@@ -1,0 +1,1230 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chor-Übe-App</title>
+
+<!-- Alle Pfade relativ: die App liegt unter einem Unterpfad (…github.io/<repo>/). -->
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="theme-color" content="#0f1114">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chor">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Übe-Aufnahmen des Chores offline auf dem Handy.">
+
+<style>
+/* ==========================================================================
+   CSS — Design-Grundlagen
+   Dunkles Design, hoher Kontrast (Probenraum, abends). System-Schriften,
+   keine externen Ressourcen.
+   ========================================================================== */
+
+:root {
+  --bg:         #0f1114;
+  --surface:    #181b21;
+  --surface-2:  #22262e;
+  --line:       #2f3641;
+  --text:       #f2f4f7;
+  --muted:      #a5adba;
+  --accent:     #f2b544;
+  --accent-ink: #14161a;
+  --danger:     #ff6f61;
+  --ok:         #56c596;
+  --warn:       #ffcf5c;
+
+  --radius:     14px;
+  --tap:        44px;          /* Mindestgröße für Touch-Ziele */
+  --pad:        16px;
+  --nav-h:      62px;
+
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  min-width: 320px;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* dvh berücksichtigt die ein- und ausfahrende Browserleiste auf dem Handy. */
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; }
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: 16px;  /* verhindert das automatische Zoomen auf iOS */
+  color: inherit;
+}
+
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
+
+/* ---------- Kopfzeile ---------------------------------------------------- */
+
+.app-header {
+  flex: 0 0 auto;
+  padding: calc(var(--safe-top) + 14px) calc(var(--pad) + var(--safe-right))
+           12px calc(var(--pad) + var(--safe-left));
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 0;
+}
+
+.app-header h1 { font-size: 1.35rem; letter-spacing: -0.01em; }
+
+/* ---------- Inhaltsbereich ---------------------------------------------- */
+
+.app-main {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--pad) calc(var(--pad) + var(--safe-right))
+           calc(var(--pad) + 24px) calc(var(--pad) + var(--safe-left));
+}
+
+.view { display: none; }
+.view.is-active { display: block; animation: fade .18s ease-out; }
+
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .view.is-active { animation: none; }
+}
+
+/* ---------- Navigationsleiste unten ------------------------------------- */
+
+.app-nav {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+.nav-btn {
+  min-height: var(--nav-h);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.nav-btn svg { width: 24px; height: 24px; display: block; }
+
+/* Auf sehr schmalen Geräten (320 px) muss „Einstellungen" noch in die Spalte passen. */
+@media (max-width: 359px) {
+  .nav-btn { font-size: 0.66rem; }
+}
+
+.nav-btn[aria-current="page"] { color: var(--accent); }
+.nav-btn:active { background: var(--surface-2); }
+
+/* ---------- Bausteine ---------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  margin-bottom: 14px;
+}
+
+.card h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 0.86rem; }
+.stack > * + * { margin-top: 10px; }
+
+.btn {
+  min-height: var(--tap);
+  padding: 11px 18px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn:active { transform: scale(0.985); }
+.btn--primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn--danger  { background: transparent; color: var(--danger); border-color: var(--danger); }
+.btn--block   { display: flex; width: 100%; }
+.btn[disabled] { opacity: 0.5; pointer-events: none; }
+
+/* Auswahl der eigenen Stimme: Raster aus großen, gut treffbaren Knöpfen. */
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.chip {
+  min-height: var(--tap);
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  padding: 10px 6px;
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+/* Speicherbalken */
+.meter {
+  height: 12px;
+  margin: 4px 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.meter > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .3s ease;
+}
+
+.meter.is-full > i { background: var(--danger); }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Leerer Zustand (noch keine Songs / Playlisten) */
+.empty {
+  text-align: center;
+  padding: 44px 18px;
+  color: var(--muted);
+}
+
+.empty svg { width: 56px; height: 56px; opacity: .55; margin-bottom: 14px; }
+.empty h2 { color: var(--text); font-size: 1.1rem; margin-bottom: 8px; text-transform: none; letter-spacing: 0; }
+
+/* Songliste (ab M1 gefüllt) */
+.list { list-style: none; margin: 0; padding: 0; }
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  padding: 12px var(--pad);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.list-item strong { font-weight: 620; }
+
+.voice-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+
+.voice-chip {
+  font-size: 0.71rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+/* Anleitungs-Schritte im Import-Bereich */
+.steps { margin: 0; padding-left: 1.25em; }
+.steps li { margin-bottom: 9px; }
+.steps li::marker { color: var(--accent); font-weight: 700; }
+
+/* ---------- Meldungsbanner (ersetzt alert()) ---------------------------- */
+
+.banners {
+  position: fixed;
+  left: calc(8px + var(--safe-left));
+  right: calc(8px + var(--safe-right));
+  top: calc(8px + var(--safe-top));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.banner {
+  pointer-events: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 11px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 26px rgba(0,0,0,.5);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.93rem;
+}
+
+.banner--error { border-left-color: var(--danger); }
+.banner--ok    { border-left-color: var(--ok); }
+.banner p { margin: 0; flex: 1; }
+
+.banner .banner-action {
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.banner .banner-close {
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+}
+
+/* ---------- Dialog (Sicherheitsabfragen, ersetzt confirm()) ------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0,0,0,.66);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px + var(--safe-top)) 18px calc(20px + var(--safe-bottom));
+}
+
+.overlay[hidden] { display: none; }
+
+.dialog {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.dialog h2 { font-size: 1.1rem; margin-bottom: 8px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.dialog p { margin: 0 0 18px; color: var(--muted); }
+.dialog-actions { display: flex; gap: 10px; }
+.dialog-actions .btn { flex: 1; }
+</style>
+</head>
+
+<body>
+
+<!-- Meldungen und Sicherheitsabfragen -->
+<div class="banners" id="banners" role="status" aria-live="polite"></div>
+
+<div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+  <div class="dialog">
+    <h2 id="dlg-title"></h2>
+    <p id="dlg-text"></p>
+    <div class="dialog-actions">
+      <button class="btn" id="dlg-cancel" type="button">Abbrechen</button>
+      <button class="btn btn--primary" id="dlg-ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<header class="app-header">
+  <h1 id="view-title">Songs</h1>
+</header>
+
+<main class="app-main" id="main">
+
+  <!-- ===== Bibliothek =================================================== -->
+  <section class="view is-active" id="view-songs" aria-labelledby="view-title">
+    <div id="song-list-host"></div>
+  </section>
+
+  <!-- ===== Playlisten =================================================== -->
+  <section class="view" id="view-playlists">
+    <div id="playlist-list-host"></div>
+  </section>
+
+  <!-- ===== Import ====================================================== -->
+  <section class="view" id="view-import">
+    <div class="card">
+      <h2>So kommen Songs in die App</h2>
+      <p class="small muted" style="margin-top:0">
+        Die Aufnahmen liegen im geteilten Dropbox-Ordner. Du lädst den Ordner einmal
+        als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline
+        auf dem Handy — ohne Dropbox, ohne Internet.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>iPhone</h2>
+      <ol class="steps small">
+        <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>…</strong> tippen.</li>
+        <li><strong>Exportieren → In Dateien sichern</strong> wählen und in „Auf meinem iPhone“ speichern.</li>
+        <li>Zurück in diese App, auf <strong>ZIP-Datei auswählen</strong> tippen und die Datei aus „Dateien“ wählen.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Android</h2>
+      <ol class="steps small">
+        <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>⋮</strong> tippen.</li>
+        <li><strong>Herunterladen</strong> wählen — Dropbox packt den Ordner als ZIP in „Downloads“.</li>
+        <li>Zurück in diese App, auf <strong>ZIP-Datei auswählen</strong> tippen und die Datei aus „Downloads“ wählen.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Gut zu wissen</h2>
+      <ul class="steps small" style="list-style: disc">
+        <li>Jeder Import <strong>ergänzt</strong> die Bibliothek. Bereits vorhandene Songs bleiben erhalten.</li>
+        <li>Du kannst später einzelne Lieder oder fehlende Stimmen nachladen.</li>
+        <li>Vor dem Speichern kannst du auswählen, welche Stimmen aufs Handy sollen — das spart Speicherplatz.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== Einstellungen =============================================== -->
+  <section class="view" id="view-settings">
+
+    <div class="card">
+      <h2>Meine Stimme</h2>
+      <p class="small muted" style="margin-top:-4px">
+        Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme
+        der Player zuerst zeigt.
+      </p>
+      <div class="chip-grid" id="voice-picker"></div>
+    </div>
+
+    <div class="card">
+      <h2>Speicher</h2>
+      <div class="stack">
+        <div class="row">
+          <span id="storage-text" class="small">wird ermittelt …</span>
+        </div>
+        <div class="meter" id="storage-meter"><i></i></div>
+        <p class="small muted" id="persist-text" style="margin:0"></p>
+        <button class="btn btn--block" id="btn-persist" type="button" hidden>
+          Dauerhafte Speicherung anfordern
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Daten</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Löscht alle Songs, Aufnahmen, Loops und Playlisten von diesem Gerät.
+          Die Dateien in der Dropbox bleiben unberührt.
+        </p>
+        <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
+          Alle Daten löschen
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Über die App</h2>
+      <div class="stack small muted">
+        <div class="row"><span>Version</span><span id="app-version">–</span></div>
+        <div class="row"><span>Offline verfügbar</span><span id="offline-state">–</span></div>
+        <p style="margin:0">
+          Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt
+          auf diesem Gerät.
+        </p>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<nav class="app-nav" id="nav" aria-label="Hauptnavigation">
+  <button class="nav-btn" type="button" data-view="songs" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
+    </svg>
+    Songs
+  </button>
+  <button class="nav-btn" type="button" data-view="playlists">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
+    </svg>
+    Playlisten
+  </button>
+  <button class="nav-btn" type="button" data-view="import">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+    </svg>
+    Import
+  </button>
+  <button class="nav-btn" type="button" data-view="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>
+    </svg>
+    Einstellungen
+  </button>
+</nav>
+
+<script>
+'use strict';
+(() => {
+
+/* ==========================================================================
+   UTIL — kleine Helfer
+   ========================================================================== */
+
+const $  = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+/** Element erzeugen. Text wird immer als textContent gesetzt — nie als HTML,
+ *  weil Titel aus fremden Dateinamen stammen können. */
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') node.className = v;
+    else if (k === 'text') node.textContent = v;
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    node.append(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+
+/** Bytes menschenlesbar, deutsche Schreibweise mit Komma. */
+function fmtBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '–';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  const digits = v < 10 && i > 0 ? 1 : 0;
+  return `${v.toFixed(digits).replace('.', ',')} ${units[i]}`;
+}
+
+/* ==========================================================================
+   VOICES — Stimmen, Reihenfolge und Anzeigenamen
+   Die Reihenfolge ist verbindlich für die Spurensortierung: FULL zuerst.
+   ========================================================================== */
+
+const VOICE_ORDER = ['FULL', 'SOP', 'ALT', 'TEN', 'BASS', 'BAR', 'LEAD', 'PIANO', 'OTHER'];
+
+const VOICE_LABEL = {
+  FULL:  'Gesamt',
+  SOP:   'Sopran',
+  ALT:   'Alt',
+  TEN:   'Tenor',
+  BASS:  'Bass',
+  BAR:   'Bariton',
+  LEAD:  'Solo / Lead',
+  PIANO: 'Klavier',
+  OTHER: 'Sonstige',
+};
+
+// Als „meine Stimme" sind nur die gesungenen Stimmen sinnvoll.
+const MY_VOICE_CHOICES = ['SOP', 'ALT', 'TEN', 'BASS', 'BAR', 'LEAD'];
+
+/* ==========================================================================
+   BANNER — Meldungen und Sicherheitsabfragen (es gibt bewusst kein alert())
+   ========================================================================== */
+
+const bannersHost = $('#banners');
+
+/**
+ * Zeigt einen Meldungsbanner.
+ * @param {string} text     Text auf Deutsch, verständlich formuliert
+ * @param {object} [opts]   { kind:'info'|'error'|'ok', action:{label,onClick},
+ *                            timeout:ms|0 (0 = bleibt stehen) }
+ * @returns {() => void}    Funktion zum Schließen
+ */
+function banner(text, opts = {}) {
+  const { kind = 'info', action = null, timeout = kind === 'error' ? 0 : 5000 } = opts;
+
+  const node = el('div', { class: `banner banner--${kind}` });
+  node.append(el('p', { text }));
+
+  if (action) {
+    node.append(el('button', {
+      class: 'banner-action',
+      type: 'button',
+      text: action.label,
+      onclick: () => { close(); action.onClick(); },
+    }));
+  }
+
+  node.append(el('button', {
+    class: 'banner-close',
+    type: 'button',
+    'aria-label': 'Meldung schließen',
+    text: '×',
+    onclick: () => close(),
+  }));
+
+  let timer = null;
+  function close() {
+    if (timer) clearTimeout(timer);
+    node.remove();
+  }
+
+  bannersHost.append(node);
+  if (timeout > 0) timer = setTimeout(close, timeout);
+  return close;
+}
+
+const overlay   = $('#overlay');
+const dlgTitle  = $('#dlg-title');
+const dlgText   = $('#dlg-text');
+const dlgOk     = $('#dlg-ok');
+const dlgCancel = $('#dlg-cancel');
+let dlgResolve  = null;
+
+/**
+ * Sicherheitsabfrage als eigener Dialog (confirm() wäre auf iOS im
+ * Standalone-Modus optisch ein Fremdkörper und blockiert den Hauptthread).
+ * @returns {Promise<boolean>}
+ */
+function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
+  dlgTitle.textContent = title;
+  dlgText.textContent  = text;
+  dlgOk.textContent    = okLabel;
+  dlgOk.className      = danger ? 'btn btn--danger' : 'btn btn--primary';
+  overlay.hidden = false;
+  dlgOk.focus();
+
+  return new Promise((resolve) => {
+    dlgResolve = resolve;
+  });
+}
+
+function closeDialog(result) {
+  overlay.hidden = true;
+  const r = dlgResolve;
+  dlgResolve = null;
+  if (r) r(result);
+}
+
+dlgOk.addEventListener('click', () => closeDialog(true));
+dlgCancel.addEventListener('click', () => closeDialog(false));
+overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !overlay.hidden) closeDialog(false);
+});
+
+/* ==========================================================================
+   DB — IndexedDB-Schicht
+
+   Zwei Stores:
+     files : { key, blob, size, name }        — MP3- und PDF-Daten (groß)
+     meta  : { key, type, ... }               — Songs, Loops, Playlisten,
+                                                Einstellungen (klein)
+
+   `meta` ist bewusst ein Schlüssel-Wert-Store mit Präfix im Schlüssel
+   (song:…, loop:…, playlist:…, settings) plus Index auf `type`. Das erspart
+   spätere Schema-Migrationen, wenn neue Datensatzarten dazukommen.
+   ========================================================================== */
+
+const DB_NAME    = 'chor-app';
+const DB_VERSION = 1;
+let dbPromise = null;
+
+function openDB() {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) {
+      reject(new Error('Dieser Browser kann keine Daten dauerhaft speichern.'));
+      return;
+    }
+
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('files')) {
+        db.createObjectStore('files', { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains('meta')) {
+        const meta = db.createObjectStore('meta', { keyPath: 'key' });
+        meta.createIndex('type', 'type', { unique: false });
+      }
+    };
+
+    req.onsuccess = () => {
+      const db = req.result;
+      // Läuft in einem anderen Tab ein Update, muss diese Verbindung weichen.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+
+    req.onerror = () => reject(req.error || new Error('IndexedDB nicht verfügbar'));
+    req.onblocked = () => reject(new Error('Die Datenbank wird von einem anderen Tab blockiert.'));
+  });
+
+  return dbPromise;
+}
+
+/** Führt `fn` in einer Transaktion aus und wartet auf deren Abschluss. */
+async function tx(storeNames, mode, fn) {
+  const db = await openDB();
+  const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(names, mode);
+    let out;
+    t.oncomplete = () => resolve(out);
+    t.onerror    = () => reject(t.error);
+    t.onabort    = () => reject(t.error || new Error('Transaktion abgebrochen'));
+    try {
+      out = fn(...names.map((n) => t.objectStore(n)), t);
+    } catch (err) {
+      try { t.abort(); } catch { /* bereits beendet */ }
+      reject(err);
+    }
+  });
+}
+
+/** IDBRequest → Promise */
+function reqPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror   = () => reject(request.error);
+  });
+}
+
+const DB = {
+  async metaGet(key) {
+    const db = await openDB();
+    return reqPromise(db.transaction('meta', 'readonly').objectStore('meta').get(key));
+  },
+
+  async metaPut(record) {
+    await tx('meta', 'readwrite', (meta) => { meta.put(record); });
+    return record;
+  },
+
+  async metaPutMany(records) {
+    if (!records.length) return;
+    await tx('meta', 'readwrite', (meta) => { for (const r of records) meta.put(r); });
+  },
+
+  async metaDelete(key) {
+    await tx('meta', 'readwrite', (meta) => { meta.delete(key); });
+  },
+
+  /** Alle Datensätze eines Typs, z.B. 'song'. */
+  async metaByType(type) {
+    const db = await openDB();
+    const idx = db.transaction('meta', 'readonly').objectStore('meta').index('type');
+    return reqPromise(idx.getAll(IDBKeyRange.only(type)));
+  },
+
+  async fileGet(key) {
+    const db = await openDB();
+    return reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key));
+  },
+
+  /** Speichert einen Blob. `key` wird vom Aufrufer vergeben (siehe M1). */
+  async filePut(key, blob, name = '') {
+    const record = { key, blob, size: blob.size, name };
+    await tx('files', 'readwrite', (files) => { files.put(record); });
+    return record;
+  },
+
+  async fileDelete(keys) {
+    const list = Array.isArray(keys) ? keys : [keys];
+    if (!list.length) return;
+    await tx('files', 'readwrite', (files) => { for (const k of list) files.delete(k); });
+  },
+
+  /** Löscht restlos alles — nur aus der Einstellung „Alle Daten löschen". */
+  async wipe() {
+    await tx(['files', 'meta'], 'readwrite', (files, meta) => {
+      files.clear();
+      meta.clear();
+    });
+  },
+};
+
+/* ==========================================================================
+   SETTINGS — Einstellungen laden und speichern
+   ========================================================================== */
+
+const SETTINGS_KEY = 'settings';
+
+const DEFAULT_SETTINGS = {
+  key: SETTINGS_KEY,
+  type: 'settings',
+  myVoice: null,            // 'SOP' | 'ALT' | … | null = noch nicht gewählt
+  defaultImportScope: 'mine', // 'mine' | 'full' | 'all' (siehe Auswahlmaske, M1)
+  lyricsFontSize: 17,
+  lastBackupAt: null,
+};
+
+let settings = { ...DEFAULT_SETTINGS };
+
+async function loadSettings() {
+  try {
+    const stored = await DB.metaGet(SETTINGS_KEY);
+    settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+  } catch (err) {
+    console.warn('[settings] konnten nicht geladen werden', err);
+    settings = { ...DEFAULT_SETTINGS };
+  }
+  return settings;
+}
+
+async function saveSettings(patch) {
+  settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+  try {
+    await DB.metaPut(settings);
+  } catch (err) {
+    banner('Die Einstellung konnte nicht gespeichert werden.', { kind: 'error' });
+    console.error(err);
+  }
+  return settings;
+}
+
+/* ==========================================================================
+   STORAGE — dauerhafte Speicherung und Platzanzeige
+   ========================================================================== */
+
+/**
+ * Bittet den Browser, die Daten dauerhaft zu behalten. Ohne das räumt iOS die
+ * Daten einer Web-App nach 7 Tagen ohne Benutzung ab — bei 2 GB Aufnahmen ein
+ * schmerzhafter Verlust.
+ */
+async function requestPersistence() {
+  if (!navigator.storage || !navigator.storage.persist) return false;
+  try {
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch (err) {
+    console.warn('[storage] persist() fehlgeschlagen', err);
+    return false;
+  }
+}
+
+async function storageInfo() {
+  if (!navigator.storage || !navigator.storage.estimate) return null;
+  try {
+    const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+    return { usage, quota };
+  } catch {
+    return null;
+  }
+}
+
+/* ==========================================================================
+   UI — Ansichten und Navigation
+   ========================================================================== */
+
+const VIEWS = {
+  songs:     { title: 'Songs',         render: renderSongs },
+  playlists: { title: 'Playlisten',    render: renderPlaylists },
+  import:    { title: 'Import',        render: null },
+  settings:  { title: 'Einstellungen', render: renderSettings },
+};
+
+let currentView = 'songs';
+
+function showView(name, { push = true } = {}) {
+  if (!VIEWS[name]) name = 'songs';
+  currentView = name;
+
+  $$('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${name}`));
+  $$('.nav-btn').forEach((b) => {
+    if (b.dataset.view === name) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+
+  $('#view-title').textContent = VIEWS[name].title;
+  $('#main').scrollTop = 0;
+
+  if (push && location.hash !== `#${name}`) {
+    history.pushState({ view: name }, '', `#${name}`);
+  }
+
+  VIEWS[name].render?.();
+}
+
+$('#nav').addEventListener('click', (e) => {
+  const btn = e.target.closest('.nav-btn');
+  if (btn) showView(btn.dataset.view);
+});
+
+// Zurück-Taste auf Android springt zwischen den Reitern statt die App zu verlassen.
+window.addEventListener('popstate', () => {
+  const name = (location.hash || '#songs').slice(1);
+  showView(name, { push: false });
+});
+
+/* ---------- Bibliothek --------------------------------------------------- */
+
+function iconEmptyNote() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>';
+  return svg;
+}
+
+const collator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
+
+async function renderSongs() {
+  const host = $('#song-list-host');
+  host.textContent = '';
+
+  let songs = [];
+  try {
+    songs = await DB.metaByType('song');
+  } catch (err) {
+    console.error(err);
+    host.append(el('div', { class: 'card' },
+      el('p', { class: 'small', text: 'Die Songliste konnte nicht geladen werden.' })));
+    return;
+  }
+
+  if (!songs.length) {
+    host.append(el('div', { class: 'empty' },
+      iconEmptyNote(),
+      el('h2', { text: 'Noch keine Songs' }),
+      el('p', { class: 'small', text: 'Lade die Aufnahmen aus der Dropbox als ZIP-Datei herunter und importiere sie hier.' }),
+      el('button', {
+        class: 'btn btn--primary',
+        type: 'button',
+        text: 'Zum Import',
+        style: 'margin-top:14px',
+        onclick: () => showView('import'),
+      })
+    ));
+    return;
+  }
+
+  // Sortierung mit Intl.Collator: „Ärger" gehört zu A, nicht ans Ende.
+  songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+
+  const list = el('ul', { class: 'list' });
+  for (const song of songs) {
+    const voices = (song.tracks || [])
+      .map((t) => t.voice)
+      .sort((a, b) => VOICE_ORDER.indexOf(a) - VOICE_ORDER.indexOf(b));
+
+    list.append(el('li', {},
+      el('div', { class: 'list-item' },
+        el('div', { style: 'flex:1; min-width:0' },
+          el('strong', { text: song.title || 'Ohne Titel' }),
+          el('div', { class: 'voice-chips' },
+            voices.map((v) => el('span', { class: 'voice-chip', text: VOICE_LABEL[v] || v })))
+        )
+      )
+    ));
+  }
+  host.append(list);
+}
+
+/* ---------- Playlisten --------------------------------------------------- */
+
+async function renderPlaylists() {
+  const host = $('#playlist-list-host');
+  host.textContent = '';
+
+  let lists = [];
+  try {
+    lists = await DB.metaByType('playlist');
+  } catch (err) {
+    console.error(err);
+  }
+
+  if (!lists.length) {
+    host.append(el('div', { class: 'empty' },
+      el('h2', { text: 'Noch keine Playlisten' }),
+      el('p', { class: 'small', text: 'Playlisten helfen dir, ein Konzertprogramm der Reihe nach zu üben.' })
+    ));
+    return;
+  }
+
+  lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
+
+  const ul = el('ul', { class: 'list' });
+  for (const pl of lists) {
+    ul.append(el('li', {},
+      el('div', { class: 'list-item' },
+        el('div', { style: 'flex:1; min-width:0' },
+          el('strong', { text: pl.name || 'Ohne Namen' }),
+          el('div', { class: 'small muted', text: `${(pl.songIds || []).length} Titel` })
+        )
+      )
+    ));
+  }
+  host.append(ul);
+}
+
+/* ---------- Einstellungen ------------------------------------------------ */
+
+function renderVoicePicker() {
+  const host = $('#voice-picker');
+  host.textContent = '';
+
+  for (const voice of MY_VOICE_CHOICES) {
+    host.append(el('button', {
+      class: 'chip',
+      type: 'button',
+      'aria-pressed': settings.myVoice === voice ? 'true' : 'false',
+      text: VOICE_LABEL[voice],
+      onclick: async () => {
+        // Nochmaliges Tippen hebt die Auswahl auf.
+        const next = settings.myVoice === voice ? null : voice;
+        await saveSettings({ myVoice: next });
+        renderVoicePicker();
+      },
+    }));
+  }
+}
+
+async function renderStorage() {
+  const info = await storageInfo();
+  const text  = $('#storage-text');
+  const meter = $('#storage-meter');
+  const bar   = meter.firstElementChild;
+
+  if (!info || !info.quota) {
+    text.textContent = 'Dieser Browser nennt keinen Speicherstand.';
+    meter.hidden = true;
+  } else {
+    meter.hidden = false;
+    const pct = Math.min(100, (info.usage / info.quota) * 100);
+    text.textContent = `Belegt: ${fmtBytes(info.usage)} von ${fmtBytes(info.quota)}`;
+    bar.style.width = `${Math.max(pct, info.usage > 0 ? 1.5 : 0)}%`;
+    meter.classList.toggle('is-full', pct >= 85);
+  }
+
+  const persisted = navigator.storage?.persisted
+    ? await navigator.storage.persisted().catch(() => false)
+    : false;
+
+  const persistText = $('#persist-text');
+  const persistBtn  = $('#btn-persist');
+
+  if (persisted) {
+    persistText.textContent = 'Dauerhafte Speicherung ist aktiv — das System löscht die Aufnahmen nicht von selbst.';
+    persistBtn.hidden = true;
+  } else {
+    persistText.textContent = 'Dauerhafte Speicherung ist nicht aktiv. Ohne sie kann das System die Aufnahmen bei Platzmangel entfernen.';
+    persistBtn.hidden = !(navigator.storage && navigator.storage.persist);
+  }
+}
+
+async function renderSettings() {
+  renderVoicePicker();
+  await renderStorage();
+  $('#offline-state').textContent = navigator.serviceWorker?.controller
+    ? 'ja'
+    : 'wird eingerichtet …';
+}
+
+$('#btn-persist').addEventListener('click', async () => {
+  const ok = await requestPersistence();
+  if (ok) banner('Dauerhafte Speicherung ist jetzt aktiv.', { kind: 'ok' });
+  else banner('Das System hat die dauerhafte Speicherung abgelehnt. Die App funktioniert trotzdem — sichere deine Loops und Playlisten gelegentlich.', { kind: 'error' });
+  await renderStorage();
+});
+
+$('#btn-wipe').addEventListener('click', async () => {
+  const ok = await confirmDialog({
+    title: 'Alle Daten löschen?',
+    text: 'Alle Songs, Aufnahmen, Loops und Playlisten werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
+    okLabel: 'Löschen',
+    danger: true,
+  });
+  if (!ok) return;
+
+  try {
+    await DB.wipe();
+    settings = { ...DEFAULT_SETTINGS };
+    banner('Alle Daten wurden gelöscht.', { kind: 'ok' });
+    await renderSettings();
+    await renderSongs();
+    await renderPlaylists();
+  } catch (err) {
+    console.error(err);
+    banner('Die Daten konnten nicht vollständig gelöscht werden.', { kind: 'error' });
+  }
+});
+
+/* ==========================================================================
+   SW — Service Worker registrieren und Updates anbieten
+   ========================================================================== */
+
+let reloadingForUpdate = false;
+
+function offerUpdate(worker) {
+  banner('Neue Version verfügbar.', {
+    kind: 'info',
+    timeout: 0,
+    action: {
+      label: 'Aktualisieren',
+      onClick: () => worker.postMessage({ type: 'SKIP_WAITING' }),
+    },
+  });
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) {
+    banner('Dieser Browser unterstützt keinen Offline-Betrieb. Die App braucht dann eine Internetverbindung.', { kind: 'error' });
+    return;
+  }
+
+  try {
+    // Relativ registrieren, damit der Scope den Unterpfad der Seite trifft.
+    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+
+    // Wartet bereits eine neue Fassung? (Tab war zwischendurch offen)
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        // controller vorhanden ⇒ es ist ein Update, keine Erstinstallation.
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          offerUpdate(worker);
+        }
+      });
+    });
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadingForUpdate) return;
+      reloadingForUpdate = true;
+      location.reload();
+    });
+
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.type === 'VERSION') $('#app-version').textContent = e.data.version;
+    });
+
+    // Version beim aktiven Worker erfragen (für die Anzeige in Einstellungen).
+    navigator.serviceWorker.ready.then((r) => {
+      r.active?.postMessage({ type: 'GET_VERSION' });
+    });
+  } catch (err) {
+    console.error('[sw] Registrierung fehlgeschlagen', err);
+    banner('Der Offline-Betrieb konnte nicht eingerichtet werden.', { kind: 'error' });
+  }
+}
+
+/* ==========================================================================
+   BOOT — Start
+   ========================================================================== */
+
+async function boot() {
+  // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('[unhandled]', e.reason);
+  });
+
+  try {
+    await openDB();
+  } catch (err) {
+    console.error(err);
+    banner('Die Datenbank konnte nicht geöffnet werden. Im privaten Modus mancher Browser ist das Speichern gesperrt.', { kind: 'error' });
+  }
+
+  await loadSettings();
+  requestPersistence(); // im Hintergrund, blockiert den Start nicht
+
+  const start = (location.hash || '#songs').slice(1);
+  showView(VIEWS[start] ? start : 'songs', { push: false });
+
+  registerServiceWorker();
+}
+
+boot();
+
+})();
+</script>
+</body>
+</html>
