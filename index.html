@@ -305,6 +305,236 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
 .steps li { margin-bottom: 9px; }
 .steps li::marker { color: var(--accent); font-weight: 700; }
 
+/* ---------- Suche und Sammelordner-Filter (Bibliothek) ------------------ */
+
+.searchbar { margin-bottom: 12px; }
+
+.search-input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 11px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.search-input::placeholder { color: var(--muted); }
+
+.filterbar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  /* seitliches Wischen in der Filterleiste, ohne die Seite mitzuziehen */
+  touch-action: pan-x;
+}
+
+.filterbar::-webkit-scrollbar { display: none; }
+
+.filter-chip {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.filter-chip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.list-item .marks { display: flex; gap: 6px; color: var(--muted); flex: 0 0 auto; }
+.list-item .marks svg { width: 18px; height: 18px; display: block; }
+
+/* ---------- Auswahlmaske vor dem Import --------------------------------- */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet[hidden] { display: none; }
+
+.sheet-head {
+  flex: 0 0 auto;
+  padding: calc(var(--safe-top) + 12px) calc(var(--pad) + var(--safe-right))
+           12px calc(var(--pad) + var(--safe-left));
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.sheet-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px calc(var(--pad) + var(--safe-right)) 12px calc(var(--pad) + var(--safe-left));
+}
+
+.sheet-foot {
+  flex: 0 0 auto;
+  padding: 12px calc(var(--pad) + var(--safe-right))
+           calc(12px + var(--safe-bottom)) calc(var(--pad) + var(--safe-left));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.sheet-title { font-size: 1.05rem; margin-bottom: 3px; }
+
+/* Voreinstellungen „Nur meine Stimme + Gesamt" usw. */
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.preset {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+  padding: 6px 4px;
+  line-height: 1.2;
+}
+
+.preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+/* Song- und Spurzeilen mit Häkchen */
+.pick-song {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.pick-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  min-height: 56px;
+}
+
+.pick-head .grow { flex: 1; min-width: 0; }
+.pick-head strong { display: block; overflow-wrap: anywhere; }
+
+.disclose {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.disclose svg { width: 20px; height: 20px; transition: transform .18s ease; }
+.disclose[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+.pick-tracks {
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  padding: 4px 12px 8px;
+}
+
+.pick-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 6px 0;
+}
+
+.pick-track .grow { flex: 1; min-width: 0; }
+.pick-track .size { color: var(--muted); font-size: 0.83rem; flex: 0 0 auto; }
+
+input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+/* Statuskennzeichen: bereits vorhanden / geändert / neue Stimme */
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface-2);
+  margin-top: 4px;
+}
+
+.badge--changed { color: var(--warn); border-color: #5a4a20; background: #2a2314; }
+.badge--new     { color: var(--ok);   border-color: #24513f; background: #14241d; }
+
+.hint-box {
+  border: 1px solid #5a4a20;
+  background: #2a2314;
+  color: var(--warn);
+  border-radius: 11px;
+  padding: 11px 13px;
+  font-size: 0.88rem;
+  margin-bottom: 12px;
+}
+
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.progress > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .15s linear;
+}
+
+/* Datei-Eingaben werden nie direkt gezeigt — Bedienung läuft über Buttons. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---------- Meldungsbanner (ersetzt alert()) ---------------------------- */
 
 .banners {
@@ -405,6 +635,38 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   </div>
 </div>
 
+<!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
+     entschieden wird und nichts anderes ablenken soll. -->
+<section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
+  <div class="sheet-head">
+    <div class="row" style="align-items:flex-start">
+      <div class="grow" style="flex:1">
+        <h2 class="sheet-title" id="sheet-title">Auswahl</h2>
+        <p class="small muted" id="sheet-found" style="margin:0"></p>
+      </div>
+      <button class="disclose" id="sheet-close" type="button" aria-label="Abbrechen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="preset-row" id="sheet-presets" role="group" aria-label="Voreinstellung">
+      <button class="preset" type="button" data-preset="mine">Nur meine Stimme + Gesamt</button>
+      <button class="preset" type="button" data-preset="full">Nur Gesamt</button>
+      <button class="preset" type="button" data-preset="all">Alles</button>
+    </div>
+  </div>
+
+  <div class="sheet-body" id="sheet-body"></div>
+
+  <div class="sheet-foot">
+    <div class="progress" id="sheet-progress" hidden><i></i></div>
+    <p class="small" id="sheet-summary" style="margin:0 0 4px"></p>
+    <p class="small muted" id="sheet-plan" style="margin:0 0 10px"></p>
+    <button class="btn btn--primary btn--block" id="sheet-import" type="button">Importieren</button>
+  </div>
+</section>
+
 <header class="app-header">
   <h1 id="view-title">Songs</h1>
 </header>
@@ -413,6 +675,12 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
 
   <!-- ===== Bibliothek =================================================== -->
   <section class="view is-active" id="view-songs" aria-labelledby="view-title">
+    <div class="searchbar" id="searchbar" hidden>
+      <input class="search-input" id="search" type="search" inputmode="search"
+             autocomplete="off" autocorrect="off" spellcheck="false"
+             placeholder="Song suchen …" aria-label="Song suchen">
+    </div>
+    <div class="filterbar" id="filterbar" hidden></div>
     <div id="song-list-host"></div>
   </section>
 
@@ -424,13 +692,28 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   <!-- ===== Import ====================================================== -->
   <section class="view" id="view-import">
     <div class="card">
-      <h2>So kommen Songs in die App</h2>
+      <h2>Songs importieren</h2>
       <p class="small muted" style="margin-top:0">
         Die Aufnahmen liegen im geteilten Dropbox-Ordner. Du lädst den Ordner einmal
         als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline
         auf dem Handy — ohne Dropbox, ohne Internet.
       </p>
+      <input class="visually-hidden" id="zip-input" type="file" accept=".zip,application/zip,application/x-zip-compressed">
+      <button class="btn btn--primary btn--block" id="btn-zip" type="button" style="margin-top:14px">
+        ZIP-Datei auswählen
+      </button>
+      <!-- Der Ordner-Import ist bewusst nur auf dem Desktop sichtbar: auf iOS und
+           Android arbeitet webkitdirectory nicht, meldet aber Unterstützung. -->
+      <div id="folder-import" hidden style="margin-top:10px">
+        <input class="visually-hidden" id="folder-input" type="file" webkitdirectory multiple>
+        <button class="btn btn--block" id="btn-folder" type="button">
+          Stattdessen einen Ordner wählen
+        </button>
+        <p class="small muted" style="margin:8px 0 0">Nur am Computer verfügbar.</p>
+      </div>
     </div>
+
+    <div id="import-report"></div>
 
     <div class="card">
       <h2>iPhone</h2>
@@ -569,6 +852,9 @@ function el(tag, attrs = {}, ...children) {
   }
   return node;
 }
+
+// Deutsche Sortierung: „Ärger" gehört zu A, nicht ans Listenende.
+const collator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 
 /** Bytes menschenlesbar, deutsche Schreibweise mit Komma. */
 function fmtBytes(bytes) {
@@ -894,13 +1180,517 @@ async function storageInfo() {
 }
 
 /* ==========================================================================
+   ZIP — eigener Leser, häppchenweise über File.slice()
+
+   Die Datei wird NIE komplett in den Speicher geladen: bei 500 MB würde das
+   Handy abstürzen. Gelesen wird zuerst nur das Inhaltsverzeichnis am Dateiende
+   (wenige Kilobyte), und erst nach der Auswahl die tatsächlich gewünschten
+   Einträge.
+   ========================================================================== */
+
+const SIG_EOCD    = 0x06054b50;  // End of Central Directory
+const SIG_ZIP64_L = 0x07064b50;  // ZIP64 End of Central Directory Locator
+const SIG_ZIP64_E = 0x06064b50;  // ZIP64 End of Central Directory Record
+const SIG_CEN     = 0x02014b50;  // Central Directory Header
+const SIG_LOC     = 0x04034b50;  // Local File Header
+
+/** Zeichentabelle CP437, obere Hälfte — Fallback für Dateinamen ohne UTF-8-Flag. */
+const CP437_HIGH =
+  'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒ' +
+  'áíóúñÑªº¿⌐¬½¼¡«»' +
+  '░▒▓│┤╡╢╖╕╣║╗╝╜╛┐' +
+  '└┴┬├─┼╞╟╚╔╩╦╠═╬╧' +
+  '╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀' +
+  'αßΓπΣσµτΦΘΩδ∞φε∩' +
+  '≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
+
+function decodeCP437(bytes) {
+  let out = '';
+  for (const b of bytes) out += b < 0x80 ? String.fromCharCode(b) : CP437_HIGH[b - 0x80];
+  return out;
+}
+
+const utf8Strict = new TextDecoder('utf-8', { fatal: true });
+const utf8Loose  = new TextDecoder('utf-8');
+
+function decodeEntryName(bytes, flags) {
+  // Bit 11 des Flag-Feldes bedeutet: Name ist UTF-8.
+  if (flags & 0x800) return utf8Loose.decode(bytes);
+  try {
+    return utf8Strict.decode(bytes);   // viele Packer setzen das Flag nicht, sind aber UTF-8
+  } catch {
+    return decodeCP437(bytes);
+  }
+}
+
+async function sliceView(file, start, end) {
+  const buf = await file.slice(Math.max(0, start), Math.min(end, file.size)).arrayBuffer();
+  return new DataView(buf);
+}
+
+/** Sucht eine 4-Byte-Signatur von hinten nach vorn. */
+function findSigBackwards(view, sig) {
+  for (let i = view.byteLength - 4; i >= 0; i--) {
+    if (view.getUint32(i, true) === sig) return i;
+  }
+  return -1;
+}
+
+function u64(view, offset) {
+  const value = view.getBigUint64(offset, true);
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new ZipError('Diese ZIP-Datei ist zu groß.');
+  }
+  return Number(value);
+}
+
+class ZipError extends Error {}
+
+/** macOS legt Metadaten neben die Nutzdaten — die will niemand importieren. */
+function isJunkPath(path) {
+  if (path.startsWith('__MACOSX/')) return true;
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  return base.startsWith('._') || base.startsWith('.');
+}
+
+/**
+ * Liest das Inhaltsverzeichnis einer ZIP-Datei.
+ * @returns {Promise<Array>} Einträge { path, method, compressedSize, size, headerOffset }
+ */
+async function zipReadDirectory(file) {
+  if (file.size < 22) throw new ZipError('Die Datei ist zu klein für ein ZIP-Archiv.');
+
+  // Der EOCD-Record steht am Dateiende, kann aber bis zu 64 KB Kommentar
+  // hinter sich haben. 66 KB abdecken genügt für jedes gültige Archiv.
+  const tailLen = Math.min(file.size, 66 * 1024);
+  const tail = await sliceView(file, file.size - tailLen, file.size);
+  const tailStart = file.size - tailLen;
+
+  const eocdRel = findSigBackwards(tail, SIG_EOCD);
+  if (eocdRel < 0) {
+    throw new ZipError('Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
+  }
+
+  let total  = tail.getUint16(eocdRel + 10, true);
+  let cdSize = tail.getUint32(eocdRel + 12, true);
+  let cdOff  = tail.getUint32(eocdRel + 16, true);
+
+  // Platzhalterwerte ⇒ die echten Zahlen stehen im ZIP64-Record.
+  if (total === 0xFFFF || cdSize === 0xFFFFFFFF || cdOff === 0xFFFFFFFF) {
+    const locRel = findSigBackwards(tail, SIG_ZIP64_L);
+    if (locRel < 0) throw new ZipError('Diese ZIP-Datei verwendet ein Format, das die App nicht lesen kann.');
+    const z64Off = u64(tail, locRel + 8);
+    const z64 = await sliceView(file, z64Off, z64Off + 56);
+    if (z64.getUint32(0, true) !== SIG_ZIP64_E) {
+      throw new ZipError('Diese ZIP-Datei verwendet ein Format, das die App nicht lesen kann.');
+    }
+    total  = u64(z64, 32);
+    cdSize = u64(z64, 40);
+    cdOff  = u64(z64, 48);
+  }
+
+  if (cdOff + cdSize > file.size) {
+    throw new ZipError('Diese Datei ist unvollständig. Bitte den Ordner erneut aus Dropbox herunterladen.');
+  }
+
+  // Das gesamte Inhaltsverzeichnis am Stück lesen — bei 2000 Einträgen sind
+  // das rund 100 KB, und es geht in Sekundenbruchteilen.
+  const cd = await sliceView(file, cdOff, cdOff + cdSize);
+  const entries = [];
+  let p = 0;
+
+  for (let i = 0; i < total; i++) {
+    if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== SIG_CEN) break;
+
+    const flags    = cd.getUint16(p + 8, true);
+    const method   = cd.getUint16(p + 10, true);
+    let   compSize = cd.getUint32(p + 20, true);
+    let   size     = cd.getUint32(p + 24, true);
+    const nameLen  = cd.getUint16(p + 28, true);
+    const extraLen = cd.getUint16(p + 30, true);
+    const cmtLen   = cd.getUint16(p + 32, true);
+    let   headerOffset = cd.getUint32(p + 42, true);
+
+    const nameBytes = new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nameLen);
+    const path = decodeEntryName(nameBytes, flags);
+
+    // ZIP64-Zusatzfeld (0x0001) trägt die echten Werte für alles, was mit
+    // Platzhaltern markiert ist — in genau dieser Reihenfolge.
+    if (size === 0xFFFFFFFF || compSize === 0xFFFFFFFF || headerOffset === 0xFFFFFFFF) {
+      let e = p + 46 + nameLen;
+      const extraEnd = e + extraLen;
+      while (e + 4 <= extraEnd) {
+        const id  = cd.getUint16(e, true);
+        const len = cd.getUint16(e + 2, true);
+        if (id === 0x0001) {
+          let q = e + 4;
+          if (size === 0xFFFFFFFF)         { size = u64(cd, q); q += 8; }
+          if (compSize === 0xFFFFFFFF)     { compSize = u64(cd, q); q += 8; }
+          if (headerOffset === 0xFFFFFFFF) { headerOffset = u64(cd, q); q += 8; }
+          break;
+        }
+        e += 4 + len;
+      }
+    }
+
+    p += 46 + nameLen + extraLen + cmtLen;
+
+    if (path.endsWith('/')) continue;      // reiner Verzeichniseintrag
+    if (isJunkPath(path)) continue;
+
+    entries.push({ path, method, compressedSize: compSize, size, headerOffset });
+  }
+
+  if (!entries.length) {
+    throw new ZipError('In dieser ZIP-Datei sind keine Dateien enthalten.');
+  }
+  return entries;
+}
+
+const canInflate = typeof DecompressionStream === 'function';
+
+/** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
+async function zipExtract(file, entry) {
+  const head = await sliceView(file, entry.headerOffset, entry.headerOffset + 30);
+  if (head.getUint32(0, true) !== SIG_LOC) {
+    throw new ZipError(`„${entry.path}" konnte im Archiv nicht gefunden werden.`);
+  }
+  // Der lokale Header hat eigene Längenangaben — die aus dem Inhaltsverzeichnis
+  // dürfen hier nicht verwendet werden, sie unterscheiden sich häufig.
+  const nameLen  = head.getUint16(26, true);
+  const extraLen = head.getUint16(28, true);
+  const start = entry.headerOffset + 30 + nameLen + extraLen;
+  const raw = file.slice(start, start + entry.compressedSize);
+
+  // Methode 0 (stored) ist bei MP3s der Normalfall — Dropbox komprimiert sie
+  // nicht noch einmal. Dann kostet das Extrahieren praktisch nichts.
+  if (entry.method === 0) return raw;
+
+  if (entry.method === 8) {
+    if (!canInflate) {
+      throw new ZipError(`„${entry.path}" ist komprimiert; dieser Browser kann das nicht entpacken.`);
+    }
+    const stream = raw.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(stream).blob();
+  }
+
+  throw new ZipError(`„${entry.path}" verwendet ein unbekanntes Komprimierungsverfahren.`);
+}
+
+/* ==========================================================================
+   SCANNER — Ordner- und Dateierkennung (Spec 4.3)
+   ========================================================================== */
+
+const AUDIO_RE = /\.(mp3|m4a|aac|wav|ogg|opus|flac)$/i;
+const PDF_RE   = /\.pdf$/i;
+const TXT_RE   = /\.txt$/i;
+
+/** ä→ae usw., danach alle übrigen Akzente auflösen. Reihenfolge ist wichtig. */
+function foldUmlauts(s) {
+  return s
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Grundnormalisierung eines Titels: Kleinschreibung, Umlaute aufgelöst,
+ * Satzzeichen entfernt. Das ist die Songidentität (4.6) und zugleich die
+ * Zuordnung für Playlisten und Sicherungen — „Blaue Augen", „blaue augen"
+ * und „Blaue_Augen" ergeben denselben Schlüssel.
+ */
+function normalizeTitle(s) {
+  return foldUmlauts(String(s).toLowerCase())
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/[^\p{L}\p{N} ]+/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Versionsmarker am Ende eines Ordnernamens (4.5). Nur für die Erkennung
+// mehrerer Fassungen desselben Liedes — NICHT für die Songidentität, sonst
+// würden „Blaue Augen" und „Blaue Augen neu" ungefragt verschmolzen.
+const VERSION_MARKERS = [
+  'v2', 'v3', 'version 2', 'version 3', 'neu', 'new', 'final', 'alt', 'old',
+  'korrigiert', 'fix', 'kopie', 'copy', '2',
+];
+
+const DATE_MARKER_RE = /\s(\d{4} \d{2} \d{2}|\d{2} \d{2} \d{4}|\d{4} \d{2})$/;
+
+/**
+ * Kerntitel: normalisiert und ohne abschließenden Versionsmarker.
+ * Basis für die Gruppierung mehrerer Fassungen (siehe groupDuplicates).
+ */
+function coreTitle(s) {
+  let t = normalizeTitle(s);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const withoutDate = t.replace(DATE_MARKER_RE, '');
+    if (withoutDate !== t) { t = withoutDate.trim(); changed = true; continue; }
+    for (const marker of VERSION_MARKERS) {
+      if (t.endsWith(' ' + marker)) {
+        t = t.slice(0, -(marker.length + 1)).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  return t || normalizeTitle(s);
+}
+
+/** Stabiler Hash aus dem normalisierten Titel (FNV-1a, 32 Bit als Hex). */
+function hashId(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+const VOICE_PATTERNS = {
+  SOP:   ['sop', 'sopran', 'soprano', 's1', 's2', 'sopran 1', 'sopran 2'],
+  ALT:   ['alt', 'alto', 'a1', 'a2'],
+  TEN:   ['ten', 'tenor', 'tenore', 't1', 't2'],
+  BASS:  ['bass', 'bas', 'b1', 'b2'],
+  BAR:   ['bar', 'bariton', 'baritone'],
+  LEAD:  ['lead', 'solo', 'soli', 'soli lead', 'solo lead'],
+  FULL:  ['full', 'gesamt', 'alle', 'tutti', 'mix', 'komplett', 'all',
+          'full mix', 'full arrangement', 'arrangement'],
+  PIANO: ['klavier', 'piano', 'begleitung', 'playback', 'instrumental'],
+};
+
+const PATTERN_TO_VOICE = (() => {
+  const map = new Map();
+  for (const [voice, patterns] of Object.entries(VOICE_PATTERNS)) {
+    for (const p of patterns) map.set(p, voice);
+  }
+  return map;
+})();
+
+/** Dateiname → Wortliste: Endung weg, klein, Umlaute auf, Trenner zu Leerzeichen. */
+function tokenizeName(fileName) {
+  const withoutExt = fileName.replace(/\.[^.]+$/, '');
+  return normalizeTitle(withoutExt).split(' ').filter(Boolean);
+}
+
+/**
+ * Erkennt die Stimme einer Datei (Spec 4.3).
+ *
+ * Geprüft werden ausschließlich Rand-Positionen — niemals der ganze Dateiname.
+ * Sonst würde „Alt wie ein Baum.mp3" als Alt-Stimme gelten, obwohl es die
+ * Gesamtmischung ist.
+ *
+ * @param {string} fileName    z.B. "Blaue Augen SOP.mp3"
+ * @param {string} folderName  Name des Songordners, z.B. "Blaue Augen"
+ * @returns {{voice: string|null, rest: string}} rest = Dateiname ohne Stimmwort
+ */
+function detectVoice(fileName, folderName) {
+  const tokens = tokenizeName(fileName);
+  const folderNorm = normalizeTitle(folderName || '');
+  if (!tokens.length) return { voice: null, rest: '' };
+
+  // Trennt so viele Wörter vom Ende ab, wie noch derselben Stimme zugeordnet
+  // werden können — z.B. bei "Blaue Augen Full Mix" matcht Regel 1 zunächst
+  // nur "mix" (auch für sich genommen ein FULL-Muster); ohne diese Erweiterung
+  // bliebe "full" fälschlich im Rest hängen und der Titel-Abgleich schlüge an,
+  // obwohl der Dateiname sauber ist.
+  function stripSameVoiceSuffix(voice, cut) {
+    let end = tokens.length - cut;
+    while (end > 0 && PATTERN_TO_VOICE.get(tokens[end - 1]) === voice) end--;
+    return tokens.slice(0, end).join(' ');
+  }
+
+  // Regel 1 — letztes Wort
+  const last = tokens[tokens.length - 1];
+  if (PATTERN_TO_VOICE.has(last)) {
+    const voice = PATTERN_TO_VOICE.get(last);
+    return { voice, rest: stripSameVoiceSuffix(voice, 1) };
+  }
+
+  // Regel 2 — letzte zwei Wörter zusammen ("full mix", "sopran 1", "soli lead")
+  if (tokens.length >= 2) {
+    const lastTwo = tokens.slice(-2).join(' ');
+    if (PATTERN_TO_VOICE.has(lastTwo)) {
+      const voice = PATTERN_TO_VOICE.get(lastTwo);
+      return { voice, rest: stripSameVoiceSuffix(voice, 2) };
+    }
+  }
+
+  // Regel 3 — erstes Wort, aber nur wenn der Rest exakt der Ordnername ist.
+  // Diese Zusatzbedingung verhindert Fehltreffer bei Titeln, die selbst mit
+  // einem Stimmwort beginnen.
+  const first = tokens[0];
+  if (PATTERN_TO_VOICE.has(first)) {
+    const rest = tokens.slice(1).join(' ');
+    if (rest && folderNorm && rest === folderNorm) {
+      return { voice: PATTERN_TO_VOICE.get(first), rest };
+    }
+  }
+
+  return { voice: null, rest: tokens.join(' ') };
+}
+
+/** Führende Nummerierung entfernen („01 - Blaue Augen"), „2 Uhr nachts" bleibt heil. */
+function cleanFolderTitle(name) {
+  return name.replace(/^\d{1,3}\s*[-._)]\s*/, '').replace(/\s+/g, ' ').trim() || name.trim();
+}
+
+/** Anzeigename einer OTHER-Spur: Dateiname ohne Endung, ohne Titel-Präfix. */
+function otherLabel(fileName, songTitle) {
+  const base = fileName.replace(/\.[^.]+$/, '').trim();
+  const prefix = normalizeTitle(songTitle);
+  if (!prefix) return base;
+
+  // Kürzeste führende Wortfolge suchen, die genau dem Liedtitel entspricht,
+  // und nur den Rest anzeigen — sonst stünde der Titel in jeder Zeile doppelt.
+  const words = base.split(/\s+/);
+  for (let i = 1; i < words.length; i++) {
+    if (normalizeTitle(words.slice(0, i).join(' ')) === prefix) {
+      return words.slice(i).join(' ');
+    }
+  }
+  return base;
+}
+
+/**
+ * Baut aus einer flachen Liste { path, ... } die Songstruktur.
+ *
+ * Ein Ordner ist ein *Song*, wenn er direkt Audiodateien enthält. Ein Ordner,
+ * der nur Unterordner enthält, ist ein *Sammelordner* — sein Name wird zur
+ * Liste `collections` der darin liegenden Songs.
+ *
+ * @param {Array} files      Einträge mit `path` (Pfad mit / als Trenner)
+ * @param {string} zipTitle  Titel für Dateien, die direkt im Wurzelverzeichnis liegen
+ */
+function scanFiles(files, zipTitle) {
+  // nach Ordner gruppieren
+  const byFolder = new Map();
+  for (const f of files) {
+    const slash = f.path.lastIndexOf('/');
+    const folder = slash < 0 ? '' : f.path.slice(0, slash);
+    const name = f.path.slice(slash + 1);
+    if (!name) continue;
+    if (!byFolder.has(folder)) byFolder.set(folder, []);
+    byFolder.get(folder).push({ ...f, name, folder });
+  }
+
+  const songs = [];
+  const notes = [];   // Hinweise für den Bericht (abweichende Präfixe u.ä.)
+
+  for (const [folder, items] of byFolder) {
+    const audio = items.filter((i) => AUDIO_RE.test(i.name));
+    if (!audio.length) continue;   // kein Songordner — Sammelordner oder Beiwerk
+
+    const segments = folder ? folder.split('/') : [];
+    const folderName = segments.length ? segments[segments.length - 1] : '';
+    // Wurzelverzeichnis: der ZIP-Dateiname gilt als Songtitel.
+    const title = folderName ? cleanFolderTitle(folderName) : zipTitle;
+
+    // Der nächsthöhere Ordner ist der Sammelordner (z.B. „Best of 2025").
+    const parent = segments.length >= 2 ? segments[segments.length - 2] : null;
+    const collections = parent ? [cleanFolderTitle(parent)] : [];
+
+    // --- Stimmen zuordnen -------------------------------------------------
+    const tracks = [];
+    const withoutVoice = [];
+    let hasFull = false;
+
+    for (const item of audio) {
+      const { voice, rest } = detectVoice(item.name, folderName || title);
+      if (voice) {
+        if (voice === 'FULL') hasFull = true;
+        tracks.push({ entry: item, voice, fileName: item.name, size: item.size });
+
+        // Präfix, der nicht zum Ordner passt, deutet auf einen Ablagefehler hin.
+        const folderNorm = normalizeTitle(folderName || title);
+        if (rest && folderNorm && rest !== folderNorm) {
+          notes.push(`„${item.name}" trägt den Titel „${rest}", liegt aber im Ordner „${folderName || title}".`);
+        }
+      } else {
+        withoutVoice.push(item);
+      }
+    }
+
+    // Sonderregel: kein Kürzel = Gesamtmischung — außer es gibt schon eine.
+    // Nichts wird verworfen, im Zweifel landet die Datei als OTHER in der Liste.
+    for (const item of withoutVoice) {
+      const voice = hasFull ? 'OTHER' : 'FULL';
+      if (voice === 'FULL') hasFull = true;
+      tracks.push({ entry: item, voice, fileName: item.name, size: item.size });
+    }
+
+    for (const t of tracks) {
+      t.label = t.voice === 'OTHER' ? otherLabel(t.fileName, title) : VOICE_LABEL[t.voice];
+    }
+    tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+
+    // --- Liedtext und Noten ------------------------------------------------
+    const txts = items.filter((i) => TXT_RE.test(i.name));
+    let lyricsEntry = null;
+    if (txts.length) {
+      const preferred = txts.filter((i) => /lyric|text|songtext/i.test(i.name));
+      const pool = preferred.length ? preferred : txts;
+      pool.sort((a, b) => collator.compare(a.name, b.name));
+      lyricsEntry = pool[0];
+    }
+    const pdfEntries = items.filter((i) => PDF_RE.test(i.name))
+      .sort((a, b) => collator.compare(a.name, b.name));
+
+    songs.push({
+      title,
+      normTitle: normalizeTitle(title),
+      core: coreTitle(title),
+      collections,
+      folder,
+      tracks,
+      lyricsEntry,
+      pdfEntries,
+    });
+  }
+
+  songs.sort((a, b) => collator.compare(a.title, b.title));
+  return { songs, notes };
+}
+
+/**
+ * Gruppiert mehrere Fassungen desselben Liedes (Spec 4.5).
+ * Vorgeschlagen wird die Fassung mit den meisten erkannten Stimmen, bei
+ * Gleichstand die mit den meisten Dateien. Entschieden wird nie still —
+ * die Auswahlmaske zeigt die Gruppe an, der Nutzer kann umstellen.
+ */
+function groupDuplicates(songFolders) {
+  const groups = new Map();
+  for (const song of songFolders) {
+    if (!groups.has(song.core)) groups.set(song.core, []);
+    groups.get(song.core).push(song);
+  }
+
+  const result = [];
+  for (const [core, members] of groups) {
+    if (members.length > 1) {
+      const ranked = [...members].sort((a, b) => {
+        const va = new Set(a.tracks.filter((t) => t.voice !== 'OTHER').map((t) => t.voice)).size;
+        const vb = new Set(b.tracks.filter((t) => t.voice !== 'OTHER').map((t) => t.voice)).size;
+        if (vb !== va) return vb - va;
+        return b.tracks.length - a.tracks.length;
+      });
+      result.push({ core, members, suggested: ranked[0] });
+    } else {
+      result.push({ core, members, suggested: members[0] });
+    }
+  }
+  return result;
+}
+
+/* ==========================================================================
    UI — Ansichten und Navigation
    ========================================================================== */
 
 const VIEWS = {
   songs:     { title: 'Songs',         render: renderSongs },
   playlists: { title: 'Playlisten',    render: renderPlaylists },
-  import:    { title: 'Import',        render: null },
+  import:    { title: 'Import',        render: () => renderImportReport() },
   settings:  { title: 'Einstellungen', render: renderSettings },
 };
 
@@ -952,7 +1742,28 @@ function iconEmptyNote() {
   return svg;
 }
 
-const collator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
+function markIcon(kind) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('role', 'img');
+  if (kind === 'lyrics') {
+    svg.innerHTML = '<title>Liedtext vorhanden</title><path d="M5 5h14M5 10h14M5 15h9"/>';
+  } else {
+    svg.innerHTML = '<title>Noten vorhanden</title>' +
+      '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/>' +
+      '<circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/>';
+  }
+  return svg;
+}
+
+// Suchbegriff und gewählter Sammelordner-Filter der Bibliothek
+let songQuery = '';
+let songFilter = null;   // null = „Alle"
 
 async function renderSongs() {
   const host = $('#song-list-host');
@@ -969,6 +1780,8 @@ async function renderSongs() {
   }
 
   if (!songs.length) {
+    $('#searchbar').hidden = true;
+    $('#filterbar').hidden = true;
     host.append(el('div', { class: 'empty' },
       iconEmptyNote(),
       el('h2', { text: 'Noch keine Songs' }),
@@ -984,27 +1797,78 @@ async function renderSongs() {
     return;
   }
 
-  // Sortierung mit Intl.Collator: „Ärger" gehört zu A, nicht ans Ende.
-  songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  $('#searchbar').hidden = false;
+
+  // --- Filterleiste der Sammelordner (nur wenn es mehr als einen gibt) ----
+  const collections = [...new Set(songs.flatMap((s) => s.collections || []))]
+    .sort((a, b) => collator.compare(a, b));
+  const filterbar = $('#filterbar');
+
+  if (collections.length > 1) {
+    filterbar.hidden = false;
+    filterbar.textContent = '';
+    if (songFilter && !collections.includes(songFilter)) songFilter = null;
+
+    const makeChip = (label, value) => el('button', {
+      class: 'filter-chip',
+      type: 'button',
+      'aria-pressed': songFilter === value ? 'true' : 'false',
+      text: label,
+      onclick: () => { songFilter = value; renderSongs(); },
+    });
+
+    filterbar.append(makeChip('Alle', null), ...collections.map((c) => makeChip(c, c)));
+  } else {
+    filterbar.hidden = true;
+    songFilter = null;
+  }
+
+  // --- Filtern und sortieren --------------------------------------------
+  const q = normalizeTitle(songQuery);
+  let visible = songs;
+  if (songFilter) visible = visible.filter((s) => (s.collections || []).includes(songFilter));
+  if (q) visible = visible.filter((s) => normalizeTitle(s.title || '').includes(q));
+
+  visible.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+
+  if (!visible.length) {
+    host.append(el('div', { class: 'empty' },
+      el('h2', { text: 'Nichts gefunden' }),
+      el('p', { class: 'small', text: 'Kein Song passt zu dieser Suche.' })));
+    return;
+  }
 
   const list = el('ul', { class: 'list' });
-  for (const song of songs) {
+  for (const song of visible) {
     const voices = (song.tracks || [])
-      .map((t) => t.voice)
-      .sort((a, b) => VOICE_ORDER.indexOf(a) - VOICE_ORDER.indexOf(b));
+      .slice()
+      .sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+
+    const marks = el('div', { class: 'marks' });
+    if (song.lyrics) marks.append(markIcon('lyrics'));
+    if ((song.scores || []).length) marks.append(markIcon('score'));
 
     list.append(el('li', {},
       el('div', { class: 'list-item' },
         el('div', { style: 'flex:1; min-width:0' },
           el('strong', { text: song.title || 'Ohne Titel' }),
           el('div', { class: 'voice-chips' },
-            voices.map((v) => el('span', { class: 'voice-chip', text: VOICE_LABEL[v] || v })))
-        )
+            voices.map((t) => el('span', {
+              class: 'voice-chip',
+              text: t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice),
+            })))
+        ),
+        marks
       )
     ));
   }
   host.append(list);
 }
+
+$('#search').addEventListener('input', (e) => {
+  songQuery = e.target.value;
+  renderSongs();
+});
 
 /* ---------- Playlisten --------------------------------------------------- */
 
@@ -1136,6 +2000,656 @@ $('#btn-wipe').addEventListener('click', async () => {
 });
 
 /* ==========================================================================
+   IMPORT — Auswahlmaske und additives Schreiben (Spec 4.4 und 4.6)
+
+   Ablauf: Datei wählen → Inhaltsverzeichnis lesen → Struktur analysieren →
+   mit der Bibliothek abgleichen → Auswahlmaske → erst dann schreiben.
+   Bis zur Auswahlmaske wurde noch keine einzige Audiodatei gelesen.
+   ========================================================================== */
+
+// Zustand der laufenden Auswahl; null, solange keine Maske offen ist.
+let pick = null;
+let lastReport = null;
+
+const sheet        = $('#sheet');
+const sheetBody    = $('#sheet-body');
+const sheetFound   = $('#sheet-found');
+const sheetSummary = $('#sheet-summary');
+const sheetPlan    = $('#sheet-plan');
+const sheetImport  = $('#sheet-import');
+const sheetProgress = $('#sheet-progress');
+
+function newFileKey() {
+  return crypto.randomUUID
+    ? `f_${crypto.randomUUID()}`
+    : `f_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Text aus einem Blob lesen: UTF-8, bei ungültigen Bytes Windows-1252. */
+async function readTextBlob(blob) {
+  const buf = await blob.arrayBuffer();
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder('windows-1252').decode(buf);
+  }
+}
+
+/** Liefert die Nutzdaten eines Scan-Eintrags — aus dem ZIP oder direkt. */
+async function entryBlob(entry) {
+  if (entry.blob) return entry.blob;           // Ordner-Import
+  return zipExtract(pick.source.file, entry);  // ZIP-Import
+}
+
+/**
+ * Sucht die vorhandene Spur, die von einer neuen ersetzt bzw. ergänzt würde.
+ * Abgeglichen wird über die Stimme — bei OTHER über den Dateinamen, weil
+ * dort mehrere Spuren derselben „Stimme" nebeneinander liegen können.
+ */
+function findExistingTrack(existingSong, track) {
+  if (!existingSong) return null;
+  const tracks = existingSong.tracks || [];
+  if (track.voice === 'OTHER') {
+    return tracks.find((x) => x.voice === 'OTHER' && x.fileName === track.fileName) || null;
+  }
+  return tracks.find((x) => x.voice === track.voice) || null;
+}
+
+/** Vergleicht das Scan-Ergebnis mit der Bibliothek und setzt je Spur den Status. */
+async function analyzeAgainstLibrary(songs) {
+  const existing = await DB.metaByType('song');
+  const byNorm = new Map(existing.map((s) => [s.normTitle, s]));
+
+  for (const song of songs) {
+    song.existing = byNorm.get(song.normTitle) || null;
+    for (const track of song.tracks) {
+      const found = findExistingTrack(song.existing, track);
+      track.existingTrack = found;
+      if (!found) track.status = 'new';
+      else if (found.size === track.size) track.status = 'same';
+      else track.status = 'changed';
+    }
+  }
+  return songs;
+}
+
+/** Setzt die Häkchen gemäß Voreinstellung (4.4). */
+function applyPreset(preset) {
+  pick.preset = preset;
+  for (const song of pick.songs) {
+    for (const track of song.tracks) {
+      let inScope;
+      if (preset === 'all') inScope = true;
+      else if (preset === 'full') inScope = track.voice === 'FULL';
+      else inScope = track.voice === 'FULL' || track.voice === settings.myVoice;
+
+      // Unveränderte Spuren sind nie vorausgewählt — sie würden nur
+      // dieselben Daten noch einmal schreiben.
+      track.checked = inScope && track.status !== 'same';
+    }
+  }
+}
+
+function selectionStats() {
+  let songCount = 0, fileCount = 0, bytes = 0;
+  let newSongs = 0, extended = 0, replaced = 0, unchanged = 0;
+
+  for (const song of pick.songs) {
+    const chosen = song.tracks.filter((t) => t.checked);
+    unchanged += song.tracks.filter((t) => t.status === 'same').length;
+    if (!chosen.length) continue;
+
+    songCount++;
+    fileCount += chosen.length;
+    for (const t of chosen) bytes += t.size;
+
+    if (!song.existing) newSongs++;
+    else if (chosen.some((t) => t.status === 'new')) extended++;
+    replaced += chosen.filter((t) => t.status === 'changed').length;
+  }
+  return { songCount, fileCount, bytes, newSongs, extended, replaced, unchanged };
+}
+
+function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
+
+async function updateSheetSummary() {
+  const s = selectionStats();
+  const info = await storageInfo();
+  const free = info ? Math.max(0, info.quota - info.usage) : null;
+
+  sheetSummary.textContent = free === null
+    ? `Auswahl: ${plural(s.songCount, 'Song', 'Songs')}, ${fmtBytes(s.bytes)}`
+    : `Auswahl: ${plural(s.songCount, 'Song', 'Songs')}, ${fmtBytes(s.bytes)} — verfügbar: ${fmtBytes(free)}`;
+
+  // Warnung, sobald die Auswahl 60 % des freien Speichers übersteigt.
+  const tight = free !== null && free > 0 && s.bytes > free * 0.6;
+  sheetSummary.style.color = tight ? 'var(--warn)' : '';
+  let warnBox = $('#sheet-warn');
+  if (tight && !warnBox) {
+    warnBox = el('div', { class: 'hint-box', id: 'sheet-warn' });
+    sheetBody.prepend(warnBox);
+  }
+  if (warnBox) {
+    warnBox.hidden = !tight;
+    if (tight) {
+      warnBox.textContent = `Die Auswahl belegt einen großen Teil des freien Speichers (${fmtBytes(s.bytes)} von ${fmtBytes(free)}). Wähle notfalls weniger Stimmen aus.`;
+    }
+  }
+
+  const parts = [];
+  if (s.newSongs)  parts.push(plural(s.newSongs, 'neuer Song', 'neue Songs'));
+  if (s.extended)  parts.push(`${plural(s.extended, 'Song', 'Songs')} um Stimmen ergänzt`);
+  if (s.replaced)  parts.push(`${plural(s.replaced, 'Aufnahme', 'Aufnahmen')} ersetzt`);
+  if (s.unchanged) parts.push(`${plural(s.unchanged, 'Datei', 'Dateien')} unverändert`);
+  sheetPlan.textContent = parts.join(' · ');
+
+  sheetImport.disabled = s.fileCount === 0;
+  sheetImport.textContent = s.fileCount
+    ? `Importieren (${plural(s.fileCount, 'Datei', 'Dateien')})`
+    : 'Nichts ausgewählt';
+}
+
+function iconChevron() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<path d="M9 5l7 7-7 7"/>';
+  return svg;
+}
+
+function renderSheetList() {
+  sheetBody.textContent = '';
+
+  for (const song of pick.songs) {
+    const box = el('div', { class: 'pick-song' });
+
+    const songBox = el('input', { type: 'checkbox' });
+    songBox.checked = song.tracks.some((t) => t.checked);
+    songBox.indeterminate = !songBox.checked ? false
+      : song.tracks.some((t) => !t.checked) && song.tracks.some((t) => t.checked);
+    songBox.setAttribute('aria-label', `Alle Spuren von ${song.title}`);
+
+    const tracksHost = el('div', { class: 'pick-tracks', hidden: true });
+
+    const refreshSongBox = () => {
+      const on  = song.tracks.filter((t) => t.checked).length;
+      songBox.checked = on > 0;
+      songBox.indeterminate = on > 0 && on < song.tracks.length;
+    };
+
+    // --- Spurzeilen ------------------------------------------------------
+    for (const track of song.tracks) {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = track.checked;
+      cb.setAttribute('aria-label', `${track.label} von ${song.title}`);
+      cb.addEventListener('change', () => {
+        track.checked = cb.checked;
+        refreshSongBox();
+        updateSheetSummary();
+      });
+
+      const info = el('div', { class: 'grow' }, el('div', { text: track.label }));
+      if (track.status === 'same') {
+        info.append(el('span', { class: 'badge', text: 'bereits vorhanden' }));
+      } else if (track.status === 'changed') {
+        info.append(el('span', { class: 'badge badge--changed', text: 'geändert' }));
+      } else if (song.existing) {
+        info.append(el('span', { class: 'badge badge--new', text: 'neue Stimme' }));
+      }
+
+      const row = el('label', { class: 'pick-track' }, cb, info,
+        el('span', { class: 'size', text: fmtBytes(track.size) }));
+      tracksHost.append(row);
+    }
+
+    // --- Songzeile -------------------------------------------------------
+    songBox.addEventListener('change', () => {
+      const on = songBox.checked;
+      song.tracks.forEach((t, i) => {
+        t.checked = on;
+        tracksHost.querySelectorAll('input[type="checkbox"]')[i].checked = on;
+      });
+      songBox.indeterminate = false;
+      updateSheetSummary();
+    });
+
+    const totalBytes = song.tracks.reduce((sum, t) => sum + t.size, 0);
+    const extras = [];
+    if (song.lyricsEntry) extras.push('Text');
+    if (song.pdfEntries.length) extras.push('Noten');
+
+    const meta = [
+      plural(song.tracks.length, 'Spur', 'Spuren'),
+      fmtBytes(totalBytes),
+      ...(song.collections.length ? [song.collections.join(', ')] : []),
+      ...extras,
+    ].join(' · ');
+
+    const titleBlock = el('div', { class: 'grow' },
+      el('strong', { text: song.title }),
+      el('div', { class: 'small muted', text: meta }));
+
+    if (song.existing) {
+      const allSame = song.tracks.every((t) => t.status === 'same');
+      titleBlock.append(el('span', {
+        class: allSame ? 'badge' : 'badge badge--new',
+        text: allSame ? 'bereits vorhanden' : 'wird ergänzt',
+      }));
+    }
+
+    const toggle = el('button', {
+      class: 'disclose',
+      type: 'button',
+      'aria-expanded': 'false',
+      'aria-label': `Spuren von ${song.title} anzeigen`,
+    }, iconChevron());
+
+    toggle.addEventListener('click', () => {
+      const open = tracksHost.hidden;
+      tracksHost.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+
+    box.append(el('div', { class: 'pick-head' }, songBox, titleBlock, toggle), tracksHost);
+    sheetBody.append(box);
+  }
+
+  // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
+  if (pick.notes.length) {
+    sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
+      el('h2', { text: 'Hinweise' }),
+      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
+        pick.notes.map((n) => el('li', { text: n })))));
+  }
+}
+
+function closeSheet() {
+  sheet.hidden = true;
+  pick = null;
+  sheetProgress.hidden = true;
+  sheetImport.disabled = false;
+}
+
+/** Öffnet die Auswahlmaske für ein analysiertes Ergebnis. */
+async function openPicker({ songs, notes, skipped, source, foundFiles, foundBytes }) {
+  pick = { songs, notes, skipped, source, preset: settings.defaultImportScope || 'mine' };
+
+  sheetFound.textContent =
+    `Gefunden: ${plural(songs.length, 'Song', 'Songs')}, ` +
+    `${plural(foundFiles, 'Datei', 'Dateien')}, ${fmtBytes(foundBytes)}`;
+
+  // Ohne eigene Stimme ergibt „Nur meine Stimme + Gesamt" keinen Sinn.
+  if (!settings.myVoice && pick.preset === 'mine') pick.preset = 'full';
+
+  applyPreset(pick.preset);
+  $$('#sheet-presets .preset').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.preset === pick.preset ? 'true' : 'false');
+  });
+
+  renderSheetList();
+  await updateSheetSummary();
+  sheet.hidden = false;
+  sheetBody.scrollTop = 0;
+}
+
+/** Fragt die eigene Stimme ab, bevor die Maske aufgeht (4.4). */
+async function ensureMyVoice() {
+  if (settings.myVoice) return;
+  const chosen = await new Promise((resolve) => {
+    const host = el('div', { class: 'dialog' },
+      el('h2', { text: 'Welche Stimme singst du?' }),
+      el('p', { text: 'Danach sind beim Import deine Stimme und die Gesamtmischung vorausgewählt. Du kannst das jederzeit ändern.' }));
+
+    const grid = el('div', { class: 'chip-grid' },
+      MY_VOICE_CHOICES.map((v) => el('button', {
+        class: 'chip', type: 'button', text: VOICE_LABEL[v],
+        onclick: () => { layer.remove(); resolve(v); },
+      })));
+
+    host.append(grid, el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
+      el('button', {
+        class: 'btn', type: 'button', text: 'Überspringen',
+        onclick: () => { layer.remove(); resolve(null); },
+      })));
+
+    const layer = el('div', { class: 'overlay' }, host);
+    document.body.append(layer);
+  });
+
+  if (chosen) await saveSettings({ myVoice: chosen, defaultImportScope: 'mine' });
+}
+
+/* ---------- Einlesen: ZIP und Ordner ------------------------------------ */
+
+async function startZipImport(file) {
+  const close = banner('ZIP-Datei wird gelesen …', { timeout: 0 });
+  try {
+    const entries = await zipReadDirectory(file);
+
+    // Einträge mit unbekanntem Verfahren gleich aussortieren, damit sie nicht
+    // erst beim Schreiben scheitern.
+    const usable = [];
+    const skipped = [];
+    for (const e of entries) {
+      if (e.method === 0 || (e.method === 8 && canInflate)) usable.push(e);
+      else skipped.push({ path: e.path, reason: 'unbekanntes Komprimierungsverfahren' });
+    }
+
+    const zipTitle = cleanFolderTitle(file.name.replace(/\.zip$/i, ''));
+    const { songs, notes } = scanFiles(usable, zipTitle);
+    close();
+
+    if (!songs.length) {
+      banner('In dieser ZIP-Datei wurden keine Songs gefunden. Erwartet werden Ordner, in denen die MP3-Dateien liegen.', { kind: 'error' });
+      return;
+    }
+
+    await ensureMyVoice();
+    await analyzeAgainstLibrary(songs);
+
+    const foundFiles = songs.reduce((n, s) => n + s.tracks.length, 0);
+    const foundBytes = songs.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.size, 0), 0);
+    await openPicker({ songs, notes, skipped, source: { kind: 'zip', file }, foundFiles, foundBytes });
+  } catch (err) {
+    close();
+    console.error(err);
+    banner(err instanceof ZipError ? err.message
+      : 'Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.',
+      { kind: 'error' });
+  }
+}
+
+async function startFolderImport(fileList) {
+  const close = banner('Ordner wird gelesen …', { timeout: 0 });
+  try {
+    const items = [];
+    for (const f of fileList) {
+      const path = f.webkitRelativePath || f.name;
+      if (isJunkPath(path)) continue;
+      items.push({ path, size: f.size, blob: f });
+    }
+
+    // Der oberste Ordner des Auswahldialogs entspricht dem ZIP-Wurzelnamen.
+    const rootName = (fileList[0]?.webkitRelativePath || '').split('/')[0] || 'Import';
+    const { songs, notes } = scanFiles(items, cleanFolderTitle(rootName));
+    close();
+
+    if (!songs.length) {
+      banner('In diesem Ordner wurden keine Songs gefunden. Erwartet werden Unterordner, in denen die MP3-Dateien liegen.', { kind: 'error' });
+      return;
+    }
+
+    await ensureMyVoice();
+    await analyzeAgainstLibrary(songs);
+
+    const foundFiles = songs.reduce((n, s) => n + s.tracks.length, 0);
+    const foundBytes = songs.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.size, 0), 0);
+    await openPicker({ songs, notes, skipped: [], source: { kind: 'folder' }, foundFiles, foundBytes });
+  } catch (err) {
+    close();
+    console.error(err);
+    banner('Der Ordner konnte nicht gelesen werden.', { kind: 'error' });
+  }
+}
+
+/* ---------- Schreiben ---------------------------------------------------- */
+
+/**
+ * Schreibt die Auswahl in die Datenbank. Jede Datei wird einzeln extrahiert
+ * und sofort geschrieben — so liegt nie mehr als eine Aufnahme im Speicher.
+ * Bricht der Vorgang ab (z.B. Speicher voll), bleibt alles bereits
+ * Geschriebene erhalten.
+ */
+async function runImport() {
+  const chosenSongs = pick.songs.filter((s) => s.tracks.some((t) => t.checked));
+  const totalFiles = chosenSongs.reduce((n, s) => n + s.tracks.filter((t) => t.checked).length, 0);
+
+  sheetImport.disabled = true;
+  sheetProgress.hidden = false;
+  const bar = sheetProgress.firstElementChild;
+
+  const report = {
+    songsImported: 0, tracksAdded: 0, tracksReplaced: 0,
+    unchanged: 0, failed: [], notes: pick.notes.slice(),
+    quotaHit: false, at: new Date(),
+  };
+  for (const s of pick.skipped) report.failed.push(`${s.path} (${s.reason})`);
+
+  const existingLoops = await DB.metaByType('loop');
+  let done = 0;
+
+  try {
+    for (const scan of chosenSongs) {
+      // Vorhandenen Song erweitern statt einen zweiten anzulegen (4.6).
+      const song = scan.existing ? { ...scan.existing, tracks: [...scan.existing.tracks] } : {
+        key: `song:${hashId(scan.normTitle)}`,
+        type: 'song',
+        id: hashId(scan.normTitle),
+        title: scan.title,
+        normTitle: scan.normTitle,
+        collections: [],
+        tracks: [],
+        lyrics: null,
+        scores: [],
+        importedAt: new Date().toISOString(),
+      };
+      song.collections = [...(song.collections || [])];
+      song.scores = [...(song.scores || [])];
+
+      // Sammelordner ergänzen — ein Song kann in mehreren Programmen liegen.
+      for (const c of scan.collections) {
+        if (!song.collections.some((x) => normalizeTitle(x) === normalizeTitle(c))) {
+          song.collections.push(c);
+        }
+      }
+
+      const songHasLoops = existingLoops.some((l) => l.songId === song.id);
+      const obsoleteKeys = [];
+
+      for (const track of scan.tracks) {
+        if (!track.checked) continue;
+        try {
+          const blob = await entryBlob(track.entry);
+          const fileKey = newFileKey();
+          await DB.filePut(fileKey, blob, track.fileName);
+
+          const record = {
+            voice: track.voice,
+            label: track.label,
+            fileName: track.fileName,
+            fileKey,
+            size: blob.size,
+            durationSec: null,
+          };
+
+          const old = findExistingTrack(scan.existing, track);
+          if (old) {
+            obsoleteKeys.push(old.fileKey);
+            // Ersetzte Aufnahmen können gespeicherte Loops verschieben. Nichts
+            // wird umgerechnet — der Player weist einmalig darauf hin (Spec 4.6).
+            if (songHasLoops && old.durationSec) {
+              song.replacedNotice = { voice: track.voice, prevDurationSec: old.durationSec };
+            }
+            const idx = song.tracks.findIndex((x) =>
+              track.voice === 'OTHER'
+                ? x.voice === 'OTHER' && x.fileName === track.fileName
+                : x.voice === track.voice);
+            if (idx >= 0) song.tracks[idx] = record; else song.tracks.push(record);
+            report.tracksReplaced++;
+          } else {
+            song.tracks.push(record);
+            report.tracksAdded++;
+          }
+        } catch (err) {
+          if (err && err.name === 'QuotaExceededError') throw err;
+          console.error('[import]', track.fileName, err);
+          report.failed.push(`${track.fileName} (nicht lesbar)`);
+        }
+        done++;
+        bar.style.width = `${(done / totalFiles) * 100}%`;
+      }
+
+      // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
+      if (scan.lyricsEntry) {
+        try {
+          song.lyrics = await readTextBlob(await entryBlob(scan.lyricsEntry));
+        } catch (err) {
+          console.warn('[import] Liedtext', err);
+          report.failed.push(`${scan.lyricsEntry.name} (Text nicht lesbar)`);
+        }
+      }
+
+      // Noten: gleicher Dateiname wird ersetzt, sonst hinzugefügt.
+      for (const pdf of scan.pdfEntries) {
+        try {
+          const blob = await entryBlob(pdf);
+          const existing = song.scores.find((s) => s.fileName === pdf.name);
+          if (existing) {
+            obsoleteKeys.push(existing.fileKey);
+            existing.fileKey = newFileKey();
+            existing.size = blob.size;
+            await DB.filePut(existing.fileKey, blob, pdf.name);
+          } else {
+            const fileKey = newFileKey();
+            await DB.filePut(fileKey, blob, pdf.name);
+            song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
+          }
+        } catch (err) {
+          if (err && err.name === 'QuotaExceededError') throw err;
+          console.warn('[import] Noten', err);
+          report.failed.push(`${pdf.name} (nicht lesbar)`);
+        }
+      }
+
+      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+      await DB.metaPut(song);
+      if (obsoleteKeys.length) await DB.fileDelete(obsoleteKeys);
+      report.songsImported++;
+    }
+  } catch (err) {
+    console.error('[import] abgebrochen', err);
+    if (err && err.name === 'QuotaExceededError') {
+      report.quotaHit = true;
+      report.quotaAt = report.songsImported;
+      report.quotaTotal = chosenSongs.length;
+    } else {
+      report.failed.push('Der Import wurde vorzeitig abgebrochen.');
+    }
+  }
+
+  report.unchanged = selectionStats().unchanged;
+  lastReport = report;
+  closeSheet();
+  renderImportReport();
+
+  if (report.quotaHit) {
+    banner(`Zu wenig Speicherplatz. ${report.quotaAt} von ${report.quotaTotal} Songs wurden importiert.`, {
+      kind: 'error',
+      action: { label: 'Speicher', onClick: () => showView('settings') },
+    });
+  } else if (report.failed.length) {
+    banner(`${plural(report.songsImported, 'Song', 'Songs')} importiert, ${plural(report.failed.length, 'Datei', 'Dateien')} übersprungen.`, {
+      kind: 'error',
+      action: { label: 'Bericht', onClick: () => showView('import') },
+    });
+  } else {
+    banner(`${plural(report.songsImported, 'Song', 'Songs')} importiert.`, { kind: 'ok' });
+  }
+
+  showView('songs');
+}
+
+/** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
+function renderImportReport() {
+  const host = $('#import-report');
+  host.textContent = '';
+  if (!lastReport) return;
+
+  const r = lastReport;
+  const card = el('div', { class: 'card' }, el('h2', { text: 'Letzter Import' }));
+
+  const lines = [];
+  if (r.songsImported) lines.push(`${plural(r.songsImported, 'Song', 'Songs')} geschrieben.`);
+  if (r.tracksAdded)   lines.push(`${plural(r.tracksAdded, 'Spur', 'Spuren')} hinzugefügt.`);
+  if (r.tracksReplaced) lines.push(`${plural(r.tracksReplaced, 'Aufnahme', 'Aufnahmen')} ersetzt.`);
+  if (r.unchanged)     lines.push(`${plural(r.unchanged, 'Datei', 'Dateien')} waren unverändert und wurden übersprungen.`);
+  if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
+
+  card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
+
+  if (r.failed.length) {
+    card.append(
+      el('p', { class: 'small', style: 'margin:12px 0 4px; color: var(--warn)',
+                text: `${plural(r.failed.length, 'Datei', 'Dateien')} übersprungen:` }),
+      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
+        r.failed.map((f) => el('li', { text: f }))));
+  }
+
+  if (r.notes.length) {
+    card.append(
+      el('p', { class: 'small', style: 'margin:12px 0 4px', text: 'Hinweise:' }),
+      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
+        r.notes.map((n) => el('li', { text: n }))));
+  }
+
+  host.append(card);
+}
+
+/* ---------- Bedienelemente des Imports ---------------------------------- */
+
+$('#btn-zip').addEventListener('click', () => $('#zip-input').click());
+
+$('#zip-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';   // damit dieselbe Datei erneut gewählt werden kann
+  if (file) await startZipImport(file);
+});
+
+$('#btn-folder').addEventListener('click', () => $('#folder-input').click());
+
+$('#folder-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  if (files.length) await startFolderImport(files);
+});
+
+$('#sheet-close').addEventListener('click', closeSheet);
+$('#sheet-import').addEventListener('click', () => runImport());
+
+$('#sheet-presets').addEventListener('click', (e) => {
+  const btn = e.target.closest('.preset');
+  if (!btn || !pick) return;
+  if (btn.dataset.preset === 'mine' && !settings.myVoice) {
+    banner('Wähle zuerst in den Einstellungen deine Stimme.', { kind: 'error' });
+    return;
+  }
+  applyPreset(btn.dataset.preset);
+  $$('#sheet-presets .preset').forEach((b) => {
+    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+  });
+  renderSheetList();
+  updateSheetSummary();
+});
+
+/**
+ * Ordner-Import nur am Computer anbieten. Auf Android meldet
+ * `'webkitdirectory' in input` fälschlich true, obwohl die Auswahl nicht
+ * funktioniert — deshalb müssen zusätzlich beide Zeigergeräte-Prüfungen
+ * zutreffen. Im Zweifel bleibt der Button verborgen.
+ */
+function setupFolderImport() {
+  const hasFeature = 'webkitdirectory' in document.createElement('input');
+  const isDesktop = navigator.maxTouchPoints === 0
+    && window.matchMedia('(pointer: fine)').matches;
+  if (hasFeature && isDesktop) $('#folder-import').hidden = false;
+}
+
+/* ==========================================================================
    SW — Service Worker registrieren und Updates anbieten
    ========================================================================== */
 
@@ -1197,6 +2711,102 @@ async function registerServiceWorker() {
 }
 
 /* ==========================================================================
+   SELFTEST — prüft die Beispiele aus der Spezifikation (4.3 und 4.5)
+   Ergebnis steht in der Browser-Konsole. Schlägt etwas fehl, ist die
+   Erkennung kaputt — dann stimmen auch die Stimmen in der App nicht.
+   ========================================================================== */
+
+function runSelfTests() {
+  // [Dateiname, Ordnername, erwartete Stimme] — null = kein Kürzel im Namen
+  const voiceCases = [
+    ['ALT.mp3',                  '',                 'ALT'],
+    ['BASS.mp3',                 '',                 'BASS'],
+    ['SOP.mp3',                  '',                 'SOP'],
+    ['TEN.mp3',                  '',                 'TEN'],
+    ['FULL.mp3',                 '',                 'FULL'],
+    ['Full Arrangement.mp3',     '',                 'FULL'],
+    ['Full - Mix.mp3',           '',                 'FULL'],
+    ['SOLI LEAD.mp3',            '',                 'LEAD'],
+    ['Soprano.mp3',              '',                 'SOP'],
+    ['Alt.mp3',                  '',                 'ALT'],
+    ['Tenor.mp3',                '',                 'TEN'],
+    ['Sopran 1.mp3',             '',                 'SOP'],
+    ['Blaue Augen SOP.mp3',      'Blaue Augen',      'SOP'],
+    ['Blaue Augen TEN.mp3',      'Blaue Augen',      'TEN'],
+    ['Blaue Augen Full Mix.mp3', 'Blaue Augen',      'FULL'],
+    ['Blaue Augen.mp3',          'Blaue Augen',      null],
+    ['Alt wie ein Baum.mp3',     'Alt wie ein Baum', null],
+    ['Alt wie ein Baum ALT.mp3', 'Alt wie ein Baum', 'ALT'],
+    ['SOP Blaue Augen.mp3',      'Blaue Augen',      'SOP'],
+  ];
+
+  const failed = [];
+  for (const [file, folder, expected] of voiceCases) {
+    const got = detectVoice(file, folder).voice;
+    if (got !== expected) failed.push(`detectVoice("${file}", "${folder}") = ${got}, erwartet ${expected}`);
+  }
+
+  // Ohne Kürzel gilt die Spur als Gesamtmischung — außer es gibt schon eine.
+  const noVoice = scanFiles([
+    { path: 'Alt wie ein Baum/Alt wie ein Baum.mp3', size: 1 },
+    { path: 'Alt wie ein Baum/Alt wie ein Baum ALT.mp3', size: 1 },
+  ], 'ZIP');
+  const baum = noVoice.songs[0];
+  if (baum?.tracks.find((t) => t.fileName === 'Alt wie ein Baum.mp3')?.voice !== 'FULL') {
+    failed.push('„Alt wie ein Baum.mp3" müsste die Gesamtmischung sein');
+  }
+
+  // Zweite Datei ohne Kürzel wird OTHER, weil FULL schon vergeben ist.
+  const twoFull = scanFiles([
+    { path: 'Lied/Lied.mp3', size: 1 },
+    { path: 'Lied/Lied Probe.mp3', size: 1 },
+  ], 'ZIP');
+  const voices = twoFull.songs[0].tracks.map((t) => t.voice).sort();
+  if (voices.join(',') !== 'FULL,OTHER') {
+    failed.push(`zweite Datei ohne Kürzel: ${voices.join(',')}, erwartet FULL,OTHER`);
+  }
+
+  // Sammelordner werden zu collections, Songordner zum Titel.
+  const nested = scanFiles([{ path: 'Best of 2025/Blaue Augen/SOP.mp3', size: 1 }], 'ZIP');
+  if (nested.songs[0]?.title !== 'Blaue Augen' ||
+      nested.songs[0]?.collections[0] !== 'Best of 2025') {
+    failed.push('Sammelordner „Best of 2025" wurde nicht korrekt aufgelöst');
+  }
+
+  // Titel-Normalisierung und Versionsmarker (4.5)
+  const titleCases = [
+    [normalizeTitle('Blaue_Augen'),      'blaue augen'],
+    [normalizeTitle('Grüß Gott!'),       'gruess gott'],
+    [normalizeTitle('  blaue   augen '), 'blaue augen'],
+    [coreTitle('Blaue Augen neu'),       'blaue augen'],
+    [coreTitle('Blaue Augen v2'),        'blaue augen'],
+    [coreTitle('Blaue Augen 2023-04-11'), 'blaue augen'],
+    [coreTitle('Blaue Augen'),           'blaue augen'],
+  ];
+  for (const [got, expected] of titleCases) {
+    if (got !== expected) failed.push(`Titel-Normalisierung: "${got}", erwartet "${expected}"`);
+  }
+
+  // Mehrere Fassungen: vorgeschlagen wird die mit den meisten Stimmen.
+  const groups = groupDuplicates([
+    { core: 'blaue augen', title: 'Blaue Augen', tracks: [{ voice: 'FULL' }] },
+    { core: 'blaue augen', title: 'Blaue Augen neu', tracks: [{ voice: 'FULL' }, { voice: 'SOP' }] },
+  ]);
+  if (groups.length !== 1 || groups[0].suggested.title !== 'Blaue Augen neu') {
+    failed.push('groupDuplicates schlägt die falsche Fassung vor');
+  }
+
+  const total = voiceCases.length + titleCases.length + 4;
+  if (failed.length) {
+    console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
+    for (const f of failed) console.error('  ✗ ' + f);
+  } else {
+    console.info(`[Selbsttest] Alle ${total} Prüfungen der Datei- und Titelerkennung bestanden.`);
+  }
+  return failed;
+}
+
+/* ==========================================================================
    BOOT — Start
    ========================================================================== */
 
@@ -1215,6 +2825,8 @@ async function boot() {
 
   await loadSettings();
   requestPersistence(); // im Hintergrund, blockiert den Start nicht
+  setupFolderImport();
+  runSelfTests();
 
   const start = (location.hash || '#songs').slice(1);
   showView(VIEWS[start] ? start : 'songs', { push: false });
