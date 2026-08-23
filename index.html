@@ -5686,10 +5686,23 @@ let loopOn = false;
 let activeLoopId = null;
 let songLoops = [];
 
+/**
+ * Der aktuell gesetzte Abschnitt, auf die Länge der Aufnahme begrenzt.
+ *
+ * Die Begrenzung ist kein Schönheitsfehler: Ein aus einer Sicherung
+ * eingespielter Abschnitt kann hinter dem Ende einer inzwischen ersetzten,
+ * kürzeren Aufnahme liegen. Der Worklet erreicht dann weder das Loop-Ende noch
+ * das Dateiende — die Wiedergabe liefe stumm weiter, ohne je aufzuhören.
+ */
 function loopRange() {
   if (loopA === null || loopB === null) return null;
-  const start = Math.min(loopA, loopB);
-  const end = Math.max(loopA, loopB);
+  const dur = Audio.duration || 0;
+  let start = Math.min(loopA, loopB);
+  let end = Math.max(loopA, loopB);
+  if (dur) {
+    start = Math.min(start, dur);
+    end = Math.min(end, dur);
+  }
   return end - start < 0.2 ? null : { start, end };
 }
 
@@ -6630,9 +6643,11 @@ $('#btn-pl-copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(text);
     banner('Playlist in die Zwischenablage kopiert.', { kind: 'ok' });
   } catch {
+    // Mehrzeilig: so bleibt ein Titel je Zeile stehen und der kopierte Text
+    // lässt sich anderswo wieder als Playlist einlesen.
     await promptDialog({
       title: 'Playlist als Text', text: 'Text markieren und kopieren.',
-      value: text.replace(/\n/g, ' · '), okLabel: 'Fertig',
+      value: text, okLabel: 'Fertig', multiline: true,
     });
   }
 });
@@ -7058,7 +7073,27 @@ function runSelfTests() {
     failed.push('groupDuplicates schlägt die falsche Fassung vor');
   }
 
-  const total = voiceCases.length + titleCases.length + 7;
+  // Abschnitt hinter dem Ende einer kürzeren Aufnahme wird begrenzt bzw.
+  // verworfen — sonst liefe die Wiedergabe stumm ins Leere.
+  const savedA = loopA, savedB = loopB, savedDur = Audio.duration;
+  Audio.duration = 100;
+  loopA = 50; loopB = 200;
+  const clamped = loopRange();
+  if (!clamped || clamped.end !== 100 || clamped.start !== 50) {
+    failed.push(`loopRange begrenzt nicht auf die Länge: ${JSON.stringify(clamped)}`);
+  }
+  loopA = 150; loopB = 200;
+  if (loopRange() !== null) failed.push('loopRange hinter dem Ende müsste null sein');
+  loopA = savedA; loopB = savedB; Audio.duration = savedDur;
+
+  // Nur ausgepackte Daten zählen gegen die Speichergrenze eines Import-Stapels.
+  if (inMemoryBytes({ method: 0 }, { size: 5e6 }) !== 0
+      || inMemoryBytes({ blob: {} }, { size: 5e6 }) !== 0
+      || inMemoryBytes({ method: 8 }, { size: 5e6 }) !== 5e6) {
+    failed.push('inMemoryBytes zählt die falschen Einträge');
+  }
+
+  const total = voiceCases.length + titleCases.length + 10;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
