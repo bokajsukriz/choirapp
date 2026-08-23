@@ -61,12 +61,7 @@ html, body {
 }
 
 body {
-  background:
-    radial-gradient(340px 340px at 92% -4%, rgba(255,61,154,.14), transparent 70%),
-    radial-gradient(300px 300px at -6% 18%, rgba(51,201,220,.16), transparent 70%),
-    radial-gradient(360px 360px at 100% 70%, rgba(255,210,63,.16), transparent 70%),
-    var(--bg);
-  background-attachment: fixed;
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 16px;
@@ -78,6 +73,22 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* Konfetti-Kreise: feste, scharfe Kreisflächen statt verschwommener Farbflecken —
+   dieselben zwei Kreise hinter der App wie hinter dem Player/der Playlist. */
+body::before, body::after,
+.player::before, .player::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  mix-blend-mode: multiply;
+  opacity: .4;
+  filter: blur(2px);
+  pointer-events: none;
+  z-index: -1;
+}
+body::before, .player::before { top: -70px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
+body::after, .player::after { bottom: 100px; left: -70px; width: 190px; height: 190px; background: #ffd23f; }
 
 /* dvh berücksichtigt die ein- und ausfahrende Browserleiste auf dem Handy. */
 @supports (height: 100dvh) {
@@ -105,7 +116,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   flex: 0 0 auto;
   padding: calc(var(--safe-top) + 14px) calc(var(--pad) + var(--safe-right))
            12px calc(var(--pad) + var(--safe-left));
-  background: var(--bg);
+  background: transparent;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -113,7 +124,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   min-height: 0;
 }
 
-.app-header h1 { font-size: 1.35rem; letter-spacing: -0.01em; }
+.app-header h1 { flex: 1; text-align: center; font-size: 1.35rem; letter-spacing: -0.01em; }
 
 /* ---------- Inhaltsbereich ---------------------------------------------- */
 
@@ -140,7 +151,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  background: var(--surface);
+  background: transparent;
   border-top: 1px solid var(--line);
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
@@ -292,23 +303,25 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   text-align: left;
 }
 
-.list-item strong { font-weight: 620; font-size: 0.94rem; }
-
-.voice-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* Titel und Stimm-Kürzel laufen als ein Textfluss: die Badges hängen sich
+   direkt an den Titel und brechen nur um, wenn die Zeile voll ist. */
+.song-line { line-height: 2; }
+.song-line strong { font-weight: 620; font-size: 0.94rem; }
 
 .voice-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  font-size: 0.63rem;
+  height: 19px;
+  font-size: 0.6rem;
   font-weight: 700;
-  padding: 0 5px;
+  letter-spacing: .02em;
+  padding: 0 7px;
+  margin: 0 3px 3px 0;
   border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  color: var(--muted);
+  background: var(--muted);
+  color: #fff;
+  vertical-align: middle;
 }
 
 /* Anleitungs-Schritte im Import-Bereich */
@@ -578,7 +591,8 @@ input[type="checkbox"] {
 
 .player-head {
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
   gap: 6px;
   padding: calc(var(--safe-top) + 10px) calc(12px + var(--safe-right))
@@ -586,7 +600,10 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--line);
 }
 
-.player-head .grow { flex: 1; min-width: 0; }
+/* Der Titel bleibt über der ganzen Breite mittig, egal ob rechts ein
+   Umbenennen-Knopf, ein Ladeindikator oder gar nichts steht. */
+.player-head .grow { min-width: 0; text-align: center; }
+.player-head > :last-child { justify-self: center; }
 .player-head strong { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
 .player-head .spinner { width: 16px; height: 16px; border-width: 2px; flex: 0 0 auto; }
 .player-head .spinner[hidden] { display: none; }
@@ -626,7 +643,7 @@ input[type="checkbox"] {
    selbst oben im Fokus bleibt. */
 .player-select-row {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
   gap: 8px;
   margin-top: 12px;
@@ -641,8 +658,8 @@ input[type="checkbox"] {
   min-height: var(--tap);
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 17px;
-  padding: 0 22px 0 10px;
+  border-radius: 999px;
+  padding: 0 22px 0 14px;
 }
 
 /* Zeigt, dass sich hier etwas aufklappen lässt — appearance:none nimmt dem
@@ -680,23 +697,6 @@ input[type="checkbox"] {
 .select-field select:focus { outline: none; }
 .select-field select:disabled { color: var(--muted); }
 .select-field option:disabled { color: var(--muted); }
-
-.mixer-btn {
-  flex: 0 0 auto;
-  width: var(--tap);
-  height: var(--tap);
-  border-radius: 17px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.mixer-btn svg { width: 20px; height: 20px; }
-.mixer-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 /* Fortschrittsbalken — touch-action: none, damit beim Ziehen nicht gescrollt wird. */
 .seek {
@@ -774,14 +774,15 @@ input[type="checkbox"] {
 }
 
 .tbtn {
-  min-width: 48px;
-  min-height: 52px;
-  border-radius: 18px;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
   font-weight: 650;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -790,8 +791,8 @@ input[type="checkbox"] {
 .tbtn svg { width: 22px; height: 22px; }
 
 .tbtn--play {
-  min-width: 68px;
-  min-height: 58px;
+  width: 64px;
+  height: 64px;
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
@@ -800,18 +801,6 @@ input[type="checkbox"] {
 .tbtn--play svg { width: 28px; height: 28px; }
 .tbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
-/* Mischmodus */
-.mix-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: var(--tap);
-  padding: 4px 0;
-}
-
-.mix-row .name { flex: 0 0 92px; font-size: 0.9rem; font-weight: 600; }
-.mix-row input[type="range"] { flex: 1; accent-color: var(--accent); height: 28px; }
-.mix-row .val { flex: 0 0 42px; text-align: right; color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 
 .section-title {
   font-size: 0.8rem;
@@ -848,9 +837,13 @@ input[type="checkbox"] {
   gap: 6px;
 }
 
-.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; }
+.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; border-radius: 999px; }
 
-.loop-controls .icon-only { padding: 10px; }
+#btn-loop-a[aria-pressed="true"], #btn-loop-b[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+
+.loop-controls .icon-only { padding: 10px; border-radius: 999px; }
 .loop-controls .icon-only svg { width: 20px; height: 20px; }
 
 /* I/O-Schalter für Loop an/aus */
@@ -914,12 +907,28 @@ input[type="checkbox"] {
   text-align: left;
 }
 
-.queue-item .num { color: var(--muted); font-size: 0.82rem; min-width: 18px; }
 .queue-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .queue-item[data-current="true"] { border-color: var(--accent); }
 .queue-item[data-current="true"] .grow { font-weight: 650; }
 .queue-item[data-missing="true"] { opacity: .6; }
 .queue-item[data-missing="true"] .grow { color: var(--muted); }
+
+.queue-remove {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
 
 /* Playlist-Einträge mit Ziehgriff */
 .pl-entry {
@@ -970,6 +979,7 @@ input[type="checkbox"] {
   margin-bottom: 8px;
   color: inherit;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .score-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
@@ -1167,19 +1177,19 @@ input[type="checkbox"] {
     <div class="hint-box" id="player-hint" hidden></div>
 
     <div id="queue-block" hidden>
-      <p class="section-title" id="queue-title">Playlist</p>
+      <div class="row" style="margin:18px 0 10px">
+        <p class="section-title" id="queue-title-text" style="margin:0">Playlist</p>
+        <button class="icon-btn" id="btn-queue-edit" type="button" aria-label="Playlist bearbeiten" style="min-width:36px; min-height:36px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>
+        </button>
+      </div>
       <div id="queue-list"></div>
-    </div>
-
-    <div id="mix-panel" hidden>
-      <p class="section-title">Lautstärke je Stimme</p>
-      <div id="mix-rows"></div>
     </div>
 
     <p class="section-title">Abschnitt üben</p>
     <div class="loop-controls">
-      <button class="btn" id="btn-loop-a" type="button">A</button>
-      <button class="btn" id="btn-loop-b" type="button">B</button>
+      <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">A</button>
+      <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">B</button>
       <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6a6 6 0 0 0 0 12H6"/><circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -1250,9 +1260,6 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
         <select id="voice-select" aria-label="Stimme"></select>
       </label>
-      <button class="mixer-btn" id="btn-mix" type="button" aria-pressed="false" aria-label="Mischmodus einschalten">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-      </button>
       <label class="select-field">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
         <select id="rate-select" aria-label="Geschwindigkeit">
@@ -1397,6 +1404,19 @@ input[type="checkbox"] {
         der Player zuerst zeigt.
       </p>
       <div class="chip-grid" id="voice-picker"></div>
+    </div>
+
+    <div class="card">
+      <h2>Fahrradfahren-Modus</h2>
+      <p class="small muted" style="margin-top:-4px">
+        Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
+        Seite gemischt, hört man sie sonst je nach Ohr gar nicht.
+      </p>
+      <div class="preset-row" id="channel-mode" role="group" aria-label="Kanalwiedergabe">
+        <button class="preset" type="button" data-mode="off" aria-pressed="true">Normal</button>
+        <button class="preset" type="button" data-mode="mono">Mono</button>
+        <button class="preset" type="button" data-mode="swap">Tauschen</button>
+      </div>
     </div>
 
     <div class="card">
@@ -1587,15 +1607,28 @@ const VOICE_LABEL = {
 
 // Kurzform für die kompakten Stimm-Icons in der Songliste.
 const VOICE_ICON = {
-  FULL:  'Ges',
-  SOP:   'S',
-  ALT:   'A',
-  TEN:   'T',
-  BASS:  'B',
-  BAR:   'Br',
-  LEAD:  'L',
-  PIANO: 'Kl',
+  FULL:  'FULL',
+  SOP:   'SOP',
+  ALT:   'ALT',
+  TEN:   'TEN',
+  BASS:  'BASS',
+  BAR:   'BAR',
+  LEAD:  'SOLO',
+  PIANO: 'PIANO',
   OTHER: '?',
+};
+
+// Poppige Konfetti-Farben je Stimme für die Badges in der Songliste.
+const VOICE_COLOR = {
+  FULL:  '#33c9dc',
+  SOP:   '#ff3d9a',
+  ALT:   '#33c9dc',
+  TEN:   '#ffb23f',
+  BASS:  '#7a5cff',
+  BAR:   '#7a5cff',
+  LEAD:  '#ffb23f',
+  PIANO: '#ff3d9a',
+  OTHER: '#8c81a6',
 };
 
 // Als „meine Stimme" wählbar. Bariton fehlt bewusst: der Chor hat keinen.
@@ -1875,6 +1908,7 @@ const DEFAULT_SETTINGS = {
   lastBackupAt: null,
   repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
+  channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2662,18 +2696,18 @@ async function renderSongs() {
           navigate(`#song/${song.id}`);
         },
       },
-        el('div', { style: 'flex:1; min-width:0' },
-          el('strong', { text: songLabel(song) || 'Ohne Titel' }),
-          el('div', { class: 'voice-chips' },
-            voices.map((t) => {
-              const full = t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice);
-              return el('span', {
-                class: 'voice-chip',
-                title: full,
-                'aria-label': full,
-                text: t.voice === 'OTHER' ? (full || '?').slice(0, 2) : (VOICE_ICON[t.voice] || full.slice(0, 2)),
-              });
-            }))
+        el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
+          el('strong', { text: `${songLabel(song) || 'Ohne Titel'} ` }),
+          ...voices.map((t) => {
+            const full = t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice);
+            return el('span', {
+              class: 'voice-chip',
+              title: full,
+              'aria-label': full,
+              style: `background:${VOICE_COLOR[t.voice] || VOICE_COLOR.OTHER}`,
+              text: t.voice === 'OTHER' ? (full || '?').slice(0, 4).toUpperCase() : (VOICE_ICON[t.voice] || full.slice(0, 4).toUpperCase()),
+            });
+          })
         ),
         marks
       )
@@ -2924,6 +2958,7 @@ async function refreshAfterDelete() {
 
 async function renderSettings() {
   renderVoicePicker();
+  renderChannelMode();
   await renderStorage();
   renderBackupAge();
   await renderStorageManager();
@@ -2931,6 +2966,20 @@ async function renderSettings() {
     ? 'ja'
     : 'wird eingerichtet …';
 }
+
+function renderChannelMode() {
+  for (const btn of $$('#channel-mode .preset')) {
+    btn.setAttribute('aria-pressed', btn.dataset.mode === (settings.channelMode || 'off') ? 'true' : 'false');
+  }
+}
+
+$$('#channel-mode .preset').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    await saveSettings({ channelMode: btn.dataset.mode });
+    audioApplyChannelMode(settings.channelMode);
+    renderChannelMode();
+  });
+});
 
 $('#btn-help-import').addEventListener('click', () => showView('import'));
 
@@ -3291,7 +3340,25 @@ async function audioInit() {
     outputChannelCount: [2],
   });
 
-  Audio.node.connect(Audio.ctx.destination);
+  // Kanal-Matrix für den „Fahrradfahren-Modus" (Spec: nur ein Ohrstöpsel):
+  // eine feste Verdrahtung aus vier Gains, die je nach Einstellung normal
+  // durchreicht, links/rechts tauscht oder zu Mono mischt. Das Umschalten
+  // ändert nur Gain-Werte, keine Verbindungen — knackfrei und jederzeit möglich.
+  const ctx = Audio.ctx;
+  const splitter = ctx.createChannelSplitter(2);
+  const merger = ctx.createChannelMerger(2);
+  const gLL = ctx.createGain(); // links  -> links
+  const gLR = ctx.createGain(); // links  -> rechts
+  const gRL = ctx.createGain(); // rechts -> links
+  const gRR = ctx.createGain(); // rechts -> rechts
+  Audio.node.connect(splitter);
+  splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
+  splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
+  splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
+  splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
+  merger.connect(ctx.destination);
+  Audio.channel = { gLL, gLR, gRL, gRR };
+  audioApplyChannelMode(settings.channelMode);
 
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
@@ -3521,6 +3588,27 @@ function audioSetRate(rate) {
 function audioSetLoop(loop) {
   Audio.loop = loop;
   Audio.node?.port.postMessage({ type: 'loop', loop });
+}
+
+/**
+ * „Fahrradfahren-Modus" (nur ein Ohrstöpsel): Manche Aufnahmen legen eine
+ * Stimme (z. B. Bass) hart auf einen Kanal. Mit nur einem Stöpsel im Ohr ist
+ * das reine Glückssache. 'mono' mischt beide Kanäle zusammen, 'swap' tauscht
+ * links und rechts.
+ */
+function audioApplyChannelMode(mode) {
+  const c = Audio.channel;
+  if (!c) return;
+  if (mode === 'mono') {
+    c.gLL.gain.value = 0.5; c.gRR.gain.value = 0.5;
+    c.gLR.gain.value = 0.5; c.gRL.gain.value = 0.5;
+  } else if (mode === 'swap') {
+    c.gLL.gain.value = 0; c.gRR.gain.value = 0;
+    c.gLR.gain.value = 1; c.gRL.gain.value = 1;
+  } else {
+    c.gLL.gain.value = 1; c.gRR.gain.value = 1;
+    c.gLR.gain.value = 0; c.gRL.gain.value = 0;
+  }
 }
 
 async function audioRequestWakeLock() {
@@ -4405,8 +4493,7 @@ async function registerServiceWorker() {
 
 const playerEl = $('#player');
 let playerSong = null;      // gerade geöffneter Song
-let playerVoice = null;     // aktive Stimme (Einzelmodus)
-let mixMode = false;
+let playerVoice = null;     // aktive Stimme
 let seeking = false;
 
 function fmtTime(sec) {
@@ -4459,43 +4546,13 @@ function renderVoiceSelect() {
   sel.value = playerVoice || '';
 }
 
-function renderMixRows() {
-  const host = $('#mix-rows');
-  host.textContent = '';
-  if (!playerSong) return;
-
-  const active = playerSong.tracks.filter((t) => Audio.decoded.has(t.fileKey) && !t.broken);
-  if (!active.length) {
-    host.append(el('p', { class: 'small muted', style: 'margin:0',
-      text: 'Tippe oben auf die Stimmen, die du gleichzeitig hören möchtest.' }));
-    return;
-  }
-
-  for (const track of active) {
-    const value = Math.round((Audio.levels.get(track.fileKey) || 0) * 100);
-    const val = el('span', { class: 'val', text: `${value} %` });
-    const slider = el('input', {
-      type: 'range', min: '0', max: '100', value: String(value),
-      'aria-label': `Lautstärke ${track.label}`,
-    });
-    slider.addEventListener('input', () => {
-      const v = Number(slider.value);
-      val.textContent = `${v} %`;
-      audioSetGain(track.fileKey, v / 100);
-      renderVoiceSelect();
-    });
-    host.append(el('div', { class: 'mix-row' },
-      el('span', { class: 'name', text: track.label }), slider, val));
-  }
-}
-
 // Zählt Stimmenwechsel mit. Tippt jemand schnell mehrere Stimmen an, darf ein
 // langsamer beendeter Ladevorgang die inzwischen gewählte Stimme nicht
 // überschreiben und die Ladeanzeige nicht stehen lassen.
 let loadToken = 0;
 
 /**
- * Stimme wählen: im Einzelmodus exklusiv, im Mischmodus zusätzlich.
+ * Stimme wählen: exklusiv — alle anderen Spuren werden stumm.
  * `userChoice` unterscheidet den Tastendruck vom automatischen Vorbelegen
  * beim Öffnen — nur eine echte Wahl wird als Vorliebe gemerkt.
  */
@@ -4503,31 +4560,6 @@ async function selectTrack(track, userChoice = false) {
   if (!playerSong || track.broken) return;
   const token = ++loadToken;
 
-  if (mixMode) {
-    const on = (Audio.levels.get(track.fileKey) || 0) > 0;
-    if (on) {
-      audioSetGain(track.fileKey, 0);
-    } else if (Audio.decoded.has(track.fileKey)) {
-      audioSetGain(track.fileKey, 1);
-    } else {
-      try {
-        await audioLoadTrack(track, 1);
-      } catch (err) {
-        markBroken(track, err);
-        return;
-      }
-      // Das Dekodieren sendet die Lautstärke schon beim Anlegen der Spur an
-      // den Worklet. Ist inzwischen längst eine andere Auswahl aktiv (Song
-      // gewechselt, Mischmodus verlassen …), muss das wieder stummgeschaltet
-      // werden — sonst klingt eine Spur nach, die gar nicht mehr gemeint war.
-      if (token !== loadToken) { audioSetGain(track.fileKey, 0); return; }
-    }
-    renderVoiceSelect();
-    renderMixRows();
-    return;
-  }
-
-  // Einzelmodus: alles andere stumm, die gewählte Spur auf volle Lautstärke.
   playerVoice = track.fileKey;
   if (userChoice && track.voice !== 'OTHER' && settings.lastVoice !== track.voice) {
     saveSettings({ lastVoice: track.voice });
@@ -4555,7 +4587,6 @@ async function selectTrack(track, userChoice = false) {
   }
 
   renderVoiceSelect();
-  renderMixRows();
   updateMediaSession();
 }
 
@@ -4609,10 +4640,6 @@ async function openPlayer(songId) {
   $('#player-sub').textContent = `${plural(song.tracks.length, 'Stimme', 'Stimmen')}`;
   $('#player-hint').hidden = true;
   renderQueue();
-  mixMode = false;
-  $('#btn-mix').setAttribute('aria-pressed', 'false');
-  $('#btn-mix').setAttribute('aria-label', 'Mischmodus einschalten');
-  $('#mix-panel').hidden = true;
   playerVoice = null;
   loopA = loopB = null;
   loopOn = false;
@@ -4733,81 +4760,98 @@ function songLabel(song) {
   return song.artist ? `${song.title} (${song.artist})` : song.title;
 }
 
-// Bei langen Programmen wird die Liste im Player gekürzt: zwei Titel vor und
-// nach dem laufenden genügen zur Orientierung. Auf Wunsch klappt sie auf.
-const QUEUE_WINDOW = 2;
-let queueExpanded = false;
-
 /**
- * Zeigt die laufende Playlist im Player an, mit dem aktuellen Titel markiert.
- * Noch nicht importierte Titel bleiben sichtbar, aber ohne Tippfunktion —
- * so sieht man auch beim Abspielen, was in der Playlist fehlt.
+ * Zeigt die laufende Playlist im Player an — bewusst knapp: nur der laufende
+ * und der nächste Titel, das reicht zur Orientierung beim Üben. Über den
+ * Stift geht es zur vollständigen Playlist-Bearbeitung.
  */
+// Läuft renderQueue() mehrfach überlappend (schnelles Weiterschalten in der
+// Playlist ruft openPlayer() mehrmals auf), darf nur der jeweils letzte
+// Aufruf die Liste zeichnen — sonst hängt eine überholte, verzögert
+// eintreffende Antwort ihre Einträge hinter die schon fertige Liste
+// („1, 2, 3, 1, 2, 3").
+let queueRenderToken = 0;
+
 async function renderQueue() {
+  const token = ++queueRenderToken;
   const block = $('#queue-block');
   const host = $('#queue-list');
-  host.textContent = '';
 
-  if (!playQueue || !playQueue.items.length) { block.hidden = true; return; }
+  if (!playQueue || !playQueue.items.length) {
+    host.textContent = '';
+    block.hidden = true;
+    return;
+  }
   block.hidden = false;
 
   const total = playQueue.items.length;
   const pos = playQueue.index + 1;
-  $('#queue-title').textContent = `Playlist: ${playQueue.name} · ${pos} von ${total}`;
+  $('#queue-title-text').textContent = `Playlist: ${playQueue.name} · ${pos} von ${total}`;
+  $('#btn-queue-edit').hidden = !playQueue.id;
 
   const songs = await DB.metaByType('song').catch(() => []);
+  if (token !== queueRenderToken) return; // eine neuere Anzeige läuft schon
+  host.textContent = '';
   const byId = new Map(songs.map((s) => [s.id, s]));
 
-  const compact = !queueExpanded && total > QUEUE_WINDOW * 2 + 2;
-  const from = compact ? Math.max(0, playQueue.index - QUEUE_WINDOW) : 0;
-  const to = compact ? Math.min(total, playQueue.index + QUEUE_WINDOW + 1) : total;
+  // Nur laufender und nächster Titel — der Rest der Playlist gehört in die
+  // Bearbeitungsansicht, nicht in die Player-Anzeige.
+  const rows = [playQueue.index, playQueue.index + 1].filter((i) => i >= 0 && i < total);
 
-  if (compact && from > 0) {
-    host.append(el('p', { class: 'small muted', style: 'margin:0 0 6px',
-      text: `… ${plural(from, 'Titel', 'Titel')} davor` }));
-  }
-
-  for (let index = from; index < to; index++) {
+  for (const index of rows) {
     const item = playQueue.items[index];
     const song = item.id ? byId.get(item.id) : null;
     const current = index === playQueue.index;
-    const row = el('button', {
-      class: 'queue-item', type: 'button',
-      'data-current': current ? 'true' : 'false',
-      'data-missing': song ? 'false' : 'true',
+
+    const remove = el('button', {
+      class: 'queue-remove', type: 'button',
+      'aria-label': `„${song ? songLabel(song) : item.title}" aus der Wiedergabe entfernen`,
+      onclick: (e) => { e.stopPropagation(); removeFromQueue(index); },
+    }, '×');
+
+    const open = el('button', {
+      class: 'grow', type: 'button', style: 'text-align:left; background:none; border:0; color:inherit; padding:0; font:inherit',
       disabled: song ? null : true,
       onclick: song ? () => {
         playQueue.index = index;
         pendingAutoPlay = Audio.playing;
         navigate(`#song/${item.id}`, { replace: true });
       } : null,
-    },
-      el('span', { class: 'num', text: String(index + 1) }),
-      el('span', { class: 'grow', text: song ? songLabel(song) : item.title }));
+    }, song ? songLabel(song) : item.title);
+
+    const row = el('div', {
+      class: 'queue-item',
+      'data-current': current ? 'true' : 'false',
+      'data-missing': song ? 'false' : 'true',
+    }, remove, open);
     if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
     else if (!song) row.append(el('span', { class: 'small muted', text: 'nicht verfügbar' }));
     host.append(row);
   }
+}
 
-  if (compact) {
-    const rest = total - to;
-    if (rest > 0) {
-      host.append(el('p', { class: 'small muted', style: 'margin:6px 0 0',
-        text: `… ${plural(rest, 'Titel', 'Titel')} danach` }));
-    }
-    host.append(el('button', {
-      class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
-      text: `Ganze Playlist anzeigen (${total})`,
-      onclick: () => { queueExpanded = true; renderQueue(); },
-    }));
-  } else if (total > QUEUE_WINDOW * 2 + 2) {
-    host.append(el('button', {
-      class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
-      text: 'Weniger anzeigen',
-      onclick: () => { queueExpanded = false; renderQueue(); },
-    }));
+/** Entfernt einen Titel aus der laufenden Wiedergabe (nicht aus der gespeicherten Playlist). */
+function removeFromQueue(index) {
+  if (!playQueue) return;
+  const wasCurrent = index === playQueue.index;
+  playQueue.items.splice(index, 1);
+
+  if (!playQueue.items.length) { playQueue = null; renderQueue(); return; }
+
+  if (wasCurrent) {
+    // Der laufende Titel ist weg — zum jetzt an seiner Stelle stehenden
+    // (verfügbaren) Titel weiterschalten, so wie „Nächstes Lied" es tut.
+    playQueue.index = index - 1;
+    playlistStep(1, Audio.playing);
+  } else {
+    if (index < playQueue.index) playQueue.index -= 1;
+    renderQueue();
   }
 }
+
+$('#btn-queue-edit').addEventListener('click', () => {
+  if (playQueue?.id) navigate(`#playlist/${playQueue.id}`);
+});
 
 /**
  * Verhalten am Ende eines Liedes: wiederholen oder zum nächsten Titel.
@@ -4906,22 +4950,6 @@ function renderRepeatMode() {
   btn.setAttribute('aria-label', song ? 'Am Ende: Wiederholen' : 'Am Ende: Nächstes Lied');
 }
 
-$('#btn-mix').addEventListener('click', () => {
-  mixMode = !mixMode;
-  $('#btn-mix').setAttribute('aria-pressed', mixMode ? 'true' : 'false');
-  $('#btn-mix').setAttribute('aria-label', mixMode ? 'Mischmodus ausschalten' : 'Mischmodus einschalten');
-  $('#mix-panel').hidden = !mixMode;
-
-  if (!mixMode) {
-    // Zurück zur Einzelstimme: alles außer der zuletzt gewählten stumm.
-    for (const key of Audio.decoded.keys()) {
-      audioSetGain(key, key === playerVoice ? 1 : 0);
-    }
-  }
-  renderVoiceSelect();
-  renderMixRows();
-});
-
 /* Ziehen im Fortschrittsbalken. touch-action: none im CSS verhindert, dass
    die Seite dabei mitscrollt. */
 (() => {
@@ -5017,6 +5045,8 @@ function updateLoopUI() {
   $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
   $('#btn-loop-toggle').setAttribute('aria-checked', loopOn ? 'true' : 'false');
   $('#btn-loop-toggle').setAttribute('aria-label', loopOn ? 'Loop ausschalten' : 'Loop einschalten');
+  $('#btn-loop-a').setAttribute('aria-pressed', loopA !== null ? 'true' : 'false');
+  $('#btn-loop-b').setAttribute('aria-pressed', loopB !== null ? 'true' : 'false');
 
   const info = $('#loop-info');
   if (!r) {
@@ -5034,6 +5064,17 @@ function applyLoop() {
   audioSetLoop(loopOn && r ? r : null);
 }
 
+/** Loop einschalten und, falls nötig, an den Anfang des Abschnitts springen. */
+function activateLoop() {
+  loopOn = true;
+  applyLoop();
+  const r = loopRange();
+  if (r && (Audio.position < r.start || Audio.position > r.end)) {
+    updateSeekUI(audioSeek(r.start));
+  }
+  updateLoopUI();
+}
+
 $('#btn-loop-a').addEventListener('click', () => {
   loopA = Audio.position;
   if (loopB !== null && loopB <= loopA) loopB = null;
@@ -5047,21 +5088,21 @@ $('#btn-loop-b').addEventListener('click', () => {
   loopB = Audio.position;
   if (loopA !== null && loopA >= loopB) loopA = null;
   activeLoopId = null;
-  updateLoopUI();
-  applyLoop();
   renderLoopList();
+  // Mit B ist der Abschnitt vollständig — direkt in Schleife üben, ohne
+  // dass noch extra auf den Schalter getippt werden muss.
+  if (loopRange()) activateLoop();
+  else { updateLoopUI(); applyLoop(); }
 });
 
 $('#btn-loop-toggle').addEventListener('click', () => {
-  loopOn = !loopOn;
-  applyLoop();
-  // Beim Einschalten an den Anfang des Abschnitts springen, damit sofort
-  // hörbar ist, was geübt wird.
-  const r = loopRange();
-  if (loopOn && r && (Audio.position < r.start || Audio.position > r.end)) {
-    updateSeekUI(audioSeek(r.start));
+  if (loopOn) {
+    loopOn = false;
+    applyLoop();
+    updateLoopUI();
+  } else {
+    activateLoop();
   }
-  updateLoopUI();
 });
 
 $('#btn-loop-save').addEventListener('click', async () => {
@@ -5276,25 +5317,29 @@ async function renderPlayerExtras() {
       const url = URL.createObjectURL(file);
       scoreURLs.push(url);
 
-      // Der Link wird vorab erzeugt, damit das Öffnen im Klick passiert und
-      // nicht vom Popup-Schutz abgefangen wird.
-      const open = el('a', {
-        class: 'btn', href: url, target: '_blank', rel: 'noopener',
-        text: 'Öffnen', style: 'padding:8px 14px; min-height:38px',
+      // Die ganze Zeile öffnet die Datei — kein eigener „Öffnen“-Knopf mehr.
+      row.tabIndex = 0;
+      row.setAttribute('role', 'link');
+      row.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(url, '_blank', 'noopener'); }
       });
-      row.append(open);
 
       if (navigator.canShare?.({ files: [file] })) {
         row.append(el('button', {
           class: 'btn', type: 'button', text: 'Teilen',
           style: 'padding:8px 14px; min-height:38px',
-          onclick: () => navigator.share({ files: [file], title: score.fileName })
-            .catch(() => { /* vom Nutzer abgebrochen */ }),
+          onclick: (e) => {
+            e.stopPropagation();
+            navigator.share({ files: [file], title: score.fileName })
+              .catch(() => { /* vom Nutzer abgebrochen */ });
+          },
         }));
       } else {
         const dl = el('a', {
           class: 'btn', href: url, download: score.fileName, text: 'Sichern',
           style: 'padding:8px 14px; min-height:38px',
+          onclick: (e) => e.stopPropagation(),
         });
         row.append(dl);
       }
@@ -5540,8 +5585,7 @@ async function startPlaylist(pl) {
     banner(`Von „${pl.name}" ist noch kein Lied importiert.`, { kind: 'error' });
     return;
   }
-  playQueue = { name: pl.name, items, index: firstIndex };
-  queueExpanded = false;
+  playQueue = { id: pl.id, name: pl.name, items, index: firstIndex };
   navigate(`#song/${items[firstIndex].id}`);
 }
 
@@ -5788,9 +5832,10 @@ function renderPlaylistCandidates(songs) {
   const q = normalizeTitle($('#pl-search').value || '');
   const inList = new Set((plDraft.songTitles || []).map(normalizeTitle));
 
+  // Ohne Suchbegriff zeigt die Liste alle Songs — sonst blieben Titel weiter
+  // hinten im Alphabet beim Playlist-Bearbeiten unauffindbar.
   let list = songs.slice().sort((a, b) => collator.compare(a.title, b.title));
   if (q) list = list.filter((s) => s.normTitle.includes(q));
-  list = list.slice(0, q ? 20 : 6);
 
   if (!list.length) {
     host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
