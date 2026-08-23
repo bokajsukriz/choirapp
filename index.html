@@ -4455,6 +4455,11 @@ async function selectTrack(track, userChoice = false) {
         markBroken(track, err);
         return;
       }
+      // Das Dekodieren sendet die Lautstärke schon beim Anlegen der Spur an
+      // den Worklet. Ist inzwischen längst eine andere Auswahl aktiv (Song
+      // gewechselt, Mischmodus verlassen …), muss das wieder stummgeschaltet
+      // werden — sonst klingt eine Spur nach, die gar nicht mehr gemeint war.
+      if (token !== loadToken) { audioSetGain(track.fileKey, 0); return; }
     }
     renderVoiceSelect();
     renderMixRows();
@@ -4480,7 +4485,12 @@ async function selectTrack(track, userChoice = false) {
       markBroken(track, err);
       return;
     }
-    if (token !== loadToken) return;   // inzwischen wurde eine andere gewählt
+    // Inzwischen wurde eine andere Stimme oder ein anderer Song gewählt: die
+    // gerade fertig dekodierte Spur trotzdem stumm schalten. Sonst bleibt sie
+    // hörbar, weil der Worklet die beim Laden übergebene Lautstärke schon
+    // gesetzt hat, bevor wir hier reagieren konnten (führte bei schnellem
+    // „Nächstes Lied" dazu, dass zwei Lieder gleichzeitig liefen).
+    if (token !== loadToken) { audioSetGain(track.fileKey, 0); return; }
   }
 
   renderVoiceSelect();
