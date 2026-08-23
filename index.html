@@ -497,6 +497,23 @@ input[type="checkbox"] {
 .badge--changed { color: var(--warn); border-color: #5a4a20; background: #2a2314; }
 .badge--new     { color: var(--ok);   border-color: #24513f; background: #14241d; }
 
+/* Gruppe mehrerer Fassungen desselben Liedes */
+.version-group {
+  border: 1px solid #5a4a20;
+  background: #221d12;
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.version-row .chip { padding: 8px 8px; line-height: 1.25; }
+
 .hint-box {
   border: 1px solid #5a4a20;
   background: #2a2314;
@@ -533,6 +550,352 @@ input[type="checkbox"] {
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---------- Player ------------------------------------------------------ */
+
+.player {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.player[hidden] { display: none; }
+
+.player-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: calc(var(--safe-top) + 10px) calc(12px + var(--safe-right))
+           10px calc(6px + var(--safe-left));
+  border-bottom: 1px solid var(--line);
+}
+
+.player-head .grow { flex: 1; min-width: 0; }
+.player-head strong { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
+
+.icon-btn {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 11px;
+}
+
+.icon-btn svg { width: 24px; height: 24px; }
+.icon-btn:active { background: var(--surface-2); }
+
+.player-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
+}
+
+.player-foot {
+  flex: 0 0 auto;
+  padding: 10px calc(var(--pad) + var(--safe-right))
+           calc(10px + var(--safe-bottom)) calc(var(--pad) + var(--safe-left));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* Stimmen-Umschalter: das meistgenutzte Element, deshalb groß und oben. */
+.voice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.voice-btn {
+  min-height: 62px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 650;
+  font-size: 1rem;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.voice-btn small { font-weight: 500; font-size: 0.72rem; color: var(--muted); }
+.voice-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.voice-btn[aria-pressed="true"] small { color: rgba(20,22,26,.7); }
+.voice-btn[data-broken="true"] { opacity: .55; }
+
+/* Fortschrittsbalken — touch-action: none, damit beim Ziehen nicht gescrollt wird. */
+.seek {
+  position: relative;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  touch-action: none;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+.seek-track {
+  position: relative;
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow: visible;
+}
+
+.seek-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  width: 0;
+}
+
+.seek-knob {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  left: 0;
+}
+
+/* Loop-Markierungen im Balken (A/B) */
+.seek-mark {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1px;
+  background: var(--ok);
+  border-radius: 2px;
+}
+
+.seek-range {
+  position: absolute;
+  top: 0; bottom: 0;
+  background: rgba(86,197,150,.28);
+}
+
+.times {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.tbtn {
+  min-width: 56px;
+  min-height: 52px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 650;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tbtn svg { width: 22px; height: 22px; }
+
+.tbtn--play {
+  min-width: 76px;
+  min-height: 60px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.tbtn--play svg { width: 28px; height: 28px; }
+
+.rate-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.rate-btn {
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 0.85rem;
+}
+
+.rate-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+/* Mischmodus */
+.mix-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--tap);
+  padding: 4px 0;
+}
+
+.mix-row .name { flex: 0 0 92px; font-size: 0.9rem; font-weight: 600; }
+.mix-row input[type="range"] { flex: 1; accent-color: var(--accent); height: 28px; }
+.mix-row .val { flex: 0 0 42px; text-align: right; color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin: 18px 0 10px;
+  font-weight: 650;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-2);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+}
+
+.loading-row { display: flex; align-items: center; gap: 12px; padding: 10px 0 18px; color: var(--muted); }
+
+/* Loops */
+.loop-controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; }
+#btn-loop-toggle[aria-pressed="true"] { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
+
+.loop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.loop-item .go {
+  flex: 1;
+  min-height: var(--tap);
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.loop-item .go strong { display: block; font-weight: 620; }
+.loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.loop-item[data-active="true"] .go { border-color: var(--ok); }
+
+/* Playlist-Einträge mit Ziehgriff */
+.pl-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 8px 10px 8px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 8px;
+  touch-action: pan-y;
+}
+
+.pl-entry .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pl-entry[data-missing="true"] strong { color: var(--muted); }
+.pl-entry.is-dragging { opacity: .7; border-color: var(--accent); }
+.pl-grip { color: var(--muted); cursor: grab; touch-action: none; }
+
+/* Griffe der Loop-Markierungen im Fortschrittsbalken */
+.seek-mark { pointer-events: auto; touch-action: none; cursor: ew-resize; }
+.seek-mark::before {
+  content: '';
+  position: absolute;
+  left: -16px; right: -16px; top: -10px; bottom: -10px;
+}
+
+.lyrics {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  line-height: 1.55;
+}
+
+.score-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.score-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
+.score-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.dialog input[type="text"] {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 11px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  margin-bottom: 16px;
 }
 
 /* ---------- Meldungsbanner (ersetzt alert()) ---------------------------- */
@@ -635,6 +998,138 @@ input[type="checkbox"] {
   </div>
 </div>
 
+<!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
+<section class="player" id="playlist-view" hidden aria-labelledby="pl-title">
+  <div class="player-head">
+    <button class="icon-btn" id="pl-back" type="button" aria-label="Zurück zu den Playlisten">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="grow">
+      <strong id="pl-title"></strong>
+      <span class="small muted" id="pl-sub"></span>
+    </div>
+    <button class="icon-btn" id="pl-rename" type="button" aria-label="Playlist umbenennen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="player-body">
+    <div id="pl-missing" class="hint-box" hidden></div>
+    <div id="pl-entries"></div>
+
+    <p class="section-title">Titel hinzufügen</p>
+    <input class="search-input" id="pl-search" type="search" autocomplete="off"
+           placeholder="Song suchen …" aria-label="Song für die Playlist suchen">
+    <div id="pl-candidates" style="margin-top:10px"></div>
+
+    <p class="section-title">Weitergeben</p>
+    <div class="stack">
+      <button class="btn btn--block" id="btn-pl-export" type="button">Als Textdatei sichern</button>
+      <button class="btn btn--block" id="btn-pl-copy" type="button">Als Text kopieren</button>
+      <button class="btn btn--danger btn--block" id="btn-pl-delete" type="button">Playlist löschen</button>
+    </div>
+  </div>
+
+  <div class="player-foot">
+    <button class="btn btn--primary btn--block" id="btn-pl-play" type="button">Playlist abspielen</button>
+  </div>
+</section>
+
+<!-- Player: eigene Vollbild-Ansicht über der Bibliothek. -->
+<section class="player" id="player" hidden aria-labelledby="player-title">
+  <div class="player-head">
+    <button class="icon-btn" id="player-back" type="button" aria-label="Zurück zur Bibliothek">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="grow">
+      <strong id="player-title"></strong>
+      <span class="small muted" id="player-sub"></span>
+    </div>
+  </div>
+
+  <div class="player-body" id="player-body">
+    <div class="loading-row" id="player-loading" hidden>
+      <div class="spinner"></div>
+      <span id="player-loading-text">Spuren werden geladen …</span>
+    </div>
+
+    <div class="hint-box" id="player-hint" hidden></div>
+
+    <div class="voice-grid" id="voice-grid"></div>
+
+    <button class="btn btn--block" id="btn-mix" type="button" aria-pressed="false">
+      Mischmodus einschalten
+    </button>
+    <div id="mix-panel" hidden>
+      <p class="section-title">Lautstärke je Stimme</p>
+      <div id="mix-rows"></div>
+    </div>
+
+    <p class="section-title">Abschnitt üben</p>
+    <div class="loop-controls">
+      <button class="btn" id="btn-loop-a" type="button">A setzen</button>
+      <button class="btn" id="btn-loop-b" type="button">B setzen</button>
+      <button class="btn" id="btn-loop-toggle" type="button" aria-pressed="false" disabled>Loop an</button>
+      <button class="btn" id="btn-loop-save" type="button" disabled>Speichern</button>
+    </div>
+    <p class="small muted" id="loop-info" style="margin:10px 0 0"></p>
+    <div id="loop-list"></div>
+
+    <div id="lyrics-block" hidden>
+      <p class="section-title">Liedtext</p>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn" id="btn-lyrics-toggle" type="button" aria-expanded="false">Anzeigen</button>
+        <span style="display:flex; gap:6px">
+          <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
+          <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
+        </span>
+      </div>
+      <div class="lyrics" id="lyrics-text" hidden></div>
+    </div>
+
+    <div id="scores-block" hidden>
+      <p class="section-title">Noten</p>
+      <div id="scores-list"></div>
+    </div>
+  </div>
+
+  <div class="player-foot">
+    <div class="seek" id="seek" role="slider" tabindex="0"
+         aria-label="Wiedergabeposition" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+      <div class="seek-track" id="seek-track">
+        <div class="seek-range" id="seek-range" hidden></div>
+        <div class="seek-fill" id="seek-fill"></div>
+        <div class="seek-mark" id="seek-mark-a" hidden></div>
+        <div class="seek-mark" id="seek-mark-b" hidden></div>
+        <div class="seek-knob" id="seek-knob"></div>
+      </div>
+    </div>
+    <div class="times"><span id="time-cur">0:00</span><span id="time-tot">0:00</span></div>
+
+    <div class="transport">
+      <button class="tbtn" id="btn-back10" type="button" aria-label="10 Sekunden zurück">−10 s</button>
+      <button class="tbtn tbtn--play" id="btn-play" type="button" aria-label="Abspielen">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-play"><path d="M8 5.5v13l11-6.5z"/></svg>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-pause" style="display:none"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+      </button>
+      <button class="tbtn" id="btn-fwd10" type="button" aria-label="10 Sekunden vor">+10 s</button>
+    </div>
+
+    <div class="rate-row" id="rate-row" role="group" aria-label="Tempo">
+      <button class="rate-btn" type="button" data-rate="0.5">0,5×</button>
+      <button class="rate-btn" type="button" data-rate="0.75">0,75×</button>
+      <button class="rate-btn" type="button" data-rate="1" aria-pressed="true">1×</button>
+      <button class="rate-btn" type="button" data-rate="1.25">1,25×</button>
+    </div>
+  </div>
+</section>
+
 <!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
      entschieden wird und nichts anderes ablenken soll. -->
 <section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
@@ -675,6 +1170,7 @@ input[type="checkbox"] {
 
   <!-- ===== Bibliothek =================================================== -->
   <section class="view is-active" id="view-songs" aria-labelledby="view-title">
+    <div class="hint-box" id="backup-reminder" hidden></div>
     <div class="searchbar" id="searchbar" hidden>
       <input class="search-input" id="search" type="search" inputmode="search"
              autocomplete="off" autocorrect="off" spellcheck="false"
@@ -686,6 +1182,19 @@ input[type="checkbox"] {
 
   <!-- ===== Playlisten =================================================== -->
   <section class="view" id="view-playlists">
+    <div class="card">
+      <h2>Playlisten</h2>
+      <p class="small muted" style="margin-top:0">
+        Eine Playlist ist ein Programm: die Lieder in der Reihenfolge, in der
+        sie gesungen werden. Der Chorleiter kann sie als Textdatei verteilen.
+      </p>
+      <div class="stack" style="margin-top:14px">
+        <button class="btn btn--primary btn--block" id="btn-pl-new" type="button">Neue Playlist</button>
+        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
+        <button class="btn btn--block" id="btn-pl-import" type="button">Aus Textdatei importieren</button>
+        <button class="btn btn--block" id="btn-pl-paste" type="button">Aus Text einfügen</button>
+      </div>
+    </div>
     <div id="playlist-list-host"></div>
   </section>
 
@@ -770,6 +1279,36 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2>Sicherung</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Sichert Loops, Playlisten, Einstellungen und die Songliste — ohne
+          Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt sich
+          per Mail oder Messenger verschicken.
+        </p>
+        <p class="small" id="backup-age" style="margin:0"></p>
+        <button class="btn btn--primary btn--block" id="btn-backup-export" type="button">
+          Sicherung erstellen
+        </button>
+        <input class="visually-hidden" id="backup-input" type="file" accept=".json,application/json">
+        <button class="btn btn--block" id="btn-backup-import" type="button">
+          Sicherung einspielen
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Speicherplatz freigeben</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Einzelne Songs oder Stimmen löschen. Loops und Playlisten bleiben
+          dabei erhalten.
+        </p>
+        <div id="storage-manager"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Daten</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
@@ -778,6 +1317,20 @@ input[type="checkbox"] {
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
           Alle Daten löschen
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Hilfe</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
+          Unter „Import“ steht Schritt für Schritt, wie das auf dem iPhone
+          und auf Android geht.
+        </p>
+        <button class="btn btn--block" id="btn-help-import" type="button">
+          Wie bekomme ich Songs in die App?
         </button>
       </div>
     </div>
@@ -967,6 +1520,38 @@ function closeDialog(result) {
   const r = dlgResolve;
   dlgResolve = null;
   if (r) r(result);
+}
+
+/**
+ * Abfrage mit Texteingabe (für Loop-Namen, Playlist-Namen).
+ * @returns {Promise<string|null>} null, wenn abgebrochen wurde
+ */
+function promptDialog({ title, text = '', value = '', placeholder = '', okLabel = 'Speichern' }) {
+  return new Promise((resolve) => {
+    const input = el('input', { type: 'text', value, placeholder, 'aria-label': title });
+
+    const done = (result) => { layer.remove(); resolve(result); };
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: title }),
+      text ? el('p', { text }) : null,
+      input,
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: okLabel,
+                       onclick: () => done(input.value) })));
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); done(input.value); }
+      if (e.key === 'Escape') { e.preventDefault(); done(null); }
+    });
+
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+    input.focus();
+    input.select();
+  });
 }
 
 dlgOk.addEventListener('click', () => closeDialog(true));
@@ -1605,7 +2190,7 @@ function scanFiles(files, zipTitle) {
         // Präfix, der nicht zum Ordner passt, deutet auf einen Ablagefehler hin.
         const folderNorm = normalizeTitle(folderName || title);
         if (rest && folderNorm && rest !== folderNorm) {
-          notes.push(`„${item.name}" trägt den Titel „${rest}", liegt aber im Ordner „${folderName || title}".`);
+          notes.push(`„${item.name}" liegt im Ordner „${folderName || title}", der Dateiname deutet aber auf ein anderes Lied hin.`);
         }
       } else {
         withoutVoice.push(item);
@@ -1696,7 +2281,7 @@ const VIEWS = {
 
 let currentView = 'songs';
 
-function showView(name, { push = true } = {}) {
+function showTab(name) {
   if (!VIEWS[name]) name = 'songs';
   currentView = name;
 
@@ -1708,12 +2293,50 @@ function showView(name, { push = true } = {}) {
 
   $('#view-title').textContent = VIEWS[name].title;
   $('#main').scrollTop = 0;
+  VIEWS[name].render?.();
+}
 
-  if (push && location.hash !== `#${name}`) {
-    history.pushState({ view: name }, '', `#${name}`);
+/**
+ * Navigiert über die Adresszeile, damit die Zurück-Taste funktioniert.
+ * `replace` ersetzt den aktuellen Eintrag — beim Weiterschalten in einer
+ * Playlist soll „zurück" zur Liste führen und nicht durch alle bereits
+ * gespielten Songs zurücklaufen.
+ */
+function navigate(hash, { replace = false } = {}) {
+  if (location.hash === hash) { applyRoute(); return; }
+  if (replace) history.replaceState({}, '', hash);
+  else history.pushState({}, '', hash);
+  applyRoute();
+}
+
+function showView(name) { navigate(`#${name}`); }
+
+/**
+ * Wertet die Adresse aus: `#songs`, `#import`, … oder `#song/<id>` für den
+ * Player. Der Player liegt über den Reitern, deshalb wird er hier geöffnet
+ * und geschlossen — so bringt die Zurück-Taste zuverlässig zur Liste zurück.
+ */
+function applyRoute() {
+  const raw = (location.hash || '#songs').slice(1);
+  const slash = raw.indexOf('/');
+  const name = slash < 0 ? raw : raw.slice(0, slash);
+  const param = slash < 0 ? '' : raw.slice(slash + 1);
+
+  if (name === 'song' && param) {
+    if (openPlaylist) closePlaylistView();
+    if (!playerSong || playerSong.id !== param) openPlayer(param);
+    return;
   }
 
-  VIEWS[name].render?.();
+  if (name === 'playlist' && param) {
+    if (playerSong) closePlayer();
+    if (!openPlaylist || openPlaylist.id !== param) openPlaylistView(param);
+    return;
+  }
+
+  if (playerSong) closePlayer();
+  if (openPlaylist) closePlaylistView();
+  showTab(VIEWS[name] ? name : 'songs');
 }
 
 $('#nav').addEventListener('click', (e) => {
@@ -1721,11 +2344,9 @@ $('#nav').addEventListener('click', (e) => {
   if (btn) showView(btn.dataset.view);
 });
 
-// Zurück-Taste auf Android springt zwischen den Reitern statt die App zu verlassen.
-window.addEventListener('popstate', () => {
-  const name = (location.hash || '#songs').slice(1);
-  showView(name, { push: false });
-});
+// Zurück-Taste auf Android springt zwischen den Reitern bzw. aus dem Player
+// zurück, statt die App zu verlassen.
+window.addEventListener('popstate', applyRoute);
 
 /* ---------- Bibliothek --------------------------------------------------- */
 
@@ -1798,6 +2419,7 @@ async function renderSongs() {
   }
 
   $('#searchbar').hidden = false;
+  updateBackupReminder();
 
   // --- Filterleiste der Sammelordner (nur wenn es mehr als einen gibt) ----
   const collections = [...new Set(songs.flatMap((s) => s.collections || []))]
@@ -1849,7 +2471,11 @@ async function renderSongs() {
     if ((song.scores || []).length) marks.append(markIcon('score'));
 
     list.append(el('li', {},
-      el('div', { class: 'list-item' },
+      el('button', {
+        class: 'list-item',
+        type: 'button',
+        onclick: () => navigate(`#song/${song.id}`),
+      },
         el('div', { style: 'flex:1; min-width:0' },
           el('strong', { text: song.title || 'Ohne Titel' }),
           el('div', { class: 'voice-chips' },
@@ -1869,43 +2495,6 @@ $('#search').addEventListener('input', (e) => {
   songQuery = e.target.value;
   renderSongs();
 });
-
-/* ---------- Playlisten --------------------------------------------------- */
-
-async function renderPlaylists() {
-  const host = $('#playlist-list-host');
-  host.textContent = '';
-
-  let lists = [];
-  try {
-    lists = await DB.metaByType('playlist');
-  } catch (err) {
-    console.error(err);
-  }
-
-  if (!lists.length) {
-    host.append(el('div', { class: 'empty' },
-      el('h2', { text: 'Noch keine Playlisten' }),
-      el('p', { class: 'small', text: 'Playlisten helfen dir, ein Konzertprogramm der Reihe nach zu üben.' })
-    ));
-    return;
-  }
-
-  lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
-
-  const ul = el('ul', { class: 'list' });
-  for (const pl of lists) {
-    ul.append(el('li', {},
-      el('div', { class: 'list-item' },
-        el('div', { style: 'flex:1; min-width:0' },
-          el('strong', { text: pl.name || 'Ohne Namen' }),
-          el('div', { class: 'small muted', text: `${(pl.songIds || []).length} Titel` })
-        )
-      )
-    ));
-  }
-  host.append(ul);
-}
 
 /* ---------- Einstellungen ------------------------------------------------ */
 
@@ -1962,13 +2551,138 @@ async function renderStorage() {
   }
 }
 
+/**
+ * Speicherverwaltung: Songs und einzelne Stimmen gezielt löschen (Spec 5.5).
+ * Loops und Playlisten bleiben dabei erhalten — sie hängen am Titel, nicht
+ * an der Aufnahme.
+ */
+async function renderStorageManager() {
+  const host = $('#storage-manager');
+  host.textContent = '';
+
+  const songs = await DB.metaByType('song').catch(() => []);
+  if (!songs.length) {
+    host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Es sind keine Songs gespeichert.' }));
+    return;
+  }
+
+  songs.sort((a, b) => collator.compare(a.title, b.title));
+
+  for (const song of songs) {
+    const bytes = song.tracks.reduce((n, t) => n + (t.size || 0), 0)
+      + (song.scores || []).reduce((n, s) => n + (s.size || 0), 0);
+
+    const tracksHost = el('div', { class: 'pick-tracks', hidden: true });
+    for (const track of song.tracks) {
+      tracksHost.append(el('div', { class: 'pick-track' },
+        el('div', { class: 'grow' }, el('div', { text: track.label })),
+        el('span', { class: 'size', text: fmtBytes(track.size || 0) }),
+        el('button', {
+          class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
+          'aria-label': `${track.label} von ${song.title} löschen`,
+          onclick: () => deleteTrack(song, track),
+        }, (() => {
+          const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          s.setAttribute('viewBox', '0 0 24 24');
+          s.setAttribute('fill', 'none');
+          s.setAttribute('stroke', 'currentColor');
+          s.setAttribute('stroke-width', '1.8');
+          s.setAttribute('stroke-linecap', 'round');
+          s.innerHTML = '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>';
+          return s;
+        })())));
+    }
+
+    const toggle = el('button', {
+      class: 'disclose', type: 'button', 'aria-expanded': 'false',
+      'aria-label': `Stimmen von ${song.title} anzeigen`,
+    }, iconChevron());
+    toggle.addEventListener('click', () => {
+      const open = tracksHost.hidden;
+      tracksHost.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+
+    const del = el('button', {
+      class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
+      'aria-label': `${song.title} vollständig löschen`,
+      onclick: () => deleteSong(song),
+    });
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
+
+    host.append(el('div', { class: 'pick-song' },
+      el('div', { class: 'pick-head' },
+        el('div', { class: 'grow' },
+          el('strong', { text: song.title }),
+          el('div', { class: 'small muted',
+            text: `${plural(song.tracks.length, 'Stimme', 'Stimmen')} · ${fmtBytes(bytes)}` })),
+        del, toggle),
+      tracksHost));
+  }
+}
+
+async function deleteTrack(song, track) {
+  const ok = await confirmDialog({
+    title: 'Stimme löschen?',
+    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops bleiben erhalten.`,
+    okLabel: 'Löschen', danger: true,
+  });
+  if (!ok) return;
+
+  await DB.fileDelete(track.fileKey);
+  song.tracks = song.tracks.filter((t) => t !== track);
+  if (song.tracks.length) {
+    await DB.metaPut(song);
+  } else {
+    // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
+    for (const s of song.scores || []) await DB.fileDelete(s.fileKey);
+    await DB.metaDelete(song.key);
+  }
+  await refreshAfterDelete();
+}
+
+async function deleteSong(song) {
+  const ok = await confirmDialog({
+    title: 'Song löschen?',
+    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
+    okLabel: 'Löschen', danger: true,
+  });
+  if (!ok) return;
+
+  const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
+  await DB.fileDelete(keys);
+
+  // Loops nicht löschen, sondern vom Song lösen — der Titel bleibt gemerkt.
+  const loops = await DB.metaByType('loop').catch(() => []);
+  for (const loop of loops.filter((l) => l.songId === song.id)) {
+    loop.songId = null;
+    loop.songTitle = song.title;
+    await DB.metaPut(loop);
+  }
+
+  await DB.metaDelete(song.key);
+  await refreshAfterDelete();
+}
+
+async function refreshAfterDelete() {
+  await renderStorage();
+  await renderStorageManager();
+  await renderSongs();
+  await renderPlaylists();
+  banner('Gelöscht.', { kind: 'ok' });
+}
+
 async function renderSettings() {
   renderVoicePicker();
   await renderStorage();
+  renderBackupAge();
+  await renderStorageManager();
   $('#offline-state').textContent = navigator.serviceWorker?.controller
     ? 'ja'
     : 'wird eingerichtet …';
 }
+
+$('#btn-help-import').addEventListener('click', () => showView('import'));
 
 $('#btn-persist').addEventListener('click', async () => {
   const ok = await requestPersistence();
@@ -1989,6 +2703,9 @@ $('#btn-wipe').addEventListener('click', async () => {
   try {
     await DB.wipe();
     settings = { ...DEFAULT_SETTINGS };
+    lastReport = null;
+    playQueue = null;
+    reminderDismissed = false;
     banner('Alle Daten wurden gelöscht.', { kind: 'ok' });
     await renderSettings();
     await renderSongs();
@@ -1998,6 +2715,516 @@ $('#btn-wipe').addEventListener('click', async () => {
     banner('Die Daten konnten nicht vollständig gelöscht werden.', { kind: 'error' });
   }
 });
+
+/* ==========================================================================
+   AUDIO — Wiedergabe über einen eigenen AudioWorklet
+
+   Warum ein Worklet und keine AudioBufferSourceNodes: alle Spuren eines Songs
+   werden von *einem* Prozessor aus derselben Leseposition gemischt. Damit sind
+   sie per Konstruktion exakt synchron, der Stimmenwechsel ist eine reine
+   Lautstärkeänderung, und Loops springen sample-genau.
+
+   Das Tempo wird über Overlap-Add mit Anschluss-Suche (WSOLA) gedehnt, damit
+   die Tonhöhe erhalten bleibt — mit `playbackRate` einer BufferSource würde
+   0,75× das Stück um fünf Halbtöne nach unten ziehen und wäre zum Üben
+   unbrauchbar. Die Anschlussstelle wird einmal auf der hörbaren Spur gesucht
+   und für alle Spuren gleich angewandt, sonst liefen sie auseinander.
+   ========================================================================== */
+
+const WORKLET_SRC = `
+'use strict';
+
+// 2048 Samples sind bei 44,1 kHz rund 46 ms: lang genug für tiefe Männer-
+// stimmen, kurz genug, dass Einsätze nicht verschmieren.
+const FRAME = 2048;
+const HOP_OUT = FRAME >> 1;
+const SEARCH = 300;        // Suchbereich für die Anschlussstelle (Samples)
+const SEARCH_STEP = 4;
+const CORR_LEN = 256;
+
+class ChoirProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.tracks = new Map();
+    this.win = new Float32Array(FRAME);
+    for (let i = 0; i < FRAME; i++) {
+      this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / FRAME);
+    }
+    this.pos = 0;            // nominelle Leseposition (Samples, driftfrei)
+    this.windowPos = 0;      // tatsächliche Fensterposition (WSOLA)
+    this.playing = false;
+    this.rate = 1;
+    this.loop = null;
+    this.total = 0;
+    this.queue = [];
+    this.qOff = 0;
+    this.first = true;
+    this.sinceReport = 0;
+    this.gainStep = 1 / (0.015 * sampleRate);   // 15-ms-Rampe
+    this.port.onmessage = (e) => this.onMessage(e.data);
+  }
+
+  onMessage(m) {
+    switch (m.type) {
+      case 'load': {
+        const ch0 = m.ch[0];
+        const ch1 = m.ch.length > 1 ? m.ch[1] : m.ch[0];
+        this.tracks.set(m.id, { ch0: ch0, ch1: ch1, frames: m.frames,
+                                gain: 0, target: m.gain || 0,
+                                accL: new Float32Array(FRAME),
+                                accR: new Float32Array(FRAME) });
+        this.recalcTotal();
+        break;
+      }
+      case 'unload':
+        this.tracks.delete(m.id);
+        this.recalcTotal();
+        break;
+      case 'gain': {
+        const t = this.tracks.get(m.id);
+        if (t) t.target = m.value;
+        break;
+      }
+      case 'play':
+        this.playing = true;
+        break;
+      case 'pause':
+        this.playing = false;
+        this.report(true);
+        break;
+      case 'seek':
+        this.seek(m.seconds * sampleRate);
+        break;
+      case 'rate':
+        this.rate = m.value;
+        break;
+      case 'loop':
+        this.loop = m.loop
+          ? { start: m.loop.start * sampleRate, end: m.loop.end * sampleRate }
+          : null;
+        break;
+    }
+  }
+
+  recalcTotal() {
+    let max = 0;
+    for (const t of this.tracks.values()) if (t.frames > max) max = t.frames;
+    this.total = max;
+    this.port.postMessage({ type: 'total', seconds: max / sampleRate });
+  }
+
+  seek(samples) {
+    this.pos = Math.max(0, Math.min(samples, this.total));
+    this.windowPos = this.pos;
+    this.queue.length = 0;
+    this.qOff = 0;
+    this.first = true;
+    for (const t of this.tracks.values()) { t.accL.fill(0); t.accR.fill(0); }
+    this.report(true);
+  }
+
+  /** Spur, auf der die Anschlussstelle gesucht wird: die lauteste hörbare. */
+  refTrack() {
+    let best = null, bestGain = -1;
+    for (const t of this.tracks.values()) {
+      const g = Math.max(t.gain, t.target);
+      if (g > bestGain) { bestGain = g; best = t; }
+    }
+    return best;
+  }
+
+  /** Beste Anschlussstelle nahe der Zielposition (Kreuzkorrelation). */
+  findBest(target) {
+    const t = this.refTrack();
+    if (!t) return target;
+    const ref = this.windowPos + HOP_OUT;
+    if (ref + CORR_LEN >= t.frames) return target;
+
+    let bestPos = target, bestScore = -Infinity;
+    for (let d = -SEARCH; d <= SEARCH; d += SEARCH_STEP) {
+      const p = target + d;
+      if (p < 0 || p + CORR_LEN >= t.frames) continue;
+      let s = 0;
+      for (let i = 0; i < CORR_LEN; i += 2) s += t.ch0[ref + i] * t.ch0[p + i];
+      if (s > bestScore) { bestScore = s; bestPos = p; }
+    }
+    return bestPos;
+  }
+
+  /** Nächste Fensterposition bestimmen (inklusive Loop-Rücksprung). */
+  nextPos() {
+    if (this.first) {
+      this.first = false;
+      this.windowPos = Math.floor(this.pos);
+      return this.windowPos;
+    }
+    const hopIn = HOP_OUT * this.rate;
+    this.pos += hopIn;
+
+    // Loop: der Rücksprung wird nicht hart geschnitten — das folgende Fenster
+    // blendet über das ausklingende, das ergibt einen weichen Übergang.
+    if (this.loop && this.pos >= this.loop.end) {
+      this.pos = this.loop.start + (this.pos - this.loop.end);
+      this.windowPos = Math.floor(this.pos);
+      return this.windowPos;
+    }
+
+    const target = Math.floor(this.pos);
+    this.windowPos = this.rate === 1 ? target : this.findBest(target);
+    return this.windowPos;
+  }
+
+  renderHop() {
+    if (!this.loop && this.pos >= this.total) {
+      this.playing = false;
+      this.port.postMessage({ type: 'ended' });
+      return;
+    }
+    const src = this.nextPos();
+    const outL = new Float32Array(HOP_OUT);
+    const outR = new Float32Array(HOP_OUT);
+
+    for (const t of this.tracks.values()) {
+      // Fenster auf den Akkumulator addieren
+      const n = t.frames;
+      for (let i = 0; i < FRAME; i++) {
+        const p = src + i;
+        if (p < 0 || p >= n) continue;
+        const w = this.win[i];
+        t.accL[i] += t.ch0[p] * w;
+        t.accR[i] += t.ch1[p] * w;
+      }
+      // fertige Samples mit gleitendem Gain ausmischen
+      let g = t.gain;
+      const tg = t.target;
+      const step = this.gainStep;
+      for (let i = 0; i < HOP_OUT; i++) {
+        if (g < tg) g = Math.min(tg, g + step);
+        else if (g > tg) g = Math.max(tg, g - step);
+        if (g !== 0) {
+          const f = g / 32768;
+          outL[i] += t.accL[i] * f;
+          outR[i] += t.accR[i] * f;
+        }
+      }
+      t.gain = g;
+      // Akkumulator um einen Hop weiterschieben
+      t.accL.copyWithin(0, HOP_OUT);
+      t.accL.fill(0, FRAME - HOP_OUT);
+      t.accR.copyWithin(0, HOP_OUT);
+      t.accR.fill(0, FRAME - HOP_OUT);
+    }
+
+    this.queue.push({ l: outL, r: outR });
+  }
+
+  report(force) {
+    this.port.postMessage({ type: 'pos', seconds: this.pos / sampleRate,
+                            playing: this.playing });
+    if (force) this.sinceReport = 0;
+  }
+
+  process(inputs, outputs) {
+    const out = outputs[0];
+    const L = out[0];
+    const R = out.length > 1 ? out[1] : null;
+    const n = L.length;
+
+    if (!this.playing || this.tracks.size === 0) {
+      L.fill(0);
+      if (R) R.fill(0);
+      return true;
+    }
+
+    let filled = 0;
+    while (filled < n) {
+      if (!this.queue.length) this.renderHop();
+      if (!this.queue.length) {                 // Ende erreicht
+        L.fill(0, filled);
+        if (R) R.fill(0, filled);
+        break;
+      }
+      const b = this.queue[0];
+      const take = Math.min(b.l.length - this.qOff, n - filled);
+      for (let i = 0; i < take; i++) {
+        L[filled + i] = b.l[this.qOff + i];
+        if (R) R[filled + i] = b.r[this.qOff + i];
+      }
+      filled += take;
+      this.qOff += take;
+      if (this.qOff >= b.l.length) { this.queue.shift(); this.qOff = 0; }
+    }
+
+    this.sinceReport += n;
+    if (this.sinceReport >= 4096) { this.sinceReport = 0; this.report(false); }
+    return true;
+  }
+}
+
+registerProcessor('choir', ChoirProcessor);
+`;
+
+/**
+ * Erzeugt eine kurze stille WAV-Datei als Blob-URL.
+ *
+ * iOS blendet die Sperrbildschirm-Steuerung nur ein und lässt den Ton bei
+ * gesperrtem Bildschirm nur weiterlaufen, wenn ein <audio>-Element aktiv ist.
+ * Reines Web Audio genügt dafür nicht. Deshalb läuft parallel diese stille
+ * Schleife — sie erzeugt keinen hörbaren Ton und lädt nichts aus dem Netz.
+ */
+function silentLoopURL() {
+  const sr = 8000, secs = 1, n = sr * secs;
+  const buf = new ArrayBuffer(44 + n);
+  const v = new DataView(buf);
+  const ascii = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ascii(0, 'RIFF');           v.setUint32(4, 36 + n, true);
+  ascii(8, 'WAVEfmt ');       v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);   v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true);  v.setUint32(28, sr, true);
+  v.setUint16(32, 1, true);   v.setUint16(34, 8, true);
+  ascii(36, 'data');          v.setUint32(40, n, true);
+  new Uint8Array(buf, 44).fill(128);   // 8-Bit-Stille ist der Mittelwert 128
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+/** Höchstens drei Spuren gleichzeitig dekodiert halten (Spec 5.2). */
+const MAX_DECODED = 3;
+
+const Audio = {
+  ctx: null,
+  node: null,
+  ready: false,
+  song: null,
+  decoded: new Map(),   // fileKey -> { duration }
+  lru: [],              // fileKey, zuletzt benutzt zuletzt
+  levels: new Map(),    // fileKey -> 0..1
+  position: 0,
+  duration: 0,
+  playing: false,
+  rate: 1,
+  loop: null,
+  silent: null,
+  wakeLock: null,
+  onPosition: null,
+  onEnded: null,
+};
+
+async function audioInit() {
+  if (Audio.ready) return;
+
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) throw new Error('Dieser Browser unterstützt keine Audiowiedergabe.');
+  Audio.ctx = new Ctx({ latencyHint: 'playback' });
+
+  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+  try {
+    await Audio.ctx.audioWorklet.addModule(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+
+  Audio.node = new AudioWorkletNode(Audio.ctx, 'choir', {
+    numberOfInputs: 0,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],
+  });
+  Audio.node.connect(Audio.ctx.destination);
+
+  Audio.node.port.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'pos') {
+      Audio.position = m.seconds;
+      Audio.onPosition?.(m.seconds);
+    } else if (m.type === 'total') {
+      Audio.duration = m.seconds;
+      Audio.onPosition?.(Audio.position);
+    } else if (m.type === 'ended') {
+      Audio.playing = false;
+      audioReleaseWakeLock();
+      Audio.silent?.pause();
+      Audio.onEnded?.();
+    }
+  };
+
+  if (!Audio.silent) {
+    Audio.silent = document.createElement('audio');
+    Audio.silent.src = silentLoopURL();
+    Audio.silent.loop = true;
+    Audio.silent.volume = 0;
+  }
+
+  Audio.ready = true;
+}
+
+/** Dekodiert eine Spur und übergibt sie als 16-Bit-Daten an den Worklet. */
+async function audioLoadTrack(track, gain = 0) {
+  if (Audio.decoded.has(track.fileKey)) {
+    touchLRU(track.fileKey);
+    audioSetGain(track.fileKey, gain);
+    return Audio.decoded.get(track.fileKey);
+  }
+
+  const rec = await DB.fileGet(track.fileKey);
+  if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
+
+  const audioBuf = await Audio.ctx.decodeAudioData(await rec.blob.arrayBuffer());
+
+  // 16 Bit statt 32 Bit Fließkomma halbiert den Speicherbedarf — eine
+  // 14-MB-MP3 belegt so rund 50 statt 100 MB. Hörbar ist der Unterschied
+  // bei MP3-Quellen nicht.
+  const chans = [];
+  const count = Math.min(2, audioBuf.numberOfChannels);
+  for (let c = 0; c < count; c++) {
+    const f = audioBuf.getChannelData(c);
+    const i16 = new Int16Array(f.length);
+    for (let i = 0; i < f.length; i++) {
+      const s = f[i] < -1 ? -1 : f[i] > 1 ? 1 : f[i];
+      i16[i] = s < 0 ? s * 32768 : s * 32767;
+    }
+    chans.push(i16);
+  }
+
+  // Platz schaffen, bevor die neue Spur dazukommt.
+  evictIfNeeded(track.fileKey);
+
+  Audio.node.port.postMessage(
+    { type: 'load', id: track.fileKey, ch: chans, frames: audioBuf.length, gain },
+    chans.map((c) => c.buffer)
+  );
+
+  const info = { duration: audioBuf.duration };
+  Audio.decoded.set(track.fileKey, info);
+  Audio.levels.set(track.fileKey, gain);
+  touchLRU(track.fileKey);
+
+  // Die Dauer wird beim ersten Dekodieren gemerkt. Nur so lässt sich später
+  // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
+  // Loops verschoben sein könnten.
+  rememberDuration(track, audioBuf.duration);
+  return info;
+}
+
+async function rememberDuration(track, duration) {
+  if (!Audio.song || !Number.isFinite(duration)) return;
+  if (typeof track.durationSec === 'number' && Math.abs(track.durationSec - duration) < 0.05) return;
+  track.durationSec = duration;
+  try {
+    const song = await DB.metaGet(Audio.song.key);
+    if (!song) return;
+    const stored = song.tracks.find((t) => t.fileKey === track.fileKey);
+    if (!stored) return;
+    stored.durationSec = duration;
+    await DB.metaPut(song);
+  } catch (err) {
+    console.warn('[player] Dauer konnte nicht gemerkt werden', err);
+  }
+}
+
+function touchLRU(key) {
+  const i = Audio.lru.indexOf(key);
+  if (i >= 0) Audio.lru.splice(i, 1);
+  Audio.lru.push(key);
+}
+
+/** Welche Spuren dürfen nie ausgelagert werden? Gesamt und die eigene Stimme. */
+function protectedKeys() {
+  if (!Audio.song) return new Set();
+  const keep = new Set();
+  for (const t of Audio.song.tracks) {
+    if (t.voice === 'FULL' || t.voice === settings.myVoice) keep.add(t.fileKey);
+  }
+  return keep;
+}
+
+function evictIfNeeded(incomingKey) {
+  const keep = protectedKeys();
+  while (Audio.decoded.size >= MAX_DECODED) {
+    // Älteste Spur suchen, die weder geschützt noch gerade hörbar ist.
+    const victim = Audio.lru.find((k) =>
+      k !== incomingKey && (Audio.levels.get(k) || 0) === 0 && !keep.has(k))
+      ?? Audio.lru.find((k) => k !== incomingKey && (Audio.levels.get(k) || 0) === 0)
+      ?? Audio.lru.find((k) => k !== incomingKey);
+    if (!victim) break;
+    audioUnload(victim);
+  }
+}
+
+function audioUnload(key) {
+  Audio.node.port.postMessage({ type: 'unload', id: key });
+  Audio.decoded.delete(key);
+  Audio.levels.delete(key);
+  const i = Audio.lru.indexOf(key);
+  if (i >= 0) Audio.lru.splice(i, 1);
+}
+
+function audioSetGain(key, value) {
+  Audio.levels.set(key, value);
+  Audio.node?.port.postMessage({ type: 'gain', id: key, value });
+  if (value > 0) touchLRU(key);
+}
+
+async function audioPlay() {
+  if (!Audio.ready) return;
+  if (Audio.ctx.state === 'suspended') await Audio.ctx.resume();
+  Audio.node.port.postMessage({ type: 'play' });
+  Audio.playing = true;
+  Audio.silent?.play().catch(() => { /* ohne Nutzergeste abgelehnt — unkritisch */ });
+  audioRequestWakeLock();
+}
+
+function audioPause() {
+  if (!Audio.ready) return;
+  Audio.node.port.postMessage({ type: 'pause' });
+  Audio.playing = false;
+  Audio.silent?.pause();
+  audioReleaseWakeLock();
+}
+
+function audioSeek(seconds) {
+  const s = Math.max(0, Math.min(seconds, Audio.duration || 0));
+  Audio.position = s;
+  Audio.node?.port.postMessage({ type: 'seek', seconds: s });
+  return s;
+}
+
+function audioSetRate(rate) {
+  Audio.rate = rate;
+  Audio.node?.port.postMessage({ type: 'rate', value: rate });
+}
+
+function audioSetLoop(loop) {
+  Audio.loop = loop;
+  Audio.node?.port.postMessage({ type: 'loop', loop });
+}
+
+async function audioRequestWakeLock() {
+  // Hält den Bildschirm an, solange gespielt wird (Spec 5.2).
+  if (!('wakeLock' in navigator) || Audio.wakeLock) return;
+  try {
+    Audio.wakeLock = await navigator.wakeLock.request('screen');
+    Audio.wakeLock.addEventListener('release', () => { Audio.wakeLock = null; });
+  } catch { /* z.B. bei niedrigem Akkustand abgelehnt */ }
+}
+
+function audioReleaseWakeLock() {
+  Audio.wakeLock?.release().catch(() => {});
+  Audio.wakeLock = null;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Audio.playing) audioRequestWakeLock();
+});
+
+/** Gibt alle Spuren frei — beim Verlassen des Players. */
+function audioReset() {
+  if (!Audio.ready) return;
+  audioPause();
+  for (const key of [...Audio.decoded.keys()]) audioUnload(key);
+  Audio.song = null;
+  Audio.position = 0;
+  Audio.duration = 0;
+  audioSetLoop(null);
+}
 
 /* ==========================================================================
    IMPORT — Auswahlmaske und additives Schreiben (Spec 4.4 und 4.6)
@@ -2060,8 +3287,22 @@ async function analyzeAgainstLibrary(songs) {
   const existing = await DB.metaByType('song');
   const byNorm = new Map(existing.map((s) => [s.normTitle, s]));
 
+  // Zusätzlich nach Kerntitel gruppieren: „Blaue Augen neu" ist ein anderer
+  // Song als „Blaue Augen", aber der Nutzer soll sehen, dass eine ähnliche
+  // Fassung schon in der Bibliothek liegt, statt sie versehentlich doppelt
+  // aufzunehmen. Entschieden wird das nie automatisch.
+  const byCore = new Map();
+  for (const s of existing) {
+    const core = coreTitle(s.title);
+    if (!byCore.has(core)) byCore.set(core, []);
+    byCore.get(core).push(s);
+  }
+
   for (const song of songs) {
     song.existing = byNorm.get(song.normTitle) || null;
+    song.similar = song.existing
+      ? null
+      : (byCore.get(song.core) || []).find((s) => s.normTitle !== song.normTitle) || null;
     for (const track of song.tracks) {
       const found = findExistingTrack(song.existing, track);
       track.existingTrack = found;
@@ -2073,19 +3314,36 @@ async function analyzeAgainstLibrary(songs) {
   return songs;
 }
 
+/** Ist dieser Song die gewählte Fassung seiner Gruppe? (siehe 4.5) */
+function isChosenVersion(song) {
+  const group = pick.groups?.find((g) => g.members.includes(song));
+  if (!group || group.members.length < 2) return true;
+  return pick.chosenVersion.get(group.core) === song.folder;
+}
+
 /** Setzt die Häkchen gemäß Voreinstellung (4.4). */
 function applyPreset(preset) {
   pick.preset = preset;
   for (const song of pick.songs) {
+    // Fassungen, die der Nutzer nicht gewählt hat, bleiben vollständig
+    // abgewählt — entschieden wird nie still, aber auch nicht doppelt.
+    if (!isChosenVersion(song)) {
+      for (const track of song.tracks) track.checked = false;
+      continue;
+    }
     for (const track of song.tracks) {
       let inScope;
       if (preset === 'all') inScope = true;
       else if (preset === 'full') inScope = track.voice === 'FULL';
       else inScope = track.voice === 'FULL' || track.voice === settings.myVoice;
 
-      // Unveränderte Spuren sind nie vorausgewählt — sie würden nur
-      // dieselben Daten noch einmal schreiben.
-      track.checked = inScope && track.status !== 'same';
+      // Unveränderte Spuren sind nie vorausgewählt — sie würden nur dieselben
+      // Daten noch einmal schreiben. Eine *geänderte* Aufnahme liegt dagegen
+      // bereits auf dem Gerät: sie wird unabhängig von der Voreinstellung zum
+      // Ersetzen vorgeschlagen, sonst bliebe stillschweigend die alte Fassung.
+      if (track.status === 'same') track.checked = false;
+      else if (track.status === 'changed') track.checked = true;
+      else track.checked = inScope;
     }
   }
 }
@@ -2165,7 +3423,52 @@ function iconChevron() {
 function renderSheetList() {
   sheetBody.textContent = '';
 
-  for (const song of pick.songs) {
+  for (const group of pick.groups) {
+    // Mehrere Fassungen desselben Liedes: gruppiert zeigen und zur Auswahl
+    // stellen. Vorgeschlagen ist die mit den meisten Stimmen (Spec 4.5).
+    if (group.members.length > 1) {
+      const chosen = pick.chosenVersion.get(group.core);
+      const head = el('div', { class: 'version-group' },
+        el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn)',
+          text: `${group.members.length} Versionen gefunden — Vorschlag: „${group.suggested.title}" (${plural(countVoices(group.suggested), 'Stimme', 'Stimmen')})` }),
+        el('div', { class: 'version-row' },
+          group.members.map((m) => el('button', {
+            class: 'chip', type: 'button',
+            'aria-pressed': m.folder === chosen ? 'true' : 'false',
+            onclick: () => {
+              pick.chosenVersion.set(group.core, m.folder);
+              applyPreset(pick.preset);
+              renderSheetList();
+              updateSheetSummary();
+            },
+          },
+            el('span', { text: m.title }),
+            el('small', { style: 'display:block; font-weight:500; font-size:0.72rem',
+              text: plural(countVoices(m), 'Stimme', 'Stimmen') })))));
+      sheetBody.append(head);
+    }
+
+    for (const song of group.members) {
+      if (!isChosenVersion(song)) continue;
+      renderSheetSong(song);
+    }
+  }
+
+  // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
+  if (pick.notes.length) {
+    sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
+      el('h2', { text: 'Hinweise' }),
+      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
+        pick.notes.map((n) => el('li', { text: n })))));
+  }
+}
+
+function countVoices(song) {
+  return new Set(song.tracks.filter((t) => t.voice !== 'OTHER').map((t) => t.voice)).size;
+}
+
+function renderSheetSong(song) {
+  {
     const box = el('div', { class: 'pick-song' });
 
     const songBox = el('input', { type: 'checkbox' });
@@ -2240,6 +3543,11 @@ function renderSheetList() {
         class: allSame ? 'badge' : 'badge badge--new',
         text: allSame ? 'bereits vorhanden' : 'wird ergänzt',
       }));
+    } else if (song.similar) {
+      titleBlock.append(el('span', {
+        class: 'badge badge--changed',
+        text: `ähnlich vorhanden: ${song.similar.title}`,
+      }));
     }
 
     const toggle = el('button', {
@@ -2258,14 +3566,6 @@ function renderSheetList() {
     box.append(el('div', { class: 'pick-head' }, songBox, titleBlock, toggle), tracksHost);
     sheetBody.append(box);
   }
-
-  // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
-  if (pick.notes.length) {
-    sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
-      el('h2', { text: 'Hinweise' }),
-      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
-        pick.notes.map((n) => el('li', { text: n })))));
-  }
 }
 
 function closeSheet() {
@@ -2277,7 +3577,14 @@ function closeSheet() {
 
 /** Öffnet die Auswahlmaske für ein analysiertes Ergebnis. */
 async function openPicker({ songs, notes, skipped, source, foundFiles, foundBytes }) {
-  pick = { songs, notes, skipped, source, preset: settings.defaultImportScope || 'mine' };
+  const groups = groupDuplicates(songs);
+  const chosenVersion = new Map();
+  for (const g of groups) chosenVersion.set(g.core, g.suggested.folder);
+
+  pick = {
+    songs, notes, skipped, source, groups, chosenVersion,
+    preset: settings.defaultImportScope || 'mine',
+  };
 
   sheetFound.textContent =
     `Gefunden: ${plural(songs.length, 'Song', 'Songs')}, ` +
@@ -2543,9 +3850,18 @@ async function runImport() {
   }
 
   report.unchanged = selectionStats().unchanged;
+
+  // Loops aus einer Sicherung, deren Song bisher fehlte, verbinden sich jetzt.
+  try {
+    report.reconnected = await reconnectPendingLoops();
+  } catch (err) {
+    console.warn('[import] Loops verbinden', err);
+  }
+
   lastReport = report;
   closeSheet();
   renderImportReport();
+  renderPlaylists();
 
   if (report.quotaHit) {
     banner(`Zu wenig Speicherplatz. ${report.quotaAt} von ${report.quotaTotal} Songs wurden importiert.`, {
@@ -2579,6 +3895,7 @@ function renderImportReport() {
   if (r.tracksReplaced) lines.push(`${plural(r.tracksReplaced, 'Aufnahme', 'Aufnahmen')} ersetzt.`);
   if (r.unchanged)     lines.push(`${plural(r.unchanged, 'Datei', 'Dateien')} waren unverändert und wurden übersprungen.`);
   if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
+  if (r.reconnected)   lines.push(`${plural(r.reconnected, 'gespeicherter Loop', 'gespeicherte Loops')} aus einer Sicherung wieder verbunden.`);
 
   card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
 
@@ -2634,6 +3951,8 @@ $('#sheet-presets').addEventListener('click', (e) => {
   });
   renderSheetList();
   updateSheetSummary();
+  // Die Wahl gilt auch beim nächsten Import als Voreinstellung.
+  saveSettings({ defaultImportScope: btn.dataset.preset });
 });
 
 /**
@@ -2708,6 +4027,1522 @@ async function registerServiceWorker() {
     console.error('[sw] Registrierung fehlgeschlagen', err);
     banner('Der Offline-Betrieb konnte nicht eingerichtet werden.', { kind: 'error' });
   }
+}
+
+/* ==========================================================================
+   PLAYER — Oberfläche
+   ========================================================================== */
+
+const playerEl = $('#player');
+let playerSong = null;      // gerade geöffneter Song
+let playerVoice = null;     // aktive Stimme (Einzelmodus)
+let mixMode = false;
+let seeking = false;
+
+function fmtTime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function trackByVoiceKey(key) {
+  return (playerSong?.tracks || []).find((t) => t.fileKey === key) || null;
+}
+
+/** Welche Spur soll beim Öffnen klingen? Eigene Stimme, sonst Gesamt. */
+function preferredTrack(song) {
+  const mine = song.tracks.find((t) => t.voice === settings.myVoice);
+  return mine || song.tracks.find((t) => t.voice === 'FULL') || song.tracks[0] || null;
+}
+
+function setLoadingText(text) {
+  const row = $('#player-loading');
+  if (!text) { row.hidden = true; return; }
+  $('#player-loading-text').textContent = text;
+  row.hidden = false;
+}
+
+function renderVoiceButtons() {
+  const host = $('#voice-grid');
+  host.textContent = '';
+  if (!playerSong) return;
+
+  for (const track of playerSong.tracks) {
+    const active = mixMode
+      ? (Audio.levels.get(track.fileKey) || 0) > 0
+      : playerVoice === track.fileKey;
+
+    const btn = el('button', {
+      class: 'voice-btn',
+      type: 'button',
+      'aria-pressed': active ? 'true' : 'false',
+      'data-broken': track.broken ? 'true' : null,
+    }, el('span', { text: track.label }));
+
+    if (track.broken) btn.append(el('small', { text: 'nicht abspielbar' }));
+    else if (Audio.decoded.has(track.fileKey)) btn.append(el('small', { text: 'bereit' }));
+    else btn.append(el('small', { text: fmtBytes(track.size) }));
+
+    btn.addEventListener('click', () => selectTrack(track));
+    host.append(btn);
+  }
+}
+
+function renderMixRows() {
+  const host = $('#mix-rows');
+  host.textContent = '';
+  if (!playerSong) return;
+
+  const active = playerSong.tracks.filter((t) => Audio.decoded.has(t.fileKey) && !t.broken);
+  if (!active.length) {
+    host.append(el('p', { class: 'small muted', style: 'margin:0',
+      text: 'Tippe oben auf die Stimmen, die du gleichzeitig hören möchtest.' }));
+    return;
+  }
+
+  for (const track of active) {
+    const value = Math.round((Audio.levels.get(track.fileKey) || 0) * 100);
+    const val = el('span', { class: 'val', text: `${value} %` });
+    const slider = el('input', {
+      type: 'range', min: '0', max: '100', value: String(value),
+      'aria-label': `Lautstärke ${track.label}`,
+    });
+    slider.addEventListener('input', () => {
+      const v = Number(slider.value);
+      val.textContent = `${v} %`;
+      audioSetGain(track.fileKey, v / 100);
+      renderVoiceButtons();
+    });
+    host.append(el('div', { class: 'mix-row' },
+      el('span', { class: 'name', text: track.label }), slider, val));
+  }
+}
+
+// Zählt Stimmenwechsel mit. Tippt jemand schnell mehrere Stimmen an, darf ein
+// langsamer beendeter Ladevorgang die inzwischen gewählte Stimme nicht
+// überschreiben und die Ladeanzeige nicht stehen lassen.
+let loadToken = 0;
+
+/** Stimme wählen: im Einzelmodus exklusiv, im Mischmodus zusätzlich. */
+async function selectTrack(track) {
+  if (!playerSong || track.broken) return;
+  const token = ++loadToken;
+
+  if (mixMode) {
+    const on = (Audio.levels.get(track.fileKey) || 0) > 0;
+    if (on) {
+      audioSetGain(track.fileKey, 0);
+    } else if (Audio.decoded.has(track.fileKey)) {
+      audioSetGain(track.fileKey, 1);
+    } else {
+      setLoadingText(`${track.label} wird geladen …`);
+      try {
+        await audioLoadTrack(track, 1);
+      } catch (err) {
+        markBroken(track, err);
+        return;
+      } finally {
+        if (token === loadToken) setLoadingText('');
+      }
+    }
+    renderVoiceButtons();
+    renderMixRows();
+    return;
+  }
+
+  // Einzelmodus: alles andere stumm, die gewählte Spur auf volle Lautstärke.
+  playerVoice = track.fileKey;
+  for (const key of Audio.decoded.keys()) {
+    if (key !== track.fileKey) audioSetGain(key, 0);
+  }
+
+  if (Audio.decoded.has(track.fileKey)) {
+    audioSetGain(track.fileKey, 1);
+    setLoadingText('');
+  } else {
+    // Kurzes Nachladen ist hinnehmbar — ein Speicherabsturz nicht.
+    setLoadingText(`${track.label} wird geladen …`);
+    try {
+      await audioLoadTrack(track, token === loadToken ? 1 : 0);
+    } catch (err) {
+      markBroken(track, err);
+      return;
+    } finally {
+      if (token === loadToken) setLoadingText('');
+    }
+    if (token !== loadToken) return;   // inzwischen wurde eine andere gewählt
+  }
+
+  renderVoiceButtons();
+  renderMixRows();
+  updateMediaSession();
+}
+
+/** Eine nicht dekodierbare Spur wird gekennzeichnet, der Rest läuft weiter. */
+function markBroken(track, err) {
+  console.error('[player]', track.fileName, err);
+  track.broken = true;
+  renderVoiceButtons();
+  banner(`„${track.label}" konnte nicht abgespielt werden. Die übrigen Stimmen funktionieren.`,
+    { kind: 'error' });
+}
+
+function updateSeekUI(seconds) {
+  const dur = Audio.duration || 0;
+  const pct = dur > 0 ? Math.min(100, (seconds / dur) * 100) : 0;
+  $('#seek-fill').style.width = `${pct}%`;
+  $('#seek-knob').style.left = `${pct}%`;
+  $('#time-cur').textContent = fmtTime(seconds);
+  $('#time-tot').textContent = fmtTime(dur);
+  const seek = $('#seek');
+  seek.setAttribute('aria-valuemax', String(Math.round(dur)));
+  seek.setAttribute('aria-valuenow', String(Math.round(seconds)));
+  seek.setAttribute('aria-valuetext', fmtTime(seconds));
+  updateLoopMarks();
+}
+
+function setPlayIcon(playing) {
+  $('#icon-play').style.display = playing ? 'none' : '';
+  $('#icon-pause').style.display = playing ? '' : 'none';
+  $('#btn-play').setAttribute('aria-label', playing ? 'Pause' : 'Abspielen');
+}
+
+/* ---------- Öffnen und Schließen ---------------------------------------- */
+
+async function openPlayer(songId) {
+  let song;
+  try {
+    song = await DB.metaGet(`song:${songId}`);
+  } catch (err) {
+    console.error(err);
+  }
+  if (!song) {
+    banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' });
+    showView('songs');
+    return;
+  }
+
+  playerSong = song;
+  playerEl.hidden = false;
+  $('#player-title').textContent = song.title;
+  $('#player-sub').textContent = `${plural(song.tracks.length, 'Stimme', 'Stimmen')}`;
+  $('#player-hint').hidden = true;
+  mixMode = false;
+  $('#btn-mix').setAttribute('aria-pressed', 'false');
+  $('#btn-mix').textContent = 'Mischmodus einschalten';
+  $('#mix-panel').hidden = true;
+  playerVoice = null;
+  loopA = loopB = null;
+  loopOn = false;
+  activeLoopId = null;
+  setPlayIcon(false);
+  updateSeekUI(0);
+  updateLoopUI();
+  renderVoiceButtons();
+  renderPlayerExtras();
+  loadSongLoops();
+
+  try {
+    setLoadingText('Spuren werden geladen …');
+    await audioInit();
+  } catch (err) {
+    console.error(err);
+    setLoadingText('');
+    banner('Die Audiowiedergabe konnte nicht gestartet werden.', { kind: 'error' });
+    return;
+  }
+
+  Audio.song = song;
+  Audio.rate = 1;
+  audioSetRate(1);
+  audioSetLoop(null);
+  Audio.onPosition = (s) => {
+    if (!seeking) updateSeekUI(s);
+    // Der Sperrbildschirm zeigt den Fortschritt nur, wenn er regelmäßig
+    // gemeldet wird — aber nicht bei jeder Meldung, das wäre zu häufig.
+    if (Audio.playing && Math.floor(s) !== lastReportedSecond) {
+      lastReportedSecond = Math.floor(s);
+      updateMediaPosition();
+    }
+  };
+  Audio.onEnded = onPlaybackEnded;
+
+  // Zuerst die bevorzugte Stimme laden, danach im Hintergrund die
+  // Gesamtmischung — so ist der Player schnell bedienbar.
+  const first = preferredTrack(song);
+  if (!first) {
+    setLoadingText('');
+    banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
+    return;
+  }
+
+  try {
+    await selectTrack(first);
+  } finally {
+    setLoadingText('');
+  }
+
+  // Beim automatischen Weiterschalten in einer Playlist gleich losspielen.
+  if (pendingAutoPlay) {
+    pendingAutoPlay = false;
+    await audioPlay();
+    setPlayIcon(true);
+  }
+
+  const full = song.tracks.find((t) => t.voice === 'FULL' && t.fileKey !== first.fileKey);
+  if (full && !full.broken) {
+    audioLoadTrack(full, 0).catch((err) => console.warn('[player] Gesamt', err));
+  }
+
+  showReplacedNotice(song);
+  showLengthNotice(song);
+  updateMediaSession();
+}
+
+/**
+ * Hinweis nach einer ersetzten Aufnahme (Spec 4.6). Es wird nichts
+ * umgerechnet — der Versatz ist nicht zuverlässig bestimmbar.
+ */
+function showReplacedNotice(song) {
+  if (!song.replacedNotice) return;
+  const { prevDurationSec, voice } = song.replacedNotice;
+  const box = $('#player-hint');
+  box.textContent = '';
+
+  const check = async () => {
+    const track = song.tracks.find((t) => t.voice === voice);
+    const dur = track && Audio.decoded.get(track.fileKey)?.duration;
+    if (!dur || Math.abs(dur - prevDurationSec) <= 1) return;
+
+    const diff = Math.round(Math.abs(dur - prevDurationSec));
+    const longer = dur > prevDurationSec ? 'länger' : 'kürzer';
+    box.append(
+      el('p', { style: 'margin:0 0 10px',
+        text: `Die Aufnahme wurde ersetzt und ist ${diff} Sekunden ${longer}. Deine gespeicherten Loops könnten verschoben sein.` }),
+      el('button', {
+        class: 'btn', type: 'button', text: 'Verstanden',
+        onclick: async () => {
+          box.hidden = true;
+          delete song.replacedNotice;
+          await DB.metaPut(song);
+        },
+      }));
+    box.hidden = false;
+  };
+  setTimeout(check, 600);
+}
+
+/** Unterschiedlich lange Spuren: einmaliger, dezenter Hinweis (Spec 5.2). */
+let lengthNoticeShown = false;
+function showLengthNotice(song) {
+  if (lengthNoticeShown) return;
+  const durations = song.tracks
+    .map((t) => t.durationSec)
+    .filter((d) => typeof d === 'number' && d > 0);
+  if (durations.length < 2) return;
+  if (Math.max(...durations) - Math.min(...durations) > 1) {
+    lengthNoticeShown = true;
+    banner('Die Stimmen dieses Songs sind unterschiedlich lang. Die Wiedergabe richtet sich nach der längsten.');
+  }
+}
+
+function onPlaybackEnded() {
+  setPlayIcon(false);
+  updateSeekUI(Audio.duration);
+  if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
+  playlistAdvance();
+}
+
+function closePlayer() {
+  playerEl.hidden = true;
+  audioReset();
+  releaseScoreURLs();
+  playerSong = null;
+  playerVoice = null;
+  songLoops = [];
+  if (navigator.mediaSession) {
+    navigator.mediaSession.playbackState = 'none';
+    navigator.mediaSession.metadata = null;
+  }
+}
+
+/* ---------- Bedienelemente ---------------------------------------------- */
+
+$('#player-back').addEventListener('click', () => history.back());
+
+$('#btn-play').addEventListener('click', async () => {
+  if (Audio.playing) {
+    audioPause();
+    setPlayIcon(false);
+  } else {
+    await audioPlay();
+    setPlayIcon(true);
+  }
+  if (navigator.mediaSession) {
+    navigator.mediaSession.playbackState = Audio.playing ? 'playing' : 'paused';
+  }
+  updateMediaSession();
+});
+
+$('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 10)));
+$('#btn-fwd10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position + 10)));
+
+$('#rate-row').addEventListener('click', (e) => {
+  const btn = e.target.closest('.rate-btn');
+  if (!btn) return;
+  audioSetRate(Number(btn.dataset.rate));
+  $$('#rate-row .rate-btn').forEach((b) => {
+    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+  });
+  updateMediaSession();
+});
+
+$('#btn-mix').addEventListener('click', () => {
+  mixMode = !mixMode;
+  $('#btn-mix').setAttribute('aria-pressed', mixMode ? 'true' : 'false');
+  $('#btn-mix').textContent = mixMode ? 'Mischmodus ausschalten' : 'Mischmodus einschalten';
+  $('#mix-panel').hidden = !mixMode;
+
+  if (!mixMode) {
+    // Zurück zur Einzelstimme: alles außer der zuletzt gewählten stumm.
+    for (const key of Audio.decoded.keys()) {
+      audioSetGain(key, key === playerVoice ? 1 : 0);
+    }
+  }
+  renderVoiceButtons();
+  renderMixRows();
+});
+
+/* Ziehen im Fortschrittsbalken. touch-action: none im CSS verhindert, dass
+   die Seite dabei mitscrollt. */
+(() => {
+  const seek = $('#seek');
+  const track = $('#seek-track');
+
+  const posFromEvent = (e) => {
+    const r = track.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - r.left, r.width));
+    return (x / r.width) * (Audio.duration || 0);
+  };
+
+  seek.addEventListener('pointerdown', (e) => {
+    if (!Audio.duration) return;
+    seeking = true;
+    seek.setPointerCapture(e.pointerId);
+    updateSeekUI(posFromEvent(e));
+  });
+
+  seek.addEventListener('pointermove', (e) => {
+    if (!seeking) return;
+    updateSeekUI(posFromEvent(e));
+  });
+
+  const finish = (e) => {
+    if (!seeking) return;
+    seeking = false;
+    updateSeekUI(audioSeek(posFromEvent(e)));
+  };
+  seek.addEventListener('pointerup', finish);
+  seek.addEventListener('pointercancel', () => { seeking = false; });
+
+  // Tastaturbedienung
+  seek.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 30 : 5;
+    if (e.key === 'ArrowRight') updateSeekUI(audioSeek(Audio.position + step));
+    else if (e.key === 'ArrowLeft') updateSeekUI(audioSeek(Audio.position - step));
+    else return;
+    e.preventDefault();
+  });
+})();
+
+/* ==========================================================================
+   LOOPS — Abschnitte markieren, speichern und wiederfinden (Spec 5.2)
+
+   Loops gehören zum Song, nicht zur Spur: beim Stimmenwechsel bleiben sie
+   erhalten, weil die Wiedergabeposition ohnehin für alle Spuren gemeinsam
+   geführt wird.
+   ========================================================================== */
+
+let loopA = null;
+let loopB = null;
+let loopOn = false;
+let activeLoopId = null;
+let songLoops = [];
+
+function loopRange() {
+  if (loopA === null || loopB === null) return null;
+  const start = Math.min(loopA, loopB);
+  const end = Math.max(loopA, loopB);
+  return end - start < 0.2 ? null : { start, end };
+}
+
+function updateLoopMarks() {
+  const dur = Audio.duration || 0;
+  const markA = $('#seek-mark-a');
+  const markB = $('#seek-mark-b');
+  const range = $('#seek-range');
+  if (!dur) { markA.hidden = markB.hidden = range.hidden = true; return; }
+
+  const put = (node, value) => {
+    if (value === null) { node.hidden = true; return; }
+    node.hidden = false;
+    node.style.left = `${Math.min(100, (value / dur) * 100)}%`;
+  };
+  put(markA, loopA);
+  put(markB, loopB);
+
+  const r = loopRange();
+  if (r) {
+    range.hidden = false;
+    range.style.left = `${(r.start / dur) * 100}%`;
+    range.style.width = `${((r.end - r.start) / dur) * 100}%`;
+  } else {
+    range.hidden = true;
+  }
+}
+
+function updateLoopUI() {
+  const r = loopRange();
+  $('#btn-loop-toggle').disabled = !r;
+  $('#btn-loop-save').disabled = !r;
+  $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
+  $('#btn-loop-toggle').textContent = loopOn ? 'Loop aus' : 'Loop an';
+
+  const info = $('#loop-info');
+  if (!r) {
+    info.textContent = loopA === null && loopB === null
+      ? 'Setze A und B, um eine Stelle in Schleife zu üben.'
+      : 'Setze auch den zweiten Punkt.';
+  } else {
+    info.textContent = `Abschnitt ${fmtTime(r.start)} – ${fmtTime(r.end)} (${(r.end - r.start).toFixed(1).replace('.', ',')} s)`;
+  }
+  updateLoopMarks();
+}
+
+function applyLoop() {
+  const r = loopRange();
+  audioSetLoop(loopOn && r ? r : null);
+}
+
+$('#btn-loop-a').addEventListener('click', () => {
+  loopA = Audio.position;
+  if (loopB !== null && loopB <= loopA) loopB = null;
+  activeLoopId = null;
+  updateLoopUI();
+  applyLoop();
+  renderLoopList();
+});
+
+$('#btn-loop-b').addEventListener('click', () => {
+  loopB = Audio.position;
+  if (loopA !== null && loopA >= loopB) loopA = null;
+  activeLoopId = null;
+  updateLoopUI();
+  applyLoop();
+  renderLoopList();
+});
+
+$('#btn-loop-toggle').addEventListener('click', () => {
+  loopOn = !loopOn;
+  applyLoop();
+  // Beim Einschalten an den Anfang des Abschnitts springen, damit sofort
+  // hörbar ist, was geübt wird.
+  const r = loopRange();
+  if (loopOn && r && (Audio.position < r.start || Audio.position > r.end)) {
+    updateSeekUI(audioSeek(r.start));
+  }
+  updateLoopUI();
+});
+
+$('#btn-loop-save').addEventListener('click', async () => {
+  const r = loopRange();
+  if (!r || !playerSong) return;
+
+  const suggestion = `Abschnitt ${songLoops.length + 1}`;
+  const name = await promptDialog({
+    title: 'Loop speichern',
+    text: `${fmtTime(r.start)} – ${fmtTime(r.end)}`,
+    value: suggestion,
+    placeholder: 'z. B. Refrain oder Takt 32–48',
+  });
+  if (name === null) return;
+
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const loop = {
+    key: `loop:${id}`, type: 'loop', id,
+    songId: playerSong.id,
+    name: name.trim() || suggestion,
+    start: r.start, end: r.end,
+    createdAt: new Date().toISOString(),
+  };
+  await DB.metaPut(loop);
+  activeLoopId = id;
+  await loadSongLoops();
+  banner('Loop gespeichert.', { kind: 'ok' });
+});
+
+async function loadSongLoops() {
+  if (!playerSong) { songLoops = []; return; }
+  const all = await DB.metaByType('loop').catch(() => []);
+  songLoops = all
+    .filter((l) => l.songId === playerSong.id)
+    .sort((a, b) => a.start - b.start);
+  renderLoopList();
+}
+
+function renderLoopList() {
+  const host = $('#loop-list');
+  host.textContent = '';
+  if (!songLoops.length) return;
+
+  for (const loop of songLoops) {
+    const go = el('button', { class: 'go', type: 'button' },
+      el('strong', { text: loop.name }),
+      el('span', { text: `${fmtTime(loop.start)} – ${fmtTime(loop.end)}` }));
+
+    go.addEventListener('click', () => {
+      loopA = loop.start;
+      loopB = loop.end;
+      loopOn = true;
+      activeLoopId = loop.id;
+      applyLoop();
+      updateSeekUI(audioSeek(loop.start));
+      updateLoopUI();
+      renderLoopList();
+    });
+
+    const rename = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${loop.name}" umbenennen`,
+    });
+    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+    rename.addEventListener('click', async () => {
+      const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
+      if (name === null) return;
+      loop.name = name.trim() || loop.name;
+      await DB.metaPut(loop);
+      renderLoopList();
+    });
+
+    const del = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${loop.name}" löschen`,
+      style: 'color: var(--danger)',
+    });
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
+    del.addEventListener('click', async () => {
+      const ok = await confirmDialog({
+        title: 'Loop löschen?', text: `„${loop.name}" wird entfernt.`,
+        okLabel: 'Löschen', danger: true,
+      });
+      if (!ok) return;
+      await DB.metaDelete(loop.key);
+      if (activeLoopId === loop.id) activeLoopId = null;
+      await loadSongLoops();
+    });
+
+    host.append(el('div', {
+      class: 'loop-item',
+      'data-active': activeLoopId === loop.id ? 'true' : 'false',
+    }, go, rename, del));
+  }
+}
+
+/* Feinjustierung der Marken durch Ziehen direkt im Fortschrittsbalken. */
+(() => {
+  const track = $('#seek-track');
+
+  const install = (node, apply) => {
+    node.addEventListener('pointerdown', (e) => {
+      if (!Audio.duration) return;
+      e.stopPropagation();          // nicht als Sprung im Balken werten
+      node.setPointerCapture(e.pointerId);
+      node.dataset.dragging = 'true';
+    });
+    node.addEventListener('pointermove', (e) => {
+      if (node.dataset.dragging !== 'true') return;
+      e.stopPropagation();
+      const r = track.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - r.left, r.width));
+      apply((x / r.width) * Audio.duration);
+      updateLoopUI();
+    });
+    const end = (e) => {
+      if (node.dataset.dragging !== 'true') return;
+      e.stopPropagation();
+      node.dataset.dragging = 'false';
+      activeLoopId = null;
+      applyLoop();
+      renderLoopList();
+    };
+    node.addEventListener('pointerup', end);
+    node.addEventListener('pointercancel', end);
+  };
+
+  install($('#seek-mark-a'), (v) => { loopA = v; });
+  install($('#seek-mark-b'), (v) => { loopB = v; });
+})();
+
+/* ==========================================================================
+   LIEDTEXT UND NOTEN
+   ========================================================================== */
+
+let scoreURLs = [];   // Blob-URLs der geöffneten PDFs, werden wieder freigegeben
+
+function releaseScoreURLs() {
+  for (const u of scoreURLs) URL.revokeObjectURL(u);
+  scoreURLs = [];
+}
+
+function applyLyricsFontSize() {
+  $('#lyrics-text').style.fontSize = `${settings.lyricsFontSize || 17}px`;
+}
+
+$('#btn-lyrics-toggle').addEventListener('click', () => {
+  const box = $('#lyrics-text');
+  const open = box.hidden;
+  box.hidden = !open;
+  $('#btn-lyrics-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('#btn-lyrics-toggle').textContent = open ? 'Ausblenden' : 'Anzeigen';
+});
+
+const stepFontSize = async (delta) => {
+  const next = Math.max(13, Math.min(30, (settings.lyricsFontSize || 17) + delta));
+  await saveSettings({ lyricsFontSize: next });
+  applyLyricsFontSize();
+};
+
+$('#btn-lyrics-smaller').addEventListener('click', () => stepFontSize(-2));
+$('#btn-lyrics-bigger').addEventListener('click', () => stepFontSize(2));
+
+function iconPdf() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>';
+  return svg;
+}
+
+/**
+ * Liedtext und Noten des geöffneten Songs anzeigen.
+ * Für PDFs wird kein eigener Betrachter gebaut — das System kann das besser.
+ */
+async function renderPlayerExtras() {
+  releaseScoreURLs();
+
+  // --- Liedtext ---------------------------------------------------------
+  const lyricsBlock = $('#lyrics-block');
+  if (playerSong?.lyrics) {
+    lyricsBlock.hidden = false;
+    $('#lyrics-text').textContent = playerSong.lyrics;
+    $('#lyrics-text').hidden = true;
+    $('#btn-lyrics-toggle').setAttribute('aria-expanded', 'false');
+    $('#btn-lyrics-toggle').textContent = 'Anzeigen';
+    applyLyricsFontSize();
+  } else {
+    lyricsBlock.hidden = true;
+  }
+
+  // --- Noten ------------------------------------------------------------
+  const block = $('#scores-block');
+  const list = $('#scores-list');
+  list.textContent = '';
+  const scores = playerSong?.scores || [];
+  block.hidden = scores.length === 0;
+  if (!scores.length) return;
+
+  for (const score of scores) {
+    const row = el('div', { class: 'score-item' });
+    row.append(iconPdf(), el('span', { class: 'grow', text: score.fileName }));
+    list.append(row);
+
+    try {
+      const rec = await DB.fileGet(score.fileKey);
+      if (!rec) { row.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
+
+      const file = new File([rec.blob], score.fileName, { type: 'application/pdf' });
+      const url = URL.createObjectURL(file);
+      scoreURLs.push(url);
+
+      // Der Link wird vorab erzeugt, damit das Öffnen im Klick passiert und
+      // nicht vom Popup-Schutz abgefangen wird.
+      const open = el('a', {
+        class: 'btn', href: url, target: '_blank', rel: 'noopener',
+        text: 'Öffnen', style: 'padding:8px 14px; min-height:38px',
+      });
+      row.append(open);
+
+      if (navigator.canShare?.({ files: [file] })) {
+        row.append(el('button', {
+          class: 'btn', type: 'button', text: 'Teilen',
+          style: 'padding:8px 14px; min-height:38px',
+          onclick: () => navigator.share({ files: [file], title: score.fileName })
+            .catch(() => { /* vom Nutzer abgebrochen */ }),
+        }));
+      } else {
+        const dl = el('a', {
+          class: 'btn', href: url, download: score.fileName, text: 'Sichern',
+          style: 'padding:8px 14px; min-height:38px',
+        });
+        row.append(dl);
+      }
+    } catch (err) {
+      console.error('[noten]', err);
+      row.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
+    }
+  }
+}
+
+/* ---------- Media Session (Sperrbildschirm) ------------------------------ */
+
+function updateMediaSession() {
+  if (!('mediaSession' in navigator) || !playerSong) return;
+  const ms = navigator.mediaSession;
+
+  try {
+    const voiceLabel = playerVoice ? trackByVoiceKey(playerVoice)?.label : null;
+    ms.metadata = new MediaMetadata({
+      title: playerSong.title,
+      artist: voiceLabel || 'Chor',
+      album: (playerSong.collections || [])[0] || 'Chor-Übe-App',
+      artwork: [{ src: './icon-512.png', sizes: '512x512', type: 'image/png' }],
+    });
+  } catch { /* ältere Browser ohne MediaMetadata */ }
+
+  const set = (action, handler) => {
+    try { ms.setActionHandler(action, handler); } catch { /* nicht unterstützt */ }
+  };
+
+  set('play', async () => { await audioPlay(); setPlayIcon(true); ms.playbackState = 'playing'; });
+  set('pause', () => { audioPause(); setPlayIcon(false); ms.playbackState = 'paused'; });
+  set('seekbackward', (d) => updateSeekUI(audioSeek(Audio.position - (d?.seekOffset || 10))));
+  set('seekforward', (d) => updateSeekUI(audioSeek(Audio.position + (d?.seekOffset || 10))));
+  set('seekto', (d) => { if (d?.seekTime != null) updateSeekUI(audioSeek(d.seekTime)); });
+  set('previoustrack', () => playlistStep(-1));
+  set('nexttrack', () => playlistStep(1));
+
+  updateMediaPosition();
+}
+
+let lastReportedSecond = -1;
+
+function updateMediaPosition() {
+  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+  try {
+    if (Audio.duration > 0) {
+      navigator.mediaSession.setPositionState({
+        duration: Audio.duration,
+        playbackRate: Audio.rate,
+        position: Math.max(0, Math.min(Audio.position, Audio.duration)),
+      });
+    }
+  } catch { /* Safari lehnt ungültige Werte ab */ }
+}
+
+/* ==========================================================================
+   PLAYLISTEN (Spec 5.3)
+
+   Gespeichert werden die *Titel*, nicht die internen Kennungen. Nur so
+   bleiben Einträge erhalten, deren Song noch nicht importiert ist — sie
+   stehen als ausgegraute Platzhalter in der Liste und verbinden sich von
+   selbst, sobald der passende Song dazukommt.
+   ========================================================================== */
+
+let openPlaylist = null;
+let playQueue = null;   // { titles: [], index } während des Abspielens
+
+/**
+ * Liest eine Playlist-Textdatei. Bewusst tolerant: die Dateien schreiben
+ * Menschen, nicht Maschinen.
+ * @returns {{name: string|null, titles: string[]}}
+ */
+function parsePlaylistText(text, fallbackName) {
+  const lines = text.split(/\r?\n/);
+  let name = null;
+  const titles = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    if (line.startsWith('#')) {
+      // Die erste Kommentarzeile gilt als Name der Playlist.
+      if (name === null) {
+        const candidate = line.replace(/^#+\s*/, '').trim();
+        if (candidate) name = candidate;
+      }
+      continue;
+    }
+
+    // Führende Nummerierungen und Aufzählungszeichen entfernen:
+    // „1.", „1)", „01 -", „- ", „* "
+    const cleaned = line
+      .replace(/^\d{1,3}\s*[.)]\s*/, '')
+      .replace(/^\d{1,3}\s*[-–]\s*/, '')
+      .replace(/^[-–*•]\s*/, '')
+      .trim();
+
+    if (cleaned) titles.push(cleaned);
+  }
+
+  return { name: name || fallbackName || null, titles };
+}
+
+function playlistToText(pl) {
+  return [`# ${pl.name}`, ...pl.songTitles].join('\n') + '\n';
+}
+
+/** Ordnet einen Titel einem Song zu — über den normalisierten Titel (4.5). */
+function findSongByTitle(songs, title) {
+  const norm = normalizeTitle(title);
+  return songs.find((s) => s.normTitle === norm) || null;
+}
+
+async function savePlaylist(pl) {
+  pl.updatedAt = new Date().toISOString();
+  await DB.metaPut(pl);
+}
+
+function newPlaylist(name, titles = []) {
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    key: `playlist:${id}`, type: 'playlist', id,
+    name, songTitles: titles, note: '',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Legt eine Playlist aus geparstem Text an und meldet fehlende Titel. */
+async function createPlaylistFromText(text, fallbackName) {
+  const { name, titles } = parsePlaylistText(text, fallbackName);
+  if (!titles.length) {
+    banner('In diesem Text stehen keine Liedtitel.', { kind: 'error' });
+    return null;
+  }
+
+  const songs = await DB.metaByType('song');
+  const missing = titles.filter((t) => !findSongByTitle(songs, t));
+
+  const pl = newPlaylist(name || 'Playlist', titles);
+  await savePlaylist(pl);
+  await renderPlaylists();
+
+  // Nicht gefundene Titel werden immer genannt, nie still verworfen.
+  if (missing.length) {
+    banner(`${missing.length} von ${titles.length} Titeln nicht gefunden: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ' …' : ''} — vermutlich noch nicht importiert.`,
+      { kind: 'error' });
+  } else {
+    banner(`Playlist „${pl.name}" mit ${plural(titles.length, 'Titel', 'Titeln')} angelegt.`, { kind: 'ok' });
+  }
+  navigate(`#playlist/${pl.id}`);
+  return pl;
+}
+
+$('#btn-pl-new').addEventListener('click', async () => {
+  const name = await promptDialog({
+    title: 'Neue Playlist', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Anlegen',
+  });
+  if (name === null || !name.trim()) return;
+  const pl = newPlaylist(name.trim());
+  await savePlaylist(pl);
+  await renderPlaylists();
+  navigate(`#playlist/${pl.id}`);
+});
+
+$('#btn-pl-import').addEventListener('click', () => $('#pl-input').click());
+
+$('#pl-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const text = await readTextBlob(file);
+    await createPlaylistFromText(text, file.name.replace(/\.txt$/i, ''));
+  } catch (err) {
+    console.error(err);
+    banner('Diese Datei konnte nicht gelesen werden.', { kind: 'error' });
+  }
+});
+
+$('#btn-pl-paste').addEventListener('click', async () => {
+  const text = await promptDialog({
+    title: 'Playlist einfügen',
+    text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.',
+    value: '', placeholder: 'Ave Maria', okLabel: 'Übernehmen',
+  });
+  if (text === null || !text.trim()) return;
+  await createPlaylistFromText(text, 'Eingefügte Playlist');
+});
+
+async function renderPlaylists() {
+  const host = $('#playlist-list-host');
+  host.textContent = '';
+
+  const lists = await DB.metaByType('playlist').catch(() => []);
+  if (!lists.length) {
+    host.append(el('div', { class: 'empty' },
+      el('h2', { text: 'Noch keine Playlisten' }),
+      el('p', { class: 'small', text: 'Lege eine an oder importiere die Textdatei des Chorleiters.' })));
+    return;
+  }
+
+  const songs = await DB.metaByType('song').catch(() => []);
+  lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
+
+  const ul = el('ul', { class: 'list' });
+  for (const pl of lists) {
+    const titles = pl.songTitles || [];
+    const missing = titles.filter((t) => !findSongByTitle(songs, t)).length;
+    ul.append(el('li', {},
+      el('button', {
+        class: 'list-item', type: 'button',
+        onclick: () => navigate(`#playlist/${pl.id}`),
+      },
+        el('div', { style: 'flex:1; min-width:0' },
+          el('strong', { text: pl.name }),
+          el('div', { class: 'small muted',
+            text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })))));
+  }
+  host.append(ul);
+}
+
+/* ---------- Detailansicht ------------------------------------------------ */
+
+async function openPlaylistView(id) {
+  const pl = await DB.metaGet(`playlist:${id}`).catch(() => null);
+  if (!pl) {
+    banner('Diese Playlist ist nicht mehr vorhanden.', { kind: 'error' });
+    showView('playlists');
+    return;
+  }
+  openPlaylist = pl;
+  $('#playlist-view').hidden = false;
+  $('#pl-search').value = '';
+  await renderPlaylistDetail();
+}
+
+function closePlaylistView() {
+  $('#playlist-view').hidden = true;
+  openPlaylist = null;
+}
+
+async function renderPlaylistDetail() {
+  const pl = openPlaylist;
+  if (!pl) return;
+  const songs = await DB.metaByType('song').catch(() => []);
+
+  $('#pl-title').textContent = pl.name;
+  const titles = pl.songTitles || [];
+  const missing = titles.filter((t) => !findSongByTitle(songs, t));
+  $('#pl-sub').textContent = plural(titles.length, 'Titel', 'Titel');
+
+  const hint = $('#pl-missing');
+  if (missing.length) {
+    hint.hidden = false;
+    hint.textContent = `${missing.length} ${missing.length === 1 ? 'Titel ist' : 'Titel sind'} noch nicht importiert: ${missing.join(', ')}. Die Einträge bleiben stehen und verbinden sich automatisch.`;
+  } else {
+    hint.hidden = true;
+  }
+
+  renderPlaylistEntries(songs);
+  renderPlaylistCandidates(songs);
+  $('#btn-pl-play').disabled = titles.length === 0 || missing.length === titles.length;
+}
+
+function renderPlaylistEntries(songs) {
+  const host = $('#pl-entries');
+  host.textContent = '';
+  const titles = openPlaylist.songTitles || [];
+
+  if (!titles.length) {
+    host.append(el('p', { class: 'small muted', style: 'margin:0',
+      text: 'Noch keine Titel. Suche unten nach Songs und tippe sie an.' }));
+    return;
+  }
+
+  titles.forEach((title, index) => {
+    const song = findSongByTitle(songs, title);
+
+    const grip = el('button', {
+      class: 'icon-btn pl-grip', type: 'button',
+      'aria-label': `„${title}" verschieben`, 'data-index': String(index),
+    });
+    grip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 7h8M8 12h8M8 17h8"/></svg>';
+
+    const label = el('div', { class: 'grow' },
+      el('strong', { text: title }),
+      el('div', { class: 'small muted',
+        text: song ? plural(song.tracks.length, 'Stimme', 'Stimmen') : 'noch nicht importiert' }));
+
+    const remove = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${title}" entfernen`,
+      style: 'color: var(--danger)',
+    });
+    remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    remove.addEventListener('click', async () => {
+      openPlaylist.songTitles.splice(index, 1);
+      await savePlaylist(openPlaylist);
+      await renderPlaylistDetail();
+    });
+
+    const row = el('div', {
+      class: 'pl-entry',
+      'data-index': String(index),
+      'data-missing': song ? 'false' : 'true',
+    }, grip, label, remove);
+
+    if (song) {
+      label.style.cursor = 'pointer';
+      label.addEventListener('click', () => navigate(`#song/${song.id}`));
+    }
+    host.append(row);
+  });
+
+  installEntryDragging(host);
+}
+
+/**
+ * Reihenfolge per Ziehgriff. HTML5-Drag-and-drop arbeitet auf Touch-Geräten
+ * nicht, deshalb eigene Umsetzung über Pointer-Events.
+ */
+function installEntryDragging(host) {
+  let dragging = null;
+
+  const rowAt = (y) => {
+    const rows = [...host.querySelectorAll('.pl-entry')];
+    for (const r of rows) {
+      const box = r.getBoundingClientRect();
+      if (y < box.top + box.height / 2) return rows.indexOf(r);
+    }
+    return rows.length;
+  };
+
+  host.addEventListener('pointerdown', (e) => {
+    const grip = e.target.closest('.pl-grip');
+    if (!grip) return;
+    e.preventDefault();
+    const row = grip.closest('.pl-entry');
+    dragging = { from: Number(row.dataset.index), row };
+    row.classList.add('is-dragging');
+    grip.setPointerCapture(e.pointerId);
+  });
+
+  host.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    dragging.to = rowAt(e.clientY);
+    // Vorschau: die gezogene Zeile an die Zielposition setzen
+    const rows = [...host.querySelectorAll('.pl-entry')];
+    const target = rows[dragging.to] || null;
+    if (target !== dragging.row) host.insertBefore(dragging.row, target);
+  });
+
+  const finish = async () => {
+    if (!dragging) return;
+    const row = dragging.row;
+    row.classList.remove('is-dragging');
+    const order = [...host.querySelectorAll('.pl-entry')].map((r) => Number(r.dataset.index));
+    dragging = null;
+
+    const titles = openPlaylist.songTitles;
+    openPlaylist.songTitles = order.map((i) => titles[i]);
+    await savePlaylist(openPlaylist);
+    await renderPlaylistDetail();
+  };
+
+  host.addEventListener('pointerup', finish);
+  host.addEventListener('pointercancel', finish);
+}
+
+function renderPlaylistCandidates(songs) {
+  const host = $('#pl-candidates');
+  host.textContent = '';
+  const q = normalizeTitle($('#pl-search').value || '');
+  const inList = new Set((openPlaylist.songTitles || []).map(normalizeTitle));
+
+  let list = songs.slice().sort((a, b) => collator.compare(a.title, b.title));
+  if (q) list = list.filter((s) => s.normTitle.includes(q));
+  list = list.slice(0, q ? 20 : 6);
+
+  if (!list.length) {
+    host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
+    return;
+  }
+
+  for (const song of list) {
+    const already = inList.has(song.normTitle);
+    host.append(el('button', {
+      class: 'list-item', type: 'button', style: already ? 'opacity:.55' : '',
+      onclick: async () => {
+        if (already) {
+          openPlaylist.songTitles = openPlaylist.songTitles
+            .filter((t) => normalizeTitle(t) !== song.normTitle);
+        } else {
+          openPlaylist.songTitles.push(song.title);
+        }
+        await savePlaylist(openPlaylist);
+        await renderPlaylistDetail();
+      },
+    },
+      el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: song.title })),
+      el('span', { class: 'small muted', text: already ? 'entfernen' : 'hinzufügen' })));
+  }
+}
+
+$('#pl-search').addEventListener('input', async () => {
+  renderPlaylistCandidates(await DB.metaByType('song').catch(() => []));
+});
+
+$('#pl-back').addEventListener('click', () => history.back());
+
+$('#pl-rename').addEventListener('click', async () => {
+  const name = await promptDialog({ title: 'Playlist umbenennen', value: openPlaylist.name });
+  if (name === null || !name.trim()) return;
+  openPlaylist.name = name.trim();
+  await savePlaylist(openPlaylist);
+  await renderPlaylistDetail();
+  await renderPlaylists();
+});
+
+$('#btn-pl-delete').addEventListener('click', async () => {
+  const ok = await confirmDialog({
+    title: 'Playlist löschen?',
+    text: `„${openPlaylist.name}" wird entfernt. Die Songs bleiben erhalten.`,
+    okLabel: 'Löschen', danger: true,
+  });
+  if (!ok) return;
+  await DB.metaDelete(openPlaylist.key);
+  await renderPlaylists();
+  history.back();
+});
+
+/** Teilt oder sichert die Playlist als Textdatei. */
+async function sharePlaylistFile() {
+  const text = playlistToText(openPlaylist);
+  const fileName = `${openPlaylist.name.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+  const file = new File([text], fileName, { type: 'text/plain' });
+
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: openPlaylist.name });
+      return;
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  }
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: fileName, style: 'display:none' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+$('#btn-pl-export').addEventListener('click', sharePlaylistFile);
+
+$('#btn-pl-copy').addEventListener('click', async () => {
+  const text = playlistToText(openPlaylist);
+  try {
+    await navigator.clipboard.writeText(text);
+    banner('Playlist in die Zwischenablage kopiert.', { kind: 'ok' });
+  } catch {
+    // Ohne Zwischenablage-Zugriff den Text zum Markieren anbieten.
+    await promptDialog({
+      title: 'Playlist als Text', text: 'Text markieren und kopieren.',
+      value: text.replace(/\n/g, ' · '), okLabel: 'Fertig',
+    });
+  }
+});
+
+/* ---------- Playlist abspielen ------------------------------------------- */
+
+$('#btn-pl-play').addEventListener('click', async () => {
+  const songs = await DB.metaByType('song').catch(() => []);
+  const entries = (openPlaylist.songTitles || [])
+    .map((t) => findSongByTitle(songs, t))
+    .filter(Boolean);
+  if (!entries.length) return;
+
+  playQueue = { name: openPlaylist.name, ids: entries.map((s) => s.id), index: 0 };
+  navigate(`#song/${playQueue.ids[0]}`);
+});
+
+/** Springt in der laufenden Playlist. */
+function playlistStep(delta) {
+  if (!playQueue) return;
+  const next = playQueue.index + delta;
+  if (next < 0 || next >= playQueue.ids.length) return;
+  playQueue.index = next;
+  navigate(`#song/${playQueue.ids[next]}`, { replace: true });
+}
+
+/** Nach Songende automatisch zum nächsten Titel der Playlist. */
+function playlistAdvance() {
+  if (!playQueue) return;
+  if (playQueue.index + 1 >= playQueue.ids.length) {
+    banner(`Playlist „${playQueue.name}" zu Ende.`);
+    playQueue = null;
+    return;
+  }
+  playQueue.index++;
+  pendingAutoPlay = true;
+  navigate(`#song/${playQueue.ids[playQueue.index]}`, { replace: true });
+}
+
+// Beim automatischen Weiterschalten soll der nächste Song gleich losspielen.
+let pendingAutoPlay = false;
+
+/* ==========================================================================
+   BACKUP — Loops, Playlisten und Einstellungen sichern (Spec 5.4)
+
+   Bewusst ohne Audiodaten: die Datei bleibt wenige Kilobyte groß. Loops und
+   Playlisten verweisen über den *Titel* auf Songs, nicht über die interne
+   Kennung — nur so übersteht eine Sicherung das Löschen und erneute
+   Importieren der Aufnahmen und lässt sich auf ein anderes Gerät übertragen.
+   ========================================================================== */
+
+const BACKUP_FORMAT = 'chor-app-backup';
+
+async function buildBackup() {
+  const [songs, loops, playlists] = await Promise.all([
+    DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
+  ]);
+  const byId = new Map(songs.map((s) => [s.id, s]));
+
+  return {
+    format: BACKUP_FORMAT,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: { myVoice: settings.myVoice, lyricsFontSize: settings.lyricsFontSize },
+    songs: songs
+      .sort((a, b) => collator.compare(a.title, b.title))
+      .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })),
+    loops: loops.map((l) => ({
+      songTitle: byId.get(l.songId)?.title || l.songTitle || '',
+      name: l.name, start: l.start, end: l.end,
+    })).filter((l) => l.songTitle),
+    playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
+  };
+}
+
+$('#btn-backup-export').addEventListener('click', async () => {
+  try {
+    const data = await buildBackup();
+    const text = JSON.stringify(data, null, 2);
+    const date = new Date().toISOString().slice(0, 10);
+    const fileName = `chor-app-backup-${date}.json`;
+    const file = new File([text], fileName, { type: 'application/json' });
+
+    let shared = false;
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Chor-Sicherung' }); shared = true; }
+      catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    if (!shared) downloadBlob(new Blob([text], { type: 'application/json' }), fileName);
+
+    await saveSettings({ lastBackupAt: new Date().toISOString() });
+    renderBackupAge();
+    updateBackupReminder();
+    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, ${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
+  } catch (err) {
+    console.error(err);
+    banner('Die Sicherung konnte nicht erstellt werden.', { kind: 'error' });
+  }
+});
+
+$('#btn-backup-import').addEventListener('click', () => $('#backup-input').click());
+
+$('#backup-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  let data;
+  try {
+    data = JSON.parse(await readTextBlob(file));
+  } catch {
+    banner('Diese Datei ist keine gültige Sicherung.', { kind: 'error' });
+    return;
+  }
+  if (!data || data.format !== BACKUP_FORMAT) {
+    banner('Diese Datei stammt nicht aus dieser App.', { kind: 'error' });
+    return;
+  }
+  await restoreBackup(data);
+});
+
+/** Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen. */
+async function restoreBackup(data) {
+  const songs = await DB.metaByType('song').catch(() => []);
+  const loops = Array.isArray(data.loops) ? data.loops : [];
+  const playlists = Array.isArray(data.playlists) ? data.playlists : [];
+  const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
+
+  const mode = await choiceDialog({
+    title: 'Sicherung einspielen',
+    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(playlists.length, 'Playlist', 'Playlisten')} gefunden. `
+        + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
+        + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
+    options: [
+      { value: 'merge', label: 'Zusammenführen', primary: true },
+      { value: 'replace', label: 'Alles ersetzen', danger: true },
+    ],
+  });
+  if (!mode) return;
+
+  if (mode === 'replace') {
+    const ok = await confirmDialog({
+      title: 'Wirklich ersetzen?',
+      text: 'Alle vorhandenen Loops und Playlisten werden vorher gelöscht.',
+      okLabel: 'Ersetzen', danger: true,
+    });
+    if (!ok) return;
+    for (const l of await DB.metaByType('loop')) await DB.metaDelete(l.key);
+    for (const p of await DB.metaByType('playlist')) await DB.metaDelete(p.key);
+  }
+
+  const existingLoops = await DB.metaByType('loop');
+  const existingPl = await DB.metaByType('playlist');
+  let addedLoops = 0, addedPl = 0, keptPending = 0;
+
+  for (const l of loops) {
+    if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
+    const song = findSongByTitle(songs, l.songTitle || '');
+    const norm = normalizeTitle(l.songTitle || '');
+
+    // Bei gleichem Namen und gleichem Song nichts doppelt anlegen.
+    const dupe = existingLoops.some((x) =>
+      x.name === l.name && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm));
+    if (dupe) continue;
+
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    await DB.metaPut({
+      key: `loop:${id}`, type: 'loop', id,
+      songId: song ? song.id : null,
+      songTitle: l.songTitle || '',      // bleibt erhalten, auch ohne Song
+      name: l.name || 'Abschnitt',
+      start: l.start, end: l.end,
+      createdAt: new Date().toISOString(),
+    });
+    addedLoops++;
+    if (!song) keptPending++;
+  }
+
+  for (const p of playlists) {
+    if (!p || !Array.isArray(p.songTitles)) continue;
+    if (existingPl.some((x) => normalizeTitle(x.name) === normalizeTitle(p.name || ''))) continue;
+    await savePlaylist(newPlaylist(p.name || 'Playlist', p.songTitles));
+    addedPl++;
+  }
+
+  if (data.settings?.myVoice && !settings.myVoice) {
+    await saveSettings({ myVoice: data.settings.myVoice });
+  }
+  if (data.settings?.lyricsFontSize) {
+    await saveSettings({ lyricsFontSize: data.settings.lyricsFontSize });
+  }
+
+  await renderPlaylists();
+  await renderSettings();
+  banner(`${plural(addedLoops, 'Loop', 'Loops')} und ${plural(addedPl, 'Playlist', 'Playlisten')} eingespielt.`
+    + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : ''), { kind: 'ok' });
+}
+
+/**
+ * Loops, die beim Wiederherstellen keinem Song zugeordnet werden konnten,
+ * nach einem Import nachträglich verbinden.
+ */
+async function reconnectPendingLoops() {
+  const loops = await DB.metaByType('loop').catch(() => []);
+  const pending = loops.filter((l) => !l.songId && l.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  let n = 0;
+  for (const loop of pending) {
+    const song = findSongByTitle(songs, loop.songTitle);
+    if (!song) continue;
+    loop.songId = song.id;
+    await DB.metaPut(loop);
+    n++;
+  }
+  return n;
+}
+
+function daysSince(iso) {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  return Math.floor((Date.now() - then) / 86400000);
+}
+
+function renderBackupAge() {
+  const days = daysSince(settings.lastBackupAt);
+  const node = $('#backup-age');
+  if (days === null) {
+    node.textContent = 'Noch keine Sicherung erstellt.';
+    node.style.color = 'var(--warn)';
+  } else {
+    node.textContent = days === 0
+      ? 'Letzte Sicherung: heute'
+      : `Letzte Sicherung: vor ${plural(days, 'Tag', 'Tagen')}`;
+    node.style.color = days > 30 ? 'var(--warn)' : 'var(--muted)';
+  }
+}
+
+/**
+ * Dezenter Hinweis auf dem Startbildschirm, wenn länger als 30 Tage nicht
+ * gesichert wurde und Übe-Arbeit auf dem Spiel steht. Keine Pop-ups, und
+ * nach dem Wegklicken kommt er nicht wieder.
+ */
+let reminderDismissed = false;
+
+async function updateBackupReminder() {
+  const box = $('#backup-reminder');
+  if (reminderDismissed) { box.hidden = true; return; }
+
+  const days = daysSince(settings.lastBackupAt);
+  const loops = await DB.metaByType('loop').catch(() => []);
+  if (loops.length < 5 || (days !== null && days <= 30)) { box.hidden = true; return; }
+
+  box.textContent = '';
+  box.append(
+    el('p', { style: 'margin:0 0 10px',
+      text: days === null
+        ? `Du hast ${plural(loops.length, 'Loop', 'Loops')} angelegt, aber noch nie gesichert. Eine Sicherung ist in zehn Sekunden erstellt.`
+        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops und Playlisten wären bei einem Problem verloren.` }),
+    el('div', { style: 'display:flex; gap:8px' },
+      el('button', { class: 'btn', type: 'button', text: 'Jetzt sichern',
+        onclick: () => { box.hidden = true; showView('settings'); $('#btn-backup-export').focus(); } }),
+      el('button', { class: 'btn', type: 'button', text: 'Später',
+        onclick: () => { reminderDismissed = true; box.hidden = true; } })));
+  box.hidden = false;
+}
+
+/** Auswahl zwischen mehreren Möglichkeiten (Zusammenführen / Ersetzen). */
+function choiceDialog({ title, text, options }) {
+  return new Promise((resolve) => {
+    const done = (v) => { layer.remove(); resolve(v); };
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: title }),
+      el('p', { text }),
+      el('div', { class: 'stack' },
+        options.map((o) => el('button', {
+          class: `btn btn--block${o.primary ? ' btn--primary' : ''}${o.danger ? ' btn--danger' : ''}`,
+          type: 'button', text: o.label, onclick: () => done(o.value),
+        })),
+        el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(null) })));
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+  });
 }
 
 /* ==========================================================================
@@ -2809,6 +5644,15 @@ function runSelfTests() {
 /* ==========================================================================
    BOOT — Start
    ========================================================================== */
+
+// Zugang für die Fehlersuche in der Browser-Konsole (auch am Handy über die
+// Entwicklerwerkzeuge). Enthält keine Logik, die die App selbst braucht.
+window.chorApp = {
+  audio: Audio,
+  db: DB,
+  settings: () => settings,
+  selfTest: runSelfTests,
+};
 
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
