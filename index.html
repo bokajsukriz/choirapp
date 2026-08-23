@@ -4137,9 +4137,16 @@ async function analyzeAgainstLibrary(songs) {
   return songs;
 }
 
-/** Ist dieser Song die gewählte Fassung seiner Gruppe? (siehe 4.5) */
+/**
+ * Ist dieser Song die gewählte Fassung seiner Gruppe? (siehe 4.5)
+ *
+ * Die Gruppe hängt am Song selbst (openPicker setzt sie). Vorher wurde sie bei
+ * jedem Aufruf über alle Gruppen gesucht — bei einem Archiv mit vielen Liedern
+ * ist das quadratischer Aufwand, und die Auswahlmaske zeichnet sich bei jedem
+ * Häkchen neu.
+ */
 function isChosenVersion(song) {
-  const group = pick.groups?.find((g) => g.members.includes(song));
+  const group = song.group;
   if (!group || group.members.length < 2) return true;
   return pick.chosenVersion.get(group.core) === song.folder;
 }
@@ -4409,7 +4416,10 @@ function closeSheet() {
 async function openPicker({ songs, notes, skipped, source, foundFiles, foundBytes }) {
   const groups = groupDuplicates(songs);
   const chosenVersion = new Map();
-  for (const g of groups) chosenVersion.set(g.core, g.suggested.folder);
+  for (const g of groups) {
+    chosenVersion.set(g.core, g.suggested.folder);
+    for (const m of g.members) m.group = g;
+  }
 
   pick = {
     songs, notes, skipped, source, groups, chosenVersion,
@@ -5810,7 +5820,14 @@ function iconPdf() {
  * Liedtext und Noten des geöffneten Songs anzeigen.
  * Für PDFs wird kein eigener Betrachter gebaut — das System kann das besser.
  */
+// Wie bei renderSongs()/renderQueue(): schnelles Weiterschalten in einer
+// Playlist startet mehrere Durchläufe. Ohne Marke würde ein überholter
+// Durchlauf seine Notenzeilen hinter die bereits fertige Liste hängen und die
+// gerade erzeugten Objekt-URLs des neuen Songs wieder freigeben.
+let extrasRenderToken = 0;
+
 async function renderPlayerExtras() {
+  const token = ++extrasRenderToken;
   releaseScoreURLs();
 
   // --- Liedtext ---------------------------------------------------------
@@ -5835,12 +5852,14 @@ async function renderPlayerExtras() {
   if (!scores.length) return;
 
   for (const score of scores) {
+    if (token !== extrasRenderToken) return;
     const row = el('div', { class: 'score-item' });
     row.append(iconPdf(), el('span', { class: 'grow', text: score.fileName }));
     list.append(row);
 
     try {
       const rec = await DB.fileGet(score.fileKey);
+      if (token !== extrasRenderToken) return;
       if (!rec) { row.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
       const file = new File([rec.blob], score.fileName, { type: 'application/pdf' });
