@@ -1605,7 +1605,7 @@ function scanFiles(files, zipTitle) {
         // Präfix, der nicht zum Ordner passt, deutet auf einen Ablagefehler hin.
         const folderNorm = normalizeTitle(folderName || title);
         if (rest && folderNorm && rest !== folderNorm) {
-          notes.push(`„${item.name}" trägt den Titel „${rest}", liegt aber im Ordner „${folderName || title}".`);
+          notes.push(`„${item.name}" liegt im Ordner „${folderName || title}", der Dateiname deutet aber auf ein anderes Lied hin.`);
         }
       } else {
         withoutVoice.push(item);
@@ -2083,9 +2083,13 @@ function applyPreset(preset) {
       else if (preset === 'full') inScope = track.voice === 'FULL';
       else inScope = track.voice === 'FULL' || track.voice === settings.myVoice;
 
-      // Unveränderte Spuren sind nie vorausgewählt — sie würden nur
-      // dieselben Daten noch einmal schreiben.
-      track.checked = inScope && track.status !== 'same';
+      // Unveränderte Spuren sind nie vorausgewählt — sie würden nur dieselben
+      // Daten noch einmal schreiben. Eine *geänderte* Aufnahme liegt dagegen
+      // bereits auf dem Gerät: sie wird unabhängig von der Voreinstellung zum
+      // Ersetzen vorgeschlagen, sonst bliebe stillschweigend die alte Fassung.
+      if (track.status === 'same') track.checked = false;
+      else if (track.status === 'changed') track.checked = true;
+      else track.checked = inScope;
     }
   }
 }
