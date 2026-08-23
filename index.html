@@ -577,6 +577,8 @@ input[type="checkbox"] {
 
 .player-head .grow { flex: 1; min-width: 0; }
 .player-head strong { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
+.player-head .spinner { width: 16px; height: 16px; border-width: 2px; flex: 0 0 auto; }
+.player-head .spinner[hidden] { display: none; }
 
 .icon-btn {
   min-width: var(--tap);
@@ -709,12 +711,12 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 7px;
   margin-bottom: 10px;
 }
 
 .tbtn {
-  min-width: 56px;
+  min-width: 48px;
   min-height: 52px;
   border-radius: 13px;
   border: 1px solid var(--line);
@@ -730,8 +732,8 @@ input[type="checkbox"] {
 .tbtn svg { width: 22px; height: 22px; }
 
 .tbtn--play {
-  min-width: 76px;
-  min-height: 60px;
+  min-width: 68px;
+  min-height: 58px;
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
@@ -832,6 +834,30 @@ input[type="checkbox"] {
 .loop-item .go strong { display: block; font-weight: 620; }
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--ok); }
+
+/* Laufende Playlist im Player */
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--text);
+  margin-bottom: 6px;
+  text-align: left;
+}
+
+.queue-item .num { color: var(--muted); font-size: 0.82rem; min-width: 18px; }
+.queue-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.queue-item[data-current="true"] { border-color: var(--accent); }
+.queue-item[data-current="true"] .grow { font-weight: 650; }
+
+/* dezenter Hinweis auf einer noch ladenden Stimme */
+.voice-btn .dot { letter-spacing: 2px; opacity: .8; }
 
 /* Playlist-Einträge mit Ziehgriff */
 .pl-entry {
@@ -1035,7 +1061,14 @@ input[type="checkbox"] {
   </div>
 
   <div class="player-foot">
-    <button class="btn btn--primary btn--block" id="btn-pl-play" type="button">Playlist abspielen</button>
+    <p class="small" id="pl-dirty" style="margin:0 0 8px; color: var(--warn)" hidden>
+      Nicht gespeicherte Änderungen.
+    </p>
+    <div style="display:flex; gap:8px">
+      <button class="btn" id="btn-pl-discard" type="button" style="flex:1" disabled>Verwerfen</button>
+      <button class="btn btn--primary" id="btn-pl-save" type="button" style="flex:1" disabled>Speichern</button>
+    </div>
+    <button class="btn btn--block" id="btn-pl-play" type="button" style="margin-top:8px">Playlist abspielen</button>
   </div>
 </section>
 
@@ -1051,15 +1084,16 @@ input[type="checkbox"] {
       <strong id="player-title"></strong>
       <span class="small muted" id="player-sub"></span>
     </div>
+    <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
   </div>
 
   <div class="player-body" id="player-body">
-    <div class="loading-row" id="player-loading" hidden>
-      <div class="spinner"></div>
-      <span id="player-loading-text">Spuren werden geladen …</span>
-    </div>
-
     <div class="hint-box" id="player-hint" hidden></div>
+
+    <div id="queue-block" hidden>
+      <p class="section-title" id="queue-title">Playlist</p>
+      <div id="queue-list"></div>
+    </div>
 
     <div class="voice-grid" id="voice-grid"></div>
 
@@ -1113,6 +1147,12 @@ input[type="checkbox"] {
     <div class="times"><span id="time-cur">0:00</span><span id="time-tot">0:00</span></div>
 
     <div class="transport">
+      <button class="tbtn" id="btn-restart" type="button" aria-label="Zurück an den Anfang">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6v12M8 12l7-6v12z"/>
+        </svg>
+      </button>
+      <button class="tbtn" id="btn-back30" type="button" aria-label="30 Sekunden zurück">−30 s</button>
       <button class="tbtn" id="btn-back10" type="button" aria-label="10 Sekunden zurück">−10 s</button>
       <button class="tbtn tbtn--play" id="btn-play" type="button" aria-label="Abspielen">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-play"><path d="M8 5.5v13l11-6.5z"/></svg>
@@ -1126,6 +1166,12 @@ input[type="checkbox"] {
       <button class="rate-btn" type="button" data-rate="0.75">0,75×</button>
       <button class="rate-btn" type="button" data-rate="1" aria-pressed="true">1×</button>
       <button class="rate-btn" type="button" data-rate="1.25">1,25×</button>
+    </div>
+
+    <div class="rate-row" id="repeat-row" role="group" aria-label="Am Ende des Liedes" style="margin-top:6px; grid-template-columns: repeat(3, 1fr)">
+      <button class="rate-btn" type="button" data-repeat="off" aria-pressed="true">Ende: Stopp</button>
+      <button class="rate-btn" type="button" data-repeat="song">Wiederholen</button>
+      <button class="rate-btn" type="button" data-repeat="next">Nächstes Lied</button>
     </div>
   </div>
 </section>
@@ -1304,6 +1350,13 @@ input[type="checkbox"] {
           Einzelne Songs oder Stimmen löschen. Loops und Playlisten bleiben
           dabei erhalten.
         </p>
+        <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button">
+          Alle Aufnahmen löschen
+        </button>
+        <p class="small muted" style="margin:0">
+          Entfernt nur die Audiodateien. Loops, Playlisten und Einstellungen
+          bleiben erhalten und verbinden sich beim nächsten Import wieder.
+        </p>
         <div id="storage-manager"></div>
       </div>
     </div>
@@ -1440,8 +1493,9 @@ const VOICE_LABEL = {
   OTHER: 'Sonstige',
 };
 
-// Als „meine Stimme" sind nur die gesungenen Stimmen sinnvoll.
-const MY_VOICE_CHOICES = ['SOP', 'ALT', 'TEN', 'BASS', 'BAR', 'LEAD'];
+// Als „meine Stimme" wählbar. Bariton fehlt bewusst: der Chor hat keinen.
+// Erkannt werden Bariton-Dateien trotzdem, falls welche im Archiv liegen.
+const MY_VOICE_CHOICES = ['SOP', 'ALT', 'TEN', 'BASS', 'LEAD'];
 
 /* ==========================================================================
    BANNER — Meldungen und Sicherheitsabfragen (es gibt bewusst kein alert())
@@ -1708,6 +1762,7 @@ const DEFAULT_SETTINGS = {
   defaultImportScope: 'mine', // 'mine' | 'full' | 'all' (siehe Auswahlmaske, M1)
   lyricsFontSize: 17,
   lastBackupAt: null,
+  repeatMode: 'off',          // 'off' | 'song' | 'next'
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2033,16 +2088,22 @@ function hashId(s) {
   return h.toString(16).padStart(8, '0');
 }
 
+// Die Muster decken auch Schreibweisen ab, wie sie in gewachsenen Ablagen
+// vorkommen: „ALTO", „Sopran 2", „Lead Bass". Geprüft werden immer nur die
+// Rand-Positionen des Dateinamens (siehe detectVoice).
 const VOICE_PATTERNS = {
-  SOP:   ['sop', 'sopran', 'soprano', 's1', 's2', 'sopran 1', 'sopran 2'],
-  ALT:   ['alt', 'alto', 'a1', 'a2'],
-  TEN:   ['ten', 'tenor', 'tenore', 't1', 't2'],
-  BASS:  ['bass', 'bas', 'b1', 'b2'],
+  SOP:   ['sop', 'sopran', 'soprano', 'sopr', 's1', 's2',
+          'sopran 1', 'sopran 2', 'sop 1', 'sop 2', 'soprano 1', 'soprano 2'],
+  ALT:   ['alt', 'alto', 'a1', 'a2', 'alt 1', 'alt 2', 'alto 1', 'alto 2'],
+  TEN:   ['ten', 'tenor', 'tenore', 't1', 't2',
+          'ten 1', 'ten 2', 'tenor 1', 'tenor 2'],
+  BASS:  ['bass', 'bas', 'basso', 'b1', 'b2',
+          'bass 1', 'bass 2', 'lead bass', 'bass lead'],
   BAR:   ['bar', 'bariton', 'baritone'],
-  LEAD:  ['lead', 'solo', 'soli', 'soli lead', 'solo lead'],
-  FULL:  ['full', 'gesamt', 'alle', 'tutti', 'mix', 'komplett', 'all',
-          'full mix', 'full arrangement', 'arrangement'],
-  PIANO: ['klavier', 'piano', 'begleitung', 'playback', 'instrumental'],
+  LEAD:  ['lead', 'solo', 'soli', 'melodie', 'soli lead', 'solo lead', 'lead vocal'],
+  FULL:  ['full', 'gesamt', 'alle', 'tutti', 'mix', 'komplett', 'all', 'chor',
+          'full mix', 'full arrangement', 'arrangement', 'alle stimmen'],
+  PIANO: ['klavier', 'piano', 'begleitung', 'playback', 'instrumental', 'karaoke'],
 };
 
 const PATTERN_TO_VOICE = (() => {
@@ -2166,6 +2227,14 @@ function scanFiles(files, zipTitle) {
   for (const [folder, items] of byFolder) {
     const audio = items.filter((i) => AUDIO_RE.test(i.name));
     if (!audio.length) continue;   // kein Songordner — Sammelordner oder Beiwerk
+
+    // Dateien, die im Songordner liegen, aber weder Aufnahme noch Text noch
+    // Noten sind, im Bericht nennen. Sonst fehlt am Ende eine Stimme und
+    // niemand weiß, warum.
+    for (const item of items) {
+      if (AUDIO_RE.test(item.name) || TXT_RE.test(item.name) || PDF_RE.test(item.name)) continue;
+      notes.push(`„${item.name}" wurde übersprungen — die App erkennt dieses Dateiformat nicht als Aufnahme.`);
+    }
 
     const segments = folder ? folder.split('/') : [];
     const folderName = segments.length ? segments[segments.length - 1] : '';
@@ -2477,7 +2546,7 @@ async function renderSongs() {
         onclick: () => navigate(`#song/${song.id}`),
       },
         el('div', { style: 'flex:1; min-width:0' },
-          el('strong', { text: song.title || 'Ohne Titel' }),
+          el('strong', { text: songLabel(song) || 'Ohne Titel' }),
           el('div', { class: 'voice-chips' },
             voices.map((t) => el('span', {
               class: 'voice-chip',
@@ -2639,6 +2708,7 @@ async function deleteTrack(song, track) {
     await DB.metaDelete(song.key);
   }
   await refreshAfterDelete();
+  banner('Stimme gelöscht.', { kind: 'ok' });
 }
 
 async function deleteSong(song) {
@@ -2661,15 +2731,63 @@ async function deleteSong(song) {
   }
 
   await DB.metaDelete(song.key);
+  if (playerSong && playerSong.id === song.id) closePlayer();
   await refreshAfterDelete();
+  banner('Song gelöscht.', { kind: 'ok' });
 }
+
+/**
+ * Löscht alle Aufnahmen, behält aber Loops, Playlisten und Einstellungen.
+ * Praktisch, um Platz zu schaffen, ohne die Übe-Arbeit zu verlieren.
+ */
+$('#btn-drop-audio').addEventListener('click', async () => {
+  const songs = await DB.metaByType('song').catch(() => []);
+  if (!songs.length) {
+    banner('Es sind keine Aufnahmen gespeichert.');
+    return;
+  }
+  const bytes = songs.reduce((n, s) =>
+    n + s.tracks.reduce((m, t) => m + (t.size || 0), 0)
+      + (s.scores || []).reduce((m, x) => m + (x.size || 0), 0), 0);
+
+  const ok = await confirmDialog({
+    title: 'Alle Aufnahmen löschen?',
+    text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
+        + 'Loops, Playlisten und Einstellungen bleiben erhalten und verbinden sich wieder, '
+        + 'sobald du die Lieder erneut importierst.',
+    okLabel: 'Aufnahmen löschen', danger: true,
+  });
+  if (!ok) return;
+
+  try {
+    const loops = await DB.metaByType('loop').catch(() => []);
+    for (const song of songs) {
+      // Loops vom Song lösen, aber den Titel merken.
+      for (const loop of loops.filter((l) => l.songId === song.id)) {
+        loop.songId = null;
+        loop.songTitle = song.title;
+        await DB.metaPut(loop);
+      }
+      await DB.fileDelete([
+        ...song.tracks.map((t) => t.fileKey),
+        ...(song.scores || []).map((x) => x.fileKey),
+      ]);
+      await DB.metaDelete(song.key);
+    }
+    if (playerSong) closePlayer();
+    banner(`${plural(songs.length, 'Song', 'Songs')} entfernt, ${fmtBytes(bytes)} frei.`, { kind: 'ok' });
+    await refreshAfterDelete();
+  } catch (err) {
+    console.error(err);
+    banner('Die Aufnahmen konnten nicht vollständig gelöscht werden.', { kind: 'error' });
+  }
+});
 
 async function refreshAfterDelete() {
   await renderStorage();
   await renderStorageManager();
   await renderSongs();
   await renderPlaylists();
-  banner('Gelöscht.', { kind: 'ok' });
 }
 
 async function renderSettings() {
@@ -2734,13 +2852,17 @@ $('#btn-wipe').addEventListener('click', async () => {
 const WORKLET_SRC = `
 'use strict';
 
-// 2048 Samples sind bei 44,1 kHz rund 46 ms: lang genug für tiefe Männer-
-// stimmen, kurz genug, dass Einsätze nicht verschmieren.
-const FRAME = 2048;
+// 4096 Samples sind bei 44,1 kHz rund 93 ms. Lange Fenster verschmieren
+// Einsätze etwas, klingen bei gehaltenen Chorklängen aber deutlich sauberer
+// als kurze — und genau dafür ist das langsame Üben da.
+const FRAME = 4096;
 const HOP_OUT = FRAME >> 1;
-const SEARCH = 300;        // Suchbereich für die Anschlussstelle (Samples)
-const SEARCH_STEP = 4;
-const CORR_LEN = 256;
+
+// Suchbereich für die Anschlussstelle. Er muss mindestens eine Periode des
+// tiefsten Tons abdecken: ein Bass bei 80 Hz hat 550 Samples Periodendauer.
+const SEARCH = 1200;
+const COARSE_STEP = 8;
+const CORR_LEN = 1200;
 
 class ChoirProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -2760,6 +2882,12 @@ class ChoirProcessor extends AudioWorkletProcessor {
     this.qOff = 0;
     this.first = true;
     this.sinceReport = 0;
+    // Güte der Anschluss-Suche: 2 = volle Suche. Reißt der Puffer auf einem
+    // langsamen Gerät wiederholt, wird heruntergeschaltet und nach einer
+    // ruhigen Phase wieder hoch.
+    this.quality = 2;
+    this.underruns = 0;
+    this.clean = 0;
     this.gainStep = 1 / (0.015 * sampleRate);   // 15-ms-Rampe
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
@@ -2833,20 +2961,54 @@ class ChoirProcessor extends AudioWorkletProcessor {
     return best;
   }
 
-  /** Beste Anschlussstelle nahe der Zielposition (Kreuzkorrelation). */
+  /**
+   * Beste Anschlussstelle nahe der Zielposition.
+   *
+   * Verglichen wird mit dem Stück, das ohne Dehnung als Nächstes gekommen
+   * wäre. Die Ähnlichkeit wird auf die Lautstärke des Kandidaten normiert —
+   * ohne das gewinnt einfach die lauteste Stelle im Suchbereich, und genau
+   * daher kommen die pumpenden Artefakte bei starker Dehnung.
+   *
+   * Gesucht wird zweistufig: grob im ganzen Bereich, dann fein um den besten
+   * Treffer. Das kostet nur einen Bruchteil der vollen Suche.
+   */
   findBest(target) {
     const t = this.refTrack();
     if (!t) return target;
     const ref = this.windowPos + HOP_OUT;
-    if (ref + CORR_LEN >= t.frames) return target;
+    if (ref < 0 || ref + CORR_LEN >= t.frames) return target;
 
-    let bestPos = target, bestScore = -Infinity;
-    for (let d = -SEARCH; d <= SEARCH; d += SEARCH_STEP) {
+    // Auf schwachen Geräten wird die Suche gröber (siehe quality unten):
+    // etwas mehr Artefakt ist immer noch besser als hörbare Aussetzer.
+    const step = COARSE_STEP << (2 - this.quality);
+    const len = this.quality === 2 ? CORR_LEN : CORR_LEN >> 1;
+    const stride = this.quality === 2 ? 2 : 4;
+
+    const ch = t.ch0;
+    const score = (p) => {
+      if (p < 0 || p + len >= t.frames) return -Infinity;
+      let dot = 0, energy = 0;
+      for (let i = 0; i < len; i += stride) {
+        const a = ch[ref + i];
+        const b = ch[p + i];
+        dot += a * b;
+        energy += b * b;
+      }
+      return energy > 0 ? dot / Math.sqrt(energy) : 0;
+    };
+
+    let bestPos = target;
+    let best = score(target);
+    for (let d = -SEARCH; d <= SEARCH; d += step) {
       const p = target + d;
-      if (p < 0 || p + CORR_LEN >= t.frames) continue;
-      let s = 0;
-      for (let i = 0; i < CORR_LEN; i += 2) s += t.ch0[ref + i] * t.ch0[p + i];
-      if (s > bestScore) { bestScore = s; bestPos = p; }
+      const s = score(p);
+      if (s > best) { best = s; bestPos = p; }
+    }
+    for (let d = -step + 1; d < step; d++) {
+      if (d === 0) continue;
+      const p = bestPos + d;
+      const s = score(p);
+      if (s > best) { best = s; bestPos = p; }
     }
     return bestPos;
   }
@@ -2918,8 +3080,18 @@ class ChoirProcessor extends AudioWorkletProcessor {
     this.queue.push({ l: outL, r: outR });
   }
 
+  queuedSamples() {
+    let n = -this.qOff;
+    for (const b of this.queue) n += b.l.length;
+    return n;
+  }
+
   report(force) {
-    this.port.postMessage({ type: 'pos', seconds: this.pos / sampleRate,
+    // Gemeldet wird die Stelle, die gerade zu hören ist — nicht die, die
+    // schon gerendert wurde. Sonst liefe die Anzeige dem Ton voraus.
+    const ahead = this.queuedSamples() * this.rate;
+    const heard = Math.max(0, this.pos - ahead);
+    this.port.postMessage({ type: 'pos', seconds: heard / sampleRate,
                             playing: this.playing });
     if (force) this.sinceReport = 0;
   }
@@ -2938,7 +3110,19 @@ class ChoirProcessor extends AudioWorkletProcessor {
 
     let filled = 0;
     while (filled < n) {
-      if (!this.queue.length) this.renderHop();
+      if (!this.queue.length) {
+        // Der Puffer war leer — es musste mitten in der Ausgabe gerechnet
+        // werden. Häuft sich das, ist das Gerät zu langsam für die volle Suche.
+        if (this.playing && !this.first) {
+          this.underruns++;
+          this.clean = 0;
+          if (this.underruns > 6 && this.quality > 0) {
+            this.quality--;
+            this.underruns = 0;
+          }
+        }
+        this.renderHop();
+      }
       if (!this.queue.length) {                 // Ende erreicht
         L.fill(0, filled);
         if (R) R.fill(0, filled);
@@ -2953,6 +3137,15 @@ class ChoirProcessor extends AudioWorkletProcessor {
       filled += take;
       this.qOff += take;
       if (this.qOff >= b.l.length) { this.queue.shift(); this.qOff = 0; }
+    }
+
+    // Vorlauf aufbauen, aber höchstens einen Hop je Aufruf. Ein Aufruf hat nur
+    // knapp 3 ms Zeit; würde die Anschluss-Suche immer erst dann laufen, wenn
+    // der Puffer leer ist, käme es auf langsamen Geräten zu Aussetzern.
+    if (this.playing && this.queuedSamples() < HOP_OUT * 3) {
+      this.renderHop();
+      // Läuft es lange rund, wieder feiner suchen.
+      if (this.quality < 2 && ++this.clean > 800) { this.quality++; this.clean = 0; }
     }
 
     this.sinceReport += n;
@@ -2987,15 +3180,26 @@ function silentLoopURL() {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 
-/** Höchstens drei Spuren gleichzeitig dekodiert halten (Spec 5.2). */
-const MAX_DECODED = 3;
+/**
+ * Wie viel dekodiertes Audio gleichzeitig im Speicher liegen darf.
+ *
+ * Die Grenze zählt Bytes statt Spuren: ein dreiminütiges Chorstück belegt als
+ * 16-Bit-Stereo rund 30 MB, ein zwölfminütiges Werk das Vierfache. Eine feste
+ * Obergrenze von drei Spuren würde bei kurzen Stücken unnötig oft nachladen
+ * und bei sehr langen immer noch zu viel Speicher belegen.
+ */
+const DECODE_BUDGET = 150 * 1024 * 1024;
+const MIN_DECODED = 2;    // mindestens die eigene Stimme und die Gesamtmischung
+const MAX_DECODED = 8;
 
 const Audio = {
   ctx: null,
   node: null,
   ready: false,
   song: null,
-  decoded: new Map(),   // fileKey -> { duration }
+  decoded: new Map(),   // fileKey -> { duration, bytes }
+  decodedBytes: 0,
+  loading: new Map(),   // fileKey -> Label, solange dekodiert wird
   lru: [],              // fileKey, zuletzt benutzt zuletzt
   levels: new Map(),    // fileKey -> 0..1
   position: 0,
@@ -3007,6 +3211,7 @@ const Audio = {
   wakeLock: null,
   onPosition: null,
   onEnded: null,
+  onLoadingChange: null,
 };
 
 async function audioInit() {
@@ -3064,6 +3269,36 @@ async function audioLoadTrack(track, gain = 0) {
     return Audio.decoded.get(track.fileKey);
   }
 
+  // Läuft für dieselbe Spur schon ein Ladevorgang, auf diesen warten statt
+  // ein zweites Mal zu dekodieren.
+  if (Audio.pending?.has(track.fileKey)) {
+    await Audio.pending.get(track.fileKey);
+    if (Audio.decoded.has(track.fileKey)) {
+      audioSetGain(track.fileKey, gain);
+      return Audio.decoded.get(track.fileKey);
+    }
+  }
+
+  const job = decodeAndSend(track, gain);
+  Audio.pending = Audio.pending || new Map();
+  Audio.pending.set(track.fileKey, job);
+  setLoading(track.fileKey, track.label);
+  try {
+    return await job;
+  } finally {
+    Audio.pending.delete(track.fileKey);
+    setLoading(track.fileKey, null);
+  }
+}
+
+/** Meldet, welche Spuren gerade geladen werden — die Anzeige hängt daran. */
+function setLoading(key, label) {
+  if (label) Audio.loading.set(key, label);
+  else Audio.loading.delete(key);
+  Audio.onLoadingChange?.();
+}
+
+async function decodeAndSend(track, gain) {
   const rec = await DB.fileGet(track.fileKey);
   if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
 
@@ -3084,16 +3319,19 @@ async function audioLoadTrack(track, gain = 0) {
     chans.push(i16);
   }
 
+  const bytes = chans.reduce((n, c) => n + c.byteLength, 0);
+
   // Platz schaffen, bevor die neue Spur dazukommt.
-  evictIfNeeded(track.fileKey);
+  evictIfNeeded(track.fileKey, bytes);
 
   Audio.node.port.postMessage(
     { type: 'load', id: track.fileKey, ch: chans, frames: audioBuf.length, gain },
     chans.map((c) => c.buffer)
   );
 
-  const info = { duration: audioBuf.duration };
+  const info = { duration: audioBuf.duration, bytes };
   Audio.decoded.set(track.fileKey, info);
+  Audio.decodedBytes += bytes;
   Audio.levels.set(track.fileKey, gain);
   touchLRU(track.fileKey);
 
@@ -3136,9 +3374,14 @@ function protectedKeys() {
   return keep;
 }
 
-function evictIfNeeded(incomingKey) {
+function evictIfNeeded(incomingKey, incomingBytes = 0) {
   const keep = protectedKeys();
-  while (Audio.decoded.size >= MAX_DECODED) {
+  const tooMuch = () =>
+    Audio.decoded.size >= MAX_DECODED
+    || (Audio.decoded.size >= MIN_DECODED
+        && Audio.decodedBytes + incomingBytes > DECODE_BUDGET);
+
+  while (tooMuch()) {
     // Älteste Spur suchen, die weder geschützt noch gerade hörbar ist.
     const victim = Audio.lru.find((k) =>
       k !== incomingKey && (Audio.levels.get(k) || 0) === 0 && !keep.has(k))
@@ -3151,10 +3394,33 @@ function evictIfNeeded(incomingKey) {
 
 function audioUnload(key) {
   Audio.node.port.postMessage({ type: 'unload', id: key });
+  Audio.decodedBytes -= Audio.decoded.get(key)?.bytes || 0;
+  if (Audio.decodedBytes < 0) Audio.decodedBytes = 0;
   Audio.decoded.delete(key);
   Audio.levels.delete(key);
   const i = Audio.lru.indexOf(key);
   if (i >= 0) Audio.lru.splice(i, 1);
+}
+
+/**
+ * Lädt die übrigen Stimmen im Hintergrund, damit ein Stimmenwechsel später
+ * sofort klingt. Läuft nacheinander, damit das Dekodieren die Bedienung
+ * nicht ausbremst, und hört auf, sobald das Speicherbudget erreicht ist.
+ */
+async function prefetchTracks(song, order) {
+  for (const track of order) {
+    if (!Audio.song || Audio.song.key !== song.key) return;   // Song gewechselt
+    if (Audio.decoded.has(track.fileKey) || track.broken) continue;
+    if (Audio.decoded.size >= MAX_DECODED) return;
+    if (Audio.decodedBytes > DECODE_BUDGET * 0.8) return;
+    try {
+      await audioLoadTrack(track, 0);
+    } catch (err) {
+      console.warn('[player] Vorladen', track.fileName, err);
+      track.broken = true;
+      renderVoiceButtons();
+    }
+  }
 }
 
 function audioSetGain(key, value) {
@@ -3220,10 +3486,15 @@ function audioReset() {
   if (!Audio.ready) return;
   audioPause();
   for (const key of [...Audio.decoded.keys()]) audioUnload(key);
+  Audio.loading.clear();
+  Audio.onLoadingChange?.();
   Audio.song = null;
-  Audio.position = 0;
   Audio.duration = 0;
   audioSetLoop(null);
+  // Position ausdrücklich zurücksetzen: sonst startet der nächste Song an
+  // der Stelle, an der der vorige stand.
+  audioSeek(0);
+  Audio.position = 0;
 }
 
 /* ==========================================================================
@@ -3250,6 +3521,35 @@ function newFileKey() {
   return crypto.randomUUID
     ? `f_${crypto.randomUUID()}`
     : `f_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Trennt eine Kopfzeile vom Liedtext ab.
+ *
+ * Die Textdateien im Chor beginnen mit einer Zeile wie
+ * `# John Moods - Liedname`, danach folgt der eigentliche Text. Daraus wird
+ * der Interpret gewonnen; die Kopfzeile selbst gehört nicht in den Text.
+ *
+ * @returns {{ artist: string|null, title: string|null, text: string }}
+ */
+function splitLyricsHeader(raw) {
+  const lines = raw.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;   // führende Leerzeilen
+
+  if (i >= lines.length || !lines[i].trim().startsWith('#')) {
+    return { artist: null, title: null, text: raw.replace(/^\s*\n/, '') };
+  }
+
+  const head = lines[i].replace(/^#+\s*/, '').trim();
+  const rest = lines.slice(i + 1).join('\n').replace(/^\s*\n+/, '');
+
+  // „Interpret - Titel"; als Trenner gelten Bindestrich, Gedanken- und
+  // Halbgeviertstrich, jeweils mit Leerzeichen ringsum, damit Titel wie
+  // „Sing-Sang" nicht zerschnitten werden.
+  const m = head.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+  if (m) return { artist: m[1].trim(), title: m[2].trim(), text: rest };
+  return { artist: null, title: head || null, text: rest };
 }
 
 /** Text aus einem Blob lesen: UTF-8, bei ungültigen Bytes Windows-1252. */
@@ -3538,10 +3838,17 @@ function renderSheetSong(song) {
       el('div', { class: 'small muted', text: meta }));
 
     if (song.existing) {
-      const allSame = song.tracks.every((t) => t.status === 'same');
+      // Genau benennen, was passiert — „wird ergänzt" wäre falsch, wenn nur
+      // dieselben Dateien noch einmal im Archiv liegen.
+      const neu = song.tracks.filter((t) => t.status === 'new').length;
+      const geaendert = song.tracks.filter((t) => t.status === 'changed').length;
+      const parts = [];
+      if (neu) parts.push(plural(neu, 'neue Stimme', 'neue Stimmen'));
+      if (geaendert) parts.push(`${plural(geaendert, 'Aufnahme', 'Aufnahmen')} neuer`);
+
       titleBlock.append(el('span', {
-        class: allSame ? 'badge' : 'badge badge--new',
-        text: allSame ? 'bereits vorhanden' : 'wird ergänzt',
+        class: parts.length ? 'badge badge--new' : 'badge',
+        text: parts.length ? parts.join(' · ') : 'bereits vorhanden',
       }));
     } else if (song.similar) {
       titleBlock.append(el('span', {
@@ -3804,7 +4111,10 @@ async function runImport() {
       // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
       if (scan.lyricsEntry) {
         try {
-          song.lyrics = await readTextBlob(await entryBlob(scan.lyricsEntry));
+          const raw = await readTextBlob(await entryBlob(scan.lyricsEntry));
+          const { artist, text } = splitLyricsHeader(raw);
+          song.lyrics = text;
+          if (artist) song.artist = artist;
         } catch (err) {
           console.warn('[import] Liedtext', err);
           report.failed.push(`${scan.lyricsEntry.name} (Text nicht lesbar)`);
@@ -4056,11 +4366,10 @@ function preferredTrack(song) {
   return mine || song.tracks.find((t) => t.voice === 'FULL') || song.tracks[0] || null;
 }
 
-function setLoadingText(text) {
-  const row = $('#player-loading');
-  if (!text) { row.hidden = true; return; }
-  $('#player-loading-text').textContent = text;
-  row.hidden = false;
+/** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
+function renderLoadingState() {
+  $('#player-loading').hidden = Audio.loading.size === 0;
+  renderVoiceButtons();
 }
 
 function renderVoiceButtons() {
@@ -4080,9 +4389,10 @@ function renderVoiceButtons() {
       'data-broken': track.broken ? 'true' : null,
     }, el('span', { text: track.label }));
 
+    // Bewusst ohne Dateigröße und ohne „bereit": im Alltag zählt nur, welche
+    // Stimme klingt. Lädt eine Spur gerade, zeigt das ein kleiner Punkt.
     if (track.broken) btn.append(el('small', { text: 'nicht abspielbar' }));
-    else if (Audio.decoded.has(track.fileKey)) btn.append(el('small', { text: 'bereit' }));
-    else btn.append(el('small', { text: fmtBytes(track.size) }));
+    else if (Audio.loading.has(track.fileKey)) btn.append(el('small', { class: 'dot', text: '•••' }));
 
     btn.addEventListener('click', () => selectTrack(track));
     host.append(btn);
@@ -4136,14 +4446,11 @@ async function selectTrack(track) {
     } else if (Audio.decoded.has(track.fileKey)) {
       audioSetGain(track.fileKey, 1);
     } else {
-      setLoadingText(`${track.label} wird geladen …`);
       try {
         await audioLoadTrack(track, 1);
       } catch (err) {
         markBroken(track, err);
         return;
-      } finally {
-        if (token === loadToken) setLoadingText('');
       }
     }
     renderVoiceButtons();
@@ -4156,20 +4463,16 @@ async function selectTrack(track) {
   for (const key of Audio.decoded.keys()) {
     if (key !== track.fileKey) audioSetGain(key, 0);
   }
+  renderVoiceButtons();
 
   if (Audio.decoded.has(track.fileKey)) {
     audioSetGain(track.fileKey, 1);
-    setLoadingText('');
   } else {
-    // Kurzes Nachladen ist hinnehmbar — ein Speicherabsturz nicht.
-    setLoadingText(`${track.label} wird geladen …`);
     try {
       await audioLoadTrack(track, token === loadToken ? 1 : 0);
     } catch (err) {
       markBroken(track, err);
       return;
-    } finally {
-      if (token === loadToken) setLoadingText('');
     }
     if (token !== loadToken) return;   // inzwischen wurde eine andere gewählt
   }
@@ -4225,9 +4528,10 @@ async function openPlayer(songId) {
 
   playerSong = song;
   playerEl.hidden = false;
-  $('#player-title').textContent = song.title;
+  $('#player-title').textContent = songLabel(song);
   $('#player-sub').textContent = `${plural(song.tracks.length, 'Stimme', 'Stimmen')}`;
   $('#player-hint').hidden = true;
+  renderQueue();
   mixMode = false;
   $('#btn-mix').setAttribute('aria-pressed', 'false');
   $('#btn-mix').textContent = 'Mischmodus einschalten';
@@ -4239,16 +4543,15 @@ async function openPlayer(songId) {
   setPlayIcon(false);
   updateSeekUI(0);
   updateLoopUI();
+  renderRepeatMode();
   renderVoiceButtons();
   renderPlayerExtras();
   loadSongLoops();
 
   try {
-    setLoadingText('Spuren werden geladen …');
     await audioInit();
   } catch (err) {
     console.error(err);
-    setLoadingText('');
     banner('Die Audiowiedergabe konnte nicht gestartet werden.', { kind: 'error' });
     return;
   }
@@ -4257,6 +4560,9 @@ async function openPlayer(songId) {
   Audio.rate = 1;
   audioSetRate(1);
   audioSetLoop(null);
+  audioSeek(0);
+  updateSeekUI(0);
+  Audio.onLoadingChange = renderLoadingState;
   Audio.onPosition = (s) => {
     if (!seeking) updateSeekUI(s);
     // Der Sperrbildschirm zeigt den Fortschritt nur, wenn er regelmäßig
@@ -4272,16 +4578,11 @@ async function openPlayer(songId) {
   // Gesamtmischung — so ist der Player schnell bedienbar.
   const first = preferredTrack(song);
   if (!first) {
-    setLoadingText('');
     banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
     return;
   }
 
-  try {
-    await selectTrack(first);
-  } finally {
-    setLoadingText('');
-  }
+  await selectTrack(first);
 
   // Beim automatischen Weiterschalten in einer Playlist gleich losspielen.
   if (pendingAutoPlay) {
@@ -4290,10 +4591,12 @@ async function openPlayer(songId) {
     setPlayIcon(true);
   }
 
-  const full = song.tracks.find((t) => t.voice === 'FULL' && t.fileKey !== first.fileKey);
-  if (full && !full.broken) {
-    audioLoadTrack(full, 0).catch((err) => console.warn('[player] Gesamt', err));
-  }
+  // Alle übrigen Stimmen im Hintergrund vorbereiten, damit ein Wechsel später
+  // ohne Wartezeit klingt. Reihenfolge: Gesamtmischung, dann der Rest.
+  const rest = song.tracks
+    .filter((t) => t.fileKey !== first.fileKey)
+    .sort((a, b) => (a.voice === 'FULL' ? -1 : 0) - (b.voice === 'FULL' ? -1 : 0));
+  prefetchTracks(song, rest);
 
   showReplacedNotice(song);
   showLengthNotice(song);
@@ -4347,11 +4650,76 @@ function showLengthNotice(song) {
   }
 }
 
+/** Titel, dahinter der Interpret in Klammern, wenn er bekannt ist. */
+function songLabel(song) {
+  if (!song) return '';
+  return song.artist ? `${song.title} (${song.artist})` : song.title;
+}
+
+/** Zeigt die laufende Playlist im Player an, mit dem aktuellen Titel markiert. */
+async function renderQueue() {
+  const block = $('#queue-block');
+  const host = $('#queue-list');
+  host.textContent = '';
+
+  if (!playQueue || !playQueue.ids.length) { block.hidden = true; return; }
+  block.hidden = false;
+  $('#queue-title').textContent = `Playlist: ${playQueue.name}`;
+
+  const songs = await DB.metaByType('song').catch(() => []);
+  const byId = new Map(songs.map((s) => [s.id, s]));
+
+  playQueue.ids.forEach((id, index) => {
+    const song = byId.get(id);
+    if (!song) return;
+    const current = playerSong && song.id === playerSong.id;
+    const row = el('button', {
+      class: 'queue-item', type: 'button',
+      'data-current': current ? 'true' : 'false',
+      onclick: () => {
+        playQueue.index = index;
+        navigate(`#song/${id}`, { replace: true });
+      },
+    },
+      el('span', { class: 'num', text: String(index + 1) }),
+      el('span', { class: 'grow', text: songLabel(song) }));
+    if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
+    host.append(row);
+  });
+}
+
+/**
+ * Verhalten am Ende eines Liedes: anhalten, wiederholen oder weiterschalten.
+ * Läuft eine Playlist, ist „Nächstes Lied" der Standard.
+ */
 function onPlaybackEnded() {
   setPlayIcon(false);
-  updateSeekUI(Audio.duration);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
-  playlistAdvance();
+
+  const mode = settings.repeatMode || 'off';
+  if (mode === 'song') {
+    updateSeekUI(audioSeek(0));
+    audioPlay().then(() => setPlayIcon(true));
+    return;
+  }
+  if (mode === 'next' || (mode === 'off' && playQueue)) {
+    if (playQueue) { playlistAdvance(); return; }
+  }
+  updateSeekUI(Audio.duration);
+}
+
+$('#repeat-row').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.rate-btn');
+  if (!btn) return;
+  await saveSettings({ repeatMode: btn.dataset.repeat });
+  renderRepeatMode();
+});
+
+function renderRepeatMode() {
+  const mode = settings.repeatMode || 'off';
+  $$('#repeat-row .rate-btn').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.repeat === mode ? 'true' : 'false');
+  });
 }
 
 function closePlayer() {
@@ -4385,6 +4753,8 @@ $('#btn-play').addEventListener('click', async () => {
   updateMediaSession();
 });
 
+$('#btn-restart').addEventListener('click', () => updateSeekUI(audioSeek(0)));
+$('#btn-back30').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 30)));
 $('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 10)));
 $('#btn-fwd10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position + 10)));
 
@@ -4915,7 +5285,10 @@ function newPlaylist(name, titles = []) {
   };
 }
 
-/** Legt eine Playlist aus geparstem Text an und meldet fehlende Titel. */
+/**
+ * Öffnet eine Playlist aus geparstem Text als Entwurf. Gespeichert wird erst,
+ * wenn der Nutzer es ausdrücklich sagt.
+ */
 async function createPlaylistFromText(text, fallbackName) {
   const { name, titles } = parsePlaylistText(text, fallbackName);
   if (!titles.length) {
@@ -4926,30 +5299,22 @@ async function createPlaylistFromText(text, fallbackName) {
   const songs = await DB.metaByType('song');
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
 
-  const pl = newPlaylist(name || 'Playlist', titles);
-  await savePlaylist(pl);
-  await renderPlaylists();
-
   // Nicht gefundene Titel werden immer genannt, nie still verworfen.
   if (missing.length) {
-    banner(`${missing.length} von ${titles.length} Titeln nicht gefunden: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ' …' : ''} — vermutlich noch nicht importiert.`,
+    banner(`${missing.length} von ${titles.length} Titeln nicht gefunden: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ' …' : ''} — vermutlich noch nicht importiert. Sie bleiben als Platzhalter stehen.`,
       { kind: 'error' });
-  } else {
-    banner(`Playlist „${pl.name}" mit ${plural(titles.length, 'Titel', 'Titeln')} angelegt.`, { kind: 'ok' });
   }
-  navigate(`#playlist/${pl.id}`);
-  return pl;
+
+  openDraft(newPlaylist(name || 'Playlist', titles), true);
+  return plDraft;
 }
 
 $('#btn-pl-new').addEventListener('click', async () => {
   const name = await promptDialog({
-    title: 'Neue Playlist', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Anlegen',
+    title: 'Neue Playlist', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
   });
   if (name === null || !name.trim()) return;
-  const pl = newPlaylist(name.trim());
-  await savePlaylist(pl);
-  await renderPlaylists();
-  navigate(`#playlist/${pl.id}`);
+  openDraft(newPlaylist(name.trim()), true);
 });
 
 $('#btn-pl-import').addEventListener('click', () => $('#pl-input').click());
@@ -5009,19 +5374,53 @@ async function renderPlaylists() {
   host.append(ul);
 }
 
-/* ---------- Detailansicht ------------------------------------------------ */
+/* ---------- Detailansicht: Entwurf, Speichern, Verwerfen ---------------- */
+
+// An der Playlist wird in einem Entwurf gearbeitet. Erst „Speichern" schreibt
+// sie in die Datenbank — so bleibt eine versehentliche Änderung folgenlos.
+let plDraft = null;
+let plSaved = null;    // zuletzt gespeicherter Stand, null bei neuer Playlist
+let plDirty = false;
+
+function openDraft(playlist, isNew) {
+  plSaved = isNew ? null : JSON.parse(JSON.stringify(playlist));
+  plDraft = JSON.parse(JSON.stringify(playlist));
+  plDirty = isNew;
+  openPlaylist = plDraft;
+  $('#playlist-view').hidden = false;
+  $('#pl-search').value = '';
+  if (location.hash !== `#playlist/${plDraft.id}`) {
+    history.pushState({}, '', `#playlist/${plDraft.id}`);
+  }
+  renderPlaylistDetail();
+}
+
+function markDirty() {
+  plDirty = true;
+  updateDraftButtons();
+}
+
+function updateDraftButtons() {
+  $('#pl-dirty').hidden = !plDirty;
+  $('#btn-pl-save').disabled = !plDirty;
+  $('#btn-pl-discard').disabled = !plDirty;
+}
 
 async function openPlaylistView(id) {
+  // Ein Entwurf, der noch nicht gespeichert ist, bleibt beim Zurückkehren offen.
+  if (plDraft && plDraft.id === id) {
+    openPlaylist = plDraft;
+    $('#playlist-view').hidden = false;
+    await renderPlaylistDetail();
+    return;
+  }
   const pl = await DB.metaGet(`playlist:${id}`).catch(() => null);
   if (!pl) {
     banner('Diese Playlist ist nicht mehr vorhanden.', { kind: 'error' });
     showView('playlists');
     return;
   }
-  openPlaylist = pl;
-  $('#playlist-view').hidden = false;
-  $('#pl-search').value = '';
-  await renderPlaylistDetail();
+  openDraft(pl, false);
 }
 
 function closePlaylistView() {
@@ -5029,8 +5428,62 @@ function closePlaylistView() {
   openPlaylist = null;
 }
 
+$('#btn-pl-save').addEventListener('click', async () => {
+  if (!plDraft) return;
+  await savePlaylist(plDraft);
+  plSaved = JSON.parse(JSON.stringify(plDraft));
+  plDirty = false;
+  updateDraftButtons();
+  await renderPlaylists();
+  banner('Playlist gespeichert.', { kind: 'ok' });
+});
+
+$('#btn-pl-discard').addEventListener('click', async () => {
+  if (!plDraft) return;
+  const ok = await confirmDialog({
+    title: 'Änderungen verwerfen?',
+    text: plSaved ? 'Die Playlist wird auf den zuletzt gespeicherten Stand zurückgesetzt.'
+                  : 'Die neue Playlist wird nicht angelegt.',
+    okLabel: 'Verwerfen', danger: true,
+  });
+  if (!ok) return;
+
+  if (plSaved) {
+    plDraft = JSON.parse(JSON.stringify(plSaved));
+    openPlaylist = plDraft;
+    plDirty = false;
+    await renderPlaylistDetail();
+  } else {
+    plDraft = null;
+    plDirty = false;
+    history.back();
+  }
+});
+
+/** Vor dem Verlassen nachfragen, wenn etwas offen ist. */
+async function confirmLeaveDraft() {
+  if (!plDirty || !plDraft) return true;
+  const choice = await choiceDialog({
+    title: 'Nicht gespeicherte Änderungen',
+    text: `„${plDraft.name}" wurde geändert.`,
+    options: [
+      { value: 'save', label: 'Speichern', primary: true },
+      { value: 'drop', label: 'Verwerfen', danger: true },
+    ],
+  });
+  if (!choice) return false;
+  if (choice === 'save') {
+    await savePlaylist(plDraft);
+    await renderPlaylists();
+    banner('Playlist gespeichert.', { kind: 'ok' });
+  }
+  plDirty = false;
+  plDraft = null;
+  return true;
+}
+
 async function renderPlaylistDetail() {
-  const pl = openPlaylist;
+  const pl = plDraft;
   if (!pl) return;
   const songs = await DB.metaByType('song').catch(() => []);
 
@@ -5049,13 +5502,14 @@ async function renderPlaylistDetail() {
 
   renderPlaylistEntries(songs);
   renderPlaylistCandidates(songs);
+  updateDraftButtons();
   $('#btn-pl-play').disabled = titles.length === 0 || missing.length === titles.length;
 }
 
 function renderPlaylistEntries(songs) {
   const host = $('#pl-entries');
   host.textContent = '';
-  const titles = openPlaylist.songTitles || [];
+  const titles = plDraft.songTitles || [];
 
   if (!titles.length) {
     host.append(el('p', { class: 'small muted', style: 'margin:0',
@@ -5073,7 +5527,7 @@ function renderPlaylistEntries(songs) {
     grip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 7h8M8 12h8M8 17h8"/></svg>';
 
     const label = el('div', { class: 'grow' },
-      el('strong', { text: title }),
+      el('strong', { text: song ? songLabel(song) : title }),
       el('div', { class: 'small muted',
         text: song ? plural(song.tracks.length, 'Stimme', 'Stimmen') : 'noch nicht importiert' }));
 
@@ -5083,8 +5537,8 @@ function renderPlaylistEntries(songs) {
     });
     remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     remove.addEventListener('click', async () => {
-      openPlaylist.songTitles.splice(index, 1);
-      await savePlaylist(openPlaylist);
+      plDraft.songTitles.splice(index, 1);
+      markDirty();
       await renderPlaylistDetail();
     });
 
@@ -5134,7 +5588,6 @@ function installEntryDragging(host) {
     if (!dragging) return;
     e.preventDefault();
     dragging.to = rowAt(e.clientY);
-    // Vorschau: die gezogene Zeile an die Zielposition setzen
     const rows = [...host.querySelectorAll('.pl-entry')];
     const target = rows[dragging.to] || null;
     if (target !== dragging.row) host.insertBefore(dragging.row, target);
@@ -5145,11 +5598,12 @@ function installEntryDragging(host) {
     const row = dragging.row;
     row.classList.remove('is-dragging');
     const order = [...host.querySelectorAll('.pl-entry')].map((r) => Number(r.dataset.index));
+    const moved = order.some((v, i) => v !== i);
     dragging = null;
 
-    const titles = openPlaylist.songTitles;
-    openPlaylist.songTitles = order.map((i) => titles[i]);
-    await savePlaylist(openPlaylist);
+    const titles = plDraft.songTitles;
+    plDraft.songTitles = order.map((i) => titles[i]);
+    if (moved) markDirty();
     await renderPlaylistDetail();
   };
 
@@ -5161,7 +5615,7 @@ function renderPlaylistCandidates(songs) {
   const host = $('#pl-candidates');
   host.textContent = '';
   const q = normalizeTitle($('#pl-search').value || '');
-  const inList = new Set((openPlaylist.songTitles || []).map(normalizeTitle));
+  const inList = new Set((plDraft.songTitles || []).map(normalizeTitle));
 
   let list = songs.slice().sort((a, b) => collator.compare(a.title, b.title));
   if (q) list = list.filter((s) => s.normTitle.includes(q));
@@ -5178,16 +5632,16 @@ function renderPlaylistCandidates(songs) {
       class: 'list-item', type: 'button', style: already ? 'opacity:.55' : '',
       onclick: async () => {
         if (already) {
-          openPlaylist.songTitles = openPlaylist.songTitles
+          plDraft.songTitles = plDraft.songTitles
             .filter((t) => normalizeTitle(t) !== song.normTitle);
         } else {
-          openPlaylist.songTitles.push(song.title);
+          plDraft.songTitles.push(song.title);
         }
-        await savePlaylist(openPlaylist);
+        markDirty();
         await renderPlaylistDetail();
       },
     },
-      el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: song.title })),
+      el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) })),
       el('span', { class: 'small muted', text: already ? 'entfernen' : 'hinzufügen' })));
   }
 }
@@ -5196,38 +5650,41 @@ $('#pl-search').addEventListener('input', async () => {
   renderPlaylistCandidates(await DB.metaByType('song').catch(() => []));
 });
 
-$('#pl-back').addEventListener('click', () => history.back());
+$('#pl-back').addEventListener('click', async () => {
+  if (await confirmLeaveDraft()) history.back();
+});
 
 $('#pl-rename').addEventListener('click', async () => {
-  const name = await promptDialog({ title: 'Playlist umbenennen', value: openPlaylist.name });
+  const name = await promptDialog({ title: 'Playlist umbenennen', value: plDraft.name });
   if (name === null || !name.trim()) return;
-  openPlaylist.name = name.trim();
-  await savePlaylist(openPlaylist);
+  plDraft.name = name.trim();
+  markDirty();
   await renderPlaylistDetail();
-  await renderPlaylists();
 });
 
 $('#btn-pl-delete').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Playlist löschen?',
-    text: `„${openPlaylist.name}" wird entfernt. Die Songs bleiben erhalten.`,
+    text: `„${plDraft.name}" wird entfernt. Die Songs bleiben erhalten.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
-  await DB.metaDelete(openPlaylist.key);
+  if (plSaved) await DB.metaDelete(plDraft.key);
+  plDraft = null;
+  plDirty = false;
   await renderPlaylists();
   history.back();
 });
 
 /** Teilt oder sichert die Playlist als Textdatei. */
 async function sharePlaylistFile() {
-  const text = playlistToText(openPlaylist);
-  const fileName = `${openPlaylist.name.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+  const text = playlistToText(plDraft);
+  const fileName = `${plDraft.name.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
   const file = new File([text], fileName, { type: 'text/plain' });
 
   if (navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ files: [file], title: openPlaylist.name });
+      await navigator.share({ files: [file], title: plDraft.name });
       return;
     } catch (err) {
       if (err?.name === 'AbortError') return;
@@ -5248,12 +5705,11 @@ function downloadBlob(blob, fileName) {
 $('#btn-pl-export').addEventListener('click', sharePlaylistFile);
 
 $('#btn-pl-copy').addEventListener('click', async () => {
-  const text = playlistToText(openPlaylist);
+  const text = playlistToText(plDraft);
   try {
     await navigator.clipboard.writeText(text);
     banner('Playlist in die Zwischenablage kopiert.', { kind: 'ok' });
   } catch {
-    // Ohne Zwischenablage-Zugriff den Text zum Markieren anbieten.
     await promptDialog({
       title: 'Playlist als Text', text: 'Text markieren und kopieren.',
       value: text.replace(/\n/g, ' · '), okLabel: 'Fertig',
@@ -5265,12 +5721,12 @@ $('#btn-pl-copy').addEventListener('click', async () => {
 
 $('#btn-pl-play').addEventListener('click', async () => {
   const songs = await DB.metaByType('song').catch(() => []);
-  const entries = (openPlaylist.songTitles || [])
+  const entries = (plDraft.songTitles || [])
     .map((t) => findSongByTitle(songs, t))
     .filter(Boolean);
   if (!entries.length) return;
 
-  playQueue = { name: openPlaylist.name, ids: entries.map((s) => s.id), index: 0 };
+  playQueue = { name: plDraft.name, ids: entries.map((s) => s.id), index: 0 };
   navigate(`#song/${playQueue.ids[0]}`);
 });
 
@@ -5573,6 +6029,13 @@ function runSelfTests() {
     ['Alt wie ein Baum.mp3',     'Alt wie ein Baum', null],
     ['Alt wie ein Baum ALT.mp3', 'Alt wie ein Baum', 'ALT'],
     ['SOP Blaue Augen.mp3',      'Blaue Augen',      'SOP'],
+    // Schreibweisen aus der gewachsenen Ablage
+    ['ALTO.mp3',                 'Mein Lied',        'ALT'],
+    ['Lead Bass.mp3',            'Mein Lied',        'BASS'],
+    ['Sopran 2.mp3',             'Mein Lied',        'SOP'],
+    ['Tenor 1.mp3',              'Mein Lied',        'TEN'],
+    ['Karaoke.mp3',              'Mein Lied',        'PIANO'],
+    ['Mein Lied Chor.mp3',       'Mein Lied',        'FULL'],
   ];
 
   const failed = [];
@@ -5622,6 +6085,21 @@ function runSelfTests() {
     if (got !== expected) failed.push(`Titel-Normalisierung: "${got}", erwartet "${expected}"`);
   }
 
+  // Kopfzeile im Liedtext: „# Interpret - Titel"
+  const header = splitLyricsHeader('# John Moods - Blaue Augen\n\nErste Zeile\nZweite Zeile\n');
+  if (header.artist !== 'John Moods' || header.title !== 'Blaue Augen'
+      || !header.text.startsWith('Erste Zeile')) {
+    failed.push(`Liedtext-Kopfzeile: ${JSON.stringify(header)}`);
+  }
+  const plain = splitLyricsHeader('Nur Text\nZweite Zeile\n');
+  if (plain.artist !== null || !plain.text.startsWith('Nur Text')) {
+    failed.push('Liedtext ohne Kopfzeile wurde verändert');
+  }
+  const noDash = splitLyricsHeader('# Sing-Sang\n\nText\n');
+  if (noDash.artist !== null || noDash.title !== 'Sing-Sang') {
+    failed.push(`Kopfzeile ohne Interpret: ${JSON.stringify(noDash)}`);
+  }
+
   // Mehrere Fassungen: vorgeschlagen wird die mit den meisten Stimmen.
   const groups = groupDuplicates([
     { core: 'blaue augen', title: 'Blaue Augen', tracks: [{ voice: 'FULL' }] },
@@ -5631,7 +6109,7 @@ function runSelfTests() {
     failed.push('groupDuplicates schlägt die falsche Fassung vor');
   }
 
-  const total = voiceCases.length + titleCases.length + 4;
+  const total = voiceCases.length + titleCases.length + 7;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
