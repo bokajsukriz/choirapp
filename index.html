@@ -308,6 +308,22 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Songliste (ab M1 gefüllt) */
 .list { list-style: none; margin: 0; padding: 0; }
 
+/* Zeilen außerhalb des Bildschirms überspringt der Browser beim Berechnen und
+   Zeichnen. Bei einer großen Bibliothek ist das der Unterschied zwischen einem
+   spürbaren Hänger und einem sofortigen Reiterwechsel — sichtbar ändert sich
+   nichts. Browser ohne Unterstützung (ältere Safari-Versionen) ignorieren die
+   Angabe einfach.
+   `auto` merkt sich die zuletzt gemessene Höhe, damit die Bildlaufleiste beim
+   Scrollen nicht springt; 66px ist die Höhe einer einzeiligen Zeile.
+   Betrifft die Songliste, die Titelauswahl beim Bearbeiten einer Playlist und
+   die Auswahlmaske vor dem Import — die drei Listen, die lang werden. */
+.list > li,
+#pl-candidates > .list-item,
+.pick-song {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 66px;
+}
+
 .list-item {
   display: flex;
   align-items: center;
@@ -2176,8 +2192,9 @@ function reqPromise(request) {
  * Jede Schreiboperation, die einen Song berühren kann, verwirft ihn wieder.
  */
 let songCache = null;
+let songCacheStamp = 0;
 
-function dropSongCache() { songCache = null; }
+function dropSongCache() { songCache = null; songCacheStamp++; }
 
 const DB = {
   async metaGet(key) {
@@ -2977,6 +2994,11 @@ let songFilter = null;   // null = „Alle"
 // Aufruf darf die Liste zeichnen.
 let songsRenderToken = 0;
 
+// Woraus die aktuell sichtbare Liste entstanden ist. Stimmt das noch, muss
+// nichts neu gebaut werden — der Wechsel zurück auf den Reiter „Songs" ist
+// sonst bei jeder Rückkehr ein kompletter Neuaufbau aller Zeilen.
+let songsRenderSignature = null;
+
 async function renderSongs() {
   const token = ++songsRenderToken;
   const host = $('#song-list-host');
@@ -2987,12 +3009,21 @@ async function renderSongs() {
   } catch (err) {
     console.error(err);
     if (token !== songsRenderToken) return;
+    songsRenderSignature = null;
     host.textContent = '';
     host.append(el('div', { class: 'card' },
       el('p', { class: 'small', text: 'Die Songliste konnte nicht geladen werden.' })));
     return;
   }
   if (token !== songsRenderToken) return;
+
+  // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
+  if (songs.length) updateBackupReminder();
+
+  const signature = `${songCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
+  if (signature === songsRenderSignature && host.firstChild) return;
+  songsRenderSignature = signature;
+
   host.textContent = '';
 
   if (!songs.length) {
@@ -3014,7 +3045,6 @@ async function renderSongs() {
   }
 
   $('#searchbar').hidden = false;
-  updateBackupReminder();
 
   // --- Filterleiste der Sammelordner (nur wenn es mehr als einen gibt) ----
   const collections = [...new Set(songs.flatMap((s) => s.collections || []))]
@@ -3168,8 +3198,17 @@ async function renderStorage() {
  * Loops und Playlisten bleiben dabei erhalten — sie hängen am Titel, nicht
  * an der Aufnahme.
  */
+/**
+ * Die Liste zum Löschen einzelner Songs und Stimmen.
+ *
+ * Wird erst gebaut, wenn sie jemand aufklappt. Vorher entstand sie bei jedem
+ * Öffnen der Einstellungen im Verborgenen — bei einer großen Bibliothek sind
+ * das tausende Elemente samt Symbolen, und der Wechsel in die Einstellungen
+ * hing dadurch mehrere Sekunden, obwohl niemand die Liste sehen wollte.
+ */
 async function renderStorageManager() {
   const host = $('#storage-manager');
+  if (host.hidden) { host.textContent = ''; return; }
   host.textContent = '';
 
   const songs = await DB.metaByType('song').catch(() => []);
@@ -3235,12 +3274,13 @@ async function renderStorageManager() {
 
 // Bei einer großen Bibliothek wird die Liste mit den Lösch-Buttons sonst
 // unübersichtlich — deshalb erst auf Wunsch einblenden.
-$('#btn-manage-storage').addEventListener('click', () => {
+$('#btn-manage-storage').addEventListener('click', async () => {
   const host = $('#storage-manager');
   const open = host.hidden;
   host.hidden = !open;
   $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
   $('#btn-manage-storage').textContent = open ? 'Einzelne Songs verwalten ausblenden' : 'Einzelne Songs verwalten';
+  await renderStorageManager();
 });
 
 async function deleteTrack(song, track) {
