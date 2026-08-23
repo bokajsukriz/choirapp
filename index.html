@@ -2175,13 +2175,6 @@ const DB = {
     return reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key));
   },
 
-  /** Speichert einen Blob. `key` wird vom Aufrufer vergeben (siehe M1). */
-  async filePut(key, blob, name = '') {
-    const record = { key, blob, size: blob.size, name };
-    await tx('files', 'readwrite', (files) => { files.put(record); });
-    return record;
-  },
-
   async fileDelete(keys) {
     const list = Array.isArray(keys) ? keys : [keys];
     if (!list.length) return;
@@ -2440,17 +2433,40 @@ async function zipReadDirectory(file) {
 
 const canInflate = typeof DecompressionStream === 'function';
 
-/** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
-async function zipExtract(file, entry) {
+/**
+ * Wo beginnen die Nutzdaten eines Eintrags?
+ *
+ * Der lokale Header hat eigene Längenangaben — die aus dem Inhaltsverzeichnis
+ * dürfen hier nicht verwendet werden, sie unterscheiden sich häufig. Das
+ * Ergebnis wird am Eintrag gemerkt: jeder dieser 30-Byte-Lesevorgänge ist auf
+ * dem Handy eine eigene Anfrage an das Dateisystem und kostet mehr Zeit als
+ * die Bytes vermuten lassen.
+ */
+async function zipDataStart(file, entry) {
+  if (entry.dataStart !== undefined) return entry.dataStart;
   const head = await sliceView(file, entry.headerOffset, entry.headerOffset + 30);
   if (head.getUint32(0, true) !== SIG_LOC) {
     throw new ZipError(`„${entry.path}" konnte im Archiv nicht gefunden werden.`);
   }
-  // Der lokale Header hat eigene Längenangaben — die aus dem Inhaltsverzeichnis
-  // dürfen hier nicht verwendet werden, sie unterscheiden sich häufig.
-  const nameLen  = head.getUint16(26, true);
-  const extraLen = head.getUint16(28, true);
-  const start = entry.headerOffset + 30 + nameLen + extraLen;
+  entry.dataStart = entry.headerOffset + 30
+    + head.getUint16(26, true) + head.getUint16(28, true);
+  return entry.dataStart;
+}
+
+/**
+ * Ermittelt die Datenanfänge vieler Einträge auf einmal.
+ *
+ * Nacheinander wäre jeder Lesevorgang eine eigene Wartezeit; nebeneinander
+ * laufen sie zusammen. Fehler werden hier bewusst verschluckt — sie treten
+ * beim eigentlichen Auspacken erneut auf und werden dort gemeldet.
+ */
+async function zipPrefetchStarts(file, entries) {
+  await Promise.all(entries.map((e) => zipDataStart(file, e).catch(() => {})));
+}
+
+/** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
+async function zipExtract(file, entry) {
+  const start = await zipDataStart(file, entry);
   const raw = file.slice(start, start + entry.compressedSize);
 
   // Methode 0 (stored) ist bei MP3s der Normalfall — Dropbox komprimiert sie
@@ -3183,7 +3199,7 @@ async function deleteTrack(song, track) {
     await DB.metaPut(song);
   } else {
     // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
-    for (const s of song.scores || []) await DB.fileDelete(s.fileKey);
+    await DB.fileDelete((song.scores || []).map((s) => s.fileKey));
     await DB.metaDelete(song.key);
   }
   await refreshAfterDelete();
@@ -3203,11 +3219,12 @@ async function deleteSong(song) {
 
   // Loops nicht löschen, sondern vom Song lösen — der Titel bleibt gemerkt.
   const loops = await DB.metaByType('loop').catch(() => []);
-  for (const loop of loops.filter((l) => l.songId === song.id)) {
+  const detached = loops.filter((l) => l.songId === song.id);
+  for (const loop of detached) {
     loop.songId = null;
     loop.songTitle = song.title;
-    await DB.metaPut(loop);
   }
+  await DB.metaPutMany(detached);
 
   await DB.metaDelete(song.key);
   if (playerSong && playerSong.id === song.id) closePlayer();
@@ -4476,18 +4493,65 @@ async function startFolderImport(fileList) {
 /* ---------- Schreiben ---------------------------------------------------- */
 
 /**
- * Schreibt die Auswahl in die Datenbank. Jede Datei wird einzeln extrahiert
- * und sofort geschrieben — so liegt nie mehr als eine Aufnahme im Speicher.
+ * Wie viel je Schreibvorgang gebündelt wird.
+ *
+ * Der teure Teil eines Imports ist nicht das Auspacken, sondern das Schreiben
+ * in die Datenbank: jede Transaktion kostet auf dem Handy Zeit, unabhängig von
+ * ihrer Größe. Statt 50 Einzelschreibungen sammelt der Import deshalb, bis
+ * eine der beiden Grenzen erreicht ist, und schreibt dann in einem Rutsch.
+ * Die Grenzen halten gleichzeitig den Speicherbedarf klein — bei
+ * komprimierten Archiven liegen die ausgepackten Daten so lange im Speicher.
+ */
+const IMPORT_BATCH_BYTES = 32 * 1024 * 1024;
+const IMPORT_BATCH_FILES = 12;
+
+/**
+ * Schreibt einen Stapel: Aufnahmen, die zugehörigen Songdatensätze und die
+ * abgelösten Altdateien — alles in einer einzigen Transaktion.
+ *
+ * Zusammen zu schreiben ist nicht nur schneller, sondern auch sicherer: Ein
+ * Abbruch mitten im Import kann so keine Dateien zurücklassen, auf die kein
+ * Song mehr zeigt (die hätte danach niemand je wieder gefunden oder gelöscht).
+ */
+async function flushImportBatch(batch) {
+  if (!batch.files.length && !batch.songs.size && !batch.obsolete.length) return;
+  const files = batch.files;
+  const songs = [...batch.songs];
+  const obsolete = batch.obsolete;
+  batch.files = [];
+  batch.songs = new Set();
+  batch.obsolete = [];
+  batch.bytes = 0;
+  await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
+    for (const rec of files) fileStore.put(rec);
+    for (const song of songs) metaStore.put(song);
+    // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
+    for (const key of obsolete) fileStore.delete(key);
+  });
+}
+
+/**
+ * Schreibt die Auswahl in die Datenbank.
+ *
  * Bricht der Vorgang ab (z.B. Speicher voll), bleibt alles bereits
- * Geschriebene erhalten.
+ * Geschriebene erhalten und bleibt in sich stimmig.
  */
 async function runImport() {
   const chosenSongs = pick.songs.filter((s) => s.tracks.some((t) => t.checked));
-  const totalFiles = chosenSongs.reduce((n, s) => n + s.tracks.filter((t) => t.checked).length, 0);
+  const chosenTracks = chosenSongs.flatMap((s) => s.tracks.filter((t) => t.checked));
+  const totalFiles = chosenTracks.length;
+  const totalBytes = chosenTracks.reduce((n, t) => n + (t.size || 0), 0) || 1;
 
   sheetImport.disabled = true;
   sheetProgress.hidden = false;
   const bar = sheetProgress.firstElementChild;
+
+  // Der Bildschirm darf während des Imports nicht ausgehen: iOS friert die
+  // Seite dann ein und der Import steht, bis das Handy wieder entsperrt wird.
+  let importLock = null;
+  if ('wakeLock' in navigator) {
+    importLock = await navigator.wakeLock.request('screen').catch(() => null);
+  }
 
   const report = {
     songsImported: 0, tracksAdded: 0, tracksReplaced: 0,
@@ -4497,7 +4561,33 @@ async function runImport() {
   for (const s of pick.skipped) report.failed.push(`${s.path} (${s.reason})`);
 
   const existingLoops = await DB.metaByType('loop');
+  const batch = { files: [], songs: new Set(), obsolete: [], bytes: 0 };
   let done = 0;
+  let doneBytes = 0;
+  const startedAt = Date.now();
+
+  // Fortschritt nach Bytes statt nach Dateien: eine 12-MB-Gesamtmischung
+  // dauert nun einmal länger als eine 3-MB-Einzelstimme.
+  const showProgress = (label) => {
+    const ratio = Math.min(1, doneBytes / totalBytes);
+    bar.style.width = `${ratio * 100}%`;
+    const elapsed = (Date.now() - startedAt) / 1000;
+    let rest = '';
+    if (ratio > 0.05 && elapsed > 3) {
+      const left = Math.round(elapsed / ratio - elapsed);
+      if (left > 5) rest = ` · noch etwa ${left < 60 ? `${left} s` : `${Math.round(left / 60)} min`}`;
+    }
+    sheetSummary.textContent = `${done} von ${totalFiles} Dateien${rest}`;
+    sheetPlan.textContent = label || '';
+  };
+  showProgress('');
+
+  // Die Lage der Nutzdaten im Archiv vorab und nebenläufig klären, damit das
+  // Auspacken später nicht bei jeder Datei einzeln darauf wartet.
+  if (pick.source.kind === 'zip') {
+    await zipPrefetchStarts(pick.source.file, chosenTracks.map((t) => t.entry))
+      .catch(() => { /* Fehler tauchen beim Auspacken wieder auf */ });
+  }
 
   try {
     for (const scan of chosenSongs) {
@@ -4525,14 +4615,16 @@ async function runImport() {
       }
 
       const songHasLoops = existingLoops.some((l) => l.songId === song.id);
-      const obsoleteKeys = [];
 
       for (const track of scan.tracks) {
         if (!track.checked) continue;
+        showProgress(track.fileName);
         try {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
-          await DB.filePut(fileKey, blob, track.fileName);
+          batch.files.push({ key: fileKey, blob, size: blob.size, name: track.fileName });
+          batch.bytes += blob.size;
+          batch.songs.add(song);
 
           const record = {
             voice: track.voice,
@@ -4545,7 +4637,7 @@ async function runImport() {
 
           const old = findExistingTrack(scan.existing, track);
           if (old) {
-            obsoleteKeys.push(old.fileKey);
+            batch.obsolete.push(old.fileKey);
             // Ersetzte Aufnahmen können gespeicherte Loops verschieben. Nichts
             // wird umgerechnet — der Player weist einmalig darauf hin (Spec 4.6).
             if (songHasLoops && old.durationSec) {
@@ -4561,13 +4653,19 @@ async function runImport() {
             song.tracks.push(record);
             report.tracksAdded++;
           }
+
+          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+            song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+            await flushImportBatch(batch);
+          }
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
           console.error('[import]', track.fileName, err);
           report.failed.push(`${track.fileName} (nicht lesbar)`);
         }
         done++;
-        bar.style.width = `${(done / totalFiles) * 100}%`;
+        doneBytes += track.size || 0;
+        showProgress(track.fileName);
       }
 
       // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
@@ -4587,17 +4685,18 @@ async function runImport() {
       for (const pdf of scan.pdfEntries) {
         try {
           const blob = await entryBlob(pdf);
-          const existing = song.scores.find((s) => s.fileName === pdf.name);
+          const fileKey = newFileKey();
+          const existing = song.scores.find((sc) => sc.fileName === pdf.name);
           if (existing) {
-            obsoleteKeys.push(existing.fileKey);
-            existing.fileKey = newFileKey();
+            batch.obsolete.push(existing.fileKey);
+            existing.fileKey = fileKey;
             existing.size = blob.size;
-            await DB.filePut(existing.fileKey, blob, pdf.name);
           } else {
-            const fileKey = newFileKey();
-            await DB.filePut(fileKey, blob, pdf.name);
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
+          batch.files.push({ key: fileKey, blob, size: blob.size, name: pdf.name });
+          batch.bytes += blob.size;
+          batch.songs.add(song);
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
           console.warn('[import] Noten', err);
@@ -4606,10 +4705,13 @@ async function runImport() {
       }
 
       song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-      await DB.metaPut(song);
-      if (obsoleteKeys.length) await DB.fileDelete(obsoleteKeys);
+      batch.songs.add(song);
+      if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+        await flushImportBatch(batch);
+      }
       report.songsImported++;
     }
+    await flushImportBatch(batch);
   } catch (err) {
     console.error('[import] abgebrochen', err);
     if (err && err.name === 'QuotaExceededError') {
@@ -4619,6 +4721,11 @@ async function runImport() {
     } else {
       report.failed.push('Der Import wurde vorzeitig abgebrochen.');
     }
+    // Was schon ausgepackt ist, soll nicht verloren gehen. Bei vollem Speicher
+    // scheitert auch das — dann bleibt eben der Stand davor.
+    try { await flushImportBatch(batch); } catch (e) { console.warn('[import] Rest', e); }
+  } finally {
+    importLock?.release().catch(() => {});
   }
 
   report.unchanged = selectionStats().unchanged;
