@@ -37,6 +37,7 @@
   --danger:     #ff4d6d;
   --ok:         #21b17f;
   --warn:       #ffb100;
+  --pill-line:  rgba(255,61,154,.32);   /* zarter Rosa-Rand für Pillenknöpfe */
 
   --radius:     20px;
   --tap:        44px;          /* Mindestgröße für Touch-Ziele */
@@ -83,7 +84,6 @@ body::before, body::after,
   border-radius: 50%;
   mix-blend-mode: multiply;
   opacity: .4;
-  filter: blur(2px);
   pointer-events: none;
   z-index: -1;
 }
@@ -336,10 +336,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
 .search-input {
   width: 100%;
   min-height: var(--tap);
-  padding: 11px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  padding: 11px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,61,154,.3);
+  background: rgba(255,61,154,.07);
   color: var(--text);
 }
 
@@ -363,7 +363,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   min-height: 38px;
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--pill-line);
   background: var(--surface);
   color: var(--muted);
   font-size: 0.88rem;
@@ -635,8 +635,7 @@ input[type="checkbox"] {
   flex: 0 0 auto;
   padding: 10px calc(var(--pad) + var(--safe-right))
            calc(10px + var(--safe-bottom)) calc(var(--pad) + var(--safe-left));
-  border-top: 1px solid var(--line);
-  background: var(--surface);
+  background: transparent;
 }
 
 /* Stimme + Geschwindigkeit: unter der Transportleiste, damit die Wiedergabe
@@ -656,7 +655,7 @@ input[type="checkbox"] {
   gap: 8px;
   min-width: 0;
   min-height: var(--tap);
-  border: 1px solid var(--line);
+  border: 1px solid var(--pill-line);
   background: var(--surface);
   border-radius: 999px;
   padding: 0 22px 0 14px;
@@ -778,7 +777,7 @@ input[type="checkbox"] {
   height: 52px;
   flex: 0 0 auto;
   border-radius: 999px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--pill-line);
   background: var(--surface-2);
   color: var(--text);
   font-weight: 650;
@@ -837,37 +836,46 @@ input[type="checkbox"] {
   gap: 6px;
 }
 
-.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; border-radius: 999px; }
+.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; border-radius: 999px; border-color: var(--pill-line); }
 
 #btn-loop-a[aria-pressed="true"], #btn-loop-b[aria-pressed="true"] {
   background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
 }
 
-.loop-controls .icon-only { padding: 10px; border-radius: 999px; }
+.loop-controls .icon-only { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
 .loop-controls .icon-only svg { width: 20px; height: 20px; }
 
-/* I/O-Schalter für Loop an/aus */
+/* Schalter für Loop an/aus — echte Wippe mit Knopf, damit der Zustand auf
+   den ersten Blick klar ist (nicht nur eine Farbänderung). */
 .loop-switch {
-  width: 56px;
-  min-height: var(--tap);
+  width: 52px;
+  height: 32px;
+  flex: 0 0 auto;
   border-radius: 999px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--pill-line);
   background: var(--surface-2);
-  color: var(--muted);
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0;
+  padding: 3px;
+  justify-content: flex-start;
 }
 
-.loop-switch svg { width: 20px; height: 20px; }
+.loop-switch-knob {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(36,27,61,.3);
+  transition: transform .18s ease;
+}
+
 .loop-switch[disabled] { opacity: 0.5; pointer-events: none; }
 
 .loop-switch[aria-checked="true"] {
   background: var(--ok);
-  color: var(--accent-ink);
   border-color: var(--ok);
 }
+.loop-switch[aria-checked="true"] .loop-switch-knob { transform: translateX(20px); }
 
 .loop-item {
   display: flex;
@@ -912,6 +920,19 @@ input[type="checkbox"] {
 .queue-item[data-current="true"] .grow { font-weight: 650; }
 .queue-item[data-missing="true"] { opacity: .6; }
 .queue-item[data-missing="true"] .grow { color: var(--muted); }
+
+.queue-more {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 0;
+  margin-bottom: 4px;
+}
 
 .queue-remove {
   flex: 0 0 auto;
@@ -1191,7 +1212,7 @@ input[type="checkbox"] {
       <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">A</button>
       <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">B</button>
       <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6a6 6 0 0 0 0 12H6"/><circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+        <span class="loop-switch-knob"></span>
       </button>
       <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
@@ -1618,16 +1639,18 @@ const VOICE_ICON = {
   OTHER: '?',
 };
 
-// Poppige Konfetti-Farben je Stimme für die Badges in der Songliste.
+// Poppige Konfetti-Farben je Stimme für die Badges in der Songliste — jede
+// Stimme eigenständig, FULL bewusst im Marken-Magenta, weil es bei jedem
+// Song vorkommt.
 const VOICE_COLOR = {
-  FULL:  '#33c9dc',
-  SOP:   '#ff3d9a',
-  ALT:   '#33c9dc',
+  FULL:  '#ff3d9a',
+  SOP:   '#33c9dc',
+  ALT:   '#7a5cff',
   TEN:   '#ffb23f',
-  BASS:  '#7a5cff',
-  BAR:   '#7a5cff',
-  LEAD:  '#ffb23f',
-  PIANO: '#ff3d9a',
+  BASS:  '#2fbf84',
+  BAR:   '#ff6f61',
+  LEAD:  '#e0a100',
+  PIANO: '#5c8dff',
   OTHER: '#8c81a6',
 };
 
@@ -2601,19 +2624,27 @@ function markIcon(kind) {
 let songQuery = '';
 let songFilter = null;   // null = „Alle"
 
+// Wie bei renderQueue()/renderPlaylists(): nur der letzte überlappende
+// Aufruf darf die Liste zeichnen.
+let songsRenderToken = 0;
+
 async function renderSongs() {
+  const token = ++songsRenderToken;
   const host = $('#song-list-host');
-  host.textContent = '';
 
   let songs = [];
   try {
     songs = await DB.metaByType('song');
   } catch (err) {
     console.error(err);
+    if (token !== songsRenderToken) return;
+    host.textContent = '';
     host.append(el('div', { class: 'card' },
       el('p', { class: 'small', text: 'Die Songliste konnte nicht geladen werden.' })));
     return;
   }
+  if (token !== songsRenderToken) return;
+  host.textContent = '';
 
   if (!songs.length) {
     $('#searchbar').hidden = true;
@@ -4771,6 +4802,7 @@ function songLabel(song) {
 // eintreffende Antwort ihre Einträge hinter die schon fertige Liste
 // („1, 2, 3, 1, 2, 3").
 let queueRenderToken = 0;
+let queueExpanded = false;
 
 async function renderQueue() {
   const token = ++queueRenderToken;
@@ -4794,9 +4826,18 @@ async function renderQueue() {
   host.textContent = '';
   const byId = new Map(songs.map((s) => [s.id, s]));
 
-  // Nur laufender und nächster Titel — der Rest der Playlist gehört in die
-  // Bearbeitungsansicht, nicht in die Player-Anzeige.
-  const rows = [playQueue.index, playQueue.index + 1].filter((i) => i >= 0 && i < total);
+  // Standardmäßig nur laufender und nächster Titel — auf Wunsch (über die
+  // „…"-Zeile) klappt die ganze Playlist auf.
+  const rows = queueExpanded
+    ? Array.from({ length: total }, (_, i) => i)
+    : [playQueue.index, playQueue.index + 1].filter((i) => i >= 0 && i < total);
+
+  if (!queueExpanded && playQueue.index > 0) {
+    host.append(el('button', {
+      class: 'queue-more', type: 'button',
+      onclick: () => { queueExpanded = true; renderQueue(); },
+    }, `⋯ ${plural(playQueue.index, 'Titel', 'Titel')} davor`));
+  }
 
   for (const index of rows) {
     const item = playQueue.items[index];
@@ -4827,6 +4868,22 @@ async function renderQueue() {
     if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
     else if (!song) row.append(el('span', { class: 'small muted', text: 'nicht verfügbar' }));
     host.append(row);
+  }
+
+  const restAfter = total - (playQueue.index + 2);
+  if (!queueExpanded && restAfter > 0) {
+    host.append(el('button', {
+      class: 'queue-more', type: 'button',
+      onclick: () => { queueExpanded = true; renderQueue(); },
+    }, `⋯ ${plural(restAfter, 'Titel', 'Titel')} danach`));
+  }
+
+  if (queueExpanded) {
+    host.append(el('button', {
+      class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
+      text: 'Weniger anzeigen',
+      onclick: () => { queueExpanded = false; renderQueue(); },
+    }));
   }
 }
 
@@ -5527,12 +5584,20 @@ $('#btn-pl-paste').addEventListener('click', async () => {
   await createPlaylistFromText(text, 'Eingefügte Playlist');
 });
 
+// Läuft renderPlaylists() mehrfach überlappend (z. B. Import und Tab-Wechsel
+// dicht hintereinander), darf nur der letzte Aufruf die Liste zeichnen —
+// sonst hängt eine verzögert eintreffende Antwort ihre Einträge hinter die
+// schon fertige Liste (Playlisten erschienen doppelt).
+let playlistsRenderToken = 0;
+
 async function renderPlaylists() {
+  const token = ++playlistsRenderToken;
   const host = $('#playlist-list-host');
-  host.textContent = '';
 
   const lists = await DB.metaByType('playlist').catch(() => []);
+  if (token !== playlistsRenderToken) return;
   if (!lists.length) {
+    host.textContent = '';
     host.append(el('div', { class: 'empty' },
       el('h2', { text: 'Noch keine Playlisten' }),
       el('p', { class: 'small', text: 'Lege eine an oder importiere die Textdatei des Chorleiters.' })));
@@ -5540,6 +5605,8 @@ async function renderPlaylists() {
   }
 
   const songs = await DB.metaByType('song').catch(() => []);
+  if (token !== playlistsRenderToken) return;
+  host.textContent = '';
   lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
 
   const ul = el('ul', { class: 'list' });
@@ -5962,21 +6029,21 @@ function playlistStep(delta, autoplay) {
 }
 
 /** Nach Songende automatisch zum nächsten (verfügbaren) Titel der Playlist. */
+/** Am Ende der Playlist geht es wieder beim ersten (verfügbaren) Titel los. */
 function playlistAdvance() {
   if (!playQueue) return;
-  let i = playQueue.index;
-  for (;;) {
-    i++;
-    if (i >= playQueue.items.length) {
-      banner(`Playlist „${playQueue.name}" zu Ende.`);
-      playQueue = null;
-      return;
-    }
-    if (playQueue.items[i].id) break;
+  const total = playQueue.items.length;
+  for (let step = 1; step <= total; step++) {
+    const i = (playQueue.index + step) % total;
+    if (!playQueue.items[i].id) continue;
+    if (i <= playQueue.index) banner(`Playlist „${playQueue.name}" beginnt von vorn.`);
+    playQueue.index = i;
+    pendingAutoPlay = true;
+    navigate(`#song/${playQueue.items[i].id}`, { replace: true });
+    return;
   }
-  playQueue.index = i;
-  pendingAutoPlay = true;
-  navigate(`#song/${playQueue.items[i].id}`, { replace: true });
+  banner(`Playlist „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
+  playQueue = null;
 }
 
 // Beim automatischen Weiterschalten soll der nächste Song gleich losspielen.
