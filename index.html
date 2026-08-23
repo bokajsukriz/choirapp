@@ -2883,17 +2883,13 @@ $('#btn-wipe').addEventListener('click', async () => {
 const WORKLET_SRC = `
 'use strict';
 
-// 4096 Samples sind bei 44,1 kHz rund 93 ms. Lange Fenster verschmieren
-// Einsätze etwas, klingen bei gehaltenen Chorklängen aber deutlich sauberer
-// als kurze — und genau dafür ist das langsame Üben da.
-const FRAME = 4096;
+// 2048 Samples sind bei 44,1 kHz rund 46 ms: lang genug für tiefe Männer-
+// stimmen, kurz genug, dass Einsätze nicht verschmieren.
+const FRAME = 2048;
 const HOP_OUT = FRAME >> 1;
-
-// Suchbereich für die Anschlussstelle. Er muss mindestens eine Periode des
-// tiefsten Tons abdecken: ein Bass bei 80 Hz hat 550 Samples Periodendauer.
-const SEARCH = 1200;
-const COARSE_STEP = 8;
-const CORR_LEN = 1200;
+const SEARCH = 300;        // Suchbereich für die Anschlussstelle (Samples)
+const SEARCH_STEP = 4;
+const CORR_LEN = 256;
 
 class ChoirProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -2913,12 +2909,6 @@ class ChoirProcessor extends AudioWorkletProcessor {
     this.qOff = 0;
     this.first = true;
     this.sinceReport = 0;
-    // Güte der Anschluss-Suche: 2 = volle Suche. Reißt der Puffer auf einem
-    // langsamen Gerät wiederholt, wird heruntergeschaltet und nach einer
-    // ruhigen Phase wieder hoch.
-    this.quality = 2;
-    this.underruns = 0;
-    this.clean = 0;
     this.gainStep = 1 / (0.015 * sampleRate);   // 15-ms-Rampe
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
@@ -2992,54 +2982,20 @@ class ChoirProcessor extends AudioWorkletProcessor {
     return best;
   }
 
-  /**
-   * Beste Anschlussstelle nahe der Zielposition.
-   *
-   * Verglichen wird mit dem Stück, das ohne Dehnung als Nächstes gekommen
-   * wäre. Die Ähnlichkeit wird auf die Lautstärke des Kandidaten normiert —
-   * ohne das gewinnt einfach die lauteste Stelle im Suchbereich, und genau
-   * daher kommen die pumpenden Artefakte bei starker Dehnung.
-   *
-   * Gesucht wird zweistufig: grob im ganzen Bereich, dann fein um den besten
-   * Treffer. Das kostet nur einen Bruchteil der vollen Suche.
-   */
+  /** Beste Anschlussstelle nahe der Zielposition (Kreuzkorrelation). */
   findBest(target) {
     const t = this.refTrack();
     if (!t) return target;
     const ref = this.windowPos + HOP_OUT;
-    if (ref < 0 || ref + CORR_LEN >= t.frames) return target;
+    if (ref + CORR_LEN >= t.frames) return target;
 
-    // Auf schwachen Geräten wird die Suche gröber (siehe quality unten):
-    // etwas mehr Artefakt ist immer noch besser als hörbare Aussetzer.
-    const step = COARSE_STEP << (2 - this.quality);
-    const len = this.quality === 2 ? CORR_LEN : CORR_LEN >> 1;
-    const stride = this.quality === 2 ? 2 : 4;
-
-    const ch = t.ch0;
-    const score = (p) => {
-      if (p < 0 || p + len >= t.frames) return -Infinity;
-      let dot = 0, energy = 0;
-      for (let i = 0; i < len; i += stride) {
-        const a = ch[ref + i];
-        const b = ch[p + i];
-        dot += a * b;
-        energy += b * b;
-      }
-      return energy > 0 ? dot / Math.sqrt(energy) : 0;
-    };
-
-    let bestPos = target;
-    let best = score(target);
-    for (let d = -SEARCH; d <= SEARCH; d += step) {
+    let bestPos = target, bestScore = -Infinity;
+    for (let d = -SEARCH; d <= SEARCH; d += SEARCH_STEP) {
       const p = target + d;
-      const s = score(p);
-      if (s > best) { best = s; bestPos = p; }
-    }
-    for (let d = -step + 1; d < step; d++) {
-      if (d === 0) continue;
-      const p = bestPos + d;
-      const s = score(p);
-      if (s > best) { best = s; bestPos = p; }
+      if (p < 0 || p + CORR_LEN >= t.frames) continue;
+      let s = 0;
+      for (let i = 0; i < CORR_LEN; i += 2) s += t.ch0[ref + i] * t.ch0[p + i];
+      if (s > bestScore) { bestScore = s; bestPos = p; }
     }
     return bestPos;
   }
@@ -3111,18 +3067,8 @@ class ChoirProcessor extends AudioWorkletProcessor {
     this.queue.push({ l: outL, r: outR });
   }
 
-  queuedSamples() {
-    let n = -this.qOff;
-    for (const b of this.queue) n += b.l.length;
-    return n;
-  }
-
   report(force) {
-    // Gemeldet wird die Stelle, die gerade zu hören ist — nicht die, die
-    // schon gerendert wurde. Sonst liefe die Anzeige dem Ton voraus.
-    const ahead = this.queuedSamples() * this.rate;
-    const heard = Math.max(0, this.pos - ahead);
-    this.port.postMessage({ type: 'pos', seconds: heard / sampleRate,
+    this.port.postMessage({ type: 'pos', seconds: this.pos / sampleRate,
                             playing: this.playing });
     if (force) this.sinceReport = 0;
   }
@@ -3141,19 +3087,7 @@ class ChoirProcessor extends AudioWorkletProcessor {
 
     let filled = 0;
     while (filled < n) {
-      if (!this.queue.length) {
-        // Der Puffer war leer — es musste mitten in der Ausgabe gerechnet
-        // werden. Häuft sich das, ist das Gerät zu langsam für die volle Suche.
-        if (this.playing && !this.first) {
-          this.underruns++;
-          this.clean = 0;
-          if (this.underruns > 6 && this.quality > 0) {
-            this.quality--;
-            this.underruns = 0;
-          }
-        }
-        this.renderHop();
-      }
+      if (!this.queue.length) this.renderHop();
       if (!this.queue.length) {                 // Ende erreicht
         L.fill(0, filled);
         if (R) R.fill(0, filled);
@@ -3168,15 +3102,6 @@ class ChoirProcessor extends AudioWorkletProcessor {
       filled += take;
       this.qOff += take;
       if (this.qOff >= b.l.length) { this.queue.shift(); this.qOff = 0; }
-    }
-
-    // Vorlauf aufbauen, aber höchstens einen Hop je Aufruf. Ein Aufruf hat nur
-    // knapp 3 ms Zeit; würde die Anschluss-Suche immer erst dann laufen, wenn
-    // der Puffer leer ist, käme es auf langsamen Geräten zu Aussetzern.
-    if (this.playing && this.queuedSamples() < HOP_OUT * 3) {
-      this.renderHop();
-      // Läuft es lange rund, wieder feiner suchen.
-      if (this.quality < 2 && ++this.clean > 800) { this.quality++; this.clean = 0; }
     }
 
     this.sinceReport += n;
@@ -3238,10 +3163,7 @@ const Audio = {
   playing: false,
   rate: 1,
   loop: null,
-  silent: null,        // stille Schleife (iOS)
-  out: null,           // <audio> mit dem MediaStream (Android)
-  streamDest: null,
-  useStream: false,
+  silent: null,
   wakeLock: null,
   onPosition: null,
   onEnded: null,
@@ -3268,36 +3190,7 @@ async function audioInit() {
     outputChannelCount: [2],
   });
 
-  /*
-   * Ausgabeweg — hier unterscheiden sich die Systeme:
-   *
-   * Android drosselt reines Web Audio, sobald der Bildschirm ausgeht: die App
-   * gilt dann als Hintergrundseite ohne laufendes Medium. Läuft der Ton
-   * dagegen durch ein <audio>-Element, behandelt Chrome ihn wie einen
-   * Musikplayer und lässt ihn weiterlaufen. Dafür wird der Ausgang des
-   * Worklets in einen MediaStream geleitet und dieser abgespielt.
-   *
-   * Auf iOS ist derselbe Weg unzuverlässig (MediaStream in <audio> wird dort
-   * je nach Version gar nicht wiedergegeben). Deshalb bleibt es dort bei der
-   * direkten Verbindung plus der stillen Schleife, die die Audiositzung und
-   * die Sperrbildschirm-Steuerung aktiv hält.
-   */
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  Audio.useStream = isAndroid && typeof Audio.ctx.createMediaStreamDestination === 'function';
-
-  if (Audio.useStream) {
-    Audio.streamDest = Audio.ctx.createMediaStreamDestination();
-    Audio.node.connect(Audio.streamDest);
-
-    Audio.out = document.createElement('audio');
-    Audio.out.srcObject = Audio.streamDest.stream;
-    Audio.out.setAttribute('playsinline', '');
-    Audio.out.preload = 'auto';
-    Audio.out.style.display = 'none';
-    document.body.append(Audio.out);
-  } else {
-    Audio.node.connect(Audio.ctx.destination);
-  }
+  Audio.node.connect(Audio.ctx.destination);
 
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
@@ -3315,7 +3208,7 @@ async function audioInit() {
     }
   };
 
-  if (!Audio.useStream && !Audio.silent) {
+  if (!Audio.silent) {
     Audio.silent = document.createElement('audio');
     Audio.silent.src = silentLoopURL();
     Audio.silent.loop = true;
@@ -3500,57 +3393,14 @@ async function audioPlay() {
   Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
 
-  // Das Ausgabe-Element muss laufen, sonst hört Android beim Ausschalten
-  // des Bildschirms auf.
-  if (Audio.out) {
-    try {
-      await Audio.out.play();
-      // Spielt es nach kurzer Zeit trotzdem nicht, lieber auf den direkten
-      // Weg zurückfallen: Hauptsache, man hört überhaupt etwas.
-      setTimeout(() => {
-        if (Audio.playing && Audio.out && Audio.out.paused) useDirectOutput();
-      }, 1200);
-    } catch (err) {
-      console.warn('[audio] Ausgabe über MediaStream nicht möglich', err);
-      useDirectOutput();
-    }
-  }
   Audio.silent?.play().catch(() => { /* ohne Nutzergeste abgelehnt — unkritisch */ });
   audioRequestWakeLock();
-}
-
-/**
- * Notweg: den Worklet direkt mit dem Ausgang verbinden. Damit geht zwar die
- * Hintergrundwiedergabe auf Android verloren, aber Ton ist wichtiger.
- */
-function useDirectOutput() {
-  if (!Audio.useStream) return;
-  console.warn('[audio] Wechsel auf direkte Ausgabe');
-  try {
-    Audio.node.disconnect();
-    Audio.node.connect(Audio.ctx.destination);
-  } catch (err) {
-    console.error('[audio] Umschalten fehlgeschlagen', err);
-    return;
-  }
-  Audio.out?.pause();
-  Audio.useStream = false;
-
-  if (!Audio.silent) {
-    Audio.silent = document.createElement('audio');
-    Audio.silent.src = silentLoopURL();
-    Audio.silent.loop = true;
-    Audio.silent.volume = 0;
-    Audio.silent.setAttribute('playsinline', '');
-  }
-  if (Audio.playing) Audio.silent.play().catch(() => {});
 }
 
 function audioPause() {
   if (!Audio.ready) return;
   Audio.node.port.postMessage({ type: 'pause' });
   Audio.playing = false;
-  Audio.out?.pause();
   Audio.silent?.pause();
   audioReleaseWakeLock();
 }
