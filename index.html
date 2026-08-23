@@ -3844,6 +3844,11 @@ function silentLoopURL() {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 
+// iPad und iPhone melden sich seit iPadOS 13 als „MacIntel" — der Touch-Test
+// unterscheidet sie vom echten Mac.
+const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 /**
  * Wie viel dekodiertes Audio gleichzeitig im Speicher liegen darf.
  *
@@ -3851,10 +3856,16 @@ function silentLoopURL() {
  * 16-Bit-Stereo rund 30 MB, ein zwölfminütiges Werk das Vierfache. Eine feste
  * Obergrenze von drei Spuren würde bei kurzen Stücken unnötig oft nachladen
  * und bei sehr langen immer noch zu viel Speicher belegen.
+ *
+ * Auf dem iPhone ist die Grenze deutlich enger. Safari räumt eine Web-App bei
+ * Speicherdruck kommentarlos ab — und beim Dekodieren liegt kurzzeitig das
+ * Dreifache einer Spur im Speicher (32-Bit-Fließkomma plus 16-Bit-Kopie).
+ * Mit der Desktop-Grenze brach die Wiedergabe dort beim Wechsel auf die zweite
+ * Stimme zusammen. Lieber einmal kurz nachladen als abstürzen.
  */
-const DECODE_BUDGET = 150 * 1024 * 1024;
-const MIN_DECODED = 2;    // mindestens die eigene Stimme und die Gesamtmischung
-const MAX_DECODED = 8;
+const DECODE_BUDGET = (isIOSDevice ? 96 : 150) * 1024 * 1024;
+const MIN_DECODED = isIOSDevice ? 1 : 2;   // sonst: eigene Stimme und Gesamtmischung
+const MAX_DECODED = isIOSDevice ? 3 : 8;
 
 const Audio = {
   ctx: null,
@@ -3934,6 +3945,12 @@ async function audioInit() {
     }
   };
 
+  // Safari kennt neben „running" und „suspended" den Zustand „interrupted":
+  // ein Anruf, eine andere Audio-App oder Speicherdruck halten den Kontext an.
+  // Ohne Zutun bleibt er angehalten — die App sah dann aus, als spiele sie,
+  // und es kam kein Ton mehr. Deshalb hier zuhören und selbst fortsetzen.
+  Audio.ctx.addEventListener('statechange', onAudioStateChange);
+
   if (!Audio.silent) {
     Audio.silent = document.createElement('audio');
     Audio.silent.src = silentLoopURL();
@@ -3960,6 +3977,27 @@ async function audioInit() {
   });
 
   Audio.ready = true;
+}
+
+async function onAudioStateChange() {
+  const state = Audio.ctx?.state;
+  if (!state || state === 'running' || !Audio.playing) return;
+
+  try {
+    await Audio.ctx.resume();
+  } catch (err) {
+    console.warn('[audio] Kontext ließ sich nicht fortsetzen', err);
+  }
+
+  // Hat das Fortsetzen nicht geklappt, muss die Anzeige die Wahrheit sagen —
+  // ein Play-Symbol, das nichts abspielt, sucht man sonst ewig.
+  if (Audio.ctx.state !== 'running') {
+    Audio.playing = false;
+    Audio.silent?.pause();
+    setPlayIcon(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
+  }
 }
 
 /** Dekodiert eine Spur und übergibt sie als 16-Bit-Daten an den Worklet. */
@@ -4025,13 +4063,27 @@ async function decodeAndSend(track, gain) {
   const bytes = await recordBytes(rec);
   if (!bytes.byteLength) throw new Error('Die gespeicherte Aufnahme ist leer.');
 
+  // Platz schaffen, BEVOR dekodiert wird. Beim Dekodieren liegen kurzzeitig die
+  // 32-Bit-Fließkommadaten und die 16-Bit-Kopie gleichzeitig im Speicher —
+  // zusammen rund das Dreifache der fertigen Spur. Räumt man erst danach auf,
+  // ist die Spitze längst überschritten; auf dem iPhone endete das beim
+  // Stimmwechsel damit, dass Safari die App abräumte.
+  evictIfNeeded(track.fileKey, estimatePcmBytes(track));
+
   const audioBuf = await decodeAudio(bytes);
+  const frames = audioBuf.length;
+  const duration = audioBuf.duration;
+  const count = Math.min(2, audioBuf.numberOfChannels);
+  const pcmBytes = frames * count * 2;
+
+  // Jetzt ist die Länge bekannt — mit der echten Zahl noch einmal nachräumen,
+  // bevor die 16-Bit-Kopie dazukommt.
+  evictIfNeeded(track.fileKey, pcmBytes);
 
   // 16 Bit statt 32 Bit Fließkomma halbiert den Speicherbedarf — eine
   // 14-MB-MP3 belegt so rund 50 statt 100 MB. Hörbar ist der Unterschied
   // bei MP3-Quellen nicht.
   const chans = [];
-  const count = Math.min(2, audioBuf.numberOfChannels);
   for (let c = 0; c < count; c++) {
     const f = audioBuf.getChannelData(c);
     const i16 = new Int16Array(f.length);
@@ -4042,17 +4094,15 @@ async function decodeAndSend(track, gain) {
     chans.push(i16);
   }
 
-  const pcmBytes = chans.reduce((n, c) => n + c.byteLength, 0);
-
-  // Platz schaffen, bevor die neue Spur dazukommt.
-  evictIfNeeded(track.fileKey, pcmBytes);
-
+  // Die Arrays wandern zum Worklet (`transfer`), im Hauptthread bleibt nichts
+  // liegen. Der AudioBuffer wird hier nicht mehr gebraucht.
   Audio.node.port.postMessage(
-    { type: 'load', id: track.fileKey, ch: chans, frames: audioBuf.length, gain },
+    { type: 'load', id: track.fileKey, ch: chans, frames, gain },
     chans.map((c) => c.buffer)
   );
+  chans.length = 0;
 
-  const info = { duration: audioBuf.duration, bytes: pcmBytes };
+  const info = { duration, bytes: pcmBytes };
   Audio.decoded.set(track.fileKey, info);
   Audio.decodedBytes += pcmBytes;
   Audio.levels.set(track.fileKey, gain);
@@ -4061,8 +4111,24 @@ async function decodeAndSend(track, gain) {
   // Die Dauer wird beim ersten Dekodieren gemerkt. Nur so lässt sich später
   // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
   // Loops verschoben sein könnten.
-  rememberDuration(track, audioBuf.duration);
+  rememberDuration(track, duration);
   return info;
+}
+
+/**
+ * Schätzt, wie viel eine Spur dekodiert belegen wird (16 Bit, stereo).
+ *
+ * Beim ersten Mal ist die Dauer unbekannt; dann rechnet die Schätzung von der
+ * Dateigröße hoch — eine MP3 mit 128 kbit/s wird beim Dekodieren rund elfmal
+ * so groß. Großzügig zu schätzen ist die sichere Seite: die Zahl entscheidet
+ * nur, wie viel vorher weggeräumt wird.
+ */
+function estimatePcmBytes(track) {
+  const rate = Audio.ctx?.sampleRate || 44100;
+  if (Number.isFinite(track.durationSec) && track.durationSec > 0) {
+    return Math.round(track.durationSec * rate * 2 * 2);
+  }
+  return Math.round((track.size || 0) * 12);
 }
 
 async function rememberDuration(track, duration) {
@@ -4172,7 +4238,9 @@ async function audioPlay() {
     audioSeek(0);
   }
 
-  if (Audio.ctx.state === 'suspended') await Audio.ctx.resume();
+  // Nicht nur 'suspended': Safari meldet nach einer Unterbrechung
+  // 'interrupted', und auch daraus muss der Kontext zurückgeholt werden.
+  if (Audio.ctx.state !== 'running') await Audio.ctx.resume().catch(() => {});
 
   // Der stille Loop zuerst: Android vergibt den Audio-Fokus an das
   // Medienelement, und daran hängt, ob die Seite bei gesperrtem Bildschirm
@@ -7650,11 +7718,14 @@ function runSelfTests() {
   if (loopRange() !== null) failed.push('loopRange hinter dem Ende müsste null sein');
   loopA = savedA; loopB = savedB; Audio.duration = savedDur;
 
-  // Nur ausgepackte Daten zählen gegen die Speichergrenze eines Import-Stapels.
-  if (inMemoryBytes({ method: 0 }, { size: 5e6 }) !== 0
-      || inMemoryBytes({ blob: {} }, { size: 5e6 }) !== 0
-      || inMemoryBytes({ method: 8 }, { size: 5e6 }) !== 5e6) {
-    failed.push('inMemoryBytes zählt die falschen Einträge');
+  // Dateidatensätze: neue halten die Bytes selbst, ältere noch einen Blob.
+  // Beides muss lesbar bleiben, sonst spielt nach einem Update nichts mehr.
+  if (recordBlob({ data: new Uint8Array([1, 2, 3]).buffer }, 'audio/mpeg').size !== 3) {
+    failed.push('recordBlob liest neue Datensätze nicht');
+  }
+  const legacyBlob = new Blob([new Uint8Array([1, 2, 3])]);
+  if (recordBlob({ blob: legacyBlob }) !== legacyBlob) {
+    failed.push('recordBlob reicht ältere Datensätze nicht durch');
   }
 
   // Notizen-Export: Titel, Leerzeile, Notiz — dazwischen wieder eine Leerzeile.
@@ -7666,7 +7737,7 @@ function runSelfTests() {
     failed.push(`Notizen-Export: ${JSON.stringify(notesText)}`);
   }
 
-  const total = voiceCases.length + titleCases.length + 11;
+  const total = voiceCases.length + titleCases.length + 12;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
@@ -7714,9 +7785,6 @@ function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches === true
       || window.navigator.standalone === true;
 }
-
-const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 // Chrome & Co. bieten die Installation über ein eigenes Ereignis an. Es
 // kommt genau einmal und muss aufgehoben werden, bis der Nutzer so weit ist.
@@ -7929,7 +7997,13 @@ async function boot() {
 
   await loadSettings();
   setupFolderImport();
-  runSelfTests();
+  try {
+    runSelfTests();
+  } catch (err) {
+    // Eine Prüfung, die selbst kaputt ist, darf den Start nicht verhindern —
+    // sonst bleibt der Bildschirm leer, obwohl die App funktionieren würde.
+    console.error('[Selbsttest] abgebrochen', err);
+  }
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
