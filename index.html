@@ -61,12 +61,7 @@ html, body {
 }
 
 body {
-  background:
-    radial-gradient(340px 340px at 92% -4%, rgba(255,61,154,.14), transparent 70%),
-    radial-gradient(300px 300px at -6% 18%, rgba(51,201,220,.16), transparent 70%),
-    radial-gradient(360px 360px at 100% 70%, rgba(255,210,63,.16), transparent 70%),
-    var(--bg);
-  background-attachment: fixed;
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 16px;
@@ -78,6 +73,22 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* Konfetti-Kreise: feste, scharfe Kreisflächen statt verschwommener Farbflecken —
+   dieselben zwei Kreise hinter der App wie hinter dem Player/der Playlist. */
+body::before, body::after,
+.player::before, .player::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  mix-blend-mode: multiply;
+  opacity: .4;
+  filter: blur(2px);
+  pointer-events: none;
+  z-index: -1;
+}
+body::before, .player::before { top: -70px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
+body::after, .player::after { bottom: 100px; left: -70px; width: 190px; height: 190px; background: #ffd23f; }
 
 /* dvh berücksichtigt die ein- und ausfahrende Browserleiste auf dem Handy. */
 @supports (height: 100dvh) {
@@ -105,7 +116,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   flex: 0 0 auto;
   padding: calc(var(--safe-top) + 14px) calc(var(--pad) + var(--safe-right))
            12px calc(var(--pad) + var(--safe-left));
-  background: var(--bg);
+  background: transparent;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -113,7 +124,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   min-height: 0;
 }
 
-.app-header h1 { font-size: 1.35rem; letter-spacing: -0.01em; }
+.app-header h1 { flex: 1; text-align: center; font-size: 1.35rem; letter-spacing: -0.01em; }
 
 /* ---------- Inhaltsbereich ---------------------------------------------- */
 
@@ -140,7 +151,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  background: var(--surface);
+  background: transparent;
   border-top: 1px solid var(--line);
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
@@ -305,12 +316,11 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: .02em;
-  padding: 0 6px;
+  padding: 0 7px;
   margin: 0 3px 3px 0;
   border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  color: var(--muted);
+  background: var(--muted);
+  color: #fff;
   vertical-align: middle;
 }
 
@@ -581,7 +591,8 @@ input[type="checkbox"] {
 
 .player-head {
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
   gap: 6px;
   padding: calc(var(--safe-top) + 10px) calc(12px + var(--safe-right))
@@ -589,7 +600,10 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--line);
 }
 
-.player-head .grow { flex: 1; min-width: 0; }
+/* Der Titel bleibt über der ganzen Breite mittig, egal ob rechts ein
+   Umbenennen-Knopf, ein Ladeindikator oder gar nichts steht. */
+.player-head .grow { min-width: 0; text-align: center; }
+.player-head > :last-child { justify-self: center; }
 .player-head strong { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
 .player-head .spinner { width: 16px; height: 16px; border-width: 2px; flex: 0 0 auto; }
 .player-head .spinner[hidden] { display: none; }
@@ -644,8 +658,8 @@ input[type="checkbox"] {
   min-height: var(--tap);
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 17px;
-  padding: 0 22px 0 10px;
+  border-radius: 999px;
+  padding: 0 22px 0 14px;
 }
 
 /* Zeigt, dass sich hier etwas aufklappen lässt — appearance:none nimmt dem
@@ -760,14 +774,15 @@ input[type="checkbox"] {
 }
 
 .tbtn {
-  min-width: 48px;
-  min-height: 52px;
-  border-radius: 18px;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
   font-weight: 650;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -776,8 +791,8 @@ input[type="checkbox"] {
 .tbtn svg { width: 22px; height: 22px; }
 
 .tbtn--play {
-  min-width: 68px;
-  min-height: 58px;
+  width: 64px;
+  height: 64px;
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
@@ -822,13 +837,13 @@ input[type="checkbox"] {
   gap: 6px;
 }
 
-.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; }
+.loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; border-radius: 999px; }
 
 #btn-loop-a[aria-pressed="true"], #btn-loop-b[aria-pressed="true"] {
   background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
 }
 
-.loop-controls .icon-only { padding: 10px; }
+.loop-controls .icon-only { padding: 10px; border-radius: 999px; }
 .loop-controls .icon-only svg { width: 20px; height: 20px; }
 
 /* I/O-Schalter für Loop an/aus */
@@ -1601,6 +1616,19 @@ const VOICE_ICON = {
   LEAD:  'SOLO',
   PIANO: 'PIANO',
   OTHER: '?',
+};
+
+// Poppige Konfetti-Farben je Stimme für die Badges in der Songliste.
+const VOICE_COLOR = {
+  FULL:  '#33c9dc',
+  SOP:   '#ff3d9a',
+  ALT:   '#33c9dc',
+  TEN:   '#ffb23f',
+  BASS:  '#7a5cff',
+  BAR:   '#7a5cff',
+  LEAD:  '#ffb23f',
+  PIANO: '#ff3d9a',
+  OTHER: '#8c81a6',
 };
 
 // Als „meine Stimme" wählbar. Bariton fehlt bewusst: der Chor hat keinen.
@@ -2676,6 +2704,7 @@ async function renderSongs() {
               class: 'voice-chip',
               title: full,
               'aria-label': full,
+              style: `background:${VOICE_COLOR[t.voice] || VOICE_COLOR.OTHER}`,
               text: t.voice === 'OTHER' ? (full || '?').slice(0, 4).toUpperCase() : (VOICE_ICON[t.voice] || full.slice(0, 4).toUpperCase()),
             });
           })
