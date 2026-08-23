@@ -4031,6 +4031,14 @@ function audioSetGain(key, value) {
 
 async function audioPlay() {
   if (!Audio.ready) return;
+
+  // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne das
+  // meldet der Worklet sofort erneut „zu Ende" und es passiert schlicht nichts
+  // — zu erleben, sobald das letzte (oder einzige) Lied durchgelaufen war.
+  if (!Audio.loop && Audio.duration > 0 && Audio.position >= Audio.duration - 0.05) {
+    audioSeek(0);
+  }
+
   if (Audio.ctx.state === 'suspended') await Audio.ctx.resume();
 
   // Der stille Loop zuerst: Android vergibt den Audio-Fokus an das
