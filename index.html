@@ -497,6 +497,23 @@ input[type="checkbox"] {
 .badge--changed { color: var(--warn); border-color: #5a4a20; background: #2a2314; }
 .badge--new     { color: var(--ok);   border-color: #24513f; background: #14241d; }
 
+/* Gruppe mehrerer Fassungen desselben Liedes */
+.version-group {
+  border: 1px solid #5a4a20;
+  background: #221d12;
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.version-row .chip { padding: 8px 8px; line-height: 1.25; }
+
 .hint-box {
   border: 1px solid #5a4a20;
   background: #2a2314;
@@ -1300,6 +1317,20 @@ input[type="checkbox"] {
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
           Alle Daten löschen
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Hilfe</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
+          Unter „Import“ steht Schritt für Schritt, wie das auf dem iPhone
+          und auf Android geht.
+        </p>
+        <button class="btn btn--block" id="btn-help-import" type="button">
+          Wie bekomme ich Songs in die App?
         </button>
       </div>
     </div>
@@ -2265,10 +2296,16 @@ function showTab(name) {
   VIEWS[name].render?.();
 }
 
-/** Navigiert über die Adresszeile, damit die Zurück-Taste funktioniert. */
-function navigate(hash) {
+/**
+ * Navigiert über die Adresszeile, damit die Zurück-Taste funktioniert.
+ * `replace` ersetzt den aktuellen Eintrag — beim Weiterschalten in einer
+ * Playlist soll „zurück" zur Liste führen und nicht durch alle bereits
+ * gespielten Songs zurücklaufen.
+ */
+function navigate(hash, { replace = false } = {}) {
   if (location.hash === hash) { applyRoute(); return; }
-  history.pushState({}, '', hash);
+  if (replace) history.replaceState({}, '', hash);
+  else history.pushState({}, '', hash);
   applyRoute();
 }
 
@@ -2644,6 +2681,8 @@ async function renderSettings() {
     ? 'ja'
     : 'wird eingerichtet …';
 }
+
+$('#btn-help-import').addEventListener('click', () => showView('import'));
 
 $('#btn-persist').addEventListener('click', async () => {
   const ok = await requestPersistence();
@@ -3227,8 +3266,22 @@ async function analyzeAgainstLibrary(songs) {
   const existing = await DB.metaByType('song');
   const byNorm = new Map(existing.map((s) => [s.normTitle, s]));
 
+  // Zusätzlich nach Kerntitel gruppieren: „Blaue Augen neu" ist ein anderer
+  // Song als „Blaue Augen", aber der Nutzer soll sehen, dass eine ähnliche
+  // Fassung schon in der Bibliothek liegt, statt sie versehentlich doppelt
+  // aufzunehmen. Entschieden wird das nie automatisch.
+  const byCore = new Map();
+  for (const s of existing) {
+    const core = coreTitle(s.title);
+    if (!byCore.has(core)) byCore.set(core, []);
+    byCore.get(core).push(s);
+  }
+
   for (const song of songs) {
     song.existing = byNorm.get(song.normTitle) || null;
+    song.similar = song.existing
+      ? null
+      : (byCore.get(song.core) || []).find((s) => s.normTitle !== song.normTitle) || null;
     for (const track of song.tracks) {
       const found = findExistingTrack(song.existing, track);
       track.existingTrack = found;
@@ -3240,10 +3293,23 @@ async function analyzeAgainstLibrary(songs) {
   return songs;
 }
 
+/** Ist dieser Song die gewählte Fassung seiner Gruppe? (siehe 4.5) */
+function isChosenVersion(song) {
+  const group = pick.groups?.find((g) => g.members.includes(song));
+  if (!group || group.members.length < 2) return true;
+  return pick.chosenVersion.get(group.core) === song.folder;
+}
+
 /** Setzt die Häkchen gemäß Voreinstellung (4.4). */
 function applyPreset(preset) {
   pick.preset = preset;
   for (const song of pick.songs) {
+    // Fassungen, die der Nutzer nicht gewählt hat, bleiben vollständig
+    // abgewählt — entschieden wird nie still, aber auch nicht doppelt.
+    if (!isChosenVersion(song)) {
+      for (const track of song.tracks) track.checked = false;
+      continue;
+    }
     for (const track of song.tracks) {
       let inScope;
       if (preset === 'all') inScope = true;
@@ -3336,7 +3402,52 @@ function iconChevron() {
 function renderSheetList() {
   sheetBody.textContent = '';
 
-  for (const song of pick.songs) {
+  for (const group of pick.groups) {
+    // Mehrere Fassungen desselben Liedes: gruppiert zeigen und zur Auswahl
+    // stellen. Vorgeschlagen ist die mit den meisten Stimmen (Spec 4.5).
+    if (group.members.length > 1) {
+      const chosen = pick.chosenVersion.get(group.core);
+      const head = el('div', { class: 'version-group' },
+        el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn)',
+          text: `${group.members.length} Versionen gefunden — Vorschlag: „${group.suggested.title}" (${plural(countVoices(group.suggested), 'Stimme', 'Stimmen')})` }),
+        el('div', { class: 'version-row' },
+          group.members.map((m) => el('button', {
+            class: 'chip', type: 'button',
+            'aria-pressed': m.folder === chosen ? 'true' : 'false',
+            onclick: () => {
+              pick.chosenVersion.set(group.core, m.folder);
+              applyPreset(pick.preset);
+              renderSheetList();
+              updateSheetSummary();
+            },
+          },
+            el('span', { text: m.title }),
+            el('small', { style: 'display:block; font-weight:500; font-size:0.72rem',
+              text: plural(countVoices(m), 'Stimme', 'Stimmen') })))));
+      sheetBody.append(head);
+    }
+
+    for (const song of group.members) {
+      if (!isChosenVersion(song)) continue;
+      renderSheetSong(song);
+    }
+  }
+
+  // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
+  if (pick.notes.length) {
+    sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
+      el('h2', { text: 'Hinweise' }),
+      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
+        pick.notes.map((n) => el('li', { text: n })))));
+  }
+}
+
+function countVoices(song) {
+  return new Set(song.tracks.filter((t) => t.voice !== 'OTHER').map((t) => t.voice)).size;
+}
+
+function renderSheetSong(song) {
+  {
     const box = el('div', { class: 'pick-song' });
 
     const songBox = el('input', { type: 'checkbox' });
@@ -3411,6 +3522,11 @@ function renderSheetList() {
         class: allSame ? 'badge' : 'badge badge--new',
         text: allSame ? 'bereits vorhanden' : 'wird ergänzt',
       }));
+    } else if (song.similar) {
+      titleBlock.append(el('span', {
+        class: 'badge badge--changed',
+        text: `ähnlich vorhanden: ${song.similar.title}`,
+      }));
     }
 
     const toggle = el('button', {
@@ -3429,14 +3545,6 @@ function renderSheetList() {
     box.append(el('div', { class: 'pick-head' }, songBox, titleBlock, toggle), tracksHost);
     sheetBody.append(box);
   }
-
-  // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
-  if (pick.notes.length) {
-    sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
-      el('h2', { text: 'Hinweise' }),
-      el('ul', { class: 'steps small muted', style: 'list-style: disc' },
-        pick.notes.map((n) => el('li', { text: n })))));
-  }
 }
 
 function closeSheet() {
@@ -3448,7 +3556,14 @@ function closeSheet() {
 
 /** Öffnet die Auswahlmaske für ein analysiertes Ergebnis. */
 async function openPicker({ songs, notes, skipped, source, foundFiles, foundBytes }) {
-  pick = { songs, notes, skipped, source, preset: settings.defaultImportScope || 'mine' };
+  const groups = groupDuplicates(songs);
+  const chosenVersion = new Map();
+  for (const g of groups) chosenVersion.set(g.core, g.suggested.folder);
+
+  pick = {
+    songs, notes, skipped, source, groups, chosenVersion,
+    preset: settings.defaultImportScope || 'mine',
+  };
 
   sheetFound.textContent =
     `Gefunden: ${plural(songs.length, 'Song', 'Songs')}, ` +
@@ -3815,6 +3930,8 @@ $('#sheet-presets').addEventListener('click', (e) => {
   });
   renderSheetList();
   updateSheetSummary();
+  // Die Wahl gilt auch beim nächsten Import als Voreinstellung.
+  saveSettings({ defaultImportScope: btn.dataset.preset });
 });
 
 /**
@@ -4119,7 +4236,15 @@ async function openPlayer(songId) {
   Audio.rate = 1;
   audioSetRate(1);
   audioSetLoop(null);
-  Audio.onPosition = (s) => { if (!seeking) updateSeekUI(s); };
+  Audio.onPosition = (s) => {
+    if (!seeking) updateSeekUI(s);
+    // Der Sperrbildschirm zeigt den Fortschritt nur, wenn er regelmäßig
+    // gemeldet wird — aber nicht bei jeder Meldung, das wäre zu häufig.
+    if (Audio.playing && Math.floor(s) !== lastReportedSecond) {
+      lastReportedSecond = Math.floor(s);
+      updateMediaPosition();
+    }
+  };
   Audio.onEnded = onPlaybackEnded;
 
   // Zuerst die bevorzugte Stimme laden, danach im Hintergrund die
@@ -4678,15 +4803,22 @@ function updateMediaSession() {
   set('previoustrack', () => playlistStep(-1));
   set('nexttrack', () => playlistStep(1));
 
+  updateMediaPosition();
+}
+
+let lastReportedSecond = -1;
+
+function updateMediaPosition() {
+  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
   try {
     if (Audio.duration > 0) {
-      ms.setPositionState({
+      navigator.mediaSession.setPositionState({
         duration: Audio.duration,
         playbackRate: Audio.rate,
-        position: Math.min(Audio.position, Audio.duration),
+        position: Math.max(0, Math.min(Audio.position, Audio.duration)),
       });
     }
-  } catch { /* Safari mag ungültige Werte nicht */ }
+  } catch { /* Safari lehnt ungültige Werte ab */ }
 }
 
 /* ==========================================================================
@@ -5127,7 +5259,7 @@ function playlistStep(delta) {
   const next = playQueue.index + delta;
   if (next < 0 || next >= playQueue.ids.length) return;
   playQueue.index = next;
-  navigate(`#song/${playQueue.ids[next]}`);
+  navigate(`#song/${playQueue.ids[next]}`, { replace: true });
 }
 
 /** Nach Songende automatisch zum nächsten Titel der Playlist. */
@@ -5140,7 +5272,7 @@ function playlistAdvance() {
   }
   playQueue.index++;
   pendingAutoPlay = true;
-  navigate(`#song/${playQueue.ids[playQueue.index]}`);
+  navigate(`#song/${playQueue.ids[playQueue.index]}`, { replace: true });
 }
 
 // Beim automatischen Weiterschalten soll der nächste Song gleich losspielen.
