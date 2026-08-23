@@ -1056,7 +1056,9 @@ input[type="checkbox"] {
   left: calc(8px + var(--safe-left));
   right: calc(8px + var(--safe-right));
   top: calc(8px + var(--safe-top));
-  z-index: 60;
+  /* Über allem: eine Meldung, die hinter der Ersteinrichtung oder einem
+     Dialog verschwindet, ist keine Meldung. */
+  z-index: 90;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -4926,6 +4928,15 @@ async function registerServiceWorker() {
     return;
   }
 
+  // Beim allerersten Besuch gibt es noch keinen Service Worker. Übernimmt er
+  // die Seite gleich nach der Installation (clients.claim), meldet der Browser
+  // denselben „controllerchange" wie bei einem echten Update. Ohne diese
+  // Unterscheidung lud sich die App direkt nach dem ersten Start einmal selbst
+  // neu — sichtbar als Flackern, und die Ersteinrichtung begann von vorn.
+  // Deshalb wird mitgeführt, ob die Seite überhaupt schon betreut wurde: nur
+  // ein *Wechsel* des Betreuers ist ein Update.
+  let swControlled = !!navigator.serviceWorker.controller;
+
   try {
     // Relativ registrieren, damit der Scope den Unterpfad der Seite trifft.
     const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
@@ -4945,6 +4956,9 @@ async function registerServiceWorker() {
     });
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const firstTakeover = !swControlled;
+      swControlled = !!navigator.serviceWorker.controller;
+      if (firstTakeover) return;           // Erstinstallation, kein Update
       if (reloadingForUpdate) return;
       reloadingForUpdate = true;
       location.reload();
