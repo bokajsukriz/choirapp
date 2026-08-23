@@ -9,34 +9,36 @@
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<meta name="theme-color" content="#0f1114">
+<meta name="theme-color" content="#fff7ec">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Chor">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <meta name="description" content="Übe-Aufnahmen des Chores offline auf dem Handy.">
 
 <style>
 /* ==========================================================================
-   CSS — Design-Grundlagen
-   Dunkles Design, hoher Kontrast (Probenraum, abends). System-Schriften,
-   keine externen Ressourcen.
+   CSS — Design-Grundlagen „Konfetti"
+   Helles, fröhliches Design mit kräftigen Farbtupfern und stark abgerundeten
+   Formen. System-Schriften, keine externen Ressourcen.
    ========================================================================== */
 
 :root {
-  --bg:         #0f1114;
-  --surface:    #181b21;
-  --surface-2:  #22262e;
-  --line:       #2f3641;
-  --text:       #f2f4f7;
-  --muted:      #a5adba;
-  --accent:     #f2b544;
-  --accent-ink: #14161a;
-  --danger:     #ff6f61;
-  --ok:         #56c596;
-  --warn:       #ffcf5c;
+  --bg:         #fff7ec;
+  --surface:    #ffffff;
+  --surface-2:  #fbeffd;
+  --line:       #ecdcf5;
+  --text:       #241b3d;
+  --muted:      #8c81a6;
+  --accent:     #ff3d9a;
+  --accent-ink: #241b3d;
+  --accent-2:   #33c9dc;
+  --accent-3:   #ffd23f;
+  --danger:     #ff4d6d;
+  --ok:         #21b17f;
+  --warn:       #ffb100;
 
-  --radius:     14px;
+  --radius:     20px;
   --tap:        44px;          /* Mindestgröße für Touch-Ziele */
   --pad:        16px;
   --nav-h:      62px;
@@ -59,7 +61,12 @@ html, body {
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(340px 340px at 92% -4%, rgba(255,61,154,.14), transparent 70%),
+    radial-gradient(300px 300px at -6% 18%, rgba(51,201,220,.16), transparent 70%),
+    radial-gradient(360px 360px at 100% 70%, rgba(255,210,63,.16), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   font-size: 16px;
@@ -191,7 +198,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
 .btn {
   min-height: var(--tap);
   padding: 11px 18px;
-  border-radius: 11px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
@@ -217,7 +224,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
 
 .chip {
   min-height: var(--tap);
-  border-radius: 11px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
@@ -276,25 +283,29 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 58px;
-  padding: 12px var(--pad);
+  min-height: 50px;
+  padding: 9px var(--pad);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  margin-bottom: 8px;
+  margin-bottom: 7px;
   text-align: left;
 }
 
-.list-item strong { font-weight: 620; }
+.list-item strong { font-weight: 620; font-size: 0.94rem; }
 
-.voice-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.voice-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 
 .voice-chip {
-  font-size: 0.71rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  font-size: 0.63rem;
   font-weight: 700;
-  letter-spacing: .03em;
-  padding: 2px 7px;
-  border-radius: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--line);
   color: var(--muted);
@@ -313,7 +324,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   width: 100%;
   min-height: var(--tap);
   padding: 11px 14px;
-  border-radius: 11px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
@@ -402,14 +413,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; }
   margin-top: 12px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 17px;
   padding: 4px;
 }
 
 .preset {
   min-height: 40px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 13px;
   background: transparent;
   color: var(--muted);
   font-size: 0.82rem;
@@ -494,13 +505,13 @@ input[type="checkbox"] {
   margin-top: 4px;
 }
 
-.badge--changed { color: var(--warn); border-color: #5a4a20; background: #2a2314; }
-.badge--new     { color: var(--ok);   border-color: #24513f; background: #14241d; }
+.badge--changed { color: #a06600; border-color: #ffe6a3; background: #fff4d6; }
+.badge--new     { color: var(--ok);   border-color: #b6ecd9; background: #e3f9f0; }
 
 /* Gruppe mehrerer Fassungen desselben Liedes */
 .version-group {
-  border: 1px solid #5a4a20;
-  background: #221d12;
+  border: 1px solid #ffe6a3;
+  background: #fff8e6;
   border-radius: var(--radius);
   padding: 12px;
   margin-bottom: 8px;
@@ -515,10 +526,10 @@ input[type="checkbox"] {
 .version-row .chip { padding: 8px 8px; line-height: 1.25; }
 
 .hint-box {
-  border: 1px solid #5a4a20;
-  background: #2a2314;
-  color: var(--warn);
-  border-radius: 11px;
+  border: 1px solid #ffe6a3;
+  background: #fff8e6;
+  color: #a06600;
+  border-radius: 14px;
   padding: 11px 13px;
   font-size: 0.88rem;
   margin-bottom: 12px;
@@ -590,7 +601,7 @@ input[type="checkbox"] {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 11px;
+  border-radius: 16px;
 }
 
 .icon-btn svg { width: 24px; height: 24px; }
@@ -611,34 +622,81 @@ input[type="checkbox"] {
   background: var(--surface);
 }
 
-/* Stimmen-Umschalter: das meistgenutzte Element, deshalb groß und oben. */
-.voice-grid {
+/* Stimme + Geschwindigkeit: unter der Transportleiste, damit die Wiedergabe
+   selbst oben im Fokus bleibt. */
+.player-select-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-top: 12px;
 }
 
-.voice-btn {
-  min-height: 62px;
-  border-radius: 13px;
+.select-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 17px;
+  padding: 0 22px 0 10px;
+}
+
+/* Zeigt, dass sich hier etwas aufklappen lässt — appearance:none nimmt dem
+   <select> sonst jeden sichtbaren Hinweis darauf. */
+.select-field::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.select-field svg { width: 20px; height: 20px; color: var(--muted); flex: 0 0 auto; }
+
+.select-field select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  font-size: 0.95rem;
+  padding: 10px 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.select-field select:focus { outline: none; }
+.select-field select:disabled { color: var(--muted); }
+.select-field option:disabled { color: var(--muted); }
+
+.mixer-btn {
+  flex: 0 0 auto;
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 17px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  font-weight: 650;
-  font-size: 1rem;
-  padding: 8px 6px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  padding: 0;
 }
 
-.voice-btn small { font-weight: 500; font-size: 0.72rem; color: var(--muted); }
-.voice-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.voice-btn[aria-pressed="true"] small { color: rgba(20,22,26,.7); }
-.voice-btn[data-broken="true"] { opacity: .55; }
+.mixer-btn svg { width: 20px; height: 20px; }
+.mixer-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 /* Fortschrittsbalken — touch-action: none, damit beim Ziehen nicht gescrollt wird. */
 .seek {
@@ -695,7 +753,7 @@ input[type="checkbox"] {
 .seek-range {
   position: absolute;
   top: 0; bottom: 0;
-  background: rgba(86,197,150,.28);
+  background: rgba(33,177,127,.24);
 }
 
 .times {
@@ -718,7 +776,7 @@ input[type="checkbox"] {
 .tbtn {
   min-width: 48px;
   min-height: 52px;
-  border-radius: 13px;
+  border-radius: 18px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
@@ -740,28 +798,7 @@ input[type="checkbox"] {
 }
 
 .tbtn--play svg { width: 28px; height: 28px; }
-
-.rate-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 4px;
-}
-
-.rate-btn {
-  min-height: 38px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  font-weight: 650;
-  font-size: 0.85rem;
-}
-
-.rate-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.tbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 /* Mischmodus */
 .mix-row {
@@ -806,12 +843,38 @@ input[type="checkbox"] {
 /* Loops */
 .loop-controls {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: 1fr 1fr auto auto;
+  align-items: center;
   gap: 6px;
 }
 
 .loop-controls .btn { padding: 10px 4px; font-size: 0.85rem; }
-#btn-loop-toggle[aria-pressed="true"] { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
+
+.loop-controls .icon-only { padding: 10px; }
+.loop-controls .icon-only svg { width: 20px; height: 20px; }
+
+/* I/O-Schalter für Loop an/aus */
+.loop-switch {
+  width: 56px;
+  min-height: var(--tap);
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.loop-switch svg { width: 20px; height: 20px; }
+.loop-switch[disabled] { opacity: 0.5; pointer-events: none; }
+
+.loop-switch[aria-checked="true"] {
+  background: var(--ok);
+  color: var(--accent-ink);
+  border-color: var(--ok);
+}
 
 .loop-item {
   display: flex;
@@ -825,7 +888,7 @@ input[type="checkbox"] {
   min-height: var(--tap);
   text-align: left;
   padding: 10px 12px;
-  border-radius: 11px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
@@ -844,7 +907,7 @@ input[type="checkbox"] {
   min-height: var(--tap);
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 16px;
   background: var(--surface);
   color: var(--text);
   margin-bottom: 6px;
@@ -855,9 +918,8 @@ input[type="checkbox"] {
 .queue-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .queue-item[data-current="true"] { border-color: var(--accent); }
 .queue-item[data-current="true"] .grow { font-weight: 650; }
-
-/* dezenter Hinweis auf einer noch ladenden Stimme */
-.voice-btn .dot { letter-spacing: 2px; opacity: .8; }
+.queue-item[data-missing="true"] { opacity: .6; }
+.queue-item[data-missing="true"] .grow { color: var(--muted); }
 
 /* Playlist-Einträge mit Ziehgriff */
 .pl-entry {
@@ -917,7 +979,7 @@ input[type="checkbox"] {
   width: 100%;
   min-height: 160px;
   padding: 11px 14px;
-  border-radius: 11px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
@@ -931,7 +993,7 @@ input[type="checkbox"] {
   width: 100%;
   min-height: var(--tap);
   padding: 11px 14px;
-  border-radius: 11px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
@@ -957,9 +1019,9 @@ input[type="checkbox"] {
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
-  border-radius: 11px;
+  border-radius: 16px;
   padding: 12px 14px;
-  box-shadow: 0 8px 26px rgba(0,0,0,.5);
+  box-shadow: 0 8px 26px rgba(36,27,61,.18);
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -973,7 +1035,7 @@ input[type="checkbox"] {
 .banner .banner-action {
   min-height: 36px;
   padding: 7px 12px;
-  border-radius: 9px;
+  border-radius: 13px;
   border: 1px solid var(--line);
   background: var(--surface);
   font-weight: 600;
@@ -1109,11 +1171,6 @@ input[type="checkbox"] {
       <div id="queue-list"></div>
     </div>
 
-    <div class="voice-grid" id="voice-grid"></div>
-
-    <button class="btn btn--block" id="btn-mix" type="button" aria-pressed="false">
-      Mischmodus einschalten
-    </button>
     <div id="mix-panel" hidden>
       <p class="section-title">Lautstärke je Stimme</p>
       <div id="mix-rows"></div>
@@ -1121,10 +1178,14 @@ input[type="checkbox"] {
 
     <p class="section-title">Abschnitt üben</p>
     <div class="loop-controls">
-      <button class="btn" id="btn-loop-a" type="button">A setzen</button>
-      <button class="btn" id="btn-loop-b" type="button">B setzen</button>
-      <button class="btn" id="btn-loop-toggle" type="button" aria-pressed="false" disabled>Loop an</button>
-      <button class="btn" id="btn-loop-save" type="button" disabled>Speichern</button>
+      <button class="btn" id="btn-loop-a" type="button">A</button>
+      <button class="btn" id="btn-loop-b" type="button">B</button>
+      <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6a6 6 0 0 0 0 12H6"/><circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+      </button>
     </div>
     <p class="small muted" id="loop-info" style="margin:10px 0 0"></p>
     <div id="loop-list"></div>
@@ -1166,13 +1227,17 @@ input[type="checkbox"] {
           <path d="M6 6v12M8 12l7-6v12z"/>
         </svg>
       </button>
-      <button class="tbtn" id="btn-back30" type="button" aria-label="30 Sekunden zurück">−30 s</button>
       <button class="tbtn" id="btn-back10" type="button" aria-label="10 Sekunden zurück">−10 s</button>
       <button class="tbtn tbtn--play" id="btn-play" type="button" aria-label="Abspielen">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-play"><path d="M8 5.5v13l11-6.5z"/></svg>
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-pause" style="display:none"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
       </button>
-      <button class="tbtn" id="btn-fwd10" type="button" aria-label="10 Sekunden vor">+10 s</button>
+      <button class="tbtn" id="btn-repeat" type="button" aria-pressed="false" aria-label="Am Ende: Nächstes Lied">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </button>
       <button class="tbtn" id="btn-next" type="button" aria-label="Nächstes Lied">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M18 6v12M16 12L9 6v12z"/>
@@ -1180,17 +1245,22 @@ input[type="checkbox"] {
       </button>
     </div>
 
-    <div class="rate-row" id="rate-row" role="group" aria-label="Tempo">
-      <button class="rate-btn" type="button" data-rate="0.5">0,5×</button>
-      <button class="rate-btn" type="button" data-rate="0.75">0,75×</button>
-      <button class="rate-btn" type="button" data-rate="1" aria-pressed="true">1×</button>
-      <button class="rate-btn" type="button" data-rate="1.25">1,25×</button>
-    </div>
-
-    <div class="rate-row" id="repeat-row" role="group" aria-label="Am Ende des Liedes" style="margin-top:6px; grid-template-columns: repeat(3, 1fr)">
-      <button class="rate-btn" type="button" data-repeat="off" aria-pressed="true">Ende: Stopp</button>
-      <button class="rate-btn" type="button" data-repeat="song">Wiederholen</button>
-      <button class="rate-btn" type="button" data-repeat="next">Nächstes Lied</button>
+    <div class="player-select-row" id="player-select-row">
+      <label class="select-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <select id="voice-select" aria-label="Stimme"></select>
+      </label>
+      <button class="mixer-btn" id="btn-mix" type="button" aria-pressed="false" aria-label="Mischmodus einschalten">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      </button>
+      <label class="select-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        <select id="rate-select" aria-label="Geschwindigkeit">
+          <option value="1">1×</option>
+          <option value="0.8">0,8×</option>
+          <option value="0.6">0,6×</option>
+        </select>
+      </label>
     </div>
   </div>
 </section>
@@ -1376,7 +1446,10 @@ input[type="checkbox"] {
           Entfernt nur die Audiodateien. Loops, Playlisten und Einstellungen
           bleiben erhalten und verbinden sich beim nächsten Import wieder.
         </p>
-        <div id="storage-manager"></div>
+        <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false">
+          Einzelne Songs verwalten
+        </button>
+        <div id="storage-manager" hidden></div>
       </div>
     </div>
 
@@ -1510,6 +1583,19 @@ const VOICE_LABEL = {
   LEAD:  'Solo / Lead',
   PIANO: 'Klavier',
   OTHER: 'Sonstige',
+};
+
+// Kurzform für die kompakten Stimm-Icons in der Songliste.
+const VOICE_ICON = {
+  FULL:  'Ges',
+  SOP:   'S',
+  ALT:   'A',
+  TEN:   'T',
+  BASS:  'B',
+  BAR:   'Br',
+  LEAD:  'L',
+  PIANO: 'Kl',
+  OTHER: '?',
 };
 
 // Als „meine Stimme" wählbar. Bariton fehlt bewusst: der Chor hat keinen.
@@ -1787,7 +1873,7 @@ const DEFAULT_SETTINGS = {
   defaultImportScope: 'mine', // 'mine' | 'full' | 'all' (siehe Auswahlmaske, M1)
   lyricsFontSize: 17,
   lastBackupAt: null,
-  repeatMode: 'off',          // 'off' | 'song' | 'next'
+  repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
 };
 
@@ -2579,10 +2665,15 @@ async function renderSongs() {
         el('div', { style: 'flex:1; min-width:0' },
           el('strong', { text: songLabel(song) || 'Ohne Titel' }),
           el('div', { class: 'voice-chips' },
-            voices.map((t) => el('span', {
-              class: 'voice-chip',
-              text: t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice),
-            })))
+            voices.map((t) => {
+              const full = t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice);
+              return el('span', {
+                class: 'voice-chip',
+                title: full,
+                'aria-label': full,
+                text: t.voice === 'OTHER' ? (full || '?').slice(0, 2) : (VOICE_ICON[t.voice] || full.slice(0, 2)),
+              });
+            }))
         ),
         marks
       )
@@ -2720,6 +2811,16 @@ async function renderStorageManager() {
       tracksHost));
   }
 }
+
+// Bei einer großen Bibliothek wird die Liste mit den Lösch-Buttons sonst
+// unübersichtlich — deshalb erst auf Wunsch einblenden.
+$('#btn-manage-storage').addEventListener('click', () => {
+  const host = $('#storage-manager');
+  const open = host.hidden;
+  host.hidden = !open;
+  $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('#btn-manage-storage').textContent = open ? 'Einzelne Songs verwalten ausblenden' : 'Einzelne Songs verwalten';
+});
 
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
@@ -2883,17 +2984,13 @@ $('#btn-wipe').addEventListener('click', async () => {
 const WORKLET_SRC = `
 'use strict';
 
-// 4096 Samples sind bei 44,1 kHz rund 93 ms. Lange Fenster verschmieren
-// Einsätze etwas, klingen bei gehaltenen Chorklängen aber deutlich sauberer
-// als kurze — und genau dafür ist das langsame Üben da.
-const FRAME = 4096;
+// 2048 Samples sind bei 44,1 kHz rund 46 ms: lang genug für tiefe Männer-
+// stimmen, kurz genug, dass Einsätze nicht verschmieren.
+const FRAME = 2048;
 const HOP_OUT = FRAME >> 1;
-
-// Suchbereich für die Anschlussstelle. Er muss mindestens eine Periode des
-// tiefsten Tons abdecken: ein Bass bei 80 Hz hat 550 Samples Periodendauer.
-const SEARCH = 1200;
-const COARSE_STEP = 8;
-const CORR_LEN = 1200;
+const SEARCH = 300;        // Suchbereich für die Anschlussstelle (Samples)
+const SEARCH_STEP = 4;
+const CORR_LEN = 256;
 
 class ChoirProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -2913,12 +3010,6 @@ class ChoirProcessor extends AudioWorkletProcessor {
     this.qOff = 0;
     this.first = true;
     this.sinceReport = 0;
-    // Güte der Anschluss-Suche: 2 = volle Suche. Reißt der Puffer auf einem
-    // langsamen Gerät wiederholt, wird heruntergeschaltet und nach einer
-    // ruhigen Phase wieder hoch.
-    this.quality = 2;
-    this.underruns = 0;
-    this.clean = 0;
     this.gainStep = 1 / (0.015 * sampleRate);   // 15-ms-Rampe
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
@@ -2992,54 +3083,20 @@ class ChoirProcessor extends AudioWorkletProcessor {
     return best;
   }
 
-  /**
-   * Beste Anschlussstelle nahe der Zielposition.
-   *
-   * Verglichen wird mit dem Stück, das ohne Dehnung als Nächstes gekommen
-   * wäre. Die Ähnlichkeit wird auf die Lautstärke des Kandidaten normiert —
-   * ohne das gewinnt einfach die lauteste Stelle im Suchbereich, und genau
-   * daher kommen die pumpenden Artefakte bei starker Dehnung.
-   *
-   * Gesucht wird zweistufig: grob im ganzen Bereich, dann fein um den besten
-   * Treffer. Das kostet nur einen Bruchteil der vollen Suche.
-   */
+  /** Beste Anschlussstelle nahe der Zielposition (Kreuzkorrelation). */
   findBest(target) {
     const t = this.refTrack();
     if (!t) return target;
     const ref = this.windowPos + HOP_OUT;
-    if (ref < 0 || ref + CORR_LEN >= t.frames) return target;
+    if (ref + CORR_LEN >= t.frames) return target;
 
-    // Auf schwachen Geräten wird die Suche gröber (siehe quality unten):
-    // etwas mehr Artefakt ist immer noch besser als hörbare Aussetzer.
-    const step = COARSE_STEP << (2 - this.quality);
-    const len = this.quality === 2 ? CORR_LEN : CORR_LEN >> 1;
-    const stride = this.quality === 2 ? 2 : 4;
-
-    const ch = t.ch0;
-    const score = (p) => {
-      if (p < 0 || p + len >= t.frames) return -Infinity;
-      let dot = 0, energy = 0;
-      for (let i = 0; i < len; i += stride) {
-        const a = ch[ref + i];
-        const b = ch[p + i];
-        dot += a * b;
-        energy += b * b;
-      }
-      return energy > 0 ? dot / Math.sqrt(energy) : 0;
-    };
-
-    let bestPos = target;
-    let best = score(target);
-    for (let d = -SEARCH; d <= SEARCH; d += step) {
+    let bestPos = target, bestScore = -Infinity;
+    for (let d = -SEARCH; d <= SEARCH; d += SEARCH_STEP) {
       const p = target + d;
-      const s = score(p);
-      if (s > best) { best = s; bestPos = p; }
-    }
-    for (let d = -step + 1; d < step; d++) {
-      if (d === 0) continue;
-      const p = bestPos + d;
-      const s = score(p);
-      if (s > best) { best = s; bestPos = p; }
+      if (p < 0 || p + CORR_LEN >= t.frames) continue;
+      let s = 0;
+      for (let i = 0; i < CORR_LEN; i += 2) s += t.ch0[ref + i] * t.ch0[p + i];
+      if (s > bestScore) { bestScore = s; bestPos = p; }
     }
     return bestPos;
   }
@@ -3111,18 +3168,8 @@ class ChoirProcessor extends AudioWorkletProcessor {
     this.queue.push({ l: outL, r: outR });
   }
 
-  queuedSamples() {
-    let n = -this.qOff;
-    for (const b of this.queue) n += b.l.length;
-    return n;
-  }
-
   report(force) {
-    // Gemeldet wird die Stelle, die gerade zu hören ist — nicht die, die
-    // schon gerendert wurde. Sonst liefe die Anzeige dem Ton voraus.
-    const ahead = this.queuedSamples() * this.rate;
-    const heard = Math.max(0, this.pos - ahead);
-    this.port.postMessage({ type: 'pos', seconds: heard / sampleRate,
+    this.port.postMessage({ type: 'pos', seconds: this.pos / sampleRate,
                             playing: this.playing });
     if (force) this.sinceReport = 0;
   }
@@ -3141,19 +3188,7 @@ class ChoirProcessor extends AudioWorkletProcessor {
 
     let filled = 0;
     while (filled < n) {
-      if (!this.queue.length) {
-        // Der Puffer war leer — es musste mitten in der Ausgabe gerechnet
-        // werden. Häuft sich das, ist das Gerät zu langsam für die volle Suche.
-        if (this.playing && !this.first) {
-          this.underruns++;
-          this.clean = 0;
-          if (this.underruns > 6 && this.quality > 0) {
-            this.quality--;
-            this.underruns = 0;
-          }
-        }
-        this.renderHop();
-      }
+      if (!this.queue.length) this.renderHop();
       if (!this.queue.length) {                 // Ende erreicht
         L.fill(0, filled);
         if (R) R.fill(0, filled);
@@ -3168,15 +3203,6 @@ class ChoirProcessor extends AudioWorkletProcessor {
       filled += take;
       this.qOff += take;
       if (this.qOff >= b.l.length) { this.queue.shift(); this.qOff = 0; }
-    }
-
-    // Vorlauf aufbauen, aber höchstens einen Hop je Aufruf. Ein Aufruf hat nur
-    // knapp 3 ms Zeit; würde die Anschluss-Suche immer erst dann laufen, wenn
-    // der Puffer leer ist, käme es auf langsamen Geräten zu Aussetzern.
-    if (this.playing && this.queuedSamples() < HOP_OUT * 3) {
-      this.renderHop();
-      // Läuft es lange rund, wieder feiner suchen.
-      if (this.quality < 2 && ++this.clean > 800) { this.quality++; this.clean = 0; }
     }
 
     this.sinceReport += n;
@@ -3238,10 +3264,7 @@ const Audio = {
   playing: false,
   rate: 1,
   loop: null,
-  silent: null,        // stille Schleife (iOS)
-  out: null,           // <audio> mit dem MediaStream (Android)
-  streamDest: null,
-  useStream: false,
+  silent: null,
   wakeLock: null,
   onPosition: null,
   onEnded: null,
@@ -3268,36 +3291,7 @@ async function audioInit() {
     outputChannelCount: [2],
   });
 
-  /*
-   * Ausgabeweg — hier unterscheiden sich die Systeme:
-   *
-   * Android drosselt reines Web Audio, sobald der Bildschirm ausgeht: die App
-   * gilt dann als Hintergrundseite ohne laufendes Medium. Läuft der Ton
-   * dagegen durch ein <audio>-Element, behandelt Chrome ihn wie einen
-   * Musikplayer und lässt ihn weiterlaufen. Dafür wird der Ausgang des
-   * Worklets in einen MediaStream geleitet und dieser abgespielt.
-   *
-   * Auf iOS ist derselbe Weg unzuverlässig (MediaStream in <audio> wird dort
-   * je nach Version gar nicht wiedergegeben). Deshalb bleibt es dort bei der
-   * direkten Verbindung plus der stillen Schleife, die die Audiositzung und
-   * die Sperrbildschirm-Steuerung aktiv hält.
-   */
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  Audio.useStream = isAndroid && typeof Audio.ctx.createMediaStreamDestination === 'function';
-
-  if (Audio.useStream) {
-    Audio.streamDest = Audio.ctx.createMediaStreamDestination();
-    Audio.node.connect(Audio.streamDest);
-
-    Audio.out = document.createElement('audio');
-    Audio.out.srcObject = Audio.streamDest.stream;
-    Audio.out.setAttribute('playsinline', '');
-    Audio.out.preload = 'auto';
-    Audio.out.style.display = 'none';
-    document.body.append(Audio.out);
-  } else {
-    Audio.node.connect(Audio.ctx.destination);
-  }
+  Audio.node.connect(Audio.ctx.destination);
 
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
@@ -3315,7 +3309,7 @@ async function audioInit() {
     }
   };
 
-  if (!Audio.useStream && !Audio.silent) {
+  if (!Audio.silent) {
     Audio.silent = document.createElement('audio');
     Audio.silent.src = silentLoopURL();
     Audio.silent.loop = true;
@@ -3483,7 +3477,7 @@ async function prefetchTracks(song, order) {
     } catch (err) {
       console.warn('[player] Vorladen', track.fileName, err);
       track.broken = true;
-      renderVoiceButtons();
+      renderVoiceSelect();
     }
   }
 }
@@ -3500,57 +3494,14 @@ async function audioPlay() {
   Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
 
-  // Das Ausgabe-Element muss laufen, sonst hört Android beim Ausschalten
-  // des Bildschirms auf.
-  if (Audio.out) {
-    try {
-      await Audio.out.play();
-      // Spielt es nach kurzer Zeit trotzdem nicht, lieber auf den direkten
-      // Weg zurückfallen: Hauptsache, man hört überhaupt etwas.
-      setTimeout(() => {
-        if (Audio.playing && Audio.out && Audio.out.paused) useDirectOutput();
-      }, 1200);
-    } catch (err) {
-      console.warn('[audio] Ausgabe über MediaStream nicht möglich', err);
-      useDirectOutput();
-    }
-  }
   Audio.silent?.play().catch(() => { /* ohne Nutzergeste abgelehnt — unkritisch */ });
   audioRequestWakeLock();
-}
-
-/**
- * Notweg: den Worklet direkt mit dem Ausgang verbinden. Damit geht zwar die
- * Hintergrundwiedergabe auf Android verloren, aber Ton ist wichtiger.
- */
-function useDirectOutput() {
-  if (!Audio.useStream) return;
-  console.warn('[audio] Wechsel auf direkte Ausgabe');
-  try {
-    Audio.node.disconnect();
-    Audio.node.connect(Audio.ctx.destination);
-  } catch (err) {
-    console.error('[audio] Umschalten fehlgeschlagen', err);
-    return;
-  }
-  Audio.out?.pause();
-  Audio.useStream = false;
-
-  if (!Audio.silent) {
-    Audio.silent = document.createElement('audio');
-    Audio.silent.src = silentLoopURL();
-    Audio.silent.loop = true;
-    Audio.silent.volume = 0;
-    Audio.silent.setAttribute('playsinline', '');
-  }
-  if (Audio.playing) Audio.silent.play().catch(() => {});
 }
 
 function audioPause() {
   if (!Audio.ready) return;
   Audio.node.port.postMessage({ type: 'pause' });
   Audio.playing = false;
-  Audio.out?.pause();
   Audio.silent?.pause();
   audioReleaseWakeLock();
 }
@@ -4488,34 +4439,24 @@ function preferredTrack(song) {
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
 function renderLoadingState() {
   $('#player-loading').hidden = Audio.loading.size === 0;
-  renderVoiceButtons();
+  renderVoiceSelect();
 }
 
-function renderVoiceButtons() {
-  const host = $('#voice-grid');
-  host.textContent = '';
+function renderVoiceSelect() {
+  const sel = $('#voice-select');
+  sel.textContent = '';
   if (!playerSong) return;
 
+  // Bewusst ohne Dateigröße und ohne „bereit": im Alltag zählt nur, welche
+  // Stimme klingt. Lädt eine Spur gerade oder ist sie unspielbar, steht das
+  // knapp hinter dem Namen.
   for (const track of playerSong.tracks) {
-    const active = mixMode
-      ? (Audio.levels.get(track.fileKey) || 0) > 0
-      : playerVoice === track.fileKey;
-
-    const btn = el('button', {
-      class: 'voice-btn',
-      type: 'button',
-      'aria-pressed': active ? 'true' : 'false',
-      'data-broken': track.broken ? 'true' : null,
-    }, el('span', { text: track.label }));
-
-    // Bewusst ohne Dateigröße und ohne „bereit": im Alltag zählt nur, welche
-    // Stimme klingt. Lädt eine Spur gerade, zeigt das ein kleiner Punkt.
-    if (track.broken) btn.append(el('small', { text: 'nicht abspielbar' }));
-    else if (Audio.loading.has(track.fileKey)) btn.append(el('small', { class: 'dot', text: '•••' }));
-
-    btn.addEventListener('click', () => selectTrack(track, true));
-    host.append(btn);
+    let label = track.label;
+    if (track.broken) label += ' — nicht abspielbar';
+    else if (Audio.loading.has(track.fileKey)) label += ' — lädt …';
+    sel.append(el('option', { value: track.fileKey, text: label, disabled: track.broken || null }));
   }
+  sel.value = playerVoice || '';
 }
 
 function renderMixRows() {
@@ -4541,7 +4482,7 @@ function renderMixRows() {
       const v = Number(slider.value);
       val.textContent = `${v} %`;
       audioSetGain(track.fileKey, v / 100);
-      renderVoiceButtons();
+      renderVoiceSelect();
     });
     host.append(el('div', { class: 'mix-row' },
       el('span', { class: 'name', text: track.label }), slider, val));
@@ -4575,8 +4516,13 @@ async function selectTrack(track, userChoice = false) {
         markBroken(track, err);
         return;
       }
+      // Das Dekodieren sendet die Lautstärke schon beim Anlegen der Spur an
+      // den Worklet. Ist inzwischen längst eine andere Auswahl aktiv (Song
+      // gewechselt, Mischmodus verlassen …), muss das wieder stummgeschaltet
+      // werden — sonst klingt eine Spur nach, die gar nicht mehr gemeint war.
+      if (token !== loadToken) { audioSetGain(track.fileKey, 0); return; }
     }
-    renderVoiceButtons();
+    renderVoiceSelect();
     renderMixRows();
     return;
   }
@@ -4589,7 +4535,7 @@ async function selectTrack(track, userChoice = false) {
   for (const key of Audio.decoded.keys()) {
     if (key !== track.fileKey) audioSetGain(key, 0);
   }
-  renderVoiceButtons();
+  renderVoiceSelect();
 
   if (Audio.decoded.has(track.fileKey)) {
     audioSetGain(track.fileKey, 1);
@@ -4600,10 +4546,15 @@ async function selectTrack(track, userChoice = false) {
       markBroken(track, err);
       return;
     }
-    if (token !== loadToken) return;   // inzwischen wurde eine andere gewählt
+    // Inzwischen wurde eine andere Stimme oder ein anderer Song gewählt: die
+    // gerade fertig dekodierte Spur trotzdem stumm schalten. Sonst bleibt sie
+    // hörbar, weil der Worklet die beim Laden übergebene Lautstärke schon
+    // gesetzt hat, bevor wir hier reagieren konnten (führte bei schnellem
+    // „Nächstes Lied" dazu, dass zwei Lieder gleichzeitig liefen).
+    if (token !== loadToken) { audioSetGain(track.fileKey, 0); return; }
   }
 
-  renderVoiceButtons();
+  renderVoiceSelect();
   renderMixRows();
   updateMediaSession();
 }
@@ -4612,7 +4563,7 @@ async function selectTrack(track, userChoice = false) {
 function markBroken(track, err) {
   console.error('[player]', track.fileName, err);
   track.broken = true;
-  renderVoiceButtons();
+  renderVoiceSelect();
   banner(`„${track.label}" konnte nicht abgespielt werden. Die übrigen Stimmen funktionieren.`,
     { kind: 'error' });
 }
@@ -4660,7 +4611,7 @@ async function openPlayer(songId) {
   renderQueue();
   mixMode = false;
   $('#btn-mix').setAttribute('aria-pressed', 'false');
-  $('#btn-mix').textContent = 'Mischmodus einschalten';
+  $('#btn-mix').setAttribute('aria-label', 'Mischmodus einschalten');
   $('#mix-panel').hidden = true;
   playerVoice = null;
   loopA = loopB = null;
@@ -4670,7 +4621,7 @@ async function openPlayer(songId) {
   updateSeekUI(0);
   updateLoopUI();
   renderRepeatMode();
-  renderVoiceButtons();
+  renderVoiceSelect();
   renderPlayerExtras();
   loadSongLoops();
 
@@ -4683,8 +4634,8 @@ async function openPlayer(songId) {
   }
 
   Audio.song = song;
-  Audio.rate = 1;
   audioSetRate(1);
+  $('#rate-select').value = '1';
   audioSetLoop(null);
   audioSeek(0);
   updateSeekUI(0);
@@ -4787,16 +4738,20 @@ function songLabel(song) {
 const QUEUE_WINDOW = 2;
 let queueExpanded = false;
 
-/** Zeigt die laufende Playlist im Player an, mit dem aktuellen Titel markiert. */
+/**
+ * Zeigt die laufende Playlist im Player an, mit dem aktuellen Titel markiert.
+ * Noch nicht importierte Titel bleiben sichtbar, aber ohne Tippfunktion —
+ * so sieht man auch beim Abspielen, was in der Playlist fehlt.
+ */
 async function renderQueue() {
   const block = $('#queue-block');
   const host = $('#queue-list');
   host.textContent = '';
 
-  if (!playQueue || !playQueue.ids.length) { block.hidden = true; return; }
+  if (!playQueue || !playQueue.items.length) { block.hidden = true; return; }
   block.hidden = false;
 
-  const total = playQueue.ids.length;
+  const total = playQueue.items.length;
   const pos = playQueue.index + 1;
   $('#queue-title').textContent = `Playlist: ${playQueue.name} · ${pos} von ${total}`;
 
@@ -4813,21 +4768,24 @@ async function renderQueue() {
   }
 
   for (let index = from; index < to; index++) {
-    const song = byId.get(playQueue.ids[index]);
-    if (!song) continue;
-    const current = playerSong && song.id === playerSong.id;
+    const item = playQueue.items[index];
+    const song = item.id ? byId.get(item.id) : null;
+    const current = index === playQueue.index;
     const row = el('button', {
       class: 'queue-item', type: 'button',
       'data-current': current ? 'true' : 'false',
-      onclick: () => {
+      'data-missing': song ? 'false' : 'true',
+      disabled: song ? null : true,
+      onclick: song ? () => {
         playQueue.index = index;
         pendingAutoPlay = Audio.playing;
-        navigate(`#song/${playQueue.ids[index]}`, { replace: true });
-      },
+        navigate(`#song/${item.id}`, { replace: true });
+      } : null,
     },
       el('span', { class: 'num', text: String(index + 1) }),
-      el('span', { class: 'grow', text: songLabel(song) }));
+      el('span', { class: 'grow', text: song ? songLabel(song) : item.title }));
     if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
+    else if (!song) row.append(el('span', { class: 'small muted', text: 'nicht verfügbar' }));
     host.append(row);
   }
 
@@ -4852,37 +4810,22 @@ async function renderQueue() {
 }
 
 /**
- * Verhalten am Ende eines Liedes: anhalten, wiederholen oder weiterschalten.
- * Läuft eine Playlist, ist „Nächstes Lied" der Standard.
+ * Verhalten am Ende eines Liedes: wiederholen oder zum nächsten Titel.
+ * Läuft eine Playlist, geht es dort weiter (mit Meldung am Ende) — sonst
+ * alphabetisch durch die Bibliothek.
  */
 function onPlaybackEnded() {
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
 
-  const mode = settings.repeatMode || 'off';
-  if (mode === 'song') {
+  if (settings.repeatMode === 'song') {
     updateSeekUI(audioSeek(0));
     audioPlay().then(() => setPlayIcon(true));
     return;
   }
-  if (mode === 'next' || (mode === 'off' && playQueue)) {
-    if (playQueue) { playlistAdvance(); return; }
-  }
   updateSeekUI(Audio.duration);
-}
-
-$('#repeat-row').addEventListener('click', async (e) => {
-  const btn = e.target.closest('.rate-btn');
-  if (!btn) return;
-  await saveSettings({ repeatMode: btn.dataset.repeat });
-  renderRepeatMode();
-});
-
-function renderRepeatMode() {
-  const mode = settings.repeatMode || 'off';
-  $$('#repeat-row .rate-btn').forEach((b) => {
-    b.setAttribute('aria-pressed', b.dataset.repeat === mode ? 'true' : 'false');
-  });
+  if (playQueue) { playlistAdvance(); return; }
+  goToNextLibrarySong(true);
 }
 
 function closePlayer() {
@@ -4919,39 +4862,54 @@ $('#btn-play').addEventListener('click', async () => {
 $('#btn-restart').addEventListener('click', () => updateSeekUI(audioSeek(0)));
 
 /**
- * Nächstes Lied. In einer Playlist der nächste Eintrag, sonst der nächste
- * Song der Bibliothek in alphabetischer Reihenfolge — so lässt sich auch ohne
- * Playlist durch das Programm blättern.
+ * Nächster Song der Bibliothek in alphabetischer Reihenfolge — so lässt
+ * sich auch ohne Playlist durch das Programm blättern.
  */
-$('#btn-next').addEventListener('click', async () => {
-  if (playQueue) { playlistStep(1); return; }
+async function goToNextLibrarySong(autoplay) {
   const songs = await DB.metaByType('song').catch(() => []);
   songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
   const i = songs.findIndex((s) => s.id === playerSong?.id);
   const next = songs[(i + 1) % songs.length];
   if (next && next.id !== playerSong?.id) {
-    pendingAutoPlay = Audio.playing;
+    pendingAutoPlay = autoplay;
     navigate(`#song/${next.id}`, { replace: true });
   }
-});
-$('#btn-back30').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 30)));
-$('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 10)));
-$('#btn-fwd10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position + 10)));
+}
 
-$('#rate-row').addEventListener('click', (e) => {
-  const btn = e.target.closest('.rate-btn');
-  if (!btn) return;
-  audioSetRate(Number(btn.dataset.rate));
-  $$('#rate-row .rate-btn').forEach((b) => {
-    b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
-  });
+/** Nächstes Lied. In einer Playlist der nächste Eintrag (fehlende Titel
+ *  werden übersprungen), sonst der nächste Song der Bibliothek. */
+$('#btn-next').addEventListener('click', () => {
+  if (playQueue) { playlistStep(1, Audio.playing); return; }
+  goToNextLibrarySong(Audio.playing);
+});
+$('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 10)));
+
+$('#voice-select').addEventListener('change', (e) => {
+  const track = trackByVoiceKey(e.target.value);
+  if (track) selectTrack(track, true);
+});
+
+$('#rate-select').addEventListener('change', (e) => {
+  audioSetRate(Number(e.target.value));
   updateMediaSession();
 });
+
+$('#btn-repeat').addEventListener('click', async () => {
+  await saveSettings({ repeatMode: settings.repeatMode === 'song' ? 'next' : 'song' });
+  renderRepeatMode();
+});
+
+function renderRepeatMode() {
+  const song = settings.repeatMode === 'song';
+  const btn = $('#btn-repeat');
+  btn.setAttribute('aria-pressed', song ? 'true' : 'false');
+  btn.setAttribute('aria-label', song ? 'Am Ende: Wiederholen' : 'Am Ende: Nächstes Lied');
+}
 
 $('#btn-mix').addEventListener('click', () => {
   mixMode = !mixMode;
   $('#btn-mix').setAttribute('aria-pressed', mixMode ? 'true' : 'false');
-  $('#btn-mix').textContent = mixMode ? 'Mischmodus ausschalten' : 'Mischmodus einschalten';
+  $('#btn-mix').setAttribute('aria-label', mixMode ? 'Mischmodus ausschalten' : 'Mischmodus einschalten');
   $('#mix-panel').hidden = !mixMode;
 
   if (!mixMode) {
@@ -4960,7 +4918,7 @@ $('#btn-mix').addEventListener('click', () => {
       audioSetGain(key, key === playerVoice ? 1 : 0);
     }
   }
-  renderVoiceButtons();
+  renderVoiceSelect();
   renderMixRows();
 });
 
@@ -5057,7 +5015,8 @@ function updateLoopUI() {
   $('#btn-loop-toggle').disabled = !r;
   $('#btn-loop-save').disabled = !r;
   $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
-  $('#btn-loop-toggle').textContent = loopOn ? 'Loop aus' : 'Loop an';
+  $('#btn-loop-toggle').setAttribute('aria-checked', loopOn ? 'true' : 'false');
+  $('#btn-loop-toggle').setAttribute('aria-label', loopOn ? 'Loop ausschalten' : 'Loop einschalten');
 
   const info = $('#loop-info');
   if (!r) {
@@ -5402,7 +5361,7 @@ function updateMediaPosition() {
    ========================================================================== */
 
 let openPlaylist = null;
-let playQueue = null;   // { titles: [], index } während des Abspielens
+let playQueue = null;   // { name, items: [{title, id}], index } während des Abspielens
 
 /**
  * Liest eine Playlist-Textdatei. Bewusst tolerant: die Dateien schreiben
@@ -5568,20 +5527,22 @@ async function renderPlaylists() {
   host.append(ul);
 }
 
-/** Startet eine Playlist von vorn. */
+/** Startet eine Playlist von vorn. Fehlende Titel bleiben als Platzhalter drin. */
 async function startPlaylist(pl) {
   const songs = await DB.metaByType('song').catch(() => []);
-  const entries = (pl.songTitles || [])
-    .map((t) => findSongByTitle(songs, t))
-    .filter(Boolean);
+  const items = (pl.songTitles || []).map((t) => {
+    const song = findSongByTitle(songs, t);
+    return { title: t, id: song ? song.id : null };
+  });
+  const firstIndex = items.findIndex((it) => it.id);
 
-  if (!entries.length) {
+  if (firstIndex === -1) {
     banner(`Von „${pl.name}" ist noch kein Lied importiert.`, { kind: 'error' });
     return;
   }
-  playQueue = { name: pl.name, ids: entries.map((s) => s.id), index: 0 };
+  playQueue = { name: pl.name, items, index: firstIndex };
   queueExpanded = false;
-  navigate(`#song/${playQueue.ids[0]}`);
+  navigate(`#song/${items[firstIndex].id}`);
 }
 
 /* ---------- Detailansicht: Entwurf, Speichern, Verwerfen ---------------- */
@@ -5942,26 +5903,35 @@ $('#btn-pl-play').addEventListener('click', async () => {
   await startPlaylist(plDraft);
 });
 
-/** Springt in der laufenden Playlist. */
-function playlistStep(delta) {
+/** Springt in der laufenden Playlist, überspringt dabei fehlende Titel. */
+function playlistStep(delta, autoplay) {
   if (!playQueue) return;
-  const next = playQueue.index + delta;
-  if (next < 0 || next >= playQueue.ids.length) return;
-  playQueue.index = next;
-  navigate(`#song/${playQueue.ids[next]}`, { replace: true });
+  let i = playQueue.index;
+  do {
+    i += delta;
+    if (i < 0 || i >= playQueue.items.length) return;
+  } while (!playQueue.items[i].id);
+  playQueue.index = i;
+  pendingAutoPlay = autoplay ?? Audio.playing;
+  navigate(`#song/${playQueue.items[i].id}`, { replace: true });
 }
 
-/** Nach Songende automatisch zum nächsten Titel der Playlist. */
+/** Nach Songende automatisch zum nächsten (verfügbaren) Titel der Playlist. */
 function playlistAdvance() {
   if (!playQueue) return;
-  if (playQueue.index + 1 >= playQueue.ids.length) {
-    banner(`Playlist „${playQueue.name}" zu Ende.`);
-    playQueue = null;
-    return;
+  let i = playQueue.index;
+  for (;;) {
+    i++;
+    if (i >= playQueue.items.length) {
+      banner(`Playlist „${playQueue.name}" zu Ende.`);
+      playQueue = null;
+      return;
+    }
+    if (playQueue.items[i].id) break;
   }
-  playQueue.index++;
+  playQueue.index = i;
   pendingAutoPlay = true;
-  navigate(`#song/${playQueue.ids[playQueue.index]}`, { replace: true });
+  navigate(`#song/${playQueue.items[i].id}`, { replace: true });
 }
 
 // Beim automatischen Weiterschalten soll der nächste Song gleich losspielen.
