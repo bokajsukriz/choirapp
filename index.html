@@ -88,6 +88,11 @@ body {
   flex-direction: column;
 }
 
+/* `hidden` muss stärker sein als jede display-Regel weiter unten. Ohne das
+   bleiben ausgeblendete Elemente sichtbar, sobald ihre Klasse ein eigenes
+   display setzt (.btn ist inline-flex, .filterbar ist flex). */
+[hidden] { display: none !important; }
+
 /* Konfetti-Kreise: feste, scharfe Kreisflächen statt verschwommener Farbflecken —
    dieselben zwei Kreise hinter der App wie hinter dem Player/der Playlist. */
 body::before, body::after,
@@ -404,8 +409,6 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   display: flex;
   flex-direction: column;
 }
-
-.sheet[hidden] { display: none; }
 
 .sheet-head {
   flex: 0 0 auto;
@@ -1099,6 +1102,128 @@ input[type="checkbox"] {
   padding: 0;
 }
 
+/* ---------- Ersteinrichtung (Slides beim ersten Start) ------------------ */
+
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Waagerechter Streifen mit Einrastpunkten: wischen fühlt sich nativ an und
+   kostet kein Skript. Die Knöpfe unten scrollen denselben Streifen. */
+.onb-track {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.onb-track::-webkit-scrollbar { display: none; }
+
+.onb-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(26px + var(--safe-top)) calc(20px + var(--safe-right))
+           20px calc(20px + var(--safe-left));
+}
+
+.onb-step {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+
+.onb-slide h2 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1.15;
+  margin: 0 0 10px;
+  color: var(--text);
+}
+
+.onb-slide p { margin: 0 0 12px; color: var(--muted); line-height: 1.5; }
+.onb-slide p strong { color: var(--text); }
+.onb-slide .steps { margin-bottom: 12px; color: var(--muted); }
+.onb-slide .steps strong { color: var(--text); }
+
+/* Farbtupfer über der Überschrift — greift die Konfetti-Idee auf, ohne
+   eigene Bilddateien. */
+.onb-badge {
+  width: 62px;
+  height: 62px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+
+.onb-badge svg { width: 30px; height: 30px; }
+
+.onb-note {
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.onb-note--ok { border-color: var(--ok); color: var(--ok); }
+.onb-note--warn { border-color: var(--warn); color: var(--text); }
+
+.onb-foot {
+  padding: 12px calc(18px + var(--safe-right))
+           calc(14px + var(--safe-bottom)) calc(18px + var(--safe-left));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.onb-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.onb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  border: 0;
+  padding: 0;
+  transition: width .2s ease, background .2s ease;
+}
+
+.onb-dot[aria-current="true"] { width: 22px; background: var(--accent); }
+
+.onb-actions { display: flex; gap: 10px; }
+.onb-actions .btn { flex: 1; }
+.onb-actions .btn--ghost { flex: 0 0 auto; border-color: transparent; background: transparent; color: var(--muted); }
+.onb-actions .btn[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-dot { transition: none; }
+}
+
 /* ---------- Dialog (Sicherheitsabfragen, ersetzt confirm()) ------------- */
 
 .overlay {
@@ -1111,8 +1236,6 @@ input[type="checkbox"] {
   justify-content: center;
   padding: calc(20px + var(--safe-top)) 18px calc(20px + var(--safe-bottom));
 }
-
-.overlay[hidden] { display: none; }
 
 .dialog {
   background: var(--surface);
@@ -1145,6 +1268,146 @@ input[type="checkbox"] {
     </div>
   </div>
 </div>
+
+<!-- Ersteinrichtung: läuft beim allerersten Start einmal durch und ist
+     danach über die Einstellungen wieder erreichbar. Bewusst ohne
+     Zwangsabfolge — jeder Schritt lässt sich überspringen. -->
+<section class="onboarding" id="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onb-title-1">
+  <div class="onb-track" id="onb-track">
+
+    <!-- 1 — Auf den Home-Bildschirm ------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-1" aria-label="Schritt 1 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 6v7"/><path d="M9 9l3-3 3 3"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 1 von 5</p>
+      <h2 id="onb-title-1">Auf den Home&#8209;Bildschirm legen</h2>
+      <p>
+        So startet die App wie jede andere: eigenes Symbol, kein Browserfenster,
+        volle Bildschirmhöhe. Vor allem aber behält das System die Aufnahmen
+        länger, wenn die App installiert ist.
+      </p>
+      <div id="onb-install"></div>
+    </article>
+
+    <!-- 2 — Meine Stimme ------------------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-2" aria-label="Schritt 2 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 2 von 5</p>
+      <h2 id="onb-title-2">Welche Stimme singst du?</h2>
+      <p>
+        Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine
+        Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:
+      </p>
+      <ul class="steps small" style="list-style: disc; color: var(--muted)">
+        <li><strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung
+            vorausgewählt — der Rest bleibt draußen und spart Speicherplatz.</li>
+        <li><strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du
+            sie bei jedem Lied neu einstellst.</li>
+      </ul>
+      <div class="chip-grid" id="onb-voice"></div>
+      <p class="small muted" style="margin-top:12px">
+        Alle Stimmen bleiben trotzdem wählbar. Änderbar unter
+        <strong>Einstellungen&nbsp;→&nbsp;Meine Stimme</strong>.
+      </p>
+    </article>
+
+    <!-- 3 — Dauerhafte Speicherung --------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-3" aria-label="Schritt 3 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l8 3.5V12c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6.5z"/><path d="M9 12l2 2 4-4"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 3 von 5</p>
+      <h2 id="onb-title-3">Aufnahmen dauerhaft behalten</h2>
+      <p>
+        Web-Apps dürfen ihre Daten normalerweise nur „auf Probe“ speichern: wird
+        der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie
+        weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.
+      </p>
+      <p>
+        Mit einem Klick fragen wir das Betriebssystem, ob es die Daten
+        <strong>dauerhaft</strong> behalten soll. Der Browser entscheidet
+        selbst — ein Dialog erscheint dabei in der Regel nicht.
+      </p>
+      <div class="stack">
+        <button class="btn btn--primary btn--block" id="onb-persist" type="button">
+          Dauerhafte Speicherung anfordern
+        </button>
+        <div class="onb-note" id="onb-persist-note" hidden></div>
+      </div>
+    </article>
+
+    <!-- 4 — Üben: Abschnitt und Tempo ------------------------------------ -->
+    <article class="onb-slide" id="onb-slide-4" aria-label="Schritt 4 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 4 von 5</p>
+      <h2 id="onb-title-4">Die schwere Stelle üben</h2>
+      <p><strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben“:</p>
+      <ol class="steps small">
+        <li>An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.</li>
+        <li>Am Ende der Stelle auf <strong>B</strong> tippen.</li>
+        <li>Den <strong>Schalter</strong> daneben einschalten — der Abschnitt
+            läuft jetzt in der Schleife, bis du ihn kannst.</li>
+        <li>Über das <strong>Disketten-Symbol</strong> lässt sich der Abschnitt
+            benennen und bleibt gespeichert, auch nach dem Schließen.</li>
+      </ol>
+      <p><strong>Langsamer üben.</strong> Unten rechts im Player steht die
+        Geschwindigkeit: <strong>1×</strong>, <strong>0,8×</strong> oder
+        <strong>0,6×</strong>. Die Tonhöhe bleibt dabei gleich — es klingt
+        langsamer, nicht tiefer. Beides zusammen ist der Kern der App: einen
+        kurzen Abschnitt so lange langsam wiederholen, bis er sitzt.</p>
+    </article>
+
+    <!-- 5 — Playlisten und Import ---------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-5" aria-label="Schritt 5 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 5 von 5</p>
+      <h2 id="onb-title-5">Songs holen, Programm planen</h2>
+      <p><strong>Import.</strong> Die Aufnahmen liegen im geteilten
+        Dropbox-Ordner. Du lädst ihn dort einmal als <strong>ZIP-Datei</strong>
+        herunter und wählst sie unter „Import“ aus. Vor dem Speichern zeigt die
+        App, was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs
+        Handy sollen. Jeder weitere Import <strong>ergänzt</strong> nur —
+        Vorhandenes bleibt, fehlende Stimmen lassen sich nachladen.</p>
+      <p><strong>Playlisten.</strong> Eine Playlist ist ein Programm: die Lieder
+        in der Reihenfolge, in der sie gesungen werden. Am Ende eines Liedes
+        schaltet die App von selbst weiter. Der Chorleiter kann eine Playlist
+        als schlichte Textdatei verteilen — ein Titel je Zeile —, du spielst sie
+        unter „Playlisten“ ein.</p>
+      <div class="onb-note">
+        Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem
+        Import kein Internet mehr.
+      </div>
+    </article>
+
+  </div>
+
+  <div class="onb-foot">
+    <div class="onb-dots" id="onb-dots" role="tablist" aria-label="Schritte"></div>
+    <div class="onb-actions">
+      <button class="btn btn--ghost" id="onb-skip" type="button">Überspringen</button>
+      <button class="btn" id="onb-prev" type="button" hidden>Zurück</button>
+      <button class="btn btn--primary" id="onb-next" type="button">Weiter</button>
+    </div>
+  </div>
+</section>
 
 <!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
 <section class="player" id="playlist-view" hidden aria-labelledby="pl-title">
@@ -1532,6 +1795,9 @@ input[type="checkbox"] {
         </p>
         <button class="btn btn--block" id="btn-help-import" type="button">
           Wie bekomme ich Songs in die App?
+        </button>
+        <button class="btn btn--block" id="btn-setup-again" type="button">
+          Einführung noch einmal ansehen
         </button>
       </div>
     </div>
@@ -1947,6 +2213,7 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
+  setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3028,6 +3295,7 @@ $$('#channel-mode .preset').forEach((btn) => {
 });
 
 $('#btn-help-import').addEventListener('click', () => showView('import'));
+$('#btn-setup-again').addEventListener('click', () => openOnboarding());
 
 $('#btn-persist').addEventListener('click', async () => {
   const ok = await requestPersistence();
@@ -6441,6 +6709,231 @@ window.chorApp = {
   selfTest: runSelfTests,
 };
 
+/* ==========================================================================
+   ERSTEINRICHTUNG — fünf Slides beim allerersten Start
+
+   Absichtlich kein Zwang: jeder Schritt lässt sich überspringen, und über die
+   Einstellungen ist die Einführung jederzeit wieder erreichbar. Gemerkt wird
+   nur ein Zeitstempel in den Einstellungen (`setupDoneAt`).
+   ========================================================================== */
+
+const ONB_SLIDES = 5;
+
+const onbEl    = $('#onboarding');
+const onbTrack = $('#onb-track');
+const onbDots  = $('#onb-dots');
+const onbPrev  = $('#onb-prev');
+const onbNext  = $('#onb-next');
+const onbSkip  = $('#onb-skip');
+
+let onbIndex = 0;
+let onbOpen  = false;
+
+/** Läuft die App bereits vom Home-Bildschirm? */
+function isStandalone() {
+  return window.matchMedia?.('(display-mode: standalone)').matches === true
+      || window.navigator.standalone === true;
+}
+
+const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// Chrome & Co. bieten die Installation über ein eigenes Ereignis an. Es
+// kommt genau einmal und muss aufgehoben werden, bis der Nutzer so weit ist.
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  if (onbOpen) renderOnbInstall();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  if (onbOpen) renderOnbInstall();
+});
+
+/** Schritt 1: Anleitung passend zum Gerät. */
+function renderOnbInstall() {
+  const host = $('#onb-install');
+  host.textContent = '';
+
+  if (isStandalone()) {
+    host.append(el('div', { class: 'onb-note onb-note--ok',
+      text: 'Erledigt — die App läuft bereits vom Home-Bildschirm.' }));
+    return;
+  }
+
+  if (installPrompt) {
+    host.append(el('button', {
+      class: 'btn btn--primary btn--block', type: 'button', text: 'App installieren',
+      onclick: async () => {
+        const prompt = installPrompt;
+        installPrompt = null;
+        try {
+          await prompt.prompt();
+          await prompt.userChoice;
+        } catch (err) {
+          console.warn('[install]', err);
+        }
+        renderOnbInstall();
+      },
+    }));
+    return;
+  }
+
+  const steps = isIOSDevice
+    ? ['In <strong>Safari</strong> unten auf das Teilen-Symbol tippen (Quadrat mit Pfeil nach oben).',
+       'In der Liste nach unten wischen bis <strong>„Zum Home-Bildschirm“</strong>.',
+       'Oben rechts auf <strong>Hinzufügen</strong> tippen — fertig.']
+    : ['Im Browser oben rechts das <strong>Menü</strong> öffnen (⋮).',
+       'Dort <strong>„App installieren“</strong> bzw. <strong>„Zum Startbildschirm hinzufügen“</strong> wählen.',
+       'Bestätigen — das Symbol liegt danach neben den übrigen Apps.'];
+
+  const list = el('ol', { class: 'steps small' });
+  for (const s of steps) {
+    const li = document.createElement('li');
+    li.innerHTML = s;               // fester Text aus dieser Datei, keine Fremddaten
+    list.append(li);
+  }
+  host.append(list);
+
+  if (isIOSDevice) {
+    host.append(el('div', { class: 'onb-note',
+      text: 'Ohne diesen Schritt löscht iOS die gespeicherten Aufnahmen, wenn die App längere Zeit nicht geöffnet wird.' }));
+  }
+}
+
+/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
+function renderOnbVoice() {
+  const host = $('#onb-voice');
+  host.textContent = '';
+  for (const voice of MY_VOICE_CHOICES) {
+    host.append(el('button', {
+      class: 'chip', type: 'button',
+      'aria-pressed': settings.myVoice === voice ? 'true' : 'false',
+      text: VOICE_LABEL[voice],
+      onclick: async () => {
+        const next = settings.myVoice === voice ? null : voice;
+        // Wer hier zum ersten Mal wählt, will beim Import genau diese Stimme.
+        await saveSettings(next
+          ? { myVoice: next, defaultImportScope: 'mine' }
+          : { myVoice: null });
+        renderOnbVoice();
+        renderVoicePicker();
+      },
+    }));
+  }
+}
+
+/** Schritt 3: Stand der dauerhaften Speicherung anzeigen. */
+async function renderOnbPersist() {
+  const btn  = $('#onb-persist');
+  const note = $('#onb-persist-note');
+
+  if (!navigator.storage || !navigator.storage.persist) {
+    btn.hidden = true;
+    note.hidden = false;
+    note.className = 'onb-note';
+    note.textContent = 'Dieser Browser kennt die Einstellung nicht. Die Aufnahmen werden trotzdem gespeichert — nur ohne ausdrückliche Zusage.';
+    return;
+  }
+
+  const persisted = await navigator.storage.persisted().catch(() => false);
+  btn.hidden = persisted;
+  note.hidden = !persisted;
+  if (persisted) {
+    note.className = 'onb-note onb-note--ok';
+    note.textContent = 'Dauerhafte Speicherung ist aktiv — das System löscht die Aufnahmen nicht von selbst.';
+  }
+}
+
+$('#onb-persist').addEventListener('click', async () => {
+  const btn  = $('#onb-persist');
+  const note = $('#onb-persist-note');
+  btn.disabled = true;
+  const ok = await requestPersistence();
+  btn.disabled = false;
+  note.hidden = false;
+  if (ok) {
+    btn.hidden = true;
+    note.className = 'onb-note onb-note--ok';
+    note.textContent = 'Zugesagt — das System löscht die Aufnahmen nicht von selbst.';
+  } else {
+    note.className = 'onb-note onb-note--warn';
+    note.textContent = isStandalone()
+      ? 'Der Browser hat noch nicht zugesagt. Das holt er oft von selbst nach, sobald die App ein paar Mal benutzt wurde.'
+      : 'Der Browser hat noch nicht zugesagt. Am zuverlässigsten klappt es, wenn die App auf dem Home-Bildschirm liegt (Schritt 1).';
+  }
+  renderStorage().catch(() => {});
+});
+
+function renderOnbDots() {
+  onbDots.textContent = '';
+  for (let i = 0; i < ONB_SLIDES; i++) {
+    onbDots.append(el('button', {
+      class: 'onb-dot', type: 'button', role: 'tab',
+      'aria-current': i === onbIndex ? 'true' : 'false',
+      'aria-label': `Schritt ${i + 1} von ${ONB_SLIDES}`,
+      onclick: () => onbGoTo(i),
+    }));
+  }
+  onbPrev.hidden = onbIndex === 0;
+  onbSkip.hidden = onbIndex === ONB_SLIDES - 1;
+  onbNext.textContent = onbIndex === ONB_SLIDES - 1 ? 'Los geht’s' : 'Weiter';
+}
+
+function onbGoTo(index) {
+  onbIndex = Math.max(0, Math.min(ONB_SLIDES - 1, index));
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  onbTrack.scrollTo({ left: onbIndex * onbTrack.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
+  renderOnbDots();
+  if (onbIndex === 2) renderOnbPersist();
+}
+
+// Beim Wischen die Punkte nachziehen — gedrosselt über einen Frame, damit das
+// Scrollen auf älteren Geräten flüssig bleibt.
+let onbScrollFrame = 0;
+onbTrack.addEventListener('scroll', () => {
+  if (onbScrollFrame) return;
+  onbScrollFrame = requestAnimationFrame(() => {
+    onbScrollFrame = 0;
+    const width = onbTrack.clientWidth || 1;
+    const i = Math.round(onbTrack.scrollLeft / width);
+    if (i !== onbIndex && i >= 0 && i < ONB_SLIDES) {
+      onbIndex = i;
+      renderOnbDots();
+      if (onbIndex === 2) renderOnbPersist();
+    }
+  });
+}, { passive: true });
+
+onbPrev.addEventListener('click', () => onbGoTo(onbIndex - 1));
+onbNext.addEventListener('click', () => {
+  if (onbIndex === ONB_SLIDES - 1) closeOnboarding();
+  else onbGoTo(onbIndex + 1);
+});
+onbSkip.addEventListener('click', () => closeOnboarding());
+
+function openOnboarding() {
+  onbOpen = true;
+  onbIndex = 0;
+  onbEl.hidden = false;
+  renderOnbInstall();
+  renderOnbVoice();
+  renderOnbPersist();
+  renderOnbDots();
+  // Ohne Verzögerung steht die Breite des Streifens noch nicht fest.
+  requestAnimationFrame(() => { onbTrack.scrollLeft = 0; });
+  onbNext.focus();
+}
+
+async function closeOnboarding() {
+  onbOpen = false;
+  onbEl.hidden = true;
+  if (!settings.setupDoneAt) await saveSettings({ setupDoneAt: new Date().toISOString() });
+  renderVoicePicker();
+  if (currentView === 'settings') renderSettings();
+}
+
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
@@ -6455,12 +6948,21 @@ async function boot() {
   }
 
   await loadSettings();
-  requestPersistence(); // im Hintergrund, blockiert den Start nicht
   setupFolderImport();
   runSelfTests();
 
   const start = (location.hash || '#songs').slice(1);
-  showView(VIEWS[start] ? start : 'songs', { push: false });
+  // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
+  // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel.
+  navigate(VIEWS[start] ? `#${start}` : '#songs', { replace: true });
+
+  if (!settings.setupDoneAt) {
+    // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
+    // Fingertipp, was manche Browser voraussetzen.
+    openOnboarding();
+  } else {
+    requestPersistence(); // im Hintergrund, blockiert den Start nicht
+  }
 
   registerServiceWorker();
 }
