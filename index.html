@@ -2238,6 +2238,34 @@ async function tx(storeNames, mode, fn) {
   });
 }
 
+/**
+ * Datensatz für den `files`-Store: die reinen Bytes, nicht der Blob.
+ *
+ * Safari legt einen in IndexedDB gespeicherten Blob als Verweis auf eine Datei
+ * ab. Ist die weg — App neu gestartet, Zwischenspeicher aufgeräumt —, gibt es
+ * den Datensatz zwar noch, seine Bytes aber nicht mehr: auf dem iPhone spielte
+ * danach keine einzige Stimme mehr („konnte nicht abgespielt werden"), obwohl
+ * die Songliste vollständig aussah. Ein ArrayBuffer wird dagegen wirklich in
+ * die Datenbank geschrieben.
+ */
+async function fileRecord(key, blob, name) {
+  return { key, data: await blob.arrayBuffer(), size: blob.size, name };
+}
+
+/** Bytes eines Dateidatensatzes. Ältere Datensätze halten noch einen Blob. */
+async function recordBytes(rec) {
+  if (rec.data) return rec.data;
+  if (rec.blob) return await rec.blob.arrayBuffer();
+  throw new Error('Der Datensatz ist leer.');
+}
+
+/** Dateidatensatz als Blob — für alles, was das System öffnen oder teilen soll. */
+function recordBlob(rec, type) {
+  if (rec.data) return new Blob([rec.data], { type });
+  if (rec.blob) return rec.blob;
+  throw new Error('Der Datensatz ist leer.');
+}
+
 /** IDBRequest → Promise */
 function reqPromise(request) {
   return new Promise((resolve, reject) => {
@@ -3971,11 +3999,33 @@ function setLoading(key, label) {
   Audio.onLoadingChange?.();
 }
 
+/**
+ * decodeAudioData in beiden Fassungen: Safari hat die mit Rückrufen deutlich
+ * länger als die mit Promise. Wer die falsche nimmt, bekommt dort `undefined`
+ * zurück — und jede Stimme gilt als kaputt.
+ */
+function decodeAudio(bytes) {
+  return new Promise((resolve, reject) => {
+    const fail = (err) => reject(err || new Error('Die Aufnahme ließ sich nicht dekodieren.'));
+    let ret;
+    try {
+      ret = Audio.ctx.decodeAudioData(bytes, resolve, fail);
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    if (ret && typeof ret.then === 'function') ret.then(resolve, fail);
+  });
+}
+
 async function decodeAndSend(track, gain) {
   const rec = await DB.fileGet(track.fileKey);
   if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
 
-  const audioBuf = await Audio.ctx.decodeAudioData(await rec.blob.arrayBuffer());
+  const bytes = await recordBytes(rec);
+  if (!bytes.byteLength) throw new Error('Die gespeicherte Aufnahme ist leer.');
+
+  const audioBuf = await decodeAudio(bytes);
 
   // 16 Bit statt 32 Bit Fließkomma halbiert den Speicherbedarf — eine
   // 14-MB-MP3 belegt so rund 50 statt 100 MB. Hörbar ist der Unterschied
@@ -3992,19 +4042,19 @@ async function decodeAndSend(track, gain) {
     chans.push(i16);
   }
 
-  const bytes = chans.reduce((n, c) => n + c.byteLength, 0);
+  const pcmBytes = chans.reduce((n, c) => n + c.byteLength, 0);
 
   // Platz schaffen, bevor die neue Spur dazukommt.
-  evictIfNeeded(track.fileKey, bytes);
+  evictIfNeeded(track.fileKey, pcmBytes);
 
   Audio.node.port.postMessage(
     { type: 'load', id: track.fileKey, ch: chans, frames: audioBuf.length, gain },
     chans.map((c) => c.buffer)
   );
 
-  const info = { duration: audioBuf.duration, bytes };
+  const info = { duration: audioBuf.duration, bytes: pcmBytes };
   Audio.decoded.set(track.fileKey, info);
-  Audio.decodedBytes += bytes;
+  Audio.decodedBytes += pcmBytes;
   Audio.levels.set(track.fileKey, gain);
   touchLRU(track.fileKey);
 
@@ -4100,6 +4150,7 @@ async function prefetchTracks(song, order) {
     } catch (err) {
       console.warn('[player] Vorladen', track.fileName, err);
       track.broken = true;
+      track.brokenReason = errText(err);
       renderVoiceSelect();
     }
   }
@@ -4795,11 +4846,6 @@ const IMPORT_BATCH_FILES = 24;
  * Nur ausgepackte (deflate-)Einträge liegen wirklich im Speicher und
  * begrenzen, wie viel gesammelt werden darf.
  */
-function inMemoryBytes(entry, blob) {
-  if (entry.blob || entry.method === 0) return 0;
-  return blob.size;
-}
-
 /**
  * Schreibt einen Stapel: Aufnahmen, die zugehörigen Songdatensätze und die
  * abgelösten Altdateien — alles in einer einzigen Transaktion.
@@ -4918,8 +4964,8 @@ async function runImport() {
         try {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
-          batch.files.push({ key: fileKey, blob, size: blob.size, name: track.fileName });
-          batch.bytes += inMemoryBytes(track.entry, blob);
+          batch.files.push(await fileRecord(fileKey, blob, track.fileName));
+          batch.bytes += blob.size;
           batch.songs.add(song);
 
           const record = {
@@ -4990,8 +5036,8 @@ async function runImport() {
           } else {
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
-          batch.files.push({ key: fileKey, blob, size: blob.size, name: pdf.name });
-          batch.bytes += inMemoryBytes(pdf, blob);
+          batch.files.push(await fileRecord(fileKey, blob, pdf.name));
+          batch.bytes += blob.size;
           batch.songs.add(song);
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
@@ -5348,9 +5394,69 @@ async function selectTrack(track, userChoice = false) {
 function markBroken(track, err) {
   console.error('[player]', track.fileName, err);
   track.broken = true;
+  track.brokenReason = errText(err);
   renderVoiceSelect();
-  banner(`„${track.label}" konnte nicht abgespielt werden. Die übrigen Stimmen funktionieren.`,
-    { kind: 'error' });
+  showBrokenNotice(track);
+}
+
+/** Name und Text der Ausnahme — auf dem Handy gibt es keine Konsole. */
+function errText(err) {
+  if (!err) return 'unbekannter Fehler';
+  const name = err.name && err.name !== 'Error' ? `${err.name}: ` : '';
+  return `${name}${err.message || String(err)}`;
+}
+
+// Eine Meldung je Song statt einer je Stimme: wer nacheinander vier Stimmen
+// antippt, hatte sonst vier gleichlautende Kästen übereinander, die auf dem
+// iPhone den halben Bildschirm füllten.
+let brokenNotice = null;
+
+function resetBrokenNotice() {
+  brokenNotice?.close?.();
+  brokenNotice = null;
+}
+
+function showBrokenNotice(track) {
+  const song = playerSong;
+  if (!song) return;
+
+  if (!brokenNotice || brokenNotice.songId !== song.id) {
+    resetBrokenNotice();
+    brokenNotice = { songId: song.id, labels: [], reasons: new Set(), close: null };
+  }
+  const n = brokenNotice;
+  if (!n.labels.includes(track.label)) n.labels.push(track.label);
+  n.reasons.add(track.brokenReason);
+  n.close?.();
+
+  const reason = [...n.reasons].join(' · ');
+
+  // „Die übrigen Stimmen funktionieren" wäre gelogen, wenn keine mehr übrig
+  // ist. Dann hilft nur ein neuer Import — also gleich den Weg dorthin zeigen.
+  const allBroken = song.tracks.every((t) => t.broken);
+  const text = allBroken
+    ? `Keine Stimme von „${song.title}" lässt sich abspielen (${reason}). `
+      + 'Die Aufnahmen sind auf diesem Gerät nicht mehr lesbar — bitte neu importieren.'
+    : `${n.labels.map((l) => `„${l}"`).join(', ')} `
+      + `${n.labels.length === 1 ? 'lässt sich' : 'lassen sich'} nicht abspielen (${reason}). `
+      + 'Die übrigen Stimmen funktionieren.';
+
+  n.close = banner(text, {
+    kind: 'error',
+    action: allBroken ? { label: 'Reparieren', onClick: () => repairBrokenSong(song) } : null,
+  });
+}
+
+/**
+ * Keine Stimme lässt sich mehr abspielen — dann sind die Dateien hinter den
+ * Datensätzen verschwunden. Ein zweiter Import allein hilft nicht: dort gelten
+ * gleich große Dateien als „bereits vorhanden" und werden übersprungen. Also
+ * erst den Song entfernen (Loops, Notizen und Playlisten bleiben), danach
+ * direkt zum Import.
+ */
+async function repairBrokenSong(song) {
+  await deleteSong(song);
+  if (!(await DB.metaGet(song.key).catch(() => null))) showView('import');
 }
 
 function updateSeekUI(seconds) {
@@ -5396,6 +5502,7 @@ async function openPlayer(songId) {
   $('#player-hint').hidden = true;
   renderQueue();
   playerVoice = null;
+  resetBrokenNotice();
   loopA = loopB = null;
   loopOn = false;
   activeLoopId = null;
@@ -5660,6 +5767,7 @@ function closePlayer() {
   playerVoice = null;
   songLoops = [];
   playerNote = null;
+  resetBrokenNotice();
   if (navigator.mediaSession) {
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
@@ -6116,7 +6224,8 @@ async function renderPlayerExtras() {
       if (token !== extrasRenderToken) return;
       if (!rec) { row.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
-      const file = new File([rec.blob], score.fileName, { type: 'application/pdf' });
+      const file = new File([recordBlob(rec, 'application/pdf')], score.fileName,
+        { type: 'application/pdf' });
       const url = URL.createObjectURL(file);
       scoreURLs.push(url);
 
