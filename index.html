@@ -308,6 +308,22 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Songliste (ab M1 gefüllt) */
 .list { list-style: none; margin: 0; padding: 0; }
 
+/* Zeilen außerhalb des Bildschirms überspringt der Browser beim Berechnen und
+   Zeichnen. Bei einer großen Bibliothek ist das der Unterschied zwischen einem
+   spürbaren Hänger und einem sofortigen Reiterwechsel — sichtbar ändert sich
+   nichts. Browser ohne Unterstützung (ältere Safari-Versionen) ignorieren die
+   Angabe einfach.
+   `auto` merkt sich die zuletzt gemessene Höhe, damit die Bildlaufleiste beim
+   Scrollen nicht springt; 66px ist die Höhe einer einzeiligen Zeile.
+   Betrifft die Songliste, die Titelauswahl beim Bearbeiten einer Playlist und
+   die Auswahlmaske vor dem Import — die drei Listen, die lang werden. */
+.list > li,
+#pl-candidates > .list-item,
+.pick-song {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 66px;
+}
+
 .list-item {
   display: flex;
   align-items: center;
@@ -1066,7 +1082,10 @@ input[type="checkbox"] {
 }
 
 .banner {
-  pointer-events: auto;
+  /* Der Meldungstext selbst fängt keine Tipps ab — sonst wäre der Knopf
+     darunter (z.B. „Zurück" im Player) unerreichbar, solange die Meldung
+     steht. Bedienbar sind nur die Knöpfe der Meldung. */
+  pointer-events: none;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
@@ -1082,6 +1101,11 @@ input[type="checkbox"] {
 .banner--error { border-left-color: var(--danger); }
 .banner--ok    { border-left-color: var(--ok); }
 .banner p { margin: 0; flex: 1; }
+
+.banner .banner-action,
+.banner .banner-close {
+  pointer-events: auto;
+}
 
 .banner .banner-action {
   min-height: 36px;
@@ -1721,6 +1745,20 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2>Bildschirm</h2>
+      <p class="small muted" style="margin-top:-4px">
+        Manche Android-Handys beenden die Wiedergabe, sobald sich der Bildschirm
+        sperrt. Mit „Immer an“ bleibt er an, solange ein Lied geöffnet ist —
+        das kostet Akku, aber die Wiedergabe reißt nicht ab.
+      </p>
+      <div class="preset-row" id="screen-mode" role="group" aria-label="Bildschirmsperre">
+        <button class="preset" type="button" data-keep="off" aria-pressed="true">Normal</button>
+        <button class="preset" type="button" data-keep="on">Immer an</button>
+      </div>
+      <p class="small muted" id="screen-note" style="margin:10px 0 0"></p>
+    </div>
+
+    <div class="card">
       <h2>Speicher</h2>
       <div class="stack">
         <div class="row">
@@ -2154,8 +2192,9 @@ function reqPromise(request) {
  * Jede Schreiboperation, die einen Song berühren kann, verwirft ihn wieder.
  */
 let songCache = null;
+let songCacheStamp = 0;
 
-function dropSongCache() { songCache = null; }
+function dropSongCache() { songCache = null; songCacheStamp++; }
 
 const DB = {
   async metaGet(key) {
@@ -2235,6 +2274,7 @@ const DEFAULT_SETTINGS = {
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
+  keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2954,6 +2994,11 @@ let songFilter = null;   // null = „Alle"
 // Aufruf darf die Liste zeichnen.
 let songsRenderToken = 0;
 
+// Woraus die aktuell sichtbare Liste entstanden ist. Stimmt das noch, muss
+// nichts neu gebaut werden — der Wechsel zurück auf den Reiter „Songs" ist
+// sonst bei jeder Rückkehr ein kompletter Neuaufbau aller Zeilen.
+let songsRenderSignature = null;
+
 async function renderSongs() {
   const token = ++songsRenderToken;
   const host = $('#song-list-host');
@@ -2964,12 +3009,21 @@ async function renderSongs() {
   } catch (err) {
     console.error(err);
     if (token !== songsRenderToken) return;
+    songsRenderSignature = null;
     host.textContent = '';
     host.append(el('div', { class: 'card' },
       el('p', { class: 'small', text: 'Die Songliste konnte nicht geladen werden.' })));
     return;
   }
   if (token !== songsRenderToken) return;
+
+  // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
+  if (songs.length) updateBackupReminder();
+
+  const signature = `${songCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
+  if (signature === songsRenderSignature && host.firstChild) return;
+  songsRenderSignature = signature;
+
   host.textContent = '';
 
   if (!songs.length) {
@@ -2991,7 +3045,6 @@ async function renderSongs() {
   }
 
   $('#searchbar').hidden = false;
-  updateBackupReminder();
 
   // --- Filterleiste der Sammelordner (nur wenn es mehr als einen gibt) ----
   const collections = [...new Set(songs.flatMap((s) => s.collections || []))]
@@ -3145,8 +3198,17 @@ async function renderStorage() {
  * Loops und Playlisten bleiben dabei erhalten — sie hängen am Titel, nicht
  * an der Aufnahme.
  */
+/**
+ * Die Liste zum Löschen einzelner Songs und Stimmen.
+ *
+ * Wird erst gebaut, wenn sie jemand aufklappt. Vorher entstand sie bei jedem
+ * Öffnen der Einstellungen im Verborgenen — bei einer großen Bibliothek sind
+ * das tausende Elemente samt Symbolen, und der Wechsel in die Einstellungen
+ * hing dadurch mehrere Sekunden, obwohl niemand die Liste sehen wollte.
+ */
 async function renderStorageManager() {
   const host = $('#storage-manager');
+  if (host.hidden) { host.textContent = ''; return; }
   host.textContent = '';
 
   const songs = await DB.metaByType('song').catch(() => []);
@@ -3212,12 +3274,13 @@ async function renderStorageManager() {
 
 // Bei einer großen Bibliothek wird die Liste mit den Lösch-Buttons sonst
 // unübersichtlich — deshalb erst auf Wunsch einblenden.
-$('#btn-manage-storage').addEventListener('click', () => {
+$('#btn-manage-storage').addEventListener('click', async () => {
   const host = $('#storage-manager');
   const open = host.hidden;
   host.hidden = !open;
   $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
   $('#btn-manage-storage').textContent = open ? 'Einzelne Songs verwalten ausblenden' : 'Einzelne Songs verwalten';
+  await renderStorageManager();
 });
 
 async function deleteTrack(song, track) {
@@ -3324,6 +3387,7 @@ async function refreshAfterDelete() {
 async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
+  renderScreenMode();
   await renderStorage();
   renderBackupAge();
   await renderStorageManager();
@@ -3337,6 +3401,24 @@ function renderChannelMode() {
     btn.setAttribute('aria-pressed', btn.dataset.mode === (settings.channelMode || 'off') ? 'true' : 'false');
   }
 }
+
+function renderScreenMode() {
+  const want = settings.keepScreenOn ? 'on' : 'off';
+  for (const btn of $$('#screen-mode .preset')) {
+    btn.setAttribute('aria-pressed', btn.dataset.keep === want ? 'true' : 'false');
+  }
+  $('#screen-note').textContent = 'wakeLock' in navigator
+    ? 'Gilt nur, solange ein Lied geöffnet ist. Beim Verlassen des Players sperrt sich der Bildschirm wieder wie gewohnt.'
+    : 'Dieser Browser kann den Bildschirm nicht anlassen. Am zuverlässigsten läuft die Wiedergabe, wenn die App auf dem Home-Bildschirm liegt.';
+}
+
+$('#screen-mode').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.preset');
+  if (!btn) return;
+  await saveSettings({ keepScreenOn: btn.dataset.keep === 'on' });
+  renderScreenMode();
+  updateWakeLock();
+});
 
 $$('#channel-mode .preset').forEach((btn) => {
   btn.addEventListener('click', async () => {
@@ -3736,8 +3818,8 @@ async function audioInit() {
       Audio.onPosition?.(Audio.position);
     } else if (m.type === 'ended') {
       Audio.playing = false;
-      audioReleaseWakeLock();
       Audio.silent?.pause();
+      updateWakeLock();
       Audio.onEnded?.();
     }
   };
@@ -3746,9 +3828,26 @@ async function audioInit() {
     Audio.silent = document.createElement('audio');
     Audio.silent.src = silentLoopURL();
     Audio.silent.loop = true;
-    Audio.silent.volume = 0;
     Audio.silent.setAttribute('playsinline', '');
+    // Lautstärke bewusst NICHT auf 0: die WAV-Datei enthält echte Stille, es
+    // ist also ohnehin nichts zu hören. Ein Element mit Lautstärke 0 gilt
+    // Android dagegen als stumm — es vergibt dafür keinen Audio-Fokus und
+    // beendet die Wiedergabe, sobald sich der Bildschirm sperrt.
+    Audio.silent.volume = 1;
+    // Im Dokument statt freischwebend: nur so bezieht Chrome das Element
+    // zuverlässig in die Medienwiedergabe der Seite ein.
+    Audio.silent.style.display = 'none';
+    document.body.append(Audio.silent);
   }
+
+  // Sperrt Android die Seite trotzdem aus, steht der Kontext beim Zurückkehren
+  // auf „suspended". Ohne das hier bliebe der Player danach stumm stehen.
+  Audio.ctx.addEventListener('statechange', () => {
+    if (Audio.ctx.state === 'suspended' && Audio.playing
+        && document.visibilityState === 'visible') {
+      Audio.ctx.resume().catch(() => {});
+    }
+  });
 
   Audio.ready = true;
 }
@@ -3932,12 +4031,26 @@ function audioSetGain(key, value) {
 
 async function audioPlay() {
   if (!Audio.ready) return;
+
+  // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne das
+  // meldet der Worklet sofort erneut „zu Ende" und es passiert schlicht nichts
+  // — zu erleben, sobald das letzte (oder einzige) Lied durchgelaufen war.
+  if (!Audio.loop && Audio.duration > 0 && Audio.position >= Audio.duration - 0.05) {
+    audioSeek(0);
+  }
+
   if (Audio.ctx.state === 'suspended') await Audio.ctx.resume();
+
+  // Der stille Loop zuerst: Android vergibt den Audio-Fokus an das
+  // Medienelement, und daran hängt, ob die Seite bei gesperrtem Bildschirm
+  // weiterlaufen darf.
+  try { await Audio.silent?.play(); }
+  catch { /* ohne Nutzergeste abgelehnt — unkritisch */ }
+
   Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
-
-  Audio.silent?.play().catch(() => { /* ohne Nutzergeste abgelehnt — unkritisch */ });
-  audioRequestWakeLock();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  updateWakeLock();
 }
 
 function audioPause() {
@@ -3945,7 +4058,8 @@ function audioPause() {
   Audio.node.port.postMessage({ type: 'pause' });
   Audio.playing = false;
   Audio.silent?.pause();
-  audioReleaseWakeLock();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  updateWakeLock();
 }
 
 function audioSeek(seconds) {
@@ -3986,22 +4100,54 @@ function audioApplyChannelMode(mode) {
   }
 }
 
-async function audioRequestWakeLock() {
-  // Hält den Bildschirm an, solange gespielt wird (Spec 5.2).
-  if (!('wakeLock' in navigator) || Audio.wakeLock) return;
-  try {
-    Audio.wakeLock = await navigator.wakeLock.request('screen');
-    Audio.wakeLock.addEventListener('release', () => { Audio.wakeLock = null; });
-  } catch { /* z.B. bei niedrigem Akkustand abgelehnt */ }
-}
+/**
+ * Hält den Bildschirm an — solange gespielt wird, und auf Wunsch die ganze
+ * Zeit, in der der Player offen ist.
+ *
+ * Hintergrund: Android beendet die Wiedergabe einer Web-App beim Sperren des
+ * Bildschirms je nach Gerät und Browser trotz Medienelement und Media Session.
+ * Wer das erlebt, schaltet in den Einstellungen „Bildschirm anlassen" ein —
+ * dann sperrt sich das Handy während des Übens gar nicht erst.
+ *
+ * Das System nimmt die Sperre von sich aus zurück, sobald die Seite in den
+ * Hintergrund gerät; deshalb wird sie beim Zurückkehren neu angefordert.
+ */
+let wakeLockPending = false;
 
-function audioReleaseWakeLock() {
-  Audio.wakeLock?.release().catch(() => {});
-  Audio.wakeLock = null;
+async function updateWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  const want = Audio.playing || (playerSong && settings.keepScreenOn);
+
+  if (!want) {
+    Audio.wakeLock?.release().catch(() => {});
+    Audio.wakeLock = null;
+    return;
+  }
+  // Nur im Vordergrund möglich, und nie zwei Anfragen gleichzeitig.
+  if (Audio.wakeLock || wakeLockPending || document.visibilityState !== 'visible') return;
+
+  wakeLockPending = true;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    lock.addEventListener('release', () => {
+      if (Audio.wakeLock === lock) Audio.wakeLock = null;
+    });
+    Audio.wakeLock = lock;
+  } catch { /* z.B. bei niedrigem Akkustand abgelehnt */ } finally {
+    wakeLockPending = false;
+  }
+  // Inzwischen doch nicht mehr gewollt (Pause während der Anfrage).
+  if (!(Audio.playing || (playerSong && settings.keepScreenOn))) updateWakeLock();
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && Audio.playing) audioRequestWakeLock();
+  if (document.visibilityState !== 'visible') return;
+  updateWakeLock();
+  // Hat Android den Ton währenddessen angehalten, hier wieder aufnehmen.
+  if (Audio.playing && Audio.ctx?.state === 'suspended') {
+    Audio.ctx.resume().catch(() => {});
+    Audio.silent?.play().catch(() => {});
+  }
 });
 
 /** Gibt alle Spuren frei — beim Verlassen des Players. */
@@ -5155,6 +5301,7 @@ async function openPlayer(songId) {
 
   playerSong = song;
   playerEl.hidden = false;
+  updateWakeLock();
   $('#player-title').textContent = songLabel(song);
   $('#player-sub').textContent = `${plural(song.tracks.length, 'Stimme', 'Stimmen')}`;
   $('#player-hint').hidden = true;
@@ -5417,6 +5564,7 @@ function closePlayer() {
   audioReset();
   releaseScoreURLs();
   playerSong = null;
+  updateWakeLock();          // „Bildschirm anlassen" gilt nur im Player
   playerVoice = null;
   songLoops = [];
   if (navigator.mediaSession) {
@@ -5546,10 +5694,23 @@ let loopOn = false;
 let activeLoopId = null;
 let songLoops = [];
 
+/**
+ * Der aktuell gesetzte Abschnitt, auf die Länge der Aufnahme begrenzt.
+ *
+ * Die Begrenzung ist kein Schönheitsfehler: Ein aus einer Sicherung
+ * eingespielter Abschnitt kann hinter dem Ende einer inzwischen ersetzten,
+ * kürzeren Aufnahme liegen. Der Worklet erreicht dann weder das Loop-Ende noch
+ * das Dateiende — die Wiedergabe liefe stumm weiter, ohne je aufzuhören.
+ */
 function loopRange() {
   if (loopA === null || loopB === null) return null;
-  const start = Math.min(loopA, loopB);
-  const end = Math.max(loopA, loopB);
+  const dur = Audio.duration || 0;
+  let start = Math.min(loopA, loopB);
+  let end = Math.max(loopA, loopB);
+  if (dur) {
+    start = Math.min(start, dur);
+    end = Math.min(end, dur);
+  }
   return end - start < 0.2 ? null : { start, end };
 }
 
@@ -6490,9 +6651,11 @@ $('#btn-pl-copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(text);
     banner('Playlist in die Zwischenablage kopiert.', { kind: 'ok' });
   } catch {
+    // Mehrzeilig: so bleibt ein Titel je Zeile stehen und der kopierte Text
+    // lässt sich anderswo wieder als Playlist einlesen.
     await promptDialog({
       title: 'Playlist als Text', text: 'Text markieren und kopieren.',
-      value: text.replace(/\n/g, ' · '), okLabel: 'Fertig',
+      value: text, okLabel: 'Fertig', multiline: true,
     });
   }
 });
@@ -6918,7 +7081,27 @@ function runSelfTests() {
     failed.push('groupDuplicates schlägt die falsche Fassung vor');
   }
 
-  const total = voiceCases.length + titleCases.length + 7;
+  // Abschnitt hinter dem Ende einer kürzeren Aufnahme wird begrenzt bzw.
+  // verworfen — sonst liefe die Wiedergabe stumm ins Leere.
+  const savedA = loopA, savedB = loopB, savedDur = Audio.duration;
+  Audio.duration = 100;
+  loopA = 50; loopB = 200;
+  const clamped = loopRange();
+  if (!clamped || clamped.end !== 100 || clamped.start !== 50) {
+    failed.push(`loopRange begrenzt nicht auf die Länge: ${JSON.stringify(clamped)}`);
+  }
+  loopA = 150; loopB = 200;
+  if (loopRange() !== null) failed.push('loopRange hinter dem Ende müsste null sein');
+  loopA = savedA; loopB = savedB; Audio.duration = savedDur;
+
+  // Nur ausgepackte Daten zählen gegen die Speichergrenze eines Import-Stapels.
+  if (inMemoryBytes({ method: 0 }, { size: 5e6 }) !== 0
+      || inMemoryBytes({ blob: {} }, { size: 5e6 }) !== 0
+      || inMemoryBytes({ method: 8 }, { size: 5e6 }) !== 5e6) {
+    failed.push('inMemoryBytes zählt die falschen Einträge');
+  }
+
+  const total = voiceCases.length + titleCases.length + 10;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
