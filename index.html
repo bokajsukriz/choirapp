@@ -3860,11 +3860,20 @@ function audioUnload(key) {
 }
 
 /**
- * Lädt die übrigen Stimmen im Hintergrund, damit ein Stimmenwechsel später
- * sofort klingt. Läuft nacheinander, damit das Dekodieren die Bedienung
- * nicht ausbremst, und hört auf, sobald das Speicherbudget erreicht ist.
+ * Lädt ausgewählte Stimmen im Hintergrund vor, damit ein Wechsel später sofort
+ * klingt.
+ *
+ * Bewusst nicht *alle* Stimmen: Dekodieren kostet auf älteren Handys je Spur
+ * mehrere Sekunden Rechenzeit im Vordergrund-Thread — genau während der Nutzer
+ * abspielen, scrollen oder Loop-Marken setzen will. Vorbereitet werden deshalb
+ * nur die Spuren, die tatsächlich als Nächstes drankommen (siehe
+ * prefetchOrder). Alle übrigen laden beim Antippen nach, mit „lädt …" in der
+ * Stimmenauswahl.
  */
 async function prefetchTracks(song, order) {
+  // Erst zur Ruhe kommen lassen: die gewählte Stimme soll ohne Konkurrenz
+  // fertig werden und der Player sofort bedienbar sein.
+  await new Promise((r) => setTimeout(r, 400));
   for (const track of order) {
     if (!Audio.song || Audio.song.key !== song.key) return;   // Song gewechselt
     if (Audio.decoded.has(track.fileKey) || track.broken) continue;
@@ -4944,6 +4953,24 @@ function preferredTrack(song) {
       || null;
 }
 
+/**
+ * Welche Stimmen lohnen sich im Hintergrund?
+ *
+ * Die Gesamtmischung (zum Gegenhören) und die eigene Stimme — mehr braucht
+ * niemand sofort. Jede weitere Spur kostet Rechenzeit, die im selben Moment
+ * für die Bedienung fehlt.
+ */
+function prefetchOrder(song, first) {
+  const wanted = ['FULL', settings.myVoice, settings.lastVoice];
+  const out = [];
+  for (const voice of wanted) {
+    if (!voice) continue;
+    const track = song.tracks.find((t) => t.voice === voice);
+    if (track && track !== first && !out.includes(track)) out.push(track);
+  }
+  return out;
+}
+
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
 function renderLoadingState() {
   $('#player-loading').hidden = Audio.loading.size === 0;
@@ -5116,12 +5143,7 @@ async function openPlayer(songId) {
     setPlayIcon(true);
   }
 
-  // Alle übrigen Stimmen im Hintergrund vorbereiten, damit ein Wechsel später
-  // ohne Wartezeit klingt. Reihenfolge: Gesamtmischung, dann der Rest.
-  const rest = song.tracks
-    .filter((t) => t.fileKey !== first.fileKey)
-    .sort((a, b) => (a.voice === 'FULL' ? -1 : 0) - (b.voice === 'FULL' ? -1 : 0));
-  prefetchTracks(song, rest);
+  prefetchTracks(song, prefetchOrder(song, first));
 
   showReplacedNotice(song);
   showLengthNotice(song);
@@ -6428,8 +6450,17 @@ function playlistAdvance() {
     if (!playQueue.items[i].id) continue;
     if (i <= playQueue.index) banner(`Playlist „${playQueue.name}" beginnt von vorn.`);
     playQueue.index = i;
+    const id = playQueue.items[i].id;
+    // Ist nur ein einziger Titel abspielbar, führt das Weiterschalten zurück
+    // auf den laufenden Song. Dann gibt es nichts zu navigieren — er fängt
+    // einfach wieder von vorn an. (Sonst blieb die Wiedergabe stehen.)
+    if (playerSong && playerSong.id === id) {
+      updateSeekUI(audioSeek(0));
+      audioPlay().then(() => setPlayIcon(true));
+      return;
+    }
     pendingAutoPlay = true;
-    navigate(`#song/${playQueue.items[i].id}`, { replace: true });
+    navigate(`#song/${id}`, { replace: true });
     return;
   }
   banner(`Playlist „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
@@ -6544,12 +6575,13 @@ async function restoreBackup(data) {
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
-    for (const l of await DB.metaByType('loop')) await DB.metaDelete(l.key);
-    for (const p of await DB.metaByType('playlist')) await DB.metaDelete(p.key);
+    const stale = [...await DB.metaByType('loop'), ...await DB.metaByType('playlist')];
+    await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
   }
 
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
+  const fresh = [];
   let addedLoops = 0, addedPl = 0, keptPending = 0;
 
   for (const l of loops) {
@@ -6557,13 +6589,14 @@ async function restoreBackup(data) {
     const song = findSongByTitle(songs, l.songTitle || '');
     const norm = normalizeTitle(l.songTitle || '');
 
-    // Bei gleichem Namen und gleichem Song nichts doppelt anlegen.
-    const dupe = existingLoops.some((x) =>
-      x.name === l.name && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm));
-    if (dupe) continue;
+    // Bei gleichem Namen und gleichem Song nichts doppelt anlegen — auch dann
+    // nicht, wenn die Sicherung denselben Loop selbst zweimal enthält.
+    const isDupe = (x) =>
+      x.name === l.name && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm);
+    if (existingLoops.some(isDupe) || fresh.some((x) => x.type === 'loop' && isDupe(x))) continue;
 
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    await DB.metaPut({
+    fresh.push({
       key: `loop:${id}`, type: 'loop', id,
       songId: song ? song.id : null,
       songTitle: l.songTitle || '',      // bleibt erhalten, auch ohne Song
@@ -6577,10 +6610,16 @@ async function restoreBackup(data) {
 
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
-    if (existingPl.some((x) => normalizeTitle(x.name) === normalizeTitle(p.name || ''))) continue;
-    await savePlaylist(newPlaylist(p.name || 'Playlist', p.songTitles));
+    const name = normalizeTitle(p.name || '');
+    if (existingPl.some((x) => normalizeTitle(x.name) === name)) continue;
+    if (fresh.some((x) => x.type === 'playlist' && normalizeTitle(x.name) === name)) continue;
+    fresh.push(newPlaylist(p.name || 'Playlist', p.songTitles));
     addedPl++;
   }
+
+  // Alles auf einmal schreiben: bei einer großen Sicherung sind das sonst
+  // hunderte einzelne Transaktionen.
+  await DB.metaPutMany(fresh);
 
   if (data.settings?.myVoice && !settings.myVoice) {
     await saveSettings({ myVoice: data.settings.myVoice });
@@ -6605,15 +6644,15 @@ async function reconnectPendingLoops() {
   if (!pending.length) return 0;
 
   const songs = await DB.metaByType('song');
-  let n = 0;
+  const reconnected = [];
   for (const loop of pending) {
     const song = findSongByTitle(songs, loop.songTitle);
     if (!song) continue;
     loop.songId = song.id;
-    await DB.metaPut(loop);
-    n++;
+    reconnected.push(loop);
   }
-  return n;
+  await DB.metaPutMany(reconnected);
+  return reconnected.length;
 }
 
 function daysSince(iso) {
