@@ -3096,7 +3096,28 @@ async function audioLoadTrack(track, gain = 0) {
   Audio.decoded.set(track.fileKey, info);
   Audio.levels.set(track.fileKey, gain);
   touchLRU(track.fileKey);
+
+  // Die Dauer wird beim ersten Dekodieren gemerkt. Nur so lässt sich später
+  // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
+  // Loops verschoben sein könnten.
+  rememberDuration(track, audioBuf.duration);
   return info;
+}
+
+async function rememberDuration(track, duration) {
+  if (!Audio.song || !Number.isFinite(duration)) return;
+  if (typeof track.durationSec === 'number' && Math.abs(track.durationSec - duration) < 0.05) return;
+  track.durationSec = duration;
+  try {
+    const song = await DB.metaGet(Audio.song.key);
+    if (!song) return;
+    const stored = song.tracks.find((t) => t.fileKey === track.fileKey);
+    if (!stored) return;
+    stored.durationSec = duration;
+    await DB.metaPut(song);
+  } catch (err) {
+    console.warn('[player] Dauer konnte nicht gemerkt werden', err);
+  }
 }
 
 function touchLRU(key) {
