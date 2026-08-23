@@ -1024,6 +1024,32 @@ input[type="checkbox"] {
 .score-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
 .score-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+/* Notizen — schlichtes Textfeld ohne Formatierung. Bewusst dieselbe Anmutung
+   wie der Liedtext daneben, nur eben beschreibbar. */
+.note-box {
+  display: block;
+  width: 100%;
+  min-height: 130px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  line-height: 1.55;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.note-foot { margin-top: 8px; }
+
+.note-state { color: var(--muted); font-size: 0.82rem; }
+.note-state[data-dirty="true"] { color: var(--warn); }
+
+.note-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.note-actions .btn { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
+.note-actions .btn svg { width: 20px; height: 20px; }
+
 .dialog textarea {
   width: 100%;
   min-height: 160px;
@@ -1517,6 +1543,27 @@ input[type="checkbox"] {
       <p class="section-title">Noten</p>
       <div id="scores-list"></div>
     </div>
+
+    <div id="notes-block">
+      <p class="section-title">Notizen</p>
+      <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
+      <div id="note-editor" hidden>
+        <textarea class="note-box" id="note-text" rows="5" spellcheck="true"
+                  aria-label="Notiz zu diesem Lied"
+                  placeholder="z. B. Einsatz nach Takt 12 abwarten, zweite Strophe leiser"></textarea>
+        <div class="row note-foot">
+          <span class="note-state" id="note-state" data-dirty="false" role="status"></span>
+          <span class="note-actions">
+            <button class="btn" id="btn-note-save" type="button" aria-label="Notiz speichern">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+            </button>
+            <button class="btn" id="btn-note-delete" type="button" aria-label="Notiz löschen" style="color: var(--danger)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+            </button>
+          </span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="player-foot">
@@ -1738,9 +1785,9 @@ input[type="checkbox"] {
       <h2>Sicherung</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Sichert Loops, Playlisten, Einstellungen und die Songliste — ohne
-          Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt sich
-          per Mail oder Messenger verschicken.
+          Sichert Loops, Notizen, Playlisten, Einstellungen und die Songliste
+          — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt
+          sich per Mail oder Messenger verschicken.
         </p>
         <p class="small" id="backup-age" style="margin:0"></p>
         <button class="btn btn--primary btn--block" id="btn-backup-export" type="button">
@@ -1754,18 +1801,33 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2>Notizen</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Alle Notizen zusammen als schlichte Textdatei: Songtitel, Leerzeile,
+          Notiz. Zum Ausdrucken, Weitergeben oder Einfügen in eine Notiz-App.
+        </p>
+        <p class="small" id="notes-count" style="margin:0"></p>
+        <button class="btn btn--block" id="btn-notes-export" type="button">
+          Notizen als Textdatei
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Speicherplatz freigeben</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Einzelne Songs oder Stimmen löschen. Loops und Playlisten bleiben
-          dabei erhalten.
+          Einzelne Songs oder Stimmen löschen. Loops, Notizen und Playlisten
+          bleiben dabei erhalten.
         </p>
         <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button">
           Alle Aufnahmen löschen
         </button>
         <p class="small muted" style="margin:0">
-          Entfernt nur die Audiodateien. Loops, Playlisten und Einstellungen
-          bleiben erhalten und verbinden sich beim nächsten Import wieder.
+          Entfernt nur die Audiodateien. Loops, Notizen, Playlisten und
+          Einstellungen bleiben erhalten und verbinden sich beim nächsten
+          Import wieder.
         </p>
         <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false">
           Einzelne Songs verwalten
@@ -1778,7 +1840,8 @@ input[type="checkbox"] {
       <h2>Daten</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Löscht alle Songs, Aufnahmen, Loops und Playlisten von diesem Gerät.
+          Löscht alle Songs, Aufnahmen, Loops, Notizen und Playlisten von
+          diesem Gerät.
           Die Dateien in der Dropbox bleiben unberührt.
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
@@ -3223,7 +3286,7 @@ $('#btn-manage-storage').addEventListener('click', () => {
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: 'Stimme löschen?',
-    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops bleiben erhalten.`,
+    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops und Notizen bleiben erhalten.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -3235,6 +3298,7 @@ async function deleteTrack(song, track) {
   } else {
     // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
     await DB.fileDelete((song.scores || []).map((s) => s.fileKey));
+    await detachNotes(song);
     await DB.metaDelete(song.key);
   }
   await refreshAfterDelete();
@@ -3244,7 +3308,7 @@ async function deleteTrack(song, track) {
 async function deleteSong(song) {
   const ok = await confirmDialog({
     title: 'Song löschen?',
-    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
+    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops und Notizen bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -3260,6 +3324,7 @@ async function deleteSong(song) {
     loop.songTitle = song.title;
   }
   await DB.metaPutMany(detached);
+  await detachNotes(song);
 
   await DB.metaDelete(song.key);
   if (playerSong && playerSong.id === song.id) closePlayer();
@@ -3284,8 +3349,8 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Aufnahmen löschen?',
     text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
-        + 'Loops, Playlisten und Einstellungen bleiben erhalten und verbinden sich wieder, '
-        + 'sobald du die Lieder erneut importierst.',
+        + 'Loops, Notizen, Playlisten und Einstellungen bleiben erhalten und verbinden sich '
+        + 'wieder, sobald du die Lieder erneut importierst.',
     okLabel: 'Aufnahmen löschen', danger: true,
   });
   if (!ok) return;
@@ -3299,6 +3364,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
         loop.songTitle = song.title;
         await DB.metaPut(loop);
       }
+      await detachNotes(song);
       await DB.fileDelete([
         ...song.tracks.map((t) => t.fileKey),
         ...(song.scores || []).map((x) => x.fileKey),
@@ -3316,6 +3382,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
 
 async function refreshAfterDelete() {
   await renderStorage();
+  await renderNotesCount();
   await renderStorageManager();
   await renderSongs();
   await renderPlaylists();
@@ -3326,6 +3393,7 @@ async function renderSettings() {
   renderChannelMode();
   await renderStorage();
   renderBackupAge();
+  await renderNotesCount();
   await renderStorageManager();
   $('#offline-state').textContent = navigator.serviceWorker?.controller
     ? 'ja'
@@ -4798,11 +4866,17 @@ async function runImport() {
 
   report.unchanged = selectionStats().unchanged;
 
-  // Loops aus einer Sicherung, deren Song bisher fehlte, verbinden sich jetzt.
+  // Loops und Notizen aus einer Sicherung, deren Song bisher fehlte,
+  // verbinden sich jetzt.
   try {
     report.reconnected = await reconnectPendingLoops();
   } catch (err) {
     console.warn('[import] Loops verbinden', err);
+  }
+  try {
+    report.notesLinked = await reconnectPendingNotes();
+  } catch (err) {
+    console.warn('[import] Notizen verbinden', err);
   }
 
   lastReport = report;
@@ -4843,6 +4917,7 @@ function renderImportReport() {
   if (r.unchanged)     lines.push(`${plural(r.unchanged, 'Datei', 'Dateien')} waren unverändert und wurden übersprungen.`);
   if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
   if (r.reconnected)   lines.push(`${plural(r.reconnected, 'gespeicherter Loop', 'gespeicherte Loops')} aus einer Sicherung wieder verbunden.`);
+  if (r.notesLinked)   lines.push(`${plural(r.notesLinked, 'gespeicherte Notiz', 'gespeicherte Notizen')} wieder verbunden.`);
 
   card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
 
@@ -5170,6 +5245,7 @@ async function openPlayer(songId) {
   renderVoiceSelect();
   renderPlayerExtras();
   loadSongLoops();
+  loadSongNote();
 
   try {
     await audioInit();
@@ -5413,12 +5489,15 @@ function onPlaybackEnded() {
 }
 
 function closePlayer() {
+  // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
+  flushNote();
   playerEl.hidden = true;
   audioReset();
   releaseScoreURLs();
   playerSong = null;
   playerVoice = null;
   songLoops = [];
+  playerNote = null;
   if (navigator.mediaSession) {
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
@@ -5897,6 +5976,326 @@ async function renderPlayerExtras() {
       row.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
     }
   }
+}
+
+/* ==========================================================================
+   NOTIZEN — freier Text je Lied (ohne Formatierung)
+
+   Eigener Datensatz statt eines Feldes im Song: so übersteht eine Notiz das
+   Löschen und erneute Importieren der Aufnahmen, genau wie ein Loop. Solange
+   es keine Notiz gibt, steht im Player nur ein Knopf — das Textfeld erscheint
+   erst, wenn es gebraucht wird.
+
+   Gespeichert wird automatisch, aber nicht bei jedem Tastendruck: eine kurze
+   Ruhepause reicht, danach ist es ein Schreibvorgang von wenigen hundert Byte.
+   Die Diskette daneben speichert sofort — für alle, die das lieber selbst in
+   der Hand haben.
+   ========================================================================== */
+
+const NOTE_SAVE_DELAY = 900;   // ms Tippruhe, bevor automatisch gespeichert wird
+
+let playerNote   = null;   // Notiz des offenen Songs, null = keine
+let noteSaveTimer = null;  // läuft nach dem Tippen
+
+// Schreibvorgänge laufen nacheinander. Sonst liest das nächste Lied seine
+// Notiz, während die des vorherigen noch geschrieben wird.
+let notePending = Promise.resolve();
+
+function noteWrite(run) {
+  notePending = notePending.then(run, run).catch((err) => console.error('[notiz]', err));
+  return notePending;
+}
+
+function newNote(song) {
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    key: `note:${id}`, type: 'note', id,
+    songId: song.id,
+    songTitle: song.title,        // bleibt erhalten, auch ohne Song
+    text: '',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Notiz eines Songs — auch eine, die noch am Titel hängt (aus einer Sicherung). */
+function noteForSong(notes, song) {
+  const norm = song.normTitle || normalizeTitle(song.title);
+  return notes.find((n) => n.songId === song.id)
+      || notes.find((n) => !n.songId && normalizeTitle(n.songTitle || '') === norm)
+      || null;
+}
+
+async function loadSongNote() {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  playerNote = null;
+  renderNoteBlock();
+  if (!playerSong) return;
+
+  const song = playerSong;
+  await notePending.catch(() => {});
+  const all = await DB.metaByType('note').catch(() => []);
+  if (playerSong !== song) return;      // inzwischen ein anderes Lied geöffnet
+
+  const found = noteForSong(all, song);
+  if (!found) return;
+
+  // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg, Knopf zurück.
+  if (!(found.text || '').trim()) {
+    noteWrite(() => DB.metaDelete(found.key));
+    return;
+  }
+
+  // Kam sie aus einer Sicherung, hängt sie noch am Titel. Jetzt, wo der Song
+  // offen ist, bekommt sie seine Kennung.
+  if (!found.songId) {
+    found.songId = song.id;
+    noteWrite(() => DB.metaPut(found));
+  }
+
+  playerNote = found;
+  renderNoteBlock();
+}
+
+/** Textfeld oder Knopf — je nachdem, ob es schon eine Notiz gibt. */
+function renderNoteBlock() {
+  const has = playerNote !== null;
+  $('#btn-note-add').hidden = has;
+  $('#note-editor').hidden = !has;
+  $('#note-text').value = has ? (playerNote.text || '') : '';
+  setNoteState(has ? 'saved' : 'none');
+}
+
+function setNoteState(kind) {
+  const node = $('#note-state');
+  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
+  if (kind === 'dirty')  { node.textContent = 'Noch nicht gespeichert …'; return; }
+  if (kind === 'saving') { node.textContent = 'Speichert …'; return; }
+  if (kind === 'saved') {
+    const at = fmtClock(playerNote?.updatedAt);
+    node.textContent = at ? `Gespeichert um ${at} Uhr` : 'Gespeichert';
+    return;
+  }
+  node.textContent = '';
+}
+
+function fmtClock(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+$('#btn-note-add').addEventListener('click', () => {
+  if (!playerSong || playerNote) return;
+  // Erst beim Speichern entsteht ein Datensatz: wer den Knopf nur ausprobiert,
+  // hinterlässt keine leere Notiz.
+  playerNote = newNote(playerSong);
+  renderNoteBlock();
+  setNoteState('none');
+  $('#note-text').focus();
+});
+
+$('#note-text').addEventListener('input', () => {
+  if (!playerNote) return;
+  setNoteState('dirty');
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(() => { saveNote(); }, NOTE_SAVE_DELAY);
+});
+
+// Wer das Feld verlässt, will nicht auf die Tippruhe warten.
+$('#note-text').addEventListener('blur', () => { if (noteSaveTimer) saveNote(); });
+
+$('#btn-note-save').addEventListener('click', () => saveNote({ announce: true }));
+
+$('#btn-note-delete').addEventListener('click', async () => {
+  if (!playerNote) return;
+  if ($('#note-text').value.trim()) {
+    const ok = await confirmDialog({
+      title: 'Notiz löschen?',
+      text: `Die Notiz zu „${playerSong?.title || 'diesem Lied'}" wird entfernt.`,
+      okLabel: 'Löschen', danger: true,
+    });
+    if (!ok) return;
+  }
+  await deleteNote();
+});
+
+async function saveNote({ announce = false } = {}) {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  const note = playerNote;
+  if (!note) return;
+
+  const text = $('#note-text').value;
+
+  // Ausdrücklich gespeicherte Leere heißt: Notiz weg. Beim automatischen
+  // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
+  // Händen, während jemand den Text gerade neu schreibt.
+  if (announce && !text.trim()) {
+    await deleteNote();
+    banner('Leere Notiz entfernt.');
+    return;
+  }
+
+  note.text = text;
+  note.songTitle = playerSong?.title || note.songTitle;
+  note.updatedAt = new Date().toISOString();
+  setNoteState('saving');
+
+  try {
+    await noteWrite(() => DB.metaPut(note));
+    if (playerNote === note) setNoteState('saved');
+    if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
+  } catch (err) {
+    console.error('[notiz]', err);
+    if (playerNote === note) setNoteState('dirty');
+    banner('Die Notiz konnte nicht gespeichert werden.', { kind: 'error' });
+  }
+}
+
+async function deleteNote() {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  const note = playerNote;
+  playerNote = null;
+  renderNoteBlock();
+  if (note) await noteWrite(() => DB.metaDelete(note.key));
+}
+
+/**
+ * Beim Schließen des Players oder beim Wegwischen der App sichern, was noch
+ * offen ist. Liest den Text sofort — danach darf der Player längst zu sein.
+ */
+function flushNote() {
+  const note = playerNote;
+  if (!note) return;
+  const text = $('#note-text').value;
+
+  if (!text.trim()) {
+    playerNote = null;
+    noteWrite(() => DB.metaDelete(note.key));
+    return;
+  }
+  if (text === note.text && !noteSaveTimer) return;
+
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  note.text = text;
+  note.updatedAt = new Date().toISOString();
+  noteWrite(() => DB.metaPut(note));
+}
+
+// Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
+// aus oder die App wird weggewischt. Beides ist die letzte Gelegenheit.
+window.addEventListener('pagehide', flushNote);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushNote();
+});
+
+/* ---------- Notizen sammeln und ausgeben --------------------------------- */
+
+/**
+ * Alle nicht leeren Notizen, nach Songtitel sortiert. Notizen zu gelöschten
+ * Songs sind dabei — sie tragen den Titel selbst.
+ */
+async function collectNotes() {
+  const [notes, songs] = await Promise.all([
+    DB.metaByType('note').catch(() => []),
+    DB.metaByType('song').catch(() => []),
+  ]);
+  const byId = new Map(songs.map((s) => [s.id, s]));
+
+  return notes
+    .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || 'Ohne Titel' }))
+    .filter((n) => (n.text || '').trim())
+    .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
+}
+
+/**
+ * Songtitel, Leerzeile, Notiz — und vor dem nächsten Titel wieder eine
+ * Leerzeile. Bewusst ohne Kopfzeile, damit sich die Datei überall einfügen
+ * lässt, ohne dass jemand erst etwas wegräumen muss.
+ */
+function notesToText(notes) {
+  return notes
+    .map((n) => `${n.songTitle}\n\n${String(n.text).replace(/\s+$/, '')}`)
+    .join('\n\n') + '\n';
+}
+
+async function renderNotesCount() {
+  const node = $('#notes-count');
+  const btn  = $('#btn-notes-export');
+  const notes = await collectNotes();
+  node.textContent = notes.length
+    ? `${plural(notes.length, 'Notiz', 'Notizen')} gespeichert.`
+    : 'Noch keine Notizen.';
+  btn.disabled = notes.length === 0;
+}
+
+$('#btn-notes-export').addEventListener('click', async () => {
+  let notes;
+  try {
+    notes = await collectNotes();
+  } catch (err) {
+    console.error(err);
+    banner('Die Notizen konnten nicht gelesen werden.', { kind: 'error' });
+    return;
+  }
+  if (!notes.length) {
+    banner('Es sind noch keine Notizen gespeichert.');
+    return;
+  }
+
+  const text = notesToText(notes);
+  const fileName = `chor-notizen-${new Date().toISOString().slice(0, 10)}.txt`;
+  const file = new File([text], fileName, { type: 'text/plain' });
+
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Notizen' });
+      return;
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  }
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+});
+
+/** Notizen eines gelöschten Songs behalten, aber vom Song lösen. */
+async function detachNotes(song) {
+  const notes = await DB.metaByType('note').catch(() => []);
+  const mine = notes.filter((n) => n.songId === song.id);
+  for (const note of mine) {
+    note.songId = null;
+    note.songTitle = song.title;
+  }
+  await DB.metaPutMany(mine);
+}
+
+/**
+ * Notizen, die beim Wiederherstellen keinem Song zugeordnet werden konnten,
+ * nach einem Import nachträglich verbinden — wie bei den Loops.
+ */
+async function reconnectPendingNotes() {
+  const notes = await DB.metaByType('note').catch(() => []);
+  const pending = notes.filter((n) => !n.songId && n.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  const taken = new Set(notes.filter((n) => n.songId).map((n) => n.songId));
+  const linked = [];
+  for (const note of pending) {
+    const song = findSongByTitle(songs, note.songTitle);
+    // Hat der Song schon eine Notiz, bleibt die wartende liegen — sonst
+    // stünden plötzlich zwei Notizen an einem Lied.
+    if (!song || taken.has(song.id)) continue;
+    note.songId = song.id;
+    taken.add(song.id);
+    linked.push(note);
+  }
+  await DB.metaPutMany(linked);
+  return linked.length;
 }
 
 /* ---------- Media Session (Sperrbildschirm) ------------------------------ */
@@ -6567,8 +6966,9 @@ let pendingAutoPlay = false;
 const BACKUP_FORMAT = 'chor-app-backup';
 
 async function buildBackup() {
-  const [songs, loops, playlists] = await Promise.all([
+  const [songs, loops, playlists, notes] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
+    DB.metaByType('note'),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
 
@@ -6585,6 +6985,11 @@ async function buildBackup() {
       name: l.name, start: l.start, end: l.end,
     })).filter((l) => l.songTitle),
     playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
+    notes: notes.map((n) => ({
+      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
+      text: n.text || '',
+      updatedAt: n.updatedAt || null,
+    })).filter((n) => n.songTitle && n.text.trim()),
   };
 }
 
@@ -6606,7 +7011,9 @@ $('#btn-backup-export').addEventListener('click', async () => {
     await saveSettings({ lastBackupAt: new Date().toISOString() });
     renderBackupAge();
     updateBackupReminder();
-    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, ${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
+    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, `
+      + `${plural(data.notes.length, 'Notiz', 'Notizen')}, `
+      + `${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
   } catch (err) {
     console.error(err);
     banner('Die Sicherung konnte nicht erstellt werden.', { kind: 'error' });
@@ -6639,11 +7046,13 @@ async function restoreBackup(data) {
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
+  const notes = Array.isArray(data.notes) ? data.notes : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
-    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(playlists.length, 'Playlist', 'Playlisten')} gefunden. `
+    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
+        + `${plural(playlists.length, 'Playlist', 'Playlisten')} gefunden. `
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
     options: [
@@ -6656,19 +7065,25 @@ async function restoreBackup(data) {
   if (mode === 'replace') {
     const ok = await confirmDialog({
       title: 'Wirklich ersetzen?',
-      text: 'Alle vorhandenen Loops und Playlisten werden vorher gelöscht.',
+      text: 'Alle vorhandenen Loops, Notizen und Playlisten werden vorher gelöscht.',
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
-    const stale = [...await DB.metaByType('loop'), ...await DB.metaByType('playlist')];
+    const stale = [
+      ...await DB.metaByType('loop'),
+      ...await DB.metaByType('note'),
+      ...await DB.metaByType('playlist'),
+    ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
     dropSongCache();
   }
 
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
+  const existingNotes = await DB.metaByType('note');
   const fresh = [];
   let addedLoops = 0, addedPl = 0, keptPending = 0;
+  let addedNotes = 0, skippedNotes = 0;
 
   for (const l of loops) {
     if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
@@ -6694,6 +7109,31 @@ async function restoreBackup(data) {
     if (!song) keptPending++;
   }
 
+  // Notizen: eine je Lied. Eine vorhandene Notiz wird nie überschrieben —
+  // sonst wäre beim „Zusammenführen" plötzlich der eigene Text weg.
+  for (const n of notes) {
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    const song = findSongByTitle(songs, n.songTitle);
+    const norm = normalizeTitle(n.songTitle);
+
+    const isSame = (x) =>
+      x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm;
+    if (existingNotes.some(isSame) || fresh.some((x) => x.type === 'note' && isSame(x))) {
+      skippedNotes++;
+      continue;
+    }
+
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    fresh.push({
+      key: `note:${id}`, type: 'note', id,
+      songId: song ? song.id : null,
+      songTitle: n.songTitle,           // bleibt erhalten, auch ohne Song
+      text: n.text,
+      updatedAt: n.updatedAt || new Date().toISOString(),
+    });
+    addedNotes++;
+  }
+
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
     const name = normalizeTitle(p.name || '');
@@ -6716,8 +7156,12 @@ async function restoreBackup(data) {
 
   await renderPlaylists();
   await renderSettings();
-  banner(`${plural(addedLoops, 'Loop', 'Loops')} und ${plural(addedPl, 'Playlist', 'Playlisten')} eingespielt.`
-    + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : ''), { kind: 'ok' });
+  if (playerSong) await loadSongNote();
+  banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
+    + `und ${plural(addedPl, 'Playlist', 'Playlisten')} eingespielt.`
+    + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
+    + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
+        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : ''), { kind: 'ok' });
 }
 
 /**
@@ -6918,7 +7362,16 @@ function runSelfTests() {
     failed.push('groupDuplicates schlägt die falsche Fassung vor');
   }
 
-  const total = voiceCases.length + titleCases.length + 7;
+  // Notizen-Export: Titel, Leerzeile, Notiz — dazwischen wieder eine Leerzeile.
+  const notesText = notesToText([
+    { songTitle: 'Blaue Augen', text: 'Einsatz nach Takt 12.\n' },
+    { songTitle: 'Grüß Gott',   text: 'Zweite Strophe leiser.' },
+  ]);
+  if (notesText !== 'Blaue Augen\n\nEinsatz nach Takt 12.\n\nGrüß Gott\n\nZweite Strophe leiser.\n') {
+    failed.push(`Notizen-Export: ${JSON.stringify(notesText)}`);
+  }
+
+  const total = voiceCases.length + titleCases.length + 8;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
