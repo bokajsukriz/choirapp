@@ -5924,8 +5924,13 @@ function updateMediaSession() {
   set('seekbackward', (d) => updateSeekUI(audioSeek(Audio.position - (d?.seekOffset || 10))));
   set('seekforward', (d) => updateSeekUI(audioSeek(Audio.position + (d?.seekOffset || 10))));
   set('seekto', (d) => { if (d?.seekTime != null) updateSeekUI(audioSeek(d.seekTime)); });
-  set('previoustrack', () => playlistStep(-1));
-  set('nexttrack', () => playlistStep(1));
+  // Dieselbe Bedeutung wie die Knöpfe im Player: außerhalb einer Playlist
+  // führt „weiter" durch die Bibliothek, statt gar nichts zu tun.
+  set('previoustrack', () => { if (playQueue) playlistStep(-1); });
+  set('nexttrack', () => {
+    if (playQueue) playlistStep(1);
+    else goToNextLibrarySong(Audio.playing);
+  });
 
   updateMediaPosition();
 }
