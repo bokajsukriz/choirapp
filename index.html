@@ -3346,6 +3346,34 @@ $('#btn-manage-storage').addEventListener('click', async () => {
   await renderStorageManager();
 });
 
+/**
+ * Loops und Notizen eines verschwindenden Songs nicht löschen, sondern vom
+ * Song lösen: die Kennung fällt weg, der Titel bleibt gemerkt. Beim nächsten
+ * Import finden sie so wieder zusammen (siehe reconnectPendingLoops /
+ * reconnectPendingNotes).
+ *
+ * `preloaded` spart bei einem Lauf über viele Songs die Lesevorgänge — dann
+ * einmal songLinkRecords() holen und hier durchreichen.
+ */
+async function detachSongLinks(song, preloaded = null) {
+  const records = preloaded || await songLinkRecords();
+  const detached = records.filter((r) => r.songId === song.id);
+  for (const rec of detached) {
+    rec.songId = null;
+    rec.songTitle = song.title;
+  }
+  await DB.metaPutMany(detached);
+}
+
+/** Alle Datensätze, die an einem Song hängen — Loops und Notizen. */
+async function songLinkRecords() {
+  const [loops, notes] = await Promise.all([
+    DB.metaByType('loop').catch(() => []),
+    DB.metaByType('note').catch(() => []),
+  ]);
+  return [...loops, ...notes];
+}
+
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: 'Stimme löschen?',
@@ -3361,7 +3389,7 @@ async function deleteTrack(song, track) {
   } else {
     // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
     await DB.fileDelete((song.scores || []).map((s) => s.fileKey));
-    await detachNotes(song);
+    await detachSongLinks(song);
     await DB.metaDelete(song.key);
   }
   await refreshAfterDelete();
@@ -3379,16 +3407,7 @@ async function deleteSong(song) {
   const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
   await DB.fileDelete(keys);
 
-  // Loops nicht löschen, sondern vom Song lösen — der Titel bleibt gemerkt.
-  const loops = await DB.metaByType('loop').catch(() => []);
-  const detached = loops.filter((l) => l.songId === song.id);
-  for (const loop of detached) {
-    loop.songId = null;
-    loop.songTitle = song.title;
-  }
-  await DB.metaPutMany(detached);
-  await detachNotes(song);
-
+  await detachSongLinks(song);
   await DB.metaDelete(song.key);
   if (playerSong && playerSong.id === song.id) closePlayer();
   await refreshAfterDelete();
@@ -3396,7 +3415,8 @@ async function deleteSong(song) {
 }
 
 /**
- * Löscht alle Aufnahmen, behält aber Loops, Playlisten und Einstellungen.
+ * Löscht alle Aufnahmen, behält aber Loops, Notizen, Playlisten und
+ * Einstellungen.
  * Praktisch, um Platz zu schaffen, ohne die Übe-Arbeit zu verlieren.
  */
 $('#btn-drop-audio').addEventListener('click', async () => {
@@ -3419,15 +3439,9 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   if (!ok) return;
 
   try {
-    const loops = await DB.metaByType('loop').catch(() => []);
+    const links = await songLinkRecords();
     for (const song of songs) {
-      // Loops vom Song lösen, aber den Titel merken.
-      for (const loop of loops.filter((l) => l.songId === song.id)) {
-        loop.songId = null;
-        loop.songTitle = song.title;
-        await DB.metaPut(loop);
-      }
-      await detachNotes(song);
+      await detachSongLinks(song, links);
       await DB.fileDelete([
         ...song.tracks.map((t) => t.fileKey),
         ...(song.scores || []).map((x) => x.fileKey),
@@ -6422,17 +6436,6 @@ $('#btn-notes-export').addEventListener('click', async () => {
   }
   downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
 });
-
-/** Notizen eines gelöschten Songs behalten, aber vom Song lösen. */
-async function detachNotes(song) {
-  const notes = await DB.metaByType('note').catch(() => []);
-  const mine = notes.filter((n) => n.songId === song.id);
-  for (const note of mine) {
-    note.songId = null;
-    note.songTitle = song.title;
-  }
-  await DB.metaPutMany(mine);
-}
 
 /**
  * Notizen, die beim Wiederherstellen keinem Song zugeordnet werden konnten,
