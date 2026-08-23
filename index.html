@@ -913,6 +913,20 @@ input[type="checkbox"] {
 .score-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
 .score-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+.dialog textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 11px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  margin-bottom: 16px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
 .dialog input[type="text"] {
   width: 100%;
   min-height: var(--tap);
@@ -1159,6 +1173,11 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-pause" style="display:none"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
       </button>
       <button class="tbtn" id="btn-fwd10" type="button" aria-label="10 Sekunden vor">+10 s</button>
+      <button class="tbtn" id="btn-next" type="button" aria-label="Nächstes Lied">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 6v12M16 12L9 6v12z"/>
+        </svg>
+      </button>
     </div>
 
     <div class="rate-row" id="rate-row" role="group" aria-label="Tempo">
@@ -1580,9 +1599,14 @@ function closeDialog(result) {
  * Abfrage mit Texteingabe (für Loop-Namen, Playlist-Namen).
  * @returns {Promise<string|null>} null, wenn abgebrochen wurde
  */
-function promptDialog({ title, text = '', value = '', placeholder = '', okLabel = 'Speichern' }) {
+function promptDialog({ title, text = '', value = '', placeholder = '',
+                        okLabel = 'Speichern', multiline = false }) {
   return new Promise((resolve) => {
-    const input = el('input', { type: 'text', value, placeholder, 'aria-label': title });
+    // Mehrzeilig für eingefügte Programme: ein Liedtitel je Zeile.
+    const input = multiline
+      ? el('textarea', { rows: '8', placeholder, 'aria-label': title })
+      : el('input', { type: 'text', value, placeholder, 'aria-label': title });
+    if (multiline) input.value = value;
 
     const done = (result) => { layer.remove(); resolve(result); };
 
@@ -1596,7 +1620,8 @@ function promptDialog({ title, text = '', value = '', placeholder = '', okLabel 
                        onclick: () => done(input.value) })));
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); done(input.value); }
+      // Im mehrzeiligen Feld ist die Eingabetaste ein Zeilenumbruch.
+      if (e.key === 'Enter' && !multiline) { e.preventDefault(); done(input.value); }
       if (e.key === 'Escape') { e.preventDefault(); done(null); }
     });
 
@@ -1763,6 +1788,7 @@ const DEFAULT_SETTINGS = {
   lyricsFontSize: 17,
   lastBackupAt: null,
   repeatMode: 'off',          // 'off' | 'song' | 'next'
+  lastVoice: null,            // zuletzt bewusst gewählte Stimme
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2543,7 +2569,12 @@ async function renderSongs() {
       el('button', {
         class: 'list-item',
         type: 'button',
-        onclick: () => navigate(`#song/${song.id}`),
+        onclick: () => {
+          // Wer aus der Bibliothek ein einzelnes Lied wählt, will nicht mehr
+          // in der Playlist sein — sonst schaltet sie danach einfach weiter.
+          playQueue = null;
+          navigate(`#song/${song.id}`);
+        },
       },
         el('div', { style: 'flex:1; min-width:0' },
           el('strong', { text: songLabel(song) || 'Ohne Titel' }),
@@ -3207,7 +3238,10 @@ const Audio = {
   playing: false,
   rate: 1,
   loop: null,
-  silent: null,
+  silent: null,        // stille Schleife (iOS)
+  out: null,           // <audio> mit dem MediaStream (Android)
+  streamDest: null,
+  useStream: false,
   wakeLock: null,
   onPosition: null,
   onEnded: null,
@@ -3233,7 +3267,37 @@ async function audioInit() {
     numberOfOutputs: 1,
     outputChannelCount: [2],
   });
-  Audio.node.connect(Audio.ctx.destination);
+
+  /*
+   * Ausgabeweg — hier unterscheiden sich die Systeme:
+   *
+   * Android drosselt reines Web Audio, sobald der Bildschirm ausgeht: die App
+   * gilt dann als Hintergrundseite ohne laufendes Medium. Läuft der Ton
+   * dagegen durch ein <audio>-Element, behandelt Chrome ihn wie einen
+   * Musikplayer und lässt ihn weiterlaufen. Dafür wird der Ausgang des
+   * Worklets in einen MediaStream geleitet und dieser abgespielt.
+   *
+   * Auf iOS ist derselbe Weg unzuverlässig (MediaStream in <audio> wird dort
+   * je nach Version gar nicht wiedergegeben). Deshalb bleibt es dort bei der
+   * direkten Verbindung plus der stillen Schleife, die die Audiositzung und
+   * die Sperrbildschirm-Steuerung aktiv hält.
+   */
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  Audio.useStream = isAndroid && typeof Audio.ctx.createMediaStreamDestination === 'function';
+
+  if (Audio.useStream) {
+    Audio.streamDest = Audio.ctx.createMediaStreamDestination();
+    Audio.node.connect(Audio.streamDest);
+
+    Audio.out = document.createElement('audio');
+    Audio.out.srcObject = Audio.streamDest.stream;
+    Audio.out.setAttribute('playsinline', '');
+    Audio.out.preload = 'auto';
+    Audio.out.style.display = 'none';
+    document.body.append(Audio.out);
+  } else {
+    Audio.node.connect(Audio.ctx.destination);
+  }
 
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
@@ -3251,11 +3315,12 @@ async function audioInit() {
     }
   };
 
-  if (!Audio.silent) {
+  if (!Audio.useStream && !Audio.silent) {
     Audio.silent = document.createElement('audio');
     Audio.silent.src = silentLoopURL();
     Audio.silent.loop = true;
     Audio.silent.volume = 0;
+    Audio.silent.setAttribute('playsinline', '');
   }
 
   Audio.ready = true;
@@ -3434,14 +3499,58 @@ async function audioPlay() {
   if (Audio.ctx.state === 'suspended') await Audio.ctx.resume();
   Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
+
+  // Das Ausgabe-Element muss laufen, sonst hört Android beim Ausschalten
+  // des Bildschirms auf.
+  if (Audio.out) {
+    try {
+      await Audio.out.play();
+      // Spielt es nach kurzer Zeit trotzdem nicht, lieber auf den direkten
+      // Weg zurückfallen: Hauptsache, man hört überhaupt etwas.
+      setTimeout(() => {
+        if (Audio.playing && Audio.out && Audio.out.paused) useDirectOutput();
+      }, 1200);
+    } catch (err) {
+      console.warn('[audio] Ausgabe über MediaStream nicht möglich', err);
+      useDirectOutput();
+    }
+  }
   Audio.silent?.play().catch(() => { /* ohne Nutzergeste abgelehnt — unkritisch */ });
   audioRequestWakeLock();
+}
+
+/**
+ * Notweg: den Worklet direkt mit dem Ausgang verbinden. Damit geht zwar die
+ * Hintergrundwiedergabe auf Android verloren, aber Ton ist wichtiger.
+ */
+function useDirectOutput() {
+  if (!Audio.useStream) return;
+  console.warn('[audio] Wechsel auf direkte Ausgabe');
+  try {
+    Audio.node.disconnect();
+    Audio.node.connect(Audio.ctx.destination);
+  } catch (err) {
+    console.error('[audio] Umschalten fehlgeschlagen', err);
+    return;
+  }
+  Audio.out?.pause();
+  Audio.useStream = false;
+
+  if (!Audio.silent) {
+    Audio.silent = document.createElement('audio');
+    Audio.silent.src = silentLoopURL();
+    Audio.silent.loop = true;
+    Audio.silent.volume = 0;
+    Audio.silent.setAttribute('playsinline', '');
+  }
+  if (Audio.playing) Audio.silent.play().catch(() => {});
 }
 
 function audioPause() {
   if (!Audio.ready) return;
   Audio.node.port.postMessage({ type: 'pause' });
   Audio.playing = false;
+  Audio.out?.pause();
   Audio.silent?.pause();
   audioReleaseWakeLock();
 }
@@ -4360,10 +4469,20 @@ function trackByVoiceKey(key) {
   return (playerSong?.tracks || []).find((t) => t.fileKey === key) || null;
 }
 
-/** Welche Spur soll beim Öffnen klingen? Eigene Stimme, sonst Gesamt. */
+/**
+ * Welche Spur soll beim Öffnen klingen?
+ *
+ * Zuerst die Stimme, die zuletzt bewusst gewählt wurde — wer den Abend über
+ * Bass übt, will das nicht bei jedem Lied neu einstellen. Danach die eigene
+ * Stimme aus den Einstellungen, dann die Gesamtmischung.
+ */
 function preferredTrack(song) {
-  const mine = song.tracks.find((t) => t.voice === settings.myVoice);
-  return mine || song.tracks.find((t) => t.voice === 'FULL') || song.tracks[0] || null;
+  const byVoice = (v) => (v ? song.tracks.find((t) => t.voice === v) : null);
+  return byVoice(settings.lastVoice)
+      || byVoice(settings.myVoice)
+      || byVoice('FULL')
+      || song.tracks[0]
+      || null;
 }
 
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
@@ -4394,7 +4513,7 @@ function renderVoiceButtons() {
     if (track.broken) btn.append(el('small', { text: 'nicht abspielbar' }));
     else if (Audio.loading.has(track.fileKey)) btn.append(el('small', { class: 'dot', text: '•••' }));
 
-    btn.addEventListener('click', () => selectTrack(track));
+    btn.addEventListener('click', () => selectTrack(track, true));
     host.append(btn);
   }
 }
@@ -4434,8 +4553,12 @@ function renderMixRows() {
 // überschreiben und die Ladeanzeige nicht stehen lassen.
 let loadToken = 0;
 
-/** Stimme wählen: im Einzelmodus exklusiv, im Mischmodus zusätzlich. */
-async function selectTrack(track) {
+/**
+ * Stimme wählen: im Einzelmodus exklusiv, im Mischmodus zusätzlich.
+ * `userChoice` unterscheidet den Tastendruck vom automatischen Vorbelegen
+ * beim Öffnen — nur eine echte Wahl wird als Vorliebe gemerkt.
+ */
+async function selectTrack(track, userChoice = false) {
   if (!playerSong || track.broken) return;
   const token = ++loadToken;
 
@@ -4460,6 +4583,9 @@ async function selectTrack(track) {
 
   // Einzelmodus: alles andere stumm, die gewählte Spur auf volle Lautstärke.
   playerVoice = track.fileKey;
+  if (userChoice && track.voice !== 'OTHER' && settings.lastVoice !== track.voice) {
+    saveSettings({ lastVoice: track.voice });
+  }
   for (const key of Audio.decoded.keys()) {
     if (key !== track.fileKey) audioSetGain(key, 0);
   }
@@ -4656,6 +4782,11 @@ function songLabel(song) {
   return song.artist ? `${song.title} (${song.artist})` : song.title;
 }
 
+// Bei langen Programmen wird die Liste im Player gekürzt: zwei Titel vor und
+// nach dem laufenden genügen zur Orientierung. Auf Wunsch klappt sie auf.
+const QUEUE_WINDOW = 2;
+let queueExpanded = false;
+
 /** Zeigt die laufende Playlist im Player an, mit dem aktuellen Titel markiert. */
 async function renderQueue() {
   const block = $('#queue-block');
@@ -4664,28 +4795,60 @@ async function renderQueue() {
 
   if (!playQueue || !playQueue.ids.length) { block.hidden = true; return; }
   block.hidden = false;
-  $('#queue-title').textContent = `Playlist: ${playQueue.name}`;
+
+  const total = playQueue.ids.length;
+  const pos = playQueue.index + 1;
+  $('#queue-title').textContent = `Playlist: ${playQueue.name} · ${pos} von ${total}`;
 
   const songs = await DB.metaByType('song').catch(() => []);
   const byId = new Map(songs.map((s) => [s.id, s]));
 
-  playQueue.ids.forEach((id, index) => {
-    const song = byId.get(id);
-    if (!song) return;
+  const compact = !queueExpanded && total > QUEUE_WINDOW * 2 + 2;
+  const from = compact ? Math.max(0, playQueue.index - QUEUE_WINDOW) : 0;
+  const to = compact ? Math.min(total, playQueue.index + QUEUE_WINDOW + 1) : total;
+
+  if (compact && from > 0) {
+    host.append(el('p', { class: 'small muted', style: 'margin:0 0 6px',
+      text: `… ${plural(from, 'Titel', 'Titel')} davor` }));
+  }
+
+  for (let index = from; index < to; index++) {
+    const song = byId.get(playQueue.ids[index]);
+    if (!song) continue;
     const current = playerSong && song.id === playerSong.id;
     const row = el('button', {
       class: 'queue-item', type: 'button',
       'data-current': current ? 'true' : 'false',
       onclick: () => {
         playQueue.index = index;
-        navigate(`#song/${id}`, { replace: true });
+        pendingAutoPlay = Audio.playing;
+        navigate(`#song/${playQueue.ids[index]}`, { replace: true });
       },
     },
       el('span', { class: 'num', text: String(index + 1) }),
       el('span', { class: 'grow', text: songLabel(song) }));
     if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
     host.append(row);
-  });
+  }
+
+  if (compact) {
+    const rest = total - to;
+    if (rest > 0) {
+      host.append(el('p', { class: 'small muted', style: 'margin:6px 0 0',
+        text: `… ${plural(rest, 'Titel', 'Titel')} danach` }));
+    }
+    host.append(el('button', {
+      class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
+      text: `Ganze Playlist anzeigen (${total})`,
+      onclick: () => { queueExpanded = true; renderQueue(); },
+    }));
+  } else if (total > QUEUE_WINDOW * 2 + 2) {
+    host.append(el('button', {
+      class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
+      text: 'Weniger anzeigen',
+      onclick: () => { queueExpanded = false; renderQueue(); },
+    }));
+  }
 }
 
 /**
@@ -4754,6 +4917,23 @@ $('#btn-play').addEventListener('click', async () => {
 });
 
 $('#btn-restart').addEventListener('click', () => updateSeekUI(audioSeek(0)));
+
+/**
+ * Nächstes Lied. In einer Playlist der nächste Eintrag, sonst der nächste
+ * Song der Bibliothek in alphabetischer Reihenfolge — so lässt sich auch ohne
+ * Playlist durch das Programm blättern.
+ */
+$('#btn-next').addEventListener('click', async () => {
+  if (playQueue) { playlistStep(1); return; }
+  const songs = await DB.metaByType('song').catch(() => []);
+  songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  const i = songs.findIndex((s) => s.id === playerSong?.id);
+  const next = songs[(i + 1) % songs.length];
+  if (next && next.id !== playerSong?.id) {
+    pendingAutoPlay = Audio.playing;
+    navigate(`#song/${next.id}`, { replace: true });
+  }
+});
 $('#btn-back30').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 30)));
 $('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position - 10)));
 $('#btn-fwd10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.position + 10)));
@@ -5336,7 +5516,8 @@ $('#btn-pl-paste').addEventListener('click', async () => {
   const text = await promptDialog({
     title: 'Playlist einfügen',
     text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.',
-    value: '', placeholder: 'Ave Maria', okLabel: 'Übernehmen',
+    value: '', okLabel: 'Übernehmen', multiline: true,
+    placeholder: '# Sommerkonzert 2026\nAve Maria\nBlaue Augen',
   });
   if (text === null || !text.trim()) return;
   await createPlaylistFromText(text, 'Eingefügte Playlist');
@@ -5361,17 +5542,46 @@ async function renderPlaylists() {
   for (const pl of lists) {
     const titles = pl.songTitles || [];
     const missing = titles.filter((t) => !findSongByTitle(songs, t)).length;
-    ul.append(el('li', {},
-      el('button', {
-        class: 'list-item', type: 'button',
-        onclick: () => navigate(`#playlist/${pl.id}`),
-      },
-        el('div', { style: 'flex:1; min-width:0' },
-          el('strong', { text: pl.name }),
-          el('div', { class: 'small muted',
-            text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })))));
+    const playable = titles.length > missing;
+
+    // Antippen spielt die Playlist — das ist der Alltagsfall. Bearbeitet wird
+    // über den Stift daneben.
+    const open = el('button', {
+      class: 'list-item', type: 'button', style: 'margin-bottom:0',
+      onclick: () => startPlaylist(pl),
+    },
+      el('div', { style: 'flex:1; min-width:0' },
+        el('strong', { text: pl.name }),
+        el('div', { class: 'small muted',
+          text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+    if (!playable) open.style.opacity = '.6';
+
+    const edit = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${pl.name}" bearbeiten`,
+      onclick: () => navigate(`#playlist/${pl.id}`),
+    });
+    edit.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+
+    ul.append(el('li', { style: 'display:flex; gap:8px; align-items:stretch; margin-bottom:8px' },
+      open, edit));
   }
   host.append(ul);
+}
+
+/** Startet eine Playlist von vorn. */
+async function startPlaylist(pl) {
+  const songs = await DB.metaByType('song').catch(() => []);
+  const entries = (pl.songTitles || [])
+    .map((t) => findSongByTitle(songs, t))
+    .filter(Boolean);
+
+  if (!entries.length) {
+    banner(`Von „${pl.name}" ist noch kein Lied importiert.`, { kind: 'error' });
+    return;
+  }
+  playQueue = { name: pl.name, ids: entries.map((s) => s.id), index: 0 };
+  queueExpanded = false;
+  navigate(`#song/${playQueue.ids[0]}`);
 }
 
 /* ---------- Detailansicht: Entwurf, Speichern, Verwerfen ---------------- */
@@ -5720,14 +5930,16 @@ $('#btn-pl-copy').addEventListener('click', async () => {
 /* ---------- Playlist abspielen ------------------------------------------- */
 
 $('#btn-pl-play').addEventListener('click', async () => {
-  const songs = await DB.metaByType('song').catch(() => []);
-  const entries = (plDraft.songTitles || [])
-    .map((t) => findSongByTitle(songs, t))
-    .filter(Boolean);
-  if (!entries.length) return;
-
-  playQueue = { name: plDraft.name, ids: entries.map((s) => s.id), index: 0 };
-  navigate(`#song/${playQueue.ids[0]}`);
+  if (!plDraft) return;
+  if (plDirty) {
+    // Erst sichern, damit gespielt wird, was man sieht.
+    await savePlaylist(plDraft);
+    plSaved = JSON.parse(JSON.stringify(plDraft));
+    plDirty = false;
+    updateDraftButtons();
+    await renderPlaylists();
+  }
+  await startPlaylist(plDraft);
 });
 
 /** Springt in der laufenden Playlist. */
