@@ -88,6 +88,11 @@ body {
   flex-direction: column;
 }
 
+/* `hidden` muss stärker sein als jede display-Regel weiter unten. Ohne das
+   bleiben ausgeblendete Elemente sichtbar, sobald ihre Klasse ein eigenes
+   display setzt (.btn ist inline-flex, .filterbar ist flex). */
+[hidden] { display: none !important; }
+
 /* Konfetti-Kreise: feste, scharfe Kreisflächen statt verschwommener Farbflecken —
    dieselben zwei Kreise hinter der App wie hinter dem Player/der Playlist. */
 body::before, body::after,
@@ -404,8 +409,6 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   display: flex;
   flex-direction: column;
 }
-
-.sheet[hidden] { display: none; }
 
 .sheet-head {
   flex: 0 0 auto;
@@ -1053,7 +1056,9 @@ input[type="checkbox"] {
   left: calc(8px + var(--safe-left));
   right: calc(8px + var(--safe-right));
   top: calc(8px + var(--safe-top));
-  z-index: 60;
+  /* Über allem: eine Meldung, die hinter der Ersteinrichtung oder einem
+     Dialog verschwindet, ist keine Meldung. */
+  z-index: 90;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1099,6 +1104,128 @@ input[type="checkbox"] {
   padding: 0;
 }
 
+/* ---------- Ersteinrichtung (Slides beim ersten Start) ------------------ */
+
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Waagerechter Streifen mit Einrastpunkten: wischen fühlt sich nativ an und
+   kostet kein Skript. Die Knöpfe unten scrollen denselben Streifen. */
+.onb-track {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.onb-track::-webkit-scrollbar { display: none; }
+
+.onb-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(26px + var(--safe-top)) calc(20px + var(--safe-right))
+           20px calc(20px + var(--safe-left));
+}
+
+.onb-step {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+
+.onb-slide h2 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1.15;
+  margin: 0 0 10px;
+  color: var(--text);
+}
+
+.onb-slide p { margin: 0 0 12px; color: var(--muted); line-height: 1.5; }
+.onb-slide p strong { color: var(--text); }
+.onb-slide .steps { margin-bottom: 12px; color: var(--muted); }
+.onb-slide .steps strong { color: var(--text); }
+
+/* Farbtupfer über der Überschrift — greift die Konfetti-Idee auf, ohne
+   eigene Bilddateien. */
+.onb-badge {
+  width: 62px;
+  height: 62px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+
+.onb-badge svg { width: 30px; height: 30px; }
+
+.onb-note {
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.onb-note--ok { border-color: var(--ok); color: var(--ok); }
+.onb-note--warn { border-color: var(--warn); color: var(--text); }
+
+.onb-foot {
+  padding: 12px calc(18px + var(--safe-right))
+           calc(14px + var(--safe-bottom)) calc(18px + var(--safe-left));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.onb-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.onb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  border: 0;
+  padding: 0;
+  transition: width .2s ease, background .2s ease;
+}
+
+.onb-dot[aria-current="true"] { width: 22px; background: var(--accent); }
+
+.onb-actions { display: flex; gap: 10px; }
+.onb-actions .btn { flex: 1; }
+.onb-actions .btn--ghost { flex: 0 0 auto; border-color: transparent; background: transparent; color: var(--muted); }
+.onb-actions .btn[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-dot { transition: none; }
+}
+
 /* ---------- Dialog (Sicherheitsabfragen, ersetzt confirm()) ------------- */
 
 .overlay {
@@ -1111,8 +1238,6 @@ input[type="checkbox"] {
   justify-content: center;
   padding: calc(20px + var(--safe-top)) 18px calc(20px + var(--safe-bottom));
 }
-
-.overlay[hidden] { display: none; }
 
 .dialog {
   background: var(--surface);
@@ -1145,6 +1270,146 @@ input[type="checkbox"] {
     </div>
   </div>
 </div>
+
+<!-- Ersteinrichtung: läuft beim allerersten Start einmal durch und ist
+     danach über die Einstellungen wieder erreichbar. Bewusst ohne
+     Zwangsabfolge — jeder Schritt lässt sich überspringen. -->
+<section class="onboarding" id="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onb-title-1">
+  <div class="onb-track" id="onb-track">
+
+    <!-- 1 — Auf den Home-Bildschirm ------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-1" aria-label="Schritt 1 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 6v7"/><path d="M9 9l3-3 3 3"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 1 von 5</p>
+      <h2 id="onb-title-1">Auf den Home&#8209;Bildschirm legen</h2>
+      <p>
+        So startet die App wie jede andere: eigenes Symbol, kein Browserfenster,
+        volle Bildschirmhöhe. Vor allem aber behält das System die Aufnahmen
+        länger, wenn die App installiert ist.
+      </p>
+      <div id="onb-install"></div>
+    </article>
+
+    <!-- 2 — Meine Stimme ------------------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-2" aria-label="Schritt 2 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 2 von 5</p>
+      <h2 id="onb-title-2">Welche Stimme singst du?</h2>
+      <p>
+        Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine
+        Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:
+      </p>
+      <ul class="steps small" style="list-style: disc; color: var(--muted)">
+        <li><strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung
+            vorausgewählt — der Rest bleibt draußen und spart Speicherplatz.</li>
+        <li><strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du
+            sie bei jedem Lied neu einstellst.</li>
+      </ul>
+      <div class="chip-grid" id="onb-voice"></div>
+      <p class="small muted" style="margin-top:12px">
+        Alle Stimmen bleiben trotzdem wählbar. Änderbar unter
+        <strong>Einstellungen&nbsp;→&nbsp;Meine Stimme</strong>.
+      </p>
+    </article>
+
+    <!-- 3 — Dauerhafte Speicherung --------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-3" aria-label="Schritt 3 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l8 3.5V12c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6.5z"/><path d="M9 12l2 2 4-4"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 3 von 5</p>
+      <h2 id="onb-title-3">Aufnahmen dauerhaft behalten</h2>
+      <p>
+        Web-Apps dürfen ihre Daten normalerweise nur „auf Probe“ speichern: wird
+        der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie
+        weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.
+      </p>
+      <p>
+        Mit einem Klick fragen wir das Betriebssystem, ob es die Daten
+        <strong>dauerhaft</strong> behalten soll. Der Browser entscheidet
+        selbst — ein Dialog erscheint dabei in der Regel nicht.
+      </p>
+      <div class="stack">
+        <button class="btn btn--primary btn--block" id="onb-persist" type="button">
+          Dauerhafte Speicherung anfordern
+        </button>
+        <div class="onb-note" id="onb-persist-note" hidden></div>
+      </div>
+    </article>
+
+    <!-- 4 — Üben: Abschnitt und Tempo ------------------------------------ -->
+    <article class="onb-slide" id="onb-slide-4" aria-label="Schritt 4 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 4 von 5</p>
+      <h2 id="onb-title-4">Die schwere Stelle üben</h2>
+      <p><strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben“:</p>
+      <ol class="steps small">
+        <li>An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.</li>
+        <li>Am Ende der Stelle auf <strong>B</strong> tippen.</li>
+        <li>Den <strong>Schalter</strong> daneben einschalten — der Abschnitt
+            läuft jetzt in der Schleife, bis du ihn kannst.</li>
+        <li>Über das <strong>Disketten-Symbol</strong> lässt sich der Abschnitt
+            benennen und bleibt gespeichert, auch nach dem Schließen.</li>
+      </ol>
+      <p><strong>Langsamer üben.</strong> Unten rechts im Player steht die
+        Geschwindigkeit: <strong>1×</strong>, <strong>0,8×</strong> oder
+        <strong>0,6×</strong>. Die Tonhöhe bleibt dabei gleich — es klingt
+        langsamer, nicht tiefer. Beides zusammen ist der Kern der App: einen
+        kurzen Abschnitt so lange langsam wiederholen, bis er sitzt.</p>
+    </article>
+
+    <!-- 5 — Playlisten und Import ---------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-5" aria-label="Schritt 5 von 5">
+      <div class="onb-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
+        </svg>
+      </div>
+      <p class="onb-step">Schritt 5 von 5</p>
+      <h2 id="onb-title-5">Songs holen, Programm planen</h2>
+      <p><strong>Import.</strong> Die Aufnahmen liegen im geteilten
+        Dropbox-Ordner. Du lädst ihn dort einmal als <strong>ZIP-Datei</strong>
+        herunter und wählst sie unter „Import“ aus. Vor dem Speichern zeigt die
+        App, was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs
+        Handy sollen. Jeder weitere Import <strong>ergänzt</strong> nur —
+        Vorhandenes bleibt, fehlende Stimmen lassen sich nachladen.</p>
+      <p><strong>Playlisten.</strong> Eine Playlist ist ein Programm: die Lieder
+        in der Reihenfolge, in der sie gesungen werden. Am Ende eines Liedes
+        schaltet die App von selbst weiter. Der Chorleiter kann eine Playlist
+        als schlichte Textdatei verteilen — ein Titel je Zeile —, du spielst sie
+        unter „Playlisten“ ein.</p>
+      <div class="onb-note">
+        Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem
+        Import kein Internet mehr.
+      </div>
+    </article>
+
+  </div>
+
+  <div class="onb-foot">
+    <div class="onb-dots" id="onb-dots" role="tablist" aria-label="Schritte"></div>
+    <div class="onb-actions">
+      <button class="btn btn--ghost" id="onb-skip" type="button">Überspringen</button>
+      <button class="btn" id="onb-prev" type="button" hidden>Zurück</button>
+      <button class="btn btn--primary" id="onb-next" type="button">Weiter</button>
+    </div>
+  </div>
+</section>
 
 <!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
 <section class="player" id="playlist-view" hidden aria-labelledby="pl-title">
@@ -1533,6 +1798,9 @@ input[type="checkbox"] {
         <button class="btn btn--block" id="btn-help-import" type="button">
           Wie bekomme ich Songs in die App?
         </button>
+        <button class="btn btn--block" id="btn-setup-again" type="button">
+          Einführung noch einmal ansehen
+        </button>
       </div>
     </div>
 
@@ -1877,6 +2145,18 @@ function reqPromise(request) {
   });
 }
 
+/**
+ * Zwischenspeicher der Songliste.
+ *
+ * Die Bibliothek wird bei jedem Tastendruck in der Suche neu gezeichnet. Ohne
+ * Zwischenspeicher liest jeder davon alle Songdatensätze samt Liedtexten aus
+ * der Datenbank — auf einem älteren Handy hakt die Eingabe dadurch spürbar.
+ * Jede Schreiboperation, die einen Song berühren kann, verwirft ihn wieder.
+ */
+let songCache = null;
+
+function dropSongCache() { songCache = null; }
+
 const DB = {
   async metaGet(key) {
     const db = await openDB();
@@ -1885,16 +2165,19 @@ const DB = {
 
   async metaPut(record) {
     await tx('meta', 'readwrite', (meta) => { meta.put(record); });
+    if (record.type === 'song') dropSongCache();
     return record;
   },
 
   async metaPutMany(records) {
     if (!records.length) return;
     await tx('meta', 'readwrite', (meta) => { for (const r of records) meta.put(r); });
+    if (records.some((r) => r.type === 'song')) dropSongCache();
   },
 
   async metaDelete(key) {
     await tx('meta', 'readwrite', (meta) => { meta.delete(key); });
+    if (String(key).startsWith('song:')) dropSongCache();
   },
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
@@ -1904,16 +2187,19 @@ const DB = {
     return reqPromise(idx.getAll(IDBKeyRange.only(type)));
   },
 
+  /**
+   * Songs für die Anzeige — aus dem Zwischenspeicher, wenn er gültig ist.
+   * Nur für lesende Anzeigen gedacht: wer Datensätze verändert, holt sie über
+   * metaByType, damit der Zwischenspeicher nicht mitverändert wird.
+   */
+  async songsForDisplay() {
+    if (!songCache) songCache = await this.metaByType('song');
+    return songCache;
+  },
+
   async fileGet(key) {
     const db = await openDB();
     return reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key));
-  },
-
-  /** Speichert einen Blob. `key` wird vom Aufrufer vergeben (siehe M1). */
-  async filePut(key, blob, name = '') {
-    const record = { key, blob, size: blob.size, name };
-    await tx('files', 'readwrite', (files) => { files.put(record); });
-    return record;
   },
 
   async fileDelete(keys) {
@@ -1928,6 +2214,7 @@ const DB = {
       files.clear();
       meta.clear();
     });
+    dropSongCache();
   },
 };
 
@@ -1947,6 +2234,7 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
+  setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2173,17 +2461,40 @@ async function zipReadDirectory(file) {
 
 const canInflate = typeof DecompressionStream === 'function';
 
-/** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
-async function zipExtract(file, entry) {
+/**
+ * Wo beginnen die Nutzdaten eines Eintrags?
+ *
+ * Der lokale Header hat eigene Längenangaben — die aus dem Inhaltsverzeichnis
+ * dürfen hier nicht verwendet werden, sie unterscheiden sich häufig. Das
+ * Ergebnis wird am Eintrag gemerkt: jeder dieser 30-Byte-Lesevorgänge ist auf
+ * dem Handy eine eigene Anfrage an das Dateisystem und kostet mehr Zeit als
+ * die Bytes vermuten lassen.
+ */
+async function zipDataStart(file, entry) {
+  if (entry.dataStart !== undefined) return entry.dataStart;
   const head = await sliceView(file, entry.headerOffset, entry.headerOffset + 30);
   if (head.getUint32(0, true) !== SIG_LOC) {
     throw new ZipError(`„${entry.path}" konnte im Archiv nicht gefunden werden.`);
   }
-  // Der lokale Header hat eigene Längenangaben — die aus dem Inhaltsverzeichnis
-  // dürfen hier nicht verwendet werden, sie unterscheiden sich häufig.
-  const nameLen  = head.getUint16(26, true);
-  const extraLen = head.getUint16(28, true);
-  const start = entry.headerOffset + 30 + nameLen + extraLen;
+  entry.dataStart = entry.headerOffset + 30
+    + head.getUint16(26, true) + head.getUint16(28, true);
+  return entry.dataStart;
+}
+
+/**
+ * Ermittelt die Datenanfänge vieler Einträge auf einmal.
+ *
+ * Nacheinander wäre jeder Lesevorgang eine eigene Wartezeit; nebeneinander
+ * laufen sie zusammen. Fehler werden hier bewusst verschluckt — sie treten
+ * beim eigentlichen Auspacken erneut auf und werden dort gemeldet.
+ */
+async function zipPrefetchStarts(file, entries) {
+  await Promise.all(entries.map((e) => zipDataStart(file, e).catch(() => {})));
+}
+
+/** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
+async function zipExtract(file, entry) {
+  const start = await zipDataStart(file, entry);
   const raw = file.slice(start, start + entry.compressedSize);
 
   // Methode 0 (stored) ist bei MP3s der Normalfall — Dropbox komprimiert sie
@@ -2649,7 +2960,7 @@ async function renderSongs() {
 
   let songs = [];
   try {
-    songs = await DB.metaByType('song');
+    songs = await DB.songsForDisplay();
   } catch (err) {
     console.error(err);
     if (token !== songsRenderToken) return;
@@ -2708,9 +3019,12 @@ async function renderSongs() {
 
   // --- Filtern und sortieren --------------------------------------------
   const q = normalizeTitle(songQuery);
-  let visible = songs;
+  // normTitle liegt am Datensatz — beim Tippen nicht für jeden Song neu
+  // berechnen. Der Zwischenspeicher wird hier nie umsortiert, deshalb eine
+  // eigene Liste.
+  let visible = [...songs];
   if (songFilter) visible = visible.filter((s) => (s.collections || []).includes(songFilter));
-  if (q) visible = visible.filter((s) => normalizeTitle(s.title || '').includes(q));
+  if (q) visible = visible.filter((s) => (s.normTitle || normalizeTitle(s.title || '')).includes(q));
 
   visible.sort((a, b) => collator.compare(a.title || '', b.title || ''));
 
@@ -2762,9 +3076,13 @@ async function renderSongs() {
   host.append(list);
 }
 
+// Entprellt: ein schnell getippter Suchbegriff soll die Liste einmal neu
+// zeichnen, nicht bei jedem Buchstaben.
+let searchTimer = 0;
 $('#search').addEventListener('input', (e) => {
   songQuery = e.target.value;
-  renderSongs();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderSongs, 120);
 });
 
 /* ---------- Einstellungen ------------------------------------------------ */
@@ -2916,7 +3234,7 @@ async function deleteTrack(song, track) {
     await DB.metaPut(song);
   } else {
     // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
-    for (const s of song.scores || []) await DB.fileDelete(s.fileKey);
+    await DB.fileDelete((song.scores || []).map((s) => s.fileKey));
     await DB.metaDelete(song.key);
   }
   await refreshAfterDelete();
@@ -2936,11 +3254,12 @@ async function deleteSong(song) {
 
   // Loops nicht löschen, sondern vom Song lösen — der Titel bleibt gemerkt.
   const loops = await DB.metaByType('loop').catch(() => []);
-  for (const loop of loops.filter((l) => l.songId === song.id)) {
+  const detached = loops.filter((l) => l.songId === song.id);
+  for (const loop of detached) {
     loop.songId = null;
     loop.songTitle = song.title;
-    await DB.metaPut(loop);
   }
+  await DB.metaPutMany(detached);
 
   await DB.metaDelete(song.key);
   if (playerSong && playerSong.id === song.id) closePlayer();
@@ -3028,6 +3347,7 @@ $$('#channel-mode .preset').forEach((btn) => {
 });
 
 $('#btn-help-import').addEventListener('click', () => showView('import'));
+$('#btn-setup-again').addEventListener('click', () => openOnboarding());
 
 $('#btn-persist').addEventListener('click', async () => {
   const ok = await requestPersistence();
@@ -3575,11 +3895,20 @@ function audioUnload(key) {
 }
 
 /**
- * Lädt die übrigen Stimmen im Hintergrund, damit ein Stimmenwechsel später
- * sofort klingt. Läuft nacheinander, damit das Dekodieren die Bedienung
- * nicht ausbremst, und hört auf, sobald das Speicherbudget erreicht ist.
+ * Lädt ausgewählte Stimmen im Hintergrund vor, damit ein Wechsel später sofort
+ * klingt.
+ *
+ * Bewusst nicht *alle* Stimmen: Dekodieren kostet auf älteren Handys je Spur
+ * mehrere Sekunden Rechenzeit im Vordergrund-Thread — genau während der Nutzer
+ * abspielen, scrollen oder Loop-Marken setzen will. Vorbereitet werden deshalb
+ * nur die Spuren, die tatsächlich als Nächstes drankommen (siehe
+ * prefetchOrder). Alle übrigen laden beim Antippen nach, mit „lädt …" in der
+ * Stimmenauswahl.
  */
 async function prefetchTracks(song, order) {
+  // Erst zur Ruhe kommen lassen: die gewählte Stimme soll ohne Konkurrenz
+  // fertig werden und der Player sofort bedienbar sein.
+  await new Promise((r) => setTimeout(r, 400));
   for (const track of order) {
     if (!Audio.song || Audio.song.key !== song.key) return;   // Song gewechselt
     if (Audio.decoded.has(track.fileKey) || track.broken) continue;
@@ -3808,9 +4137,16 @@ async function analyzeAgainstLibrary(songs) {
   return songs;
 }
 
-/** Ist dieser Song die gewählte Fassung seiner Gruppe? (siehe 4.5) */
+/**
+ * Ist dieser Song die gewählte Fassung seiner Gruppe? (siehe 4.5)
+ *
+ * Die Gruppe hängt am Song selbst (openPicker setzt sie). Vorher wurde sie bei
+ * jedem Aufruf über alle Gruppen gesucht — bei einem Archiv mit vielen Liedern
+ * ist das quadratischer Aufwand, und die Auswahlmaske zeichnet sich bei jedem
+ * Häkchen neu.
+ */
 function isChosenVersion(song) {
-  const group = pick.groups?.find((g) => g.members.includes(song));
+  const group = song.group;
   if (!group || group.members.length < 2) return true;
   return pick.chosenVersion.get(group.core) === song.folder;
 }
@@ -4080,7 +4416,10 @@ function closeSheet() {
 async function openPicker({ songs, notes, skipped, source, foundFiles, foundBytes }) {
   const groups = groupDuplicates(songs);
   const chosenVersion = new Map();
-  for (const g of groups) chosenVersion.set(g.core, g.suggested.folder);
+  for (const g of groups) {
+    chosenVersion.set(g.core, g.suggested.folder);
+    for (const m of g.members) m.group = g;
+  }
 
   pick = {
     songs, notes, skipped, source, groups, chosenVersion,
@@ -4208,18 +4547,79 @@ async function startFolderImport(fileList) {
 /* ---------- Schreiben ---------------------------------------------------- */
 
 /**
- * Schreibt die Auswahl in die Datenbank. Jede Datei wird einzeln extrahiert
- * und sofort geschrieben — so liegt nie mehr als eine Aufnahme im Speicher.
+ * Wie viel je Schreibvorgang gebündelt wird.
+ *
+ * Der teure Teil eines Imports ist nicht das Auspacken, sondern das Schreiben
+ * in die Datenbank: jede Transaktion kostet auf dem Handy Zeit, unabhängig von
+ * ihrer Größe. Statt 50 Einzelschreibungen sammelt der Import deshalb, bis
+ * eine der beiden Grenzen erreicht ist, und schreibt dann in einem Rutsch.
+ * Die Grenzen halten gleichzeitig den Speicherbedarf klein — bei
+ * komprimierten Archiven liegen die ausgepackten Daten so lange im Speicher.
+ */
+const IMPORT_BATCH_BYTES = 32 * 1024 * 1024;
+const IMPORT_BATCH_FILES = 24;
+
+/**
+ * Wie viel Arbeitsspeicher belegt dieser Blob, bis er geschrieben ist?
+ *
+ * Unkomprimierte ZIP-Einträge und Dateien aus dem Ordner-Import sind nur ein
+ * Verweis auf einen Bereich der Datei auf der Festplatte — sie kosten nichts.
+ * Nur ausgepackte (deflate-)Einträge liegen wirklich im Speicher und
+ * begrenzen, wie viel gesammelt werden darf.
+ */
+function inMemoryBytes(entry, blob) {
+  if (entry.blob || entry.method === 0) return 0;
+  return blob.size;
+}
+
+/**
+ * Schreibt einen Stapel: Aufnahmen, die zugehörigen Songdatensätze und die
+ * abgelösten Altdateien — alles in einer einzigen Transaktion.
+ *
+ * Zusammen zu schreiben ist nicht nur schneller, sondern auch sicherer: Ein
+ * Abbruch mitten im Import kann so keine Dateien zurücklassen, auf die kein
+ * Song mehr zeigt (die hätte danach niemand je wieder gefunden oder gelöscht).
+ */
+async function flushImportBatch(batch) {
+  if (!batch.files.length && !batch.songs.size && !batch.obsolete.length) return;
+  const files = batch.files;
+  const songs = [...batch.songs];
+  const obsolete = batch.obsolete;
+  batch.files = [];
+  batch.songs = new Set();
+  batch.obsolete = [];
+  batch.bytes = 0;
+  await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
+    for (const rec of files) fileStore.put(rec);
+    for (const song of songs) metaStore.put(song);
+    // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
+    for (const key of obsolete) fileStore.delete(key);
+  });
+  dropSongCache();
+}
+
+/**
+ * Schreibt die Auswahl in die Datenbank.
+ *
  * Bricht der Vorgang ab (z.B. Speicher voll), bleibt alles bereits
- * Geschriebene erhalten.
+ * Geschriebene erhalten und bleibt in sich stimmig.
  */
 async function runImport() {
   const chosenSongs = pick.songs.filter((s) => s.tracks.some((t) => t.checked));
-  const totalFiles = chosenSongs.reduce((n, s) => n + s.tracks.filter((t) => t.checked).length, 0);
+  const chosenTracks = chosenSongs.flatMap((s) => s.tracks.filter((t) => t.checked));
+  const totalFiles = chosenTracks.length;
+  const totalBytes = chosenTracks.reduce((n, t) => n + (t.size || 0), 0) || 1;
 
   sheetImport.disabled = true;
   sheetProgress.hidden = false;
   const bar = sheetProgress.firstElementChild;
+
+  // Der Bildschirm darf während des Imports nicht ausgehen: iOS friert die
+  // Seite dann ein und der Import steht, bis das Handy wieder entsperrt wird.
+  let importLock = null;
+  if ('wakeLock' in navigator) {
+    importLock = await navigator.wakeLock.request('screen').catch(() => null);
+  }
 
   const report = {
     songsImported: 0, tracksAdded: 0, tracksReplaced: 0,
@@ -4229,7 +4629,33 @@ async function runImport() {
   for (const s of pick.skipped) report.failed.push(`${s.path} (${s.reason})`);
 
   const existingLoops = await DB.metaByType('loop');
+  const batch = { files: [], songs: new Set(), obsolete: [], bytes: 0 };
   let done = 0;
+  let doneBytes = 0;
+  const startedAt = Date.now();
+
+  // Fortschritt nach Bytes statt nach Dateien: eine 12-MB-Gesamtmischung
+  // dauert nun einmal länger als eine 3-MB-Einzelstimme.
+  const showProgress = (label) => {
+    const ratio = Math.min(1, doneBytes / totalBytes);
+    bar.style.width = `${ratio * 100}%`;
+    const elapsed = (Date.now() - startedAt) / 1000;
+    let rest = '';
+    if (ratio > 0.05 && elapsed > 3) {
+      const left = Math.round(elapsed / ratio - elapsed);
+      if (left > 5) rest = ` · noch etwa ${left < 60 ? `${left} s` : `${Math.round(left / 60)} min`}`;
+    }
+    sheetSummary.textContent = `${done} von ${totalFiles} Dateien${rest}`;
+    sheetPlan.textContent = label || '';
+  };
+  showProgress('');
+
+  // Die Lage der Nutzdaten im Archiv vorab und nebenläufig klären, damit das
+  // Auspacken später nicht bei jeder Datei einzeln darauf wartet.
+  if (pick.source.kind === 'zip') {
+    await zipPrefetchStarts(pick.source.file, chosenTracks.map((t) => t.entry))
+      .catch(() => { /* Fehler tauchen beim Auspacken wieder auf */ });
+  }
 
   try {
     for (const scan of chosenSongs) {
@@ -4257,14 +4683,16 @@ async function runImport() {
       }
 
       const songHasLoops = existingLoops.some((l) => l.songId === song.id);
-      const obsoleteKeys = [];
 
       for (const track of scan.tracks) {
         if (!track.checked) continue;
+        showProgress(track.fileName);
         try {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
-          await DB.filePut(fileKey, blob, track.fileName);
+          batch.files.push({ key: fileKey, blob, size: blob.size, name: track.fileName });
+          batch.bytes += inMemoryBytes(track.entry, blob);
+          batch.songs.add(song);
 
           const record = {
             voice: track.voice,
@@ -4277,7 +4705,7 @@ async function runImport() {
 
           const old = findExistingTrack(scan.existing, track);
           if (old) {
-            obsoleteKeys.push(old.fileKey);
+            batch.obsolete.push(old.fileKey);
             // Ersetzte Aufnahmen können gespeicherte Loops verschieben. Nichts
             // wird umgerechnet — der Player weist einmalig darauf hin (Spec 4.6).
             if (songHasLoops && old.durationSec) {
@@ -4293,13 +4721,19 @@ async function runImport() {
             song.tracks.push(record);
             report.tracksAdded++;
           }
+
+          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+            song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+            await flushImportBatch(batch);
+          }
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
           console.error('[import]', track.fileName, err);
           report.failed.push(`${track.fileName} (nicht lesbar)`);
         }
         done++;
-        bar.style.width = `${(done / totalFiles) * 100}%`;
+        doneBytes += track.size || 0;
+        showProgress(track.fileName);
       }
 
       // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
@@ -4319,17 +4753,18 @@ async function runImport() {
       for (const pdf of scan.pdfEntries) {
         try {
           const blob = await entryBlob(pdf);
-          const existing = song.scores.find((s) => s.fileName === pdf.name);
+          const fileKey = newFileKey();
+          const existing = song.scores.find((sc) => sc.fileName === pdf.name);
           if (existing) {
-            obsoleteKeys.push(existing.fileKey);
-            existing.fileKey = newFileKey();
+            batch.obsolete.push(existing.fileKey);
+            existing.fileKey = fileKey;
             existing.size = blob.size;
-            await DB.filePut(existing.fileKey, blob, pdf.name);
           } else {
-            const fileKey = newFileKey();
-            await DB.filePut(fileKey, blob, pdf.name);
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
+          batch.files.push({ key: fileKey, blob, size: blob.size, name: pdf.name });
+          batch.bytes += inMemoryBytes(pdf, blob);
+          batch.songs.add(song);
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
           console.warn('[import] Noten', err);
@@ -4338,10 +4773,13 @@ async function runImport() {
       }
 
       song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-      await DB.metaPut(song);
-      if (obsoleteKeys.length) await DB.fileDelete(obsoleteKeys);
+      batch.songs.add(song);
+      if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+        await flushImportBatch(batch);
+      }
       report.songsImported++;
     }
+    await flushImportBatch(batch);
   } catch (err) {
     console.error('[import] abgebrochen', err);
     if (err && err.name === 'QuotaExceededError') {
@@ -4351,6 +4789,11 @@ async function runImport() {
     } else {
       report.failed.push('Der Import wurde vorzeitig abgebrochen.');
     }
+    // Was schon ausgepackt ist, soll nicht verloren gehen. Bei vollem Speicher
+    // scheitert auch das — dann bleibt eben der Stand davor.
+    try { await flushImportBatch(batch); } catch (e) { console.warn('[import] Rest', e); }
+  } finally {
+    importLock?.release().catch(() => {});
   }
 
   report.unchanged = selectionStats().unchanged;
@@ -4495,6 +4938,15 @@ async function registerServiceWorker() {
     return;
   }
 
+  // Beim allerersten Besuch gibt es noch keinen Service Worker. Übernimmt er
+  // die Seite gleich nach der Installation (clients.claim), meldet der Browser
+  // denselben „controllerchange" wie bei einem echten Update. Ohne diese
+  // Unterscheidung lud sich die App direkt nach dem ersten Start einmal selbst
+  // neu — sichtbar als Flackern, und die Ersteinrichtung begann von vorn.
+  // Deshalb wird mitgeführt, ob die Seite überhaupt schon betreut wurde: nur
+  // ein *Wechsel* des Betreuers ist ein Update.
+  let swControlled = !!navigator.serviceWorker.controller;
+
   try {
     // Relativ registrieren, damit der Scope den Unterpfad der Seite trifft.
     const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
@@ -4514,6 +4966,9 @@ async function registerServiceWorker() {
     });
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const firstTakeover = !swControlled;
+      swControlled = !!navigator.serviceWorker.controller;
+      if (firstTakeover) return;           // Erstinstallation, kein Update
       if (reloadingForUpdate) return;
       reloadingForUpdate = true;
       location.reload();
@@ -4567,6 +5022,24 @@ function preferredTrack(song) {
       || byVoice('FULL')
       || song.tracks[0]
       || null;
+}
+
+/**
+ * Welche Stimmen lohnen sich im Hintergrund?
+ *
+ * Die Gesamtmischung (zum Gegenhören) und die eigene Stimme — mehr braucht
+ * niemand sofort. Jede weitere Spur kostet Rechenzeit, die im selben Moment
+ * für die Bedienung fehlt.
+ */
+function prefetchOrder(song, first) {
+  const wanted = ['FULL', settings.myVoice, settings.lastVoice];
+  const out = [];
+  for (const voice of wanted) {
+    if (!voice) continue;
+    const track = song.tracks.find((t) => t.voice === voice);
+    if (track && track !== first && !out.includes(track)) out.push(track);
+  }
+  return out;
 }
 
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
@@ -4741,12 +5214,7 @@ async function openPlayer(songId) {
     setPlayIcon(true);
   }
 
-  // Alle übrigen Stimmen im Hintergrund vorbereiten, damit ein Wechsel später
-  // ohne Wartezeit klingt. Reihenfolge: Gesamtmischung, dann der Rest.
-  const rest = song.tracks
-    .filter((t) => t.fileKey !== first.fileKey)
-    .sort((a, b) => (a.voice === 'FULL' ? -1 : 0) - (b.voice === 'FULL' ? -1 : 0));
-  prefetchTracks(song, rest);
+  prefetchTracks(song, prefetchOrder(song, first));
 
   showReplacedNotice(song);
   showLengthNotice(song);
@@ -5352,7 +5820,14 @@ function iconPdf() {
  * Liedtext und Noten des geöffneten Songs anzeigen.
  * Für PDFs wird kein eigener Betrachter gebaut — das System kann das besser.
  */
+// Wie bei renderSongs()/renderQueue(): schnelles Weiterschalten in einer
+// Playlist startet mehrere Durchläufe. Ohne Marke würde ein überholter
+// Durchlauf seine Notenzeilen hinter die bereits fertige Liste hängen und die
+// gerade erzeugten Objekt-URLs des neuen Songs wieder freigeben.
+let extrasRenderToken = 0;
+
 async function renderPlayerExtras() {
+  const token = ++extrasRenderToken;
   releaseScoreURLs();
 
   // --- Liedtext ---------------------------------------------------------
@@ -5377,12 +5852,14 @@ async function renderPlayerExtras() {
   if (!scores.length) return;
 
   for (const score of scores) {
+    if (token !== extrasRenderToken) return;
     const row = el('div', { class: 'score-item' });
     row.append(iconPdf(), el('span', { class: 'grow', text: score.fileName }));
     list.append(row);
 
     try {
       const rec = await DB.fileGet(score.fileKey);
+      if (token !== extrasRenderToken) return;
       if (!rec) { row.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
       const file = new File([rec.blob], score.fileName, { type: 'application/pdf' });
@@ -5447,8 +5924,13 @@ function updateMediaSession() {
   set('seekbackward', (d) => updateSeekUI(audioSeek(Audio.position - (d?.seekOffset || 10))));
   set('seekforward', (d) => updateSeekUI(audioSeek(Audio.position + (d?.seekOffset || 10))));
   set('seekto', (d) => { if (d?.seekTime != null) updateSeekUI(audioSeek(d.seekTime)); });
-  set('previoustrack', () => playlistStep(-1));
-  set('nexttrack', () => playlistStep(1));
+  // Dieselbe Bedeutung wie die Knöpfe im Player: außerhalb einer Playlist
+  // führt „weiter" durch die Bibliothek, statt gar nichts zu tun.
+  set('previoustrack', () => { if (playQueue) playlistStep(-1); });
+  set('nexttrack', () => {
+    if (playQueue) playlistStep(1);
+    else goToNextLibrarySong(Audio.playing);
+  });
 
   updateMediaPosition();
 }
@@ -6053,8 +6535,17 @@ function playlistAdvance() {
     if (!playQueue.items[i].id) continue;
     if (i <= playQueue.index) banner(`Playlist „${playQueue.name}" beginnt von vorn.`);
     playQueue.index = i;
+    const id = playQueue.items[i].id;
+    // Ist nur ein einziger Titel abspielbar, führt das Weiterschalten zurück
+    // auf den laufenden Song. Dann gibt es nichts zu navigieren — er fängt
+    // einfach wieder von vorn an. (Sonst blieb die Wiedergabe stehen.)
+    if (playerSong && playerSong.id === id) {
+      updateSeekUI(audioSeek(0));
+      audioPlay().then(() => setPlayIcon(true));
+      return;
+    }
     pendingAutoPlay = true;
-    navigate(`#song/${playQueue.items[i].id}`, { replace: true });
+    navigate(`#song/${id}`, { replace: true });
     return;
   }
   banner(`Playlist „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
@@ -6169,12 +6660,14 @@ async function restoreBackup(data) {
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
-    for (const l of await DB.metaByType('loop')) await DB.metaDelete(l.key);
-    for (const p of await DB.metaByType('playlist')) await DB.metaDelete(p.key);
+    const stale = [...await DB.metaByType('loop'), ...await DB.metaByType('playlist')];
+    await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
+    dropSongCache();
   }
 
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
+  const fresh = [];
   let addedLoops = 0, addedPl = 0, keptPending = 0;
 
   for (const l of loops) {
@@ -6182,13 +6675,14 @@ async function restoreBackup(data) {
     const song = findSongByTitle(songs, l.songTitle || '');
     const norm = normalizeTitle(l.songTitle || '');
 
-    // Bei gleichem Namen und gleichem Song nichts doppelt anlegen.
-    const dupe = existingLoops.some((x) =>
-      x.name === l.name && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm));
-    if (dupe) continue;
+    // Bei gleichem Namen und gleichem Song nichts doppelt anlegen — auch dann
+    // nicht, wenn die Sicherung denselben Loop selbst zweimal enthält.
+    const isDupe = (x) =>
+      x.name === l.name && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm);
+    if (existingLoops.some(isDupe) || fresh.some((x) => x.type === 'loop' && isDupe(x))) continue;
 
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    await DB.metaPut({
+    fresh.push({
       key: `loop:${id}`, type: 'loop', id,
       songId: song ? song.id : null,
       songTitle: l.songTitle || '',      // bleibt erhalten, auch ohne Song
@@ -6202,10 +6696,16 @@ async function restoreBackup(data) {
 
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
-    if (existingPl.some((x) => normalizeTitle(x.name) === normalizeTitle(p.name || ''))) continue;
-    await savePlaylist(newPlaylist(p.name || 'Playlist', p.songTitles));
+    const name = normalizeTitle(p.name || '');
+    if (existingPl.some((x) => normalizeTitle(x.name) === name)) continue;
+    if (fresh.some((x) => x.type === 'playlist' && normalizeTitle(x.name) === name)) continue;
+    fresh.push(newPlaylist(p.name || 'Playlist', p.songTitles));
     addedPl++;
   }
+
+  // Alles auf einmal schreiben: bei einer großen Sicherung sind das sonst
+  // hunderte einzelne Transaktionen.
+  await DB.metaPutMany(fresh);
 
   if (data.settings?.myVoice && !settings.myVoice) {
     await saveSettings({ myVoice: data.settings.myVoice });
@@ -6230,15 +6730,15 @@ async function reconnectPendingLoops() {
   if (!pending.length) return 0;
 
   const songs = await DB.metaByType('song');
-  let n = 0;
+  const reconnected = [];
   for (const loop of pending) {
     const song = findSongByTitle(songs, loop.songTitle);
     if (!song) continue;
     loop.songId = song.id;
-    await DB.metaPut(loop);
-    n++;
+    reconnected.push(loop);
   }
-  return n;
+  await DB.metaPutMany(reconnected);
+  return reconnected.length;
 }
 
 function daysSince(iso) {
@@ -6441,6 +6941,231 @@ window.chorApp = {
   selfTest: runSelfTests,
 };
 
+/* ==========================================================================
+   ERSTEINRICHTUNG — fünf Slides beim allerersten Start
+
+   Absichtlich kein Zwang: jeder Schritt lässt sich überspringen, und über die
+   Einstellungen ist die Einführung jederzeit wieder erreichbar. Gemerkt wird
+   nur ein Zeitstempel in den Einstellungen (`setupDoneAt`).
+   ========================================================================== */
+
+const ONB_SLIDES = 5;
+
+const onbEl    = $('#onboarding');
+const onbTrack = $('#onb-track');
+const onbDots  = $('#onb-dots');
+const onbPrev  = $('#onb-prev');
+const onbNext  = $('#onb-next');
+const onbSkip  = $('#onb-skip');
+
+let onbIndex = 0;
+let onbOpen  = false;
+
+/** Läuft die App bereits vom Home-Bildschirm? */
+function isStandalone() {
+  return window.matchMedia?.('(display-mode: standalone)').matches === true
+      || window.navigator.standalone === true;
+}
+
+const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// Chrome & Co. bieten die Installation über ein eigenes Ereignis an. Es
+// kommt genau einmal und muss aufgehoben werden, bis der Nutzer so weit ist.
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  if (onbOpen) renderOnbInstall();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  if (onbOpen) renderOnbInstall();
+});
+
+/** Schritt 1: Anleitung passend zum Gerät. */
+function renderOnbInstall() {
+  const host = $('#onb-install');
+  host.textContent = '';
+
+  if (isStandalone()) {
+    host.append(el('div', { class: 'onb-note onb-note--ok',
+      text: 'Erledigt — die App läuft bereits vom Home-Bildschirm.' }));
+    return;
+  }
+
+  if (installPrompt) {
+    host.append(el('button', {
+      class: 'btn btn--primary btn--block', type: 'button', text: 'App installieren',
+      onclick: async () => {
+        const prompt = installPrompt;
+        installPrompt = null;
+        try {
+          await prompt.prompt();
+          await prompt.userChoice;
+        } catch (err) {
+          console.warn('[install]', err);
+        }
+        renderOnbInstall();
+      },
+    }));
+    return;
+  }
+
+  const steps = isIOSDevice
+    ? ['In <strong>Safari</strong> unten auf das Teilen-Symbol tippen (Quadrat mit Pfeil nach oben).',
+       'In der Liste nach unten wischen bis <strong>„Zum Home-Bildschirm“</strong>.',
+       'Oben rechts auf <strong>Hinzufügen</strong> tippen — fertig.']
+    : ['Im Browser oben rechts das <strong>Menü</strong> öffnen (⋮).',
+       'Dort <strong>„App installieren“</strong> bzw. <strong>„Zum Startbildschirm hinzufügen“</strong> wählen.',
+       'Bestätigen — das Symbol liegt danach neben den übrigen Apps.'];
+
+  const list = el('ol', { class: 'steps small' });
+  for (const s of steps) {
+    const li = document.createElement('li');
+    li.innerHTML = s;               // fester Text aus dieser Datei, keine Fremddaten
+    list.append(li);
+  }
+  host.append(list);
+
+  if (isIOSDevice) {
+    host.append(el('div', { class: 'onb-note',
+      text: 'Ohne diesen Schritt löscht iOS die gespeicherten Aufnahmen, wenn die App längere Zeit nicht geöffnet wird.' }));
+  }
+}
+
+/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
+function renderOnbVoice() {
+  const host = $('#onb-voice');
+  host.textContent = '';
+  for (const voice of MY_VOICE_CHOICES) {
+    host.append(el('button', {
+      class: 'chip', type: 'button',
+      'aria-pressed': settings.myVoice === voice ? 'true' : 'false',
+      text: VOICE_LABEL[voice],
+      onclick: async () => {
+        const next = settings.myVoice === voice ? null : voice;
+        // Wer hier zum ersten Mal wählt, will beim Import genau diese Stimme.
+        await saveSettings(next
+          ? { myVoice: next, defaultImportScope: 'mine' }
+          : { myVoice: null });
+        renderOnbVoice();
+        renderVoicePicker();
+      },
+    }));
+  }
+}
+
+/** Schritt 3: Stand der dauerhaften Speicherung anzeigen. */
+async function renderOnbPersist() {
+  const btn  = $('#onb-persist');
+  const note = $('#onb-persist-note');
+
+  if (!navigator.storage || !navigator.storage.persist) {
+    btn.hidden = true;
+    note.hidden = false;
+    note.className = 'onb-note';
+    note.textContent = 'Dieser Browser kennt die Einstellung nicht. Die Aufnahmen werden trotzdem gespeichert — nur ohne ausdrückliche Zusage.';
+    return;
+  }
+
+  const persisted = await navigator.storage.persisted().catch(() => false);
+  btn.hidden = persisted;
+  note.hidden = !persisted;
+  if (persisted) {
+    note.className = 'onb-note onb-note--ok';
+    note.textContent = 'Dauerhafte Speicherung ist aktiv — das System löscht die Aufnahmen nicht von selbst.';
+  }
+}
+
+$('#onb-persist').addEventListener('click', async () => {
+  const btn  = $('#onb-persist');
+  const note = $('#onb-persist-note');
+  btn.disabled = true;
+  const ok = await requestPersistence();
+  btn.disabled = false;
+  note.hidden = false;
+  if (ok) {
+    btn.hidden = true;
+    note.className = 'onb-note onb-note--ok';
+    note.textContent = 'Zugesagt — das System löscht die Aufnahmen nicht von selbst.';
+  } else {
+    note.className = 'onb-note onb-note--warn';
+    note.textContent = isStandalone()
+      ? 'Der Browser hat noch nicht zugesagt. Das holt er oft von selbst nach, sobald die App ein paar Mal benutzt wurde.'
+      : 'Der Browser hat noch nicht zugesagt. Am zuverlässigsten klappt es, wenn die App auf dem Home-Bildschirm liegt (Schritt 1).';
+  }
+  renderStorage().catch(() => {});
+});
+
+function renderOnbDots() {
+  onbDots.textContent = '';
+  for (let i = 0; i < ONB_SLIDES; i++) {
+    onbDots.append(el('button', {
+      class: 'onb-dot', type: 'button', role: 'tab',
+      'aria-current': i === onbIndex ? 'true' : 'false',
+      'aria-label': `Schritt ${i + 1} von ${ONB_SLIDES}`,
+      onclick: () => onbGoTo(i),
+    }));
+  }
+  onbPrev.hidden = onbIndex === 0;
+  onbSkip.hidden = onbIndex === ONB_SLIDES - 1;
+  onbNext.textContent = onbIndex === ONB_SLIDES - 1 ? 'Los geht’s' : 'Weiter';
+}
+
+function onbGoTo(index) {
+  onbIndex = Math.max(0, Math.min(ONB_SLIDES - 1, index));
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  onbTrack.scrollTo({ left: onbIndex * onbTrack.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
+  renderOnbDots();
+  if (onbIndex === 2) renderOnbPersist();
+}
+
+// Beim Wischen die Punkte nachziehen — gedrosselt über einen Frame, damit das
+// Scrollen auf älteren Geräten flüssig bleibt.
+let onbScrollFrame = 0;
+onbTrack.addEventListener('scroll', () => {
+  if (onbScrollFrame) return;
+  onbScrollFrame = requestAnimationFrame(() => {
+    onbScrollFrame = 0;
+    const width = onbTrack.clientWidth || 1;
+    const i = Math.round(onbTrack.scrollLeft / width);
+    if (i !== onbIndex && i >= 0 && i < ONB_SLIDES) {
+      onbIndex = i;
+      renderOnbDots();
+      if (onbIndex === 2) renderOnbPersist();
+    }
+  });
+}, { passive: true });
+
+onbPrev.addEventListener('click', () => onbGoTo(onbIndex - 1));
+onbNext.addEventListener('click', () => {
+  if (onbIndex === ONB_SLIDES - 1) closeOnboarding();
+  else onbGoTo(onbIndex + 1);
+});
+onbSkip.addEventListener('click', () => closeOnboarding());
+
+function openOnboarding() {
+  onbOpen = true;
+  onbIndex = 0;
+  onbEl.hidden = false;
+  renderOnbInstall();
+  renderOnbVoice();
+  renderOnbPersist();
+  renderOnbDots();
+  // Ohne Verzögerung steht die Breite des Streifens noch nicht fest.
+  requestAnimationFrame(() => { onbTrack.scrollLeft = 0; });
+  onbNext.focus();
+}
+
+async function closeOnboarding() {
+  onbOpen = false;
+  onbEl.hidden = true;
+  if (!settings.setupDoneAt) await saveSettings({ setupDoneAt: new Date().toISOString() });
+  renderVoicePicker();
+  if (currentView === 'settings') renderSettings();
+}
+
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
@@ -6455,12 +7180,21 @@ async function boot() {
   }
 
   await loadSettings();
-  requestPersistence(); // im Hintergrund, blockiert den Start nicht
   setupFolderImport();
   runSelfTests();
 
   const start = (location.hash || '#songs').slice(1);
-  showView(VIEWS[start] ? start : 'songs', { push: false });
+  // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
+  // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel.
+  navigate(VIEWS[start] ? `#${start}` : '#songs', { replace: true });
+
+  if (!settings.setupDoneAt) {
+    // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
+    // Fingertipp, was manche Browser voraussetzen.
+    openOnboarding();
+  } else {
+    requestPersistence(); // im Hintergrund, blockiert den Start nicht
+  }
 
   registerServiceWorker();
 }
