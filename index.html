@@ -3945,10 +3945,11 @@ async function audioInit() {
     }
   };
 
-  // Safari kennt neben „running" und „suspended" den Zustand „interrupted":
-  // ein Anruf, eine andere Audio-App oder Speicherdruck halten den Kontext an.
-  // Ohne Zutun bleibt er angehalten — die App sah dann aus, als spiele sie,
-  // und es kam kein Ton mehr. Deshalb hier zuhören und selbst fortsetzen.
+  // Der Kontext kann von außen angehalten werden: Android sperrt die Seite
+  // beim Bildschirm-Aus aus („suspended"), Safari kennt zusätzlich
+  // „interrupted" — ein Anruf, eine andere Audio-App oder Speicherdruck.
+  // Beides bleibt ohne Zutun angehalten: die App sah aus, als spiele sie, und
+  // es kam kein Ton mehr.
   Audio.ctx.addEventListener('statechange', onAudioStateChange);
 
   if (!Audio.silent) {
@@ -3967,31 +3968,27 @@ async function audioInit() {
     document.body.append(Audio.silent);
   }
 
-  // Sperrt Android die Seite trotzdem aus, steht der Kontext beim Zurückkehren
-  // auf „suspended". Ohne das hier bliebe der Player danach stumm stehen.
-  Audio.ctx.addEventListener('statechange', () => {
-    if (Audio.ctx.state === 'suspended' && Audio.playing
-        && document.visibilityState === 'visible') {
-      Audio.ctx.resume().catch(() => {});
-    }
-  });
-
   Audio.ready = true;
 }
 
 async function onAudioStateChange() {
-  const state = Audio.ctx?.state;
-  if (!state || state === 'running' || !Audio.playing) return;
+  const ctx = Audio.ctx;
+  if (!ctx || ctx.state === 'running' || !Audio.playing) return;
+
+  // Im Hintergrund ist ein angehaltener Kontext normal und kein Fehler; beim
+  // Zurückkehren kümmert sich der visibilitychange-Handler darum.
+  if (document.visibilityState !== 'visible') return;
 
   try {
-    await Audio.ctx.resume();
+    await ctx.resume();
   } catch (err) {
     console.warn('[audio] Kontext ließ sich nicht fortsetzen', err);
   }
+  if (ctx !== Audio.ctx || !Audio.playing) return;
 
   // Hat das Fortsetzen nicht geklappt, muss die Anzeige die Wahrheit sagen —
   // ein Play-Symbol, das nichts abspielt, sucht man sonst ewig.
-  if (Audio.ctx.state !== 'running') {
+  if (ctx.state !== 'running') {
     Audio.playing = false;
     Audio.silent?.pause();
     setPlayIcon(false);
