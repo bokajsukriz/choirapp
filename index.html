@@ -2143,6 +2143,18 @@ function reqPromise(request) {
   });
 }
 
+/**
+ * Zwischenspeicher der Songliste.
+ *
+ * Die Bibliothek wird bei jedem Tastendruck in der Suche neu gezeichnet. Ohne
+ * Zwischenspeicher liest jeder davon alle Songdatensätze samt Liedtexten aus
+ * der Datenbank — auf einem älteren Handy hakt die Eingabe dadurch spürbar.
+ * Jede Schreiboperation, die einen Song berühren kann, verwirft ihn wieder.
+ */
+let songCache = null;
+
+function dropSongCache() { songCache = null; }
+
 const DB = {
   async metaGet(key) {
     const db = await openDB();
@@ -2151,16 +2163,19 @@ const DB = {
 
   async metaPut(record) {
     await tx('meta', 'readwrite', (meta) => { meta.put(record); });
+    if (record.type === 'song') dropSongCache();
     return record;
   },
 
   async metaPutMany(records) {
     if (!records.length) return;
     await tx('meta', 'readwrite', (meta) => { for (const r of records) meta.put(r); });
+    if (records.some((r) => r.type === 'song')) dropSongCache();
   },
 
   async metaDelete(key) {
     await tx('meta', 'readwrite', (meta) => { meta.delete(key); });
+    if (String(key).startsWith('song:')) dropSongCache();
   },
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
@@ -2168,6 +2183,16 @@ const DB = {
     const db = await openDB();
     const idx = db.transaction('meta', 'readonly').objectStore('meta').index('type');
     return reqPromise(idx.getAll(IDBKeyRange.only(type)));
+  },
+
+  /**
+   * Songs für die Anzeige — aus dem Zwischenspeicher, wenn er gültig ist.
+   * Nur für lesende Anzeigen gedacht: wer Datensätze verändert, holt sie über
+   * metaByType, damit der Zwischenspeicher nicht mitverändert wird.
+   */
+  async songsForDisplay() {
+    if (!songCache) songCache = await this.metaByType('song');
+    return songCache;
   },
 
   async fileGet(key) {
@@ -2187,6 +2212,7 @@ const DB = {
       files.clear();
       meta.clear();
     });
+    dropSongCache();
   },
 };
 
@@ -2932,7 +2958,7 @@ async function renderSongs() {
 
   let songs = [];
   try {
-    songs = await DB.metaByType('song');
+    songs = await DB.songsForDisplay();
   } catch (err) {
     console.error(err);
     if (token !== songsRenderToken) return;
@@ -2991,9 +3017,12 @@ async function renderSongs() {
 
   // --- Filtern und sortieren --------------------------------------------
   const q = normalizeTitle(songQuery);
-  let visible = songs;
+  // normTitle liegt am Datensatz — beim Tippen nicht für jeden Song neu
+  // berechnen. Der Zwischenspeicher wird hier nie umsortiert, deshalb eine
+  // eigene Liste.
+  let visible = [...songs];
   if (songFilter) visible = visible.filter((s) => (s.collections || []).includes(songFilter));
-  if (q) visible = visible.filter((s) => normalizeTitle(s.title || '').includes(q));
+  if (q) visible = visible.filter((s) => (s.normTitle || normalizeTitle(s.title || '')).includes(q));
 
   visible.sort((a, b) => collator.compare(a.title || '', b.title || ''));
 
@@ -3045,9 +3074,13 @@ async function renderSongs() {
   host.append(list);
 }
 
+// Entprellt: ein schnell getippter Suchbegriff soll die Liste einmal neu
+// zeichnen, nicht bei jedem Buchstaben.
+let searchTimer = 0;
 $('#search').addEventListener('input', (e) => {
   songQuery = e.target.value;
-  renderSongs();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(renderSongs, 120);
 });
 
 /* ---------- Einstellungen ------------------------------------------------ */
@@ -4512,7 +4545,20 @@ async function startFolderImport(fileList) {
  * komprimierten Archiven liegen die ausgepackten Daten so lange im Speicher.
  */
 const IMPORT_BATCH_BYTES = 32 * 1024 * 1024;
-const IMPORT_BATCH_FILES = 12;
+const IMPORT_BATCH_FILES = 24;
+
+/**
+ * Wie viel Arbeitsspeicher belegt dieser Blob, bis er geschrieben ist?
+ *
+ * Unkomprimierte ZIP-Einträge und Dateien aus dem Ordner-Import sind nur ein
+ * Verweis auf einen Bereich der Datei auf der Festplatte — sie kosten nichts.
+ * Nur ausgepackte (deflate-)Einträge liegen wirklich im Speicher und
+ * begrenzen, wie viel gesammelt werden darf.
+ */
+function inMemoryBytes(entry, blob) {
+  if (entry.blob || entry.method === 0) return 0;
+  return blob.size;
+}
 
 /**
  * Schreibt einen Stapel: Aufnahmen, die zugehörigen Songdatensätze und die
@@ -4537,6 +4583,7 @@ async function flushImportBatch(batch) {
     // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
     for (const key of obsolete) fileStore.delete(key);
   });
+  dropSongCache();
 }
 
 /**
@@ -4632,7 +4679,7 @@ async function runImport() {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
           batch.files.push({ key: fileKey, blob, size: blob.size, name: track.fileName });
-          batch.bytes += blob.size;
+          batch.bytes += inMemoryBytes(track.entry, blob);
           batch.songs.add(song);
 
           const record = {
@@ -4704,7 +4751,7 @@ async function runImport() {
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
           batch.files.push({ key: fileKey, blob, size: blob.size, name: pdf.name });
-          batch.bytes += blob.size;
+          batch.bytes += inMemoryBytes(pdf, blob);
           batch.songs.add(song);
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
@@ -6577,6 +6624,7 @@ async function restoreBackup(data) {
     if (!ok) return;
     const stale = [...await DB.metaByType('loop'), ...await DB.metaByType('playlist')];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
+    dropSongCache();
   }
 
   const existingLoops = await DB.metaByType('loop');
