@@ -1,7 +1,7 @@
 {
-  "name": "Chor-Übe-App",
-  "short_name": "Chor",
-  "description": "Übe-Aufnahmen des Chores offline auf dem Handy.",
+  "name": "BVG",
+  "short_name": "BVG",
+  "description": "Übe-Aufnahmen des Chores BVG offline auf dem Handy.",
   "lang": "de",
   "dir": "ltr",
   "start_url": "./",
@@ -9,8 +9,8 @@
   "id": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f1114",
-  "theme_color": "#0f1114",
+  "background_color": "#fff7ec",
+  "theme_color": "#fff7ec",
   "icons": [
     {
       "src": "./icon-192.png",

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Chor-Übe-App</title>
+<title>BVG</title>
 
 <!-- Alle Pfade relativ: die App liegt unter einem Unterpfad (…github.io/<repo>/). -->
 <link rel="manifest" href="./manifest.json">
@@ -12,9 +12,9 @@
 <meta name="theme-color" content="#fff7ec">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Chor">
+<meta name="apple-mobile-web-app-title" content="BVG">
 <meta name="color-scheme" content="light">
-<meta name="description" content="Übe-Aufnahmen des Chores offline auf dem Handy.">
+<meta name="description" content="Übe-Aufnahmen des Chores BVG offline auf dem Handy.">
 
 <style>
 /* ==========================================================================
@@ -5418,7 +5418,7 @@ function updateMediaSession() {
     ms.metadata = new MediaMetadata({
       title: playerSong.title,
       artist: voiceLabel || 'Chor',
-      album: (playerSong.collections || [])[0] || 'Chor-Übe-App',
+      album: (playerSong.collections || [])[0] || 'BVG',
       artwork: [{ src: './icon-512.png', sizes: '512x512', type: 'image/png' }],
     });
   } catch { /* ältere Browser ohne MediaMetadata */ }
