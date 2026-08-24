@@ -1794,15 +1794,49 @@ input[type="checkbox"] {
     <div class="card">
       <h2>Bildschirm</h2>
       <p class="small muted" style="margin-top:-4px">
-        Manche Android-Handys beenden die Wiedergabe, sobald sich der Bildschirm
-        sperrt. Mit „Immer an“ bleibt er an, solange ein Lied geöffnet ist —
-        das kostet Akku, aber die Wiedergabe reißt nicht ab.
+        Schaltet sich der Bildschirm von selbst ab, weil du eine Weile nichts
+        berührst, hält „Immer an“ ihn an, solange ein Lied geöffnet ist — das
+        kostet Akku. Sperrst du das Handy dagegen bewusst über die Ein/Aus-
+        Taste, hilft das nicht mehr — dafür die Karte weiter unten.
       </p>
       <div class="preset-row" id="screen-mode" role="group" aria-label="Bildschirmsperre">
         <button class="preset" type="button" data-keep="off" aria-pressed="true">Normal</button>
         <button class="preset" type="button" data-keep="on">Immer an</button>
       </div>
       <p class="small muted" id="screen-note" style="margin:10px 0 0"></p>
+    </div>
+
+    <div class="card">
+      <h2>Wiedergabe bei gesperrtem Bildschirm</h2>
+      <p class="small muted" style="margin-top:-4px">
+        Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das nicht
+        an dieser App: Android entscheidet, ob eine Web-App im Hintergrund
+        weiterlaufen darf, und das steuern zwei Systemeinstellungen — beide
+        lassen sich nur von Hand ändern, keine Website darf sie selbst setzen.
+      </p>
+      <ol class="steps small">
+        <li>Android-Einstellungen → <strong>Apps</strong> → deinen Browser
+          öffnen (z. B. <strong>Vanadium</strong> oder <strong>Chrome</strong>
+          — die App, in der du „Zum Startbildschirm hinzufügen“ verwendet
+          hast).</li>
+        <li><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
+          wählen. Sonst beendet Android den Browser im Hintergrund, sobald
+          der Bildschirm aus ist.</li>
+        <li><strong>Benachrichtigungen</strong> → erlauben. Android verlangt
+          dafür eine sichtbare Benachrichtigung — ohne sie darf keine
+          Web-App im Hintergrund weiterspielen.</li>
+      </ol>
+      <p class="small muted" style="margin:10px 0 0">
+        Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
+        Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
+        eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
+        Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
+        „BVG“-Symbol.
+      </p>
+      <p class="small" id="notif-state" style="margin:14px 0 0"></p>
+      <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px">
+        Benachrichtigungen für diese Seite erlauben
+      </button>
     </div>
 
     <div class="card">
@@ -3497,6 +3531,7 @@ async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
+  renderNotificationState();
   await renderStorage();
   renderBackupAge();
   await renderNotesCount();
@@ -3528,6 +3563,48 @@ $('#screen-mode').addEventListener('click', async (e) => {
   await saveSettings({ keepScreenOn: btn.dataset.keep === 'on' });
   renderScreenMode();
   updateWakeLock();
+});
+
+/**
+ * Ob eine Web-App im Hintergrund weiterspielen darf, entscheidet Android
+ * über zwei App-Einstellungen (Akku, Benachrichtigungen) — keine davon lässt
+ * sich von einer Website aus setzen. Die Web-Notification-Berechtigung hier
+ * ist eine dritte, eigenständige Berechtigung: bei manchen Browsern schaltet
+ * erst sie die Wiedergabesteuerung im Sperrbildschirm frei, bei anderen
+ * spielt sie keine Rolle. Sie zeigt sich aber wenigstens im Browser selbst
+ * anfragen und prüfen — anders als die beiden Android-Einstellungen.
+ */
+function renderNotificationState() {
+  const node = $('#notif-state');
+  const btn = $('#btn-notify-request');
+
+  if (!('Notification' in window)) {
+    node.textContent = 'Dieser Browser kennt keine Benachrichtigungen.';
+    btn.hidden = true;
+    return;
+  }
+
+  if (Notification.permission === 'granted') {
+    node.textContent = 'Benachrichtigungen sind erlaubt.';
+    btn.hidden = true;
+  } else if (Notification.permission === 'denied') {
+    node.textContent = 'Benachrichtigungen sind blockiert. Das lässt sich nur '
+      + 'in den Android-Einstellungen wieder ändern (Apps → Browser → '
+      + 'Benachrichtigungen).';
+    btn.hidden = true;
+  } else {
+    node.textContent = 'Noch nicht erteilt.';
+    btn.hidden = false;
+  }
+}
+
+$('#btn-notify-request').addEventListener('click', async () => {
+  try {
+    await Notification.requestPermission();
+  } catch (err) {
+    console.warn('[notify] Anfrage fehlgeschlagen', err);
+  }
+  renderNotificationState();
 });
 
 $$('#channel-mode .preset').forEach((btn) => {
