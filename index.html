@@ -1807,21 +1807,21 @@ input[type="checkbox"] {
     <div id="import-report"></div>
 
     <div class="card">
-      <h2>iPhone</h2>
+      <h2>So kommt der Ordner aufs Handy</h2>
+      <p class="small" style="font-weight:650; margin:0 0 6px">iPhone</p>
       <ol class="steps small">
         <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>…</strong> tippen.</li>
         <li><strong>Exportieren → In Dateien sichern</strong> wählen und in „Auf meinem iPhone“ speichern.</li>
-        <li>Zurück in diese App, auf <strong>ZIP-Datei auswählen</strong> tippen und die Datei aus „Dateien“ wählen.</li>
       </ol>
-    </div>
-
-    <div class="card">
-      <h2>Android</h2>
+      <p class="small" style="font-weight:650; margin:14px 0 6px">Android</p>
       <ol class="steps small">
         <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>⋮</strong> tippen.</li>
         <li><strong>Herunterladen</strong> wählen — Dropbox packt den Ordner als ZIP in „Downloads“.</li>
-        <li>Zurück in diese App, auf <strong>ZIP-Datei auswählen</strong> tippen und die Datei aus „Downloads“ wählen.</li>
       </ol>
+      <p class="small muted" style="margin:14px 0 0">
+        Danach zurück in dieser App auf <strong>ZIP-Datei auswählen</strong>
+        tippen und die Datei aus „Dateien“ bzw. „Downloads“ wählen.
+      </p>
     </div>
 
     <div class="card">
@@ -1831,6 +1831,15 @@ input[type="checkbox"] {
         <li>Du kannst später einzelne Lieder oder fehlende Stimmen nachladen.</li>
         <li>Vor dem Speichern kannst du auswählen, welche Stimmen aufs Handy sollen — das spart Speicherplatz.</li>
       </ul>
+    </div>
+
+    <div class="card">
+      <h2>Bibliothek</h2>
+      <div class="stack small" id="import-stats">
+        <div class="row"><span>Songs</span><span id="stat-songs">–</span></div>
+        <div class="row"><span>Dateien</span><span id="stat-files">–</span></div>
+        <div class="row"><span>Letzter Import</span><span id="stat-last-import">–</span></div>
+      </div>
     </div>
   </section>
 
@@ -2482,6 +2491,7 @@ const DEFAULT_SETTINGS = {
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
   keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
   shuffleMode: false,         // zufälliges statt geordnetes „nächstes Lied"
+  lastImportAt: null,         // Zeitpunkt des letzten erfolgreichen Imports
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3131,7 +3141,7 @@ function groupDuplicates(songFolders) {
 const VIEWS = {
   songs:     { title: 'Songs',         render: renderSongs },
   playlists: { title: 'Playlisten',    render: renderPlaylists },
-  import:    { title: 'Import',        render: () => renderImportReport() },
+  import:    { title: 'Import',        render: () => { renderImportReport(); renderImportStats(); } },
   settings:  { title: 'Einstellungen', render: renderSettings },
 };
 
@@ -5500,9 +5510,16 @@ async function runImport() {
     console.warn('[import] Notizen verbinden', err);
   }
 
+  // Zeitpunkt merken — aber nur, wenn wirklich etwas geschrieben wurde: ein
+  // Abbruch ohne jede Änderung soll nicht als „Import" durchgehen.
+  if (report.songsImported || report.tracksAdded || report.tracksReplaced) {
+    await saveSettings({ lastImportAt: new Date().toISOString() });
+  }
+
   lastReport = report;
   closeSheet();
   renderImportReport();
+  renderImportStats();
   renderPlaylists();
 
   if (report.quotaHit) {
@@ -7954,6 +7971,21 @@ async function reconnectPendingLoops() {
   }
   await DB.metaPutMany(reconnected);
   return reconnected.length;
+}
+
+/** Kurzstatistik im Import-Tab: was liegt schon auf dem Gerät. */
+async function renderImportStats() {
+  const songs = await DB.metaByType('song').catch(() => []);
+  const files = songs.reduce((n, s) =>
+    n + (s.tracks?.length || 0) + (s.scores?.length || 0), 0);
+
+  $('#stat-songs').textContent = String(songs.length);
+  $('#stat-files').textContent = String(files);
+
+  const days = daysSince(settings.lastImportAt);
+  $('#stat-last-import').textContent = days === null
+    ? 'noch nie'
+    : days === 0 ? 'heute' : `vor ${plural(days, 'Tag', 'Tagen')}`;
 }
 
 function daysSince(iso) {
