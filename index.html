@@ -967,8 +967,6 @@ input[type="checkbox"] {
   .spinner { animation-duration: 2s; }
 }
 
-.loading-row { display: flex; align-items: center; gap: 12px; padding: 10px 0 18px; color: var(--muted); }
-
 /* Loops */
 .loop-controls {
   display: grid;
@@ -3248,6 +3246,9 @@ function showView(name) { navigate(`#${name}`); }
  * Wertet die Adresse aus: `#songs`, `#import`, … oder `#song/<id>` für den
  * Player. Der Player liegt über den Reitern, deshalb wird er hier geöffnet
  * und geschlossen — so bringt die Zurück-Taste zuverlässig zur Liste zurück.
+ * Führt die Route nicht zurück in den (noch ladenden) Player, wird ein
+ * laufender openPlayer()-Aufruf per Marke verworfen — sonst könnte er sich
+ * nach einer verspäteten DB-Antwort von selbst wieder öffnen.
  */
 function applyRoute() {
   const raw = (location.hash || '#songs').slice(1);
@@ -3262,12 +3263,12 @@ function applyRoute() {
   }
 
   if (name === 'playlist' && param) {
-    if (playerSong) closePlayer();
+    if (playerSong) closePlayer(); else openPlayerToken++;
     if (!openPlaylist || openPlaylist.id !== param) openPlaylistView(param);
     return;
   }
 
-  if (playerSong) closePlayer();
+  if (playerSong) closePlayer(); else openPlayerToken++;
   if (openPlaylist) closePlaylistView();
   showTab(VIEWS[name] ? name : 'songs');
 }
@@ -6010,13 +6011,22 @@ function setPlayIcon(playing) {
 
 /* ---------- Öffnen und Schließen ---------------------------------------- */
 
+// Schnelles Weiterschalten (Playlist oder mehrfaches Antippen von „Nächstes")
+// kann openPlayer() überlappend aufrufen. Ohne Marke könnte eine verzögert
+// eintreffende ältere Antwort playerSong/Audio.song rückwärts überschreiben,
+// nachdem der neuere Aufruf schon fertig ist — Titel und Stimmen zeigen dann
+// den falschen Song, obwohl schon der neue läuft.
+let openPlayerToken = 0;
+
 async function openPlayer(songId) {
+  const token = ++openPlayerToken;
   let song;
   try {
     song = await DB.metaGet(`song:${songId}`);
   } catch (err) {
     console.error(err);
   }
+  if (token !== openPlayerToken) return;
   if (!song) {
     banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' });
     showView('songs');
@@ -6054,6 +6064,7 @@ async function openPlayer(songId) {
     banner('Die Audiowiedergabe konnte nicht gestartet werden.', { kind: 'error' });
     return;
   }
+  if (token !== openPlayerToken) return;
 
   Audio.song = song;
   audioSetRate(1);
@@ -6082,6 +6093,7 @@ async function openPlayer(songId) {
   }
 
   await selectTrack(first);
+  if (token !== openPlayerToken) return;
 
   // Beim automatischen Weiterschalten in einer Playlist gleich losspielen.
   if (pendingAutoPlay) {
@@ -6289,6 +6301,9 @@ function onPlaybackEnded() {
 }
 
 function closePlayer() {
+  // Verwirft einen noch ladenden openPlayer()-Aufruf — sonst öffnet der sich
+  // gleich von selbst wieder, sobald seine DB-Abfrage verspätet eintrifft.
+  openPlayerToken++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
   playerEl.hidden = true;
@@ -7763,7 +7778,6 @@ $('#btn-pl-play').addEventListener('click', async () => {
   await startPlaylist(plDraft);
 });
 
-/** Springt in der laufenden Playlist, überspringt dabei fehlende Titel. */
 /** Zufälliger, vorhandener Index der Playlist — nie der aktuelle, außer es
  *  gibt nur einen einzigen abspielbaren Titel. */
 function randomQueueIndex(queue) {
@@ -7774,6 +7788,7 @@ function randomQueueIndex(queue) {
   return queue.items[queue.index]?.id ? queue.index : -1;
 }
 
+/** Springt in der laufenden Playlist, überspringt dabei fehlende Titel. */
 function playlistStep(delta, autoplay) {
   if (!playQueue) return;
   let i;
