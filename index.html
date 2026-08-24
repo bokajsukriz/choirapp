@@ -308,6 +308,22 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Songliste (ab M1 gefüllt) */
 .list { list-style: none; margin: 0; padding: 0; }
 
+/* Zeilen außerhalb des Bildschirms überspringt der Browser beim Berechnen und
+   Zeichnen. Bei einer großen Bibliothek ist das der Unterschied zwischen einem
+   spürbaren Hänger und einem sofortigen Reiterwechsel — sichtbar ändert sich
+   nichts. Browser ohne Unterstützung (ältere Safari-Versionen) ignorieren die
+   Angabe einfach.
+   `auto` merkt sich die zuletzt gemessene Höhe, damit die Bildlaufleiste beim
+   Scrollen nicht springt; 66px ist die Höhe einer einzeiligen Zeile.
+   Betrifft die Songliste, die Titelauswahl beim Bearbeiten einer Playlist und
+   die Auswahlmaske vor dem Import — die drei Listen, die lang werden. */
+.list > li,
+#pl-candidates > .list-item,
+.pick-song {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 66px;
+}
+
 .list-item {
   display: flex;
   align-items: center;
@@ -1024,6 +1040,32 @@ input[type="checkbox"] {
 .score-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
 .score-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+/* Notizen — schlichtes Textfeld ohne Formatierung. Bewusst dieselbe Anmutung
+   wie der Liedtext daneben, nur eben beschreibbar. */
+.note-box {
+  display: block;
+  width: 100%;
+  min-height: 130px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  line-height: 1.55;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.note-foot { margin-top: 8px; }
+
+.note-state { color: var(--muted); font-size: 0.82rem; }
+.note-state[data-dirty="true"] { color: var(--warn); }
+
+.note-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.note-actions .btn { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
+.note-actions .btn svg { width: 20px; height: 20px; }
+
 .dialog textarea {
   width: 100%;
   min-height: 160px;
@@ -1066,7 +1108,10 @@ input[type="checkbox"] {
 }
 
 .banner {
-  pointer-events: auto;
+  /* Der Meldungstext selbst fängt keine Tipps ab — sonst wäre der Knopf
+     darunter (z.B. „Zurück" im Player) unerreichbar, solange die Meldung
+     steht. Bedienbar sind nur die Knöpfe der Meldung. */
+  pointer-events: none;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
@@ -1082,6 +1127,11 @@ input[type="checkbox"] {
 .banner--error { border-left-color: var(--danger); }
 .banner--ok    { border-left-color: var(--ok); }
 .banner p { margin: 0; flex: 1; }
+
+.banner .banner-action,
+.banner .banner-close {
+  pointer-events: auto;
+}
 
 .banner .banner-action {
   min-height: 36px;
@@ -1517,6 +1567,27 @@ input[type="checkbox"] {
       <p class="section-title">Noten</p>
       <div id="scores-list"></div>
     </div>
+
+    <div id="notes-block">
+      <p class="section-title">Notizen</p>
+      <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
+      <div id="note-editor" hidden>
+        <textarea class="note-box" id="note-text" rows="5" spellcheck="true"
+                  aria-label="Notiz zu diesem Lied"
+                  placeholder="z. B. Einsatz nach Takt 12 abwarten, zweite Strophe leiser"></textarea>
+        <div class="row note-foot">
+          <span class="note-state" id="note-state" data-dirty="false" role="status"></span>
+          <span class="note-actions">
+            <button class="btn" id="btn-note-save" type="button" aria-label="Notiz speichern">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+            </button>
+            <button class="btn" id="btn-note-delete" type="button" aria-label="Notiz löschen" style="color: var(--danger)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+            </button>
+          </span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="player-foot">
@@ -1721,6 +1792,20 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2>Bildschirm</h2>
+      <p class="small muted" style="margin-top:-4px">
+        Manche Android-Handys beenden die Wiedergabe, sobald sich der Bildschirm
+        sperrt. Mit „Immer an“ bleibt er an, solange ein Lied geöffnet ist —
+        das kostet Akku, aber die Wiedergabe reißt nicht ab.
+      </p>
+      <div class="preset-row" id="screen-mode" role="group" aria-label="Bildschirmsperre">
+        <button class="preset" type="button" data-keep="off" aria-pressed="true">Normal</button>
+        <button class="preset" type="button" data-keep="on">Immer an</button>
+      </div>
+      <p class="small muted" id="screen-note" style="margin:10px 0 0"></p>
+    </div>
+
+    <div class="card">
       <h2>Speicher</h2>
       <div class="stack">
         <div class="row">
@@ -1738,9 +1823,9 @@ input[type="checkbox"] {
       <h2>Sicherung</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Sichert Loops, Playlisten, Einstellungen und die Songliste — ohne
-          Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt sich
-          per Mail oder Messenger verschicken.
+          Sichert Loops, Notizen, Playlisten, Einstellungen und die Songliste
+          — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt
+          sich per Mail oder Messenger verschicken.
         </p>
         <p class="small" id="backup-age" style="margin:0"></p>
         <button class="btn btn--primary btn--block" id="btn-backup-export" type="button">
@@ -1754,18 +1839,33 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2>Notizen</h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Alle Notizen zusammen als schlichte Textdatei: Songtitel, Leerzeile,
+          Notiz. Zum Ausdrucken, Weitergeben oder Einfügen in eine Notiz-App.
+        </p>
+        <p class="small" id="notes-count" style="margin:0"></p>
+        <button class="btn btn--block" id="btn-notes-export" type="button">
+          Notizen als Textdatei
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Speicherplatz freigeben</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Einzelne Songs oder Stimmen löschen. Loops und Playlisten bleiben
-          dabei erhalten.
+          Einzelne Songs oder Stimmen löschen. Loops, Notizen und Playlisten
+          bleiben dabei erhalten.
         </p>
         <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button">
           Alle Aufnahmen löschen
         </button>
         <p class="small muted" style="margin:0">
-          Entfernt nur die Audiodateien. Loops, Playlisten und Einstellungen
-          bleiben erhalten und verbinden sich beim nächsten Import wieder.
+          Entfernt nur die Audiodateien. Loops, Notizen, Playlisten und
+          Einstellungen bleiben erhalten und verbinden sich beim nächsten
+          Import wieder.
         </p>
         <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false">
           Einzelne Songs verwalten
@@ -1778,7 +1878,8 @@ input[type="checkbox"] {
       <h2>Daten</h2>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Löscht alle Songs, Aufnahmen, Loops und Playlisten von diesem Gerät.
+          Löscht alle Songs, Aufnahmen, Loops, Notizen und Playlisten von
+          diesem Gerät.
           Die Dateien in der Dropbox bleiben unberührt.
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
@@ -2137,6 +2238,34 @@ async function tx(storeNames, mode, fn) {
   });
 }
 
+/**
+ * Datensatz für den `files`-Store: die reinen Bytes, nicht der Blob.
+ *
+ * Safari legt einen in IndexedDB gespeicherten Blob als Verweis auf eine Datei
+ * ab. Ist die weg — App neu gestartet, Zwischenspeicher aufgeräumt —, gibt es
+ * den Datensatz zwar noch, seine Bytes aber nicht mehr: auf dem iPhone spielte
+ * danach keine einzige Stimme mehr („konnte nicht abgespielt werden"), obwohl
+ * die Songliste vollständig aussah. Ein ArrayBuffer wird dagegen wirklich in
+ * die Datenbank geschrieben.
+ */
+async function fileRecord(key, blob, name) {
+  return { key, data: await blob.arrayBuffer(), size: blob.size, name };
+}
+
+/** Bytes eines Dateidatensatzes. Ältere Datensätze halten noch einen Blob. */
+async function recordBytes(rec) {
+  if (rec.data) return rec.data;
+  if (rec.blob) return await rec.blob.arrayBuffer();
+  throw new Error('Der Datensatz ist leer.');
+}
+
+/** Dateidatensatz als Blob — für alles, was das System öffnen oder teilen soll. */
+function recordBlob(rec, type) {
+  if (rec.data) return new Blob([rec.data], { type });
+  if (rec.blob) return rec.blob;
+  throw new Error('Der Datensatz ist leer.');
+}
+
 /** IDBRequest → Promise */
 function reqPromise(request) {
   return new Promise((resolve, reject) => {
@@ -2154,8 +2283,9 @@ function reqPromise(request) {
  * Jede Schreiboperation, die einen Song berühren kann, verwirft ihn wieder.
  */
 let songCache = null;
+let songCacheStamp = 0;
 
-function dropSongCache() { songCache = null; }
+function dropSongCache() { songCache = null; songCacheStamp++; }
 
 const DB = {
   async metaGet(key) {
@@ -2235,6 +2365,7 @@ const DEFAULT_SETTINGS = {
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
+  keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2954,6 +3085,11 @@ let songFilter = null;   // null = „Alle"
 // Aufruf darf die Liste zeichnen.
 let songsRenderToken = 0;
 
+// Woraus die aktuell sichtbare Liste entstanden ist. Stimmt das noch, muss
+// nichts neu gebaut werden — der Wechsel zurück auf den Reiter „Songs" ist
+// sonst bei jeder Rückkehr ein kompletter Neuaufbau aller Zeilen.
+let songsRenderSignature = null;
+
 async function renderSongs() {
   const token = ++songsRenderToken;
   const host = $('#song-list-host');
@@ -2964,12 +3100,21 @@ async function renderSongs() {
   } catch (err) {
     console.error(err);
     if (token !== songsRenderToken) return;
+    songsRenderSignature = null;
     host.textContent = '';
     host.append(el('div', { class: 'card' },
       el('p', { class: 'small', text: 'Die Songliste konnte nicht geladen werden.' })));
     return;
   }
   if (token !== songsRenderToken) return;
+
+  // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
+  if (songs.length) updateBackupReminder();
+
+  const signature = `${songCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
+  if (signature === songsRenderSignature && host.firstChild) return;
+  songsRenderSignature = signature;
+
   host.textContent = '';
 
   if (!songs.length) {
@@ -2991,7 +3136,6 @@ async function renderSongs() {
   }
 
   $('#searchbar').hidden = false;
-  updateBackupReminder();
 
   // --- Filterleiste der Sammelordner (nur wenn es mehr als einen gibt) ----
   const collections = [...new Set(songs.flatMap((s) => s.collections || []))]
@@ -3145,8 +3289,17 @@ async function renderStorage() {
  * Loops und Playlisten bleiben dabei erhalten — sie hängen am Titel, nicht
  * an der Aufnahme.
  */
+/**
+ * Die Liste zum Löschen einzelner Songs und Stimmen.
+ *
+ * Wird erst gebaut, wenn sie jemand aufklappt. Vorher entstand sie bei jedem
+ * Öffnen der Einstellungen im Verborgenen — bei einer großen Bibliothek sind
+ * das tausende Elemente samt Symbolen, und der Wechsel in die Einstellungen
+ * hing dadurch mehrere Sekunden, obwohl niemand die Liste sehen wollte.
+ */
 async function renderStorageManager() {
   const host = $('#storage-manager');
+  if (host.hidden) { host.textContent = ''; return; }
   host.textContent = '';
 
   const songs = await DB.metaByType('song').catch(() => []);
@@ -3212,18 +3365,47 @@ async function renderStorageManager() {
 
 // Bei einer großen Bibliothek wird die Liste mit den Lösch-Buttons sonst
 // unübersichtlich — deshalb erst auf Wunsch einblenden.
-$('#btn-manage-storage').addEventListener('click', () => {
+$('#btn-manage-storage').addEventListener('click', async () => {
   const host = $('#storage-manager');
   const open = host.hidden;
   host.hidden = !open;
   $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
   $('#btn-manage-storage').textContent = open ? 'Einzelne Songs verwalten ausblenden' : 'Einzelne Songs verwalten';
+  await renderStorageManager();
 });
+
+/**
+ * Loops und Notizen eines verschwindenden Songs nicht löschen, sondern vom
+ * Song lösen: die Kennung fällt weg, der Titel bleibt gemerkt. Beim nächsten
+ * Import finden sie so wieder zusammen (siehe reconnectPendingLoops /
+ * reconnectPendingNotes).
+ *
+ * `preloaded` spart bei einem Lauf über viele Songs die Lesevorgänge — dann
+ * einmal songLinkRecords() holen und hier durchreichen.
+ */
+async function detachSongLinks(song, preloaded = null) {
+  const records = preloaded || await songLinkRecords();
+  const detached = records.filter((r) => r.songId === song.id);
+  for (const rec of detached) {
+    rec.songId = null;
+    rec.songTitle = song.title;
+  }
+  await DB.metaPutMany(detached);
+}
+
+/** Alle Datensätze, die an einem Song hängen — Loops und Notizen. */
+async function songLinkRecords() {
+  const [loops, notes] = await Promise.all([
+    DB.metaByType('loop').catch(() => []),
+    DB.metaByType('note').catch(() => []),
+  ]);
+  return [...loops, ...notes];
+}
 
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: 'Stimme löschen?',
-    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops bleiben erhalten.`,
+    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops und Notizen bleiben erhalten.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -3235,6 +3417,7 @@ async function deleteTrack(song, track) {
   } else {
     // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
     await DB.fileDelete((song.scores || []).map((s) => s.fileKey));
+    await detachSongLinks(song);
     await DB.metaDelete(song.key);
   }
   await refreshAfterDelete();
@@ -3244,7 +3427,7 @@ async function deleteTrack(song, track) {
 async function deleteSong(song) {
   const ok = await confirmDialog({
     title: 'Song löschen?',
-    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
+    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops und Notizen bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -3252,15 +3435,7 @@ async function deleteSong(song) {
   const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
   await DB.fileDelete(keys);
 
-  // Loops nicht löschen, sondern vom Song lösen — der Titel bleibt gemerkt.
-  const loops = await DB.metaByType('loop').catch(() => []);
-  const detached = loops.filter((l) => l.songId === song.id);
-  for (const loop of detached) {
-    loop.songId = null;
-    loop.songTitle = song.title;
-  }
-  await DB.metaPutMany(detached);
-
+  await detachSongLinks(song);
   await DB.metaDelete(song.key);
   if (playerSong && playerSong.id === song.id) closePlayer();
   await refreshAfterDelete();
@@ -3268,7 +3443,8 @@ async function deleteSong(song) {
 }
 
 /**
- * Löscht alle Aufnahmen, behält aber Loops, Playlisten und Einstellungen.
+ * Löscht alle Aufnahmen, behält aber Loops, Notizen, Playlisten und
+ * Einstellungen.
  * Praktisch, um Platz zu schaffen, ohne die Übe-Arbeit zu verlieren.
  */
 $('#btn-drop-audio').addEventListener('click', async () => {
@@ -3284,21 +3460,16 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Aufnahmen löschen?',
     text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
-        + 'Loops, Playlisten und Einstellungen bleiben erhalten und verbinden sich wieder, '
-        + 'sobald du die Lieder erneut importierst.',
+        + 'Loops, Notizen, Playlisten und Einstellungen bleiben erhalten und verbinden sich '
+        + 'wieder, sobald du die Lieder erneut importierst.',
     okLabel: 'Aufnahmen löschen', danger: true,
   });
   if (!ok) return;
 
   try {
-    const loops = await DB.metaByType('loop').catch(() => []);
+    const links = await songLinkRecords();
     for (const song of songs) {
-      // Loops vom Song lösen, aber den Titel merken.
-      for (const loop of loops.filter((l) => l.songId === song.id)) {
-        loop.songId = null;
-        loop.songTitle = song.title;
-        await DB.metaPut(loop);
-      }
+      await detachSongLinks(song, links);
       await DB.fileDelete([
         ...song.tracks.map((t) => t.fileKey),
         ...(song.scores || []).map((x) => x.fileKey),
@@ -3316,6 +3487,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
 
 async function refreshAfterDelete() {
   await renderStorage();
+  await renderNotesCount();
   await renderStorageManager();
   await renderSongs();
   await renderPlaylists();
@@ -3324,8 +3496,10 @@ async function refreshAfterDelete() {
 async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
+  renderScreenMode();
   await renderStorage();
   renderBackupAge();
+  await renderNotesCount();
   await renderStorageManager();
   $('#offline-state').textContent = navigator.serviceWorker?.controller
     ? 'ja'
@@ -3337,6 +3511,24 @@ function renderChannelMode() {
     btn.setAttribute('aria-pressed', btn.dataset.mode === (settings.channelMode || 'off') ? 'true' : 'false');
   }
 }
+
+function renderScreenMode() {
+  const want = settings.keepScreenOn ? 'on' : 'off';
+  for (const btn of $$('#screen-mode .preset')) {
+    btn.setAttribute('aria-pressed', btn.dataset.keep === want ? 'true' : 'false');
+  }
+  $('#screen-note').textContent = 'wakeLock' in navigator
+    ? 'Gilt nur, solange ein Lied geöffnet ist. Beim Verlassen des Players sperrt sich der Bildschirm wieder wie gewohnt.'
+    : 'Dieser Browser kann den Bildschirm nicht anlassen. Am zuverlässigsten läuft die Wiedergabe, wenn die App auf dem Home-Bildschirm liegt.';
+}
+
+$('#screen-mode').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.preset');
+  if (!btn) return;
+  await saveSettings({ keepScreenOn: btn.dataset.keep === 'on' });
+  renderScreenMode();
+  updateWakeLock();
+});
 
 $$('#channel-mode .preset').forEach((btn) => {
   btn.addEventListener('click', async () => {
@@ -3652,6 +3844,11 @@ function silentLoopURL() {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 
+// iPad und iPhone melden sich seit iPadOS 13 als „MacIntel" — der Touch-Test
+// unterscheidet sie vom echten Mac.
+const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 /**
  * Wie viel dekodiertes Audio gleichzeitig im Speicher liegen darf.
  *
@@ -3659,10 +3856,16 @@ function silentLoopURL() {
  * 16-Bit-Stereo rund 30 MB, ein zwölfminütiges Werk das Vierfache. Eine feste
  * Obergrenze von drei Spuren würde bei kurzen Stücken unnötig oft nachladen
  * und bei sehr langen immer noch zu viel Speicher belegen.
+ *
+ * Auf dem iPhone ist die Grenze deutlich enger. Safari räumt eine Web-App bei
+ * Speicherdruck kommentarlos ab — und beim Dekodieren liegt kurzzeitig das
+ * Dreifache einer Spur im Speicher (32-Bit-Fließkomma plus 16-Bit-Kopie).
+ * Mit der Desktop-Grenze brach die Wiedergabe dort beim Wechsel auf die zweite
+ * Stimme zusammen. Lieber einmal kurz nachladen als abstürzen.
  */
-const DECODE_BUDGET = 150 * 1024 * 1024;
-const MIN_DECODED = 2;    // mindestens die eigene Stimme und die Gesamtmischung
-const MAX_DECODED = 8;
+const DECODE_BUDGET = (isIOSDevice ? 96 : 150) * 1024 * 1024;
+const MIN_DECODED = isIOSDevice ? 1 : 2;   // sonst: eigene Stimme und Gesamtmischung
+const MAX_DECODED = isIOSDevice ? 3 : 8;
 
 const Audio = {
   ctx: null,
@@ -3736,21 +3939,62 @@ async function audioInit() {
       Audio.onPosition?.(Audio.position);
     } else if (m.type === 'ended') {
       Audio.playing = false;
-      audioReleaseWakeLock();
       Audio.silent?.pause();
+      updateWakeLock();
       Audio.onEnded?.();
     }
   };
+
+  // Der Kontext kann von außen angehalten werden: Android sperrt die Seite
+  // beim Bildschirm-Aus aus („suspended"), Safari kennt zusätzlich
+  // „interrupted" — ein Anruf, eine andere Audio-App oder Speicherdruck.
+  // Beides bleibt ohne Zutun angehalten: die App sah aus, als spiele sie, und
+  // es kam kein Ton mehr.
+  Audio.ctx.addEventListener('statechange', onAudioStateChange);
 
   if (!Audio.silent) {
     Audio.silent = document.createElement('audio');
     Audio.silent.src = silentLoopURL();
     Audio.silent.loop = true;
-    Audio.silent.volume = 0;
     Audio.silent.setAttribute('playsinline', '');
+    // Lautstärke bewusst NICHT auf 0: die WAV-Datei enthält echte Stille, es
+    // ist also ohnehin nichts zu hören. Ein Element mit Lautstärke 0 gilt
+    // Android dagegen als stumm — es vergibt dafür keinen Audio-Fokus und
+    // beendet die Wiedergabe, sobald sich der Bildschirm sperrt.
+    Audio.silent.volume = 1;
+    // Im Dokument statt freischwebend: nur so bezieht Chrome das Element
+    // zuverlässig in die Medienwiedergabe der Seite ein.
+    Audio.silent.style.display = 'none';
+    document.body.append(Audio.silent);
   }
 
   Audio.ready = true;
+}
+
+async function onAudioStateChange() {
+  const ctx = Audio.ctx;
+  if (!ctx || ctx.state === 'running' || !Audio.playing) return;
+
+  // Im Hintergrund ist ein angehaltener Kontext normal und kein Fehler; beim
+  // Zurückkehren kümmert sich der visibilitychange-Handler darum.
+  if (document.visibilityState !== 'visible') return;
+
+  try {
+    await ctx.resume();
+  } catch (err) {
+    console.warn('[audio] Kontext ließ sich nicht fortsetzen', err);
+  }
+  if (ctx !== Audio.ctx || !Audio.playing) return;
+
+  // Hat das Fortsetzen nicht geklappt, muss die Anzeige die Wahrheit sagen —
+  // ein Play-Symbol, das nichts abspielt, sucht man sonst ewig.
+  if (ctx.state !== 'running') {
+    Audio.playing = false;
+    Audio.silent?.pause();
+    setPlayIcon(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
+  }
 }
 
 /** Dekodiert eine Spur und übergibt sie als 16-Bit-Daten an den Worklet. */
@@ -3790,17 +4034,53 @@ function setLoading(key, label) {
   Audio.onLoadingChange?.();
 }
 
+/**
+ * decodeAudioData in beiden Fassungen: Safari hat die mit Rückrufen deutlich
+ * länger als die mit Promise. Wer die falsche nimmt, bekommt dort `undefined`
+ * zurück — und jede Stimme gilt als kaputt.
+ */
+function decodeAudio(bytes) {
+  return new Promise((resolve, reject) => {
+    const fail = (err) => reject(err || new Error('Die Aufnahme ließ sich nicht dekodieren.'));
+    let ret;
+    try {
+      ret = Audio.ctx.decodeAudioData(bytes, resolve, fail);
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    if (ret && typeof ret.then === 'function') ret.then(resolve, fail);
+  });
+}
+
 async function decodeAndSend(track, gain) {
   const rec = await DB.fileGet(track.fileKey);
   if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
 
-  const audioBuf = await Audio.ctx.decodeAudioData(await rec.blob.arrayBuffer());
+  const bytes = await recordBytes(rec);
+  if (!bytes.byteLength) throw new Error('Die gespeicherte Aufnahme ist leer.');
+
+  // Platz schaffen, BEVOR dekodiert wird. Beim Dekodieren liegen kurzzeitig die
+  // 32-Bit-Fließkommadaten und die 16-Bit-Kopie gleichzeitig im Speicher —
+  // zusammen rund das Dreifache der fertigen Spur. Räumt man erst danach auf,
+  // ist die Spitze längst überschritten; auf dem iPhone endete das beim
+  // Stimmwechsel damit, dass Safari die App abräumte.
+  evictIfNeeded(track.fileKey, estimatePcmBytes(track));
+
+  const audioBuf = await decodeAudio(bytes);
+  const frames = audioBuf.length;
+  const duration = audioBuf.duration;
+  const count = Math.min(2, audioBuf.numberOfChannels);
+  const pcmBytes = frames * count * 2;
+
+  // Jetzt ist die Länge bekannt — mit der echten Zahl noch einmal nachräumen,
+  // bevor die 16-Bit-Kopie dazukommt.
+  evictIfNeeded(track.fileKey, pcmBytes);
 
   // 16 Bit statt 32 Bit Fließkomma halbiert den Speicherbedarf — eine
   // 14-MB-MP3 belegt so rund 50 statt 100 MB. Hörbar ist der Unterschied
   // bei MP3-Quellen nicht.
   const chans = [];
-  const count = Math.min(2, audioBuf.numberOfChannels);
   for (let c = 0; c < count; c++) {
     const f = audioBuf.getChannelData(c);
     const i16 = new Int16Array(f.length);
@@ -3811,27 +4091,41 @@ async function decodeAndSend(track, gain) {
     chans.push(i16);
   }
 
-  const bytes = chans.reduce((n, c) => n + c.byteLength, 0);
-
-  // Platz schaffen, bevor die neue Spur dazukommt.
-  evictIfNeeded(track.fileKey, bytes);
-
+  // Die Arrays wandern zum Worklet (`transfer`), im Hauptthread bleibt nichts
+  // liegen. Der AudioBuffer wird hier nicht mehr gebraucht.
   Audio.node.port.postMessage(
-    { type: 'load', id: track.fileKey, ch: chans, frames: audioBuf.length, gain },
+    { type: 'load', id: track.fileKey, ch: chans, frames, gain },
     chans.map((c) => c.buffer)
   );
+  chans.length = 0;
 
-  const info = { duration: audioBuf.duration, bytes };
+  const info = { duration, bytes: pcmBytes };
   Audio.decoded.set(track.fileKey, info);
-  Audio.decodedBytes += bytes;
+  Audio.decodedBytes += pcmBytes;
   Audio.levels.set(track.fileKey, gain);
   touchLRU(track.fileKey);
 
   // Die Dauer wird beim ersten Dekodieren gemerkt. Nur so lässt sich später
   // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
   // Loops verschoben sein könnten.
-  rememberDuration(track, audioBuf.duration);
+  rememberDuration(track, duration);
   return info;
+}
+
+/**
+ * Schätzt, wie viel eine Spur dekodiert belegen wird (16 Bit, stereo).
+ *
+ * Beim ersten Mal ist die Dauer unbekannt; dann rechnet die Schätzung von der
+ * Dateigröße hoch — eine MP3 mit 128 kbit/s wird beim Dekodieren rund elfmal
+ * so groß. Großzügig zu schätzen ist die sichere Seite: die Zahl entscheidet
+ * nur, wie viel vorher weggeräumt wird.
+ */
+function estimatePcmBytes(track) {
+  const rate = Audio.ctx?.sampleRate || 44100;
+  if (Number.isFinite(track.durationSec) && track.durationSec > 0) {
+    return Math.round(track.durationSec * rate * 2 * 2);
+  }
+  return Math.round((track.size || 0) * 12);
 }
 
 async function rememberDuration(track, duration) {
@@ -3919,6 +4213,7 @@ async function prefetchTracks(song, order) {
     } catch (err) {
       console.warn('[player] Vorladen', track.fileName, err);
       track.broken = true;
+      track.brokenReason = errText(err);
       renderVoiceSelect();
     }
   }
@@ -3932,12 +4227,28 @@ function audioSetGain(key, value) {
 
 async function audioPlay() {
   if (!Audio.ready) return;
-  if (Audio.ctx.state === 'suspended') await Audio.ctx.resume();
+
+  // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne das
+  // meldet der Worklet sofort erneut „zu Ende" und es passiert schlicht nichts
+  // — zu erleben, sobald das letzte (oder einzige) Lied durchgelaufen war.
+  if (!Audio.loop && Audio.duration > 0 && Audio.position >= Audio.duration - 0.05) {
+    audioSeek(0);
+  }
+
+  // Nicht nur 'suspended': Safari meldet nach einer Unterbrechung
+  // 'interrupted', und auch daraus muss der Kontext zurückgeholt werden.
+  if (Audio.ctx.state !== 'running') await Audio.ctx.resume().catch(() => {});
+
+  // Der stille Loop zuerst: Android vergibt den Audio-Fokus an das
+  // Medienelement, und daran hängt, ob die Seite bei gesperrtem Bildschirm
+  // weiterlaufen darf.
+  try { await Audio.silent?.play(); }
+  catch { /* ohne Nutzergeste abgelehnt — unkritisch */ }
+
   Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
-
-  Audio.silent?.play().catch(() => { /* ohne Nutzergeste abgelehnt — unkritisch */ });
-  audioRequestWakeLock();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  updateWakeLock();
 }
 
 function audioPause() {
@@ -3945,7 +4256,8 @@ function audioPause() {
   Audio.node.port.postMessage({ type: 'pause' });
   Audio.playing = false;
   Audio.silent?.pause();
-  audioReleaseWakeLock();
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  updateWakeLock();
 }
 
 function audioSeek(seconds) {
@@ -3986,22 +4298,54 @@ function audioApplyChannelMode(mode) {
   }
 }
 
-async function audioRequestWakeLock() {
-  // Hält den Bildschirm an, solange gespielt wird (Spec 5.2).
-  if (!('wakeLock' in navigator) || Audio.wakeLock) return;
-  try {
-    Audio.wakeLock = await navigator.wakeLock.request('screen');
-    Audio.wakeLock.addEventListener('release', () => { Audio.wakeLock = null; });
-  } catch { /* z.B. bei niedrigem Akkustand abgelehnt */ }
-}
+/**
+ * Hält den Bildschirm an — solange gespielt wird, und auf Wunsch die ganze
+ * Zeit, in der der Player offen ist.
+ *
+ * Hintergrund: Android beendet die Wiedergabe einer Web-App beim Sperren des
+ * Bildschirms je nach Gerät und Browser trotz Medienelement und Media Session.
+ * Wer das erlebt, schaltet in den Einstellungen „Bildschirm anlassen" ein —
+ * dann sperrt sich das Handy während des Übens gar nicht erst.
+ *
+ * Das System nimmt die Sperre von sich aus zurück, sobald die Seite in den
+ * Hintergrund gerät; deshalb wird sie beim Zurückkehren neu angefordert.
+ */
+let wakeLockPending = false;
 
-function audioReleaseWakeLock() {
-  Audio.wakeLock?.release().catch(() => {});
-  Audio.wakeLock = null;
+async function updateWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  const want = Audio.playing || (playerSong && settings.keepScreenOn);
+
+  if (!want) {
+    Audio.wakeLock?.release().catch(() => {});
+    Audio.wakeLock = null;
+    return;
+  }
+  // Nur im Vordergrund möglich, und nie zwei Anfragen gleichzeitig.
+  if (Audio.wakeLock || wakeLockPending || document.visibilityState !== 'visible') return;
+
+  wakeLockPending = true;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    lock.addEventListener('release', () => {
+      if (Audio.wakeLock === lock) Audio.wakeLock = null;
+    });
+    Audio.wakeLock = lock;
+  } catch { /* z.B. bei niedrigem Akkustand abgelehnt */ } finally {
+    wakeLockPending = false;
+  }
+  // Inzwischen doch nicht mehr gewollt (Pause während der Anfrage).
+  if (!(Audio.playing || (playerSong && settings.keepScreenOn))) updateWakeLock();
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && Audio.playing) audioRequestWakeLock();
+  if (document.visibilityState !== 'visible') return;
+  updateWakeLock();
+  // Hat Android den Ton währenddessen angehalten, hier wieder aufnehmen.
+  if (Audio.playing && Audio.ctx?.state === 'suspended') {
+    Audio.ctx.resume().catch(() => {});
+    Audio.silent?.play().catch(() => {});
+  }
 });
 
 /** Gibt alle Spuren frei — beim Verlassen des Players. */
@@ -4567,11 +4911,6 @@ const IMPORT_BATCH_FILES = 24;
  * Nur ausgepackte (deflate-)Einträge liegen wirklich im Speicher und
  * begrenzen, wie viel gesammelt werden darf.
  */
-function inMemoryBytes(entry, blob) {
-  if (entry.blob || entry.method === 0) return 0;
-  return blob.size;
-}
-
 /**
  * Schreibt einen Stapel: Aufnahmen, die zugehörigen Songdatensätze und die
  * abgelösten Altdateien — alles in einer einzigen Transaktion.
@@ -4690,8 +5029,8 @@ async function runImport() {
         try {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
-          batch.files.push({ key: fileKey, blob, size: blob.size, name: track.fileName });
-          batch.bytes += inMemoryBytes(track.entry, blob);
+          batch.files.push(await fileRecord(fileKey, blob, track.fileName));
+          batch.bytes += blob.size;
           batch.songs.add(song);
 
           const record = {
@@ -4762,8 +5101,8 @@ async function runImport() {
           } else {
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
-          batch.files.push({ key: fileKey, blob, size: blob.size, name: pdf.name });
-          batch.bytes += inMemoryBytes(pdf, blob);
+          batch.files.push(await fileRecord(fileKey, blob, pdf.name));
+          batch.bytes += blob.size;
           batch.songs.add(song);
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
@@ -4798,11 +5137,17 @@ async function runImport() {
 
   report.unchanged = selectionStats().unchanged;
 
-  // Loops aus einer Sicherung, deren Song bisher fehlte, verbinden sich jetzt.
+  // Loops und Notizen aus einer Sicherung, deren Song bisher fehlte,
+  // verbinden sich jetzt.
   try {
     report.reconnected = await reconnectPendingLoops();
   } catch (err) {
     console.warn('[import] Loops verbinden', err);
+  }
+  try {
+    report.notesLinked = await reconnectPendingNotes();
+  } catch (err) {
+    console.warn('[import] Notizen verbinden', err);
   }
 
   lastReport = report;
@@ -4843,6 +5188,7 @@ function renderImportReport() {
   if (r.unchanged)     lines.push(`${plural(r.unchanged, 'Datei', 'Dateien')} waren unverändert und wurden übersprungen.`);
   if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
   if (r.reconnected)   lines.push(`${plural(r.reconnected, 'gespeicherter Loop', 'gespeicherte Loops')} aus einer Sicherung wieder verbunden.`);
+  if (r.notesLinked)   lines.push(`${plural(r.notesLinked, 'gespeicherte Notiz', 'gespeicherte Notizen')} wieder verbunden.`);
 
   card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
 
@@ -5113,9 +5459,69 @@ async function selectTrack(track, userChoice = false) {
 function markBroken(track, err) {
   console.error('[player]', track.fileName, err);
   track.broken = true;
+  track.brokenReason = errText(err);
   renderVoiceSelect();
-  banner(`„${track.label}" konnte nicht abgespielt werden. Die übrigen Stimmen funktionieren.`,
-    { kind: 'error' });
+  showBrokenNotice(track);
+}
+
+/** Name und Text der Ausnahme — auf dem Handy gibt es keine Konsole. */
+function errText(err) {
+  if (!err) return 'unbekannter Fehler';
+  const name = err.name && err.name !== 'Error' ? `${err.name}: ` : '';
+  return `${name}${err.message || String(err)}`;
+}
+
+// Eine Meldung je Song statt einer je Stimme: wer nacheinander vier Stimmen
+// antippt, hatte sonst vier gleichlautende Kästen übereinander, die auf dem
+// iPhone den halben Bildschirm füllten.
+let brokenNotice = null;
+
+function resetBrokenNotice() {
+  brokenNotice?.close?.();
+  brokenNotice = null;
+}
+
+function showBrokenNotice(track) {
+  const song = playerSong;
+  if (!song) return;
+
+  if (!brokenNotice || brokenNotice.songId !== song.id) {
+    resetBrokenNotice();
+    brokenNotice = { songId: song.id, labels: [], reasons: new Set(), close: null };
+  }
+  const n = brokenNotice;
+  if (!n.labels.includes(track.label)) n.labels.push(track.label);
+  n.reasons.add(track.brokenReason);
+  n.close?.();
+
+  const reason = [...n.reasons].join(' · ');
+
+  // „Die übrigen Stimmen funktionieren" wäre gelogen, wenn keine mehr übrig
+  // ist. Dann hilft nur ein neuer Import — also gleich den Weg dorthin zeigen.
+  const allBroken = song.tracks.every((t) => t.broken);
+  const text = allBroken
+    ? `Keine Stimme von „${song.title}" lässt sich abspielen (${reason}). `
+      + 'Die Aufnahmen sind auf diesem Gerät nicht mehr lesbar — bitte neu importieren.'
+    : `${n.labels.map((l) => `„${l}"`).join(', ')} `
+      + `${n.labels.length === 1 ? 'lässt sich' : 'lassen sich'} nicht abspielen (${reason}). `
+      + 'Die übrigen Stimmen funktionieren.';
+
+  n.close = banner(text, {
+    kind: 'error',
+    action: allBroken ? { label: 'Reparieren', onClick: () => repairBrokenSong(song) } : null,
+  });
+}
+
+/**
+ * Keine Stimme lässt sich mehr abspielen — dann sind die Dateien hinter den
+ * Datensätzen verschwunden. Ein zweiter Import allein hilft nicht: dort gelten
+ * gleich große Dateien als „bereits vorhanden" und werden übersprungen. Also
+ * erst den Song entfernen (Loops, Notizen und Playlisten bleiben), danach
+ * direkt zum Import.
+ */
+async function repairBrokenSong(song) {
+  await deleteSong(song);
+  if (!(await DB.metaGet(song.key).catch(() => null))) showView('import');
 }
 
 function updateSeekUI(seconds) {
@@ -5155,11 +5561,13 @@ async function openPlayer(songId) {
 
   playerSong = song;
   playerEl.hidden = false;
+  updateWakeLock();
   $('#player-title').textContent = songLabel(song);
   $('#player-sub').textContent = `${plural(song.tracks.length, 'Stimme', 'Stimmen')}`;
   $('#player-hint').hidden = true;
   renderQueue();
   playerVoice = null;
+  resetBrokenNotice();
   loopA = loopB = null;
   loopOn = false;
   activeLoopId = null;
@@ -5170,6 +5578,7 @@ async function openPlayer(songId) {
   renderVoiceSelect();
   renderPlayerExtras();
   loadSongLoops();
+  loadSongNote();
 
   try {
     await audioInit();
@@ -5413,12 +5822,17 @@ function onPlaybackEnded() {
 }
 
 function closePlayer() {
+  // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
+  flushNote();
   playerEl.hidden = true;
   audioReset();
   releaseScoreURLs();
   playerSong = null;
+  updateWakeLock();          // „Bildschirm anlassen" gilt nur im Player
   playerVoice = null;
   songLoops = [];
+  playerNote = null;
+  resetBrokenNotice();
   if (navigator.mediaSession) {
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
@@ -5546,10 +5960,23 @@ let loopOn = false;
 let activeLoopId = null;
 let songLoops = [];
 
+/**
+ * Der aktuell gesetzte Abschnitt, auf die Länge der Aufnahme begrenzt.
+ *
+ * Die Begrenzung ist kein Schönheitsfehler: Ein aus einer Sicherung
+ * eingespielter Abschnitt kann hinter dem Ende einer inzwischen ersetzten,
+ * kürzeren Aufnahme liegen. Der Worklet erreicht dann weder das Loop-Ende noch
+ * das Dateiende — die Wiedergabe liefe stumm weiter, ohne je aufzuhören.
+ */
 function loopRange() {
   if (loopA === null || loopB === null) return null;
-  const start = Math.min(loopA, loopB);
-  const end = Math.max(loopA, loopB);
+  const dur = Audio.duration || 0;
+  let start = Math.min(loopA, loopB);
+  let end = Math.max(loopA, loopB);
+  if (dur) {
+    start = Math.min(start, dur);
+    end = Math.min(end, dur);
+  }
   return end - start < 0.2 ? null : { start, end };
 }
 
@@ -5862,7 +6289,8 @@ async function renderPlayerExtras() {
       if (token !== extrasRenderToken) return;
       if (!rec) { row.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
-      const file = new File([rec.blob], score.fileName, { type: 'application/pdf' });
+      const file = new File([recordBlob(rec, 'application/pdf')], score.fileName,
+        { type: 'application/pdf' });
       const url = URL.createObjectURL(file);
       scoreURLs.push(url);
 
@@ -5897,6 +6325,315 @@ async function renderPlayerExtras() {
       row.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
     }
   }
+}
+
+/* ==========================================================================
+   NOTIZEN — freier Text je Lied (ohne Formatierung)
+
+   Eigener Datensatz statt eines Feldes im Song: so übersteht eine Notiz das
+   Löschen und erneute Importieren der Aufnahmen, genau wie ein Loop. Solange
+   es keine Notiz gibt, steht im Player nur ein Knopf — das Textfeld erscheint
+   erst, wenn es gebraucht wird.
+
+   Gespeichert wird automatisch, aber nicht bei jedem Tastendruck: eine kurze
+   Ruhepause reicht, danach ist es ein Schreibvorgang von wenigen hundert Byte.
+   Die Diskette daneben speichert sofort — für alle, die das lieber selbst in
+   der Hand haben.
+   ========================================================================== */
+
+const NOTE_SAVE_DELAY = 900;   // ms Tippruhe, bevor automatisch gespeichert wird
+
+let playerNote   = null;   // Notiz des offenen Songs, null = keine
+let noteSaveTimer = null;  // läuft nach dem Tippen
+
+// Schreibvorgänge laufen nacheinander. Sonst liest das nächste Lied seine
+// Notiz, während die des vorherigen noch geschrieben wird.
+let notePending = Promise.resolve();
+
+function noteWrite(run) {
+  notePending = notePending.then(run, run).catch((err) => console.error('[notiz]', err));
+  return notePending;
+}
+
+function newNote(song) {
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    key: `note:${id}`, type: 'note', id,
+    songId: song.id,
+    songTitle: song.title,        // bleibt erhalten, auch ohne Song
+    text: '',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Notiz eines Songs — auch eine, die noch am Titel hängt (aus einer Sicherung). */
+function noteForSong(notes, song) {
+  const norm = song.normTitle || normalizeTitle(song.title);
+  return notes.find((n) => n.songId === song.id)
+      || notes.find((n) => !n.songId && normalizeTitle(n.songTitle || '') === norm)
+      || null;
+}
+
+async function loadSongNote() {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  playerNote = null;
+  renderNoteBlock();
+  if (!playerSong) return;
+
+  const song = playerSong;
+  await notePending.catch(() => {});
+  const all = await DB.metaByType('note').catch(() => []);
+  if (playerSong !== song) return;      // inzwischen ein anderes Lied geöffnet
+
+  const found = noteForSong(all, song);
+  if (!found) return;
+
+  // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg, Knopf zurück.
+  if (!(found.text || '').trim()) {
+    noteWrite(() => DB.metaDelete(found.key));
+    return;
+  }
+
+  // Kam sie aus einer Sicherung, hängt sie noch am Titel. Jetzt, wo der Song
+  // offen ist, bekommt sie seine Kennung.
+  if (!found.songId) {
+    found.songId = song.id;
+    noteWrite(() => DB.metaPut(found));
+  }
+
+  playerNote = found;
+  renderNoteBlock();
+}
+
+/** Textfeld oder Knopf — je nachdem, ob es schon eine Notiz gibt. */
+function renderNoteBlock() {
+  const has = playerNote !== null;
+  $('#btn-note-add').hidden = has;
+  $('#note-editor').hidden = !has;
+  $('#note-text').value = has ? (playerNote.text || '') : '';
+  setNoteState(has ? 'saved' : 'none');
+}
+
+function setNoteState(kind) {
+  const node = $('#note-state');
+  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
+  if (kind === 'dirty')  { node.textContent = 'Noch nicht gespeichert …'; return; }
+  if (kind === 'saving') { node.textContent = 'Speichert …'; return; }
+  if (kind === 'saved') {
+    const at = fmtClock(playerNote?.updatedAt);
+    node.textContent = at ? `Gespeichert um ${at} Uhr` : 'Gespeichert';
+    return;
+  }
+  node.textContent = '';
+}
+
+function fmtClock(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+$('#btn-note-add').addEventListener('click', () => {
+  if (!playerSong || playerNote) return;
+  // Erst beim Speichern entsteht ein Datensatz: wer den Knopf nur ausprobiert,
+  // hinterlässt keine leere Notiz.
+  playerNote = newNote(playerSong);
+  renderNoteBlock();
+  setNoteState('none');
+  $('#note-text').focus();
+});
+
+$('#note-text').addEventListener('input', () => {
+  if (!playerNote) return;
+  setNoteState('dirty');
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(() => { saveNote(); }, NOTE_SAVE_DELAY);
+});
+
+// Wer das Feld verlässt, will nicht auf die Tippruhe warten.
+$('#note-text').addEventListener('blur', () => { if (noteSaveTimer) saveNote(); });
+
+$('#btn-note-save').addEventListener('click', () => saveNote({ announce: true }));
+
+$('#btn-note-delete').addEventListener('click', async () => {
+  if (!playerNote) return;
+  if ($('#note-text').value.trim()) {
+    const ok = await confirmDialog({
+      title: 'Notiz löschen?',
+      text: `Die Notiz zu „${playerSong?.title || 'diesem Lied'}" wird entfernt.`,
+      okLabel: 'Löschen', danger: true,
+    });
+    if (!ok) return;
+  }
+  await deleteNote();
+});
+
+async function saveNote({ announce = false } = {}) {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  const note = playerNote;
+  if (!note) return;
+
+  const text = $('#note-text').value;
+
+  // Ausdrücklich gespeicherte Leere heißt: Notiz weg. Beim automatischen
+  // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
+  // Händen, während jemand den Text gerade neu schreibt.
+  if (announce && !text.trim()) {
+    await deleteNote();
+    banner('Leere Notiz entfernt.');
+    return;
+  }
+
+  note.text = text;
+  note.songTitle = playerSong?.title || note.songTitle;
+  note.updatedAt = new Date().toISOString();
+  setNoteState('saving');
+
+  try {
+    await noteWrite(() => DB.metaPut(note));
+    if (playerNote === note) setNoteState('saved');
+    if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
+  } catch (err) {
+    console.error('[notiz]', err);
+    if (playerNote === note) setNoteState('dirty');
+    banner('Die Notiz konnte nicht gespeichert werden.', { kind: 'error' });
+  }
+}
+
+async function deleteNote() {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  const note = playerNote;
+  playerNote = null;
+  renderNoteBlock();
+  if (note) await noteWrite(() => DB.metaDelete(note.key));
+}
+
+/**
+ * Beim Schließen des Players oder beim Wegwischen der App sichern, was noch
+ * offen ist. Liest den Text sofort — danach darf der Player längst zu sein.
+ */
+function flushNote() {
+  const note = playerNote;
+  if (!note) return;
+  const text = $('#note-text').value;
+
+  if (!text.trim()) {
+    playerNote = null;
+    noteWrite(() => DB.metaDelete(note.key));
+    return;
+  }
+  if (text === note.text && !noteSaveTimer) return;
+
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  note.text = text;
+  note.updatedAt = new Date().toISOString();
+  noteWrite(() => DB.metaPut(note));
+}
+
+// Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
+// aus oder die App wird weggewischt. Beides ist die letzte Gelegenheit.
+window.addEventListener('pagehide', flushNote);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushNote();
+});
+
+/* ---------- Notizen sammeln und ausgeben --------------------------------- */
+
+/**
+ * Alle nicht leeren Notizen, nach Songtitel sortiert. Notizen zu gelöschten
+ * Songs sind dabei — sie tragen den Titel selbst.
+ */
+async function collectNotes() {
+  const [notes, songs] = await Promise.all([
+    DB.metaByType('note').catch(() => []),
+    DB.metaByType('song').catch(() => []),
+  ]);
+  const byId = new Map(songs.map((s) => [s.id, s]));
+
+  return notes
+    .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || 'Ohne Titel' }))
+    .filter((n) => (n.text || '').trim())
+    .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
+}
+
+/**
+ * Songtitel, Leerzeile, Notiz — und vor dem nächsten Titel wieder eine
+ * Leerzeile. Bewusst ohne Kopfzeile, damit sich die Datei überall einfügen
+ * lässt, ohne dass jemand erst etwas wegräumen muss.
+ */
+function notesToText(notes) {
+  return notes
+    .map((n) => `${n.songTitle}\n\n${String(n.text).replace(/\s+$/, '')}`)
+    .join('\n\n') + '\n';
+}
+
+async function renderNotesCount() {
+  const node = $('#notes-count');
+  const btn  = $('#btn-notes-export');
+  const notes = await collectNotes();
+  node.textContent = notes.length
+    ? `${plural(notes.length, 'Notiz', 'Notizen')} gespeichert.`
+    : 'Noch keine Notizen.';
+  btn.disabled = notes.length === 0;
+}
+
+$('#btn-notes-export').addEventListener('click', async () => {
+  let notes;
+  try {
+    notes = await collectNotes();
+  } catch (err) {
+    console.error(err);
+    banner('Die Notizen konnten nicht gelesen werden.', { kind: 'error' });
+    return;
+  }
+  if (!notes.length) {
+    banner('Es sind noch keine Notizen gespeichert.');
+    return;
+  }
+
+  const text = notesToText(notes);
+  const fileName = `chor-notizen-${new Date().toISOString().slice(0, 10)}.txt`;
+  const file = new File([text], fileName, { type: 'text/plain' });
+
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Notizen' });
+      return;
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  }
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+});
+
+/**
+ * Notizen, die beim Wiederherstellen keinem Song zugeordnet werden konnten,
+ * nach einem Import nachträglich verbinden — wie bei den Loops.
+ */
+async function reconnectPendingNotes() {
+  const notes = await DB.metaByType('note').catch(() => []);
+  const pending = notes.filter((n) => !n.songId && n.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  const taken = new Set(notes.filter((n) => n.songId).map((n) => n.songId));
+  const linked = [];
+  for (const note of pending) {
+    const song = findSongByTitle(songs, note.songTitle);
+    // Hat der Song schon eine Notiz, bleibt die wartende liegen — sonst
+    // stünden plötzlich zwei Notizen an einem Lied.
+    if (!song || taken.has(song.id)) continue;
+    note.songId = song.id;
+    taken.add(song.id);
+    linked.push(note);
+  }
+  await DB.metaPutMany(linked);
+  return linked.length;
 }
 
 /* ---------- Media Session (Sperrbildschirm) ------------------------------ */
@@ -6490,9 +7227,11 @@ $('#btn-pl-copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(text);
     banner('Playlist in die Zwischenablage kopiert.', { kind: 'ok' });
   } catch {
+    // Mehrzeilig: so bleibt ein Titel je Zeile stehen und der kopierte Text
+    // lässt sich anderswo wieder als Playlist einlesen.
     await promptDialog({
       title: 'Playlist als Text', text: 'Text markieren und kopieren.',
-      value: text.replace(/\n/g, ' · '), okLabel: 'Fertig',
+      value: text, okLabel: 'Fertig', multiline: true,
     });
   }
 });
@@ -6567,8 +7306,9 @@ let pendingAutoPlay = false;
 const BACKUP_FORMAT = 'chor-app-backup';
 
 async function buildBackup() {
-  const [songs, loops, playlists] = await Promise.all([
+  const [songs, loops, playlists, notes] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
+    DB.metaByType('note'),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
 
@@ -6585,6 +7325,11 @@ async function buildBackup() {
       name: l.name, start: l.start, end: l.end,
     })).filter((l) => l.songTitle),
     playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
+    notes: notes.map((n) => ({
+      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
+      text: n.text || '',
+      updatedAt: n.updatedAt || null,
+    })).filter((n) => n.songTitle && n.text.trim()),
   };
 }
 
@@ -6606,7 +7351,9 @@ $('#btn-backup-export').addEventListener('click', async () => {
     await saveSettings({ lastBackupAt: new Date().toISOString() });
     renderBackupAge();
     updateBackupReminder();
-    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, ${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
+    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, `
+      + `${plural(data.notes.length, 'Notiz', 'Notizen')}, `
+      + `${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
   } catch (err) {
     console.error(err);
     banner('Die Sicherung konnte nicht erstellt werden.', { kind: 'error' });
@@ -6639,11 +7386,13 @@ async function restoreBackup(data) {
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
+  const notes = Array.isArray(data.notes) ? data.notes : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
-    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(playlists.length, 'Playlist', 'Playlisten')} gefunden. `
+    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
+        + `${plural(playlists.length, 'Playlist', 'Playlisten')} gefunden. `
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
     options: [
@@ -6656,19 +7405,25 @@ async function restoreBackup(data) {
   if (mode === 'replace') {
     const ok = await confirmDialog({
       title: 'Wirklich ersetzen?',
-      text: 'Alle vorhandenen Loops und Playlisten werden vorher gelöscht.',
+      text: 'Alle vorhandenen Loops, Notizen und Playlisten werden vorher gelöscht.',
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
-    const stale = [...await DB.metaByType('loop'), ...await DB.metaByType('playlist')];
+    const stale = [
+      ...await DB.metaByType('loop'),
+      ...await DB.metaByType('note'),
+      ...await DB.metaByType('playlist'),
+    ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
     dropSongCache();
   }
 
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
+  const existingNotes = await DB.metaByType('note');
   const fresh = [];
   let addedLoops = 0, addedPl = 0, keptPending = 0;
+  let addedNotes = 0, skippedNotes = 0;
 
   for (const l of loops) {
     if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
@@ -6694,6 +7449,31 @@ async function restoreBackup(data) {
     if (!song) keptPending++;
   }
 
+  // Notizen: eine je Lied. Eine vorhandene Notiz wird nie überschrieben —
+  // sonst wäre beim „Zusammenführen" plötzlich der eigene Text weg.
+  for (const n of notes) {
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    const song = findSongByTitle(songs, n.songTitle);
+    const norm = normalizeTitle(n.songTitle);
+
+    const isSame = (x) =>
+      x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm;
+    if (existingNotes.some(isSame) || fresh.some((x) => x.type === 'note' && isSame(x))) {
+      skippedNotes++;
+      continue;
+    }
+
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    fresh.push({
+      key: `note:${id}`, type: 'note', id,
+      songId: song ? song.id : null,
+      songTitle: n.songTitle,           // bleibt erhalten, auch ohne Song
+      text: n.text,
+      updatedAt: n.updatedAt || new Date().toISOString(),
+    });
+    addedNotes++;
+  }
+
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
     const name = normalizeTitle(p.name || '');
@@ -6716,8 +7496,12 @@ async function restoreBackup(data) {
 
   await renderPlaylists();
   await renderSettings();
-  banner(`${plural(addedLoops, 'Loop', 'Loops')} und ${plural(addedPl, 'Playlist', 'Playlisten')} eingespielt.`
-    + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : ''), { kind: 'ok' });
+  if (playerSong) await loadSongNote();
+  banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
+    + `und ${plural(addedPl, 'Playlist', 'Playlisten')} eingespielt.`
+    + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
+    + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
+        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : ''), { kind: 'ok' });
 }
 
 /**
@@ -6918,7 +7702,39 @@ function runSelfTests() {
     failed.push('groupDuplicates schlägt die falsche Fassung vor');
   }
 
-  const total = voiceCases.length + titleCases.length + 7;
+  // Abschnitt hinter dem Ende einer kürzeren Aufnahme wird begrenzt bzw.
+  // verworfen — sonst liefe die Wiedergabe stumm ins Leere.
+  const savedA = loopA, savedB = loopB, savedDur = Audio.duration;
+  Audio.duration = 100;
+  loopA = 50; loopB = 200;
+  const clamped = loopRange();
+  if (!clamped || clamped.end !== 100 || clamped.start !== 50) {
+    failed.push(`loopRange begrenzt nicht auf die Länge: ${JSON.stringify(clamped)}`);
+  }
+  loopA = 150; loopB = 200;
+  if (loopRange() !== null) failed.push('loopRange hinter dem Ende müsste null sein');
+  loopA = savedA; loopB = savedB; Audio.duration = savedDur;
+
+  // Dateidatensätze: neue halten die Bytes selbst, ältere noch einen Blob.
+  // Beides muss lesbar bleiben, sonst spielt nach einem Update nichts mehr.
+  if (recordBlob({ data: new Uint8Array([1, 2, 3]).buffer }, 'audio/mpeg').size !== 3) {
+    failed.push('recordBlob liest neue Datensätze nicht');
+  }
+  const legacyBlob = new Blob([new Uint8Array([1, 2, 3])]);
+  if (recordBlob({ blob: legacyBlob }) !== legacyBlob) {
+    failed.push('recordBlob reicht ältere Datensätze nicht durch');
+  }
+
+  // Notizen-Export: Titel, Leerzeile, Notiz — dazwischen wieder eine Leerzeile.
+  const notesText = notesToText([
+    { songTitle: 'Blaue Augen', text: 'Einsatz nach Takt 12.\n' },
+    { songTitle: 'Grüß Gott',   text: 'Zweite Strophe leiser.' },
+  ]);
+  if (notesText !== 'Blaue Augen\n\nEinsatz nach Takt 12.\n\nGrüß Gott\n\nZweite Strophe leiser.\n') {
+    failed.push(`Notizen-Export: ${JSON.stringify(notesText)}`);
+  }
+
+  const total = voiceCases.length + titleCases.length + 12;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
@@ -6966,9 +7782,6 @@ function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches === true
       || window.navigator.standalone === true;
 }
-
-const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 // Chrome & Co. bieten die Installation über ein eigenes Ereignis an. Es
 // kommt genau einmal und muss aufgehoben werden, bis der Nutzer so weit ist.
@@ -7181,7 +7994,13 @@ async function boot() {
 
   await loadSettings();
   setupFolderImport();
-  runSelfTests();
+  try {
+    runSelfTests();
+  } catch (err) {
+    // Eine Prüfung, die selbst kaputt ist, darf den Start nicht verhindern —
+    // sonst bleibt der Bildschirm leer, obwohl die App funktionieren würde.
+    console.error('[Selbsttest] abgebrochen', err);
+  }
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
