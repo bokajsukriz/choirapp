@@ -4940,6 +4940,24 @@ async function ensureMyVoice() {
  * Bildschirm-Timeout mitten in einem langen Lesevorgang zuschlagen — bei
  * einem mehrere GB großen Archiv reicht das für viele Minuten Wartezeit.
  */
+/**
+ * Wartet, bis der Browser mindestens einen Frame tatsächlich gemalt hat.
+ *
+ * Ein DOM-Update wie ein neuer Banner erscheint nicht sofort — der Browser
+ * malt erst beim nächsten freien Moment. Folgt direkt danach ohne Umweg über
+ * das Rendering ein Aufruf, der den Haupt-Thread lange blockiert (auf
+ * manchen Android-Browsern etwa das Lesen einer sehr großen, über die
+ * Dateiauswahl übergebenen Datei), kommt es nie zu diesem Frame — die
+ * Meldung bliebe unsichtbar, obwohl sie im Code längst gesetzt ist. Zwei
+ * verschachtelte requestAnimationFrame-Aufrufe sind der verlässliche Weg,
+ * genau einen abgeschlossenen Malvorgang abzuwarten.
+ */
+function paintNow() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
 async function withScreenAwake(fn) {
   let lock = null;
   if ('wakeLock' in navigator) {
@@ -4965,6 +4983,13 @@ async function startZipImport(file) {
       + 'Bitte den Bildschirm eingeschaltet lassen, dieser Browser kann das '
       + 'nicht automatisch übernehmen.'
     : 'ZIP-Datei wird gelesen …', { timeout: 0 });
+
+  // Erst sicher malen lassen, bevor die erste (möglicherweise lange
+  // blockierende) Leseoperation beginnt — sonst bleibt die Meldung im
+  // Extremfall unsichtbar, weil kein Frame mehr dazwischenkommt (siehe
+  // paintNow()).
+  await paintNow();
+
   try {
     const entries = await withScreenAwake(() => zipReadDirectory(file));
 
@@ -5001,6 +5026,7 @@ async function startZipImport(file) {
 
 async function startFolderImport(fileList) {
   const close = banner('Ordner wird gelesen …', { timeout: 0 });
+  await paintNow();
   try {
     const items = [];
     for (const f of fileList) {
