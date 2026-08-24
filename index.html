@@ -355,8 +355,17 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 
 /* Titel und Stimm-Kürzel laufen als ein Textfluss: die Badges hängen sich
    direkt an den Titel und brechen nur um, wenn die Zeile voll ist. */
-.song-line { line-height: 2; }
-.song-line strong { font-family: var(--font-display); font-weight: 700; font-size: 1rem; }
+/* Titel und Stimm-Pillen als ein Block: die Pillen hängen sich direkt an
+   den Titel statt an den rechten Rand der Zeile — nur bei sehr langen
+   Titeln bricht der Block auf eine zweite Zeile um. */
+.song-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 0;
+  line-height: 2;
+}
+.song-line strong { font-family: var(--font-display); font-weight: 700; font-size: 1rem; margin-right: 8px; }
 
 .voice-chip {
   display: inline-flex;
@@ -1808,20 +1817,15 @@ input[type="checkbox"] {
 
     <div class="card">
       <h2>So kommt der Ordner aufs Handy</h2>
-      <p class="small" style="font-weight:650; margin:0 0 6px">iPhone</p>
       <ol class="steps small">
-        <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>…</strong> tippen.</li>
-        <li><strong>Exportieren → In Dateien sichern</strong> wählen und in „Auf meinem iPhone“ speichern.</li>
+        <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>⋮</strong>
+          (Android) bzw. <strong>…</strong> (iPhone) tippen.</li>
+        <li><strong>Herunterladen</strong> (Android) bzw.
+          <strong>Exportieren → In Dateien sichern</strong> (iPhone) wählen —
+          der Ordner landet als ZIP in „Downloads“ bzw. „Dateien“.</li>
+        <li>Zurück in dieser App auf <strong>ZIP-Datei auswählen</strong>
+          tippen und die Datei dort wählen.</li>
       </ol>
-      <p class="small" style="font-weight:650; margin:14px 0 6px">Android</p>
-      <ol class="steps small">
-        <li>Dropbox-App öffnen, beim gewünschten Ordner auf <strong>⋮</strong> tippen.</li>
-        <li><strong>Herunterladen</strong> wählen — Dropbox packt den Ordner als ZIP in „Downloads“.</li>
-      </ol>
-      <p class="small muted" style="margin:14px 0 0">
-        Danach zurück in dieser App auf <strong>ZIP-Datei auswählen</strong>
-        tippen und die Datei aus „Dateien“ bzw. „Downloads“ wählen.
-      </p>
     </div>
 
     <div class="card">
@@ -3428,8 +3432,8 @@ async function renderSongs() {
       },
         el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
           el('strong', { text: songLabel(song) || 'Ohne Titel' }),
+          renderVoicePills(song.tracks),
         ),
-        renderVoicePills(song.tracks),
         marks
       )
     ));
