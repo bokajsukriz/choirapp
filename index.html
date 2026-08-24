@@ -396,7 +396,8 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 
 /* ---------- Suche und Sammelordner-Filter (Bibliothek) ------------------ */
 
-.searchbar { margin-bottom: 12px; }
+.searchbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.searchbar .search-input { flex: 1; min-width: 0; }
 
 .search-input {
   width: 100%;
@@ -847,36 +848,36 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 6px;
   margin-bottom: 10px;
 }
 
 .tbtn {
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   flex: 0 0 auto;
   border-radius: 999px;
   border: 1px solid var(--pill-line);
   background: var(--surface-2);
   color: var(--text);
   font-weight: 650;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.tbtn svg { width: 22px; height: 22px; }
+.tbtn svg { width: 20px; height: 20px; }
 
 .tbtn--play {
-  width: 64px;
-  height: 64px;
+  width: 58px;
+  height: 58px;
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
 }
 
-.tbtn--play svg { width: 28px; height: 28px; }
+.tbtn--play svg { width: 26px; height: 26px; }
 .tbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 
@@ -1667,6 +1668,15 @@ input[type="checkbox"] {
           <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
         </svg>
       </button>
+      <button class="tbtn" id="btn-shuffle" type="button" aria-pressed="false" aria-label="Zufällige Reihenfolge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="16 3 21 3 21 8"/>
+          <line x1="4" y1="20" x2="21" y2="3"/>
+          <polyline points="21 16 21 21 16 21"/>
+          <line x1="15" y1="15" x2="21" y2="21"/>
+          <line x1="4" y1="4" x2="9" y2="9"/>
+        </svg>
+      </button>
       <button class="tbtn" id="btn-next" type="button" aria-label="Nächstes Lied">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M18 6v12M16 12L9 6v12z"/>
@@ -1736,6 +1746,17 @@ input[type="checkbox"] {
       <input class="search-input" id="search" type="search" inputmode="search"
              autocomplete="off" autocorrect="off" spellcheck="false"
              placeholder="Song suchen …" aria-label="Song suchen">
+      <button class="icon-btn" id="btn-feeling-lucky" type="button"
+              aria-label="Feeling Lucky — zufälliges Lied abspielen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
+          <circle cx="8.3" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="8.3" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="15.7" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
     </div>
     <div class="filterbar" id="filterbar" hidden></div>
     <div id="song-list-host"></div>
@@ -2460,6 +2481,7 @@ const DEFAULT_SETTINGS = {
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
   keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
+  shuffleMode: false,         // zufälliges statt geordnetes „nächstes Lied"
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3270,6 +3292,8 @@ function renderMarks(has) {
 // Suchbegriff und gewählter Sammelordner-Filter der Bibliothek
 let songQuery = '';
 let songFilter = null;   // null = „Alle"
+// Die zuletzt sichtbare (gefilterte/gesuchte) Liste — für „Feeling Lucky".
+let lastVisibleSongs = [];
 
 // Wie bei renderQueue()/renderPlaylists(): nur der letzte überlappende
 // Aufruf darf die Liste zeichnen.
@@ -3308,6 +3332,7 @@ async function renderSongs() {
   host.textContent = '';
 
   if (!songs.length) {
+    lastVisibleSongs = [];
     $('#searchbar').hidden = true;
     $('#filterbar').hidden = true;
     host.append(el('div', { class: 'empty' },
@@ -3361,6 +3386,7 @@ async function renderSongs() {
   if (q) visible = visible.filter((s) => (s.normTitle || normalizeTitle(s.title || '')).includes(q));
 
   visible.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  lastVisibleSongs = visible;
 
   if (!visible.length) {
     host.append(el('div', { class: 'empty' },
@@ -3408,6 +3434,21 @@ $('#search').addEventListener('input', (e) => {
   songQuery = e.target.value;
   clearTimeout(searchTimer);
   searchTimer = setTimeout(renderSongs, 120);
+});
+
+/**
+ * Feeling Lucky: schaltet Shuffle ein (falls noch aus) und startet direkt
+ * ein zufälliges Lied — aus der gerade sichtbaren (gesuchten/gefilterten)
+ * Auswahl, damit ein Suchbegriff nicht ignoriert wird.
+ */
+$('#btn-feeling-lucky').addEventListener('click', async () => {
+  const pool = lastVisibleSongs.length ? lastVisibleSongs : await DB.metaByType('song').catch(() => []);
+  if (!pool.length) return;
+  if (!settings.shuffleMode) await saveSettings({ shuffleMode: true });
+  const song = pool[Math.floor(Math.random() * pool.length)];
+  playQueue = null;
+  pendingAutoPlay = true;
+  navigate(`#song/${song.id}`);
 });
 
 /* ---------- Einstellungen ------------------------------------------------ */
@@ -5886,6 +5927,7 @@ async function openPlayer(songId) {
   updateSeekUI(0);
   updateLoopUI();
   renderRepeatMode();
+  renderShuffleMode();
   renderVoiceSelect();
   renderPlayerExtras();
   loadSongLoops();
@@ -6168,7 +6210,16 @@ $('#btn-play').addEventListener('click', async () => {
   updateMediaSession();
 });
 
-$('#btn-restart').addEventListener('click', () => updateSeekUI(audioSeek(0)));
+$('#btn-restart').addEventListener('click', () => {
+  // Wie bei echten Musik-Playern: ist man schon (fast) am Anfang, springt
+  // „Zurück" zum vorherigen Titel statt stur bei 0 stehen zu bleiben.
+  if (Audio.position < 2) {
+    if (playQueue) { playlistStep(-1, Audio.playing); return; }
+    goToPreviousLibrarySong(Audio.playing);
+    return;
+  }
+  updateSeekUI(audioSeek(0));
+});
 
 /**
  * Nächster Song der Bibliothek in alphabetischer Reihenfolge — so lässt
@@ -6176,13 +6227,40 @@ $('#btn-restart').addEventListener('click', () => updateSeekUI(audioSeek(0)));
  */
 async function goToNextLibrarySong(autoplay) {
   const songs = await DB.metaByType('song').catch(() => []);
+  if (!songs.length) return;
   songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
-  const i = songs.findIndex((s) => s.id === playerSong?.id);
-  const next = songs[(i + 1) % songs.length];
+  const next = settings.shuffleMode
+    ? randomOtherSong(songs, playerSong?.id)
+    : songs[(songs.findIndex((s) => s.id === playerSong?.id) + 1) % songs.length];
   if (next && next.id !== playerSong?.id) {
     pendingAutoPlay = autoplay;
     navigate(`#song/${next.id}`, { replace: true });
   }
+}
+
+/**
+ * Vorheriges Lied der Bibliothek — für die Zurück-Taste, wenn man schon am
+ * Anfang steht. Bei Shuffle ebenfalls zufällig: eine geordnete „Rückwärts"-
+ * Reihenfolge ergäbe bei zufälligem „Vorwärts" ohnehin keinen Sinn.
+ */
+async function goToPreviousLibrarySong(autoplay) {
+  const songs = await DB.metaByType('song').catch(() => []);
+  if (!songs.length) return;
+  songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  const prev = settings.shuffleMode
+    ? randomOtherSong(songs, playerSong?.id)
+    : songs[(songs.findIndex((s) => s.id === playerSong?.id) - 1 + songs.length) % songs.length];
+  if (prev && prev.id !== playerSong?.id) {
+    pendingAutoPlay = autoplay;
+    navigate(`#song/${prev.id}`, { replace: true });
+  }
+}
+
+/** Zufälliger Song aus der Liste, nie derselbe wie `excludeId` (außer es gibt nur einen). */
+function randomOtherSong(songs, excludeId) {
+  const candidates = songs.filter((s) => s.id !== excludeId);
+  const pool = candidates.length ? candidates : songs;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 /** Nächstes Lied. In einer Playlist der nächste Eintrag (fehlende Titel
@@ -6213,6 +6291,15 @@ function renderRepeatMode() {
   const btn = $('#btn-repeat');
   btn.setAttribute('aria-pressed', song ? 'true' : 'false');
   btn.setAttribute('aria-label', song ? 'Am Ende: Wiederholen' : 'Am Ende: Nächstes Lied');
+}
+
+$('#btn-shuffle').addEventListener('click', async () => {
+  await saveSettings({ shuffleMode: !settings.shuffleMode });
+  renderShuffleMode();
+});
+
+function renderShuffleMode() {
+  $('#btn-shuffle').setAttribute('aria-pressed', settings.shuffleMode ? 'true' : 'false');
 }
 
 /* Ziehen im Fortschrittsbalken. touch-action: none im CSS verhindert, dass
@@ -7563,13 +7650,29 @@ $('#btn-pl-play').addEventListener('click', async () => {
 });
 
 /** Springt in der laufenden Playlist, überspringt dabei fehlende Titel. */
+/** Zufälliger, vorhandener Index der Playlist — nie der aktuelle, außer es
+ *  gibt nur einen einzigen abspielbaren Titel. */
+function randomQueueIndex(queue) {
+  const candidates = queue.items
+    .map((_, idx) => idx)
+    .filter((idx) => queue.items[idx].id && idx !== queue.index);
+  if (candidates.length) return candidates[Math.floor(Math.random() * candidates.length)];
+  return queue.items[queue.index]?.id ? queue.index : -1;
+}
+
 function playlistStep(delta, autoplay) {
   if (!playQueue) return;
-  let i = playQueue.index;
-  do {
-    i += delta;
-    if (i < 0 || i >= playQueue.items.length) return;
-  } while (!playQueue.items[i].id);
+  let i;
+  if (settings.shuffleMode) {
+    i = randomQueueIndex(playQueue);
+    if (i < 0) return;
+  } else {
+    i = playQueue.index;
+    do {
+      i += delta;
+      if (i < 0 || i >= playQueue.items.length) return;
+    } while (!playQueue.items[i].id);
+  }
   playQueue.index = i;
   pendingAutoPlay = autoplay ?? Audio.playing;
   navigate(`#song/${playQueue.items[i].id}`, { replace: true });
@@ -7579,6 +7682,20 @@ function playlistStep(delta, autoplay) {
 /** Am Ende der Playlist geht es wieder beim ersten (verfügbaren) Titel los. */
 function playlistAdvance() {
   if (!playQueue) return;
+  if (settings.shuffleMode) {
+    const i = randomQueueIndex(playQueue);
+    if (i < 0) return;
+    playQueue.index = i;
+    const id = playQueue.items[i].id;
+    if (playerSong && playerSong.id === id) {
+      updateSeekUI(audioSeek(0));
+      audioPlay().then(() => setPlayIcon(true));
+      return;
+    }
+    pendingAutoPlay = true;
+    navigate(`#song/${id}`, { replace: true });
+    return;
+  }
   const total = playQueue.items.length;
   for (let step = 1; step <= total; step++) {
     const i = (playQueue.index + step) % total;
