@@ -268,6 +268,21 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-color: var(--accent);
 }
 
+/* Stimmen-Chips: gedeckt in der Stimmfarbe, solange nicht gewählt — knallig,
+   sobald sie zu „meinen Stimmen" gehören. Die Farbe kommt als CSS-Variable
+   von außen (siehe renderVoicePicker), damit jede Stimme ihre eigene Farbe
+   aus VOICE_COLOR trägt statt der einheitlichen Akzentfarbe. */
+.chip--voice {
+  background: color-mix(in srgb, var(--voice-c) 20%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--voice-c) 45%, transparent);
+  color: var(--text);
+}
+.chip--voice[aria-pressed="true"] {
+  background: var(--voice-c);
+  border-color: var(--voice-c);
+  color: #fff;
+}
+
 /* Speicherbalken */
 .meter {
   height: 12px;
@@ -879,9 +894,10 @@ input[type="checkbox"] {
 .loop-controls .icon-only { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
 .loop-controls .icon-only svg { width: 20px; height: 20px; }
 
-/* Schalter für Loop an/aus — echte Wippe mit Knopf, damit der Zustand auf
-   den ersten Blick klar ist (nicht nur eine Farbänderung). */
-.loop-switch {
+/* Schalter — echte Wippe mit Knopf, damit der Zustand auf den ersten Blick
+   klar ist (nicht nur eine Farbänderung). Für Loop an/aus und für einzelne
+   Ja/Nein-Einstellungen wie „Bildschirm anlassen". */
+.loop-switch, .switch {
   width: 52px;
   height: 32px;
   flex: 0 0 auto;
@@ -894,7 +910,7 @@ input[type="checkbox"] {
   justify-content: flex-start;
 }
 
-.loop-switch-knob {
+.loop-switch-knob, .switch-knob {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -903,13 +919,14 @@ input[type="checkbox"] {
   transition: transform .18s ease;
 }
 
-.loop-switch[disabled] { opacity: 0.5; pointer-events: none; }
+.loop-switch[disabled], .switch[disabled] { opacity: 0.5; pointer-events: none; }
 
-.loop-switch[aria-checked="true"] {
+.loop-switch[aria-checked="true"], .switch[aria-checked="true"] {
   background: var(--accent);
   border-color: var(--accent);
 }
-.loop-switch[aria-checked="true"] .loop-switch-knob { transform: translateX(20px); }
+.loop-switch[aria-checked="true"] .loop-switch-knob,
+.switch[aria-checked="true"] .switch-knob { transform: translateX(20px); }
 
 .loop-item {
   display: flex;
@@ -1770,10 +1787,11 @@ input[type="checkbox"] {
   <section class="view" id="view-settings">
 
     <div class="card">
-      <h2>Meine Stimme</h2>
+      <h2>Meine Stimmen</h2>
       <p class="small muted" style="margin-top:-4px">
-        Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme
-        der Player zuerst zeigt.
+        Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
+        Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
+        Stimme der Player zuerst zeigt.
       </p>
       <div class="chip-grid" id="voice-picker"></div>
     </div>
@@ -1792,51 +1810,58 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2>Bildschirm</h2>
-      <p class="small muted" style="margin-top:-4px">
-        Schaltet sich der Bildschirm von selbst ab, weil du eine Weile nichts
-        berührst, hält „Immer an“ ihn an, solange ein Lied geöffnet ist — das
-        kostet Akku. Sperrst du das Handy dagegen bewusst über die Ein/Aus-
-        Taste, hilft das nicht mehr — dafür die Karte weiter unten.
-      </p>
-      <div class="preset-row" id="screen-mode" role="group" aria-label="Bildschirmsperre">
-        <button class="preset" type="button" data-keep="off" aria-pressed="true">Normal</button>
-        <button class="preset" type="button" data-keep="on">Immer an</button>
+      <h2>Bildschirm &amp; Hintergrund</h2>
+      <div class="row">
+        <span class="small" style="max-width:70%">
+          Bildschirm anlassen, solange ein Lied geöffnet ist
+        </span>
+        <button class="switch" id="btn-screen-toggle" type="button" role="switch"
+                aria-checked="false" aria-label="Bildschirm anlassen">
+          <span class="switch-knob"></span>
+        </button>
       </div>
-      <p class="small muted" id="screen-note" style="margin:10px 0 0"></p>
-    </div>
+      <p class="small muted" style="margin:8px 0 0">
+        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
+        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
+      </p>
+      <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
 
-    <div class="card">
-      <h2>Wiedergabe bei gesperrtem Bildschirm</h2>
-      <p class="small muted" style="margin-top:-4px">
-        Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das nicht
-        an dieser App: Android entscheidet, ob eine Web-App im Hintergrund
-        weiterlaufen darf, und das steuern zwei Systemeinstellungen — beide
-        lassen sich nur von Hand ändern, keine Website darf sie selbst setzen.
-      </p>
-      <ol class="steps small">
-        <li>Android-Einstellungen → <strong>Apps</strong> → deinen Browser
-          öffnen (z. B. <strong>Vanadium</strong> oder <strong>Chrome</strong>
-          — die App, in der du „Zum Startbildschirm hinzufügen“ verwendet
-          hast).</li>
-        <li><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
-          wählen. Sonst beendet Android den Browser im Hintergrund, sobald
-          der Bildschirm aus ist.</li>
-        <li><strong>Benachrichtigungen</strong> → erlauben. Android verlangt
-          dafür eine sichtbare Benachrichtigung — ohne sie darf keine
-          Web-App im Hintergrund weiterspielen.</li>
-      </ol>
-      <p class="small muted" style="margin:10px 0 0">
-        Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
-        Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
-        eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
-        Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
-        „BVG“-Symbol.
-      </p>
-      <p class="small" id="notif-state" style="margin:14px 0 0"></p>
-      <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px">
-        Benachrichtigungen für diese Seite erlauben
+      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
+              aria-expanded="false" style="margin-top:14px">
+        Hören im Hintergrund klappt nicht?
       </button>
+      <div id="bg-help" hidden style="margin-top:12px">
+        <p class="small muted" style="margin-top:0">
+          Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
+          nicht an dieser App: Android entscheidet, ob eine Web-App im
+          Hintergrund weiterlaufen darf, und das steuern zwei
+          Systemeinstellungen — beide lassen sich nur von Hand ändern, keine
+          Website darf sie selbst setzen.
+        </p>
+        <ol class="steps small">
+          <li>Android-Einstellungen → <strong>Apps</strong> → deinen Browser
+            öffnen (z. B. <strong>Vanadium</strong> oder
+            <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm
+            hinzufügen“ verwendet hast).</li>
+          <li><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
+            wählen. Sonst beendet Android den Browser im Hintergrund, sobald
+            der Bildschirm aus ist.</li>
+          <li><strong>Benachrichtigungen</strong> → erlauben. Android
+            verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf
+            keine Web-App im Hintergrund weiterspielen.</li>
+        </ol>
+        <p class="small muted" style="margin:10px 0 0">
+          Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
+          Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
+          eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
+          Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
+          „BVG“-Symbol.
+        </p>
+        <p class="small" id="notif-state" style="margin:14px 0 0"></p>
+        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px">
+          Benachrichtigungen für diese Seite erlauben
+        </button>
+      </div>
     </div>
 
     <div class="card">
@@ -1854,7 +1879,9 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2>Sicherung</h2>
+      <h2>Daten &amp; Sicherung</h2>
+
+      <p class="section-title" style="margin-top:0">Sicherung</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
           Sichert Loops, Notizen, Playlisten, Einstellungen und die Songliste
@@ -1869,25 +1896,13 @@ input[type="checkbox"] {
         <button class="btn btn--block" id="btn-backup-import" type="button">
           Sicherung einspielen
         </button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Notizen</h2>
-      <div class="stack">
-        <p class="small muted" style="margin:0">
-          Alle Notizen zusammen als schlichte Textdatei: Songtitel, Leerzeile,
-          Notiz. Zum Ausdrucken, Weitergeben oder Einfügen in eine Notiz-App.
-        </p>
-        <p class="small" id="notes-count" style="margin:0"></p>
+        <p class="small" id="notes-count" style="margin:8px 0 0"></p>
         <button class="btn btn--block" id="btn-notes-export" type="button">
           Notizen als Textdatei
         </button>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Speicherplatz freigeben</h2>
+      <p class="section-title">Speicherplatz freigeben</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
           Einzelne Songs oder Stimmen löschen. Loops, Notizen und Playlisten
@@ -1906,15 +1921,12 @@ input[type="checkbox"] {
         </button>
         <div id="storage-manager" hidden></div>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Daten</h2>
+      <p class="section-title">Alles löschen</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
           Löscht alle Songs, Aufnahmen, Loops, Notizen und Playlisten von
-          diesem Gerät.
-          Die Dateien in der Dropbox bleiben unberührt.
+          diesem Gerät. Die Dateien in der Dropbox bleiben unberührt.
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
           Alle Daten löschen
@@ -2391,7 +2403,7 @@ const SETTINGS_KEY = 'settings';
 const DEFAULT_SETTINGS = {
   key: SETTINGS_KEY,
   type: 'settings',
-  myVoice: null,            // 'SOP' | 'ALT' | … | null = noch nicht gewählt
+  myVoices: [],             // z.B. ['ALT', 'BASS'] — [] = noch keine gewählt
   defaultImportScope: 'mine', // 'mine' | 'full' | 'all' (siehe Auswahlmaske, M1)
   lyricsFontSize: 17,
   lastBackupAt: null,
@@ -2411,6 +2423,11 @@ async function loadSettings() {
   } catch (err) {
     console.warn('[settings] konnten nicht geladen werden', err);
     settings = { ...DEFAULT_SETTINGS };
+  }
+  // Ältere Datensätze kennen nur eine einzelne Stimme (`myVoice`). Wer
+  // zwischen Stimmen wechselt, soll die aber nicht neu wählen müssen.
+  if (!settings.myVoices?.length && settings.myVoice) {
+    settings.myVoices = [settings.myVoice];
   }
   return settings;
 }
@@ -3305,23 +3322,33 @@ $('#search').addEventListener('input', (e) => {
 
 /* ---------- Einstellungen ------------------------------------------------ */
 
+/** Stimme in `settings.myVoices` an- oder abwählen (Mehrfachauswahl). */
+async function toggleMyVoice(voice) {
+  const set = new Set(settings.myVoices);
+  if (set.has(voice)) set.delete(voice); else set.add(voice);
+  // Reihenfolge bleibt VOICE_ORDER treu, statt der Klickreihenfolge zu folgen —
+  // sonst hinge z.B. die Vorschau-Priorität vom Zufall der Auswahl ab.
+  const myVoices = MY_VOICE_CHOICES.filter((v) => set.has(v));
+  await saveSettings({ myVoices });
+}
+
 function renderVoicePicker() {
   const host = $('#voice-picker');
   host.textContent = '';
 
   for (const voice of MY_VOICE_CHOICES) {
-    host.append(el('button', {
-      class: 'chip',
+    const btn = el('button', {
+      class: 'chip chip--voice',
       type: 'button',
-      'aria-pressed': settings.myVoice === voice ? 'true' : 'false',
+      'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
       text: VOICE_LABEL[voice],
       onclick: async () => {
-        // Nochmaliges Tippen hebt die Auswahl auf.
-        const next = settings.myVoice === voice ? null : voice;
-        await saveSettings({ myVoice: next });
+        await toggleMyVoice(voice);
         renderVoicePicker();
       },
-    }));
+    });
+    btn.style.setProperty('--voice-c', VOICE_COLOR[voice] || VOICE_COLOR.OTHER);
+    host.append(btn);
   }
 }
 
@@ -3588,21 +3615,31 @@ function renderChannelMode() {
 }
 
 function renderScreenMode() {
-  const want = settings.keepScreenOn ? 'on' : 'off';
-  for (const btn of $$('#screen-mode .preset')) {
-    btn.setAttribute('aria-pressed', btn.dataset.keep === want ? 'true' : 'false');
+  $('#btn-screen-toggle').setAttribute('aria-checked', settings.keepScreenOn ? 'true' : 'false');
+  const note = $('#screen-note');
+  // Im Regelfall (Wake Lock verfügbar) sagt der Schalter schon alles Nötige —
+  // die Zeile bleibt dann weg, damit die Karte kurz bleibt.
+  if ('wakeLock' in navigator) {
+    note.hidden = true;
+  } else {
+    note.hidden = false;
+    note.textContent = 'Dieser Browser kann den Bildschirm nicht anlassen. Am '
+      + 'zuverlässigsten läuft die Wiedergabe, wenn die App auf dem '
+      + 'Home-Bildschirm liegt.';
   }
-  $('#screen-note').textContent = 'wakeLock' in navigator
-    ? 'Gilt nur, solange ein Lied geöffnet ist. Beim Verlassen des Players sperrt sich der Bildschirm wieder wie gewohnt.'
-    : 'Dieser Browser kann den Bildschirm nicht anlassen. Am zuverlässigsten läuft die Wiedergabe, wenn die App auf dem Home-Bildschirm liegt.';
 }
 
-$('#screen-mode').addEventListener('click', async (e) => {
-  const btn = e.target.closest('.preset');
-  if (!btn) return;
-  await saveSettings({ keepScreenOn: btn.dataset.keep === 'on' });
+$('#btn-screen-toggle').addEventListener('click', async () => {
+  await saveSettings({ keepScreenOn: !settings.keepScreenOn });
   renderScreenMode();
   updateWakeLock();
+});
+
+$('#btn-bg-help-toggle').addEventListener('click', () => {
+  const host = $('#bg-help');
+  const open = host.hidden;
+  host.hidden = !open;
+  $('#btn-bg-help-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
 });
 
 /**
@@ -4272,7 +4309,7 @@ function protectedKeys() {
   if (!Audio.song) return new Set();
   const keep = new Set();
   for (const t of Audio.song.tracks) {
-    if (t.voice === 'FULL' || t.voice === settings.myVoice) keep.add(t.fileKey);
+    if (t.voice === 'FULL' || settings.myVoices.includes(t.voice)) keep.add(t.fileKey);
   }
   return keep;
 }
@@ -4626,7 +4663,7 @@ function applyPreset(preset) {
       let inScope;
       if (preset === 'all') inScope = true;
       else if (preset === 'full') inScope = track.voice === 'FULL';
-      else inScope = track.voice === 'FULL' || track.voice === settings.myVoice;
+      else inScope = track.voice === 'FULL' || settings.myVoices.includes(track.voice);
 
       // Unveränderte Spuren sind nie vorausgewählt — sie würden nur dieselben
       // Daten noch einmal schreiben. Eine *geänderte* Aufnahme liegt dagegen
@@ -4892,7 +4929,7 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
     `${plural(foundFiles, 'Datei', 'Dateien')}, ${fmtBytes(foundBytes)}`;
 
   // Ohne eigene Stimme ergibt „Nur meine Stimme + Gesamt" keinen Sinn.
-  if (!settings.myVoice && pick.preset === 'mine') pick.preset = 'full';
+  if (!settings.myVoices.length && pick.preset === 'mine') pick.preset = 'full';
 
   applyPreset(pick.preset);
   $$('#sheet-presets .preset').forEach((b) => {
@@ -4907,29 +4944,41 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
 
 /** Fragt die eigene Stimme ab, bevor die Maske aufgeht (4.4). */
 async function ensureMyVoice() {
-  if (settings.myVoice) return;
+  if (settings.myVoices.length) return;
   const chosen = await new Promise((resolve) => {
+    const picked = new Set();
     const host = el('div', { class: 'dialog' },
       el('h2', { text: 'Welche Stimme singst du?' }),
-      el('p', { text: 'Danach sind beim Import deine Stimme und die Gesamtmischung vorausgewählt. Du kannst das jederzeit ändern.' }));
+      el('p', { text: 'Auch mehrere möglich, wer zwischen Stimmen wechselt. Danach sind sie beim Import zusammen mit der Gesamtmischung vorausgewählt — jederzeit änderbar.' }));
 
-    const grid = el('div', { class: 'chip-grid' },
-      MY_VOICE_CHOICES.map((v) => el('button', {
-        class: 'chip', type: 'button', text: VOICE_LABEL[v],
-        onclick: () => { layer.remove(); resolve(v); },
-      })));
+    const grid = el('div', { class: 'chip-grid' });
+    for (const v of MY_VOICE_CHOICES) {
+      const btn = el('button', {
+        class: 'chip chip--voice', type: 'button', text: VOICE_LABEL[v], 'aria-pressed': 'false',
+        onclick: () => {
+          if (picked.has(v)) picked.delete(v); else picked.add(v);
+          btn.setAttribute('aria-pressed', picked.has(v) ? 'true' : 'false');
+        },
+      });
+      btn.style.setProperty('--voice-c', VOICE_COLOR[v] || VOICE_COLOR.OTHER);
+      grid.append(btn);
+    }
 
     host.append(grid, el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
       el('button', {
         class: 'btn', type: 'button', text: 'Überspringen',
         onclick: () => { layer.remove(); resolve(null); },
+      }),
+      el('button', {
+        class: 'btn btn--primary', type: 'button', text: 'Fertig',
+        onclick: () => { layer.remove(); resolve(MY_VOICE_CHOICES.filter((v) => picked.has(v))); },
       })));
 
     const layer = el('div', { class: 'overlay' }, host);
     document.body.append(layer);
   });
 
-  if (chosen) await saveSettings({ myVoice: chosen, defaultImportScope: 'mine' });
+  if (chosen?.length) await saveSettings({ myVoices: chosen, defaultImportScope: 'mine' });
 }
 
 /* ---------- Einlesen: ZIP und Ordner ------------------------------------ */
@@ -5404,8 +5453,8 @@ $('#sheet-import').addEventListener('click', () => runImport());
 $('#sheet-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.preset');
   if (!btn || !pick) return;
-  if (btn.dataset.preset === 'mine' && !settings.myVoice) {
-    banner('Wähle zuerst in den Einstellungen deine Stimme.', { kind: 'error' });
+  if (btn.dataset.preset === 'mine' && !settings.myVoices.length) {
+    banner('Wähle zuerst in den Einstellungen deine Stimme(n).', { kind: 'error' });
     return;
   }
   applyPreset(btn.dataset.preset);
@@ -5533,11 +5582,11 @@ function trackByVoiceKey(key) {
  */
 function preferredTrack(song) {
   const byVoice = (v) => (v ? song.tracks.find((t) => t.voice === v) : null);
-  return byVoice(settings.lastVoice)
-      || byVoice(settings.myVoice)
-      || byVoice('FULL')
-      || song.tracks[0]
-      || null;
+  for (const v of [settings.lastVoice, ...settings.myVoices, 'FULL']) {
+    const track = byVoice(v);
+    if (track) return track;
+  }
+  return song.tracks[0] || null;
 }
 
 /**
@@ -5548,7 +5597,7 @@ function preferredTrack(song) {
  * für die Bedienung fehlt.
  */
 function prefetchOrder(song, first) {
-  const wanted = ['FULL', settings.myVoice, settings.lastVoice];
+  const wanted = ['FULL', ...settings.myVoices, settings.lastVoice];
   const out = [];
   for (const voice of wanted) {
     if (!voice) continue;
@@ -7486,7 +7535,7 @@ async function buildBackup() {
     format: BACKUP_FORMAT,
     version: 1,
     exportedAt: new Date().toISOString(),
-    settings: { myVoice: settings.myVoice, lyricsFontSize: settings.lyricsFontSize },
+    settings: { myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize },
     songs: songs
       .sort((a, b) => collator.compare(a.title, b.title))
       .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })),
@@ -7657,8 +7706,11 @@ async function restoreBackup(data) {
   // hunderte einzelne Transaktionen.
   await DB.metaPutMany(fresh);
 
-  if (data.settings?.myVoice && !settings.myVoice) {
-    await saveSettings({ myVoice: data.settings.myVoice });
+  // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
+  const savedVoices = Array.isArray(data.settings?.myVoices) ? data.settings.myVoices
+    : (data.settings?.myVoice ? [data.settings.myVoice] : []);
+  if (savedVoices.length && !settings.myVoices.length) {
+    await saveSettings({ myVoices: savedVoices });
   }
   if (data.settings?.lyricsFontSize) {
     await saveSettings({ lyricsFontSize: data.settings.lyricsFontSize });
@@ -8022,20 +8074,21 @@ function renderOnbVoice() {
   const host = $('#onb-voice');
   host.textContent = '';
   for (const voice of MY_VOICE_CHOICES) {
-    host.append(el('button', {
-      class: 'chip', type: 'button',
-      'aria-pressed': settings.myVoice === voice ? 'true' : 'false',
+    const btn = el('button', {
+      class: 'chip chip--voice', type: 'button',
+      'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
       text: VOICE_LABEL[voice],
       onclick: async () => {
-        const next = settings.myVoice === voice ? null : voice;
-        // Wer hier zum ersten Mal wählt, will beim Import genau diese Stimme.
-        await saveSettings(next
-          ? { myVoice: next, defaultImportScope: 'mine' }
-          : { myVoice: null });
+        await toggleMyVoice(voice);
+        // Wer hier zum ersten Mal wählt, will beim Import genau diese
+        // Stimme(n) — aber nur, solange mindestens eine gewählt ist.
+        if (settings.myVoices.length) await saveSettings({ defaultImportScope: 'mine' });
         renderOnbVoice();
         renderVoicePicker();
       },
-    }));
+    });
+    btn.style.setProperty('--voice-c', VOICE_COLOR[voice] || VOICE_COLOR.OTHER);
+    host.append(btn);
   }
 }
 
