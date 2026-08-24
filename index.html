@@ -398,6 +398,19 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .voice-pills .voice-chip:not(:first-child) { margin-left: -15px; }
 
+/* Im Player öffnet ein Klick auf den Pillenstapel die Stimmenauswahl —
+   dieselbe Fläche, die die Stimmen schon zeigt, statt eines separaten
+   Knopfs daneben. Etwas Innenabstand vergrößert die Trefffläche über die
+   schmalen Pillen hinaus. */
+.voice-pills--clickable {
+  padding: 6px 4px;
+  margin: -6px -4px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.voice-pills--clickable:active { background: rgba(0,0,0,.05); }
+.voice-pills--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Anleitungs-Schritte im Import-Bereich */
 .steps { margin: 0; padding-left: 1.25em; }
 .steps li { margin-bottom: 9px; }
@@ -3294,7 +3307,13 @@ function iconEmptyNote() {
  * aufgeführte Stimme (VOICE_ORDER, meist FULL) obenauf und lesbar bleibt —
  * die übrigen picken nur mit einem Farbrand dahinter hervor.
  */
-function renderVoicePills(tracks) {
+/**
+ * @param {boolean} clickable Im Player: ein Klick auf den Pillenstapel öffnet
+ * die Stimmenauswahl — dieselbe Fläche, die schon die Stimmen zeigt, statt
+ * eines separaten Knopfs. In der Songliste bleibt der Stapel rein informativ,
+ * dort übernimmt schon die ganze Zeile die Navigation.
+ */
+function renderVoicePills(tracks, { clickable = false } = {}) {
   const host = el('div', { class: 'voice-pills' });
   const sorted = (tracks || []).slice()
     .sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
@@ -3312,7 +3331,30 @@ function renderVoicePills(tracks) {
     });
     host.append(chip);
   });
+
+  if (clickable) {
+    host.classList.add('voice-pills--clickable');
+    host.tabIndex = 0;
+    host.setAttribute('role', 'button');
+    host.setAttribute('aria-label', 'Stimme wählen');
+    host.addEventListener('click', () => openVoicePicker());
+    host.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openVoicePicker(); }
+    });
+  }
   return host;
+}
+
+/** Öffnet die native Stimmenauswahl — genutzt vom versteckten <select> selbst
+ *  und vom Klick auf die Pillen im Player-Kopf, damit beide Wege zum selben
+ *  Dropdown führen. */
+function openVoicePicker() {
+  const sel = $('#voice-select');
+  if (typeof sel.showPicker === 'function') {
+    try { sel.showPicker(); return; } catch { /* z.B. ohne Nutzergeste */ }
+  }
+  sel.focus();
+  sel.click();
 }
 
 // Feste Reihenfolge der Markierungen in der Songliste — jede Zeile bekommt
@@ -5985,7 +6027,7 @@ async function openPlayer(songId) {
   playerEl.hidden = false;
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
-  const pills = renderVoicePills(song.tracks);
+  const pills = renderVoicePills(song.tracks, { clickable: true });
   pills.id = 'player-pills';
   $('#player-pills').replaceWith(pills);
   $('#player-hint').hidden = true;
