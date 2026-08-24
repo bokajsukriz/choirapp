@@ -2283,7 +2283,7 @@ async function tx(storeNames, mode, fn) {
  * die Datenbank geschrieben.
  */
 async function fileRecord(key, blob, name) {
-  return { key, data: await blob.arrayBuffer(), size: blob.size, name };
+  return { key, data: await readArrayBuffer(blob), size: blob.size, name };
 }
 
 /** Bytes eines Dateidatensatzes. Ältere Datensätze halten noch einen Blob. */
@@ -2500,8 +2500,30 @@ function decodeEntryName(bytes, flags) {
   }
 }
 
+/**
+ * Liest einen Blob als ArrayBuffer, mit ein bis zwei Wiederholungen bei
+ * kurzen Ausfällen.
+ *
+ * Der Zugriff auf eine über die Storage Access Framework ausgewählte Datei
+ * läuft über einen Content-Provider — bei einem mehrere GB großen Archiv
+ * dauert das Lesen entsprechend lange, und genau dabei bricht die Verbindung
+ * auf manchen Android-Browsern (beobachtet mit Firefox) gelegentlich kurz ab,
+ * etwa wenn der Bildschirm zwischendurch ausgeht. Ein erneuter Versuch nach
+ * kurzer Pause überbrückt das meist, ohne den ganzen Import abzubrechen.
+ */
+async function readArrayBuffer(blob, attempts = 3) {
+  for (let i = 0; ; i++) {
+    try {
+      return await blob.arrayBuffer();
+    } catch (err) {
+      if (i >= attempts - 1) throw err;
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+}
+
 async function sliceView(file, start, end) {
-  const buf = await file.slice(Math.max(0, start), Math.min(end, file.size)).arrayBuffer();
+  const buf = await readArrayBuffer(file.slice(Math.max(0, start), Math.min(end, file.size)));
   return new DataView(buf);
 }
 
@@ -2522,6 +2544,24 @@ function u64(view, offset) {
 }
 
 class ZipError extends Error {}
+
+/**
+ * Nachricht für einen gescheiterten ZIP-Lesevorgang.
+ *
+ * Ein NotReadableError/SecurityError deutet auf einen abgebrochenen
+ * Content-Provider-Zugriff hin, nicht auf eine beschädigte Datei — das
+ * betrifft vor allem sehr große Archive, wenn der Bildschirm währenddessen
+ * ausgeht. „Erneut aus Dropbox herunterladen" wäre dort der falsche Rat.
+ */
+function zipReadFailureMessage(err) {
+  if (err instanceof ZipError) return err.message;
+  if (err?.name === 'NotReadableError' || err?.name === 'SecurityError') {
+    return 'Die Datei ließ sich nicht zu Ende lesen. Bei sehr großen Archiven kann '
+      + 'das passieren, wenn der Bildschirm währenddessen ausgeht — Bildschirm '
+      + 'eingeschaltet lassen und noch einmal versuchen.';
+  }
+  return 'Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.';
+}
 
 /** macOS legt Metadaten neben die Nutzdaten — die will niemand importieren. */
 function isJunkPath(path) {
@@ -4894,10 +4934,39 @@ async function ensureMyVoice() {
 
 /* ---------- Einlesen: ZIP und Ordner ------------------------------------ */
 
-async function startZipImport(file) {
-  const close = banner('ZIP-Datei wird gelesen …', { timeout: 0 });
+/**
+ * Hält den Bildschirm für die Dauer von `fn` wach, wenn der Browser das kann.
+ * Ohne das friert iOS eine ausgeschaltete Seite ein, und auf Android kann der
+ * Bildschirm-Timeout mitten in einem langen Lesevorgang zuschlagen — bei
+ * einem mehrere GB großen Archiv reicht das für viele Minuten Wartezeit.
+ */
+async function withScreenAwake(fn) {
+  let lock = null;
+  if ('wakeLock' in navigator) {
+    lock = await navigator.wakeLock.request('screen').catch(() => null);
+  }
   try {
-    const entries = await zipReadDirectory(file);
+    return await fn();
+  } finally {
+    lock?.release().catch(() => {});
+  }
+}
+
+// Ab dieser Größe warnen wir vor dem Lesen: übliche Archive für einen ganzen
+// Chor bleiben deutlich darunter, aber wer eine mehrjährige Sammlung auf
+// einmal importiert, soll wissen, dass ein ausgehender Bildschirm den
+// Vorgang unterbrechen kann, statt das erst nach langem Warten zu erfahren.
+const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
+
+async function startZipImport(file) {
+  const bigWithoutWakeLock = file.size > LARGE_IMPORT_BYTES && !('wakeLock' in navigator);
+  const close = banner(bigWithoutWakeLock
+    ? `Große Datei (${fmtBytes(file.size)}) wird gelesen — das kann dauern. `
+      + 'Bitte den Bildschirm eingeschaltet lassen, dieser Browser kann das '
+      + 'nicht automatisch übernehmen.'
+    : 'ZIP-Datei wird gelesen …', { timeout: 0 });
+  try {
+    const entries = await withScreenAwake(() => zipReadDirectory(file));
 
     // Einträge mit unbekanntem Verfahren gleich aussortieren, damit sie nicht
     // erst beim Schreiben scheitern.
@@ -4926,9 +4995,7 @@ async function startZipImport(file) {
   } catch (err) {
     close();
     console.error(err);
-    banner(err instanceof ZipError ? err.message
-      : 'Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.',
-      { kind: 'error' });
+    banner(zipReadFailureMessage(err), { kind: 'error' });
   }
 }
 
