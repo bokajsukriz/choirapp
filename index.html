@@ -26,12 +26,12 @@
 :root {
   --bg:         #fff7ec;
   --surface:    #ffffff;
-  --surface-2:  #fbeffd;
-  --line:       #ecdcf5;
+  --surface-2:  color-mix(in srgb, var(--accent) 6%, white);   /* zarte Tönung, folgt der Akzentfarbe */
+  --line:       color-mix(in srgb, var(--accent) 14%, white);  /* etwas kräftiger als --surface-2, für Ränder */
   --text:       #241b3d;
   --muted:      #8c81a6;
-  --accent:     #ff3d9a;
-  --accent-rgb: 255,61,154;             /* dieselbe Farbe wie --accent, als "r,g,b" für rgba() unten —
+  --accent:     #F868B0;
+  --accent-rgb: 248,104,176;             /* dieselbe Farbe wie --accent, als "r,g,b" für rgba() unten —
                                             wird zusammen mit --accent umgeschaltet (siehe applyAccentColor) */
   --accent-ink: #241b3d;
   --accent-2:   #33c9dc;
@@ -2889,7 +2889,7 @@ const DEFAULT_SETTINGS = {
   lastImportAt: null,         // Zeitpunkt des letzten erfolgreichen Imports
   debugLog: false,            // Diagnose-Log für schwer reproduzierbare Fehler (Beta)
   defaultPlayerTab: 'loops',  // Reiter, der beim Öffnen eines Songs zuerst erscheint
-  accentColor: '#ff3d9a',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
+  accentColor: '#F868B0',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2901,17 +2901,17 @@ let settings = { ...DEFAULT_SETTINGS };
  * zu müssen.
  */
 const ACCENT_PRESETS = [
-  { name: 'Pink',    hex: '#ff3d9a' },
-  { name: 'Türkis',  hex: '#33c9dc' },
-  { name: 'Orange',  hex: '#ff9f1c' },
-  { name: 'Lila',    hex: '#a75cff' },
-  { name: 'Mint',    hex: '#2ecc9c' },
-  { name: 'Blau',    hex: '#3d9bf5' },
+  { name: 'Koralle',  hex: '#FF6B6B' },
+  { name: 'Gelb',     hex: '#FFD93D' },
+  { name: 'Türkis',   hex: '#4ECDC4' },
+  { name: 'Violett',  hex: '#A78BFA' },
+  { name: 'Pink',     hex: '#F868B0' },
+  { name: 'Grün',     hex: '#6BCB77' },
 ];
 
 function hexToRgbTriplet(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
-  if (!m) return '255,61,154';
+  if (!m) return '248,104,176';
   return [1, 2, 3].map((i) => parseInt(m[i], 16)).join(',');
 }
 
