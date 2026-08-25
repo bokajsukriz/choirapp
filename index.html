@@ -2903,6 +2903,25 @@ function hexBytes(view, offset, len) {
   return out;
 }
 
+/**
+ * Zählt, wie oft die Bytes „P" „K" (der Anfang jeder ZIP-Signatur) irgendwo
+ * im Bereich vorkommen, plus die erste/letzte Fundstelle. Taucht „PK" gar
+ * nicht auf, liegen an dieser Stelle mit hoher Sicherheit keine ZIP-Reste
+ * (egal welcher Art) — das unterscheidet „komplett falsche Stelle gelesen"
+ * von „an ungefähr der richtigen Stelle, nur der genaue Datensatz fehlt".
+ */
+function countPkMarkers(view) {
+  let count = 0, first = -1, last = -1;
+  for (let i = 0; i < view.byteLength - 1; i++) {
+    if (view.getUint8(i) === 0x50 && view.getUint8(i + 1) === 0x4b) {
+      if (first < 0) first = i;
+      last = i;
+      count++;
+    }
+  }
+  return { count, first, last };
+}
+
 function u64(view, offset) {
   const value = view.getBigUint64(offset, true);
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -2973,10 +2992,12 @@ async function zipReadDirectory(file) {
     // erkennbare, aber falsch positionierte ZIP-Bytes oder echter
     // Zufallsschrott stehen — das grenzt eine falsch berechnete Leseposition
     // von einer tatsächlich unvollständigen Datei ein.
+    const pk = countPkMarkers(tail);
     dlog('import:zip:eocdMissing', {
       tailLen, fileSize: file.size,
       headHex: hexBytes(tail, 0, 16),
       tailHex: hexBytes(tail, tail.byteLength - 16, 16),
+      pkCount: pk.count, pkFirst: pk.first, pkLast: pk.last,
     });
     throw new ZipError('Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
   }
