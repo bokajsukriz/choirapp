@@ -7597,13 +7597,17 @@ function renderPlaylistEntries(songs) {
     }
     host.append(row);
   });
-
-  installEntryDragging(host);
 }
 
 /**
  * Reihenfolge per Ziehgriff. HTML5-Drag-and-drop arbeitet auf Touch-Geräten
  * nicht, deshalb eigene Umsetzung über Pointer-Events.
+ *
+ * Einmalig auf den (immer gleichen) Listen-Container aufgesetzt statt bei
+ * jedem renderPlaylistEntries(): sonst sammeln sich bei jeder Änderung an der
+ * Playlist weitere Pointer-Handler an, die sich beim nächsten Ziehen
+ * gegenseitig ins Gehege kommen und die Zeilen an die falsche Stelle
+ * verschieben.
  */
 function installEntryDragging(host) {
   let dragging = null;
@@ -7627,7 +7631,13 @@ function installEntryDragging(host) {
     grip.setPointerCapture(e.pointerId);
   });
 
-  host.addEventListener('pointermove', (e) => {
+  // move/up/cancel hängen an window, nicht an host: zieht man eine Zeile ganz
+  // nach oben oder unten, landet der Zeigefinger leicht außerhalb der Liste
+  // (oder sogar außerhalb des sichtbaren Bereichs) — mit Listenern nur auf
+  // host kam dort nie ein pointerup an, die Ziehmarke blieb hängen und die
+  // nächste Berührung der Liste verschob dann die falsche (alte) Zeile.
+  window.addEventListener('pointermove', (e) => {
+    if (dragging && !dragging.row.isConnected) dragging = null;
     if (!dragging) return;
     e.preventDefault();
     dragging.to = rowAt(e.clientY);
@@ -7637,6 +7647,7 @@ function installEntryDragging(host) {
   });
 
   const finish = async () => {
+    if (dragging && !dragging.row.isConnected) { dragging = null; return; }
     if (!dragging) return;
     const row = dragging.row;
     row.classList.remove('is-dragging');
@@ -7650,9 +7661,11 @@ function installEntryDragging(host) {
     await renderPlaylistDetail();
   };
 
-  host.addEventListener('pointerup', finish);
-  host.addEventListener('pointercancel', finish);
+  window.addEventListener('pointerup', finish);
+  window.addEventListener('pointercancel', finish);
 }
+
+installEntryDragging($('#pl-entries'));
 
 function renderPlaylistCandidates(songs) {
   const host = $('#pl-candidates');
