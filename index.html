@@ -2101,6 +2101,30 @@ input[type="checkbox"] {
       </div>
     </div>
 
+    <div class="card">
+      <h2>Diagnose-Log</h2>
+      <div class="row">
+        <span class="small" style="max-width:70%">
+          Ausführliches Protokoll für schwer fassbare Fehler aufzeichnen
+        </span>
+        <button class="switch" id="btn-debuglog-toggle" type="button" role="switch"
+                aria-checked="false" aria-label="Diagnose-Log aufzeichnen">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0">
+        Zeichnet technische Abläufe auf (Zeitstempel, Zustände, Zahlen) — nie
+        Songtitel, Dateinamen oder Namen. Sinnvoll direkt vor dem Nachstellen
+        eines Problems (z. B. Import, dann Bildschirm sperren); danach hier
+        exportieren und beim Melden mitschicken.
+      </p>
+      <div style="display:flex; gap:8px; margin-top:12px">
+        <button class="btn" id="btn-debuglog-export" type="button" style="flex:1">Log exportieren</button>
+        <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1">Leeren</button>
+      </div>
+      <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
+    </div>
+
   </section>
 </main>
 
@@ -2308,6 +2332,7 @@ function logAppError(code, err) {
   errorLog = [entry, ...errorLog].slice(0, MAX_ERROR_LOG);
   try { localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(errorLog)); } catch { /* z.B. privater Modus */ }
   console.error(`[${code}]`, err);
+  dlog('error', { code, name: entry.name, message: entry.message });
   return entry;
 }
 
@@ -2357,6 +2382,79 @@ function renderErrorLog() {
       el('p', { class: 'small', style: 'margin:0; font-weight:600', text: `${time} · ${e.code}` }),
       el('p', { class: 'small muted', style: 'margin:2px 0 0; overflow-wrap: anywhere', text: tech || '–' })));
   }
+}
+
+/* ==========================================================================
+   DIAGNOSE-LOG (Beta, per Schalter)
+
+   Für zwei schwer reproduzierbare Fehlerbilder (großer Import bricht
+   grundlos ab, Wiedergabe stoppt Sekunden nach dem Sperren): ein
+   mitlaufendes Protokoll technischer Ereignisse — Zeitstempel, Zustände,
+   Zahlen. NIE Songtitel, Dateinamen, Vornamen oder sonstige Inhalte; die
+   einzige gerätebezogene Angabe ist der User-Agent (Browser/Betriebssystem),
+   der für die Fehlersuche selbst gebraucht wird. Läuft nur mit
+   eingeschaltetem Schalter, bleibt bis zum Export ausschließlich lokal.
+   ========================================================================== */
+
+const DEBUG_LOG_KEY = 'bvg-debug-log';
+const MAX_DEBUG_LOG = 3000;
+const bootTime = performance.now(); // Referenzpunkt: 0 = Skriptstart
+
+function loadDebugLog() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DEBUG_LOG_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+let debugLog = loadDebugLog();
+let debugLogSaveTimer = null;
+
+function saveDebugLogSoon() {
+  if (debugLogSaveTimer) return;
+  // Gebündelt statt bei jedem Eintrag: bei häufigen Ereignissen (Position,
+  // Zustandswechsel) wäre sofortiges Schreiben unnötig teuer. 1s Verzögerung
+  // ist unkritisch — beim harten Beenden der Seite ist ohnehin nichts mehr
+  // zu retten, egal wie oft geschrieben wird.
+  debugLogSaveTimer = setTimeout(() => {
+    debugLogSaveTimer = null;
+    try { localStorage.setItem(DEBUG_LOG_KEY, JSON.stringify(debugLog)); } catch { /* voll oder privater Modus */ }
+  }, 1000);
+}
+
+/**
+ * Ereignis fürs Diagnose-Log. Ohne settings.debugLog ein reiner No-Op.
+ * `data` darf ausschließlich Zahlen, Booleans und kurze technische Strings
+ * enthalten (Zustände, Codes) — nie Songtitel, Dateinamen oder Namen.
+ */
+function dlog(event, data) {
+  if (!settings?.debugLog) return;
+  debugLog.push({ t: Math.round(performance.now() - bootTime), event, ...(data || {}) });
+  if (debugLog.length > MAX_DEBUG_LOG) debugLog = debugLog.slice(-MAX_DEBUG_LOG);
+  saveDebugLogSoon();
+}
+
+function debugLogText() {
+  const header = [
+    `BVG Diagnose-Log — ${new Date().toISOString()}`,
+    `User-Agent: ${navigator.userAgent}`,
+    `Online: ${navigator.onLine}   Kerne: ${navigator.hardwareConcurrency ?? '?'}`,
+    '',
+  ].join('\n');
+  if (!debugLog.length) return header + 'Keine Ereignisse aufgezeichnet.';
+  const lines = debugLog.map((e) => {
+    const { t, event, ...rest } = e;
+    const extra = Object.entries(rest).map(([k, v]) => `${k}=${v}`).join(' ');
+    return `+${t}ms  ${event}${extra ? '  ' + extra : ''}`;
+  });
+  return header + lines.join('\n');
+}
+
+function clearDebugLog() {
+  debugLog = [];
+  try { localStorage.removeItem(DEBUG_LOG_KEY); } catch { /* z.B. privater Modus */ }
 }
 
 const overlay   = $('#overlay');
@@ -2656,6 +2754,7 @@ const DEFAULT_SETTINGS = {
   keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
   shuffleMode: false,         // zufälliges statt geordnetes „nächstes Lied"
   lastImportAt: null,         // Zeitpunkt des letzten erfolgreichen Imports
+  debugLog: false,            // Diagnose-Log für schwer reproduzierbare Fehler (Beta)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3940,10 +4039,44 @@ async function renderSettings() {
   await renderNotesCount();
   await renderStorageManager();
   renderErrorLog();
+  renderDebugLogState();
   $('#offline-state').textContent = navigator.serviceWorker?.controller
     ? 'ja'
     : 'wird eingerichtet …';
 }
+
+function renderDebugLogState() {
+  $('#btn-debuglog-toggle').setAttribute('aria-checked', settings.debugLog ? 'true' : 'false');
+  const n = debugLog.length;
+  $('#debuglog-count').textContent = settings.debugLog
+    ? `Zeichnet auf — ${plural(n, 'Ereignis', 'Ereignisse')} gespeichert.`
+    : (n ? `Ausgeschaltet — ${plural(n, 'Ereignis', 'Ereignisse')} vom letzten Mal gespeichert.` : 'Ausgeschaltet.');
+}
+
+$('#btn-debuglog-toggle').addEventListener('click', async () => {
+  await saveSettings({ debugLog: !settings.debugLog });
+  dlog(settings.debugLog ? 'debuglog:on' : 'debuglog:off');
+  renderDebugLogState();
+});
+
+$('#btn-debuglog-export').addEventListener('click', async () => {
+  const text = debugLogText();
+  const date = new Date().toISOString().replace(/[:.]/g, '-');
+  const fileName = `bvg-diagnose-${date}.txt`;
+  const file = new File([text], fileName, { type: 'text/plain' });
+
+  let shared = false;
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'BVG Diagnose-Log' }); shared = true; }
+    catch (err) { if (err?.name === 'AbortError') return; }
+  }
+  if (!shared) downloadBlob(new Blob([text], { type: 'text/plain' }), fileName);
+});
+
+$('#btn-debuglog-clear').addEventListener('click', async () => {
+  clearDebugLog();
+  renderDebugLogState();
+});
 
 $('#btn-errorlog-copy').addEventListener('click', async () => {
   const text = errorLogText();
@@ -4438,15 +4571,24 @@ async function audioInit() {
   Audio.channel = { gLL, gLR, gRL, gRR };
   audioApplyChannelMode(settings.channelMode);
 
+  // Letzte im Diagnose-Log protokollierte Position — nur alle paar Sekunden
+  // ein Eintrag, sonst würde das Log bei jedem Positions-Tick überlaufen.
+  let lastLoggedPos = -10;
+
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
     if (m.type === 'pos') {
       Audio.position = m.seconds;
+      if (m.seconds - lastLoggedPos >= 5) {
+        lastLoggedPos = m.seconds;
+        dlog('audio:pos', { s: Math.round(m.seconds), ctxState: Audio.ctx?.state, visibility: document.visibilityState });
+      }
       Audio.onPosition?.(m.seconds);
     } else if (m.type === 'total') {
       Audio.duration = m.seconds;
       Audio.onPosition?.(Audio.position);
     } else if (m.type === 'ended') {
+      dlog('audio:worklet:ended', { pos: Math.round(Audio.position) });
       Audio.playing = false;
       Audio.silent?.pause();
       updateWakeLock();
@@ -4460,6 +4602,9 @@ async function audioInit() {
   // Beides bleibt ohne Zutun angehalten: die App sah aus, als spiele sie, und
   // es kam kein Ton mehr.
   Audio.ctx.addEventListener('statechange', onAudioStateChange);
+  Audio.ctx.addEventListener('statechange', () => dlog('audio:ctxstate', {
+    state: Audio.ctx.state, playing: Audio.playing, visibility: document.visibilityState,
+  }));
 
   if (!Audio.silent) {
     Audio.silent = document.createElement('audio');
@@ -4475,9 +4620,20 @@ async function audioInit() {
     // zuverlässig in die Medienwiedergabe der Seite ein.
     Audio.silent.style.display = 'none';
     document.body.append(Audio.silent);
+
+    // Für die Diagnose zweier Fehlerbilder (Wiedergabe stoppt Sekunden nach
+    // dem Sperren): jedes Ereignis des stillen Loops, der den Audio-Fokus
+    // für die Seite hält. Bleibt er stehen, ohne dass „pause" von der App
+    // selbst kam, ist genau das die Ursache.
+    for (const type of ['play', 'pause', 'ended', 'error', 'stalled', 'suspend', 'waiting']) {
+      Audio.silent.addEventListener(type, () => dlog('audio:silentloop:' + type, {
+        visibility: document.visibilityState, ctxState: Audio.ctx?.state,
+      }));
+    }
   }
 
   Audio.ready = true;
+  dlog('audio:init:ok');
 }
 
 async function onAudioStateChange() {
@@ -4492,12 +4648,14 @@ async function onAudioStateChange() {
     await ctx.resume();
   } catch (err) {
     console.warn('[audio] Kontext ließ sich nicht fortsetzen', err);
+    dlog('audio:resume:fail', { name: err?.name });
   }
   if (ctx !== Audio.ctx || !Audio.playing) return;
 
   // Hat das Fortsetzen nicht geklappt, muss die Anzeige die Wahrheit sagen —
   // ein Play-Symbol, das nichts abspielt, sucht man sonst ewig.
   if (ctx.state !== 'running') {
+    dlog('audio:interrupted', { state: ctx.state });
     Audio.playing = false;
     Audio.silent?.pause();
     setPlayIcon(false);
@@ -4752,11 +4910,12 @@ async function audioPlay() {
   // Medienelement, und daran hängt, ob die Seite bei gesperrtem Bildschirm
   // weiterlaufen darf.
   try { await Audio.silent?.play(); }
-  catch { /* ohne Nutzergeste abgelehnt — unkritisch */ }
+  catch (err) { dlog('audio:silentloop:playfail', { name: err?.name }); /* ohne Nutzergeste abgelehnt — unkritisch */ }
 
   Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  dlog('audio:play');
   updateWakeLock();
 }
 
@@ -4766,6 +4925,7 @@ function audioPause() {
   Audio.playing = false;
   Audio.silent?.pause();
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  dlog('audio:pause');
   updateWakeLock();
 }
 
@@ -4836,11 +4996,15 @@ async function updateWakeLock() {
   wakeLockPending = true;
   try {
     const lock = await navigator.wakeLock.request('screen');
+    dlog('wakelock:granted');
     lock.addEventListener('release', () => {
+      dlog('wakelock:released', { visibility: document.visibilityState, playing: Audio.playing });
       if (Audio.wakeLock === lock) Audio.wakeLock = null;
     });
     Audio.wakeLock = lock;
-  } catch { /* z.B. bei niedrigem Akkustand abgelehnt */ } finally {
+  } catch (err) {
+    dlog('wakelock:denied', { name: err?.name });
+  } finally {
     wakeLockPending = false;
   }
   // Inzwischen doch nicht mehr gewollt (Pause während der Anfrage).
@@ -4848,12 +5012,14 @@ async function updateWakeLock() {
 }
 
 document.addEventListener('visibilitychange', () => {
+  dlog('visibility', { state: document.visibilityState, playing: Audio.playing, ctxState: Audio.ctx?.state });
   if (document.visibilityState !== 'visible') return;
   updateWakeLock();
   // Hat Android den Ton währenddessen angehalten, hier wieder aufnehmen.
   if (Audio.playing && Audio.ctx?.state === 'suspended') {
-    Audio.ctx.resume().catch(() => {});
-    Audio.silent?.play().catch(() => {});
+    dlog('audio:visible:recover');
+    Audio.ctx.resume().catch((err) => dlog('audio:resume:fail', { name: err?.name }));
+    Audio.silent?.play().catch((err) => dlog('audio:silentloop:playfail', { name: err?.name }));
   }
 });
 
@@ -5365,7 +5531,14 @@ function paintNow() {
 async function withScreenAwake(fn) {
   let lock = null;
   if ('wakeLock' in navigator) {
-    lock = await navigator.wakeLock.request('screen').catch(() => null);
+    lock = await navigator.wakeLock.request('screen').catch((err) => {
+      dlog('wakelock:denied', { name: err?.name });
+      return null;
+    });
+    if (lock) {
+      dlog('wakelock:granted');
+      lock.addEventListener('release', () => dlog('wakelock:released'));
+    }
   }
   try {
     return await fn();
@@ -5381,6 +5554,7 @@ async function withScreenAwake(fn) {
 const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
 
 async function startZipImport(file) {
+  dlog('import:zip:begin', { bytes: file.size });
   const bigWithoutWakeLock = file.size > LARGE_IMPORT_BYTES && !('wakeLock' in navigator);
   const close = banner(bigWithoutWakeLock
     ? `Große Datei (${fmtBytes(file.size)}) wird gelesen — das kann dauern. `
@@ -5395,7 +5569,9 @@ async function startZipImport(file) {
   await paintNow();
 
   try {
+    const dirReadStart = performance.now();
     const entries = await withScreenAwake(() => zipReadDirectory(file));
+    dlog('import:zip:dirRead', { entries: entries.length, ms: Math.round(performance.now() - dirReadStart) });
 
     // Einträge mit unbekanntem Verfahren gleich aussortieren, damit sie nicht
     // erst beim Schreiben scheitern.
@@ -5428,6 +5604,7 @@ async function startZipImport(file) {
 }
 
 async function startFolderImport(fileList) {
+  dlog('import:folder:begin', { files: fileList.length });
   const close = banner('Ordner wird gelesen …', { timeout: 0 });
   await paintNow();
   try {
@@ -5496,16 +5673,19 @@ async function flushImportBatch(batch) {
   const files = batch.files;
   const songs = [...batch.songs];
   const obsolete = batch.obsolete;
+  const bytes = batch.bytes;
   batch.files = [];
   batch.songs = new Set();
   batch.obsolete = [];
   batch.bytes = 0;
+  const start = performance.now();
   await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
     for (const rec of files) fileStore.put(rec);
     for (const song of songs) metaStore.put(song);
     // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
     for (const key of obsolete) fileStore.delete(key);
   });
+  dlog('import:batch:flush', { files: files.length, bytes, ms: Math.round(performance.now() - start) });
   dropSongCache();
 }
 
@@ -5520,6 +5700,7 @@ async function runImport() {
   const chosenTracks = chosenSongs.flatMap((s) => s.tracks.filter((t) => t.checked));
   const totalFiles = chosenTracks.length;
   const totalBytes = chosenTracks.reduce((n, t) => n + (t.size || 0), 0) || 1;
+  dlog('import:run:begin', { totalFiles, totalBytes, songs: chosenSongs.length });
 
   sheetImport.disabled = true;
   sheetProgress.hidden = false;
@@ -5529,7 +5710,14 @@ async function runImport() {
   // Seite dann ein und der Import steht, bis das Handy wieder entsperrt wird.
   let importLock = null;
   if ('wakeLock' in navigator) {
-    importLock = await navigator.wakeLock.request('screen').catch(() => null);
+    importLock = await navigator.wakeLock.request('screen').catch((err) => {
+      dlog('wakelock:denied', { name: err?.name });
+      return null;
+    });
+    if (importLock) {
+      dlog('wakelock:granted');
+      importLock.addEventListener('release', () => dlog('wakelock:released'));
+    }
   }
 
   const report = {
@@ -5640,6 +5828,7 @@ async function runImport() {
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
           console.error('[import]', track.fileName, err);
+          dlog('import:file:fail', { index: done, bytes: track.size || 0, name: err?.name, message: err?.message });
           report.failed.push(`${track.fileName} (nicht lesbar)`);
         }
         done++;
@@ -5693,6 +5882,7 @@ async function runImport() {
     await flushImportBatch(batch);
   } catch (err) {
     console.error('[import] abgebrochen', err);
+    dlog('import:run:abort', { name: err?.name, message: err?.message, songsImported: report.songsImported, done, doneBytes });
     if (err && err.name === 'QuotaExceededError') {
       report.quotaHit = true;
       report.quotaAt = report.songsImported;
@@ -5748,6 +5938,11 @@ async function runImport() {
     banner(`${plural(report.songsImported, 'Song', 'Songs')} importiert.`, { kind: 'ok' });
   }
 
+  dlog('import:run:end', {
+    songsImported: report.songsImported, tracksAdded: report.tracksAdded,
+    tracksReplaced: report.tracksReplaced, failed: report.failed.length,
+    quotaHit: report.quotaHit, doneFiles: done, doneBytes,
+  });
   showView('songs');
 }
 
@@ -6399,6 +6594,7 @@ $('#btn-queue-edit').addEventListener('click', () => {
  * alphabetisch durch die Bibliothek.
  */
 function onPlaybackEnded() {
+  dlog('playback:ended', { repeatMode: settings.repeatMode, hasQueue: !!playQueue });
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
 
@@ -7179,6 +7375,16 @@ window.addEventListener('pagehide', flushNote);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushNote();
 });
+
+// Diagnose: die Page-Lifecycle-Ereignisse zeigen, ob der Browser die Seite
+// im Hintergrund einfriert (friert eine Seite ein, bleiben Timer und
+// laufender Code stehen — das würde erklären, warum die Wiedergabe nach ein
+// paar Sekunden bei gesperrtem Bildschirm abbricht). Nicht jeder Browser
+// kennt diese Ereignisse; wo nicht, bleibt der Aufruf folgenlos.
+document.addEventListener('freeze', () => dlog('page:freeze', { playing: Audio.playing, ctxState: Audio.ctx?.state }));
+document.addEventListener('resume', () => dlog('page:resume', { playing: Audio.playing, ctxState: Audio.ctx?.state }));
+window.addEventListener('pageshow', (e) => dlog('page:pageshow', { fromBfcache: e.persisted }));
+window.addEventListener('pagehide', (e) => dlog('page:pagehide', { toBfcache: e.persisted, playing: Audio.playing }));
 
 /* ---------- Notizen sammeln und ausgeben --------------------------------- */
 
