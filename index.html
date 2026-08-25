@@ -2374,13 +2374,15 @@ const VOICE_ICON = {
 // Poppige Konfetti-Farben je Stimme für die Badges in der Songliste — jede
 // Stimme eigenständig, FULL bewusst im Marken-Magenta, weil es bei jedem
 // Song vorkommt.
+// Dieselben sechs Töne wie bei den Akzentfarben (ACCENT_PRESETS) — Stimmen
+// und Farbauswahl sprechen so dieselbe Sprache.
 const VOICE_COLOR = {
-  FULL:  '#ff3d9a',
-  SOP:   '#33c9dc',
-  ALT:   '#2fbf84',
-  TEN:   '#ffb23f',
-  BASS:  '#8b5cf6',
-  BAR:   '#ff6f61',
+  FULL:  '#F868B0',   // Pink
+  SOP:   '#4ECDC4',   // Türkis
+  ALT:   '#6BCB77',   // Grün
+  TEN:   '#FFD93D',   // Gelb
+  BASS:  '#A78BFA',   // Violett
+  BAR:   '#FF6B6B',   // Koralle
   LEAD:  '#e0a100',
   PIANO: '#5c8dff',
   OTHER: '#8c81a6',
@@ -2901,11 +2903,11 @@ let settings = { ...DEFAULT_SETTINGS };
  * zu müssen.
  */
 const ACCENT_PRESETS = [
+  { name: 'Pink',     hex: '#F868B0' },   // Standard
   { name: 'Koralle',  hex: '#FF6B6B' },
   { name: 'Gelb',     hex: '#FFD93D' },
   { name: 'Türkis',   hex: '#4ECDC4' },
   { name: 'Violett',  hex: '#A78BFA' },
-  { name: 'Pink',     hex: '#F868B0' },
   { name: 'Grün',     hex: '#6BCB77' },
 ];
 
