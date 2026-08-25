@@ -1593,7 +1593,7 @@ input[type="checkbox"] {
 
     <p class="section-title">Titel hinzufügen</p>
     <input class="search-input" id="pl-search" type="search" autocomplete="off"
-           placeholder="Song suchen …" aria-label="Song für die Setliste suchen">
+           placeholder="Song suchen oder Platzhalter hinzufügen …" aria-label="Song für die Setliste suchen">
     <div id="pl-candidates" style="margin-top:10px"></div>
 
     <p class="section-title">Weitergeben</p>
@@ -1839,12 +1839,12 @@ input[type="checkbox"] {
   <section class="view" id="view-playlists">
     <div id="current-setlist-host"></div>
     <div class="card">
-      <h2>Setlisten</h2>
+      <h2>Setliste hinzufügen</h2>
       <div class="row" style="margin-top:14px; gap:8px">
         <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
         <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Aus Datei</button>
-        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Texteingabe</button>
+        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Datei</button>
+        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Text</button>
       </div>
     </div>
     <div id="playlist-list-host"></div>
@@ -7385,7 +7385,7 @@ function starIcon(filled) {
   return `<svg viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.8-6.2 3.8 1.6-7-5.4-4.8 7.1-.7z"/></svg>`;
 }
 
-/** Zeigt die favorisierte Playlist vollständig als „aktuelle Setliste" oben an. */
+/** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
 function renderCurrentSetlist(favorite, songs) {
   const host = $('#current-setlist-host');
   host.textContent = '';
@@ -7398,14 +7398,18 @@ function renderCurrentSetlist(favorite, songs) {
     list.append(el('li', { class: found ? '' : 'muted', text: t }));
   }
 
+  const play = el('button', {
+    class: 'icon-btn', type: 'button', 'aria-label': `„${favorite.name}" abspielen`,
+    onclick: () => startPlaylist(favorite),
+  });
+  play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+
   host.append(el('div', { class: 'card' },
-    el('button', {
-      class: 'list-item', type: 'button', style: 'margin-bottom:0',
-      onclick: () => startPlaylist(favorite),
-    },
+    el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
-        el('p', { class: 'small muted', style: 'margin:0' }, 'Aktuelle Setliste'),
-        el('strong', { text: favorite.name }))),
+        el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
+        el('strong', { text: favorite.name })),
+      play),
     list));
 }
 
