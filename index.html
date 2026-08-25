@@ -221,6 +221,28 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   margin-bottom: 12px;
 }
 
+/* Einstellungsseite: jede Karte startet eingeklappt, siehe
+   initSettingsAccordion() — nur die Überschrift plus Pfeil ist sichtbar,
+   bis man antippt. */
+#view-settings .card h2.card-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 0;
+}
+#view-settings .card h2.card-toggle[aria-expanded="true"] { margin-bottom: 12px; }
+#view-settings .card h2.card-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.card-chevron { flex: 0 0 auto; display: flex; transition: transform .15s ease; }
+.card-chevron svg { width: 16px; height: 16px; }
+#view-settings .card h2.card-toggle[aria-expanded="true"] .card-chevron { transform: rotate(180deg); }
+
 .muted { color: var(--muted); }
 .small { font-size: 0.86rem; }
 .stack > * + * { margin-top: 10px; }
@@ -1944,7 +1966,7 @@ input[type="checkbox"] {
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" style="margin:8px 0 0">
+      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden>
         Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
         nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
       </p>
@@ -1989,15 +2011,18 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2>Speicher</h2>
+      <h2>Hilfe</h2>
       <div class="stack">
-        <div class="row">
-          <span id="storage-text" class="small">wird ermittelt …</span>
-        </div>
-        <div class="meter" id="storage-meter"><i></i></div>
-        <p class="small muted" id="persist-text" style="margin:0"></p>
-        <button class="btn btn--block" id="btn-persist" type="button" hidden>
-          Dauerhafte Speicherung anfordern
+        <p class="small muted" style="margin:0">
+          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
+          Unter „Import“ steht Schritt für Schritt, wie das auf dem iPhone
+          und auf Android geht.
+        </p>
+        <button class="btn btn--block" id="btn-help-import" type="button">
+          Wie bekomme ich Songs in die App?
+        </button>
+        <button class="btn btn--block" id="btn-setup-again" type="button">
+          Einführung noch einmal ansehen
         </button>
       </div>
     </div>
@@ -2014,15 +2039,15 @@ input[type="checkbox"] {
         </p>
         <p class="small" id="backup-age" style="margin:0"></p>
         <button class="btn btn--primary btn--block" id="btn-backup-export" type="button">
-          Sicherung erstellen
+          Backup
         </button>
         <input class="visually-hidden" id="backup-input" type="file" accept=".json,application/json">
         <button class="btn btn--block" id="btn-backup-import" type="button">
-          Sicherung einspielen
+          Restore
         </button>
         <p class="small" id="notes-count" style="margin:8px 0 0"></p>
         <button class="btn btn--block" id="btn-notes-export" type="button">
-          Notizen als Textdatei
+          Alle Notizen drucken
         </button>
       </div>
 
@@ -2059,23 +2084,6 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2>Hilfe</h2>
-      <div class="stack">
-        <p class="small muted" style="margin:0">
-          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
-          Unter „Import“ steht Schritt für Schritt, wie das auf dem iPhone
-          und auf Android geht.
-        </p>
-        <button class="btn btn--block" id="btn-help-import" type="button">
-          Wie bekomme ich Songs in die App?
-        </button>
-        <button class="btn btn--block" id="btn-setup-again" type="button">
-          Einführung noch einmal ansehen
-        </button>
-      </div>
-    </div>
-
-    <div class="card">
       <h2>Über die App</h2>
       <div class="stack small muted">
         <div class="row"><span>Version</span><span id="app-version">–</span></div>
@@ -2085,11 +2093,9 @@ input[type="checkbox"] {
           auf diesem Gerät.
         </p>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Fehlerprotokoll</h2>
-      <p class="small muted" style="margin-top:-4px">
+      <p class="section-title">Fehlerprotokoll</p>
+      <p class="small muted" style="margin-top:0">
         Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim
         Melden eines Problems. Bleibt nur auf diesem Gerät.
       </p>
@@ -2098,10 +2104,8 @@ input[type="checkbox"] {
         <button class="btn" id="btn-errorlog-copy" type="button" style="flex:1">Protokoll kopieren</button>
         <button class="btn" id="btn-errorlog-clear" type="button" style="flex:1">Leeren</button>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Diagnose-Log</h2>
+      <p class="section-title">Diagnose-Log</p>
       <div class="row">
         <span class="small" style="max-width:70%">
           Ausführliches Protokoll für schwer fassbare Fehler aufzeichnen
@@ -2122,6 +2126,20 @@ input[type="checkbox"] {
         <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1">Leeren</button>
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
+    </div>
+
+    <div class="card">
+      <h2>Speicher</h2>
+      <div class="stack">
+        <div class="row">
+          <span id="storage-text" class="small">wird ermittelt …</span>
+        </div>
+        <div class="meter" id="storage-meter"><i></i></div>
+        <p class="small muted" id="persist-text" style="margin:0"></p>
+        <button class="btn btn--block" id="btn-persist" type="button" hidden>
+          Dauerhafte Speicherung anfordern
+        </button>
+      </div>
     </div>
 
   </section>
@@ -4083,7 +4101,52 @@ async function refreshAfterDelete() {
   await renderPlaylists();
 }
 
+/**
+ * Alle Karten der Einstellungsseite als Akkordeon: eingeklappt bis zum
+ * Antippen der Überschrift. Verschiebt dazu einmalig alles nach dem <h2>
+ * in einen eigenen, zunächst verborgenen Container — IDs und bestehende
+ * Event-Listener bleiben davon unberührt, sie hängen ja an denselben Knoten.
+ */
+function initSettingsAccordion() {
+  for (const card of $$('#view-settings > .card')) {
+    if (card.dataset.accordionReady) continue;
+    card.dataset.accordionReady = '1';
+
+    const h2 = card.querySelector('h2');
+    if (!h2) continue;
+
+    const body = el('div', { class: 'card-body' });
+    body.hidden = true;
+    let node = h2.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      body.append(node);
+      node = next;
+    }
+    card.append(body);
+
+    h2.classList.add('card-toggle');
+    h2.tabIndex = 0;
+    h2.setAttribute('role', 'button');
+    h2.setAttribute('aria-expanded', 'false');
+    h2.append(el('span', { class: 'card-chevron', 'aria-hidden': 'true' }));
+    h2.querySelector('.card-chevron').innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+
+    const toggle = () => {
+      const expanded = h2.getAttribute('aria-expanded') === 'true';
+      h2.setAttribute('aria-expanded', String(!expanded));
+      body.hidden = expanded;
+    };
+    h2.addEventListener('click', toggle);
+    h2.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  }
+}
+
 async function renderSettings() {
+  initSettingsAccordion();
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
@@ -4159,6 +4222,7 @@ function renderChannelMode() {
 
 function renderScreenMode() {
   $('#btn-screen-toggle').setAttribute('aria-checked', settings.keepScreenOn ? 'true' : 'false');
+  $('#screen-hint').hidden = !settings.keepScreenOn;
   const note = $('#screen-note');
   // Im Regelfall (Wake Lock verfügbar) sagt der Schalter schon alles Nötige —
   // die Zeile bleibt dann weg, damit die Karte kurz bleibt.
@@ -7113,6 +7177,34 @@ function notesToText(notes) {
     .join('\n\n') + '\n';
 }
 
+/**
+ * Maskiert Text fürs RTF-Textkontrollwort: Sonderzeichen (\, {, }) escapen,
+ * Zeilenumbrüche werden zu \par, alles außerhalb ASCII geht als \uN? raus —
+ * so bleibt die Datei unabhängig von jeder Zeichenkodierung lesbar.
+ */
+function rtfEscapeText(str) {
+  let out = '';
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    const code = str.charCodeAt(i);
+    if (ch === '\\' || ch === '{' || ch === '}') out += '\\' + ch;
+    else if (ch === '\n') out += '\\par\n';
+    else if (code < 0x80) out += ch;
+    else out += `\\u${code > 32767 ? code - 65536 : code}?`;
+  }
+  return out;
+}
+
+/** Songtitel als fette Überschrift, Notiztext darunter — zum Drucken. */
+function notesToRtf(notes) {
+  const body = notes.map((n) => {
+    const heading = rtfEscapeText(n.songTitle);
+    const text = rtfEscapeText(String(n.text).replace(/\s+$/, ''));
+    return `{\\b\\fs28 ${heading}\\par}\\fs22 ${text}\\par\\par`;
+  }).join('');
+  return `{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0 Helvetica;}}\\f0\\fs22 ${body}}`;
+}
+
 async function renderNotesCount() {
   const node = $('#notes-count');
   const btn  = $('#btn-notes-export');
@@ -7136,9 +7228,9 @@ $('#btn-notes-export').addEventListener('click', async () => {
     return;
   }
 
-  const text = notesToText(notes);
-  const fileName = `chor-notizen-${new Date().toISOString().slice(0, 10)}.txt`;
-  const file = new File([text], fileName, { type: 'text/plain' });
+  const text = notesToRtf(notes);
+  const fileName = `chor-notizen-${new Date().toISOString().slice(0, 10)}.rtf`;
+  const file = new File([text], fileName, { type: 'application/rtf' });
 
   if (navigator.canShare?.({ files: [file] })) {
     try {
@@ -7148,7 +7240,7 @@ $('#btn-notes-export').addEventListener('click', async () => {
       if (err?.name === 'AbortError') return;
     }
   }
-  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+  downloadBlob(new Blob([text], { type: 'application/rtf' }), fileName);
 });
 
 /**
