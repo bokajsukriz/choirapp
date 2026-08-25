@@ -4319,6 +4319,8 @@ function mediaErrorToError(mediaError) {
 
 const Audio = {
   el: null,
+  ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
+  channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
   ready: false,
   song: null,
   currentKey: null,      // fileKey der Spur, die gerade in `el` geladen ist
@@ -4420,6 +4422,49 @@ async function audioInit() {
 
   el.addEventListener('error', () => dlog('audio:error', { code: el.error?.code }));
 
+  // Kanal-Matrix für den „Fahrradfahren-Modus" (Spec: nur ein Ohrstöpsel):
+  // eine feste Verdrahtung aus vier Gains, die je nach Einstellung normal
+  // durchreicht, links/rechts tauscht oder zu Mono mischt. Das Umschalten
+  // ändert nur Gain-Werte, keine Verbindungen — knackfrei und jederzeit
+  // möglich.
+  //
+  // Phase-0-Spike (spike-mediaelement.html): ein <audio>-Element behält
+  // seine Mediensitzung auch dann, wenn es zusätzlich durch diese Matrix
+  // läuft — Sperrbildschirm-Steuerung und Hintergrundwiedergabe blieben
+  // erhalten, `ctx.state` stand beim Entsperren auf „running". Eine einzige
+  // Verdrahtung genügt also (Variante A) — kein zweites Element, kein
+  // Moduswechsel-Umbau.
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) throw new Error('Kein AudioContext verfügbar.');
+    const ctx = new Ctx({ latencyHint: 'playback' });
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const gLL = ctx.createGain(); // links  -> links
+    const gLR = ctx.createGain(); // links  -> rechts
+    const gRL = ctx.createGain(); // rechts -> links
+    const gRR = ctx.createGain(); // rechts -> rechts
+    splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
+    splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
+    splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
+    splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
+    merger.connect(ctx.destination);
+    // Erst als letzter Schritt: schlägt nur noch dieser Aufruf fehl, bleiben
+    // Splitter/Gains/Merger folgenlos unverbunden, statt das Element mitten
+    // im Aufbau von seiner normalen Ausgabe abzuschneiden.
+    ctx.createMediaElementSource(el).connect(splitter);
+
+    Audio.ctx = ctx;
+    Audio.channel = { gLL, gLR, gRL, gRR };
+    audioApplyChannelMode(settings.channelMode);
+    dlog('audio:route', { mode: 'matrix' });
+  } catch (err) {
+    // Lieber kein Fahrradmodus als kein Ton: das Element spielt in diesem
+    // Fall einfach direkt, ohne jeden Web-Audio-Kontakt.
+    console.warn('[audio] Kanal-Matrix nicht verfügbar, direkte Ausgabe', err);
+    dlog('audio:route', { mode: 'direct', name: err?.name });
+  }
+
   Audio.ready = true;
   dlog('audio:init:ok');
 }
@@ -4519,6 +4564,11 @@ async function audioPlay() {
     audioSeek(0);
   }
 
+  // Läuft das Element durch die Kanal-Matrix (Variante A), kann der
+  // AudioContext im angehaltenen Zustand starten, bis eine Nutzergeste ihn
+  // freigibt — genau die, die hier gerade läuft.
+  if (Audio.ctx && Audio.ctx.state !== 'running') await Audio.ctx.resume().catch(() => {});
+
   try {
     await Audio.el.play();
   } catch (err) {
@@ -4571,9 +4621,9 @@ function audioSetLoop(loop) {
  * das reine Glückssache. 'mono' mischt beide Kanäle zusammen, 'swap' tauscht
  * links und rechts.
  *
- * Bis Phase 2 (Kanal-Matrix ums <audio>-Element, siehe Arbeitsanweisung) ist
- * `Audio.channel` nicht gesetzt — der Schalter in den Einstellungen bleibt
- * dann ohne hörbare Wirkung.
+ * Steht `Audio.channel` nicht zur Verfügung — die Matrix aus audioInit()
+ * ließ sich nicht aufbauen, siehe dort —, bleibt der Schalter in den
+ * Einstellungen ohne hörbare Wirkung; die Wiedergabe läuft dann direkt.
  */
 function audioApplyChannelMode(mode) {
   const c = Audio.channel;
