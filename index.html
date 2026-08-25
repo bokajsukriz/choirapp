@@ -2088,6 +2088,19 @@ input[type="checkbox"] {
       </div>
     </div>
 
+    <div class="card">
+      <h2>Fehlerprotokoll</h2>
+      <p class="small muted" style="margin-top:-4px">
+        Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim
+        Melden eines Problems. Bleibt nur auf diesem Gerät.
+      </p>
+      <div class="stack small" id="error-log-list"></div>
+      <div style="display:flex; gap:8px; margin-top:12px">
+        <button class="btn" id="btn-errorlog-copy" type="button" style="flex:1">Protokoll kopieren</button>
+        <button class="btn" id="btn-errorlog-clear" type="button" style="flex:1">Leeren</button>
+      </div>
+    </div>
+
   </section>
 </main>
 
@@ -2258,6 +2271,92 @@ function banner(text, opts = {}) {
   bannersHost.append(node);
   if (timeout > 0) timer = setTimeout(close, timeout);
   return close;
+}
+
+/* ==========================================================================
+   FEHLERPROTOKOLL
+
+   „Diese Datei konnte nicht gelesen werden" hilft niemandem beim Melden
+   eines Fehlers — schon gar nicht aus der Ferne, in einer Beta, ohne
+   Entwicklertools. Jeder technische Fehler bekommt hier einen kurzen,
+   stabilen Code (z. B. „IMPORT-ZIP") und wird mit Name/Meldung des
+   Browsers auf einem Gerät protokolliert, das niemand außer der
+   testenden Person je sieht.
+   ========================================================================== */
+
+const ERROR_LOG_KEY = 'bvg-error-log';
+const MAX_ERROR_LOG = 20;
+
+function loadErrorLog() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ERROR_LOG_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+let errorLog = loadErrorLog();
+
+function logAppError(code, err) {
+  const entry = {
+    code,
+    time: new Date().toISOString(),
+    name: err?.name || '',
+    message: err?.message || (err ? String(err) : ''),
+  };
+  errorLog = [entry, ...errorLog].slice(0, MAX_ERROR_LOG);
+  try { localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(errorLog)); } catch { /* z.B. privater Modus */ }
+  console.error(`[${code}]`, err);
+  return entry;
+}
+
+/**
+ * Kurzer Zusatz für Banner: „ (Code IMPORT-ZIP — RangeError: Invalid …)".
+ * Steht die technische Meldung schon wortgleich im verständlichen Text (z. B.
+ * bei ZipError, dessen Meldung selbst schon nutzerfreundlich ist), bleibt nur
+ * der Code übrig — sonst läse man denselben Satz zweimal.
+ */
+function errDetail(code, text, err) {
+  const tech = [err?.name, err?.message].filter(Boolean).join(': ');
+  if (!tech || (err?.message && text.includes(err.message))) return ` (Code ${code})`;
+  return ` (Code ${code} — ${tech})`;
+}
+
+/**
+ * Fehlerbanner, das den technischen Fehler zugleich ins Protokoll schreibt.
+ * `text` bleibt der verständliche Satz, der Code+Original werden angehängt —
+ * so lässt sich ein Fehler melden, ohne die Konsole zu öffnen.
+ */
+function bannerError(text, code, err, opts = {}) {
+  logAppError(code, err);
+  return banner(text + errDetail(code, text, err), { ...opts, kind: 'error' });
+}
+
+function errorLogText() {
+  if (!errorLog.length) return 'Keine Fehler aufgezeichnet.';
+  return errorLog.map((e) => {
+    const time = new Date(e.time).toLocaleString('de-DE');
+    const tech = [e.name, e.message].filter(Boolean).join(': ');
+    return `${time} · ${e.code}${tech ? ` · ${tech}` : ''}`;
+  }).join('\n');
+}
+
+function renderErrorLog() {
+  const host = $('#error-log-list');
+  if (!host) return;
+  host.textContent = '';
+  if (!errorLog.length) {
+    host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Keine Fehler aufgezeichnet.' }));
+    return;
+  }
+  for (const e of errorLog) {
+    const time = new Date(e.time).toLocaleString('de-DE');
+    const tech = [e.name, e.message].filter(Boolean).join(': ');
+    host.append(el('div', { style: 'padding:6px 0; border-top: 1px solid var(--pill-line)' },
+      el('p', { class: 'small', style: 'margin:0; font-weight:600', text: `${time} · ${e.code}` }),
+      el('p', { class: 'small muted', style: 'margin:2px 0 0; overflow-wrap: anywhere', text: tech || '–' })));
+  }
 }
 
 const overlay   = $('#overlay');
@@ -2582,8 +2681,7 @@ async function saveSettings(patch) {
   try {
     await DB.metaPut(settings);
   } catch (err) {
-    banner('Die Einstellung konnte nicht gespeichert werden.', { kind: 'error' });
-    console.error(err);
+    bannerError('Die Einstellung konnte nicht gespeichert werden.', 'SETTINGS-SAVE', err);
   }
   return settings;
 }
@@ -3820,8 +3918,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
     banner(`${plural(songs.length, 'Song', 'Songs')} entfernt, ${fmtBytes(bytes)} frei.`, { kind: 'ok' });
     await refreshAfterDelete();
   } catch (err) {
-    console.error(err);
-    banner('Die Aufnahmen konnten nicht vollständig gelöscht werden.', { kind: 'error' });
+    bannerError('Die Aufnahmen konnten nicht vollständig gelöscht werden.', 'AUDIO-DROP', err);
   }
 });
 
@@ -3842,10 +3939,30 @@ async function renderSettings() {
   renderBackupAge();
   await renderNotesCount();
   await renderStorageManager();
+  renderErrorLog();
   $('#offline-state').textContent = navigator.serviceWorker?.controller
     ? 'ja'
     : 'wird eingerichtet …';
 }
+
+$('#btn-errorlog-copy').addEventListener('click', async () => {
+  const text = errorLogText();
+  try {
+    await navigator.clipboard.writeText(text);
+    banner('Protokoll in die Zwischenablage kopiert.', { kind: 'ok' });
+  } catch {
+    await promptDialog({
+      title: 'Fehlerprotokoll', text: 'Text markieren und kopieren.',
+      value: text, okLabel: 'Fertig', multiline: true,
+    });
+  }
+});
+
+$('#btn-errorlog-clear').addEventListener('click', async () => {
+  errorLog = [];
+  try { localStorage.removeItem(ERROR_LOG_KEY); } catch { /* z.B. privater Modus */ }
+  renderErrorLog();
+});
 
 function renderChannelMode() {
   for (const btn of $$('#channel-mode .preset')) {
@@ -3961,8 +4078,7 @@ $('#btn-wipe').addEventListener('click', async () => {
     await renderSongs();
     await renderPlaylists();
   } catch (err) {
-    console.error(err);
-    banner('Die Daten konnten nicht vollständig gelöscht werden.', { kind: 'error' });
+    bannerError('Die Daten konnten nicht vollständig gelöscht werden.', 'DATA-WIPE', err);
   }
 });
 
@@ -5307,8 +5423,7 @@ async function startZipImport(file) {
     await openPicker({ songs, notes, skipped, source: { kind: 'zip', file }, foundFiles, foundBytes });
   } catch (err) {
     close();
-    console.error(err);
-    banner(zipReadFailureMessage(err), { kind: 'error' });
+    bannerError(zipReadFailureMessage(err), 'IMPORT-ZIP', err);
   }
 }
 
@@ -5341,8 +5456,7 @@ async function startFolderImport(fileList) {
     await openPicker({ songs, notes, skipped: [], source: { kind: 'folder' }, foundFiles, foundBytes });
   } catch (err) {
     close();
-    console.error(err);
-    banner('Der Ordner konnte nicht gelesen werden.', { kind: 'error' });
+    bannerError('Der Ordner konnte nicht gelesen werden.', 'IMPORT-FOLDER', err);
   }
 }
 
@@ -5794,8 +5908,7 @@ async function registerServiceWorker() {
       r.active?.postMessage({ type: 'GET_VERSION' });
     });
   } catch (err) {
-    console.error('[sw] Registrierung fehlgeschlagen', err);
-    banner('Der Offline-Betrieb konnte nicht eingerichtet werden.', { kind: 'error' });
+    bannerError('Der Offline-Betrieb konnte nicht eingerichtet werden.', 'OFFLINE-SETUP', err);
   }
 }
 
@@ -6060,8 +6173,7 @@ async function openPlayer(songId) {
   try {
     await audioInit();
   } catch (err) {
-    console.error(err);
-    banner('Die Audiowiedergabe konnte nicht gestartet werden.', { kind: 'error' });
+    bannerError('Die Audiowiedergabe konnte nicht gestartet werden.', 'AUDIO-INIT', err);
     return;
   }
   if (token !== openPlayerToken) return;
@@ -7024,9 +7136,8 @@ async function saveNote({ announce = false } = {}) {
     if (playerNote === note) setNoteState('saved');
     if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
   } catch (err) {
-    console.error('[notiz]', err);
     if (playerNote === note) setNoteState('dirty');
-    banner('Die Notiz konnte nicht gespeichert werden.', { kind: 'error' });
+    bannerError('Die Notiz konnte nicht gespeichert werden.', 'NOTE-SAVE', err);
   }
 }
 
@@ -7114,8 +7225,7 @@ $('#btn-notes-export').addEventListener('click', async () => {
   try {
     notes = await collectNotes();
   } catch (err) {
-    console.error(err);
-    banner('Die Notizen konnten nicht gelesen werden.', { kind: 'error' });
+    bannerError('Die Notizen konnten nicht gelesen werden.', 'NOTES-READ', err);
     return;
   }
   if (!notes.length) {
@@ -7329,8 +7439,7 @@ $('#pl-input').addEventListener('change', async (e) => {
     const text = await readTextBlob(file);
     await createPlaylistFromText(text, file.name.replace(/\.txt$/i, ''));
   } catch (err) {
-    console.error(err);
-    banner('Diese Datei konnte nicht gelesen werden.', { kind: 'error' });
+    bannerError('Diese Datei konnte nicht gelesen werden.', 'IMPORT-TEXT', err);
   }
 });
 
@@ -7925,8 +8034,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
       + `${plural(data.notes.length, 'Notiz', 'Notizen')}, `
       + `${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
   } catch (err) {
-    console.error(err);
-    banner('Die Sicherung konnte nicht erstellt werden.', { kind: 'error' });
+    bannerError('Die Sicherung konnte nicht erstellt werden.', 'BACKUP-EXPORT', err);
   }
 });
 
@@ -7940,8 +8048,8 @@ $('#backup-input').addEventListener('change', async (e) => {
   let data;
   try {
     data = JSON.parse(await readTextBlob(file));
-  } catch {
-    banner('Diese Datei ist keine gültige Sicherung.', { kind: 'error' });
+  } catch (err) {
+    bannerError('Diese Datei ist keine gültige Sicherung.', 'BACKUP-IMPORT', err);
     return;
   }
   if (!data || data.format !== BACKUP_FORMAT) {
@@ -8571,14 +8679,13 @@ async function closeOnboarding() {
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
-    console.error('[unhandled]', e.reason);
+    bannerError('Unerwarteter Fehler.', 'UNHANDLED', e.reason);
   });
 
   try {
     await openDB();
   } catch (err) {
-    console.error(err);
-    banner('Die Datenbank konnte nicht geöffnet werden. Im privaten Modus mancher Browser ist das Speichern gesperrt.', { kind: 'error' });
+    bannerError('Die Datenbank konnte nicht geöffnet werden. Im privaten Modus mancher Browser ist das Speichern gesperrt.', 'DB-OPEN', err);
   }
 
   await loadSettings();
