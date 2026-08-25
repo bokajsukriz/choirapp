@@ -2970,16 +2970,21 @@ async function zipReadDirectory(file) {
   const tailStart = file.size - tailLen;
   const tail = await sliceView(file, tailStart, file.size);
 
-  // Manche Browser liefern beim Lesen so weit hinten in einer sehr großen
-  // Datei (beobachtet oberhalb von 2 GB) weniger Bytes als angefordert,
-  // ohne einen Fehler zu werfen — die Datei sieht dann fälschlich wie
-  // beschädigt aus. Das lässt sich hier klar von einer echten Beschädigung
-  // unterscheiden und dem Browser statt der Datei anlasten.
+  // Mit Nutzer-Rückmeldungen abgeglichen: Firefox für Android liest so weit
+  // hinten in einer sehr großen Datei (beobachtet oberhalb von 2 GB)
+  // zuverlässig falsch — mal zu wenig Bytes, mal die volle Länge, aber ohne
+  // gültiges ZIP-Ende darin. Derselbe (dort sogar größere) Ordner ließ sich
+  // in Chrome auf demselben Gerät anschließend problemlos importieren. Ab
+  // dieser Größe ist die konkrete Browser-Empfehlung darum gerechtfertigt,
+  // statt die Datei fälschlich als beschädigt hinzustellen.
+  const tooBigMessage = () =>
+    `Diese Datei ist mit ${fmtBytes(file.size)} zu groß für diesen Browser (beobachtet oberhalb von etwa 2 GB). `
+    + 'Bitte in einem anderen Browser importieren (z. B. Chrome) oder den Ordner in kleinere Teile aufteilen.';
+
   if (tail.byteLength !== tailLen) {
     dlog('import:zip:tailShort', { requested: tailLen, got: tail.byteLength, fileSize: file.size });
     throw new ZipError(file.size > 2 ** 31
-      ? `Diese Datei ist mit ${fmtBytes(file.size)} zu groß für diesen Browser (Grenze liegt bei etwa 2 GB). `
-        + 'Bitte in einem anderen Browser importieren (z. B. Chrome) oder den Ordner in kleinere Teile aufteilen.'
+      ? tooBigMessage()
       : 'Diese Datei konnte nicht zu Ende gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
   }
 
@@ -2999,7 +3004,9 @@ async function zipReadDirectory(file) {
       tailHex: hexBytes(tail, tail.byteLength - 16, 16),
       pkCount: pk.count, pkFirst: pk.first, pkLast: pk.last,
     });
-    throw new ZipError('Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
+    throw new ZipError(file.size > 2 ** 31
+      ? tooBigMessage()
+      : 'Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
   }
 
   let total  = tail.getUint16(eocdRel + 10, true);
