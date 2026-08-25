@@ -2939,11 +2939,25 @@ async function zipReadDirectory(file) {
   // Der EOCD-Record steht am Dateiende, kann aber bis zu 64 KB Kommentar
   // hinter sich haben. 66 KB abdecken genügt für jedes gültige Archiv.
   const tailLen = Math.min(file.size, 66 * 1024);
-  const tail = await sliceView(file, file.size - tailLen, file.size);
   const tailStart = file.size - tailLen;
+  const tail = await sliceView(file, tailStart, file.size);
+
+  // Manche Browser liefern beim Lesen so weit hinten in einer sehr großen
+  // Datei (beobachtet oberhalb von 2 GB) weniger Bytes als angefordert,
+  // ohne einen Fehler zu werfen — die Datei sieht dann fälschlich wie
+  // beschädigt aus. Das lässt sich hier klar von einer echten Beschädigung
+  // unterscheiden und dem Browser statt der Datei anlasten.
+  if (tail.byteLength !== tailLen) {
+    dlog('import:zip:tailShort', { requested: tailLen, got: tail.byteLength, fileSize: file.size });
+    throw new ZipError(file.size > 2 ** 31
+      ? `Diese Datei ist mit ${fmtBytes(file.size)} zu groß für diesen Browser (Grenze liegt bei etwa 2 GB). `
+        + 'Bitte in einem anderen Browser importieren (z. B. Chrome) oder den Ordner in kleinere Teile aufteilen.'
+      : 'Diese Datei konnte nicht zu Ende gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
+  }
 
   const eocdRel = findSigBackwards(tail, SIG_EOCD);
   if (eocdRel < 0) {
+    dlog('import:zip:eocdMissing', { tailLen, fileSize: file.size });
     throw new ZipError('Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
   }
 
