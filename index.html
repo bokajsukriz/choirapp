@@ -4923,9 +4923,9 @@ function selectionStats() {
 
 function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
 
-async function updateSheetSummary() {
+function updateSheetSummary() {
   const s = selectionStats();
-  const info = await storageInfo();
+  const info = pick.storage;
   const free = info ? Math.max(0, info.quota - info.usage) : null;
 
   sheetSummary.textContent = free === null
@@ -5147,6 +5147,12 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
   pick = {
     songs, notes, skipped, source, groups, chosenVersion,
     preset: settings.defaultImportScope || 'mine',
+    // Einmal beim Öffnen geholt statt bei jedem Häkchen neu: der freie
+    // Speicher ändert sich nicht dadurch, dass jemand Auswahlkästchen tippt,
+    // und navigator.storage.estimate() ist auf manchen Geräten spürbar
+    // langsam — bei einem großen Archiv mit vielen Spuren würde sonst jeder
+    // einzelne Klick ruckeln.
+    storage: await storageInfo(),
   };
 
   sheetFound.textContent =
