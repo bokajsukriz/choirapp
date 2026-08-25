@@ -2894,6 +2894,15 @@ function findSigBackwards(view, sig) {
   return -1;
 }
 
+/** `len` Bytes ab `offset` als Hex-String — reine Struktur, kein Inhalt. */
+function hexBytes(view, offset, len) {
+  const start = Math.max(0, offset);
+  const end = Math.min(view.byteLength, start + len);
+  let out = '';
+  for (let i = start; i < end; i++) out += view.getUint8(i).toString(16).padStart(2, '0');
+  return out;
+}
+
 function u64(view, offset) {
   const value = view.getBigUint64(offset, true);
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -2957,7 +2966,18 @@ async function zipReadDirectory(file) {
 
   const eocdRel = findSigBackwards(tail, SIG_EOCD);
   if (eocdRel < 0) {
-    dlog('import:zip:eocdMissing', { tailLen, fileSize: file.size });
+    // Weder zu kurz gelesen noch (per Definition der ZIP-Kommentarlänge,
+    // maximal 64 KB) zu wenig abgedeckt — trotzdem kein gültiges Dateiende
+    // gefunden. Die letzten/ersten Bytes des gelesenen Bereichs als Hex
+    // zeigen, ob dort verlässlich Nullen (nicht zugewiesener Bereich),
+    // erkennbare, aber falsch positionierte ZIP-Bytes oder echter
+    // Zufallsschrott stehen — das grenzt eine falsch berechnete Leseposition
+    // von einer tatsächlich unvollständigen Datei ein.
+    dlog('import:zip:eocdMissing', {
+      tailLen, fileSize: file.size,
+      headHex: hexBytes(tail, 0, 16),
+      tailHex: hexBytes(tail, tail.byteLength - 16, 16),
+    });
     throw new ZipError('Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
   }
 
@@ -4545,6 +4565,13 @@ const Audio = {
   onLoadingChange: null,
 };
 
+// Referenzpunkt für die Aussetzer-Erkennung im Diagnose-Log (Echtzeit +
+// Position beim letzten Messpunkt) — wird bei jedem echten Start/Sprung
+// zurückgesetzt (audioPlay, audioSeek). Bliebe er ab audioInit() stehen,
+// würde die Zeit bis zum ersten tatsächlichen Abspielen (die z. B. ein
+// vorheriger Import-Versuch verlängert) fälschlich als Aussetzer gelten.
+let lastPosLog = { wall: performance.now(), pos: 0 };
+
 async function audioInit() {
   if (Audio.ready) return;
 
@@ -4584,15 +4611,6 @@ async function audioInit() {
   merger.connect(ctx.destination);
   Audio.channel = { gLL, gLR, gRL, gRR };
   audioApplyChannelMode(settings.channelMode);
-
-  // Letzter im Diagnose-Log protokollierter Messpunkt — nach Echtzeit, nicht
-  // nach Wiedergabeposition getaktet: nur so lässt sich ein Aussetzer
-  // überhaupt erkennen. Ein Takt nach Position (z.B. „alle 5 s Position")
-  // würde einen mehrsekündigen Stillstand einfach in denselben Eimer wie
-  // normale Wiedergabe stecken — beides sieht am Ende „5 Sekunden weiter"
-  // aus, egal ob das 5 echte Sekunden oder 10 mit einer Pause dazwischen
-  // gedauert hat.
-  let lastPosLog = { wall: performance.now(), pos: 0 };
 
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
@@ -4948,6 +4966,7 @@ async function audioPlay() {
   Audio.playing = true;
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   dlog('audio:play');
+  lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
 }
 
@@ -4965,6 +4984,7 @@ function audioSeek(seconds) {
   const s = Math.max(0, Math.min(seconds, Audio.duration || 0));
   Audio.position = s;
   Audio.node?.port.postMessage({ type: 'seek', seconds: s });
+  lastPosLog = { wall: performance.now(), pos: s };
   return s;
 }
 
