@@ -4522,6 +4522,16 @@ async function audioLoadTrackNow(track) {
     Audio.blobUrl = url;
     Audio.currentKey = track.fileKey;
 
+    // Tempo und Tonhöhenerhalt gelten dem Element, nicht der Quelle — nach
+    // Spec bleiben sie über einen Ladevorgang hinweg erhalten. Sicherheits-
+    // halber trotzdem erneut gesetzt: manche WebKit-Stände haben das in der
+    // Vergangenheit beim Laden zurückgesetzt, und ein leise auf 1× gefallenes
+    // Tempo wäre in der Auswahlbox nicht zu erkennen.
+    el.playbackRate = Audio.rate;
+    el.preservesPitch = true;
+    el.webkitPreservesPitch = true;
+    el.mozPreservesPitch = true;
+
     // Die Dauer wird bei jedem Laden aktualisiert. Nur so lässt sich später
     // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
     // Loops verschoben sein könnten.
@@ -4564,17 +4574,23 @@ async function audioPlay() {
     audioSeek(0);
   }
 
-  // Läuft das Element durch die Kanal-Matrix (Variante A), kann der
-  // AudioContext im angehaltenen Zustand starten, bis eine Nutzergeste ihn
-  // freigibt — genau die, die hier gerade läuft.
-  if (Audio.ctx && Audio.ctx.state !== 'running') await Audio.ctx.resume().catch(() => {});
-
+  // el.play() zuerst und ohne vorheriges await: Safari bindet die Erlaubnis
+  // zum Abspielen an die Nutzergeste, die audioPlay() gerade auslöst, und
+  // die verfällt, sobald davor noch auf irgendetwas anderes gewartet wird.
   try {
     await Audio.el.play();
   } catch (err) {
     dlog('audio:play:fail', { name: err?.name });
     bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', err);
     return;
+  }
+
+  // Läuft das Element durch die Kanal-Matrix (Variante A), kann der
+  // AudioContext im angehaltenen Zustand starten, bis eine Nutzergeste ihn
+  // freigibt. Erst jetzt anstoßen, nicht blockierend: Ton setzt notfalls ein,
+  // sobald resume() durch ist, statt play() selbst zu verzögern.
+  if (Audio.ctx && Audio.ctx.state !== 'running') {
+    Audio.ctx.resume().catch((err) => dlog('audio:ctxresume:fail', { name: err?.name }));
   }
 
   Audio.playing = true;
@@ -4696,9 +4712,22 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /** Gibt die geladene Spur frei — beim Verlassen des Players. */
-function audioReset() {
+async function audioReset() {
   if (!Audio.ready) return;
   audioPause();
+
+  // Läuft gerade ein Ladevorgang, erst zu Ende kommen lassen. Ein direktes
+  // el.load() hier würde ihn zwar abbrechen, aber weder `loadedmetadata`
+  // noch `error` feuert dafür noch — die darauf wartende Promise in
+  // audioLoadTrackNow bliebe für immer offen, der Mutex für immer belegt,
+  // und jeder künftige Stimmwechsel würde auf ewig hängen.
+  const resetToken = openPlayerToken;
+  if (audioLoadMutex) await audioLoadMutex.catch(() => {});
+  // Inzwischen wurde doch schon ein neuer Song geöffnet (schneller
+  // Doppel-Tipp: schließen, sofort einen anderen Song öffnen) — dessen
+  // gerade geladene Spur gehört nicht mehr uns, nichts mehr anfassen.
+  if (resetToken !== openPlayerToken) return;
+
   if (Audio.blobUrl) { URL.revokeObjectURL(Audio.blobUrl); Audio.blobUrl = null; }
   Audio.el.removeAttribute('src');
   Audio.el.load();
@@ -5877,12 +5906,16 @@ async function selectTrack(track, userChoice = false) {
   try {
     await audioLoadTrack(track);
   } catch (err) {
-    // Inzwischen wurde eine andere Stimme oder ein anderer Song gewählt —
-    // dann gehört der Fehler nicht mehr zur aktuellen Auswahl.
-    if (token === loadToken) markBroken(track, err);
+    // Inzwischen wurde eine andere Stimme oder ein anderer Song gewählt, oder
+    // der Player wurde ganz geschlossen — dann gehört der Fehler nicht mehr
+    // zur aktuellen Auswahl.
+    if (playerSong && token === loadToken) markBroken(track, err);
     return;
   }
-  if (token !== loadToken) return;   // inzwischen wurde eine andere Stimme gewählt
+  // playerSong: der Player kann während des Ladens geschlossen worden sein
+  // (closePlayer setzt es auf null, ohne loadToken anzufassen) — dann darf
+  // hier nicht plötzlich wieder Ton losgehen.
+  if (!playerSong || token !== loadToken) return;
 
   audioSeek(pos);
   if (wasPlaying) await audioPlay();
