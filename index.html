@@ -2620,13 +2620,6 @@ async function fileRecord(key, blob, name) {
   return { key, data: await readArrayBuffer(blob), size: blob.size, name };
 }
 
-/** Bytes eines Dateidatensatzes. Ältere Datensätze halten noch einen Blob. */
-async function recordBytes(rec) {
-  if (rec.data) return rec.data;
-  if (rec.blob) return await rec.blob.arrayBuffer();
-  throw new Error('Der Datensatz ist leer.');
-}
-
 /** Dateidatensatz als Blob — für alles, was das System öffnen oder teilen soll. */
 function recordBlob(rec, type) {
   if (rec.data) return new Blob([rec.data], { type });
@@ -4278,315 +4271,66 @@ $('#btn-wipe').addEventListener('click', async () => {
 });
 
 /* ==========================================================================
-   AUDIO — Wiedergabe über einen eigenen AudioWorklet
+   AUDIO — Wiedergabe über ein natives <audio>-Element
 
-   Warum ein Worklet und keine AudioBufferSourceNodes: alle Spuren eines Songs
-   werden von *einem* Prozessor aus derselben Leseposition gemischt. Damit sind
-   sie per Konstruktion exakt synchron, der Stimmenwechsel ist eine reine
-   Lautstärkeänderung, und Loops springen sample-genau.
+   Die Wiedergabe läuft über ein natives <audio>-Element statt über einen
+   AudioWorklet. Grund: Android vergibt Audio-Fokus und legt eine
+   Mediensitzung nur für hörbare Medienelemente an. Reine Web-Audio-Ausgabe
+   wurde beim Sperren des Bildschirms nach wenigen Sekunden beendet und
+   erschien nie auf dem Sperrbildschirm. Nebeneffekt: kein Vorab-Dekodieren
+   mehr, dadurch sofortiger Start und ein Bruchteil des Speicherbedarfs.
 
-   Das Tempo wird über Overlap-Add mit Anschluss-Suche (WSOLA) gedehnt, damit
-   die Tonhöhe erhalten bleibt — mit `playbackRate` einer BufferSource würde
-   0,75× das Stück um fünf Halbtöne nach unten ziehen und wäre zum Üben
-   unbrauchbar. Die Anschlussstelle wird einmal auf der hörbaren Spur gesucht
-   und für alle Spuren gleich angewandt, sonst liefen sie auseinander.
+   Die Stimmwahl ist exklusiv (siehe selectTrack) — es läuft immer genau eine
+   Spur. Ein Stimmwechsel wechselt deshalb schlicht die `src` und stellt die
+   gemerkte Position wieder her, statt Lautstärken umzuschalten. Das kostet
+   je nach Gerät 100–300 ms Lücke — ein bewusst akzeptierter Rückschritt
+   gegenüber dem gleichzeitig dekodierten Worklet-Ansatz.
+
+   Das Tempo (1×, 0,8×, 0,6×) übernimmt `playbackRate` mit
+   `preservesPitch = true` nativ — der bisherige WSOLA-Code im Worklet wird
+   dafür nicht mehr gebraucht.
    ========================================================================== */
-
-const WORKLET_SRC = `
-'use strict';
-
-// 2048 Samples sind bei 44,1 kHz rund 46 ms: lang genug für tiefe Männer-
-// stimmen, kurz genug, dass Einsätze nicht verschmieren.
-const FRAME = 2048;
-const HOP_OUT = FRAME >> 1;
-const SEARCH = 300;        // Suchbereich für die Anschlussstelle (Samples)
-const SEARCH_STEP = 4;
-const CORR_LEN = 256;
-
-class ChoirProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.tracks = new Map();
-    this.win = new Float32Array(FRAME);
-    for (let i = 0; i < FRAME; i++) {
-      this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / FRAME);
-    }
-    this.pos = 0;            // nominelle Leseposition (Samples, driftfrei)
-    this.windowPos = 0;      // tatsächliche Fensterposition (WSOLA)
-    this.playing = false;
-    this.rate = 1;
-    this.loop = null;
-    this.total = 0;
-    this.queue = [];
-    this.qOff = 0;
-    this.first = true;
-    this.sinceReport = 0;
-    this.gainStep = 1 / (0.015 * sampleRate);   // 15-ms-Rampe
-    this.port.onmessage = (e) => this.onMessage(e.data);
-  }
-
-  onMessage(m) {
-    switch (m.type) {
-      case 'load': {
-        const ch0 = m.ch[0];
-        const ch1 = m.ch.length > 1 ? m.ch[1] : m.ch[0];
-        this.tracks.set(m.id, { ch0: ch0, ch1: ch1, frames: m.frames,
-                                gain: 0, target: m.gain || 0,
-                                accL: new Float32Array(FRAME),
-                                accR: new Float32Array(FRAME) });
-        this.recalcTotal();
-        break;
-      }
-      case 'unload':
-        this.tracks.delete(m.id);
-        this.recalcTotal();
-        break;
-      case 'gain': {
-        const t = this.tracks.get(m.id);
-        if (t) t.target = m.value;
-        break;
-      }
-      case 'play':
-        this.playing = true;
-        break;
-      case 'pause':
-        this.playing = false;
-        this.report(true);
-        break;
-      case 'seek':
-        this.seek(m.seconds * sampleRate);
-        break;
-      case 'rate':
-        this.rate = m.value;
-        break;
-      case 'loop':
-        this.loop = m.loop
-          ? { start: m.loop.start * sampleRate, end: m.loop.end * sampleRate }
-          : null;
-        break;
-    }
-  }
-
-  recalcTotal() {
-    let max = 0;
-    for (const t of this.tracks.values()) if (t.frames > max) max = t.frames;
-    this.total = max;
-    this.port.postMessage({ type: 'total', seconds: max / sampleRate });
-  }
-
-  seek(samples) {
-    this.pos = Math.max(0, Math.min(samples, this.total));
-    this.windowPos = this.pos;
-    this.queue.length = 0;
-    this.qOff = 0;
-    this.first = true;
-    for (const t of this.tracks.values()) { t.accL.fill(0); t.accR.fill(0); }
-    this.report(true);
-  }
-
-  /** Spur, auf der die Anschlussstelle gesucht wird: die lauteste hörbare. */
-  refTrack() {
-    let best = null, bestGain = -1;
-    for (const t of this.tracks.values()) {
-      const g = Math.max(t.gain, t.target);
-      if (g > bestGain) { bestGain = g; best = t; }
-    }
-    return best;
-  }
-
-  /** Beste Anschlussstelle nahe der Zielposition (Kreuzkorrelation). */
-  findBest(target) {
-    const t = this.refTrack();
-    if (!t) return target;
-    const ref = this.windowPos + HOP_OUT;
-    if (ref + CORR_LEN >= t.frames) return target;
-
-    let bestPos = target, bestScore = -Infinity;
-    for (let d = -SEARCH; d <= SEARCH; d += SEARCH_STEP) {
-      const p = target + d;
-      if (p < 0 || p + CORR_LEN >= t.frames) continue;
-      let s = 0;
-      for (let i = 0; i < CORR_LEN; i += 2) s += t.ch0[ref + i] * t.ch0[p + i];
-      if (s > bestScore) { bestScore = s; bestPos = p; }
-    }
-    return bestPos;
-  }
-
-  /** Nächste Fensterposition bestimmen (inklusive Loop-Rücksprung). */
-  nextPos() {
-    if (this.first) {
-      this.first = false;
-      this.windowPos = Math.floor(this.pos);
-      return this.windowPos;
-    }
-    const hopIn = HOP_OUT * this.rate;
-    this.pos += hopIn;
-
-    // Loop: der Rücksprung wird nicht hart geschnitten — das folgende Fenster
-    // blendet über das ausklingende, das ergibt einen weichen Übergang.
-    if (this.loop && this.pos >= this.loop.end) {
-      this.pos = this.loop.start + (this.pos - this.loop.end);
-      this.windowPos = Math.floor(this.pos);
-      return this.windowPos;
-    }
-
-    const target = Math.floor(this.pos);
-    this.windowPos = this.rate === 1 ? target : this.findBest(target);
-    return this.windowPos;
-  }
-
-  renderHop() {
-    if (!this.loop && this.pos >= this.total) {
-      this.playing = false;
-      this.port.postMessage({ type: 'ended' });
-      return;
-    }
-    const src = this.nextPos();
-    const outL = new Float32Array(HOP_OUT);
-    const outR = new Float32Array(HOP_OUT);
-
-    for (const t of this.tracks.values()) {
-      // Fenster auf den Akkumulator addieren
-      const n = t.frames;
-      for (let i = 0; i < FRAME; i++) {
-        const p = src + i;
-        if (p < 0 || p >= n) continue;
-        const w = this.win[i];
-        t.accL[i] += t.ch0[p] * w;
-        t.accR[i] += t.ch1[p] * w;
-      }
-      // fertige Samples mit gleitendem Gain ausmischen
-      let g = t.gain;
-      const tg = t.target;
-      const step = this.gainStep;
-      for (let i = 0; i < HOP_OUT; i++) {
-        if (g < tg) g = Math.min(tg, g + step);
-        else if (g > tg) g = Math.max(tg, g - step);
-        if (g !== 0) {
-          const f = g / 32768;
-          outL[i] += t.accL[i] * f;
-          outR[i] += t.accR[i] * f;
-        }
-      }
-      t.gain = g;
-      // Akkumulator um einen Hop weiterschieben
-      t.accL.copyWithin(0, HOP_OUT);
-      t.accL.fill(0, FRAME - HOP_OUT);
-      t.accR.copyWithin(0, HOP_OUT);
-      t.accR.fill(0, FRAME - HOP_OUT);
-    }
-
-    this.queue.push({ l: outL, r: outR });
-  }
-
-  report(force) {
-    this.port.postMessage({ type: 'pos', seconds: this.pos / sampleRate,
-                            playing: this.playing });
-    if (force) this.sinceReport = 0;
-  }
-
-  process(inputs, outputs) {
-    const out = outputs[0];
-    const L = out[0];
-    const R = out.length > 1 ? out[1] : null;
-    const n = L.length;
-
-    if (!this.playing || this.tracks.size === 0) {
-      L.fill(0);
-      if (R) R.fill(0);
-      return true;
-    }
-
-    let filled = 0;
-    while (filled < n) {
-      if (!this.queue.length) this.renderHop();
-      if (!this.queue.length) {                 // Ende erreicht
-        L.fill(0, filled);
-        if (R) R.fill(0, filled);
-        break;
-      }
-      const b = this.queue[0];
-      const take = Math.min(b.l.length - this.qOff, n - filled);
-      for (let i = 0; i < take; i++) {
-        L[filled + i] = b.l[this.qOff + i];
-        if (R) R[filled + i] = b.r[this.qOff + i];
-      }
-      filled += take;
-      this.qOff += take;
-      if (this.qOff >= b.l.length) { this.queue.shift(); this.qOff = 0; }
-    }
-
-    this.sinceReport += n;
-    if (this.sinceReport >= 4096) { this.sinceReport = 0; this.report(false); }
-    return true;
-  }
-}
-
-registerProcessor('choir', ChoirProcessor);
-`;
-
-/**
- * Erzeugt eine kurze stille WAV-Datei als Blob-URL.
- *
- * iOS blendet die Sperrbildschirm-Steuerung nur ein und lässt den Ton bei
- * gesperrtem Bildschirm nur weiterlaufen, wenn ein <audio>-Element aktiv ist.
- * Reines Web Audio genügt dafür nicht. Deshalb läuft parallel diese stille
- * Schleife — sie erzeugt keinen hörbaren Ton und lädt nichts aus dem Netz.
- */
-function silentLoopURL() {
-  const sr = 8000, secs = 1, n = sr * secs;
-  const buf = new ArrayBuffer(44 + n);
-  const v = new DataView(buf);
-  const ascii = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-  ascii(0, 'RIFF');           v.setUint32(4, 36 + n, true);
-  ascii(8, 'WAVEfmt ');       v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true);   v.setUint16(22, 1, true);
-  v.setUint32(24, sr, true);  v.setUint32(28, sr, true);
-  v.setUint16(32, 1, true);   v.setUint16(34, 8, true);
-  ascii(36, 'data');          v.setUint32(40, n, true);
-  new Uint8Array(buf, 44).fill(128);   // 8-Bit-Stille ist der Mittelwert 128
-  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-}
 
 // iPad und iPhone melden sich seit iPadOS 13 als „MacIntel" — der Touch-Test
 // unterscheidet sie vom echten Mac.
 const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-/**
- * Wie viel dekodiertes Audio gleichzeitig im Speicher liegen darf.
- *
- * Die Grenze zählt Bytes statt Spuren: ein dreiminütiges Chorstück belegt als
- * 16-Bit-Stereo rund 30 MB, ein zwölfminütiges Werk das Vierfache. Eine feste
- * Obergrenze von drei Spuren würde bei kurzen Stücken unnötig oft nachladen
- * und bei sehr langen immer noch zu viel Speicher belegen.
- *
- * Auf dem iPhone ist die Grenze deutlich enger. Safari räumt eine Web-App bei
- * Speicherdruck kommentarlos ab — und beim Dekodieren liegt kurzzeitig das
- * Dreifache einer Spur im Speicher (32-Bit-Fließkomma plus 16-Bit-Kopie).
- * Mit der Desktop-Grenze brach die Wiedergabe dort beim Wechsel auf die zweite
- * Stimme zusammen. Lieber einmal kurz nachladen als abstürzen.
- */
-const DECODE_BUDGET = (isIOSDevice ? 96 : 150) * 1024 * 1024;
-const MIN_DECODED = isIOSDevice ? 1 : 2;   // sonst: eigene Stimme und Gesamtmischung
-const MAX_DECODED = isIOSDevice ? 3 : 8;
+// Dateiendung -> MIME-Typ fürs Blob, aus dem das <audio>-Element liest.
+// Browser sniffen Audiodaten zwar meist auch ohne korrekten Typ, ein
+// passender Wert ist aber die zuverlässigere Grundlage.
+const AUDIO_MIME = {
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
+  wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac',
+};
+function mimeForTrack(track) {
+  const ext = (track.fileName || '').split('.').pop()?.toLowerCase();
+  return AUDIO_MIME[ext] || 'audio/mpeg';
+}
+
+const MEDIA_ERROR_NAMES = {
+  1: 'MEDIA_ERR_ABORTED', 2: 'MEDIA_ERR_NETWORK',
+  3: 'MEDIA_ERR_DECODE', 4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+};
+function mediaErrorToError(mediaError) {
+  const name = MEDIA_ERROR_NAMES[mediaError?.code] || 'MEDIA_ERR_UNKNOWN';
+  return new Error(mediaError?.message || `Die Aufnahme ließ sich nicht laden (${name}).`);
+}
 
 const Audio = {
-  ctx: null,
-  node: null,
+  el: null,
+  ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
+  channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
   ready: false,
   song: null,
-  decoded: new Map(),   // fileKey -> { duration, bytes }
-  decodedBytes: 0,
-  loading: new Map(),   // fileKey -> Label, solange dekodiert wird
-  lru: [],              // fileKey, zuletzt benutzt zuletzt
-  levels: new Map(),    // fileKey -> 0..1
+  currentKey: null,      // fileKey der Spur, die gerade in `el` geladen ist
+  blobUrl: null,          // aktive Blob-URL, für revokeObjectURL beim Wechsel
+  loading: new Set(),    // fileKey, solange geladen wird (immer höchstens einer)
   position: 0,
   duration: 0,
   playing: false,
   rate: 1,
-  loop: null,
-  silent: null,
+  loop: null,             // { start, end } in Sekunden, oder null
   wakeLock: null,
   onPosition: null,
   onEnded: null,
@@ -4603,274 +4347,195 @@ let lastPosLog = { wall: performance.now(), pos: 0 };
 async function audioInit() {
   if (Audio.ready) return;
 
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) throw new Error('Dieser Browser unterstützt keine Audiowiedergabe.');
-  Audio.ctx = new Ctx({ latencyHint: 'playback' });
+  const el = document.createElement('audio');
+  el.setAttribute('playsinline', '');
+  el.preload = 'auto';
+  el.volume = 1;
+  // Im Dokument statt freischwebend: nur so bezieht Chrome das Element
+  // zuverlässig in die Medienwiedergabe der Seite ein.
+  el.style.display = 'none';
+  el.preservesPitch = true;
+  el.webkitPreservesPitch = true;
+  el.mozPreservesPitch = true;
+  document.body.append(el);
+  Audio.el = el;
 
-  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
-  try {
-    await Audio.ctx.audioWorklet.addModule(url);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-
-  Audio.node = new AudioWorkletNode(Audio.ctx, 'choir', {
-    numberOfInputs: 0,
-    numberOfOutputs: 1,
-    outputChannelCount: [2],
+  el.addEventListener('durationchange', () => {
+    Audio.duration = el.duration || 0;
+    Audio.onPosition?.(Audio.position);
   });
+
+  el.addEventListener('timeupdate', () => {
+    const s = el.currentTime;
+
+    // A-B-Loop: der Rücksprung ist hier bestenfalls auf ein paar hundert
+    // Millisekunden genau — `timeupdate` liefert keine sample-genaue
+    // Position mehr, wie es der frühere Worklet-Ansatz konnte.
+    if (Audio.loop && s >= Audio.loop.end) {
+      el.currentTime = Audio.loop.start;
+      Audio.position = Audio.loop.start;
+      Audio.onPosition?.(Audio.loop.start);
+      return;
+    }
+
+    Audio.position = s;
+    const nowWall = performance.now();
+    const wallDelta = nowWall - lastPosLog.wall;
+    if (wallDelta >= 3000) {
+      const posDelta = s - lastPosLog.pos;
+      const expected = (wallDelta / 1000) * (Audio.rate || 1);
+      // Deutlich weniger Position als bei der eingestellten Geschwindigkeit
+      // zu erwarten wäre ⇒ die Wiedergabe stand zwischenzeitlich still, auch
+      // wenn das Element selbst unauffällig aussieht.
+      if (Audio.playing && posDelta < expected * 0.5) {
+        dlog('audio:stall', {
+          expectedS: Math.round(expected * 10) / 10, actualS: Math.round(posDelta * 10) / 10,
+          visibility: document.visibilityState, elPaused: el.paused,
+        });
+      }
+      dlog('audio:pos', { s: Math.round(s), visibility: document.visibilityState });
+      lastPosLog = { wall: nowWall, pos: s };
+    }
+    Audio.onPosition?.(s);
+  });
+
+  el.addEventListener('ended', () => {
+    dlog('audio:ended', { pos: Math.round(Audio.position) });
+    Audio.playing = false;
+    updateWakeLock();
+    Audio.onEnded?.();
+  });
+
+  // Das Element kann von außen angehalten werden: ein Anruf, eine andere
+  // Audio-App oder Speicherdruck. Das bleibt ohne Zutun angehalten — die App
+  // sah aus, als spiele sie, und es kam kein Ton mehr. Eigene Aufrufe von
+  // audioPause() setzen Audio.playing schon vorher auf false, ein normales
+  // Songende setzt `el.ended`; beides wird hier deshalb übersprungen.
+  el.addEventListener('pause', () => {
+    if (!Audio.playing || el.ended) return;
+    dlog('audio:interrupted');
+    Audio.playing = false;
+    setPlayIcon(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
+  });
+
+  el.addEventListener('error', () => dlog('audio:error', { code: el.error?.code }));
 
   // Kanal-Matrix für den „Fahrradfahren-Modus" (Spec: nur ein Ohrstöpsel):
   // eine feste Verdrahtung aus vier Gains, die je nach Einstellung normal
   // durchreicht, links/rechts tauscht oder zu Mono mischt. Das Umschalten
-  // ändert nur Gain-Werte, keine Verbindungen — knackfrei und jederzeit möglich.
-  const ctx = Audio.ctx;
-  const splitter = ctx.createChannelSplitter(2);
-  const merger = ctx.createChannelMerger(2);
-  const gLL = ctx.createGain(); // links  -> links
-  const gLR = ctx.createGain(); // links  -> rechts
-  const gRL = ctx.createGain(); // rechts -> links
-  const gRR = ctx.createGain(); // rechts -> rechts
-  Audio.node.connect(splitter);
-  splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
-  splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
-  splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
-  splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
-  merger.connect(ctx.destination);
-  Audio.channel = { gLL, gLR, gRL, gRR };
-  audioApplyChannelMode(settings.channelMode);
+  // ändert nur Gain-Werte, keine Verbindungen — knackfrei und jederzeit
+  // möglich.
+  //
+  // Phase-0-Spike (spike-mediaelement.html): ein <audio>-Element behält
+  // seine Mediensitzung auch dann, wenn es zusätzlich durch diese Matrix
+  // läuft — Sperrbildschirm-Steuerung und Hintergrundwiedergabe blieben
+  // erhalten, `ctx.state` stand beim Entsperren auf „running". Eine einzige
+  // Verdrahtung genügt also (Variante A) — kein zweites Element, kein
+  // Moduswechsel-Umbau.
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) throw new Error('Kein AudioContext verfügbar.');
+    const ctx = new Ctx({ latencyHint: 'playback' });
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const gLL = ctx.createGain(); // links  -> links
+    const gLR = ctx.createGain(); // links  -> rechts
+    const gRL = ctx.createGain(); // rechts -> links
+    const gRR = ctx.createGain(); // rechts -> rechts
+    splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
+    splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
+    splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
+    splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
+    merger.connect(ctx.destination);
+    // Erst als letzter Schritt: schlägt nur noch dieser Aufruf fehl, bleiben
+    // Splitter/Gains/Merger folgenlos unverbunden, statt das Element mitten
+    // im Aufbau von seiner normalen Ausgabe abzuschneiden.
+    ctx.createMediaElementSource(el).connect(splitter);
 
-  Audio.node.port.onmessage = (e) => {
-    const m = e.data;
-    if (m.type === 'pos') {
-      Audio.position = m.seconds;
-      const nowWall = performance.now();
-      const wallDelta = nowWall - lastPosLog.wall;
-      if (wallDelta >= 3000) {
-        const posDelta = m.seconds - lastPosLog.pos;
-        const expected = (wallDelta / 1000) * (Audio.rate || 1);
-        // Deutlich weniger Position als bei der eingestellten Geschwindigkeit
-        // zu erwarten wäre ⇒ die Wiedergabe stand zwischenzeitlich still,
-        // auch wenn AudioContext und Sichtbarkeit unauffällig aussehen.
-        if (posDelta < expected * 0.5) {
-          dlog('audio:stall', {
-            expectedS: Math.round(expected * 10) / 10, actualS: Math.round(posDelta * 10) / 10,
-            ctxState: Audio.ctx?.state, visibility: document.visibilityState, silentPaused: Audio.silent?.paused,
-          });
-        }
-        dlog('audio:pos', { s: Math.round(m.seconds), ctxState: Audio.ctx?.state, visibility: document.visibilityState });
-        lastPosLog = { wall: nowWall, pos: m.seconds };
-      }
-      Audio.onPosition?.(m.seconds);
-    } else if (m.type === 'total') {
-      Audio.duration = m.seconds;
-      Audio.onPosition?.(Audio.position);
-    } else if (m.type === 'ended') {
-      dlog('audio:worklet:ended', { pos: Math.round(Audio.position) });
-      Audio.playing = false;
-      Audio.silent?.pause();
-      updateWakeLock();
-      Audio.onEnded?.();
-    }
-  };
-
-  // Der Kontext kann von außen angehalten werden: Android sperrt die Seite
-  // beim Bildschirm-Aus aus („suspended"), Safari kennt zusätzlich
-  // „interrupted" — ein Anruf, eine andere Audio-App oder Speicherdruck.
-  // Beides bleibt ohne Zutun angehalten: die App sah aus, als spiele sie, und
-  // es kam kein Ton mehr.
-  Audio.ctx.addEventListener('statechange', onAudioStateChange);
-  Audio.ctx.addEventListener('statechange', () => dlog('audio:ctxstate', {
-    state: Audio.ctx.state, playing: Audio.playing, visibility: document.visibilityState,
-  }));
-
-  if (!Audio.silent) {
-    Audio.silent = document.createElement('audio');
-    Audio.silent.src = silentLoopURL();
-    Audio.silent.loop = true;
-    Audio.silent.setAttribute('playsinline', '');
-    // Lautstärke bewusst NICHT auf 0: die WAV-Datei enthält echte Stille, es
-    // ist also ohnehin nichts zu hören. Ein Element mit Lautstärke 0 gilt
-    // Android dagegen als stumm — es vergibt dafür keinen Audio-Fokus und
-    // beendet die Wiedergabe, sobald sich der Bildschirm sperrt.
-    Audio.silent.volume = 1;
-    // Im Dokument statt freischwebend: nur so bezieht Chrome das Element
-    // zuverlässig in die Medienwiedergabe der Seite ein.
-    Audio.silent.style.display = 'none';
-    document.body.append(Audio.silent);
-
-    // Für die Diagnose zweier Fehlerbilder (Wiedergabe stoppt Sekunden nach
-    // dem Sperren): jedes Ereignis des stillen Loops, der den Audio-Fokus
-    // für die Seite hält. Bleibt er stehen, ohne dass „pause" von der App
-    // selbst kam, ist genau das die Ursache.
-    for (const type of ['play', 'pause', 'ended', 'error', 'stalled', 'suspend', 'waiting']) {
-      Audio.silent.addEventListener(type, () => dlog('audio:silentloop:' + type, {
-        visibility: document.visibilityState, ctxState: Audio.ctx?.state,
-      }));
-    }
+    Audio.ctx = ctx;
+    Audio.channel = { gLL, gLR, gRL, gRR };
+    audioApplyChannelMode(settings.channelMode);
+    dlog('audio:route', { mode: 'matrix' });
+  } catch (err) {
+    // Lieber kein Fahrradmodus als kein Ton: das Element spielt in diesem
+    // Fall einfach direkt, ohne jeden Web-Audio-Kontakt.
+    console.warn('[audio] Kanal-Matrix nicht verfügbar, direkte Ausgabe', err);
+    dlog('audio:route', { mode: 'direct', name: err?.name });
   }
 
   Audio.ready = true;
   dlog('audio:init:ok');
 }
 
-async function onAudioStateChange() {
-  const ctx = Audio.ctx;
-  if (!ctx || ctx.state === 'running' || !Audio.playing) return;
+// Nur ein Ladevorgang gleichzeitig auf dem einen Element — sonst würde ein
+// schneller zweiter Stimmwechsel mit `el.src` und den Listenern des ersten
+// kollidieren, bevor dessen `loadedmetadata` eingetroffen ist.
+let audioLoadMutex = null;
 
-  // Im Hintergrund ist ein angehaltener Kontext normal und kein Fehler; beim
-  // Zurückkehren kümmert sich der visibilitychange-Handler darum.
-  if (document.visibilityState !== 'visible') return;
+/** Lädt eine Spur in das Element. Läuft schon dieselbe, ist nichts zu tun. */
+async function audioLoadTrack(track) {
+  if (audioLoadMutex) await audioLoadMutex.catch(() => {});
+  if (Audio.currentKey === track.fileKey) return;
 
+  const job = audioLoadTrackNow(track);
+  audioLoadMutex = job;
   try {
-    await ctx.resume();
-  } catch (err) {
-    console.warn('[audio] Kontext ließ sich nicht fortsetzen', err);
-    dlog('audio:resume:fail', { name: err?.name });
-  }
-  if (ctx !== Audio.ctx || !Audio.playing) return;
-
-  // Hat das Fortsetzen nicht geklappt, muss die Anzeige die Wahrheit sagen —
-  // ein Play-Symbol, das nichts abspielt, sucht man sonst ewig.
-  if (ctx.state !== 'running') {
-    dlog('audio:interrupted', { state: ctx.state });
-    Audio.playing = false;
-    Audio.silent?.pause();
-    setPlayIcon(false);
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
-  }
-}
-
-/** Dekodiert eine Spur und übergibt sie als 16-Bit-Daten an den Worklet. */
-async function audioLoadTrack(track, gain = 0) {
-  if (Audio.decoded.has(track.fileKey)) {
-    touchLRU(track.fileKey);
-    audioSetGain(track.fileKey, gain);
-    return Audio.decoded.get(track.fileKey);
-  }
-
-  // Läuft für dieselbe Spur schon ein Ladevorgang, auf diesen warten statt
-  // ein zweites Mal zu dekodieren.
-  if (Audio.pending?.has(track.fileKey)) {
-    await Audio.pending.get(track.fileKey);
-    if (Audio.decoded.has(track.fileKey)) {
-      audioSetGain(track.fileKey, gain);
-      return Audio.decoded.get(track.fileKey);
-    }
-  }
-
-  const job = decodeAndSend(track, gain);
-  Audio.pending = Audio.pending || new Map();
-  Audio.pending.set(track.fileKey, job);
-  setLoading(track.fileKey, track.label);
-  try {
-    return await job;
+    await job;
   } finally {
-    Audio.pending.delete(track.fileKey);
-    setLoading(track.fileKey, null);
+    if (audioLoadMutex === job) audioLoadMutex = null;
   }
 }
 
-/** Meldet, welche Spuren gerade geladen werden — die Anzeige hängt daran. */
-function setLoading(key, label) {
-  if (label) Audio.loading.set(key, label);
+async function audioLoadTrackNow(track) {
+  setLoading(track.fileKey, true);
+  try {
+    const rec = await DB.fileGet(track.fileKey);
+    if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
+    const blob = recordBlob(rec, mimeForTrack(track));
+    if (!blob.size) throw new Error('Die gespeicherte Aufnahme ist leer.');
+
+    const el = Audio.el;
+    const url = URL.createObjectURL(blob);
+    try {
+      await new Promise((resolve, reject) => {
+        const onReady = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(mediaErrorToError(el.error)); };
+        function cleanup() {
+          el.removeEventListener('loadedmetadata', onReady);
+          el.removeEventListener('error', onError);
+        }
+        el.addEventListener('loadedmetadata', onReady, { once: true });
+        el.addEventListener('error', onError, { once: true });
+        el.src = url;
+        el.load();
+      });
+    } catch (err) {
+      URL.revokeObjectURL(url);
+      throw err;
+    }
+
+    // Die alte Blob-URL wird erst jetzt verworfen, wo sicher feststeht, dass
+    // sie nicht mehr gebraucht wird — zwingend, sonst läuft der Speicher über.
+    if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
+    Audio.blobUrl = url;
+    Audio.currentKey = track.fileKey;
+
+    // Die Dauer wird bei jedem Laden aktualisiert. Nur so lässt sich später
+    // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
+    // Loops verschoben sein könnten.
+    rememberDuration(track, el.duration);
+  } finally {
+    setLoading(track.fileKey, false);
+  }
+}
+
+/** Meldet, ob gerade eine Spur geladen wird — die Anzeige hängt daran. */
+function setLoading(key, active) {
+  if (active) Audio.loading.add(key);
   else Audio.loading.delete(key);
   Audio.onLoadingChange?.();
-}
-
-/**
- * decodeAudioData in beiden Fassungen: Safari hat die mit Rückrufen deutlich
- * länger als die mit Promise. Wer die falsche nimmt, bekommt dort `undefined`
- * zurück — und jede Stimme gilt als kaputt.
- */
-function decodeAudio(bytes) {
-  return new Promise((resolve, reject) => {
-    const fail = (err) => reject(err || new Error('Die Aufnahme ließ sich nicht dekodieren.'));
-    let ret;
-    try {
-      ret = Audio.ctx.decodeAudioData(bytes, resolve, fail);
-    } catch (err) {
-      fail(err);
-      return;
-    }
-    if (ret && typeof ret.then === 'function') ret.then(resolve, fail);
-  });
-}
-
-async function decodeAndSend(track, gain) {
-  const rec = await DB.fileGet(track.fileKey);
-  if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
-
-  const bytes = await recordBytes(rec);
-  if (!bytes.byteLength) throw new Error('Die gespeicherte Aufnahme ist leer.');
-
-  // Platz schaffen, BEVOR dekodiert wird. Beim Dekodieren liegen kurzzeitig die
-  // 32-Bit-Fließkommadaten und die 16-Bit-Kopie gleichzeitig im Speicher —
-  // zusammen rund das Dreifache der fertigen Spur. Räumt man erst danach auf,
-  // ist die Spitze längst überschritten; auf dem iPhone endete das beim
-  // Stimmwechsel damit, dass Safari die App abräumte.
-  evictIfNeeded(track.fileKey, estimatePcmBytes(track));
-
-  const audioBuf = await decodeAudio(bytes);
-  const frames = audioBuf.length;
-  const duration = audioBuf.duration;
-  const count = Math.min(2, audioBuf.numberOfChannels);
-  const pcmBytes = frames * count * 2;
-
-  // Jetzt ist die Länge bekannt — mit der echten Zahl noch einmal nachräumen,
-  // bevor die 16-Bit-Kopie dazukommt.
-  evictIfNeeded(track.fileKey, pcmBytes);
-
-  // 16 Bit statt 32 Bit Fließkomma halbiert den Speicherbedarf — eine
-  // 14-MB-MP3 belegt so rund 50 statt 100 MB. Hörbar ist der Unterschied
-  // bei MP3-Quellen nicht.
-  const chans = [];
-  for (let c = 0; c < count; c++) {
-    const f = audioBuf.getChannelData(c);
-    const i16 = new Int16Array(f.length);
-    for (let i = 0; i < f.length; i++) {
-      const s = f[i] < -1 ? -1 : f[i] > 1 ? 1 : f[i];
-      i16[i] = s < 0 ? s * 32768 : s * 32767;
-    }
-    chans.push(i16);
-  }
-
-  // Die Arrays wandern zum Worklet (`transfer`), im Hauptthread bleibt nichts
-  // liegen. Der AudioBuffer wird hier nicht mehr gebraucht.
-  Audio.node.port.postMessage(
-    { type: 'load', id: track.fileKey, ch: chans, frames, gain },
-    chans.map((c) => c.buffer)
-  );
-  chans.length = 0;
-
-  const info = { duration, bytes: pcmBytes };
-  Audio.decoded.set(track.fileKey, info);
-  Audio.decodedBytes += pcmBytes;
-  Audio.levels.set(track.fileKey, gain);
-  touchLRU(track.fileKey);
-
-  // Die Dauer wird beim ersten Dekodieren gemerkt. Nur so lässt sich später
-  // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
-  // Loops verschoben sein könnten.
-  rememberDuration(track, duration);
-  return info;
-}
-
-/**
- * Schätzt, wie viel eine Spur dekodiert belegen wird (16 Bit, stereo).
- *
- * Beim ersten Mal ist die Dauer unbekannt; dann rechnet die Schätzung von der
- * Dateigröße hoch — eine MP3 mit 128 kbit/s wird beim Dekodieren rund elfmal
- * so groß. Großzügig zu schätzen ist die sichere Seite: die Zahl entscheidet
- * nur, wie viel vorher weggeräumt wird.
- */
-function estimatePcmBytes(track) {
-  const rate = Audio.ctx?.sampleRate || 44100;
-  if (Number.isFinite(track.durationSec) && track.durationSec > 0) {
-    return Math.round(track.durationSec * rate * 2 * 2);
-  }
-  return Math.round((track.size || 0) * 12);
 }
 
 async function rememberDuration(track, duration) {
@@ -4889,108 +4554,29 @@ async function rememberDuration(track, duration) {
   }
 }
 
-function touchLRU(key) {
-  const i = Audio.lru.indexOf(key);
-  if (i >= 0) Audio.lru.splice(i, 1);
-  Audio.lru.push(key);
-}
-
-/** Welche Spuren dürfen nie ausgelagert werden? Gesamt und die eigene Stimme. */
-function protectedKeys() {
-  if (!Audio.song) return new Set();
-  const keep = new Set();
-  for (const t of Audio.song.tracks) {
-    if (t.voice === 'FULL' || settings.myVoices.includes(t.voice)) keep.add(t.fileKey);
-  }
-  return keep;
-}
-
-function evictIfNeeded(incomingKey, incomingBytes = 0) {
-  const keep = protectedKeys();
-  const tooMuch = () =>
-    Audio.decoded.size >= MAX_DECODED
-    || (Audio.decoded.size >= MIN_DECODED
-        && Audio.decodedBytes + incomingBytes > DECODE_BUDGET);
-
-  while (tooMuch()) {
-    // Älteste Spur suchen, die weder geschützt noch gerade hörbar ist.
-    const victim = Audio.lru.find((k) =>
-      k !== incomingKey && (Audio.levels.get(k) || 0) === 0 && !keep.has(k))
-      ?? Audio.lru.find((k) => k !== incomingKey && (Audio.levels.get(k) || 0) === 0)
-      ?? Audio.lru.find((k) => k !== incomingKey);
-    if (!victim) break;
-    audioUnload(victim);
-  }
-}
-
-function audioUnload(key) {
-  Audio.node.port.postMessage({ type: 'unload', id: key });
-  Audio.decodedBytes -= Audio.decoded.get(key)?.bytes || 0;
-  if (Audio.decodedBytes < 0) Audio.decodedBytes = 0;
-  Audio.decoded.delete(key);
-  Audio.levels.delete(key);
-  const i = Audio.lru.indexOf(key);
-  if (i >= 0) Audio.lru.splice(i, 1);
-}
-
-/**
- * Lädt ausgewählte Stimmen im Hintergrund vor, damit ein Wechsel später sofort
- * klingt.
- *
- * Bewusst nicht *alle* Stimmen: Dekodieren kostet auf älteren Handys je Spur
- * mehrere Sekunden Rechenzeit im Vordergrund-Thread — genau während der Nutzer
- * abspielen, scrollen oder Loop-Marken setzen will. Vorbereitet werden deshalb
- * nur die Spuren, die tatsächlich als Nächstes drankommen (siehe
- * prefetchOrder). Alle übrigen laden beim Antippen nach, mit „lädt …" in der
- * Stimmenauswahl.
- */
-async function prefetchTracks(song, order) {
-  // Erst zur Ruhe kommen lassen: die gewählte Stimme soll ohne Konkurrenz
-  // fertig werden und der Player sofort bedienbar sein.
-  await new Promise((r) => setTimeout(r, 400));
-  for (const track of order) {
-    if (!Audio.song || Audio.song.key !== song.key) return;   // Song gewechselt
-    if (Audio.decoded.has(track.fileKey) || track.broken) continue;
-    if (Audio.decoded.size >= MAX_DECODED) return;
-    if (Audio.decodedBytes > DECODE_BUDGET * 0.8) return;
-    try {
-      await audioLoadTrack(track, 0);
-    } catch (err) {
-      console.warn('[player] Vorladen', track.fileName, err);
-      track.broken = true;
-      track.brokenReason = errText(err);
-      renderVoiceSelect();
-    }
-  }
-}
-
-function audioSetGain(key, value) {
-  Audio.levels.set(key, value);
-  Audio.node?.port.postMessage({ type: 'gain', id: key, value });
-  if (value > 0) touchLRU(key);
-}
-
 async function audioPlay() {
-  if (!Audio.ready) return;
+  if (!Audio.ready || !Audio.currentKey) return;
 
-  // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne das
-  // meldet der Worklet sofort erneut „zu Ende" und es passiert schlicht nichts
-  // — zu erleben, sobald das letzte (oder einzige) Lied durchgelaufen war.
+  // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne
+  // das bleibt das Element am Ende stehen und es passiert schlicht nichts —
+  // zu erleben, sobald das letzte (oder einzige) Lied durchgelaufen war.
   if (!Audio.loop && Audio.duration > 0 && Audio.position >= Audio.duration - 0.05) {
     audioSeek(0);
   }
 
-  // Nicht nur 'suspended': Safari meldet nach einer Unterbrechung
-  // 'interrupted', und auch daraus muss der Kontext zurückgeholt werden.
-  if (Audio.ctx.state !== 'running') await Audio.ctx.resume().catch(() => {});
+  // Läuft das Element durch die Kanal-Matrix (Variante A), kann der
+  // AudioContext im angehaltenen Zustand starten, bis eine Nutzergeste ihn
+  // freigibt — genau die, die hier gerade läuft.
+  if (Audio.ctx && Audio.ctx.state !== 'running') await Audio.ctx.resume().catch(() => {});
 
-  // Der stille Loop zuerst: Android vergibt den Audio-Fokus an das
-  // Medienelement, und daran hängt, ob die Seite bei gesperrtem Bildschirm
-  // weiterlaufen darf.
-  try { await Audio.silent?.play(); }
-  catch (err) { dlog('audio:silentloop:playfail', { name: err?.name }); /* ohne Nutzergeste abgelehnt — unkritisch */ }
+  try {
+    await Audio.el.play();
+  } catch (err) {
+    dlog('audio:play:fail', { name: err?.name });
+    bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', err);
+    return;
+  }
 
-  Audio.node.port.postMessage({ type: 'play' });
   Audio.playing = true;
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   dlog('audio:play');
@@ -5000,9 +4586,8 @@ async function audioPlay() {
 
 function audioPause() {
   if (!Audio.ready) return;
-  Audio.node.port.postMessage({ type: 'pause' });
+  Audio.el.pause();
   Audio.playing = false;
-  Audio.silent?.pause();
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   dlog('audio:pause');
   updateWakeLock();
@@ -5011,19 +4596,23 @@ function audioPause() {
 function audioSeek(seconds) {
   const s = Math.max(0, Math.min(seconds, Audio.duration || 0));
   Audio.position = s;
-  Audio.node?.port.postMessage({ type: 'seek', seconds: s });
+  if (Audio.el) Audio.el.currentTime = s;
   lastPosLog = { wall: performance.now(), pos: s };
   return s;
 }
 
 function audioSetRate(rate) {
   Audio.rate = rate;
-  Audio.node?.port.postMessage({ type: 'rate', value: rate });
+  if (!Audio.el) return;
+  Audio.el.playbackRate = rate;
+  Audio.el.preservesPitch = true;
+  Audio.el.webkitPreservesPitch = true;
+  Audio.el.mozPreservesPitch = true;
 }
 
+/** Setzt oder löscht den A-B-Loop; durchgesetzt wird er im `timeupdate`. */
 function audioSetLoop(loop) {
   Audio.loop = loop;
-  Audio.node?.port.postMessage({ type: 'loop', loop });
 }
 
 /**
@@ -5031,6 +4620,10 @@ function audioSetLoop(loop) {
  * Stimme (z. B. Bass) hart auf einen Kanal. Mit nur einem Stöpsel im Ohr ist
  * das reine Glückssache. 'mono' mischt beide Kanäle zusammen, 'swap' tauscht
  * links und rechts.
+ *
+ * Steht `Audio.channel` nicht zur Verfügung — die Matrix aus audioInit()
+ * ließ sich nicht aufbauen, siehe dort —, bleibt der Schalter in den
+ * Einstellungen ohne hörbare Wirkung; die Wiedergabe läuft dann direkt.
  */
 function audioApplyChannelMode(mode) {
   const c = Audio.channel;
@@ -5092,22 +4685,24 @@ async function updateWakeLock() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  dlog('visibility', { state: document.visibilityState, playing: Audio.playing, ctxState: Audio.ctx?.state });
+  dlog('visibility', { state: document.visibilityState, playing: Audio.playing, elPaused: Audio.el?.paused });
   if (document.visibilityState !== 'visible') return;
   updateWakeLock();
-  // Hat Android den Ton währenddessen angehalten, hier wieder aufnehmen.
-  if (Audio.playing && Audio.ctx?.state === 'suspended') {
+  // Hat das System die Wiedergabe währenddessen angehalten, hier wieder aufnehmen.
+  if (Audio.playing && Audio.el?.paused) {
     dlog('audio:visible:recover');
-    Audio.ctx.resume().catch((err) => dlog('audio:resume:fail', { name: err?.name }));
-    Audio.silent?.play().catch((err) => dlog('audio:silentloop:playfail', { name: err?.name }));
+    Audio.el.play().catch((err) => dlog('audio:resume:fail', { name: err?.name }));
   }
 });
 
-/** Gibt alle Spuren frei — beim Verlassen des Players. */
+/** Gibt die geladene Spur frei — beim Verlassen des Players. */
 function audioReset() {
   if (!Audio.ready) return;
   audioPause();
-  for (const key of [...Audio.decoded.keys()]) audioUnload(key);
+  if (Audio.blobUrl) { URL.revokeObjectURL(Audio.blobUrl); Audio.blobUrl = null; }
+  Audio.el.removeAttribute('src');
+  Audio.el.load();
+  Audio.currentKey = null;
   Audio.loading.clear();
   Audio.onLoadingChange?.();
   Audio.song = null;
@@ -6223,24 +5818,6 @@ function preferredTrack(song) {
   return song.tracks[0] || null;
 }
 
-/**
- * Welche Stimmen lohnen sich im Hintergrund?
- *
- * Die Gesamtmischung (zum Gegenhören) und die eigene Stimme — mehr braucht
- * niemand sofort. Jede weitere Spur kostet Rechenzeit, die im selben Moment
- * für die Bedienung fehlt.
- */
-function prefetchOrder(song, first) {
-  const wanted = ['FULL', ...settings.myVoices, settings.lastVoice];
-  const out = [];
-  for (const voice of wanted) {
-    if (!voice) continue;
-    const track = song.tracks.find((t) => t.voice === voice);
-    if (track && track !== first && !out.includes(track)) out.push(track);
-  }
-  return out;
-}
-
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
 function renderLoadingState() {
   $('#player-loading').hidden = Audio.loading.size === 0;
@@ -6270,7 +5847,11 @@ function renderVoiceSelect() {
 let loadToken = 0;
 
 /**
- * Stimme wählen: exklusiv — alle anderen Spuren werden stumm.
+ * Stimme wählen: exklusiv — es lädt immer nur eine Spur. Statt einer reinen
+ * Lautstärkeänderung wechselt das jetzt die `src` des Elements; Position und
+ * Wiedergabestatus werden danach wiederhergestellt (100–300 ms Lücke, ein
+ * bewusst akzeptierter Rückschritt gegenüber dem gleichzeitig dekodierten
+ * Worklet-Ansatz).
  * `userChoice` unterscheidet den Tastendruck vom automatischen Vorbelegen
  * beim Öffnen — nur eine echte Wahl wird als Vorliebe gemerkt.
  */
@@ -6282,27 +5863,29 @@ async function selectTrack(track, userChoice = false) {
   if (userChoice && track.voice !== 'OTHER' && settings.lastVoice !== track.voice) {
     saveSettings({ lastVoice: track.voice });
   }
-  for (const key of Audio.decoded.keys()) {
-    if (key !== track.fileKey) audioSetGain(key, 0);
-  }
   renderVoiceSelect();
 
-  if (Audio.decoded.has(track.fileKey)) {
-    audioSetGain(track.fileKey, 1);
-  } else {
-    try {
-      await audioLoadTrack(track, token === loadToken ? 1 : 0);
-    } catch (err) {
-      markBroken(track, err);
-      return;
-    }
-    // Inzwischen wurde eine andere Stimme oder ein anderer Song gewählt: die
-    // gerade fertig dekodierte Spur trotzdem stumm schalten. Sonst bleibt sie
-    // hörbar, weil der Worklet die beim Laden übergebene Lautstärke schon
-    // gesetzt hat, bevor wir hier reagieren konnten (führte bei schnellem
-    // „Nächstes Lied" dazu, dass zwei Lieder gleichzeitig liefen).
-    if (token !== loadToken) { audioSetGain(track.fileKey, 0); return; }
+  if (Audio.currentKey === track.fileKey) {
+    renderVoiceSelect();
+    updateMediaSession();
+    return;
   }
+
+  const pos = Audio.position;
+  const wasPlaying = Audio.playing;
+
+  try {
+    await audioLoadTrack(track);
+  } catch (err) {
+    // Inzwischen wurde eine andere Stimme oder ein anderer Song gewählt —
+    // dann gehört der Fehler nicht mehr zur aktuellen Auswahl.
+    if (token === loadToken) markBroken(track, err);
+    return;
+  }
+  if (token !== loadToken) return;   // inzwischen wurde eine andere Stimme gewählt
+
+  audioSeek(pos);
+  if (wasPlaying) await audioPlay();
 
   renderVoiceSelect();
   updateMediaSession();
@@ -6471,8 +6054,7 @@ async function openPlayer(songId) {
   };
   Audio.onEnded = onPlaybackEnded;
 
-  // Zuerst die bevorzugte Stimme laden, danach im Hintergrund die
-  // Gesamtmischung — so ist der Player schnell bedienbar.
+  // Nur die bevorzugte Stimme laden — ein Stimmwechsel lädt bei Bedarf nach.
   const first = preferredTrack(song);
   if (!first) {
     banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
@@ -6488,8 +6070,6 @@ async function openPlayer(songId) {
     await audioPlay();
     setPlayIcon(true);
   }
-
-  prefetchTracks(song, prefetchOrder(song, first));
 
   showReplacedNotice(song);
   showLengthNotice(song);
@@ -6508,7 +6088,7 @@ function showReplacedNotice(song) {
 
   const check = async () => {
     const track = song.tracks.find((t) => t.voice === voice);
-    const dur = track && Audio.decoded.get(track.fileKey)?.duration;
+    const dur = track?.durationSec;
     if (!dur || Math.abs(dur - prevDurationSec) <= 1) return;
 
     const diff = Math.round(Math.abs(dur - prevDurationSec));
@@ -6880,8 +6460,9 @@ let songLoops = [];
  *
  * Die Begrenzung ist kein Schönheitsfehler: Ein aus einer Sicherung
  * eingespielter Abschnitt kann hinter dem Ende einer inzwischen ersetzten,
- * kürzeren Aufnahme liegen. Der Worklet erreicht dann weder das Loop-Ende noch
- * das Dateiende — die Wiedergabe liefe stumm weiter, ohne je aufzuhören.
+ * kürzeren Aufnahme liegen. Ohne Begrenzung würde `timeupdate` das
+ * Loop-Ende dann nie erreichen — die Markierungen säßen jenseits des
+ * Dateiendes, und die Wiedergabe liefe einfach bis zum echten Ende durch.
  */
 function loopRange() {
   if (loopA === null || loopB === null) return null;
@@ -7461,8 +7042,8 @@ document.addEventListener('visibilitychange', () => {
 // laufender Code stehen — das würde erklären, warum die Wiedergabe nach ein
 // paar Sekunden bei gesperrtem Bildschirm abbricht). Nicht jeder Browser
 // kennt diese Ereignisse; wo nicht, bleibt der Aufruf folgenlos.
-document.addEventListener('freeze', () => dlog('page:freeze', { playing: Audio.playing, ctxState: Audio.ctx?.state }));
-document.addEventListener('resume', () => dlog('page:resume', { playing: Audio.playing, ctxState: Audio.ctx?.state }));
+document.addEventListener('freeze', () => dlog('page:freeze', { playing: Audio.playing, elPaused: Audio.el?.paused }));
+document.addEventListener('resume', () => dlog('page:resume', { playing: Audio.playing, elPaused: Audio.el?.paused }));
 window.addEventListener('pageshow', (e) => dlog('page:pageshow', { fromBfcache: e.persisted }));
 window.addEventListener('pagehide', (e) => dlog('page:pagehide', { toBfcache: e.persisted, playing: Audio.playing }));
 
