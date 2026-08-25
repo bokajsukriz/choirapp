@@ -416,16 +416,9 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .voice-pills .voice-chip {
   margin: 0;
+  box-shadow: 0 0 0 2px var(--bg);
 }
-/* Statt eines Rings in --bg (der vor andersfarbigem Untergrund, z. B. dem
-   grünen Player-Kopf, als unpassender Rand auffällt) schneidet eine Maske
-   einen echt durchsichtigen Steg aus der überlappenden Pille — der Abstand
-   bleibt sichtbar, unabhängig vom Hintergrund dahinter. */
-.voice-pills .voice-chip:not(:first-child) {
-  margin-left: -15px;
-  -webkit-mask-image: linear-gradient(to right, transparent 0 3px, #000 3px 100%);
-          mask-image: linear-gradient(to right, transparent 0 3px, #000 3px 100%);
-}
+.voice-pills .voice-chip:not(:first-child) { margin-left: -15px; }
 
 /* Im Player öffnet ein Klick auf den Pillenstapel die Stimmenauswahl —
    dieselbe Fläche, die die Stimmen schon zeigt, statt eines separaten
