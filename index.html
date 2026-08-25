@@ -1530,7 +1530,7 @@ input[type="checkbox"] {
         kurzen Abschnitt so lange langsam wiederholen, bis er sitzt.</p>
     </article>
 
-    <!-- 5 — Playlisten und Import ---------------------------------------- -->
+    <!-- 5 — Setlisten und Import ---------------------------------------- -->
     <article class="onb-slide" id="onb-slide-5" aria-label="Schritt 5 von 5">
       <div class="onb-badge" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1545,11 +1545,11 @@ input[type="checkbox"] {
         App, was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs
         Handy sollen. Jeder weitere Import <strong>ergänzt</strong> nur —
         Vorhandenes bleibt, fehlende Stimmen lassen sich nachladen.</p>
-      <p><strong>Playlisten.</strong> Eine Playlist ist ein Programm: die Lieder
+      <p><strong>Setlisten.</strong> Eine Setliste ist ein Programm: die Lieder
         in der Reihenfolge, in der sie gesungen werden. Am Ende eines Liedes
-        schaltet die App von selbst weiter. Der Chorleiter kann eine Playlist
+        schaltet die App von selbst weiter. Der Chorleiter kann eine Setliste
         als schlichte Textdatei verteilen — ein Titel je Zeile —, du spielst sie
-        unter „Playlisten“ ein.</p>
+        unter „Setlisten“ ein.</p>
       <div class="onb-note">
         Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem
         Import kein Internet mehr.
@@ -1571,7 +1571,7 @@ input[type="checkbox"] {
 <!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
 <section class="player" id="playlist-view" hidden aria-labelledby="pl-title">
   <div class="player-head">
-    <button class="icon-btn" id="pl-back" type="button" aria-label="Zurück zu den Playlisten">
+    <button class="icon-btn" id="pl-back" type="button" aria-label="Zurück zu den Setlisten">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M15 5l-7 7 7 7"/>
       </svg>
@@ -1580,7 +1580,7 @@ input[type="checkbox"] {
       <strong id="pl-title"></strong>
       <span class="small muted" id="pl-sub"></span>
     </div>
-    <button class="icon-btn" id="pl-rename" type="button" aria-label="Playlist umbenennen">
+    <button class="icon-btn" id="pl-rename" type="button" aria-label="Setliste umbenennen">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/>
       </svg>
@@ -1593,14 +1593,14 @@ input[type="checkbox"] {
 
     <p class="section-title">Titel hinzufügen</p>
     <input class="search-input" id="pl-search" type="search" autocomplete="off"
-           placeholder="Song suchen …" aria-label="Song für die Playlist suchen">
+           placeholder="Song suchen …" aria-label="Song für die Setliste suchen">
     <div id="pl-candidates" style="margin-top:10px"></div>
 
     <p class="section-title">Weitergeben</p>
     <div class="stack">
       <button class="btn btn--block" id="btn-pl-export" type="button">Als Textdatei sichern</button>
       <button class="btn btn--block" id="btn-pl-copy" type="button">Als Text kopieren</button>
-      <button class="btn btn--danger btn--block" id="btn-pl-delete" type="button">Playlist löschen</button>
+      <button class="btn btn--danger btn--block" id="btn-pl-delete" type="button">Setliste löschen</button>
     </div>
   </div>
 
@@ -1612,7 +1612,7 @@ input[type="checkbox"] {
       <button class="btn" id="btn-pl-discard" type="button" style="flex:1" disabled>Verwerfen</button>
       <button class="btn btn--primary" id="btn-pl-save" type="button" style="flex:1" disabled>Speichern</button>
     </div>
-    <button class="btn btn--block" id="btn-pl-play" type="button" style="margin-top:8px">Playlist abspielen</button>
+    <button class="btn btn--block" id="btn-pl-play" type="button" style="margin-top:8px">Setliste abspielen</button>
   </div>
 </section>
 
@@ -1638,8 +1638,8 @@ input[type="checkbox"] {
 
     <div id="queue-block" hidden>
       <div class="row" style="margin:18px 0 10px">
-        <p class="section-title" id="queue-title-text" style="margin:0">Playlist</p>
-        <button class="icon-btn" id="btn-queue-edit" type="button" aria-label="Playlist bearbeiten" style="min-width:36px; min-height:36px">
+        <p class="section-title" id="queue-title-text" style="margin:0">Setliste</p>
+        <button class="icon-btn" id="btn-queue-edit" type="button" aria-label="Setliste bearbeiten" style="min-width:36px; min-height:36px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>
         </button>
       </div>
@@ -1835,22 +1835,18 @@ input[type="checkbox"] {
     <div id="song-list-host"></div>
   </section>
 
-  <!-- ===== Playlisten =================================================== -->
+  <!-- ===== Setlisten ===================================================== -->
   <section class="view" id="view-playlists">
+    <div id="current-setlist-host"></div>
     <div class="card">
-      <h2>Playlisten</h2>
-      <p class="small muted" style="margin-top:0">
-        Eine Playlist ist ein Programm: die Lieder in der Reihenfolge, in der
-        sie gesungen werden. Der Chorleiter kann sie als Textdatei verteilen.
-      </p>
-      <div class="stack" style="margin-top:14px">
-        <button class="btn btn--primary btn--block" id="btn-pl-new" type="button">Neue Playlist</button>
+      <h2>Setlisten</h2>
+      <div class="row" style="margin-top:14px; gap:8px">
+        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
         <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn btn--block" id="btn-pl-import" type="button">Aus Textdatei importieren</button>
-        <button class="btn btn--block" id="btn-pl-paste" type="button">Aus Text einfügen</button>
+        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Aus Datei</button>
+        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Texteingabe</button>
       </div>
     </div>
-    <div id="current-setlist-host"></div>
     <div id="playlist-list-host"></div>
   </section>
 
@@ -2013,7 +2009,7 @@ input[type="checkbox"] {
       <p class="section-title" style="margin-top:0">Sicherung</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Sichert Loops, Notizen, Playlisten, Einstellungen und die Songliste
+          Sichert Loops, Notizen, Setlisten, Einstellungen und die Songliste
           — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt
           sich per Mail oder Messenger verschicken.
         </p>
@@ -2034,14 +2030,14 @@ input[type="checkbox"] {
       <p class="section-title">Speicherplatz freigeben</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Einzelne Songs oder Stimmen löschen. Loops, Notizen und Playlisten
+          Einzelne Songs oder Stimmen löschen. Loops, Notizen und Setlisten
           bleiben dabei erhalten.
         </p>
         <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button">
           Alle Aufnahmen löschen
         </button>
         <p class="small muted" style="margin:0">
-          Entfernt nur die Audiodateien. Loops, Notizen, Playlisten und
+          Entfernt nur die Audiodateien. Loops, Notizen, Setlisten und
           Einstellungen bleiben erhalten und verbinden sich beim nächsten
           Import wieder.
         </p>
@@ -2054,7 +2050,7 @@ input[type="checkbox"] {
       <p class="section-title">Alles löschen</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Löscht alle Songs, Aufnahmen, Loops, Notizen und Playlisten von
+          Löscht alle Songs, Aufnahmen, Loops, Notizen und Setlisten von
           diesem Gerät. Die Dateien in der Dropbox bleiben unberührt.
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
@@ -2143,7 +2139,7 @@ input[type="checkbox"] {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
     </svg>
-    Playlisten
+    Setlisten
   </button>
   <button class="nav-btn" type="button" data-view="import">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3461,7 +3457,7 @@ function groupDuplicates(songFolders) {
 
 const VIEWS = {
   songs:     { title: 'Songs',         render: renderSongs },
-  playlists: { title: 'Playlisten',    render: renderPlaylists },
+  playlists: { title: 'Setlisten',     render: renderPlaylists },
   import:    { title: 'Import',        render: () => { renderImportReport(); renderImportStats(); } },
   settings:  { title: 'Einstellungen', render: renderSettings },
 };
@@ -4056,7 +4052,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Aufnahmen löschen?',
     text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
-        + 'Loops, Notizen, Playlisten und Einstellungen bleiben erhalten und verbinden sich '
+        + 'Loops, Notizen, Setlisten und Einstellungen bleiben erhalten und verbinden sich '
         + 'wieder, sobald du die Lieder erneut importierst.',
     okLabel: 'Aufnahmen löschen', danger: true,
   });
@@ -4246,14 +4242,14 @@ $('#btn-setup-again').addEventListener('click', () => openOnboarding());
 $('#btn-persist').addEventListener('click', async () => {
   const ok = await requestPersistence();
   if (ok) banner('Dauerhafte Speicherung ist jetzt aktiv.', { kind: 'ok' });
-  else banner('Das System hat die dauerhafte Speicherung abgelehnt. Die App funktioniert trotzdem — sichere deine Loops und Playlisten gelegentlich.', { kind: 'error' });
+  else banner('Das System hat die dauerhafte Speicherung abgelehnt. Die App funktioniert trotzdem — sichere deine Loops und Setlisten gelegentlich.', { kind: 'error' });
   await renderStorage();
 });
 
 $('#btn-wipe').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Daten löschen?',
-    text: 'Alle Songs, Aufnahmen, Loops und Playlisten werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
+    text: 'Alle Songs, Aufnahmen, Loops und Setlisten werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
     okLabel: 'Löschen',
     danger: true,
   });
@@ -6199,7 +6195,7 @@ async function renderQueue() {
 
   const total = playQueue.items.length;
   const pos = playQueue.index + 1;
-  $('#queue-title-text').textContent = `Playlist: ${playQueue.name} · ${pos} von ${total}`;
+  $('#queue-title-text').textContent = `Setliste: ${playQueue.name} · ${pos} von ${total}`;
   $('#btn-queue-edit').hidden = !playQueue.id;
 
   const songs = await DB.metaByType('song').catch(() => []);
@@ -7342,13 +7338,13 @@ async function createPlaylistFromText(text, fallbackName) {
       { kind: 'error' });
   }
 
-  openDraft(newPlaylist(name || 'Playlist', titles), true);
+  openDraft(newPlaylist(name || 'Setliste', titles), true);
   return plDraft;
 }
 
 $('#btn-pl-new').addEventListener('click', async () => {
   const name = await promptDialog({
-    title: 'Neue Playlist', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
+    title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
   });
   if (name === null || !name.trim()) return;
   openDraft(newPlaylist(name.trim()), true);
@@ -7370,13 +7366,13 @@ $('#pl-input').addEventListener('change', async (e) => {
 
 $('#btn-pl-paste').addEventListener('click', async () => {
   const text = await promptDialog({
-    title: 'Playlist einfügen',
+    title: 'Setliste einfügen',
     text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.',
     value: '', okLabel: 'Übernehmen', multiline: true,
     placeholder: '# Sommerkonzert 2026\nAve Maria\nBlaue Augen',
   });
   if (text === null || !text.trim()) return;
-  await createPlaylistFromText(text, 'Eingefügte Playlist');
+  await createPlaylistFromText(text, 'Eingefügte Setliste');
 });
 
 // Läuft renderPlaylists() mehrfach überlappend (z. B. Import und Tab-Wechsel
@@ -7423,7 +7419,7 @@ async function renderPlaylists() {
     $('#current-setlist-host').textContent = '';
     host.textContent = '';
     host.append(el('div', { class: 'empty' },
-      el('h2', { text: 'Noch keine Playlisten' }),
+      el('h2', { text: 'Noch keine Setlisten' }),
       el('p', { class: 'small', text: 'Lege eine an oder importiere die Textdatei des Chorleiters.' })));
     return;
   }
@@ -7533,7 +7529,7 @@ async function openPlaylistView(id) {
   }
   const pl = await DB.metaGet(`playlist:${id}`).catch(() => null);
   if (!pl) {
-    banner('Diese Playlist ist nicht mehr vorhanden.', { kind: 'error' });
+    banner('Diese Setliste ist nicht mehr vorhanden.', { kind: 'error' });
     showView('playlists');
     return;
   }
@@ -7552,15 +7548,15 @@ $('#btn-pl-save').addEventListener('click', async () => {
   plDirty = false;
   updateDraftButtons();
   await renderPlaylists();
-  banner('Playlist gespeichert.', { kind: 'ok' });
+  banner('Setliste gespeichert.', { kind: 'ok' });
 });
 
 $('#btn-pl-discard').addEventListener('click', async () => {
   if (!plDraft) return;
   const ok = await confirmDialog({
     title: 'Änderungen verwerfen?',
-    text: plSaved ? 'Die Playlist wird auf den zuletzt gespeicherten Stand zurückgesetzt.'
-                  : 'Die neue Playlist wird nicht angelegt.',
+    text: plSaved ? 'Die Setliste wird auf den zuletzt gespeicherten Stand zurückgesetzt.'
+                  : 'Die neue Setliste wird nicht angelegt.',
     okLabel: 'Verwerfen', danger: true,
   });
   if (!ok) return;
@@ -7592,7 +7588,7 @@ async function confirmLeaveDraft() {
   if (choice === 'save') {
     await savePlaylist(plDraft);
     await renderPlaylists();
-    banner('Playlist gespeichert.', { kind: 'ok' });
+    banner('Setliste gespeichert.', { kind: 'ok' });
   }
   plDirty = false;
   plDraft = null;
@@ -7744,7 +7740,28 @@ installEntryDragging($('#pl-entries'));
 function renderPlaylistCandidates(songs) {
   const host = $('#pl-candidates');
   host.textContent = '';
-  const q = normalizeTitle($('#pl-search').value || '');
+  const raw = $('#pl-search').value || '';
+  const q = normalizeTitle(raw);
+
+  // Auch noch nicht importierte Lieder gehören in eine Setliste — der
+  // Chorleiter plant oft, bevor die Aufnahme überhaupt vorliegt. Ein Titel,
+  // zu dem die Suche keinen vorhandenen Song findet, lässt sich deshalb als
+  // reiner Platzhalter eintragen (genau wie beim Text-Import).
+  if (raw.trim() && !songs.some((s) => s.normTitle === q)) {
+    host.append(el('button', {
+      class: 'list-item', type: 'button',
+      onclick: async () => {
+        plDraft.songTitles.push(raw.trim());
+        markDirty();
+        $('#pl-search').value = '';
+        await renderPlaylistDetail();
+      },
+    },
+      el('div', { style: 'flex:1; min-width:0' },
+        el('strong', { text: `„${raw.trim()}“ eintragen` }),
+        el('div', { class: 'small muted', text: 'Noch nicht importiertes Lied als Platzhalter hinzufügen' }))));
+  }
+
   const inList = new Set((plDraft.songTitles || []).map(normalizeTitle));
 
   // Ohne Suchbegriff zeigt die Liste alle Songs — sonst blieben Titel weiter
@@ -7753,7 +7770,7 @@ function renderPlaylistCandidates(songs) {
   if (q) list = list.filter((s) => s.normTitle.includes(q));
 
   if (!list.length) {
-    host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
+    if (!raw.trim()) host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
     return;
   }
 
@@ -7786,7 +7803,7 @@ $('#pl-back').addEventListener('click', async () => {
 });
 
 $('#pl-rename').addEventListener('click', async () => {
-  const name = await promptDialog({ title: 'Playlist umbenennen', value: plDraft.name });
+  const name = await promptDialog({ title: 'Setliste umbenennen', value: plDraft.name });
   if (name === null || !name.trim()) return;
   plDraft.name = name.trim();
   markDirty();
@@ -7795,7 +7812,7 @@ $('#pl-rename').addEventListener('click', async () => {
 
 $('#btn-pl-delete').addEventListener('click', async () => {
   const ok = await confirmDialog({
-    title: 'Playlist löschen?',
+    title: 'Setliste löschen?',
     text: `„${plDraft.name}" wird entfernt. Die Songs bleiben erhalten.`,
     okLabel: 'Löschen', danger: true,
   });
@@ -7839,12 +7856,12 @@ $('#btn-pl-copy').addEventListener('click', async () => {
   const text = playlistToText(plDraft);
   try {
     await navigator.clipboard.writeText(text);
-    banner('Playlist in die Zwischenablage kopiert.', { kind: 'ok' });
+    banner('Setliste in die Zwischenablage kopiert.', { kind: 'ok' });
   } catch {
     // Mehrzeilig: so bleibt ein Titel je Zeile stehen und der kopierte Text
     // lässt sich anderswo wieder als Playlist einlesen.
     await promptDialog({
-      title: 'Playlist als Text', text: 'Text markieren und kopieren.',
+      title: 'Setliste als Text', text: 'Text markieren und kopieren.',
       value: text, okLabel: 'Fertig', multiline: true,
     });
   }
@@ -7916,7 +7933,7 @@ function playlistAdvance() {
   for (let step = 1; step <= total; step++) {
     const i = (playQueue.index + step) % total;
     if (!playQueue.items[i].id) continue;
-    if (i <= playQueue.index) banner(`Playlist „${playQueue.name}" beginnt von vorn.`);
+    if (i <= playQueue.index) banner(`Setliste „${playQueue.name}" beginnt von vorn.`);
     playQueue.index = i;
     const id = playQueue.items[i].id;
     // Ist nur ein einziger Titel abspielbar, führt das Weiterschalten zurück
@@ -7931,7 +7948,7 @@ function playlistAdvance() {
     navigate(`#song/${id}`, { replace: true });
     return;
   }
-  banner(`Playlist „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
+  banner(`Setliste „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
   playQueue = null;
 }
 
@@ -7997,7 +8014,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
     updateBackupReminder();
     banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, `
       + `${plural(data.notes.length, 'Notiz', 'Notizen')}, `
-      + `${plural(data.playlists.length, 'Playlist', 'Playlisten')}.`, { kind: 'ok' });
+      + `${plural(data.playlists.length, 'Setliste', 'Setlisten')}.`, { kind: 'ok' });
   } catch (err) {
     bannerError('Die Sicherung konnte nicht erstellt werden.', 'BACKUP-EXPORT', err);
   }
@@ -8035,7 +8052,7 @@ async function restoreBackup(data) {
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
-        + `${plural(playlists.length, 'Playlist', 'Playlisten')} gefunden. `
+        + `${plural(playlists.length, 'Setliste', 'Setlisten')} gefunden. `
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
     options: [
@@ -8048,7 +8065,7 @@ async function restoreBackup(data) {
   if (mode === 'replace') {
     const ok = await confirmDialog({
       title: 'Wirklich ersetzen?',
-      text: 'Alle vorhandenen Loops, Notizen und Playlisten werden vorher gelöscht.',
+      text: 'Alle vorhandenen Loops, Notizen und Setlisten werden vorher gelöscht.',
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
@@ -8122,7 +8139,7 @@ async function restoreBackup(data) {
     const name = normalizeTitle(p.name || '');
     if (existingPl.some((x) => normalizeTitle(x.name) === name)) continue;
     if (fresh.some((x) => x.type === 'playlist' && normalizeTitle(x.name) === name)) continue;
-    fresh.push(newPlaylist(p.name || 'Playlist', p.songTitles));
+    fresh.push(newPlaylist(p.name || 'Setliste', p.songTitles));
     addedPl++;
   }
 
@@ -8144,7 +8161,7 @@ async function restoreBackup(data) {
   await renderSettings();
   if (playerSong) await loadSongNote();
   banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
-    + `und ${plural(addedPl, 'Playlist', 'Playlisten')} eingespielt.`
+    + `und ${plural(addedPl, 'Setliste', 'Setlisten')} eingespielt.`
     + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
     + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
         + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : ''), { kind: 'ok' });
@@ -8227,7 +8244,7 @@ async function updateBackupReminder() {
     el('p', { style: 'margin:0 0 10px',
       text: days === null
         ? `Du hast ${plural(loops.length, 'Loop', 'Loops')} angelegt, aber noch nie gesichert. Eine Sicherung ist in zehn Sekunden erstellt.`
-        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops und Playlisten wären bei einem Problem verloren.` }),
+        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops und Setlisten wären bei einem Problem verloren.` }),
     el('div', { style: 'display:flex; gap:8px' },
       el('button', { class: 'btn', type: 'button', text: 'Jetzt sichern',
         onclick: () => { box.hidden = true; showView('settings'); $('#btn-backup-export').focus(); } }),
