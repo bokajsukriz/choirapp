@@ -4585,17 +4585,35 @@ async function audioInit() {
   Audio.channel = { gLL, gLR, gRL, gRR };
   audioApplyChannelMode(settings.channelMode);
 
-  // Letzte im Diagnose-Log protokollierte Position — nur alle paar Sekunden
-  // ein Eintrag, sonst würde das Log bei jedem Positions-Tick überlaufen.
-  let lastLoggedPos = -10;
+  // Letzter im Diagnose-Log protokollierter Messpunkt — nach Echtzeit, nicht
+  // nach Wiedergabeposition getaktet: nur so lässt sich ein Aussetzer
+  // überhaupt erkennen. Ein Takt nach Position (z.B. „alle 5 s Position")
+  // würde einen mehrsekündigen Stillstand einfach in denselben Eimer wie
+  // normale Wiedergabe stecken — beides sieht am Ende „5 Sekunden weiter"
+  // aus, egal ob das 5 echte Sekunden oder 10 mit einer Pause dazwischen
+  // gedauert hat.
+  let lastPosLog = { wall: performance.now(), pos: 0 };
 
   Audio.node.port.onmessage = (e) => {
     const m = e.data;
     if (m.type === 'pos') {
       Audio.position = m.seconds;
-      if (m.seconds - lastLoggedPos >= 5) {
-        lastLoggedPos = m.seconds;
+      const nowWall = performance.now();
+      const wallDelta = nowWall - lastPosLog.wall;
+      if (wallDelta >= 3000) {
+        const posDelta = m.seconds - lastPosLog.pos;
+        const expected = (wallDelta / 1000) * (Audio.rate || 1);
+        // Deutlich weniger Position als bei der eingestellten Geschwindigkeit
+        // zu erwarten wäre ⇒ die Wiedergabe stand zwischenzeitlich still,
+        // auch wenn AudioContext und Sichtbarkeit unauffällig aussehen.
+        if (posDelta < expected * 0.5) {
+          dlog('audio:stall', {
+            expectedS: Math.round(expected * 10) / 10, actualS: Math.round(posDelta * 10) / 10,
+            ctxState: Audio.ctx?.state, visibility: document.visibilityState, silentPaused: Audio.silent?.paused,
+          });
+        }
         dlog('audio:pos', { s: Math.round(m.seconds), ctxState: Audio.ctx?.state, visibility: document.visibilityState });
+        lastPosLog = { wall: nowWall, pos: m.seconds };
       }
       Audio.onPosition?.(m.seconds);
     } else if (m.type === 'total') {
