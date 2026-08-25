@@ -31,13 +31,15 @@
   --text:       #241b3d;
   --muted:      #8c81a6;
   --accent:     #ff3d9a;
+  --accent-rgb: 255,61,154;             /* dieselbe Farbe wie --accent, als "r,g,b" für rgba() unten —
+                                            wird zusammen mit --accent umgeschaltet (siehe applyAccentColor) */
   --accent-ink: #241b3d;
   --accent-2:   #33c9dc;
   --accent-3:   #ffd23f;
   --danger:     #ff4d6d;
   --ok:         #21b17f;
   --warn:       #ffb100;
-  --pill-line:  rgba(255,61,154,.32);   /* zarter Rosa-Rand für Pillenknöpfe */
+  --pill-line:  rgba(var(--accent-rgb),.32);   /* zarter Rosa-Rand für Pillenknöpfe */
 
   --radius:     20px;
   --tap:        44px;          /* Mindestgröße für Touch-Ziele */
@@ -368,7 +370,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   width: 100%;
   min-height: 50px;
   padding: 9px var(--pad);
-  background: rgba(255,61,154,.045);
+  background: rgba(var(--accent-rgb),.045);
   border: 1px solid var(--pill-line);
   border-radius: var(--radius);
   margin-bottom: 7px;
@@ -448,8 +450,8 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   min-height: var(--tap);
   padding: 11px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255,61,154,.3);
-  background: rgba(255,61,154,.07);
+  border: 1px solid rgba(var(--accent-rgb),.3);
+  background: rgba(var(--accent-rgb),.07);
   color: var(--text);
 }
 
@@ -910,7 +912,7 @@ input[type="checkbox"] {
 .seek-range {
   position: absolute;
   top: 0; bottom: 0;
-  background: rgba(255,61,154,.22);
+  background: rgba(var(--accent-rgb),.22);
 }
 
 .times {
@@ -1004,6 +1006,7 @@ input[type="checkbox"] {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   min-height: 52px;
   border: 0;
@@ -1034,6 +1037,27 @@ input[type="checkbox"] {
 .player-tabs--mini { margin: 8px 0 0; }
 .player-tabs--mini .player-tab { min-height: 44px; font-size: 0.68rem; gap: 1px; }
 .player-tabs--mini .player-tab svg { width: 16px; height: 16px; }
+
+/* Akzentfarbe wählen ("Persönliches") — runde Farbproben, die aktuell
+   gewählte bekommt einen Doppelring statt einem Häkchen, damit die Farbe
+   selbst gut zu sehen bleibt. */
+.accent-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+.accent-swatch {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+}
+.accent-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text);
+}
 
 .tab-panel[hidden] { display: none; }
 
@@ -1197,32 +1221,48 @@ input[type="checkbox"] {
   border-radius: var(--radius);
   padding: 14px;
   line-height: 1.55;
+  text-align: center;
 }
 
 .score-item {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: var(--tap);
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   margin-bottom: 8px;
+}
+
+.score-item-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
   color: inherit;
   text-decoration: none;
   cursor: pointer;
 }
-
 .score-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted); }
 .score-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* Eingebettete PDF-Vorschau — natives iframe, kein eigener Renderer. Lädt
+   erst, wenn der Sheets-Reiter geöffnet wird (siehe loadScorePreviews). */
+.score-preview {
+  width: 100%;
+  height: 360px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) - 4px);
+  background: #fff;
+}
 
 /* Notizen — schlichtes Textfeld ohne Formatierung. Bewusst dieselbe Anmutung
    wie der Liedtext daneben, nur eben beschreibbar. */
 .note-box {
   display: block;
   width: 100%;
-  min-height: 130px;
+  min-height: 320px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1742,7 +1782,7 @@ input[type="checkbox"] {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         </button>
       </div>
-      <p class="small muted" id="loop-info" style="margin:10px 0 0"></p>
+      <p class="small muted" id="loop-info" style="margin:10px 0 0; text-align:center"></p>
       <div id="loop-list"></div>
     </div>
 
@@ -1757,13 +1797,13 @@ input[type="checkbox"] {
         </div>
         <div class="lyrics" id="lyrics-text" hidden></div>
       </div>
-      <p class="small muted" id="lyrics-empty" style="margin:0">Kein Liedtext hinterlegt.</p>
+      <p class="small muted" id="lyrics-empty" style="margin:0; text-align:center">Kein Liedtext hinterlegt.</p>
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" hidden>
       <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
       <div id="note-editor" hidden>
-        <textarea class="note-box" id="note-text" rows="5" spellcheck="true"
+        <textarea class="note-box" id="note-text" rows="12" spellcheck="true"
                   aria-label="Notiz zu diesem Lied"
                   placeholder="z. B. Einsatz nach Takt 12 abwarten, zweite Strophe leiser"></textarea>
         <div class="row note-foot">
@@ -2010,6 +2050,9 @@ input[type="checkbox"] {
           <span>Sheets</span>
         </button>
       </div>
+
+      <p class="section-title">Akzentfarbe</p>
+      <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
     </div>
 
     <div class="card">
@@ -2023,7 +2066,7 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2>Fahrradfahren-Modus</h2>
+      <h2>Byciclemode</h2>
       <p class="small muted" style="margin-top:-4px">
         Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
         Seite gemischt, hört man sie sonst je nach Ohr gar nicht.
@@ -2846,9 +2889,38 @@ const DEFAULT_SETTINGS = {
   lastImportAt: null,         // Zeitpunkt des letzten erfolgreichen Imports
   debugLog: false,            // Diagnose-Log für schwer reproduzierbare Fehler (Beta)
   defaultPlayerTab: 'loops',  // Reiter, der beim Öffnen eines Songs zuerst erscheint
+  accentColor: '#ff3d9a',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
 };
 
 let settings = { ...DEFAULT_SETTINGS };
+
+/**
+ * Auswahl in "Persönliches". Bewusst helle, kräftige Töne — dieselbe
+ * Anmutung wie das voreingestellte Pink —, damit die dunkle --accent-ink
+ * überall lesbar bleibt, ohne pro Farbe eine eigene Kontrastfarbe pflegen
+ * zu müssen.
+ */
+const ACCENT_PRESETS = [
+  { name: 'Pink',    hex: '#ff3d9a' },
+  { name: 'Türkis',  hex: '#33c9dc' },
+  { name: 'Orange',  hex: '#ff9f1c' },
+  { name: 'Lila',    hex: '#a75cff' },
+  { name: 'Mint',    hex: '#2ecc9c' },
+  { name: 'Blau',    hex: '#3d9bf5' },
+];
+
+function hexToRgbTriplet(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return '255,61,154';
+  return [1, 2, 3].map((i) => parseInt(m[i], 16)).join(',');
+}
+
+/** Schaltet --accent (und die davon abgeleitete --accent-rgb) auf dem Wurzelelement um. */
+function applyAccentColor(hex) {
+  const root = document.documentElement.style;
+  root.setProperty('--accent', hex);
+  root.setProperty('--accent-rgb', hexToRgbTriplet(hex));
+}
 
 async function loadSettings() {
   try {
@@ -2863,11 +2935,13 @@ async function loadSettings() {
   if (!settings.myVoices?.length && settings.myVoice) {
     settings.myVoices = [settings.myVoice];
   }
+  applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
   return settings;
 }
 
 async function saveSettings(patch) {
   settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+  if ('accentColor' in patch) applyAccentColor(settings.accentColor);
   try {
     await DB.metaPut(settings);
   } catch (err) {
@@ -4229,6 +4303,7 @@ function initSettingsAccordion() {
 async function renderSettings() {
   initSettingsAccordion();
   renderDefaultTabPicker();
+  renderAccentPicker();
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
@@ -4305,6 +4380,25 @@ function renderChannelMode() {
 function renderDefaultTabPicker() {
   for (const btn of $$('#default-tab-picker .player-tab')) {
     btn.setAttribute('aria-pressed', btn.dataset.tab === (settings.defaultPlayerTab || 'loops') ? 'true' : 'false');
+  }
+}
+
+function renderAccentPicker() {
+  const host = $('#accent-picker');
+  host.textContent = '';
+  const current = settings.accentColor || DEFAULT_SETTINGS.accentColor;
+
+  for (const preset of ACCENT_PRESETS) {
+    const btn = el('button', {
+      class: 'accent-swatch', type: 'button', style: `background:${preset.hex}`,
+      'aria-pressed': preset.hex === current ? 'true' : 'false',
+      'aria-label': preset.name,
+      onclick: async () => {
+        await saveSettings({ accentColor: preset.hex });
+        renderAccentPicker();
+      },
+    });
+    host.append(btn);
   }
 }
 
@@ -6899,6 +6993,7 @@ function renderLoopList() {
    ========================================================================== */
 
 let scoreURLs = [];   // Blob-URLs der geöffneten PDFs, werden wieder freigegeben
+let scoresPreviewLoaded = false; // ob loadScorePreviews() für den offenen Song schon lief
 
 function releaseScoreURLs() {
   for (const u of scoreURLs) URL.revokeObjectURL(u);
@@ -6951,6 +7046,8 @@ function setPlayerTab(tab) {
     $(`#tab-btn-${name}`).setAttribute('aria-selected', String(name === tab));
     $(`#tab-panel-${name}`).hidden = name !== tab;
   }
+  // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
+  if (tab === 'sheets') loadScorePreviews();
 }
 
 /** Färbt Icon und Beschriftung eines Reiters rosa, wenn dort etwas hinterlegt ist. */
@@ -6991,40 +7088,69 @@ async function renderPlayerExtras() {
   $('#lyrics-empty').hidden = !!playerSong?.lyrics;
   setTabHasContent('lyrics', !!playerSong?.lyrics);
 
-  // --- Noten ------------------------------------------------------------
+  // --- Noten --------------------------------------------------------------
+  // Nur die Dateinamen sofort — das Einlesen der PDF-Bytes aus IndexedDB und
+  // die eingebettete Vorschau folgen erst, wenn der Sheets-Reiter tatsächlich
+  // geöffnet wird (loadScorePreviews). Sonst würde jeder Songwechsel jede
+  // hinterlegte Partitur laden, obwohl sie kaum je angesehen wird.
   const list = $('#scores-list');
   list.textContent = '';
   const scores = playerSong?.scores || [];
   $('#scores-empty').hidden = scores.length > 0;
   setTabHasContent('sheets', scores.length > 0);
-  if (!scores.length) return;
+  scoresPreviewLoaded = false;
 
   for (const score of scores) {
-    if (token !== extrasRenderToken) return;
-    const row = el('div', { class: 'score-item' });
-    row.append(iconPdf(), el('span', { class: 'grow', text: score.fileName }));
+    const row = el('div', { class: 'score-item', 'data-file-key': score.fileKey });
+    const head = el('div', { class: 'score-item-head' });
+    head.append(iconPdf(), el('span', { class: 'grow', text: score.fileName }));
+    row.append(head);
     list.append(row);
+  }
+
+  // Ist der Sheets-Reiter schon offen (z. B. weil er der Standard-Reiter
+  // ist), lädt die Vorschau sofort mit — sonst erst beim Antippen des Reiters.
+  if ($('#tab-btn-sheets')?.getAttribute('aria-selected') === 'true') loadScorePreviews();
+}
+
+/**
+ * Holt für jede hinterlegte Partitur die PDF-Bytes und bettet eine Vorschau
+ * ein (natives iframe, keine eigene PDF-Bibliothek nötig). Läuft höchstens
+ * einmal je geöffnetem Song — ein erneuter Reiterwechsel lädt nicht neu.
+ */
+async function loadScorePreviews() {
+  if (scoresPreviewLoaded || !playerSong?.scores?.length) return;
+  scoresPreviewLoaded = true;
+  const token = ++extrasRenderToken;
+  const rows = $$('#scores-list .score-item');
+
+  for (const score of playerSong.scores) {
+    const row = rows.find((r) => r.dataset.fileKey === score.fileKey);
+    if (!row) continue;
+    const head = row.querySelector('.score-item-head');
 
     try {
       const rec = await DB.fileGet(score.fileKey);
       if (token !== extrasRenderToken) return;
-      if (!rec) { row.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
+      if (!rec) { head.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
       const file = new File([recordBlob(rec, 'application/pdf')], score.fileName,
         { type: 'application/pdf' });
       const url = URL.createObjectURL(file);
       scoreURLs.push(url);
 
-      // Die ganze Zeile öffnet die Datei — kein eigener „Öffnen“-Knopf mehr.
-      row.tabIndex = 0;
-      row.setAttribute('role', 'link');
-      row.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
-      row.addEventListener('keydown', (e) => {
+      // Die Kopfzeile öffnet die Datei groß — kein eigener „Öffnen“-Knopf.
+      // Klicks in der eingebetteten Vorschau selbst lösen das nicht aus:
+      // die läuft als eigenes Dokument im iframe.
+      head.tabIndex = 0;
+      head.setAttribute('role', 'link');
+      head.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+      head.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(url, '_blank', 'noopener'); }
       });
 
       if (navigator.canShare?.({ files: [file] })) {
-        row.append(el('button', {
+        head.append(el('button', {
           class: 'btn', type: 'button', text: 'Teilen',
           style: 'padding:8px 14px; min-height:38px',
           onclick: (e) => {
@@ -7039,11 +7165,15 @@ async function renderPlayerExtras() {
           style: 'padding:8px 14px; min-height:38px',
           onclick: (e) => e.stopPropagation(),
         });
-        row.append(dl);
+        head.append(dl);
       }
+
+      row.append(el('iframe', {
+        class: 'score-preview', src: url, title: score.fileName, loading: 'lazy',
+      }));
     } catch (err) {
       console.error('[noten]', err);
-      row.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
+      head.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
     }
   }
 }
