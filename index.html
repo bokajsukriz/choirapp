@@ -4446,10 +4446,10 @@ async function audioInit() {
       if (Audio.playing && posDelta < expected * 0.5) {
         dlog('audio:stall', {
           expectedS: Math.round(expected * 10) / 10, actualS: Math.round(posDelta * 10) / 10,
-          visibility: document.visibilityState, elPaused: el.paused,
+          visibility: document.visibilityState, elPaused: el.paused, ctxState: Audio.ctx?.state,
         });
       }
-      dlog('audio:pos', { s: Math.round(s), visibility: document.visibilityState });
+      dlog('audio:pos', { s: Math.round(s), visibility: document.visibilityState, ctxState: Audio.ctx?.state });
       lastPosLog = { wall: nowWall, pos: s };
     }
     Audio.onPosition?.(s);
@@ -4469,7 +4469,7 @@ async function audioInit() {
   // Songende setzt `el.ended`; beides wird hier deshalb übersprungen.
   el.addEventListener('pause', () => {
     if (!Audio.playing || el.ended) return;
-    dlog('audio:interrupted');
+    dlog('audio:interrupted', { ctxState: Audio.ctx?.state, visibility: document.visibilityState });
     Audio.playing = false;
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -4514,6 +4514,16 @@ async function audioInit() {
     Audio.channel = { gLL, gLR, gRL, gRR };
     audioApplyChannelMode(settings.channelMode);
     dlog('audio:route', { mode: 'matrix' });
+
+    // Läuft das Element durch die Matrix, kommt kein Ton mehr durch, sobald
+    // dieser Kontext angehalten wird — auch wenn `el.paused` weiterhin false
+    // zeigt, das Element sich also für sich genommen unauffällig verhält.
+    // iOS kann den Kontext im Hintergrund unabhängig vom Element anhalten;
+    // ohne diesen Listener bliebe das unbemerkt und unbehandelt.
+    ctx.addEventListener('statechange', () => {
+      dlog('audio:ctxstate', { state: ctx.state, playing: Audio.playing, visibility: document.visibilityState });
+      onAudioContextStateChange();
+    });
   } catch (err) {
     // Lieber kein Fahrradmodus als kein Ton: das Element spielt in diesem
     // Fall einfach direkt, ohne jeden Web-Audio-Kontakt.
@@ -4523,6 +4533,37 @@ async function audioInit() {
 
   Audio.ready = true;
   dlog('audio:init:ok');
+}
+
+/**
+ * Reagiert darauf, dass der AudioContext der Kanal-Matrix von außen
+ * angehalten wurde (Android sperrt ihn beim Bildschirm-Aus, Safari kennt
+ * zusätzlich „interrupted" — ein Anruf, eine andere Audio-App, Speicherdruck).
+ * `el.paused` bleibt davon unberührt: das Element denkt, es spiele, nur kommt
+ * kein Ton mehr durch die Matrix.
+ */
+async function onAudioContextStateChange() {
+  const ctx = Audio.ctx;
+  if (!ctx || ctx.state === 'running' || !Audio.playing) return;
+
+  // Im Hintergrund ist ein angehaltener Kontext normal und kein Fehler; beim
+  // Zurückkehren kümmert sich der visibilitychange-Handler darum.
+  if (document.visibilityState !== 'visible') return;
+
+  try {
+    await ctx.resume();
+  } catch (err) {
+    dlog('audio:ctxresume:fail', { name: err?.name });
+  }
+  if (ctx !== Audio.ctx || !Audio.playing) return;
+
+  if (ctx.state !== 'running') {
+    dlog('audio:interrupted', { ctxState: ctx.state, visibility: document.visibilityState });
+    Audio.playing = false;
+    setPlayIcon(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
+  }
 }
 
 // Nur ein Ladevorgang gleichzeitig auf dem einen Element — sonst würde ein
@@ -4757,14 +4798,25 @@ async function updateWakeLock() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  dlog('visibility', { state: document.visibilityState, playing: Audio.playing, elPaused: Audio.el?.paused });
+  dlog('visibility', {
+    state: document.visibilityState, playing: Audio.playing,
+    elPaused: Audio.el?.paused, ctxState: Audio.ctx?.state,
+  });
   if (document.visibilityState !== 'visible') return;
   updateWakeLock();
-  // Hat das System die Wiedergabe währenddessen angehalten, hier wieder aufnehmen.
-  if (Audio.playing && Audio.el?.paused) {
+  if (!Audio.playing) return;
+
+  // Hat das System die Wiedergabe währenddessen angehalten, hier wieder
+  // aufnehmen — das Element selbst (z. B. nach einem Anruf) und, unabhängig
+  // davon, den AudioContext der Kanal-Matrix. Der kann im Hintergrund für
+  // sich allein angehalten worden sein, während `el.paused` weiterhin false
+  // zeigt — dann käme trotz vermeintlich laufender Wiedergabe kein Ton mehr
+  // durch die Matrix, ohne dass irgendetwas das bisher bemerkt hätte.
+  if (Audio.el?.paused) {
     dlog('audio:visible:recover');
     Audio.el.play().catch((err) => dlog('audio:resume:fail', { name: err?.name }));
   }
+  onAudioContextStateChange();
 });
 
 /** Gibt die geladene Spur frei — beim Verlassen des Players. */
@@ -7135,8 +7187,8 @@ document.addEventListener('visibilitychange', () => {
 // laufender Code stehen — das würde erklären, warum die Wiedergabe nach ein
 // paar Sekunden bei gesperrtem Bildschirm abbricht). Nicht jeder Browser
 // kennt diese Ereignisse; wo nicht, bleibt der Aufruf folgenlos.
-document.addEventListener('freeze', () => dlog('page:freeze', { playing: Audio.playing, elPaused: Audio.el?.paused }));
-document.addEventListener('resume', () => dlog('page:resume', { playing: Audio.playing, elPaused: Audio.el?.paused }));
+document.addEventListener('freeze', () => dlog('page:freeze', { playing: Audio.playing, elPaused: Audio.el?.paused, ctxState: Audio.ctx?.state }));
+document.addEventListener('resume', () => dlog('page:resume', { playing: Audio.playing, elPaused: Audio.el?.paused, ctxState: Audio.ctx?.state }));
 window.addEventListener('pageshow', (e) => dlog('page:pageshow', { fromBfcache: e.persisted }));
 window.addEventListener('pagehide', (e) => dlog('page:pagehide', { toBfcache: e.persisted, playing: Audio.playing }));
 
