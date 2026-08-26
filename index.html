@@ -1531,13 +1531,17 @@ input[type="checkbox"] {
 .dialog-actions .btn { flex: 1; }
 
 /* Player als dauerhafter Hauptreiter zwischen Kopf- und Navigationsleiste. */
-.app-header, .app-nav { position: relative; z-index: 70; }
+.app-nav { position: relative; z-index: 70; }
 #player {
-  top: calc(var(--safe-top) + 54px);
+  top: 0;
   bottom: calc(var(--safe-bottom) + var(--nav-h));
   z-index: 60;
 }
-#player > .player-head { grid-template-columns: 1fr; padding-top: 10px; }
+#player > .player-head { grid-template-columns: 1fr; padding-top: calc(var(--safe-top) + 10px); }
+#player .player-head-main { flex-direction: column; }
+#player .player-head-title { justify-content: center; width: 100%; }
+#player .player-head-title strong { text-align: center; }
+#player .voice-pills { justify-content: center; }
 #player .player-foot { padding-bottom: 10px; }
 .player-empty { display: none; flex: 1; padding: 48px 24px; text-align: center; color: var(--muted); }
 .player-empty strong { display: block; color: var(--text); font-family: var(--font-display); font-size: 1.25rem; margin-bottom: 8px; }
@@ -1546,9 +1550,11 @@ input[type="checkbox"] {
 #player.is-empty .player-empty { display: block; }
 
 /* Der Import ist die prominente, offene erste Aktion der Einstellungen. */
-.settings-import { margin-bottom: 24px; }
-.settings-import > .card:first-child { background: transparent; border: 0; border-radius: 0; padding: 0; }
-.settings-import > .card:first-child h2 { color: var(--text); font-family: var(--font-display); font-size: 1.2rem; text-transform: none; letter-spacing: 0; }
+.settings-import-button { margin-bottom: 18px; }
+.import-view { z-index: 75; }
+.import-view > .player-head { grid-template-columns: 44px 1fr 44px; }
+.import-view > .player-head strong { text-align: center; }
+.import-view > .player-body { padding-bottom: calc(20px + var(--safe-bottom)); }
 </style>
 </head>
 
@@ -1949,57 +1955,17 @@ input[type="checkbox"] {
   </div>
 </section>
 
-<header class="app-header">
-  <h1 id="view-title">Songs</h1>
-</header>
-
-<main class="app-main" id="main">
-
-  <!-- ===== Bibliothek =================================================== -->
-  <section class="view is-active" id="view-songs" aria-labelledby="view-title">
-    <div class="hint-box" id="backup-reminder" hidden></div>
-    <div class="searchbar" id="searchbar" hidden>
-      <input class="search-input" id="search" type="search" inputmode="search"
-             autocomplete="off" autocorrect="off" spellcheck="false"
-             placeholder="Song suchen …" aria-label="Song suchen">
-      <button class="icon-btn" id="btn-feeling-lucky" type="button"
-              aria-label="Feeling Lucky — zufälliges Lied abspielen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
-          <circle cx="8.3" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="8.3" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="15.7" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
-        </svg>
-      </button>
-    </div>
-    <div class="filterbar" id="filterbar" hidden></div>
-    <div id="song-list-host"></div>
-  </section>
-
-  <!-- ===== Setlisten ===================================================== -->
-  <section class="view" id="view-playlists">
-    <div id="current-setlist-host"></div>
+<!-- Import: eigene Vollbild-Ansicht mit Anleitung und Status. -->
+<section class="player import-view" id="import-view" hidden aria-labelledby="import-title">
+  <div class="player-head">
+    <button class="icon-btn" id="import-back" type="button" aria-label="Zurück zu den Einstellungen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <strong id="import-title">Songs importieren</strong>
+    <span aria-hidden="true"></span>
+  </div>
+  <div class="player-body">
     <div class="card">
-      <h2>Setliste hinzufügen</h2>
-      <div class="row" style="margin-top:14px; gap:8px">
-        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
-        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Datei</button>
-        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Text</button>
-      </div>
-    </div>
-    <div id="playlist-list-host"></div>
-  </section>
-
-  <!-- ===== Import ====================================================== -->
-
-  <!-- ===== Einstellungen =============================================== -->
-  <section class="view" id="view-settings">
-    <div class="settings-import" aria-labelledby="settings-import-title">
-    <div class="card">
-      <h2 id="settings-import-title">Songs importieren</h2>
       <p class="small muted" style="margin-top:0">
         Die Aufnahmen liegen im geteilten Dropbox-Ordner. Du lädst den Ordner einmal
         als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline
@@ -2052,8 +2018,54 @@ input[type="checkbox"] {
         <div class="row"><span>Letzter Import</span><span id="stat-last-import">–</span></div>
       </div>
     </div>
-    </div>
+  </div>
+</section>
 
+<main class="app-main" id="main">
+
+  <!-- ===== Bibliothek =================================================== -->
+  <section class="view is-active" id="view-songs">
+    <div class="hint-box" id="backup-reminder" hidden></div>
+    <div class="searchbar" id="searchbar" hidden>
+      <input class="search-input" id="search" type="search" inputmode="search"
+             autocomplete="off" autocorrect="off" spellcheck="false"
+             placeholder="Song suchen …" aria-label="Song suchen">
+      <button class="icon-btn" id="btn-feeling-lucky" type="button"
+              aria-label="Feeling Lucky — zufälliges Lied abspielen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
+          <circle cx="8.3" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="8.3" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="15.7" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+    </div>
+    <div class="filterbar" id="filterbar" hidden></div>
+    <div id="song-list-host"></div>
+  </section>
+
+  <!-- ===== Setlisten ===================================================== -->
+  <section class="view" id="view-playlists">
+    <div id="current-setlist-host"></div>
+    <div class="card">
+      <h2>Setliste hinzufügen</h2>
+      <div class="row" style="margin-top:14px; gap:8px">
+        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
+        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
+        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Datei</button>
+        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Text</button>
+      </div>
+    </div>
+    <div id="playlist-list-host"></div>
+  </section>
+
+  <!-- ===== Einstellungen =============================================== -->
+  <section class="view" id="view-settings">
+    <button class="btn btn--primary btn--block settings-import-button" id="btn-open-import" type="button">
+      Songs importieren
+    </button>
 
     <div class="card">
       <h2>Persönliches</h2>
@@ -3677,9 +3689,7 @@ function showTab(name) {
     else b.removeAttribute('aria-current');
   });
 
-  $('#view-title').textContent = VIEWS[name].title;
   $('#main').scrollTop = 0;
-  if (name === 'settings') { renderImportReport(); renderImportStats(); }
   VIEWS[name].render?.();
 }
 
@@ -3709,6 +3719,16 @@ function applyRoute() {
   const name = slash < 0 ? raw : raw.slice(0, slash);
   const param = slash < 0 ? '' : raw.slice(slash + 1);
 
+  if (name === 'import') {
+    if (openPlaylist) closePlaylistView();
+    importView.hidden = false;
+    renderImportReport();
+    renderImportStats();
+    return;
+  }
+
+  importView.hidden = true;
+
   if (name === 'song' && param) {
     if (openPlaylist) closePlaylistView();
     showTab('player');
@@ -3724,6 +3744,9 @@ function applyRoute() {
   if (openPlaylist) closePlaylistView();
   showTab(VIEWS[name] ? name : 'songs');
 }
+
+$('#btn-open-import').addEventListener('click', () => navigate('#import'));
+$('#import-back').addEventListener('click', () => history.back());
 
 $('#nav').addEventListener('click', (e) => {
   const btn = e.target.closest('.nav-btn');
@@ -6154,6 +6177,7 @@ async function registerServiceWorker() {
    ========================================================================== */
 
 const playerEl = $('#player');
+const importView = $('#import-view');
 let playerSong = null;      // gerade geöffneter Song
 let playerVoice = null;     // aktive Stimme
 let seeking = false;
@@ -9126,7 +9150,7 @@ function loadGrooveLab() {
 }
 
 function initGrooveLabEasterEgg() {
-  const title = $('#view-title');
+  const title = $('#player-title');
   if (!title) return;
 
   let taps = [];
