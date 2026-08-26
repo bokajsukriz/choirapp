@@ -115,6 +115,16 @@ body::after, .player::after { bottom: 40px; left: -130px; width: 380px; height: 
   html, body { height: 100dvh; }
 }
 
+/* Installierte iOS/iPadOS-Web-Apps melden für `dvh` teils nur die frühere
+   Safari-Inhaltsfläche. `vh` entspricht im Standalone-Modus dagegen der
+   vollständigen App-Fläche. Eng auf WebKit-PWAs begrenzen, damit Browser-Tabs
+   (mit ein-/ausfahrender Werkzeugleiste) und andere Plattformen `dvh` behalten. */
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    html, body { height: 100vh; }
+  }
+}
+
 button, input, select, textarea {
   font-family: inherit;
   font-size: 16px;  /* verhindert das automatische Zoomen auf iOS */
