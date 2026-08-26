@@ -1,0 +1,57 @@
+name: Apply iOS standalone viewport fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ios-viewport-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Patch index.html
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+          old = """/* dvh berücksichtigt die ein- und ausfahrende Browserleiste auf dem Handy. */
+          @supports (height: 100dvh) {
+            html, body { height: 100dvh; }
+          }
+          """
+          new = """/* dvh berücksichtigt die ein- und ausfahrende Browserleiste auf dem Handy. */
+          @supports (height: 100dvh) {
+            html, body { height: 100dvh; }
+          }
+
+          /* iOS/iPadOS Standalone-PWA: WebKit kann dvh mit viewport-fit=cover
+             zu klein berechnen und dadurch unter der Navigation Leerraum lassen. */
+          @media (display-mode: standalone) {
+            html, body { height: 100vh; }
+          }
+          """
+          if old not in text:
+              raise SystemExit("Expected viewport CSS block not found; index.html was not changed.")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Remove temporary workflow
+        run: rm .github/workflows/ios-viewport-fix.yml
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html .github/workflows/ios-viewport-fix.yml
+          git commit -m "Fix iOS standalone viewport height"
+          git push origin HEAD:main
