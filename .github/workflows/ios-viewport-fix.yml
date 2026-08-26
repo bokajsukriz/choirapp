@@ -55,3 +55,5 @@ jobs:
           git add index.html .github/workflows/ios-viewport-fix.yml
           git commit -m "Fix iOS standalone viewport height"
           git push origin HEAD:main
+
+# trigger after workflow registration
