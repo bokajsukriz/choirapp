@@ -1529,6 +1529,26 @@ input[type="checkbox"] {
 .dialog p { margin: 0 0 18px; color: var(--muted); }
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions .btn { flex: 1; }
+
+/* Player als dauerhafter Hauptreiter zwischen Kopf- und Navigationsleiste. */
+.app-header, .app-nav { position: relative; z-index: 70; }
+#player {
+  top: calc(var(--safe-top) + 54px);
+  bottom: calc(var(--safe-bottom) + var(--nav-h));
+  z-index: 60;
+}
+#player > .player-head { grid-template-columns: 1fr; padding-top: 10px; }
+#player .player-foot { padding-bottom: 10px; }
+.player-empty { display: none; flex: 1; padding: 48px 24px; text-align: center; color: var(--muted); }
+.player-empty strong { display: block; color: var(--text); font-family: var(--font-display); font-size: 1.25rem; margin-bottom: 8px; }
+.player-empty p { max-width: 360px; margin: 0 auto; line-height: 1.5; }
+#player.is-empty .player-head, #player.is-empty .player-body, #player.is-empty .player-foot { display: none; }
+#player.is-empty .player-empty { display: block; }
+
+/* Der Import ist die prominente, offene erste Aktion der Einstellungen. */
+.settings-import { margin-bottom: 24px; }
+.settings-import > .card:first-child { background: transparent; border: 0; border-radius: 0; padding: 0; }
+.settings-import > .card:first-child h2 { color: var(--text); font-family: var(--font-display); font-size: 1.2rem; text-transform: none; letter-spacing: 0; }
 </style>
 </head>
 
@@ -1728,14 +1748,9 @@ input[type="checkbox"] {
   </div>
 </section>
 
-<!-- Player: eigene Vollbild-Ansicht über der Bibliothek. -->
-<section class="player" id="player" hidden aria-labelledby="player-title">
+<!-- Player: dauerhafter Hauptreiter; Audio läuft beim Reiterwechsel weiter. -->
+<section class="player is-empty" id="player" hidden aria-labelledby="player-title">
   <div class="player-head">
-    <button class="icon-btn" id="player-back" type="button" aria-label="Zurück zur Bibliothek">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M15 5l-7 7 7 7"/>
-      </svg>
-    </button>
     <div class="player-head-main">
       <div class="player-head-title">
         <strong id="player-title"></strong>
@@ -1744,6 +1759,8 @@ input[type="checkbox"] {
       <div class="voice-pills" id="player-pills"></div>
     </div>
   </div>
+
+  <div class="player-empty" id="player-empty"><strong>Noch nichts ausgewählt</strong><p>Wähle einen Song oder starte eine Setliste. Die Wiedergabe bleibt beim Wechseln der Reiter aktiv.</p></div>
 
   <div class="player-body" id="player-body">
     <div class="hint-box" id="player-hint" hidden></div>
@@ -1977,9 +1994,12 @@ input[type="checkbox"] {
   </section>
 
   <!-- ===== Import ====================================================== -->
-  <section class="view" id="view-import">
+
+  <!-- ===== Einstellungen =============================================== -->
+  <section class="view" id="view-settings">
+    <div class="settings-import" aria-labelledby="settings-import-title">
     <div class="card">
-      <h2>Songs importieren</h2>
+      <h2 id="settings-import-title">Songs importieren</h2>
       <p class="small muted" style="margin-top:0">
         Die Aufnahmen liegen im geteilten Dropbox-Ordner. Du lädst den Ordner einmal
         als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline
@@ -2032,10 +2052,8 @@ input[type="checkbox"] {
         <div class="row"><span>Letzter Import</span><span id="stat-last-import">–</span></div>
       </div>
     </div>
-  </section>
+    </div>
 
-  <!-- ===== Einstellungen =============================================== -->
-  <section class="view" id="view-settings">
 
     <div class="card">
       <h2>Persönliches</h2>
@@ -2291,11 +2309,11 @@ input[type="checkbox"] {
     </svg>
     Setlisten
   </button>
-  <button class="nav-btn" type="button" data-view="import">
+  <button class="nav-btn" type="button" data-view="player">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+      <circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z" fill="currentColor" stroke="none"/>
     </svg>
-    Import
+    Player
   </button>
   <button class="nav-btn" type="button" data-view="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3642,7 +3660,7 @@ function groupDuplicates(songFolders) {
 const VIEWS = {
   songs:     { title: 'Songs',         render: renderSongs },
   playlists: { title: 'Setlisten',     render: renderPlaylists },
-  import:    { title: 'Import',        render: () => { renderImportReport(); renderImportStats(); } },
+  player:    { title: 'Player',        render: () => {} },
   settings:  { title: 'Einstellungen', render: renderSettings },
 };
 
@@ -3653,6 +3671,7 @@ function showTab(name) {
   currentView = name;
 
   $$('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${name}`));
+  playerEl.hidden = name !== 'player';
   $$('.nav-btn').forEach((b) => {
     if (b.dataset.view === name) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
@@ -3660,6 +3679,7 @@ function showTab(name) {
 
   $('#view-title').textContent = VIEWS[name].title;
   $('#main').scrollTop = 0;
+  if (name === 'settings') { renderImportReport(); renderImportStats(); }
   VIEWS[name].render?.();
 }
 
@@ -3679,12 +3699,9 @@ function navigate(hash, { replace = false } = {}) {
 function showView(name) { navigate(`#${name}`); }
 
 /**
- * Wertet die Adresse aus: `#songs`, `#import`, … oder `#song/<id>` für den
- * Player. Der Player liegt über den Reitern, deshalb wird er hier geöffnet
- * und geschlossen — so bringt die Zurück-Taste zuverlässig zur Liste zurück.
- * Führt die Route nicht zurück in den (noch ladenden) Player, wird ein
- * laufender openPlayer()-Aufruf per Marke verworfen — sonst könnte er sich
- * nach einer verspäteten DB-Antwort von selbst wieder öffnen.
+ * Wertet die Adresse aus: `#songs`, `#player`, … oder `#song/<id>` für einen
+ * konkreten Song. Der Player bleibt beim Wechsel zu einem anderen Hauptreiter
+ * geladen; nur ein explizit gewählter neuer Song ersetzt seinen Inhalt.
  */
 function applyRoute() {
   const raw = (location.hash || '#songs').slice(1);
@@ -3694,17 +3711,16 @@ function applyRoute() {
 
   if (name === 'song' && param) {
     if (openPlaylist) closePlaylistView();
+    showTab('player');
     if (!playerSong || playerSong.id !== param) openPlayer(param);
     return;
   }
 
   if (name === 'playlist' && param) {
-    if (playerSong) closePlayer(); else openPlayerToken++;
     if (!openPlaylist || openPlaylist.id !== param) openPlaylistView(param);
     return;
   }
 
-  if (playerSong) closePlayer(); else openPlayerToken++;
   if (openPlaylist) closePlaylistView();
   showTab(VIEWS[name] ? name : 'songs');
 }
@@ -6360,7 +6376,8 @@ async function openPlayer(songId) {
   }
 
   playerSong = song;
-  playerEl.hidden = false;
+  playerEl.classList.remove('is-empty');
+  playerEl.hidden = currentView !== 'player';
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
   const pills = renderVoicePills(song.tracks, { clickable: true });
@@ -6630,7 +6647,8 @@ function closePlayer() {
   openPlayerToken++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
-  playerEl.hidden = true;
+  playerEl.hidden = currentView !== 'player';
+  playerEl.classList.add('is-empty');
   audioReset();
   releaseScoreURLs();
   playerSong = null;
@@ -6646,8 +6664,6 @@ function closePlayer() {
 }
 
 /* ---------- Bedienelemente ---------------------------------------------- */
-
-$('#player-back').addEventListener('click', () => history.back());
 
 $('#btn-play').addEventListener('click', async () => {
   if (Audio.playing) {
