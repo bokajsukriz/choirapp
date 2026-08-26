@@ -1,4 +1,4 @@
-/* ========================================================================== 
+/* ==========================================================================
    SERVICE WORKER — Chor-Übe-App
    Aufgabe: die App-Shell (HTML, Manifest, Icons) im Cache Storage halten,
    damit die App im Flugmodus und vom Home-Bildschirm startet.
@@ -10,39 +10,8 @@
 
 // Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
 // Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v50';
+const SW_VERSION = 'v51';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
-
-// iOS/iPadOS WebKit kann in einer installierten Standalone-PWA mit
-// viewport-fit=cover 100dvh zu klein berechnen. Dann endet der Flex-Body zu
-// früh und unter der unteren Navigation bleibt sichtbar Leerraum. Für die
-// ausgelieferte App-Shell ergänzen wir deshalb im Standalone-Modus 100vh als
-// gezielten Override. Die normale Browserdarstellung behält 100dvh.
-const IOS_VIEWPORT_NEEDLE = `@supports (height: 100dvh) {
-  html, body { height: 100dvh; }
-}`;
-const IOS_VIEWPORT_FIX = `/* iOS/iPadOS Standalone-PWA: WebKit kann dvh mit viewport-fit=cover
-   zu klein berechnen und dadurch unter der Navigation Leerraum lassen. */
-@media (display-mode: standalone) {
-  html, body { height: 100vh; }
-}`;
-
-async function patchIndexResponse(response) {
-  const html = await response.text();
-  const fixed = html.includes(IOS_VIEWPORT_FIX)
-    ? html
-    : html.replace(IOS_VIEWPORT_NEEDLE, `${IOS_VIEWPORT_NEEDLE}\n\n${IOS_VIEWPORT_FIX}`);
-
-  const headers = new Headers(response.headers);
-  headers.delete('content-length');
-  headers.set('content-type', 'text/html; charset=utf-8');
-
-  return new Response(fixed, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
 // (https://<name>.github.io/<repo>/). Absolute Pfade würden dort ins Leere zeigen.
@@ -63,13 +32,7 @@ self.addEventListener('install', (event) => {
       await Promise.all(
         SHELL.map(async (path) => {
           try {
-            const req = new Request(path, { cache: 'reload' });
-            const res = await fetch(req);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const toCache = (path === './' || path === './index.html')
-              ? await patchIndexResponse(res)
-              : res;
-            await cache.put(req, toCache);
+            await cache.add(new Request(path, { cache: 'reload' }));
           } catch (err) {
             console.warn('[sw] konnte nicht cachen:', path, err);
           }
@@ -120,7 +83,7 @@ self.addEventListener('fetch', (event) => {
         const cached = await caches.match('./index.html', { ignoreSearch: true });
         if (cached) return cached;
         try {
-          return await patchIndexResponse(await fetch(req));
+          return await fetch(req);
         } catch {
           return new Response(
             '<!doctype html><meta charset="utf-8">' +
