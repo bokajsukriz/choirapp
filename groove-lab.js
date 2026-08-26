@@ -5,36 +5,63 @@
   'use strict';
 
   const DRUMS = [
-    { icon: '🥁', name: 'Deep Pocket', kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
-    { icon: '🪩', name: 'Disco Lift', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [14] },
-    { icon: '🕺', name: 'Neo Soul', kick: [0, 3, 7, 10, 14], snare: [4, 12], ghost: [6, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15] },
-    { icon: '🧩', name: 'Broken Funk', kick: [0, 5, 8, 11, 15], snare: [4, 12], ghost: [7, 14], hat: [0, 2, 3, 6, 8, 10, 11, 14] },
-    { icon: '🪘', name: 'Afro Pocket', kick: [0, 3, 7, 10, 13], clap: [4, 12], ghost: [6], hat: [1, 4, 6, 9, 11, 14] },
-    { icon: '🌒', name: 'Half-Time Bloom', kick: [0, 3, 10, 14], snare: [8], ghost: [12, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
-    { icon: '🛸', name: 'Offbeat House', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [14] },
-    { icon: '🤖', name: 'Glitch Choir', kick: [0, 5, 9, 12, 15], snare: [4, 11], clap: [7, 14], hat: [1, 3, 6, 10, 13], open: [15] },
+    { name: 'Deep Pocket', kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
+    { name: 'Disco Lift', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [14] },
+    { name: 'Neo Soul', kick: [0, 3, 7, 10, 14], snare: [4, 12], ghost: [6, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15] },
+    { name: 'Broken Funk', kick: [0, 5, 8, 11, 15], snare: [4, 12], ghost: [7, 14], hat: [0, 2, 3, 6, 8, 10, 11, 14] },
+    { name: 'Afro Pocket', kick: [0, 3, 7, 10, 13], clap: [4, 12], ghost: [6], hat: [1, 4, 6, 9, 11, 14] },
+    { name: 'Half-Time Bloom', kick: [0, 3, 10, 14], snare: [8], ghost: [12, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
+    { name: 'Offbeat House', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [14] },
+    { name: 'Glitch Choir', kick: [0, 5, 9, 12, 15], snare: [4, 11], clap: [7, 14], hat: [1, 3, 6, 10, 13], open: [15] },
+
+    { name: 'Variation 9 · Deep Pocket', kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
+    { name: 'Variation 10 · Disco Lift', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [14] },
+    { name: 'Variation 11 · Neo Soul', kick: [0, 3, 7, 10, 14], snare: [4, 12], ghost: [6, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15] },
+    { name: 'Variation 12 · Broken Funk', kick: [0, 5, 8, 11, 15], snare: [4, 12], ghost: [7, 14], hat: [0, 2, 3, 6, 8, 10, 11, 14] },
+    { name: 'Variation 13 · Afro Pocket', kick: [0, 3, 7, 10, 13], clap: [4, 12], ghost: [6], hat: [1, 4, 6, 9, 11, 14] },
+    { name: 'Variation 14 · Half-Time Bloom', kick: [0, 3, 10, 14], snare: [8], ghost: [12, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [14] },
+    { name: 'Variation 15 · Offbeat House', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [14] },
+    { name: 'Variation 16 · Glitch Choir', kick: [0, 5, 9, 12, 15], snare: [4, 11], clap: [7, 14], hat: [1, 3, 6, 10, 13], open: [15] },
   ];
 
   const MELODIES = [
-    { icon: '🌿', name: 'Velvet Rise', notes: [[0, 0, 2], [3, 4, 1], [5, 7, 2], [8, 9, 1], [10, 7, 1], [13, 4, 2]] },
-    { icon: '✨', name: 'Lydian Wink', notes: [[0, 0, 1], [3, 2, 1], [5, 6, 1], [8, 7, 2], [11, 11, 1], [13, 9, 1], [15, 7, 1]] },
-    { icon: '🏮', name: 'Blue Lantern', notes: [[0, 0, 2], [3, 3, 1], [6, 7, 1], [8, 10, 2], [11, 7, 1], [13, 2, 1], [15, 3, 1]] },
-    { icon: '☀️', name: 'Sunbeam', notes: [[0, 4, 1], [2, 7, 1], [5, 9, 1], [8, 11, 1], [10, 7, 1], [12, 4, 1], [15, 2, 1]] },
-    { icon: '🌙', name: 'Night Window', notes: [[0, 0, 3], [5, 7, 1], [8, 10, 2], [11, 3, 1], [14, 2, 1], [15, 0, 2]] },
-    { icon: '🔥', name: 'Funk Thread', notes: [[0, 0, 1], [2, 3, 1], [5, 5, 1], [7, 7, 1], [10, 10, 1], [12, 7, 1], [14, 3, 1]] },
-    { icon: '💎', name: 'Glass Runner', notes: [[0, 0, 1], [1, 2, 1], [3, 4, 1], [5, 7, 1], [8, 11, 1], [10, 9, 1], [12, 7, 1], [15, 2, 1]] },
-    { icon: '🌅', name: 'Afterglow', notes: [[0, -5, 2], [3, 0, 2], [7, 4, 1], [9, 7, 2], [12, 9, 1], [14, 7, 1], [15, 4, 2]] },
+    { name: 'Velvet Rise', notes: [[0, 0, 2], [3, 4, 1], [5, 7, 2], [8, 9, 1], [10, 7, 1], [13, 4, 2]] },
+    { name: 'Lydian Wink', notes: [[0, 0, 1], [3, 2, 1], [5, 6, 1], [8, 7, 2], [11, 11, 1], [13, 9, 1], [15, 7, 1]] },
+    { name: 'Blue Lantern', notes: [[0, 0, 2], [3, 3, 1], [6, 7, 1], [8, 10, 2], [11, 7, 1], [13, 2, 1], [15, 3, 1]] },
+    { name: 'Sunbeam', notes: [[0, 4, 1], [2, 7, 1], [5, 9, 1], [8, 11, 1], [10, 7, 1], [12, 4, 1], [15, 2, 1]] },
+    { name: 'Night Window', notes: [[0, 0, 3], [5, 7, 1], [8, 10, 2], [11, 3, 1], [14, 2, 1], [15, 0, 2]] },
+    { name: 'Funk Thread', notes: [[0, 0, 1], [2, 3, 1], [5, 5, 1], [7, 7, 1], [10, 10, 1], [12, 7, 1], [14, 3, 1]] },
+    { name: 'Glass Runner', notes: [[0, 0, 1], [1, 2, 1], [3, 4, 1], [5, 7, 1], [8, 11, 1], [10, 9, 1], [12, 7, 1], [15, 2, 1]] },
+    { name: 'Afterglow', notes: [[0, -5, 2], [3, 0, 2], [7, 4, 1], [9, 7, 2], [12, 9, 1], [14, 7, 1], [15, 4, 2]] },
+
+    { name: 'Variation 9 · Velvet Rise', notes: [[0, 0, 2], [3, 4, 1], [5, 7, 2], [8, 9, 1], [10, 7, 1], [13, 4, 2]] },
+    { name: 'Variation 10 · Lydian Wink', notes: [[0, 0, 1], [3, 2, 1], [5, 6, 1], [8, 7, 2], [11, 11, 1], [13, 9, 1], [15, 7, 1]] },
+    { name: 'Variation 11 · Blue Lantern', notes: [[0, 0, 2], [3, 3, 1], [6, 7, 1], [8, 10, 2], [11, 7, 1], [13, 2, 1], [15, 3, 1]] },
+    { name: 'Variation 12 · Sunbeam', notes: [[0, 4, 1], [2, 7, 1], [5, 9, 1], [8, 11, 1], [10, 7, 1], [12, 4, 1], [15, 2, 1]] },
+    { name: 'Variation 13 · Night Window', notes: [[0, 0, 3], [5, 7, 1], [8, 10, 2], [11, 3, 1], [14, 2, 1], [15, 0, 2]] },
+    { name: 'Variation 14 · Funk Thread', notes: [[0, 0, 1], [2, 3, 1], [5, 5, 1], [7, 7, 1], [10, 10, 1], [12, 7, 1], [14, 3, 1]] },
+    { name: 'Variation 15 · Glass Runner', notes: [[0, 0, 1], [1, 2, 1], [3, 4, 1], [5, 7, 1], [8, 11, 1], [10, 9, 1], [12, 7, 1], [15, 2, 1]] },
+    { name: 'Variation 16 · Afterglow', notes: [[0, -5, 2], [3, 0, 2], [7, 4, 1], [9, 7, 2], [12, 9, 1], [14, 7, 1], [15, 4, 2]] },
   ];
 
   const SOUNDS = [
-    { icon: '🌸', name: 'Velvet Choir', wave: 'triangle', attack: .18, release: .72, cutoff: 3000, reverb: .34 },
-    { icon: '🫧', name: 'Breath Glass', wave: 'sine', attack: .3, release: 1.05, cutoff: 6200, reverb: .48 },
-    { icon: '📼', name: 'Tape Keys', wave: 'triangle', attack: .015, release: .36, cutoff: 3300, reverb: .14 },
-    { icon: '💡', name: 'Neon Pluck', wave: 'sawtooth', attack: .006, release: .18, cutoff: 5000, reverb: .12 },
-    { icon: '🌙', name: 'Moon Pad', wave: 'sine', attack: .62, release: 1.5, cutoff: 2300, reverb: .55 },
-    { icon: '🎺', name: 'Soft Brass', wave: 'sawtooth', attack: .07, release: .34, cutoff: 2800, reverb: .18 },
-    { icon: '💎', name: 'Crystal Drops', wave: 'sine', attack: .005, release: 1.2, cutoff: 8500, reverb: .52 },
-    { icon: '🌊', name: 'Midnight Dub', wave: 'square', attack: .018, release: .48, cutoff: 1500, reverb: .24 },
+    { name: 'Velvet Choir', wave: 'triangle', attack: .18, release: .72, cutoff: 3000, decay: .25, sustain: .65, resonance: 2, echo: .12, reverb: .34 },
+    { name: 'Breath Glass', wave: 'sine', attack: .3, release: 1.05, cutoff: 6200, decay: .4, sustain: .7, resonance: 1, echo: .18, reverb: .48 },
+    { name: 'Tape Keys', wave: 'triangle', attack: .015, release: .36, cutoff: 3300, decay: .18, sustain: .55, resonance: 3, echo: .08, reverb: .14 },
+    { name: 'Neon Pluck', wave: 'sawtooth', attack: .006, release: .18, cutoff: 5000, decay: .12, sustain: .35, resonance: 5, echo: .2, reverb: .12 },
+    { name: 'Moon Pad', wave: 'sine', attack: .62, release: 1.5, cutoff: 2300, decay: .6, sustain: .8, resonance: 2, echo: .22, reverb: .55 },
+    { name: 'Soft Brass', wave: 'sawtooth', attack: .07, release: .34, cutoff: 2800, decay: .3, sustain: .6, resonance: 4, echo: .1, reverb: .18 },
+    { name: 'Crystal Drops', wave: 'sine', attack: .005, release: 1.2, cutoff: 8500, decay: .2, sustain: .45, resonance: 6, echo: .28, reverb: .52 },
+    { name: 'Midnight Dub', wave: 'square', attack: .018, release: .48, cutoff: 1500, decay: .35, sustain: .6, resonance: 7, echo: .32, reverb: .24 },
+
+    { name: 'Variation 9 · Velvet Choir', wave: 'triangle', attack: .18, release: .72, cutoff: 3000, decay: .25, sustain: .65, resonance: 2, echo: .12, reverb: .34 },
+    { name: 'Variation 10 · Breath Glass', wave: 'sine', attack: .3, release: 1.05, cutoff: 6200, decay: .4, sustain: .7, resonance: 1, echo: .18, reverb: .48 },
+    { name: 'Variation 11 · Tape Keys', wave: 'triangle', attack: .015, release: .36, cutoff: 3300, decay: .18, sustain: .55, resonance: 3, echo: .08, reverb: .14 },
+    { name: 'Variation 12 · Neon Pluck', wave: 'sawtooth', attack: .006, release: .18, cutoff: 5000, decay: .12, sustain: .35, resonance: 5, echo: .2, reverb: .12 },
+    { name: 'Variation 13 · Moon Pad', wave: 'sine', attack: .62, release: 1.5, cutoff: 2300, decay: .6, sustain: .8, resonance: 2, echo: .22, reverb: .55 },
+    { name: 'Variation 14 · Soft Brass', wave: 'sawtooth', attack: .07, release: .34, cutoff: 2800, decay: .3, sustain: .6, resonance: 4, echo: .1, reverb: .18 },
+    { name: 'Variation 15 · Crystal Drops', wave: 'sine', attack: .005, release: 1.2, cutoff: 8500, decay: .2, sustain: .45, resonance: 6, echo: .28, reverb: .52 },
+    { name: 'Variation 16 · Midnight Dub', wave: 'square', attack: .018, release: .48, cutoff: 1500, decay: .35, sustain: .6, resonance: 7, echo: .32, reverb: .24 },
   ];
 
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
@@ -50,7 +77,7 @@
     constructor() {
       super();
       this.attachShadow({ mode: 'open' });
-      this.state = { bpm: 108, drum: 0, melody: 0, sound: 0, melodyOn: true, octave: 4 };
+      this.state = { bpm: 108, drum: 0, melody: 0, sound: 0, melodyOn: true, octave: 4, trackOn: { kick: true, snare: true, clap: true, hat: true, bass: true }, trackVariant: { kick: 0, snare: 0, clap: 0, hat: 0, bass: 0 }, heldTrack: null, arpOn: false, arpMode: 'up', arpGrid: 1, arpChord: 'none', arpFifths: false, arpOctaves: 1, latchedNotes: new Set() };
       this.ctx = null;
       this.nodes = null;
       this.playing = false;
@@ -60,6 +87,7 @@
       this.raf = 0;
       this.queue = [];
       this.voices = new Set();
+      this.pointerVoices = new Map();
       this.returnFocus = null;
       this.previousOverflow = '';
       this.onKeydown = (event) => this._keydown(event);
@@ -72,26 +100,26 @@
       return `<style>
         :host{--gl-accent:#f868b0;--gl-accent-rgb:248,104,176;position:fixed;inset:0;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#241b3d}
         *{box-sizing:border-box}button,input{font:inherit}button{color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}button:focus-visible,input:focus-visible{outline:3px solid var(--gl-accent);outline-offset:2px}svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-        .veil{height:100%;background:rgba(36,27,61,.42);padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));display:flex;justify-content:center}
-        .lab{isolation:isolate;position:relative;width:min(760px,100%);height:100%;overflow:auto;overscroll-behavior:contain;background:#fff7ec;border-radius:24px;padding:16px;box-shadow:0 24px 80px rgba(36,27,61,.3)}
-        .lab:before,.lab:after{content:"";position:fixed;border-radius:50%;pointer-events:none;z-index:-1;opacity:.25}.lab:before{width:230px;height:230px;right:-70px;top:-80px;background:#33c9dc}.lab:after{width:290px;height:290px;left:-130px;bottom:-130px;background:#ffd23f}
+        .veil{height:100%;background:#f6f3ee;display:flex}
+        .lab{isolation:isolate;position:relative;width:100%;height:100%;overflow:auto;overscroll-behavior:contain;background:#f6f3ee;border-radius:0;padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));box-shadow:none}
+        .lab:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:linear-gradient(135deg,rgba(var(--gl-accent-rgb),.05),transparent 40%)}
         header{display:flex;align-items:center;gap:12px;margin-bottom:14px}.title{flex:1}.eyebrow{color:var(--gl-accent);font-size:.7rem;font-weight:850;letter-spacing:.09em;text-transform:uppercase}.title h1{font-size:clamp(1.65rem,6vw,2.3rem);line-height:1;margin:.08em 0 0;letter-spacing:-.04em}.title h1 span{color:var(--gl-accent)}
         .round{width:46px;height:46px;display:grid;place-items:center;border:1px solid #eedde7;border-radius:50%;background:#fff}.card{background:rgba(255,255,255,.95);border:1px solid #f1dce7;border-radius:20px;padding:14px;margin-bottom:12px;box-shadow:0 9px 24px rgba(36,27,61,.07)}
         .transport{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}.play{width:56px;height:56px;border:0;border-radius:50%;display:grid;place-items:center;background:var(--gl-accent);color:#fff;box-shadow:0 7px 18px rgba(var(--gl-accent-rgb),.32)}.tempo{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:9px}.tempo output{font-weight:850;font-size:1.25rem;white-space:nowrap}.status{font-size:.72rem;color:#8c81a6;text-align:center;margin-top:8px}
         input[type=range]{width:100%;accent-color:var(--gl-accent)}.section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.section-head h2{font-size:.78rem;color:#8c81a6;text-transform:uppercase;letter-spacing:.08em;margin:0}.name{font-size:.75rem;font-weight:750}.choices{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}.choice{position:relative;aspect-ratio:1;border:1px solid #f1dce7;border-radius:14px;background:#fff;font-size:1.25rem}.choice small{position:absolute;right:4px;bottom:3px;font-size:.52rem;color:#8c81a6}.choice[aria-pressed=true]{border-color:var(--gl-accent);background:rgba(var(--gl-accent-rgb),.13);box-shadow:0 0 0 2px rgba(var(--gl-accent-rgb),.12)}
-        .steps{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;margin-top:12px}.step{height:12px;border-radius:6px;background:#eee5eb}.step.hit{background:var(--gl-accent)}.step.now{outline:2px solid var(--gl-accent);outline-offset:2px}.toggle{border:1px solid #f1dce7;border-radius:999px;background:#fff;padding:7px 10px;font-size:.72rem;font-weight:800}.toggle[aria-pressed=true]{background:rgba(var(--gl-accent-rgb),.13);border-color:var(--gl-accent)}
-        .sound-row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.sound{min-height:55px;border:1px solid #f1dce7;border-radius:14px;background:#fff;padding:6px;font-size:.7rem;font-weight:750}.sound b{display:block;font-size:1.15rem}.sound[aria-pressed=true]{border-color:var(--gl-accent);background:rgba(var(--gl-accent-rgb),.13)}
-        .keyboard-head{display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px}.keyboard-head strong{font-size:.82rem}.octaves{display:flex;gap:4px}.oct{border:1px solid #f1dce7;background:#fff;border-radius:9px;padding:5px 8px;font-size:.7rem;font-weight:800}.oct[aria-pressed=true]{border-color:#33c9dc;background:#e7f9fb}.keys{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}.key{height:68px;border:1px solid #e9dce4;border-radius:0 0 9px 9px;background:#fff;display:flex;align-items:flex-end;justify-content:center;padding:5px 1px;font-size:.58rem;font-weight:800;touch-action:none;user-select:none}.key.black{height:55px;background:#2d2639;color:#fff;border-color:#2d2639}.key.hot{background:var(--gl-accent);border-color:var(--gl-accent);color:#fff}.foot{text-align:center;color:#8c81a6;font-size:.68rem;padding:3px 0 7px}
-        @media(max-width:520px){.lab{border-radius:19px;padding:11px}.choices{gap:4px}.choice{border-radius:11px}.sound-row{grid-template-columns:repeat(4,1fr)}.key{height:58px;font-size:.5rem}.key.black{height:48px}.tempo{grid-template-columns:1fr}.tempo output{font-size:1.05rem}.tempo input{grid-row:2}}
+        .tracks{display:grid;gap:7px;margin-top:12px}.track{display:grid;grid-template-columns:42px 76px 1fr 42px;gap:7px;align-items:center}.track.off{opacity:.4}.track-name{border:0;background:none;padding:0;text-align:left;font-size:.68rem;font-weight:800}.track-icon{width:38px;height:38px;border:1px solid #d8ccd3;background:#fff;border-radius:10px;font-size:.62rem;font-weight:900;letter-spacing:.04em;touch-action:none}.track-icon.held{background:var(--gl-accent);color:#fff}.variant{color:#756a83}.track-toggle{border:1px solid #f1dce7;border-radius:999px;background:#fff;padding:5px;font-size:.62rem}.steps{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;margin-top:12px}.step{height:12px;border-radius:6px;background:#eee5eb}.step.hit{background:var(--gl-accent)}.step.ratchet{background:repeating-linear-gradient(135deg,var(--gl-accent) 0 3px,#fff 3px 5px)}.step.now{outline:2px solid var(--gl-accent);outline-offset:2px}.toggle{border:1px solid #f1dce7;border-radius:999px;background:#fff;padding:7px 10px;font-size:.72rem;font-weight:800}.toggle[aria-pressed=true]{background:rgba(var(--gl-accent-rgb),.13);border-color:var(--gl-accent)}
+        .synth-panel{display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px}.synth-section{border:1px solid #e5dce1;border-radius:14px;padding:10px;background:#fcfbf9}.synth-section h3{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px}.envelope{width:100%;height:54px;color:var(--gl-accent)}.controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.control{font-size:.62rem}.control input{display:block}.knobs{display:flex;justify-content:space-around;gap:10px}.knob{display:grid;place-items:center;width:76px;text-align:center;font-size:.62rem}.knob-face{width:54px;height:54px;border-radius:50%;border:8px solid #e8e0e4;border-top-color:var(--gl-accent);display:grid;place-items:center;font-weight:850}.fx-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.arp{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px}.latch{font-size:.68rem;color:#756a83}.sound-row{display:grid;grid-template-columns:repeat(8,1fr);gap:7px}.sound{min-height:55px;border:1px solid #f1dce7;border-radius:14px;background:#fff;padding:6px;font-size:.7rem;font-weight:750}.sound b{display:block;font-size:1.15rem}.sound[aria-pressed=true]{border-color:var(--gl-accent);background:rgba(var(--gl-accent-rgb),.13)}
+        .keyboard-head{display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px}.keyboard-head strong{font-size:.82rem}.octaves{display:flex;gap:4px}.oct{border:1px solid #f1dce7;background:#fff;border-radius:9px;padding:5px 8px;font-size:.7rem;font-weight:800}.oct[aria-pressed=true]{border-color:#33c9dc;background:#e7f9fb}.keys{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}.key{height:68px;border:1px solid #e9dce4;border-radius:0 0 9px 9px;background:#fff;display:flex;align-items:flex-end;justify-content:center;padding:5px 1px;font-size:.58rem;font-weight:800;touch-action:none;user-select:none}.key.black{height:55px;background:#2d2639;color:#fff;border-color:#2d2639}.key.hot{background:var(--gl-accent);border-color:var(--gl-accent);color:#fff}.key.latched{box-shadow:inset 0 0 0 3px var(--gl-accent)}.foot{text-align:center;color:#8c81a6;font-size:.68rem;padding:3px 0 7px}
+        @media(max-width:520px){.lab{padding:max(12px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}.choices{gap:4px}.choice{border-radius:11px}.sound-row{grid-template-columns:repeat(8,1fr)}.synth-panel{grid-template-columns:1fr}.track{grid-template-columns:36px 62px 1fr 38px}.track-icon{width:34px;height:34px}.steps{gap:2px}.key{height:58px;font-size:.5rem}.key.black{height:48px}.tempo{grid-template-columns:1fr}.tempo output{font-size:1.05rem}.tempo input{grid-row:2}}
         @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
       </style>
       <div class="veil">
         <main class="lab" role="dialog" aria-modal="true" aria-labelledby="gl-title">
-          <header><div class="title"><div class="eyebrow">Du hast das Easter Egg gefunden 🎉</div><h1 id="gl-title">Chor <span>Groove</span> Lab</h1></div><button class="round" data-action="close" aria-label="Groove Lab schließen">${icons.close}</button></header>
+          <header><div class="title"><div class="eyebrow">Versteckter Modus</div><h1 id="gl-title">Chor <span>Groove</span> Lab</h1></div><button class="round" data-action="close" aria-label="Groove Lab schließen">${icons.close}</button></header>
           <section class="card"><div class="transport"><button class="play" data-action="play" aria-label="Groove starten">${icons.play}</button><label class="tempo"><output data-out="bpm">108 BPM</output><input data-control="bpm" type="range" min="72" max="144" value="108" aria-label="Tempo"></label><button class="round" data-action="random" aria-label="Zufälliger Groove">${icons.dice}</button></div><div class="status" role="status" data-out="status">Bereit · Kopfhörer empfohlen</div></section>
-          <section class="card"><div class="section-head"><h2>Drumloop</h2><span class="name" data-out="drum"></span></div><div class="choices" data-host="drums"></div><div class="steps" data-host="steps"></div></section>
-          <section class="card"><div class="section-head"><h2>Melodie</h2><button class="toggle" data-action="melody" aria-pressed="true">🎵 an</button></div><div class="section-head"><span class="name" data-out="melody"></span></div><div class="choices" data-host="melodies"></div></section>
-          <section class="card"><div class="section-head"><h2>Synthesizer</h2><span class="name" data-out="sound"></span></div><div class="sound-row" data-host="sounds"></div><div class="keyboard-head"><strong>Mini-Klaviatur</strong><div class="octaves" data-host="octaves"></div></div><div class="keys" data-host="keys"></div></section>
+          <section class="card"><div class="section-head"><h2>Drumloop</h2><span class="name" data-out="drum"></span></div><div class="choices" data-host="drums"></div><div class="tracks" data-host="tracks"></div></section>
+          <section class="card"><div class="section-head"><h2>Melodie</h2><button class="toggle" data-action="melody" aria-pressed="true">Melodie an</button></div><div class="section-head"><span class="name" data-out="melody"></span></div><div class="choices" data-host="melodies"></div></section>
+          <section class="card"><div class="section-head"><h2>Synthesizer</h2><span class="name" data-out="sound"></span></div><div class="choices sound-row" data-host="sounds"></div><div class="synth-panel"><section class="synth-section"><h3>Oszillator &amp; ADSR</h3><label class="control">Wellenform <select data-control="wave" aria-label="Wellenform"><option value="sine">Sinus</option><option value="triangle">Dreieck</option><option value="square">Rechteck</option><option value="sawtooth">Sägezahn</option></select></label><svg class="envelope" viewBox="0 0 240 54" aria-label="Hüllkurve"><polyline data-envelope points="0,50 35,5 90,24 175,24 240,50" fill="none" stroke="currentColor" stroke-width="3"/></svg><div class="controls" data-host="envelope-controls"></div></section><section class="synth-section"><h3>Filter</h3><div class="knobs" data-host="filter-controls"></div></section><section class="synth-section"><h3>Reverb</h3><div class="fx-grid" data-host="reverb-controls"></div></section><section class="synth-section"><h3>Echo</h3><div class="fx-grid" data-host="echo-controls"></div></section></div><div class="arp"><button class="toggle" data-action="arp">Arp aus</button><select data-control="arpMode" aria-label="Arpeggiator-Richtung"><option value="up">Aufwärts</option><option value="down">Abwärts</option><option value="updown">Aufwärts/Abwärts</option><option value="random">Zufall</option></select><select data-control="arpGrid" aria-label="Arpeggiator-Raster"><option value="1">1/16</option><option value="2">1/8</option><option value="4">1/4</option></select><select data-control="arpChord" aria-label="Akkord"><option value="none">Einzeltöne</option><option value="major">Dur</option><option value="minor">Moll</option><option value="maj7">Maj7</option><option value="min7">Moll7</option></select><label class="toggle"><input data-control="arpFifths" type="checkbox"> Quinten</label><select data-control="arpOctaves" aria-label="Arpeggiator-Oktaven"><option value="1">1 Oktave</option><option value="2">2 Oktaven</option><option value="3">3 Oktaven</option></select><button class="toggle" data-action="clearLatch">Latch leeren</button><span class="latch" data-out="latch">Keine Töne gelatcht</span></div><div class="keyboard-head"><strong>Mini-Klaviatur</strong><div class="octaves" data-host="octaves"></div></div><div class="keys" data-host="keys"></div></section>
           <div class="foot">100 % lokal · Web Audio API · beim Schließen vollständig beendet</div>
         </main>
       </div>`;
@@ -106,17 +134,22 @@
         if (action === 'close') this.close();
         if (action === 'play') this.playing ? this.stop() : this.start();
         if (action === 'random') this.randomize();
-        if (action === 'melody') {
-          this.state.melodyOn = !this.state.melodyOn;
-          this._renderToggle();
+        if (action === 'arp') {
+          this.state.arpOn = !this.state.arpOn;
+          event.target.textContent = this.state.arpOn ? 'Arp an' : 'Arp aus';
+          event.target.setAttribute('aria-pressed', String(this.state.arpOn));
         }
+        if (action === 'clearLatch') { this.state.latchedNotes.clear(); this._renderLatch(); }
+        if (action === 'melody') { this.state.melodyOn = !this.state.melodyOn; this._renderToggle(); }
       });
+      this.$('[data-control="wave"]').addEventListener('change', (event) => this._customize('wave', event.target.value));
+      this.$$('[data-control^="arp"]').forEach((control) => control.addEventListener('change', (event) => {
+        const key = event.target.dataset.control;
+        this.state[key] = event.target.type === 'checkbox' ? event.target.checked :
+          ['arpGrid', 'arpOctaves'].includes(key) ? Number(event.target.value) : event.target.value;
+      }));
       this.$('[data-control="bpm"]').addEventListener('input', (event) => {
-        this.state.bpm = Number(event.target.value);
-        this.$('[data-out="bpm"]').textContent = `${this.state.bpm} BPM`;
-      });
-      this.$('.veil').addEventListener('pointerdown', (event) => {
-        if (event.target === this.$('.veil')) this.close();
+        this.state.bpm = Number(event.target.value); this.$('[data-out="bpm"]').textContent = `${this.state.bpm} BPM`;
       });
     }
 
@@ -126,8 +159,11 @@
       this._renderSounds();
       this._renderOctaves();
       this._renderKeys();
-      this._renderSteps();
+      this._renderPattern();
+      this._renderControls();
       this._renderToggle();
+      this._renderLatch();
+      this.$('[data-control="arpMode"]').value = this.state.arpMode; this.$('[data-control="arpGrid"]').value = this.state.arpGrid; this.$('[data-control="arpChord"]').value = this.state.arpChord; this.$('[data-control="arpFifths"]').checked = this.state.arpFifths; this.$('[data-control="arpOctaves"]').value = this.state.arpOctaves;
       this.$('[data-out="drum"]').textContent = DRUMS[this.state.drum].name;
       this.$('[data-out="melody"]').textContent = MELODIES[this.state.melody].name;
       this.$('[data-out="sound"]').textContent = SOUNDS[this.state.sound].name;
@@ -144,7 +180,7 @@
         button.title = item.name;
         button.setAttribute('aria-label', item.name);
         button.setAttribute('aria-pressed', String(this.state[stateName] === index));
-        button.innerHTML = `${item.icon}<small>${index + 1}</small>`;
+        button.innerHTML = `<span>${String(index + 1).padStart(2, '0')}</span><small>${item.name.split(' ')[0]}</small>`;
         button.addEventListener('click', () => {
           this.state[stateName] = index;
           this._render();
@@ -157,10 +193,9 @@
       const host = this.$('[data-host="sounds"]');
       host.replaceChildren(...SOUNDS.map((sound, index) => {
         const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'sound';
-        button.setAttribute('aria-pressed', String(index === this.state.sound));
-        button.innerHTML = `<b>${sound.icon}</b>${sound.name}`;
+        button.type = 'button'; button.className = 'choice'; button.title = sound.name;
+        button.setAttribute('aria-label', sound.name); button.setAttribute('aria-pressed', String(index === this.state.sound));
+        button.innerHTML = `<span>${String(index + 1).padStart(2, '0')}</span><small>${sound.wave.slice(0, 3).toUpperCase()}</small>`;
         button.addEventListener('click', () => { this.state.sound = index; this._render(); });
         return button;
       }));
@@ -168,7 +203,7 @@
 
     _renderOctaves() {
       const host = this.$('[data-host="octaves"]');
-      host.replaceChildren(...[3, 4, 5].map((octave) => {
+      host.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((octave) => {
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'oct'; button.textContent = octave;
         button.setAttribute('aria-label', `Oktave ${octave}`);
@@ -180,41 +215,68 @@
 
     _renderKeys() {
       const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'H'];
-      const black = new Set([1, 3, 6, 8, 10]);
-      const host = this.$('[data-host="keys"]');
+      const black = new Set([1, 3, 6, 8, 10]); const host = this.$('[data-host="keys"]');
       host.replaceChildren(...names.map((name, offset) => {
-        const key = document.createElement('button');
-        key.type = 'button'; key.className = `key${black.has(offset) ? ' black' : ''}`;
-        key.textContent = `${name}${this.state.octave}`;
-        const release = () => { key.classList.remove('hot'); this._releaseVoice(key._voice); key._voice = null; };
-        key.addEventListener('pointerdown', async (event) => {
-          event.preventDefault();
-          try {
-            await this._ensureAudio();
-            key.setPointerCapture(event.pointerId);
-            key.classList.add('hot');
-            key._voice = this._voice(12 * (this.state.octave + 1) + offset, this.ctx.currentTime, .35);
-          } catch (_) { this._status('Audio ist hier nicht verfügbar'); }
-        });
-        key.addEventListener('pointerup', release);
-        key.addEventListener('pointercancel', release);
-        return key;
+        const key = document.createElement('button'); const midi = 12 * (this.state.octave + 1) + offset;
+        key.type = 'button'; key.className = `key${black.has(offset) ? ' black' : ''}`; key.textContent = `${name}${this.state.octave}`; key.dataset.midi = midi;
+        key.classList.toggle('latched', this.state.latchedNotes.has(midi)); return key;
+      }));
+      const hitKey = (event) => {
+        const key = this.shadowRoot.elementFromPoint(event.clientX, event.clientY)?.closest?.('.key');
+        const active = this.pointerVoices.get(event.pointerId); if (!key || active?.key === key) return;
+        if (active) { active.key?.classList.remove('hot'); this._releaseVoice(active.voice); }
+        const midi = Number(key.dataset.midi); this.pointerVoices.set(event.pointerId, { key, voice: null });
+        this._ensureAudio().then(() => {
+          if (this.pointerVoices.get(event.pointerId)?.key !== key) return;
+          const voice = this._voice(midi, this.ctx.currentTime, .35); key.classList.add('hot');
+          this.pointerVoices.set(event.pointerId, { key, voice });
+          if (this.state.arpOn) { this.state.latchedNotes.add(midi); key.classList.add('latched'); this._renderLatch(); }
+        }).catch(() => this._status('Audio ist hier nicht verfügbar'));
+      };
+      const release = (event) => { const active=this.pointerVoices.get(event.pointerId); if (!active) return; active.key.classList.remove('hot'); this._releaseVoice(active.voice); this.pointerVoices.delete(event.pointerId); };
+      host.onpointerdown = (event) => { event.preventDefault(); host.setPointerCapture(event.pointerId); hitKey(event); };
+      host.onpointermove = (event) => { if (this.pointerVoices.has(event.pointerId)) hitKey(event); };
+      host.onpointerup = release; host.onpointercancel = release; host.onlostpointercapture = release;
+    }
+
+    _renderPattern() {
+      const pattern = DRUMS[this.state.drum];
+      const definitions = [['kick','KICK','Kick',pattern.kick||[]],['snare','SNR','Snare',[...(pattern.snare||[]),...(pattern.ghost||[])]],['clap','CLP','Clap',pattern.clap||[]],['hat','HAT','Hi-Hat',[...(pattern.hat||[]),...(pattern.open||[])]],['bass','BASS','Basslauf',pattern.kick||[]]];
+      const host=this.$('[data-host="tracks"]'); host.replaceChildren(...definitions.map(([id,mark,label,original])=>{
+        const row=document.createElement('div'); row.className=`track${this.state.trackOn[id]?'':' off'}`;
+        const variant=this.state.trackVariant[id], hits=(variant===2||this.state.heldTrack===id)?Array.from({length:16},(_,i)=>i):original;
+        row.innerHTML=`<button class="track-icon${this.state.heldTrack===id?' held':''}" aria-label="${label}: gehaltene Sechzehntel">${mark}</button><button class="track-name variant" title="Variante wechseln">${label}<br><small>${['Original','Ratchet','16tel'][variant]}</small></button><div class="steps">${Array.from({length:16},(_,i)=>`<i class="step${hits.includes(i)?' hit':''}${variant===1&&hits.includes(i)?' ratchet':''}" data-step="${i}"></i>`).join('')}</div><button class="track-toggle" aria-pressed="${this.state.trackOn[id]}">${this.state.trackOn[id]?'an':'aus'}</button>`;
+        const icon=row.querySelector('.track-icon'); const hold=()=>{this.state.heldTrack=id;icon.classList.add('held');row.querySelectorAll('.step').forEach(x=>x.classList.add('hit'));}; const unhold=()=>{if(this.state.heldTrack===id){this.state.heldTrack=null;this._renderPattern();}};
+        icon.addEventListener('pointerdown',e=>{e.preventDefault();icon.setPointerCapture(e.pointerId);hold();}); icon.addEventListener('pointerup',unhold); icon.addEventListener('pointercancel',unhold); icon.addEventListener('lostpointercapture',unhold);
+        row.querySelector('.track-name').addEventListener('click',()=>{this.state.trackVariant[id]=(variant+1)%3;this._renderPattern();}); row.querySelector('.track-toggle').addEventListener('click',()=>{this.state.trackOn[id]=!this.state.trackOn[id];this._renderPattern();}); return row;
       }));
     }
 
-    _renderSteps() {
-      const pattern = DRUMS[this.state.drum];
-      const hits = new Set([...(pattern.kick || []), ...(pattern.snare || []), ...(pattern.clap || []), ...(pattern.hat || [])]);
-      const host = this.$('[data-host="steps"]');
-      host.replaceChildren(...Array.from({ length: 16 }, (_, index) => {
-        const dot = document.createElement('i'); dot.className = `step${hits.has(index) ? ' hit' : ''}`; dot.dataset.step = index; return dot;
-      }));
+    _renderControls() {
+      const sound=SOUNDS[this.state.sound]; this.$('[data-control="wave"]').value=sound.wave;
+      const attackX=10+Math.min(55,sound.attack*55), decayX=attackX+25+Math.min(35,sound.decay*20), sustainY=50-sound.sustain*42; this.$('[data-envelope]').setAttribute('points',`0,50 ${attackX},5 ${decayX},${sustainY} 185,${sustainY} 240,50`);
+      const range=(key,label,min,max,step,value=sound[key])=>{const el=document.createElement('label');el.className='control';el.innerHTML=`${label}<input type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-param="${key}">`;el.querySelector('input').addEventListener('input',e=>this._customize(key,Number(e.target.value)));return el;};
+      this.$('[data-host="envelope-controls"]').replaceChildren(...[['attack','A',.005,1,.005],['decay','D',.05,1.5,.01],['sustain','S',.05,1,.01],['release','R',.05,2,.01]].map(x=>range(...x)));
+      const knob=(key,label,min,max,step)=>{const wrap=document.createElement('label');wrap.className='knob';wrap.innerHTML=`<span class="knob-face">${key==='cutoff'?Math.round(sound[key]/100)/10+'k':sound[key].toFixed(1)}</span>${label}<input type="range" min="${min}" max="${max}" step="${step}" value="${sound[key]}" data-param="${key}">`;wrap.querySelector('input').addEventListener('input',e=>{this._customize(key,Number(e.target.value));this._renderControls();});return wrap;};
+      this.$('[data-host="filter-controls"]').replaceChildren(knob('cutoff','Cutoff',300,10000,10),knob('resonance','Resonanz',0,15,.1));
+      this.$('[data-host="reverb-controls"]').replaceChildren(range('reverb','Dry / Wet',0,.8,.01),range('reverbLength','Länge',.2,3,.05,sound.reverbLength??1.25));
+      this.$('[data-host="echo-controls"]').replaceChildren(range('echo','Dry / Wet',0,.7,.01),range('echoRate','Rate',.06,.6,.01,sound.echoRate??.24));
     }
+
+    _customize(key, value) {
+      SOUNDS[this.state.sound][key]=value; this.$('[data-out="sound"]').textContent='Eigene Einstellung'; this.$$('[data-host="sounds"] .choice').forEach(x=>x.setAttribute('aria-pressed','false'));
+      if (this.nodes && key==='reverb') this.nodes.wet.gain.setTargetAtTime(value,this.ctx.currentTime,.02);
+      if (this.nodes && key==='echo') this.nodes.echoWet.gain.setTargetAtTime(value,this.ctx.currentTime,.02);
+      if (this.nodes && key==='echoRate') this.nodes.delay.delayTime.setTargetAtTime(value,this.ctx.currentTime,.02);
+      if (this.nodes && key==='reverbLength') this.nodes.convolver.buffer=this._impulse(value);
+    }
+
+    _renderLatch() { const notes=[...this.state.latchedNotes].sort((a,b)=>a-b); this.$('[data-out="latch"]').textContent=notes.length?`${notes.length} Ton${notes.length===1?'':'e'} gelatcht`:'Keine Töne gelatcht'; }
 
     _renderToggle() {
       const button = this.$('[data-action="melody"]');
       button.setAttribute('aria-pressed', String(this.state.melodyOn));
-      button.textContent = this.state.melodyOn ? '🎵 an' : '🎵 aus';
+      button.textContent = this.state.melodyOn ? 'Melodie an' : 'Melodie aus';
     }
 
     _status(text) { this.$('[data-out="status"]').textContent = text; }
@@ -235,10 +297,13 @@
       const synth = this.ctx.createGain(); synth.gain.value = .55; synth.connect(master);
       const convolver = this.ctx.createConvolver(); convolver.buffer = this._impulse(1.25);
       const wet = this.ctx.createGain(); wet.gain.value = SOUNDS[this.state.sound].reverb;
+      const delay = this.ctx.createDelay(.8), feedback = this.ctx.createGain(), echoWet = this.ctx.createGain();
+      delay.delayTime.value = SOUNDS[this.state.sound].echoRate ?? .24; feedback.gain.value = .32; echoWet.gain.value = SOUNDS[this.state.sound].echo;
+      synth.connect(delay); delay.connect(feedback).connect(delay); delay.connect(echoWet).connect(master);
       synth.connect(convolver).connect(wet).connect(master);
       const noise = this.ctx.createBuffer(1, Math.ceil(this.ctx.sampleRate * .35), this.ctx.sampleRate);
       const data = noise.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-      this.nodes = { master, drums, synth, wet, noise };
+      this.nodes = { master, drums, synth, convolver, wet, delay, feedback, echoWet, noise };
       if (this.ctx.state !== 'running') await this.ctx.resume();
     }
 
@@ -266,23 +331,46 @@
       source.connect(filter).connect(gain).connect(this.nodes.drums); source.start(time); source.stop(time + length + .01);
     }
 
+    _trackHit(track, original = [], step) {
+      if (!this.state.trackOn[track]) return false;
+      return this.state.heldTrack === track || this.state.trackVariant[track] === 2 || original?.includes(step);
+    }
+
+    _bass(time, step) {
+      const oscillator=this.ctx.createOscillator(), filter=this.ctx.createBiquadFilter(), gain=this.ctx.createGain();
+      oscillator.type='square'; oscillator.frequency.value=noteHz(36 + (step % 4) * 2);
+      filter.type='lowpass'; filter.frequency.value=520; filter.Q.value=9;
+      gain.gain.setValueAtTime(.18,time); gain.gain.exponentialRampToValueAtTime(.0001,time+.13);
+      oscillator.connect(filter).connect(gain).connect(this.nodes.drums); oscillator.start(time); oscillator.stop(time+.14);
+    }
+
+    _drumRatchets(step, time) {
+      const pattern=DRUMS[this.state.drum];
+      if (this.state.trackVariant.kick===1 && this._trackHit('kick',pattern.kick,step)) this._kick(time);
+      if (this.state.trackVariant.snare===1 && this._trackHit('snare',pattern.snare,step)) this._noise(time,900,.08,.1);
+      if (this.state.trackVariant.clap===1 && this._trackHit('clap',pattern.clap,step)) this._noise(time,1400,.06,.08);
+      if (this.state.trackVariant.hat===1 && this._trackHit('hat',pattern.hat,step)) this._noise(time,6500,.025,.03);
+      if (this.state.trackVariant.bass===1 && this._trackHit('bass',pattern.kick,step)) this._bass(time,step);
+    }
+
     _drum(step, time) {
       const pattern = DRUMS[this.state.drum];
-      if (pattern.kick?.includes(step)) this._kick(time);
-      if (pattern.snare?.includes(step)) this._noise(time, 900, .12, .2);
-      if (pattern.ghost?.includes(step)) this._noise(time, 1200, .07, .07);
-      if (pattern.clap?.includes(step)) { this._noise(time, 1300, .09, .15); this._noise(time + .018, 1800, .065, .09); }
-      if (pattern.hat?.includes(step)) this._noise(time, 6500, .04, .055);
-      if (pattern.open?.includes(step)) this._noise(time, 4800, .17, .085);
+      if (this._trackHit('kick', pattern.kick, step)) this._kick(time);
+      if (this._trackHit('bass', pattern.kick, step)) this._bass(time, step);
+      if (this._trackHit('snare', pattern.snare, step)) this._noise(time, 900, .12, .2);
+      if (this.state.trackOn.snare && this.state.trackVariant.snare === 0 && pattern.ghost?.includes(step)) this._noise(time, 1200, .07, .07);
+      if (this._trackHit('clap', pattern.clap, step)) { this._noise(time, 1300, .09, .15); this._noise(time + .018, 1800, .065, .09); }
+      if (this._trackHit('hat', pattern.hat, step)) this._noise(time, 6500, .04, .055);
+      if (this.state.trackOn.hat && this.state.trackVariant.hat === 0 && pattern.open?.includes(step)) this._noise(time, 4800, .17, .085);
     }
 
     _voice(midi, time, velocity, duration) {
       const sound = SOUNDS[this.state.sound];
-      this.nodes.wet.gain.setTargetAtTime(sound.reverb, time, .02);
+      this.nodes.wet.gain.setTargetAtTime(sound.reverb, time, .02); this.nodes.echoWet.gain.setTargetAtTime(sound.echo, time, .02);
       const oscillator = this.ctx.createOscillator(); const filter = this.ctx.createBiquadFilter(); const gain = this.ctx.createGain();
       oscillator.type = sound.wave; oscillator.frequency.value = noteHz(midi);
-      filter.type = 'lowpass'; filter.frequency.value = Math.min(sound.cutoff, this.ctx.sampleRate * .45); filter.Q.value = 1.5;
-      gain.gain.setValueAtTime(.0001, time); gain.gain.linearRampToValueAtTime(velocity, time + sound.attack);
+      filter.type = 'lowpass'; filter.frequency.value = Math.min(sound.cutoff, this.ctx.sampleRate * .45); filter.Q.value = sound.resonance;
+      gain.gain.setValueAtTime(.0001, time); gain.gain.linearRampToValueAtTime(velocity, time + sound.attack); gain.gain.linearRampToValueAtTime(velocity * sound.sustain, time + sound.attack + sound.decay);
       oscillator.connect(filter).connect(gain).connect(this.nodes.synth); oscillator.start(time);
       const voice = { oscillator, gain, release: sound.release, done: false }; this.voices.add(voice);
       oscillator.addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
@@ -307,10 +395,19 @@
       while (this.nextTime < this.ctx.currentTime + .1) {
         const step = this.step;
         this._drum(step, this.nextTime);
+        this._drumRatchets(step, this.nextTime + (60 / this.state.bpm / 8));
         if (this.state.melodyOn) {
           for (const [at, offset, length] of MELODIES[this.state.melody].notes) {
             if (at === step) this._voice(60 + offset + (this.state.octave - 4) * 12, this.nextTime, .18, length * 60 / this.state.bpm / 4);
           }
+        }
+        if (this.state.arpOn && this.state.latchedNotes.size && step % this.state.arpGrid === 0) {
+          const chordIntervals={none:[0],major:[0,4,7],minor:[0,3,7],maj7:[0,4,7,11],min7:[0,3,7,10]}[this.state.arpChord];
+          const notes=[...new Set([...this.state.latchedNotes].flatMap(root=>chordIntervals.flatMap(interval=>Array.from({length:this.state.arpOctaves},(_,octave)=>root+interval+octave*12)).concat(this.state.arpFifths?[root+7]:[])))].sort((a,b)=>a-b);
+          const phase=Math.floor(step/this.state.arpGrid); let index=phase%notes.length;
+          if(this.state.arpMode==='down') index=notes.length-1-index;
+          if(this.state.arpMode==='updown'&&notes.length>1){const cycle=[...notes,...notes.slice(1,-1).reverse()];index=cycle[phase%cycle.length];this._voice(index,this.nextTime,.14,60/this.state.bpm/8);}
+          else {if(this.state.arpMode==='random') index=Math.floor(Math.random()*notes.length);this._voice(notes[index],this.nextTime,.14,60/this.state.bpm/8);}
         }
         this.queue.push({ step, time: this.nextTime });
         this.nextTime += 60 / this.state.bpm / 4;
@@ -335,8 +432,9 @@
     }
 
     stop() {
-      this.playing = false; global.clearTimeout(this.timer); global.cancelAnimationFrame(this.raf);
+      this.playing = false; this.state.heldTrack = null; global.clearTimeout(this.timer); global.cancelAnimationFrame(this.raf);
       this.timer = 0; this.raf = 0; this.queue.length = 0;
+      this.pointerVoices.forEach((active) => this._releaseVoice(active?.voice, true)); this.pointerVoices.clear();
       this.voices.forEach((voice) => this._releaseVoice(voice, true));
       this.$$('.step').forEach((dot) => dot.classList.remove('now'));
       const button = this.$('[data-action="play"]'); button.innerHTML = icons.play; button.setAttribute('aria-label', 'Groove starten');
@@ -374,7 +472,7 @@
     _keydown(event) {
       if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
       if (event.key !== 'Tab') return;
-      const focusable = this.$$('button:not([disabled]),input:not([disabled])');
+      const focusable = this.$$('button:not([disabled]),input:not([disabled]),select:not([disabled])');
       const first = focusable[0]; const last = focusable[focusable.length - 1];
       if (event.shiftKey && this.shadowRoot.activeElement === first) { event.preventDefault(); last.focus(); }
       if (!event.shiftKey && this.shadowRoot.activeElement === last) { event.preventDefault(); first.focus(); }
