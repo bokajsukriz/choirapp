@@ -706,6 +706,7 @@ input[type="checkbox"] {
   inset: auto;
   z-index: auto;
   flex: 1 1 auto;
+  min-height: 0; /* selber Flex-Grund wie bei .player-body — siehe dort */
 }
 
 .player-head {
@@ -771,6 +772,12 @@ input[type="checkbox"] {
 
 .player-body {
   flex: 1 1 auto;
+  /* Ohne min-height:0 verweigert sich ein Flex-Kind mit overflow:auto dem
+     Schrumpfen unter seine Inhaltshöhe — bei einer offenen Setliste (Queue)
+     plus großer Noten-Vorschau wuchs .player-body dadurch über den
+     verfügbaren Platz hinaus und schob die Transportleiste aus dem
+     sichtbaren Bereich. */
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
@@ -7271,15 +7278,25 @@ async function loadScorePreviews() {
       const url = URL.createObjectURL(file);
       scoreURLs.push(url);
 
-      // Die Kopfzeile öffnet die Datei groß — kein eigener „Öffnen“-Knopf.
-      // Klicks in der eingebetteten Vorschau selbst lösen das nicht aus:
-      // die läuft als eigenes Dokument im iframe.
+      // Die Kopfzeile öffnet die Datei groß — zusätzlich zum eigenen
+      // „Öffnen“-Knopf (siehe unten). Klicks in der eingebetteten Vorschau
+      // selbst lösen das nicht aus: die läuft als eigenes Dokument im iframe.
       head.tabIndex = 0;
       head.setAttribute('role', 'link');
       head.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
       head.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(url, '_blank', 'noopener'); }
       });
+
+      // Manche Browser (z. B. gehärtete Chromium-Varianten wie Vanadium auf
+      // GrapheneOS) zeigen die eingebettete Vorschau leer, öffnen die Datei
+      // aber ganz normal in einem eigenen Tab. Deshalb gibt es diesen Knopf
+      // immer — nicht erst, wenn die Vorschau sichtbar bleibt.
+      head.append(el('button', {
+        class: 'btn', type: 'button', text: 'Öffnen',
+        style: 'padding:8px 14px; min-height:38px',
+        onclick: (e) => { e.stopPropagation(); window.open(url, '_blank', 'noopener'); },
+      }));
 
       if (navigator.canShare?.({ files: [file] })) {
         head.append(el('button', {
@@ -7300,9 +7317,13 @@ async function loadScorePreviews() {
         head.append(dl);
       }
 
-      row.append(el('iframe', {
-        class: 'score-preview', src: url, title: score.fileName, loading: 'lazy',
-      }));
+      // Kein `loading="lazy"`: das Panel ist beim Einfügen bereits sichtbar
+      // (siehe setPlayerTab), ein zusätzliches Lazy-Loading brachte auf
+      // manchen Geräten nur eine leer bleibende Vorschau statt Zeitersparnis.
+      row.append(
+        el('iframe', { class: 'score-preview', src: url, title: score.fileName }),
+        el('p', { class: 'small muted', style: 'margin:6px 0 0',
+          text: 'Bleibt die Vorschau leer, öffnet „Öffnen“ die Datei im eigenen PDF-Betrachter.' }));
     } catch (err) {
       console.error('[noten]', err);
       head.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
