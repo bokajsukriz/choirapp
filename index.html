@@ -140,29 +140,16 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--font-display); }
 
-/* ---------- Kopfzeile ---------------------------------------------------- */
-
-.app-header {
-  flex: 0 0 auto;
-  padding: calc(var(--safe-top) + 14px) calc(var(--pad) + var(--safe-right))
-           12px calc(var(--pad) + var(--safe-left));
-  background: transparent;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 0;
-}
-
-.app-header h1 { flex: 1; text-align: center; font-size: 1.35rem; letter-spacing: -0.01em; }
-
 /* ---------- Inhaltsbereich ---------------------------------------------- */
+/* Die frühere Kopfzeile mit allgemeiner Überschrift ist entfallen — mehr
+   Platz für Inhalte. Der obere Sicherheitsabstand (Notch/Kamera) wandert
+   deshalb hierher, statt wie zuvor von der Kopfzeile übernommen zu werden. */
 
 .app-main {
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: var(--pad) calc(var(--pad) + var(--safe-right))
+  padding: calc(var(--pad) + var(--safe-top)) calc(var(--pad) + var(--safe-right))
            calc(var(--pad) + 24px) calc(var(--pad) + var(--safe-left));
 }
 
@@ -709,6 +696,18 @@ input[type="checkbox"] {
 
 .player[hidden] { display: none; }
 
+/* Der Übe-Player ist kein Vollbild-Overlay mehr, sondern ein gleichberechtigter
+   Hauptreiter (siehe showTab()): er liegt im normalen Layoutfluss zwischen
+   Inhalt und Navigation, statt alles einschließlich der Reiterleiste zu
+   verdecken. Setlisten-Detail und Import bleiben echte Vollbild-Overlays mit
+   Zurück-Pfeil und erben weiterhin die Fixierung von .player. */
+#player {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  flex: 1 1 auto;
+}
+
 .player-head {
   flex: 0 0 auto;
   display: grid;
@@ -720,20 +719,19 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--line);
 }
 
-/* Der Übe-Player hat keinen dritten Kopf-Knopf mehr — die Ladeanzeige zog in
-   die mittlere Spalte, neben die Stimm-Pills (siehe .player-head-main). */
-#player > .player-head { grid-template-columns: 44px 1fr; }
+/* Die Import-Ansicht hat nur einen Zurück-Pfeil, keinen zweiten Knopf. */
+#import-view > .player-head { grid-template-columns: 44px 1fr; }
 
-/* Titel linksbündig neben dem Zurück-Pfeil, Stimm-Pills rechtsbündig — bei
-   knappem Platz weicht zuerst der Titel (er darf umbrechen), die Pills
-   behalten ihre Breite. */
-.player-head-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+/* Kein Zurück-Pfeil und kein zweiter Kopf-Knopf mehr — der Player ist ein
+   Hauptreiter. Drei gleich breite Spalten (leerer Platzhalter / Titel /
+   Stimm-Pills) halten den Titel exakt mittig, unabhängig davon, wie breit
+   der Pillenstapel gerade ist. */
+#player > .player-head {
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  padding-left: calc(var(--pad) + var(--safe-left));
+  padding-right: calc(var(--pad) + var(--safe-right));
 }
-.player-head-main .voice-pills { flex: 0 0 auto; }
+#player > .player-head .voice-pills { justify-self: end; }
 
 /* Titel und Marken (Liedtext/Notiz/Noten) als ein Block, wie in der
    Songliste — die Symbole hängen sich an den Titel statt an den rechten
@@ -741,9 +739,9 @@ input[type="checkbox"] {
 .player-head-title {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 2px 8px;
-  flex: 1 1 auto;
   min-width: 0;
 }
 .player-head-title strong { flex: 0 1 auto; min-width: 0; text-align: left; }
@@ -1731,21 +1729,27 @@ input[type="checkbox"] {
 <!-- Player: eigene Vollbild-Ansicht über der Bibliothek. -->
 <section class="player" id="player" hidden aria-labelledby="player-title">
   <div class="player-head">
-    <button class="icon-btn" id="player-back" type="button" aria-label="Zurück zur Bibliothek">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M15 5l-7 7 7 7"/>
-      </svg>
-    </button>
-    <div class="player-head-main">
-      <div class="player-head-title">
-        <strong id="player-title"></strong>
-        <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
-      </div>
-      <div class="voice-pills" id="player-pills"></div>
+    <span aria-hidden="true"></span>
+    <div class="player-head-title">
+      <strong id="player-title">Kein Song ausgewählt</strong>
+      <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
     </div>
+    <div class="voice-pills" id="player-pills"></div>
   </div>
 
   <div class="player-body" id="player-body">
+    <!-- Leerzustand: sichtbar, solange kein Song geladen ist — der Player
+         ist jetzt ein dauerhafter Reiter und muss auch ohne Auswahl etwas
+         Sinnvolles zeigen (siehe openPlayer()/closePlayer()). -->
+    <div class="empty" id="player-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
+      </svg>
+      <h2>Kein Song ausgewählt</h2>
+      <p class="small">Wähle einen Song aus der Liste, um ihn hier abzuspielen.</p>
+    </div>
+
+    <div id="player-loaded" hidden>
     <div class="hint-box" id="player-hint" hidden></div>
 
     <div id="queue-block" hidden>
@@ -1834,9 +1838,10 @@ input[type="checkbox"] {
       <div id="scores-list"></div>
       <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
     </div>
+    </div>
   </div>
 
-  <div class="player-foot">
+  <div class="player-foot" id="player-foot" hidden>
     <div class="seek" id="seek" role="slider" tabindex="0"
          aria-label="Wiedergabeposition" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
       <div class="seek-track" id="seek-track">
@@ -1900,84 +1905,21 @@ input[type="checkbox"] {
   </div>
 </section>
 
-<!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
-     entschieden wird und nichts anderes ablenken soll. -->
-<section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
-  <div class="sheet-head">
-    <div class="row" style="align-items:flex-start">
-      <div class="grow" style="flex:1">
-        <h2 class="sheet-title" id="sheet-title">Auswahl</h2>
-        <p class="small muted" id="sheet-found" style="margin:0"></p>
-      </div>
-      <button class="disclose" id="sheet-close" type="button" aria-label="Abbrechen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-          <path d="M6 6l12 12M18 6L6 18"/>
-        </svg>
-      </button>
-    </div>
-    <div class="preset-row" id="sheet-presets" role="group" aria-label="Voreinstellung">
-      <button class="preset" type="button" data-preset="mine">Nur meine Stimme + Gesamt</button>
-      <button class="preset" type="button" data-preset="full">Nur Gesamt</button>
-      <button class="preset" type="button" data-preset="all">Alles</button>
+<!-- Import: eigene Vollbild-Ansicht mit Zurück-Pfeil, erreichbar nur über den
+     Knopf oben in den Einstellungen (siehe #btn-open-import). -->
+<section class="player" id="import-view" hidden aria-labelledby="import-title">
+  <div class="player-head">
+    <button class="icon-btn" id="import-back" type="button" aria-label="Zurück zu den Einstellungen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="grow">
+      <strong id="import-title">Songs importieren</strong>
     </div>
   </div>
 
-  <div class="sheet-body" id="sheet-body"></div>
-
-  <div class="sheet-foot">
-    <div class="progress" id="sheet-progress" hidden><i></i></div>
-    <p class="small" id="sheet-summary" style="margin:0 0 4px"></p>
-    <p class="small muted" id="sheet-plan" style="margin:0 0 10px"></p>
-    <button class="btn btn--primary btn--block" id="sheet-import" type="button">Importieren</button>
-  </div>
-</section>
-
-<header class="app-header">
-  <h1 id="view-title">Songs</h1>
-</header>
-
-<main class="app-main" id="main">
-
-  <!-- ===== Bibliothek =================================================== -->
-  <section class="view is-active" id="view-songs" aria-labelledby="view-title">
-    <div class="hint-box" id="backup-reminder" hidden></div>
-    <div class="searchbar" id="searchbar" hidden>
-      <input class="search-input" id="search" type="search" inputmode="search"
-             autocomplete="off" autocorrect="off" spellcheck="false"
-             placeholder="Song suchen …" aria-label="Song suchen">
-      <button class="icon-btn" id="btn-feeling-lucky" type="button"
-              aria-label="Feeling Lucky — zufälliges Lied abspielen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
-          <circle cx="8.3" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="8.3" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="15.7" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
-          <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
-        </svg>
-      </button>
-    </div>
-    <div class="filterbar" id="filterbar" hidden></div>
-    <div id="song-list-host"></div>
-  </section>
-
-  <!-- ===== Setlisten ===================================================== -->
-  <section class="view" id="view-playlists">
-    <div id="current-setlist-host"></div>
-    <div class="card">
-      <h2>Setliste hinzufügen</h2>
-      <div class="row" style="margin-top:14px; gap:8px">
-        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
-        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Datei</button>
-        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Text</button>
-      </div>
-    </div>
-    <div id="playlist-list-host"></div>
-  </section>
-
-  <!-- ===== Import ====================================================== -->
-  <section class="view" id="view-import">
+  <div class="player-body">
     <div class="card">
       <h2>Songs importieren</h2>
       <p class="small muted" style="margin-top:0">
@@ -2032,10 +1974,89 @@ input[type="checkbox"] {
         <div class="row"><span>Letzter Import</span><span id="stat-last-import">–</span></div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
+     entschieden wird und nichts anderes ablenken soll. -->
+<section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
+  <div class="sheet-head">
+    <div class="row" style="align-items:flex-start">
+      <div class="grow" style="flex:1">
+        <h2 class="sheet-title" id="sheet-title">Auswahl</h2>
+        <p class="small muted" id="sheet-found" style="margin:0"></p>
+      </div>
+      <button class="disclose" id="sheet-close" type="button" aria-label="Abbrechen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="preset-row" id="sheet-presets" role="group" aria-label="Voreinstellung">
+      <button class="preset" type="button" data-preset="mine">Nur meine Stimme + Gesamt</button>
+      <button class="preset" type="button" data-preset="full">Nur Gesamt</button>
+      <button class="preset" type="button" data-preset="all">Alles</button>
+    </div>
+  </div>
+
+  <div class="sheet-body" id="sheet-body"></div>
+
+  <div class="sheet-foot">
+    <div class="progress" id="sheet-progress" hidden><i></i></div>
+    <p class="small" id="sheet-summary" style="margin:0 0 4px"></p>
+    <p class="small muted" id="sheet-plan" style="margin:0 0 10px"></p>
+    <button class="btn btn--primary btn--block" id="sheet-import" type="button">Importieren</button>
+  </div>
+</section>
+
+<main class="app-main" id="main">
+
+  <!-- ===== Bibliothek =================================================== -->
+  <section class="view is-active" id="view-songs">
+    <div class="hint-box" id="backup-reminder" hidden></div>
+    <div class="searchbar" id="searchbar" hidden>
+      <input class="search-input" id="search" type="search" inputmode="search"
+             autocomplete="off" autocorrect="off" spellcheck="false"
+             placeholder="Song suchen …" aria-label="Song suchen">
+      <button class="icon-btn" id="btn-feeling-lucky" type="button"
+              aria-label="Feeling Lucky — zufälliges Lied abspielen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
+          <circle cx="8.3" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="15.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="8.3" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="15.7" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+    </div>
+    <div class="filterbar" id="filterbar" hidden></div>
+    <div id="song-list-host"></div>
+  </section>
+
+  <!-- ===== Setlisten ===================================================== -->
+  <section class="view" id="view-playlists">
+    <div id="current-setlist-host"></div>
+    <div class="card">
+      <h2>Setliste hinzufügen</h2>
+      <div class="row" style="margin-top:14px; gap:8px">
+        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
+        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
+        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Datei</button>
+        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Text</button>
+      </div>
+    </div>
+    <div id="playlist-list-host"></div>
   </section>
 
   <!-- ===== Einstellungen =============================================== -->
   <section class="view" id="view-settings">
+
+    <!-- Öffnet die abgetrennte Import-Vollbildansicht (siehe #import-view
+         weiter unten) — hier steht nur noch der Einstiegsknopf. -->
+    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:14px">
+      Songs importieren
+    </button>
 
     <div class="card">
       <h2>Persönliches</h2>
@@ -2291,11 +2312,11 @@ input[type="checkbox"] {
     </svg>
     Setlisten
   </button>
-  <button class="nav-btn" type="button" data-view="import">
+  <button class="nav-btn" type="button" data-view="player">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+      <circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/>
     </svg>
-    Import
+    Player
   </button>
   <button class="nav-btn" type="button" data-view="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3640,26 +3661,39 @@ function groupDuplicates(songFolders) {
    ========================================================================== */
 
 const VIEWS = {
-  songs:     { title: 'Songs',         render: renderSongs },
-  playlists: { title: 'Setlisten',     render: renderPlaylists },
-  import:    { title: 'Import',        render: () => { renderImportReport(); renderImportStats(); } },
-  settings:  { title: 'Einstellungen', render: renderSettings },
+  songs:     { render: renderSongs },
+  playlists: { render: renderPlaylists },
+  player:    { render: () => {} },
+  settings:  { render: renderSettings },
 };
 
 let currentView = 'songs';
 
+/**
+ * Schaltet zwischen den vier Hauptreitern um. Der Player ist einer davon —
+ * kein Vollbild-Overlay mit Zurück-Knopf mehr, sondern nimmt einfach den
+ * Platz von <main> ein, während die Reiterleiste sichtbar bleibt. Der
+ * geladene Song und die Wiedergabe laufen beim Wechsel unbeeinflusst weiter,
+ * weil hier nur Sichtbarkeit umgeschaltet wird — nie closePlayer().
+ */
 function showTab(name) {
   if (!VIEWS[name]) name = 'songs';
   currentView = name;
+  const isPlayer = name === 'player';
 
-  $$('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${name}`));
+  $('#main').hidden = isPlayer;
+  playerEl.hidden = !isPlayer;
+
+  if (!isPlayer) {
+    $$('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${name}`));
+    $('#main').scrollTop = 0;
+  }
+
   $$('.nav-btn').forEach((b) => {
     if (b.dataset.view === name) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
 
-  $('#view-title').textContent = VIEWS[name].title;
-  $('#main').scrollTop = 0;
   VIEWS[name].render?.();
 }
 
@@ -3679,12 +3713,11 @@ function navigate(hash, { replace = false } = {}) {
 function showView(name) { navigate(`#${name}`); }
 
 /**
- * Wertet die Adresse aus: `#songs`, `#import`, … oder `#song/<id>` für den
- * Player. Der Player liegt über den Reitern, deshalb wird er hier geöffnet
- * und geschlossen — so bringt die Zurück-Taste zuverlässig zur Liste zurück.
- * Führt die Route nicht zurück in den (noch ladenden) Player, wird ein
- * laufender openPlayer()-Aufruf per Marke verworfen — sonst könnte er sich
- * nach einer verspäteten DB-Antwort von selbst wieder öffnen.
+ * Wertet die Adresse aus: `#songs`, `#player`, `#settings`, … oder
+ * `#song/<id>` zum Laden eines Songs in den Player-Reiter. `#import` öffnet
+ * die Import-Vollbildansicht über allem — die einzige Ansicht, die noch
+ * einen echten Zurück-Knopf hat, damit sie sich per Browser-Zurück-Taste
+ * zuverlässig wieder schließt.
  */
 function applyRoute() {
   const raw = (location.hash || '#songs').slice(1);
@@ -3692,19 +3725,25 @@ function applyRoute() {
   const name = slash < 0 ? raw : raw.slice(0, slash);
   const param = slash < 0 ? '' : raw.slice(slash + 1);
 
+  if (name === 'import') {
+    if (openPlaylist) closePlaylistView();
+    openImportView();
+    return;
+  }
+  if (importOpen) closeImportView();
+
   if (name === 'song' && param) {
     if (openPlaylist) closePlaylistView();
+    showTab('player');
     if (!playerSong || playerSong.id !== param) openPlayer(param);
     return;
   }
 
   if (name === 'playlist' && param) {
-    if (playerSong) closePlayer(); else openPlayerToken++;
     if (!openPlaylist || openPlaylist.id !== param) openPlaylistView(param);
     return;
   }
 
-  if (playerSong) closePlayer(); else openPlayerToken++;
   if (openPlaylist) closePlaylistView();
   showTab(VIEWS[name] ? name : 'songs');
 }
@@ -5972,6 +6011,28 @@ async function runImport() {
   showView('songs');
 }
 
+/**
+ * Import-Vollbildansicht: die einzige Ansicht neben der Setlisten-Detailseite,
+ * die noch einen echten Zurück-Pfeil braucht — sie liegt über allen vier
+ * Hauptreitern und wird nur über den Knopf in den Einstellungen erreicht.
+ */
+let importOpen = false;
+
+function openImportView() {
+  importOpen = true;
+  $('#import-view').hidden = false;
+  renderImportReport();
+  renderImportStats();
+}
+
+function closeImportView() {
+  importOpen = false;
+  $('#import-view').hidden = true;
+}
+
+$('#btn-open-import').addEventListener('click', () => navigate('#import'));
+$('#import-back').addEventListener('click', () => history.back());
+
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
   const host = $('#import-report');
@@ -6360,7 +6421,12 @@ async function openPlayer(songId) {
   }
 
   playerSong = song;
-  playerEl.hidden = false;
+  // Der Player ist ein dauerhafter Reiter (keine Vollbild-Ansicht mehr) —
+  // sichtbar bleibt er über showTab(); hier wird nur zwischen Leerzustand
+  // und geladenem Song umgeschaltet.
+  $('#player-empty').hidden = true;
+  $('#player-loaded').hidden = false;
+  $('#player-foot').hidden = false;
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
   const pills = renderVoicePills(song.tracks, { clickable: true });
@@ -6630,10 +6696,14 @@ function closePlayer() {
   openPlayerToken++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
-  playerEl.hidden = true;
   audioReset();
   releaseScoreURLs();
   playerSong = null;
+  $('#player-title').textContent = 'Kein Song ausgewählt';
+  $('#player-pills').textContent = '';
+  $('#player-empty').hidden = false;
+  $('#player-loaded').hidden = true;
+  $('#player-foot').hidden = true;
   updateWakeLock();          // „Bildschirm anlassen" gilt nur im Player
   playerVoice = null;
   songLoops = [];
@@ -6646,8 +6716,6 @@ function closePlayer() {
 }
 
 /* ---------- Bedienelemente ---------------------------------------------- */
-
-$('#player-back').addEventListener('click', () => history.back());
 
 $('#btn-play').addEventListener('click', async () => {
   if (Audio.playing) {
@@ -9109,8 +9177,12 @@ function loadGrooveLab() {
   return grooveLabLoadPromise;
 }
 
+// Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem
+// Player als Hauptreiter entfallen. Neue Heimat: der Songtitel im
+// Player-Reiter, weil er (anders als der Rest des Players) immer im DOM
+// steht, auch ohne geladenen Song.
 function initGrooveLabEasterEgg() {
-  const title = $('#view-title');
+  const title = $('#player-title');
   if (!title) return;
 
   let taps = [];
@@ -9159,8 +9231,9 @@ async function boot() {
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
-  // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel.
-  navigate(VIEWS[start] ? `#${start}` : '#songs', { replace: true });
+  // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel. `import`
+  // ist kein Haupt-Reiter mehr, aber weiterhin ein gültiges Kaltstart-Ziel.
+  navigate(VIEWS[start] || start === 'import' ? `#${start}` : '#songs', { replace: true });
 
   if (!settings.setupDoneAt) {
     // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
