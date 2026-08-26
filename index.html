@@ -9084,6 +9084,56 @@ async function closeOnboarding() {
   if (currentView === 'settings') renderSettings();
 }
 
+/* ==========================================================================
+   EASTER EGG — winziger Trigger, eigentliche App wird erst bei Bedarf geladen
+   ========================================================================== */
+
+let grooveLabLoadPromise = null;
+
+function loadGrooveLab() {
+  if (window.ChorGrooveLab) return Promise.resolve(window.ChorGrooveLab);
+  if (grooveLabLoadPromise) return grooveLabLoadPromise;
+
+  grooveLabLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = './groove-lab.js';
+    script.async = true;
+    script.onload = () => window.ChorGrooveLab ? resolve(window.ChorGrooveLab) : reject(new Error('Groove Lab wurde nicht registriert.'));
+    script.onerror = () => reject(new Error('Groove Lab konnte nicht geladen werden.'));
+    document.head.append(script);
+  }).catch((err) => {
+    grooveLabLoadPromise = null;
+    throw err;
+  });
+
+  return grooveLabLoadPromise;
+}
+
+function initGrooveLabEasterEgg() {
+  const title = $('#view-title');
+  if (!title) return;
+
+  let taps = [];
+  title.addEventListener('pointerup', async (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const now = performance.now();
+    taps = taps.filter((time) => now - time < 3200);
+    taps.push(now);
+    if (taps.length < 7) return;
+    taps = [];
+
+    // Zwei Audioquellen sollen nie gegeneinander spielen. Die vorhandene
+    // Aufnahme wird sauber pausiert, bevor das unabhängige Lab startet.
+    if (Audio.playing) audioPause();
+    try {
+      const lab = await loadGrooveLab();
+      lab.open({ accent: settings.accentColor || DEFAULT_SETTINGS.accentColor });
+    } catch (err) {
+      bannerError('Das Groove Lab konnte nicht geöffnet werden.', 'GROOVE-LAB', err);
+    }
+  });
+}
+
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
@@ -9097,6 +9147,7 @@ async function boot() {
   }
 
   await loadSettings();
+  initGrooveLabEasterEgg();
   setupFolderImport();
   try {
     runSelfTests();

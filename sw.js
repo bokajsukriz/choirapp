@@ -10,7 +10,7 @@
 
 // Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
 // Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v51';
+const SW_VERSION = 'v52';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -18,6 +18,7 @@ const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 const SHELL = [
   './',
   './index.html',
+  './groove-lab.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
