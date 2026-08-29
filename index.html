@@ -552,6 +552,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.preset:disabled { opacity: .4; }
 
 /* Song- und Spurzeilen mit Häkchen */
 .pick-song {
@@ -7979,16 +7980,21 @@ const LYRICS_DONE_ICON = '<polyline points="20 6 9 17 4 12"/>';
 function renderLyricsBlock() {
   const hasOfficial = !!playerSong?.lyrics;
   const hasPrivate = playerLyricsNote !== null;
-  const showSwitch = hasOfficial; // eigener Text ist immer erreichbar, auch noch leer
-  const activeSource = showSwitch ? lyricsSource : 'private';
+  // Der Schalter bleibt immer sichtbar (siehe Nutzerwunsch) — „Offiziell"
+  // wird nur ausgegraut, wenn es (noch) keinen offiziellen Text gibt, statt
+  // wie zuvor den ganzen Schalter zu verstecken.
+  const activeSource = hasOfficial ? lyricsSource : 'private';
   const showOfficial = activeSource === 'official';
   const editing = !showOfficial && lyricsNoteEditing;
 
   $('#lyrics-toolbar').hidden = !playerSong;
-  $('#lyrics-source-switch').hidden = !showSwitch;
+  $('#lyrics-source-switch').hidden = !playerSong;
   $$('#lyrics-source-switch .preset').forEach((btn) => {
     btn.setAttribute('aria-pressed', String(btn.dataset.lyricsSource === activeSource));
   });
+  const officialBtn = $('#lyrics-source-switch [data-lyrics-source="official"]');
+  officialBtn.disabled = !hasOfficial;
+  officialBtn.setAttribute('aria-disabled', String(!hasOfficial));
 
   // Stift/Fertig-Knopf gilt nur für den eigenen Text — die offizielle
   // Fassung aus dem Import lässt sich nicht bearbeiten.
