@@ -140,29 +140,16 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--font-display); }
 
-/* ---------- Kopfzeile ---------------------------------------------------- */
-
-.app-header {
-  flex: 0 0 auto;
-  padding: calc(var(--safe-top) + 14px) calc(var(--pad) + var(--safe-right))
-           12px calc(var(--pad) + var(--safe-left));
-  background: transparent;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 0;
-}
-
-.app-header h1 { flex: 1; text-align: center; font-size: 1.35rem; letter-spacing: -0.01em; }
-
 /* ---------- Inhaltsbereich ---------------------------------------------- */
+/* Die frühere Kopfzeile mit allgemeiner Überschrift ist entfallen — mehr
+   Platz für Inhalte. Der obere Sicherheitsabstand (Notch/Kamera) wandert
+   deshalb hierher, statt wie zuvor von der Kopfzeile übernommen zu werden. */
 
 .app-main {
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: var(--pad) calc(var(--pad) + var(--safe-right))
+  padding: calc(var(--pad) + var(--safe-top)) calc(var(--pad) + var(--safe-right))
            calc(var(--pad) + 24px) calc(var(--pad) + var(--safe-left));
 }
 
@@ -239,8 +226,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 #view-settings .card h2.card-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   user-select: none;
   margin-bottom: 0;
@@ -251,7 +237,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   outline-offset: 3px;
   border-radius: 6px;
 }
-.card-chevron { flex: 0 0 auto; display: flex; transition: transform .15s ease; }
+/* Dasselbe Linien-Icon wie in der unteren Navigation — nur kleiner und in
+   der gedeckten Überschriftenfarbe statt der Akzentfarbe. */
+.card-icon { flex: 0 0 auto; width: 19px; height: 19px; }
+.card-chevron { flex: 0 0 auto; margin-left: auto; display: flex; transition: transform .15s ease; }
 .card-chevron svg { width: 16px; height: 16px; }
 #view-settings .card h2.card-toggle[aria-expanded="true"] .card-chevron { transform: rotate(180deg); }
 
@@ -538,7 +527,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 
 .sheet-title { font-size: 1.05rem; margin-bottom: 3px; }
 
-/* Voreinstellungen „Nur meine Stimme + Gesamt" usw. */
+/* Voreinstellungen „Meine Stimmen", „Full", „Alle Stimmen" */
 .preset-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -563,6 +552,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.preset:disabled { opacity: .4; }
 
 /* Song- und Spurzeilen mit Häkchen */
 .pick-song {
@@ -709,6 +699,19 @@ input[type="checkbox"] {
 
 .player[hidden] { display: none; }
 
+/* Der Übe-Player ist kein Vollbild-Overlay mehr, sondern ein gleichberechtigter
+   Hauptreiter (siehe showTab()): er liegt im normalen Layoutfluss zwischen
+   Inhalt und Navigation, statt alles einschließlich der Reiterleiste zu
+   verdecken. Setlisten-Detail und Import bleiben echte Vollbild-Overlays mit
+   Zurück-Pfeil und erben weiterhin die Fixierung von .player. */
+#player {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  flex: 1 1 auto;
+  min-height: 0; /* selber Flex-Grund wie bei .player-body — siehe dort */
+}
+
 .player-head {
   flex: 0 0 auto;
   display: grid;
@@ -720,20 +723,19 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--line);
 }
 
-/* Der Übe-Player hat keinen dritten Kopf-Knopf mehr — die Ladeanzeige zog in
-   die mittlere Spalte, neben die Stimm-Pills (siehe .player-head-main). */
-#player > .player-head { grid-template-columns: 44px 1fr; }
+/* Die Import-Ansicht hat nur einen Zurück-Pfeil, keinen zweiten Knopf. */
+#import-view > .player-head { grid-template-columns: 44px 1fr; }
 
-/* Titel linksbündig neben dem Zurück-Pfeil, Stimm-Pills rechtsbündig — bei
-   knappem Platz weicht zuerst der Titel (er darf umbrechen), die Pills
-   behalten ihre Breite. */
-.player-head-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+/* Kein Zurück-Pfeil und kein zweiter Kopf-Knopf mehr — der Player ist ein
+   Hauptreiter. Drei gleich breite Spalten (leerer Platzhalter / Titel /
+   Stimm-Pills) halten den Titel exakt mittig, unabhängig davon, wie breit
+   der Pillenstapel gerade ist. */
+#player > .player-head {
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  padding-left: calc(var(--pad) + var(--safe-left));
+  padding-right: calc(var(--pad) + var(--safe-right));
 }
-.player-head-main .voice-pills { flex: 0 0 auto; }
+#player > .player-head .voice-pills { justify-self: end; }
 
 /* Titel und Marken (Liedtext/Notiz/Noten) als ein Block, wie in der
    Songliste — die Symbole hängen sich an den Titel statt an den rechten
@@ -741,9 +743,9 @@ input[type="checkbox"] {
 .player-head-title {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 2px 8px;
-  flex: 1 1 auto;
   min-width: 0;
 }
 .player-head-title strong { flex: 0 1 auto; min-width: 0; text-align: left; }
@@ -773,6 +775,12 @@ input[type="checkbox"] {
 
 .player-body {
   flex: 1 1 auto;
+  /* Ohne min-height:0 verweigert sich ein Flex-Kind mit overflow:auto dem
+     Schrumpfen unter seine Inhaltshöhe — bei einer offenen Setliste (Queue)
+     plus großer Noten-Vorschau wuchs .player-body dadurch über den
+     verfügbaren Platz hinaus und schob die Transportleiste aus dem
+     sichtbaren Bereich. */
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
@@ -1223,13 +1231,13 @@ input[type="checkbox"] {
   left: -16px; right: -16px; top: -10px; bottom: -10px;
 }
 
+/* Bewusst ohne Kasten (Hintergrund/Rahmen) — der Text steht direkt auf dem
+   Seitenhintergrund, wie im Lesemodus gewünscht. Nur die Bearbeitungsbox
+   (.note-box) bekommt noch einen eigenen Kasten. */
 .lyrics {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px;
+  padding: 4px 6px 14px;
   line-height: 1.55;
   text-align: center;
 }
@@ -1561,14 +1569,17 @@ input[type="checkbox"] {
           <rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 6v7"/><path d="M9 9l3-3 3 3"/>
         </svg>
       </div>
-      <p class="onb-step">Schritt 1 von 5</p>
-      <h2 id="onb-title-1">Auf den Home&#8209;Bildschirm legen</h2>
-      <p>
+      <p class="onb-step" data-i18n="onb.step1of5">Schritt 1 von 5</p>
+      <h2 id="onb-title-1" data-i18n-html="onb.slide1.title">Auf den Home&#8209;Bildschirm legen</h2>
+      <p data-i18n="onb.slide1.text">
         So startet die App wie jede andere: eigenes Symbol, kein Browserfenster,
         volle Bildschirmhöhe. Vor allem aber behält das System die Aufnahmen
         länger, wenn die App installiert ist.
       </p>
       <div id="onb-install"></div>
+
+      <p class="section-title" data-i18n="settings.personal.language">Sprache</p>
+      <div class="preset-row" id="onb-language-picker"></div>
     </article>
 
     <!-- 2 — Meine Stimme ------------------------------------------------- -->
@@ -1578,20 +1589,20 @@ input[type="checkbox"] {
           <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
         </svg>
       </div>
-      <p class="onb-step">Schritt 2 von 5</p>
-      <h2 id="onb-title-2">Welche Stimme singst du?</h2>
-      <p>
+      <p class="onb-step" data-i18n="onb.step2of5">Schritt 2 von 5</p>
+      <h2 id="onb-title-2" data-i18n="onb.slide2.title">Welche Stimme singst du?</h2>
+      <p data-i18n="onb.slide2.text">
         Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine
         Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:
       </p>
       <ul class="steps small" style="list-style: disc; color: var(--muted)">
-        <li><strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung
+        <li data-i18n-html="onb.slide2.li1"><strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung
             vorausgewählt — der Rest bleibt draußen und spart Speicherplatz.</li>
-        <li><strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du
+        <li data-i18n-html="onb.slide2.li2"><strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du
             sie bei jedem Lied neu einstellst.</li>
       </ul>
       <div class="chip-grid" id="onb-voice"></div>
-      <p class="small muted" style="margin-top:12px">
+      <p class="small muted" style="margin-top:12px" data-i18n-html="onb.slide2.footnote">
         Alle Stimmen bleiben trotzdem wählbar. Änderbar unter
         <strong>Einstellungen&nbsp;→&nbsp;Meine Stimme</strong>.
       </p>
@@ -1604,20 +1615,20 @@ input[type="checkbox"] {
           <path d="M12 3l8 3.5V12c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6.5z"/><path d="M9 12l2 2 4-4"/>
         </svg>
       </div>
-      <p class="onb-step">Schritt 3 von 5</p>
-      <h2 id="onb-title-3">Aufnahmen dauerhaft behalten</h2>
-      <p>
+      <p class="onb-step" data-i18n="onb.step3of5">Schritt 3 von 5</p>
+      <h2 id="onb-title-3" data-i18n="onb.slide3.title">Aufnahmen dauerhaft behalten</h2>
+      <p data-i18n="onb.slide3.text1">
         Web-Apps dürfen ihre Daten normalerweise nur „auf Probe“ speichern: wird
         der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie
         weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.
       </p>
-      <p>
+      <p data-i18n-html="onb.slide3.text2">
         Mit einem Klick fragen wir das Betriebssystem, ob es die Daten
         <strong>dauerhaft</strong> behalten soll. Der Browser entscheidet
         selbst — ein Dialog erscheint dabei in der Regel nicht.
       </p>
       <div class="stack">
-        <button class="btn btn--primary btn--block" id="onb-persist" type="button">
+        <button class="btn btn--primary btn--block" id="onb-persist" type="button" data-i18n="settings.storage.persistBtn">
           Dauerhafte Speicherung anfordern
         </button>
         <div class="onb-note" id="onb-persist-note" hidden></div>
@@ -1632,18 +1643,18 @@ input[type="checkbox"] {
           <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
         </svg>
       </div>
-      <p class="onb-step">Schritt 4 von 5</p>
-      <h2 id="onb-title-4">Die schwere Stelle üben</h2>
-      <p><strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben“:</p>
+      <p class="onb-step" data-i18n="onb.step4of5">Schritt 4 von 5</p>
+      <h2 id="onb-title-4" data-i18n="onb.slide4.title">Die schwere Stelle üben</h2>
+      <p data-i18n-html="onb.slide4.intro"><strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben“:</p>
       <ol class="steps small">
-        <li>An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.</li>
-        <li>Am Ende der Stelle auf <strong>B</strong> tippen.</li>
-        <li>Den <strong>Schalter</strong> daneben einschalten — der Abschnitt
+        <li data-i18n-html="onb.slide4.li1">An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.</li>
+        <li data-i18n-html="onb.slide4.li2">Am Ende der Stelle auf <strong>B</strong> tippen.</li>
+        <li data-i18n-html="onb.slide4.li3">Den <strong>Schalter</strong> daneben einschalten — der Abschnitt
             läuft jetzt in der Schleife, bis du ihn kannst.</li>
-        <li>Über das <strong>Disketten-Symbol</strong> lässt sich der Abschnitt
+        <li data-i18n-html="onb.slide4.li4">Über das <strong>Disketten-Symbol</strong> lässt sich der Abschnitt
             benennen und bleibt gespeichert, auch nach dem Schließen.</li>
       </ol>
-      <p><strong>Langsamer üben.</strong> Unten rechts im Player steht die
+      <p data-i18n-html="onb.slide4.speed"><strong>Langsamer üben.</strong> Unten rechts im Player steht die
         Geschwindigkeit: <strong>1,0×</strong>, <strong>0,85×</strong>,
         <strong>0,7×</strong> oder <strong>0,6×</strong>. Die Tonhöhe bleibt dabei gleich — es klingt
         langsamer, nicht tiefer. Beides zusammen ist der Kern der App: einen
@@ -1657,20 +1668,22 @@ input[type="checkbox"] {
           <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
         </svg>
       </div>
-      <p class="onb-step">Schritt 5 von 5</p>
-      <h2 id="onb-title-5">Songs holen, Programm planen</h2>
-      <p><strong>Import.</strong> Die Aufnahmen liegen im geteilten
-        Dropbox-Ordner. Du lädst ihn dort einmal als <strong>ZIP-Datei</strong>
-        herunter und wählst sie unter „Import“ aus. Vor dem Speichern zeigt die
-        App, was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs
-        Handy sollen. Jeder weitere Import <strong>ergänzt</strong> nur —
-        Vorhandenes bleibt, fehlende Stimmen lassen sich nachladen.</p>
-      <p><strong>Setlisten.</strong> Eine Setliste ist ein Programm: die Lieder
+      <p class="onb-step" data-i18n="onb.step5of5">Schritt 5 von 5</p>
+      <h2 id="onb-title-5" data-i18n="onb.slide5.title">Songs holen, Programm planen</h2>
+      <p data-i18n-html="onb.slide5.import"><strong>Import.</strong> Die Aufnahmen liegen im geteilten
+        Dropbox-Ordner. Öffne ihn dafür im <strong>Browser</strong> — nicht in
+        der Dropbox-App, die kann Ordner nicht als ZIP herunterladen —, lade ihn
+        einmal als <strong>ZIP-Datei</strong> herunter und wählst sie unter
+        „Einstellungen → Songs importieren“ aus. Vor dem Speichern zeigt die App,
+        was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs Handy
+        sollen. Jeder weitere Import <strong>ergänzt</strong> nur — Vorhandenes
+        bleibt, fehlende Stimmen lassen sich nachladen.</p>
+      <p data-i18n-html="onb.slide5.setlists"><strong>Setlisten.</strong> Eine Setliste ist ein Programm: die Lieder
         in der Reihenfolge, in der sie gesungen werden. Am Ende eines Liedes
         schaltet die App von selbst weiter. Der Chorleiter kann eine Setliste
         als schlichte Textdatei verteilen — ein Titel je Zeile —, du spielst sie
         unter „Setlisten“ ein.</p>
-      <div class="onb-note">
+      <div class="onb-note" data-i18n="onb.slide5.note">
         Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem
         Import kein Internet mehr.
       </div>
@@ -1681,9 +1694,9 @@ input[type="checkbox"] {
   <div class="onb-foot">
     <div class="onb-dots" id="onb-dots" role="tablist" aria-label="Schritte"></div>
     <div class="onb-actions">
-      <button class="btn btn--ghost" id="onb-skip" type="button">Überspringen</button>
-      <button class="btn" id="onb-prev" type="button" hidden>Zurück</button>
-      <button class="btn btn--primary" id="onb-next" type="button">Weiter</button>
+      <button class="btn btn--ghost" id="onb-skip" type="button" data-i18n="onb.skip">Überspringen</button>
+      <button class="btn" id="onb-prev" type="button" hidden data-i18n="onb.back">Zurück</button>
+      <button class="btn btn--primary" id="onb-next" type="button" data-i18n="onb.next">Weiter</button>
     </div>
   </div>
 </section>
@@ -1713,7 +1726,8 @@ input[type="checkbox"] {
 
     <p class="section-title">Titel hinzufügen</p>
     <input class="search-input" id="pl-search" type="search" autocomplete="off"
-           placeholder="Song suchen oder Platzhalter hinzufügen …" aria-label="Song für die Setliste suchen">
+           placeholder="Song suchen oder Platzhalter hinzufügen …" aria-label="Song für die Setliste suchen"
+           data-i18n-placeholder="playlists.searchPlaceholder" data-i18n-aria="playlists.searchAria">
     <div id="pl-candidates" style="margin-top:10px"></div>
   </div>
 
@@ -1731,21 +1745,27 @@ input[type="checkbox"] {
 <!-- Player: eigene Vollbild-Ansicht über der Bibliothek. -->
 <section class="player" id="player" hidden aria-labelledby="player-title">
   <div class="player-head">
-    <button class="icon-btn" id="player-back" type="button" aria-label="Zurück zur Bibliothek">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M15 5l-7 7 7 7"/>
-      </svg>
-    </button>
-    <div class="player-head-main">
-      <div class="player-head-title">
-        <strong id="player-title"></strong>
-        <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
-      </div>
-      <div class="voice-pills" id="player-pills"></div>
+    <span aria-hidden="true"></span>
+    <div class="player-head-title">
+      <strong id="player-title">Kein Song ausgewählt</strong>
+      <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
     </div>
+    <div class="voice-pills" id="player-pills"></div>
   </div>
 
   <div class="player-body" id="player-body">
+    <!-- Leerzustand: sichtbar, solange kein Song geladen ist — der Player
+         ist jetzt ein dauerhafter Reiter und muss auch ohne Auswahl etwas
+         Sinnvolles zeigen (siehe openPlayer()/closePlayer()). -->
+    <div class="empty" id="player-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
+      </svg>
+      <h2>Kein Song ausgewählt</h2>
+      <p class="small">Wähle einen Song aus der Liste, um ihn hier abzuspielen.</p>
+    </div>
+
+    <div id="player-loaded" hidden>
     <div class="hint-box" id="player-hint" hidden></div>
 
     <div id="queue-block" hidden>
@@ -1762,22 +1782,22 @@ input[type="checkbox"] {
       <button class="player-tab" type="button" role="tab" id="tab-btn-loops"
               data-tab="loops" aria-selected="true" aria-controls="tab-panel-loops">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-        <span>Loops</span>
+        <span data-i18n="tabs.loops">Loops</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-lyrics"
               data-tab="lyrics" aria-selected="false" aria-controls="tab-panel-lyrics">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
-        <span>Lyrics</span>
+        <span data-i18n="tabs.lyrics">Lyrics</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-notes"
               data-tab="notes" aria-selected="false" aria-controls="tab-panel-notes">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span>Notes</span>
+        <span data-i18n="tabs.notes">Notes</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-sheets"
               data-tab="sheets" aria-selected="false" aria-controls="tab-panel-sheets">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
-        <span>Sheets</span>
+        <span data-i18n="tabs.sheets">Sheets</span>
       </button>
     </div>
 
@@ -1797,17 +1817,42 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
-      <div id="lyrics-content" hidden>
-        <div class="row" style="margin-bottom:8px">
-          <button class="btn" id="btn-lyrics-toggle" type="button" aria-expanded="false">Anzeigen</button>
-          <span style="display:flex; gap:6px">
-            <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
-            <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
-          </span>
+      <!-- Eine Leiste für alles: Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
+           Bleibt sichtbar, solange ein Song offen ist (siehe renderLyricsBlock). -->
+      <div class="row" id="lyrics-toolbar" style="margin-bottom:10px" hidden>
+        <div class="preset-row" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr); margin-top:0" role="group" aria-label="Liedtext-Quelle" hidden>
+          <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Offiziell</button>
+          <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Eigener Text</button>
         </div>
-        <div class="lyrics" id="lyrics-text" hidden></div>
+        <span style="display:flex; align-items:center; gap:6px; margin-left:auto">
+          <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
+          <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
+          <button class="icon-btn" id="btn-lyrics-note-edit" type="button" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="lyrics-edit-icon"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+        </span>
       </div>
-      <p class="small muted" id="lyrics-empty" style="margin:0; text-align:center">Kein Liedtext hinterlegt.</p>
+
+      <!-- Offizieller Liedtext aus dem Import — schreibgeschützt, reiner Text
+           ohne Kastenhintergrund (siehe .lyrics). -->
+      <div class="lyrics" id="lyrics-text" hidden></div>
+
+      <!-- Eigener Liedtext — wie die offizielle Fassung reiner Text auf dem
+           Hintergrund; die Bearbeitungsbox (mit eigenem Kasten) erscheint erst
+           über den Stift-Knopf oben. Speichern läuft automatisch im
+           Hintergrund; ein leer gelassener Text räumt sich beim Verlassen von
+           selbst weg (siehe flushLyricsNote) — eigene Lösch-Fläche unnötig. -->
+      <div id="lyrics-private-block" hidden>
+        <div class="lyrics" id="lyrics-note-display" hidden></div>
+        <p class="small muted" id="lyrics-note-empty-hint" hidden style="text-align:center">
+          Noch kein eigener Liedtext — oben auf den Stift tippen.
+        </p>
+        <div id="lyrics-note-editor" hidden>
+          <textarea class="note-box" id="lyrics-note-text" rows="14" spellcheck="true"
+                    aria-label="Eigener Liedtext" placeholder="Liedtext eintragen …"></textarea>
+          <p class="note-state" id="lyrics-note-state" data-dirty="false" role="status" style="margin:8px 0 0"></p>
+        </div>
+      </div>
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" hidden>
@@ -1834,9 +1879,10 @@ input[type="checkbox"] {
       <div id="scores-list"></div>
       <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
     </div>
+    </div>
   </div>
 
-  <div class="player-foot">
+  <div class="player-foot" id="player-foot" hidden>
     <div class="seek" id="seek" role="slider" tabindex="0"
          aria-label="Wiedergabeposition" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
       <div class="seek-track" id="seek-track">
@@ -1900,25 +1946,103 @@ input[type="checkbox"] {
   </div>
 </section>
 
+<!-- Import: eigene Vollbild-Ansicht mit Zurück-Pfeil, erreichbar nur über den
+     Knopf oben in den Einstellungen (siehe #btn-open-import). -->
+<section class="player" id="import-view" hidden aria-labelledby="import-title">
+  <div class="player-head">
+    <button class="icon-btn" id="import-back" type="button" aria-label="Zurück zu den Einstellungen" data-i18n-aria="import.backAria">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="grow">
+      <strong id="import-title" data-i18n="settings.importBtn">Songs importieren</strong>
+    </div>
+  </div>
+
+  <div class="player-body">
+    <div class="card">
+      <h2 data-i18n="settings.importBtn">Songs importieren</h2>
+      <p class="small muted" style="margin-top:0" data-i18n-html="import.intro">
+        Die Aufnahmen liegen im geteilten Dropbox-Ordner. Öffne Dropbox dafür im
+        <strong>Browser</strong> (nicht in der Dropbox-App — die kann Ordner nicht
+        als ZIP herunterladen), lade den Ordner einmal als ZIP-Datei herunter und
+        wählst sie hier aus. Danach ist alles offline auf dem Handy — ohne Dropbox,
+        ohne Internet.
+      </p>
+      <input class="visually-hidden" id="zip-input" type="file" accept=".zip,application/zip,application/x-zip-compressed">
+      <button class="btn btn--primary btn--block" id="btn-zip" type="button" style="margin-top:14px" data-i18n="import.pickZipBtn">
+        ZIP-Datei auswählen
+      </button>
+      <!-- Der Ordner-Import ist bewusst nur auf dem Desktop sichtbar: auf iOS und
+           Android arbeitet webkitdirectory nicht, meldet aber Unterstützung. -->
+      <div id="folder-import" hidden style="margin-top:10px">
+        <input class="visually-hidden" id="folder-input" type="file" webkitdirectory multiple>
+        <button class="btn btn--block" id="btn-folder" type="button" data-i18n="import.pickFolderBtn">
+          Stattdessen einen Ordner wählen
+        </button>
+        <p class="small muted" style="margin:8px 0 0" data-i18n="import.desktopOnly">Nur am Computer verfügbar.</p>
+      </div>
+    </div>
+
+    <div id="import-report"></div>
+
+    <div class="card">
+      <h2 data-i18n="import.howToTitle">So kommt der Ordner aufs Handy</h2>
+      <p class="small" style="margin-top:0" data-i18n-html="import.howToWarning">
+        Wichtig: <strong>dropbox.com im Browser öffnen, nicht die Dropbox-App</strong> —
+        die App bietet für Ordner keinen ZIP-Download an, nur der Browser kann das.
+      </p>
+      <ol class="steps small">
+        <li data-i18n-html="import.howToStep1">Im Browser bei dropbox.com anmelden, beim gewünschten Ordner auf <strong>⋮</strong>
+          (Android) bzw. <strong>…</strong> (iPhone) tippen.</li>
+        <li data-i18n-html="import.howToStep2"><strong>Herunterladen</strong> (Android) bzw.
+          <strong>Exportieren → In Dateien sichern</strong> (iPhone) wählen —
+          der Ordner landet als ZIP in „Downloads“ bzw. „Dateien“.</li>
+        <li data-i18n-html="import.howToStep3">Zurück in dieser App auf <strong>ZIP-Datei auswählen</strong>
+          tippen und die Datei dort wählen.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="import.goodToKnowTitle">Gut zu wissen</h2>
+      <ul class="steps small" style="list-style: disc">
+        <li data-i18n-html="import.goodToKnow1">Jeder Import <strong>ergänzt</strong> die Bibliothek. Bereits vorhandene Songs bleiben erhalten.</li>
+        <li data-i18n="import.goodToKnow2">Du kannst später einzelne Lieder oder fehlende Stimmen nachladen.</li>
+        <li data-i18n="import.goodToKnow3">Vor dem Speichern kannst du auswählen, welche Stimmen aufs Handy sollen — das spart Speicherplatz.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="import.libraryTitle">Bibliothek</h2>
+      <div class="stack small" id="import-stats">
+        <div class="row"><span data-i18n="import.libSongs">Songs</span><span id="stat-songs">–</span></div>
+        <div class="row"><span data-i18n="import.libFiles">Dateien</span><span id="stat-files">–</span></div>
+        <div class="row"><span data-i18n="import.libLastImport">Letzter Import</span><span id="stat-last-import">–</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
      entschieden wird und nichts anderes ablenken soll. -->
 <section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
   <div class="sheet-head">
     <div class="row" style="align-items:flex-start">
       <div class="grow" style="flex:1">
-        <h2 class="sheet-title" id="sheet-title">Auswahl</h2>
+        <h2 class="sheet-title" id="sheet-title" data-i18n="import.sheetTitle">Auswahl</h2>
         <p class="small muted" id="sheet-found" style="margin:0"></p>
       </div>
-      <button class="disclose" id="sheet-close" type="button" aria-label="Abbrechen">
+      <button class="disclose" id="sheet-close" type="button" aria-label="Abbrechen" data-i18n-aria="common.cancel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <path d="M6 6l12 12M18 6L6 18"/>
         </svg>
       </button>
     </div>
     <div class="preset-row" id="sheet-presets" role="group" aria-label="Voreinstellung">
-      <button class="preset" type="button" data-preset="mine">Nur meine Stimme + Gesamt</button>
-      <button class="preset" type="button" data-preset="full">Nur Gesamt</button>
-      <button class="preset" type="button" data-preset="all">Alles</button>
+      <button class="preset" type="button" data-preset="mine" data-i18n="import.presetMine">Meine Stimmen</button>
+      <button class="preset" type="button" data-preset="full" data-i18n="import.presetFull">Full</button>
+      <button class="preset" type="button" data-preset="all" data-i18n="import.presetAll">Alle Stimmen</button>
     </div>
   </div>
 
@@ -1928,25 +2052,22 @@ input[type="checkbox"] {
     <div class="progress" id="sheet-progress" hidden><i></i></div>
     <p class="small" id="sheet-summary" style="margin:0 0 4px"></p>
     <p class="small muted" id="sheet-plan" style="margin:0 0 10px"></p>
-    <button class="btn btn--primary btn--block" id="sheet-import" type="button">Importieren</button>
+    <button class="btn btn--primary btn--block" id="sheet-import" type="button" data-i18n="import.importBtn">Importieren</button>
   </div>
 </section>
-
-<header class="app-header">
-  <h1 id="view-title">Songs</h1>
-</header>
 
 <main class="app-main" id="main">
 
   <!-- ===== Bibliothek =================================================== -->
-  <section class="view is-active" id="view-songs" aria-labelledby="view-title">
+  <section class="view is-active" id="view-songs">
     <div class="hint-box" id="backup-reminder" hidden></div>
     <div class="searchbar" id="searchbar" hidden>
       <input class="search-input" id="search" type="search" inputmode="search"
              autocomplete="off" autocorrect="off" spellcheck="false"
-             placeholder="Song suchen …" aria-label="Song suchen">
+             placeholder="Song suchen …" aria-label="Song suchen"
+             data-i18n-placeholder="songs.searchPlaceholder" data-i18n-aria="songs.searchAria">
       <button class="icon-btn" id="btn-feeling-lucky" type="button"
-              aria-label="Feeling Lucky — zufälliges Lied abspielen">
+              aria-label="Feeling Lucky — zufälliges Lied abspielen" data-i18n-aria="songs.feelingLuckyAria">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
           <circle cx="8.3" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
@@ -1965,109 +2086,60 @@ input[type="checkbox"] {
   <section class="view" id="view-playlists">
     <div id="current-setlist-host"></div>
     <div class="card">
-      <h2>Setliste hinzufügen</h2>
+      <h2 data-i18n="playlists.addTitle">Setliste hinzufügen</h2>
       <div class="row" style="margin-top:14px; gap:8px">
-        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button">Neu</button>
+        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button" data-i18n="playlists.newBtn">Neu</button>
         <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn" style="flex:1" id="btn-pl-import" type="button">Datei</button>
-        <button class="btn" style="flex:1" id="btn-pl-paste" type="button">Text</button>
+        <button class="btn" style="flex:1" id="btn-pl-import" type="button" data-i18n="playlists.fileBtn">Datei</button>
+        <button class="btn" style="flex:1" id="btn-pl-paste" type="button" data-i18n="playlists.pasteBtn">Text</button>
       </div>
     </div>
     <div id="playlist-list-host"></div>
   </section>
 
-  <!-- ===== Import ====================================================== -->
-  <section class="view" id="view-import">
-    <div class="card">
-      <h2>Songs importieren</h2>
-      <p class="small muted" style="margin-top:0">
-        Die Aufnahmen liegen im geteilten Dropbox-Ordner. Du lädst den Ordner einmal
-        als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline
-        auf dem Handy — ohne Dropbox, ohne Internet.
-      </p>
-      <input class="visually-hidden" id="zip-input" type="file" accept=".zip,application/zip,application/x-zip-compressed">
-      <button class="btn btn--primary btn--block" id="btn-zip" type="button" style="margin-top:14px">
-        ZIP-Datei auswählen
-      </button>
-      <!-- Der Ordner-Import ist bewusst nur auf dem Desktop sichtbar: auf iOS und
-           Android arbeitet webkitdirectory nicht, meldet aber Unterstützung. -->
-      <div id="folder-import" hidden style="margin-top:10px">
-        <input class="visually-hidden" id="folder-input" type="file" webkitdirectory multiple>
-        <button class="btn btn--block" id="btn-folder" type="button">
-          Stattdessen einen Ordner wählen
-        </button>
-        <p class="small muted" style="margin:8px 0 0">Nur am Computer verfügbar.</p>
-      </div>
-    </div>
-
-    <div id="import-report"></div>
-
-    <div class="card">
-      <h2>So kommt der Ordner aufs Handy</h2>
-      <ol class="steps small">
-        <li>Dropbox im Browser (nicht in der App!) öffnen, beim gewünschten Ordner auf <strong>⋮</strong>
-          (Android) bzw. <strong>…</strong> (iPhone) tippen.</li>
-        <li><strong>Herunterladen</strong> (Android) bzw.
-          <strong>Exportieren → In Dateien sichern</strong> (iPhone) wählen —
-          der Ordner landet als ZIP in „Downloads“ bzw. „Dateien“.</li>
-        <li>Zurück in dieser App auf <strong>ZIP-Datei auswählen</strong>
-          tippen und die Datei dort wählen.</li>
-      </ol>
-    </div>
-
-    <div class="card">
-      <h2>Gut zu wissen</h2>
-      <ul class="steps small" style="list-style: disc">
-        <li>Jeder Import <strong>ergänzt</strong> die Bibliothek. Bereits vorhandene Songs bleiben erhalten.</li>
-        <li>Du kannst später einzelne Lieder oder fehlende Stimmen nachladen.</li>
-        <li>Vor dem Speichern kannst du auswählen, welche Stimmen aufs Handy sollen — das spart Speicherplatz.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2>Bibliothek</h2>
-      <div class="stack small" id="import-stats">
-        <div class="row"><span>Songs</span><span id="stat-songs">–</span></div>
-        <div class="row"><span>Dateien</span><span id="stat-files">–</span></div>
-        <div class="row"><span>Letzter Import</span><span id="stat-last-import">–</span></div>
-      </div>
-    </div>
-  </section>
-
   <!-- ===== Einstellungen =============================================== -->
   <section class="view" id="view-settings">
 
+    <!-- Öffnet die abgetrennte Import-Vollbildansicht (siehe #import-view
+         weiter unten) — hier steht nur noch der Einstiegsknopf. -->
+    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:14px" data-i18n="settings.importBtn">
+      Songs importieren
+    </button>
+
     <div class="card">
-      <h2>Persönliches</h2>
-      <p class="small muted" style="margin-top:-4px">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span data-i18n="settings.personal.title">Make it yours!</span></h2>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.tabHint">
         Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.
       </p>
-      <div class="player-tabs player-tabs--mini" id="default-tab-picker" role="group" aria-label="Standard-Reiter im Player">
+      <div class="player-tabs player-tabs--mini" id="default-tab-picker" role="group" aria-label="Standard-Reiter im Player" data-i18n-aria="settings.personal.tabGroupAria">
         <button class="player-tab" type="button" data-tab="loops" aria-pressed="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          <span>Loops</span>
+          <span data-i18n="tabs.loops">Loops</span>
         </button>
         <button class="player-tab" type="button" data-tab="lyrics" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
-          <span>Lyrics</span>
+          <span data-i18n="tabs.lyrics">Lyrics</span>
         </button>
         <button class="player-tab" type="button" data-tab="notes" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          <span>Notes</span>
+          <span data-i18n="tabs.notes">Notes</span>
         </button>
         <button class="player-tab" type="button" data-tab="sheets" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
-          <span>Sheets</span>
+          <span data-i18n="tabs.sheets">Sheets</span>
         </button>
       </div>
 
-      <p class="section-title">Akzentfarbe</p>
+      <p class="section-title" data-i18n="settings.personal.language">Sprache</p>
+      <div class="preset-row" id="language-picker" role="group" aria-label="Sprache"></div>
+
+      <p class="section-title" data-i18n="settings.personal.accent">Akzentfarbe</p>
       <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
     </div>
 
     <div class="card">
-      <h2>Meine Stimmen</h2>
-      <p class="small muted" style="margin-top:-4px">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M9 21h6"/></svg><span data-i18n="settings.voices.title">Meine Stimmen</span></h2>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.voices.hint">
         Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
         Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
         Stimme der Player zuerst zeigt.
@@ -2076,41 +2148,41 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2>Byciclemode</h2>
-      <p class="small muted" style="margin-top:-4px">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/></svg><span data-i18n="settings.bike.title">Byciclemode</span></h2>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.bike.hint">
         Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
         Seite gemischt, hört man sie sonst je nach Ohr gar nicht.
       </p>
       <div class="preset-row" id="channel-mode" role="group" aria-label="Kanalwiedergabe">
-        <button class="preset" type="button" data-mode="off" aria-pressed="true">Normal</button>
-        <button class="preset" type="button" data-mode="mono">Mono</button>
-        <button class="preset" type="button" data-mode="swap">Tauschen</button>
+        <button class="preset" type="button" data-mode="off" aria-pressed="true" data-i18n="settings.bike.normal">Normal</button>
+        <button class="preset" type="button" data-mode="mono" data-i18n="settings.bike.mono">Mono</button>
+        <button class="preset" type="button" data-mode="swap" data-i18n="settings.bike.swap">Tauschen</button>
       </div>
     </div>
 
     <div class="card">
-      <h2>Bildschirm &amp; Hintergrund</h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span data-i18n="settings.screen.title">Bildschirm &amp; Hintergrund</span></h2>
       <div class="row">
-        <span class="small" style="max-width:70%">
+        <span class="small" style="max-width:70%" data-i18n="settings.screen.keepOn">
           Bildschirm anlassen, solange ein Lied geöffnet ist
         </span>
         <button class="switch" id="btn-screen-toggle" type="button" role="switch"
-                aria-checked="false" aria-label="Bildschirm anlassen">
+                aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden>
+      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
         Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
         nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
       </p>
       <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
 
       <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
-              aria-expanded="false" style="margin-top:14px">
+              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
         Hören im Hintergrund klappt nicht?
       </button>
       <div id="bg-help" hidden style="margin-top:12px">
-        <p class="small muted" style="margin-top:0">
+        <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
           Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
           nicht an dieser App: Android entscheidet, ob eine Web-App im
           Hintergrund weiterlaufen darf, und das steuern zwei
@@ -2118,18 +2190,18 @@ input[type="checkbox"] {
           Website darf sie selbst setzen.
         </p>
         <ol class="steps small">
-          <li>Android-Einstellungen → <strong>Apps</strong> → deinen Browser
+          <li data-i18n-html="settings.screen.step1">Android-Einstellungen → <strong>Apps</strong> → deinen Browser
             öffnen (z. B. <strong>Vanadium</strong> oder
             <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm
             hinzufügen“ verwendet hast).</li>
-          <li><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
+          <li data-i18n-html="settings.screen.step2"><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
             wählen. Sonst beendet Android den Browser im Hintergrund, sobald
             der Bildschirm aus ist.</li>
-          <li><strong>Benachrichtigungen</strong> → erlauben. Android
+          <li data-i18n-html="settings.screen.step3"><strong>Benachrichtigungen</strong> → erlauben. Android
             verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf
             keine Web-App im Hintergrund weiterspielen.</li>
         </ol>
-        <p class="small muted" style="margin:10px 0 0">
+        <p class="small muted" style="margin:10px 0 0" data-i18n-html="settings.screen.grapheneNote">
           Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
           Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
           eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
@@ -2137,139 +2209,140 @@ input[type="checkbox"] {
           „BVG“-Symbol.
         </p>
         <p class="small" id="notif-state" style="margin:14px 0 0"></p>
-        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px">
+        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px" data-i18n="settings.screen.notifyBtn">
           Benachrichtigungen für diese Seite erlauben
         </button>
       </div>
     </div>
 
     <div class="card">
-      <h2>Hilfe</h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
       <div class="stack">
-        <p class="small muted" style="margin:0">
+        <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
           Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
-          Unter „Import“ steht Schritt für Schritt, wie das auf dem iPhone
+          Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone
           und auf Android geht.
         </p>
-        <button class="btn btn--block" id="btn-help-import" type="button">
+        <button class="btn btn--block" id="btn-help-import" type="button" data-i18n="settings.help.howToBtn">
           Wie bekomme ich Songs in die App?
         </button>
-        <button class="btn btn--block" id="btn-setup-again" type="button">
+        <button class="btn btn--block" id="btn-setup-again" type="button" data-i18n="settings.help.replayOnboarding">
           Einführung noch einmal ansehen
         </button>
       </div>
     </div>
 
     <div class="card">
-      <h2>Daten &amp; Sicherung</h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6Z"/></svg><span data-i18n="settings.data.title">Daten &amp; Sicherung</span></h2>
 
-      <p class="section-title" style="margin-top:0">Sicherung</p>
+      <p class="section-title" style="margin-top:0" data-i18n="settings.data.backupTitle">Sicherung</p>
       <div class="stack">
-        <p class="small muted" style="margin:0">
-          Sichert Loops, Notizen, Setlisten, Einstellungen und die Songliste
-          — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt
-          sich per Mail oder Messenger verschicken.
+        <p class="small muted" style="margin:0" data-i18n="settings.data.backupHint">
+          Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen
+          und die Songliste — ohne Aufnahmen. Die Datei ist nur wenige
+          Kilobyte groß und lässt sich per Mail oder Messenger verschicken.
         </p>
         <p class="small" id="backup-age" style="margin:0"></p>
-        <button class="btn btn--primary btn--block" id="btn-backup-export" type="button">
+        <button class="btn btn--primary btn--block" id="btn-backup-export" type="button" data-i18n="settings.data.backupBtn">
           Backup
         </button>
         <input class="visually-hidden" id="backup-input" type="file" accept=".json,application/json">
-        <button class="btn btn--block" id="btn-backup-import" type="button">
+        <button class="btn btn--block" id="btn-backup-import" type="button" data-i18n="settings.data.restoreBtn">
           Restore
         </button>
         <p class="small" id="notes-count" style="margin:8px 0 0"></p>
-        <button class="btn btn--block" id="btn-notes-export" type="button">
+        <button class="btn btn--block" id="btn-notes-export" type="button" data-i18n="settings.data.printNotesBtn">
           Alle Notizen drucken
         </button>
       </div>
 
-      <p class="section-title">Speicherplatz freigeben</p>
+      <p class="section-title" data-i18n="settings.data.freeSpaceTitle">Speicherplatz freigeben</p>
       <div class="stack">
-        <p class="small muted" style="margin:0">
-          Einzelne Songs oder Stimmen löschen. Loops, Notizen und Setlisten
-          bleiben dabei erhalten.
+        <p class="small muted" style="margin:0" data-i18n="settings.data.freeSpaceHint1">
+          Einzelne Songs oder Stimmen löschen. Loops, Notizen, eigene
+          Liedtexte und Setlisten bleiben dabei erhalten.
         </p>
-        <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button">
+        <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button" data-i18n="settings.data.dropAudioBtn">
           Alle Aufnahmen löschen
         </button>
-        <p class="small muted" style="margin:0">
-          Entfernt nur die Audiodateien. Loops, Notizen, Setlisten und
-          Einstellungen bleiben erhalten und verbinden sich beim nächsten
-          Import wieder.
+        <p class="small muted" style="margin:0" data-i18n="settings.data.freeSpaceHint2">
+          Entfernt nur die Audiodateien. Loops, Notizen, eigene Liedtexte,
+          Setlisten und Einstellungen bleiben erhalten und verbinden sich
+          beim nächsten Import wieder.
         </p>
-        <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false">
+        <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false" data-i18n="settings.data.manageStorageBtn">
           Einzelne Songs verwalten
         </button>
         <div id="storage-manager" hidden></div>
       </div>
 
-      <p class="section-title">Alles löschen</p>
+      <p class="section-title" data-i18n="settings.data.wipeTitle">Alles löschen</p>
       <div class="stack">
-        <p class="small muted" style="margin:0">
-          Löscht alle Songs, Aufnahmen, Loops, Notizen und Setlisten von
-          diesem Gerät. Die Dateien in der Dropbox bleiben unberührt.
+        <p class="small muted" style="margin:0" data-i18n="settings.data.wipeHint">
+          Löscht alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte
+          und Setlisten von diesem Gerät. Die Dateien in der Dropbox bleiben
+          unberührt.
         </p>
-        <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
+        <button class="btn btn--danger btn--block" id="btn-wipe" type="button" data-i18n="settings.data.wipeBtn">
           Alle Daten löschen
         </button>
       </div>
     </div>
 
     <div class="card">
-      <h2>Über die App</h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.about.title">Über die App</span></h2>
       <div class="stack small muted">
-        <div class="row"><span>Version</span><span id="app-version">–</span></div>
-        <div class="row"><span>Offline verfügbar</span><span id="offline-state">–</span></div>
-        <p style="margin:0">
+        <div class="row"><span data-i18n="settings.about.version">Version</span><span id="app-version">–</span></div>
+        <div class="row"><span data-i18n="settings.about.offline">Offline verfügbar</span><span id="offline-state">–</span></div>
+        <p style="margin:0" data-i18n="settings.about.privacy">
           Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt
           auf diesem Gerät.
         </p>
       </div>
 
-      <p class="section-title">Fehlerprotokoll</p>
-      <p class="small muted" style="margin-top:0">
+      <p class="section-title" data-i18n="settings.about.errorLogTitle">Fehlerprotokoll</p>
+      <p class="small muted" style="margin-top:0" data-i18n="settings.about.errorLogHint">
         Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim
         Melden eines Problems. Bleibt nur auf diesem Gerät.
       </p>
       <div class="stack small" id="error-log-list"></div>
       <div style="display:flex; gap:8px; margin-top:12px">
-        <button class="btn" id="btn-errorlog-copy" type="button" style="flex:1">Protokoll kopieren</button>
-        <button class="btn" id="btn-errorlog-clear" type="button" style="flex:1">Leeren</button>
+        <button class="btn" id="btn-errorlog-copy" type="button" style="flex:1" data-i18n="settings.about.copyLogBtn">Protokoll kopieren</button>
+        <button class="btn" id="btn-errorlog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
 
-      <p class="section-title">Diagnose-Log</p>
+      <p class="section-title" data-i18n="settings.about.debugLogTitle">Diagnose-Log</p>
       <div class="row">
-        <span class="small" style="max-width:70%">
+        <span class="small" style="max-width:70%" data-i18n="settings.about.debugLogSwitch">
           Ausführliches Protokoll für schwer fassbare Fehler aufzeichnen
         </span>
         <button class="switch" id="btn-debuglog-toggle" type="button" role="switch"
-                aria-checked="false" aria-label="Diagnose-Log aufzeichnen">
+                aria-checked="false" aria-label="Diagnose-Log aufzeichnen" data-i18n-aria="settings.about.debugLogAria">
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" style="margin:8px 0 0">
+      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.about.debugLogHint">
         Zeichnet technische Abläufe auf (Zeitstempel, Zustände, Zahlen) — nie
         Songtitel, Dateinamen oder Namen. Sinnvoll direkt vor dem Nachstellen
         eines Problems (z. B. Import, dann Bildschirm sperren); danach hier
         exportieren und beim Melden mitschicken.
       </p>
       <div style="display:flex; gap:8px; margin-top:12px">
-        <button class="btn" id="btn-debuglog-export" type="button" style="flex:1">Log exportieren</button>
-        <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1">Leeren</button>
+        <button class="btn" id="btn-debuglog-export" type="button" style="flex:1" data-i18n="settings.about.exportLogBtn">Log exportieren</button>
+        <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
     </div>
 
     <div class="card">
-      <h2>Speicher</h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span data-i18n="settings.storage.title">Speicher</span></h2>
       <div class="stack">
         <div class="row">
-          <span id="storage-text" class="small">wird ermittelt …</span>
+          <span id="storage-text" class="small" data-i18n="settings.storage.measuring">wird ermittelt …</span>
         </div>
         <div class="meter" id="storage-meter"><i></i></div>
         <p class="small muted" id="persist-text" style="margin:0"></p>
-        <button class="btn btn--block" id="btn-persist" type="button" hidden>
+        <button class="btn btn--block" id="btn-persist" type="button" hidden data-i18n="settings.storage.persistBtn">
           Dauerhafte Speicherung anfordern
         </button>
       </div>
@@ -2283,25 +2356,25 @@ input[type="checkbox"] {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
     </svg>
-    Songs
+    <span data-i18n="nav.songs">Songs</span>
   </button>
   <button class="nav-btn" type="button" data-view="playlists">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
     </svg>
-    Setlisten
+    <span data-i18n="nav.playlists">Setlisten</span>
   </button>
-  <button class="nav-btn" type="button" data-view="import">
+  <button class="nav-btn" type="button" data-view="player">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+      <circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/>
     </svg>
-    Import
+    <span data-i18n="nav.player">Player</span>
   </button>
   <button class="nav-btn" type="button" data-view="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>
     </svg>
-    Einstellungen
+    <span data-i18n="nav.settings">Einstellungen</span>
   </button>
 </nav>
 
@@ -2807,6 +2880,12 @@ let noteSongIds = null;
 let noteCacheStamp = 0;
 function dropNoteCache() { noteSongIds = null; noteCacheStamp++; }
 
+// Dasselbe für „hat dieser Song einen eigenen Liedtext" — eigener Typ
+// `lyricsNote`, eigener Zwischenspeicher (siehe LIEDTEXT UND NOTEN).
+let lyricsNoteSongIds = null;
+let lyricsNoteCacheStamp = 0;
+function dropLyricsNoteCache() { lyricsNoteSongIds = null; lyricsNoteCacheStamp++; }
+
 const DB = {
   async metaGet(key) {
     const db = await openDB();
@@ -2817,6 +2896,7 @@ const DB = {
     await tx('meta', 'readwrite', (meta) => { meta.put(record); });
     if (record.type === 'song') dropSongCache();
     if (record.type === 'note') dropNoteCache();
+    if (record.type === 'lyricsNote') dropLyricsNoteCache();
     return record;
   },
 
@@ -2825,12 +2905,14 @@ const DB = {
     await tx('meta', 'readwrite', (meta) => { for (const r of records) meta.put(r); });
     if (records.some((r) => r.type === 'song')) dropSongCache();
     if (records.some((r) => r.type === 'note')) dropNoteCache();
+    if (records.some((r) => r.type === 'lyricsNote')) dropLyricsNoteCache();
   },
 
   async metaDelete(key) {
     await tx('meta', 'readwrite', (meta) => { meta.delete(key); });
     if (String(key).startsWith('song:')) dropSongCache();
     if (String(key).startsWith('note:')) dropNoteCache();
+    if (String(key).startsWith('lyricsNote:')) dropLyricsNoteCache();
   },
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
@@ -2846,6 +2928,14 @@ const DB = {
     const notes = await this.metaByType('note').catch(() => []);
     noteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
     return noteSongIds;
+  },
+
+  /** Dasselbe für eigene Liedtexte. */
+  async songIdsWithLyricsNotes() {
+    if (lyricsNoteSongIds) return lyricsNoteSongIds;
+    const notes = await this.metaByType('lyricsNote').catch(() => []);
+    lyricsNoteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
+    return lyricsNoteSongIds;
   },
 
   /**
@@ -2902,6 +2992,7 @@ const DEFAULT_SETTINGS = {
   debugLog: false,            // Diagnose-Log für schwer reproduzierbare Fehler (Beta)
   defaultPlayerTab: 'loops',  // Reiter, der beim Öffnen eines Songs zuerst erscheint
   accentColor: '#F868B0',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
+  language: 'de',             // 'de' | 'en' | 'pl' — siehe STRINGS/t()/applyTranslations()
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -2934,6 +3025,532 @@ function applyAccentColor(hex) {
   root.setProperty('--accent-rgb', hexToRgbTriplet(hex));
 }
 
+/* ==========================================================================
+   SPRACHE — Deutsch/Englisch/Polnisch für die statische Oberfläche (Navigation,
+   Ersteinrichtung, Einstellungen, Import, Leerzustände). Seltene, tief
+   verschachtelte Meldungen (einzelne Fehlertexte, Sicherungs-Zusammenfassungen)
+   bleiben bewusst vorerst Deutsch — dieselbe t()/STRINGS-Struktur deckt sie
+   bei Bedarf später ab, ohne dass sich am Muster etwas ändern müsste.
+
+   HTML-Text wird über `data-i18n="schlüssel"` markiert und von
+   applyTranslations() gesetzt; steht vor dem Text noch ein Icon, sitzt das
+   Attribut an einem <span> statt am Element selbst, damit das Icon beim
+   Neusetzen des Texts nicht mitgelöscht wird. Platzhalter/aria-label über
+   `data-i18n-placeholder` bzw. `data-i18n-aria`.
+   ========================================================================== */
+
+const LANGUAGES = [
+  { id: 'de', label: 'Deutsch' },
+  { id: 'en', label: 'English' },
+  { id: 'pl', label: 'Polski' },
+];
+
+const STRINGS = {
+  de: {
+    'nav.songs': 'Songs',
+    'nav.playlists': 'Setlisten',
+    'nav.player': 'Player',
+    'nav.settings': 'Einstellungen',
+
+    'tabs.loops': 'Loops',
+    'tabs.lyrics': 'Lyrics',
+    'tabs.notes': 'Notes',
+    'tabs.sheets': 'Sheets',
+
+    'settings.importBtn': 'Songs importieren',
+    'settings.personal.title': 'Make it yours!',
+    'settings.personal.tabHint': 'Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.',
+    'settings.personal.tabGroupAria': 'Standard-Reiter im Player',
+    'settings.personal.language': 'Sprache',
+    'settings.personal.accent': 'Akzentfarbe',
+
+    'settings.voices.title': 'Meine Stimmen',
+    'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
+
+    'settings.bike.title': 'Byciclemode',
+    'settings.bike.hint': 'Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine Seite gemischt, hört man sie sonst je nach Ohr gar nicht.',
+    'settings.bike.normal': 'Normal',
+    'settings.bike.mono': 'Mono',
+    'settings.bike.swap': 'Tauschen',
+
+    'settings.screen.title': 'Bildschirm & Hintergrund',
+    'settings.screen.keepOn': 'Bildschirm anlassen, solange ein Lied geöffnet ist',
+    'settings.screen.keepOnAria': 'Bildschirm anlassen',
+    'settings.screen.hint': 'Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.',
+    'settings.screen.bgHelpToggle': 'Hören im Hintergrund klappt nicht?',
+    'settings.screen.bgHelpIntro': 'Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das nicht an dieser App: Android entscheidet, ob eine Web-App im Hintergrund weiterlaufen darf, und das steuern zwei Systemeinstellungen — beide lassen sich nur von Hand ändern, keine Website darf sie selbst setzen.',
+    'settings.screen.step1': 'Android-Einstellungen → <strong>Apps</strong> → deinen Browser öffnen (z. B. <strong>Vanadium</strong> oder <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm hinzufügen" verwendet hast).',
+    'settings.screen.step2': '<strong>Akku</strong> → <strong>Nicht eingeschränkt</strong> wählen. Sonst beendet Android den Browser im Hintergrund, sobald der Bildschirm aus ist.',
+    'settings.screen.step3': '<strong>Benachrichtigungen</strong> → erlauben. Android verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf keine Web-App im Hintergrund weiterspielen.',
+    'settings.screen.grapheneNote': 'Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum Startbildschirm hinzufügen" meist nur eine Verknüpfung an, kein eigenes App-Symbol mit eigenen Berechtigungen. Die beiden Einstellungen betreffen dann den Browser selbst, nicht ein eigenes „BVG"-Symbol.',
+    'settings.screen.notifyBtn': 'Benachrichtigungen für diese Seite erlauben',
+
+    'settings.help.title': 'Hilfe',
+    'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
+    'settings.help.howToBtn': 'Wie bekomme ich Songs in die App?',
+    'settings.help.replayOnboarding': 'Einführung noch einmal ansehen',
+
+    'settings.data.title': 'Daten & Sicherung',
+    'settings.data.backupTitle': 'Sicherung',
+    'settings.data.backupHint': 'Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen und die Songliste — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt sich per Mail oder Messenger verschicken.',
+    'settings.data.backupBtn': 'Backup',
+    'settings.data.restoreBtn': 'Restore',
+    'settings.data.printNotesBtn': 'Alle Notizen drucken',
+    'settings.data.freeSpaceTitle': 'Speicherplatz freigeben',
+    'settings.data.freeSpaceHint1': 'Einzelne Songs oder Stimmen löschen. Loops, Notizen, eigene Liedtexte und Setlisten bleiben dabei erhalten.',
+    'settings.data.dropAudioBtn': 'Alle Aufnahmen löschen',
+    'settings.data.freeSpaceHint2': 'Entfernt nur die Audiodateien. Loops, Notizen, eigene Liedtexte, Setlisten und Einstellungen bleiben erhalten und verbinden sich beim nächsten Import wieder.',
+    'settings.data.manageStorageBtn': 'Einzelne Songs verwalten',
+    'settings.data.wipeTitle': 'Alles löschen',
+    'settings.data.wipeHint': 'Löscht alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte und Setlisten von diesem Gerät. Die Dateien in der Dropbox bleiben unberührt.',
+    'settings.data.wipeBtn': 'Alle Daten löschen',
+
+    'settings.about.title': 'Über die App',
+    'settings.about.version': 'Version',
+    'settings.about.offline': 'Offline verfügbar',
+    'settings.about.privacy': 'Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt auf diesem Gerät.',
+    'settings.about.errorLogTitle': 'Fehlerprotokoll',
+    'settings.about.errorLogHint': 'Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim Melden eines Problems. Bleibt nur auf diesem Gerät.',
+    'settings.about.copyLogBtn': 'Protokoll kopieren',
+    'settings.about.clearBtn': 'Leeren',
+    'settings.about.debugLogTitle': 'Diagnose-Log',
+    'settings.about.debugLogSwitch': 'Ausführliches Protokoll für schwer fassbare Fehler aufzeichnen',
+    'settings.about.debugLogAria': 'Diagnose-Log aufzeichnen',
+    'settings.about.debugLogHint': 'Zeichnet technische Abläufe auf (Zeitstempel, Zustände, Zahlen) — nie Songtitel, Dateinamen oder Namen. Sinnvoll direkt vor dem Nachstellen eines Problems (z. B. Import, dann Bildschirm sperren); danach hier exportieren und beim Melden mitschicken.',
+    'settings.about.exportLogBtn': 'Log exportieren',
+
+    'settings.storage.title': 'Speicher',
+    'settings.storage.measuring': 'wird ermittelt …',
+    'settings.storage.persistBtn': 'Dauerhafte Speicherung anfordern',
+
+    'onb.step1of5': 'Schritt 1 von 5',
+    'onb.step2of5': 'Schritt 2 von 5',
+    'onb.step3of5': 'Schritt 3 von 5',
+    'onb.step4of5': 'Schritt 4 von 5',
+    'onb.step5of5': 'Schritt 5 von 5',
+    'onb.skip': 'Überspringen',
+    'onb.back': 'Zurück',
+    'onb.next': 'Weiter',
+
+    'onb.slide1.title': 'Auf den Home&#8209;Bildschirm legen',
+    'onb.slide1.text': 'So startet die App wie jede andere: eigenes Symbol, kein Browserfenster, volle Bildschirmhöhe. Vor allem aber behält das System die Aufnahmen länger, wenn die App installiert ist.',
+
+    'onb.slide2.title': 'Welche Stimme singst du?',
+    'onb.slide2.text': 'Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:',
+    'onb.slide2.li1': '<strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung vorausgewählt — der Rest bleibt draußen und spart Speicherplatz.',
+    'onb.slide2.li2': '<strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du sie bei jedem Lied neu einstellst.',
+    'onb.slide2.footnote': 'Alle Stimmen bleiben trotzdem wählbar. Änderbar unter <strong>Einstellungen&nbsp;→&nbsp;Meine Stimme</strong>.',
+
+    'onb.slide3.title': 'Aufnahmen dauerhaft behalten',
+    'onb.slide3.text1': 'Web-Apps dürfen ihre Daten normalerweise nur „auf Probe" speichern: wird der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.',
+    'onb.slide3.text2': 'Mit einem Klick fragen wir das Betriebssystem, ob es die Daten <strong>dauerhaft</strong> behalten soll. Der Browser entscheidet selbst — ein Dialog erscheint dabei in der Regel nicht.',
+
+    'onb.slide4.title': 'Die schwere Stelle üben',
+    'onb.slide4.intro': '<strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben":',
+    'onb.slide4.li1': 'An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.',
+    'onb.slide4.li2': 'Am Ende der Stelle auf <strong>B</strong> tippen.',
+    'onb.slide4.li3': 'Den <strong>Schalter</strong> daneben einschalten — der Abschnitt läuft jetzt in der Schleife, bis du ihn kannst.',
+    'onb.slide4.li4': 'Über das <strong>Disketten-Symbol</strong> lässt sich der Abschnitt benennen und bleibt gespeichert, auch nach dem Schließen.',
+    'onb.slide4.speed': '<strong>Langsamer üben.</strong> Unten rechts im Player steht die Geschwindigkeit: <strong>1,0×</strong>, <strong>0,85×</strong>, <strong>0,7×</strong> oder <strong>0,6×</strong>. Die Tonhöhe bleibt dabei gleich — es klingt langsamer, nicht tiefer. Beides zusammen ist der Kern der App: einen kurzen Abschnitt so lange langsam wiederholen, bis er sitzt.',
+
+    'onb.slide5.title': 'Songs holen, Programm planen',
+    'onb.slide5.import': '<strong>Import.</strong> Die Aufnahmen liegen im geteilten Dropbox-Ordner. Öffne ihn dafür im <strong>Browser</strong> — nicht in der Dropbox-App, die kann Ordner nicht als ZIP herunterladen —, lade ihn einmal als <strong>ZIP-Datei</strong> herunter und wählst sie unter „Einstellungen → Songs importieren" aus. Vor dem Speichern zeigt die App, was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs Handy sollen. Jeder weitere Import <strong>ergänzt</strong> nur — Vorhandenes bleibt, fehlende Stimmen lassen sich nachladen.',
+    'onb.slide5.setlists': '<strong>Setlisten.</strong> Eine Setliste ist ein Programm: die Lieder in der Reihenfolge, in der sie gesungen werden. Am Ende eines Liedes schaltet die App von selbst weiter. Der Chorleiter kann eine Setliste als schlichte Textdatei verteilen — ein Titel je Zeile —, du spielst sie unter „Setlisten" ein.',
+    'onb.slide5.note': 'Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem Import kein Internet mehr.',
+
+    'common.cancel': 'Abbrechen',
+
+    'import.backAria': 'Zurück zu den Einstellungen',
+    'import.intro': 'Die Aufnahmen liegen im geteilten Dropbox-Ordner. Öffne Dropbox dafür im <strong>Browser</strong> (nicht in der Dropbox-App — die kann Ordner nicht als ZIP herunterladen), lade den Ordner einmal als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline auf dem Handy — ohne Dropbox, ohne Internet.',
+    'import.pickZipBtn': 'ZIP-Datei auswählen',
+    'import.pickFolderBtn': 'Stattdessen einen Ordner wählen',
+    'import.desktopOnly': 'Nur am Computer verfügbar.',
+    'import.howToTitle': 'So kommt der Ordner aufs Handy',
+    'import.howToWarning': 'Wichtig: <strong>dropbox.com im Browser öffnen, nicht die Dropbox-App</strong> — die App bietet für Ordner keinen ZIP-Download an, nur der Browser kann das.',
+    'import.howToStep1': 'Im Browser bei dropbox.com anmelden, beim gewünschten Ordner auf <strong>⋮</strong> (Android) bzw. <strong>…</strong> (iPhone) tippen.',
+    'import.howToStep2': '<strong>Herunterladen</strong> (Android) bzw. <strong>Exportieren → In Dateien sichern</strong> (iPhone) wählen — der Ordner landet als ZIP in „Downloads" bzw. „Dateien".',
+    'import.howToStep3': 'Zurück in dieser App auf <strong>ZIP-Datei auswählen</strong> tippen und die Datei dort wählen.',
+    'import.goodToKnowTitle': 'Gut zu wissen',
+    'import.goodToKnow1': 'Jeder Import <strong>ergänzt</strong> die Bibliothek. Bereits vorhandene Songs bleiben erhalten.',
+    'import.goodToKnow2': 'Du kannst später einzelne Lieder oder fehlende Stimmen nachladen.',
+    'import.goodToKnow3': 'Vor dem Speichern kannst du auswählen, welche Stimmen aufs Handy sollen — das spart Speicherplatz.',
+    'import.libraryTitle': 'Bibliothek',
+    'import.libSongs': 'Songs',
+    'import.libFiles': 'Dateien',
+    'import.libLastImport': 'Letzter Import',
+    'import.sheetTitle': 'Auswahl',
+    'import.presetMine': 'Meine Stimmen',
+    'import.presetFull': 'Full',
+    'import.presetAll': 'Alle Stimmen',
+    'import.importBtn': 'Importieren',
+    'import.attachSimilarPrefix': 'Loops, Notizen und Liedtext von',
+    'import.attachSimilarSuffix': 'übernehmen',
+
+    'songs.searchPlaceholder': 'Song suchen …',
+    'songs.searchAria': 'Song suchen',
+    'songs.feelingLuckyAria': 'Feeling Lucky — zufälliges Lied abspielen',
+
+    'playlists.addTitle': 'Setliste hinzufügen',
+    'playlists.newBtn': 'Neu',
+    'playlists.fileBtn': 'Datei',
+    'playlists.pasteBtn': 'Text',
+    'playlists.searchPlaceholder': 'Song suchen oder Platzhalter hinzufügen …',
+    'playlists.searchAria': 'Song für die Setliste suchen',
+    'playlists.emptyTitle': 'Noch keine Setlisten',
+    'playlists.emptyText': 'Lege eine an oder importiere die Textdatei des Chorleiters.',
+
+    'songs.emptyTitle': 'Noch keine Songs',
+    'songs.emptyText': 'Lade die Aufnahmen aus der Dropbox als ZIP-Datei herunter und importiere sie hier.',
+    'songs.emptyImportBtn': 'Zum Import',
+    'songs.notFoundTitle': 'Nichts gefunden',
+    'songs.notFoundText': 'Kein Song passt zu dieser Suche.',
+    'songs.createPlaceholderSuffix': 'als Platzhalter anlegen',
+    'songs.createPlaceholderHint': 'Noch nicht importiertes Lied anlegen — für Liedtext, Notizen oder eine Setliste.',
+    'songs.placeholderBadge': 'noch keine Aufnahme',
+    'player.placeholderHint': 'Für diesen Song ist noch keine Aufnahme importiert. Liedtext und Notizen kannst du trotzdem schon speichern — sie verbinden sich beim nächsten Import automatisch mit den Stimmen.',
+  },
+  en: {
+    'nav.songs': 'Songs',
+    'nav.playlists': 'Setlists',
+    'nav.player': 'Player',
+    'nav.settings': 'Settings',
+
+    'tabs.loops': 'Loops',
+    'tabs.lyrics': 'Lyrics',
+    'tabs.notes': 'Notes',
+    'tabs.sheets': 'Sheets',
+
+    'settings.importBtn': 'Import songs',
+    'settings.personal.title': 'Make it yours!',
+    'settings.personal.tabHint': 'Tab that shows first when you open a song.',
+    'settings.personal.tabGroupAria': 'Default tab in the player',
+    'settings.personal.language': 'Language',
+    'settings.personal.accent': 'Accent color',
+
+    'settings.voices.title': 'My voices',
+    'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
+
+    'settings.bike.title': 'Bicycle mode',
+    'settings.bike.hint': 'With only one earbud in: if a voice (e.g. bass) is hard-panned to one side, you might not hear it at all depending on your ear.',
+    'settings.bike.normal': 'Normal',
+    'settings.bike.mono': 'Mono',
+    'settings.bike.swap': 'Swap',
+
+    'settings.screen.title': 'Screen & background',
+    'settings.screen.keepOn': 'Keep the screen on while a song is open',
+    'settings.screen.keepOnAria': 'Keep screen on',
+    'settings.screen.hint': 'Only prevents automatic dimming from inactivity — doesn\'t help if you lock the phone yourself with the power button.',
+    'settings.screen.bgHelpToggle': 'Background playback not working?',
+    'settings.screen.bgHelpIntro': 'If playback stops as soon as you lock your phone, that\'s not this app\'s fault: Android decides whether a web app may keep running in the background, controlled by two system settings — both can only be changed by hand, no website can set them itself.',
+    'settings.screen.step1': 'Android settings → <strong>Apps</strong> → open your browser (e.g. <strong>Vanadium</strong> or <strong>Chrome</strong> — the app you used "Add to home screen" with).',
+    'settings.screen.step2': '<strong>Battery</strong> → choose <strong>Unrestricted</strong>. Otherwise Android shuts the browser down in the background as soon as the screen turns off.',
+    'settings.screen.step3': '<strong>Notifications</strong> → allow. Android requires a visible notification for this — without it, no web app may keep playing in the background.',
+    'settings.screen.grapheneNote': 'Without Google Play services — e.g. on GrapheneOS — "Add to home screen" usually only creates a shortcut, not a proper app icon with its own permissions. Both settings then apply to the browser itself, not a separate "BVG" icon.',
+    'settings.screen.notifyBtn': 'Allow notifications for this page',
+
+    'settings.help.title': 'Help',
+    'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
+    'settings.help.howToBtn': 'How do I get songs into the app?',
+    'settings.help.replayOnboarding': 'Watch the intro again',
+
+    'settings.data.title': 'Data & backup',
+    'settings.data.backupTitle': 'Backup',
+    'settings.data.backupHint': 'Backs up loops, notes, your own lyrics, setlists, settings and the song list — without recordings. The file is only a few kilobytes and can be sent by mail or messenger.',
+    'settings.data.backupBtn': 'Backup',
+    'settings.data.restoreBtn': 'Restore',
+    'settings.data.printNotesBtn': 'Print all notes',
+    'settings.data.freeSpaceTitle': 'Free up storage',
+    'settings.data.freeSpaceHint1': 'Delete individual songs or voices. Loops, notes, your own lyrics and setlists are kept.',
+    'settings.data.dropAudioBtn': 'Delete all recordings',
+    'settings.data.freeSpaceHint2': 'Only removes the audio files. Loops, notes, your own lyrics, setlists and settings are kept and reconnect on the next import.',
+    'settings.data.manageStorageBtn': 'Manage individual songs',
+    'settings.data.wipeTitle': 'Delete everything',
+    'settings.data.wipeHint': 'Deletes all songs, recordings, loops, notes, your own lyrics and setlists from this device. Files in Dropbox stay untouched.',
+    'settings.data.wipeBtn': 'Delete all data',
+
+    'settings.about.title': 'About the app',
+    'settings.about.version': 'Version',
+    'settings.about.offline': 'Available offline',
+    'settings.about.privacy': 'The app makes no network requests and sends no data. Everything stays on this device.',
+    'settings.about.errorLogTitle': 'Error log',
+    'settings.about.errorLogHint': 'Technical error messages from the app, newest first — helpful when reporting a problem. Stays only on this device.',
+    'settings.about.copyLogBtn': 'Copy log',
+    'settings.about.clearBtn': 'Clear',
+    'settings.about.debugLogTitle': 'Diagnostic log',
+    'settings.about.debugLogSwitch': 'Record a detailed log for hard-to-pin-down bugs',
+    'settings.about.debugLogAria': 'Record diagnostic log',
+    'settings.about.debugLogHint': 'Records technical events (timestamps, states, numbers) — never song titles, file names or names. Useful right before reproducing a problem (e.g. import, then lock the screen); export it here afterwards and send it along when reporting.',
+    'settings.about.exportLogBtn': 'Export log',
+
+    'settings.storage.title': 'Storage',
+    'settings.storage.measuring': 'measuring …',
+    'settings.storage.persistBtn': 'Request persistent storage',
+
+    'onb.step1of5': 'Step 1 of 5',
+    'onb.step2of5': 'Step 2 of 5',
+    'onb.step3of5': 'Step 3 of 5',
+    'onb.step4of5': 'Step 4 of 5',
+    'onb.step5of5': 'Step 5 of 5',
+    'onb.skip': 'Skip',
+    'onb.back': 'Back',
+    'onb.next': 'Next',
+
+    'onb.slide1.title': 'Add it to your home screen',
+    'onb.slide1.text': 'This makes the app start like any other: its own icon, no browser window, full screen height. Most importantly, the system keeps recordings around longer once the app is installed.',
+
+    'onb.slide2.title': 'Which voice do you sing?',
+    'onb.slide2.text': 'Every song has several recordings — one per voice, plus a full mix. Knowing your voice lets the app do two things:',
+    'onb.slide2.li1': '<strong>On import</strong>, your voice and the full mix are pre-selected — everything else stays out and saves storage.',
+    'onb.slide2.li2': '<strong>In the player</strong>, your voice plays right away, with no need to set it up again for every song.',
+    'onb.slide2.footnote': 'All voices stay selectable regardless. Change it under <strong>Settings&nbsp;→&nbsp;My voices</strong>.',
+
+    'onb.slide3.title': 'Keep recordings for good',
+    'onb.slide3.text1': 'Web apps are normally only allowed to store data "on trial": if space gets tight or the app sits unused for a while, the system may clear it out. With a few gigabytes of recordings, that would be annoying.',
+    'onb.slide3.text2': 'With one tap we ask the operating system to keep the data <strong>permanently</strong>. The browser decides for itself — usually no dialog appears.',
+
+    'onb.slide4.title': 'Practice the hard part',
+    'onb.slide4.intro': '<strong>Loop a section.</strong> In the player, under "Practice a section":',
+    'onb.slide4.li1': 'Tap <strong>A</strong> where the section should start.',
+    'onb.slide4.li2': 'Tap <strong>B</strong> at the end of the section.',
+    'onb.slide4.li3': 'Turn on the <strong>switch</strong> next to it — the section now loops until you\'ve got it.',
+    'onb.slide4.li4': 'The <strong>save icon</strong> lets you name the section, and it stays saved even after closing.',
+    'onb.slide4.speed': '<strong>Practice slower.</strong> The bottom right of the player shows the speed: <strong>1.0×</strong>, <strong>0.85×</strong>, <strong>0.7×</strong> or <strong>0.6×</strong>. The pitch stays the same — it sounds slower, not lower. Together, these two are the core of the app: loop a short section slowly until it sits.',
+
+    'onb.slide5.title': 'Get songs, plan the program',
+    'onb.slide5.import': '<strong>Import.</strong> Recordings live in the shared Dropbox folder. Open it in the <strong>browser</strong> — not the Dropbox app, which can\'t download folders as a ZIP —, download it once as a <strong>ZIP file</strong> and pick it under "Settings → Import songs". Before saving, the app shows what it found, and you tick off which voices should actually go onto your phone. Every further import only <strong>adds</strong> — what\'s there stays, missing voices can be loaded later.',
+    'onb.slide5.setlists': '<strong>Setlists.</strong> A setlist is a program: the songs in the order they\'re sung. The app moves on by itself at the end of a song. The choir director can hand out a setlist as a plain text file — one title per line —, which you load in under "Setlists".',
+    'onb.slide5.note': 'Everything stays on this device. The app sends nothing and needs no internet after the import.',
+
+    'common.cancel': 'Cancel',
+
+    'import.backAria': 'Back to settings',
+    'import.intro': 'Recordings live in the shared Dropbox folder. Open Dropbox in the <strong>browser</strong> for this (not the Dropbox app — it can\'t download folders as a ZIP), download the folder once as a ZIP file and pick it here. After that everything is offline on your phone — no Dropbox, no internet needed.',
+    'import.pickZipBtn': 'Choose ZIP file',
+    'import.pickFolderBtn': 'Choose a folder instead',
+    'import.desktopOnly': 'Only available on a computer.',
+    'import.howToTitle': 'Getting the folder onto your phone',
+    'import.howToWarning': 'Important: <strong>open dropbox.com in the browser, not the Dropbox app</strong> — the app doesn\'t offer a ZIP download for folders, only the browser can do that.',
+    'import.howToStep1': 'Sign in at dropbox.com in the browser, tap <strong>⋮</strong> (Android) or <strong>…</strong> (iPhone) on the folder you want.',
+    'import.howToStep2': 'Choose <strong>Download</strong> (Android) or <strong>Export → Save to Files</strong> (iPhone) — the folder lands as a ZIP in "Downloads" or "Files".',
+    'import.howToStep3': 'Back in this app, tap <strong>Choose ZIP file</strong> and pick the file there.',
+    'import.goodToKnowTitle': 'Good to know',
+    'import.goodToKnow1': 'Every import <strong>adds to</strong> the library. Songs already there are kept.',
+    'import.goodToKnow2': 'You can load individual songs or missing voices later.',
+    'import.goodToKnow3': 'Before saving you can choose which voices should go onto your phone — that saves storage.',
+    'import.libraryTitle': 'Library',
+    'import.libSongs': 'Songs',
+    'import.libFiles': 'Files',
+    'import.libLastImport': 'Last import',
+    'import.sheetTitle': 'Selection',
+    'import.presetMine': 'My voices',
+    'import.presetFull': 'Full',
+    'import.presetAll': 'All voices',
+    'import.importBtn': 'Import',
+    'import.attachSimilarPrefix': 'Copy loops, notes and lyrics from',
+    'import.attachSimilarSuffix': 'over to this song',
+
+    'songs.searchPlaceholder': 'Search song …',
+    'songs.searchAria': 'Search song',
+    'songs.feelingLuckyAria': 'Feeling Lucky — play a random song',
+
+    'playlists.addTitle': 'Add setlist',
+    'playlists.newBtn': 'New',
+    'playlists.fileBtn': 'File',
+    'playlists.pasteBtn': 'Text',
+    'playlists.searchPlaceholder': 'Search song or add a placeholder …',
+    'playlists.searchAria': 'Search a song for the setlist',
+    'playlists.emptyTitle': 'No setlists yet',
+    'playlists.emptyText': 'Create one, or import the choir director\'s text file.',
+
+    'songs.emptyTitle': 'No songs yet',
+    'songs.emptyText': 'Download the recordings from Dropbox as a ZIP file and import them here.',
+    'songs.emptyImportBtn': 'Go to import',
+    'songs.notFoundTitle': 'Nothing found',
+    'songs.notFoundText': 'No song matches this search.',
+    'songs.createPlaceholderSuffix': 'add as placeholder',
+    'songs.createPlaceholderHint': 'Create a song that hasn\'t been imported yet — for lyrics, notes or a setlist.',
+    'songs.placeholderBadge': 'no recording yet',
+    'player.placeholderHint': 'No recording has been imported for this song yet. You can still save lyrics and notes now — they connect automatically to the voices on the next import.',
+  },
+  pl: {
+    'nav.songs': 'Utwory',
+    'nav.playlists': 'Setlisty',
+    'nav.player': 'Odtwarzacz',
+    'nav.settings': 'Ustawienia',
+
+    'tabs.loops': 'Loopy',
+    'tabs.lyrics': 'Tekst',
+    'tabs.notes': 'Notatki',
+    'tabs.sheets': 'Nuty',
+
+    'settings.importBtn': 'Importuj utwory',
+    'settings.personal.title': 'Make it yours!',
+    'settings.personal.tabHint': 'Zakładka widoczna jako pierwsza po otwarciu utworu.',
+    'settings.personal.tabGroupAria': 'Domyślna zakładka w odtwarzaczu',
+    'settings.personal.language': 'Język',
+    'settings.personal.accent': 'Kolor akcentu',
+
+    'settings.voices.title': 'Moje głosy',
+    'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
+
+    'settings.bike.title': 'Tryb rowerowy',
+    'settings.bike.hint': 'Przy jednej słuchawce: jeśli głos (np. bas) jest mocno przesunięty na jedną stronę, w drugim uchu może być w ogóle niesłyszalny.',
+    'settings.bike.normal': 'Normalny',
+    'settings.bike.mono': 'Mono',
+    'settings.bike.swap': 'Zamień',
+
+    'settings.screen.title': 'Ekran i tło',
+    'settings.screen.keepOn': 'Ekran włączony, dopóki utwór jest otwarty',
+    'settings.screen.keepOnAria': 'Ekran włączony',
+    'settings.screen.hint': 'Zapobiega tylko automatycznemu przygaszaniu przy bezczynności — nie pomoże, gdy sam zablokujesz telefon przyciskiem.',
+    'settings.screen.bgHelpToggle': 'Odtwarzanie w tle nie działa?',
+    'settings.screen.bgHelpIntro': 'Jeśli odtwarzanie przerywa się zaraz po zablokowaniu telefonu, to nie wina tej aplikacji: Android decyduje, czy aplikacja webowa może działać w tle, a sterują tym dwa ustawienia systemowe — oba trzeba zmienić ręcznie, żadna strona nie może ustawić ich sama.',
+    'settings.screen.step1': 'Ustawienia Androida → <strong>Aplikacje</strong> → otwórz swoją przeglądarkę (np. <strong>Vanadium</strong> lub <strong>Chrome</strong> — tę, w której użyto „Dodaj do ekranu głównego").',
+    'settings.screen.step2': '<strong>Bateria</strong> → wybierz <strong>Bez ograniczeń</strong>. W przeciwnym razie Android zamknie przeglądarkę w tle, gdy tylko ekran zgaśnie.',
+    'settings.screen.step3': '<strong>Powiadomienia</strong> → zezwól. Android wymaga widocznego powiadomienia — bez niego żadna aplikacja webowa nie może grać w tle.',
+    'settings.screen.grapheneNote': 'Bez usług Google Play — np. na GrapheneOS — „Dodaj do ekranu głównego" zwykle tworzy tylko skrót, a nie osobną ikonę aplikacji z własnymi uprawnieniami. Oba ustawienia dotyczą wtedy samej przeglądarki, nie osobnej ikony „BVG".',
+    'settings.screen.notifyBtn': 'Zezwól na powiadomienia dla tej strony',
+
+    'settings.help.title': 'Pomoc',
+    'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
+    'settings.help.howToBtn': 'Jak wgrać utwory do aplikacji?',
+    'settings.help.replayOnboarding': 'Obejrzyj wprowadzenie ponownie',
+
+    'settings.data.title': 'Dane i kopia zapasowa',
+    'settings.data.backupTitle': 'Kopia zapasowa',
+    'settings.data.backupHint': 'Zapisuje loopy, notatki, własne teksty, setlisty, ustawienia i listę utworów — bez nagrań. Plik ma tylko kilka kilobajtów i można go wysłać mailem lub komunikatorem.',
+    'settings.data.backupBtn': 'Kopia zapasowa',
+    'settings.data.restoreBtn': 'Przywróć',
+    'settings.data.printNotesBtn': 'Wydrukuj wszystkie notatki',
+    'settings.data.freeSpaceTitle': 'Zwolnij miejsce',
+    'settings.data.freeSpaceHint1': 'Usuń pojedyncze utwory lub głosy. Loopy, notatki, własne teksty i setlisty pozostają zachowane.',
+    'settings.data.dropAudioBtn': 'Usuń wszystkie nagrania',
+    'settings.data.freeSpaceHint2': 'Usuwa tylko pliki audio. Loopy, notatki, własne teksty, setlisty i ustawienia pozostają zachowane i połączą się ponownie przy kolejnym imporcie.',
+    'settings.data.manageStorageBtn': 'Zarządzaj pojedynczymi utworami',
+    'settings.data.wipeTitle': 'Usuń wszystko',
+    'settings.data.wipeHint': 'Usuwa wszystkie utwory, nagrania, loopy, notatki, własne teksty i setlisty z tego urządzenia. Pliki w Dropboxie pozostają nietknięte.',
+    'settings.data.wipeBtn': 'Usuń wszystkie dane',
+
+    'settings.about.title': 'O aplikacji',
+    'settings.about.version': 'Wersja',
+    'settings.about.offline': 'Dostępna offline',
+    'settings.about.privacy': 'Aplikacja nie wysyła żadnych zapytań sieciowych ani danych. Wszystko pozostaje na tym urządzeniu.',
+    'settings.about.errorLogTitle': 'Dziennik błędów',
+    'settings.about.errorLogHint': 'Techniczne komunikaty błędów aplikacji, najnowsze na górze — pomocne przy zgłaszaniu problemu. Pozostaje tylko na tym urządzeniu.',
+    'settings.about.copyLogBtn': 'Kopiuj dziennik',
+    'settings.about.clearBtn': 'Wyczyść',
+    'settings.about.debugLogTitle': 'Dziennik diagnostyczny',
+    'settings.about.debugLogSwitch': 'Zapisuj szczegółowy dziennik dla trudnych do uchwycenia błędów',
+    'settings.about.debugLogAria': 'Zapisuj dziennik diagnostyczny',
+    'settings.about.debugLogHint': 'Zapisuje techniczne zdarzenia (znaczniki czasu, stany, liczby) — nigdy tytuły utworów, nazwy plików ani nazwiska. Przydatne tuż przed odtworzeniem problemu (np. import, potem zablokowanie ekranu); potem wyeksportuj tutaj i dołącz przy zgłoszeniu.',
+    'settings.about.exportLogBtn': 'Eksportuj dziennik',
+
+    'settings.storage.title': 'Pamięć',
+    'settings.storage.measuring': 'sprawdzanie …',
+    'settings.storage.persistBtn': 'Poproś o trwałe przechowywanie',
+
+    'onb.step1of5': 'Krok 1 z 5',
+    'onb.step2of5': 'Krok 2 z 5',
+    'onb.step3of5': 'Krok 3 z 5',
+    'onb.step4of5': 'Krok 4 z 5',
+    'onb.step5of5': 'Krok 5 z 5',
+    'onb.skip': 'Pomiń',
+    'onb.back': 'Wstecz',
+    'onb.next': 'Dalej',
+
+    'onb.slide1.title': 'Dodaj do ekranu głównego',
+    'onb.slide1.text': 'Dzięki temu aplikacja startuje jak każda inna: własna ikona, bez okna przeglądarki, pełny ekran. Przede wszystkim system dłużej przechowuje nagrania, gdy aplikacja jest zainstalowana.',
+
+    'onb.slide2.title': 'Jakim głosem śpiewasz?',
+    'onb.slide2.text': 'Do każdego utworu jest kilka nagrań — jedno na głos i jeden pełny miks. Znając twój głos, aplikacja wie dwie rzeczy:',
+    'onb.slide2.li1': '<strong>Przy imporcie</strong> twój głos i pełny miks są wstępnie zaznaczone — reszta zostaje pominięta, co oszczędza miejsce.',
+    'onb.slide2.li2': '<strong>W odtwarzaczu</strong> od razu słychać twój głos, bez ustawiania go na nowo przy każdym utworze.',
+    'onb.slide2.footnote': 'Wszystkie głosy nadal można wybrać. Zmienisz to w <strong>Ustawienia&nbsp;→&nbsp;Moje głosy</strong>.',
+
+    'onb.slide3.title': 'Zachowaj nagrania na stałe',
+    'onb.slide3.text1': 'Aplikacje webowe zwykle mogą przechowywać dane tylko „na próbę": gdy zabraknie miejsca albo aplikacja długo nie jest używana, system może je usunąć. Przy kilku gigabajtach nagrań byłoby to uciążliwe.',
+    'onb.slide3.text2': 'Jednym dotknięciem pytamy system operacyjny, czy może zachować dane <strong>na stałe</strong>. Przeglądarka decyduje sama — zwykle bez żadnego okna dialogowego.',
+
+    'onb.slide4.title': 'Ćwicz trudny fragment',
+    'onb.slide4.intro': '<strong>Powtarzaj fragment.</strong> W odtwarzaczu, w sekcji „Ćwicz fragment":',
+    'onb.slide4.li1': 'Dotknij <strong>A</strong> w miejscu, gdzie fragment ma się zaczynać.',
+    'onb.slide4.li2': 'Dotknij <strong>B</strong> na końcu fragmentu.',
+    'onb.slide4.li3': 'Włącz <strong>przełącznik</strong> obok — fragment gra teraz w pętli, aż go opanujesz.',
+    'onb.slide4.li4': '<strong>Ikona dyskietki</strong> pozwala nazwać fragment i zapisuje go na stałe, nawet po zamknięciu.',
+    'onb.slide4.speed': '<strong>Ćwicz wolniej.</strong> W prawym dolnym rogu odtwarzacza jest prędkość: <strong>1,0×</strong>, <strong>0,85×</strong>, <strong>0,7×</strong> lub <strong>0,6×</strong>. Wysokość dźwięku pozostaje taka sama — brzmi wolniej, nie niżej. Oba te elementy razem to sedno aplikacji: powtarzać krótki fragment wolno, aż zasiądzie.',
+
+    'onb.slide5.title': 'Pobierz utwory, zaplanuj program',
+    'onb.slide5.import': '<strong>Import.</strong> Nagrania znajdują się we współdzielonym folderze Dropbox. Otwórz go w <strong>przeglądarce</strong> — nie w aplikacji Dropbox, która nie umie pobrać folderu jako ZIP —, pobierz go raz jako plik <strong>ZIP</strong> i wybierz go w „Ustawienia → Importuj utwory". Przed zapisaniem aplikacja pokazuje, co znalazła, a ty zaznaczasz, które głosy naprawdę mają trafić na telefon. Każdy kolejny import tylko <strong>dodaje</strong> — to, co jest, zostaje, brakujące głosy można doładować później.',
+    'onb.slide5.setlists': '<strong>Setlisty.</strong> Setlista to program: utwory w kolejności, w jakiej są śpiewane. Po zakończeniu utworu aplikacja sama przechodzi dalej. Prowadzący chór może rozesłać setlistę jako zwykły plik tekstowy — jeden tytuł na linię —, a ty wczytujesz ją w „Setlisty".',
+    'onb.slide5.note': 'Wszystko pozostaje na tym urządzeniu. Aplikacja niczego nie wysyła i po imporcie nie potrzebuje już internetu.',
+
+    'common.cancel': 'Anuluj',
+
+    'import.backAria': 'Wróć do ustawień',
+    'import.intro': 'Nagrania znajdują się we współdzielonym folderze Dropbox. Otwórz Dropbox w <strong>przeglądarce</strong> (nie w aplikacji Dropbox — ta nie potrafi pobrać folderu jako ZIP), pobierz folder raz jako plik ZIP i wybierz go tutaj. Potem wszystko działa offline na telefonie — bez Dropboxa, bez internetu.',
+    'import.pickZipBtn': 'Wybierz plik ZIP',
+    'import.pickFolderBtn': 'Wybierz zamiast tego folder',
+    'import.desktopOnly': 'Dostępne tylko na komputerze.',
+    'import.howToTitle': 'Jak przenieść folder na telefon',
+    'import.howToWarning': 'Ważne: <strong>otwórz dropbox.com w przeglądarce, nie aplikację Dropbox</strong> — aplikacja nie oferuje pobierania folderów jako ZIP, tylko przeglądarka to potrafi.',
+    'import.howToStep1': 'Zaloguj się na dropbox.com w przeglądarce, dotknij <strong>⋮</strong> (Android) lub <strong>…</strong> (iPhone) przy wybranym folderze.',
+    'import.howToStep2': 'Wybierz <strong>Pobierz</strong> (Android) lub <strong>Eksportuj → Zapisz w Plikach</strong> (iPhone) — folder trafi jako ZIP do „Pobrane" lub „Pliki".',
+    'import.howToStep3': 'Wróć do tej aplikacji, dotknij <strong>Wybierz plik ZIP</strong> i wskaż tam ten plik.',
+    'import.goodToKnowTitle': 'Warto wiedzieć',
+    'import.goodToKnow1': 'Każdy import <strong>uzupełnia</strong> bibliotekę. Utwory, które już tam są, pozostają.',
+    'import.goodToKnow2': 'Pojedyncze utwory lub brakujące głosy możesz doładować później.',
+    'import.goodToKnow3': 'Przed zapisaniem możesz wybrać, które głosy mają trafić na telefon — to oszczędza miejsce.',
+    'import.libraryTitle': 'Biblioteka',
+    'import.libSongs': 'Utwory',
+    'import.libFiles': 'Pliki',
+    'import.libLastImport': 'Ostatni import',
+    'import.sheetTitle': 'Wybór',
+    'import.presetMine': 'Moje głosy',
+    'import.presetFull': 'Full',
+    'import.presetAll': 'Wszystkie głosy',
+    'import.importBtn': 'Importuj',
+    'import.attachSimilarPrefix': 'Przenieś loopy, notatki i tekst z',
+    'import.attachSimilarSuffix': 'do tego utworu',
+
+    'songs.searchPlaceholder': 'Szukaj utworu …',
+    'songs.searchAria': 'Szukaj utworu',
+    'songs.feelingLuckyAria': 'Feeling Lucky — odtwórz losowy utwór',
+
+    'playlists.addTitle': 'Dodaj setlistę',
+    'playlists.newBtn': 'Nowa',
+    'playlists.fileBtn': 'Plik',
+    'playlists.pasteBtn': 'Tekst',
+    'playlists.searchPlaceholder': 'Szukaj utworu lub dodaj placeholder …',
+    'playlists.searchAria': 'Szukaj utworu do setlisty',
+    'playlists.emptyTitle': 'Jeszcze brak setlist',
+    'playlists.emptyText': 'Utwórz jedną albo zaimportuj plik tekstowy od prowadzącego chór.',
+
+    'songs.emptyTitle': 'Jeszcze brak utworów',
+    'songs.emptyText': 'Pobierz nagrania z Dropboxa jako plik ZIP i zaimportuj je tutaj.',
+    'songs.emptyImportBtn': 'Przejdź do importu',
+    'songs.notFoundTitle': 'Nic nie znaleziono',
+    'songs.notFoundText': 'Żaden utwór nie pasuje do tego wyszukiwania.',
+    'songs.createPlaceholderSuffix': 'dodaj jako placeholder',
+    'songs.createPlaceholderHint': 'Utwórz jeszcze niezaimportowany utwór — na tekst, notatki lub do setlisty.',
+    'songs.placeholderBadge': 'jeszcze bez nagrania',
+    'player.placeholderHint': 'Do tego utworu nie zaimportowano jeszcze nagrania. Możesz już teraz zapisać tekst i notatki — połączą się automatycznie z głosami przy kolejnym imporcie.',
+  },
+};
+
+function t(key) {
+  return STRINGS[settings.language]?.[key] ?? STRINGS.de[key] ?? key;
+}
+
+function applyTranslations(root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  // Nur für die Handvoll Texte mit eingebetteter <strong>-Hervorhebung — der
+  // übersetzte String selbst kommt aus STRINGS, nie aus Nutzereingaben.
+  for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+  for (const el of root.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
+  for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+}
+
 async function loadSettings() {
   try {
     const stored = await DB.metaGet(SETTINGS_KEY);
@@ -2954,6 +3571,7 @@ async function loadSettings() {
 async function saveSettings(patch) {
   settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
+  if ('language' in patch) applyTranslations();
   try {
     await DB.metaPut(settings);
   } catch (err) {
@@ -3640,26 +4258,39 @@ function groupDuplicates(songFolders) {
    ========================================================================== */
 
 const VIEWS = {
-  songs:     { title: 'Songs',         render: renderSongs },
-  playlists: { title: 'Setlisten',     render: renderPlaylists },
-  import:    { title: 'Import',        render: () => { renderImportReport(); renderImportStats(); } },
-  settings:  { title: 'Einstellungen', render: renderSettings },
+  songs:     { render: renderSongs },
+  playlists: { render: renderPlaylists },
+  player:    { render: () => {} },
+  settings:  { render: renderSettings },
 };
 
 let currentView = 'songs';
 
+/**
+ * Schaltet zwischen den vier Hauptreitern um. Der Player ist einer davon —
+ * kein Vollbild-Overlay mit Zurück-Knopf mehr, sondern nimmt einfach den
+ * Platz von <main> ein, während die Reiterleiste sichtbar bleibt. Der
+ * geladene Song und die Wiedergabe laufen beim Wechsel unbeeinflusst weiter,
+ * weil hier nur Sichtbarkeit umgeschaltet wird — nie closePlayer().
+ */
 function showTab(name) {
   if (!VIEWS[name]) name = 'songs';
   currentView = name;
+  const isPlayer = name === 'player';
 
-  $$('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${name}`));
+  $('#main').hidden = isPlayer;
+  playerEl.hidden = !isPlayer;
+
+  if (!isPlayer) {
+    $$('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${name}`));
+    $('#main').scrollTop = 0;
+  }
+
   $$('.nav-btn').forEach((b) => {
     if (b.dataset.view === name) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
 
-  $('#view-title').textContent = VIEWS[name].title;
-  $('#main').scrollTop = 0;
   VIEWS[name].render?.();
 }
 
@@ -3679,12 +4310,11 @@ function navigate(hash, { replace = false } = {}) {
 function showView(name) { navigate(`#${name}`); }
 
 /**
- * Wertet die Adresse aus: `#songs`, `#import`, … oder `#song/<id>` für den
- * Player. Der Player liegt über den Reitern, deshalb wird er hier geöffnet
- * und geschlossen — so bringt die Zurück-Taste zuverlässig zur Liste zurück.
- * Führt die Route nicht zurück in den (noch ladenden) Player, wird ein
- * laufender openPlayer()-Aufruf per Marke verworfen — sonst könnte er sich
- * nach einer verspäteten DB-Antwort von selbst wieder öffnen.
+ * Wertet die Adresse aus: `#songs`, `#player`, `#settings`, … oder
+ * `#song/<id>` zum Laden eines Songs in den Player-Reiter. `#import` öffnet
+ * die Import-Vollbildansicht über allem — die einzige Ansicht, die noch
+ * einen echten Zurück-Knopf hat, damit sie sich per Browser-Zurück-Taste
+ * zuverlässig wieder schließt.
  */
 function applyRoute() {
   const raw = (location.hash || '#songs').slice(1);
@@ -3692,19 +4322,25 @@ function applyRoute() {
   const name = slash < 0 ? raw : raw.slice(0, slash);
   const param = slash < 0 ? '' : raw.slice(slash + 1);
 
+  if (name === 'import') {
+    if (openPlaylist) closePlaylistView();
+    openImportView();
+    return;
+  }
+  if (importOpen) closeImportView();
+
   if (name === 'song' && param) {
     if (openPlaylist) closePlaylistView();
+    showTab('player');
     if (!playerSong || playerSong.id !== param) openPlayer(param);
     return;
   }
 
   if (name === 'playlist' && param) {
-    if (playerSong) closePlayer(); else openPlayerToken++;
     if (!openPlaylist || openPlaylist.id !== param) openPlaylistView(param);
     return;
   }
 
-  if (playerSong) closePlayer(); else openPlayerToken++;
   if (openPlaylist) closePlaylistView();
   showTab(VIEWS[name] ? name : 'songs');
 }
@@ -3848,6 +4484,33 @@ let songsRenderToken = 0;
 // sonst bei jeder Rückkehr ein kompletter Neuaufbau aller Zeilen.
 let songsRenderSignature = null;
 
+/**
+ * Legt einen Song ganz ohne Aufnahme an — für Liedtexte/Notizen oder eine
+ * Setliste, bevor die Stimmen importiert sind. Nutzt dieselbe ID-Herleitung
+ * wie der Import (hashId(normTitle)): kommt später ein echter Import mit
+ * demselben Titel, wird dieser Platzhalter erweitert statt verdoppelt.
+ */
+async function createPlaceholderSong(rawTitle) {
+  const title = rawTitle.trim();
+  const normTitle = normalizeTitle(title);
+  const existing = await DB.metaGet(`song:${hashId(normTitle)}`).catch(() => null);
+  if (existing) return existing;
+  const song = {
+    key: `song:${hashId(normTitle)}`,
+    type: 'song',
+    id: hashId(normTitle),
+    title,
+    normTitle,
+    collections: [],
+    tracks: [],
+    lyrics: null,
+    scores: [],
+    importedAt: new Date().toISOString(),
+  };
+  await DB.metaPut(song);
+  return song;
+}
+
 async function renderSongs() {
   const token = ++songsRenderToken;
   const host = $('#song-list-host');
@@ -3869,7 +4532,11 @@ async function renderSongs() {
   // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
   if (songs.length) updateBackupReminder();
 
-  const signature = `${songCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
+  // noteCacheStamp/lyricsNoteCacheStamp gehören mit rein: sonst übersieht das
+  // Kurzschluss-„nichts geändert“ eine Notiz oder einen eigenen Liedtext, die
+  // gerade hinzugefügt oder gelöscht wurden — die Markierung in der Zeile
+  // bliebe bis zum nächsten Songwechsel veraltet stehen.
+  const signature = `${songCacheStamp}\u0000${noteCacheStamp}\u0000${lyricsNoteCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
   if (signature === songsRenderSignature && host.firstChild) return;
   songsRenderSignature = signature;
 
@@ -3881,12 +4548,12 @@ async function renderSongs() {
     $('#filterbar').hidden = true;
     host.append(el('div', { class: 'empty' },
       iconEmptyNote(),
-      el('h2', { text: 'Noch keine Songs' }),
-      el('p', { class: 'small', text: 'Lade die Aufnahmen aus der Dropbox als ZIP-Datei herunter und importiere sie hier.' }),
+      el('h2', { text: t('songs.emptyTitle') }),
+      el('p', { class: 'small', text: t('songs.emptyText') }),
       el('button', {
         class: 'btn btn--primary',
         type: 'button',
-        text: 'Zum Import',
+        text: t('songs.emptyImportBtn'),
         style: 'margin-top:14px',
         onclick: () => showView('import'),
       })
@@ -3932,19 +4599,44 @@ async function renderSongs() {
   visible.sort((a, b) => collator.compare(a.title || '', b.title || ''));
   lastVisibleSongs = visible;
 
-  if (!visible.length) {
+  // Kein Song trägt exakt diesen Titel — dann lässt sich die Suche auch als
+  // Platzhalter anlegen (genau wie in der Setliste, siehe renderPlaylistCandidates).
+  const rawQuery = songQuery.trim();
+  const canCreatePlaceholder = !!rawQuery
+    && !songs.some((s) => (s.normTitle || normalizeTitle(s.title || '')) === q);
+
+  if (!visible.length && !canCreatePlaceholder) {
     host.append(el('div', { class: 'empty' },
-      el('h2', { text: 'Nichts gefunden' }),
-      el('p', { class: 'small', text: 'Kein Song passt zu dieser Suche.' })));
+      el('h2', { text: t('songs.notFoundTitle') }),
+      el('p', { class: 'small', text: t('songs.notFoundText') })));
     return;
   }
 
+  if (canCreatePlaceholder) {
+    host.append(el('button', {
+      class: 'list-item', type: 'button', style: 'margin-bottom:10px',
+      onclick: async () => {
+        const song = await createPlaceholderSong(rawQuery);
+        $('#search').value = '';
+        songQuery = '';
+        playQueue = null;
+        navigate(`#song/${song.id}`);
+      },
+    },
+      el('div', { style: 'flex:1; min-width:0' },
+        el('strong', { text: `„${rawQuery}" ${t('songs.createPlaceholderSuffix')}` }),
+        el('div', { class: 'small muted', text: t('songs.createPlaceholderHint') }))));
+  }
+
+  if (!visible.length) return;
+
   const notedSongs = await DB.songIdsWithNotes().catch(() => new Set());
+  const lyricsNotedSongs = await DB.songIdsWithLyricsNotes().catch(() => new Set());
 
   const list = el('ul', { class: 'list' });
   for (const song of visible) {
     const marks = renderMarks({
-      lyrics: !!song.lyrics,
+      lyrics: !!song.lyrics || lyricsNotedSongs.has(song.id),
       score: (song.scores || []).length > 0,
       notes: notedSongs.has(song.id),
     });
@@ -3962,7 +4654,9 @@ async function renderSongs() {
       },
         el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
           el('strong', { text: songLabel(song) || 'Ohne Titel' }),
-          renderVoicePills(song.tracks),
+          song.tracks.length
+            ? renderVoicePills(song.tracks)
+            : el('span', { class: 'small muted', text: t('songs.placeholderBadge') }),
         ),
         marks
       )
@@ -4169,19 +4863,41 @@ async function detachSongLinks(song, preloaded = null) {
   await DB.metaPutMany(detached);
 }
 
-/** Alle Datensätze, die an einem Song hängen — Loops und Notizen. */
+/** Alle Datensätze, die an einem Song hängen — Loops, Notizen und eigene Liedtexte. */
 async function songLinkRecords() {
-  const [loops, notes] = await Promise.all([
+  const [loops, notes, lyricsNotes] = await Promise.all([
     DB.metaByType('loop').catch(() => []),
     DB.metaByType('note').catch(() => []),
+    DB.metaByType('lyricsNote').catch(() => []),
   ]);
-  return [...loops, ...notes];
+  return [...loops, ...notes, ...lyricsNotes];
+}
+
+/**
+ * Hängt Loops, Notizen und eigenen Liedtext von einem ähnlich betitelten
+ * Song (siehe analyzeAgainstLibrary/coreTitle, "attachSimilar"-Häkchen in
+ * der Auswahlmaske) auf den gerade importierten Song um. Nur explizit
+ * angehakte Fälle — ein automatisches Zusammenführen könnte sonst Daten an
+ * einen ganz anderen Song hängen, nur weil der Titel ähnlich klingt.
+ */
+async function attachSimilarSongData(requests) {
+  const records = await songLinkRecords();
+  const toUpdate = [];
+  for (const { fromId, toId, toTitle } of requests) {
+    for (const rec of records.filter((r) => r.songId === fromId)) {
+      rec.songId = toId;
+      rec.songTitle = toTitle;
+      toUpdate.push(rec);
+    }
+  }
+  if (toUpdate.length) await DB.metaPutMany(toUpdate);
+  return toUpdate.length;
 }
 
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: 'Stimme löschen?',
-    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops und Notizen bleiben erhalten.`,
+    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops, Notizen und eigene Liedtexte bleiben erhalten.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -4203,7 +4919,7 @@ async function deleteTrack(song, track) {
 async function deleteSong(song) {
   const ok = await confirmDialog({
     title: 'Song löschen?',
-    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops und Notizen bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
+    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops, Notizen und eigene Liedtexte bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -4236,8 +4952,8 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Aufnahmen löschen?',
     text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
-        + 'Loops, Notizen, Setlisten und Einstellungen bleiben erhalten und verbinden sich '
-        + 'wieder, sobald du die Lieder erneut importierst.',
+        + 'Loops, Notizen, eigene Liedtexte, Setlisten und Einstellungen bleiben erhalten '
+        + 'und verbinden sich wieder, sobald du die Lieder erneut importierst.',
     okLabel: 'Aufnahmen löschen', danger: true,
   });
   if (!ok) return;
@@ -4315,6 +5031,7 @@ function initSettingsAccordion() {
 async function renderSettings() {
   initSettingsAccordion();
   renderDefaultTabPicker();
+  renderLanguagePicker();
   renderAccentPicker();
   renderVoicePicker();
   renderChannelMode();
@@ -4392,6 +5109,25 @@ function renderChannelMode() {
 function renderDefaultTabPicker() {
   for (const btn of $$('#default-tab-picker .player-tab')) {
     btn.setAttribute('aria-pressed', btn.dataset.tab === (settings.defaultPlayerTab || 'loops') ? 'true' : 'false');
+  }
+}
+
+function renderLanguagePicker() {
+  const host = $('#language-picker');
+  host.textContent = '';
+  const current = settings.language || DEFAULT_SETTINGS.language;
+
+  for (const lang of LANGUAGES) {
+    const btn = el('button', {
+      class: 'preset', type: 'button',
+      'aria-pressed': lang.id === current ? 'true' : 'false',
+      text: lang.label,
+      onclick: async () => {
+        await saveSettings({ language: lang.id });
+        renderLanguagePicker();
+      },
+    });
+    host.append(btn);
   }
 }
 
@@ -5426,6 +6162,25 @@ function renderSheetSong(song) {
       }));
     }
 
+    // Ähnlicher, aber nicht identischer Titel bereits in der Bibliothek
+    // (siehe analyzeAgainstLibrary/coreTitle): Loops, Notizen und eigener
+    // Liedtext hängen an der Song-ID, nicht am Titel — ohne diese Option
+    // blieben sie am alten Platzhalter/Tippfehler-Titel hängen.
+    let attachRow = null;
+    if (song.similar) {
+      attachRow = el('label', { class: 'row', style: 'margin:8px 0 0; align-items:flex-start' });
+      const attachBox = el('input', { type: 'checkbox' });
+      attachBox.checked = !!song.attachSimilar;
+      attachBox.addEventListener('change', () => { song.attachSimilar = attachBox.checked; });
+      attachRow.append(
+        attachBox,
+        el('span', {
+          class: 'small muted', style: 'flex:1',
+          text: `${t('import.attachSimilarPrefix')} „${song.similar.title}" ${t('import.attachSimilarSuffix')}`,
+        })
+      );
+    }
+
     const toggle = el('button', {
       class: 'disclose',
       type: 'button',
@@ -5440,6 +6195,7 @@ function renderSheetSong(song) {
     });
 
     box.append(el('div', { class: 'pick-head' }, songBox, titleBlock, toggle), tracksHost);
+    if (attachRow) box.append(attachRow);
     sheetBody.append(box);
   }
 }
@@ -5475,7 +6231,7 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
     `Gefunden: ${plural(songs.length, 'Song', 'Songs')}, ` +
     `${plural(foundFiles, 'Datei', 'Dateien')}, ${fmtBytes(foundBytes)}`;
 
-  // Ohne eigene Stimme ergibt „Nur meine Stimme + Gesamt" keinen Sinn.
+  // Ohne eigene Stimme ergibt „Meine Stimmen" keinen Sinn.
   if (!settings.myVoices.length && pick.preset === 'mine') pick.preset = 'full';
 
   applyPreset(pick.preset);
@@ -5782,6 +6538,11 @@ async function runImport() {
       .catch(() => { /* Fehler tauchen beim Auspacken wieder auf */ });
   }
 
+  // Gesammelt, statt sofort verschoben: Loops/Notizen/Liedtexte eines
+  // ähnlich betitelten Songs sollen erst umgehängt werden, wenn der Import
+  // wirklich fertig geschrieben ist (siehe attachSimilarSongData unten).
+  const attachRequests = [];
+
   try {
     for (const scan of chosenSongs) {
       // Vorhandenen Song erweitern statt einen zweiten anzulegen (4.6).
@@ -5799,6 +6560,10 @@ async function runImport() {
       };
       song.collections = [...(song.collections || [])];
       song.scores = [...(song.scores || [])];
+
+      if (scan.attachSimilar && scan.similar) {
+        attachRequests.push({ fromId: scan.similar.id, toId: song.id, toTitle: song.title });
+      }
 
       // Sammelordner ergänzen — ein Song kann in mehreren Programmen liegen.
       for (const c of scan.collections) {
@@ -5937,6 +6702,18 @@ async function runImport() {
   } catch (err) {
     console.warn('[import] Notizen verbinden', err);
   }
+  try {
+    report.lyricsNotesLinked = await reconnectPendingLyricsNotes();
+  } catch (err) {
+    console.warn('[import] Eigene Liedtexte verbinden', err);
+  }
+  if (attachRequests.length) {
+    try {
+      report.similarAttached = await attachSimilarSongData(attachRequests);
+    } catch (err) {
+      console.warn('[import] Daten von ähnlichem Song übernehmen', err);
+    }
+  }
 
   // Zeitpunkt merken — aber nur, wenn wirklich etwas geschrieben wurde: ein
   // Abbruch ohne jede Änderung soll nicht als „Import" durchgehen.
@@ -5972,6 +6749,28 @@ async function runImport() {
   showView('songs');
 }
 
+/**
+ * Import-Vollbildansicht: die einzige Ansicht neben der Setlisten-Detailseite,
+ * die noch einen echten Zurück-Pfeil braucht — sie liegt über allen vier
+ * Hauptreitern und wird nur über den Knopf in den Einstellungen erreicht.
+ */
+let importOpen = false;
+
+function openImportView() {
+  importOpen = true;
+  $('#import-view').hidden = false;
+  renderImportReport();
+  renderImportStats();
+}
+
+function closeImportView() {
+  importOpen = false;
+  $('#import-view').hidden = true;
+}
+
+$('#btn-open-import').addEventListener('click', () => navigate('#import'));
+$('#import-back').addEventListener('click', () => history.back());
+
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
   const host = $('#import-report');
@@ -5989,6 +6788,8 @@ function renderImportReport() {
   if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
   if (r.reconnected)   lines.push(`${plural(r.reconnected, 'gespeicherter Loop', 'gespeicherte Loops')} aus einer Sicherung wieder verbunden.`);
   if (r.notesLinked)   lines.push(`${plural(r.notesLinked, 'gespeicherte Notiz', 'gespeicherte Notizen')} wieder verbunden.`);
+  if (r.lyricsNotesLinked) lines.push(`${plural(r.lyricsNotesLinked, 'eigener Liedtext', 'eigene Liedtexte')} wieder verbunden.`);
+  if (r.similarAttached) lines.push(`${plural(r.similarAttached, 'gespeicherter Eintrag', 'gespeicherte Einträge')} vom ähnlichen Song übernommen.`);
 
   card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
 
@@ -6360,7 +7161,15 @@ async function openPlayer(songId) {
   }
 
   playerSong = song;
-  playerEl.hidden = false;
+  // Der Player ist ein dauerhafter Reiter (keine Vollbild-Ansicht mehr) —
+  // sichtbar bleibt er über showTab(); hier wird nur zwischen Leerzustand
+  // und geladenem Song umgeschaltet.
+  $('#player-empty').hidden = true;
+  $('#player-loaded').hidden = false;
+  // Bleibt zunächst verborgen — Transportleiste macht nur Sinn, sobald
+  // unten feststeht, dass tatsächlich eine Aufnahme geladen werden kann
+  // (siehe Platzhalter-Songs ohne Stimmen weiter unten).
+  $('#player-foot').hidden = true;
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
   const pills = renderVoicePills(song.tracks, { clickable: true });
@@ -6383,6 +7192,7 @@ async function openPlayer(songId) {
   renderPlayerExtras();
   loadSongLoops();
   loadSongNote();
+  loadSongLyricsNote();
 
   try {
     await audioInit();
@@ -6413,10 +7223,18 @@ async function openPlayer(songId) {
   // Nur die bevorzugte Stimme laden — ein Stimmwechsel lädt bei Bedarf nach.
   const first = preferredTrack(song);
   if (!first) {
-    banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
+    if (!song.tracks.length) {
+      // Platzhalter-Song ohne Aufnahme (siehe createPlaceholderSong) — kein
+      // Fehler, sondern der erwartete Zustand vor dem nächsten Import.
+      $('#player-hint').hidden = false;
+      $('#player-hint').textContent = t('player.placeholderHint');
+    } else {
+      banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
+    }
     return;
   }
 
+  $('#player-foot').hidden = false;
   await selectTrack(first);
   if (token !== openPlayerToken) return;
 
@@ -6630,10 +7448,15 @@ function closePlayer() {
   openPlayerToken++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
-  playerEl.hidden = true;
+  flushLyricsNote();
   audioReset();
   releaseScoreURLs();
   playerSong = null;
+  $('#player-title').textContent = 'Kein Song ausgewählt';
+  $('#player-pills').textContent = '';
+  $('#player-empty').hidden = false;
+  $('#player-loaded').hidden = true;
+  $('#player-foot').hidden = true;
   updateWakeLock();          // „Bildschirm anlassen" gilt nur im Player
   playerVoice = null;
   songLoops = [];
@@ -6646,8 +7469,6 @@ function closePlayer() {
 }
 
 /* ---------- Bedienelemente ---------------------------------------------- */
-
-$('#player-back').addEventListener('click', () => history.back());
 
 $('#btn-play').addEventListener('click', async () => {
   if (Audio.playing) {
@@ -7064,17 +7885,14 @@ function releaseScoreURLs() {
   scoreURLs = [];
 }
 
+// Gilt für beide Quellen — offiziell wie privat —, damit die A−/A+-Knöpfe
+// unabhängig davon wirken, welcher Text gerade zu sehen ist.
 function applyLyricsFontSize() {
-  $('#lyrics-text').style.fontSize = `${settings.lyricsFontSize || 17}px`;
+  const size = `${settings.lyricsFontSize || 17}px`;
+  $('#lyrics-text').style.fontSize = size;
+  $('#lyrics-note-display').style.fontSize = size;
+  $('#lyrics-note-text').style.fontSize = size;
 }
-
-$('#btn-lyrics-toggle').addEventListener('click', () => {
-  const box = $('#lyrics-text');
-  const open = box.hidden;
-  box.hidden = !open;
-  $('#btn-lyrics-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
-  $('#btn-lyrics-toggle').textContent = open ? 'Ausblenden' : 'Anzeigen';
-});
 
 const stepFontSize = async (delta) => {
   const next = Math.max(13, Math.min(30, (settings.lyricsFontSize || 17) + delta));
@@ -7084,6 +7902,230 @@ const stepFontSize = async (delta) => {
 
 $('#btn-lyrics-smaller').addEventListener('click', () => stepFontSize(-2));
 $('#btn-lyrics-bigger').addEventListener('click', () => stepFontSize(2));
+
+/**
+ * Eigener Liedtext — ein Datensatz wie eine Notiz (siehe NOTIZEN weiter
+ * unten), nur mit eigenem Typ `lyricsNote`, damit er nie mit einer
+ * Übe-Notiz verwechselt wird (getrennte Anzeige, getrennter Export,
+ * getrennte „ein Eintrag je Lied"-Prüfung beim Wiederherstellen). Sichtbar
+ * ist er entweder alleine (keine offizielle Fassung vorhanden — dann
+ * verhält sich der Reiter genau wie NOTIZEN) oder über den Schalter
+ * „Offiziell / Eigener Text" neben der offiziellen Fassung.
+ */
+const LYRICS_NOTE_SAVE_DELAY = 900;
+
+let playerLyricsNote = null;     // eigener Liedtext des offenen Songs, null = keiner
+let lyricsNoteSaveTimer = null;
+let lyricsSource = 'official';   // nur relevant, wenn beide Fassungen existieren
+// Lesemodus (reiner Text wie die offizielle Fassung) vs. Bearbeitungsmodus
+// (Textfeld) — siehe renderLyricsBlock(). Ohne eigenen Eintrag irrelevant.
+let lyricsNoteEditing = false;
+
+let lyricsNotePending = Promise.resolve();
+function lyricsNoteWrite(run) {
+  lyricsNotePending = lyricsNotePending.then(run, run).catch((err) => console.error('[liedtext]', err));
+  return lyricsNotePending;
+}
+
+function newLyricsNote(song) {
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    key: `lyricsNote:${id}`, type: 'lyricsNote', id,
+    songId: song.id,
+    songTitle: song.title,        // bleibt erhalten, auch ohne Song
+    text: '',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function loadSongLyricsNote() {
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  playerLyricsNote = null;
+  lyricsNoteEditing = false;
+  if (!playerSong) { renderLyricsBlock(); return; }
+
+  const song = playerSong;
+  await lyricsNotePending.catch(() => {});
+  const all = await DB.metaByType('lyricsNote').catch(() => []);
+  if (playerSong !== song) return;      // inzwischen ein anderes Lied geöffnet
+
+  const found = noteForSong(all, song); // Zuordnungslogik ist typunabhängig
+  if (found) {
+    // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg.
+    if (!(found.text || '').trim()) {
+      lyricsNoteWrite(() => DB.metaDelete(found.key));
+    } else {
+      if (!found.songId) {
+        found.songId = song.id;
+        lyricsNoteWrite(() => DB.metaPut(found));
+      }
+      playerLyricsNote = found;
+    }
+  }
+
+  // Default: existiert eine offizielle Fassung, zeigt sich die zuerst.
+  lyricsSource = playerSong?.lyrics ? 'official' : 'private';
+  renderLyricsBlock();
+}
+
+const LYRICS_EDIT_ICON = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
+const LYRICS_DONE_ICON = '<polyline points="20 6 9 17 4 12"/>';
+
+/**
+ * Zeigt offiziellen Text, eigenen Text (als reiner Lesetext) oder — beim
+ * Bearbeiten — die Textbox. Die Leiste oben (Quelle/Schriftgröße/Stift)
+ * bleibt sichtbar, solange ein Song offen ist.
+ */
+function renderLyricsBlock() {
+  const hasOfficial = !!playerSong?.lyrics;
+  const hasPrivate = playerLyricsNote !== null;
+  // Der Schalter bleibt immer sichtbar (siehe Nutzerwunsch) — „Offiziell"
+  // wird nur ausgegraut, wenn es (noch) keinen offiziellen Text gibt, statt
+  // wie zuvor den ganzen Schalter zu verstecken.
+  const activeSource = hasOfficial ? lyricsSource : 'private';
+  const showOfficial = activeSource === 'official';
+  const editing = !showOfficial && lyricsNoteEditing;
+
+  $('#lyrics-toolbar').hidden = !playerSong;
+  $('#lyrics-source-switch').hidden = !playerSong;
+  $$('#lyrics-source-switch .preset').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.lyricsSource === activeSource));
+  });
+  const officialBtn = $('#lyrics-source-switch [data-lyrics-source="official"]');
+  officialBtn.disabled = !hasOfficial;
+  officialBtn.setAttribute('aria-disabled', String(!hasOfficial));
+
+  // Stift/Fertig-Knopf gilt nur für den eigenen Text — die offizielle
+  // Fassung aus dem Import lässt sich nicht bearbeiten.
+  $('#btn-lyrics-note-edit').hidden = showOfficial;
+  $('#lyrics-edit-icon').innerHTML = editing ? LYRICS_DONE_ICON : LYRICS_EDIT_ICON;
+  $('#btn-lyrics-note-edit').setAttribute('aria-label', editing ? 'Fertig' : 'Bearbeiten');
+
+  $('#lyrics-text').hidden = !showOfficial;
+  if (showOfficial) $('#lyrics-text').textContent = playerSong.lyrics;
+
+  $('#lyrics-private-block').hidden = showOfficial;
+  if (!showOfficial) {
+    $('#lyrics-note-display').hidden = !hasPrivate || editing;
+    if (hasPrivate) $('#lyrics-note-display').textContent = playerLyricsNote.text || '';
+    $('#lyrics-note-empty-hint').hidden = hasPrivate || editing;
+    $('#lyrics-note-editor').hidden = !editing;
+    $('#lyrics-note-text').value = hasPrivate ? (playerLyricsNote.text || '') : '';
+    setLyricsNoteState(hasPrivate ? 'saved' : 'none');
+  }
+
+  applyLyricsFontSize();
+  setTabHasContent('lyrics', hasOfficial || hasPrivate);
+}
+
+function setLyricsNoteState(kind) {
+  const node = $('#lyrics-note-state');
+  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
+  if (kind === 'dirty')  { node.textContent = 'Noch nicht gespeichert …'; return; }
+  if (kind === 'saving') { node.textContent = 'Speichert …'; return; }
+  if (kind === 'saved') {
+    const at = fmtClock(playerLyricsNote?.updatedAt);
+    node.textContent = at ? `Gespeichert um ${at} Uhr` : 'Gespeichert';
+    return;
+  }
+  node.textContent = '';
+}
+
+$$('#lyrics-source-switch .preset').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    lyricsSource = btn.dataset.lyricsSource;
+    renderLyricsBlock();
+  });
+});
+
+// Ein Knopf für beides: ohne Eintrag legt er einen an und öffnet die
+// Bearbeitungsbox, mit Eintrag schaltet er zwischen Lesen und Bearbeiten um.
+// „Fertig" speichert automatisch — ein leer gelassener Text löscht sich dabei
+// gleich mit (siehe saveLyricsNote), eine eigene Lösch-Fläche ist so unnötig.
+$('#btn-lyrics-note-edit').addEventListener('click', async () => {
+  if (!playerSong) return;
+  if (!lyricsNoteEditing) {
+    if (!playerLyricsNote) playerLyricsNote = newLyricsNote(playerSong);
+    lyricsNoteEditing = true;
+    renderLyricsBlock();
+    setLyricsNoteState('none');
+    $('#lyrics-note-text').focus();
+    return;
+  }
+  await saveLyricsNote({ announce: true });
+  lyricsNoteEditing = false;
+  renderLyricsBlock();
+});
+
+$('#lyrics-note-text').addEventListener('input', () => {
+  if (!playerLyricsNote) return;
+  setLyricsNoteState('dirty');
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = setTimeout(() => { saveLyricsNote(); }, LYRICS_NOTE_SAVE_DELAY);
+});
+
+$('#lyrics-note-text').addEventListener('blur', () => { if (lyricsNoteSaveTimer) saveLyricsNote(); });
+
+async function saveLyricsNote({ announce = false } = {}) {
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  const note = playerLyricsNote;
+  if (!note) return;
+
+  const text = $('#lyrics-note-text').value;
+
+  if (announce && !text.trim()) {
+    await deleteLyricsNote();
+    banner('Leeren Liedtext entfernt.');
+    return;
+  }
+
+  note.text = text;
+  note.songTitle = playerSong?.title || note.songTitle;
+  note.updatedAt = new Date().toISOString();
+  setLyricsNoteState('saving');
+
+  try {
+    await lyricsNoteWrite(() => DB.metaPut(note));
+    if (playerLyricsNote === note) setLyricsNoteState('saved');
+    if (announce) banner('Liedtext gespeichert.', { kind: 'ok' });
+  } catch (err) {
+    if (playerLyricsNote === note) setLyricsNoteState('dirty');
+    bannerError('Der Liedtext konnte nicht gespeichert werden.', 'LYRICS-NOTE-SAVE', err);
+  }
+}
+
+async function deleteLyricsNote() {
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  const note = playerLyricsNote;
+  playerLyricsNote = null;
+  lyricsNoteEditing = false;
+  lyricsSource = playerSong?.lyrics ? 'official' : 'private';
+  renderLyricsBlock();
+  if (note) await lyricsNoteWrite(() => DB.metaDelete(note.key));
+}
+
+/** Beim Schließen des Players oder beim Wegwischen der App sichern. */
+function flushLyricsNote() {
+  const note = playerLyricsNote;
+  if (!note) return;
+  const text = $('#lyrics-note-text').value;
+
+  if (!text.trim()) {
+    playerLyricsNote = null;
+    lyricsNoteWrite(() => DB.metaDelete(note.key));
+    return;
+  }
+  if (text === note.text && !lyricsNoteSaveTimer) return;
+
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  note.text = text;
+  note.updatedAt = new Date().toISOString();
+  lyricsNoteWrite(() => DB.metaPut(note));
+}
 
 function iconPdf() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -7137,20 +8179,9 @@ async function renderPlayerExtras() {
   const token = ++extrasRenderToken;
   releaseScoreURLs();
 
-  // --- Liedtext ---------------------------------------------------------
-  const lyricsContent = $('#lyrics-content');
-  if (playerSong?.lyrics) {
-    lyricsContent.hidden = false;
-    $('#lyrics-text').textContent = playerSong.lyrics;
-    $('#lyrics-text').hidden = true;
-    $('#btn-lyrics-toggle').setAttribute('aria-expanded', 'false');
-    $('#btn-lyrics-toggle').textContent = 'Anzeigen';
-    applyLyricsFontSize();
-  } else {
-    lyricsContent.hidden = true;
-  }
-  $('#lyrics-empty').hidden = !!playerSong?.lyrics;
-  setTabHasContent('lyrics', !!playerSong?.lyrics);
+  // Liedtext: eigener Ablauf über loadSongLyricsNote()/renderLyricsBlock(),
+  // weil der eigene Text ein eigener DB-Datensatz ist (wie eine Notiz) und
+  // erst asynchron geladen werden muss — siehe dort.
 
   // --- Noten --------------------------------------------------------------
   // Nur die Dateinamen sofort — das Einlesen der PDF-Bytes aus IndexedDB und
@@ -7203,15 +8234,25 @@ async function loadScorePreviews() {
       const url = URL.createObjectURL(file);
       scoreURLs.push(url);
 
-      // Die Kopfzeile öffnet die Datei groß — kein eigener „Öffnen“-Knopf.
-      // Klicks in der eingebetteten Vorschau selbst lösen das nicht aus:
-      // die läuft als eigenes Dokument im iframe.
+      // Die Kopfzeile öffnet die Datei groß — zusätzlich zum eigenen
+      // „Öffnen“-Knopf (siehe unten). Klicks in der eingebetteten Vorschau
+      // selbst lösen das nicht aus: die läuft als eigenes Dokument im iframe.
       head.tabIndex = 0;
       head.setAttribute('role', 'link');
       head.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
       head.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(url, '_blank', 'noopener'); }
       });
+
+      // Manche Browser (z. B. gehärtete Chromium-Varianten wie Vanadium auf
+      // GrapheneOS) zeigen die eingebettete Vorschau leer, öffnen die Datei
+      // aber ganz normal in einem eigenen Tab. Deshalb gibt es diesen Knopf
+      // immer — nicht erst, wenn die Vorschau sichtbar bleibt.
+      head.append(el('button', {
+        class: 'btn', type: 'button', text: 'Öffnen',
+        style: 'padding:8px 14px; min-height:38px',
+        onclick: (e) => { e.stopPropagation(); window.open(url, '_blank', 'noopener'); },
+      }));
 
       if (navigator.canShare?.({ files: [file] })) {
         head.append(el('button', {
@@ -7232,9 +8273,13 @@ async function loadScorePreviews() {
         head.append(dl);
       }
 
-      row.append(el('iframe', {
-        class: 'score-preview', src: url, title: score.fileName, loading: 'lazy',
-      }));
+      // Kein `loading="lazy"`: das Panel ist beim Einfügen bereits sichtbar
+      // (siehe setPlayerTab), ein zusätzliches Lazy-Loading brachte auf
+      // manchen Geräten nur eine leer bleibende Vorschau statt Zeitersparnis.
+      row.append(
+        el('iframe', { class: 'score-preview', src: url, title: score.fileName }),
+        el('p', { class: 'small muted', style: 'margin:6px 0 0',
+          text: 'Bleibt die Vorschau leer, öffnet „Öffnen“ die Datei im eigenen PDF-Betrachter.' }));
     } catch (err) {
       console.error('[noten]', err);
       head.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
@@ -7452,9 +8497,9 @@ function flushNote() {
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
 // aus oder die App wird weggewischt. Beides ist die letzte Gelegenheit.
-window.addEventListener('pagehide', flushNote);
+window.addEventListener('pagehide', () => { flushNote(); flushLyricsNote(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushNote();
+  if (document.visibilityState === 'hidden') { flushNote(); flushLyricsNote(); }
 });
 
 // Diagnose: die Page-Lifecycle-Ereignisse zeigen, ob der Browser die Seite
@@ -7579,6 +8624,26 @@ async function reconnectPendingNotes() {
     const song = findSongByTitle(songs, note.songTitle);
     // Hat der Song schon eine Notiz, bleibt die wartende liegen — sonst
     // stünden plötzlich zwei Notizen an einem Lied.
+    if (!song || taken.has(song.id)) continue;
+    note.songId = song.id;
+    taken.add(song.id);
+    linked.push(note);
+  }
+  await DB.metaPutMany(linked);
+  return linked.length;
+}
+
+/** Dasselbe für eigene Liedtexte (Typ `lyricsNote`). */
+async function reconnectPendingLyricsNotes() {
+  const notes = await DB.metaByType('lyricsNote').catch(() => []);
+  const pending = notes.filter((n) => !n.songId && n.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  const taken = new Set(notes.filter((n) => n.songId).map((n) => n.songId));
+  const linked = [];
+  for (const note of pending) {
+    const song = findSongByTitle(songs, note.songTitle);
     if (!song || taken.has(song.id)) continue;
     note.songId = song.id;
     taken.add(song.id);
@@ -7834,8 +8899,8 @@ async function renderPlaylists() {
     $('#current-setlist-host').textContent = '';
     host.textContent = '';
     host.append(el('div', { class: 'empty' },
-      el('h2', { text: 'Noch keine Setlisten' }),
-      el('p', { class: 'small', text: 'Lege eine an oder importiere die Textdatei des Chorleiters.' })));
+      el('h2', { text: t('playlists.emptyTitle') }),
+      el('p', { class: 'small', text: t('playlists.emptyText') })));
     return;
   }
 
@@ -8393,9 +9458,9 @@ let pendingAutoPlay = false;
 const BACKUP_FORMAT = 'chor-app-backup';
 
 async function buildBackup() {
-  const [songs, loops, playlists, notes] = await Promise.all([
+  const [songs, loops, playlists, notes, lyricsNotes] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
-    DB.metaByType('note'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
 
@@ -8413,6 +9478,11 @@ async function buildBackup() {
     })).filter((l) => l.songTitle),
     playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
     notes: notes.map((n) => ({
+      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
+      text: n.text || '',
+      updatedAt: n.updatedAt || null,
+    })).filter((n) => n.songTitle && n.text.trim()),
+    lyricsNotes: lyricsNotes.map((n) => ({
       songTitle: byId.get(n.songId)?.title || n.songTitle || '',
       text: n.text || '',
       updatedAt: n.updatedAt || null,
@@ -8473,11 +9543,13 @@ async function restoreBackup(data) {
   const loops = Array.isArray(data.loops) ? data.loops : [];
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
   const notes = Array.isArray(data.notes) ? data.notes : [];
+  const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
+        + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
         + `${plural(playlists.length, 'Setliste', 'Setlisten')} gefunden. `
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
@@ -8491,13 +9563,14 @@ async function restoreBackup(data) {
   if (mode === 'replace') {
     const ok = await confirmDialog({
       title: 'Wirklich ersetzen?',
-      text: 'Alle vorhandenen Loops, Notizen und Setlisten werden vorher gelöscht.',
+      text: 'Alle vorhandenen Loops, Notizen, eigene Liedtexte und Setlisten werden vorher gelöscht.',
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
     const stale = [
       ...await DB.metaByType('loop'),
       ...await DB.metaByType('note'),
+      ...await DB.metaByType('lyricsNote'),
       ...await DB.metaByType('playlist'),
     ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
@@ -8507,9 +9580,11 @@ async function restoreBackup(data) {
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
   const existingNotes = await DB.metaByType('note');
+  const existingLyricsNotes = await DB.metaByType('lyricsNote');
   const fresh = [];
   let addedLoops = 0, addedPl = 0, keptPending = 0;
   let addedNotes = 0, skippedNotes = 0;
+  let addedLyricsNotes = 0, skippedLyricsNotes = 0;
 
   for (const l of loops) {
     if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
@@ -8560,6 +9635,32 @@ async function restoreBackup(data) {
     addedNotes++;
   }
 
+  // Eigene Liedtexte: derselbe Ablauf, aber im eigenen Store — eine
+  // vorhandene offizielle Fassung des Songs verhindert das nicht, denn beide
+  // können nebeneinander bestehen (siehe LIEDTEXT UND NOTEN).
+  for (const n of lyricsNotes) {
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    const song = findSongByTitle(songs, n.songTitle);
+    const norm = normalizeTitle(n.songTitle);
+
+    const isSame = (x) =>
+      x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm;
+    if (existingLyricsNotes.some(isSame) || fresh.some((x) => x.type === 'lyricsNote' && isSame(x))) {
+      skippedLyricsNotes++;
+      continue;
+    }
+
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    fresh.push({
+      key: `lyricsNote:${id}`, type: 'lyricsNote', id,
+      songId: song ? song.id : null,
+      songTitle: n.songTitle,
+      text: n.text,
+      updatedAt: n.updatedAt || new Date().toISOString(),
+    });
+    addedLyricsNotes++;
+  }
+
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
     const name = normalizeTitle(p.name || '');
@@ -8585,12 +9686,15 @@ async function restoreBackup(data) {
 
   await renderPlaylists();
   await renderSettings();
-  if (playerSong) await loadSongNote();
+  if (playerSong) { await loadSongNote(); await loadSongLyricsNote(); }
   banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
     + `und ${plural(addedPl, 'Setliste', 'Setlisten')} eingespielt.`
+    + (addedLyricsNotes ? ` ${plural(addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} dazu.` : '')
     + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
     + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
-        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : ''), { kind: 'ok' });
+        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : '')
+    + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
+        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : ''), { kind: 'ok' });
 }
 
 /**
@@ -8952,6 +10056,25 @@ function renderOnbInstall() {
 }
 
 /** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
+function renderOnbLanguage() {
+  const host = $('#onb-language-picker');
+  host.textContent = '';
+  const current = settings.language || DEFAULT_SETTINGS.language;
+
+  for (const lang of LANGUAGES) {
+    const btn = el('button', {
+      class: 'preset', type: 'button',
+      'aria-pressed': lang.id === current ? 'true' : 'false',
+      text: lang.label,
+      onclick: async () => {
+        await saveSettings({ language: lang.id });
+        renderOnbLanguage();
+      },
+    });
+    host.append(btn);
+  }
+}
+
 function renderOnbVoice() {
   const host = $('#onb-voice');
   host.textContent = '';
@@ -9068,6 +10191,7 @@ function openOnboarding() {
   onbIndex = 0;
   onbEl.hidden = false;
   renderOnbInstall();
+  renderOnbLanguage();
   renderOnbVoice();
   renderOnbPersist();
   renderOnbDots();
@@ -9109,8 +10233,12 @@ function loadGrooveLab() {
   return grooveLabLoadPromise;
 }
 
+// Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem
+// Player als Hauptreiter entfallen. Neue Heimat: der Songtitel im
+// Player-Reiter, weil er (anders als der Rest des Players) immer im DOM
+// steht, auch ohne geladenen Song.
 function initGrooveLabEasterEgg() {
-  const title = $('#view-title');
+  const title = $('#player-title');
   if (!title) return;
 
   let taps = [];
@@ -9147,6 +10275,7 @@ async function boot() {
   }
 
   await loadSettings();
+  applyTranslations();
   initGrooveLabEasterEgg();
   setupFolderImport();
   try {
@@ -9159,8 +10288,9 @@ async function boot() {
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
-  // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel.
-  navigate(VIEWS[start] ? `#${start}` : '#songs', { replace: true });
+  // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel. `import`
+  // ist kein Haupt-Reiter mehr, aber weiterhin ein gültiges Kaltstart-Ziel.
+  navigate(VIEWS[start] || start === 'import' ? `#${start}` : '#songs', { replace: true });
 
   if (!settings.setupDoneAt) {
     // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
