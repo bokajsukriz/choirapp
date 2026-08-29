@@ -1835,13 +1835,23 @@ input[type="checkbox"] {
            automatischem Speichern. -->
       <div id="lyrics-private-block" hidden>
         <button class="btn btn--block" id="btn-lyrics-note-add" type="button">Liedtext hinzufügen</button>
+
+        <!-- Lesemodus: eigener Text wie die offizielle Fassung als reiner Text —
+             die Bearbeitungsbox erscheint erst nach einem Klick auf „Bearbeiten". -->
+        <div id="lyrics-note-view" hidden>
+          <div class="lyrics" id="lyrics-note-display"></div>
+          <button class="btn btn--block" id="btn-lyrics-note-edit" type="button" style="margin-top:10px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:6px; vertical-align:-3px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Bearbeiten
+          </button>
+        </div>
+
         <div id="lyrics-note-editor" hidden>
           <textarea class="note-box" id="lyrics-note-text" rows="14" spellcheck="true"
                     aria-label="Eigener Liedtext" placeholder="Liedtext eintragen …"></textarea>
           <div class="row note-foot">
             <span class="note-state" id="lyrics-note-state" data-dirty="false" role="status"></span>
             <span class="note-actions">
-              <button class="btn" id="btn-lyrics-note-save" type="button" aria-label="Liedtext speichern">
+              <button class="btn" id="btn-lyrics-note-save" type="button" aria-label="Liedtext speichern und fertig">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
               </button>
               <button class="btn" id="btn-lyrics-note-delete" type="button" aria-label="Liedtext löschen" style="color: var(--danger)">
@@ -7888,6 +7898,7 @@ function releaseScoreURLs() {
 function applyLyricsFontSize() {
   const size = `${settings.lyricsFontSize || 17}px`;
   $('#lyrics-text').style.fontSize = size;
+  $('#lyrics-note-display').style.fontSize = size;
   $('#lyrics-note-text').style.fontSize = size;
 }
 
@@ -7914,6 +7925,9 @@ const LYRICS_NOTE_SAVE_DELAY = 900;
 let playerLyricsNote = null;     // eigener Liedtext des offenen Songs, null = keiner
 let lyricsNoteSaveTimer = null;
 let lyricsSource = 'official';   // nur relevant, wenn beide Fassungen existieren
+// Lesemodus (reiner Text wie die offizielle Fassung) vs. Bearbeitungsmodus
+// (Textfeld) — siehe renderLyricsBlock(). Ohne eigenen Eintrag irrelevant.
+let lyricsNoteEditing = false;
 
 let lyricsNotePending = Promise.resolve();
 function lyricsNoteWrite(run) {
@@ -7936,6 +7950,7 @@ async function loadSongLyricsNote() {
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = null;
   playerLyricsNote = null;
+  lyricsNoteEditing = false;
   if (!playerSong) { renderLyricsBlock(); return; }
 
   const song = playerSong;
@@ -7985,8 +8000,11 @@ function renderLyricsBlock() {
 
   $('#lyrics-private-block').hidden = showOfficial;
   if (!showOfficial) {
+    const editing = hasPrivate && lyricsNoteEditing;
     $('#btn-lyrics-note-add').hidden = hasPrivate;
-    $('#lyrics-note-editor').hidden = !hasPrivate;
+    $('#lyrics-note-view').hidden = !hasPrivate || editing;
+    if (hasPrivate && !editing) $('#lyrics-note-display').textContent = playerLyricsNote.text || '';
+    $('#lyrics-note-editor').hidden = !editing;
     $('#lyrics-note-text').value = hasPrivate ? (playerLyricsNote.text || '') : '';
     setLyricsNoteState(hasPrivate ? 'saved' : 'none');
   }
@@ -8020,8 +8038,16 @@ $('#btn-lyrics-note-add').addEventListener('click', () => {
   // Erst beim Speichern entsteht ein Datensatz: wer den Knopf nur ausprobiert,
   // hinterlässt keinen leeren Liedtext.
   playerLyricsNote = newLyricsNote(playerSong);
+  lyricsNoteEditing = true;
   renderLyricsBlock();
   setLyricsNoteState('none');
+  $('#lyrics-note-text').focus();
+});
+
+$('#btn-lyrics-note-edit').addEventListener('click', () => {
+  if (!playerLyricsNote) return;
+  lyricsNoteEditing = true;
+  renderLyricsBlock();
   $('#lyrics-note-text').focus();
 });
 
@@ -8034,7 +8060,12 @@ $('#lyrics-note-text').addEventListener('input', () => {
 
 $('#lyrics-note-text').addEventListener('blur', () => { if (lyricsNoteSaveTimer) saveLyricsNote(); });
 
-$('#btn-lyrics-note-save').addEventListener('click', () => saveLyricsNote({ announce: true }));
+$('#btn-lyrics-note-save').addEventListener('click', async () => {
+  await saveLyricsNote({ announce: true });
+  // Zurück in den Lesemodus — Speichern heißt hier zugleich „fertig".
+  lyricsNoteEditing = false;
+  renderLyricsBlock();
+});
 
 $('#btn-lyrics-note-delete').addEventListener('click', async () => {
   if (!playerLyricsNote) return;
@@ -8083,6 +8114,7 @@ async function deleteLyricsNote() {
   lyricsNoteSaveTimer = null;
   const note = playerLyricsNote;
   playerLyricsNote = null;
+  lyricsNoteEditing = false;
   lyricsSource = playerSong?.lyrics ? 'official' : 'private';
   renderLyricsBlock();
   if (note) await lyricsNoteWrite(() => DB.metaDelete(note.key));
