@@ -19,7 +19,7 @@
   const STEP_COUNT = 16;
 
   /* ------------------------------------------------------------------------
-     INHALT — 16 Drumloops, 16 Melodien, 16 Synth-Voreinstellungen. Jeder
+     INHALT — 16 Drumloops, 20 Melodien, 18 Synth-Voreinstellungen. Jeder
      Eintrag ist eigenständig; die Icons werden weiter unten aus genau diesen
      Daten gezeichnet statt aus Emoji ausgewählt.
      ------------------------------------------------------------------------ */
@@ -75,34 +75,70 @@
     { name: 'Blue Third',      icon: 'droplet',   notes: [[0, 0, 2], [3, 3, 1], [6, 3, 1], [9, 7, 1], [12, 10, 1], [14, 7, 1]] },
     { name: 'Wide Leap',       icon: 'expand',    notes: [[0, 0, 2], [4, 12, 2], [8, 7, 2], [12, -5, 2]] },
     { name: 'Gentle Wave',     icon: 'wave',      notes: [[0, 4, 1], [2, 7, 1], [4, 9, 1], [7, 11, 1], [9, 7, 1], [11, 4, 1], [14, 2, 1]] },
-    { name: 'Two-Note Pulse',  icon: 'heart',     notes: [[0, 0, 1], [2, 7, 1], [4, 0, 1], [6, 7, 1], [8, 0, 1], [10, 7, 1], [12, 0, 1], [14, 7, 1]] },
+    { name: 'Two-Note Pulse',  icon: 'heart',     notes: [[0, 0, 1], [2, 7, 1], [4, 0, 1], [6, 7, 1], [8, 0, 1], [10, 3, 1], [12, 0, 1], [14, 7, 2]] },
     { name: 'Descending Run',  icon: 'chevrons',  notes: [[0, 12, 1], [1, 11, 1], [3, 9, 1], [4, 7, 1], [6, 5, 1], [7, 4, 1], [9, 2, 1], [10, 0, 2]] },
     { name: 'Suspended Glow',  icon: 'bulb',      notes: [[0, 0, 3], [5, 5, 2], [9, 7, 2], [13, 0, 3]] },
     { name: 'Funk Thread',     icon: 'thread',    notes: [[0, 0, 1], [2, 3, 1], [4, 5, 1], [6, 7, 1], [9, 10, 1], [11, 7, 1], [13, 3, 1]] },
     { name: 'Glass Runner',    icon: 'runner',    notes: [[0, 0, 1], [1, 2, 1], [3, 4, 1], [6, 7, 1], [9, 11, 1], [11, 9, 1], [13, 7, 1], [15, 2, 1]] },
     { name: 'Afterglow',       icon: 'sunset',    notes: [[0, -5, 2], [4, 0, 2], [8, 4, 1], [10, 7, 2], [12, 9, 1], [14, 7, 1]] },
+    // --- neu: mehr harmonische Reichweite (Septakkord-Töne, Modal-Läufe,
+    //     ein Triolen-Feel innerhalb des 16tel-Rasters) für mehr Kontrast
+    //     zu den bestehenden Motiven oben.
+    { name: 'Modal Drift',     icon: 'compass',   notes: [[0, 0, 2], [3, 2, 1], [5, 3, 1], [8, 7, 2], [11, 10, 1], [13, 8, 1], [15, 5, 1]] },
+    { name: 'Triplet Cascade', icon: 'diamond',   notes: [[0, 12, 1], [2, 9, 1], [4, 5, 1], [5, 12, 1], [7, 9, 1], [9, 5, 1], [10, 12, 1], [12, 4, 1], [14, 0, 2]] },
+    { name: 'Sevenths Hook',   icon: 'bolt',      notes: [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 11, 1], [8, 14, 2], [12, 7, 1], [14, 4, 2]] },
+    { name: 'Echo Motif',      icon: 'repeat',    notes: [[0, 0, 1], [2, 5, 1], [4, 7, 1], [8, 0, 1], [10, 5, 1], [12, 7, 1], [14, 12, 2]] },
   ];
 
   // reverbLength in Sekunden (Nachhall-Dauer), echoRate in Millisekunden
   // (Verzögerungszeit), filterEnvAmount in Hz: wie stark die Lautstärke-
   // Hüllkurve den Filter mit aufzieht (0 = Filter bleibt starr auf cutoff).
+  // Vier weitere, optionale Zutaten für mehr Klangcharakter (Standard je 0 =
+  // aus, siehe GrooveEngine.playTone): detune (Cent) mischt zwei zusätzlich
+  // verstimmte Unisono-Stimmen dazu — dickerer Chor-/Pad-Klang. vibratoRate/
+  // -Depth/-Delay legen eine Tonhöhen-LFO, die erst nach der Verzögerung
+  // einschwingt (klingt sonst wie Seekrankheit ab dem ersten Millisekunden).
+  // pitchDrop (Cent) lässt die Note aus der Höhe in die Ziel-Tonhöhe
+  // gleiten — der perkussive "Bender"-Einsatz vieler Analog-Leads/-Bässe.
+  // subLevel (0–1) mischt eine Sinus-Suboktave dazu, für Fundament ohne
+  // dumpfen Cutoff.
   const SYNTH_PRESETS = [
-    { name: 'Velvet Choir',   icon: 'users',    wave: 'triangle', attack: .16,  decay: .22, sustain: .68, release: .8,  cutoff: 2900, resonance: 2,  filterEnvAmount: 600,  reverbWet: .38, reverbLength: 1.6, echoWet: .10, echoRate: 220 },
-    { name: 'Breath Glass',   icon: 'wind',     wave: 'sine',     attack: .32,  decay: .38, sustain: .72, release: 1.1, cutoff: 6400, resonance: 1,  filterEnvAmount: 300,  reverbWet: .5,  reverbLength: 2.2, echoWet: .16, echoRate: 260 },
-    { name: 'Tape Keys',      icon: 'cassette', wave: 'triangle', attack: .01,  decay: .16, sustain: .5,  release: .32, cutoff: 3100, resonance: 3,  filterEnvAmount: 900,  reverbWet: .12, reverbLength: .8,  echoWet: .06, echoRate: 160 },
-    { name: 'Neon Pluck',     icon: 'zap',      wave: 'sawtooth', attack: .004, decay: .1,  sustain: .3,  release: .16, cutoff: 5200, resonance: 6,  filterEnvAmount: 2400, reverbWet: .1,  reverbLength: .6,  echoWet: .22, echoRate: 180 },
-    { name: 'Moon Pad',       icon: 'moon',     wave: 'sine',     attack: .58,  decay: .55, sustain: .82, release: 1.6, cutoff: 2100, resonance: 2,  filterEnvAmount: 400,  reverbWet: .58, reverbLength: 2.6, echoWet: .24, echoRate: 300 },
-    { name: 'Soft Brass',     icon: 'horn',     wave: 'sawtooth', attack: .06,  decay: .26, sustain: .58, release: .3,  cutoff: 2600, resonance: 4,  filterEnvAmount: 1400, reverbWet: .16, reverbLength: 1.0, echoWet: .08, echoRate: 200 },
-    { name: 'Crystal Drops',  icon: 'droplet',  wave: 'sine',     attack: .005, decay: .18, sustain: .4,  release: 1.3, cutoff: 9000, resonance: 7,  filterEnvAmount: 1800, reverbWet: .55, reverbLength: 2.0, echoWet: .3,  echoRate: 240 },
-    { name: 'Dub Chamber',    icon: 'door',     wave: 'square',   attack: .02,  decay: .32, sustain: .55, release: .44, cutoff: 1400, resonance: 8,  filterEnvAmount: 700,  reverbWet: .26, reverbLength: 1.4, echoWet: .34, echoRate: 340 },
-    { name: 'Warm Sub',       icon: 'flame',    wave: 'sine',     attack: .03,  decay: .2,  sustain: .7,  release: .5,  cutoff: 900,  resonance: 3,  filterEnvAmount: 200,  reverbWet: .15, reverbLength: .7,  echoWet: .05, echoRate: 140 },
-    { name: 'Square Bell',    icon: 'bell',     wave: 'square',   attack: .005, decay: .4,  sustain: .25, release: 1.8, cutoff: 4200, resonance: 5,  filterEnvAmount: 2000, reverbWet: .45, reverbLength: 1.9, echoWet: .2,  echoRate: 260 },
-    { name: 'Analog Lead',    icon: 'compass',  wave: 'sawtooth', attack: .008, decay: .15, sustain: .6,  release: .25, cutoff: 3800, resonance: 9,  filterEnvAmount: 2600, reverbWet: .08, reverbLength: .5,  echoWet: .14, echoRate: 170 },
-    { name: 'Airy Choir',     icon: 'cloud',    wave: 'triangle', attack: .4,   decay: .4,  sustain: .75, release: 1.4, cutoff: 3400, resonance: 1,  filterEnvAmount: 350,  reverbWet: .5,  reverbLength: 2.4, echoWet: .12, echoRate: 280 },
-    { name: 'Metallic Pluck', icon: 'gear',     wave: 'square',   attack: .003, decay: .08, sustain: .2,  release: .12, cutoff: 6800, resonance: 10, filterEnvAmount: 3000, reverbWet: .06, reverbLength: .4,  echoWet: .28, echoRate: 150 },
-    { name: 'Deep Pad',       icon: 'anchor',   wave: 'sine',     attack: .7,   decay: .6,  sustain: .85, release: 2.0, cutoff: 1700, resonance: 2,  filterEnvAmount: 250,  reverbWet: .6,  reverbLength: 2.8, echoWet: .2,  echoRate: 320 },
-    { name: 'Bright Saw',     icon: 'sun',      wave: 'sawtooth', attack: .01,  decay: .2,  sustain: .45, release: .4,  cutoff: 7200, resonance: 5,  filterEnvAmount: 1600, reverbWet: .2,  reverbLength: 1.1, echoWet: .16, echoRate: 210 },
-    { name: 'Vintage Organ',  icon: 'key',      wave: 'triangle', attack: .01,  decay: .05, sustain: .9,  release: .2,  cutoff: 4600, resonance: 3,  filterEnvAmount: 100,  reverbWet: .3,  reverbLength: 1.3, echoWet: .1,  echoRate: 190 },
+    { name: 'Velvet Choir',   icon: 'users',    wave: 'triangle', attack: .16,  decay: .22, sustain: .68, release: .8,  cutoff: 2900, resonance: 2,  filterEnvAmount: 600,  reverbWet: .38, reverbLength: 1.6, echoWet: .10, echoRate: 220,
+      detune: 9, vibratoRate: 4.5, vibratoDepth: 6, vibratoDelay: .3 },
+    { name: 'Breath Glass',   icon: 'wind',     wave: 'sine',     attack: .32,  decay: .38, sustain: .72, release: 1.1, cutoff: 6400, resonance: 1,  filterEnvAmount: 300,  reverbWet: .5,  reverbLength: 2.2, echoWet: .16, echoRate: 260,
+      subLevel: .12, vibratoRate: 3.8, vibratoDepth: 5, vibratoDelay: .35 },
+    { name: 'Tape Keys',      icon: 'cassette', wave: 'triangle', attack: .01,  decay: .16, sustain: .5,  release: .32, cutoff: 3100, resonance: 3,  filterEnvAmount: 900,  reverbWet: .12, reverbLength: .8,  echoWet: .06, echoRate: 160,
+      detune: 5, vibratoRate: .7, vibratoDepth: 4, vibratoDelay: 0 },
+    { name: 'Neon Pluck',     icon: 'zap',      wave: 'sawtooth', attack: .004, decay: .1,  sustain: .3,  release: .16, cutoff: 5200, resonance: 6,  filterEnvAmount: 2400, reverbWet: .1,  reverbLength: .6,  echoWet: .22, echoRate: 180,
+      pitchDrop: 180 },
+    { name: 'Moon Pad',       icon: 'moon',     wave: 'sine',     attack: .58,  decay: .55, sustain: .82, release: 1.6, cutoff: 2100, resonance: 2,  filterEnvAmount: 400,  reverbWet: .58, reverbLength: 2.6, echoWet: .24, echoRate: 300,
+      detune: 10, subLevel: .25, vibratoRate: 4, vibratoDepth: 8, vibratoDelay: .4 },
+    { name: 'Soft Brass',     icon: 'horn',     wave: 'sawtooth', attack: .06,  decay: .26, sustain: .58, release: .3,  cutoff: 2600, resonance: 4,  filterEnvAmount: 1400, reverbWet: .16, reverbLength: 1.0, echoWet: .08, echoRate: 200,
+      pitchDrop: 55, vibratoRate: 5.5, vibratoDepth: 9, vibratoDelay: .28 },
+    { name: 'Crystal Drops',  icon: 'droplet',  wave: 'sine',     attack: .005, decay: .18, sustain: .4,  release: 1.3, cutoff: 9000, resonance: 7,  filterEnvAmount: 1800, reverbWet: .55, reverbLength: 2.0, echoWet: .3,  echoRate: 240,
+      detune: 4, pitchDrop: 35 },
+    { name: 'Dub Chamber',    icon: 'door',     wave: 'square',   attack: .02,  decay: .32, sustain: .55, release: .44, cutoff: 1400, resonance: 8,  filterEnvAmount: 700,  reverbWet: .26, reverbLength: 1.4, echoWet: .34, echoRate: 340,
+      detune: 12, subLevel: .2 },
+    { name: 'Warm Sub',       icon: 'flame',    wave: 'sine',     attack: .03,  decay: .2,  sustain: .7,  release: .5,  cutoff: 900,  resonance: 3,  filterEnvAmount: 200,  reverbWet: .15, reverbLength: .7,  echoWet: .05, echoRate: 140,
+      subLevel: .5, pitchDrop: 80 },
+    { name: 'Square Bell',    icon: 'bell',     wave: 'square',   attack: .005, decay: .4,  sustain: .25, release: 1.8, cutoff: 4200, resonance: 5,  filterEnvAmount: 2000, reverbWet: .45, reverbLength: 1.9, echoWet: .2,  echoRate: 260,
+      detune: 5, pitchDrop: 25 },
+    { name: 'Analog Lead',    icon: 'compass',  wave: 'sawtooth', attack: .008, decay: .15, sustain: .6,  release: .25, cutoff: 3800, resonance: 9,  filterEnvAmount: 2600, reverbWet: .08, reverbLength: .5,  echoWet: .14, echoRate: 170,
+      pitchDrop: 130, vibratoRate: 6, vibratoDepth: 14, vibratoDelay: .18 },
+    { name: 'Airy Choir',     icon: 'cloud',    wave: 'triangle', attack: .4,   decay: .4,  sustain: .75, release: 1.4, cutoff: 3400, resonance: 1,  filterEnvAmount: 350,  reverbWet: .5,  reverbLength: 2.4, echoWet: .12, echoRate: 280,
+      detune: 11, subLevel: .1, vibratoRate: 4.2, vibratoDepth: 7, vibratoDelay: .3 },
+    { name: 'Metallic Pluck', icon: 'gear',     wave: 'square',   attack: .003, decay: .08, sustain: .2,  release: .12, cutoff: 6800, resonance: 10, filterEnvAmount: 3000, reverbWet: .06, reverbLength: .4,  echoWet: .28, echoRate: 150,
+      detune: 6, pitchDrop: 55 },
+    { name: 'Deep Pad',       icon: 'anchor',   wave: 'sine',     attack: .7,   decay: .6,  sustain: .85, release: 2.0, cutoff: 1700, resonance: 2,  filterEnvAmount: 250,  reverbWet: .6,  reverbLength: 2.8, echoWet: .2,  echoRate: 320,
+      detune: 8, subLevel: .3, vibratoRate: 3.5, vibratoDepth: 5, vibratoDelay: .5 },
+    { name: 'Bright Saw',     icon: 'sun',      wave: 'sawtooth', attack: .01,  decay: .2,  sustain: .45, release: .4,  cutoff: 7200, resonance: 5,  filterEnvAmount: 1600, reverbWet: .2,  reverbLength: 1.1, echoWet: .16, echoRate: 210,
+      pitchDrop: 90, vibratoRate: 5, vibratoDepth: 9, vibratoDelay: .2 },
+    { name: 'Vintage Organ',  icon: 'key',      wave: 'triangle', attack: .01,  decay: .05, sustain: .9,  release: .2,  cutoff: 4600, resonance: 3,  filterEnvAmount: 100,  reverbWet: .3,  reverbLength: 1.3, echoWet: .1,  echoRate: 190,
+      detune: 7, vibratoRate: 5.8, vibratoDepth: 4, vibratoDelay: 0 },
+    { name: 'Growl Bass',     icon: 'target',   wave: 'sawtooth', attack: .01,  decay: .18, sustain: .6,  release: .28, cutoff: 900,  resonance: 9,  filterEnvAmount: 500,  reverbWet: .1,  reverbLength: .6,  echoWet: .08, echoRate: 160,
+      detune: 6, subLevel: .45, pitchDrop: 220 },
+    { name: 'Shimmer Bells',  icon: 'star',     wave: 'sine',     attack: .004, decay: .3,  sustain: .3,  release: 2.4, cutoff: 8200, resonance: 4,  filterEnvAmount: 1200, reverbWet: .6,  reverbLength: 3.0, echoWet: .35, echoRate: 280,
+      detune: 14, vibratoRate: 4.6, vibratoDepth: 6, vibratoDelay: .5 },
   ];
 
   // Für den Arpeggiator: feste Akkorde (Halbtonabstände zur Grundtonart) —
@@ -395,11 +431,8 @@
 
     playTone(preset, midi, time, velocity, duration) {
       const ctx = this.ctx;
-      const osc = ctx.createOscillator();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
-      osc.type = preset.wave;
-      osc.frequency.value = noteHz(midi);
       filter.type = 'lowpass';
       const nyquist = ctx.sampleRate * .45;
       const baseCutoff = Math.min(preset.cutoff, nyquist);
@@ -418,12 +451,73 @@
       gain.gain.linearRampToValueAtTime(velocity, time + preset.attack);
       gain.gain.linearRampToValueAtTime(velocity * preset.sustain, time + preset.attack + preset.decay);
 
-      osc.connect(filter).connect(gain).connect(this.buses.synth);
-      osc.start(time);
+      const baseFreq = noteHz(midi);
+      const oscillators = [];
+      const lfos = [];
 
-      const voice = { osc, gain, release: preset.release, done: false };
+      // Unisono: bei preset.detune zwei zusätzliche, leicht verstimmte
+      // Stimmen dazumischen — macht Chöre/Pads/Bässe dicker, ohne die
+      // wahrgenommene Grundtonhöhe zu verschieben (Cent-Verstimmung ist
+      // symmetrisch nach oben und unten).
+      const detune = preset.detune || 0;
+      const spreads = detune ? [0, detune, -detune] : [0];
+      for (const cents of spreads) {
+        const osc = ctx.createOscillator();
+        osc.type = preset.wave;
+        osc.frequency.value = baseFreq;
+        osc.detune.value = cents;
+
+        const voiceGain = ctx.createGain();
+        voiceGain.gain.value = cents === 0 ? 1 : .55;
+        osc.connect(voiceGain).connect(filter);
+
+        // Vibrato: eine Tonhöhen-LFO, die erst nach vibratoDelay einschwingt
+        // (klingt sonst wie Seekrankheit ab der ersten Millisekunde).
+        if (preset.vibratoDepth) {
+          const lfo = ctx.createOscillator();
+          lfo.frequency.value = preset.vibratoRate || 5;
+          const lfoGain = ctx.createGain();
+          const delay = preset.vibratoDelay ?? .15;
+          lfoGain.gain.setValueAtTime(0, time);
+          lfoGain.gain.setValueAtTime(0, time + delay);
+          lfoGain.gain.linearRampToValueAtTime(preset.vibratoDepth, time + delay + .25);
+          lfo.connect(lfoGain).connect(osc.detune);
+          lfo.start(time);
+          lfos.push(lfo);
+        }
+
+        // Pitch-Drop: schneller Gleitton von oben in die Zielnote hinein —
+        // gibt Plucks/Bässen/Leads einen perkussiven Anschlag, den eine
+        // starre Tonhöhe nicht hinbekommt.
+        if (preset.pitchDrop) {
+          const glide = Math.max(.02, preset.attack);
+          osc.detune.setValueAtTime(cents + preset.pitchDrop, time);
+          osc.detune.linearRampToValueAtTime(cents, time + glide);
+        }
+
+        osc.start(time);
+        oscillators.push(osc);
+      }
+
+      // Sub-Oszillator: eine Oktave tiefer, immer Sinus (kein Oberton-
+      // Gerassel) — gibt Bässen/Pads Fundament, ohne den Cutoff aufreißen
+      // zu müssen.
+      if (preset.subLevel) {
+        const sub = ctx.createOscillator();
+        sub.type = 'sine';
+        sub.frequency.value = baseFreq / 2;
+        const subGain = ctx.createGain();
+        subGain.gain.value = preset.subLevel;
+        sub.connect(subGain).connect(filter);
+        sub.start(time);
+        oscillators.push(sub);
+      }
+
+      filter.connect(gain).connect(this.buses.synth);
+
+      const voice = { oscillators, lfos, gain, release: preset.release, done: false };
       this.voices.add(voice);
-      osc.addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
+      oscillators[0].addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
       if (duration) global.setTimeout(() => this._releaseVoice(voice), Math.max(0, (time + duration - ctx.currentTime) * 1000));
       return voice;
     }
@@ -436,7 +530,9 @@
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(Math.max(.0001, voice.gain.gain.value), now);
         voice.gain.gain.exponentialRampToValueAtTime(.0001, now + release);
-        voice.osc.stop(now + release + .02);
+        const stopAt = now + release + .02;
+        voice.oscillators.forEach((osc) => osc.stop(stopAt));
+        voice.lfos.forEach((lfo) => lfo.stop(stopAt));
       } catch { /* Oszillator kann schon beendet sein */ }
       voice.done = true;
       this.voices.delete(voice);
