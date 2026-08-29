@@ -554,6 +554,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .preset:disabled { opacity: .4; }
 
+/* Liedtext-Quelle (Offiziell/Eigener Text): dezenter als die übrigen
+   Voreinstellungs-Schalter — die volle Akzentfüllung wirkte hier zu laut
+   für eine reine Ansichtsauswahl ohne inhaltliche Tragweite. */
+#lyrics-source-switch .preset[aria-pressed="true"] {
+  background: rgba(var(--accent-rgb), .16);
+  color: var(--accent);
+}
+
 /* Song- und Spurzeilen mit Häkchen */
 .pick-song {
   border: 1px solid var(--line);
@@ -1242,6 +1250,76 @@ input[type="checkbox"] {
   text-align: center;
 }
 
+/* Vorlesemodus (siehe btn-lyrics-present): großer, heller Text auf
+   Schwarz, damit Leute neben dem Gerät mitlesen können. Auf Handys steht
+   das Display meist hochkant, ohne dass eine Bildschirmdrehung erzwungen
+   werden kann (iOS Safari unterstützt das nicht zuverlässig) — deshalb
+   wird der Innenbereich per CSS gedreht statt auf die Orientation API zu
+   vertrauen; requestFullscreen()/orientation.lock() laufen zusätzlich, wo
+   verfügbar, sind aber nicht Voraussetzung. */
+.lyrics-present {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #000;
+  overflow: hidden;
+}
+.lyrics-present[hidden] { display: none; }
+
+.lyrics-present-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vw;
+  height: 100vh;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+@media (orientation: portrait) {
+  .lyrics-present-inner {
+    width: 100vh;
+    height: 100vw;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+}
+
+.lyrics-present-text {
+  margin: 0;
+  padding: 4vh 6vw;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: center;
+  color: #fff;
+  font-family: var(--font-display, inherit);
+  font-weight: 700;
+  font-size: clamp(28px, 7vmin, 76px);
+  line-height: 1.4;
+}
+
+.lyrics-present-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  z-index: 1;
+}
+.lyrics-present-close svg { width: 22px; height: 22px; }
+
 .score-item {
   display: flex;
   flex-direction: column;
@@ -1701,6 +1779,17 @@ input[type="checkbox"] {
   </div>
 </section>
 
+<!-- Vorlesemodus für Lyrics: Vollbild, quer, groß, weiß auf schwarz — zum
+     Hinlegen für Leute daneben, die mitlesen wollen (siehe btn-lyrics-present). -->
+<div class="lyrics-present" id="lyrics-present" hidden role="dialog" aria-modal="true" aria-label="Textanzeige für andere">
+  <div class="lyrics-present-inner">
+    <p class="lyrics-present-text" id="lyrics-present-text"></p>
+  </div>
+  <button class="lyrics-present-close" id="lyrics-present-close" type="button" aria-label="Schließen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</div>
+
 <!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
 <section class="player" id="playlist-view" hidden aria-labelledby="pl-title">
   <div class="player-head">
@@ -1825,6 +1914,9 @@ input[type="checkbox"] {
           <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Eigener Text</button>
         </div>
         <span style="display:flex; align-items:center; gap:6px; margin-left:auto">
+          <button class="icon-btn" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          </button>
           <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
           <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
           <button class="icon-btn" id="btn-lyrics-note-edit" type="button" hidden>
@@ -3207,7 +3299,7 @@ const STRINGS = {
     'songs.createPlaceholderSuffix': 'als Platzhalter anlegen',
     'songs.createPlaceholderHint': 'Noch nicht importiertes Lied anlegen — für Liedtext, Notizen oder eine Setliste.',
     'songs.placeholderBadge': 'noch keine Aufnahme',
-    'player.placeholderHint': 'Für diesen Song ist noch keine Aufnahme importiert. Liedtext und Notizen kannst du trotzdem schon speichern — sie verbinden sich beim nächsten Import automatisch mit den Stimmen.',
+    'player.placeholderHint': 'Noch keine Aufnahme importiert. Liedtext und Notizen kannst du trotzdem schon speichern — sie verbinden sich automatisch beim nächsten Import.',
   },
   en: {
     'nav.songs': 'Songs',
@@ -3370,7 +3462,7 @@ const STRINGS = {
     'songs.createPlaceholderSuffix': 'add as placeholder',
     'songs.createPlaceholderHint': 'Create a song that hasn\'t been imported yet — for lyrics, notes or a setlist.',
     'songs.placeholderBadge': 'no recording yet',
-    'player.placeholderHint': 'No recording has been imported for this song yet. You can still save lyrics and notes now — they connect automatically to the voices on the next import.',
+    'player.placeholderHint': 'No recording imported yet. You can still save lyrics and notes now — they connect automatically on the next import.',
   },
   pl: {
     'nav.songs': 'Utwory',
@@ -3533,7 +3625,7 @@ const STRINGS = {
     'songs.createPlaceholderSuffix': 'dodaj jako placeholder',
     'songs.createPlaceholderHint': 'Utwórz jeszcze niezaimportowany utwór — na tekst, notatki lub do setlisty.',
     'songs.placeholderBadge': 'jeszcze bez nagrania',
-    'player.placeholderHint': 'Do tego utworu nie zaimportowano jeszcze nagrania. Możesz już teraz zapisać tekst i notatki — połączą się automatycznie z głosami przy kolejnym imporcie.',
+    'player.placeholderHint': 'Nagranie nie zostało jeszcze zaimportowane. Możesz już teraz zapisać tekst i notatki — połączą się automatycznie przy kolejnym imporcie.',
   },
 };
 
@@ -7972,6 +8064,14 @@ async function loadSongLyricsNote() {
 const LYRICS_EDIT_ICON = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
 const LYRICS_DONE_ICON = '<polyline points="20 6 9 17 4 12"/>';
 
+/** Welcher Text gerade sichtbar ist — genutzt fürs Ein-/Ausblenden des
+ *  Vorlesemodus-Knopfs UND für dessen Inhalt (siehe openLyricsPresent). */
+function lyricsPresentSourceText() {
+  const hasOfficial = !!playerSong?.lyrics;
+  const activeSource = hasOfficial ? lyricsSource : 'private';
+  return activeSource === 'official' ? (playerSong?.lyrics || '') : (playerLyricsNote?.text || '');
+}
+
 /**
  * Zeigt offiziellen Text, eigenen Text (als reiner Lesetext) oder — beim
  * Bearbeiten — die Textbox. Die Leiste oben (Quelle/Schriftgröße/Stift)
@@ -8017,7 +8117,47 @@ function renderLyricsBlock() {
 
   applyLyricsFontSize();
   setTabHasContent('lyrics', hasOfficial || hasPrivate);
+  $('#btn-lyrics-present').hidden = !lyricsPresentSourceText().trim();
 }
+
+/**
+ * Vorlesemodus: Vollbild, quer, groß, weiß auf schwarz — zum Hinlegen für
+ * Leute daneben, die den Text mitlesen wollen. Die Drehung läuft rein über
+ * CSS (siehe .lyrics-present-inner), weil sich eine echte Bildschirmdrehung
+ * nicht auf allen Geräten erzwingen lässt (iOS Safari kennt orientation.lock
+ * gar nicht) — Vollbild/Orientation-Lock laufen zusätzlich, wo verfügbar,
+ * sind aber nicht Voraussetzung fürs Funktionieren.
+ */
+function onLyricsPresentKeydown(event) {
+  if (event.key === 'Escape') closeLyricsPresent();
+}
+
+async function openLyricsPresent() {
+  const text = lyricsPresentSourceText();
+  if (!text.trim()) return;
+  $('#lyrics-present-text').textContent = text;
+  const el = $('#lyrics-present');
+  el.hidden = false;
+  document.body.style.overflow = 'hidden';
+  document.addEventListener('keydown', onLyricsPresentKeydown);
+  try { await el.requestFullscreen?.(); } catch { /* z. B. iOS Safari ohne Element-Vollbild */ }
+  try { await screen.orientation?.lock?.('landscape'); } catch { /* dann übernimmt der CSS-Dreh-Trick */ }
+}
+
+async function closeLyricsPresent() {
+  const el = $('#lyrics-present');
+  el.hidden = true;
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', onLyricsPresentKeydown);
+  try { screen.orientation?.unlock?.(); } catch { /* nichts zu entsperren */ }
+  if (document.fullscreenElement === el) {
+    try { await document.exitFullscreen(); } catch { /* schon zu */ }
+  }
+}
+
+$('#btn-lyrics-present').addEventListener('click', openLyricsPresent);
+$('#lyrics-present-close').addEventListener('click', closeLyricsPresent);
+$('#lyrics-present').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLyricsPresent(); });
 
 function setLyricsNoteState(kind) {
   const node = $('#lyrics-note-state');
