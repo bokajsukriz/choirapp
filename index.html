@@ -1808,17 +1808,41 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
-      <div id="lyrics-content" hidden>
-        <div class="row" style="margin-bottom:8px">
-          <button class="btn" id="btn-lyrics-toggle" type="button" aria-expanded="false">Anzeigen</button>
-          <span style="display:flex; gap:6px">
-            <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
-            <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
-          </span>
+      <div class="row" id="lyrics-toolbar" style="margin-bottom:10px" hidden>
+        <div class="preset-row" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr); margin-top:0" role="group" aria-label="Liedtext-Quelle" hidden>
+          <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Offiziell</button>
+          <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Eigener Text</button>
         </div>
-        <div class="lyrics" id="lyrics-text" hidden></div>
+        <span style="display:flex; gap:6px">
+          <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
+          <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
+        </span>
       </div>
-      <p class="small muted" id="lyrics-empty" style="margin:0; text-align:center">Kein Liedtext hinterlegt.</p>
+
+      <!-- Offizieller Liedtext aus dem Import — schreibgeschützt. -->
+      <div class="lyrics" id="lyrics-text" hidden></div>
+
+      <!-- Eigener Liedtext — bearbeitbar wie eine Notiz (siehe NOTIZEN weiter
+           unten): ohne Eintrag nur ein Knopf, mit Eintrag ein Textfeld mit
+           automatischem Speichern. -->
+      <div id="lyrics-private-block" hidden>
+        <button class="btn btn--block" id="btn-lyrics-note-add" type="button">Liedtext hinzufügen</button>
+        <div id="lyrics-note-editor" hidden>
+          <textarea class="note-box" id="lyrics-note-text" rows="14" spellcheck="true"
+                    aria-label="Eigener Liedtext" placeholder="Liedtext eintragen …"></textarea>
+          <div class="row note-foot">
+            <span class="note-state" id="lyrics-note-state" data-dirty="false" role="status"></span>
+            <span class="note-actions">
+              <button class="btn" id="btn-lyrics-note-save" type="button" aria-label="Liedtext speichern">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+              </button>
+              <button class="btn" id="btn-lyrics-note-delete" type="button" aria-label="Liedtext löschen" style="color: var(--danger)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" hidden>
@@ -2194,9 +2218,9 @@ input[type="checkbox"] {
       <p class="section-title" style="margin-top:0">Sicherung</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Sichert Loops, Notizen, Setlisten, Einstellungen und die Songliste
-          — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt
-          sich per Mail oder Messenger verschicken.
+          Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen
+          und die Songliste — ohne Aufnahmen. Die Datei ist nur wenige
+          Kilobyte groß und lässt sich per Mail oder Messenger verschicken.
         </p>
         <p class="small" id="backup-age" style="margin:0"></p>
         <button class="btn btn--primary btn--block" id="btn-backup-export" type="button">
@@ -2215,16 +2239,16 @@ input[type="checkbox"] {
       <p class="section-title">Speicherplatz freigeben</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Einzelne Songs oder Stimmen löschen. Loops, Notizen und Setlisten
-          bleiben dabei erhalten.
+          Einzelne Songs oder Stimmen löschen. Loops, Notizen, eigene
+          Liedtexte und Setlisten bleiben dabei erhalten.
         </p>
         <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button">
           Alle Aufnahmen löschen
         </button>
         <p class="small muted" style="margin:0">
-          Entfernt nur die Audiodateien. Loops, Notizen, Setlisten und
-          Einstellungen bleiben erhalten und verbinden sich beim nächsten
-          Import wieder.
+          Entfernt nur die Audiodateien. Loops, Notizen, eigene Liedtexte,
+          Setlisten und Einstellungen bleiben erhalten und verbinden sich
+          beim nächsten Import wieder.
         </p>
         <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false">
           Einzelne Songs verwalten
@@ -2235,8 +2259,9 @@ input[type="checkbox"] {
       <p class="section-title">Alles löschen</p>
       <div class="stack">
         <p class="small muted" style="margin:0">
-          Löscht alle Songs, Aufnahmen, Loops, Notizen und Setlisten von
-          diesem Gerät. Die Dateien in der Dropbox bleiben unberührt.
+          Löscht alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte
+          und Setlisten von diesem Gerät. Die Dateien in der Dropbox bleiben
+          unberührt.
         </p>
         <button class="btn btn--danger btn--block" id="btn-wipe" type="button">
           Alle Daten löschen
@@ -2835,6 +2860,12 @@ let noteSongIds = null;
 let noteCacheStamp = 0;
 function dropNoteCache() { noteSongIds = null; noteCacheStamp++; }
 
+// Dasselbe für „hat dieser Song einen eigenen Liedtext" — eigener Typ
+// `lyricsNote`, eigener Zwischenspeicher (siehe LIEDTEXT UND NOTEN).
+let lyricsNoteSongIds = null;
+let lyricsNoteCacheStamp = 0;
+function dropLyricsNoteCache() { lyricsNoteSongIds = null; lyricsNoteCacheStamp++; }
+
 const DB = {
   async metaGet(key) {
     const db = await openDB();
@@ -2845,6 +2876,7 @@ const DB = {
     await tx('meta', 'readwrite', (meta) => { meta.put(record); });
     if (record.type === 'song') dropSongCache();
     if (record.type === 'note') dropNoteCache();
+    if (record.type === 'lyricsNote') dropLyricsNoteCache();
     return record;
   },
 
@@ -2853,12 +2885,14 @@ const DB = {
     await tx('meta', 'readwrite', (meta) => { for (const r of records) meta.put(r); });
     if (records.some((r) => r.type === 'song')) dropSongCache();
     if (records.some((r) => r.type === 'note')) dropNoteCache();
+    if (records.some((r) => r.type === 'lyricsNote')) dropLyricsNoteCache();
   },
 
   async metaDelete(key) {
     await tx('meta', 'readwrite', (meta) => { meta.delete(key); });
     if (String(key).startsWith('song:')) dropSongCache();
     if (String(key).startsWith('note:')) dropNoteCache();
+    if (String(key).startsWith('lyricsNote:')) dropLyricsNoteCache();
   },
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
@@ -2874,6 +2908,14 @@ const DB = {
     const notes = await this.metaByType('note').catch(() => []);
     noteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
     return noteSongIds;
+  },
+
+  /** Dasselbe für eigene Liedtexte. */
+  async songIdsWithLyricsNotes() {
+    if (lyricsNoteSongIds) return lyricsNoteSongIds;
+    const notes = await this.metaByType('lyricsNote').catch(() => []);
+    lyricsNoteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
+    return lyricsNoteSongIds;
   },
 
   /**
@@ -3915,7 +3957,11 @@ async function renderSongs() {
   // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
   if (songs.length) updateBackupReminder();
 
-  const signature = `${songCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
+  // noteCacheStamp/lyricsNoteCacheStamp gehören mit rein: sonst übersieht das
+  // Kurzschluss-„nichts geändert“ eine Notiz oder einen eigenen Liedtext, die
+  // gerade hinzugefügt oder gelöscht wurden — die Markierung in der Zeile
+  // bliebe bis zum nächsten Songwechsel veraltet stehen.
+  const signature = `${songCacheStamp}\u0000${noteCacheStamp}\u0000${lyricsNoteCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
   if (signature === songsRenderSignature && host.firstChild) return;
   songsRenderSignature = signature;
 
@@ -3986,11 +4032,12 @@ async function renderSongs() {
   }
 
   const notedSongs = await DB.songIdsWithNotes().catch(() => new Set());
+  const lyricsNotedSongs = await DB.songIdsWithLyricsNotes().catch(() => new Set());
 
   const list = el('ul', { class: 'list' });
   for (const song of visible) {
     const marks = renderMarks({
-      lyrics: !!song.lyrics,
+      lyrics: !!song.lyrics || lyricsNotedSongs.has(song.id),
       score: (song.scores || []).length > 0,
       notes: notedSongs.has(song.id),
     });
@@ -4215,19 +4262,20 @@ async function detachSongLinks(song, preloaded = null) {
   await DB.metaPutMany(detached);
 }
 
-/** Alle Datensätze, die an einem Song hängen — Loops und Notizen. */
+/** Alle Datensätze, die an einem Song hängen — Loops, Notizen und eigene Liedtexte. */
 async function songLinkRecords() {
-  const [loops, notes] = await Promise.all([
+  const [loops, notes, lyricsNotes] = await Promise.all([
     DB.metaByType('loop').catch(() => []),
     DB.metaByType('note').catch(() => []),
+    DB.metaByType('lyricsNote').catch(() => []),
   ]);
-  return [...loops, ...notes];
+  return [...loops, ...notes, ...lyricsNotes];
 }
 
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: 'Stimme löschen?',
-    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops und Notizen bleiben erhalten.`,
+    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops, Notizen und eigene Liedtexte bleiben erhalten.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -4249,7 +4297,7 @@ async function deleteTrack(song, track) {
 async function deleteSong(song) {
   const ok = await confirmDialog({
     title: 'Song löschen?',
-    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops und Notizen bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
+    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops, Notizen und eigene Liedtexte bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
     okLabel: 'Löschen', danger: true,
   });
   if (!ok) return;
@@ -4282,8 +4330,8 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Aufnahmen löschen?',
     text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
-        + 'Loops, Notizen, Setlisten und Einstellungen bleiben erhalten und verbinden sich '
-        + 'wieder, sobald du die Lieder erneut importierst.',
+        + 'Loops, Notizen, eigene Liedtexte, Setlisten und Einstellungen bleiben erhalten '
+        + 'und verbinden sich wieder, sobald du die Lieder erneut importierst.',
     okLabel: 'Aufnahmen löschen', danger: true,
   });
   if (!ok) return;
@@ -5983,6 +6031,11 @@ async function runImport() {
   } catch (err) {
     console.warn('[import] Notizen verbinden', err);
   }
+  try {
+    report.lyricsNotesLinked = await reconnectPendingLyricsNotes();
+  } catch (err) {
+    console.warn('[import] Eigene Liedtexte verbinden', err);
+  }
 
   // Zeitpunkt merken — aber nur, wenn wirklich etwas geschrieben wurde: ein
   // Abbruch ohne jede Änderung soll nicht als „Import" durchgehen.
@@ -6057,6 +6110,7 @@ function renderImportReport() {
   if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
   if (r.reconnected)   lines.push(`${plural(r.reconnected, 'gespeicherter Loop', 'gespeicherte Loops')} aus einer Sicherung wieder verbunden.`);
   if (r.notesLinked)   lines.push(`${plural(r.notesLinked, 'gespeicherte Notiz', 'gespeicherte Notizen')} wieder verbunden.`);
+  if (r.lyricsNotesLinked) lines.push(`${plural(r.lyricsNotesLinked, 'eigener Liedtext', 'eigene Liedtexte')} wieder verbunden.`);
 
   card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
 
@@ -6456,6 +6510,7 @@ async function openPlayer(songId) {
   renderPlayerExtras();
   loadSongLoops();
   loadSongNote();
+  loadSongLyricsNote();
 
   try {
     await audioInit();
@@ -6703,6 +6758,7 @@ function closePlayer() {
   openPlayerToken++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
+  flushLyricsNote();
   audioReset();
   releaseScoreURLs();
   playerSong = null;
@@ -7139,17 +7195,13 @@ function releaseScoreURLs() {
   scoreURLs = [];
 }
 
+// Gilt für beide Quellen — offiziell wie privat —, damit die A−/A+-Knöpfe
+// unabhängig davon wirken, welcher Text gerade zu sehen ist.
 function applyLyricsFontSize() {
-  $('#lyrics-text').style.fontSize = `${settings.lyricsFontSize || 17}px`;
+  const size = `${settings.lyricsFontSize || 17}px`;
+  $('#lyrics-text').style.fontSize = size;
+  $('#lyrics-note-text').style.fontSize = size;
 }
-
-$('#btn-lyrics-toggle').addEventListener('click', () => {
-  const box = $('#lyrics-text');
-  const open = box.hidden;
-  box.hidden = !open;
-  $('#btn-lyrics-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
-  $('#btn-lyrics-toggle').textContent = open ? 'Ausblenden' : 'Anzeigen';
-});
 
 const stepFontSize = async (delta) => {
   const next = Math.max(13, Math.min(30, (settings.lyricsFontSize || 17) + delta));
@@ -7159,6 +7211,214 @@ const stepFontSize = async (delta) => {
 
 $('#btn-lyrics-smaller').addEventListener('click', () => stepFontSize(-2));
 $('#btn-lyrics-bigger').addEventListener('click', () => stepFontSize(2));
+
+/**
+ * Eigener Liedtext — ein Datensatz wie eine Notiz (siehe NOTIZEN weiter
+ * unten), nur mit eigenem Typ `lyricsNote`, damit er nie mit einer
+ * Übe-Notiz verwechselt wird (getrennte Anzeige, getrennter Export,
+ * getrennte „ein Eintrag je Lied"-Prüfung beim Wiederherstellen). Sichtbar
+ * ist er entweder alleine (keine offizielle Fassung vorhanden — dann
+ * verhält sich der Reiter genau wie NOTIZEN) oder über den Schalter
+ * „Offiziell / Eigener Text" neben der offiziellen Fassung.
+ */
+const LYRICS_NOTE_SAVE_DELAY = 900;
+
+let playerLyricsNote = null;     // eigener Liedtext des offenen Songs, null = keiner
+let lyricsNoteSaveTimer = null;
+let lyricsSource = 'official';   // nur relevant, wenn beide Fassungen existieren
+
+let lyricsNotePending = Promise.resolve();
+function lyricsNoteWrite(run) {
+  lyricsNotePending = lyricsNotePending.then(run, run).catch((err) => console.error('[liedtext]', err));
+  return lyricsNotePending;
+}
+
+function newLyricsNote(song) {
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    key: `lyricsNote:${id}`, type: 'lyricsNote', id,
+    songId: song.id,
+    songTitle: song.title,        // bleibt erhalten, auch ohne Song
+    text: '',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function loadSongLyricsNote() {
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  playerLyricsNote = null;
+  if (!playerSong) { renderLyricsBlock(); return; }
+
+  const song = playerSong;
+  await lyricsNotePending.catch(() => {});
+  const all = await DB.metaByType('lyricsNote').catch(() => []);
+  if (playerSong !== song) return;      // inzwischen ein anderes Lied geöffnet
+
+  const found = noteForSong(all, song); // Zuordnungslogik ist typunabhängig
+  if (found) {
+    // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg.
+    if (!(found.text || '').trim()) {
+      lyricsNoteWrite(() => DB.metaDelete(found.key));
+    } else {
+      if (!found.songId) {
+        found.songId = song.id;
+        lyricsNoteWrite(() => DB.metaPut(found));
+      }
+      playerLyricsNote = found;
+    }
+  }
+
+  // Default: existiert eine offizielle Fassung, zeigt sich die zuerst.
+  lyricsSource = playerSong?.lyrics ? 'official' : 'private';
+  renderLyricsBlock();
+}
+
+/**
+ * Zeigt offiziellen Text, eigenen Text, den Umschalter (nur wenn beides da
+ * ist) oder — ganz ohne Eintrag — den „Liedtext hinzufügen"-Knopf, genau
+ * wie bei einer leeren Notiz.
+ */
+function renderLyricsBlock() {
+  const hasOfficial = !!playerSong?.lyrics;
+  const hasPrivate = playerLyricsNote !== null;
+  const showSwitch = hasOfficial; // eigener Text ist immer erreichbar, auch noch leer
+  const activeSource = showSwitch ? lyricsSource : 'private';
+  const showOfficial = activeSource === 'official';
+
+  $('#lyrics-toolbar').hidden = !hasOfficial && !hasPrivate;
+  $('#lyrics-source-switch').hidden = !showSwitch;
+  $$('#lyrics-source-switch .preset').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.lyricsSource === activeSource));
+  });
+
+  $('#lyrics-text').hidden = !showOfficial;
+  if (showOfficial) $('#lyrics-text').textContent = playerSong.lyrics;
+
+  $('#lyrics-private-block').hidden = showOfficial;
+  if (!showOfficial) {
+    $('#btn-lyrics-note-add').hidden = hasPrivate;
+    $('#lyrics-note-editor').hidden = !hasPrivate;
+    $('#lyrics-note-text').value = hasPrivate ? (playerLyricsNote.text || '') : '';
+    setLyricsNoteState(hasPrivate ? 'saved' : 'none');
+  }
+
+  applyLyricsFontSize();
+  setTabHasContent('lyrics', hasOfficial || hasPrivate);
+}
+
+function setLyricsNoteState(kind) {
+  const node = $('#lyrics-note-state');
+  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
+  if (kind === 'dirty')  { node.textContent = 'Noch nicht gespeichert …'; return; }
+  if (kind === 'saving') { node.textContent = 'Speichert …'; return; }
+  if (kind === 'saved') {
+    const at = fmtClock(playerLyricsNote?.updatedAt);
+    node.textContent = at ? `Gespeichert um ${at} Uhr` : 'Gespeichert';
+    return;
+  }
+  node.textContent = '';
+}
+
+$$('#lyrics-source-switch .preset').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    lyricsSource = btn.dataset.lyricsSource;
+    renderLyricsBlock();
+  });
+});
+
+$('#btn-lyrics-note-add').addEventListener('click', () => {
+  if (!playerSong || playerLyricsNote) return;
+  // Erst beim Speichern entsteht ein Datensatz: wer den Knopf nur ausprobiert,
+  // hinterlässt keinen leeren Liedtext.
+  playerLyricsNote = newLyricsNote(playerSong);
+  renderLyricsBlock();
+  setLyricsNoteState('none');
+  $('#lyrics-note-text').focus();
+});
+
+$('#lyrics-note-text').addEventListener('input', () => {
+  if (!playerLyricsNote) return;
+  setLyricsNoteState('dirty');
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = setTimeout(() => { saveLyricsNote(); }, LYRICS_NOTE_SAVE_DELAY);
+});
+
+$('#lyrics-note-text').addEventListener('blur', () => { if (lyricsNoteSaveTimer) saveLyricsNote(); });
+
+$('#btn-lyrics-note-save').addEventListener('click', () => saveLyricsNote({ announce: true }));
+
+$('#btn-lyrics-note-delete').addEventListener('click', async () => {
+  if (!playerLyricsNote) return;
+  if ($('#lyrics-note-text').value.trim()) {
+    const ok = await confirmDialog({
+      title: 'Eigenen Liedtext löschen?',
+      text: `Der eigene Liedtext zu „${playerSong?.title || 'diesem Lied'}" wird entfernt.`,
+      okLabel: 'Löschen', danger: true,
+    });
+    if (!ok) return;
+  }
+  await deleteLyricsNote();
+});
+
+async function saveLyricsNote({ announce = false } = {}) {
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  const note = playerLyricsNote;
+  if (!note) return;
+
+  const text = $('#lyrics-note-text').value;
+
+  if (announce && !text.trim()) {
+    await deleteLyricsNote();
+    banner('Leeren Liedtext entfernt.');
+    return;
+  }
+
+  note.text = text;
+  note.songTitle = playerSong?.title || note.songTitle;
+  note.updatedAt = new Date().toISOString();
+  setLyricsNoteState('saving');
+
+  try {
+    await lyricsNoteWrite(() => DB.metaPut(note));
+    if (playerLyricsNote === note) setLyricsNoteState('saved');
+    if (announce) banner('Liedtext gespeichert.', { kind: 'ok' });
+  } catch (err) {
+    if (playerLyricsNote === note) setLyricsNoteState('dirty');
+    bannerError('Der Liedtext konnte nicht gespeichert werden.', 'LYRICS-NOTE-SAVE', err);
+  }
+}
+
+async function deleteLyricsNote() {
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  const note = playerLyricsNote;
+  playerLyricsNote = null;
+  lyricsSource = playerSong?.lyrics ? 'official' : 'private';
+  renderLyricsBlock();
+  if (note) await lyricsNoteWrite(() => DB.metaDelete(note.key));
+}
+
+/** Beim Schließen des Players oder beim Wegwischen der App sichern. */
+function flushLyricsNote() {
+  const note = playerLyricsNote;
+  if (!note) return;
+  const text = $('#lyrics-note-text').value;
+
+  if (!text.trim()) {
+    playerLyricsNote = null;
+    lyricsNoteWrite(() => DB.metaDelete(note.key));
+    return;
+  }
+  if (text === note.text && !lyricsNoteSaveTimer) return;
+
+  clearTimeout(lyricsNoteSaveTimer);
+  lyricsNoteSaveTimer = null;
+  note.text = text;
+  note.updatedAt = new Date().toISOString();
+  lyricsNoteWrite(() => DB.metaPut(note));
+}
 
 function iconPdf() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -7212,20 +7472,9 @@ async function renderPlayerExtras() {
   const token = ++extrasRenderToken;
   releaseScoreURLs();
 
-  // --- Liedtext ---------------------------------------------------------
-  const lyricsContent = $('#lyrics-content');
-  if (playerSong?.lyrics) {
-    lyricsContent.hidden = false;
-    $('#lyrics-text').textContent = playerSong.lyrics;
-    $('#lyrics-text').hidden = true;
-    $('#btn-lyrics-toggle').setAttribute('aria-expanded', 'false');
-    $('#btn-lyrics-toggle').textContent = 'Anzeigen';
-    applyLyricsFontSize();
-  } else {
-    lyricsContent.hidden = true;
-  }
-  $('#lyrics-empty').hidden = !!playerSong?.lyrics;
-  setTabHasContent('lyrics', !!playerSong?.lyrics);
+  // Liedtext: eigener Ablauf über loadSongLyricsNote()/renderLyricsBlock(),
+  // weil der eigene Text ein eigener DB-Datensatz ist (wie eine Notiz) und
+  // erst asynchron geladen werden muss — siehe dort.
 
   // --- Noten --------------------------------------------------------------
   // Nur die Dateinamen sofort — das Einlesen der PDF-Bytes aus IndexedDB und
@@ -7541,9 +7790,9 @@ function flushNote() {
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
 // aus oder die App wird weggewischt. Beides ist die letzte Gelegenheit.
-window.addEventListener('pagehide', flushNote);
+window.addEventListener('pagehide', () => { flushNote(); flushLyricsNote(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushNote();
+  if (document.visibilityState === 'hidden') { flushNote(); flushLyricsNote(); }
 });
 
 // Diagnose: die Page-Lifecycle-Ereignisse zeigen, ob der Browser die Seite
@@ -7668,6 +7917,26 @@ async function reconnectPendingNotes() {
     const song = findSongByTitle(songs, note.songTitle);
     // Hat der Song schon eine Notiz, bleibt die wartende liegen — sonst
     // stünden plötzlich zwei Notizen an einem Lied.
+    if (!song || taken.has(song.id)) continue;
+    note.songId = song.id;
+    taken.add(song.id);
+    linked.push(note);
+  }
+  await DB.metaPutMany(linked);
+  return linked.length;
+}
+
+/** Dasselbe für eigene Liedtexte (Typ `lyricsNote`). */
+async function reconnectPendingLyricsNotes() {
+  const notes = await DB.metaByType('lyricsNote').catch(() => []);
+  const pending = notes.filter((n) => !n.songId && n.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  const taken = new Set(notes.filter((n) => n.songId).map((n) => n.songId));
+  const linked = [];
+  for (const note of pending) {
+    const song = findSongByTitle(songs, note.songTitle);
     if (!song || taken.has(song.id)) continue;
     note.songId = song.id;
     taken.add(song.id);
@@ -8482,9 +8751,9 @@ let pendingAutoPlay = false;
 const BACKUP_FORMAT = 'chor-app-backup';
 
 async function buildBackup() {
-  const [songs, loops, playlists, notes] = await Promise.all([
+  const [songs, loops, playlists, notes, lyricsNotes] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
-    DB.metaByType('note'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
 
@@ -8502,6 +8771,11 @@ async function buildBackup() {
     })).filter((l) => l.songTitle),
     playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
     notes: notes.map((n) => ({
+      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
+      text: n.text || '',
+      updatedAt: n.updatedAt || null,
+    })).filter((n) => n.songTitle && n.text.trim()),
+    lyricsNotes: lyricsNotes.map((n) => ({
       songTitle: byId.get(n.songId)?.title || n.songTitle || '',
       text: n.text || '',
       updatedAt: n.updatedAt || null,
@@ -8562,11 +8836,13 @@ async function restoreBackup(data) {
   const loops = Array.isArray(data.loops) ? data.loops : [];
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
   const notes = Array.isArray(data.notes) ? data.notes : [];
+  const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
+        + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
         + `${plural(playlists.length, 'Setliste', 'Setlisten')} gefunden. `
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
@@ -8580,13 +8856,14 @@ async function restoreBackup(data) {
   if (mode === 'replace') {
     const ok = await confirmDialog({
       title: 'Wirklich ersetzen?',
-      text: 'Alle vorhandenen Loops, Notizen und Setlisten werden vorher gelöscht.',
+      text: 'Alle vorhandenen Loops, Notizen, eigene Liedtexte und Setlisten werden vorher gelöscht.',
       okLabel: 'Ersetzen', danger: true,
     });
     if (!ok) return;
     const stale = [
       ...await DB.metaByType('loop'),
       ...await DB.metaByType('note'),
+      ...await DB.metaByType('lyricsNote'),
       ...await DB.metaByType('playlist'),
     ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
@@ -8596,9 +8873,11 @@ async function restoreBackup(data) {
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
   const existingNotes = await DB.metaByType('note');
+  const existingLyricsNotes = await DB.metaByType('lyricsNote');
   const fresh = [];
   let addedLoops = 0, addedPl = 0, keptPending = 0;
   let addedNotes = 0, skippedNotes = 0;
+  let addedLyricsNotes = 0, skippedLyricsNotes = 0;
 
   for (const l of loops) {
     if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
@@ -8649,6 +8928,32 @@ async function restoreBackup(data) {
     addedNotes++;
   }
 
+  // Eigene Liedtexte: derselbe Ablauf, aber im eigenen Store — eine
+  // vorhandene offizielle Fassung des Songs verhindert das nicht, denn beide
+  // können nebeneinander bestehen (siehe LIEDTEXT UND NOTEN).
+  for (const n of lyricsNotes) {
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    const song = findSongByTitle(songs, n.songTitle);
+    const norm = normalizeTitle(n.songTitle);
+
+    const isSame = (x) =>
+      x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm;
+    if (existingLyricsNotes.some(isSame) || fresh.some((x) => x.type === 'lyricsNote' && isSame(x))) {
+      skippedLyricsNotes++;
+      continue;
+    }
+
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    fresh.push({
+      key: `lyricsNote:${id}`, type: 'lyricsNote', id,
+      songId: song ? song.id : null,
+      songTitle: n.songTitle,
+      text: n.text,
+      updatedAt: n.updatedAt || new Date().toISOString(),
+    });
+    addedLyricsNotes++;
+  }
+
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
     const name = normalizeTitle(p.name || '');
@@ -8674,12 +8979,15 @@ async function restoreBackup(data) {
 
   await renderPlaylists();
   await renderSettings();
-  if (playerSong) await loadSongNote();
+  if (playerSong) { await loadSongNote(); await loadSongLyricsNote(); }
   banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
     + `und ${plural(addedPl, 'Setliste', 'Setlisten')} eingespielt.`
+    + (addedLyricsNotes ? ` ${plural(addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} dazu.` : '')
     + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
     + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
-        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : ''), { kind: 'ok' });
+        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : '')
+    + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
+        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : ''), { kind: 'ok' });
 }
 
 /**
