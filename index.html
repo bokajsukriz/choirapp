@@ -1160,18 +1160,18 @@ input[type="checkbox"] {
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
-/* Aufnahme */
+/* Mitschnitt */
 .rec-controls {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 10px 0 6px;
+  gap: 8px;
+  padding: 6px 0;
 }
 
 .rec-btn {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
   border-radius: 50%;
   border: 3px solid var(--danger);
@@ -1182,8 +1182,8 @@ input[type="checkbox"] {
 }
 
 .rec-btn-dot {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: var(--danger);
   transition: border-radius .18s ease, width .18s ease, height .18s ease;
@@ -1194,9 +1194,9 @@ input[type="checkbox"] {
 }
 
 .rec-btn[aria-pressed="true"] .rec-btn-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
   background: #fff;
   animation: rec-pulse 1.4s ease-in-out infinite;
 }
@@ -1209,9 +1209,26 @@ input[type="checkbox"] {
 .rec-timer {
   margin: 0;
   font-weight: 650;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-variant-numeric: tabular-nums;
 }
+
+.rec-pending {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  margin: 6px 0;
+}
+
+.rec-pending-info { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rec-pending-info strong { font-weight: 620; }
+
+.rec-pending-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.rec-pending-actions .btn { flex: 1; padding: 10px 4px; font-size: 0.88rem; }
 
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
@@ -1931,11 +1948,6 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span data-i18n="tabs.loops">Loops</span>
       </button>
-      <button class="player-tab" type="button" role="tab" id="tab-btn-record"
-              data-tab="record" aria-selected="false" aria-controls="tab-panel-record">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><rect x="9" y="2" width="6" height="12" rx="3"/></svg>
-        <span data-i18n="tabs.record">Mitschnitt</span>
-      </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-lyrics"
               data-tab="lyrics" aria-selected="false" aria-controls="tab-panel-lyrics">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
@@ -1966,10 +1978,9 @@ input[type="checkbox"] {
       </div>
       <p class="small muted" id="loop-info" style="margin:10px 0 0; text-align:center"></p>
       <div id="loop-list"></div>
-    </div>
 
-    <div id="tab-panel-record" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-record" hidden>
-      <div class="rec-controls">
+      <p class="section-title" style="margin:22px 0 10px">Mitschnitt</p>
+      <div class="rec-controls" id="rec-controls">
         <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="Mitschnitt starten">
           <span class="rec-btn-dot"></span>
         </button>
@@ -1977,6 +1988,17 @@ input[type="checkbox"] {
         <p class="small muted" id="rec-status" style="margin:0; text-align:center">
           Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
         </p>
+      </div>
+      <div class="rec-pending" id="rec-pending" hidden>
+        <div class="rec-pending-info">
+          <strong id="rec-pending-name">Mitschnitt</strong>
+          <span class="small muted" id="rec-pending-duration"></span>
+        </div>
+        <div class="rec-pending-actions">
+          <button class="btn" id="btn-rec-preview" type="button">▶ Anhören</button>
+          <button class="btn btn--primary" id="btn-rec-save" type="button">Speichern</button>
+          <button class="btn" id="btn-rec-discard" type="button" style="color: var(--danger)">Verwerfen</button>
+        </div>
       </div>
       <div id="recording-list"></div>
     </div>
@@ -2284,10 +2306,6 @@ input[type="checkbox"] {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           <span data-i18n="tabs.loops">Loops</span>
         </button>
-        <button class="player-tab" type="button" data-tab="record" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><rect x="9" y="2" width="6" height="12" rx="3"/></svg>
-          <span data-i18n="tabs.record">Mitschnitt</span>
-        </button>
         <button class="player-tab" type="button" data-tab="lyrics" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
           <span data-i18n="tabs.lyrics">Lyrics</span>
@@ -2425,6 +2443,20 @@ input[type="checkbox"] {
         <p class="small" id="notes-count" style="margin:8px 0 0"></p>
         <button class="btn btn--block" id="btn-notes-export" type="button" data-i18n="settings.data.printNotesBtn">
           Alle Notizen drucken
+        </button>
+      </div>
+
+      <p class="section-title">Mitschnitt importieren</p>
+      <div class="stack">
+        <p class="small muted" style="margin:0">
+          Eine Datei einspielen, die jemand über „Exportieren" bei einem
+          Mitschnitt erzeugt hat — auch von einer anderen Chor-App-Installation.
+          Fehlt der Song noch in der Bibliothek, verbindet sich der Mitschnitt
+          automatisch, sobald er importiert wird.
+        </p>
+        <input class="visually-hidden" id="mitschnitt-input" type="file" accept=".json,application/json">
+        <button class="btn btn--block" id="btn-mitschnitt-import" type="button">
+          Mitschnitt importieren
         </button>
       </div>
 
@@ -3229,7 +3261,6 @@ const STRINGS = {
     'nav.settings': 'Einstellungen',
 
     'tabs.loops': 'Loops',
-    'tabs.record': 'Mitschnitt',
     'tabs.lyrics': 'Lyrics',
     'tabs.notes': 'Notes',
     'tabs.sheets': 'Sheets',
@@ -3393,7 +3424,6 @@ const STRINGS = {
     'nav.settings': 'Settings',
 
     'tabs.loops': 'Loops',
-    'tabs.record': 'Record',
     'tabs.lyrics': 'Lyrics',
     'tabs.notes': 'Notes',
     'tabs.sheets': 'Sheets',
@@ -3557,7 +3587,6 @@ const STRINGS = {
     'nav.settings': 'Ustawienia',
 
     'tabs.loops': 'Loopy',
-    'tabs.record': 'Zapis',
     'tabs.lyrics': 'Tekst',
     'tabs.notes': 'Notatki',
     'tabs.sheets': 'Nuty',
@@ -6887,6 +6916,11 @@ async function runImport() {
   } catch (err) {
     console.warn('[import] Eigene Liedtexte verbinden', err);
   }
+  try {
+    report.recordingsLinked = await reconnectPendingRecordings();
+  } catch (err) {
+    console.warn('[import] Mitschnitte verbinden', err);
+  }
   if (attachRequests.length) {
     try {
       report.similarAttached = await attachSimilarSongData(attachRequests);
@@ -7189,6 +7223,10 @@ let loadToken = 0;
  */
 async function selectTrack(track, userChoice = false) {
   if (!playerSong || track.broken) return;
+  // Eine laufende Mitschnitt-Vorschau hat Audio.el gerade belegt — vor dem
+  // Stimmwechsel erst normal weiterlaufen lassen, sonst würde audioLoadTrack()
+  // gleich wieder wegwerfen, was previewRecordingBlob() sich fürs Zurück gemerkt hat.
+  await endRecordingPreview();
   const token = ++loadToken;
 
   playerVoice = track.fileKey;
@@ -7342,15 +7380,20 @@ async function openPlayer(songId) {
 
   // Der Player ist ein dauerhafter Reiter — ein Songwechsel läuft nie über
   // closePlayer(), sondern direkt über einen erneuten openPlayer()-Aufruf.
-  // Ohne diesen Abbruch würde eine laufende Aufnahme also unbemerkt in den
-  // neuen Song hinein weiterlaufen und am Ende dem falschen Lied zugeordnet.
+  // Ohne diesen Abbruch würde eine laufende Aufnahme oder ein noch nicht
+  // gespeicherter Take unbemerkt in den neuen Song hinein weiterlaufen bzw.
+  // am Ende dem falschen Lied zugeordnet werden.
   if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
     discardActiveRecording();
     banner('Mitschnitt abgebrochen, weil der Song gewechselt wurde.');
+  } else if (pendingTake) {
+    banner('Nicht gespeicherter Mitschnitt wurde verworfen, weil der Song gewechselt wurde.');
   }
-  recPlayer.pause();
-  if (recPlayer.src) { URL.revokeObjectURL(recPlayer.src); recPlayer.removeAttribute('src'); }
-  recPlayingId = null;
+  pendingTake = null;
+  renderPendingTake();
+  // Eine laufende Vorschau gehört zum alten Song — Audio.el wird gleich für
+  // den neuen ohnehin frisch geladen, ein Rücksprung ergäbe hier keinen Sinn.
+  audioPreview = null;
 
   playerSong = song;
   // Der Player ist ein dauerhafter Reiter (keine Vollbild-Ansicht mehr) —
@@ -7621,6 +7664,14 @@ $('#btn-queue-edit').addEventListener('click', () => {
  * alphabetisch durch die Bibliothek.
  */
 function onPlaybackEnded() {
+  // Eine zu Ende gelaufene Mitschnitt-Vorschau darf nie zum nächsten Song
+  // weiterschalten oder sich wiederholen — beides gehört zur Song-Wiedergabe.
+  if (audioPreview) {
+    endRecordingPreview();
+    renderRecordingList();
+    updateRecPreviewButton();
+    return;
+  }
   dlog('playback:ended', { repeatMode: settings.repeatMode, hasQueue: !!playQueue });
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
@@ -7645,9 +7696,10 @@ function closePlayer() {
   audioReset();
   releaseScoreURLs();
   discardActiveRecording();
-  recPlayer.pause();
-  if (recPlayer.src) { URL.revokeObjectURL(recPlayer.src); recPlayer.removeAttribute('src'); }
-  recPlayingId = null;
+  pendingTake = null;
+  renderPendingTake();
+  // audioReset() hat die Blob-URL einer laufenden Vorschau schon freigegeben.
+  audioPreview = null;
   playerSong = null;
   $('#player-title').textContent = 'Kein Song ausgewählt';
   $('#player-pills').textContent = '';
@@ -7680,9 +7732,15 @@ $('#btn-play').addEventListener('click', async () => {
     navigator.mediaSession.playbackState = Audio.playing ? 'playing' : 'paused';
   }
   updateMediaSession();
+  // Läuft gerade eine Mitschnitt-Vorschau, muss deren eigener Anhören-Knopf
+  // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
+  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
+  // Während einer Mitschnitt-Vorschau gilt „Zurück" dem Mitschnitt selbst —
+  // ein Sprung zum vorherigen Song wäre hier nur verwirrend.
+  if (audioPreview) { updateSeekUI(audioSeek(0)); return; }
   // Wie bei echten Musik-Playern: ist man schon (fast) am Anfang, springt
   // „Zurück" zum vorherigen Titel statt stur bei 0 stehen zu bleiben.
   if (Audio.position < 2) {
@@ -7913,7 +7971,9 @@ function activateLoop() {
   updateLoopUI();
 }
 
-$('#btn-loop-a').addEventListener('click', () => {
+$('#btn-loop-a').addEventListener('click', async () => {
+  // Audio.position gehört sonst dem gerade angehörten Mitschnitt, nicht dem Song.
+  await endRecordingPreview();
   loopA = Audio.position;
   if (loopB !== null && loopB <= loopA) loopB = null;
   activeLoopId = null;
@@ -7922,7 +7982,8 @@ $('#btn-loop-a').addEventListener('click', () => {
   renderLoopList();
 });
 
-$('#btn-loop-b').addEventListener('click', () => {
+$('#btn-loop-b').addEventListener('click', async () => {
+  await endRecordingPreview();
   loopB = Audio.position;
   if (loopA !== null && loopA >= loopB) loopA = null;
   activeLoopId = null;
@@ -7933,7 +7994,8 @@ $('#btn-loop-b').addEventListener('click', () => {
   else { updateLoopUI(); applyLoop(); }
 });
 
-$('#btn-loop-toggle').addEventListener('click', () => {
+$('#btn-loop-toggle').addEventListener('click', async () => {
+  await endRecordingPreview();
   if (loopOn) {
     loopOn = false;
     applyLoop();
@@ -7979,10 +8041,15 @@ async function loadSongLoops() {
   renderLoopList();
 }
 
+/** Der Punkt am Loops-Reiter gilt jetzt Loops UND Mitschnitten — beide leben im selben Tab. */
+function updateLoopsTabDot() {
+  setTabHasContent('loops', songLoops.length > 0 || songRecordings.length > 0);
+}
+
 function renderLoopList() {
   const host = $('#loop-list');
   host.textContent = '';
-  setTabHasContent('loops', songLoops.length > 0);
+  updateLoopsTabDot();
   if (!songLoops.length) return;
 
   for (const loop of songLoops) {
@@ -7990,7 +8057,10 @@ function renderLoopList() {
       el('strong', { text: loop.name }),
       el('span', { text: `${fmtTime(loop.start)} – ${fmtTime(loop.end)}` }));
 
-    go.addEventListener('click', () => {
+    go.addEventListener('click', async () => {
+      // Der Loop bezieht sich auf den Song, nicht auf eine gerade laufende
+      // Mitschnitt-Vorschau — erst zurück zum Song, dann den Abschnitt anspringen.
+      await endRecordingPreview();
       loopA = loop.start;
       loopB = loop.end;
       loopOn = true;
@@ -8073,13 +8143,20 @@ function renderLoopList() {
 
 /* ==========================================================================
    MITSCHNITT — eigene Aufnahme übers Mikrofon, zum Anhören oder als
-   Gedächtnisstütze aus der Probe. Aufbau bewusst analog zu LOOPS: eigener
-   Meta-Typ, an den Song gebunden, überlebt Löschen/Reimport wie ein Loop.
+   Gedächtnisstütze aus der Probe. Lebt bewusst im Loops-Tab statt in einem
+   eigenen Reiter: beides sind Übe-Hilfen zum selben Song. Eigener Meta-Typ,
+   überlebt Löschen/Reimport wie ein Loop.
 
    Der Name „Mitschnitt" statt „Aufnahme": Letzteres bezeichnet in der
    restlichen App schon die importierte Stimmen-Datei des Songs — mit
    gleichem Wort für die eigene Stimme wäre "Alle Aufnahmen löschen" in den
    Einstellungen missverständlich, obwohl Mitschnitte davon unberührt bleiben.
+
+   Wiedergabe läuft absichtlich nicht über ein eigenes <audio>-Element,
+   sondern kapert kurz die Hauptsteuerung (Audio.el/#btn-play/Suchleiste):
+   dieselben Knöpfe, die den Song abspielen, spielen dann den Mitschnitt.
+   previewRecordingBlob()/endRecordingPreview() merken sich dafür, wo die
+   normale Wiedergabe stand, und stellen das danach wieder her.
    ========================================================================== */
 
 let recStream = null;
@@ -8089,18 +8166,10 @@ let recMimeType = '';
 let recStartedAt = 0;
 let recTimerHandle = null;
 let songRecordings = [];
-let recPlayingId = null;
+let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
+let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden }
 
-// Eigenes <audio>-Element für die Wiedergabe der Mitschnitte: `Audio` ist in
-// diesem Skript schon der Name des Wrappers für die Songwiedergabe (siehe
-// weiter oben), `new Audio()` würde also den falschen Konstruktor treffen.
-const recPlayer = document.createElement('audio');
-recPlayer.style.display = 'none';
-document.body.append(recPlayer);
-recPlayer.addEventListener('ended', () => {
-  recPlayingId = null;
-  renderRecordingList();
-});
+const MITSCHNITT_EXPORT_FORMAT = 'chor-app-mitschnitt';
 
 /** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
@@ -8127,7 +8196,7 @@ function updateRecTimer() {
 }
 
 async function startRecording() {
-  if (!playerSong) return;
+  if (!playerSong || pendingTake) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     banner('Dieser Browser kann keine Mikrofonaufnahmen aufzeichnen.', { kind: 'error' });
     return;
@@ -8198,7 +8267,9 @@ async function onRecordingStopped() {
     if (chunks.length) banner('Der Mitschnitt war zu kurz und wurde verworfen.');
     return;
   }
-  await saveRecording(new Blob(chunks, { type: mimeType }), mimeType, duration);
+  // Nicht sofort speichern — erst anhören und entscheiden lassen.
+  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration };
+  renderPendingTake();
 }
 
 $('#btn-rec-toggle').addEventListener('click', () => {
@@ -8206,20 +8277,81 @@ $('#btn-rec-toggle').addEventListener('click', () => {
   else startRecording();
 });
 
-async function saveRecording(blob, mimeType, duration) {
-  if (!playerSong) return;
+/** Wechselt zwischen „Aufnehmen"-Knopf und der Karte für den noch nicht gespeicherten Take. */
+function renderPendingTake() {
+  const has = !!pendingTake;
+  $('#rec-controls').hidden = has;
+  $('#rec-pending').hidden = !has;
+  if (!has) return;
+  $('#rec-pending-name').textContent = `Mitschnitt ${songRecordings.length + 1}`;
+  $('#rec-pending-duration').textContent = `Dauer ${fmtTime(pendingTake.duration)}`;
+  updateRecPreviewButton();
+}
+
+/** Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die Hauptsteuerung läuft. */
+function updateRecPreviewButton() {
+  const btn = $('#btn-rec-preview');
+  if (!btn) return;
+  btn.textContent = (audioPreview?.tag?.pending && Audio.playing) ? '⏸ Pause' : '▶ Anhören';
+}
+
+$('#btn-rec-preview').addEventListener('click', async () => {
+  if (!pendingTake) return;
+  if (audioPreview?.tag?.pending) {
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+  } else {
+    try { await previewRecordingBlob(pendingTake.blob, { pending: true }); }
+    catch (err) { bannerError('Der Mitschnitt konnte nicht abgespielt werden.', 'REC-PLAY', err); }
+  }
+  updateRecPreviewButton();
+});
+
+$('#btn-rec-discard').addEventListener('click', async () => {
+  if (!pendingTake) return;
+  const ok = await confirmDialog({
+    title: 'Mitschnitt verwerfen?', text: 'Die Aufnahme wird nicht gespeichert.',
+    okLabel: 'Verwerfen', danger: true,
+  });
+  if (!ok) return;
+  if (audioPreview?.tag?.pending) await endRecordingPreview();
+  pendingTake = null;
+  renderPendingTake();
+});
+
+/** Voice-Auswahl beim Speichern. `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". */
+async function pickRecordingVoice() {
+  const value = await choiceDialog({
+    title: 'Stimme zuordnen?',
+    text: 'Damit lässt sich der Mitschnitt später leichter wiederfinden — optional.',
+    options: [
+      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
+      { value: 'FULL', label: 'Gesamt (alle Stimmen)' },
+      { value: 'SOP', label: VOICE_LABEL.SOP },
+      { value: 'ALT', label: VOICE_LABEL.ALT },
+      { value: 'TEN', label: VOICE_LABEL.TEN },
+      { value: 'BASS', label: VOICE_LABEL.BASS },
+      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+    ],
+  });
+  if (value === null) return undefined;
+  return value === 'NONE' ? null : value;
+}
+
+$('#btn-rec-save').addEventListener('click', async () => {
+  if (!pendingTake || !playerSong) return;
+  const voice = await pickRecordingVoice();
+  if (voice === undefined) return; // abgebrochen — Take bleibt zum erneuten Anhören/Speichern erhalten
+
   const suggestion = `Mitschnitt ${songRecordings.length + 1}`;
   const name = await promptDialog({
     title: 'Mitschnitt speichern',
-    text: `Dauer ${fmtTime(duration)}`,
+    text: `Dauer ${fmtTime(pendingTake.duration)}`,
     value: suggestion,
     placeholder: 'z. B. Probe 12.3. oder Sopran allein',
   });
-  if (name === null) {
-    banner('Mitschnitt verworfen.');
-    return;
-  }
+  if (name === null) return; // abgebrochen — Take bleibt erhalten
 
+  const { blob, mimeType, duration } = pendingTake;
   const fileKey = newFileKey();
   const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
   await DB.filePut(await fileRecord(fileKey, blob, `${name.trim() || suggestion}.${ext}`));
@@ -8229,14 +8361,18 @@ async function saveRecording(blob, mimeType, duration) {
     key: `recording:${id}`, type: 'recording', id,
     songId: playerSong.id, songTitle: playerSong.title,
     name: name.trim() || suggestion,
-    fileKey, mimeType, duration,
+    voice, fileKey, mimeType, duration,
     size: blob.size,
     createdAt: new Date().toISOString(),
   };
   await DB.metaPut(recording);
+
+  if (audioPreview?.tag?.pending) await endRecordingPreview();
+  pendingTake = null;
+  renderPendingTake();
   await loadSongRecordings();
   banner('Mitschnitt gespeichert.', { kind: 'ok' });
-}
+});
 
 async function loadSongRecordings() {
   if (!playerSong) { songRecordings = []; return; }
@@ -8247,50 +8383,255 @@ async function loadSongRecordings() {
   renderRecordingList();
 }
 
-async function toggleRecordingPlayback(recording) {
-  if (recPlayingId === recording.id) {
-    recPlayer.pause();
-    recPlayingId = null;
+/**
+ * Spielt einen Mitschnitt über die normale Hauptsteuerung ab (Audio.el,
+ * #btn-play, Suchleiste) statt über ein eigenes Element. Merkt sich Spur,
+ * Position und Wiedergabestatus, damit endRecordingPreview() den Song danach
+ * genau dort weiterlaufen lassen kann.
+ */
+async function previewRecordingBlob(blob, tag) {
+  if (!Audio.ready) { banner('Die Wiedergabe ist noch nicht bereit.', { kind: 'error' }); return; }
+
+  // Läuft schon eine Vorschau, gilt weiter der allererste Rücksprungpunkt —
+  // sonst würde ein zweiter angehörter Mitschnitt den echten Song überschreiben.
+  const prior = audioPreview;
+  const returnTrack = prior ? prior.returnTrack : (playerVoice ? trackByVoiceKey(playerVoice) : null);
+  const returnPos = prior ? prior.returnPos : Audio.position;
+  const returnPlaying = prior ? prior.returnPlaying : Audio.playing;
+  const returnFootHidden = prior ? prior.returnFootHidden : $('#player-foot').hidden;
+
+  if (Audio.playing) audioPause();
+
+  const el = Audio.el;
+  const url = URL.createObjectURL(blob);
+  try {
+    await new Promise((resolve, reject) => {
+      const onReady = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(mediaErrorToError(el.error)); };
+      function cleanup() {
+        el.removeEventListener('loadedmetadata', onReady);
+        el.removeEventListener('error', onError);
+      }
+      el.addEventListener('loadedmetadata', onReady, { once: true });
+      el.addEventListener('error', onError, { once: true });
+      el.src = url;
+      el.load();
+    });
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
+  }
+
+  if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
+  Audio.blobUrl = url;
+  Audio.currentKey = 'preview'; // keine echte Spur — audioLoadTrack() vergleicht nie darauf
+  Audio.duration = el.duration || 0;
+  audioSetLoop(null);
+  // A/B-Marken gehören zur Song-Zeitleiste — bei der (meist viel kürzeren)
+  // Mitschnittdauer wären ihre Positionen auf der Suchleiste bloß irreführend.
+  $('#seek-mark-a').hidden = true;
+  $('#seek-mark-b').hidden = true;
+  $('#seek-range').hidden = true;
+  // Ein Platzhalter-Song ohne eigene Aufnahme blendet die Transportleiste
+  // sonst aus — zum Anhören eines Mitschnitts braucht es sie trotzdem.
+  $('#player-foot').hidden = false;
+
+  audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden };
+  updateSeekUI(0);
+  await audioPlay();
+  setPlayIcon(true);
+}
+
+/** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
+async function endRecordingPreview() {
+  if (!audioPreview) return;
+  const { returnTrack, returnPos, returnPlaying, returnFootHidden } = audioPreview;
+  audioPreview = null;
+  audioPause();
+
+  if (returnTrack) {
+    try { await audioLoadTrack(returnTrack); } catch { /* zeigt sich beim nächsten normalen Abspielversuch */ }
+    audioSeek(returnPos);
+    if (returnPlaying) await audioPlay();
+  } else {
+    if (Audio.blobUrl) { URL.revokeObjectURL(Audio.blobUrl); Audio.blobUrl = null; }
+    Audio.el.removeAttribute('src');
+    Audio.el.load();
+    Audio.currentKey = null;
+    Audio.duration = 0;
+    audioSeek(0);
+  }
+  $('#player-foot').hidden = returnFootHidden;
+  applyLoop();
+  updateLoopMarks();
+  updateSeekUI(Audio.position);
+  setPlayIcon(Audio.playing);
+}
+
+async function toggleSavedRecordingPreview(recording) {
+  if (audioPreview?.tag?.savedId === recording.id) {
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
     renderRecordingList();
+    updateRecPreviewButton();
     return;
   }
 
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der Mitschnitt fehlt in der Datenbank.');
-    if (recPlayer.src) URL.revokeObjectURL(recPlayer.src);
-    recPlayer.src = URL.createObjectURL(recordBlob(rec, recording.mimeType));
-    await recPlayer.play();
-    recPlayingId = recording.id;
+    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id });
   } catch (err) {
     bannerError('Der Mitschnitt konnte nicht abgespielt werden.', 'REC-PLAY', err);
-    recPlayingId = null;
   }
   renderRecordingList();
+  updateRecPreviewButton();
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlob(base64, mimeType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+/** Für den Dateinamen: nur Buchstaben/Zahlen/Leerzeichen/Bindestrich, alles andere raus. */
+function sanitizeFileName(name) {
+  return name.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'Mitschnitt';
+}
+
+/**
+ * Exportiert einen Mitschnitt als einzelne JSON-Datei mit eingebetteter Audiospur
+ * (Base64) — verschickbar per Mail/Messenger und in einer anderen App-Instanz
+ * importierbar. Songtitel statt Song-ID, weil die ID dort nichts bedeutet;
+ * siehe reconnectPendingRecordings für den Fall, dass der Song dort fehlt.
+ */
+async function exportRecording(recording) {
+  try {
+    const rec = await DB.fileGet(recording.fileKey);
+    if (!rec) throw new Error('Der Mitschnitt fehlt in der Datenbank.');
+    const blob = recordBlob(rec, recording.mimeType);
+    const audioBase64 = await blobToBase64(blob);
+
+    const payload = {
+      format: MITSCHNITT_EXPORT_FORMAT, version: 1,
+      songTitle: playerSong?.title || recording.songTitle || '',
+      voice: recording.voice || null,
+      name: recording.name,
+      duration: recording.duration,
+      mimeType: recording.mimeType,
+      createdAt: recording.createdAt,
+      audioBase64,
+    };
+    const text = JSON.stringify(payload);
+    const fileName = `mitschnitt-${sanitizeFileName(recording.name)}.json`;
+    const file = new File([text], fileName, { type: 'application/json' });
+
+    let shared = false;
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Mitschnitt' }); shared = true; }
+      catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    if (!shared) downloadBlob(new Blob([text], { type: 'application/json' }), fileName);
+  } catch (err) {
+    bannerError('Der Mitschnitt konnte nicht exportiert werden.', 'REC-EXPORT', err);
+  }
+}
+
+/**
+ * Importiert eine mit exportRecording() erzeugte Datei. Findet sich der Song
+ * (per Titel) nicht in der Bibliothek, bleibt der Mitschnitt ohne songId
+ * gespeichert und verbindet sich automatisch, sobald der Song importiert wird
+ * (siehe reconnectPendingRecordings) — genau wie bei Loops und Notizen.
+ */
+async function importRecordingPayload(data) {
+  const songs = await DB.metaByType('song').catch(() => []);
+  const song = findSongByTitle(songs, data.songTitle || '');
+  const mimeType = data.mimeType || 'audio/webm';
+  const blob = base64ToBlob(data.audioBase64 || '', mimeType);
+  if (!blob.size) throw new Error('Die Datei enthält keine Audiodaten.');
+
+  const fileKey = newFileKey();
+  const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+  await DB.filePut(await fileRecord(fileKey, blob, `${data.name || 'Mitschnitt'}.${ext}`));
+
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const recording = {
+    key: `recording:${id}`, type: 'recording', id,
+    songId: song ? song.id : null,
+    songTitle: data.songTitle || '',
+    name: data.name || 'Mitschnitt',
+    voice: data.voice || null,
+    fileKey, mimeType, duration: data.duration || 0,
+    size: blob.size,
+    createdAt: data.createdAt || new Date().toISOString(),
+  };
+  await DB.metaPut(recording);
+
+  if (playerSong && song && playerSong.id === song.id) await loadSongRecordings();
+  banner(song
+    ? `Mitschnitt „${recording.name}" zu „${song.title}" hinzugefügt.`
+    : `Mitschnitt „${recording.name}" importiert — wird aktiv, sobald „${data.songTitle}" importiert wird.`,
+    { kind: 'ok' });
+}
+
+/** Mitschnitte ohne songId nachträglich verbinden, nachdem ein Song importiert wurde. */
+async function reconnectPendingRecordings() {
+  const recordings = await DB.metaByType('recording').catch(() => []);
+  const pending = recordings.filter((r) => !r.songId && r.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  const reconnected = [];
+  for (const recording of pending) {
+    const song = findSongByTitle(songs, recording.songTitle);
+    if (!song) continue;
+    recording.songId = song.id;
+    reconnected.push(recording);
+  }
+  await DB.metaPutMany(reconnected);
+  return reconnected.length;
 }
 
 function renderRecordingList() {
   const host = $('#recording-list');
   host.textContent = '';
-  setTabHasContent('record', songRecordings.length > 0);
+  updateLoopsTabDot();
   if (!songRecordings.length) return;
 
   for (const recording of songRecordings) {
-    const playing = recPlayingId === recording.id;
+    const playing = audioPreview?.tag?.savedId === recording.id && Audio.playing;
     const icon = el('span', { 'aria-hidden': 'true' });
     icon.innerHTML = playing
       ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
       : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 
+    const meta = [fmtTime(recording.duration)];
+    if (recording.voice) meta.push(VOICE_LABEL[recording.voice] || recording.voice);
+
     const go = el('button', {
       class: 'go', type: 'button',
-      'aria-label': `„${recording.name}" ${playing ? 'pausieren' : 'abspielen'}`,
+      'aria-label': `„${recording.name}" ${playing ? 'pausieren' : 'über die Wiedergabe oben abspielen'}`,
     },
       icon,
       el('span', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:2px' },
         el('strong', { text: recording.name }),
-        el('span', { class: 'rec-meta', text: fmtTime(recording.duration) })));
-    go.addEventListener('click', () => toggleRecordingPlayback(recording));
+        el('span', { class: 'rec-meta', text: meta.join(' · ') })));
+    go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
+
+    const exportBtn = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" exportieren`,
+    });
+    exportBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>';
+    exportBtn.addEventListener('click', () => exportRecording(recording));
 
     const rename = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" umbenennen`,
@@ -8315,7 +8656,7 @@ function renderRecordingList() {
         okLabel: 'Löschen', danger: true,
       });
       if (!ok) return;
-      if (recPlayingId === recording.id) { recPlayer.pause(); recPlayingId = null; }
+      if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
       await DB.fileDelete(recording.fileKey);
       await DB.metaDelete(recording.key);
       await loadSongRecordings();
@@ -8324,7 +8665,7 @@ function renderRecordingList() {
     host.append(el('div', {
       class: 'loop-item recording-item',
       'data-active': playing ? 'true' : 'false',
-    }, go, rename, del));
+    }, go, exportBtn, rename, del));
   }
 }
 
@@ -8647,7 +8988,7 @@ function iconPdf() {
  * kleine Punkt am Reiter zeigt schon vorm Antippen, ob dort etwas hinterlegt
  * ist (siehe renderLoopList/renderPlayerExtras/renderNoteBlock).
  */
-const PLAYER_TABS = ['loops', 'record', 'lyrics', 'notes', 'sheets'];
+const PLAYER_TABS = ['loops', 'lyrics', 'notes', 'sheets'];
 
 function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
@@ -10038,6 +10379,31 @@ $('#backup-input').addEventListener('change', async (e) => {
     return;
   }
   await restoreBackup(data);
+});
+
+$('#btn-mitschnitt-import').addEventListener('click', () => $('#mitschnitt-input').click());
+
+$('#mitschnitt-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  let data;
+  try {
+    data = JSON.parse(await readTextBlob(file));
+  } catch (err) {
+    bannerError('Diese Datei ist kein gültiger Mitschnitt.', 'REC-IMPORT', err);
+    return;
+  }
+  if (!data || data.format !== MITSCHNITT_EXPORT_FORMAT) {
+    banner('Diese Datei stammt nicht aus dieser App.', { kind: 'error' });
+    return;
+  }
+  try {
+    await importRecordingPayload(data);
+  } catch (err) {
+    bannerError('Der Mitschnitt konnte nicht importiert werden.', 'REC-IMPORT', err);
+  }
 });
 
 /** Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen. */
