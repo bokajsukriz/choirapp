@@ -8549,14 +8549,21 @@ $('#btn-rec-discard').addEventListener('click', async () => {
   renderPendingTake();
 });
 
-/** Voice-Auswahl beim Speichern. `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". */
-async function pickRecordingVoice() {
+/**
+ * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
+ * `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". `current`
+ * (nur beim Bearbeiten gesetzt) zeigt die bisherige Zuordnung im Dialogtext.
+ */
+async function pickRecordingVoice(current) {
+  const currentLabel = current === undefined ? null
+    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
   const value = await choiceDialog({
     title: 'Stimme zuordnen?',
-    text: 'Damit lässt sich der REC später leichter wiederfinden — optional.',
+    text: currentLabel
+      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
+      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
     options: [
       { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
-      { value: 'FULL', label: 'Gesamt (alle Stimmen)' },
       { value: 'SOP', label: VOICE_LABEL.SOP },
       { value: 'ALT', label: VOICE_LABEL.ALT },
       { value: 'TEN', label: VOICE_LABEL.TEN },
@@ -8920,15 +8927,15 @@ const REC_NAME_MARKER = 'REC';
 
 /**
  * Dateiname aus allen wichtigen Angaben — auch ohne die App (oder nach dem
- * Umbenennen, das die ID3-Tags nicht mehr hätte) lesbar: Song, Stimme, Name
- * und Datum stehen direkt im Namen, „·" als Trenner, weil das in Songtiteln
- * praktisch nie vorkommt.
+ * Umbenennen, das die ID3-Tags nicht mehr hätte) lesbar: Song, Stimme und
+ * Name stehen direkt im Namen, mit „_" als Trenner (überall problemlos
+ * nutzbar, z.B. beim Versenden oder in der Kommandozeile). Kein Datum —
+ * das steht ohnehin im ID3-Tag und macht den Namen nur unnötig lang.
  */
-function recFileBaseName({ songTitle, voice, name, createdAt }) {
+function recFileBaseName({ songTitle, voice, name }) {
   const voiceLabel = voice ? (VOICE_LABEL[voice] || voice) : 'Ohne Stimme';
-  const date = (createdAt || new Date().toISOString()).slice(0, 10);
-  const parts = [songTitle || 'Unbekannter Song', voiceLabel, name || 'REC', date].map(sanitizeFileName);
-  return [REC_NAME_MARKER, ...parts].join(' · ');
+  const parts = [songTitle || 'Unbekannter Song', voiceLabel, name || 'REC'].map(sanitizeFileName);
+  return [REC_NAME_MARKER, ...parts].join('_');
 }
 
 /** Über ein unsichtbares <audio> die Dauer einer Datei ermitteln. */
@@ -8946,10 +8953,10 @@ function probeAudioDuration(blob) {
 
 /**
  * Exportiert einen REC als eigenständige MP3-Datei — abspielbar und
- * verschickbar überall, ganz ohne diese App. Songtitel, Stimme, Name und
- * Datum stehen sowohl im Dateinamen (für Menschen) als auch als ID3-Tags
- * (überlebt ein Umbenennen) — importRecordingFile liest zuerst die Tags,
- * fällt sonst auf den Dateinamen zurück.
+ * verschickbar überall, ganz ohne diese App. Songtitel, Stimme und Name
+ * stehen im Dateinamen (für Menschen); Songtitel, Stimme, Name und Datum
+ * zusätzlich als ID3-Tags (überlebt ein Umbenennen) — importRecordingFile
+ * liest zuerst die Tags, fällt sonst auf den Dateinamen zurück.
  */
 async function exportRecording(recording) {
   const closeBanner = banner('REC wird als MP3 exportiert …', { timeout: 0 });
@@ -8969,7 +8976,7 @@ async function exportRecording(recording) {
     });
 
     const fileName = `${recFileBaseName({
-      songTitle, voice: recording.voice, name: recording.name, createdAt: recording.createdAt,
+      songTitle, voice: recording.voice, name: recording.name,
     })}.mp3`;
     const file = new File([tagged], fileName, { type: 'audio/mpeg' });
 
@@ -9007,12 +9014,15 @@ async function importRecordingFile(file) {
     // Kein (oder ein fremder) ID3-Tag — vermutlich umbenannt oder von einer
     // älteren Version. Letzter Versuch: den Dateinamen selbst auswerten.
     const base = file.name.replace(/\.mp3$/i, '');
-    const parts = base.split(' · ');
-    if (parts[0] === REC_NAME_MARKER && parts.length === 5) {
+    // Ältere Exporte trennten mit „ · " und hängten ein Datum an — beides
+    // wird hier noch verstanden, falls so eine Datei importiert wird.
+    const legacyParts = base.split(' · ');
+    const parts = legacyParts.length >= 4 ? legacyParts : base.split('_');
+    if (parts[0] === REC_NAME_MARKER && (parts.length === 4 || parts.length === 5)) {
       songTitle = songTitle || parts[1];
       voice = voice || (parts[2] === 'Ohne Stimme' ? '' : (voiceCodeFromLabel(parts[2]) || ''));
       name = name || parts[3];
-      dateIso = dateIso || parts[4];
+      dateIso = dateIso || parts[4] || '';
     } else if (!songTitle) {
       throw new Error('Diese Datei wurde nicht als REC-Export erkannt.');
     }
@@ -9094,13 +9104,15 @@ function renderRecordingList() {
     exportBtn.addEventListener('click', () => exportRecording(recording));
 
     const rename = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" umbenennen`,
+      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
     rename.addEventListener('click', async () => {
       const name = await promptDialog({ title: 'REC umbenennen', value: recording.name });
       if (name === null) return;
+      const voice = await pickRecordingVoice(recording.voice);
       recording.name = name.trim() || recording.name;
+      if (voice !== undefined) recording.voice = voice;
       await DB.metaPut(recording);
       renderRecordingList();
     });
