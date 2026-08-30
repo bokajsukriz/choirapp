@@ -511,6 +511,9 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .marks { display: flex; gap: 6px; color: var(--muted); flex: 0 0 auto; }
 .marks svg, .marks .mark-slot { width: 18px; height: 18px; display: block; }
 
+.placeholder-badge { display: block; flex: 0 0 auto; color: var(--muted); }
+.placeholder-badge svg { width: 20px; height: 20px; display: block; }
+
 /* ---------- Auswahlmaske vor dem Import --------------------------------- */
 
 .sheet {
@@ -1005,6 +1008,12 @@ input[type="checkbox"] {
 
 .tbtn--play svg { width: 28px; height: 28px; }
 .tbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tbtn[disabled], .shuffle-btn[disabled] { opacity: .4; pointer-events: none; }
+
+/* Platzhalter-Song ohne Aufnahme: Transportleiste bleibt sichtbar (statt
+   ganz zu verschwinden), aber ausgegraut — siehe setPlayerFootUnavailable(). */
+.player-foot--unavailable .tbtn--play { background: var(--surface-2); color: var(--muted); border-color: var(--pill-line); }
+.player-foot--unavailable #seek { opacity: .4; pointer-events: none; }
 
 
 .section-title {
@@ -2167,6 +2176,7 @@ input[type="checkbox"] {
       <button class="tbtn tbtn--play" id="btn-play" type="button" aria-label="Abspielen">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-play"><path d="M8 5.5v13l11-6.5z"/></svg>
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-pause" style="display:none"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" id="icon-unavailable" style="display:none"><circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/></svg>
       </button>
       <button class="tbtn" id="btn-repeat" type="button" aria-pressed="false" aria-label="Am Ende: Nächstes Lied">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3277,6 +3287,7 @@ const DEFAULT_SETTINGS = {
   language: 'de',             // 'de' | 'en' | 'pl' — siehe STRINGS/t()/applyTranslations()
   firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
+  placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3443,6 +3454,7 @@ const STRINGS = {
     'onb.slide5.note': 'Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem Import kein Internet mehr.',
 
     'common.cancel': 'Abbrechen',
+    'common.close': 'Schließen',
 
     'import.backAria': 'Zurück zu den Einstellungen',
     'import.intro': 'Die Aufnahmen liegen im geteilten Dropbox-Ordner. Öffne Dropbox dafür im <strong>Browser</strong> (nicht in der Dropbox-App — die kann Ordner nicht als ZIP herunterladen), lade den Ordner einmal als ZIP-Datei herunter und wählst sie hier aus. Danach ist alles offline auf dem Handy — ohne Dropbox, ohne Internet.',
@@ -3606,6 +3618,7 @@ const STRINGS = {
     'onb.slide5.note': 'Everything stays on this device. The app sends nothing and needs no internet after the import.',
 
     'common.cancel': 'Cancel',
+    'common.close': 'Close',
 
     'import.backAria': 'Back to settings',
     'import.intro': 'Recordings live in the shared Dropbox folder. Open Dropbox in the <strong>browser</strong> for this (not the Dropbox app — it can\'t download folders as a ZIP), download the folder once as a ZIP file and pick it here. After that everything is offline on your phone — no Dropbox, no internet needed.',
@@ -3769,6 +3782,7 @@ const STRINGS = {
     'onb.slide5.note': 'Wszystko pozostaje na tym urządzeniu. Aplikacja niczego nie wysyła i po imporcie nie potrzebuje już internetu.',
 
     'common.cancel': 'Anuluj',
+    'common.close': 'Zamknij',
 
     'import.backAria': 'Wróć do ustawień',
     'import.intro': 'Nagrania znajdują się we współdzielonym folderze Dropbox. Otwórz Dropbox w <strong>przeglądarce</strong> (nie w aplikacji Dropbox — ta nie potrafi pobrać folderu jako ZIP), pobierz folder raz jako plik ZIP i wybierz go tutaj. Potem wszystko działa offline na telefonie — bez Dropboxa, bez internetu.',
@@ -4654,6 +4668,23 @@ function iconEmptyNote() {
 }
 
 /**
+ * Verbotssymbol für Platzhalter-Songs ohne Aufnahme — dieselbe Grafik wie im
+ * Player-Abspielknopf (siehe #icon-unavailable), damit Songliste und Player
+ * denselben Zustand gleich zeigen.
+ */
+function iconUnavailable() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/>';
+  return svg;
+}
+
+/**
  * Baut den Stimm-Pill-Stapel für einen Song — geteilt zwischen Songliste und
  * Player-Kopf, damit beide gleich aussehen und sich gleich verhalten.
  *
@@ -4940,7 +4971,7 @@ async function renderSongs() {
           el('strong', { text: songLabel(song) || 'Ohne Titel' }),
           song.tracks.length
             ? renderVoicePills(song.tracks)
-            : el('span', { class: 'small muted', text: t('songs.placeholderBadge') }),
+            : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
         ),
         marks
       )
@@ -7436,6 +7467,31 @@ function setPlayIcon(playing) {
   $('#btn-play').setAttribute('aria-label', playing ? 'Pause' : 'Abspielen');
 }
 
+/**
+ * Platzhalter-Song ohne Aufnahme: die Transportleiste bleibt sichtbar statt
+ * ganz zu verschwinden, aber alle Bedienelemente sind gesperrt und der
+ * Abspielknopf zeigt dasselbe Verbotssymbol wie die Songliste (siehe
+ * iconUnavailable()) statt „Play". Zum Anhören eines RECs (siehe
+ * previewRecordingBlob()) wird der Zustand kurz aufgehoben.
+ */
+function setPlayerFootUnavailable(unavailable) {
+  const foot = $('#player-foot');
+  foot.classList.toggle('player-foot--unavailable', unavailable);
+  for (const control of foot.querySelectorAll('.tbtn, .shuffle-btn, select')) {
+    control.disabled = unavailable;
+  }
+  $('#seek').tabIndex = unavailable ? -1 : 0;
+  $('#seek').setAttribute('aria-disabled', unavailable ? 'true' : 'false');
+  $('#icon-unavailable').style.display = unavailable ? '' : 'none';
+  if (unavailable) {
+    $('#icon-play').style.display = 'none';
+    $('#icon-pause').style.display = 'none';
+    $('#btn-play').setAttribute('aria-label', t('songs.placeholderBadge'));
+  } else {
+    setPlayIcon(Audio.playing);
+  }
+}
+
 /* ---------- Öffnen und Schließen ---------------------------------------- */
 
 // Schnelles Weiterschalten (Playlist oder mehrfaches Antippen von „Nächstes")
@@ -7487,6 +7543,7 @@ async function openPlayer(songId) {
   // unten feststeht, dass tatsächlich eine Aufnahme geladen werden kann
   // (siehe Platzhalter-Songs ohne Stimmen weiter unten).
   $('#player-foot').hidden = true;
+  setPlayerFootUnavailable(false);
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
   const pills = renderVoicePills(song.tracks, { clickable: true });
@@ -7543,9 +7600,12 @@ async function openPlayer(songId) {
   if (!first) {
     if (!song.tracks.length) {
       // Platzhalter-Song ohne Aufnahme (siehe createPlaceholderSong) — kein
-      // Fehler, sondern der erwartete Zustand vor dem nächsten Import.
-      $('#player-hint').hidden = false;
-      $('#player-hint').textContent = t('player.placeholderHint');
+      // Fehler, sondern der erwartete Zustand vor dem nächsten Import. Die
+      // Transportleiste bleibt trotzdem sichtbar (nur gesperrt/ausgegraut),
+      // statt ganz zu verschwinden — siehe setPlayerFootUnavailable().
+      if (!settings.placeholderHintDismissed) showPlaceholderHint();
+      $('#player-foot').hidden = false;
+      setPlayerFootUnavailable(true);
     } else {
       banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
     }
@@ -7566,6 +7626,32 @@ async function openPlayer(songId) {
   showReplacedNotice(song);
   showLengthNotice(song);
   updateMediaSession();
+}
+
+/**
+ * Erklärung oben im Player für einen Platzhalter-Song ohne Aufnahme. Einmal
+ * weggeklickt, merkt sich das dauerhaft in den Einstellungen (siehe
+ * settings.placeholderHintDismissed) und erscheint nicht wieder.
+ */
+function showPlaceholderHint() {
+  const box = $('#player-hint');
+  box.textContent = '';
+
+  const closeBtn = el('button', {
+    class: 'icon-btn', type: 'button', 'aria-label': t('common.close'),
+    style: 'flex: 0 0 auto; color: inherit',
+  });
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  closeBtn.addEventListener('click', async () => {
+    box.hidden = true;
+    await saveSettings({ placeholderHintDismissed: true });
+  });
+
+  box.append(
+    el('div', { style: 'display:flex; align-items:flex-start; gap:10px' },
+      el('p', { class: 'grow', style: 'margin:0', text: t('player.placeholderHint') }),
+      closeBtn));
+  box.hidden = false;
 }
 
 /**
@@ -7788,6 +7874,7 @@ function closePlayer() {
   $('#player-empty').hidden = false;
   $('#player-loaded').hidden = true;
   $('#player-foot').hidden = true;
+  setPlayerFootUnavailable(false);
   updateWakeLock();          // „Bildschirm anlassen" gilt nur im Player
   playerVoice = null;
   songLoops = [];
@@ -8249,7 +8336,7 @@ let recStartedAt = 0;
 let recTimerHandle = null;
 let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
-let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden }
+let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
 
 /** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
@@ -8650,6 +8737,7 @@ async function previewRecordingBlob(blob, tag) {
   const returnPos = prior ? prior.returnPos : Audio.position;
   const returnPlaying = prior ? prior.returnPlaying : Audio.playing;
   const returnFootHidden = prior ? prior.returnFootHidden : $('#player-foot').hidden;
+  const returnFootUnavailable = prior ? prior.returnFootUnavailable : $('#player-foot').classList.contains('player-foot--unavailable');
 
   if (Audio.playing) audioPause();
 
@@ -8683,11 +8771,12 @@ async function previewRecordingBlob(blob, tag) {
   $('#seek-mark-a').hidden = true;
   $('#seek-mark-b').hidden = true;
   $('#seek-range').hidden = true;
-  // Ein Platzhalter-Song ohne eigene Aufnahme blendet die Transportleiste
-  // sonst aus — zum Anhören eines RECs braucht es sie trotzdem.
+  // Ein Platzhalter-Song ohne eigene Aufnahme sperrt die Transportleiste
+  // sonst — zum Anhören eines RECs braucht es sie trotzdem bedienbar.
   $('#player-foot').hidden = false;
+  setPlayerFootUnavailable(false);
 
-  audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden };
+  audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable };
   updateSeekUI(0);
   await audioPlay();
   setPlayIcon(true);
@@ -8696,7 +8785,7 @@ async function previewRecordingBlob(blob, tag) {
 /** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
 async function endRecordingPreview() {
   if (!audioPreview) return;
-  const { returnTrack, returnPos, returnPlaying, returnFootHidden } = audioPreview;
+  const { returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable } = audioPreview;
   audioPreview = null;
   audioPause();
 
@@ -8713,6 +8802,7 @@ async function endRecordingPreview() {
     audioSeek(0);
   }
   $('#player-foot').hidden = returnFootHidden;
+  setPlayerFootUnavailable(returnFootUnavailable);
   applyLoop();
   updateLoopMarks();
   updateSeekUI(Audio.position);
