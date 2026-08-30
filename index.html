@@ -7477,7 +7477,11 @@ function setPlayIcon(playing) {
 function setPlayerFootUnavailable(unavailable) {
   const foot = $('#player-foot');
   foot.classList.toggle('player-foot--unavailable', unavailable);
+  // „Zurück" (zum vorherigen Titel, sobald man am Anfang steht) und
+  // „Nächstes Lied" brauchen keine geladene Aufnahme — sie schalten nur durch
+  // die Playlist/Bibliothek weiter — und bleiben deshalb immer bedienbar.
   for (const control of foot.querySelectorAll('.tbtn, .shuffle-btn, select')) {
+    if (control.id === 'btn-restart' || control.id === 'btn-next') continue;
     control.disabled = unavailable;
   }
   $('#seek').tabIndex = unavailable ? -1 : 0;
