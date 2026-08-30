@@ -8818,7 +8818,10 @@ async function endRecordingPreview() {
   applyLoop();
   updateLoopMarks();
   updateSeekUI(Audio.position);
-  setPlayIcon(Audio.playing);
+  // setPlayerFootUnavailable() hat das Play-Icon schon gesetzt — bei
+  // returnFootUnavailable=true stünde sonst „Verbotssymbol" und „Play"
+  // gleichzeitig da, weil setPlayIcon() das Verbotssymbol nicht kennt.
+  if (!returnFootUnavailable) setPlayIcon(Audio.playing);
 }
 
 async function toggleSavedRecordingPreview(recording) {
