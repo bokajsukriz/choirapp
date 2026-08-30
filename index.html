@@ -1699,6 +1699,7 @@ input[type="checkbox"] {
   align-items: center;
   justify-content: center;
   padding: calc(20px + var(--safe-top)) 18px calc(20px + var(--safe-bottom));
+  overflow-y: auto;
 }
 
 .dialog {
@@ -1708,6 +1709,9 @@ input[type="checkbox"] {
   padding: 20px;
   width: 100%;
   max-width: 420px;
+  max-height: 100%;
+  overflow-y: auto;
+  margin: auto;
 }
 
 .dialog h2 { font-size: 1.1rem; margin-bottom: 8px; text-transform: none; letter-spacing: 0; color: var(--text); }
@@ -2006,8 +2010,8 @@ input[type="checkbox"] {
 
     <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops">
       <div class="loop-controls">
-        <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">A</button>
-        <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">B</button>
+        <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">Start</button>
+        <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">Ende</button>
         <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
           <span class="loop-switch-knob"></span>
         </button>
@@ -3246,6 +3250,8 @@ const DEFAULT_SETTINGS = {
   defaultPlayerTab: 'loops',  // Reiter, der beim Öffnen eines Songs zuerst erscheint
   accentColor: '#F868B0',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
   language: 'de',             // 'de' | 'en' | 'pl' — siehe STRINGS/t()/applyTranslations()
+  firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
+  compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -9892,6 +9898,8 @@ async function showPrintSelectionDialog(title, items) {
       });
     }
 
+    const pick = (action) => done({ action, items: [...selected].sort((a, b) => a - b).map((i) => items[i]) });
+
     const box = el('div', { class: 'dialog', style: 'max-height:82vh; display:flex; flex-direction:column' },
       el('h2', { text: title }),
       playlistRow,
@@ -9900,10 +9908,12 @@ async function showPrintSelectionDialog(title, items) {
         el('button', { class: 'btn', type: 'button', text: 'Keine', onclick: () => setAll(false) }),
         countLabel),
       el('div', { class: 'stack', style: 'overflow-y:auto; flex:1; gap:0' }, ...rows),
-      el('div', { class: 'dialog-actions' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        el('button', { class: 'btn btn--primary', type: 'button', text: 'Drucken',
-                       onclick: () => done([...selected].sort((a, b) => a - b).map((i) => items[i])) })));
+      el('div', { class: 'stack', style: 'gap:10px; margin-top:12px' },
+        el('div', { class: 'dialog-actions' },
+          el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+          el('button', { class: 'btn', type: 'button', text: 'Drucken', onclick: () => pick('print') })),
+        el('button', { class: 'btn btn--primary', type: 'button', style: 'width:100%', text: 'Als Datei exportieren',
+                       onclick: () => pick('export') })));
 
     updateCount();
     const layer = el('div', { class: 'overlay' }, box);
@@ -9925,6 +9935,35 @@ function printItems(heading, items) {
   window.print();
 }
 
+/** Baut aus den ausgewählten Einträgen einen menschenlesbaren Klartext. */
+function printableToText(heading, items) {
+  const lines = [heading, `Exportiert am ${new Date().toLocaleDateString('de-DE')}`, ''];
+  for (const item of items) {
+    lines.push('='.repeat(40), item.songTitle, '='.repeat(40));
+    lines.push(String(item.text).replace(/\s+$/, ''), '');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Speichert/verschickt die Auswahl als echte .txt-Datei — zum Weitergeben an
+ * einen anderen Computer und dortigen Weiterbearbeiten. Reiner Text statt
+ * RTF/OTF, weil das auf jedem Gerät ohne Zusatz-App lesbar und editierbar ist.
+ */
+async function exportPrintableFile(heading, items) {
+  const text = printableToText(heading, items);
+  const date = new Date().toISOString().slice(0, 10);
+  const safeHeading = heading.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'Export';
+  const fileName = `${safeHeading}-${date}.txt`;
+  const file = new File([text], fileName, { type: 'text/plain;charset=utf-8' });
+
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: heading }); return; }
+    catch (err) { if (err?.name === 'AbortError') return; }
+  }
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+}
+
 async function printFlow(kind, label, heading, readErrorCode) {
   let items;
   try {
@@ -9937,9 +9976,10 @@ async function printFlow(kind, label, heading, readErrorCode) {
     banner(`Es sind noch keine ${label.toLowerCase()} gespeichert.`);
     return;
   }
-  const chosen = await showPrintSelectionDialog(`${label} drucken`, items);
-  if (!chosen || !chosen.length) return;
-  printItems(heading, chosen);
+  const result = await showPrintSelectionDialog(`${label} drucken`, items);
+  if (!result || !result.items.length) return;
+  if (result.action === 'print') printItems(heading, result.items);
+  else await exportPrintableFile(heading, result.items);
 }
 
 $('#btn-notes-export').addEventListener('click', () => printFlow('note', 'Notizen', 'Notizen', 'NOTES-READ'));
@@ -10840,81 +10880,123 @@ async function backupSizeEstimate() {
   };
 }
 
-async function buildBackup(opts) {
+/**
+ * Ein JSON-Objekt aus `{schlüssel: wert}`-Paaren als Text — wie
+ * `JSON.stringify`, aber ohne das riesige `audioBase64`-Feld: das wird als
+ * eigenes, unangetastetes Blob-Teilstück angehängt (Base64 besteht nur aus
+ * A-Z/a-z/0-9/+/=, braucht also kein Escaping). So entsteht nie ein einziger
+ * JS-String über alle Audiodaten hinweg — bei einer 800-MB-Sicherung sprengte
+ * genau das die maximale Stringlänge der Engine (RangeError: Invalid string
+ * length). Der Ziel-Blob wird stattdessen aus vielen kleinen Teilen gebaut.
+ */
+function metaWithAudioParts(meta, base64) {
+  const entries = Object.entries(meta).map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',');
+  return [`{${entries},"audioBase64":"`, base64, '"}'];
+}
+
+/**
+ * Baut die Sicherung als Liste von Blob-Teilstücken (statt eines einzigen
+ * JSON-Strings) plus Zählern für die Erfolgsmeldung. `new Blob(parts)`/
+ * `new File(parts, …)` fügt die Teile aneinander, ohne je einen JS-String
+ * über die gesamte Dateigröße anzulegen.
+ */
+async function buildBackupParts(opts) {
   const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
     DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
+  const counts = {};
+  const parts = [];
 
-  const data = {
-    format: BACKUP_FORMAT,
-    version: 2,
-    exportedAt: new Date().toISOString(),
-    songs: songs
-      .sort((a, b) => collator.compare(a.title, b.title))
-      .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })),
-  };
+  parts.push(`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":2,"exportedAt":${JSON.stringify(new Date().toISOString())}`);
+  parts.push(`,"songs":${JSON.stringify(songs
+    .sort((a, b) => collator.compare(a.title, b.title))
+    .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })))}`);
 
   if (opts.settings) {
-    data.settings = { myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize };
+    parts.push(`,"settings":${JSON.stringify({ myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize })}`);
   }
   if (opts.loops) {
-    data.loops = loops.map((l) => ({
+    const arr = loops.map((l) => ({
       songTitle: byId.get(l.songId)?.title || l.songTitle || '',
       name: l.name, start: l.start, end: l.end,
     })).filter((l) => l.songTitle);
+    parts.push(`,"loops":${JSON.stringify(arr)}`);
+    counts.loops = arr.length;
   }
   if (opts.playlists) {
-    data.playlists = playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] }));
+    const arr = playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] }));
+    parts.push(`,"playlists":${JSON.stringify(arr)}`);
+    counts.playlists = arr.length;
   }
   if (opts.notes) {
-    data.notes = notes.map((n) => ({
+    const arr = notes.map((n) => ({
       songTitle: byId.get(n.songId)?.title || n.songTitle || '',
       text: n.text || '',
       updatedAt: n.updatedAt || null,
     })).filter((n) => n.songTitle && n.text.trim());
+    parts.push(`,"notes":${JSON.stringify(arr)}`);
+    counts.notes = arr.length;
   }
   if (opts.lyricsNotes) {
-    data.lyricsNotes = lyricsNotes.map((n) => ({
+    const arr = lyricsNotes.map((n) => ({
       songTitle: byId.get(n.songId)?.title || n.songTitle || '',
       text: n.text || '',
       updatedAt: n.updatedAt || null,
     })).filter((n) => n.songTitle && n.text.trim());
+    parts.push(`,"lyricsNotes":${JSON.stringify(arr)}`);
+    counts.lyricsNotes = arr.length;
   }
 
   if (opts.recordings) {
-    const withAudio = await Promise.all(recordings.map(async (r) => {
+    parts.push(',"recordings":[');
+    let first = true, n = 0;
+    for (const r of recordings) {
       const rec = await DB.fileGet(r.fileKey);
-      if (!rec) return null;
+      if (!rec) continue;
       const blob = recordBlob(rec, r.mimeType);
-      return {
+      const base64 = await blobToBase64(blob);
+      const meta = {
         songTitle: byId.get(r.songId)?.title || r.songTitle || '',
         name: r.name, voice: r.voice || null, duration: r.duration,
         mimeType: r.mimeType, createdAt: r.createdAt,
-        audioBase64: await blobToBase64(blob),
       };
-    }));
-    data.recordings = withAudio.filter(Boolean);
+      if (!first) parts.push(',');
+      first = false;
+      parts.push(...metaWithAudioParts(meta, base64));
+      n++;
+    }
+    parts.push(']');
+    counts.recordings = n;
   }
 
   if (opts.songAudio) {
-    const withAudio = await Promise.all(songs.map(async (s) => {
-      const tracks = await Promise.all(s.tracks.map(async (t) => {
+    parts.push(',"songAudio":[');
+    let firstSong = true, trackCount = 0;
+    for (const s of songs) {
+      const trackParts = [];
+      for (const t of s.tracks) {
         const rec = await DB.fileGet(t.fileKey);
-        if (!rec) return null;
+        if (!rec) continue;
         const blob = recordBlob(rec, mimeForTrack(t));
-        return {
-          voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t),
-          audioBase64: await blobToBase64(blob),
-        };
-      }));
-      return { title: s.title, tracks: tracks.filter(Boolean) };
-    }));
-    data.songAudio = withAudio.filter((s) => s.tracks.length);
+        const base64 = await blobToBase64(blob);
+        const meta = { voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t) };
+        if (trackParts.length) trackParts.push(',');
+        trackParts.push(...metaWithAudioParts(meta, base64));
+        trackCount++;
+      }
+      if (!trackParts.length) continue;
+      if (!firstSong) parts.push(',');
+      firstSong = false;
+      parts.push(`{"title":${JSON.stringify(s.title)},"tracks":[`, ...trackParts, ']}');
+    }
+    parts.push(']');
+    counts.songAudioTracks = trackCount;
   }
 
-  return data;
+  parts.push('}');
+  return { parts, counts };
 }
 
 /**
@@ -10945,13 +11027,22 @@ async function showBackupOptionsDialog() {
     const row = (key, title, hint, bytes) => {
       const cb = el('input', { type: 'checkbox' });
       cb.checked = opts[key];
-      cb.addEventListener('change', () => { opts[key] = cb.checked; updateTotal(); });
+      cb.addEventListener('change', () => { opts[key] = cb.checked; updateTotal(); updatePresetHighlight(); });
+      const label = el('span', { class: 'grow' }, el('div', { text: title }));
+      if (hint) label.append(el('div', { class: 'small muted', text: hint }));
       return el('label', { class: 'row', style: 'align-items:flex-start; gap:10px; cursor:pointer' },
-        cb,
-        el('span', { class: 'grow' },
-          el('div', { text: title }),
-          el('div', { class: 'small muted', text: hint })),
+        cb, label,
         el('span', { class: 'small muted', style: 'white-space:nowrap', text: bytes != null ? fmtBytes(bytes) : '' }));
+    };
+
+    let presetBtnUser, presetBtnFull;
+    const isUserDataPreset = () => !opts.songAudio && opts.loops && opts.notes && opts.lyricsNotes
+      && opts.playlists && opts.settings && opts.recordings === (est.recCount > 0);
+    const isFullPreset = () => opts.songAudio && opts.loops && opts.notes && opts.lyricsNotes
+      && opts.playlists && opts.settings && opts.recordings === (est.recCount > 0);
+    const updatePresetHighlight = () => {
+      presetBtnUser.setAttribute('aria-pressed', isUserDataPreset() ? 'true' : 'false');
+      presetBtnFull.setAttribute('aria-pressed', isFullPreset() ? 'true' : 'false');
     };
 
     const applyPreset = (full) => {
@@ -10960,15 +11051,16 @@ async function showBackupOptionsDialog() {
       opts.loops = opts.notes = opts.lyricsNotes = opts.playlists = opts.settings = true;
       for (const [key, cb] of Object.entries(checkboxes)) cb.checked = opts[key];
       updateTotal();
+      updatePresetHighlight();
     };
 
     const checkboxRows = [
       ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
-      ['recordings', 'Eigene RECs', `${plural(est.recCount, 'Aufnahme', 'Aufnahmen')} mit Ton — ohne Audio nutzlos, deshalb immer komplett dabei.`, est.recAudioBytes],
-      ['loops', 'Loops', 'Geübte Abschnitte je Song.', null],
-      ['notes', 'Notizen', 'Eigene Anmerkungen je Song.', null],
-      ['lyricsNotes', 'Eigene Liedtexte', 'Selbst eingetragene Liedtexte.', null],
-      ['playlists', 'Setlisten', 'Gespeicherte Programme.', null],
+      ['recordings', `Eigene RECs (${plural(est.recCount, 'Aufnahme', 'Aufnahmen')})`, null, est.recAudioBytes],
+      ['loops', 'Loops', null, null],
+      ['notes', 'Notizen', null, null],
+      ['lyricsNotes', 'Eigene Liedtexte', null, null],
+      ['playlists', 'Setlisten', null, null],
       ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße.', null],
     ];
     const checkboxes = {};
@@ -10982,8 +11074,8 @@ async function showBackupOptionsDialog() {
       el('h2', { text: 'Sicherung erstellen' }),
       el('p', { text: 'Text-Daten sind immer klein und stehen deshalb schon an. Audio nur, wenn gewünscht — beides lässt sich einzeln abwählen.' }),
       el('div', { class: 'preset-row', style: 'grid-template-columns:repeat(2,1fr); margin-bottom:10px' },
-        el('button', { class: 'preset', type: 'button', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
-        el('button', { class: 'preset', type: 'button', text: 'Alles sichern', onclick: () => applyPreset(true) })),
+        presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
+        presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Alles sichern', onclick: () => applyPreset(true) })),
       el('div', { class: 'stack', style: 'gap:2px' }, ...rowNodes),
       el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
         el('span', { text: 'Geschätzte Dateigröße' }), totalLabel),
@@ -10992,6 +11084,7 @@ async function showBackupOptionsDialog() {
         el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts }) })));
 
     updateTotal();
+    updatePresetHighlight();
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
@@ -11007,11 +11100,10 @@ $('#btn-backup-export').addEventListener('click', async () => {
     ? banner('Sicherung wird erstellt … bei viel Audio kann das etwas dauern.', { timeout: 0 })
     : null;
   try {
-    const data = await buildBackup(opts);
-    const text = JSON.stringify(data);
+    const { parts: blobParts, counts } = await buildBackupParts(opts);
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `chor-app-backup-${date}.json`;
-    const file = new File([text], fileName, { type: 'application/json' });
+    const file = new File(blobParts, fileName, { type: 'application/json' });
     closeBanner?.();
 
     let shared = false;
@@ -11019,17 +11111,17 @@ $('#btn-backup-export').addEventListener('click', async () => {
       try { await navigator.share({ files: [file], title: 'Chor-Sicherung' }); shared = true; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
-    if (!shared) downloadBlob(new Blob([text], { type: 'application/json' }), fileName);
+    if (!shared) downloadBlob(new Blob(blobParts, { type: 'application/json' }), fileName);
 
     await saveSettings({ lastBackupAt: new Date().toISOString() });
     renderBackupAge();
     updateBackupReminder();
     const parts = [];
-    if (data.loops) parts.push(plural(data.loops.length, 'Loop', 'Loops'));
-    if (data.notes) parts.push(plural(data.notes.length, 'Notiz', 'Notizen'));
-    if (data.playlists) parts.push(plural(data.playlists.length, 'Setliste', 'Setlisten'));
-    if (data.recordings) parts.push(plural(data.recordings.length, 'REC', 'RECs'));
-    if (data.songAudio) parts.push(`${plural(data.songAudio.reduce((n, s) => n + s.tracks.length, 0), 'Spur', 'Spuren')} Song-Audio`);
+    if (opts.loops) parts.push(plural(counts.loops, 'Loop', 'Loops'));
+    if (opts.notes) parts.push(plural(counts.notes, 'Notiz', 'Notizen'));
+    if (opts.playlists) parts.push(plural(counts.playlists, 'Setliste', 'Setlisten'));
+    if (opts.recordings) parts.push(plural(counts.recordings, 'REC', 'RECs'));
+    if (opts.songAudio) parts.push(`${plural(counts.songAudioTracks, 'Spur', 'Spuren')} Song-Audio`);
     banner(`Sicherung erstellt (${fmtBytes(file.size)}): ${parts.join(', ')}.`, { kind: 'ok' });
   } catch (err) {
     closeBanner?.();
@@ -11410,6 +11502,44 @@ async function updateBackupReminder() {
       el('button', { class: 'btn', type: 'button', text: 'Später',
         onclick: () => { reminderDismissed = true; box.hidden = true; } })));
   box.hidden = false;
+}
+
+/* ==========================================================================
+   KOMPATIBILITÄTSHINWEIS — die App ist noch in Entwicklung; das Datenformat
+   von Notizen/Liedtexten/Loops/RECs kann sich bis zur finalen Version noch
+   ändern, sodass eine Übernahme beim Update nicht garantiert ist. Der
+   Hinweis erscheint bei der ersten Nutzung sowie nach 3, 7 und 30 Tagen,
+   jede Schwelle aber nur einmal (siehe settings.compatWarningsShown).
+   ========================================================================== */
+
+const COMPAT_WARNING_DAYS = [3, 7, 30];
+
+function showCompatWarningDialog() {
+  const box = el('div', { class: 'dialog' },
+    el('h2', { text: 'Hinweis zur Datenkompatibilität' }),
+    el('p', { text: 'Diese App wird noch weiterentwickelt. Beim Wechsel auf die finale Version ist es möglich, dass selbst angelegte Daten — Notizen, eigene Liedtexte, Loops und RECs — nicht automatisch übernommen werden können.' }),
+    el('p', { style: 'margin-bottom:0', text: 'Am sichersten: regelmäßig unter Einstellungen → Daten & Sicherung eine Sicherung erstellen.' }),
+    el('div', { class: 'dialog-actions' },
+      el('button', { class: 'btn btn--primary', type: 'button', text: 'Verstanden', onclick: () => done() })));
+  const done = () => layer.remove();
+  const layer = el('div', { class: 'overlay' }, box);
+  layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
+  document.body.append(layer);
+}
+
+async function checkCompatWarning() {
+  if (!settings.firstUseAt) {
+    await saveSettings({ firstUseAt: new Date().toISOString(), compatWarningsShown: [0] });
+    showCompatWarningDialog();
+    return;
+  }
+  const daysSince = Math.floor((Date.now() - new Date(settings.firstUseAt).getTime()) / 86400000);
+  const shown = settings.compatWarningsShown || [];
+  const due = COMPAT_WARNING_DAYS.find((d) => daysSince >= d && !shown.includes(d));
+  if (due != null) {
+    await saveSettings({ compatWarningsShown: [...shown, due] });
+    showCompatWarningDialog();
+  }
 }
 
 /** Auswahl zwischen mehreren Möglichkeiten (Zusammenführen / Ersetzen). */
@@ -11827,6 +11957,7 @@ async function closeOnboarding() {
   if (!settings.setupDoneAt) await saveSettings({ setupDoneAt: new Date().toISOString() });
   renderVoicePicker();
   if (currentView === 'settings') renderSettings();
+  checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
 }
 
 /* ==========================================================================
@@ -11915,10 +12046,13 @@ async function boot() {
 
   if (!settings.setupDoneAt) {
     // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
-    // Fingertipp, was manche Browser voraussetzen.
+    // Fingertipp, was manche Browser voraussetzen. Der Kompatibilitätshinweis
+    // kommt hier erst nach dem Schließen (closeOnboarding), damit er nicht
+    // gleichzeitig mit der Ersteinrichtung um den Bildschirm konkurriert.
     openOnboarding();
   } else {
     requestPersistence(); // im Hintergrund, blockiert den Start nicht
+    checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
   }
 
   registerServiceWorker();
