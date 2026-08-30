@@ -804,6 +804,11 @@ input[type="checkbox"] {
 .icon-btn svg { width: 24px; height: 24px; }
 .icon-btn:active { background: var(--surface-2); }
 
+/* Für Leisten-Knöpfe, die nicht immer gelten (z.B. Liedtext-Bearbeiten nur
+   beim eigenen Text): unsichtbar statt weg, damit ihr Platz reserviert bleibt
+   und die übrigen Knöpfe beim Umschalten nicht springen. */
+.slot-hidden { visibility: hidden; pointer-events: none; }
+
 .player-body {
   flex: 1 1 auto;
   /* Ohne min-height:0 verweigert sich ein Flex-Kind mit overflow:auto dem
@@ -2086,19 +2091,22 @@ input[type="checkbox"] {
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
       <!-- Eine Leiste für alles: Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
-           Bleibt sichtbar, solange ein Song offen ist (siehe renderLyricsBlock). -->
+           Bleibt sichtbar, solange ein Song offen ist (siehe renderLyricsBlock).
+           Knöpfe, die nicht immer gelten (Vorlesemodus, Bearbeiten), verstecken
+           sich über .slot-hidden (visibility statt hidden) — ihr Platz bleibt
+           reserviert, damit die übrigen Knöpfe beim Umschalten nicht springen. -->
       <div class="row" id="lyrics-toolbar" style="margin-bottom:10px" hidden>
         <div class="preset-row" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr); margin-top:0" role="group" aria-label="Liedtext-Quelle" hidden>
-          <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Offiziell</button>
-          <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Eigener Text</button>
+          <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Cloud</button>
+          <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Lokal</button>
         </div>
         <span style="display:flex; align-items:center; gap:6px; margin-left:auto">
-          <button class="icon-btn" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere" hidden>
+          <button class="icon-btn slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
           </button>
           <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
           <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
-          <button class="icon-btn" id="btn-lyrics-note-edit" type="button" hidden>
+          <button class="icon-btn slot-hidden" id="btn-lyrics-note-edit" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="lyrics-edit-icon"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
         </span>
@@ -9380,8 +9388,10 @@ function renderLyricsBlock() {
   officialBtn.setAttribute('aria-disabled', String(!hasOfficial));
 
   // Stift/Fertig-Knopf gilt nur für den eigenen Text — die offizielle
-  // Fassung aus dem Import lässt sich nicht bearbeiten.
-  $('#btn-lyrics-note-edit').hidden = showOfficial;
+  // Fassung aus dem Import lässt sich nicht bearbeiten. Bleibt als Leerplatz
+  // stehen (slot-hidden), statt zu verschwinden — sonst rutschen A−/A+ beim
+  // Quellenwechsel hin und her.
+  $('#btn-lyrics-note-edit').classList.toggle('slot-hidden', showOfficial);
   $('#lyrics-edit-icon').innerHTML = editing ? LYRICS_DONE_ICON : LYRICS_EDIT_ICON;
   $('#btn-lyrics-note-edit').setAttribute('aria-label', editing ? 'Fertig' : 'Bearbeiten');
 
@@ -9400,7 +9410,8 @@ function renderLyricsBlock() {
 
   applyLyricsFontSize();
   setTabHasContent('lyrics', hasOfficial || hasPrivate);
-  $('#btn-lyrics-present').hidden = !lyricsPresentSourceText().trim();
+  // Ebenfalls als Leerplatz stehen lassen (siehe oben) statt auszublenden.
+  $('#btn-lyrics-present').classList.toggle('slot-hidden', !lyricsPresentSourceText().trim());
 }
 
 /**
