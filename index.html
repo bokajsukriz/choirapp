@@ -107,6 +107,26 @@ body::before, body::after,
   pointer-events: none;
   z-index: -1;
 }
+
+/* #player ist (anders als Setlisten-Detail/Import) kein fixiertes, eigene
+   Stapelkontext bildendes Vollbild-Overlay mehr, sondern ein normales
+   Layout-Element (position:static). Ohne eigenen Stapelkontext landen seine
+   negativ gestapelten ::before/::after (z-index:-1) im Stapelkontext von
+   body — und werden dort VOR #player's eigenem (undurchsichtigem)
+   Hintergrund gemalt, also dahinter versteckt: sichtbar blieb nur ein
+   schmaler Streifen unterhalb von #player, über der Navigationsleiste.
+   `isolation: isolate` gibt #player einen eigenen Stapelkontext zurück,
+   ohne Position/Layout zu ändern — darin malen die eigenen Kreise wieder
+   über den eigenen Hintergrund, wie bei den echten Vollbild-Overlays. */
+#player { isolation: isolate; }
+
+/* Wenn ein .player sichtbar ist, blendet diese Regel body's eigene Kreise
+   aus: sonst lägen sie im schmalen Streifen exakt auf denen des .player und
+   wirkten dort durch mix-blend-mode:multiply doppelt so satt. */
+body:has(.player:not([hidden]))::before,
+body:has(.player:not([hidden]))::after {
+  content: none;
+}
 body::before, .player::before { top: -70px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
 body::after, .player::after { bottom: 40px; left: -130px; width: 380px; height: 380px; background: #ffd23f; }
 
@@ -1160,6 +1180,105 @@ input[type="checkbox"] {
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
+/* REC */
+.rec-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.rec-btn {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 3px solid var(--danger);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-btn-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--danger);
+  transition: border-radius .18s ease, width .18s ease, height .18s ease;
+}
+
+.rec-btn[aria-pressed="true"] {
+  background: var(--danger);
+}
+
+.rec-btn[aria-pressed="true"] .rec-btn-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: #fff;
+  animation: rec-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+.rec-timer {
+  margin: 0;
+  font-weight: 650;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-meter {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.rec-meter-canvas {
+  display: block;
+  width: 100%;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--pill-line);
+}
+
+.rec-meter-warning {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 650;
+  text-align: center;
+}
+
+.rec-pending {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  margin: 6px 0;
+}
+
+.rec-pending-info { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rec-pending-info strong { font-weight: 620; }
+
+.rec-pending-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.rec-pending-actions .btn { flex: 1; padding: 10px 4px; font-size: 0.88rem; }
+
+.recording-item .go { display: flex; align-items: center; gap: 10px; }
+.recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.recording-item .go span.rec-meta { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.recording-item[data-active="true"] .go { border-color: var(--accent); }
+
 /* Laufende Playlist im Player */
 .queue-item {
   display: flex;
@@ -1600,6 +1719,7 @@ input[type="checkbox"] {
   align-items: center;
   justify-content: center;
   padding: calc(20px + var(--safe-top)) 18px calc(20px + var(--safe-bottom));
+  overflow-y: auto;
 }
 
 .dialog {
@@ -1609,12 +1729,35 @@ input[type="checkbox"] {
   padding: 20px;
   width: 100%;
   max-width: 420px;
+  max-height: 100%;
+  overflow-y: auto;
+  margin: auto;
 }
 
 .dialog h2 { font-size: 1.1rem; margin-bottom: 8px; text-transform: none; letter-spacing: 0; color: var(--text); }
 .dialog p { margin: 0 0 18px; color: var(--muted); }
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions .btn { flex: 1; }
+
+/* Checkbox-Listen in Dialogen (Backup-Auswahl, Notizen/Liedtexte-Auswahl):
+   ohne flex:1 blieb der Titel zwischen Checkbox und (oft leerem) Größen-Feld
+   „schweben" statt linksbündig direkt neben der Checkbox zu sitzen. */
+.dialog label.row .grow { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+
+/* Drucken — statt eines Dateiformats (RTF öffnet nicht überall zuverlässig)
+   der native Druckdialog des Browsers: der lässt auf jedem Gerät gleich
+   entweder direkt drucken oder als PDF sichern, ganz ohne Format-Frage. */
+#print-sheet { display: none; }
+
+@media print {
+  body > *:not(#print-sheet) { display: none !important; }
+  #print-sheet { display: block !important; color: #000; background: #fff; }
+  #print-sheet h1 { font-size: 18pt; margin: 0 0 16pt; }
+  #print-sheet .print-entry { page-break-after: always; }
+  #print-sheet .print-entry:last-child { page-break-after: auto; }
+  #print-sheet .print-entry h2 { font-size: 14pt; margin: 0 0 10pt; }
+  #print-sheet .print-text { font-size: 11pt; line-height: 1.5; white-space: pre-wrap; }
+}
 </style>
 </head>
 
@@ -1892,8 +2035,8 @@ input[type="checkbox"] {
 
     <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops">
       <div class="loop-controls">
-        <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">A</button>
-        <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">B</button>
+        <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">Start</button>
+        <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">Ende</button>
         <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
           <span class="loop-switch-knob"></span>
         </button>
@@ -1903,6 +2046,33 @@ input[type="checkbox"] {
       </div>
       <p class="small muted" id="loop-info" style="margin:10px 0 0; text-align:center"></p>
       <div id="loop-list"></div>
+
+      <p class="section-title" style="margin:22px 0 10px">REC</p>
+      <div class="rec-controls" id="rec-controls">
+        <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
+          <span class="rec-btn-dot"></span>
+        </button>
+        <div class="rec-meter" id="rec-meter" hidden>
+          <canvas class="rec-meter-canvas" id="rec-meter-canvas"></canvas>
+          <p class="small rec-meter-warning" id="rec-meter-warning" hidden>Zu laut — die Aufnahme übersteuert</p>
+        </div>
+        <p class="rec-timer" id="rec-timer" hidden>0:00</p>
+        <p class="small muted" id="rec-status" style="margin:0; text-align:center">
+          Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
+        </p>
+      </div>
+      <div class="rec-pending" id="rec-pending" hidden>
+        <div class="rec-pending-info">
+          <strong id="rec-pending-name">REC</strong>
+          <span class="small muted" id="rec-pending-duration"></span>
+        </div>
+        <div class="rec-pending-actions">
+          <button class="btn" id="btn-rec-preview" type="button">▶ Anhören</button>
+          <button class="btn btn--primary" id="btn-rec-save" type="button">Speichern</button>
+          <button class="btn" id="btn-rec-discard" type="button" style="color: var(--danger)">Verwerfen</button>
+        </div>
+      </div>
+      <div id="recording-list"></div>
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
@@ -2194,9 +2364,17 @@ input[type="checkbox"] {
 
     <!-- Öffnet die abgetrennte Import-Vollbildansicht (siehe #import-view
          weiter unten) — hier steht nur noch der Einstiegsknopf. -->
-    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:14px" data-i18n="settings.importBtn">
+    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:10px" data-i18n="settings.importBtn">
       Songs importieren
     </button>
+
+    <!-- Eigener, gleichrangiger Einstieg statt in der ZIP-Importansicht
+         versteckt: RECs kommen meist einzeln per Messenger (z.B. Signal),
+         nicht als ganzer Dropbox-Ordner — ein Tipp genügt, keine eigene Seite. -->
+    <button class="btn btn--block" id="btn-rec-import" type="button" style="margin-bottom:14px">
+      Recordings importieren
+    </button>
+    <input class="visually-hidden" id="rec-import-input" type="file" accept=".mp3,audio/mpeg" multiple>
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span data-i18n="settings.personal.title">Make it yours!</span></h2>
@@ -2344,7 +2522,11 @@ input[type="checkbox"] {
         </button>
         <p class="small" id="notes-count" style="margin:8px 0 0"></p>
         <button class="btn btn--block" id="btn-notes-export" type="button" data-i18n="settings.data.printNotesBtn">
-          Alle Notizen drucken
+          Notizen drucken
+        </button>
+        <p class="small" id="lyrics-notes-count" style="margin:8px 0 0"></p>
+        <button class="btn btn--block" id="btn-lyrics-notes-export" type="button">
+          Eigene Liedtexte drucken
         </button>
       </div>
 
@@ -2469,6 +2651,10 @@ input[type="checkbox"] {
     <span data-i18n="nav.settings">Einstellungen</span>
   </button>
 </nav>
+
+<!-- Nur beim Drucken sichtbar (siehe @media print) — printItems() füllt es
+     kurz vor window.print() und lässt den Rest der Seite dafür verschwinden. -->
+<div id="print-sheet" hidden></div>
 
 <script>
 'use strict';
@@ -3045,6 +3231,10 @@ const DB = {
     return reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key));
   },
 
+  async filePut(record) {
+    await tx('files', 'readwrite', (files) => { files.put(record); });
+  },
+
   async fileDelete(keys) {
     const list = Array.isArray(keys) ? keys : [keys];
     if (!list.length) return;
@@ -3085,6 +3275,8 @@ const DEFAULT_SETTINGS = {
   defaultPlayerTab: 'loops',  // Reiter, der beim Öffnen eines Songs zuerst erscheint
   accentColor: '#F868B0',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
   language: 'de',             // 'de' | 'en' | 'pl' — siehe STRINGS/t()/applyTranslations()
+  firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
+  compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3184,10 +3376,10 @@ const STRINGS = {
 
     'settings.data.title': 'Daten & Sicherung',
     'settings.data.backupTitle': 'Sicherung',
-    'settings.data.backupHint': 'Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen und die Songliste — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt sich per Mail oder Messenger verschicken.',
+    'settings.data.backupHint': 'Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen, eigene RECs und die Songliste. Beim Erstellen lässt sich auswählen, was genau enthalten sein soll — auch die (großen) Song-Audiodateien.',
     'settings.data.backupBtn': 'Backup',
     'settings.data.restoreBtn': 'Restore',
-    'settings.data.printNotesBtn': 'Alle Notizen drucken',
+    'settings.data.printNotesBtn': 'Notizen drucken',
     'settings.data.freeSpaceTitle': 'Speicherplatz freigeben',
     'settings.data.freeSpaceHint1': 'Einzelne Songs oder Stimmen löschen. Loops, Notizen, eigene Liedtexte und Setlisten bleiben dabei erhalten.',
     'settings.data.dropAudioBtn': 'Alle Aufnahmen löschen',
@@ -3347,10 +3539,10 @@ const STRINGS = {
 
     'settings.data.title': 'Data & backup',
     'settings.data.backupTitle': 'Backup',
-    'settings.data.backupHint': 'Backs up loops, notes, your own lyrics, setlists, settings and the song list — without recordings. The file is only a few kilobytes and can be sent by mail or messenger.',
+    'settings.data.backupHint': 'Backs up loops, notes, your own lyrics, setlists, settings, your own RECs and the song list. When creating it you can choose exactly what to include — even the (large) song audio files.',
     'settings.data.backupBtn': 'Backup',
     'settings.data.restoreBtn': 'Restore',
-    'settings.data.printNotesBtn': 'Print all notes',
+    'settings.data.printNotesBtn': 'Print notes',
     'settings.data.freeSpaceTitle': 'Free up storage',
     'settings.data.freeSpaceHint1': 'Delete individual songs or voices. Loops, notes, your own lyrics and setlists are kept.',
     'settings.data.dropAudioBtn': 'Delete all recordings',
@@ -3510,10 +3702,10 @@ const STRINGS = {
 
     'settings.data.title': 'Dane i kopia zapasowa',
     'settings.data.backupTitle': 'Kopia zapasowa',
-    'settings.data.backupHint': 'Zapisuje loopy, notatki, własne teksty, setlisty, ustawienia i listę utworów — bez nagrań. Plik ma tylko kilka kilobajtów i można go wysłać mailem lub komunikatorem.',
+    'settings.data.backupHint': 'Zapisuje loopy, notatki, własne teksty, setlisty, ustawienia, własne nagrania (REC) i listę utworów. Przy tworzeniu można wybrać, co dokładnie ma być uwzględnione — także (duże) pliki audio utworów.',
     'settings.data.backupBtn': 'Kopia zapasowa',
     'settings.data.restoreBtn': 'Przywróć',
-    'settings.data.printNotesBtn': 'Wydrukuj wszystkie notatki',
+    'settings.data.printNotesBtn': 'Drukuj notatki',
     'settings.data.freeSpaceTitle': 'Zwolnij miejsce',
     'settings.data.freeSpaceHint1': 'Usuń pojedyncze utwory lub głosy. Loopy, notatki, własne teksty i setlisty pozostają zachowane.',
     'settings.data.dropAudioBtn': 'Usuń wszystkie nagrania',
@@ -4955,14 +5147,15 @@ async function detachSongLinks(song, preloaded = null) {
   await DB.metaPutMany(detached);
 }
 
-/** Alle Datensätze, die an einem Song hängen — Loops, Notizen und eigene Liedtexte. */
+/** Alle Datensätze, die an einem Song hängen — Loops, Notizen, eigene Liedtexte und Aufnahmen. */
 async function songLinkRecords() {
-  const [loops, notes, lyricsNotes] = await Promise.all([
+  const [loops, notes, lyricsNotes, recordings] = await Promise.all([
     DB.metaByType('loop').catch(() => []),
     DB.metaByType('note').catch(() => []),
     DB.metaByType('lyricsNote').catch(() => []),
+    DB.metaByType('recording').catch(() => []),
   ]);
-  return [...loops, ...notes, ...lyricsNotes];
+  return [...loops, ...notes, ...lyricsNotes, ...recordings];
 }
 
 /**
@@ -5071,6 +5264,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
 async function refreshAfterDelete() {
   await renderStorage();
   await renderNotesCount();
+  await renderLyricsNotesCount();
   await renderStorageManager();
   await renderSongs();
   await renderPlaylists();
@@ -5132,6 +5326,7 @@ async function renderSettings() {
   await renderStorage();
   renderBackupAge();
   await renderNotesCount();
+  await renderLyricsNotesCount();
   await renderStorageManager();
   renderErrorLog();
   renderDebugLogState();
@@ -6799,6 +6994,11 @@ async function runImport() {
   } catch (err) {
     console.warn('[import] Eigene Liedtexte verbinden', err);
   }
+  try {
+    report.recordingsLinked = await reconnectPendingRecordings();
+  } catch (err) {
+    console.warn('[import] RECs verbinden', err);
+  }
   if (attachRequests.length) {
     try {
       report.similarAttached = await attachSimilarSongData(attachRequests);
@@ -7010,6 +7210,10 @@ async function registerServiceWorker() {
       if (firstTakeover) return;           // Erstinstallation, kein Update
       if (reloadingForUpdate) return;
       reloadingForUpdate = true;
+      // Markiert den bevorstehenden Neustart als Update — nach dem Reload
+      // zeigt boot() dann den Kompatibilitätshinweis, unabhängig vom
+      // Tages-Zeitplan (siehe checkCompatWarning/COMPAT_UPDATE_FLAG).
+      try { sessionStorage.setItem(COMPAT_UPDATE_FLAG, '1'); } catch { /* z.B. privater Modus */ }
       location.reload();
     });
 
@@ -7101,6 +7305,10 @@ let loadToken = 0;
  */
 async function selectTrack(track, userChoice = false) {
   if (!playerSong || track.broken) return;
+  // Eine laufende REC-Vorschau hat Audio.el gerade belegt — vor dem
+  // Stimmwechsel erst normal weiterlaufen lassen, sonst würde audioLoadTrack()
+  // gleich wieder wegwerfen, was previewRecordingBlob() sich fürs Zurück gemerkt hat.
+  await endRecordingPreview();
   const token = ++loadToken;
 
   playerVoice = track.fileKey;
@@ -7252,6 +7460,23 @@ async function openPlayer(songId) {
     return;
   }
 
+  // Der Player ist ein dauerhafter Reiter — ein Songwechsel läuft nie über
+  // closePlayer(), sondern direkt über einen erneuten openPlayer()-Aufruf.
+  // Ohne diesen Abbruch würde eine laufende Aufnahme oder ein noch nicht
+  // gespeicherter Take unbemerkt in den neuen Song hinein weiterlaufen bzw.
+  // am Ende dem falschen Lied zugeordnet werden.
+  if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
+    discardActiveRecording();
+    banner('REC abgebrochen, weil der Song gewechselt wurde.');
+  } else if (pendingTake) {
+    banner('Nicht gespeicherter REC wurde verworfen, weil der Song gewechselt wurde.');
+  }
+  pendingTake = null;
+  renderPendingTake();
+  // Eine laufende Vorschau gehört zum alten Song — Audio.el wird gleich für
+  // den neuen ohnehin frisch geladen, ein Rücksprung ergäbe hier keinen Sinn.
+  audioPreview = null;
+
   playerSong = song;
   // Der Player ist ein dauerhafter Reiter (keine Vollbild-Ansicht mehr) —
   // sichtbar bleibt er über showTab(); hier wird nur zwischen Leerzustand
@@ -7283,6 +7508,7 @@ async function openPlayer(songId) {
   setPlayerTab(settings.defaultPlayerTab || 'loops');
   renderPlayerExtras();
   loadSongLoops();
+  loadSongRecordings();
   loadSongNote();
   loadSongLyricsNote();
 
@@ -7520,6 +7746,14 @@ $('#btn-queue-edit').addEventListener('click', () => {
  * alphabetisch durch die Bibliothek.
  */
 function onPlaybackEnded() {
+  // Eine zu Ende gelaufene REC-Vorschau darf nie zum nächsten Song
+  // weiterschalten oder sich wiederholen — beides gehört zur Song-Wiedergabe.
+  if (audioPreview) {
+    endRecordingPreview();
+    renderRecordingList();
+    updateRecPreviewButton();
+    return;
+  }
   dlog('playback:ended', { repeatMode: settings.repeatMode, hasQueue: !!playQueue });
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
@@ -7543,6 +7777,11 @@ function closePlayer() {
   flushLyricsNote();
   audioReset();
   releaseScoreURLs();
+  discardActiveRecording();
+  pendingTake = null;
+  renderPendingTake();
+  // audioReset() hat die Blob-URL einer laufenden Vorschau schon freigegeben.
+  audioPreview = null;
   playerSong = null;
   $('#player-title').textContent = 'Kein Song ausgewählt';
   $('#player-pills').textContent = '';
@@ -7552,6 +7791,7 @@ function closePlayer() {
   updateWakeLock();          // „Bildschirm anlassen" gilt nur im Player
   playerVoice = null;
   songLoops = [];
+  songRecordings = [];
   playerNote = null;
   resetBrokenNotice();
   if (navigator.mediaSession) {
@@ -7574,9 +7814,15 @@ $('#btn-play').addEventListener('click', async () => {
     navigator.mediaSession.playbackState = Audio.playing ? 'playing' : 'paused';
   }
   updateMediaSession();
+  // Läuft gerade eine REC-Vorschau, muss deren eigener Anhören-Knopf
+  // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
+  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
+  // Während einer REC-Vorschau gilt „Zurück" dem REC selbst —
+  // ein Sprung zum vorherigen Song wäre hier nur verwirrend.
+  if (audioPreview) { updateSeekUI(audioSeek(0)); return; }
   // Wie bei echten Musik-Playern: ist man schon (fast) am Anfang, springt
   // „Zurück" zum vorherigen Titel statt stur bei 0 stehen zu bleiben.
   if (Audio.position < 2) {
@@ -7807,7 +8053,9 @@ function activateLoop() {
   updateLoopUI();
 }
 
-$('#btn-loop-a').addEventListener('click', () => {
+$('#btn-loop-a').addEventListener('click', async () => {
+  // Audio.position gehört sonst dem gerade angehörten REC, nicht dem Song.
+  await endRecordingPreview();
   loopA = Audio.position;
   if (loopB !== null && loopB <= loopA) loopB = null;
   activeLoopId = null;
@@ -7816,7 +8064,8 @@ $('#btn-loop-a').addEventListener('click', () => {
   renderLoopList();
 });
 
-$('#btn-loop-b').addEventListener('click', () => {
+$('#btn-loop-b').addEventListener('click', async () => {
+  await endRecordingPreview();
   loopB = Audio.position;
   if (loopA !== null && loopA >= loopB) loopA = null;
   activeLoopId = null;
@@ -7827,7 +8076,8 @@ $('#btn-loop-b').addEventListener('click', () => {
   else { updateLoopUI(); applyLoop(); }
 });
 
-$('#btn-loop-toggle').addEventListener('click', () => {
+$('#btn-loop-toggle').addEventListener('click', async () => {
+  await endRecordingPreview();
   if (loopOn) {
     loopOn = false;
     applyLoop();
@@ -7873,10 +8123,15 @@ async function loadSongLoops() {
   renderLoopList();
 }
 
+/** Der Punkt am Loops-Reiter gilt jetzt Loops UND RECs — beide leben im selben Tab. */
+function updateLoopsTabDot() {
+  setTabHasContent('loops', songLoops.length > 0 || songRecordings.length > 0);
+}
+
 function renderLoopList() {
   const host = $('#loop-list');
   host.textContent = '';
-  setTabHasContent('loops', songLoops.length > 0);
+  updateLoopsTabDot();
   if (!songLoops.length) return;
 
   for (const loop of songLoops) {
@@ -7884,7 +8139,10 @@ function renderLoopList() {
       el('strong', { text: loop.name }),
       el('span', { text: `${fmtTime(loop.start)} – ${fmtTime(loop.end)}` }));
 
-    go.addEventListener('click', () => {
+    go.addEventListener('click', async () => {
+      // Der Loop bezieht sich auf den Song, nicht auf eine gerade laufende
+      // REC-Vorschau — erst zurück zum Song, dann den Abschnitt anspringen.
+      await endRecordingPreview();
       loopA = loop.start;
       loopB = loop.end;
       loopOn = true;
@@ -7964,6 +8222,937 @@ function renderLoopList() {
   install($('#seek-mark-a'), (v) => { loopA = v; });
   install($('#seek-mark-b'), (v) => { loopB = v; });
 })();
+
+/* ==========================================================================
+   REC — eigene Aufnahme übers Mikrofon, zum Anhören oder als
+   Gedächtnisstütze aus der Probe. Lebt bewusst im Loops-Tab statt in einem
+   eigenen Reiter: beides sind Übe-Hilfen zum selben Song. Eigener Meta-Typ,
+   überlebt Löschen/Reimport wie ein Loop.
+
+   Der Name „REC" statt „Aufnahme": Letzteres bezeichnet in der
+   restlichen App schon die importierte Stimmen-Datei des Songs — mit
+   gleichem Wort für die eigene Stimme wäre "Alle Aufnahmen löschen" in den
+   Einstellungen missverständlich, obwohl RECs davon unberührt bleiben.
+
+   Wiedergabe läuft absichtlich nicht über ein eigenes <audio>-Element,
+   sondern kapert kurz die Hauptsteuerung (Audio.el/#btn-play/Suchleiste):
+   dieselben Knöpfe, die den Song abspielen, spielen dann den REC.
+   previewRecordingBlob()/endRecordingPreview() merken sich dafür, wo die
+   normale Wiedergabe stand, und stellen das danach wieder her.
+   ========================================================================== */
+
+let recStream = null;
+let recMediaRecorder = null;
+let recChunks = [];
+let recMimeType = '';
+let recStartedAt = 0;
+let recTimerHandle = null;
+let songRecordings = [];
+let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
+let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden }
+
+/** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
+function pickRecMimeType() {
+  if (!window.MediaRecorder) return '';
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+  ];
+  return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || '';
+}
+
+function setRecUI(recording) {
+  const btn = $('#btn-rec-toggle');
+  btn.setAttribute('aria-pressed', recording ? 'true' : 'false');
+  btn.setAttribute('aria-label', recording ? 'REC stoppen' : 'REC starten');
+  $('#rec-timer').hidden = !recording;
+  $('#rec-status').hidden = recording;
+}
+
+function updateRecTimer() {
+  $('#rec-timer').textContent = fmtTime((Date.now() - recStartedAt) / 1000);
+}
+
+async function startRecording() {
+  if (!playerSong || pendingTake) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    banner('Dieser Browser kann keine Mikrofonaufnahmen aufzeichnen.', { kind: 'error' });
+    return;
+  }
+
+  try {
+    // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
+    // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
+    // schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
+    // Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
+    recStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (err) {
+    bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
+    return;
+  }
+
+  recMimeType = pickRecMimeType();
+  try {
+    recMediaRecorder = recMimeType
+      ? new MediaRecorder(recStream, { mimeType: recMimeType })
+      : new MediaRecorder(recStream);
+  } catch (err) {
+    for (const track of recStream.getTracks()) track.stop();
+    recStream = null;
+    bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err);
+    return;
+  }
+
+  recChunks = [];
+  recMediaRecorder.addEventListener('dataavailable', (e) => {
+    if (e.data.size) recChunks.push(e.data);
+  });
+  recMediaRecorder.addEventListener('stop', onRecordingStopped);
+
+  recStartedAt = Date.now();
+  recMediaRecorder.start();
+  setRecUI(true);
+  updateRecTimer();
+  recTimerHandle = setInterval(updateRecTimer, 250);
+  startLevelMeter(recStream);
+}
+
+function stopRecording() {
+  if (!recMediaRecorder || recMediaRecorder.state === 'inactive') return;
+  recMediaRecorder.stop();
+}
+
+/* ---------- Pegelanzeige während der Aufnahme ----------
+   Eine mitlaufende Wellenform wie bei anderen Aufnahme-Apps (Sprachmemos,
+   WhatsApp): neue Balken wachsen rechts an und wandern nach links, statt nur
+   den aktuellen Pegel als einzelnen Balken zu zeigen — so sieht man auch im
+   Rückblick, WANN es laut oder zu laut war, nicht nur den Moment gerade eben.
+   Ein separater AnalyserNode auf demselben Stream — der MediaRecorder bekommt
+   davon nichts mit und läuft unbeeinflusst weiter. */
+
+let levelCtx = null;
+let levelAnalyser = null;
+let levelSource = null;
+let levelRafId = null;
+let levelData = null;
+let levelClipUntil = 0;
+let levelCanvasCtx = null;
+let levelCanvasWidth = 0;
+let levelCanvasHeight = 0;
+let levelHistory = [];
+let levelAccumPeak = 0;
+let levelAccumSumSquares = 0;
+let levelAccumCount = 0;
+let levelLastColumnAt = 0;
+let levelDangerColor = '#e0464a';
+
+const LEVEL_COLUMN_MS = 80;   // wie oft eine neue Wellenform-Spalte entsteht
+const LEVEL_COLUMN_WIDTH = 3;
+const LEVEL_COLUMN_GAP = 2;
+
+function setupLevelCanvas() {
+  const canvas = $('#rec-meter-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = canvas.getBoundingClientRect().width || 280;
+  const cssHeight = 56;
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  levelCanvasCtx = canvas.getContext('2d');
+  levelCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  levelCanvasWidth = cssWidth;
+  levelCanvasHeight = cssHeight;
+  levelHistory = [];
+  // Einmal die echte Warnfarbe aus dem Theme holen statt sie hart zu verdrahten —
+  // hell/dunkel haben unterschiedliche --danger-Werte.
+  const themeDanger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim();
+  if (themeDanger) levelDangerColor = themeDanger;
+  levelCanvasCtx.clearRect(0, 0, cssWidth, cssHeight);
+}
+
+function startLevelMeter(stream) {
+  try {
+    levelCtx = new (window.AudioContext || window.webkitAudioContext)();
+    levelSource = levelCtx.createMediaStreamSource(stream);
+    levelAnalyser = levelCtx.createAnalyser();
+    levelAnalyser.fftSize = 1024;
+    levelSource.connect(levelAnalyser);
+    levelData = new Float32Array(levelAnalyser.fftSize);
+  } catch (err) {
+    // Ohne Anzeige läuft die Aufnahme selbst trotzdem normal weiter.
+    console.warn('[rec-meter] Pegelanzeige konnte nicht starten', err);
+    return;
+  }
+
+  levelClipUntil = 0;
+  levelAccumPeak = 0;
+  levelAccumSumSquares = 0;
+  levelAccumCount = 0;
+  levelLastColumnAt = performance.now();
+  $('#rec-meter').hidden = false;
+  $('#rec-meter-warning').hidden = true;
+  setupLevelCanvas();
+
+  const tick = () => {
+    if (!levelAnalyser) return;
+    levelAnalyser.getFloatTimeDomainData(levelData);
+    let peak = 0;
+    let sumSquares = 0;
+    for (let i = 0; i < levelData.length; i++) {
+      const v = levelData[i];
+      const abs = Math.abs(v);
+      if (abs > peak) peak = abs;
+      sumSquares += v * v;
+    }
+    levelAccumPeak = Math.max(levelAccumPeak, peak);
+    levelAccumSumSquares += sumSquares;
+    levelAccumCount += levelData.length;
+
+    // Ein einzelner Sample-Ausschlag nahe Vollausschlag bedeutet bereits
+    // Verzerrung — die Textwarnung bleibt kurz stehen, sonst wäre ein
+    // Spitzenwert bei 60 Bildern pro Sekunde kaum zu sehen.
+    if (peak >= 0.985) levelClipUntil = Date.now() + 1500;
+    $('#rec-meter-warning').hidden = Date.now() >= levelClipUntil;
+
+    const now = performance.now();
+    if (now - levelLastColumnAt >= LEVEL_COLUMN_MS) {
+      const rms = Math.sqrt(levelAccumSumSquares / levelAccumCount);
+      pushLevelColumn(rms, levelAccumPeak);
+      levelAccumPeak = 0;
+      levelAccumSumSquares = 0;
+      levelAccumCount = 0;
+      levelLastColumnAt = now;
+    }
+    levelRafId = requestAnimationFrame(tick);
+  };
+  levelRafId = requestAnimationFrame(tick);
+}
+
+/** Fügt eine Spalte hinzu — die eigene Lautstärke dieses Augenblicks, nicht der nachleuchtende Warnzustand. */
+function pushLevelColumn(rms, peak) {
+  const db = rms > 0 ? 20 * Math.log10(rms) : -100;
+  // -50 dBFS (kaum hörbar) bis 0 dBFS (Vollausschlag), mit sichtbarer Mindesthöhe
+  // für Stille — ein komplett flacher Strich sähe wie "eingefroren" aus.
+  const amp = Math.max(0.04, Math.min(1, (db + 50) / 50));
+  const clipping = peak >= 0.985;
+
+  const columnsFit = Math.max(1, Math.floor(levelCanvasWidth / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
+  levelHistory.push({ amp, clipping });
+  if (levelHistory.length > columnsFit) levelHistory.shift();
+  drawLevelHistory();
+}
+
+function drawLevelHistory() {
+  const ctx = levelCanvasCtx;
+  if (!ctx) return;
+  ctx.clearRect(0, 0, levelCanvasWidth, levelCanvasHeight);
+
+  const midY = levelCanvasHeight / 2;
+  const maxHalf = levelCanvasHeight / 2 - 3;
+  let x = levelCanvasWidth - LEVEL_COLUMN_WIDTH;
+  for (let i = levelHistory.length - 1; i >= 0 && x > -LEVEL_COLUMN_WIDTH; i--, x -= (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
+    const { amp, clipping } = levelHistory[i];
+    const half = Math.max(1.5, amp * maxHalf);
+    ctx.fillStyle = clipping ? levelDangerColor : (amp >= 0.75 ? '#FFD93D' : '#6BCB77');
+    const radius = Math.min(LEVEL_COLUMN_WIDTH / 2, half);
+    roundedBar(ctx, x, midY - half, LEVEL_COLUMN_WIDTH, half * 2, radius);
+    ctx.fill();
+  }
+}
+
+function roundedBar(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function stopLevelMeter() {
+  if (levelRafId) { cancelAnimationFrame(levelRafId); levelRafId = null; }
+  if (levelSource) { levelSource.disconnect(); levelSource = null; }
+  levelAnalyser = null;
+  if (levelCtx) { levelCtx.close().catch(() => {}); levelCtx = null; }
+  $('#rec-meter').hidden = true;
+  $('#rec-meter-warning').hidden = true;
+}
+
+/** Mikrofon und Timer freigeben — unabhängig davon, wie die Aufnahme endete. */
+function teardownRecording() {
+  if (recTimerHandle) { clearInterval(recTimerHandle); recTimerHandle = null; }
+  if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
+  recMediaRecorder = null;
+  stopLevelMeter();
+  setRecUI(false);
+}
+
+/** Verwirft eine laufende Aufnahme sofort, z.B. beim Verlassen des Songs. */
+function discardActiveRecording() {
+  if (!recMediaRecorder) return;
+  recMediaRecorder.removeEventListener('stop', onRecordingStopped);
+  if (recMediaRecorder.state !== 'inactive') recMediaRecorder.stop();
+  recChunks = [];
+  teardownRecording();
+}
+
+async function onRecordingStopped() {
+  const duration = (Date.now() - recStartedAt) / 1000;
+  const mimeType = recMimeType || recChunks[0]?.type || 'audio/webm';
+  const chunks = recChunks;
+  recChunks = [];
+  teardownRecording();
+
+  if (!chunks.length || duration < 0.5) {
+    if (chunks.length) banner('Der REC war zu kurz und wurde verworfen.');
+    return;
+  }
+  // Nicht sofort speichern — erst anhören und entscheiden lassen.
+  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration };
+  renderPendingTake();
+}
+
+$('#btn-rec-toggle').addEventListener('click', () => {
+  if (recMediaRecorder && recMediaRecorder.state !== 'inactive') stopRecording();
+  else startRecording();
+});
+
+/** Wechselt zwischen „Aufnehmen"-Knopf und der Karte für den noch nicht gespeicherten Take. */
+function renderPendingTake() {
+  const has = !!pendingTake;
+  $('#rec-controls').hidden = has;
+  $('#rec-pending').hidden = !has;
+  if (!has) return;
+  $('#rec-pending-name').textContent = `REC ${songRecordings.length + 1}`;
+  $('#rec-pending-duration').textContent = `Dauer ${fmtTime(pendingTake.duration)}`;
+  updateRecPreviewButton();
+}
+
+/** Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die Hauptsteuerung läuft. */
+function updateRecPreviewButton() {
+  const btn = $('#btn-rec-preview');
+  if (!btn) return;
+  btn.textContent = (audioPreview?.tag?.pending && Audio.playing) ? '⏸ Pause' : '▶ Anhören';
+}
+
+$('#btn-rec-preview').addEventListener('click', async () => {
+  if (!pendingTake) return;
+  if (audioPreview?.tag?.pending) {
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+  } else {
+    try { await previewRecordingBlob(pendingTake.blob, { pending: true }); }
+    catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
+  }
+  updateRecPreviewButton();
+});
+
+$('#btn-rec-discard').addEventListener('click', async () => {
+  if (!pendingTake) return;
+  const ok = await confirmDialog({
+    title: 'REC verwerfen?', text: 'Die Aufnahme wird nicht gespeichert.',
+    okLabel: 'Verwerfen', danger: true,
+  });
+  if (!ok) return;
+  if (audioPreview?.tag?.pending) await endRecordingPreview();
+  pendingTake = null;
+  renderPendingTake();
+});
+
+/**
+ * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
+ * `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". `current`
+ * (nur beim Bearbeiten gesetzt) zeigt die bisherige Zuordnung im Dialogtext.
+ */
+async function pickRecordingVoice(current) {
+  const currentLabel = current === undefined ? null
+    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
+  const value = await choiceDialog({
+    title: 'Stimme zuordnen?',
+    text: currentLabel
+      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
+      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
+    options: [
+      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
+      { value: 'SOP', label: VOICE_LABEL.SOP },
+      { value: 'ALT', label: VOICE_LABEL.ALT },
+      { value: 'TEN', label: VOICE_LABEL.TEN },
+      { value: 'BASS', label: VOICE_LABEL.BASS },
+      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+    ],
+  });
+  if (value === null) return undefined;
+  return value === 'NONE' ? null : value;
+}
+
+$('#btn-rec-save').addEventListener('click', async () => {
+  if (!pendingTake || !playerSong) return;
+  const voice = await pickRecordingVoice();
+  if (voice === undefined) return; // abgebrochen — Take bleibt zum erneuten Anhören/Speichern erhalten
+
+  const suggestion = `REC ${songRecordings.length + 1}`;
+  const name = await promptDialog({
+    title: 'REC speichern',
+    text: `Dauer ${fmtTime(pendingTake.duration)}`,
+    value: suggestion,
+    placeholder: 'z. B. Probe 12.3. oder Sopran allein',
+  });
+  if (name === null) return; // abgebrochen — Take bleibt erhalten
+
+  const { blob, mimeType, duration } = pendingTake;
+  const fileKey = newFileKey();
+  const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+  await DB.filePut(await fileRecord(fileKey, blob, `${name.trim() || suggestion}.${ext}`));
+
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const recording = {
+    key: `recording:${id}`, type: 'recording', id,
+    songId: playerSong.id, songTitle: playerSong.title,
+    name: name.trim() || suggestion,
+    voice, fileKey, mimeType, duration,
+    size: blob.size,
+    createdAt: new Date().toISOString(),
+  };
+  await DB.metaPut(recording);
+
+  if (audioPreview?.tag?.pending) await endRecordingPreview();
+  pendingTake = null;
+  renderPendingTake();
+  await loadSongRecordings();
+  banner('REC gespeichert.', { kind: 'ok' });
+});
+
+async function loadSongRecordings() {
+  if (!playerSong) { songRecordings = []; return; }
+  const all = await DB.metaByType('recording').catch(() => []);
+  songRecordings = all
+    .filter((r) => r.songId === playerSong.id)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  renderRecordingList();
+}
+
+/**
+ * Spielt einen REC über die normale Hauptsteuerung ab (Audio.el,
+ * #btn-play, Suchleiste) statt über ein eigenes Element. Merkt sich Spur,
+ * Position und Wiedergabestatus, damit endRecordingPreview() den Song danach
+ * genau dort weiterlaufen lassen kann.
+ */
+async function previewRecordingBlob(blob, tag) {
+  if (!Audio.ready) { banner('Die Wiedergabe ist noch nicht bereit.', { kind: 'error' }); return; }
+
+  // Läuft schon eine Vorschau, gilt weiter der allererste Rücksprungpunkt —
+  // sonst würde ein zweiter angehörter REC den echten Song überschreiben.
+  const prior = audioPreview;
+  const returnTrack = prior ? prior.returnTrack : (playerVoice ? trackByVoiceKey(playerVoice) : null);
+  const returnPos = prior ? prior.returnPos : Audio.position;
+  const returnPlaying = prior ? prior.returnPlaying : Audio.playing;
+  const returnFootHidden = prior ? prior.returnFootHidden : $('#player-foot').hidden;
+
+  if (Audio.playing) audioPause();
+
+  const el = Audio.el;
+  const url = URL.createObjectURL(blob);
+  try {
+    await new Promise((resolve, reject) => {
+      const onReady = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(mediaErrorToError(el.error)); };
+      function cleanup() {
+        el.removeEventListener('loadedmetadata', onReady);
+        el.removeEventListener('error', onError);
+      }
+      el.addEventListener('loadedmetadata', onReady, { once: true });
+      el.addEventListener('error', onError, { once: true });
+      el.src = url;
+      el.load();
+    });
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
+  }
+
+  if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
+  Audio.blobUrl = url;
+  Audio.currentKey = 'preview'; // keine echte Spur — audioLoadTrack() vergleicht nie darauf
+  Audio.duration = el.duration || 0;
+  audioSetLoop(null);
+  // A/B-Marken gehören zur Song-Zeitleiste — bei der (meist viel kürzeren)
+  // REC-Dauer wären ihre Positionen auf der Suchleiste bloß irreführend.
+  $('#seek-mark-a').hidden = true;
+  $('#seek-mark-b').hidden = true;
+  $('#seek-range').hidden = true;
+  // Ein Platzhalter-Song ohne eigene Aufnahme blendet die Transportleiste
+  // sonst aus — zum Anhören eines RECs braucht es sie trotzdem.
+  $('#player-foot').hidden = false;
+
+  audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden };
+  updateSeekUI(0);
+  await audioPlay();
+  setPlayIcon(true);
+}
+
+/** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
+async function endRecordingPreview() {
+  if (!audioPreview) return;
+  const { returnTrack, returnPos, returnPlaying, returnFootHidden } = audioPreview;
+  audioPreview = null;
+  audioPause();
+
+  if (returnTrack) {
+    try { await audioLoadTrack(returnTrack); } catch { /* zeigt sich beim nächsten normalen Abspielversuch */ }
+    audioSeek(returnPos);
+    if (returnPlaying) await audioPlay();
+  } else {
+    if (Audio.blobUrl) { URL.revokeObjectURL(Audio.blobUrl); Audio.blobUrl = null; }
+    Audio.el.removeAttribute('src');
+    Audio.el.load();
+    Audio.currentKey = null;
+    Audio.duration = 0;
+    audioSeek(0);
+  }
+  $('#player-foot').hidden = returnFootHidden;
+  applyLoop();
+  updateLoopMarks();
+  updateSeekUI(Audio.position);
+  setPlayIcon(Audio.playing);
+}
+
+async function toggleSavedRecordingPreview(recording) {
+  if (audioPreview?.tag?.savedId === recording.id) {
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    renderRecordingList();
+    updateRecPreviewButton();
+    return;
+  }
+
+  try {
+    const rec = await DB.fileGet(recording.fileKey);
+    if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
+    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id });
+  } catch (err) {
+    bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
+  }
+  renderRecordingList();
+  updateRecPreviewButton();
+}
+
+/* ---------- MP3-Export: lamejs laden, dekodieren, kodieren, mit ID3 versehen ---------- */
+
+// lamejs wiegt gepackt gut 150 KB und wird nur fürs Exportieren gebraucht —
+// erst bei Bedarf nachladen, nicht beim Programmstart.
+let lameLoadPromise = null;
+function ensureLameLoaded() {
+  if (window.lamejs) return Promise.resolve();
+  if (lameLoadPromise) return lameLoadPromise;
+  lameLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'lame.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { lameLoadPromise = null; reject(new Error('MP3-Encoder konnte nicht geladen werden.')); };
+    document.head.append(script);
+  });
+  return lameLoadPromise;
+}
+
+/** WebM/Opus oder MP4/AAC zu rohem PCM dekodieren — ein kurzlebiger eigener AudioContext, unabhängig von Audio.ctx. */
+async function decodeToPcm(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    return await ctx.decodeAudioData(arrayBuffer);
+  } finally {
+    ctx.close().catch(() => {});
+  }
+}
+
+function floatTo16BitPCM(floatSamples) {
+  const out = new Int16Array(floatSamples.length);
+  for (let i = 0; i < floatSamples.length; i++) {
+    const s = Math.max(-1, Math.min(1, floatSamples[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+
+/** PCM aus einem AudioBuffer mit lamejs zu MP3 kodieren (mono oder stereo, je nach Quelle). */
+function encodePcmToMp3(audioBuffer, kbps = 128) {
+  const channels = Math.min(audioBuffer.numberOfChannels, 2);
+  const left = floatTo16BitPCM(audioBuffer.getChannelData(0));
+  const right = channels === 2 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null;
+
+  const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, kbps);
+  const chunks = [];
+  const blockSize = 1152;
+  for (let i = 0; i < left.length; i += blockSize) {
+    const buf = channels === 2
+      ? encoder.encodeBuffer(left.subarray(i, i + blockSize), right.subarray(i, i + blockSize))
+      : encoder.encodeBuffer(left.subarray(i, i + blockSize));
+    if (buf.length > 0) chunks.push(buf);
+  }
+  const end = encoder.flush();
+  if (end.length > 0) chunks.push(end);
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+  return merged;
+}
+
+/* ---------- ID3v2.3-Tag schreiben und lesen ----------
+   Handgeschrieben statt einer weiteren Bibliothek: es sind nur eine Handvoll
+   Textframes, und so bleibt die App bei „eine Datei, keine Abhängigkeiten"
+   (lamejs ausgenommen, das für die Kodierung selbst unersetzlich ist). */
+
+function latin1Bytes(text) {
+  const bytes = [];
+  for (let i = 0; i < text.length; i++) bytes.push(text.charCodeAt(i) & 0xFF);
+  return bytes;
+}
+
+/** Textinfo-Frame (TIT2, TALB, …) als UTF-16LE mit BOM — deckt auch Umlaute/Polnisch ab. */
+function utf16leTextFrameBody(text) {
+  const bytes = [0x01, 0xFF, 0xFE];
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    bytes.push(code & 0xFF, (code >> 8) & 0xFF);
+  }
+  return bytes;
+}
+
+/** TXXX-Frame für eigene Schlüssel/Wert-Angaben — hier immer reines ASCII, deshalb Latin-1. */
+function txxxFrameBody(description, value) {
+  return [0x00, ...latin1Bytes(description), 0x00, ...latin1Bytes(value)];
+}
+
+function id3Frame(id, bodyBytes) {
+  const size = bodyBytes.length;
+  return [
+    ...latin1Bytes(id),
+    (size >>> 24) & 0xFF, (size >>> 16) & 0xFF, (size >>> 8) & 0xFF, size & 0xFF,
+    0x00, 0x00, // Flags
+    ...bodyBytes,
+  ];
+}
+
+const ID3_MARKER_KEY = 'ChorAppREC';
+
+function buildId3v2Tag({ name, songTitle, voice, dateIso }) {
+  const frames = [
+    id3Frame('TIT2', utf16leTextFrameBody(name || '')),
+    id3Frame('TALB', utf16leTextFrameBody(songTitle || '')),
+    id3Frame('TXXX', txxxFrameBody(ID3_MARKER_KEY, '1')),
+    id3Frame('TXXX', txxxFrameBody('Stimme', voice || '')),
+    id3Frame('TXXX', txxxFrameBody('Datum', dateIso || '')),
+  ].flat();
+
+  const size = frames.length;
+  // Nur die Größe im ID3v2-Header ist "syncsafe" (7 Bit je Byte) — die
+  // einzelnen Frame-Header darüber verwenden in v2.3 normale 32-Bit-Werte.
+  const syncsafeSize = [
+    (size >>> 21) & 0x7F, (size >>> 14) & 0x7F, (size >>> 7) & 0x7F, size & 0x7F,
+  ];
+  return new Uint8Array([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, ...syncsafeSize, ...frames]);
+}
+
+function attachId3Tag(mp3Bytes, meta) {
+  const tag = buildId3v2Tag(meta);
+  const out = new Uint8Array(tag.length + mp3Bytes.length);
+  out.set(tag, 0);
+  out.set(mp3Bytes, tag.length);
+  return out;
+}
+
+function decodeId3String(bytes, encByte) {
+  if (encByte === 0x01 || encByte === 0x02) {
+    let start = 0;
+    let littleEndian = true;
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) { start = 2; littleEndian = true; }
+    else if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) { start = 2; littleEndian = false; }
+    let out = '';
+    for (let i = start; i + 1 < bytes.length; i += 2) {
+      const code = littleEndian ? (bytes[i] | (bytes[i + 1] << 8)) : ((bytes[i] << 8) | bytes[i + 1]);
+      if (code === 0) break;
+      out += String.fromCharCode(code);
+    }
+    return out;
+  }
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0) break;
+    out += String.fromCharCode(bytes[i]);
+  }
+  return out;
+}
+
+function decodeTxxxFrame(body) {
+  const encByte = body[0];
+  const rest = body.subarray(1);
+  if (encByte === 0x01 || encByte === 0x02) {
+    let i = 0;
+    while (i + 1 < rest.length && !(rest[i] === 0 && rest[i + 1] === 0)) i += 2;
+    return [decodeId3String(rest.subarray(0, i), encByte), decodeId3String(rest.subarray(i + 2), encByte)];
+  }
+  const zero = rest.indexOf(0);
+  const end = zero === -1 ? rest.length : zero;
+  return [decodeId3String(rest.subarray(0, end), 0x00), decodeId3String(rest.subarray(end + 1), 0x00)];
+}
+
+/** Liest die ID3v2-Tags am Dateianfang — null, wenn keine vorhanden sind. */
+function readId3Tags(bytes) {
+  if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return null;
+  const size = ((bytes[6] & 0x7F) << 21) | ((bytes[7] & 0x7F) << 14) | ((bytes[8] & 0x7F) << 7) | (bytes[9] & 0x7F);
+  const tagEnd = Math.min(10 + size, bytes.length);
+  const tags = {};
+  let pos = 10;
+  while (pos + 10 <= tagEnd) {
+    const id = String.fromCharCode(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]);
+    if (id === '\u0000\u0000\u0000\u0000') break; // Padding erreicht
+    const frameSize = (bytes[pos + 4] << 24) | (bytes[pos + 5] << 16) | (bytes[pos + 6] << 8) | bytes[pos + 7];
+    const bodyStart = pos + 10;
+    const bodyEnd = bodyStart + frameSize;
+    if (frameSize <= 0 || bodyEnd > bytes.length) break;
+    const body = bytes.subarray(bodyStart, bodyEnd);
+    if (id === 'TIT2' || id === 'TALB') {
+      tags[id] = decodeId3String(body.subarray(1), body[0]);
+    } else if (id === 'TXXX') {
+      const [desc, value] = decodeTxxxFrame(body);
+      tags[`TXXX:${desc}`] = value;
+    }
+    pos = bodyEnd;
+  }
+  return tags;
+}
+
+function voiceCodeFromLabel(label) {
+  const entry = Object.entries(VOICE_LABEL).find(([, v]) => v === label);
+  return entry ? entry[0] : null;
+}
+
+/** Für den Dateinamen: nur Buchstaben/Zahlen/Leerzeichen/Bindestrich, alles andere raus. */
+function sanitizeFileName(name) {
+  return name.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'REC';
+}
+
+const REC_NAME_MARKER = 'REC';
+
+/**
+ * Dateiname aus allen wichtigen Angaben — auch ohne die App (oder nach dem
+ * Umbenennen, das die ID3-Tags nicht mehr hätte) lesbar: Song, Stimme und
+ * Name stehen direkt im Namen, mit „_" als Trenner (überall problemlos
+ * nutzbar, z.B. beim Versenden oder in der Kommandozeile). Kein Datum —
+ * das steht ohnehin im ID3-Tag und macht den Namen nur unnötig lang.
+ */
+function recFileBaseName({ songTitle, voice, name }) {
+  const voiceLabel = voice ? (VOICE_LABEL[voice] || voice) : 'Ohne Stimme';
+  const parts = [songTitle || 'Unbekannter Song', voiceLabel, name || 'REC'].map(sanitizeFileName);
+  return [REC_NAME_MARKER, ...parts].join('_');
+}
+
+/** Über ein unsichtbares <audio> die Dauer einer Datei ermitteln. */
+function probeAudioDuration(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('audio');
+    const cleanup = () => { URL.revokeObjectURL(url); a.remove(); };
+    a.addEventListener('loadedmetadata', () => { const d = a.duration; cleanup(); resolve(Number.isFinite(d) ? d : 0); });
+    a.addEventListener('error', () => { cleanup(); resolve(0); });
+    a.src = url;
+    a.load();
+  });
+}
+
+/**
+ * Exportiert einen REC als eigenständige MP3-Datei — abspielbar und
+ * verschickbar überall, ganz ohne diese App. Songtitel, Stimme und Name
+ * stehen im Dateinamen (für Menschen); Songtitel, Stimme, Name und Datum
+ * zusätzlich als ID3-Tags (überlebt ein Umbenennen) — importRecordingFile
+ * liest zuerst die Tags, fällt sonst auf den Dateinamen zurück.
+ */
+async function exportRecording(recording) {
+  const closeBanner = banner('REC wird als MP3 exportiert …', { timeout: 0 });
+  try {
+    const rec = await DB.fileGet(recording.fileKey);
+    if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
+    const sourceBlob = recordBlob(rec, recording.mimeType);
+
+    await ensureLameLoaded();
+    const audioBuffer = await decodeToPcm(sourceBlob);
+    const mp3Bytes = encodePcmToMp3(audioBuffer);
+
+    const songTitle = playerSong?.title || recording.songTitle || '';
+    const tagged = attachId3Tag(mp3Bytes, {
+      name: recording.name, songTitle, voice: recording.voice,
+      dateIso: (recording.createdAt || '').slice(0, 10),
+    });
+
+    const fileName = `${recFileBaseName({
+      songTitle, voice: recording.voice, name: recording.name,
+    })}.mp3`;
+    const file = new File([tagged], fileName, { type: 'audio/mpeg' });
+
+    closeBanner();
+    let shared = false;
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'REC' }); shared = true; }
+      catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    if (!shared) downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
+  } catch (err) {
+    closeBanner();
+    bannerError('Der REC konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
+  }
+}
+
+/**
+ * Importiert eine mit exportRecording() erzeugte MP3-Datei — auch aus einer
+ * anderen App-Instanz. Findet sich der Song (per Titel) nicht in der
+ * Bibliothek, bleibt der REC ohne songId gespeichert und verbindet
+ * sich automatisch, sobald der Song importiert wird (reconnectPendingRecordings)
+ * — genau wie bei Loops und Notizen.
+ */
+async function importRecordingFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const tags = readId3Tags(bytes) || {};
+  const isOurs = tags[`TXXX:${ID3_MARKER_KEY}`] === '1';
+
+  let songTitle = tags.TALB || '';
+  let name = tags.TIT2 || '';
+  let voice = tags['TXXX:Stimme'] || '';
+  let dateIso = tags['TXXX:Datum'] || '';
+
+  if (!isOurs) {
+    // Kein (oder ein fremder) ID3-Tag — vermutlich umbenannt oder von einer
+    // älteren Version. Letzter Versuch: den Dateinamen selbst auswerten.
+    const base = file.name.replace(/\.mp3$/i, '');
+    // Ältere Exporte trennten mit „ · " und hängten ein Datum an — beides
+    // wird hier noch verstanden, falls so eine Datei importiert wird.
+    const legacyParts = base.split(' · ');
+    const parts = legacyParts.length >= 4 ? legacyParts : base.split('_');
+    if (parts[0] === REC_NAME_MARKER && (parts.length === 4 || parts.length === 5)) {
+      songTitle = songTitle || parts[1];
+      voice = voice || (parts[2] === 'Ohne Stimme' ? '' : (voiceCodeFromLabel(parts[2]) || ''));
+      name = name || parts[3];
+      dateIso = dateIso || parts[4] || '';
+    } else if (!songTitle) {
+      throw new Error('Diese Datei wurde nicht als REC-Export erkannt.');
+    }
+  }
+
+  const blob = new Blob([bytes], { type: 'audio/mpeg' });
+  const duration = await probeAudioDuration(blob);
+
+  const songs = await DB.metaByType('song').catch(() => []);
+  const song = findSongByTitle(songs, songTitle);
+
+  const fileKey = newFileKey();
+  await DB.filePut(await fileRecord(fileKey, blob, file.name));
+
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const recording = {
+    key: `recording:${id}`, type: 'recording', id,
+    songId: song ? song.id : null,
+    songTitle,
+    name: name || 'REC',
+    voice: voice || null,
+    fileKey, mimeType: 'audio/mpeg', duration,
+    size: blob.size,
+    createdAt: dateIso ? `${dateIso}T00:00:00.000Z` : new Date().toISOString(),
+  };
+  await DB.metaPut(recording);
+  if (playerSong && song && playerSong.id === song.id) await loadSongRecordings();
+  return { song, recording };
+}
+
+/** RECs ohne songId nachträglich verbinden, nachdem ein Song importiert wurde. */
+async function reconnectPendingRecordings() {
+  const recordings = await DB.metaByType('recording').catch(() => []);
+  const pending = recordings.filter((r) => !r.songId && r.songTitle);
+  if (!pending.length) return 0;
+
+  const songs = await DB.metaByType('song');
+  const reconnected = [];
+  for (const recording of pending) {
+    const song = findSongByTitle(songs, recording.songTitle);
+    if (!song) continue;
+    recording.songId = song.id;
+    reconnected.push(recording);
+  }
+  await DB.metaPutMany(reconnected);
+  return reconnected.length;
+}
+
+function renderRecordingList() {
+  const host = $('#recording-list');
+  host.textContent = '';
+  updateLoopsTabDot();
+  if (!songRecordings.length) return;
+
+  for (const recording of songRecordings) {
+    const playing = audioPreview?.tag?.savedId === recording.id && Audio.playing;
+    const icon = el('span', { 'aria-hidden': 'true' });
+    icon.innerHTML = playing
+      ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+
+    const meta = [fmtTime(recording.duration)];
+    if (recording.voice) meta.push(VOICE_LABEL[recording.voice] || recording.voice);
+
+    const go = el('button', {
+      class: 'go', type: 'button',
+      'aria-label': `„${recording.name}" ${playing ? 'pausieren' : 'über die Wiedergabe oben abspielen'}`,
+    },
+      icon,
+      el('span', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:2px' },
+        el('strong', { text: recording.name }),
+        el('span', { class: 'rec-meta', text: meta.join(' · ') })));
+    go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
+
+    const exportBtn = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" exportieren`,
+    });
+    exportBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>';
+    exportBtn.addEventListener('click', () => exportRecording(recording));
+
+    const rename = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
+    });
+    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+    rename.addEventListener('click', async () => {
+      const name = await promptDialog({ title: 'REC umbenennen', value: recording.name });
+      if (name === null) return;
+      const voice = await pickRecordingVoice(recording.voice);
+      recording.name = name.trim() || recording.name;
+      if (voice !== undefined) recording.voice = voice;
+      await DB.metaPut(recording);
+      renderRecordingList();
+    });
+
+    const del = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" löschen`,
+      style: 'color: var(--danger)',
+    });
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
+    del.addEventListener('click', async () => {
+      const ok = await confirmDialog({
+        title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
+        okLabel: 'Löschen', danger: true,
+      });
+      if (!ok) return;
+      if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
+      await DB.fileDelete(recording.fileKey);
+      await DB.metaDelete(recording.key);
+      await loadSongRecordings();
+    });
+
+    host.append(el('div', {
+      class: 'loop-item recording-item',
+      'data-active': playing ? 'true' : 'false',
+    }, go, exportBtn, rename, del));
+  }
+}
 
 /* ==========================================================================
    LIEDTEXT UND NOTEN
@@ -8652,101 +9841,190 @@ document.addEventListener('resume', () => dlog('page:resume', { playing: Audio.p
 window.addEventListener('pageshow', (e) => dlog('page:pageshow', { fromBfcache: e.persisted }));
 window.addEventListener('pagehide', (e) => dlog('page:pagehide', { toBfcache: e.persisted, playing: Audio.playing }));
 
-/* ---------- Notizen sammeln und ausgeben --------------------------------- */
+/* ---------- Notizen/eigene Liedtexte sammeln und drucken -----------------
+
+   Statt eines Dateiformats (RTF öffnete auf manchen Handys gar nicht erst)
+   der native Druckdialog des Browsers: der bietet auf jedem Gerät gleich
+   "Drucken" und "Als PDF sichern" an, ganz ohne Format-Frage. Notizen und
+   eigene Liedtexte teilen sich Sammlung, Auswahl-Dialog und Druckausgabe —
+   nur die DB-Art (`note`/`lyricsNote`) und die Beschriftung unterscheiden sich. */
 
 /**
- * Alle nicht leeren Notizen, nach Songtitel sortiert. Notizen zu gelöschten
- * Songs sind dabei — sie tragen den Titel selbst.
+ * Alle nicht leeren Einträge einer Art, nach Songtitel sortiert. Einträge zu
+ * gelöschten Songs sind dabei — sie tragen den Titel selbst.
  */
-async function collectNotes() {
-  const [notes, songs] = await Promise.all([
-    DB.metaByType('note').catch(() => []),
+async function collectPrintable(kind) {
+  const [items, songs] = await Promise.all([
+    DB.metaByType(kind).catch(() => []),
     DB.metaByType('song').catch(() => []),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
 
-  return notes
+  return items
     .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || 'Ohne Titel' }))
     .filter((n) => (n.text || '').trim())
     .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
 }
 
-/**
- * Songtitel, Leerzeile, Notiz — und vor dem nächsten Titel wieder eine
- * Leerzeile. Bewusst ohne Kopfzeile, damit sich die Datei überall einfügen
- * lässt, ohne dass jemand erst etwas wegräumen muss.
- */
-function notesToText(notes) {
-  return notes
-    .map((n) => `${n.songTitle}\n\n${String(n.text).replace(/\s+$/, '')}`)
-    .join('\n\n') + '\n';
-}
-
-/**
- * Maskiert Text fürs RTF-Textkontrollwort: Sonderzeichen (\, {, }) escapen,
- * Zeilenumbrüche werden zu \par, alles außerhalb ASCII geht als \uN? raus —
- * so bleibt die Datei unabhängig von jeder Zeichenkodierung lesbar.
- */
-function rtfEscapeText(str) {
-  let out = '';
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    const code = str.charCodeAt(i);
-    if (ch === '\\' || ch === '{' || ch === '}') out += '\\' + ch;
-    else if (ch === '\n') out += '\\par\n';
-    else if (code < 0x80) out += ch;
-    else out += `\\u${code > 32767 ? code - 65536 : code}?`;
-  }
-  return out;
-}
-
-/** Songtitel als fette Überschrift, Notiztext darunter — zum Drucken. */
-function notesToRtf(notes) {
-  const body = notes.map((n) => {
-    const heading = rtfEscapeText(n.songTitle);
-    const text = rtfEscapeText(String(n.text).replace(/\s+$/, ''));
-    return `{\\b\\fs28 ${heading}\\par}\\fs22 ${text}\\par\\par`;
-  }).join('');
-  return `{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0 Helvetica;}}\\f0\\fs22 ${body}}`;
+async function renderPrintCount(kind, countId, btnId, noneLabel) {
+  const node = $(`#${countId}`);
+  const btn  = $(`#${btnId}`);
+  const items = await collectPrintable(kind);
+  node.textContent = items.length
+    ? `${plural(items.length, 'Song', 'Songs')} verfügbar.`
+    : noneLabel;
+  btn.disabled = items.length === 0;
 }
 
 async function renderNotesCount() {
-  const node = $('#notes-count');
-  const btn  = $('#btn-notes-export');
-  const notes = await collectNotes();
-  node.textContent = notes.length
-    ? `${plural(notes.length, 'Notiz', 'Notizen')} gespeichert.`
-    : 'Noch keine Notizen.';
-  btn.disabled = notes.length === 0;
+  await renderPrintCount('note', 'notes-count', 'btn-notes-export', 'Noch keine Notizen.');
+}
+async function renderLyricsNotesCount() {
+  await renderPrintCount('lyricsNote', 'lyrics-notes-count', 'btn-lyrics-notes-export', 'Noch keine eigenen Liedtexte.');
 }
 
-$('#btn-notes-export').addEventListener('click', async () => {
-  let notes;
-  try {
-    notes = await collectNotes();
-  } catch (err) {
-    bannerError('Die Notizen konnten nicht gelesen werden.', 'NOTES-READ', err);
-    return;
-  }
-  if (!notes.length) {
-    banner('Es sind noch keine Notizen gespeichert.');
-    return;
-  }
+/**
+ * Auswahl der Songs mit vorhandenem Inhalt — ähnlich der Auswahlmaske beim
+ * Songimport, aber naturgemäß nur mit Songs, zu denen überhaupt etwas
+ * vorliegt. Eine Setliste lässt sich als Schnellauswahl übernehmen. Gibt die
+ * ausgewählten Einträge zurück, oder `null` bei Abbruch.
+ */
+async function showPrintSelectionDialog(title, items) {
+  const playlists = await DB.metaByType('playlist').catch(() => []);
+  const selected = new Set(items.map((_, i) => i)); // alles vorausgewählt
 
-  const text = notesToRtf(notes);
-  const fileName = `chor-notizen-${new Date().toISOString().slice(0, 10)}.rtf`;
-  const file = new File([text], fileName, { type: 'application/rtf' });
+  return new Promise((resolve) => {
+    const done = (result) => { layer.remove(); resolve(result); };
+
+    const countLabel = el('span', { class: 'small muted' });
+    const updateCount = () => { countLabel.textContent = `${selected.size} von ${items.length} ausgewählt`; };
+
+    const rows = items.map((item, i) => {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = true;
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(i); else selected.delete(i);
+        updateCount();
+      });
+      return el('label', { class: 'row', style: 'align-items:center; gap:10px; cursor:pointer; padding:8px 0; border-bottom:1px solid var(--line)' },
+        cb, el('span', { class: 'grow', text: item.songTitle }));
+    });
+
+    const setAll = (on) => {
+      selected.clear();
+      items.forEach((_, i) => { if (on) selected.add(i); });
+      rows.forEach((row) => { row.querySelector('input').checked = on; });
+      updateCount();
+    };
+
+    let playlistSelect = null;
+    const playlistRow = playlists.length ? el('label', { class: 'select-field', style: 'margin-bottom:10px' },
+      playlistSelect = el('select', {},
+        el('option', { value: '', text: 'Für eine Setliste auswählen …' }),
+        ...playlists.map((p) => el('option', { value: p.name, text: p.name })))
+    ) : null;
+
+    if (playlistSelect) {
+      playlistSelect.addEventListener('change', () => {
+        const pl = playlists.find((p) => p.name === playlistSelect.value);
+        if (!pl) return;
+        const wanted = new Set((pl.songTitles || []).map(normalizeTitle));
+        selected.clear();
+        items.forEach((item, i) => {
+          const on = wanted.has(normalizeTitle(item.songTitle));
+          if (on) selected.add(i);
+          rows[i].querySelector('input').checked = on;
+        });
+        updateCount();
+      });
+    }
+
+    const pick = (action) => done({ action, items: [...selected].sort((a, b) => a - b).map((i) => items[i]) });
+
+    const box = el('div', { class: 'dialog', style: 'max-height:82vh; display:flex; flex-direction:column' },
+      el('h2', { text: title }),
+      playlistRow,
+      el('div', { class: 'row', style: 'margin-bottom:6px' },
+        el('button', { class: 'btn', type: 'button', text: 'Alle', onclick: () => setAll(true) }),
+        el('button', { class: 'btn', type: 'button', text: 'Keine', onclick: () => setAll(false) }),
+        countLabel),
+      el('div', { class: 'stack', style: 'overflow-y:auto; flex:1; gap:0' }, ...rows),
+      el('div', { class: 'stack', style: 'gap:10px; margin-top:12px' },
+        el('div', { class: 'dialog-actions' },
+          el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+          el('button', { class: 'btn', type: 'button', text: 'Drucken', onclick: () => pick('print') })),
+        el('button', { class: 'btn btn--primary', type: 'button', style: 'width:100%', text: 'Als Datei exportieren',
+                       onclick: () => pick('export') })));
+
+    updateCount();
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+  });
+}
+
+/** Füllt #print-sheet und ruft den nativen Druckdialog auf. */
+function printItems(heading, items) {
+  const host = $('#print-sheet');
+  host.textContent = '';
+  host.append(el('h1', { text: heading }));
+  for (const item of items) {
+    host.append(el('div', { class: 'print-entry' },
+      el('h2', { text: item.songTitle }),
+      el('div', { class: 'print-text', text: String(item.text).replace(/\s+$/, '') })));
+  }
+  window.print();
+}
+
+/** Baut aus den ausgewählten Einträgen einen menschenlesbaren Klartext. */
+function printableToText(heading, items) {
+  const lines = [heading, `Exportiert am ${new Date().toLocaleDateString('de-DE')}`, ''];
+  for (const item of items) {
+    lines.push('='.repeat(40), item.songTitle, '='.repeat(40));
+    lines.push(String(item.text).replace(/\s+$/, ''), '');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Speichert/verschickt die Auswahl als echte .txt-Datei — zum Weitergeben an
+ * einen anderen Computer und dortigen Weiterbearbeiten. Reiner Text statt
+ * RTF/OTF, weil das auf jedem Gerät ohne Zusatz-App lesbar und editierbar ist.
+ */
+async function exportPrintableFile(heading, items) {
+  const text = printableToText(heading, items);
+  const date = new Date().toISOString().slice(0, 10);
+  const safeHeading = heading.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'Export';
+  const fileName = `${safeHeading}-${date}.txt`;
+  const file = new File([text], fileName, { type: 'text/plain;charset=utf-8' });
 
   if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'Notizen' });
-      return;
-    } catch (err) {
-      if (err?.name === 'AbortError') return;
-    }
+    try { await navigator.share({ files: [file], title: heading }); return; }
+    catch (err) { if (err?.name === 'AbortError') return; }
   }
-  downloadBlob(new Blob([text], { type: 'application/rtf' }), fileName);
-});
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+}
+
+async function printFlow(kind, label, heading, readErrorCode) {
+  let items;
+  try {
+    items = await collectPrintable(kind);
+  } catch (err) {
+    bannerError(`${label} konnten nicht gelesen werden.`, readErrorCode, err);
+    return;
+  }
+  if (!items.length) {
+    banner(`Es sind noch keine ${label.toLowerCase()} gespeichert.`);
+    return;
+  }
+  const result = await showPrintSelectionDialog(`${label} drucken`, items);
+  if (!result || !result.items.length) return;
+  if (result.action === 'print') printItems(heading, result.items);
+  else await exportPrintableFile(heading, result.items);
+}
+
+$('#btn-notes-export').addEventListener('click', () => printFlow('note', 'Notizen', 'Notizen', 'NOTES-READ'));
+$('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', 'Eigene Liedtexte', 'Eigene Liedtexte', 'LYRICS-PRINT-READ'));
 
 /**
  * Notizen, die beim Wiederherstellen keinem Song zugeordnet werden konnten,
@@ -9587,71 +10865,349 @@ function playlistAdvance() {
 let pendingAutoPlay = false;
 
 /* ==========================================================================
-   BACKUP — Loops, Playlisten und Einstellungen sichern (Spec 5.4)
+   BACKUP — Loops, Playlisten, Einstellungen, RECs und wahlweise Audio sichern
 
-   Bewusst ohne Audiodaten: die Datei bleibt wenige Kilobyte groß. Loops und
-   Playlisten verweisen über den *Titel* auf Songs, nicht über die interne
-   Kennung — nur so übersteht eine Sicherung das Löschen und erneute
+   Loops und Playlisten verweisen über den *Titel* auf Songs, nicht über die
+   interne Kennung — nur so übersteht eine Sicherung das Löschen und erneute
    Importieren der Aufnahmen und lässt sich auf ein anderes Gerät übertragen.
+
+   Was tatsächlich hineinkommt, wählt die Person beim Erstellen aus
+   (showBackupOptionsDialog): Text-Daten (Loops/Notizen/eigene Liedtexte/
+   Setlisten/Einstellungen) sind immer klein und praktisch kostenlos. Eigene
+   RECs sind ohne ihr Audio nutzlos — sie werden deshalb, wenn ausgewählt,
+   immer mitsamt Ton als Base64 eingebettet. Die Song-Audiodateien (die
+   komplette Chor-Bibliothek) können ebenfalls eingebettet werden, sind aber
+   oft groß und liegen ohnehin schon in der Dropbox — deshalb separat
+   abwählbar und nicht in der Voreinstellung "Nur Nutzerdaten".
    ========================================================================== */
 
 const BACKUP_FORMAT = 'chor-app-backup';
 
-async function buildBackup() {
-  const [songs, loops, playlists, notes, lyricsNotes] = await Promise.all([
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlob(base64, mimeType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * Größenschätzung je Kategorie — rein aus bereits gespeicherten `size`-Feldern,
+ * ohne eine einzige Datei zu öffnen. Deshalb blitzschnell und für die Live-
+ * Anzeige im Auswahl-Dialog geeignet; *1,34 gleicht den Base64-Aufschlag aus.
+ */
+async function backupSizeEstimate() {
+  const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
-    DB.metaByType('note'), DB.metaByType('lyricsNote'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
+  ]);
+  const textBytes = JSON.stringify({ loops, notes, lyricsNotes, playlists }).length + 500;
+  const recAudioBytes = recordings.reduce((n, r) => n + (r.size || 0), 0) * 1.34;
+  const songAudioBytes = songs.reduce((n, s) =>
+    n + s.tracks.reduce((m, t) => m + (t.size || 0), 0), 0) * 1.34;
+  return {
+    textBytes,
+    recAudioBytes, recCount: recordings.length,
+    songAudioBytes, songCount: songs.length,
+    trackCount: songs.reduce((n, s) => n + s.tracks.length, 0),
+  };
+}
+
+/**
+ * Ein JSON-Objekt aus `{schlüssel: wert}`-Paaren als Text — wie
+ * `JSON.stringify`, aber ohne das riesige `audioBase64`-Feld: das wird als
+ * eigenes, unangetastetes Blob-Teilstück angehängt (Base64 besteht nur aus
+ * A-Z/a-z/0-9/+/=, braucht also kein Escaping). So entsteht nie ein einziger
+ * JS-String über alle Audiodaten hinweg — bei einer 800-MB-Sicherung sprengte
+ * genau das die maximale Stringlänge der Engine (RangeError: Invalid string
+ * length). Der Ziel-Blob wird stattdessen aus vielen kleinen Teilen gebaut.
+ */
+function metaWithAudioParts(meta, base64) {
+  const entries = Object.entries(meta).map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',');
+  return [`{${entries},"audioBase64":"`, base64, '"}'];
+}
+
+/**
+ * Baut die Sicherung als Liste von Blob-Teilstücken (statt eines einzigen
+ * JSON-Strings) plus Zählern für die Erfolgsmeldung. `new Blob(parts)`/
+ * `new File(parts, …)` fügt die Teile aneinander, ohne je einen JS-String
+ * über die gesamte Dateigröße anzulegen.
+ */
+async function buildBackupParts(opts, onProgress) {
+  const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
+    DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
   ]);
   const byId = new Map(songs.map((s) => [s.id, s]));
+  const counts = {};
+  const parts = [];
+  // Fortschritt in denselben *1,34-hochgerechneten Bytes wie die Schätzung
+  // im Auswahl-Dialog, damit der Balken am Ende auch wirklich bei 100% ankommt.
+  let doneBytes = 0;
+  const reportProgress = (rawSize) => {
+    doneBytes += (rawSize || 0) * 1.34;
+    onProgress?.(doneBytes);
+  };
 
-  return {
-    format: BACKUP_FORMAT,
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    settings: { myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize },
-    songs: songs
-      .sort((a, b) => collator.compare(a.title, b.title))
-      .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })),
-    loops: loops.map((l) => ({
+  parts.push(`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":2,"exportedAt":${JSON.stringify(new Date().toISOString())}`);
+  parts.push(`,"songs":${JSON.stringify(songs
+    .sort((a, b) => collator.compare(a.title, b.title))
+    .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })))}`);
+
+  if (opts.settings) {
+    parts.push(`,"settings":${JSON.stringify({
+      myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize,
+      defaultPlayerTab: settings.defaultPlayerTab, accentColor: settings.accentColor, language: settings.language,
+    })}`);
+  }
+  if (opts.loops) {
+    const arr = loops.map((l) => ({
       songTitle: byId.get(l.songId)?.title || l.songTitle || '',
       name: l.name, start: l.start, end: l.end,
-    })).filter((l) => l.songTitle),
-    playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
-    notes: notes.map((n) => ({
+    })).filter((l) => l.songTitle);
+    parts.push(`,"loops":${JSON.stringify(arr)}`);
+    counts.loops = arr.length;
+  }
+  if (opts.playlists) {
+    const arr = playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] }));
+    parts.push(`,"playlists":${JSON.stringify(arr)}`);
+    counts.playlists = arr.length;
+  }
+  if (opts.notes) {
+    const arr = notes.map((n) => ({
       songTitle: byId.get(n.songId)?.title || n.songTitle || '',
       text: n.text || '',
       updatedAt: n.updatedAt || null,
-    })).filter((n) => n.songTitle && n.text.trim()),
-    lyricsNotes: lyricsNotes.map((n) => ({
+    })).filter((n) => n.songTitle && n.text.trim());
+    parts.push(`,"notes":${JSON.stringify(arr)}`);
+    counts.notes = arr.length;
+  }
+  if (opts.lyricsNotes) {
+    const arr = lyricsNotes.map((n) => ({
       songTitle: byId.get(n.songId)?.title || n.songTitle || '',
       text: n.text || '',
       updatedAt: n.updatedAt || null,
-    })).filter((n) => n.songTitle && n.text.trim()),
+    })).filter((n) => n.songTitle && n.text.trim());
+    parts.push(`,"lyricsNotes":${JSON.stringify(arr)}`);
+    counts.lyricsNotes = arr.length;
+  }
+
+  if (opts.recordings) {
+    parts.push(',"recordings":[');
+    let first = true, n = 0;
+    for (const r of recordings) {
+      const rec = await DB.fileGet(r.fileKey);
+      if (!rec) continue;
+      const blob = recordBlob(rec, r.mimeType);
+      const base64 = await blobToBase64(blob);
+      const meta = {
+        songTitle: byId.get(r.songId)?.title || r.songTitle || '',
+        name: r.name, voice: r.voice || null, duration: r.duration,
+        mimeType: r.mimeType, createdAt: r.createdAt,
+      };
+      if (!first) parts.push(',');
+      first = false;
+      parts.push(...metaWithAudioParts(meta, base64));
+      reportProgress(r.size);
+      n++;
+    }
+    parts.push(']');
+    counts.recordings = n;
+  }
+
+  if (opts.songAudio) {
+    parts.push(',"songAudio":[');
+    let firstSong = true, trackCount = 0;
+    for (const s of songs) {
+      const trackParts = [];
+      for (const t of s.tracks) {
+        const rec = await DB.fileGet(t.fileKey);
+        if (!rec) continue;
+        const blob = recordBlob(rec, mimeForTrack(t));
+        const base64 = await blobToBase64(blob);
+        const meta = { voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t) };
+        if (trackParts.length) trackParts.push(',');
+        trackParts.push(...metaWithAudioParts(meta, base64));
+        reportProgress(t.size);
+        trackCount++;
+      }
+      if (!trackParts.length) continue;
+      if (!firstSong) parts.push(',');
+      firstSong = false;
+      parts.push(`{"title":${JSON.stringify(s.title)},"tracks":[`, ...trackParts, ']}');
+    }
+    parts.push(']');
+    counts.songAudioTracks = trackCount;
+  }
+
+  parts.push('}');
+  return { parts, counts };
+}
+
+/**
+ * Fragt, was in die Sicherung soll: Text-Daten sind immer sinnvoll (klein,
+ * ohne sie wären RECs/Loops/Notizen beim nächsten Geräteschaden weg) und
+ * daher fest angehakt; Audio ist optional, weil groß. Gibt die gewählten
+ * Optionen zurück oder `null`, wenn abgebrochen wurde.
+ */
+async function showBackupOptionsDialog() {
+  const est = await backupSizeEstimate();
+  const opts = {
+    loops: true, notes: true, lyricsNotes: true, playlists: true, settings: true,
+    recordings: est.recCount > 0,
+    songAudio: false,
+  };
+
+  return new Promise((resolve) => {
+    const done = (result) => { layer.remove(); resolve(result); };
+
+    const totalLabel = el('strong', { id: 'backup-size-total' });
+    let currentTotalBytes = 0;
+    const updateTotal = () => {
+      let bytes = est.textBytes;
+      if (opts.recordings) bytes += est.recAudioBytes;
+      if (opts.songAudio) bytes += est.songAudioBytes;
+      currentTotalBytes = bytes;
+      totalLabel.textContent = fmtBytes(bytes);
+    };
+
+    const row = (key, title, hint, bytes) => {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = opts[key];
+      cb.addEventListener('change', () => { opts[key] = cb.checked; updateTotal(); updatePresetHighlight(); });
+      const label = el('span', { class: 'grow' }, el('div', { text: title }));
+      if (hint) label.append(el('div', { class: 'small muted', text: hint }));
+      return el('label', { class: 'row', style: 'align-items:flex-start; gap:10px; cursor:pointer' },
+        cb, label,
+        el('span', { class: 'small muted', style: 'white-space:nowrap', text: bytes != null ? fmtBytes(bytes) : '' }));
+    };
+
+    let presetBtnUser, presetBtnFull;
+    const isUserDataPreset = () => !opts.songAudio && opts.loops && opts.notes && opts.lyricsNotes
+      && opts.playlists && opts.settings && opts.recordings === (est.recCount > 0);
+    const isFullPreset = () => opts.songAudio && opts.loops && opts.notes && opts.lyricsNotes
+      && opts.playlists && opts.settings && opts.recordings === (est.recCount > 0);
+    const updatePresetHighlight = () => {
+      presetBtnUser.setAttribute('aria-pressed', isUserDataPreset() ? 'true' : 'false');
+      presetBtnFull.setAttribute('aria-pressed', isFullPreset() ? 'true' : 'false');
+    };
+
+    const applyPreset = (full) => {
+      opts.songAudio = full;
+      opts.recordings = est.recCount > 0;
+      opts.loops = opts.notes = opts.lyricsNotes = opts.playlists = opts.settings = true;
+      for (const [key, cb] of Object.entries(checkboxes)) cb.checked = opts[key];
+      updateTotal();
+      updatePresetHighlight();
+    };
+
+    const checkboxRows = [
+      ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
+      ['recordings', `Eigene RECs (${plural(est.recCount, 'Aufnahme', 'Aufnahmen')})`, null, est.recAudioBytes],
+      ['loops', 'Loops', null, null],
+      ['notes', 'Notizen', null, null],
+      ['lyricsNotes', 'Eigene Liedtexte', null, null],
+      ['playlists', 'Setlisten', null, null],
+      ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße, Standardreiter, Akzentfarbe, Sprache.', null],
+    ];
+    const checkboxes = {};
+    const rowNodes = checkboxRows.map(([key, title, hint, bytes]) => {
+      const node = row(key, title, hint, bytes);
+      checkboxes[key] = node.querySelector('input');
+      return node;
+    });
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'Sicherung erstellen' }),
+      el('p', { text: 'Text-Daten sind immer klein und stehen deshalb schon an. Audio nur, wenn gewünscht — beides lässt sich einzeln abwählen.' }),
+      el('div', { class: 'preset-row', style: 'grid-template-columns:repeat(2,1fr); margin-bottom:10px' },
+        presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
+        presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Alles sichern', onclick: () => applyPreset(true) })),
+      el('div', { class: 'stack', style: 'gap:2px' }, ...rowNodes),
+      el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
+        el('span', { text: 'Geschätzte Dateigröße' }), totalLabel),
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
+
+    updateTotal();
+    updatePresetHighlight();
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+  });
+}
+
+const BACKUP_PROGRESS_THRESHOLD = 10 * 1024 * 1024; // ab 10 MB eigener Fortschrittsbalken statt nur Banner
+
+/** Fortschrittsbalken für große Sicherungen — dieselbe Optik wie der Speicherbalken in den Einstellungen. */
+function showBackupProgressDialog(estimatedTotal) {
+  const bar = el('i');
+  const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: 'Sicherung wird erstellt …' });
+  const box = el('div', { class: 'dialog' },
+    el('h2', { text: 'Sicherung wird erstellt' }),
+    el('p', { text: 'Bitte die App währenddessen nicht schließen — bei viel Audio kann das etwas dauern.' }),
+    el('div', { class: 'meter' }, bar),
+    status);
+  const layer = el('div', { class: 'overlay' }, box);
+  document.body.append(layer);
+  return {
+    update(doneBytes) {
+      const pct = estimatedTotal > 0 ? Math.min(100, Math.round((doneBytes / estimatedTotal) * 100)) : 0;
+      bar.style.width = `${pct}%`;
+      status.textContent = `${pct}% · ${fmtBytes(doneBytes)} von ${fmtBytes(estimatedTotal)}`;
+    },
+    close() { layer.remove(); },
   };
 }
 
 $('#btn-backup-export').addEventListener('click', async () => {
+  const result = await showBackupOptionsDialog();
+  if (!result) return;
+  const { estimatedBytes, ...opts } = result;
+
+  const showProgress = estimatedBytes > BACKUP_PROGRESS_THRESHOLD;
+  const progress = showProgress ? showBackupProgressDialog(estimatedBytes) : null;
+  const heavy = opts.songAudio || opts.recordings;
+  const closeBanner = !showProgress && heavy
+    ? banner('Sicherung wird erstellt … bei viel Audio kann das etwas dauern.', { timeout: 0 })
+    : null;
   try {
-    const data = await buildBackup();
-    const text = JSON.stringify(data, null, 2);
+    const { parts: blobParts, counts } = await buildBackupParts(opts, (done) => progress?.update(done));
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `chor-app-backup-${date}.json`;
-    const file = new File([text], fileName, { type: 'application/json' });
+    const file = new File(blobParts, fileName, { type: 'application/json' });
+    progress?.close();
+    closeBanner?.();
 
     let shared = false;
     if (navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file], title: 'Chor-Sicherung' }); shared = true; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
-    if (!shared) downloadBlob(new Blob([text], { type: 'application/json' }), fileName);
+    if (!shared) downloadBlob(new Blob(blobParts, { type: 'application/json' }), fileName);
 
     await saveSettings({ lastBackupAt: new Date().toISOString() });
     renderBackupAge();
     updateBackupReminder();
-    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, `
-      + `${plural(data.notes.length, 'Notiz', 'Notizen')}, `
-      + `${plural(data.playlists.length, 'Setliste', 'Setlisten')}.`, { kind: 'ok' });
+    const parts = [];
+    if (opts.loops) parts.push(plural(counts.loops, 'Loop', 'Loops'));
+    if (opts.notes) parts.push(plural(counts.notes, 'Notiz', 'Notizen'));
+    if (opts.playlists) parts.push(plural(counts.playlists, 'Setliste', 'Setlisten'));
+    if (opts.recordings) parts.push(plural(counts.recordings, 'REC', 'RECs'));
+    if (opts.songAudio) parts.push(`${plural(counts.songAudioTracks, 'Spur', 'Spuren')} Song-Audio`);
+    banner(`Sicherung erstellt (${fmtBytes(file.size)}): ${parts.join(', ')}.`, { kind: 'ok' });
   } catch (err) {
+    progress?.close();
+    closeBanner?.();
     bannerError('Die Sicherung konnte nicht erstellt werden.', 'BACKUP-EXPORT', err);
   }
 });
@@ -9677,6 +11233,32 @@ $('#backup-input').addEventListener('change', async (e) => {
   await restoreBackup(data);
 });
 
+$('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
+
+$('#rec-import-input').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length) return;
+
+  let linked = 0, pending = 0, failed = 0;
+  for (const file of files) {
+    try {
+      const { song } = await importRecordingFile(file);
+      if (song) linked++; else pending++;
+    } catch (err) {
+      failed++;
+      console.warn('[rec-import]', file.name, err);
+    }
+  }
+
+  await renderImportStats();
+  const parts = [];
+  if (linked) parts.push(`${plural(linked, 'REC', 'RECs')} zugeordnet`);
+  if (pending) parts.push(`${plural(pending, 'REC', 'RECs')} warten auf den passenden Song`);
+  if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als REC erkannt`);
+  banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
+});
+
 /** Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen. */
 async function restoreBackup(data) {
   const songs = await DB.metaByType('song').catch(() => []);
@@ -9684,13 +11266,18 @@ async function restoreBackup(data) {
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
   const notes = Array.isArray(data.notes) ? data.notes : [];
   const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
+  const recordingsIn0 = Array.isArray(data.recordings) ? data.recordings : [];
+  const songAudioIn0 = Array.isArray(data.songAudio) ? data.songAudio : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
         + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
-        + `${plural(playlists.length, 'Setliste', 'Setlisten')} gefunden. `
+        + `${plural(playlists.length, 'Setliste', 'Setlisten')}`
+        + (recordingsIn0.length ? `, ${plural(recordingsIn0.length, 'REC', 'RECs')}` : '')
+        + (songAudioIn0.length ? ` und Audio für ${plural(songAudioIn0.length, 'Song', 'Songs')}` : '')
+        + ' gefunden. '
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
     options: [
@@ -9714,6 +11301,38 @@ async function restoreBackup(data) {
       ...await DB.metaByType('playlist'),
     ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
+    dropSongCache();
+  }
+
+  // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch gar
+  // nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der Stimmen
+  // gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre fehleranfällig).
+  // Muss vor Loops/Notizen/RECs laufen, damit die einen frisch angelegten
+  // Song schon finden, statt fälschlich als "ohne Song" zu landen.
+  let songsCreated = 0, songsSkipped = 0;
+  const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
+  if (songAudioIn.length) {
+    for (const s of songAudioIn) {
+      if (!s || !Array.isArray(s.tracks) || !s.tracks.length) continue;
+      if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+
+      const song = await createPlaceholderSong(s.title);
+      for (const t of s.tracks) {
+        if (!t.audioBase64) continue;
+        const blob = base64ToBlob(t.audioBase64, t.mimeType || 'audio/mpeg');
+        const fileKey = newFileKey();
+        const fileName = t.fileName || `${t.voice}.mp3`;
+        await DB.filePut(await fileRecord(fileKey, blob, fileName));
+        song.tracks.push({
+          voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
+          fileName, fileKey, size: blob.size, durationSec: null,
+        });
+      }
+      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+      await DB.metaPut(song);
+      songs.push(song);
+      songsCreated++;
+    }
     dropSongCache();
   }
 
@@ -9814,6 +11433,46 @@ async function restoreBackup(data) {
   // hunderte einzelne Transaktionen.
   await DB.metaPutMany(fresh);
 
+  // RECs mit eingebettetem Audio — anders als Loops/Notizen nie über "Alles
+  // ersetzen" gelöscht, sonst würde eine eigene Aufnahme durch Wiedereinspielen
+  // einer älteren Sicherung verschwinden. Duplikate (Name + Song) werden
+  // trotzdem übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
+  let addedRecordings = 0, skippedRecordings = 0;
+  const recordingsIn = Array.isArray(data.recordings) ? data.recordings : [];
+  if (recordingsIn.length) {
+    const existingRecordings = await DB.metaByType('recording').catch(() => []);
+    for (const r of recordingsIn) {
+      if (!r || !r.audioBase64) continue;
+      const song = findSongByTitle(songs, r.songTitle || '');
+      const norm = normalizeTitle(r.songTitle || '');
+      const isDupe = (x) => x.name === r.name
+        && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm);
+      if (existingRecordings.some(isDupe)) { skippedRecordings++; continue; }
+
+      const mimeType = r.mimeType || 'audio/webm';
+      const blob = base64ToBlob(r.audioBase64, mimeType);
+      const fileKey = newFileKey();
+      const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('mpeg') ? 'mp3' : 'webm');
+      await DB.filePut(await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`));
+
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      const recording = {
+        key: `recording:${id}`, type: 'recording', id,
+        songId: song ? song.id : null,
+        songTitle: r.songTitle || '',
+        name: r.name || 'REC',
+        voice: r.voice || null,
+        fileKey, mimeType, duration: r.duration || 0,
+        size: blob.size,
+        createdAt: r.createdAt || new Date().toISOString(),
+      };
+      await DB.metaPut(recording);
+      existingRecordings.push(recording);
+      addedRecordings++;
+    }
+    if (playerSong) await loadSongRecordings();
+  }
+
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
   const savedVoices = Array.isArray(data.settings?.myVoices) ? data.settings.myVoices
     : (data.settings?.myVoice ? [data.settings.myVoice] : []);
@@ -9823,6 +11482,15 @@ async function restoreBackup(data) {
   if (data.settings?.lyricsFontSize) {
     await saveSettings({ lyricsFontSize: data.settings.lyricsFontSize });
   }
+  if (data.settings?.defaultPlayerTab) {
+    await saveSettings({ defaultPlayerTab: data.settings.defaultPlayerTab });
+  }
+  if (data.settings?.accentColor) {
+    await saveSettings({ accentColor: data.settings.accentColor }); // wendet die Farbe gleich mit an
+  }
+  if (data.settings?.language) {
+    await saveSettings({ language: data.settings.language }); // übersetzt die Oberfläche gleich mit
+  }
 
   await renderPlaylists();
   await renderSettings();
@@ -9830,11 +11498,16 @@ async function restoreBackup(data) {
   banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
     + `und ${plural(addedPl, 'Setliste', 'Setlisten')} eingespielt.`
     + (addedLyricsNotes ? ` ${plural(addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} dazu.` : '')
+    + (addedRecordings ? ` ${plural(addedRecordings, 'REC', 'RECs')} dazu.` : '')
+    + (songsCreated ? ` ${plural(songsCreated, 'Song', 'Songs')} neu angelegt.` : '')
     + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
     + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
         + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : '')
     + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
-        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : ''), { kind: 'ok' });
+        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : '')
+    + (skippedRecordings ? ` ${plural(skippedRecordings, 'REC', 'RECs')} übersprungen, weil schon vorhanden.` : '')
+    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : ''),
+    { kind: 'ok' });
 }
 
 /**
@@ -9921,6 +11594,61 @@ async function updateBackupReminder() {
       el('button', { class: 'btn', type: 'button', text: 'Später',
         onclick: () => { reminderDismissed = true; box.hidden = true; } })));
   box.hidden = false;
+}
+
+/* ==========================================================================
+   KOMPATIBILITÄTSHINWEIS — die App ist noch in Entwicklung; das Datenformat
+   von Notizen/Liedtexten/Loops/RECs kann sich bis zur finalen Version noch
+   ändern, sodass eine Übernahme beim Update nicht garantiert ist. Der
+   Hinweis erscheint bei der ersten Nutzung, nach jeder Aktualisierung
+   (COMPAT_UPDATE_FLAG, gesetzt kurz vor dem Reload in registerServiceWorker)
+   sowie nach 3, 7 und 30 Tagen — Tages-Schwellen je nur einmal
+   (siehe settings.compatWarningsShown).
+   ========================================================================== */
+
+const COMPAT_WARNING_DAYS = [3, 7, 30];
+const COMPAT_UPDATE_FLAG = 'chor-app-just-updated';
+
+function showCompatWarningDialog() {
+  const warnIcon = el('span', { style: 'flex:0 0 auto; width:24px; height:24px; color:var(--warn)', 'aria-hidden': 'true' });
+  warnIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  const box = el('div', { class: 'dialog' },
+    el('h2', { style: 'display:flex; align-items:center; gap:8px' },
+      warnIcon, el('span', { text: 'Hinweis zur Datenkompatibilität' })),
+    el('p', { style: 'margin-bottom:0', text: 'Diese App wird noch weiterentwickelt. Beim Wechsel auf die finale Version ist es möglich, dass selbst angelegte Daten — Notizen, eigene Liedtexte, Loops und RECs — nicht automatisch übernommen werden können.' }),
+    el('div', { class: 'dialog-actions' },
+      el('button', { class: 'btn btn--primary', type: 'button', text: 'Verstanden', onclick: () => done() })));
+  const done = () => layer.remove();
+  const layer = el('div', { class: 'overlay' }, box);
+  layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
+  document.body.append(layer);
+}
+
+async function checkCompatWarning() {
+  if (!settings.firstUseAt) {
+    await saveSettings({ firstUseAt: new Date().toISOString(), compatWarningsShown: [0] });
+    showCompatWarningDialog();
+    return;
+  }
+
+  let justUpdated = false;
+  try {
+    justUpdated = sessionStorage.getItem(COMPAT_UPDATE_FLAG) === '1';
+    sessionStorage.removeItem(COMPAT_UPDATE_FLAG);
+  } catch { /* z.B. privater Modus */ }
+  if (justUpdated) {
+    showCompatWarningDialog();
+    return;
+  }
+
+  const daysSince = Math.floor((Date.now() - new Date(settings.firstUseAt).getTime()) / 86400000);
+  const shown = settings.compatWarningsShown || [];
+  const due = COMPAT_WARNING_DAYS.find((d) => daysSince >= d && !shown.includes(d));
+  if (due != null) {
+    await saveSettings({ compatWarningsShown: [...shown, due] });
+    showCompatWarningDialog();
+  }
 }
 
 /** Auswahl zwischen mehreren Möglichkeiten (Zusammenführen / Ersetzen). */
@@ -10073,16 +11801,8 @@ function runSelfTests() {
     failed.push('recordBlob reicht ältere Datensätze nicht durch');
   }
 
-  // Notizen-Export: Titel, Leerzeile, Notiz — dazwischen wieder eine Leerzeile.
-  const notesText = notesToText([
-    { songTitle: 'Blaue Augen', text: 'Einsatz nach Takt 12.\n' },
-    { songTitle: 'Grüß Gott',   text: 'Zweite Strophe leiser.' },
-  ]);
-  if (notesText !== 'Blaue Augen\n\nEinsatz nach Takt 12.\n\nGrüß Gott\n\nZweite Strophe leiser.\n') {
-    failed.push(`Notizen-Export: ${JSON.stringify(notesText)}`);
-  }
 
-  const total = voiceCases.length + titleCases.length + 12;
+  const total = voiceCases.length + titleCases.length + 11;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
@@ -10346,6 +12066,7 @@ async function closeOnboarding() {
   if (!settings.setupDoneAt) await saveSettings({ setupDoneAt: new Date().toISOString() });
   renderVoicePicker();
   if (currentView === 'settings') renderSettings();
+  checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
 }
 
 /* ==========================================================================
@@ -10434,10 +12155,13 @@ async function boot() {
 
   if (!settings.setupDoneAt) {
     // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
-    // Fingertipp, was manche Browser voraussetzen.
+    // Fingertipp, was manche Browser voraussetzen. Der Kompatibilitätshinweis
+    // kommt hier erst nach dem Schließen (closeOnboarding), damit er nicht
+    // gleichzeitig mit der Ersteinrichtung um den Bildschirm konkurriert.
     openOnboarding();
   } else {
     requestPersistence(); // im Hintergrund, blockiert den Start nicht
+    checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
   }
 
   registerServiceWorker();
