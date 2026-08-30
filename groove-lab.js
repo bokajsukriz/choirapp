@@ -9,85 +9,173 @@
    - GrooveEngine:  reine Klangerzeugung (AudioContext, Bus-Struktur, Voices).
                     Kennt weder Muster noch UI-Zustand.
    - Knob:          eigenständiger Dreh-Regler (Pointer-Events, Tastatur),
-                    genutzt für Cutoff/Resonanz und Reverb/Echo.
-   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — Zustand, Scheduler,
-                    Rendering.
+                    genutzt für alle Synth-Parameter.
+   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — vier Reiter (Beat,
+                    Melodie, Synth, Keys) unter einer festen Transportleiste,
+                    Zustand, Scheduler, Rendering.
    ========================================================================== */
 (function (global) {
   'use strict';
 
-  const STEP_COUNT = 16;
+  const STEP_COUNT = 16; // ein Takt = 16 Sechzehntel
 
   /* ------------------------------------------------------------------------
-     INHALT — 16 Drumloops, 20 Melodien, 18 Synth-Voreinstellungen. Jeder
-     Eintrag ist eigenständig; die Icons werden weiter unten aus genau diesen
-     Daten gezeichnet statt aus Emoji ausgewählt.
+     INHALT — 16 Drumloops, 20 Melodien (je 2–4 Takte), 16 Synth-Voreinstel-
+     lungen. Jeder Eintrag ist eigenständig; die Icons werden weiter unten
+     aus genau diesen Daten gezeichnet statt aus Emoji ausgewählt.
      ------------------------------------------------------------------------ */
 
-  // `bass`/`bassNotes` sind bewusst eigenständig: eine Basslinie, die nur die
-  // Kick-Schläge dopplet, hat kein eigenes musikalisches Profil. Beide Arrays
+  // `bass`/`bassNotes` sind bewusst eigenständig von `kick`: eine Basslinie,
+  // die nur die Kick-Schläge dopplet, hat kein eigenes musikalisches Profil.
+  // Hier laufen Bass und Kick rhythmisch bewusst auseinander (Synkopen,
+  // Durchgangstöne) — nur an wenigen Punkten treffen sie sich. Beide Arrays
   // sind gleich lang — bassNotes[i] ist der Halbtonabstand zur Grundtonart
   // für den Schlag bei bass[i] (siehe GrooveLabView._playStep()).
+  //
+  // `roll`: die "zweite Line" fürs Halten eines Pads (siehe
+  // GrooveLabView._startRoll()) — eine je Loop eigene, artikulierte
+  // Rhythmuszelle aus [Dauer in 16teln, Lautstärke 0–1]-Paaren, die beim
+  // Halten in Schleife läuft. Bewusst NICHT einfach Sechzehntel im Gleich-
+  // takt: unterschiedliche Notenlängen und Akzente pro Loop, passend zum
+  // jeweiligen Groove-Charakter.
   const DRUM_PATTERNS = [
     { name: 'Pulse Basic',    icon: 'pulse',       kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [0, 4, 8, 10, 12], bassNotes: [0, 0, 0, 7, 0] },
+      bass: [0, 3, 6, 8, 11, 14], bassNotes: [0, 7, 10, 0, 7, 3],
+      roll: [[1.5, 1], [.5, .6], [1, .85], [1, .6]] },
     { name: 'Backbeat Open',  icon: 'unlock',       kick: [0, 4, 8, 12], snare: [4, 12], hat: [2, 6, 10, 14], open: [14],
-      bass: [0, 4, 7, 8, 12], bassNotes: [0, 0, 7, 0, 0] },
+      bass: [2, 5, 8, 11, 14], bassNotes: [0, 3, 7, 3, 0],
+      roll: [[1.33, 1], [.67, .55]] },
     { name: 'Disco Clap',     icon: 'star',         kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [6, 14],
-      bass: [0, 3, 4, 8, 11, 12], bassNotes: [0, 7, 0, 0, 7, 0] },
+      bass: [0, 3, 7, 10, 13, 15], bassNotes: [0, 0, 7, 0, 0, 10],
+      roll: [[.5, .6], [.5, 1], [.5, .6], [.5, 1], [1, .9], [1, .6]] },
     { name: 'Swing Soul',     icon: 'note',         kick: [0, 3, 7, 10, 13], snare: [4, 12], ghost: [6, 9, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15],
-      bass: [0, 3, 6, 10, 13], bassNotes: [0, 3, 7, 3, 0] },
+      bass: [1, 4, 8, 11, 14], bassNotes: [0, 5, 3, 7, 0],
+      roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
     { name: 'Glass Funk',     icon: 'diamond',      kick: [0, 3, 6, 10, 13], snare: [4, 12], ghost: [2, 9, 14], hat: [0, 2, 4, 6, 8, 9, 11, 13, 15],
-      bass: [0, 3, 8, 10, 13], bassNotes: [0, 5, 7, 5, 0] },
+      bass: [2, 5, 8, 12, 15], bassNotes: [0, 7, 5, 3, 0],
+      roll: [[.5, 1], [.25, .5], [.25, .7], [1, .9], [.5, .6], [1.5, 1]] },
     { name: 'Afrobeat Skip',  icon: 'footprints',   kick: [0, 3, 6, 10, 12], clap: [4, 12], ghost: [7, 9], hat: [1, 3, 5, 8, 10, 13, 15],
-      bass: [0, 3, 6, 9, 12, 14], bassNotes: [0, 0, 7, 7, 0, 3] },
+      bass: [1, 4, 8, 11, 13], bassNotes: [0, 3, 7, 10, 3],
+      roll: [[1.5, 1], [1.5, .75], [1, .9]] },
     { name: 'Half-Time Drop', icon: 'clock',        kick: [0, 6, 10], snare: [8], ghost: [3, 13, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [12],
-      bass: [0, 6, 8, 10], bassNotes: [0, 0, 7, 0] },
+      bass: [2, 4, 9, 13], bassNotes: [0, 7, 3, 0],
+      roll: [[2, 1], [1, .6], [1, .8]] },
     { name: 'House Bounce',   icon: 'house',        kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [10, 14],
-      bass: [0, 4, 7, 8, 12, 15], bassNotes: [0, 0, 7, 0, 0, 7] },
+      bass: [2, 5, 9, 11, 14], bassNotes: [0, 7, 0, 5, 7],
+      roll: [[.75, 1], [.75, .55], [.75, .8], [.75, .55], [1, .9]] },
     { name: 'Circuit Pulse',  icon: 'bolt',         kick: [0, 5, 9, 13], snare: [4, 11], clap: [7, 14], hat: [1, 3, 6, 8, 10, 13], open: [15],
-      bass: [0, 5, 8, 11, 13], bassNotes: [0, 3, 0, 7, 0] },
+      bass: [0, 3, 6, 10, 12, 15], bassNotes: [0, 5, 10, 5, 0, 7],
+      roll: [[.5, 1], [.5, .5], [.25, .7], [.25, .5], [1, .9], [1.5, .6]] },
     { name: 'Boom Bap',       icon: 'speaker',      kick: [0, 10], snare: [4, 12], ghost: [7], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [0, 3, 7, 10, 14], bassNotes: [0, 0, 7, 0, 0] },
+      bass: [3, 6, 9, 13, 15], bassNotes: [0, 7, 3, 0, 7],
+      roll: [[1.5, 1], [.5, .5], [1, .85], [1, .6]] },
     { name: 'Latin Skip',     icon: 'sun',          kick: [0, 3, 6, 8, 11, 14], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [0, 3, 6, 8, 11, 14], bassNotes: [0, 7, 0, 3, 7, 0] },
+      bass: [1, 4, 7, 9, 12, 15], bassNotes: [0, 7, 0, 3, 7, 0],
+      roll: [[1.5, 1], [1, .6], [.5, .8], [1, .9]] },
     { name: 'Breakbeat Cut',  icon: 'scissors',     kick: [0, 10, 12], snare: [4, 11], ghost: [2, 9], hat: [0, 2, 4, 6, 7, 9, 11, 13, 15],
-      bass: [0, 4, 7, 10, 12, 15], bassNotes: [0, 0, 5, 0, 7, 0] },
+      bass: [1, 4, 6, 9, 13, 15], bassNotes: [0, 0, 7, 5, 0, 10],
+      roll: [[.25, 1], [.25, .6], [.5, .9], [1, .5], [2, 1]] },
     { name: 'Minimal Click',  icon: 'target',       kick: [0, 8], snare: [12], ghost: [4], hat: [2, 6, 10, 14],
-      bass: [0, 8], bassNotes: [0, 7] },
+      bass: [2, 6, 10, 14], bassNotes: [0, 7, 3, 7],
+      roll: [[2, 1], [2, .4]] },
     { name: 'Triplet Roll',   icon: 'repeat',       kick: [0, 7, 10], snare: [4, 12], hat: [0, 2, 3, 5, 6, 8, 10, 11, 13, 14],
-      bass: [0, 5, 8, 11], bassNotes: [0, 7, 0, 7] },
+      bass: [1, 4, 6, 9, 12, 14], bassNotes: [0, 7, 0, 7, 0, 3],
+      roll: [[1.33, 1], [1.33, .7], [1.34, .85]] },
     { name: 'Deep House',     icon: 'moon',         kick: [0, 4, 8, 12], clap: [4, 12], hat: [1, 3, 5, 7, 9, 11, 13, 15], open: [7, 15],
-      bass: [0, 4, 8, 11, 12], bassNotes: [0, 0, 0, 7, 0] },
+      bass: [2, 6, 9, 13], bassNotes: [0, 0, 7, 0],
+      roll: [[.5, .6], [1.5, 1], [.5, .6], [1.5, .9]] },
     { name: 'Broken Beat',    icon: 'puzzle',       kick: [0, 5, 8, 11], snare: [3, 10, 14], ghost: [6, 13], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [0, 3, 5, 8, 11, 13], bassNotes: [0, 5, 0, 7, 0, 3] },
+      bass: [1, 4, 7, 10, 14], bassNotes: [0, 3, 7, 10, 5],
+      roll: [[.75, 1], [1.25, .6], [.5, .9], [1.5, .7]] },
   ];
 
-  // [Schritt, Halbtonabstand zur Grundtonart, Länge in 16teln]
+  /** Baut eine mehrtaktige Melodie aus einem Ein-Takt-Motiv: das Original
+   *  plus transponierte, rhythmisch leicht verschobene "Sequenzen" (ein
+   *  klassisches Kompositionsmittel) statt bloßer Wiederholung — dadurch
+   *  wirkt eine 2–4-taktige Melodie entwickelnd statt eintönig. `plan`
+   *  enthält einen Eintrag je weiterem Takt: transpose (Halbtöne),
+   *  rhythmShift (Schritte, mit Umbruch innerhalb des Takts) und optional
+   *  extendLast (verlängert die letzte Note des Takts — kadenzierender
+   *  Schluss). motif bleibt unverändert im ersten Takt erhalten. */
+  function phrase(motif, plan) {
+    const bars = [motif.map((n) => [...n])];
+    plan.forEach(({ transpose = 0, rhythmShift = 0, extendLast = 0 }, i) => {
+      const barIndex = i + 1;
+      const bar = motif.map(([at, offset, len]) => {
+        let a = (at + rhythmShift) % STEP_COUNT;
+        if (a < 0) a += STEP_COUNT;
+        return [a + barIndex * STEP_COUNT, offset + transpose, len];
+      });
+      if (extendLast && bar.length) bar[bar.length - 1][2] += extendLast;
+      bars.push(bar);
+    });
+    return bars.flat().sort((a, b) => a[0] - b[0]);
+  }
+
+  // [Schritt, Halbtonabstand zur Grundtonart, Länge in 16teln] — je Melodie
+  // 2–4 Takte lang (siehe `bars`), aus einem Ein-Takt-Motiv per phrase()
+  // entwickelt statt als einzelner, sich wiederholender Takt.
   const MELODIES = [
-    { name: 'Rising Third',    icon: 'trendUp',   notes: [[0, 0, 2], [4, 4, 2], [8, 7, 2], [12, 9, 2]] },
-    { name: 'Falling Fourth',  icon: 'trendDown', notes: [[0, 12, 2], [4, 7, 2], [8, 4, 2], [12, 0, 2]] },
-    { name: 'Skip Step',       icon: 'stairs',    notes: [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 5, 1], [8, 7, 1], [10, 9, 1], [12, 11, 1], [14, 12, 1]] },
-    { name: 'Call & Response', icon: 'chat',      notes: [[0, 0, 2], [4, 3, 1], [6, 5, 1], [8, 0, 2], [12, 3, 1], [14, 5, 1]] },
-    { name: 'Arch Line',       icon: 'arch',      notes: [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 9, 1], [8, 7, 1], [10, 4, 1], [12, 0, 2]] },
-    { name: 'Syncopated Hook', icon: 'magnet',    notes: [[0, 0, 1], [3, 4, 1], [6, 7, 1], [9, 4, 1], [11, 9, 1], [14, 7, 1]] },
-    { name: 'Night Window',    icon: 'window',    notes: [[0, 0, 3], [4, 7, 1], [7, 10, 2], [10, 3, 1], [13, 2, 1], [15, 0, 2]] },
-    { name: 'Blue Third',      icon: 'droplet',   notes: [[0, 0, 2], [3, 3, 1], [6, 3, 1], [9, 7, 1], [12, 10, 1], [14, 7, 1]] },
-    { name: 'Wide Leap',       icon: 'expand',    notes: [[0, 0, 2], [4, 12, 2], [8, 7, 2], [12, -5, 2]] },
-    { name: 'Gentle Wave',     icon: 'wave',      notes: [[0, 4, 1], [2, 7, 1], [4, 9, 1], [7, 11, 1], [9, 7, 1], [11, 4, 1], [14, 2, 1]] },
-    { name: 'Two-Note Pulse',  icon: 'heart',     notes: [[0, 0, 1], [2, 7, 1], [4, 0, 1], [6, 7, 1], [8, 0, 1], [10, 3, 1], [12, 0, 1], [14, 7, 2]] },
-    { name: 'Descending Run',  icon: 'chevrons',  notes: [[0, 12, 1], [1, 11, 1], [3, 9, 1], [4, 7, 1], [6, 5, 1], [7, 4, 1], [9, 2, 1], [10, 0, 2]] },
-    { name: 'Suspended Glow',  icon: 'bulb',      notes: [[0, 0, 3], [5, 5, 2], [9, 7, 2], [13, 0, 3]] },
-    { name: 'Funk Thread',     icon: 'thread',    notes: [[0, 0, 1], [2, 3, 1], [4, 5, 1], [6, 7, 1], [9, 10, 1], [11, 7, 1], [13, 3, 1]] },
-    { name: 'Glass Runner',    icon: 'runner',    notes: [[0, 0, 1], [1, 2, 1], [3, 4, 1], [6, 7, 1], [9, 11, 1], [11, 9, 1], [13, 7, 1], [15, 2, 1]] },
-    { name: 'Afterglow',       icon: 'sunset',    notes: [[0, -5, 2], [4, 0, 2], [8, 4, 1], [10, 7, 2], [12, 9, 1], [14, 7, 1]] },
-    // --- neu: mehr harmonische Reichweite (Septakkord-Töne, Modal-Läufe,
-    //     ein Triolen-Feel innerhalb des 16tel-Rasters) für mehr Kontrast
-    //     zu den bestehenden Motiven oben.
-    { name: 'Modal Drift',     icon: 'compass',   notes: [[0, 0, 2], [3, 2, 1], [5, 3, 1], [8, 7, 2], [11, 10, 1], [13, 8, 1], [15, 5, 1]] },
-    { name: 'Triplet Cascade', icon: 'diamond',   notes: [[0, 12, 1], [2, 9, 1], [4, 5, 1], [5, 12, 1], [7, 9, 1], [9, 5, 1], [10, 12, 1], [12, 4, 1], [14, 0, 2]] },
-    { name: 'Sevenths Hook',   icon: 'bolt',      notes: [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 11, 1], [8, 14, 2], [12, 7, 1], [14, 4, 2]] },
-    { name: 'Echo Motif',      icon: 'repeat',    notes: [[0, 0, 1], [2, 5, 1], [4, 7, 1], [8, 0, 1], [10, 5, 1], [12, 7, 1], [14, 12, 2]] },
+    { name: 'Rising Third',    icon: 'trendUp',   bars: 2, notes: phrase(
+      [[0, 0, 2], [4, 4, 2], [8, 7, 2], [12, 9, 2]],
+      [{ transpose: 5, rhythmShift: -1, extendLast: 2 }]) },
+    { name: 'Falling Fourth',  icon: 'trendDown', bars: 2, notes: phrase(
+      [[0, 12, 2], [4, 7, 2], [8, 4, 2], [12, 0, 2]],
+      [{ transpose: -7, rhythmShift: 2, extendLast: 3 }]) },
+    { name: 'Skip Step',       icon: 'stairs',    bars: 3, notes: phrase(
+      [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 5, 1], [8, 7, 1], [10, 9, 1], [12, 11, 1], [14, 12, 1]],
+      [{ transpose: -12, rhythmShift: 1 }, { transpose: -5, rhythmShift: -1, extendLast: 2 }]) },
+    { name: 'Call & Response', icon: 'chat',      bars: 2, notes: phrase(
+      [[0, 0, 2], [4, 3, 1], [6, 5, 1], [8, 0, 2], [12, 3, 1], [14, 5, 1]],
+      [{ transpose: 7, rhythmShift: 0, extendLast: 1 }]) },
+    { name: 'Arch Line',       icon: 'arch',      bars: 2, notes: phrase(
+      [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 9, 1], [8, 7, 1], [10, 4, 1], [12, 0, 2]],
+      [{ transpose: 3, rhythmShift: -2, extendLast: 2 }]) },
+    { name: 'Syncopated Hook', icon: 'magnet',    bars: 3, notes: phrase(
+      [[0, 0, 1], [3, 4, 1], [6, 7, 1], [9, 4, 1], [11, 9, 1], [14, 7, 1]],
+      [{ transpose: 5, rhythmShift: 1 }, { transpose: -2, rhythmShift: -1, extendLast: 2 }]) },
+    { name: 'Night Window',    icon: 'window',    bars: 2, notes: phrase(
+      [[0, 0, 3], [4, 7, 1], [7, 10, 2], [10, 3, 1], [13, 2, 1], [15, 0, 2]],
+      [{ transpose: -5, rhythmShift: 1, extendLast: 1 }]) },
+    { name: 'Blue Third',      icon: 'droplet',   bars: 3, notes: phrase(
+      [[0, 0, 2], [3, 3, 1], [6, 3, 1], [9, 7, 1], [12, 10, 1], [14, 7, 1]],
+      [{ transpose: 5, rhythmShift: 0 }, { transpose: 0, rhythmShift: -1, extendLast: 2 }]) },
+    { name: 'Wide Leap',       icon: 'expand',    bars: 2, notes: phrase(
+      [[0, 0, 2], [4, 12, 2], [8, 7, 2], [12, -5, 2]],
+      [{ transpose: 7, rhythmShift: 0, extendLast: 2 }]) },
+    { name: 'Gentle Wave',     icon: 'wave',      bars: 3, notes: phrase(
+      [[0, 4, 1], [2, 7, 1], [4, 9, 1], [7, 11, 1], [9, 7, 1], [11, 4, 1], [14, 2, 1]],
+      [{ transpose: -3, rhythmShift: 1 }, { transpose: 2, rhythmShift: -1, extendLast: 2 }]) },
+    { name: 'Two-Note Pulse',  icon: 'heart',     bars: 2, notes: phrase(
+      [[0, 0, 1], [2, 7, 1], [4, 0, 1], [6, 7, 1], [8, 0, 1], [10, 3, 1], [12, 0, 1], [14, 7, 2]],
+      [{ transpose: 5, rhythmShift: 0, extendLast: 1 }]) },
+    { name: 'Descending Run',  icon: 'chevrons',  bars: 3, notes: phrase(
+      [[0, 12, 1], [1, 11, 1], [3, 9, 1], [4, 7, 1], [6, 5, 1], [7, 4, 1], [9, 2, 1], [10, 0, 2]],
+      [{ transpose: -12, rhythmShift: 2 }, { transpose: -5, rhythmShift: 0, extendLast: 3 }]) },
+    { name: 'Suspended Glow',  icon: 'bulb',      bars: 4, notes: phrase(
+      [[0, 0, 3], [5, 5, 2], [9, 7, 2], [13, 0, 3]],
+      [{ transpose: 5, rhythmShift: 0 }, { transpose: 9, rhythmShift: -2 }, { transpose: 0, rhythmShift: 0, extendLast: 3 }]) },
+    { name: 'Funk Thread',     icon: 'thread',    bars: 3, notes: phrase(
+      [[0, 0, 1], [2, 3, 1], [4, 5, 1], [6, 7, 1], [9, 10, 1], [11, 7, 1], [13, 3, 1]],
+      [{ transpose: 2, rhythmShift: 1 }, { transpose: -2, rhythmShift: -1, extendLast: 2 }]) },
+    { name: 'Glass Runner',    icon: 'runner',    bars: 2, notes: phrase(
+      [[0, 0, 1], [1, 2, 1], [3, 4, 1], [6, 7, 1], [9, 11, 1], [11, 9, 1], [13, 7, 1], [15, 2, 1]],
+      [{ transpose: 5, rhythmShift: 0, extendLast: 1 }]) },
+    { name: 'Afterglow',       icon: 'sunset',    bars: 3, notes: phrase(
+      [[0, -5, 2], [4, 0, 2], [8, 4, 1], [10, 7, 2], [12, 9, 1], [14, 7, 1]],
+      [{ transpose: 5, rhythmShift: 0 }, { transpose: 0, rhythmShift: -2, extendLast: 3 }]) },
+    { name: 'Modal Drift',     icon: 'compass',   bars: 4, notes: phrase(
+      [[0, 0, 2], [3, 2, 1], [5, 3, 1], [8, 7, 2], [11, 10, 1], [13, 8, 1], [15, 5, 1]],
+      [{ transpose: 5, rhythmShift: 1 }, { transpose: -3, rhythmShift: -1 }, { transpose: 0, rhythmShift: 0, extendLast: 2 }]) },
+    { name: 'Triplet Cascade', icon: 'diamond',   bars: 2, notes: phrase(
+      [[0, 12, 1], [2, 9, 1], [4, 5, 1], [5, 12, 1], [7, 9, 1], [9, 5, 1], [10, 12, 1], [12, 4, 1], [14, 0, 2]],
+      [{ transpose: -7, rhythmShift: 0, extendLast: 1 }]) },
+    { name: 'Sevenths Hook',   icon: 'bolt',      bars: 3, notes: phrase(
+      [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 11, 1], [8, 14, 2], [12, 7, 1], [14, 4, 2]],
+      [{ transpose: 5, rhythmShift: 0 }, { transpose: 0, rhythmShift: -2, extendLast: 2 }]) },
+    { name: 'Echo Motif',      icon: 'repeat',    bars: 4, notes: phrase(
+      [[0, 0, 1], [2, 5, 1], [4, 7, 1], [8, 0, 1], [10, 5, 1], [12, 7, 1], [14, 12, 2]],
+      [{ transpose: 5, rhythmShift: 0 }, { transpose: -5, rhythmShift: 1 }, { transpose: 0, rhythmShift: 0, extendLast: 2 }]) },
   ];
 
   // reverbLength in Sekunden (Nachhall-Dauer), echoRate in Millisekunden
@@ -101,7 +189,9 @@
   // pitchDrop (Cent) lässt die Note aus der Höhe in die Ziel-Tonhöhe
   // gleiten — der perkussive "Bender"-Einsatz vieler Analog-Leads/-Bässe.
   // subLevel (0–1) mischt eine Sinus-Suboktave dazu, für Fundament ohne
-  // dumpfen Cutoff.
+  // dumpfen Cutoff. Alle diese Felder sind jetzt auch im Synth-Reiter als
+  // Regler editierbar (siehe GrooveLabView._renderSynthControls()) — nicht
+  // nur über die Presets erreichbar.
   const SYNTH_PRESETS = [
     { name: 'Velvet Choir',   icon: 'users',    wave: 'triangle', attack: .16,  decay: .22, sustain: .68, release: .8,  cutoff: 2900, resonance: 2,  filterEnvAmount: 600,  reverbWet: .38, reverbLength: 1.6, echoWet: .10, echoRate: 220,
       detune: 9, vibratoRate: 4.5, vibratoDepth: 6, vibratoDelay: .3 },
@@ -127,8 +217,6 @@
       pitchDrop: 130, vibratoRate: 6, vibratoDepth: 14, vibratoDelay: .18 },
     { name: 'Airy Choir',     icon: 'cloud',    wave: 'triangle', attack: .4,   decay: .4,  sustain: .75, release: 1.4, cutoff: 3400, resonance: 1,  filterEnvAmount: 350,  reverbWet: .5,  reverbLength: 2.4, echoWet: .12, echoRate: 280,
       detune: 11, subLevel: .1, vibratoRate: 4.2, vibratoDepth: 7, vibratoDelay: .3 },
-    { name: 'Metallic Pluck', icon: 'gear',     wave: 'square',   attack: .003, decay: .08, sustain: .2,  release: .12, cutoff: 6800, resonance: 10, filterEnvAmount: 3000, reverbWet: .06, reverbLength: .4,  echoWet: .28, echoRate: 150,
-      detune: 6, pitchDrop: 55 },
     { name: 'Deep Pad',       icon: 'anchor',   wave: 'sine',     attack: .7,   decay: .6,  sustain: .85, release: 2.0, cutoff: 1700, resonance: 2,  filterEnvAmount: 250,  reverbWet: .6,  reverbLength: 2.8, echoWet: .2,  echoRate: 320,
       detune: 8, subLevel: .3, vibratoRate: 3.5, vibratoDepth: 5, vibratoDelay: .5 },
     { name: 'Bright Saw',     icon: 'sun',      wave: 'sawtooth', attack: .01,  decay: .2,  sustain: .45, release: .4,  cutoff: 7200, resonance: 5,  filterEnvAmount: 1600, reverbWet: .2,  reverbLength: 1.1, echoWet: .16, echoRate: 210,
@@ -137,8 +225,6 @@
       detune: 7, vibratoRate: 5.8, vibratoDepth: 4, vibratoDelay: 0 },
     { name: 'Growl Bass',     icon: 'target',   wave: 'sawtooth', attack: .01,  decay: .18, sustain: .6,  release: .28, cutoff: 900,  resonance: 9,  filterEnvAmount: 500,  reverbWet: .1,  reverbLength: .6,  echoWet: .08, echoRate: 160,
       detune: 6, subLevel: .45, pitchDrop: 220 },
-    { name: 'Shimmer Bells',  icon: 'star',     wave: 'sine',     attack: .004, decay: .3,  sustain: .3,  release: 2.4, cutoff: 8200, resonance: 4,  filterEnvAmount: 1200, reverbWet: .6,  reverbLength: 3.0, echoWet: .35, echoRate: 280,
-      detune: 14, vibratoRate: 4.6, vibratoDepth: 6, vibratoDelay: .5 },
   ];
 
   // Für den Arpeggiator: feste Akkorde (Halbtonabstände zur Grundtonart) —
@@ -161,6 +247,13 @@
 
   const WAVE_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'];
   const WAVE_LABEL = { sine: 'Sinus', triangle: 'Dreieck', square: 'Rechteck', sawtooth: 'Sägezahn' };
+
+  const TABS = [
+    { id: 'beat', label: 'Beat' },
+    { id: 'melody', label: 'Melodie' },
+    { id: 'synth', label: 'Synth' },
+    { id: 'keys', label: 'Keys' },
+  ];
 
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -250,7 +343,6 @@
     bell: '<path d="M12 3a5 5 0 0 0-5 5v3c0 1.5-.5 3-2 4.5h14c-1.5-1.5-2-3-2-4.5V8a5 5 0 0 0-5-5Z" fill="none" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" fill="none" stroke-linecap="round"/>',
     compass: '<circle cx="12" cy="12" r="9" fill="none"/><path d="M15 9l-2 6-6 2 2-6Z" fill="none" stroke-linejoin="round"/>',
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17 18H7Z" fill="none" stroke-linejoin="round"/>',
-    gear: '<circle cx="12" cy="12" r="3" fill="none"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6" stroke-linecap="round"/>',
     anchor: '<circle cx="12" cy="5" r="2" fill="none"/><path d="M12 7v14M7 13H2a10 10 0 0 0 10 8 10 10 0 0 0 10-8h-5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 9h8" stroke-linecap="round"/>',
     key: '<circle cx="7" cy="7" r="4" fill="none"/><path d="M10 10l10 10M17 15l3-3M14 18l2-2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   };
@@ -381,52 +473,90 @@
       return buffer;
     }
 
-    playKick(time) {
+    playKick(time, velocity = 1) {
       const ctx = this.ctx;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.frequency.setValueAtTime(150, time);
       osc.frequency.exponentialRampToValueAtTime(42, time + .11);
-      gain.gain.setValueAtTime(.7, time);
+      gain.gain.setValueAtTime(.7 * velocity, time);
       gain.gain.exponentialRampToValueAtTime(.0001, time + .19);
       osc.connect(gain).connect(this.buses.drums);
       osc.start(time); osc.stop(time + .2);
     }
 
-    playNoise(time, { cutoff, length, volume }) {
+    playNoise(time, { cutoff, length, volume, type = 'highpass', q = .7 }) {
       const ctx = this.ctx;
       const source = ctx.createBufferSource();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
       source.buffer = this.noiseBuffer;
-      filter.type = 'highpass'; filter.frequency.value = cutoff;
+      filter.type = type; filter.frequency.value = cutoff; filter.Q.value = q;
       gain.gain.setValueAtTime(volume, time);
       gain.gain.exponentialRampToValueAtTime(.0001, time + length);
       source.connect(filter).connect(gain).connect(this.buses.drums);
       source.start(time); source.stop(time + length + .02);
     }
 
-    playBass(time, midi) {
+    /** Snare: ein kurzer, tonaler "Fell"-Thump (Dreieck, ~190→110 Hz) plus
+     *  eng gefiltertes Bandpass-Rauschen — enger und "schnarrender" als die
+     *  breitbandige Clap, damit beide klar unterscheidbar bleiben. */
+    playSnare(time, velocity = 1) {
+      const ctx = this.ctx;
+      const body = ctx.createOscillator();
+      const bodyGain = ctx.createGain();
+      body.type = 'triangle';
+      body.frequency.setValueAtTime(190, time);
+      body.frequency.exponentialRampToValueAtTime(110, time + .08);
+      bodyGain.gain.setValueAtTime(.25 * velocity, time);
+      bodyGain.gain.exponentialRampToValueAtTime(.0001, time + .09);
+      body.connect(bodyGain).connect(this.buses.drums);
+      body.start(time); body.stop(time + .1);
+
+      this.playNoise(time, { cutoff: 1800, length: .16, volume: .22 * velocity, type: 'bandpass', q: 1.1 });
+    }
+
+    /** Clap: drei eng gestaffelte, breitere Rausch-Bursts ("Flam") statt
+     *  eines einzelnen Treffers — eine echte Handclap ist immer ein kurzer
+     *  Schauer aus mehreren Anschlägen, keine einzelne Attacke wie die Snare. */
+    playClap(time, velocity = 1) {
+      const offsets = [0, .012, .026];
+      offsets.forEach((offset, i) => {
+        const isLast = i === offsets.length - 1;
+        this.playNoise(time + offset, {
+          cutoff: 1500, length: isLast ? .11 : .04, volume: (isLast ? .22 : .13) * velocity,
+          type: 'bandpass', q: 3.2,
+        });
+      });
+    }
+
+    playHat(time, velocity = 1) {
+      this.playNoise(time, { cutoff: 6500, length: .045, volume: .055 * velocity, type: 'highpass', q: .7 });
+    }
+
+    /** Trägt genau einen Trommel-Treffer ein — genutzt vom Sequencer UND vom
+     *  "Halten"-Roll (siehe GrooveLabView._startRoll). Bass läuft separat
+     *  über playBass(), weil er eine Tonhöhe statt nur ein Timing braucht.
+     *  `velocity` (0–1) skaliert die Lautstärke — genutzt für Ghost-Notes
+     *  und die akzentuierte Roll-Rhythmuszelle je Loop. */
+    hitTrack(track, time, velocity = 1) {
+      if (track === 'kick') this.playKick(time, velocity);
+      else if (track === 'snare') this.playSnare(time, velocity);
+      else if (track === 'clap') this.playClap(time, velocity);
+      else this.playHat(time, velocity);
+    }
+
+    playBass(time, midi, velocity = 1) {
       const ctx = this.ctx;
       const osc = ctx.createOscillator();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
       osc.type = 'square'; osc.frequency.value = noteHz(midi);
       filter.type = 'lowpass'; filter.frequency.value = 480; filter.Q.value = 8;
-      gain.gain.setValueAtTime(.2, time);
+      gain.gain.setValueAtTime(.2 * velocity, time);
       gain.gain.exponentialRampToValueAtTime(.0001, time + .14);
       osc.connect(filter).connect(gain).connect(this.buses.drums);
       osc.start(time); osc.stop(time + .15);
-    }
-
-    /** Trägt genau einen Trommel-Treffer ein — genutzt vom Sequencer UND vom
-     *  "Halten"-Roll (siehe GrooveLabView._startRoll). Bass läuft separat
-     *  über playBass(), weil er eine Tonhöhe statt nur ein Timing braucht. */
-    hitTrack(track, time) {
-      if (track === 'kick') this.playKick(time);
-      else if (track === 'snare') this.playNoise(time, { cutoff: 900, length: .12, volume: .2 });
-      else if (track === 'clap') { this.playNoise(time, { cutoff: 1300, length: .09, volume: .15 }); this.playNoise(time + .018, { cutoff: 1800, length: .065, volume: .09 }); }
-      else this.playNoise(time, { cutoff: 6500, length: .045, volume: .055 }); // hat
     }
 
     playTone(preset, midi, time, velocity, duration) {
@@ -543,10 +673,10 @@
   }
 
   /* ------------------------------------------------------------------------
-     Knob — Dreh-Regler für Cutoff/Resonanz/Reverb/Echo. 270°-Sweep,
-     Pointer-Drag (vertikal) plus Pfeiltasten für Tastaturbedienung.
-     Kapselt sich selbst vollständig (kein globaler Zustand), damit mehrere
-     Regler nebeneinander unabhängig funktionieren.
+     Knob — Dreh-Regler für alle Synth-Parameter. 270°-Sweep, Pointer-Drag
+     (vertikal) plus Pfeiltasten für Tastaturbedienung. Kapselt sich selbst
+     vollständig (kein globaler Zustand), damit mehrere Regler nebeneinander
+     unabhängig funktionieren.
      ------------------------------------------------------------------------ */
 
   class Knob {
@@ -562,6 +692,7 @@
                 aria-label="${label}" aria-valuemin="${min}" aria-valuemax="${max}">
           <svg viewBox="0 0 40 40" aria-hidden="true">
             <circle class="knob-track" cx="20" cy="20" r="16"/>
+            <circle class="knob-fill" cx="20" cy="20" r="16"/>
             <circle class="knob-dot" cx="20" cy="6" r="2.4"/>
           </svg>
         </button>
@@ -570,6 +701,7 @@
 
       this.button = this.el.querySelector('.knob');
       this.dot = this.el.querySelector('.knob-dot');
+      this.fill = this.el.querySelector('.knob-fill');
       this.output = this.el.querySelector('.knob-value');
 
       this._dragStartY = 0;
@@ -618,6 +750,9 @@
       const fraction = (this.value - this.min) / (this.max - this.min || 1);
       const angle = -135 + fraction * 270;
       this.dot.setAttribute('transform', `rotate(${angle.toFixed(1)} 20 20)`);
+      const circumference = 2 * Math.PI * 16;
+      const arc = circumference * 270 / 360;
+      this.fill.setAttribute('stroke-dasharray', `${(arc * fraction).toFixed(2)} ${circumference}`);
       this.button.setAttribute('aria-valuenow', String(this.value));
       this.output.textContent = this.format(this.value);
     }
@@ -651,7 +786,8 @@
       };
 
       this.playing = false;
-      this.step = 0;
+      this.activeTab = 'beat';
+      this.globalStep = 0;
       this.nextStepTime = 0;
       this.schedulerTimer = 0;
       this.visualFrame = 0;
@@ -668,6 +804,7 @@
       this._wireControls();
       this._wireKeyboard();
       this._renderAll();
+      this._setTab('beat');
     }
 
     $(selector) { return this.shadowRoot.querySelector(selector); }
@@ -700,6 +837,14 @@
       this._restoreFocusTo?.focus?.();
     }
 
+    /* ---- Reiter ---- */
+
+    _setTab(tab) {
+      this.activeTab = tab;
+      this.$all('.tab-btn').forEach((btn) => btn.setAttribute('aria-selected', String(btn.dataset.tab === tab)));
+      this.$all('.tab-panel').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== tab; });
+    }
+
     /* ---- Transport ---- */
 
     async start() {
@@ -711,7 +856,7 @@
         return;
       }
       this.playing = true;
-      this.step = 0;
+      this.globalStep = 0;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .05;
 
@@ -759,39 +904,47 @@
       const stepSeconds = 60 / this.state.bpm / 4;
 
       while (this.nextStepTime < ctx.currentTime + .1) {
-        this._playStep(this.step, this.nextStepTime);
-        this.scheduledSteps.push({ step: this.step, time: this.nextStepTime });
+        this._playStep(this.globalStep, this.nextStepTime);
+        this.scheduledSteps.push({ step: this.globalStep % STEP_COUNT, time: this.nextStepTime });
         this.nextStepTime += stepSeconds;
-        this.step = (this.step + 1) % STEP_COUNT;
+        this.globalStep++;
       }
       this.schedulerTimer = global.setTimeout(() => this._scheduleAhead(), 25);
     }
 
-    _playStep(step, time) {
+    _playStep(globalStep, time) {
       const pattern = DRUM_PATTERNS[this.state.patternIndex];
+      const drumStep = globalStep % STEP_COUNT;
       const stepSeconds = 60 / this.state.bpm / 4;
       for (const track of TRACK_IDS) {
         if (!this.state.trackOn[track]) continue;
-        if (!stepsForTrack(pattern, track).includes(step)) continue;
+        if (!stepsForTrack(pattern, track).includes(drumStep)) continue;
         // Die Basslinie hat eine eigene Notenfolge (siehe DRUM_PATTERNS) —
         // sie soll nicht einfach die Kick-Tonhöhe wiederholen.
-        if (track === 'bass') this.engine.playBass(time, 36 + bassOffsetForStep(pattern, step));
-        else this.engine.hitTrack(track, time, step);
+        if (track === 'bass') this.engine.playBass(time, 36 + bassOffsetForStep(pattern, drumStep));
+        else {
+          // Ghost-Notes der Snare leiser als die "echten" Treffer.
+          const velocity = (track === 'snare' && pattern.ghost?.includes(drumStep)) ? .45 : 1;
+          this.engine.hitTrack(track, time, velocity);
+        }
       }
 
       if (this.state.melodyOn) {
-        for (const [at, offset, lengthSteps] of MELODIES[this.state.melodyIndex].notes) {
-          if (at === step) {
+        const melody = MELODIES[this.state.melodyIndex];
+        const bars = melody.bars || 1;
+        const melodyStep = globalStep % (bars * STEP_COUNT);
+        for (const [at, offset, lengthSteps] of melody.notes) {
+          if (at === melodyStep) {
             const midi = 60 + offset + (this.state.octave - 4) * 12;
             this.engine.playTone(SYNTH_PRESETS[this.state.presetIndex], midi, time, .17, lengthSteps * stepSeconds);
           }
         }
       }
 
-      if (this.state.arpOn && step % this.state.arpDivision === 0) {
+      if (this.state.arpOn && globalStep % this.state.arpDivision === 0) {
         const pool = this._arpPool();
         if (pool.length) {
-          const phase = Math.floor(step / this.state.arpDivision);
+          const phase = Math.floor(globalStep / this.state.arpDivision);
           const midi = pool[this._arpIndex(phase, pool.length)];
           this.engine.playTone(SYNTH_PRESETS[this.state.presetIndex], midi, time, .13, stepSeconds);
         }
@@ -841,29 +994,32 @@
       this.visualFrame = global.requestAnimationFrame(() => this._drawSteps());
     }
 
-    _setStatus(text) { this.$('.status-line').textContent = text; }
+    _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
 
-    /* ---- Halten-Roll: Zusatznoten nur solange der Pad-Knopf gedrückt ist. ---- */
+    /* ---- Halten-Roll: eine je Loop eigene, artikulierte Rhythmuszelle nur
+       solange der Pad-Knopf gedrückt ist (siehe DRUM_PATTERNS.roll). ---- */
 
     async _startRoll(track) {
       if (this.rollTimers[track]) return;
       try { await this.engine.start(); this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]); }
       catch { this._setStatus('Web Audio ist hier nicht verfügbar.'); return; }
 
+      const pattern = DRUM_PATTERNS[this.state.patternIndex];
+      const cell = (pattern.roll && pattern.roll.length) ? pattern.roll : [[1, 1]];
+      const notes = pattern.bassNotes?.length ? pattern.bassNotes : [0];
       const stepSeconds = () => 60 / this.state.bpm / 4;
-      let rollStep = 0;
+      let cellIndex = 0;
+      let bassIndex = 0;
       const tick = () => {
+        const [duration, velocity] = cell[cellIndex % cell.length];
         if (track === 'bass') {
-          // Zyklisch durch die Notenfolge der aktuellen Basslinie statt
-          // starr eine Tonhöhe zu wiederholen (siehe DRUM_PATTERNS.bassNotes).
-          const pattern = DRUM_PATTERNS[this.state.patternIndex];
-          const notes = pattern.bassNotes?.length ? pattern.bassNotes : [0];
-          this.engine.playBass(this.engine.ctx.currentTime, 36 + notes[rollStep % notes.length]);
-          rollStep++;
+          this.engine.playBass(this.engine.ctx.currentTime, 36 + notes[bassIndex % notes.length], velocity);
+          bassIndex++;
         } else {
-          this.engine.hitTrack(track, this.engine.ctx.currentTime);
+          this.engine.hitTrack(track, this.engine.ctx.currentTime, velocity);
         }
-        this.rollTimers[track] = global.setTimeout(tick, stepSeconds() * 1000);
+        cellIndex++;
+        this.rollTimers[track] = global.setTimeout(tick, Math.max(30, duration * stepSeconds() * 1000));
       };
       tick();
     }
@@ -881,7 +1037,8 @@
       this._renderGrid('.preset-grid', SYNTH_PRESETS, this.state.presetIndex, (i) => this._selectPreset(i), (p) => pictogramIcon(p.icon));
 
       this.$('.pattern-name').textContent = DRUM_PATTERNS[this.state.patternIndex].name;
-      this.$('.melody-name').textContent = MELODIES[this.state.melodyIndex].name;
+      const melody = MELODIES[this.state.melodyIndex];
+      this.$('.melody-name').textContent = `${melody.name} · ${melody.bars || 1} Takte`;
       this.$('.preset-name').textContent = SYNTH_PRESETS[this.state.presetIndex].name;
 
       this._renderTracks();
@@ -900,8 +1057,8 @@
       const latchBtn = this.$('.latch-toggle');
       latchBtn.setAttribute('aria-pressed', String(this.state.latchOn));
 
-      this.$('.bpm-input').value = this.state.bpm;
-      this.$('.bpm-out').textContent = `${this.state.bpm} BPM`;
+      this.$all('.bpm-input').forEach((el) => { el.value = this.state.bpm; });
+      this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
       this.$('[data-field="arpMode"]').value = this.state.arpMode;
       this.$('[data-field="arpDivision"]').value = String(this.state.arpDivision);
       this.$('[data-field="arpOctaves"]').value = String(this.state.arpOctaves);
@@ -941,8 +1098,8 @@
         const roll = document.createElement('button');
         roll.type = 'button';
         roll.className = 'track-roll';
-        roll.setAttribute('aria-label', `${TRACK_LABEL[track]} halten für Extra-Noten`);
-        roll.title = 'Halten für Extra-Noten';
+        roll.setAttribute('aria-label', `${TRACK_LABEL[track]} halten für die zweite Line`);
+        roll.title = 'Halten für die zweite Line';
         roll.innerHTML = svg('<circle cx="12" cy="12" r="7"/>');
         roll.addEventListener('pointerdown', (e) => {
           e.preventDefault();
@@ -965,10 +1122,10 @@
         const cells = document.createElement('div');
         cells.className = 'step-row';
         for (let i = 0; i < STEP_COUNT; i++) {
-          const cell = document.createElement('i');
-          cell.className = `step-cell${hits.includes(i) ? ' is-hit' : ''}`;
-          cell.dataset.step = String(i);
-          cells.append(cell);
+          const cellEl = document.createElement('i');
+          cellEl.className = `step-cell${hits.includes(i) ? ' is-hit' : ''}`;
+          cellEl.dataset.step = String(i);
+          cells.append(cellEl);
         }
 
         const toggle = document.createElement('button');
@@ -1054,6 +1211,47 @@
         onInput: (v) => { preset.filterEnvAmount = v; this._markCustom(); },
       });
       knobHost.append(cutoffKnob.el, resonanceKnob.el, envAmountKnob.el);
+
+      // --- Charakter: Detune (Unisono), Sub-Level, Pitch-Drop — bisher nur
+      //     über Presets erreichbar, jetzt live editierbar. ---
+      const characterHost = this.$('.character-knobs');
+      characterHost.replaceChildren();
+      const detuneKnob = new Knob({
+        label: 'Detune', min: 0, max: 25, value: preset.detune || 0,
+        format: (v) => `${Math.round(v)}¢`,
+        onInput: (v) => { preset.detune = v; this._markCustom(); },
+      });
+      const subKnob = new Knob({
+        label: 'Sub-Level', min: 0, max: 1, value: preset.subLevel || 0,
+        format: (v) => `${Math.round(v * 100)}%`,
+        onInput: (v) => { preset.subLevel = v; this._markCustom(); },
+      });
+      const pitchDropKnob = new Knob({
+        label: 'Pitch-Drop', min: 0, max: 300, value: preset.pitchDrop || 0,
+        format: (v) => `${Math.round(v)}¢`,
+        onInput: (v) => { preset.pitchDrop = v; this._markCustom(); },
+      });
+      characterHost.append(detuneKnob.el, subKnob.el, pitchDropKnob.el);
+
+      // --- Vibrato: Rate/Tiefe/Einsatzverzögerung — ebenfalls neu editierbar. ---
+      const vibratoHost = this.$('.vibrato-knobs');
+      vibratoHost.replaceChildren();
+      const vibRateKnob = new Knob({
+        label: 'Rate', min: 0, max: 8, value: preset.vibratoRate || 0,
+        format: (v) => `${v.toFixed(1)} Hz`,
+        onInput: (v) => { preset.vibratoRate = v; this._markCustom(); },
+      });
+      const vibDepthKnob = new Knob({
+        label: 'Tiefe', min: 0, max: 20, value: preset.vibratoDepth || 0,
+        format: (v) => `${Math.round(v)}¢`,
+        onInput: (v) => { preset.vibratoDepth = v; this._markCustom(); },
+      });
+      const vibDelayKnob = new Knob({
+        label: 'Einsatz', min: 0, max: 1, value: preset.vibratoDelay ?? 0,
+        format: (v) => `${v.toFixed(2)} s`,
+        onInput: (v) => { preset.vibratoDelay = v; this._markCustom(); },
+      });
+      vibratoHost.append(vibRateKnob.el, vibDepthKnob.el, vibDelayKnob.el);
 
       // --- Reverb: Dry/Wet + Länge ---
       const reverbHost = this.$('.reverb-knobs');
@@ -1273,13 +1471,15 @@
 
     _wireControls() {
       this.shadowRoot.addEventListener('click', (event) => {
-        const action = event.target.closest('[data-action]')?.dataset.action;
+        const target = event.target.closest('[data-action]');
+        const action = target?.dataset.action;
         if (!action) return;
         if (action === 'close') this.close();
         else if (action === 'toggle-transport') this.playing ? this.stop() : this.start();
         else if (action === 'randomize') this.randomize();
         else if (action === 'toggle-melody') { this.state.melodyOn = !this.state.melodyOn; this._renderAll(); }
         else if (action === 'toggle-arp') { this.state.arpOn = !this.state.arpOn; this._renderAll(); }
+        else if (action === 'tab') this._setTab(target.dataset.tab);
         else if (action === 'toggle-latch') {
           this.state.latchOn = !this.state.latchOn;
           if (!this.state.latchOn) this._releaseAllKeys();
@@ -1287,9 +1487,11 @@
         }
       });
 
-      this.$('.bpm-input').addEventListener('input', (e) => {
-        this.state.bpm = Number(e.target.value);
-        this.$('.bpm-out').textContent = `${this.state.bpm} BPM`;
+      this.$all('.bpm-input').forEach((input) => {
+        input.addEventListener('input', (e) => {
+          this.state.bpm = Number(e.target.value);
+          this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
+        });
       });
 
       this.$('[data-field="arpSource"]').addEventListener('change', (e) => { this.state.arpSourceId = e.target.value; });
@@ -1301,7 +1503,8 @@
     _handleKeydown(event) {
       if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
       if (event.key !== 'Tab') return;
-      const focusable = this.$all('button:not([disabled]), input:not([disabled]), select:not([disabled])');
+      const focusable = this.$all('button:not([disabled]), input:not([disabled]), select:not([disabled])')
+        .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement);
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -1317,11 +1520,14 @@
     --accent-rgb: 248,104,176;
     --bg: #fff7ec;
     --surface: #ffffff;
-    --line: #eee0e9;
+    --surface-2: #fff1e2;
+    --line: #f1ddd0;
     --text: #241b3d;
     --muted: #8c81a6;
     position: fixed; inset: 0; z-index: 2147483000;
-    background: var(--bg);
+    background:
+      radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .14), transparent 55%),
+      var(--bg);
     display: flex; flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: var(--text);
@@ -1335,101 +1541,134 @@
 
   .lab-head {
     flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
-    padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
-    border-bottom: 1px solid var(--line);
+    padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   }
   .lab-head-title { flex: 1; }
-  .eyebrow { color: var(--accent); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-  .lab-head h1 { font-size: 1.3rem; margin: .1em 0 0; letter-spacing: -.02em; font-weight: 800; }
+  .eyebrow { color: var(--accent); font-size: .66rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .lab-head h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   .lab-head h1 span { color: var(--accent); }
   .icon-btn {
-    width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center;
-    border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+    width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted);
   }
+
+  .tab-bar {
+    flex: 0 0 auto; display: flex; gap: 6px; padding: 0 max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    flex: 1 0 auto; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--muted); font-size: .78rem; font-weight: 700; text-align: center;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   .lab-body {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 14px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: 2px max(16px, env(safe-area-inset-right)) 18px max(16px, env(safe-area-inset-left));
   }
+  .tab-panel[hidden] { display: none; }
 
-  .panel { border: 1px solid var(--line); border-radius: 18px; padding: 14px; margin-bottom: 12px; background: var(--surface); }
+  .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
   .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .panel-head h2 { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin: 0; font-weight: 700; }
-  .item-name { font-size: .74rem; font-weight: 700; }
+  .panel-head h2 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; }
+  .item-name { font-size: .74rem; font-weight: 700; color: var(--accent); text-align: right; }
 
-  .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
-  .transport-play {
-    width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
-    background: var(--accent); color: #fff;
+  .transport-bar {
+    flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--surface);
+    backdrop-filter: blur(14px);
+    padding: 12px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
-  .tempo-field { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 9px; }
-  .bpm-out { font-weight: 800; font-size: 1.15rem; white-space: nowrap; }
-  .status-line { font-size: .7rem; color: var(--muted); text-align: center; margin: 8px 0 0; }
+  .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; }
+  .transport-play {
+    width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7);
+  }
+  .icon-btn.dice-btn { width: 46px; height: 46px; border-radius: 15px; }
+  .tempo-field { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
+  .bpm-out { font-weight: 800; font-size: 1.1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .status-line { font-size: .68rem; color: var(--muted); text-align: center; margin: 8px 0 0; }
 
   input[type=range] { width: 100%; accent-color: var(--accent); }
 
   .pick-cell {
-    aspect-ratio: 1; border: 1px solid var(--line); border-radius: 12px; background: var(--bg);
+    aspect-ratio: 1; border: 1px solid var(--line); border-radius: 13px; background: var(--surface);
     display: grid; place-items: center; padding: 4px;
   }
-  .pick-cell svg { width: 22px; height: 22px; color: var(--muted); }
-  .pick-cell[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
+  .pick-cell svg { width: 21px; height: 21px; color: var(--muted); }
+  .pick-cell[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .3) inset; }
   .pick-cell[aria-pressed="true"] svg { color: var(--accent); }
   .pattern-grid, .melody-grid, .preset-grid { display: grid; grid-template-columns: repeat(8, minmax(0,1fr)); gap: 6px; }
 
   .track-list { display: grid; gap: 8px; margin-top: 12px; }
-  .track-row { display: grid; grid-template-columns: 34px 62px 1fr 40px; gap: 8px; align-items: center; }
-  .track-row.is-off { opacity: .4; }
+  .track-row { display: grid; grid-template-columns: 32px 60px 1fr 38px; gap: 8px; align-items: center; }
+  .track-row.is-off { opacity: .38; }
   .track-roll {
-    width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%;
+    width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface);
     display: grid; place-items: center; color: var(--muted); touch-action: none;
   }
-  .track-roll svg { width: 16px; height: 16px; }
+  .track-roll svg { width: 15px; height: 15px; }
   .track-roll.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .track-name { font-size: .66rem; font-weight: 700; }
-  .track-toggle { border: 1px solid var(--line); border-radius: 999px; background: var(--bg); padding: 6px; font-size: .6rem; text-align: center; }
+  .track-name { font-size: .64rem; font-weight: 700; color: var(--muted); }
+  .track-toggle { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 6px; font-size: .58rem; text-align: center; font-weight: 700; }
   .step-row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; }
-  .step-cell { height: 11px; border-radius: 5px; background: rgba(0,0,0,.08); }
+  .step-cell { height: 11px; border-radius: 5px; background: rgba(36,27,61,.09); }
   .step-cell.is-hit { background: var(--accent); }
-  .step-cell.is-now { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .step-cell.is-now { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-  .toggle-pill { border: 1px solid var(--line); border-radius: 999px; background: var(--bg); padding: 8px 14px; font-size: .72rem; font-weight: 700; }
-  .toggle-pill[aria-pressed="true"] { background: rgba(var(--accent-rgb), .13); border-color: var(--accent); color: var(--accent); }
+  .toggle-pill { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 8px 14px; font-size: .72rem; font-weight: 700; }
+  .toggle-pill[aria-pressed="true"] { background: rgba(var(--accent-rgb), .18); border-color: var(--accent); color: var(--accent); }
 
-  .synth-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
-  .synth-section h3, .fx-box h3 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; font-weight: 700; }
+  .module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .module {
+    grid-column: span 2; border: 1px solid var(--line); border-radius: 18px; padding: 13px;
+    background: var(--surface); box-shadow: 0 3px 10px -6px rgba(36,27,61,.18);
+  }
+  .module.module-half { grid-column: span 1; }
+  .module-head { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
+  .module-icon {
+    width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
+    background: rgba(var(--accent-rgb), .15); color: var(--accent);
+  }
+  .module-icon svg { width: 15px; height: 15px; }
+  .module-head h3 { font-size: .72rem; color: var(--text); text-transform: uppercase; letter-spacing: .06em; margin: 0; font-weight: 800; }
+  .fx-columns { display: grid; gap: 12px; }
+  .fx-columns > div + div { padding-top: 10px; border-top: 1px dashed var(--line); }
+  .fx-label { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .module-half .knob-row { gap: 8px; }
+  .module-half .knob-field { width: 52px; }
+  .module-half .knob { width: 46px; height: 46px; }
   .wave-row { display: flex; gap: 8px; margin-bottom: 14px; }
-  .wave-btn { flex: 1; aspect-ratio: 1.3; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); display: grid; place-items: center; color: var(--muted); }
+  .wave-btn { flex: 1; aspect-ratio: 1.3; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); display: grid; place-items: center; color: var(--muted); }
   .wave-btn svg { width: 58%; height: 58%; }
-  .wave-btn[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); color: var(--accent); }
+  .wave-btn[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); color: var(--accent); }
 
   .adsr-row { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  .envelope-graph { width: 100%; height: 44px; }
+  .envelope-graph { width: 100%; height: 42px; }
   .envelope-path { fill: none; stroke: var(--accent); stroke-width: 2; }
   .adsr-sliders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-  .slider-field { font-size: .6rem; font-weight: 700; display: block; }
+  .slider-field { font-size: .58rem; font-weight: 700; display: block; color: var(--muted); }
   .slider-field input { display: block; margin-top: 4px; }
 
-  .knob-row { display: flex; gap: 16px; margin-top: 4px; flex-wrap: wrap; }
-  .knob-field { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-  .knob { width: 58px; height: 58px; touch-action: none; }
+  .knob-row { display: flex; gap: 14px; margin-top: 2px; flex-wrap: wrap; }
+  .knob-field { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 62px; }
+  .knob { width: 54px; height: 54px; touch-action: none; }
   .knob-track { fill: none; stroke: var(--line); stroke-width: 2.6; }
-  .knob-dot { fill: var(--accent); }
-  .knob-label { font-size: .62rem; font-weight: 700; color: var(--muted); }
-  .knob-value { font-size: .68rem; font-weight: 700; }
-
-  .fx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
-  .fx-box { border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+  .knob-fill { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; transform: rotate(135deg); transform-origin: 20px 20px; transition: stroke-dasharray .05s linear; }
+  .knob-dot { fill: #fff; }
+  .knob-label { font-size: .58rem; font-weight: 700; color: var(--muted); text-align: center; }
+  .knob-value { font-size: .64rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
   .arp-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-  .arp-controls select { border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; background: var(--bg); font-size: .72rem; }
+  .arp-controls select { border: 1px solid var(--line); border-radius: 11px; padding: 8px; background: var(--surface); font-size: .72rem; }
   .arp-toggles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 
   .keyboard-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
   .keyboard-head strong { font-size: .8rem; }
   .octave-list { display: flex; gap: 4px; }
-  .octave-btn { border: 1px solid var(--line); background: var(--bg); border-radius: 9px; padding: 5px 9px; font-size: .68rem; font-weight: 800; }
-  .octave-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+  .octave-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 5px 9px; font-size: .66rem; font-weight: 800; }
+  .octave-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .14); }
   /* Gap bewusst winzig: bei einem schnellen Glissando über die Tastatur
      reicht eine größere Lücke zwischen den Tasten aus, den Finger kurz
      "zwischen" zwei Tasten treffen zu lassen (siehe _wireKeyboard). Alle
@@ -1438,20 +1677,21 @@
      zusätzliche tote Zone ohne Trefffläche hinterlassen. */
   .keyboard { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1px; touch-action: none; }
   .key {
-    height: 64px; border: 1px solid var(--line); border-radius: 0 0 9px 9px; background: var(--bg);
+    height: 64px; border: 1px solid var(--line); border-radius: 0 0 10px 10px; background: var(--surface);
     display: flex; align-items: flex-end; justify-content: center; padding: 6px 1px;
-    font-size: .56rem; font-weight: 800; touch-action: none; user-select: none; color: var(--muted);
+    font-size: .54rem; font-weight: 800; touch-action: none; user-select: none; color: var(--muted);
   }
   .key.is-black { background: #2d2639; color: #cbb8d8; border-color: #2d2639; }
   .key.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
   .key.is-latched { box-shadow: inset 0 0 0 2px #fff; }
 
-  .foot-note { text-align: center; color: var(--muted); font-size: .66rem; padding: 4px 0 0; }
+  .foot-note { text-align: center; color: var(--muted); font-size: .64rem; padding: 10px 0 0; }
 
   @media (max-width: 380px) {
     .adsr-sliders { grid-template-columns: repeat(2, 1fr); }
-    .fx-grid { grid-template-columns: 1fr; }
-    .key { height: 54px; font-size: .5rem; }
+    .module-grid { grid-template-columns: 1fr; }
+    .module, .module.module-half { grid-column: span 1; }
+    .key { height: 54px; font-size: .48rem; }
   }
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
@@ -1464,103 +1704,135 @@
   <button class="icon-btn close-btn" type="button" data-action="close" aria-label="Groove Lab schließen">${UI_ICON.close}</button>
 </header>
 
+<nav class="tab-bar" role="tablist">
+  ${TABS.map((tab) => `<button class="tab-btn" type="button" role="tab" data-action="tab" data-tab="${tab.id}" aria-selected="${tab.id === 'beat'}">${tab.label}</button>`).join('')}
+</nav>
+
 <div class="lab-body">
-  <section class="panel">
-    <div class="transport-row">
-      <button class="icon-btn transport-play" type="button" data-action="toggle-transport" aria-label="Groove starten">${UI_ICON.play}</button>
-      <label class="tempo-field">
-        <output class="bpm-out">106 BPM</output>
-        <input class="bpm-input" type="range" min="72" max="144" value="106" aria-label="Tempo">
-      </label>
-      <button class="icon-btn" type="button" data-action="randomize" aria-label="Zufälliger Groove">${UI_ICON.dice}</button>
-    </div>
-    <p class="status-line" role="status">Bereit — am besten mit Kopfhörern.</p>
+  <section class="tab-panel" data-tab-panel="beat">
+    <section class="panel">
+      <div class="panel-head"><h2>Drumloop</h2><span class="item-name pattern-name"></span></div>
+      <div class="pattern-grid"></div>
+      <div class="track-list"></div>
+    </section>
   </section>
 
-  <section class="panel">
-    <div class="panel-head"><h2>Drumloop</h2><span class="item-name pattern-name"></span></div>
-    <div class="pattern-grid"></div>
-    <div class="track-list"></div>
+  <section class="tab-panel" data-tab-panel="melody" hidden>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Melodie</h2>
+        <button class="toggle-pill melody-toggle" type="button" data-action="toggle-melody" aria-pressed="true">Melodie an</button>
+      </div>
+      <div class="panel-head"><span class="item-name melody-name"></span></div>
+      <div class="melody-grid"></div>
+      <p class="foot-note">Jede Melodie entwickelt ihr Motiv über 2–4 Takte weiter, statt sich nur zu wiederholen.</p>
+    </section>
   </section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Melodie</h2>
-      <button class="toggle-pill melody-toggle" type="button" data-action="toggle-melody" aria-pressed="true">Melodie an</button>
-    </div>
-    <div class="panel-head"><span class="item-name melody-name"></span></div>
-    <div class="melody-grid"></div>
-  </section>
+  <section class="tab-panel" data-tab-panel="synth" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>Voreinstellung</h2><span class="item-name preset-name"></span></div>
+      <div class="preset-grid"></div>
+    </section>
 
-  <section class="panel">
-    <div class="panel-head"><h2>Synthesizer</h2><span class="item-name preset-name"></span></div>
-    <div class="preset-grid"></div>
-
-    <div class="synth-section">
-      <h3>Oszillator</h3>
-      <div class="wave-row" role="group" aria-label="Wellenform"></div>
-
-      <h3>Hüllkurve</h3>
-      <div class="adsr-row">
-        <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none">
-          <path class="envelope-path" d=""/>
-        </svg>
-        <div class="adsr-sliders"></div>
+    <div class="module-grid">
+      <div class="module">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>Oszillator</h3></div>
+        <div class="wave-row" role="group" aria-label="Wellenform"></div>
       </div>
 
-      <h3>Filter</h3>
-      <div class="knob-row filter-knobs"></div>
-    </div>
-
-    <div class="fx-grid">
-      <div class="fx-box">
-        <h3>Reverb</h3>
-        <div class="knob-row reverb-knobs"></div>
+      <div class="module">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>Hüllkurve</h3></div>
+        <div class="adsr-row">
+          <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none">
+            <path class="envelope-path" d=""/>
+          </svg>
+          <div class="adsr-sliders"></div>
+        </div>
       </div>
-      <div class="fx-box">
-        <h3>Echo</h3>
-        <div class="knob-row echo-knobs"></div>
+
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>Filter</h3></div>
+        <div class="knob-row filter-knobs"></div>
+      </div>
+
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>Charakter</h3></div>
+        <div class="knob-row character-knobs"></div>
+      </div>
+
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>Vibrato</h3></div>
+        <div class="knob-row vibrato-knobs"></div>
+      </div>
+
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('repeat')}</span><h3>Raum &amp; Echo</h3></div>
+        <div class="fx-columns">
+          <div>
+            <span class="fx-label">Reverb</span>
+            <div class="knob-row reverb-knobs"></div>
+          </div>
+          <div>
+            <span class="fx-label">Echo</span>
+            <div class="knob-row echo-knobs"></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="panel">
-    <div class="panel-head"><h2>Arpeggiator</h2></div>
-    <div class="arp-toggles">
-      <button class="toggle-pill arp-toggle" type="button" data-action="toggle-arp" aria-pressed="false">Arp aus</button>
-      <button class="toggle-pill latch-toggle" type="button" data-action="toggle-latch" aria-pressed="false">${UI_ICON.latch} Latch</button>
-    </div>
-    <div class="arp-controls">
-      <select data-field="arpSource" aria-label="Notenvorrat"></select>
-      <select data-field="arpMode" aria-label="Richtung">
-        <option value="up">Aufwärts</option>
-        <option value="down">Abwärts</option>
-        <option value="updown">Auf/Ab</option>
-        <option value="random">Zufall</option>
-      </select>
-      <select data-field="arpDivision" aria-label="Geschwindigkeit">
-        <option value="1">1/16</option>
-        <option value="2">1/8</option>
-        <option value="4">1/4</option>
-      </select>
-      <select data-field="arpOctaves" aria-label="Oktavbereich">
-        <option value="1">1 Oktave</option>
-        <option value="2">2 Oktaven</option>
-        <option value="3">3 Oktaven</option>
-      </select>
-    </div>
-    <p class="foot-note">Latch an: Tasten antippen hält sie — der Arp läuft über die gehaltenen Töne, bis du sie erneut antippst.</p>
-  </section>
+  <section class="tab-panel" data-tab-panel="keys" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>Arpeggiator</h2></div>
+      <div class="arp-toggles">
+        <button class="toggle-pill arp-toggle" type="button" data-action="toggle-arp" aria-pressed="false">Arp aus</button>
+        <button class="toggle-pill latch-toggle" type="button" data-action="toggle-latch" aria-pressed="false">${UI_ICON.latch} Latch</button>
+      </div>
+      <div class="arp-controls">
+        <select data-field="arpSource" aria-label="Notenvorrat"></select>
+        <select data-field="arpMode" aria-label="Richtung">
+          <option value="up">Aufwärts</option>
+          <option value="down">Abwärts</option>
+          <option value="updown">Auf/Ab</option>
+          <option value="random">Zufall</option>
+        </select>
+        <select data-field="arpDivision" aria-label="Geschwindigkeit">
+          <option value="1">1/16</option>
+          <option value="2">1/8</option>
+          <option value="4">1/4</option>
+        </select>
+        <select data-field="arpOctaves" aria-label="Oktavbereich">
+          <option value="1">1 Oktave</option>
+          <option value="2">2 Oktaven</option>
+          <option value="3">3 Oktaven</option>
+        </select>
+      </div>
+      <p class="foot-note">Latch an: Tasten antippen hält sie — der Arp läuft über die gehaltenen Töne, bis du sie erneut antippst.</p>
+    </section>
 
-  <section class="panel">
-    <div class="keyboard-head">
-      <strong>Mini-Klaviatur</strong>
-      <div class="octave-list"></div>
-    </div>
-    <div class="keyboard"></div>
-    <p class="foot-note">100 % lokal · Web Audio API · beim Schließen vollständig beendet</p>
+    <section class="panel">
+      <div class="keyboard-head">
+        <strong>Mini-Klaviatur</strong>
+        <div class="octave-list"></div>
+      </div>
+      <div class="keyboard"></div>
+      <p class="foot-note">100 % lokal · Web Audio API · beim Schließen vollständig beendet</p>
+    </section>
   </section>
-</div>`;
+</div>
+
+<footer class="transport-bar">
+  <div class="transport-row">
+    <button class="icon-btn transport-play" type="button" data-action="toggle-transport" aria-label="Groove starten">${UI_ICON.play}</button>
+    <label class="tempo-field">
+      <output class="bpm-out">106 BPM</output>
+      <input class="bpm-input" type="range" min="72" max="144" value="106" aria-label="Tempo">
+    </label>
+    <button class="icon-btn dice-btn" type="button" data-action="randomize" aria-label="Zufälliger Groove">${UI_ICON.dice}</button>
+  </div>
+  <p class="status-line" role="status">Bereit — am besten mit Kopfhörern.</p>
+</footer>`;
     }
   }
 
