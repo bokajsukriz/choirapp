@@ -114,7 +114,7 @@ body::before, body::after,
    lagen body's und #player's eigene Kreise exakt übereinander und wirkten
    durch mix-blend-mode:multiply doppelt so satt wie auf den anderen Reitern. */
 #player::before, #player::after { content: none; }
-body::before, .player::before { top: -30px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
+body::before, .player::before { top: -70px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
 body::after, .player::after { bottom: 40px; left: -130px; width: 380px; height: 380px; background: #ffd23f; }
 
 /* dvh berücksichtigt die ein- und ausfahrende Browserleiste auf dem Handy. */
@@ -11587,8 +11587,7 @@ const COMPAT_UPDATE_FLAG = 'chor-app-just-updated';
 function showCompatWarningDialog() {
   const box = el('div', { class: 'dialog' },
     el('h2', { text: 'Hinweis zur Datenkompatibilität' }),
-    el('p', { text: 'Diese App wird noch weiterentwickelt. Beim Wechsel auf die finale Version ist es möglich, dass selbst angelegte Daten — Notizen, eigene Liedtexte, Loops und RECs — nicht automatisch übernommen werden können.' }),
-    el('p', { style: 'margin-bottom:0', text: 'Am sichersten: regelmäßig unter Einstellungen → Daten & Sicherung eine Sicherung erstellen.' }),
+    el('p', { style: 'margin-bottom:0', text: 'Diese App wird noch weiterentwickelt. Beim Wechsel auf die finale Version ist es möglich, dass selbst angelegte Daten — Notizen, eigene Liedtexte, Loops und RECs — nicht automatisch übernommen werden können.' }),
     el('div', { class: 'dialog-actions' },
       el('button', { class: 'btn btn--primary', type: 'button', text: 'Verstanden', onclick: () => done() })));
   const done = () => layer.remove();
