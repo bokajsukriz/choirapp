@@ -3322,7 +3322,7 @@ const STRINGS = {
 
     'settings.data.title': 'Daten & Sicherung',
     'settings.data.backupTitle': 'Sicherung',
-    'settings.data.backupHint': 'Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen und die Songliste — ohne Aufnahmen. Die Datei ist nur wenige Kilobyte groß und lässt sich per Mail oder Messenger verschicken.',
+    'settings.data.backupHint': 'Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen, eigene RECs und die Songliste. Beim Erstellen lässt sich auswählen, was genau enthalten sein soll — auch die (großen) Song-Audiodateien.',
     'settings.data.backupBtn': 'Backup',
     'settings.data.restoreBtn': 'Restore',
     'settings.data.printNotesBtn': 'Alle Notizen drucken',
@@ -3485,7 +3485,7 @@ const STRINGS = {
 
     'settings.data.title': 'Data & backup',
     'settings.data.backupTitle': 'Backup',
-    'settings.data.backupHint': 'Backs up loops, notes, your own lyrics, setlists, settings and the song list — without recordings. The file is only a few kilobytes and can be sent by mail or messenger.',
+    'settings.data.backupHint': 'Backs up loops, notes, your own lyrics, setlists, settings, your own RECs and the song list. When creating it you can choose exactly what to include — even the (large) song audio files.',
     'settings.data.backupBtn': 'Backup',
     'settings.data.restoreBtn': 'Restore',
     'settings.data.printNotesBtn': 'Print all notes',
@@ -3648,7 +3648,7 @@ const STRINGS = {
 
     'settings.data.title': 'Dane i kopia zapasowa',
     'settings.data.backupTitle': 'Kopia zapasowa',
-    'settings.data.backupHint': 'Zapisuje loopy, notatki, własne teksty, setlisty, ustawienia i listę utworów — bez nagrań. Plik ma tylko kilka kilobajtów i można go wysłać mailem lub komunikatorem.',
+    'settings.data.backupHint': 'Zapisuje loopy, notatki, własne teksty, setlisty, ustawienia, własne nagrania (REC) i listę utworów. Przy tworzeniu można wybrać, co dokładnie ma być uwzględnione — także (duże) pliki audio utworów.',
     'settings.data.backupBtn': 'Kopia zapasowa',
     'settings.data.restoreBtn': 'Przywróć',
     'settings.data.printNotesBtn': 'Wydrukuj wszystkie notatki',
@@ -10704,56 +10704,235 @@ function playlistAdvance() {
 let pendingAutoPlay = false;
 
 /* ==========================================================================
-   BACKUP — Loops, Playlisten und Einstellungen sichern (Spec 5.4)
+   BACKUP — Loops, Playlisten, Einstellungen, RECs und wahlweise Audio sichern
 
-   Bewusst ohne Audiodaten: die Datei bleibt wenige Kilobyte groß. Loops und
-   Playlisten verweisen über den *Titel* auf Songs, nicht über die interne
-   Kennung — nur so übersteht eine Sicherung das Löschen und erneute
+   Loops und Playlisten verweisen über den *Titel* auf Songs, nicht über die
+   interne Kennung — nur so übersteht eine Sicherung das Löschen und erneute
    Importieren der Aufnahmen und lässt sich auf ein anderes Gerät übertragen.
+
+   Was tatsächlich hineinkommt, wählt die Person beim Erstellen aus
+   (showBackupOptionsDialog): Text-Daten (Loops/Notizen/eigene Liedtexte/
+   Setlisten/Einstellungen) sind immer klein und praktisch kostenlos. Eigene
+   RECs sind ohne ihr Audio nutzlos — sie werden deshalb, wenn ausgewählt,
+   immer mitsamt Ton als Base64 eingebettet. Die Song-Audiodateien (die
+   komplette Chor-Bibliothek) können ebenfalls eingebettet werden, sind aber
+   oft groß und liegen ohnehin schon in der Dropbox — deshalb separat
+   abwählbar und nicht in der Voreinstellung "Nur Nutzerdaten".
    ========================================================================== */
 
 const BACKUP_FORMAT = 'chor-app-backup';
 
-async function buildBackup() {
-  const [songs, loops, playlists, notes, lyricsNotes] = await Promise.all([
-    DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
-    DB.metaByType('note'), DB.metaByType('lyricsNote'),
-  ]);
-  const byId = new Map(songs.map((s) => [s.id, s]));
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
 
+function base64ToBlob(base64, mimeType) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * Größenschätzung je Kategorie — rein aus bereits gespeicherten `size`-Feldern,
+ * ohne eine einzige Datei zu öffnen. Deshalb blitzschnell und für die Live-
+ * Anzeige im Auswahl-Dialog geeignet; *1,34 gleicht den Base64-Aufschlag aus.
+ */
+async function backupSizeEstimate() {
+  const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
+    DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
+  ]);
+  const textBytes = JSON.stringify({ loops, notes, lyricsNotes, playlists }).length + 500;
+  const recAudioBytes = recordings.reduce((n, r) => n + (r.size || 0), 0) * 1.34;
+  const songAudioBytes = songs.reduce((n, s) =>
+    n + s.tracks.reduce((m, t) => m + (t.size || 0), 0), 0) * 1.34;
   return {
-    format: BACKUP_FORMAT,
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    settings: { myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize },
-    songs: songs
-      .sort((a, b) => collator.compare(a.title, b.title))
-      .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })),
-    loops: loops.map((l) => ({
-      songTitle: byId.get(l.songId)?.title || l.songTitle || '',
-      name: l.name, start: l.start, end: l.end,
-    })).filter((l) => l.songTitle),
-    playlists: playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] })),
-    notes: notes.map((n) => ({
-      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
-      text: n.text || '',
-      updatedAt: n.updatedAt || null,
-    })).filter((n) => n.songTitle && n.text.trim()),
-    lyricsNotes: lyricsNotes.map((n) => ({
-      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
-      text: n.text || '',
-      updatedAt: n.updatedAt || null,
-    })).filter((n) => n.songTitle && n.text.trim()),
+    textBytes,
+    recAudioBytes, recCount: recordings.length,
+    songAudioBytes, songCount: songs.length,
+    trackCount: songs.reduce((n, s) => n + s.tracks.length, 0),
   };
 }
 
+async function buildBackup(opts) {
+  const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
+    DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
+  ]);
+  const byId = new Map(songs.map((s) => [s.id, s]));
+
+  const data = {
+    format: BACKUP_FORMAT,
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    songs: songs
+      .sort((a, b) => collator.compare(a.title, b.title))
+      .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })),
+  };
+
+  if (opts.settings) {
+    data.settings = { myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize };
+  }
+  if (opts.loops) {
+    data.loops = loops.map((l) => ({
+      songTitle: byId.get(l.songId)?.title || l.songTitle || '',
+      name: l.name, start: l.start, end: l.end,
+    })).filter((l) => l.songTitle);
+  }
+  if (opts.playlists) {
+    data.playlists = playlists.map((p) => ({ name: p.name, songTitles: p.songTitles || [] }));
+  }
+  if (opts.notes) {
+    data.notes = notes.map((n) => ({
+      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
+      text: n.text || '',
+      updatedAt: n.updatedAt || null,
+    })).filter((n) => n.songTitle && n.text.trim());
+  }
+  if (opts.lyricsNotes) {
+    data.lyricsNotes = lyricsNotes.map((n) => ({
+      songTitle: byId.get(n.songId)?.title || n.songTitle || '',
+      text: n.text || '',
+      updatedAt: n.updatedAt || null,
+    })).filter((n) => n.songTitle && n.text.trim());
+  }
+
+  if (opts.recordings) {
+    const withAudio = await Promise.all(recordings.map(async (r) => {
+      const rec = await DB.fileGet(r.fileKey);
+      if (!rec) return null;
+      const blob = recordBlob(rec, r.mimeType);
+      return {
+        songTitle: byId.get(r.songId)?.title || r.songTitle || '',
+        name: r.name, voice: r.voice || null, duration: r.duration,
+        mimeType: r.mimeType, createdAt: r.createdAt,
+        audioBase64: await blobToBase64(blob),
+      };
+    }));
+    data.recordings = withAudio.filter(Boolean);
+  }
+
+  if (opts.songAudio) {
+    const withAudio = await Promise.all(songs.map(async (s) => {
+      const tracks = await Promise.all(s.tracks.map(async (t) => {
+        const rec = await DB.fileGet(t.fileKey);
+        if (!rec) return null;
+        const blob = recordBlob(rec, mimeForTrack(t));
+        return {
+          voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t),
+          audioBase64: await blobToBase64(blob),
+        };
+      }));
+      return { title: s.title, tracks: tracks.filter(Boolean) };
+    }));
+    data.songAudio = withAudio.filter((s) => s.tracks.length);
+  }
+
+  return data;
+}
+
+/**
+ * Fragt, was in die Sicherung soll: Text-Daten sind immer sinnvoll (klein,
+ * ohne sie wären RECs/Loops/Notizen beim nächsten Geräteschaden weg) und
+ * daher fest angehakt; Audio ist optional, weil groß. Gibt die gewählten
+ * Optionen zurück oder `null`, wenn abgebrochen wurde.
+ */
+async function showBackupOptionsDialog() {
+  const est = await backupSizeEstimate();
+  const opts = {
+    loops: true, notes: true, lyricsNotes: true, playlists: true, settings: true,
+    recordings: est.recCount > 0,
+    songAudio: false,
+  };
+
+  return new Promise((resolve) => {
+    const done = (result) => { layer.remove(); resolve(result); };
+
+    const totalLabel = el('strong', { id: 'backup-size-total' });
+    const updateTotal = () => {
+      let bytes = est.textBytes;
+      if (opts.recordings) bytes += est.recAudioBytes;
+      if (opts.songAudio) bytes += est.songAudioBytes;
+      totalLabel.textContent = fmtBytes(bytes);
+    };
+
+    const row = (key, title, hint, bytes) => {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = opts[key];
+      cb.addEventListener('change', () => { opts[key] = cb.checked; updateTotal(); });
+      return el('label', { class: 'row', style: 'align-items:flex-start; gap:10px; cursor:pointer' },
+        cb,
+        el('span', { class: 'grow' },
+          el('div', { text: title }),
+          el('div', { class: 'small muted', text: hint })),
+        el('span', { class: 'small muted', style: 'white-space:nowrap', text: bytes != null ? fmtBytes(bytes) : '' }));
+    };
+
+    const applyPreset = (full) => {
+      opts.songAudio = full;
+      opts.recordings = est.recCount > 0;
+      opts.loops = opts.notes = opts.lyricsNotes = opts.playlists = opts.settings = true;
+      for (const [key, cb] of Object.entries(checkboxes)) cb.checked = opts[key];
+      updateTotal();
+    };
+
+    const checkboxRows = [
+      ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
+      ['recordings', 'Eigene RECs', `${plural(est.recCount, 'Aufnahme', 'Aufnahmen')} mit Ton — ohne Audio nutzlos, deshalb immer komplett dabei.`, est.recAudioBytes],
+      ['loops', 'Loops', 'Geübte Abschnitte je Song.', null],
+      ['notes', 'Notizen', 'Eigene Anmerkungen je Song.', null],
+      ['lyricsNotes', 'Eigene Liedtexte', 'Selbst eingetragene Liedtexte.', null],
+      ['playlists', 'Setlisten', 'Gespeicherte Programme.', null],
+      ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße.', null],
+    ];
+    const checkboxes = {};
+    const rowNodes = checkboxRows.map(([key, title, hint, bytes]) => {
+      const node = row(key, title, hint, bytes);
+      checkboxes[key] = node.querySelector('input');
+      return node;
+    });
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'Sicherung erstellen' }),
+      el('p', { text: 'Text-Daten sind immer klein und stehen deshalb schon an. Audio nur, wenn gewünscht — beides lässt sich einzeln abwählen.' }),
+      el('div', { class: 'preset-row', style: 'grid-template-columns:repeat(2,1fr); margin-bottom:10px' },
+        el('button', { class: 'preset', type: 'button', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
+        el('button', { class: 'preset', type: 'button', text: 'Alles sichern', onclick: () => applyPreset(true) })),
+      el('div', { class: 'stack', style: 'gap:2px' }, ...rowNodes),
+      el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
+        el('span', { text: 'Geschätzte Dateigröße' }), totalLabel),
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts }) })));
+
+    updateTotal();
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+  });
+}
+
 $('#btn-backup-export').addEventListener('click', async () => {
+  const opts = await showBackupOptionsDialog();
+  if (!opts) return;
+
+  const heavy = opts.songAudio || opts.recordings;
+  const closeBanner = heavy
+    ? banner('Sicherung wird erstellt … bei viel Audio kann das etwas dauern.', { timeout: 0 })
+    : null;
   try {
-    const data = await buildBackup();
-    const text = JSON.stringify(data, null, 2);
+    const data = await buildBackup(opts);
+    const text = JSON.stringify(data);
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `chor-app-backup-${date}.json`;
     const file = new File([text], fileName, { type: 'application/json' });
+    closeBanner?.();
 
     let shared = false;
     if (navigator.canShare?.({ files: [file] })) {
@@ -10765,10 +10944,15 @@ $('#btn-backup-export').addEventListener('click', async () => {
     await saveSettings({ lastBackupAt: new Date().toISOString() });
     renderBackupAge();
     updateBackupReminder();
-    banner(`Sicherung erstellt: ${plural(data.loops.length, 'Loop', 'Loops')}, `
-      + `${plural(data.notes.length, 'Notiz', 'Notizen')}, `
-      + `${plural(data.playlists.length, 'Setliste', 'Setlisten')}.`, { kind: 'ok' });
+    const parts = [];
+    if (data.loops) parts.push(plural(data.loops.length, 'Loop', 'Loops'));
+    if (data.notes) parts.push(plural(data.notes.length, 'Notiz', 'Notizen'));
+    if (data.playlists) parts.push(plural(data.playlists.length, 'Setliste', 'Setlisten'));
+    if (data.recordings) parts.push(plural(data.recordings.length, 'REC', 'RECs'));
+    if (data.songAudio) parts.push(`${plural(data.songAudio.reduce((n, s) => n + s.tracks.length, 0), 'Spur', 'Spuren')} Song-Audio`);
+    banner(`Sicherung erstellt (${fmtBytes(file.size)}): ${parts.join(', ')}.`, { kind: 'ok' });
   } catch (err) {
+    closeBanner?.();
     bannerError('Die Sicherung konnte nicht erstellt werden.', 'BACKUP-EXPORT', err);
   }
 });
@@ -10827,13 +11011,18 @@ async function restoreBackup(data) {
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
   const notes = Array.isArray(data.notes) ? data.notes : [];
   const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
+  const recordingsIn0 = Array.isArray(data.recordings) ? data.recordings : [];
+  const songAudioIn0 = Array.isArray(data.songAudio) ? data.songAudio : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
     title: 'Sicherung einspielen',
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
         + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
-        + `${plural(playlists.length, 'Setliste', 'Setlisten')} gefunden. `
+        + `${plural(playlists.length, 'Setliste', 'Setlisten')}`
+        + (recordingsIn0.length ? `, ${plural(recordingsIn0.length, 'REC', 'RECs')}` : '')
+        + (songAudioIn0.length ? ` und Audio für ${plural(songAudioIn0.length, 'Song', 'Songs')}` : '')
+        + ' gefunden. '
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
     options: [
@@ -10857,6 +11046,38 @@ async function restoreBackup(data) {
       ...await DB.metaByType('playlist'),
     ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
+    dropSongCache();
+  }
+
+  // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch gar
+  // nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der Stimmen
+  // gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre fehleranfällig).
+  // Muss vor Loops/Notizen/RECs laufen, damit die einen frisch angelegten
+  // Song schon finden, statt fälschlich als "ohne Song" zu landen.
+  let songsCreated = 0, songsSkipped = 0;
+  const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
+  if (songAudioIn.length) {
+    for (const s of songAudioIn) {
+      if (!s || !Array.isArray(s.tracks) || !s.tracks.length) continue;
+      if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+
+      const song = await createPlaceholderSong(s.title);
+      for (const t of s.tracks) {
+        if (!t.audioBase64) continue;
+        const blob = base64ToBlob(t.audioBase64, t.mimeType || 'audio/mpeg');
+        const fileKey = newFileKey();
+        const fileName = t.fileName || `${t.voice}.mp3`;
+        await DB.filePut(await fileRecord(fileKey, blob, fileName));
+        song.tracks.push({
+          voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
+          fileName, fileKey, size: blob.size, durationSec: null,
+        });
+      }
+      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+      await DB.metaPut(song);
+      songs.push(song);
+      songsCreated++;
+    }
     dropSongCache();
   }
 
@@ -10957,6 +11178,46 @@ async function restoreBackup(data) {
   // hunderte einzelne Transaktionen.
   await DB.metaPutMany(fresh);
 
+  // RECs mit eingebettetem Audio — anders als Loops/Notizen nie über "Alles
+  // ersetzen" gelöscht, sonst würde eine eigene Aufnahme durch Wiedereinspielen
+  // einer älteren Sicherung verschwinden. Duplikate (Name + Song) werden
+  // trotzdem übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
+  let addedRecordings = 0, skippedRecordings = 0;
+  const recordingsIn = Array.isArray(data.recordings) ? data.recordings : [];
+  if (recordingsIn.length) {
+    const existingRecordings = await DB.metaByType('recording').catch(() => []);
+    for (const r of recordingsIn) {
+      if (!r || !r.audioBase64) continue;
+      const song = findSongByTitle(songs, r.songTitle || '');
+      const norm = normalizeTitle(r.songTitle || '');
+      const isDupe = (x) => x.name === r.name
+        && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm);
+      if (existingRecordings.some(isDupe)) { skippedRecordings++; continue; }
+
+      const mimeType = r.mimeType || 'audio/webm';
+      const blob = base64ToBlob(r.audioBase64, mimeType);
+      const fileKey = newFileKey();
+      const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('mpeg') ? 'mp3' : 'webm');
+      await DB.filePut(await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`));
+
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      const recording = {
+        key: `recording:${id}`, type: 'recording', id,
+        songId: song ? song.id : null,
+        songTitle: r.songTitle || '',
+        name: r.name || 'REC',
+        voice: r.voice || null,
+        fileKey, mimeType, duration: r.duration || 0,
+        size: blob.size,
+        createdAt: r.createdAt || new Date().toISOString(),
+      };
+      await DB.metaPut(recording);
+      existingRecordings.push(recording);
+      addedRecordings++;
+    }
+    if (playerSong) await loadSongRecordings();
+  }
+
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
   const savedVoices = Array.isArray(data.settings?.myVoices) ? data.settings.myVoices
     : (data.settings?.myVoice ? [data.settings.myVoice] : []);
@@ -10973,11 +11234,16 @@ async function restoreBackup(data) {
   banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
     + `und ${plural(addedPl, 'Setliste', 'Setlisten')} eingespielt.`
     + (addedLyricsNotes ? ` ${plural(addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} dazu.` : '')
+    + (addedRecordings ? ` ${plural(addedRecordings, 'REC', 'RECs')} dazu.` : '')
+    + (songsCreated ? ` ${plural(songsCreated, 'Song', 'Songs')} neu angelegt.` : '')
     + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
     + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
         + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : '')
     + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
-        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : ''), { kind: 'ok' });
+        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : '')
+    + (skippedRecordings ? ` ${plural(skippedRecordings, 'REC', 'RECs')} übersprungen, weil schon vorhanden.` : '')
+    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : ''),
+    { kind: 'ok' });
 }
 
 /**
