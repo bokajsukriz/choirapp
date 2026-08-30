@@ -2175,6 +2175,21 @@ input[type="checkbox"] {
       </div>
     </div>
 
+    <div class="card">
+      <h2>Mitschnitt importieren</h2>
+      <p class="small muted" style="margin-top:0">
+        Eine MP3-Datei einspielen, die jemand über „Exportieren" bei einem
+        Mitschnitt erzeugt hat — auch aus einer anderen Chor-App-Installation.
+        Mehrere Dateien auf einmal sind möglich. Fehlt der Song noch in der
+        Bibliothek, verbindet sich der Mitschnitt automatisch, sobald er
+        importiert wird.
+      </p>
+      <input class="visually-hidden" id="mitschnitt-input" type="file" accept=".mp3,audio/mpeg" multiple>
+      <button class="btn btn--block" id="btn-mitschnitt-import" type="button">
+        Mitschnitt-MP3s auswählen
+      </button>
+    </div>
+
     <div id="import-report"></div>
 
     <div class="card">
@@ -2443,20 +2458,6 @@ input[type="checkbox"] {
         <p class="small" id="notes-count" style="margin:8px 0 0"></p>
         <button class="btn btn--block" id="btn-notes-export" type="button" data-i18n="settings.data.printNotesBtn">
           Alle Notizen drucken
-        </button>
-      </div>
-
-      <p class="section-title">Mitschnitt importieren</p>
-      <div class="stack">
-        <p class="small muted" style="margin:0">
-          Eine Datei einspielen, die jemand über „Exportieren" bei einem
-          Mitschnitt erzeugt hat — auch von einer anderen Chor-App-Installation.
-          Fehlt der Song noch in der Bibliothek, verbindet sich der Mitschnitt
-          automatisch, sobald er importiert wird.
-        </p>
-        <input class="visually-hidden" id="mitschnitt-input" type="file" accept=".json,application/json">
-        <button class="btn btn--block" id="btn-mitschnitt-import" type="button">
-          Mitschnitt importieren
         </button>
       </div>
 
@@ -8169,8 +8170,6 @@ let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden }
 
-const MITSCHNITT_EXPORT_FORMAT = 'chor-app-mitschnitt';
-
 /** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
   if (!window.MediaRecorder) return '';
@@ -8203,7 +8202,13 @@ async function startRecording() {
   }
 
   try {
-    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
+    // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
+    // schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
+    // Übe-Mitschnitt zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
+    recStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
   } catch (err) {
     bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
     return;
@@ -8487,20 +8492,197 @@ async function toggleSavedRecordingPreview(recording) {
   updateRecPreviewButton();
 }
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
+/* ---------- MP3-Export: lamejs laden, dekodieren, kodieren, mit ID3 versehen ---------- */
+
+// lamejs wiegt gepackt gut 150 KB und wird nur fürs Exportieren gebraucht —
+// erst bei Bedarf nachladen, nicht beim Programmstart.
+let lameLoadPromise = null;
+function ensureLameLoaded() {
+  if (window.lamejs) return Promise.resolve();
+  if (lameLoadPromise) return lameLoadPromise;
+  lameLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'lame.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { lameLoadPromise = null; reject(new Error('MP3-Encoder konnte nicht geladen werden.')); };
+    document.head.append(script);
   });
+  return lameLoadPromise;
 }
 
-function base64ToBlob(base64, mimeType) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mimeType });
+/** WebM/Opus oder MP4/AAC zu rohem PCM dekodieren — ein kurzlebiger eigener AudioContext, unabhängig von Audio.ctx. */
+async function decodeToPcm(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    return await ctx.decodeAudioData(arrayBuffer);
+  } finally {
+    ctx.close().catch(() => {});
+  }
+}
+
+function floatTo16BitPCM(floatSamples) {
+  const out = new Int16Array(floatSamples.length);
+  for (let i = 0; i < floatSamples.length; i++) {
+    const s = Math.max(-1, Math.min(1, floatSamples[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+
+/** PCM aus einem AudioBuffer mit lamejs zu MP3 kodieren (mono oder stereo, je nach Quelle). */
+function encodePcmToMp3(audioBuffer, kbps = 128) {
+  const channels = Math.min(audioBuffer.numberOfChannels, 2);
+  const left = floatTo16BitPCM(audioBuffer.getChannelData(0));
+  const right = channels === 2 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null;
+
+  const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, kbps);
+  const chunks = [];
+  const blockSize = 1152;
+  for (let i = 0; i < left.length; i += blockSize) {
+    const buf = channels === 2
+      ? encoder.encodeBuffer(left.subarray(i, i + blockSize), right.subarray(i, i + blockSize))
+      : encoder.encodeBuffer(left.subarray(i, i + blockSize));
+    if (buf.length > 0) chunks.push(buf);
+  }
+  const end = encoder.flush();
+  if (end.length > 0) chunks.push(end);
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+  return merged;
+}
+
+/* ---------- ID3v2.3-Tag schreiben und lesen ----------
+   Handgeschrieben statt einer weiteren Bibliothek: es sind nur eine Handvoll
+   Textframes, und so bleibt die App bei „eine Datei, keine Abhängigkeiten"
+   (lamejs ausgenommen, das für die Kodierung selbst unersetzlich ist). */
+
+function latin1Bytes(text) {
+  const bytes = [];
+  for (let i = 0; i < text.length; i++) bytes.push(text.charCodeAt(i) & 0xFF);
+  return bytes;
+}
+
+/** Textinfo-Frame (TIT2, TALB, …) als UTF-16LE mit BOM — deckt auch Umlaute/Polnisch ab. */
+function utf16leTextFrameBody(text) {
+  const bytes = [0x01, 0xFF, 0xFE];
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    bytes.push(code & 0xFF, (code >> 8) & 0xFF);
+  }
+  return bytes;
+}
+
+/** TXXX-Frame für eigene Schlüssel/Wert-Angaben — hier immer reines ASCII, deshalb Latin-1. */
+function txxxFrameBody(description, value) {
+  return [0x00, ...latin1Bytes(description), 0x00, ...latin1Bytes(value)];
+}
+
+function id3Frame(id, bodyBytes) {
+  const size = bodyBytes.length;
+  return [
+    ...latin1Bytes(id),
+    (size >>> 24) & 0xFF, (size >>> 16) & 0xFF, (size >>> 8) & 0xFF, size & 0xFF,
+    0x00, 0x00, // Flags
+    ...bodyBytes,
+  ];
+}
+
+const ID3_MARKER_KEY = 'ChorAppMitschnitt';
+
+function buildId3v2Tag({ name, songTitle, voice, dateIso }) {
+  const frames = [
+    id3Frame('TIT2', utf16leTextFrameBody(name || '')),
+    id3Frame('TALB', utf16leTextFrameBody(songTitle || '')),
+    id3Frame('TXXX', txxxFrameBody(ID3_MARKER_KEY, '1')),
+    id3Frame('TXXX', txxxFrameBody('Stimme', voice || '')),
+    id3Frame('TXXX', txxxFrameBody('Datum', dateIso || '')),
+  ].flat();
+
+  const size = frames.length;
+  // Nur die Größe im ID3v2-Header ist "syncsafe" (7 Bit je Byte) — die
+  // einzelnen Frame-Header darüber verwenden in v2.3 normale 32-Bit-Werte.
+  const syncsafeSize = [
+    (size >>> 21) & 0x7F, (size >>> 14) & 0x7F, (size >>> 7) & 0x7F, size & 0x7F,
+  ];
+  return new Uint8Array([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, ...syncsafeSize, ...frames]);
+}
+
+function attachId3Tag(mp3Bytes, meta) {
+  const tag = buildId3v2Tag(meta);
+  const out = new Uint8Array(tag.length + mp3Bytes.length);
+  out.set(tag, 0);
+  out.set(mp3Bytes, tag.length);
+  return out;
+}
+
+function decodeId3String(bytes, encByte) {
+  if (encByte === 0x01 || encByte === 0x02) {
+    let start = 0;
+    let littleEndian = true;
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) { start = 2; littleEndian = true; }
+    else if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) { start = 2; littleEndian = false; }
+    let out = '';
+    for (let i = start; i + 1 < bytes.length; i += 2) {
+      const code = littleEndian ? (bytes[i] | (bytes[i + 1] << 8)) : ((bytes[i] << 8) | bytes[i + 1]);
+      if (code === 0) break;
+      out += String.fromCharCode(code);
+    }
+    return out;
+  }
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0) break;
+    out += String.fromCharCode(bytes[i]);
+  }
+  return out;
+}
+
+function decodeTxxxFrame(body) {
+  const encByte = body[0];
+  const rest = body.subarray(1);
+  if (encByte === 0x01 || encByte === 0x02) {
+    let i = 0;
+    while (i + 1 < rest.length && !(rest[i] === 0 && rest[i + 1] === 0)) i += 2;
+    return [decodeId3String(rest.subarray(0, i), encByte), decodeId3String(rest.subarray(i + 2), encByte)];
+  }
+  const zero = rest.indexOf(0);
+  const end = zero === -1 ? rest.length : zero;
+  return [decodeId3String(rest.subarray(0, end), 0x00), decodeId3String(rest.subarray(end + 1), 0x00)];
+}
+
+/** Liest die ID3v2-Tags am Dateianfang — null, wenn keine vorhanden sind. */
+function readId3Tags(bytes) {
+  if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return null;
+  const size = ((bytes[6] & 0x7F) << 21) | ((bytes[7] & 0x7F) << 14) | ((bytes[8] & 0x7F) << 7) | (bytes[9] & 0x7F);
+  const tagEnd = Math.min(10 + size, bytes.length);
+  const tags = {};
+  let pos = 10;
+  while (pos + 10 <= tagEnd) {
+    const id = String.fromCharCode(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]);
+    if (id === '\u0000\u0000\u0000\u0000') break; // Padding erreicht
+    const frameSize = (bytes[pos + 4] << 24) | (bytes[pos + 5] << 16) | (bytes[pos + 6] << 8) | bytes[pos + 7];
+    const bodyStart = pos + 10;
+    const bodyEnd = bodyStart + frameSize;
+    if (frameSize <= 0 || bodyEnd > bytes.length) break;
+    const body = bytes.subarray(bodyStart, bodyEnd);
+    if (id === 'TIT2' || id === 'TALB') {
+      tags[id] = decodeId3String(body.subarray(1), body[0]);
+    } else if (id === 'TXXX') {
+      const [desc, value] = decodeTxxxFrame(body);
+      tags[`TXXX:${desc}`] = value;
+    }
+    pos = bodyEnd;
+  }
+  return tags;
+}
+
+function voiceCodeFromLabel(label) {
+  const entry = Object.entries(VOICE_LABEL).find(([, v]) => v === label);
+  return entry ? entry[0] : null;
 }
 
 /** Für den Dateinamen: nur Buchstaben/Zahlen/Leerzeichen/Bindestrich, alles andere raus. */
@@ -8508,79 +8690,131 @@ function sanitizeFileName(name) {
   return name.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'Mitschnitt';
 }
 
+const MITSCHNITT_NAME_MARKER = 'Mitschnitt';
+
 /**
- * Exportiert einen Mitschnitt als einzelne JSON-Datei mit eingebetteter Audiospur
- * (Base64) — verschickbar per Mail/Messenger und in einer anderen App-Instanz
- * importierbar. Songtitel statt Song-ID, weil die ID dort nichts bedeutet;
- * siehe reconnectPendingRecordings für den Fall, dass der Song dort fehlt.
+ * Dateiname aus allen wichtigen Angaben — auch ohne die App (oder nach dem
+ * Umbenennen, das die ID3-Tags nicht mehr hätte) lesbar: Song, Stimme, Name
+ * und Datum stehen direkt im Namen, „·" als Trenner, weil das in Songtiteln
+ * praktisch nie vorkommt.
+ */
+function mitschnittFileBaseName({ songTitle, voice, name, createdAt }) {
+  const voiceLabel = voice ? (VOICE_LABEL[voice] || voice) : 'Ohne Stimme';
+  const date = (createdAt || new Date().toISOString()).slice(0, 10);
+  const parts = [songTitle || 'Unbekannter Song', voiceLabel, name || 'Mitschnitt', date].map(sanitizeFileName);
+  return [MITSCHNITT_NAME_MARKER, ...parts].join(' · ');
+}
+
+/** Über ein unsichtbares <audio> die Dauer einer Datei ermitteln. */
+function probeAudioDuration(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('audio');
+    const cleanup = () => { URL.revokeObjectURL(url); a.remove(); };
+    a.addEventListener('loadedmetadata', () => { const d = a.duration; cleanup(); resolve(Number.isFinite(d) ? d : 0); });
+    a.addEventListener('error', () => { cleanup(); resolve(0); });
+    a.src = url;
+    a.load();
+  });
+}
+
+/**
+ * Exportiert einen Mitschnitt als eigenständige MP3-Datei — abspielbar und
+ * verschickbar überall, ganz ohne diese App. Songtitel, Stimme, Name und
+ * Datum stehen sowohl im Dateinamen (für Menschen) als auch als ID3-Tags
+ * (überlebt ein Umbenennen) — importRecordingFile liest zuerst die Tags,
+ * fällt sonst auf den Dateinamen zurück.
  */
 async function exportRecording(recording) {
+  const closeBanner = banner('Mitschnitt wird als MP3 exportiert …', { timeout: 0 });
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der Mitschnitt fehlt in der Datenbank.');
-    const blob = recordBlob(rec, recording.mimeType);
-    const audioBase64 = await blobToBase64(blob);
+    const sourceBlob = recordBlob(rec, recording.mimeType);
 
-    const payload = {
-      format: MITSCHNITT_EXPORT_FORMAT, version: 1,
-      songTitle: playerSong?.title || recording.songTitle || '',
-      voice: recording.voice || null,
-      name: recording.name,
-      duration: recording.duration,
-      mimeType: recording.mimeType,
-      createdAt: recording.createdAt,
-      audioBase64,
-    };
-    const text = JSON.stringify(payload);
-    const fileName = `mitschnitt-${sanitizeFileName(recording.name)}.json`;
-    const file = new File([text], fileName, { type: 'application/json' });
+    await ensureLameLoaded();
+    const audioBuffer = await decodeToPcm(sourceBlob);
+    const mp3Bytes = encodePcmToMp3(audioBuffer);
 
+    const songTitle = playerSong?.title || recording.songTitle || '';
+    const tagged = attachId3Tag(mp3Bytes, {
+      name: recording.name, songTitle, voice: recording.voice,
+      dateIso: (recording.createdAt || '').slice(0, 10),
+    });
+
+    const fileName = `${mitschnittFileBaseName({
+      songTitle, voice: recording.voice, name: recording.name, createdAt: recording.createdAt,
+    })}.mp3`;
+    const file = new File([tagged], fileName, { type: 'audio/mpeg' });
+
+    closeBanner();
     let shared = false;
     if (navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file], title: 'Mitschnitt' }); shared = true; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
-    if (!shared) downloadBlob(new Blob([text], { type: 'application/json' }), fileName);
+    if (!shared) downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
   } catch (err) {
-    bannerError('Der Mitschnitt konnte nicht exportiert werden.', 'REC-EXPORT', err);
+    closeBanner();
+    bannerError('Der Mitschnitt konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
   }
 }
 
 /**
- * Importiert eine mit exportRecording() erzeugte Datei. Findet sich der Song
- * (per Titel) nicht in der Bibliothek, bleibt der Mitschnitt ohne songId
- * gespeichert und verbindet sich automatisch, sobald der Song importiert wird
- * (siehe reconnectPendingRecordings) — genau wie bei Loops und Notizen.
+ * Importiert eine mit exportRecording() erzeugte MP3-Datei — auch aus einer
+ * anderen App-Instanz. Findet sich der Song (per Titel) nicht in der
+ * Bibliothek, bleibt der Mitschnitt ohne songId gespeichert und verbindet
+ * sich automatisch, sobald der Song importiert wird (reconnectPendingRecordings)
+ * — genau wie bei Loops und Notizen.
  */
-async function importRecordingPayload(data) {
+async function importRecordingFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const tags = readId3Tags(bytes) || {};
+  const isOurs = tags[`TXXX:${ID3_MARKER_KEY}`] === '1';
+
+  let songTitle = tags.TALB || '';
+  let name = tags.TIT2 || '';
+  let voice = tags['TXXX:Stimme'] || '';
+  let dateIso = tags['TXXX:Datum'] || '';
+
+  if (!isOurs) {
+    // Kein (oder ein fremder) ID3-Tag — vermutlich umbenannt oder von einer
+    // älteren Version. Letzter Versuch: den Dateinamen selbst auswerten.
+    const base = file.name.replace(/\.mp3$/i, '');
+    const parts = base.split(' · ');
+    if (parts[0] === MITSCHNITT_NAME_MARKER && parts.length === 5) {
+      songTitle = songTitle || parts[1];
+      voice = voice || (parts[2] === 'Ohne Stimme' ? '' : (voiceCodeFromLabel(parts[2]) || ''));
+      name = name || parts[3];
+      dateIso = dateIso || parts[4];
+    } else if (!songTitle) {
+      throw new Error('Diese Datei wurde nicht als Mitschnitt-Export erkannt.');
+    }
+  }
+
+  const blob = new Blob([bytes], { type: 'audio/mpeg' });
+  const duration = await probeAudioDuration(blob);
+
   const songs = await DB.metaByType('song').catch(() => []);
-  const song = findSongByTitle(songs, data.songTitle || '');
-  const mimeType = data.mimeType || 'audio/webm';
-  const blob = base64ToBlob(data.audioBase64 || '', mimeType);
-  if (!blob.size) throw new Error('Die Datei enthält keine Audiodaten.');
+  const song = findSongByTitle(songs, songTitle);
 
   const fileKey = newFileKey();
-  const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
-  await DB.filePut(await fileRecord(fileKey, blob, `${data.name || 'Mitschnitt'}.${ext}`));
+  await DB.filePut(await fileRecord(fileKey, blob, file.name));
 
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const recording = {
     key: `recording:${id}`, type: 'recording', id,
     songId: song ? song.id : null,
-    songTitle: data.songTitle || '',
-    name: data.name || 'Mitschnitt',
-    voice: data.voice || null,
-    fileKey, mimeType, duration: data.duration || 0,
+    songTitle,
+    name: name || 'Mitschnitt',
+    voice: voice || null,
+    fileKey, mimeType: 'audio/mpeg', duration,
     size: blob.size,
-    createdAt: data.createdAt || new Date().toISOString(),
+    createdAt: dateIso ? `${dateIso}T00:00:00.000Z` : new Date().toISOString(),
   };
   await DB.metaPut(recording);
-
   if (playerSong && song && playerSong.id === song.id) await loadSongRecordings();
-  banner(song
-    ? `Mitschnitt „${recording.name}" zu „${song.title}" hinzugefügt.`
-    : `Mitschnitt „${recording.name}" importiert — wird aktiv, sobald „${data.songTitle}" importiert wird.`,
-    { kind: 'ok' });
+  return { song, recording };
 }
 
 /** Mitschnitte ohne songId nachträglich verbinden, nachdem ein Song importiert wurde. */
@@ -10384,26 +10618,27 @@ $('#backup-input').addEventListener('change', async (e) => {
 $('#btn-mitschnitt-import').addEventListener('click', () => $('#mitschnitt-input').click());
 
 $('#mitschnitt-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (!file) return;
+  if (!files.length) return;
 
-  let data;
-  try {
-    data = JSON.parse(await readTextBlob(file));
-  } catch (err) {
-    bannerError('Diese Datei ist kein gültiger Mitschnitt.', 'REC-IMPORT', err);
-    return;
+  let linked = 0, pending = 0, failed = 0;
+  for (const file of files) {
+    try {
+      const { song } = await importRecordingFile(file);
+      if (song) linked++; else pending++;
+    } catch (err) {
+      failed++;
+      console.warn('[mitschnitt-import]', file.name, err);
+    }
   }
-  if (!data || data.format !== MITSCHNITT_EXPORT_FORMAT) {
-    banner('Diese Datei stammt nicht aus dieser App.', { kind: 'error' });
-    return;
-  }
-  try {
-    await importRecordingPayload(data);
-  } catch (err) {
-    bannerError('Der Mitschnitt konnte nicht importiert werden.', 'REC-IMPORT', err);
-  }
+
+  await renderImportStats();
+  const parts = [];
+  if (linked) parts.push(`${plural(linked, 'Mitschnitt', 'Mitschnitte')} zugeordnet`);
+  if (pending) parts.push(`${plural(pending, 'Mitschnitt', 'Mitschnitte')} warten auf den passenden Song`);
+  if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als Mitschnitt erkannt`);
+  banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
 
 /** Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen. */
