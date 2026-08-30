@@ -1719,6 +1719,11 @@ input[type="checkbox"] {
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions .btn { flex: 1; }
 
+/* Checkbox-Listen in Dialogen (Backup-Auswahl, Notizen/Liedtexte-Auswahl):
+   ohne flex:1 blieb der Titel zwischen Checkbox und (oft leerem) Größen-Feld
+   „schweben" statt linksbündig direkt neben der Checkbox zu sitzen. */
+.dialog label.row .grow { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+
 /* Drucken — statt eines Dateiformats (RTF öffnet nicht überall zuverlässig)
    der native Druckdialog des Browsers: der lässt auf jedem Gerät gleich
    entweder direkt drucken oder als PDF sichern, ganz ohne Format-Frage. */
@@ -7185,6 +7190,10 @@ async function registerServiceWorker() {
       if (firstTakeover) return;           // Erstinstallation, kein Update
       if (reloadingForUpdate) return;
       reloadingForUpdate = true;
+      // Markiert den bevorstehenden Neustart als Update — nach dem Reload
+      // zeigt boot() dann den Kompatibilitätshinweis, unabhängig vom
+      // Tages-Zeitplan (siehe checkCompatWarning/COMPAT_UPDATE_FLAG).
+      try { sessionStorage.setItem(COMPAT_UPDATE_FLAG, '1'); } catch { /* z.B. privater Modus */ }
       location.reload();
     });
 
@@ -10900,7 +10909,7 @@ function metaWithAudioParts(meta, base64) {
  * `new File(parts, …)` fügt die Teile aneinander, ohne je einen JS-String
  * über die gesamte Dateigröße anzulegen.
  */
-async function buildBackupParts(opts) {
+async function buildBackupParts(opts, onProgress) {
   const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
     DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
@@ -10908,6 +10917,13 @@ async function buildBackupParts(opts) {
   const byId = new Map(songs.map((s) => [s.id, s]));
   const counts = {};
   const parts = [];
+  // Fortschritt in denselben *1,34-hochgerechneten Bytes wie die Schätzung
+  // im Auswahl-Dialog, damit der Balken am Ende auch wirklich bei 100% ankommt.
+  let doneBytes = 0;
+  const reportProgress = (rawSize) => {
+    doneBytes += (rawSize || 0) * 1.34;
+    onProgress?.(doneBytes);
+  };
 
   parts.push(`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":2,"exportedAt":${JSON.stringify(new Date().toISOString())}`);
   parts.push(`,"songs":${JSON.stringify(songs
@@ -10965,6 +10981,7 @@ async function buildBackupParts(opts) {
       if (!first) parts.push(',');
       first = false;
       parts.push(...metaWithAudioParts(meta, base64));
+      reportProgress(r.size);
       n++;
     }
     parts.push(']');
@@ -10984,6 +11001,7 @@ async function buildBackupParts(opts) {
         const meta = { voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t) };
         if (trackParts.length) trackParts.push(',');
         trackParts.push(...metaWithAudioParts(meta, base64));
+        reportProgress(t.size);
         trackCount++;
       }
       if (!trackParts.length) continue;
@@ -11017,10 +11035,12 @@ async function showBackupOptionsDialog() {
     const done = (result) => { layer.remove(); resolve(result); };
 
     const totalLabel = el('strong', { id: 'backup-size-total' });
+    let currentTotalBytes = 0;
     const updateTotal = () => {
       let bytes = est.textBytes;
       if (opts.recordings) bytes += est.recAudioBytes;
       if (opts.songAudio) bytes += est.songAudioBytes;
+      currentTotalBytes = bytes;
       totalLabel.textContent = fmtBytes(bytes);
     };
 
@@ -11081,7 +11101,7 @@ async function showBackupOptionsDialog() {
         el('span', { text: 'Geschätzte Dateigröße' }), totalLabel),
       el('div', { class: 'dialog-actions' },
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts }) })));
+        el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
 
     updateTotal();
     updatePresetHighlight();
@@ -11091,19 +11111,46 @@ async function showBackupOptionsDialog() {
   });
 }
 
-$('#btn-backup-export').addEventListener('click', async () => {
-  const opts = await showBackupOptionsDialog();
-  if (!opts) return;
+const BACKUP_PROGRESS_THRESHOLD = 10 * 1024 * 1024; // ab 10 MB eigener Fortschrittsbalken statt nur Banner
 
+/** Fortschrittsbalken für große Sicherungen — dieselbe Optik wie der Speicherbalken in den Einstellungen. */
+function showBackupProgressDialog(estimatedTotal) {
+  const bar = el('i');
+  const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: 'Sicherung wird erstellt …' });
+  const box = el('div', { class: 'dialog' },
+    el('h2', { text: 'Sicherung wird erstellt' }),
+    el('p', { text: 'Bitte die App währenddessen nicht schließen — bei viel Audio kann das etwas dauern.' }),
+    el('div', { class: 'meter' }, bar),
+    status);
+  const layer = el('div', { class: 'overlay' }, box);
+  document.body.append(layer);
+  return {
+    update(doneBytes) {
+      const pct = estimatedTotal > 0 ? Math.min(100, Math.round((doneBytes / estimatedTotal) * 100)) : 0;
+      bar.style.width = `${pct}%`;
+      status.textContent = `${pct}% · ${fmtBytes(doneBytes)} von ${fmtBytes(estimatedTotal)}`;
+    },
+    close() { layer.remove(); },
+  };
+}
+
+$('#btn-backup-export').addEventListener('click', async () => {
+  const result = await showBackupOptionsDialog();
+  if (!result) return;
+  const { estimatedBytes, ...opts } = result;
+
+  const showProgress = estimatedBytes > BACKUP_PROGRESS_THRESHOLD;
+  const progress = showProgress ? showBackupProgressDialog(estimatedBytes) : null;
   const heavy = opts.songAudio || opts.recordings;
-  const closeBanner = heavy
+  const closeBanner = !showProgress && heavy
     ? banner('Sicherung wird erstellt … bei viel Audio kann das etwas dauern.', { timeout: 0 })
     : null;
   try {
-    const { parts: blobParts, counts } = await buildBackupParts(opts);
+    const { parts: blobParts, counts } = await buildBackupParts(opts, (done) => progress?.update(done));
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `chor-app-backup-${date}.json`;
     const file = new File(blobParts, fileName, { type: 'application/json' });
+    progress?.close();
     closeBanner?.();
 
     let shared = false;
@@ -11124,6 +11171,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
     if (opts.songAudio) parts.push(`${plural(counts.songAudioTracks, 'Spur', 'Spuren')} Song-Audio`);
     banner(`Sicherung erstellt (${fmtBytes(file.size)}): ${parts.join(', ')}.`, { kind: 'ok' });
   } catch (err) {
+    progress?.close();
     closeBanner?.();
     bannerError('Die Sicherung konnte nicht erstellt werden.', 'BACKUP-EXPORT', err);
   }
@@ -11508,11 +11556,14 @@ async function updateBackupReminder() {
    KOMPATIBILITÄTSHINWEIS — die App ist noch in Entwicklung; das Datenformat
    von Notizen/Liedtexten/Loops/RECs kann sich bis zur finalen Version noch
    ändern, sodass eine Übernahme beim Update nicht garantiert ist. Der
-   Hinweis erscheint bei der ersten Nutzung sowie nach 3, 7 und 30 Tagen,
-   jede Schwelle aber nur einmal (siehe settings.compatWarningsShown).
+   Hinweis erscheint bei der ersten Nutzung, nach jeder Aktualisierung
+   (COMPAT_UPDATE_FLAG, gesetzt kurz vor dem Reload in registerServiceWorker)
+   sowie nach 3, 7 und 30 Tagen — Tages-Schwellen je nur einmal
+   (siehe settings.compatWarningsShown).
    ========================================================================== */
 
 const COMPAT_WARNING_DAYS = [3, 7, 30];
+const COMPAT_UPDATE_FLAG = 'chor-app-just-updated';
 
 function showCompatWarningDialog() {
   const box = el('div', { class: 'dialog' },
@@ -11533,6 +11584,17 @@ async function checkCompatWarning() {
     showCompatWarningDialog();
     return;
   }
+
+  let justUpdated = false;
+  try {
+    justUpdated = sessionStorage.getItem(COMPAT_UPDATE_FLAG) === '1';
+    sessionStorage.removeItem(COMPAT_UPDATE_FLAG);
+  } catch { /* z.B. privater Modus */ }
+  if (justUpdated) {
+    showCompatWarningDialog();
+    return;
+  }
+
   const daysSince = Math.floor((Date.now() - new Date(settings.firstUseAt).getTime()) / 86400000);
   const shown = settings.compatWarningsShown || [];
   const due = COMPAT_WARNING_DAYS.find((d) => daysSince >= d && !shown.includes(d));
