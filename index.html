@@ -108,12 +108,17 @@ body::before, body::after,
   z-index: -1;
 }
 
-/* #player ist (anders als Setlisten-Detail/Import) kein fixiertes Vollbild-
-   Overlay mehr, sondern liegt im normalen Layoutfluss (siehe #player weiter
-   unten) — body deckt die Kreise dort also nicht mehr ab. Ohne diese Regel
-   lagen body's und #player's eigene Kreise exakt übereinander und wirkten
-   durch mix-blend-mode:multiply doppelt so satt wie auf den anderen Reitern. */
-#player::before, #player::after { content: none; }
+/* #player deckt als normales Layout-Element (kein fixiertes Vollbild-Overlay
+   mehr wie Setlisten-Detail/Import) einen Großteil des Viewports mit seinem
+   eigenen Hintergrund ab — body's Kreise blitzen dort höchstens in einem
+   schmalen Streifen über der Navigationsleiste hervor. Wenn ein .player
+   sichtbar ist, blendet diese Regel body's Kreise deshalb ganz aus: sonst
+   lagen sie exakt auf den eigenen Kreisen des .player und wirkten durch
+   mix-blend-mode:multiply doppelt so satt wie auf den anderen Reitern. */
+body:has(.player:not([hidden]))::before,
+body:has(.player:not([hidden]))::after {
+  content: none;
+}
 body::before, .player::before { top: -70px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
 body::after, .player::after { bottom: 40px; left: -130px; width: 380px; height: 380px; background: #ffd23f; }
 
@@ -10950,7 +10955,10 @@ async function buildBackupParts(opts, onProgress) {
     .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })))}`);
 
   if (opts.settings) {
-    parts.push(`,"settings":${JSON.stringify({ myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize })}`);
+    parts.push(`,"settings":${JSON.stringify({
+      myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize,
+      defaultPlayerTab: settings.defaultPlayerTab, accentColor: settings.accentColor, language: settings.language,
+    })}`);
   }
   if (opts.loops) {
     const arr = loops.map((l) => ({
@@ -11100,7 +11108,7 @@ async function showBackupOptionsDialog() {
       ['notes', 'Notizen', null, null],
       ['lyricsNotes', 'Eigene Liedtexte', null, null],
       ['playlists', 'Setlisten', null, null],
-      ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße.', null],
+      ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße, Standardreiter, Akzentfarbe, Sprache.', null],
     ];
     const checkboxes = {};
     const rowNodes = checkboxRows.map(([key, title, hint, bytes]) => {
@@ -11465,6 +11473,15 @@ async function restoreBackup(data) {
   }
   if (data.settings?.lyricsFontSize) {
     await saveSettings({ lyricsFontSize: data.settings.lyricsFontSize });
+  }
+  if (data.settings?.defaultPlayerTab) {
+    await saveSettings({ defaultPlayerTab: data.settings.defaultPlayerTab });
+  }
+  if (data.settings?.accentColor) {
+    await saveSettings({ accentColor: data.settings.accentColor }); // wendet die Farbe gleich mit an
+  }
+  if (data.settings?.language) {
+    await saveSettings({ language: data.settings.language }); // übersetzt die Oberfläche gleich mit
   }
 
   await renderPlaylists();
