@@ -1213,6 +1213,42 @@ input[type="checkbox"] {
   font-variant-numeric: tabular-nums;
 }
 
+.rec-meter {
+  width: 100%;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.rec-meter-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--pill-line);
+  overflow: hidden;
+}
+
+.rec-meter-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: #6BCB77;
+  transition: width .06s linear, background-color .15s ease;
+}
+
+.rec-meter-fill[data-level="hot"] { background: #FFD93D; }
+.rec-meter-fill[data-level="clip"] { background: var(--danger); }
+
+.rec-meter-warning {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 650;
+  text-align: center;
+}
+
 .rec-pending {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -1984,6 +2020,12 @@ input[type="checkbox"] {
         <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="Mitschnitt starten">
           <span class="rec-btn-dot"></span>
         </button>
+        <div class="rec-meter" id="rec-meter" hidden>
+          <div class="rec-meter-track">
+            <div class="rec-meter-fill" id="rec-meter-fill" data-level="ok"></div>
+          </div>
+          <p class="small rec-meter-warning" id="rec-meter-warning" hidden>Zu laut — die Aufnahme übersteuert</p>
+        </div>
         <p class="rec-timer" id="rec-timer" hidden>0:00</p>
         <p class="small muted" id="rec-status" style="margin:0; text-align:center">
           Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
@@ -8237,6 +8279,7 @@ async function startRecording() {
   setRecUI(true);
   updateRecTimer();
   recTimerHandle = setInterval(updateRecTimer, 250);
+  startLevelMeter(recStream);
 }
 
 function stopRecording() {
@@ -8244,11 +8287,87 @@ function stopRecording() {
   recMediaRecorder.stop();
 }
 
+/* ---------- Pegelanzeige während der Aufnahme ----------
+   Zeigt zweierlei auf einen Blick: bewegt sich der Balken überhaupt (nimmt
+   das Mikrofon etwas auf?) und läuft es "zu heiß" (Übersteuerung, Verzerrung
+   im fertigen Mitschnitt). Ein separater AnalyserNode auf demselben Stream —
+   der MediaRecorder bekommt davon nichts mit und läuft unbeeinflusst weiter. */
+
+let levelCtx = null;
+let levelAnalyser = null;
+let levelSource = null;
+let levelRafId = null;
+let levelData = null;
+let levelClipUntil = 0;
+
+function startLevelMeter(stream) {
+  try {
+    levelCtx = new (window.AudioContext || window.webkitAudioContext)();
+    levelSource = levelCtx.createMediaStreamSource(stream);
+    levelAnalyser = levelCtx.createAnalyser();
+    levelAnalyser.fftSize = 1024;
+    levelSource.connect(levelAnalyser);
+    levelData = new Float32Array(levelAnalyser.fftSize);
+  } catch (err) {
+    // Ohne Anzeige läuft die Aufnahme selbst trotzdem normal weiter.
+    console.warn('[rec-meter] Pegelanzeige konnte nicht starten', err);
+    return;
+  }
+
+  levelClipUntil = 0;
+  $('#rec-meter').hidden = false;
+  $('#rec-meter-warning').hidden = true;
+
+  const tick = () => {
+    if (!levelAnalyser) return;
+    levelAnalyser.getFloatTimeDomainData(levelData);
+    let peak = 0;
+    let sumSquares = 0;
+    for (let i = 0; i < levelData.length; i++) {
+      const v = levelData[i];
+      const abs = Math.abs(v);
+      if (abs > peak) peak = abs;
+      sumSquares += v * v;
+    }
+    updateLevelMeterUI(Math.sqrt(sumSquares / levelData.length), peak);
+    levelRafId = requestAnimationFrame(tick);
+  };
+  levelRafId = requestAnimationFrame(tick);
+}
+
+function updateLevelMeterUI(rms, peak) {
+  // -50 dBFS (kaum hörbar) bis 0 dBFS (Vollausschlag) auf 0–100% gestreckt —
+  // der volle Bereich, in dem sich eine Stimme normalerweise bewegt.
+  const db = rms > 0 ? 20 * Math.log10(rms) : -100;
+  const pct = Math.max(0, Math.min(1, (db + 50) / 50)) * 100;
+
+  // Ein einzelner Sample-Ausschlag nahe Vollausschlag bedeutet bereits
+  // Verzerrung im Mitschnitt — die Warnung bleibt kurz stehen, sonst wäre ein
+  // Spitzenwert bei 60 Bildern pro Sekunde kaum zu sehen.
+  if (peak >= 0.985) levelClipUntil = Date.now() + 1500;
+  const clipping = Date.now() < levelClipUntil;
+
+  const fill = $('#rec-meter-fill');
+  fill.style.width = `${pct}%`;
+  fill.dataset.level = clipping ? 'clip' : (pct >= 75 ? 'hot' : 'ok');
+  $('#rec-meter-warning').hidden = !clipping;
+}
+
+function stopLevelMeter() {
+  if (levelRafId) { cancelAnimationFrame(levelRafId); levelRafId = null; }
+  if (levelSource) { levelSource.disconnect(); levelSource = null; }
+  levelAnalyser = null;
+  if (levelCtx) { levelCtx.close().catch(() => {}); levelCtx = null; }
+  $('#rec-meter').hidden = true;
+  $('#rec-meter-warning').hidden = true;
+}
+
 /** Mikrofon und Timer freigeben — unabhängig davon, wie die Aufnahme endete. */
 function teardownRecording() {
   if (recTimerHandle) { clearInterval(recTimerHandle); recTimerHandle = null; }
   if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
   recMediaRecorder = null;
+  stopLevelMeter();
   setRecUI(false);
 }
 
