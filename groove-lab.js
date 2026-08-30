@@ -1518,15 +1518,15 @@
   :host {
     --accent: #f868b0;
     --accent-rgb: 248,104,176;
-    --bg: #0f0e17;
-    --surface: #171624;
-    --surface-2: #201e30;
-    --line: #2d2b41;
-    --text: #f3f1fb;
-    --muted: #948da8;
+    --bg: #fff7ec;
+    --surface: #ffffff;
+    --surface-2: #fff1e2;
+    --line: #f1ddd0;
+    --text: #241b3d;
+    --muted: #8c81a6;
     position: fixed; inset: 0; z-index: 2147483000;
     background:
-      radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .22), transparent 55%),
+      radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .14), transparent 55%),
       var(--bg);
     display: flex; flex-direction: column;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -1562,7 +1562,7 @@
     background: var(--surface-2); color: var(--muted); font-size: .78rem; font-weight: 700; text-align: center;
     transition: background .15s, border-color .15s, color .15s;
   }
-  .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #100b17; }
+  .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   .lab-body {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -1583,7 +1583,7 @@
   .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; }
   .transport-play {
     width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
-    background: var(--accent); color: #100b17; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7);
+    background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7);
   }
   .icon-btn.dice-btn { width: 46px; height: 46px; border-radius: 15px; }
   .tempo-field { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
@@ -1609,19 +1609,36 @@
     display: grid; place-items: center; color: var(--muted); touch-action: none;
   }
   .track-roll svg { width: 15px; height: 15px; }
-  .track-roll.is-active { background: var(--accent); border-color: var(--accent); color: #100b17; }
+  .track-roll.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .track-name { font-size: .64rem; font-weight: 700; color: var(--muted); }
   .track-toggle { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 6px; font-size: .58rem; text-align: center; font-weight: 700; }
   .step-row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; }
-  .step-cell { height: 11px; border-radius: 5px; background: rgba(255,255,255,.07); }
+  .step-cell { height: 11px; border-radius: 5px; background: rgba(36,27,61,.09); }
   .step-cell.is-hit { background: var(--accent); }
-  .step-cell.is-now { outline: 2px solid #fff; outline-offset: 1px; }
+  .step-cell.is-now { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .toggle-pill { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 8px 14px; font-size: .72rem; font-weight: 700; }
   .toggle-pill[aria-pressed="true"] { background: rgba(var(--accent-rgb), .18); border-color: var(--accent); color: var(--accent); }
 
-  .synth-section + .synth-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
-  .synth-section h3, .fx-box h3 { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin: 0 0 10px; font-weight: 800; }
+  .module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .module {
+    grid-column: span 2; border: 1px solid var(--line); border-radius: 18px; padding: 13px;
+    background: var(--surface); box-shadow: 0 3px 10px -6px rgba(36,27,61,.18);
+  }
+  .module.module-half { grid-column: span 1; }
+  .module-head { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
+  .module-icon {
+    width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
+    background: rgba(var(--accent-rgb), .15); color: var(--accent);
+  }
+  .module-icon svg { width: 15px; height: 15px; }
+  .module-head h3 { font-size: .72rem; color: var(--text); text-transform: uppercase; letter-spacing: .06em; margin: 0; font-weight: 800; }
+  .fx-columns { display: grid; gap: 12px; }
+  .fx-columns > div + div { padding-top: 10px; border-top: 1px dashed var(--line); }
+  .fx-label { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .module-half .knob-row { gap: 8px; }
+  .module-half .knob-field { width: 52px; }
+  .module-half .knob { width: 46px; height: 46px; }
   .wave-row { display: flex; gap: 8px; margin-bottom: 14px; }
   .wave-btn { flex: 1; aspect-ratio: 1.3; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); display: grid; place-items: center; color: var(--muted); }
   .wave-btn svg { width: 58%; height: 58%; }
@@ -1642,9 +1659,6 @@
   .knob-dot { fill: #fff; }
   .knob-label { font-size: .58rem; font-weight: 700; color: var(--muted); text-align: center; }
   .knob-value { font-size: .64rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-  .synth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
-  .fx-box { border: 1px solid var(--line); border-radius: 15px; padding: 11px; background: var(--surface); }
 
   .arp-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
   .arp-controls select { border: 1px solid var(--line); border-radius: 11px; padding: 8px; background: var(--surface); font-size: .72rem; }
@@ -1667,15 +1681,16 @@
     display: flex; align-items: flex-end; justify-content: center; padding: 6px 1px;
     font-size: .54rem; font-weight: 800; touch-action: none; user-select: none; color: var(--muted);
   }
-  .key.is-black { background: #0b0a12; color: #746c8c; border-color: #0b0a12; }
-  .key.is-hot { background: var(--accent); border-color: var(--accent); color: #100b17; }
+  .key.is-black { background: #2d2639; color: #cbb8d8; border-color: #2d2639; }
+  .key.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
   .key.is-latched { box-shadow: inset 0 0 0 2px #fff; }
 
   .foot-note { text-align: center; color: var(--muted); font-size: .64rem; padding: 10px 0 0; }
 
   @media (max-width: 380px) {
     .adsr-sliders { grid-template-columns: repeat(2, 1fr); }
-    .synth-grid { grid-template-columns: 1fr; }
+    .module-grid { grid-template-columns: 1fr; }
+    .module, .module.module-half { grid-column: span 1; }
     .key { height: 54px; font-size: .48rem; }
   }
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
@@ -1720,12 +1735,14 @@
       <div class="preset-grid"></div>
     </section>
 
-    <section class="panel synth-section">
-      <h3>Oszillator</h3>
-      <div class="wave-row" role="group" aria-label="Wellenform"></div>
+    <div class="module-grid">
+      <div class="module">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>Oszillator</h3></div>
+        <div class="wave-row" role="group" aria-label="Wellenform"></div>
+      </div>
 
-      <div class="synth-section">
-        <h3>Hüllkurve</h3>
+      <div class="module">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>Hüllkurve</h3></div>
         <div class="adsr-row">
           <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none">
             <path class="envelope-path" d=""/>
@@ -1734,32 +1751,35 @@
         </div>
       </div>
 
-      <div class="synth-section">
-        <h3>Filter</h3>
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>Filter</h3></div>
         <div class="knob-row filter-knobs"></div>
       </div>
 
-      <div class="synth-section">
-        <h3>Charakter</h3>
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>Charakter</h3></div>
         <div class="knob-row character-knobs"></div>
       </div>
 
-      <div class="synth-section">
-        <h3>Vibrato</h3>
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>Vibrato</h3></div>
         <div class="knob-row vibrato-knobs"></div>
       </div>
-    </section>
 
-    <section class="synth-grid">
-      <div class="fx-box">
-        <h3>Reverb</h3>
-        <div class="knob-row reverb-knobs"></div>
+      <div class="module module-half">
+        <div class="module-head"><span class="module-icon">${pictogramIcon('repeat')}</span><h3>Raum &amp; Echo</h3></div>
+        <div class="fx-columns">
+          <div>
+            <span class="fx-label">Reverb</span>
+            <div class="knob-row reverb-knobs"></div>
+          </div>
+          <div>
+            <span class="fx-label">Echo</span>
+            <div class="knob-row echo-knobs"></div>
+          </div>
+        </div>
       </div>
-      <div class="fx-box">
-        <h3>Echo</h3>
-        <div class="knob-row echo-knobs"></div>
-      </div>
-    </section>
+    </div>
   </section>
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
