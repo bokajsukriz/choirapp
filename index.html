@@ -951,7 +951,8 @@ input[type="checkbox"] {
   left: 0;
 }
 
-/* Loop-Markierungen im Balken (A/B) */
+/* Loop-Markierungen im Balken (A/B) — inklusive Ziehgriff-Hitfläche, siehe
+   .seek-mark::before (per Ziehen direkt im Fortschrittsbalken verschiebbar). */
 .seek-mark {
   position: absolute;
   top: -4px;
@@ -961,6 +962,14 @@ input[type="checkbox"] {
   background: var(--accent-ink);
   border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(255,255,255,.6);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: ew-resize;
+}
+.seek-mark::before {
+  content: '';
+  position: absolute;
+  left: -16px; right: -16px; top: -10px; bottom: -10px;
 }
 
 .seek-range {
@@ -1364,14 +1373,6 @@ input[type="checkbox"] {
 .pl-entry.is-dragging { opacity: .7; border-color: var(--accent); }
 .pl-grip { color: var(--muted); cursor: grab; touch-action: none; }
 
-/* Griffe der Loop-Markierungen im Fortschrittsbalken */
-.seek-mark { pointer-events: auto; touch-action: none; cursor: ew-resize; }
-.seek-mark::before {
-  content: '';
-  position: absolute;
-  left: -16px; right: -16px; top: -10px; bottom: -10px;
-}
-
 /* Bewusst ohne Kasten (Hintergrund/Rahmen) — der Text steht direkt auf dem
    Seitenhintergrund, wie im Lesemodus gewünscht. Nur die Bearbeitungsbox
    (.note-box) bekommt noch einen eigenen Kasten. */
@@ -1511,31 +1512,6 @@ input[type="checkbox"] {
 .note-actions { display: flex; gap: 6px; flex: 0 0 auto; }
 .note-actions .btn { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
 .note-actions .btn svg { width: 20px; height: 20px; }
-
-.dialog textarea {
-  width: 100%;
-  min-height: 160px;
-  padding: 11px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--text);
-  margin-bottom: 16px;
-  resize: vertical;
-  line-height: 1.5;
-  font-family: inherit;
-}
-
-.dialog input[type="text"] {
-  width: 100%;
-  min-height: var(--tap);
-  padding: 11px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--text);
-  margin-bottom: 16px;
-}
 
 /* ---------- Meldungsbanner (ersetzt alert()) ---------------------------- */
 
@@ -1752,6 +1728,33 @@ input[type="checkbox"] {
 .dialog p { margin: 0 0 18px; color: var(--muted); }
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions .btn { flex: 1; }
+
+/* Texteingabe innerhalb eines Dialogs (promptDialog: Loop-/Playlist-Namen,
+   mehrzeilig eingefügte Programme). */
+.dialog textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  margin-bottom: 16px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.dialog input[type="text"] {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 11px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  margin-bottom: 16px;
+}
 
 /* Checkbox-Listen in Dialogen (Backup-Auswahl, Notizen/Liedtexte-Auswahl):
    ohne flex:1 blieb der Titel zwischen Checkbox und (oft leerem) Größen-Feld
@@ -5207,7 +5210,7 @@ $('#btn-manage-storage').addEventListener('click', async () => {
  * Loops und Notizen eines verschwindenden Songs nicht löschen, sondern vom
  * Song lösen: die Kennung fällt weg, der Titel bleibt gemerkt. Beim nächsten
  * Import finden sie so wieder zusammen (siehe reconnectPendingLoops /
- * reconnectPendingNotes).
+ * reconnectPendingByType).
  *
  * `preloaded` spart bei einem Lauf über viele Songs die Lesevorgänge — dann
  * einmal songLinkRecords() holen und hier durchreichen.
@@ -6612,7 +6615,7 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
   });
 
   renderSheetList();
-  await updateSheetSummary();
+  updateSheetSummary();
   sheet.hidden = false;
   sheetBody.scrollTop = 0;
 }
@@ -7080,12 +7083,12 @@ async function runImport() {
     console.warn('[import] Loops verbinden', err);
   }
   try {
-    report.notesLinked = await reconnectPendingNotes();
+    report.notesLinked = await reconnectPendingByType('note');
   } catch (err) {
     console.warn('[import] Notizen verbinden', err);
   }
   try {
-    report.lyricsNotesLinked = await reconnectPendingLyricsNotes();
+    report.lyricsNotesLinked = await reconnectPendingByType('lyricsNote');
   } catch (err) {
     console.warn('[import] Eigene Liedtexte verbinden', err);
   }
@@ -7254,9 +7257,16 @@ function setupFolderImport() {
    ========================================================================== */
 
 let reloadingForUpdate = false;
+let updateBannerClose = null;
 
 function offerUpdate(worker) {
-  banner('Neue Version verfügbar.', {
+  // Ein zweites Update während derselben (langen) Sitzung machte den älteren
+  // Banner nicht nur überflüssig, sondern auch tot: sein worker ist vom
+  // Browser längst als "redundant" markiert, ein Klick darauf hätte still
+  // gar nichts mehr getan. Erst den alten Banner schließen, dann den neuen
+  // zeigen — es gibt so nie mehr als einen anklickbaren Stand gleichzeitig.
+  updateBannerClose?.();
+  updateBannerClose = banner('Neue Version verfügbar.', {
     kind: 'info',
     timeout: 0,
     action: {
@@ -10252,11 +10262,12 @@ $('#btn-notes-export').addEventListener('click', () => printFlow('note', 'Notize
 $('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', 'Eigene Liedtexte', 'Eigene Liedtexte', 'LYRICS-PRINT-READ'));
 
 /**
- * Notizen, die beim Wiederherstellen keinem Song zugeordnet werden konnten,
- * nach einem Import nachträglich verbinden — wie bei den Loops.
+ * Notizen (oder eigene Liedtexte — Typ `note`/`lyricsNote`), die beim
+ * Wiederherstellen keinem Song zugeordnet werden konnten, nach einem Import
+ * nachträglich verbinden — wie bei den Loops.
  */
-async function reconnectPendingNotes() {
-  const notes = await DB.metaByType('note').catch(() => []);
+async function reconnectPendingByType(type) {
+  const notes = await DB.metaByType(type).catch(() => []);
   const pending = notes.filter((n) => !n.songId && n.songTitle);
   if (!pending.length) return 0;
 
@@ -10267,26 +10278,6 @@ async function reconnectPendingNotes() {
     const song = findSongByTitle(songs, note.songTitle);
     // Hat der Song schon eine Notiz, bleibt die wartende liegen — sonst
     // stünden plötzlich zwei Notizen an einem Lied.
-    if (!song || taken.has(song.id)) continue;
-    note.songId = song.id;
-    taken.add(song.id);
-    linked.push(note);
-  }
-  await DB.metaPutMany(linked);
-  return linked.length;
-}
-
-/** Dasselbe für eigene Liedtexte (Typ `lyricsNote`). */
-async function reconnectPendingLyricsNotes() {
-  const notes = await DB.metaByType('lyricsNote').catch(() => []);
-  const pending = notes.filter((n) => !n.songId && n.songTitle);
-  if (!pending.length) return 0;
-
-  const songs = await DB.metaByType('song');
-  const taken = new Set(notes.filter((n) => n.songId).map((n) => n.songId));
-  const linked = [];
-  for (const note of pending) {
-    const song = findSongByTitle(songs, note.songTitle);
     if (!song || taken.has(song.id)) continue;
     note.songId = song.id;
     taken.add(song.id);
@@ -11115,6 +11106,10 @@ let pendingAutoPlay = false;
    ========================================================================== */
 
 const BACKUP_FORMAT = 'chor-app-backup';
+// Erhöhen, sobald ein künftiges Format Felder erwartet, die diese Version
+// nicht kennt — readBackupFile()/restoreBackup() lehnen dann eine neuere
+// Sicherung mit einer klaren Meldung ab, statt sie halb-falsch einzulesen.
+const BACKUP_FORMAT_VERSION = 2;
 
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -11133,6 +11128,148 @@ function base64ToBlob(base64, mimeType) {
 }
 
 /**
+ * Liest eine Sicherungsdatei zurück, ohne sie je als einen einzigen JS-String
+ * über die volle Dateigröße anzulegen.
+ *
+ * Grund: metaWithAudioParts() (siehe oben) baut die Sicherung beim Exportieren
+ * schon bewusst aus vielen kleinen Blob-Teilen statt einem großen String —
+ * bei einer 800-MB-Sicherung sprengte ein einziger String genau das
+ * (RangeError: Invalid string length). Ein einfaches `JSON.parse(await
+ * readTextBlob(file))` beim Wiedereinspielen hätte exakt dasselbe Problem nur
+ * auf der Leseseite.
+ *
+ * Ablauf: die Datei wird häppchenweise (CHUNK Bytes) roh als Bytes durchsucht
+ * — nach jedem `"audioBase64":"`-Feld (das einzige, was in einer Sicherung
+ * wirklich groß werden kann). Jeder gefundene Wert wird durch einen kurzen
+ * Platzhalter (`@B64#<n>`) ersetzt und sein Byte-Bereich in der
+ * Originaldatei gemerkt; alles andere ("Grundgerüst") wandert unverändert in
+ * einen deutlich kleineren Skeleton-Blob, der sich gefahrlos als ein
+ * einziger String lesen und parsen lässt. Die eigentlichen Base64-Werte
+ * werden erst bei Bedarf über resolveAudioBase64() direkt aus der
+ * Originaldatei nachgelesen — nie als Teil eines größeren Strings.
+ */
+const BACKUP_AUDIO_B64_MARKER = '"audioBase64":"';
+const BACKUP_AUDIO_B64_MARKER_BYTES = new TextEncoder().encode(BACKUP_AUDIO_B64_MARKER);
+const BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX = '@B64#';
+const BACKUP_READ_CHUNK = 8 * 1024 * 1024;
+const JSON_QUOTE_BYTE = 0x22; // '"' — Base64 selbst enthält nie ein Anführungszeichen.
+
+function findByteFrom(buf, from, byte) {
+  for (let i = from; i < buf.length; i++) if (buf[i] === byte) return i;
+  return -1;
+}
+
+function findBytesFrom(buf, from, needle) {
+  const end = buf.length - needle.length;
+  outer: for (let i = from; i <= end; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (buf[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+function concatBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
+async function readBackupFile(file) {
+  const markerBytes = BACKUP_AUDIO_B64_MARKER_BYTES;
+  const markerLen = markerBytes.length;
+
+  const skeletonParts = [];
+  const spans = []; // { start, end } je gefundenem audioBase64-Wert, als Byte-Offsets in `file`
+
+  let carry = new Uint8Array(0);
+  let filePos = 0;
+  let pendingSpan = -1; // spans-Index eines Base64-Werts, der über eine Chunk-Grenze hinaus weiterläuft
+
+  for (let offset = 0; offset < file.size; offset += BACKUP_READ_CHUNK) {
+    const chunkBuf = new Uint8Array(
+      await file.slice(offset, Math.min(offset + BACKUP_READ_CHUNK, file.size)).arrayBuffer());
+    const buf = carry.length ? concatBytes(carry, chunkBuf) : chunkBuf;
+    const bufFileStart = filePos;
+
+    let i = 0;
+    let lastFlush = 0;
+
+    if (pendingSpan >= 0) {
+      const endIdx = findByteFrom(buf, 0, JSON_QUOTE_BYTE);
+      if (endIdx < 0) {
+        // Der Base64-Wert reicht über diesen ganzen Chunk hinaus weiter.
+        carry = new Uint8Array(0);
+        filePos = bufFileStart + buf.length;
+        continue;
+      }
+      spans[pendingSpan].end = bufFileStart + endIdx;
+      pendingSpan = -1;
+      lastFlush = endIdx;
+      i = endIdx;
+    }
+
+    for (;;) {
+      const found = findBytesFrom(buf, i, markerBytes);
+      if (found < 0) break;
+      skeletonParts.push(buf.slice(lastFlush, found + markerLen));
+      const idx = spans.length;
+      skeletonParts.push(new TextEncoder().encode(`${BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX}${idx}`));
+      const base64Start = bufFileStart + found + markerLen;
+      spans.push({ start: base64Start, end: -1 });
+
+      const endIdx = findByteFrom(buf, found + markerLen, JSON_QUOTE_BYTE);
+      if (endIdx < 0) {
+        pendingSpan = idx;
+        lastFlush = buf.length;
+        i = buf.length;
+        break;
+      }
+      spans[idx].end = bufFileStart + endIdx;
+      lastFlush = endIdx;
+      i = endIdx;
+    }
+
+    if (pendingSpan < 0) {
+      // Die letzten (markerLen-1) Bytes zurückhalten, statt sie schon in den
+      // Skeleton zu übernehmen — erst der nächste Chunk zeigt, ob dort ein
+      // Marker beginnt. Ohne das kämen sie hier UND (als carry) im nächsten
+      // Durchlauf noch einmal vor.
+      const keep = Math.min(markerLen - 1, buf.length);
+      const flushEnd = Math.max(lastFlush, buf.length - keep);
+      skeletonParts.push(buf.slice(lastFlush, flushEnd));
+      carry = buf.slice(flushEnd);
+      filePos = bufFileStart + flushEnd;
+    } else {
+      carry = new Uint8Array(0);
+      filePos = bufFileStart + buf.length;
+    }
+  }
+  if (carry.length) skeletonParts.push(carry);
+
+  const skeletonBlob = new Blob(skeletonParts);
+  let data;
+  try {
+    data = JSON.parse(await readTextBlob(skeletonBlob));
+  } catch (err) {
+    throw new Error('Diese Datei ist keine gültige Sicherung.', { cause: err });
+  }
+
+  return {
+    data,
+    /** Löst einen `@B64#n`-Platzhalter direkt aus der Originaldatei auf — nie als Teil eines größeren Strings. */
+    async resolveAudioBase64(placeholder) {
+      const idx = Number(String(placeholder).slice(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX.length));
+      const span = spans[idx];
+      if (!span || span.end < 0) throw new Error('Beschädigte Sicherung: Audiodaten nicht gefunden.');
+      return readTextBlob(file.slice(span.start, span.end));
+    },
+  };
+}
+
+/**
  * Größenschätzung je Kategorie — rein aus bereits gespeicherten `size`-Feldern,
  * ohne eine einzige Datei zu öffnen. Deshalb blitzschnell und für die Live-
  * Anzeige im Auswahl-Dialog geeignet; *1,34 gleicht den Base64-Aufschlag aus.
@@ -11146,8 +11283,11 @@ async function backupSizeEstimate() {
   // UTF-8) unterschätzt das sonst die tatsächliche Dateigröße.
   const textBytes = new TextEncoder().encode(JSON.stringify({ loops, notes, lyricsNotes, playlists })).length + 500;
   const recAudioBytes = recordings.reduce((n, r) => n + (r.size || 0), 0) * 1.34;
+  // Noten (Notenblätter) hängen an derselben Auswahl wie die Song-Audiodateien
+  // (siehe buildBackupParts) — zählen deshalb hier mit rein.
   const songAudioBytes = songs.reduce((n, s) =>
-    n + s.tracks.reduce((m, t) => m + (t.size || 0), 0), 0) * 1.34;
+    n + s.tracks.reduce((m, t) => m + (t.size || 0), 0)
+      + (s.scores || []).reduce((m, sc) => m + (sc.size || 0), 0), 0) * 1.34;
   return {
     textBytes,
     recAudioBytes, recCount: recordings.length,
@@ -11192,7 +11332,7 @@ async function buildBackupParts(opts, onProgress) {
     onProgress?.(doneBytes);
   };
 
-  parts.push(`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":2,"exportedAt":${JSON.stringify(new Date().toISOString())}`);
+  parts.push(`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":${BACKUP_FORMAT_VERSION},"exportedAt":${JSON.stringify(new Date().toISOString())}`);
   parts.push(`,"songs":${JSON.stringify(songs
     .sort((a, b) => collator.compare(a.title, b.title))
     .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })))}`);
@@ -11260,7 +11400,7 @@ async function buildBackupParts(opts, onProgress) {
 
   if (opts.songAudio) {
     parts.push(',"songAudio":[');
-    let firstSong = true, trackCount = 0;
+    let firstSong = true, trackCount = 0, scoreCount = 0;
     for (const s of songs) {
       const trackParts = [];
       for (const t of s.tracks) {
@@ -11274,13 +11414,29 @@ async function buildBackupParts(opts, onProgress) {
         reportProgress(t.size);
         trackCount++;
       }
-      if (!trackParts.length) continue;
+      // Noten (Notenblätter/PDFs) gehören zum selben Song — dieselbe
+      // Auswahl ("Song-Audiodateien") nimmt sie mit, sonst gingen sie bei
+      // "Alles sichern" ohne Hinweis verloren.
+      const scoreParts = [];
+      for (const sc of s.scores || []) {
+        const rec = await DB.fileGet(sc.fileKey);
+        if (!rec) continue;
+        const blob = recordBlob(rec, 'application/pdf');
+        const base64 = await blobToBase64(blob);
+        const meta = { fileName: sc.fileName };
+        if (scoreParts.length) scoreParts.push(',');
+        scoreParts.push(...metaWithAudioParts(meta, base64));
+        reportProgress(sc.size);
+        scoreCount++;
+      }
+      if (!trackParts.length && !scoreParts.length) continue;
       if (!firstSong) parts.push(',');
       firstSong = false;
-      parts.push(`{"title":${JSON.stringify(s.title)},"tracks":[`, ...trackParts, ']}');
+      parts.push(`{"title":${JSON.stringify(s.title)},"tracks":[`, ...trackParts, '],"scores":[', ...scoreParts, ']}');
     }
     parts.push(']');
     counts.songAudioTracks = trackCount;
+    counts.songScores = scoreCount;
   }
 
   parts.push('}');
@@ -11345,7 +11501,7 @@ async function showBackupOptionsDialog() {
     };
 
     const checkboxRows = [
-      ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
+      ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) samt hinterlegten Notenblättern — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
       ['recordings', `Eigene RECs (${plural(est.recCount, 'Aufnahme', 'Aufnahmen')})`, null, est.recAudioBytes],
       ['loops', 'Loops', null, null],
       ['notes', 'Notizen', null, null],
@@ -11454,9 +11610,9 @@ $('#backup-input').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!file) return;
 
-  let data;
+  let data, resolveAudioBase64;
   try {
-    data = JSON.parse(await readTextBlob(file));
+    ({ data, resolveAudioBase64 } = await readBackupFile(file));
   } catch (err) {
     bannerError('Diese Datei ist keine gültige Sicherung.', 'BACKUP-IMPORT', err);
     return;
@@ -11465,7 +11621,11 @@ $('#backup-input').addEventListener('change', async (e) => {
     banner('Diese Datei stammt nicht aus dieser App.', { kind: 'error' });
     return;
   }
-  await restoreBackup(data);
+  if (typeof data.version === 'number' && data.version > BACKUP_FORMAT_VERSION) {
+    banner('Diese Sicherung stammt aus einer neueren Version der App. Bitte die App aktualisieren und erneut versuchen.', { kind: 'error' });
+    return;
+  }
+  await restoreBackup(data, resolveAudioBase64);
 });
 
 $('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
@@ -11494,15 +11654,21 @@ $('#rec-import-input').addEventListener('change', async (e) => {
   banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
 
-/** Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen. */
-async function restoreBackup(data) {
+/**
+ * Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen.
+ * @param {Function} [resolveAudioBase64] Löst einen `audioBase64`-Wert auf —
+ * bei einer über readBackupFile() gelesenen Sicherung ein `@B64#n`-Platzhalter
+ * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
+ * die Werte in `data` sind schon echtes Base64.
+ */
+async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
   const notes = Array.isArray(data.notes) ? data.notes : [];
   const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
-  const recordingsIn0 = Array.isArray(data.recordings) ? data.recordings : [];
-  const songAudioIn0 = Array.isArray(data.songAudio) ? data.songAudio : [];
+  const recordingsIn = Array.isArray(data.recordings) ? data.recordings : [];
+  const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   const mode = await choiceDialog({
@@ -11510,8 +11676,8 @@ async function restoreBackup(data) {
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
         + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
         + `${plural(playlists.length, 'Setliste', 'Setlisten')}`
-        + (recordingsIn0.length ? `, ${plural(recordingsIn0.length, 'REC', 'RECs')}` : '')
-        + (songAudioIn0.length ? ` und Audio für ${plural(songAudioIn0.length, 'Song', 'Songs')}` : '')
+        + (recordingsIn.length ? `, ${plural(recordingsIn.length, 'REC', 'RECs')}` : '')
+        + (songAudioIn.length ? ` und Audio für ${plural(songAudioIn.length, 'Song', 'Songs')}` : '')
         + ' gefunden. '
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
@@ -11550,17 +11716,17 @@ async function restoreBackup(data) {
   // gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre fehleranfällig).
   // Muss vor Loops/Notizen/RECs laufen, damit die einen frisch angelegten
   // Song schon finden, statt fälschlich als "ohne Song" zu landen.
-  let songsCreated = 0, songsSkipped = 0;
-  const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
+  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
   if (songAudioIn.length) {
     for (const s of songAudioIn) {
-      if (!s || !Array.isArray(s.tracks) || !s.tracks.length) continue;
+      if (!s || (!s.tracks?.length && !s.scores?.length)) continue;
       if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
 
       const song = await createPlaceholderSong(s.title);
-      for (const t of s.tracks) {
+      for (const t of s.tracks || []) {
         if (!t.audioBase64) continue;
-        const blob = base64ToBlob(t.audioBase64, t.mimeType || 'audio/mpeg');
+        const base64 = await resolveAudioBase64(t.audioBase64);
+        const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
         const fileKey = newFileKey();
         const fileName = t.fileName || `${t.voice}.mp3`;
         await DB.filePut(await fileRecord(fileKey, blob, fileName));
@@ -11570,6 +11736,18 @@ async function restoreBackup(data) {
         });
       }
       song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+      // Noten (Notenblätter/PDFs) — dieselbe Sicherung, dieselbe Auswahl
+      // ("Song-Audiodateien", siehe buildBackupParts), separat gespeichert.
+      for (const sc of s.scores || []) {
+        if (!sc.audioBase64) continue;
+        const base64 = await resolveAudioBase64(sc.audioBase64);
+        const blob = base64ToBlob(base64, 'application/pdf');
+        const fileKey = newFileKey();
+        const fileName = sc.fileName || 'Noten.pdf';
+        await DB.filePut(await fileRecord(fileKey, blob, fileName));
+        song.scores.push({ fileName, fileKey, size: blob.size });
+        scoresRestored++;
+      }
       await DB.metaPut(song);
       songs.push(song);
       songsCreated++;
@@ -11679,7 +11857,6 @@ async function restoreBackup(data) {
   // einer älteren Sicherung verschwinden. Duplikate (Name + Song) werden
   // trotzdem übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
   let addedRecordings = 0, skippedRecordings = 0;
-  const recordingsIn = Array.isArray(data.recordings) ? data.recordings : [];
   if (recordingsIn.length) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
     for (const r of recordingsIn) {
@@ -11691,7 +11868,8 @@ async function restoreBackup(data) {
       if (existingRecordings.some(isDupe)) { skippedRecordings++; continue; }
 
       const mimeType = r.mimeType || 'audio/webm';
-      const blob = base64ToBlob(r.audioBase64, mimeType);
+      const base64 = await resolveAudioBase64(r.audioBase64);
+      const blob = base64ToBlob(base64, mimeType);
       const fileKey = newFileKey();
       const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('mpeg') ? 'mp3' : 'webm');
       await DB.filePut(await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`));
@@ -11741,6 +11919,7 @@ async function restoreBackup(data) {
     + (addedLyricsNotes ? ` ${plural(addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} dazu.` : '')
     + (addedRecordings ? ` ${plural(addedRecordings, 'REC', 'RECs')} dazu.` : '')
     + (songsCreated ? ` ${plural(songsCreated, 'Song', 'Songs')} neu angelegt.` : '')
+    + (scoresRestored ? ` ${plural(scoresRestored, 'Notenblatt', 'Notenblätter')} dazu.` : '')
     + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
     + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
         + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : '')
