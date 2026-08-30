@@ -108,13 +108,21 @@ body::before, body::after,
   z-index: -1;
 }
 
-/* #player deckt als normales Layout-Element (kein fixiertes Vollbild-Overlay
-   mehr wie Setlisten-Detail/Import) einen Großteil des Viewports mit seinem
-   eigenen Hintergrund ab — body's Kreise blitzen dort höchstens in einem
-   schmalen Streifen über der Navigationsleiste hervor. Wenn ein .player
-   sichtbar ist, blendet diese Regel body's Kreise deshalb ganz aus: sonst
-   lagen sie exakt auf den eigenen Kreisen des .player und wirkten durch
-   mix-blend-mode:multiply doppelt so satt wie auf den anderen Reitern. */
+/* #player ist (anders als Setlisten-Detail/Import) kein fixiertes, eigene
+   Stapelkontext bildendes Vollbild-Overlay mehr, sondern ein normales
+   Layout-Element (position:static). Ohne eigenen Stapelkontext landen seine
+   negativ gestapelten ::before/::after (z-index:-1) im Stapelkontext von
+   body — und werden dort VOR #player's eigenem (undurchsichtigem)
+   Hintergrund gemalt, also dahinter versteckt: sichtbar blieb nur ein
+   schmaler Streifen unterhalb von #player, über der Navigationsleiste.
+   `isolation: isolate` gibt #player einen eigenen Stapelkontext zurück,
+   ohne Position/Layout zu ändern — darin malen die eigenen Kreise wieder
+   über den eigenen Hintergrund, wie bei den echten Vollbild-Overlays. */
+#player { isolation: isolate; }
+
+/* Wenn ein .player sichtbar ist, blendet diese Regel body's eigene Kreise
+   aus: sonst lägen sie im schmalen Streifen exakt auf denen des .player und
+   wirkten dort durch mix-blend-mode:multiply doppelt so satt. */
 body:has(.player:not([hidden]))::before,
 body:has(.player:not([hidden]))::after {
   content: none;
@@ -11602,8 +11610,12 @@ const COMPAT_WARNING_DAYS = [3, 7, 30];
 const COMPAT_UPDATE_FLAG = 'chor-app-just-updated';
 
 function showCompatWarningDialog() {
+  const warnIcon = el('span', { style: 'flex:0 0 auto; width:24px; height:24px; color:var(--warn)', 'aria-hidden': 'true' });
+  warnIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
   const box = el('div', { class: 'dialog' },
-    el('h2', { text: 'Hinweis zur Datenkompatibilität' }),
+    el('h2', { style: 'display:flex; align-items:center; gap:8px' },
+      warnIcon, el('span', { text: 'Hinweis zur Datenkompatibilität' })),
     el('p', { style: 'margin-bottom:0', text: 'Diese App wird noch weiterentwickelt. Beim Wechsel auf die finale Version ist es möglich, dass selbst angelegte Daten — Notizen, eigene Liedtexte, Loops und RECs — nicht automatisch übernommen werden können.' }),
     el('div', { class: 'dialog-actions' },
       el('button', { class: 'btn btn--primary', type: 'button', text: 'Verstanden', onclick: () => done() })));
