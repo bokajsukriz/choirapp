@@ -577,7 +577,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .preset:disabled { opacity: .4; }
 
-/* Liedtext-Quelle (Offiziell/Eigener Text): dezenter als die übrigen
+/* Liedtext-Quelle (Cloud/Lokal): dezenter als die übrigen
    Voreinstellungs-Schalter — die volle Akzentfüllung wirkte hier zu laut
    für eine reine Ansichtsauswahl ohne inhaltliche Tragweite. */
 #lyrics-source-switch .preset[aria-pressed="true"] {
@@ -659,7 +659,7 @@ input[type="checkbox"] {
   margin-top: 4px;
 }
 
-.badge--changed { color: #a06600; border-color: #ffe6a3; background: #fff4d6; }
+.badge--changed { color: #a06600; border-color: #ffe6a3; background: #fff8e6; }
 .badge--new     { color: var(--ok);   border-color: #b6ecd9; background: #e3f9f0; }
 
 /* Gruppe mehrerer Fassungen desselben Liedes */
@@ -1839,7 +1839,7 @@ input[type="checkbox"] {
       <div class="chip-grid" id="onb-voice"></div>
       <p class="small muted" style="margin-top:12px" data-i18n-html="onb.slide2.footnote">
         Alle Stimmen bleiben trotzdem wählbar. Änderbar unter
-        <strong>Einstellungen&nbsp;→&nbsp;Meine Stimme</strong>.
+        <strong>Einstellungen&nbsp;→&nbsp;Meine Stimmen</strong>.
       </p>
     </article>
 
@@ -2436,7 +2436,7 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/></svg><span data-i18n="settings.bike.title">Byciclemode</span></h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/></svg><span data-i18n="settings.bike.title">Fahrradfahren-Modus</span></h2>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.bike.hint">
         Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
         Seite gemischt, hört man sie sonst je nach Ohr gar nicht.
@@ -2991,6 +2991,12 @@ let dlgResolve  = null;
  * @returns {Promise<boolean>}
  */
 function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
+  // Ein noch offener vorheriger Aufruf würde sonst für immer hängen, sobald
+  // dieser Aufruf dlgResolve gleich überschreibt — lieber sauber mit
+  // „Abbrechen" auflösen, als den ersten Aufrufer nie wieder aufwachen zu
+  // lassen.
+  if (dlgResolve) closeDialog(false);
+
   dlgTitle.textContent = title;
   dlgText.textContent  = text;
   dlgOk.textContent    = okLabel;
@@ -3103,6 +3109,13 @@ function openDB() {
 
     req.onerror = () => reject(req.error || new Error('IndexedDB nicht verfügbar'));
     req.onblocked = () => reject(new Error('Die Datenbank wird von einem anderen Tab blockiert.'));
+  }).catch((err) => {
+    // Ohne das bliebe ein einmal fehlgeschlagener Verbindungsversuch (z.B.
+    // kurzzeitig durch einen anderen Tab blockiert) für den Rest der Sitzung
+    // hängen — jeder weitere DB.*-Aufruf würde denselben alten Fehler wieder
+    // zurückbekommen, obwohl die Ursache längst behoben sein könnte.
+    dbPromise = null;
+    throw err;
   });
 
   return dbPromise;
@@ -3221,7 +3234,7 @@ const DB = {
   /** IDs der Songs mit mindestens einer nicht leeren Notiz — zwischengespeichert. */
   async songIdsWithNotes() {
     if (noteSongIds) return noteSongIds;
-    const notes = await this.metaByType('note').catch(() => []);
+    const notes = await this.metaByType('note').catch((err) => { console.warn('[db] songIdsWithNotes', err); return []; });
     noteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
     return noteSongIds;
   },
@@ -3229,7 +3242,7 @@ const DB = {
   /** Dasselbe für eigene Liedtexte. */
   async songIdsWithLyricsNotes() {
     if (lyricsNoteSongIds) return lyricsNoteSongIds;
-    const notes = await this.metaByType('lyricsNote').catch(() => []);
+    const notes = await this.metaByType('lyricsNote').catch((err) => { console.warn('[db] songIdsWithLyricsNotes', err); return []; });
     lyricsNoteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
     return lyricsNoteSongIds;
   },
@@ -3266,6 +3279,8 @@ const DB = {
       meta.clear();
     });
     dropSongCache();
+    dropNoteCache();
+    dropLyricsNoteCache();
   },
 };
 
@@ -3370,7 +3385,7 @@ const STRINGS = {
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
 
-    'settings.bike.title': 'Byciclemode',
+    'settings.bike.title': 'Fahrradfahren-Modus',
     'settings.bike.hint': 'Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine Seite gemischt, hört man sie sonst je nach Ohr gar nicht.',
     'settings.bike.normal': 'Normal',
     'settings.bike.mono': 'Mono',
@@ -3442,7 +3457,7 @@ const STRINGS = {
     'onb.slide2.text': 'Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:',
     'onb.slide2.li1': '<strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung vorausgewählt — der Rest bleibt draußen und spart Speicherplatz.',
     'onb.slide2.li2': '<strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du sie bei jedem Lied neu einstellst.',
-    'onb.slide2.footnote': 'Alle Stimmen bleiben trotzdem wählbar. Änderbar unter <strong>Einstellungen&nbsp;→&nbsp;Meine Stimme</strong>.',
+    'onb.slide2.footnote': 'Alle Stimmen bleiben trotzdem wählbar. Änderbar unter <strong>Einstellungen&nbsp;→&nbsp;Meine Stimmen</strong>.',
 
     'onb.slide3.title': 'Aufnahmen dauerhaft behalten',
     'onb.slide3.text1': 'Web-Apps dürfen ihre Daten normalerweise nur „auf Probe" speichern: wird der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.',
@@ -4150,6 +4165,14 @@ async function zipReadDirectory(file) {
     const cmtLen   = cd.getUint16(p + 32, true);
     let   headerOffset = cd.getUint32(p + 42, true);
 
+    // Ohne diese Prüfung könnte ein beschädigtes/abgeschnittenes Verzeichnis
+    // (falsche Längenangabe) den Namen oder das ZIP64-Zusatzfeld gleich unten
+    // über das Ende von `cd` hinaus lesen wollen — das wäre ein roher
+    // RangeError statt der gewohnten, verständlichen ZipError-Meldung.
+    if (p + 46 + nameLen + extraLen + cmtLen > cd.byteLength) {
+      throw new ZipError('Diese Datei ist unvollständig. Bitte den Ordner erneut aus Dropbox herunterladen.');
+    }
+
     const nameBytes = new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nameLen);
     const path = decodeEntryName(nameBytes, flags);
 
@@ -4161,7 +4184,7 @@ async function zipReadDirectory(file) {
       while (e + 4 <= extraEnd) {
         const id  = cd.getUint16(e, true);
         const len = cd.getUint16(e + 2, true);
-        if (id === 0x0001) {
+        if (id === 0x0001 && e + 4 + len <= cd.byteLength) {
           let q = e + 4;
           if (size === 0xFFFFFFFF)         { size = u64(cd, q); q += 8; }
           if (compSize === 0xFFFFFFFF)     { compSize = u64(cd, q); q += 8; }
@@ -4200,7 +4223,10 @@ const canInflate = typeof DecompressionStream === 'function';
 async function zipDataStart(file, entry) {
   if (entry.dataStart !== undefined) return entry.dataStart;
   const head = await sliceView(file, entry.headerOffset, entry.headerOffset + 30);
-  if (head.getUint32(0, true) !== SIG_LOC) {
+  // sliceView() kappt am Dateiende — bei einem beschädigten headerOffset nahe
+  // EOF kämen hier weniger als 30 Bytes zurück, und getUint32() würde mit
+  // einem rohen RangeError abbrechen statt der gewohnten ZipError-Meldung.
+  if (head.byteLength < 30 || head.getUint32(0, true) !== SIG_LOC) {
     throw new ZipError(`„${entry.path}" konnte im Archiv nicht gefunden werden.`);
   }
   entry.dataStart = entry.headerOffset + 30
@@ -4250,6 +4276,12 @@ const TXT_RE   = /\.txt$/i;
 /** ä→ae usw., danach alle übrigen Akzente auflösen. Reihenfolge ist wichtig. */
 function foldUmlauts(s) {
   return s
+    // Dateinamen aus einem auf dem Mac gepackten ZIP kommen oft NFD-zerlegt
+    // an (z.B. "ü" als "u" + Kombinationszeichen statt einem Zeichen) — ohne
+    // dieses Vereinheitlichen greift der literale ä/ö/ü/ß-Ersatz unten nicht,
+    // und derselbe Songtitel bekäme je nach Mac- oder Windows-Herkunft eine
+    // andere Songidentität (siehe normalizeTitle/hashId).
+    .normalize('NFC')
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
@@ -4955,6 +4987,10 @@ async function renderSongs() {
 
   const notedSongs = await DB.songIdsWithNotes().catch(() => new Set());
   const lyricsNotedSongs = await DB.songIdsWithLyricsNotes().catch(() => new Set());
+  // Zwei weitere awaits seit dem letzten Abgleich (z.B. Filter-Chip-Klicks
+  // ohne Debounce) — ohne erneute Prüfung könnte ein überholter Aufruf hier
+  // seine Liste noch zusätzlich anhängen.
+  if (token !== songsRenderToken) return;
 
   const list = el('ul', { class: 'list' });
   for (const song of visible) {
@@ -5226,15 +5262,19 @@ async function deleteTrack(song, track) {
   });
   if (!ok) return;
 
-  await DB.fileDelete(track.fileKey);
+  // Erst den Datensatz, dann die Datei(en): bricht mittendrin etwas ab
+  // (Tab-Absturz, Stromausfall), bleibt so höchstens eine verwaiste, aber
+  // harmlose Datei übrig — nie ein Song, der auf eine schon gelöschte Datei
+  // zeigt und beim nächsten Abspielversuch scheitert.
   song.tracks = song.tracks.filter((t) => t !== track);
   if (song.tracks.length) {
     await DB.metaPut(song);
+    await DB.fileDelete(track.fileKey);
   } else {
     // Ohne Aufnahme ist der Song leer — dann ganz entfernen.
-    await DB.fileDelete((song.scores || []).map((s) => s.fileKey));
     await detachSongLinks(song);
     await DB.metaDelete(song.key);
+    await DB.fileDelete([track.fileKey, ...(song.scores || []).map((s) => s.fileKey)]);
   }
   await refreshAfterDelete();
   banner('Stimme gelöscht.', { kind: 'ok' });
@@ -5248,12 +5288,13 @@ async function deleteSong(song) {
   });
   if (!ok) return;
 
+  // Erst den Datensatz weg, dann die Dateien (siehe deleteTrack) — sonst
+  // könnte ein Abbruch mittendrin einen Song mit toten Dateiverweisen zurücklassen.
   const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
-  await DB.fileDelete(keys);
-
   await detachSongLinks(song);
   await DB.metaDelete(song.key);
   if (playerSong && playerSong.id === song.id) closePlayer();
+  await DB.fileDelete(keys);
   await refreshAfterDelete();
   banner('Song gelöscht.', { kind: 'ok' });
 }
@@ -5865,6 +5906,11 @@ async function audioLoadTrackNow(track) {
 
     const el = Audio.el;
     const url = URL.createObjectURL(blob);
+    // Sonst feuert load() mitten in der Wiedergabe ein echtes 'pause', das
+    // Audio.playing noch auf true vorfindet und fälschlich als „von außen
+    // unterbrochen" gilt (siehe der pause-Listener in audioInit()) — derselbe
+    // Kniff wie in previewRecordingBlob()/audioReset().
+    if (Audio.playing) audioPause();
     try {
       await new Promise((resolve, reject) => {
         const onReady = () => { cleanup(); resolve(); };
@@ -6782,10 +6828,6 @@ async function flushImportBatch(batch) {
   const songs = [...batch.songs];
   const obsolete = batch.obsolete;
   const bytes = batch.bytes;
-  batch.files = [];
-  batch.songs = new Set();
-  batch.obsolete = [];
-  batch.bytes = 0;
   const start = performance.now();
   await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
     for (const rec of files) fileStore.put(rec);
@@ -6793,6 +6835,14 @@ async function flushImportBatch(batch) {
     // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
     for (const key of obsolete) fileStore.delete(key);
   });
+  // Erst nach erfolgreichem Commit leeren: schlägt tx() fehl (nicht nur bei
+  // vollem Speicher — z.B. auch AbortError/UnknownError einer wackligen
+  // Verbindung), greift runImport()s Rettungsversuch „flushImportBatch(batch)
+  // erneut" sonst ins Leere, weil hier schon nichts mehr drin steht.
+  batch.files = [];
+  batch.songs = new Set();
+  batch.obsolete = [];
+  batch.bytes = 0;
   dlog('import:batch:flush', { files: files.length, bytes, ms: Math.round(performance.now() - start) });
   dropSongCache();
 }
@@ -6919,7 +6969,13 @@ async function runImport() {
             durationSec: null,
           };
 
-          const old = findExistingTrack(scan.existing, track);
+          // Gegen die laufend mitgeführte Arbeitskopie prüfen, nicht gegen
+          // das unveränderliche scan.existing: enthält dieser Ordner zwei
+          // Dateien für dieselbe Stimme, fände sich sonst beide Male derselbe
+          // alte Datensatz, und die zweite Datei überschriebe die erste im
+          // Songdatensatz, ohne dass deren Datei als obsolet markiert wird —
+          // eine nie mehr referenzierte, aber nie gelöschte Leiche im Speicher.
+          const old = findExistingTrack(song, track);
           if (old) {
             batch.obsolete.push(old.fileKey);
             // Ersetzte Aufnahmen können gespeicherte Loops verschieben. Nichts
@@ -7470,6 +7526,11 @@ function updateSeekUI(seconds) {
 }
 
 function setPlayIcon(playing) {
+  // Bei einem Platzhalter-Song hält setPlayerFootUnavailable() das
+  // Verbotssymbol — kein anderer Aufrufer (Mediensitzung, REC-Vorschau,
+  // Klick-Handler) darf das Play/Pause-Icon währenddessen überschreiben,
+  // sonst zeigen sich beide Icons gleichzeitig.
+  if ($('#player-foot').classList.contains('player-foot--unavailable')) return;
   $('#icon-play').style.display = playing ? 'none' : '';
   $('#icon-pause').style.display = playing ? '' : 'none';
   $('#btn-play').setAttribute('aria-label', playing ? 'Pause' : 'Abspielen');
@@ -7494,6 +7555,10 @@ function setPlayerFootUnavailable(unavailable) {
   }
   $('#seek').tabIndex = unavailable ? -1 : 0;
   $('#seek').setAttribute('aria-disabled', unavailable ? 'true' : 'false');
+  // Start/Ende leben im Loops-Tab, nicht in #player-foot — ohne Aufnahme
+  // ergäbe ein gesetzter Loop-Punkt aber keinen Sinn, deshalb hier mit sperren.
+  $('#btn-loop-a').disabled = unavailable;
+  $('#btn-loop-b').disabled = unavailable;
   $('#icon-unavailable').style.display = unavailable ? '' : 'none';
   if (unavailable) {
     $('#icon-play').style.display = 'none';
@@ -7527,6 +7592,14 @@ async function openPlayer(songId) {
     showView('songs');
     return;
   }
+
+  // Ebenso: ein Songwechsel lief bisher nicht über closePlayer(), das
+  // Notiz/Liedtext vorm Schließen sichert (siehe dort) — ohne diesen Aufruf
+  // hier ging eine noch nicht gespeicherte Änderung aus dem Debounce-Fenster
+  // beim schnellen Songwechsel (z.B. „Nächstes Lied" kurz nach dem Tippen)
+  // stillschweigend verloren.
+  flushNote();
+  flushLyricsNote();
 
   // Der Player ist ein dauerhafter Reiter — ein Songwechsel läuft nie über
   // closePlayer(), sondern direkt über einen erneuten openPlayer()-Aufruf.
@@ -7615,6 +7688,12 @@ async function openPlayer(songId) {
       // Fehler, sondern der erwartete Zustand vor dem nächsten Import. Die
       // Transportleiste bleibt trotzdem sichtbar (nur gesperrt/ausgegraut),
       // statt ganz zu verschwinden — siehe setPlayerFootUnavailable().
+      // audioReset(): sonst läuft eine noch aktive Wiedergabe (echter Song
+      // oder REC-Vorschau) unhörbar sichtbar unbemerkt weiter, weil dieser
+      // Zweig sonst nie audioLoadTrack()/audioLoadTrackNow() erreicht, die
+      // das sonst beim Laden der neuen Spur miterledigen würden.
+      await audioReset();
+      if (token !== openPlayerToken) return;
       if (!settings.placeholderHintDismissed) showPlaceholderHint();
       $('#player-foot').hidden = false;
       setPlayerFootUnavailable(true);
@@ -7677,6 +7756,9 @@ function showReplacedNotice(song) {
   box.textContent = '';
 
   const check = async () => {
+    // Song kann in den 600ms längst gewechselt worden sein — sonst poppt
+    // dieser Hinweis (oder überschreibt einen anderen) beim falschen Song.
+    if (playerSong !== song) return;
     const track = song.tracks.find((t) => t.voice === voice);
     const dur = track?.durationSec;
     if (!dur || Math.abs(dur - prevDurationSec) <= 1) return;
@@ -7976,7 +8058,10 @@ function randomOtherSong(songs, excludeId) {
 
 /** Nächstes Lied. In einer Playlist der nächste Eintrag (fehlende Titel
  *  werden übersprungen), sonst der nächste Song der Bibliothek. */
-$('#btn-next').addEventListener('click', () => {
+$('#btn-next').addEventListener('click', async () => {
+  // Anders als „Zurück" hat „Weiter" keine REC-eigene Bedeutung — läuft
+  // gerade eine Vorschau, erst sauber beenden statt sie hängen zu lassen.
+  if (audioPreview) await endRecordingPreview();
   if (playQueue) { playlistStep(1, Audio.playing); return; }
   goToNextLibrarySong(Audio.playing);
 });
@@ -8091,6 +8176,10 @@ function loopRange() {
 }
 
 function updateLoopMarks() {
+  // A/B-Marken gehören zur Song-Zeitleiste, nicht zur (meist viel kürzeren)
+  // REC-Vorschau — sonst tauchen sie während der Vorschau wieder auf,
+  // fehlplatziert anhand der REC-Dauer statt der Song-Dauer.
+  if (audioPreview) return;
   const dur = Audio.duration || 0;
   const markA = $('#seek-mark-a');
   const markB = $('#seek-mark-b');
@@ -8318,8 +8407,17 @@ function renderLoopList() {
     node.addEventListener('pointercancel', end);
   };
 
-  install($('#seek-mark-a'), (v) => { loopA = v; });
-  install($('#seek-mark-b'), (v) => { loopB = v; });
+  // Dieselbe Reihenfolge-Regel wie bei den Start/Ende-Knöpfen: schiebt eine
+  // Marke über die andere, verliert die andere ihren Wert statt stumm zu
+  // vertauschen.
+  install($('#seek-mark-a'), (v) => {
+    loopA = v;
+    if (loopB !== null && loopB <= loopA) loopB = null;
+  });
+  install($('#seek-mark-b'), (v) => {
+    loopB = v;
+    if (loopA !== null && loopA >= loopB) loopA = null;
+  });
 })();
 
 /* ==========================================================================
@@ -8346,6 +8444,10 @@ let recChunks = [];
 let recMimeType = '';
 let recStartedAt = 0;
 let recTimerHandle = null;
+// Schützt vor einem schnellen Doppel-Tipp auf REC-Start, bevor getUserMedia()
+// beim ersten Aufruf überhaupt zurückkommt — recMediaRecorder wird erst nach
+// diesem await gesetzt, wäre also für den Klick-Handler bis dahin kein Schutz.
+let recStarting = false;
 let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
@@ -8375,12 +8477,13 @@ function updateRecTimer() {
 }
 
 async function startRecording() {
-  if (!playerSong || pendingTake) return;
+  if (!playerSong || pendingTake || recStarting) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     banner('Dieser Browser kann keine Mikrofonaufnahmen aufzeichnen.', { kind: 'error' });
     return;
   }
 
+  recStarting = true;
   try {
     // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
     // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
@@ -8390,6 +8493,7 @@ async function startRecording() {
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
   } catch (err) {
+    recStarting = false;
     bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
     return;
   }
@@ -8400,17 +8504,28 @@ async function startRecording() {
       ? new MediaRecorder(recStream, { mimeType: recMimeType })
       : new MediaRecorder(recStream);
   } catch (err) {
+    recStarting = false;
     for (const track of recStream.getTracks()) track.stop();
     recStream = null;
     bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err);
     return;
   }
+  recStarting = false;
 
   recChunks = [];
   recMediaRecorder.addEventListener('dataavailable', (e) => {
     if (e.data.size) recChunks.push(e.data);
   });
   recMediaRecorder.addEventListener('stop', onRecordingStopped);
+  // Kein garantiertes 'stop' nach einem 'error' in jedem Browser — ohne
+  // eigenen Handler bliebe das Mikrofon offen und die REC-UI für immer im
+  // "nimmt auf"-Zustand hängen.
+  recMediaRecorder.addEventListener('error', (e) => {
+    console.warn('[rec] MediaRecorder error', e.error);
+    recChunks = [];
+    teardownRecording();
+    bannerError('Die Aufnahme wurde abgebrochen.', 'REC-ERROR', e.error);
+  });
 
   recStartedAt = Date.now();
   recMediaRecorder.start();
@@ -8818,10 +8933,9 @@ async function endRecordingPreview() {
   applyLoop();
   updateLoopMarks();
   updateSeekUI(Audio.position);
-  // setPlayerFootUnavailable() hat das Play-Icon schon gesetzt — bei
-  // returnFootUnavailable=true stünde sonst „Verbotssymbol" und „Play"
-  // gleichzeitig da, weil setPlayIcon() das Verbotssymbol nicht kennt.
-  if (!returnFootUnavailable) setPlayIcon(Audio.playing);
+  // setPlayIcon() guards itself against the unavailable state now, so this
+  // is a plain no-op when returnFootUnavailable is true.
+  setPlayIcon(Audio.playing);
 }
 
 async function toggleSavedRecordingPreview(recording) {
@@ -9296,7 +9410,7 @@ $('#btn-lyrics-bigger').addEventListener('click', () => stepFontSize(2));
  * getrennte „ein Eintrag je Lied"-Prüfung beim Wiederherstellen). Sichtbar
  * ist er entweder alleine (keine offizielle Fassung vorhanden — dann
  * verhält sich der Reiter genau wie NOTIZEN) oder über den Schalter
- * „Offiziell / Eigener Text" neben der offiziellen Fassung.
+ * „Cloud / Lokal" neben der offiziellen Fassung.
  */
 const LYRICS_NOTE_SAVE_DELAY = 900;
 
@@ -9374,7 +9488,7 @@ function lyricsPresentSourceText() {
 function renderLyricsBlock() {
   const hasOfficial = !!playerSong?.lyrics;
   const hasPrivate = playerLyricsNote !== null;
-  // Der Schalter bleibt immer sichtbar (siehe Nutzerwunsch) — „Offiziell"
+  // Der Schalter bleibt immer sichtbar (siehe Nutzerwunsch) — „Cloud"
   // wird nur ausgegraut, wenn es (noch) keinen offiziellen Text gibt, statt
   // wie zuvor den ganzen Schalter zu verstecken.
   const activeSource = hasOfficial ? lyricsSource : 'private';
@@ -9613,7 +9727,10 @@ for (const name of PLAYER_TABS) {
 let extrasRenderToken = 0;
 
 async function renderPlayerExtras() {
-  const token = ++extrasRenderToken;
+  // Kein await hier, also keine eigene Marke nötig — die Zählung erhöht
+  // trotzdem extrasRenderToken, damit ein noch laufendes loadScorePreviews()
+  // vom vorigen Song sich selbst als überholt erkennt (siehe dort).
+  extrasRenderToken++;
   releaseScoreURLs();
 
   // Liedtext: eigener Ablauf über loadSongLyricsNote()/renderLyricsBlock(),
@@ -10206,8 +10323,14 @@ function updateMediaSession() {
   set('seekto', (d) => { if (d?.seekTime != null) updateSeekUI(audioSeek(d.seekTime)); });
   // Dieselbe Bedeutung wie die Knöpfe im Player: außerhalb einer Playlist
   // führt „weiter" durch die Bibliothek, statt gar nichts zu tun.
-  set('previoustrack', () => { if (playQueue) playlistStep(-1); });
-  set('nexttrack', () => {
+  set('previoustrack', async () => {
+    if (audioPreview) await endRecordingPreview();
+    if (playQueue) playlistStep(-1);
+  });
+  set('nexttrack', async () => {
+    // Wie beim Knopf im Player: läuft eine REC-Vorschau, erst sauber
+    // beenden statt sie beim Songwechsel hängen zu lassen.
+    if (audioPreview) await endRecordingPreview();
     if (playQueue) playlistStep(1);
     else goToNextLibrarySong(Audio.playing);
   });
@@ -10928,8 +11051,10 @@ function playlistStep(delta, autoplay) {
   navigate(`#song/${playQueue.items[i].id}`, { replace: true });
 }
 
-/** Nach Songende automatisch zum nächsten (verfügbaren) Titel der Playlist. */
-/** Am Ende der Playlist geht es wieder beim ersten (verfügbaren) Titel los. */
+/**
+ * Nach Songende automatisch zum nächsten (verfügbaren) Titel der Playlist.
+ * Am Ende der Playlist geht es wieder beim ersten (verfügbaren) Titel los.
+ */
 function playlistAdvance() {
   if (!playQueue) return;
   if (settings.shuffleMode) {
@@ -11017,7 +11142,9 @@ async function backupSizeEstimate() {
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
     DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
   ]);
-  const textBytes = JSON.stringify({ loops, notes, lyricsNotes, playlists }).length + 500;
+  // .length zählt UTF-16-Einheiten, keine Bytes — bei Umlauten/ß (2 Byte in
+  // UTF-8) unterschätzt das sonst die tatsächliche Dateigröße.
+  const textBytes = new TextEncoder().encode(JSON.stringify({ loops, notes, lyricsNotes, playlists })).length + 500;
   const recAudioBytes = recordings.reduce((n, r) => n + (r.size || 0), 0) * 1.34;
   const songAudioBytes = songs.reduce((n, s) =>
     n + s.tracks.reduce((m, t) => m + (t.size || 0), 0), 0) * 1.34;
@@ -11409,7 +11536,13 @@ async function restoreBackup(data) {
       ...await DB.metaByType('playlist'),
     ];
     await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
+    // Läuft direkt über tx() statt DB.metaDelete() (löscht in einem Rutsch
+    // statt pro Datensatz) — die Zwischenspeicher für „hat Notiz"/„hat
+    // eigenen Liedtext" bleiben dadurch sonst stehen und zeigen in der
+    // Songliste weiter Symbole für längst gelöschte Notizen.
     dropSongCache();
+    dropNoteCache();
+    dropLyricsNoteCache();
   }
 
   // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch gar
@@ -11852,6 +11985,10 @@ function runSelfTests() {
   const titleCases = [
     [normalizeTitle('Blaue_Augen'),      'blaue augen'],
     [normalizeTitle('Grüß Gott!'),       'gruess gott'],
+    // NFD-zerlegtes „Grüß Gott!" (z.B. so von einem Mac-ZIP) muss dieselbe
+    // Songidentität ergeben wie die NFC-Schreibweise oben — sonst bekäme
+    // derselbe Titel je nach Mac-/Windows-Herkunft zwei verschiedene IDs.
+    [normalizeTitle('Grüß Gott!'.normalize('NFD')), 'gruess gott'],
     [normalizeTitle('  blaue   augen '), 'blaue augen'],
     [coreTitle('Blaue Augen neu'),       'blaue augen'],
     [coreTitle('Blaue Augen v2'),        'blaue augen'],
@@ -12023,7 +12160,7 @@ function renderOnbInstall() {
   }
 }
 
-/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
+/** Sprachauswahl der Ersteinrichtung. */
 function renderOnbLanguage() {
   const host = $('#onb-language-picker');
   host.textContent = '';
@@ -12043,6 +12180,7 @@ function renderOnbLanguage() {
   }
 }
 
+/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
 function renderOnbVoice() {
   const host = $('#onb-voice');
   host.textContent = '';
