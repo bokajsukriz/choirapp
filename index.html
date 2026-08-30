@@ -107,6 +107,13 @@ body::before, body::after,
   pointer-events: none;
   z-index: -1;
 }
+
+/* #player ist (anders als Setlisten-Detail/Import) kein fixiertes Vollbild-
+   Overlay mehr, sondern liegt im normalen Layoutfluss (siehe #player weiter
+   unten) — body deckt die Kreise dort also nicht mehr ab. Ohne diese Regel
+   lagen body's und #player's eigene Kreise exakt übereinander und wirkten
+   durch mix-blend-mode:multiply doppelt so satt wie auf den anderen Reitern. */
+#player::before, #player::after { content: none; }
 body::before, .player::before { top: -70px; right: -60px; width: 220px; height: 220px; background: #33c9dc; }
 body::after, .player::after { bottom: 40px; left: -130px; width: 380px; height: 380px; background: #ffd23f; }
 
