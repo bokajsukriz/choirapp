@@ -1160,7 +1160,7 @@ input[type="checkbox"] {
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
-/* Mitschnitt */
+/* REC */
 .rec-controls {
   display: flex;
   flex-direction: column;
@@ -2003,9 +2003,9 @@ input[type="checkbox"] {
       <p class="small muted" id="loop-info" style="margin:10px 0 0; text-align:center"></p>
       <div id="loop-list"></div>
 
-      <p class="section-title" style="margin:22px 0 10px">Mitschnitt</p>
+      <p class="section-title" style="margin:22px 0 10px">REC</p>
       <div class="rec-controls" id="rec-controls">
-        <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="Mitschnitt starten">
+        <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
           <span class="rec-btn-dot"></span>
         </button>
         <div class="rec-meter" id="rec-meter" hidden>
@@ -2019,7 +2019,7 @@ input[type="checkbox"] {
       </div>
       <div class="rec-pending" id="rec-pending" hidden>
         <div class="rec-pending-info">
-          <strong id="rec-pending-name">Mitschnitt</strong>
+          <strong id="rec-pending-name">REC</strong>
           <span class="small muted" id="rec-pending-duration"></span>
         </div>
         <div class="rec-pending-actions">
@@ -2203,21 +2203,6 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div class="card">
-      <h2>Mitschnitt importieren</h2>
-      <p class="small muted" style="margin-top:0">
-        Eine MP3-Datei einspielen, die jemand über „Exportieren" bei einem
-        Mitschnitt erzeugt hat — auch aus einer anderen Chor-App-Installation.
-        Mehrere Dateien auf einmal sind möglich. Fehlt der Song noch in der
-        Bibliothek, verbindet sich der Mitschnitt automatisch, sobald er
-        importiert wird.
-      </p>
-      <input class="visually-hidden" id="mitschnitt-input" type="file" accept=".mp3,audio/mpeg" multiple>
-      <button class="btn btn--block" id="btn-mitschnitt-import" type="button">
-        Mitschnitt-MP3s auswählen
-      </button>
-    </div>
-
     <div id="import-report"></div>
 
     <div class="card">
@@ -2335,9 +2320,17 @@ input[type="checkbox"] {
 
     <!-- Öffnet die abgetrennte Import-Vollbildansicht (siehe #import-view
          weiter unten) — hier steht nur noch der Einstiegsknopf. -->
-    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:14px" data-i18n="settings.importBtn">
+    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:10px" data-i18n="settings.importBtn">
       Songs importieren
     </button>
+
+    <!-- Eigener, gleichrangiger Einstieg statt in der ZIP-Importansicht
+         versteckt: RECs kommen meist einzeln per Messenger (z.B. Signal),
+         nicht als ganzer Dropbox-Ordner — ein Tipp genügt, keine eigene Seite. -->
+    <button class="btn btn--block" id="btn-rec-import" type="button" style="margin-bottom:14px">
+      Recordings importieren
+    </button>
+    <input class="visually-hidden" id="rec-import-input" type="file" accept=".mp3,audio/mpeg" multiple>
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span data-i18n="settings.personal.title">Make it yours!</span></h2>
@@ -6948,7 +6941,7 @@ async function runImport() {
   try {
     report.recordingsLinked = await reconnectPendingRecordings();
   } catch (err) {
-    console.warn('[import] Mitschnitte verbinden', err);
+    console.warn('[import] RECs verbinden', err);
   }
   if (attachRequests.length) {
     try {
@@ -7252,7 +7245,7 @@ let loadToken = 0;
  */
 async function selectTrack(track, userChoice = false) {
   if (!playerSong || track.broken) return;
-  // Eine laufende Mitschnitt-Vorschau hat Audio.el gerade belegt — vor dem
+  // Eine laufende REC-Vorschau hat Audio.el gerade belegt — vor dem
   // Stimmwechsel erst normal weiterlaufen lassen, sonst würde audioLoadTrack()
   // gleich wieder wegwerfen, was previewRecordingBlob() sich fürs Zurück gemerkt hat.
   await endRecordingPreview();
@@ -7414,9 +7407,9 @@ async function openPlayer(songId) {
   // am Ende dem falschen Lied zugeordnet werden.
   if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
     discardActiveRecording();
-    banner('Mitschnitt abgebrochen, weil der Song gewechselt wurde.');
+    banner('REC abgebrochen, weil der Song gewechselt wurde.');
   } else if (pendingTake) {
-    banner('Nicht gespeicherter Mitschnitt wurde verworfen, weil der Song gewechselt wurde.');
+    banner('Nicht gespeicherter REC wurde verworfen, weil der Song gewechselt wurde.');
   }
   pendingTake = null;
   renderPendingTake();
@@ -7693,7 +7686,7 @@ $('#btn-queue-edit').addEventListener('click', () => {
  * alphabetisch durch die Bibliothek.
  */
 function onPlaybackEnded() {
-  // Eine zu Ende gelaufene Mitschnitt-Vorschau darf nie zum nächsten Song
+  // Eine zu Ende gelaufene REC-Vorschau darf nie zum nächsten Song
   // weiterschalten oder sich wiederholen — beides gehört zur Song-Wiedergabe.
   if (audioPreview) {
     endRecordingPreview();
@@ -7761,13 +7754,13 @@ $('#btn-play').addEventListener('click', async () => {
     navigator.mediaSession.playbackState = Audio.playing ? 'playing' : 'paused';
   }
   updateMediaSession();
-  // Läuft gerade eine Mitschnitt-Vorschau, muss deren eigener Anhören-Knopf
+  // Läuft gerade eine REC-Vorschau, muss deren eigener Anhören-Knopf
   // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
   if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
-  // Während einer Mitschnitt-Vorschau gilt „Zurück" dem Mitschnitt selbst —
+  // Während einer REC-Vorschau gilt „Zurück" dem REC selbst —
   // ein Sprung zum vorherigen Song wäre hier nur verwirrend.
   if (audioPreview) { updateSeekUI(audioSeek(0)); return; }
   // Wie bei echten Musik-Playern: ist man schon (fast) am Anfang, springt
@@ -8001,7 +7994,7 @@ function activateLoop() {
 }
 
 $('#btn-loop-a').addEventListener('click', async () => {
-  // Audio.position gehört sonst dem gerade angehörten Mitschnitt, nicht dem Song.
+  // Audio.position gehört sonst dem gerade angehörten REC, nicht dem Song.
   await endRecordingPreview();
   loopA = Audio.position;
   if (loopB !== null && loopB <= loopA) loopB = null;
@@ -8070,7 +8063,7 @@ async function loadSongLoops() {
   renderLoopList();
 }
 
-/** Der Punkt am Loops-Reiter gilt jetzt Loops UND Mitschnitten — beide leben im selben Tab. */
+/** Der Punkt am Loops-Reiter gilt jetzt Loops UND RECs — beide leben im selben Tab. */
 function updateLoopsTabDot() {
   setTabHasContent('loops', songLoops.length > 0 || songRecordings.length > 0);
 }
@@ -8088,7 +8081,7 @@ function renderLoopList() {
 
     go.addEventListener('click', async () => {
       // Der Loop bezieht sich auf den Song, nicht auf eine gerade laufende
-      // Mitschnitt-Vorschau — erst zurück zum Song, dann den Abschnitt anspringen.
+      // REC-Vorschau — erst zurück zum Song, dann den Abschnitt anspringen.
       await endRecordingPreview();
       loopA = loop.start;
       loopB = loop.end;
@@ -8171,19 +8164,19 @@ function renderLoopList() {
 })();
 
 /* ==========================================================================
-   MITSCHNITT — eigene Aufnahme übers Mikrofon, zum Anhören oder als
+   REC — eigene Aufnahme übers Mikrofon, zum Anhören oder als
    Gedächtnisstütze aus der Probe. Lebt bewusst im Loops-Tab statt in einem
    eigenen Reiter: beides sind Übe-Hilfen zum selben Song. Eigener Meta-Typ,
    überlebt Löschen/Reimport wie ein Loop.
 
-   Der Name „Mitschnitt" statt „Aufnahme": Letzteres bezeichnet in der
+   Der Name „REC" statt „Aufnahme": Letzteres bezeichnet in der
    restlichen App schon die importierte Stimmen-Datei des Songs — mit
    gleichem Wort für die eigene Stimme wäre "Alle Aufnahmen löschen" in den
-   Einstellungen missverständlich, obwohl Mitschnitte davon unberührt bleiben.
+   Einstellungen missverständlich, obwohl RECs davon unberührt bleiben.
 
    Wiedergabe läuft absichtlich nicht über ein eigenes <audio>-Element,
    sondern kapert kurz die Hauptsteuerung (Audio.el/#btn-play/Suchleiste):
-   dieselben Knöpfe, die den Song abspielen, spielen dann den Mitschnitt.
+   dieselben Knöpfe, die den Song abspielen, spielen dann den REC.
    previewRecordingBlob()/endRecordingPreview() merken sich dafür, wo die
    normale Wiedergabe stand, und stellen das danach wieder her.
    ========================================================================== */
@@ -8213,7 +8206,7 @@ function pickRecMimeType() {
 function setRecUI(recording) {
   const btn = $('#btn-rec-toggle');
   btn.setAttribute('aria-pressed', recording ? 'true' : 'false');
-  btn.setAttribute('aria-label', recording ? 'Mitschnitt stoppen' : 'Mitschnitt starten');
+  btn.setAttribute('aria-label', recording ? 'REC stoppen' : 'REC starten');
   $('#rec-timer').hidden = !recording;
   $('#rec-status').hidden = recording;
 }
@@ -8233,7 +8226,7 @@ async function startRecording() {
     // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
     // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
     // schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
-    // Übe-Mitschnitt zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
+    // Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
     recStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
@@ -8455,7 +8448,7 @@ async function onRecordingStopped() {
   teardownRecording();
 
   if (!chunks.length || duration < 0.5) {
-    if (chunks.length) banner('Der Mitschnitt war zu kurz und wurde verworfen.');
+    if (chunks.length) banner('Der REC war zu kurz und wurde verworfen.');
     return;
   }
   // Nicht sofort speichern — erst anhören und entscheiden lassen.
@@ -8474,7 +8467,7 @@ function renderPendingTake() {
   $('#rec-controls').hidden = has;
   $('#rec-pending').hidden = !has;
   if (!has) return;
-  $('#rec-pending-name').textContent = `Mitschnitt ${songRecordings.length + 1}`;
+  $('#rec-pending-name').textContent = `REC ${songRecordings.length + 1}`;
   $('#rec-pending-duration').textContent = `Dauer ${fmtTime(pendingTake.duration)}`;
   updateRecPreviewButton();
 }
@@ -8492,7 +8485,7 @@ $('#btn-rec-preview').addEventListener('click', async () => {
     if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
   } else {
     try { await previewRecordingBlob(pendingTake.blob, { pending: true }); }
-    catch (err) { bannerError('Der Mitschnitt konnte nicht abgespielt werden.', 'REC-PLAY', err); }
+    catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
 });
@@ -8500,7 +8493,7 @@ $('#btn-rec-preview').addEventListener('click', async () => {
 $('#btn-rec-discard').addEventListener('click', async () => {
   if (!pendingTake) return;
   const ok = await confirmDialog({
-    title: 'Mitschnitt verwerfen?', text: 'Die Aufnahme wird nicht gespeichert.',
+    title: 'REC verwerfen?', text: 'Die Aufnahme wird nicht gespeichert.',
     okLabel: 'Verwerfen', danger: true,
   });
   if (!ok) return;
@@ -8513,7 +8506,7 @@ $('#btn-rec-discard').addEventListener('click', async () => {
 async function pickRecordingVoice() {
   const value = await choiceDialog({
     title: 'Stimme zuordnen?',
-    text: 'Damit lässt sich der Mitschnitt später leichter wiederfinden — optional.',
+    text: 'Damit lässt sich der REC später leichter wiederfinden — optional.',
     options: [
       { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
       { value: 'FULL', label: 'Gesamt (alle Stimmen)' },
@@ -8533,9 +8526,9 @@ $('#btn-rec-save').addEventListener('click', async () => {
   const voice = await pickRecordingVoice();
   if (voice === undefined) return; // abgebrochen — Take bleibt zum erneuten Anhören/Speichern erhalten
 
-  const suggestion = `Mitschnitt ${songRecordings.length + 1}`;
+  const suggestion = `REC ${songRecordings.length + 1}`;
   const name = await promptDialog({
-    title: 'Mitschnitt speichern',
+    title: 'REC speichern',
     text: `Dauer ${fmtTime(pendingTake.duration)}`,
     value: suggestion,
     placeholder: 'z. B. Probe 12.3. oder Sopran allein',
@@ -8562,7 +8555,7 @@ $('#btn-rec-save').addEventListener('click', async () => {
   pendingTake = null;
   renderPendingTake();
   await loadSongRecordings();
-  banner('Mitschnitt gespeichert.', { kind: 'ok' });
+  banner('REC gespeichert.', { kind: 'ok' });
 });
 
 async function loadSongRecordings() {
@@ -8575,7 +8568,7 @@ async function loadSongRecordings() {
 }
 
 /**
- * Spielt einen Mitschnitt über die normale Hauptsteuerung ab (Audio.el,
+ * Spielt einen REC über die normale Hauptsteuerung ab (Audio.el,
  * #btn-play, Suchleiste) statt über ein eigenes Element. Merkt sich Spur,
  * Position und Wiedergabestatus, damit endRecordingPreview() den Song danach
  * genau dort weiterlaufen lassen kann.
@@ -8584,7 +8577,7 @@ async function previewRecordingBlob(blob, tag) {
   if (!Audio.ready) { banner('Die Wiedergabe ist noch nicht bereit.', { kind: 'error' }); return; }
 
   // Läuft schon eine Vorschau, gilt weiter der allererste Rücksprungpunkt —
-  // sonst würde ein zweiter angehörter Mitschnitt den echten Song überschreiben.
+  // sonst würde ein zweiter angehörter REC den echten Song überschreiben.
   const prior = audioPreview;
   const returnTrack = prior ? prior.returnTrack : (playerVoice ? trackByVoiceKey(playerVoice) : null);
   const returnPos = prior ? prior.returnPos : Audio.position;
@@ -8619,12 +8612,12 @@ async function previewRecordingBlob(blob, tag) {
   Audio.duration = el.duration || 0;
   audioSetLoop(null);
   // A/B-Marken gehören zur Song-Zeitleiste — bei der (meist viel kürzeren)
-  // Mitschnittdauer wären ihre Positionen auf der Suchleiste bloß irreführend.
+  // REC-Dauer wären ihre Positionen auf der Suchleiste bloß irreführend.
   $('#seek-mark-a').hidden = true;
   $('#seek-mark-b').hidden = true;
   $('#seek-range').hidden = true;
   // Ein Platzhalter-Song ohne eigene Aufnahme blendet die Transportleiste
-  // sonst aus — zum Anhören eines Mitschnitts braucht es sie trotzdem.
+  // sonst aus — zum Anhören eines RECs braucht es sie trotzdem.
   $('#player-foot').hidden = false;
 
   audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden };
@@ -8669,10 +8662,10 @@ async function toggleSavedRecordingPreview(recording) {
 
   try {
     const rec = await DB.fileGet(recording.fileKey);
-    if (!rec) throw new Error('Der Mitschnitt fehlt in der Datenbank.');
+    if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
     await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id });
   } catch (err) {
-    bannerError('Der Mitschnitt konnte nicht abgespielt werden.', 'REC-PLAY', err);
+    bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
   }
   renderRecordingList();
   updateRecPreviewButton();
@@ -8777,7 +8770,7 @@ function id3Frame(id, bodyBytes) {
   ];
 }
 
-const ID3_MARKER_KEY = 'ChorAppMitschnitt';
+const ID3_MARKER_KEY = 'ChorAppREC';
 
 function buildId3v2Tag({ name, songTitle, voice, dateIso }) {
   const frames = [
@@ -8873,10 +8866,10 @@ function voiceCodeFromLabel(label) {
 
 /** Für den Dateinamen: nur Buchstaben/Zahlen/Leerzeichen/Bindestrich, alles andere raus. */
 function sanitizeFileName(name) {
-  return name.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'Mitschnitt';
+  return name.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'REC';
 }
 
-const MITSCHNITT_NAME_MARKER = 'Mitschnitt';
+const REC_NAME_MARKER = 'REC';
 
 /**
  * Dateiname aus allen wichtigen Angaben — auch ohne die App (oder nach dem
@@ -8884,11 +8877,11 @@ const MITSCHNITT_NAME_MARKER = 'Mitschnitt';
  * und Datum stehen direkt im Namen, „·" als Trenner, weil das in Songtiteln
  * praktisch nie vorkommt.
  */
-function mitschnittFileBaseName({ songTitle, voice, name, createdAt }) {
+function recFileBaseName({ songTitle, voice, name, createdAt }) {
   const voiceLabel = voice ? (VOICE_LABEL[voice] || voice) : 'Ohne Stimme';
   const date = (createdAt || new Date().toISOString()).slice(0, 10);
-  const parts = [songTitle || 'Unbekannter Song', voiceLabel, name || 'Mitschnitt', date].map(sanitizeFileName);
-  return [MITSCHNITT_NAME_MARKER, ...parts].join(' · ');
+  const parts = [songTitle || 'Unbekannter Song', voiceLabel, name || 'REC', date].map(sanitizeFileName);
+  return [REC_NAME_MARKER, ...parts].join(' · ');
 }
 
 /** Über ein unsichtbares <audio> die Dauer einer Datei ermitteln. */
@@ -8905,17 +8898,17 @@ function probeAudioDuration(blob) {
 }
 
 /**
- * Exportiert einen Mitschnitt als eigenständige MP3-Datei — abspielbar und
+ * Exportiert einen REC als eigenständige MP3-Datei — abspielbar und
  * verschickbar überall, ganz ohne diese App. Songtitel, Stimme, Name und
  * Datum stehen sowohl im Dateinamen (für Menschen) als auch als ID3-Tags
  * (überlebt ein Umbenennen) — importRecordingFile liest zuerst die Tags,
  * fällt sonst auf den Dateinamen zurück.
  */
 async function exportRecording(recording) {
-  const closeBanner = banner('Mitschnitt wird als MP3 exportiert …', { timeout: 0 });
+  const closeBanner = banner('REC wird als MP3 exportiert …', { timeout: 0 });
   try {
     const rec = await DB.fileGet(recording.fileKey);
-    if (!rec) throw new Error('Der Mitschnitt fehlt in der Datenbank.');
+    if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
     const sourceBlob = recordBlob(rec, recording.mimeType);
 
     await ensureLameLoaded();
@@ -8928,7 +8921,7 @@ async function exportRecording(recording) {
       dateIso: (recording.createdAt || '').slice(0, 10),
     });
 
-    const fileName = `${mitschnittFileBaseName({
+    const fileName = `${recFileBaseName({
       songTitle, voice: recording.voice, name: recording.name, createdAt: recording.createdAt,
     })}.mp3`;
     const file = new File([tagged], fileName, { type: 'audio/mpeg' });
@@ -8936,20 +8929,20 @@ async function exportRecording(recording) {
     closeBanner();
     let shared = false;
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Mitschnitt' }); shared = true; }
+      try { await navigator.share({ files: [file], title: 'REC' }); shared = true; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
     if (!shared) downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
   } catch (err) {
     closeBanner();
-    bannerError('Der Mitschnitt konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
+    bannerError('Der REC konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
   }
 }
 
 /**
  * Importiert eine mit exportRecording() erzeugte MP3-Datei — auch aus einer
  * anderen App-Instanz. Findet sich der Song (per Titel) nicht in der
- * Bibliothek, bleibt der Mitschnitt ohne songId gespeichert und verbindet
+ * Bibliothek, bleibt der REC ohne songId gespeichert und verbindet
  * sich automatisch, sobald der Song importiert wird (reconnectPendingRecordings)
  * — genau wie bei Loops und Notizen.
  */
@@ -8968,13 +8961,13 @@ async function importRecordingFile(file) {
     // älteren Version. Letzter Versuch: den Dateinamen selbst auswerten.
     const base = file.name.replace(/\.mp3$/i, '');
     const parts = base.split(' · ');
-    if (parts[0] === MITSCHNITT_NAME_MARKER && parts.length === 5) {
+    if (parts[0] === REC_NAME_MARKER && parts.length === 5) {
       songTitle = songTitle || parts[1];
       voice = voice || (parts[2] === 'Ohne Stimme' ? '' : (voiceCodeFromLabel(parts[2]) || ''));
       name = name || parts[3];
       dateIso = dateIso || parts[4];
     } else if (!songTitle) {
-      throw new Error('Diese Datei wurde nicht als Mitschnitt-Export erkannt.');
+      throw new Error('Diese Datei wurde nicht als REC-Export erkannt.');
     }
   }
 
@@ -8992,7 +8985,7 @@ async function importRecordingFile(file) {
     key: `recording:${id}`, type: 'recording', id,
     songId: song ? song.id : null,
     songTitle,
-    name: name || 'Mitschnitt',
+    name: name || 'REC',
     voice: voice || null,
     fileKey, mimeType: 'audio/mpeg', duration,
     size: blob.size,
@@ -9003,7 +8996,7 @@ async function importRecordingFile(file) {
   return { song, recording };
 }
 
-/** Mitschnitte ohne songId nachträglich verbinden, nachdem ein Song importiert wurde. */
+/** RECs ohne songId nachträglich verbinden, nachdem ein Song importiert wurde. */
 async function reconnectPendingRecordings() {
   const recordings = await DB.metaByType('recording').catch(() => []);
   const pending = recordings.filter((r) => !r.songId && r.songTitle);
@@ -9058,7 +9051,7 @@ function renderRecordingList() {
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
     rename.addEventListener('click', async () => {
-      const name = await promptDialog({ title: 'Mitschnitt umbenennen', value: recording.name });
+      const name = await promptDialog({ title: 'REC umbenennen', value: recording.name });
       if (name === null) return;
       recording.name = name.trim() || recording.name;
       await DB.metaPut(recording);
@@ -9072,7 +9065,7 @@ function renderRecordingList() {
     del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
     del.addEventListener('click', async () => {
       const ok = await confirmDialog({
-        title: 'Mitschnitt löschen?', text: `„${recording.name}" wird entfernt.`,
+        title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
         okLabel: 'Löschen', danger: true,
       });
       if (!ok) return;
@@ -10801,9 +10794,9 @@ $('#backup-input').addEventListener('change', async (e) => {
   await restoreBackup(data);
 });
 
-$('#btn-mitschnitt-import').addEventListener('click', () => $('#mitschnitt-input').click());
+$('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
 
-$('#mitschnitt-input').addEventListener('change', async (e) => {
+$('#rec-import-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
   e.target.value = '';
   if (!files.length) return;
@@ -10815,15 +10808,15 @@ $('#mitschnitt-input').addEventListener('change', async (e) => {
       if (song) linked++; else pending++;
     } catch (err) {
       failed++;
-      console.warn('[mitschnitt-import]', file.name, err);
+      console.warn('[rec-import]', file.name, err);
     }
   }
 
   await renderImportStats();
   const parts = [];
-  if (linked) parts.push(`${plural(linked, 'Mitschnitt', 'Mitschnitte')} zugeordnet`);
-  if (pending) parts.push(`${plural(pending, 'Mitschnitt', 'Mitschnitte')} warten auf den passenden Song`);
-  if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als Mitschnitt erkannt`);
+  if (linked) parts.push(`${plural(linked, 'REC', 'RECs')} zugeordnet`);
+  if (pending) parts.push(`${plural(pending, 'REC', 'RECs')} warten auf den passenden Song`);
+  if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als REC erkannt`);
   banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
 
