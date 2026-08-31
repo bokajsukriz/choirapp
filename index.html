@@ -5768,21 +5768,23 @@ function androidIntentUrl(appUrl, packageName, fallbackUrl) {
   return `intent://${rest}#Intent;${parts.join(';')};end`;
 }
 
-/** Öffnet einen Link „richtig" extern. Als installierte App (Standalone-
- *  Modus, siehe manifest.json "display": "standalone") gibt es keine Tabs —
- *  ein neuer Tab per window.open()/target="_blank" bleibt dort oft einfach
- *  unsichtbar innerhalb der App hängen, statt sie zu verlassen. Nur eine
- *  echte Top-Level-Navigation (location.href) lässt iOS/Android die Seite
- *  aus der App herausreichen: an Safari/Chrome oder — sofern registriert —
- *  direkt an die passende installierte App (Universal Links/App Links, z. B.
- *  Spotify, YouTube). Läuft die App dagegen ganz normal im Browser-Tab
- *  (kein Standalone-Modus), öffnet ein echter Anker-Klick mit target="_blank"
- *  wie gewünscht ein neues Fenster/Tab, statt den aktuellen Tab mit der
- *  Chor-App selbst zu ersetzen. */
-function openExternalLink(url) {
-  const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches
+/** Läuft die App installiert vom Home-Bildschirm (Standalone-Modus, siehe
+ *  manifest.json "display": "standalone")? Dort gibt es keine Tabs, und
+ *  externe Links landen von sich aus im eingebauten Browser der App. */
+function isStandaloneApp() {
+  return window.matchMedia?.('(display-mode: standalone)').matches
     || window.navigator.standalone === true; // iOS: Flag für "Zum Home-Bildschirm"
-  if (isStandalone) {
+}
+
+/** Öffnet einen Link „richtig" extern. Als installierte App gibt es keine
+ *  Tabs — ein neuer Tab per window.open()/target="_blank" bleibt dort oft
+ *  einfach unsichtbar innerhalb der App hängen, statt sie zu verlassen. Nur
+ *  eine echte Top-Level-Navigation (location.href) reicht die Adresse ans
+ *  System weiter. Läuft die App dagegen ganz normal im Browser-Tab, öffnet
+ *  ein echter Anker-Klick mit target="_blank" wie gewünscht ein neues
+ *  Fenster/Tab, statt den aktuellen Tab mit der Chor-App selbst zu ersetzen. */
+function openExternalLink(url) {
+  if (isStandaloneApp()) {
     window.location.href = url;
     return;
   }
@@ -5800,28 +5802,14 @@ function openExternalLink(url) {
  *  langsam startendes Handy. */
 const APP_LINK_FALLBACK_MS = 1500;
 
-/** Öffnet einen Link möglichst in der zugehörigen App und sonst im Browser.
+/** Navigiert versuchsweise auf eine Nicht-https-Adresse (App-Schema oder
+ *  x-safari-https) und fällt auf die Webseite zurück, wenn nichts passiert.
  *
- *  Android: Chrome erledigt beides in einem Rutsch (siehe androidIntentUrl) —
- *  App starten, wenn vorhanden, sonst web() laden.
- *  iOS: Ob ein App-Schema registriert ist, lässt sich nicht abfragen — wir
- *  navigieren einfach dorthin. Klappt es, wechselt das System in die App und
- *  unsere Seite wird unsichtbar (visibilitychange/pagehide); dann sagen wir
- *  den Rückfall ab. Tut sich nichts, ist die App offenbar nicht installiert
- *  und wir öffnen die Webseite.
- *  Ohne passendes App-Ziel — und am Rechner, wo ein App-Schema nur einen
- *  zusätzlichen Bestätigungsdialog brächte — geht es direkt zur Webseite. */
-function openAppOrWeb({ web, iosApp, androidApp, androidPackage }) {
-  if (IS_ANDROID && (androidApp || androidPackage)) {
-    const target = androidApp || web;
-    openExternalLink(androidIntentUrl(target, androidPackage, web) || target);
-    return;
-  }
-  if (!IS_IOS || !iosApp) {
-    openExternalLink(web);
-    return;
-  }
-
+ *  Ob so ein Schema überhaupt jemand entgegennimmt, lässt sich vorher nicht
+ *  abfragen — wir navigieren einfach dorthin. Klappt es, übernimmt die andere
+ *  App und unsere Seite wird unsichtbar (visibilitychange/pagehide); dann
+ *  sagen wir den Rückfall ab. Tut sich nichts, öffnen wir die Webseite. */
+function navigateWithWebFallback(schemeUrl, webUrl) {
   let settled = false;
   let timer = null;
   const stop = () => {
@@ -5832,16 +5820,47 @@ function openAppOrWeb({ web, iosApp, androidApp, androidPackage }) {
     window.removeEventListener('pagehide', stop);
   };
   const onVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') stop(); // App hat übernommen
+    if (document.visibilityState === 'hidden') stop(); // jemand hat übernommen
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('pagehide', stop);
   timer = setTimeout(() => {
     if (settled) return;
     stop();
-    if (document.visibilityState === 'visible') openExternalLink(web);
+    if (document.visibilityState === 'visible') openExternalLink(webUrl);
   }, APP_LINK_FALLBACK_MS);
-  window.location.href = iosApp;
+  window.location.href = schemeUrl;
+}
+
+/** Öffnet einen Link möglichst in der zugehörigen App und sonst im Browser.
+ *
+ *  Android: Chrome erledigt beides in einem Rutsch (siehe androidIntentUrl) —
+ *  App starten, wenn vorhanden, sonst web() laden.
+ *  iOS: über das App-Schema, sofern der Dienst eines hat.
+ *  Hat er keins (Spotify, Google) und laufen wir installiert vom Home-
+ *  Bildschirm, bliebe der https-Link im eingebauten Browser der App stecken.
+ *  Dagegen hilft nur "x-safari-https://…": das zwingt iOS, echtes Safari zu
+ *  öffnen — und Safari wiederum reicht Universal Links weiter, ein
+ *  open.spotify.com-Link landet von dort also doch noch in der Spotify-App.
+ *  Apple dokumentiert das Schema nicht und ältere iOS-Versionen kennen es
+ *  nicht; deshalb hängt auch daran der Rückfall auf die Webseite.
+ *  Im normalen Browser-Tab und am Rechner geht es direkt zur Webseite — dort
+ *  gibt es nichts zu umgehen. */
+function openAppOrWeb({ web, iosApp, androidApp, androidPackage }) {
+  if (IS_ANDROID && (androidApp || androidPackage)) {
+    const target = androidApp || web;
+    openExternalLink(androidIntentUrl(target, androidPackage, web) || target);
+    return;
+  }
+  if (IS_IOS && iosApp) {
+    navigateWithWebFallback(iosApp, web);
+    return;
+  }
+  if (IS_IOS && isStandaloneApp() && web.startsWith('https://')) {
+    navigateWithWebFallback(`x-safari-${web}`, web);
+    return;
+  }
+  openExternalLink(web);
 }
 
 /** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp auf die Lupe
