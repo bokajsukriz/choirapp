@@ -5676,21 +5676,66 @@ function renderPresentThemePicker() {
   }
 }
 
-/** Dienste fürs Lupen-Symbol im Player (siehe openSongSearch). Tidal,
- *  Spotify und Deezer durchsuchen nur Musikkataloge und bekommen daher den
- *  reinen Titel. YouTube und Google durchsuchen das ganze Web — ohne
+/** Dienste fürs Lupen-Symbol im Player (siehe openSongSearch).
+ *
+ *  web(q) – Adresse für den Browser. Sie funktioniert immer und dient
+ *      zugleich als Rückfallebene, falls die App nicht installiert ist.
+ *  app(q) – dieselbe Suche im App-eigenen Schema (z. B. „tidal://…"). Nur
+ *      dort nötig, wo die Webadresse die App NICHT von selbst öffnet:
+ *      Spotify, Deezer, YouTube und Google haben für ihre Domains Universal
+ *      Links bzw. App Links hinterlegt, ihre Webadresse landet auf dem Handy
+ *      also ohnehin in der jeweiligen App. Tidals Suchseite liegt dagegen auf
+ *      listen.tidal.com, dem reinen Web-Player — diese Adresse beansprucht
+ *      die Tidal-App nicht für sich, also bleibt es bei der Webseite (in
+ *      einer installierten PWA sogar nur in deren eingebautem Browser).
+ *      Deshalb bekommt Tidal hier ein eigenes App-Schema.
+ *  androidPackage – erlaubt Chrome unter Android, gezielt diese App zu
+ *      starten und sonst sauber auf web() zurückzufallen (androidIntentUrl).
+ *
+ *  Tidal, Spotify und Deezer durchsuchen nur Musikkataloge und bekommen daher
+ *  den reinen Titel. YouTube und Google durchsuchen das ganze Web — ohne
  *  Zusatzwort landen viele Treffer bei Wikipedia, Liedtext-Seiten o.ä. statt
- *  bei Aufnahmen, daher hängt songSearchUrl dort "Musik" an die Suche an. */
+ *  bei Aufnahmen, daher hängt die Suche dort "Musik" an die Anfrage an. */
 const SONG_SEARCH_SERVICES = [
-  { id: 'tidal', label: 'Tidal', url: (q) => `https://listen.tidal.com/search/${encodeURIComponent(q)}` },
-  { id: 'spotify', label: 'Spotify', url: (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}` },
-  { id: 'deezer', label: 'Deezer', url: (q) => `https://www.deezer.com/search/${encodeURIComponent(q)}` },
-  { id: 'youtube', label: 'YouTube', url: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} Musik`)}` },
-  { id: 'google', label: 'Google', url: (q) => `https://www.google.com/search?q=${encodeURIComponent(`${q} Musik`)}` },
+  {
+    id: 'tidal', label: 'Tidal',
+    web: (q) => `https://listen.tidal.com/search/${encodeURIComponent(q)}`,
+    // Tidal registriert das Schema "tidal://" und routet darin wie im
+    // Web-Player. Sollte eine künftige App-Version einen anderen Suchpfad
+    // erwarten, ist hier die einzige Stelle zum Nachziehen — schlimmstenfalls
+    // greift der Web-Fallback wie bisher.
+    app: (q) => `tidal://search?q=${encodeURIComponent(q)}`,
+    androidPackage: 'com.aspiro.tidal',
+  },
+  { id: 'spotify', label: 'Spotify', web: (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}` },
+  { id: 'deezer', label: 'Deezer', web: (q) => `https://www.deezer.com/search/${encodeURIComponent(q)}` },
+  { id: 'youtube', label: 'YouTube', web: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} Musik`)}` },
+  { id: 'google', label: 'Google', web: (q) => `https://www.google.com/search?q=${encodeURIComponent(`${q} Musik`)}` },
 ];
 
 function songSearchServiceById(id) {
   return SONG_SEARCH_SERVICES.find((s) => s.id === id) || SONG_SEARCH_SERVICES[0];
+}
+
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+// iPadOS meldet sich seit Version 13 als "MacIntel"; die Touch-Punkte
+// verraten trotzdem, dass ein iPad davorsitzt.
+const IS_IOS = /iP(hone|ad|od)/i.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/** Baut aus einer App-Adresse („tidal://search?q=Bach") eine Android-Intent-
+ *  Adresse mit eingebautem Web-Fallback. Chrome unter Android startet damit
+ *  die App, sofern installiert, und öffnet sonst automatisch fallbackUrl —
+ *  ohne Wartezeit und ohne Fehlermeldung. */
+function androidIntentUrl(appUrl, packageName, fallbackUrl) {
+  const sep = appUrl.indexOf('://');
+  if (sep < 0) return null;
+  const scheme = appUrl.slice(0, sep);
+  const rest = appUrl.slice(sep + 3); // Host + Pfad + Query, ohne Schema
+  const parts = [`scheme=${scheme}`];
+  if (packageName) parts.push(`package=${packageName}`);
+  parts.push(`S.browser_fallback_url=${encodeURIComponent(fallbackUrl)}`);
+  return `intent://${rest}#Intent;${parts.join(';')};end`;
 }
 
 /** Öffnet einen Link „richtig" extern. Als installierte App (Standalone-
@@ -5720,16 +5765,67 @@ function openExternalLink(url) {
   a.remove();
 }
 
+/** So lange warten wir unter iOS auf den App-Wechsel, bevor wir die Webseite
+ *  öffnen. Kurz genug, dass es sich nicht hängend anfühlt, lang genug für ein
+ *  langsam startendes Handy. */
+const APP_LINK_FALLBACK_MS = 1500;
+
+/** Öffnet einen Link möglichst in der zugehörigen App und sonst im Browser.
+ *
+ *  Android: Chrome erledigt beides in einem Rutsch (siehe androidIntentUrl).
+ *  iOS: Ob ein App-Schema registriert ist, lässt sich nicht abfragen — wir
+ *  navigieren einfach dorthin. Klappt es, wechselt das System in die App und
+ *  unsere Seite wird unsichtbar (visibilitychange/pagehide); dann sagen wir
+ *  den Rückfall ab. Tut sich nichts, ist die App offenbar nicht installiert
+ *  und wir öffnen wie bisher die Webseite.
+ *  Am Rechner (weder iOS noch Android) bleibt es gleich beim Browser-Link;
+ *  ein App-Schema brächte dort nur einen zusätzlichen Bestätigungsdialog. */
+function openAppOrWeb({ app, web, androidPackage }) {
+  if (!app || (!IS_IOS && !IS_ANDROID)) {
+    openExternalLink(web);
+    return;
+  }
+  if (IS_ANDROID) {
+    openExternalLink(androidIntentUrl(app, androidPackage, web) || app);
+    return;
+  }
+
+  let settled = false;
+  let timer = null;
+  const stop = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('pagehide', stop);
+  };
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') stop(); // App hat übernommen
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('pagehide', stop);
+  timer = setTimeout(() => {
+    if (settled) return;
+    stop();
+    if (document.visibilityState === 'visible') openExternalLink(web);
+  }, APP_LINK_FALLBACK_MS);
+  window.location.href = app;
+}
+
 /** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp auf die Lupe
  *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
  *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
  *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
 function openSongSearch(serviceId) {
   if (!playerSong) return;
-  const query = playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title;
-  if (!query || !query.trim()) return;
+  const query = (playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title || '').trim();
+  if (!query) return;
   const service = songSearchServiceById(serviceId);
-  openExternalLink(service.url(query));
+  openAppOrWeb({
+    app: service.app ? service.app(query) : null,
+    web: service.web(query),
+    androidPackage: service.androidPackage,
+  });
 }
 
 function renderSongSearchServicePicker() {
