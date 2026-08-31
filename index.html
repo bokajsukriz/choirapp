@@ -5693,12 +5693,24 @@ function songSearchServiceById(id) {
   return SONG_SEARCH_SERVICES.find((s) => s.id === id) || SONG_SEARCH_SERVICES[0];
 }
 
-/** Öffnet einen Link „richtig" extern — als echten Anker-Klick statt per
- *  window.open(). In der installierten PWA reicht window.open() oft nicht:
- *  iOS/Android lösen App-Links/Universal Links (z. B. Spotify, YouTube) nur
- *  bei einer echten Link-Navigation aus der App heraus zuverlässig aus, statt
- *  einfach im eigenen Browser-Tab zu landen. */
+/** Öffnet einen Link „richtig" extern. Als installierte App (Standalone-
+ *  Modus, siehe manifest.json "display": "standalone") gibt es keine Tabs —
+ *  ein neuer Tab per window.open()/target="_blank" bleibt dort oft einfach
+ *  unsichtbar innerhalb der App hängen, statt sie zu verlassen. Nur eine
+ *  echte Top-Level-Navigation (location.href) lässt iOS/Android die Seite
+ *  aus der App herausreichen: an Safari/Chrome oder — sofern registriert —
+ *  direkt an die passende installierte App (Universal Links/App Links, z. B.
+ *  Spotify, YouTube). Läuft die App dagegen ganz normal im Browser-Tab
+ *  (kein Standalone-Modus), öffnet ein echter Anker-Klick mit target="_blank"
+ *  wie gewünscht ein neues Fenster/Tab, statt den aktuellen Tab mit der
+ *  Chor-App selbst zu ersetzen. */
 function openExternalLink(url) {
+  const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches
+    || window.navigator.standalone === true; // iOS: Flag für "Zum Home-Bildschirm"
+  if (isStandalone) {
+    window.location.href = url;
+    return;
+  }
   const a = document.createElement('a');
   a.href = url;
   a.target = '_blank';
