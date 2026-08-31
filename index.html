@@ -830,6 +830,23 @@ input[type="checkbox"] {
   padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
 }
 
+/* Nur im Übe-Player: eigener innerer Scroll-Container (.player-body-scroll),
+   damit der schwebende Vollbild-Knopf (#btn-lyrics-present) außerhalb des
+   Scrollbereichs sitzen und so wirklich fix unten rechts bleiben kann,
+   statt mit dem Liedtext mitzuscrollen. #player-body selbst scrollt dafür
+   nicht mehr direkt (überschreibt die .player-body-Regel oben). */
+#player-body {
+  position: relative;
+  overflow: visible;
+  padding: 0;
+}
+#player-body > .player-body-scroll {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
+}
+
 .player-foot {
   flex: 0 0 auto;
   padding: 10px calc(var(--pad) + var(--safe-right))
@@ -1119,7 +1136,7 @@ input[type="checkbox"] {
    (A−/A+) direkt dahinter, Bearbeiten ganz rechts — dicht unter den
    Reitern, damit Cloud/Lokal wie eine Fortsetzung der aktiven
    Lyrics-Hervorhebung wirkt. Der Vollbild-Knopf steht nicht mehr hier,
-   sondern schwebt über dem Text selbst (siehe .lyrics-present-fab-wrap). */
+   sondern schwebt über dem Text selbst (siehe .lyrics-present-fab). */
 .lyrics-toolbar-extended {
   display: flex;
   align-items: center;
@@ -1188,30 +1205,29 @@ input[type="checkbox"] {
 .present-theme-label { font-size: 0.78rem; font-weight: 650; color: var(--text); }
 
 /* Vollbild-Knopf (Vorlesemodus, siehe btn-lyrics-present): schwebt rechts
-   unten über dem Liedtext statt in der Werkzeugleiste zu stehen — bleibt
-   dank position:sticky innerhalb von .player-body beim Scrollen im Text
-   sichtbar. */
-.lyrics-present-fab-wrap {
-  position: sticky;
-  bottom: 10px;
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 14px;
-  pointer-events: none;
-}
+   unten über dem Liedtext statt in der Werkzeugleiste zu stehen. Ist ein
+   direktes Kind von #player-body, außerhalb von .player-body-scroll (siehe
+   dort) — bleibt dadurch wirklich fix unten rechts stehen, egal wie lang
+   der Liedtext ist oder wie weit darin gescrollt wurde, statt mitzuscrollen.
+   Bewusst zurückhaltend gehalten (klein, leicht durchscheinend, dezente
+   Randfarbe, kein Akzent-Vollton) — soll sich unterordnen, nicht hervorstechen. */
 .lyrics-present-fab {
-  pointer-events: auto;
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
-  min-height: 52px;
+  position: absolute;
+  right: calc(12px + var(--safe-right));
+  bottom: 12px;
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: 0 4px 14px rgba(0,0,0,.28);
+  border: 1px solid var(--pill-line);
+  background: rgba(var(--accent-rgb), .06);
+  color: var(--muted);
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
 }
-.lyrics-present-fab:active { background: var(--accent); opacity: .85; }
-.lyrics-present-fab svg { width: 24px; height: 24px; }
+.lyrics-present-fab:active { background: rgba(var(--accent-rgb), .14); }
+.lyrics-present-fab svg { width: 18px; height: 18px; }
 
 .tab-panel[hidden] { display: none; }
 
@@ -2098,6 +2114,7 @@ input[type="checkbox"] {
   </div>
 
   <div class="player-body" id="player-body">
+  <div class="player-body-scroll">
     <!-- Leerzustand: sichtbar, solange kein Song geladen ist — der Player
          ist jetzt ein dauerhafter Reiter und muss auch ohne Auswahl etwas
          Sinnvolles zeigen (siehe openPlayer()/closePlayer()). -->
@@ -2196,8 +2213,9 @@ input[type="checkbox"] {
            Cloud/Lokal sitzt links am Rand in derselben Optik (Fläche,
            Eckenradius, Akzentfarbe) wie der aktive Lyrics-Reiter darüber —
            wirkt dadurch wie dessen Fortsetzung, mit A−/A+ direkt dahinter
-           und Bearbeiten ganz rechts. Der Vollbild-Knopf steht separat unten
-           beim Text (siehe .lyrics-present-fab-wrap). -->
+           und Bearbeiten ganz rechts. Der Vollbild-Knopf steht separat, fix
+           unten rechts über dem Text (siehe #btn-lyrics-present am Ende von
+           #player-body im Markup, außerhalb von .player-body-scroll). -->
       <div class="lyrics-toolbar-extended" id="lyrics-toolbar" hidden>
         <div class="preset-row lyrics-source-switch--extended" id="lyrics-source-switch" style="grid-template-columns:repeat(2,auto)" role="group" aria-label="Liedtext-Quelle" hidden>
           <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Cloud</button>
@@ -2230,16 +2248,6 @@ input[type="checkbox"] {
           <p class="note-state" id="lyrics-note-state" data-dirty="false" role="status" style="margin:8px 0 0"></p>
         </div>
       </div>
-
-      <!-- Vollbild/Vorlesemodus: schwebt rechts unten über dem Text statt in
-           der Werkzeugleiste zu stehen, bleibt beim Scrollen sichtbar
-           (position:sticky, siehe CSS). Platz bleibt über .slot-hidden
-           reserviert, wenn (noch) kein Text zum Anzeigen da ist. -->
-      <div class="lyrics-present-fab-wrap">
-        <button class="icon-btn lyrics-present-fab slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        </button>
-      </div>
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" hidden>
@@ -2267,6 +2275,16 @@ input[type="checkbox"] {
       <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
     </div>
     </div>
+  </div>
+
+  <!-- Vollbild/Vorlesemodus: bewusst außerhalb von .player-body-scroll, damit
+       der Knopf nicht mit dem Liedtext mitscrollt, sondern wirklich fix
+       unten rechts über dem Text schwebt (siehe .lyrics-present-fab und
+       #player-body in der CSS). Sichtbarkeit hängt vom aktiven Reiter
+       (setPlayerTab) UND vorhandenem Text ab (renderLyricsBlock). -->
+  <button class="lyrics-present-fab" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  </button>
   </div>
 
   <div class="player-foot" id="player-foot" hidden>
@@ -9690,8 +9708,18 @@ function renderLyricsBlock() {
 
   applyLyricsFontSize();
   setTabHasContent('lyrics', hasOfficial || hasPrivate);
-  // Ebenfalls als Leerplatz stehen lassen (siehe oben) statt auszublenden.
-  $('#btn-lyrics-present').classList.toggle('slot-hidden', !lyricsPresentSourceText().trim());
+  updateLyricsPresentFab();
+}
+
+/** Sichtbarkeit des frei schwebenden Vollbild-Knopfs (#btn-lyrics-present,
+ *  siehe .lyrics-present-fab): nur auf dem Lyrics-Reiter UND nur, wenn es
+ *  überhaupt Text zum Anzeigen gibt. Läuft sowohl bei jedem Reiterwechsel
+ *  (setPlayerTab) als auch bei jeder Textänderung (renderLyricsBlock), weil
+ *  der Knopf jetzt außerhalb von #tab-panel-lyrics sitzt und sich daher
+ *  nicht mehr automatisch mit dem Reiter versteckt. */
+function updateLyricsPresentFab() {
+  const isLyricsTab = $('#tab-btn-lyrics').getAttribute('aria-selected') === 'true';
+  $('#btn-lyrics-present').hidden = !isLyricsTab || !lyricsPresentSourceText().trim();
 }
 
 /**
@@ -9869,6 +9897,10 @@ function setPlayerTab(tab) {
   }
   // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
   if (tab === 'sheets') loadScorePreviews();
+  // Der Vollbild-Knopf sitzt außerhalb der Reiter-Panels (siehe
+  // .lyrics-present-fab) und muss sich daher hier selbst um sein
+  // Verstecken/Zeigen kümmern.
+  updateLyricsPresentFab();
 }
 
 /** Färbt Icon und Beschriftung eines Reiters rosa, wenn dort etwas hinterlegt ist. */
