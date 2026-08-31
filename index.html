@@ -585,6 +585,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   color: var(--accent);
 }
 
+/* Experiment: in der erweiterten Lyrics-Leiste (siehe .lyrics-toolbar-extended)
+   bewusst zurück auf die volle Akzentfüllung — soll wie eine Fortsetzung der
+   Reiter-Hervorhebung darüber wirken, nicht wie eine eigene, dezentere Auswahl. */
+#lyrics-source-switch.lyrics-source-switch--extended .preset[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 /* Song- und Spurzeilen mit Häkchen */
 .pick-song {
   border: 1px solid var(--line);
@@ -1067,7 +1075,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 17px;
   padding: 4px;
-  margin: 18px 0 16px;
+  margin: 8px 0;
 }
 
 .player-tab {
@@ -1107,6 +1115,26 @@ input[type="checkbox"] {
 .player-tabs--mini .player-tab { min-height: 44px; font-size: 0.68rem; gap: 1px; }
 .player-tabs--mini .player-tab svg { width: 16px; height: 16px; }
 
+/* Lyrics-Leiste unter den Reitern: Vollbild-Knopf links, Cloud/Lokal mittig
+   (füllt den Platz, siehe .lyrics-source-switch--extended), Schriftgröße/
+   Bearbeiten rechts — dicht unter den Reitern, damit Cloud/Lokal wie eine
+   Fortsetzung der aktiven Lyrics-Hervorhebung wirkt statt wie eine eigene,
+   abgesetzte Leiste. */
+.lyrics-toolbar-extended {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.lyrics-toolbar-extended > .icon-btn,
+.lyrics-toolbar-extended > span { flex: 0 0 auto; }
+
+.lyrics-source-switch--extended {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
 /* Akzentfarbe wählen ("Persönliches") — runde Farbproben, die aktuell
    gewählte bekommt einen Doppelring statt einem Häkchen, damit die Farbe
    selbst gut zu sehen bleibt. */
@@ -1127,6 +1155,39 @@ input[type="checkbox"] {
 .accent-swatch[aria-pressed="true"] {
   box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text);
 }
+
+/* Farbe der Vollbild-Textanzeige ("Persönliches") — zwei Karten mit echtem
+   Beispielausschnitt statt bloß einem Farbpunkt, damit sofort klar ist, wie
+   die Anzeige später wirkt. */
+.present-theme-picker {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.present-theme-swatch {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid transparent;
+  border-radius: 17px;
+  background: var(--surface-2);
+  padding: 6px;
+}
+.present-theme-swatch[aria-pressed="true"] { border-color: var(--accent); }
+.present-theme-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  border-radius: 11px;
+  font-family: var(--font-display, inherit);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.present-theme-label { font-size: 0.78rem; font-weight: 650; color: var(--text); }
 
 .tab-panel[hidden] { display: none; }
 
@@ -1400,6 +1461,10 @@ input[type="checkbox"] {
 }
 .lyrics-present[hidden] { display: none; }
 
+/* Alternative Farbgebung — wählbar unter Einstellungen → Make it yours!
+   (siehe settings.presentTheme/renderPresentThemePicker). */
+.lyrics-present[data-theme="light"] { background: #fff; }
+
 .lyrics-present-inner {
   position: absolute;
   top: 50%;
@@ -1436,6 +1501,7 @@ input[type="checkbox"] {
   font-size: clamp(28px, 7vmin, 76px);
   line-height: 1.4;
 }
+.lyrics-present[data-theme="light"] .lyrics-present-text { color: #000; }
 
 .lyrics-present-close {
   position: absolute;
@@ -1453,6 +1519,11 @@ input[type="checkbox"] {
   z-index: 1;
 }
 .lyrics-present-close svg { width: 22px; height: 22px; }
+.lyrics-present[data-theme="light"] .lyrics-present-close {
+  border-color: rgba(0,0,0,.2);
+  background: rgba(0,0,0,.06);
+  color: #000;
+}
 
 .score-item {
   display: flex;
@@ -2093,20 +2164,25 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
-      <!-- Eine Leiste für alles: Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
-           Bleibt sichtbar, solange ein Song offen ist (siehe renderLyricsBlock).
-           Knöpfe, die nicht immer gelten (Vorlesemodus, Bearbeiten), verstecken
-           sich über .slot-hidden (visibility statt hidden) — ihr Platz bleibt
-           reserviert, damit die übrigen Knöpfe beim Umschalten nicht springen. -->
-      <div class="row" id="lyrics-toolbar" style="margin-bottom:10px" hidden>
-        <div class="preset-row" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr); margin-top:0" role="group" aria-label="Liedtext-Quelle" hidden>
+      <!-- Eine Leiste für alles: Vollbild, Quelle wählen, Schriftgröße,
+           Bearbeiten/Fertig. Bleibt sichtbar, solange ein Song offen ist
+           (siehe renderLyricsBlock). Knöpfe, die nicht immer gelten
+           (Vorlesemodus, Bearbeiten), verstecken sich über .slot-hidden
+           (visibility statt hidden) — ihr Platz bleibt reserviert, damit die
+           übrigen Knöpfe beim Umschalten nicht springen.
+           Cloud/Lokal sitzt bewusst mittig in derselben Optik (Fläche,
+           Eckenradius, Akzentfarbe) wie der aktive Lyrics-Reiter darüber —
+           wirkt dadurch wie dessen Fortsetzung nach unten, mit dem
+           Vollbild-Knopf links und Schriftgröße/Bearbeiten rechts davon. -->
+      <div class="lyrics-toolbar-extended" id="lyrics-toolbar" hidden>
+        <button class="icon-btn slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </button>
+        <div class="preset-row lyrics-source-switch--extended" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr)" role="group" aria-label="Liedtext-Quelle" hidden>
           <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Cloud</button>
           <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Lokal</button>
         </div>
-        <span style="display:flex; align-items:center; gap:6px; margin-left:auto">
-          <button class="icon-btn slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          </button>
+        <span style="display:flex; align-items:center; gap:6px">
           <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
           <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
           <button class="icon-btn slot-hidden" id="btn-lyrics-note-edit" type="button">
@@ -2426,6 +2502,12 @@ input[type="checkbox"] {
 
       <p class="section-title" data-i18n="settings.personal.accent">Akzentfarbe</p>
       <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
+
+      <p class="section-title" data-i18n="settings.personal.presentTitle">Textanzeige für andere</p>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.presentHint">
+        Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).
+      </p>
+      <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
     </div>
 
     <div class="card">
@@ -3314,6 +3396,7 @@ const DEFAULT_SETTINGS = {
   firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
+  presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3384,6 +3467,10 @@ const STRINGS = {
     'settings.personal.tabGroupAria': 'Standard-Reiter im Player',
     'settings.personal.language': 'Sprache',
     'settings.personal.accent': 'Akzentfarbe',
+    'settings.personal.presentTitle': 'Textanzeige für andere',
+    'settings.personal.presentHint': 'Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).',
+    'settings.personal.presentThemeDark': 'Weiß auf Schwarz',
+    'settings.personal.presentThemeLight': 'Schwarz auf Weiß',
 
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
@@ -3548,6 +3635,10 @@ const STRINGS = {
     'settings.personal.tabGroupAria': 'Default tab in the player',
     'settings.personal.language': 'Language',
     'settings.personal.accent': 'Accent color',
+    'settings.personal.presentTitle': 'Text display for others',
+    'settings.personal.presentHint': 'Color of the full-screen display for others to read along (fullscreen button in Lyrics).',
+    'settings.personal.presentThemeDark': 'White on black',
+    'settings.personal.presentThemeLight': 'Black on white',
 
     'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
@@ -3712,6 +3803,10 @@ const STRINGS = {
     'settings.personal.tabGroupAria': 'Domyślna zakładka w odtwarzaczu',
     'settings.personal.language': 'Język',
     'settings.personal.accent': 'Kolor akcentu',
+    'settings.personal.presentTitle': 'Wyświetlanie tekstu dla innych',
+    'settings.personal.presentHint': 'Kolor dużego, pełnoekranowego wyświetlacza do wspólnego czytania (przycisk pełnego ekranu przy tekście).',
+    'settings.personal.presentThemeDark': 'Biały na czarnym',
+    'settings.personal.presentThemeLight': 'Czarny na białym',
 
     'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
@@ -5402,6 +5497,7 @@ async function renderSettings() {
   renderDefaultTabPicker();
   renderLanguagePicker();
   renderAccentPicker();
+  renderPresentThemePicker();
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
@@ -5516,6 +5612,34 @@ function renderAccentPicker() {
         renderAccentPicker();
       },
     });
+    host.append(btn);
+  }
+}
+
+/** Farbe der Vollbild-Textanzeige (Vorlesemodus) — mit echtem Beispieltext je Auswahl. */
+const PRESENT_THEMES = [
+  { id: 'dark', bg: '#000', fg: '#fff', labelKey: 'settings.personal.presentThemeDark' },
+  { id: 'light', bg: '#fff', fg: '#000', labelKey: 'settings.personal.presentThemeLight' },
+];
+
+function renderPresentThemePicker() {
+  const host = $('#present-theme-picker');
+  host.textContent = '';
+  const current = settings.presentTheme || 'dark';
+
+  for (const theme of PRESENT_THEMES) {
+    const label = t(theme.labelKey);
+    const btn = el('button', {
+      class: 'present-theme-swatch', type: 'button',
+      'aria-pressed': theme.id === current ? 'true' : 'false',
+      'aria-label': label, 'data-i18n-aria': theme.labelKey,
+      onclick: async () => {
+        await saveSettings({ presentTheme: theme.id });
+        renderPresentThemePicker();
+      },
+    },
+      el('span', { class: 'present-theme-preview', style: `background:${theme.bg}; color:${theme.fg}`, text: 'Aa' }),
+      el('span', { class: 'present-theme-label', text: label, 'data-i18n': theme.labelKey }));
     host.append(btn);
   }
 }
@@ -9558,6 +9682,7 @@ async function openLyricsPresent() {
   if (!text.trim()) return;
   $('#lyrics-present-text').textContent = text;
   const el = $('#lyrics-present');
+  el.dataset.theme = settings.presentTheme === 'light' ? 'light' : 'dark';
   el.hidden = false;
   document.body.style.overflow = 'hidden';
   document.addEventListener('keydown', onLyricsPresentKeydown);
