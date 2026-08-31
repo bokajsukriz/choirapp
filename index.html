@@ -441,19 +441,6 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .voice-pills .voice-chip:not(:first-child) { margin-left: -15px; }
 
-/* Im Player öffnet ein Klick auf den Pillenstapel die Stimmenauswahl —
-   dieselbe Fläche, die die Stimmen schon zeigt, statt eines separaten
-   Knopfs daneben. Etwas Innenabstand vergrößert die Trefffläche über die
-   schmalen Pillen hinaus. */
-.voice-pills--clickable {
-  padding: 6px 4px;
-  margin: -6px -4px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.voice-pills--clickable:active { background: rgba(0,0,0,.05); }
-.voice-pills--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
 /* Anleitungs-Schritte im Import-Bereich */
 .steps { margin: 0; padding-left: 1.25em; }
 .steps li { margin-bottom: 9px; }
@@ -583,6 +570,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 #lyrics-source-switch .preset[aria-pressed="true"] {
   background: rgba(var(--accent-rgb), .16);
   color: var(--accent);
+}
+
+/* Experiment: in der erweiterten Lyrics-Leiste (siehe .lyrics-toolbar-extended)
+   bewusst zurück auf die volle Akzentfüllung — soll wie eine Fortsetzung der
+   Reiter-Hervorhebung darüber wirken, nicht wie eine eigene, dezentere Auswahl. */
+#lyrics-source-switch.lyrics-source-switch--extended .preset[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* Song- und Spurzeilen mit Häkchen */
@@ -766,7 +761,7 @@ input[type="checkbox"] {
   padding-left: calc(var(--pad) + var(--safe-left));
   padding-right: calc(var(--pad) + var(--safe-right));
 }
-#player > .player-head .voice-pills { justify-self: end; }
+#player > .player-head #btn-song-search { justify-self: end; }
 
 /* Titel und Marken (Liedtext/Notiz/Noten) als ein Block, wie in der
    Songliste — die Symbole hängen sich an den Titel statt an den rechten
@@ -804,6 +799,11 @@ input[type="checkbox"] {
 .icon-btn svg { width: 24px; height: 24px; }
 .icon-btn:active { background: var(--surface-2); }
 
+/* Langes Halten löst hier die einmalige Dienstauswahl aus (siehe
+   Pointer-Handler bei btn-song-search) — ohne manipulation würde ein
+   Doppel-Tipp auf Touch-Geräten stattdessen zoomen. */
+#btn-song-search { touch-action: manipulation; }
+
 /* Für Leisten-Knöpfe, die nicht immer gelten (z.B. Liedtext-Bearbeiten nur
    beim eigenen Text): unsichtbar statt weg, damit ihr Platz reserviert bleibt
    und die übrigen Knöpfe beim Umschalten nicht springen. */
@@ -817,6 +817,23 @@ input[type="checkbox"] {
      verfügbaren Platz hinaus und schob die Transportleiste aus dem
      sichtbaren Bereich. */
   min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
+}
+
+/* Nur im Übe-Player: eigener innerer Scroll-Container (.player-body-scroll),
+   damit der schwebende Vollbild-Knopf (#btn-lyrics-present) außerhalb des
+   Scrollbereichs sitzen und so wirklich fix unten rechts bleiben kann,
+   statt mit dem Liedtext mitzuscrollen. #player-body selbst scrollt dafür
+   nicht mehr direkt (überschreibt die .player-body-Regel oben). */
+#player-body {
+  position: relative;
+  overflow: visible;
+  padding: 0;
+}
+#player-body > .player-body-scroll {
+  height: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 14px calc(var(--pad) + var(--safe-right)) 14px calc(var(--pad) + var(--safe-left));
@@ -1067,7 +1084,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 17px;
   padding: 4px;
-  margin: 18px 0 16px;
+  margin: 8px 0;
 }
 
 .player-tab {
@@ -1107,6 +1124,24 @@ input[type="checkbox"] {
 .player-tabs--mini .player-tab { min-height: 44px; font-size: 0.68rem; gap: 1px; }
 .player-tabs--mini .player-tab svg { width: 16px; height: 16px; }
 
+/* Lyrics-Leiste unter den Reitern: Cloud/Lokal links am Rand, Schriftgröße
+   (A−/A+) direkt dahinter, Bearbeiten ganz rechts — dicht unter den
+   Reitern, damit Cloud/Lokal wie eine Fortsetzung der aktiven
+   Lyrics-Hervorhebung wirkt. Der Vollbild-Knopf steht nicht mehr hier,
+   sondern schwebt über dem Text selbst (siehe .lyrics-present-fab). */
+.lyrics-toolbar-extended {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.lyrics-toolbar-extended > .icon-btn { flex: 0 0 auto; margin-left: auto; }
+
+.lyrics-source-switch--extended {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
 /* Akzentfarbe wählen ("Persönliches") — runde Farbproben, die aktuell
    gewählte bekommt einen Doppelring statt einem Häkchen, damit die Farbe
    selbst gut zu sehen bleibt. */
@@ -1127,6 +1162,64 @@ input[type="checkbox"] {
 .accent-swatch[aria-pressed="true"] {
   box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text);
 }
+
+/* Farbe der Vollbild-Textanzeige ("Persönliches") — zwei Karten mit echtem
+   Beispielausschnitt statt bloß einem Farbpunkt, damit sofort klar ist, wie
+   die Anzeige später wirkt. */
+.present-theme-picker {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.present-theme-swatch {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid transparent;
+  border-radius: 17px;
+  background: var(--surface-2);
+  padding: 6px;
+}
+.present-theme-swatch[aria-pressed="true"] { border-color: var(--accent); }
+.present-theme-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  border-radius: 11px;
+  font-family: var(--font-display, inherit);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.present-theme-label { font-size: 0.78rem; font-weight: 650; color: var(--text); }
+
+/* Vollbild-Knopf (Vorlesemodus, siehe btn-lyrics-present): schwebt rechts
+   unten über dem Liedtext statt in der Werkzeugleiste zu stehen. Ist ein
+   direktes Kind von #player-body, außerhalb von .player-body-scroll (siehe
+   dort) — bleibt dadurch wirklich fix unten rechts stehen, egal wie lang
+   der Liedtext ist oder wie weit darin gescrollt wurde, statt mitzuscrollen.
+   Bewusst zurückhaltend gehalten (klein, leicht durchscheinend, dezente
+   Randfarbe, kein Akzent-Vollton) — soll sich unterordnen, nicht hervorstechen. */
+.lyrics-present-fab {
+  position: absolute;
+  right: calc(12px + var(--safe-right));
+  bottom: 12px;
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--pill-line);
+  background: rgba(var(--accent-rgb), .06);
+  color: var(--muted);
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
+}
+.lyrics-present-fab:active { background: rgba(var(--accent-rgb), .14); }
+.lyrics-present-fab svg { width: 18px; height: 18px; }
 
 .tab-panel[hidden] { display: none; }
 
@@ -1400,6 +1493,10 @@ input[type="checkbox"] {
 }
 .lyrics-present[hidden] { display: none; }
 
+/* Alternative Farbgebung — wählbar unter Einstellungen → Make it yours!
+   (siehe settings.presentTheme/renderPresentThemePicker). */
+.lyrics-present[data-theme="light"] { background: #fff; }
+
 .lyrics-present-inner {
   position: absolute;
   top: 50%;
@@ -1436,6 +1533,7 @@ input[type="checkbox"] {
   font-size: clamp(28px, 7vmin, 76px);
   line-height: 1.4;
 }
+.lyrics-present[data-theme="light"] .lyrics-present-text { color: #000; }
 
 .lyrics-present-close {
   position: absolute;
@@ -1453,6 +1551,11 @@ input[type="checkbox"] {
   z-index: 1;
 }
 .lyrics-present-close svg { width: 22px; height: 22px; }
+.lyrics-present[data-theme="light"] .lyrics-present-close {
+  border-color: rgba(0,0,0,.2);
+  background: rgba(0,0,0,.06);
+  color: #000;
+}
 
 .score-item {
   display: flex;
@@ -1999,10 +2102,22 @@ input[type="checkbox"] {
       <strong id="player-title">Kein Song ausgewählt</strong>
       <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
     </div>
-    <div class="voice-pills" id="player-pills"></div>
+    <!-- Song online suchen (siehe openSongSearch): kurzer Tipp nutzt den
+         Standarddienst aus den Einstellungen, langes Halten fragt einmalig
+         nach einem anderen Dienst (siehe Pointer-Handler weiter unten). -->
+    <button class="icon-btn" id="btn-song-search" type="button" aria-label="Song online suchen" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+        <path d="M19 5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+        <path d="M7 12v7a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-5"/>
+        <path d="M17 12v7a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-5"/>
+        <path d="M9 8h6"/>
+      </svg>
+    </button>
   </div>
 
   <div class="player-body" id="player-body">
+  <div class="player-body-scroll">
     <!-- Leerzustand: sichtbar, solange kein Song geladen ist — der Player
          ist jetzt ein dauerhafter Reiter und muss auch ohne Auswahl etwas
          Sinnvolles zeigen (siehe openPlayer()/closePlayer()). -->
@@ -2093,26 +2208,27 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
-      <!-- Eine Leiste für alles: Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
-           Bleibt sichtbar, solange ein Song offen ist (siehe renderLyricsBlock).
-           Knöpfe, die nicht immer gelten (Vorlesemodus, Bearbeiten), verstecken
-           sich über .slot-hidden (visibility statt hidden) — ihr Platz bleibt
-           reserviert, damit die übrigen Knöpfe beim Umschalten nicht springen. -->
-      <div class="row" id="lyrics-toolbar" style="margin-bottom:10px" hidden>
-        <div class="preset-row" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr); margin-top:0" role="group" aria-label="Liedtext-Quelle" hidden>
+      <!-- Eine Leiste für Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
+           Bleibt sichtbar, solange ein Song offen ist (siehe
+           renderLyricsBlock). Der Bearbeiten-Knopf, der nicht immer gilt,
+           versteckt sich über .slot-hidden (visibility statt hidden) — sein
+           Platz bleibt reserviert, damit die übrigen Knöpfe nicht springen.
+           Cloud/Lokal sitzt links am Rand in derselben Optik (Fläche,
+           Eckenradius, Akzentfarbe) wie der aktive Lyrics-Reiter darüber —
+           wirkt dadurch wie dessen Fortsetzung, mit A−/A+ direkt dahinter
+           und Bearbeiten ganz rechts. Der Vollbild-Knopf steht separat, fix
+           unten rechts über dem Text (siehe #btn-lyrics-present am Ende von
+           #player-body im Markup, außerhalb von .player-body-scroll). -->
+      <div class="lyrics-toolbar-extended" id="lyrics-toolbar" hidden>
+        <div class="preset-row lyrics-source-switch--extended" id="lyrics-source-switch" style="grid-template-columns:repeat(2,auto)" role="group" aria-label="Liedtext-Quelle" hidden>
           <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Cloud</button>
           <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Lokal</button>
         </div>
-        <span style="display:flex; align-items:center; gap:6px; margin-left:auto">
-          <button class="icon-btn slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          </button>
-          <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
-          <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
-          <button class="icon-btn slot-hidden" id="btn-lyrics-note-edit" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="lyrics-edit-icon"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          </button>
-        </span>
+        <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
+        <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
+        <button class="icon-btn slot-hidden" id="btn-lyrics-note-edit" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="lyrics-edit-icon"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
       </div>
 
       <!-- Offizieller Liedtext aus dem Import — schreibgeschützt, reiner Text
@@ -2162,6 +2278,16 @@ input[type="checkbox"] {
       <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
     </div>
     </div>
+  </div>
+
+  <!-- Vollbild/Vorlesemodus: bewusst außerhalb von .player-body-scroll, damit
+       der Knopf nicht mit dem Liedtext mitscrollt, sondern wirklich fix
+       unten rechts über dem Text schwebt (siehe .lyrics-present-fab und
+       #player-body in der CSS). Sichtbarkeit hängt vom aktiven Reiter
+       (setPlayerTab) UND vorhandenem Text ab (renderLyricsBlock). -->
+  <button class="lyrics-present-fab" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  </button>
   </div>
 
   <div class="player-foot" id="player-foot" hidden>
@@ -2426,6 +2552,18 @@ input[type="checkbox"] {
 
       <p class="section-title" data-i18n="settings.personal.accent">Akzentfarbe</p>
       <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
+
+      <p class="section-title" data-i18n="settings.personal.presentTitle">Textanzeige für andere</p>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.presentHint">
+        Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).
+      </p>
+      <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
+
+      <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
+        Dienst für das Fernglas-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
+      </p>
+      <div class="chip-grid" id="song-search-service-picker" role="group" aria-label="Suchdienst"></div>
     </div>
 
     <div class="card">
@@ -3314,6 +3452,8 @@ const DEFAULT_SETTINGS = {
   firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
+  presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
+  songSearchService: 'youtube', // Standarddienst fürs Fernglas-Symbol im Player (siehe SONG_SEARCH_SERVICES)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3384,6 +3524,12 @@ const STRINGS = {
     'settings.personal.tabGroupAria': 'Standard-Reiter im Player',
     'settings.personal.language': 'Sprache',
     'settings.personal.accent': 'Akzentfarbe',
+    'settings.personal.presentTitle': 'Textanzeige für andere',
+    'settings.personal.presentHint': 'Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).',
+    'settings.personal.presentThemeDark': 'Weiß auf Schwarz',
+    'settings.personal.presentThemeLight': 'Schwarz auf Weiß',
+    'settings.personal.searchTitle': 'Song-Suche',
+    'settings.personal.searchHint': 'Dienst für das Fernglas-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.',
 
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
@@ -3548,6 +3694,12 @@ const STRINGS = {
     'settings.personal.tabGroupAria': 'Default tab in the player',
     'settings.personal.language': 'Language',
     'settings.personal.accent': 'Accent color',
+    'settings.personal.presentTitle': 'Text display for others',
+    'settings.personal.presentHint': 'Color of the full-screen display for others to read along (fullscreen button in Lyrics).',
+    'settings.personal.presentThemeDark': 'White on black',
+    'settings.personal.presentThemeLight': 'Black on white',
+    'settings.personal.searchTitle': 'Song search',
+    'settings.personal.searchHint': 'Service used by the binoculars icon in the player. Long-press it to pick a different service just once.',
 
     'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
@@ -3712,6 +3864,12 @@ const STRINGS = {
     'settings.personal.tabGroupAria': 'Domyślna zakładka w odtwarzaczu',
     'settings.personal.language': 'Język',
     'settings.personal.accent': 'Kolor akcentu',
+    'settings.personal.presentTitle': 'Wyświetlanie tekstu dla innych',
+    'settings.personal.presentHint': 'Kolor dużego, pełnoekranowego wyświetlacza do wspólnego czytania (przycisk pełnego ekranu przy tekście).',
+    'settings.personal.presentThemeDark': 'Biały na czarnym',
+    'settings.personal.presentThemeLight': 'Czarny na białym',
+    'settings.personal.searchTitle': 'Wyszukiwanie utworu',
+    'settings.personal.searchHint': 'Usługa używana przez ikonę lornetki w odtwarzaczu. Długie przytrzymanie pozwala jednorazowo wybrać inną usługę.',
 
     'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
@@ -4738,13 +4896,7 @@ function iconUnavailable() {
  * aufgeführte Stimme (VOICE_ORDER, meist FULL) obenauf und lesbar bleibt —
  * die übrigen picken nur mit einem Farbrand dahinter hervor.
  */
-/**
- * @param {boolean} clickable Im Player: ein Klick auf den Pillenstapel öffnet
- * die Stimmenauswahl — dieselbe Fläche, die schon die Stimmen zeigt, statt
- * eines separaten Knopfs. In der Songliste bleibt der Stapel rein informativ,
- * dort übernimmt schon die ganze Zeile die Navigation.
- */
-function renderVoicePills(tracks, { clickable = false } = {}) {
+function renderVoicePills(tracks) {
   const host = el('div', { class: 'voice-pills' });
   const sorted = (tracks || []).slice()
     .sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
@@ -4762,30 +4914,7 @@ function renderVoicePills(tracks, { clickable = false } = {}) {
     });
     host.append(chip);
   });
-
-  if (clickable) {
-    host.classList.add('voice-pills--clickable');
-    host.tabIndex = 0;
-    host.setAttribute('role', 'button');
-    host.setAttribute('aria-label', 'Stimme wählen');
-    host.addEventListener('click', () => openVoicePicker());
-    host.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openVoicePicker(); }
-    });
-  }
   return host;
-}
-
-/** Öffnet die native Stimmenauswahl — genutzt vom versteckten <select> selbst
- *  und vom Klick auf die Pillen im Player-Kopf, damit beide Wege zum selben
- *  Dropdown führen. */
-function openVoicePicker() {
-  const sel = $('#voice-select');
-  if (typeof sel.showPicker === 'function') {
-    try { sel.showPicker(); return; } catch { /* z.B. ohne Nutzergeste */ }
-  }
-  sel.focus();
-  sel.click();
 }
 
 // Feste Reihenfolge der Markierungen in der Songliste — jede Zeile bekommt
@@ -5402,6 +5531,8 @@ async function renderSettings() {
   renderDefaultTabPicker();
   renderLanguagePicker();
   renderAccentPicker();
+  renderPresentThemePicker();
+  renderSongSearchServicePicker();
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
@@ -5514,6 +5645,82 @@ function renderAccentPicker() {
       onclick: async () => {
         await saveSettings({ accentColor: preset.hex });
         renderAccentPicker();
+      },
+    });
+    host.append(btn);
+  }
+}
+
+/** Farbe der Vollbild-Textanzeige (Vorlesemodus) — mit echtem Beispieltext je Auswahl. */
+const PRESENT_THEMES = [
+  { id: 'dark', bg: '#000', fg: '#fff', labelKey: 'settings.personal.presentThemeDark' },
+  { id: 'light', bg: '#fff', fg: '#000', labelKey: 'settings.personal.presentThemeLight' },
+];
+
+function renderPresentThemePicker() {
+  const host = $('#present-theme-picker');
+  host.textContent = '';
+  const current = settings.presentTheme || 'dark';
+
+  for (const theme of PRESENT_THEMES) {
+    const label = t(theme.labelKey);
+    const btn = el('button', {
+      class: 'present-theme-swatch', type: 'button',
+      'aria-pressed': theme.id === current ? 'true' : 'false',
+      'aria-label': label, 'data-i18n-aria': theme.labelKey,
+      onclick: async () => {
+        await saveSettings({ presentTheme: theme.id });
+        renderPresentThemePicker();
+      },
+    },
+      el('span', { class: 'present-theme-preview', style: `background:${theme.bg}; color:${theme.fg}`, text: 'Aa' }),
+      el('span', { class: 'present-theme-label', text: label, 'data-i18n': theme.labelKey }));
+    host.append(btn);
+  }
+}
+
+/** Dienste fürs Fernglas-Symbol im Player (siehe openSongSearch). Tidal,
+ *  Spotify und Deezer durchsuchen nur Musikkataloge und bekommen daher den
+ *  reinen Titel. YouTube und Google durchsuchen das ganze Web — ohne
+ *  Zusatzwort landen viele Treffer bei Wikipedia, Liedtext-Seiten o.ä. statt
+ *  bei Aufnahmen, daher hängt songSearchUrl dort "Musik" an die Suche an. */
+const SONG_SEARCH_SERVICES = [
+  { id: 'tidal', label: 'Tidal', url: (q) => `https://listen.tidal.com/search/${encodeURIComponent(q)}` },
+  { id: 'spotify', label: 'Spotify', url: (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}` },
+  { id: 'deezer', label: 'Deezer', url: (q) => `https://www.deezer.com/search/${encodeURIComponent(q)}` },
+  { id: 'youtube', label: 'YouTube', url: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} Musik`)}` },
+  { id: 'google', label: 'Google', url: (q) => `https://www.google.com/search?q=${encodeURIComponent(`${q} Musik`)}` },
+];
+
+function songSearchServiceById(id) {
+  return SONG_SEARCH_SERVICES.find((s) => s.id === id) || SONG_SEARCH_SERVICES[0];
+}
+
+/** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp aufs Fernglas
+ *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
+ *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
+ *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
+function openSongSearch(serviceId) {
+  if (!playerSong) return;
+  const query = playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title;
+  if (!query || !query.trim()) return;
+  const service = songSearchServiceById(serviceId);
+  window.open(service.url(query), '_blank', 'noopener');
+}
+
+function renderSongSearchServicePicker() {
+  const host = $('#song-search-service-picker');
+  host.textContent = '';
+  const current = settings.songSearchService || 'youtube';
+
+  for (const service of SONG_SEARCH_SERVICES) {
+    const btn = el('button', {
+      class: 'chip', type: 'button',
+      'aria-pressed': service.id === current ? 'true' : 'false',
+      text: service.label,
+      onclick: async () => {
+        await saveSettings({ songSearchService: service.id });
+        renderSongSearchServicePicker();
       },
     });
     host.append(btn);
@@ -7641,9 +7848,7 @@ async function openPlayer(songId) {
   setPlayerFootUnavailable(false);
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
-  const pills = renderVoicePills(song.tracks, { clickable: true });
-  pills.id = 'player-pills';
-  $('#player-pills').replaceWith(pills);
+  $('#btn-song-search').hidden = false;
   $('#player-hint').hidden = true;
   renderQueue();
   playerVoice = null;
@@ -7974,7 +8179,7 @@ function closePlayer() {
   audioPreview = null;
   playerSong = null;
   $('#player-title').textContent = 'Kein Song ausgewählt';
-  $('#player-pills').textContent = '';
+  $('#btn-song-search').hidden = true;
   $('#player-empty').hidden = false;
   $('#player-loaded').hidden = true;
   $('#player-foot').hidden = true;
@@ -8080,6 +8285,44 @@ $('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.po
 $('#voice-select').addEventListener('change', (e) => {
   const track = trackByVoiceKey(e.target.value);
   if (track) selectTrack(track, true);
+});
+
+/** Fernglas oben rechts im Player: kurzer Tipp sucht beim Standarddienst
+ *  (Einstellungen → Make it yours!), langes Halten (500ms) fragt einmalig
+ *  nach einem anderen Dienst, ohne den Standard zu ändern. Pointer- statt
+ *  Klick-Events, damit sich Maus und Touch gleich verhalten; der Klick nach
+ *  einem ausgelösten langen Halten wird unterdrückt, sonst öffnete sich
+ *  hinterher zusätzlich noch der Standarddienst. */
+let songSearchLongPressTimer = null;
+let songSearchLongPressFired = false;
+
+function cancelSongSearchLongPress() {
+  clearTimeout(songSearchLongPressTimer);
+  songSearchLongPressTimer = null;
+}
+
+$('#btn-song-search').addEventListener('pointerdown', (e) => {
+  if (e.button != null && e.button !== 0) return;
+  songSearchLongPressFired = false;
+  cancelSongSearchLongPress();
+  songSearchLongPressTimer = setTimeout(async () => {
+    songSearchLongPressTimer = null;
+    songSearchLongPressFired = true;
+    const picked = await choiceDialog({
+      title: 'Song suchen bei …',
+      text: 'Einmalige Auswahl — dein Standarddienst bleibt unverändert.',
+      options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
+    });
+    if (picked) openSongSearch(picked);
+  }, 500);
+});
+$('#btn-song-search').addEventListener('pointerup', cancelSongSearchLongPress);
+$('#btn-song-search').addEventListener('pointerleave', cancelSongSearchLongPress);
+$('#btn-song-search').addEventListener('pointercancel', cancelSongSearchLongPress);
+$('#btn-song-search').addEventListener('contextmenu', (e) => e.preventDefault());
+$('#btn-song-search').addEventListener('click', () => {
+  if (songSearchLongPressFired) { songSearchLongPressFired = false; return; }
+  openSongSearch(settings.songSearchService);
 });
 
 $('#rate-select').addEventListener('change', (e) => {
@@ -9537,8 +9780,18 @@ function renderLyricsBlock() {
 
   applyLyricsFontSize();
   setTabHasContent('lyrics', hasOfficial || hasPrivate);
-  // Ebenfalls als Leerplatz stehen lassen (siehe oben) statt auszublenden.
-  $('#btn-lyrics-present').classList.toggle('slot-hidden', !lyricsPresentSourceText().trim());
+  updateLyricsPresentFab();
+}
+
+/** Sichtbarkeit des frei schwebenden Vollbild-Knopfs (#btn-lyrics-present,
+ *  siehe .lyrics-present-fab): nur auf dem Lyrics-Reiter UND nur, wenn es
+ *  überhaupt Text zum Anzeigen gibt. Läuft sowohl bei jedem Reiterwechsel
+ *  (setPlayerTab) als auch bei jeder Textänderung (renderLyricsBlock), weil
+ *  der Knopf jetzt außerhalb von #tab-panel-lyrics sitzt und sich daher
+ *  nicht mehr automatisch mit dem Reiter versteckt. */
+function updateLyricsPresentFab() {
+  const isLyricsTab = $('#tab-btn-lyrics').getAttribute('aria-selected') === 'true';
+  $('#btn-lyrics-present').hidden = !isLyricsTab || !lyricsPresentSourceText().trim();
 }
 
 /**
@@ -9558,6 +9811,7 @@ async function openLyricsPresent() {
   if (!text.trim()) return;
   $('#lyrics-present-text').textContent = text;
   const el = $('#lyrics-present');
+  el.dataset.theme = settings.presentTheme === 'light' ? 'light' : 'dark';
   el.hidden = false;
   document.body.style.overflow = 'hidden';
   document.addEventListener('keydown', onLyricsPresentKeydown);
@@ -9715,6 +9969,10 @@ function setPlayerTab(tab) {
   }
   // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
   if (tab === 'sheets') loadScorePreviews();
+  // Der Vollbild-Knopf sitzt außerhalb der Reiter-Panels (siehe
+  // .lyrics-present-fab) und muss sich daher hier selbst um sein
+  // Verstecken/Zeigen kümmern.
+  updateLyricsPresentFab();
 }
 
 /** Färbt Icon und Beschriftung eines Reiters rosa, wenn dort etwas hinterlegt ist. */
