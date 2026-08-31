@@ -441,19 +441,6 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .voice-pills .voice-chip:not(:first-child) { margin-left: -15px; }
 
-/* Im Player öffnet ein Klick auf den Pillenstapel die Stimmenauswahl —
-   dieselbe Fläche, die die Stimmen schon zeigt, statt eines separaten
-   Knopfs daneben. Etwas Innenabstand vergrößert die Trefffläche über die
-   schmalen Pillen hinaus. */
-.voice-pills--clickable {
-  padding: 6px 4px;
-  margin: -6px -4px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.voice-pills--clickable:active { background: rgba(0,0,0,.05); }
-.voice-pills--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
 /* Anleitungs-Schritte im Import-Bereich */
 .steps { margin: 0; padding-left: 1.25em; }
 .steps li { margin-bottom: 9px; }
@@ -774,7 +761,7 @@ input[type="checkbox"] {
   padding-left: calc(var(--pad) + var(--safe-left));
   padding-right: calc(var(--pad) + var(--safe-right));
 }
-#player > .player-head .voice-pills { justify-self: end; }
+#player > .player-head #btn-song-search { justify-self: end; }
 
 /* Titel und Marken (Liedtext/Notiz/Noten) als ein Block, wie in der
    Songliste — die Symbole hängen sich an den Titel statt an den rechten
@@ -811,6 +798,11 @@ input[type="checkbox"] {
 
 .icon-btn svg { width: 24px; height: 24px; }
 .icon-btn:active { background: var(--surface-2); }
+
+/* Langes Halten löst hier die einmalige Dienstauswahl aus (siehe
+   Pointer-Handler bei btn-song-search) — ohne manipulation würde ein
+   Doppel-Tipp auf Touch-Geräten stattdessen zoomen. */
+#btn-song-search { touch-action: manipulation; }
 
 /* Für Leisten-Knöpfe, die nicht immer gelten (z.B. Liedtext-Bearbeiten nur
    beim eigenen Text): unsichtbar statt weg, damit ihr Platz reserviert bleibt
@@ -2110,7 +2102,18 @@ input[type="checkbox"] {
       <strong id="player-title">Kein Song ausgewählt</strong>
       <div class="spinner" id="player-loading" hidden role="status" aria-label="Stimmen werden geladen"></div>
     </div>
-    <div class="voice-pills" id="player-pills"></div>
+    <!-- Song online suchen (siehe openSongSearch): kurzer Tipp nutzt den
+         Standarddienst aus den Einstellungen, langes Halten fragt einmalig
+         nach einem anderen Dienst (siehe Pointer-Handler weiter unten). -->
+    <button class="icon-btn" id="btn-song-search" type="button" aria-label="Song online suchen" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+        <path d="M19 5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+        <path d="M7 12v7a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-5"/>
+        <path d="M17 12v7a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-5"/>
+        <path d="M9 8h6"/>
+      </svg>
+    </button>
   </div>
 
   <div class="player-body" id="player-body">
@@ -2555,6 +2558,12 @@ input[type="checkbox"] {
         Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).
       </p>
       <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
+
+      <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
+        Dienst für das Fernglas-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
+      </p>
+      <div class="chip-grid" id="song-search-service-picker" role="group" aria-label="Suchdienst"></div>
     </div>
 
     <div class="card">
@@ -3444,6 +3453,7 @@ const DEFAULT_SETTINGS = {
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
+  songSearchService: 'youtube', // Standarddienst fürs Fernglas-Symbol im Player (siehe SONG_SEARCH_SERVICES)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3518,6 +3528,8 @@ const STRINGS = {
     'settings.personal.presentHint': 'Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).',
     'settings.personal.presentThemeDark': 'Weiß auf Schwarz',
     'settings.personal.presentThemeLight': 'Schwarz auf Weiß',
+    'settings.personal.searchTitle': 'Song-Suche',
+    'settings.personal.searchHint': 'Dienst für das Fernglas-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.',
 
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
@@ -3686,6 +3698,8 @@ const STRINGS = {
     'settings.personal.presentHint': 'Color of the full-screen display for others to read along (fullscreen button in Lyrics).',
     'settings.personal.presentThemeDark': 'White on black',
     'settings.personal.presentThemeLight': 'Black on white',
+    'settings.personal.searchTitle': 'Song search',
+    'settings.personal.searchHint': 'Service used by the binoculars icon in the player. Long-press it to pick a different service just once.',
 
     'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
@@ -3854,6 +3868,8 @@ const STRINGS = {
     'settings.personal.presentHint': 'Kolor dużego, pełnoekranowego wyświetlacza do wspólnego czytania (przycisk pełnego ekranu przy tekście).',
     'settings.personal.presentThemeDark': 'Biały na czarnym',
     'settings.personal.presentThemeLight': 'Czarny na białym',
+    'settings.personal.searchTitle': 'Wyszukiwanie utworu',
+    'settings.personal.searchHint': 'Usługa używana przez ikonę lornetki w odtwarzaczu. Długie przytrzymanie pozwala jednorazowo wybrać inną usługę.',
 
     'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
@@ -4880,13 +4896,7 @@ function iconUnavailable() {
  * aufgeführte Stimme (VOICE_ORDER, meist FULL) obenauf und lesbar bleibt —
  * die übrigen picken nur mit einem Farbrand dahinter hervor.
  */
-/**
- * @param {boolean} clickable Im Player: ein Klick auf den Pillenstapel öffnet
- * die Stimmenauswahl — dieselbe Fläche, die schon die Stimmen zeigt, statt
- * eines separaten Knopfs. In der Songliste bleibt der Stapel rein informativ,
- * dort übernimmt schon die ganze Zeile die Navigation.
- */
-function renderVoicePills(tracks, { clickable = false } = {}) {
+function renderVoicePills(tracks) {
   const host = el('div', { class: 'voice-pills' });
   const sorted = (tracks || []).slice()
     .sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
@@ -4904,30 +4914,7 @@ function renderVoicePills(tracks, { clickable = false } = {}) {
     });
     host.append(chip);
   });
-
-  if (clickable) {
-    host.classList.add('voice-pills--clickable');
-    host.tabIndex = 0;
-    host.setAttribute('role', 'button');
-    host.setAttribute('aria-label', 'Stimme wählen');
-    host.addEventListener('click', () => openVoicePicker());
-    host.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openVoicePicker(); }
-    });
-  }
   return host;
-}
-
-/** Öffnet die native Stimmenauswahl — genutzt vom versteckten <select> selbst
- *  und vom Klick auf die Pillen im Player-Kopf, damit beide Wege zum selben
- *  Dropdown führen. */
-function openVoicePicker() {
-  const sel = $('#voice-select');
-  if (typeof sel.showPicker === 'function') {
-    try { sel.showPicker(); return; } catch { /* z.B. ohne Nutzergeste */ }
-  }
-  sel.focus();
-  sel.click();
 }
 
 // Feste Reihenfolge der Markierungen in der Songliste — jede Zeile bekommt
@@ -5545,6 +5532,7 @@ async function renderSettings() {
   renderLanguagePicker();
   renderAccentPicker();
   renderPresentThemePicker();
+  renderSongSearchServicePicker();
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
@@ -5687,6 +5675,54 @@ function renderPresentThemePicker() {
     },
       el('span', { class: 'present-theme-preview', style: `background:${theme.bg}; color:${theme.fg}`, text: 'Aa' }),
       el('span', { class: 'present-theme-label', text: label, 'data-i18n': theme.labelKey }));
+    host.append(btn);
+  }
+}
+
+/** Dienste fürs Fernglas-Symbol im Player (siehe openSongSearch). Tidal,
+ *  Spotify und Deezer durchsuchen nur Musikkataloge und bekommen daher den
+ *  reinen Titel. YouTube und Google durchsuchen das ganze Web — ohne
+ *  Zusatzwort landen viele Treffer bei Wikipedia, Liedtext-Seiten o.ä. statt
+ *  bei Aufnahmen, daher hängt songSearchUrl dort "Musik" an die Suche an. */
+const SONG_SEARCH_SERVICES = [
+  { id: 'tidal', label: 'Tidal', url: (q) => `https://listen.tidal.com/search/${encodeURIComponent(q)}` },
+  { id: 'spotify', label: 'Spotify', url: (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}` },
+  { id: 'deezer', label: 'Deezer', url: (q) => `https://www.deezer.com/search/${encodeURIComponent(q)}` },
+  { id: 'youtube', label: 'YouTube', url: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} Musik`)}` },
+  { id: 'google', label: 'Google', url: (q) => `https://www.google.com/search?q=${encodeURIComponent(`${q} Musik`)}` },
+];
+
+function songSearchServiceById(id) {
+  return SONG_SEARCH_SERVICES.find((s) => s.id === id) || SONG_SEARCH_SERVICES[0];
+}
+
+/** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp aufs Fernglas
+ *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
+ *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
+ *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
+function openSongSearch(serviceId) {
+  if (!playerSong) return;
+  const query = playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title;
+  if (!query || !query.trim()) return;
+  const service = songSearchServiceById(serviceId);
+  window.open(service.url(query), '_blank', 'noopener');
+}
+
+function renderSongSearchServicePicker() {
+  const host = $('#song-search-service-picker');
+  host.textContent = '';
+  const current = settings.songSearchService || 'youtube';
+
+  for (const service of SONG_SEARCH_SERVICES) {
+    const btn = el('button', {
+      class: 'chip', type: 'button',
+      'aria-pressed': service.id === current ? 'true' : 'false',
+      text: service.label,
+      onclick: async () => {
+        await saveSettings({ songSearchService: service.id });
+        renderSongSearchServicePicker();
+      },
+    });
     host.append(btn);
   }
 }
@@ -7812,9 +7848,7 @@ async function openPlayer(songId) {
   setPlayerFootUnavailable(false);
   updateWakeLock();
   $('#player-title').textContent = songLabel(song);
-  const pills = renderVoicePills(song.tracks, { clickable: true });
-  pills.id = 'player-pills';
-  $('#player-pills').replaceWith(pills);
+  $('#btn-song-search').hidden = false;
   $('#player-hint').hidden = true;
   renderQueue();
   playerVoice = null;
@@ -8145,7 +8179,7 @@ function closePlayer() {
   audioPreview = null;
   playerSong = null;
   $('#player-title').textContent = 'Kein Song ausgewählt';
-  $('#player-pills').textContent = '';
+  $('#btn-song-search').hidden = true;
   $('#player-empty').hidden = false;
   $('#player-loaded').hidden = true;
   $('#player-foot').hidden = true;
@@ -8251,6 +8285,44 @@ $('#btn-back10').addEventListener('click', () => updateSeekUI(audioSeek(Audio.po
 $('#voice-select').addEventListener('change', (e) => {
   const track = trackByVoiceKey(e.target.value);
   if (track) selectTrack(track, true);
+});
+
+/** Fernglas oben rechts im Player: kurzer Tipp sucht beim Standarddienst
+ *  (Einstellungen → Make it yours!), langes Halten (500ms) fragt einmalig
+ *  nach einem anderen Dienst, ohne den Standard zu ändern. Pointer- statt
+ *  Klick-Events, damit sich Maus und Touch gleich verhalten; der Klick nach
+ *  einem ausgelösten langen Halten wird unterdrückt, sonst öffnete sich
+ *  hinterher zusätzlich noch der Standarddienst. */
+let songSearchLongPressTimer = null;
+let songSearchLongPressFired = false;
+
+function cancelSongSearchLongPress() {
+  clearTimeout(songSearchLongPressTimer);
+  songSearchLongPressTimer = null;
+}
+
+$('#btn-song-search').addEventListener('pointerdown', (e) => {
+  if (e.button != null && e.button !== 0) return;
+  songSearchLongPressFired = false;
+  cancelSongSearchLongPress();
+  songSearchLongPressTimer = setTimeout(async () => {
+    songSearchLongPressTimer = null;
+    songSearchLongPressFired = true;
+    const picked = await choiceDialog({
+      title: 'Song suchen bei …',
+      text: 'Einmalige Auswahl — dein Standarddienst bleibt unverändert.',
+      options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
+    });
+    if (picked) openSongSearch(picked);
+  }, 500);
+});
+$('#btn-song-search').addEventListener('pointerup', cancelSongSearchLongPress);
+$('#btn-song-search').addEventListener('pointerleave', cancelSongSearchLongPress);
+$('#btn-song-search').addEventListener('pointercancel', cancelSongSearchLongPress);
+$('#btn-song-search').addEventListener('contextmenu', (e) => e.preventDefault());
+$('#btn-song-search').addEventListener('click', () => {
+  if (songSearchLongPressFired) { songSearchLongPressFired = false; return; }
+  openSongSearch(settings.songSearchService);
 });
 
 $('#rate-select').addEventListener('change', (e) => {
