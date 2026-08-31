@@ -5678,39 +5678,69 @@ function renderPresentThemePicker() {
 
 /** Dienste fürs Lupen-Symbol im Player (siehe openSongSearch).
  *
- *  web(q) – Adresse für den Browser. Sie funktioniert immer und dient
- *      zugleich als Rückfallebene, falls die App nicht installiert ist.
- *  app(q) – dieselbe Suche im App-eigenen Schema (z. B. „tidal://…"). Nur
- *      dort nötig, wo die Webadresse die App NICHT von selbst öffnet:
- *      Spotify, Deezer, YouTube und Google haben für ihre Domains Universal
- *      Links bzw. App Links hinterlegt, ihre Webadresse landet auf dem Handy
- *      also ohnehin in der jeweiligen App. Tidals Suchseite liegt dagegen auf
- *      listen.tidal.com, dem reinen Web-Player — diese Adresse beansprucht
- *      die Tidal-App nicht für sich, also bleibt es bei der Webseite (in
- *      einer installierten PWA sogar nur in deren eingebautem Browser).
- *      Deshalb bekommt Tidal hier ein eigenes App-Schema.
- *  androidPackage – erlaubt Chrome unter Android, gezielt diese App zu
- *      starten und sonst sauber auf web() zurückzufallen (androidIntentUrl).
+ *  Warum je System eine eigene Adresse? Aus einer installierten PWA heraus
+ *  prüft weder iOS noch Android bei einem gewöhnlichen https-Link, ob eine
+ *  App die Domain für sich beansprucht — der Link landet einfach im
+ *  eingebauten Browser der PWA. Universal Links bzw. App Links greifen also
+ *  nicht von selbst; wir müssen die App gezielt ansprechen:
+ *
+ *  web(q)         – Adresse für den Browser, zugleich Rückfallebene, falls
+ *                   die App fehlt.
+ *  iosApp(q)      – dieselbe Suche im App-eigenen Schema („tidal://…").
+ *                   Unter iOS der einzige Weg in die App.
+ *  androidPackage – Chrome unter Android startet damit gezielt diese App und
+ *                   fällt sonst sauber auf web() zurück (androidIntentUrl).
+ *                   Beansprucht die App ihre eigene Domain, genügt das schon
+ *                   zusammen mit web().
+ *  androidApp(q)  – nur nötig, wenn die Web-Adresse NICHT zur App gehört
+ *                   (siehe Tidal); sonst wird web() an den Intent gereicht.
  *
  *  Tidal, Spotify und Deezer durchsuchen nur Musikkataloge und bekommen daher
  *  den reinen Titel. YouTube und Google durchsuchen das ganze Web — ohne
  *  Zusatzwort landen viele Treffer bei Wikipedia, Liedtext-Seiten o.ä. statt
  *  bei Aufnahmen, daher hängt die Suche dort "Musik" an die Anfrage an. */
+const tidalSearchUrl = (q) => `tidal://search?q=${encodeURIComponent(q)}`;
+
 const SONG_SEARCH_SERVICES = [
   {
     id: 'tidal', label: 'Tidal',
     web: (q) => `https://listen.tidal.com/search/${encodeURIComponent(q)}`,
-    // Tidal registriert das Schema "tidal://" und routet darin wie im
-    // Web-Player. Sollte eine künftige App-Version einen anderen Suchpfad
-    // erwarten, ist hier die einzige Stelle zum Nachziehen — schlimmstenfalls
-    // greift der Web-Fallback wie bisher.
-    app: (q) => `tidal://search?q=${encodeURIComponent(q)}`,
+    // Tidals Suchseite liegt auf listen.tidal.com, dem reinen Web-Player, den
+    // die App nicht für sich beansprucht — auf beiden Systemen führt deshalb
+    // nur das eigene Schema hinein.
+    iosApp: tidalSearchUrl,
+    androidApp: tidalSearchUrl,
     androidPackage: 'com.aspiro.tidal',
   },
-  { id: 'spotify', label: 'Spotify', web: (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}` },
-  { id: 'deezer', label: 'Deezer', web: (q) => `https://www.deezer.com/search/${encodeURIComponent(q)}` },
-  { id: 'youtube', label: 'YouTube', web: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} Musik`)}` },
-  { id: 'google', label: 'Google', web: (q) => `https://www.google.com/search?q=${encodeURIComponent(`${q} Musik`)}` },
+  {
+    id: 'spotify', label: 'Spotify',
+    web: (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}`,
+    // Kein iosApp: Spotify hat die Suche im eigenen Schema abgeschaltet,
+    // neuere App-Versionen antworten darauf nur noch mit „Link konnte nicht
+    // geöffnet werden". Unter Android trägt der App Link auf open.spotify.com,
+    // sobald wir das Paket dazusagen.
+    androidPackage: 'com.spotify.music',
+  },
+  {
+    id: 'deezer', label: 'Deezer',
+    web: (q) => `https://www.deezer.com/search/${encodeURIComponent(q)}`,
+    iosApp: (q) => `deezer://www.deezer.com/search/${encodeURIComponent(q)}`,
+    androidPackage: 'deezer.android.app',
+  },
+  {
+    id: 'youtube', label: 'YouTube',
+    web: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${q} Musik`)}`,
+    // Unter iOS heißt das Schema "youtube://"; unter Android beansprucht die
+    // App youtube.com selbst, dort genügt der Web-Link plus Paketname.
+    iosApp: (q) => `youtube://results?search_query=${encodeURIComponent(`${q} Musik`)}`,
+    androidPackage: 'com.google.android.youtube',
+  },
+  {
+    // Google bleibt reiner Browser-Link: eine Such-App, die sich verlässlich
+    // ansprechen ließe, gibt es nicht.
+    id: 'google', label: 'Google',
+    web: (q) => `https://www.google.com/search?q=${encodeURIComponent(`${q} Musik`)}`,
+  },
 ];
 
 function songSearchServiceById(id) {
@@ -5738,21 +5768,23 @@ function androidIntentUrl(appUrl, packageName, fallbackUrl) {
   return `intent://${rest}#Intent;${parts.join(';')};end`;
 }
 
-/** Öffnet einen Link „richtig" extern. Als installierte App (Standalone-
- *  Modus, siehe manifest.json "display": "standalone") gibt es keine Tabs —
- *  ein neuer Tab per window.open()/target="_blank" bleibt dort oft einfach
- *  unsichtbar innerhalb der App hängen, statt sie zu verlassen. Nur eine
- *  echte Top-Level-Navigation (location.href) lässt iOS/Android die Seite
- *  aus der App herausreichen: an Safari/Chrome oder — sofern registriert —
- *  direkt an die passende installierte App (Universal Links/App Links, z. B.
- *  Spotify, YouTube). Läuft die App dagegen ganz normal im Browser-Tab
- *  (kein Standalone-Modus), öffnet ein echter Anker-Klick mit target="_blank"
- *  wie gewünscht ein neues Fenster/Tab, statt den aktuellen Tab mit der
- *  Chor-App selbst zu ersetzen. */
-function openExternalLink(url) {
-  const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches
+/** Läuft die App installiert vom Home-Bildschirm (Standalone-Modus, siehe
+ *  manifest.json "display": "standalone")? Dort gibt es keine Tabs, und
+ *  externe Links landen von sich aus im eingebauten Browser der App. */
+function isStandaloneApp() {
+  return window.matchMedia?.('(display-mode: standalone)').matches
     || window.navigator.standalone === true; // iOS: Flag für "Zum Home-Bildschirm"
-  if (isStandalone) {
+}
+
+/** Öffnet einen Link „richtig" extern. Als installierte App gibt es keine
+ *  Tabs — ein neuer Tab per window.open()/target="_blank" bleibt dort oft
+ *  einfach unsichtbar innerhalb der App hängen, statt sie zu verlassen. Nur
+ *  eine echte Top-Level-Navigation (location.href) reicht die Adresse ans
+ *  System weiter. Läuft die App dagegen ganz normal im Browser-Tab, öffnet
+ *  ein echter Anker-Klick mit target="_blank" wie gewünscht ein neues
+ *  Fenster/Tab, statt den aktuellen Tab mit der Chor-App selbst zu ersetzen. */
+function openExternalLink(url) {
+  if (isStandaloneApp()) {
     window.location.href = url;
     return;
   }
@@ -5770,26 +5802,14 @@ function openExternalLink(url) {
  *  langsam startendes Handy. */
 const APP_LINK_FALLBACK_MS = 1500;
 
-/** Öffnet einen Link möglichst in der zugehörigen App und sonst im Browser.
+/** Navigiert versuchsweise auf eine Nicht-https-Adresse (App-Schema oder
+ *  x-safari-https) und fällt auf die Webseite zurück, wenn nichts passiert.
  *
- *  Android: Chrome erledigt beides in einem Rutsch (siehe androidIntentUrl).
- *  iOS: Ob ein App-Schema registriert ist, lässt sich nicht abfragen — wir
- *  navigieren einfach dorthin. Klappt es, wechselt das System in die App und
- *  unsere Seite wird unsichtbar (visibilitychange/pagehide); dann sagen wir
- *  den Rückfall ab. Tut sich nichts, ist die App offenbar nicht installiert
- *  und wir öffnen wie bisher die Webseite.
- *  Am Rechner (weder iOS noch Android) bleibt es gleich beim Browser-Link;
- *  ein App-Schema brächte dort nur einen zusätzlichen Bestätigungsdialog. */
-function openAppOrWeb({ app, web, androidPackage }) {
-  if (!app || (!IS_IOS && !IS_ANDROID)) {
-    openExternalLink(web);
-    return;
-  }
-  if (IS_ANDROID) {
-    openExternalLink(androidIntentUrl(app, androidPackage, web) || app);
-    return;
-  }
-
+ *  Ob so ein Schema überhaupt jemand entgegennimmt, lässt sich vorher nicht
+ *  abfragen — wir navigieren einfach dorthin. Klappt es, übernimmt die andere
+ *  App und unsere Seite wird unsichtbar (visibilitychange/pagehide); dann
+ *  sagen wir den Rückfall ab. Tut sich nichts, öffnen wir die Webseite. */
+function navigateWithWebFallback(schemeUrl, webUrl) {
   let settled = false;
   let timer = null;
   const stop = () => {
@@ -5800,16 +5820,47 @@ function openAppOrWeb({ app, web, androidPackage }) {
     window.removeEventListener('pagehide', stop);
   };
   const onVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') stop(); // App hat übernommen
+    if (document.visibilityState === 'hidden') stop(); // jemand hat übernommen
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('pagehide', stop);
   timer = setTimeout(() => {
     if (settled) return;
     stop();
-    if (document.visibilityState === 'visible') openExternalLink(web);
+    if (document.visibilityState === 'visible') openExternalLink(webUrl);
   }, APP_LINK_FALLBACK_MS);
-  window.location.href = app;
+  window.location.href = schemeUrl;
+}
+
+/** Öffnet einen Link möglichst in der zugehörigen App und sonst im Browser.
+ *
+ *  Android: Chrome erledigt beides in einem Rutsch (siehe androidIntentUrl) —
+ *  App starten, wenn vorhanden, sonst web() laden.
+ *  iOS: über das App-Schema, sofern der Dienst eines hat.
+ *  Hat er keins (Spotify, Google) und laufen wir installiert vom Home-
+ *  Bildschirm, bliebe der https-Link im eingebauten Browser der App stecken.
+ *  Dagegen hilft nur "x-safari-https://…": das zwingt iOS, echtes Safari zu
+ *  öffnen — und Safari wiederum reicht Universal Links weiter, ein
+ *  open.spotify.com-Link landet von dort also doch noch in der Spotify-App.
+ *  Apple dokumentiert das Schema nicht und ältere iOS-Versionen kennen es
+ *  nicht; deshalb hängt auch daran der Rückfall auf die Webseite.
+ *  Im normalen Browser-Tab und am Rechner geht es direkt zur Webseite — dort
+ *  gibt es nichts zu umgehen. */
+function openAppOrWeb({ web, iosApp, androidApp, androidPackage }) {
+  if (IS_ANDROID && (androidApp || androidPackage)) {
+    const target = androidApp || web;
+    openExternalLink(androidIntentUrl(target, androidPackage, web) || target);
+    return;
+  }
+  if (IS_IOS && iosApp) {
+    navigateWithWebFallback(iosApp, web);
+    return;
+  }
+  if (IS_IOS && isStandaloneApp() && web.startsWith('https://')) {
+    navigateWithWebFallback(`x-safari-${web}`, web);
+    return;
+  }
+  openExternalLink(web);
 }
 
 /** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp auf die Lupe
@@ -5822,8 +5873,9 @@ function openSongSearch(serviceId) {
   if (!query) return;
   const service = songSearchServiceById(serviceId);
   openAppOrWeb({
-    app: service.app ? service.app(query) : null,
     web: service.web(query),
+    iosApp: service.iosApp ? service.iosApp(query) : null,
+    androidApp: service.androidApp ? service.androidApp(query) : null,
     androidPackage: service.androidPackage,
   });
 }
