@@ -2107,11 +2107,12 @@ input[type="checkbox"] {
          nach einem anderen Dienst (siehe Pointer-Handler weiter unten). -->
     <button class="icon-btn" id="btn-song-search" type="button" aria-label="Song online suchen" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M9 5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
-        <path d="M19 5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
-        <path d="M7 12v7a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-5"/>
-        <path d="M17 12v7a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-5"/>
-        <path d="M9 8h6"/>
+        <path d="M10 10h4"/>
+        <path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/>
+        <path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z"/>
+        <path d="M22 16H2"/>
+        <path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z"/>
+        <path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3"/>
       </svg>
     </button>
   </div>
@@ -5700,12 +5701,27 @@ function songSearchServiceById(id) {
  *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
  *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
  *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
+/** Öffnet einen Link „richtig" extern — als echten Anker-Klick statt per
+ *  window.open(). In der installierten PWA reicht window.open() oft nicht:
+ *  iOS/Android lösen App-Links/Universal Links (z. B. Spotify, YouTube) nur
+ *  bei einer echten Link-Navigation aus der App heraus zuverlässig aus, statt
+ *  einfach im eigenen Browser-Tab zu landen. */
+function openExternalLink(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
 function openSongSearch(serviceId) {
   if (!playerSong) return;
   const query = playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title;
   if (!query || !query.trim()) return;
   const service = songSearchServiceById(serviceId);
-  window.open(service.url(query), '_blank', 'noopener');
+  openExternalLink(service.url(query));
 }
 
 function renderSongSearchServicePicker() {
