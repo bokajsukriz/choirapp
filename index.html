@@ -2107,12 +2107,8 @@ input[type="checkbox"] {
          nach einem anderen Dienst (siehe Pointer-Handler weiter unten). -->
     <button class="icon-btn" id="btn-song-search" type="button" aria-label="Song online suchen" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M10 10h4"/>
-        <path d="M19 7V4a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3"/>
-        <path d="M20 21a2 2 0 0 0 2-2v-3.851c0-1.39-2-2.962-2-4.829V8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v11a2 2 0 0 0 2 2z"/>
-        <path d="M22 16H2"/>
-        <path d="M4 21a2 2 0 0 1-2-2v-3.851c0-1.39 2-2.962 2-4.829V8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2z"/>
-        <path d="M9 7V4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3"/>
+        <circle cx="11" cy="11" r="7"/>
+        <path d="M21 21l-4.35-4.35"/>
       </svg>
     </button>
   </div>
@@ -2562,7 +2558,7 @@ input[type="checkbox"] {
 
       <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
-        Dienst für das Fernglas-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
+        Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
       </p>
       <div class="chip-grid" id="song-search-service-picker" role="group" aria-label="Suchdienst"></div>
     </div>
@@ -3454,7 +3450,7 @@ const DEFAULT_SETTINGS = {
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
-  songSearchService: 'youtube', // Standarddienst fürs Fernglas-Symbol im Player (siehe SONG_SEARCH_SERVICES)
+  songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3530,7 +3526,7 @@ const STRINGS = {
     'settings.personal.presentThemeDark': 'Weiß auf Schwarz',
     'settings.personal.presentThemeLight': 'Schwarz auf Weiß',
     'settings.personal.searchTitle': 'Song-Suche',
-    'settings.personal.searchHint': 'Dienst für das Fernglas-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.',
+    'settings.personal.searchHint': 'Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.',
 
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
@@ -3700,7 +3696,7 @@ const STRINGS = {
     'settings.personal.presentThemeDark': 'White on black',
     'settings.personal.presentThemeLight': 'Black on white',
     'settings.personal.searchTitle': 'Song search',
-    'settings.personal.searchHint': 'Service used by the binoculars icon in the player. Long-press it to pick a different service just once.',
+    'settings.personal.searchHint': 'Service used by the magnifying-glass icon in the player. Long-press it to pick a different service just once.',
 
     'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
@@ -3870,7 +3866,7 @@ const STRINGS = {
     'settings.personal.presentThemeDark': 'Biały na czarnym',
     'settings.personal.presentThemeLight': 'Czarny na białym',
     'settings.personal.searchTitle': 'Wyszukiwanie utworu',
-    'settings.personal.searchHint': 'Usługa używana przez ikonę lornetki w odtwarzaczu. Długie przytrzymanie pozwala jednorazowo wybrać inną usługę.',
+    'settings.personal.searchHint': 'Usługa używana przez ikonę lupy w odtwarzaczu. Długie przytrzymanie pozwala jednorazowo wybrać inną usługę.',
 
     'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
@@ -5680,7 +5676,7 @@ function renderPresentThemePicker() {
   }
 }
 
-/** Dienste fürs Fernglas-Symbol im Player (siehe openSongSearch). Tidal,
+/** Dienste fürs Lupen-Symbol im Player (siehe openSongSearch). Tidal,
  *  Spotify und Deezer durchsuchen nur Musikkataloge und bekommen daher den
  *  reinen Titel. YouTube und Google durchsuchen das ganze Web — ohne
  *  Zusatzwort landen viele Treffer bei Wikipedia, Liedtext-Seiten o.ä. statt
@@ -5697,10 +5693,6 @@ function songSearchServiceById(id) {
   return SONG_SEARCH_SERVICES.find((s) => s.id === id) || SONG_SEARCH_SERVICES[0];
 }
 
-/** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp aufs Fernglas
- *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
- *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
- *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
 /** Öffnet einen Link „richtig" extern — als echten Anker-Klick statt per
  *  window.open(). In der installierten PWA reicht window.open() oft nicht:
  *  iOS/Android lösen App-Links/Universal Links (z. B. Spotify, YouTube) nur
@@ -5716,6 +5708,10 @@ function openExternalLink(url) {
   a.remove();
 }
 
+/** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp auf die Lupe
+ *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
+ *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
+ *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
 function openSongSearch(serviceId) {
   if (!playerSong) return;
   const query = playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title;
@@ -8303,7 +8299,7 @@ $('#voice-select').addEventListener('change', (e) => {
   if (track) selectTrack(track, true);
 });
 
-/** Fernglas oben rechts im Player: kurzer Tipp sucht beim Standarddienst
+/** Lupe oben rechts im Player: kurzer Tipp sucht beim Standarddienst
  *  (Einstellungen → Make it yours!), langes Halten (500ms) fragt einmalig
  *  nach einem anderen Dienst, ohne den Standard zu ändern. Pointer- statt
  *  Klick-Events, damit sich Maus und Touch gleich verhalten; der Klick nach
