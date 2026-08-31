@@ -1115,23 +1115,21 @@ input[type="checkbox"] {
 .player-tabs--mini .player-tab { min-height: 44px; font-size: 0.68rem; gap: 1px; }
 .player-tabs--mini .player-tab svg { width: 16px; height: 16px; }
 
-/* Lyrics-Leiste unter den Reitern: Vollbild-Knopf links, Cloud/Lokal mittig
-   (füllt den Platz, siehe .lyrics-source-switch--extended), Schriftgröße/
-   Bearbeiten rechts — dicht unter den Reitern, damit Cloud/Lokal wie eine
-   Fortsetzung der aktiven Lyrics-Hervorhebung wirkt statt wie eine eigene,
-   abgesetzte Leiste. */
+/* Lyrics-Leiste unter den Reitern: Cloud/Lokal links am Rand, Schriftgröße
+   (A−/A+) direkt dahinter, Bearbeiten ganz rechts — dicht unter den
+   Reitern, damit Cloud/Lokal wie eine Fortsetzung der aktiven
+   Lyrics-Hervorhebung wirkt. Der Vollbild-Knopf steht nicht mehr hier,
+   sondern schwebt über dem Text selbst (siehe .lyrics-present-fab-wrap). */
 .lyrics-toolbar-extended {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 0 10px;
 }
-.lyrics-toolbar-extended > .icon-btn,
-.lyrics-toolbar-extended > span { flex: 0 0 auto; }
+.lyrics-toolbar-extended > .icon-btn { flex: 0 0 auto; margin-left: auto; }
 
 .lyrics-source-switch--extended {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   margin-top: 0;
 }
 
@@ -1188,6 +1186,32 @@ input[type="checkbox"] {
   font-size: 1.1rem;
 }
 .present-theme-label { font-size: 0.78rem; font-weight: 650; color: var(--text); }
+
+/* Vollbild-Knopf (Vorlesemodus, siehe btn-lyrics-present): schwebt rechts
+   unten über dem Liedtext statt in der Werkzeugleiste zu stehen — bleibt
+   dank position:sticky innerhalb von .player-body beim Scrollen im Text
+   sichtbar. */
+.lyrics-present-fab-wrap {
+  position: sticky;
+  bottom: 10px;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+  pointer-events: none;
+}
+.lyrics-present-fab {
+  pointer-events: auto;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 4px 14px rgba(0,0,0,.28);
+}
+.lyrics-present-fab:active { background: var(--accent); opacity: .85; }
+.lyrics-present-fab svg { width: 24px; height: 24px; }
 
 .tab-panel[hidden] { display: none; }
 
@@ -2164,31 +2188,26 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
-      <!-- Eine Leiste für alles: Vollbild, Quelle wählen, Schriftgröße,
-           Bearbeiten/Fertig. Bleibt sichtbar, solange ein Song offen ist
-           (siehe renderLyricsBlock). Knöpfe, die nicht immer gelten
-           (Vorlesemodus, Bearbeiten), verstecken sich über .slot-hidden
-           (visibility statt hidden) — ihr Platz bleibt reserviert, damit die
-           übrigen Knöpfe beim Umschalten nicht springen.
-           Cloud/Lokal sitzt bewusst mittig in derselben Optik (Fläche,
+      <!-- Eine Leiste für Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
+           Bleibt sichtbar, solange ein Song offen ist (siehe
+           renderLyricsBlock). Der Bearbeiten-Knopf, der nicht immer gilt,
+           versteckt sich über .slot-hidden (visibility statt hidden) — sein
+           Platz bleibt reserviert, damit die übrigen Knöpfe nicht springen.
+           Cloud/Lokal sitzt links am Rand in derselben Optik (Fläche,
            Eckenradius, Akzentfarbe) wie der aktive Lyrics-Reiter darüber —
-           wirkt dadurch wie dessen Fortsetzung nach unten, mit dem
-           Vollbild-Knopf links und Schriftgröße/Bearbeiten rechts davon. -->
+           wirkt dadurch wie dessen Fortsetzung, mit A−/A+ direkt dahinter
+           und Bearbeiten ganz rechts. Der Vollbild-Knopf steht separat unten
+           beim Text (siehe .lyrics-present-fab-wrap). -->
       <div class="lyrics-toolbar-extended" id="lyrics-toolbar" hidden>
-        <button class="icon-btn slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        </button>
-        <div class="preset-row lyrics-source-switch--extended" id="lyrics-source-switch" style="grid-template-columns:repeat(2,1fr)" role="group" aria-label="Liedtext-Quelle" hidden>
+        <div class="preset-row lyrics-source-switch--extended" id="lyrics-source-switch" style="grid-template-columns:repeat(2,auto)" role="group" aria-label="Liedtext-Quelle" hidden>
           <button class="preset" type="button" data-lyrics-source="official" aria-pressed="true">Cloud</button>
           <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false">Lokal</button>
         </div>
-        <span style="display:flex; align-items:center; gap:6px">
-          <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
-          <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
-          <button class="icon-btn slot-hidden" id="btn-lyrics-note-edit" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="lyrics-edit-icon"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          </button>
-        </span>
+        <button class="btn" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner">A−</button>
+        <button class="btn" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer">A+</button>
+        <button class="icon-btn slot-hidden" id="btn-lyrics-note-edit" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="lyrics-edit-icon"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
       </div>
 
       <!-- Offizieller Liedtext aus dem Import — schreibgeschützt, reiner Text
@@ -2210,6 +2229,16 @@ input[type="checkbox"] {
                     aria-label="Eigener Liedtext" placeholder="Liedtext eintragen …"></textarea>
           <p class="note-state" id="lyrics-note-state" data-dirty="false" role="status" style="margin:8px 0 0"></p>
         </div>
+      </div>
+
+      <!-- Vollbild/Vorlesemodus: schwebt rechts unten über dem Text statt in
+           der Werkzeugleiste zu stehen, bleibt beim Scrollen sichtbar
+           (position:sticky, siehe CSS). Platz bleibt über .slot-hidden
+           reserviert, wenn (noch) kein Text zum Anzeigen da ist. -->
+      <div class="lyrics-present-fab-wrap">
+        <button class="icon-btn lyrics-present-fab slot-hidden" id="btn-lyrics-present" type="button" aria-label="Textanzeige für andere">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </button>
       </div>
     </div>
 
