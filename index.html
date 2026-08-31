@@ -11655,7 +11655,9 @@ $('#rec-import-input').addEventListener('change', async (e) => {
 });
 
 /**
- * Vorschau vor dem Übernehmen, danach Zusammenführen oder Ersetzen.
+ * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
+ * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
+ * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
  * @param {Function} [resolveAudioBase64] Löst einen `audioBase64`-Wert auf —
  * bei einer über readBackupFile() gelesenen Sicherung ein `@B64#n`-Platzhalter
  * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
@@ -11671,7 +11673,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
-  const mode = await choiceDialog({
+  // Nur noch Zusammenführen — „Alles ersetzen" ist als Datenverlust-Falle
+  // entfernt: wer wirklich bei null anfangen will, löscht vorher von Hand
+  // über „Alle Daten löschen" und spielt die Sicherung danach ein.
+  const ok = await confirmDialog({
     title: 'Sicherung einspielen',
     text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
         + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
@@ -11680,36 +11685,11 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         + (songAudioIn.length ? ` und Audio für ${plural(songAudioIn.length, 'Song', 'Songs')}` : '')
         + ' gefunden. '
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
-        + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird.',
-    options: [
-      { value: 'merge', label: 'Zusammenführen', primary: true },
-      { value: 'replace', label: 'Alles ersetzen', danger: true },
-    ],
+        + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird. '
+        + 'Vorhandene Daten bleiben erhalten, es wird nur ergänzt.',
+    okLabel: 'Zusammenführen',
   });
-  if (!mode) return;
-
-  if (mode === 'replace') {
-    const ok = await confirmDialog({
-      title: 'Wirklich ersetzen?',
-      text: 'Alle vorhandenen Loops, Notizen, eigene Liedtexte und Setlisten werden vorher gelöscht.',
-      okLabel: 'Ersetzen', danger: true,
-    });
-    if (!ok) return;
-    const stale = [
-      ...await DB.metaByType('loop'),
-      ...await DB.metaByType('note'),
-      ...await DB.metaByType('lyricsNote'),
-      ...await DB.metaByType('playlist'),
-    ];
-    await tx('meta', 'readwrite', (meta) => { for (const r of stale) meta.delete(r.key); });
-    // Läuft direkt über tx() statt DB.metaDelete() (löscht in einem Rutsch
-    // statt pro Datensatz) — die Zwischenspeicher für „hat Notiz"/„hat
-    // eigenen Liedtext" bleiben dadurch sonst stehen und zeigen in der
-    // Songliste weiter Symbole für längst gelöschte Notizen.
-    dropSongCache();
-    dropNoteCache();
-    dropLyricsNoteCache();
-  }
+  if (!ok) return;
 
   // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch gar
   // nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der Stimmen
@@ -11852,10 +11832,8 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // hunderte einzelne Transaktionen.
   await DB.metaPutMany(fresh);
 
-  // RECs mit eingebettetem Audio — anders als Loops/Notizen nie über "Alles
-  // ersetzen" gelöscht, sonst würde eine eigene Aufnahme durch Wiedereinspielen
-  // einer älteren Sicherung verschwinden. Duplikate (Name + Song) werden
-  // trotzdem übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
+  // RECs mit eingebettetem Audio. Duplikate (Name + Song) werden
+  // übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
   let addedRecordings = 0, skippedRecordings = 0;
   if (recordingsIn.length) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
@@ -12071,7 +12049,7 @@ async function checkCompatWarning() {
   }
 }
 
-/** Auswahl zwischen mehreren Möglichkeiten (Zusammenführen / Ersetzen). */
+/** Auswahl zwischen mehreren Möglichkeiten, mit „Abbrechen" als fester letzter Option. */
 function choiceDialog({ title, text, options }) {
   return new Promise((resolve) => {
     const done = (v) => { layer.remove(); resolve(v); };
