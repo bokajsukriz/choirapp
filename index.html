@@ -2577,6 +2577,18 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
+        Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
+        sich nach der eigenen Stimme richten und über die Systemuhr synchron
+        laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
+      </p>
+      <button class="btn btn--primary btn--block" id="btn-open-lightshow" type="button" data-i18n="settings.lightshow.openBtn">
+        Lichtshow öffnen
+      </button>
+    </div>
+
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/></svg><span data-i18n="settings.bike.title">Fahrradfahren-Modus</span></h2>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.bike.hint">
         Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
@@ -3733,6 +3745,10 @@ const DEFAULT_SETTINGS = {
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
+  lightshowOffsetMs: 0,       // Handversatz der Geräteuhr in ms (siehe Sync-Prüfbild)
+  lightshowVoice: null,       // null = automatisch aus myVoices
+  lightshowShow: 'sterne',    // zuletzt gewählte Show
+  lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4328,6 +4344,8 @@ async function loadSettings() {
   if (!settings.myVoices?.length && settings.myVoice) {
     settings.myVoices = [settings.myVoice];
   }
+  // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
+  settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
   applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
   return settings;
 }
@@ -12158,6 +12176,8 @@ async function buildBackupParts(opts, onProgress) {
     parts.push(`,"settings":${JSON.stringify({
       myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize,
       defaultPlayerTab: settings.defaultPlayerTab, accentColor: settings.accentColor, language: settings.language,
+      lightshowOffsetMs: settings.lightshowOffsetMs, lightshowVoice: settings.lightshowVoice,
+      lightshowShow: settings.lightshowShow, lightshowSeed: settings.lightshowSeed,
     })}`);
   }
   if (opts.loops) {
@@ -12810,6 +12830,18 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   }
   if (data.settings?.language) {
     await saveSettings({ language: data.settings.language }); // übersetzt die Oberfläche gleich mit
+  }
+  if (typeof data.settings?.lightshowOffsetMs === 'number') {
+    await saveSettings({ lightshowOffsetMs: Math.max(-5000, Math.min(5000, data.settings.lightshowOffsetMs)) });
+  }
+  if (data.settings?.lightshowVoice) {
+    await saveSettings({ lightshowVoice: data.settings.lightshowVoice });
+  }
+  if (data.settings?.lightshowShow) {
+    await saveSettings({ lightshowShow: data.settings.lightshowShow });
+  }
+  if (data.settings?.lightshowSeed) {
+    await saveSettings({ lightshowSeed: data.settings.lightshowSeed });
   }
 
   await renderPlaylists();
