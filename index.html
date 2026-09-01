@@ -5776,18 +5776,13 @@ function isStandaloneApp() {
     || window.navigator.standalone === true; // iOS: Flag für "Zum Home-Bildschirm"
 }
 
-/** Öffnet einen Link „richtig" extern. Als installierte App gibt es keine
- *  Tabs — ein neuer Tab per window.open()/target="_blank" bleibt dort oft
- *  einfach unsichtbar innerhalb der App hängen, statt sie zu verlassen. Nur
- *  eine echte Top-Level-Navigation (location.href) reicht die Adresse ans
- *  System weiter. Läuft die App dagegen ganz normal im Browser-Tab, öffnet
- *  ein echter Anker-Klick mit target="_blank" wie gewünscht ein neues
- *  Fenster/Tab, statt den aktuellen Tab mit der Chor-App selbst zu ersetzen. */
+/** Öffnet einen Link extern, auch als installierte Standalone-App: ein
+ *  echter Anker-Klick mit target="_blank" fordert einen neuen Browserkontext
+ *  an, statt die Chor-App per location.href im eigenen Fenster zu ersetzen.
+ *  Muss synchron aus dem auslösenden click-/pointer-Handler laufen — ohne
+ *  vorheriges await oder einen Timer –, sonst blockieren Popup-Blocker den
+ *  neuen Kontext. */
 function openExternalLink(url) {
-  if (isStandaloneApp()) {
-    window.location.href = url;
-    return;
-  }
   const a = document.createElement('a');
   a.href = url;
   a.target = '_blank';
