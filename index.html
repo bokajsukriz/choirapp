@@ -329,6 +329,39 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   color: #fff;
 }
 
+/* Lichtshow — Ansicht unter Einstellungen → Lichtshow. --lightshow-voice-c
+   kommt von außen (siehe renderLightshowVoiceLine/renderLightshowList). */
+.lightshow-voice-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--lightshow-voice-c, var(--accent));
+  flex: 0 0 auto;
+}
+.lightshow-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lightshow-tile-preview {
+  height: 8px;
+  border-radius: 4px;
+}
+.lightshow-tile.is-recommended { border-color: var(--accent); }
+.lightshow-tile-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 /* Speicherbalken */
 .meter {
   height: 12px;
@@ -1560,6 +1593,115 @@ input[type="checkbox"] {
   color: #000;
 }
 
+/* Lichtshow-Bühne (siehe openLightshowStage/closeLightshowStage). Keine
+   Übergänge — die Blenden rechnet lightshowFrame() selbst, eine
+   CSS-Transition würde dagegenarbeiten. */
+.lightshow-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+  transition: none;
+}
+.lightshow-stage[hidden] { display: none; }
+
+.lightshow-countdown {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255,255,255,.55);
+  font-weight: 700;
+  font-size: clamp(48px, 16vmin, 160px);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.lightshow-countdown:empty { display: none; }
+
+/* Stark gedimmt, damit der Knopf auf der hellen Bühnenfläche nicht als
+   heller Fleck auffällt — aber immer an derselben Stelle und mit
+   mindestens 44×44 px Trefferfläche, damit er auch im Dunkeln zu finden ist. */
+/* mix-blend-mode: difference invertiert gegen den jeweiligen Bühnenhintergrund
+   — auf Schwarz bleibt der Knopf hell, auf Weiß (Finale-Höhepunkt) wird er
+   von selbst dunkel. Ohne den Trick würde ein rein weißer Rand auf der
+   weißen Bühnenfläche komplett verschwinden. */
+.lightshow-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.4);
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  mix-blend-mode: difference;
+  opacity: .55;
+  z-index: 1;
+}
+.lightshow-close svg { width: 20px; height: 20px; }
+
+/* Sync-Prüfbild (siehe openLightshowSync). Eigene, dunkelgraue statt
+   schwarze Fläche, damit der weiße Sekundenläufer auch ohne Blitz sichtbar
+   bleibt. */
+.lightshow-sync {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #14141a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightshow-sync[hidden] { display: none; }
+
+.lightshow-sync-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lightshow-sync-body {
+  position: relative;
+  width: min(92vw, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+
+.lightshow-sync-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255,255,255,.15);
+  overflow: hidden;
+}
+.lightshow-sync-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 100%;
+  border-radius: 5px;
+  background: #fff;
+  will-change: transform;
+}
+
+.lightshow-sync-offset {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
 .score-item {
   display: flex;
   flex-direction: column;
@@ -2056,6 +2198,49 @@ input[type="checkbox"] {
   </button>
 </div>
 
+<!-- Lichtshow-Bühne: Vollbild-Overlay, das nur seine Hintergrundfarbe zeigt
+     (siehe openLightshowStage). Kein Schließen durch Tippen auf die Fläche —
+     versehentliches Beenden mitten in der Einlage wäre der schlimmste Fehler
+     dieser Funktion. Derselbe Stapelplatz wie #lyrics-present, dieselbe Regel:
+     eine reine Vollflächen-Ebene ohne Innencontainer, der die Farbe überdeckt. -->
+<div class="lightshow-stage" id="lightshow-stage" hidden role="dialog" aria-modal="true" aria-label="Lichtshow">
+  <div class="lightshow-countdown" id="lightshow-countdown" aria-hidden="true"></div>
+  <button class="lightshow-close" id="lightshow-close" type="button" aria-label="Schließen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</div>
+
+<!-- Sync-Prüfbild: ohne Netz feststellen, ob eine Handyuhr grob danebenliegt,
+     und das über den Handversatz (settings.lightshowOffsetMs) ausgleichen. -->
+<div class="lightshow-sync" id="lightshow-sync" hidden role="dialog" aria-modal="true" aria-label="Uhr prüfen">
+  <div class="lightshow-sync-flash" id="lightshow-sync-flash" aria-hidden="true"></div>
+  <button class="lightshow-close" id="lightshow-sync-close" type="button" aria-label="Schließen" data-i18n-aria="common.close">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+  <div class="lightshow-sync-body">
+    <p class="small" style="color:#fff" data-i18n="lightshow.sync.instruction">
+      Zwei Handys nebeneinander legen, beide dieses Bild zeigen. Laufen die
+      Balken sichtbar versetzt, geht eine Uhr falsch.
+    </p>
+    <div class="lightshow-sync-track" id="lightshow-sync-track" aria-hidden="true"><div class="lightshow-sync-bar" id="lightshow-sync-bar"></div></div>
+    <p class="small" style="color:#fff" data-i18n="lightshow.sync.autoNote">
+      Liegt ein Gerät um mehr als etwa eine halbe Sekunde daneben: nicht hier
+      ausgleichen, sondern „Datum &amp; Uhrzeit automatisch" im Betriebssystem
+      einschalten. Der Handversatz ist nur die Krücke, falls das nicht geht.
+    </p>
+    <div class="lightshow-sync-offset" id="lightshow-sync-value">0 ms</div>
+    <div class="preset-row" role="group" aria-label="Handversatz" data-i18n-aria="lightshow.sync.offsetAria">
+      <button class="preset" type="button" data-delta="-250">−250 ms</button>
+      <button class="preset" type="button" data-delta="-50">−50 ms</button>
+      <button class="preset" type="button" data-delta="50">+50 ms</button>
+      <button class="preset" type="button" data-delta="250">+250 ms</button>
+    </div>
+    <button class="btn btn--block" id="btn-lightshow-sync-reset" type="button" style="margin-top:10px" data-i18n="lightshow.sync.resetBtn">
+      Zurücksetzen
+    </button>
+  </div>
+</div>
+
 <!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
 <section class="player" id="playlist-view" hidden aria-labelledby="pl-title">
   <div class="player-head">
@@ -2433,6 +2618,81 @@ input[type="checkbox"] {
   </div>
 </section>
 
+<!-- Lichtshow: eigene Vollbild-Ansicht mit Zurück-Pfeil, erreichbar nur über
+     den Knopf in den Einstellungen (siehe #btn-open-lightshow). Startet von
+     hier aus die eigentliche Vollbild-Bühne (#lightshow-stage, weiter unten). -->
+<section class="player" id="lightshow-view" hidden aria-labelledby="lightshow-title">
+  <div class="player-head">
+    <button class="icon-btn" id="lightshow-back" type="button" aria-label="Zurück zu den Einstellungen" data-i18n-aria="lightshow.backAria">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="grow">
+      <strong id="lightshow-title" data-i18n="settings.lightshow.title">Lichtshow</strong>
+    </div>
+  </div>
+
+  <div class="player-body">
+    <div class="card">
+      <p class="small muted" id="lightshow-novoice-hint" style="margin-top:0" hidden data-i18n-html="lightshow.noVoiceHint">
+        Noch keine Stimme gewählt — die Show läuft vorerst im Sopran-Takt und
+        Pink. Ändern unter <strong>Einstellungen → Meine Stimmen</strong>, oder
+        hier nur für die Show festlegen:
+      </p>
+      <div class="row" id="lightshow-voice-line">
+        <span class="lightshow-voice-dot" id="lightshow-voice-dot" aria-hidden="true"></span>
+        <span id="lightshow-voice-text"></span>
+      </div>
+      <div class="chip-grid" id="lightshow-voice-picker" role="group" aria-label="Stimme für die Lichtshow" data-i18n-aria="lightshow.voicePickerAria"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="lightshow.showsTitle">Show wählen</h2>
+      <div class="stack" id="lightshow-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="small" style="max-width:70%" data-i18n="lightshow.rehearsalLabel">
+          Probelauf — startet sofort, ohne auf den Rasterpunkt zu warten
+        </span>
+        <button class="switch" id="lightshow-rehearsal-toggle" type="button" role="switch"
+                aria-checked="false" aria-label="Probelauf" data-i18n-aria="lightshow.rehearsalAria">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="lightshow.rehearsalHint">
+        Steht nach dem Schließen dieser Ansicht wieder aus — sonst steht
+        jemand auf der Bühne im Probelauf.
+      </p>
+      <button class="btn btn--block" id="btn-lightshow-sync" type="button" style="margin-top:14px" data-i18n="lightshow.syncBtn">
+        Uhr prüfen
+      </button>
+    </div>
+
+    <div class="card">
+      <p class="small muted" style="margin:0" data-i18n-html="lightshow.hintBlock">
+        Bildschirmhelligkeit vor dem Auftritt von Hand hochdrehen — das kann
+        die App nicht selbst tun. „Datum &amp; Uhrzeit automatisch" sollte im
+        Betriebssystem eingeschaltet bleiben. Handy während der Show nicht
+        sperren. Vor dem Auftritt einmal zu zweit „Uhr prüfen" machen.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="small muted" style="margin:0" data-i18n="lightshow.seizureWarning">
+        Die Shows arbeiten mit hellen, wechselnden Flächen. Wer lichtempfindlich
+        ist oder zu Anfällen neigt, macht besser nicht mit oder wählt „Sternenhimmel".
+      </p>
+      <p class="small muted" id="lightshow-motion-hint" style="margin:8px 0 0" hidden data-i18n="lightshow.reducedMotionHint">
+        Dieses Gerät bevorzugt weniger Bewegung — „Sternenhimmel" ist deshalb
+        vorausgewählt. Die anderen Shows lassen sich trotzdem starten.
+      </p>
+    </div>
+  </div>
+</section>
+
 <!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
      entschieden wird und nichts anderes ablenken soll. -->
 <section class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
@@ -2574,6 +2834,18 @@ input[type="checkbox"] {
         Stimme der Player zuerst zeigt.
       </p>
       <div class="chip-grid" id="voice-picker"></div>
+    </div>
+
+    <div class="card">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
+        Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
+        sich nach der eigenen Stimme richten und über die Systemuhr synchron
+        laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
+      </p>
+      <button class="btn btn--primary btn--block" id="btn-open-lightshow" type="button" data-i18n="settings.lightshow.openBtn">
+        Lichtshow öffnen
+      </button>
     </div>
 
     <div class="card">
@@ -2915,6 +3187,212 @@ const VOICE_COLOR = {
 // Als „meine Stimme" wählbar. Bariton fehlt bewusst: der Chor hat keinen.
 // Erkannt werden Bariton-Dateien trotzdem, falls welche im Archiv liegen.
 const MY_VOICE_CHOICES = ['SOP', 'ALT', 'TEN', 'BASS', 'LEAD'];
+
+/* ==========================================================================
+   LICHTSHOW — reine Zeit-zu-Farbe-Funktionen für die Bühnen-Einlage unter
+   Einstellungen → Lichtshow (siehe LICHTSHOW-PLAN.md). Es gibt keinen
+   Startzeitpunkt und keine Nachricht zwischen Geräten: das Bild ist eine
+   reine Funktion der Systemzeit, `Farbe = f(Zeit mod Zykluslänge, Stimme)`.
+   Wer später einsteigt oder neu lädt, ist damit sofort in Phase.
+   ========================================================================== */
+
+// Reihenfolge bestimmt den Versatz in „Welle" und „Finale": von oben nach
+// unten durch den Chor, wie man ihn auch aufstellt.
+const LIGHTSHOW_VOICES = ['SOP', 'ALT', 'TEN', 'BASS'];
+
+/** Position in LIGHTSHOW_VOICES; unbekannte oder fehlende Stimme (LEAD, null) -> 0. */
+function lightshowVoiceIndex(voice) {
+  const i = LIGHTSHOW_VOICES.indexOf(voice);
+  return i < 0 ? 0 : i;
+}
+
+/**
+ * Stimmfarbe für die Lichtshow. Eine Solistin ohne SATB-Stimme (LEAD) oder
+ * ganz ohne Auswahl bekommt das Marken-Pink und läuft im Takt der Soprane mit,
+ * statt gar nicht zu leuchten.
+ */
+function lightshowVoiceColor(voice) {
+  return LIGHTSHOW_VOICES.includes(voice) ? VOICE_COLOR[voice] : VOICE_COLOR.FULL;
+}
+
+// `sync` ist reine Anzeige-Information für die Show-Auswahl (siehe
+// renderLightshowPicker): aufsteigende Empfindlichkeit gegenüber einer schief
+// gehenden Handy-Uhr. Die sichere Bank steht oben.
+const LIGHTSHOWS = [
+  { id: 'sterne', cycleMs: 40000, sync: 'unkritisch' },
+  { id: 'puls',   cycleMs: 24000, sync: 'hoch' },
+  { id: 'welle',  cycleMs: 32000, sync: 'mittel' },
+  { id: 'finale', cycleMs: 32000, sync: 'empfindlich' },
+];
+
+function lightshowByte(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+function lightshowHexByte(v) { return lightshowByte(v).toString(16).padStart(2, '0'); }
+const LIGHTSHOW_HEX_RE = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
+
+/** Jeder Kanal * b (b in [0,1]) — schlichte Multiplikation statt Gamma-Korrektur, sieht auf der Bühne richtig aus und ist billig. */
+function lightshowScale(hex, b) {
+  const m = LIGHTSHOW_HEX_RE.exec(hex);
+  if (!m) return '#000000';
+  const [r, g, bl] = [1, 2, 3].map((i) => parseInt(m[i], 16) * b);
+  return `#${lightshowHexByte(r)}${lightshowHexByte(g)}${lightshowHexByte(bl)}`;
+}
+
+/** Lineare Mischung zweier Farben, f in [0,1]. */
+function lightshowMix(hexA, hexB, f) {
+  const a = LIGHTSHOW_HEX_RE.exec(hexA), b = LIGHTSHOW_HEX_RE.exec(hexB);
+  if (!a || !b) return '#000000';
+  const parts = [1, 2, 3].map((i) => {
+    const va = parseInt(a[i], 16), vb = parseInt(b[i], 16);
+    return lightshowHexByte(va + (vb - va) * f);
+  });
+  return `#${parts.join('')}`;
+}
+
+/**
+ * Deterministischer 32-Bit-Mix (Wang/xorshift, kein Math.random) — derselbe
+ * (seed, n) ergibt auf jedem Gerät und in jedem Selbsttest denselben Wert.
+ * Trägt „Sternenhimmel" (siehe unten): entscheidet je 800-ms-Zeitschlitz,
+ * ob und wie hell dieses Gerät funkelt.
+ */
+function lightshowHash(seed, n) {
+  let h = (seed ^ (n * 0x9e3779b1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+/** Sternenhimmel — braucht keine Synchronität, deshalb die erste Show. */
+function lightshowFrameSterne(tMs, voice, seed) {
+  const color = lightshowVoiceColor(voice);
+  const base = lightshowScale(color, 0.06); // Grundton, damit auch dunkle Momente ein Farbfeld ergeben
+  const slot = Math.floor(tMs / 800);
+  const local = tMs - slot * 800;
+  const hash = lightshowHash(seed >>> 0, slot);
+  const sparkles = (hash % 4) === 0; // etwa jeder vierte Schlitz
+  if (!sparkles) return base;
+  const peak = 0.45 + ((hash >>> 8) % 1000) / 1000 * 0.55; // 0,45 … 1,0
+  let envelope;
+  if (local < 250) envelope = local / 250;                 // 250 ms Aufblende
+  else if (local < 550) envelope = 1;                       // Halten
+  else envelope = Math.max(0, 1 - (local - 550) / 250);     // 250 ms Abblende
+  return lightshowMix(base, lightshowScale(color, peak), envelope);
+}
+
+/** Weiche Glocke (erhabener Kosinus) um distMs=0, 0 außerhalb ±halfWidthMs — nie ein Rechteck. */
+function lightshowBeatBell(distMs, halfWidthMs) {
+  if (Math.abs(distMs) >= halfWidthMs) return 0;
+  return Math.cos((Math.PI / 2) * (distMs / halfWidthMs)) ** 2;
+}
+
+/** Herzschlag — Grundschlag 2000 ms, Gruppen um je 500 ms versetzt. */
+function lightshowFramePuls(tMs, voice) {
+  const color = lightshowVoiceColor(voice);
+  const idx = lightshowVoiceIndex(voice);
+  const cycleMs = 24000;
+  const beatMs = 2000;
+  const halfWidth = 420; // Aufstiegsflanke ≥ 400 ms
+  // Phasenversatz, damit bei tMs=0 (Zyklusstart) keine Gruppe exakt auf dem
+  // Schlag steht — sonst gäbe es dort einen Sprung zwischen der wachsenden
+  // und der am Zyklusende wieder fallenden Amplitude (siehe Selbsttest L7.4).
+  const phaseShiftMs = 250;
+  const offset = idx * 500 + phaseShiftMs;
+  let tGroup = (tMs - offset) % beatMs;
+  if (tGroup < 0) tGroup += beatMs;
+  const dMain = tGroup <= beatMs / 2 ? tGroup : tGroup - beatMs;   // Hauptschlag bei Phase 0
+  const dSec = tGroup - beatMs * 0.22;                              // Nachschlag bei Phase 0,22
+  const envelope = Math.max(lightshowBeatBell(dMain, halfWidth), 0.55 * lightshowBeatBell(dSec, halfWidth));
+  // Amplitude wächst über den Zyklus, fällt in den letzten 3000 ms wieder ab
+  // — ein Bogen statt nur zu blinken.
+  let amp;
+  if (tMs < cycleMs - 3000) amp = 0.35 + (1 - 0.35) * (tMs / (cycleMs - 3000));
+  else amp = 1 - (1 - 0.2) * ((tMs - (cycleMs - 3000)) / 3000);
+  const b = envelope * amp;
+  return lightshowMix(lightshowScale(color, 0.05), lightshowMix(color, '#ffffff', 0.3), b); // in der Spitze 30% Richtung Weiß
+}
+
+/** Helligkeit der Welle für eine Stimme an einer Stelle innerhalb der 4000-ms-Periode. */
+function lightshowWaveBrightness(idx, localMs) {
+  // Versatz, damit bei localMs=0 keine Gruppe exakt in der Wellenmitte steht
+  // — siehe lightshowFrameWelle für den Grund.
+  const waveOffset = 0.125;
+  const p = ((localMs % 4000) / 4000 + waveOffset) % 1;
+  const phi = idx / LIGHTSHOW_VOICES.length;
+  let d = Math.abs(p - phi);
+  if (d > 0.5) d = 1 - d; // kürzeste Distanz auf dem Kreis
+  return Math.max(0, 1 - d / 0.28) ** 1.6;
+}
+
+/** Welle — sieben Durchläufe von Sopran nach Bass, dann eine gemeinsame Atmung. */
+function lightshowFrameWelle(tMs, voice) {
+  const color = lightshowVoiceColor(voice);
+  const idx = lightshowVoiceIndex(voice);
+  if (tMs < 28000) {
+    const b = lightshowWaveBrightness(idx, tMs);
+    return lightshowScale(color, 0.04 + 0.96 * b);
+  }
+  // 28 000 … 32 000 ms: alle gemeinsam eine Atmung nach Weiß und zurück.
+  // Sie endet exakt auf dem Helligkeitswert, mit dem die Welle bei tMs=0
+  // wieder einsteigt (lightshowWaveBrightness ist 4000-ms-periodisch) —
+  // damit springt das Bild beim Loop nicht (Selbsttest L7.4).
+  const boundary = lightshowWaveBrightness(idx, 0);
+  const boundaryColor = lightshowScale(color, 0.04 + 0.96 * boundary);
+  const r = (tMs - 28000) / 4000;
+  const breathe = Math.sin(Math.PI * r);
+  return lightshowMix(boundaryColor, '#ffffff', breathe);
+}
+
+/** Finale — die einzige Show mit harten Schnitten, deshalb „empfindlich". */
+function lightshowFrameFinale(tMs, voice) {
+  const color = lightshowVoiceColor(voice);
+  const idx = lightshowVoiceIndex(voice);
+  if (tMs < 12000) {
+    // Gruppen-Jagd im 500-ms-Raster: genau eine Gruppe hell, sonst 5 %.
+    const slot = Math.floor(tMs / 500);
+    const activeIdx = slot % LIGHTSHOW_VOICES.length;
+    const isActive = idx === activeIdx;
+    // Der allererste Schlitz blendet aus dem Schwarz auf, statt hart
+    // einzuschalten — die vorige Runde endet in Schwarz (siehe unten), ohne
+    // diesen weichen Einstieg gäbe es am Loop-Punkt einen Sprung.
+    let attack = 1;
+    if (slot === 0) attack = tMs / 500;
+    const level = (isActive ? 1 : 0.05) * attack;
+    return lightshowScale(color, level);
+  }
+  if (tMs < 24000) {
+    // Alle gemeinsam im 1000-ms-Puls, Amplitude linear steigend, Richtung Weiß.
+    const t2 = tMs - 12000;
+    const amp = t2 / 12000;
+    const phase = (t2 % 1000) / 1000;
+    const pulse = lightshowBeatBell((phase - 0.5) * 1000, 500);
+    return lightshowMix(lightshowScale(color, 0.05), '#ffffff', amp * pulse);
+  }
+  if (tMs < 28500) return '#ffffff'; // Höhepunkt: alle voll Weiß, stehend
+  const f = Math.min(1, (tMs - 28500) / (32000 - 28500));
+  return lightshowMix('#ffffff', '#000000', f); // Blende nach Schwarz
+}
+
+/**
+ * Bildinhalt einer Show zu einem Zeitpunkt — rein, ohne DOM, ohne Date, ohne
+ * Math.random. Genau das macht sie testbar (siehe runSelfTests) und sorgt
+ * zugleich dafür, dass zwei Geräte mit derselben Uhr zwangsläufig dasselbe
+ * zeigen.
+ * @param {string} showId  aus LIGHTSHOWS
+ * @param {number} tMs     Millisekunden seit Zyklusbeginn, 0 <= tMs < cycleMs
+ * @param {string} voice   'SOP' | 'ALT' | 'TEN' | 'BASS' | …
+ * @param {number} seed    geräteeigener Zufallskeim (nur Show „sterne")
+ * @returns {string}       Hintergrundfarbe '#rrggbb'
+ */
+function lightshowFrame(showId, tMs, voice, seed) {
+  switch (showId) {
+    case 'sterne': return lightshowFrameSterne(tMs, voice, seed);
+    case 'puls':   return lightshowFramePuls(tMs, voice);
+    case 'welle':  return lightshowFrameWelle(tMs, voice);
+    case 'finale': return lightshowFrameFinale(tMs, voice);
+    default:       return '#000000';
+  }
+}
 
 /* ==========================================================================
    BANNER — Meldungen und Sicherheitsabfragen (es gibt bewusst kein alert())
@@ -3527,6 +4005,10 @@ const DEFAULT_SETTINGS = {
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
+  lightshowOffsetMs: 0,       // Handversatz der Geräteuhr in ms (siehe Sync-Prüfbild)
+  lightshowVoice: null,       // null = automatisch aus myVoices
+  lightshowShow: 'sterne',    // zuletzt gewählte Show
+  lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3606,6 +4088,10 @@ const STRINGS = {
 
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
+
+    'settings.lightshow.title': 'Lichtshow',
+    'settings.lightshow.hint': 'Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die sich nach der eigenen Stimme richten und über die Systemuhr synchron laufen — ganz ohne Internet oder Verbindung zwischen den Handys.',
+    'settings.lightshow.openBtn': 'Lichtshow öffnen',
 
     'settings.bike.title': 'Fahrradfahren-Modus',
     'settings.bike.hint': 'Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine Seite gemischt, hört man sie sonst je nach Ohr gar nicht.',
@@ -3750,6 +4236,40 @@ const STRINGS = {
     'songs.createPlaceholderHint': 'Noch nicht importiertes Lied anlegen — für Liedtext, Notizen oder eine Setliste.',
     'songs.placeholderBadge': 'noch keine Aufnahme',
     'player.placeholderHint': 'Noch keine Aufnahme importiert. Liedtext und Notizen kannst du trotzdem schon speichern — sie verbinden sich automatisch beim nächsten Import.',
+
+    'lightshow.backAria': 'Zurück zu den Einstellungen',
+    'lightshow.noVoiceHint': 'Noch keine Stimme gewählt — die Show läuft vorerst im Sopran-Takt und Pink. Ändern unter <strong>Einstellungen → Meine Stimmen</strong>, oder hier nur für die Show festlegen:',
+    'lightshow.voicePickerAria': 'Stimme für die Lichtshow',
+    'lightshow.voicePrefix': 'Du leuchtest als',
+    'lightshow.showsTitle': 'Show wählen',
+    'lightshow.startBtn': 'Show starten',
+    'lightshow.rehearsalLabel': 'Probelauf — startet sofort, ohne auf den Rasterpunkt zu warten',
+    'lightshow.rehearsalAria': 'Probelauf',
+    'lightshow.rehearsalHint': 'Steht nach dem Schließen dieser Ansicht wieder aus — sonst steht jemand auf der Bühne im Probelauf.',
+    'lightshow.syncBtn': 'Uhr prüfen',
+    'lightshow.hintBlock': 'Bildschirmhelligkeit vor dem Auftritt von Hand hochdrehen — das kann die App nicht selbst tun. „Datum &amp; Uhrzeit automatisch" sollte im Betriebssystem eingeschaltet bleiben. Handy während der Show nicht sperren. Vor dem Auftritt einmal zu zweit „Uhr prüfen" machen.',
+    'lightshow.seizureWarning': 'Die Shows arbeiten mit hellen, wechselnden Flächen. Wer lichtempfindlich ist oder zu Anfällen neigt, macht besser nicht mit oder wählt „Sternenhimmel".',
+    'lightshow.reducedMotionHint': 'Dieses Gerät bevorzugt weniger Bewegung — „Sternenhimmel" ist deshalb vorausgewählt. Die anderen Shows lassen sich trotzdem starten.',
+    'lightshow.recommendedBadge': 'Empfohlen',
+
+    'lightshow.show.sterne.name': 'Sternenhimmel',
+    'lightshow.show.sterne.desc': 'Flirrendes Funkeln in der eigenen Stimmfarbe — braucht keine gut gestellte Uhr.',
+    'lightshow.show.puls.name': 'Herzschlag',
+    'lightshow.show.puls.desc': 'Ein Doppelschlag läuft von Sopran zu Bass durch den Chor, wird zum Ende hin kräftiger.',
+    'lightshow.show.welle.name': 'Welle',
+    'lightshow.show.welle.desc': 'Ein Lichtband läuft immer wieder von Sopran nach Bass, endet in einer gemeinsamen Atmung.',
+    'lightshow.show.finale.name': 'Finale',
+    'lightshow.show.finale.desc': 'Gruppen-Jagd, gemeinsamer Puls, ein Höhepunkt in Weiß — die einzige Show mit harten Schnitten.',
+
+    'lightshow.syncLevel.unkritisch': 'verzeiht schiefe Uhren',
+    'lightshow.syncLevel.hoch': 'verzeiht kleine Abweichungen',
+    'lightshow.syncLevel.mittel': 'braucht einigermaßen gestellte Uhren',
+    'lightshow.syncLevel.empfindlich': 'braucht gut gestellte Uhren',
+
+    'lightshow.sync.instruction': 'Zwei Handys nebeneinander legen, beide dieses Bild zeigen. Laufen die Balken sichtbar versetzt, geht eine Uhr falsch.',
+    'lightshow.sync.autoNote': 'Liegt ein Gerät um mehr als etwa eine halbe Sekunde daneben: nicht hier ausgleichen, sondern „Datum & Uhrzeit automatisch" im Betriebssystem einschalten. Der Handversatz ist nur die Krücke, falls das nicht geht.',
+    'lightshow.sync.offsetAria': 'Handversatz',
+    'lightshow.sync.resetBtn': 'Zurücksetzen',
   },
   en: {
     'nav.songs': 'Songs',
@@ -3777,6 +4297,10 @@ const STRINGS = {
 
     'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
+
+    'settings.lightshow.title': 'Light show',
+    'settings.lightshow.hint': 'Four small on-stage moments for the concert: full-screen light colours that follow your own voice part and stay in sync via the system clock — no internet or connection between phones needed.',
+    'settings.lightshow.openBtn': 'Open light show',
 
     'settings.bike.title': 'Bicycle mode',
     'settings.bike.hint': 'With only one earbud in: if a voice (e.g. bass) is hard-panned to one side, you might not hear it at all depending on your ear.',
@@ -3921,6 +4445,40 @@ const STRINGS = {
     'songs.createPlaceholderHint': 'Create a song that hasn\'t been imported yet — for lyrics, notes or a setlist.',
     'songs.placeholderBadge': 'no recording yet',
     'player.placeholderHint': 'No recording imported yet. You can still save lyrics and notes now — they connect automatically on the next import.',
+
+    'lightshow.backAria': 'Back to settings',
+    'lightshow.noVoiceHint': 'No voice part chosen yet — the show will run on soprano timing in pink for now. Change it under <strong>Settings → My voices</strong>, or set it here just for the show:',
+    'lightshow.voicePickerAria': 'Voice for the light show',
+    'lightshow.voicePrefix': 'You light up as',
+    'lightshow.showsTitle': 'Choose a show',
+    'lightshow.startBtn': 'Start show',
+    'lightshow.rehearsalLabel': 'Rehearsal — starts right away instead of waiting for the grid point',
+    'lightshow.rehearsalAria': 'Rehearsal',
+    'lightshow.rehearsalHint': 'Turns off again once you close this view — otherwise someone could end up on stage in rehearsal mode.',
+    'lightshow.syncBtn': 'Check clock',
+    'lightshow.hintBlock': 'Turn up the screen brightness by hand before the concert — the app can’t do that itself. Keep "automatic date & time" switched on in the OS. Don’t lock the phone during the show. Run "Check clock" together with someone once before the concert.',
+    'lightshow.seizureWarning': 'The shows use bright, changing areas of colour. If you’re light-sensitive or prone to seizures, better sit this one out or pick "Starry sky".',
+    'lightshow.reducedMotionHint': 'This device prefers reduced motion — "Starry sky" is pre-selected because of that. The other shows can still be started.',
+    'lightshow.recommendedBadge': 'Recommended',
+
+    'lightshow.show.sterne.name': 'Starry sky',
+    'lightshow.show.sterne.desc': 'A shimmering twinkle in your own voice colour — doesn’t need a well-set clock.',
+    'lightshow.show.puls.name': 'Heartbeat',
+    'lightshow.show.puls.desc': 'A double beat travels from soprano to bass through the choir, growing stronger toward the end.',
+    'lightshow.show.welle.name': 'Wave',
+    'lightshow.show.welle.desc': 'A band of light keeps travelling from soprano to bass, ending in a shared breath.',
+    'lightshow.show.finale.name': 'Finale',
+    'lightshow.show.finale.desc': 'A group chase, a shared pulse, a peak in white — the only show with hard cuts.',
+
+    'lightshow.syncLevel.unkritisch': 'forgives clocks that run off',
+    'lightshow.syncLevel.hoch': 'forgives small differences',
+    'lightshow.syncLevel.mittel': 'needs reasonably set clocks',
+    'lightshow.syncLevel.empfindlich': 'needs well-set clocks',
+
+    'lightshow.sync.instruction': 'Place two phones side by side, both showing this image. If the bars visibly drift apart, one clock is off.',
+    'lightshow.sync.autoNote': 'If a device is off by more than about half a second: don’t compensate here, switch on "automatic date & time" in the OS instead. The manual offset is only a crutch for when that isn’t possible.',
+    'lightshow.sync.offsetAria': 'Manual offset',
+    'lightshow.sync.resetBtn': 'Reset',
   },
   pl: {
     'nav.songs': 'Utwory',
@@ -3948,6 +4506,10 @@ const STRINGS = {
 
     'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
+
+    'settings.lightshow.title': 'Pokaz świateł',
+    'settings.lightshow.hint': 'Cztery krótkie sceniczne wstawki na koncert: pełnoekranowe kolory światła dopasowane do własnego głosu, zsynchronizowane przez zegar systemowy — bez internetu i bez połączenia między telefonami.',
+    'settings.lightshow.openBtn': 'Otwórz pokaz świateł',
 
     'settings.bike.title': 'Tryb rowerowy',
     'settings.bike.hint': 'Przy jednej słuchawce: jeśli głos (np. bas) jest mocno przesunięty na jedną stronę, w drugim uchu może być w ogóle niesłyszalny.',
@@ -4092,6 +4654,40 @@ const STRINGS = {
     'songs.createPlaceholderHint': 'Utwórz jeszcze niezaimportowany utwór — na tekst, notatki lub do setlisty.',
     'songs.placeholderBadge': 'jeszcze bez nagrania',
     'player.placeholderHint': 'Nagranie nie zostało jeszcze zaimportowane. Możesz już teraz zapisać tekst i notatki — połączą się automatycznie przy kolejnym imporcie.',
+
+    'lightshow.backAria': 'Wróć do ustawień',
+    'lightshow.noVoiceHint': 'Nie wybrano jeszcze głosu — pokaz na razie działa w tempie sopranu, w kolorze różowym. Zmień to w <strong>Ustawienia → Moje głosy</strong>, albo ustaw tylko dla pokazu tutaj:',
+    'lightshow.voicePickerAria': 'Głos na pokaz świateł',
+    'lightshow.voicePrefix': 'Świecisz jako',
+    'lightshow.showsTitle': 'Wybierz pokaz',
+    'lightshow.startBtn': 'Uruchom pokaz',
+    'lightshow.rehearsalLabel': 'Próba — zaczyna od razu, bez czekania na punkt siatki czasowej',
+    'lightshow.rehearsalAria': 'Próba',
+    'lightshow.rehearsalHint': 'Po zamknięciu tego widoku znowu jest wyłączona — inaczej ktoś mógłby stanąć na scenie w trybie próby.',
+    'lightshow.syncBtn': 'Sprawdź zegar',
+    'lightshow.hintBlock': 'Przed koncertem podkręć jasność ekranu ręcznie — aplikacja nie może zrobić tego sama. „Automatyczna data i godzina" powinna zostać włączona w systemie. Nie blokuj telefonu podczas pokazu. Przed występem zrób raz we dwoje „Sprawdź zegar".',
+    'lightshow.seizureWarning': 'Pokazy operują jasnymi, zmieniającymi się barwami. Osoby wrażliwe na światło lub podatne na napady lepiej niech nie biorą udziału albo wybiorą „Rozgwieżdżone niebo".',
+    'lightshow.reducedMotionHint': 'To urządzenie preferuje mniej ruchu — dlatego wybrano wstępnie „Rozgwieżdżone niebo". Pozostałe pokazy nadal można uruchomić.',
+    'lightshow.recommendedBadge': 'Polecane',
+
+    'lightshow.show.sterne.name': 'Rozgwieżdżone niebo',
+    'lightshow.show.sterne.desc': 'Migoczące skrzenie we własnym kolorze głosu — nie wymaga dobrze ustawionego zegara.',
+    'lightshow.show.puls.name': 'Bicie serca',
+    'lightshow.show.puls.desc': 'Podwójne uderzenie biegnie od sopranu do basu przez chór, narasta ku końcowi.',
+    'lightshow.show.welle.name': 'Fala',
+    'lightshow.show.welle.desc': 'Pasmo światła wciąż biegnie od sopranu do basu, kończy się wspólnym oddechem.',
+    'lightshow.show.finale.name': 'Finał',
+    'lightshow.show.finale.desc': 'Pościg grup, wspólny puls, szczyt w bieli — jedyny pokaz z ostrymi cięciami.',
+
+    'lightshow.syncLevel.unkritisch': 'wybacza rozjechane zegary',
+    'lightshow.syncLevel.hoch': 'wybacza małe różnice',
+    'lightshow.syncLevel.mittel': 'wymaga w miarę ustawionych zegarów',
+    'lightshow.syncLevel.empfindlich': 'wymaga dobrze ustawionych zegarów',
+
+    'lightshow.sync.instruction': 'Połóż dwa telefony obok siebie, oba pokazujące ten obraz. Jeśli paski wyraźnie się rozjeżdżają, jeden zegar się myli.',
+    'lightshow.sync.autoNote': 'Jeśli urządzenie myli się o więcej niż pół sekundy: nie wyrównuj tego tutaj, tylko włącz „Automatyczną datę i godzinę" w systemie. Ręczne przesunięcie to tylko podpórka, gdy to niemożliwe.',
+    'lightshow.sync.offsetAria': 'Ręczne przesunięcie',
+    'lightshow.sync.resetBtn': 'Resetuj',
   },
 };
 
@@ -4122,6 +4718,8 @@ async function loadSettings() {
   if (!settings.myVoices?.length && settings.myVoice) {
     settings.myVoices = [settings.myVoice];
   }
+  // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
+  settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
   applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
   return settings;
 }
@@ -4927,6 +5525,13 @@ function applyRoute() {
     return;
   }
   if (importOpen) closeImportView();
+
+  if (name === 'lightshow') {
+    if (openPlaylist) closePlaylistView();
+    openLightshowView();
+    return;
+  }
+  if (lightshowOpen) closeLightshowView();
 
   if (name === 'song' && param) {
     if (openPlaylist) closePlaylistView();
@@ -7661,6 +8266,344 @@ function closeImportView() {
 
 $('#btn-open-import').addEventListener('click', () => navigate('#import'));
 $('#import-back').addEventListener('click', () => history.back());
+
+/* ==========================================================================
+   LICHTSHOW — Vollbild-Unteransicht (#lightshow-view), Vorbild #import-view.
+   Die eigentliche Bühne (#lightshow-stage) und das Sync-Prüfbild
+   (#lightshow-sync) sind eigene Overlays, siehe weiter unten.
+   ========================================================================== */
+
+let lightshowOpen = false;
+// Nicht gespeichert: steht bei jedem Öffnen der Ansicht wieder auf „aus",
+// sonst stünde jemand auf der Bühne im Probelauf.
+let lightshowRehearsal = false;
+
+/** Stimme, in deren Takt/Farbe die Lichtshow läuft — Sopran-Timing/Pink, wenn keine gewählt ist. */
+function lightshowActiveVoice() {
+  return settings.lightshowVoice || settings.myVoices?.[0] || null;
+}
+
+/**
+ * Zieht einmalig einen geräteeigenen Zufallskeim für „Sternenhimmel" — darf
+ * sich danach nie wieder ändern, sonst funkelt dasselbe Handy bei jedem
+ * Start anders.
+ */
+async function ensureLightshowSeed() {
+  if (settings.lightshowSeed) return;
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  await saveSettings({ lightshowSeed: buf[0] || 1 }); // 0 bliebe „noch keiner"
+}
+
+function renderLightshowVoiceLine() {
+  const voice = lightshowActiveVoice();
+  $('#lightshow-novoice-hint').hidden = !!voice;
+  $('#lightshow-voice-dot').style.setProperty('--lightshow-voice-c', lightshowVoiceColor(voice));
+  $('#lightshow-voice-text').textContent = voice ? `${t('lightshow.voicePrefix')} ${VOICE_LABEL[voice]}` : '';
+}
+
+function renderLightshowVoicePicker() {
+  const host = $('#lightshow-voice-picker');
+  host.textContent = '';
+  for (const voice of LIGHTSHOW_VOICES) {
+    const btn = el('button', {
+      class: 'chip chip--voice',
+      type: 'button',
+      'aria-pressed': lightshowActiveVoice() === voice ? 'true' : 'false',
+      text: VOICE_LABEL[voice],
+      onclick: async () => {
+        // Nur für die Show überschreiben — wer zwei Stimmen singt oder die
+        // Reihe wechselt, soll dafür nicht die Import-Einstellung anfassen.
+        await saveSettings({ lightshowVoice: voice });
+        renderLightshowVoiceLine();
+        renderLightshowVoicePicker();
+        renderLightshowList();
+      },
+    });
+    btn.style.setProperty('--voice-c', VOICE_COLOR[voice]);
+    host.append(btn);
+  }
+}
+
+function renderLightshowMotionHint() {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('#lightshow-motion-hint').hidden = !reduced;
+}
+
+function renderLightshowList() {
+  const host = $('#lightshow-list');
+  host.textContent = '';
+  const voice = lightshowActiveVoice();
+  const color = lightshowVoiceColor(voice);
+  // Bevorzugt weniger Bewegung: „Sternenhimmel" bekommt einen Hinweis, bleibt
+  // aber genau wie die anderen Shows startbar — eine bewusste Bühnenhandlung
+  // ist keine unerwartete Animation (siehe LICHTSHOW-PLAN.md Abschnitt 9.3).
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const show of LIGHTSHOWS) {
+    const recommended = reducedMotion && show.id === 'sterne';
+    host.append(el('div', { class: recommended ? 'lightshow-tile is-recommended' : 'lightshow-tile' },
+      el('div', {
+        class: 'lightshow-tile-preview',
+        style: `background:linear-gradient(90deg, ${lightshowScale(color, 0.12)}, ${color})`,
+      }),
+      el('div', { style: 'display:flex; align-items:center; gap:6px' },
+        el('strong', { text: t(`lightshow.show.${show.id}.name`) }),
+        recommended ? el('span', { class: 'lightshow-tile-badge', text: t('lightshow.recommendedBadge') }) : null),
+      el('p', { class: 'small muted', style: 'margin:0', text: t(`lightshow.show.${show.id}.desc`) }),
+      el('p', { class: 'small muted', style: 'margin:0' },
+        `${Math.round(show.cycleMs / 1000)} s · ${t(`lightshow.syncLevel.${show.sync}`)}`),
+      el('button', {
+        class: 'btn btn--primary btn--block', type: 'button', style: 'margin-top:4px',
+        text: t('lightshow.startBtn'),
+        onclick: async () => {
+          await saveSettings({ lightshowShow: show.id });
+          openLightshowStage(show.id, { rehearsal: lightshowRehearsal });
+        },
+      })));
+  }
+}
+
+function renderLightshowView() {
+  renderLightshowVoiceLine();
+  renderLightshowVoicePicker();
+  renderLightshowMotionHint();
+  renderLightshowList();
+}
+
+async function openLightshowView() {
+  lightshowOpen = true;
+  lightshowRehearsal = false;
+  $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', 'false');
+  $('#lightshow-view').hidden = false;
+  await ensureLightshowSeed();
+  renderLightshowView();
+}
+
+function closeLightshowView() {
+  lightshowOpen = false;
+  $('#lightshow-view').hidden = true;
+  if (lightshowStageOpen) closeLightshowStage();
+}
+
+$('#btn-open-lightshow').addEventListener('click', () => navigate('#lightshow'));
+$('#lightshow-back').addEventListener('click', () => history.back());
+
+$('#lightshow-rehearsal-toggle').addEventListener('click', () => {
+  lightshowRehearsal = !lightshowRehearsal;
+  $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', lightshowRehearsal ? 'true' : 'false');
+});
+
+$('#btn-lightshow-sync').addEventListener('click', () => openLightshowSync());
+
+/* ==========================================================================
+   LICHTSHOW-BÜHNE — Vollbild-Overlay (#lightshow-stage). Zeigt ausschließlich
+   ihre Hintergrundfarbe; die Farbe ist eine reine Funktion der Systemzeit
+   (siehe lightshowFrame), es gibt keinen Startzeitpunkt, der zwischen
+   Geräten abgestimmt werden müsste.
+   ========================================================================== */
+
+let lightshowStageOpen = false;
+let lightshowStageRaf = null;
+let lightshowWakeLock = null;
+let lightshowAnchorWall = 0;   // Date.now() + Handversatz zum Zeitpunkt der letzten Verankerung
+let lightshowAnchorPerf = 0;   // performance.now() zum selben Zeitpunkt — monotoner Bezug dazu
+let lightshowStartWall = 0;    // Rasterpunkt, ab dem die Show synchron läuft
+let lightshowStageCycleMs = 0;
+let lightshowStageShowId = null;
+let lightshowStageVoice = null;
+let lightshowStageSeed = 1;
+let lightshowLastBg = null;
+let lightshowLastCountdownSec = null;
+
+/**
+ * Aktuelle „Wanduhrzeit" aus dem monotonen performance.now()-Zähler
+ * abgeleitet, statt bei jedem Frame erneut Date.now() abzufragen — stellt
+ * das Betriebssystem mitten in der Show die Uhr per NTP nach, würde das
+ * Bild sonst sichtbar springen. Neu verankert wird nur beim Start und beim
+ * Zurückkommen aus dem Hintergrund (siehe lightshowReanchorStage).
+ */
+function lightshowWallNow() {
+  return lightshowAnchorWall + (performance.now() - lightshowAnchorPerf);
+}
+
+function lightshowReanchorStage() {
+  lightshowAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
+  lightshowAnchorPerf = performance.now();
+}
+
+function lightshowStageStep() {
+  lightshowStageRaf = requestAnimationFrame(lightshowStageStep);
+  const wall = lightshowWallNow();
+  const stage = $('#lightshow-stage');
+
+  if (wall < lightshowStartWall) {
+    const secLeft = Math.ceil((lightshowStartWall - wall) / 1000);
+    if (secLeft !== lightshowLastCountdownSec) {
+      lightshowLastCountdownSec = secLeft;
+      $('#lightshow-countdown').textContent = secLeft > 0 ? String(secLeft) : '';
+    }
+    if (lightshowLastBg !== '#000000') { stage.style.backgroundColor = '#000000'; lightshowLastBg = '#000000'; }
+    return;
+  }
+  if (lightshowLastCountdownSec !== null) {
+    lightshowLastCountdownSec = null;
+    $('#lightshow-countdown').textContent = '';
+  }
+
+  // Im synchronen Betrieb liegt startWall auf dem Epochen-Raster, also ist
+  // das hier gleichbedeutend mit `wall % cycleMs` — das ist der eigentliche
+  // Punkt der ganzen Konstruktion: zwei Geräte mit derselben Uhr zeigen
+  // zwangsläufig dasselbe, ganz ohne Nachricht zwischen ihnen.
+  const tMs = (wall - lightshowStartWall) % lightshowStageCycleMs;
+  const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice, lightshowStageSeed);
+  if (bg !== lightshowLastBg) { stage.style.backgroundColor = bg; lightshowLastBg = bg; }
+}
+
+// Der Browser drosselt requestAnimationFrame im Hintergrund ohnehin; ohne
+// dieses Anhalten gäbe es beim Zurückkommen genau den Uhrensprung, den die
+// monotone Verankerung oben vermeiden soll.
+document.addEventListener('visibilitychange', () => {
+  if (!lightshowStageOpen) return;
+  if (document.visibilityState === 'visible') {
+    lightshowReanchorStage();
+    if (!lightshowStageRaf) lightshowStageStep();
+    if (!lightshowWakeLock) lightshowAcquireStageWakeLock();
+  } else if (lightshowStageRaf) {
+    cancelAnimationFrame(lightshowStageRaf);
+    lightshowStageRaf = null;
+  }
+});
+
+/** Eigener Wake Lock für die Bühne — updateWakeLock() gehört dem Player und bleibt unangetastet. */
+async function lightshowAcquireStageWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    lightshowWakeLock = await navigator.wakeLock.request('screen');
+    lightshowWakeLock.addEventListener('release', () => { lightshowWakeLock = null; });
+  } catch { /* z. B. Berechtigung verweigert — die Show läuft trotzdem weiter */ }
+}
+
+async function openLightshowStage(showId, { rehearsal = false } = {}) {
+  const show = LIGHTSHOWS.find((s) => s.id === showId);
+  if (!show) return;
+
+  lightshowStageOpen = true;
+  lightshowStageShowId = showId;
+  lightshowStageCycleMs = show.cycleMs;
+  lightshowStageVoice = lightshowActiveVoice();
+  lightshowStageSeed = settings.lightshowSeed || 1;
+  lightshowLastBg = null;
+  lightshowLastCountdownSec = null;
+
+  const stage = $('#lightshow-stage');
+  stage.style.backgroundColor = '#000000';
+  $('#lightshow-countdown').textContent = '';
+  stage.hidden = false;
+  openModal(stage, { initialFocus: $('#lightshow-close'), onEscape: () => closeLightshowStage() });
+
+  try { await stage.requestFullscreen?.(); } catch { /* z. B. iOS Safari ohne Element-Vollbild */ }
+  await lightshowAcquireStageWakeLock();
+
+  lightshowReanchorStage();
+  lightshowStartWall = rehearsal
+    ? lightshowAnchorWall
+    : Math.ceil(lightshowAnchorWall / lightshowStageCycleMs) * lightshowStageCycleMs;
+
+  if (lightshowStageRaf) cancelAnimationFrame(lightshowStageRaf);
+  lightshowStageStep();
+}
+
+async function closeLightshowStage() {
+  lightshowStageOpen = false;
+  if (lightshowStageRaf) { cancelAnimationFrame(lightshowStageRaf); lightshowStageRaf = null; }
+  if (lightshowWakeLock) { lightshowWakeLock.release().catch(() => {}); lightshowWakeLock = null; }
+  const stage = $('#lightshow-stage');
+  closeModal(stage);
+  stage.hidden = true;
+  stage.style.backgroundColor = '#000000';
+  if (document.fullscreenElement === stage) {
+    try { await document.exitFullscreen(); } catch { /* schon zu */ }
+  }
+}
+
+$('#lightshow-close').addEventListener('click', () => closeLightshowStage());
+
+/* ==========================================================================
+   SYNC-PRÜFBILD — ohne Netz feststellen, ob eine Handyuhr grob danebenliegt
+   (#lightshow-sync), und das über den Handversatz ausgleichen.
+   ========================================================================== */
+
+let lightshowSyncOpen = false;
+let lightshowSyncRaf = null;
+let lightshowSyncAnchorWall = 0;
+let lightshowSyncAnchorPerf = 0;
+
+function lightshowRenderSyncOffset() {
+  $('#lightshow-sync-value').textContent = `${settings.lightshowOffsetMs || 0} ms`;
+}
+
+async function lightshowAdjustOffset(deltaMs) {
+  const next = Math.max(-5000, Math.min(5000, (settings.lightshowOffsetMs || 0) + deltaMs));
+  await saveSettings({ lightshowOffsetMs: next });
+  lightshowRenderSyncOffset();
+}
+
+function lightshowSyncStep() {
+  lightshowSyncRaf = requestAnimationFrame(lightshowSyncStep);
+  const wall = lightshowSyncAnchorWall + (performance.now() - lightshowSyncAnchorPerf);
+  const msIntoSecond = ((wall % 1000) + 1000) % 1000;
+
+  const track = $('#lightshow-sync-track');
+  const bar = $('#lightshow-sync-bar');
+  const travel = Math.max(0, track.clientWidth - bar.clientWidth);
+  bar.style.transform = `translateX(${(msIntoSecond / 1000) * travel}px)`;
+
+  // Kurzer Vollflächen-Blitz von 80 ms zum Sekundenwechsel — klingt schneller
+  // ab als die Sekunde selbst, damit er nicht in die nächste hineinragt.
+  const flash = $('#lightshow-sync-flash');
+  flash.style.opacity = msIntoSecond < 80 ? String(1 - msIntoSecond / 80) : '0';
+}
+
+function openLightshowSync() {
+  lightshowSyncOpen = true;
+  lightshowRenderSyncOffset();
+  const el = $('#lightshow-sync');
+  el.hidden = false;
+  openModal(el, { initialFocus: $('#lightshow-sync-close'), onEscape: () => closeLightshowSync() });
+  lightshowSyncAnchorWall = Date.now();
+  lightshowSyncAnchorPerf = performance.now();
+  if (lightshowSyncRaf) cancelAnimationFrame(lightshowSyncRaf);
+  lightshowSyncStep();
+}
+
+function closeLightshowSync() {
+  lightshowSyncOpen = false;
+  if (lightshowSyncRaf) { cancelAnimationFrame(lightshowSyncRaf); lightshowSyncRaf = null; }
+  const el = $('#lightshow-sync');
+  closeModal(el);
+  el.hidden = true;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!lightshowSyncOpen) return;
+  if (document.visibilityState === 'visible') {
+    lightshowSyncAnchorWall = Date.now();
+    lightshowSyncAnchorPerf = performance.now();
+    if (!lightshowSyncRaf) lightshowSyncStep();
+  } else if (lightshowSyncRaf) {
+    cancelAnimationFrame(lightshowSyncRaf);
+    lightshowSyncRaf = null;
+  }
+});
+
+$('#lightshow-sync-close').addEventListener('click', () => closeLightshowSync());
+$$('#lightshow-sync .preset').forEach((btn) => {
+  btn.addEventListener('click', () => lightshowAdjustOffset(Number(btn.dataset.delta)));
+});
+$('#btn-lightshow-sync-reset').addEventListener('click', async () => {
+  await saveSettings({ lightshowOffsetMs: 0 });
+  lightshowRenderSyncOffset();
+});
 
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
@@ -11952,6 +12895,8 @@ async function buildBackupParts(opts, onProgress) {
     parts.push(`,"settings":${JSON.stringify({
       myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize,
       defaultPlayerTab: settings.defaultPlayerTab, accentColor: settings.accentColor, language: settings.language,
+      lightshowOffsetMs: settings.lightshowOffsetMs, lightshowVoice: settings.lightshowVoice,
+      lightshowShow: settings.lightshowShow, lightshowSeed: settings.lightshowSeed,
     })}`);
   }
   if (opts.loops) {
@@ -12605,6 +13550,18 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   if (data.settings?.language) {
     await saveSettings({ language: data.settings.language }); // übersetzt die Oberfläche gleich mit
   }
+  if (typeof data.settings?.lightshowOffsetMs === 'number') {
+    await saveSettings({ lightshowOffsetMs: Math.max(-5000, Math.min(5000, data.settings.lightshowOffsetMs)) });
+  }
+  if (data.settings?.lightshowVoice) {
+    await saveSettings({ lightshowVoice: data.settings.lightshowVoice });
+  }
+  if (data.settings?.lightshowShow) {
+    await saveSettings({ lightshowShow: data.settings.lightshowShow });
+  }
+  if (data.settings?.lightshowSeed) {
+    await saveSettings({ lightshowSeed: data.settings.lightshowSeed });
+  }
 
   await renderPlaylists();
   await renderSettings();
@@ -12947,6 +13904,102 @@ function runSelfTests() {
     failed.push(`orphanFileKeys findet die falschen Waisen: ${JSON.stringify(orphans)}`);
   }
 
+  // LICHTSHOW: lightshowFrame() ist rein (ohne DOM, ohne Date, ohne
+  // Math.random) — genau das macht sie hier ohne Browser testbar.
+  const lightshowHexRe = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
+  const lightshowBrightnessOf = (hex) => {
+    const m = lightshowHexRe.exec(hex);
+    const [r, g, b] = [1, 2, 3].map((i) => parseInt(m[i], 16));
+    return (r + g + b) / 3 / 255;
+  };
+
+  // 1. Determinismus: gleicher Aufruf, gleiches Ergebnis.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      for (const tMs of [0, 12345, show.cycleMs - 1]) {
+        checks++;
+        const a = lightshowFrame(show.id, tMs, voice, 7);
+        const b = lightshowFrame(show.id, tMs, voice, 7);
+        if (a !== b) failed.push(`lightshowFrame nicht deterministisch: ${show.id}/${voice}/${tMs}`);
+      }
+    }
+  }
+
+  // 2. Gültige Ausgabe über den ganzen Zyklus, für alle Stimmen.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      for (let tMs = 0; tMs < show.cycleMs; tMs += 50) {
+        checks++;
+        const c = lightshowFrame(show.id, tMs, voice, 42);
+        if (!/^#[0-9a-f]{6}$/.test(c)) failed.push(`lightshowFrame liefert kein #rrggbb: ${show.id}/${voice}/${tMs} = ${c}`);
+      }
+    }
+  }
+
+  // 3. Stimmabhängigkeit: „Welle" und „Finale" müssen SOP und BASS unterscheiden.
+  for (const showId of ['welle', 'finale']) {
+    checks++;
+    let differs = false;
+    for (let tMs = 0; tMs < 32000; tMs += 50) {
+      if (lightshowFrame(showId, tMs, 'SOP', 1) !== lightshowFrame(showId, tMs, 'BASS', 1)) { differs = true; break; }
+    }
+    if (!differs) failed.push(`lightshowFrame(${showId}): SOP und BASS sehen überall gleich aus`);
+  }
+
+  // 4. Zyklusschluss: kein sichtbarer Sprung beim Loop-Übergang, für jede Show und Stimme.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      checks++;
+      const a = lightshowBrightnessOf(lightshowFrame(show.id, 0, voice, 99));
+      const b = lightshowBrightnessOf(lightshowFrame(show.id, show.cycleMs - 20, voice, 99));
+      if (Math.abs(a - b) >= 0.12) {
+        failed.push(`Zyklusschluss ${show.id}/${voice}: Helligkeit springt von ${b.toFixed(2)} auf ${a.toFixed(2)}`);
+      }
+    }
+  }
+
+  // 5. Blitzgrenze (WCAG 2.3.1): höchstens 3 steigende Übergänge über 0,5 je 1000-ms-Fenster.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      const seeds = show.id === 'sterne' ? [1, 2, 3, 4, 5, 99, 12345] : [0];
+      for (const seed of seeds) {
+        checks++;
+        const step = 20;
+        const n = Math.floor(show.cycleMs / step);
+        const samples = [];
+        for (let i = 0; i < n; i++) samples.push(lightshowBrightnessOf(lightshowFrame(show.id, i * step, voice, seed)));
+        const doubled = samples.concat(samples); // kreisförmig, damit auch Fenster um den Loop-Punkt geprüft werden
+        const windowSize = Math.round(1000 / step);
+        let maxCount = 0;
+        for (let i = 0; i < n; i++) {
+          let count = 0;
+          for (let j = 1; j < windowSize; j++) {
+            if (doubled[i + j] > 0.5 && doubled[i + j - 1] <= 0.5) count++;
+          }
+          if (count > maxCount) maxCount = count;
+        }
+        if (maxCount > 3) failed.push(`Blitzgrenze verletzt: ${show.id}/${voice}/seed${seed}, ${maxCount} Übergänge in 1000 ms`);
+      }
+    }
+  }
+
+  // 6. Farbhelfer.
+  checks++;
+  if (lightshowScale('#ffffff', 0) !== '#000000') failed.push('lightshowScale("#ffffff", 0) müsste Schwarz sein');
+  checks++;
+  if (lightshowScale('#ffffff', 1) !== '#ffffff') failed.push('lightshowScale("#ffffff", 1) müsste Weiß sein');
+  checks++;
+  const lightshowMixHalf = lightshowMix('#000000', '#ffffff', 0.5);
+  if (lightshowMixHalf !== '#808080' && lightshowMixHalf !== '#7f7f7f') {
+    failed.push(`lightshowMix("#000000", "#ffffff", 0.5) = ${lightshowMixHalf}, erwartet #808080/#7f7f7f`);
+  }
+
+  // 7. Stimmzuordnung.
+  checks++;
+  if (lightshowVoiceIndex('LEAD') !== 0) failed.push('lightshowVoiceIndex("LEAD") müsste 0 sein');
+  checks++;
+  if (lightshowVoiceColor('LEAD') !== VOICE_COLOR.FULL) failed.push('lightshowVoiceColor("LEAD") müsste VOICE_COLOR.FULL sein');
+
   const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
@@ -12999,6 +14052,7 @@ window.chorApp = {
   settings: () => settings,
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
+  lightshowFrame,
 };
 
 /* ==========================================================================
