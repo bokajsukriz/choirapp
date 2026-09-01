@@ -57,6 +57,17 @@ Titelerkennung, Speicher-Warteschlangen, Aufräumlogik). Fokusreihenfolge,
 Kontrast im echten Rendering, Quota-Verhalten und Service-Worker-Updates
 lassen sich nur manuell im Browser prüfen.
 
+## Lichtshow
+
+Unter Einstellungen → Lichtshow gibt es vier kleine Bühnen-Einlagen für den
+Auftritt: Vollbild-Lichtfarben, die sich nach der eigenen Stimme richten. Die
+Handys reden nicht miteinander — es gibt keinen Server, keine Bluetooth- oder
+QR-Kopplung —, sondern laufen rein über die Systemuhr synchron: das Bild ist
+eine reine Funktion der Zeit (`lightshowFrame()`), auf jedem Gerät identisch.
+Damit das funktioniert, sollte „Datum & Uhrzeit automatisch“ im Betriebssystem
+eingeschaltet bleiben; ein Sync-Prüfbild in der Ansicht zeigt, ob eine Uhr
+grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich.
+
 ## Wichtige Regel für Änderungen
 
 Bei jeder Änderung an `index.html`, `sw.js` oder `manifest.json` muss
