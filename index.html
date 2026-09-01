@@ -1584,6 +1584,54 @@ input[type="checkbox"] {
   color: #000;
 }
 
+/* Lichtshow-Bühne (siehe openLightshowStage/closeLightshowStage). Keine
+   Übergänge — die Blenden rechnet lightshowFrame() selbst, eine
+   CSS-Transition würde dagegenarbeiten. */
+.lightshow-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+  transition: none;
+}
+.lightshow-stage[hidden] { display: none; }
+
+.lightshow-countdown {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255,255,255,.55);
+  font-weight: 700;
+  font-size: clamp(48px, 16vmin, 160px);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.lightshow-countdown:empty { display: none; }
+
+/* Stark gedimmt, damit der Knopf auf der hellen Bühnenfläche nicht als
+   heller Fleck auffällt — aber immer an derselben Stelle und mit
+   mindestens 44×44 px Trefferfläche, damit er auch im Dunkeln zu finden ist. */
+.lightshow-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  opacity: .25;
+  z-index: 1;
+}
+.lightshow-close svg { width: 20px; height: 20px; }
+
 .score-item {
   display: flex;
   flex-direction: column;
@@ -2076,6 +2124,18 @@ input[type="checkbox"] {
     <p class="lyrics-present-text" id="lyrics-present-text"></p>
   </div>
   <button class="lyrics-present-close" id="lyrics-present-close" type="button" aria-label="Schließen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</div>
+
+<!-- Lichtshow-Bühne: Vollbild-Overlay, das nur seine Hintergrundfarbe zeigt
+     (siehe openLightshowStage). Kein Schließen durch Tippen auf die Fläche —
+     versehentliches Beenden mitten in der Einlage wäre der schlimmste Fehler
+     dieser Funktion. Derselbe Stapelplatz wie #lyrics-present, dieselbe Regel:
+     eine reine Vollflächen-Ebene ohne Innencontainer, der die Farbe überdeckt. -->
+<div class="lightshow-stage" id="lightshow-stage" hidden role="dialog" aria-modal="true" aria-label="Lichtshow">
+  <div class="lightshow-countdown" id="lightshow-countdown" aria-hidden="true"></div>
+  <button class="lightshow-close" id="lightshow-close" type="button" aria-label="Schließen">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
   </button>
 </div>
@@ -8112,6 +8172,139 @@ $('#lightshow-rehearsal-toggle').addEventListener('click', () => {
 });
 
 $('#btn-lightshow-sync').addEventListener('click', () => openLightshowSync());
+
+/* ==========================================================================
+   LICHTSHOW-BÜHNE — Vollbild-Overlay (#lightshow-stage). Zeigt ausschließlich
+   ihre Hintergrundfarbe; die Farbe ist eine reine Funktion der Systemzeit
+   (siehe lightshowFrame), es gibt keinen Startzeitpunkt, der zwischen
+   Geräten abgestimmt werden müsste.
+   ========================================================================== */
+
+let lightshowStageOpen = false;
+let lightshowStageRaf = null;
+let lightshowWakeLock = null;
+let lightshowAnchorWall = 0;   // Date.now() + Handversatz zum Zeitpunkt der letzten Verankerung
+let lightshowAnchorPerf = 0;   // performance.now() zum selben Zeitpunkt — monotoner Bezug dazu
+let lightshowStartWall = 0;    // Rasterpunkt, ab dem die Show synchron läuft
+let lightshowStageCycleMs = 0;
+let lightshowStageShowId = null;
+let lightshowStageVoice = null;
+let lightshowStageSeed = 1;
+let lightshowLastBg = null;
+let lightshowLastCountdownSec = null;
+
+/**
+ * Aktuelle „Wanduhrzeit" aus dem monotonen performance.now()-Zähler
+ * abgeleitet, statt bei jedem Frame erneut Date.now() abzufragen — stellt
+ * das Betriebssystem mitten in der Show die Uhr per NTP nach, würde das
+ * Bild sonst sichtbar springen. Neu verankert wird nur beim Start und beim
+ * Zurückkommen aus dem Hintergrund (siehe lightshowReanchorStage).
+ */
+function lightshowWallNow() {
+  return lightshowAnchorWall + (performance.now() - lightshowAnchorPerf);
+}
+
+function lightshowReanchorStage() {
+  lightshowAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
+  lightshowAnchorPerf = performance.now();
+}
+
+function lightshowStageStep() {
+  lightshowStageRaf = requestAnimationFrame(lightshowStageStep);
+  const wall = lightshowWallNow();
+  const stage = $('#lightshow-stage');
+
+  if (wall < lightshowStartWall) {
+    const secLeft = Math.ceil((lightshowStartWall - wall) / 1000);
+    if (secLeft !== lightshowLastCountdownSec) {
+      lightshowLastCountdownSec = secLeft;
+      $('#lightshow-countdown').textContent = secLeft > 0 ? String(secLeft) : '';
+    }
+    if (lightshowLastBg !== '#000000') { stage.style.backgroundColor = '#000000'; lightshowLastBg = '#000000'; }
+    return;
+  }
+  if (lightshowLastCountdownSec !== null) {
+    lightshowLastCountdownSec = null;
+    $('#lightshow-countdown').textContent = '';
+  }
+
+  // Im synchronen Betrieb liegt startWall auf dem Epochen-Raster, also ist
+  // das hier gleichbedeutend mit `wall % cycleMs` — das ist der eigentliche
+  // Punkt der ganzen Konstruktion: zwei Geräte mit derselben Uhr zeigen
+  // zwangsläufig dasselbe, ganz ohne Nachricht zwischen ihnen.
+  const tMs = (wall - lightshowStartWall) % lightshowStageCycleMs;
+  const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice, lightshowStageSeed);
+  if (bg !== lightshowLastBg) { stage.style.backgroundColor = bg; lightshowLastBg = bg; }
+}
+
+// Der Browser drosselt requestAnimationFrame im Hintergrund ohnehin; ohne
+// dieses Anhalten gäbe es beim Zurückkommen genau den Uhrensprung, den die
+// monotone Verankerung oben vermeiden soll.
+document.addEventListener('visibilitychange', () => {
+  if (!lightshowStageOpen) return;
+  if (document.visibilityState === 'visible') {
+    lightshowReanchorStage();
+    if (!lightshowStageRaf) lightshowStageStep();
+    if (!lightshowWakeLock) lightshowAcquireStageWakeLock();
+  } else if (lightshowStageRaf) {
+    cancelAnimationFrame(lightshowStageRaf);
+    lightshowStageRaf = null;
+  }
+});
+
+/** Eigener Wake Lock für die Bühne — updateWakeLock() gehört dem Player und bleibt unangetastet. */
+async function lightshowAcquireStageWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    lightshowWakeLock = await navigator.wakeLock.request('screen');
+    lightshowWakeLock.addEventListener('release', () => { lightshowWakeLock = null; });
+  } catch { /* z. B. Berechtigung verweigert — die Show läuft trotzdem weiter */ }
+}
+
+async function openLightshowStage(showId, { rehearsal = false } = {}) {
+  const show = LIGHTSHOWS.find((s) => s.id === showId);
+  if (!show) return;
+
+  lightshowStageOpen = true;
+  lightshowStageShowId = showId;
+  lightshowStageCycleMs = show.cycleMs;
+  lightshowStageVoice = lightshowActiveVoice();
+  lightshowStageSeed = settings.lightshowSeed || 1;
+  lightshowLastBg = null;
+  lightshowLastCountdownSec = null;
+
+  const stage = $('#lightshow-stage');
+  stage.style.backgroundColor = '#000000';
+  $('#lightshow-countdown').textContent = '';
+  stage.hidden = false;
+  openModal(stage, { initialFocus: $('#lightshow-close'), onEscape: () => closeLightshowStage() });
+
+  try { await stage.requestFullscreen?.(); } catch { /* z. B. iOS Safari ohne Element-Vollbild */ }
+  await lightshowAcquireStageWakeLock();
+
+  lightshowReanchorStage();
+  lightshowStartWall = rehearsal
+    ? lightshowAnchorWall
+    : Math.ceil(lightshowAnchorWall / lightshowStageCycleMs) * lightshowStageCycleMs;
+
+  if (lightshowStageRaf) cancelAnimationFrame(lightshowStageRaf);
+  lightshowStageStep();
+}
+
+async function closeLightshowStage() {
+  lightshowStageOpen = false;
+  if (lightshowStageRaf) { cancelAnimationFrame(lightshowStageRaf); lightshowStageRaf = null; }
+  if (lightshowWakeLock) { lightshowWakeLock.release().catch(() => {}); lightshowWakeLock = null; }
+  const stage = $('#lightshow-stage');
+  closeModal(stage);
+  stage.hidden = true;
+  stage.style.backgroundColor = '#000000';
+  if (document.fullscreenElement === stage) {
+    try { await document.exitFullscreen(); } catch { /* schon zu */ }
+  }
+}
+
+$('#lightshow-close').addEventListener('click', () => closeLightshowStage());
 
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
