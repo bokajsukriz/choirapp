@@ -13880,6 +13880,102 @@ function runSelfTests() {
     failed.push(`orphanFileKeys findet die falschen Waisen: ${JSON.stringify(orphans)}`);
   }
 
+  // LICHTSHOW: lightshowFrame() ist rein (ohne DOM, ohne Date, ohne
+  // Math.random) — genau das macht sie hier ohne Browser testbar.
+  const lightshowHexRe = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
+  const lightshowBrightnessOf = (hex) => {
+    const m = lightshowHexRe.exec(hex);
+    const [r, g, b] = [1, 2, 3].map((i) => parseInt(m[i], 16));
+    return (r + g + b) / 3 / 255;
+  };
+
+  // 1. Determinismus: gleicher Aufruf, gleiches Ergebnis.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      for (const tMs of [0, 12345, show.cycleMs - 1]) {
+        checks++;
+        const a = lightshowFrame(show.id, tMs, voice, 7);
+        const b = lightshowFrame(show.id, tMs, voice, 7);
+        if (a !== b) failed.push(`lightshowFrame nicht deterministisch: ${show.id}/${voice}/${tMs}`);
+      }
+    }
+  }
+
+  // 2. Gültige Ausgabe über den ganzen Zyklus, für alle Stimmen.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      for (let tMs = 0; tMs < show.cycleMs; tMs += 50) {
+        checks++;
+        const c = lightshowFrame(show.id, tMs, voice, 42);
+        if (!/^#[0-9a-f]{6}$/.test(c)) failed.push(`lightshowFrame liefert kein #rrggbb: ${show.id}/${voice}/${tMs} = ${c}`);
+      }
+    }
+  }
+
+  // 3. Stimmabhängigkeit: „Welle" und „Finale" müssen SOP und BASS unterscheiden.
+  for (const showId of ['welle', 'finale']) {
+    checks++;
+    let differs = false;
+    for (let tMs = 0; tMs < 32000; tMs += 50) {
+      if (lightshowFrame(showId, tMs, 'SOP', 1) !== lightshowFrame(showId, tMs, 'BASS', 1)) { differs = true; break; }
+    }
+    if (!differs) failed.push(`lightshowFrame(${showId}): SOP und BASS sehen überall gleich aus`);
+  }
+
+  // 4. Zyklusschluss: kein sichtbarer Sprung beim Loop-Übergang, für jede Show und Stimme.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      checks++;
+      const a = lightshowBrightnessOf(lightshowFrame(show.id, 0, voice, 99));
+      const b = lightshowBrightnessOf(lightshowFrame(show.id, show.cycleMs - 20, voice, 99));
+      if (Math.abs(a - b) >= 0.12) {
+        failed.push(`Zyklusschluss ${show.id}/${voice}: Helligkeit springt von ${b.toFixed(2)} auf ${a.toFixed(2)}`);
+      }
+    }
+  }
+
+  // 5. Blitzgrenze (WCAG 2.3.1): höchstens 3 steigende Übergänge über 0,5 je 1000-ms-Fenster.
+  for (const show of LIGHTSHOWS) {
+    for (const voice of LIGHTSHOW_VOICES) {
+      const seeds = show.id === 'sterne' ? [1, 2, 3, 4, 5, 99, 12345] : [0];
+      for (const seed of seeds) {
+        checks++;
+        const step = 20;
+        const n = Math.floor(show.cycleMs / step);
+        const samples = [];
+        for (let i = 0; i < n; i++) samples.push(lightshowBrightnessOf(lightshowFrame(show.id, i * step, voice, seed)));
+        const doubled = samples.concat(samples); // kreisförmig, damit auch Fenster um den Loop-Punkt geprüft werden
+        const windowSize = Math.round(1000 / step);
+        let maxCount = 0;
+        for (let i = 0; i < n; i++) {
+          let count = 0;
+          for (let j = 1; j < windowSize; j++) {
+            if (doubled[i + j] > 0.5 && doubled[i + j - 1] <= 0.5) count++;
+          }
+          if (count > maxCount) maxCount = count;
+        }
+        if (maxCount > 3) failed.push(`Blitzgrenze verletzt: ${show.id}/${voice}/seed${seed}, ${maxCount} Übergänge in 1000 ms`);
+      }
+    }
+  }
+
+  // 6. Farbhelfer.
+  checks++;
+  if (lightshowScale('#ffffff', 0) !== '#000000') failed.push('lightshowScale("#ffffff", 0) müsste Schwarz sein');
+  checks++;
+  if (lightshowScale('#ffffff', 1) !== '#ffffff') failed.push('lightshowScale("#ffffff", 1) müsste Weiß sein');
+  checks++;
+  const lightshowMixHalf = lightshowMix('#000000', '#ffffff', 0.5);
+  if (lightshowMixHalf !== '#808080' && lightshowMixHalf !== '#7f7f7f') {
+    failed.push(`lightshowMix("#000000", "#ffffff", 0.5) = ${lightshowMixHalf}, erwartet #808080/#7f7f7f`);
+  }
+
+  // 7. Stimmzuordnung.
+  checks++;
+  if (lightshowVoiceIndex('LEAD') !== 0) failed.push('lightshowVoiceIndex("LEAD") müsste 0 sein');
+  checks++;
+  if (lightshowVoiceColor('LEAD') !== VOICE_COLOR.FULL) failed.push('lightshowVoiceColor("LEAD") müsste VOICE_COLOR.FULL sein');
+
   const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
@@ -13932,6 +14028,7 @@ window.chorApp = {
   settings: () => settings,
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
+  lightshowFrame,
 };
 
 /* ==========================================================================
