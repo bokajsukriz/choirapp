@@ -2432,7 +2432,7 @@ input[type="checkbox"] {
 
 <!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
      entschieden wird und nichts anderes ablenken soll. -->
-<section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
+<section class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
   <div class="sheet-head">
     <div class="row" style="align-items:flex-start">
       <div class="grow" style="flex:1">
@@ -3121,6 +3121,72 @@ function clearDebugLog() {
   try { localStorage.removeItem(DEBUG_LOG_KEY); } catch { /* z.B. privater Modus */ }
 }
 
+/* ==========================================================================
+   MODALE EBENEN (Befund F-04)
+
+   #overlay (Bestätigungsdialog), promptDialog()s eigene Ebene, #onboarding,
+   #lyrics-present und #sheet sind alle direkte Kinder von <body>. Diese
+   Hilfe hält den Fokus in der jeweils obersten Ebene fest, gibt ihn beim
+   Schließen an das auslösende Element zurück und sperrt alles dahinter.
+   ========================================================================== */
+
+const modalStack = [];
+const FOCUSABLE_SEL = 'a[href], button:not([disabled]), input:not([disabled]), '
+  + 'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const supportsInert = 'inert' in HTMLElement.prototype;
+
+function focusableIn(layer) {
+  return [...layer.querySelectorAll(FOCUSABLE_SEL)].filter((node) => node.offsetParent !== null);
+}
+
+function onModalKeydown(e) {
+  const top = modalStack[modalStack.length - 1];
+  if (!top) return;
+  if (e.key === 'Escape') { e.preventDefault(); top.onEscape(); return; }
+  if (e.key !== 'Tab') return;
+
+  const items = focusableIn(top.layer);
+  if (!items.length) { e.preventDefault(); return; }
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+document.addEventListener('keydown', onModalKeydown);
+
+/**
+ * Hält den Tastaturfokus in einer modalen Ebene fest und gibt ihn beim
+ * Schließen an das auslösende Element zurück. Ohne das tabbt man hinter das
+ * Overlay in die Bibliothek darunter und findet nach dem Schließen nicht mehr
+ * an die Stelle zurück, von der man kam. Stapelfähig, weil confirmDialog()
+ * auch aus einem offenen #sheet heraus aufgerufen wird.
+ */
+function openModal(layer, { initialFocus, onEscape } = {}) {
+  // Schon offen (z.B. doppelter Aufruf) — nicht erneut auf den Stapel legen.
+  if (modalStack.some((m) => m.layer === layer)) { (initialFocus || focusableIn(layer)[0])?.focus(); return; }
+  const restore = document.activeElement;
+  const inertedSiblings = [];
+  if (supportsInert) {
+    for (const child of document.body.children) {
+      if (child === layer || child.hidden || child.inert) continue;
+      child.inert = true;
+      inertedSiblings.push(child);
+    }
+  }
+  modalStack.push({ layer, restore, inertedSiblings, onEscape: onEscape || (() => {}) });
+  if (modalStack.length === 1) document.body.style.overflow = 'hidden';
+  (initialFocus || focusableIn(layer)[0])?.focus();
+}
+
+function closeModal(layer) {
+  const idx = modalStack.findIndex((m) => m.layer === layer);
+  if (idx < 0) return;
+  const [entry] = modalStack.splice(idx, 1);
+  for (const el of entry.inertedSiblings) el.inert = false;
+  if (!modalStack.length) document.body.style.overflow = '';
+  if (entry.restore && document.body.contains(entry.restore)) entry.restore.focus?.();
+}
+
 const overlay   = $('#overlay');
 const dlgTitle  = $('#dlg-title');
 const dlgText   = $('#dlg-text');
@@ -3145,7 +3211,7 @@ function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
   dlgOk.textContent    = okLabel;
   dlgOk.className      = danger ? 'btn btn--danger' : 'btn btn--primary';
   overlay.hidden = false;
-  dlgOk.focus();
+  openModal(overlay, { initialFocus: dlgOk, onEscape: () => closeDialog(false) });
 
   return new Promise((resolve) => {
     dlgResolve = resolve;
@@ -3154,6 +3220,7 @@ function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
 
 function closeDialog(result) {
   overlay.hidden = true;
+  closeModal(overlay);
   const r = dlgResolve;
   dlgResolve = null;
   if (r) r(result);
@@ -3172,7 +3239,7 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
       : el('input', { type: 'text', value, placeholder, 'aria-label': title });
     if (multiline) input.value = value;
 
-    const done = (result) => { layer.remove(); resolve(result); };
+    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const box = el('div', { class: 'dialog' },
       el('h2', { text: title }),
@@ -3185,14 +3252,14 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
 
     input.addEventListener('keydown', (e) => {
       // Im mehrzeiligen Feld ist die Eingabetaste ein Zeilenumbruch.
+      // Escape läuft zentral über onModalKeydown → onEscape (siehe unten).
       if (e.key === 'Enter' && !multiline) { e.preventDefault(); done(input.value); }
-      if (e.key === 'Escape') { e.preventDefault(); done(null); }
     });
 
-    const layer = el('div', { class: 'overlay' }, box);
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
-    input.focus();
+    openModal(layer, { initialFocus: input, onEscape: () => done(null) });
     input.select();
   });
 }
@@ -3200,9 +3267,6 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
 dlgOk.addEventListener('click', () => closeDialog(true));
 dlgCancel.addEventListener('click', () => closeDialog(false));
 overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(false); });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !overlay.hidden) closeDialog(false);
-});
 
 /* ==========================================================================
    DB — IndexedDB-Schicht
@@ -6983,6 +7047,7 @@ function renderSheetSong(song) {
 
 function closeSheet() {
   sheet.hidden = true;
+  closeModal(sheet);
   pick = null;
   sheetProgress.hidden = true;
   sheetImport.disabled = false;
@@ -7023,6 +7088,7 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
   renderSheetList();
   updateSheetSummary();
   sheet.hidden = false;
+  openModal(sheet, { onEscape: () => closeSheet() });
   sheetBody.scrollTop = 0;
 }
 
@@ -10025,10 +10091,6 @@ function updateLyricsPresentFab() {
  * gar nicht) — Vollbild/Orientation-Lock laufen zusätzlich, wo verfügbar,
  * sind aber nicht Voraussetzung fürs Funktionieren.
  */
-function onLyricsPresentKeydown(event) {
-  if (event.key === 'Escape') closeLyricsPresent();
-}
-
 async function openLyricsPresent() {
   const text = lyricsPresentSourceText();
   if (!text.trim()) return;
@@ -10036,8 +10098,9 @@ async function openLyricsPresent() {
   const el = $('#lyrics-present');
   el.dataset.theme = settings.presentTheme === 'light' ? 'light' : 'dark';
   el.hidden = false;
-  document.body.style.overflow = 'hidden';
-  document.addEventListener('keydown', onLyricsPresentKeydown);
+  // document.body.style.overflow läuft jetzt über openModal()/closeModal()
+  // (erst beim ersten bzw. letzten Eintrag im Stapel).
+  openModal(el, { initialFocus: $('#lyrics-present-close'), onEscape: () => closeLyricsPresent() });
   try { await el.requestFullscreen?.(); } catch { /* z. B. iOS Safari ohne Element-Vollbild */ }
   try { await screen.orientation?.lock?.('landscape'); } catch { /* dann übernimmt der CSS-Dreh-Trick */ }
 }
@@ -10045,8 +10108,7 @@ async function openLyricsPresent() {
 async function closeLyricsPresent() {
   const el = $('#lyrics-present');
   el.hidden = true;
-  document.body.style.overflow = '';
-  document.removeEventListener('keydown', onLyricsPresentKeydown);
+  closeModal(el);
   try { screen.orientation?.unlock?.(); } catch { /* nichts zu entsperren */ }
   if (document.fullscreenElement === el) {
     try { await document.exitFullscreen(); } catch { /* schon zu */ }
@@ -13082,12 +13144,13 @@ function openOnboarding() {
   renderOnbDots();
   // Ohne Verzögerung steht die Breite des Streifens noch nicht fest.
   requestAnimationFrame(() => { onbTrack.scrollLeft = 0; });
-  onbNext.focus();
+  openModal(onbEl, { initialFocus: onbNext, onEscape: () => closeOnboarding() });
 }
 
 async function closeOnboarding() {
   onbOpen = false;
   onbEl.hidden = true;
+  closeModal(onbEl);
   if (!settings.setupDoneAt) await saveSettings({ setupDoneAt: new Date().toISOString() });
   renderVoicePicker();
   if (currentView === 'settings') renderSettings();
