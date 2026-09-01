@@ -329,6 +329,30 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   color: #fff;
 }
 
+/* Lichtshow — Ansicht unter Einstellungen → Lichtshow. --lightshow-voice-c
+   kommt von außen (siehe renderLightshowVoiceLine/renderLightshowList). */
+.lightshow-voice-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--lightshow-voice-c, var(--accent));
+  flex: 0 0 auto;
+}
+.lightshow-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lightshow-tile-preview {
+  height: 8px;
+  border-radius: 4px;
+}
+
 /* Speicherbalken */
 .meter {
   height: 12px;
@@ -2429,6 +2453,81 @@ input[type="checkbox"] {
         <div class="row"><span data-i18n="import.libFiles">Dateien</span><span id="stat-files">–</span></div>
         <div class="row"><span data-i18n="import.libLastImport">Letzter Import</span><span id="stat-last-import">–</span></div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- Lichtshow: eigene Vollbild-Ansicht mit Zurück-Pfeil, erreichbar nur über
+     den Knopf in den Einstellungen (siehe #btn-open-lightshow). Startet von
+     hier aus die eigentliche Vollbild-Bühne (#lightshow-stage, weiter unten). -->
+<section class="player" id="lightshow-view" hidden aria-labelledby="lightshow-title">
+  <div class="player-head">
+    <button class="icon-btn" id="lightshow-back" type="button" aria-label="Zurück zu den Einstellungen" data-i18n-aria="lightshow.backAria">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="grow">
+      <strong id="lightshow-title" data-i18n="settings.lightshow.title">Lichtshow</strong>
+    </div>
+  </div>
+
+  <div class="player-body">
+    <div class="card">
+      <p class="small muted" id="lightshow-novoice-hint" style="margin-top:0" hidden data-i18n-html="lightshow.noVoiceHint">
+        Noch keine Stimme gewählt — die Show läuft vorerst im Sopran-Takt und
+        Pink. Ändern unter <strong>Einstellungen → Meine Stimmen</strong>, oder
+        hier nur für die Show festlegen:
+      </p>
+      <div class="row" id="lightshow-voice-line">
+        <span class="lightshow-voice-dot" id="lightshow-voice-dot" aria-hidden="true"></span>
+        <span id="lightshow-voice-text"></span>
+      </div>
+      <div class="chip-grid" id="lightshow-voice-picker" role="group" aria-label="Stimme für die Lichtshow" data-i18n-aria="lightshow.voicePickerAria"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="lightshow.showsTitle">Show wählen</h2>
+      <div class="stack" id="lightshow-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="small" style="max-width:70%" data-i18n="lightshow.rehearsalLabel">
+          Probelauf — startet sofort, ohne auf den Rasterpunkt zu warten
+        </span>
+        <button class="switch" id="lightshow-rehearsal-toggle" type="button" role="switch"
+                aria-checked="false" aria-label="Probelauf" data-i18n-aria="lightshow.rehearsalAria">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="lightshow.rehearsalHint">
+        Steht nach dem Schließen dieser Ansicht wieder aus — sonst steht
+        jemand auf der Bühne im Probelauf.
+      </p>
+      <button class="btn btn--block" id="btn-lightshow-sync" type="button" style="margin-top:14px" data-i18n="lightshow.syncBtn">
+        Uhr prüfen
+      </button>
+    </div>
+
+    <div class="card">
+      <p class="small muted" style="margin:0" data-i18n-html="lightshow.hintBlock">
+        Bildschirmhelligkeit vor dem Auftritt von Hand hochdrehen — das kann
+        die App nicht selbst tun. „Datum &amp; Uhrzeit automatisch" sollte im
+        Betriebssystem eingeschaltet bleiben. Handy während der Show nicht
+        sperren. Vor dem Auftritt einmal zu zweit „Uhr prüfen" machen.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="small muted" style="margin:0" data-i18n="lightshow.seizureWarning">
+        Die Shows arbeiten mit hellen, wechselnden Flächen. Wer lichtempfindlich
+        ist oder zu Anfällen neigt, macht besser nicht mit oder wählt „Sternenhimmel".
+      </p>
+      <p class="small muted" id="lightshow-motion-hint" style="margin:8px 0 0" hidden data-i18n="lightshow.reducedMotionHint">
+        Dieses Gerät bevorzugt weniger Bewegung — „Sternenhimmel" ist deshalb
+        vorausgewählt. Die anderen Shows lassen sich trotzdem starten.
+      </p>
     </div>
   </div>
 </section>
@@ -5151,6 +5250,13 @@ function applyRoute() {
     return;
   }
   if (importOpen) closeImportView();
+
+  if (name === 'lightshow') {
+    if (openPlaylist) closePlaylistView();
+    openLightshowView();
+    return;
+  }
+  if (lightshowOpen) closeLightshowView();
 
   if (name === 'song' && param) {
     if (openPlaylist) closePlaylistView();
@@ -7885,6 +7991,127 @@ function closeImportView() {
 
 $('#btn-open-import').addEventListener('click', () => navigate('#import'));
 $('#import-back').addEventListener('click', () => history.back());
+
+/* ==========================================================================
+   LICHTSHOW — Vollbild-Unteransicht (#lightshow-view), Vorbild #import-view.
+   Die eigentliche Bühne (#lightshow-stage) und das Sync-Prüfbild
+   (#lightshow-sync) sind eigene Overlays, siehe weiter unten.
+   ========================================================================== */
+
+let lightshowOpen = false;
+// Nicht gespeichert: steht bei jedem Öffnen der Ansicht wieder auf „aus",
+// sonst stünde jemand auf der Bühne im Probelauf.
+let lightshowRehearsal = false;
+
+/** Stimme, in deren Takt/Farbe die Lichtshow läuft — Sopran-Timing/Pink, wenn keine gewählt ist. */
+function lightshowActiveVoice() {
+  return settings.lightshowVoice || settings.myVoices?.[0] || null;
+}
+
+/**
+ * Zieht einmalig einen geräteeigenen Zufallskeim für „Sternenhimmel" — darf
+ * sich danach nie wieder ändern, sonst funkelt dasselbe Handy bei jedem
+ * Start anders.
+ */
+async function ensureLightshowSeed() {
+  if (settings.lightshowSeed) return;
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  await saveSettings({ lightshowSeed: buf[0] || 1 }); // 0 bliebe „noch keiner"
+}
+
+function renderLightshowVoiceLine() {
+  const voice = lightshowActiveVoice();
+  $('#lightshow-novoice-hint').hidden = !!voice;
+  $('#lightshow-voice-dot').style.setProperty('--lightshow-voice-c', lightshowVoiceColor(voice));
+  $('#lightshow-voice-text').textContent = voice ? `${t('lightshow.voicePrefix')} ${VOICE_LABEL[voice]}` : '';
+}
+
+function renderLightshowVoicePicker() {
+  const host = $('#lightshow-voice-picker');
+  host.textContent = '';
+  for (const voice of LIGHTSHOW_VOICES) {
+    const btn = el('button', {
+      class: 'chip chip--voice',
+      type: 'button',
+      'aria-pressed': lightshowActiveVoice() === voice ? 'true' : 'false',
+      text: VOICE_LABEL[voice],
+      onclick: async () => {
+        // Nur für die Show überschreiben — wer zwei Stimmen singt oder die
+        // Reihe wechselt, soll dafür nicht die Import-Einstellung anfassen.
+        await saveSettings({ lightshowVoice: voice });
+        renderLightshowVoiceLine();
+        renderLightshowVoicePicker();
+        renderLightshowList();
+      },
+    });
+    btn.style.setProperty('--voice-c', VOICE_COLOR[voice]);
+    host.append(btn);
+  }
+}
+
+function renderLightshowMotionHint() {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('#lightshow-motion-hint').hidden = !reduced;
+}
+
+function renderLightshowList() {
+  const host = $('#lightshow-list');
+  host.textContent = '';
+  const voice = lightshowActiveVoice();
+  const color = lightshowVoiceColor(voice);
+  for (const show of LIGHTSHOWS) {
+    host.append(el('div', { class: 'lightshow-tile' },
+      el('div', {
+        class: 'lightshow-tile-preview',
+        style: `background:linear-gradient(90deg, ${lightshowScale(color, 0.12)}, ${color})`,
+      }),
+      el('strong', { text: t(`lightshow.show.${show.id}.name`) }),
+      el('p', { class: 'small muted', style: 'margin:0', text: t(`lightshow.show.${show.id}.desc`) }),
+      el('p', { class: 'small muted', style: 'margin:0' },
+        `${Math.round(show.cycleMs / 1000)} s · ${t(`lightshow.sync.${show.sync}`)}`),
+      el('button', {
+        class: 'btn btn--primary btn--block', type: 'button', style: 'margin-top:4px',
+        text: t('lightshow.startBtn'),
+        onclick: async () => {
+          await saveSettings({ lightshowShow: show.id });
+          openLightshowStage(show.id, { rehearsal: lightshowRehearsal });
+        },
+      })));
+  }
+}
+
+function renderLightshowView() {
+  renderLightshowVoiceLine();
+  renderLightshowVoicePicker();
+  renderLightshowMotionHint();
+  renderLightshowList();
+}
+
+async function openLightshowView() {
+  lightshowOpen = true;
+  lightshowRehearsal = false;
+  $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', 'false');
+  $('#lightshow-view').hidden = false;
+  await ensureLightshowSeed();
+  renderLightshowView();
+}
+
+function closeLightshowView() {
+  lightshowOpen = false;
+  $('#lightshow-view').hidden = true;
+  if (lightshowStageOpen) closeLightshowStage();
+}
+
+$('#btn-open-lightshow').addEventListener('click', () => navigate('#lightshow'));
+$('#lightshow-back').addEventListener('click', () => history.back());
+
+$('#lightshow-rehearsal-toggle').addEventListener('click', () => {
+  lightshowRehearsal = !lightshowRehearsal;
+  $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', lightshowRehearsal ? 'true' : 'false');
+});
+
+$('#btn-lightshow-sync').addEventListener('click', () => openLightshowSync());
 
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
