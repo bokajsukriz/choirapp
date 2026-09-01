@@ -12825,12 +12825,17 @@ function runSelfTests() {
   ];
 
   const failed = [];
+  // Zähler statt Handzählung — wächst automatisch mit jeder neuen Prüfung
+  // unten mit, statt eine Summe von Hand nachpflegen zu müssen.
+  let checks = 0;
   for (const [file, folder, expected] of voiceCases) {
+    checks++;
     const got = detectVoice(file, folder).voice;
     if (got !== expected) failed.push(`detectVoice("${file}", "${folder}") = ${got}, erwartet ${expected}`);
   }
 
   // Ohne Kürzel gilt die Spur als Gesamtmischung — außer es gibt schon eine.
+  checks++;
   const noVoice = scanFiles([
     { path: 'Alt wie ein Baum/Alt wie ein Baum.mp3', size: 1 },
     { path: 'Alt wie ein Baum/Alt wie ein Baum ALT.mp3', size: 1 },
@@ -12841,6 +12846,7 @@ function runSelfTests() {
   }
 
   // Zweite Datei ohne Kürzel wird OTHER, weil FULL schon vergeben ist.
+  checks++;
   const twoFull = scanFiles([
     { path: 'Lied/Lied.mp3', size: 1 },
     { path: 'Lied/Lied Probe.mp3', size: 1 },
@@ -12851,6 +12857,7 @@ function runSelfTests() {
   }
 
   // Sammelordner werden zu collections, Songordner zum Titel.
+  checks++;
   const nested = scanFiles([{ path: 'Best of 2025/Blaue Augen/SOP.mp3', size: 1 }], 'ZIP');
   if (nested.songs[0]?.title !== 'Blaue Augen' ||
       nested.songs[0]?.collections[0] !== 'Best of 2025') {
@@ -12872,25 +12879,30 @@ function runSelfTests() {
     [coreTitle('Blaue Augen'),           'blaue augen'],
   ];
   for (const [got, expected] of titleCases) {
+    checks++;
     if (got !== expected) failed.push(`Titel-Normalisierung: "${got}", erwartet "${expected}"`);
   }
 
   // Kopfzeile im Liedtext: „# Interpret - Titel"
+  checks++;
   const header = splitLyricsHeader('# John Moods - Blaue Augen\n\nErste Zeile\nZweite Zeile\n');
   if (header.artist !== 'John Moods' || header.title !== 'Blaue Augen'
       || !header.text.startsWith('Erste Zeile')) {
     failed.push(`Liedtext-Kopfzeile: ${JSON.stringify(header)}`);
   }
+  checks++;
   const plain = splitLyricsHeader('Nur Text\nZweite Zeile\n');
   if (plain.artist !== null || !plain.text.startsWith('Nur Text')) {
     failed.push('Liedtext ohne Kopfzeile wurde verändert');
   }
+  checks++;
   const noDash = splitLyricsHeader('# Sing-Sang\n\nText\n');
   if (noDash.artist !== null || noDash.title !== 'Sing-Sang') {
     failed.push(`Kopfzeile ohne Interpret: ${JSON.stringify(noDash)}`);
   }
 
   // Mehrere Fassungen: vorgeschlagen wird die mit den meisten Stimmen.
+  checks++;
   const groups = groupDuplicates([
     { core: 'blaue augen', title: 'Blaue Augen', tracks: [{ voice: 'FULL' }] },
     { core: 'blaue augen', title: 'Blaue Augen neu', tracks: [{ voice: 'FULL' }, { voice: 'SOP' }] },
@@ -12904,31 +12916,73 @@ function runSelfTests() {
   const savedA = loopA, savedB = loopB, savedDur = Audio.duration;
   Audio.duration = 100;
   loopA = 50; loopB = 200;
+  checks++;
   const clamped = loopRange();
   if (!clamped || clamped.end !== 100 || clamped.start !== 50) {
     failed.push(`loopRange begrenzt nicht auf die Länge: ${JSON.stringify(clamped)}`);
   }
   loopA = 150; loopB = 200;
+  checks++;
   if (loopRange() !== null) failed.push('loopRange hinter dem Ende müsste null sein');
   loopA = savedA; loopB = savedB; Audio.duration = savedDur;
 
   // Dateidatensätze: neue halten die Bytes selbst, ältere noch einen Blob.
   // Beides muss lesbar bleiben, sonst spielt nach einem Update nichts mehr.
+  checks++;
   if (recordBlob({ data: new Uint8Array([1, 2, 3]).buffer }, 'audio/mpeg').size !== 3) {
     failed.push('recordBlob liest neue Datensätze nicht');
   }
+  checks++;
   const legacyBlob = new Blob([new Uint8Array([1, 2, 3])]);
   if (recordBlob({ blob: legacyBlob }) !== legacyBlob) {
     failed.push('recordBlob reicht ältere Datensätze nicht durch');
   }
 
+  // A3: welche fileKeys sind nach einem Abbruch verwaist?
+  checks++;
+  const orphanSongs = [{ tracks: [{ fileKey: 'a' }], scores: [{ fileKey: 'b' }] }];
+  const orphanRecordings = [{ fileKey: 'c' }];
+  const orphans = orphanFileKeys(['a', 'b', 'c', 'd', 'e'], orphanSongs, orphanRecordings);
+  if (orphans.sort().join(',') !== 'd,e') {
+    failed.push(`orphanFileKeys findet die falschen Waisen: ${JSON.stringify(orphans)}`);
+  }
 
-  const total = voiceCases.length + titleCases.length + 11;
+  const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
   } else {
     console.info(`[Selbsttest] Alle ${total} Prüfungen der Datei- und Titelerkennung bestanden.`);
+  }
+  return failed;
+}
+
+/**
+ * A1: eine abgelehnte Schreiboperation muss (a) selbst als abgelehnte Promise
+ * zurückkommen und darf (b) die nächste eingereihte Operation nicht
+ * blockieren. Läuft asynchron und getrennt von runSelfTests() (das rein
+ * synchron ist), wird aber vom selben Aufrufer (boot()) mit ausgelöst.
+ */
+async function runAsyncSelfTests() {
+  const failed = [];
+
+  let rejected = false;
+  try {
+    await noteWrite(() => Promise.reject(new Error('Testfehler')));
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) failed.push('noteWrite() müsste bei einem Fehler ablehnen');
+
+  let nextRan = false;
+  await noteWrite(() => { nextRan = true; });
+  if (!nextRan) failed.push('noteWrite() blockiert die Warteschlange nach einem Fehler');
+
+  if (failed.length) {
+    console.error(`[Selbsttest async] ${failed.length} Prüfung(en) fehlgeschlagen:`);
+    for (const f of failed) console.error('  ✗ ' + f);
+  } else {
+    console.info('[Selbsttest async] Speicher-Warteschlange nach Fehlern bestanden.');
   }
   return failed;
 }
@@ -12944,6 +12998,7 @@ window.chorApp = {
   db: DB,
   settings: () => settings,
   selfTest: runSelfTests,
+  selfTestAsync: runAsyncSelfTests,
 };
 
 /* ==========================================================================
@@ -13269,6 +13324,8 @@ async function boot() {
     // sonst bleibt der Bildschirm leer, obwohl die App funktionieren würde.
     console.error('[Selbsttest] abgebrochen', err);
   }
+  // Nicht abgewartet — der Start soll nicht auf ein paar Promise-Ticks warten.
+  runAsyncSelfTests().catch((err) => console.error('[Selbsttest async] abgebrochen', err));
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den

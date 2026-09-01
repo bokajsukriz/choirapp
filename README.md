@@ -43,11 +43,13 @@ Danach `http://localhost:8000` im Browser öffnen.
 
 ## Selbsttests
 
-`runSelfTests()` läuft bei jedem Start automatisch und meldet sich in der
-Browser-Konsole. Manuell auslösen:
+`runSelfTests()` (synchron) und `runAsyncSelfTests()` (asynchron, prüft die
+Speicher-Warteschlange von Notizen/Liedtexten) laufen bei jedem Start
+automatisch und melden sich in der Browser-Konsole. Manuell auslösen:
 
 ```js
 chorApp.selfTest()
+chorApp.selfTestAsync()
 ```
 
 Geprüft wird alles, was ohne Browser-Automatisierung möglich ist (Datei- und
