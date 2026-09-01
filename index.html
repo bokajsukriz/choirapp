@@ -9843,8 +9843,13 @@ let lyricsNoteEditing = false;
 
 let lyricsNotePending = Promise.resolve();
 function lyricsNoteWrite(run) {
-  lyricsNotePending = lyricsNotePending.then(run, run).catch((err) => console.error('[liedtext]', err));
-  return lyricsNotePending;
+  const op = lyricsNotePending.then(run, run);
+  // Die Warteschlange selbst darf nie im Fehlerzustand hängen bleiben —
+  // sonst stünde jede spätere Schreiboperation still. Der Aufrufer bekommt
+  // dagegen die echte, ggf. abgelehnte Promise: nur so kann die Oberfläche
+  // einen fehlgeschlagenen Speichervorgang auch als solchen zeigen.
+  lyricsNotePending = op.catch((err) => console.error('[liedtext]', err));
+  return op;
 }
 
 function newLyricsNote(song) {
@@ -9874,11 +9879,11 @@ async function loadSongLyricsNote() {
   if (found) {
     // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg.
     if (!(found.text || '').trim()) {
-      lyricsNoteWrite(() => DB.metaDelete(found.key));
+      lyricsNoteWrite(() => DB.metaDelete(found.key)).catch((err) => console.error('[liedtext]', err));
     } else {
       if (!found.songId) {
         found.songId = song.id;
-        lyricsNoteWrite(() => DB.metaPut(found));
+        lyricsNoteWrite(() => DB.metaPut(found)).catch((err) => console.error('[liedtext]', err));
       }
       playerLyricsNote = found;
     }
@@ -10058,8 +10063,7 @@ async function saveLyricsNote({ announce = false } = {}) {
   const text = $('#lyrics-note-text').value;
 
   if (announce && !text.trim()) {
-    await deleteLyricsNote();
-    banner('Leeren Liedtext entfernt.');
+    if (await deleteLyricsNote()) banner('Leeren Liedtext entfernt.');
     return;
   }
 
@@ -10078,15 +10082,32 @@ async function saveLyricsNote({ announce = false } = {}) {
   }
 }
 
+/** @returns {Promise<boolean>} ob der eigene Liedtext tatsächlich gelöscht wurde. */
 async function deleteLyricsNote() {
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = null;
   const note = playerLyricsNote;
+  const prevEditing = lyricsNoteEditing;
+  const prevSource = lyricsSource;
   playerLyricsNote = null;
   lyricsNoteEditing = false;
   lyricsSource = playerSong?.lyrics ? 'official' : 'private';
   renderLyricsBlock();
-  if (note) await lyricsNoteWrite(() => DB.metaDelete(note.key));
+  if (!note) return true;
+  try {
+    await lyricsNoteWrite(() => DB.metaDelete(note.key));
+    return true;
+  } catch (err) {
+    // Der Datensatz steht noch in der Datenbank — das darf nicht als
+    // „gelöscht" durchgehen, sonst ist der Liedtext nach dem nächsten Start
+    // unerwartet wieder da.
+    playerLyricsNote = note;
+    lyricsNoteEditing = prevEditing;
+    lyricsSource = prevSource;
+    renderLyricsBlock();
+    bannerError('Der Liedtext konnte nicht gelöscht werden.', 'LYRICS-NOTE-DELETE', err);
+    return false;
+  }
 }
 
 /** Beim Schließen des Players oder beim Wegwischen der App sichern. */
@@ -10097,7 +10118,7 @@ function flushLyricsNote() {
 
   if (!text.trim()) {
     playerLyricsNote = null;
-    lyricsNoteWrite(() => DB.metaDelete(note.key));
+    lyricsNoteWrite(() => DB.metaDelete(note.key)).catch(console.error);
     return;
   }
   if (text === note.text && !lyricsNoteSaveTimer) return;
@@ -10106,7 +10127,7 @@ function flushLyricsNote() {
   lyricsNoteSaveTimer = null;
   note.text = text;
   note.updatedAt = new Date().toISOString();
-  lyricsNoteWrite(() => DB.metaPut(note));
+  lyricsNoteWrite(() => DB.metaPut(note)).catch(console.error);
 }
 
 function iconPdf() {
@@ -10300,8 +10321,13 @@ let noteSaveTimer = null;  // läuft nach dem Tippen
 let notePending = Promise.resolve();
 
 function noteWrite(run) {
-  notePending = notePending.then(run, run).catch((err) => console.error('[notiz]', err));
-  return notePending;
+  const op = notePending.then(run, run);
+  // Die Warteschlange selbst darf nie im Fehlerzustand hängen bleiben —
+  // sonst stünde jede spätere Schreiboperation still. Der Aufrufer bekommt
+  // dagegen die echte, ggf. abgelehnte Promise: nur so kann die Oberfläche
+  // einen fehlgeschlagenen Speichervorgang auch als solchen zeigen.
+  notePending = op.catch((err) => console.error('[notiz]', err));
+  return op;
 }
 
 function newNote(song) {
@@ -10340,7 +10366,7 @@ async function loadSongNote() {
 
   // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg, Knopf zurück.
   if (!(found.text || '').trim()) {
-    noteWrite(() => DB.metaDelete(found.key));
+    noteWrite(() => DB.metaDelete(found.key)).catch((err) => console.error('[notiz]', err));
     return;
   }
 
@@ -10348,7 +10374,7 @@ async function loadSongNote() {
   // offen ist, bekommt sie seine Kennung.
   if (!found.songId) {
     found.songId = song.id;
-    noteWrite(() => DB.metaPut(found));
+    noteWrite(() => DB.metaPut(found)).catch((err) => console.error('[notiz]', err));
   }
 
   playerNote = found;
@@ -10432,8 +10458,7 @@ async function saveNote({ announce = false } = {}) {
   // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
   // Händen, während jemand den Text gerade neu schreibt.
   if (announce && !text.trim()) {
-    await deleteNote();
-    banner('Leere Notiz entfernt.');
+    if (await deleteNote()) banner('Leere Notiz entfernt.');
     return;
   }
 
@@ -10452,13 +10477,26 @@ async function saveNote({ announce = false } = {}) {
   }
 }
 
+/** @returns {Promise<boolean>} ob die Notiz tatsächlich gelöscht wurde. */
 async function deleteNote() {
   clearTimeout(noteSaveTimer);
   noteSaveTimer = null;
   const note = playerNote;
   playerNote = null;
   renderNoteBlock();
-  if (note) await noteWrite(() => DB.metaDelete(note.key));
+  if (!note) return true;
+  try {
+    await noteWrite(() => DB.metaDelete(note.key));
+    return true;
+  } catch (err) {
+    // Der Datensatz steht noch in der Datenbank — das darf nicht als
+    // „gelöscht" durchgehen, sonst ist die Notiz nach dem nächsten Start
+    // unerwartet wieder da.
+    playerNote = note;
+    renderNoteBlock();
+    bannerError('Die Notiz konnte nicht gelöscht werden.', 'NOTE-DELETE', err);
+    return false;
+  }
 }
 
 /**
@@ -10472,7 +10510,7 @@ function flushNote() {
 
   if (!text.trim()) {
     playerNote = null;
-    noteWrite(() => DB.metaDelete(note.key));
+    noteWrite(() => DB.metaDelete(note.key)).catch(console.error);
     return;
   }
   if (text === note.text && !noteSaveTimer) return;
@@ -10481,7 +10519,7 @@ function flushNote() {
   noteSaveTimer = null;
   note.text = text;
   note.updatedAt = new Date().toISOString();
-  noteWrite(() => DB.metaPut(note));
+  noteWrite(() => DB.metaPut(note)).catch(console.error);
 }
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
