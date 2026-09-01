@@ -12100,7 +12100,11 @@ $('#backup-input').addEventListener('change', async (e) => {
     banner('Diese Sicherung stammt aus einer neueren Version der App. Bitte die App aktualisieren und erneut versuchen.', { kind: 'error' });
     return;
   }
-  await restoreBackup(data, resolveAudioBase64);
+  try {
+    await restoreBackup(data, resolveAudioBase64);
+  } catch (err) {
+    bannerError('Die Sicherung konnte nicht vollständig eingespielt werden.', 'BACKUP-RESTORE', err);
+  }
 });
 
 $('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
@@ -12138,6 +12142,21 @@ $('#rec-import-input').addEventListener('change', async (e) => {
  * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
  * die Werte in `data` sind schon echtes Base64.
  */
+/**
+ * Welche der im Lauf vergebenen fileKeys referenziert nach einem Abbruch kein
+ * Songdatensatz und keine Aufnahme mehr. Reine Funktion (keine Datenbank),
+ * damit sich Restores Aufräumlogik ohne IndexedDB testen lässt.
+ */
+function orphanFileKeys(writtenKeys, songs, recordings) {
+  const referenced = new Set();
+  for (const song of songs) {
+    for (const t of song.tracks || []) if (t.fileKey) referenced.add(t.fileKey);
+    for (const sc of song.scores || []) if (sc.fileKey) referenced.add(sc.fileKey);
+  }
+  for (const rec of recordings) if (rec.fileKey) referenced.add(rec.fileKey);
+  return writtenKeys.filter((k) => !referenced.has(k));
+}
+
 async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
@@ -12166,58 +12185,121 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   });
   if (!ok) return;
 
-  // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch gar
-  // nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der Stimmen
-  // gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre fehleranfällig).
-  // Muss vor Loops/Notizen/RECs laufen, damit die einen frisch angelegten
-  // Song schon finden, statt fälschlich als "ohne Song" zu landen.
-  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
-  if (songAudioIn.length) {
-    for (const s of songAudioIn) {
-      if (!s || (!s.tracks?.length && !s.scores?.length)) continue;
-      if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+  // Jeder im Lauf vergebene fileKey wird hier vermerkt — bricht der Vorgang
+  // unterwegs ab (siehe catch weiter unten), wird geprüft, welche davon
+  // keinen festgeschriebenen Datensatz mehr referenzieren, und diese werden
+  // gelöscht. Ohne das blieben Datei-Bytes ohne Referenz im `files`-Store:
+  // unsichtbar, nie wieder löschbar, verbrauchen weiter Quota.
+  const writtenFileKeys = [];
+  // Leichtgewichtige Vorabprüfung: offensichtlich unbrauchbare Einträge
+  // zählen und überspringen, statt sie mitten im Schreiben scheitern zu
+  // lassen. Der volle Base64-Inhalt wird dabei bewusst nicht vorab aufgelöst
+  // (das vermeidet readBackupFile() bereits gezielt, wegen des Speichers).
+  let discardedSongAudio = 0, discardedRecordings = 0;
 
-      const song = await createPlaceholderSong(s.title);
-      for (const t of s.tracks || []) {
-        if (!t.audioBase64) continue;
-        const base64 = await resolveAudioBase64(t.audioBase64);
-        const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
-        const fileKey = newFileKey();
-        const fileName = t.fileName || `${t.voice}.mp3`;
-        await DB.filePut(await fileRecord(fileKey, blob, fileName));
-        song.tracks.push({
-          voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
-          fileName, fileKey, size: blob.size, durationSec: null,
-        });
+  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
+  let addedLoops = 0, addedPl = 0, keptPending = 0;
+  let addedNotes = 0, skippedNotes = 0;
+  let addedLyricsNotes = 0, skippedLyricsNotes = 0;
+  let addedRecordings = 0, skippedRecordings = 0;
+
+  try {
+    // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch
+    // gar nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der
+    // Stimmen gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre
+    // fehleranfällig). Muss vor Loops/Notizen/RECs laufen, damit die einen
+    // frisch angelegten Song schon finden, statt fälschlich als "ohne Song"
+    // zu landen.
+    if (songAudioIn.length) {
+      // Dateien und Songdatensätze im selben Batch-Muster wie der ZIP-Import
+      // (siehe flushImportBatch): Datei-Bytes und die sie referenzierenden
+      // Songdatensätze landen in derselben Transaktion, sodass ein
+      // Songdatensatz nie auf eine nicht festgeschriebene Datei zeigt.
+      const batch = { files: [], songs: new Set(), obsolete: [], bytes: 0 };
+      for (const s of songAudioIn) {
+        if (!s || typeof s.title !== 'string' || !s.title.trim()
+            || (!s.tracks?.length && !s.scores?.length)) {
+          discardedSongAudio++;
+          continue;
+        }
+        if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+
+        const title = s.title.trim();
+        const normTitle = normalizeTitle(title);
+        // Der Datensatz entsteht nur im Speicher — das Schreiben übernimmt
+        // der Batch. Würde er (wie createPlaceholderSong()) sofort
+        // geschrieben, bliebe bei einem Abbruch mitten im Restore ein leerer
+        // Song zurück (dasselbe Problem wie bei F-02).
+        const song = {
+          key: `song:${hashId(normTitle)}`,
+          type: 'song',
+          id: hashId(normTitle),
+          title,
+          normTitle,
+          collections: [],
+          tracks: [],
+          lyrics: null,
+          scores: [],
+          importedAt: new Date().toISOString(),
+        };
+        let songGotContent = false;
+
+        for (const t of s.tracks || []) {
+          if (!t.audioBase64) continue;
+          const base64 = await resolveAudioBase64(t.audioBase64);
+          const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
+          const fileKey = newFileKey();
+          const fileName = t.fileName || `${t.voice}.mp3`;
+          batch.files.push(await fileRecord(fileKey, blob, fileName));
+          writtenFileKeys.push(fileKey);
+          batch.bytes += blob.size;
+          song.tracks.push({
+            voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
+            fileName, fileKey, size: blob.size, durationSec: null,
+          });
+          songGotContent = true;
+          batch.songs.add(song);
+          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+            song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+            await flushImportBatch(batch);
+          }
+        }
+        song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+        // Noten (Notenblätter/PDFs) — dieselbe Sicherung, dieselbe Auswahl
+        // ("Song-Audiodateien", siehe buildBackupParts), separat gespeichert.
+        for (const sc of s.scores || []) {
+          if (!sc.audioBase64) continue;
+          const base64 = await resolveAudioBase64(sc.audioBase64);
+          const blob = base64ToBlob(base64, 'application/pdf');
+          const fileKey = newFileKey();
+          const fileName = sc.fileName || 'Noten.pdf';
+          batch.files.push(await fileRecord(fileKey, blob, fileName));
+          writtenFileKeys.push(fileKey);
+          batch.bytes += blob.size;
+          song.scores.push({ fileName, fileKey, size: blob.size });
+          scoresRestored++;
+          songGotContent = true;
+          batch.songs.add(song);
+          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+            await flushImportBatch(batch);
+          }
+        }
+        // Kein Inhalt übernommen (z.B. alle audioBase64-Felder fehlten) →
+        // kein leerer Song, aus demselben Grund wie oben.
+        if (songGotContent) {
+          songs.push(song);
+          songsCreated++;
+        }
       }
-      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-      // Noten (Notenblätter/PDFs) — dieselbe Sicherung, dieselbe Auswahl
-      // ("Song-Audiodateien", siehe buildBackupParts), separat gespeichert.
-      for (const sc of s.scores || []) {
-        if (!sc.audioBase64) continue;
-        const base64 = await resolveAudioBase64(sc.audioBase64);
-        const blob = base64ToBlob(base64, 'application/pdf');
-        const fileKey = newFileKey();
-        const fileName = sc.fileName || 'Noten.pdf';
-        await DB.filePut(await fileRecord(fileKey, blob, fileName));
-        song.scores.push({ fileName, fileKey, size: blob.size });
-        scoresRestored++;
-      }
-      await DB.metaPut(song);
-      songs.push(song);
-      songsCreated++;
+      await flushImportBatch(batch);
+      dropSongCache();
     }
-    dropSongCache();
-  }
 
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
   const existingNotes = await DB.metaByType('note');
   const existingLyricsNotes = await DB.metaByType('lyricsNote');
   const fresh = [];
-  let addedLoops = 0, addedPl = 0, keptPending = 0;
-  let addedNotes = 0, skippedNotes = 0;
-  let addedLyricsNotes = 0, skippedLyricsNotes = 0;
 
   for (const l of loops) {
     if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
@@ -12309,11 +12391,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
 
   // RECs mit eingebettetem Audio. Duplikate (Name + Song) werden
   // übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
-  let addedRecordings = 0, skippedRecordings = 0;
   if (recordingsIn.length) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
     for (const r of recordingsIn) {
-      if (!r || !r.audioBase64) continue;
+      if (!r || !r.audioBase64) { discardedRecordings++; continue; }
       const song = findSongByTitle(songs, r.songTitle || '');
       const norm = normalizeTitle(r.songTitle || '');
       const isDupe = (x) => x.name === r.name
@@ -12325,7 +12406,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       const blob = base64ToBlob(base64, mimeType);
       const fileKey = newFileKey();
       const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('mpeg') ? 'mp3' : 'webm');
-      await DB.filePut(await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`));
+      const fileRec = await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`);
 
       const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       const recording = {
@@ -12338,11 +12419,36 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         size: blob.size,
         createdAt: r.createdAt || new Date().toISOString(),
       };
-      await DB.metaPut(recording);
+      // Datei und Metadatensatz einer Aufnahme in einer Transaktion, aus
+      // demselben Grund wie beim Song-Audio oben — sonst kann eine
+      // referenzlose Datei im `files`-Store zurückbleiben.
+      await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
+        fileStore.put(fileRec);
+        metaStore.put(recording);
+      });
+      writtenFileKeys.push(fileKey);
       existingRecordings.push(recording);
       addedRecordings++;
     }
     if (playerSong) await loadSongRecordings();
+  }
+  } catch (err) {
+    // Trotz der Batch-/Transaktionsschreibweise oben kann ein Fehler
+    // zwischen zwei Transaktionen auftreten (z.B. base64ToBlob scheitert
+    // nach einem erfolgreichen Flush). Aufräumen: alle in diesem Lauf
+    // vergebenen fileKeys, die kein festgeschriebener Datensatz mehr
+    // referenziert, wieder löschen — sonst blieben referenzlose Dateien im
+    // `files`-Store zurück.
+    try {
+      const currentSongs = await DB.metaByType('song').catch(() => []);
+      const currentRecordings = await DB.metaByType('recording').catch(() => []);
+      const orphaned = orphanFileKeys(writtenFileKeys, currentSongs, currentRecordings);
+      if (orphaned.length) await DB.fileDelete(orphaned);
+    } catch (cleanupErr) {
+      console.error('[backup] Aufräumen nach Abbruch fehlgeschlagen', cleanupErr);
+    }
+    dropSongCache();
+    throw err;
   }
 
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
@@ -12379,7 +12485,9 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
         + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : '')
     + (skippedRecordings ? ` ${plural(skippedRecordings, 'REC', 'RECs')} übersprungen, weil schon vorhanden.` : '')
-    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : ''),
+    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : '')
+    + (discardedSongAudio ? ` ${plural(discardedSongAudio, 'Songeintrag', 'Songeinträge')} ohne verwertbaren Inhalt verworfen.` : '')
+    + (discardedRecordings ? ` ${plural(discardedRecordings, 'REC', 'RECs')} ohne Audiodaten verworfen.` : ''),
     { kind: 'ok' });
 }
 
