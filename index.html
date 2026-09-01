@@ -2995,6 +2995,11 @@ function logAppError(code, err) {
   return entry;
 }
 
+function clearErrorLog() {
+  errorLog = [];
+  try { localStorage.removeItem(ERROR_LOG_KEY); } catch { /* z.B. privater Modus */ }
+}
+
 /**
  * Kurzer Zusatz für Banner: „ (Code IMPORT-ZIP — RangeError: Invalid …)".
  * Steht die technische Meldung schon wortgleich im verständlichen Text (z. B.
@@ -5593,8 +5598,7 @@ $('#btn-errorlog-copy').addEventListener('click', async () => {
 });
 
 $('#btn-errorlog-clear').addEventListener('click', async () => {
-  errorLog = [];
-  try { localStorage.removeItem(ERROR_LOG_KEY); } catch { /* z.B. privater Modus */ }
+  clearErrorLog();
   renderErrorLog();
 });
 
@@ -5993,7 +5997,8 @@ $('#btn-persist').addEventListener('click', async () => {
 $('#btn-wipe').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Daten löschen?',
-    text: 'Alle Songs, Aufnahmen, Loops und Setlisten werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
+    text: 'Alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte und Setlisten sowie Fehler- und '
+        + 'Diagnoseprotokolle werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
     okLabel: 'Löschen',
     danger: true,
   });
@@ -6001,6 +6006,9 @@ $('#btn-wipe').addEventListener('click', async () => {
 
   try {
     await DB.wipe();
+    clearDebugLog();
+    clearErrorLog();
+    try { sessionStorage.removeItem(COMPAT_UPDATE_FLAG); } catch { /* z.B. privater Modus */ }
     settings = { ...DEFAULT_SETTINGS };
     lastReport = null;
     playQueue = null;
