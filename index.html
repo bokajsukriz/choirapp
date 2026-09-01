@@ -29,7 +29,10 @@
   --surface-2:  color-mix(in srgb, var(--accent) 6%, white);   /* zarte Tönung, folgt der Akzentfarbe */
   --line:       color-mix(in srgb, var(--accent) 14%, white);  /* etwas kräftiger als --surface-2, für Ränder */
   --text:       #241b3d;
-  --muted:      #8c81a6;
+  /* Kontrastgrenze (WCAG AA, 4,5:1): 4,66:1 auf --bg, 4,95:1 auf --surface,
+     4,95:1 für Weiß auf --muted (Badge, siehe unten) — bitte nicht wieder
+     aufhellen, ohne neu nachzurechnen. */
+  --muted:      #766a91;
   --accent:     #F868B0;
   --accent-rgb: 248,104,176;             /* dieselbe Farbe wie --accent, als "r,g,b" für rgba() unten —
                                             wird zusammen mit --accent umgeschaltet (siehe applyAccentColor) */
