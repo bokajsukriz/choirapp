@@ -12270,15 +12270,6 @@ $('#rec-import-input').addEventListener('change', async (e) => {
 });
 
 /**
- * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
- * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
- * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
- * @param {Function} [resolveAudioBase64] Löst einen `audioBase64`-Wert auf —
- * bei einer über readBackupFile() gelesenen Sicherung ein `@B64#n`-Platzhalter
- * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
- * die Werte in `data` sind schon echtes Base64.
- */
-/**
  * Welche der im Lauf vergebenen fileKeys referenziert nach einem Abbruch kein
  * Songdatensatz und keine Aufnahme mehr. Reine Funktion (keine Datenbank),
  * damit sich Restores Aufräumlogik ohne IndexedDB testen lässt.
@@ -12293,6 +12284,15 @@ function orphanFileKeys(writtenKeys, songs, recordings) {
   return writtenKeys.filter((k) => !referenced.has(k));
 }
 
+/**
+ * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
+ * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
+ * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
+ * @param {Function} [resolveAudioBase64] Löst einen `audioBase64`-Wert auf —
+ * bei einer über readBackupFile() gelesenen Sicherung ein `@B64#n`-Platzhalter
+ * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
+ * die Werte in `data` sind schon echtes Base64.
+ */
 async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
