@@ -29,7 +29,10 @@
   --surface-2:  color-mix(in srgb, var(--accent) 6%, white);   /* zarte Tönung, folgt der Akzentfarbe */
   --line:       color-mix(in srgb, var(--accent) 14%, white);  /* etwas kräftiger als --surface-2, für Ränder */
   --text:       #241b3d;
-  --muted:      #8c81a6;
+  /* Kontrastgrenze (WCAG AA, 4,5:1): 4,66:1 auf --bg, 4,95:1 auf --surface,
+     4,95:1 für Weiß auf --muted (Badge, siehe unten) — bitte nicht wieder
+     aufhellen, ohne neu nachzurechnen. */
+  --muted:      #766a91;
   --accent:     #F868B0;
   --accent-rgb: 248,104,176;             /* dieselbe Farbe wie --accent, als "r,g,b" für rgba() unten —
                                             wird zusammen mit --accent umgeschaltet (siehe applyAccentColor) */
@@ -2033,7 +2036,7 @@ input[type="checkbox"] {
   </div>
 
   <div class="onb-foot">
-    <div class="onb-dots" id="onb-dots" role="tablist" aria-label="Schritte"></div>
+    <div class="onb-dots" id="onb-dots" role="group" aria-label="Schritte"></div>
     <div class="onb-actions">
       <button class="btn btn--ghost" id="onb-skip" type="button" data-i18n="onb.skip">Überspringen</button>
       <button class="btn" id="onb-prev" type="button" hidden data-i18n="onb.back">Zurück</button>
@@ -2141,28 +2144,28 @@ input[type="checkbox"] {
 
     <div class="player-tabs" id="player-tabs" role="tablist" aria-label="Lied-Bereiche">
       <button class="player-tab" type="button" role="tab" id="tab-btn-loops"
-              data-tab="loops" aria-selected="true" aria-controls="tab-panel-loops">
+              data-tab="loops" aria-selected="true" aria-controls="tab-panel-loops" tabindex="0">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span data-i18n="tabs.loops">Loops</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-lyrics"
-              data-tab="lyrics" aria-selected="false" aria-controls="tab-panel-lyrics">
+              data-tab="lyrics" aria-selected="false" aria-controls="tab-panel-lyrics" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
         <span data-i18n="tabs.lyrics">Lyrics</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-notes"
-              data-tab="notes" aria-selected="false" aria-controls="tab-panel-notes">
+              data-tab="notes" aria-selected="false" aria-controls="tab-panel-notes" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         <span data-i18n="tabs.notes">Notes</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-sheets"
-              data-tab="sheets" aria-selected="false" aria-controls="tab-panel-sheets">
+              data-tab="sheets" aria-selected="false" aria-controls="tab-panel-sheets" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
         <span data-i18n="tabs.sheets">Sheets</span>
       </button>
     </div>
 
-    <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops">
+    <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops" tabindex="0">
       <div class="loop-controls">
         <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">Start</button>
         <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">Ende</button>
@@ -2204,7 +2207,7 @@ input[type="checkbox"] {
       <div id="recording-list"></div>
     </div>
 
-    <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
+    <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" tabindex="0" hidden>
       <!-- Eine Leiste für Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
            Bleibt sichtbar, solange ein Song offen ist (siehe
            renderLyricsBlock). Der Bearbeiten-Knopf, der nicht immer gilt,
@@ -2250,7 +2253,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" hidden>
+    <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" tabindex="0" hidden>
       <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
       <div id="note-editor" hidden>
         <textarea class="note-box" id="note-text" rows="12" spellcheck="true"
@@ -2270,7 +2273,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div id="tab-panel-sheets" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-sheets" hidden>
+    <div id="tab-panel-sheets" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-sheets" tabindex="0" hidden>
       <div id="scores-list"></div>
       <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
     </div>
@@ -2432,7 +2435,7 @@ input[type="checkbox"] {
 
 <!-- Auswahlmaske: liegt über der App, weil hier über den Speicherverbrauch
      entschieden wird und nichts anderes ablenken soll. -->
-<section class="sheet" id="sheet" hidden aria-labelledby="sheet-title">
+<section class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
   <div class="sheet-head">
     <div class="row" style="align-items:flex-start">
       <div class="grow" style="flex:1">
@@ -2728,6 +2731,10 @@ input[type="checkbox"] {
           Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt
           auf diesem Gerät.
         </p>
+        <p style="margin:0" data-i18n-html="settings.about.lame">
+          MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf
+          <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.
+        </p>
       </div>
 
       <p class="section-title" data-i18n="settings.about.errorLogTitle">Fehlerprotokoll</p>
@@ -2995,6 +3002,11 @@ function logAppError(code, err) {
   return entry;
 }
 
+function clearErrorLog() {
+  errorLog = [];
+  try { localStorage.removeItem(ERROR_LOG_KEY); } catch { /* z.B. privater Modus */ }
+}
+
 /**
  * Kurzer Zusatz für Banner: „ (Code IMPORT-ZIP — RangeError: Invalid …)".
  * Steht die technische Meldung schon wortgleich im verständlichen Text (z. B.
@@ -3116,6 +3128,72 @@ function clearDebugLog() {
   try { localStorage.removeItem(DEBUG_LOG_KEY); } catch { /* z.B. privater Modus */ }
 }
 
+/* ==========================================================================
+   MODALE EBENEN (Befund F-04)
+
+   #overlay (Bestätigungsdialog), promptDialog()s eigene Ebene, #onboarding,
+   #lyrics-present und #sheet sind alle direkte Kinder von <body>. Diese
+   Hilfe hält den Fokus in der jeweils obersten Ebene fest, gibt ihn beim
+   Schließen an das auslösende Element zurück und sperrt alles dahinter.
+   ========================================================================== */
+
+const modalStack = [];
+const FOCUSABLE_SEL = 'a[href], button:not([disabled]), input:not([disabled]), '
+  + 'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const supportsInert = 'inert' in HTMLElement.prototype;
+
+function focusableIn(layer) {
+  return [...layer.querySelectorAll(FOCUSABLE_SEL)].filter((node) => node.offsetParent !== null);
+}
+
+function onModalKeydown(e) {
+  const top = modalStack[modalStack.length - 1];
+  if (!top) return;
+  if (e.key === 'Escape') { e.preventDefault(); top.onEscape(); return; }
+  if (e.key !== 'Tab') return;
+
+  const items = focusableIn(top.layer);
+  if (!items.length) { e.preventDefault(); return; }
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+document.addEventListener('keydown', onModalKeydown);
+
+/**
+ * Hält den Tastaturfokus in einer modalen Ebene fest und gibt ihn beim
+ * Schließen an das auslösende Element zurück. Ohne das tabbt man hinter das
+ * Overlay in die Bibliothek darunter und findet nach dem Schließen nicht mehr
+ * an die Stelle zurück, von der man kam. Stapelfähig, weil confirmDialog()
+ * auch aus einem offenen #sheet heraus aufgerufen wird.
+ */
+function openModal(layer, { initialFocus, onEscape } = {}) {
+  // Schon offen (z.B. doppelter Aufruf) — nicht erneut auf den Stapel legen.
+  if (modalStack.some((m) => m.layer === layer)) { (initialFocus || focusableIn(layer)[0])?.focus(); return; }
+  const restore = document.activeElement;
+  const inertedSiblings = [];
+  if (supportsInert) {
+    for (const child of document.body.children) {
+      if (child === layer || child.hidden || child.inert) continue;
+      child.inert = true;
+      inertedSiblings.push(child);
+    }
+  }
+  modalStack.push({ layer, restore, inertedSiblings, onEscape: onEscape || (() => {}) });
+  if (modalStack.length === 1) document.body.style.overflow = 'hidden';
+  (initialFocus || focusableIn(layer)[0])?.focus();
+}
+
+function closeModal(layer) {
+  const idx = modalStack.findIndex((m) => m.layer === layer);
+  if (idx < 0) return;
+  const [entry] = modalStack.splice(idx, 1);
+  for (const el of entry.inertedSiblings) el.inert = false;
+  if (!modalStack.length) document.body.style.overflow = '';
+  if (entry.restore && document.body.contains(entry.restore)) entry.restore.focus?.();
+}
+
 const overlay   = $('#overlay');
 const dlgTitle  = $('#dlg-title');
 const dlgText   = $('#dlg-text');
@@ -3140,7 +3218,7 @@ function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
   dlgOk.textContent    = okLabel;
   dlgOk.className      = danger ? 'btn btn--danger' : 'btn btn--primary';
   overlay.hidden = false;
-  dlgOk.focus();
+  openModal(overlay, { initialFocus: dlgOk, onEscape: () => closeDialog(false) });
 
   return new Promise((resolve) => {
     dlgResolve = resolve;
@@ -3149,6 +3227,7 @@ function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
 
 function closeDialog(result) {
   overlay.hidden = true;
+  closeModal(overlay);
   const r = dlgResolve;
   dlgResolve = null;
   if (r) r(result);
@@ -3167,7 +3246,7 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
       : el('input', { type: 'text', value, placeholder, 'aria-label': title });
     if (multiline) input.value = value;
 
-    const done = (result) => { layer.remove(); resolve(result); };
+    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const box = el('div', { class: 'dialog' },
       el('h2', { text: title }),
@@ -3180,14 +3259,14 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
 
     input.addEventListener('keydown', (e) => {
       // Im mehrzeiligen Feld ist die Eingabetaste ein Zeilenumbruch.
+      // Escape läuft zentral über onModalKeydown → onEscape (siehe unten).
       if (e.key === 'Enter' && !multiline) { e.preventDefault(); done(input.value); }
-      if (e.key === 'Escape') { e.preventDefault(); done(null); }
     });
 
-    const layer = el('div', { class: 'overlay' }, box);
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
-    input.focus();
+    openModal(layer, { initialFocus: input, onEscape: () => done(null) });
     input.select();
   });
 }
@@ -3195,9 +3274,6 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
 dlgOk.addEventListener('click', () => closeDialog(true));
 dlgCancel.addEventListener('click', () => closeDialog(false));
 overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(false); });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !overlay.hidden) closeDialog(false);
-});
 
 /* ==========================================================================
    DB — IndexedDB-Schicht
@@ -3573,6 +3649,7 @@ const STRINGS = {
     'settings.about.version': 'Version',
     'settings.about.offline': 'Offline verfügbar',
     'settings.about.privacy': 'Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt auf diesem Gerät.',
+    'settings.about.lame': 'MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.',
     'settings.about.errorLogTitle': 'Fehlerprotokoll',
     'settings.about.errorLogHint': 'Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim Melden eines Problems. Bleibt nur auf diesem Gerät.',
     'settings.about.copyLogBtn': 'Protokoll kopieren',
@@ -3743,6 +3820,7 @@ const STRINGS = {
     'settings.about.version': 'Version',
     'settings.about.offline': 'Available offline',
     'settings.about.privacy': 'The app makes no network requests and sends no data. Everything stays on this device.',
+    'settings.about.lame': 'MP3 export using <strong>lamejs</strong> (LGPL-3.0), based on <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.',
     'settings.about.errorLogTitle': 'Error log',
     'settings.about.errorLogHint': 'Technical error messages from the app, newest first — helpful when reporting a problem. Stays only on this device.',
     'settings.about.copyLogBtn': 'Copy log',
@@ -3913,6 +3991,7 @@ const STRINGS = {
     'settings.about.version': 'Wersja',
     'settings.about.offline': 'Dostępna offline',
     'settings.about.privacy': 'Aplikacja nie wysyła żadnych zapytań sieciowych ani danych. Wszystko pozostaje na tym urządzeniu.',
+    'settings.about.lame': 'Eksport MP3 z użyciem <strong>lamejs</strong> (LGPL-3.0), opartego na <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.',
     'settings.about.errorLogTitle': 'Dziennik błędów',
     'settings.about.errorLogHint': 'Techniczne komunikaty błędów aplikacji, najnowsze na górze — pomocne przy zgłaszaniu problemu. Pozostaje tylko na tym urządzeniu.',
     'settings.about.copyLogBtn': 'Kopiuj dziennik',
@@ -4364,6 +4443,9 @@ async function zipReadDirectory(file) {
   if (!entries.length) {
     throw new ZipError('In dieser ZIP-Datei sind keine Dateien enthalten.');
   }
+  if (entries.length > ZIP_MAX_ENTRIES) {
+    throw new ZipError('Dieses Archiv enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.');
+  }
   return entries;
 }
 
@@ -4405,6 +4487,12 @@ async function zipPrefetchStarts(file, entries) {
 
 /** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
 async function zipExtract(file, entry) {
+  // Die Größenangabe stammt aus dem Inhaltsverzeichnis und kostet nichts —
+  // billige erste Bremse gegen ein grob präpariertes Archiv (F-06).
+  if (entry.size > ZIP_MAX_ENTRY_BYTES) {
+    throw new ZipError(`„${entry.path}" ist ausgepackt größer als erwartet und wird übersprungen.`);
+  }
+
   const start = await zipDataStart(file, entry);
   const raw = file.slice(start, start + entry.compressedSize);
 
@@ -4416,7 +4504,22 @@ async function zipExtract(file, entry) {
     if (!canInflate) {
       throw new ZipError(`„${entry.path}" ist komprimiert; dieser Browser kann das nicht entpacken.`);
     }
-    const stream = raw.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    // Die Größenangabe im Inhaltsverzeichnis lässt sich fälschen — deshalb
+    // zusätzlich während des Entpackens mitzählen, statt ihr blind zu
+    // vertrauen (siehe Prüfung oben).
+    let seen = 0;
+    const guard = new TransformStream({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > ZIP_MAX_ENTRY_BYTES) {
+          throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+        }
+        controller.enqueue(chunk);
+      },
+    });
+    const stream = raw.stream()
+      .pipeThrough(new DecompressionStream('deflate-raw'))
+      .pipeThrough(guard);
     return await new Response(stream).blob();
   }
 
@@ -5593,8 +5696,7 @@ $('#btn-errorlog-copy').addEventListener('click', async () => {
 });
 
 $('#btn-errorlog-clear').addEventListener('click', async () => {
-  errorLog = [];
-  try { localStorage.removeItem(ERROR_LOG_KEY); } catch { /* z.B. privater Modus */ }
+  clearErrorLog();
   renderErrorLog();
 });
 
@@ -5993,7 +6095,8 @@ $('#btn-persist').addEventListener('click', async () => {
 $('#btn-wipe').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Daten löschen?',
-    text: 'Alle Songs, Aufnahmen, Loops und Setlisten werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
+    text: 'Alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte und Setlisten sowie Fehler- und '
+        + 'Diagnoseprotokolle werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
     okLabel: 'Löschen',
     danger: true,
   });
@@ -6001,6 +6104,9 @@ $('#btn-wipe').addEventListener('click', async () => {
 
   try {
     await DB.wipe();
+    clearDebugLog();
+    clearErrorLog();
+    try { sessionStorage.removeItem(COMPAT_UPDATE_FLAG); } catch { /* z.B. privater Modus */ }
     settings = { ...DEFAULT_SETTINGS };
     lastReport = null;
     playQueue = null;
@@ -6951,6 +7057,7 @@ function renderSheetSong(song) {
 
 function closeSheet() {
   sheet.hidden = true;
+  closeModal(sheet);
   pick = null;
   sheetProgress.hidden = true;
   sheetImport.disabled = false;
@@ -6991,6 +7098,7 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
   renderSheetList();
   updateSheetSummary();
   sheet.hidden = false;
+  openModal(sheet, { onEscape: () => closeSheet() });
   sheetBody.scrollTop = 0;
 }
 
@@ -7083,6 +7191,13 @@ async function withScreenAwake(fn) {
 // einmal importiert, soll wissen, dass ein ausgehender Bildschirm den
 // Vorgang unterbrechen kann, statt das erst nach langem Warten zu erfahren.
 const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
+
+// Harte Grenzen beim Auspacken (Befund F-06): die Dateien stammen aus dem
+// Dropbox-Export des eigenen Chores, der Angriffsweg ist entsprechend schmal.
+// Trotzdem billig gegen ein grob präpariertes Archiv absichern, ohne
+// durchgängiges Streaming oder eine globale Import-Limit-Policy einzuführen.
+const ZIP_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
+const ZIP_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // ausgepackt, je Eintrag
 
 async function startZipImport(file) {
   dlog('import:zip:begin', { bytes: file.size });
@@ -7313,10 +7428,11 @@ async function runImport() {
       };
       song.collections = [...(song.collections || [])];
       song.scores = [...(song.scores || [])];
-
-      if (scan.attachSimilar && scan.similar) {
-        attachRequests.push({ fromId: scan.similar.id, toId: song.id, toTitle: song.title });
-      }
+      // Nur wenn hier tatsächlich etwas übernommen wird, entsteht ein neuer
+      // Songdatensatz bzw. zählt der Import (siehe „keep" weiter unten) —
+      // sonst bleibt bei einer einzigen unlesbaren Datei ein leerer,
+      // unspielbarer Song übrig.
+      let songGotContent = false;
 
       // Sammelordner ergänzen — ein Song kann in mehreren Programmen liegen.
       for (const c of scan.collections) {
@@ -7334,6 +7450,7 @@ async function runImport() {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
           batch.files.push(await fileRecord(fileKey, blob, track.fileName));
+          songGotContent = true;
           batch.bytes += blob.size;
           batch.songs.add(song);
 
@@ -7392,6 +7509,7 @@ async function runImport() {
           const raw = await readTextBlob(await entryBlob(scan.lyricsEntry));
           const { artist, text } = splitLyricsHeader(raw);
           song.lyrics = text;
+          songGotContent = true;
           if (artist) song.artist = artist;
         } catch (err) {
           console.warn('[import] Liedtext', err);
@@ -7413,6 +7531,7 @@ async function runImport() {
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
           batch.files.push(await fileRecord(fileKey, blob, pdf.name));
+          songGotContent = true;
           batch.bytes += blob.size;
           batch.songs.add(song);
         } catch (err) {
@@ -7422,12 +7541,20 @@ async function runImport() {
         }
       }
 
-      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-      batch.songs.add(song);
-      if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
-        await flushImportBatch(batch);
+      // Ein bereits vorhandener Song zählt als „hat Inhalt" nicht automatisch —
+      // er darf aber auch nicht verschwinden, wenn diesmal nichts Neues ankam.
+      const keep = songGotContent || !!scan.existing;
+      if (keep) {
+        song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+        batch.songs.add(song);
+        if (scan.attachSimilar && scan.similar) {
+          attachRequests.push({ fromId: scan.similar.id, toId: song.id, toTitle: song.title });
+        }
+        if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+          await flushImportBatch(batch);
+        }
       }
-      report.songsImported++;
+      if (songGotContent) report.songsImported++;
     }
     await flushImportBatch(batch);
   } catch (err) {
@@ -9843,8 +9970,13 @@ let lyricsNoteEditing = false;
 
 let lyricsNotePending = Promise.resolve();
 function lyricsNoteWrite(run) {
-  lyricsNotePending = lyricsNotePending.then(run, run).catch((err) => console.error('[liedtext]', err));
-  return lyricsNotePending;
+  const op = lyricsNotePending.then(run, run);
+  // Die Warteschlange selbst darf nie im Fehlerzustand hängen bleiben —
+  // sonst stünde jede spätere Schreiboperation still. Der Aufrufer bekommt
+  // dagegen die echte, ggf. abgelehnte Promise: nur so kann die Oberfläche
+  // einen fehlgeschlagenen Speichervorgang auch als solchen zeigen.
+  lyricsNotePending = op.catch((err) => console.error('[liedtext]', err));
+  return op;
 }
 
 function newLyricsNote(song) {
@@ -9874,11 +10006,11 @@ async function loadSongLyricsNote() {
   if (found) {
     // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg.
     if (!(found.text || '').trim()) {
-      lyricsNoteWrite(() => DB.metaDelete(found.key));
+      lyricsNoteWrite(() => DB.metaDelete(found.key)).catch((err) => console.error('[liedtext]', err));
     } else {
       if (!found.songId) {
         found.songId = song.id;
-        lyricsNoteWrite(() => DB.metaPut(found));
+        lyricsNoteWrite(() => DB.metaPut(found)).catch((err) => console.error('[liedtext]', err));
       }
       playerLyricsNote = found;
     }
@@ -9969,10 +10101,6 @@ function updateLyricsPresentFab() {
  * gar nicht) — Vollbild/Orientation-Lock laufen zusätzlich, wo verfügbar,
  * sind aber nicht Voraussetzung fürs Funktionieren.
  */
-function onLyricsPresentKeydown(event) {
-  if (event.key === 'Escape') closeLyricsPresent();
-}
-
 async function openLyricsPresent() {
   const text = lyricsPresentSourceText();
   if (!text.trim()) return;
@@ -9980,8 +10108,9 @@ async function openLyricsPresent() {
   const el = $('#lyrics-present');
   el.dataset.theme = settings.presentTheme === 'light' ? 'light' : 'dark';
   el.hidden = false;
-  document.body.style.overflow = 'hidden';
-  document.addEventListener('keydown', onLyricsPresentKeydown);
+  // document.body.style.overflow läuft jetzt über openModal()/closeModal()
+  // (erst beim ersten bzw. letzten Eintrag im Stapel).
+  openModal(el, { initialFocus: $('#lyrics-present-close'), onEscape: () => closeLyricsPresent() });
   try { await el.requestFullscreen?.(); } catch { /* z. B. iOS Safari ohne Element-Vollbild */ }
   try { await screen.orientation?.lock?.('landscape'); } catch { /* dann übernimmt der CSS-Dreh-Trick */ }
 }
@@ -9989,8 +10118,7 @@ async function openLyricsPresent() {
 async function closeLyricsPresent() {
   const el = $('#lyrics-present');
   el.hidden = true;
-  document.body.style.overflow = '';
-  document.removeEventListener('keydown', onLyricsPresentKeydown);
+  closeModal(el);
   try { screen.orientation?.unlock?.(); } catch { /* nichts zu entsperren */ }
   if (document.fullscreenElement === el) {
     try { await document.exitFullscreen(); } catch { /* schon zu */ }
@@ -10058,8 +10186,7 @@ async function saveLyricsNote({ announce = false } = {}) {
   const text = $('#lyrics-note-text').value;
 
   if (announce && !text.trim()) {
-    await deleteLyricsNote();
-    banner('Leeren Liedtext entfernt.');
+    if (await deleteLyricsNote()) banner('Leeren Liedtext entfernt.');
     return;
   }
 
@@ -10078,15 +10205,32 @@ async function saveLyricsNote({ announce = false } = {}) {
   }
 }
 
+/** @returns {Promise<boolean>} ob der eigene Liedtext tatsächlich gelöscht wurde. */
 async function deleteLyricsNote() {
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = null;
   const note = playerLyricsNote;
+  const prevEditing = lyricsNoteEditing;
+  const prevSource = lyricsSource;
   playerLyricsNote = null;
   lyricsNoteEditing = false;
   lyricsSource = playerSong?.lyrics ? 'official' : 'private';
   renderLyricsBlock();
-  if (note) await lyricsNoteWrite(() => DB.metaDelete(note.key));
+  if (!note) return true;
+  try {
+    await lyricsNoteWrite(() => DB.metaDelete(note.key));
+    return true;
+  } catch (err) {
+    // Der Datensatz steht noch in der Datenbank — das darf nicht als
+    // „gelöscht" durchgehen, sonst ist der Liedtext nach dem nächsten Start
+    // unerwartet wieder da.
+    playerLyricsNote = note;
+    lyricsNoteEditing = prevEditing;
+    lyricsSource = prevSource;
+    renderLyricsBlock();
+    bannerError('Der Liedtext konnte nicht gelöscht werden.', 'LYRICS-NOTE-DELETE', err);
+    return false;
+  }
 }
 
 /** Beim Schließen des Players oder beim Wegwischen der App sichern. */
@@ -10097,7 +10241,7 @@ function flushLyricsNote() {
 
   if (!text.trim()) {
     playerLyricsNote = null;
-    lyricsNoteWrite(() => DB.metaDelete(note.key));
+    lyricsNoteWrite(() => DB.metaDelete(note.key)).catch(console.error);
     return;
   }
   if (text === note.text && !lyricsNoteSaveTimer) return;
@@ -10106,7 +10250,7 @@ function flushLyricsNote() {
   lyricsNoteSaveTimer = null;
   note.text = text;
   note.updatedAt = new Date().toISOString();
-  lyricsNoteWrite(() => DB.metaPut(note));
+  lyricsNoteWrite(() => DB.metaPut(note)).catch(console.error);
 }
 
 function iconPdf() {
@@ -10132,6 +10276,10 @@ function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
   for (const name of PLAYER_TABS) {
     $(`#tab-btn-${name}`).setAttribute('aria-selected', String(name === tab));
+    // Roving tabindex (F-08): nur der ausgewählte Reiter ist per Tab
+    // erreichbar, die übrigen nur noch über die Pfeiltasten — sonst müsste
+    // man sich durch alle vier tabben, statt direkt weiterzuarbeiten.
+    $(`#tab-btn-${name}`).tabIndex = name === tab ? 0 : -1;
     $(`#tab-panel-${name}`).hidden = name !== tab;
   }
   // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
@@ -10149,6 +10297,27 @@ function setTabHasContent(tab, has) {
 
 for (const name of PLAYER_TABS) {
   $(`#tab-btn-${name}`).addEventListener('click', () => setPlayerTab(name));
+}
+
+// Pfeiltasten/Home/End nach dem ARIA-Tab-Muster: wechseln UND fokussieren
+// zugleich, zyklisch über den Rand hinaus.
+$('#player-tabs').addEventListener('keydown', (e) => {
+  const idx = PLAYER_TABS.indexOf(playerTabsActive());
+  if (idx < 0) return;
+  let nextIdx = -1;
+  if (e.key === 'ArrowRight') nextIdx = (idx + 1) % PLAYER_TABS.length;
+  else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + PLAYER_TABS.length) % PLAYER_TABS.length;
+  else if (e.key === 'Home') nextIdx = 0;
+  else if (e.key === 'End') nextIdx = PLAYER_TABS.length - 1;
+  else return;
+  e.preventDefault();
+  const name = PLAYER_TABS[nextIdx];
+  setPlayerTab(name);
+  $(`#tab-btn-${name}`).focus();
+});
+
+function playerTabsActive() {
+  return PLAYER_TABS.find((name) => $(`#tab-btn-${name}`).getAttribute('aria-selected') === 'true');
 }
 
 /**
@@ -10300,8 +10469,13 @@ let noteSaveTimer = null;  // läuft nach dem Tippen
 let notePending = Promise.resolve();
 
 function noteWrite(run) {
-  notePending = notePending.then(run, run).catch((err) => console.error('[notiz]', err));
-  return notePending;
+  const op = notePending.then(run, run);
+  // Die Warteschlange selbst darf nie im Fehlerzustand hängen bleiben —
+  // sonst stünde jede spätere Schreiboperation still. Der Aufrufer bekommt
+  // dagegen die echte, ggf. abgelehnte Promise: nur so kann die Oberfläche
+  // einen fehlgeschlagenen Speichervorgang auch als solchen zeigen.
+  notePending = op.catch((err) => console.error('[notiz]', err));
+  return op;
 }
 
 function newNote(song) {
@@ -10340,7 +10514,7 @@ async function loadSongNote() {
 
   // Eine leer gewordene Notiz ist keine Notiz — Datensatz weg, Knopf zurück.
   if (!(found.text || '').trim()) {
-    noteWrite(() => DB.metaDelete(found.key));
+    noteWrite(() => DB.metaDelete(found.key)).catch((err) => console.error('[notiz]', err));
     return;
   }
 
@@ -10348,7 +10522,7 @@ async function loadSongNote() {
   // offen ist, bekommt sie seine Kennung.
   if (!found.songId) {
     found.songId = song.id;
-    noteWrite(() => DB.metaPut(found));
+    noteWrite(() => DB.metaPut(found)).catch((err) => console.error('[notiz]', err));
   }
 
   playerNote = found;
@@ -10432,8 +10606,7 @@ async function saveNote({ announce = false } = {}) {
   // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
   // Händen, während jemand den Text gerade neu schreibt.
   if (announce && !text.trim()) {
-    await deleteNote();
-    banner('Leere Notiz entfernt.');
+    if (await deleteNote()) banner('Leere Notiz entfernt.');
     return;
   }
 
@@ -10452,13 +10625,26 @@ async function saveNote({ announce = false } = {}) {
   }
 }
 
+/** @returns {Promise<boolean>} ob die Notiz tatsächlich gelöscht wurde. */
 async function deleteNote() {
   clearTimeout(noteSaveTimer);
   noteSaveTimer = null;
   const note = playerNote;
   playerNote = null;
   renderNoteBlock();
-  if (note) await noteWrite(() => DB.metaDelete(note.key));
+  if (!note) return true;
+  try {
+    await noteWrite(() => DB.metaDelete(note.key));
+    return true;
+  } catch (err) {
+    // Der Datensatz steht noch in der Datenbank — das darf nicht als
+    // „gelöscht" durchgehen, sonst ist die Notiz nach dem nächsten Start
+    // unerwartet wieder da.
+    playerNote = note;
+    renderNoteBlock();
+    bannerError('Die Notiz konnte nicht gelöscht werden.', 'NOTE-DELETE', err);
+    return false;
+  }
 }
 
 /**
@@ -10472,7 +10658,7 @@ function flushNote() {
 
   if (!text.trim()) {
     playerNote = null;
-    noteWrite(() => DB.metaDelete(note.key));
+    noteWrite(() => DB.metaDelete(note.key)).catch(console.error);
     return;
   }
   if (text === note.text && !noteSaveTimer) return;
@@ -10481,7 +10667,7 @@ function flushNote() {
   noteSaveTimer = null;
   note.text = text;
   note.updatedAt = new Date().toISOString();
-  noteWrite(() => DB.metaPut(note));
+  noteWrite(() => DB.metaPut(note)).catch(console.error);
 }
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
@@ -12050,7 +12236,11 @@ $('#backup-input').addEventListener('change', async (e) => {
     banner('Diese Sicherung stammt aus einer neueren Version der App. Bitte die App aktualisieren und erneut versuchen.', { kind: 'error' });
     return;
   }
-  await restoreBackup(data, resolveAudioBase64);
+  try {
+    await restoreBackup(data, resolveAudioBase64);
+  } catch (err) {
+    bannerError('Die Sicherung konnte nicht vollständig eingespielt werden.', 'BACKUP-RESTORE', err);
+  }
 });
 
 $('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
@@ -12078,6 +12268,21 @@ $('#rec-import-input').addEventListener('change', async (e) => {
   if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als REC erkannt`);
   banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
+
+/**
+ * Welche der im Lauf vergebenen fileKeys referenziert nach einem Abbruch kein
+ * Songdatensatz und keine Aufnahme mehr. Reine Funktion (keine Datenbank),
+ * damit sich Restores Aufräumlogik ohne IndexedDB testen lässt.
+ */
+function orphanFileKeys(writtenKeys, songs, recordings) {
+  const referenced = new Set();
+  for (const song of songs) {
+    for (const t of song.tracks || []) if (t.fileKey) referenced.add(t.fileKey);
+    for (const sc of song.scores || []) if (sc.fileKey) referenced.add(sc.fileKey);
+  }
+  for (const rec of recordings) if (rec.fileKey) referenced.add(rec.fileKey);
+  return writtenKeys.filter((k) => !referenced.has(k));
+}
 
 /**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
@@ -12116,58 +12321,121 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   });
   if (!ok) return;
 
-  // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch gar
-  // nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der Stimmen
-  // gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre fehleranfällig).
-  // Muss vor Loops/Notizen/RECs laufen, damit die einen frisch angelegten
-  // Song schon finden, statt fälschlich als "ohne Song" zu landen.
-  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
-  if (songAudioIn.length) {
-    for (const s of songAudioIn) {
-      if (!s || (!s.tracks?.length && !s.scores?.length)) continue;
-      if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+  // Jeder im Lauf vergebene fileKey wird hier vermerkt — bricht der Vorgang
+  // unterwegs ab (siehe catch weiter unten), wird geprüft, welche davon
+  // keinen festgeschriebenen Datensatz mehr referenzieren, und diese werden
+  // gelöscht. Ohne das blieben Datei-Bytes ohne Referenz im `files`-Store:
+  // unsichtbar, nie wieder löschbar, verbrauchen weiter Quota.
+  const writtenFileKeys = [];
+  // Leichtgewichtige Vorabprüfung: offensichtlich unbrauchbare Einträge
+  // zählen und überspringen, statt sie mitten im Schreiben scheitern zu
+  // lassen. Der volle Base64-Inhalt wird dabei bewusst nicht vorab aufgelöst
+  // (das vermeidet readBackupFile() bereits gezielt, wegen des Speichers).
+  let discardedSongAudio = 0, discardedRecordings = 0;
 
-      const song = await createPlaceholderSong(s.title);
-      for (const t of s.tracks || []) {
-        if (!t.audioBase64) continue;
-        const base64 = await resolveAudioBase64(t.audioBase64);
-        const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
-        const fileKey = newFileKey();
-        const fileName = t.fileName || `${t.voice}.mp3`;
-        await DB.filePut(await fileRecord(fileKey, blob, fileName));
-        song.tracks.push({
-          voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
-          fileName, fileKey, size: blob.size, durationSec: null,
-        });
+  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
+  let addedLoops = 0, addedPl = 0, keptPending = 0;
+  let addedNotes = 0, skippedNotes = 0;
+  let addedLyricsNotes = 0, skippedLyricsNotes = 0;
+  let addedRecordings = 0, skippedRecordings = 0;
+
+  try {
+    // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch
+    // gar nicht gibt (bei vorhandenen lieber der normale ZIP-Import, der
+    // Stimmen gezielt ersetzen/ergänzen kann; das hier nachzubauen wäre
+    // fehleranfällig). Muss vor Loops/Notizen/RECs laufen, damit die einen
+    // frisch angelegten Song schon finden, statt fälschlich als "ohne Song"
+    // zu landen.
+    if (songAudioIn.length) {
+      // Dateien und Songdatensätze im selben Batch-Muster wie der ZIP-Import
+      // (siehe flushImportBatch): Datei-Bytes und die sie referenzierenden
+      // Songdatensätze landen in derselben Transaktion, sodass ein
+      // Songdatensatz nie auf eine nicht festgeschriebene Datei zeigt.
+      const batch = { files: [], songs: new Set(), obsolete: [], bytes: 0 };
+      for (const s of songAudioIn) {
+        if (!s || typeof s.title !== 'string' || !s.title.trim()
+            || (!s.tracks?.length && !s.scores?.length)) {
+          discardedSongAudio++;
+          continue;
+        }
+        if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+
+        const title = s.title.trim();
+        const normTitle = normalizeTitle(title);
+        // Der Datensatz entsteht nur im Speicher — das Schreiben übernimmt
+        // der Batch. Würde er (wie createPlaceholderSong()) sofort
+        // geschrieben, bliebe bei einem Abbruch mitten im Restore ein leerer
+        // Song zurück (dasselbe Problem wie bei F-02).
+        const song = {
+          key: `song:${hashId(normTitle)}`,
+          type: 'song',
+          id: hashId(normTitle),
+          title,
+          normTitle,
+          collections: [],
+          tracks: [],
+          lyrics: null,
+          scores: [],
+          importedAt: new Date().toISOString(),
+        };
+        let songGotContent = false;
+
+        for (const t of s.tracks || []) {
+          if (!t.audioBase64) continue;
+          const base64 = await resolveAudioBase64(t.audioBase64);
+          const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
+          const fileKey = newFileKey();
+          const fileName = t.fileName || `${t.voice}.mp3`;
+          batch.files.push(await fileRecord(fileKey, blob, fileName));
+          writtenFileKeys.push(fileKey);
+          batch.bytes += blob.size;
+          song.tracks.push({
+            voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
+            fileName, fileKey, size: blob.size, durationSec: null,
+          });
+          songGotContent = true;
+          batch.songs.add(song);
+          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+            song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+            await flushImportBatch(batch);
+          }
+        }
+        song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+        // Noten (Notenblätter/PDFs) — dieselbe Sicherung, dieselbe Auswahl
+        // ("Song-Audiodateien", siehe buildBackupParts), separat gespeichert.
+        for (const sc of s.scores || []) {
+          if (!sc.audioBase64) continue;
+          const base64 = await resolveAudioBase64(sc.audioBase64);
+          const blob = base64ToBlob(base64, 'application/pdf');
+          const fileKey = newFileKey();
+          const fileName = sc.fileName || 'Noten.pdf';
+          batch.files.push(await fileRecord(fileKey, blob, fileName));
+          writtenFileKeys.push(fileKey);
+          batch.bytes += blob.size;
+          song.scores.push({ fileName, fileKey, size: blob.size });
+          scoresRestored++;
+          songGotContent = true;
+          batch.songs.add(song);
+          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+            await flushImportBatch(batch);
+          }
+        }
+        // Kein Inhalt übernommen (z.B. alle audioBase64-Felder fehlten) →
+        // kein leerer Song, aus demselben Grund wie oben.
+        if (songGotContent) {
+          songs.push(song);
+          songsCreated++;
+        }
       }
-      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-      // Noten (Notenblätter/PDFs) — dieselbe Sicherung, dieselbe Auswahl
-      // ("Song-Audiodateien", siehe buildBackupParts), separat gespeichert.
-      for (const sc of s.scores || []) {
-        if (!sc.audioBase64) continue;
-        const base64 = await resolveAudioBase64(sc.audioBase64);
-        const blob = base64ToBlob(base64, 'application/pdf');
-        const fileKey = newFileKey();
-        const fileName = sc.fileName || 'Noten.pdf';
-        await DB.filePut(await fileRecord(fileKey, blob, fileName));
-        song.scores.push({ fileName, fileKey, size: blob.size });
-        scoresRestored++;
-      }
-      await DB.metaPut(song);
-      songs.push(song);
-      songsCreated++;
+      await flushImportBatch(batch);
+      dropSongCache();
     }
-    dropSongCache();
-  }
 
   const existingLoops = await DB.metaByType('loop');
   const existingPl = await DB.metaByType('playlist');
   const existingNotes = await DB.metaByType('note');
   const existingLyricsNotes = await DB.metaByType('lyricsNote');
   const fresh = [];
-  let addedLoops = 0, addedPl = 0, keptPending = 0;
-  let addedNotes = 0, skippedNotes = 0;
-  let addedLyricsNotes = 0, skippedLyricsNotes = 0;
 
   for (const l of loops) {
     if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
@@ -12259,11 +12527,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
 
   // RECs mit eingebettetem Audio. Duplikate (Name + Song) werden
   // übersprungen, damit dasselbe Backup nicht zweimal etwas anlegt.
-  let addedRecordings = 0, skippedRecordings = 0;
   if (recordingsIn.length) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
     for (const r of recordingsIn) {
-      if (!r || !r.audioBase64) continue;
+      if (!r || !r.audioBase64) { discardedRecordings++; continue; }
       const song = findSongByTitle(songs, r.songTitle || '');
       const norm = normalizeTitle(r.songTitle || '');
       const isDupe = (x) => x.name === r.name
@@ -12275,7 +12542,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       const blob = base64ToBlob(base64, mimeType);
       const fileKey = newFileKey();
       const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('mpeg') ? 'mp3' : 'webm');
-      await DB.filePut(await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`));
+      const fileRec = await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`);
 
       const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       const recording = {
@@ -12288,11 +12555,36 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         size: blob.size,
         createdAt: r.createdAt || new Date().toISOString(),
       };
-      await DB.metaPut(recording);
+      // Datei und Metadatensatz einer Aufnahme in einer Transaktion, aus
+      // demselben Grund wie beim Song-Audio oben — sonst kann eine
+      // referenzlose Datei im `files`-Store zurückbleiben.
+      await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
+        fileStore.put(fileRec);
+        metaStore.put(recording);
+      });
+      writtenFileKeys.push(fileKey);
       existingRecordings.push(recording);
       addedRecordings++;
     }
     if (playerSong) await loadSongRecordings();
+  }
+  } catch (err) {
+    // Trotz der Batch-/Transaktionsschreibweise oben kann ein Fehler
+    // zwischen zwei Transaktionen auftreten (z.B. base64ToBlob scheitert
+    // nach einem erfolgreichen Flush). Aufräumen: alle in diesem Lauf
+    // vergebenen fileKeys, die kein festgeschriebener Datensatz mehr
+    // referenziert, wieder löschen — sonst blieben referenzlose Dateien im
+    // `files`-Store zurück.
+    try {
+      const currentSongs = await DB.metaByType('song').catch(() => []);
+      const currentRecordings = await DB.metaByType('recording').catch(() => []);
+      const orphaned = orphanFileKeys(writtenFileKeys, currentSongs, currentRecordings);
+      if (orphaned.length) await DB.fileDelete(orphaned);
+    } catch (cleanupErr) {
+      console.error('[backup] Aufräumen nach Abbruch fehlgeschlagen', cleanupErr);
+    }
+    dropSongCache();
+    throw err;
   }
 
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
@@ -12329,7 +12621,9 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
         + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : '')
     + (skippedRecordings ? ` ${plural(skippedRecordings, 'REC', 'RECs')} übersprungen, weil schon vorhanden.` : '')
-    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : ''),
+    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : '')
+    + (discardedSongAudio ? ` ${plural(discardedSongAudio, 'Songeintrag', 'Songeinträge')} ohne verwertbaren Inhalt verworfen.` : '')
+    + (discardedRecordings ? ` ${plural(discardedRecordings, 'REC', 'RECs')} ohne Audiodaten verworfen.` : ''),
     { kind: 'ok' });
 }
 
@@ -12531,12 +12825,17 @@ function runSelfTests() {
   ];
 
   const failed = [];
+  // Zähler statt Handzählung — wächst automatisch mit jeder neuen Prüfung
+  // unten mit, statt eine Summe von Hand nachpflegen zu müssen.
+  let checks = 0;
   for (const [file, folder, expected] of voiceCases) {
+    checks++;
     const got = detectVoice(file, folder).voice;
     if (got !== expected) failed.push(`detectVoice("${file}", "${folder}") = ${got}, erwartet ${expected}`);
   }
 
   // Ohne Kürzel gilt die Spur als Gesamtmischung — außer es gibt schon eine.
+  checks++;
   const noVoice = scanFiles([
     { path: 'Alt wie ein Baum/Alt wie ein Baum.mp3', size: 1 },
     { path: 'Alt wie ein Baum/Alt wie ein Baum ALT.mp3', size: 1 },
@@ -12547,6 +12846,7 @@ function runSelfTests() {
   }
 
   // Zweite Datei ohne Kürzel wird OTHER, weil FULL schon vergeben ist.
+  checks++;
   const twoFull = scanFiles([
     { path: 'Lied/Lied.mp3', size: 1 },
     { path: 'Lied/Lied Probe.mp3', size: 1 },
@@ -12557,6 +12857,7 @@ function runSelfTests() {
   }
 
   // Sammelordner werden zu collections, Songordner zum Titel.
+  checks++;
   const nested = scanFiles([{ path: 'Best of 2025/Blaue Augen/SOP.mp3', size: 1 }], 'ZIP');
   if (nested.songs[0]?.title !== 'Blaue Augen' ||
       nested.songs[0]?.collections[0] !== 'Best of 2025') {
@@ -12578,25 +12879,30 @@ function runSelfTests() {
     [coreTitle('Blaue Augen'),           'blaue augen'],
   ];
   for (const [got, expected] of titleCases) {
+    checks++;
     if (got !== expected) failed.push(`Titel-Normalisierung: "${got}", erwartet "${expected}"`);
   }
 
   // Kopfzeile im Liedtext: „# Interpret - Titel"
+  checks++;
   const header = splitLyricsHeader('# John Moods - Blaue Augen\n\nErste Zeile\nZweite Zeile\n');
   if (header.artist !== 'John Moods' || header.title !== 'Blaue Augen'
       || !header.text.startsWith('Erste Zeile')) {
     failed.push(`Liedtext-Kopfzeile: ${JSON.stringify(header)}`);
   }
+  checks++;
   const plain = splitLyricsHeader('Nur Text\nZweite Zeile\n');
   if (plain.artist !== null || !plain.text.startsWith('Nur Text')) {
     failed.push('Liedtext ohne Kopfzeile wurde verändert');
   }
+  checks++;
   const noDash = splitLyricsHeader('# Sing-Sang\n\nText\n');
   if (noDash.artist !== null || noDash.title !== 'Sing-Sang') {
     failed.push(`Kopfzeile ohne Interpret: ${JSON.stringify(noDash)}`);
   }
 
   // Mehrere Fassungen: vorgeschlagen wird die mit den meisten Stimmen.
+  checks++;
   const groups = groupDuplicates([
     { core: 'blaue augen', title: 'Blaue Augen', tracks: [{ voice: 'FULL' }] },
     { core: 'blaue augen', title: 'Blaue Augen neu', tracks: [{ voice: 'FULL' }, { voice: 'SOP' }] },
@@ -12610,31 +12916,73 @@ function runSelfTests() {
   const savedA = loopA, savedB = loopB, savedDur = Audio.duration;
   Audio.duration = 100;
   loopA = 50; loopB = 200;
+  checks++;
   const clamped = loopRange();
   if (!clamped || clamped.end !== 100 || clamped.start !== 50) {
     failed.push(`loopRange begrenzt nicht auf die Länge: ${JSON.stringify(clamped)}`);
   }
   loopA = 150; loopB = 200;
+  checks++;
   if (loopRange() !== null) failed.push('loopRange hinter dem Ende müsste null sein');
   loopA = savedA; loopB = savedB; Audio.duration = savedDur;
 
   // Dateidatensätze: neue halten die Bytes selbst, ältere noch einen Blob.
   // Beides muss lesbar bleiben, sonst spielt nach einem Update nichts mehr.
+  checks++;
   if (recordBlob({ data: new Uint8Array([1, 2, 3]).buffer }, 'audio/mpeg').size !== 3) {
     failed.push('recordBlob liest neue Datensätze nicht');
   }
+  checks++;
   const legacyBlob = new Blob([new Uint8Array([1, 2, 3])]);
   if (recordBlob({ blob: legacyBlob }) !== legacyBlob) {
     failed.push('recordBlob reicht ältere Datensätze nicht durch');
   }
 
+  // A3: welche fileKeys sind nach einem Abbruch verwaist?
+  checks++;
+  const orphanSongs = [{ tracks: [{ fileKey: 'a' }], scores: [{ fileKey: 'b' }] }];
+  const orphanRecordings = [{ fileKey: 'c' }];
+  const orphans = orphanFileKeys(['a', 'b', 'c', 'd', 'e'], orphanSongs, orphanRecordings);
+  if (orphans.sort().join(',') !== 'd,e') {
+    failed.push(`orphanFileKeys findet die falschen Waisen: ${JSON.stringify(orphans)}`);
+  }
 
-  const total = voiceCases.length + titleCases.length + 11;
+  const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
   } else {
     console.info(`[Selbsttest] Alle ${total} Prüfungen der Datei- und Titelerkennung bestanden.`);
+  }
+  return failed;
+}
+
+/**
+ * A1: eine abgelehnte Schreiboperation muss (a) selbst als abgelehnte Promise
+ * zurückkommen und darf (b) die nächste eingereihte Operation nicht
+ * blockieren. Läuft asynchron und getrennt von runSelfTests() (das rein
+ * synchron ist), wird aber vom selben Aufrufer (boot()) mit ausgelöst.
+ */
+async function runAsyncSelfTests() {
+  const failed = [];
+
+  let rejected = false;
+  try {
+    await noteWrite(() => Promise.reject(new Error('Testfehler')));
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) failed.push('noteWrite() müsste bei einem Fehler ablehnen');
+
+  let nextRan = false;
+  await noteWrite(() => { nextRan = true; });
+  if (!nextRan) failed.push('noteWrite() blockiert die Warteschlange nach einem Fehler');
+
+  if (failed.length) {
+    console.error(`[Selbsttest async] ${failed.length} Prüfung(en) fehlgeschlagen:`);
+    for (const f of failed) console.error('  ✗ ' + f);
+  } else {
+    console.info('[Selbsttest async] Speicher-Warteschlange nach Fehlern bestanden.');
   }
   return failed;
 }
@@ -12650,6 +12998,7 @@ window.chorApp = {
   db: DB,
   settings: () => settings,
   selfTest: runSelfTests,
+  selfTestAsync: runAsyncSelfTests,
 };
 
 /* ==========================================================================
@@ -12831,7 +13180,7 @@ function renderOnbDots() {
   onbDots.textContent = '';
   for (let i = 0; i < ONB_SLIDES; i++) {
     onbDots.append(el('button', {
-      class: 'onb-dot', type: 'button', role: 'tab',
+      class: 'onb-dot', type: 'button',
       'aria-current': i === onbIndex ? 'true' : 'false',
       'aria-label': `Schritt ${i + 1} von ${ONB_SLIDES}`,
       onclick: () => onbGoTo(i),
@@ -12885,12 +13234,13 @@ function openOnboarding() {
   renderOnbDots();
   // Ohne Verzögerung steht die Breite des Streifens noch nicht fest.
   requestAnimationFrame(() => { onbTrack.scrollLeft = 0; });
-  onbNext.focus();
+  openModal(onbEl, { initialFocus: onbNext, onEscape: () => closeOnboarding() });
 }
 
 async function closeOnboarding() {
   onbOpen = false;
   onbEl.hidden = true;
+  closeModal(onbEl);
   if (!settings.setupDoneAt) await saveSettings({ setupDoneAt: new Date().toISOString() });
   renderVoicePicker();
   if (currentView === 'settings') renderSettings();
@@ -12974,6 +13324,8 @@ async function boot() {
     // sonst bleibt der Bildschirm leer, obwohl die App funktionieren würde.
     console.error('[Selbsttest] abgebrochen', err);
   }
+  // Nicht abgewartet — der Start soll nicht auf ein paar Promise-Ticks warten.
+  runAsyncSelfTests().catch((err) => console.error('[Selbsttest async] abgebrochen', err));
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
