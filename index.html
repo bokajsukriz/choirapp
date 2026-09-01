@@ -7313,10 +7313,11 @@ async function runImport() {
       };
       song.collections = [...(song.collections || [])];
       song.scores = [...(song.scores || [])];
-
-      if (scan.attachSimilar && scan.similar) {
-        attachRequests.push({ fromId: scan.similar.id, toId: song.id, toTitle: song.title });
-      }
+      // Nur wenn hier tatsächlich etwas übernommen wird, entsteht ein neuer
+      // Songdatensatz bzw. zählt der Import (siehe „keep" weiter unten) —
+      // sonst bleibt bei einer einzigen unlesbaren Datei ein leerer,
+      // unspielbarer Song übrig.
+      let songGotContent = false;
 
       // Sammelordner ergänzen — ein Song kann in mehreren Programmen liegen.
       for (const c of scan.collections) {
@@ -7334,6 +7335,7 @@ async function runImport() {
           const blob = await entryBlob(track.entry);
           const fileKey = newFileKey();
           batch.files.push(await fileRecord(fileKey, blob, track.fileName));
+          songGotContent = true;
           batch.bytes += blob.size;
           batch.songs.add(song);
 
@@ -7392,6 +7394,7 @@ async function runImport() {
           const raw = await readTextBlob(await entryBlob(scan.lyricsEntry));
           const { artist, text } = splitLyricsHeader(raw);
           song.lyrics = text;
+          songGotContent = true;
           if (artist) song.artist = artist;
         } catch (err) {
           console.warn('[import] Liedtext', err);
@@ -7413,6 +7416,7 @@ async function runImport() {
             song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
           }
           batch.files.push(await fileRecord(fileKey, blob, pdf.name));
+          songGotContent = true;
           batch.bytes += blob.size;
           batch.songs.add(song);
         } catch (err) {
@@ -7422,12 +7426,20 @@ async function runImport() {
         }
       }
 
-      song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-      batch.songs.add(song);
-      if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
-        await flushImportBatch(batch);
+      // Ein bereits vorhandener Song zählt als „hat Inhalt" nicht automatisch —
+      // er darf aber auch nicht verschwinden, wenn diesmal nichts Neues ankam.
+      const keep = songGotContent || !!scan.existing;
+      if (keep) {
+        song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+        batch.songs.add(song);
+        if (scan.attachSimilar && scan.similar) {
+          attachRequests.push({ fromId: scan.similar.id, toId: song.id, toTitle: song.title });
+        }
+        if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+          await flushImportBatch(batch);
+        }
       }
-      report.songsImported++;
+      if (songGotContent) report.songsImported++;
     }
     await flushImportBatch(batch);
   } catch (err) {
