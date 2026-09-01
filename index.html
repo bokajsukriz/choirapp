@@ -352,6 +352,15 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   height: 8px;
   border-radius: 4px;
 }
+.lightshow-tile.is-recommended { border-color: var(--accent); }
+.lightshow-tile-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
 
 /* Speicherbalken */
 .meter {
@@ -1614,6 +1623,10 @@ input[type="checkbox"] {
 /* Stark gedimmt, damit der Knopf auf der hellen Bühnenfläche nicht als
    heller Fleck auffällt — aber immer an derselben Stelle und mit
    mindestens 44×44 px Trefferfläche, damit er auch im Dunkeln zu finden ist. */
+/* mix-blend-mode: difference invertiert gegen den jeweiligen Bühnenhintergrund
+   — auf Schwarz bleibt der Knopf hell, auf Weiß (Finale-Höhepunkt) wird er
+   von selbst dunkel. Ohne den Trick würde ein rein weißer Rand auf der
+   weißen Bühnenfläche komplett verschwinden. */
 .lightshow-close {
   position: absolute;
   top: max(14px, env(safe-area-inset-top));
@@ -1623,11 +1636,12 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255,255,255,.3);
+  border: 1px solid rgba(255,255,255,.4);
   border-radius: 50%;
-  background: rgba(255,255,255,.08);
+  background: rgba(255,255,255,.15);
   color: #fff;
-  opacity: .25;
+  mix-blend-mode: difference;
+  opacity: .55;
   z-index: 1;
 }
 .lightshow-close svg { width: 20px; height: 20px; }
@@ -4236,6 +4250,7 @@ const STRINGS = {
     'lightshow.hintBlock': 'Bildschirmhelligkeit vor dem Auftritt von Hand hochdrehen — das kann die App nicht selbst tun. „Datum &amp; Uhrzeit automatisch" sollte im Betriebssystem eingeschaltet bleiben. Handy während der Show nicht sperren. Vor dem Auftritt einmal zu zweit „Uhr prüfen" machen.',
     'lightshow.seizureWarning': 'Die Shows arbeiten mit hellen, wechselnden Flächen. Wer lichtempfindlich ist oder zu Anfällen neigt, macht besser nicht mit oder wählt „Sternenhimmel".',
     'lightshow.reducedMotionHint': 'Dieses Gerät bevorzugt weniger Bewegung — „Sternenhimmel" ist deshalb vorausgewählt. Die anderen Shows lassen sich trotzdem starten.',
+    'lightshow.recommendedBadge': 'Empfohlen',
 
     'lightshow.show.sterne.name': 'Sternenhimmel',
     'lightshow.show.sterne.desc': 'Flirrendes Funkeln in der eigenen Stimmfarbe — braucht keine gut gestellte Uhr.',
@@ -4444,6 +4459,7 @@ const STRINGS = {
     'lightshow.hintBlock': 'Turn up the screen brightness by hand before the concert — the app can’t do that itself. Keep "automatic date & time" switched on in the OS. Don’t lock the phone during the show. Run "Check clock" together with someone once before the concert.',
     'lightshow.seizureWarning': 'The shows use bright, changing areas of colour. If you’re light-sensitive or prone to seizures, better sit this one out or pick "Starry sky".',
     'lightshow.reducedMotionHint': 'This device prefers reduced motion — "Starry sky" is pre-selected because of that. The other shows can still be started.',
+    'lightshow.recommendedBadge': 'Recommended',
 
     'lightshow.show.sterne.name': 'Starry sky',
     'lightshow.show.sterne.desc': 'A shimmering twinkle in your own voice colour — doesn’t need a well-set clock.',
@@ -4652,6 +4668,7 @@ const STRINGS = {
     'lightshow.hintBlock': 'Przed koncertem podkręć jasność ekranu ręcznie — aplikacja nie może zrobić tego sama. „Automatyczna data i godzina" powinna zostać włączona w systemie. Nie blokuj telefonu podczas pokazu. Przed występem zrób raz we dwoje „Sprawdź zegar".',
     'lightshow.seizureWarning': 'Pokazy operują jasnymi, zmieniającymi się barwami. Osoby wrażliwe na światło lub podatne na napady lepiej niech nie biorą udziału albo wybiorą „Rozgwieżdżone niebo".',
     'lightshow.reducedMotionHint': 'To urządzenie preferuje mniej ruchu — dlatego wybrano wstępnie „Rozgwieżdżone niebo". Pozostałe pokazy nadal można uruchomić.',
+    'lightshow.recommendedBadge': 'Polecane',
 
     'lightshow.show.sterne.name': 'Rozgwieżdżone niebo',
     'lightshow.show.sterne.desc': 'Migoczące skrzenie we własnym kolorze głosu — nie wymaga dobrze ustawionego zegara.',
@@ -8318,13 +8335,20 @@ function renderLightshowList() {
   host.textContent = '';
   const voice = lightshowActiveVoice();
   const color = lightshowVoiceColor(voice);
+  // Bevorzugt weniger Bewegung: „Sternenhimmel" bekommt einen Hinweis, bleibt
+  // aber genau wie die anderen Shows startbar — eine bewusste Bühnenhandlung
+  // ist keine unerwartete Animation (siehe LICHTSHOW-PLAN.md Abschnitt 9.3).
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   for (const show of LIGHTSHOWS) {
-    host.append(el('div', { class: 'lightshow-tile' },
+    const recommended = reducedMotion && show.id === 'sterne';
+    host.append(el('div', { class: recommended ? 'lightshow-tile is-recommended' : 'lightshow-tile' },
       el('div', {
         class: 'lightshow-tile-preview',
         style: `background:linear-gradient(90deg, ${lightshowScale(color, 0.12)}, ${color})`,
       }),
-      el('strong', { text: t(`lightshow.show.${show.id}.name`) }),
+      el('div', { style: 'display:flex; align-items:center; gap:6px' },
+        el('strong', { text: t(`lightshow.show.${show.id}.name`) }),
+        recommended ? el('span', { class: 'lightshow-tile-badge', text: t('lightshow.recommendedBadge') }) : null),
       el('p', { class: 'small muted', style: 'margin:0', text: t(`lightshow.show.${show.id}.desc`) }),
       el('p', { class: 'small muted', style: 'margin:0' },
         `${Math.round(show.cycleMs / 1000)} s · ${t(`lightshow.syncLevel.${show.sync}`)}`),
