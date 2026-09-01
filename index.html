@@ -4369,6 +4369,9 @@ async function zipReadDirectory(file) {
   if (!entries.length) {
     throw new ZipError('In dieser ZIP-Datei sind keine Dateien enthalten.');
   }
+  if (entries.length > ZIP_MAX_ENTRIES) {
+    throw new ZipError('Dieses Archiv enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.');
+  }
   return entries;
 }
 
@@ -4410,6 +4413,12 @@ async function zipPrefetchStarts(file, entries) {
 
 /** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
 async function zipExtract(file, entry) {
+  // Die Größenangabe stammt aus dem Inhaltsverzeichnis und kostet nichts —
+  // billige erste Bremse gegen ein grob präpariertes Archiv (F-06).
+  if (entry.size > ZIP_MAX_ENTRY_BYTES) {
+    throw new ZipError(`„${entry.path}" ist ausgepackt größer als erwartet und wird übersprungen.`);
+  }
+
   const start = await zipDataStart(file, entry);
   const raw = file.slice(start, start + entry.compressedSize);
 
@@ -4421,7 +4430,22 @@ async function zipExtract(file, entry) {
     if (!canInflate) {
       throw new ZipError(`„${entry.path}" ist komprimiert; dieser Browser kann das nicht entpacken.`);
     }
-    const stream = raw.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    // Die Größenangabe im Inhaltsverzeichnis lässt sich fälschen — deshalb
+    // zusätzlich während des Entpackens mitzählen, statt ihr blind zu
+    // vertrauen (siehe Prüfung oben).
+    let seen = 0;
+    const guard = new TransformStream({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > ZIP_MAX_ENTRY_BYTES) {
+          throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+        }
+        controller.enqueue(chunk);
+      },
+    });
+    const stream = raw.stream()
+      .pipeThrough(new DecompressionStream('deflate-raw'))
+      .pipeThrough(guard);
     return await new Response(stream).blob();
   }
 
@@ -7091,6 +7115,13 @@ async function withScreenAwake(fn) {
 // einmal importiert, soll wissen, dass ein ausgehender Bildschirm den
 // Vorgang unterbrechen kann, statt das erst nach langem Warten zu erfahren.
 const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
+
+// Harte Grenzen beim Auspacken (Befund F-06): die Dateien stammen aus dem
+// Dropbox-Export des eigenen Chores, der Angriffsweg ist entsprechend schmal.
+// Trotzdem billig gegen ein grob präpariertes Archiv absichern, ohne
+// durchgängiges Streaming oder eine globale Import-Limit-Policy einzuführen.
+const ZIP_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
+const ZIP_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // ausgepackt, je Eintrag
 
 async function startZipImport(file) {
   dlog('import:zip:begin', { bytes: file.size });
