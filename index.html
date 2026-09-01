@@ -2033,7 +2033,7 @@ input[type="checkbox"] {
   </div>
 
   <div class="onb-foot">
-    <div class="onb-dots" id="onb-dots" role="tablist" aria-label="Schritte"></div>
+    <div class="onb-dots" id="onb-dots" role="group" aria-label="Schritte"></div>
     <div class="onb-actions">
       <button class="btn btn--ghost" id="onb-skip" type="button" data-i18n="onb.skip">Überspringen</button>
       <button class="btn" id="onb-prev" type="button" hidden data-i18n="onb.back">Zurück</button>
@@ -2141,28 +2141,28 @@ input[type="checkbox"] {
 
     <div class="player-tabs" id="player-tabs" role="tablist" aria-label="Lied-Bereiche">
       <button class="player-tab" type="button" role="tab" id="tab-btn-loops"
-              data-tab="loops" aria-selected="true" aria-controls="tab-panel-loops">
+              data-tab="loops" aria-selected="true" aria-controls="tab-panel-loops" tabindex="0">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         <span data-i18n="tabs.loops">Loops</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-lyrics"
-              data-tab="lyrics" aria-selected="false" aria-controls="tab-panel-lyrics">
+              data-tab="lyrics" aria-selected="false" aria-controls="tab-panel-lyrics" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
         <span data-i18n="tabs.lyrics">Lyrics</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-notes"
-              data-tab="notes" aria-selected="false" aria-controls="tab-panel-notes">
+              data-tab="notes" aria-selected="false" aria-controls="tab-panel-notes" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         <span data-i18n="tabs.notes">Notes</span>
       </button>
       <button class="player-tab" type="button" role="tab" id="tab-btn-sheets"
-              data-tab="sheets" aria-selected="false" aria-controls="tab-panel-sheets">
+              data-tab="sheets" aria-selected="false" aria-controls="tab-panel-sheets" tabindex="-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
         <span data-i18n="tabs.sheets">Sheets</span>
       </button>
     </div>
 
-    <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops">
+    <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops" tabindex="0">
       <div class="loop-controls">
         <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">Start</button>
         <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">Ende</button>
@@ -2204,7 +2204,7 @@ input[type="checkbox"] {
       <div id="recording-list"></div>
     </div>
 
-    <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" hidden>
+    <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" tabindex="0" hidden>
       <!-- Eine Leiste für Quelle wählen, Schriftgröße, Bearbeiten/Fertig.
            Bleibt sichtbar, solange ein Song offen ist (siehe
            renderLyricsBlock). Der Bearbeiten-Knopf, der nicht immer gilt,
@@ -2250,7 +2250,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" hidden>
+    <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" tabindex="0" hidden>
       <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
       <div id="note-editor" hidden>
         <textarea class="note-box" id="note-text" rows="12" spellcheck="true"
@@ -2270,7 +2270,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div id="tab-panel-sheets" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-sheets" hidden>
+    <div id="tab-panel-sheets" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-sheets" tabindex="0" hidden>
       <div id="scores-list"></div>
       <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
     </div>
@@ -10266,6 +10266,10 @@ function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
   for (const name of PLAYER_TABS) {
     $(`#tab-btn-${name}`).setAttribute('aria-selected', String(name === tab));
+    // Roving tabindex (F-08): nur der ausgewählte Reiter ist per Tab
+    // erreichbar, die übrigen nur noch über die Pfeiltasten — sonst müsste
+    // man sich durch alle vier tabben, statt direkt weiterzuarbeiten.
+    $(`#tab-btn-${name}`).tabIndex = name === tab ? 0 : -1;
     $(`#tab-panel-${name}`).hidden = name !== tab;
   }
   // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
@@ -10283,6 +10287,27 @@ function setTabHasContent(tab, has) {
 
 for (const name of PLAYER_TABS) {
   $(`#tab-btn-${name}`).addEventListener('click', () => setPlayerTab(name));
+}
+
+// Pfeiltasten/Home/End nach dem ARIA-Tab-Muster: wechseln UND fokussieren
+// zugleich, zyklisch über den Rand hinaus.
+$('#player-tabs').addEventListener('keydown', (e) => {
+  const idx = PLAYER_TABS.indexOf(playerTabsActive());
+  if (idx < 0) return;
+  let nextIdx = -1;
+  if (e.key === 'ArrowRight') nextIdx = (idx + 1) % PLAYER_TABS.length;
+  else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + PLAYER_TABS.length) % PLAYER_TABS.length;
+  else if (e.key === 'Home') nextIdx = 0;
+  else if (e.key === 'End') nextIdx = PLAYER_TABS.length - 1;
+  else return;
+  e.preventDefault();
+  const name = PLAYER_TABS[nextIdx];
+  setPlayerTab(name);
+  $(`#tab-btn-${name}`).focus();
+});
+
+function playerTabsActive() {
+  return PLAYER_TABS.find((name) => $(`#tab-btn-${name}`).getAttribute('aria-selected') === 'true');
 }
 
 /**
@@ -13090,7 +13115,7 @@ function renderOnbDots() {
   onbDots.textContent = '';
   for (let i = 0; i < ONB_SLIDES; i++) {
     onbDots.append(el('button', {
-      class: 'onb-dot', type: 'button', role: 'tab',
+      class: 'onb-dot', type: 'button',
       'aria-current': i === onbIndex ? 'true' : 'false',
       'aria-label': `Schritt ${i + 1} von ${ONB_SLIDES}`,
       onclick: () => onbGoTo(i),
