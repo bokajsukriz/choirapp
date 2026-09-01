@@ -1632,6 +1632,62 @@ input[type="checkbox"] {
 }
 .lightshow-close svg { width: 20px; height: 20px; }
 
+/* Sync-Prüfbild (siehe openLightshowSync). Eigene, dunkelgraue statt
+   schwarze Fläche, damit der weiße Sekundenläufer auch ohne Blitz sichtbar
+   bleibt. */
+.lightshow-sync {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #14141a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightshow-sync[hidden] { display: none; }
+
+.lightshow-sync-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lightshow-sync-body {
+  position: relative;
+  width: min(92vw, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+
+.lightshow-sync-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255,255,255,.15);
+  overflow: hidden;
+}
+.lightshow-sync-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 100%;
+  border-radius: 5px;
+  background: #fff;
+  will-change: transform;
+}
+
+.lightshow-sync-offset {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
 .score-item {
   display: flex;
   flex-direction: column;
@@ -2138,6 +2194,37 @@ input[type="checkbox"] {
   <button class="lightshow-close" id="lightshow-close" type="button" aria-label="Schließen">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
   </button>
+</div>
+
+<!-- Sync-Prüfbild: ohne Netz feststellen, ob eine Handyuhr grob danebenliegt,
+     und das über den Handversatz (settings.lightshowOffsetMs) ausgleichen. -->
+<div class="lightshow-sync" id="lightshow-sync" hidden role="dialog" aria-modal="true" aria-label="Uhr prüfen">
+  <div class="lightshow-sync-flash" id="lightshow-sync-flash" aria-hidden="true"></div>
+  <button class="lightshow-close" id="lightshow-sync-close" type="button" aria-label="Schließen" data-i18n-aria="common.close">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+  <div class="lightshow-sync-body">
+    <p class="small" style="color:#fff" data-i18n="lightshow.sync.instruction">
+      Zwei Handys nebeneinander legen, beide dieses Bild zeigen. Laufen die
+      Balken sichtbar versetzt, geht eine Uhr falsch.
+    </p>
+    <div class="lightshow-sync-track" id="lightshow-sync-track" aria-hidden="true"><div class="lightshow-sync-bar" id="lightshow-sync-bar"></div></div>
+    <p class="small" style="color:#fff" data-i18n="lightshow.sync.autoNote">
+      Liegt ein Gerät um mehr als etwa eine halbe Sekunde daneben: nicht hier
+      ausgleichen, sondern „Datum &amp; Uhrzeit automatisch" im Betriebssystem
+      einschalten. Der Handversatz ist nur die Krücke, falls das nicht geht.
+    </p>
+    <div class="lightshow-sync-offset" id="lightshow-sync-value">0 ms</div>
+    <div class="preset-row" role="group" aria-label="Handversatz" data-i18n-aria="lightshow.sync.offsetAria">
+      <button class="preset" type="button" data-delta="-250">−250 ms</button>
+      <button class="preset" type="button" data-delta="-50">−50 ms</button>
+      <button class="preset" type="button" data-delta="50">+50 ms</button>
+      <button class="preset" type="button" data-delta="250">+250 ms</button>
+    </div>
+    <button class="btn btn--block" id="btn-lightshow-sync-reset" type="button" style="margin-top:10px" data-i18n="lightshow.sync.resetBtn">
+      Zurücksetzen
+    </button>
+  </div>
 </div>
 
 <!-- Playlist-Detail: eigene Vollbild-Ansicht. -->
@@ -8305,6 +8392,83 @@ async function closeLightshowStage() {
 }
 
 $('#lightshow-close').addEventListener('click', () => closeLightshowStage());
+
+/* ==========================================================================
+   SYNC-PRÜFBILD — ohne Netz feststellen, ob eine Handyuhr grob danebenliegt
+   (#lightshow-sync), und das über den Handversatz ausgleichen.
+   ========================================================================== */
+
+let lightshowSyncOpen = false;
+let lightshowSyncRaf = null;
+let lightshowSyncAnchorWall = 0;
+let lightshowSyncAnchorPerf = 0;
+
+function lightshowRenderSyncOffset() {
+  $('#lightshow-sync-value').textContent = `${settings.lightshowOffsetMs || 0} ms`;
+}
+
+async function lightshowAdjustOffset(deltaMs) {
+  const next = Math.max(-5000, Math.min(5000, (settings.lightshowOffsetMs || 0) + deltaMs));
+  await saveSettings({ lightshowOffsetMs: next });
+  lightshowRenderSyncOffset();
+}
+
+function lightshowSyncStep() {
+  lightshowSyncRaf = requestAnimationFrame(lightshowSyncStep);
+  const wall = lightshowSyncAnchorWall + (performance.now() - lightshowSyncAnchorPerf);
+  const msIntoSecond = ((wall % 1000) + 1000) % 1000;
+
+  const track = $('#lightshow-sync-track');
+  const bar = $('#lightshow-sync-bar');
+  const travel = Math.max(0, track.clientWidth - bar.clientWidth);
+  bar.style.transform = `translateX(${(msIntoSecond / 1000) * travel}px)`;
+
+  // Kurzer Vollflächen-Blitz von 80 ms zum Sekundenwechsel — klingt schneller
+  // ab als die Sekunde selbst, damit er nicht in die nächste hineinragt.
+  const flash = $('#lightshow-sync-flash');
+  flash.style.opacity = msIntoSecond < 80 ? String(1 - msIntoSecond / 80) : '0';
+}
+
+function openLightshowSync() {
+  lightshowSyncOpen = true;
+  lightshowRenderSyncOffset();
+  const el = $('#lightshow-sync');
+  el.hidden = false;
+  openModal(el, { initialFocus: $('#lightshow-sync-close'), onEscape: () => closeLightshowSync() });
+  lightshowSyncAnchorWall = Date.now();
+  lightshowSyncAnchorPerf = performance.now();
+  if (lightshowSyncRaf) cancelAnimationFrame(lightshowSyncRaf);
+  lightshowSyncStep();
+}
+
+function closeLightshowSync() {
+  lightshowSyncOpen = false;
+  if (lightshowSyncRaf) { cancelAnimationFrame(lightshowSyncRaf); lightshowSyncRaf = null; }
+  const el = $('#lightshow-sync');
+  closeModal(el);
+  el.hidden = true;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!lightshowSyncOpen) return;
+  if (document.visibilityState === 'visible') {
+    lightshowSyncAnchorWall = Date.now();
+    lightshowSyncAnchorPerf = performance.now();
+    if (!lightshowSyncRaf) lightshowSyncStep();
+  } else if (lightshowSyncRaf) {
+    cancelAnimationFrame(lightshowSyncRaf);
+    lightshowSyncRaf = null;
+  }
+});
+
+$('#lightshow-sync-close').addEventListener('click', () => closeLightshowSync());
+$$('#lightshow-sync .preset').forEach((btn) => {
+  btn.addEventListener('click', () => lightshowAdjustOffset(Number(btn.dataset.delta)));
+});
+$('#btn-lightshow-sync-reset').addEventListener('click', async () => {
+  await saveSettings({ lightshowOffsetMs: 0 });
+  lightshowRenderSyncOffset();
+});
 
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
