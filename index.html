@@ -548,7 +548,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
    openModal() #main (und damit auch diesen Knopf) inert — ein Tipp auf die
    sichtbare Kreisfläche trifft dadurch gar nicht mehr den Knopf, sondern
    fällt zum darunterliegenden, nicht inerten Backdrop durch und schließt so
-   das Menü genauso wie ein Tipp daneben. */
+   das Menü genauso wie ein Tipp daneben. Gemischt mit Weiß statt Grau: heller
+   und blasser als die volle Akzentfarbe, aber nicht dunkler — --accent-ink
+   bleibt darauf gut lesbar, weil hellere Flächen den Kontrast zur dunklen
+   Tinte nur vergrößern. */
 .songs-import-fab {
   position: fixed;
   right: calc(16px + var(--safe-right));
@@ -561,7 +564,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-radius: 50%;
   border: 0;
   background: var(--accent);
-  background: color-mix(in srgb, var(--accent) 68%, #6b6b6b 32%);
+  background: color-mix(in srgb, var(--accent) 48%, white 52%);
   color: var(--accent-ink);
   display: flex;
   align-items: center;
