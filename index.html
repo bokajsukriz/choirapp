@@ -4458,6 +4458,8 @@ const DEFAULT_SETTINGS = {
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
+  recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
+  recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
