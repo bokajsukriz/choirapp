@@ -5876,8 +5876,12 @@ $('#search').addEventListener('input', (e) => {
  * Auswahl, damit ein Suchbegriff nicht ignoriert wird.
  */
 $('#btn-feeling-lucky').addEventListener('click', async () => {
-  const pool = lastVisibleSongs.length ? lastVisibleSongs : await DB.metaByType('song').catch(() => []);
-  if (!pool.length) return;
+  const all = lastVisibleSongs.length ? lastVisibleSongs : await DB.metaByType('song').catch(() => []);
+  const pool = all.filter(isPlayableSong);
+  if (!pool.length) {
+    banner('Kein Lied mit Aufnahme in dieser Auswahl.', { kind: 'error' });
+    return;
+  }
   if (!settings.shuffleMode) await saveSettings({ shuffleMode: true });
   const song = pool[Math.floor(Math.random() * pool.length)];
   playQueue = null;
@@ -8815,6 +8819,13 @@ function preferredTrack(song) {
   return song.tracks[0] || null;
 }
 
+/** Abspielbar ist ein Song erst mit mindestens einer Stimme — Platzhalter
+ *  (siehe createPlaceholderSong) sind Karteikarten für Text und Notizen,
+ *  kein Ziel fürs Weiterschalten. */
+function isPlayableSong(song) {
+  return !!song && Array.isArray(song.tracks) && song.tracks.length > 0;
+}
+
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
 function renderLoadingState() {
   $('#player-loading').hidden = Audio.loading.size === 0;
@@ -9152,6 +9163,10 @@ async function openPlayer(songId) {
     } else {
       banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
     }
+    // Die Absicht „gleich losspielen" galt dem übersprungenen Song, nicht
+    // dem übernächsten Handgriff — sonst startet der nächste von Hand
+    // geöffnete Song ungefragt von selbst.
+    pendingAutoPlay = false;
     return;
   }
 
@@ -9471,12 +9486,18 @@ $('#btn-restart').addEventListener('click', () => {
  * sich auch ohne Playlist durch das Programm blättern.
  */
 async function goToNextLibrarySong(autoplay) {
-  const songs = await DB.metaByType('song').catch(() => []);
-  if (!songs.length) return;
+  const songs = (await DB.metaByType('song').catch(() => [])).filter(isPlayableSong);
+  if (!songs.length) {
+    banner('Kein Lied mit Aufnahme in der Bibliothek.', { kind: 'error' });
+    return;
+  }
   songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  const currentIndex = songs.findIndex((s) => s.id === playerSong?.id);
   const next = settings.shuffleMode
     ? randomOtherSong(songs, playerSong?.id)
-    : songs[(songs.findIndex((s) => s.id === playerSong?.id) + 1) % songs.length];
+    // Steht der aktuelle Song (z.B. ein Platzhalter) nicht in der gefilterten
+    // Liste, beginnt „Weiter" beim ersten abspielbaren Eintrag.
+    : songs[currentIndex === -1 ? 0 : (currentIndex + 1) % songs.length];
   if (next && next.id !== playerSong?.id) {
     pendingAutoPlay = autoplay;
     navigate(`#song/${next.id}`, { replace: true });
@@ -9489,20 +9510,29 @@ async function goToNextLibrarySong(autoplay) {
  * Reihenfolge ergäbe bei zufälligem „Vorwärts" ohnehin keinen Sinn.
  */
 async function goToPreviousLibrarySong(autoplay) {
-  const songs = await DB.metaByType('song').catch(() => []);
-  if (!songs.length) return;
+  const songs = (await DB.metaByType('song').catch(() => [])).filter(isPlayableSong);
+  if (!songs.length) {
+    banner('Kein Lied mit Aufnahme in der Bibliothek.', { kind: 'error' });
+    return;
+  }
   songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  const currentIndex = songs.findIndex((s) => s.id === playerSong?.id);
   const prev = settings.shuffleMode
     ? randomOtherSong(songs, playerSong?.id)
-    : songs[(songs.findIndex((s) => s.id === playerSong?.id) - 1 + songs.length) % songs.length];
+    // Steht der aktuelle Song nicht in der gefilterten Liste, beginnt
+    // „Zurück" beim letzten abspielbaren Eintrag.
+    : songs[currentIndex === -1 ? songs.length - 1 : (currentIndex - 1 + songs.length) % songs.length];
   if (prev && prev.id !== playerSong?.id) {
     pendingAutoPlay = autoplay;
     navigate(`#song/${prev.id}`, { replace: true });
   }
 }
 
-/** Zufälliger Song aus der Liste, nie derselbe wie `excludeId` (außer es gibt nur einen). */
+/** Zufälliger Song aus der Liste, nie derselbe wie `excludeId` (außer es gibt nur einen).
+ *  Liefert `null`, wenn `songs` leer ist — anders als früher wird dann nicht
+ *  auf den ganzen (ggf. unspielbaren) Pool zurückgefallen. */
 function randomOtherSong(songs, excludeId) {
+  if (!songs.length) return null;
   const candidates = songs.filter((s) => s.id !== excludeId);
   const pool = candidates.length ? candidates : songs;
   return pool[Math.floor(Math.random() * pool.length)];
