@@ -1409,22 +1409,58 @@ input[type="checkbox"] {
   text-align: center;
 }
 
-.rec-pending {
+.rec-take {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
   padding: 12px;
   margin: 6px 0;
 }
+.take-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+.take-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
-.rec-pending-info { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.rec-pending-info strong { font-weight: 620; }
-
-.rec-pending-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
+/* Der grüne Zwilling des REC-Knopfs — gleiche Größe, gleiche Position. */
+.rec-play {
+  width: 56px; height: 56px; flex: 0 0 auto; border-radius: 50%;
+  border: 3px solid var(--ok); background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
 }
-.rec-pending-actions .btn { flex: 1; padding: 10px 4px; font-size: 0.88rem; }
+.rec-play svg { width: 24px; height: 24px; color: var(--ok); }
+.rec-play svg#icon-rec-play { margin-left: 3px; }  /* Dreieck optisch mitten */
+
+.take-icon {
+  width: var(--tap); height: var(--tap); border-radius: 50%; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+}
+.take-icon svg { width: 22px; height: 22px; }
+.take-icon--save { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.take-icon--discard { color: var(--danger); border-color: rgba(255,77,109,.45); }
+/* Gesperrt, aber antippbar: der Tipp erklärt, was noch fehlt (siehe R8). */
+.take-icon[aria-disabled="true"] { background: var(--surface-2); border-color: var(--line); color: var(--muted); }
+
+.voice-mini {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 40px;
+  padding: 8px 10px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
+  font-weight: 620; font-size: .86rem;
+}
+.voice-mini svg { width: 17px; height: 17px; color: var(--muted); flex: 0 0 auto; }
+.voice-mini .grow { flex: 1; text-align: left; }
+.voice-mini[data-empty="true"] .grow { color: var(--muted); }
+
+.take-name {
+  width: 100%; min-height: var(--tap); padding: 10px 14px; margin-top: 12px;
+  border-radius: 14px; border: 1px solid rgba(var(--accent-rgb),.35);
+  background: rgba(var(--accent-rgb),.07); color: var(--text);
+  font-weight: 620; font-size: 15px;
+}
+.take-wave {
+  display: block; width: 100%; height: 56px; border-radius: 12px; margin-top: 10px;
+  background: var(--surface-2); border: 1px solid var(--pill-line);
+}
+.rec-take-meta { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 2px 0; }
+.rec-take-meta span { color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
 
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
@@ -2380,15 +2416,33 @@ input[type="checkbox"] {
           Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
         </p>
       </div>
-      <div class="rec-pending" id="rec-pending" hidden>
-        <div class="rec-pending-info">
-          <strong id="rec-pending-name">REC</strong>
-          <span class="small muted" id="rec-pending-duration"></span>
+      <div class="rec-take" id="rec-take" hidden>
+        <div class="take-row">
+          <button class="voice-mini" id="btn-rec-take-voice" type="button" aria-label="Stimme zuordnen" data-empty="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span class="grow" id="rec-take-voice-label">Stimme</span>
+            <span aria-hidden="true">▾</span>
+          </button>
+          <button class="rec-play" id="btn-rec-preview" type="button" aria-label="REC anhören">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-play"><path d="M8 5.5v13l11-6.5z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-pause" hidden><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+          </button>
+          <div class="take-actions">
+            <button class="take-icon take-icon--discard" id="btn-rec-discard" type="button" aria-label="REC verwerfen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+            </button>
+            <button class="take-icon take-icon--save" id="btn-rec-save" type="button" aria-label="REC speichern">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+          </div>
         </div>
-        <div class="rec-pending-actions">
-          <button class="btn" id="btn-rec-preview" type="button">▶ Anhören</button>
-          <button class="btn btn--primary" id="btn-rec-save" type="button">Speichern</button>
-          <button class="btn" id="btn-rec-discard" type="button" style="color: var(--danger)">Verwerfen</button>
+        <label class="visually-hidden" for="rec-take-name">Name des RECs</label>
+        <input class="take-name" id="rec-take-name" type="text" maxlength="60"
+               autocomplete="off" autocorrect="off" spellcheck="false">
+        <canvas class="take-wave" id="rec-take-wave"></canvas>
+        <div class="rec-take-meta">
+          <span id="rec-take-duration"></span>
+          <span id="rec-take-hint">gerade aufgenommen</span>
         </div>
       </div>
       <div id="recording-list"></div>
@@ -9971,6 +10025,10 @@ let recChunks = [];
 let recMimeType = '';
 let recStartedAt = 0;
 let recTimerHandle = null;
+// Welche Oberfläche die Aufnahme gerade zeigt — 'player' (Loops-Tab) oder
+// 'recorder' (allgemeine Aufnahme-Ansicht, siehe R7). Es läuft immer nur
+// eine Aufnahme, aber sie muss wissen, welche Knoten sie bedient.
+let recHost = 'player';
 // Schützt vor einem schnellen Doppel-Tipp auf REC-Start, bevor getUserMedia()
 // beim ersten Aufruf überhaupt zurückkommt — recMediaRecorder wird erst nach
 // diesem await gesetzt, wäre also für den Klick-Handler bis dahin kein Schutz.
@@ -10164,27 +10222,45 @@ let levelAccumCount = 0;
 let levelLastColumnAt = 0;
 let levelDangerColor = '#e0464a';
 
+// Ungekürzte Spaltenliste der laufenden Aufnahme — anders als levelHistory
+// (nur so viele Spalten wie auf den Bildschirm passen) für die eingefrorene
+// Wellenform auf der Take-Karte (siehe drawTakeWaveform). Gedeckelt bei
+// LEVEL_TAKE_MAX Spalten (~27 Minuten bei 80ms/Spalte); ist der Deckel
+// erreicht, wird die bisherige Liste ausgedünnt und ab da nur noch jede
+// levelTakeStride-te Spalte übernommen — die Form bleibt, der Speicher bleibt
+// begrenzt. Zurückgesetzt bei startLevelMeter() sowie beim Verwerfen/
+// Speichern des Takes, nicht bei stopLevelMeter().
+let levelTakeHistory = [];
+let levelTakeStride = 1;
+let levelTakeStrideCounter = 0;
+const LEVEL_TAKE_MAX = 20000;
+
 const LEVEL_COLUMN_MS = 80;   // wie oft eine neue Wellenform-Spalte entsteht
 const LEVEL_COLUMN_WIDTH = 3;
 const LEVEL_COLUMN_GAP = 2;
 
-function setupLevelCanvas() {
-  const canvas = $('#rec-meter-canvas');
+/** Bereitet ein beliebiges Canvas fürs Zeichnen von Pegel-Spalten vor
+ *  (Live-Pegel und eingefrorene Take-Wellenform teilen sich diese Logik). */
+function setupLevelCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.getBoundingClientRect().width || 280;
   const cssHeight = 56;
   canvas.width = Math.round(cssWidth * dpr);
   canvas.height = Math.round(cssHeight * dpr);
-  levelCanvasCtx = canvas.getContext('2d');
-  levelCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  levelCanvasWidth = cssWidth;
-  levelCanvasHeight = cssHeight;
-  levelHistory = [];
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // Einmal die echte Warnfarbe aus dem Theme holen statt sie hart zu verdrahten —
   // hell/dunkel haben unterschiedliche --danger-Werte.
   const themeDanger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim();
   if (themeDanger) levelDangerColor = themeDanger;
-  levelCanvasCtx.clearRect(0, 0, cssWidth, cssHeight);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  return { ctx, width: cssWidth, height: cssHeight };
+}
+
+function resetLevelTakeHistory() {
+  levelTakeHistory = [];
+  levelTakeStride = 1;
+  levelTakeStrideCounter = 0;
 }
 
 function startLevelMeter(stream) {
@@ -10206,9 +10282,11 @@ function startLevelMeter(stream) {
   levelAccumSumSquares = 0;
   levelAccumCount = 0;
   levelLastColumnAt = performance.now();
+  levelHistory = [];
+  resetLevelTakeHistory();
   $('#rec-meter').hidden = false;
   $('#rec-meter-warning').hidden = true;
-  setupLevelCanvas();
+  ({ ctx: levelCanvasCtx, width: levelCanvasWidth, height: levelCanvasHeight } = setupLevelCanvas($('#rec-meter-canvas')));
 
   const tick = () => {
     if (!levelAnalyser) return;
@@ -10256,19 +10334,57 @@ function pushLevelColumn(rms, peak) {
   const columnsFit = Math.max(1, Math.floor(levelCanvasWidth / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
   levelHistory.push({ amp, clipping });
   if (levelHistory.length > columnsFit) levelHistory.shift();
-  drawLevelHistory();
+  pushTakeColumn(amp, clipping);
+  drawLevelHistory(levelCanvasCtx, levelHistory, levelCanvasWidth, levelCanvasHeight);
 }
 
-function drawLevelHistory() {
-  const ctx = levelCanvasCtx;
-  if (!ctx) return;
-  ctx.clearRect(0, 0, levelCanvasWidth, levelCanvasHeight);
+/** Hängt eine Spalte an die ungekürzte Take-Historie an (siehe levelTakeHistory). */
+function pushTakeColumn(amp, clipping) {
+  levelTakeStrideCounter++;
+  if (levelTakeStrideCounter % levelTakeStride !== 0) return;
+  levelTakeHistory.push({ amp, clipping });
+  if (levelTakeHistory.length > LEVEL_TAKE_MAX) {
+    levelTakeHistory = levelTakeHistory.filter((_, i) => i % 2 === 0);
+    levelTakeStride *= 2;
+  }
+}
 
-  const midY = levelCanvasHeight / 2;
-  const maxHalf = levelCanvasHeight / 2 - 3;
-  let x = levelCanvasWidth - LEVEL_COLUMN_WIDTH;
-  for (let i = levelHistory.length - 1; i >= 0 && x > -LEVEL_COLUMN_WIDTH; i--, x -= (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
-    const { amp, clipping } = levelHistory[i];
+/** Fasst `columns` auf `bucketCount` Werte zusammen — je Bucket das Maximum
+ *  von `amp`, `clipping` wenn eine Spalte im Bucket übersteuert war. */
+function bucketizeColumns(columns, bucketCount) {
+  if (!columns.length || bucketCount <= 0) return [];
+  const result = [];
+  for (let b = 0; b < bucketCount; b++) {
+    const start = Math.floor((b * columns.length) / bucketCount);
+    const end = Math.max(start + 1, Math.floor(((b + 1) * columns.length) / bucketCount));
+    let amp = 0;
+    let clipping = false;
+    for (let i = start; i < end && i < columns.length; i++) {
+      amp = Math.max(amp, columns[i].amp);
+      clipping = clipping || columns[i].clipping;
+    }
+    result.push({ amp, clipping });
+  }
+  return result;
+}
+
+/** Zeichnet die eingefrorene Wellenform der ganzen Aufnahme auf die Take-Karte. */
+function drawTakeWaveform() {
+  const canvas = $('#rec-take-wave');
+  const { ctx, width, height } = setupLevelCanvas(canvas);
+  const bucketCount = Math.max(1, Math.floor(width / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
+  drawLevelHistory(ctx, bucketizeColumns(levelTakeHistory, bucketCount), width, height);
+}
+
+function drawLevelHistory(ctx, columns, width, height) {
+  if (!ctx) return;
+  ctx.clearRect(0, 0, width, height);
+
+  const midY = height / 2;
+  const maxHalf = height / 2 - 3;
+  let x = width - LEVEL_COLUMN_WIDTH;
+  for (let i = columns.length - 1; i >= 0 && x > -LEVEL_COLUMN_WIDTH; i--, x -= (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
+    const { amp, clipping } = columns[i];
     const half = Math.max(1.5, amp * maxHalf);
     ctx.fillStyle = clipping ? levelDangerColor : (amp >= 0.75 ? '#FFD93D' : '#6BCB77');
     const radius = Math.min(LEVEL_COLUMN_WIDTH / 2, half);
@@ -10336,23 +10452,70 @@ $('#btn-rec-toggle').addEventListener('click', () => {
   else startRecording();
 });
 
+// Entwurf der noch nicht gespeicherten Aufnahme — { name, voice }. Getrennt
+// von pendingTake (Blob/Dauer), damit ein Neuzeichnen der Karte (z.B. beim
+// Umschalten der Vorschau) den gerade getippten Namen nicht überschreibt.
+let takeDraft = null;
+
 /** Wechselt zwischen „Aufnehmen"-Knopf und der Karte für den noch nicht gespeicherten Take. */
 function renderPendingTake() {
   const has = !!pendingTake;
   $('#rec-controls').hidden = has;
-  $('#rec-pending').hidden = !has;
-  if (!has) return;
-  $('#rec-pending-name').textContent = `REC ${songRecordings.length + 1}`;
-  $('#rec-pending-duration').textContent = `Dauer ${fmtTime(pendingTake.duration)}`;
+  $('#rec-take').hidden = !has;
+  if (!has) { takeDraft = null; return; }
+  if (!takeDraft) {
+    takeDraft = { name: `REC ${songRecordings.length + 1}`, voice: null };
+    $('#rec-take-name').value = takeDraft.name;
+    // Sofort tippbereit — wer gerade gestoppt hat, will den Namen setzen,
+    // ohne erst hinzutippen zu müssen.
+    $('#rec-take-name').focus();
+  }
+  $('#rec-take-duration').textContent = fmtTime(pendingTake.duration);
+  renderTakeVoiceLabel();
+  drawTakeWaveform();
   updateRecPreviewButton();
+  updateRecSaveLocked();
+}
+
+/** Beschriftung des Stimme-Knopfs auf der Take-Karte. */
+function renderTakeVoiceLabel() {
+  const btn = $('#btn-rec-take-voice');
+  $('#rec-take-voice-label').textContent = takeDraft?.voice ? (VOICE_LABEL[takeDraft.voice] || takeDraft.voice) : 'Stimme';
+  btn.dataset.empty = takeDraft?.voice ? 'false' : 'true';
+}
+
+/**
+ * Ob „Speichern" gesperrt ist — auf der Take-Karte im Player nie (der Song
+ * steht schon fest), im allgemeinen Recorder erst mit gewähltem Song
+ * (siehe R8/renderRecSongPicker). aria-disabled statt disabled, damit der
+ * Klick weiter feuert und der Hinweis erklären kann, was fehlt.
+ */
+function updateRecSaveLocked() {
+  const locked = recHost === 'recorder' && !takeDraft?.songId;
+  $('#btn-rec-save').setAttribute('aria-disabled', locked ? 'true' : 'false');
 }
 
 /** Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die Hauptsteuerung läuft. */
 function updateRecPreviewButton() {
   const btn = $('#btn-rec-preview');
   if (!btn) return;
-  btn.textContent = (audioPreview?.tag?.pending && Audio.playing) ? '⏸ Pause' : '▶ Anhören';
+  const playing = !!(audioPreview?.tag?.pending && Audio.playing);
+  $('#icon-rec-play').hidden = playing;
+  $('#icon-rec-pause').hidden = !playing;
+  btn.setAttribute('aria-label', playing ? 'REC pausieren' : 'REC anhören');
 }
+
+$('#rec-take-name').addEventListener('input', (e) => {
+  if (takeDraft) takeDraft.name = e.target.value;
+});
+
+$('#btn-rec-take-voice').addEventListener('click', async () => {
+  if (!takeDraft) return;
+  const voice = await pickRecordingVoice(takeDraft.voice);
+  if (voice === undefined) return; // abgebrochen
+  takeDraft.voice = voice;
+  renderTakeVoiceLabel();
+});
 
 $('#btn-rec-preview').addEventListener('click', async () => {
   if (!pendingTake) return;
@@ -10374,6 +10537,7 @@ $('#btn-rec-discard').addEventListener('click', async () => {
   if (!ok) return;
   if (audioPreview?.tag?.pending) await endRecordingPreview();
   pendingTake = null;
+  resetLevelTakeHistory();
   renderPendingTake();
 });
 
@@ -10403,31 +10567,26 @@ async function pickRecordingVoice(current) {
   return value === 'NONE' ? null : value;
 }
 
+// Speichert ohne jeden Dialog — Name und Stimme stehen schon über die
+// Take-Karte fest (siehe takeDraft). Der allgemeine Recorder (R7/R8) erweitert
+// diesen Handler um die Songwahl; im Player ist der Song immer schon bekannt.
 $('#btn-rec-save').addEventListener('click', async () => {
-  if (!pendingTake || !playerSong) return;
-  const voice = await pickRecordingVoice();
-  if (voice === undefined) return; // abgebrochen — Take bleibt zum erneuten Anhören/Speichern erhalten
+  if (!pendingTake || !takeDraft || !playerSong) return;
 
   const suggestion = `REC ${songRecordings.length + 1}`;
-  const name = await promptDialog({
-    title: 'REC speichern',
-    text: `Dauer ${fmtTime(pendingTake.duration)}`,
-    value: suggestion,
-    placeholder: 'z. B. Probe 12.3. oder Sopran allein',
-  });
-  if (name === null) return; // abgebrochen — Take bleibt erhalten
+  const name = takeDraft.name.trim() || suggestion;
+  const voice = takeDraft.voice;
 
   const { blob, mimeType, duration } = pendingTake;
   const fileKey = newFileKey();
   const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
-  await DB.filePut(await fileRecord(fileKey, blob, `${name.trim() || suggestion}.${ext}`));
+  await DB.filePut(await fileRecord(fileKey, blob, `${name}.${ext}`));
 
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const recording = {
     key: `recording:${id}`, type: 'recording', id,
     songId: playerSong.id, songTitle: playerSong.title,
-    name: name.trim() || suggestion,
-    voice, fileKey, mimeType, duration,
+    name, voice, fileKey, mimeType, duration,
     size: blob.size,
     createdAt: new Date().toISOString(),
   };
@@ -10435,6 +10594,7 @@ $('#btn-rec-save').addEventListener('click', async () => {
 
   if (audioPreview?.tag?.pending) await endRecordingPreview();
   pendingTake = null;
+  resetLevelTakeHistory();
   renderPendingTake();
   await loadSongRecordings();
   banner('REC gespeichert.', { kind: 'ok' });
