@@ -282,6 +282,12 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .small { font-size: 0.86rem; }
 .stack > * + * { margin-top: 10px; }
 
+/* „Nächster Gig"-Liste (renderCurrentSetlist): einzeilige Songtitel, keine
+   eigenständigen Zeilen wie im .stack — 10px Zeilenabstand wirkte hier viel
+   zu luftig, deshalb eine engere eigene Regel statt eines Inline-Styles. */
+.gig-list { margin: 8px 0 0; padding-left: 20px; line-height: 1.35; }
+.gig-list > li + li { margin-top: 3px; }
+
 .btn {
   min-height: var(--tap);
   padding: 11px 18px;
@@ -985,7 +991,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 6px;
   padding: calc(var(--safe-top) + 10px) calc(12px + var(--safe-right))
-           10px calc(6px + var(--safe-left));
+           6px calc(6px + var(--safe-left));
   border-bottom: 1px solid var(--line);
 }
 
@@ -1324,7 +1330,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 17px;
   padding: 4px;
-  margin: 8px 0;
+  margin: 2px 0 8px;
 }
 
 .player-tab {
@@ -13478,7 +13484,7 @@ function renderCurrentSetlist(favorite, songs) {
   if (!favorite) return;
 
   const titles = favorite.songTitles || [];
-  const list = el('ol', { class: 'stack small', style: 'margin:8px 0 0; padding-left:20px' });
+  const list = el('ol', { class: 'gig-list small' });
   for (const t of titles) {
     const found = findSongByTitle(songs, t);
     list.append(el('li', { class: found ? '' : 'muted', text: t }));
