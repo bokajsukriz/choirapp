@@ -1652,15 +1652,27 @@ input[type="checkbox"] {
    (siehe updateBackingUI) — für alte RECs ohne Anker taucht nichts auf. */
 .rec-backing {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.rec-backing-row {
+  display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
 }
 .rec-backing span { font-size: 0.88rem; white-space: nowrap; }
 .rec-backing input[type="range"] {
   flex: 1;
   min-width: 0;
   accent-color: var(--accent);
+}
+/* Feste Breite, damit der Regler beim Ziehen nicht mit jeder Stelle springt. */
+.rec-backing-offset-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 6ch;
+  text-align: right;
 }
 .recording-item[data-active="true"] .go { border-color: var(--accent); }
 
@@ -2625,11 +2637,22 @@ input[type="checkbox"] {
       </div>
       <div id="recording-list"></div>
       <div class="rec-backing" id="rec-backing" hidden>
-        <button class="loop-switch" id="btn-rec-backing" type="button" role="switch" aria-checked="false" aria-label="Original leise mitlaufen">
-          <span class="loop-switch-knob"></span>
-        </button>
-        <span>Original leise mitlaufen</span>
-        <input type="range" id="rec-backing-volume" min="0" max="60" step="5" value="20" aria-label="Lautstärke des Originaltracks">
+        <div class="rec-backing-row">
+          <button class="loop-switch" id="btn-rec-backing" type="button" role="switch" aria-checked="false" aria-label="Original leise mitlaufen">
+            <span class="loop-switch-knob"></span>
+          </button>
+          <span>Original leise mitlaufen</span>
+          <input type="range" id="rec-backing-volume" min="0" max="60" step="5" value="20" aria-label="Lautstärke des Originaltracks">
+        </div>
+        <div class="rec-backing-fine" id="rec-backing-fine" hidden>
+          <div class="rec-backing-row">
+            <span>Versatz</span>
+            <input type="range" id="rec-backing-offset" min="-500" max="500" step="10" value="0"
+                   aria-label="Versatz des Originaltracks in Millisekunden">
+            <span class="rec-backing-offset-value" id="rec-backing-offset-value">0 ms</span>
+          </div>
+          <p class="small muted" style="margin:6px 0 0">Nach Gehör einstellen: nach rechts läuft das Original später.</p>
+        </div>
       </div>
     </div>
 
@@ -4460,6 +4483,7 @@ const DEFAULT_SETTINGS = {
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
+  recBackingOffsetMs: 0,    // Handversatz des Originaltracks in ms (+ = später), siehe backingLagSeconds
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -5156,6 +5180,7 @@ async function loadSettings() {
   }
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
+  settings.recBackingOffsetMs = Math.max(-BACKING_OFFSET_MAX_MS, Math.min(BACKING_OFFSET_MAX_MS, settings.recBackingOffsetMs || 0));
   applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
   return settings;
 }
@@ -7560,6 +7585,18 @@ function audioSeek(seconds) {
   if (Audio.el) Audio.el.currentTime = s;
   lastPosLog = { wall: performance.now(), pos: s };
   return s;
+}
+
+/**
+ * Die tatsächliche Position des Elements. `Audio.position` ist nur der Stand
+ * des letzten `timeupdate` und damit bis zu einer Viertelsekunde alt — für
+ * Suchleiste und Anzeige genügt das, für den Anker eines RECs und die
+ * Nachregelung des Originaltracks nicht: dort wäre genau dieser Rückstand
+ * der Versatz, der die Funktion unbrauchbar macht.
+ */
+function audioLivePosition() {
+  const s = Audio.el?.currentTime;
+  return Number.isFinite(s) ? s : Audio.position;
 }
 
 function audioSetRate(rate) {
@@ -10398,15 +10435,42 @@ function renderLoopList() {
    runSelfTests). Die Herleitung steht im Arbeitsplan (REC-MITSING-PLAN.md,
    Abschnitt 1.4): Während der Aufnahme lief der Song mit Rate `anchor.rate`,
    in `recTime` Sekunden REC-Zeit rückte er also um `anchor.rate * recTime`
-   vor, gerechnet ab der Anker-Position `anchor.pos`. */
+   vor, gerechnet ab der Anker-Position `anchor.pos`.
+
+   Dazu kommt der Umweg, den die erste Fassung noch verschwieg und der sie
+   unbrauchbar machte: Was aus dem Element herausläuft, erreicht das Ohr erst
+   nach der Ausgabelatenz (bei Bluetooth gern 150–300 ms), und was das
+   Mikrofon aufnimmt, erreicht den Recorder erst nach der Eingangslatenz.
+   Gesungen wurde also stets zu einer *früheren* Stelle des Songs, als die
+   REC-Zeit vermuten lässt. Der Umweg wird beim Aufnehmen gemessen
+   (`anchor.lat`) und um den Handversatz ergänzt, den der Browser nicht
+   verraten kann (`settings.recBackingOffsetMs`). */
 
 const BACKING_SEEK_S = 0.25;      // ab hier harter Sprung statt Nachregeln
 const BACKING_NUDGE_S = 0.04;     // darunter gilt die Abweichung als vernachlässigbar
 const BACKING_NUDGE_FACTOR = 0.03; // Rate-Abweichung beim weichen Aufholen (1 ∓ Faktor)
+// Obergrenze für den gemessenen Umweg. Alles darüber ist keine Latenz mehr,
+// sondern ein Messfehler des Browsers — und der darf die Wiedergabe nicht
+// stärker verziehen, als er sie geraderückt.
+const BACKING_MAX_LATENCY_S = 1;
+// Spielraum des Handversatzes in beide Richtungen. Mehr als eine halbe
+// Sekunde ist kein Ausgleich mehr, sondern eine andere Stelle im Lied.
+const BACKING_OFFSET_MAX_MS = 500;
+
+/**
+ * Wie weit die Aufnahme dem Song hinterherhängt, in Sekunden Echtzeit:
+ * gemessener Umweg plus Handversatz. Ältere RECs kennen kein `lat` — dann
+ * trägt der Handversatz allein.
+ */
+function backingLagSeconds(anchor, offsetS) {
+  const lat = Number.isFinite(anchor?.lat) ? anchor.lat : 0;
+  const off = Number.isFinite(offsetS) ? offsetS : 0;
+  return lat + off;
+}
 
 /** Sollposition des Originaltracks zu einer REC-Position (siehe Herleitung oben). */
-function backingTargetTime(anchor, recTime) {
-  return anchor.pos + anchor.rate * recTime;
+function backingTargetTime(anchor, recTime, offsetS) {
+  return anchor.pos + anchor.rate * (recTime - backingLagSeconds(anchor, offsetS));
 }
 
 /** Sollrate des Originaltracks bei gegebener REC-Rate. */
@@ -10590,18 +10654,35 @@ function updateRecTimer() {
 }
 
 /**
+ * Der Umweg zwischen Song und Aufnahme in Sekunden, soweit der Browser ihn
+ * verrät: Ausgabelatenz (Element → Ohr) plus Eingangslatenz (Mikrofon →
+ * Recorder). Beides zusammen ist der Rückstand, mit dem die Aufnahme dem Song
+ * hinterherhängt. `outputLatency` kennt nicht jeder Browser — dann bleibt
+ * `baseLatency`, und der Rest ist Sache des Handversatzes.
+ */
+function measureBackingLatency(stream) {
+  const ctx = Audio.ctx;
+  let out = Number(ctx?.outputLatency);
+  if (!Number.isFinite(out) || out <= 0) out = Number(ctx?.baseLatency);
+  if (!Number.isFinite(out) || out <= 0) out = 0;
+  let mic = Number(stream?.getAudioTracks?.()[0]?.getSettings?.().latency);
+  if (!Number.isFinite(mic) || mic <= 0) mic = 0;
+  return Math.min(BACKING_MAX_LATENCY_S, out + mic);
+}
+
+/**
  * Anker für einen neu startenden REC — nur gesetzt, wenn wirklich der Song
  * lief (nicht: audioPreview, also läuft schon ein anderer REC; nicht: kein
  * Song geladen oder pausiert). Die Stimme kommt über den fileKey der
  * aktuell geladenen Spur — fehlt sie (Song inzwischen verändert), gibt es
  * keinen Anker statt eines geratenen.
  */
-function captureRecAnchor() {
+function captureRecAnchor(stream) {
   if (audioPreview) return null;
   if (!Audio.playing || !Audio.currentKey) return null;
   const voice = trackByVoiceKey(Audio.currentKey)?.voice;
   if (!voice) return null;
-  return { voice, pos: Audio.position, rate: Audio.rate };
+  return { voice, pos: audioLivePosition(), rate: Audio.rate, lat: measureBackingLatency(stream) };
 }
 
 async function startRecording() {
@@ -10661,7 +10742,7 @@ async function startRecording() {
   // Erst wenn der Recorder wirklich läuft, steht der Anker fest — zwischen
   // getUserMedia() und dem ersten aufgezeichneten Sample liegt sonst eine
   // unbekannte Latenz, die den Anker daneben liegen ließe.
-  recMediaRecorder.addEventListener('start', () => { recAnchor = captureRecAnchor(); }, { once: true });
+  recMediaRecorder.addEventListener('start', () => { recAnchor = captureRecAnchor(recStream); }, { once: true });
 
   recStartedAt = Date.now();
   recMediaRecorder.start();
@@ -11015,7 +11096,7 @@ async function previewRecordingBlob(blob, tag) {
   // sonst würde ein zweiter angehörter REC den echten Song überschreiben.
   const prior = audioPreview;
   const returnTrack = prior ? prior.returnTrack : (playerVoice ? trackByVoiceKey(playerVoice) : null);
-  const returnPos = prior ? prior.returnPos : Audio.position;
+  const returnPos = prior ? prior.returnPos : audioLivePosition();
   const returnPlaying = prior ? prior.returnPlaying : Audio.playing;
   const returnFootHidden = prior ? prior.returnFootHidden : $('#player-foot').hidden;
   const returnFootUnavailable = prior ? prior.returnFootUnavailable : $('#player-foot').classList.contains('player-foot--unavailable');
@@ -11168,11 +11249,17 @@ async function startBacking(anchor) {
       bg.load();
     });
 
-    bg.currentTime = backingTargetTime(anchor, Audio.position);
+    // Live-Position statt Audio.position: das ist der Stand des letzten
+    // `timeupdate` und gehört beim Start einer Vorschau noch dem Song von
+    // davor — der Hintergrund setzte damit an einer beliebigen Stelle ein.
     bg.playbackRate = backingTargetRate(anchor, Audio.rate);
-    // Nur abspielen, wenn die REC-Vorschau das gerade auch tut — sonst legte
-    // der Hintergrund beim bloßen Einschalten des Reglers während einer Pause los.
-    if (Audio.playing) await bg.play();
+    const target = backingTargetTime(anchor, audioLivePosition(), backingOffsetS());
+    if (backingInRange(bg, target)) {
+      bg.currentTime = target;
+      // Nur abspielen, wenn die REC-Vorschau das gerade auch tut — sonst legte
+      // der Hintergrund beim bloßen Einschalten des Reglers während einer Pause los.
+      if (Audio.playing) await bg.play();
+    }
   } catch (err) {
     dlog('backing:start:fail', { name: err?.name });
     stopBacking();
@@ -11191,30 +11278,58 @@ function stopBacking() {
 }
 
 /**
- * Hält den Hintergrundtrack im Wiedergabestatus der REC-Vorschau — reines
- * Play/Pause, kein Neuladen. Für Pausieren/Fortsetzen während einer laufenden
- * Vorschau (toggleSavedRecordingPreview, #btn-rec-preview, #btn-play).
+ * Hält den Hintergrundtrack im Wiedergabestatus der REC-Vorschau — kein
+ * Neuladen. Für Pausieren/Fortsetzen während einer laufenden Vorschau
+ * (toggleSavedRecordingPreview, #btn-rec-preview, #btn-play).
  */
 function syncBackingPlayState() {
   if (!Audio.bg || !Audio.bgVoice) return;
-  if (Audio.playing) Audio.bg.play().catch((err) => dlog('backing:play:fail', { name: err?.name }));
+  // Beim Fortsetzen zugleich neu ausrichten: während der Pause wurde
+  // vielleicht gespult, und `timeupdate` meldet sich erst wieder, wenn schon
+  // eine Viertelsekunde an der falschen Stelle gelaufen ist.
+  if (Audio.playing) syncBacking({ force: true });
   else Audio.bg.pause();
+}
+
+/** Liegt die Sollposition überhaupt im Original? Davor und dahinter gibt es nichts mitzuspielen. */
+function backingInRange(bg, target) {
+  if (!(target >= 0)) return false;
+  const dur = Number(bg.duration);
+  return !Number.isFinite(dur) || dur <= 0 || target < dur;
 }
 
 /**
  * Nachregelung gegen Drift zum REC (siehe 1.4 im Plan) — aufgerufen aus dem
- * bestehenden Audio.onPosition-Handler, kein eigener Timer.
+ * bestehenden Audio.onPosition-Handler, kein eigener Timer. `force` richtet
+ * sofort hart aus, statt die Abweichung erst auszuregeln: nach einem Sprung,
+ * beim Fortsetzen und beim Verstellen des Versatzes, der ja nach Gehör
+ * gesucht wird und deshalb augenblicklich wirken muss.
  */
-function syncBacking() {
+function syncBacking({ force = false } = {}) {
   const bg = Audio.bg;
   const anchor = audioPreview?.tag?.anchor;
-  if (!bg || !anchor || Audio.bgVoice !== anchor.voice || bg.paused) return;
+  if (!bg || !anchor || Audio.bgVoice !== anchor.voice) return;
 
-  const target = backingTargetTime(anchor, Audio.position);
+  const target = backingTargetTime(anchor, audioLivePosition(), backingOffsetS());
+  // Vor dem Anfang des Originals (großer Versatz) oder hinter seinem Ende
+  // gibt es nichts mitzuspielen — anhalten und beim nächsten Takt wieder
+  // einsteigen, statt am Rand kleben zu bleiben.
+  if (!backingInRange(bg, target)) { if (!bg.paused) bg.pause(); return; }
+
   const targetRate = backingTargetRate(anchor, Audio.rate);
+  // Steht der Hintergrund (Ende überlaufen, Pause, vom System angehalten),
+  // hilft nur der harte Wiedereinstieg: die Regelung darunter greift an einem
+  // stehenden Element nie wieder.
+  if (bg.paused) {
+    bg.currentTime = target;
+    bg.playbackRate = targetRate;
+    if (Audio.playing) bg.play().catch((err) => dlog('backing:play:fail', { name: err?.name }));
+    return;
+  }
+
   const { action, rateFactor } = backingCorrection(bg.currentTime - target);
-  if (action === 'seek') bg.currentTime = target;
-  bg.playbackRate = targetRate * (action === 'nudge' ? rateFactor : 1);
+  if (force || action === 'seek') bg.currentTime = target;
+  bg.playbackRate = targetRate * (!force && action === 'nudge' ? rateFactor : 1);
 }
 
 /** Lautstärke des Hintergrundtracks — über den Gain, knackfrei; bg.volume nur als Notlösung ohne Matrix. */
@@ -11224,6 +11339,27 @@ function setBackingVolume(v) {
   } else if (Audio.bg) {
     Audio.bg.volume = v;
   }
+}
+
+/**
+ * Handversatz in Millisekunden, geklemmt — eine kaputte Sicherung oder ein
+ * fremd beschriebener Datensatz soll die Wiedergabe nicht verziehen.
+ */
+function backingOffsetMs() {
+  const ms = Number(settings.recBackingOffsetMs) || 0;
+  return Math.max(-BACKING_OFFSET_MAX_MS, Math.min(BACKING_OFFSET_MAX_MS, Math.round(ms)));
+}
+
+/** Derselbe Wert in Sekunden — so rechnet die Anker-Mathematik. */
+function backingOffsetS() {
+  return backingOffsetMs() / 1000;
+}
+
+/** Beschriftung neben dem Versatz-Regler, mit Vorzeichen (echtes Minus, kein Bindestrich). */
+function renderBackingOffsetValue() {
+  const ms = backingOffsetMs();
+  const sign = ms > 0 ? '+' : (ms < 0 ? '\u2212' : '');
+  $('#rec-backing-offset-value').textContent = `${sign}${Math.abs(ms)} ms`;
 }
 
 /**
@@ -11240,15 +11376,33 @@ function updateBackingUI() {
   if (!resolvable) return;
   $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
   $('#rec-backing-volume').value = Math.round(settings.recBackingVolume * 100);
+  // Der Versatz lässt sich nur einstellen, während man ihn hört — eingeklappt,
+  // solange die Funktion aus ist.
+  $('#rec-backing-fine').hidden = !settings.recBacking;
+  $('#rec-backing-offset').value = String(backingOffsetMs());
+  renderBackingOffsetValue();
 }
 
 $('#btn-rec-backing').addEventListener('click', async () => {
   await saveSettings({ recBacking: !settings.recBacking });
-  $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
+  updateBackingUI();
   // Wirkt sofort auf die laufende Vorschau, nicht erst beim nächsten Anhören.
   const anchor = audioPreview?.tag?.anchor;
   if (settings.recBacking && anchor) await startBacking(anchor);
   else stopBacking();
+});
+
+// Anders als die Lautstärke wird der Versatz nicht bei jedem Zwischenwert
+// gespeichert: er wird ziehend nach Gehör gesucht, und jede Zwischenstellung
+// wäre ein eigener Schreibvorgang. Anwenden sofort, sichern am Ende.
+$('#rec-backing-offset').addEventListener('input', (e) => {
+  settings.recBackingOffsetMs = Number(e.target.value) || 0;
+  renderBackingOffsetValue();
+  syncBacking({ force: true });
+});
+
+$('#rec-backing-offset').addEventListener('change', async (e) => {
+  await saveSettings({ recBackingOffsetMs: Number(e.target.value) || 0 });
 });
 
 $('#rec-backing-volume').addEventListener('input', async (e) => {
@@ -14086,7 +14240,13 @@ function sanitizeRecAnchor(anchor) {
   if (!anchor || typeof anchor !== 'object') return null;
   if (!VOICE_ORDER.includes(anchor.voice)) return null;
   if (!Number.isFinite(anchor.pos) || !Number.isFinite(anchor.rate)) return null;
-  return { voice: anchor.voice, pos: anchor.pos, rate: anchor.rate };
+  const clean = { voice: anchor.voice, pos: anchor.pos, rate: anchor.rate };
+  // Der gemessene Umweg ist freiwillig — ältere RECs kennen ihn nicht, und ein
+  // unplausibler Wert soll den Originaltrack nicht schiefziehen.
+  if (Number.isFinite(anchor.lat) && anchor.lat >= 0 && anchor.lat <= BACKING_MAX_LATENCY_S) {
+    clean.lat = anchor.lat;
+  }
+  return clean;
 }
 
 /**
@@ -14947,6 +15107,29 @@ function runSelfTests() {
     failed.push('backingTargetRate müsste das Produkt beider Raten sein');
   }
 
+  // Der Umweg (Kopfhörer- und Mikrofonlatenz plus Handversatz) — ohne ihn
+  // liefe der Originaltrack genau um diesen Betrag zu früh.
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 1, lat: 0.2 }, 5) !== 14.8) {
+    failed.push('backingTargetTime müsste den gemessenen Umweg abziehen');
+  }
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 2, lat: 0.2 }, 5) !== 19.6) {
+    failed.push('backingTargetTime müsste den Umweg mit der Aufnahmerate skalieren');
+  }
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 1 }, 5, 0.1) !== 14.9) {
+    failed.push('backingTargetTime müsste den Handversatz abziehen');
+  }
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 1, lat: 0.2 }, 5, -0.2) !== 15) {
+    failed.push('ein gegenläufiger Handversatz müsste den Umweg aufheben');
+  }
+  checks++;
+  if (backingLagSeconds({ pos: 0, rate: 1 }, undefined) !== 0) {
+    failed.push('ohne Umweg und ohne Versatz müsste der Rückstand 0 sein');
+  }
+
   const correctionCases = [
     [0, 'hold'],
     [0.039, 'hold'],
@@ -14987,6 +15170,18 @@ function runSelfTests() {
   checks++;
   if (sanitizeRecAnchor(null) !== null) {
     failed.push('sanitizeRecAnchor müsste einen fehlenden Anker verkraften');
+  }
+  checks++;
+  if (sanitizeRecAnchor({ voice: 'ALT', pos: 1, rate: 1, lat: 0.18 }).lat !== 0.18) {
+    failed.push('sanitizeRecAnchor müsste einen plausiblen Umweg übernehmen');
+  }
+  checks++;
+  if ('lat' in sanitizeRecAnchor({ voice: 'ALT', pos: 1, rate: 1, lat: 9 })) {
+    failed.push('sanitizeRecAnchor müsste einen absurden Umweg verwerfen');
+  }
+  checks++;
+  if ('lat' in sanitizeRecAnchor({ voice: 'ALT', pos: 1, rate: 1 })) {
+    failed.push('sanitizeRecAnchor dürfte keinen Umweg erfinden');
   }
 
   const total = checks;
