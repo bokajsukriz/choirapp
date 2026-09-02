@@ -1452,6 +1452,8 @@ input[type="checkbox"] {
 .queue-item[data-current="true"] .grow { font-weight: 650; }
 .queue-item[data-missing="true"] { opacity: .6; }
 .queue-item[data-missing="true"] .grow { color: var(--muted); }
+.queue-item[data-unplayable="true"] { opacity: .6; }
+.queue-item[data-unplayable="true"] .grow { color: var(--muted); }
 
 .queue-more {
   display: block;
@@ -9327,9 +9329,12 @@ async function renderQueue() {
       onclick: (e) => { e.stopPropagation(); removeFromQueue(index); },
     }, '×');
 
+    const unplayable = song && !isPlayableSong(song);
     const open = el('button', {
       class: 'grow', type: 'button', style: 'text-align:left; background:none; border:0; color:inherit; padding:0; font:inherit',
       disabled: song ? null : true,
+      title: unplayable ? t('songs.placeholderBadge') : null,
+      'aria-label': unplayable ? `${songLabel(song)} — ${t('songs.placeholderBadge')}` : null,
       onclick: song ? () => {
         playQueue.index = index;
         pendingAutoPlay = Audio.playing;
@@ -9341,6 +9346,7 @@ async function renderQueue() {
       class: 'queue-item',
       'data-current': current ? 'true' : 'false',
       'data-missing': song ? 'false' : 'true',
+      'data-unplayable': unplayable ? 'true' : 'false',
     }, remove, open);
     if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
     else if (!song) row.append(el('span', { class: 'small muted', text: 'nicht verfügbar' }));
@@ -12192,12 +12198,16 @@ async function startPlaylist(pl) {
   const songs = await DB.metaByType('song').catch(() => []);
   const items = (pl.songTitles || []).map((t) => {
     const song = findSongByTitle(songs, t);
-    return { title: t, id: song ? song.id : null };
+    return { title: t, id: song ? song.id : null, playable: isPlayableSong(song) };
   });
-  const firstIndex = items.findIndex((it) => it.id);
+  const firstIndex = items.findIndex((it) => it.playable);
 
   if (firstIndex === -1) {
-    banner(`Von „${pl.name}" ist noch kein Lied importiert.`, { kind: 'error' });
+    if (!items.some((it) => it.id)) {
+      banner(`Von „${pl.name}" ist noch kein Lied importiert.`, { kind: 'error' });
+    } else {
+      banner(`Von „${pl.name}" ist noch keine Aufnahme importiert.`, { kind: 'error' });
+    }
     return;
   }
   playQueue = { id: pl.id, name: pl.name, items, index: firstIndex };
@@ -12602,9 +12612,9 @@ function openPlaylistTextDialog(pl) {
 function randomQueueIndex(queue) {
   const candidates = queue.items
     .map((_, idx) => idx)
-    .filter((idx) => queue.items[idx].id && idx !== queue.index);
+    .filter((idx) => queue.items[idx].playable && idx !== queue.index);
   if (candidates.length) return candidates[Math.floor(Math.random() * candidates.length)];
-  return queue.items[queue.index]?.id ? queue.index : -1;
+  return queue.items[queue.index]?.playable ? queue.index : -1;
 }
 
 /** Springt in der laufenden Playlist, überspringt dabei fehlende Titel. */
@@ -12619,7 +12629,7 @@ function playlistStep(delta, autoplay) {
     do {
       i += delta;
       if (i < 0 || i >= playQueue.items.length) return;
-    } while (!playQueue.items[i].id);
+    } while (!playQueue.items[i].playable);
   }
   playQueue.index = i;
   pendingAutoPlay = autoplay ?? Audio.playing;
@@ -12649,7 +12659,7 @@ function playlistAdvance() {
   const total = playQueue.items.length;
   for (let step = 1; step <= total; step++) {
     const i = (playQueue.index + step) % total;
-    if (!playQueue.items[i].id) continue;
+    if (!playQueue.items[i].playable) continue;
     if (i <= playQueue.index) banner(`Setliste „${playQueue.name}" beginnt von vorn.`);
     playQueue.index = i;
     const id = playQueue.items[i].id;
