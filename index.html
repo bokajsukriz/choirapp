@@ -48,6 +48,12 @@
   --tap:        44px;          /* Mindestgröße für Touch-Ziele */
   --pad:        16px;
   --nav-h:      62px;
+  /* Höhe der Lyrics-Werkzeugleiste samt Abstand darunter. Bestimmt die Leiste
+     selbst (min-height) und den Ausgleich im Notizen-Reiter, damit die
+     +-Knöpfe der beiden leeren Reiter auf gleicher Höhe liegen. */
+  --lyrics-toolbar-h: 60px;
+  /* Fläche, in deren Mitte der +-Knopf eines leeren Reiters sitzt. */
+  --empty-add-h: 44vh;
 
   --safe-top:    env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -179,10 +185,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .view { display: none; }
 .view.is-active { display: block; animation: fade .18s ease-out; }
 
-/* Ansichten mit schwebendem +-Knopf (siehe .fab-add) brauchen unten Luft:
-   sonst liegt der letzte Listeneintrag am Ende der Liste dauerhaft unter dem
-   Knopf und lässt sich nicht mehr antippen. */
-#view-songs, #view-playlists { padding-bottom: 52px; }
+/* Die Bibliothek hat einen schwebenden +-Knopf (siehe .fab-add) und braucht
+   unten Luft: sonst liegt der letzte Listeneintrag am Ende der Liste
+   dauerhaft darunter und lässt sich nicht mehr antippen. */
+#view-songs { padding-bottom: 52px; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -597,20 +603,27 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   z-index: 6;
   background: transparent;
 }
+/* left/bottom/transform-origin setzt showFabMenu() beim Öffnen aus der Lage
+   des auslösenden Knopfs — der sitzt mal unten rechts (Bibliothek), mal
+   mittig im Text (Setlisten). Die Werte hier sind nur der Startwert, falls
+   das Menü einmal ohne Messung auftaucht. */
 .fab-menu {
   position: absolute;
-  right: calc(16px + var(--safe-right));
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px + 56px + 10px);
+  left: 50%;
+  bottom: 50%;
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: min(240px, calc(100vw - 32px));
-  transform-origin: bottom right;
+  transform-origin: bottom center;
   animation: fab-menu-in .16s ease-out;
 }
+/* Klappt das Menü nach unten auf (siehe placeFabMenu), steht der wichtigste
+   Eintrag wieder direkt am Knopf — also am oberen Rand statt am unteren. */
+.fab-menu--below { flex-direction: column-reverse; }
 @keyframes fab-menu-in {
-  from { opacity: 0; transform: scale(.4) translateY(10px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
   .fab-menu { animation: none; }
@@ -635,15 +648,36 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie
    die schwebenden Knöpfe, aber bewusst zurückhaltend — gestrichelter Umriss
    statt gefüllter Fläche. min-height rückt ihn in die Mitte der freien
-   Fläche, statt ihn oben an den Rand zu drücken. */
+   Fläche, statt ihn oben an den Rand zu drücken.
+
+   Beide Reiter beginnen an derselben Stelle; nur im Lyrics-Reiter steht
+   davor noch die Werkzeugleiste. Damit die beiden Knöpfe beim Reiterwechsel
+   nicht springen, hält der Notizen-Reiter denselben Abstand frei. */
 .empty-add {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: 44vh;
+  min-height: var(--empty-add-h);
   text-align: center;
+}
+/* Polsterung statt Rand: ein margin würde durch den Reiter hindurch
+   kollabieren und die ganze Ansicht verschieben. Die min-height rechnet die
+   Polsterung wieder heraus (border-box), damit zum Zentrieren dieselbe
+   Inhaltshöhe bleibt wie im Lyrics-Reiter unter der Werkzeugleiste. */
+#note-empty {
+  padding-top: var(--lyrics-toolbar-h);
+  min-height: calc(var(--empty-add-h) + var(--lyrics-toolbar-h));
+}
+
+/* Derselbe Knopf, aber im Textfluss (Setlisten: zwischen „Nächster Gig" und
+   der Liste). Ohne Beschriftung — an der Stelle ist ohnehin klar, was ein +
+   anlegt. */
+.add-inline {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 20px;
 }
 .empty-add-btn {
   width: 56px;
@@ -659,7 +693,9 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   justify-content: center;
 }
 .empty-add-btn:active { background: rgba(var(--accent-rgb), .16); }
-.empty-add-btn svg { width: 26px; height: 26px; }
+.empty-add-btn svg { width: 26px; height: 26px; transition: transform .18s ease; }
+/* Öffnet der Knopf ein Menü, wird das + wie beim schwebenden Knopf zum × */
+.empty-add-btn[aria-expanded="true"] svg { transform: rotate(45deg); }
 .empty-add-label { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
 
 /* Hinweispfeil auf den +-Knopf bei leerer Bibliothek (siehe
@@ -1337,6 +1373,10 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Höhe und Abstand zusammen ergeben --lyrics-toolbar-h — der Notizen-Reiter
+     hält denselben Betrag frei, damit beide Leerzustände gleich hoch sitzen
+     (siehe .empty-add). */
+  min-height: calc(var(--lyrics-toolbar-h) - 10px);
   margin: 0 0 10px;
 }
 .lyrics-toolbar-extended > .icon-btn { flex: 0 0 auto; margin-left: auto; }
@@ -2965,16 +3005,20 @@ input[type="checkbox"] {
   <section class="view" id="view-playlists">
     <div id="current-setlist-host"></div>
     <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-    <div id="playlist-list-host"></div>
 
-    <!-- Wie in der Bibliothek: statt einer Karte mit drei Knöpfen ein
-         schwebender +-Knopf, der die drei Wege als Menü anbietet. -->
-    <button class="fab-add" id="btn-playlist-add-fab" type="button"
-            aria-label="Setliste hinzufügen" aria-haspopup="true" aria-expanded="false">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-    </button>
+    <!-- Statt einer Karte mit drei Knöpfen derselbe zurückhaltende +-Knopf
+         wie in den leeren Player-Reitern, hier im Fluss zwischen „Nächster
+         Gig" und der Liste. Er öffnet die drei Wege als Menü. -->
+    <div class="add-inline">
+      <button class="empty-add-btn" id="btn-playlist-add-fab" type="button"
+              aria-label="Setliste hinzufügen" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="playlist-list-host"></div>
   </section>
 
   <!-- ===== Einstellungen =============================================== -->
@@ -4017,7 +4061,7 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
 }
 
 /* --------------------------------------------------------------------------
-   Menüs der schwebenden +-Knöpfe (Bibliothek, Setlisten)
+   Menüs der +-Knöpfe (Bibliothek, Setlisten)
 
    Ein +-Knopf öffnet kein zentriertes Dialogfenster, sondern ein Menü, das
    optisch aus ihm herauswächst (siehe .fab-menu-Styles). Kein „Abbrechen"
@@ -4030,10 +4074,38 @@ let openFabMenu = null;   // { btn, backdrop } des gerade offenen Menüs
 
 function isFabMenuOpen() { return openFabMenu !== null; }
 
+/**
+ * Setzt das Menü an seinen Knopf: waagerecht auf dessen Mitte, am
+ * Bildschirmrand abgefangen. Der Ursprung der Aufziehbewegung bleibt dabei
+ * genau über der Knopfmitte, damit es auch beim abgefangenen Menü (unten
+ * rechts) noch aus dem Knopf herauszuwachsen scheint. Über dem Knopf, wo
+ * Platz ist — sonst darunter (der Setlisten-Knopf steht je nach Liste weit
+ * oben). Beim Klappen nach unten dreht sich auch die Reihenfolge um, damit
+ * der wichtigste Eintrag dem Knopf am nächsten bleibt.
+ */
+function placeFabMenu(btn, backdrop) {
+  const menu = $('.fab-menu', backdrop);
+  const r = btn.getBoundingClientRect();
+  const gap = 10;
+  const edge = 12;
+
+  const w = menu.offsetWidth;
+  const centerX = r.left + r.width / 2;
+  const left = Math.max(edge, Math.min(centerX - w / 2, window.innerWidth - w - edge));
+  menu.style.left = `${Math.round(left)}px`;
+
+  const below = menu.offsetHeight > r.top - gap - edge;
+  menu.classList.toggle('fab-menu--below', below);
+  menu.style.top    = below ? `${Math.round(r.bottom + gap)}px` : 'auto';
+  menu.style.bottom = below ? 'auto' : `${Math.round(window.innerHeight - r.top + gap)}px`;
+  menu.style.transformOrigin = `${Math.round(centerX - left)}px ${below ? '0%' : '100%'}`;
+}
+
 function showFabMenu(btn, backdrop) {
   if (openFabMenu) closeFabMenu();
   openFabMenu = { btn, backdrop };
   backdrop.hidden = false;
+  placeFabMenu(btn, backdrop);   // erst sichtbar, dann messbar
   btn.setAttribute('aria-expanded', 'true');
   openModal(backdrop, { initialFocus: $('.fab-menu-item', backdrop), onEscape: () => closeFabMenu() });
 }
@@ -4064,6 +4136,12 @@ function wireFabMenu(btnSel, backdropSel, onAction) {
     onAction(item.dataset.action);
   });
 }
+
+// Nach einer Drehung stimmt die gemessene Lage nicht mehr — neu setzen,
+// statt das Menü einem Knopf hinterherhängen zu lassen, der weg ist.
+window.addEventListener('resize', () => {
+  if (openFabMenu) placeFabMenu(openFabMenu.btn, openFabMenu.backdrop);
+});
 
 /* Bibliothek: drei gleichrangige Wege, an Songs zu kommen — ZIP aus der
    Dropbox (#import-view), einzelne Recordings (#rec-import-input) und ein
