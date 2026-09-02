@@ -62,15 +62,14 @@ lassen sich nur manuell im Browser prüfen.
 REC (im Player unter „Loops") und die Wiedergabe laufen unabhängig
 nebeneinander: Der Song kann weiterlaufen, während man sich dazu aufnimmt.
 Wie gut das klingt, entscheidet allerdings das Betriebssystem, nicht die App.
-Drei Dinge sind deshalb eingebaut:
+Drei Punkte dazu:
 
-- **Abhörsituation „Kopfhörer" / „Lautsprecher"** direkt über dem
-  REC-Knopf. Bei „Kopfhörer" nimmt das Mikrofon unbearbeitet auf — die beste
-  Qualität. Bei „Lautsprecher" schaltet die App Echo-Unterdrückung,
-  Rauschfilter und Aussteuerung des Systems ein, damit der mitlaufende Song
-  wieder aus der Aufnahme verschwindet; die eigene Stimme klingt dafür etwas
-  dünner. Ob Kopfhörer angeschlossen sind, verrät kein Browser-API — darum
-  die Wahl von Hand.
+- **Nur mit Kopfhörern.** Über Lautsprecher landet der Song im Mikrofon;
+  das einzige Mittel dagegen wäre die Echo-Unterdrückung des Systems, und
+  die bleibt bewusst ausnahmslos aus (`RECORDING_CONSTRAINTS`) — sie ist für
+  Telefonate gebaut, dünnt Gesang aus und schneidet leise Stellen weg. Eine
+  Aufnahme, die immer roh und unbearbeitet ist, wiegt schwerer als das
+  Mitsingen ohne Kopfhörer.
 - **Bluetooth-Ausweichen.** Öffnet ein Browser das Mikrofon eines
   Bluetooth-Kopfhörers, schaltet der vom Musik- ins Freisprechprofil: ab da
   laufen *beide* Richtungen mono in Telefonbandbreite (8–16 kHz). Der Song

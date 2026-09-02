@@ -1539,15 +1539,6 @@ input[type="checkbox"] {
   text-align: center;
 }
 
-/* Abhörsituation: zwei statt drei Spalten, und ohne den Abstand nach oben —
-   die Zeile sitzt direkt unter dem Statustext, nicht als eigener Block. */
-.rec-mode-row {
-  grid-template-columns: repeat(2, 1fr);
-  margin-top: 0;
-  width: 100%;
-  max-width: 320px;
-}
-
 /* Hinweis auf ein Telefonqualitäts-Mikrofon (Bluetooth-Freisprechprofil) —
    kein Fehler, aber der Grund für eine dumpfe Aufnahme; darum warnfarben,
    aber ohne die volle Wucht von .rec-meter-warning. */
@@ -2526,17 +2517,6 @@ input[type="checkbox"] {
         <p class="small muted" id="rec-status" style="margin:0; text-align:center">
           Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
         </p>
-        <!-- Mitsingen zum laufenden Song: die richtige Einstellung hängt
-             daran, ob der Song über Kopfhörer oder über den Lautsprecher
-             läuft — ohne Kopfhörer nimmt das Mikrofon zwangsläufig auch den
-             Song mit, dagegen hilft nur die Echo-Unterdrückung. Steht hier
-             und nicht in den Einstellungen, weil sich das von Probe zu Probe
-             ändert (siehe REC_MODES). -->
-        <div class="preset-row rec-mode-row" id="rec-mode" role="group" aria-label="Abhörsituation">
-          <button class="preset" type="button" data-rec-mode="headphones" aria-pressed="true">Kopfhörer</button>
-          <button class="preset" type="button" data-rec-mode="speaker" aria-pressed="false">Lautsprecher</button>
-        </div>
-        <p class="small muted" id="rec-mode-hint" style="margin:0; text-align:center"></p>
         <p class="small rec-input-warning" id="rec-input-warning" hidden></p>
       </div>
       <div class="rec-pending" id="rec-pending" hidden>
@@ -4279,7 +4259,6 @@ const DEFAULT_SETTINGS = {
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
-  recMode: 'headphones',      // 'headphones' | 'speaker' — Abhörsituation beim REC (siehe REC_MODES)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -10194,23 +10173,20 @@ function renderLoopList() {
    previewRecordingBlob()/endRecordingPreview() merken sich dafür, wo die
    normale Wiedergabe stand, und stellen das danach wieder her.
 
-   Mitsingen zum laufenden Song ist ausdrücklich vorgesehen — REC und
-   Wiedergabe laufen unabhängig nebeneinander. Was dabei herauskommt,
-   entscheidet aber das Betriebssystem, nicht diese App; drei Dinge dagegen
-   stehen hier:
+   Mitsingen zum laufenden Song ist vorgesehen — REC und Wiedergabe laufen
+   unabhängig nebeneinander —, aber nur mit Kopfhörern: über Lautsprecher
+   landet der Song unvermeidlich mit im Mikrofon, und das einzige Mittel
+   dagegen wäre die Echo-Unterdrückung des Systems, die hier bewusst nie an
+   ist (siehe RECORDING_CONSTRAINTS). Zwei Dinge, die dem Gleichzeitigen
+   sonst im Weg stünden, sind dafür ausgeräumt:
 
-   1. REC_MODES — ohne Kopfhörer landet der Song über den Lautsprecher
-      unvermeidlich mit im Mikrofon. Nur die Echo-Unterdrückung des Systems
-      bekommt ihn wieder heraus, und die ist bei Kopfhörern gerade unerwünscht
-      (sie dünnt die Stimme aus). Ob Kopfhörer im Spiel sind, verrät kein
-      Browser-API — deshalb fragt die Oberfläche danach.
-   2. preferWideBandMic() — sobald ein Browser das Mikrofon eines
+   1. preferWideBandMic() — sobald ein Browser das Mikrofon eines
       Bluetooth-Kopfhörers öffnet, schaltet der vom Musik- ins
       Freisprechprofil: ab da laufen BEIDE Richtungen mono in
       Telefonbandbreite. Der Song klingt plötzlich dumpf und die Aufnahme
       erst recht. Gibt es ein eingebautes Mikrofon, wird deshalb das
       genommen und das Headset gar nicht erst als Eingang geöffnet.
-   3. startLevelMeter() hängt am AudioContext der Wiedergabe statt einen
+   2. startLevelMeter() hängt am AudioContext der Wiedergabe statt einen
       zweiten aufzumachen — ein frisch erzeugter AudioContext lässt iOS die
       Audio-Hardware neu aushandeln, was die gerade laufende Wiedergabe
       hörbar stört.
@@ -10230,32 +10206,19 @@ let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
 
-/* ---------- Abhörsituation und Mikrofonwahl ----------
-   Die Grundeinstellung (echoCancellation/noiseSuppression/autoGainControl
-   aus) bleibt für den Normalfall richtig: die drei sind für Telefonate
-   gedacht, komprimieren und filtern aggressiv und machen Gesang dünner. Wer
-   aber ohne Kopfhörer zum laufenden Song mitsingt, hat den Song im
-   Mikrofonsignal — laut, verzerrt und über den Lautsprecher gefärbt. Genau
-   dagegen ist die Echo-Unterdrückung gebaut: sie kennt das Ausgangssignal
-   und rechnet es wieder heraus. Der Preis ist die schmalere Stimme; darum
-   ist es eine Wahl und keine Automatik. */
-const REC_MODES = {
-  headphones: {
-    constraints: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-    hint: 'Der Song läuft über Kopfhörer: das Mikrofon nimmt unbearbeitet auf — die beste Qualität.',
-  },
-  speaker: {
-    constraints: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    hint: 'Der Song läuft über den Lautsprecher: die Echo-Unterdrückung hält ihn aus der Aufnahme heraus. Die eigene Stimme klingt dadurch etwas dünner.',
-  },
-};
+/* ---------- Mikrofon ----------
+   echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
+   gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
+   schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
+   Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit, und
+   zwar ausnahmslos: die Echo-Unterdrückung wäre das einzige Mittel gegen
+   einen über Lautsprecher mitlaufenden Song im Mikrofon, kostet dafür aber
+   jede Aufnahme Klang. Mitsingen zum laufenden Song geht deshalb nur mit
+   Kopfhörern. */
+const RECORDING_CONSTRAINTS = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
 
-function recMode() {
-  return REC_MODES[settings.recMode] ? settings.recMode : 'headphones';
-}
-
-function recModeConstraints(mode = recMode()) {
-  return { ...(REC_MODES[mode] || REC_MODES.headphones).constraints };
+function recConstraints() {
+  return { ...RECORDING_CONSTRAINTS };
 }
 
 /* Gerätenamen sind je nach System und Sprache verschieden — geprüft wird
@@ -10314,7 +10277,7 @@ function recStreamInfo(stream) {
  * Deshalb wird der alte Stream vorher freigegeben — erst das lässt das
  * System zurück ins Musikprofil schalten.
  */
-async function preferWideBandMic(stream, mode) {
+async function preferWideBandMic(stream) {
   const info = recStreamInfo(stream);
   if (recInputQuality(info) === 'ok') return stream;
   if (!navigator.mediaDevices?.enumerateDevices) return stream;
@@ -10331,7 +10294,7 @@ async function preferWideBandMic(stream, mode) {
   for (const track of stream.getTracks()) track.stop();
   try {
     const better = await navigator.mediaDevices.getUserMedia({
-      audio: { ...recModeConstraints(mode), deviceId: { exact: deviceId } },
+      audio: { ...recConstraints(), deviceId: { exact: deviceId } },
     });
     dlog('rec:mic:switched', { sampleRate: recStreamInfo(better).sampleRate });
     return better;
@@ -10340,7 +10303,7 @@ async function preferWideBandMic(stream, mode) {
     // Browser nicht wählbar) — dann lieber die Systemvorgabe in
     // Telefonqualität als gar keine Aufnahme.
     dlog('rec:mic:switchfail', { name: err?.name });
-    return navigator.mediaDevices.getUserMedia({ audio: recModeConstraints(mode) });
+    return navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
   }
 }
 
@@ -10362,22 +10325,6 @@ function updateRecInputWarning(stream) {
   el.hidden = false;
 }
 
-function renderRecMode() {
-  const mode = recMode();
-  for (const btn of $$('#rec-mode .preset')) {
-    btn.setAttribute('aria-pressed', btn.dataset.recMode === mode ? 'true' : 'false');
-  }
-  const hint = $('#rec-mode-hint');
-  if (hint) hint.textContent = REC_MODES[mode].hint;
-}
-
-$$('#rec-mode .preset').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    await saveSettings({ recMode: btn.dataset.recMode });
-    renderRecMode();
-  });
-});
-
 /** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
   if (!window.MediaRecorder) return '';
@@ -10396,10 +10343,6 @@ function setRecUI(recording) {
   btn.setAttribute('aria-label', recording ? 'REC stoppen' : 'REC starten');
   $('#rec-timer').hidden = !recording;
   $('#rec-status').hidden = recording;
-  // Die Abhörsituation gilt für den ganzen Take — ein Umschalten mittendrin
-  // ließe sich am offenen Stream ohnehin nicht mehr ändern.
-  $('#rec-mode').hidden = recording;
-  $('#rec-mode-hint').hidden = recording;
 }
 
 function updateRecTimer() {
@@ -10414,14 +10357,12 @@ async function startRecording() {
   }
 
   recStarting = true;
-  const mode = recMode();
   try {
-    // Welche Filter an sind, entscheidet die Abhörsituation (siehe REC_MODES).
-    recStream = await navigator.mediaDevices.getUserMedia({ audio: recModeConstraints(mode) });
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
     // Erst danach steht fest, welches Mikrofon der Browser genommen hat —
     // ein Bluetooth-Kopfhörer würde Aufnahme und Wiedergabe zugleich auf
     // Telefonqualität herunterziehen.
-    recStream = await preferWideBandMic(recStream, mode);
+    recStream = await preferWideBandMic(recStream);
   } catch (err) {
     recStarting = false;
     if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
@@ -14457,18 +14398,13 @@ function runSelfTests() {
   checks++;
   if (lightshowVoiceColor('LEAD') !== VOICE_COLOR.FULL) failed.push('lightshowVoiceColor("LEAD") müsste VOICE_COLOR.FULL sein');
 
-  // 8. REC: Abhörsituation, Headset-Erkennung und Mikrofonwahl.
-  checks++;
-  if (recModeConstraints('speaker').echoCancellation !== true) {
-    failed.push('Lautsprecher-Modus müsste die Echo-Unterdrückung einschalten');
-  }
-  checks++;
-  if (recModeConstraints('headphones').echoCancellation !== false) {
-    failed.push('Kopfhörer-Modus müsste ohne Echo-Unterdrückung aufnehmen');
-  }
-  checks++;
-  if (recModeConstraints('quatsch').echoCancellation !== false) {
-    failed.push('unbekannter REC-Modus müsste auf Kopfhörer zurückfallen');
+  // 8. REC: Aufnahmefilter, Headset-Erkennung und Mikrofonwahl.
+  // Die drei Telefonfilter bleiben ausnahmslos aus — auch beim Ausweichen
+  // aufs eingebaute Mikrofon, wo die Bedingungen ein zweites Mal gesetzt
+  // werden.
+  for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl']) {
+    checks++;
+    if (recConstraints()[key] !== false) failed.push(`recConstraints().${key} müsste false sein`);
   }
 
   const headsetLabels = [
@@ -14900,7 +14836,6 @@ async function boot() {
 
   await loadSettings();
   applyTranslations();
-  renderRecMode();
   initGrooveLabEasterEgg();
   setupFolderImport();
   try {
