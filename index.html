@@ -1617,6 +1617,16 @@ input[type="checkbox"] {
   text-align: center;
 }
 
+/* Hinweis auf ein Telefonqualitäts-Mikrofon (Bluetooth-Freisprechprofil) —
+   kein Fehler, aber der Grund für eine dumpfe Aufnahme; darum warnfarben,
+   aber ohne die volle Wucht von .rec-meter-warning. */
+.rec-input-warning {
+  margin: 0;
+  text-align: center;
+  color: var(--danger);
+  line-height: 1.35;
+}
+
 .rec-pending {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -2585,6 +2595,7 @@ input[type="checkbox"] {
         <p class="small muted" id="rec-status" style="margin:0; text-align:center">
           Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
         </p>
+        <p class="small rec-input-warning" id="rec-input-warning" hidden></p>
       </div>
       <div class="rec-pending" id="rec-pending" hidden>
         <div class="rec-pending-info">
@@ -10326,6 +10337,24 @@ function renderLoopList() {
    dieselben Knöpfe, die den Song abspielen, spielen dann den REC.
    previewRecordingBlob()/endRecordingPreview() merken sich dafür, wo die
    normale Wiedergabe stand, und stellen das danach wieder her.
+
+   Mitsingen zum laufenden Song ist vorgesehen — REC und Wiedergabe laufen
+   unabhängig nebeneinander —, aber nur mit Kopfhörern: über Lautsprecher
+   landet der Song unvermeidlich mit im Mikrofon, und das einzige Mittel
+   dagegen wäre die Echo-Unterdrückung des Systems, die hier bewusst nie an
+   ist (siehe RECORDING_CONSTRAINTS). Zwei Dinge, die dem Gleichzeitigen
+   sonst im Weg stünden, sind dafür ausgeräumt:
+
+   1. preferWideBandMic() — sobald ein Browser das Mikrofon eines
+      Bluetooth-Kopfhörers öffnet, schaltet der vom Musik- ins
+      Freisprechprofil: ab da laufen BEIDE Richtungen mono in
+      Telefonbandbreite. Der Song klingt plötzlich dumpf und die Aufnahme
+      erst recht. Gibt es ein eingebautes Mikrofon, wird deshalb das
+      genommen und das Headset gar nicht erst als Eingang geöffnet.
+   2. startLevelMeter() hängt am AudioContext der Wiedergabe statt einen
+      zweiten aufzumachen — ein frisch erzeugter AudioContext lässt iOS die
+      Audio-Hardware neu aushandeln, was die gerade laufende Wiedergabe
+      hörbar stört.
    ========================================================================== */
 
 let recStream = null;
@@ -10341,6 +10370,125 @@ let recStarting = false;
 let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
+
+/* ---------- Mikrofon ----------
+   echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
+   gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
+   schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
+   Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit, und
+   zwar ausnahmslos: die Echo-Unterdrückung wäre das einzige Mittel gegen
+   einen über Lautsprecher mitlaufenden Song im Mikrofon, kostet dafür aber
+   jede Aufnahme Klang. Mitsingen zum laufenden Song geht deshalb nur mit
+   Kopfhörern. */
+const RECORDING_CONSTRAINTS = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
+function recConstraints() {
+  return { ...RECORDING_CONSTRAINTS };
+}
+
+/* Gerätenamen sind je nach System und Sprache verschieden — geprüft wird
+   deshalb auf die Bestandteile, die sich in der Praxis wiederholen. Ein
+   Treffer ist ein Verdacht, kein Beweis: entscheidend ist die Abtastrate,
+   die aber nicht jeder Browser herausgibt (Safari meist nicht). */
+const REC_HEADSET_LABEL_RE = /bluetooth|airpods|air pods|beats|buds|headset|hands[\s-]?free|freisprech|\bhfp\b|\bbt\b/i;
+
+function isLikelyHeadsetInput(label) {
+  return REC_HEADSET_LABEL_RE.test(String(label || ''));
+}
+
+/**
+ * Beurteilt den geöffneten Eingang: 'ok', 'narrowband' (nachgewiesene
+ * Telefonbandbreite) oder 'headset' (Verdacht allein aus dem Namen).
+ * 16 000 Hz ist das Breitband-Freisprechprofil, 8 000 Hz das schmalbandige;
+ * alles bis 24 000 Hz liegt unterhalb dessen, was ein Mikrofon für Gesang
+ * liefern sollte.
+ */
+function recInputQuality({ label = '', sampleRate = 0 } = {}) {
+  // Eine bekannte Abtastrate ist die härtere Auskunft als der Gerätename:
+  // ein Kopfhörer, der in voller Bandbreite aufnimmt, braucht keine Warnung.
+  if (sampleRate > 0) return sampleRate <= 24000 ? 'narrowband' : 'ok';
+  if (isLikelyHeadsetInput(label)) return 'headset';
+  return 'ok';
+}
+
+/**
+ * Sucht ein eingebautes Mikrofon, wenn der offene Eingang nach Headset
+ * aussieht. 'default' und 'communications' sind Verweise auf genau die
+ * Systemvorgabe, die gerade das Headset ist — die würden dasselbe Gerät
+ * erneut öffnen und sind deshalb keine Kandidaten.
+ */
+function pickBuiltInMicId(devices, currentLabel) {
+  if (!isLikelyHeadsetInput(currentLabel)) return null;
+  for (const device of devices || []) {
+    if (device.kind !== 'audioinput') continue;
+    if (!device.deviceId || device.deviceId === 'default' || device.deviceId === 'communications') continue;
+    if (isLikelyHeadsetInput(device.label)) continue;
+    return device.deviceId;
+  }
+  return null;
+}
+
+function recStreamInfo(stream) {
+  const track = stream?.getAudioTracks?.()[0];
+  const info = track?.getSettings?.() || {};
+  return { label: track?.label || '', sampleRate: info.sampleRate || 0, channelCount: info.channelCount || 0 };
+}
+
+/**
+ * Weicht auf das eingebaute Mikrofon aus, wenn der Browser das eines
+ * Bluetooth-Kopfhörers erwischt hat. Das ist nicht nur eine Frage der
+ * Aufnahme: solange dessen Mikrofon offen ist, bleibt der Kopfhörer im
+ * Freisprechprofil und gibt auch den Song nur in Telefonqualität wieder.
+ * Deshalb wird der alte Stream vorher freigegeben — erst das lässt das
+ * System zurück ins Musikprofil schalten.
+ */
+async function preferWideBandMic(stream) {
+  const info = recStreamInfo(stream);
+  if (recInputQuality(info) === 'ok') return stream;
+  if (!navigator.mediaDevices?.enumerateDevices) return stream;
+
+  let deviceId = null;
+  try {
+    deviceId = pickBuiltInMicId(await navigator.mediaDevices.enumerateDevices(), info.label);
+  } catch (err) {
+    dlog('rec:devices:fail', { name: err?.name });
+    return stream;
+  }
+  if (!deviceId) return stream;
+
+  for (const track of stream.getTracks()) track.stop();
+  try {
+    const better = await navigator.mediaDevices.getUserMedia({
+      audio: { ...recConstraints(), deviceId: { exact: deviceId } },
+    });
+    dlog('rec:mic:switched', { sampleRate: recStreamInfo(better).sampleRate });
+    return better;
+  } catch (err) {
+    // Das Wunschgerät ließ sich nicht öffnen (belegt, verschwunden, vom
+    // Browser nicht wählbar) — dann lieber die Systemvorgabe in
+    // Telefonqualität als gar keine Aufnahme.
+    dlog('rec:mic:switchfail', { name: err?.name });
+    return navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
+  }
+}
+
+/** Sagt nach dem Öffnen, wenn der Eingang die Aufnahme hörbar begrenzt. */
+function updateRecInputWarning(stream) {
+  const el = $('#rec-input-warning');
+  if (!el) return;
+  const info = recStreamInfo(stream);
+  const quality = stream ? recInputQuality(info) : 'ok';
+  dlog('rec:input', { quality, sampleRate: info.sampleRate, channelCount: info.channelCount });
+  if (quality === 'ok') {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  el.textContent = quality === 'narrowband'
+    ? 'Das Mikrofon läuft in Telefonqualität — typisch für Bluetooth-Kopfhörer, die beim Aufnehmen aufs Freisprechprofil umschalten. Dann klingt auch der Song dumpf. Kabelgebundene Kopfhörer oder Bluetooth aus helfen.'
+    : 'Aufnahme über ein Bluetooth-Headset. Viele Kopfhörer schalten dabei auf Telefonqualität um — auch für die Wiedergabe. Kabelgebundene Kopfhörer klingen deutlich besser.';
+  el.hidden = false;
+}
 
 /** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
@@ -10375,24 +10523,27 @@ async function startRecording() {
 
   recStarting = true;
   try {
-    // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
-    // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
-    // schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
-    // Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
-    recStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-    });
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
+    // Erst danach steht fest, welches Mikrofon der Browser genommen hat —
+    // ein Bluetooth-Kopfhörer würde Aufnahme und Wiedergabe zugleich auf
+    // Telefonqualität herunterziehen.
+    recStream = await preferWideBandMic(recStream);
   } catch (err) {
     recStarting = false;
+    if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
     bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
     return;
   }
+  updateRecInputWarning(recStream);
 
   recMimeType = pickRecMimeType();
   try {
-    recMediaRecorder = recMimeType
-      ? new MediaRecorder(recStream, { mimeType: recMimeType })
-      : new MediaRecorder(recStream);
+    // Ohne Angabe wählen manche Browser eine sehr sparsame Datenrate; 128
+    // kbit/s kosten pro Probenmitschnitt wenige Megabyte und nehmen der
+    // Aufnahme den Kompressionsschleier.
+    const recorderOptions = { audioBitsPerSecond: 128000 };
+    if (recMimeType) recorderOptions.mimeType = recMimeType;
+    recMediaRecorder = new MediaRecorder(recStream, recorderOptions);
   } catch (err) {
     recStarting = false;
     for (const track of recStream.getTracks()) track.stop();
@@ -10439,6 +10590,7 @@ function stopRecording() {
    davon nichts mit und läuft unbeeinflusst weiter. */
 
 let levelCtx = null;
+let levelCtxOwned = false;   // eigener Kontext (nur dann schließen) statt dem der Wiedergabe
 let levelAnalyser = null;
 let levelSource = null;
 let levelRafId = null;
@@ -10479,7 +10631,14 @@ function setupLevelCanvas() {
 
 function startLevelMeter(stream) {
   try {
-    levelCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Bevorzugt der Kontext, der ohnehin schon läuft: ein zweiter, frisch
+    // erzeugter AudioContext lässt iOS die Audio-Hardware neu aushandeln —
+    // beim Mitsingen zum laufenden Song setzt die Wiedergabe dabei hörbar
+    // aus. Der Analyser hängt an keinem Ausgang, kann also auch keine
+    // Rückkopplung erzeugen.
+    levelCtxOwned = !Audio.ctx;
+    levelCtx = Audio.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (levelCtx.state === 'suspended') levelCtx.resume().catch(() => {});
     levelSource = levelCtx.createMediaStreamSource(stream);
     levelAnalyser = levelCtx.createAnalyser();
     levelAnalyser.fftSize = 1024;
@@ -10581,7 +10740,11 @@ function stopLevelMeter() {
   if (levelRafId) { cancelAnimationFrame(levelRafId); levelRafId = null; }
   if (levelSource) { levelSource.disconnect(); levelSource = null; }
   levelAnalyser = null;
-  if (levelCtx) { levelCtx.close().catch(() => {}); levelCtx = null; }
+  // Der Kontext der Wiedergabe gehört der App, nicht der Pegelanzeige — ihn
+  // zu schließen würde den Ton für den Rest der Sitzung abschalten.
+  if (levelCtx && levelCtxOwned) levelCtx.close().catch(() => {});
+  levelCtx = null;
+  levelCtxOwned = false;
   $('#rec-meter').hidden = true;
   $('#rec-meter-warning').hidden = true;
 }
@@ -14411,6 +14574,75 @@ function runSelfTests() {
   if (lightshowVoiceIndex('LEAD') !== 0) failed.push('lightshowVoiceIndex("LEAD") müsste 0 sein');
   checks++;
   if (lightshowVoiceColor('LEAD') !== VOICE_COLOR.FULL) failed.push('lightshowVoiceColor("LEAD") müsste VOICE_COLOR.FULL sein');
+
+  // 8. REC: Aufnahmefilter, Headset-Erkennung und Mikrofonwahl.
+  // Die drei Telefonfilter bleiben ausnahmslos aus — auch beim Ausweichen
+  // aufs eingebaute Mikrofon, wo die Bedingungen ein zweites Mal gesetzt
+  // werden.
+  for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl']) {
+    checks++;
+    if (recConstraints()[key] !== false) failed.push(`recConstraints().${key} müsste false sein`);
+  }
+
+  const headsetLabels = [
+    ['AirPods Pro von Jakob', true],
+    ['WH-1000XM4 (Bluetooth)', true],
+    ['Freisprecheinrichtung (Jabra)', true],
+    ['Headset-Mikrofon', true],
+    ['Galaxy Buds', true],
+    ['Standard - Mikrofon (Realtek Audio)', false],
+    ['iPhone-Mikrofon', false],
+    ['Eingebautes Mikrofon', false],
+    ['', false],
+  ];
+  for (const [label, expected] of headsetLabels) {
+    checks++;
+    if (isLikelyHeadsetInput(label) !== expected) {
+      failed.push(`isLikelyHeadsetInput("${label}") = ${!expected}, erwartet ${expected}`);
+    }
+  }
+
+  // Die nachgewiesene Abtastrate schlägt den Namen: ein Headset, das in
+  // voller Bandbreite läuft, braucht keine Warnung.
+  const qualityCases = [
+    [{ label: 'AirPods', sampleRate: 16000 }, 'narrowband'],
+    [{ label: 'Eingebautes Mikrofon', sampleRate: 8000 }, 'narrowband'],
+    [{ label: 'AirPods', sampleRate: 0 }, 'headset'],
+    [{ label: 'AirPods', sampleRate: 48000 }, 'ok'],
+    [{ label: 'Eingebautes Mikrofon', sampleRate: 48000 }, 'ok'],
+    [{}, 'ok'],
+  ];
+  for (const [input, expected] of qualityCases) {
+    checks++;
+    const got = recInputQuality(input);
+    if (got !== expected) {
+      failed.push(`recInputQuality(${JSON.stringify(input)}) = ${got}, erwartet ${expected}`);
+    }
+  }
+
+  const micDevices = [
+    { kind: 'audioinput', deviceId: 'default', label: 'Standard - AirPods' },
+    { kind: 'audioinput', deviceId: 'communications', label: 'Kommunikation - AirPods' },
+    { kind: 'audiooutput', deviceId: 'spk', label: 'Lautsprecher' },
+    { kind: 'audioinput', deviceId: 'bt1', label: 'AirPods Pro' },
+    { kind: 'audioinput', deviceId: 'mic1', label: 'Eingebautes Mikrofon' },
+  ];
+  checks++;
+  if (pickBuiltInMicId(micDevices, 'AirPods Pro') !== 'mic1') {
+    failed.push('pickBuiltInMicId müsste das eingebaute Mikrofon wählen');
+  }
+  checks++;
+  if (pickBuiltInMicId(micDevices, 'Eingebautes Mikrofon') !== null) {
+    failed.push('ohne Headset-Verdacht darf pickBuiltInMicId nicht umschalten');
+  }
+  checks++;
+  if (pickBuiltInMicId([{ kind: 'audioinput', deviceId: 'bt1', label: 'AirPods Pro' }], 'AirPods Pro') !== null) {
+    failed.push('ohne Alternative müsste pickBuiltInMicId beim Headset bleiben');
+  }
+  checks++;
+  if (pickBuiltInMicId(undefined, 'AirPods') !== null) {
+    failed.push('pickBuiltInMicId müsste eine fehlende Geräteliste verkraften');
+  }
 
   const total = checks;
   if (failed.length) {

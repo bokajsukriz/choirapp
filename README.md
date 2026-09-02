@@ -57,6 +57,31 @@ Titelerkennung, Speicher-Warteschlangen, Aufräumlogik). Fokusreihenfolge,
 Kontrast im echten Rendering, Quota-Verhalten und Service-Worker-Updates
 lassen sich nur manuell im Browser prüfen.
 
+## Mitsingen und aufnehmen zugleich
+
+REC (im Player unter „Loops") und die Wiedergabe laufen unabhängig
+nebeneinander: Der Song kann weiterlaufen, während man sich dazu aufnimmt.
+Wie gut das klingt, entscheidet allerdings das Betriebssystem, nicht die App.
+Drei Punkte dazu:
+
+- **Nur mit Kopfhörern.** Über Lautsprecher landet der Song im Mikrofon;
+  das einzige Mittel dagegen wäre die Echo-Unterdrückung des Systems, und
+  die bleibt bewusst ausnahmslos aus (`RECORDING_CONSTRAINTS`) — sie ist für
+  Telefonate gebaut, dünnt Gesang aus und schneidet leise Stellen weg. Eine
+  Aufnahme, die immer roh und unbearbeitet ist, wiegt schwerer als das
+  Mitsingen ohne Kopfhörer.
+- **Bluetooth-Ausweichen.** Öffnet ein Browser das Mikrofon eines
+  Bluetooth-Kopfhörers, schaltet der vom Musik- ins Freisprechprofil: ab da
+  laufen *beide* Richtungen mono in Telefonbandbreite (8–16 kHz). Der Song
+  klingt dumpf und die Aufnahme erst recht. Gibt es ein eingebautes
+  Mikrofon, nimmt die App deshalb das und öffnet das Headset gar nicht erst
+  (`preferWideBandMic()`); bleibt nur das Headset, erscheint ein Hinweis
+  unter dem REC-Knopf. Zuverlässig gut ist nur eine Kabelverbindung.
+- **Ein AudioContext statt zwei.** Die Pegelanzeige hängt am AudioContext
+  der Wiedergabe. Ein zweiter, frisch erzeugter Kontext lässt iOS die
+  Audio-Hardware neu aushandeln — die laufende Wiedergabe setzt dabei
+  hörbar aus.
+
 ## Lichtshow
 
 Unter Einstellungen → Lichtshow gibt es vier kleine Bühnen-Einlagen für den
