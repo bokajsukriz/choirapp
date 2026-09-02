@@ -432,6 +432,11 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   text-align: left;
 }
 
+/* Songwahl im allgemeinen Recorder (siehe renderRecSongPicker) — die
+   gewählte Zeile bekommt einen Akzentrand statt einer eigenen Auswahlmaske. */
+.song-pick-list .list-item[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb),.09); }
+.song-pick-list .list-item .pick-check { color: var(--accent); flex: 0 0 auto; }
+
 /* Titel und Stimm-Kürzel laufen als ein Textfluss: die Badges hängen sich
    direkt an den Titel und brechen nur um, wenn die Zeile voll ist. */
 /* Titel und Stimm-Pillen als ein Block: die Pillen hängen sich direkt an
@@ -2769,13 +2774,13 @@ input[type="checkbox"] {
      ========================================================================== -->
 <section class="player" id="recorder-view" hidden aria-labelledby="recorder-title">
   <div class="player-head">
-    <button class="icon-btn" id="recorder-back" type="button" aria-label="Zurück zu den Liedern" data-i18n-aria="recorder.backAria">
+    <button class="icon-btn" id="recorder-back" type="button" aria-label="Zurück zu den Liedern">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M15 5l-7 7 7 7"/>
       </svg>
     </button>
     <div class="grow">
-      <strong id="recorder-title" data-i18n="songs.recordAria">Aufnehmen</strong>
+      <strong id="recorder-title">Aufnehmen</strong>
     </div>
   </div>
 
@@ -2825,11 +2830,10 @@ input[type="checkbox"] {
     </div>
 
     <div class="card" id="recorder-song-picker" hidden>
-      <p class="section-title" style="margin:0 0 10px" data-i18n="recorder.chooseSongTitle">Song wählen</p>
+      <p class="section-title" style="margin:0 0 10px">Song wählen</p>
       <input class="search-input" id="rec-song-search" type="search" inputmode="search"
              autocomplete="off" autocorrect="off" spellcheck="false"
-             placeholder="Song suchen …" aria-label="Song suchen"
-             data-i18n-placeholder="songs.searchPlaceholder" data-i18n-aria="songs.searchAria">
+             placeholder="Song suchen …" aria-label="Song suchen">
       <div class="stack song-pick-list" id="rec-song-list" style="margin-top:10px"></div>
     </div>
   </div>
@@ -4365,8 +4369,6 @@ const STRINGS = {
     'songs.searchAria': 'Song suchen',
     'songs.feelingLuckyAria': 'Feeling Lucky — zufälliges Lied abspielen',
     'songs.recordAria': 'Aufnehmen',
-    'recorder.backAria': 'Zurück zu den Liedern',
-    'recorder.chooseSongTitle': 'Song wählen',
 
     'playlists.addTitle': 'Setliste hinzufügen',
     'playlists.newBtn': 'Neu',
@@ -4577,8 +4579,6 @@ const STRINGS = {
     'songs.searchAria': 'Search song',
     'songs.feelingLuckyAria': 'Feeling Lucky — play a random song',
     'songs.recordAria': 'Record',
-    'recorder.backAria': 'Back to songs',
-    'recorder.chooseSongTitle': 'Choose song',
 
     'playlists.addTitle': 'Add setlist',
     'playlists.newBtn': 'New',
@@ -4789,8 +4789,6 @@ const STRINGS = {
     'songs.searchAria': 'Szukaj utworu',
     'songs.feelingLuckyAria': 'Feeling Lucky — odtwórz losowy utwór',
     'songs.recordAria': 'Nagraj',
-    'recorder.backAria': 'Wróć do utworów',
-    'recorder.chooseSongTitle': 'Wybierz utwór',
 
     'playlists.addTitle': 'Dodaj setlistę',
     'playlists.newBtn': 'Nowa',
@@ -5313,6 +5311,25 @@ function normalizeTitle(s) {
     .replace(/[^\p{L}\p{N} ]+/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Songs, deren (normalisierter) Titel `query` enthält — leere Suche liefert
+ *  alles unverändert zurück. Geteilt zwischen der Bibliothek (renderSongs)
+ *  und dem allgemeinen Recorder (renderRecSongPicker). */
+function filterSongsByQuery(songs, query) {
+  const q = normalizeTitle(query);
+  if (!q) return songs;
+  return songs.filter((s) => (s.normTitle || normalizeTitle(s.title || '')).includes(q));
+}
+
+/** Ob sich `rawQuery` als neuer Platzhalter anlegen ließe — nur wenn kein
+ *  Song exakt diesen Titel trägt (sonst würde ein zweiter, doppelter Eintrag
+ *  entstehen). Geteilt wie filterSongsByQuery. */
+function canCreatePlaceholderFor(songs, rawQuery) {
+  const trimmed = (rawQuery || '').trim();
+  if (!trimmed) return false;
+  const q = normalizeTitle(trimmed);
+  return !songs.some((s) => (s.normTitle || normalizeTitle(s.title || '')) === q);
 }
 
 // Versionsmarker am Ende eines Ordnernamens (4.5). Nur für die Erkennung
@@ -5943,22 +5960,21 @@ async function renderSongs() {
   }
 
   // --- Filtern und sortieren --------------------------------------------
-  const q = normalizeTitle(songQuery);
   // normTitle liegt am Datensatz — beim Tippen nicht für jeden Song neu
   // berechnen. Der Zwischenspeicher wird hier nie umsortiert, deshalb eine
   // eigene Liste.
   let visible = [...songs];
   if (songFilter) visible = visible.filter((s) => (s.collections || []).includes(songFilter));
-  if (q) visible = visible.filter((s) => (s.normTitle || normalizeTitle(s.title || '')).includes(q));
+  visible = filterSongsByQuery(visible, songQuery);
 
   visible.sort((a, b) => collator.compare(a.title || '', b.title || ''));
   lastVisibleSongs = visible;
 
   // Kein Song trägt exakt diesen Titel — dann lässt sich die Suche auch als
-  // Platzhalter anlegen (genau wie in der Setliste, siehe renderPlaylistCandidates).
+  // Platzhalter anlegen (genau wie in der Setliste, siehe renderPlaylistCandidates,
+  // und im allgemeinen Recorder, siehe renderRecSongPicker).
   const rawQuery = songQuery.trim();
-  const canCreatePlaceholder = !!rawQuery
-    && !songs.some((s) => (s.normTitle || normalizeTitle(s.title || '')) === q);
+  const canCreatePlaceholder = canCreatePlaceholderFor(songs, rawQuery);
 
   if (!visible.length && !canCreatePlaceholder) {
     host.append(el('div', { class: 'empty' },
@@ -8480,6 +8496,9 @@ function closeRecorderView() {
   recorderOpen = false;
   $('#recorder-view').hidden = true;
   abandonRecorderSession();
+  // Nichts (mehr) offen hier — zurück auf den Normalzustand, damit ein
+  // späterer Blick auf recHost nicht die geschlossene Ansicht meint.
+  if (!(recMediaRecorder && recMediaRecorder.state !== 'inactive') && !pendingTake) recHost = 'player';
 }
 
 /** Zurück-Pfeil: bewusster Tipp, hier ist Zeit zu fragen (anders als beim
@@ -10691,7 +10710,9 @@ function renderPendingTake() {
   const has = !!pendingTake;
   rn('controls').hidden = has;
   rn('take').hidden = !has;
+  if (recHost === 'recorder') $('#recorder-song-picker').hidden = !has;
   if (!has) { takeDraft = null; return; }
+  const isNew = !takeDraft;
   if (!takeDraft) {
     const suggestion = recHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
     takeDraft = { name: suggestion, voice: null, songId: null };
@@ -10705,6 +10726,11 @@ function renderPendingTake() {
   drawTakeWaveform();
   updateRecPreviewButton();
   updateRecSaveLocked();
+  // Kein Song ist vorausgewählt — die Liste erscheint erst mit dem Take.
+  if (recHost === 'recorder' && isNew) {
+    $('#rec-song-search').value = '';
+    renderRecSongPicker();
+  }
 }
 
 /** Beschriftung des Stimme-Knopfs auf der Take-Karte. */
@@ -10780,6 +10806,70 @@ async function onTakeDiscardClick() {
 $('#btn-rec-discard').addEventListener('click', onTakeDiscardClick);
 $('#btn-recorder-discard').addEventListener('click', onTakeDiscardClick);
 
+const REC_SONG_PICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+
+// Läuft renderRecSongPicker() mehrfach überlappend (schnelles Tippen in der
+// Suche), darf nur der jeweils letzte Aufruf zeichnen — dieselbe Regel wie
+// bei renderQueue()/queueRenderToken.
+let recSongPickerToken = 0;
+
+/**
+ * Songauswahl im allgemeinen Recorder — die Auswahl ist die Songliste selbst,
+ * kein Dialog. Teilt sich Filter- und Platzhalter-Logik mit renderSongs()
+ * (siehe filterSongsByQuery/canCreatePlaceholderFor) statt sie zu kopieren.
+ * Kein Song ist vorausgewählt; die gewählte Zeile merkt sich takeDraft.songId.
+ */
+async function renderRecSongPicker() {
+  const token = ++recSongPickerToken;
+  const host = $('#rec-song-list');
+  const query = $('#rec-song-search').value;
+
+  let songs = [];
+  try { songs = await DB.metaByType('song').catch(() => []); } catch (err) { console.error(err); }
+  if (token !== recSongPickerToken) return;
+
+  const rawQuery = query.trim();
+  const visible = filterSongsByQuery(songs, query).sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  host.textContent = '';
+
+  const selectSong = (song) => {
+    takeDraft.songId = song.id;
+    renderRecSongPicker();
+    updateRecSaveLocked();
+  };
+
+  if (canCreatePlaceholderFor(songs, rawQuery)) {
+    host.append(el('button', {
+      class: 'list-item', type: 'button', style: 'margin-bottom:10px',
+      onclick: async () => selectSong(await createPlaceholderSong(rawQuery)),
+    },
+      el('div', { style: 'flex:1; min-width:0' },
+        el('strong', { text: `„${rawQuery}" als neues Lied anlegen` }),
+        el('div', { class: 'small muted', text: 'Verbindet sich beim nächsten Import automatisch.' }))));
+  }
+
+  for (const song of visible) {
+    const picked = takeDraft?.songId === song.id;
+    const row = el('button', {
+      class: 'list-item', type: 'button', 'aria-pressed': picked ? 'true' : 'false',
+      onclick: () => selectSong(song),
+    }, el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) })));
+    if (picked) {
+      const check = el('span', { class: 'pick-check', 'aria-hidden': 'true' });
+      check.innerHTML = REC_SONG_PICK_ICON;
+      row.append(check);
+    }
+    host.append(row);
+  }
+}
+
+// Entprellt wie die Songsuche in der Bibliothek (siehe #search).
+let recSongSearchTimer = 0;
+$('#rec-song-search').addEventListener('input', () => {
+  clearTimeout(recSongSearchTimer);
+  recSongSearchTimer = setTimeout(renderRecSongPicker, 120);
+});
+
 /**
  * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
  * `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". `current`
@@ -10806,13 +10896,31 @@ async function pickRecordingVoice(current) {
   return value === 'NONE' ? null : value;
 }
 
-// Speichert ohne jeden Dialog — Name und Stimme stehen schon über die
-// Take-Karte fest (siehe takeDraft). Der allgemeine Recorder (R7/R8) erweitert
-// diesen Handler um die Songwahl; im Player ist der Song immer schon bekannt.
-$('#btn-rec-save').addEventListener('click', async () => {
-  if (!pendingTake || !takeDraft || !playerSong) return;
+/**
+ * Speichert ohne jeden Dialog — Name und Stimme stehen schon über die
+ * Take-Karte fest (siehe takeDraft). Im Player ist der Song immer schon
+ * bekannt; im allgemeinen Recorder kommt er aus takeDraft.songId
+ * (siehe renderRecSongPicker) und wird hier zuerst geprüft — gesperrt, aber
+ * antippbar, damit der Tipp erklären kann, was fehlt (siehe .take-icon[aria-disabled]).
+ */
+async function onTakeSaveClick() {
+  if (!pendingTake || !takeDraft) return;
 
-  const suggestion = `REC ${songRecordings.length + 1}`;
+  let song;
+  if (recHost === 'recorder') {
+    if (!takeDraft.songId) {
+      banner('Bitte zuerst einen Song wählen — dann lässt sich der REC speichern.');
+      $('#rec-song-search').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    try { song = await DB.metaGet(`song:${takeDraft.songId}`); } catch (err) { console.error(err); }
+    if (!song) { banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' }); return; }
+  } else {
+    song = playerSong;
+    if (!song) return;
+  }
+
+  const suggestion = recHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
   const name = takeDraft.name.trim() || suggestion;
   const voice = takeDraft.voice;
 
@@ -10824,7 +10932,7 @@ $('#btn-rec-save').addEventListener('click', async () => {
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const recording = {
     key: `recording:${id}`, type: 'recording', id,
-    songId: playerSong.id, songTitle: playerSong.title,
+    songId: song.id, songTitle: song.title,
     name, voice, fileKey, mimeType, duration,
     size: blob.size,
     createdAt: new Date().toISOString(),
@@ -10832,12 +10940,22 @@ $('#btn-rec-save').addEventListener('click', async () => {
   await DB.metaPut(recording);
 
   if (audioPreview?.tag?.pending) await endRecordingPreview();
+  const wasRecorder = recHost === 'recorder';
   pendingTake = null;
   resetLevelTakeHistory();
   renderPendingTake();
-  await loadSongRecordings();
   banner('REC gespeichert.', { kind: 'ok' });
-});
+  if (wasRecorder) {
+    // Der Player zeigt evtl. denselben Song schon offen — sonst fehlt der
+    // neue Eintrag im Loops-Reiter, bis man den Song erneut öffnet.
+    history.back();
+    if (playerSong?.id === song.id) await loadSongRecordings();
+  } else {
+    await loadSongRecordings();
+  }
+}
+$('#btn-rec-save').addEventListener('click', onTakeSaveClick);
+$('#btn-recorder-save').addEventListener('click', onTakeSaveClick);
 
 async function loadSongRecordings() {
   if (!playerSong) { songRecordings = []; return; }
