@@ -540,12 +540,23 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Schwebender +-Knopf auf der Songs-Übersicht (siehe btn-songs-import-fab):
    position:fixed statt absolute, weil #view-songs innerhalb von .app-main
    scrollt — der Knopf soll dabei stehen bleiben. bottom rechnet die Höhe
-   der Navigationsleiste mit ein, sonst läge er dahinter. */
+   der Navigationsleiste mit ein, sonst läge er dahinter. Die Akzentfarbe ist
+   bewusst etwas gedeckt (color-mix mit Grau) statt im vollen Pink — der
+   Knopf soll präsent, aber nicht grell sein; die einfache background-Zeile
+   davor ist der Fallback für Browser ohne color-mix(). z-index über dem
+   Menü-Hintergrund (siehe .fab-menu-backdrop): bei offenem Menü macht
+   openModal() #main (und damit auch diesen Knopf) inert — ein Tipp auf die
+   sichtbare Kreisfläche trifft dadurch gar nicht mehr den Knopf, sondern
+   fällt zum darunterliegenden, nicht inerten Backdrop durch und schließt so
+   das Menü genauso wie ein Tipp daneben. Gemischt mit Weiß statt Grau: heller
+   und blasser als die volle Akzentfarbe, aber nicht dunkler — --accent-ink
+   bleibt darauf gut lesbar, weil hellere Flächen den Kontrast zur dunklen
+   Tinte nur vergrößern. */
 .songs-import-fab {
   position: fixed;
   right: calc(16px + var(--safe-right));
   bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
-  z-index: 5;
+  z-index: 7;
   width: 56px;
   height: 56px;
   min-width: 56px;
@@ -553,38 +564,108 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-radius: 50%;
   border: 0;
   background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 48%, white 52%);
   color: var(--accent-ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  box-shadow: 0 3px 10px rgba(0,0,0,.2);
 }
 .songs-import-fab:active { transform: scale(.94); }
-.songs-import-fab svg { width: 26px; height: 26px; }
+.songs-import-fab svg {
+  width: 26px;
+  height: 26px;
+  transition: transform .18s ease;
+}
+/* + dreht sich zu × — ersetzt den früheren „Abbrechen"-Eintrag im Menü:
+   der offensichtliche Weg, es wieder zu schließen, ist derselbe Knopf. */
+.songs-import-fab[aria-expanded="true"] svg { transform: rotate(45deg); }
+
+/* Menü, das aus dem +-Knopf herauswächst (siehe .fab-menu-backdrop weiter
+   unten): eigener, unsichtbarer Vollbild-Layer nur zum Einfangen von Klicks
+   außerhalb, darin das eigentliche Menü rechtsbündig über dem Knopf verankert
+   und mit transform-origin unten rechts skaliert — wirkt dadurch wie eine
+   Erweiterung des Knopfs, nicht wie ein eigenständiger Dialog. */
+.fab-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  background: transparent;
+}
+.fab-menu {
+  position: absolute;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px + 56px + 10px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(240px, calc(100vw - 32px));
+  transform-origin: bottom right;
+  animation: fab-menu-in .16s ease-out;
+}
+@keyframes fab-menu-in {
+  from { opacity: 0; transform: scale(.4) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fab-menu { animation: none; }
+}
+.fab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), .28);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  color: var(--text);
+  font-weight: 650;
+  font-size: 0.92rem;
+  text-align: left;
+  box-shadow: 0 3px 10px rgba(0,0,0,.16);
+}
+.fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
+.fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
 
 /* Hinweispfeil auf den +-Knopf bei leerer Bibliothek (siehe
    songs-import-hint): eigenständig fixiert statt Kind des +-Knopfs, damit
    Pfeilspitze und Knopf unabhängig voneinander positioniert werden können.
    Rein dekorativ (aria-hidden, pointer-events:none) — der +-Knopf selbst
-   trägt schon ein aria-label. */
+   trägt schon ein aria-label. Das sanfte Auf-und-Ab (siehe Keyframes unten)
+   holt den Blick dorthin, ohne auf Dauer zu nerven — deshalb behutsam und
+   respektiert prefers-reduced-motion. */
 .import-fab-hint {
   position: fixed;
-  right: calc(4px + var(--safe-right));
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 78px);
+  right: calc(24px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 80px);
   z-index: 4;
-  width: 100px;
-  color: var(--accent);
-  text-align: right;
+  width: 120px;
+  text-align: center;
   pointer-events: none;
+  animation: import-fab-hint-bob 2.4s ease-in-out infinite;
+}
+@keyframes import-fab-hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-fab-hint { animation: none; }
 }
 .import-fab-hint-label {
-  display: block;
+  display: inline-block;
+  background: var(--surface);
+  border: 1px solid var(--pill-line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin-bottom: 4px;
+  color: var(--accent);
   font-style: italic;
+  font-weight: 700;
   font-size: 0.8rem;
-  font-weight: 650;
-  margin-bottom: 2px;
+  letter-spacing: .01em;
+  box-shadow: 0 3px 10px rgba(0,0,0,.14);
 }
-.import-fab-hint svg { display: block; width: 76px; height: 100px; margin-left: auto; }
+.import-fab-hint-arrow { display: block; width: 54px; height: 108px; margin: 0 auto; color: var(--accent); }
 
 /* ---------- Auswahlmaske vor dem Import --------------------------------- */
 
@@ -2799,30 +2880,27 @@ input[type="checkbox"] {
     <div class="filterbar" id="filterbar" hidden></div>
     <div id="song-list-host"></div>
 
-    <!-- Schwebender Import-Einstieg: fragt vor dem Import nach der Quelle
-         (Dropbox-ZIP oder einzelne Recordings) statt selbst schon eine der
-         beiden Einstiegsansichten in den Einstellungen festzulegen. -->
-    <button class="songs-import-fab" id="btn-songs-import-fab" type="button" aria-label="Songs importieren">
+    <!-- Schwebender Import-Einstieg: öffnet ein Menü, das direkt aus dem
+         Knopf herauswächst (siehe .fab-menu-backdrop/.fab-menu), statt eine
+         der Einstiegsansichten in den Einstellungen selbst festzulegen. -->
+    <button class="songs-import-fab" id="btn-songs-import-fab" type="button"
+            aria-label="Songs importieren" aria-haspopup="true" aria-expanded="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 5v14M5 12h14"/>
       </svg>
     </button>
 
-    <!-- Handgezeichneter Hinweispfeil auf den +-Knopf, nur solange die
-         Bibliothek leer ist (siehe renderSongs) — gewöhnt von Anfang an an
-         denselben Weg, den man auch später zum Nachimportieren braucht. -->
+    <!-- Hinweispfeil auf den +-Knopf, nur solange die Bibliothek leer ist
+         (siehe renderSongs) — gewöhnt von Anfang an an denselben Weg, den
+         man auch später zum Nachimportieren braucht: erst gerade nach
+         unten, dann ein Bogen zum Knopf. -->
     <div class="import-fab-hint" id="songs-import-hint" hidden aria-hidden="true">
       <span class="import-fab-hint-label">Songs hier importieren</span>
-      <svg viewBox="0 0 100 130" aria-hidden="true">
-        <filter id="import-fab-hint-sketch" x="-30%" y="-30%" width="160%" height="160%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.035 0.09" numOctaves="2" seed="7" result="n"/>
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="5"/>
-        </filter>
-        <g filter="url(#import-fab-hint-sketch)" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 12 C 44 4, 66 46, 46 76 C 32 96, 58 100, 70 112"/>
-          <path d="M70 112 L54 104"/>
-          <path d="M70 112 L60 126"/>
-        </g>
+      <svg class="import-fab-hint-arrow" viewBox="0 0 54 108" aria-hidden="true">
+        <path fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"
+              d="M27 4 C 19 24, 33 42, 25 60 C 19 76, 35 78, 44 92"/>
+        <path fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"
+              d="M44 92 L30 87 M44 92 L38 104"/>
       </svg>
     </div>
   </section>
@@ -3135,6 +3213,37 @@ input[type="checkbox"] {
 
   </section>
 </main>
+
+<!-- Menü, das der +-Knopf auf der Songs-Übersicht öffnet (siehe
+     openImportMenu/closeImportMenu, btn-songs-import-fab): eigener,
+     unsichtbarer Vollbild-Layer nur zum Einfangen von Klicks außerhalb —
+     muss wie #overlay ein direktes Kind von body sein, sonst würde
+     openModal()s inert-Logik #main (und damit das Menü selbst) lahmlegen.
+     Kein „Abbrechen" nötig: ein Klick auf den Backdrop oder erneut auf den
+     Knopf schließt es. -->
+<div class="fab-menu-backdrop" id="songs-fab-backdrop" hidden>
+  <div class="fab-menu" id="songs-fab-menu" role="menu" aria-label="Songs importieren">
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 3l7 7-11 11H3v-7z"/><path d="M13 5.5L18.5 11"/>
+      </svg>
+      <span>Platzhalter hinzufügen</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="recordings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21M9 21h6"/>
+      </svg>
+      <span>Aus Recordings</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="dropbox">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7 3l5 3.2L7 9.4 2 6.2 7 3z"/><path d="M17 3l5 3.2-5 3.2-5-3.2L17 3z"/>
+        <path d="M2 12.6l5 3.2 5-3.2M12 12.6l5 3.2 5-3.2"/><path d="M7 19.8l5-3.2 5 3.2"/>
+      </svg>
+      <span>Aus der Dropbox</span>
+    </button>
+  </div>
+</div>
 
 <nav class="app-nav" id="nav" aria-label="Hauptnavigation">
   <button class="nav-btn" type="button" data-view="songs" aria-current="page">
@@ -3826,37 +3935,58 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
 }
 
 /**
- * Auswahl vor dem Import (siehe btn-songs-import-fab): „Songs importieren"
- * (ZIP aus Dropbox, #import-view) und „Recordings importieren" (einzelne
- * MP3s, #rec-import-input) sind zwei gleichrangige Einstiege in den
- * Einstellungen — der schwebende Knopf auf der Songs-Übersicht fragt daher
- * erst nach der Quelle, statt selbst einen der beiden festzulegen.
+ * Menü des schwebenden +-Knopfs auf der Songs-Übersicht (siehe
+ * btn-songs-import-fab/songs-fab-backdrop): „Aus der Dropbox" (ZIP,
+ * #import-view), „Aus Recordings" (einzelne MP3s, #rec-import-input) und
+ * „Platzhalter hinzufügen" sind drei gleichrangige Wege, einen Song
+ * anzulegen. Wächst optisch aus dem Knopf heraus (siehe .fab-menu-Styles)
+ * statt als eigenständiger, zentrierter Dialog zu erscheinen — kein
+ * „Abbrechen" nötig, ein Klick auf den transparenten Backdrop oder erneut
+ * auf den Knopf (jetzt ein ×) schließt es genauso.
  */
-function openImportSourceChoice() {
-  const done = (action) => { closeModal(layer); layer.remove(); action?.(); };
+const fabBackdrop = $('#songs-fab-backdrop');
+const fabMenuBtn  = $('#btn-songs-import-fab');
 
-  const box = el('div', { class: 'dialog' },
-    el('h2', { text: 'Songs importieren' }),
-    el('p', { text: 'Woher sollen die Songs kommen?' }),
-    el('div', { style: 'display:flex; flex-direction:column; gap:10px' },
-      el('button', {
-        class: 'btn btn--primary btn--block', type: 'button', text: 'Aus der Dropbox',
-        onclick: () => done(() => navigate('#import')),
-      }),
-      el('button', {
-        class: 'btn btn--block', type: 'button', text: 'Aus Recordings',
-        onclick: () => done(() => { navigate('#settings'); $('#rec-import-input').click(); }),
-      }),
-      el('button', {
-        class: 'btn btn--block', type: 'button', text: 'Abbrechen',
-        onclick: () => done(),
-      })));
+function isImportMenuOpen() { return !fabBackdrop.hidden; }
 
-  const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Songs importieren' }, box);
-  layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
-  document.body.append(layer);
-  openModal(layer, { onEscape: () => done() });
+function openImportMenu() {
+  if (isImportMenuOpen()) return;
+  fabBackdrop.hidden = false;
+  fabMenuBtn.setAttribute('aria-expanded', 'true');
+  openModal(fabBackdrop, { initialFocus: $('.fab-menu-item', fabBackdrop), onEscape: () => closeImportMenu() });
 }
+
+function closeImportMenu() {
+  if (!isImportMenuOpen()) return;
+  fabBackdrop.hidden = true;
+  fabMenuBtn.setAttribute('aria-expanded', 'false');
+  closeModal(fabBackdrop);
+}
+
+fabMenuBtn.addEventListener('click', () => (isImportMenuOpen() ? closeImportMenu() : openImportMenu()));
+fabBackdrop.addEventListener('click', (e) => { if (e.target === fabBackdrop) closeImportMenu(); });
+
+$('#songs-fab-menu').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.fab-menu-item');
+  if (!btn) return;
+  closeImportMenu();
+  if (btn.dataset.action === 'dropbox') navigate('#import');
+  else if (btn.dataset.action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); }
+  else if (btn.dataset.action === 'placeholder') {
+    const title = await promptDialog({
+      title: 'Platzhalter hinzufügen',
+      text: 'Die Aufnahme kann später ergänzt werden — Liedtext, Notizen und Setlisten funktionieren schon vorher.',
+      placeholder: 'Songtitel',
+      okLabel: 'Anlegen',
+    });
+    if (!title || !title.trim()) return;
+    const song = await createPlaceholderSong(title);
+    $('#search').value = '';
+    songQuery = '';
+    playQueue = null;
+    navigate(`#song/${song.id}`);
+  }
+});
 
 dlgOk.addEventListener('click', () => closeDialog(true));
 dlgCancel.addEventListener('click', () => closeDialog(false));
@@ -4338,7 +4468,6 @@ const STRINGS = {
 
     'songs.emptyTitle': 'Noch keine Songs',
     'songs.emptyText': 'Lade die Aufnahmen aus der Dropbox als ZIP-Datei herunter und importiere sie hier.',
-    'songs.emptyImportBtn': 'Zum Import',
     'songs.notFoundTitle': 'Nichts gefunden',
     'songs.notFoundText': 'Kein Song passt zu dieser Suche.',
     'songs.createPlaceholderSuffix': 'als Platzhalter anlegen',
@@ -4547,7 +4676,6 @@ const STRINGS = {
 
     'songs.emptyTitle': 'No songs yet',
     'songs.emptyText': 'Download the recordings from Dropbox as a ZIP file and import them here.',
-    'songs.emptyImportBtn': 'Go to import',
     'songs.notFoundTitle': 'Nothing found',
     'songs.notFoundText': 'No song matches this search.',
     'songs.createPlaceholderSuffix': 'add as placeholder',
@@ -4756,7 +4884,6 @@ const STRINGS = {
 
     'songs.emptyTitle': 'Jeszcze brak utworów',
     'songs.emptyText': 'Pobierz nagrania z Dropboxa jako plik ZIP i zaimportuj je tutaj.',
-    'songs.emptyImportBtn': 'Przejdź do importu',
     'songs.notFoundTitle': 'Nic nie znaleziono',
     'songs.notFoundText': 'Żaden utwór nie pasuje do tego wyszukiwania.',
     'songs.createPlaceholderSuffix': 'dodaj jako placeholder',
@@ -5623,6 +5750,11 @@ function showView(name) { navigate(`#${name}`); }
  * zuverlässig wieder schließt.
  */
 function applyRoute() {
+  // Sonst bliebe das Menü sichtbar, wenn man z.B. per Zurück-Taste oder
+  // Reiterleiste wegnavigiert, statt es über einen seiner eigenen Wege
+  // (Aktion, Backdrop, ×-Knopf) zu schließen.
+  if (isImportMenuOpen()) closeImportMenu();
+
   const raw = (location.hash || '#songs').slice(1);
   const slash = raw.indexOf('/');
   const name = slash < 0 ? raw : raw.slice(0, slash);
@@ -5851,14 +5983,7 @@ async function renderSongs() {
     host.append(el('div', { class: 'empty' },
       iconEmptyNote(),
       el('h2', { text: t('songs.emptyTitle') }),
-      el('p', { class: 'small', text: t('songs.emptyText') }),
-      el('button', {
-        class: 'btn btn--primary',
-        type: 'button',
-        text: t('songs.emptyImportBtn'),
-        style: 'margin-top:14px',
-        onclick: () => openImportSourceChoice(),
-      })
+      el('p', { class: 'small', text: t('songs.emptyText') })
     ));
     return;
   }
@@ -8376,7 +8501,6 @@ function closeImportView() {
 
 $('#btn-open-import').addEventListener('click', () => navigate('#import'));
 $('#import-back').addEventListener('click', () => history.back());
-$('#btn-songs-import-fab').addEventListener('click', () => openImportSourceChoice());
 
 /* ==========================================================================
    LICHTSHOW — Vollbild-Unteransicht (#lightshow-view), Vorbild #import-view.
