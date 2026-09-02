@@ -13788,6 +13788,9 @@ async function buildBackupParts(opts, onProgress) {
         name: r.name, voice: r.voice || null, duration: r.duration,
         mimeType: r.mimeType, createdAt: r.createdAt,
       };
+      // Nur wenn vorhanden — ohne diesen Schritt verlöre jeder REC beim
+      // Sichern und Zurückspielen seinen Anker (siehe restoreBackup).
+      if (r.anchor) meta.anchor = r.anchor;
       if (!first) parts.push(',');
       first = false;
       parts.push(...metaWithAudioParts(meta, base64));
@@ -14074,6 +14077,19 @@ function orphanFileKeys(writtenKeys, songs, recordings) {
 }
 
 /**
+ * Prüft einen REC-Anker aus einer Sicherungsdatei, bevor er übernommen wird —
+ * eine Sicherungsdatei ist eine Datei von außen und darf keine kaputten Werte
+ * in die Wiedergabe tragen (siehe restoreBackup). `null` bei fehlendem oder
+ * ungültigem Anker, sonst der bereinigte Anker.
+ */
+function sanitizeRecAnchor(anchor) {
+  if (!anchor || typeof anchor !== 'object') return null;
+  if (!VOICE_ORDER.includes(anchor.voice)) return null;
+  if (!Number.isFinite(anchor.pos) || !Number.isFinite(anchor.rate)) return null;
+  return { voice: anchor.voice, pos: anchor.pos, rate: anchor.rate };
+}
+
+/**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
  * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
  * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
@@ -14344,6 +14360,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         size: blob.size,
         createdAt: r.createdAt || new Date().toISOString(),
       };
+      // Ungültiger Anker wird verworfen, statt den REC ohne ihn scheitern zu
+      // lassen — eine Sicherungsdatei ist eine Datei von außen.
+      const anchor = sanitizeRecAnchor(r.anchor);
+      if (anchor) recording.anchor = anchor;
       // Datei und Metadatensatz einer Aufnahme in einer Transaktion, aus
       // demselben Grund wie beim Song-Audio oben — sonst kann eine
       // referenzlose Datei im `files`-Store zurückbleiben.
