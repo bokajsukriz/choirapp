@@ -10002,6 +10002,27 @@ function updateRecTimer() {
   $('#rec-timer').textContent = fmtTime((Date.now() - recStartedAt) / 1000);
 }
 
+// Nur einmal pro Sitzung ins Diagnose-Log — die Geräteliste ändert sich
+// zwischen zwei RECs praktisch nie, und niemand braucht sie zwanzigmal.
+let audioInputDevicesLogged = false;
+
+/** Listet einmalig die verfügbaren Mikrofone ins Diagnose-Log — hilft zu
+ *  klären, ob nach dem Koppeln von Kopfhörern das eingebaute Mikrofon noch
+ *  auftaucht bzw. welches tatsächlich gewählt wird (siehe R5). */
+async function logAudioInputDevicesOnce() {
+  if (audioInputDevicesLogged || !settings?.debugLog) return;
+  audioInputDevicesLogged = true;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices
+      .filter((d) => d.kind === 'audioinput')
+      .map((d) => ({ deviceId: d.deviceId.slice(0, 8), label: d.label, groupId: d.groupId.slice(0, 8) }));
+    dlog('rec:devices', { inputs });
+  } catch (err) {
+    console.warn('[rec] enumerateDevices failed', err);
+  }
+}
+
 async function startRecording() {
   if (!playerSong || pendingTake || recStarting) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -10010,6 +10031,7 @@ async function startRecording() {
   }
 
   recStarting = true;
+  dlog('rec:ctx', { when: 'before', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
   try {
     // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
     // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
@@ -10023,6 +10045,10 @@ async function startRecording() {
     bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
     return;
   }
+  const recTrack = recStream.getAudioTracks()[0];
+  if (recTrack) dlog('rec:stream', { label: recTrack.label, settings: recTrack.getSettings() });
+  dlog('rec:ctx', { when: 'after', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
+  logAudioInputDevicesOnce();
 
   recMimeType = pickRecMimeType();
   try {
@@ -10229,6 +10255,7 @@ function teardownRecording() {
   recMediaRecorder = null;
   stopLevelMeter();
   setRecUI(false);
+  dlog('rec:ctx', { when: 'teardown', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
 }
 
 /** Verwirft eine laufende Aufnahme sofort, z.B. beim Verlassen des Songs. */
