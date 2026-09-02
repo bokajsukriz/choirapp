@@ -537,6 +537,55 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .placeholder-badge { display: block; flex: 0 0 auto; color: var(--muted); }
 .placeholder-badge svg { width: 20px; height: 20px; display: block; }
 
+/* Schwebender +-Knopf auf der Songs-Übersicht (siehe btn-songs-import-fab):
+   position:fixed statt absolute, weil #view-songs innerhalb von .app-main
+   scrollt — der Knopf soll dabei stehen bleiben. bottom rechnet die Höhe
+   der Navigationsleiste mit ein, sonst läge er dahinter. */
+.songs-import-fab {
+  position: fixed;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+  z-index: 5;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+}
+.songs-import-fab:active { transform: scale(.94); }
+.songs-import-fab svg { width: 26px; height: 26px; }
+
+/* Hinweispfeil auf den +-Knopf bei leerer Bibliothek (siehe
+   songs-import-hint): eigenständig fixiert statt Kind des +-Knopfs, damit
+   Pfeilspitze und Knopf unabhängig voneinander positioniert werden können.
+   Rein dekorativ (aria-hidden, pointer-events:none) — der +-Knopf selbst
+   trägt schon ein aria-label. */
+.import-fab-hint {
+  position: fixed;
+  right: calc(4px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 78px);
+  z-index: 4;
+  width: 100px;
+  color: var(--accent);
+  text-align: right;
+  pointer-events: none;
+}
+.import-fab-hint-label {
+  display: block;
+  font-style: italic;
+  font-size: 0.8rem;
+  font-weight: 650;
+  margin-bottom: 2px;
+}
+.import-fab-hint svg { display: block; width: 76px; height: 100px; margin-left: auto; }
+
 /* ---------- Auswahlmaske vor dem Import --------------------------------- */
 
 .sheet {
@@ -2749,6 +2798,33 @@ input[type="checkbox"] {
     </div>
     <div class="filterbar" id="filterbar" hidden></div>
     <div id="song-list-host"></div>
+
+    <!-- Schwebender Import-Einstieg: fragt vor dem Import nach der Quelle
+         (Dropbox-ZIP oder einzelne Recordings) statt selbst schon eine der
+         beiden Einstiegsansichten in den Einstellungen festzulegen. -->
+    <button class="songs-import-fab" id="btn-songs-import-fab" type="button" aria-label="Songs importieren">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
+
+    <!-- Handgezeichneter Hinweispfeil auf den +-Knopf, nur solange die
+         Bibliothek leer ist (siehe renderSongs) — gewöhnt von Anfang an an
+         denselben Weg, den man auch später zum Nachimportieren braucht. -->
+    <div class="import-fab-hint" id="songs-import-hint" hidden aria-hidden="true">
+      <span class="import-fab-hint-label">Songs hier importieren</span>
+      <svg viewBox="0 0 100 130" aria-hidden="true">
+        <filter id="import-fab-hint-sketch" x="-30%" y="-30%" width="160%" height="160%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035 0.09" numOctaves="2" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="5"/>
+        </filter>
+        <g filter="url(#import-fab-hint-sketch)" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 12 C 44 4, 66 46, 46 76 C 32 96, 58 100, 70 112"/>
+          <path d="M70 112 L54 104"/>
+          <path d="M70 112 L60 126"/>
+        </g>
+      </svg>
+    </div>
   </section>
 
   <!-- ===== Setlisten ===================================================== -->
@@ -3747,6 +3823,39 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
     openModal(layer, { initialFocus: input, onEscape: () => done(null) });
     input.select();
   });
+}
+
+/**
+ * Auswahl vor dem Import (siehe btn-songs-import-fab): „Songs importieren"
+ * (ZIP aus Dropbox, #import-view) und „Recordings importieren" (einzelne
+ * MP3s, #rec-import-input) sind zwei gleichrangige Einstiege in den
+ * Einstellungen — der schwebende Knopf auf der Songs-Übersicht fragt daher
+ * erst nach der Quelle, statt selbst einen der beiden festzulegen.
+ */
+function openImportSourceChoice() {
+  const done = (action) => { closeModal(layer); layer.remove(); action?.(); };
+
+  const box = el('div', { class: 'dialog' },
+    el('h2', { text: 'Songs importieren' }),
+    el('p', { text: 'Woher sollen die Songs kommen?' }),
+    el('div', { style: 'display:flex; flex-direction:column; gap:10px' },
+      el('button', {
+        class: 'btn btn--primary btn--block', type: 'button', text: 'Aus der Dropbox',
+        onclick: () => done(() => navigate('#import')),
+      }),
+      el('button', {
+        class: 'btn btn--block', type: 'button', text: 'Aus Recordings',
+        onclick: () => done(() => { navigate('#settings'); $('#rec-import-input').click(); }),
+      }),
+      el('button', {
+        class: 'btn btn--block', type: 'button', text: 'Abbrechen',
+        onclick: () => done(),
+      })));
+
+  const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Songs importieren' }, box);
+  layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
+  document.body.append(layer);
+  openModal(layer, { onEscape: () => done() });
 }
 
 dlgOk.addEventListener('click', () => closeDialog(true));
@@ -5733,6 +5842,7 @@ async function renderSongs() {
   songsRenderSignature = signature;
 
   host.textContent = '';
+  $('#songs-import-hint').hidden = !!songs.length;
 
   if (!songs.length) {
     lastVisibleSongs = [];
@@ -5747,7 +5857,7 @@ async function renderSongs() {
         type: 'button',
         text: t('songs.emptyImportBtn'),
         style: 'margin-top:14px',
-        onclick: () => showView('import'),
+        onclick: () => openImportSourceChoice(),
       })
     ));
     return;
@@ -8266,6 +8376,7 @@ function closeImportView() {
 
 $('#btn-open-import').addEventListener('click', () => navigate('#import'));
 $('#import-back').addEventListener('click', () => history.back());
+$('#btn-songs-import-fab').addEventListener('click', () => openImportSourceChoice());
 
 /* ==========================================================================
    LICHTSHOW — Vollbild-Unteransicht (#lightshow-view), Vorbild #import-view.
