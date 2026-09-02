@@ -10357,6 +10357,42 @@ function renderLoopList() {
       hörbar stört.
    ========================================================================== */
 
+/* ---------- Anker-Mathematik (Original leise unter dem REC) ----------
+   Reine Funktionen, kein Zugriff auf Audio/DOM — einzeln testbar (siehe
+   runSelfTests). Die Herleitung steht im Arbeitsplan (REC-MITSING-PLAN.md,
+   Abschnitt 1.4): Während der Aufnahme lief der Song mit Rate `anchor.rate`,
+   in `recTime` Sekunden REC-Zeit rückte er also um `anchor.rate * recTime`
+   vor, gerechnet ab der Anker-Position `anchor.pos`. */
+
+const BACKING_SEEK_S = 0.25;      // ab hier harter Sprung statt Nachregeln
+const BACKING_NUDGE_S = 0.04;     // darunter gilt die Abweichung als vernachlässigbar
+const BACKING_NUDGE_FACTOR = 0.03; // Rate-Abweichung beim weichen Aufholen (1 ∓ Faktor)
+
+/** Sollposition des Originaltracks zu einer REC-Position (siehe Herleitung oben). */
+function backingTargetTime(anchor, recTime) {
+  return anchor.pos + anchor.rate * recTime;
+}
+
+/** Sollrate des Originaltracks bei gegebener REC-Rate. */
+function backingTargetRate(anchor, recRate) {
+  return anchor.rate * recRate;
+}
+
+/**
+ * Wie auf eine Abweichung `driftS` (Ist minus Soll) reagiert wird: 'seek'
+ * (harter Sprung), 'nudge' (weiches Aufholen über die Rate) oder 'hold'
+ * (Sollrate reicht). `rateFactor` gilt nur bei 'nudge' und ist auf 1 zu
+ * kürzen, wenn der Hintergrund voraus liegt (driftS > 0).
+ */
+function backingCorrection(driftS) {
+  const abs = Math.abs(driftS);
+  if (abs > BACKING_SEEK_S) return { action: 'seek', rateFactor: 1 };
+  if (abs > BACKING_NUDGE_S) {
+    return { action: 'nudge', rateFactor: driftS > 0 ? 1 - BACKING_NUDGE_FACTOR : 1 + BACKING_NUDGE_FACTOR };
+  }
+  return { action: 'hold', rateFactor: 1 };
+}
+
 let recStream = null;
 let recMediaRecorder = null;
 let recChunks = [];
@@ -10368,8 +10404,11 @@ let recTimerHandle = null;
 // diesem await gesetzt, wäre also für den Klick-Handler bis dahin kein Schutz.
 let recStarting = false;
 let songRecordings = [];
-let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
+let pendingTake = null;     // { blob, mimeType, duration, anchor } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
+// Anker der laufenden Aufnahme — welche Stimme an welcher Stelle lief, siehe
+// captureRecAnchor(). null, solange kein Song lief oder schon ein REC.
+let recAnchor = null;
 
 /* ---------- Mikrofon ----------
    echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
