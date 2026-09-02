@@ -14933,6 +14933,62 @@ function runSelfTests() {
     failed.push('pickBuiltInMicId müsste eine fehlende Geräteliste verkraften');
   }
 
+  // Anker-Mathematik (Original leise mitlaufen, siehe REC-MITSING-PLAN.md 1.4).
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 1 }, 5) !== 15) {
+    failed.push('backingTargetTime bei rate=1 müsste eine reine Verschiebung sein');
+  }
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 0.75 }, 8) !== 16) {
+    failed.push('backingTargetTime bei rate=0.75 müsste die gestauchte Zeitachse rechnen');
+  }
+  checks++;
+  if (backingTargetRate({ pos: 0, rate: 0.8 }, 0.5) !== 0.4) {
+    failed.push('backingTargetRate müsste das Produkt beider Raten sein');
+  }
+
+  const correctionCases = [
+    [0, 'hold'],
+    [0.039, 'hold'],
+    [0.041, 'nudge'],
+    [-0.041, 'nudge'],
+    [0.25, 'nudge'],
+    [0.251, 'seek'],
+    [-0.251, 'seek'],
+  ];
+  for (const [drift, expected] of correctionCases) {
+    checks++;
+    const got = backingCorrection(drift).action;
+    if (got !== expected) failed.push(`backingCorrection(${drift}) = ${got}, erwartet ${expected}`);
+  }
+  checks++;
+  if (backingCorrection(0.1).rateFactor !== 1 - BACKING_NUDGE_FACTOR) {
+    failed.push('backingCorrection müsste bei positivem Drift langsamer nachregeln');
+  }
+  checks++;
+  if (backingCorrection(-0.1).rateFactor !== 1 + BACKING_NUDGE_FACTOR) {
+    failed.push('backingCorrection müsste bei negativem Drift schneller nachregeln');
+  }
+
+  // Anker-Prüfung aus einer Sicherungsdatei (M7) — die kommt von außen und
+  // darf keine kaputten Werte in die Wiedergabe tragen.
+  checks++;
+  if (!sanitizeRecAnchor({ voice: 'ALT', pos: 12.5, rate: 0.85 })) {
+    failed.push('sanitizeRecAnchor müsste einen gültigen Anker durchlassen');
+  }
+  checks++;
+  if (sanitizeRecAnchor({ voice: 'ALT', pos: NaN, rate: 1 }) !== null) {
+    failed.push('sanitizeRecAnchor müsste eine NaN-Position verwerfen');
+  }
+  checks++;
+  if (sanitizeRecAnchor({ voice: 'KLINGONISCH', pos: 0, rate: 1 }) !== null) {
+    failed.push('sanitizeRecAnchor müsste eine unbekannte Stimme verwerfen');
+  }
+  checks++;
+  if (sanitizeRecAnchor(null) !== null) {
+    failed.push('sanitizeRecAnchor müsste einen fehlenden Anker verkraften');
+  }
+
   const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
