@@ -3205,6 +3205,29 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16a8 8 0 0 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.perf.title">Kompatibilität &amp; Performance</span></h2>
+      <div class="row">
+        <span class="small" style="max-width:70%" data-i18n="settings.perf.hqSwitch">
+          Bessere Tonqualität beim langsamen Abspielen
+        </span>
+        <button class="switch" id="btn-hq-slow-toggle" type="button" role="switch"
+                aria-checked="true" aria-label="Bessere Tonqualität beim langsamen Abspielen" data-i18n-aria="settings.perf.hqAria">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.hqHint">
+        Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem
+        Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen.
+        Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem
+        älteren Handy oder wird es warm, schalte hier aus.
+      </p>
+      <p class="small muted" id="hq-unsupported-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.hqUnsupported">
+        Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt
+        beim bisherigen Weg.
+      </p>
+    </div>
+
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
       <div class="stack">
         <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
@@ -4460,6 +4483,7 @@ const DEFAULT_SETTINGS = {
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
+  hqSlowdown: true,   // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4561,6 +4585,12 @@ const STRINGS = {
     'settings.screen.step3': '<strong>Benachrichtigungen</strong> → erlauben. Android verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf keine Web-App im Hintergrund weiterspielen.',
     'settings.screen.grapheneNote': 'Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum Startbildschirm hinzufügen" meist nur eine Verknüpfung an, kein eigenes App-Symbol mit eigenen Berechtigungen. Die beiden Einstellungen betreffen dann den Browser selbst, nicht ein eigenes „BVG"-Symbol.',
     'settings.screen.notifyBtn': 'Benachrichtigungen für diese Seite erlauben',
+
+    'settings.perf.title': 'Kompatibilität & Performance',
+    'settings.perf.hqSwitch': 'Bessere Tonqualität beim langsamen Abspielen',
+    'settings.perf.hqAria': 'Bessere Tonqualität beim langsamen Abspielen',
+    'settings.perf.hqHint': 'Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, schalte hier aus.',
+    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt beim bisherigen Weg.',
 
     'settings.help.title': 'Hilfe',
     'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
@@ -4766,6 +4796,12 @@ const STRINGS = {
     'settings.screen.grapheneNote': 'Without Google Play services — e.g. on GrapheneOS — "Add to home screen" usually only creates a shortcut, not a proper app icon with its own permissions. Both settings then apply to the browser itself, not a separate "BVG" icon.',
     'settings.screen.notifyBtn': 'Allow notifications for this page',
 
+    'settings.perf.title': 'Compatibility & performance',
+    'settings.perf.hqSwitch': 'Better sound quality for slow playback',
+    'settings.perf.hqAria': 'Better sound quality for slow playback',
+    'settings.perf.hqHint': 'Recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser — noticeably cleaner on held notes. Costs more processing power in return. If playback stutters or the phone gets warm on an older device, turn this off.',
+    'settings.perf.hqUnsupported': "This device doesn't support the better slow playback — it stays on the previous method.",
+
     'settings.help.title': 'Help',
     'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
     'settings.help.howToBtn': 'How do I get songs into the app?',
@@ -4969,6 +5005,12 @@ const STRINGS = {
     'settings.screen.step3': '<strong>Powiadomienia</strong> → zezwól. Android wymaga widocznego powiadomienia — bez niego żadna aplikacja webowa nie może grać w tle.',
     'settings.screen.grapheneNote': 'Bez usług Google Play — np. na GrapheneOS — „Dodaj do ekranu głównego" zwykle tworzy tylko skrót, a nie osobną ikonę aplikacji z własnymi uprawnieniami. Oba ustawienia dotyczą wtedy samej przeglądarki, nie osobnej ikony „BVG".',
     'settings.screen.notifyBtn': 'Zezwól na powiadomienia dla tej strony',
+
+    'settings.perf.title': 'Kompatybilność i wydajność',
+    'settings.perf.hqSwitch': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
+    'settings.perf.hqAria': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
+    'settings.perf.hqHint': 'Sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długo trzymanych dźwiękach. Kosztuje to jednak więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina lub telefon się nagrzewa na starszym urządzeniu, wyłącz to tutaj.',
+    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje lepszego spowolnienia — pozostaje dotychczasowy sposób.',
 
     'settings.help.title': 'Pomoc',
     'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
@@ -6676,6 +6718,7 @@ async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
+  renderHqSlowdown();
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
@@ -7056,6 +7099,26 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
   await saveSettings({ keepScreenOn: !settings.keepScreenOn });
   renderScreenMode();
   updateWakeLock();
+});
+
+/**
+ * Vor dem ersten audioInit() (z.B. Einstellungen vor dem ersten geöffneten
+ * Song besucht) zählt nur die statische Prüfung — danach, ob addModule()
+ * wirklich geklappt hat (Audio.hqNode).
+ */
+function renderHqSlowdown() {
+  const btn = $('#btn-hq-slow-toggle');
+  const supported = Audio.ready ? !!Audio.hqNode : hqStaticallySupported();
+  btn.disabled = !supported;
+  btn.setAttribute('aria-checked', settings.hqSlowdown && supported ? 'true' : 'false');
+  $('#hq-unsupported-hint').hidden = supported;
+}
+
+$('#btn-hq-slow-toggle').addEventListener('click', async () => {
+  await saveSettings({ hqSlowdown: !settings.hqSlowdown });
+  renderHqSlowdown();
+  applyHqMode();
+  applyRateToElement();
 });
 
 $('#btn-bg-help-toggle').addEventListener('click', () => {
@@ -10053,6 +10116,10 @@ async function openPlayer(songId) {
     return;
   }
   if (token !== openPlayerToken) return;
+  // Erst jetzt steht fest, ob addModule() für die HQ-Verlangsamung wirklich
+  // geklappt hat — die statische Vermutung aus renderHqSlowdown() vor dem
+  // ersten audioInit() war bis hierhin nur eine Annäherung.
+  renderHqSlowdown();
 
   Audio.song = song;
   audioSetRate(1);
