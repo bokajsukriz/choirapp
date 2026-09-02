@@ -7187,6 +7187,12 @@ const Audio = {
   el: null,
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
   channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
+  channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
+  bg: null,               // zweites, stummes <audio> für den leise mitlaufenden Original-Song (REC)
+  bgGain: null,           // Gain zwischen bg und channelIn — bg.volume ist auf iOS schreibgeschützt
+  bgSource: null,         // MediaElementSource von bg, falls die Matrix steht
+  bgVoice: null,          // Stimme, deren Spur gerade in bg geladen ist, oder null
+  bgUrl: null,            // aktive Blob-URL von bg, für revokeObjectURL beim Wechsel
   ready: false,
   song: null,
   currentKey: null,      // fileKey der Spur, die gerade in `el` geladen ist
@@ -7322,6 +7328,9 @@ async function audioInit() {
 
     Audio.ctx = ctx;
     Audio.channel = { gLL, gLR, gRL, gRR };
+    // Einspeisepunkt für den Hintergrundtrack (siehe ensureBackingAudio) — im
+    // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
+    Audio.channelIn = splitter;
     audioApplyChannelMode(settings.channelMode);
     dlog('audio:route', { mode: 'matrix' });
 
@@ -11053,6 +11062,44 @@ async function endRecordingPreview() {
   // setPlayIcon() guards itself against the unavailable state now, so this
   // is a plain no-op when returnFootUnavailable is true.
   setPlayIcon(Audio.playing);
+}
+
+/* ---------- Original leise mitlaufen lassen ----------
+   Zweites, stummes <audio> (Audio.bg) neben dem der REC-Vorschau — kapert
+   weder Mediensitzung noch Pegelanzeige noch Suchleiste. Lautstärke läuft
+   zwingend über einen GainNode (Audio.bgGain): HTMLMediaElement.volume ist
+   auf iOS schreibgeschützt, siehe REC-MITSING-PLAN.md Abschnitt 1.2. */
+
+/**
+ * Legt Audio.bg an — lazy, aber genau einmal fürs ganze Programm. Erstmals
+ * mitten in laufender Wiedergabe zu verdrahten kann auf iOS einen kurzen
+ * Aussetzer kosten; ein zweites Mal wäre eins zu viel.
+ */
+function ensureBackingAudio() {
+  if (Audio.bg) return Audio.bg;
+
+  const bg = document.createElement('audio');
+  bg.setAttribute('playsinline', '');
+  bg.preload = 'auto';
+  bg.style.display = 'none';
+  bg.preservesPitch = true;
+  bg.webkitPreservesPitch = true;
+  bg.mozPreservesPitch = true;
+  document.body.append(bg);
+  Audio.bg = bg;
+
+  if (Audio.ctx && Audio.channelIn) {
+    Audio.bgSource = Audio.ctx.createMediaElementSource(bg);
+    Audio.bgGain = Audio.ctx.createGain();
+    Audio.bgGain.gain.value = settings.recBackingVolume;
+    Audio.bgSource.connect(Audio.bgGain);
+    Audio.bgGain.connect(Audio.channelIn);
+  }
+  // Sonst (Matrix nicht verfügbar): bg.volume als Notlösung, siehe
+  // setBackingVolume() — auf iOS wirkungslos, aber in diesem Zweig läuft der
+  // Fahrradmodus ohnehin schon nicht.
+
+  return bg;
 }
 
 async function toggleSavedRecordingPreview(recording) {
