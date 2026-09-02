@@ -10553,6 +10553,21 @@ function updateRecTimer() {
   $('#rec-timer').textContent = fmtTime((Date.now() - recStartedAt) / 1000);
 }
 
+/**
+ * Anker für einen neu startenden REC — nur gesetzt, wenn wirklich der Song
+ * lief (nicht: audioPreview, also läuft schon ein anderer REC; nicht: kein
+ * Song geladen oder pausiert). Die Stimme kommt über den fileKey der
+ * aktuell geladenen Spur — fehlt sie (Song inzwischen verändert), gibt es
+ * keinen Anker statt eines geratenen.
+ */
+function captureRecAnchor() {
+  if (audioPreview) return null;
+  if (!Audio.playing || !Audio.currentKey) return null;
+  const voice = trackByVoiceKey(Audio.currentKey)?.voice;
+  if (!voice) return null;
+  return { voice, pos: Audio.position, rate: Audio.rate };
+}
+
 async function startRecording() {
   if (!playerSong || pendingTake || recStarting) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -10606,6 +10621,11 @@ async function startRecording() {
     teardownRecording();
     bannerError('Die Aufnahme wurde abgebrochen.', 'REC-ERROR', e.error);
   });
+
+  // Erst wenn der Recorder wirklich läuft, steht der Anker fest — zwischen
+  // getUserMedia() und dem ersten aufgezeichneten Sample liegt sonst eine
+  // unbekannte Latenz, die den Anker daneben liegen ließe.
+  recMediaRecorder.addEventListener('start', () => { recAnchor = captureRecAnchor(); }, { once: true });
 
   recStartedAt = Date.now();
   recMediaRecorder.start();
@@ -10793,6 +10813,7 @@ function teardownRecording() {
   if (recTimerHandle) { clearInterval(recTimerHandle); recTimerHandle = null; }
   if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
   recMediaRecorder = null;
+  recAnchor = null;
   stopLevelMeter();
   setRecUI(false);
 }
@@ -10810,6 +10831,8 @@ async function onRecordingStopped() {
   const duration = (Date.now() - recStartedAt) / 1000;
   const mimeType = recMimeType || recChunks[0]?.type || 'audio/webm';
   const chunks = recChunks;
+  // Lokal sichern, bevor teardownRecording() gleich recAnchor zurücksetzt.
+  const anchor = recAnchor;
   recChunks = [];
   teardownRecording();
 
@@ -10818,7 +10841,7 @@ async function onRecordingStopped() {
     return;
   }
   // Nicht sofort speichern — erst anhören und entscheiden lassen.
-  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration };
+  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration, anchor };
   renderPendingTake();
 }
 
@@ -10908,7 +10931,7 @@ $('#btn-rec-save').addEventListener('click', async () => {
   });
   if (name === null) return; // abgebrochen — Take bleibt erhalten
 
-  const { blob, mimeType, duration } = pendingTake;
+  const { blob, mimeType, duration, anchor } = pendingTake;
   const fileKey = newFileKey();
   const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
   await DB.filePut(await fileRecord(fileKey, blob, `${name.trim() || suggestion}.${ext}`));
@@ -10922,6 +10945,8 @@ $('#btn-rec-save').addEventListener('click', async () => {
     size: blob.size,
     createdAt: new Date().toISOString(),
   };
+  // Nur anhängen, wenn vorhanden — kein `anchor: null` in jedem Datensatz.
+  if (anchor) recording.anchor = anchor;
   await DB.metaPut(recording);
 
   if (audioPreview?.tag?.pending) await endRecordingPreview();
