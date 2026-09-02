@@ -319,14 +319,21 @@ in dieser Datei — nicht kaschieren und nicht durch Filter „verbessern".
 
 *(Von dir auszufüllen.)*
 
-**Stand:** R3 (Diagnose) und R5 (Mikrofonwahl, Bluetooth-Hinweis, Bitrate)
-sind umgesetzt und committet — sie sind in sich sicher: R5 hilft unabhängig
-vom Messergebnis (bevorzugt das eingebaute Mikrofon, wenn Labels verfügbar
-sind, sonst ändert sich nichts), und R3 protokolliert nur. **R4
-(Audioweg-Neuaufbau) ist noch offen**, wie im Auftrag vorgesehen: er wird nur
-gebaut, wenn dieses Messergebnis eine Abtastraten-Änderung oder einen nach
-dem Stoppen bestehen bleibenden Qualitätsabfall bestätigt. Bitte das
-Testprotokoll aus 3.2 durchführen und das Log teilen, dann folgt R4.
+**Stand nach dem Zusammenführen mit `main`:** Zwischenzeitlich ist auf `main`
+unabhängig eine eigene, weiterreichende Lösung für genau dieses Problem
+entstanden (`claude/simultane-aufnahme-wiedergabe-t8pleh`,
+„Make singing along while recording work as well as the platform allows"):
+`RECORDING_CONSTRAINTS` (Echo-Unterdrückung bleibt ausnahmslos aus),
+`preferWideBandMic()` (Ausweichen aufs eingebaute Mikrofon bei erkanntem
+Bluetooth-Headset), `updateRecInputWarning()` (dauerhafter Hinweis statt
+einmaligem Banner) und eine mit der Wiedergabe geteilte `AudioContext`
+(verhindert die iOS-Neuaushandlung, die R4 hier beheben sollte). Das deckt
+R3 und R5 vollständig ab und geht beim Audioweg-Problem (R4) weiter, als es
+diese Datei vorsah. **R3 und R5 aus dieser Datei sind deshalb hinfällig**
+und wurden beim Zusammenführen verworfen; **R4 gilt durch `main`s Lösung als
+erledigt.** Nur R1/R2 (Shuffle-Stopp) und R6–R9 (Take-Karte, allgemeiner
+Recorder, Selbsttests) aus diesem Auftrag wurden übernommen — beide Zweige
+zusammengeführt in `claude/lichtshow-feature-q2ghr2`.
 
 ---
 

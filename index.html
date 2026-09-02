@@ -48,6 +48,12 @@
   --tap:        44px;          /* Mindestgröße für Touch-Ziele */
   --pad:        16px;
   --nav-h:      62px;
+  /* Höhe der Lyrics-Werkzeugleiste samt Abstand darunter. Bestimmt die Leiste
+     selbst (min-height) und den Ausgleich im Notizen-Reiter, damit die
+     +-Knöpfe der beiden leeren Reiter auf gleicher Höhe liegen. */
+  --lyrics-toolbar-h: 60px;
+  /* Fläche, in deren Mitte der +-Knopf eines leeren Reiters sitzt. */
+  --empty-add-h: 44vh;
 
   --safe-top:    env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -178,6 +184,11 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 
 .view { display: none; }
 .view.is-active { display: block; animation: fade .18s ease-out; }
+
+/* Die Bibliothek hat einen schwebenden +-Knopf (siehe .fab-add) und braucht
+   unten Luft: sonst liegt der letzte Listeneintrag am Ende der Liste
+   dauerhaft darunter und lässt sich nicht mehr antippen. */
+#view-songs { padding-bottom: 52px; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -542,6 +553,199 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .placeholder-badge { display: block; flex: 0 0 auto; color: var(--muted); }
 .placeholder-badge svg { width: 20px; height: 20px; display: block; }
 
+/* Schwebender +-Knopf, der ein Menü öffnet — in der Bibliothek
+   (btn-songs-import-fab) und bei den Setlisten (btn-playlist-add-fab).
+   position:fixed statt absolute, weil die Ansichten innerhalb von .app-main
+   scrollen — der Knopf soll dabei stehen bleiben. bottom rechnet die Höhe
+   der Navigationsleiste mit ein, sonst läge er dahinter. Die Fläche ist mit
+   Weiß gemischt: heller und blasser als die volle Akzentfarbe, aber nicht
+   dunkler — präsent, ohne zu grell zu sein, und --accent-ink bleibt darauf
+   gut lesbar, weil hellere Flächen den Kontrast zur dunklen Tinte nur
+   vergrößern (die einfache background-Zeile davor ist der Fallback für
+   Browser ohne color-mix()). z-index über dem Menü-Hintergrund (siehe
+   .fab-menu-backdrop): bei offenem Menü macht openModal() #main (und damit
+   auch diesen Knopf) inert — ein Tipp auf die sichtbare Kreisfläche trifft
+   dadurch gar nicht mehr den Knopf, sondern fällt zum darunterliegenden,
+   nicht inerten Backdrop durch und schließt so das Menü genauso wie ein
+   Tipp daneben. */
+.fab-add {
+  position: fixed;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+  z-index: 7;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 48%, white 52%);
+  color: var(--accent-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(0,0,0,.2);
+}
+.fab-add:active { transform: scale(.94); }
+.fab-add svg {
+  width: 26px;
+  height: 26px;
+  transition: transform .18s ease;
+}
+/* + dreht sich zu × — ersetzt den früheren „Abbrechen"-Eintrag im Menü:
+   der offensichtliche Weg, es wieder zu schließen, ist derselbe Knopf. */
+.fab-add[aria-expanded="true"] svg { transform: rotate(45deg); }
+
+/* Menü, das aus dem +-Knopf herauswächst (siehe .fab-menu-backdrop weiter
+   unten): eigener, unsichtbarer Vollbild-Layer nur zum Einfangen von Klicks
+   außerhalb, darin das eigentliche Menü rechtsbündig über dem Knopf verankert
+   und mit transform-origin unten rechts skaliert — wirkt dadurch wie eine
+   Erweiterung des Knopfs, nicht wie ein eigenständiger Dialog. */
+.fab-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  background: transparent;
+}
+/* left/bottom/transform-origin setzt showFabMenu() beim Öffnen aus der Lage
+   des auslösenden Knopfs — der sitzt mal unten rechts (Bibliothek), mal
+   mittig im Text (Setlisten). Die Werte hier sind nur der Startwert, falls
+   das Menü einmal ohne Messung auftaucht. */
+.fab-menu {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(240px, calc(100vw - 32px));
+  transform-origin: bottom center;
+  animation: fab-menu-in .16s ease-out;
+}
+/* Klappt das Menü nach unten auf (siehe placeFabMenu), steht der wichtigste
+   Eintrag wieder direkt am Knopf — also am oberen Rand statt am unteren. */
+.fab-menu--below { flex-direction: column-reverse; }
+@keyframes fab-menu-in {
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fab-menu { animation: none; }
+}
+.fab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), .28);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  color: var(--text);
+  font-weight: 650;
+  font-size: 0.92rem;
+  text-align: left;
+  box-shadow: 0 3px 10px rgba(0,0,0,.16);
+}
+.fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
+.fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
+
+/* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie
+   die schwebenden Knöpfe, aber bewusst zurückhaltend — gestrichelter Umriss
+   statt gefüllter Fläche. min-height rückt ihn in die Mitte der freien
+   Fläche, statt ihn oben an den Rand zu drücken.
+
+   Beide Reiter beginnen an derselben Stelle; nur im Lyrics-Reiter steht
+   davor noch die Werkzeugleiste. Damit die beiden Knöpfe beim Reiterwechsel
+   nicht springen, hält der Notizen-Reiter denselben Abstand frei. */
+.empty-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--empty-add-h);
+  text-align: center;
+}
+/* Polsterung statt Rand: ein margin würde durch den Reiter hindurch
+   kollabieren und die ganze Ansicht verschieben. Die min-height rechnet die
+   Polsterung wieder heraus (border-box), damit zum Zentrieren dieselbe
+   Inhaltshöhe bleibt wie im Lyrics-Reiter unter der Werkzeugleiste. */
+#note-empty {
+  padding-top: var(--lyrics-toolbar-h);
+  min-height: calc(var(--empty-add-h) + var(--lyrics-toolbar-h));
+}
+
+/* Derselbe Knopf, aber im Textfluss (Setlisten: zwischen „Nächster Gig" und
+   der Liste). Ohne Beschriftung — an der Stelle ist ohnehin klar, was ein +
+   anlegt. */
+.add-inline {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 20px;
+}
+.empty-add-btn {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(var(--accent-rgb), .5);
+  background: rgba(var(--accent-rgb), .06);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-add-btn:active { background: rgba(var(--accent-rgb), .16); }
+.empty-add-btn svg { width: 26px; height: 26px; transition: transform .18s ease; }
+/* Öffnet der Knopf ein Menü, wird das + wie beim schwebenden Knopf zum × */
+.empty-add-btn[aria-expanded="true"] svg { transform: rotate(45deg); }
+.empty-add-label { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+
+/* Hinweispfeil auf den +-Knopf bei leerer Bibliothek (siehe
+   songs-import-hint): eigenständig fixiert statt Kind des +-Knopfs, damit
+   Pfeilspitze und Knopf unabhängig voneinander positioniert werden können.
+   Rein dekorativ (aria-hidden, pointer-events:none) — der +-Knopf selbst
+   trägt schon ein aria-label. Das sanfte Auf-und-Ab (siehe Keyframes unten)
+   holt den Blick dorthin, ohne auf Dauer zu nerven — deshalb behutsam und
+   respektiert prefers-reduced-motion. */
+.import-fab-hint {
+  position: fixed;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 70px);
+  z-index: 4;
+  width: 150px;
+  text-align: center;
+  pointer-events: none;
+  animation: import-fab-hint-bob 2.4s ease-in-out infinite;
+}
+@keyframes import-fab-hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-fab-hint { animation: none; }
+}
+.import-fab-hint-label {
+  display: inline-block;
+  background: var(--surface);
+  border: 1px solid var(--pill-line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: .01em;
+  box-shadow: 0 3px 10px rgba(0,0,0,.14);
+}
+/* Rechtsbündig statt zentriert: die Pfeilspitze sitzt am rechten Rand der
+   Zeichenfläche und zeigt damit genau auf den Knopf darunter, während der
+   Anfang mittig unter dem Schildchen bleibt. */
+.import-fab-hint-arrow { display: block; width: 100px; height: 120px; margin-left: auto; color: var(--accent); }
+
 /* ---------- Auswahlmaske vor dem Import --------------------------------- */
 
 .sheet {
@@ -790,7 +994,7 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--line);
 }
 
-/* Die Import- und die Aufnahme-Ansicht haben nur einen Zurück-Pfeil, keinen zweiten Knopf. */
+/* Die Import-Ansicht hat nur einen Zurück-Pfeil, keinen zweiten Knopf. */
 #import-view > .player-head, #recorder-view > .player-head { grid-template-columns: 44px 1fr; }
 
 /* Kein Zurück-Pfeil und kein zweiter Kopf-Knopf mehr — der Player ist ein
@@ -1181,6 +1385,10 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Höhe und Abstand zusammen ergeben --lyrics-toolbar-h — der Notizen-Reiter
+     hält denselben Betrag frei, damit beide Leerzustände gleich hoch sitzen
+     (siehe .empty-add). */
+  min-height: calc(var(--lyrics-toolbar-h) - 10px);
   margin: 0 0 10px;
 }
 .lyrics-toolbar-extended > .icon-btn { flex: 0 0 auto; margin-left: auto; }
@@ -1377,12 +1585,6 @@ input[type="checkbox"] {
   background: var(--danger);
 }
 
-/* Großer REC-Knopf im allgemeinen Recorder (siehe #recorder-view) — gleiche
- * Bausteine wie im Player, nur größer, weil er dort die einzige Bedienung ist. */
-.rec-btn--lg { width: 84px; height: 84px; margin: 0 auto; }
-.rec-btn--lg .rec-btn-dot { width: 33px; height: 33px; }
-.rec-btn--lg[aria-pressed="true"] .rec-btn-dot { width: 24px; height: 24px; border-radius: 8px; }
-
 .rec-btn[aria-pressed="true"] .rec-btn-dot {
   width: 16px;
   height: 16px;
@@ -1390,6 +1592,12 @@ input[type="checkbox"] {
   background: #fff;
   animation: rec-pulse 1.4s ease-in-out infinite;
 }
+
+/* Großer REC-Knopf im allgemeinen Recorder (siehe #recorder-view) — gleiche
+ * Bausteine wie im Player, nur größer, weil er dort die einzige Bedienung ist. */
+.rec-btn--lg { width: 84px; height: 84px; margin: 0 auto; }
+.rec-btn--lg .rec-btn-dot { width: 33px; height: 33px; }
+.rec-btn--lg[aria-pressed="true"] .rec-btn-dot { width: 24px; height: 24px; border-radius: 8px; }
 
 @keyframes rec-pulse {
   0%, 100% { opacity: 1; }
@@ -1427,6 +1635,16 @@ input[type="checkbox"] {
   text-align: center;
 }
 
+/* Hinweis auf ein Telefonqualitäts-Mikrofon (Bluetooth-Freisprechprofil) —
+   kein Fehler, aber der Grund für eine dumpfe Aufnahme; darum warnfarben,
+   aber ohne die volle Wucht von .rec-meter-warning. */
+.rec-input-warning {
+  margin: 0;
+  text-align: center;
+  color: var(--danger);
+  line-height: 1.35;
+}
+
 .rec-take {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1454,7 +1672,7 @@ input[type="checkbox"] {
 .take-icon svg { width: 22px; height: 22px; }
 .take-icon--save { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .take-icon--discard { color: var(--danger); border-color: rgba(255,77,109,.45); }
-/* Gesperrt, aber antippbar: der Tipp erklärt, was noch fehlt (siehe R8). */
+/* Gesperrt, aber antippbar: der Tipp erklärt, was noch fehlt (siehe allgemeiner Recorder). */
 .take-icon[aria-disabled="true"] { background: var(--surface-2); border-color: var(--line); color: var(--muted); }
 
 .voice-mini {
@@ -1483,6 +1701,21 @@ input[type="checkbox"] {
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .recording-item .go span.rec-meta { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+/* Nur sichtbar, solange eine REC-Vorschau mit auflösbarem Anker läuft
+   (siehe updateBackingUI) — für alte RECs ohne Anker taucht nichts auf. */
+.rec-backing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.rec-backing span { font-size: 0.88rem; white-space: nowrap; }
+.rec-backing input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
 .recording-item[data-active="true"] .go { border-color: var(--accent); }
 
 /* Laufende Playlist im Player */
@@ -2433,6 +2666,7 @@ input[type="checkbox"] {
         <p class="small muted" id="rec-status" style="margin:0; text-align:center">
           Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
         </p>
+        <p class="small rec-input-warning" id="rec-input-warning" hidden></p>
       </div>
       <div class="rec-take" id="rec-take" hidden>
         <div class="take-row">
@@ -2464,6 +2698,13 @@ input[type="checkbox"] {
         </div>
       </div>
       <div id="recording-list"></div>
+      <div class="rec-backing" id="rec-backing" hidden>
+        <button class="loop-switch" id="btn-rec-backing" type="button" role="switch" aria-checked="false" aria-label="Original leise mitlaufen">
+          <span class="loop-switch-knob"></span>
+        </button>
+        <span>Original leise mitlaufen</span>
+        <input type="range" id="rec-backing-volume" min="0" max="60" step="5" value="20" aria-label="Lautstärke des Originaltracks">
+      </div>
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" tabindex="0" hidden>
@@ -2501,9 +2742,17 @@ input[type="checkbox"] {
            selbst weg (siehe flushLyricsNote) — eigene Lösch-Fläche unnötig. -->
       <div id="lyrics-private-block" hidden>
         <div class="lyrics" id="lyrics-note-display" hidden></div>
-        <p class="small muted" id="lyrics-note-empty-hint" hidden style="text-align:center">
-          Noch kein eigener Liedtext — oben auf den Stift tippen.
-        </p>
+        <!-- Leerzustand: derselbe +-Gedanke wie in der Bibliothek, nur
+             zurückhaltend (gestrichelter Kreis) und mittig in der freien
+             Fläche statt als Satz oben am Rand. -->
+        <div class="empty-add" id="lyrics-note-empty-hint" hidden>
+          <button class="empty-add-btn" id="btn-lyrics-note-start" type="button" aria-label="Eigenen Liedtext anlegen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+          <span class="empty-add-label">Eigener Liedtext</span>
+        </div>
         <div id="lyrics-note-editor" hidden>
           <textarea class="note-box" id="lyrics-note-text" rows="14" spellcheck="true"
                     aria-label="Eigener Liedtext" placeholder="Liedtext eintragen …"></textarea>
@@ -2513,7 +2762,16 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" tabindex="0" hidden>
-      <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
+      <!-- Leerzustand wie beim eigenen Liedtext: dezenter +-Knopf mittig,
+           statt eines breiten Knopfs oben am Rand. -->
+      <div class="empty-add" id="note-empty" hidden>
+        <button class="empty-add-btn" id="btn-note-add" type="button" aria-label="Notiz anlegen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+        <span class="empty-add-label">Notiz</span>
+      </div>
       <div id="note-editor" hidden>
         <textarea class="note-box" id="note-text" rows="12" spellcheck="true"
                   aria-label="Notiz zu diesem Lied"
@@ -2768,9 +3026,9 @@ input[type="checkbox"] {
 </section>
 
 <!-- ==========================================================================
-     Allgemeine Aufnahmefunktion (REC-PLAN.md R7/R8) — Vollbild-Unteransicht
-     nach dem Vorbild von #import-view. Kein Song vorausgewählt; die Zuordnung
-     passiert erst beim Speichern über die Songliste unten in #recorder-take.
+     Allgemeine Aufnahmefunktion — Vollbild-Unteransicht nach dem Vorbild von
+     #import-view. Kein Song vorausgewählt; die Zuordnung passiert erst beim
+     Speichern über die Songliste unten in #recorder-take.
      ========================================================================== -->
 <section class="player" id="recorder-view" hidden aria-labelledby="recorder-title">
   <div class="player-head">
@@ -2797,6 +3055,7 @@ input[type="checkbox"] {
         <canvas class="rec-meter-canvas" id="recorder-meter-canvas"></canvas>
         <p class="small rec-meter-warning" id="recorder-meter-warning" hidden>Zu laut — die Aufnahme übersteuert</p>
       </div>
+      <p class="small rec-input-warning" id="recorder-input-warning" hidden></p>
     </div>
 
     <div class="rec-take" id="recorder-take" hidden style="margin:0 0 16px">
@@ -2899,20 +3158,50 @@ input[type="checkbox"] {
     </div>
     <div class="filterbar" id="filterbar" hidden></div>
     <div id="song-list-host"></div>
+
+    <!-- Schwebender Import-Einstieg: öffnet ein Menü, das direkt aus dem
+         Knopf herauswächst (siehe .fab-menu-backdrop/.fab-menu), statt eine
+         der Einstiegsansichten in den Einstellungen selbst festzulegen. -->
+    <button class="fab-add" id="btn-songs-import-fab" type="button"
+            aria-label="Songs importieren" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
+
+    <!-- Hinweispfeil auf den +-Knopf, nur solange die Bibliothek leer ist
+         (siehe renderSongs) — gewöhnt von Anfang an an denselben Weg, den
+         man auch später zum Nachimportieren braucht: erst gerade nach
+         unten, dann ein Bogen zum Knopf. -->
+    <div class="import-fab-hint" id="songs-import-hint" hidden aria-hidden="true">
+      <span class="import-fab-hint-label">Songs hier importieren</span>
+      <svg class="import-fab-hint-arrow" viewBox="0 0 100 120" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M36 8 C 26 36, 57 68, 63 84 L 72 106"/>
+          <path d="M72 106 L57 95"/>
+          <path d="M72 106 L75 87"/>
+        </g>
+      </svg>
+    </div>
   </section>
 
   <!-- ===== Setlisten ===================================================== -->
   <section class="view" id="view-playlists">
     <div id="current-setlist-host"></div>
-    <div class="card">
-      <h2 data-i18n="playlists.addTitle">Setliste hinzufügen</h2>
-      <div class="row" style="margin-top:14px; gap:8px">
-        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button" data-i18n="playlists.newBtn">Neu</button>
-        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn" style="flex:1" id="btn-pl-import" type="button" data-i18n="playlists.fileBtn">Datei</button>
-        <button class="btn" style="flex:1" id="btn-pl-paste" type="button" data-i18n="playlists.pasteBtn">Text</button>
-      </div>
+    <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
+
+    <!-- Statt einer Karte mit drei Knöpfen derselbe zurückhaltende +-Knopf
+         wie in den leeren Player-Reitern, hier im Fluss zwischen „Nächster
+         Gig" und der Liste. Er öffnet die drei Wege als Menü. -->
+    <div class="add-inline">
+      <button class="empty-add-btn" id="btn-playlist-add-fab" type="button"
+              aria-label="Setliste hinzufügen" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </button>
     </div>
+
     <div id="playlist-list-host"></div>
   </section>
 
@@ -3209,6 +3498,62 @@ input[type="checkbox"] {
 
   </section>
 </main>
+
+<!-- Menü, das der +-Knopf auf der Songs-Übersicht öffnet (siehe wireFabMenu,
+     btn-songs-import-fab): eigener, unsichtbarer Vollbild-Layer nur zum
+     Einfangen von Klicks außerhalb — muss wie #overlay ein direktes Kind von
+     body sein, sonst würde openModal()s inert-Logik #main (und damit das Menü
+     selbst) lahmlegen. Kein „Abbrechen" nötig: ein Klick auf den Backdrop
+     oder erneut auf den Knopf schließt es. -->
+<div class="fab-menu-backdrop" id="songs-fab-backdrop" hidden>
+  <div class="fab-menu" id="songs-fab-menu" role="menu" aria-label="Songs importieren">
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 3l7 7-11 11H3v-7z"/><path d="M13 5.5L18.5 11"/>
+      </svg>
+      <span>Platzhalter hinzufügen</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="recordings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21M9 21h6"/>
+      </svg>
+      <span>Aus Recordings</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="dropbox">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7 3l5 3.2L7 9.4 2 6.2 7 3z"/><path d="M17 3l5 3.2-5 3.2-5-3.2L17 3z"/>
+        <path d="M2 12.6l5 3.2 5-3.2M12 12.6l5 3.2 5-3.2"/><path d="M7 19.8l5-3.2 5 3.2"/>
+      </svg>
+      <span>Aus der Dropbox</span>
+    </button>
+  </div>
+</div>
+
+<!-- Dasselbe für die Setlisten (siehe btn-playlist-add-fab). „Eigene
+     erstellen" steht unten, also am dichtesten am Daumen: das ist der Weg,
+     den man am häufigsten nimmt. -->
+<div class="fab-menu-backdrop" id="playlists-fab-backdrop" hidden>
+  <div class="fab-menu" role="menu" aria-label="Setliste hinzufügen">
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+      </svg>
+      <span>Aus Datei importieren</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="paste">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 6h14M5 11h14M5 16h8"/>
+      </svg>
+      <span>Aus Text importieren</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6h11M4 12h7M4 18h7"/><path d="M17 11v8M13 15h8"/>
+      </svg>
+      <span>Eigene erstellen</span>
+    </button>
+  </div>
+</div>
 
 <nav class="app-nav" id="nav" aria-label="Hauptnavigation">
   <button class="nav-btn" type="button" data-view="songs" aria-current="page">
@@ -3899,6 +4244,111 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
   });
 }
 
+/* --------------------------------------------------------------------------
+   Menüs der +-Knöpfe (Bibliothek, Setlisten)
+
+   Ein +-Knopf öffnet kein zentriertes Dialogfenster, sondern ein Menü, das
+   optisch aus ihm herauswächst (siehe .fab-menu-Styles). Kein „Abbrechen"
+   nötig: ein Klick auf den transparenten Backdrop oder erneut auf den Knopf
+   (jetzt ein ×) schließt es. Es ist immer höchstens eines offen — mehr
+   bräuchte niemand, und so bleibt das Schließen von außen eindeutig.
+   -------------------------------------------------------------------------- */
+
+let openFabMenu = null;   // { btn, backdrop } des gerade offenen Menüs
+
+function isFabMenuOpen() { return openFabMenu !== null; }
+
+/**
+ * Setzt das Menü an seinen Knopf: waagerecht auf dessen Mitte, am
+ * Bildschirmrand abgefangen. Der Ursprung der Aufziehbewegung bleibt dabei
+ * genau über der Knopfmitte, damit es auch beim abgefangenen Menü (unten
+ * rechts) noch aus dem Knopf herauszuwachsen scheint. Über dem Knopf, wo
+ * Platz ist — sonst darunter (der Setlisten-Knopf steht je nach Liste weit
+ * oben). Beim Klappen nach unten dreht sich auch die Reihenfolge um, damit
+ * der wichtigste Eintrag dem Knopf am nächsten bleibt.
+ */
+function placeFabMenu(btn, backdrop) {
+  const menu = $('.fab-menu', backdrop);
+  const r = btn.getBoundingClientRect();
+  const gap = 10;
+  const edge = 12;
+
+  const w = menu.offsetWidth;
+  const centerX = r.left + r.width / 2;
+  const left = Math.max(edge, Math.min(centerX - w / 2, window.innerWidth - w - edge));
+  menu.style.left = `${Math.round(left)}px`;
+
+  const below = menu.offsetHeight > r.top - gap - edge;
+  menu.classList.toggle('fab-menu--below', below);
+  menu.style.top    = below ? `${Math.round(r.bottom + gap)}px` : 'auto';
+  menu.style.bottom = below ? 'auto' : `${Math.round(window.innerHeight - r.top + gap)}px`;
+  menu.style.transformOrigin = `${Math.round(centerX - left)}px ${below ? '0%' : '100%'}`;
+}
+
+function showFabMenu(btn, backdrop) {
+  if (openFabMenu) closeFabMenu();
+  openFabMenu = { btn, backdrop };
+  backdrop.hidden = false;
+  placeFabMenu(btn, backdrop);   // erst sichtbar, dann messbar
+  btn.setAttribute('aria-expanded', 'true');
+  openModal(backdrop, { initialFocus: $('.fab-menu-item', backdrop), onEscape: () => closeFabMenu() });
+}
+
+function closeFabMenu() {
+  if (!openFabMenu) return;
+  const { btn, backdrop } = openFabMenu;
+  openFabMenu = null;
+  backdrop.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+  closeModal(backdrop);
+}
+
+/**
+ * Verdrahtet einen +-Knopf mit seinem Menü. `onAction` bekommt den Wert aus
+ * data-action des gewählten Eintrags; das Menü ist zu diesem Zeitpunkt schon
+ * geschlossen, damit ein darauf folgender Dialog die Ebene für sich hat.
+ */
+function wireFabMenu(btnSel, backdropSel, onAction) {
+  const btn = $(btnSel);
+  const backdrop = $(backdropSel);
+  btn.addEventListener('click', () => (openFabMenu?.btn === btn ? closeFabMenu() : showFabMenu(btn, backdrop)));
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeFabMenu(); });
+  $('.fab-menu', backdrop).addEventListener('click', (e) => {
+    const item = e.target.closest('.fab-menu-item');
+    if (!item) return;
+    closeFabMenu();
+    onAction(item.dataset.action);
+  });
+}
+
+// Nach einer Drehung stimmt die gemessene Lage nicht mehr — neu setzen,
+// statt das Menü einem Knopf hinterherhängen zu lassen, der weg ist.
+window.addEventListener('resize', () => {
+  if (openFabMenu) placeFabMenu(openFabMenu.btn, openFabMenu.backdrop);
+});
+
+/* Bibliothek: drei gleichrangige Wege, an Songs zu kommen — ZIP aus der
+   Dropbox (#import-view), einzelne Recordings (#rec-import-input) und ein
+   Platzhalter ganz ohne Aufnahme. */
+wireFabMenu('#btn-songs-import-fab', '#songs-fab-backdrop', async (action) => {
+  if (action === 'dropbox') { navigate('#import'); return; }
+  if (action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); return; }
+  if (action === 'placeholder') {
+    const title = await promptDialog({
+      title: 'Platzhalter hinzufügen',
+      text: 'Die Aufnahme kann später ergänzt werden — Liedtext, Notizen und Setlisten funktionieren schon vorher.',
+      placeholder: 'Songtitel',
+      okLabel: 'Anlegen',
+    });
+    if (!title || !title.trim()) return;
+    const song = await createPlaceholderSong(title);
+    $('#search').value = '';
+    songQuery = '';
+    playQueue = null;
+    navigate(`#song/${song.id}`);
+  }
+});
+
 dlgOk.addEventListener('click', () => closeDialog(true));
 dlgCancel.addEventListener('click', () => closeDialog(false));
 overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(false); });
@@ -4153,13 +4603,14 @@ const DEFAULT_SETTINGS = {
   firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
-  btRecHintDismissed: false, // Hinweis auf Bluetooth-Kopfhörer beim Aufnehmen schon einmal gezeigt
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
   lightshowOffsetMs: 0,       // Handversatz der Geräteuhr in ms (siehe Sync-Prüfbild)
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
+  recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
+  recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4370,10 +4821,6 @@ const STRINGS = {
     'songs.feelingLuckyAria': 'Feeling Lucky — zufälliges Lied abspielen',
     'songs.recordAria': 'Aufnehmen',
 
-    'playlists.addTitle': 'Setliste hinzufügen',
-    'playlists.newBtn': 'Neu',
-    'playlists.fileBtn': 'Datei',
-    'playlists.pasteBtn': 'Text',
     'playlists.searchPlaceholder': 'Song suchen oder Platzhalter hinzufügen …',
     'playlists.searchAria': 'Song für die Setliste suchen',
     'playlists.emptyTitle': 'Noch keine Setlisten',
@@ -4381,7 +4828,6 @@ const STRINGS = {
 
     'songs.emptyTitle': 'Noch keine Songs',
     'songs.emptyText': 'Lade die Aufnahmen aus der Dropbox als ZIP-Datei herunter und importiere sie hier.',
-    'songs.emptyImportBtn': 'Zum Import',
     'songs.notFoundTitle': 'Nichts gefunden',
     'songs.notFoundText': 'Kein Song passt zu dieser Suche.',
     'songs.createPlaceholderSuffix': 'als Platzhalter anlegen',
@@ -4580,10 +5026,6 @@ const STRINGS = {
     'songs.feelingLuckyAria': 'Feeling Lucky — play a random song',
     'songs.recordAria': 'Record',
 
-    'playlists.addTitle': 'Add setlist',
-    'playlists.newBtn': 'New',
-    'playlists.fileBtn': 'File',
-    'playlists.pasteBtn': 'Text',
     'playlists.searchPlaceholder': 'Search song or add a placeholder …',
     'playlists.searchAria': 'Search a song for the setlist',
     'playlists.emptyTitle': 'No setlists yet',
@@ -4591,7 +5033,6 @@ const STRINGS = {
 
     'songs.emptyTitle': 'No songs yet',
     'songs.emptyText': 'Download the recordings from Dropbox as a ZIP file and import them here.',
-    'songs.emptyImportBtn': 'Go to import',
     'songs.notFoundTitle': 'Nothing found',
     'songs.notFoundText': 'No song matches this search.',
     'songs.createPlaceholderSuffix': 'add as placeholder',
@@ -4790,10 +5231,6 @@ const STRINGS = {
     'songs.feelingLuckyAria': 'Feeling Lucky — odtwórz losowy utwór',
     'songs.recordAria': 'Nagraj',
 
-    'playlists.addTitle': 'Dodaj setlistę',
-    'playlists.newBtn': 'Nowa',
-    'playlists.fileBtn': 'Plik',
-    'playlists.pasteBtn': 'Tekst',
     'playlists.searchPlaceholder': 'Szukaj utworu lub dodaj placeholder …',
     'playlists.searchAria': 'Szukaj utworu do setlisty',
     'playlists.emptyTitle': 'Jeszcze brak setlist',
@@ -4801,7 +5238,6 @@ const STRINGS = {
 
     'songs.emptyTitle': 'Jeszcze brak utworów',
     'songs.emptyText': 'Pobierz nagrania z Dropboxa jako plik ZIP i zaimportuj je tutaj.',
-    'songs.emptyImportBtn': 'Przejdź do importu',
     'songs.notFoundTitle': 'Nic nie znaleziono',
     'songs.notFoundText': 'Żaden utwór nie pasuje do tego wyszukiwania.',
     'songs.createPlaceholderSuffix': 'dodaj jako placeholder',
@@ -5687,6 +6123,11 @@ function showView(name) { navigate(`#${name}`); }
  * zuverlässig wieder schließt.
  */
 function applyRoute() {
+  // Sonst bliebe das Menü sichtbar, wenn man z.B. per Zurück-Taste oder
+  // Reiterleiste wegnavigiert, statt es über einen seiner eigenen Wege
+  // (Aktion, Backdrop, ×-Knopf) zu schließen.
+  if (isFabMenuOpen()) closeFabMenu();
+
   const raw = (location.hash || '#songs').slice(1);
   const slash = raw.indexOf('/');
   const name = slash < 0 ? raw : raw.slice(0, slash);
@@ -5913,6 +6354,7 @@ async function renderSongs() {
   songsRenderSignature = signature;
 
   host.textContent = '';
+  $('#songs-import-hint').hidden = !!songs.length;
 
   if (!songs.length) {
     lastVisibleSongs = [];
@@ -5921,14 +6363,7 @@ async function renderSongs() {
     host.append(el('div', { class: 'empty' },
       iconEmptyNote(),
       el('h2', { text: t('songs.emptyTitle') }),
-      el('p', { class: 'small', text: t('songs.emptyText') }),
-      el('button', {
-        class: 'btn btn--primary',
-        type: 'button',
-        text: t('songs.emptyImportBtn'),
-        style: 'margin-top:14px',
-        onclick: () => showView('import'),
-      })
+      el('p', { class: 'small', text: t('songs.emptyText') })
     ));
     return;
   }
@@ -6959,6 +7394,12 @@ const Audio = {
   el: null,
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
   channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
+  channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
+  bg: null,               // zweites, stummes <audio> für den leise mitlaufenden Original-Song (REC)
+  bgGain: null,           // Gain zwischen bg und channelIn — bg.volume ist auf iOS schreibgeschützt
+  bgSource: null,         // MediaElementSource von bg, falls die Matrix steht
+  bgVoice: null,          // Stimme, deren Spur gerade in bg geladen ist, oder null
+  bgUrl: null,            // aktive Blob-URL von bg, für revokeObjectURL beim Wechsel
   ready: false,
   song: null,
   currentKey: null,      // fileKey der Spur, die gerade in `el` geladen ist
@@ -7094,6 +7535,9 @@ async function audioInit() {
 
     Audio.ctx = ctx;
     Audio.channel = { gLL, gLR, gRL, gRR };
+    // Einspeisepunkt für den Hintergrundtrack (siehe ensureBackingAudio) — im
+    // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
+    Audio.channelIn = splitter;
     audioApplyChannelMode(settings.channelMode);
     dlog('audio:route', { mode: 'matrix' });
 
@@ -8452,7 +8896,6 @@ function closeImportView() {
 }
 
 $('#btn-open-import').addEventListener('click', () => navigate('#import'));
-$('#import-back').addEventListener('click', () => history.back());
 
 /**
  * Allgemeine Aufnahme-Ansicht (#recorder-view), Vorbild #import-view — liegt
@@ -8517,6 +8960,7 @@ async function requestCloseRecorderView() {
 
 $('#btn-rec-global').addEventListener('click', () => navigate('#recorder'));
 $('#recorder-back').addEventListener('click', requestCloseRecorderView);
+$('#import-back').addEventListener('click', () => history.back());
 
 /* ==========================================================================
    LICHTSHOW — Vollbild-Unteransicht (#lightshow-view), Vorbild #import-view.
@@ -9391,6 +9835,9 @@ async function openPlayer(songId) {
       lastReportedSecond = Math.floor(s);
       updateMediaPosition();
     }
+    // Nachregelung des leise mitlaufenden Originaltracks — hier statt über
+    // einen eigenen Timer, dieser Takt (~4x/Sekunde) reicht dafür völlig.
+    syncBacking();
   };
   Audio.onEnded = onPlaybackEnded;
 
@@ -9723,7 +10170,7 @@ $('#btn-play').addEventListener('click', async () => {
   updateMediaSession();
   // Läuft gerade eine REC-Vorschau, muss deren eigener Anhören-Knopf
   // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
-  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); }
+  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); syncBackingPlayState(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
@@ -10215,7 +10662,61 @@ function renderLoopList() {
    dieselben Knöpfe, die den Song abspielen, spielen dann den REC.
    previewRecordingBlob()/endRecordingPreview() merken sich dafür, wo die
    normale Wiedergabe stand, und stellen das danach wieder her.
+
+   Mitsingen zum laufenden Song ist vorgesehen — REC und Wiedergabe laufen
+   unabhängig nebeneinander —, aber nur mit Kopfhörern: über Lautsprecher
+   landet der Song unvermeidlich mit im Mikrofon, und das einzige Mittel
+   dagegen wäre die Echo-Unterdrückung des Systems, die hier bewusst nie an
+   ist (siehe RECORDING_CONSTRAINTS). Zwei Dinge, die dem Gleichzeitigen
+   sonst im Weg stünden, sind dafür ausgeräumt:
+
+   1. preferWideBandMic() — sobald ein Browser das Mikrofon eines
+      Bluetooth-Kopfhörers öffnet, schaltet der vom Musik- ins
+      Freisprechprofil: ab da laufen BEIDE Richtungen mono in
+      Telefonbandbreite. Der Song klingt plötzlich dumpf und die Aufnahme
+      erst recht. Gibt es ein eingebautes Mikrofon, wird deshalb das
+      genommen und das Headset gar nicht erst als Eingang geöffnet.
+   2. startLevelMeter() hängt am AudioContext der Wiedergabe statt einen
+      zweiten aufzumachen — ein frisch erzeugter AudioContext lässt iOS die
+      Audio-Hardware neu aushandeln, was die gerade laufende Wiedergabe
+      hörbar stört.
    ========================================================================== */
+
+/* ---------- Anker-Mathematik (Original leise unter dem REC) ----------
+   Reine Funktionen, kein Zugriff auf Audio/DOM — einzeln testbar (siehe
+   runSelfTests). Die Herleitung steht im Arbeitsplan (REC-MITSING-PLAN.md,
+   Abschnitt 1.4): Während der Aufnahme lief der Song mit Rate `anchor.rate`,
+   in `recTime` Sekunden REC-Zeit rückte er also um `anchor.rate * recTime`
+   vor, gerechnet ab der Anker-Position `anchor.pos`. */
+
+const BACKING_SEEK_S = 0.25;      // ab hier harter Sprung statt Nachregeln
+const BACKING_NUDGE_S = 0.04;     // darunter gilt die Abweichung als vernachlässigbar
+const BACKING_NUDGE_FACTOR = 0.03; // Rate-Abweichung beim weichen Aufholen (1 ∓ Faktor)
+
+/** Sollposition des Originaltracks zu einer REC-Position (siehe Herleitung oben). */
+function backingTargetTime(anchor, recTime) {
+  return anchor.pos + anchor.rate * recTime;
+}
+
+/** Sollrate des Originaltracks bei gegebener REC-Rate. */
+function backingTargetRate(anchor, recRate) {
+  return anchor.rate * recRate;
+}
+
+/**
+ * Wie auf eine Abweichung `driftS` (Ist minus Soll) reagiert wird: 'seek'
+ * (harter Sprung), 'nudge' (weiches Aufholen über die Rate) oder 'hold'
+ * (Sollrate reicht). `rateFactor` gilt nur bei 'nudge' und ist auf 1 zu
+ * kürzen, wenn der Hintergrund voraus liegt (driftS > 0).
+ */
+function backingCorrection(driftS) {
+  const abs = Math.abs(driftS);
+  if (abs > BACKING_SEEK_S) return { action: 'seek', rateFactor: 1 };
+  if (abs > BACKING_NUDGE_S) {
+    return { action: 'nudge', rateFactor: driftS > 0 ? 1 - BACKING_NUDGE_FACTOR : 1 + BACKING_NUDGE_FACTOR };
+  }
+  return { action: 'hold', rateFactor: 1 };
+}
 
 let recStream = null;
 let recMediaRecorder = null;
@@ -10224,16 +10725,17 @@ let recMimeType = '';
 let recStartedAt = 0;
 let recTimerHandle = null;
 // Welche Oberfläche die Aufnahme gerade zeigt — 'player' (Loops-Tab) oder
-// 'recorder' (allgemeine Aufnahme-Ansicht, siehe R7). Es läuft immer nur
-// eine Aufnahme, aber sie muss wissen, welche Knoten sie bedient. Beide
-// Oberflächen bauen dieselbe Karte aus R6 nach, nur mit eigenen IDs (der
-// große Knopf im Recorder ist z.B. optisch größer) — RID bildet recHost auf
-// die jeweils richtigen Knoten ab, rn() ist die Kurzform dafür.
+// 'recorder' (allgemeine Aufnahme-Ansicht). Es läuft immer nur eine Aufnahme,
+// aber sie muss wissen, welche Knoten sie bedient. Beide Oberflächen bauen
+// dieselbe Take-Karte nach, nur mit eigenen IDs (der große Knopf im Recorder
+// ist z.B. optisch größer) — RID bildet recHost auf die jeweils richtigen
+// Knoten ab, rn() ist die Kurzform dafür.
 let recHost = 'player';
 const RID = {
   player: {
     controls: 'rec-controls', toggle: 'btn-rec-toggle', timer: 'rec-timer', status: 'rec-status',
     meter: 'rec-meter', meterCanvas: 'rec-meter-canvas', meterWarning: 'rec-meter-warning',
+    inputWarning: 'rec-input-warning',
     take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration',
     voiceBtn: 'btn-rec-take-voice', voiceLabel: 'rec-take-voice-label',
     wave: 'rec-take-wave', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
@@ -10242,6 +10744,7 @@ const RID = {
   recorder: {
     controls: 'recorder-idle', toggle: 'btn-recorder-toggle', timer: 'recorder-timer', status: 'recorder-status',
     meter: 'recorder-meter', meterCanvas: 'recorder-meter-canvas', meterWarning: 'recorder-meter-warning',
+    inputWarning: 'recorder-input-warning',
     take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration',
     voiceBtn: 'btn-recorder-take-voice', voiceLabel: 'recorder-take-voice-label',
     wave: 'recorder-take-wave', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
@@ -10250,55 +10753,146 @@ const RID = {
 };
 /** Liefert den Knoten der gerade aktiven Aufnahme-Oberfläche (siehe recHost/RID). */
 function rn(key) { return $('#' + RID[recHost][key]); }
+
 // Schützt vor einem schnellen Doppel-Tipp auf REC-Start, bevor getUserMedia()
 // beim ersten Aufruf überhaupt zurückkommt — recMediaRecorder wird erst nach
 // diesem await gesetzt, wäre also für den Klick-Handler bis dahin kein Schutz.
 let recStarting = false;
 let songRecordings = [];
-let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
+let pendingTake = null;     // { blob, mimeType, duration, anchor } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
+// Anker der laufenden Aufnahme — welche Stimme an welcher Stelle lief, siehe
+// captureRecAnchor(). null, solange kein Song lief oder schon ein REC.
+let recAnchor = null;
+
+/* ---------- Mikrofon ----------
+   echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
+   gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
+   schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
+   Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit, und
+   zwar ausnahmslos: die Echo-Unterdrückung wäre das einzige Mittel gegen
+   einen über Lautsprecher mitlaufenden Song im Mikrofon, kostet dafür aber
+   jede Aufnahme Klang. Mitsingen zum laufenden Song geht deshalb nur mit
+   Kopfhörern. */
+const RECORDING_CONSTRAINTS = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
+function recConstraints() {
+  return { ...RECORDING_CONSTRAINTS };
+}
+
+/* Gerätenamen sind je nach System und Sprache verschieden — geprüft wird
+   deshalb auf die Bestandteile, die sich in der Praxis wiederholen. Ein
+   Treffer ist ein Verdacht, kein Beweis: entscheidend ist die Abtastrate,
+   die aber nicht jeder Browser herausgibt (Safari meist nicht). */
+const REC_HEADSET_LABEL_RE = /bluetooth|airpods|air pods|beats|buds|headset|hands[\s-]?free|freisprech|\bhfp\b|\bbt\b/i;
+
+function isLikelyHeadsetInput(label) {
+  return REC_HEADSET_LABEL_RE.test(String(label || ''));
+}
 
 /**
- * Sucht unter den Mikrofonen ein eingebautes statt eines Headset-Mikrofons —
- * Bluetooth-Kopfhörer bleiben dann im Wiedergabeprofil (siehe REC-PLAN.md
- * Abschnitt 3.4). Liefert `null`, wenn keine Auswahl möglich ist (Labels nur
- * mit erteilter Erlaubnis sichtbar, auf iOS/Safari ohnehin nie) — dann ändert
- * sich nichts, wie bisher.
+ * Beurteilt den geöffneten Eingang: 'ok', 'narrowband' (nachgewiesene
+ * Telefonbandbreite) oder 'headset' (Verdacht allein aus dem Namen).
+ * 16 000 Hz ist das Breitband-Freisprechprofil, 8 000 Hz das schmalbandige;
+ * alles bis 24 000 Hz liegt unterhalb dessen, was ein Mikrofon für Gesang
+ * liefern sollte.
  */
-async function pickPreferredMicId() {
+function recInputQuality({ label = '', sampleRate = 0 } = {}) {
+  // Eine bekannte Abtastrate ist die härtere Auskunft als der Gerätename:
+  // ein Kopfhörer, der in voller Bandbreite aufnimmt, braucht keine Warnung.
+  if (sampleRate > 0) return sampleRate <= 24000 ? 'narrowband' : 'ok';
+  if (isLikelyHeadsetInput(label)) return 'headset';
+  return 'ok';
+}
+
+/**
+ * Sucht ein eingebautes Mikrofon, wenn der offene Eingang nach Headset
+ * aussieht. 'default' und 'communications' sind Verweise auf genau die
+ * Systemvorgabe, die gerade das Headset ist — die würden dasselbe Gerät
+ * erneut öffnen und sind deshalb keine Kandidaten.
+ */
+function pickBuiltInMicId(devices, currentLabel) {
+  if (!isLikelyHeadsetInput(currentLabel)) return null;
+  for (const device of devices || []) {
+    if (device.kind !== 'audioinput') continue;
+    if (!device.deviceId || device.deviceId === 'default' || device.deviceId === 'communications') continue;
+    if (isLikelyHeadsetInput(device.label)) continue;
+    return device.deviceId;
+  }
+  return null;
+}
+
+function recStreamInfo(stream) {
+  const track = stream?.getAudioTracks?.()[0];
+  const info = track?.getSettings?.() || {};
+  return { label: track?.label || '', sampleRate: info.sampleRate || 0, channelCount: info.channelCount || 0 };
+}
+
+/**
+ * Weicht auf das eingebaute Mikrofon aus, wenn der Browser das eines
+ * Bluetooth-Kopfhörers erwischt hat. Das ist nicht nur eine Frage der
+ * Aufnahme: solange dessen Mikrofon offen ist, bleibt der Kopfhörer im
+ * Freisprechprofil und gibt auch den Song nur in Telefonqualität wieder.
+ * Deshalb wird der alte Stream vorher freigegeben — erst das lässt das
+ * System zurück ins Musikprofil schalten.
+ */
+async function preferWideBandMic(stream) {
+  const info = recStreamInfo(stream);
+  if (recInputQuality(info) === 'ok') return stream;
+  if (!navigator.mediaDevices?.enumerateDevices) return stream;
+
+  let deviceId = null;
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const inputs = devices.filter((d) => d.kind === 'audioinput' && d.label);
-    if (inputs.length < 2) return null;
-    const builtIn = inputs.find((d) => !/bluetooth|airpods|\bbt\b|headset|kopfh(ö|oe)rer|freisprech|hands.?free/i.test(d.label));
-    return builtIn ? builtIn.deviceId : null;
-  } catch {
-    return null;
+    deviceId = pickBuiltInMicId(await navigator.mediaDevices.enumerateDevices(), info.label);
+  } catch (err) {
+    dlog('rec:devices:fail', { name: err?.name });
+    return stream;
+  }
+  if (!deviceId) return stream;
+
+  for (const track of stream.getTracks()) track.stop();
+  try {
+    const better = await navigator.mediaDevices.getUserMedia({
+      audio: { ...recConstraints(), deviceId: { exact: deviceId } },
+    });
+    dlog('rec:mic:switched', { sampleRate: recStreamInfo(better).sampleRate });
+    return better;
+  } catch (err) {
+    // Das Wunschgerät ließ sich nicht öffnen (belegt, verschwunden, vom
+    // Browser nicht wählbar) — dann lieber die Systemvorgabe in
+    // Telefonqualität als gar keine Aufnahme.
+    dlog('rec:mic:switchfail', { name: err?.name });
+    return navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
   }
 }
 
-/** Großzügige Erkennung, ob ein Mikrofon-Label auf Bluetooth-Kopfhörer hindeutet. */
-function looksLikeBluetoothMic(label) {
-  return /bluetooth|airpods|\bbt\b/i.test(label || '');
+/** Sagt nach dem Öffnen, wenn der Eingang die Aufnahme hörbar begrenzt. */
+function updateRecInputWarning(stream) {
+  const el = rn('inputWarning');
+  if (!el) return;
+  const info = recStreamInfo(stream);
+  const quality = stream ? recInputQuality(info) : 'ok';
+  dlog('rec:input', { quality, sampleRate: info.sampleRate, channelCount: info.channelCount });
+  if (quality === 'ok') {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  el.textContent = quality === 'narrowband'
+    ? 'Das Mikrofon läuft in Telefonqualität — typisch für Bluetooth-Kopfhörer, die beim Aufnehmen aufs Freisprechprofil umschalten. Dann klingt auch der Song dumpf. Kabelgebundene Kopfhörer oder Bluetooth aus helfen.'
+    : 'Aufnahme über ein Bluetooth-Headset. Viele Kopfhörer schalten dabei auf Telefonqualität um — auch für die Wiedergabe. Kabelgebundene Kopfhörer klingen deutlich besser.';
+  el.hidden = false;
 }
 
-/** Einmaliger Hinweis: Bluetooth schaltet beim Aufnehmen in den Telefonmodus,
- *  Ton und Aufnahme klingen dann dumpfer (siehe REC-PLAN.md Abschnitt 3.4). */
-function maybeShowBtRecHint(label) {
-  if (settings.btRecHintDismissed || !looksLikeBluetoothMic(label)) return;
-  banner('Bluetooth-Kopfhörer schalten beim Aufnehmen in den Telefonmodus — Ton und Aufnahme klingen dann dumpfer. Für gute Aufnahmen die Kopfhörer trennen.');
-  saveSettings({ btRecHintDismissed: true });
-}
-
+/** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 /** Tag.Monat. für den Namensvorschlag im allgemeinen Recorder — dort gibt es
- *  (anders als im Player) noch keinen Song, an dem sich eine laufende Nummer
- *  festmachen ließe (siehe REC-PLAN.md 5.3). */
+ *  (anders als im Player) noch keinen Song, an dem sich eine laufende
+ *  Nummer festmachen ließe. */
 function dateStamp() {
   const d = new Date();
   return `${d.getDate()}.${d.getMonth() + 1}.`;
 }
 
-/** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
   if (!window.MediaRecorder) return '';
   const candidates = [
@@ -10322,30 +10916,24 @@ function updateRecTimer() {
   rn('timer').textContent = fmtTime((Date.now() - recStartedAt) / 1000);
 }
 
-// Nur einmal pro Sitzung ins Diagnose-Log — die Geräteliste ändert sich
-// zwischen zwei RECs praktisch nie, und niemand braucht sie zwanzigmal.
-let audioInputDevicesLogged = false;
-
-/** Listet einmalig die verfügbaren Mikrofone ins Diagnose-Log — hilft zu
- *  klären, ob nach dem Koppeln von Kopfhörern das eingebaute Mikrofon noch
- *  auftaucht bzw. welches tatsächlich gewählt wird (siehe R5). */
-async function logAudioInputDevicesOnce() {
-  if (audioInputDevicesLogged || !settings?.debugLog) return;
-  audioInputDevicesLogged = true;
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const inputs = devices
-      .filter((d) => d.kind === 'audioinput')
-      .map((d) => ({ deviceId: d.deviceId.slice(0, 8), label: d.label, groupId: d.groupId.slice(0, 8) }));
-    dlog('rec:devices', { inputs });
-  } catch (err) {
-    console.warn('[rec] enumerateDevices failed', err);
-  }
+/**
+ * Anker für einen neu startenden REC — nur gesetzt, wenn wirklich der Song
+ * lief (nicht: audioPreview, also läuft schon ein anderer REC; nicht: kein
+ * Song geladen oder pausiert). Die Stimme kommt über den fileKey der
+ * aktuell geladenen Spur — fehlt sie (Song inzwischen verändert), gibt es
+ * keinen Anker statt eines geratenen.
+ */
+function captureRecAnchor() {
+  if (audioPreview) return null;
+  if (!Audio.playing || !Audio.currentKey) return null;
+  const voice = trackByVoiceKey(Audio.currentKey)?.voice;
+  if (!voice) return null;
+  return { voice, pos: Audio.position, rate: Audio.rate };
 }
 
 async function startRecording() {
-  // Im Player braucht es einen offenen Song; im allgemeinen Recorder (R7/R8)
-  // ist noch keiner ausgewählt — der Song wird erst beim Speichern zugeordnet.
+  // Im Player braucht es einen offenen Song; im allgemeinen Recorder ist noch
+  // keiner ausgewählt — der Song wird erst beim Speichern zugeordnet.
   if ((recHost === 'player' && !playerSong) || pendingTake || recStarting) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     banner('Dieser Browser kann keine Mikrofonaufnahmen aufzeichnen.', { kind: 'error' });
@@ -10353,51 +10941,34 @@ async function startRecording() {
   }
 
   recStarting = true;
-  dlog('rec:ctx', { when: 'before', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
-  const preferredMicId = await pickPreferredMicId();
   try {
-    // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
-    // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
-    // schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
-    // Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
-    // deviceId nur „ideal": ein inzwischen verschwundenes Gerät soll die
-    // Aufnahme nicht verhindern.
-    recStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-        ...(preferredMicId ? { deviceId: { ideal: preferredMicId } } : {}),
-      },
-    });
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
+    // Erst danach steht fest, welches Mikrofon der Browser genommen hat —
+    // ein Bluetooth-Kopfhörer würde Aufnahme und Wiedergabe zugleich auf
+    // Telefonqualität herunterziehen.
+    recStream = await preferWideBandMic(recStream);
   } catch (err) {
     recStarting = false;
+    if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
     bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
     return;
   }
-  const recTrack = recStream.getAudioTracks()[0];
-  if (recTrack) {
-    dlog('rec:stream', { label: recTrack.label, settings: recTrack.getSettings() });
-    maybeShowBtRecHint(recTrack.label);
-  }
-  dlog('rec:ctx', { when: 'after', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
-  logAudioInputDevicesOnce();
+  updateRecInputWarning(recStream);
 
   recMimeType = pickRecMimeType();
-  const recorderOpts = recMimeType ? { mimeType: recMimeType } : {};
   try {
-    recMediaRecorder = new MediaRecorder(recStream, { ...recorderOpts, audioBitsPerSecond: 128000 });
+    // Ohne Angabe wählen manche Browser eine sehr sparsame Datenrate; 128
+    // kbit/s kosten pro Probenmitschnitt wenige Megabyte und nehmen der
+    // Aufnahme den Kompressionsschleier.
+    const recorderOptions = { audioBitsPerSecond: 128000 };
+    if (recMimeType) recorderOptions.mimeType = recMimeType;
+    recMediaRecorder = new MediaRecorder(recStream, recorderOptions);
   } catch (err) {
-    // Manche Browser lehnen audioBitsPerSecond ab (z.B. zusammen mit einem
-    // bestimmten mimeType) — dann ohne Option erneut versuchen, statt die
-    // Aufnahme daran scheitern zu lassen.
-    try {
-      recMediaRecorder = new MediaRecorder(recStream, recorderOpts);
-    } catch (err2) {
-      recStarting = false;
-      for (const track of recStream.getTracks()) track.stop();
-      recStream = null;
-      bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err2);
-      return;
-    }
+    recStarting = false;
+    for (const track of recStream.getTracks()) track.stop();
+    recStream = null;
+    bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err);
+    return;
   }
   recStarting = false;
 
@@ -10415,6 +10986,16 @@ async function startRecording() {
     teardownRecording();
     bannerError('Die Aufnahme wurde abgebrochen.', 'REC-ERROR', e.error);
   });
+
+  // Erst wenn der Recorder wirklich läuft, steht der Anker fest — zwischen
+  // getUserMedia() und dem ersten aufgezeichneten Sample liegt sonst eine
+  // unbekannte Latenz, die den Anker daneben liegen ließe. Nur im Player: im
+  // allgemeinen Recorder steht der Song noch nicht fest, ein hier gefangener
+  // Anker würde sich auf einen zufällig im Hintergrund laufenden Song
+  // beziehen statt auf den erst beim Speichern gewählten.
+  recMediaRecorder.addEventListener('start', () => {
+    recAnchor = recHost === 'player' ? captureRecAnchor() : null;
+  }, { once: true });
 
   recStartedAt = Date.now();
   recMediaRecorder.start();
@@ -10439,6 +11020,7 @@ function stopRecording() {
    davon nichts mit und läuft unbeeinflusst weiter. */
 
 let levelCtx = null;
+let levelCtxOwned = false;   // eigener Kontext (nur dann schließen) statt dem der Wiedergabe
 let levelAnalyser = null;
 let levelSource = null;
 let levelRafId = null;
@@ -10497,7 +11079,14 @@ function resetLevelTakeHistory() {
 
 function startLevelMeter(stream) {
   try {
-    levelCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Bevorzugt der Kontext, der ohnehin schon läuft: ein zweiter, frisch
+    // erzeugter AudioContext lässt iOS die Audio-Hardware neu aushandeln —
+    // beim Mitsingen zum laufenden Song setzt die Wiedergabe dabei hörbar
+    // aus. Der Analyser hängt an keinem Ausgang, kann also auch keine
+    // Rückkopplung erzeugen.
+    levelCtxOwned = !Audio.ctx;
+    levelCtx = Audio.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (levelCtx.state === 'suspended') levelCtx.resume().catch(() => {});
     levelSource = levelCtx.createMediaStreamSource(stream);
     levelAnalyser = levelCtx.createAnalyser();
     levelAnalyser.fftSize = 1024;
@@ -10639,7 +11228,11 @@ function stopLevelMeter() {
   if (levelRafId) { cancelAnimationFrame(levelRafId); levelRafId = null; }
   if (levelSource) { levelSource.disconnect(); levelSource = null; }
   levelAnalyser = null;
-  if (levelCtx) { levelCtx.close().catch(() => {}); levelCtx = null; }
+  // Der Kontext der Wiedergabe gehört der App, nicht der Pegelanzeige — ihn
+  // zu schließen würde den Ton für den Rest der Sitzung abschalten.
+  if (levelCtx && levelCtxOwned) levelCtx.close().catch(() => {});
+  levelCtx = null;
+  levelCtxOwned = false;
   rn('meter').hidden = true;
   rn('meterWarning').hidden = true;
 }
@@ -10649,9 +11242,9 @@ function teardownRecording() {
   if (recTimerHandle) { clearInterval(recTimerHandle); recTimerHandle = null; }
   if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
   recMediaRecorder = null;
+  recAnchor = null;
   stopLevelMeter();
   setRecUI(false);
-  dlog('rec:ctx', { when: 'teardown', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
   updateWakeLock();
 }
 
@@ -10668,6 +11261,8 @@ async function onRecordingStopped() {
   const duration = (Date.now() - recStartedAt) / 1000;
   const mimeType = recMimeType || recChunks[0]?.type || 'audio/webm';
   const chunks = recChunks;
+  // Lokal sichern, bevor teardownRecording() gleich recAnchor zurücksetzt.
+  const anchor = recAnchor;
   recChunks = [];
   teardownRecording();
 
@@ -10676,15 +11271,15 @@ async function onRecordingStopped() {
     return;
   }
   // Nicht sofort speichern — erst anhören und entscheiden lassen.
-  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration };
+  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration, anchor };
   renderPendingTake();
 }
 
 /**
  * Startet/stoppt vom angegebenen Host aus. Läuft die Aufnahme bzw. steht ein
  * ungespeicherter Take schon beim jeweils anderen Host, wird hier nicht
- * stumm nichts getan, sondern erklärt, warum nicht (siehe REC-PLAN.md 5.2:
- * „eine Aufnahme zur Zeit").
+ * stumm nichts getan, sondern erklärt, warum nicht — „eine Aufnahme zur
+ * Zeit" (Player und allgemeiner Recorder teilen sich Mikrofon und Take-Karte).
  */
 function onRecToggleClick(host) {
   const active = recMediaRecorder && recMediaRecorder.state !== 'inactive';
@@ -10700,9 +11295,9 @@ $('#btn-rec-toggle').addEventListener('click', () => onRecToggleClick('player'))
 $('#btn-recorder-toggle').addEventListener('click', () => onRecToggleClick('recorder'));
 
 // Entwurf der noch nicht gespeicherten Aufnahme — { name, voice, songId }.
-// songId nur im allgemeinen Recorder benutzt (siehe R8). Getrennt von
-// pendingTake (Blob/Dauer), damit ein Neuzeichnen der Karte (z.B. beim
-// Umschalten der Vorschau) den gerade getippten Namen nicht überschreibt.
+// songId nur im allgemeinen Recorder benutzt. Getrennt von pendingTake
+// (Blob/Dauer/Anker), damit ein Neuzeichnen der Karte (z.B. beim Umschalten
+// der Vorschau) den gerade getippten Namen nicht überschreibt.
 let takeDraft = null;
 
 /** Wechselt zwischen „Aufnehmen"-Knopf und der Karte für den noch nicht gespeicherten Take. */
@@ -10742,9 +11337,9 @@ function renderTakeVoiceLabel() {
 
 /**
  * Ob „Speichern" gesperrt ist — auf der Take-Karte im Player nie (der Song
- * steht schon fest), im allgemeinen Recorder erst mit gewähltem Song
- * (siehe R8/renderRecSongPicker). aria-disabled statt disabled, damit der
- * Klick weiter feuert und der Hinweis erklären kann, was fehlt.
+ * steht schon fest), im allgemeinen Recorder erst mit gewähltem Song (siehe
+ * renderRecSongPicker). aria-disabled statt disabled, damit der Klick weiter
+ * feuert und der Hinweis erklären kann, was fehlt.
  */
 function updateRecSaveLocked() {
   const locked = recHost === 'recorder' && !takeDraft?.songId;
@@ -10782,8 +11377,9 @@ async function onTakePreviewClick() {
   if (!pendingTake) return;
   if (audioPreview?.tag?.pending) {
     if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    syncBackingPlayState();
   } else {
-    try { await previewRecordingBlob(pendingTake.blob, { pending: true }); }
+    try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }); }
     catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
@@ -10899,9 +11495,9 @@ async function pickRecordingVoice(current) {
 /**
  * Speichert ohne jeden Dialog — Name und Stimme stehen schon über die
  * Take-Karte fest (siehe takeDraft). Im Player ist der Song immer schon
- * bekannt; im allgemeinen Recorder kommt er aus takeDraft.songId
- * (siehe renderRecSongPicker) und wird hier zuerst geprüft — gesperrt, aber
- * antippbar, damit der Tipp erklären kann, was fehlt (siehe .take-icon[aria-disabled]).
+ * bekannt; im allgemeinen Recorder kommt er aus takeDraft.songId (siehe
+ * renderRecSongPicker) und wird hier zuerst geprüft — gesperrt, aber
+ * antippbar, damit der Tipp erklären kann, was fehlt.
  */
 async function onTakeSaveClick() {
   if (!pendingTake || !takeDraft) return;
@@ -10924,7 +11520,7 @@ async function onTakeSaveClick() {
   const name = takeDraft.name.trim() || suggestion;
   const voice = takeDraft.voice;
 
-  const { blob, mimeType, duration } = pendingTake;
+  const { blob, mimeType, duration, anchor } = pendingTake;
   const fileKey = newFileKey();
   const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
   await DB.filePut(await fileRecord(fileKey, blob, `${name}.${ext}`));
@@ -10937,6 +11533,8 @@ async function onTakeSaveClick() {
     size: blob.size,
     createdAt: new Date().toISOString(),
   };
+  // Nur anhängen, wenn vorhanden — kein `anchor: null` in jedem Datensatz.
+  if (anchor) recording.anchor = anchor;
   await DB.metaPut(recording);
 
   if (audioPreview?.tag?.pending) await endRecordingPreview();
@@ -11023,13 +11621,18 @@ async function previewRecordingBlob(blob, tag) {
 
   audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable };
   updateSeekUI(0);
+  // audioPlay() zuerst und ohne vorheriges await davor: Safari bindet die
+  // Abspielerlaubnis an die Nutzergeste (siehe Kommentar in audioPlay()).
   await audioPlay();
   setPlayIcon(true);
+  updateBackingUI();
+  if (settings.recBacking && tag?.anchor) startBacking(tag.anchor);
 }
 
 /** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
 async function endRecordingPreview() {
   if (!audioPreview) return;
+  stopBacking();
   const { returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable } = audioPreview;
   audioPreview = null;
   audioPause();
@@ -11054,11 +11657,174 @@ async function endRecordingPreview() {
   // setPlayIcon() guards itself against the unavailable state now, so this
   // is a plain no-op when returnFootUnavailable is true.
   setPlayIcon(Audio.playing);
+  updateBackingUI();
 }
+
+/* ---------- Original leise mitlaufen lassen ----------
+   Zweites, stummes <audio> (Audio.bg) neben dem der REC-Vorschau — kapert
+   weder Mediensitzung noch Pegelanzeige noch Suchleiste. Lautstärke läuft
+   zwingend über einen GainNode (Audio.bgGain): HTMLMediaElement.volume ist
+   auf iOS schreibgeschützt, siehe REC-MITSING-PLAN.md Abschnitt 1.2. */
+
+/**
+ * Legt Audio.bg an — lazy, aber genau einmal fürs ganze Programm. Erstmals
+ * mitten in laufender Wiedergabe zu verdrahten kann auf iOS einen kurzen
+ * Aussetzer kosten; ein zweites Mal wäre eins zu viel.
+ */
+function ensureBackingAudio() {
+  if (Audio.bg) return Audio.bg;
+
+  const bg = document.createElement('audio');
+  bg.setAttribute('playsinline', '');
+  bg.preload = 'auto';
+  bg.style.display = 'none';
+  bg.preservesPitch = true;
+  bg.webkitPreservesPitch = true;
+  bg.mozPreservesPitch = true;
+  document.body.append(bg);
+  Audio.bg = bg;
+
+  if (Audio.ctx && Audio.channelIn) {
+    Audio.bgSource = Audio.ctx.createMediaElementSource(bg);
+    Audio.bgGain = Audio.ctx.createGain();
+    Audio.bgGain.gain.value = settings.recBackingVolume;
+    Audio.bgSource.connect(Audio.bgGain);
+    Audio.bgGain.connect(Audio.channelIn);
+  }
+  // Sonst (Matrix nicht verfügbar): bg.volume als Notlösung, siehe
+  // setBackingVolume() — auf iOS wirkungslos, aber in diesem Zweig läuft der
+  // Fahrradmodus ohnehin schon nicht.
+
+  return bg;
+}
+
+/**
+ * Startet den Hintergrundtrack zu `anchor`. Löst die Spur über anchor.voice
+ * auf (nicht über einen fileKey — siehe 1.5 im Plan). Fehlt die Stimme im
+ * Song, wird abgebrochen statt stillschweigend eine andere zu nehmen.
+ */
+async function startBacking(anchor) {
+  const track = anchor && playerSong ? playerSong.tracks.find((t) => t.voice === anchor.voice) : null;
+  if (!track) { stopBacking(); return; }
+
+  const bg = ensureBackingAudio();
+  if (Audio.bgUrl) { URL.revokeObjectURL(Audio.bgUrl); Audio.bgUrl = null; }
+
+  try {
+    const rec = await DB.fileGet(track.fileKey);
+    if (!rec) throw new Error('Die Spur fehlt in der Datenbank.');
+    const url = URL.createObjectURL(recordBlob(rec, mimeForTrack(track)));
+    Audio.bgUrl = url;
+    Audio.bgVoice = anchor.voice;
+
+    await new Promise((resolve, reject) => {
+      const onReady = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(mediaErrorToError(bg.error)); };
+      function cleanup() {
+        bg.removeEventListener('loadedmetadata', onReady);
+        bg.removeEventListener('error', onError);
+      }
+      bg.addEventListener('loadedmetadata', onReady, { once: true });
+      bg.addEventListener('error', onError, { once: true });
+      bg.src = url;
+      bg.load();
+    });
+
+    bg.currentTime = backingTargetTime(anchor, Audio.position);
+    bg.playbackRate = backingTargetRate(anchor, Audio.rate);
+    // Nur abspielen, wenn die REC-Vorschau das gerade auch tut — sonst legte
+    // der Hintergrund beim bloßen Einschalten des Reglers während einer Pause los.
+    if (Audio.playing) await bg.play();
+  } catch (err) {
+    dlog('backing:start:fail', { name: err?.name });
+    stopBacking();
+  }
+}
+
+/** Hält den Hintergrundtrack an und gibt seine Ressourcen frei. */
+function stopBacking() {
+  if (Audio.bg) {
+    Audio.bg.pause();
+    Audio.bg.removeAttribute('src');
+    Audio.bg.load();
+  }
+  if (Audio.bgUrl) { URL.revokeObjectURL(Audio.bgUrl); Audio.bgUrl = null; }
+  Audio.bgVoice = null;
+}
+
+/**
+ * Hält den Hintergrundtrack im Wiedergabestatus der REC-Vorschau — reines
+ * Play/Pause, kein Neuladen. Für Pausieren/Fortsetzen während einer laufenden
+ * Vorschau (toggleSavedRecordingPreview, #btn-rec-preview, #btn-play).
+ */
+function syncBackingPlayState() {
+  if (!Audio.bg || !Audio.bgVoice) return;
+  if (Audio.playing) Audio.bg.play().catch((err) => dlog('backing:play:fail', { name: err?.name }));
+  else Audio.bg.pause();
+}
+
+/**
+ * Nachregelung gegen Drift zum REC (siehe 1.4 im Plan) — aufgerufen aus dem
+ * bestehenden Audio.onPosition-Handler, kein eigener Timer.
+ */
+function syncBacking() {
+  const bg = Audio.bg;
+  const anchor = audioPreview?.tag?.anchor;
+  if (!bg || !anchor || Audio.bgVoice !== anchor.voice || bg.paused) return;
+
+  const target = backingTargetTime(anchor, Audio.position);
+  const targetRate = backingTargetRate(anchor, Audio.rate);
+  const { action, rateFactor } = backingCorrection(bg.currentTime - target);
+  if (action === 'seek') bg.currentTime = target;
+  bg.playbackRate = targetRate * (action === 'nudge' ? rateFactor : 1);
+}
+
+/** Lautstärke des Hintergrundtracks — über den Gain, knackfrei; bg.volume nur als Notlösung ohne Matrix. */
+function setBackingVolume(v) {
+  if (Audio.bgGain) {
+    Audio.bgGain.gain.setTargetAtTime(v, Audio.ctx.currentTime, 0.05);
+  } else if (Audio.bg) {
+    Audio.bg.volume = v;
+  }
+}
+
+/**
+ * Zeigt/versteckt den Schalter „Original leise mitlaufen" — nur sichtbar,
+ * solange eine Vorschau mit auflösbarem Anker läuft (die Stimme muss noch
+ * im Song existieren). Für alte RECs ohne Anker taucht nichts auf — kein
+ * Hinweis, kein ausgegrautes Element.
+ */
+function updateBackingUI() {
+  const host = $('#rec-backing');
+  const anchor = audioPreview?.tag?.anchor;
+  const resolvable = !!(anchor && playerSong?.tracks.some((t) => t.voice === anchor.voice));
+  host.hidden = !resolvable;
+  if (!resolvable) return;
+  $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
+  $('#rec-backing-volume').value = Math.round(settings.recBackingVolume * 100);
+}
+
+$('#btn-rec-backing').addEventListener('click', async () => {
+  await saveSettings({ recBacking: !settings.recBacking });
+  $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
+  // Wirkt sofort auf die laufende Vorschau, nicht erst beim nächsten Anhören.
+  const anchor = audioPreview?.tag?.anchor;
+  if (settings.recBacking && anchor) await startBacking(anchor);
+  else stopBacking();
+});
+
+$('#rec-backing-volume').addEventListener('input', async (e) => {
+  const pct = Number(e.target.value) || 0;
+  // 0 % schaltet die Funktion nicht ab, es macht sie nur unhörbar — das ist
+  // gewollt und unterscheidbar vom Schalter selbst.
+  await saveSettings({ recBackingVolume: pct / 100 });
+  setBackingVolume(settings.recBackingVolume);
+});
 
 async function toggleSavedRecordingPreview(recording) {
   if (audioPreview?.tag?.savedId === recording.id) {
     if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    syncBackingPlayState();
     renderRecordingList();
     updateRecPreviewButton();
     return;
@@ -11067,7 +11833,7 @@ async function toggleSavedRecordingPreview(recording) {
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
-    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id });
+    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor });
   } catch (err) {
     bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
   }
@@ -11724,20 +12490,28 @@ $$('#lyrics-source-switch .preset').forEach((btn) => {
 // Bearbeitungsbox, mit Eintrag schaltet er zwischen Lesen und Bearbeiten um.
 // „Fertig" speichert automatisch — ein leer gelassener Text löscht sich dabei
 // gleich mit (siehe saveLyricsNote), eine eigene Lösch-Fläche ist so unnötig.
+/* Erst beim Speichern entsteht ein Datensatz (siehe saveLyricsNote): wer die
+   Bearbeitung nur öffnet und wieder verlässt, hinterlässt keinen leeren Text. */
+function startLyricsNoteEditing() {
+  if (!playerSong || lyricsNoteEditing) return;
+  if (!playerLyricsNote) playerLyricsNote = newLyricsNote(playerSong);
+  lyricsNoteEditing = true;
+  renderLyricsBlock();
+  setLyricsNoteState('none');
+  $('#lyrics-note-text').focus();
+}
+
 $('#btn-lyrics-note-edit').addEventListener('click', async () => {
   if (!playerSong) return;
-  if (!lyricsNoteEditing) {
-    if (!playerLyricsNote) playerLyricsNote = newLyricsNote(playerSong);
-    lyricsNoteEditing = true;
-    renderLyricsBlock();
-    setLyricsNoteState('none');
-    $('#lyrics-note-text').focus();
-    return;
-  }
+  if (!lyricsNoteEditing) { startLyricsNoteEditing(); return; }
   await saveLyricsNote({ announce: true });
   lyricsNoteEditing = false;
   renderLyricsBlock();
 });
+
+// Der +-Knopf im Leerzustand ist nur eine zweite, näherliegende Tür zu
+// derselben Bearbeitung wie der Stift oben.
+$('#btn-lyrics-note-start').addEventListener('click', () => startLyricsNoteEditing());
 
 $('#lyrics-note-text').addEventListener('input', () => {
   if (!playerLyricsNote) return;
@@ -12103,7 +12877,7 @@ async function loadSongNote() {
 /** Textfeld oder Knopf — je nachdem, ob es schon eine Notiz gibt. */
 function renderNoteBlock() {
   const has = playerNote !== null;
-  $('#btn-note-add').hidden = has;
+  $('#note-empty').hidden = has;
   $('#note-editor').hidden = !has;
   $('#note-text').value = has ? (playerNote.text || '') : '';
   setNoteState(has ? 'saved' : 'none');
@@ -12640,15 +13414,19 @@ async function createPlaylistFromText(text, fallbackName) {
   return plDraft;
 }
 
-$('#btn-pl-new').addEventListener('click', async () => {
-  const name = await promptDialog({
-    title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
-  });
-  if (name === null || !name.trim()) return;
-  openDraft(newPlaylist(name.trim()), true);
+/* Setlisten-Menü am +-Knopf (siehe wireFabMenu, btn-playlist-add-fab) —
+   dieselben drei Wege wie früher die Knopfreihe „Neu / Datei / Text". */
+wireFabMenu('#btn-playlist-add-fab', '#playlists-fab-backdrop', async (action) => {
+  if (action === 'file') { $('#pl-input').click(); return; }
+  if (action === 'paste') { await createPlaylistFromPastedText(); return; }
+  if (action === 'new') {
+    const name = await promptDialog({
+      title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
+    });
+    if (name === null || !name.trim()) return;
+    openDraft(newPlaylist(name.trim()), true);
+  }
 });
-
-$('#btn-pl-import').addEventListener('click', () => $('#pl-input').click());
 
 $('#pl-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -12662,7 +13440,7 @@ $('#pl-input').addEventListener('change', async (e) => {
   }
 });
 
-$('#btn-pl-paste').addEventListener('click', async () => {
+async function createPlaylistFromPastedText() {
   const text = await promptDialog({
     title: 'Setliste einfügen',
     text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.',
@@ -12671,7 +13449,7 @@ $('#btn-pl-paste').addEventListener('click', async () => {
   });
   if (text === null || !text.trim()) return;
   await createPlaylistFromText(text, 'Eingefügte Setliste');
-});
+}
 
 // Läuft renderPlaylists() mehrfach überlappend (z. B. Import und Tab-Wechsel
 // dicht hintereinander), darf nur der letzte Aufruf die Liste zeichnen —
@@ -13586,6 +14364,9 @@ async function buildBackupParts(opts, onProgress) {
         name: r.name, voice: r.voice || null, duration: r.duration,
         mimeType: r.mimeType, createdAt: r.createdAt,
       };
+      // Nur wenn vorhanden — ohne diesen Schritt verlöre jeder REC beim
+      // Sichern und Zurückspielen seinen Anker (siehe restoreBackup).
+      if (r.anchor) meta.anchor = r.anchor;
       if (!first) parts.push(',');
       first = false;
       parts.push(...metaWithAudioParts(meta, base64));
@@ -13872,6 +14653,19 @@ function orphanFileKeys(writtenKeys, songs, recordings) {
 }
 
 /**
+ * Prüft einen REC-Anker aus einer Sicherungsdatei, bevor er übernommen wird —
+ * eine Sicherungsdatei ist eine Datei von außen und darf keine kaputten Werte
+ * in die Wiedergabe tragen (siehe restoreBackup). `null` bei fehlendem oder
+ * ungültigem Anker, sonst der bereinigte Anker.
+ */
+function sanitizeRecAnchor(anchor) {
+  if (!anchor || typeof anchor !== 'object') return null;
+  if (!VOICE_ORDER.includes(anchor.voice)) return null;
+  if (!Number.isFinite(anchor.pos) || !Number.isFinite(anchor.rate)) return null;
+  return { voice: anchor.voice, pos: anchor.pos, rate: anchor.rate };
+}
+
+/**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
  * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
  * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
@@ -14142,6 +14936,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         size: blob.size,
         createdAt: r.createdAt || new Date().toISOString(),
       };
+      // Ungültiger Anker wird verworfen, statt den REC ohne ihn scheitern zu
+      // lassen — eine Sicherungsdatei ist eine Datei von außen.
+      const anchor = sanitizeRecAnchor(r.anchor);
+      if (anchor) recording.anchor = anchor;
       // Datei und Metadatensatz einer Aufnahme in einer Transaktion, aus
       // demselben Grund wie beim Song-Audio oben — sonst kann eine
       // referenzlose Datei im `files`-Store zurückbleiben.
@@ -14642,8 +15440,133 @@ function runSelfTests() {
   checks++;
   if (lightshowVoiceColor('LEAD') !== VOICE_COLOR.FULL) failed.push('lightshowVoiceColor("LEAD") müsste VOICE_COLOR.FULL sein');
 
-  // 8. REC-Umbau (Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im
-  // Recorder, eingefrorene Wellenform — siehe REC-PLAN.md).
+  // 8. REC: Aufnahmefilter, Headset-Erkennung und Mikrofonwahl.
+  // Die drei Telefonfilter bleiben ausnahmslos aus — auch beim Ausweichen
+  // aufs eingebaute Mikrofon, wo die Bedingungen ein zweites Mal gesetzt
+  // werden.
+  for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl']) {
+    checks++;
+    if (recConstraints()[key] !== false) failed.push(`recConstraints().${key} müsste false sein`);
+  }
+
+  const headsetLabels = [
+    ['AirPods Pro von Jakob', true],
+    ['WH-1000XM4 (Bluetooth)', true],
+    ['Freisprecheinrichtung (Jabra)', true],
+    ['Headset-Mikrofon', true],
+    ['Galaxy Buds', true],
+    ['Standard - Mikrofon (Realtek Audio)', false],
+    ['iPhone-Mikrofon', false],
+    ['Eingebautes Mikrofon', false],
+    ['', false],
+  ];
+  for (const [label, expected] of headsetLabels) {
+    checks++;
+    if (isLikelyHeadsetInput(label) !== expected) {
+      failed.push(`isLikelyHeadsetInput("${label}") = ${!expected}, erwartet ${expected}`);
+    }
+  }
+
+  // Die nachgewiesene Abtastrate schlägt den Namen: ein Headset, das in
+  // voller Bandbreite läuft, braucht keine Warnung.
+  const qualityCases = [
+    [{ label: 'AirPods', sampleRate: 16000 }, 'narrowband'],
+    [{ label: 'Eingebautes Mikrofon', sampleRate: 8000 }, 'narrowband'],
+    [{ label: 'AirPods', sampleRate: 0 }, 'headset'],
+    [{ label: 'AirPods', sampleRate: 48000 }, 'ok'],
+    [{ label: 'Eingebautes Mikrofon', sampleRate: 48000 }, 'ok'],
+    [{}, 'ok'],
+  ];
+  for (const [input, expected] of qualityCases) {
+    checks++;
+    const got = recInputQuality(input);
+    if (got !== expected) {
+      failed.push(`recInputQuality(${JSON.stringify(input)}) = ${got}, erwartet ${expected}`);
+    }
+  }
+
+  const micDevices = [
+    { kind: 'audioinput', deviceId: 'default', label: 'Standard - AirPods' },
+    { kind: 'audioinput', deviceId: 'communications', label: 'Kommunikation - AirPods' },
+    { kind: 'audiooutput', deviceId: 'spk', label: 'Lautsprecher' },
+    { kind: 'audioinput', deviceId: 'bt1', label: 'AirPods Pro' },
+    { kind: 'audioinput', deviceId: 'mic1', label: 'Eingebautes Mikrofon' },
+  ];
+  checks++;
+  if (pickBuiltInMicId(micDevices, 'AirPods Pro') !== 'mic1') {
+    failed.push('pickBuiltInMicId müsste das eingebaute Mikrofon wählen');
+  }
+  checks++;
+  if (pickBuiltInMicId(micDevices, 'Eingebautes Mikrofon') !== null) {
+    failed.push('ohne Headset-Verdacht darf pickBuiltInMicId nicht umschalten');
+  }
+  checks++;
+  if (pickBuiltInMicId([{ kind: 'audioinput', deviceId: 'bt1', label: 'AirPods Pro' }], 'AirPods Pro') !== null) {
+    failed.push('ohne Alternative müsste pickBuiltInMicId beim Headset bleiben');
+  }
+  checks++;
+  if (pickBuiltInMicId(undefined, 'AirPods') !== null) {
+    failed.push('pickBuiltInMicId müsste eine fehlende Geräteliste verkraften');
+  }
+
+  // Anker-Mathematik (Original leise mitlaufen, siehe REC-MITSING-PLAN.md 1.4).
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 1 }, 5) !== 15) {
+    failed.push('backingTargetTime bei rate=1 müsste eine reine Verschiebung sein');
+  }
+  checks++;
+  if (backingTargetTime({ pos: 10, rate: 0.75 }, 8) !== 16) {
+    failed.push('backingTargetTime bei rate=0.75 müsste die gestauchte Zeitachse rechnen');
+  }
+  checks++;
+  if (backingTargetRate({ pos: 0, rate: 0.8 }, 0.5) !== 0.4) {
+    failed.push('backingTargetRate müsste das Produkt beider Raten sein');
+  }
+
+  const correctionCases = [
+    [0, 'hold'],
+    [0.039, 'hold'],
+    [0.041, 'nudge'],
+    [-0.041, 'nudge'],
+    [0.25, 'nudge'],
+    [0.251, 'seek'],
+    [-0.251, 'seek'],
+  ];
+  for (const [drift, expected] of correctionCases) {
+    checks++;
+    const got = backingCorrection(drift).action;
+    if (got !== expected) failed.push(`backingCorrection(${drift}) = ${got}, erwartet ${expected}`);
+  }
+  checks++;
+  if (backingCorrection(0.1).rateFactor !== 1 - BACKING_NUDGE_FACTOR) {
+    failed.push('backingCorrection müsste bei positivem Drift langsamer nachregeln');
+  }
+  checks++;
+  if (backingCorrection(-0.1).rateFactor !== 1 + BACKING_NUDGE_FACTOR) {
+    failed.push('backingCorrection müsste bei negativem Drift schneller nachregeln');
+  }
+
+  // Anker-Prüfung aus einer Sicherungsdatei (M7) — die kommt von außen und
+  // darf keine kaputten Werte in die Wiedergabe tragen.
+  checks++;
+  if (!sanitizeRecAnchor({ voice: 'ALT', pos: 12.5, rate: 0.85 })) {
+    failed.push('sanitizeRecAnchor müsste einen gültigen Anker durchlassen');
+  }
+  checks++;
+  if (sanitizeRecAnchor({ voice: 'ALT', pos: NaN, rate: 1 }) !== null) {
+    failed.push('sanitizeRecAnchor müsste eine NaN-Position verwerfen');
+  }
+  checks++;
+  if (sanitizeRecAnchor({ voice: 'KLINGONISCH', pos: 0, rate: 1 }) !== null) {
+    failed.push('sanitizeRecAnchor müsste eine unbekannte Stimme verwerfen');
+  }
+  checks++;
+  if (sanitizeRecAnchor(null) !== null) {
+    failed.push('sanitizeRecAnchor müsste einen fehlenden Anker verkraften');
+  }
+
+  // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
+  // eingefrorene Wellenform.
   checks++;
   if (isPlayableSong({ tracks: [] })) failed.push('isPlayableSong({tracks:[]}) müsste falsch sein');
   checks++;
