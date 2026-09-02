@@ -4122,6 +4122,66 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
   });
 }
 
+/**
+ * REC bearbeiten: Name und Stimmwahl in einem Dialog statt zwei
+ * hintereinander (Name per promptDialog(), Stimme per pickRecordingVoice()
+ * — das war der vorherige Weg beim Umbenennen; pickRecordingVoice() bleibt
+ * fürs Speichern eines frischen Takes weiter in Gebrauch). Die Stimmwahl
+ * läuft als exklusive Pillenreihe wie beim Fahrradfahren-Modus
+ * (#channel-mode) statt als eigener Dialog.
+ * @returns {Promise<{name: string, voice: string|null}|null>} null bei Abbruch
+ */
+function editRecordingDialog({ name, voice }) {
+  return new Promise((resolve) => {
+    const input = el('input', { type: 'text', value: name, 'aria-label': 'Name' });
+
+    let selected = voice || null;
+    const voiceOptions = [
+      { value: null, label: 'Keine' },
+      { value: 'SOP', label: VOICE_LABEL.SOP },
+      { value: 'ALT', label: VOICE_LABEL.ALT },
+      { value: 'TEN', label: VOICE_LABEL.TEN },
+      { value: 'BASS', label: VOICE_LABEL.BASS },
+      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+    ];
+    // .preset-row ist fest auf drei Spalten gerastert — bei sechs Knöpfen
+    // ergeben sich daraus von selbst zwei Zeilen, ohne eigene CSS-Variante.
+    const voiceBtns = voiceOptions.map((opt) => el('button', {
+      class: 'preset', type: 'button',
+      'aria-pressed': opt.value === selected ? 'true' : 'false',
+      text: opt.label,
+    }));
+    voiceBtns.forEach((btn, i) => btn.addEventListener('click', () => {
+      selected = voiceOptions[i].value;
+      voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+    }));
+    const voiceRow = el('div', { class: 'preset-row', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+
+    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'REC bearbeiten' }),
+      input,
+      voiceRow,
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: 'Speichern',
+                       onclick: () => done({ name: input.value, voice: selected }) })));
+
+    input.addEventListener('keydown', (e) => {
+      // Escape läuft zentral über onModalKeydown → onEscape (siehe unten).
+      if (e.key === 'Enter') { e.preventDefault(); done({ name: input.value, voice: selected }); }
+    });
+
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC bearbeiten' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+    openModal(layer, { initialFocus: input, onEscape: () => done(null) });
+    input.select();
+  });
+}
+
 /* --------------------------------------------------------------------------
    Menüs der +-Knöpfe (Bibliothek, Setlisten)
 
@@ -12240,11 +12300,10 @@ function renderRecordingList() {
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
     rename.addEventListener('click', async () => {
-      const name = await promptDialog({ title: 'REC umbenennen', value: recording.name });
-      if (name === null) return;
-      const voice = await pickRecordingVoice(recording.voice);
-      recording.name = name.trim() || recording.name;
-      if (voice !== undefined) recording.voice = voice;
+      const result = await editRecordingDialog({ name: recording.name, voice: recording.voice || null });
+      if (!result) return;
+      recording.name = result.name.trim() || recording.name;
+      recording.voice = result.voice;
       await DB.metaPut(recording);
       renderRecordingList();
     });
