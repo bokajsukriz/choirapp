@@ -7506,7 +7506,16 @@ class HqPitchShifter {
     this.prevPhase = new Float64Array(this.half + 1);
     this.synthPhase = new Float64Array(this.half + 1);
     this.framesProcessed = 0;
-    this.synthReadPos = 0;
+    // Startet negativ statt bei 0 — siehe readOutput(): das ist die
+    // Anlaufverzögerung von rund N Samples (Plan Abschnitt 1.3 „Latenz").
+    // Ohne sie läuft der Lesezeiger dem Schreibzeiger sofort davon: ein
+    // Frame liefert Hs Samples auf einen Schlag, sobald genug Eingabe
+    // angekommen ist (alle Ha Samples), während gelesen wird, sobald neue
+    // Eingabe eintrifft (alle 128 Samples pro Render-Quantum) — bei Ha > 128
+    // reicht der ungepolsterte Vorsprung nicht, der Lesezeiger überholt den
+    // Schreibzeiger zwischen zwei Frames und es entstehen ständige
+    // Unterläufe. Der Puffer aus N Samples Vorlauf fängt das ab.
+    this.synthReadPos = -this.N;
     this.underrunSamples = 0; // seit dem letzten Bericht aufgelaufene Unterlauf-Samples
 
     // Wiederverwendete Arbeitsspeicher, damit process() pro Frame keinen
@@ -7536,7 +7545,7 @@ class HqPitchShifter {
     this.prevPhase.fill(0);
     this.synthPhase.fill(0);
     this.framesProcessed = 0;
-    this.synthReadPos = 0;
+    this.synthReadPos = -this.N; // siehe Kommentar im Konstruktor
     this.underrunSamples = 0;
   }
 
@@ -7627,20 +7636,23 @@ class HqPitchShifter {
   /** Ein Ausgabesample per lineare Interpolation aus dem Syntheseringpuffer lesen. */
   readOutput() {
     const pos = this.synthReadPos;
+    this.synthReadPos += this.r;
+    // Noch in der Anlaufverzögerung (siehe Konstruktor) — erwartete Stille,
+    // kein Unterlauf, wird nicht mitgezählt.
+    if (pos < 0) return 0;
     const i0 = Math.floor(pos);
     const finalizedEnd = this.framesProcessed * this.Hs;
     if (i0 + 1 >= finalizedEnd) {
-      // Unterlauf: Stille statt alter (wiederholter) Samples, Lesezeiger
-      // trotzdem weiterschieben, damit sich kein Rückstand aufbaut.
+      // Echter Unterlauf: Stille statt alter (wiederholter) Samples, der
+      // Lesezeiger wurde oben schon weitergeschoben, damit sich kein
+      // Rückstand aufbaut.
       this.underrunSamples++;
-      this.synthReadPos += this.r;
       return 0;
     }
     const frac = pos - i0;
     const ringSize = this.ringSize;
     const s0 = this.synthRing[i0 % ringSize];
     const s1 = this.synthRing[(i0 + 1) % ringSize];
-    this.synthReadPos += this.r;
     return s0 + (s1 - s0) * frac;
   }
 
@@ -7711,11 +7723,17 @@ class HqShiftProcessor extends AudioWorkletProcessor {
   process(inputs, outputs) {
     const input = inputs[0];
     const output = outputs[0];
-    if (!input || !input.length) return true;
-    this.ensureChannels(input.length);
+    if (!output || !output.length) return true;
+    // Nach output.length richten, nicht nach input.length: eine mono Quelle
+    // (input.length===1) mit erzwungener Stereo-Ausgabe (outputChannelCount
+    // [2]) braucht trotzdem für JEDEN Ausgabekanal einen eigenen Shifter mit
+    // eigenem Zustand — sonst würde ein einziger Shifter zweimal pro Block
+    // mit denselben Samples gefüttert und seine interne Position liefe
+    // doppelt so schnell, was den Ton komplett zerlegt.
+    this.ensureChannels(output.length);
     for (let ch = 0; ch < output.length; ch++) {
-      const src = input[ch] || input[0];
-      const shifter = this.shifters[Math.min(ch, this.shifters.length - 1)];
+      const src = (input && (input[ch] || input[0])) || new Float32Array(output[ch].length);
+      const shifter = this.shifters[ch];
       output[ch].set(shifter.process(src));
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
