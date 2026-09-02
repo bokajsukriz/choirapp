@@ -4005,6 +4005,7 @@ const DEFAULT_SETTINGS = {
   firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
+  btRecHintDismissed: false, // Hinweis auf Bluetooth-Kopfhörer beim Aufnehmen schon einmal gezeigt
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
   lightshowOffsetMs: 0,       // Handversatz der Geräteuhr in ms (siehe Sync-Prüfbild)
@@ -9978,6 +9979,38 @@ let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
 
+/**
+ * Sucht unter den Mikrofonen ein eingebautes statt eines Headset-Mikrofons —
+ * Bluetooth-Kopfhörer bleiben dann im Wiedergabeprofil (siehe REC-PLAN.md
+ * Abschnitt 3.4). Liefert `null`, wenn keine Auswahl möglich ist (Labels nur
+ * mit erteilter Erlaubnis sichtbar, auf iOS/Safari ohnehin nie) — dann ändert
+ * sich nichts, wie bisher.
+ */
+async function pickPreferredMicId() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter((d) => d.kind === 'audioinput' && d.label);
+    if (inputs.length < 2) return null;
+    const builtIn = inputs.find((d) => !/bluetooth|airpods|\bbt\b|headset|kopfh(ö|oe)rer|freisprech|hands.?free/i.test(d.label));
+    return builtIn ? builtIn.deviceId : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Großzügige Erkennung, ob ein Mikrofon-Label auf Bluetooth-Kopfhörer hindeutet. */
+function looksLikeBluetoothMic(label) {
+  return /bluetooth|airpods|\bbt\b/i.test(label || '');
+}
+
+/** Einmaliger Hinweis: Bluetooth schaltet beim Aufnehmen in den Telefonmodus,
+ *  Ton und Aufnahme klingen dann dumpfer (siehe REC-PLAN.md Abschnitt 3.4). */
+function maybeShowBtRecHint(label) {
+  if (settings.btRecHintDismissed || !looksLikeBluetoothMic(label)) return;
+  banner('Bluetooth-Kopfhörer schalten beim Aufnehmen in den Telefonmodus — Ton und Aufnahme klingen dann dumpfer. Für gute Aufnahmen die Kopfhörer trennen.');
+  saveSettings({ btRecHintDismissed: true });
+}
+
 /** Bestes vom Browser unterstützte Format — Chrome kann WebM/Opus, Safari nur MP4/AAC. */
 function pickRecMimeType() {
   if (!window.MediaRecorder) return '';
@@ -10032,13 +10065,19 @@ async function startRecording() {
 
   recStarting = true;
   dlog('rec:ctx', { when: 'before', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
+  const preferredMicId = await pickPreferredMicId();
   try {
     // echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
     // gedacht — sie komprimieren und filtern aggressiv, was bei Gesang eher
     // schadet (dünnerer Klang, leise Stellen werden weggeschnitten). Für einen
     // Übe-REC zählt die unbearbeitete Aufnahme mehr als Sprachklarheit.
+    // deviceId nur „ideal": ein inzwischen verschwundenes Gerät soll die
+    // Aufnahme nicht verhindern.
     recStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      audio: {
+        echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+        ...(preferredMicId ? { deviceId: { ideal: preferredMicId } } : {}),
+      },
     });
   } catch (err) {
     recStarting = false;
@@ -10046,21 +10085,30 @@ async function startRecording() {
     return;
   }
   const recTrack = recStream.getAudioTracks()[0];
-  if (recTrack) dlog('rec:stream', { label: recTrack.label, settings: recTrack.getSettings() });
+  if (recTrack) {
+    dlog('rec:stream', { label: recTrack.label, settings: recTrack.getSettings() });
+    maybeShowBtRecHint(recTrack.label);
+  }
   dlog('rec:ctx', { when: 'after', rate: Audio.ctx?.sampleRate, state: Audio.ctx?.state });
   logAudioInputDevicesOnce();
 
   recMimeType = pickRecMimeType();
+  const recorderOpts = recMimeType ? { mimeType: recMimeType } : {};
   try {
-    recMediaRecorder = recMimeType
-      ? new MediaRecorder(recStream, { mimeType: recMimeType })
-      : new MediaRecorder(recStream);
+    recMediaRecorder = new MediaRecorder(recStream, { ...recorderOpts, audioBitsPerSecond: 128000 });
   } catch (err) {
-    recStarting = false;
-    for (const track of recStream.getTracks()) track.stop();
-    recStream = null;
-    bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err);
-    return;
+    // Manche Browser lehnen audioBitsPerSecond ab (z.B. zusammen mit einem
+    // bestimmten mimeType) — dann ohne Option erneut versuchen, statt die
+    // Aufnahme daran scheitern zu lassen.
+    try {
+      recMediaRecorder = new MediaRecorder(recStream, recorderOpts);
+    } catch (err2) {
+      recStarting = false;
+      for (const track of recStream.getTracks()) track.stop();
+      recStream = null;
+      bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err2);
+      return;
+    }
   }
   recStarting = false;
 
