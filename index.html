@@ -179,6 +179,11 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .view { display: none; }
 .view.is-active { display: block; animation: fade .18s ease-out; }
 
+/* Ansichten mit schwebendem +-Knopf (siehe .fab-add) brauchen unten Luft:
+   sonst liegt der letzte Listeneintrag am Ende der Liste dauerhaft unter dem
+   Knopf und lässt sich nicht mehr antippen. */
+#view-songs, #view-playlists { padding-bottom: 52px; }
+
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
@@ -537,22 +542,22 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .placeholder-badge { display: block; flex: 0 0 auto; color: var(--muted); }
 .placeholder-badge svg { width: 20px; height: 20px; display: block; }
 
-/* Schwebender +-Knopf auf der Songs-Übersicht (siehe btn-songs-import-fab):
-   position:fixed statt absolute, weil #view-songs innerhalb von .app-main
-   scrollt — der Knopf soll dabei stehen bleiben. bottom rechnet die Höhe
-   der Navigationsleiste mit ein, sonst läge er dahinter. Die Akzentfarbe ist
-   bewusst etwas gedeckt (color-mix mit Grau) statt im vollen Pink — der
-   Knopf soll präsent, aber nicht grell sein; die einfache background-Zeile
-   davor ist der Fallback für Browser ohne color-mix(). z-index über dem
-   Menü-Hintergrund (siehe .fab-menu-backdrop): bei offenem Menü macht
-   openModal() #main (und damit auch diesen Knopf) inert — ein Tipp auf die
-   sichtbare Kreisfläche trifft dadurch gar nicht mehr den Knopf, sondern
-   fällt zum darunterliegenden, nicht inerten Backdrop durch und schließt so
-   das Menü genauso wie ein Tipp daneben. Gemischt mit Weiß statt Grau: heller
-   und blasser als die volle Akzentfarbe, aber nicht dunkler — --accent-ink
-   bleibt darauf gut lesbar, weil hellere Flächen den Kontrast zur dunklen
-   Tinte nur vergrößern. */
-.songs-import-fab {
+/* Schwebender +-Knopf, der ein Menü öffnet — in der Bibliothek
+   (btn-songs-import-fab) und bei den Setlisten (btn-playlist-add-fab).
+   position:fixed statt absolute, weil die Ansichten innerhalb von .app-main
+   scrollen — der Knopf soll dabei stehen bleiben. bottom rechnet die Höhe
+   der Navigationsleiste mit ein, sonst läge er dahinter. Die Fläche ist mit
+   Weiß gemischt: heller und blasser als die volle Akzentfarbe, aber nicht
+   dunkler — präsent, ohne zu grell zu sein, und --accent-ink bleibt darauf
+   gut lesbar, weil hellere Flächen den Kontrast zur dunklen Tinte nur
+   vergrößern (die einfache background-Zeile davor ist der Fallback für
+   Browser ohne color-mix()). z-index über dem Menü-Hintergrund (siehe
+   .fab-menu-backdrop): bei offenem Menü macht openModal() #main (und damit
+   auch diesen Knopf) inert — ein Tipp auf die sichtbare Kreisfläche trifft
+   dadurch gar nicht mehr den Knopf, sondern fällt zum darunterliegenden,
+   nicht inerten Backdrop durch und schließt so das Menü genauso wie ein
+   Tipp daneben. */
+.fab-add {
   position: fixed;
   right: calc(16px + var(--safe-right));
   bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
@@ -571,15 +576,15 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   justify-content: center;
   box-shadow: 0 3px 10px rgba(0,0,0,.2);
 }
-.songs-import-fab:active { transform: scale(.94); }
-.songs-import-fab svg {
+.fab-add:active { transform: scale(.94); }
+.fab-add svg {
   width: 26px;
   height: 26px;
   transition: transform .18s ease;
 }
 /* + dreht sich zu × — ersetzt den früheren „Abbrechen"-Eintrag im Menü:
    der offensichtliche Weg, es wieder zu schließen, ist derselbe Knopf. */
-.songs-import-fab[aria-expanded="true"] svg { transform: rotate(45deg); }
+.fab-add[aria-expanded="true"] svg { transform: rotate(45deg); }
 
 /* Menü, das aus dem +-Knopf herauswächst (siehe .fab-menu-backdrop weiter
    unten): eigener, unsichtbarer Vollbild-Layer nur zum Einfangen von Klicks
@@ -626,6 +631,36 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
 .fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
+
+/* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie
+   die schwebenden Knöpfe, aber bewusst zurückhaltend — gestrichelter Umriss
+   statt gefüllter Fläche. min-height rückt ihn in die Mitte der freien
+   Fläche, statt ihn oben an den Rand zu drücken. */
+.empty-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44vh;
+  text-align: center;
+}
+.empty-add-btn {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(var(--accent-rgb), .5);
+  background: rgba(var(--accent-rgb), .06);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-add-btn:active { background: rgba(var(--accent-rgb), .16); }
+.empty-add-btn svg { width: 26px; height: 26px; }
+.empty-add-label { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
 
 /* Hinweispfeil auf den +-Knopf bei leerer Bibliothek (siehe
    songs-import-hint): eigenständig fixiert statt Kind des +-Knopfs, damit
@@ -2560,9 +2595,17 @@ input[type="checkbox"] {
            selbst weg (siehe flushLyricsNote) — eigene Lösch-Fläche unnötig. -->
       <div id="lyrics-private-block" hidden>
         <div class="lyrics" id="lyrics-note-display" hidden></div>
-        <p class="small muted" id="lyrics-note-empty-hint" hidden style="text-align:center">
-          Noch kein eigener Liedtext — oben auf den Stift tippen.
-        </p>
+        <!-- Leerzustand: derselbe +-Gedanke wie in der Bibliothek, nur
+             zurückhaltend (gestrichelter Kreis) und mittig in der freien
+             Fläche statt als Satz oben am Rand. -->
+        <div class="empty-add" id="lyrics-note-empty-hint" hidden>
+          <button class="empty-add-btn" id="btn-lyrics-note-start" type="button" aria-label="Eigenen Liedtext anlegen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+          <span class="empty-add-label">Eigener Liedtext</span>
+        </div>
         <div id="lyrics-note-editor" hidden>
           <textarea class="note-box" id="lyrics-note-text" rows="14" spellcheck="true"
                     aria-label="Eigener Liedtext" placeholder="Liedtext eintragen …"></textarea>
@@ -2572,7 +2615,16 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" tabindex="0" hidden>
-      <button class="btn btn--block" id="btn-note-add" type="button">Notiz hinzufügen</button>
+      <!-- Leerzustand wie beim eigenen Liedtext: dezenter +-Knopf mittig,
+           statt eines breiten Knopfs oben am Rand. -->
+      <div class="empty-add" id="note-empty" hidden>
+        <button class="empty-add-btn" id="btn-note-add" type="button" aria-label="Notiz anlegen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+        <span class="empty-add-label">Notiz</span>
+      </div>
       <div id="note-editor" hidden>
         <textarea class="note-box" id="note-text" rows="12" spellcheck="true"
                   aria-label="Notiz zu diesem Lied"
@@ -2886,7 +2938,7 @@ input[type="checkbox"] {
     <!-- Schwebender Import-Einstieg: öffnet ein Menü, das direkt aus dem
          Knopf herauswächst (siehe .fab-menu-backdrop/.fab-menu), statt eine
          der Einstiegsansichten in den Einstellungen selbst festzulegen. -->
-    <button class="songs-import-fab" id="btn-songs-import-fab" type="button"
+    <button class="fab-add" id="btn-songs-import-fab" type="button"
             aria-label="Songs importieren" aria-haspopup="true" aria-expanded="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 5v14M5 12h14"/>
@@ -2912,16 +2964,17 @@ input[type="checkbox"] {
   <!-- ===== Setlisten ===================================================== -->
   <section class="view" id="view-playlists">
     <div id="current-setlist-host"></div>
-    <div class="card">
-      <h2 data-i18n="playlists.addTitle">Setliste hinzufügen</h2>
-      <div class="row" style="margin-top:14px; gap:8px">
-        <button class="btn btn--primary" style="flex:1" id="btn-pl-new" type="button" data-i18n="playlists.newBtn">Neu</button>
-        <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
-        <button class="btn" style="flex:1" id="btn-pl-import" type="button" data-i18n="playlists.fileBtn">Datei</button>
-        <button class="btn" style="flex:1" id="btn-pl-paste" type="button" data-i18n="playlists.pasteBtn">Text</button>
-      </div>
-    </div>
+    <input class="visually-hidden" id="pl-input" type="file" accept=".txt,text/plain">
     <div id="playlist-list-host"></div>
+
+    <!-- Wie in der Bibliothek: statt einer Karte mit drei Knöpfen ein
+         schwebender +-Knopf, der die drei Wege als Menü anbietet. -->
+    <button class="fab-add" id="btn-playlist-add-fab" type="button"
+            aria-label="Setliste hinzufügen" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
   </section>
 
   <!-- ===== Einstellungen =============================================== -->
@@ -3218,13 +3271,12 @@ input[type="checkbox"] {
   </section>
 </main>
 
-<!-- Menü, das der +-Knopf auf der Songs-Übersicht öffnet (siehe
-     openImportMenu/closeImportMenu, btn-songs-import-fab): eigener,
-     unsichtbarer Vollbild-Layer nur zum Einfangen von Klicks außerhalb —
-     muss wie #overlay ein direktes Kind von body sein, sonst würde
-     openModal()s inert-Logik #main (und damit das Menü selbst) lahmlegen.
-     Kein „Abbrechen" nötig: ein Klick auf den Backdrop oder erneut auf den
-     Knopf schließt es. -->
+<!-- Menü, das der +-Knopf auf der Songs-Übersicht öffnet (siehe wireFabMenu,
+     btn-songs-import-fab): eigener, unsichtbarer Vollbild-Layer nur zum
+     Einfangen von Klicks außerhalb — muss wie #overlay ein direktes Kind von
+     body sein, sonst würde openModal()s inert-Logik #main (und damit das Menü
+     selbst) lahmlegen. Kein „Abbrechen" nötig: ein Klick auf den Backdrop
+     oder erneut auf den Knopf schließt es. -->
 <div class="fab-menu-backdrop" id="songs-fab-backdrop" hidden>
   <div class="fab-menu" id="songs-fab-menu" role="menu" aria-label="Songs importieren">
     <button class="fab-menu-item" type="button" role="menuitem" data-action="placeholder">
@@ -3245,6 +3297,32 @@ input[type="checkbox"] {
         <path d="M2 12.6l5 3.2 5-3.2M12 12.6l5 3.2 5-3.2"/><path d="M7 19.8l5-3.2 5 3.2"/>
       </svg>
       <span>Aus der Dropbox</span>
+    </button>
+  </div>
+</div>
+
+<!-- Dasselbe für die Setlisten (siehe btn-playlist-add-fab). „Eigene
+     erstellen" steht unten, also am dichtesten am Daumen: das ist der Weg,
+     den man am häufigsten nimmt. -->
+<div class="fab-menu-backdrop" id="playlists-fab-backdrop" hidden>
+  <div class="fab-menu" role="menu" aria-label="Setliste hinzufügen">
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+      </svg>
+      <span>Aus Datei importieren</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="paste">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 6h14M5 11h14M5 16h8"/>
+      </svg>
+      <span>Aus Text importieren</span>
+    </button>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6h11M4 12h7M4 18h7"/><path d="M17 11v8M13 15h8"/>
+      </svg>
+      <span>Eigene erstellen</span>
     </button>
   </div>
 </div>
@@ -3938,45 +4016,62 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
   });
 }
 
+/* --------------------------------------------------------------------------
+   Menüs der schwebenden +-Knöpfe (Bibliothek, Setlisten)
+
+   Ein +-Knopf öffnet kein zentriertes Dialogfenster, sondern ein Menü, das
+   optisch aus ihm herauswächst (siehe .fab-menu-Styles). Kein „Abbrechen"
+   nötig: ein Klick auf den transparenten Backdrop oder erneut auf den Knopf
+   (jetzt ein ×) schließt es. Es ist immer höchstens eines offen — mehr
+   bräuchte niemand, und so bleibt das Schließen von außen eindeutig.
+   -------------------------------------------------------------------------- */
+
+let openFabMenu = null;   // { btn, backdrop } des gerade offenen Menüs
+
+function isFabMenuOpen() { return openFabMenu !== null; }
+
+function showFabMenu(btn, backdrop) {
+  if (openFabMenu) closeFabMenu();
+  openFabMenu = { btn, backdrop };
+  backdrop.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  openModal(backdrop, { initialFocus: $('.fab-menu-item', backdrop), onEscape: () => closeFabMenu() });
+}
+
+function closeFabMenu() {
+  if (!openFabMenu) return;
+  const { btn, backdrop } = openFabMenu;
+  openFabMenu = null;
+  backdrop.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+  closeModal(backdrop);
+}
+
 /**
- * Menü des schwebenden +-Knopfs auf der Songs-Übersicht (siehe
- * btn-songs-import-fab/songs-fab-backdrop): „Aus der Dropbox" (ZIP,
- * #import-view), „Aus Recordings" (einzelne MP3s, #rec-import-input) und
- * „Platzhalter hinzufügen" sind drei gleichrangige Wege, einen Song
- * anzulegen. Wächst optisch aus dem Knopf heraus (siehe .fab-menu-Styles)
- * statt als eigenständiger, zentrierter Dialog zu erscheinen — kein
- * „Abbrechen" nötig, ein Klick auf den transparenten Backdrop oder erneut
- * auf den Knopf (jetzt ein ×) schließt es genauso.
+ * Verdrahtet einen +-Knopf mit seinem Menü. `onAction` bekommt den Wert aus
+ * data-action des gewählten Eintrags; das Menü ist zu diesem Zeitpunkt schon
+ * geschlossen, damit ein darauf folgender Dialog die Ebene für sich hat.
  */
-const fabBackdrop = $('#songs-fab-backdrop');
-const fabMenuBtn  = $('#btn-songs-import-fab');
-
-function isImportMenuOpen() { return !fabBackdrop.hidden; }
-
-function openImportMenu() {
-  if (isImportMenuOpen()) return;
-  fabBackdrop.hidden = false;
-  fabMenuBtn.setAttribute('aria-expanded', 'true');
-  openModal(fabBackdrop, { initialFocus: $('.fab-menu-item', fabBackdrop), onEscape: () => closeImportMenu() });
+function wireFabMenu(btnSel, backdropSel, onAction) {
+  const btn = $(btnSel);
+  const backdrop = $(backdropSel);
+  btn.addEventListener('click', () => (openFabMenu?.btn === btn ? closeFabMenu() : showFabMenu(btn, backdrop)));
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeFabMenu(); });
+  $('.fab-menu', backdrop).addEventListener('click', (e) => {
+    const item = e.target.closest('.fab-menu-item');
+    if (!item) return;
+    closeFabMenu();
+    onAction(item.dataset.action);
+  });
 }
 
-function closeImportMenu() {
-  if (!isImportMenuOpen()) return;
-  fabBackdrop.hidden = true;
-  fabMenuBtn.setAttribute('aria-expanded', 'false');
-  closeModal(fabBackdrop);
-}
-
-fabMenuBtn.addEventListener('click', () => (isImportMenuOpen() ? closeImportMenu() : openImportMenu()));
-fabBackdrop.addEventListener('click', (e) => { if (e.target === fabBackdrop) closeImportMenu(); });
-
-$('#songs-fab-menu').addEventListener('click', async (e) => {
-  const btn = e.target.closest('.fab-menu-item');
-  if (!btn) return;
-  closeImportMenu();
-  if (btn.dataset.action === 'dropbox') navigate('#import');
-  else if (btn.dataset.action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); }
-  else if (btn.dataset.action === 'placeholder') {
+/* Bibliothek: drei gleichrangige Wege, an Songs zu kommen — ZIP aus der
+   Dropbox (#import-view), einzelne Recordings (#rec-import-input) und ein
+   Platzhalter ganz ohne Aufnahme. */
+wireFabMenu('#btn-songs-import-fab', '#songs-fab-backdrop', async (action) => {
+  if (action === 'dropbox') { navigate('#import'); return; }
+  if (action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); return; }
+  if (action === 'placeholder') {
     const title = await promptDialog({
       title: 'Platzhalter hinzufügen',
       text: 'Die Aufnahme kann später ergänzt werden — Liedtext, Notizen und Setlisten funktionieren schon vorher.',
@@ -4461,10 +4556,6 @@ const STRINGS = {
     'songs.searchAria': 'Song suchen',
     'songs.feelingLuckyAria': 'Feeling Lucky — zufälliges Lied abspielen',
 
-    'playlists.addTitle': 'Setliste hinzufügen',
-    'playlists.newBtn': 'Neu',
-    'playlists.fileBtn': 'Datei',
-    'playlists.pasteBtn': 'Text',
     'playlists.searchPlaceholder': 'Song suchen oder Platzhalter hinzufügen …',
     'playlists.searchAria': 'Song für die Setliste suchen',
     'playlists.emptyTitle': 'Noch keine Setlisten',
@@ -4669,10 +4760,6 @@ const STRINGS = {
     'songs.searchAria': 'Search song',
     'songs.feelingLuckyAria': 'Feeling Lucky — play a random song',
 
-    'playlists.addTitle': 'Add setlist',
-    'playlists.newBtn': 'New',
-    'playlists.fileBtn': 'File',
-    'playlists.pasteBtn': 'Text',
     'playlists.searchPlaceholder': 'Search song or add a placeholder …',
     'playlists.searchAria': 'Search a song for the setlist',
     'playlists.emptyTitle': 'No setlists yet',
@@ -4877,10 +4964,6 @@ const STRINGS = {
     'songs.searchAria': 'Szukaj utworu',
     'songs.feelingLuckyAria': 'Feeling Lucky — odtwórz losowy utwór',
 
-    'playlists.addTitle': 'Dodaj setlistę',
-    'playlists.newBtn': 'Nowa',
-    'playlists.fileBtn': 'Plik',
-    'playlists.pasteBtn': 'Tekst',
     'playlists.searchPlaceholder': 'Szukaj utworu lub dodaj placeholder …',
     'playlists.searchAria': 'Szukaj utworu do setlisty',
     'playlists.emptyTitle': 'Jeszcze brak setlist',
@@ -5757,7 +5840,7 @@ function applyRoute() {
   // Sonst bliebe das Menü sichtbar, wenn man z.B. per Zurück-Taste oder
   // Reiterleiste wegnavigiert, statt es über einen seiner eigenen Wege
   // (Aktion, Backdrop, ×-Knopf) zu schließen.
-  if (isImportMenuOpen()) closeImportMenu();
+  if (isFabMenuOpen()) closeFabMenu();
 
   const raw = (location.hash || '#songs').slice(1);
   const slash = raw.indexOf('/');
@@ -11335,20 +11418,28 @@ $$('#lyrics-source-switch .preset').forEach((btn) => {
 // Bearbeitungsbox, mit Eintrag schaltet er zwischen Lesen und Bearbeiten um.
 // „Fertig" speichert automatisch — ein leer gelassener Text löscht sich dabei
 // gleich mit (siehe saveLyricsNote), eine eigene Lösch-Fläche ist so unnötig.
+/* Erst beim Speichern entsteht ein Datensatz (siehe saveLyricsNote): wer die
+   Bearbeitung nur öffnet und wieder verlässt, hinterlässt keinen leeren Text. */
+function startLyricsNoteEditing() {
+  if (!playerSong || lyricsNoteEditing) return;
+  if (!playerLyricsNote) playerLyricsNote = newLyricsNote(playerSong);
+  lyricsNoteEditing = true;
+  renderLyricsBlock();
+  setLyricsNoteState('none');
+  $('#lyrics-note-text').focus();
+}
+
 $('#btn-lyrics-note-edit').addEventListener('click', async () => {
   if (!playerSong) return;
-  if (!lyricsNoteEditing) {
-    if (!playerLyricsNote) playerLyricsNote = newLyricsNote(playerSong);
-    lyricsNoteEditing = true;
-    renderLyricsBlock();
-    setLyricsNoteState('none');
-    $('#lyrics-note-text').focus();
-    return;
-  }
+  if (!lyricsNoteEditing) { startLyricsNoteEditing(); return; }
   await saveLyricsNote({ announce: true });
   lyricsNoteEditing = false;
   renderLyricsBlock();
 });
+
+// Der +-Knopf im Leerzustand ist nur eine zweite, näherliegende Tür zu
+// derselben Bearbeitung wie der Stift oben.
+$('#btn-lyrics-note-start').addEventListener('click', () => startLyricsNoteEditing());
 
 $('#lyrics-note-text').addEventListener('input', () => {
   if (!playerLyricsNote) return;
@@ -11714,7 +11805,7 @@ async function loadSongNote() {
 /** Textfeld oder Knopf — je nachdem, ob es schon eine Notiz gibt. */
 function renderNoteBlock() {
   const has = playerNote !== null;
-  $('#btn-note-add').hidden = has;
+  $('#note-empty').hidden = has;
   $('#note-editor').hidden = !has;
   $('#note-text').value = has ? (playerNote.text || '') : '';
   setNoteState(has ? 'saved' : 'none');
@@ -12251,15 +12342,19 @@ async function createPlaylistFromText(text, fallbackName) {
   return plDraft;
 }
 
-$('#btn-pl-new').addEventListener('click', async () => {
-  const name = await promptDialog({
-    title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
-  });
-  if (name === null || !name.trim()) return;
-  openDraft(newPlaylist(name.trim()), true);
+/* Setlisten-Menü am +-Knopf (siehe wireFabMenu, btn-playlist-add-fab) —
+   dieselben drei Wege wie früher die Knopfreihe „Neu / Datei / Text". */
+wireFabMenu('#btn-playlist-add-fab', '#playlists-fab-backdrop', async (action) => {
+  if (action === 'file') { $('#pl-input').click(); return; }
+  if (action === 'paste') { await createPlaylistFromPastedText(); return; }
+  if (action === 'new') {
+    const name = await promptDialog({
+      title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
+    });
+    if (name === null || !name.trim()) return;
+    openDraft(newPlaylist(name.trim()), true);
+  }
 });
-
-$('#btn-pl-import').addEventListener('click', () => $('#pl-input').click());
 
 $('#pl-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -12273,7 +12368,7 @@ $('#pl-input').addEventListener('change', async (e) => {
   }
 });
 
-$('#btn-pl-paste').addEventListener('click', async () => {
+async function createPlaylistFromPastedText() {
   const text = await promptDialog({
     title: 'Setliste einfügen',
     text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.',
@@ -12282,7 +12377,7 @@ $('#btn-pl-paste').addEventListener('click', async () => {
   });
   if (text === null || !text.trim()) return;
   await createPlaylistFromText(text, 'Eingefügte Setliste');
-});
+}
 
 // Läuft renderPlaylists() mehrfach überlappend (z. B. Import und Tab-Wechsel
 // dicht hintereinander), darf nur der letzte Aufruf die Liste zeichnen —
