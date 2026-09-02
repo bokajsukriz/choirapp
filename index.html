@@ -636,10 +636,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
    respektiert prefers-reduced-motion. */
 .import-fab-hint {
   position: fixed;
-  right: calc(24px + var(--safe-right));
-  bottom: calc(var(--nav-h) + var(--safe-bottom) + 80px);
+  right: calc(16px + var(--safe-right));
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 70px);
   z-index: 4;
-  width: 120px;
+  width: 150px;
   text-align: center;
   pointer-events: none;
   animation: import-fab-hint-bob 2.4s ease-in-out infinite;
@@ -665,7 +665,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   letter-spacing: .01em;
   box-shadow: 0 3px 10px rgba(0,0,0,.14);
 }
-.import-fab-hint-arrow { display: block; width: 54px; height: 108px; margin: 0 auto; color: var(--accent); }
+/* Rechtsbündig statt zentriert: die Pfeilspitze sitzt am rechten Rand der
+   Zeichenfläche und zeigt damit genau auf den Knopf darunter, während der
+   Anfang mittig unter dem Schildchen bleibt. */
+.import-fab-hint-arrow { display: block; width: 100px; height: 120px; margin-left: auto; color: var(--accent); }
 
 /* ---------- Auswahlmaske vor dem Import --------------------------------- */
 
@@ -2896,11 +2899,12 @@ input[type="checkbox"] {
          unten, dann ein Bogen zum Knopf. -->
     <div class="import-fab-hint" id="songs-import-hint" hidden aria-hidden="true">
       <span class="import-fab-hint-label">Songs hier importieren</span>
-      <svg class="import-fab-hint-arrow" viewBox="0 0 54 108" aria-hidden="true">
-        <path fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"
-              d="M27 4 C 19 24, 33 42, 25 60 C 19 76, 35 78, 44 92"/>
-        <path fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"
-              d="M44 92 L30 87 M44 92 L38 104"/>
+      <svg class="import-fab-hint-arrow" viewBox="0 0 100 120" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M36 8 C 26 36, 57 68, 63 84 L 72 106"/>
+          <path d="M72 106 L57 95"/>
+          <path d="M72 106 L75 87"/>
+        </g>
       </svg>
     </div>
   </section>
