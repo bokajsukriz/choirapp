@@ -1647,6 +1647,21 @@ input[type="checkbox"] {
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .recording-item .go span.rec-meta { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+/* Nur sichtbar, solange eine REC-Vorschau mit auflösbarem Anker läuft
+   (siehe updateBackingUI) — für alte RECs ohne Anker taucht nichts auf. */
+.rec-backing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.rec-backing span { font-size: 0.88rem; white-space: nowrap; }
+.rec-backing input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
 .recording-item[data-active="true"] .go { border-color: var(--accent); }
 
 /* Laufende Playlist im Player */
@@ -2609,6 +2624,13 @@ input[type="checkbox"] {
         </div>
       </div>
       <div id="recording-list"></div>
+      <div class="rec-backing" id="rec-backing" hidden>
+        <button class="loop-switch" id="btn-rec-backing" type="button" role="switch" aria-checked="false" aria-label="Original leise mitlaufen">
+          <span class="loop-switch-knob"></span>
+        </button>
+        <span>Original leise mitlaufen</span>
+        <input type="range" id="rec-backing-volume" min="0" max="60" step="5" value="20" aria-label="Lautstärke des Originaltracks">
+      </div>
     </div>
 
     <div id="tab-panel-lyrics" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-lyrics" tabindex="0" hidden>
@@ -11039,6 +11061,7 @@ async function previewRecordingBlob(blob, tag) {
   // Abspielerlaubnis an die Nutzergeste (siehe Kommentar in audioPlay()).
   await audioPlay();
   setPlayIcon(true);
+  updateBackingUI();
   if (settings.recBacking && tag?.anchor) startBacking(tag.anchor);
 }
 
@@ -11070,6 +11093,7 @@ async function endRecordingPreview() {
   // setPlayIcon() guards itself against the unavailable state now, so this
   // is a plain no-op when returnFootUnavailable is true.
   setPlayIcon(Audio.playing);
+  updateBackingUI();
 }
 
 /* ---------- Original leise mitlaufen lassen ----------
@@ -11199,6 +11223,39 @@ function setBackingVolume(v) {
     Audio.bg.volume = v;
   }
 }
+
+/**
+ * Zeigt/versteckt den Schalter „Original leise mitlaufen" — nur sichtbar,
+ * solange eine Vorschau mit auflösbarem Anker läuft (die Stimme muss noch
+ * im Song existieren). Für alte RECs ohne Anker taucht nichts auf — kein
+ * Hinweis, kein ausgegrautes Element.
+ */
+function updateBackingUI() {
+  const host = $('#rec-backing');
+  const anchor = audioPreview?.tag?.anchor;
+  const resolvable = !!(anchor && playerSong?.tracks.some((t) => t.voice === anchor.voice));
+  host.hidden = !resolvable;
+  if (!resolvable) return;
+  $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
+  $('#rec-backing-volume').value = Math.round(settings.recBackingVolume * 100);
+}
+
+$('#btn-rec-backing').addEventListener('click', async () => {
+  await saveSettings({ recBacking: !settings.recBacking });
+  $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
+  // Wirkt sofort auf die laufende Vorschau, nicht erst beim nächsten Anhören.
+  const anchor = audioPreview?.tag?.anchor;
+  if (settings.recBacking && anchor) await startBacking(anchor);
+  else stopBacking();
+});
+
+$('#rec-backing-volume').addEventListener('input', async (e) => {
+  const pct = Number(e.target.value) || 0;
+  // 0 % schaltet die Funktion nicht ab, es macht sie nur unhörbar — das ist
+  // gewollt und unterscheidbar vom Schalter selbst.
+  await saveSettings({ recBackingVolume: pct / 100 });
+  setBackingVolume(settings.recBackingVolume);
+});
 
 async function toggleSavedRecordingPreview(recording) {
   if (audioPreview?.tag?.savedId === recording.id) {
