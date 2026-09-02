@@ -13248,27 +13248,37 @@ function playlistAdvance() {
     navigate(`#song/${id}`, { replace: true });
     return;
   }
-  const total = playQueue.items.length;
-  for (let step = 1; step <= total; step++) {
-    const i = (playQueue.index + step) % total;
-    if (!playQueue.items[i].playable) continue;
-    if (i <= playQueue.index) banner(`Setliste „${playQueue.name}" beginnt von vorn.`);
-    playQueue.index = i;
-    const id = playQueue.items[i].id;
-    // Ist nur ein einziger Titel abspielbar, führt das Weiterschalten zurück
-    // auf den laufenden Song. Dann gibt es nichts zu navigieren — er fängt
-    // einfach wieder von vorn an. (Sonst blieb die Wiedergabe stehen.)
-    if (playerSong && playerSong.id === id) {
-      updateSeekUI(audioSeek(0));
-      audioPlay().then(() => setPlayIcon(true));
-      return;
-    }
-    pendingAutoPlay = true;
-    navigate(`#song/${id}`, { replace: true });
+  const i = nextPlayableIndex(playQueue.items, playQueue.index);
+  if (i < 0) {
+    banner(`Setliste „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
+    playQueue = null;
     return;
   }
-  banner(`Setliste „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
-  playQueue = null;
+  if (i <= playQueue.index) banner(`Setliste „${playQueue.name}" beginnt von vorn.`);
+  playQueue.index = i;
+  const id = playQueue.items[i].id;
+  // Ist nur ein einziger Titel abspielbar, führt das Weiterschalten zurück
+  // auf den laufenden Song. Dann gibt es nichts zu navigieren — er fängt
+  // einfach wieder von vorn an. (Sonst blieb die Wiedergabe stehen.)
+  if (playerSong && playerSong.id === id) {
+    updateSeekUI(audioSeek(0));
+    audioPlay().then(() => setPlayIcon(true));
+    return;
+  }
+  pendingAutoPlay = true;
+  navigate(`#song/${id}`, { replace: true });
+}
+
+/** Nächster abspielbarer Eintrag nach `from` (zirkulär durch die Liste),
+ *  -1 wenn keiner abspielbar ist. Reine Funktion, damit sie sich ohne
+ *  echte Setliste testen lässt (siehe runSelfTests). */
+function nextPlayableIndex(items, from) {
+  const total = items.length;
+  for (let step = 1; step <= total; step++) {
+    const i = (from + step) % total;
+    if (items[i].playable) return i;
+  }
+  return -1;
 }
 
 // Beim automatischen Weiterschalten soll der nächste Song gleich losspielen.
@@ -14631,6 +14641,44 @@ function runSelfTests() {
   if (lightshowVoiceIndex('LEAD') !== 0) failed.push('lightshowVoiceIndex("LEAD") müsste 0 sein');
   checks++;
   if (lightshowVoiceColor('LEAD') !== VOICE_COLOR.FULL) failed.push('lightshowVoiceColor("LEAD") müsste VOICE_COLOR.FULL sein');
+
+  // 8. REC-Umbau (Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im
+  // Recorder, eingefrorene Wellenform — siehe REC-PLAN.md).
+  checks++;
+  if (isPlayableSong({ tracks: [] })) failed.push('isPlayableSong({tracks:[]}) müsste falsch sein');
+  checks++;
+  if (!isPlayableSong({ tracks: [{}] })) failed.push('isPlayableSong({tracks:[{}]}) müsste wahr sein');
+  checks++;
+  if (isPlayableSong(null)) failed.push('isPlayableSong(null) müsste falsch sein');
+
+  checks++;
+  {
+    const items = [{ playable: false }, { playable: true }, { playable: false }];
+    const results = items.map((_, i) => nextPlayableIndex(items, i));
+    if (results.some((r) => r !== 1)) {
+      failed.push(`nextPlayableIndex müsste von jedem Startpunkt aus 1 liefern, war ${JSON.stringify(results)}`);
+    }
+  }
+  checks++;
+  {
+    const noneItems = [{ playable: false }, { playable: false }];
+    if (nextPlayableIndex(noneItems, 0) !== -1) failed.push('nextPlayableIndex ohne abspielbaren Eintrag müsste -1 liefern');
+  }
+
+  checks++;
+  {
+    const songs = [{ title: 'Blaue Augen', normTitle: normalizeTitle('Blaue Augen') }, { title: 'Andere', normTitle: normalizeTitle('Andere') }];
+    if (filterSongsByQuery(songs, 'blaue AUGEN').length !== 1) failed.push('filterSongsByQuery müsste Groß-/Kleinschreibung ignorieren');
+    if (filterSongsByQuery(songs, '').length !== songs.length) failed.push('filterSongsByQuery mit leerer Suche müsste alles liefern');
+  }
+
+  checks++;
+  {
+    const columns = Array.from({ length: 100 }, (_, i) => ({ amp: i === 42 ? 1 : 0.1, clipping: false }));
+    const buckets = bucketizeColumns(columns, 10);
+    if (buckets.length !== 10) failed.push(`bucketizeColumns(100, 10) müsste 10 Werte liefern, waren ${buckets.length}`);
+    else if (buckets[4].amp !== 1) failed.push(`bucketizeColumns müsste das Maximum je Bucket behalten, Bucket 4 war ${buckets[4].amp}`);
+  }
 
   const total = checks;
   if (failed.length) {
