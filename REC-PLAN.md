@@ -317,7 +317,16 @@ in dieser Datei — nicht kaschieren und nicht durch Filter „verbessern".
 
 ### 3.6 Messergebnis
 
-*(Von dir auszufüllen, bevor R4/R5 committet werden.)*
+*(Von dir auszufüllen.)*
+
+**Stand:** R3 (Diagnose) und R5 (Mikrofonwahl, Bluetooth-Hinweis, Bitrate)
+sind umgesetzt und committet — sie sind in sich sicher: R5 hilft unabhängig
+vom Messergebnis (bevorzugt das eingebaute Mikrofon, wenn Labels verfügbar
+sind, sonst ändert sich nichts), und R3 protokolliert nur. **R4
+(Audioweg-Neuaufbau) ist noch offen**, wie im Auftrag vorgesehen: er wird nur
+gebaut, wenn dieses Messergebnis eine Abtastraten-Änderung oder einen nach
+dem Stoppen bestehen bleibenden Qualitätsabfall bestätigt. Bitte das
+Testprotokoll aus 3.2 durchführen und das Log teilen, dann folgt R4.
 
 ---
 
