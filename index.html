@@ -9549,6 +9549,9 @@ async function openPlayer(songId) {
       lastReportedSecond = Math.floor(s);
       updateMediaPosition();
     }
+    // Nachregelung des leise mitlaufenden Originaltracks — hier statt über
+    // einen eigenen Timer, dieser Takt (~4x/Sekunde) reicht dafür völlig.
+    syncBacking();
   };
   Audio.onEnded = onPlaybackEnded;
 
@@ -9869,7 +9872,7 @@ $('#btn-play').addEventListener('click', async () => {
   updateMediaSession();
   // Läuft gerade eine REC-Vorschau, muss deren eigener Anhören-Knopf
   // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
-  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); }
+  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); syncBackingPlayState(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
@@ -10881,8 +10884,9 @@ $('#btn-rec-preview').addEventListener('click', async () => {
   if (!pendingTake) return;
   if (audioPreview?.tag?.pending) {
     if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    syncBackingPlayState();
   } else {
-    try { await previewRecordingBlob(pendingTake.blob, { pending: true }); }
+    try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }); }
     catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
@@ -11031,13 +11035,17 @@ async function previewRecordingBlob(blob, tag) {
 
   audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable };
   updateSeekUI(0);
+  // audioPlay() zuerst und ohne vorheriges await davor: Safari bindet die
+  // Abspielerlaubnis an die Nutzergeste (siehe Kommentar in audioPlay()).
   await audioPlay();
   setPlayIcon(true);
+  if (settings.recBacking && tag?.anchor) startBacking(tag.anchor);
 }
 
 /** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
 async function endRecordingPreview() {
   if (!audioPreview) return;
+  stopBacking();
   const { returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable } = audioPreview;
   audioPreview = null;
   audioPause();
@@ -11102,9 +11110,100 @@ function ensureBackingAudio() {
   return bg;
 }
 
+/**
+ * Startet den Hintergrundtrack zu `anchor`. Löst die Spur über anchor.voice
+ * auf (nicht über einen fileKey — siehe 1.5 im Plan). Fehlt die Stimme im
+ * Song, wird abgebrochen statt stillschweigend eine andere zu nehmen.
+ */
+async function startBacking(anchor) {
+  const track = anchor && playerSong ? playerSong.tracks.find((t) => t.voice === anchor.voice) : null;
+  if (!track) { stopBacking(); return; }
+
+  const bg = ensureBackingAudio();
+  if (Audio.bgUrl) { URL.revokeObjectURL(Audio.bgUrl); Audio.bgUrl = null; }
+
+  try {
+    const rec = await DB.fileGet(track.fileKey);
+    if (!rec) throw new Error('Die Spur fehlt in der Datenbank.');
+    const url = URL.createObjectURL(recordBlob(rec, mimeForTrack(track)));
+    Audio.bgUrl = url;
+    Audio.bgVoice = anchor.voice;
+
+    await new Promise((resolve, reject) => {
+      const onReady = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(mediaErrorToError(bg.error)); };
+      function cleanup() {
+        bg.removeEventListener('loadedmetadata', onReady);
+        bg.removeEventListener('error', onError);
+      }
+      bg.addEventListener('loadedmetadata', onReady, { once: true });
+      bg.addEventListener('error', onError, { once: true });
+      bg.src = url;
+      bg.load();
+    });
+
+    bg.currentTime = backingTargetTime(anchor, Audio.position);
+    bg.playbackRate = backingTargetRate(anchor, Audio.rate);
+    // Nur abspielen, wenn die REC-Vorschau das gerade auch tut — sonst legte
+    // der Hintergrund beim bloßen Einschalten des Reglers während einer Pause los.
+    if (Audio.playing) await bg.play();
+  } catch (err) {
+    dlog('backing:start:fail', { name: err?.name });
+    stopBacking();
+  }
+}
+
+/** Hält den Hintergrundtrack an und gibt seine Ressourcen frei. */
+function stopBacking() {
+  if (Audio.bg) {
+    Audio.bg.pause();
+    Audio.bg.removeAttribute('src');
+    Audio.bg.load();
+  }
+  if (Audio.bgUrl) { URL.revokeObjectURL(Audio.bgUrl); Audio.bgUrl = null; }
+  Audio.bgVoice = null;
+}
+
+/**
+ * Hält den Hintergrundtrack im Wiedergabestatus der REC-Vorschau — reines
+ * Play/Pause, kein Neuladen. Für Pausieren/Fortsetzen während einer laufenden
+ * Vorschau (toggleSavedRecordingPreview, #btn-rec-preview, #btn-play).
+ */
+function syncBackingPlayState() {
+  if (!Audio.bg || !Audio.bgVoice) return;
+  if (Audio.playing) Audio.bg.play().catch((err) => dlog('backing:play:fail', { name: err?.name }));
+  else Audio.bg.pause();
+}
+
+/**
+ * Nachregelung gegen Drift zum REC (siehe 1.4 im Plan) — aufgerufen aus dem
+ * bestehenden Audio.onPosition-Handler, kein eigener Timer.
+ */
+function syncBacking() {
+  const bg = Audio.bg;
+  const anchor = audioPreview?.tag?.anchor;
+  if (!bg || !anchor || Audio.bgVoice !== anchor.voice || bg.paused) return;
+
+  const target = backingTargetTime(anchor, Audio.position);
+  const targetRate = backingTargetRate(anchor, Audio.rate);
+  const { action, rateFactor } = backingCorrection(bg.currentTime - target);
+  if (action === 'seek') bg.currentTime = target;
+  bg.playbackRate = targetRate * (action === 'nudge' ? rateFactor : 1);
+}
+
+/** Lautstärke des Hintergrundtracks — über den Gain, knackfrei; bg.volume nur als Notlösung ohne Matrix. */
+function setBackingVolume(v) {
+  if (Audio.bgGain) {
+    Audio.bgGain.gain.setTargetAtTime(v, Audio.ctx.currentTime, 0.05);
+  } else if (Audio.bg) {
+    Audio.bg.volume = v;
+  }
+}
+
 async function toggleSavedRecordingPreview(recording) {
   if (audioPreview?.tag?.savedId === recording.id) {
     if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    syncBackingPlayState();
     renderRecordingList();
     updateRecPreviewButton();
     return;
@@ -11113,7 +11212,7 @@ async function toggleSavedRecordingPreview(recording) {
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
-    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id });
+    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor });
   } catch (err) {
     bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
   }
