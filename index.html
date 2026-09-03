@@ -7748,12 +7748,12 @@ function mediaErrorToError(mediaError) {
    audioInit()/applyHqMode(), das Umschalten in applyRateToElement() weiter
    unten.
 
-   Die folgenden fünf Bausteine (hqPrincipalAngle, hqAnalysisHop,
-   hqPitchRatio, HqFft, HqPitchShifter) werden unverändert per
+   Die folgenden sechs Bausteine (hqPrincipalAngle, hqAnalysisHop,
+   hqPitchRatio, HqFft, HqRealFft, HqPitchShifter) werden unverändert per
    `Function.prototype.toString()` in den Worklet-Quelltext übernommen (das
    Repo minifiziert nicht, toString() ist also verlässlich, siehe
    hqBuildWorkletSource()) — deshalb dürfen sie auf NICHTS außerhalb dieser
-   fünf Bausteine zugreifen: keine Konstanten, keine Helferfunktionen von
+   sechs Bausteine zugreifen: keine Konstanten, keine Helferfunktionen von
    außen. Untereinander dürfen sie sich verwenden, sie landen ja gemeinsam
    im zusammengesetzten Quelltext. Genau deshalb sind sie hier als ganz
    normale, direkt aufrufbare und direkt testbare Funktionen/Klassen
@@ -7856,6 +7856,94 @@ class HqFft {
 }
 
 /**
+ * Reelle FFT der Länge `size` über eine komplexe FFT halber Länge
+ * (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 4.2) — spart gegenüber einer
+ * komplexen FFT über die volle Länge rund 61% der FFT-Rechenzeit, weil das
+ * Eingangssignal ohnehin reell ist. `this.c` ist die innere komplexe FFT der
+ * Länge `size/2` (`half`) und zugleich das, wogegen der Selbsttest die
+ * Ausgabe hier vergleicht.
+ *
+ * Verfahren: gerade Samples in den Realteil, ungerade in den Imaginärteil
+ * eines komplexen Signals `Z` halber Länge packen, komplex transformieren,
+ * danach über die Twiddle-Tabelle `tc`/`ts` (Winkel `−2πk/size`) in das
+ * Spektrum des reellen Signals entfalten bzw. wieder zusammenfalten.
+ */
+class HqRealFft {
+  constructor(size) {
+    this.size = size;
+    this.half = size / 2;
+    this.c = new HqFft(this.half);
+    this.tc = new Float64Array(this.half + 1);
+    this.ts = new Float64Array(this.half + 1);
+    for (let k = 0; k <= this.half; k++) {
+      const angle = -2 * Math.PI * k / size;
+      this.tc[k] = Math.cos(angle);
+      this.ts[k] = Math.sin(angle);
+    }
+    // Arbeitsspeicher für die innere komplexe FFT, wiederverwendet — im
+    // Audio-Thread darf pro Frame nichts allokiert werden.
+    this._zr = new Float32Array(this.half);
+    this._zi = new Float32Array(this.half);
+  }
+
+  /** `x` (reell, Länge `size`) -> `outRe`/`outIm` (je Länge `half + 1`). */
+  forward(x, outRe, outIm) {
+    const half = this.half, zr = this._zr, zi = this._zi;
+    for (let n = 0; n < half; n++) { zr[n] = x[2 * n]; zi[n] = x[2 * n + 1]; }
+    this.c.transform(zr, zi, false);
+    const tc = this.tc, ts = this.ts;
+    // k läuft bis einschließlich half (Nyquist) — hier braucht es KEINEN
+    // Sonderfall, k1 = k % half trägt das für k = half (dann k1 = 0) schon
+    // richtig (Plan Abschnitt 4.2).
+    for (let k = 0; k <= half; k++) {
+      const k1 = k % half;
+      const k2 = (half - k) % half;
+      const aRe = zr[k1], aIm = zi[k1];
+      const bRe = zr[k2], bIm = -zi[k2]; // b = conj(Z[k2])
+      const feRe = (aRe + bRe) / 2, feIm = (aIm + bIm) / 2;
+      // Fo = (a - b) / (2i)
+      const foRe = (aIm - bIm) / 2;
+      const foIm = -(aRe - bRe) / 2;
+      const wRe = tc[k], wIm = ts[k];
+      // X[k] = Fe + W·Fo
+      outRe[k] = feRe + (wRe * foRe - wIm * foIm);
+      outIm[k] = feIm + (wRe * foIm + wIm * foRe);
+    }
+  }
+
+  /** `inRe`/`inIm` (je Länge `half + 1`) -> `x` (reell, Länge `size`). */
+  inverse(inRe, inIm, x) {
+    const half = this.half, zr = this._zr, zi = this._zi;
+    const tc = this.tc, ts = this.ts;
+    for (let k = 0; k < half; k++) {
+      const aRe = inRe[k], aIm = inIm[k];
+      let bRe, bIm;
+      if (k === 0) {
+        // Nyquist-Sonderfall (Plan Abschnitt 4.2): der Partner von X[0] ist
+        // NICHT X[0] selbst, sondern der Nyquist-Bin X[half] — beide reell.
+        // Ohne diesen Sonderfall stimmt die Hintransformation exakt, der
+        // Rundlauf aber um mehrere Prozent ab (getestet).
+        bRe = inRe[half]; bIm = 0;
+      } else {
+        const idx = (half - k) % half;
+        bRe = inRe[idx]; bIm = -inIm[idx]; // conj
+      }
+      const feRe = (aRe + bRe) / 2, feIm = (aIm + bIm) / 2;
+      // W·Fo = (a − b) / 2  =>  Fo = conj(W) · (a − b) / 2
+      const dRe = (aRe - bRe) / 2, dIm = (aIm - bIm) / 2;
+      const wRe = tc[k], wIm = ts[k];
+      const foRe = wRe * dRe + wIm * dIm;
+      const foIm = wRe * dIm - wIm * dRe;
+      // Z[k] = Fe + i·Fo
+      zr[k] = feRe - foIm;
+      zi[k] = feIm + foRe;
+    }
+    this.c.transform(zr, zi, true); // teilt bereits durch half
+    for (let n = 0; n < half; n++) { x[2 * n] = zr[n]; x[2 * n + 1] = zi[n]; }
+  }
+}
+
+/**
  * Phasenvocoder mit Phasenkopplung, ein Kanal — für Stereo werden zwei
  * Instanzen gehalten (siehe hqBuildWorkletSource()). Genaue Vorgaben in
  * SLOWPLAY-HQ-PLAN.md Abschnitt 1.3.
@@ -7874,7 +7962,12 @@ class HqPitchShifter {
     this.omega = new Float64Array(this.half + 1);
     for (let b = 0; b <= this.half; b++) this.omega[b] = 2 * Math.PI * b / this.N;
 
-    this.fft = new HqFft(this.N);
+    // Reelle FFT statt komplexer (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 4):
+    // das Eingangssignal ist reell, eine reelle FFT der Länge N kommt mit
+    // einer komplexen FFT der Länge N/2 plus einem linearen Nachlauf aus —
+    // spart rund 61% der FFT-Rechenzeit gegenüber der komplexen FFT über
+    // die volle Länge.
+    this.rfft = new HqRealFft(this.N);
 
     this.shift = 1;
     this.Ha = this.Hs;
@@ -7918,9 +8011,13 @@ class HqPitchShifter {
     this.underrunSamples = 0; // seit dem letzten Bericht aufgelaufene Unterlauf-Samples
 
     // Wiederverwendete Arbeitsspeicher, damit process() pro Frame keinen
-    // neuen Müll für den Garbage Collector erzeugt.
-    this._re = new Float32Array(this.N);
-    this._im = new Float32Array(this.N);
+    // neuen Müll für den Garbage Collector erzeugt. _time ist das gefensterte
+    // Zeitsignal (reell, Länge N), _specRe/_specIm sind sein Spektrum
+    // (Länge half+1) — ersetzen die frühere komplexe re/im-Paarung voller
+    // Länge N (Plan Abschnitt 4.3).
+    this._time = new Float32Array(this.N);
+    this._specRe = new Float32Array(this.half + 1);
+    this._specIm = new Float32Array(this.half + 1);
     // Betragsquadrat statt Betrag — für die Spitzensuche reicht der
     // Vergleich, sqrt/hypot ist hier unnötig (Plan Abschnitt 3, Punkt 1).
     this._mag2 = new Float64Array(this.half + 1);
@@ -7995,11 +8092,11 @@ class HqPitchShifter {
    * und cos/sin fallen dadurch nur noch je Spitze an, nicht je Bin.
    */
   processFrame() {
-    const N = this.N, half = this.half, win = this.win, fft = this.fft, omega = this.omega;
+    const N = this.N, half = this.half, win = this.win, rfft = this.rfft, omega = this.omega;
     const Ha = this.Ha, Hs = this.Hs;
-    const re = this._re, im = this._im;
-    for (let i = 0; i < N; i++) { re[i] = this.analysisWin[i] * win[i]; im[i] = 0; }
-    fft.transform(re, im, false);
+    const time = this._time, re = this._specRe, im = this._specIm;
+    for (let i = 0; i < N; i++) time[i] = this.analysisWin[i] * win[i];
+    rfft.forward(time, re, im);
 
     const mag2 = this._mag2;
     for (let b = 0; b <= half; b++) mag2[b] = re[b] * re[b] + im[b] * im[b];
@@ -8061,9 +8158,11 @@ class HqPitchShifter {
     this.hasPrev = true;
 
     im[0] = 0; im[half] = 0; // DC und Nyquist müssen bei einem reellen Signal reell bleiben
-    for (let b = 1; b < half; b++) { re[N - b] = re[b]; im[N - b] = -im[b]; }
+    // Die frühere Symmetrieschleife (re[N-b]=re[b]; im[N-b]=-im[b]) entfällt
+    // ersatzlos — sie steckt jetzt implizit in der reellen Rücktransformation
+    // (Plan Abschnitt 4.3).
 
-    fft.transform(re, im, true);
+    rfft.inverse(re, im, time);
 
     // Overlap-Add in den Ring, normiert durch 1,5 (Summe der quadrierten
     // Hann-Fenster bei 75% Überlappung). Die „neue" Randzone (die noch kein
@@ -8074,7 +8173,7 @@ class HqPitchShifter {
     const leadStart = frameStart + N - Hs;
     for (let i = 0; i < Hs; i++) this.synthRing[(leadStart + i) % ringSize] = 0;
     for (let i = 0; i < N; i++) {
-      this.synthRing[(frameStart + i) % ringSize] += re[i] * win[i] / 1.5;
+      this.synthRing[(frameStart + i) % ringSize] += time[i] * win[i] / 1.5;
     }
     this.framesProcessed++;
   }
@@ -8157,14 +8256,14 @@ class HqPitchShifter {
 }
 
 /**
- * Setzt den Worklet-Quelltext aus den fünf testbaren Bausteinen oben
+ * Setzt den Worklet-Quelltext aus den sechs testbaren Bausteinen oben
  * zusammen (siehe Kopfkommentar) und hängt die eigentliche
  * `AudioWorkletProcessor`-Klasse an, die nur im Worklet-Kontext Sinn
  * ergibt (`currentTime`, `sampleRate`, `registerProcessor`) und deshalb
- * nicht zu den fünf testbaren Bausteinen zählt.
+ * nicht zu den sechs testbaren Bausteinen zählt.
  */
 function hqBuildWorkletSource() {
-  const shared = [hqPrincipalAngle, hqAnalysisHop, hqPitchRatio, HqFft, HqPitchShifter]
+  const shared = [hqPrincipalAngle, hqAnalysisHop, hqPitchRatio, HqFft, HqRealFft, HqPitchShifter]
     .map((f) => f.toString()).join('\n\n');
   return `'use strict';\n\n${shared}\n\n` + `
 class HqShiftProcessor extends AudioWorkletProcessor {
@@ -16878,6 +16977,56 @@ function runSelfTests() {
   if (hqAnalysisHop(512, 1) !== 512) failed.push('hqAnalysisHop(512, 1) müsste 512 sein');
   checks++;
   if (hqAnalysisHop(512, 1e6) !== 1) failed.push('hqAnalysisHop(512, 1e6) müsste 1 sein (Randfall)');
+
+  // 3b. HqRealFft (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 4.4) gegen die
+  // komplexe Referenz HqFft: dasselbe deterministische Testsignal einmal
+  // reell, einmal komplex (im mit Nullen) transformiert. Schranke relativ
+  // zum größten Betrag im Spektrum — bei Spektralwerten in der
+  // Größenordnung 1000 wäre eine absolute Schranke sinnlos.
+  checks++;
+  {
+    const N = 2048, half = N / 2;
+    const x = new Float32Array(N);
+    for (let i = 0; i < N; i++) x[i] = Math.sin(i * 12.9898) * 0.5 + Math.sin(i * 0.031) * 0.3;
+
+    const refRe = Float32Array.from(x);
+    const refIm = new Float32Array(N);
+    new HqFft(N).transform(refRe, refIm, false);
+
+    const rfft = new HqRealFft(N);
+    const outRe = new Float32Array(half + 1), outIm = new Float32Array(half + 1);
+    rfft.forward(x, outRe, outIm);
+
+    let maxDiff = 0, maxAbs = 0;
+    for (let b = 0; b <= half; b++) {
+      maxDiff = Math.max(maxDiff, Math.abs(outRe[b] - refRe[b]), Math.abs(outIm[b] - refIm[b]));
+      maxAbs = Math.max(maxAbs, Math.abs(refRe[b]), Math.abs(refIm[b]));
+    }
+    if (maxDiff / maxAbs >= 1e-5) {
+      failed.push(`HqRealFft.forward gegen HqFft: relative Abweichung ${maxDiff / maxAbs}, erwartet < 1e-5`);
+    }
+  }
+
+  // 3c. Rundlauf HqRealFft: forward gefolgt von inverse muss das
+  // Eingangssignal zurückgeben. Fängt speziell den Nyquist-Sonderfall aus
+  // Abschnitt 4.2 — ohne ihn stimmt forward exakt, der Rundlauf aber um
+  // mehrere Prozent, nicht um 1e-5.
+  checks++;
+  {
+    const N = 2048, half = N / 2;
+    const x = new Float32Array(N);
+    for (let i = 0; i < N; i++) x[i] = Math.sin(i * 12.9898) * 0.5 + Math.sin(i * 0.031) * 0.3;
+
+    const rfft = new HqRealFft(N);
+    const specRe = new Float32Array(half + 1), specIm = new Float32Array(half + 1);
+    rfft.forward(x, specRe, specIm);
+    const x2 = new Float32Array(N);
+    rfft.inverse(specRe, specIm, x2);
+
+    let maxDiff = 0;
+    for (let i = 0; i < N; i++) maxDiff = Math.max(maxDiff, Math.abs(x[i] - x2[i]));
+    if (maxDiff >= 1e-5) failed.push(`HqRealFft-Rundlauf: maxDiff ${maxDiff}, erwartet < 1e-5`);
+  }
 
   // 4. Durchreichen bei shift=1 — kein FFT, Ausgabe = Eingabe.
   checks++;
