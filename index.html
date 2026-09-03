@@ -7779,8 +7779,18 @@ class HqPitchShifter {
     this.inFifo = new Float32Array(this.N);
     this.inFifoLen = 0;
     this.analysisWin = new Float32Array(this.N);
-    this.prevPhase = new Float64Array(this.half + 1);
-    this.synthPhase = new Float64Array(this.half + 1);
+    // Statt einer Phase je Bin (prevPhase) das vorige, ungedrehte komplexe
+    // Analysespektrum (prevRe/prevIm) — reines Kopieren, keine Winkelfunktion
+    // (Plan Abschnitt 3, Punkt 2). Statt einer laufenden Synthesephase je Bin
+    // (synthPhase) das θ, mit dem der Bin im vorigen Frame gedreht wurde
+    // (prevTheta) — daraus lässt sich die vorige Synthesephase einer neu
+    // hinzugekommenen Spitze rekonstruieren, ohne sie durchgehend
+    // fortzuschreiben (Punkt 3). `hasPrev` markiert den allerersten Frame
+    // nach reset(): dann gibt es noch kein voriges Spektrum (Punkt 5).
+    this.prevRe = new Float64Array(this.half + 1);
+    this.prevIm = new Float64Array(this.half + 1);
+    this.prevTheta = new Float64Array(this.half + 1);
+    this.hasPrev = false;
     this.framesProcessed = 0;
     // Startet negativ statt bei 0 — siehe readOutput(): das ist die
     // Anlaufverzögerung von rund N Samples (Plan Abschnitt 1.3 „Latenz").
@@ -7798,13 +7808,18 @@ class HqPitchShifter {
     // neuen Müll für den Garbage Collector erzeugt.
     this._re = new Float32Array(this.N);
     this._im = new Float32Array(this.N);
-    this._mag = new Float64Array(this.half + 1);
-    this._phase = new Float64Array(this.half + 1);
-    this._framePhase = new Float64Array(this.half + 1);
+    // Betragsquadrat statt Betrag — für die Spitzensuche reicht der
+    // Vergleich, sqrt/hypot ist hier unnötig (Plan Abschnitt 3, Punkt 1).
+    this._mag2 = new Float64Array(this.half + 1);
     this._nearestPeak = new Int32Array(this.half + 1);
     // Höchstens half+1 Bins können Spitze sein — Zähler statt Array-Länge.
     this._peaks = new Int32Array(this.half + 1);
     this._peakCount = 0;
+    // θ je Spitze (nicht je Bin) — nur hier fallen cos/sin an, einmal pro
+    // Spitze statt einmal pro Bin.
+    this._peakTheta = new Float64Array(this.half + 1);
+    this._peakCosTheta = new Float64Array(this.half + 1);
+    this._peakSinTheta = new Float64Array(this.half + 1);
   }
 
   setShift(k) {
@@ -7821,29 +7836,33 @@ class HqPitchShifter {
     this.inFifoLen = 0;
     this.analysisWin.fill(0);
     this.synthRing.fill(0);
-    this.prevPhase.fill(0);
-    this.synthPhase.fill(0);
+    this.prevRe.fill(0);
+    this.prevIm.fill(0);
+    this.prevTheta.fill(0);
+    this.hasPrev = false;
     this.framesProcessed = 0;
     this.synthReadPos = -this.N; // siehe Kommentar im Konstruktor
     this.underrunSamples = 0;
   }
 
   /**
-   * Lokale Maxima im Betragsspektrum (±2 Nachbarn) als Ankerpunkte für die
-   * Phasenkopplung. Schreibt in das vorbelegte `_peaks` statt ein neues
-   * Array anzulegen und liefert die Anzahl gültiger Einträge zurück.
+   * Lokale Maxima im Betragsquadrat (±2 Nachbarn) als Ankerpunkte für die
+   * Phasenkopplung — das Quadrat genügt für den Vergleich, sqrt/hypot ist
+   * hier unnötig (Plan Abschnitt 3, Punkt 1). Schreibt in das vorbelegte
+   * `_peaks` statt ein neues Array anzulegen und liefert die Anzahl
+   * gültiger Einträge zurück.
    */
   findPeaks() {
-    const mag = this._mag, half = this.half, peaks = this._peaks;
+    const mag2 = this._mag2, half = this.half, peaks = this._peaks;
     let count = 0;
     for (let b = 0; b <= half; b++) {
-      const m = mag[b];
+      const m = mag2[b];
       let isPeak = true;
       for (let d = -2; d <= 2; d++) {
         if (d === 0) continue;
         const nb = b + d;
         if (nb < 0 || nb > half) continue; // fehlende Randnachbarn zählen nicht gegen den Kandidaten
-        if (mag[nb] > m) { isPeak = false; break; }
+        if (mag2[nb] > m) { isPeak = false; break; }
       }
       if (isPeak) peaks[count++] = b;
     }
@@ -7852,7 +7871,16 @@ class HqPitchShifter {
     return count;
   }
 
-  /** Verarbeitet einen Frame aus `this.analysisWin`, legt das Ergebnis per Overlap-Add im Ring ab. */
+  /**
+   * Verarbeitet einen Frame aus `this.analysisWin`, legt das Ergebnis per
+   * Overlap-Add im Ring ab. Rekonstruiert die Phasenkopplung als komplexe
+   * Drehung des frischen Analysespektrums statt über Betrag+cos/sin für
+   * jeden Bin (Plan Abschnitt 3): `mag[b]·cos(synthPhase[p] + phase[b] −
+   * phase[p])` ist algebraisch identisch zu `X[b] · e^{iθ_p}` mit
+   * `X[b] = re[b] + i·im[b]` und `θ_p = synthPhase[p] − phase[p]` — siehe
+   * den zweiten neuen Selbsttest, der genau diese Identität prüft. atan2
+   * und cos/sin fallen dadurch nur noch je Spitze an, nicht je Bin.
+   */
   processFrame() {
     const N = this.N, half = this.half, win = this.win, fft = this.fft, omega = this.omega;
     const Ha = this.Ha, Hs = this.Hs;
@@ -7860,46 +7888,65 @@ class HqPitchShifter {
     for (let i = 0; i < N; i++) { re[i] = this.analysisWin[i] * win[i]; im[i] = 0; }
     fft.transform(re, im, false);
 
-    const mag = this._mag, phase = this._phase;
-    for (let b = 0; b <= half; b++) {
-      mag[b] = Math.hypot(re[b], im[b]);
-      phase[b] = Math.atan2(im[b], re[b]);
-    }
+    const mag2 = this._mag2;
+    for (let b = 0; b <= half; b++) mag2[b] = re[b] * re[b] + im[b] * im[b];
 
     const peakCount = this.findPeaks();
     const peaks = this._peaks;
-    const synthPhase = this.synthPhase, prevPhase = this.prevPhase;
+    const prevRe = this.prevRe, prevIm = this.prevIm, prevTheta = this.prevTheta;
+    const hasPrev = this.hasPrev;
+    const peakTheta = this._peakTheta, peakCos = this._peakCosTheta, peakSin = this._peakSinTheta;
+
     // Nur die Spitzen bekommen den echten Phasenvocoder-Fortschritt
-    // (Phasenableitung → wahre Frequenz → Synthesephase).
+    // (Phasenableitung → wahre Frequenz → Synthesephase) — und nur hier
+    // fallen atan2/cos/sin an.
     for (let pk = 0; pk < peakCount; pk++) {
       const p = peaks[pk];
-      const dphi = hqPrincipalAngle(phase[p] - prevPhase[p] - Ha * omega[p]);
-      const trueFreq = omega[p] + dphi / Ha;
-      synthPhase[p] = synthPhase[p] + Hs * trueFreq;
+      const phaseP = Math.atan2(im[p], re[p]);
+      let theta;
+      if (hasPrev) {
+        // Die vorige Synthesephase dieser Spitze lässt sich aus ihrer
+        // vorigen Analysephase (ein atan2 aus dem gesicherten, ungedrehten
+        // Spektrum) plus dem θ rekonstruieren, mit dem sie im vorigen Frame
+        // gedreht wurde — ohne synthPhase durchgehend je Bin fortzuschreiben.
+        const prevPhaseP = Math.atan2(prevIm[p], prevRe[p]);
+        const prevSynthPhase = prevPhaseP + prevTheta[p];
+        const dphi = hqPrincipalAngle(phaseP - prevPhaseP - Ha * omega[p]);
+        const trueFreq = omega[p] + dphi / Ha;
+        const synthPhase = prevSynthPhase + Hs * trueFreq;
+        theta = synthPhase - phaseP;
+      } else {
+        // Erster Frame nach reset(): kein voriges Spektrum, also Identität
+        // statt mit einer fingierten Nullphase zu rechnen (Punkt 5).
+        theta = 0;
+      }
+      peakTheta[pk] = theta;
+      peakCos[pk] = Math.cos(theta);
+      peakSin[pk] = Math.sin(theta);
     }
 
     // Jeder Bin an seine nächste Spitze koppeln (Peaks sind an sich selbst
-    // gekoppelt, Differenz 0) — das ist der Qualitätsgewinn gegenüber
-    // WSOLA: ohne diesen Schritt klingt ein Phasenvocoder „phasig".
+    // gekoppelt, θ=0) — das ist der Qualitätsgewinn gegenüber WSOLA: ohne
+    // diesen Schritt klingt ein Phasenvocoder „phasig". Im selben Durchlauf:
+    // das ungedrehte Spektrum für den nächsten Frame sichern (Punkt 4 — vor
+    // der Drehung, nicht danach), die Drehung anwenden und das dabei
+    // verwendete θ als prevTheta für den nächsten Frame merken (Punkt 3).
     const nearestPeak = this._nearestPeak;
     let pi = 0;
     for (let b = 0; b <= half; b++) {
       while (pi < peakCount - 1 && Math.abs(peaks[pi + 1] - b) < Math.abs(peaks[pi] - b)) pi++;
       nearestPeak[b] = peaks[pi];
+      prevRe[b] = re[b];
+      prevIm[b] = im[b];
+      const cosT = peakCos[pi], sinT = peakSin[pi];
+      const nre = re[b] * cosT - im[b] * sinT;
+      const nim = re[b] * sinT + im[b] * cosT;
+      re[b] = nre;
+      im[b] = nim;
+      prevTheta[b] = peakTheta[pi];
     }
-    const framePhase = this._framePhase;
-    for (let b = 0; b <= half; b++) {
-      const p = nearestPeak[b];
-      framePhase[b] = synthPhase[p] + (phase[b] - phase[p]);
-    }
-    for (let b = 0; b <= half; b++) { prevPhase[b] = phase[b]; synthPhase[b] = framePhase[b]; }
+    this.hasPrev = true;
 
-    // Spektrum aus unverändertem Betrag und gekoppelter Phase neu aufbauen,
-    // für die reelle Rücktransformation an der Nyquist-Achse spiegeln.
-    for (let b = 0; b <= half; b++) {
-      re[b] = mag[b] * Math.cos(framePhase[b]);
-      im[b] = mag[b] * Math.sin(framePhase[b]);
-    }
     im[0] = 0; im[half] = 0; // DC und Nyquist müssen bei einem reellen Signal reell bleiben
     for (let b = 1; b < half; b++) { re[N - b] = re[b]; im[N - b] = -im[b]; }
 
