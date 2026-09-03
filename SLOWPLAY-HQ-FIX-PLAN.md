@@ -369,3 +369,82 @@ ersten Frame angeglichene alte Implementierung liefert für ein 1-Sekunden-
 Testsignal bitgenau (`maxDiff === 0`) dieselbe Ausgabe wie die neue. Der
 Störanteil kann sich durch Abschnitt 3 also nicht verändert haben; er ist
 identisch zum Stand vor diesem Umbau, nicht nur ähnlich.
+
+---
+
+## Gerätetest — Android, PR #54 (2026-09-03)
+
+Diagnose-Log vom Nutzer, Android 10, Chrome Mobile 152, 8 Kerne. Befund:
+**bei jedem Tempo außer 1× läuft die Wiedergabe nur noch mit 50–60 % der
+Echtzeit, der Pitchabfall bei 0,7× bleibt bestehen.**
+
+### Was das Log zeigt
+
+- `hasPerf=false`, `sampleRate=48000` — die Ersatzmessung ohne
+  `performance.now()` ist tatsächlich der Pfad, der auf echten
+  Android-Geräten läuft, nicht nur in Chromium 141 headless.
+- Bei `shift=1` (Durchreichen, vor dem ersten Tempowechsel): `realtimePct`
+  98–102 % über sieben Meldungen — sauber, wie erwartet.
+- Sofort nach dem Wechsel auf 0,85× (`shift=1,18`): `realtimePct` fällt von
+  73 % auf 57–58 % und bleibt dort.
+- Bei 0,7× und 0,6× bleibt `realtimePct` im selben Band (54–56 %) — wird
+  **nicht** schlechter, obwohl `Ha` kleiner wird und pro Zeiteinheit mehr
+  Frames anfallen. Die Last scheint hier an einer Decke zu hängen, die
+  schon bei 0,85× erreicht ist, nicht am erwarteten Anstieg mit sinkendem
+  Tempo.
+- `underruns=0` in **jeder** Meldung — der Ringpuffer des Worklets selbst
+  läuft nie leer. Die Verlangsamung zeigt sich ausschließlich darin, dass
+  der AudioContext insgesamt langsamer als die Wanduhr läuft (das
+  Render-Quantum wird seltener aufgerufen, als es sollte) — nicht darin,
+  dass der Worklet-eigene Puffer der Nachfrage hinterherhinkt. Das deckt
+  sich mit „scheint langsamer als 0,85 zu sein" aus dem ursprünglichen
+  Befund: keine Interpretation, sondern jetzt gemessen.
+- **Neuer, konkreter Befund:** von den fünf gesendeten `shift`-Nachrichten
+  (zwei bei 1× durch den Verdrahtungscode, je eine bei 0,85×/0,7×/0,6×)
+  kommen nur **drei** `shiftAck` zurück — die Bestätigungen für 0,7× und
+  0,6× fehlen im Log vollständig. Das ist die erste harte Bestätigung von
+  Verdacht 1 aus Abschnitt 1.4 (verlorene/verspätete `shift`-Nachricht):
+  unter dieser Überlastung schafft es der Worklet-Message-Port nicht
+  zuverlässig, die Nachricht zu verarbeiten. Das Element resampled sofort
+  auf 0,7 (nativ, unabhängig vom JS-Thread), die kompensierende
+  Hochverschiebung im Worklet bleibt dabei plausibel auf dem alten Wert
+  stehen — genau das wäre ein hörbarer Pitchabfall, ohne dass die
+  Rekonstruktion selbst falsch rechnet.
+
+### Einordnung
+
+Schritt 2 (keine Allokationen mehr) und Schritt 3 (Winkelfunktionen nur an
+Spitzen) sind beide gemessen wirksam — der Benchmark dieser Session zeigt
+40–45 % weniger Rechenzeit im Mittel auf x86. Auf diesem Android-Gerät
+reicht das **nicht**: schon bei 0,85× ist die Echtzeitgrenze weit
+überschritten, und die Last steigt bei 0,7×/0,6× nicht mehr messbar
+weiter — das riecht weniger nach linear mit der Rechenlast wachsendem
+Rückstand als nach einer harten Sättigung (Thermal Throttling, ein
+gedrosselter Akku-Sparmodus, oder schlicht ein deutlich schwächerer Kern
+als die x86-Referenz). Ohne ein zweites, unbelastetes Gerät zum Vergleich
+lässt sich das hier nicht weiter auseinanderhalten.
+
+Das ist genau der „bleibt es marginal"-Fall aus Schritt 5 im Nachtrag von
+`SLOWPLAY-HQ-PLAN.md`: die Echtzeit-Phasenvocoder-Verlangsamung ist auf
+dieser Geräteklasse an ihrem Limit, unabhängig von weiterer
+Kleinoptimierung. Schritt 4 (Polyphasen-Sinc-Resampler) würde die
+Rechenlast zusätzlich erhöhen, nicht senken — auf diesem Gerät jetzt der
+falsche nächste Schritt. `DEFAULT_SETTINGS.hqSlowdown` bleibt deshalb aus
+guten Grund `false`.
+
+**Offen für eine Folge-Session, nicht Teil dieser Runde:**
+
+1. Die fehlenden `shiftAck` sind unabhängig von der grundsätzlichen
+   Lastfrage ein eigener kleiner Fehler wert nachzugehen — etwa, ob der
+   Port unter Last Nachrichten verwirft oder nur sehr spät verarbeitet,
+   und ob eine robustere Zustellung (z. B. Wiederholen bis zur
+   Bestätigung, oder `shift` direkt mit jedem `process()`-Aufruf statt per
+   `postMessage` transportieren) den Pitchabfall unabhängig von der
+   generellen Überlastung behebt.
+2. Die eigentliche Architekturfrage aus Schritt 5: Echtzeit-Verlangsamung
+   auf so einem Gerät aufzugeben und stattdessen offline zu dehnen (den
+   gerade geloopten Abschnitt einmal vorab berechnen, das Ergebnis
+   zwischenspeichern, dem Element als Blob geben) — kein Echtzeitrisiko
+   mehr, aber Wartezeit beim Start eines Loops und mehr Speicherbedarf.
+   Das ist ein Architekturumbau und damit ausdrücklich nicht Teil dieser
+   oder der vorigen Runde.
