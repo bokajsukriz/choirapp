@@ -4700,7 +4700,12 @@ const DEFAULT_SETTINGS = {
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
-  hqSlowdown: true,   // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
+  // Vorerst AUS: auf einem Pixel 9 (GrapheneOS) stottert die Wiedergabe schon
+  // bei 0,85× und bricht bei 0,7× fast ganz ab — der Worklet schafft die
+  // Echtzeit auf dem Gerät nicht (Messung und Ursachen in SLOWPLAY-HQ-PLAN.md,
+  // Abschnitt „Befund"). Erst wieder auf true, wenn das auf echter Hardware
+  // sauber läuft.
+  hqSlowdown: false,  // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4806,7 +4811,7 @@ const STRINGS = {
     'settings.perf.title': 'Kompatibilität & Performance',
     'settings.perf.hqSwitch': 'Bessere Tonqualität beim langsamen Abspielen',
     'settings.perf.hqAria': 'Bessere Tonqualität beim langsamen Abspielen',
-    'settings.perf.hqHint': 'Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, schalte hier aus.',
+    'settings.perf.hqHint': 'Noch im Versuch und deshalb ausgeschaltet: Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen. Auf manchen Geräten stottert die Wiedergabe damit noch — dann wieder ausschalten. Bleibt es aus, klingt alles wie bisher.',
     'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt beim bisherigen Weg.',
 
     'settings.help.title': 'Hilfe',
@@ -5017,7 +5022,7 @@ const STRINGS = {
     'settings.perf.title': 'Compatibility & performance',
     'settings.perf.hqSwitch': 'Better sound quality for slow playback',
     'settings.perf.hqAria': 'Better sound quality for slow playback',
-    'settings.perf.hqHint': 'Recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser — noticeably cleaner on held notes. Costs more processing power in return. If playback stutters or the phone gets warm on an older device, turn this off.',
+    'settings.perf.hqHint': 'Still experimental and therefore switched off: recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser. On some devices playback still stutters with it — then switch it off again. Left off, everything sounds as before.',
     'settings.perf.hqUnsupported': "This device doesn't support the better slow playback — it stays on the previous method.",
 
     'settings.help.title': 'Help',
@@ -5228,7 +5233,7 @@ const STRINGS = {
     'settings.perf.title': 'Kompatybilność i wydajność',
     'settings.perf.hqSwitch': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
     'settings.perf.hqAria': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
-    'settings.perf.hqHint': 'Sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długo trzymanych dźwiękach. Kosztuje to jednak więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina lub telefon się nagrzewa na starszym urządzeniu, wyłącz to tutaj.',
+    'settings.perf.hqHint': 'Wciąż w fazie testów i dlatego wyłączone: sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce. Na niektórych urządzeniach odtwarzanie nadal się zacina — wtedy wyłącz to ponownie. Pozostawione wyłączone, wszystko brzmi jak dotychczas.',
     'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje lepszego spowolnienia — pozostaje dotychczasowy sposób.',
 
     'settings.help.title': 'Pomoc',
