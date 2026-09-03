@@ -812,6 +812,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   line-height: 1.2;
 }
 
+/* Vierter Verlangsamungsmodus „HQ Mono" (SLOWPLAY-HQ-FIX-PLAN-3.md
+   Abschnitt 2.5) — .preset-row ist sonst fest auf 3 Spalten verdrahtet und
+   wird mit den Fahrradfahren-Presets geteilt, deshalb eine eigene Regel
+   statt die gemeinsame Klasse zu ändern. */
+#slow-mode {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .preset:disabled { opacity: .4; }
 
@@ -3396,6 +3404,7 @@ input[type="checkbox"] {
       </p>
       <div class="preset-row" id="slow-mode" role="group" aria-label="Verlangsamung">
         <button class="preset" type="button" data-mode="standard" aria-pressed="true" data-i18n="settings.perf.modeStandard">Standard</button>
+        <button class="preset" type="button" data-mode="hqmono" data-i18n="settings.perf.modeHqMono">HQ Mono</button>
         <button class="preset" type="button" data-mode="hq" data-i18n="settings.perf.modeHq">HQ</button>
         <button class="preset" type="button" data-mode="raw" data-i18n="settings.perf.modeRaw">Roh</button>
       </div>
@@ -3404,6 +3413,14 @@ input[type="checkbox"] {
         deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr
         Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder
         wird es warm, wieder auf Standard stellen.
+      </p>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.hqMonoHint">
+        HQ Mono rechnet die Tonhöhenkorrektur nur einmal statt zweimal und
+        ist deshalb etwa doppelt so sparsam wie HQ — dafür klingen danach
+        beide Kanäle gleich. Aufnahmen, die eine Stimme hart auf links oder
+        rechts legen, verlieren diese Trennung, und die
+        Fahrradfahren-Umschaltung hat in diesem Modus keine hörbare Wirkung
+        mehr.
       </p>
       <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.rawHint">
         Roh nur zum Ausprobieren: verlangsamt wie HQ, korrigiert die
@@ -4747,9 +4764,12 @@ const DEFAULT_SETTINGS = {
   // sauber läuft.
   hqSlowdown: false,  // veraltet — nur noch für die einmalige Migration auf slowMode in loadSettings() gelesen
   hqSlowdownReset: false,  // Merker der einmaligen Rücknahme, siehe loadSettings()
-  // 'standard' (nativ, WSOLA) | 'hq' (Phasenvocoder + Tonhöhenkorrektur) |
-  // 'raw' (nur Tempo wie HQ, aber ohne Tonhöhenkorrektur — Tonhöhe fällt
-  // hörbar ab; zum Eingrenzen, ob ein Problem an der Korrektur liegt oder
+  // 'standard' (nativ, WSOLA) | 'hq' (Phasenvocoder + Tonhöhenkorrektur,
+  // stereo) | 'hqmono' (wie 'hq', aber der Eingang wird vor dem Vocoder auf
+  // einen Kanal heruntergemischt — rund halb so teuer, kostet das
+  // Stereobild, siehe SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.5) | 'raw' (nur
+  // Tempo wie HQ, aber ohne Tonhöhenkorrektur — Tonhöhe fällt hörbar ab;
+  // zum Eingrenzen, ob ein Problem an der Korrektur liegt oder
   // grundsätzlicher ist, siehe SLOWPLAY-HQ-FIX-PLAN.md)
   slowMode: 'standard',
   slowModeMigrated: false,  // Merker der einmaligen Migration von hqSlowdown, siehe loadSettings()
@@ -4858,11 +4878,13 @@ const STRINGS = {
     'settings.perf.title': 'Kompatibilität & Performance',
     'settings.perf.modeHint': 'Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.',
     'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHqMono': 'HQ Mono',
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Roh',
     'settings.perf.hqHint': 'HQ rechnet den Klang selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, wieder auf Standard stellen.',
+    'settings.perf.hqMonoHint': 'HQ Mono rechnet die Tonhöhenkorrektur nur einmal statt zweimal und ist deshalb etwa doppelt so sparsam wie HQ — dafür klingen danach beide Kanäle gleich. Aufnahmen, die eine Stimme hart auf links oder rechts legen, verlieren diese Trennung, und die Fahrradfahren-Umschaltung hat in diesem Modus keine hörbare Wirkung mehr.',
     'settings.perf.rawHint': 'Roh verlangsamt wie HQ, korrigiert die Tonhöhe aber nicht — sie fällt hörbar ab. Zeigt, ob ein Problem an der Tonhöhenkorrektur liegt oder grundsätzlicher ist. Zugleich die Vergleichsmessung: dieselbe Anzeige wie bei HQ, nur ohne Tonhöhenkorrektur.',
-    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt HQ nicht — Standard und Roh funktionieren trotzdem.',
+    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt weder HQ noch HQ Mono — Standard und Roh funktionieren trotzdem.',
     'settings.perf.hqLoadLabel': 'Rechenlast:',
     'settings.perf.hqLoadAvg': 'im Mittel,',
     'settings.perf.hqLoadPeak': 'in der Spitze —',
@@ -5079,11 +5101,13 @@ const STRINGS = {
     'settings.perf.title': 'Compatibility & performance',
     'settings.perf.modeHint': 'How slowing down at 0.85×, 0.7× and 0.6× is computed.',
     'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHqMono': 'HQ Mono',
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Raw',
     'settings.perf.hqHint': 'HQ recalculates the sound itself instead of leaving it to the browser — noticeably cleaner on sustained notes. Costs more processing power in return. If playback stutters on an older phone or it gets warm, switch back to Standard.',
+    'settings.perf.hqMonoHint': "HQ Mono computes the pitch correction only once instead of twice, so it's roughly twice as cheap as HQ — but both channels sound the same afterwards. Recordings that put a voice hard left or right lose that separation, and the one-earbud switch has no audible effect in this mode anymore.",
     'settings.perf.rawHint': "Raw slows down like HQ but doesn't correct the pitch — it noticeably drops. Shows whether a problem is in the pitch correction or more fundamental. Also the comparison measurement: the same display as HQ, just without pitch correction.",
-    'settings.perf.hqUnsupported': "This device doesn't support HQ — Standard and Raw still work.",
+    'settings.perf.hqUnsupported': "This device supports neither HQ nor HQ Mono — Standard and Raw still work.",
     'settings.perf.hqLoadLabel': 'Load:',
     'settings.perf.hqLoadAvg': 'average,',
     'settings.perf.hqLoadPeak': 'peak —',
@@ -5300,11 +5324,13 @@ const STRINGS = {
     'settings.perf.title': 'Kompatybilność i wydajność',
     'settings.perf.modeHint': 'Jak liczone jest spowolnienie przy 0,85×, 0,7× i 0,6×.',
     'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHqMono': 'HQ Mono',
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Surowy',
     'settings.perf.hqHint': 'HQ sam przelicza dźwięk, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długich dźwiękach. Kosztuje to więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina na starszym telefonie albo się nagrzewa, wróć do Standardu.',
+    'settings.perf.hqMonoHint': 'HQ Mono liczy korektę wysokości dźwięku tylko raz zamiast dwa razy, więc jest z grubsza dwukrotnie oszczędniejszy niż HQ — za to oba kanały brzmią potem tak samo. Nagrania, w których jeden głos jest twardo przypisany do lewego lub prawego kanału, tracą to rozdzielenie, a przełącznik „jeden słuchawka" nie ma w tym trybie już słyszalnego efektu.',
     'settings.perf.rawHint': 'Surowy spowalnia jak HQ, ale nie koryguje wysokości dźwięku — wyraźnie spada. Pokazuje, czy problem tkwi w korekcie wysokości dźwięku, czy jest bardziej fundamentalny. To zarazem pomiar porównawczy: ten sam wskaźnik co w HQ, tylko bez korekty wysokości dźwięku.',
-    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje HQ — Standard i Surowy nadal działają.',
+    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje ani HQ, ani HQ Mono — Standard i Surowy nadal działają.',
     'settings.perf.hqLoadLabel': 'Obciążenie:',
     'settings.perf.hqLoadAvg': 'średnio,',
     'settings.perf.hqLoadPeak': 'szczyt —',
@@ -7467,8 +7493,7 @@ function renderSlowMode() {
   const supported = Audio.ready ? !!Audio.hqNode : hqStaticallySupported();
   const mode = settings.slowMode || 'standard';
   for (const btn of $$('#slow-mode .preset')) {
-    const isHq = btn.dataset.mode === 'hq';
-    btn.disabled = isHq && !supported;
+    btn.disabled = isHqMode(btn.dataset.mode) && !supported;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
   }
   $('#hq-unsupported-hint').hidden = supported;
@@ -7486,6 +7511,9 @@ let hqRenderCapacityStarted = false;
 // Die Feldnamen einmal gegen die Wirklichkeit loggen (Abschnitt 2.1), nicht
 // bei jedem update-Ereignis erneut.
 let hqRenderCapacityFieldsLogged = false;
+// Einmalig protokollieren, ob renderCapacity existiert und start() ohne
+// Ausnahme durchläuft (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 1.2).
+let hqCapacityAvailLogged = false;
 // Letzter vom Worklet gemeldeter Aussetzerzähler — nur in HQ befüllt (siehe
 // hqCreateNode), sonst läuft dort kein Worklet, das etwas zu melden hätte.
 let hqLastWorkletUnderruns = null;
@@ -7523,11 +7551,26 @@ function startHqLoadMeasurement() {
   const ctx = Audio.ctx;
   if (!ctx) return;
   if (ctx.renderCapacity && !hqRenderCapacityStarted) {
-    ctx.renderCapacity.start({ updateInterval: 1 });
-    hqRenderCapacityStarted = true;
+    try {
+      // Abgesichert (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 1.2): ein
+      // Fehlschlag hier blieb bisher stumm — dann existiert
+      // ctx.renderCapacity zwar, liefert aber nie ein update-Ereignis, und
+      // die Ersatzmessung springt nicht ein, weil sie nur bei fehlendem
+      // renderCapacity greift.
+      ctx.renderCapacity.start({ updateInterval: 1 });
+      hqRenderCapacityStarted = true;
+    } catch (err) {
+      dlog('hq:capacityAvail', { has: true, started: false, name: err?.name });
+    }
   } else if (!ctx.renderCapacity && !hqLoadFallbackTimer) {
     hqLoadFallbackPrev = { audio: ctx.currentTime, wall: performance.now() };
     hqLoadFallbackTimer = setInterval(tickHqLoadFallback, 1000);
+  }
+  // Einmalig protokollieren, nicht bei jedem Start — genügt, um zu klären,
+  // ob renderCapacity auf dem Gerät überhaupt greift.
+  if (!hqCapacityAvailLogged) {
+    hqCapacityAvailLogged = true;
+    dlog('hq:capacityAvail', { has: !!ctx.renderCapacity, started: hqRenderCapacityStarted });
   }
 }
 
@@ -8299,6 +8342,10 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // sonst bekäme immer derselbe Kanal den Vortritt, wenn das Budget für
     // beide zugleich nicht reicht.
     this.rotate = 0;
+    // Zahl der tatsächlich rechnenden Shifter aus dem letzten process()
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.2) — 0 heißt „noch nicht
+    // bestimmt", gültige Werte sind sonst nie 0.
+    this.need = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
       // Kein 'shift'-Zweig mehr: der Wert kommt jetzt ausschließlich über
@@ -8329,13 +8376,26 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     const input = inputs[0];
     const output = outputs[0];
     if (!output || !output.length) return true;
-    // Nach output.length richten, nicht nach input.length: eine mono Quelle
-    // (input.length===1) mit erzwungener Stereo-Ausgabe (outputChannelCount
-    // [2]) braucht trotzdem für JEDEN Ausgabekanal einen eigenen Shifter mit
-    // eigenem Zustand — sonst würde ein einziger Shifter zweimal pro Block
-    // mit denselben Samples gefüttert und seine interne Position liefe
-    // doppelt so schnell, was den Ton komplett zerlegt.
-    this.ensureChannels(output.length);
+    // Nur so viele Shifter wie nötig (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt
+    // 2.2): bei einer MONO-Quelle bekämen zwei Shifter exakt dieselben
+    // Samples und rechneten exakt dasselbe Ergebnis zweimal aus — die
+    // Hälfte der Rechenzeit wäre verdoppelte Arbeit. Ein einziger Shifter
+    // reicht dann, sein Ergebnis wird unten in die übrigen Ausgabekanäle
+    // kopiert. Bei einer STEREO-Quelle bleibt es bei einem eigenen,
+    // eigenständigen Shifter je Ausgabekanal — sonst würde ein einziger
+    // Shifter zweimal pro Block mit unterschiedlichen Samples gefüttert und
+    // seine interne Position liefe doppelt so schnell, was den Ton komplett
+    // zerlegt.
+    const inCh = input ? input.length : 0;
+    const need = inCh <= 1 ? 1 : output.length;
+    if (this.need !== 0 && this.need !== need) {
+      // Kanalzahl hat gewechselt (z.B. Stimmwechsel auf eine anders
+      // kodierte Spur) — sonst spielt ein bisher unbenutzter Shifter noch
+      // seinen alten Zustand.
+      for (const s of this.shifters) s.reset();
+    }
+    this.need = need;
+    this.ensureChannels(need);
 
     // AudioParam statt Nachricht (siehe parameterDescriptors oben) — nur bei
     // tatsächlicher Änderung übernehmen, das postMessage hier läuft also
@@ -8357,8 +8417,8 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // um ein Quantum zu verschieben ändert also nichts an der Ausgabe,
     // sondern nur daran, wann er berechnet wird.
     let budget = 1;
-    for (let i = 0; i < output.length; i++) {
-      const ch = (this.rotate + i) % output.length;
+    for (let i = 0; i < need; i++) {
+      const ch = (this.rotate + i) % need;
       const src = (input && (input[ch] || input[0])) || this.silence(output[ch].length);
       const shifter = this.shifters[ch];
       const before = shifter.framesProcessed;
@@ -8367,7 +8427,10 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
     }
-    this.rotate = (this.rotate + 1) % output.length;
+    this.rotate = (this.rotate + 1) % need;
+    // Mono-Abkürzung: das gerade berechnete Ergebnis von Kanal 0 in die
+    // übrigen Ausgabekanäle kopieren statt es dort erneut auszurechnen.
+    for (let c = need; c < output.length; c++) output[c].set(output[0]);
     if (this.hasPerf) {
       const dt = performance.now() - t0;
       this.loadSum += dt;
@@ -8380,7 +8443,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       if (this.hasPerf) {
         const avgPct = this.loadCount > 0 ? (this.loadSum / this.loadCount) / budgetMs * 100 : 0;
         const maxPct = this.loadMax / budgetMs * 100;
-        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples, shift: this.shift });
+        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples, shift: this.shift, inCh: input ? input.length : 0 });
       } else {
         // Ersatzmessung ohne performance.now(): currentFrame ist die eigene
         // Uhr des AudioContext und wächst nur, wenn process() tatsächlich
@@ -8389,7 +8452,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
         // auf der Hauptseite (die dort verfügbare performance.now() ist die
         // einzig verlässliche Wanduhr), hier wird nur der rohe Zählerstand
         // gemeldet (Plan Abschnitt 1.1).
-        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples, shift: this.shift });
+        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples, shift: this.shift, inCh: input ? input.length : 0 });
       }
       this.underrunSamples = 0;
       this.loadSum = 0;
@@ -8440,7 +8503,7 @@ async function hqCreateNode(ctx) {
       // 1.5).
       if (m.type === 'load' || m.type === 'loadFallback') {
         hqLastWorkletUnderruns = m.underruns;
-        dlog('hq:workletLoad', { underruns: m.underruns, shift: m.shift });
+        dlog('hq:workletLoad', { underruns: m.underruns, shift: m.shift, inCh: m.inCh });
       } else if (m.type === 'started') {
         dlog('hq:worklet', { hasPerf: m.hasPerf, sampleRate: m.sampleRate });
       } else if (m.type === 'shiftAck') {
@@ -8463,6 +8526,16 @@ async function hqCreateNode(ctx) {
  */
 function hqStaticallySupported() {
   return typeof AudioWorkletNode !== 'undefined' && !!(window.AudioContext || window.webkitAudioContext);
+}
+
+/**
+ * Ob ein Verlangsamungsmodus eine der beiden HQ-Varianten ist — 'hq'
+ * (stereo) oder 'hqmono' (Eingang vor dem Vocoder auf einen Kanal
+ * heruntergemischt, SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.5). Ein Helfer
+ * statt fünf verdoppelter Vergleiche an den Aufrufstellen.
+ */
+function isHqMode(mode = settings.slowMode) {
+  return mode === 'hq' || mode === 'hqmono';
 }
 
 const Audio = {
@@ -8653,7 +8726,7 @@ async function audioInit() {
         dlog('hq:load', { avgPct: avg, peakPct: peak, underrunPct });
         const parts = [`${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${peak}% ${t('settings.perf.hqLoadPeak')}`];
         if (underrunPct > 0) parts.push(`${t('settings.perf.hqLoadDropoutRate')} ${underrunPct}%`);
-        if (settings.slowMode === 'hq' && hqLastWorkletUnderruns !== null) {
+        if (isHqMode() && hqLastWorkletUnderruns !== null) {
           parts.push(`${t('settings.perf.hqLoadUnderruns')} ${hqLastWorkletUnderruns}`);
         }
         renderHqLoadText(parts.join(' · '), (ev.peakLoad || 0) > 1);
@@ -8898,9 +8971,29 @@ function applyHqMode() {
   const src = Audio.elSource;
   if (!src) return;
   src.disconnect();
-  const useHq = !!(Audio.hqNode && settings.slowMode === 'hq');
+  const useHq = !!(Audio.hqNode && isHqMode());
   if (useHq) {
+    // HQ Mono summiert den Eingang vor dem Vocoder auf einen Kanal herunter
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.5) — Web Audio macht das selbst
+    // nach der Lautsprecher-Regel (0,5·(L+R)), kein eigener DSP-Code nötig.
+    // process() bekommt dadurch inputs[0].length === 1, die Mono-Abkürzung
+    // aus Abschnitt 2.2 greift von selbst. `outputChannelCount: [2]` steht
+    // seit dem Anlegen fest, die Ausgabe bleibt in jedem Fall stereo.
+    if (settings.slowMode === 'hqmono') {
+      Audio.hqNode.channelCount = 1;
+      Audio.hqNode.channelCountMode = 'explicit';
+      Audio.hqNode.channelInterpretation = 'speakers';
+    } else {
+      Audio.hqNode.channelCountMode = 'max'; // Standardwert für Stereo-HQ
+    }
     src.connect(Audio.hqNode);
+    // Solange der Knoten abgehängt war, lief process() gar nicht — der
+    // Shifter behielt seinen kompletten Zustand und würde beim
+    // Wiedereinhängen sonst bis zu N Samples (~43 ms) Audio von VOR dem
+    // Abhängen ausgeben, hörbar als Sprung genau beim Moduswechsel
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 4.1). Deckt auch den Wechsel
+    // zwischen HQ und HQ Mono ab, bei dem sich die Zahl der Shifter ändert.
+    Audio.hqNode.port.postMessage({ type: 'reset' });
   } else if (Audio.channelIn) {
     src.connect(Audio.channelIn);
   }
@@ -8931,7 +9024,7 @@ function applyRateToElement() {
   const el = Audio.el;
   if (!el) return;
   el.playbackRate = Audio.rate;
-  const useHq = !!(settings.slowMode === 'hq' && Audio.hqNode);
+  const useHq = !!(isHqMode() && Audio.hqNode);
   const preserve = settings.slowMode === 'standard';
   el.preservesPitch = preserve;
   el.webkitPreservesPitch = preserve;
@@ -17176,6 +17269,34 @@ function runSelfTests() {
     for (let i = 0; i < nq * Q; i++) maxDiff = Math.max(maxDiff, Math.abs(outUnbounded[i] - outBudgeted[i]));
     if (maxDiff !== 0) failed.push(`Frame-Budget: maxDiff ${maxDiff}, erwartet 0 (bitgleich)`);
     if (budgeted.underrunSamples !== 0) failed.push(`Frame-Budget: ${budgeted.underrunSamples} Unterlauf-Samples, erwartet 0`);
+  }
+
+  // 11. Mono-Abkürzung (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.2): die
+  // eigentliche Optimierung lebt in HqShiftProcessor (nur im Worklet-
+  // Kontext lauffähig, siehe hqBuildWorkletSource), aber ihre Voraussetzung
+  // lässt sich hier prüfen — zwei Shifter, mit identischem Eingang gefüttert
+  // wie bisher bei einer Mono-Quelle, liefern bitgleiche Ausgabe. Genau das
+  // macht das Kopieren des Ergebnisses in den zweiten Ausgabekanal
+  // gleichwertig zu einem zweiten, redundant rechnenden Shifter.
+  checks++;
+  {
+    const sr = 48000, n = sr;
+    const input = new Float32Array(n);
+    for (let i = 0; i < n; i++) input[i] = Math.sin(i * 12.9898) * 0.5;
+
+    const a = new HqPitchShifter();
+    a.setShift(1 / 0.6);
+    const outA = a.process(input);
+
+    const b = new HqPitchShifter();
+    b.setShift(1 / 0.6);
+    const outB = b.process(input);
+
+    let same = outA.length === outB.length;
+    if (same) {
+      for (let i = 0; i < outA.length; i++) if (outA[i] !== outB[i]) { same = false; break; }
+    }
+    if (!same) failed.push('Mono-Abkürzung: zwei mit identischem Eingang gefütterte Shifter liefern unterschiedliche Ausgabe');
   }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,

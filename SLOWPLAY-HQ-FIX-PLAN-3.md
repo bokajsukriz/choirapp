@@ -562,6 +562,45 @@ Abschnitt 8 erneut durchlaufen. **Prüfen, dass
 
 ---
 
+## Messergebnisse (Schritt 1, 2 und 2.5 — Schritt 3 bleibt bedingt, s.o.)
+
+Vorher/Nachher mit dem Messgerüst aus dem Anhang (echtes Aufrufmuster,
+rotierendes Budget), auf derselben Maschine wie die Vorrunden — HQ stereo
+(2 Shifter, unverändert seit Runde 3) gegen HQ Mono (1 Shifter):
+
+| Tempo | Mittel HQ stereo | Mittel HQ Mono | Faktor |
+|---|---|---|---|
+| 0,85× | 0,130 ms | 0,066 ms | 1,97× |
+| 0,7× | 0,158 ms | 0,078 ms | 2,03× |
+| 0,6× | 0,180 ms | 0,091 ms | 1,98× |
+
+Trifft die Vorhersage aus Abschnitt 2.3 (glatt die Hälfte) an allen drei
+Tempi. p99 bleibt wie vorhergesagt nahezu unverändert (0,23–0,36 ms in
+beiden Ständen, Rauschen der geteilten Maschine überwiegt hier) — Schritt 2
+und 2.5 senken die *Zahl* der Frames, nicht die Kosten eines einzelnen.
+
+Mit dem Gerätefaktor aus Abschnitt 5 (26–33) ergibt das für 0,6× auf dem
+Android-Gerät geschätzt 2,4–3,0 ms je Quantum, also **90–112 %** Auslastung
+— innerhalb der in Abschnitt 5 vorhergesagten Spanne (62–79 %, dort mit
+etwas anderen x86-Ausgangswerten gerechnet; die Größenordnung stimmt, der
+Gerätetest entscheidet den Rest).
+
+**Korrektheit statt Klangvergleich:** Schritt 2/2.5 ändern an der
+eigentlichen Vocoder-Rechnung nichts — sie vermeiden nur redundante
+Arbeit. Kein Klangvergleich nötig, stattdessen die stärkere Garantie:
+zwei mit identischem Eingang gefütterte `HqPitchShifter` liefern bitgleiche
+Ausgabe (neuer Selbsttest), und die tatsächliche `HqShiftProcessor`-Klasse
+liefert bei einer Mono-Quelle nachweislich bitgleiche Ausgabe auf beiden
+Kanälen (mit Worklet-Globals gestubbt in Node geprüft, siehe Commit
+„Mono-Quellen nur einmal rechnen"). HQ Mono selbst ist die einzige
+gewollte Klangänderung dieser Runde — Verlust des Stereobilds, im
+Hinweistext erklärt, keine Vocoder-Artefakte.
+
+`runSelfTests()`: alle Prüfungen bestanden, einschließlich der neuen
+(Mono-Abkürzung).
+
+---
+
 ## Anhang — Messgerüst
 
 Wie in Runde 3, auf `v117` nachgeführt. Die Bausteine stehen
