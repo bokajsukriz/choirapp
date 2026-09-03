@@ -7986,6 +7986,11 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       if (m.type === 'shift') {
         this.shift = m.value;
         for (const s of this.shifters) s.setShift(m.value);
+        // Diagnose des Pitchabfalls bei 0,7× (Plan Abschnitt 1.4): postMessage
+        // ist asynchron, eine verlorene oder verspätete shift-Nachricht ließe
+        // den Shifter unbemerkt auf dem alten Wert stehen. Die Bestätigung
+        // macht das auf der Hauptseite sichtbar.
+        this.port.postMessage({ type: 'shiftAck', value: m.value });
       } else if (m.type === 'reset') {
         for (const s of this.shifters) s.reset();
       }
@@ -8111,6 +8116,8 @@ async function hqCreateNode(ctx) {
         }
       } else if (m.type === 'started') {
         dlog('hq:worklet', { hasPerf: m.hasPerf, sampleRate: m.sampleRate });
+      } else if (m.type === 'shiftAck') {
+        dlog('hq:shiftAck', { value: m.value });
       }
     };
     dlog('hq:init', { ok: true });
