@@ -2,7 +2,20 @@
 (() => {
   'use strict';
 
-  // Jede Prüfung: Anzeige + eine Zeile im kopierbaren Ergebnis.
+  const el = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------------
+  // 1. Geräte-Fakten
+  // ---------------------------------------------------------------------
+  function facts() {
+    el('f-cores').textContent = navigator.hardwareConcurrency ?? 'unbekannt';
+    el('f-mem').textContent = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'nicht gemeldet';
+    el('f-ua').textContent = navigator.userAgent;
+  }
+
+  // ---------------------------------------------------------------------
+  // 2. Bausteine — schnelle Fähigkeitsprüfungen vor der eigentlichen Messung
+  // ---------------------------------------------------------------------
   const CHECKS = [
     ['worklet',  'AudioWorklet aus Blob-URL'],
     ['wasm',     'WebAssembly aus eingebetteten Bytes'],
@@ -10,11 +23,8 @@
     ['perf',     'performance.now() im Worklet'],
     ['capacity', 'AudioContext.renderCapacity'],
     ['stretch',  'signalsmith-stretch lädt'],
-    ['audible',  'Hörprobe spielt'],
   ];
   const state = {};
-  const el = (id) => document.getElementById(id);
-
   const rowsHost = el('checks');
   for (const [key, label] of CHECKS) {
     const row = document.createElement('div');
@@ -33,7 +43,6 @@
     chip.textContent = status;
     chip.className = 'chip ' + (status === 'ja' ? 'ok' : status === 'nein' ? 'bad' : status === 'offen' ? '' : 'warn');
     el('det-' + key).textContent = detail || '';
-    render();
   }
 
   // Kleinstes gültiges WASM-Modul: exportiert add(i32,i32)->i32.
@@ -48,14 +57,6 @@
   const SIMD_WASM = new Uint8Array([
     0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11,
   ]);
-
-  let ctx = null, stretchNode = null, rtTimer = null, rtPrev = null;
-
-  function facts() {
-    el('f-cores').textContent = navigator.hardwareConcurrency ?? 'unbekannt';
-    el('f-mem').textContent = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'nicht gemeldet';
-    el('f-ua').textContent = navigator.userAgent;
-  }
 
   async function checkWasm() {
     try {
@@ -72,8 +73,6 @@
     }
   }
 
-  // Ein winziger Prozessor, nur um zu sehen, ob addModule aus einer Blob-URL
-  // durchkommt — und ob es dort drin eine Uhr gibt.
   function probeSource() {
     return "class ProbeProcessor extends AudioWorkletProcessor {\n"
       + "  constructor() {\n"
@@ -88,7 +87,7 @@
       + "registerProcessor('probe', ProbeProcessor);\n";
   }
 
-  async function checkWorklet() {
+  async function checkWorklet(ctx) {
     if (!ctx.audioWorklet) { mark('worklet', 'nein', 'ctx.audioWorklet fehlt'); mark('perf', 'nein', 'ohne Worklet nicht prüfbar'); return; }
     const url = URL.createObjectURL(new Blob([probeSource()], { type: 'application/javascript' }));
     try {
@@ -100,7 +99,7 @@
       });
       mark('worklet', 'ja', 'addModule(blob:) angenommen, Prozessor meldet sich');
       mark('perf', msg.hasPerf ? 'ja' : 'nein',
-        msg.hasPerf ? 'Uhr im Worklet vorhanden' : 'wie erwartet nicht vorhanden — Ersatzmessung nötig');
+        msg.hasPerf ? 'Uhr im Worklet vorhanden' : 'wie erwartet nicht vorhanden');
       node.disconnect();
     } catch (err) {
       mark('worklet', 'nein', (err && err.name) + ': ' + (err && err.message));
@@ -110,98 +109,160 @@
     }
   }
 
-  function checkCapacity() {
+  function checkCapacity(ctx) {
     const has = !!(ctx.renderCapacity && typeof ctx.renderCapacity.start === 'function');
-    if (!has) { mark('capacity', 'nein', 'nicht vorhanden — Ersatzmessung über ctx.currentTime'); return; }
-    try {
-      ctx.renderCapacity.addEventListener('update', (ev) => {
-        state.capacity.detail = 'averageLoad ' + (ev.averageLoad ?? '?')
-          + ' · peakLoad ' + (ev.peakLoad ?? '?')
-          + ' · underrunRatio ' + (ev.underrunRatio ?? '?');
-        el('det-capacity').textContent = state.capacity.detail;
-        render();
-      });
-      ctx.renderCapacity.start({ updateInterval: 1 });
-      mark('capacity', 'ja', 'gestartet, wartet auf erste Meldung');
-    } catch (err) {
-      mark('capacity', 'teilweise', 'vorhanden, start() scheitert: ' + (err && err.name));
-    }
+    mark('capacity', has ? 'ja' : 'nein', has ? 'vorhanden' : 'nicht vorhanden — Ersatzmessung über ctx.currentTime');
   }
 
-  // Vierklang a-cis-e-a mit leichtem Vibrato — näher an Chorstimmen als ein
-  // einzelner Sinus, und lang genug, um Stottern zu hören.
-  function chord(sr, seconds) {
-    const n = Math.round(sr * seconds);
-    const left = new Float32Array(n), right = new Float32Array(n);
-    const partials = [220, 277.18, 329.63, 440];
-    for (let i = 0; i < n; i++) {
-      const t = i / sr;
-      const env = Math.min(1, t / 0.05) * Math.min(1, (seconds - t) / 0.2);
-      let v = 0;
-      for (let p = 0; p < partials.length; p++) {
-        const vib = 1 + 0.003 * Math.sin(2 * Math.PI * (4.5 + p * 0.3) * t);
-        v += Math.sin(2 * Math.PI * partials[p] * vib * t) / partials.length;
-      }
-      left[i] = v * env * 0.7;
-      right[i] = v * env * 0.7;
-    }
-    return [left, right];
-  }
-
-  async function checkStretch() {
+  async function checkStretch(ctx) {
     if (typeof SignalsmithStretch !== 'function') {
       mark('stretch', 'nein', 'globales SignalsmithStretch fehlt — Skript nicht geladen');
-      return false;
+      return;
     }
     try {
-      stretchNode = await SignalsmithStretch(ctx);
-      stretchNode.connect(ctx.destination);
+      const node = await SignalsmithStretch(ctx);
+      node.disconnect();
       mark('stretch', 'ja', 'AudioWorklet-Knoten steht, WASM ohne Netzzugriff aus der eingebetteten data:-URI');
-      el('listen-sec').hidden = false;
-      return true;
     } catch (err) {
       mark('stretch', 'nein', (err && err.name) + ': ' + (err && err.message));
-      return false;
     }
   }
 
-  function startRealtimeMeter() {
-    if (rtTimer) return;
-    rtPrev = { audio: ctx.currentTime, wall: performance.now() };
-    rtTimer = setInterval(() => {
-      const wall = performance.now(), audio = ctx.currentTime;
-      const dw = (wall - rtPrev.wall) / 1000, da = audio - rtPrev.audio;
-      rtPrev = { audio, wall };
-      if (dw <= 0) return;
-      const pct = Math.round((da / dw) * 100);
-      el('rt').textContent = pct + ' %';
-      el('rt').style.color = pct < 97 ? 'var(--bad)' : 'var(--ok)';
-      state.realtime = pct;
-      render();
-    }, 700);
+  // ---------------------------------------------------------------------
+  // 3. Durchsatzmessung (Plan Abschnitt 2)
+  // ---------------------------------------------------------------------
+  const WORKER_SAMPLE_RATE = 48000; // ein gewöhnlicher Worker hat keine Geräte-Abtastrate; konstant, damit js-mono und wasm vergleichbar bleiben
+
+  function runWorkerBench(family, rate, channels) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(new Blob([MESSPLATZ.workerSrc], { type: 'application/javascript' }));
+      const worker = new Worker(url);
+      const id = Math.random().toString(36).slice(2);
+      const done = (result) => {
+        clearTimeout(timeout);
+        worker.terminate();
+        URL.revokeObjectURL(url);
+        resolve(result);
+      };
+      const timeout = setTimeout(() => done({ ok: false, error: 'Zeitüberschreitung (10 s)' }), 10000);
+      worker.onmessage = (e) => { if (e.data && e.data.id === id) done(e.data); };
+      worker.onerror = (e) => done({ ok: false, error: (e && e.message) || 'Worker-Fehler' });
+      worker.postMessage({
+        cmd: 'bench', id, family, rate, channels, sampleRate: WORKER_SAMPLE_RATE,
+        warmupMaxQuanta: 2000, warmupMaxMs: 800, durationMs: 2000,
+      });
+    });
   }
 
-  async function play(rate) {
-    if (!stretchNode) return;
-    try {
-      stretchNode.stop();
-      const [l, r] = chord(ctx.sampleRate, 4);
-      stretchNode.addBuffers([l, r]);
-      stretchNode.schedule({ rate, semitones: 0, formantCompensation: false, input: 0 });
-      stretchNode.start();
-      startRealtimeMeter();
-      mark('audible', 'ja', 'zuletzt gespielt: ' + rate.toFixed(2) + '× — bitte hören, ob es sauber klingt');
-    } catch (err) {
-      mark('audible', 'nein', (err && err.name) + ': ' + (err && err.message));
+  let overloadWorkletReady = null;
+  function ensureOverloadWorklet(ctx) {
+    if (!overloadWorkletReady) {
+      const url = URL.createObjectURL(new Blob([MESSPLATZ.overloadWorkletSrc], { type: 'application/javascript' }));
+      overloadWorkletReady = ctx.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url));
     }
+    return overloadWorkletReady;
   }
 
-  function render() {
+  function measureRealtimeRatio(ctx, ms) {
+    return new Promise((resolve) => {
+      const w0 = performance.now(), a0 = ctx.currentTime;
+      setTimeout(() => {
+        const dw = (performance.now() - w0) / 1000;
+        const da = ctx.currentTime - a0;
+        resolve(dw > 0 ? da / dw : 0);
+      }, ms);
+    });
+  }
+
+  async function runJsWorkletRound(ctx, rate, channels, k) {
+    await ensureOverloadWorklet(ctx);
+    const node = new AudioWorkletNode(ctx, 'hq-overload', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+      processorOptions: { k, channels, shift: 1 / rate },
+    });
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    node.connect(mute).connect(ctx.destination);
+    await new Promise((r) => setTimeout(r, 150));
+    const p = await measureRealtimeRatio(ctx, 2000);
+    node.port.postMessage({ type: 'stop' });
+    node.disconnect(); mute.disconnect();
+    return p;
+  }
+
+  async function runWasmWorkletRound(ctx, rate, k) {
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    mute.connect(ctx.destination);
+    const src = testSignal(ctx.sampleRate, 4);
+    const nodes = [];
+    for (let i = 0; i < k; i++) {
+      const node = await SignalsmithStretch(ctx);
+      node.addBuffers([src, src]);
+      node.schedule({ rate, semitones: 0, formantCompensation: false, input: 0 });
+      node.start();
+      node.connect(mute);
+      nodes.push(node);
+    }
+    await new Promise((r) => setTimeout(r, 150));
+    const p = await measureRealtimeRatio(ctx, 2000);
+    for (const node of nodes) { try { node.stop(); } catch {} node.disconnect(); }
+    mute.disconnect();
+    return p;
+  }
+
+  async function overloadThroughput(family, ctx, rate, channels) {
+    const round = (k) => family === 'wasm' ? runWasmWorkletRound(ctx, rate, k) : runJsWorkletRound(ctx, rate, channels, k);
+    let k = 6;
+    let p = await round(k);
+    const rounds = [{ k, p }];
+    if (p >= 0.95) {
+      k = 16;
+      p = await round(k);
+      rounds.push({ k, p });
+    }
+    const last = rounds[rounds.length - 1];
+    return { throughput: last.k * last.p, rounds };
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. Ablauf und Ergebnisdarstellung
+  // ---------------------------------------------------------------------
+  const RUNS_REQUIRED = [
+    { key: 'js-mono', label: 'js-mono', family: 'js', channels: 1 },
+    { key: 'wasm', label: 'wasm', family: 'wasm', channels: 1 },
+  ];
+  const RUNS_EXTRA = [
+    { key: 'js-stereo', label: 'js-stereo', family: 'js', channels: 2 },
+  ];
+  const TEMPI_REQUIRED = [0.6];
+  const TEMPI_EXTRA = [0.85, 0.7];
+
+  const messungen = []; // { key, label, rate, worker, worklet }
+
+  function addResultRow(m) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const workerTxt = m.worker.ok ? m.worker.throughput.toFixed(2) + '×' : 'Fehler';
+    row.innerHTML = '<span class="name"></span><span class="chip"></span>'
+      + '<span class="detail"></span>';
+    row.querySelector('.name').textContent = m.label + ' · ' + m.rate.toFixed(2) + '×';
+    const chip = row.querySelector('.chip');
+    chip.textContent = workerTxt + ' / ' + m.worklet.throughput.toFixed(2) + '×';
+    chip.className = 'chip ' + (m.worker.ok && m.worklet.throughput >= 1 ? 'ok' : m.worker.ok ? 'warn' : 'bad');
+    const roundsTxt = m.worklet.rounds.map((r) => 'K=' + r.k + ' p=' + (r.p * 100).toFixed(0) + '%').join(', ');
+    row.querySelector('.detail').textContent =
+      'Worker: ' + (m.worker.ok ? m.worker.throughput.toFixed(3) + '× Echtzeit (' + m.worker.blocks + ' Blöcke, ' + m.worker.elapsedMs.toFixed(0) + ' ms)' : m.worker.error)
+      + ' · Worklet: ' + roundsTxt + ' → Durchsatz ' + m.worklet.throughput.toFixed(3) + '×';
+    el('results').append(row);
+  }
+
+  function renderErgebnis() {
+    const ctx = window.__messCtx;
     const lines = [];
-    lines.push('BVG Audio-Prüfstand — ' + new Date().toISOString());
+    lines.push('BVG Audio-Messplatz — Durchsatzmessung — ' + new Date().toISOString());
     lines.push('UA: ' + navigator.userAgent);
-    lines.push('Kerne: ' + (navigator.hardwareConcurrency ?? '?')
-      + '   Speicher: ' + (navigator.deviceMemory ?? '?'));
+    lines.push('Kerne: ' + (navigator.hardwareConcurrency ?? '?') + '   Speicher: ' + (navigator.deviceMemory ?? '?'));
     if (ctx) {
       lines.push('Abtastrate: ' + ctx.sampleRate
         + '   baseLatency: ' + (ctx.baseLatency ?? '?')
@@ -209,39 +270,75 @@
       lines.push('Frist je Render-Quantum: ' + (128 / ctx.sampleRate * 1000).toFixed(2) + ' ms');
     }
     lines.push('');
-    for (const [key, label] of CHECKS) {
-      const s = state[key];
-      lines.push(label.padEnd(38, ' ') + s.status + (s.detail ? '   [' + s.detail + ']' : ''));
+    lines.push('WASM-SIMD: ' + state.simd.status + '   renderCapacity: ' + state.capacity.status + '   Blob-Worklet: ' + state.worklet.status);
+    lines.push('signalsmith-stretch: ' + MESSPLATZ.libVersion + ' (' + MESSPLATZ.libLicense + ')   sha256 ' + MESSPLATZ.libSha256);
+    lines.push('js-Motor (aus index.html geschnitten): sha256 ' + MESSPLATZ.engineSha256);
+    lines.push('');
+    lines.push('Durchsatz — Audiosekunden je Wanduhrsekunde (Worker roh / Worklet K·p, absichtlich überlastet):');
+    for (const m of messungen) {
+      const workerTxt = m.worker.ok ? m.worker.throughput.toFixed(3) + '×' : 'FEHLER: ' + m.worker.error;
+      const roundsTxt = m.worklet.rounds.map((r) => 'K=' + r.k + ' p=' + (r.p * 100).toFixed(1) + '%').join(', ');
+      lines.push('  ' + m.label.padEnd(10, ' ') + m.rate.toFixed(2) + '×'
+        + '   Worker ' + workerTxt.padEnd(10, ' ')
+        + '   Worklet ' + m.worklet.throughput.toFixed(3) + '× (' + roundsTxt + ')'
+        + '   Betriebsart: ' + (m.family === 'wasm' ? 'Pufferbetrieb (b)' : 'Direktaufruf, wie im Worklet der App'));
     }
-    if (state.realtime != null) lines.push('', 'Echtzeit während der Wiedergabe: ' + state.realtime + ' %');
+    lines.push('');
+    lines.push('Hörvergleich: noch nicht durchgeführt (Stufe 2 dieses Messplatzes).');
     el('out').textContent = lines.join('\n');
+  }
+
+  async function messeAlle(ctx, mitExtra) {
+    const tempi = TEMPI_REQUIRED.concat(mitExtra ? TEMPI_EXTRA : []);
+    const runs = RUNS_REQUIRED.concat(mitExtra ? RUNS_EXTRA : []);
+    for (const rate of tempi) {
+      for (const run of runs) {
+        el('status').textContent = 'Messe ' + run.label + ' bei ' + rate.toFixed(2) + '× — Worker …';
+        const worker = await runWorkerBench(run.family, rate, run.channels);
+        el('status').textContent = 'Messe ' + run.label + ' bei ' + rate.toFixed(2) + '× — Worklet …';
+        const worklet = await overloadThroughput(run.family, ctx, rate, run.channels);
+        const m = { key: run.key, label: run.label, family: run.family, rate, worker, worklet };
+        messungen.push(m);
+        addResultRow(m);
+        renderErgebnis();
+      }
+    }
+    el('status').textContent = 'Fertig.';
   }
 
   el('start').addEventListener('click', async () => {
     const btn = el('start');
     btn.disabled = true;
-    btn.textContent = 'Prüfung läuft …';
+    btn.textContent = 'Messung läuft …';
+    el('results').innerHTML = '';
+    messungen.length = 0;
     try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (navigator.wakeLock) {
+        try { await navigator.wakeLock.request('screen'); } catch { /* z.B. Tab im Hintergrund — egal, nur bestmöglich */ }
+      }
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      window.__messCtx = ctx;
       await ctx.resume();
       el('f-sr').textContent = ctx.sampleRate + ' Hz';
       el('f-lat').textContent = 'base ' + (ctx.baseLatency ?? '?') + ' · output ' + (ctx.outputLatency ?? '?');
+
+      el('status').textContent = 'Prüfe Bausteine …';
       await checkWasm();
-      await checkWorklet();
-      checkCapacity();
-      await checkStretch();
-      btn.textContent = 'Prüfung abgeschlossen';
-      el('hint').textContent = 'Fertig. Unten die Hörprobe, danach das Ergebnis kopieren.';
+      await checkWorklet(ctx);
+      checkCapacity(ctx);
+      await checkStretch(ctx);
+
+      await messeAlle(ctx, el('extra').checked);
+
+      btn.textContent = 'Messung abgeschlossen';
+      el('hint').textContent = 'Fertig. Unten das Ergebnis kopieren.';
     } catch (err) {
       btn.disabled = false;
       btn.textContent = 'Nochmal versuchen';
-      el('hint').textContent = 'Fehlgeschlagen: ' + (err && err.name) + ' — ' + (err && err.message);
+      el('status').textContent = 'Fehlgeschlagen: ' + (err && err.name) + ' — ' + (err && err.message);
     }
-    render();
+    renderErgebnis();
   });
-
-  el('play1').addEventListener('click', () => play(1.0));
-  el('play06').addEventListener('click', () => play(0.6));
 
   el('copy').addEventListener('click', async () => {
     const btn = el('copy');
@@ -259,6 +356,6 @@
   });
 
   facts();
-  render();
+  renderErgebnis();
 })();
 </script>

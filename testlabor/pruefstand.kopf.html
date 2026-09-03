@@ -1,4 +1,4 @@
-<title>BVG Audio-Prüfstand</title>
+<title>BVG Audio-Messplatz</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <style>
   :root {
@@ -86,17 +86,14 @@
   button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line-strong); }
   button:disabled { opacity:0.45; cursor:default; }
   button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .btnrow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 
-  .meter {
-    display:flex; align-items:baseline; justify-content:space-between; gap:12px;
-    background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:14px 16px;
+  label.toggle {
+    display:flex; align-items:center; gap:10px; font-size:0.87rem; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:12px 14px;
   }
-  .meter .label { font-size:0.8rem; color:var(--muted); }
-  .meter .value {
-    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:1.5rem; font-weight:500;
-    font-variant-numeric:tabular-nums;
-  }
+  label.toggle input { width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; }
+
+  .status { font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.82rem; color:var(--accent); min-height:1.3em; }
 
   pre {
     margin:0; background:var(--surface); border:1px solid var(--line); border-radius:6px;
@@ -108,13 +105,13 @@
 
 <div class="wrap">
   <header>
-    <span class="stamp">Vorprüfung · Gerät</span>
-    <h1>Audio-Prüfstand</h1>
+    <span class="stamp">Messplatz · Durchsatz</span>
+    <h1>Audio-Messplatz</h1>
     <p class="lede">
-      Klärt vor dem Bau des Messplatzes, ob dieses Telefon die Bausteine trägt, auf denen
-      er stehen soll: ein AudioWorklet aus einer Blob-URL, WebAssembly aus eingebetteten
-      Bytes, und <em>signalsmith-stretch</em> — die WASM-Zeitdehnung, die den handgeschriebenen
-      Phasenvocoder ablösen könnte.
+      Misst, ob <em>signalsmith-stretch</em> (WASM) auf diesem Telefon wirklich schafft, woran der
+      handgeschriebene js-Phasenvocoder bei 0,6× scheitert — im Worker (roher Durchsatz) und im
+      AudioWorklet (absichtlich überlastet, um die 100%-Deckung der Echtzeitmessung zu durchbrechen).
+      Kein App-Code, kein Risiko für die laufende App.
     </p>
   </header>
 
@@ -132,27 +129,25 @@
   <section>
     <h2>Bausteine</h2>
     <div class="rows" id="checks"></div>
-    <button id="start">Prüfung starten</button>
-    <p class="note" id="hint">
-      Der Ton läuft erst nach einer Berührung — das verlangt der Browser. Bitte den
-      Bildschirm anlassen und die Lautstärke aufdrehen.
-    </p>
   </section>
 
-  <section id="listen-sec" hidden>
-    <h2>Hörprobe</h2>
+  <section>
+    <h2>Durchsatzmessung</h2>
     <p class="note">
-      Ein gehaltener Vierklang, durch <em>signalsmith-stretch</em> geschickt. Bei 0,6× muss
-      er langsamer, aber in derselben Tonhöhe klingen — nicht tiefer, nicht abgehackt.
+      Pflicht: <code>js-mono</code> gegen <code>wasm</code> bei 0,6× — der schlimmste Fall, alles
+      andere läuft automatisch mit.
     </p>
-    <div class="btnrow">
-      <button class="secondary" id="play1">1,0× spielen</button>
-      <button class="secondary" id="play06">0,6× spielen</button>
-    </div>
-    <div class="meter">
-      <span class="label">Echtzeit während der Wiedergabe</span>
-      <span class="value" id="rt">–</span>
-    </div>
+    <label class="toggle">
+      <input type="checkbox" id="extra">
+      <span>auch 0,85× und 0,7× sowie <code>js-stereo</code> messen (dauert länger)</span>
+    </label>
+    <button id="start">Messung starten</button>
+    <p class="note" id="hint">
+      Ton läuft nur intern (Worker/Worklet, stummgeschaltet) — trotzdem verlangt der Browser eine
+      Berührung, um Audio überhaupt zuzulassen. Bildschirm bitte anlassen.
+    </p>
+    <p class="status" id="status"></p>
+    <div class="rows" id="results"></div>
   </section>
 
   <section>
