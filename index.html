@@ -8111,7 +8111,16 @@ class HqPitchShifter {
    * den Selbsttests, siehe runSelfTests: der Audio-Thread nimmt diesen
    * Zweig nie), legt die Methode selbst eins an.
    */
-  process(input, output) {
+  /**
+   * `maxFrames` begrenzt, wie viele Analyseframes dieser Aufruf höchstens
+   * berechnet — `undefined` bedeutet unbegrenzt (die Selbsttests schicken
+   * ganze Sekunden Material in einem Aufruf durch, das darf nicht hoffnungs-
+   * los in Rückstand geraten). Der zweite Teil der while-Bedingung ist das
+   * Sicherheitsventil: staut sich mehr als ein voller Frame an, wird trotz
+   * erschöpftem Budget gerechnet, damit kein dauerhafter Rückstand entsteht
+   * (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 3.1).
+   */
+  process(input, output, maxFrames) {
     const n = input.length;
     if (!output) output = new Float32Array(n);
     if (this.shift === 1) {
@@ -8126,13 +8135,15 @@ class HqPitchShifter {
     // Selbsttests rufen process() mit sehr viel größeren Eingaben auf einen
     // Schlag auf — ohne die Portionierung liefe der Puffer über.
     const inFifo = this.inFifo, Ha = this.Ha, N = this.N;
+    let budget = maxFrames === undefined ? Infinity : maxFrames;
     let readPos = 0;
     while (readPos < n) {
       const room = N - this.inFifoLen;
       const take = Math.min(room, n - readPos);
       for (let i = 0; i < take; i++) inFifo[this.inFifoLen++] = input[readPos + i];
       readPos += take;
-      while (this.inFifoLen >= Ha) {
+      while (this.inFifoLen >= Ha && (budget > 0 || this.inFifoLen >= 2 * Ha)) {
+        budget--;
         this.analysisWin.copyWithin(0, Ha);
         for (let i = 0; i < Ha; i++) this.analysisWin[N - Ha + i] = inFifo[i];
         inFifo.copyWithin(0, Ha, this.inFifoLen);
@@ -8185,6 +8196,10 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // Eingang und Quantum — bleibt unangetastet immer auf 0, wird also nie
     // neu genullt.
     this._silence = null;
+    // Rotierender Startkanal für das globale Frame-Budget (siehe process()):
+    // sonst bekäme immer derselbe Kanal den Vortritt, wenn das Budget für
+    // beide zugleich nicht reicht.
+    this.rotate = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
       // Kein 'shift'-Zweig mehr: der Wert kommt jetzt ausschließlich über
@@ -8234,13 +8249,26 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     }
 
     const t0 = this.hasPerf ? performance.now() : 0;
-    for (let ch = 0; ch < output.length; ch++) {
+    // Höchstens ein Analyseframe je Render-Quantum, über alle Kanäle hinweg
+    // (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 3.1): beide Kanäle bekommen pro
+    // Quantum gleich viele Samples, ihre FIFOs füllen sich im Gleichschritt,
+    // ohne Budget wird ihr Frame also immer im selben Aufruf reif — die
+    // Spitzenlast wäre doppelt so hoch wie nötig. Der Lesezeiger hat rund
+    // N Samples Vorlauf (siehe Konstruktor von HqPitchShifter), einen Frame
+    // um ein Quantum zu verschieben ändert also nichts an der Ausgabe,
+    // sondern nur daran, wann er berechnet wird.
+    let budget = 1;
+    for (let i = 0; i < output.length; i++) {
+      const ch = (this.rotate + i) % output.length;
       const src = (input && (input[ch] || input[0])) || this.silence(output[ch].length);
       const shifter = this.shifters[ch];
-      shifter.process(src, output[ch]);
+      const before = shifter.framesProcessed;
+      shifter.process(src, output[ch], budget);
+      budget = Math.max(0, budget - (shifter.framesProcessed - before));
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
     }
+    this.rotate = (this.rotate + 1) % output.length;
     if (this.hasPerf) {
       const dt = performance.now() - t0;
       this.loadSum += dt;
@@ -16958,6 +16986,47 @@ function runSelfTests() {
       for (let i = 0; i < out1.length; i++) if (out1[i] !== out2[i]) { same = false; break; }
     }
     if (!same) failed.push('HqPitchShifter-Reset: derselbe Block liefert nach reset() eine andere Ausgabe');
+  }
+
+  // 10. Frame-Budget (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 3.3): derselbe
+  // Eingang in 128er-Blöcken (wie im Audio-Thread), einmal ohne und einmal
+  // mit maxFrames=1 — JEDES Ausgabesample muss identisch sein. Eine harte
+  // Zusage, kein Toleranzvergleich: bricht das, stimmt etwas mit der
+  // Puffer-Buchhaltung nicht (Verschieben eines Frames um ein paar Quanten
+  // darf am Ergebnis nichts ändern, siehe Kommentar an
+  // HqShiftProcessor.process). Beide Läufe müssen in 128er-Blöcken erfolgen
+  // — ein einzelner unchunkter Aufruf würde alle Frames vor dem ersten
+  // readOutput() berechnen und wäre kein fairer Vergleich.
+  checks++;
+  {
+    const sr = 48000, Q = 128;
+    const n = sr * 2;
+    const sig = new Float32Array(n);
+    for (let i = 0; i < n; i++) sig[i] = Math.sin(i * 12.9898) * 0.5; // deterministisch statt Math.random()
+    const nq = Math.floor(n / Q);
+
+    const unbounded = new HqPitchShifter();
+    unbounded.setShift(1 / 0.6);
+    const outUnbounded = new Float32Array(nq * Q);
+    for (let q = 0; q < nq; q++) {
+      const chunk = new Float32Array(Q);
+      unbounded.process(sig.subarray(q * Q, q * Q + Q), chunk);
+      outUnbounded.set(chunk, q * Q);
+    }
+
+    const budgeted = new HqPitchShifter();
+    budgeted.setShift(1 / 0.6);
+    const outBudgeted = new Float32Array(nq * Q);
+    for (let q = 0; q < nq; q++) {
+      const chunk = new Float32Array(Q);
+      budgeted.process(sig.subarray(q * Q, q * Q + Q), chunk, 1);
+      outBudgeted.set(chunk, q * Q);
+    }
+
+    let maxDiff = 0;
+    for (let i = 0; i < nq * Q; i++) maxDiff = Math.max(maxDiff, Math.abs(outUnbounded[i] - outBudgeted[i]));
+    if (maxDiff !== 0) failed.push(`Frame-Budget: maxDiff ${maxDiff}, erwartet 0 (bitgleich)`);
+    if (budgeted.underrunSamples !== 0) failed.push(`Frame-Budget: ${budgeted.underrunSamples} Unterlauf-Samples, erwartet 0`);
   }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
