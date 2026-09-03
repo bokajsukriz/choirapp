@@ -812,6 +812,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   line-height: 1.2;
 }
 
+/* Vierter Verlangsamungsmodus „HQ Mono" (SLOWPLAY-HQ-FIX-PLAN-3.md
+   Abschnitt 2.5) — .preset-row ist sonst fest auf 3 Spalten verdrahtet und
+   wird mit den Fahrradfahren-Presets geteilt, deshalb eine eigene Regel
+   statt die gemeinsame Klasse zu ändern. */
+#slow-mode {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .preset:disabled { opacity: .4; }
 
@@ -3396,6 +3404,7 @@ input[type="checkbox"] {
       </p>
       <div class="preset-row" id="slow-mode" role="group" aria-label="Verlangsamung">
         <button class="preset" type="button" data-mode="standard" aria-pressed="true" data-i18n="settings.perf.modeStandard">Standard</button>
+        <button class="preset" type="button" data-mode="hqmono" data-i18n="settings.perf.modeHqMono">HQ Mono</button>
         <button class="preset" type="button" data-mode="hq" data-i18n="settings.perf.modeHq">HQ</button>
         <button class="preset" type="button" data-mode="raw" data-i18n="settings.perf.modeRaw">Roh</button>
       </div>
@@ -3404,6 +3413,14 @@ input[type="checkbox"] {
         deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr
         Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder
         wird es warm, wieder auf Standard stellen.
+      </p>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.hqMonoHint">
+        HQ Mono rechnet die Tonhöhenkorrektur nur einmal statt zweimal und
+        ist deshalb etwa doppelt so sparsam wie HQ — dafür klingen danach
+        beide Kanäle gleich. Aufnahmen, die eine Stimme hart auf links oder
+        rechts legen, verlieren diese Trennung, und die
+        Fahrradfahren-Umschaltung hat in diesem Modus keine hörbare Wirkung
+        mehr.
       </p>
       <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.rawHint">
         Roh nur zum Ausprobieren: verlangsamt wie HQ, korrigiert die
@@ -4747,9 +4764,12 @@ const DEFAULT_SETTINGS = {
   // sauber läuft.
   hqSlowdown: false,  // veraltet — nur noch für die einmalige Migration auf slowMode in loadSettings() gelesen
   hqSlowdownReset: false,  // Merker der einmaligen Rücknahme, siehe loadSettings()
-  // 'standard' (nativ, WSOLA) | 'hq' (Phasenvocoder + Tonhöhenkorrektur) |
-  // 'raw' (nur Tempo wie HQ, aber ohne Tonhöhenkorrektur — Tonhöhe fällt
-  // hörbar ab; zum Eingrenzen, ob ein Problem an der Korrektur liegt oder
+  // 'standard' (nativ, WSOLA) | 'hq' (Phasenvocoder + Tonhöhenkorrektur,
+  // stereo) | 'hqmono' (wie 'hq', aber der Eingang wird vor dem Vocoder auf
+  // einen Kanal heruntergemischt — rund halb so teuer, kostet das
+  // Stereobild, siehe SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.5) | 'raw' (nur
+  // Tempo wie HQ, aber ohne Tonhöhenkorrektur — Tonhöhe fällt hörbar ab;
+  // zum Eingrenzen, ob ein Problem an der Korrektur liegt oder
   // grundsätzlicher ist, siehe SLOWPLAY-HQ-FIX-PLAN.md)
   slowMode: 'standard',
   slowModeMigrated: false,  // Merker der einmaligen Migration von hqSlowdown, siehe loadSettings()
@@ -4858,11 +4878,13 @@ const STRINGS = {
     'settings.perf.title': 'Kompatibilität & Performance',
     'settings.perf.modeHint': 'Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.',
     'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHqMono': 'HQ Mono',
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Roh',
     'settings.perf.hqHint': 'HQ rechnet den Klang selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, wieder auf Standard stellen.',
+    'settings.perf.hqMonoHint': 'HQ Mono rechnet die Tonhöhenkorrektur nur einmal statt zweimal und ist deshalb etwa doppelt so sparsam wie HQ — dafür klingen danach beide Kanäle gleich. Aufnahmen, die eine Stimme hart auf links oder rechts legen, verlieren diese Trennung, und die Fahrradfahren-Umschaltung hat in diesem Modus keine hörbare Wirkung mehr.',
     'settings.perf.rawHint': 'Roh verlangsamt wie HQ, korrigiert die Tonhöhe aber nicht — sie fällt hörbar ab. Zeigt, ob ein Problem an der Tonhöhenkorrektur liegt oder grundsätzlicher ist. Zugleich die Vergleichsmessung: dieselbe Anzeige wie bei HQ, nur ohne Tonhöhenkorrektur.',
-    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt HQ nicht — Standard und Roh funktionieren trotzdem.',
+    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt weder HQ noch HQ Mono — Standard und Roh funktionieren trotzdem.',
     'settings.perf.hqLoadLabel': 'Rechenlast:',
     'settings.perf.hqLoadAvg': 'im Mittel,',
     'settings.perf.hqLoadPeak': 'in der Spitze —',
@@ -5079,11 +5101,13 @@ const STRINGS = {
     'settings.perf.title': 'Compatibility & performance',
     'settings.perf.modeHint': 'How slowing down at 0.85×, 0.7× and 0.6× is computed.',
     'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHqMono': 'HQ Mono',
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Raw',
     'settings.perf.hqHint': 'HQ recalculates the sound itself instead of leaving it to the browser — noticeably cleaner on sustained notes. Costs more processing power in return. If playback stutters on an older phone or it gets warm, switch back to Standard.',
+    'settings.perf.hqMonoHint': "HQ Mono computes the pitch correction only once instead of twice, so it's roughly twice as cheap as HQ — but both channels sound the same afterwards. Recordings that put a voice hard left or right lose that separation, and the one-earbud switch has no audible effect in this mode anymore.",
     'settings.perf.rawHint': "Raw slows down like HQ but doesn't correct the pitch — it noticeably drops. Shows whether a problem is in the pitch correction or more fundamental. Also the comparison measurement: the same display as HQ, just without pitch correction.",
-    'settings.perf.hqUnsupported': "This device doesn't support HQ — Standard and Raw still work.",
+    'settings.perf.hqUnsupported': "This device supports neither HQ nor HQ Mono — Standard and Raw still work.",
     'settings.perf.hqLoadLabel': 'Load:',
     'settings.perf.hqLoadAvg': 'average,',
     'settings.perf.hqLoadPeak': 'peak —',
@@ -5300,11 +5324,13 @@ const STRINGS = {
     'settings.perf.title': 'Kompatybilność i wydajność',
     'settings.perf.modeHint': 'Jak liczone jest spowolnienie przy 0,85×, 0,7× i 0,6×.',
     'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHqMono': 'HQ Mono',
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Surowy',
     'settings.perf.hqHint': 'HQ sam przelicza dźwięk, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długich dźwiękach. Kosztuje to więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina na starszym telefonie albo się nagrzewa, wróć do Standardu.',
+    'settings.perf.hqMonoHint': 'HQ Mono liczy korektę wysokości dźwięku tylko raz zamiast dwa razy, więc jest z grubsza dwukrotnie oszczędniejszy niż HQ — za to oba kanały brzmią potem tak samo. Nagrania, w których jeden głos jest twardo przypisany do lewego lub prawego kanału, tracą to rozdzielenie, a przełącznik „jeden słuchawka" nie ma w tym trybie już słyszalnego efektu.',
     'settings.perf.rawHint': 'Surowy spowalnia jak HQ, ale nie koryguje wysokości dźwięku — wyraźnie spada. Pokazuje, czy problem tkwi w korekcie wysokości dźwięku, czy jest bardziej fundamentalny. To zarazem pomiar porównawczy: ten sam wskaźnik co w HQ, tylko bez korekty wysokości dźwięku.',
-    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje HQ — Standard i Surowy nadal działają.',
+    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje ani HQ, ani HQ Mono — Standard i Surowy nadal działają.',
     'settings.perf.hqLoadLabel': 'Obciążenie:',
     'settings.perf.hqLoadAvg': 'średnio,',
     'settings.perf.hqLoadPeak': 'szczyt —',
@@ -7467,8 +7493,7 @@ function renderSlowMode() {
   const supported = Audio.ready ? !!Audio.hqNode : hqStaticallySupported();
   const mode = settings.slowMode || 'standard';
   for (const btn of $$('#slow-mode .preset')) {
-    const isHq = btn.dataset.mode === 'hq';
-    btn.disabled = isHq && !supported;
+    btn.disabled = isHqMode(btn.dataset.mode) && !supported;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
   }
   $('#hq-unsupported-hint').hidden = supported;
@@ -8503,6 +8528,16 @@ function hqStaticallySupported() {
   return typeof AudioWorkletNode !== 'undefined' && !!(window.AudioContext || window.webkitAudioContext);
 }
 
+/**
+ * Ob ein Verlangsamungsmodus eine der beiden HQ-Varianten ist — 'hq'
+ * (stereo) oder 'hqmono' (Eingang vor dem Vocoder auf einen Kanal
+ * heruntergemischt, SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.5). Ein Helfer
+ * statt fünf verdoppelter Vergleiche an den Aufrufstellen.
+ */
+function isHqMode(mode = settings.slowMode) {
+  return mode === 'hq' || mode === 'hqmono';
+}
+
 const Audio = {
   el: null,
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
@@ -8691,7 +8726,7 @@ async function audioInit() {
         dlog('hq:load', { avgPct: avg, peakPct: peak, underrunPct });
         const parts = [`${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${peak}% ${t('settings.perf.hqLoadPeak')}`];
         if (underrunPct > 0) parts.push(`${t('settings.perf.hqLoadDropoutRate')} ${underrunPct}%`);
-        if (settings.slowMode === 'hq' && hqLastWorkletUnderruns !== null) {
+        if (isHqMode() && hqLastWorkletUnderruns !== null) {
           parts.push(`${t('settings.perf.hqLoadUnderruns')} ${hqLastWorkletUnderruns}`);
         }
         renderHqLoadText(parts.join(' · '), (ev.peakLoad || 0) > 1);
@@ -8936,14 +8971,28 @@ function applyHqMode() {
   const src = Audio.elSource;
   if (!src) return;
   src.disconnect();
-  const useHq = !!(Audio.hqNode && settings.slowMode === 'hq');
+  const useHq = !!(Audio.hqNode && isHqMode());
   if (useHq) {
+    // HQ Mono summiert den Eingang vor dem Vocoder auf einen Kanal herunter
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.5) — Web Audio macht das selbst
+    // nach der Lautsprecher-Regel (0,5·(L+R)), kein eigener DSP-Code nötig.
+    // process() bekommt dadurch inputs[0].length === 1, die Mono-Abkürzung
+    // aus Abschnitt 2.2 greift von selbst. `outputChannelCount: [2]` steht
+    // seit dem Anlegen fest, die Ausgabe bleibt in jedem Fall stereo.
+    if (settings.slowMode === 'hqmono') {
+      Audio.hqNode.channelCount = 1;
+      Audio.hqNode.channelCountMode = 'explicit';
+      Audio.hqNode.channelInterpretation = 'speakers';
+    } else {
+      Audio.hqNode.channelCountMode = 'max'; // Standardwert für Stereo-HQ
+    }
     src.connect(Audio.hqNode);
     // Solange der Knoten abgehängt war, lief process() gar nicht — der
     // Shifter behielt seinen kompletten Zustand und würde beim
     // Wiedereinhängen sonst bis zu N Samples (~43 ms) Audio von VOR dem
     // Abhängen ausgeben, hörbar als Sprung genau beim Moduswechsel
-    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 4.1).
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 4.1). Deckt auch den Wechsel
+    // zwischen HQ und HQ Mono ab, bei dem sich die Zahl der Shifter ändert.
     Audio.hqNode.port.postMessage({ type: 'reset' });
   } else if (Audio.channelIn) {
     src.connect(Audio.channelIn);
@@ -8975,7 +9024,7 @@ function applyRateToElement() {
   const el = Audio.el;
   if (!el) return;
   el.playbackRate = Audio.rate;
-  const useHq = !!(settings.slowMode === 'hq' && Audio.hqNode);
+  const useHq = !!(isHqMode() && Audio.hqNode);
   const preserve = settings.slowMode === 'standard';
   el.preservesPitch = preserve;
   el.webkitPreservesPitch = preserve;
