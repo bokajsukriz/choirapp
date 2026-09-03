@@ -756,3 +756,27 @@ Sample vergleichen. Erwartung `maxDiff === 0` und `underrunSamples === 0`.
 `process()`-Aufruf über beide Kanäle differenzieren und histogrammieren.
 Das ist die Messung, die den eigentlichen Befund dieser Vorbereitung
 geliefert hat (immer null oder zwei, nie einer).
+
+---
+
+## Nachtrag (2026-09-03) — Ergebnis des Gerätetests nach Runde 3
+
+Android 10, Chrome Mobile 152, HQ: 0,85× 96–97 % der Echtzeit (knackt),
+0,7× 75–78 %, 0,6× 65 %. Dazu: „die Songs springen manchmal."
+
+**Die Last steigt jetzt mit sinkendem Tempo** — vorher lag sie bei allen
+Tempi bei 57 %. Damit ist belegt, dass Schritt 1 (`shift` als AudioParam)
+greift und der Pitchabfall erledigt ist. Bei 0,85× ist aus 57 % ein
+96–97 % geworden, teils durch Schritt 3 und 4, teils weil die alte Messung
+systematisch unterschätzte (Abschnitt 2.2).
+
+Es reicht aber nicht: bei 0,6× fehlt rund ein Drittel der Echtzeit.
+
+Die Nulllinie aus Abschnitt 6 liegt inzwischen vor: **Standard und Roh
+bleiben bei jedem Tempo bei rund 100 %.** Damit ist belegt, dass alles
+außer dem Phasenvocoder — Dekodieren, Resampeln im Element, Kanal-Matrix,
+Mischen — bequem in die Frist passt und der gesamte Rückstand auf den
+Vocoder geht. `renderCapacity` hat auf dem Gerät dagegen offenbar nicht
+gegriffen, gemeldet wurde der Wortlaut der Ersatzmessung.
+
+Wie es weitergeht, steht in **`SLOWPLAY-HQ-FIX-PLAN-3.md`**.
