@@ -14,6 +14,24 @@
 Der SHA-256-Wert wurde mit `sha256sum lame.min.js` gegen die Datei in diesem
 Repository nachgerechnet, nicht übernommen.
 
+| Feld | Wert |
+|---|---|
+| Komponente | signalsmith-stretch |
+| Version | 1.3.2 |
+| Datei | `signalsmith-stretch.js` |
+| SHA-256 | `fe0e23b6bb5dbffb231a91e7dc39f9d2a7d10c7f793fb0237d819ca748f7f778` |
+| Quelle | https://signalsmith-audio.co.uk/code/stretch/ — npm `signalsmith-stretch@1.3.2` |
+| Lizenz | MIT (Volltext siehe `LICENSE-signalsmith-stretch.txt`) |
+| Verändert | nein |
+| Verwendung | Verlangsamung im Modus „HD": Zeitdehnung/Tonhöhenkorrektur als WASM in einem AudioWorklet, per `<script>` nachgeladen |
+
+Die Datei enthält das WebAssembly-Modul (~64 KB) als
+`data:application/octet-stream;base64,`-URI in sich selbst — sie lädt zur
+Laufzeit **nichts** nach und funktioniert deshalb auch offline aus dem
+Shell-Cache. Der SHA-256-Wert stammt aus dem npm-Tarball und wurde gegen
+die Datei in diesem Repository nachgerechnet.
+
+
 Der vollständige Text der LGPL-3.0 (und der GPL-3.0, auf der sie aufbaut)
 konnte in dieser Umgebung nicht von gnu.org abgerufen werden (Netzzugriff
 durch die Ausführungsumgebung gesperrt). `LICENSE-lamejs.txt` enthält bislang

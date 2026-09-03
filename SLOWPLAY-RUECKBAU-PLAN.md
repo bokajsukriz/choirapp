@@ -1,5 +1,11 @@
 # Arbeitsanweisung — Rückbau der HQ-Verlangsamung
 
+> **Überholt.** Der Rückbau ist erledigt — aber nicht als eigene Runde: er
+> steckt in derselben Änderung, die den Vocoder durch `signalsmith-stretch`
+> ersetzt hat. Was tatsächlich ausgeliefert wird, steht in
+> `SLOWPLAY-HD-PLAN.md`. Die Liste unten bleibt als Beleg, was alles
+> entfernt wurde, und als Vorlage, falls HD am Ende doch nicht überzeugt.
+
 **Alles entfernen, was in vier Runden für die „bessere" Verlangsamung
 eingebaut wurde, und zum nativen `preservesPitch = true` zurückkehren.**
 
