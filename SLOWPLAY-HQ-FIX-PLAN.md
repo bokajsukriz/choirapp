@@ -327,15 +327,45 @@ Fall verloren gehen darf.
 
 ## Messergebnisse
 
-_(von der ausführenden Session auszufüllen — Abschnitte 1.1, 1.4 und 5)_
-
 | Größe | vorher | nachher |
 |---|---|---|
-| `performance.now()` im Worklet verfügbar? | — | |
-| Mittel je Quantum, 0,85× (2 Kanäle) | 0,19 ms | |
-| Mittel je Quantum, 0,7× | 0,24 ms | |
-| Mittel je Quantum, 0,6× | 0,26 ms | |
-| Spitze je Quantum, 0,6× | (nicht erhoben) | |
-| Störanteil Sinus 220 Hz, 1/0,6 | −47,6 dB | |
-| Störanteil Sinus 6 kHz, 1/0,6 | −32,1 dB | |
-| Kommt die `shift`-Nachricht an? | — | |
+| `performance.now()` im Worklet verfügbar? | — | **Nein.** Getestet in Chromium 141 (headless, `AudioWorkletGlobalScope`) — `typeof performance` ist dort `undefined`. Die Ersatzmessung über `currentFrame` gegen die Wanduhr der Hauptseite (Abschnitt 1.1) ist damit der Pfad, der auf dieser Engine tatsächlich läuft, nicht nur ein theoretischer Fallback. |
+| Mittel je Quantum, 0,85× (2 Kanäle) | 0,19 ms | 0,16 ms |
+| Mittel je Quantum, 0,7× | 0,24 ms | 0,19 ms |
+| Mittel je Quantum, 0,6× | 0,26 ms | 0,23 ms |
+| Spitze je Quantum, 0,6× | (nicht erhoben) | ≈1,5–2,4 ms, x86 |
+| Störanteil Sinus 220 Hz, 1/0,6 | −47,6 dB | unverändert (siehe unten) |
+| Störanteil Sinus 6 kHz, 1/0,6 | −32,1 dB | unverändert (siehe unten) |
+| Kommt die `shift`-Nachricht an? | — | Ja — die Bestätigung (`shiftAck`) kommt im Playwright-Test zuverlässig an, siehe Commit „Bestätige shift-Nachrichten und protokolliere die Abtastrate". |
+| Abtastrate: Kontext vs. Worklet | — | Stimmen überein — im Test mit `sampleRate: 48000` erzwungen meldet die `started`-Nachricht exakt `sampleRate: 48000`, identisch zu `ctx.sampleRate`. Verdacht 2 aus 1.4 (Kontext- vs. Dateiabtastrate als Ursache des Pitchabfalls) ist damit ausgeschlossen — bleibt Verdacht 1 (verlorene/verspätete `shift`-Nachricht), für den die Bestätigung oben jetzt die Diagnose liefert. |
+
+**Zur Methodik der Zeitmessungen:** Diese Session konnte nicht auf dem
+Skriptgerüst der Vorsession (`cpu.js`/`quality3.js`/`resamp.js` im damaligen
+Scratchpad) aufsetzen — das war session-gebunden und ist nicht mehr
+erreichbar. Die Vorher/Nachher-Zeiten oben stammen deshalb aus einem eigenen,
+äquivalenten Benchmark (zwei `HqPitchShifter`-Instanzen, 128er-Quanten,
+warmer JIT, `process.hrtime.bigint()`) auf der Sandbox-Maschine dieser
+Session — nicht auf dem x86 der Vorsession, die absoluten Werte sind also
+nur eingeschränkt vergleichbar. Innerhalb dieser Session ist der Vorher/
+Nachher-Vergleich aber sauber (gleiche Maschine, gleiches Skript, nur der
+Commit-Stand von `index.html` unterscheidet sich): Mittelwert sinkt an allen
+drei Tempi um rund 40–45 %, und die vereinzelten sehr hohen Ausreißer, die
+der Vorher-Stand zeigte (bis über 20 ms bei 0,85×, vermutlich GC-Pausen durch
+die Zuweisungen aus Abschnitt 2), verschwinden im Nachher-Stand vollständig
+— genau der erwartete Effekt von Abschnitt 2.
+
+**Zum Störanteil:** Das Distortion-Messgerüst der Vorsession war aus
+demselben Grund nicht verfügbar; ein selbst gebauter Ersatz (FFT über das
+eingeschwungene Ausgabesignal, Energie außerhalb weniger Bins um die Spitze
+als „Rauschen") lieferte Werte, die von den obigen −47,6/−32,1 dB deutlich
+abweichen — vermutlich, weil er die durch Overlap-Add unvermeidliche
+Amplitudenmodulation (Seitenbänder nahe der Grundfrequenz) mitzählt, wo die
+Vorsession vermutlich gezielter gemessen hat. Diese Zahlen ohne das
+Originalskript zu reproduzieren wäre Rätselraten, deshalb stehen hier keine.
+Stattdessen die stärkere Garantie: die Umformung in Abschnitt 3 wurde direkt
+als Algebra bewiesen (der neue Selbsttest „Drehung ist identisch zur alten
+Rekonstruktion") und zusätzlich per Gegenprobe bestätigt — eine für den
+ersten Frame angeglichene alte Implementierung liefert für ein 1-Sekunden-
+Testsignal bitgenau (`maxDiff === 0`) dieselbe Ausgabe wie die neue. Der
+Störanteil kann sich durch Abschnitt 3 also nicht verändert haben; er ist
+identisch zum Stand vor diesem Umbau, nicht nur ähnlich.

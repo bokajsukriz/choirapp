@@ -16723,6 +16723,69 @@ function runSelfTests() {
     if (output.length !== input.length) {
       failed.push(`HqPitchShifter-Längentreue: ${output.length} Ausgabesamples, erwartet ${input.length}`);
     }
+
+    // 7. Verstärkung: derselbe Sinus behält seinen Effektivwert (RMS) grob —
+    // fehlte bisher und hätte einen groben Skalierungsfehler in der
+    // Rücktransformation nicht bemerkt (SLOWPLAY-HQ-FIX-PLAN.md Abschnitt 4).
+    // Gemessen liegt die Phasenkopplung selbst schon bei rund −0,5 dB (an
+    // allen drei Tempi und mehreren Testfrequenzen geprüft, unverändert seit
+    // vor diesem Umbau — kein Regress, siehe Commit „Winkelfunktionen nur
+    // noch an den Spektralspitzen") — die Grenze hier ist bewusst weiter
+    // gefasst, sie soll einen groben Fehler abfangen (z.B. eine falsche
+    // Overlap-Add-Normierung), nicht die letzte Zehntel-dB.
+    checks++;
+    {
+      let sumIn = 0, sumOut = 0, count = 0;
+      for (let i = from; i < n; i++) {
+        sumIn += input[i] * input[i];
+        sumOut += output[i] * output[i];
+        count++;
+      }
+      const rmsIn = Math.sqrt(sumIn / count), rmsOut = Math.sqrt(sumOut / count);
+      const dB = 20 * Math.log10(rmsOut / rmsIn);
+      if (!Number.isFinite(dB) || Math.abs(dB) > 1.5) {
+        failed.push(`HqPitchShifter-Verstärkung: ${dB.toFixed(2)} dB Abweichung, erwartet höchstens ±1,5 dB`);
+      }
+    }
+  }
+
+  // 8. Die komplexe Drehung (Plan Abschnitt 3) muss algebraisch identisch zur
+  // alten Rekonstruktion mag·cos(synthPhase+phase−phasePeak) sein — für
+  // konstruierte Werte auf 1e-9 geprüft. Sichert gegen Vorzeichendreher, die
+  // wahrscheinlichste Art, diesen Umbau zu verpfuschen.
+  checks++;
+  {
+    const mag = 0.73, phase = 1.234, phasePeak = -0.456, synthPhasePeak = 2.1;
+    const oldRe = mag * Math.cos(synthPhasePeak + (phase - phasePeak));
+    const oldIm = mag * Math.sin(synthPhasePeak + (phase - phasePeak));
+    const xRe = mag * Math.cos(phase), xIm = mag * Math.sin(phase);
+    const theta = synthPhasePeak - phasePeak;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+    const newRe = xRe * cosT - xIm * sinT;
+    const newIm = xRe * sinT + xIm * cosT;
+    if (Math.abs(newRe - oldRe) > 1e-9 || Math.abs(newIm - oldIm) > 1e-9) {
+      failed.push(`HqPitchShifter-Drehung: (${newRe}, ${newIm}) weicht von der alten Rekonstruktion (${oldRe}, ${oldIm}) ab`);
+    }
+  }
+
+  // 9. Kein Zustandsleck über reset(): derselbe Block durch denselben
+  // Shifter geschickt, dazwischen reset() — beide Ausgaben müssen
+  // bitgleich sein.
+  checks++;
+  {
+    const shifter = new HqPitchShifter();
+    shifter.setShift(1 / 0.7);
+    const n = 8192;
+    const block = new Float32Array(n);
+    for (let i = 0; i < n; i++) block[i] = Math.sin(i * 12.9898) * 0.5; // deterministisch statt Math.random()
+    const out1 = shifter.process(block);
+    shifter.reset();
+    const out2 = shifter.process(block);
+    let same = out1.length === out2.length;
+    if (same) {
+      for (let i = 0; i < out1.length; i++) if (out1[i] !== out2[i]) { same = false; break; }
+    }
+    if (!same) failed.push('HqPitchShifter-Reset: derselbe Block liefert nach reset() eine andere Ausgabe');
   }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
