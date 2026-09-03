@@ -1051,11 +1051,11 @@ input[type="checkbox"] {
 .icon-btn:active { background: var(--surface-2); }
 
 .rec-global-btn {
-  min-width: var(--tap); min-height: var(--tap); border-radius: 50%; flex: 0 0 auto;
+  width: 34px; height: 34px; min-width: 0; min-height: 0; border-radius: 50%; flex: 0 0 auto;
   border: 2px solid var(--danger); background: var(--surface);
   display: flex; align-items: center; justify-content: center;
 }
-.rec-global-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--danger); }
+.rec-global-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); }
 
 /* Langes Halten löst hier die einmalige Dienstauswahl aus (siehe
    Pointer-Handler bei btn-song-search) — ohne manipulation würde ein
@@ -9862,7 +9862,10 @@ async function requestCloseRecorderView() {
   history.back();
 }
 
-$('#btn-rec-global').addEventListener('click', () => navigate('#recorder'));
+$('#btn-rec-global').addEventListener('click', () => {
+  navigate('#recorder');
+  onRecToggleClick('recorder');
+});
 $('#recorder-back').addEventListener('click', requestCloseRecorderView);
 $('#import-back').addEventListener('click', () => history.back());
 
