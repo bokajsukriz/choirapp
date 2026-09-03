@@ -3405,6 +3405,7 @@ input[type="checkbox"] {
         Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt
         beim bisherigen Weg.
       </p>
+      <p class="small muted" id="hq-load" style="margin:8px 0 0" hidden></p>
     </div>
 
     <div class="card">
@@ -4838,6 +4839,12 @@ const STRINGS = {
     'settings.perf.hqAria': 'Bessere Tonqualität beim langsamen Abspielen',
     'settings.perf.hqHint': 'Noch im Versuch und deshalb ausgeschaltet: Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen. Auf manchen Geräten stottert die Wiedergabe damit noch — dann wieder ausschalten. Bleibt es aus, klingt alles wie bisher.',
     'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt beim bisherigen Weg.',
+    'settings.perf.hqLoadLabel': 'Rechenlast:',
+    'settings.perf.hqLoadAvg': 'im Mittel,',
+    'settings.perf.hqLoadPeak': 'in der Spitze —',
+    'settings.perf.hqLoadUnderruns': 'Aussetzer:',
+    'settings.perf.hqLoadFallbackLabel': 'Wiedergabetempo:',
+    'settings.perf.hqLoadFallbackSuffix': 'der Echtzeit',
 
     'settings.help.title': 'Hilfe',
     'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
@@ -5049,6 +5056,12 @@ const STRINGS = {
     'settings.perf.hqAria': 'Better sound quality for slow playback',
     'settings.perf.hqHint': 'Still experimental and therefore switched off: recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser. On some devices playback still stutters with it — then switch it off again. Left off, everything sounds as before.',
     'settings.perf.hqUnsupported': "This device doesn't support the better slow playback — it stays on the previous method.",
+    'settings.perf.hqLoadLabel': 'Load:',
+    'settings.perf.hqLoadAvg': 'average,',
+    'settings.perf.hqLoadPeak': 'peak —',
+    'settings.perf.hqLoadUnderruns': 'Dropouts:',
+    'settings.perf.hqLoadFallbackLabel': 'Playback speed:',
+    'settings.perf.hqLoadFallbackSuffix': 'of real time',
 
     'settings.help.title': 'Help',
     'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
@@ -5260,6 +5273,12 @@ const STRINGS = {
     'settings.perf.hqAria': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
     'settings.perf.hqHint': 'Wciąż w fazie testów i dlatego wyłączone: sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce. Na niektórych urządzeniach odtwarzanie nadal się zacina — wtedy wyłącz to ponownie. Pozostawione wyłączone, wszystko brzmi jak dotychczas.',
     'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje lepszego spowolnienia — pozostaje dotychczasowy sposób.',
+    'settings.perf.hqLoadLabel': 'Obciążenie:',
+    'settings.perf.hqLoadAvg': 'średnio,',
+    'settings.perf.hqLoadPeak': 'szczyt —',
+    'settings.perf.hqLoadUnderruns': 'Przerwy:',
+    'settings.perf.hqLoadFallbackLabel': 'Tempo odtwarzania:',
+    'settings.perf.hqLoadFallbackSuffix': 'czasu rzeczywistego',
 
     'settings.help.title': 'Pomoc',
     'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
@@ -7405,6 +7424,31 @@ function renderHqSlowdown() {
   btn.disabled = !supported;
   btn.setAttribute('aria-checked', settings.hqSlowdown && supported ? 'true' : 'false');
   $('#hq-unsupported-hint').hidden = supported;
+  updateHqLoadVisibility();
+}
+
+// Letzte Meldung der Ersatzmessung ohne performance.now() (siehe
+// hqCreateNode) — für den Wanduhr-Vergleich zwischen zwei Meldungen.
+let hqLoadFallbackPrev = null;
+
+function renderHqLoadText(text, danger) {
+  const node = $('#hq-load');
+  node.textContent = text;
+  node.style.color = danger ? 'var(--danger)' : '';
+}
+
+/**
+ * Die Lastanzeige (Abschnitt 1.3) soll niemanden verunsichern, der die
+ * Funktion gar nicht benutzt: nur sichtbar, solange der Schalter an ist und
+ * eine Wiedergabe läuft. Wird sie versteckt, verwirft sie auch den
+ * Bezugspunkt der Ersatzmessung — sonst würde die nächste Meldung nach einer
+ * Pause die stehende Zeit als Überlastung missdeuten.
+ */
+function updateHqLoadVisibility() {
+  const node = $('#hq-load');
+  const visible = !!(settings.hqSlowdown && Audio.playing && Audio.hqNode);
+  node.hidden = !visible;
+  if (!visible) hqLoadFallbackPrev = null;
 }
 
 $('#btn-hq-slow-toggle').addEventListener('click', async () => {
@@ -7928,6 +7972,15 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     this.shift = 1;
     this.underrunSamples = 0;
     this.lastReport = currentTime;
+    // Lastmessung (SLOWPLAY-HQ-FIX-PLAN.md Abschnitt 1): performance.now()
+    // ist in AudioWorkletGlobalScope laut Spezifikation nicht garantiert —
+    // getestet (Chromium 141, headless) fehlt es dort tatsächlich. Wo es
+    // fehlt, bleibt nur der grobe Ersatz über currentFrame gegen die Wanduhr
+    // der Hauptseite, siehe unten in process().
+    this.hasPerf = typeof performance !== 'undefined' && typeof performance.now === 'function';
+    this.loadSum = 0;
+    this.loadMax = 0;
+    this.loadCount = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'shift') {
@@ -7937,6 +7990,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
         for (const s of this.shifters) s.reset();
       }
     };
+    this.port.postMessage({ type: 'started', hasPerf: this.hasPerf, sampleRate });
   }
 
   ensureChannels(count) {
@@ -7958,6 +8012,8 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // mit denselben Samples gefüttert und seine interne Position liefe
     // doppelt so schnell, was den Ton komplett zerlegt.
     this.ensureChannels(output.length);
+
+    const t0 = this.hasPerf ? performance.now() : 0;
     for (let ch = 0; ch < output.length; ch++) {
       const src = (input && (input[ch] || input[0])) || new Float32Array(output[ch].length);
       const shifter = this.shifters[ch];
@@ -7965,11 +8021,33 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
     }
+    if (this.hasPerf) {
+      const dt = performance.now() - t0;
+      this.loadSum += dt;
+      if (dt > this.loadMax) this.loadMax = dt;
+      this.loadCount++;
+    }
+
     if (currentTime - this.lastReport >= 1) {
-      if (this.underrunSamples > 0) {
-        this.port.postMessage({ type: 'underrun', count: this.underrunSamples });
-        this.underrunSamples = 0;
+      const budgetMs = (128 / sampleRate) * 1000; // Frist je Render-Quantum
+      if (this.hasPerf) {
+        const avgPct = this.loadCount > 0 ? (this.loadSum / this.loadCount) / budgetMs * 100 : 0;
+        const maxPct = this.loadMax / budgetMs * 100;
+        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples });
+      } else {
+        // Ersatzmessung ohne performance.now(): currentFrame ist die eigene
+        // Uhr des AudioContext und wächst nur, wenn process() tatsächlich
+        // aufgerufen wird — bleibt ein Callback wegen Überlastung aus, hinkt
+        // sie der echten Wanduhr hinterher. Der Vergleich selbst passiert
+        // auf der Hauptseite (die dort verfügbare performance.now() ist die
+        // einzig verlässliche Wanduhr), hier wird nur der rohe Zählerstand
+        // gemeldet (Plan Abschnitt 1.1).
+        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples });
       }
+      this.underrunSamples = 0;
+      this.loadSum = 0;
+      this.loadMax = 0;
+      this.loadCount = 0;
       this.lastReport = currentTime;
     }
     return true;
@@ -8004,7 +8082,36 @@ async function hqCreateNode(ctx) {
     });
     node.port.onmessage = (e) => {
       const m = e.data;
-      if (m.type === 'underrun') dlog('hq:underrun', { count: m.count });
+      if (m.type === 'load') {
+        const avg = Math.round(m.avgPct);
+        const max = Math.round(m.maxPct);
+        dlog('hq:load', { avgPct: avg, maxPct: max, underruns: m.underruns });
+        renderHqLoadText(
+          `${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${max}% ${t('settings.perf.hqLoadPeak')} ${t('settings.perf.hqLoadUnderruns')} ${m.underruns}`,
+          max > 100,
+        );
+        updateHqLoadVisibility();
+      } else if (m.type === 'loadFallback') {
+        // Ersatzmessung ohne performance.now() im Worklet (siehe
+        // hqBuildWorkletSource): der Vergleich mit der Wanduhr passiert hier
+        // auf der Hauptseite, wo performance.now() verlässlich ist.
+        const now = performance.now();
+        let pct = null;
+        if (hqLoadFallbackPrev) {
+          const wallMs = now - hqLoadFallbackPrev.wall;
+          const audioMs = ((m.frame - hqLoadFallbackPrev.frame) / (ctx.sampleRate || 48000)) * 1000;
+          if (wallMs > 0) pct = (audioMs / wallMs) * 100;
+        }
+        hqLoadFallbackPrev = { frame: m.frame, wall: now };
+        if (pct !== null) {
+          const p = Math.round(pct);
+          dlog('hq:load', { fallback: true, realtimePct: p, underruns: m.underruns });
+          renderHqLoadText(`${t('settings.perf.hqLoadFallbackLabel')} ${p}% ${t('settings.perf.hqLoadFallbackSuffix')}`, p < 97);
+          updateHqLoadVisibility();
+        }
+      } else if (m.type === 'started') {
+        dlog('hq:worklet', { hasPerf: m.hasPerf, sampleRate: m.sampleRate });
+      }
     };
     dlog('hq:init', { ok: true });
     return node;
@@ -8118,6 +8225,7 @@ async function audioInit() {
     dlog('audio:ended', { pos: Math.round(Audio.position) });
     Audio.playing = false;
     updateWakeLock();
+    updateHqLoadVisibility();
     Audio.onEnded?.();
   });
 
@@ -8132,6 +8240,7 @@ async function audioInit() {
     Audio.playing = false;
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    updateHqLoadVisibility();
     banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
   });
 
@@ -8372,6 +8481,7 @@ async function audioPlay() {
   dlog('audio:play');
   lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
+  updateHqLoadVisibility();
 }
 
 function audioPause() {
@@ -8381,6 +8491,7 @@ function audioPause() {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   dlog('audio:pause');
   updateWakeLock();
+  updateHqLoadVisibility();
 }
 
 function audioSeek(seconds) {
