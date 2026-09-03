@@ -8317,6 +8317,10 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // sonst bekäme immer derselbe Kanal den Vortritt, wenn das Budget für
     // beide zugleich nicht reicht.
     this.rotate = 0;
+    // Zahl der tatsächlich rechnenden Shifter aus dem letzten process()
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.2) — 0 heißt „noch nicht
+    // bestimmt", gültige Werte sind sonst nie 0.
+    this.need = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
       // Kein 'shift'-Zweig mehr: der Wert kommt jetzt ausschließlich über
@@ -8347,13 +8351,26 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     const input = inputs[0];
     const output = outputs[0];
     if (!output || !output.length) return true;
-    // Nach output.length richten, nicht nach input.length: eine mono Quelle
-    // (input.length===1) mit erzwungener Stereo-Ausgabe (outputChannelCount
-    // [2]) braucht trotzdem für JEDEN Ausgabekanal einen eigenen Shifter mit
-    // eigenem Zustand — sonst würde ein einziger Shifter zweimal pro Block
-    // mit denselben Samples gefüttert und seine interne Position liefe
-    // doppelt so schnell, was den Ton komplett zerlegt.
-    this.ensureChannels(output.length);
+    // Nur so viele Shifter wie nötig (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt
+    // 2.2): bei einer MONO-Quelle bekämen zwei Shifter exakt dieselben
+    // Samples und rechneten exakt dasselbe Ergebnis zweimal aus — die
+    // Hälfte der Rechenzeit wäre verdoppelte Arbeit. Ein einziger Shifter
+    // reicht dann, sein Ergebnis wird unten in die übrigen Ausgabekanäle
+    // kopiert. Bei einer STEREO-Quelle bleibt es bei einem eigenen,
+    // eigenständigen Shifter je Ausgabekanal — sonst würde ein einziger
+    // Shifter zweimal pro Block mit unterschiedlichen Samples gefüttert und
+    // seine interne Position liefe doppelt so schnell, was den Ton komplett
+    // zerlegt.
+    const inCh = input ? input.length : 0;
+    const need = inCh <= 1 ? 1 : output.length;
+    if (this.need !== 0 && this.need !== need) {
+      // Kanalzahl hat gewechselt (z.B. Stimmwechsel auf eine anders
+      // kodierte Spur) — sonst spielt ein bisher unbenutzter Shifter noch
+      // seinen alten Zustand.
+      for (const s of this.shifters) s.reset();
+    }
+    this.need = need;
+    this.ensureChannels(need);
 
     // AudioParam statt Nachricht (siehe parameterDescriptors oben) — nur bei
     // tatsächlicher Änderung übernehmen, das postMessage hier läuft also
@@ -8375,8 +8392,8 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // um ein Quantum zu verschieben ändert also nichts an der Ausgabe,
     // sondern nur daran, wann er berechnet wird.
     let budget = 1;
-    for (let i = 0; i < output.length; i++) {
-      const ch = (this.rotate + i) % output.length;
+    for (let i = 0; i < need; i++) {
+      const ch = (this.rotate + i) % need;
       const src = (input && (input[ch] || input[0])) || this.silence(output[ch].length);
       const shifter = this.shifters[ch];
       const before = shifter.framesProcessed;
@@ -8385,7 +8402,10 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
     }
-    this.rotate = (this.rotate + 1) % output.length;
+    this.rotate = (this.rotate + 1) % need;
+    // Mono-Abkürzung: das gerade berechnete Ergebnis von Kanal 0 in die
+    // übrigen Ausgabekanäle kopieren statt es dort erneut auszurechnen.
+    for (let c = need; c < output.length; c++) output[c].set(output[0]);
     if (this.hasPerf) {
       const dt = performance.now() - t0;
       this.loadSum += dt;
@@ -17200,6 +17220,34 @@ function runSelfTests() {
     for (let i = 0; i < nq * Q; i++) maxDiff = Math.max(maxDiff, Math.abs(outUnbounded[i] - outBudgeted[i]));
     if (maxDiff !== 0) failed.push(`Frame-Budget: maxDiff ${maxDiff}, erwartet 0 (bitgleich)`);
     if (budgeted.underrunSamples !== 0) failed.push(`Frame-Budget: ${budgeted.underrunSamples} Unterlauf-Samples, erwartet 0`);
+  }
+
+  // 11. Mono-Abkürzung (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 2.2): die
+  // eigentliche Optimierung lebt in HqShiftProcessor (nur im Worklet-
+  // Kontext lauffähig, siehe hqBuildWorkletSource), aber ihre Voraussetzung
+  // lässt sich hier prüfen — zwei Shifter, mit identischem Eingang gefüttert
+  // wie bisher bei einer Mono-Quelle, liefern bitgleiche Ausgabe. Genau das
+  // macht das Kopieren des Ergebnisses in den zweiten Ausgabekanal
+  // gleichwertig zu einem zweiten, redundant rechnenden Shifter.
+  checks++;
+  {
+    const sr = 48000, n = sr;
+    const input = new Float32Array(n);
+    for (let i = 0; i < n; i++) input[i] = Math.sin(i * 12.9898) * 0.5;
+
+    const a = new HqPitchShifter();
+    a.setShift(1 / 0.6);
+    const outA = a.process(input);
+
+    const b = new HqPitchShifter();
+    b.setShift(1 / 0.6);
+    const outB = b.process(input);
+
+    let same = outA.length === outB.length;
+    if (same) {
+      for (let i = 0; i < outA.length; i++) if (outA[i] !== outB[i]) { same = false; break; }
+    }
+    if (!same) failed.push('Mono-Abkürzung: zwei mit identischem Eingang gefütterte Shifter liefern unterschiedliche Ausgabe');
   }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
