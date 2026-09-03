@@ -81,6 +81,16 @@ Drei Punkte dazu:
   der Wiedergabe. Ein zweiter, frisch erzeugter Kontext lässt iOS die
   Audio-Hardware neu aushandeln — die laufende Wiedergabe setzt dabei
   hörbar aus.
+- **Das Original leise darunter.** Beim Anhören eines REC kann der
+  Originaltrack an genau der Stelle leise mitlaufen, an der aufgenommen
+  wurde (Schalter unter der REC-Liste). Dass beides zusammenpasst, ist
+  Rechnerei: Gesungen wurde immer zu einer *früheren* Stelle des Songs, als
+  die Aufnahmezeit vermuten lässt — dazwischen liegen die Ausgabelatenz zum
+  Kopfhörer (bei Bluetooth 150–300 ms) und der Weg vom Mikrofon zum
+  Recorder. Was der Browser davon verrät, misst die App beim Start der
+  Aufnahme und legt es zum Anker (`anchor.lat`); den Rest stellt der
+  Versatz-Regler nach Gehör ein. Er gilt geräteweit, weil die Latenz am
+  Gerät und am Kopfhörer hängt, nicht am Lied.
 
 ## Lichtshow
 
