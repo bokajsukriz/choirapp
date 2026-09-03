@@ -651,6 +651,44 @@ keinen Fall verlorengehen darf.
 
 ---
 
+## Messergebnisse (nach allen vier Schritten)
+
+Vorher/Nachher mit dem Messgerüst aus dem Anhang, angepasst auf den
+tatsächlichen Aufrufweg (globales Frame-Budget über zwei rotierende Kanäle,
+wie in `HqShiftProcessor.process()`), auf derselben Maschine wie der
+Vorher-Stand (Node, x86, 128er-Quanten, zwei Kanäle, warmer JIT):
+
+| Tempo | Mittel vorher | Mittel nachher | p99 vorher | p99 nachher |
+|---|---|---|---|---|
+| 0,85× | 0,151 ms | 0,091 ms (−40 %) | 0,861 ms | 0,202 ms (−77 %) |
+| 0,7× | 0,171 ms | 0,109 ms (−36 %) | 0,717 ms | 0,199 ms (−72 %) |
+| 0,6× | 0,192 ms | 0,128 ms (−33 %) | 0,509 ms | 0,199 ms (−61 %) |
+
+Trifft die Zielmarke aus der Ausgangslage (Mittel ≈ −40 % durch Schritt 4,
+p99 ≈ −75 % durch Schritt 3 und 4 zusammen) an allen drei Tempi, mit etwas
+Streuung durch die geteilte Maschine dieser Session — innerhalb einer
+Messreihe (gleicher Lauf, nur Vorher/Nachher-Commit unterschiedlich) ist der
+Vergleich aber sauber.
+
+**Klangqualität (Abschnitt 4, Schritt 4 isoliert):** derselbe Sinus bei
+220 Hz und 6 kHz, `shift = 1/0,6`, einmal mit der komplexen FFT (Stand vor
+Schritt 4, Commit „Höchstens ein Analyseframe je Render-Quantum") und einmal
+mit der reellen FFT verarbeitet — die Ausgaben weichen nur im Rahmen der
+Float32-Rundung voneinander ab (`maxDiff` 9,5·10⁻⁷ bei 220 Hz, 1,4·10⁻⁶ bei
+6 kHz). Der reelle Umbau ist also nicht nur „nicht schlechter", sondern
+praktisch identisch zum vorigen Stand.
+
+**Frame-Budget (Abschnitt 3):** bitgleich gegenüber dem unbegrenzten Lauf
+(`maxDiff === 0`, `underrunSamples === 0`) an allen drei Tempi — bestätigt
+durch den neuen Selbsttest, der genau das bei jedem Lauf von
+`runSelfTests()` mitprüft.
+
+`runSelfTests()`: alle Prüfungen bestanden (Node-Extraktion der sechs
+Bausteine, siehe Anhang), einschließlich der vier neuen (Frame-Budget,
+`HqRealFft` gegen `HqFft`, `HqRealFft`-Rundlauf).
+
+---
+
 ## Anhang — Messgerüst
 
 Die Vorsession hat ihr Messgerüst im Scratchpad verloren und konnte ihre
@@ -665,7 +703,7 @@ zwischen `function hqPrincipalAngle` und `function hqBuildWorkletSource`:
 ```python
 src = open('index.html').read()
 core = src[src.index('function hqPrincipalAngle(x) {'):src.index('function hqBuildWorkletSource()')]
-open('hqcore.js','w').write(core + "\nmodule.exports={hqPrincipalAngle,hqAnalysisHop,hqPitchRatio,HqFft,HqPitchShifter};\n")
+open('hqcore.js','w').write(core + "\nmodule.exports={hqPrincipalAngle,hqAnalysisHop,hqPitchRatio,HqFft,HqRealFft,HqPitchShifter};\n")
 ```
 
 **Zeit je Quantum, zwei Kanäle** (`node bench.js`):
