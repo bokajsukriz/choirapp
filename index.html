@@ -8919,6 +8919,12 @@ function applyHqMode() {
   const useHq = !!(Audio.hqNode && settings.slowMode === 'hq');
   if (useHq) {
     src.connect(Audio.hqNode);
+    // Solange der Knoten abgehängt war, lief process() gar nicht — der
+    // Shifter behielt seinen kompletten Zustand und würde beim
+    // Wiedereinhängen sonst bis zu N Samples (~43 ms) Audio von VOR dem
+    // Abhängen ausgeben, hörbar als Sprung genau beim Moduswechsel
+    // (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 4.1).
+    Audio.hqNode.port.postMessage({ type: 'reset' });
   } else if (Audio.channelIn) {
     src.connect(Audio.channelIn);
   }
