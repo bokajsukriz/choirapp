@@ -282,6 +282,12 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .small { font-size: 0.86rem; }
 .stack > * + * { margin-top: 10px; }
 
+/* „Nächster Gig"-Liste (renderCurrentSetlist): einzeilige Songtitel, keine
+   eigenständigen Zeilen wie im .stack — 10px Zeilenabstand wirkte hier viel
+   zu luftig, deshalb eine engere eigene Regel statt eines Inline-Styles. */
+.gig-list { margin: 8px 0 0; padding-left: 20px; line-height: 1.35; }
+.gig-list > li + li { margin-top: 3px; }
+
 .btn {
   min-height: var(--tap);
   padding: 11px 18px;
@@ -990,7 +996,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 6px;
   padding: calc(var(--safe-top) + 10px) calc(12px + var(--safe-right))
-           10px calc(6px + var(--safe-left));
+           6px calc(6px + var(--safe-left));
   border-bottom: 1px solid var(--line);
 }
 
@@ -1336,7 +1342,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 17px;
   padding: 4px;
-  margin: 8px 0;
+  margin: 2px 0 8px;
 }
 
 .player-tab {
@@ -3356,6 +3362,29 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16a8 8 0 0 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.perf.title">Kompatibilität &amp; Performance</span></h2>
+      <div class="row">
+        <span class="small" style="max-width:70%" data-i18n="settings.perf.hqSwitch">
+          Bessere Tonqualität beim langsamen Abspielen
+        </span>
+        <button class="switch" id="btn-hq-slow-toggle" type="button" role="switch"
+                aria-checked="true" aria-label="Bessere Tonqualität beim langsamen Abspielen" data-i18n-aria="settings.perf.hqAria">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.hqHint">
+        Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem
+        Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen.
+        Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem
+        älteren Handy oder wird es warm, schalte hier aus.
+      </p>
+      <p class="small muted" id="hq-unsupported-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.hqUnsupported">
+        Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt
+        beim bisherigen Weg.
+      </p>
+    </div>
+
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
       <div class="stack">
         <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
@@ -4244,6 +4273,66 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
   });
 }
 
+/**
+ * REC bearbeiten: Name und Stimmwahl in einem Dialog statt zwei
+ * hintereinander (Name per promptDialog(), Stimme per pickRecordingVoice()
+ * — das war der vorherige Weg beim Umbenennen; pickRecordingVoice() bleibt
+ * fürs Speichern eines frischen Takes weiter in Gebrauch). Die Stimmwahl
+ * läuft als exklusive Pillenreihe wie beim Fahrradfahren-Modus
+ * (#channel-mode) statt als eigener Dialog.
+ * @returns {Promise<{name: string, voice: string|null}|null>} null bei Abbruch
+ */
+function editRecordingDialog({ name, voice }) {
+  return new Promise((resolve) => {
+    const input = el('input', { type: 'text', value: name, 'aria-label': 'Name' });
+
+    let selected = voice || null;
+    const voiceOptions = [
+      { value: null, label: 'Keine' },
+      { value: 'SOP', label: VOICE_LABEL.SOP },
+      { value: 'ALT', label: VOICE_LABEL.ALT },
+      { value: 'TEN', label: VOICE_LABEL.TEN },
+      { value: 'BASS', label: VOICE_LABEL.BASS },
+      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+    ];
+    // .preset-row ist fest auf drei Spalten gerastert — bei sechs Knöpfen
+    // ergeben sich daraus von selbst zwei Zeilen, ohne eigene CSS-Variante.
+    const voiceBtns = voiceOptions.map((opt) => el('button', {
+      class: 'preset', type: 'button',
+      'aria-pressed': opt.value === selected ? 'true' : 'false',
+      text: opt.label,
+    }));
+    voiceBtns.forEach((btn, i) => btn.addEventListener('click', () => {
+      selected = voiceOptions[i].value;
+      voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+    }));
+    const voiceRow = el('div', { class: 'preset-row', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+
+    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'REC bearbeiten' }),
+      input,
+      voiceRow,
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: 'Speichern',
+                       onclick: () => done({ name: input.value, voice: selected }) })));
+
+    input.addEventListener('keydown', (e) => {
+      // Escape läuft zentral über onModalKeydown → onEscape (siehe unten).
+      if (e.key === 'Enter') { e.preventDefault(); done({ name: input.value, voice: selected }); }
+    });
+
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC bearbeiten' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+    openModal(layer, { initialFocus: input, onEscape: () => done(null) });
+    input.select();
+  });
+}
+
 /* --------------------------------------------------------------------------
    Menüs der +-Knöpfe (Bibliothek, Setlisten)
 
@@ -4611,6 +4700,7 @@ const DEFAULT_SETTINGS = {
   lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
+  hqSlowdown: true,   // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4712,6 +4802,12 @@ const STRINGS = {
     'settings.screen.step3': '<strong>Benachrichtigungen</strong> → erlauben. Android verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf keine Web-App im Hintergrund weiterspielen.',
     'settings.screen.grapheneNote': 'Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum Startbildschirm hinzufügen" meist nur eine Verknüpfung an, kein eigenes App-Symbol mit eigenen Berechtigungen. Die beiden Einstellungen betreffen dann den Browser selbst, nicht ein eigenes „BVG"-Symbol.',
     'settings.screen.notifyBtn': 'Benachrichtigungen für diese Seite erlauben',
+
+    'settings.perf.title': 'Kompatibilität & Performance',
+    'settings.perf.hqSwitch': 'Bessere Tonqualität beim langsamen Abspielen',
+    'settings.perf.hqAria': 'Bessere Tonqualität beim langsamen Abspielen',
+    'settings.perf.hqHint': 'Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, schalte hier aus.',
+    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt beim bisherigen Weg.',
 
     'settings.help.title': 'Hilfe',
     'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
@@ -4918,6 +5014,12 @@ const STRINGS = {
     'settings.screen.grapheneNote': 'Without Google Play services — e.g. on GrapheneOS — "Add to home screen" usually only creates a shortcut, not a proper app icon with its own permissions. Both settings then apply to the browser itself, not a separate "BVG" icon.',
     'settings.screen.notifyBtn': 'Allow notifications for this page',
 
+    'settings.perf.title': 'Compatibility & performance',
+    'settings.perf.hqSwitch': 'Better sound quality for slow playback',
+    'settings.perf.hqAria': 'Better sound quality for slow playback',
+    'settings.perf.hqHint': 'Recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser — noticeably cleaner on held notes. Costs more processing power in return. If playback stutters or the phone gets warm on an older device, turn this off.',
+    'settings.perf.hqUnsupported': "This device doesn't support the better slow playback — it stays on the previous method.",
+
     'settings.help.title': 'Help',
     'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
     'settings.help.howToBtn': 'How do I get songs into the app?',
@@ -5122,6 +5224,12 @@ const STRINGS = {
     'settings.screen.step3': '<strong>Powiadomienia</strong> → zezwól. Android wymaga widocznego powiadomienia — bez niego żadna aplikacja webowa nie może grać w tle.',
     'settings.screen.grapheneNote': 'Bez usług Google Play — np. na GrapheneOS — „Dodaj do ekranu głównego" zwykle tworzy tylko skrót, a nie osobną ikonę aplikacji z własnymi uprawnieniami. Oba ustawienia dotyczą wtedy samej przeglądarki, nie osobnej ikony „BVG".',
     'settings.screen.notifyBtn': 'Zezwól na powiadomienia dla tej strony',
+
+    'settings.perf.title': 'Kompatybilność i wydajność',
+    'settings.perf.hqSwitch': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
+    'settings.perf.hqAria': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
+    'settings.perf.hqHint': 'Sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długo trzymanych dźwiękach. Kosztuje to jednak więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina lub telefon się nagrzewa na starszym urządzeniu, wyłącz to tutaj.',
+    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje lepszego spowolnienia — pozostaje dotychczasowy sposób.',
 
     'settings.help.title': 'Pomoc',
     'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
@@ -6859,6 +6967,7 @@ async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
+  renderHqSlowdown();
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
@@ -7241,6 +7350,26 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
   updateWakeLock();
 });
 
+/**
+ * Vor dem ersten audioInit() (z.B. Einstellungen vor dem ersten geöffneten
+ * Song besucht) zählt nur die statische Prüfung — danach, ob addModule()
+ * wirklich geklappt hat (Audio.hqNode).
+ */
+function renderHqSlowdown() {
+  const btn = $('#btn-hq-slow-toggle');
+  const supported = Audio.ready ? !!Audio.hqNode : hqStaticallySupported();
+  btn.disabled = !supported;
+  btn.setAttribute('aria-checked', settings.hqSlowdown && supported ? 'true' : 'false');
+  $('#hq-unsupported-hint').hidden = supported;
+}
+
+$('#btn-hq-slow-toggle').addEventListener('click', async () => {
+  await saveSettings({ hqSlowdown: !settings.hqSlowdown });
+  renderHqSlowdown();
+  applyHqMode();
+  applyRateToElement();
+});
+
 $('#btn-bg-help-toggle').addEventListener('click', () => {
   const host = $('#bg-help');
   const open = host.hidden;
@@ -7359,9 +7488,15 @@ $('#btn-wipe').addEventListener('click', async () => {
    je nach Gerät 100–300 ms Lücke — ein bewusst akzeptierter Rückschritt
    gegenüber dem gleichzeitig dekodierten Worklet-Ansatz.
 
-   Das Tempo (1,0×, 0,85×, 0,7×, 0,6×) übernimmt `playbackRate` mit
-   `preservesPitch = true` nativ — der bisherige WSOLA-Code im Worklet wird
-   dafür nicht mehr gebraucht.
+   Das Tempo (1,0×, 0,85×, 0,7×, 0,6×) übernimmt `playbackRate`. Die
+   Tonhöhenkorrektur dabei ist wählbar: nativ per `preservesPitch = true`
+   (WSOLA, wie ursprünglich hier beschrieben) oder — Standard, siehe
+   Einstellungen „Kompatibilität & Performance" — über einen Phasenvocoder
+   im AudioWorklet, der bei `preservesPitch = false` wieder hochschiebt, was
+   das Element beim Resampling in der Tonhöhe mit heruntergezogen hat. Genau
+   dieselbe Begründung, die den Worklet-Player oben verworfen hat, gilt auch
+   hier: das Element bleibt die Quelle, nur ein zusätzlicher Knoten hängt
+   sich dahinter — siehe „HQ-VERLANGSAMUNG" weiter unten.
    ========================================================================== */
 
 // iPad und iPhone melden sich seit iPadOS 13 als „MacIntel" — der Touch-Test
@@ -7390,11 +7525,468 @@ function mediaErrorToError(mediaError) {
   return new Error(mediaError?.message || `Die Aufnahme ließ sich nicht laden (${name}).`);
 }
 
+/* ==========================================================================
+   HQ-VERLANGSAMUNG — Phasenvocoder mit Phasenkopplung (identity phase
+   locking, Laroche/Dolson), siehe SLOWPLAY-HQ-PLAN.md Abschnitt 1.
+
+   Warum nicht einfach preservesPitch=true lassen: Chrome/Safari korrigieren
+   die Tonhöhe dabei per WSOLA (Overlap-Add mit Anschluss-Suche im
+   Zeitbereich). Auf polyphonem Chorgesang — viele gleichzeitige, lang
+   gehaltene Töne — erzeugt WSOLA das typische Flattern/Doppeln, besonders
+   deutlich bei 0,6×. Ein Phasenvocoder arbeitet stattdessen im
+   Frequenzbereich und hält gehaltene Töne sauber; das kostet mehr
+   Rechenzeit, daher der Schalter in den Einstellungen (Abschnitt 2).
+
+   Der Trick, der die Mediensitzung/Sperrbildschirm-Architektur unangetastet
+   lässt (siehe Kopfkommentar weiter unten, „AUDIO — Wiedergabe über ein
+   natives <audio>-Element"): das Element bleibt die Quelle und wird
+   umgekehrt benutzt. Es resampled klassisch (`playbackRate = rate`,
+   `preservesPitch = false` — langsamer *und* tiefer, reines Resampling,
+   artefaktfrei). Ein AudioWorklet dahinter schiebt die Tonhöhe um
+   `k = 1/rate` wieder nach oben. Die Verdrahtung dafür steht in
+   audioInit()/applyHqMode(), das Umschalten in applyRateToElement() weiter
+   unten.
+
+   Die folgenden fünf Bausteine (hqPrincipalAngle, hqAnalysisHop,
+   hqPitchRatio, HqFft, HqPitchShifter) werden unverändert per
+   `Function.prototype.toString()` in den Worklet-Quelltext übernommen (das
+   Repo minifiziert nicht, toString() ist also verlässlich, siehe
+   hqBuildWorkletSource()) — deshalb dürfen sie auf NICHTS außerhalb dieser
+   fünf Bausteine zugreifen: keine Konstanten, keine Helferfunktionen von
+   außen. Untereinander dürfen sie sich verwenden, sie landen ja gemeinsam
+   im zusammengesetzten Quelltext. Genau deshalb sind sie hier als ganz
+   normale, direkt aufrufbare und direkt testbare Funktionen/Klassen
+   geschrieben, statt von Anfang an in einem Template-String zu stecken.
+   ========================================================================== */
+
+/** Faltet einen Winkel (Radiant) auf (−π, π]. */
+function hqPrincipalAngle(x) {
+  const twoPi = 2 * Math.PI;
+  let y = x - twoPi * Math.round(x / twoPi);
+  // Math.round(x/twoPi) kann bei x genau auf der Grenze zur falschen Seite
+  // runden (IEEE-Rundung) — deshalb hart auf (−π, π] nachklemmen.
+  if (y <= -Math.PI) y += twoPi;
+  if (y > Math.PI) y -= twoPi;
+  return y;
+}
+
+/**
+ * Analyse-Sprung für den festen Synthese-Sprung `Hs` und den
+ * Tonhöhenfaktor `k` (`k = 1/rate ≥ 1` beim Verlangsamen). Ganzzahlig,
+ * mindestens 1, höchstens `Hs` — bei `k = 1` genau `Hs` (keine
+ * Tonhöhenänderung), bei sehr großem `k` klemmt es bei 1 statt auf 0 zu
+ * fallen.
+ */
+function hqAnalysisHop(Hs, k) {
+  return Math.min(Hs, Math.max(1, Math.round(Hs / k)));
+}
+
+/**
+ * Tatsächliches Sprungverhältnis — mit DIESEM wird resampled, nicht mit
+ * `k` selbst (siehe Kommentar an HqPitchShifter.process): so verbraucht
+ * jeder Frame exakt `Ha` Eingabe- und liefert exakt `Ha` Ausgabesamples,
+ * kein Drift, keine wachsenden Puffer.
+ */
+function hqPitchRatio(Hs, Ha) {
+  return Hs / Ha;
+}
+
+/**
+ * Radix-2-FFT (komplex, in-place), iterativ mit vorberechneter
+ * Twiddle-Tabelle. `size` muss eine Zweierpotenz sein — hier immer 2048.
+ */
+class HqFft {
+  constructor(size) {
+    this.size = size;
+    let bits = 0;
+    while ((1 << bits) < size) bits++;
+    this.bitrev = new Uint32Array(size);
+    for (let i = 0; i < size; i++) {
+      let rev = 0, x = i;
+      for (let b = 0; b < bits; b++) { rev = (rev << 1) | (x & 1); x >>= 1; }
+      this.bitrev[i] = rev;
+    }
+    // cos/sin für den Winkel −2π·k/size (Vorwärtstransformation) — für die
+    // Rückwärtstransformation reicht es, beim Gebrauch das Vorzeichen von
+    // sin umzudrehen, siehe transform().
+    this.cosTable = new Float64Array(size / 2);
+    this.sinTable = new Float64Array(size / 2);
+    for (let k = 0; k < size / 2; k++) {
+      const angle = -2 * Math.PI * k / size;
+      this.cosTable[k] = Math.cos(angle);
+      this.sinTable[k] = Math.sin(angle);
+    }
+  }
+
+  /** Transformiert `re`/`im` (je Länge `size`) in-place. */
+  transform(re, im, inverse) {
+    const n = this.size;
+    const bitrev = this.bitrev;
+    for (let i = 0; i < n; i++) {
+      const j = bitrev[i];
+      if (j > i) {
+        let t = re[i]; re[i] = re[j]; re[j] = t;
+        t = im[i]; im[i] = im[j]; im[j] = t;
+      }
+    }
+    for (let size2 = 2; size2 <= n; size2 <<= 1) {
+      const half = size2 >> 1;
+      const stride = n / size2;
+      for (let start = 0; start < n; start += size2) {
+        for (let k = 0; k < half; k++) {
+          const tw = k * stride;
+          const cos = this.cosTable[tw];
+          const sin = inverse ? -this.sinTable[tw] : this.sinTable[tw];
+          const i0 = start + k;
+          const i1 = i0 + half;
+          const tRe = re[i1] * cos - im[i1] * sin;
+          const tIm = re[i1] * sin + im[i1] * cos;
+          re[i1] = re[i0] - tRe;
+          im[i1] = im[i0] - tIm;
+          re[i0] += tRe;
+          im[i0] += tIm;
+        }
+      }
+    }
+    if (inverse) {
+      for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    }
+  }
+}
+
+/**
+ * Phasenvocoder mit Phasenkopplung, ein Kanal — für Stereo werden zwei
+ * Instanzen gehalten (siehe hqBuildWorkletSource()). Genaue Vorgaben in
+ * SLOWPLAY-HQ-PLAN.md Abschnitt 1.3.
+ */
+class HqPitchShifter {
+  constructor() {
+    this.N = 2048;           // Fenster, bei 44,1 kHz ≈ 46 ms
+    this.Hs = this.N / 4;    // Synthese-Sprung, 75% Überlappung
+    this.half = this.N / 2;  // höchster Bin (Nyquist)
+
+    this.win = new Float32Array(this.N);
+    for (let i = 0; i < this.N; i++) {
+      this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / this.N);
+    }
+    // Bin-Mittenfrequenz in Radiant/Sample, ω_bin = 2π·bin/N.
+    this.omega = new Float64Array(this.half + 1);
+    for (let b = 0; b <= this.half; b++) this.omega[b] = 2 * Math.PI * b / this.N;
+
+    this.fft = new HqFft(this.N);
+
+    this.shift = 1;
+    this.Ha = this.Hs;
+    this.r = 1;
+
+    // Reichlich Platz zwischen zwei Runden durch den Ring — der Lesezeiger
+    // hinkt dem Schreibzeiger nie mehr als ein Fenster hinterher.
+    this.ringSize = this.N * 4;
+    this.synthRing = new Float32Array(this.ringSize);
+
+    this.inFifo = [];
+    this.analysisWin = new Float32Array(this.N);
+    this.prevPhase = new Float64Array(this.half + 1);
+    this.synthPhase = new Float64Array(this.half + 1);
+    this.framesProcessed = 0;
+    // Startet negativ statt bei 0 — siehe readOutput(): das ist die
+    // Anlaufverzögerung von rund N Samples (Plan Abschnitt 1.3 „Latenz").
+    // Ohne sie läuft der Lesezeiger dem Schreibzeiger sofort davon: ein
+    // Frame liefert Hs Samples auf einen Schlag, sobald genug Eingabe
+    // angekommen ist (alle Ha Samples), während gelesen wird, sobald neue
+    // Eingabe eintrifft (alle 128 Samples pro Render-Quantum) — bei Ha > 128
+    // reicht der ungepolsterte Vorsprung nicht, der Lesezeiger überholt den
+    // Schreibzeiger zwischen zwei Frames und es entstehen ständige
+    // Unterläufe. Der Puffer aus N Samples Vorlauf fängt das ab.
+    this.synthReadPos = -this.N;
+    this.underrunSamples = 0; // seit dem letzten Bericht aufgelaufene Unterlauf-Samples
+
+    // Wiederverwendete Arbeitsspeicher, damit process() pro Frame keinen
+    // neuen Müll für den Garbage Collector erzeugt.
+    this._re = new Float32Array(this.N);
+    this._im = new Float32Array(this.N);
+    this._mag = new Float64Array(this.half + 1);
+    this._phase = new Float64Array(this.half + 1);
+    this._framePhase = new Float64Array(this.half + 1);
+    this._nearestPeak = new Int32Array(this.half + 1);
+  }
+
+  setShift(k) {
+    if (k === this.shift) return;
+    this.shift = k;
+    this.Ha = hqAnalysisHop(this.Hs, k);
+    this.r = hqPitchRatio(this.Hs, this.Ha);
+    // Sonst klingt für eine Fensterlänge das alte Tempo/die alte Phasenlage
+    // nach — siehe Plan Abschnitt 1.3 „Rücksetzen".
+    this.reset();
+  }
+
+  reset() {
+    this.inFifo.length = 0;
+    this.analysisWin.fill(0);
+    this.synthRing.fill(0);
+    this.prevPhase.fill(0);
+    this.synthPhase.fill(0);
+    this.framesProcessed = 0;
+    this.synthReadPos = -this.N; // siehe Kommentar im Konstruktor
+    this.underrunSamples = 0;
+  }
+
+  /** Lokale Maxima im Betragsspektrum (±2 Nachbarn) als Ankerpunkte für die Phasenkopplung. */
+  findPeaks() {
+    const mag = this._mag, half = this.half;
+    const peaks = [];
+    for (let b = 0; b <= half; b++) {
+      const m = mag[b];
+      let isPeak = true;
+      for (let d = -2; d <= 2; d++) {
+        if (d === 0) continue;
+        const nb = b + d;
+        if (nb < 0 || nb > half) continue; // fehlende Randnachbarn zählen nicht gegen den Kandidaten
+        if (mag[nb] > m) { isPeak = false; break; }
+      }
+      if (isPeak) peaks.push(b);
+    }
+    if (!peaks.length) peaks.push(0); // z.B. Stille — sonst bliebe kein Bin zugeordnet
+    return peaks;
+  }
+
+  /** Verarbeitet einen Frame aus `this.analysisWin`, legt das Ergebnis per Overlap-Add im Ring ab. */
+  processFrame() {
+    const N = this.N, half = this.half, win = this.win, fft = this.fft, omega = this.omega;
+    const Ha = this.Ha, Hs = this.Hs;
+    const re = this._re, im = this._im;
+    for (let i = 0; i < N; i++) { re[i] = this.analysisWin[i] * win[i]; im[i] = 0; }
+    fft.transform(re, im, false);
+
+    const mag = this._mag, phase = this._phase;
+    for (let b = 0; b <= half; b++) {
+      mag[b] = Math.hypot(re[b], im[b]);
+      phase[b] = Math.atan2(im[b], re[b]);
+    }
+
+    const peaks = this.findPeaks();
+    const synthPhase = this.synthPhase, prevPhase = this.prevPhase;
+    // Nur die Spitzen bekommen den echten Phasenvocoder-Fortschritt
+    // (Phasenableitung → wahre Frequenz → Synthesephase).
+    for (const p of peaks) {
+      const dphi = hqPrincipalAngle(phase[p] - prevPhase[p] - Ha * omega[p]);
+      const trueFreq = omega[p] + dphi / Ha;
+      synthPhase[p] = synthPhase[p] + Hs * trueFreq;
+    }
+
+    // Jeder Bin an seine nächste Spitze koppeln (Peaks sind an sich selbst
+    // gekoppelt, Differenz 0) — das ist der Qualitätsgewinn gegenüber
+    // WSOLA: ohne diesen Schritt klingt ein Phasenvocoder „phasig".
+    const nearestPeak = this._nearestPeak;
+    let pi = 0;
+    for (let b = 0; b <= half; b++) {
+      while (pi < peaks.length - 1 && Math.abs(peaks[pi + 1] - b) < Math.abs(peaks[pi] - b)) pi++;
+      nearestPeak[b] = peaks[pi];
+    }
+    const framePhase = this._framePhase;
+    for (let b = 0; b <= half; b++) {
+      const p = nearestPeak[b];
+      framePhase[b] = synthPhase[p] + (phase[b] - phase[p]);
+    }
+    for (let b = 0; b <= half; b++) { prevPhase[b] = phase[b]; synthPhase[b] = framePhase[b]; }
+
+    // Spektrum aus unverändertem Betrag und gekoppelter Phase neu aufbauen,
+    // für die reelle Rücktransformation an der Nyquist-Achse spiegeln.
+    for (let b = 0; b <= half; b++) {
+      re[b] = mag[b] * Math.cos(framePhase[b]);
+      im[b] = mag[b] * Math.sin(framePhase[b]);
+    }
+    im[0] = 0; im[half] = 0; // DC und Nyquist müssen bei einem reellen Signal reell bleiben
+    for (let b = 1; b < half; b++) { re[N - b] = re[b]; im[N - b] = -im[b]; }
+
+    fft.transform(re, im, true);
+
+    // Overlap-Add in den Ring, normiert durch 1,5 (Summe der quadrierten
+    // Hann-Fenster bei 75% Überlappung). Die „neue" Randzone (die noch kein
+    // früherer Frame berührt hat) muss vor dem Addieren geleert werden,
+    // sonst spukt darin ein Ring-Durchlauf alter Frames.
+    const frameStart = this.framesProcessed * Hs;
+    const ringSize = this.ringSize;
+    const leadStart = frameStart + N - Hs;
+    for (let i = 0; i < Hs; i++) this.synthRing[(leadStart + i) % ringSize] = 0;
+    for (let i = 0; i < N; i++) {
+      this.synthRing[(frameStart + i) % ringSize] += re[i] * win[i] / 1.5;
+    }
+    this.framesProcessed++;
+  }
+
+  /** Ein Ausgabesample per lineare Interpolation aus dem Syntheseringpuffer lesen. */
+  readOutput() {
+    const pos = this.synthReadPos;
+    this.synthReadPos += this.r;
+    // Noch in der Anlaufverzögerung (siehe Konstruktor) — erwartete Stille,
+    // kein Unterlauf, wird nicht mitgezählt.
+    if (pos < 0) return 0;
+    const i0 = Math.floor(pos);
+    const finalizedEnd = this.framesProcessed * this.Hs;
+    if (i0 + 1 >= finalizedEnd) {
+      // Echter Unterlauf: Stille statt alter (wiederholter) Samples, der
+      // Lesezeiger wurde oben schon weitergeschoben, damit sich kein
+      // Rückstand aufbaut.
+      this.underrunSamples++;
+      return 0;
+    }
+    const frac = pos - i0;
+    const ringSize = this.ringSize;
+    const s0 = this.synthRing[i0 % ringSize];
+    const s1 = this.synthRing[(i0 + 1) % ringSize];
+    return s0 + (s1 - s0) * frac;
+  }
+
+  /**
+   * Verschiebt `input` in Originaltonhöhe zurück; die Ausgabe ist exakt so
+   * lang wie die Eingabe (Echtzeit 1:1 — das Zeitdehnen passiert schon im
+   * <audio>-Element, hier wird nur die Tonhöhe zurückgeschoben).
+   */
+  process(input) {
+    const n = input.length;
+    const output = new Float32Array(n);
+    if (this.shift === 1) {
+      // Normalfall bei 1,0×: reines Durchreichen, kein FFT — muss messbar
+      // nichts kosten.
+      output.set(input);
+      return output;
+    }
+    for (let i = 0; i < n; i++) this.inFifo.push(input[i]);
+    const Ha = this.Ha, N = this.N;
+    while (this.inFifo.length >= Ha) {
+      this.analysisWin.copyWithin(0, Ha);
+      for (let i = 0; i < Ha; i++) this.analysisWin[N - Ha + i] = this.inFifo[i];
+      this.inFifo.splice(0, Ha);
+      this.processFrame();
+    }
+    for (let i = 0; i < n; i++) output[i] = this.readOutput();
+    return output;
+  }
+}
+
+/**
+ * Setzt den Worklet-Quelltext aus den fünf testbaren Bausteinen oben
+ * zusammen (siehe Kopfkommentar) und hängt die eigentliche
+ * `AudioWorkletProcessor`-Klasse an, die nur im Worklet-Kontext Sinn
+ * ergibt (`currentTime`, `sampleRate`, `registerProcessor`) und deshalb
+ * nicht zu den fünf testbaren Bausteinen zählt.
+ */
+function hqBuildWorkletSource() {
+  const shared = [hqPrincipalAngle, hqAnalysisHop, hqPitchRatio, HqFft, HqPitchShifter]
+    .map((f) => f.toString()).join('\n\n');
+  return `'use strict';\n\n${shared}\n\n` + `
+class HqShiftProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.shifters = [];
+    this.shift = 1;
+    this.underrunSamples = 0;
+    this.lastReport = currentTime;
+    this.port.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'shift') {
+        this.shift = m.value;
+        for (const s of this.shifters) s.setShift(m.value);
+      } else if (m.type === 'reset') {
+        for (const s of this.shifters) s.reset();
+      }
+    };
+  }
+
+  ensureChannels(count) {
+    while (this.shifters.length < count) {
+      const s = new HqPitchShifter();
+      s.setShift(this.shift);
+      this.shifters.push(s);
+    }
+  }
+
+  process(inputs, outputs) {
+    const input = inputs[0];
+    const output = outputs[0];
+    if (!output || !output.length) return true;
+    // Nach output.length richten, nicht nach input.length: eine mono Quelle
+    // (input.length===1) mit erzwungener Stereo-Ausgabe (outputChannelCount
+    // [2]) braucht trotzdem für JEDEN Ausgabekanal einen eigenen Shifter mit
+    // eigenem Zustand — sonst würde ein einziger Shifter zweimal pro Block
+    // mit denselben Samples gefüttert und seine interne Position liefe
+    // doppelt so schnell, was den Ton komplett zerlegt.
+    this.ensureChannels(output.length);
+    for (let ch = 0; ch < output.length; ch++) {
+      const src = (input && (input[ch] || input[0])) || new Float32Array(output[ch].length);
+      const shifter = this.shifters[ch];
+      output[ch].set(shifter.process(src));
+      this.underrunSamples += shifter.underrunSamples;
+      shifter.underrunSamples = 0;
+    }
+    if (currentTime - this.lastReport >= 1) {
+      if (this.underrunSamples > 0) {
+        this.port.postMessage({ type: 'underrun', count: this.underrunSamples });
+        this.underrunSamples = 0;
+      }
+      this.lastReport = currentTime;
+    }
+    return true;
+  }
+}
+
+registerProcessor('hq-pitch-shift', HqShiftProcessor);
+`;
+}
+
+/**
+ * Lädt das HQ-Worklet-Modul und legt den Knoten an. Scheitert leise (liefert
+ * `null`) — die App spielt dann einfach nativ weiter (preservesPitch=true),
+ * siehe applyRateToElement(). Wird unabhängig vom aktuellen Schalterstand
+ * aufgerufen, damit sich die Einstellung später ohne Neuladen umschalten
+ * lässt.
+ */
+async function hqCreateNode(ctx) {
+  if (!ctx.audioWorklet) { dlog('hq:init', { ok: false, name: 'no-audioWorklet' }); return null; }
+  const url = URL.createObjectURL(new Blob([hqBuildWorkletSource()], { type: 'application/javascript' }));
+  try {
+    await ctx.audioWorklet.addModule(url);
+  } catch (err) {
+    dlog('hq:init', { ok: false, name: err?.name });
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  try {
+    const node = new AudioWorkletNode(ctx, 'hq-pitch-shift', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+    });
+    node.port.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'underrun') dlog('hq:underrun', { count: m.count });
+    };
+    dlog('hq:init', { ok: true });
+    return node;
+  } catch (err) {
+    dlog('hq:init', { ok: false, name: err?.name });
+    return null;
+  }
+}
+
+/**
+ * Statische Verfügbarkeitsprüfung, bevor audioInit() überhaupt lief (z.B.
+ * wenn die Einstellungen vor dem ersten Öffnen eines Songs besucht werden).
+ * Sobald audioInit() gelaufen ist, zählt stattdessen `!!Audio.hqNode` — die
+ * einzig verlässliche Antwort, ob addModule() wirklich geklappt hat.
+ */
+function hqStaticallySupported() {
+  return typeof AudioWorkletNode !== 'undefined' && !!(window.AudioContext || window.webkitAudioContext);
+}
+
 const Audio = {
   el: null,
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
   channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
   channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
+  elSource: null,         // MediaElementSource von el — createMediaElementSource() darf nur einmal pro Element laufen, daher gemerkt statt neu erzeugt
+  hqNode: null,           // AudioWorkletNode der HQ-Verlangsamung, oder null falls nicht verfügbar (siehe hqCreateNode)
   bg: null,               // zweites, stummes <audio> für den leise mitlaufenden Original-Song (REC)
   bgGain: null,           // Gain zwischen bg und channelIn — bg.volume ist auf iOS schreibgeschützt
   bgSource: null,         // MediaElementSource von bg, falls die Matrix steht
@@ -7528,16 +8120,28 @@ async function audioInit() {
     splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
     splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
     merger.connect(ctx.destination);
+
+    // HQ-Verlangsamung (Phasenvocoder, siehe weiter oben): das Worklet-Modul
+    // wird hier schon geladen, unabhängig vom aktuellen Schalterstand, damit
+    // sich die Einstellung später ohne Neuladen umschalten lässt. Schlägt
+    // das fehl, bleibt hqNode null — applyHqMode() lässt das Element dann
+    // einfach an der Matrix vorbei direkt zur Quelle durch.
+    const hqNode = await hqCreateNode(ctx);
+    if (hqNode) hqNode.connect(splitter);
+
     // Erst als letzter Schritt: schlägt nur noch dieser Aufruf fehl, bleiben
-    // Splitter/Gains/Merger folgenlos unverbunden, statt das Element mitten
-    // im Aufbau von seiner normalen Ausgabe abzuschneiden.
-    ctx.createMediaElementSource(el).connect(splitter);
+    // Splitter/Gains/Merger/HQ-Knoten folgenlos unverbunden, statt das
+    // Element mitten im Aufbau von seiner normalen Ausgabe abzuschneiden.
+    const elSource = ctx.createMediaElementSource(el);
 
     Audio.ctx = ctx;
     Audio.channel = { gLL, gLR, gRL, gRR };
     // Einspeisepunkt für den Hintergrundtrack (siehe ensureBackingAudio) — im
     // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
     Audio.channelIn = splitter;
+    Audio.elSource = elSource;
+    Audio.hqNode = hqNode;
+    applyHqMode(); // verdrahtet elSource -> hqNode -> splitter oder elSource -> splitter direkt
     audioApplyChannelMode(settings.channelMode);
     dlog('audio:route', { mode: 'matrix' });
 
@@ -7654,11 +8258,9 @@ async function audioLoadTrackNow(track) {
     // Spec bleiben sie über einen Ladevorgang hinweg erhalten. Sicherheits-
     // halber trotzdem erneut gesetzt: manche WebKit-Stände haben das in der
     // Vergangenheit beim Laden zurückgesetzt, und ein leise auf 1× gefallenes
-    // Tempo wäre in der Auswahlbox nicht zu erkennen.
-    el.playbackRate = Audio.rate;
-    el.preservesPitch = true;
-    el.webkitPreservesPitch = true;
-    el.mozPreservesPitch = true;
+    // Tempo (bzw. eine leise wieder aktivierte native Tonhöhenkorrektur bei
+    // laufender HQ-Verlangsamung) wäre in der Auswahlbox nicht zu erkennen.
+    applyRateToElement();
 
     // Die Dauer wird bei jedem Laden aktualisiert. Nur so lässt sich später
     // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
@@ -7741,17 +8343,58 @@ function audioSeek(seconds) {
   const s = Math.max(0, Math.min(seconds, Audio.duration || 0));
   Audio.position = s;
   if (Audio.el) Audio.el.currentTime = s;
+  // Der Phasenvocoder springt nicht mit — ohne Rücksetzen würde er nach
+  // einem Sprung für eine Fensterlänge die alte Stelle weiterrechnen.
+  Audio.hqNode?.port.postMessage({ type: 'reset' });
   lastPosLog = { wall: performance.now(), pos: s };
   return s;
 }
 
+/**
+ * Verdrahtet Audio.elSource neu: mit dem HQ-Knoten dazwischen oder direkt
+ * zur Kanal-Matrix. createMediaElementSource() selbst wird dabei nicht noch
+ * einmal aufgerufen (das darf pro Element nur einmal passieren, siehe
+ * Audio.elSource) — nur die Verbindungen seines Ausgangs ändern sich, und
+ * das ist jederzeit erlaubt.
+ */
+function applyHqMode() {
+  const src = Audio.elSource;
+  if (!src) return;
+  src.disconnect();
+  if (Audio.hqNode && settings.hqSlowdown) {
+    src.connect(Audio.hqNode);
+  } else if (Audio.channelIn) {
+    src.connect(Audio.channelIn);
+  }
+}
+
+/**
+ * Setzt Tempo und Tonhöhenverhalten auf dem Element — ersetzt die frühere
+ * Doppelung in audioSetRate() und audioLoadTrackNow(). Ist die HQ-
+ * Verlangsamung an und verfügbar, resampled das Element klassisch
+ * (preservesPitch=false, Bandmaschinen-Verhalten: langsamer und tiefer) und
+ * der Phasenvocoder im Worklet schiebt die Tonhöhe per `shift = 1/rate`
+ * wieder hoch; sonst hält preservesPitch=true nativ die Tonhöhe (WSOLA), wie
+ * bisher.
+ */
+function applyRateToElement() {
+  const el = Audio.el;
+  if (!el) return;
+  el.playbackRate = Audio.rate;
+  const useHq = !!(settings.hqSlowdown && Audio.hqNode);
+  el.preservesPitch = !useHq;
+  el.webkitPreservesPitch = !useHq;
+  el.mozPreservesPitch = !useHq;
+  if (Audio.hqNode) {
+    const shift = useHq ? 1 / Audio.rate : 1;
+    Audio.hqNode.port.postMessage({ type: 'shift', value: shift });
+    dlog('hq:mode', { on: useHq, rate: Audio.rate, shift });
+  }
+}
+
 function audioSetRate(rate) {
   Audio.rate = rate;
-  if (!Audio.el) return;
-  Audio.el.playbackRate = rate;
-  Audio.el.preservesPitch = true;
-  Audio.el.webkitPreservesPitch = true;
-  Audio.el.mozPreservesPitch = true;
+  applyRateToElement();
 }
 
 /** Setzt oder löscht den A-B-Loop; durchgesetzt wird er im `timeupdate`. */
@@ -9819,6 +10462,10 @@ async function openPlayer(songId) {
     return;
   }
   if (token !== openPlayerToken) return;
+  // Erst jetzt steht fest, ob addModule() für die HQ-Verlangsamung wirklich
+  // geklappt hat — die statische Vermutung aus renderHqSlowdown() vor dem
+  // ersten audioInit() war bis hierhin nur eine Annäherung.
+  renderHqSlowdown();
 
   Audio.song = song;
   audioSetRate(1);
@@ -11670,6 +12317,15 @@ async function endRecordingPreview() {
  * Legt Audio.bg an — lazy, aber genau einmal fürs ganze Programm. Erstmals
  * mitten in laufender Wiedergabe zu verdrahten kann auf iOS einen kurzen
  * Aussetzer kosten; ein zweites Mal wäre eins zu viel.
+ *
+ * Läuft bewusst NICHT durch den HQ-Phasenvocoder (bgSource speist direkt in
+ * Audio.channelIn ein, an Audio.hqNode vorbei — siehe unten): er läuft leise
+ * im Hintergrund als reine Orientierung, preservesPitch=true liefert dafür
+ * schon die richtige Tonhöhe, und ein zweiter Vocoder wäre die doppelte
+ * Rechenlast für den unwichtigeren Ton. Die ~46 ms Latenz des Shifters
+ * wirken dadurch nur auf den REC selbst — sollte das in der Praxis stören,
+ * ist die Stellschraube die bestehende Drift-Korrektur (backingCorrection),
+ * nicht ein zweiter Vocoder.
  */
 function ensureBackingAudio() {
   if (Audio.bg) return Audio.bg;
@@ -12224,11 +12880,10 @@ function renderRecordingList() {
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
     rename.addEventListener('click', async () => {
-      const name = await promptDialog({ title: 'REC umbenennen', value: recording.name });
-      if (name === null) return;
-      const voice = await pickRecordingVoice(recording.voice);
-      recording.name = name.trim() || recording.name;
-      if (voice !== undefined) recording.voice = voice;
+      const result = await editRecordingDialog({ name: recording.name, voice: recording.voice || null });
+      if (!result) return;
+      recording.name = result.name.trim() || recording.name;
+      recording.voice = result.voice;
       await DB.metaPut(recording);
       renderRecordingList();
     });
@@ -13468,7 +14123,7 @@ function renderCurrentSetlist(favorite, songs) {
   if (!favorite) return;
 
   const titles = favorite.songTitles || [];
-  const list = el('ol', { class: 'stack small', style: 'margin:8px 0 0; padding-left:20px' });
+  const list = el('ol', { class: 'gig-list small' });
   for (const t of titles) {
     const found = findSongByTitle(songs, t);
     list.append(el('li', { class: found ? '' : 'muted', text: t }));
@@ -15563,6 +16218,92 @@ function runSelfTests() {
   checks++;
   if (sanitizeRecAnchor(null) !== null) {
     failed.push('sanitizeRecAnchor müsste einen fehlenden Anker verkraften');
+  }
+
+  /* ---------- HQ-Verlangsamung: Phasenvocoder (SLOWPLAY-HQ-PLAN.md 1.4) ---------- */
+
+  // 1. hqPrincipalAngle faltet auf (−π, π] — Konvention hier: 3π und −3π
+  // landen beide auf +π (nicht −π), siehe Kommentar an der Funktion.
+  checks++;
+  if (hqPrincipalAngle(0) !== 0) failed.push('hqPrincipalAngle(0) müsste 0 sein');
+  checks++;
+  if (Math.abs(hqPrincipalAngle(3 * Math.PI) - Math.PI) > 1e-9) {
+    failed.push(`hqPrincipalAngle(3π) = ${hqPrincipalAngle(3 * Math.PI)}, erwartet π`);
+  }
+  checks++;
+  if (Math.abs(hqPrincipalAngle(-3 * Math.PI) - Math.PI) > 1e-9) {
+    failed.push(`hqPrincipalAngle(-3π) = ${hqPrincipalAngle(-3 * Math.PI)}, erwartet π`);
+  }
+  checks++;
+  if (Math.abs(hqPrincipalAngle(2 * Math.PI)) > 1e-9) {
+    failed.push(`hqPrincipalAngle(2π) = ${hqPrincipalAngle(2 * Math.PI)}, erwartet 0`);
+  }
+
+  // 2. hqAnalysisHop/hqPitchRatio für die drei angebotenen Tempi.
+  for (const rate of [0.85, 0.7, 0.6]) {
+    const k = 1 / rate;
+    const Ha = hqAnalysisHop(512, k);
+    checks++;
+    if (!Number.isInteger(Ha) || Ha < 1 || Ha > 512) {
+      failed.push(`hqAnalysisHop(512, ${k}) = ${Ha}, erwartet ganzzahlig zwischen 1 und 512`);
+    }
+    const r = hqPitchRatio(512, Ha);
+    checks++;
+    if (Math.abs(r - k) / k > 0.005) {
+      failed.push(`hqPitchRatio(512, ${Ha}) = ${r}, weicht mehr als 0,5% von k=${k} ab`);
+    }
+  }
+
+  // 3. Randfälle.
+  checks++;
+  if (hqAnalysisHop(512, 1) !== 512) failed.push('hqAnalysisHop(512, 1) müsste 512 sein');
+  checks++;
+  if (hqAnalysisHop(512, 1e6) !== 1) failed.push('hqAnalysisHop(512, 1e6) müsste 1 sein (Randfall)');
+
+  // 4. Durchreichen bei shift=1 — kein FFT, Ausgabe = Eingabe.
+  checks++;
+  {
+    const shifter = new HqPitchShifter();
+    const noise = new Float32Array(4096);
+    // Deterministisch statt Math.random() — reproduzierbare Selbsttests.
+    for (let i = 0; i < noise.length; i++) noise[i] = Math.sin(i * 12.9898) * 0.5;
+    const out = shifter.process(noise);
+    let same = out.length === noise.length;
+    if (same) {
+      for (let i = 0; i < noise.length; i++) if (out[i] !== noise[i]) { same = false; break; }
+    }
+    if (!same) failed.push('HqPitchShifter mit shift=1 müsste die Eingabe unverändert durchreichen');
+  }
+
+  // 5. Tonhöhe: 440 Hz durch shift=1/0,7 muss auf ≈629 Hz landen (Nulldurch-
+  // gangszählung im eingeschwungenen Teil, ab Sample 4096 — vorher ist noch
+  // nicht das ganze erste Analysefenster mit echtem Signal gefüllt).
+  checks++;
+  {
+    const sr = 44100;
+    const shifter = new HqPitchShifter();
+    shifter.setShift(1 / 0.7);
+    const n = sr;
+    const input = new Float32Array(n);
+    for (let i = 0; i < n; i++) input[i] = Math.sin(2 * Math.PI * 440 * i / sr);
+    const output = shifter.process(input);
+
+    const from = 4096;
+    let crossings = 0;
+    for (let i = from + 1; i < n; i++) {
+      if (output[i - 1] < 0 && output[i] >= 0) crossings++;
+    }
+    const freq = crossings / ((n - from) / sr);
+    const expected = 440 * (1 / 0.7);
+    if (Math.abs(freq - expected) / expected > 0.02) {
+      failed.push(`HqPitchShifter-Tonhöhe: ${freq.toFixed(1)} Hz, erwartet ~${expected.toFixed(1)} Hz (±2%)`);
+    }
+
+    // 6. Längentreue: genauso viele Ausgabe- wie Eingabesamples.
+    checks++;
+    if (output.length !== input.length) {
+      failed.push(`HqPitchShifter-Längentreue: ${output.length} Ausgabesamples, erwartet ${input.length}`);
+    }
   }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
