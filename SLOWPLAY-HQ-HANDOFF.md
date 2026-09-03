@@ -273,24 +273,33 @@ clock. This turns every future user test from one data point into
 calibrated numbers, and it answers the Worker hypothesis in §7 at the same
 time. Everything else should wait behind this.
 
-**C. Reconsider the no-dependency rule.** — **A device probe has now made
-this the leading option.** On the target phone at 0.6×, our JS vocoder
-reaches 65 % of real time; `signalsmith-stretch` (MIT, WASM, SIMD
-available on that device) reaches 100 %. The 35 % gap that five rounds of
-hand-optimisation could not close is simply absent. See
-`SLOWPLAY-TESTLABOR-PLAN.md` §0 for the full probe result and for what it
-does *not* yet establish (100 % is a ceiling — the headroom behind it is
-unmeasured — and it says nothing about sound).
+**C. Drop the no-dependency rule and use a WASM stretcher.** — **A device
+probe has moved this from a hunch to the leading option.** On the target
+phone at 0.6×, our JS vocoder reaches 65 % of real time;
+`signalsmith-stretch` reaches **100 %**. The 35 % gap that five rounds of
+hand-optimisation could not close is simply absent.
 
-**C (Fortsetzung).** A WASM time-stretcher with SIMD
-is plausibly 5–10× faster than hand-written JS — larger than everything
-rounds 2 to 4 achieved put together (≈5–6×), and it would end this problem
-outright instead of shaving at it. Candidates to *verify* (my recollection of licences and
-availability may be stale — check, don't trust): `signalsmith-stretch`
-(MIT, purpose-built for exactly this), SoundTouch (LGPL, like the lamejs
-already shipped). Rubber Band is GPL-or-commercial and probably
-unsuitable for a publicly hosted app. This deserved consideration in round
-2 and never got it.
+Verified, not recalled: `signalsmith-stretch@1.3.2` is **MIT**, a single
+113 KB JS file with its ~64 KB WASM embedded as a `data:` URI, so it needs
+no network — it runs under the artifact CSP and would run offline in the
+PWA. It is already an AudioWorklet node, and it brings two things our
+vocoder does not have: **formant compensation** (without it, pitched-up
+singing goes chipmunky — for a choir possibly the largest audible
+difference of all) and **built-in looping** on a loaded buffer, which would
+make the A-B loop sample-accurate instead of "a few hundred milliseconds at
+best". WASM SIMD is available on the target device.
+
+What the probe does **not** establish: 100 % is a ceiling, so the headroom
+behind it is unmeasured; it ran in the Claude app's WebView rather than
+Chrome or the installed PWA; it used a 4 s synthetic chord in buffer mode,
+not choir material on live input; and it says nothing about sound. That is
+what `SLOWPLAY-TESTLABOR-PLAN.md` is for.
+
+Also checked: `rubberband-web@0.2.1` is GPL-2.0-or-later — valuable as a
+private quality yardstick, not shippable on a publicly hosted page. The
+SoundTouch packages are pure JS, no speed to be had. And the rule itself
+was never the project's: the repo already ships `lame.min.js` (LGPL) with
+a `THIRD-PARTY.md` entry and a licence file.
 
 **D. Spend the last JS lever: 50 % overlap with a sine window.** Written up
 in `SLOWPLAY-HQ-FIX-PLAN-3.md` §3, another ~2×, measured on x86 as
