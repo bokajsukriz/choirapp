@@ -3391,24 +3391,28 @@ input[type="checkbox"] {
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16a8 8 0 0 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.perf.title">Kompatibilität &amp; Performance</span></h2>
-      <div class="row">
-        <span class="small" style="max-width:70%" data-i18n="settings.perf.hqSwitch">
-          Bessere Tonqualität beim langsamen Abspielen
-        </span>
-        <button class="switch" id="btn-hq-slow-toggle" type="button" role="switch"
-                aria-checked="true" aria-label="Bessere Tonqualität beim langsamen Abspielen" data-i18n-aria="settings.perf.hqAria">
-          <span class="switch-knob"></span>
-        </button>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.perf.modeHint">
+        Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.
+      </p>
+      <div class="preset-row" id="slow-mode" role="group" aria-label="Verlangsamung">
+        <button class="preset" type="button" data-mode="standard" aria-pressed="true" data-i18n="settings.perf.modeStandard">Standard</button>
+        <button class="preset" type="button" data-mode="hq" data-i18n="settings.perf.modeHq">HQ</button>
+        <button class="preset" type="button" data-mode="raw" data-i18n="settings.perf.modeRaw">Roh</button>
       </div>
       <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.hqHint">
-        Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem
-        Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen.
-        Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem
-        älteren Handy oder wird es warm, schalte hier aus.
+        HQ rechnet den Klang selbst um, statt es dem Browser zu überlassen —
+        deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr
+        Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder
+        wird es warm, wieder auf Standard stellen.
+      </p>
+      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.rawHint">
+        Roh nur zum Ausprobieren: verlangsamt wie HQ, korrigiert die
+        Tonhöhe aber nicht — sie fällt hörbar ab. Zeigt, ob ein Problem an
+        der Tonhöhenkorrektur liegt oder grundsätzlicher ist.
       </p>
       <p class="small muted" id="hq-unsupported-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.hqUnsupported">
-        Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt
-        beim bisherigen Weg.
+        Dieses Gerät unterstützt HQ nicht — Standard und Roh funktionieren
+        trotzdem.
       </p>
       <p class="small muted" id="hq-load" style="margin:8px 0 0" hidden></p>
     </div>
@@ -4741,8 +4745,14 @@ const DEFAULT_SETTINGS = {
   // Echtzeit auf dem Gerät nicht (Messung und Ursachen in SLOWPLAY-HQ-PLAN.md,
   // Abschnitt „Befund"). Erst wieder auf true, wenn das auf echter Hardware
   // sauber läuft.
-  hqSlowdown: false,  // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
+  hqSlowdown: false,  // veraltet — nur noch für die einmalige Migration auf slowMode in loadSettings() gelesen
   hqSlowdownReset: false,  // Merker der einmaligen Rücknahme, siehe loadSettings()
+  // 'standard' (nativ, WSOLA) | 'hq' (Phasenvocoder + Tonhöhenkorrektur) |
+  // 'raw' (nur Tempo wie HQ, aber ohne Tonhöhenkorrektur — Tonhöhe fällt
+  // hörbar ab; zum Eingrenzen, ob ein Problem an der Korrektur liegt oder
+  // grundsätzlicher ist, siehe SLOWPLAY-HQ-FIX-PLAN.md)
+  slowMode: 'standard',
+  slowModeMigrated: false,  // Merker der einmaligen Migration von hqSlowdown, siehe loadSettings()
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4846,10 +4856,13 @@ const STRINGS = {
     'settings.screen.notifyBtn': 'Benachrichtigungen für diese Seite erlauben',
 
     'settings.perf.title': 'Kompatibilität & Performance',
-    'settings.perf.hqSwitch': 'Bessere Tonqualität beim langsamen Abspielen',
-    'settings.perf.hqAria': 'Bessere Tonqualität beim langsamen Abspielen',
-    'settings.perf.hqHint': 'Noch im Versuch und deshalb ausgeschaltet: Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen. Auf manchen Geräten stottert die Wiedergabe damit noch — dann wieder ausschalten. Bleibt es aus, klingt alles wie bisher.',
-    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt beim bisherigen Weg.',
+    'settings.perf.modeHint': 'Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.',
+    'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHq': 'HQ',
+    'settings.perf.modeRaw': 'Roh',
+    'settings.perf.hqHint': 'HQ rechnet den Klang selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, wieder auf Standard stellen.',
+    'settings.perf.rawHint': 'Roh nur zum Ausprobieren: verlangsamt wie HQ, korrigiert die Tonhöhe aber nicht — sie fällt hörbar ab. Zeigt, ob ein Problem an der Tonhöhenkorrektur liegt oder grundsätzlicher ist.',
+    'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt HQ nicht — Standard und Roh funktionieren trotzdem.',
     'settings.perf.hqLoadLabel': 'Rechenlast:',
     'settings.perf.hqLoadAvg': 'im Mittel,',
     'settings.perf.hqLoadPeak': 'in der Spitze —',
@@ -5063,10 +5076,13 @@ const STRINGS = {
     'settings.screen.notifyBtn': 'Allow notifications for this page',
 
     'settings.perf.title': 'Compatibility & performance',
-    'settings.perf.hqSwitch': 'Better sound quality for slow playback',
-    'settings.perf.hqAria': 'Better sound quality for slow playback',
-    'settings.perf.hqHint': 'Still experimental and therefore switched off: recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser. On some devices playback still stutters with it — then switch it off again. Left off, everything sounds as before.',
-    'settings.perf.hqUnsupported': "This device doesn't support the better slow playback — it stays on the previous method.",
+    'settings.perf.modeHint': 'How slowing down at 0.85×, 0.7× and 0.6× is computed.',
+    'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHq': 'HQ',
+    'settings.perf.modeRaw': 'Raw',
+    'settings.perf.hqHint': 'HQ recalculates the sound itself instead of leaving it to the browser — noticeably cleaner on sustained notes. Costs more processing power in return. If playback stutters on an older phone or it gets warm, switch back to Standard.',
+    'settings.perf.rawHint': "Raw is for testing only: slows down like HQ but doesn't correct the pitch — it noticeably drops. Shows whether a problem is in the pitch correction or more fundamental.",
+    'settings.perf.hqUnsupported': "This device doesn't support HQ — Standard and Raw still work.",
     'settings.perf.hqLoadLabel': 'Load:',
     'settings.perf.hqLoadAvg': 'average,',
     'settings.perf.hqLoadPeak': 'peak —',
@@ -5280,10 +5296,13 @@ const STRINGS = {
     'settings.screen.notifyBtn': 'Zezwól na powiadomienia dla tej strony',
 
     'settings.perf.title': 'Kompatybilność i wydajność',
-    'settings.perf.hqSwitch': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
-    'settings.perf.hqAria': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
-    'settings.perf.hqHint': 'Wciąż w fazie testów i dlatego wyłączone: sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce. Na niektórych urządzeniach odtwarzanie nadal się zacina — wtedy wyłącz to ponownie. Pozostawione wyłączone, wszystko brzmi jak dotychczas.',
-    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje lepszego spowolnienia — pozostaje dotychczasowy sposób.',
+    'settings.perf.modeHint': 'Jak liczone jest spowolnienie przy 0,85×, 0,7× i 0,6×.',
+    'settings.perf.modeStandard': 'Standard',
+    'settings.perf.modeHq': 'HQ',
+    'settings.perf.modeRaw': 'Surowy',
+    'settings.perf.hqHint': 'HQ sam przelicza dźwięk, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długich dźwiękach. Kosztuje to więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina na starszym telefonie albo się nagrzewa, wróć do Standardu.',
+    'settings.perf.rawHint': 'Surowy tylko do testów: spowalnia jak HQ, ale nie koryguje wysokości dźwięku — wyraźnie spada. Pokazuje, czy problem tkwi w korekcie wysokości dźwięku, czy jest bardziej fundamentalny.',
+    'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje HQ — Standard i Surowy nadal działają.',
     'settings.perf.hqLoadLabel': 'Obciążenie:',
     'settings.perf.hqLoadAvg': 'średnio,',
     'settings.perf.hqLoadPeak': 'szczyt —',
@@ -5487,6 +5506,16 @@ async function loadSettings() {
   if (!settings.hqSlowdownReset) {
     settings.hqSlowdown = false;
     await saveSettings({ hqSlowdown: false, hqSlowdownReset: true }).catch(() => {});
+  }
+
+  // Migration von der alten hqSlowdown-Einstellung auf die drei Modi
+  // (Standard/HQ/Raw): eine Installation, die HQ nach der Rücknahme oben
+  // bewusst wieder eingeschaltet hatte, soll dabei nicht stillschweigend auf
+  // Standard zurückfallen. Nur einmal — danach bestimmt slowMode allein.
+  if (!settings.slowModeMigrated) {
+    if (settings.hqSlowdown === true) settings.slowMode = 'hq';
+    settings.slowModeMigrated = true;
+    await saveSettings({ slowMode: settings.slowMode, slowModeMigrated: true }).catch(() => {});
   }
 
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
@@ -7041,7 +7070,7 @@ async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
-  renderHqSlowdown();
+  renderSlowMode();
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
@@ -7427,13 +7456,18 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
 /**
  * Vor dem ersten audioInit() (z.B. Einstellungen vor dem ersten geöffneten
  * Song besucht) zählt nur die statische Prüfung — danach, ob addModule()
- * wirklich geklappt hat (Audio.hqNode).
+ * wirklich geklappt hat (Audio.hqNode). Nur der HQ-Preset braucht das
+ * Worklet — Standard und Raw funktionieren immer, deshalb wird nur der
+ * HQ-Knopf deaktiviert, nicht die ganze Zeile.
  */
-function renderHqSlowdown() {
-  const btn = $('#btn-hq-slow-toggle');
+function renderSlowMode() {
   const supported = Audio.ready ? !!Audio.hqNode : hqStaticallySupported();
-  btn.disabled = !supported;
-  btn.setAttribute('aria-checked', settings.hqSlowdown && supported ? 'true' : 'false');
+  const mode = settings.slowMode || 'standard';
+  for (const btn of $$('#slow-mode .preset')) {
+    const isHq = btn.dataset.mode === 'hq';
+    btn.disabled = isHq && !supported;
+    btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
+  }
   $('#hq-unsupported-hint').hidden = supported;
   updateHqLoadVisibility();
 }
@@ -7450,23 +7484,27 @@ function renderHqLoadText(text, danger) {
 
 /**
  * Die Lastanzeige (Abschnitt 1.3) soll niemanden verunsichern, der die
- * Funktion gar nicht benutzt: nur sichtbar, solange der Schalter an ist und
- * eine Wiedergabe läuft. Wird sie versteckt, verwirft sie auch den
+ * Funktion gar nicht benutzt: nur sichtbar, solange HQ aktiv ist und eine
+ * Wiedergabe läuft — bei Raw läuft das Worklet gar nicht erst mit, da gibt
+ * es nichts zu melden. Wird sie versteckt, verwirft sie auch den
  * Bezugspunkt der Ersatzmessung — sonst würde die nächste Meldung nach einer
  * Pause die stehende Zeit als Überlastung missdeuten.
  */
 function updateHqLoadVisibility() {
   const node = $('#hq-load');
-  const visible = !!(settings.hqSlowdown && Audio.playing && Audio.hqNode);
+  const visible = !!(settings.slowMode === 'hq' && Audio.playing && Audio.hqNode);
   node.hidden = !visible;
   if (!visible) hqLoadFallbackPrev = null;
 }
 
-$('#btn-hq-slow-toggle').addEventListener('click', async () => {
-  await saveSettings({ hqSlowdown: !settings.hqSlowdown });
-  renderHqSlowdown();
-  applyHqMode();
-  applyRateToElement();
+$$('#slow-mode .preset').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    await saveSettings({ slowMode: btn.dataset.mode });
+    renderSlowMode();
+    applyHqMode();
+    applyRateToElement();
+  });
 });
 
 $('#btn-bg-help-toggle').addEventListener('click', () => {
@@ -8633,7 +8671,7 @@ function applyHqMode() {
   const src = Audio.elSource;
   if (!src) return;
   src.disconnect();
-  if (Audio.hqNode && settings.hqSlowdown) {
+  if (Audio.hqNode && settings.slowMode === 'hq') {
     src.connect(Audio.hqNode);
   } else if (Audio.channelIn) {
     src.connect(Audio.channelIn);
@@ -8642,25 +8680,27 @@ function applyHqMode() {
 
 /**
  * Setzt Tempo und Tonhöhenverhalten auf dem Element — ersetzt die frühere
- * Doppelung in audioSetRate() und audioLoadTrackNow(). Ist die HQ-
- * Verlangsamung an und verfügbar, resampled das Element klassisch
- * (preservesPitch=false, Bandmaschinen-Verhalten: langsamer und tiefer) und
- * der Phasenvocoder im Worklet schiebt die Tonhöhe per `shift = 1/rate`
- * wieder hoch; sonst hält preservesPitch=true nativ die Tonhöhe (WSOLA), wie
- * bisher.
+ * Doppelung in audioSetRate() und audioLoadTrackNow(). Bei Standard hält
+ * preservesPitch=true nativ die Tonhöhe (WSOLA). Bei HQ und bei Raw
+ * resampled das Element klassisch (preservesPitch=false, Bandmaschinen-
+ * Verhalten: langsamer und tiefer) — der Unterschied ist einzig, ob der
+ * Phasenvocoder im Worklet die Tonhöhe per `shift = 1/rate` wieder
+ * hochschiebt (HQ) oder eben nicht (Raw, absichtlich zum Ausprobieren:
+ * siehe SLOWPLAY-HQ-FIX-PLAN.md).
  */
 function applyRateToElement() {
   const el = Audio.el;
   if (!el) return;
   el.playbackRate = Audio.rate;
-  const useHq = !!(settings.hqSlowdown && Audio.hqNode);
-  el.preservesPitch = !useHq;
-  el.webkitPreservesPitch = !useHq;
-  el.mozPreservesPitch = !useHq;
+  const useHq = !!(settings.slowMode === 'hq' && Audio.hqNode);
+  const preserve = settings.slowMode === 'standard';
+  el.preservesPitch = preserve;
+  el.webkitPreservesPitch = preserve;
+  el.mozPreservesPitch = preserve;
   if (Audio.hqNode) {
     const shift = useHq ? 1 / Audio.rate : 1;
     Audio.hqNode.port.postMessage({ type: 'shift', value: shift });
-    dlog('hq:mode', { on: useHq, rate: Audio.rate, shift });
+    dlog('hq:mode', { mode: settings.slowMode, on: useHq, rate: Audio.rate, shift });
   }
 }
 
@@ -10738,9 +10778,9 @@ async function openPlayer(songId) {
   }
   if (token !== openPlayerToken) return;
   // Erst jetzt steht fest, ob addModule() für die HQ-Verlangsamung wirklich
-  // geklappt hat — die statische Vermutung aus renderHqSlowdown() vor dem
+  // geklappt hat — die statische Vermutung aus renderSlowMode() vor dem
   // ersten audioInit() war bis hierhin nur eine Annäherung.
-  renderHqSlowdown();
+  renderSlowMode();
 
   Audio.song = song;
   audioSetRate(1);
