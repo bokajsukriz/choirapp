@@ -1,0 +1,264 @@
+<script>
+(() => {
+  'use strict';
+
+  // Jede Prüfung: Anzeige + eine Zeile im kopierbaren Ergebnis.
+  const CHECKS = [
+    ['worklet',  'AudioWorklet aus Blob-URL'],
+    ['wasm',     'WebAssembly aus eingebetteten Bytes'],
+    ['simd',     'WASM-SIMD'],
+    ['perf',     'performance.now() im Worklet'],
+    ['capacity', 'AudioContext.renderCapacity'],
+    ['stretch',  'signalsmith-stretch lädt'],
+    ['audible',  'Hörprobe spielt'],
+  ];
+  const state = {};
+  const el = (id) => document.getElementById(id);
+
+  const rowsHost = el('checks');
+  for (const [key, label] of CHECKS) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = '<span class="name"></span><span class="chip" id="chip-' + key + '">offen</span>'
+      + '<span class="detail" id="det-' + key + '"></span>';
+    row.querySelector('.name').textContent = label;
+    rowsHost.append(row);
+    state[key] = { label, status: 'offen', detail: '' };
+  }
+
+  function mark(key, status, detail) {
+    state[key].status = status;
+    state[key].detail = detail || '';
+    const chip = el('chip-' + key);
+    chip.textContent = status;
+    chip.className = 'chip ' + (status === 'ja' ? 'ok' : status === 'nein' ? 'bad' : status === 'offen' ? '' : 'warn');
+    el('det-' + key).textContent = detail || '';
+    render();
+  }
+
+  // Kleinstes gültiges WASM-Modul: exportiert add(i32,i32)->i32.
+  const ADD_WASM = new Uint8Array([
+    0x00,0x61,0x73,0x6d, 0x01,0x00,0x00,0x00,
+    0x01,0x07,0x01,0x60,0x02,0x7f,0x7f,0x01,0x7f,
+    0x03,0x02,0x01,0x00,
+    0x07,0x07,0x01,0x03,0x61,0x64,0x64,0x00,0x00,
+    0x0a,0x09,0x01,0x07,0x00,0x20,0x00,0x20,0x01,0x6a,0x0b,
+  ]);
+  // Merkmalsprüfung für SIMD: ein Modul mit einer v128-Instruktion.
+  const SIMD_WASM = new Uint8Array([
+    0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11,
+  ]);
+
+  let ctx = null, stretchNode = null, rtTimer = null, rtPrev = null;
+
+  function facts() {
+    el('f-cores').textContent = navigator.hardwareConcurrency ?? 'unbekannt';
+    el('f-mem').textContent = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'nicht gemeldet';
+    el('f-ua').textContent = navigator.userAgent;
+  }
+
+  async function checkWasm() {
+    try {
+      const { instance } = await WebAssembly.instantiate(ADD_WASM, {});
+      const sum = instance.exports.add(19, 23);
+      mark('wasm', sum === 42 ? 'ja' : 'nein', 'add(19,23) = ' + sum);
+    } catch (err) {
+      mark('wasm', 'nein', (err && err.name) + ': ' + (err && err.message));
+    }
+    try {
+      mark('simd', WebAssembly.validate(SIMD_WASM) ? 'ja' : 'nein', 'Merkmalsprüfung über WebAssembly.validate');
+    } catch (err) {
+      mark('simd', 'nein', String(err && err.name));
+    }
+  }
+
+  // Ein winziger Prozessor, nur um zu sehen, ob addModule aus einer Blob-URL
+  // durchkommt — und ob es dort drin eine Uhr gibt.
+  function probeSource() {
+    return "class ProbeProcessor extends AudioWorkletProcessor {\n"
+      + "  constructor() {\n"
+      + "    super();\n"
+      + "    this.port.postMessage({\n"
+      + "      hasPerf: typeof performance !== 'undefined' && typeof performance.now === 'function',\n"
+      + "      sampleRate: sampleRate,\n"
+      + "    });\n"
+      + "  }\n"
+      + "  process() { return false; }\n"
+      + "}\n"
+      + "registerProcessor('probe', ProbeProcessor);\n";
+  }
+
+  async function checkWorklet() {
+    if (!ctx.audioWorklet) { mark('worklet', 'nein', 'ctx.audioWorklet fehlt'); mark('perf', 'nein', 'ohne Worklet nicht prüfbar'); return; }
+    const url = URL.createObjectURL(new Blob([probeSource()], { type: 'application/javascript' }));
+    try {
+      await ctx.audioWorklet.addModule(url);
+      const node = new AudioWorkletNode(ctx, 'probe');
+      const msg = await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('keine Antwort in 3 s')), 3000);
+        node.port.onmessage = (e) => { clearTimeout(t); resolve(e.data); };
+      });
+      mark('worklet', 'ja', 'addModule(blob:) angenommen, Prozessor meldet sich');
+      mark('perf', msg.hasPerf ? 'ja' : 'nein',
+        msg.hasPerf ? 'Uhr im Worklet vorhanden' : 'wie erwartet nicht vorhanden — Ersatzmessung nötig');
+      node.disconnect();
+    } catch (err) {
+      mark('worklet', 'nein', (err && err.name) + ': ' + (err && err.message));
+      mark('perf', 'nein', 'ohne Worklet nicht prüfbar');
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function checkCapacity() {
+    const has = !!(ctx.renderCapacity && typeof ctx.renderCapacity.start === 'function');
+    if (!has) { mark('capacity', 'nein', 'nicht vorhanden — Ersatzmessung über ctx.currentTime'); return; }
+    try {
+      ctx.renderCapacity.addEventListener('update', (ev) => {
+        state.capacity.detail = 'averageLoad ' + (ev.averageLoad ?? '?')
+          + ' · peakLoad ' + (ev.peakLoad ?? '?')
+          + ' · underrunRatio ' + (ev.underrunRatio ?? '?');
+        el('det-capacity').textContent = state.capacity.detail;
+        render();
+      });
+      ctx.renderCapacity.start({ updateInterval: 1 });
+      mark('capacity', 'ja', 'gestartet, wartet auf erste Meldung');
+    } catch (err) {
+      mark('capacity', 'teilweise', 'vorhanden, start() scheitert: ' + (err && err.name));
+    }
+  }
+
+  // Vierklang a-cis-e-a mit leichtem Vibrato — näher an Chorstimmen als ein
+  // einzelner Sinus, und lang genug, um Stottern zu hören.
+  function chord(sr, seconds) {
+    const n = Math.round(sr * seconds);
+    const left = new Float32Array(n), right = new Float32Array(n);
+    const partials = [220, 277.18, 329.63, 440];
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const env = Math.min(1, t / 0.05) * Math.min(1, (seconds - t) / 0.2);
+      let v = 0;
+      for (let p = 0; p < partials.length; p++) {
+        const vib = 1 + 0.003 * Math.sin(2 * Math.PI * (4.5 + p * 0.3) * t);
+        v += Math.sin(2 * Math.PI * partials[p] * vib * t) / partials.length;
+      }
+      left[i] = v * env * 0.7;
+      right[i] = v * env * 0.7;
+    }
+    return [left, right];
+  }
+
+  async function checkStretch() {
+    if (typeof SignalsmithStretch !== 'function') {
+      mark('stretch', 'nein', 'globales SignalsmithStretch fehlt — Skript nicht geladen');
+      return false;
+    }
+    try {
+      stretchNode = await SignalsmithStretch(ctx);
+      stretchNode.connect(ctx.destination);
+      mark('stretch', 'ja', 'AudioWorklet-Knoten steht, WASM ohne Netzzugriff aus der eingebetteten data:-URI');
+      el('listen-sec').hidden = false;
+      return true;
+    } catch (err) {
+      mark('stretch', 'nein', (err && err.name) + ': ' + (err && err.message));
+      return false;
+    }
+  }
+
+  function startRealtimeMeter() {
+    if (rtTimer) return;
+    rtPrev = { audio: ctx.currentTime, wall: performance.now() };
+    rtTimer = setInterval(() => {
+      const wall = performance.now(), audio = ctx.currentTime;
+      const dw = (wall - rtPrev.wall) / 1000, da = audio - rtPrev.audio;
+      rtPrev = { audio, wall };
+      if (dw <= 0) return;
+      const pct = Math.round((da / dw) * 100);
+      el('rt').textContent = pct + ' %';
+      el('rt').style.color = pct < 97 ? 'var(--bad)' : 'var(--ok)';
+      state.realtime = pct;
+      render();
+    }, 700);
+  }
+
+  async function play(rate) {
+    if (!stretchNode) return;
+    try {
+      stretchNode.stop();
+      const [l, r] = chord(ctx.sampleRate, 4);
+      stretchNode.addBuffers([l, r]);
+      stretchNode.schedule({ rate, semitones: 0, formantCompensation: false, input: 0 });
+      stretchNode.start();
+      startRealtimeMeter();
+      mark('audible', 'ja', 'zuletzt gespielt: ' + rate.toFixed(2) + '× — bitte hören, ob es sauber klingt');
+    } catch (err) {
+      mark('audible', 'nein', (err && err.name) + ': ' + (err && err.message));
+    }
+  }
+
+  function render() {
+    const lines = [];
+    lines.push('BVG Audio-Prüfstand — ' + new Date().toISOString());
+    lines.push('UA: ' + navigator.userAgent);
+    lines.push('Kerne: ' + (navigator.hardwareConcurrency ?? '?')
+      + '   Speicher: ' + (navigator.deviceMemory ?? '?'));
+    if (ctx) {
+      lines.push('Abtastrate: ' + ctx.sampleRate
+        + '   baseLatency: ' + (ctx.baseLatency ?? '?')
+        + '   outputLatency: ' + (ctx.outputLatency ?? '?'));
+      lines.push('Frist je Render-Quantum: ' + (128 / ctx.sampleRate * 1000).toFixed(2) + ' ms');
+    }
+    lines.push('');
+    for (const [key, label] of CHECKS) {
+      const s = state[key];
+      lines.push(label.padEnd(38, ' ') + s.status + (s.detail ? '   [' + s.detail + ']' : ''));
+    }
+    if (state.realtime != null) lines.push('', 'Echtzeit während der Wiedergabe: ' + state.realtime + ' %');
+    el('out').textContent = lines.join('\n');
+  }
+
+  el('start').addEventListener('click', async () => {
+    const btn = el('start');
+    btn.disabled = true;
+    btn.textContent = 'Prüfung läuft …';
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      await ctx.resume();
+      el('f-sr').textContent = ctx.sampleRate + ' Hz';
+      el('f-lat').textContent = 'base ' + (ctx.baseLatency ?? '?') + ' · output ' + (ctx.outputLatency ?? '?');
+      await checkWasm();
+      await checkWorklet();
+      checkCapacity();
+      await checkStretch();
+      btn.textContent = 'Prüfung abgeschlossen';
+      el('hint').textContent = 'Fertig. Unten die Hörprobe, danach das Ergebnis kopieren.';
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Nochmal versuchen';
+      el('hint').textContent = 'Fehlgeschlagen: ' + (err && err.name) + ' — ' + (err && err.message);
+    }
+    render();
+  });
+
+  el('play1').addEventListener('click', () => play(1.0));
+  el('play06').addEventListener('click', () => play(0.6));
+
+  el('copy').addEventListener('click', async () => {
+    const btn = el('copy');
+    try {
+      await navigator.clipboard.writeText(el('out').textContent);
+      btn.textContent = 'Kopiert';
+    } catch {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el('out'));
+      sel.removeAllRanges(); sel.addRange(range);
+      btn.textContent = 'Markiert — von Hand kopieren';
+    }
+    setTimeout(() => { btn.textContent = 'Ergebnis kopieren'; }, 2500);
+  });
+
+  facts();
+  render();
+})();
+</script>
