@@ -7772,7 +7772,12 @@ class HqPitchShifter {
     this.ringSize = this.N * 4;
     this.synthRing = new Float32Array(this.ringSize);
 
-    this.inFifo = [];
+    // Vorbelegter Ringpuffer statt JS-Array: Ha bleibt immer <= Hs = N/4, ein
+    // Quantum liefert normalerweise 128 Samples nach — reichlich Reserve
+    // gegenüber N, auch wenn mehrere Quanten anfallen, bevor ein Frame reif
+    // ist. `inFifoLen` zählt die gültigen Samples ab Index 0.
+    this.inFifo = new Float32Array(this.N);
+    this.inFifoLen = 0;
     this.analysisWin = new Float32Array(this.N);
     this.prevPhase = new Float64Array(this.half + 1);
     this.synthPhase = new Float64Array(this.half + 1);
@@ -7797,6 +7802,9 @@ class HqPitchShifter {
     this._phase = new Float64Array(this.half + 1);
     this._framePhase = new Float64Array(this.half + 1);
     this._nearestPeak = new Int32Array(this.half + 1);
+    // Höchstens half+1 Bins können Spitze sein — Zähler statt Array-Länge.
+    this._peaks = new Int32Array(this.half + 1);
+    this._peakCount = 0;
   }
 
   setShift(k) {
@@ -7810,7 +7818,7 @@ class HqPitchShifter {
   }
 
   reset() {
-    this.inFifo.length = 0;
+    this.inFifoLen = 0;
     this.analysisWin.fill(0);
     this.synthRing.fill(0);
     this.prevPhase.fill(0);
@@ -7820,10 +7828,14 @@ class HqPitchShifter {
     this.underrunSamples = 0;
   }
 
-  /** Lokale Maxima im Betragsspektrum (±2 Nachbarn) als Ankerpunkte für die Phasenkopplung. */
+  /**
+   * Lokale Maxima im Betragsspektrum (±2 Nachbarn) als Ankerpunkte für die
+   * Phasenkopplung. Schreibt in das vorbelegte `_peaks` statt ein neues
+   * Array anzulegen und liefert die Anzahl gültiger Einträge zurück.
+   */
   findPeaks() {
-    const mag = this._mag, half = this.half;
-    const peaks = [];
+    const mag = this._mag, half = this.half, peaks = this._peaks;
+    let count = 0;
     for (let b = 0; b <= half; b++) {
       const m = mag[b];
       let isPeak = true;
@@ -7833,10 +7845,11 @@ class HqPitchShifter {
         if (nb < 0 || nb > half) continue; // fehlende Randnachbarn zählen nicht gegen den Kandidaten
         if (mag[nb] > m) { isPeak = false; break; }
       }
-      if (isPeak) peaks.push(b);
+      if (isPeak) peaks[count++] = b;
     }
-    if (!peaks.length) peaks.push(0); // z.B. Stille — sonst bliebe kein Bin zugeordnet
-    return peaks;
+    if (count === 0) peaks[count++] = 0; // z.B. Stille — sonst bliebe kein Bin zugeordnet
+    this._peakCount = count;
+    return count;
   }
 
   /** Verarbeitet einen Frame aus `this.analysisWin`, legt das Ergebnis per Overlap-Add im Ring ab. */
@@ -7853,11 +7866,13 @@ class HqPitchShifter {
       phase[b] = Math.atan2(im[b], re[b]);
     }
 
-    const peaks = this.findPeaks();
+    const peakCount = this.findPeaks();
+    const peaks = this._peaks;
     const synthPhase = this.synthPhase, prevPhase = this.prevPhase;
     // Nur die Spitzen bekommen den echten Phasenvocoder-Fortschritt
     // (Phasenableitung → wahre Frequenz → Synthesephase).
-    for (const p of peaks) {
+    for (let pk = 0; pk < peakCount; pk++) {
+      const p = peaks[pk];
       const dphi = hqPrincipalAngle(phase[p] - prevPhase[p] - Ha * omega[p]);
       const trueFreq = omega[p] + dphi / Ha;
       synthPhase[p] = synthPhase[p] + Hs * trueFreq;
@@ -7869,7 +7884,7 @@ class HqPitchShifter {
     const nearestPeak = this._nearestPeak;
     let pi = 0;
     for (let b = 0; b <= half; b++) {
-      while (pi < peaks.length - 1 && Math.abs(peaks[pi + 1] - b) < Math.abs(peaks[pi] - b)) pi++;
+      while (pi < peakCount - 1 && Math.abs(peaks[pi + 1] - b) < Math.abs(peaks[pi] - b)) pi++;
       nearestPeak[b] = peaks[pi];
     }
     const framePhase = this._framePhase;
@@ -7930,24 +7945,40 @@ class HqPitchShifter {
   /**
    * Verschiebt `input` in Originaltonhöhe zurück; die Ausgabe ist exakt so
    * lang wie die Eingabe (Echtzeit 1:1 — das Zeitdehnen passiert schon im
-   * <audio>-Element, hier wird nur die Tonhöhe zurückgeschoben).
+   * <audio>-Element, hier wird nur die Tonhöhe zurückgeschoben). Schreibt in
+   * das mitgegebene `output` statt ein neues Array anzulegen — im Audio-
+   * Thread darf pro Quantum nichts allokiert werden. Fehlt `output` (nur in
+   * den Selbsttests, siehe runSelfTests: der Audio-Thread nimmt diesen
+   * Zweig nie), legt die Methode selbst eins an.
    */
-  process(input) {
+  process(input, output) {
     const n = input.length;
-    const output = new Float32Array(n);
+    if (!output) output = new Float32Array(n);
     if (this.shift === 1) {
       // Normalfall bei 1,0×: reines Durchreichen, kein FFT — muss messbar
       // nichts kosten.
       output.set(input);
       return output;
     }
-    for (let i = 0; i < n; i++) this.inFifo.push(input[i]);
-    const Ha = this.Ha, N = this.N;
-    while (this.inFifo.length >= Ha) {
-      this.analysisWin.copyWithin(0, Ha);
-      for (let i = 0; i < Ha; i++) this.analysisWin[N - Ha + i] = this.inFifo[i];
-      this.inFifo.splice(0, Ha);
-      this.processFrame();
+    // In Portionen füllen statt in einem Rutsch: der Ringpuffer ist auf N
+    // Samples begrenzt, im Audio-Thread trifft pro Aufruf aber ohnehin nur
+    // ein Render-Quantum (128 Samples) ein, weit darunter. Nur die
+    // Selbsttests rufen process() mit sehr viel größeren Eingaben auf einen
+    // Schlag auf — ohne die Portionierung liefe der Puffer über.
+    const inFifo = this.inFifo, Ha = this.Ha, N = this.N;
+    let readPos = 0;
+    while (readPos < n) {
+      const room = N - this.inFifoLen;
+      const take = Math.min(room, n - readPos);
+      for (let i = 0; i < take; i++) inFifo[this.inFifoLen++] = input[readPos + i];
+      readPos += take;
+      while (this.inFifoLen >= Ha) {
+        this.analysisWin.copyWithin(0, Ha);
+        for (let i = 0; i < Ha; i++) this.analysisWin[N - Ha + i] = inFifo[i];
+        inFifo.copyWithin(0, Ha, this.inFifoLen);
+        this.inFifoLen -= Ha;
+        this.processFrame();
+      }
     }
     for (let i = 0; i < n; i++) output[i] = this.readOutput();
     return output;
@@ -7981,6 +8012,10 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     this.loadSum = 0;
     this.loadMax = 0;
     this.loadCount = 0;
+    // Wiederverwendeter Stille-Block statt neuem Float32Array je fehlendem
+    // Eingang und Quantum — bleibt unangetastet immer auf 0, wird also nie
+    // neu genullt.
+    this._silence = null;
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'shift') {
@@ -8006,6 +8041,11 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     }
   }
 
+  silence(len) {
+    if (!this._silence || this._silence.length !== len) this._silence = new Float32Array(len);
+    return this._silence;
+  }
+
   process(inputs, outputs) {
     const input = inputs[0];
     const output = outputs[0];
@@ -8020,9 +8060,9 @@ class HqShiftProcessor extends AudioWorkletProcessor {
 
     const t0 = this.hasPerf ? performance.now() : 0;
     for (let ch = 0; ch < output.length; ch++) {
-      const src = (input && (input[ch] || input[0])) || new Float32Array(output[ch].length);
+      const src = (input && (input[ch] || input[0])) || this.silence(output[ch].length);
       const shifter = this.shifters[ch];
-      output[ch].set(shifter.process(src));
+      shifter.process(src, output[ch]);
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
     }
