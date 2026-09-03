@@ -4861,11 +4861,12 @@ const STRINGS = {
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Roh',
     'settings.perf.hqHint': 'HQ rechnet den Klang selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, wieder auf Standard stellen.',
-    'settings.perf.rawHint': 'Roh nur zum Ausprobieren: verlangsamt wie HQ, korrigiert die Tonhöhe aber nicht — sie fällt hörbar ab. Zeigt, ob ein Problem an der Tonhöhenkorrektur liegt oder grundsätzlicher ist.',
+    'settings.perf.rawHint': 'Roh verlangsamt wie HQ, korrigiert die Tonhöhe aber nicht — sie fällt hörbar ab. Zeigt, ob ein Problem an der Tonhöhenkorrektur liegt oder grundsätzlicher ist. Zugleich die Vergleichsmessung: dieselbe Anzeige wie bei HQ, nur ohne Tonhöhenkorrektur.',
     'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt HQ nicht — Standard und Roh funktionieren trotzdem.',
     'settings.perf.hqLoadLabel': 'Rechenlast:',
     'settings.perf.hqLoadAvg': 'im Mittel,',
     'settings.perf.hqLoadPeak': 'in der Spitze —',
+    'settings.perf.hqLoadDropoutRate': 'Aussetzerquote:',
     'settings.perf.hqLoadUnderruns': 'Aussetzer:',
     'settings.perf.hqLoadFallbackLabel': 'Wiedergabetempo:',
     'settings.perf.hqLoadFallbackSuffix': 'der Echtzeit',
@@ -5081,11 +5082,12 @@ const STRINGS = {
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Raw',
     'settings.perf.hqHint': 'HQ recalculates the sound itself instead of leaving it to the browser — noticeably cleaner on sustained notes. Costs more processing power in return. If playback stutters on an older phone or it gets warm, switch back to Standard.',
-    'settings.perf.rawHint': "Raw is for testing only: slows down like HQ but doesn't correct the pitch — it noticeably drops. Shows whether a problem is in the pitch correction or more fundamental.",
+    'settings.perf.rawHint': "Raw slows down like HQ but doesn't correct the pitch — it noticeably drops. Shows whether a problem is in the pitch correction or more fundamental. Also the comparison measurement: the same display as HQ, just without pitch correction.",
     'settings.perf.hqUnsupported': "This device doesn't support HQ — Standard and Raw still work.",
     'settings.perf.hqLoadLabel': 'Load:',
     'settings.perf.hqLoadAvg': 'average,',
     'settings.perf.hqLoadPeak': 'peak —',
+    'settings.perf.hqLoadDropoutRate': 'Dropout rate:',
     'settings.perf.hqLoadUnderruns': 'Dropouts:',
     'settings.perf.hqLoadFallbackLabel': 'Playback speed:',
     'settings.perf.hqLoadFallbackSuffix': 'of real time',
@@ -5301,11 +5303,12 @@ const STRINGS = {
     'settings.perf.modeHq': 'HQ',
     'settings.perf.modeRaw': 'Surowy',
     'settings.perf.hqHint': 'HQ sam przelicza dźwięk, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długich dźwiękach. Kosztuje to więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina na starszym telefonie albo się nagrzewa, wróć do Standardu.',
-    'settings.perf.rawHint': 'Surowy tylko do testów: spowalnia jak HQ, ale nie koryguje wysokości dźwięku — wyraźnie spada. Pokazuje, czy problem tkwi w korekcie wysokości dźwięku, czy jest bardziej fundamentalny.',
+    'settings.perf.rawHint': 'Surowy spowalnia jak HQ, ale nie koryguje wysokości dźwięku — wyraźnie spada. Pokazuje, czy problem tkwi w korekcie wysokości dźwięku, czy jest bardziej fundamentalny. To zarazem pomiar porównawczy: ten sam wskaźnik co w HQ, tylko bez korekty wysokości dźwięku.',
     'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje HQ — Standard i Surowy nadal działają.',
     'settings.perf.hqLoadLabel': 'Obciążenie:',
     'settings.perf.hqLoadAvg': 'średnio,',
     'settings.perf.hqLoadPeak': 'szczyt —',
+    'settings.perf.hqLoadDropoutRate': 'Wskaźnik przerw:',
     'settings.perf.hqLoadUnderruns': 'Przerwy:',
     'settings.perf.hqLoadFallbackLabel': 'Tempo odtwarzania:',
     'settings.perf.hqLoadFallbackSuffix': 'czasu rzeczywistego',
@@ -7472,9 +7475,20 @@ function renderSlowMode() {
   updateHqLoadVisibility();
 }
 
-// Letzte Meldung der Ersatzmessung ohne performance.now() (siehe
-// hqCreateNode) — für den Wanduhr-Vergleich zwischen zwei Meldungen.
+// Ersatzmessung ohne AudioContext.renderCapacity (Abschnitt 2.2): reiner
+// Hauptseiten-Zähler, ctx.currentTime gegen performance.now(), ohne
+// Beteiligung des Worklets — funktioniert deshalb in allen drei Modi.
 let hqLoadFallbackPrev = null;
+let hqLoadFallbackTimer = null;
+// Ob renderCapacity gerade läuft, um start()/stop() nicht doppelt bzw. ohne
+// vorheriges start() aufzurufen.
+let hqRenderCapacityStarted = false;
+// Die Feldnamen einmal gegen die Wirklichkeit loggen (Abschnitt 2.1), nicht
+// bei jedem update-Ereignis erneut.
+let hqRenderCapacityFieldsLogged = false;
+// Letzter vom Worklet gemeldeter Aussetzerzähler — nur in HQ befüllt (siehe
+// hqCreateNode), sonst läuft dort kein Worklet, das etwas zu melden hätte.
+let hqLastWorkletUnderruns = null;
 
 function renderHqLoadText(text, danger) {
   const node = $('#hq-load');
@@ -7483,18 +7497,68 @@ function renderHqLoadText(text, danger) {
 }
 
 /**
- * Die Lastanzeige (Abschnitt 1.3) soll niemanden verunsichern, der die
- * Funktion gar nicht benutzt: nur sichtbar, solange HQ aktiv ist und eine
- * Wiedergabe läuft — bei Raw läuft das Worklet gar nicht erst mit, da gibt
- * es nichts zu melden. Wird sie versteckt, verwirft sie auch den
- * Bezugspunkt der Ersatzmessung — sonst würde die nächste Meldung nach einer
- * Pause die stehende Zeit als Überlastung missdeuten.
+ * Reiner Hauptseiten-Tick der Ersatzmessung (Abschnitt 2.2): beide Werte
+ * (ctx.currentTime, performance.now()) werden im selben Moment gelesen —
+ * eine Verzögerung der Hauptseite verschiebt beide gleichermaßen und kürzt
+ * sich weg. Anders als die frühere, über das Worklet vermittelte Messung
+ * (die erst beim Empfang der Nachricht Zeit nahm) unterschätzt das die
+ * Echtzeitfähigkeit nicht mehr systematisch.
+ */
+function tickHqLoadFallback() {
+  const ctx = Audio.ctx;
+  if (!ctx || !hqLoadFallbackPrev) return;
+  const nowWall = performance.now();
+  const nowAudio = ctx.currentTime;
+  const wallS = (nowWall - hqLoadFallbackPrev.wall) / 1000;
+  const audioS = nowAudio - hqLoadFallbackPrev.audio;
+  hqLoadFallbackPrev = { audio: nowAudio, wall: nowWall };
+  if (wallS <= 0) return;
+  const pct = Math.round((audioS / wallS) * 100);
+  dlog('hq:load', { fallback: true, realtimePct: pct });
+  renderHqLoadText(`${t('settings.perf.hqLoadFallbackLabel')} ${pct}% ${t('settings.perf.hqLoadFallbackSuffix')}`, pct < 97);
+}
+
+/** Startet die Lastmessung — renderCapacity, wo vorhanden, sonst die Ersatzmessung. */
+function startHqLoadMeasurement() {
+  const ctx = Audio.ctx;
+  if (!ctx) return;
+  if (ctx.renderCapacity && !hqRenderCapacityStarted) {
+    ctx.renderCapacity.start({ updateInterval: 1 });
+    hqRenderCapacityStarted = true;
+  } else if (!ctx.renderCapacity && !hqLoadFallbackTimer) {
+    hqLoadFallbackPrev = { audio: ctx.currentTime, wall: performance.now() };
+    hqLoadFallbackTimer = setInterval(tickHqLoadFallback, 1000);
+  }
+}
+
+/** Stoppt die Lastmessung und verwirft ihren Bezugspunkt. */
+function stopHqLoadMeasurement() {
+  const ctx = Audio.ctx;
+  if (ctx?.renderCapacity && hqRenderCapacityStarted) {
+    ctx.renderCapacity.stop();
+    hqRenderCapacityStarted = false;
+  }
+  if (hqLoadFallbackTimer) {
+    clearInterval(hqLoadFallbackTimer);
+    hqLoadFallbackTimer = null;
+  }
+  hqLoadFallbackPrev = null;
+}
+
+/**
+ * Die Lastanzeige (Abschnitt 2.3) soll niemanden verunsichern, der die
+ * Funktion gar nicht benutzt: nur sichtbar, solange eine Wiedergabe läuft
+ * und der AudioContext steht — unabhängig vom Modus, damit sich
+ * Standard/HQ/Roh mit demselben Maßstab vergleichen lassen (Roh ist die
+ * Nulllinie des Geräts). Startet bzw. stoppt hier auch die Messung selbst,
+ * statt das an jeder Aufrufstelle einzeln zu verdrahten.
  */
 function updateHqLoadVisibility() {
   const node = $('#hq-load');
-  const visible = !!(settings.slowMode === 'hq' && Audio.playing && Audio.hqNode);
-  node.hidden = !visible;
-  if (!visible) hqLoadFallbackPrev = null;
+  const active = !!(Audio.playing && Audio.ctx);
+  node.hidden = !active;
+  if (active) startHqLoadMeasurement();
+  else stopHqLoadMeasurement();
 }
 
 $$('#slow-mode .preset').forEach((btn) => {
@@ -8238,33 +8302,18 @@ async function hqCreateNode(ctx) {
     });
     node.port.onmessage = (e) => {
       const m = e.data;
-      if (m.type === 'load') {
-        const avg = Math.round(m.avgPct);
-        const max = Math.round(m.maxPct);
-        dlog('hq:load', { avgPct: avg, maxPct: max, underruns: m.underruns, shift: m.shift });
-        renderHqLoadText(
-          `${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${max}% ${t('settings.perf.hqLoadPeak')} ${t('settings.perf.hqLoadUnderruns')} ${m.underruns}`,
-          max > 100,
-        );
-        updateHqLoadVisibility();
-      } else if (m.type === 'loadFallback') {
-        // Ersatzmessung ohne performance.now() im Worklet (siehe
-        // hqBuildWorkletSource): der Vergleich mit der Wanduhr passiert hier
-        // auf der Hauptseite, wo performance.now() verlässlich ist.
-        const now = performance.now();
-        let pct = null;
-        if (hqLoadFallbackPrev) {
-          const wallMs = now - hqLoadFallbackPrev.wall;
-          const audioMs = ((m.frame - hqLoadFallbackPrev.frame) / (ctx.sampleRate || 48000)) * 1000;
-          if (wallMs > 0) pct = (audioMs / wallMs) * 100;
-        }
-        hqLoadFallbackPrev = { frame: m.frame, wall: now };
-        if (pct !== null) {
-          const p = Math.round(pct);
-          dlog('hq:load', { fallback: true, realtimePct: p, underruns: m.underruns });
-          renderHqLoadText(`${t('settings.perf.hqLoadFallbackLabel')} ${p}% ${t('settings.perf.hqLoadFallbackSuffix')}`, p < 97);
-          updateHqLoadVisibility();
-        }
+      // 'load' und 'loadFallback' unterscheiden sich nur darin, ob im
+      // Worklet performance.now() zur Verfügung stand (hasPerf, siehe
+      // hqBuildWorkletSource) — für die Anzeige ist das inzwischen
+      // gleichgültig: die eigentliche Lastmessung liefert jetzt
+      // renderCapacity bzw. die Ersatzmessung über ctx.currentTime (Abschnitt
+      // 2), beide ohne Zutun des Worklets. Von hier interessiert nur noch
+      // der Aussetzerzähler, den ausschließlich das Worklet kennt — nur in
+      // HQ ungleich null, weil dort sonst kein Worklet mitläuft (Abschnitt
+      // 1.5).
+      if (m.type === 'load' || m.type === 'loadFallback') {
+        hqLastWorkletUnderruns = m.underruns;
+        dlog('hq:workletLoad', { underruns: m.underruns, shift: m.shift });
       } else if (m.type === 'started') {
         dlog('hq:worklet', { hasPerf: m.hasPerf, sampleRate: m.sampleRate });
       } else if (m.type === 'shiftAck') {
@@ -8457,6 +8506,32 @@ async function audioInit() {
     applyHqMode(); // verdrahtet elSource -> hqNode -> splitter oder elSource -> splitter direkt
     audioApplyChannelMode(settings.channelMode);
     dlog('audio:route', { mode: 'matrix' });
+
+    // Lastmessung (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 2.1): Merkmalsprüfung
+    // statt Versionsprüfung — Chrome liefert renderCapacity seit Version 111.
+    // Der Listener wird einmal je ctx angelegt, start()/stop() steuert
+    // updateHqLoadVisibility() je nach Wiedergabestatus.
+    if (ctx.renderCapacity && typeof ctx.renderCapacity.start === 'function') {
+      ctx.renderCapacity.addEventListener('update', (ev) => {
+        if (!hqRenderCapacityFieldsLogged) {
+          hqRenderCapacityFieldsLogged = true;
+          dlog('hq:renderCapacityFields', {
+            keys: Object.keys(ev).join(','),
+            averageLoad: ev.averageLoad, peakLoad: ev.peakLoad, underrunRatio: ev.underrunRatio,
+          });
+        }
+        const avg = Math.round((ev.averageLoad || 0) * 100);
+        const peak = Math.round((ev.peakLoad || 0) * 100);
+        const underrunPct = Math.round((ev.underrunRatio || 0) * 100);
+        dlog('hq:load', { avgPct: avg, peakPct: peak, underrunPct });
+        const parts = [`${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${peak}% ${t('settings.perf.hqLoadPeak')}`];
+        if (underrunPct > 0) parts.push(`${t('settings.perf.hqLoadDropoutRate')} ${underrunPct}%`);
+        if (settings.slowMode === 'hq' && hqLastWorkletUnderruns !== null) {
+          parts.push(`${t('settings.perf.hqLoadUnderruns')} ${hqLastWorkletUnderruns}`);
+        }
+        renderHqLoadText(parts.join(' · '), (ev.peakLoad || 0) > 1);
+      });
+    }
 
     // Läuft das Element durch die Matrix, kommt kein Ton mehr durch, sobald
     // dieser Kontext angehalten wird — auch wenn `el.paused` weiterhin false
@@ -8703,8 +8778,15 @@ function applyHqMode() {
     src.connect(Audio.channelIn);
   }
   if (Audio.hqNode) {
-    if (useHq && Audio.channelIn) Audio.hqNode.connect(Audio.channelIn);
-    else Audio.hqNode.disconnect();
+    if (useHq && Audio.channelIn) {
+      Audio.hqNode.connect(Audio.channelIn);
+    } else {
+      Audio.hqNode.disconnect();
+      // Außerhalb von HQ läuft kein Worklet mehr mit, das den Zähler
+      // aktualisieren könnte — sonst bliebe ein veralteter Wert aus dem
+      // vorigen HQ-Durchlauf in der Anzeige stehen (Abschnitt 2.3).
+      hqLastWorkletUnderruns = null;
+    }
   }
 }
 
