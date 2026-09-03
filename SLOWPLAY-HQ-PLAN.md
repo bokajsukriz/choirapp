@@ -626,7 +626,15 @@ pro Frame und Kanal 1025-mal `hypot` **und** 1025-mal `atan2` **und**
 ## Vorgehen — in dieser Reihenfolge
 
 **Schritt 0 — erledigt.** Schalter auf Standard aus, Hinweistext als Versuch
-markiert, `SW_VERSION` auf `v113`.
+markiert, `SW_VERSION` hochgezählt.
+
+Dazu eine **einmalige Rücknahme** in `loadSettings()`: Der geänderte Standard
+allein reicht nicht, weil `saveSettings()` immer das gesamte Objekt schreibt —
+auf jeder Installation, die während der kaputten Version irgendeine Einstellung
+angefasst hat, steht `hqSlowdown: true` bereits gespeichert. Der Merker
+`hqSlowdownReset` sorgt dafür, dass genau einmal zurückgenommen wird; wer die
+Funktion danach bewusst wieder einschaltet, behält sie. Alle drei Fälle im
+Browser geprüft (frische Installation, Altbestand, bewusstes Wiedereinschalten).
 
 **Schritt 1 — auf dem Gerät messen statt raten.** Ohne Zahlen vom Pixel 9
 bleibt jede Optimierung Stochern. Der Worklet misst seine eigene `process()`-

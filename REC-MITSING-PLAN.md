@@ -370,3 +370,29 @@ Mindestens am Rechner durchspielen:
 - Kein manueller Versatz-Regler. Wenn sich in der Praxis zeigt, dass der Anker
   systematisch danebenliegt, ist das ein eigener, späterer Schritt — bau ihn
   nicht auf Verdacht ein.
+
+---
+
+## 5. Nachtrag — der Versatz, den die Praxis gezeigt hat
+
+Die erste Fassung lief so weit neben der Aufnahme, dass die Funktion nichts
+brachte. Drei Ursachen, alle behoben; der in Abschnitt 4 aufgeschobene
+Versatz-Regler ist damit fällig geworden und eingebaut:
+
+1. **Der Anker las den falschen Stand.** `Audio.position` ist nur der
+   Zwischenstand des letzten `timeupdate` und bis zu einer Viertelsekunde alt.
+   Anker, Startposition und Nachregelung lesen jetzt über
+   `audioLivePosition()` direkt am Element.
+2. **Die Startposition kam vom Song davor.** In `previewRecordingBlob()` steht
+   `Audio.position` beim Aufruf von `startBacking()` noch auf der Stelle des
+   *Songs*, nicht des REC — der Hintergrund setzte an einer beliebigen Stelle
+   ein und blieb, wenn sie hinter dem Songende lag, für immer stehen
+   (`syncBacking()` stieg an einem angehaltenen Element aus). Die Regelung
+   steigt jetzt auch aus dem Stand wieder ein und hält an, solange die
+   Sollposition außerhalb des Originals liegt.
+3. **Der Umweg fehlte in der Rechnung.** Gesungen wurde immer zu einer
+   früheren Stelle, als die REC-Zeit vermuten lässt: Ausgabelatenz zum
+   Kopfhörer plus Weg vom Mikrofon zum Recorder. Gemessen wird, was der
+   Browser hergibt (`measureBackingLatency()` → `anchor.lat`), der Rest ist
+   Handarbeit am Regler (`settings.recBackingOffsetMs`, ±500 ms, wirkt sofort
+   auf die laufende Vorschau).
