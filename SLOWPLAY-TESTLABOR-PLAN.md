@@ -1,176 +1,174 @@
-# Arbeitsanweisung — Testlabor für die Verlangsamung
+# Arbeitsanweisung — Messplatz für die Verlangsamung
 
 Adressat: Sonnet. Vorgeschichte in `SLOWPLAY-HQ-HANDOFF.md` — **lies die
-zuerst**, sie begründet, warum diese Runde nicht wieder eine Optimierung
-ist, sondern ein Messplatz.
+zuerst**. Sie begründet, warum diese Runde keine Optimierung ist.
 
 Ausgangsstand: `main` bei `2b10c33`, ausgeliefert `SW_VERSION` `v118`.
 **Immer über Funktions- und ID-Namen ansteuern, nie über Zeilennummern.**
 
 ---
 
-## Ziel
+## 0. Die Vorprüfung ist gelaufen — und sie hat schon etwas entschieden
 
-Drei Fragen sind seit fünf Runden offen, und jede einzelne entscheidet,
-ob die nächste Runde überhaupt sinnvoll ist:
+Auf dem Zielgerät (Android 10, Chrome 152, 8 Kerne, 48 kHz) gemessen:
 
-1. **Ist HQ hörbar besser als Standard?** Nie geprüft. Wenn nein, kann die
-   ganze Funktion weg.
-2. **Ist der Render-Thread der langsame Ort — oder das Gerät?** Das Worklet
-   arbeitet ~5 ms und schläft ~13 ms, immer wieder. Ein Frequenzregler
-   sieht darin einen fast untätigen Kern und taktet womöglich nie hoch;
-   Android legt Audio-Callbacks außerdem gern auf die kleinen Kerne.
-   Derselbe Code in einem gewöhnlichen Worker könnte auf derselben
-   Hardware deutlich schneller sein. Vermutung, nie geprüft.
-3. **Ist WASM deutlich schneller als unser JS?** Und klingt eine
-   ausgereifte Bibliothek besser als unser handgeschriebener Vocoder?
+| Prüfung | Ergebnis |
+|---|---|
+| AudioWorklet aus Blob-URL | **ja** — der Artifact-Weg trägt |
+| WebAssembly aus eingebetteten Bytes | **ja** |
+| WASM-SIMD | **ja** |
+| `signalsmith-stretch` lädt | **ja**, WASM ohne Netzzugriff aus der `data:`-URI |
+| Hörprobe 0,6× | **spielt**, und dabei **100 % der Echtzeit** |
+| `performance.now()` im Worklet | nein (wie erwartet) |
+| `AudioContext.renderCapacity` | **nein** — auf diesem Gerät gibt es sie nicht |
 
-Der Messplatz beantwortet alle drei **in einem einzigen Gerätetest** und
-liefert das Ergebnis als kopierbaren Text zurück.
+**Die vorletzte Zeile ist der Befund dieser Runde.** Unser handgeschriebener
+Vocoder schafft bei 0,6× auf demselben Gerät 65 % der Echtzeit;
+`signalsmith-stretch` schafft 100 %. Das Defizit von 35 %, an dem fünf
+Runden Handoptimierung gescheitert sind, ist bei der WASM-Bibliothek nicht
+vorhanden.
 
-## Warum ein Artifact und nicht die App
+**Was daraus noch nicht folgt** — und was der Messplatz klären soll:
 
-Der eigentliche Engpass der letzten fünf Runden war nicht die Rechenzeit,
-sondern die Rückkopplung: jede Erkenntnis über das Zielgerät kostete einen
-App-Release, einen Service-Worker-Cache-Tanz und eine Handmessung des
-Nutzers. Ein Artifact ist ein Link aufs Handy: kein Release, kein Cache,
-kein Risiko für die laufende App, und eine neue Fassung ist in Minuten
-draußen. Wenn es nichts taugt, wird es weggeworfen.
+- 100 % ist ein **Deckenwert**. Ob dahinter 5 % Reserve stehen oder 300 %,
+  sagt die Zahl nicht. Genau deshalb misst Abschnitt 2 den Durchsatz
+  *jenseits* der Decke.
+- Gemessen wurde in der **WebView der Claude-App**
+  (`…; wv) … Chrome/152 … Claude/1.260828.0`), nicht in Chrome selbst und
+  nicht in der installierten PWA. Dieselbe Engine, aber nicht dieselbe
+  Umgebung.
+- Gemessen wurde ein synthetischer Vierklang von 4 s im **Pufferbetrieb**,
+  nicht echtes Chormaterial am Live-Eingang.
+- **Über den Klang sagt sie nichts.** Ob HQ überhaupt hörbar besser ist als
+  das native Standard, ist weiterhin ungeprüft — die Frage, die diesem
+  ganzen Vorhaben zugrunde liegt.
 
-**Die App wird in dieser Runde nicht angefasst.** Kein Commit an
-`index.html`, keine `SW_VERSION`-Erhöhung, keine Änderung an
-`DEFAULT_SETTINGS`. Erst wenn der Messplatz einen Sieger zeigt, wird der
-in die App gebaut — als eigene Runde.
-
----
-
-## 0. Rahmenbedingungen des Artifact-Hosts
-
-Drei Fallen, die den Entwurf bestimmen:
-
-1. **Kein `fetch`/XHR zu irgendeinem Host.** Auch nicht zu den erlaubten
-   CDNs. Alles, was die Seite braucht, muss im HTML stehen.
-2. **Externe Skripte nur von den erlaubten CDNs** (cdnjs, jsdelivr/npm,
-   cdn.tailwindcss.com, code.jquery.com) — und *nur* Skripte, keine
-   Stylesheets, Bilder, Medien oder `.wasm`-Dateien.
-3. **16 MB Gesamtgröße.**
-
-Für unseren Fall ist das kein Problem, aber nur wegen eines glücklichen
-Umstands, siehe Abschnitt 3.
-
-**Vor allem anderen**: `artifact-design`-Skill laden, bevor die Seite
-geschrieben wird.
+`renderCapacity` fehlt endgültig. Die Ersatzmessung (`ctx.currentTime`
+gegen `performance.now()`, beide im selben Tick gelesen) ist damit das
+einzige Instrument, und sie deckelt bei 100 %. Abschnitt 2.2 sagt, wie man
+trotzdem an eine Zahl darüber kommt.
 
 ---
 
-## 1. Stufe 0 — Rauchtest (eigene Veröffentlichung, zuerst)
+## 1. Was gebaut wird, und wie schnell es laufen muss
 
-Bevor irgendetwas gebaut wird, muss geklärt sein, ob die Umgebung das
-überhaupt trägt. Eine kleine Seite, die vier Dinge prüft und anzeigt:
+Ein Artifact — ein Link aufs Telefon. Kein Release, kein
+Service-Worker-Cache, kein Risiko für die laufende App.
 
-1. Lädt ein `AudioWorklet` aus einer **Blob-URL**? (Genau das macht die App
-   in `hqCreateNode()`. Verbietet die CSP `blob:` in `script-src`,
-   scheitert der ganze Ansatz — und zwar für unseren Vocoder **und** für
-   `signalsmith-stretch`, das ebenfalls ein Worklet ist.)
-2. Läuft `WebAssembly.instantiate` aus eingebetteten Bytes?
-3. Ist **WASM-SIMD** verfügbar? (`WebAssembly.validate` eines winzigen
-   Moduls mit einer `v128`-Instruktion.)
-4. Gibt es `AudioContext.renderCapacity`? Gibt es `performance.now()` im
-   Worklet? (Beides wissen wir zu wissen — gegenprüfen kostet nichts.)
+**Zeitvorgabe: ein Antippen, unter 30 Sekunden bis zum fertigen
+Ergebnisblock.** Das ist eine Anforderung, keine Anregung. Die vorige
+Fassung dieser Anweisung sah eine Rampe vor, die K schrittweise hochfährt —
+das hätte je Engine und Tempo eine halbe Minute gedauert, macht drei
+Minuten Gesamtmessung und wird deshalb ausdrücklich **verworfen**. Der
+Nutzer hat für diese Sache schon fünf Runden Handmessung aufgewendet.
 
-**Diese Seite ist bereits gebaut und veröffentlicht:**
-https://claude.ai/code/artifact/bafa6d28-89ad-490f-8be8-effd7d50bbc6
+Drei Sparsamkeitsregeln:
 
-Sie prüft die vier Punkte, zeigt die Gerätedaten (Kerne, Abtastrate,
-Latenzen), lädt `signalsmith-stretch` und spielt einen Vierklang bei 1,0×
-und 0,6× — und legt alles als kopierbaren Textblock ab. **Frag den Nutzer
-nach diesem Block, bevor du auf irgendeiner Annahme weiterbaust.** Der
-Quelltext liegt nicht im Repo (er gehört nicht in die App); die
-Bibliothek ist dort wörtlich ins HTML eingebettet.
-
-Was der Block entscheidet:
-
-- `AudioWorklet aus Blob-URL: nein` → der Artifact-Weg trägt nicht, und
-  zwar für beide Engines. Dann bleibt nur der Einbau in die App.
-- `signalsmith-stretch lädt: nein` → Fehlermeldung lesen; womöglich
-  scheitert es an derselben CSP-Frage.
-- `WASM-SIMD: nein` → der erhoffte Faktor fällt kleiner aus; die Messung
-  in Stufe 1 sagt dann, ob es trotzdem reicht.
-- `Hörprobe spielt: ja` bei 0,6× ohne Stottern → die entscheidende
-  Vorentscheidung ist schon gefallen, bevor der Messplatz überhaupt
-  steht.
+1. **Nur 0,6× messen.** Das ist der schlimmste Fall; was dort besteht,
+   besteht überall. 0,85× und 0,7× nur hinter einem Schalter „auch die
+   anderen Tempi".
+2. **Nur zwei Engines im Pflichtlauf:** `js-mono` (der ausgelieferte Stand,
+   `HQ Mono`) und `wasm` (`signalsmith-stretch`). Das ist die
+   Entscheidungsfrage. `js-stereo` ist bekannt und gehört hinter denselben
+   Schalter.
+3. **Alles läuft automatisch nach einem Antippen.** Kein Knopf je Messung.
 
 ---
 
-## 2. Stufe 1 — Durchsatz-Messplatz
+## 2. Die Messungen
 
-Beantwortet Frage 2 und den Tempo-Teil von Frage 3. Braucht **keine**
-Audiodateien und keine Abhängigkeiten — deshalb zuerst, sie ist auf jeden
-Fall baubar.
+### 2.1 Durchsatz im Worker — roh und ungedeckelt
 
-### 2.1 Die Engines
+Ein gewöhnlicher `Worker` schiebt Testsignal in 128er-Blöcken durch die
+Engine, so schnell er kann, und misst mit `performance.now()`. Ergebnis:
+**Audiosekunden je Wanduhrsekunde**.
 
-Die Bausteine kommen **wortgleich** aus `index.html` (zwischen
-`function hqPrincipalAngle` und `function hqBuildWorkletSource`), damit
-gemessen wird, was ausgeliefert ist:
+- **Erst warmlaufen lassen** (rund 2000 Quanten), sonst misst man beim
+  JS-Vocoder den kalten JIT und benachteiligt ihn gegenüber WASM.
+- Danach **feste 2 s Wanduhrzeit** rechnen und zählen, wieviel Audio in
+  dieser Zeit fertig wurde. So ist die Dauer der Messung bekannt,
+  unabhängig davon, wie schnell die Engine ist.
 
-- `js-stereo` — zwei `HqPitchShifter`, wie `HQ` heute
-- `js-mono` — ein `HqPitchShifter`, wie `HQ Mono` heute
-- `wasm` — `signalsmith-stretch` (Abschnitt 3)
+Diese Zahl beantwortet die DVFS-Vermutung aus dem Handoff: das Worklet
+arbeitet stoßweise (~5 ms rechnen, ~13 ms schlafen) und taktet den Kern
+womöglich nie hoch, ein Worker unter Dauerlast schon.
 
-### 2.2 Die zwei Messungen
+### 2.2 Durchsatz im Worklet — mit Absicht überlasten
 
-**Im Worker — roher Durchsatz, unbegrenzt.** Der Worker schiebt 20 s
-Testsignal in 128er-Blöcken durch die Engine, so schnell er kann, und misst
-mit `performance.now()`. Ergebnis: **Audiosekunden je Wanduhrsekunde**.
-Das ist die Zahl, die die DVFS-Vermutung aus Frage 2 beantwortet.
+Im Worklet gibt es keine Uhr, und die Echtzeitmessung deckelt bei 100 %.
+Der Ausweg ist, nicht die Zeit zu messen, sondern **die Last so weit
+hochzudrehen, dass die Decke bricht**:
 
-**Im Worklet — wieviele Echtzeitströme trägt der Render-Thread?**
-`performance.now()` gibt es dort nicht, also nicht die Zeit messen, sondern
-die Last hochdrehen: die Engine verarbeitet **K parallele Ströme** je
-Quantum, K beginnt bei 1 und steigt alle 3 s um 1. Auf der Hauptseite
-läuft dabei die Echtzeitmessung (`ctx.currentTime` gegen
-`performance.now()`, beide im selben Tick gelesen). Das größte K, bei dem
-sie ≥ 99 % bleibt, ist **K_max** — die Zahl der Echtzeitströme, die dieser
-Render-Thread für diese Engine schafft. Die App braucht K_max ≥ 1; ab 2
-ist es bequem.
+> Das Worklet verarbeitet **K unabhängige Ströme** je Quantum. Läuft der
+> AudioContext dabei nur noch mit dem Anteil `p` der Echtzeit, dann trägt
+> dieser Render-Thread **K · p Echtzeitströme**.
+
+Eine einzige Messung genügt also, wenn K hoch genug gewählt ist:
+
+- K = 6 setzen, 2 s messen.
+- Kommt `p ≥ 95 %` heraus, war es nicht überlastet — **einmal** mit K = 16
+  wiederholen.
+- Mehr als zwei Durchgänge nicht. Ergebnis: `Durchsatz = K · p`, in
+  Echtzeitströmen.
 
 Für diese Messung das Frame-Budget aus Runde 3 **abschalten** (jeder
-Shifter rechnet frei) — gemessen wird der rohe Durchsatz, nicht die
+Shifter rechnet frei) — gemessen wird roher Durchsatz, nicht die
 ausgelieferte Ablaufplanung.
 
-Interessant ist der Vergleich: sagt der Worker 3,0× und das Worklet
-K_max = 1, ist bewiesen, dass der Render-Thread der langsame Ort ist — und
-dann ist die Antwort nicht weiter zu optimieren, sondern die Rechnung
-umzuziehen (Handoff §8 F/G).
+Damit kostet der Pflichtlauf: 2 Engines × (2 s Worker + höchstens 4 s
+Worklet + Warmlauf) — **gut unter 20 Sekunden**.
 
-Je Engine × Tempo (0,85× / 0,7× / 0,6×) beide Zahlen erheben.
+### 2.3 Was danach feststeht
+
+- `wasm`-Durchsatz im Worklet **≥ 2 Ströme** → die Sache ist entschieden,
+  WASM einbauen.
+- `wasm` deutlich besser als `js-mono`, aber beide unter 1,5 → auch WASM
+  ist knapp; dann zählt der Worker-Wert, und die Rechnung gehört vom
+  Audio-Thread herunter (Handoff §8 F).
+- Worker-Durchsatz **weit über** dem Worklet-Durchsatz derselben Engine →
+  der Render-Thread ist der langsame Ort, nicht das Gerät. Das ändert die
+  Architekturfrage grundlegend und ist unabhängig von WASM wertvoll.
 
 ---
 
-## 3. Stufe 2 — `signalsmith-stretch` einbauen
+## 3. Der Hörvergleich
 
-### 3.1 Was geprüft ist
+Beantwortet die Frage, die diesem Vorhaben zugrunde liegt und nie geprüft
+wurde. Selbstbestimmtes Tempo, keine Zeitvorgabe — aber **das Umschalten
+muss augenblicklich sein**, sonst vergleicht man Erinnerungen.
 
-`signalsmith-stretch@1.3.2`, **MIT**. Eine einzige selbstgenügsame
-JS-Datei (113 KB, UMD `.js` und ESM `.mjs`), und — das ist der glückliche
-Umstand aus Abschnitt 0 — **das WASM (~64 KB) steckt als
-`data:application/octet-stream;base64,`-URI in dieser Datei.**
-`findWasmBinary()` liefert die Daten-URI direkt zurück; das `fetch` in der
-Datei ist der Emscripten-Standardpfad für den Fall, dass die Binärdatei
-*keine* Daten-URI ist, und wird hier nicht betreten.
+- **Quelle:** `<input type="file" accept="audio/*">`. Die Songs liegen in
+  der IndexedDB der App, auf einem anderen Ursprung — der Messplatz kommt
+  nicht heran. Der Nutzer wählt eine seiner MP3-Dateien vom Telefon. Als
+  Rückfall ein eingebauter Vierklang, der aber für diese Frage wenig taugt:
+  Chorstimmen sind der Prüfstein.
+- **Ausschnitt:** ~15 s, ab einer wählbaren Stelle.
+- **Beide Kandidaten laufen gleichzeitig**, an derselben Stelle, und
+  umgeschaltet wird nur die Verstärkung. Kein Neuaufsetzen, kein Sprung,
+  keine Pause — sonst ist der Vergleich wertlos. Zwei Engines gleichzeitig
+  kosten Rechenzeit; das ist hier egal, gemessen wird in Abschnitt 2.
+- **Blind.** Knöpfe „A" und „B", Zuordnung ausgewürfelt, Auflösung erst
+  nach dem Urteil. Bei dieser Frage hängt zu viel davon ab.
+- **Paare, die etwas entscheiden** (je einzeln aufrufbar):
+  1. `standard` (natives `preservesPitch`) gegen `wasm` — **das ist die
+     Kernfrage.** Ist da kein Unterschied, kann HQ ersatzlos weg.
+  2. `js-mono` gegen `wasm` — lohnt der Wechsel klanglich?
+  3. `wasm` ohne gegen `wasm` mit **`formantCompensation`** — unser Vocoder
+     hat keine; bei hochgeschobenem Gesang ist das womöglich der größte
+     hörbare Unterschied überhaupt, und ohne eigenen Vergleich weiß
+     hinterher niemand, woher er kam.
 
-Folge: **kein Netzzugriff nötig.** Die Datei lässt sich wörtlich ins
-Artifact-HTML einbetten und würde später auch in der PWA offline
-funktionieren. Trotzdem zur Laufzeit gegenprüfen (Emscripten-Bauarten
-unterscheiden sich) — im Rauchtest sichtbar machen, ob das Modul ohne Netz
-hochkommt.
+---
 
-Bezugsquelle: `https://registry.npmjs.org/signalsmith-stretch` →
-`dist.tarball`, darin `package/SignalsmithStretch.js`. Version und
-SHA-256 notieren.
+## 4. `signalsmith-stretch` — was geprüft ist
 
-### 3.2 Die Schnittstelle
+`signalsmith-stretch@1.3.2`, **MIT**, eine einzige 113-KB-JS-Datei; das
+~64-KB-WASM steckt darin als `data:application/octet-stream;base64,`-URI.
+`findWasmBinary()` liefert sie direkt zurück; das `fetch` in der Datei ist
+Emscriptens Pfad für den Fall, dass die Binärdatei *keine* Daten-URI ist,
+und wird nicht betreten. Deshalb braucht die Bibliothek keinen Netzzugriff
+— sie läuft unter der CSP des Artifacts und würde später auch offline in
+der PWA laufen.
 
 ```js
 const stretch = await SignalsmithStretch(ctx);   // ein AudioNode
@@ -178,130 +176,140 @@ stretch.schedule({ rate: 0.6, semitones: 0, formantCompensation: true });
 stretch.start();
 ```
 
-Zwei Betriebsarten, und **beide gehören in den Messplatz**, weil sie für
-die App etwas ganz Verschiedenes bedeuten:
+**Zwei Betriebsarten, beide gehören in den Messplatz**, weil sie für die
+App Verschiedenes bedeuten:
 
 **(a) Live-Eingang.** Der Knoten hängt wie unser `hqNode` hinter der
 `MediaElementSource`. Das Element resampled weiter
 (`preservesPitch = false`), der Knoten schiebt die Tonhöhe zurück:
-`semitones = 12·log2(1/rate)`. `rate` wird in dieser Betriebsart ignoriert.
-Das ist der minimale Eingriff in die App — ein Knoten gegen einen anderen.
+`semitones = 12·log2(1/rate)`. `rate` wird dabei ignoriert. Minimaler
+Eingriff in die App — ein Knoten gegen einen anderen.
 
-**(b) Pufferbetrieb.** `stretch.addBuffers([...])` mit den dekodierten
-Kanälen, dann `schedule({ rate: 0.6 })`. Der Knoten dehnt selbst, das
-Element wird als Tonquelle gar nicht mehr gebraucht. Das ist der größere
-Umbau, aber er ist **in zwei Punkten besser**: kein doppeltes Resampling
-mehr (heute resampled erst das Element, dann interpoliert unser
-`readOutput()` ein zweites Mal), und `loopStart`/`loopEnd` gibt es
-eingebaut — der A-B-Loop wäre sample-genau statt „bestenfalls auf ein paar
-hundert Millisekunden", wie der Kommentar am `timeupdate`-Handler heute
-einräumt.
+**(b) Pufferbetrieb.** `addBuffers([...])` mit den dekodierten Kanälen,
+dann `schedule({ rate })`. Der Knoten dehnt selbst, das Element wird als
+Tonquelle nicht mehr gebraucht. Größerer Umbau, aber in zwei Punkten
+besser: kein doppeltes Resampling mehr (heute resampled erst das Element,
+dann interpoliert `readOutput()` ein zweites Mal), und `loopStart`/
+`loopEnd` gibt es eingebaut — der A-B-Loop wäre sample-genau statt
+„bestenfalls auf ein paar hundert Millisekunden", wie der Kommentar am
+`timeupdate`-Handler heute einräumt.
 
-Beide Betriebsarten messen, beide hörbar machen.
+Die Vorprüfung hat (b) benutzt. **(a) ist noch völlig ungemessen** und ist
+zugleich der Weg, der die App am wenigsten umbaut — also unbedingt mit
+messen.
 
-### 3.3 `formantCompensation` nicht vergessen
-
-Unser Vocoder hat keine Formantkorrektur. Beim Hochschieben von Gesang
-klingt das leicht nach Micky Maus; `signalsmith-stretch` kann es
-ausgleichen (`formantCompensation: true`, dazu `formantBaseHz` — grob 100
-für tiefe, 400 für hohe Stimmen, `0` für Tonhöhenverfolgung). Für einen
-Chor ist das womöglich der hörbar größte Unterschied überhaupt. **Als
-eigene Schaltfläche im Hörvergleich**, sonst weiß hinterher niemand, woher
-der Unterschied kam.
-
-### 3.4 Rubber Band nur als Maßstab
-
-`rubberband-web@0.2.1` ist **GPL-2.0-or-later**. Auf einer öffentlich
-gehosteten Seite ist das nicht tragbar, die App kann es nicht ausliefern.
-Als *Referenz* im privaten Messplatz ist es aber wertvoll: es gilt als das
-beste, was es gibt. Wenn `signalsmith` daneben gleich gut klingt, ist die
-Sache entschieden. **Deutlich als „nur Vergleich, nicht auslieferbar"
-beschriften.**
+`rubberband-web@0.2.1` ist **GPL-2.0-or-later**: als Klangmaßstab im
+privaten Messplatz wertvoll, auf einer öffentlich gehosteten Seite nicht
+auslieferbar. Nur einbauen, wenn Zeit bleibt, und **deutlich als „nur
+Vergleich, nicht auslieferbar" beschriften.**
 
 ---
 
-## 4. Stufe 3 — Hörvergleich
+## 5. Ausgangspunkt im Repo
 
-Beantwortet Frage 1, die wichtigste.
+`testlabor/` enthält das Gerüst der Vorprüfung, das weiterverwendet wird:
 
-- **Quelle:** `<input type="file" accept="audio/*">`. Die Songs liegen in
-  der IndexedDB der App, auf einem anderen Ursprung — der Messplatz kommt
-  nicht heran. Der Nutzer wählt eine seiner MP3-Dateien vom Telefon.
-  Fällt das aus, hilfsweise ein eingebauter synthetischer Akkord; für die
-  eigentliche Frage taugt der aber wenig, Chorstimmen sind der Prüfstein.
-- **Länge:** die ersten ~20 s reichen und halten die Seite schnell.
-- **Kandidaten:** `standard` (natives `preservesPitch`), `raw`
-  (`preservesPitch = false`, ohne Korrektur), `js-mono` (unser Vocoder),
-  `wasm` (live), `wasm` (Puffer), `wasm` + Formantkorrektur, und falls
-  eingebaut `rubberband`.
-- **Blind.** Zwei Knöpfe „A" und „B", die Zuordnung wird ausgewürfelt, der
-  Nutzer entscheidet, danach wird aufgelöst. Bei dieser Frage hängt zu
-  viel davon ab, als dass eine beschriftete Umschaltung genügt — wir haben
-  fünf Runden auf einer ungeprüften Annahme gebaut, jetzt soll sie richtig
-  geprüft werden.
-- **Umschalten ohne Lücke**, an derselben Stelle im Stück, sonst
-  vergleicht man Zufälligkeiten.
+- `pruefstand.kopf.html` — Markup und Stile (Telefon-Layout, hell/dunkel,
+  Prüfzeilen, Ergebnisblock)
+- `pruefstand.fuss.html` — die Messlogik der Vorprüfung
+- `bauen.py` — holt `signalsmith-stretch`, bettet es ein, schreibt
+  `pruefstand.html`; gibt Version, Lizenz und SHA-256 aus
+
+```
+python3 testlabor/bauen.py
+```
+
+Die Bibliothek liegt bewusst **nicht** im Repo — sie wird beim Bauen
+geholt. Version, Lizenz und SHA-256 gehören in die Messnotiz.
+
+Vor dem Schreiben der Seite den **`artifact-design`-Skill laden**.
 
 ---
 
-## 5. Die Ergebnisausgabe — der eigentliche Zweck
+## 6. Bauen **und prüfen** — das ist neu und nicht verhandelbar
 
-Am Ende **eine Schaltfläche „Ergebnisse kopieren"**, die alles als einen
-Textblock in die Zwischenablage legt, den der Nutzer in den Chat einfügt:
+Bisher ging jede Fassung ungetestet aufs Telefon des Nutzers. Das hört
+hier auf: in dieser Umgebung ist **Chromium samt Playwright vorinstalliert**
+(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, kein
+`playwright install` nötig).
+
+Vor dem Veröffentlichen die fertige Seite lokal aufrufen und durchfahren:
+
+1. Seite laden, **Konsole muss sauber sein** — jede Ausnahme ist ein Fehler.
+2. Den Startknopf betätigen (headless braucht
+   `--autoplay-policy=no-user-gesture-required`).
+3. Prüfen, dass **jede Prüfzeile einen Zustand ungleich „offen"** bekommt
+   und **jede Messung eine Zahl** liefert — nicht `–`, nicht `NaN`,
+   nicht `Infinity`.
+4. Den Ergebnisblock auslesen und prüfen, dass er **vollständig** ist:
+   Gerätedaten, jede Engine, jede Messung.
+5. Die Datei-Auswahl mit einer erzeugten WAV-Datei bedienen
+   (`setInputFiles`) und prüfen, dass der Hörvergleich aufsetzt und das
+   Umschalten keine Ausnahme wirft.
+
+**Die Zahlen aus dem Headless-Lauf sind bedeutungslos** — dort hängt kein
+Audiogerät, die Echtzeitmessung misst Unsinn. Geprüft wird, dass die
+Mechanik trägt: dass gemessen *wird*, nicht was herauskommt. Genau der
+Fehler, der letzte Runde nur im Browser auftrat (ein nicht maskierter
+Backtick im Worklet-Quelltext), wäre so aufgefallen.
+
+Erst danach veröffentlichen und den Link nennen.
+
+---
+
+## 7. Der Ergebnisblock
+
+Am Ende eine Schaltfläche **„Ergebnis kopieren"**, die alles als einen
+Textblock in die Zwischenablage legt:
 
 - `navigator.userAgent`, `hardwareConcurrency`, `deviceMemory`
-- `ctx.sampleRate`, `baseLatency`, `outputLatency`
-- WASM-SIMD ja/nein, `renderCapacity` ja/nein, Blob-Worklet ja/nein
-- je Engine × Tempo: Worker-Durchsatz, K_max, Echtzeit-% bei K=1
+- `ctx.sampleRate`, `baseLatency`, `outputLatency`, Frist je Quantum
+- WASM-SIMD, `renderCapacity`, Blob-Worklet — je ja/nein
+- `signalsmith-stretch`-Version und SHA-256 des eingebetteten Standes
+- je Engine: Worker-Durchsatz, Worklet-Durchsatz (K und p mit ausgeben,
+  nicht nur das Produkt), Betriebsart
 - die Blindurteile aus dem Hörvergleich
 - Zeitstempel
 
-**Das ist der Punkt der ganzen Übung.** Fünf Runden lang war die
-Rückmeldung „96–97 %" — eine einzelne Zahl ohne Bezug, von der niemand
-wusste, welche Engine sie erzeugt hat. Ein Textblock, den man einfügen
-kann, beendet das.
+**Das ist der Zweck der ganzen Übung.** Fünf Runden lang war die
+Rückmeldung „96–97 %" — eine Zahl ohne Bezug, von der niemand wusste,
+welche Engine sie erzeugt hat.
 
 ---
 
-## 6. Bedienung auf dem Telefon
+## 8. Bedienung auf dem Telefon
 
-Es wird auf einem Handy bedient, nicht am Schreibtisch:
-
-- Große Schaltflächen, kein Hover, keine Tastaturbedienung vorausgesetzt.
-- Alles hinter einem „Start"-Knopf — ohne Nutzergeste kein Audio.
+- Große Schaltflächen, kein Hover, keine Tastatur vorausgesetzt.
+- Alles hinter einem Startknopf — ohne Nutzergeste kein Audio.
 - Hell/dunkel nach dem Gerät.
-- Messungen laufen mehrere Sekunden: Fortschritt anzeigen, sonst wirkt es
-  hängengeblieben.
-- Der Bildschirm darf während der Messung nicht ausgehen, sonst
-  drosselt das Gerät (`navigator.wakeLock`, wenn vorhanden; sonst dem
-  Nutzer sagen, er soll das Display anlassen).
+- Fortschritt anzeigen, solange gemessen wird.
+- Bildschirm anlassen (`navigator.wakeLock`, wenn vorhanden; sonst
+  hinschreiben) — ein dunkler Bildschirm drosselt das Gerät und verfälscht
+  jede Messung.
 - **Deutsch**, wie die App.
 
 ---
 
-## 7. Reihenfolge
+## 9. Reihenfolge
 
-1. Rauchtest ansehen bzw. anfordern (Abschnitt 1) — nicht auf Annahmen
-   bauen.
-2. Durchsatz-Messplatz mit den JS-Engines (Abschnitt 2). Auf jeden Fall
-   baubar, beantwortet Frage 2 allein.
-3. `signalsmith-stretch` dazu (Abschnitt 3), beide Betriebsarten.
-4. Hörvergleich (Abschnitt 4).
-5. Ergebnisausgabe (Abschnitt 5) — nicht ans Ende schieben, sie ist der
-   Zweck.
-6. Rubber Band als Maßstab, falls Zeit bleibt.
+1. Durchsatzmessung mit `js-mono` und `wasm` bei 0,6× (Abschnitt 2), lokal
+   geprüft (Abschnitt 6), veröffentlicht, Link genannt.
+2. Hörvergleich, Paar 1 zuerst — `standard` gegen `wasm` (Abschnitt 3).
+3. Der Rest: weitere Tempi, `js-stereo`, Betriebsart (a) gegen (b),
+   Formantkorrektur.
+4. Rubber Band als Maßstab, falls Zeit bleibt.
 
-Nach jeder Stufe veröffentlichen und den Link nennen. Der Nutzer soll
-nicht auf ein fertiges Gesamtwerk warten müssen — eine Stufe, die schon
-misst, ist mehr wert als drei, die noch nicht fertig sind.
+Nach jeder Stufe veröffentlichen und den Link nennen. Eine Stufe, die
+schon misst, ist mehr wert als drei, die noch nicht fertig sind.
 
-## 8. Was diese Runde nicht tut
+## 10. Was diese Runde nicht tut
 
 - **Die App nicht anfassen.** Kein `index.html`, kein `SW_VERSION`, kein
-  `DEFAULT_SETTINGS`.
-- **Nichts optimieren.** Kein 50 %-Overlap, keine weitere FFT-Arbeit. Wenn
-  der Messplatz sagt, dass WASM die Sache erledigt, war jede weitere
-  Handoptimierung verschwendet.
+  `DEFAULT_SETTINGS`. `testlabor/` ist kein App-Code und wird vom Service
+  Worker nicht zwischengespeichert.
+- **Nichts optimieren.** Kein 50-%-Overlap, keine weitere FFT-Arbeit. Wenn
+  der Messplatz sagt, dass WASM die Sache erledigt, wäre jede weitere
+  Handoptimierung verschwendet gewesen.
 - **Nichts entscheiden.** Der Messplatz liefert Zahlen und Höreindrücke.
   Was daraus folgt — WASM einbauen, HQ löschen, HQ nur bei 0,85×
   anbieten —, entscheidet der Nutzer danach.

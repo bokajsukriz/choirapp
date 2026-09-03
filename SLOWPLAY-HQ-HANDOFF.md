@@ -273,7 +273,16 @@ clock. This turns every future user test from one data point into
 calibrated numbers, and it answers the Worker hypothesis in §7 at the same
 time. Everything else should wait behind this.
 
-**C. Reconsider the no-dependency rule.** A WASM time-stretcher with SIMD
+**C. Reconsider the no-dependency rule.** — **A device probe has now made
+this the leading option.** On the target phone at 0.6×, our JS vocoder
+reaches 65 % of real time; `signalsmith-stretch` (MIT, WASM, SIMD
+available on that device) reaches 100 %. The 35 % gap that five rounds of
+hand-optimisation could not close is simply absent. See
+`SLOWPLAY-TESTLABOR-PLAN.md` §0 for the full probe result and for what it
+does *not* yet establish (100 % is a ceiling — the headroom behind it is
+unmeasured — and it says nothing about sound).
+
+**C (Fortsetzung).** A WASM time-stretcher with SIMD
 is plausibly 5–10× faster than hand-written JS — larger than everything
 rounds 2 to 4 achieved put together (≈5–6×), and it would end this problem
 outright instead of shaving at it. Candidates to *verify* (my recollection of licences and
