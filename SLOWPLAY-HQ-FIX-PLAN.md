@@ -448,3 +448,25 @@ guten Grund `false`.
    mehr, aber Wartezeit beim Start eines Loops und mehr Speicherbedarf.
    Das ist ein Architekturumbau und damit ausdrücklich nicht Teil dieser
    oder der vorigen Runde.
+
+---
+
+## Nachtrag (2026-09-03) — die Einordnung oben ist überholt
+
+Der Abschnitt „Einordnung" deutet den Gerätetest als harte Sättigung
+(Thermal Throttling, zu schwacher Kern). **Das ist mit hoher
+Wahrscheinlichkeit falsch.** Zwei Befunde sprechen dagegen:
+
+1. Der neue Modus **Roh** läuft auf demselben Gerät bei 0,7× und 0,6×
+   flüssig. Resampeltes Zeitlupen-Abspielen schafft die Hardware also in
+   Echtzeit — und der Worklet-Knoten hängt in Roh weiter am Graphen und
+   läuft mit (`hqNode.connect(splitter)` in `audioInit()` wird nie gelöst).
+   Übrig bleibt als Ursache allein die Rechenarbeit im Phasenvocoder.
+2. Dass `realtimePct` bei 0,7× und 0,6× nicht weiter fällt, ist kein
+   Hinweis auf eine Decke, sondern die Folge der fehlenden `shiftAck`:
+   das Worklet hat nie auf 1/0,7 bzw. 1/0,6 umgestellt und deshalb
+   unverändert dieselbe Arbeit gemacht wie bei 0,85×. Nachgemessen steigt
+   die Rechenzeit mit sinkendem Tempo um rund ein Drittel.
+
+Wie es weitergeht, steht in **`SLOWPLAY-HQ-FIX-PLAN-2.md`** — samt
+Messgerüst, damit die Zahlen diesmal reproduzierbar bleiben.
