@@ -35,8 +35,10 @@ Gegengeprüft am Stand `84c2dba` von `index.html`, `sw.js`.
    Klang deshalb *nicht* nennenswert verbessern. Der Gewinn kommt aus dem
    anderen Verfahren (Phasenvocoder, siehe Abschnitt 1), nicht aus einer
    fremden Implementierung.
-5. **`SW_VERSION` in `sw.js` erhöhen** (`'v110'` → `'v111'`), genau **einmal am
-   Ende**, nicht pro Commit.
+5. **`SW_VERSION` in `sw.js` erhöhen**, genau **einmal am Ende**, nicht pro
+   Commit. (Ursprünglich `'v110'` → `'v111'` geplant; nach dem Merge von
+   `origin/main`, das selbst schon auf `'v111'` stand, wurde daraus `'v112'` —
+   siehe Abschnitt 8.)
 6. **Codestil beibehalten:** deutschsprachige Kommentare im Ton der Datei
    (erklären *warum*, nicht *was*), 2 Leerzeichen Einrückung, keine
    Umformatierung fremder Zeilen, keine Umbenennungen „bei der Gelegenheit“.
@@ -459,8 +461,56 @@ PR #50, Lichtshow). **Vor dem letzten Push:**
 
 ## Spike-Ergebnis
 
-_(von der ausführenden Session auszufüllen — Abschnitt 1.2)_
+Die tragende Annahme aus Abschnitt 1.2 ist bestätigt. Ein 440-Hz-Sinus als
+WAV-Blob in einem `<audio>`-Element mit `playbackRate = 0.7`, Grundfrequenz
+per Autokorrelation über einen `AnalyserNode` gemessen (Chromium 1194,
+headless):
+
+| `preservesPitch` | gemessen | erwartet |
+|---|---|---|
+| `true` | 441 Hz | 440 Hz (Tonhöhe gehalten) |
+| `false` | 308,4 Hz | 308 Hz (= 440 × 0,7) |
+
+`false` wird also respektiert — das Element resampled sauber, und der
+Phasenvocoder bekommt genau das Signal, das er erwartet. Der Weg aus 1.1
+trägt, der Rückfallplan (Offline-Dehnung) wird nicht gebraucht.
 
 ## Ergebnisse
 
-_(von der ausführenden Session auszufüllen — Abschnitt 7)_
+**Selbsttests.** `runSelfTests()` im echten Seitenkontext: *Alle 10456
+Prüfungen bestanden*, `failed.length === 0`, keine Fehler oder Warnungen in
+der Konsole außer dem absichtlich provozierten `[notiz] Error: Testfehler`
+aus `runAsyncSelfTests()` (unverändert aus `main`, kein Regress). Die sechs
+neuen HQ-Prüfungen aus 1.4 sind darin enthalten.
+
+**Der Vocoder im echten Worklet.** Die Selbsttests messen den DSP-Kern im
+Hauptthread; zusätzlich wurde der *ausgelieferte* Worklet-Quelltext
+(`hqBuildWorkletSource()`) in einem `OfflineAudioContext` registriert und ein
+440-Hz-Oszillator bei `shift = 1/0,7` hindurchgeschickt:
+
+- gemessen **629,0 Hz**, erwartet 628,6 Hz — Abweichung 0,07 %.
+
+Damit ist nicht nur die Mathematik geprüft, sondern die Kette aus
+`toString()`-Zusammenbau, Blob-URL, `addModule()`, `registerProcessor` und
+`process()` als Ganzes.
+
+**Verdrahtung im App-Pfad.** Nach `audioInit()` stehen `Audio.hqNode`,
+`Audio.elSource` und `Audio.channelIn`. Umschalten von `settings.hqSlowdown`
+im laufenden Zustand, dreimal hin und her:
+
+| Zustand | `el.preservesPitch` | `el.playbackRate` |
+|---|---|---|
+| HQ an | `false` | 0,7 |
+| HQ aus | `true` | 0,7 |
+| HQ wieder an | `false` | 0,7 |
+
+`createMediaElementSource()` läuft dabei nur einmal; umgehängt werden
+ausschließlich die Verbindungen (siehe `applyHqMode()`).
+
+**Offen geblieben.** Die Messungen oben stammen aus Chromium in dieser
+Umgebung. Ein Härtetest auf echter Hardware — hörbare Qualität bei 0,6× auf
+Chorgesang, CPU-Last und Wärmeentwicklung auf einem älteren Android-Gerät,
+Verhalten von `preservesPitch = false` in Safari/iOS — steht aus und lässt
+sich hier nicht nachstellen. Genau dafür ist der Schalter da; sollte sich auf
+iOS zeigen, dass `preservesPitch = false` dort ignoriert wird, ist die Stelle
+zum Nachbessern `applyRateToElement()`.
