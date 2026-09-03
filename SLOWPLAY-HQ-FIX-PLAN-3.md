@@ -1,6 +1,6 @@
 # Arbeitsanweisung — HQ-Verlangsamung, Runde 4
 
-**Die Rechenlast halbieren bis vierteln — und das Springen abstellen.**
+**Die Rechenlast halbieren — und das Springen abstellen.**
 
 Adressat: Sonnet (Folge-Session). Vorgeschichte in `SLOWPLAY-HQ-PLAN.md`,
 `SLOWPLAY-HQ-FIX-PLAN.md` und vor allem **`SLOWPLAY-HQ-FIX-PLAN-2.md`**
@@ -51,19 +51,26 @@ muss dieser Anteil auf **etwa die Hälfte bis ein Drittel**.
 Das ist mit den Mitteln dieser Runde erreichbar. Es sind zwei Hebel, und
 sie multiplizieren sich.
 
-### Die Messlücke, die zuerst zu schließen ist
+### Die Nulllinie — nachgetragen und eindeutig
 
-Abschnitt 6 der Vorrunde verlangte den Vergleich HQ **gegen Roh** auf
-demselben Maßstab — Roh ist die Nulllinie des Geräts. Diese Zahlen liegen
-nicht vor, nur die HQ-Werte. Ohne sie lässt sich nicht sagen, wie viel von
-der Frist überhaupt für den Phasenvocoder übrig ist: liegt Roh bei 0,6×
-schon bei 90 %, ist das Budget winzig; liegt es bei 100 %, ist es groß.
+**Standard und Roh bleiben bei jedem Tempo bei rund 100 %.** Das ist der
+Vergleichswert, der der Vorrunde noch fehlte, und er ist so klar, wie man
+es sich wünscht: Dekodieren, Resampeln im Element, Kanal-Matrix, Mischen
+und Ausgabe passen zusammen bequem in die Frist, und zwar bei 0,6× genauso
+wie bei 1×. Der **gesamte** Rückstand in HQ geht damit auf den
+Phasenvocoder — es gibt keine versteckte Grundlast, gegen die
+anzukämpfen wäre.
 
-Außerdem: Der Nutzer zitiert „% der Echtzeit" — das ist der Wortlaut der
-**Ersatzmessung** (`settings.perf.hqLoadFallbackLabel`). `renderCapacity`
-hat also offenbar nicht gegriffen, obwohl Chrome 152 sie mitbringen
-sollte. Das ist zu klären: `peakLoad` und `underrunRatio` sind die
-besseren Zahlen, und `underrunRatio` beantwortet die Sprung-Frage direkt.
+Das ist die bestmögliche Ausgangslage für diese Runde: jede eingesparte
+Rechenzeit im Vocoder schlägt eins zu eins in Luft um. Was die Rechnung
+daraus macht, steht in Abschnitt 5.
+
+Offen bleibt eine Kleinigkeit: Der Nutzer zitiert „% der Echtzeit" — das
+ist der Wortlaut der **Ersatzmessung**
+(`settings.perf.hqLoadFallbackLabel`). `renderCapacity` hat also
+offenbar nicht gegriffen, obwohl Chrome 152 sie mitbringen sollte.
+`peakLoad` und `underrunRatio` sind die besseren Zahlen, und
+`underrunRatio` beantwortet die Sprung-Frage direkt.
 
 ---
 
@@ -117,15 +124,18 @@ ins Log — `underrunRatio` beantwortet Abschnitt 4 direkt.
 
 ### 1.3 Was der Nutzer messen soll
 
-Diagnose-Log an, dann je ~10 s:
+Die Nulllinie steht bereits (Standard und Roh bei ~100 %, siehe oben) und
+muss nicht erneut erhoben werden. Für den nächsten Test genügt deshalb
+**HQ bei 0,85× / 0,7× / 0,6×, je ~10 s, mit eingeschaltetem
+Diagnose-Log** — plus einmal Roh bei 0,6× als Gegenprobe, falls sich am
+Gerät etwas geändert hat.
 
-1. **Standard** bei 1×, 0,85×, 0,7×, 0,6×
-2. **Roh** bei 0,85×, 0,7×, 0,6×
-3. **HQ** bei 0,85×, 0,7×, 0,6×
+Auszuwerten sind dann:
 
-Roh ist die Nulllinie. Die Differenz HQ − Roh ist das, was der
-Phasenvocoder wirklich kostet — und nur diese Differenz lässt sich durch
-die Schritte 2 und 3 verkleinern.
+- `inCh` — mono oder stereo (entscheidet Schritt 2 vollständig)
+- `underruns` — 0 oder nicht (entscheidet Abschnitt 4.2)
+- ob `renderCapacity` diesmal greift (dann zusätzlich `peakLoad` und
+  `underrunRatio`)
 
 ---
 
@@ -191,40 +201,102 @@ kostet, was er kostet) — aber das Gerät scheitert am **Mittelwert**
 (dauerhaft 65 % der Echtzeit ist ein anhaltendes Defizit, kein
 Einzelaussetzer), und genau den halbiert dieser Schritt.
 
-### 2.4 Die Voraussetzung, die noch offen ist
+### 2.4 Wann das von selbst greift
 
-**All das greift nur, wenn das Material tatsächlich mono ist.** Deshalb
-Schritt 1.1 zuerst. Ist `inCh === 2`, bringt dieser Schritt null — dann
-gilt stattdessen 2.5.
+Diese Abkürzung zieht nur bei einer Mono-Quelle. Ist das Material stereo
+kodiert, bringt sie zunächst nichts — dann sorgt der neue Modus aus 2.5
+dafür, dass sie trotzdem greift. `inCh` aus Schritt 1.1 sagt hinterher,
+welcher der beiden Fälle vorlag; ein Blocker ist die Frage damit nicht
+mehr.
 
-### 2.5 Falls das Material stereo ist
+### 2.5 Der vierte Modus — dieselbe Ersparnis auch bei Stereo-Quellen
 
-Zwei Möglichkeiten, in dieser Reihenfolge zu erwägen:
+Vom Nutzer vorgeschlagen, und es ist der bessere Weg als die adaptive
+Erkennung, die hier vorher stand. Zwei Dinge, die sich ähneln, aber
+verschieden sind:
 
-**(a) Bei `settings.channelMode === 'mono'` vor dem Vocoder summieren.**
-Der Nutzer hat dann ohnehin Mono angefordert (die Kanal-Matrix summiert
-danach L+R). Statt zwei Kanäle zu verschieben und danach zu summieren,
-summieren und **einen** verschieben. Nicht bitgleich zum bisherigen Weg
-(Summe zweier unabhängig phasenkorrigierter Kanäle ≠ Phasenkorrektur der
-Summe), aber für den Zweck gleichwertig und eher sauberer, weil zwischen
-den Kanälen keine Phaseninkonsistenz mehr entstehen kann. Der
-Einspeisepunkt ist die Kanalschleife im Worklet; die Matrix dahinter bleibt
-unangetastet.
+- **2.2 ist geschenkt und bedingungslos:** eine Mono-*Quelle* braucht nur
+  einen Shifter. Da ist nichts zu entscheiden, das ist einfach kein
+  Verdoppeln von Arbeit mehr.
+- **Dies hier ist eine Entscheidung:** eine Stereo-Quelle *vor* dem
+  Vocoder zu Mono summieren. Halbiert die Kosten unabhängig davon, wie
+  die Datei kodiert ist — zum Preis des Stereobildes.
 
-**(b) Doppel-Mono erkennen.** Eine als Stereo kodierte Mono-Aufnahme hat
-zwei praktisch gleiche Kanäle. Ein Vergleich je Quantum ist billig (128
-Subtraktionen). Das lohnt aber nur mit Hysterese (erst nach ~1 s
-Gleichheit umschalten, bei Abweichung sofort zurück, dabei beide Shifter
-zurücksetzen) — mehr Zustand, mehr Umschaltartefakte. **Nur angehen, wenn
-Schritt 1.1 zeigt, dass die Quellen stereo sind und Schritt 3 allein nicht
-reicht.**
+Als Modus ist das ehrlich: der Nutzer sieht, was er eintauscht, und kann
+es zurücknehmen. Als automatische Erkennung wäre es ein stiller
+Qualitätseingriff mit Umschaltartefakten.
 
----
+#### Der Clou: dafür ist kein einziges Stück DSP-Code nötig
+
+Web Audio mischt selbst herunter. In `applyHqMode()` genügt es, den Knoten
+umzustellen:
+
+```js
+// Mono-HQ
+Audio.hqNode.channelCount = 1;
+Audio.hqNode.channelCountMode = 'explicit';
+Audio.hqNode.channelInterpretation = 'speakers';
+// Stereo-HQ: zurück auf den Standardwert
+Audio.hqNode.channelCountMode = 'max';
+```
+
+Bei `'explicit'` und `channelCount = 1` mischt Web Audio den Eingang nach
+der Lautsprecher-Regel auf einen Kanal herunter, und das ist exakt
+`0,5·(L+R)` — genau die gewünschte Summe. `process()` bekommt danach
+`inputs[0].length === 1`, also greift **die Mono-Abkürzung aus 2.2 von
+selbst**. `outputChannelCount: [2]` steht beim Anlegen fest, die Ausgabe
+bleibt stereo, die Kanal-Matrix dahinter bleibt unangetastet.
+
+Weil sich mit dem Modus die Zahl der Shifter ändert, beim Umschalten
+`{ type: 'reset' }` senden — was Abschnitt 4.1 ohnehin verlangt.
+
+#### Einstellungswert und Beschriftung
+
+**`'hq'` behält seine heutige Bedeutung (stereo)**, der neue Modus bekommt
+einen eigenen Wert, z. B. `'hqmono'`. So ändert sich für niemanden
+stillschweigend das Verhalten, und die einmalige Migration in
+`loadSettings()` bleibt unberührt.
+
+`.preset-row` ist ein fest verdrahtetes `repeat(3, 1fr)` und wird mit den
+Fahrradfahren-Presets geteilt — der vierte Knopf braucht deshalb eine
+eigene Regel `#slow-mode { grid-template-columns: repeat(4, 1fr); }`, kein
+Ändern der gemeinsamen Klasse. Bei 0,82 rem in einem Viertel der Breite
+müssen die Beschriftungen kurz sein.
+
+Vorschlag, aufsteigend nach Rechenaufwand:
+`Standard | HQ Mono | HQ | Roh`. Die Namen sind Geschmackssache — „Super
+HD" und „HD" tun es genauso, sie sind nur länger und brechen eher um.
+
+#### Die Stelle, an der das schiefgeht
+
+`settings.slowMode === 'hq'` steht an **fünf** Stellen:
+`renderSlowMode()`, der Unterlauf-Zweig in `hqCreateNode()`,
+`applyHqMode()`, `applyRateToElement()` (zweimal, `useHq` und `preserve`).
+Jede davon muss beide HQ-Werte erkennen. Statt fünf Vergleiche zu
+verdoppeln: **ein Helfer `isHqMode()`**, und jede dieser Stellen ruft ihn
+auf. `preserve` bleibt an `=== 'standard'` gebunden, das ist richtig so.
+
+Auch `updateHqLoadVisibility()` und der `#hq-unsupported-hint` gelten für
+beide HQ-Knöpfe.
+
+#### Hinweistext
+
+Neuer Schlüssel in allen drei `STRINGS`-Blöcken. Inhaltlich: HQ Mono
+rechnet die Tonhöhe nur einmal statt zweimal und ist deshalb etwa doppelt
+so sparsam; dafür sind beide Kanäle danach gleich — Aufnahmen, die eine
+Stimme hart auf links oder rechts legen, verlieren diese Trennung, und die
+Fahrradfahren-Umschaltung (links/rechts tauschen, Mono) hat in diesem
+Modus keine hörbare Wirkung mehr.
 
 ## 3. Schritt 3 — 50 % Überlappung mit Sinusfenster
 
 **Der zweite Faktor 2 — dieser kostet Qualität, aber gemessen weniger als
 befürchtet.**
+
+> **Bedingt.** Dieser Schritt wird erst umgesetzt, wenn der Gerätetest
+> nach Schritt 2 zeigt, dass `HQ Mono` allein nicht reicht (siehe
+> Abschnitt 5). Er steht hier ausgearbeitet, damit die Entscheidung dann
+> schnell geht — nicht, damit er vorsorglich mitgenommen wird.
 
 ### 3.1 Warum das der einzig verbleibende große Hebel ist
 
@@ -351,25 +423,49 @@ wird (0,6× öfter als 0,85×), ist es dieser Fall. `underrunRatio` aus
 
 ## 5. Wieviel muss es werden — die Rechnung
 
-Bei 0,6× braucht das Gerät heute 2,67 ms / 0,65 = **4,11 ms** je Quantum.
-Wieviel davon der Phasenvocoder ist, hängt an der Nulllinie, die noch
-fehlt (Schritt 1.3): liegt Roh bei 100 %, entfallen auf HQ mindestens
-4,11 − 2,67 = 1,44 ms; ist die Grundlast kleiner, entsprechend mehr. Das
-Verhältnis zur Messmaschine dieser Vorbereitung (0,126 ms) liegt damit
-zwischen **11× und 25×**.
+Weil Standard und Roh bei ~100 % liegen, ist die Grundlast klein und der
+Vocoder trägt praktisch den ganzen Rückstand. Damit lässt sich der Rest
+ausrechnen statt schätzen.
 
-Zielmarke: HQ soll die Gesamtauslastung unter ~85 % der Frist drücken.
+Bei 0,6× braucht das Gerät heute 2,67 ms / 0,65 = **4,11 ms** je Quantum,
+davon fast alles Vocoder. Auf der Messmaschine dieser Vorbereitung kostet
+derselbe Vocoder 0,126 ms — dieses Gerät ist für diese Art Arbeit also
+grob **26- bis 33-mal langsamer**. Mit diesem Faktor lassen sich die
+x86-Zahlen aus 2.3 und 3.3 auf das Gerät umrechnen (Frist 2,67 ms):
 
-- **Schritt 2 allein** (0,064 ms): reicht bei einem Faktor von 11×
-  bequem, bei 25× nicht.
-- **Schritt 3 allein** (0,053 ms): dasselbe Bild.
-- **Beide zusammen** (0,028 ms): reicht über die ganze Spanne.
+| Stand | x86, 0,6× | geschätzt auf dem Gerät | Auslastung |
+|---|---|---|---|
+| HQ stereo, heute | 0,126 ms | 3,3–4,2 ms | 125–155 % |
+| HQ stereo + 50 % Überlappung | 0,053 ms | 1,4–1,7 ms | 52–65 % |
+| **HQ Mono** | 0,064 ms | 1,7–2,1 ms | **62–79 %** |
+| HQ Mono + 50 % Überlappung | 0,028 ms | 0,7–0,9 ms | 27–35 % |
 
-Deshalb sind beide Schritte eingeplant und nicht als Alternativen
-gedacht — aber in dieser Reihenfolge, und Schritt 3 mit einem eigenen,
-einzeln zurücknehmbaren Commit, weil nur er Qualität kostet.
+Die erste Zeile ist die Gegenprobe: 125–155 % Auslastung entspricht 65–80 %
+Echtzeit, gemessen wurden 65 %. Die Umrechnung trägt also.
 
----
+**Was das für die Reihenfolge heißt.** `HQ Mono` allein landet bei
+62–79 % Auslastung — unter der Grenze, mit 20–38 % Luft. Das ist
+wahrscheinlich genug: dieses Gerät knistert bei 96–97 % der Echtzeit, also
+bei rund 104 % Auslastung, und davon wäre man dann deutlich entfernt. Die
+Spanne ist allerdings breit, weil der Gerätefaktor aus drei ungefähren
+Messpunkten stammt.
+
+Deshalb **erst den Modus, dann messen, dann über die Überlappung
+entscheiden** — und nicht beides auf einmal. Schritt 3 kostet als
+einziger Schritt dieser Runde Klangqualität; ihn auszugeben, bevor
+feststeht, dass er gebraucht wird, wäre verschenkt. Reicht `HQ Mono`, ist
+die Runde vorbei. Reicht es nicht, liegt Schritt 3 fertig beschrieben da
+und bringt den Rest.
+
+**Zur Spitze, nicht nur zum Mittel:** Schritt 2 und 3 senken die *Zahl*
+der Frames, nicht die Kosten eines einzelnen. Auf x86 bleibt p99 bei
+0,17–0,25 ms je Quantum, auf dem Gerät also bei geschätzt 5–7 ms gegen
+2,67 ms Frist — ein Quantum, in dem ein Frame anfällt, reißt die Frist
+weiterhin um das Zwei- bis Dreifache. Nach beiden Schritten fällt bei 0,6×
+aber nur noch alle ~4,8 Quanten einer an; dazwischen ist so viel Luft,
+dass der Ausgabepuffer des Browsers das auffängt. Bleibt es nach beiden
+Schritten bei niedrigem Mittelwert trotzdem beim Knistern, ist genau das
+der Beleg, dass die Spitze selbst zerlegt werden muss — siehe 7(c).
 
 ## 6. Gemessene Sackgassen — hier keine Zeit investieren
 
@@ -400,6 +496,14 @@ also am meisten dort, wo es am meisten fehlt. Preis: das Analysefenster
 deckt zeitlich `k`-mal mehr Original ab (bei 0,6× rund 71 ms statt 43 ms),
 mit entsprechend mehr Verschmieren von Einsätzen.
 
+**(c) Einen Frame über mehrere Quanten verteilen.** Wenn nach Schritt 2 und
+3 der Mittelwert niedrig ist und es trotzdem knistert, liegt es an der
+Spitze (siehe Abschnitt 5): Hin-FFT im einen Quantum rechnen,
+Spektrumsarbeit und Rück-FFT im nächsten. Der Vorlauf von `N` Samples
+(16 Quanten) reicht dafür bequem, die Ausgabe ändert sich dadurch nicht —
+es verschiebt sich nur, wann gerechnet wird, genau wie beim Frame-Budget
+aus Runde 3. Halbiert die Spitze.
+
 **(b) Offline dehnen.** Den gerade geloopten Abschnitt einmal vorab
 berechnen, zwischenspeichern, dem Element als Blob geben. Kein
 Echtzeitrisiko mehr, dafür Wartezeit beim Loopstart und mehr Speicher.
@@ -418,10 +522,14 @@ Echtzeitrisiko mehr, dafür Wartezeit beim Loopstart und mehr Speicher.
 4. **Klang gegen den heutigen Stand vergleichen**, nicht gegen absolute
    Zahlen: Tonhöhentreue, RMS, Störanteil bei 220 Hz / 1 kHz / 6 kHz —
    dieselbe Messung für beide Stände, wie in 3.4.
-5. **Die App wirklich starten**: alle drei Modi, alle drei Tempi,
+5. **Die App wirklich starten**: alle vier Modi, alle drei Tempi,
    Moduswechsel *während* der Wiedergabe (das ist der Test für 4.1),
    Tempowechsel während der Wiedergabe, A-B-Loop, Stimmwechsel (das ist
-   der Test für den Kanalzahlwechsel aus 2.2).
+   der Test für den Kanalzahlwechsel aus 2.2). Beim Wechsel zwischen
+   `HQ` und `HQ Mono` während der Wiedergabe darf es nicht springen, und
+   in `HQ Mono` müssen beide Ausgabekanäle gleich klingen — die
+   Fahrradfahren-Umschaltung wird dort hörbar wirkungslos, das ist
+   gewollt und im Hinweistext erklärt.
 6. **Das Diagnose-Log gegenlesen**, bevor es an den Nutzer geht: `inCh` in
    jedem Lastbericht, `shift` passend zum Tempo, `underruns` bei 0.
 
@@ -432,10 +540,15 @@ Echtzeitrisiko mehr, dafür Wartezeit beim Loopstart und mehr Speicher.
 1. Kanalzahl und `renderCapacity`-Verfügbarkeit ins Log, `start()`
    abgesichert (Abschnitt 1)
 2. Zurücksetzen beim Wiedereinhängen des Worklet-Knotens (Abschnitt 4.1)
-3. Mono-Quellen nur einmal rechnen (Abschnitt 2, mit Selbsttest)
-4. 50 % Überlappung mit Sinusfenster (Abschnitt 3, mit Selbsttest) —
-   bewusst der letzte und einzeln zurücknehmbare Commit
+3. Mono-Quellen nur einmal rechnen (Abschnitt 2.1–2.4, mit Selbsttest)
+4. Vierter Modus `HQ Mono` samt `isHqMode()`, viertem Knopf und
+   Hinweistext in allen drei Sprachen (Abschnitt 2.5)
 5. `SW_VERSION` auf `v118`, Messergebnisse in dieser Datei
+
+**Hier endet die Runde — der Gerätetest entscheidet über den Rest.**
+Reicht `HQ Mono` nicht, folgt als eigener, einzeln zurücknehmbarer Commit:
+
+6. 50 % Überlappung mit Sinusfenster (Abschnitt 3, mit Selbsttest)
 
 ---
 
