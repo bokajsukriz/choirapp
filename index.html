@@ -7486,6 +7486,9 @@ let hqRenderCapacityStarted = false;
 // Die Feldnamen einmal gegen die Wirklichkeit loggen (Abschnitt 2.1), nicht
 // bei jedem update-Ereignis erneut.
 let hqRenderCapacityFieldsLogged = false;
+// Einmalig protokollieren, ob renderCapacity existiert und start() ohne
+// Ausnahme durchläuft (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 1.2).
+let hqCapacityAvailLogged = false;
 // Letzter vom Worklet gemeldeter Aussetzerzähler — nur in HQ befüllt (siehe
 // hqCreateNode), sonst läuft dort kein Worklet, das etwas zu melden hätte.
 let hqLastWorkletUnderruns = null;
@@ -7523,11 +7526,26 @@ function startHqLoadMeasurement() {
   const ctx = Audio.ctx;
   if (!ctx) return;
   if (ctx.renderCapacity && !hqRenderCapacityStarted) {
-    ctx.renderCapacity.start({ updateInterval: 1 });
-    hqRenderCapacityStarted = true;
+    try {
+      // Abgesichert (SLOWPLAY-HQ-FIX-PLAN-3.md Abschnitt 1.2): ein
+      // Fehlschlag hier blieb bisher stumm — dann existiert
+      // ctx.renderCapacity zwar, liefert aber nie ein update-Ereignis, und
+      // die Ersatzmessung springt nicht ein, weil sie nur bei fehlendem
+      // renderCapacity greift.
+      ctx.renderCapacity.start({ updateInterval: 1 });
+      hqRenderCapacityStarted = true;
+    } catch (err) {
+      dlog('hq:capacityAvail', { has: true, started: false, name: err?.name });
+    }
   } else if (!ctx.renderCapacity && !hqLoadFallbackTimer) {
     hqLoadFallbackPrev = { audio: ctx.currentTime, wall: performance.now() };
     hqLoadFallbackTimer = setInterval(tickHqLoadFallback, 1000);
+  }
+  // Einmalig protokollieren, nicht bei jedem Start — genügt, um zu klären,
+  // ob renderCapacity auf dem Gerät überhaupt greift.
+  if (!hqCapacityAvailLogged) {
+    hqCapacityAvailLogged = true;
+    dlog('hq:capacityAvail', { has: !!ctx.renderCapacity, started: hqRenderCapacityStarted });
   }
 }
 
@@ -8380,7 +8398,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       if (this.hasPerf) {
         const avgPct = this.loadCount > 0 ? (this.loadSum / this.loadCount) / budgetMs * 100 : 0;
         const maxPct = this.loadMax / budgetMs * 100;
-        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples, shift: this.shift });
+        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples, shift: this.shift, inCh: input ? input.length : 0 });
       } else {
         // Ersatzmessung ohne performance.now(): currentFrame ist die eigene
         // Uhr des AudioContext und wächst nur, wenn process() tatsächlich
@@ -8389,7 +8407,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
         // auf der Hauptseite (die dort verfügbare performance.now() ist die
         // einzig verlässliche Wanduhr), hier wird nur der rohe Zählerstand
         // gemeldet (Plan Abschnitt 1.1).
-        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples, shift: this.shift });
+        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples, shift: this.shift, inCh: input ? input.length : 0 });
       }
       this.underrunSamples = 0;
       this.loadSum = 0;
@@ -8440,7 +8458,7 @@ async function hqCreateNode(ctx) {
       // 1.5).
       if (m.type === 'load' || m.type === 'loadFallback') {
         hqLastWorkletUnderruns = m.underruns;
-        dlog('hq:workletLoad', { underruns: m.underruns, shift: m.shift });
+        dlog('hq:workletLoad', { underruns: m.underruns, shift: m.shift, inCh: m.inCh });
       } else if (m.type === 'started') {
         dlog('hq:worklet', { hasPerf: m.hasPerf, sampleRate: m.sampleRate });
       } else if (m.type === 'shiftAck') {
