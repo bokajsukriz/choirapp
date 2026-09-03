@@ -514,3 +514,167 @@ Verhalten von `preservesPitch = false` in Safari/iOS — steht aus und lässt
 sich hier nicht nachstellen. Genau dafür ist der Schalter da; sollte sich auf
 iOS zeigen, dass `preservesPitch = false` dort ignoriert wird, ist die Stelle
 zum Nachbessern `applyRateToElement()`.
+
+---
+
+# NACHTRAG — Befund vom Gerätetest und weiteres Vorgehen
+
+Der erste Gerätetest (Pixel 9, GrapheneOS/Vanadium) fiel negativ aus. Meldung:
+
+> „Schon bei 0,85 deutliches Stottern und Knistern, hohe Störgeräusche.
+> Außerdem scheint es langsamer als 0,85 zu sein, und bei 0,7 hört man einen
+> Pitchabfall, dann auch nur noch alle paar ms ein verzerrtes Audioschnipsel,
+> also sehr stotternd.“
+
+Das ist keine Feinabstimmung mehr, sondern grobes Fehlverhalten. **Der Schalter
+steht deshalb ab sofort auf `false`** (`DEFAULT_SETTINGS.hqSlowdown`), der
+Hinweistext in den Einstellungen nennt ihn in allen drei Sprachen als Versuch.
+Niemand bekommt die Verschlechterung ungefragt.
+
+## Befund
+
+Alle Zahlen unten sind gemessen (Chromium, `OfflineAudioContext` bzw. echter
+`AudioContext`), nicht geschätzt. Die Skripte liegen im Scratchpad.
+
+### 1. Die Rekonstruktion ist korrekt — der Fehler steckt im Shift-Pfad
+
+Läuft der Vocoder mit Faktor ≈ 1 (volle FFT-Kette, aber weder Dehnung noch
+Resampling), ist die Ausgabe bei 3 kHz und 6 kHz **−140 dB** sauber. FFT,
+Fensterung, Overlap-Add und die Normierung durch 1,5 sind also in Ordnung; der
+Verstärkungsfaktor stimmt auf 0,01 dB genau. Mit echtem Shift 1/0,6 auf einem
+**reinen Sinus** wächst der Fehler dagegen mit der Frequenz:
+
+| Testton | Störanteil |
+|---|---|
+| 220 Hz | −47,6 dB (Messgrenze) |
+| 1 kHz | −47,5 dB |
+| 3 kHz | −42,9 dB |
+| 6 kHz | −32,1 dB |
+| 9 kHz | −24,3 dB |
+
+### 2. Ursache dafür: die lineare Interpolation in `readOutput()`
+
+Derselbe Test mit kubischer Hermite-Interpolation statt linearer, sonst
+bitgleich:
+
+| Testton | linear | kubisch | Gewinn |
+|---|---|---|---|
+| 3 kHz | −42,9 dB | −47,7 dB | 4,8 dB |
+| 6 kHz | −32,1 dB | −43,6 dB | **11,5 dB** |
+| 9 kHz | −24,3 dB | −32,0 dB | 7,7 dB |
+
+Bei 9 kHz liegen selbst kubisch noch −32 dB an — für Zischlaute und
+Beckenanteile hörbar. Ein Polyphasen-Resampler mit fensterbegrenztem Sinc
+(16–32 Koeffizienten, vorberechnete Tabelle) kommt auf −80 dB und kostet
+kaum etwas.
+
+### 3. Das Resampling des `<audio>`-Elements ist nicht das Problem
+
+Gemessen an einem echten Element mit `MediaElementSource`, zwei stehenden
+Tönen: 1,0× ergibt −89,6 dB, `playbackRate = 0,7` mit `preservesPitch = false`
+ergibt **−49,9 dB**. Nicht transparent, aber deutlich besser als der Vocoder.
+Der Architekturansatz aus Abschnitt 1.1 ist damit nicht widerlegt.
+
+(Nebenbei bestätigt: `playbackRate` und `preservesPitch` müssen **nach**
+`loadedmetadata` gesetzt werden — davor werden sie verworfen. Der Kommentar in
+`audioLoadTrackNow()` hat recht.)
+
+### 4. Die eigentliche Ursache des Stotterns: Echtzeit
+
+Offline gerendert meldet der Worklet **null** Unterläufe — offline gibt es
+aber auch keine Frist. Gemessene Rechenlast (x86, warmer JIT, zwei Kanäle):
+
+| Tempo | Mittel je Quantum | Budget | Anteil eines Kerns |
+|---|---|---|---|
+| 0,85× | 0,19 ms | 2,67 ms | 7,1 % |
+| 0,7× | 0,24 ms | 2,67 ms | 9,1 % |
+| 0,6× | 0,26 ms | 2,67 ms | 9,8 % |
+
+Der Mittelwert täuscht. Die Arbeit fällt **stoßweise** an: ein Frame entsteht
+nur alle `Ha` Samples (bei 0,85× alle 435, also alle 3,4 Quanten), kostet dann
+aber für beide Kanäle rund 0,64 ms — ein Viertel der Frist in *einem* Quantum,
+auf dieser x86-Maschine. Auf einem ARM-Kern mit JS ist der Faktor 2–3, also
+1,3–1,9 ms von 2,67 ms, und zwar zusätzlich zu Mediendekodierung, Resampler
+und Kanal-Matrix im selben Callback. Genau das erklärt „stottert schon bei
+0,85×“ und „bei 0,7 nur noch Schnipsel“.
+
+Dazu kommt Speicherzuweisung auf dem Audio-Thread — jede davon riskiert eine
+GC-Pause und damit einen hörbaren Aussetzer:
+
+- `process()` legt pro Kanal und Quantum ein neues `Float32Array` an (~750/s).
+- `inFifo` ist ein gewöhnliches JS-Array mit `push()` je Sample und
+  `splice(0, Ha)` je Frame.
+- `findPeaks()` baut pro Frame und Kanal ein neues Array mit bis zu ~200
+  Einträgen.
+
+### 5. Unnötig teure Mathematik im heißen Pfad
+
+Gemessen über 5 Mio. Aufrufe:
+
+| Operation | Zeit | je Aufruf |
+|---|---|---|
+| `Math.hypot(a,b)` | 92,4 ms | 18,5 ns |
+| `Math.sqrt(a*a+b*b)` | 14,2 ms | 2,8 ns |
+| `Math.atan2` | 73,6 ms | 14,7 ns |
+| `Math.cos + Math.sin` | 83,8 ms | 16,8 ns |
+
+`Math.hypot` ist **6,5× langsamer** als `sqrt` — bei bitgleichem Ergebnis
+(beide Summen stimmten auf die dritte Nachkommastelle überein). Der Code ruft
+pro Frame und Kanal 1025-mal `hypot` **und** 1025-mal `atan2` **und**
+1025-mal `cos`/`sin` auf.
+
+## Vorgehen — in dieser Reihenfolge
+
+**Schritt 0 — erledigt.** Schalter auf Standard aus, Hinweistext als Versuch
+markiert, `SW_VERSION` hochgezählt.
+
+Dazu eine **einmalige Rücknahme** in `loadSettings()`: Der geänderte Standard
+allein reicht nicht, weil `saveSettings()` immer das gesamte Objekt schreibt —
+auf jeder Installation, die während der kaputten Version irgendeine Einstellung
+angefasst hat, steht `hqSlowdown: true` bereits gespeichert. Der Merker
+`hqSlowdownReset` sorgt dafür, dass genau einmal zurückgenommen wird; wer die
+Funktion danach bewusst wieder einschaltet, behält sie. Alle drei Fälle im
+Browser geprüft (frische Installation, Altbestand, bewusstes Wiedereinschalten).
+
+**Schritt 1 — auf dem Gerät messen statt raten.** Ohne Zahlen vom Pixel 9
+bleibt jede Optimierung Stochern. Der Worklet misst seine eigene `process()`-
+Dauer, meldet Mittel- und Maximalwert als Anteil der Frist über den bestehenden
+`port`, und die Einstellungskarte zeigt das an (nur solange der Schalter an
+ist). Zusammen mit dem schon vorhandenen `hq:underrun`-Zähler steht damit
+fest, ob es die Frist ist, die GC oder etwas Drittes. Das ist wenig Arbeit und
+entscheidet alles Weitere.
+
+**Schritt 2 — Echtzeitsicherheit.** Keine einzige Speicherzuweisung mehr im
+Audio-Thread: `inFifo` durch einen vorbelegten Ringpuffer ersetzen, Ausgabe in
+den vom Aufrufer gelieferten Puffer schreiben statt ein neues Array anzulegen,
+Spitzenliste als vorbelegtes `Int32Array` mit Zähler. Zusätzlich die Last
+glätten: höchstens **ein** Frame je Quantum verarbeiten und dafür das Polster
+im Ring vergrößern, damit die Spitze nicht mehr in ein einzelnes Quantum
+fällt.
+
+**Schritt 3 — Rechenlast senken.** `hypot` → `sqrt`. `atan2`/`cos`/`sin` nur
+noch für die Spitzen statt für alle 1025 Bins: die Phasenkopplung
+`ψ_bin = ψ_peak + (φ_bin − φ_peak)` lässt sich als komplexe Drehung des
+Spektrums um `ψ_peak − φ_peak` schreiben, also als zwei Multiplikationen je
+Bin statt vier Winkelfunktionen. Danach die beiden Kanäle in **einer** FFT
+verarbeiten (reelles Signal links im Real-, rechts im Imaginärteil) — halbiert
+Hin- und Rücktransformation.
+
+**Schritt 4 — Resampler.** Lineare Interpolation durch einen
+Polyphasen-Sinc ersetzen (Schritt 2 des Befunds). Erst nach Schritt 2 und 3
+sinnvoll: solange es stottert, hört niemand den Unterschied zwischen −32 und
+−80 dB.
+
+**Schritt 5 — neu bewerten.** Läuft es dann auf dem Pixel sauber und klingt
+besser als der native Weg, Standard wieder auf an. Bleibt es marginal, ist der
+Ansatz aus Abschnitt 1.1 auf Mobilgeräten am Ende, und der ursprünglich
+verworfene Weg wird zur ernsthaften Alternative: **offline dehnen statt in
+Echtzeit** — den Abschnitt einmal vorab durchrechnen, das Ergebnis
+zwischenspeichern und dem Element als Blob geben. Das kostet Wartezeit und
+Speicher, hat aber überhaupt kein Echtzeitrisiko und erlaubt ein beliebig
+gutes Verfahren. Für den Kernfall dieser App — einen kurzen Abschnitt in der
+Schleife langsam üben — wäre eine Vorabberechnung von zehn Sekunden Audio
+sogar sehr günstig.
+
+**Nicht** angefasst wird der Rest: die drei UI-Korrekturen sind unabhängig,
+funktionieren und bleiben.

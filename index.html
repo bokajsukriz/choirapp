@@ -3405,6 +3405,7 @@ input[type="checkbox"] {
         Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt
         beim bisherigen Weg.
       </p>
+      <p class="small muted" id="hq-load" style="margin:8px 0 0" hidden></p>
     </div>
 
     <div class="card">
@@ -4724,7 +4725,13 @@ const DEFAULT_SETTINGS = {
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
   recBackingOffsetMs: 0,    // Handversatz des Originaltracks in ms (+ = später), siehe backingLagSeconds
-  hqSlowdown: true,   // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
+  // Vorerst AUS: auf einem Pixel 9 (GrapheneOS) stottert die Wiedergabe schon
+  // bei 0,85× und bricht bei 0,7× fast ganz ab — der Worklet schafft die
+  // Echtzeit auf dem Gerät nicht (Messung und Ursachen in SLOWPLAY-HQ-PLAN.md,
+  // Abschnitt „Befund"). Erst wieder auf true, wenn das auf echter Hardware
+  // sauber läuft.
+  hqSlowdown: false,  // bessere (rechenintensivere) Verlangsamung: Phasenvocoder statt nativem preservesPitch
+  hqSlowdownReset: false,  // Merker der einmaligen Rücknahme, siehe loadSettings()
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4830,8 +4837,14 @@ const STRINGS = {
     'settings.perf.title': 'Kompatibilität & Performance',
     'settings.perf.hqSwitch': 'Bessere Tonqualität beim langsamen Abspielen',
     'settings.perf.hqAria': 'Bessere Tonqualität beim langsamen Abspielen',
-    'settings.perf.hqHint': 'Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen — deutlich sauberer bei gehaltenen Tönen. Kostet dafür mehr Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder wird es warm, schalte hier aus.',
+    'settings.perf.hqHint': 'Noch im Versuch und deshalb ausgeschaltet: Rechnet den Klang bei 0,85×, 0,7× und 0,6× selbst um, statt es dem Browser zu überlassen. Auf manchen Geräten stottert die Wiedergabe damit noch — dann wieder ausschalten. Bleibt es aus, klingt alles wie bisher.',
     'settings.perf.hqUnsupported': 'Dieses Gerät unterstützt die bessere Verlangsamung nicht — es bleibt beim bisherigen Weg.',
+    'settings.perf.hqLoadLabel': 'Rechenlast:',
+    'settings.perf.hqLoadAvg': 'im Mittel,',
+    'settings.perf.hqLoadPeak': 'in der Spitze —',
+    'settings.perf.hqLoadUnderruns': 'Aussetzer:',
+    'settings.perf.hqLoadFallbackLabel': 'Wiedergabetempo:',
+    'settings.perf.hqLoadFallbackSuffix': 'der Echtzeit',
 
     'settings.help.title': 'Hilfe',
     'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
@@ -5041,8 +5054,14 @@ const STRINGS = {
     'settings.perf.title': 'Compatibility & performance',
     'settings.perf.hqSwitch': 'Better sound quality for slow playback',
     'settings.perf.hqAria': 'Better sound quality for slow playback',
-    'settings.perf.hqHint': 'Recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser — noticeably cleaner on held notes. Costs more processing power in return. If playback stutters or the phone gets warm on an older device, turn this off.',
+    'settings.perf.hqHint': 'Still experimental and therefore switched off: recalculates the sound at 0.85×, 0.7× and 0.6× itself instead of leaving it to the browser. On some devices playback still stutters with it — then switch it off again. Left off, everything sounds as before.',
     'settings.perf.hqUnsupported': "This device doesn't support the better slow playback — it stays on the previous method.",
+    'settings.perf.hqLoadLabel': 'Load:',
+    'settings.perf.hqLoadAvg': 'average,',
+    'settings.perf.hqLoadPeak': 'peak —',
+    'settings.perf.hqLoadUnderruns': 'Dropouts:',
+    'settings.perf.hqLoadFallbackLabel': 'Playback speed:',
+    'settings.perf.hqLoadFallbackSuffix': 'of real time',
 
     'settings.help.title': 'Help',
     'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
@@ -5252,8 +5271,14 @@ const STRINGS = {
     'settings.perf.title': 'Kompatybilność i wydajność',
     'settings.perf.hqSwitch': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
     'settings.perf.hqAria': 'Lepsza jakość dźwięku przy wolnym odtwarzaniu',
-    'settings.perf.hqHint': 'Sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce — wyraźnie czyściej przy długo trzymanych dźwiękach. Kosztuje to jednak więcej mocy obliczeniowej. Jeśli odtwarzanie się zacina lub telefon się nagrzewa na starszym urządzeniu, wyłącz to tutaj.',
+    'settings.perf.hqHint': 'Wciąż w fazie testów i dlatego wyłączone: sam przelicza dźwięk przy 0,85×, 0,7× i 0,6×, zamiast zostawiać to przeglądarce. Na niektórych urządzeniach odtwarzanie nadal się zacina — wtedy wyłącz to ponownie. Pozostawione wyłączone, wszystko brzmi jak dotychczas.',
     'settings.perf.hqUnsupported': 'To urządzenie nie obsługuje lepszego spowolnienia — pozostaje dotychczasowy sposób.',
+    'settings.perf.hqLoadLabel': 'Obciążenie:',
+    'settings.perf.hqLoadAvg': 'średnio,',
+    'settings.perf.hqLoadPeak': 'szczyt —',
+    'settings.perf.hqLoadUnderruns': 'Przerwy:',
+    'settings.perf.hqLoadFallbackLabel': 'Tempo odtwarzania:',
+    'settings.perf.hqLoadFallbackSuffix': 'czasu rzeczywistego',
 
     'settings.help.title': 'Pomoc',
     'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
@@ -5440,6 +5465,19 @@ async function loadSettings() {
   if (!settings.myVoices?.length && settings.myVoice) {
     settings.myVoices = [settings.myVoice];
   }
+  // Einmalige Rücknahme: die HQ-Verlangsamung war eine Version lang als
+  // Standard an und stotterte auf echten Geräten bis zur Unbrauchbarkeit
+  // (Messung in SLOWPLAY-HQ-PLAN.md, Abschnitt „Befund"). Der geänderte
+  // Standard allein erreicht diese Installationen nicht: saveSettings()
+  // schreibt immer das *ganze* Objekt, `true` steht dort also schon fest,
+  // sobald irgendeine Einstellung angefasst wurde. Der Merker sorgt dafür,
+  // dass genau einmal zurückgenommen wird — wer die Funktion danach bewusst
+  // wieder einschaltet, behält sie.
+  if (!settings.hqSlowdownReset) {
+    settings.hqSlowdown = false;
+    await saveSettings({ hqSlowdown: false, hqSlowdownReset: true }).catch(() => {});
+  }
+
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
   settings.recBackingOffsetMs = Math.max(-BACKING_OFFSET_MAX_MS, Math.min(BACKING_OFFSET_MAX_MS, settings.recBackingOffsetMs || 0));
@@ -7386,6 +7424,31 @@ function renderHqSlowdown() {
   btn.disabled = !supported;
   btn.setAttribute('aria-checked', settings.hqSlowdown && supported ? 'true' : 'false');
   $('#hq-unsupported-hint').hidden = supported;
+  updateHqLoadVisibility();
+}
+
+// Letzte Meldung der Ersatzmessung ohne performance.now() (siehe
+// hqCreateNode) — für den Wanduhr-Vergleich zwischen zwei Meldungen.
+let hqLoadFallbackPrev = null;
+
+function renderHqLoadText(text, danger) {
+  const node = $('#hq-load');
+  node.textContent = text;
+  node.style.color = danger ? 'var(--danger)' : '';
+}
+
+/**
+ * Die Lastanzeige (Abschnitt 1.3) soll niemanden verunsichern, der die
+ * Funktion gar nicht benutzt: nur sichtbar, solange der Schalter an ist und
+ * eine Wiedergabe läuft. Wird sie versteckt, verwirft sie auch den
+ * Bezugspunkt der Ersatzmessung — sonst würde die nächste Meldung nach einer
+ * Pause die stehende Zeit als Überlastung missdeuten.
+ */
+function updateHqLoadVisibility() {
+  const node = $('#hq-load');
+  const visible = !!(settings.hqSlowdown && Audio.playing && Audio.hqNode);
+  node.hidden = !visible;
+  if (!visible) hqLoadFallbackPrev = null;
 }
 
 $('#btn-hq-slow-toggle').addEventListener('click', async () => {
@@ -7709,10 +7772,25 @@ class HqPitchShifter {
     this.ringSize = this.N * 4;
     this.synthRing = new Float32Array(this.ringSize);
 
-    this.inFifo = [];
+    // Vorbelegter Ringpuffer statt JS-Array: Ha bleibt immer <= Hs = N/4, ein
+    // Quantum liefert normalerweise 128 Samples nach — reichlich Reserve
+    // gegenüber N, auch wenn mehrere Quanten anfallen, bevor ein Frame reif
+    // ist. `inFifoLen` zählt die gültigen Samples ab Index 0.
+    this.inFifo = new Float32Array(this.N);
+    this.inFifoLen = 0;
     this.analysisWin = new Float32Array(this.N);
-    this.prevPhase = new Float64Array(this.half + 1);
-    this.synthPhase = new Float64Array(this.half + 1);
+    // Statt einer Phase je Bin (prevPhase) das vorige, ungedrehte komplexe
+    // Analysespektrum (prevRe/prevIm) — reines Kopieren, keine Winkelfunktion
+    // (Plan Abschnitt 3, Punkt 2). Statt einer laufenden Synthesephase je Bin
+    // (synthPhase) das θ, mit dem der Bin im vorigen Frame gedreht wurde
+    // (prevTheta) — daraus lässt sich die vorige Synthesephase einer neu
+    // hinzugekommenen Spitze rekonstruieren, ohne sie durchgehend
+    // fortzuschreiben (Punkt 3). `hasPrev` markiert den allerersten Frame
+    // nach reset(): dann gibt es noch kein voriges Spektrum (Punkt 5).
+    this.prevRe = new Float64Array(this.half + 1);
+    this.prevIm = new Float64Array(this.half + 1);
+    this.prevTheta = new Float64Array(this.half + 1);
+    this.hasPrev = false;
     this.framesProcessed = 0;
     // Startet negativ statt bei 0 — siehe readOutput(): das ist die
     // Anlaufverzögerung von rund N Samples (Plan Abschnitt 1.3 „Latenz").
@@ -7730,10 +7808,18 @@ class HqPitchShifter {
     // neuen Müll für den Garbage Collector erzeugt.
     this._re = new Float32Array(this.N);
     this._im = new Float32Array(this.N);
-    this._mag = new Float64Array(this.half + 1);
-    this._phase = new Float64Array(this.half + 1);
-    this._framePhase = new Float64Array(this.half + 1);
+    // Betragsquadrat statt Betrag — für die Spitzensuche reicht der
+    // Vergleich, sqrt/hypot ist hier unnötig (Plan Abschnitt 3, Punkt 1).
+    this._mag2 = new Float64Array(this.half + 1);
     this._nearestPeak = new Int32Array(this.half + 1);
+    // Höchstens half+1 Bins können Spitze sein — Zähler statt Array-Länge.
+    this._peaks = new Int32Array(this.half + 1);
+    this._peakCount = 0;
+    // θ je Spitze (nicht je Bin) — nur hier fallen cos/sin an, einmal pro
+    // Spitze statt einmal pro Bin.
+    this._peakTheta = new Float64Array(this.half + 1);
+    this._peakCosTheta = new Float64Array(this.half + 1);
+    this._peakSinTheta = new Float64Array(this.half + 1);
   }
 
   setShift(k) {
@@ -7747,36 +7833,54 @@ class HqPitchShifter {
   }
 
   reset() {
-    this.inFifo.length = 0;
+    this.inFifoLen = 0;
     this.analysisWin.fill(0);
     this.synthRing.fill(0);
-    this.prevPhase.fill(0);
-    this.synthPhase.fill(0);
+    this.prevRe.fill(0);
+    this.prevIm.fill(0);
+    this.prevTheta.fill(0);
+    this.hasPrev = false;
     this.framesProcessed = 0;
     this.synthReadPos = -this.N; // siehe Kommentar im Konstruktor
     this.underrunSamples = 0;
   }
 
-  /** Lokale Maxima im Betragsspektrum (±2 Nachbarn) als Ankerpunkte für die Phasenkopplung. */
+  /**
+   * Lokale Maxima im Betragsquadrat (±2 Nachbarn) als Ankerpunkte für die
+   * Phasenkopplung — das Quadrat genügt für den Vergleich, sqrt/hypot ist
+   * hier unnötig (Plan Abschnitt 3, Punkt 1). Schreibt in das vorbelegte
+   * `_peaks` statt ein neues Array anzulegen und liefert die Anzahl
+   * gültiger Einträge zurück.
+   */
   findPeaks() {
-    const mag = this._mag, half = this.half;
-    const peaks = [];
+    const mag2 = this._mag2, half = this.half, peaks = this._peaks;
+    let count = 0;
     for (let b = 0; b <= half; b++) {
-      const m = mag[b];
+      const m = mag2[b];
       let isPeak = true;
       for (let d = -2; d <= 2; d++) {
         if (d === 0) continue;
         const nb = b + d;
         if (nb < 0 || nb > half) continue; // fehlende Randnachbarn zählen nicht gegen den Kandidaten
-        if (mag[nb] > m) { isPeak = false; break; }
+        if (mag2[nb] > m) { isPeak = false; break; }
       }
-      if (isPeak) peaks.push(b);
+      if (isPeak) peaks[count++] = b;
     }
-    if (!peaks.length) peaks.push(0); // z.B. Stille — sonst bliebe kein Bin zugeordnet
-    return peaks;
+    if (count === 0) peaks[count++] = 0; // z.B. Stille — sonst bliebe kein Bin zugeordnet
+    this._peakCount = count;
+    return count;
   }
 
-  /** Verarbeitet einen Frame aus `this.analysisWin`, legt das Ergebnis per Overlap-Add im Ring ab. */
+  /**
+   * Verarbeitet einen Frame aus `this.analysisWin`, legt das Ergebnis per
+   * Overlap-Add im Ring ab. Rekonstruiert die Phasenkopplung als komplexe
+   * Drehung des frischen Analysespektrums statt über Betrag+cos/sin für
+   * jeden Bin (Plan Abschnitt 3): `mag[b]·cos(synthPhase[p] + phase[b] −
+   * phase[p])` ist algebraisch identisch zu `X[b] · e^{iθ_p}` mit
+   * `X[b] = re[b] + i·im[b]` und `θ_p = synthPhase[p] − phase[p]` — siehe
+   * den zweiten neuen Selbsttest, der genau diese Identität prüft. atan2
+   * und cos/sin fallen dadurch nur noch je Spitze an, nicht je Bin.
+   */
   processFrame() {
     const N = this.N, half = this.half, win = this.win, fft = this.fft, omega = this.omega;
     const Ha = this.Ha, Hs = this.Hs;
@@ -7784,44 +7888,65 @@ class HqPitchShifter {
     for (let i = 0; i < N; i++) { re[i] = this.analysisWin[i] * win[i]; im[i] = 0; }
     fft.transform(re, im, false);
 
-    const mag = this._mag, phase = this._phase;
-    for (let b = 0; b <= half; b++) {
-      mag[b] = Math.hypot(re[b], im[b]);
-      phase[b] = Math.atan2(im[b], re[b]);
-    }
+    const mag2 = this._mag2;
+    for (let b = 0; b <= half; b++) mag2[b] = re[b] * re[b] + im[b] * im[b];
 
-    const peaks = this.findPeaks();
-    const synthPhase = this.synthPhase, prevPhase = this.prevPhase;
+    const peakCount = this.findPeaks();
+    const peaks = this._peaks;
+    const prevRe = this.prevRe, prevIm = this.prevIm, prevTheta = this.prevTheta;
+    const hasPrev = this.hasPrev;
+    const peakTheta = this._peakTheta, peakCos = this._peakCosTheta, peakSin = this._peakSinTheta;
+
     // Nur die Spitzen bekommen den echten Phasenvocoder-Fortschritt
-    // (Phasenableitung → wahre Frequenz → Synthesephase).
-    for (const p of peaks) {
-      const dphi = hqPrincipalAngle(phase[p] - prevPhase[p] - Ha * omega[p]);
-      const trueFreq = omega[p] + dphi / Ha;
-      synthPhase[p] = synthPhase[p] + Hs * trueFreq;
+    // (Phasenableitung → wahre Frequenz → Synthesephase) — und nur hier
+    // fallen atan2/cos/sin an.
+    for (let pk = 0; pk < peakCount; pk++) {
+      const p = peaks[pk];
+      const phaseP = Math.atan2(im[p], re[p]);
+      let theta;
+      if (hasPrev) {
+        // Die vorige Synthesephase dieser Spitze lässt sich aus ihrer
+        // vorigen Analysephase (ein atan2 aus dem gesicherten, ungedrehten
+        // Spektrum) plus dem θ rekonstruieren, mit dem sie im vorigen Frame
+        // gedreht wurde — ohne synthPhase durchgehend je Bin fortzuschreiben.
+        const prevPhaseP = Math.atan2(prevIm[p], prevRe[p]);
+        const prevSynthPhase = prevPhaseP + prevTheta[p];
+        const dphi = hqPrincipalAngle(phaseP - prevPhaseP - Ha * omega[p]);
+        const trueFreq = omega[p] + dphi / Ha;
+        const synthPhase = prevSynthPhase + Hs * trueFreq;
+        theta = synthPhase - phaseP;
+      } else {
+        // Erster Frame nach reset(): kein voriges Spektrum, also Identität
+        // statt mit einer fingierten Nullphase zu rechnen (Punkt 5).
+        theta = 0;
+      }
+      peakTheta[pk] = theta;
+      peakCos[pk] = Math.cos(theta);
+      peakSin[pk] = Math.sin(theta);
     }
 
     // Jeder Bin an seine nächste Spitze koppeln (Peaks sind an sich selbst
-    // gekoppelt, Differenz 0) — das ist der Qualitätsgewinn gegenüber
-    // WSOLA: ohne diesen Schritt klingt ein Phasenvocoder „phasig".
+    // gekoppelt, θ=0) — das ist der Qualitätsgewinn gegenüber WSOLA: ohne
+    // diesen Schritt klingt ein Phasenvocoder „phasig". Im selben Durchlauf:
+    // das ungedrehte Spektrum für den nächsten Frame sichern (Punkt 4 — vor
+    // der Drehung, nicht danach), die Drehung anwenden und das dabei
+    // verwendete θ als prevTheta für den nächsten Frame merken (Punkt 3).
     const nearestPeak = this._nearestPeak;
     let pi = 0;
     for (let b = 0; b <= half; b++) {
-      while (pi < peaks.length - 1 && Math.abs(peaks[pi + 1] - b) < Math.abs(peaks[pi] - b)) pi++;
+      while (pi < peakCount - 1 && Math.abs(peaks[pi + 1] - b) < Math.abs(peaks[pi] - b)) pi++;
       nearestPeak[b] = peaks[pi];
+      prevRe[b] = re[b];
+      prevIm[b] = im[b];
+      const cosT = peakCos[pi], sinT = peakSin[pi];
+      const nre = re[b] * cosT - im[b] * sinT;
+      const nim = re[b] * sinT + im[b] * cosT;
+      re[b] = nre;
+      im[b] = nim;
+      prevTheta[b] = peakTheta[pi];
     }
-    const framePhase = this._framePhase;
-    for (let b = 0; b <= half; b++) {
-      const p = nearestPeak[b];
-      framePhase[b] = synthPhase[p] + (phase[b] - phase[p]);
-    }
-    for (let b = 0; b <= half; b++) { prevPhase[b] = phase[b]; synthPhase[b] = framePhase[b]; }
+    this.hasPrev = true;
 
-    // Spektrum aus unverändertem Betrag und gekoppelter Phase neu aufbauen,
-    // für die reelle Rücktransformation an der Nyquist-Achse spiegeln.
-    for (let b = 0; b <= half; b++) {
-      re[b] = mag[b] * Math.cos(framePhase[b]);
-      im[b] = mag[b] * Math.sin(framePhase[b]);
-    }
     im[0] = 0; im[half] = 0; // DC und Nyquist müssen bei einem reellen Signal reell bleiben
     for (let b = 1; b < half; b++) { re[N - b] = re[b]; im[N - b] = -im[b]; }
 
@@ -7867,24 +7992,40 @@ class HqPitchShifter {
   /**
    * Verschiebt `input` in Originaltonhöhe zurück; die Ausgabe ist exakt so
    * lang wie die Eingabe (Echtzeit 1:1 — das Zeitdehnen passiert schon im
-   * <audio>-Element, hier wird nur die Tonhöhe zurückgeschoben).
+   * <audio>-Element, hier wird nur die Tonhöhe zurückgeschoben). Schreibt in
+   * das mitgegebene `output` statt ein neues Array anzulegen — im Audio-
+   * Thread darf pro Quantum nichts allokiert werden. Fehlt `output` (nur in
+   * den Selbsttests, siehe runSelfTests: der Audio-Thread nimmt diesen
+   * Zweig nie), legt die Methode selbst eins an.
    */
-  process(input) {
+  process(input, output) {
     const n = input.length;
-    const output = new Float32Array(n);
+    if (!output) output = new Float32Array(n);
     if (this.shift === 1) {
       // Normalfall bei 1,0×: reines Durchreichen, kein FFT — muss messbar
       // nichts kosten.
       output.set(input);
       return output;
     }
-    for (let i = 0; i < n; i++) this.inFifo.push(input[i]);
-    const Ha = this.Ha, N = this.N;
-    while (this.inFifo.length >= Ha) {
-      this.analysisWin.copyWithin(0, Ha);
-      for (let i = 0; i < Ha; i++) this.analysisWin[N - Ha + i] = this.inFifo[i];
-      this.inFifo.splice(0, Ha);
-      this.processFrame();
+    // In Portionen füllen statt in einem Rutsch: der Ringpuffer ist auf N
+    // Samples begrenzt, im Audio-Thread trifft pro Aufruf aber ohnehin nur
+    // ein Render-Quantum (128 Samples) ein, weit darunter. Nur die
+    // Selbsttests rufen process() mit sehr viel größeren Eingaben auf einen
+    // Schlag auf — ohne die Portionierung liefe der Puffer über.
+    const inFifo = this.inFifo, Ha = this.Ha, N = this.N;
+    let readPos = 0;
+    while (readPos < n) {
+      const room = N - this.inFifoLen;
+      const take = Math.min(room, n - readPos);
+      for (let i = 0; i < take; i++) inFifo[this.inFifoLen++] = input[readPos + i];
+      readPos += take;
+      while (this.inFifoLen >= Ha) {
+        this.analysisWin.copyWithin(0, Ha);
+        for (let i = 0; i < Ha; i++) this.analysisWin[N - Ha + i] = inFifo[i];
+        inFifo.copyWithin(0, Ha, this.inFifoLen);
+        this.inFifoLen -= Ha;
+        this.processFrame();
+      }
     }
     for (let i = 0; i < n; i++) output[i] = this.readOutput();
     return output;
@@ -7909,15 +8050,34 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     this.shift = 1;
     this.underrunSamples = 0;
     this.lastReport = currentTime;
+    // Lastmessung (SLOWPLAY-HQ-FIX-PLAN.md Abschnitt 1): performance.now()
+    // ist in AudioWorkletGlobalScope laut Spezifikation nicht garantiert —
+    // getestet (Chromium 141, headless) fehlt es dort tatsächlich. Wo es
+    // fehlt, bleibt nur der grobe Ersatz über currentFrame gegen die Wanduhr
+    // der Hauptseite, siehe unten in process().
+    this.hasPerf = typeof performance !== 'undefined' && typeof performance.now === 'function';
+    this.loadSum = 0;
+    this.loadMax = 0;
+    this.loadCount = 0;
+    // Wiederverwendeter Stille-Block statt neuem Float32Array je fehlendem
+    // Eingang und Quantum — bleibt unangetastet immer auf 0, wird also nie
+    // neu genullt.
+    this._silence = null;
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'shift') {
         this.shift = m.value;
         for (const s of this.shifters) s.setShift(m.value);
+        // Diagnose des Pitchabfalls bei 0,7× (Plan Abschnitt 1.4): postMessage
+        // ist asynchron, eine verlorene oder verspätete shift-Nachricht ließe
+        // den Shifter unbemerkt auf dem alten Wert stehen. Die Bestätigung
+        // macht das auf der Hauptseite sichtbar.
+        this.port.postMessage({ type: 'shiftAck', value: m.value });
       } else if (m.type === 'reset') {
         for (const s of this.shifters) s.reset();
       }
     };
+    this.port.postMessage({ type: 'started', hasPerf: this.hasPerf, sampleRate });
   }
 
   ensureChannels(count) {
@@ -7926,6 +8086,11 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       s.setShift(this.shift);
       this.shifters.push(s);
     }
+  }
+
+  silence(len) {
+    if (!this._silence || this._silence.length !== len) this._silence = new Float32Array(len);
+    return this._silence;
   }
 
   process(inputs, outputs) {
@@ -7939,18 +8104,42 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // mit denselben Samples gefüttert und seine interne Position liefe
     // doppelt so schnell, was den Ton komplett zerlegt.
     this.ensureChannels(output.length);
+
+    const t0 = this.hasPerf ? performance.now() : 0;
     for (let ch = 0; ch < output.length; ch++) {
-      const src = (input && (input[ch] || input[0])) || new Float32Array(output[ch].length);
+      const src = (input && (input[ch] || input[0])) || this.silence(output[ch].length);
       const shifter = this.shifters[ch];
-      output[ch].set(shifter.process(src));
+      shifter.process(src, output[ch]);
       this.underrunSamples += shifter.underrunSamples;
       shifter.underrunSamples = 0;
     }
+    if (this.hasPerf) {
+      const dt = performance.now() - t0;
+      this.loadSum += dt;
+      if (dt > this.loadMax) this.loadMax = dt;
+      this.loadCount++;
+    }
+
     if (currentTime - this.lastReport >= 1) {
-      if (this.underrunSamples > 0) {
-        this.port.postMessage({ type: 'underrun', count: this.underrunSamples });
-        this.underrunSamples = 0;
+      const budgetMs = (128 / sampleRate) * 1000; // Frist je Render-Quantum
+      if (this.hasPerf) {
+        const avgPct = this.loadCount > 0 ? (this.loadSum / this.loadCount) / budgetMs * 100 : 0;
+        const maxPct = this.loadMax / budgetMs * 100;
+        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples });
+      } else {
+        // Ersatzmessung ohne performance.now(): currentFrame ist die eigene
+        // Uhr des AudioContext und wächst nur, wenn process() tatsächlich
+        // aufgerufen wird — bleibt ein Callback wegen Überlastung aus, hinkt
+        // sie der echten Wanduhr hinterher. Der Vergleich selbst passiert
+        // auf der Hauptseite (die dort verfügbare performance.now() ist die
+        // einzig verlässliche Wanduhr), hier wird nur der rohe Zählerstand
+        // gemeldet (Plan Abschnitt 1.1).
+        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples });
       }
+      this.underrunSamples = 0;
+      this.loadSum = 0;
+      this.loadMax = 0;
+      this.loadCount = 0;
       this.lastReport = currentTime;
     }
     return true;
@@ -7985,7 +8174,38 @@ async function hqCreateNode(ctx) {
     });
     node.port.onmessage = (e) => {
       const m = e.data;
-      if (m.type === 'underrun') dlog('hq:underrun', { count: m.count });
+      if (m.type === 'load') {
+        const avg = Math.round(m.avgPct);
+        const max = Math.round(m.maxPct);
+        dlog('hq:load', { avgPct: avg, maxPct: max, underruns: m.underruns });
+        renderHqLoadText(
+          `${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${max}% ${t('settings.perf.hqLoadPeak')} ${t('settings.perf.hqLoadUnderruns')} ${m.underruns}`,
+          max > 100,
+        );
+        updateHqLoadVisibility();
+      } else if (m.type === 'loadFallback') {
+        // Ersatzmessung ohne performance.now() im Worklet (siehe
+        // hqBuildWorkletSource): der Vergleich mit der Wanduhr passiert hier
+        // auf der Hauptseite, wo performance.now() verlässlich ist.
+        const now = performance.now();
+        let pct = null;
+        if (hqLoadFallbackPrev) {
+          const wallMs = now - hqLoadFallbackPrev.wall;
+          const audioMs = ((m.frame - hqLoadFallbackPrev.frame) / (ctx.sampleRate || 48000)) * 1000;
+          if (wallMs > 0) pct = (audioMs / wallMs) * 100;
+        }
+        hqLoadFallbackPrev = { frame: m.frame, wall: now };
+        if (pct !== null) {
+          const p = Math.round(pct);
+          dlog('hq:load', { fallback: true, realtimePct: p, underruns: m.underruns });
+          renderHqLoadText(`${t('settings.perf.hqLoadFallbackLabel')} ${p}% ${t('settings.perf.hqLoadFallbackSuffix')}`, p < 97);
+          updateHqLoadVisibility();
+        }
+      } else if (m.type === 'started') {
+        dlog('hq:worklet', { hasPerf: m.hasPerf, sampleRate: m.sampleRate });
+      } else if (m.type === 'shiftAck') {
+        dlog('hq:shiftAck', { value: m.value });
+      }
     };
     dlog('hq:init', { ok: true });
     return node;
@@ -8099,6 +8319,7 @@ async function audioInit() {
     dlog('audio:ended', { pos: Math.round(Audio.position) });
     Audio.playing = false;
     updateWakeLock();
+    updateHqLoadVisibility();
     Audio.onEnded?.();
   });
 
@@ -8113,6 +8334,7 @@ async function audioInit() {
     Audio.playing = false;
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    updateHqLoadVisibility();
     banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
   });
 
@@ -8353,6 +8575,7 @@ async function audioPlay() {
   dlog('audio:play');
   lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
+  updateHqLoadVisibility();
 }
 
 function audioPause() {
@@ -8362,6 +8585,7 @@ function audioPause() {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
   dlog('audio:pause');
   updateWakeLock();
+  updateHqLoadVisibility();
 }
 
 function audioSeek(seconds) {
@@ -16499,6 +16723,69 @@ function runSelfTests() {
     if (output.length !== input.length) {
       failed.push(`HqPitchShifter-Längentreue: ${output.length} Ausgabesamples, erwartet ${input.length}`);
     }
+
+    // 7. Verstärkung: derselbe Sinus behält seinen Effektivwert (RMS) grob —
+    // fehlte bisher und hätte einen groben Skalierungsfehler in der
+    // Rücktransformation nicht bemerkt (SLOWPLAY-HQ-FIX-PLAN.md Abschnitt 4).
+    // Gemessen liegt die Phasenkopplung selbst schon bei rund −0,5 dB (an
+    // allen drei Tempi und mehreren Testfrequenzen geprüft, unverändert seit
+    // vor diesem Umbau — kein Regress, siehe Commit „Winkelfunktionen nur
+    // noch an den Spektralspitzen") — die Grenze hier ist bewusst weiter
+    // gefasst, sie soll einen groben Fehler abfangen (z.B. eine falsche
+    // Overlap-Add-Normierung), nicht die letzte Zehntel-dB.
+    checks++;
+    {
+      let sumIn = 0, sumOut = 0, count = 0;
+      for (let i = from; i < n; i++) {
+        sumIn += input[i] * input[i];
+        sumOut += output[i] * output[i];
+        count++;
+      }
+      const rmsIn = Math.sqrt(sumIn / count), rmsOut = Math.sqrt(sumOut / count);
+      const dB = 20 * Math.log10(rmsOut / rmsIn);
+      if (!Number.isFinite(dB) || Math.abs(dB) > 1.5) {
+        failed.push(`HqPitchShifter-Verstärkung: ${dB.toFixed(2)} dB Abweichung, erwartet höchstens ±1,5 dB`);
+      }
+    }
+  }
+
+  // 8. Die komplexe Drehung (Plan Abschnitt 3) muss algebraisch identisch zur
+  // alten Rekonstruktion mag·cos(synthPhase+phase−phasePeak) sein — für
+  // konstruierte Werte auf 1e-9 geprüft. Sichert gegen Vorzeichendreher, die
+  // wahrscheinlichste Art, diesen Umbau zu verpfuschen.
+  checks++;
+  {
+    const mag = 0.73, phase = 1.234, phasePeak = -0.456, synthPhasePeak = 2.1;
+    const oldRe = mag * Math.cos(synthPhasePeak + (phase - phasePeak));
+    const oldIm = mag * Math.sin(synthPhasePeak + (phase - phasePeak));
+    const xRe = mag * Math.cos(phase), xIm = mag * Math.sin(phase);
+    const theta = synthPhasePeak - phasePeak;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+    const newRe = xRe * cosT - xIm * sinT;
+    const newIm = xRe * sinT + xIm * cosT;
+    if (Math.abs(newRe - oldRe) > 1e-9 || Math.abs(newIm - oldIm) > 1e-9) {
+      failed.push(`HqPitchShifter-Drehung: (${newRe}, ${newIm}) weicht von der alten Rekonstruktion (${oldRe}, ${oldIm}) ab`);
+    }
+  }
+
+  // 9. Kein Zustandsleck über reset(): derselbe Block durch denselben
+  // Shifter geschickt, dazwischen reset() — beide Ausgaben müssen
+  // bitgleich sein.
+  checks++;
+  {
+    const shifter = new HqPitchShifter();
+    shifter.setShift(1 / 0.7);
+    const n = 8192;
+    const block = new Float32Array(n);
+    for (let i = 0; i < n; i++) block[i] = Math.sin(i * 12.9898) * 0.5; // deterministisch statt Math.random()
+    const out1 = shifter.process(block);
+    shifter.reset();
+    const out2 = shifter.process(block);
+    let same = out1.length === out2.length;
+    if (same) {
+      for (let i = 0; i < out1.length; i++) if (out1[i] !== out2[i]) { same = false; break; }
+    }
+    if (!same) failed.push('HqPitchShifter-Reset: derselbe Block liefert nach reset() eine andere Ausgabe');
   }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
