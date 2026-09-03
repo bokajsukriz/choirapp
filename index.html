@@ -8093,6 +8093,15 @@ function hqBuildWorkletSource() {
     .map((f) => f.toString()).join('\n\n');
   return `'use strict';\n\n${shared}\n\n` + `
 class HqShiftProcessor extends AudioWorkletProcessor {
+  // 'shift' als AudioParam statt als Nachricht (SLOWPLAY-HQ-FIX-PLAN-2.md
+  // Abschnitt 1): eine Nachricht liegt in der Aufgabenwarteschlange des
+  // AudioWorkletGlobalScope und kommt unter Last selten oder gar nicht
+  // durch — ein AudioParam wird vom Render-Thread direkt gelesen, dieser
+  // Weg kann nicht verhungern.
+  static get parameterDescriptors() {
+    return [{ name: 'shift', defaultValue: 1, minValue: 0.1, maxValue: 10, automationRate: 'k-rate' }];
+  }
+
   constructor() {
     super();
     this.shifters = [];
@@ -8114,15 +8123,11 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     this._silence = null;
     this.port.onmessage = (e) => {
       const m = e.data;
-      if (m.type === 'shift') {
-        this.shift = m.value;
-        for (const s of this.shifters) s.setShift(m.value);
-        // Diagnose des Pitchabfalls bei 0,7× (Plan Abschnitt 1.4): postMessage
-        // ist asynchron, eine verlorene oder verspätete shift-Nachricht ließe
-        // den Shifter unbemerkt auf dem alten Wert stehen. Die Bestätigung
-        // macht das auf der Hauptseite sichtbar.
-        this.port.postMessage({ type: 'shiftAck', value: m.value });
-      } else if (m.type === 'reset') {
+      // Kein 'shift'-Zweig mehr: der Wert kommt jetzt ausschließlich über
+      // den AudioParam (siehe process()). Zwei Quellen für denselben
+      // Zustand wären ein Rückschritt — eine spät nachgereichte Nachricht
+      // würde einen überflüssigen reset() auslösen.
+      if (m.type === 'reset') {
         for (const s of this.shifters) s.reset();
       }
     };
@@ -8142,7 +8147,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     return this._silence;
   }
 
-  process(inputs, outputs) {
+  process(inputs, outputs, parameters) {
     const input = inputs[0];
     const output = outputs[0];
     if (!output || !output.length) return true;
@@ -8153,6 +8158,16 @@ class HqShiftProcessor extends AudioWorkletProcessor {
     // mit denselben Samples gefüttert und seine interne Position liefe
     // doppelt so schnell, was den Ton komplett zerlegt.
     this.ensureChannels(output.length);
+
+    // AudioParam statt Nachricht (siehe parameterDescriptors oben) — nur bei
+    // tatsächlicher Änderung übernehmen, das postMessage hier läuft also
+    // nicht je Quantum, sondern nur beim Tempowechsel.
+    const wanted = parameters.shift[0];
+    if (wanted !== this.shift) {
+      this.shift = wanted;
+      for (const s of this.shifters) s.setShift(wanted);
+      this.port.postMessage({ type: 'shiftAck', value: wanted });
+    }
 
     const t0 = this.hasPerf ? performance.now() : 0;
     for (let ch = 0; ch < output.length; ch++) {
@@ -8174,7 +8189,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
       if (this.hasPerf) {
         const avgPct = this.loadCount > 0 ? (this.loadSum / this.loadCount) / budgetMs * 100 : 0;
         const maxPct = this.loadMax / budgetMs * 100;
-        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples });
+        this.port.postMessage({ type: 'load', avgPct, maxPct, underruns: this.underrunSamples, shift: this.shift });
       } else {
         // Ersatzmessung ohne performance.now(): currentFrame ist die eigene
         // Uhr des AudioContext und wächst nur, wenn process() tatsächlich
@@ -8183,7 +8198,7 @@ class HqShiftProcessor extends AudioWorkletProcessor {
         // auf der Hauptseite (die dort verfügbare performance.now() ist die
         // einzig verlässliche Wanduhr), hier wird nur der rohe Zählerstand
         // gemeldet (Plan Abschnitt 1.1).
-        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples });
+        this.port.postMessage({ type: 'loadFallback', frame: currentFrame, underruns: this.underrunSamples, shift: this.shift });
       }
       this.underrunSamples = 0;
       this.loadSum = 0;
@@ -8226,7 +8241,7 @@ async function hqCreateNode(ctx) {
       if (m.type === 'load') {
         const avg = Math.round(m.avgPct);
         const max = Math.round(m.maxPct);
-        dlog('hq:load', { avgPct: avg, maxPct: max, underruns: m.underruns });
+        dlog('hq:load', { avgPct: avg, maxPct: max, underruns: m.underruns, shift: m.shift });
         renderHqLoadText(
           `${t('settings.perf.hqLoadLabel')} ${avg}% ${t('settings.perf.hqLoadAvg')} ${max}% ${t('settings.perf.hqLoadPeak')} ${t('settings.perf.hqLoadUnderruns')} ${m.underruns}`,
           max > 100,
@@ -8421,9 +8436,11 @@ async function audioInit() {
     // wird hier schon geladen, unabhängig vom aktuellen Schalterstand, damit
     // sich die Einstellung später ohne Neuladen umschalten lässt. Schlägt
     // das fehl, bleibt hqNode null — applyHqMode() lässt das Element dann
-    // einfach an der Matrix vorbei direkt zur Quelle durch.
+    // einfach an der Matrix vorbei direkt zur Quelle durch. Der Ausgang des
+    // Knotens wird NICHT hier verdrahtet, sondern erst von applyHqMode()
+    // weiter unten — sonst liefe das Worklet in Standard und Roh dauerhaft
+    // als Durchreichen von Stille mit (Plan Abschnitt 1.5).
     const hqNode = await hqCreateNode(ctx);
-    if (hqNode) hqNode.connect(splitter);
 
     // Erst als letzter Schritt: schlägt nur noch dieser Aufruf fehl, bleiben
     // Splitter/Gains/Merger/HQ-Knoten folgenlos unverbunden, statt das
@@ -8666,15 +8683,28 @@ function audioLivePosition() {
  * einmal aufgerufen (das darf pro Element nur einmal passieren, siehe
  * Audio.elSource) — nur die Verbindungen seines Ausgangs ändern sich, und
  * das ist jederzeit erlaubt.
+ *
+ * Hängt zusätzlich den AUSGANG von Audio.hqNode um (SLOWPLAY-HQ-FIX-PLAN-2.md
+ * Abschnitt 1.5): audioInit() verdrahtet hqNode.connect(splitter) einmal und
+ * löst das nie wieder, sonst liefe das Worklet in Standard und Roh dauerhaft
+ * als Durchreichen von Stille mit — billig, aber nicht kostenlos, und es
+ * verfälscht jeden Lastvergleich zwischen den Modi. Mehrfaches connect auf
+ * dieselbe Senke wird zusammengefasst, mehrfaches disconnect ohne
+ * Verbindung wirft nicht — beides idempotent.
  */
 function applyHqMode() {
   const src = Audio.elSource;
   if (!src) return;
   src.disconnect();
-  if (Audio.hqNode && settings.slowMode === 'hq') {
+  const useHq = !!(Audio.hqNode && settings.slowMode === 'hq');
+  if (useHq) {
     src.connect(Audio.hqNode);
   } else if (Audio.channelIn) {
     src.connect(Audio.channelIn);
+  }
+  if (Audio.hqNode) {
+    if (useHq && Audio.channelIn) Audio.hqNode.connect(Audio.channelIn);
+    else Audio.hqNode.disconnect();
   }
 }
 
@@ -8699,8 +8729,14 @@ function applyRateToElement() {
   el.mozPreservesPitch = preserve;
   if (Audio.hqNode) {
     const shift = useHq ? 1 / Audio.rate : 1;
-    Audio.hqNode.port.postMessage({ type: 'shift', value: shift });
-    dlog('hq:mode', { mode: settings.slowMode, on: useHq, rate: Audio.rate, shift });
+    // AudioParam statt Nachricht (SLOWPLAY-HQ-FIX-PLAN-2.md Abschnitt 1.3):
+    // der Wert wird vom Render-Thread direkt gelesen, eine postMessage kann
+    // unter Last in der Warteschlange des Worklets verhungern. Der Fallback
+    // sollte nie greifen — wenn doch, fehlt der Parameter-Deskriptor.
+    const p = Audio.hqNode.parameters.get('shift');
+    if (p) p.value = shift;
+    else Audio.hqNode.port.postMessage({ type: 'shift', value: shift });
+    dlog('hq:mode', { mode: settings.slowMode, on: useHq, rate: Audio.rate, shift, param: p ? p.value : null });
   }
 }
 
