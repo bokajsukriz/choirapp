@@ -8546,6 +8546,39 @@ async function audioInit() {
  * `el.paused` bleibt davon unberührt: das Element denkt, es spiele, nur kommt
  * kein Ton mehr durch die Matrix.
  */
+// Nur ein Start-/Resume-Vorgang gleichzeitig: audioPlay() und diese Funktion
+// dürfen nicht beide gleichzeitig an ctx.resume() ziehen — der zweite Aufruf
+// hängt sich an denselben, schon laufenden Versuch an, statt einen eigenen
+// zu starten (Stufe 3 in SLOWPLAY-HD-FIX-PLAN.md).
+let audioStartMutex = null;
+
+/**
+ * Lässt Audio.ctx anlaufen, falls nötig, und liefert erst zurück, wenn
+ * feststeht, ob er wirklich läuft. Ohne Kontext (Matrix nicht verfügbar,
+ * direkte Ausgabe) gilt das als Erfolg — dort gibt es nichts zu starten.
+ */
+async function audioResumeContext() {
+  const ctx = Audio.ctx;
+  if (!ctx) return true;
+  if (ctx.state === 'running') return true;
+  if (!audioStartMutex) {
+    audioStartMutex = (async () => {
+      try {
+        await ctx.resume();
+      } catch (err) {
+        dlog('audio:ctxresume:fail', { name: err?.name });
+      }
+    })();
+  }
+  const job = audioStartMutex;
+  try {
+    await job;
+  } finally {
+    if (audioStartMutex === job) audioStartMutex = null;
+  }
+  return ctx === Audio.ctx && ctx.state === 'running';
+}
+
 async function onAudioContextStateChange() {
   const ctx = Audio.ctx;
   if (!ctx || ctx.state === 'running' || !Audio.playing) return;
@@ -8554,14 +8587,10 @@ async function onAudioContextStateChange() {
   // Zurückkehren kümmert sich der visibilitychange-Handler darum.
   if (document.visibilityState !== 'visible') return;
 
-  try {
-    await ctx.resume();
-  } catch (err) {
-    dlog('audio:ctxresume:fail', { name: err?.name });
-  }
+  const ok = await audioResumeContext();
   if (ctx !== Audio.ctx || !Audio.playing) return;
 
-  if (ctx.state !== 'running') {
+  if (!ok) {
     dlog('audio:interrupted', { ctxState: ctx.state, visibility: document.visibilityState });
     Audio.playing = false;
     setPlayIcon(false);
@@ -8691,12 +8720,18 @@ async function audioPlay() {
     return;
   }
 
-  // Läuft das Element durch die Kanal-Matrix (Variante A), kann der
-  // AudioContext im angehaltenen Zustand starten, bis eine Nutzergeste ihn
-  // freigibt. Erst jetzt anstoßen, nicht blockierend: Ton setzt notfalls ein,
-  // sobald resume() durch ist, statt play() selbst zu verzögern.
-  if (Audio.ctx && Audio.ctx.state !== 'running') {
-    Audio.ctx.resume().catch((err) => dlog('audio:ctxresume:fail', { name: err?.name }));
+  // Läuft das Element durch die Kanal-Matrix (Variante A), kommt ohne
+  // laufenden AudioContext kein Ton durch, auch wenn das Element selbst
+  // sauber spielt — abgewartet und geprüft, statt nur angestoßen, sonst
+  // zeigt die App „spielt", während noch kein Ton kommt, und ein frühes
+  // statechange fände Audio.playing noch auf false vor und würde verworfen
+  // (Befund 7 in SLOWPLAY-HD-FIX-PLAN.md).
+  const ctxOk = await audioResumeContext();
+  if (!ctxOk) {
+    dlog('audio:play:fail', { name: 'ctx-not-running' });
+    Audio.el.pause();
+    bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', new Error('Der AudioContext lief nicht an.'));
+    return;
   }
 
   Audio.playing = true;

@@ -10,37 +10,61 @@
 
 // Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
 // Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v125';
+const SW_VERSION = 'v126';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
 // (https://<name>.github.io/<repo>/). Absolute Pfade würden dort ins Leere zeigen.
-const SHELL = [
+//
+// Pflichtteil: ohne eine dieser Dateien startet die App offline gar nicht
+// oder verliert den HD-Modus (Befund 6 in SLOWPLAY-HD-FIX-PLAN.md — ein
+// einzelner fehlgeschlagener cache.add() galt bislang trotzdem als
+// erfolgreiche Installation, und activate() löschte danach den alten,
+// vollständigen Cache). Fehlt eine davon, darf dieser Cache weder als fertig
+// gelten noch einen älteren, funktionierenden Stand ersetzen.
+const SHELL_REQUIRED = [
   './',
   './index.html',
   './groove-lab.js',
-  './lame.min.js',
   './signalsmith-stretch.js',
+];
+// Kürteil: fehlt eine davon, bleibt die App trotzdem offlinefähig — der
+// MP3-Export bzw. eine Icon-Variante fehlt dann einmalig, bis das nächste
+// Update sie nachträgt.
+const SHELL_OPTIONAL = [
+  './lame.min.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
 ];
+const SHELL = [...SHELL_REQUIRED, ...SHELL_OPTIONAL];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      // Einzeln statt addAll: schlägt eine Datei fehl, scheitert sonst die
-      // komplette Installation und die App bleibt ohne Offline-Fähigkeit.
-      await Promise.all(
+      // Einzeln statt addAll: schlägt eine Kür-Datei fehl, soll das die
+      // Installation nicht scheitern lassen.
+      const results = await Promise.all(
         SHELL.map(async (path) => {
           try {
             await cache.add(new Request(path, { cache: 'reload' }));
+            return { path, ok: true };
           } catch (err) {
             console.warn('[sw] konnte nicht cachen:', path, err);
+            return { path, ok: false };
           }
         })
       );
+      const missing = results.filter((r) => !r.ok && SHELL_REQUIRED.includes(r.path));
+      if (missing.length) {
+        // Diesen unvollständigen Cache verwerfen: eine fehlgeschlagene
+        // install() lässt den Browser die neue Service-Worker-Version ganz
+        // verwerfen, der bisherige aktive Worker (und sein vollständiger
+        // Cache) bleibt unangetastet in Kontrolle.
+        await caches.delete(CACHE_NAME);
+        throw new Error(`Pflichtdateien fehlen im Shell-Cache: ${missing.map((r) => r.path).join(', ')}`);
+      }
       // Kein automatisches skipWaiting: Der Nutzer entscheidet über den
       // Banner „Neue Version verfügbar", damit kein Neuladen mitten im
       // Abspielen oder Importieren passiert.
@@ -51,6 +75,17 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // Zweite, unabhängige Prüfung vor dem Löschen: install() sollte einen
+      // unvollständigen Cache nie bis hierher haben durchkommen lassen, aber
+      // erst danach ausgelagerte Cache-Einträge (Speicherdruck) wären sonst
+      // unbemerkt und der letzte vollständige Shell-Stand wäre weg.
+      const cache = await caches.open(CACHE_NAME);
+      const complete = (await Promise.all(SHELL_REQUIRED.map((path) => cache.match(path)))).every(Boolean);
+      if (!complete) {
+        console.warn('[sw] Shell-Cache unvollständig, alte Caches bleiben stehen');
+        await self.clients.claim();
+        return;
+      }
       const names = await caches.keys();
       await Promise.all(
         names
