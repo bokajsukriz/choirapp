@@ -36,6 +36,13 @@
   --accent:     #F868B0;
   --accent-rgb: 248,104,176;             /* dieselbe Farbe wie --accent, als "r,g,b" für rgba() unten —
                                             wird zusammen mit --accent umgeschaltet (siehe applyAccentColor) */
+  /* Abgedunkelte Variante von --accent für Text/Icons auf hellem Grund
+     (≥4,5:1 auf --bg/--surface/--surface-2, siehe deriveAccentForeground) —
+     dieser Wert ist nur der statische Startzustand für Pink, bis
+     applyAccentColor() beim Laden der Einstellungen den echten, zur
+     jeweiligen Akzentfarbe passenden Wert setzt. --accent selbst bleibt für
+     Füllungen, große Flächen und Fokusringe im Einsatz. */
+  --accent-foreground: #db0a73;
   --accent-ink: #241b3d;
   --accent-2:   #33c9dc;
   --accent-3:   #ffd23f;
@@ -232,7 +239,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   .nav-btn { font-size: 0.66rem; }
 }
 
-.nav-btn[aria-current="page"] { color: var(--accent); }
+.nav-btn[aria-current="page"] { color: var(--accent-foreground); font-weight: 800; }
 .nav-btn:active { background: var(--surface-2); }
 
 /* ---------- Bausteine ---------------------------------------------------- */
@@ -452,7 +459,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Songwahl im allgemeinen Recorder (siehe renderRecSongPicker) — die
    gewählte Zeile bekommt einen Akzentrand statt einer eigenen Auswahlmaske. */
 .song-pick-list .list-item[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb),.09); }
-.song-pick-list .list-item .pick-check { color: var(--accent); flex: 0 0 auto; }
+.song-pick-list .list-item .pick-check { color: var(--accent-foreground); flex: 0 0 auto; }
 
 /* Titel und Stimm-Kürzel laufen als ein Textfluss: die Badges hängen sich
    direkt an den Titel und brechen nur um, wenn die Zeile voll ist. */
@@ -502,7 +509,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Anleitungs-Schritte im Import-Bereich */
 .steps { margin: 0; padding-left: 1.25em; }
 .steps li { margin-bottom: 9px; }
-.steps li::marker { color: var(--accent); font-weight: 700; }
+.steps li::marker { color: var(--accent-foreground); font-weight: 700; }
 
 /* ---------- Suche und Sammelordner-Filter (Bibliothek) ------------------ */
 
@@ -654,7 +661,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   box-shadow: 0 3px 10px rgba(0,0,0,.16);
 }
 .fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
-.fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
+.fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent-foreground); }
 
 /* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie
    die schwebenden Knöpfe, aber bewusst zurückhaltend — gestrichelter Umriss
@@ -698,7 +705,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-radius: 50%;
   border: 1.5px dashed rgba(var(--accent-rgb), .5);
   background: rgba(var(--accent-rgb), .06);
-  color: var(--accent);
+  color: var(--accent-foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -740,7 +747,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-radius: 999px;
   padding: 6px 14px;
   margin-bottom: 4px;
-  color: var(--accent);
+  color: var(--accent-foreground);
   font-style: italic;
   font-weight: 700;
   font-size: 0.8rem;
@@ -750,7 +757,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Rechtsbündig statt zentriert: die Pfeilspitze sitzt am rechten Rand der
    Zeichenfläche und zeigt damit genau auf den Knopf darunter, während der
    Anfang mittig unter dem Schildchen bleibt. */
-.import-fab-hint-arrow { display: block; width: 100px; height: 120px; margin-left: auto; color: var(--accent); }
+.import-fab-hint-arrow { display: block; width: 100px; height: 120px; margin-left: auto; color: var(--accent-foreground); }
 
 /* ---------- Auswahlmaske vor dem Import --------------------------------- */
 
@@ -855,7 +862,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
    für eine reine Ansichtsauswahl ohne inhaltliche Tragweite. */
 #lyrics-source-switch .preset[aria-pressed="true"] {
   background: rgba(var(--accent-rgb), .16);
-  color: var(--accent);
+  color: var(--accent-foreground);
 }
 
 /* Experiment: in der erweiterten Lyrics-Leiste (siehe .lyrics-toolbar-extended)
@@ -1403,7 +1410,7 @@ input[type="checkbox"] {
    sich Icon und Beschriftung rosa statt grau — schon vor dem Antippen zu
    erkennen. Der aktive Reiter (Akzent-Fläche) gewinnt immer, unabhängig
    vom Inhalt. */
-.player-tab.has-content { color: var(--accent); }
+.player-tab.has-content { color: var(--accent-foreground); font-weight: 800; }
 
 .player-tab[aria-selected="true"], .player-tab[aria-pressed="true"] {
   background: var(--accent);
@@ -2207,7 +2214,7 @@ input[type="checkbox"] {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-foreground);
   margin: 0 0 6px;
 }
 
@@ -2236,7 +2243,7 @@ input[type="checkbox"] {
   margin-bottom: 16px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  color: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .onb-badge svg { width: 30px; height: 30px; }
@@ -4956,11 +4963,103 @@ function hexToRgbTriplet(hex) {
   return [1, 2, 3].map((i) => parseInt(m[i], 16)).join(',');
 }
 
-/** Schaltet --accent (und die davon abgeleitete --accent-rgb) auf dem Wurzelelement um. */
+function hexToRgbArray(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  return m ? [1, 2, 3].map((i) => parseInt(m[i], 16)) : [248, 104, 176];
+}
+
+function rgbToHex([r, g, b]) {
+  return '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+
+/* -------- Kontrastrechnung (WCAG 2.x) für --accent-foreground, siehe unten -------- */
+
+function srgbChannelToLinear(c) {
+  const cs = c / 255;
+  return cs <= 0.03928 ? cs / 12.92 : Math.pow((cs + 0.055) / 1.055, 2.4);
+}
+function relLuminance([r, g, b]) {
+  return 0.2126 * srgbChannelToLinear(r) + 0.7152 * srgbChannelToLinear(g) + 0.0722 * srgbChannelToLinear(b);
+}
+/** WCAG-Kontrastverhältnis zweier Farben, als [r,g,b]-Arrays. */
+function contrastRatio(rgbA, rgbB) {
+  const La = relLuminance(rgbA), Lb = relLuminance(rgbB);
+  const [lighter, darker] = La >= Lb ? [La, Lb] : [Lb, La];
+  return (lighter + 0.05) / (darker + 0.05);
+}
+/** Mischt in Gamma-Raum wie CSS' `color-mix(in srgb, …)` — dieselbe Formel wie --surface-2/--line im CSS. */
+function mixWithWhiteSrgb(rgb, pct) {
+  const f = pct / 100;
+  return rgb.map((c) => Math.round(c * f + 255 * (1 - f)));
+}
+function rgbToHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r: h = ((g - b) / d) % 6; break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return [h, s, l];
+}
+function hslToRgb([h, s, l]) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let rgb1;
+  if (h < 60) rgb1 = [c, x, 0];
+  else if (h < 120) rgb1 = [x, c, 0];
+  else if (h < 180) rgb1 = [0, c, x];
+  else if (h < 240) rgb1 = [0, x, c];
+  else if (h < 300) rgb1 = [x, 0, c];
+  else rgb1 = [c, 0, x];
+  return rgb1.map((v) => Math.round((v + m) * 255));
+}
+
+const ACCENT_FOREGROUND_MIN_CONTRAST = 4.5; // WCAG AA, normaler Text
+const ACCENT_BG_RGB      = hexToRgbArray('#fff7ec'); // == --bg
+const ACCENT_SURFACE_RGB = hexToRgbArray('#ffffff'); // == --surface
+
+/**
+ * Leitet aus einer Akzentfarbe eine dunklere Variante für Text/Icons auf
+ * hellem Grund ab (AP-05: #F868B0 auf #fff7ec liegt bei 2,6:1, weit unter
+ * den geforderten 4,5:1). Anders als --accent-ink (dunkler Text AUF einer
+ * Akzentfläche) geht es hier um die Akzentfarbe SELBST als Text-/Iconfarbe.
+ * Dunkelt die Farbe in HSL-Schritten ab, bis sie gegen alle drei hellen
+ * Flächen (--bg, --surface und das von der Akzentfarbe selbst abhängige
+ * --surface-2) mindestens 4,5:1 erreicht — l=0 (Schwarz) hätte gegen jeden
+ * hellen Grund maximalen Kontrast, die Schleife terminiert also immer.
+ * Für Füllungen/Ränder/Fokusringe bleibt --accent unverändert im Einsatz.
+ */
+function deriveAccentForeground(hex) {
+  const rgb0 = hexToRgbArray(hex);
+  const surface2Rgb = mixWithWhiteSrgb(rgb0, 6); // dieselbe Formel wie --surface-2
+  const backgrounds = [ACCENT_BG_RGB, ACCENT_SURFACE_RGB, surface2Rgb];
+  const worstContrast = (rgb) => Math.min(...backgrounds.map((bg) => contrastRatio(rgb, bg)));
+
+  let [h, s, l] = rgbToHsl(rgb0);
+  let rgb = rgb0;
+  for (let step = 0; step <= 100 && worstContrast(rgb) < ACCENT_FOREGROUND_MIN_CONTRAST; step++) {
+    l = Math.max(0, l - 0.01);
+    rgb = hslToRgb([h, s, l]);
+  }
+  return rgbToHex(rgb);
+}
+
+/** Schaltet --accent, --accent-rgb und die daraus abgeleitete --accent-foreground auf dem Wurzelelement um. */
 function applyAccentColor(hex) {
   const root = document.documentElement.style;
   root.setProperty('--accent', hex);
   root.setProperty('--accent-rgb', hexToRgbTriplet(hex));
+  root.setProperty('--accent-foreground', deriveAccentForeground(hex));
 }
 
 /* ==========================================================================
@@ -17737,6 +17836,28 @@ function runSelfTests() {
     const buckets = bucketizeColumns(columns, 10);
     if (buckets.length !== 10) failed.push(`bucketizeColumns(100, 10) müsste 10 Werte liefern, waren ${buckets.length}`);
     else if (buckets[4].amp !== 1) failed.push(`bucketizeColumns müsste das Maximum je Bucket behalten, Bucket 4 war ${buckets[4].amp}`);
+  }
+
+  // AP-05: --accent-foreground muss für jedes Preset gegen --bg, --surface
+  // UND das von der jeweiligen Akzentfarbe selbst abhängige --surface-2
+  // mindestens 4,5:1 erreichen (WCAG AA, normaler Text) — nicht nur für das
+  // voreingestellte Pink.
+  checks++;
+  {
+    for (const preset of ACCENT_PRESETS) {
+      const fgRgb = hexToRgbArray(deriveAccentForeground(preset.hex));
+      const surface2Rgb = mixWithWhiteSrgb(hexToRgbArray(preset.hex), 6);
+      const ratios = {
+        bg: contrastRatio(fgRgb, ACCENT_BG_RGB),
+        surface: contrastRatio(fgRgb, ACCENT_SURFACE_RGB),
+        surface2: contrastRatio(fgRgb, surface2Rgb),
+      };
+      for (const [name, ratio] of Object.entries(ratios)) {
+        if (ratio < ACCENT_FOREGROUND_MIN_CONTRAST) {
+          failed.push(`--accent-foreground für „${preset.name}" erreicht auf --${name} nur ${ratio.toFixed(2)}:1, gefordert ${ACCENT_FOREGROUND_MIN_CONTRAST}:1`);
+        }
+      }
+    }
   }
 
   const total = checks;
