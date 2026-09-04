@@ -174,6 +174,14 @@
     });
   }
 
+  function withTimeout(promise, ms, label) {
+    let t;
+    const timeout = new Promise((_, reject) => {
+      t = setTimeout(() => reject(new Error('Zeitüberschreitung bei ' + label + ' (' + ms + ' ms)')), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+  }
+
   async function runJsWorkletRound(ctx, rate, channels, k) {
     await ensureOverloadWorklet(ctx);
     const node = new AudioWorkletNode(ctx, 'hq-overload', {
@@ -190,39 +198,77 @@
     return p;
   }
 
-  async function runWasmWorkletRound(ctx, rate, k) {
-    const mute = ctx.createGain();
-    mute.gain.value = 0;
-    mute.connect(ctx.destination);
-    const src = testSignal(ctx.sampleRate, 4);
-    const nodes = [];
-    for (let i = 0; i < k; i++) {
+  // Jeder wasm-Knoten kompiliert und instanziiert sein eigenes WASM-Modul neu
+  // — auf dem echten Gerät teuer genug, dass 6 verwerfen und 16 neu bauen
+  // (22 Instanzen für eine Tempo/Engine-Kombination) zum Hänger werden kann.
+  // Deshalb: den Pool über die Eskalationsrunde hinweg behalten, nur die
+  // fehlende Differenz dazubauen.
+  async function growWasmPool(ctx, mute, pool, targetK, rate, src) {
+    while (pool.length < targetK) {
       const node = await SignalsmithStretch(ctx);
       node.addBuffers([src, src]);
       node.schedule({ rate, semitones: 0, formantCompensation: false, input: 0 });
       node.start();
       node.connect(mute);
-      nodes.push(node);
+      pool.push(node);
     }
-    await new Promise((r) => setTimeout(r, 150));
-    const p = await measureRealtimeRatio(ctx, 2000);
-    for (const node of nodes) { try { node.stop(); } catch {} node.disconnect(); }
-    mute.disconnect();
-    return p;
   }
 
+  async function runWasmWorkletRound(ctx, mute, pool, targetK, rate, src) {
+    await growWasmPool(ctx, mute, pool, targetK, rate, src);
+    await new Promise((r) => setTimeout(r, 150));
+    return measureRealtimeRatio(ctx, 2000);
+  }
+
+  // Nie unbegrenzt hängen: ein Gerät, das K Ströme nicht in angemessener
+  // Zeit anlegen kann, ist selbst ein Ergebnis (siehe SLOWPLAY-HQ-HANDOFF.md
+  // §6 Punkt 1 — auf einem schnellen Proxy gemessen, dem Gerät nicht
+  // zugetraut, dass es teuer ist) und muss als Fehler sichtbar werden statt
+  // die Seite einzufrieren.
+  const WORKLET_ROUND_TIMEOUT_MS = 8000;
+
   async function overloadThroughput(family, ctx, rate, channels) {
-    const round = (k) => family === 'wasm' ? runWasmWorkletRound(ctx, rate, k) : runJsWorkletRound(ctx, rate, channels, k);
-    let k = 6;
-    let p = await round(k);
-    const rounds = [{ k, p }];
-    if (p >= 0.95) {
-      k = 16;
-      p = await round(k);
-      rounds.push({ k, p });
+    const rounds = [];
+    let ok = true, error = null;
+    if (family === 'wasm') {
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      mute.connect(ctx.destination);
+      const src = testSignal(ctx.sampleRate, 4);
+      const pool = [];
+      try {
+        let k = 6;
+        let p = await withTimeout(runWasmWorkletRound(ctx, mute, pool, k, rate, src), WORKLET_ROUND_TIMEOUT_MS, 'wasm K=' + k);
+        rounds.push({ k, p });
+        if (p >= 0.95) {
+          k = 16;
+          p = await withTimeout(runWasmWorkletRound(ctx, mute, pool, k, rate, src), WORKLET_ROUND_TIMEOUT_MS, 'wasm K=' + k);
+          rounds.push({ k, p });
+        }
+      } catch (err) {
+        ok = false;
+        error = (err && err.message) || String(err);
+      }
+      for (const node of pool) { try { node.stop(); } catch {} try { node.disconnect(); } catch {} }
+      mute.disconnect();
+    } else {
+      try {
+        let k = 6;
+        let p = await withTimeout(runJsWorkletRound(ctx, rate, channels, k), WORKLET_ROUND_TIMEOUT_MS, 'js K=' + k);
+        rounds.push({ k, p });
+        if (p >= 0.95) {
+          k = 16;
+          p = await withTimeout(runJsWorkletRound(ctx, rate, channels, k), WORKLET_ROUND_TIMEOUT_MS, 'js K=' + k);
+          rounds.push({ k, p });
+        }
+      } catch (err) {
+        ok = false;
+        error = (err && err.message) || String(err);
+      }
     }
+    if (rounds.length === 0) return { throughput: 0, rounds: [], ok: false, error };
     const last = rounds[rounds.length - 1];
-    return { throughput: last.k * last.p, rounds };
+    return { throughput: last.k * last.p, rounds, ok, error };
   }
 
   // ---------------------------------------------------------------------
@@ -240,20 +286,34 @@
 
   const messungen = []; // { key, label, rate, worker, worklet }
 
+  function fmtRounds(rounds, digits) {
+    return rounds.map((r) => 'K=' + r.k + ' p=' + (r.p * 100).toFixed(digits) + '%').join(', ');
+  }
+
+  // Ein Worklet-Fehler (z.B. Zeitüberschreitung) ist selbst ein Ergebnis —
+  // nie stumm 0 anzeigen, sondern was tatsächlich passiert ist.
+  function fmtWorklet(w, digits) {
+    if (!w.ok) {
+      const partial = w.rounds.length ? ' (' + fmtRounds(w.rounds, digits) + ' vor dem Abbruch)' : '';
+      return 'FEHLER: ' + w.error + partial;
+    }
+    return fmtRounds(w.rounds, digits) + ' → Durchsatz ' + w.throughput.toFixed(3) + '×';
+  }
+
   function addResultRow(m) {
     const row = document.createElement('div');
     row.className = 'row';
     const workerTxt = m.worker.ok ? m.worker.throughput.toFixed(2) + '×' : 'Fehler';
+    const workletTxt = m.worklet.ok ? m.worklet.throughput.toFixed(2) + '×' : 'Fehler';
     row.innerHTML = '<span class="name"></span><span class="chip"></span>'
       + '<span class="detail"></span>';
     row.querySelector('.name').textContent = m.label + ' · ' + m.rate.toFixed(2) + '×';
     const chip = row.querySelector('.chip');
-    chip.textContent = workerTxt + ' / ' + m.worklet.throughput.toFixed(2) + '×';
-    chip.className = 'chip ' + (m.worker.ok && m.worklet.throughput >= 1 ? 'ok' : m.worker.ok ? 'warn' : 'bad');
-    const roundsTxt = m.worklet.rounds.map((r) => 'K=' + r.k + ' p=' + (r.p * 100).toFixed(0) + '%').join(', ');
+    chip.textContent = workerTxt + ' / ' + workletTxt;
+    chip.className = 'chip ' + (m.worker.ok && m.worklet.ok && m.worklet.throughput >= 1 ? 'ok' : m.worker.ok && m.worklet.ok ? 'warn' : 'bad');
     row.querySelector('.detail').textContent =
-      'Worker: ' + (m.worker.ok ? m.worker.throughput.toFixed(3) + '× Echtzeit (' + m.worker.blocks + ' Blöcke, ' + m.worker.elapsedMs.toFixed(0) + ' ms)' : m.worker.error)
-      + ' · Worklet: ' + roundsTxt + ' → Durchsatz ' + m.worklet.throughput.toFixed(3) + '×';
+      'Worker: ' + (m.worker.ok ? m.worker.throughput.toFixed(3) + '× Echtzeit (' + m.worker.blocks + ' Blöcke, ' + m.worker.elapsedMs.toFixed(0) + ' ms)' : 'FEHLER: ' + m.worker.error)
+      + ' · Worklet: ' + fmtWorklet(m.worklet, 0);
     el('results').append(row);
   }
 
@@ -277,14 +337,21 @@
     lines.push('Durchsatz — Audiosekunden je Wanduhrsekunde (Worker roh / Worklet K·p, absichtlich überlastet):');
     for (const m of messungen) {
       const workerTxt = m.worker.ok ? m.worker.throughput.toFixed(3) + '×' : 'FEHLER: ' + m.worker.error;
-      const roundsTxt = m.worklet.rounds.map((r) => 'K=' + r.k + ' p=' + (r.p * 100).toFixed(1) + '%').join(', ');
       lines.push('  ' + m.label.padEnd(10, ' ') + m.rate.toFixed(2) + '×'
         + '   Worker ' + workerTxt.padEnd(10, ' ')
-        + '   Worklet ' + m.worklet.throughput.toFixed(3) + '× (' + roundsTxt + ')'
+        + '   Worklet ' + fmtWorklet(m.worklet, 1)
         + '   Betriebsart: ' + (m.family === 'wasm' ? 'Pufferbetrieb (b)' : 'Direktaufruf, wie im Worklet der App'));
     }
     lines.push('');
-    lines.push('Hörvergleich: noch nicht durchgeführt (Stufe 2 dieses Messplatzes).');
+    if (hvJudgement) {
+      const j = hvJudgement;
+      const verdict = j.result === 'same' ? 'kein hörbarer Unterschied' : j.assignment[j.result] + ' bevorzugt';
+      lines.push('Hörvergleich — Paar 1 (standard gegen wasm) bei ' + j.rate.toFixed(2) + '×: ' + verdict
+        + '   [A=' + j.assignment.A + ', B=' + j.assignment.B + ']'
+        + '   Quelle: ' + j.source);
+    } else {
+      lines.push('Hörvergleich: noch kein Urteil erfasst.');
+    }
     el('out').textContent = lines.join('\n');
   }
 
@@ -339,6 +406,196 @@
     }
     renderErgebnis();
   });
+
+  // ---------------------------------------------------------------------
+  // 5. Hörvergleich (Plan Abschnitt 3) — Paar 1: standard gegen wasm
+  // ---------------------------------------------------------------------
+  let hvCtx = null;
+  let hvBuffer = null; // AudioBuffer der gewählten Datei, oder null (dann: eingebauter Vierklang)
+  let hvObjectUrl = null;
+  let hvFile = null;
+  let hvBuiltin = null; // { buffer, objectUrl } — einmal erzeugt, wiederverwendet
+  let hvNodes = null;
+  let hvAssignment = null; // { A: 'standard'|'wasm', B: 'standard'|'wasm' } — vor dem Urteil nirgends angezeigt
+  let hvJudgement = null;
+
+  function hvFormatTime(s) {
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return m + ':' + String(sec).padStart(2, '0');
+  }
+
+  // Nur für den eingebauten Vierklang nötig: ein <audio>-Element braucht eine
+  // echte Quelle (preservesPitch gibt es nur auf HTMLMediaElement, nicht auf
+  // einem AudioBuffer) — bei einer eigenen Datei wird stattdessen direkt die
+  // hochgeladene Datei als Objekt-URL verwendet.
+  function encodeWav(buffer) {
+    const numCh = buffer.numberOfChannels, sr = buffer.sampleRate, len = buffer.length;
+    const blockAlign = numCh * 2, dataSize = len * blockAlign;
+    const out = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(out);
+    const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+    writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, numCh, true); view.setUint32(24, sr, true);
+    view.setUint32(28, sr * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+    writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+    const chans = []; for (let c = 0; c < numCh; c++) chans.push(buffer.getChannelData(c));
+    let off = 44;
+    for (let i = 0; i < len; i++) {
+      for (let c = 0; c < numCh; c++) {
+        const s = Math.max(-1, Math.min(1, chans[c][i]));
+        view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        off += 2;
+      }
+    }
+    return new Blob([out], { type: 'audio/wav' });
+  }
+
+  function hvGetBuiltin(ctx) {
+    if (hvBuiltin) return hvBuiltin;
+    const seconds = 16;
+    const mono = testSignal(ctx.sampleRate, seconds);
+    const buffer = ctx.createBuffer(2, mono.length, ctx.sampleRate);
+    buffer.copyToChannel(mono, 0);
+    buffer.copyToChannel(mono, 1);
+    hvBuiltin = { buffer, objectUrl: URL.createObjectURL(encodeWav(buffer)) };
+    return hvBuiltin;
+  }
+
+  el('hv-file').addEventListener('change', async () => {
+    const file = el('hv-file').files[0];
+    if (!file) return;
+    el('hv-filename').textContent = 'lädt: ' + file.name + ' …';
+    try {
+      const buf = await file.arrayBuffer();
+      const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await tmpCtx.decodeAudioData(buf);
+      await tmpCtx.close();
+      if (hvObjectUrl) URL.revokeObjectURL(hvObjectUrl);
+      hvBuffer = audioBuffer;
+      hvObjectUrl = URL.createObjectURL(file);
+      hvFile = file;
+      el('hv-filename').textContent = file.name + ' (' + hvFormatTime(audioBuffer.duration) + ')';
+      const maxOffset = Math.max(0, Math.floor(audioBuffer.duration - 15));
+      const offsetInput = el('hv-offset');
+      offsetInput.max = String(maxOffset);
+      offsetInput.value = String(Math.floor(maxOffset * 0.25));
+      el('hv-offset-row').hidden = false;
+      el('hv-offset-val').textContent = hvFormatTime(Number(offsetInput.value));
+    } catch (err) {
+      hvBuffer = null;
+      el('hv-filename').textContent = 'Fehler beim Laden — Vierklang wird verwendet: ' + (err && err.message);
+    }
+  });
+
+  el('hv-offset').addEventListener('input', () => {
+    el('hv-offset-val').textContent = hvFormatTime(Number(el('hv-offset').value));
+  });
+
+  function hvStopPlayback() {
+    if (!hvNodes) return;
+    try { hvNodes.standardEl.pause(); } catch {}
+    try { hvNodes.standardEl.src = ''; } catch {}
+    try { hvNodes.wasmNode.stop(); } catch {}
+    try { hvNodes.wasmNode.disconnect(); } catch {}
+    try { hvNodes.standardGain.disconnect(); } catch {}
+    try { hvNodes.wasmGain.disconnect(); } catch {}
+    hvNodes = null;
+  }
+
+  function hvSwitch(which) {
+    if (!hvNodes || !hvAssignment) return;
+    const now = hvCtx.currentTime;
+    const wantStandard = hvAssignment[which] === 'standard';
+    hvNodes.standardGain.gain.setTargetAtTime(wantStandard ? 1 : 0, now, 0.005);
+    hvNodes.wasmGain.gain.setTargetAtTime(wantStandard ? 0 : 1, now, 0.005);
+    el('hv-a').className = 'secondary' + (which === 'A' ? ' picked' : '');
+    el('hv-b').className = 'secondary' + (which === 'B' ? ' picked' : '');
+  }
+
+  function hvJudge(result) {
+    hvJudgement = {
+      result, assignment: hvAssignment, rate: Number(el('hv-rate').value),
+      source: hvFile ? hvFile.name : 'eingebauter Vierklang',
+    };
+    const real = result === 'same' ? 'kein Unterschied' : hvAssignment[result] + ' (' + result + ')';
+    el('hv-status').textContent = 'Urteil erfasst: ' + real + '. Aufgelöst: A=' + hvAssignment.A + ', B=' + hvAssignment.B + '.';
+    renderErgebnis();
+  }
+
+  async function hvStart() {
+    const btn = el('hv-start');
+    btn.disabled = true;
+    btn.textContent = 'lädt …';
+    hvStopPlayback();
+    try {
+      if (!hvCtx) hvCtx = new (window.AudioContext || window.webkitAudioContext)();
+      await hvCtx.resume();
+
+      let buffer, sourceUrl;
+      if (hvBuffer) {
+        buffer = hvBuffer; sourceUrl = hvObjectUrl;
+      } else {
+        const b = hvGetBuiltin(hvCtx);
+        buffer = b.buffer; sourceUrl = b.objectUrl;
+      }
+      const rate = Number(el('hv-rate').value);
+      const offset = hvBuffer ? Number(el('hv-offset').value) : 0;
+      const dur = Math.min(15, buffer.duration - offset);
+      const loopEnd = offset + dur;
+
+      // standard: natives preservesPitch, nur über ein echtes <audio>-Element zu haben.
+      const standardEl = new Audio();
+      standardEl.preservesPitch = true;
+      standardEl.playbackRate = rate;
+      standardEl.src = sourceUrl;
+      await new Promise((resolve, reject) => {
+        standardEl.addEventListener('loadedmetadata', resolve, { once: true });
+        standardEl.addEventListener('error', () => reject(new Error('audio-Element: Ladefehler')), { once: true });
+      });
+      standardEl.currentTime = offset;
+      standardEl.addEventListener('timeupdate', () => {
+        if (standardEl.currentTime >= loopEnd - 0.05) standardEl.currentTime = offset;
+      });
+      const standardSrc = hvCtx.createMediaElementSource(standardEl);
+      const standardGain = hvCtx.createGain();
+      standardGain.gain.value = 0;
+      standardSrc.connect(standardGain).connect(hvCtx.destination);
+
+      // wasm: Pufferbetrieb, sample-genauer eingebauter Loop.
+      const wasmNode = await SignalsmithStretch(hvCtx);
+      const chL = buffer.getChannelData(0);
+      const chR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chL;
+      wasmNode.addBuffers([chL, chR]);
+      wasmNode.schedule({ rate, semitones: 0, formantCompensation: false, input: offset, loopStart: offset, loopEnd });
+      wasmNode.start();
+      const wasmGain = hvCtx.createGain();
+      wasmGain.gain.value = 0;
+      wasmNode.connect(wasmGain).connect(hvCtx.destination);
+
+      await standardEl.play();
+      hvNodes = { standardEl, standardGain, wasmNode, wasmGain };
+
+      const flip = Math.random() < 0.5;
+      hvAssignment = flip ? { A: 'standard', B: 'wasm' } : { A: 'wasm', B: 'standard' };
+      hvSwitch('A');
+
+      el('hv-player').hidden = false;
+      el('hv-status').textContent = '';
+      el('hv-hint').textContent = 'Läuft. Zwischen A und B umschalten, dann urteilen.';
+      btn.textContent = 'Neu starten';
+    } catch (err) {
+      el('hv-hint').textContent = 'Fehlgeschlagen: ' + (err && err.name) + ' — ' + (err && err.message);
+    }
+    btn.disabled = false;
+  }
+
+  el('hv-start').addEventListener('click', hvStart);
+  el('hv-a').addEventListener('click', () => hvSwitch('A'));
+  el('hv-b').addEventListener('click', () => hvSwitch('B'));
+  el('hv-judge-a').addEventListener('click', () => hvJudge('A'));
+  el('hv-judge-b').addEventListener('click', () => hvJudge('B'));
+  el('hv-judge-same').addEventListener('click', () => hvJudge('same'));
 
   el('copy').addEventListener('click', async () => {
     const btn = el('copy');
