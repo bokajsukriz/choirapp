@@ -11,7 +11,7 @@ erledigt** — er ist Teil dieser Änderung, nicht mehr eine eigene Runde.
 Der selbst geschriebene Phasenvocoder ist raus. An seiner Stelle steht
 `signalsmith-stretch` — ein Phasenvocoder in WebAssembly (MIT).
 
-| | vorher (`v118`) | jetzt (`v120`) |
+| | vorher (`v118`) | jetzt (`v124`) |
 |---|---|---|
 | Modi | Standard / HQ Mono / HQ / Roh | **Standard / HD** |
 | Rechenkern | ~45 KB handgeschriebenes JS im Worklet | `signalsmith-stretch` 1.3.2, WASM |
@@ -77,23 +77,48 @@ zurück (kurz hörbar), deshalb nur beim Loslassen des Reglers:
 hat (höchstens ein Analyseframe je Quantum). Wenn es knackt, obwohl die
 Echtzeitanzeige bei 100 % steht, ist das der erste Schalter zum Probieren.
 
-### Latenz — gemessen, und der Regler dafür
+### Warum „Rechnung verteilen" nicht einfach immer an ist
 
-Die Latenz des Zeitdehners steht unten im Bereich und entspricht **exakt der
-Blocklänge**:
+Weil es Latenz kostet — nachgemessen 25 %:
 
 | Einstellung | Latenz |
 |---|---|
-| Preset „Standard" | 120 ms |
-| Preset „Sparsam" | 140 ms |
-| Blocklänge 60 ms | 60 ms |
-| Blocklänge 30 ms | 30 ms |
+| Blocklänge 120 ms, verteilt aus | 120 ms |
+| Blocklänge 120 ms, verteilt **an** | **150 ms** |
+| Blocklänge 60 ms, verteilt aus | 60 ms |
+| Blocklänge 60 ms, verteilt **an** | **75 ms** |
 
-**120 ms sind für Mitsingen viel.** Wem der Versatz auffällt, dreht die
-Blocklänge herunter — 60 ms halbieren ihn. Der Preis ist gröbere
-Frequenzauflösung, was tiefe Stimmen zuerst treffen dürfte (60 ms sind bei
-48 kHz knapp 2900 Samples; ein Bass bei 80 Hz hat darin knapp fünf
-Perioden). Genau das ist der Kompromiss, den es zu hören gilt.
+Genau deshalb steht es auch in der Bibliothek auf `false`: die Arbeit über
+mehrere Quanten zu strecken heißt, dass das Ergebnis später fertig ist. Ein
+echter Tausch — Spitzenlast gegen Latenz —, deshalb ein Schalter und keine
+Voreinstellung.
+
+### Latenz — was sie wirklich betrifft
+
+**Fürs reine Hören ist sie egal.** Eine konstante Verzögerung des ganzen
+Signals hört niemand; man singt zu dem, was man hört. Entscheidend ist nicht
+die Latenz, sondern der *Durchsatz*: dass pro Sekunde eine Sekunde Ton fertig
+wird. Das zeigt die Echtzeitanzeige, und sie steht bei 100 %.
+
+Drei Stellen, an denen sie doch zählt:
+
+1. **Die Positionsanzeige eilt dem Ton voraus** — um die Blocklänge.
+2. **Der A-B-Loop springt hörbar spät**: das Element springt sofort, der Ton
+   kommt eine Blocklänge später nach. Die Länge der Schleife stimmt, nur der
+   Übergang schmiert.
+3. **Die Aufnahme (REC).** Der Anker rechnete mit `outputLatency` plus
+   Mikrofonlatenz und kannte die des Zeitdehners nicht — eine Aufnahme in HD
+   hätte um rund 120 ms versetzt gelegen. **Behoben:**
+   `measureBackingLatency()` zählt `Audio.hdLatency` mit, sobald der
+   Zeitdehner wirklich im Weg hängt.
+
+### Bei 1,0× ist der Zeitdehner nicht im Weg
+
+Bei normalem Tempo gäbe es nichts zu korrigieren — er kostete dort nur
+Rechenzeit und seine Latenz. `hdEngaged()` verlangt deshalb `slowMode === 'hd'`
+**und** `rate !== 1`, und `audioSetRate()` verdrahtet bei jedem Tempowechsel
+neu. Geladen bleibt er trotzdem, sobald HD gewählt ist — sonst müsste der
+erste Tempowechsel erst 113 KB nachziehen.
 
 ## Voreinstellung
 

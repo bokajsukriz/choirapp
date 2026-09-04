@@ -8206,7 +8206,7 @@ function ensureHdNode() {
     hdNodePromise = null;
     Audio.hdNode = node;
     if (!node) hdUnavailable = true;
-    else { applySlowMode(); applyHdConfigure(); applyRateToElement(); }
+    else { applySlowMode(); applyHdConfigure(); applyRateToElement(); refreshHdLatency(); }
     renderSlowMode();
   });
 }
@@ -8218,6 +8218,7 @@ const Audio = {
   channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
   elSource: null,         // MediaElementSource von el — createMediaElementSource() darf nur einmal pro Element laufen, daher gemerkt statt neu erzeugt
   hdNode: null,           // Zeitdehner-Knoten des HD-Modus, oder null solange nicht gebraucht/nicht verfügbar (siehe hdCreateNode)
+  hdLatency: 0,           // Latenz des Zeitdehners in Sekunden, zuletzt abgefragt (siehe refreshHdLatency)
   bg: null,               // zweites, stummes <audio> für den leise mitlaufenden Original-Song (REC)
   bgGain: null,           // Gain zwischen bg und channelIn — bg.volume ist auf iOS schreibgeschützt
   bgSource: null,         // MediaElementSource von bg, falls die Matrix steht
@@ -8604,6 +8605,16 @@ function audioLivePosition() {
  * zusammengefasst, mehrfaches disconnect ohne Verbindung wirft nicht —
  * beides idempotent.
  */
+/**
+ * Ob der Zeitdehner gerade wirklich im Signalweg hängt. Bei 1,0× ist er das
+ * **nicht**: dort gäbe es nichts zu korrigieren, er würde nur Rechenzeit und
+ * seine Latenz kosten. Angelegt und geladen bleibt er trotzdem, sobald HD
+ * gewählt ist — sonst müsste der erste Tempowechsel erst nachladen.
+ */
+function hdEngaged() {
+  return !!(settings.slowMode === 'hd' && Audio.hdNode && Audio.rate !== 1);
+}
+
 function applySlowMode() {
   const wantHd = settings.slowMode === 'hd';
   // Vor der Verdrahtung und vor dem frühen Ausstieg unten: wer HD in den
@@ -8613,7 +8624,7 @@ function applySlowMode() {
   if (wantHd) ensureHdNode();
   const src = Audio.elSource;
   if (!src) return;
-  const useHd = !!(wantHd && Audio.hdNode);
+  const useHd = hdEngaged();
   src.disconnect();
   if (useHd) src.connect(Audio.hdNode);
   else if (Audio.channelIn) src.connect(Audio.channelIn);
@@ -8637,7 +8648,7 @@ function applyRateToElement() {
   const el = Audio.el;
   if (!el) return;
   el.playbackRate = Audio.rate;
-  const useHd = !!(settings.slowMode === 'hd' && Audio.hdNode);
+  const useHd = hdEngaged();
   const preserve = !useHd;
   el.preservesPitch = preserve;
   el.webkitPreservesPitch = preserve;
@@ -8684,21 +8695,34 @@ function applyHdConfigure() {
     .catch((err) => dlog('hd:configure', { name: err?.name }));
 }
 
-/** Latenz des Zeitdehners abfragen und anzeigen — sie hängt an der Blocklänge. */
+/**
+ * Latenz des Zeitdehners abfragen — sie hängt an der Blocklänge und daran, ob
+ * die Rechnung verteilt wird. Wird nicht nur angezeigt, sondern in
+ * `Audio.hdLatency` gemerkt: der REC-Anker braucht sie synchron
+ * (siehe measureBackingLatency), `latency()` liefert aber ein Promise.
+ */
 function refreshHdLatency() {
   const node = Audio.hdNode, out = $('#hd-latency');
-  if (!out) return;
-  if (!node || typeof node.latency !== 'function') { out.textContent = ''; return; }
+  if (!node || typeof node.latency !== 'function') {
+    Audio.hdLatency = 0;
+    if (out) out.textContent = '';
+    return;
+  }
   Promise.resolve(node.latency())
     .then((sec) => {
       if (!Number.isFinite(sec)) return;
-      out.textContent = `${t('settings.perf.advLatency')} ${Math.round(sec * 1000)} ms`;
+      Audio.hdLatency = sec;
+      if (out) out.textContent = `${t('settings.perf.advLatency')} ${Math.round(sec * 1000)} ms`;
     })
-    .catch(() => { out.textContent = ''; });
+    .catch(() => { if (out) out.textContent = ''; });
 }
+
 
 function audioSetRate(rate) {
   Audio.rate = rate;
+  // Erst die Verdrahtung, dann die Werte: ob der Zeitdehner im Signalweg
+  // hängt, entscheidet seit dem Bypass bei 1,0× das Tempo mit.
+  applySlowMode();
   applyRateToElement();
 }
 
@@ -11911,7 +11935,11 @@ function measureBackingLatency(stream) {
   if (!Number.isFinite(out) || out <= 0) out = 0;
   let mic = Number(stream?.getAudioTracks?.()[0]?.getSettings?.().latency);
   if (!Number.isFinite(mic) || mic <= 0) mic = 0;
-  return Math.min(BACKING_MAX_LATENCY_S, out + mic);
+  // Hängt der Zeitdehner im Weg (Modus HD, Tempo ≠ 1,0×), kommt seine eigene
+  // Latenz obendrauf — rund 120 ms bei der Voreinstellung. Ohne sie läge die
+  // Aufnahme um genau diesen Betrag gegen den Song versetzt.
+  const hd = hdEngaged() && Number.isFinite(Audio.hdLatency) ? Audio.hdLatency : 0;
+  return Math.min(BACKING_MAX_LATENCY_S, out + mic + hd);
 }
 
 /**
