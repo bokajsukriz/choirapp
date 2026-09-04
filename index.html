@@ -7874,9 +7874,10 @@ let hdRtTimer = null;
  * Health-Monitor (Stufe 4a in SLOWPLAY-HD-FIX-PLAN.md): führt die
  * Echtzeitmessung des AudioContext mit den übrigen Signalen aus hdHealth
  * (letzter Aussetzer aus timeupdate, fehlgeschlagene Worklet-RPCs) zu einem
- * gemeinsamen, protokollierten Zustand zusammen. Das allein löst noch nichts
- * aus — die Daten sind die Grundlage für den automatischen Neuaufbau aus
- * einem späteren Commit.
+ * gemeinsamen, protokollierten Zustand zusammen. Drei aufeinanderfolgende
+ * Sekunden unter etwa 80 % lösen — nur innerhalb des Beobachtungsfensters
+ * nach einer Rückkehr aus dem Hintergrund — den automatischen Neuaufbau aus
+ * Stufe 4b aus (siehe hdMaybeAutoRebuild).
  */
 function hdHealthTick() {
   const ctx = Audio.ctx;
@@ -7887,6 +7888,7 @@ function hdHealthTick() {
   if (wallS <= 0) return;
   const pct = Math.min(100, Math.round((audioS / wallS) * 100));
   hdHealth.realtimePct = pct;
+  hdLowPctStreak = pct < 80 ? hdLowPctStreak + 1 : 0;
 
   dlog('audio:health', {
     realtimePct: pct, mode: settings.slowMode,
@@ -7897,6 +7899,11 @@ function hdHealthTick() {
   const node = $('#hd-load');
   node.textContent = `${t('settings.perf.rtLabel')} ${pct}% ${t('settings.perf.rtSuffix')}`;
   node.style.color = pct < 97 ? 'var(--danger)' : '';
+
+  if (hdLowPctStreak >= 3) {
+    hdLowPctStreak = 0;
+    hdMaybeAutoRebuild('low-realtime', { realtimePct: pct });
+  }
 }
 
 /**
@@ -8493,6 +8500,14 @@ async function setupAudioGraph() {
           expectedS: Math.round(expected * 10) / 10, actualS: Math.round(posDelta * 10) / 10,
           visibility: document.visibilityState, elPaused: el.paused, ctxState: Audio.ctx?.state,
         });
+        // Stufe 4b: erst ein zweiter Aussetzer innerhalb des
+        // Beobachtungsfensters gilt als "schlägt erneut an" — der erste kann
+        // ein normaler Ruckler beim Wiederanlaufen sein.
+        audioWatchStallCount++;
+        if (audioWatchStallCount >= 2) {
+          audioWatchStallCount = 0;
+          hdMaybeAutoRebuild('stall', {});
+        }
       }
       dlog('audio:pos', { s: Math.round(s), visibility: document.visibilityState, ctxState: Audio.ctx?.state });
       lastPosLog = { wall: nowWall, pos: s };
@@ -9274,7 +9289,42 @@ async function updateWakeLock() {
 // Hebel, der den ursprünglich gemeldeten Vorfall (HD bei 0,7×, zwei Stunden
 // Hintergrund, danach abgehackter Ton bei 1,0×) abgedeckt hätte.
 const AUDIO_LONG_BACKGROUND_MS = 30 * 60 * 1000;
+// Ab hier lohnt sich ein Blick auf den Health-Monitor beim Zurückkehren
+// (Stufe 4b) — kürzere Wechsel sind normal (Bildschirm kurz aus, App-
+// Wechsler) und kein Anlass, den Graphen zu beobachten.
+const AUDIO_BACKGROUND_WATCH_MIN_MS = 3000;
+// Fenster nach der Rückkehr, in dem ein degradierter Zustand als Folge des
+// Hintergrunds gilt statt einer beliebigen späteren Last mitten im
+// normalen Betrieb.
+const AUDIO_REBUILD_WATCH_MS = 60 * 1000;
 let audioHiddenSince = null;
+let audioReturnedFromBackgroundAt = 0;
+let hdLowPctStreak = 0;
+let audioWatchStallCount = 0;
+
+// Stufe 4b: höchstens zwei automatische Neuaufbauten pro Sitzung — eine
+// falsch ausgelöste Automatik mitten in der Wiedergabe macht mehr kaputt,
+// als sie repariert (siehe Commit-Schnitt in SLOWPLAY-HD-FIX-PLAN.md). Der
+// manuelle Knopf und der 4c-Hebel (der nur läuft, während nichts spielt)
+// zählen bewusst nicht gegen dieses Budget.
+const AUDIO_REBUILD_MAX = 2;
+let audioRebuildCount = 0;
+
+function hdAutoRebuildWatchActive() {
+  return audioReturnedFromBackgroundAt > 0
+    && (performance.now() - audioReturnedFromBackgroundAt) < AUDIO_REBUILD_WATCH_MS;
+}
+
+/** Löst — mit Hysterese und Obergrenze — den automatischen Neuaufbau aus Stufe 4b aus. */
+function hdMaybeAutoRebuild(reason, extra) {
+  if (audioRebuildCount >= AUDIO_REBUILD_MAX || !hdAutoRebuildWatchActive()) return;
+  // Fenster verbraucht: derselbe Rückkehr-Vorfall soll nicht zweimal
+  // auslösen, sobald der erste Neuaufbau anläuft.
+  audioReturnedFromBackgroundAt = 0;
+  audioRebuildCount++;
+  dlog('audio:rebuild:trigger', { reason, count: audioRebuildCount, ...extra });
+  rebuildAudioGraph(reason).catch((err) => dlog('audio:rebuild', { name: err?.name }));
+}
 
 document.addEventListener('visibilitychange', () => {
   dlog('visibility', {
@@ -9292,6 +9342,13 @@ document.addEventListener('visibilitychange', () => {
   if (backgroundMs >= AUDIO_LONG_BACKGROUND_MS && !Audio.playing && Audio.ctx) {
     dlog('audio:rebuild:trigger', { reason: 'long-background', backgroundMs: Math.round(backgroundMs) });
     rebuildAudioGraph('long-background').catch((err) => dlog('audio:rebuild', { name: err?.name }));
+  } else if (backgroundMs >= AUDIO_BACKGROUND_WATCH_MIN_MS) {
+    // Stufe 4b: der Graph wird hier noch nicht neu aufgebaut — erst wenn der
+    // Health-Monitor (hdHealthTick/audio:stall) innerhalb dieses Fensters
+    // tatsächlich Degradation meldet.
+    audioReturnedFromBackgroundAt = performance.now();
+    hdLowPctStreak = 0;
+    audioWatchStallCount = 0;
   }
 
   if (!Audio.playing) return;
