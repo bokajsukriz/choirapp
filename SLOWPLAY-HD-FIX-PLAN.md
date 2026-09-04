@@ -9,7 +9,7 @@ zwei Stunden im Hintergrund die Wiedergabe über Bluetooth-Kopfhörer schrecklic
 statisch geprüft und neun Baustellen gemeldet. Diese Anweisung bestätigt,
 korrigiert und ergänzt sie und legt die Reihenfolge der Reparatur fest.
 
-### Zwei Dinge vorweg, die Sonnet wissen muss
+### Vier Dinge vorweg, die Sonnet wissen muss
 
 **1. Arbeitsstand.** Alle Zeilennummern und Aussagen hier beziehen sich auf
 **`2185744` (v125)**, den Stand, auf dem dieses Dokument liegt. Beim Erstellen
@@ -188,7 +188,7 @@ if (!moduleUrl) { … moduleUrl = URL.createObjectURL(new Blob([moduleCode] …)
 greift also nie: jeder neue `AudioContext` erzeugt eine neue Blob-URL, und
 `moduleCode` enthält den kompletten Emscripten-Module-Quelltext **samt WASM als
 `data:`-URI**. Widerrufen wird sie nie. Heute fällt das nicht auf, weil es genau
-einen Kontext gibt — sobald Stufe 3 den Kontext neu aufbauen kann, wird daraus
+einen Kontext gibt — sobald Stufe 4 den Kontext neu aufbauen kann, wird daraus
 ein Leck von jeweils gut hundert Kilobyte. `requestMap` (401) hat weder Timeout
 noch Abbruchpfad.
 
@@ -221,13 +221,15 @@ ohnehin anfasst — aber nicht als Fehlerursache verkaufen.
 
 ## Umsetzung
 
-### Stufe 0 — die eine Messung, die noch fehlt (vor allem anderen)
+### Stufe 0 — die offene Messung (kein Hindernis, nicht warten)
 
 Der Nutzer hat nicht geprüft, ob zum Fehlerzeitpunkt **auch andere Apps** auf
-denselben Kopfhörern schlecht klangen. Das trennt App-Fehler von Android-/BT-
-Zustand. Bitte im Player-Bildschirm nichts dafür bauen — es genügt, das in der
-PR-Beschreibung als offene Frage zu notieren und die Reparaturen unabhängig
-davon durchzuziehen. Sie sind alle für sich richtig.
+denselben Kopfhörern schlecht klangen; er kann es nachträglich nicht mehr sagen.
+Das wäre der einzige saubere Weg, einen Fehler von Android auszuschließen.
+
+**Darauf ist nicht zu warten.** Es ist im Code nichts dafür zu bauen — es
+genügt, die Frage in der PR-Beschreibung als offen zu notieren. Alle folgenden
+Stufen sind unabhängig davon richtig und können sofort laufen.
 
 ### Stufe 1 — was den Ton kaputt macht
 
