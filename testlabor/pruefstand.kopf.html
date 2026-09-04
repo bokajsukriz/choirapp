@@ -1,0 +1,225 @@
+<title>BVG Audio-Messplatz</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#F6F8F6; --surface:#FFFFFF; --ink:#131C18; --muted:#5A6B63;
+    --line:#DBE3DE; --line-strong:#C3CFC8; --accent:#0E6A4B;
+    --ok:#17825A; --warn:#A9700A; --bad:#A93A22; --pending:#7C8A83;
+    --ok-bg:#E4F2EA; --warn-bg:#F7EEDC; --bad-bg:#F7E4DF; --pending-bg:#ECEFED;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0E1412; --surface:#171F1B; --ink:#E3ECE6; --muted:#93A49B;
+      --line:#27332D; --line-strong:#36453D; --accent:#4FCB92;
+      --ok:#4FCB92; --warn:#D9A33A; --bad:#E8735A; --pending:#7E8E86;
+      --ok-bg:#12291F; --warn-bg:#2B2415; --bad-bg:#2E1B16; --pending-bg:#1D2622;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0E1412; --surface:#171F1B; --ink:#E3ECE6; --muted:#93A49B;
+    --line:#27332D; --line-strong:#36453D; --accent:#4FCB92;
+    --ok:#4FCB92; --warn:#D9A33A; --bad:#E8735A; --pending:#7E8E86;
+    --ok-bg:#12291F; --warn-bg:#2B2415; --bad-bg:#2E1B16; --pending-bg:#1D2622;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    font-size:16px; line-height:1.55; -webkit-text-size-adjust:100%;
+  }
+  .wrap { max-width:34rem; margin:0 auto; padding:28px 20px 64px; display:flex; flex-direction:column; gap:34px; }
+
+  header { display:flex; flex-direction:column; gap:10px; }
+  h1 {
+    font-family:"IBM Plex Sans Condensed", system-ui, sans-serif; font-weight:700;
+    font-size:2rem; line-height:1.1; margin:0; letter-spacing:-0.015em; text-wrap:balance;
+  }
+  .lede { margin:0; color:var(--muted); font-size:0.97rem; max-width:32rem; }
+  .stamp {
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.72rem;
+    text-transform:uppercase; letter-spacing:0.1em; color:var(--accent);
+  }
+
+  section { display:flex; flex-direction:column; gap:14px; }
+  h2 {
+    font-family:"IBM Plex Sans Condensed", system-ui, sans-serif; font-weight:600;
+    font-size:0.78rem; text-transform:uppercase; letter-spacing:0.13em;
+    margin:0; color:var(--muted);
+    padding-bottom:8px; border-bottom:1px solid var(--line);
+  }
+  p { margin:0; }
+  .note { font-size:0.87rem; color:var(--muted); }
+
+  .rows { display:flex; flex-direction:column; }
+  .row {
+    display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:baseline;
+    padding:13px 0; border-bottom:1px solid var(--line);
+  }
+  .row:last-child { border-bottom:0; }
+  .row .name { font-weight:500; }
+  .row .detail {
+    grid-column:1 / -1; font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:0.79rem; color:var(--muted); word-break:break-word; line-height:1.5;
+  }
+  .chip {
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.72rem; font-weight:500;
+    text-transform:uppercase; letter-spacing:0.06em; padding:3px 9px; border-radius:3px;
+    white-space:nowrap; background:var(--pending-bg); color:var(--pending);
+  }
+  .chip.ok { background:var(--ok-bg); color:var(--ok); }
+  .chip.warn { background:var(--warn-bg); color:var(--warn); }
+  .chip.bad { background:var(--bad-bg); color:var(--bad); }
+
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:7px 16px; font-size:0.87rem; }
+  .facts dt { color:var(--muted); }
+  .facts dd {
+    margin:0; font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.82rem;
+    font-variant-numeric:tabular-nums; word-break:break-word;
+  }
+
+  button {
+    font-family:inherit; font-size:1rem; font-weight:500; color:var(--surface);
+    background:var(--accent); border:0; border-radius:6px; padding:15px 20px;
+    min-height:52px; cursor:pointer; width:100%;
+  }
+  button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line-strong); }
+  button:disabled { opacity:0.45; cursor:default; }
+  button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  label.toggle {
+    display:flex; align-items:center; gap:10px; font-size:0.87rem; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:12px 14px;
+  }
+  label.toggle input { width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; }
+
+  .status { font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.82rem; color:var(--accent); min-height:1.3em; }
+
+  .filepick {
+    display:flex; flex-direction:column; gap:8px; font-size:0.87rem; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:14px;
+  }
+  .filepick input[type=file] { font-family:inherit; font-size:0.83rem; color:var(--muted); width:100%; }
+  .filepick .fname { font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.79rem; color:var(--muted); word-break:break-word; }
+
+  .hv-row { display:flex; align-items:center; gap:12px; font-size:0.87rem; }
+  .hv-row label { color:var(--muted); flex-shrink:0; }
+  .hv-row input[type=range] { flex:1; accent-color:var(--accent); }
+  .hv-row select {
+    font-family:inherit; font-size:0.9rem; color:var(--ink); background:var(--surface);
+    border:1px solid var(--line-strong); border-radius:6px; padding:10px 12px;
+  }
+  .hv-row .val {
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:0.8rem; color:var(--muted);
+    white-space:nowrap; min-width:3.2em; text-align:right;
+  }
+
+  .btnrow2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .btnrow2 button.picked { background:var(--ok-bg); color:var(--ok); border-color:var(--ok); }
+
+  pre {
+    margin:0; background:var(--surface); border:1px solid var(--line); border-radius:6px;
+    padding:14px; overflow-x:auto; font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:0.75rem; line-height:1.6; color:var(--ink); white-space:pre; tab-size:2;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="stamp">Messplatz · Durchsatz</span>
+    <h1>Audio-Messplatz</h1>
+    <p class="lede">
+      Misst, ob <em>signalsmith-stretch</em> (WASM) auf diesem Telefon wirklich schafft, woran der
+      handgeschriebene js-Phasenvocoder bei 0,6× scheitert — im Worker (roher Durchsatz) und im
+      AudioWorklet (absichtlich überlastet, um die 100%-Deckung der Echtzeitmessung zu durchbrechen).
+      Kein App-Code, kein Risiko für die laufende App.
+    </p>
+  </header>
+
+  <section>
+    <h2>Gerät</h2>
+    <dl class="facts" id="facts">
+      <dt>Kerne</dt><dd id="f-cores">–</dd>
+      <dt>Speicher</dt><dd id="f-mem">–</dd>
+      <dt>Abtastrate</dt><dd id="f-sr">noch nicht gestartet</dd>
+      <dt>Latenz</dt><dd id="f-lat">–</dd>
+      <dt>Browser</dt><dd id="f-ua">–</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Bausteine</h2>
+    <div class="rows" id="checks"></div>
+  </section>
+
+  <section>
+    <h2>Durchsatzmessung</h2>
+    <p class="note">
+      Pflicht: <code>js-mono</code> gegen <code>wasm</code> bei 0,6× — der schlimmste Fall, alles
+      andere läuft automatisch mit.
+    </p>
+    <label class="toggle">
+      <input type="checkbox" id="extra">
+      <span>auch 0,85× und 0,7× sowie <code>js-stereo</code> messen (dauert länger)</span>
+    </label>
+    <button id="start">Messung starten</button>
+    <p class="note" id="hint">
+      Ton läuft nur intern (Worker/Worklet, stummgeschaltet) — trotzdem verlangt der Browser eine
+      Berührung, um Audio überhaupt zuzulassen. Bildschirm bitte anlassen.
+    </p>
+    <p class="status" id="status"></p>
+    <div class="rows" id="results"></div>
+  </section>
+
+  <section>
+    <h2>Hörvergleich</h2>
+    <p class="note">
+      Paar 1: <code>standard</code> (natives <code>preservesPitch</code>) gegen <code>wasm</code> —
+      die Frage, die diesem ganzen Vorhaben zugrunde liegt. Blind: erst hören, dann auflösen.
+      Paar 2 (<code>js-mono</code> gegen <code>wasm</code>) und Paar 3 (Formantkorrektur) folgen in
+      der nächsten Stufe.
+    </p>
+    <label class="filepick">
+      <span>Eigene Aufnahme (Chorstimmen sind der Prüfstein) — sonst der eingebaute Vierklang</span>
+      <input type="file" id="hv-file" accept="audio/*">
+      <span class="fname" id="hv-filename">keine Datei gewählt</span>
+    </label>
+    <div class="hv-row" id="hv-offset-row" hidden>
+      <label for="hv-offset">Ausschnitt ab</label>
+      <input type="range" id="hv-offset" min="0" max="0" step="1" value="0">
+      <span class="val" id="hv-offset-val">0:00</span>
+    </div>
+    <div class="hv-row">
+      <label for="hv-rate">Tempo</label>
+      <select id="hv-rate">
+        <option value="0.6" selected>0,6×</option>
+        <option value="0.7">0,7×</option>
+        <option value="0.85">0,85×</option>
+      </select>
+    </div>
+    <button id="hv-start">Hörvergleich starten</button>
+    <p class="note" id="hv-hint">Beide Kandidaten laufen gleichzeitig und leise im Hintergrund mit — nur die Verstärkung schaltet um, kein Neuaufsetzen, kein Sprung.</p>
+
+    <div id="hv-player" hidden>
+      <div class="btnrow2">
+        <button class="secondary" id="hv-a">A</button>
+        <button class="secondary" id="hv-b">B</button>
+      </div>
+      <div class="btnrow2" style="margin-top:10px;">
+        <button class="secondary" id="hv-judge-a">A klingt besser</button>
+        <button class="secondary" id="hv-judge-b">B klingt besser</button>
+      </div>
+      <button class="secondary" id="hv-judge-same" style="margin-top:10px;">kein hörbarer Unterschied</button>
+      <p class="status" id="hv-status"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ergebnis</h2>
+    <p class="note">Diesen Block kopieren und in den Chat einfügen.</p>
+    <pre id="out">Noch nichts gemessen.</pre>
+    <button class="secondary" id="copy">Ergebnis kopieren</button>
+  </section>
+</div>
