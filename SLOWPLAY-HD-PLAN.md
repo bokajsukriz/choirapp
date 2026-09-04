@@ -11,7 +11,7 @@ erledigt** — er ist Teil dieser Änderung, nicht mehr eine eigene Runde.
 Der selbst geschriebene Phasenvocoder ist raus. An seiner Stelle steht
 `signalsmith-stretch` — ein Phasenvocoder in WebAssembly (MIT).
 
-| | vorher (`v118`) | jetzt (`v124`) |
+| | vorher (`v118`) | jetzt (`v125`) |
 |---|---|---|
 | Modi | Standard / HQ Mono / HQ / Roh | **Standard / HD** |
 | Rechenkern | ~45 KB handgeschriebenes JS im Worklet | `signalsmith-stretch` 1.3.2, WASM |
@@ -69,29 +69,66 @@ zurück (kurz hörbar), deshalb nur beim Loslassen des Reglers:
 | Regler | Voreinstellung | wozu |
 |---|---|---|
 | Standard / Sparsam | Standard | die beiden Presets der Bibliothek |
-| Blocklänge | nach Voreinstellung | eigene Blocklänge; sperrt die Presets |
+| Blocklänge | 120 ms | eigene Blocklänge; sperrt die Presets |
 | Schrittweite | automatisch (¼ Block) | größer = weniger Frames = billiger, gröber |
-| Rechnung verteilen | aus | verteilt einen Block über mehrere Render-Quanten: senkt die **Spitzen**last, nicht die Gesamtlast |
+| Rechnung verteilen | **an** | verteilt einen Block über mehrere Render-Quanten: senkt die **Spitzen**last, nicht die Gesamtlast |
 
 „Rechnung verteilen" ist genau der Hebel, den Runde 3 von Hand nachgebaut
 hat (höchstens ein Analyseframe je Quantum). Wenn es knackt, obwohl die
 Echtzeitanzeige bei 100 % steht, ist das der erste Schalter zum Probieren.
 
-### Warum „Rechnung verteilen" nicht einfach immer an ist
+### Rechenaufwand — was wirklich hilft, gemessen
 
-Weil es Latenz kostet — nachgemessen 25 %:
+Mit `OfflineAudioContext` gerendert (20 s, zwei Kanäle, Rechenzeit je Sekunde
+Ton — kleiner ist besser):
 
-| Einstellung | Latenz |
-|---|---|
-| Blocklänge 120 ms, verteilt aus | 120 ms |
-| Blocklänge 120 ms, verteilt **an** | **150 ms** |
-| Blocklänge 60 ms, verteilt aus | 60 ms |
-| Blocklänge 60 ms, verteilt **an** | **75 ms** |
+| Einstellung | Latenz | Rechenzeit/s | relativ |
+|---|---|---|---|
+| Preset „Standard" | 120 ms | 24,2 ms | 94 % |
+| Preset „Sparsam" | 140 ms | 18,2 ms | **71 %** |
+| Block 60, Schritt auto | 60 ms | 24,8 ms | 96 % |
+| Block 120, Schritt auto | 120 ms | 25,7 ms | 100 % |
+| Block 250, Schritt auto | 250 ms | 24,6 ms | 96 % |
+| Block 120, Schritt auto, verteilt | 150 ms | 25,6 ms | 100 % |
+| Block 250, Schritt auto, verteilt | 313 ms | 25,2 ms | 98 % |
+| Block 120, **Schritt 60** | 120 ms | 15,2 ms | **59 %** |
+| Block 250, **Schritt 120** | 250 ms | 15,8 ms | **61 %** |
 
-Genau deshalb steht es auch in der Bibliothek auf `false`: die Arbeit über
-mehrere Quanten zu strecken heißt, dass das Ergebnis später fertig ist. Ein
-echter Tausch — Spitzenlast gegen Latenz —, deshalb ein Schalter und keine
-Voreinstellung.
+Drei Dinge stehen damit fest:
+
+1. **Die Blocklänge ändert am Rechenaufwand fast nichts** (60 ms: 96 %,
+   250 ms: 96 %). Sie bestimmt Frequenzauflösung und Latenz, nicht die Last.
+   „Mehr Latenz für mehr Stabilität" geht also **nicht** auf — größere Blöcke
+   machen die einzelnen Schübe sogar größer.
+2. **„Rechnung verteilen" kostet keine Rechenzeit** (100 % gegen 100 %). Es
+   schiebt die Arbeit nur zeitlich auseinander, bezahlt mit einem Viertel
+   mehr Latenz. Genau die Schübe waren es, an denen der alte Vocoder
+   gescheitert ist — deshalb steht es jetzt **ab Werk an**.
+3. **Der einzige echte Sparhebel ist die Schrittweite** (−41 %) bzw. das
+   Preset „Sparsam" (−29 %), das nichts anderes tut. Weniger Analyseblöcke je
+   Sekunde. Der Preis ist gröbere Überlappung, also mehr „Phasigkeit" auf
+   gehaltenen Tönen — bei einem Chor die falsche Stelle zum Sparen, solange
+   es nicht nötig ist.
+
+### Die Voreinstellung setzt eine eigene Blocklänge
+
+`blockMs: 120` statt „Preset", und das ist kein Schönheitsfehler: `configure()`
+der Bibliothek reicht `splitComputation` **nur** im Zweig mit gesetztem
+`blockMs` weiter. In der Preset-Betriebsart wäre der Schalter wirkungslos —
+er ist dort deshalb gesperrt und sagt, warum. 120 ms sind gemessen genau die
+Latenz des Presets „Standard", der Klang ändert sich also praktisch nicht.
+
+Ein Druck auf ein Preset schaltet zurück in die Preset-Betriebsart
+(`blockMs: 0`), ein Zug am Blocklängen-Regler wieder heraus. Ein Selbsttest
+wacht darüber, dass die Voreinstellung nicht versehentlich auf `blockMs: 0`
+bei eingeschaltetem `splitComputation` landet.
+
+### Was „ab Werk" heißt, steht jetzt dran
+
+Jeder Regler, der noch auf der Voreinstellung steht, trägt hinter seinem Wert
+ein „· ab Werk". In der Preset-Betriebsart zeigt die Blocklänge zusätzlich die
+gemessene Latenz — den einzigen Wert, den die Bibliothek über ihre Presets
+herausgibt.
 
 ### Latenz — was sie wirklich betrifft
 
