@@ -10440,9 +10440,16 @@ async function runImport() {
         }
       }
 
-      // Ein bereits vorhandener Song zählt als „hat Inhalt" nicht automatisch —
-      // er darf aber auch nicht verschwinden, wenn diesmal nichts Neues ankam.
-      const keep = songGotContent || !!scan.existing;
+      // Bewusst nur songGotContent: `song` ist oben eine mutierte Arbeitskopie
+      // von scan.existing (u.a. schon mit neuen Collections zusammengeführt,
+      // noch bevor überhaupt ein Track/Text/Notenblatt gelesen wurde). Schlägt
+      // bei einem bereits vorhandenen Song jeder einzelne Lesevorgang fehl,
+      // darf diese Kopie nicht trotzdem zurückgeschrieben werden — sonst
+      // ersetzte ein vollständig fehlgeschlagener Reimport den unveränderten
+      // Originaldatensatz durch eine Kopie ohne jeden neuen Inhalt (AP-03).
+      // Für neu angelegte Songs war songGotContent schon vorher die einzige
+      // Bedingung (scan.existing ist dort undefined).
+      const keep = songGotContent;
       if (keep) {
         song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
         batch.songs.add(song);
