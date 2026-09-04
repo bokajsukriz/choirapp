@@ -1,4 +1,25 @@
-
+/*
+ * Lokale Abweichung vom npm-Paket signalsmith-stretch@1.3.2 (siehe
+ * THIRD-PARTY.md). Ein `npm update` dieser Datei würde die folgenden vier
+ * Stellen verschlucken — vor jedem Update erneut anwenden:
+ *
+ * 1. `remoteMethods.reset` (im AudioWorklet-Prozessor): ruft
+ *    `this.wasmModule._reset()` auf. Das Original bietet keine Möglichkeit,
+ *    den Zustand des Streckers ohne teures configure() zurückzusetzen —
+ *    nötig, um beim Wiedereinhängen nach Bypass/Seek/Spurwechsel den alten
+ *    Überlappungspuffer loszuwerden.
+ * 2. `this.configure()` statt `configure()` im Kanalzahl-Zweig von
+ *    `process()` (Upstream-Bug: `ReferenceError`, dort aber toter Code, weil
+ *    dieser Player die Kanalzahl fest auf 2 anlegt).
+ * 3. `createNode.moduleUrl` wird nach dem Erzeugen der Blob-URL gesetzt,
+ *    damit der eingebaute Cache greift (Upstream liest den Wert, weist ihn
+ *    aber nie zu — jeder neue AudioContext hätte sonst eine eigene,
+ *    nie freigegebene Blob-URL mit dem kompletten Modul samt WASM als
+ *    data:-URI erzeugt).
+ * 4. `post()` bekommt Timeout und Reject, `processorerror`/`messageerror`
+ *    lehnen offene und künftige Aufrufe sofort ab, statt sie für immer
+ *    hängen zu lassen.
+ */
 var SignalsmithStretch = (() => {
   var _scriptName = typeof document != 'undefined' ? document.currentScript?.src : undefined;
   
@@ -160,6 +181,13 @@ function registerWorkletProcessor(Module, audioNodeKey) {
 					let length = sampleBuffers[0].length;
 					this.audioBuffersEnd += length;
 					return this.audioBuffersEnd/sampleRate;
+				},
+				// Lokale Ergänzung (siehe Kommentar am Dateianfang): setzt nur den
+				// WASM-Zustand des Streckers zurück, NICHT this.timeMap — der
+				// Aufrufer muss direkt danach schedule() für das aktuelle Segment
+				// senden, sonst bleibt die eingeplante Zeitabbildung stehen.
+				reset: _ => {
+					this.wasmModule._reset();
 				}
 			};
 
@@ -256,7 +284,7 @@ function registerWorkletProcessor(Module, audioNodeKey) {
 			// Check the input/output channel counts
 			if (outputList[0].length != this.channels) {
 				this.channels = outputList[0]?.length || 0;
-				configure();
+				this.configure();
 			}
 			let outputBlockSize = outputList[0][0].length;
 
@@ -390,6 +418,12 @@ SignalsmithStretch = ((Module, audioNodeKey) => {
 				if (!moduleUrl) {
 					let moduleCode = `(${registerWorkletProcessor})((_scriptName=>${Module})(),${JSON.stringify(audioNodeKey)})`;
 					moduleUrl = URL.createObjectURL(new Blob([moduleCode], {type: 'text/javascript'}));
+					// Lebt bewusst so lang wie die Seite (siehe Kommentar am
+					// Dateianfang) — eine Blob-URL für die gesamte Sitzung statt
+					// einer neuen je AudioContext. NICHT nach addModule() widerrufen:
+					// ein späterer Kontext (nach rebuildAudioGraph()) muss sie noch
+					// benutzen können.
+					createNode.moduleUrl = moduleUrl;
 				}
 				audioContext[promiseKey] = audioContext.audioWorklet.addModule(moduleUrl);
 			}
@@ -401,12 +435,40 @@ SignalsmithStretch = ((Module, audioNodeKey) => {
 		let requestMap = {};
 		let idCounter = 0;
 		let timeUpdateCallback = null;
+		// Lokale Ergänzung (siehe Kommentar am Dateianfang): sobald der Prozessor
+		// als ausgefallen gilt, lehnt post() weitere Aufrufe sofort ab, statt sie
+		// für immer hängen zu lassen — sonst bleibt z.B. ein wartendes
+		// hdReset() für immer offen.
+		let failure = null;
+		const REQUEST_TIMEOUT_MS = 5000;
+		let failAll = (err) => {
+			failure = err;
+			for (let id in requestMap) {
+				let entry = requestMap[id];
+				delete requestMap[id];
+				if (entry && entry.reject) {
+					clearTimeout(entry.timer);
+					entry.reject(err);
+				}
+			}
+		};
 		let post = (transfer, ...data) => {
+			if (failure) return Promise.reject(failure);
 			let id = idCounter++;
-			return new Promise(resolve => {
-				requestMap[id] = resolve;
+			return new Promise((resolve, reject) => {
+				let timer = setTimeout(() => {
+					delete requestMap[id];
+					reject(new Error(`signalsmith-stretch: keine Antwort auf "${data[0]}" innerhalb von ${REQUEST_TIMEOUT_MS} ms`));
+				}, REQUEST_TIMEOUT_MS);
+				requestMap[id] = { resolve, reject, timer };
 				audioNode.port.postMessage([id].concat(data), transfer);
 			});
+		};
+		audioNode.onprocessorerror = () => {
+			failAll(new Error('signalsmith-stretch: AudioWorkletProcessor abgestürzt'));
+		};
+		audioNode.port.onmessageerror = () => {
+			failAll(new Error('signalsmith-stretch: Nachricht des Zeitdehners ließ sich nicht übertragen'));
 		};
 		audioNode.inputTime = 0;
 		audioNode.port.onmessage = (event) => {
@@ -416,9 +478,13 @@ SignalsmithStretch = ((Module, audioNodeKey) => {
 				audioNode.inputTime = value;
 				if (timeUpdateCallback) timeUpdateCallback(value);
 			}
-			if (id in requestMap) {
-				requestMap[id](value);
+			let entry = requestMap[id];
+			if (entry) {
 				delete requestMap[id];
+				// 'ready' ist eine einfache Funktion, keine post()-Anfrage mit
+				// Timeout (siehe requestMap['ready'] weiter unten).
+				if (typeof entry === 'function') entry(value);
+				else { clearTimeout(entry.timer); entry.resolve(value); }
 			}
 		};
 		

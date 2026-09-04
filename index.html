@@ -8808,6 +8808,21 @@ function refreshHdLatency() {
     .catch(() => { if (out) out.textContent = ''; });
 }
 
+/**
+ * Trennt einen Zeitdehner-Knoten sauber ab: Verbindung lösen und den
+ * MessagePort schließen — sonst läuft das AudioWorklet dahinter als
+ * verwaister Prozess im Renderthread weiter, auch wenn nichts mehr auf ihn
+ * zeigt (z. B. ein Knoten, der nach einem Init-Timeout verspätet fertig
+ * wird). Nullt `Audio.hdNode` nur, wenn der übergebene Knoten wirklich noch
+ * der aktive ist — sonst würde ein spät entsorgter, längst ersetzter Knoten
+ * den neuen darunter wegreißen.
+ */
+function hdTeardown(node) {
+  if (!node) return;
+  try { node.disconnect(); } catch {}
+  try { node.port.close(); } catch {}
+  if (Audio.hdNode === node) Audio.hdNode = null;
+}
 
 function audioSetRate(rate) {
   Audio.rate = rate;
