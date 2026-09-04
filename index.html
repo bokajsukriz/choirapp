@@ -3522,10 +3522,20 @@ input[type="checkbox"] {
         <p class="small muted" id="hd-semitones" style="margin:14px 0 0"></p>
         <p class="small muted" id="hd-latency" style="margin:4px 0 0"></p>
 
-        <button class="btn btn--block" id="btn-hd-reset" type="button"
-                style="margin-top:12px" data-i18n="settings.perf.advReset">
-          Auf Voreinstellung zurücksetzen
-        </button>
+        <div style="display:flex; gap:8px; margin-top:12px">
+          <button class="btn" id="btn-hd-ab" type="button" style="flex:1"
+                  aria-pressed="false" data-i18n="settings.perf.advAb"
+                  data-i18n-aria="settings.perf.advAbAria" aria-label="Standard und eigene Einstellungen vergleichen">
+            A/B
+          </button>
+          <button class="btn" id="btn-hd-reset" type="button" style="flex:1" data-i18n="settings.perf.advReset">
+            Zurücksetzen
+          </button>
+          <button class="btn" id="btn-hd-copy" type="button" style="flex:1" data-i18n="settings.perf.advCopy">
+            Kopieren
+          </button>
+        </div>
+        <p class="small muted" id="hd-ab-hint" style="margin:6px 0 0" hidden data-i18n="settings.perf.advAbHint"></p>
       </div>
       <p class="small muted" id="hd-load" style="margin:8px 0 0" hidden></p>
     </div>
@@ -5007,8 +5017,15 @@ const STRINGS = {
     'settings.perf.advSplitHint': 'Verteilt die Arbeit eines Analyseblocks über mehrere Render-Quanten. Senkt die Spitzenlast, nicht die Gesamtlast — hilft gegen Knacken, wenn die Durchschnittslast in Ordnung ist.',
     'settings.perf.advLatency': 'Latenz des Zeitdehners:',
     'settings.perf.advSemitones': 'Tonhöhenkorrektur:',
-    'settings.perf.advReset': 'Auf Voreinstellung zurücksetzen',
+    'settings.perf.advReset': 'Zurücksetzen',
     'settings.perf.advUnitSemi': 'Halbtöne',
+    'settings.perf.advAb': 'A/B',
+    'settings.perf.advAbAria': 'Standard und eigene Einstellungen vergleichen',
+    'settings.perf.advAbHint': 'Du hörst gerade die Voreinstellung zum Vergleich — deine eigenen Werte sind unverändert gespeichert.',
+    'settings.perf.advCopy': 'Kopieren',
+    'settings.perf.advCopied': 'Einstellungen in die Zwischenablage kopiert.',
+    'settings.perf.advOn': 'an',
+    'settings.perf.advOff': 'aus',
 
     'settings.help.title': 'Hilfe',
     'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
@@ -5243,8 +5260,15 @@ const STRINGS = {
     'settings.perf.advSplitHint': 'Spreads one analysis block over several render quanta. Lowers peak load, not total load — helps against crackling when the average load is fine.',
     'settings.perf.advLatency': 'Stretcher latency:',
     'settings.perf.advSemitones': 'Pitch correction:',
-    'settings.perf.advReset': 'Reset to defaults',
+    'settings.perf.advReset': 'Reset',
     'settings.perf.advUnitSemi': 'semitones',
+    'settings.perf.advAb': 'A/B',
+    'settings.perf.advAbAria': 'Compare standard and your own settings',
+    'settings.perf.advAbHint': "You're previewing the default for comparison — your own settings are unchanged and still saved.",
+    'settings.perf.advCopy': 'Copy',
+    'settings.perf.advCopied': 'Settings copied to clipboard.',
+    'settings.perf.advOn': 'on',
+    'settings.perf.advOff': 'off',
 
     'settings.help.title': 'Help',
     'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
@@ -5479,8 +5503,15 @@ const STRINGS = {
     'settings.perf.advSplitHint': 'Rozkłada pracę jednego bloku analizy na kilka kwantów renderowania. Obniża obciążenie szczytowe, nie całkowite — pomaga na trzaski, gdy średnie obciążenie jest w porządku.',
     'settings.perf.advLatency': 'Opóźnienie rozciągacza:',
     'settings.perf.advSemitones': 'Korekta wysokości:',
-    'settings.perf.advReset': 'Przywróć ustawienia domyślne',
+    'settings.perf.advReset': 'Resetuj',
     'settings.perf.advUnitSemi': 'półtonów',
+    'settings.perf.advAb': 'A/B',
+    'settings.perf.advAbAria': 'Porównaj ustawienie standardowe z własnym',
+    'settings.perf.advAbHint': 'Słuchasz teraz ustawienia domyślnego do porównania — twoje własne wartości pozostają zapisane bez zmian.',
+    'settings.perf.advCopy': 'Kopiuj',
+    'settings.perf.advCopied': 'Ustawienia skopiowane do schowka.',
+    'settings.perf.advOn': 'wł.',
+    'settings.perf.advOff': 'wył.',
 
     'settings.help.title': 'Pomoc',
     'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
@@ -7632,6 +7663,7 @@ function renderSlowMode() {
   const advBtn = $('#btn-hd-advanced-toggle');
   advBtn.hidden = mode !== 'hd' || broken;
   if (advBtn.hidden) {
+    hdAbRestore();
     $('#hd-advanced').hidden = true;
     advBtn.setAttribute('aria-expanded', 'false');
   }
@@ -7661,6 +7693,49 @@ function renderHdOptions() {
   $('#hd-interval-out').textContent = o.intervalMs > 0
     ? `${o.intervalMs} ms`
     : (o.blockMs > 0 ? `${Math.round(o.blockMs / 4)} ms` : t('settings.perf.advIntervalAuto'));
+}
+
+/**
+ * "A/B": hört probeweise die Voreinstellung statt der eigenen Regler, ohne
+ * sie zu überschreiben — die eigenen Werte liegen währenddessen in
+ * `hdAbUserOptions`. Die Regler sind währenddessen gesperrt: sie würden sonst
+ * die Voreinstellung verändern statt die eigene.
+ */
+let hdAbUserOptions = null;
+
+function hdAbActive() {
+  return hdAbUserOptions !== null;
+}
+
+/** Die tatsächlich gespeicherten Werte — auch während gerade vorgehört wird. */
+function currentUserHdOptions() {
+  return hdAbActive() ? hdAbUserOptions : settings.hdOptions;
+}
+
+function renderHdAb() {
+  const active = hdAbActive();
+  const btn = $('#btn-hd-ab');
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  btn.classList.toggle('btn--primary', active);
+  $('#hd-ab-hint').hidden = !active;
+  for (const id of ['#hd-formant-comp', '#hd-formant-semi', '#hd-formant-base',
+                     '#hd-tonality', '#hd-block', '#hd-interval', '#hd-split', '#btn-hd-reset']) {
+    $(id).disabled = active;
+  }
+  for (const presetBtn of $$('#hd-preset .preset')) {
+    presetBtn.disabled = active || settings.hdOptions.blockMs > 0;
+  }
+}
+
+/** Kehrt vom Vorhören der Voreinstellung zu den eigenen Werten zurück, falls gerade aktiv — ohne zu speichern. */
+function hdAbRestore() {
+  if (!hdAbActive()) return;
+  settings.hdOptions = hdAbUserOptions;
+  hdAbUserOptions = null;
+  renderHdOptions();
+  renderHdAb();
+  applyHdConfigure();
+  applyRateToElement();
 }
 
 /** Zeigt, um wieviel gerade nach oben geschoben wird — die Gegenprobe zum Tempo. */
@@ -7744,7 +7819,8 @@ $('#btn-hd-advanced-toggle').addEventListener('click', () => {
   const open = host.hidden;
   host.hidden = !open;
   $('#btn-hd-advanced-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
-  if (open) { renderHdOptions(); refreshHdLatency(); }
+  if (open) { renderHdOptions(); renderHdAb(); refreshHdLatency(); }
+  else { hdAbRestore(); }
 });
 
 $('#hd-formant-comp').addEventListener('click', () => {
@@ -7791,6 +7867,44 @@ $('#btn-hd-reset').addEventListener('click', async () => {
   await saveSettings({ hdOptions: settings.hdOptions });
   renderHdOptions();
   applyHdConfigure();
+});
+
+$('#btn-hd-ab').addEventListener('click', () => {
+  if (hdAbActive()) { hdAbRestore(); return; }
+  hdAbUserOptions = settings.hdOptions;
+  settings.hdOptions = { ...DEFAULT_SETTINGS.hdOptions };
+  renderHdOptions();
+  renderHdAb();
+  applyHdConfigure();
+  applyRateToElement();
+});
+
+/** Baut den Text zum Verschicken — dieselbe Darstellung wie die Regler, als Zeilen. */
+function hdOptionsAsText(o) {
+  const bool = (v) => t(v ? 'settings.perf.advOn' : 'settings.perf.advOff');
+  return [
+    `${t('settings.perf.advFormantComp')}: ${bool(o.formantCompensation)}`,
+    `${t('settings.perf.advFormantSemi')}: ${o.formantSemitones.toLocaleString(undefined, { minimumFractionDigits: 1 })} ${t('settings.perf.advUnitSemi')}`,
+    `${t('settings.perf.advFormantBase')}: ${o.formantBaseHz > 0 ? `${o.formantBaseHz} Hz` : t('settings.perf.advFormantBaseAuto')}`,
+    `${t('settings.perf.advTonality')}: ${o.tonalityHz} Hz`,
+    `${t('settings.perf.advGroupCost')}: ${o.preset === 'cheaper' ? t('settings.perf.advPresetCheap') : t('settings.perf.advPresetDefault')}`,
+    `${t('settings.perf.advBlock')}: ${o.blockMs > 0 ? `${o.blockMs} ms` : t('settings.perf.advBlockAuto')}`,
+    `${t('settings.perf.advInterval')}: ${o.intervalMs > 0 ? `${o.intervalMs} ms` : (o.blockMs > 0 ? `${Math.round(o.blockMs / 4)} ms` : t('settings.perf.advIntervalAuto'))}`,
+    `${t('settings.perf.advSplit')}: ${bool(o.splitComputation)}`,
+  ].join('\n');
+}
+
+$('#btn-hd-copy').addEventListener('click', async () => {
+  const text = hdOptionsAsText(currentUserHdOptions());
+  try {
+    await navigator.clipboard.writeText(text);
+    banner(t('settings.perf.advCopied'), { kind: 'ok' });
+  } catch {
+    await promptDialog({
+      title: 'Erweiterte Einstellungen (Zeitdehner)', text: 'Text markieren und kopieren.',
+      value: text, okLabel: 'Fertig', multiline: true,
+    });
+  }
 });
 
 $('#btn-bg-help-toggle').addEventListener('click', () => {
