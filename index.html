@@ -3332,6 +3332,9 @@ input[type="checkbox"] {
         Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
       </p>
       <div class="chip-grid" id="song-search-service-picker" role="group" aria-label="Suchdienst"></div>
+      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
+        Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.
+      </p>
     </div>
 
     <div class="card">
@@ -3645,8 +3648,10 @@ input[type="checkbox"] {
         <div class="row"><span data-i18n="settings.about.version">Version</span><span id="app-version">–</span></div>
         <div class="row"><span data-i18n="settings.about.offline">Offline verfügbar</span><span id="offline-state">–</span></div>
         <p style="margin:0" data-i18n="settings.about.privacy">
-          Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt
-          auf diesem Gerät.
+          Die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine
+          Daten — alles bleibt auf diesem Gerät. Nutzt man die optionale Liedsuche
+          (Lupe im Player), gehen Songtitel und ggf. Interpret an den dort gewählten
+          externen Dienst (Tidal, Spotify, Deezer, YouTube oder Google).
         </p>
         <p style="margin:0" data-i18n-html="settings.about.lame">
           MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf
@@ -4390,17 +4395,18 @@ let dlgResolve  = null;
  * Standalone-Modus optisch ein Fremdkörper und blockiert den Hauptthread).
  * @returns {Promise<boolean>}
  */
-function confirmDialog({ title, text, okLabel = 'OK', danger = false }) {
+function confirmDialog({ title, text, okLabel = 'OK', cancelLabel = 'Abbrechen', danger = false }) {
   // Ein noch offener vorheriger Aufruf würde sonst für immer hängen, sobald
   // dieser Aufruf dlgResolve gleich überschreibt — lieber sauber mit
   // „Abbrechen" auflösen, als den ersten Aufrufer nie wieder aufwachen zu
   // lassen.
   if (dlgResolve) closeDialog(false);
 
-  dlgTitle.textContent = title;
-  dlgText.textContent  = text;
-  dlgOk.textContent    = okLabel;
-  dlgOk.className      = danger ? 'btn btn--danger' : 'btn btn--primary';
+  dlgTitle.textContent  = title;
+  dlgText.textContent   = text;
+  dlgOk.textContent     = okLabel;
+  dlgCancel.textContent = cancelLabel;
+  dlgOk.className       = danger ? 'btn btn--danger' : 'btn btn--primary';
   overlay.hidden = false;
   openModal(overlay, { initialFocus: dlgOk, onEscape: () => closeDialog(false) });
 
@@ -4882,6 +4888,7 @@ const DEFAULT_SETTINGS = {
   placeholderHintDismissed: false, // Erklärung zu Platzhalter-Songs im Player weggeklickt — nicht erneut zeigen
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
+  songSearchNoticeShown: false, // einmaliger Hinweis vor der allerersten externen Liedsuche schon gezeigt? (AP-04)
   lightshowOffsetMs: 0,       // Handversatz der Geräteuhr in ms (siehe Sync-Prüfbild)
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
@@ -5000,6 +5007,13 @@ const STRINGS = {
     'settings.personal.presentThemeLight': 'Schwarz auf Weiß',
     'settings.personal.searchTitle': 'Song-Suche',
     'settings.personal.searchHint': 'Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.',
+    'settings.personal.searchPrivacyHint': 'Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.',
+
+    'songsearch.dialogTitle': 'Externe Suche',
+    'songsearch.dialogPrefix': 'Öffnet ',
+    'songsearch.dialogSuffix': ' und sendet den Songtitel dorthin, um danach zu suchen.',
+    'songsearch.dialogOk': 'Passt',
+    'songsearch.dialogCancel': 'Dann nicht',
 
     'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
@@ -5096,7 +5110,7 @@ const STRINGS = {
     'settings.about.title': 'Über die App',
     'settings.about.version': 'Version',
     'settings.about.offline': 'Offline verfügbar',
-    'settings.about.privacy': 'Die App stellt keine Netzwerkanfragen und sendet keine Daten. Alles bleibt auf diesem Gerät.',
+    'settings.about.privacy': 'Die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine Daten — alles bleibt auf diesem Gerät. Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel und ggf. Interpret an den dort gewählten externen Dienst (Tidal, Spotify, Deezer, YouTube oder Google).',
     'settings.about.lame': 'MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.',
     'settings.about.stretch': 'Verlangsamung im Modus „HD" mit <strong>signalsmith-stretch</strong> (MIT) von Geraint Luff / Signalsmith Audio Ltd. — <a href="https://signalsmith-audio.co.uk/code/stretch/" target="_blank" rel="noopener noreferrer">signalsmith-audio.co.uk</a>.',
     'settings.about.errorLogTitle': 'Fehlerprotokoll',
@@ -5253,6 +5267,13 @@ const STRINGS = {
     'settings.personal.presentThemeLight': 'Black on white',
     'settings.personal.searchTitle': 'Song search',
     'settings.personal.searchHint': 'Service used by the magnifying-glass icon in the player. Long-press it to pick a different service just once.',
+    'settings.personal.searchPrivacyHint': 'Tapping the magnifying glass in the player sends the song title (and artist, if known) to the service selected here.',
+
+    'songsearch.dialogTitle': 'External search',
+    'songsearch.dialogPrefix': 'Opens ',
+    'songsearch.dialogSuffix': ' and sends the song title there to search for it.',
+    'songsearch.dialogOk': 'Sounds good',
+    'songsearch.dialogCancel': 'Not now',
 
     'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
@@ -5349,7 +5370,7 @@ const STRINGS = {
     'settings.about.title': 'About the app',
     'settings.about.version': 'Version',
     'settings.about.offline': 'Available offline',
-    'settings.about.privacy': 'The app makes no network requests and sends no data. Everything stays on this device.',
+    'settings.about.privacy': 'The app itself makes no automatic network requests and sends no data — everything stays on this device. Using the optional song search (magnifying glass in the player) sends the song title, and artist if known, to the external service selected there (Tidal, Spotify, Deezer, YouTube, or Google).',
     'settings.about.lame': 'MP3 export using <strong>lamejs</strong> (LGPL-3.0), based on <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.',
     'settings.about.stretch': 'Slowdown in <strong>HD</strong> mode using <strong>signalsmith-stretch</strong> (MIT) by Geraint Luff / Signalsmith Audio Ltd. — <a href="https://signalsmith-audio.co.uk/code/stretch/" target="_blank" rel="noopener noreferrer">signalsmith-audio.co.uk</a>.',
     'settings.about.errorLogTitle': 'Error log',
@@ -5506,6 +5527,13 @@ const STRINGS = {
     'settings.personal.presentThemeLight': 'Czarny na białym',
     'settings.personal.searchTitle': 'Wyszukiwanie utworu',
     'settings.personal.searchHint': 'Usługa używana przez ikonę lupy w odtwarzaczu. Długie przytrzymanie pozwala jednorazowo wybrać inną usługę.',
+    'settings.personal.searchPrivacyHint': 'Dotknięcie lupy w odtwarzaczu wysyła tytuł utworu (a jeśli jest znany, także wykonawcę) do usługi wybranej tutaj.',
+
+    'songsearch.dialogTitle': 'Wyszukiwanie zewnętrzne',
+    'songsearch.dialogPrefix': 'Otwiera ',
+    'songsearch.dialogSuffix': ' i wysyła tam tytuł utworu, aby go wyszukać.',
+    'songsearch.dialogOk': 'Pasuje',
+    'songsearch.dialogCancel': 'Nie teraz',
 
     'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
@@ -5602,7 +5630,7 @@ const STRINGS = {
     'settings.about.title': 'O aplikacji',
     'settings.about.version': 'Wersja',
     'settings.about.offline': 'Dostępna offline',
-    'settings.about.privacy': 'Aplikacja nie wysyła żadnych zapytań sieciowych ani danych. Wszystko pozostaje na tym urządzeniu.',
+    'settings.about.privacy': 'Sama aplikacja nie wysyła automatycznie żadnych zapytań sieciowych ani danych — wszystko pozostaje na tym urządzeniu. Korzystanie z opcjonalnego wyszukiwania utworu (lupka w odtwarzaczu) przesyła tytuł utworu, a jeśli jest znany, także wykonawcę, do wybranej tam zewnętrznej usługi (Tidal, Spotify, Deezer, YouTube lub Google).',
     'settings.about.lame': 'Eksport MP3 z użyciem <strong>lamejs</strong> (LGPL-3.0), opartego na <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.',
     'settings.about.stretch': 'Spowolnienie w trybie <strong>HD</strong> z użyciem <strong>signalsmith-stretch</strong> (MIT) autorstwa Geraint Luff / Signalsmith Audio Ltd. — <a href="https://signalsmith-audio.co.uk/code/stretch/" target="_blank" rel="noopener noreferrer">signalsmith-audio.co.uk</a>.',
     'settings.about.errorLogTitle': 'Dziennik błędów',
@@ -7707,12 +7735,31 @@ function openAppOrWeb({ web, iosApp, androidApp, androidPackage }) {
 /** Sucht den geöffneten Song bei einem Dienst — kurzer Tipp auf die Lupe
  *  nutzt den Standarddienst (Einstellungen), langes Halten fragt einmalig
  *  nach einem anderen (siehe Pointer-Handler bei btn-song-search). Titel
- *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage. */
-function openSongSearch(serviceId) {
+ *  und, falls bekannt, Interpret (siehe song.artist) bilden die Suchanfrage.
+ *
+ *  Vor der allerersten externen Suche überhaupt ein einmaliger, aktiver
+ *  Hinweis (AP-04): anders als die App selbst sendet dieser eine Weg Songtitel
+ *  (und ggf. Interpret) an einen externen Dienst — das soll niemanden
+ *  überraschen. Bewusst kein sich selbst wegklickendes Banner, sondern ein
+ *  Dialog mit echter Wahl; „Dann nicht" bricht nur diese eine Suche ab, der
+ *  Hinweis selbst kommt danach nicht wieder. */
+async function openSongSearch(serviceId) {
   if (!playerSong) return;
   const query = (playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title || '').trim();
   if (!query) return;
   const service = songSearchServiceById(serviceId);
+
+  if (!settings.songSearchNoticeShown) {
+    const ok = await confirmDialog({
+      title: t('songsearch.dialogTitle'),
+      text: `${t('songsearch.dialogPrefix')}${service.label}${t('songsearch.dialogSuffix')}`,
+      okLabel: t('songsearch.dialogOk'),
+      cancelLabel: t('songsearch.dialogCancel'),
+    });
+    await saveSettings({ songSearchNoticeShown: true });
+    if (!ok) return;
+  }
+
   openAppOrWeb({
     web: service.web(query),
     iosApp: service.iosApp ? service.iosApp(query) : null,

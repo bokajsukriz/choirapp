@@ -2,7 +2,10 @@
 
 Installierbare, rein lokale Progressive-Web-App zum Üben mit den
 Übe-Aufnahmen des Chores BVG. Kein Backend, kein Konto, keine Telemetrie —
-die App stellt keinerlei Netzwerkanfragen und sendet keine Daten.
+die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine
+Daten. Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel
+und ggf. Interpret an den gewählten externen Dienst — siehe
+[Externe Liedsuche](#externe-liedsuche).
 
 ## Daten und Speicherorte
 
@@ -20,6 +23,17 @@ Alles bleibt auf dem Gerät:
 sowie Fehler- und Diagnoseprotokoll. Dateien in einer verbundenen Dropbox
 bleiben davon unberührt — die App greift nie direkt auf Dropbox zu, sondern
 nur auf lokal heruntergeladene ZIP-Archive.
+
+## Externe Liedsuche
+
+Die Lupe im Player öffnet eine Suche nach dem aktuellen Song bei einem
+selbst gewählten externen Dienst (Tidal, Spotify, Deezer, YouTube oder
+Google, einstellbar in den Einstellungen). Dabei gehen Songtitel und, falls
+hinterlegt, der Interpret als Suchanfrage an den gewählten Dienst — sonst
+nichts. Das passiert ausschließlich bei aktivem Antippen der Lupe, nie
+automatisch im Hintergrund. Vor der allerersten Nutzung weist die App
+einmalig aktiv darauf hin (kein sich selbst wegklickender Hinweis, sondern
+ein Dialog mit echter Wahl).
 
 ## Dateiübersicht
 
