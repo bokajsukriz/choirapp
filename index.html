@@ -3456,8 +3456,9 @@ input[type="checkbox"] {
         <p class="small hd-group" data-i18n="settings.perf.advGroupSound">Klang</p>
 
         <div class="row">
-          <span class="small" style="max-width:70%" data-i18n="settings.perf.advFormantComp">
-            Formantkorrektur
+          <span class="small" style="max-width:70%">
+            <span data-i18n="settings.perf.advFormantComp">Formantkorrektur</span>
+            <span class="muted" id="hd-formant-comp-std" data-i18n="settings.perf.advIsDefaultSuffix"> · ab Werk</span>
           </span>
           <button class="switch" id="hd-formant-comp" type="button" role="switch"
                   aria-checked="false" aria-label="Formantkorrektur"
@@ -3488,7 +3489,8 @@ input[type="checkbox"] {
 
         <p class="small hd-group" data-i18n="settings.perf.advGroupCost">Rechenaufwand</p>
 
-        <div class="preset-row" id="hd-preset" role="group" aria-label="Rechenaufwand">
+        <p class="small muted" style="margin:0"><span id="hd-preset-std" data-i18n="settings.perf.advPresetIsDefault">Preset steht auf Voreinstellung</span></p>
+        <div class="preset-row" id="hd-preset" role="group" aria-label="Rechenaufwand" style="margin-top:6px">
           <button class="preset" type="button" data-preset="default" aria-pressed="true" data-i18n="settings.perf.advPresetDefault">Standard</button>
           <button class="preset" type="button" data-preset="cheaper" data-i18n="settings.perf.advPresetCheap">Sparsam</button>
         </div>
@@ -3504,8 +3506,9 @@ input[type="checkbox"] {
         </label>
 
         <div class="row" style="margin-top:14px">
-          <span class="small" style="max-width:70%" data-i18n="settings.perf.advSplit">
-            Rechnung über die Quanten verteilen
+          <span class="small" style="max-width:70%">
+            <span data-i18n="settings.perf.advSplit">Rechnung über die Quanten verteilen</span>
+            <span class="muted" id="hd-split-std" data-i18n="settings.perf.advIsDefaultSuffix"> · ab Werk</span>
           </span>
           <button class="switch" id="hd-split" type="button" role="switch"
                   aria-checked="false" aria-label="Rechnung verteilen"
@@ -3513,10 +3516,22 @@ input[type="checkbox"] {
             <span class="switch-knob"></span>
           </button>
         </div>
+        <p class="small muted" style="margin:6px 0 0" id="hd-split-inactive" hidden data-i18n="settings.perf.advSplitInactive">
+          Wirkungslos, solange ein Preset gewählt ist: die Bibliothek bestimmt
+          dort Blocklänge und Schrittweite selbst. Eine eigene Blocklänge
+          einstellen, dann greift der Schalter.
+        </p>
         <p class="small muted" style="margin:6px 0 0" data-i18n="settings.perf.advSplitHint">
           Verteilt die Arbeit eines Analyseblocks über mehrere Render-Quanten.
-          Senkt die Spitzenlast, nicht die Gesamtlast — hilft gegen Knacken,
-          wenn die Durchschnittslast in Ordnung ist.
+          Kostet gemessen keine Rechenzeit, nur ein Viertel mehr Latenz —
+          deshalb ab Werk an. Ausschalten macht die Wiedergabe direkter, aber
+          stoßweiser.
+        </p>
+        <p class="small muted" style="margin:6px 0 0" data-i18n="settings.perf.advCostHint">
+          Wirklich sparsamer wird es nur über die Schrittweite oder das Preset
+          „Sparsam": eine größere Schrittweite heißt weniger Analyseblöcke je
+          Sekunde. Die Blocklänge dagegen ändert am Rechenaufwand fast nichts,
+          sie bestimmt Frequenzauflösung und Latenz.
         </p>
 
         <p class="small muted" id="hd-semitones" style="margin:14px 0 0"></p>
@@ -4888,9 +4903,20 @@ const DEFAULT_SETTINGS = {
     formantBaseHz: 0,
     tonalityHz: 8000,
     preset: 'default',
-    blockMs: 0,
+    // Eigene Blocklänge statt Preset, weil `configure()` der Bibliothek
+    // `splitComputation` NUR im Zweig mit gesetztem `blockMs` weiterreicht —
+    // in der Preset-Betriebsart wäre der Schalter wirkungslos. 120 ms sind
+    // gemessen genau die Latenz des Presets „Standard", der Klang ändert
+    // sich dadurch also praktisch nicht.
+    blockMs: 120,
     intervalMs: 0,
-    splitComputation: false,
+    // An, weil es gemessen nichts kostet: dieselbe Rechenzeit je Sekunde Ton
+    // (25,6 gegen 25,7 ms/s), aber die Arbeit eines Blocks verteilt sich über
+    // mehrere Render-Quanten statt in einem Schwall anzufallen. Genau die
+    // Spitzen waren es, an denen der alte Vocoder gescheitert ist. Bezahlt
+    // wird mit 25 % mehr Latenz (120 → 150 ms), und die fällt hier kaum ins
+    // Gewicht — siehe SLOWPLAY-HD-PLAN.md.
+    splitComputation: true,
   },
 };
 
@@ -5019,11 +5045,17 @@ const STRINGS = {
     'settings.perf.advInterval': 'Schrittweite',
     'settings.perf.advIntervalAuto': 'automatisch',
     'settings.perf.advSplit': 'Rechnung über die Quanten verteilen',
-    'settings.perf.advSplitHint': 'Verteilt die Arbeit eines Analyseblocks über mehrere Render-Quanten. Senkt die Spitzenlast, nicht die Gesamtlast — hilft gegen Knacken, wenn die Durchschnittslast in Ordnung ist.',
+    'settings.perf.advSplitHint': 'Verteilt die Arbeit eines Analyseblocks über mehrere Render-Quanten. Kostet gemessen keine Rechenzeit, nur ein Viertel mehr Latenz — deshalb ab Werk an. Ausschalten macht die Wiedergabe direkter, aber stoßweiser.',
     'settings.perf.advLatency': 'Latenz des Zeitdehners:',
     'settings.perf.advSemitones': 'Tonhöhenkorrektur:',
     'settings.perf.advReset': 'Zurücksetzen',
     'settings.perf.advUnitSemi': 'Halbtöne',
+    'settings.perf.advIsDefault': 'ab Werk',
+    'settings.perf.advIsDefaultSuffix': ' · ab Werk',
+    'settings.perf.advPresetIsDefault': 'Preset steht auf Voreinstellung',
+    'settings.perf.advUnitLatency': 'Latenz',
+    'settings.perf.advSplitInactive': 'Wirkungslos, solange ein Preset gewählt ist: die Bibliothek bestimmt dort Blocklänge und Schrittweite selbst. Eine eigene Blocklänge einstellen, dann greift der Schalter.',
+    'settings.perf.advCostHint': 'Wirklich sparsamer wird es nur über die Schrittweite oder das Preset „Sparsam": eine größere Schrittweite heißt weniger Analyseblöcke je Sekunde. Die Blocklänge dagegen ändert am Rechenaufwand fast nichts, sie bestimmt Frequenzauflösung und Latenz.',
     'settings.perf.advAb': 'A/B',
     'settings.perf.advAbAria': 'Standard und eigene Einstellungen vergleichen',
     'settings.perf.advAbHint': 'Du hörst gerade die Voreinstellung zum Vergleich — deine eigenen Werte sind unverändert gespeichert.',
@@ -5263,11 +5295,17 @@ const STRINGS = {
     'settings.perf.advInterval': 'Step size',
     'settings.perf.advIntervalAuto': 'automatic',
     'settings.perf.advSplit': 'Spread computation across quanta',
-    'settings.perf.advSplitHint': 'Spreads one analysis block over several render quanta. Lowers peak load, not total load — helps against crackling when the average load is fine.',
+    'settings.perf.advSplitHint': 'Spreads one analysis block over several render quanta. Measured to cost no extra compute, only a quarter more latency — hence on by default. Turning it off is more immediate but burstier.',
     'settings.perf.advLatency': 'Stretcher latency:',
     'settings.perf.advSemitones': 'Pitch correction:',
     'settings.perf.advReset': 'Reset',
     'settings.perf.advUnitSemi': 'semitones',
+    'settings.perf.advIsDefault': 'stock',
+    'settings.perf.advIsDefaultSuffix': ' · stock',
+    'settings.perf.advPresetIsDefault': 'Preset is at its default',
+    'settings.perf.advUnitLatency': 'latency',
+    'settings.perf.advSplitInactive': 'Has no effect while a preset is selected: there the library sets block length and step size itself. Set your own block length and the switch takes effect.',
+    'settings.perf.advCostHint': 'Real savings come only from the step size or the "Cheaper" preset: a larger step means fewer analysis blocks per second. Block length barely changes the cost — it sets frequency resolution and latency.',
     'settings.perf.advAb': 'A/B',
     'settings.perf.advAbAria': 'Compare standard and your own settings',
     'settings.perf.advAbHint': "You're previewing the default for comparison — your own settings are unchanged and still saved.",
@@ -5507,11 +5545,17 @@ const STRINGS = {
     'settings.perf.advInterval': 'Krok',
     'settings.perf.advIntervalAuto': 'automatycznie',
     'settings.perf.advSplit': 'Rozłóż obliczenia na kwanty',
-    'settings.perf.advSplitHint': 'Rozkłada pracę jednego bloku analizy na kilka kwantów renderowania. Obniża obciążenie szczytowe, nie całkowite — pomaga na trzaski, gdy średnie obciążenie jest w porządku.',
+    'settings.perf.advSplitHint': 'Rozkłada pracę jednego bloku analizy na kilka kwantów renderowania. Zmierzono, że nie kosztuje mocy, tylko ćwierć więcej opóźnienia — dlatego jest domyślnie włączone.',
     'settings.perf.advLatency': 'Opóźnienie rozciągacza:',
     'settings.perf.advSemitones': 'Korekta wysokości:',
     'settings.perf.advReset': 'Resetuj',
     'settings.perf.advUnitSemi': 'półtonów',
+    'settings.perf.advIsDefault': 'fabrycznie',
+    'settings.perf.advIsDefaultSuffix': ' · fabrycznie',
+    'settings.perf.advPresetIsDefault': 'Ustawienie domyślne',
+    'settings.perf.advUnitLatency': 'opóźnienia',
+    'settings.perf.advSplitInactive': 'Bez efektu, gdy wybrane jest ustawienie wstępne: biblioteka sama dobiera tam długość bloku i krok. Ustaw własną długość bloku, wtedy przełącznik zadziała.',
+    'settings.perf.advCostHint': 'Realne oszczędności daje tylko krok albo ustawienie „Oszczędny": większy krok to mniej bloków analizy na sekundę. Długość bloku prawie nie zmienia obciążenia — decyduje o rozdzielczości i opóźnieniu.',
     'settings.perf.advAb': 'A/B',
     'settings.perf.advAbAria': 'Porównaj ustawienie standardowe z własnym',
     'settings.perf.advAbHint': 'Słuchasz teraz ustawienia domyślnego do porównania — twoje własne wartości pozostają zapisane bez zmian.',
@@ -7683,24 +7727,52 @@ function renderHdOptions() {
   const o = activeHdOptions();
   $('#hd-formant-comp').setAttribute('aria-checked', o.formantCompensation ? 'true' : 'false');
   $('#hd-split').setAttribute('aria-checked', o.splitComputation ? 'true' : 'false');
+  // Zwei Betriebsarten: entweder ein Preset der Bibliothek (dann bestimmt sie
+  // Blocklänge und Schrittweite selbst — und ignoriert `splitComputation`),
+  // oder eigene Werte. Ein Druck auf ein Preset schaltet zurück in die erste,
+  // ein Zug am Blocklängen-Regler in die zweite.
+  const presetMode = o.blockMs === 0;
   for (const btn of $$('#hd-preset .preset')) {
-    btn.setAttribute('aria-pressed', btn.dataset.preset === o.preset ? 'true' : 'false');
-    // Bei eigener Blocklänge entscheidet nicht mehr das Preset — dann sind
-    // die beiden Knöpfe wirkungslos und sollen das auch zeigen.
-    btn.disabled = o.blockMs > 0;
+    btn.setAttribute('aria-pressed', presetMode && btn.dataset.preset === o.preset ? 'true' : 'false');
+    btn.disabled = hdAbActive();
   }
+  // In der Preset-Betriebsart reicht die Bibliothek splitComputation nicht
+  // durch — dann ist der Schalter wirkungslos und sagt das auch.
+  $('#hd-split').disabled = presetMode || hdAbActive();
+  $('#hd-split-inactive').hidden = !presetMode;
   $('#hd-formant-semi').value = o.formantSemitones;
   $('#hd-formant-base').value = o.formantBaseHz;
   $('#hd-tonality').value = o.tonalityHz;
   $('#hd-block').value = o.blockMs;
   $('#hd-interval').value = o.intervalMs;
-  $('#hd-formant-semi-out').textContent = `${o.formantSemitones.toLocaleString(undefined, { minimumFractionDigits: 1 })} ${t('settings.perf.advUnitSemi')}`;
-  $('#hd-formant-base-out').textContent = o.formantBaseHz > 0 ? `${o.formantBaseHz} Hz` : t('settings.perf.advFormantBaseAuto');
-  $('#hd-tonality-out').textContent = `${o.tonalityHz} Hz`;
-  $('#hd-block-out').textContent = o.blockMs > 0 ? `${o.blockMs} ms` : t('settings.perf.advBlockAuto');
-  $('#hd-interval-out').textContent = o.intervalMs > 0
+  // Hinter jeden Wert, der noch auf der Voreinstellung steht, ein „ab Werk" —
+  // sonst sieht man den Reglern nicht an, was man selbst verstellt hat und
+  // was Auslieferungszustand ist.
+  const d = DEFAULT_SETTINGS.hdOptions;
+  const std = t('settings.perf.advIsDefault');
+  const mark = (key, text) => (o[key] === d[key] ? `${text} · ${std}` : text);
+
+  $('#hd-formant-semi-out').textContent = mark('formantSemitones',
+    `${o.formantSemitones.toLocaleString(undefined, { minimumFractionDigits: 1 })} ${t('settings.perf.advUnitSemi')}`);
+  $('#hd-formant-base-out').textContent = mark('formantBaseHz',
+    o.formantBaseHz > 0 ? `${o.formantBaseHz} Hz` : t('settings.perf.advFormantBaseAuto'));
+  $('#hd-tonality-out').textContent = mark('tonalityHz', `${o.tonalityHz} Hz`);
+
+  // Bei „nach Voreinstellung" sagt die Blocklänge selbst nichts — dann die
+  // gemessene Latenz danebenstellen, das ist der einzige Wert, den die
+  // Bibliothek über ihre Presets wirklich herausgibt.
+  const latMs = Math.round((Audio.hdLatency || 0) * 1000);
+  $('#hd-block-out').textContent = mark('blockMs', o.blockMs > 0
+    ? `${o.blockMs} ms`
+    : (latMs > 0 ? `${t('settings.perf.advBlockAuto')} · ${latMs} ms ${t('settings.perf.advUnitLatency')}` : t('settings.perf.advBlockAuto')));
+  $('#hd-interval-out').textContent = mark('intervalMs', o.intervalMs > 0
     ? `${o.intervalMs} ms`
-    : (o.blockMs > 0 ? `${Math.round(o.blockMs / 4)} ms` : t('settings.perf.advIntervalAuto'));
+    : (o.blockMs > 0 ? `${Math.round(o.blockMs / 4)} ms` : t('settings.perf.advIntervalAuto')));
+
+  // Auch die Schalter und das Preset kennzeichnen.
+  $('#hd-formant-comp-std').hidden = o.formantCompensation !== d.formantCompensation;
+  $('#hd-split-std').hidden = o.splitComputation !== d.splitComputation;
+  $('#hd-preset-std').hidden = o.preset !== d.preset || o.blockMs > 0;
 }
 
 /**
@@ -7734,8 +7806,11 @@ function renderHdAb() {
                      '#hd-tonality', '#hd-block', '#hd-interval', '#hd-split', '#btn-hd-reset']) {
     $(id).disabled = active;
   }
+  // Nur während des Vorhörens sperren. Dass eine eigene Blocklänge gesetzt
+  // ist, sperrt die Presets NICHT mehr — ein Druck darauf ist der Weg zurück
+  // in die Preset-Betriebsart (siehe renderHdOptions).
   for (const presetBtn of $$('#hd-preset .preset')) {
-    presetBtn.disabled = active || settings.hdOptions.blockMs > 0;
+    presetBtn.disabled = active;
   }
 }
 
@@ -7839,13 +7914,14 @@ $('#hd-formant-comp').addEventListener('click', () => {
 });
 
 $('#hd-split').addEventListener('click', () => {
+  if ($('#hd-split').disabled) return;
   updateHdOption({ splitComputation: !settings.hdOptions.splitComputation }, true);
 });
 
 $$('#hd-preset .preset').forEach((btn) => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
-    updateHdOption({ preset: btn.dataset.preset }, true);
+    updateHdOption({ preset: btn.dataset.preset, blockMs: 0 }, true);
   });
 });
 
@@ -8119,7 +8195,9 @@ function sanitizeHdOptions(raw) {
     preset: o.preset === 'cheaper' ? 'cheaper' : 'default',
     blockMs: num(o.blockMs, 0, 250, d.blockMs),
     intervalMs: num(o.intervalMs, 0, 120, d.intervalMs),
-    splitComputation: o.splitComputation === true,
+    // Nur ein echtes `false` zählt als „aus" — fehlt der Wert (alte
+    // Sicherung, bevor es den Schalter gab), gilt die Voreinstellung.
+    splitComputation: typeof o.splitComputation === 'boolean' ? o.splitComputation : d.splitComputation,
   };
 }
 
@@ -8713,6 +8791,9 @@ function refreshHdLatency() {
       if (!Number.isFinite(sec)) return;
       Audio.hdLatency = sec;
       if (out) out.textContent = `${t('settings.perf.advLatency')} ${Math.round(sec * 1000)} ms`;
+      // Die Blocklängen-Zeile zeigt in der Preset-Betriebsart genau diesen
+      // Wert mit an — sie stand bis hierher auf dem vorigen.
+      renderHdOptions();
     })
     .catch(() => { if (out) out.textContent = ''; });
 }
@@ -16766,11 +16847,24 @@ function runSelfTests() {
     if (o.blockMs !== 250) bad.push(`blockMs ${o.blockMs}`);
     if (o.intervalMs !== 0) bad.push(`intervalMs ${o.intervalMs}`);
     if (o.preset !== 'default') bad.push(`preset ${o.preset}`);
-    // Nur echte Booleans zählen — 'ja' und 1 sind Datenmüll, kein „an".
+    // 'ja' ist Datenmüll, kein „an" — formantCompensation verlangt ein echtes
+    // true. splitComputation fällt bei Nicht-Booleans auf die Voreinstellung
+    // zurück, weil ältere Sicherungen den Schlüssel gar nicht kennen.
     if (o.formantCompensation !== false) bad.push('formantCompensation');
-    if (o.splitComputation !== false) bad.push('splitComputation');
+    if (o.splitComputation !== DEFAULT_SETTINGS.hdOptions.splitComputation) bad.push('splitComputation');
     if (bad.length) failed.push(`sanitizeHdOptions klemmt nicht: ${bad.join(', ')}`);
   }
+  // Die Voreinstellung muss eine eigene Blocklänge setzen: `configure()` der
+  // Bibliothek reicht `splitComputation` nur im Zweig mit gesetztem `blockMs`
+  // weiter — stünde blockMs auf 0, wäre der Schalter ab Werk wirkungslos.
+  checks++;
+  {
+    const d = DEFAULT_SETTINGS.hdOptions;
+    if (d.splitComputation && !(d.blockMs > 0)) {
+      failed.push('Voreinstellung: splitComputation an, aber blockMs 0 — der Schalter bliebe wirkungslos');
+    }
+  }
+
   checks++;
   {
     const o = sanitizeHdOptions({ tonalityHz: NaN, formantSemitones: 'x' });
