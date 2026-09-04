@@ -11,7 +11,7 @@ erledigt** — er ist Teil dieser Änderung, nicht mehr eine eigene Runde.
 Der selbst geschriebene Phasenvocoder ist raus. An seiner Stelle steht
 `signalsmith-stretch` — ein Phasenvocoder in WebAssembly (MIT).
 
-| | vorher (`v118`) | jetzt (`v119`) |
+| | vorher (`v118`) | jetzt (`v120`) |
 |---|---|---|
 | Modi | Standard / HQ Mono / HQ / Roh | **Standard / HD** |
 | Rechenkern | ~45 KB handgeschriebenes JS im Worklet | `signalsmith-stretch` 1.3.2, WASM |
