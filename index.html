@@ -8401,6 +8401,18 @@ function ensureHdNode() {
     .finally(() => {
       hdNodePromise = null;
       renderSlowMode();
+      // Der aktuelle Kontext will HD vielleicht noch, konnte aber während
+      // dieses (inzwischen veralteten oder gescheiterten) Versuchs nicht
+      // selbst starten, weil hdNodePromise besetzt war — am auffälligsten,
+      // wenn rebuildAudioGraph() mitten in einer laufenden Initialisierung
+      // dazwischenkam: die context-Prüfung oben entsorgt den falschen Knoten
+      // sauber, stößt aber nichts Neues an, und ohne diesen Nachtrag bliebe
+      // HD bis zum nächsten Tempo-/Moduswechsel stumm im nativen Fallback
+      // hängen. hdApplyTransition() prüft selbst erneut, ob ein Knoten
+      // überhaupt noch gebraucht wird.
+      if (!Audio.hdNode && settings.slowMode === 'hd' && Audio.rate !== 1) {
+        hdApplyTransition('hd-node-retry').catch(() => {});
+      }
     });
 }
 
@@ -8626,12 +8638,25 @@ let audioRebuildInFlight = null;
  *
  * Läuft nur, während Audio.ready steht (audioInit() also schon einmal
  * durchgelaufen ist) — sonst gibt es nichts zum Neuaufbauen. Liefert, ob
- * wirklich neu aufgebaut wurde (false nur, wenn Audio.ready fehlte) — der
- * Notausgang-Knopf zeigt seine Erfolgsmeldung nur dann.
+ * wirklich neu aufgebaut wurde (false wenn Audio.ready fehlte oder gerade
+ * aufgenommen wird) — der Notausgang-Knopf zeigt seine Erfolgsmeldung nur
+ * dann.
+ *
+ * Läuft außerdem nicht während einer laufenden Aufnahme: der Recorder-Pegel-
+ * messer (startLevelMeter()) hängt bei laufender Wiedergabe absichtlich am
+ * selben Audio.ctx (kein zweiter Kontext, damit iOS die Hardware nicht neu
+ * aushandelt) und wird hier nicht mit umgezogen — schließt der Rebuild den
+ * Kontext, bliebe die Pegelanzeige an einem geschlossenen Kontext hängen.
+ * Die Aufnahme selbst (MediaRecorder auf dem MediaStream) wäre davon zwar
+ * nicht betroffen, aber lieber gar nicht erst mittendrin umbauen.
  */
 async function rebuildAudioGraph(reason) {
   if (audioRebuildInFlight) { await audioRebuildInFlight; return true; }
   if (!Audio.ready) return false;
+  if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
+    dlog('audio:rebuild', { reason, skipped: 'recording' });
+    return false;
+  }
   audioRebuildInFlight = (async () => {
     dlog('audio:rebuild', { reason, start: true });
 
@@ -9198,6 +9223,10 @@ function refreshHdLatency() {
   }
   Promise.resolve(node.latency())
     .then((sec) => {
+      // Der Knoten kann inzwischen abgebaut oder durch einen neuen ersetzt
+      // worden sein (Moduswechsel, Rebuild) — eine spät ankommende Antwort
+      // darf dann nicht mehr die aktuelle Latenz überschreiben.
+      if (node !== Audio.hdNode) return;
       if (!Number.isFinite(sec)) return;
       Audio.hdLatency = sec;
       if (out) out.textContent = `${t('settings.perf.advLatency')} ${Math.round(sec * 1000)} ms`;

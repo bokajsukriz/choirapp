@@ -26,6 +26,14 @@
  *    ließ die Echtzeitanzeige dauerhaft auf ~70 % einbrechen). `false` aus
  *    `process()` ist der einzige spezifizierte Weg, den Browser den Knoten
  *    endgültig aufgeben zu lassen.
+ * 6. `requestMap['ready']` ist jetzt `{resolve, reject}`-förmig wie jeder
+ *    andere Eintrag, statt eine nackte Funktion zu sein — sonst konnte
+ *    failAll() (processorerror/messageerror VOR der ready-Nachricht) sie
+ *    nicht ablehnen: die von createNode() zurückgegebene Promise blieb für
+ *    immer offen, und der längst angelegte, aber nie herausgegebene
+ *    AudioWorkletNode war für die App unerreichbar — nicht abzuklemmen, kein
+ *    terminate() möglich. failAll() trennt jetzt außerdem den Knoten selbst.
+ *    Dazu ein `.catch()` an `Module()` im Prozessor, das genauso terminiert.
  */
 var SignalsmithStretch = (() => {
   var _scriptName = typeof document != 'undefined' ? document.currentScript?.src : undefined;
@@ -237,6 +245,13 @@ function registerWorkletProcessor(Module, audioNodeKey) {
 				this.port.postMessage(['ready', methodArgCounts]);
 				pendingMessages.forEach(this.port.onmessage);
 				pendingMessages = null;
+			}).catch(() => {
+				// Lokale Ergänzung: WebAssembly.instantiate() kann auf einem stark
+				// belasteten Gerät scheitern (Speicherdruck). Ohne diesen Zweig bliebe
+				// wasmReady für immer false, process() liefert dann zwar nur Stille,
+				// aber weiterhin `true` — dieser Prozessor würde also, falls doch
+				// irgendwie verbunden, für immer weiterlaufen statt aufzugeben.
+				this.terminated = true;
 			});
 		}
 		
@@ -472,6 +487,13 @@ SignalsmithStretch = ((Module, audioNodeKey) => {
 					entry.reject(err);
 				}
 			}
+			// Lokale Ergänzung (Patch 6, siehe Kommentar am Dateianfang): den Knoten
+			// selbst auch trennen — sonst bleibt ein Prozessor, der schon vor der
+			// ready-Nachricht scheiterte, für die App unerreichbar (die Promise von
+			// createNode() lehnt jetzt zwar ab, aber niemand hätte sonst je eine
+			// Referenz auf den längst angelegten audioNode, um ihn abzuklemmen).
+			try { audioNode.disconnect(); } catch {}
+			try { audioNode.port.close(); } catch {}
 		};
 		let post = (transfer, ...data) => {
 			if (failure) return Promise.reject(failure);
@@ -502,34 +524,39 @@ SignalsmithStretch = ((Module, audioNodeKey) => {
 			let entry = requestMap[id];
 			if (entry) {
 				delete requestMap[id];
-				// 'ready' ist eine einfache Funktion, keine post()-Anfrage mit
-				// Timeout (siehe requestMap['ready'] weiter unten).
-				if (typeof entry === 'function') entry(value);
-				else { clearTimeout(entry.timer); entry.resolve(value); }
+				clearTimeout(entry.timer);
+				entry.resolve(value);
 			}
 		};
-		
-		return new Promise(resolve => {
-			requestMap['ready'] = remoteMethodKeys => {
-				Object.keys(remoteMethodKeys).forEach(key => {
-					let argCount = remoteMethodKeys[key];
-					audioNode[key] = (...args) => {
-						let transfer = null;
-						if (args.length > argCount) {
-							transfer = args.pop();
+
+		return new Promise((resolve, reject) => {
+			// Lokale Ergänzung (Patch 6): {resolve, reject} statt einer nackten
+			// Funktion — damit failAll() (processorerror/messageerror vor der
+			// ready-Nachricht) diesen Eintrag ablehnen kann wie jeden anderen,
+			// statt die Promise für immer offen zu lassen.
+			requestMap['ready'] = {
+				resolve: remoteMethodKeys => {
+					Object.keys(remoteMethodKeys).forEach(key => {
+						let argCount = remoteMethodKeys[key];
+						audioNode[key] = (...args) => {
+							let transfer = null;
+							if (args.length > argCount) {
+								transfer = args.pop();
+							}
+							return post(transfer, key, ...args);
 						}
-						return post(transfer, key, ...args);
+					});
+					/** @lends StretchNode.prototype
+						@method setUpdateInterval
+					*/
+					audioNode.setUpdateInterval = (seconds, callback) => {
+						timeUpdateCallback = callback;
+						return post(null, 'setUpdateInterval', seconds);
 					}
-				});
-				/** @lends StretchNode.prototype
-					@method setUpdateInterval
-				*/
-				audioNode.setUpdateInterval = (seconds, callback) => {
-					timeUpdateCallback = callback;
-					return post(null, 'setUpdateInterval', seconds);
-				}
-				resolve(audioNode);
-			}
+					resolve(audioNode);
+				},
+				reject,
+			};
 		});
 	};
 	return createNode;
