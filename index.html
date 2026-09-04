@@ -5971,6 +5971,9 @@ function isJunkPath(path) {
  */
 async function zipReadDirectory(file) {
   if (file.size < 22) throw new ZipError('Die Datei ist zu klein für ein ZIP-Archiv.');
+  if (file.size > ZIP_MAX_FILE_BYTES) {
+    throw new ZipError(`Diese ZIP-Datei ist zu groß (${fmtBytes(file.size)}, erlaubt sind ${fmtBytes(ZIP_MAX_FILE_BYTES)}).`);
+  }
 
   // Der EOCD-Record steht am Dateiende, kann aber bis zu 64 KB Kommentar
   // hinter sich haben. 66 KB abdecken genügt für jedes gültige Archiv.
@@ -6039,11 +6042,23 @@ async function zipReadDirectory(file) {
     throw new ZipError('Diese Datei ist unvollständig. Bitte den Ordner erneut aus Dropbox herunterladen.');
   }
 
+  // Größe VOR dem Lesen prüfen (nicht erst danach) — ein präpariertes/
+  // beschädigtes cdSize-Feld soll nicht erst einen Lesevorgang über
+  // beliebig viele Megabyte auslösen, bevor überhaupt geprüft wird, ob das
+  // plausibel ist.
+  if (cdSize > ZIP_MAX_CD_BYTES) {
+    throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (Inhaltsverzeichnis unplausibel groß).');
+  }
+
   // Das gesamte Inhaltsverzeichnis am Stück lesen — bei 2000 Einträgen sind
   // das rund 100 KB, und es geht in Sekundenbruchteilen.
   const cd = await sliceView(file, cdOff, cdOff + cdSize);
   const entries = [];
   let p = 0;
+  // Über alle Einträge mitgeführt, gegen ZIP_MAX_TOTAL_BYTES geprüft — die
+  // einzelnen Einträge könnten alle für sich unter ZIP_MAX_ENTRY_BYTES
+  // bleiben und trotzdem zusammen beliebig viel Speicher/Quota verbrauchen.
+  let totalDeclaredSize = 0;
 
   for (let i = 0; i < total; i++) {
     if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== SIG_CEN) break;
@@ -6091,6 +6106,24 @@ async function zipReadDirectory(file) {
 
     if (path.endsWith('/')) continue;      // reiner Verzeichniseintrag
     if (isJunkPath(path)) continue;
+    if (path.length > ZIP_MAX_PATH_LEN) continue;
+
+    // Deklarierte Größen (aus dem Inhaltsverzeichnis, noch nichts gelesen)
+    // gegen eine verdächtige Kompressionsrate prüfen — ein klassisches
+    // Zip-Bomb-Muster ist eine winzige komprimierte Größe für eine riesige
+    // deklarierte Ausgabe. Nur oberhalb einer Mindestgröße geprüft, sonst
+    // schlagen auch harmlose winzige Dateien (leere Textdateien u.ä.) an.
+    if (!Number.isSafeInteger(size) || !Number.isSafeInteger(compSize) || size < 0 || compSize < 0) {
+      throw new ZipError(`„${path}" hat eine unplausible Größenangabe im Archiv.`);
+    }
+    if (size > ZIP_MIN_RATIO_CHECK_SIZE && size > compSize * ZIP_MAX_RATIO) {
+      throw new ZipError(`„${path}" hat ein verdächtig hohes Kompressionsverhältnis und wird abgelehnt.`);
+    }
+
+    totalDeclaredSize += size;
+    if (!Number.isSafeInteger(totalDeclaredSize) || totalDeclaredSize > ZIP_MAX_TOTAL_BYTES) {
+      throw new ZipError(`Dieses Archiv ist ausgepackt zusammen zu groß (über ${fmtBytes(ZIP_MAX_TOTAL_BYTES)}).`);
+    }
 
     entries.push({ path, method, compressedSize: compSize, size, headerOffset });
   }
@@ -6140,8 +6173,14 @@ async function zipPrefetchStarts(file, entries) {
   await Promise.all(entries.map((e) => zipDataStart(file, e).catch(() => {})));
 }
 
-/** Holt die Nutzdaten eines einzelnen Eintrags als Blob. */
-async function zipExtract(file, entry) {
+/**
+ * Holt die Nutzdaten eines einzelnen Eintrags als Blob.
+ * @param {object} [budget] geteilter Zähler `{ used }` über den ganzen Import
+ *   hinweg — das bestehende `seen > ZIP_MAX_ENTRY_BYTES` unten prüft nur je
+ *   Eintrag; viele Einträge knapp unter dem Einzellimit könnten sonst
+ *   zusammen beliebig viel tatsächlich ausgepackten Speicher verbrauchen.
+ */
+async function zipExtract(file, entry, budget) {
   // Die Größenangabe stammt aus dem Inhaltsverzeichnis und kostet nichts —
   // billige erste Bremse gegen ein grob präpariertes Archiv (F-06).
   if (entry.size > ZIP_MAX_ENTRY_BYTES) {
@@ -6153,7 +6192,15 @@ async function zipExtract(file, entry) {
 
   // Methode 0 (stored) ist bei MP3s der Normalfall — Dropbox komprimiert sie
   // nicht noch einmal. Dann kostet das Extrahieren praktisch nichts.
-  if (entry.method === 0) return raw;
+  if (entry.method === 0) {
+    if (budget) {
+      budget.used += raw.size;
+      if (budget.used > ZIP_MAX_TOTAL_BYTES) {
+        throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(ZIP_MAX_TOTAL_BYTES)}).`);
+      }
+    }
+    return raw;
+  }
 
   if (entry.method === 8) {
     if (!canInflate) {
@@ -6169,13 +6216,18 @@ async function zipExtract(file, entry) {
         if (seen > ZIP_MAX_ENTRY_BYTES) {
           throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
         }
+        if (budget && budget.used + seen > ZIP_MAX_TOTAL_BYTES) {
+          throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(ZIP_MAX_TOTAL_BYTES)}).`);
+        }
         controller.enqueue(chunk);
       },
     });
     const stream = raw.stream()
       .pipeThrough(new DecompressionStream('deflate-raw'))
       .pipeThrough(guard);
-    return await new Response(stream).blob();
+    const blob = await new Response(stream).blob();
+    if (budget) budget.used += seen;
+    return blob;
   }
 
   throw new ZipError(`„${entry.path}" verwendet ein unbekanntes Komprimierungsverfahren.`);
@@ -9542,7 +9594,7 @@ async function readTextBlob(blob) {
 /** Liefert die Nutzdaten eines Scan-Eintrags — aus dem ZIP oder direkt. */
 async function entryBlob(entry) {
   if (entry.blob) return entry.blob;           // Ordner-Import
-  return zipExtract(pick.source.file, entry);  // ZIP-Import
+  return zipExtract(pick.source.file, entry, pick.source.inflateBudget);  // ZIP-Import
 }
 
 /**
@@ -10018,10 +10070,23 @@ const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
 
 // Harte Grenzen beim Auspacken (Befund F-06): die Dateien stammen aus dem
 // Dropbox-Export des eigenen Chores, der Angriffsweg ist entsprechend schmal.
-// Trotzdem billig gegen ein grob präpariertes Archiv absichern, ohne
-// durchgängiges Streaming oder eine globale Import-Limit-Policy einzuführen.
+// Trotzdem billig gegen ein grob präpariertes Archiv absichern — nicht nur
+// je Eintrag (das gab es schon), sondern auch summiert über das ganze
+// Archiv: viele Einträge, die alle einzeln unter dem Limit bleiben, könnten
+// sonst zusammen beliebig viel Speicher/Quota verbrauchen.
 const ZIP_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
 const ZIP_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // ausgepackt, je Eintrag
+const ZIP_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // ausgepackt, über alle Einträge
+const ZIP_MAX_CD_BYTES    = 64 * 1024 * 1024;  // Inhaltsverzeichnis selbst — Prüfung VOR dem Lesen
+const ZIP_MAX_PATH_LEN    = 512;               // Zeichen je Pfad im Archiv
+// Ab hier gilt eine Kompressionsrate als verdächtig (Zip-Bomb-Verdacht) —
+// nur oberhalb einer Mindestgröße geprüft, sonst würden auch winzige, ganz
+// normal stark komprimierbare Dateien (z.B. sehr leise REC-Passagen) anschlagen.
+const ZIP_MAX_RATIO           = 200;
+const ZIP_MIN_RATIO_CHECK_SIZE = 8 * 1024 * 1024;
+const ZIP_MAX_FILE_BYTES = 16 * 1024 * 1024 * 1024; // die ZIP-Datei selbst
+const ZIP_MAX_IMPORT_SONGS  = 5000;  // Obergrenze für runImport(), unabhängig von der Quelle (ZIP/Ordner)
+const ZIP_MAX_IMPORT_TRACKS = 20000;
 
 async function startZipImport(file) {
   dlog('import:zip:begin', { bytes: file.size });
@@ -10066,7 +10131,7 @@ async function startZipImport(file) {
 
     const foundFiles = songs.reduce((n, s) => n + s.tracks.length, 0);
     const foundBytes = songs.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.size, 0), 0);
-    await openPicker({ songs, notes, skipped, source: { kind: 'zip', file }, foundFiles, foundBytes });
+    await openPicker({ songs, notes, skipped, source: { kind: 'zip', file, inflateBudget: { used: 0 } }, foundFiles, foundBytes });
   } catch (err) {
     close();
     bannerError(zipReadFailureMessage(err), 'IMPORT-ZIP', err);
@@ -10175,6 +10240,16 @@ async function runImport() {
   const totalFiles = chosenTracks.length;
   const totalBytes = chosenTracks.reduce((n, t) => n + (t.size || 0), 0) || 1;
   dlog('import:run:begin', { totalFiles, totalBytes, songs: chosenSongs.length });
+
+  // Obergrenze für die erzeugten Objekte selbst, unabhängig von der Quelle
+  // (ZIP-Import ist über ZIP_MAX_ENTRIES schon indirekt begrenzt, der
+  // Ordner-Import über webkitdirectory gar nicht) — sonst könnte ein sehr
+  // großer, ungewöhnlicher Ordner genauso viele Meta-Datensätze anlegen wie
+  // ein präpariertes ZIP-Archiv.
+  if (chosenSongs.length > ZIP_MAX_IMPORT_SONGS || chosenTracks.length > ZIP_MAX_IMPORT_TRACKS) {
+    banner('Diese Auswahl enthält ungewöhnlich viele Songs oder Dateien — das sieht nicht nach einem Chorarchiv aus.', { kind: 'error' });
+    return;
+  }
 
   sheetImport.disabled = true;
   sheetProgress.hidden = false;
