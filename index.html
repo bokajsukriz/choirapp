@@ -7993,17 +7993,16 @@ $('#btn-hd-reset').addEventListener('click', async () => {
 });
 
 /**
- * Der Notausgang aus Stufe 4c in SLOWPLAY-HD-FIX-PLAN.md: bis die Automatik
- * (ein späterer Commit) trägt, ist das der Weg, einen kaputten Audio-Graphen
- * ohne App-Neustart loszuwerden.
+ * Der Notausgang aus Stufe 4c in SLOWPLAY-HD-FIX-PLAN.md: das ist der Weg,
+ * einen kaputten Audio-Graphen ohne App-Neustart loszuwerden.
  */
 $('#btn-audio-rebuild').addEventListener('click', async () => {
   const btn = $('#btn-audio-rebuild');
   if (btn.disabled) return;
   btn.disabled = true;
   try {
-    await rebuildAudioGraph('manual');
-    banner(t('settings.perf.rebuildDone'));
+    const rebuilt = await rebuildAudioGraph('manual');
+    if (rebuilt) banner(t('settings.perf.rebuildDone'));
   } finally {
     btn.disabled = false;
   }
@@ -8613,8 +8612,8 @@ async function audioInit() {
 }
 
 // Läuft schon ein Neuaufbau, keinen zweiten parallel anstoßen (der manuelle
-// Knopf, der 30-Minuten-Hebel aus Stufe 4c und ein künftiger automatischer
-// Auslöser aus Stufe 4b könnten sich sonst überschneiden).
+// Knopf, der 30-Minuten-Hebel aus Stufe 4c und der automatische Auslöser aus
+// Stufe 4b könnten sich sonst überschneiden).
 let audioRebuildInFlight = null;
 
 /**
@@ -8626,11 +8625,13 @@ let audioRebuildInFlight = null;
  * muss erneut ins neue Element geladen werden.
  *
  * Läuft nur, während Audio.ready steht (audioInit() also schon einmal
- * durchgelaufen ist) — sonst gibt es nichts zum Neuaufbauen.
+ * durchgelaufen ist) — sonst gibt es nichts zum Neuaufbauen. Liefert, ob
+ * wirklich neu aufgebaut wurde (false nur, wenn Audio.ready fehlte) — der
+ * Notausgang-Knopf zeigt seine Erfolgsmeldung nur dann.
  */
 async function rebuildAudioGraph(reason) {
-  if (audioRebuildInFlight) return audioRebuildInFlight;
-  if (!Audio.ready) return;
+  if (audioRebuildInFlight) { await audioRebuildInFlight; return true; }
+  if (!Audio.ready) return false;
   audioRebuildInFlight = (async () => {
     dlog('audio:rebuild', { reason, start: true });
 
@@ -8708,6 +8709,7 @@ async function rebuildAudioGraph(reason) {
   })();
   try {
     await audioRebuildInFlight;
+    return true;
   } finally {
     audioRebuildInFlight = null;
   }
