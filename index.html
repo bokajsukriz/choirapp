@@ -819,6 +819,34 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* Erweiterte Regler des Zeitdehners (Modus HD). Bewusst schlicht: das ist
+   eine Werkbank zum Ausprobieren, keine Alltagsansicht. */
+#hd-advanced .hd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+}
+#hd-advanced .hd-field > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+#hd-advanced .hd-field output {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#hd-advanced input[type="range"] { width: 100%; accent-color: var(--accent); }
+#hd-advanced .hd-group {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line, rgba(127,127,127,.25));
+  font-weight: 650;
+}
+#hd-advanced .hd-group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
 .preset[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .preset:disabled { opacity: .4; }
 
@@ -3414,6 +3442,91 @@ input[type="checkbox"] {
       <p class="small muted" id="hd-unsupported-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.hdUnsupported">
         Dieses Gerät unterstützt HD nicht — Standard funktioniert trotzdem.
       </p>
+
+      <button class="btn btn--block" id="btn-hd-advanced-toggle" type="button"
+              aria-expanded="false" hidden style="margin-top:14px" data-i18n="settings.perf.advToggle">
+        Erweitert: Zeitdehner einstellen
+      </button>
+      <div id="hd-advanced" hidden style="margin-top:12px">
+        <p class="small muted" style="margin:0 0 4px" data-i18n="settings.perf.advIntro">
+          Wirkt sofort, auch während der Wiedergabe. Zum Ausprobieren gedacht —
+          die Voreinstellungen sind bewusst so gewählt, wie sie sind.
+        </p>
+
+        <p class="small hd-group" data-i18n="settings.perf.advGroupSound">Klang</p>
+
+        <div class="row">
+          <span class="small" style="max-width:70%" data-i18n="settings.perf.advFormantComp">
+            Formantkorrektur
+          </span>
+          <button class="switch" id="hd-formant-comp" type="button" role="switch"
+                  aria-checked="false" aria-label="Formantkorrektur"
+                  data-i18n-aria="settings.perf.advFormantComp">
+            <span class="switch-knob"></span>
+          </button>
+        </div>
+        <p class="small muted" style="margin:6px 0 0" data-i18n="settings.perf.advFormantCompHint">
+          Sollte hier aus bleiben: das Resampling zieht Tonhöhe und Formanten
+          gemeinsam nach unten, das Hochschieben holt beide gemeinsam zurück.
+          Eingeschaltet klingt es dunkler, nicht besser.
+        </p>
+
+        <label class="small hd-field">
+          <span><span data-i18n="settings.perf.advFormantSemi">Formanten verschieben</span><output id="hd-formant-semi-out">0</output></span>
+          <input type="range" id="hd-formant-semi" min="-12" max="12" step="0.5" value="0">
+        </label>
+
+        <label class="small hd-field">
+          <span><span data-i18n="settings.perf.advFormantBase">Formant-Grundton</span><output id="hd-formant-base-out">automatisch</output></span>
+          <input type="range" id="hd-formant-base" min="0" max="500" step="10" value="0">
+        </label>
+
+        <label class="small hd-field">
+          <span><span data-i18n="settings.perf.advTonality">Grenze für Tonhaftigkeit</span><output id="hd-tonality-out">8000 Hz</output></span>
+          <input type="range" id="hd-tonality" min="1000" max="20000" step="500" value="8000">
+        </label>
+
+        <p class="small hd-group" data-i18n="settings.perf.advGroupCost">Rechenaufwand</p>
+
+        <div class="preset-row" id="hd-preset" role="group" aria-label="Rechenaufwand">
+          <button class="preset" type="button" data-preset="default" aria-pressed="true" data-i18n="settings.perf.advPresetDefault">Standard</button>
+          <button class="preset" type="button" data-preset="cheaper" data-i18n="settings.perf.advPresetCheap">Sparsam</button>
+        </div>
+
+        <label class="small hd-field">
+          <span><span data-i18n="settings.perf.advBlock">Blocklänge</span><output id="hd-block-out">nach Voreinstellung</output></span>
+          <input type="range" id="hd-block" min="0" max="250" step="10" value="0">
+        </label>
+
+        <label class="small hd-field">
+          <span><span data-i18n="settings.perf.advInterval">Schrittweite</span><output id="hd-interval-out">automatisch</output></span>
+          <input type="range" id="hd-interval" min="0" max="120" step="5" value="0">
+        </label>
+
+        <div class="row" style="margin-top:14px">
+          <span class="small" style="max-width:70%" data-i18n="settings.perf.advSplit">
+            Rechnung über die Quanten verteilen
+          </span>
+          <button class="switch" id="hd-split" type="button" role="switch"
+                  aria-checked="false" aria-label="Rechnung verteilen"
+                  data-i18n-aria="settings.perf.advSplit">
+            <span class="switch-knob"></span>
+          </button>
+        </div>
+        <p class="small muted" style="margin:6px 0 0" data-i18n="settings.perf.advSplitHint">
+          Verteilt die Arbeit eines Analyseblocks über mehrere Render-Quanten.
+          Senkt die Spitzenlast, nicht die Gesamtlast — hilft gegen Knacken,
+          wenn die Durchschnittslast in Ordnung ist.
+        </p>
+
+        <p class="small muted" id="hd-semitones" style="margin:14px 0 0"></p>
+        <p class="small muted" id="hd-latency" style="margin:4px 0 0"></p>
+
+        <button class="btn btn--block" id="btn-hd-reset" type="button"
+                style="margin-top:12px" data-i18n="settings.perf.advReset">
+          Auf Voreinstellung zurücksetzen
+        </button>
+      </div>
       <p class="small muted" id="hd-load" style="margin:8px 0 0" hidden></p>
     </div>
 
@@ -4749,6 +4862,21 @@ const DEFAULT_SETTINGS = {
   // Bleibt 'standard', bis HD auf echter Hardware sauber läuft; umschalten
   // lässt es sich in den Einstellungen.
   slowMode: 'standard',
+  // Regler des Zeitdehners (Modus HD, Karte „Kompatibilität & Performance"
+  // → „Erweitert"). Die Werte entsprechen den Voreinstellungen der
+  // Bibliothek; `formantCompensation` bleibt bewusst aus, siehe die
+  // Begründung an hdSemitonesForRate(). `blockMs: 0` heißt „nimm das
+  // Preset", `intervalMs: 0` heißt „ein Viertel der Blocklänge".
+  hdOptions: {
+    formantCompensation: false,
+    formantSemitones: 0,
+    formantBaseHz: 0,
+    tonalityHz: 8000,
+    preset: 'default',
+    blockMs: 0,
+    intervalMs: 0,
+    splitComputation: false,
+  },
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -4859,6 +4987,28 @@ const STRINGS = {
     'settings.perf.hdUnsupported': 'Dieses Gerät unterstützt HD nicht — Standard funktioniert trotzdem.',
     'settings.perf.rtLabel': 'Wiedergabetempo:',
     'settings.perf.rtSuffix': 'der Echtzeit',
+    'settings.perf.advToggle': 'Erweitert: Zeitdehner einstellen',
+    'settings.perf.advIntro': 'Wirkt sofort, auch während der Wiedergabe. Zum Ausprobieren gedacht — die Voreinstellungen sind bewusst so gewählt, wie sie sind.',
+    'settings.perf.advGroupSound': 'Klang',
+    'settings.perf.advGroupCost': 'Rechenaufwand',
+    'settings.perf.advFormantComp': 'Formantkorrektur',
+    'settings.perf.advFormantCompHint': 'Sollte hier aus bleiben: das Resampling zieht Tonhöhe und Formanten gemeinsam nach unten, das Hochschieben holt beide gemeinsam zurück. Eingeschaltet klingt es dunkler, nicht besser.',
+    'settings.perf.advFormantSemi': 'Formanten verschieben',
+    'settings.perf.advFormantBase': 'Formant-Grundton',
+    'settings.perf.advFormantBaseAuto': 'automatisch',
+    'settings.perf.advTonality': 'Grenze für Tonhaftigkeit',
+    'settings.perf.advPresetDefault': 'Standard',
+    'settings.perf.advPresetCheap': 'Sparsam',
+    'settings.perf.advBlock': 'Blocklänge',
+    'settings.perf.advBlockAuto': 'nach Voreinstellung',
+    'settings.perf.advInterval': 'Schrittweite',
+    'settings.perf.advIntervalAuto': 'automatisch',
+    'settings.perf.advSplit': 'Rechnung über die Quanten verteilen',
+    'settings.perf.advSplitHint': 'Verteilt die Arbeit eines Analyseblocks über mehrere Render-Quanten. Senkt die Spitzenlast, nicht die Gesamtlast — hilft gegen Knacken, wenn die Durchschnittslast in Ordnung ist.',
+    'settings.perf.advLatency': 'Latenz des Zeitdehners:',
+    'settings.perf.advSemitones': 'Tonhöhenkorrektur:',
+    'settings.perf.advReset': 'Auf Voreinstellung zurücksetzen',
+    'settings.perf.advUnitSemi': 'Halbtöne',
 
     'settings.help.title': 'Hilfe',
     'settings.help.intro': 'Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App. Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone und auf Android geht.',
@@ -5073,6 +5223,28 @@ const STRINGS = {
     'settings.perf.hdUnsupported': "This device doesn't support HD — Standard still works.",
     'settings.perf.rtLabel': 'Playback speed:',
     'settings.perf.rtSuffix': 'of real time',
+    'settings.perf.advToggle': 'Advanced: tune the stretcher',
+    'settings.perf.advIntro': 'Takes effect immediately, even during playback. Meant for experimenting — the defaults are chosen deliberately.',
+    'settings.perf.advGroupSound': 'Sound',
+    'settings.perf.advGroupCost': 'Processing cost',
+    'settings.perf.advFormantComp': 'Formant correction',
+    'settings.perf.advFormantCompHint': 'Should stay off here: the resampling pulls pitch and formants down together, and shifting back up brings both back together. Switched on it sounds darker, not better.',
+    'settings.perf.advFormantSemi': 'Shift formants',
+    'settings.perf.advFormantBase': 'Formant base note',
+    'settings.perf.advFormantBaseAuto': 'automatic',
+    'settings.perf.advTonality': 'Tonality limit',
+    'settings.perf.advPresetDefault': 'Standard',
+    'settings.perf.advPresetCheap': 'Cheaper',
+    'settings.perf.advBlock': 'Block length',
+    'settings.perf.advBlockAuto': 'from preset',
+    'settings.perf.advInterval': 'Step size',
+    'settings.perf.advIntervalAuto': 'automatic',
+    'settings.perf.advSplit': 'Spread computation across quanta',
+    'settings.perf.advSplitHint': 'Spreads one analysis block over several render quanta. Lowers peak load, not total load — helps against crackling when the average load is fine.',
+    'settings.perf.advLatency': 'Stretcher latency:',
+    'settings.perf.advSemitones': 'Pitch correction:',
+    'settings.perf.advReset': 'Reset to defaults',
+    'settings.perf.advUnitSemi': 'semitones',
 
     'settings.help.title': 'Help',
     'settings.help.intro': 'Recordings come into the app as a ZIP file from Dropbox. The button below walks through it step by step for iPhone and Android.',
@@ -5287,6 +5459,28 @@ const STRINGS = {
     'settings.perf.hdUnsupported': 'To urządzenie nie obsługuje HD — Standard nadal działa.',
     'settings.perf.rtLabel': 'Tempo odtwarzania:',
     'settings.perf.rtSuffix': 'czasu rzeczywistego',
+    'settings.perf.advToggle': 'Zaawansowane: ustawienia rozciągacza',
+    'settings.perf.advIntro': 'Działa natychmiast, także w trakcie odtwarzania. Do eksperymentów — ustawienia domyślne są dobrane świadomie.',
+    'settings.perf.advGroupSound': 'Brzmienie',
+    'settings.perf.advGroupCost': 'Obciążenie',
+    'settings.perf.advFormantComp': 'Korekta formantów',
+    'settings.perf.advFormantCompHint': 'Powinna tu zostać wyłączona: resampling obniża wysokość i formanty razem, a podniesienie przywraca oba razem. Włączona brzmi ciemniej, nie lepiej.',
+    'settings.perf.advFormantSemi': 'Przesuń formanty',
+    'settings.perf.advFormantBase': 'Ton podstawowy formantów',
+    'settings.perf.advFormantBaseAuto': 'automatycznie',
+    'settings.perf.advTonality': 'Granica tonalności',
+    'settings.perf.advPresetDefault': 'Standard',
+    'settings.perf.advPresetCheap': 'Oszczędny',
+    'settings.perf.advBlock': 'Długość bloku',
+    'settings.perf.advBlockAuto': 'wg ustawienia',
+    'settings.perf.advInterval': 'Krok',
+    'settings.perf.advIntervalAuto': 'automatycznie',
+    'settings.perf.advSplit': 'Rozłóż obliczenia na kwanty',
+    'settings.perf.advSplitHint': 'Rozkłada pracę jednego bloku analizy na kilka kwantów renderowania. Obniża obciążenie szczytowe, nie całkowite — pomaga na trzaski, gdy średnie obciążenie jest w porządku.',
+    'settings.perf.advLatency': 'Opóźnienie rozciągacza:',
+    'settings.perf.advSemitones': 'Korekta wysokości:',
+    'settings.perf.advReset': 'Przywróć ustawienia domyślne',
+    'settings.perf.advUnitSemi': 'półtonów',
 
     'settings.help.title': 'Pomoc',
     'settings.help.intro': 'Nagrania trafiają do aplikacji jako plik ZIP z Dropboxa. Poniższy przycisk pokazuje krok po kroku, jak zrobić to na iPhonie i na Androidzie.',
@@ -5480,6 +5674,7 @@ async function loadSettings() {
   if (settings.slowMode !== 'standard' && settings.slowMode !== 'hd') {
     settings.slowMode = (settings.slowMode === 'hq' || settings.slowMode === 'hqmono') ? 'hd' : 'standard';
   }
+  settings.hdOptions = sanitizeHdOptions(settings.hdOptions);
 
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
@@ -7034,6 +7229,7 @@ async function renderSettings() {
   renderChannelMode();
   renderScreenMode();
   renderSlowMode();
+  renderHdOptions();
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
@@ -7432,7 +7628,61 @@ function renderSlowMode() {
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
   }
   $('#hd-unsupported-hint').hidden = !broken;
+  // Die Werkbank hat nur Sinn, wenn HD auch läuft — sonst verwirrt sie nur.
+  const advBtn = $('#btn-hd-advanced-toggle');
+  advBtn.hidden = mode !== 'hd' || broken;
+  if (advBtn.hidden) {
+    $('#hd-advanced').hidden = true;
+    advBtn.setAttribute('aria-expanded', 'false');
+  }
   updateHdLoadVisibility();
+}
+
+/** Schreibt die gespeicherten Reglerstände in die Bedienelemente. */
+function renderHdOptions() {
+  const o = settings.hdOptions;
+  $('#hd-formant-comp').setAttribute('aria-checked', o.formantCompensation ? 'true' : 'false');
+  $('#hd-split').setAttribute('aria-checked', o.splitComputation ? 'true' : 'false');
+  for (const btn of $$('#hd-preset .preset')) {
+    btn.setAttribute('aria-pressed', btn.dataset.preset === o.preset ? 'true' : 'false');
+    // Bei eigener Blocklänge entscheidet nicht mehr das Preset — dann sind
+    // die beiden Knöpfe wirkungslos und sollen das auch zeigen.
+    btn.disabled = o.blockMs > 0;
+  }
+  $('#hd-formant-semi').value = o.formantSemitones;
+  $('#hd-formant-base').value = o.formantBaseHz;
+  $('#hd-tonality').value = o.tonalityHz;
+  $('#hd-block').value = o.blockMs;
+  $('#hd-interval').value = o.intervalMs;
+  $('#hd-formant-semi-out').textContent = `${o.formantSemitones.toLocaleString(undefined, { minimumFractionDigits: 1 })} ${t('settings.perf.advUnitSemi')}`;
+  $('#hd-formant-base-out').textContent = o.formantBaseHz > 0 ? `${o.formantBaseHz} Hz` : t('settings.perf.advFormantBaseAuto');
+  $('#hd-tonality-out').textContent = `${o.tonalityHz} Hz`;
+  $('#hd-block-out').textContent = o.blockMs > 0 ? `${o.blockMs} ms` : t('settings.perf.advBlockAuto');
+  $('#hd-interval-out').textContent = o.intervalMs > 0
+    ? `${o.intervalMs} ms`
+    : (o.blockMs > 0 ? `${Math.round(o.blockMs / 4)} ms` : t('settings.perf.advIntervalAuto'));
+}
+
+/** Zeigt, um wieviel gerade nach oben geschoben wird — die Gegenprobe zum Tempo. */
+function renderHdSemitones(semitones) {
+  const out = $('#hd-semitones');
+  if (!out) return;
+  out.textContent = semitones === null || semitones === undefined
+    ? ''
+    : `${t('settings.perf.advSemitones')} ${semitones.toFixed(2)} ${t('settings.perf.advUnitSemi')}`;
+}
+
+/**
+ * Übernimmt einen geänderten Regler: speichern, Anzeige nachziehen, und je
+ * nach Regler entweder nur neu einplanen (Klang, wirkt lückenlos) oder den
+ * Zeitdehner neu konfigurieren (Rechenaufwand, setzt ihn zurück).
+ */
+async function updateHdOption(patch, needsConfigure) {
+  settings.hdOptions = sanitizeHdOptions({ ...settings.hdOptions, ...patch });
+  await saveSettings({ hdOptions: settings.hdOptions });
+  renderHdOptions();
+  if (needsConfigure) applyHdConfigure();
+  else applyRateToElement();
 }
 
 // Echtzeitmessung: ctx.currentTime gegen performance.now(), beide im selben
@@ -7487,6 +7737,60 @@ $$('#slow-mode .preset').forEach((btn) => {
     applySlowMode();
     applyRateToElement();
   });
+});
+
+$('#btn-hd-advanced-toggle').addEventListener('click', () => {
+  const host = $('#hd-advanced');
+  const open = host.hidden;
+  host.hidden = !open;
+  $('#btn-hd-advanced-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { renderHdOptions(); refreshHdLatency(); }
+});
+
+$('#hd-formant-comp').addEventListener('click', () => {
+  updateHdOption({ formantCompensation: !settings.hdOptions.formantCompensation }, false);
+});
+
+$('#hd-split').addEventListener('click', () => {
+  updateHdOption({ splitComputation: !settings.hdOptions.splitComputation }, true);
+});
+
+$$('#hd-preset .preset').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    updateHdOption({ preset: btn.dataset.preset }, true);
+  });
+});
+
+// Beim Ziehen nur die Anzeige nachführen, erst beim Loslassen ('change')
+// speichern und anwenden: `configure()` setzt den Zeitdehner zurück, das bei
+// jedem Zwischenwert zu tun würde die Wiedergabe zerhacken.
+for (const [id, key, needsConfigure] of [
+  ['#hd-formant-semi', 'formantSemitones', false],
+  ['#hd-formant-base', 'formantBaseHz', false],
+  ['#hd-tonality', 'tonalityHz', false],
+  ['#hd-block', 'blockMs', true],
+  ['#hd-interval', 'intervalMs', true],
+]) {
+  const input = $(id);
+  input.addEventListener('input', () => {
+    const preview = sanitizeHdOptions({ ...settings.hdOptions, [key]: Number(input.value) });
+    const keep = settings.hdOptions;
+    settings.hdOptions = preview;
+    renderHdOptions();
+    settings.hdOptions = keep;
+    input.value = preview[key];
+  });
+  input.addEventListener('change', () => {
+    updateHdOption({ [key]: Number(input.value) }, needsConfigure);
+  });
+}
+
+$('#btn-hd-reset').addEventListener('click', async () => {
+  settings.hdOptions = sanitizeHdOptions(null);
+  await saveSettings({ hdOptions: settings.hdOptions });
+  renderHdOptions();
+  applyHdConfigure();
 });
 
 $('#btn-bg-help-toggle').addEventListener('click', () => {
@@ -7671,6 +7975,31 @@ function mediaErrorToError(mediaError) {
    ========================================================================== */
 
 /**
+ * Klemmt die Regler des Zeitdehners auf gültige Bereiche. Läuft bei jedem
+ * Laden über die gespeicherten Werte: eine alte oder von Hand verstellte
+ * Sicherung darf keinen Unsinn in `schedule()`/`configure()` tragen — ein
+ * NaN würde dort stumm geschluckt und der Ton bliebe unerklärlich kaputt.
+ */
+function sanitizeHdOptions(raw) {
+  const d = DEFAULT_SETTINGS.hdOptions;
+  const o = (raw && typeof raw === 'object') ? raw : {};
+  const num = (v, min, max, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+  };
+  return {
+    formantCompensation: o.formantCompensation === true,
+    formantSemitones: num(o.formantSemitones, -12, 12, d.formantSemitones),
+    formantBaseHz: num(o.formantBaseHz, 0, 500, d.formantBaseHz),
+    tonalityHz: num(o.tonalityHz, 1000, 20000, d.tonalityHz),
+    preset: o.preset === 'cheaper' ? 'cheaper' : 'default',
+    blockMs: num(o.blockMs, 0, 250, d.blockMs),
+    intervalMs: num(o.intervalMs, 0, 120, d.intervalMs),
+    splitComputation: o.splitComputation === true,
+  };
+}
+
+/**
  * Halbtöne, um die der Zeitdehner die Tonhöhe wieder hochschieben muss,
  * damit HD dieselbe Tonhöhe wie das Original hat. Das Element resampled mit
  * `rate`, senkt die Tonhöhe also um genau diesen Faktor — die Gegenrichtung
@@ -7730,8 +8059,9 @@ async function hdCreateNode(ctx) {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
     });
     // Ohne start() verarbeitet der Knoten nichts — er wartet auf ein
-    // `schedule({active: true})`, und start() ist genau das.
-    node.start();
+    // `schedule({active: true})`, und start() ist genau das. Liefert wie
+    // alle Methoden des Knotens ein Promise.
+    Promise.resolve(node.start()).catch(() => {});
     dlog('hd:init', { ok: true });
     return node;
   } catch (err) {
@@ -7752,7 +8082,7 @@ function ensureHdNode() {
     hdNodePromise = null;
     Audio.hdNode = node;
     if (!node) hdUnavailable = true;
-    else { applySlowMode(); applyRateToElement(); }
+    else { applySlowMode(); applyHdConfigure(); applyRateToElement(); }
     renderSlowMode();
   });
 }
@@ -8190,13 +8520,57 @@ function applyRateToElement() {
   el.mozPreservesPitch = preserve;
   if (Audio.hdNode) {
     const semitones = useHd ? hdSemitonesForRate(Audio.rate) : 0;
-    try {
-      Audio.hdNode.schedule({ active: true, semitones });
-    } catch (err) {
-      dlog('hd:schedule', { name: err?.name });
-    }
+    const o = settings.hdOptions;
+    // Alle Methoden des Knotens liefern ein Promise (die Bibliothek schickt
+    // sie als Nachricht ins Worklet) — ein try/catch drumherum finge einen
+    // Fehler also gar nicht, es braucht .catch().
+    Promise.resolve(Audio.hdNode.schedule({
+      active: true,
+      semitones,
+      tonalityHz: o.tonalityHz,
+      formantCompensation: o.formantCompensation,
+      formantSemitones: o.formantSemitones,
+      formantBaseHz: o.formantBaseHz,
+    })).catch((err) => dlog('hd:schedule', { name: err?.name }));
+    renderHdSemitones(useHd ? semitones : null);
     dlog('hd:mode', { mode: settings.slowMode, on: useHd, rate: Audio.rate, semitones: Math.round(semitones * 1000) / 1000 });
   }
+}
+
+/**
+ * Die Regler unter „Rechenaufwand" gehen nicht über `schedule()`, sondern
+ * über `configure()` — das legt den Analyseblock neu an und setzt den
+ * Zeitdehner dabei zurück. Hörbar als kurzer Aussetzer; deshalb nur bei
+ * einer echten Änderung aufrufen, nicht bei jedem Tempowechsel.
+ *
+ * `blockMs: 0` gibt die Kontrolle an das Preset zurück — die Bibliothek
+ * mischt die Felder in ihre bestehende Konfiguration, ein einmal gesetztes
+ * `blockMs` bliebe sonst für immer stehen.
+ */
+function applyHdConfigure() {
+  const node = Audio.hdNode;
+  if (!node || typeof node.configure !== 'function') return;
+  const o = settings.hdOptions;
+  const cfg = o.blockMs > 0
+    ? { blockMs: o.blockMs, intervalMs: o.intervalMs || 0, splitComputation: o.splitComputation }
+    : { blockMs: 0, preset: o.preset };
+  dlog('hd:configure', cfg);
+  Promise.resolve(node.configure(cfg))
+    .then(() => { applyRateToElement(); refreshHdLatency(); })
+    .catch((err) => dlog('hd:configure', { name: err?.name }));
+}
+
+/** Latenz des Zeitdehners abfragen und anzeigen — sie hängt an der Blocklänge. */
+function refreshHdLatency() {
+  const node = Audio.hdNode, out = $('#hd-latency');
+  if (!out) return;
+  if (!node || typeof node.latency !== 'function') { out.textContent = ''; return; }
+  Promise.resolve(node.latency())
+    .then((sec) => {
+      if (!Number.isFinite(sec)) return;
+      out.textContent = `${t('settings.perf.advLatency')} ${Math.round(sec * 1000)} ms`;
+    })
+    .catch(() => { out.textContent = ''; });
 }
 
 function audioSetRate(rate) {
@@ -16216,6 +16590,42 @@ function runSelfTests() {
   if (hdSemitonesForRate(-1) !== 0) failed.push('hdSemitonesForRate(-1) müsste 0 liefern');
   checks++;
   if (hdSemitonesForRate(undefined) !== 0) failed.push('hdSemitonesForRate(undefined) müsste 0 liefern');
+
+  // Die Regler des Zeitdehners: eine kaputte oder alte Sicherung darf keinen
+  // Unsinn nach schedule()/configure() tragen — dort würde ein NaN stumm
+  // geschluckt und der Ton bliebe unerklärlich kaputt.
+  checks++;
+  {
+    const d = sanitizeHdOptions(null);
+    const same = JSON.stringify(d) === JSON.stringify(DEFAULT_SETTINGS.hdOptions);
+    if (!same) failed.push(`sanitizeHdOptions(null) müsste die Voreinstellung liefern, war ${JSON.stringify(d)}`);
+  }
+  checks++;
+  {
+    const o = sanitizeHdOptions({
+      formantSemitones: 999, formantBaseHz: -50, tonalityHz: 1,
+      blockMs: 9999, intervalMs: -7, preset: 'unsinn',
+      formantCompensation: 'ja', splitComputation: 1,
+    });
+    const bad = [];
+    if (o.formantSemitones !== 12) bad.push(`formantSemitones ${o.formantSemitones}`);
+    if (o.formantBaseHz !== 0) bad.push(`formantBaseHz ${o.formantBaseHz}`);
+    if (o.tonalityHz !== 1000) bad.push(`tonalityHz ${o.tonalityHz}`);
+    if (o.blockMs !== 250) bad.push(`blockMs ${o.blockMs}`);
+    if (o.intervalMs !== 0) bad.push(`intervalMs ${o.intervalMs}`);
+    if (o.preset !== 'default') bad.push(`preset ${o.preset}`);
+    // Nur echte Booleans zählen — 'ja' und 1 sind Datenmüll, kein „an".
+    if (o.formantCompensation !== false) bad.push('formantCompensation');
+    if (o.splitComputation !== false) bad.push('splitComputation');
+    if (bad.length) failed.push(`sanitizeHdOptions klemmt nicht: ${bad.join(', ')}`);
+  }
+  checks++;
+  {
+    const o = sanitizeHdOptions({ tonalityHz: NaN, formantSemitones: 'x' });
+    if (o.tonalityHz !== 8000 || o.formantSemitones !== 0) {
+      failed.push(`sanitizeHdOptions müsste NaN/Text auf die Voreinstellung zurückfallen lassen, war ${JSON.stringify(o)}`);
+    }
+  }
 
   // Shuffle-Stopp, Setlisten-Weiterschalten, Songwahl im Recorder,
   // eingefrorene Wellenform.
