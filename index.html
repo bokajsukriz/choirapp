@@ -8187,14 +8187,24 @@ function sanitizeHdOptions(raw) {
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
   };
+  const blockMs = num(o.blockMs, 0, 250, d.blockMs);
+  // Die beiden Regler wurden bislang unabhängig geklemmt — eine Schrittweite,
+  // die größer als der Analyseblock ist, lässt keine Überlappung mehr übrig
+  // und das Overlap-Add des Zeitdehners fällt in sich zusammen. Die Hälfte
+  // der Blocklänge ist die großzügigste noch sinnvolle Überlappung (die
+  // Bibliothek selbst rechnet ohne eigenen Wert mit einem Viertel). Bei
+  // blockMs === 0 (Preset-Betriebsart) ignoriert die Bibliothek intervalMs
+  // ohnehin — ein stehengebliebener Wert würde beim nächsten Setzen von
+  // blockMs sonst schlagartig wieder wirksam.
+  const intervalMs = blockMs === 0 ? 0 : Math.min(num(o.intervalMs, 0, 120, d.intervalMs), blockMs / 2);
   return {
     formantCompensation: o.formantCompensation === true,
     formantSemitones: num(o.formantSemitones, -12, 12, d.formantSemitones),
     formantBaseHz: num(o.formantBaseHz, 0, 500, d.formantBaseHz),
     tonalityHz: num(o.tonalityHz, 1000, 20000, d.tonalityHz),
     preset: o.preset === 'cheaper' ? 'cheaper' : 'default',
-    blockMs: num(o.blockMs, 0, 250, d.blockMs),
-    intervalMs: num(o.intervalMs, 0, 120, d.intervalMs),
+    blockMs,
+    intervalMs,
     // Nur ein echtes `false` zählt als „aus" — fehlt der Wert (alte
     // Sicherung, bevor es den Schalter gab), gilt die Voreinstellung.
     splitComputation: typeof o.splitComputation === 'boolean' ? o.splitComputation : d.splitComputation,
@@ -16853,6 +16863,23 @@ function runSelfTests() {
     if (o.formantCompensation !== false) bad.push('formantCompensation');
     if (o.splitComputation !== DEFAULT_SETTINGS.hdOptions.splitComputation) bad.push('splitComputation');
     if (bad.length) failed.push(`sanitizeHdOptions klemmt nicht: ${bad.join(', ')}`);
+  }
+  // Die gemeinsame Invariante aus Blocklänge und Schrittweite: eine
+  // Schrittweite über der halben Blocklänge ließe keine Überlappung mehr
+  // übrig, und bei blockMs === 0 (Preset-Betriebsart) ignoriert die
+  // Bibliothek intervalMs ohnehin.
+  for (const [input, expected] of [
+    [{ blockMs: 10, intervalMs: 120 }, 5],
+    [{ blockMs: 0, intervalMs: 120 }, 0],
+    [{ blockMs: 120, intervalMs: 60 }, 60],
+    [{ blockMs: 120, intervalMs: 61 }, 60],
+    [{ blockMs: 120, intervalMs: 0 }, 0],
+  ]) {
+    checks++;
+    const o = sanitizeHdOptions(input);
+    if (o.intervalMs !== expected) {
+      failed.push(`sanitizeHdOptions(${JSON.stringify(input)}).intervalMs = ${o.intervalMs}, erwartet ${expected}`);
+    }
   }
   // Die Voreinstellung muss eine eigene Blocklänge setzen: `configure()` der
   // Bibliothek reicht `splitComputation` nur im Zweig mit gesetztem `blockMs`
