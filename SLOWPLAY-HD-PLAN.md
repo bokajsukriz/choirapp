@@ -69,7 +69,7 @@ zurück (kurz hörbar), deshalb nur beim Loslassen des Reglers:
 | Regler | Voreinstellung | wozu |
 |---|---|---|
 | Standard / Sparsam | Standard | die beiden Presets der Bibliothek |
-| Blocklänge | 120 ms | eigene Blocklänge; sperrt die Presets |
+| Blocklänge | 120 ms | eigene Blocklänge; ein Druck aufs Preset schaltet zurück |
 | Schrittweite | automatisch (¼ Block) | größer = weniger Frames = billiger, gröber |
 | Rechnung verteilen | **an** | verteilt einen Block über mehrere Render-Quanten: senkt die **Spitzen**last, nicht die Gesamtlast |
 
