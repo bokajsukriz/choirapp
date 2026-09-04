@@ -15808,6 +15808,33 @@ const BACKUP_FORMAT = 'chor-app-backup';
 // Sicherung mit einer klaren Meldung ab, statt sie halb-falsch einzulesen.
 const BACKUP_FORMAT_VERSION = 2;
 
+// Grenzwerte für eine einzuspielende Sicherung (AUDIT-FIXPLAN.md AP-01).
+// Eine Sicherungsdatei kommt von außen (weitergereichtes altes Gerät, von
+// Hand bearbeitet, beschädigt) und darf die App nicht mit einer unbegrenzt
+// großen Schleife oder einem Speicher-Erschöpfungsversuch lahmlegen. Die
+// Werte sind bewusst großzügig für ein gewachsenes Chorarchiv (siehe
+// backupSizeEstimate() — realistisch einige hundert Songs, siehe auch der
+// Kommentar an ZIP_MAX_ENTRIES), aber endlich. Geprüft wird VOR jedem
+// Datenbank-Write, siehe validateBackupSkeleton() und die Größenschätzung in
+// readBackupFile().
+const BACKUP_MAX_FILE_BYTES          = 4 * 1024 * 1024 * 1024;  // rohe Sicherungsdatei
+const BACKUP_MAX_SONGS               = 5000;
+const BACKUP_MAX_TRACKS_PER_SONG     = 32;
+const BACKUP_MAX_SCORES_PER_SONG     = 16;
+const BACKUP_MAX_RECORDINGS          = 20000;
+const BACKUP_MAX_LOOPS               = 20000;
+const BACKUP_MAX_NOTES               = 10000;
+const BACKUP_MAX_LYRICS_NOTES        = 10000;
+const BACKUP_MAX_PLAYLISTS           = 2000;
+const BACKUP_MAX_PLAYLIST_SONGS      = 5000; // Songtitel je Setliste
+const BACKUP_MAX_TITLE_LEN           = 300;   // Song-/Loop-/Setlistenname
+const BACKUP_MAX_TEXT_LEN            = 200000; // Notiz/eigener Liedtext, Zeichen
+const BACKUP_MAX_FILENAME_LEN        = 300;
+// Dieselbe Einzeldatei-Grenze wie beim ZIP-Import (ZIP_MAX_ENTRY_BYTES) —
+// entpackte Audiodaten/Noten-PDFs sind hier wie dort dieselbe Art Inhalt.
+const BACKUP_MAX_DECODED_ENTRY_BYTES = 512 * 1024 * 1024;
+const BACKUP_MAX_DECODED_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // über alle @B64#-Werte einer Sicherung
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -15875,6 +15902,12 @@ function concatBytes(a, b) {
 }
 
 async function readBackupFile(file) {
+  // Größte, billigste Prüfung zuerst: die rohe Dateigröße, bevor auch nur ein
+  // Chunk gelesen wird (AUDIT-FIXPLAN.md AP-01).
+  if (file.size > BACKUP_MAX_FILE_BYTES) {
+    throw new Error(`Diese Sicherung ist zu groß (${fmtBytes(file.size)}, erlaubt sind ${fmtBytes(BACKUP_MAX_FILE_BYTES)}).`);
+  }
+
   const markerBytes = BACKUP_AUDIO_B64_MARKER_BYTES;
   const markerLen = markerBytes.length;
 
@@ -15945,6 +15978,24 @@ async function readBackupFile(file) {
     }
   }
   if (carry.length) skeletonParts.push(carry);
+
+  // Base64-Größe plausibilisieren, ohne die Werte selbst zu laden (AP-01) —
+  // `span.end - span.start` ist die Zeichenzahl in der Originaldatei, aus den
+  // beim Scannen ohnehin schon ermittelten Byte-Offsets. 0,75 ist die grobe
+  // Base64→Roh-Umrechnung (4 Zeichen kodieren 3 Bytes); für eine Obergrenze
+  // reicht das, exaktes Padding spielt hier keine Rolle.
+  let decodedTotalEstimate = 0;
+  for (const span of spans) {
+    if (span.end < 0) continue; // über die Datei hinaus offen — landet unten als "beschädigt"
+    const decodedEstimate = (span.end - span.start) * 0.75;
+    if (decodedEstimate > BACKUP_MAX_DECODED_ENTRY_BYTES) {
+      throw new Error(`Diese Sicherung enthält eine einzelne Datei über dem erlaubten Limit (${fmtBytes(decodedEstimate)} > ${fmtBytes(BACKUP_MAX_DECODED_ENTRY_BYTES)}).`);
+    }
+    decodedTotalEstimate += decodedEstimate;
+    if (decodedTotalEstimate > BACKUP_MAX_DECODED_TOTAL_BYTES) {
+      throw new Error(`Diese Sicherung ist insgesamt zu groß zum Einspielen (entpackt über ${fmtBytes(BACKUP_MAX_DECODED_TOTAL_BYTES)}).`);
+    }
+  }
 
   const skeletonBlob = new Blob(skeletonParts);
   let data;
@@ -16330,9 +16381,28 @@ $('#backup-input').addEventListener('change', async (e) => {
   try {
     await restoreBackup(data, resolveAudioBase64);
   } catch (err) {
-    bannerError('Die Sicherung konnte nicht vollständig eingespielt werden.', 'BACKUP-RESTORE', err);
+    bannerError(backupPartialTallyText(err.backupPartialTally), 'BACKUP-RESTORE', err);
   }
 });
+
+/**
+ * Baut aus der an einen Restore-Fehler angehängten Teilbilanz (siehe
+ * restoreBackup()) eine konkrete Meldung statt der bisherigen Pauschalmeldung
+ * — wer abbricht, soll wissen, was bis dahin schon übernommen wurde.
+ */
+function backupPartialTallyText(t) {
+  if (!t) return 'Die Sicherung konnte nicht vollständig eingespielt werden.';
+  const parts = [];
+  if (t.songsCreated) parts.push(plural(t.songsCreated, 'Song', 'Songs'));
+  if (t.scoresRestored) parts.push(plural(t.scoresRestored, 'Notenblatt', 'Notenblätter'));
+  if (t.addedLoops) parts.push(plural(t.addedLoops, 'Loop', 'Loops'));
+  if (t.addedPl) parts.push(plural(t.addedPl, 'Setliste', 'Setlisten'));
+  if (t.addedNotes) parts.push(plural(t.addedNotes, 'Notiz', 'Notizen'));
+  if (t.addedLyricsNotes) parts.push(plural(t.addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte'));
+  if (t.addedRecordings) parts.push(plural(t.addedRecordings, 'REC', 'RECs'));
+  const done = parts.length ? ` Bis zum Abbruch übernommen: ${parts.join(', ')}.` : ' Bis zum Abbruch wurde nichts übernommen.';
+  return `Die Sicherung konnte nicht vollständig eingespielt werden.${done}`;
+}
 
 $('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
 
@@ -16395,6 +16465,53 @@ function sanitizeRecAnchor(anchor) {
 }
 
 /**
+ * Grobe, aber vollständige Strukturprüfung des Skeletons — läuft, bevor
+ * restoreBackup() auch nur den Bestätigungsdialog zeigt (AP-01). Prüft nur,
+ * was hier billig und eindeutig ist: sind die erwarteten Felder wirklich
+ * Arrays, und bleiben sie unter den BACKUP_MAX_*-Grenzen? Das fängt eine
+ * pathologische oder mutwillig aufgeblähte Sicherung ab, bevor überhaupt
+ * eine Schleife über sie läuft. Die feinere Feldprüfung je Eintrag (endliche
+ * Zahlen, Textlängen, Enum-Werte) bleibt bewusst in den bestehenden
+ * Zusammenführungs-Schleifen weiter unten — dort gilt seit jeher „ein
+ * kaputter Eintrag wird übersprungen, nicht die ganze Sicherung verworfen",
+ * und das soll so bleiben (siehe AP-01-Notiz zu Alles-oder-nichts-Rollback).
+ */
+function validateBackupSkeleton(data) {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Diese Sicherung hat kein gültiges Grundgerüst.');
+  }
+  const checkArray = (field, max) => {
+    const v = data[field];
+    if (v === undefined || v === null) return;
+    if (!Array.isArray(v)) throw new Error(`Diese Sicherung ist beschädigt: "${field}" ist keine Liste.`);
+    if (v.length > max) {
+      throw new Error(`Diese Sicherung enthält zu viele Einträge unter "${field}" (${v.length}, erlaubt sind ${max}).`);
+    }
+  };
+  checkArray('loops', BACKUP_MAX_LOOPS);
+  checkArray('playlists', BACKUP_MAX_PLAYLISTS);
+  checkArray('notes', BACKUP_MAX_NOTES);
+  checkArray('lyricsNotes', BACKUP_MAX_LYRICS_NOTES);
+  checkArray('recordings', BACKUP_MAX_RECORDINGS);
+  checkArray('songAudio', BACKUP_MAX_SONGS);
+
+  if (Array.isArray(data.songAudio)) {
+    for (const s of data.songAudio) {
+      if (!s || typeof s !== 'object') continue; // wird beim Zusammenführen ohnehin übersprungen
+      if (typeof s.title === 'string' && s.title.length > BACKUP_MAX_TITLE_LEN) {
+        throw new Error(`Diese Sicherung enthält einen zu langen Songtitel (über ${BACKUP_MAX_TITLE_LEN} Zeichen).`);
+      }
+      if (Array.isArray(s.tracks) && s.tracks.length > BACKUP_MAX_TRACKS_PER_SONG) {
+        throw new Error(`Ein Song in dieser Sicherung hat zu viele Spuren (${s.tracks.length}, erlaubt sind ${BACKUP_MAX_TRACKS_PER_SONG}).`);
+      }
+      if (Array.isArray(s.scores) && s.scores.length > BACKUP_MAX_SCORES_PER_SONG) {
+        throw new Error(`Ein Song in dieser Sicherung hat zu viele Notenblätter (${s.scores.length}, erlaubt sind ${BACKUP_MAX_SCORES_PER_SONG}).`);
+      }
+    }
+  }
+}
+
+/**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
  * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
  * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
@@ -16404,6 +16521,7 @@ function sanitizeRecAnchor(anchor) {
  * die Werte in `data` sind schon echtes Base64.
  */
 async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
+  validateBackupSkeleton(data);
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
   const playlists = Array.isArray(data.playlists) ? data.playlists : [];
@@ -16492,15 +16610,17 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
 
         for (const t of s.tracks || []) {
           if (!t.audioBase64) continue;
+          if (t.fileName && (typeof t.fileName !== 'string' || t.fileName.length > BACKUP_MAX_FILENAME_LEN)) continue;
+          const voice = VOICE_ORDER.includes(t.voice) ? t.voice : 'OTHER';
           const base64 = await resolveAudioBase64(t.audioBase64);
           const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
           const fileKey = newFileKey();
-          const fileName = t.fileName || `${t.voice}.mp3`;
+          const fileName = t.fileName || `${voice}.mp3`;
           batch.files.push(await fileRecord(fileKey, blob, fileName));
           writtenFileKeys.push(fileKey);
           batch.bytes += blob.size;
           song.tracks.push({
-            voice: t.voice, label: VOICE_LABEL[t.voice] || t.voice,
+            voice, label: VOICE_LABEL[voice] || voice,
             fileName, fileKey, size: blob.size, durationSec: null,
           });
           songGotContent = true;
@@ -16515,6 +16635,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         // ("Song-Audiodateien", siehe buildBackupParts), separat gespeichert.
         for (const sc of s.scores || []) {
           if (!sc.audioBase64) continue;
+          if (sc.fileName && (typeof sc.fileName !== 'string' || sc.fileName.length > BACKUP_MAX_FILENAME_LEN)) continue;
           const base64 = await resolveAudioBase64(sc.audioBase64);
           const blob = base64ToBlob(base64, 'application/pdf');
           const fileKey = newFileKey();
@@ -16548,7 +16669,9 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const fresh = [];
 
   for (const l of loops) {
-    if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') continue;
+    if (!l || !Number.isFinite(l.start) || !Number.isFinite(l.end)) continue;
+    if (l.start < 0 || l.end < 0) continue;
+    if ((l.name && l.name.length > BACKUP_MAX_TITLE_LEN) || (l.songTitle && l.songTitle.length > BACKUP_MAX_TITLE_LEN)) continue;
     const song = findSongByTitle(songs, l.songTitle || '');
     const norm = normalizeTitle(l.songTitle || '');
 
@@ -16575,6 +16698,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // sonst wäre beim „Zusammenführen" plötzlich der eigene Text weg.
   for (const n of notes) {
     if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    if (n.text.length > BACKUP_MAX_TEXT_LEN || n.songTitle.length > BACKUP_MAX_TITLE_LEN) continue;
     const song = findSongByTitle(songs, n.songTitle);
     const norm = normalizeTitle(n.songTitle);
 
@@ -16601,6 +16725,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // können nebeneinander bestehen (siehe LIEDTEXT UND NOTEN).
   for (const n of lyricsNotes) {
     if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    if (n.text.length > BACKUP_MAX_TEXT_LEN || n.songTitle.length > BACKUP_MAX_TITLE_LEN) continue;
     const song = findSongByTitle(songs, n.songTitle);
     const norm = normalizeTitle(n.songTitle);
 
@@ -16624,6 +16749,8 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
 
   for (const p of playlists) {
     if (!p || !Array.isArray(p.songTitles)) continue;
+    if (p.songTitles.length > BACKUP_MAX_PLAYLIST_SONGS) continue;
+    if (p.name && p.name.length > BACKUP_MAX_TITLE_LEN) continue;
     const name = normalizeTitle(p.name || '');
     if (existingPl.some((x) => normalizeTitle(x.name) === name)) continue;
     if (fresh.some((x) => x.type === 'playlist' && normalizeTitle(x.name) === name)) continue;
@@ -16641,6 +16768,15 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
     for (const r of recordingsIn) {
       if (!r || !r.audioBase64) { discardedRecordings++; continue; }
+      // Nicht-endliche Werte (Infinity, NaN) rutschen an `|| 0` vorbei — NaN
+      // ist zwar falsy, Infinity aber nicht (AP-01: "nicht-endliche Zahlen").
+      if (r.duration !== undefined && !Number.isFinite(r.duration)) { discardedRecordings++; continue; }
+      if ((r.name && r.name.length > BACKUP_MAX_TITLE_LEN) || (r.songTitle && r.songTitle.length > BACKUP_MAX_TITLE_LEN)) {
+        discardedRecordings++; continue;
+      }
+      if (r.mimeType && (typeof r.mimeType !== 'string' || r.mimeType.length > 100 || !r.mimeType.startsWith('audio/'))) {
+        discardedRecordings++; continue;
+      }
       const song = findSongByTitle(songs, r.songTitle || '');
       const norm = normalizeTitle(r.songTitle || '');
       const isDupe = (x) => x.name === r.name
@@ -16660,8 +16796,8 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         songId: song ? song.id : null,
         songTitle: r.songTitle || '',
         name: r.name || 'REC',
-        voice: r.voice || null,
-        fileKey, mimeType, duration: r.duration || 0,
+        voice: VOICE_ORDER.includes(r.voice) ? r.voice : null,
+        fileKey, mimeType, duration: Number.isFinite(r.duration) ? r.duration : 0,
         size: blob.size,
         createdAt: r.createdAt || new Date().toISOString(),
       };
@@ -16698,6 +16834,17 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       console.error('[backup] Aufräumen nach Abbruch fehlgeschlagen', cleanupErr);
     }
     dropSongCache();
+    // Teilbilanz an den Fehler anhängen: bricht der Vorgang mittendrin ab,
+    // soll der Nutzer erfahren, was bis dahin schon übernommen wurde, statt
+    // nur einer Pauschalmeldung ohne jeden Anhaltspunkt.
+    err.backupPartialTally = {
+      songsCreated, songsSkipped, scoresRestored,
+      addedLoops, addedPl, keptPending,
+      addedNotes, skippedNotes,
+      addedLyricsNotes, skippedLyricsNotes,
+      addedRecordings, skippedRecordings,
+      discardedSongAudio, discardedRecordings,
+    };
     throw err;
   }
 
