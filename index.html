@@ -7701,11 +7701,13 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
  * wirklich hochgekommen ist (Audio.hdNode). Solange noch niemand HD gewählt
  * hat, ist hdNode absichtlich null: die Bibliothek wird erst bei Bedarf
  * nachgeladen (siehe ensureStretchLib). Der Knopf wird deshalb nur dann
- * gesperrt, wenn HD schon versucht wurde und gescheitert ist.
+ * gesperrt, wenn HD mehrfach hintereinander gescheitert ist (siehe
+ * hdInitBlocked) — ein einzelner Fehlschlag versucht es nach kurzer
+ * Wartezeit von selbst noch einmal.
  */
 function renderSlowMode() {
   const mode = settings.slowMode || 'standard';
-  const broken = hdUnavailable;
+  const broken = hdInitBlocked();
   for (const btn of $$('#slow-mode .preset')) {
     btn.disabled = btn.dataset.mode === 'hd' && broken;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
@@ -7820,8 +7822,7 @@ function hdAbRestore() {
   hdAbPreviewDefault = false;
   renderHdOptions();
   renderHdAb();
-  applyHdConfigure();
-  applyRateToElement();
+  hdApplyTransition('ab-restore', { configure: true });
 }
 
 /** Zeigt, um wieviel gerade nach oben geschoben wird — die Gegenprobe zum Tempo. */
@@ -7842,8 +7843,7 @@ async function updateHdOption(patch, needsConfigure) {
   settings.hdOptions = sanitizeHdOptions({ ...settings.hdOptions, ...patch });
   await saveSettings({ hdOptions: settings.hdOptions });
   renderHdOptions();
-  if (needsConfigure) applyHdConfigure();
-  else applyRateToElement();
+  hdApplyTransition('option', { configure: !!needsConfigure });
 }
 
 // Echtzeitmessung: ctx.currentTime gegen performance.now(), beide im selben
@@ -7895,8 +7895,7 @@ $$('#slow-mode .preset').forEach((btn) => {
     if (btn.disabled) return;
     await saveSettings({ slowMode: btn.dataset.mode });
     renderSlowMode();
-    applySlowMode();
-    applyRateToElement();
+    hdApplyTransition('mode');
   });
 });
 
@@ -7953,7 +7952,7 @@ $('#btn-hd-reset').addEventListener('click', async () => {
   settings.hdOptions = sanitizeHdOptions(null);
   await saveSettings({ hdOptions: settings.hdOptions });
   renderHdOptions();
-  applyHdConfigure();
+  hdApplyTransition('reset-options', { configure: true });
 });
 
 $('#btn-hd-ab').addEventListener('click', () => {
@@ -7961,8 +7960,7 @@ $('#btn-hd-ab').addEventListener('click', () => {
   hdAbPreviewDefault = true;
   renderHdOptions();
   renderHdAb();
-  applyHdConfigure();
-  applyRateToElement();
+  hdApplyTransition('ab-preview', { configure: true });
 });
 
 /** Baut den Text zum Verschicken — dieselbe Darstellung wie die Regler, als Zeilen. */
@@ -8228,11 +8226,22 @@ function hdSemitonesForRate(rate) {
   return 12 * Math.log2(1 / rate);
 }
 
-// Wird true, sobald ein Versuch, den Zeitdehner anzulegen, gescheitert ist —
-// erst dann darf der HD-Knopf gesperrt werden (siehe renderSlowMode).
-let hdUnavailable = false;
+// Kein endgültiger Riegel mehr (Stufe 2d in SLOWPLAY-HD-FIX-PLAN.md,
+// Befund 5): bis zu HD_INIT_MAX_ATTEMPTS gescheiterte Versuche, mit kurzer
+// Wartezeit dazwischen (hdNextAttemptAt), zurückgesetzt nach einer
+// erfolgreichen Initialisierung. Ein künftiger Graph-Neuaufbau (Stufe 4)
+// setzt hdInitAttempts ebenfalls zurück — neue Generation, neue Chance.
+const HD_INIT_MAX_ATTEMPTS = 3;
+const HD_INIT_RETRY_DELAY_MS = 1500;
+const HD_INIT_TIMEOUT_MS = 10000;
+let hdInitAttempts = 0;
+let hdNextAttemptAt = 0;
 let hdLibPromise = null;
 let hdNodePromise = null;
+
+function hdInitBlocked() {
+  return hdInitAttempts >= HD_INIT_MAX_ATTEMPTS;
+}
 
 /**
  * Lädt `signalsmith-stretch.js` nach — erst beim ersten Bedarf, nicht beim
@@ -8255,8 +8264,16 @@ function ensureStretchLib() {
 
 /**
  * Legt den Zeitdehner-Knoten an. Scheitert leise (liefert `null`) — die App
- * spielt dann einfach nativ weiter, siehe applyRateToElement(). Der Knoten
- * wird hier noch nicht verdrahtet, das macht applySlowMode().
+ * spielt dann einfach nativ weiter, siehe hdApplyTransition(). Der Knoten
+ * wird hier noch nicht verdrahtet, das macht hdApplyTransition().
+ *
+ * Mit einem Timeout von rund zehn Sekunden um das eigentliche Anlegen: eine
+ * Worklet-`ready`-Nachricht, die nie ankommt (siehe Befund 5 in
+ * SLOWPLAY-HD-FIX-PLAN.md), darf HD nicht für immer sperren. `Promise.race()`
+ * bricht die Erzeugung selbst dabei nicht ab — die ursprüngliche Promise wird
+ * deshalb weiter beobachtet: liefert sie nach dem Timeout doch noch einen
+ * Knoten, wird der über hdTeardown() sofort wieder entsorgt, statt als
+ * verwaistes Worklet im Renderthread weiterzulaufen.
  */
 async function hdCreateNode(ctx) {
   if (!ctx.audioWorklet) { dlog('hd:init', { ok: false, name: 'no-audioWorklet' }); return null; }
@@ -8266,37 +8283,72 @@ async function hdCreateNode(ctx) {
     dlog('hd:init', { ok: false, name: 'script' });
     return null;
   }
+  let settled = false;
+  const created = SignalsmithStretch(ctx, {
+    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+  }).then((node) => {
+    if (!settled) return node;
+    dlog('hd:init', { ok: true, late: true });
+    hdTeardown(node);
+    return null;
+  }, (err) => {
+    if (!settled) throw err;
+    dlog('hd:init', { ok: false, name: err?.name, late: true });
+    return null;
+  });
+  const timedOut = Symbol('hd-init-timeout');
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(timedOut), HD_INIT_TIMEOUT_MS));
+  let node;
   try {
-    const node = await SignalsmithStretch(ctx, {
-      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
-    });
-    // Ohne start() verarbeitet der Knoten nichts — er wartet auf ein
-    // `schedule({active: true})`, und start() ist genau das. Liefert wie
-    // alle Methoden des Knotens ein Promise.
-    Promise.resolve(node.start()).catch(() => {});
-    dlog('hd:init', { ok: true });
-    return node;
+    node = await Promise.race([created, timeout]);
   } catch (err) {
+    settled = true;
     dlog('hd:init', { ok: false, name: err?.name });
     return null;
   }
+  settled = true;
+  if (node === timedOut) {
+    dlog('hd:init', { ok: false, name: 'timeout' });
+    return null;
+  }
+  // Ohne start() verarbeitet der Knoten nichts — er wartet auf ein
+  // `schedule({active: true})`, und start() ist genau das. Liefert wie alle
+  // Methoden des Knotens ein Promise.
+  Promise.resolve(node.start()).catch(() => {});
+  dlog('hd:init', { ok: true });
+  return node;
 }
 
 /**
- * Sorgt dafür, dass der Knoten existiert, und verdrahtet danach neu. Läuft
- * nur an, wenn HD wirklich gebraucht wird — beim Start der App passiert
- * nichts. Bis der Knoten steht, spielt HD vorübergehend wie Standard; das
- * dauert einmalig so lange, wie das Nachladen braucht.
+ * Sorgt dafür, dass der Knoten existiert, und verdrahtet danach neu (über
+ * hdApplyTransition()). Läuft nur an, wenn HD wirklich gebraucht wird — beim
+ * Start der App passiert nichts. Bis der Knoten steht, spielt HD
+ * vorübergehend wie Standard; das dauert einmalig so lange, wie das
+ * Nachladen braucht.
  */
 function ensureHdNode() {
-  if (Audio.hdNode || hdNodePromise || hdUnavailable || !Audio.ctx) return;
-  hdNodePromise = hdCreateNode(Audio.ctx).then((node) => {
-    hdNodePromise = null;
-    Audio.hdNode = node;
-    if (!node) hdUnavailable = true;
-    else { applySlowMode(); applyHdConfigure(); applyRateToElement(); refreshHdLatency(); }
-    renderSlowMode();
-  });
+  if (Audio.hdNode || hdNodePromise || hdInitBlocked() || !Audio.ctx) return;
+  if (performance.now() < hdNextAttemptAt) return;
+  const ctx = Audio.ctx;
+  hdNodePromise = hdCreateNode(ctx)
+    .then(async (node) => {
+      // Der Kontext wurde inzwischen ausgetauscht (z.B. künftiger
+      // Graph-Neuaufbau) — dieser Knoten gehört zu keiner mehr gültigen
+      // Generation, sofort wieder entsorgen statt verdrahten.
+      if (ctx !== Audio.ctx) { hdTeardown(node); return; }
+      if (!node) {
+        hdInitAttempts++;
+        hdNextAttemptAt = performance.now() + HD_INIT_RETRY_DELAY_MS;
+        return;
+      }
+      hdInitAttempts = 0;
+      Audio.hdNode = node;
+      await hdApplyTransition('node-ready', { configure: true });
+    })
+    .finally(() => {
+      hdNodePromise = null;
+      renderSlowMode();
+    });
 }
 
 const Audio = {
@@ -8366,6 +8418,10 @@ async function audioInit() {
       el.currentTime = Audio.loop.start;
       Audio.position = Audio.loop.start;
       Audio.onPosition?.(Audio.loop.start);
+      // Der Rücksprung läuft nicht über audioSeek() — dieselbe Diskontinuität
+      // explizit auslösen, sonst bleibt der alte Überlappungspuffer des
+      // Zeitdehners gerade beim Loop am hörbarsten stehen.
+      hdApplyTransition('loop', { discontinuous: true });
       return;
     }
 
@@ -8446,7 +8502,7 @@ async function audioInit() {
     // Der Zeitdehner für HD wird hier NICHT angelegt: die Bibliothek ist
     // 113 KB und wird erst nachgeladen, wenn HD tatsächlich gewählt ist
     // (siehe ensureHdNode). Bis dahin bleibt Audio.hdNode null und
-    // applySlowMode() führt das Element direkt an die Matrix.
+    // hdApplyTransition() führt das Element direkt an die Matrix.
 
     // Erst als letzter Schritt: schlägt nur noch dieser Aufruf fehl, bleiben
     // Splitter/Gains/Merger folgenlos unverbunden, statt das
@@ -8459,7 +8515,7 @@ async function audioInit() {
     // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
     Audio.channelIn = splitter;
     Audio.elSource = elSource;
-    applySlowMode(); // verdrahtet elSource -> hdNode -> splitter oder elSource -> splitter direkt
+    hdApplyTransition('init'); // verdrahtet elSource -> hdNode -> splitter oder elSource -> splitter direkt
     audioApplyChannelMode(settings.channelMode);
     dlog('audio:route', { mode: 'matrix' });
 
@@ -8578,7 +8634,9 @@ async function audioLoadTrackNow(track) {
     // Vergangenheit beim Laden zurückgesetzt, und ein leise auf 1× gefallenes
     // Tempo (bzw. eine leise wieder aktivierte native Tonhöhenkorrektur bei
     // laufender HD-Verlangsamung) wäre in der Auswahlbox nicht zu erkennen.
-    applyRateToElement();
+    // Der Spurwechsel ist außerdem eine echte Diskontinuität: ein alter
+    // Überlappungspuffer des Zeitdehners gehört nicht zur neuen Aufnahme.
+    hdApplyTransition('track-change', { discontinuous: true });
 
     // Die Dauer wird bei jedem Laden aktualisiert. Nur so lässt sich später
     // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
@@ -8664,6 +8722,9 @@ function audioSeek(seconds) {
   Audio.position = s;
   if (Audio.el) Audio.el.currentTime = s;
   lastPosLog = { wall: performance.now(), pos: s };
+  // Ein Sprung ist eine Diskontinuität für den Zeitdehner — bleibt
+  // synchron, seine Aufrufer erwarten die Position sofort zurück.
+  hdApplyTransition('seek', { discontinuous: true });
   return s;
 }
 
@@ -8703,84 +8764,164 @@ function hdEngaged() {
   return !!(settings.slowMode === 'hd' && Audio.hdNode && Audio.rate !== 1);
 }
 
-function applySlowMode() {
-  const wantHd = settings.slowMode === 'hd';
-  // Vor der Verdrahtung und vor dem frühen Ausstieg unten: wer HD in den
-  // Einstellungen wählt, soll das Nachladen sofort anstoßen, auch wenn noch
-  // gar kein Song offen ist. Dann steht der Zeitdehner schon, wenn der erste
-  // Song startet. ensureHdNode() ruft diese Funktion danach erneut auf.
-  if (wantHd) ensureHdNode();
-  const src = Audio.elSource;
-  if (!src) return;
-  const useHd = hdEngaged();
-  src.disconnect();
-  if (useHd) src.connect(Audio.hdNode);
-  else if (Audio.channelIn) src.connect(Audio.channelIn);
-  if (Audio.hdNode) {
-    if (useHd && Audio.channelIn) Audio.hdNode.connect(Audio.channelIn);
-    else Audio.hdNode.disconnect();
+// Erhöht sich bei jedem HD-Übergang. Eine spät ankommende Bestätigung eines
+// überholten Übergangs (langsame RPC-Antwort, während längst der nächste
+// Tempo-/Modus-/Reglerwechsel lief) erkennt sich daran und bricht ab, statt
+// einen älteren Zustand über einen neueren zu legen.
+let hdTransitionGeneration = 0;
+// Der zuletzt tatsächlich hörbar verbundene Zustand (siehe hdEngaged()) —
+// erlaubt hdApplyTransition(), den Übergang von „nicht eingehängt" zu
+// „eingehängt" zu erkennen, ohne dass jede Aufrufstelle das selbst wissen
+// müsste.
+let hdWasEngaged = false;
+
+/**
+ * Setzt einen laufenden Zeitdehner-Knoten zurück und wartet die Bestätigung
+ * ab — ein bloß *gestarteter* RPC vor dem Wiedereinhängen beseitigt das
+ * Race nicht, sondern verschiebt es nur (Befund 2 / Stufe 2b in
+ * SLOWPLAY-HD-FIX-PLAN.md). `reset()` fasst nur den WASM-Zustand des
+ * Streckers an, nicht die eingeplante Zeitabbildung — die Aufrufstelle
+ * schickt direkt danach eine aktuelle schedule()-Konfiguration.
+ */
+async function hdReset(reason, generation) {
+  const node = Audio.hdNode;
+  if (!node?.reset) return false;
+  try {
+    await node.reset();
+  } catch (err) {
+    dlog('hd:reset', { reason, generation, ok: false, name: err?.name });
+    return false;
   }
+  if (node !== Audio.hdNode || generation !== hdTransitionGeneration) return false;
+  dlog('hd:reset', { reason, generation, ok: true });
+  return true;
 }
 
 /**
- * Setzt Tempo und Tonhöhenverhalten auf dem Element — ersetzt die frühere
- * Doppelung in audioSetRate() und audioLoadTrackNow().
+ * Die einzige Stelle, die den Zeitdehner hörbar ein- oder aushängt und
+ * konfiguriert. Ersetzt die frühere Aufteilung auf applySlowMode() (hängte
+ * den Knoten VOR der neuen Konfiguration hörbar ein) und
+ * applyRateToElement()/applyHdConfigure() (schickten die Konfiguration erst
+ * danach, unabgewartet) — dazwischen lief der Knoten kurz mit dem alten
+ * Zustand (Befund 3 in SLOWPLAY-HD-FIX-PLAN.md).
  *
- * Bei Standard hält `preservesPitch = true` die Tonhöhe nativ (WSOLA). Bei
- * HD resampled das Element klassisch (`preservesPitch = false`, langsamer
- * *und* tiefer), und der Zeitdehner schiebt sie um `hdSemitonesForRate()`
- * wieder hoch. Steht der Zeitdehner (noch) nicht, bleibt es bei `true` —
- * dann klingt HD wie Standard, statt dass die Tonhöhe unkorrigiert abfällt.
+ * Ablauf (Stufe 2c):
+ *  1. Zielzustand bestimmen, Generation hochzählen.
+ *  2. Übergangsweise sicher nativ spielen.
+ *  3. Knoten sicherstellen (ensureHdNode() nachladen lassen, falls nötig).
+ *  4. Bei Diskontinuität hdReset() abwarten (configure() resettet selbst,
+ *     siehe Vendor-Patch — dann keinen zusätzlichen reset() hinterherschicken).
+ *  5. Zielkonfiguration senden (configure() und/oder schedule()) und die
+ *     Bestätigung abwarten.
+ *  6. Prüfen, ob Generation und Knoten noch aktuell sind — sonst abbrechen.
+ *  7. Erst jetzt preservesPitch setzen und hörbar verbinden.
+ *
+ * @param {string} reason - für dlog(), z.B. 'rate', 'mode', 'seek'.
+ * @param {object} [opts]
+ * @param {boolean} [opts.discontinuous] - Seek/Spurwechsel/Reset/Loop: der
+ *   alte Überlappungspuffer muss weg, nicht nur neue Werte gelten.
+ * @param {boolean} [opts.configure] - gesetzt, wenn configure() nötig ist
+ *   (Regler unter „Rechenaufwand" — legt den Analyseblock neu an).
  */
-function applyRateToElement() {
+async function hdApplyTransition(reason, opts = {}) {
+  const generation = ++hdTransitionGeneration;
   const el = Audio.el;
-  if (!el) return;
-  el.playbackRate = Audio.rate;
+  const src = Audio.elSource;
+
+  // Schritt 2: übergangsweise sicher nativ spielen — kein hörbarer alter
+  // Zustand, solange der Knoten (noch) nicht zuverlässig steht.
+  if (el) {
+    el.preservesPitch = true;
+    el.webkitPreservesPitch = true;
+    el.mozPreservesPitch = true;
+  }
+  if (src) {
+    src.disconnect();
+    if (Audio.channelIn) src.connect(Audio.channelIn);
+  }
+  if (Audio.hdNode) Audio.hdNode.disconnect();
+
+  // Schritt 3: Knoten sicherstellen. Wer HD in den Einstellungen wählt, soll
+  // das Nachladen sofort anstoßen, auch wenn noch gar kein Song offen ist —
+  // ensureHdNode() ruft hdApplyTransition() nach dem Laden erneut auf.
+  if (settings.slowMode === 'hd') ensureHdNode();
+  const node = Audio.hdNode;
+  if (!node) {
+    hdWasEngaged = false;
+    renderHdSemitones(null);
+    return;
+  }
+
   const useHd = hdEngaged();
-  const preserve = !useHd;
-  el.preservesPitch = preserve;
-  el.webkitPreservesPitch = preserve;
-  el.mozPreservesPitch = preserve;
-  if (Audio.hdNode) {
-    const semitones = useHd ? hdSemitonesForRate(Audio.rate) : 0;
+  const becomingEngaged = useHd && !hdWasEngaged;
+
+  // Schritt 4: bei Diskontinuität zurücksetzen und abwarten — außer
+  // configure() folgt gleich sowieso (das resettet selbst, siehe
+  // Vendor-Patch an signalsmith-stretch.js).
+  if (!opts.configure && (opts.discontinuous || becomingEngaged)) {
+    await hdReset(reason, generation);
+    if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
+  }
+
+  // Regler unter „Rechenaufwand": configure() legt den Analyseblock neu an.
+  // `blockMs: 0` gibt die Kontrolle an das Preset zurück — die Bibliothek
+  // mischt die Felder in ihre bestehende Konfiguration, ein einmal gesetztes
+  // blockMs bliebe sonst für immer stehen.
+  if (opts.configure) {
     const o = activeHdOptions();
-    // Alle Methoden des Knotens liefern ein Promise (die Bibliothek schickt
-    // sie als Nachricht ins Worklet) — ein try/catch drumherum finge einen
-    // Fehler also gar nicht, es braucht .catch().
-    Promise.resolve(Audio.hdNode.schedule({
+    const cfg = o.blockMs > 0
+      ? { blockMs: o.blockMs, intervalMs: o.intervalMs || 0, splitComputation: o.splitComputation }
+      : { blockMs: 0, preset: o.preset };
+    dlog('hd:configure', cfg);
+    try {
+      await node.configure(cfg);
+    } catch (err) {
+      dlog('hd:configure', { name: err?.name });
+      return;
+    }
+    if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
+    refreshHdLatency();
+  }
+
+  // Schritt 5: Zielkonfiguration senden und Bestätigung abwarten — erst
+  // danach darf der Knoten hörbar werden.
+  const semitones = useHd ? hdSemitonesForRate(Audio.rate) : 0;
+  const o = activeHdOptions();
+  try {
+    await node.schedule({
       active: true,
       semitones,
       tonalityHz: o.tonalityHz,
       formantCompensation: o.formantCompensation,
       formantSemitones: o.formantSemitones,
       formantBaseHz: o.formantBaseHz,
-    })).catch((err) => dlog('hd:schedule', { name: err?.name }));
-    renderHdSemitones(useHd ? semitones : null);
-    dlog('hd:mode', { mode: settings.slowMode, on: useHd, rate: Audio.rate, semitones: Math.round(semitones * 1000) / 1000 });
+    });
+  } catch (err) {
+    dlog('hd:schedule', { name: err?.name });
+    return;
   }
-}
 
-/**
- * Die Regler unter „Rechenaufwand" gehen nicht über `schedule()`, sondern
- * über `configure()` — das legt den Analyseblock neu an und setzt den
- * Zeitdehner dabei zurück. Hörbar als kurzer Aussetzer; deshalb nur bei
- * einer echten Änderung aufrufen, nicht bei jedem Tempowechsel.
- *
- * `blockMs: 0` gibt die Kontrolle an das Preset zurück — die Bibliothek
- * mischt die Felder in ihre bestehende Konfiguration, ein einmal gesetztes
- * `blockMs` bliebe sonst für immer stehen.
- */
-function applyHdConfigure() {
-  const node = Audio.hdNode;
-  if (!node || typeof node.configure !== 'function') return;
-  const o = activeHdOptions();
-  const cfg = o.blockMs > 0
-    ? { blockMs: o.blockMs, intervalMs: o.intervalMs || 0, splitComputation: o.splitComputation }
-    : { blockMs: 0, preset: o.preset };
-  dlog('hd:configure', cfg);
-  Promise.resolve(node.configure(cfg))
-    .then(() => { applyRateToElement(); refreshHdLatency(); })
-    .catch((err) => dlog('hd:configure', { name: err?.name }));
+  // Schritt 6: noch aktuell? Ein überholter Übergang bricht hier ab, statt
+  // einen älteren Zustand über einen längst neueren zu legen.
+  if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
+
+  // Schritt 7: erst jetzt hörbar verbinden.
+  if (src) {
+    src.disconnect();
+    if (useHd) src.connect(node);
+    else if (Audio.channelIn) src.connect(Audio.channelIn);
+  }
+  if (useHd && Audio.channelIn) node.connect(Audio.channelIn);
+  else node.disconnect();
+  if (el) {
+    const preserve = !useHd;
+    el.preservesPitch = preserve;
+    el.webkitPreservesPitch = preserve;
+    el.mozPreservesPitch = preserve;
+  }
+  hdWasEngaged = useHd;
+  renderHdSemitones(useHd ? semitones : null);
+  dlog('hd:mode', { mode: settings.slowMode, on: useHd, rate: Audio.rate, semitones: Math.round(semitones * 1000) / 1000, reason });
 }
 
 /**
@@ -8826,10 +8967,7 @@ function hdTeardown(node) {
 
 function audioSetRate(rate) {
   Audio.rate = rate;
-  // Erst die Verdrahtung, dann die Werte: ob der Zeitdehner im Signalweg
-  // hängt, entscheidet seit dem Bypass bei 1,0× das Tempo mit.
-  applySlowMode();
-  applyRateToElement();
+  hdApplyTransition('rate');
 }
 
 /** Setzt oder löscht den A-B-Loop; durchgesetzt wird er im `timeupdate`. */
@@ -10901,7 +11039,7 @@ async function openPlayer(songId) {
   }
   if (token !== openPlayerToken) return;
   // Erst jetzt steht der AudioContext; renderSlowMode() hängt daran, ob der
-  // Zeitdehner schon versucht wurde (siehe hdUnavailable).
+  // Zeitdehner schon versucht wurde (siehe hdInitBlocked).
   renderSlowMode();
 
   Audio.song = song;
