@@ -22,34 +22,48 @@ git log --oneline -1        # muss 2185744 oder neuer sein
 git status --short          # muss leer sein
 ```
 
-**2. Eine Korrektur an Codex.** Codex nennt den „degradierten AudioContext"
-(Befund 1) die beste Erklärung für das Fehlerbild. Als *vollständige* Erklärung
-kann das nicht stimmen: ein `AudioContext` stirbt mit der Seite. Ein Fehler, der
-**einen App-Neustart überlebt**, muss in etwas Persistentem sitzen. Persistent
-sind hier genau drei Dinge: `settings.hdOptions` in IndexedDB, der Shell-Cache
-des Service Workers, und der Bluetooth-/Audio-Zustand von Android außerhalb der
-App.
+**2. Der Vorfall ist ein Fehler des gemeinsamen Signalwegs, nicht des HD-Codes.**
+Der Nutzer hat inzwischen bestätigt, dass es **auch bei exakt `1,0×` abgehackt
+klang**. Das ist die entscheidende Angabe, und sie schließt den Zeitdehner als
+unmittelbare Ursache aus:
 
-Codex hat im Gegencheck zu Recht eingewandt, dass „App geschlossen und wieder
-geöffnet" auf Android **kein bewiesener Prozessneustart** ist: eine PWA aus den
-zuletzt verwendeten Apps zu wischen beendet den Renderer meist, aber nicht
-garantiert. Der Einwand steht; deshalb bleibt die fehlende Wiederherstellung
-(Stufe 3) im Plan. Er verschiebt die Reihenfolge aber nicht, weil die Reparatur
-der Geometrie billig, selbstheilend und ohnehin richtig ist.
+- `hdEngaged()` (8692) verlangt `Audio.rate !== 1`. Bei `1,0×` ist der Knoten
+  von Ein- **und** Ausgang getrennt und `preservesPitch` steht auf `true`.
+- `rate-select` (2924) ist ein `<select>` mit `value="1"`; `Number("1")` ist
+  exakt `1`. Es gibt hier keinen Gleitkomma-Grenzfall, der den Bypass
+  aushebelte.
+- Ein Knoten ohne Ausgangsverbindung ist nicht vom Ziel erreichbar und wird
+  vom Renderer gar nicht mehr aufgerufen.
+- `latencyHint: 'playback'`, die Kanal-Matrix und `createMediaElementSource()`
+  sind in diesem Branch **byte-gleich mit `main`** (geprüft per
+  `git diff origin/main...HEAD`).
 
-Der Nutzer hat bestätigt, **mit den Reglern „Blocklänge" und „Schrittweite"
-experimentiert zu haben**. Damit ist der persistierte, ungültige Reglerstand
-(Befund 1 unten) die wahrscheinlichste **app-persistente Ursache für schlechten
-HD-Ton** — nicht der Kontext. Ausdrücklich nicht behauptet ist, dass er den
-ganzen Vorfall erklärt; siehe „Was ich nicht bestätigen kann".
+Bei `1,0×` läuft also derselbe Signalweg wie im Standard-Modus und wie auf
+`main`. Was dort abgehackt klingt, sitzt eine Ebene tiefer: im `AudioContext`,
+im Medienelement oder im Audiopfad von Android.
 
-**3. Eine unbelegte Prämisse.** Codex' Übergabe führt als Tatsache, die
-Wiedergabe habe „auch bei `1,0×` stark abgehackt" geklungen. Der Nutzer hat das
-in der Sitzung, aus der dieser Plan stammt, **nicht gesagt** — dort war nur von
-„alles klang schrecklich" die Rede. Auf `v125` hängt daran aber viel: bei genau
-`1,0×` ist der Zeitdehner ausgehängt und der Signalweg identisch mit Standard,
-also kann dort kein HD-Code schuld sein. Bevor jemand daraus Schlüsse zieht,
-muss diese eine Angabe bestätigt werden.
+**Damit ist Codex' ursprünglicher Befund 1 wieder der Hauptverdacht**, und die
+Gegenkorrektur aus der ersten Fassung dieses Dokuments war zu stark. Sie stützte
+sich darauf, dass „App geschlossen und wieder geöffnet" einen Prozessneustart
+beweise — Codex hat im Gegencheck zu Recht widersprochen: eine installierte PWA
+aus den zuletzt verwendeten Apps zu wischen beendet den Renderer meist, aber
+nicht garantiert. Bleibt die Seite am Leben, bleibt auch ihr einmal angelegter,
+nie erneuerter `AudioContext` am Leben — mitsamt seinem Schaden.
+
+**3. Wie der Branch trotzdem beteiligt sein kann.** Der Zeitdehner lief vor dem
+Hintergrundwechsel stundenlang bei `0,7×`: WASM-Rechnung im Renderthread, 120 ms
+Blöcke, `splitComputation` an. Es ist gut möglich, dass **er den Renderthread in
+den schlechten Zustand bringt** und der fehlende Wiederaufbau ihn dort
+festhält. Bei `1,0×` hört man dann die Nachwirkung, nicht die Ursache. Das ist
+eine Hypothese, keine Feststellung — aber sie erklärt beides zugleich und ist
+der Grund, warum Stufe 4 in dieser Fassung **nicht mehr bedingt** ist.
+
+**4. Die persistierte Geometrie bleibt trotzdem zu reparieren.** Der Nutzer hat
+bestätigt, mit „Blocklänge" und „Schrittweite" experimentiert zu haben. Ein
+ungültiger Stand dort ist die wahrscheinlichste app-persistente Ursache für
+schlechten **HD**-Ton bei `0,7×` und überlebt jeden Neustart. Er erklärt den
+Vorfall bei `1,0×` nicht — er ist ein zweiter, unabhängiger Fehler, und weil die
+Reparatur billig und selbstheilend ist, bleibt sie der erste Commit.
 
 ---
 
@@ -59,17 +73,20 @@ muss diese eine Angabe bestätigt werden.
 
 | # | Befund | Codex | Bewertung |
 |---|---|---|---|
-| 1 | Ungültige Block-/Schrittweiten-Geometrie wird persistiert | #5 „mittel" | **hoch — vermutlich die Ursache** |
+| 4 | Degradierter Kontext wird nie repariert | #1 „hoch" | **hoch — Hauptverdacht für den Vorfall** |
+| 1 | Ungültige Block-/Schrittweiten-Geometrie wird persistiert | #5 „mittel" | **hoch — zweiter, unabhängiger Fehler** |
 | 2 | WASM-Zustand wird nach Bypass/Seek/Spurwechsel wiederverwendet | #2 | bestätigt, mittel-hoch |
 | 3 | HD wird vor bestätigter Konfiguration verbunden | #3 | bestätigt, mittel |
-| 4 | Degradierter Kontext wird nie repariert | #1 „hoch" | bestätigt als **Lücke**, aber nicht als Ursache dieses Vorfalls |
 | 5 | Hängende Init-Promise sperrt HD bis zum Reload | #6 | bestätigt, mittel |
 | 6 | SW-Update kann die Offline-WASM-Datei verlieren | #7 | bestätigt, mittel |
 | 7 | `resume()` und Playerzustand nicht atomar | #4 | bestätigt, niedrig-mittel |
 | 8 | Worklet-Ressourcen und RPCs werden nicht bereinigt | #9 | bestätigt und verschärft |
 | 9 | Freier `configure()`-Aufruf im Kanalzahl-Zweig | #8 | bestätigt, aber **nicht erreichbar** |
 
-### Befund 1 — ungültige Geometrie, persistiert (die wahrscheinliche Ursache)
+Die Nummern sind die dieses Dokuments und bleiben über alle Fassungen stabil;
+die Reihenfolge der Zeilen ist die neue Dringlichkeit.
+
+### Befund 1 — ungültige Geometrie, persistiert
 
 `sanitizeHdOptions()` (index.html:7745 ff.) klemmt beide Werte **unabhängig**:
 
@@ -91,8 +108,9 @@ Eine Schrittweite, die zwölfmal so groß ist wie der Analyseblock, hat keine
 Überlappung mehr — das Overlap-Add fällt in sich zusammen. Genau das klingt
 „schrecklich". `updateHdOption()` (7841) schreibt den Wert über `saveSettings()`
 nach IndexedDB, und `sanitizeHdOptions()` beim Laden (5760) lässt ihn durch, weil
-es die Invariante nicht kennt. **Der Zustand überlebt jeden Neustart** — exakt
-das gemeldete Verhalten.
+es die Invariante nicht kennt. **Der Zustand überlebt jeden Neustart.** Das
+erklärt schlechten HD-Ton bei `0,7×` über Neustarts hinweg — nicht aber den
+abgehackten Ton bei `1,0×`, siehe Befund 4.
 
 Zu beachten: der bestehende Selbsttest (index.html:16837 ff.) **schreibt die
 unabhängige Klemmung fest** (`blockMs: 9999 → 250`, `intervalMs: -7 → 0`). Er muss
@@ -128,9 +146,14 @@ Einhängen und Ankommen der Nachricht läuft der Knoten mit den alten Halbtönen
 aufgebaut**; es gibt im ganzen Player keinen `close()`-Aufruf. Die
 Aussetzer-Erkennung (`audio:stall`, 8372) und die Echtzeitmessung
 (`tickHdRealtime`, 7861) **protokollieren nur**. Bleibt der Kontext auf
-`running`, während der Renderpfad steht, passiert nichts. Das ist eine echte
-Lücke — sie erklärt nur diesen Vorfall nicht, weil sie einen Neustart nicht
-überleben kann.
+`running`, während der Renderpfad steht, passiert nichts.
+
+**Das ist der Hauptverdacht für den gemeldeten Vorfall.** Weil es bei exakt
+`1,0×` abgehackt klang und der Signalweg dort mit Standard und mit `main`
+identisch ist (siehe Kontext, Punkt 2), bleibt nur eine Ebene unterhalb des
+HD-Codes übrig. Der Kontext lebt so lange wie die Seite, und ob die Seite den
+Wisch aus den zuletzt verwendeten Apps überlebt hat, ist offen — auf Android
+ist beides möglich.
 
 ### Befund 5 — hängende Initialisierung
 
@@ -181,17 +204,18 @@ ohnehin anfasst — aber nicht als Fehlerursache verkaufen.
 
 ### Was ich nicht bestätigen kann
 
-- **Der Zeitdehner als Ursache bei 1,0×.** Auf v125 ist er bei 1,0× vollständig
-  ausgehängt (`hdEngaged()` verlangt `Audio.rate !== 1`) und `preservesPitch`
-  steht auf `true`. Der Signalweg ist dann **Byte für Byte der von Standard**.
-  Wenn es bei 1,0× schlecht klang, kann es nicht am HD-Code liegen.
+- **Wodurch der Kontext kaputtgeht.** Dass er es war, ist durch das Verhalten
+  bei `1,0×` gut begründet. *Warum* — überlasteter Renderthread durch den
+  Zeitdehner, Chromes Umgang mit dem Einfrieren der Seite, ein Gerätewechsel
+  im Hintergrund — ist statisch nicht zu klären. Der Health-Monitor aus
+  Stufe 4a ist genau dafür da.
 - **Bluetooth-Profilwechsel (A2DP → HFP/SCO).** `startLevelMeter()` (12187)
   hängt den Mikrofon-Stream bewusst an den **Wiedergabe**-Kontext. Auf Android
   ist das der klassische Auslöser dafür, dass Bluetooth ins Telefonieprofil
   kippt. Die Mikrofonspuren werden aber in allen Pfaden sauber gestoppt
-  (12059, 12075, 12350), und ein solcher Zustand überlebt einen App-Neustart
-  auch nicht. Geringe Wahrscheinlichkeit — der Test in Stufe 0 klärt es
-  nebenbei mit.
+  (12059, 12075, 12350). Geringe Wahrscheinlichkeit — der Test in Stufe 0 klärt
+  es nebenbei mit, und er ist weiterhin der einzige Weg, einen Fehler von
+  Android sauber auszuschließen.
 
 ---
 
@@ -342,14 +366,16 @@ ist risikoarm.
   `statechange` wegen `Audio.playing === false` verworfen wird
   (`onAudioContextStateChange`, 8455).
 
-### Stufe 4 — Wiederherstellung nach langem Hintergrund (bedingt)
+### Stufe 4 — Wiederherstellung nach langem Hintergrund
 
-**Diese Stufe erst endgültig freigeben, wenn nach den Stufen 1–3 entweder der
-Pixel-Fehler erneut auftritt oder ein kontrollierter Test einen formal
-laufenden, praktisch aber degradierten Graphen nachweist.** Sie ist die einzige,
-die im Zweifel wieder herausfallen kann, ohne die anderen mitzureißen.
+Codex hatte im Gegencheck vorgeschlagen, diese Stufe erst freizugeben, wenn der
+Fehler erneut auftritt oder ein Test einen degradierten Graphen nachweist.
+**Die Bedingung ist erfüllt:** abgehackter Ton bei exakt `1,0×`, wo der
+Zeitdehner nachweislich ausgehängt ist, *ist* der Nachweis. Die Stufe ist damit
+nicht mehr optional — sie adressiert als einzige den gemeldeten Vorfall.
 
-Zweigeteilt umsetzen, damit der billige Teil sofort Nutzen bringt:
+Trotzdem zweigeteilt umsetzen, damit der billige Teil sofort Nutzen bringt und
+der riskante nicht ungeprüft scharfgeschaltet wird:
 
 **4a — Health-Monitor (immer bauen).** Die Echtzeitmessung `tickHdRealtime()`
 (7861) misst nur Kontextzeit gegen Wanduhr. Das reicht nicht: sie muss mit dem
@@ -371,6 +397,20 @@ Auslösen mit Hysterese, nicht beim ersten Messwert: nach der Rückkehr nur dann
 neu aufbauen, wenn der Monitor aus 4a **drei aufeinanderfolgende** Sekunden
 unter etwa 80 % meldet oder `audio:stall` erneut anschlägt. Höchstens zwei
 automatische Versuche pro Sitzung, jeder mit `dlog('audio:rebuild', …)`.
+
+**4c — der billige Hebel, der den gemeldeten Fall abgedeckt hätte.** Unabhängig
+von jeder Messung: kehrt die App aus einem **langen** Hintergrund zurück (etwa
+ab 30 Minuten) und läuft gerade **nichts**, den Graphen einfach neu aufbauen.
+Ohne laufende Wiedergabe ist der Neuaufbau unhörbar und risikoarm, und genau in
+dieser Lage war der Nutzer: zwei Stunden weg, App geöffnet, dann erst gespielt.
+Das ist die Maßnahme mit dem besten Verhältnis von Wirkung zu Risiko — sie
+gehört mit 4a in denselben Commit, noch vor die Automatik aus 4b.
+
+**Ein Notausgang für den Nutzer.** In „Kompatibilität & Performance" einen
+Knopf „Tonausgabe neu aufbauen", der `rebuildAudioGraph()` von Hand auslöst.
+Bis die Automatik trägt, ist das der Weg, einen kaputten Zustand ohne Neustart
+loszuwerden — und im Gerätetest die Möglichkeit, die Ursache einzugrenzen,
+statt nur die Wirkung zu sehen.
 
 ---
 
@@ -420,19 +460,23 @@ es die bisherigen Runden gemacht haben:
    Transitionsgeneration, `schedule()` vor dem hörbaren Verbinden (Stufe 2b–2d).
 4. **Start und Service Worker** — atomares `audioPlay()`, Pflichtassets,
    `SW_VERSION` erhöhen (Rest von Stufe 3).
-5. **Health-Monitor** — 4a allein, ohne Neuaufbau.
-6. **Graph-Neuaufbau** — 4b, nur wenn die Daten aus Commit 5 ihn rechtfertigen.
+5. **Health-Monitor, Neuaufbau nach langem Hintergrund, Notausgang** —
+   4a + 4c + Knopf, samt `rebuildAudioGraph()` selbst, aber **ohne** Automatik.
+6. **Automatischer Neuaufbau** — 4b, die Auslösung mit Hysterese.
 
 Commits 1 bis 5 beheben unabhängig voneinander reale Fehler und können ohne
-weitere Gerätedaten laufen. Commit 6 bleibt bewusst separat und rücknehmbar.
+weitere Gerätedaten laufen. Commit 6 bleibt separat und rücknehmbar, weil eine
+falsch ausgelöste Automatik mitten in der Wiedergabe mehr kaputtmacht als sie
+repariert.
+
+**Wenn die Zeit nur für zwei Commits reicht:** Nummer 1 (heilt den
+Reglerzustand) und Nummer 5 (adressiert den gemeldeten Vorfall).
 
 ## Offen
 
 - Klang zum Fehlerzeitpunkt auch anderer Ton auf denselben Kopfhörern schlecht?
-  (Stufe 0 — trennt App-Fehler von Android-/Bluetooth-Zustand.)
-- Klang es wirklich auch bei **exakt `1,0×`** schlecht? Auf `v125` wäre der
-  Signalweg dort identisch mit Standard; die Angabe stammt aus Codex' Übergabe
-  und ist vom Nutzer bisher nicht bestätigt.
+  (Stufe 0 — die letzte offene Frage, und die einzige, die einen Fehler von
+  Android sauber ausschließen kann.)
 - Wurde die App beim „Schließen" wirklich zwangsbeendet? Beim nächsten Auftreten
   in dieser Reihenfolge testen, um zu sehen, welcher Eingriff zuerst hilft:
   andere Audio-App → Standard und `1,0×` → HD-Regler auf Werk zurücksetzen →
