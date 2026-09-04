@@ -9062,8 +9062,14 @@ async function hdApplyTransition(reason, opts = {}) {
   const src = Audio.elSource;
 
   // Schritt 2: übergangsweise sicher nativ spielen — kein hörbarer alter
-  // Zustand, solange der Knoten (noch) nicht zuverlässig steht.
+  // Zustand, solange der Knoten (noch) nicht zuverlässig steht. playbackRate
+  // gehört zwingend hierher und nicht erst in Schritt 7: die Funktion hat
+  // mehrere frühe Rückkehrpfade (kein Knoten, überholte Generation,
+  // RPC-Fehler), und ohne diese Zeile bliebe das Tempo bei jedem davon falsch
+  // stehen (Fehler A in SLOWPLAY-HD-FIX-PLAN-2.md — eine Regression aus dem
+  // Zusammenlegen zu hdApplyTransition()).
   if (el) {
+    el.playbackRate = Audio.rate;
     el.preservesPitch = true;
     el.webkitPreservesPitch = true;
     el.mozPreservesPitch = true;
@@ -9074,10 +9080,14 @@ async function hdApplyTransition(reason, opts = {}) {
   }
   if (Audio.hdNode) Audio.hdNode.disconnect();
 
-  // Schritt 3: Knoten sicherstellen. Wer HD in den Einstellungen wählt, soll
-  // das Nachladen sofort anstoßen, auch wenn noch gar kein Song offen ist —
-  // ensureHdNode() ruft hdApplyTransition() nach dem Laden erneut auf.
-  if (settings.slowMode === 'hd') ensureHdNode();
+  // Schritt 3: Knoten nur sicherstellen, wenn er wirklich gebraucht wird
+  // (Audio.rate !== 1) — bei 1,0× ist er isoliert und würde trotzdem volle
+  // Rechenzeit kosten (Fehler B in SLOWPLAY-HD-FIX-PLAN-2.md: der inaktive
+  // Zweig des Prozessors ruft _process() weiterhin jede Runde auf). Die
+  // Bibliothek selbst darf trotzdem sofort nachladen, sobald HD gewählt ist —
+  // das kostet nichts und macht den ersten Tempowechsel schneller.
+  if (settings.slowMode === 'hd' && Audio.rate !== 1) ensureHdNode();
+  else if (settings.slowMode === 'hd') ensureStretchLib().catch(() => {});
   const node = Audio.hdNode;
   if (!node) {
     hdWasEngaged = false;
@@ -9086,6 +9096,19 @@ async function hdApplyTransition(reason, opts = {}) {
   }
 
   const useHd = hdEngaged();
+
+  // Bei 1,0× (oder Standard) ist useHd hier immer falsch, weil der Knoten
+  // gerade existiert — genau dann muss er weg, ein disconnect() allein
+  // spart nichts (siehe Fehler B). Kein reset()/configure()/schedule() mehr
+  // nötig, es gibt niemanden mehr, der sie empfängt.
+  if (!useHd) {
+    hdTeardown(node);
+    hdWasEngaged = false;
+    dlog('hd:teardown', { reason });
+    renderHdSemitones(null);
+    return;
+  }
+
   const becomingEngaged = useHd && !hdWasEngaged;
 
   // Schritt 4: bei Diskontinuität zurücksetzen und abwarten — außer
@@ -17419,6 +17442,50 @@ async function runAsyncSelfTests() {
   let nextRan = false;
   await noteWrite(() => { nextRan = true; });
   if (!nextRan) failed.push('noteWrite() blockiert die Warteschlange nach einem Fehler');
+
+  // Fehler A/B aus SLOWPLAY-HD-FIX-PLAN-2.md: hdApplyTransition() darf das
+  // Tempo nie vergessen (Regression beim Zusammenlegen zu einer Funktion) und
+  // muss einen ungebrauchten Zeitdehner-Knoten wirklich abbauen, nicht nur
+  // abklemmen — der Prozessor ruft _process() sonst bei 1,0× unbemerkt
+  // weiter. Läuft mit einem kurz eingeschobenen Fake-Audio-Objekt, damit kein
+  // echter AudioContext/Worklet nötig ist; settings.slowMode bleibt dabei
+  // bewusst nicht 'hd', sonst würde Schritt 3 signalsmith-stretch.js als
+  // Nebenwirkung des Selbsttests nachladen.
+  {
+    const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
+    const savedRate = Audio.rate, savedMode = settings.slowMode;
+    try {
+      const fakeEl = { playbackRate: 1, preservesPitch: false, webkitPreservesPitch: false, mozPreservesPitch: false };
+      Audio.el = fakeEl;
+      Audio.elSource = null;
+      Audio.hdNode = null;
+      Audio.rate = 0.6;
+      settings.slowMode = 'standard';
+      await hdApplyTransition('selftest-a');
+      if (fakeEl.playbackRate !== 0.6) {
+        failed.push(`hdApplyTransition() setzt Audio.el.playbackRate nicht (Fehler A), war ${fakeEl.playbackRate}`);
+      }
+
+      let disconnected = false, portClosed = false;
+      const fakeNode = {
+        disconnect: () => { disconnected = true; },
+        port: { close: () => { portClosed = true; } },
+      };
+      Audio.hdNode = fakeNode;
+      Audio.rate = 1;
+      settings.slowMode = 'standard';
+      await hdApplyTransition('selftest-b');
+      if (!disconnected || !portClosed || Audio.hdNode !== null) {
+        failed.push('hdApplyTransition() baut einen ungebrauchten Zeitdehner-Knoten nicht ab (Fehler B)');
+      }
+    } finally {
+      Audio.el = savedEl;
+      Audio.elSource = savedSrc;
+      Audio.hdNode = savedNode;
+      Audio.rate = savedRate;
+      settings.slowMode = savedMode;
+    }
+  }
 
   if (failed.length) {
     console.error(`[Selbsttest async] ${failed.length} Prüfung(en) fehlgeschlagen:`);
