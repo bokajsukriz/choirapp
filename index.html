@@ -7680,7 +7680,7 @@ function renderSlowMode() {
 
 /** Schreibt die gespeicherten Reglerstände in die Bedienelemente. */
 function renderHdOptions() {
-  const o = settings.hdOptions;
+  const o = activeHdOptions();
   $('#hd-formant-comp').setAttribute('aria-checked', o.formantCompensation ? 'true' : 'false');
   $('#hd-split').setAttribute('aria-checked', o.splitComputation ? 'true' : 'false');
   for (const btn of $$('#hd-preset .preset')) {
@@ -7704,20 +7704,24 @@ function renderHdOptions() {
 }
 
 /**
- * "A/B": hört probeweise die Voreinstellung statt der eigenen Regler, ohne
- * sie zu überschreiben — die eigenen Werte liegen währenddessen in
- * `hdAbUserOptions`. Die Regler sind währenddessen gesperrt: sie würden sonst
- * die Voreinstellung verändern statt die eigene.
+ * "A/B": hört probeweise die Voreinstellung statt der eigenen Regler.
+ * `settings.hdOptions` bleibt dabei bewusst unangetastet — würde man sie
+ * stattdessen (auch nur vorübergehend) auf die Voreinstellung umbiegen, würde
+ * ein `saveSettings()` für irgendeine andere Einstellung währenddessen (z. B.
+ * Akzentfarbe, Sprache) genau diese Voreinstellung in die Datenbank
+ * schreiben — die eigene Feinabstimmung wäre beim nächsten Laden weg, ohne
+ * dass man die Regler je angefasst hätte. Alles, was den Zeitdehner anzeigt
+ * oder konfiguriert, liest deshalb über `activeHdOptions()`.
  */
-let hdAbUserOptions = null;
+let hdAbPreviewDefault = false;
 
 function hdAbActive() {
-  return hdAbUserOptions !== null;
+  return hdAbPreviewDefault;
 }
 
-/** Die tatsächlich gespeicherten Werte — auch während gerade vorgehört wird. */
-function currentUserHdOptions() {
-  return hdAbActive() ? hdAbUserOptions : settings.hdOptions;
+/** Was gerade zu hören sein soll: die eigenen Werte, oder probeweise die Voreinstellung. */
+function activeHdOptions() {
+  return hdAbPreviewDefault ? DEFAULT_SETTINGS.hdOptions : settings.hdOptions;
 }
 
 function renderHdAb() {
@@ -7735,11 +7739,10 @@ function renderHdAb() {
   }
 }
 
-/** Kehrt vom Vorhören der Voreinstellung zu den eigenen Werten zurück, falls gerade aktiv — ohne zu speichern. */
+/** Kehrt vom Vorhören der Voreinstellung zu den eigenen Werten zurück, falls gerade aktiv. */
 function hdAbRestore() {
   if (!hdAbActive()) return;
-  settings.hdOptions = hdAbUserOptions;
-  hdAbUserOptions = null;
+  hdAbPreviewDefault = false;
   renderHdOptions();
   renderHdAb();
   applyHdConfigure();
@@ -7879,8 +7882,7 @@ $('#btn-hd-reset').addEventListener('click', async () => {
 
 $('#btn-hd-ab').addEventListener('click', () => {
   if (hdAbActive()) { hdAbRestore(); return; }
-  hdAbUserOptions = settings.hdOptions;
-  settings.hdOptions = { ...DEFAULT_SETTINGS.hdOptions };
+  hdAbPreviewDefault = true;
   renderHdOptions();
   renderHdAb();
   applyHdConfigure();
@@ -7903,7 +7905,7 @@ function hdOptionsAsText(o) {
 }
 
 $('#btn-hd-copy').addEventListener('click', async () => {
-  const text = hdOptionsAsText(currentUserHdOptions());
+  const text = hdOptionsAsText(settings.hdOptions);
   try {
     await navigator.clipboard.writeText(text);
     banner(t('settings.perf.advCopied'), { kind: 'ok' });
@@ -8642,7 +8644,7 @@ function applyRateToElement() {
   el.mozPreservesPitch = preserve;
   if (Audio.hdNode) {
     const semitones = useHd ? hdSemitonesForRate(Audio.rate) : 0;
-    const o = settings.hdOptions;
+    const o = activeHdOptions();
     // Alle Methoden des Knotens liefern ein Promise (die Bibliothek schickt
     // sie als Nachricht ins Worklet) — ein try/catch drumherum finge einen
     // Fehler also gar nicht, es braucht .catch().
@@ -8672,7 +8674,7 @@ function applyRateToElement() {
 function applyHdConfigure() {
   const node = Audio.hdNode;
   if (!node || typeof node.configure !== 'function') return;
-  const o = settings.hdOptions;
+  const o = activeHdOptions();
   const cfg = o.blockMs > 0
     ? { blockMs: o.blockMs, intervalMs: o.intervalMs || 0, splitComputation: o.splitComputation }
     : { blockMs: 0, preset: o.preset };
