@@ -3553,6 +3553,12 @@ input[type="checkbox"] {
         <p class="small muted" id="hd-ab-hint" style="margin:6px 0 0" hidden data-i18n="settings.perf.advAbHint"></p>
       </div>
       <p class="small muted" id="hd-load" style="margin:8px 0 0" hidden></p>
+      <button class="btn btn--block" id="btn-audio-rebuild" type="button" style="margin-top:14px" data-i18n="settings.perf.rebuildBtn">
+        Tonausgabe neu aufbauen
+      </button>
+      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.perf.rebuildHint">
+        Klingt die Wiedergabe nach langer Zeit im Hintergrund abgehackt oder falsch, obwohl Pause/Abspielen nicht hilft: hiermit die Audioausgabe von Grund auf neu aufbauen. Wirkt nur, während gerade nichts läuft, und stoppt eine laufende Wiedergabe kurz dafür.
+      </p>
     </div>
 
     <div class="card">
@@ -5028,6 +5034,9 @@ const STRINGS = {
     'settings.perf.hdUnsupported': 'Dieses Gerät unterstützt HD nicht — Standard funktioniert trotzdem.',
     'settings.perf.rtLabel': 'Wiedergabetempo:',
     'settings.perf.rtSuffix': 'der Echtzeit',
+    'settings.perf.rebuildBtn': 'Tonausgabe neu aufbauen',
+    'settings.perf.rebuildHint': 'Klingt die Wiedergabe nach langer Zeit im Hintergrund abgehackt oder falsch, obwohl Pause/Abspielen nicht hilft: hiermit die Audioausgabe von Grund auf neu aufbauen. Wirkt nur, während gerade nichts läuft, und stoppt eine laufende Wiedergabe kurz dafür.',
+    'settings.perf.rebuildDone': 'Tonausgabe neu aufgebaut.',
     'settings.perf.advToggle': 'Erweitert: Zeitdehner einstellen',
     'settings.perf.advIntro': 'Wirkt sofort, auch während der Wiedergabe. Zum Ausprobieren gedacht — die Voreinstellungen sind bewusst so gewählt, wie sie sind.',
     'settings.perf.advGroupSound': 'Klang',
@@ -5278,6 +5287,9 @@ const STRINGS = {
     'settings.perf.hdUnsupported': "This device doesn't support HD — Standard still works.",
     'settings.perf.rtLabel': 'Playback speed:',
     'settings.perf.rtSuffix': 'of real time',
+    'settings.perf.rebuildBtn': 'Rebuild audio output',
+    'settings.perf.rebuildHint': "If playback sounds choppy or wrong after a long time in the background, and pause/play doesn't help: use this to rebuild the audio output from scratch. Only works while nothing is currently playing, and briefly stops playback to do it.",
+    'settings.perf.rebuildDone': 'Audio output rebuilt.',
     'settings.perf.advToggle': 'Advanced: tune the stretcher',
     'settings.perf.advIntro': 'Takes effect immediately, even during playback. Meant for experimenting — the defaults are chosen deliberately.',
     'settings.perf.advGroupSound': 'Sound',
@@ -5528,6 +5540,9 @@ const STRINGS = {
     'settings.perf.hdUnsupported': 'To urządzenie nie obsługuje HD — Standard nadal działa.',
     'settings.perf.rtLabel': 'Tempo odtwarzania:',
     'settings.perf.rtSuffix': 'czasu rzeczywistego',
+    'settings.perf.rebuildBtn': 'Odbuduj wyjście audio',
+    'settings.perf.rebuildHint': 'Jeśli odtwarzanie brzmi urywanie lub źle po długim czasie w tle, a pauza/odtwarzanie nie pomaga: użyj tego, aby odbudować wyjście audio od nowa. Działa tylko, gdy nic akurat nie gra, i na chwilę zatrzymuje odtwarzanie.',
+    'settings.perf.rebuildDone': 'Wyjście audio odbudowane.',
     'settings.perf.advToggle': 'Zaawansowane: ustawienia rozciągacza',
     'settings.perf.advIntro': 'Działa natychmiast, także w trakcie odtwarzania. Do eksperymentów — ustawienia domyślne są dobrane świadomie.',
     'settings.perf.advGroupSound': 'Brzmienie',
@@ -7855,15 +7870,30 @@ async function updateHdOption(patch, needsConfigure) {
 let hdRtPrev = null;
 let hdRtTimer = null;
 
-function tickHdRealtime() {
+/**
+ * Health-Monitor (Stufe 4a in SLOWPLAY-HD-FIX-PLAN.md): führt die
+ * Echtzeitmessung des AudioContext mit den übrigen Signalen aus hdHealth
+ * (letzter Aussetzer aus timeupdate, fehlgeschlagene Worklet-RPCs) zu einem
+ * gemeinsamen, protokollierten Zustand zusammen. Das allein löst noch nichts
+ * aus — die Daten sind die Grundlage für den automatischen Neuaufbau aus
+ * einem späteren Commit.
+ */
+function hdHealthTick() {
   const ctx = Audio.ctx;
   if (!ctx || !hdRtPrev) return;
   const nowWall = performance.now(), nowAudio = ctx.currentTime;
   const wallS = (nowWall - hdRtPrev.wall) / 1000, audioS = nowAudio - hdRtPrev.audio;
   hdRtPrev = { audio: nowAudio, wall: nowWall };
   if (wallS <= 0) return;
-  const pct = Math.round((audioS / wallS) * 100);
-  dlog('hd:load', { realtimePct: pct, mode: settings.slowMode });
+  const pct = Math.min(100, Math.round((audioS / wallS) * 100));
+  hdHealth.realtimePct = pct;
+
+  dlog('audio:health', {
+    realtimePct: pct, mode: settings.slowMode,
+    msSinceStall: hdHealth.lastStallAt ? Math.round(nowWall - hdHealth.lastStallAt) : null,
+    rpcFailures: hdHealth.rpcFailures,
+  });
+
   const node = $('#hd-load');
   node.textContent = `${t('settings.perf.rtLabel')} ${pct}% ${t('settings.perf.rtSuffix')}`;
   node.style.color = pct < 97 ? 'var(--danger)' : '';
@@ -7882,7 +7912,7 @@ function updateHdLoadVisibility() {
   node.hidden = !active;
   if (active && !hdRtTimer) {
     hdRtPrev = { audio: Audio.ctx.currentTime, wall: performance.now() };
-    hdRtTimer = setInterval(tickHdRealtime, 1000);
+    hdRtTimer = setInterval(hdHealthTick, 1000);
   } else if (!active && hdRtTimer) {
     clearInterval(hdRtTimer);
     hdRtTimer = null;
@@ -7953,6 +7983,23 @@ $('#btn-hd-reset').addEventListener('click', async () => {
   await saveSettings({ hdOptions: settings.hdOptions });
   renderHdOptions();
   hdApplyTransition('reset-options', { configure: true });
+});
+
+/**
+ * Der Notausgang aus Stufe 4c in SLOWPLAY-HD-FIX-PLAN.md: bis die Automatik
+ * (ein späterer Commit) trägt, ist das der Weg, einen kaputten Audio-Graphen
+ * ohne App-Neustart loszuwerden.
+ */
+$('#btn-audio-rebuild').addEventListener('click', async () => {
+  const btn = $('#btn-audio-rebuild');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await rebuildAudioGraph('manual');
+    banner(t('settings.perf.rebuildDone'));
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $('#btn-hd-ab').addEventListener('click', () => {
@@ -8387,9 +8434,15 @@ const Audio = {
 // vorheriger Import-Versuch verlängert) fälschlich als Aussetzer gelten.
 let lastPosLog = { wall: performance.now(), pos: 0 };
 
-async function audioInit() {
-  if (Audio.ready) return;
-
+/**
+ * Baut das <audio>-Element, den AudioContext und die Kanal-Matrix auf und
+ * verdrahtet sie. Ausgelagert aus audioInit(), damit rebuildAudioGraph()
+ * (Stufe 4b in SLOWPLAY-HD-FIX-PLAN.md) denselben Aufbau nach einem
+ * degradierten Kontext wiederholen kann — createMediaElementSource() darf
+ * pro Element nur einmal laufen, ein neuer Kontext braucht deshalb zwingend
+ * auch ein neues Element samt all dieser Listener.
+ */
+async function setupAudioGraph() {
   const el = document.createElement('audio');
   el.setAttribute('playsinline', '');
   el.preload = 'auto';
@@ -8435,6 +8488,7 @@ async function audioInit() {
       // zu erwarten wäre ⇒ die Wiedergabe stand zwischenzeitlich still, auch
       // wenn das Element selbst unauffällig aussieht.
       if (Audio.playing && posDelta < expected * 0.5) {
+        hdHealth.lastStallAt = nowWall;
         dlog('audio:stall', {
           expectedS: Math.round(expected * 10) / 10, actualS: Math.round(posDelta * 10) / 10,
           visibility: document.visibilityState, elPaused: el.paused, ctxState: Audio.ctx?.state,
@@ -8534,9 +8588,114 @@ async function audioInit() {
     console.warn('[audio] Kanal-Matrix nicht verfügbar, direkte Ausgabe', err);
     dlog('audio:route', { mode: 'direct', name: err?.name });
   }
+}
 
+async function audioInit() {
+  if (Audio.ready) return;
+  await setupAudioGraph();
   Audio.ready = true;
   dlog('audio:init:ok');
+}
+
+// Läuft schon ein Neuaufbau, keinen zweiten parallel anstoßen (der manuelle
+// Knopf, der 30-Minuten-Hebel aus Stufe 4c und ein künftiger automatischer
+// Auslöser aus Stufe 4b könnten sich sonst überschneiden).
+let audioRebuildInFlight = null;
+
+/**
+ * Baut den kompletten Audio-Graphen neu auf: schließt Audio.ctx und ersetzt
+ * ihn samt Kanal-Matrix, MediaElementAudioSourceNode und HD-Knoten (Stufe 4b
+ * in SLOWPLAY-HD-FIX-PLAN.md). Quelle, Position, Tempo, Loop und
+ * Wiedergabeabsicht bleiben erhalten — die liegen auf dem dauerhaften
+ * `Audio`-Objekt und überstehen den Umbau von selbst, nur die geladene Spur
+ * muss erneut ins neue Element geladen werden.
+ *
+ * Läuft nur, während Audio.ready steht (audioInit() also schon einmal
+ * durchgelaufen ist) — sonst gibt es nichts zum Neuaufbauen.
+ */
+async function rebuildAudioGraph(reason) {
+  if (audioRebuildInFlight) return audioRebuildInFlight;
+  if (!Audio.ready) return;
+  audioRebuildInFlight = (async () => {
+    dlog('audio:rebuild', { reason, start: true });
+
+    const wasPlaying = Audio.playing;
+    const savedKey = Audio.currentKey;
+    const savedBlobUrl = Audio.blobUrl;
+    const savedPosition = Audio.position;
+
+    audioPause();
+
+    const oldEl = Audio.el;
+    const oldCtx = Audio.ctx;
+    hdTeardown(Audio.hdNode);
+    // Auch bg (der leise mitlaufende Original-Song, siehe ensureBackingAudio)
+    // hängt an einem Element, dessen createMediaElementSource() an den alten
+    // Kontext gebunden ist — komplett verwerfen, statt an einem toten
+    // Kontext hängen zu lassen. ensureBackingAudio() legt bei Bedarf ein
+    // frisches an, verdrahtet gegen den neuen Kontext.
+    if (Audio.bg) {
+      try { Audio.bg.pause(); } catch {}
+      Audio.bg.remove();
+      Audio.bg = null;
+      Audio.bgSource = null;
+      Audio.bgGain = null;
+    }
+
+    Audio.ready = false;
+    Audio.ctx = null;
+    Audio.channel = null;
+    Audio.channelIn = null;
+    Audio.elSource = null;
+    Audio.hdNode = null;
+    Audio.el = null;
+    // Neue Generation, neue Chance auf HD (siehe hdInitBlocked/Stufe 2d) —
+    // ein wiederholt gescheiterter Versuch am alten, kaputten Kontext soll
+    // den neuen nicht mit sperren.
+    hdInitAttempts = 0;
+    hdNextAttemptAt = 0;
+    hdWasEngaged = false;
+
+    if (oldCtx) {
+      try { await oldCtx.close(); } catch (err) { dlog('audio:rebuild', { step: 'close', name: err?.name }); }
+    }
+    oldEl?.remove();
+
+    await setupAudioGraph();
+    Audio.ready = true;
+
+    if (savedBlobUrl && savedKey) {
+      const el = Audio.el;
+      try {
+        await new Promise((resolve, reject) => {
+          const onReady = () => { cleanup(); resolve(); };
+          const onError = () => { cleanup(); reject(mediaErrorToError(el.error)); };
+          function cleanup() {
+            el.removeEventListener('loadedmetadata', onReady);
+            el.removeEventListener('error', onError);
+          }
+          el.addEventListener('loadedmetadata', onReady, { once: true });
+          el.addEventListener('error', onError, { once: true });
+          el.src = savedBlobUrl;
+          el.load();
+        });
+        Audio.currentKey = savedKey;
+        el.currentTime = savedPosition;
+        Audio.position = savedPosition;
+      } catch (err) {
+        dlog('audio:rebuild', { step: 'reload', name: err?.name });
+      }
+    }
+
+    await hdApplyTransition('rebuild');
+    if (wasPlaying) await audioPlay();
+    dlog('audio:rebuild', { reason, done: true });
+  })();
+  try {
+    await audioRebuildInFlight;
+  } finally {
+    audioRebuildInFlight = null;
+  }
 }
 
 /**
@@ -8811,6 +8970,27 @@ let hdTransitionGeneration = 0;
 let hdWasEngaged = false;
 
 /**
+ * Bündelt die Signale aus dem Health-Monitor (Stufe 4a in
+ * SLOWPLAY-HD-FIX-PLAN.md): Echtzeitfaktor des AudioContext (siehe
+ * hdHealthTick), wann zuletzt timeupdate einen Aussetzer meldete, und wie
+ * viele Worklet-RPCs in Folge fehlschlugen. Hier wird nur gemessen und
+ * protokolliert — ein späterer Commit entscheidet anhand dieses einen
+ * Zustands (mit Hysterese) über den automatischen Graph-Neuaufbau (Stufe 4b).
+ */
+const hdHealth = {
+  realtimePct: null,
+  lastStallAt: 0,
+  rpcFailures: 0,
+};
+
+function hdNoteRpcFailure() {
+  hdHealth.rpcFailures++;
+}
+function hdNoteRpcSuccess() {
+  hdHealth.rpcFailures = 0;
+}
+
+/**
  * Setzt einen laufenden Zeitdehner-Knoten zurück und wartet die Bestätigung
  * ab — ein bloß *gestarteter* RPC vor dem Wiedereinhängen beseitigt das
  * Race nicht, sondern verschiebt es nur (Befund 2 / Stufe 2b in
@@ -8824,6 +9004,7 @@ async function hdReset(reason, generation) {
   try {
     await node.reset();
   } catch (err) {
+    hdNoteRpcFailure();
     dlog('hd:reset', { reason, generation, ok: false, name: err?.name });
     return false;
   }
@@ -8911,6 +9092,7 @@ async function hdApplyTransition(reason, opts = {}) {
     try {
       await node.configure(cfg);
     } catch (err) {
+      hdNoteRpcFailure();
       dlog('hd:configure', { name: err?.name });
       return;
     }
@@ -8932,9 +9114,11 @@ async function hdApplyTransition(reason, opts = {}) {
       formantBaseHz: o.formantBaseHz,
     });
   } catch (err) {
+    hdNoteRpcFailure();
     dlog('hd:schedule', { name: err?.name });
     return;
   }
+  hdNoteRpcSuccess();
 
   // Schritt 6: noch aktuell? Ein überholter Übergang bricht hier ab, statt
   // einen älteren Zustand über einen längst neueren zu legen.
@@ -9083,13 +9267,33 @@ async function updateWakeLock() {
   if (!(Audio.playing || (playerSong && settings.keepScreenOn))) updateWakeLock();
 }
 
+// Stufe 4c in SLOWPLAY-HD-FIX-PLAN.md: kehrt die App aus einem langen
+// Hintergrund zurück und läuft gerade nichts, lohnt sich ein Neuaufbau des
+// Graphen mehr als das Warten auf einen degradierten Kontext — ohne
+// laufende Wiedergabe ist er unhörbar und risikoarm. Das ist der billige
+// Hebel, der den ursprünglich gemeldeten Vorfall (HD bei 0,7×, zwei Stunden
+// Hintergrund, danach abgehackter Ton bei 1,0×) abgedeckt hätte.
+const AUDIO_LONG_BACKGROUND_MS = 30 * 60 * 1000;
+let audioHiddenSince = null;
+
 document.addEventListener('visibilitychange', () => {
   dlog('visibility', {
     state: document.visibilityState, playing: Audio.playing,
     elPaused: Audio.el?.paused, ctxState: Audio.ctx?.state,
   });
-  if (document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') {
+    audioHiddenSince = performance.now();
+    return;
+  }
+  const backgroundMs = audioHiddenSince ? performance.now() - audioHiddenSince : 0;
+  audioHiddenSince = null;
   updateWakeLock();
+
+  if (backgroundMs >= AUDIO_LONG_BACKGROUND_MS && !Audio.playing && Audio.ctx) {
+    dlog('audio:rebuild:trigger', { reason: 'long-background', backgroundMs: Math.round(backgroundMs) });
+    rebuildAudioGraph('long-background').catch((err) => dlog('audio:rebuild', { name: err?.name }));
+  }
+
   if (!Audio.playing) return;
 
   // Hat das System die Wiedergabe währenddessen angehalten, hier wieder
