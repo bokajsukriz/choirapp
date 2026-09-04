@@ -9210,17 +9210,39 @@ function refreshHdLatency() {
 
 /**
  * Trennt einen Zeitdehner-Knoten sauber ab: Verbindung lösen und den
- * MessagePort schließen — sonst läuft das AudioWorklet dahinter als
+ * Prozessor endgültig beenden — sonst läuft das AudioWorklet dahinter als
  * verwaister Prozess im Renderthread weiter, auch wenn nichts mehr auf ihn
  * zeigt (z. B. ein Knoten, der nach einem Init-Timeout verspätet fertig
- * wird). Nullt `Audio.hdNode` nur, wenn der übergebene Knoten wirklich noch
- * der aktive ist — sonst würde ein spät entsorgter, längst ersetzter Knoten
- * den neuen darunter wegreißen.
+ * wird, oder einer, der bei 1,0× nicht mehr gebraucht wird).
+ *
+ * disconnect() allein reicht dafür NICHT zuverlässig (Fehler B in
+ * SLOWPLAY-HD-FIX-PLAN-2.md, auf dem Gerät bestätigt: Echtzeit brach nach
+ * einem HD→Standard-Wechsel dauerhaft auf ~70 % ein) — der inaktive Zweig
+ * des Prozessors ruft _process() weiterhin jede Runde auf. terminate() (ein
+ * lokaler Vendor-Patch) lässt process() `false` liefern, der einzige
+ * spezifizierte Weg, mit dem der Browser den Knoten endgültig aufgibt.
+ * Nicht abgewartet: der RPC-Aufruf verschickt die Nachricht synchron, noch
+ * bevor der Port geschlossen wird — das genügt, die Zustellung an einen
+ * bereits geschlossenen Port ist damit nicht mehr betroffen.
+ *
+ * Nullt `Audio.hdNode` nur, wenn der übergebene Knoten wirklich noch der
+ * aktive ist — sonst würde ein spät entsorgter, längst ersetzter Knoten den
+ * neuen darunter wegreißen.
  */
 function hdTeardown(node) {
   if (!node) return;
   try { node.disconnect(); } catch {}
-  try { node.port.close(); } catch {}
+  // Der Port bleibt offen, bis terminate() beantwortet ist (oder der
+  // eingebaute RPC-Timeout abläuft) — sonst käme die Bestätigung nie an,
+  // weil ein bereits geschlossener Port keine Antworten mehr annimmt. Der
+  // Prozessor setzt this.terminated zwar auch ohne Bestätigung, aber ein
+  // sauberer Abschluss ist billiger als ein 5 Sekunden lang hängender Timer.
+  const closePort = () => { try { node.port.close(); } catch {} };
+  try {
+    Promise.resolve(node.terminate?.()).then(closePort, closePort);
+  } catch {
+    closePort();
+  }
   if (Audio.hdNode === node) Audio.hdNode = null;
 }
 

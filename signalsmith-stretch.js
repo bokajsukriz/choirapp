@@ -1,6 +1,6 @@
 /*
  * Lokale Abweichung vom npm-Paket signalsmith-stretch@1.3.2 (siehe
- * THIRD-PARTY.md). Ein `npm update` dieser Datei würde die folgenden vier
+ * THIRD-PARTY.md). Ein `npm update` dieser Datei würde die folgenden fünf
  * Stellen verschlucken — vor jedem Update erneut anwenden:
  *
  * 1. `remoteMethods.reset` (im AudioWorklet-Prozessor): ruft
@@ -19,6 +19,13 @@
  * 4. `post()` bekommt Timeout und Reject, `processorerror`/`messageerror`
  *    lehnen offene und künftige Aufrufe sofort ab, statt sie für immer
  *    hängen zu lassen.
+ * 5. `remoteMethods.terminate` und die Prüfung `if (this.terminated) return
+ *    false;` am Anfang von `process()`: disconnect() allein hält den
+ *    Prozessor nicht zuverlässig davon ab, weiterzurechnen (auf einem
+ *    Android-Gerät bestätigt — ein ungebrauchter, nur abgeklemmter Knoten
+ *    ließ die Echtzeitanzeige dauerhaft auf ~70 % einbrechen). `false` aus
+ *    `process()` ist der einzige spezifizierte Weg, den Browser den Knoten
+ *    endgültig aufgeben zu lassen.
  */
 var SignalsmithStretch = (() => {
   var _scriptName = typeof document != 'undefined' ? document.currentScript?.src : undefined;
@@ -188,6 +195,15 @@ function registerWorkletProcessor(Module, audioNodeKey) {
 				// senden, sonst bleibt die eingeplante Zeitabbildung stehen.
 				reset: _ => {
 					this.wasmModule._reset();
+				},
+				// Lokale Ergänzung: beendet den Prozessor endgültig. disconnect()
+				// allein ist NICHT zuverlässig genug (siehe Fehler B in
+				// SLOWPLAY-HD-FIX-PLAN-2.md) — process() muss `false` liefern,
+				// das ist der einzige spezifizierte Weg, mit dem der Browser den
+				// Knoten als endgültig fertig ansieht und keine weiteren
+				// process()-Aufrufe mehr macht.
+				terminate: _ => {
+					this.terminated = true;
 				}
 			};
 
@@ -260,6 +276,11 @@ function registerWorkletProcessor(Module, audioNodeKey) {
 		}
 
 		process(inputList, outputList, parameters) {
+			// Lokale Ergänzung (siehe Kommentar am Dateianfang): terminate()
+			// setzt nur diese Markierung, das Ende selbst erklärt sich hier —
+			// `false` ist die einzige spezifizierte Art, dem Browser mitzuteilen,
+			// dass der Knoten fertig ist und nie wieder aufgerufen werden muss.
+			if (this.terminated) return false;
 			if (!this.wasmReady) {
 				outputList.forEach(output => {
 					output.forEach(channel => {
