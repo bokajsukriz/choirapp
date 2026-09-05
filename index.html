@@ -8130,7 +8130,12 @@ $$('#slow-mode .preset').forEach((btn) => {
     if (btn.disabled) return;
     await saveSettings({ slowMode: btn.dataset.mode });
     renderSlowMode();
-    hdApplyTransition('mode');
+    await hdApplyTransition('mode');
+    // Der Griff, mit dem man ein Knacken loszuwerden versucht — und der bisher
+    // nichts half, weil der Moduswechsel den beschädigten Teil des Signalwegs
+    // gar nicht anfasst. Steht der Verdacht, wird hier wirklich erneuert; das
+    // kostet eine kurze Unterbrechung und ist allemal besser als weiterknacken.
+    await repairSuspectAudioGraph('mode-switch');
   });
 });
 
@@ -8888,6 +8893,11 @@ async function rebuildAudioGraph(reason) {
     Audio.elSource = null;
     Audio.hdNode = null;
     Audio.el = null;
+    // Element, Quellknoten und Kontext sind gleich neu — was auch immer den
+    // alten Signalweg beschädigt hatte, geht damit mit ihm.
+    audioGraphSuspect = null;
+    hdWiredSrc = null;
+    hdWiredTo = null;
     // Neue Generation, neue Chance auf HD (siehe hdInitBlocked/Stufe 2d) —
     // ein wiederholt gescheiterter Versuch am alten, kaputten Kontext soll
     // den neuen nicht mit sperren.
@@ -8935,6 +8945,80 @@ async function rebuildAudioGraph(reason) {
     return true;
   } finally {
     audioRebuildInFlight = null;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   EIN BESCHÄDIGTER SIGNALWEG ÜBERLEBT DEN BYPASS
+
+   Bei 1,0× wird der Zeitdehner nicht nur abgeklemmt, sondern abgebaut (siehe
+   hdApplyTransition/hdTeardown) — HD ist dort also wirklich umgangen, und ein
+   Wechsel auf Standard nimmt ihn ebenso weg. Was beides NICHT anfasst, ist der
+   Rest des Wegs: das <audio>-Element, sein MediaElementAudioSourceNode und der
+   AudioContext. Genau die lassen sich nicht im Betrieb ersetzen —
+   createMediaElementSource() darf pro Element nur einmal laufen —, und deshalb
+   bleibt ein einmal knackender Element-Pfad auch in Standard und auch bei 1,0×
+   hörbar kaputt. Nur rebuildAudioGraph() (oder ein Neuladen der Seite) ersetzt
+   ihn.
+
+   Der gemeldete Fall: HD bei 0,6× im Hintergrund, das Lied läuft aus, der
+   nächste Titel beginnt bei 1,0× (openPlayer() setzt das Tempo zurück) — und
+   von da an knackt es, auch in Standard. Der Health-Monitor sieht davon
+   nichts: er misst den Renderthread (ctx.currentTime gegen die Wanduhr), und
+   der läuft weiter rund, während der Element-Pfad Aussetzer liefert. Die
+   Automatik aus Stufe 4b konnte deshalb nicht anschlagen, und der
+   Notausgang-Knopf in den Einstellungen findet sich nur, wer ihn kennt.
+
+   Deshalb hier ein zweiter, unabhängiger Weg: den Graphen als *verdächtig*
+   markieren, wenn er nachweislich in dem Zustand war, in dem der Fehler
+   gemeldet wurde, und ihn beim nächsten Mal, wo es nicht weh tut, erneuern.
+   -------------------------------------------------------------------------- */
+
+// Grund des Verdachts, oder null. Wird von jedem Neuaufbau gelöscht.
+let audioGraphSuspect = null;
+
+/**
+ * Ob das Verlassen von HD den Verdacht auslöst. Ausgelagert, damit der
+ * Selbsttest die Bedingung prüfen kann, ohne document.visibilityState fälschen
+ * zu müssen.
+ *
+ * Bedingung ist bewusst eng: nur, wenn der Zeitdehner tatsächlich hörbar im
+ * Weg hing (`wasEngaged`) UND die Seite dabei im Hintergrund war. Im
+ * Vordergrund ist derselbe Übergang unauffällig — auf dem Gerät wie im Code —,
+ * und ein Verdacht bei jedem Tempowechsel würde nur unnötig Graphen erneuern.
+ */
+function hdSuspectOnBypass(wasEngaged, visibility) {
+  return wasEngaged === true && visibility !== 'visible';
+}
+
+function markAudioGraphSuspect(reason) {
+  if (audioGraphSuspect) return;
+  audioGraphSuspect = reason;
+  dlog('audio:suspect', { reason, playing: Audio.playing, mode: settings.slowMode, rate: Audio.rate });
+}
+
+/**
+ * Erneuert einen als verdächtig markierten Graphen — aber nur im Vordergrund.
+ *
+ * Im Hintergrund wäre das gefährlich statt hilfreich: der Neuaufbau legt ein
+ * frisches <audio>-Element und einen frischen AudioContext an, und die dürfen
+ * ohne Nutzergeste nicht überall von selbst anlaufen. Ausgerechnet die
+ * Hintergrundwiedergabe, um die es hier geht, würde damit reihenweise am
+ * Songwechsel stehenbleiben. Der Verdacht bleibt deshalb stehen, bis die App
+ * wieder sichtbar ist; er kostet nichts, solange niemand ihn einlöst.
+ *
+ * Liefert, ob wirklich neu aufgebaut wurde.
+ */
+async function repairSuspectAudioGraph(reason) {
+  if (!audioGraphSuspect || !Audio.ready) return false;
+  if (document.visibilityState !== 'visible') return false;
+  const because = audioGraphSuspect;
+  dlog('audio:repair', { reason, because, playing: Audio.playing });
+  try {
+    return await rebuildAudioGraph(`repair-${reason}`);
+  } catch (err) {
+    dlog('audio:repair', { reason, name: err?.name });
+    return false;
   }
 }
 
@@ -9208,6 +9292,51 @@ let hdTransitionGeneration = 0;
 // „eingehängt" zu erkennen, ohne dass jede Aufrufstelle das selbst wissen
 // müsste.
 let hdWasEngaged = false;
+// Womit Audio.elSource gerade verbunden ist — der Zielknoten selbst
+// (Audio.hdNode oder Audio.channelIn), plus die Quelle, für die das galt.
+// Nach rebuildAudioGraph() ist die Quelle eine andere; der Vergleich läuft
+// deshalb über die Identität beider Knoten und nicht über einen Namen.
+let hdWiredSrc = null;
+let hdWiredTo = null;
+
+/**
+ * Setzt Tempo und nativen Tonhöhenerhalt am Element — aber nur da, wo sich
+ * wirklich etwas ändert.
+ *
+ * `preservesPitch` umzuschalten heißt, den eingebauten Zeitdehner des
+ * Elements mitten in der Wiedergabe an- oder abzuschalten. Bisher tat
+ * hdApplyTransition() das bei JEDEM Übergang zweimal (Schritt 2 an, Schritt 7
+ * wieder aus) — also auch bei jedem Sprung, jedem Loop-Rücksprung und jedem
+ * Reglerzug, und selbst im Standard-Modus, wo der Wert ohnehin schon richtig
+ * stand. Das ist ein Eingriff in den laufenden Dekoder, den sich die
+ * Wiedergabe nicht einhandeln muss, wenn nichts umzuschalten ist.
+ */
+function hdSetElementPlayback(el, rate, preservesPitch) {
+  if (!el) return;
+  if (el.playbackRate !== rate) el.playbackRate = rate;
+  if (el.preservesPitch === preservesPitch) return;
+  el.preservesPitch = preservesPitch;
+  el.webkitPreservesPitch = preservesPitch;
+  el.mozPreservesPitch = preservesPitch;
+}
+
+/**
+ * Verdrahtet die Quelle auf ein Ziel — und lässt sie in Ruhe, wenn sie da
+ * schon hängt. `disconnect()` auf einer laufenden Quelle unterbricht den
+ * Signalfluss und ist als Knacken hörbar; im Standard-Modus (kein Knoten, das
+ * Ziel bleibt die Matrix) hatte das bei jedem audioSeek() und jedem
+ * Loop-Rücksprung gar keinen Zweck. Idempotent zu sein ist hier also kein
+ * Feinschliff, sondern der Unterschied zwischen einem stillen und einem
+ * knackenden Sprung.
+ */
+function hdWireSource(src, dest) {
+  if (!src) return;
+  if (hdWiredSrc === src && hdWiredTo === dest) return;
+  src.disconnect();
+  if (dest) src.connect(dest);
+  hdWiredSrc = src;
+  hdWiredTo = dest;
+}
 
 /**
  * Bündelt die Signale aus dem Health-Monitor (Stufe 4a in
@@ -9291,16 +9420,12 @@ async function hdApplyTransition(reason, opts = {}) {
   // RPC-Fehler), und ohne diese Zeile bliebe das Tempo bei jedem davon falsch
   // stehen (Fehler A in SLOWPLAY-HD-FIX-PLAN-2.md — eine Regression aus dem
   // Zusammenlegen zu hdApplyTransition()).
-  if (el) {
-    el.playbackRate = Audio.rate;
-    el.preservesPitch = true;
-    el.webkitPreservesPitch = true;
-    el.mozPreservesPitch = true;
-  }
-  if (src) {
-    src.disconnect();
-    if (Audio.channelIn) src.connect(Audio.channelIn);
-  }
+  //
+  // Beide Helfer fassen nur an, was sich wirklich ändert (siehe dort): steht
+  // der sichere Zustand schon — im Standard-Modus bei jedem Sprung der Fall —,
+  // bleiben Element und Verdrahtung unberührt und der Sprung damit knackfrei.
+  hdSetElementPlayback(el, Audio.rate, true);
+  hdWireSource(src, Audio.channelIn);
   if (Audio.hdNode) Audio.hdNode.disconnect();
 
   // Schritt 3: Knoten nur sicherstellen, wenn er wirklich gebraucht wird
@@ -9325,9 +9450,17 @@ async function hdApplyTransition(reason, opts = {}) {
   // spart nichts (siehe Fehler B). Kein reset()/configure()/schedule() mehr
   // nötig, es gibt niemanden mehr, der sie empfängt.
   if (!useHd) {
+    const wasEngaged = hdWasEngaged;
     hdTeardown(node);
     hdWasEngaged = false;
     dlog('hd:teardown', { reason });
+    // Der Zeitdehner ist damit weg — die Spur, die das resampelnde Element im
+    // Hintergrund hinterlassen haben kann, nicht (siehe den Abschnitt über
+    // audioGraphSuspect). Nur markieren, nicht reparieren: der Neuaufbau
+    // gehört in den Vordergrund.
+    if (hdSuspectOnBypass(wasEngaged, document.visibilityState)) {
+      markAudioGraphSuspect(`hd-bypass-${reason}`);
+    }
     renderHdSemitones(null);
     return;
   }
@@ -9388,19 +9521,10 @@ async function hdApplyTransition(reason, opts = {}) {
   if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
 
   // Schritt 7: erst jetzt hörbar verbinden.
-  if (src) {
-    src.disconnect();
-    if (useHd) src.connect(node);
-    else if (Audio.channelIn) src.connect(Audio.channelIn);
-  }
+  hdWireSource(src, useHd ? node : Audio.channelIn);
   if (useHd && Audio.channelIn) node.connect(Audio.channelIn);
   else node.disconnect();
-  if (el) {
-    const preserve = !useHd;
-    el.preservesPitch = preserve;
-    el.webkitPreservesPitch = preserve;
-    el.mozPreservesPitch = preserve;
-  }
+  hdSetElementPlayback(el, Audio.rate, !useHd);
   hdWasEngaged = useHd;
   renderHdSemitones(useHd ? semitones : null);
   dlog('hd:mode', { mode: settings.slowMode, on: useHd, rate: Audio.rate, semitones: Math.round(semitones * 1000) / 1000, reason });
@@ -9625,7 +9749,12 @@ document.addEventListener('visibilitychange', () => {
     audioWatchStallCount = 0;
   }
 
-  if (!Audio.playing) return;
+  if (!Audio.playing) {
+    // Nichts läuft, die App ist sichtbar: der billigste Zeitpunkt für einen
+    // Neuaufbau, den es gibt (derselbe Gedanke wie beim 4c-Hebel oben).
+    repairSuspectAudioGraph('visible-idle').catch((err) => dlog('audio:repair', { name: err?.name }));
+    return;
+  }
 
   // Hat das System die Wiedergabe währenddessen angehalten, hier wieder
   // aufnehmen — das Element selbst (z. B. nach einem Anruf) und, unabhängig
@@ -11637,6 +11766,13 @@ async function openPlayer(songId) {
     bannerError('Die Audiowiedergabe konnte nicht gestartet werden.', 'AUDIO-INIT', err);
     return;
   }
+  if (token !== openPlayerToken) return;
+  // Läuft gerade nichts (Songende, oder von Hand ein anderes Lied gewählt
+  // während Pause), ist ein hier fälliger Neuaufbau (siehe audioGraphSuspect)
+  // unhörbar. Vor dem Laden der neuen Spur, sonst kämen sich Neuaufbau und
+  // Ladevorgang um dasselbe Element in die Quere — und nur bei stehender
+  // Wiedergabe, sonst spielte der Neuaufbau kurz den alten Titel weiter.
+  if (!Audio.playing) await repairSuspectAudioGraph('song-change');
   if (token !== openPlayerToken) return;
   // Erst jetzt steht der AudioContext; renderSlowMode() hängt daran, ob der
   // Zeitdehner schon versucht wurde (siehe hdInitBlocked).
@@ -17932,6 +18068,72 @@ async function runAsyncSelfTests() {
       Audio.hdNode = savedNode;
       Audio.rate = savedRate;
       settings.slowMode = savedMode;
+    }
+  }
+
+  // Der Signalweg darf nicht bei jedem Übergang neu aufgetrennt werden: im
+  // Standard-Modus ist an einem audioSeek() oder einem Loop-Rücksprung nichts
+  // zu verdrahten und nichts umzuschalten, und jedes disconnect() an der
+  // laufenden Quelle ist als Knacken hörbar (siehe hdWireSource).
+  {
+    const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
+    const savedIn = Audio.channelIn, savedRate = Audio.rate, savedMode = settings.slowMode;
+    const savedWiredSrc = hdWiredSrc, savedWiredTo = hdWiredTo;
+    try {
+      let connects = 0, disconnects = 0;
+      const fakeEl = { playbackRate: 0.8, preservesPitch: true, webkitPreservesPitch: true, mozPreservesPitch: true };
+      const fakeIn = {};
+      const fakeSrc = { connect: () => { connects++; }, disconnect: () => { disconnects++; } };
+      Audio.el = fakeEl;
+      Audio.elSource = fakeSrc;
+      Audio.channelIn = fakeIn;
+      Audio.hdNode = null;
+      Audio.rate = 0.8;
+      settings.slowMode = 'standard';
+      hdWiredSrc = null;
+      hdWiredTo = null;
+
+      await hdApplyTransition('selftest-wire-first');
+      if (connects !== 1) failed.push(`hdApplyTransition() müsste die Quelle einmal verbinden, waren ${connects}`);
+      const c0 = connects, d0 = disconnects;
+
+      await hdApplyTransition('selftest-wire-again');
+      if (connects !== c0 || disconnects !== d0) {
+        failed.push(`hdApplyTransition() trennt eine unveränderte Verdrahtung erneut auf (${disconnects - d0}x disconnect, ${connects - c0}x connect)`);
+      }
+      if (fakeEl.playbackRate !== 0.8 || fakeEl.preservesPitch !== true) {
+        failed.push('hdApplyTransition() hinterlässt den sicheren nativen Zustand nicht (Tempo/Tonhöhenerhalt)');
+      }
+    } finally {
+      Audio.el = savedEl;
+      Audio.elSource = savedSrc;
+      Audio.hdNode = savedNode;
+      Audio.channelIn = savedIn;
+      Audio.rate = savedRate;
+      settings.slowMode = savedMode;
+      hdWiredSrc = savedWiredSrc;
+      hdWiredTo = savedWiredTo;
+    }
+  }
+
+  // Der Verdacht auf einen beschädigten Element-Pfad (siehe
+  // audioGraphSuspect) gilt genau dem gemeldeten Fall: HD hing hörbar im Weg
+  // und die Seite war dabei im Hintergrund. Alles andere darf keinen
+  // Neuaufbau nach sich ziehen.
+  {
+    const table = [
+      [true, 'hidden', true],
+      [true, 'visible', false],
+      [false, 'hidden', false],
+      [false, 'visible', false],
+    ];
+    for (const [engaged, visibility, expected] of table) {
+      if (hdSuspectOnBypass(engaged, visibility) !== expected) {
+        failed.push(`hdSuspectOnBypass(${engaged}, '${visibility}') müsste ${expected} liefern`);
+      }
+    }
+    if (await repairSuspectAudioGraph('selftest') !== false) {
+      failed.push('repairSuspectAudioGraph() baut ohne Verdacht neu auf');
     }
   }
 
