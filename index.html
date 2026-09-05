@@ -18135,6 +18135,269 @@ function testMakeDeferred() {
 }
 
 /* ==========================================================================
+   AP-B — Charakterisierungstests für den Audiopfad (ARCHITEKTUR-PLAN.md)
+
+   Schreibt fest, was hdApplyTransition()/rebuildAudioGraph()/hdTeardown()
+   HEUTE tun, nicht was sie tun sollten. Deterministisch mit Fakes (siehe
+   AP-A oben) — baut auf demselben Fake-Audio-Muster wie der bestehende
+   Fehler-A/B-Block in runAsyncSelfTests() auf, ohne echten AudioContext
+   oder ein echtes Worklet.
+
+   Grenze ehrlich gezogen: geprüft werden nur Orchestrierung und
+   Nachbedingungen. NICHT geprüft: Worklet-Start, echte
+   Web-Audio-Beschränkungen, CPU-Verhalten, Unterbrechungen durch das
+   System oder hörbare Korrektheit — dafür siehe AP-F (Gerätecheckliste).
+   Ein tatsächlicher rebuildAudioGraph()-Lauf wird hier bewusst nie
+   ausgelöst (aus demselben Grund wie beim bestehenden REC-Riegel-Test:
+   das würde den laufenden Graphen abreißen) — geprüft wird stattdessen der
+   Weiche-Mechanismus selbst (audioRebuildInFlight).
+   ========================================================================== */
+
+async function runAudioPathCharacterizationTests() {
+  const failed = [];
+
+  // 1) Native Rückfallebene ist verbunden, bevor auf eine RPC-Antwort
+  //    (node.schedule()) gewartet wird — genau die Reihenfolge, deren Fehlen
+  //    Falle 1 in ARCHITEKTUR-PLAN.md beschreibt.
+  {
+    const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
+    const savedChannelIn = Audio.channelIn, savedRate = Audio.rate;
+    const savedMode = settings.slowMode, savedEngaged = hdWasEngaged;
+    try {
+      const el = testMakeFakeElement();
+      const src = testMakeFakeSource();
+      const channelIn = {};
+      const deferred = testMakeDeferred();
+      const node = testMakeFakeHdNode({ schedule: () => deferred.promise });
+      Audio.el = el; Audio.elSource = src; Audio.channelIn = channelIn;
+      Audio.hdNode = node; Audio.rate = 0.6;
+      settings.slowMode = 'hd';
+      // Schon eingehängt: becomingEngaged bleibt falsch, hdReset() wird
+      // nicht abgewartet — node.schedule() ist damit der erste await.
+      hdWasEngaged = true;
+      const p = hdApplyTransition('char-native-first');
+      if (el.playbackRate !== 0.6) {
+        failed.push(`native Rückfall: playbackRate nicht sofort gesetzt, war ${el.playbackRate}`);
+      }
+      if (src.connectedTo !== channelIn) {
+        failed.push('native Rückfall: Quelle hängt nicht sofort direkt an der Kanal-Matrix');
+      }
+      if (node.calls.disconnect !== 1) {
+        failed.push('native Rückfall: der alte Zeitdehner-Knoten wurde nicht sofort abgeklemmt');
+      }
+      deferred.resolve();
+      await p;
+    } finally {
+      Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedNode;
+      Audio.channelIn = savedChannelIn; Audio.rate = savedRate;
+      settings.slowMode = savedMode; hdWasEngaged = savedEngaged;
+    }
+  }
+
+  // 2) playbackRate wird vor jedem frühen Rückkehrpfad gesetzt — Fehler A
+  //    aus SLOWPLAY-HD-FIX-PLAN-2.md, hier für mehrere frühe Rückkehrpfade
+  //    statt nur den einen im bestehenden Selbsttest.
+  {
+    const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
+    const savedChannelIn = Audio.channelIn, savedRate = Audio.rate;
+    const savedMode = settings.slowMode, savedEngaged = hdWasEngaged;
+    try {
+      const scenarios = [
+        { label: 'kein Knoten (Standard)', rate: 0.6, mode: 'standard', node: null, engaged: false },
+        { label: 'Knoten vorhanden, aber 1,0x', rate: 1, mode: 'hd', node: testMakeFakeHdNode(), engaged: true },
+        {
+          label: 'RPC-Fehler bei schedule()', rate: 0.6, mode: 'hd', engaged: true,
+          node: testMakeFakeHdNode({ schedule: () => Promise.reject(new Error('rpc-fail')) }),
+        },
+      ];
+      for (const s of scenarios) {
+        const el = testMakeFakeElement();
+        Audio.el = el; Audio.elSource = testMakeFakeSource(); Audio.channelIn = {};
+        Audio.hdNode = s.node; Audio.rate = s.rate; settings.slowMode = s.mode;
+        hdWasEngaged = s.engaged;
+        await hdApplyTransition(`char-early-return-${s.label}`);
+        if (el.playbackRate !== s.rate) {
+          failed.push(`hdApplyTransition() vergisst playbackRate bei „${s.label}" (Fehler A), war ${el.playbackRate}, erwartet ${s.rate}`);
+        }
+      }
+    } finally {
+      Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedNode;
+      Audio.channelIn = savedChannelIn; Audio.rate = savedRate;
+      settings.slowMode = savedMode; hdWasEngaged = savedEngaged;
+    }
+  }
+
+  // 3) Überholte Generationen verbinden nie wieder: zwei überlappende
+  //    Übergänge warten beide auf node.schedule() (kein hdReset() dazwischen,
+  //    siehe hdWasEngaged unten), der ältere trifft zuletzt ein — er darf den
+  //    vom jüngeren gesetzten Zustand nicht überschreiben (Schritt 6 in
+  //    hdApplyTransition()).
+  {
+    const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
+    const savedChannelIn = Audio.channelIn, savedRate = Audio.rate;
+    const savedMode = settings.slowMode, savedEngaged = hdWasEngaged;
+    try {
+      const el = testMakeFakeElement();
+      const src = testMakeFakeSource();
+      const channelIn = {};
+      const scheduleDeferreds = [];
+      const node = testMakeFakeHdNode({
+        schedule: () => { const d = testMakeDeferred(); scheduleDeferreds.push(d); return d.promise; },
+      });
+      Audio.el = el; Audio.elSource = src; Audio.channelIn = channelIn;
+      Audio.hdNode = node; Audio.rate = 0.6; settings.slowMode = 'hd';
+      // Schon eingehängt: kein hdReset()-Abwarten, node.schedule() ist damit
+      // der einzige await-Punkt beider Aufrufe.
+      hdWasEngaged = true;
+
+      const pOlder = hdApplyTransition('char-race-older');
+      const pNewer = hdApplyTransition('char-race-newer');
+      if (scheduleDeferreds.length !== 2) {
+        failed.push(`überholte Generation: erwartete zwei schedule()-Aufrufe, waren ${scheduleDeferreds.length}`);
+      } else {
+        scheduleDeferreds[1].resolve();
+        await pNewer;
+        if (src.connectedTo !== node || node.calls.connect !== 1) {
+          failed.push('überholte Generation: der jüngere Übergang hat nicht wie erwartet verbunden');
+        }
+        scheduleDeferreds[0].resolve();
+        await pOlder;
+        if (src.connectedTo !== node || node.calls.connect !== 1) {
+          failed.push('überholte Generation: ein spät ankommender älterer Übergang hat den neueren Zustand überschrieben');
+        }
+      }
+    } finally {
+      Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedNode;
+      Audio.channelIn = savedChannelIn; Audio.rate = savedRate;
+      settings.slowMode = savedMode; hdWasEngaged = savedEngaged;
+    }
+  }
+
+  // 4) Knotenerzeugung für einen veralteten Kontext wird abgebaut, nicht
+  //    übernommen (ensureHdNode()'s Kontext-Wächter).
+  {
+    const savedCtx = Audio.ctx, savedNode = Audio.hdNode, savedMode = settings.slowMode;
+    const savedAttempts = hdInitAttempts, savedNextAttempt = hdNextAttemptAt;
+    try {
+      // slowMode bleibt 'standard': ensureHdNode() selbst prüft es nicht,
+      // aber der Nachtrag in seinem finally() würde sonst nach dem
+      // Abbau einen zweiten, hier ungewollten Versuch anstoßen.
+      settings.slowMode = 'standard';
+      const fakeCtx1 = { audioWorklet: {} };
+      const fakeCtx2 = { audioWorklet: {} };
+      Audio.ctx = fakeCtx1;
+      Audio.hdNode = null;
+      hdInitAttempts = 0;
+      hdNextAttemptAt = 0;
+
+      const deferredCreate = testMakeDeferred();
+      const fakeNode = testMakeFakeHdNode();
+      await testWithGlobal('SignalsmithStretch', () => deferredCreate.promise, async () => {
+        ensureHdNode();
+        const promise = hdNodePromise;
+        if (!promise) {
+          failed.push('ensureHdNode(): keine Erzeugung angestoßen');
+          return;
+        }
+        // Der Kontext wechselt, während die Erzeugung noch läuft — z.B. ein
+        // inzwischen abgeschlossener rebuildAudioGraph().
+        Audio.ctx = fakeCtx2;
+        deferredCreate.resolve(fakeNode);
+        await promise;
+        if (fakeNode.calls.disconnect !== 1 || fakeNode.calls.terminate !== 1) {
+          failed.push('ensureHdNode(): ein Knoten für einen veralteten Kontext wird nicht abgebaut');
+        }
+        if (Audio.hdNode === fakeNode) {
+          failed.push('ensureHdNode(): ein Knoten für einen veralteten Kontext wurde trotzdem übernommen');
+        }
+      });
+    } finally {
+      Audio.ctx = savedCtx; Audio.hdNode = savedNode; settings.slowMode = savedMode;
+      hdInitAttempts = savedAttempts; hdNextAttemptAt = savedNextAttempt;
+    }
+  }
+
+  // 5) hdTeardown() beendet nur den übergebenen Knoten und nullt keinen
+  //    Nachfolger — ein spät entsorgter, längst ersetzter Knoten darf den
+  //    aktuellen nicht mitreißen.
+  {
+    const savedNode = Audio.hdNode;
+    try {
+      const nodeA = testMakeFakeHdNode();
+      const nodeB = testMakeFakeHdNode();
+      Audio.hdNode = nodeB;
+      hdTeardown(nodeA);
+      if (nodeA.calls.disconnect !== 1) failed.push('hdTeardown(): der übergebene Knoten wird nicht abgeklemmt');
+      if (Audio.hdNode !== nodeB) failed.push('hdTeardown(): ein alter Knoten reißt den aktuellen Nachfolger mit');
+      if (nodeB.calls.disconnect !== 0) failed.push('hdTeardown(): der Nachfolger wird fälschlich mit abgeklemmt');
+    } finally {
+      Audio.hdNode = savedNode;
+    }
+  }
+
+  // 6) Gleichzeitige Rebuild-Aufrufe teilen sich einen Lauf: ist bereits
+  //    einer unterwegs, hängt sich rebuildAudioGraph() daran an, statt
+  //    Audio.ready o.ä. erneut zu prüfen. Ein echter Neuaufbau läuft dabei
+  //    bewusst nie an (siehe Kommentar oben).
+  {
+    const saved = audioRebuildInFlight;
+    try {
+      const deferred = testMakeDeferred();
+      audioRebuildInFlight = deferred.promise;
+      const p = rebuildAudioGraph('char-shared-run');
+      deferred.resolve();
+      const result = await p;
+      if (result !== true) {
+        failed.push('rebuildAudioGraph(): ein bereits laufender Neuaufbau liefert nicht true an einen zweiten Aufrufer');
+      }
+    } finally {
+      audioRebuildInFlight = saved;
+    }
+  }
+
+  // 8) Der Pegelmesser schließt nie den Wiedergabe-Kontext — nur einen
+  //    eigenen. (Nummerierung folgt ARCHITEKTUR-PLAN.md; Punkt 7 ist der
+  //    bestehende REC-Riegel-Test oben in runAsyncSelfTests().)
+  {
+    const savedCtx = levelCtx, savedOwned = levelCtxOwned;
+    const savedSource = levelSource, savedAnalyser = levelAnalyser, savedRaf = levelRafId;
+    try {
+      let closedPlayback = false;
+      levelCtx = { close: async () => { closedPlayback = true; } };
+      levelCtxOwned = false;
+      levelSource = { disconnect() {} }; levelAnalyser = {}; levelRafId = null;
+      stopLevelMeter();
+      if (closedPlayback) {
+        failed.push('stopLevelMeter() schließt den mitgenutzten Wiedergabe-Kontext (levelCtxOwned=false)');
+      }
+      if (levelCtx !== null || levelCtxOwned !== false) {
+        failed.push('stopLevelMeter() räumt levelCtx/levelCtxOwned nicht auf');
+      }
+
+      let closedOwn = false;
+      levelCtx = { close: async () => { closedOwn = true; } };
+      levelCtxOwned = true;
+      levelSource = { disconnect() {} }; levelAnalyser = {}; levelRafId = null;
+      stopLevelMeter();
+      if (!closedOwn) {
+        failed.push('stopLevelMeter() schließt einen eigenen Pegel-Kontext nicht (levelCtxOwned=true)');
+      }
+    } finally {
+      levelCtx = savedCtx; levelCtxOwned = savedOwned;
+      levelSource = savedSource; levelAnalyser = savedAnalyser; levelRafId = savedRaf;
+    }
+  }
+
+  if (failed.length) {
+    console.error(`[Selbsttest Audiopfad] ${failed.length} Prüfung(en) fehlgeschlagen:`);
+    for (const f of failed) console.error('  ✗ ' + f);
+  } else {
+    console.info('[Selbsttest Audiopfad] Charakterisierungstests bestanden.');
+  }
+  return failed;
+}
+
+/* ==========================================================================
    BOOT — Start
    ========================================================================== */
 
@@ -18146,6 +18409,7 @@ window.chorApp = {
   settings: () => settings,
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
+  selfTestAudioPath: runAudioPathCharacterizationTests,
   lightshowFrame,
   // AP-A (ARCHITEKTUR-PLAN.md): Testadapter für Playwright-getriebene Tests
   // von außen, siehe Kommentar dort. Eigener Unterbereich statt die Felder
@@ -18496,7 +18760,13 @@ async function boot() {
     console.error('[Selbsttest] abgebrochen', err);
   }
   // Nicht abgewartet — der Start soll nicht auf ein paar Promise-Ticks warten.
-  runAsyncSelfTests().catch((err) => console.error('[Selbsttest async] abgebrochen', err));
+  // Nacheinander statt parallel: beide fassen dieselben Audio-/settings-Felder
+  // testweise an (Fehler-A/B-Fakes hier, Charakterisierungstests dort) — liefen
+  // sie gleichzeitig, würden sich ihre Fakes gegenseitig überschreiben.
+  runAsyncSelfTests()
+    .catch((err) => { console.error('[Selbsttest async] abgebrochen', err); })
+    .then(() => runAudioPathCharacterizationTests())
+    .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err));
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
