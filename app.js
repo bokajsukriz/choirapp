@@ -13992,6 +13992,20 @@ function initGrooveLabEasterEgg() {
   });
 }
 
+/**
+ * Automatischer Lauf nur lokal (Entwicklung) oder mit explizitem Opt-in
+ * (`?selftest=1`) — auf jeder echten Domain, auch der installierten PWA,
+ * kostet runSelfTests() sonst ~150ms auf dem kritischen Pfad vor der ersten
+ * Ansicht, ohne dass je jemand außer der Entwicklung die Konsole liest.
+ * Manuell bleibt es über chorApp.selfTest()/selfTestAsync()/
+ * selfTestAudioPath() überall auslösbar.
+ */
+function shouldAutoRunSelfTests() {
+  const explicitlyEnabled = new URLSearchParams(location.search).get('selftest') === '1';
+  const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  return explicitlyEnabled || loopbackHosts.has(location.hostname);
+}
+
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
@@ -14008,21 +14022,23 @@ async function boot() {
   applyTranslations();
   initGrooveLabEasterEgg();
   setupFolderImport();
-  try {
-    runSelfTests();
-  } catch (err) {
-    // Eine Prüfung, die selbst kaputt ist, darf den Start nicht verhindern —
-    // sonst bleibt der Bildschirm leer, obwohl die App funktionieren würde.
-    console.error('[Selbsttest] abgebrochen', err);
+  if (shouldAutoRunSelfTests()) {
+    try {
+      runSelfTests();
+    } catch (err) {
+      // Eine Prüfung, die selbst kaputt ist, darf den Start nicht verhindern —
+      // sonst bleibt der Bildschirm leer, obwohl die App funktionieren würde.
+      console.error('[Selbsttest] abgebrochen', err);
+    }
+    // Nicht abgewartet — der Start soll nicht auf ein paar Promise-Ticks warten.
+    // Nacheinander statt parallel: beide fassen dieselben Audio-/settings-Felder
+    // testweise an (Fehler-A/B-Fakes hier, Charakterisierungstests dort) — liefen
+    // sie gleichzeitig, würden sich ihre Fakes gegenseitig überschreiben.
+    runAsyncSelfTests()
+      .catch((err) => { console.error('[Selbsttest async] abgebrochen', err); })
+      .then(() => runAudioPathCharacterizationTests())
+      .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err));
   }
-  // Nicht abgewartet — der Start soll nicht auf ein paar Promise-Ticks warten.
-  // Nacheinander statt parallel: beide fassen dieselben Audio-/settings-Felder
-  // testweise an (Fehler-A/B-Fakes hier, Charakterisierungstests dort) — liefen
-  // sie gleichzeitig, würden sich ihre Fakes gegenseitig überschreiben.
-  runAsyncSelfTests()
-    .catch((err) => { console.error('[Selbsttest async] abgebrochen', err); })
-    .then(() => runAudioPathCharacterizationTests())
-    .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err));
 
   const start = (location.hash || '#songs').slice(1);
   // Beim Start den Verlauf nicht aufblähen: die erste Ansicht ersetzt den
