@@ -128,5 +128,5 @@ Mit eingeschaltetem Diagnose-Log:
 5. Bleibt es trotz Neuaufbau bei knackendem Ton, liegt es nicht am
    Element-Pfad; dann ist der Echtzeitwert aus `audio:health` die nächste Spur.
 
-`SW_VERSION` in `sw.js` ist auf `v135` erhöht, sonst kommt die Änderung nicht
+`SW_VERSION` in `sw.js` ist auf `v136` erhöht, sonst kommt die Änderung nicht
 aufs Gerät.
