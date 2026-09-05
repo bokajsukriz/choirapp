@@ -10,7 +10,7 @@
 
 // Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
 // Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v139';
+const SW_VERSION = 'v140';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -26,6 +26,7 @@ const SHELL_REQUIRED = [
   './',
   './index.html',
   './app.js',
+  './lightshow.js',
   './groove-lab.js',
   './signalsmith-stretch.js',
 ];
