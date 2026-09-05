@@ -37,8 +37,12 @@ ein Dialog mit echter Wahl).
 
 ## Dateiübersicht
 
-- `index.html` — die gesamte App: Oberfläche, Logik, Styles und die
-  Selbsttests, bewusst in einer Datei ohne Build-Schritt.
+- `index.html` — Oberfläche und Styles.
+- `app.js` — die gesamte Logik und die Selbsttests, als ES-Modul geladen;
+  bewusst weiterhin eine einzige Datei ohne Bundler.
+- `boot-guard.js` — zeigt eine Fehlermeldung, falls `app.js` nicht lädt
+  (Netzwerkfehler, korrupter Cache) — sonst bliebe nur die leere, aber
+  vollständige Oberfläche stehen.
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — nachgeladenes Easter Egg, kein Teil der eigentlichen App.
 - `lame.min.js` — vendorierter MP3-Encoder (siehe [Third-Party](#third-party)).
@@ -119,18 +123,29 @@ grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich.
 
 ## Wichtige Regel für Änderungen
 
-Bei jeder Änderung an `index.html`, `sw.js` oder `manifest.json` muss
-`SW_VERSION` in `sw.js` erhöht werden. Ohne das bekommt niemand das Update,
-weil der Shell-Cache unter dem alten Namen bestehen bleibt.
+Bei jeder Änderung an `index.html`, `app.js`, `boot-guard.js`, `sw.js` oder
+`manifest.json` muss `SW_VERSION` in `sw.js` erhöht werden. Ohne das bekommt
+niemand das Update, weil der Shell-Cache unter dem alten Namen bestehen
+bleibt.
+
+## Content-Security-Policy
+
+Ein `<meta http-equiv="Content-Security-Policy">` in `index.html` erlaubt nur
+noch Skripte von der eigenen Herkunft, `blob:` (für das AudioWorklet-Modul
+des Zeitdehners) und `'wasm-unsafe-eval'` (für dessen WASM-Instanziierung);
+Styles bleiben inline erlaubt (`'unsafe-inline'`, wegen der `style="…"`-
+Attribute im Markup), `<object>`/`<embed>` und `<base>` sind ganz gesperrt.
+`frame-ancestors` ist absichtlich nicht Teil davon — über ein Meta-Tag
+ohnehin nicht durchsetzbar, GitHub Pages kann keine Header setzen. Ob
+Zeitdehner-Worklets zusätzlich `worker-src blob:` brauchen, ist auf echtem
+Safari/WebKit noch nicht geprüft (in dieser Umgebung stand kein WebKit zur
+Verfügung) — offen, bis das nachgeholt ist.
 
 ## Bewusst offene Punkte
 
-- **Keine Content-Security-Policy.** Die App lädt keinerlei Fremdressourcen
-  und hat kein Backend; ohne eine Auslagerung des vollständig inline
-  liegenden Codes bräuchte jede CSP weiterhin `'unsafe-inline'` und brächte
-  kaum Schutz.
-- **Keine Modularisierung.** `index.html` bleibt bewusst eine einzelne Datei
-  ohne Bundler, ES-Module oder `package.json`.
+- **Keine vollständige Modularisierung.** `app.js` ist weiterhin eine
+  einzelne Datei ohne Bundler oder `package.json` — nur aus `index.html`
+  ausgelagert, damit die CSP oben überhaupt möglich wurde.
 - **Keine CI.** Kein automatisierter Headless-Browser-Testlauf.
 
 ## Third-Party
