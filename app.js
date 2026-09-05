@@ -2898,6 +2898,75 @@ let hdRtTimer = null;
  * nach einer Rückkehr aus dem Hintergrund — den automatischen Neuaufbau aus
  * Stufe 4b aus (siehe hdMaybeAutoRebuild).
  */
+// Was der Health-Monitor gesehen hat, seit die Seite unsichtbar wurde —
+// gezählt nur, solange der Zeitdehner wirklich im Signalweg hing. Das
+// Gerätelog vom 05.09. zeigt, worum es geht: drei Sekunden nach dem
+// Bildschirm-Aus fiel der Echtzeitwert bei HD 0,6× von 100 % auf 24 %. Der
+// Nutzer entscheidet, was er damit macht (siehe hdMaybeWarnStarve) — die App
+// schaltet nichts hinter seinem Rücken um.
+const hdBgTrouble = { worstPct: null, lowTicks: 0, starved: false };
+// Unter diesem Wert ist es kein Messrauschen mehr: im Vordergrund schwankt
+// derselbe Wert auf demselben Gerät zwischen 92 und 100 %.
+const HD_STARVE_PCT = 70;
+// Zwei Sekunden am Stück — ein einzelner Einbruch beim Wechsel in den
+// Hintergrund ist normal und noch kein Grund für eine Meldung.
+const HD_STARVE_TICKS = 2;
+let hdStarveHintShown = false;
+
+/**
+ * Die reine Fortschreibung des Zustands, damit der Selbsttest eine ganze
+ * Messreihe durchspielen kann, ohne document.visibilityState oder einen
+ * echten AudioContext fälschen zu müssen. Liefert den neuen Zustand und ob
+ * dieser Schritt den Hunger-Fall zum ersten Mal erreicht hat.
+ */
+function hdStarveStep(state, pct) {
+  const worstPct = state.worstPct === null ? pct : Math.min(state.worstPct, pct);
+  const lowTicks = pct < HD_STARVE_PCT ? state.lowTicks + 1 : 0;
+  const starved = state.starved || lowTicks >= HD_STARVE_TICKS;
+  return { next: { worstPct, lowTicks, starved }, becameStarved: starved && !state.starved };
+}
+
+function hdNoteBackgroundHealth(pct) {
+  if (!hdEngaged() || document.visibilityState === 'visible') return;
+  const { next, becameStarved } = hdStarveStep(hdBgTrouble, pct);
+  Object.assign(hdBgTrouble, next);
+  if (becameStarved) {
+    dlog('hd:starve', { realtimePct: pct, worstPct: hdBgTrouble.worstPct, rate: Audio.rate });
+  }
+}
+
+function hdResetBackgroundHealth() {
+  hdBgTrouble.worstPct = null;
+  hdBgTrouble.lowTicks = 0;
+  hdBgTrouble.starved = false;
+}
+
+/**
+ * Sagt beim Zurückkehren einmal je Sitzung, was im Hintergrund los war, und
+ * bietet den Wechsel auf Standard als Handgriff an — mehr nicht. Der Klang
+ * wird nicht ungefragt umgestellt: wer HD bewusst gewählt hat, soll nicht
+ * beim nächsten Blick aufs Handy etwas anderes hören, als er eingestellt hat.
+ */
+function hdMaybeWarnStarve() {
+  if (!hdBgTrouble.starved) return;
+  const pct = hdBgTrouble.worstPct ?? 0;
+  hdResetBackgroundHealth();
+  if (hdStarveHintShown) return;
+  hdStarveHintShown = true;
+  banner(`${t('player.hdStarve')} (${pct} %)`, {
+    kind: 'error',
+    timeout: 15000,
+    action: {
+      label: t('player.hdStarveAction'),
+      onClick: async () => {
+        await saveSettings({ slowMode: 'standard' });
+        renderSlowMode();
+        await hdApplyTransition('starve-hint');
+      },
+    },
+  });
+}
+
 function hdHealthTick() {
   const ctx = Audio.ctx;
   if (!ctx || !hdRtPrev) return;
@@ -2908,6 +2977,7 @@ function hdHealthTick() {
   const pct = Math.min(100, Math.round((audioS / wallS) * 100));
   hdHealth.realtimePct = pct;
   hdLowPctStreak = pct < 80 ? hdLowPctStreak + 1 : 0;
+  hdNoteBackgroundHealth(pct);
 
   dlog('audio:health', {
     realtimePct: pct, mode: settings.slowMode,
@@ -3212,6 +3282,27 @@ const AUDIO_MIME = {
 function mimeForTrack(track) {
   const ext = (track.fileName || '').split('.').pop()?.toLowerCase();
   return AUDIO_MIME[ext] || 'audio/mpeg';
+}
+
+/**
+ * Wieviele Sekunden Ton hinter der aktuellen Position schon gepuffert sind.
+ * Fällt der Wert im Hintergrund gegen null, während der Renderthread
+ * unauffällig bleibt, stottert der Dekoder und nicht die Web-Audio-Kette —
+ * ohne diese Zahl lassen sich die beiden Ursachen im Log nicht trennen.
+ */
+function bufferedAheadSeconds(el) {
+  try {
+    const t = el?.currentTime;
+    if (!Number.isFinite(t) || !el.buffered?.length) return 0;
+    for (let i = 0; i < el.buffered.length; i++) {
+      if (el.buffered.start(i) <= t && t <= el.buffered.end(i)) {
+        return Math.round((el.buffered.end(i) - t) * 10) / 10;
+      }
+    }
+    return 0;
+  } catch {
+    return 0;   // InvalidStateError auf einem gerade entladenen Element
+  }
 }
 
 const MEDIA_ERROR_NAMES = {
@@ -3544,11 +3635,33 @@ async function setupAudioGraph() {
           hdMaybeAutoRebuild('stall', {});
         }
       }
-      dlog('audio:pos', { s: Math.round(s), visibility: document.visibilityState, ctxState: Audio.ctx?.state });
+      dlog('audio:pos', {
+        s: Math.round(s), visibility: document.visibilityState, ctxState: Audio.ctx?.state,
+        aheadS: bufferedAheadSeconds(el),
+      });
       lastPosLog = { wall: nowWall, pos: s };
     }
     Audio.onPosition?.(s);
   });
+
+  // Aussetzer im Element-Pfad (Dekoder/Puffer) — der blinde Fleck des
+  // Health-Monitors: der misst den Renderthread über ctx.currentTime, und der
+  // kann tadellos bei 100 % laufen, während das Element mangels Daten stockt.
+  // Genau das ist der Zustand aus dem Gerätelog vom 05.09.: die ersten
+  // Sekunden eines im Hintergrund frisch geladenen Titels stotterten, während
+  // audio:health durchgehend 100 % meldete. 'waiting' und 'stalled' sagen es
+  // dagegen unmissverständlich.
+  for (const kind of ['waiting', 'stalled', 'suspend']) {
+    el.addEventListener(kind, () => {
+      if (!Audio.playing) return;
+      dlog(`audio:${kind}`, {
+        pos: Math.round((el.currentTime || 0) * 10) / 10,
+        aheadS: bufferedAheadSeconds(el),
+        readyState: el.readyState,
+        visibility: document.visibilityState,
+      });
+    });
+  }
 
   el.addEventListener('ended', () => {
     dlog('audio:ended', { pos: Math.round(Audio.position) });
@@ -3813,18 +3926,25 @@ let audioGraphSuspect = null;
  * zu müssen.
  *
  * Bedingung ist bewusst eng: nur, wenn der Zeitdehner tatsächlich hörbar im
- * Weg hing (`wasEngaged`) UND die Seite dabei im Hintergrund war. Im
- * Vordergrund ist derselbe Übergang unauffällig — auf dem Gerät wie im Code —,
- * und ein Verdacht bei jedem Tempowechsel würde nur unnötig Graphen erneuern.
+ * Weg hing (`wasEngaged`), die Seite dabei im Hintergrund war UND der
+ * Health-Monitor in diesem Hintergrund-Abschnitt echte Aussetzer gesehen hat
+ * (`sawTrouble`, siehe hdBgTrouble). Im Vordergrund ist derselbe Übergang
+ * unauffällig — auf dem Gerät wie im Code —, und ohne die dritte Bedingung
+ * würde jeder saubere Titelwechsel bei ausgeschaltetem Bildschirm einen
+ * Neuaufbau nach sich ziehen, den niemand braucht (Gerätelog vom 05.09.: der
+ * Graph hat sich dort nach dem Bypass von selbst wieder gefangen).
  */
-function hdSuspectOnBypass(wasEngaged, visibility) {
-  return wasEngaged === true && visibility !== 'visible';
+function hdSuspectOnBypass(wasEngaged, visibility, sawTrouble) {
+  return wasEngaged === true && visibility !== 'visible' && sawTrouble === true;
 }
 
 function markAudioGraphSuspect(reason) {
   if (audioGraphSuspect) return;
   audioGraphSuspect = reason;
-  dlog('audio:suspect', { reason, playing: Audio.playing, mode: settings.slowMode, rate: Audio.rate });
+  dlog('audio:suspect', {
+    reason, playing: Audio.playing, mode: settings.slowMode, rate: Audio.rate,
+    worstPct: hdBgTrouble.worstPct,
+  });
 }
 
 /**
@@ -4053,6 +4173,23 @@ async function audioPlay() {
   lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
   updateHdLoadVisibility();
+}
+
+/**
+ * Abspielen auf Wunsch des Nutzers. Läuft gerade ein Neuaufbau des Graphen
+ * (z.B. die Reparatur nach dem Pausieren, siehe repairSuspectAudioGraph),
+ * steht Audio.ready für ein paar hundert Millisekunden auf false — audioPlay()
+ * würde in diesem Fenster wortlos nichts tun und der Knopf sähe kaputt aus.
+ *
+ * Das Warten gehört ausdrücklich HIERHER und nicht in audioPlay(): der
+ * Neuaufbau selbst ruft am Ende audioPlay() auf, um die Wiedergabe
+ * fortzusetzen — wartete die dort auf audioRebuildInFlight, wartete sie auf
+ * sich selbst und der Neuaufbau käme nie zum Ende (im Browsertest als
+ * hängende Wiedergabe aufgefallen).
+ */
+async function audioPlayFromControls() {
+  if (audioRebuildInFlight) await audioRebuildInFlight.catch(() => {});
+  await audioPlay();
 }
 
 function audioPause() {
@@ -4288,7 +4425,7 @@ async function hdApplyTransition(reason, opts = {}) {
     // Hintergrund hinterlassen haben kann, nicht (siehe den Abschnitt über
     // audioGraphSuspect). Nur markieren, nicht reparieren: der Neuaufbau
     // gehört in den Vordergrund.
-    if (hdSuspectOnBypass(wasEngaged, document.visibilityState)) {
+    if (hdSuspectOnBypass(wasEngaged, document.visibilityState, hdBgTrouble.starved)) {
       markAudioGraphSuspect(`hd-bypass-${reason}`);
     }
     renderHdSemitones(null);
@@ -4561,11 +4698,15 @@ document.addEventListener('visibilitychange', () => {
   });
   if (document.visibilityState !== 'visible') {
     audioHiddenSince = performance.now();
+    // Frischer Abschnitt: was im vorigen Hintergrund gemessen wurde, ist
+    // beim Zurückkehren längst gemeldet und ausgewertet worden.
+    hdResetBackgroundHealth();
     return;
   }
   const backgroundMs = audioHiddenSince ? performance.now() - audioHiddenSince : 0;
   audioHiddenSince = null;
   updateWakeLock();
+  hdMaybeWarnStarve();
 
   if (backgroundMs >= AUDIO_LONG_BACKGROUND_MS && !Audio.playing && Audio.ctx) {
     dlog('audio:rebuild:trigger', { reason: 'long-background', backgroundMs: Math.round(backgroundMs) });
@@ -6963,8 +7104,15 @@ $('#btn-play').addEventListener('click', async () => {
   if (Audio.playing) {
     audioPause();
     setPlayIcon(false);
+    // Von Hand pausiert: die Wiedergabe steht, ein fälliger Neuaufbau (siehe
+    // audioGraphSuspect) ist hier unhörbar. Ohne diesen Aufruf blieb der
+    // Verdacht im häufigsten Ablauf überhaupt stehen — im Gerätelog vom
+    // 05.09. war das genau der Fall: markiert, aber nie eingelöst. Nicht
+    // abgewartet, das Symbol soll sofort umspringen; audioPlayFromControls()
+    // wartet von sich aus, falls gleich wieder gestartet wird.
+    repairSuspectAudioGraph('pause').catch((err) => dlog('audio:repair', { name: err?.name }));
   } else {
-    await audioPlay();
+    await audioPlayFromControls();
     setPlayIcon(true);
   }
   if (navigator.mediaSession) {
@@ -10195,7 +10343,7 @@ function updateMediaSession() {
     try { ms.setActionHandler(action, handler); } catch { /* nicht unterstützt */ }
   };
 
-  set('play', async () => { await audioPlay(); setPlayIcon(true); ms.playbackState = 'playing'; });
+  set('play', async () => { await audioPlayFromControls(); setPlayIcon(true); ms.playbackState = 'playing'; });
   set('pause', () => { audioPause(); setPlayIcon(false); ms.playbackState = 'paused'; });
   set('seekbackward', (d) => updateSeekUI(audioSeek(Audio.position - (d?.seekOffset || 10))));
   set('seekforward', (d) => updateSeekUI(audioSeek(Audio.position + (d?.seekOffset || 10))));
@@ -12984,18 +13132,65 @@ async function runAsyncSelfTests() {
   // Neuaufbau nach sich ziehen.
   {
     const table = [
-      [true, 'hidden', true],
-      [true, 'visible', false],
-      [false, 'hidden', false],
-      [false, 'visible', false],
+      [true, 'hidden', true, true],
+      [true, 'hidden', false, false],
+      [true, 'visible', true, false],
+      [false, 'hidden', true, false],
+      [false, 'visible', false, false],
     ];
-    for (const [engaged, visibility, expected] of table) {
-      if (hdSuspectOnBypass(engaged, visibility) !== expected) {
-        failed.push(`hdSuspectOnBypass(${engaged}, '${visibility}') müsste ${expected} liefern`);
+    for (const [engaged, visibility, trouble, expected] of table) {
+      if (hdSuspectOnBypass(engaged, visibility, trouble) !== expected) {
+        failed.push(`hdSuspectOnBypass(${engaged}, '${visibility}', ${trouble}) müsste ${expected} liefern`);
       }
     }
     if (await repairSuspectAudioGraph('selftest') !== false) {
       failed.push('repairSuspectAudioGraph() baut ohne Verdacht neu auf');
+    }
+  }
+
+  // Die Messreihe aus dem Gerätelog vom 05.09. (HD 0,6×, Bildschirm aus):
+  // 100, 93, 100, 84, 24, 23 — erst der zweite Wert unter der Schwelle gilt
+  // als Hunger, der einzelne Einbruch auf 84 nicht, und ein guter Wert
+  // dazwischen setzt den Zähler zurück.
+  {
+    let state = { worstPct: null, lowTicks: 0, starved: false };
+    const seen = [];
+    for (const pct of [100, 93, 100, 84, 24, 23]) {
+      const step = hdStarveStep(state, pct);
+      state = step.next;
+      if (step.becameStarved) seen.push(pct);
+    }
+    if (seen.length !== 1 || seen[0] !== 23) {
+      failed.push(`hdStarveStep() müsste genau beim zweiten Wert unter ${HD_STARVE_PCT} % anschlagen, war [${seen}]`);
+    }
+    if (state.worstPct !== 23) failed.push(`hdStarveStep() merkt sich den schlechtesten Wert nicht (war ${state.worstPct})`);
+
+    // Ein einzelner Einbruch, danach wieder sauber: kein Hunger.
+    let quiet = { worstPct: null, lowTicks: 0, starved: false };
+    for (const pct of [100, 60, 100, 60, 100]) quiet = hdStarveStep(quiet, pct).next;
+    if (quiet.starved) failed.push('hdStarveStep() meldet Hunger bei einzelnen Einbrüchen');
+  }
+
+  // Der Puffer-Vorlauf trennt im Log den Dekoder vom Renderthread — er muss
+  // den Bereich um die aktuelle Position treffen und darf an kaputten oder
+  // leeren Angaben nicht scheitern.
+  {
+    const ranges = (list) => ({
+      length: list.length,
+      start: (i) => list[i][0],
+      end: (i) => list[i][1],
+    });
+    const cases = [
+      [{ currentTime: 5, buffered: ranges([[0, 12]]) }, 7],
+      [{ currentTime: 5, buffered: ranges([[0, 1], [4, 9.5]]) }, 4.5],
+      [{ currentTime: 5, buffered: ranges([[0, 1]]) }, 0],
+      [{ currentTime: 5, buffered: ranges([]) }, 0],
+      [{ currentTime: NaN, buffered: ranges([[0, 12]]) }, 0],
+      [null, 0],
+    ];
+    for (const [fake, expected] of cases) {
+      const got = bufferedAheadSeconds(fake);
+      if (got !== expected) failed.push(`bufferedAheadSeconds() müsste ${expected} liefern, war ${got}`);
     }
   }
 

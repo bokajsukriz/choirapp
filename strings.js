@@ -241,6 +241,8 @@ export const STRINGS = {
     'songs.createPlaceholderHint': 'Noch nicht importiertes Lied anlegen — für Liedtext, Notizen oder eine Setliste.',
     'songs.placeholderBadge': 'noch keine Aufnahme',
     'player.placeholderHint': 'Noch keine Aufnahme importiert. Liedtext und Notizen kannst du trotzdem schon speichern — sie verbinden sich automatisch beim nächsten Import.',
+    'player.hdStarve': 'HD kam im Hintergrund nicht mit: bei ausgeschaltetem Bildschirm drosselt dieses Gerät die Rechenleistung, und der HD-Zeitdehner schafft die Verlangsamung dann nicht mehr in Echtzeit. Daher das Stottern.',
+    'player.hdStarveAction': 'Auf Standard umstellen',
 
     'lightshow.backAria': 'Zurück zu den Einstellungen',
     'lightshow.noVoiceHint': 'Noch keine Stimme gewählt — die Show läuft vorerst im Sopran-Takt und Pink. Ändern unter <strong>Einstellungen → Meine Stimmen</strong>, oder hier nur für die Show festlegen:',
@@ -501,6 +503,8 @@ export const STRINGS = {
     'songs.createPlaceholderHint': 'Create a song that hasn\'t been imported yet — for lyrics, notes or a setlist.',
     'songs.placeholderBadge': 'no recording yet',
     'player.placeholderHint': 'No recording imported yet. You can still save lyrics and notes now — they connect automatically on the next import.',
+    'player.hdStarve': 'HD could not keep up in the background: with the screen off this device throttles its CPU, and the HD time-stretcher then misses real time. That is the stuttering you heard.',
+    'player.hdStarveAction': 'Switch to Standard',
 
     'lightshow.backAria': 'Back to settings',
     'lightshow.noVoiceHint': 'No voice part chosen yet — the show will run on soprano timing in pink for now. Change it under <strong>Settings → My voices</strong>, or set it here just for the show:',
@@ -761,6 +765,8 @@ export const STRINGS = {
     'songs.createPlaceholderHint': 'Utwórz jeszcze niezaimportowany utwór — na tekst, notatki lub do setlisty.',
     'songs.placeholderBadge': 'jeszcze bez nagrania',
     'player.placeholderHint': 'Nagranie nie zostało jeszcze zaimportowane. Możesz już teraz zapisać tekst i notatki — połączą się automatycznie przy kolejnym imporcie.',
+    'player.hdStarve': 'HD nie nadążał w tle: przy wyłączonym ekranie urządzenie ogranicza moc obliczeniową i rozciąganie czasu w trybie HD przestaje działać w czasie rzeczywistym. Stąd przerywanie dźwięku.',
+    'player.hdStarveAction': 'Przełącz na Standard',
 
     'lightshow.backAria': 'Wróć do ustawień',
     'lightshow.noVoiceHint': 'Nie wybrano jeszcze głosu — pokaz na razie działa w tempie sopranu, w kolorze różowym. Zmień to w <strong>Ustawienia → Moje głosy</strong>, albo ustaw tylko dla pokazu tutaj:',

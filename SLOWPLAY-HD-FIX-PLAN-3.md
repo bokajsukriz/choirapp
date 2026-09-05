@@ -128,5 +128,93 @@ Mit eingeschaltetem Diagnose-Log:
 5. Bleibt es trotz Neuaufbau bei knackendem Ton, liegt es nicht am
    Element-Pfad; dann ist der Echtzeitwert aus `audio:health` die nächste Spur.
 
-`SW_VERSION` in `sw.js` ist auf `v136` erhöht, sonst kommt die Änderung nicht
+`SW_VERSION` in `sw.js` ist auf `v143` erhöht, sonst kommt die Änderung nicht
 aufs Gerät.
+
+---
+
+# Nachtrag: das Gerätelog vom 05.09. (Pixel, Android 10, Chrome 152)
+
+*(Der Code liegt seit AP-C/AP-D nicht mehr inline in `index.html`, sondern in
+`app.js`, die Texte in `strings.js` — die Stellenangaben unten gelten
+sinngemäß dort.)*
+
+Erster Lauf mit dieser Änderung, Diagnose-Log an. Er bestätigt einen Teil und
+korrigiert einen anderen.
+
+## Was er bestätigt
+
+Die Markierung greift genau wie vorgesehen:
+
+```
++107705  audio:ended  pos=233
++107762  hd:teardown  reason=rate
++107762  audio:suspect  reason=hd-bypass-rate playing=false mode=hd rate=1
+```
+
+## Was er korrigiert
+
+**Der Health-Monitor ist nicht blind — er sieht den Hintergrund-Einbruch sehr
+wohl.** Drei Sekunden nach dem Bildschirm-Aus, HD noch bei 0,6× eingehängt:
+
+```
++104285  realtimePct=100
++105286  realtimePct=84
++106285  realtimePct=24
++107285  realtimePct=23
+```
+
+Zum Vergleich derselbe Wert im Vordergrund, gleiche Einstellung: 92–100 %.
+Das Gerät drosselt bei ausgeschaltetem Bildschirm, und der Zeitdehner schafft
+0,6× dann nicht mehr in Echtzeit. Der Satz „der Renderthread läuft weiter
+rund" aus dem Abschnitt oben gilt für **diesen** Abschnitt also nicht.
+
+**Aber:** der Nutzer hört das Stottern nach eigener Beobachtung erst im
+*nächsten* Titel (bei 1,0×, HD abgebaut), für die ersten 5–10 Sekunden, danach
+fängt es sich. Und genau dort meldet der Monitor nach einem einzelnen
+Ausreißer (13 %) durchgehend **100 %**. Zwei verschiedene Ursachen also im
+selben Log:
+
+| Abschnitt | Echtzeitwert | Ursache |
+|---|---|---|
+| Bildschirm aus, HD 0,6× | 84 → 24 → 23 % | Renderthread verhungert, Zeitdehner zu teuer |
+| erste Sekunden des nächsten Titels, 1,0× | 100 % | **nicht** der Renderthread — Element/Dekoder |
+
+Der zweite Fall ist der eigentlich gemeldete, und für ihn fehlte im Log jede
+Spur: `audio:health` misst `ctx.currentTime`, und die Web-Audio-Kette kann
+tadellos laufen, während das frisch geladene `<audio>`-Element im
+gedrosselten Hintergrund noch nicht genug Daten hat. Der Verdacht, dass der
+Element-Pfad dauerhaft beschädigt bleibt, trägt hier ebenfalls nicht: nach
+5–10 Sekunden war der Ton wieder sauber.
+
+## Was daraus folgt
+
+1. **Diagnose vor Therapie.** `waiting`, `stalled` und `suspend` des Elements
+   werden jetzt protokolliert, dazu der Puffer-Vorlauf (`aheadS`) in
+   `audio:pos`. Damit sagt das nächste Log eindeutig, welcher der beiden Pfade
+   stottert, statt dass wir es aus Symptomen raten.
+2. **Der Verdacht wird enger.** `hdSuspectOnBypass()` verlangt jetzt zusätzlich,
+   dass der Health-Monitor in diesem Hintergrund-Abschnitt echte Aussetzer
+   gesehen hat (`hdBgTrouble`). Ein sauberer Titelwechsel bei ausgeschaltetem
+   Bildschirm zieht damit keinen Neuaufbau mehr nach sich.
+3. **Die Reparatur wird erreichbar.** Im Log wurde markiert, aber nie
+   eingelöst: der Nutzer kam bei laufender Wiedergabe zurück und pausierte
+   danach — und Pausieren war kein Auslöser. Ist es jetzt. Damit der
+   Abspielknopf während eines laufenden Neuaufbaus nicht tot wirkt, warten die
+   Bedienelemente über `audioPlayFromControls()` darauf. Bewusst dort und
+   **nicht** in `audioPlay()`: der Neuaufbau ruft `audioPlay()` selbst auf, die
+   Wache dort wartete auf sich selbst (im Browsertest als hängende Wiedergabe
+   aufgefallen, siehe Selbsttest-Abschnitt oben).
+4. **Kein automatischer Rückfall auf Standard.** Entscheidung des Betreibers:
+   die App meldet den Hunger beim Zurückkehren einmal je Sitzung
+   (`hd:starve` → Banner mit dem gemessenen Wert und dem Knopf „Auf Standard
+   umstellen") und stellt den Klang nicht ungefragt um.
+
+## Offen
+
+Warum die ersten Sekunden eines im Hintergrund frisch geladenen Titels
+stottern, ist noch nicht bewiesen. Naheliegend ist, dass Laden und Dekodieren
+der neuen Spur (IndexedDB-Blob, `el.load()`, erste Pufferfüllung) im
+gedrosselten Hintergrund zu spät kommen — dann wäre ein Vorladen des nächsten
+Titels vor dem Songende die Antwort, nicht ein Neuaufbau des Graphen. Das
+nächste Gerätelog mit `audio:waiting`/`aheadS` entscheidet das.
