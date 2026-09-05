@@ -128,12 +128,16 @@ Mit eingeschaltetem Diagnose-Log:
 5. Bleibt es trotz Neuaufbau bei knackendem Ton, liegt es nicht am
    Element-Pfad; dann ist der Echtzeitwert aus `audio:health` die nächste Spur.
 
-`SW_VERSION` in `sw.js` ist auf `v137` erhöht, sonst kommt die Änderung nicht
+`SW_VERSION` in `sw.js` ist auf `v143` erhöht, sonst kommt die Änderung nicht
 aufs Gerät.
 
 ---
 
 # Nachtrag: das Gerätelog vom 05.09. (Pixel, Android 10, Chrome 152)
+
+*(Der Code liegt seit AP-C/AP-D nicht mehr inline in `index.html`, sondern in
+`app.js`, die Texte in `strings.js` — die Stellenangaben unten gelten
+sinngemäß dort.)*
 
 Erster Lauf mit dieser Änderung, Diagnose-Log an. Er bestätigt einen Teil und
 korrigiert einen anderen.
