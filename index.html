@@ -8851,8 +8851,17 @@ let audioRebuildInFlight = null;
 async function rebuildAudioGraph(reason) {
   if (audioRebuildInFlight) { await audioRebuildInFlight; return true; }
   if (!Audio.ready) return false;
-  if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
-    dlog('audio:rebuild', { reason, skipped: 'recording' });
+  // recStarting deckt das Fenster ab, in dem die Aufnahme zwar angefordert,
+  // recMediaRecorder aber noch nicht zugewiesen ist: dazwischen liegen zwei
+  // awaits (getUserMedia mit Berechtigungsdialog, preferWideBandMic), die auf
+  // dem Handy Sekunden dauern können. Ohne diese Prüfung liefe genau dort ein
+  // Neuaufbau durch — und der Berechtigungsdialog selbst kann die Seite
+  // unsichtbar machen, sodass beim Zurückkehren der 'long-background'-Hebel
+  // (siehe visibilitychange) einen Neuaufbau auslöst, während startLevelMeter()
+  // gleich danach Audio.ctx greift. Der Pegelmesser hinge dann an einem
+  // Kontext, den der Neuaufbau gerade schließt.
+  if (recStarting || (recMediaRecorder && recMediaRecorder.state !== 'inactive')) {
+    dlog('audio:rebuild', { reason, skipped: recStarting ? 'rec-starting' : 'recording' });
     return false;
   }
   audioRebuildInFlight = (async () => {
@@ -17932,6 +17941,48 @@ async function runAsyncSelfTests() {
       Audio.hdNode = savedNode;
       Audio.rate = savedRate;
       settings.slowMode = savedMode;
+    }
+  }
+
+  // Invariante: zwischen „REC angefordert" und „Aufnahme läuft oder ist
+  // gescheitert" darf kein Neuaufbau des Audiographen dazwischenfahren.
+  // Geprüft werden ausschließlich die Ablehnungspfade — ein tatsächlicher
+  // Neuaufbau würde im Selbsttest den laufenden Graphen abreißen.
+  {
+    const savedStarting = recStarting;
+    const savedRecorder = recMediaRecorder;
+    const savedReady = Audio.ready;
+    try {
+      Audio.ready = true;
+
+      // Ein greifender Riegel liefert false zurück, ohne irgendetwas
+      // anzufassen. Läuft der Neuaufbau stattdessen wirklich los, scheitert er
+      // hier am fehlenden Audio.el — das wird als Verletzung derselben
+      // Invariante gewertet, damit der Selbsttest eine klare Meldung ausgibt
+      // statt mitten im Lauf abzubrechen.
+      const refuses = async (label) => {
+        try {
+          return await rebuildAudioGraph(label) === false;
+        } catch {
+          return false;
+        }
+      };
+
+      recStarting = true;
+      recMediaRecorder = null;
+      if (!await refuses('selftest-rec-starting')) {
+        failed.push('rebuildAudioGraph() läuft während recStarting (Mikrofon-Anforderung) statt abzulehnen');
+      }
+
+      recStarting = false;
+      recMediaRecorder = { state: 'recording' };
+      if (!await refuses('selftest-rec-active')) {
+        failed.push('rebuildAudioGraph() läuft während laufender Aufnahme statt abzulehnen');
+      }
+    } finally {
+      recStarting = savedStarting;
+      recMediaRecorder = savedRecorder;
+      Audio.ready = savedReady;
     }
   }
 
