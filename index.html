@@ -17996,6 +17996,145 @@ async function runAsyncSelfTests() {
 }
 
 /* ==========================================================================
+   AP-A — Test-Adapter (ARCHITEKTUR-PLAN.md)
+
+   Erweitert den Konsolen-Zugang window.chorApp um einen eigenen, benannten
+   Unterbereich für Playwright-getriebene Tests von außen — ohne dafür
+   index.html kopieren und Hooks hineinpatchen zu müssen (das bisherige
+   Ritual aus mehreren Umbau-Sitzungen). Zwei Dinge sind hier unerreichbar,
+   solange nichts davon exportiert: die reinen Closure-Variablen des
+   Audio-Lebenszyklus (recStarting, hdTransitionGeneration, …) und die
+   Funktionen selbst (hdApplyTransition() usw.) — window.chorApp.audio ist
+   nur eine Referenz auf das Audio-Objekt, keine dieser Variablen.
+
+   Regeln (siehe ARCHITEKTUR-PLAN.md AP-A):
+   - Snapshots statt roher Mutables: die *Snapshot-Funktionen liefern
+     Kopien, keine Referenzen auf die lebenden Objekte.
+   - Aufräumprotokoll: jede testWith*-Funktion stellt den vorherigen Zustand
+     in einem finally wieder her, auch wenn fn() wirft — ein abgebrochener
+     Test darf keinen veränderten Singleton-Zustand hinterlassen.
+   ========================================================================== */
+
+function testAudioSnapshot() {
+  return {
+    rate: Audio.rate,
+    playing: Audio.playing,
+    ready: Audio.ready,
+    currentKey: Audio.currentKey,
+    hasEl: !!Audio.el,
+    hasCtx: !!Audio.ctx,
+    ctxState: Audio.ctx?.state ?? null,
+    hasHdNode: !!Audio.hdNode,
+    hdLatency: Audio.hdLatency,
+  };
+}
+
+function testLifecycleSnapshot() {
+  return {
+    hdTransitionGeneration,
+    hdWasEngaged,
+    hdInitAttempts,
+    rebuildInFlight: !!audioRebuildInFlight,
+    recStarting,
+    recState: recMediaRecorder?.state ?? null,
+    hasLevelCtx: !!levelCtx,
+    levelCtxOwned,
+    audioReturnedFromBackgroundAt,
+  };
+}
+
+/** Führt fn() (sync oder async) aus und stellt danach garantiert den vorher
+ *  gemerkten Zustand wieder her — auch wenn fn() wirft. setup() trägt die
+ *  Testwerte ein und liefert dabei den alten Zustand zurück; restore()
+ *  bekommt genau diesen zurück. */
+async function testWithRestore(setup, restore, fn) {
+  const saved = setup();
+  try {
+    return await fn();
+  } finally {
+    restore(saved);
+  }
+}
+
+/** Ersetzt ausgewählte Felder von Audio für die Dauer von fn(). */
+function testWithAudioPatch(patch, fn) {
+  return testWithRestore(
+    () => {
+      const saved = {};
+      for (const k of Object.keys(patch)) saved[k] = Audio[k];
+      Object.assign(Audio, patch);
+      return saved;
+    },
+    (saved) => Object.assign(Audio, saved),
+    fn,
+  );
+}
+
+/** Ersetzt recStarting/recMediaRecorder für die Dauer von fn() — die einzige
+ *  Möglichkeit von außen, den REC-Riegel in rebuildAudioGraph() zu prüfen,
+ *  da beides reine Closure-Variablen sind, keine Objektfelder. */
+function testWithRecLock(recStartingVal, recMediaRecorderVal, fn) {
+  return testWithRestore(
+    () => ({ recStarting, recMediaRecorder }),
+    (saved) => { recStarting = saved.recStarting; recMediaRecorder = saved.recMediaRecorder; },
+    () => {
+      recStarting = recStartingVal;
+      recMediaRecorder = recMediaRecorderVal;
+      return fn();
+    },
+  );
+}
+
+/** Ersetzt eine globale Eigenschaft von window für die Dauer von fn() — z.B.
+ *  window.SignalsmithStretch, um hdCreateNode() ohne echtes AudioWorklet zu
+ *  prüfen (ensureStretchLib() lädt gar nicht erst nach, sobald der Name
+ *  schon eine Funktion ist). */
+function testWithGlobal(name, value, fn) {
+  return testWithRestore(
+    () => window[name],
+    (saved) => { window[name] = saved; },
+    () => { window[name] = value; return fn(); },
+  );
+}
+
+/** Zeitdehner-Knoten-Doppelgänger mit Aufrufzählern, für deterministische
+ *  Tests ohne echtes AudioWorklet. */
+function testMakeFakeHdNode(overrides = {}) {
+  const calls = { disconnect: 0, connect: 0, reset: 0, configure: 0, schedule: 0, terminate: 0 };
+  const node = {
+    calls,
+    connectedTo: null,
+    disconnect() { calls.disconnect++; node.connectedTo = null; },
+    connect(dst) { calls.connect++; node.connectedTo = dst; },
+    reset: overrides.reset || (async () => { calls.reset++; return true; }),
+    configure: overrides.configure || (async () => { calls.configure++; }),
+    schedule: overrides.schedule || (async () => { calls.schedule++; }),
+    terminate: overrides.terminate || (async () => { calls.terminate++; }),
+    latency: overrides.latency || (async () => 0),
+    start: async () => {},
+    port: { close() {} },
+  };
+  return node;
+}
+
+function testMakeFakeElement() {
+  return { playbackRate: 1, preservesPitch: false, webkitPreservesPitch: false, mozPreservesPitch: false };
+}
+
+function testMakeFakeSource() {
+  const src = { connectedTo: null, connect(dst) { src.connectedTo = dst; }, disconnect() { src.connectedTo = null; } };
+  return src;
+}
+
+/** Kontrollierbares Promise, um RPC-Wartezeiten (schedule()/reset()) in
+ *  Tests gezielt offenzuhalten und erst zum gewünschten Zeitpunkt aufzulösen. */
+function testMakeDeferred() {
+  let resolve;
+  const promise = new Promise((res) => { resolve = res; });
+  return { promise, resolve };
+}
+
+/* ==========================================================================
    BOOT — Start
    ========================================================================== */
 
@@ -18008,6 +18147,29 @@ window.chorApp = {
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
   lightshowFrame,
+  // AP-A (ARCHITEKTUR-PLAN.md): Testadapter für Playwright-getriebene Tests
+  // von außen, siehe Kommentar dort. Eigener Unterbereich statt die Felder
+  // oben aufzublähen.
+  test: {
+    audioSnapshot: testAudioSnapshot,
+    lifecycleSnapshot: testLifecycleSnapshot,
+    withAudioPatch: testWithAudioPatch,
+    withRecLock: testWithRecLock,
+    withGlobal: testWithGlobal,
+    makeFakeHdNode: testMakeFakeHdNode,
+    makeFakeElement: testMakeFakeElement,
+    makeFakeSource: testMakeFakeSource,
+    makeDeferred: testMakeDeferred,
+    // Bisher von außen unerreichbare Funktionen des Audiopfads, für AP-B.
+    rebuildAudioGraph,
+    hdApplyTransition,
+    hdTeardown,
+    hdCreateNode,
+    ensureHdNode,
+    audioSetRate,
+    hdEngaged,
+    hdReset,
+  },
 };
 
 /* ==========================================================================
