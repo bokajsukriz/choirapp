@@ -10,7 +10,7 @@
 
 // Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
 // Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v135';
+const SW_VERSION = 'v144';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -25,13 +25,21 @@ const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 const SHELL_REQUIRED = [
   './',
   './index.html',
+  './app.js',
+  './lightshow.js',
+  './strings.js',
+  './zip-reader.js',
   './groove-lab.js',
   './signalsmith-stretch.js',
 ];
 // Kürteil: fehlt eine davon, bleibt die App trotzdem offlinefähig — der
 // MP3-Export bzw. eine Icon-Variante fehlt dann einmalig, bis das nächste
-// Update sie nachträgt.
+// Update sie nachträgt. boot-guard.js gehört hierher, nicht in den
+// Pflichtteil: fehlt es, bleibt bei einem gescheiterten app.js-Fetch nur die
+// Fehlermeldung aus (siehe AP-C in ARCHITEKTUR-PLAN.md) — nicht schön, aber
+// kein Totalausfall wie bei einer der Dateien oben.
 const SHELL_OPTIONAL = [
+  './boot-guard.js',
   './lame.min.js',
   './manifest.json',
   './icon-192.png',
@@ -114,11 +122,15 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // die App lädt ohnehin nichts Fremdes
 
   // Seitenaufrufe immer aus der gecachten index.html bedienen — so startet die
-  // App auch offline, egal über welchen Einstieg sie geöffnet wurde.
+  // App auch offline, egal über welchen Einstieg sie geöffnet wurde. Mit
+  // cacheName statt eines globalen caches.match(): ohne das würde über ALLE
+  // Caches gesucht, nicht nur CACHE_NAME — bei einer einzigen Datei folgenlos,
+  // aber seit app.js dazugehört (AP-C) müssen index.html und app.js aus
+  // demselben Cache-Stand kommen, sonst droht Versionsversatz zwischen beiden.
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const cached = await caches.match('./index.html', { ignoreSearch: true });
+        const cached = await caches.match('./index.html', { cacheName: CACHE_NAME, ignoreSearch: true });
         if (cached) return cached;
         try {
           return await fetch(req);
@@ -137,9 +149,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Übrige Shell-Dateien: erst Cache, dann Netz (und Antwort nachtragen).
+  // cacheName aus demselben Grund wie oben bei index.html.
   event.respondWith(
     (async () => {
-      const cached = await caches.match(req, { ignoreSearch: true });
+      const cached = await caches.match(req, { cacheName: CACHE_NAME, ignoreSearch: true });
       if (cached) return cached;
       try {
         const res = await fetch(req);
