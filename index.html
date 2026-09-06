@@ -1429,6 +1429,15 @@ input[type="checkbox"] {
 .section-divider:first-of-type { margin-top: 0; }
 .search-privacy-hint { padding-left: 42px; }
 
+/* In aufgeklappten Einstellungskarten beginnt jede weitere Unterüberschrift
+   nach einer echten Leerzeile. So kleben etwa Exportieren, Songs verwalten,
+   Löschen und Speicher optisch nicht mehr am vorherigen Bedienblock. */
+#view-settings .card-body > * + .section-title:not(.section-divider) {
+  margin-top: 34px;
+}
+
+#btn-song-search:disabled { opacity: .4; pointer-events: none; }
+
 .spinner {
   width: 22px;
   height: 22px;

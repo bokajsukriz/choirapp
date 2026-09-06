@@ -2632,6 +2632,13 @@ function songSearchServiceById(id) {
   return SONG_SEARCH_SERVICES.find((s) => s.id === id) || SONG_SEARCH_SERVICES[0];
 }
 
+/** Aktuelle Suchanfrage aus einem Song; separat testbar gegen veraltete Titel. */
+function songSearchQuery(song) {
+  const title = String(song?.title || '').trim();
+  const artist = String(song?.artist || '').trim();
+  return [artist, title].filter(Boolean).join(' ');
+}
+
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
 // iPadOS meldet sich seit Version 13 als "MacIntel"; die Touch-Punkte
 // verraten trotzdem, dass ein iPad davorsitzt.
@@ -2756,8 +2763,6 @@ function openAppOrWeb({ web, iosApp, androidApp, androidPackage }) {
  *  Hinweis selbst kommt danach nicht wieder. */
 async function openSongSearch(serviceId) {
   if (!playerSong) return;
-  const query = (playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title || '').trim();
-  if (!query) return;
   let service = songSearchServiceById(serviceId);
 
   if (!settings.songSearchNoticeShown) {
@@ -2784,6 +2789,13 @@ async function openSongSearch(serviceId) {
     await saveSettings({ songSearchNoticeShown: true });
     if (!ok) return;
   }
+
+  // Den Titel erst unmittelbar vor dem Öffnen lesen. Während des einmaligen
+  // Hinweises oder der Dienstauswahl kann bereits zum nächsten Song gewechselt
+  // worden sein; eine vorher gebaute Query würde dann noch den alten enthalten.
+  const song = playerSong;
+  const query = songSearchQuery(song);
+  if (!query) return;
 
   openAppOrWeb({
     web: service.web(query),
@@ -7082,6 +7094,10 @@ let openPlayerToken = 0;
 
 async function openPlayer(songId) {
   const token = ++openPlayerToken;
+  // Während der neue Datensatz noch aus IndexedDB kommt, gehört playerSong
+  // weiterhin zum vorigen Titel. Die Lupe kurz sperren, statt eine Suche mit
+  // diesem veralteten Zustand zuzulassen.
+  $('#btn-song-search').disabled = true;
   let song;
   try {
     song = await DB.metaGet(`song:${songId}`);
@@ -7125,6 +7141,7 @@ async function openPlayer(songId) {
   audioPreview = null;
 
   playerSong = song;
+  $('#btn-song-search').disabled = false;
   // Der Player ist ein dauerhafter Reiter (keine Vollbild-Ansicht mehr) —
   // sichtbar bleibt er über showTab(); hier wird nur zwischen Leerzustand
   // und geladenem Song umgeschaltet.
@@ -7495,6 +7512,7 @@ function closePlayer() {
   playerSong = null;
   $('#player-title').textContent = 'Kein Song ausgewählt';
   $('#btn-song-search').hidden = true;
+  $('#btn-song-search').disabled = true;
   $('#player-empty').hidden = false;
   $('#player-loaded').hidden = true;
   $('#player-foot').hidden = true;
@@ -13060,6 +13078,18 @@ function runSelfTests() {
   // Zähler statt Handzählung — wächst automatisch mit jeder neuen Prüfung
   // unten mit, statt eine Summe von Hand nachpflegen zu müssen.
   let checks = 0;
+  checks++;
+  if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
+    failed.push('songSearchQuery müsste Interpret und aktuellen Titel verbinden');
+  }
+  checks++;
+  if (songSearchQuery({ title: '  Nur Titel  ' }) !== 'Nur Titel') {
+    failed.push('songSearchQuery müsste einen Titel ohne Interpret trimmen');
+  }
+  checks++;
+  if (songSearchQuery({ title: '  Aktuell  ', artist: '  Chor  ' }) !== 'Chor Aktuell') {
+    failed.push('songSearchQuery müsste Interpret und Titel einzeln trimmen');
+  }
   for (const [file, folder, expected] of voiceCases) {
     checks++;
     const got = detectVoice(file, folder).voice;
