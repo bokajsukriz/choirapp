@@ -319,6 +319,15 @@ export const STRINGS = {
     'lightshow.camcal.statusDone': 'Fertig — Handversatz automatisch auf {value} gesetzt.',
     'lightshow.camcal.errorPermission': 'Kein Kamerazugriff — Berechtigung erteilen oder den Handversatz oben von Hand einstellen.',
     'lightshow.camcal.retryBtn': 'Erneut versuchen',
+
+    'lightshow.ntpcal.openBtn': 'Mit Internetzeit abgleichen',
+    'lightshow.ntpcal.dialogTitle': 'Mit Internetzeit abgleichen?',
+    'lightshow.ntpcal.dialogText': 'Dafür schickt die App eine einmalige Anfrage an worldtimeapi.org, um die aktuelle Uhrzeit abzufragen. Es werden keine weiteren Daten übertragen — nur diese eine Zeitabfrage.',
+    'lightshow.ntpcal.dialogOk': 'Abgleichen',
+    'lightshow.ntpcal.dialogCancel': 'Abbrechen',
+    'lightshow.ntpcal.statusChecking': 'Frage Zeitserver ab …',
+    'lightshow.ntpcal.statusDone': 'Fertig — Handversatz automatisch auf {value} gesetzt (Laufzeit {rtt}).',
+    'lightshow.ntpcal.statusError': 'Zeitserver nicht erreichbar — später erneut versuchen oder Kamera-Abgleich/Handeinstellung nutzen.',
   },
   en: {
     'nav.songs': 'Songs',
@@ -623,6 +632,15 @@ export const STRINGS = {
     'lightshow.camcal.statusDone': 'Done — manual offset automatically set to {value}.',
     'lightshow.camcal.errorPermission': 'No camera access — grant permission, or set the manual offset above by hand.',
     'lightshow.camcal.retryBtn': 'Try again',
+
+    'lightshow.ntpcal.openBtn': 'Sync with internet time',
+    'lightshow.ntpcal.dialogTitle': 'Sync with internet time?',
+    'lightshow.ntpcal.dialogText': 'This sends a one-off request to worldtimeapi.org to look up the current time. No other data is transmitted — just this one time lookup.',
+    'lightshow.ntpcal.dialogOk': 'Sync',
+    'lightshow.ntpcal.dialogCancel': 'Cancel',
+    'lightshow.ntpcal.statusChecking': 'Checking time server …',
+    'lightshow.ntpcal.statusDone': 'Done — manual offset automatically set to {value} (round-trip {rtt}).',
+    'lightshow.ntpcal.statusError': 'Time server unreachable — try again later, or use the camera calibration / manual offset instead.',
   },
   pl: {
     'nav.songs': 'Utwory',
@@ -927,5 +945,14 @@ export const STRINGS = {
     'lightshow.camcal.statusDone': 'Gotowe — ręczne przesunięcie ustawione automatycznie na {value}.',
     'lightshow.camcal.errorPermission': 'Brak dostępu do kamery — nadaj uprawnienie albo ustaw ręczne przesunięcie powyżej ręcznie.',
     'lightshow.camcal.retryBtn': 'Spróbuj ponownie',
+
+    'lightshow.ntpcal.openBtn': 'Synchronizuj z czasem internetowym',
+    'lightshow.ntpcal.dialogTitle': 'Zsynchronizować z czasem internetowym?',
+    'lightshow.ntpcal.dialogText': 'Wyśle to jednorazowe zapytanie do worldtimeapi.org o aktualny czas. Żadne inne dane nie zostaną przesłane — tylko to jedno zapytanie o czas.',
+    'lightshow.ntpcal.dialogOk': 'Synchronizuj',
+    'lightshow.ntpcal.dialogCancel': 'Anuluj',
+    'lightshow.ntpcal.statusChecking': 'Odpytuję serwer czasu …',
+    'lightshow.ntpcal.statusDone': 'Gotowe — ręczne przesunięcie ustawione automatycznie na {value} (czas odpowiedzi {rtt}).',
+    'lightshow.ntpcal.statusError': 'Serwer czasu niedostępny — spróbuj ponownie później albo użyj kalibracji kamerą / ręcznego przesunięcia.',
   },
 };

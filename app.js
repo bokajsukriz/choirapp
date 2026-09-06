@@ -6674,6 +6674,77 @@ $('#btn-lightshow-sync-reset').addEventListener('click', async () => {
 });
 
 /* ==========================================================================
+   INTERNETZEIT-ABGLEICH — zweite automatische Variante, ganz ohne zweites
+   Handy: Statt sich an einem anderen Gerät zu orientieren, fragt DIESES
+   Gerät einmalig bei einem externen Zeitserver nach der aktuellen Uhrzeit
+   und setzt den Handversatz auf die Differenz zur eigenen Uhr. Vergleichen
+   sich alle Geräte gegen dieselbe externe Uhr, landen sie automatisch auch
+   untereinander im Gleichklang — keine Kamera, kein zweites Handy nötig.
+
+   Das ist die einzige Stelle im ganzen Programm, die eine Netzwerkanfrage
+   auslöst, ohne dass der Nutzer aktiv etwas laden wollte (siehe README:
+   „die App selbst stellt keine automatischen Netzwerkanfragen"), deshalb
+   ausdrücklich nur nach Zustimmung im Dialog — analog zur externen
+   Liedsuche (openSongSearch), nur ohne den „nicht mehr fragen"-Teil: bei
+   einer Netzwerkanfrage soll jedes Mal klar sein, dass sie gerade passiert.
+   ========================================================================== */
+
+const LIGHTSHOW_NTP_URL = 'https://worldtimeapi.org/api/timezone/Etc/UTC';
+const LIGHTSHOW_NTP_TIMEOUT_MS = 6000;
+
+async function lightshowNtpSync() {
+  const ok = await confirmDialog({
+    title: t('lightshow.ntpcal.dialogTitle'),
+    text: t('lightshow.ntpcal.dialogText'),
+    okLabel: t('lightshow.ntpcal.dialogOk'),
+    cancelLabel: t('lightshow.ntpcal.dialogCancel'),
+  });
+  if (!ok) return;
+
+  const statusEl = $('#lightshow-ntpcal-status');
+  statusEl.hidden = false;
+  statusEl.textContent = t('lightshow.ntpcal.statusChecking');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LIGHTSHOW_NTP_TIMEOUT_MS);
+  try {
+    const t0 = performance.now();
+    const res = await fetch(LIGHTSHOW_NTP_URL, { signal: controller.signal, cache: 'no-store' });
+    const t1 = performance.now(); // Antwortkopf da, aber JSON noch nicht geparst
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const serverMs = Date.parse(data.datetime ?? data.utc_datetime ?? '');
+    if (!Number.isFinite(serverMs)) throw new Error('unparsable datetime');
+
+    // Laufzeit zur Hälfte der Antwortzeit zuschlagen (übliche Annahme: Hin-
+    // und Rückweg dauern etwa gleich lang) — die Serverzeit im JSON wurde ja
+    // schon bei t0..t1 geschrieben, nicht erst, als sie hier ankam. Beide
+    // Zeitpunkte auf denselben Moment (t1) beziehen, damit die JSON-Verarbeitung
+    // selbst nicht mit in die Differenz einfließt.
+    const rtt = t1 - t0;
+    const trueAtT1 = serverMs + rtt / 2;
+    const localAtT1 = Date.now() - (performance.now() - t1);
+    const next = Math.max(-5000, Math.min(5000, Math.round(trueAtT1 - localAtT1)));
+
+    await saveSettings({ lightshowOffsetMs: next });
+    lightshowRenderSyncOffset();
+    statusEl.textContent = t('lightshow.ntpcal.statusDone')
+      .replace('{value}', `${next} ms`)
+      .replace('{rtt}', `${Math.round(rtt)} ms`);
+  } catch {
+    // Netzwerkfehler, Timeout, unerwarteter Statuscode oder unlesbares Datum
+    // laufen alle hier zusammen — der Nutzer kann ohnehin nur "nochmal
+    // versuchen" oder auf Kamera/Handeinstellung ausweichen, eine genauere
+    // Fehlerunterscheidung würde daran nichts ändern.
+    statusEl.textContent = t('lightshow.ntpcal.statusError');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+$('#btn-lightshow-ntpcal').addEventListener('click', () => lightshowNtpSync());
+
+/* ==========================================================================
    KAMERA-ABGLEICH — automatische Variante des Sync-Prüfbilds oben. Statt
    den Handversatz nach Auge einzustellen, beobachtet die Kamera dieses
    Geräts das Sync-Prüfbild eines zweiten Handys: Der Sekundenblitz dort
