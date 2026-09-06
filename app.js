@@ -6672,6 +6672,201 @@ $('#btn-lightshow-sync-reset').addEventListener('click', async () => {
   lightshowRenderSyncOffset();
 });
 
+/* ==========================================================================
+   KAMERA-ABGLEICH — automatische Variante des Sync-Prüfbilds oben. Statt
+   den Handversatz nach Auge einzustellen, beobachtet die Kamera dieses
+   Geräts das Sync-Prüfbild eines zweiten Handys: Der Sekundenblitz dort
+   trifft auf DIESES Gerät zu einem bestimmten Zeitpunkt der eigenen Uhr
+   (plus aktuellem Handversatz) ein — dessen Phase innerhalb der Sekunde
+   ist genau der Fehler, den der Handversatz ausgleichen soll.
+
+   Nur ~30 Kamera-Bilder pro Sekunde verfügbar, daher liegt die Genauigkeit
+   bei grob einer Framedauer (~15–30 ms) — für den Feinabgleich, für den
+   der Handversatz gedacht ist, reicht das (siehe lightshow.sync.autoNote:
+   ab ~0,5 s Abweichung ohnehin lieber „Datum & Uhrzeit automatisch").
+   ========================================================================== */
+
+const LIGHTSHOW_CAMCAL_MIN_ABS_DELTA = 15;   // Mindest-Helligkeitssprung (0–255), sonst zu rauschanfällig
+const LIGHTSHOW_CAMCAL_REL_DELTA = 0.12;     // …oder relativ zum Hintergrund, je nachdem was größer ist
+const LIGHTSHOW_CAMCAL_COOLDOWN_MS = 400;    // ein Blitz dauert ~80ms; danach nicht sofort erneut auslösen
+const LIGHTSHOW_CAMCAL_NEEDED_PEAKS = 5;
+const LIGHTSHOW_CAMCAL_SAMPLE_SIZE = 16;     // Downscale-Canvas — Helligkeit reicht, keine Details nötig
+
+let lightshowCamCalOpen = false;
+let lightshowCamCalStream = null;
+let lightshowCamCalRaf = null;
+let lightshowCamCalCanvas = null;
+let lightshowCamCalCtx = null;
+let lightshowCamCalAnchorWall = 0;
+let lightshowCamCalAnchorPerf = 0;
+let lightshowCamCalPeaks = [];
+let lightshowCamCalBaseline = null;
+let lightshowCamCalCooldownUntil = 0;
+
+function lightshowCamCalSampleBrightness(video) {
+  if (!lightshowCamCalCanvas) {
+    lightshowCamCalCanvas = document.createElement('canvas');
+    lightshowCamCalCanvas.width = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
+    lightshowCamCalCanvas.height = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
+    lightshowCamCalCtx = lightshowCamCalCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  const n = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
+  lightshowCamCalCtx.drawImage(video, 0, 0, n, n);
+  const { data } = lightshowCamCalCtx.getImageData(0, 0, n, n);
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 4) sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+  return sum / (n * n);
+}
+
+function lightshowCamCalWallAt(perfTime) {
+  return lightshowCamCalAnchorWall + (perfTime - lightshowCamCalAnchorPerf);
+}
+
+/** Kreismittelwert der Phasen (0..1000) — vermeidet den Bruch an der 0/1000-Grenze. */
+function lightshowCamCalCircularPhase(phases) {
+  let sumSin = 0, sumCos = 0;
+  for (const p of phases) {
+    const angle = (p / 1000) * 2 * Math.PI;
+    sumSin += Math.sin(angle);
+    sumCos += Math.cos(angle);
+  }
+  const meanAngle = Math.atan2(sumSin, sumCos);
+  const meanPhase = (meanAngle / (2 * Math.PI)) * 1000;
+  return meanPhase < 0 ? meanPhase + 1000 : meanPhase;
+}
+
+function lightshowCamCalRenderStatus(textKey) {
+  const el = $('#lightshow-camcal-status');
+  if (textKey) { el.textContent = t(textKey); return; }
+  const n = lightshowCamCalPeaks.length;
+  el.textContent = n === 0
+    ? t('lightshow.camcal.statusWaiting')
+    : t('lightshow.camcal.statusCounting').replace('{n}', String(n)).replace('{needed}', String(LIGHTSHOW_CAMCAL_NEEDED_PEAKS));
+}
+
+function lightshowCamCalResetMeasurement() {
+  lightshowCamCalPeaks = [];
+  lightshowCamCalBaseline = null;
+  lightshowCamCalCooldownUntil = 0;
+  lightshowCamCalRenderStatus();
+}
+
+function lightshowCamCalFinish() {
+  const peaks = lightshowCamCalPeaks;
+  const intervals = [];
+  for (let i = 1; i < peaks.length; i++) intervals.push(peaks[i] - peaks[i - 1]);
+  const consistent = intervals.filter((d) => d > 700 && d < 1300).length;
+  if (consistent < intervals.length - 1) {
+    // Zu viele Ausreißer in den Abständen — vermutlich Fehltreffer statt
+    // echtem Sekundenblitz (Umgebungslicht, Kamerabewegung). Neu messen
+    // statt einen falschen Wert zu übernehmen.
+    lightshowCamCalRenderStatus('lightshow.camcal.statusRetry');
+    lightshowCamCalResetMeasurement();
+    return;
+  }
+
+  const phases = peaks.map((p) => {
+    const wall = lightshowCamCalWallAt(p);
+    return ((wall % 1000) + 1000) % 1000;
+  });
+  const meanPhase = lightshowCamCalCircularPhase(phases);
+  const delta = meanPhase > 500 ? meanPhase - 1000 : meanPhase;
+  const current = settings.lightshowOffsetMs || 0;
+  const next = Math.max(-5000, Math.min(5000, Math.round(current - delta)));
+
+  lightshowCamCalStopSampling();
+  saveSettings({ lightshowOffsetMs: next }).then(() => {
+    lightshowRenderSyncOffset();
+    $('#lightshow-camcal-status').textContent = t('lightshow.camcal.statusDone').replace('{value}', `${next} ms`);
+  });
+}
+
+function lightshowCamCalStep() {
+  lightshowCamCalRaf = requestAnimationFrame(lightshowCamCalStep);
+  const video = $('#lightshow-camcal-video');
+  if (video.readyState < 2) return;
+
+  const now = performance.now();
+  const brightness = lightshowCamCalSampleBrightness(video);
+  if (lightshowCamCalBaseline == null) { lightshowCamCalBaseline = brightness; return; }
+
+  const threshold = Math.max(LIGHTSHOW_CAMCAL_MIN_ABS_DELTA, lightshowCamCalBaseline * LIGHTSHOW_CAMCAL_REL_DELTA);
+  const isPeak = (brightness - lightshowCamCalBaseline) > threshold && now >= lightshowCamCalCooldownUntil;
+
+  if (isPeak) {
+    lightshowCamCalPeaks.push(now);
+    lightshowCamCalCooldownUntil = now + LIGHTSHOW_CAMCAL_COOLDOWN_MS;
+    lightshowCamCalRenderStatus();
+    if (lightshowCamCalPeaks.length >= LIGHTSHOW_CAMCAL_NEEDED_PEAKS) lightshowCamCalFinish();
+  } else if (now >= lightshowCamCalCooldownUntil) {
+    // Hintergrund nur außerhalb der Cooldown-Phase nachziehen, sonst zöge
+    // der Blitz selbst ihn hoch und würde beim nächsten Mal nicht mehr auffallen.
+    lightshowCamCalBaseline += (brightness - lightshowCamCalBaseline) * 0.08;
+  }
+}
+
+function lightshowCamCalStopSampling() {
+  if (lightshowCamCalRaf) { cancelAnimationFrame(lightshowCamCalRaf); lightshowCamCalRaf = null; }
+}
+
+function lightshowCamCalStopCamera() {
+  if (lightshowCamCalStream) {
+    lightshowCamCalStream.getTracks().forEach((tr) => tr.stop());
+    lightshowCamCalStream = null;
+  }
+  $('#lightshow-camcal-video').srcObject = null;
+}
+
+async function openLightshowCamCal() {
+  lightshowCamCalOpen = true;
+  lightshowCamCalResetMeasurement();
+  const el = $('#lightshow-camcal');
+  el.hidden = false;
+  openModal(el, { initialFocus: $('#lightshow-camcal-close'), onEscape: () => closeLightshowCamCal() });
+
+  try {
+    lightshowCamCalStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+  } catch {
+    lightshowCamCalRenderStatus('lightshow.camcal.errorPermission');
+    return;
+  }
+  if (!lightshowCamCalOpen) { lightshowCamCalStream.getTracks().forEach((tr) => tr.stop()); return; } // inzwischen geschlossen
+
+  const video = $('#lightshow-camcal-video');
+  video.srcObject = lightshowCamCalStream;
+  try { await video.play(); } catch { /* autoplay-Attribut greift in aller Regel trotzdem */ }
+
+  lightshowCamCalAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
+  lightshowCamCalAnchorPerf = performance.now();
+  lightshowCamCalStopSampling();
+  lightshowCamCalStep();
+}
+
+function closeLightshowCamCal() {
+  lightshowCamCalOpen = false;
+  lightshowCamCalStopSampling();
+  lightshowCamCalStopCamera();
+  const el = $('#lightshow-camcal');
+  closeModal(el);
+  el.hidden = true;
+}
+
+document.addEventListener('visibilitychange', () => {
+  // Kamera nie im Hintergrund weiterlaufen lassen — Messung ist ohnehin
+  // nur ein kurzer, wiederholbarer Vorgang.
+  if (lightshowCamCalOpen && document.visibilityState !== 'visible') closeLightshowCamCal();
+});
+
+$('#btn-lightshow-camcal').addEventListener('click', () => openLightshowCamCal());
+$('#lightshow-camcal-close').addEventListener('click', () => closeLightshowCamCal());
+$('#btn-lightshow-camcal-retry').addEventListener('click', () => {
+  lightshowCamCalResetMeasurement();
+  if (!lightshowCamCalRaf && lightshowCamCalStream) lightshowCamCalStep();
+});
+
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {
   const host = $('#import-report');
