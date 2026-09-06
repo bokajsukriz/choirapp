@@ -121,8 +121,10 @@ Drei Punkte dazu:
 
 ## Lichtshow
 
-Unter Einstellungen → Lichtshow gibt es vier kleine Bühnen-Einlagen für den
-Auftritt: Vollbild-Lichtfarben, die sich nach der eigenen Stimme richten. Die
+Unter Einstellungen → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
+Auftritt: Vollbild-Lichtfarben, die jede Stimme als räumlichen Block behandeln.
+Von links nach rechts werden Sopran, Alt, Tenor und Bass inszeniert; die Farben
+sind dabei bewusst unabhängig von den sonst verwendeten Stimmfarben. Die
 Handys reden nicht miteinander — es gibt keinen Server, keine Bluetooth- oder
 QR-Kopplung —, sondern laufen rein über die Systemuhr synchron: das Bild ist
 eine reine Funktion der Zeit (`lightshowFrame()`), auf jedem Gerät identisch.

@@ -55,6 +55,10 @@ export const LIGHTSHOWS = [
   { id: 'puls',   cycleMs: 24000, sync: 'hoch' },
   { id: 'welle',  cycleMs: 32000, sync: 'mittel' },
   { id: 'finale', cycleMs: 32000, sync: 'empfindlich' },
+  { id: 'prisma', cycleMs: 32000, sync: 'empfindlich' },
+  { id: 'domino', cycleMs: 36000, sync: 'empfindlich' },
+  { id: 'dialog', cycleMs: 32000, sync: 'empfindlich' },
+  { id: 'kaleidoskop', cycleMs: 40000, sync: 'empfindlich' },
 ];
 
 function lightshowByte(v) { return Math.max(0, Math.min(255, Math.round(v))); }
@@ -205,6 +209,93 @@ function lightshowFrameFinale(tMs, voice) {
   return lightshowMix('#ffffff', '#000000', f); // Blende nach Schwarz
 }
 
+// Die neuen Shows benutzen bewusst eine eigene Bühnenpalette: Die Stimme ist
+// hier nur die räumliche Position (Sopran, Alt, Tenor, Bass von links nach
+// rechts), nicht die Farbe des Stimm-Pickers.
+const LIGHTSHOW_STAGE_COLORS = ['#ff1744', '#ffb300', '#00e5ff', '#7c4dff'];
+const lightshowStageColor = (idx, shift = 0) => LIGHTSHOW_STAGE_COLORS[(idx + shift) % 4];
+
+/** Prisma — harte geometrische Schnitte: Einzelblöcke, Paare, Spiegel und Tutti. */
+function lightshowFramePrisma(tMs, voice) {
+  const idx = lightshowVoiceIndex(voice);
+  if (tMs < 500) return '#000000';
+  if (tMs < 16000) {
+    const slot = Math.floor(tMs / 1000);
+    const routes = [0, 1, 2, 3, 3, 2, 1, 0, 0, 2, 1, 3, 3, 1, 2, 0];
+    return idx === routes[slot] ? lightshowStageColor(idx, slot % 4) : '#030306';
+  }
+  if (tMs < 24000) {
+    const slot = Math.floor((tMs - 16000) / 1000);
+    const pair = slot % 4;
+    const active = pair === 0 ? idx < 2 : pair === 1 ? idx >= 2 : pair === 2 ? idx % 2 === 0 : idx % 2 === 1;
+    return active ? lightshowStageColor(idx, slot) : '#030306';
+  }
+  if (tMs < 30000) {
+    const slot = Math.floor((tMs - 24000) / 750);
+    return lightshowStageColor(idx, slot + (idx % 2) * 2);
+  }
+  return lightshowMix(lightshowStageColor(idx), '#000000', (tMs - 30000) / 2000);
+}
+
+/** Domino — ein Lichtimpuls fällt links nach rechts, prallt zurück und stapelt sich. */
+function lightshowFrameDomino(tMs, voice) {
+  const idx = lightshowVoiceIndex(voice);
+  if (tMs < 500) return '#000000';
+  if (tMs < 16000) {
+    const slot = Math.floor(tMs / 500);
+    const pass = Math.floor(slot / 8);
+    const step = slot % 8;
+    const active = step < 4 ? step : 7 - step;
+    return idx === active ? lightshowStageColor(idx, pass) : '#020205';
+  }
+  if (tMs < 28000) {
+    const slot = Math.floor((tMs - 16000) / 1500);
+    const filled = slot < 4 ? idx <= slot : idx >= 7 - slot;
+    return filled ? lightshowStageColor(idx, slot) : '#020205';
+  }
+  if (tMs < 34000) {
+    const slot = Math.floor((tMs - 28000) / 750);
+    return lightshowStageColor(idx, slot % 2 ? 2 : 0);
+  }
+  return lightshowMix(lightshowStageColor(idx, 2), '#000000', (tMs - 34000) / 2000);
+}
+
+/** Dialog — linke und rechte Chorhälfte antworten einander, dann kreuzen sich die Innen- und Außenstimmen. */
+function lightshowFrameDialog(tMs, voice) {
+  const idx = lightshowVoiceIndex(voice);
+  if (tMs < 500) return '#000000';
+  if (tMs < 12000) {
+    const slot = Math.floor(tMs / 1500);
+    const left = slot % 2 === 0;
+    return (left ? idx < 2 : idx >= 2) ? (left ? '#ff3d8d' : '#18ffff') : '#030306';
+  }
+  if (tMs < 24000) {
+    const slot = Math.floor((tMs - 12000) / 1500);
+    const outside = slot % 2 === 0;
+    const active = outside ? idx === 0 || idx === 3 : idx === 1 || idx === 2;
+    return active ? (outside ? '#ffea00' : '#651fff') : '#030306';
+  }
+  if (tMs < 30000) {
+    const slot = Math.floor((tMs - 24000) / 750);
+    const active = slot % 2 === 0 ? idx % 2 === 0 : idx % 2 === 1;
+    return active ? lightshowStageColor(idx, slot) : '#030306';
+  }
+  return lightshowMix(lightshowStageColor(idx, 1), '#000000', (tMs - 30000) / 2000);
+}
+
+/** Kaleidoskop — acht wechselnde symmetrische Bühnenbilder mit rotierender Farbzuordnung. */
+function lightshowFrameKaleidoskop(tMs, voice) {
+  const idx = lightshowVoiceIndex(voice);
+  if (tMs < 500) return '#000000';
+  if (tMs >= 38000) return lightshowMix(lightshowStageColor(idx, 3), '#000000', (tMs - 38000) / 2000);
+  const slot = Math.floor(tMs / 1000);
+  const motif = slot % 8;
+  const active = [idx === 0 || idx === 3, idx === 1 || idx === 2, idx < 2, idx >= 2,
+    idx % 2 === 0, idx % 2 === 1, idx === motif % 4, idx !== motif % 4][motif];
+  if (!active) return '#020205';
+  return lightshowStageColor(idx, Math.floor(slot / 4));
+}
+
 /**
  * Bildinhalt einer Show zu einem Zeitpunkt — rein, ohne DOM, ohne Date, ohne
  * Math.random. Genau das macht sie testbar (siehe runSelfTests) und sorgt
@@ -222,6 +313,10 @@ export function lightshowFrame(showId, tMs, voice, seed) {
     case 'puls':   return lightshowFramePuls(tMs, voice);
     case 'welle':  return lightshowFrameWelle(tMs, voice);
     case 'finale': return lightshowFrameFinale(tMs, voice);
+    case 'prisma': return lightshowFramePrisma(tMs, voice);
+    case 'domino': return lightshowFrameDomino(tMs, voice);
+    case 'dialog': return lightshowFrameDialog(tMs, voice);
+    case 'kaleidoskop': return lightshowFrameKaleidoskop(tMs, voice);
     default:       return '#000000';
   }
 }
