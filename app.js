@@ -10955,16 +10955,24 @@ async function importPrintableFile(kind, file) {
   const detachedByTitle = new Map(existing.filter((entry) => !entry.songId)
     .map((entry) => [normalizeTitle(entry.songTitle || ''), entry]));
   const now = new Date().toISOString();
-  const records = items.map((item) => {
-    const song = findSongByTitle(songs, item.songTitle);
-    const current = (song && bySongId.get(song.id)) || detachedByTitle.get(normalizeTitle(item.songTitle));
+  const records = [];
+  for (const item of items) {
+    // Kein Song mit diesem Titel? Platzhalter anlegen, statt die Notiz
+    // unsichtbar abzulegen — der echte Import verschmilzt später damit
+    // (siehe createPlaceholderSong), weil beide dieselbe ID-Herleitung nutzen.
+    let song = findSongByTitle(songs, item.songTitle);
+    if (!song) {
+      song = await createPlaceholderSong(item.songTitle);
+      songs.push(song);
+    }
+    const current = bySongId.get(song.id) || detachedByTitle.get(normalizeTitle(item.songTitle));
     const id = current?.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    return {
+    records.push({
       ...(current || {}), key: current?.key || `${kind}:${id}`, type: kind, id,
-      songId: song?.id || null, songTitle: song?.title || item.songTitle,
+      songId: song.id, songTitle: song.title,
       text: item.text, updatedAt: now,
-    };
-  });
+    });
+  }
   const write = () => DB.metaPutMany(records);
   if (kind === 'note') await noteWrite(write); else await lyricsNoteWrite(write);
   await renderExportCount();
