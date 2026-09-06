@@ -516,11 +516,11 @@ function editRecordingDialog({ name, voice }) {
     // renderVoicePicker) statt der neutralen preset-row — exklusive Auswahl.
     const voiceBtns = voiceOptions.map((opt) => {
       const btn = el('button', {
-        class: opt.value ? 'chip chip--voice' : 'chip', type: 'button',
+        class: 'chip chip--voice', type: 'button',
         'aria-pressed': opt.value === selected ? 'true' : 'false',
         text: opt.label,
       });
-      if (opt.value) btn.style.setProperty('--voice-c', VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER);
+      btn.style.setProperty('--voice-c', opt.value ? (VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER) : 'var(--muted)');
       return btn;
     });
     voiceBtns.forEach((btn, i) => btn.addEventListener('click', () => {
@@ -528,7 +528,7 @@ function editRecordingDialog({ name, voice }) {
       voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
     }));
-    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
 
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
@@ -2315,8 +2315,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
 
 async function refreshAfterDelete() {
   await renderStorage();
-  await renderNotesCount();
-  await renderLyricsNotesCount();
+  await renderExportCount();
   await renderStorageManager();
   await renderSongs();
   await renderPlaylists();
@@ -2382,8 +2381,7 @@ async function renderSettings() {
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
-  await renderNotesCount();
-  await renderLyricsNotesCount();
+  await renderExportCount();
   await renderStorageManager();
   renderErrorLog();
   renderDebugLogState();
@@ -10651,21 +10649,23 @@ async function collectPrintable(kind) {
     .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
 }
 
-async function renderPrintCount(kind, countId, btnId, noneLabel) {
-  const node = $(`#${countId}`);
+async function printableCount(kind, btnId) {
   const btn  = $(`#${btnId}`);
   const items = await collectPrintable(kind);
-  node.textContent = items.length
-    ? `${plural(items.length, 'Song', 'Songs')} verfügbar.`
-    : noneLabel;
   btn.disabled = items.length === 0;
+  return items.length;
 }
 
-async function renderNotesCount() {
-  await renderPrintCount('note', 'notes-count', 'btn-notes-export', 'Noch keine Notizen.');
-}
-async function renderLyricsNotesCount() {
-  await renderPrintCount('lyricsNote', 'lyrics-notes-count', 'btn-lyrics-notes-export', 'Noch keine eigenen Liedtexte.');
+/** Eine kompakte gemeinsame Bestandszeile statt zweier sich wiederholender Sätze. */
+async function renderExportCount() {
+  const [notes, lyrics] = await Promise.all([
+    printableCount('note', 'btn-notes-export'),
+    printableCount('lyricsNote', 'btn-lyrics-notes-export'),
+  ]);
+  const noteLabel = notes ? plural(notes, 'Notiz', 'Notizen') : 'noch keine Notizen';
+  const lyricsLabel = lyrics ? plural(lyrics, 'eigener Liedtext', 'eigene Liedtexte') : 'noch keine eigenen Liedtexte';
+  const sentence = `${noteLabel} und ${lyricsLabel}`;
+  $('#export-count').textContent = sentence.charAt(0).toUpperCase() + sentence.slice(1) + '.';
 }
 
 /**
