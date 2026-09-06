@@ -962,10 +962,11 @@ const DEFAULT_SETTINGS = {
   hdIntroShown: false, // einmaliger Erklärdialog beim ersten Verlangsamen schon gezeigt?
   // AUS per Voreinstellung: auf WebKit (jeder iOS-Browser, macOS Safari)
   // baut setupAudioGraph() den Web-Audio-Graphen wegen WebKit-Bug 240405
-  // sonst gar nicht erst auf (siehe isWebKitBrowser) — Kanal-Matrix und HD
-  // fehlen dadurch. Der Fix liegt seit 2026-03-27 im WebKit-Hauptzweig, ist
-  // aber noch in keinem regulären Safari-Release angekommen; sobald das der
-  // Fall ist, macht dieser Schalter beides ohne App-Update wieder nutzbar.
+  // sonst nicht eigens für HD auf (siehe isWebKitBrowser/hdWebkitBlocked) —
+  // HD fehlt dadurch (die Kanal-Matrix ist davon unabhängig verfügbar, siehe
+  // setupAudioGraph()). Der Fix liegt seit 2026-03-27 im WebKit-Hauptzweig,
+  // ist aber noch in keinem regulären Safari-Release angekommen; sobald das
+  // der Fall ist, macht dieser Schalter HD ohne App-Update wieder nutzbar.
   // Nur auf WebKit sichtbar, siehe renderWebkitGraphToggle().
   webkitForceGraph: false,
   // Regler des Zeitdehners (Modus HD, Karte „Kompatibilität & Performance"
@@ -2438,29 +2439,35 @@ $('#btn-errorlog-clear').addEventListener('click', async () => {
   renderErrorLog();
 });
 
-// Ob setupAudioGraph() den Web-Audio-Graphen (aktuell) meidet — siehe dort.
+// Ob HD auf WebKit (aktuell) blockiert bleibt — siehe hdApplyTransition().
 // settings.webkitForceGraph ist der Notausgang, sobald der WebKit-Fehler
 // beim Hersteller behoben ist (siehe DEFAULT_SETTINGS): dann greift diese
-// Bedingung nicht mehr, und Kanal-Matrix/HD werden wieder normal angeboten.
-function webkitGraphBlocked() {
+// Bedingung nicht mehr, und HD wird wieder normal angeboten.
+//
+// Die Kanal-Matrix („Fahrradfahren-Modus") hängt NICHT hieran: auf dem Gerät
+// bestätigt lief sie auf WebKit unauffällig, auch ohne den Notausgang — sie
+// nutzt den Graphen nur zum Kanaltausch/-mischen bei sonst unverändertem
+// playbackRate, und genau der Ratenwechsel ist die Voraussetzung für den
+// WebKit-Fehler (siehe setupAudioGraph()). setupAudioGraph() baut den Graphen
+// deshalb schon dann auf, wenn channelMode das braucht — unabhängig von
+// webkitForceGraph. Bleibt HD dabei trotzdem aktiv (Sicherung von vor diesem
+// Umbau, oder Rate ungleich 1 während Kanal-Matrix läuft), zeigt sich der
+// ursprüngliche Fehler wieder — deshalb bleibt HD ausdrücklich hierüber
+// gesperrt, unabhängig davon, ob Audio.ctx aus einem anderen Grund schon steht.
+function hdWebkitBlocked() {
   return isWebKitBrowser && !settings.webkitForceGraph;
 }
 
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
-  // Kanal-Matrix gibt es auf WebKit ohne den Graphen nicht (siehe
-  // webkitGraphBlocked()/setupAudioGraph()) — die Auswahl anwählbar zu
-  // lassen würde nur vorgaukeln, dass Mono/Tauschen etwas bewirken.
-  $('#channel-mode').disabled = webkitGraphBlocked();
-  $('#channel-mode-unsupported-hint').hidden = !webkitGraphBlocked();
 }
 
 /**
- * Notausgang für webkitGraphBlocked(): WebKit-Bug 240405 ist beim Hersteller
+ * Notausgang für hdWebkitBlocked(): WebKit-Bug 240405 ist beim Hersteller
  * bereits behoben, nur noch in keinem Safari-Release angekommen (siehe
  * DEFAULT_SETTINGS.webkitForceGraph) — wer nicht warten will, kann den
- * Graphen hier trotzdem erzwingen und selbst hören, ob der Fehler auf dem
- * eigenen Gerät noch auftritt. Nur auf WebKit sichtbar: auf jedem anderen
+ * Graphen hier trotzdem für HD erzwingen und selbst hören, ob der Fehler auf
+ * dem eigenen Gerät noch auftritt. Nur auf WebKit sichtbar: auf jedem anderen
  * Browser gibt es nichts zu erzwingen, der Graph steht dort ohnehin schon.
  */
 function renderWebkitGraphToggle() {
@@ -2475,7 +2482,6 @@ function renderWebkitGraphToggle() {
 $('#webkit-force-graph').addEventListener('click', async () => {
   await saveSettings({ webkitForceGraph: !settings.webkitForceGraph });
   renderWebkitGraphToggle();
-  renderChannelMode();
   renderSlowMode();
   // Der Graph lässt sich am laufenden Element nicht nachrüsten oder wieder
   // entfernen (createMediaElementSource() darf pro Element nur einmal
@@ -2829,20 +2835,19 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
  */
 function renderSlowMode() {
   const mode = settings.slowMode || 'standard';
-  // webkitGraphBlocked(): der Zeitdehner bräuchte den Web-Audio-Graphen, den
-  // setupAudioGraph() dann erst gar nicht aufbaut (siehe dort) — Audio.ctx
-  // bleibt null, ensureHdNode() käme also ohnehin nie über den ersten Check
-  // hinaus. Hier trotzdem schon vorab sperren, statt das über
-  // hdInitBlocked()s Fehlversuchszähler laufen zu lassen: sonst wirkt HD
-  // kurz anwählbar, obwohl es nie etwas bewirken könnte.
-  const webkitBlocked = webkitGraphBlocked();
+  // hdWebkitBlocked(): siehe dort — HD bleibt auf WebKit ohne den
+  // Notausgang gesperrt, unabhängig davon, ob der Graph aus einem anderen
+  // Grund (Kanal-Matrix) gerade sowieso steht. Hier trotzdem schon vorab
+  // sperren, statt das über hdInitBlocked()s Fehlversuchszähler laufen zu
+  // lassen: sonst wirkt HD kurz anwählbar, obwohl es nie etwas bewirken könnte.
+  const webkitBlocked = hdWebkitBlocked();
   const broken = hdInitBlocked() || webkitBlocked;
   for (const btn of $$('#slow-mode .preset')) {
     btn.disabled = btn.dataset.mode === 'hd' && broken;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
   }
   // Zwei verschiedene Gründe, zwei verschiedene Hinweise: hdInitBlocked() ist
-  // ein wiederholter technischer Fehlschlag auf diesem Gerät, webkitGraphBlocked()
+  // ein wiederholter technischer Fehlschlag auf diesem Gerät, hdWebkitBlocked()
   // ist ein bekannter, vorübergehender Browser-Fehler mit Notausgang (siehe
   // renderWebkitGraphToggle()) — in denselben Text gepackt klänge der eine
   // Fall unnötig hoffnungsvoll, der andere unnötig endgültig.
@@ -3313,6 +3318,15 @@ $('#btn-notify-request').addEventListener('click', async () => {
 $('#channel-mode').addEventListener('change', async (e) => {
   await saveSettings({ channelMode: e.target.value });
   audioApplyChannelMode(settings.channelMode);
+  // Auf WebKit ohne Notausgang entscheidet channelMode mit, ob setupAudioGraph()
+  // den Graphen überhaupt aufbaut (siehe dort) — createMediaElementSource()
+  // lässt sich am laufenden Element nicht nachrüsten oder wieder entfernen,
+  // ein Wechsel über/unter 'off' bleibt also ohne Neuaufbau wirkungslos
+  // (audioApplyChannelMode() liefe dann gegen ein weiterhin fehlendes/
+  // weiterhin bestehendes Audio.channel).
+  if (isWebKitBrowser && !settings.webkitForceGraph && Audio.ready) {
+    await rebuildAudioGraph('channel-mode');
+  }
 });
 
 $$('#default-tab-picker .player-tab').forEach((btn) => {
@@ -3410,10 +3424,13 @@ const isDesktopSafari = /^((?!chrome|crios|fxios|edg|opr|brave|android).)*safari
 // 27.03.2026 im WebKit-Hauptzweig, ist Stand jetzt aber in keinem regulären
 // Safari-Release angekommen. `createMediaElementSource()` wirft dabei keinen
 // Fehler — sie liefert nur kaputten Ton —, ein try/catch um den Graphenaufbau
-// kann den Fall also nicht erkennen. setupAudioGraph() meidet den Graphen
-// auf diesen Browsern deshalb von vornherein (siehe dort); Kanal-Matrix
-// („Fahrradfahren-Modus") und HD bleiben dabei zwangsläufig auf der Strecke,
-// siehe renderChannelMode() und renderSlowMode().
+// kann den Fall also nicht erkennen. setupAudioGraph() baut den Graphen auf
+// diesen Browsern deshalb nicht mehr ungefragt auf HD hin auf; HD bleibt
+// gesperrt, bis settings.webkitForceGraph das aufhebt (siehe
+// hdWebkitBlocked()/renderSlowMode()). Die Kanal-Matrix („Fahrradfahren-
+// Modus") ist davon unabhängig: sie ändert playbackRate nicht selbst und
+// lief auf dem Gerät bestätigt unauffällig, deshalb baut setupAudioGraph()
+// den Graphen dafür trotzdem auf (siehe dort).
 const isWebKitBrowser = isIOSDevice || isDesktopSafari;
 
 // Dateiendung -> MIME-Typ fürs Blob, aus dem das <audio>-Element liest.
@@ -3837,16 +3854,22 @@ async function setupAudioGraph() {
   // schlägt dabei nicht fehl, sie liefert nur kaputten Ton. Ein try/catch
   // reicht hier also nicht, die Weiche muss vor dem Aufbau fallen. Das
   // Element spielt dann exakt so, wie es auch der catch-Zweig unten für jeden
-  // anderen Browser vorsieht: direkt, ganz ohne Web-Audio-Kontakt. Kanal-
-  // Matrix und HD sind dabei zwangsläufig nicht verfügbar (Audio.ctx bleibt
-  // null) — beides degradiert an seiner jeweiligen Stelle bereits von selbst
-  // auf „kein Effekt"/„nativer Fallback", siehe audioApplyChannelMode() und
-  // hdApplyTransition(). Die Einstellungen weisen eigens darauf hin, siehe
-  // renderChannelMode() und renderSlowMode() — und bieten mit
-  // settings.webkitForceGraph einen Notausgang: der Fehler ist beim
-  // Hersteller bereits behoben, nur noch nicht ausgeliefert, ein Update kann
-  // das also jederzeit stillschweigend obsolet machen.
-  if (isWebKitBrowser && !settings.webkitForceGraph) {
+  // anderen Browser vorsieht: direkt, ganz ohne Web-Audio-Kontakt.
+  //
+  // Ausnahme: braucht die Kanal-Matrix („Fahrradfahren-Modus", channelMode
+  // ≠ 'off') den Graphen, wird er trotzdem aufgebaut — auf dem Gerät
+  // bestätigt läuft sie auf WebKit unauffällig, weil sie für sich genommen
+  // playbackRate nicht anfasst. HD bleibt in diesem Fall trotzdem gesperrt
+  // (siehe hdWebkitBlocked()/hdApplyTransition()): dort ist genau der
+  // Ratenwechsel der Zweck, der den Fehler auslöst. Ändert sich später auch
+  // die Rate, während die Matrix aktiv ist, tritt der ursprüngliche Fehler
+  // wieder auf — das ist der bewusst hingenommene Rest des Kompromisses.
+  //
+  // settings.webkitForceGraph ist der zusätzliche Notausgang für HD: der
+  // Fehler ist beim Hersteller bereits behoben, nur noch nicht ausgeliefert,
+  // ein Update kann das also jederzeit stillschweigend obsolet machen, siehe
+  // renderWebkitGraphToggle() und renderSlowMode().
+  if (isWebKitBrowser && !settings.webkitForceGraph && (settings.channelMode || 'off') === 'off') {
     dlog('audio:route', { mode: 'direct', name: 'webkit-240405' });
     return;
   }
@@ -4564,13 +4587,15 @@ async function hdApplyTransition(reason, opts = {}) {
   // Zweig des Prozessors ruft _process() weiterhin jede Runde auf). Die
   // Bibliothek selbst darf trotzdem sofort nachladen, sobald HD gewählt ist —
   // das kostet nichts und macht den ersten Tempowechsel schneller.
-  if (settings.slowMode === 'hd' && Audio.rate !== 1) ensureHdNode();
-  // isWebKitBrowser: ensureHdNode() bräche oben ohnehin an !Audio.ctx ab (der
-  // Graph existiert dort gar nicht, siehe setupAudioGraph()) — die 113-KB-
-  // Bibliothek müsste also für nichts geladen werden. Nur relevant für eine
-  // Sicherung mit altem slowMode:'hd' aus der Zeit vor diesem Umbau oder von
-  // einem anderen (Android-)Gerät, die App selbst bietet HD hier nicht mehr an.
-  else if (settings.slowMode === 'hd' && !isWebKitBrowser) ensureStretchLib().catch(() => {});
+  // hdWebkitBlocked(): explizit hier geprüft statt sich auf ein fehlendes
+  // Audio.ctx zu verlassen — die Kanal-Matrix kann den Graphen auf WebKit
+  // inzwischen auch ohne Notausgang aufgebaut haben (siehe setupAudioGraph()),
+  // HD soll trotzdem gesperrt bleiben.
+  if (settings.slowMode === 'hd' && Audio.rate !== 1 && !hdWebkitBlocked()) ensureHdNode();
+  // Nur relevant für eine Sicherung mit altem slowMode:'hd' aus der Zeit vor
+  // diesem Umbau oder von einem anderen (Android-)Gerät — die 113-KB-
+  // Bibliothek müsste sonst für nichts geladen werden.
+  else if (settings.slowMode === 'hd' && !hdWebkitBlocked()) ensureStretchLib().catch(() => {});
   const node = Audio.hdNode;
   if (!node) {
     hdWasEngaged = false;
@@ -6187,6 +6212,11 @@ let recorderCloseConfirmed = false;
 function openRecorderView() {
   recorderOpen = true;
   $('#recorder-view').hidden = false;
+  // Hier fehlt der Songkontext (keine Stimme, kein Anker) — ein im
+  // Hintergrund weiterlaufender Song oder REC-Mitsing-Track ergibt darum
+  // keinen Sinn und würde sich zudem ins Mikrofon mischen.
+  if (Audio.playing) { audioPause(); setPlayIcon(false); }
+  stopBacking();
 }
 
 /** Bricht eine laufende Recorder-Aufnahme bzw. einen offenen Recorder-Take ab
