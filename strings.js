@@ -56,7 +56,7 @@ export const STRINGS = {
     'settings.voices.hint': 'Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln. Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
 
     'settings.lightshow.title': 'Lichtshow',
-    'settings.lightshow.hint': 'Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die sich nach der eigenen Stimme richten und über die Systemuhr synchron laufen — ganz ohne Internet oder Verbindung zwischen den Handys.',
+    'settings.lightshow.hint': 'Acht kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die jede Stimme als eigenen Block inszenieren und über die Systemuhr synchron laufen.',
     'settings.lightshow.openBtn': 'Lichtshow öffnen',
 
     'settings.audio.title': 'Audioeinstellungen',
@@ -298,7 +298,15 @@ export const STRINGS = {
     'lightshow.show.welle.name': 'Welle',
     'lightshow.show.welle.desc': 'Ein Lichtband läuft immer wieder von Sopran nach Bass, endet in einer gemeinsamen Atmung.',
     'lightshow.show.finale.name': 'Finale',
-    'lightshow.show.finale.desc': 'Gruppen-Jagd, gemeinsamer Puls, ein Höhepunkt in Weiß — die einzige Show mit harten Schnitten.',
+    'lightshow.show.finale.desc': 'Gruppen-Jagd, gemeinsamer Puls und ein großer Höhepunkt in Weiß.',
+    'lightshow.show.prisma.name': 'Prisma',
+    'lightshow.show.prisma.desc': 'Einzelne Farbblöcke brechen in Paare, Spiegelbilder und ein schnell wechselndes Tutti auf.',
+    'lightshow.show.domino.name': 'Domino',
+    'lightshow.show.domino.desc': 'Ein Lichtimpuls fällt von Sopran bis Bass, prallt zurück und stapelt den ganzen Chor auf.',
+    'lightshow.show.dialog.name': 'Dialog',
+    'lightshow.show.dialog.desc': 'Die Bühnenhälften antworten einander; danach wechseln sich Außen-, Innen- und Kreuzmuster ab.',
+    'lightshow.show.kaleidoskop.name': 'Kaleidoskop',
+    'lightshow.show.kaleidoskop.desc': 'Symmetrische Zweierbilder, Halbchöre und Farbwechsel setzen sich immer neu zusammen.',
 
     'lightshow.syncLevel.unkritisch': 'verzeiht schiefe Uhren',
     'lightshow.syncLevel.hoch': 'verzeiht kleine Abweichungen',
@@ -369,7 +377,7 @@ export const STRINGS = {
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
 
     'settings.lightshow.title': 'Light show',
-    'settings.lightshow.hint': 'Four small on-stage moments for the concert: full-screen light colours that follow your own voice part and stay in sync via the system clock — no internet or connection between phones needed.',
+    'settings.lightshow.hint': 'Eight on-stage moments for the concert: full-screen colours stage each voice as a separate block and stay in sync via the system clock.',
     'settings.lightshow.openBtn': 'Open light show',
 
     'settings.audio.title': 'Audio settings',
@@ -611,7 +619,15 @@ export const STRINGS = {
     'lightshow.show.welle.name': 'Wave',
     'lightshow.show.welle.desc': 'A band of light keeps travelling from soprano to bass, ending in a shared breath.',
     'lightshow.show.finale.name': 'Finale',
-    'lightshow.show.finale.desc': 'A group chase, a shared pulse, a peak in white — the only show with hard cuts.',
+    'lightshow.show.finale.desc': 'A group chase, a shared pulse and a dramatic peak in white.',
+    'lightshow.show.prisma.name': 'Prism',
+    'lightshow.show.prisma.desc': 'Single colour blocks split into pairs, mirror images and a rapidly changing tutti.',
+    'lightshow.show.domino.name': 'Domino',
+    'lightshow.show.domino.desc': 'A light pulse falls from soprano to bass, bounces back and stacks up the whole choir.',
+    'lightshow.show.dialog.name': 'Dialogue',
+    'lightshow.show.dialog.desc': 'The two halves answer each other, followed by outside, inside and crossed patterns.',
+    'lightshow.show.kaleidoskop.name': 'Kaleidoscope',
+    'lightshow.show.kaleidoskop.desc': 'Symmetrical pairs, choir halves and colour changes continually recombine.',
 
     'lightshow.syncLevel.unkritisch': 'forgives clocks that run off',
     'lightshow.syncLevel.hoch': 'forgives small differences',
@@ -682,7 +698,7 @@ export const STRINGS = {
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
 
     'settings.lightshow.title': 'Pokaz świateł',
-    'settings.lightshow.hint': 'Cztery krótkie sceniczne wstawki na koncert: pełnoekranowe kolory światła dopasowane do własnego głosu, zsynchronizowane przez zegar systemowy — bez internetu i bez połączenia między telefonami.',
+    'settings.lightshow.hint': 'Osiem scenicznych pokazów na koncert: pełnoekranowe kolory traktują każdy głos jako osobny blok i działają synchronicznie według zegara systemowego.',
     'settings.lightshow.openBtn': 'Otwórz pokaz świateł',
 
     'settings.audio.title': 'Ustawienia audio',
@@ -924,7 +940,15 @@ export const STRINGS = {
     'lightshow.show.welle.name': 'Fala',
     'lightshow.show.welle.desc': 'Pasmo światła wciąż biegnie od sopranu do basu, kończy się wspólnym oddechem.',
     'lightshow.show.finale.name': 'Finał',
-    'lightshow.show.finale.desc': 'Pościg grup, wspólny puls, szczyt w bieli — jedyny pokaz z ostrymi cięciami.',
+    'lightshow.show.finale.desc': 'Pościg grup, wspólny puls i efektowny szczyt w bieli.',
+    'lightshow.show.prisma.name': 'Pryzmat',
+    'lightshow.show.prisma.desc': 'Pojedyncze bloki barw rozpadają się na pary, odbicia i szybko zmieniające się tutti.',
+    'lightshow.show.domino.name': 'Domino',
+    'lightshow.show.domino.desc': 'Impuls biegnie od sopranu do basu, odbija się i stopniowo rozświetla cały chór.',
+    'lightshow.show.dialog.name': 'Dialog',
+    'lightshow.show.dialog.desc': 'Połowy sceny odpowiadają sobie, potem zmieniają się wzory zewnętrzne, wewnętrzne i krzyżowe.',
+    'lightshow.show.kaleidoskop.name': 'Kalejdoskop',
+    'lightshow.show.kaleidoskop.desc': 'Symetryczne pary, połowy chóru i zmiany kolorów nieustannie układają się na nowo.',
 
     'lightshow.syncLevel.unkritisch': 'wybacza rozjechane zegary',
     'lightshow.syncLevel.hoch': 'wybacza małe różnice',

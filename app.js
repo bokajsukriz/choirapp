@@ -6409,11 +6409,75 @@ function renderLightshowMotionHint() {
   $('#lightshow-motion-hint').hidden = !reduced;
 }
 
+// Kleine stilisierte Handy-Aufstellung für die Vorschauen. Die vier Blöcke
+// stehen wie auf der Bühne von links nach rechts und bilden ungefähr die
+// echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass.
+const LIGHTSHOW_PREVIEW_COUNTS = [20, 17, 6, 10];
+const LIGHTSHOW_PREVIEW_POINTS = LIGHTSHOW_PREVIEW_COUNTS.flatMap((count, voiceIdx) => {
+  const columns = Math.ceil(count / 4);
+  const blockLeft = [0.04, 0.31, 0.58, 0.72][voiceIdx];
+  const blockWidth = [0.22, 0.22, 0.10, 0.23][voiceIdx];
+  return Array.from({ length: count }, (_, pointIdx) => {
+    const column = pointIdx % columns;
+    const row = Math.floor(pointIdx / columns);
+    return {
+      voice: LIGHTSHOW_VOICES[voiceIdx],
+      x: blockLeft + ((column + 0.5 + (row % 2) * 0.12) / columns) * blockWidth,
+      y: 0.22 + row * 0.18,
+      seed: voiceIdx * 1000 + pointIdx * 97 + 1,
+    };
+  });
+});
+
+let lightshowPreviewRaf = null;
+let lightshowPreviewLastPaint = 0;
+
+function paintLightshowPreviews(now = performance.now()) {
+  if (!lightshowOpen) { lightshowPreviewRaf = null; return; }
+  lightshowPreviewRaf = requestAnimationFrame(paintLightshowPreviews);
+  if (now - lightshowPreviewLastPaint < 80) return;
+  lightshowPreviewLastPaint = now;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wall = Date.now() + (settings.lightshowOffsetMs || 0);
+  document.querySelectorAll('.lightshow-tile-preview').forEach((canvas) => {
+    const show = LIGHTSHOWS.find((candidate) => candidate.id === canvas.dataset.showId);
+    if (!show) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, width, height);
+    const tMs = reducedMotion ? show.cycleMs * 0.37 : wall % show.cycleMs;
+    const radius = Math.max(1.7 * dpr, Math.min(width / 105, height / 30));
+    for (const point of LIGHTSHOW_PREVIEW_POINTS) {
+      ctx.beginPath();
+      ctx.arc(point.x * width, point.y * height, radius, 0, Math.PI * 2);
+      ctx.fillStyle = lightshowFrame(show.id, tMs, point.voice, point.seed);
+      ctx.fill();
+    }
+  });
+}
+
+function startLightshowPreviews() {
+  if (lightshowPreviewRaf) cancelAnimationFrame(lightshowPreviewRaf);
+  lightshowPreviewLastPaint = -Infinity;
+  lightshowPreviewRaf = requestAnimationFrame(paintLightshowPreviews);
+}
+
+function stopLightshowPreviews() {
+  if (lightshowPreviewRaf) cancelAnimationFrame(lightshowPreviewRaf);
+  lightshowPreviewRaf = null;
+}
+
 function renderLightshowList() {
   const host = $('#lightshow-list');
   host.textContent = '';
-  const voice = lightshowActiveVoice();
-  const color = lightshowVoiceColor(voice);
   // Bevorzugt weniger Bewegung: „Sternenhimmel" bekommt einen Hinweis, bleibt
   // aber genau wie die anderen Shows startbar — eine bewusste Bühnenhandlung
   // ist keine unerwartete Animation (siehe LICHTSHOW-PLAN.md Abschnitt 9.3).
@@ -6421,9 +6485,10 @@ function renderLightshowList() {
   for (const show of LIGHTSHOWS) {
     const recommended = reducedMotion && show.id === 'sterne';
     host.append(el('div', { class: recommended ? 'lightshow-tile is-recommended' : 'lightshow-tile' },
-      el('div', {
+      el('canvas', {
         class: 'lightshow-tile-preview',
-        style: `background:linear-gradient(90deg, ${lightshowScale(color, 0.12)}, ${color})`,
+        'data-show-id': show.id,
+        'aria-hidden': 'true',
       }),
       el('div', { style: 'display:flex; align-items:center; gap:6px' },
         el('strong', { text: t(`lightshow.show.${show.id}.name`) }),
@@ -6440,6 +6505,7 @@ function renderLightshowList() {
         },
       })));
   }
+  startLightshowPreviews();
 }
 
 function renderLightshowView() {
@@ -6460,6 +6526,7 @@ async function openLightshowView() {
 
 function closeLightshowView() {
   lightshowOpen = false;
+  stopLightshowPreviews();
   $('#lightshow-view').hidden = true;
   if (lightshowStageOpen) closeLightshowStage();
 }
@@ -13817,11 +13884,13 @@ function runSelfTests() {
     }
   }
 
-  // 3. Stimmabhängigkeit: „Welle" und „Finale" müssen SOP und BASS unterscheiden.
-  for (const showId of ['welle', 'finale']) {
+  // 3. Stimmabhängigkeit: räumliche Shows müssen den linken Sopran- und den
+  // rechten Bass-Block im Verlauf mindestens einmal unterscheiden.
+  for (const showId of ['welle', 'finale', 'prisma', 'domino', 'dialog', 'kaleidoskop']) {
     checks++;
     let differs = false;
-    for (let tMs = 0; tMs < 32000; tMs += 50) {
+    const cycleMs = LIGHTSHOWS.find((show) => show.id === showId).cycleMs;
+    for (let tMs = 0; tMs < cycleMs; tMs += 50) {
       if (lightshowFrame(showId, tMs, 'SOP', 1) !== lightshowFrame(showId, tMs, 'BASS', 1)) { differs = true; break; }
     }
     if (!differs) failed.push(`lightshowFrame(${showId}): SOP und BASS sehen überall gleich aus`);
