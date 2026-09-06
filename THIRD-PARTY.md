@@ -7,7 +7,7 @@
 | Datei | `lame.min.js` |
 | SHA-256 | `194ee71034bb400f05648d2f7cd552f53edb43b5a106a8c9d809bee3d6275ea5` |
 | Quelle | https://github.com/zhuker/lamejs — npm `lamejs@1.2.1` |
-| Lizenz | LGPL-3.0 (Volltext siehe `LICENSE-lamejs.txt`) |
+| Lizenz | LGPL-3.0 (Volltext siehe `LICENSE-lamejs-LGPL-3.0.txt`; die zugrundeliegende GPL-3.0 siehe `LICENSE-lamejs-GPL-3.0.txt`; `LICENSE-lamejs.txt` enthält weiterhin nur den LAME-FAQ-Auszug zur Einordnung) |
 | Verändert | nein |
 | Verwendung | MP3-Export der eigenen Aufnahmen, per `<script>` nachgeladen |
 
@@ -41,15 +41,9 @@ er beschreibt jede Stelle konkret genug, um sie nach einem `npm update`
 erneut anzuwenden; diese Tabelle verdoppelt die Patchliste bewusst nicht noch
 ein drittes Mal.
 
-Der vollständige Text der LGPL-3.0 (und der GPL-3.0, auf der sie aufbaut)
-konnte in dieser Umgebung wiederholt nicht von gnu.org abgerufen werden
-(Netzzugriff durch die Proxy-Policy der Ausführungsumgebung gesperrt, auch
-nach einem für die jeweilige Sitzung erteilten Zugriffs-Grant — die Policy
-gilt sitzungsweit, `WebFetch` liefert nur eine Zusammenfassung statt des
-Wortlauts und taugt hier nicht als Ersatz). `LICENSE-lamejs.txt` enthält
-bislang nur einen Auszug aus der LAME-FAQ, nicht den vollständigen
-Lizenztext. Wer diese Datei pflegt, sollte `LICENSE-lamejs-LGPL-3.0.txt` und
-`LICENSE-lamejs-GPL-3.0.txt` mit den Originaltexten von
-https://www.gnu.org/licenses/lgpl-3.0.txt bzw. `.../gpl-3.0.txt` ergänzen —
-das braucht entweder Netzzugriff auf gnu.org aus einer anderen Umgebung/einem
-anderen Kanal oder die beiden Textdateien direkt vom Nutzer.
+Der vollständige, unveränderte Text der LGPL-3.0 und der GPL-3.0 (auf der sie
+aufbaut) liegt inzwischen als `LICENSE-lamejs-LGPL-3.0.txt` bzw.
+`LICENSE-lamejs-GPL-3.0.txt` bei, direkt von `https://www.gnu.org/licenses/lgpl-3.0.txt`
+bzw. `.../gpl-3.0.txt` bezogen. `LICENSE-lamejs.txt` bleibt unverändert als
+kurzer Auszug aus der LAME-FAQ zur Einordnung erhalten und ersetzt die
+Volltexte nicht. `lame.min.js` selbst wurde dabei nicht angefasst.
