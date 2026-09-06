@@ -528,7 +528,7 @@ function editRecordingDialog({ name, voice }) {
       voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
     }));
-    const voiceRow = el('div', { class: 'chip-grid', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
 
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
@@ -8897,27 +8897,47 @@ $('#rec-song-search').addEventListener('input', () => {
 /**
  * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
  * `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". `current`
- * (nur beim Bearbeiten gesetzt) zeigt die bisherige Zuordnung im Dialogtext.
+ * markiert die bisherige Zuordnung als bereits gewählte Pille.
+ *
+ * Dieselben farbigen Stimm-Pills wie bei „meine Stimme"/editRecordingDialog()
+ * statt der neutralen choiceDialog()-Knopfliste von vorher — eine Stimme
+ * auszuwählen soll überall gleich aussehen. Tippen entscheidet sofort (kein
+ * separater Speichern-Knopf nötig, anders als in editRecordingDialog(), wo
+ * daneben noch der Name steht).
  */
 async function pickRecordingVoice(current) {
-  const currentLabel = current === undefined ? null
-    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
-  const value = await choiceDialog({
-    title: 'Stimme zuordnen?',
-    text: currentLabel
-      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
-      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
-    options: [
-      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
-      { value: 'SOP', label: VOICE_LABEL.SOP },
-      { value: 'ALT', label: VOICE_LABEL.ALT },
-      { value: 'TEN', label: VOICE_LABEL.TEN },
-      { value: 'BASS', label: VOICE_LABEL.BASS },
-      { value: 'LEAD', label: VOICE_LABEL.LEAD },
-    ],
+  const options = [
+    { value: null, label: 'Keine bestimmte Stimme' },
+    { value: 'SOP', label: VOICE_LABEL.SOP },
+    { value: 'ALT', label: VOICE_LABEL.ALT },
+    { value: 'TEN', label: VOICE_LABEL.TEN },
+    { value: 'BASS', label: VOICE_LABEL.BASS },
+    { value: 'LEAD', label: VOICE_LABEL.LEAD },
+  ];
+  return new Promise((resolve) => {
+    const done = (v) => { closeModal(layer); layer.remove(); resolve(v); };
+    const grid = el('div', { class: 'chip-grid chip-grid--lg', role: 'group', 'aria-label': 'Stimme' },
+      ...options.map((opt) => {
+        const btn = el('button', {
+          class: opt.value ? 'chip chip--voice' : 'chip', type: 'button',
+          'aria-pressed': (current ?? null) === opt.value ? 'true' : 'false',
+          text: opt.label,
+          onclick: () => done(opt.value),
+        });
+        if (opt.value) btn.style.setProperty('--voice-c', VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER);
+        return btn;
+      }));
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'Stimme zuordnen?' }),
+      el('p', { text: 'Damit lässt sich der REC später leichter wiederfinden — optional.' }),
+      grid,
+      el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
+        el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(undefined) })));
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Stimme zuordnen' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(undefined); });
+    document.body.append(layer);
+    openModal(layer, { onEscape: () => done(undefined) });
   });
-  if (value === null) return undefined;
-  return value === 'NONE' ? null : value;
 }
 
 /**
@@ -9714,6 +9734,12 @@ function renderRecordingList() {
   const host = $('#recording-list');
   host.textContent = '';
   updateLoopsTabDot();
+  // Der Erklärtext ("Nimm dich selbst auf …") richtet sich an alle, die noch
+  // nie hier waren — wer für diesen Song schon Aufnahmen hat, weiß das
+  // längst und braucht ihn nicht mehr. setRecUI() blendet ihn zusätzlich
+  // während einer laufenden Aufnahme aus; das bleibt davon unberührt, weil
+  // diese Funktion währenddessen nicht aufgerufen wird.
+  $('#rec-status').hidden = songRecordings.length > 0;
   if (!songRecordings.length) return;
 
   for (const recording of songRecordings) {

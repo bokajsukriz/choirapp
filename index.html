@@ -339,6 +339,12 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   padding: 10px 6px;
 }
 
+/* Etwas größer als die Standard-Chips (z.B. „Meine Stimmen" in den
+   Einstellungen) — in einem Dialog, in dem die Auswahl der ganze Inhalt
+   ist (REC-Stimme zuordnen/bearbeiten), darf jede Pille mehr Fläche haben. */
+.chip-grid--lg { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.chip-grid--lg .chip { min-height: 56px; font-size: 1rem; }
+
 .chip[aria-pressed="true"] {
   background: var(--accent);
   color: var(--accent-ink);
@@ -1109,7 +1115,7 @@ input[type="checkbox"] {
    Button-Chrome durchscheint statt der eigenen Farben — auf einem iPhone SE
    blieb sonst nur der rote Rand sichtbar, ohne den gefüllten Punkt darin. */
 .rec-global-btn {
-  width: 28px; height: 28px; min-width: 0; min-height: 0; border-radius: 50%; flex: 0 0 auto;
+  width: 28px; height: 28px; aspect-ratio: 1 / 1; min-width: 0; min-height: 0; border-radius: 50%; flex: 0 0 auto;
   border: 1.5px solid var(--danger); background: var(--surface);
   appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
@@ -1631,10 +1637,13 @@ input[type="checkbox"] {
 .rec-btn {
   width: 56px;
   height: 56px;
+  aspect-ratio: 1 / 1;
   flex: 0 0 auto;
   border-radius: 50%;
   border: 3px solid var(--danger);
   background: var(--surface);
+  appearance: none;
+  -webkit-appearance: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1738,14 +1747,19 @@ input[type="checkbox"] {
 .take-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
 .take-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
-/* Der grüne Zwilling des REC-Knopfs — gleiche Größe, gleiche Position. */
+/* Der grüne Zwilling des REC-Knopfs — gleiche Größe, gleiche Position.
+   aspect-ratio schützt gegen ein WebKit-Rendering, bei dem die native
+   Button-Chrome Breite/Höhe unterschiedlich beeinflusst (dieselbe Ursache
+   wie bei .rec-btn/.rec-global-btn) — ohne die feste Form wirkte das
+   Dreieck darin winzig und schief. */
 .rec-play {
-  width: 56px; height: 56px; flex: 0 0 auto; border-radius: 50%;
+  width: 60px; height: 60px; aspect-ratio: 1 / 1; flex: 0 0 auto; border-radius: 50%;
   border: 3px solid var(--ok); background: var(--surface);
+  appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
   transition: background .12s ease, border-color .12s ease;
 }
-.rec-play svg { width: 24px; height: 24px; color: var(--ok); }
+.rec-play svg { width: 28px; height: 28px; color: var(--ok); }
 .rec-play svg#icon-rec-play, .rec-play svg#icon-recorder-play { margin-left: 3px; }  /* Dreieck optisch mitten */
 /* Gefüllt statt nur das Symbol zu tauschen — der Pause-Zustand soll auch auf
    den ersten Blick eindeutig sein, nicht erst über die Dreieck-/Balken-Form. */
@@ -1753,11 +1767,12 @@ input[type="checkbox"] {
 .rec-play.is-playing svg { color: var(--surface); }
 
 .take-icon {
-  width: var(--tap); height: var(--tap); border-radius: 50%; flex: 0 0 auto;
+  width: 48px; height: 48px; aspect-ratio: 1 / 1; border-radius: 50%; flex: 0 0 auto;
+  appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--line); background: var(--surface); color: var(--text);
 }
-.take-icon svg { width: 22px; height: 22px; }
+.take-icon svg { width: 24px; height: 24px; }
 .take-icon--save { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .take-icon--discard { color: var(--danger); border-color: rgba(255,77,109,.45); }
 /* Gesperrt, aber antippbar: der Tipp erklärt, was noch fehlt (siehe allgemeiner Recorder). */
