@@ -3,7 +3,7 @@
 // Modul-Top-Ebene stehen, deshalb hier vor der IIFE statt darin.
 import { LIGHTSHOW_VOICES, lightshowVoiceIndex, lightshowVoiceColor, LIGHTSHOWS, lightshowScale, lightshowMix, lightshowFrame } from './lightshow.js';
 import { STRINGS } from './strings.js';
-import { createZipReader, zipReadFailureMessage, isJunkPath, zipPrefetchStarts, canInflate } from './zip-reader.js';
+import { createZipReader, zipReadFailureMessage, isJunkPath, zipPrefetchStarts, canInflate, ZipError } from './zip-reader.js';
 
 'use strict';
 (() => {
@@ -4843,6 +4843,99 @@ async function entryBlob(entry) {
   return zipExtract(pick.source.file, entry, pick.source.inflateBudget);  // ZIP-Import
 }
 
+/* ==========================================================================
+   MEDIENPRÜFUNG — Signatur statt Dateiendung
+
+   scanFiles() erkennt Audio/PDF/Text bewusst weiterhin über die Endung (das
+   entscheidet, wie eine Datei einsortiert wird) — aber bevor der Inhalt
+   tatsächlich gespeichert und später an einen Browser-Decoder (Audio) oder
+   den PDF-Betrachter (iframe/neuer Tab) weitergereicht wird, muss der Anfang
+   der Datei zur behaupteten Endung passen. Eine beliebig umbenannte Datei
+   (z.B. ein Skript mit der Endung „.mp3") soll nicht ungeprüft durchgereicht
+   werden. `Blob.type` wird bewusst nicht herangezogen — beim lokalen
+   Dateiimport stammt der Wert vom Betriebssystem/der Endung und ist damit
+   genauso wenig vertrauenswürdig wie die Endung selbst.
+
+   Geprüft wird nur ein kurzer Dateianfang, nie die ganze Datei — das kostet
+   praktisch nichts und hält die Datei nicht zusätzlich im Speicher.
+   ========================================================================== */
+
+const MEDIA_SNIFF_BYTES = 64;   // reicht für jede der unten geprüften Signaturen
+
+/** Liest nur die ersten `n` Bytes eines Blobs — nie den ganzen Inhalt. */
+async function readBlobHead(blob, n = MEDIA_SNIFF_BYTES) {
+  const buf = await blob.slice(0, n).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+/** Vergleicht `bytes` ab `offset` mit einer ASCII-Zeichenkette. */
+function bytesStartWith(bytes, ascii, offset = 0) {
+  if (offset < 0 || bytes.length < offset + ascii.length) return false;
+  for (let i = 0; i < ascii.length; i++) {
+    if (bytes[offset + i] !== ascii.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
+/**
+ * PDF: beginnt mit „%PDF-". Manche Exporte (z.B. aus älteren Scannern/Tools)
+ * schreiben davor ein paar harmlose Bytes (BOM, Leerzeilen) — bis zu vier
+ * Bytes Vorlauf werden deshalb toleriert, mehr nicht.
+ */
+function looksLikePdf(bytes) {
+  const maxOffset = Math.min(4, bytes.length - 5);
+  for (let offset = 0; offset <= maxOffset; offset++) {
+    if (bytesStartWith(bytes, '%PDF-', offset)) return true;
+  }
+  return false;
+}
+
+/**
+ * Audio: erkennt die Signaturen/Container der von AUDIO_RE unterstützten
+ * Formate. Für MP3 ohne ID3-Tag und für rohes ADTS-AAC reicht die Endung
+ * allein nicht — beide erkennt man erst am Bitmuster des Frame-Syncs.
+ */
+function looksLikeAudio(bytes) {
+  if (bytesStartWith(bytes, 'ID3')) return true;                          // MP3 mit ID3-Tag
+  if (bytesStartWith(bytes, 'RIFF') && bytesStartWith(bytes, 'WAVE', 8)) return true; // WAV
+  if (bytesStartWith(bytes, 'OggS')) return true;                         // Ogg/Opus
+  if (bytesStartWith(bytes, 'fLaC')) return true;                         // FLAC
+  if (bytes.length >= 8 && bytesStartWith(bytes, 'ftyp', 4)) return true; // M4A/AAC (ISO-BMFF)
+  // EBML/WebM: kein Import-Format (AUDIO_RE kennt keine .webm-Endung), aber
+  // die App zeichnet RECs selbst als WebM auf (siehe recorderOptions) — eine
+  // Sicherung mit eingebetteten RECs muss diese beim Wiederherstellen erkennen.
+  if (bytesStartWith(bytes, '\x1A\x45\xDF\xA3')) return true;
+
+  if (bytes.length >= 2 && bytes[0] === 0xFF) {
+    const b1 = bytes[1];
+    // MPEG-Audio-Frame-Sync (MP3 ohne ID3-Tag): 11 Sync-Bits, danach Version
+    // und Layer dürfen nicht auf einen „reserved"-Wert zeigen.
+    if ((b1 & 0xE0) === 0xE0) {
+      const version = (b1 >> 3) & 0x03;
+      const layer = (b1 >> 1) & 0x03;
+      if (version !== 0x01 && layer !== 0x00) return true;
+    }
+    // ADTS (rohes AAC): 12 Sync-Bits, danach feste Layer-Bits „00".
+    if ((b1 & 0xF6) === 0xF0) return true;
+  }
+  return false;
+}
+
+/**
+ * Prüft, ob der Anfang eines importierten Blobs zum behaupteten Dateityp
+ * passt. Liest dafür nur MEDIA_SNIFF_BYTES Bytes, nie den ganzen Blob.
+ *
+ * @param {Blob} blob
+ * @param {'audio'|'pdf'} expectedKind
+ * @returns {Promise<boolean>}
+ */
+async function validateImportedMediaBlob(blob, expectedKind) {
+  const head = await readBlobHead(blob);
+  if (expectedKind === 'pdf') return looksLikePdf(head);
+  if (expectedKind === 'audio') return looksLikeAudio(head);
+  return false;
+}
+
 /**
  * Sucht die vorhandene Spur, die von einer neuen ersetzt bzw. ergänzt würde.
  * Abgeglichen wird über die Stimme — bei OTHER über den Dateinamen, weil
@@ -5314,25 +5407,36 @@ async function withScreenAwake(fn) {
 // Vorgang unterbrechen kann, statt das erst nach langem Warten zu erfahren.
 const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
 
-// Harte Grenzen beim Auspacken (Befund F-06): die Dateien stammen aus dem
+// Harte Grenzen beim Importieren (Befund F-06): die Dateien stammen aus dem
 // Dropbox-Export des eigenen Chores, der Angriffsweg ist entsprechend schmal.
-// Trotzdem billig gegen ein grob präpariertes Archiv absichern — nicht nur
-// je Eintrag (das gab es schon), sondern auch summiert über das ganze
-// Archiv: viele Einträge, die alle einzeln unter dem Limit bleiben, könnten
-// sonst zusammen beliebig viel Speicher/Quota verbrauchen.
-const ZIP_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
-const ZIP_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // ausgepackt, je Eintrag
-const ZIP_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // ausgepackt, über alle Einträge
+// Trotzdem billig gegen ein grob präpariertes Archiv oder einen grob
+// präparierten Ordner absichern — nicht nur je Eintrag (das gab es schon),
+// sondern auch summiert über den ganzen Import: viele Einträge, die alle
+// einzeln unter dem Limit bleiben, könnten sonst zusammen beliebig viel
+// Speicher/Quota verbrauchen.
+//
+// Quellenneutral benannt (IMPORT_MAX_*): ZIP- und Ordnerimport laufen beide
+// über scanFiles() in dieselbe Auswahlmaske und sollen auch vorher auf
+// demselben Sicherheitsniveau geprüft werden — startFolderImport() unten
+// verwendet dieselben Werte für dieselbe Art Inhalt (Anzahl, Pfadlänge,
+// Einzel- und Gesamtgröße), bevor überhaupt gescannt wird. Was wirklich nur
+// beim ZIP-Format selbst anfällt (Format der Datei, Central-Directory-Größe,
+// Kompressionsverhältnis), bleibt als ZIP_MAX_* daneben stehen.
+const IMPORT_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
+const IMPORT_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // je Datei, unkomprimiert
+const IMPORT_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // über alle Dateien
+const IMPORT_MAX_PATH_LENGTH = 512;               // Zeichen je Pfad/Dateiname
+const IMPORT_MAX_SONGS  = 5000;  // Obergrenze für runImport(), unabhängig von der Quelle (ZIP/Ordner)
+const IMPORT_MAX_TRACKS = 20000;
+
+// Nur beim ZIP-Format selbst relevant — kein Ordnerimport-Äquivalent.
 const ZIP_MAX_CD_BYTES    = 64 * 1024 * 1024;  // Inhaltsverzeichnis selbst — Prüfung VOR dem Lesen
-const ZIP_MAX_PATH_LEN    = 512;               // Zeichen je Pfad im Archiv
 // Ab hier gilt eine Kompressionsrate als verdächtig (Zip-Bomb-Verdacht) —
 // nur oberhalb einer Mindestgröße geprüft, sonst würden auch winzige, ganz
 // normal stark komprimierbare Dateien (z.B. sehr leise REC-Passagen) anschlagen.
 const ZIP_MAX_RATIO           = 200;
 const ZIP_MIN_RATIO_CHECK_SIZE = 8 * 1024 * 1024;
 const ZIP_MAX_FILE_BYTES = 16 * 1024 * 1024 * 1024; // die ZIP-Datei selbst
-const ZIP_MAX_IMPORT_SONGS  = 5000;  // Obergrenze für runImport(), unabhängig von der Quelle (ZIP/Ordner)
-const ZIP_MAX_IMPORT_TRACKS = 20000;
 
 // AP-D (ARCHITEKTUR-PLAN.md): der ZIP-Parser selbst lebt in zip-reader.js,
 // als echtes Blatt ohne eigene Grenzwerte — die kommen erst hier, eingefroren,
@@ -5341,12 +5445,12 @@ const ZIP_MAX_IMPORT_TRACKS = 20000;
 const { zipReadDirectory, zipExtract } = createZipReader({
   maxFileBytes: ZIP_MAX_FILE_BYTES,
   maxCdBytes: ZIP_MAX_CD_BYTES,
-  maxPathLen: ZIP_MAX_PATH_LEN,
+  maxPathLen: IMPORT_MAX_PATH_LENGTH,
   maxRatio: ZIP_MAX_RATIO,
   minRatioCheckSize: ZIP_MIN_RATIO_CHECK_SIZE,
-  maxTotalBytes: ZIP_MAX_TOTAL_BYTES,
-  maxEntries: ZIP_MAX_ENTRIES,
-  maxEntryBytes: ZIP_MAX_ENTRY_BYTES,
+  maxTotalBytes: IMPORT_MAX_TOTAL_BYTES,
+  maxEntries: IMPORT_MAX_ENTRIES,
+  maxEntryBytes: IMPORT_MAX_ENTRY_BYTES,
 }, dlog);
 
 async function startZipImport(file) {
@@ -5399,8 +5503,64 @@ async function startZipImport(file) {
   }
 }
 
+/**
+ * Prüft eine Ordnerauswahl gegen dieselben Grenzen wie den ZIP-Import — VOR
+ * dem Aufbau der items-Liste und vor scanFiles(). Der ZIP-Import bekommt
+ * seine Grenzen aus dem Inhaltsverzeichnis, bevor überhaupt eine Datei
+ * gelesen wird (siehe zipReadDirectory()); der Ordnerimport lief bisher ohne
+ * jede Vorprüfung in scanFiles(), obwohl `<input webkitdirectory>` genauso
+ * beliebig viele, beliebig große und beliebig tief verschachtelte Dateien
+ * liefern kann wie ein präpariertes Archiv.
+ *
+ * Reine Funktion (kein DOM, keine Datenbank) — testbar mit einfachen
+ * { size, webkitRelativePath }-Objekten statt echter File-Instanzen.
+ *
+ * @param {Array<{size: number, webkitRelativePath?: string, name?: string}>} fileList
+ * @returns {string|null} Fehlermeldung oder null, wenn die Auswahl unbedenklich ist.
+ */
+function validateFolderImportSelection(fileList) {
+  if (fileList.length > IMPORT_MAX_ENTRIES) {
+    return 'Dieser Ordner enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.';
+  }
+
+  // Summe der Dateigrößen sicher aufbauen: Number.isSafeInteger fängt sowohl
+  // kaputte/negative Werte (z.B. aus einem manipulierten File-ähnlichen
+  // Objekt) als auch einen Überlauf oberhalb von Number.MAX_SAFE_INTEGER ab,
+  // bevor die Summe selbst unplausibel würde.
+  let totalBytes = 0;
+  for (const f of fileList) {
+    const path = f.webkitRelativePath || f.name || '';
+    if (path.length > IMPORT_MAX_PATH_LENGTH) {
+      return `„${path.slice(0, 60)}…" hat einen zu langen Pfad.`;
+    }
+    if (!Number.isSafeInteger(f.size) || f.size < 0) {
+      return `„${path}" hat eine unplausible Größenangabe.`;
+    }
+    if (f.size > IMPORT_MAX_ENTRY_BYTES) {
+      return `„${path}" ist mit ${fmtBytes(f.size)} größer als erlaubt (${fmtBytes(IMPORT_MAX_ENTRY_BYTES)}).`;
+    }
+    totalBytes += f.size;
+    if (!Number.isSafeInteger(totalBytes) || totalBytes > IMPORT_MAX_TOTAL_BYTES) {
+      return `Dieser Ordner ist zusammen zu groß (über ${fmtBytes(IMPORT_MAX_TOTAL_BYTES)}).`;
+    }
+  }
+  return null;
+}
+
 async function startFolderImport(fileList) {
   dlog('import:folder:begin', { files: fileList.length });
+
+  // Vor jedem weiteren Schritt geprüft — auch vor dem Aufbau der items-Liste
+  // unten (siehe validateFolderImportSelection()). Ein Fehlschlag hier bricht
+  // den ganzen Import ab, mit einer konkreten Meldung statt eines stillen
+  // Abschneidens; runImport() prüft die tatsächliche Auswahl anschließend
+  // noch einmal als zweite Verteidigungsschicht.
+  const selectionError = validateFolderImportSelection(fileList);
+  if (selectionError) {
+    banner(selectionError, { kind: 'error' });
+    return;
+  }
+
   const close = banner('Ordner wird gelesen …', { timeout: 0 });
   await paintNow();
   try {
@@ -5502,12 +5662,12 @@ async function runImport() {
   const totalBytes = chosenTracks.reduce((n, t) => n + (t.size || 0), 0) || 1;
   dlog('import:run:begin', { totalFiles, totalBytes, songs: chosenSongs.length });
 
-  // Obergrenze für die erzeugten Objekte selbst, unabhängig von der Quelle
-  // (ZIP-Import ist über ZIP_MAX_ENTRIES schon indirekt begrenzt, der
-  // Ordner-Import über webkitdirectory gar nicht) — sonst könnte ein sehr
-  // großer, ungewöhnlicher Ordner genauso viele Meta-Datensätze anlegen wie
-  // ein präpariertes ZIP-Archiv.
-  if (chosenSongs.length > ZIP_MAX_IMPORT_SONGS || chosenTracks.length > ZIP_MAX_IMPORT_TRACKS) {
+  // Obergrenze für die erzeugten Objekte selbst, unabhängig von der Quelle —
+  // zweite Verteidigungsschicht hinter den Vorprüfungen in startZipImport()/
+  // startFolderImport() (IMPORT_MAX_ENTRIES bzw. die dortigen Prüfungen vor
+  // scanFiles()), falls die Auswahlmaske zwischen Scan und Import verändert
+  // werden könnte.
+  if (chosenSongs.length > IMPORT_MAX_SONGS || chosenTracks.length > IMPORT_MAX_TRACKS) {
     banner('Diese Auswahl enthält ungewöhnlich viele Songs oder Dateien — das sieht nicht nach einem Chorarchiv aus.', { kind: 'error' });
     return;
   }
@@ -5608,49 +5768,59 @@ async function runImport() {
         showProgress(track.fileName);
         try {
           const blob = await entryBlob(track.entry);
-          const fileKey = newFileKey();
-          batch.files.push(await fileRecord(fileKey, blob, track.fileName));
-          songGotContent = true;
-          batch.bytes += blob.size;
-          batch.songs.add(song);
-
-          const record = {
-            voice: track.voice,
-            label: track.label,
-            fileName: track.fileName,
-            fileKey,
-            size: blob.size,
-            durationSec: null,
-          };
-
-          // Gegen die laufend mitgeführte Arbeitskopie prüfen, nicht gegen
-          // das unveränderliche scan.existing: enthält dieser Ordner zwei
-          // Dateien für dieselbe Stimme, fände sich sonst beide Male derselbe
-          // alte Datensatz, und die zweite Datei überschriebe die erste im
-          // Songdatensatz, ohne dass deren Datei als obsolet markiert wird —
-          // eine nie mehr referenzierte, aber nie gelöschte Leiche im Speicher.
-          const old = findExistingTrack(song, track);
-          if (old) {
-            batch.obsolete.push(old.fileKey);
-            // Ersetzte Aufnahmen können gespeicherte Loops verschieben. Nichts
-            // wird umgerechnet — der Player weist einmalig darauf hin (Spec 4.6).
-            if (songHasLoops && old.durationSec) {
-              song.replacedNotice = { voice: track.voice, prevDurationSec: old.durationSec };
-            }
-            const idx = song.tracks.findIndex((x) =>
-              track.voice === 'OTHER'
-                ? x.voice === 'OTHER' && x.fileName === track.fileName
-                : x.voice === track.voice);
-            if (idx >= 0) song.tracks[idx] = record; else song.tracks.push(record);
-            report.tracksReplaced++;
+          // Endung und Ordnerposition sagen nichts über den tatsächlichen
+          // Inhalt — eine beliebig umbenannte Datei soll nicht ungeprüft an
+          // den Browser-Audio-Decoder weitergereicht werden (Signaturprüfung,
+          // siehe validateImportedMediaBlob()). Die Datei wird übersprungen,
+          // der restliche Import läuft weiter, genau wie bei jedem anderen
+          // Lesefehler hier.
+          if (!(await validateImportedMediaBlob(blob, 'audio'))) {
+            report.failed.push(`${track.fileName} (Inhalt passt nicht zu einer Audiodatei)`);
           } else {
-            song.tracks.push(record);
-            report.tracksAdded++;
-          }
+            const fileKey = newFileKey();
+            batch.files.push(await fileRecord(fileKey, blob, track.fileName));
+            songGotContent = true;
+            batch.bytes += blob.size;
+            batch.songs.add(song);
 
-          if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
-            song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
-            await flushImportBatch(batch);
+            const record = {
+              voice: track.voice,
+              label: track.label,
+              fileName: track.fileName,
+              fileKey,
+              size: blob.size,
+              durationSec: null,
+            };
+
+            // Gegen die laufend mitgeführte Arbeitskopie prüfen, nicht gegen
+            // das unveränderliche scan.existing: enthält dieser Ordner zwei
+            // Dateien für dieselbe Stimme, fände sich sonst beide Male derselbe
+            // alte Datensatz, und die zweite Datei überschriebe die erste im
+            // Songdatensatz, ohne dass deren Datei als obsolet markiert wird —
+            // eine nie mehr referenzierte, aber nie gelöschte Leiche im Speicher.
+            const old = findExistingTrack(song, track);
+            if (old) {
+              batch.obsolete.push(old.fileKey);
+              // Ersetzte Aufnahmen können gespeicherte Loops verschieben. Nichts
+              // wird umgerechnet — der Player weist einmalig darauf hin (Spec 4.6).
+              if (songHasLoops && old.durationSec) {
+                song.replacedNotice = { voice: track.voice, prevDurationSec: old.durationSec };
+              }
+              const idx = song.tracks.findIndex((x) =>
+                track.voice === 'OTHER'
+                  ? x.voice === 'OTHER' && x.fileName === track.fileName
+                  : x.voice === track.voice);
+              if (idx >= 0) song.tracks[idx] = record; else song.tracks.push(record);
+              report.tracksReplaced++;
+            } else {
+              song.tracks.push(record);
+              report.tracksAdded++;
+            }
+
+            if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+              song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+              await flushImportBatch(batch);
+            }
           }
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
@@ -5681,19 +5851,26 @@ async function runImport() {
       for (const pdf of scan.pdfEntries) {
         try {
           const blob = await entryBlob(pdf);
-          const fileKey = newFileKey();
-          const existing = song.scores.find((sc) => sc.fileName === pdf.name);
-          if (existing) {
-            batch.obsolete.push(existing.fileKey);
-            existing.fileKey = fileKey;
-            existing.size = blob.size;
+          // Dieselbe Signaturprüfung wie bei Audiodateien, hier gegen die
+          // PDF-Kennung — bevor die Datei später als „application/pdf" in
+          // ein iframe/einen neuen Tab wandert (siehe loadScorePreviews()).
+          if (!(await validateImportedMediaBlob(blob, 'pdf'))) {
+            report.failed.push(`${pdf.name} (Inhalt passt nicht zu einer PDF-Datei)`);
           } else {
-            song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
+            const fileKey = newFileKey();
+            const existing = song.scores.find((sc) => sc.fileName === pdf.name);
+            if (existing) {
+              batch.obsolete.push(existing.fileKey);
+              existing.fileKey = fileKey;
+              existing.size = blob.size;
+            } else {
+              song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
+            }
+            batch.files.push(await fileRecord(fileKey, blob, pdf.name));
+            songGotContent = true;
+            batch.bytes += blob.size;
+            batch.songs.add(song);
           }
-          batch.files.push(await fileRecord(fileKey, blob, pdf.name));
-          songGotContent = true;
-          batch.bytes += blob.size;
-          batch.songs.add(song);
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
           console.warn('[import] Noten', err);
@@ -9199,6 +9376,12 @@ async function exportRecording(recording) {
  */
 async function importRecordingFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
+  // Signaturprüfung vor allem anderen: eine beliebig umbenannte Datei mit der
+  // Endung „.mp3" soll nicht als Audiodatei gespeichert werden, nur weil ihr
+  // Dateiname oder ein ID3-Tag wie ein REC-Export aussieht.
+  if (!looksLikeAudio(bytes.subarray(0, MEDIA_SNIFF_BYTES))) {
+    throw new Error('Diese Datei wurde nicht als REC-Export erkannt.');
+  }
   const tags = readId3Tags(bytes) || {};
   const isOurs = tags[`TXXX:${ID3_MARKER_KEY}`] === '1';
 
@@ -9856,6 +10039,23 @@ async function loadScorePreviews() {
         head.append(dl);
       }
 
+      // Kein `sandbox`-Attribut: geprüft (Chromium 141, headless) — schon ein
+      // rein restriktives `sandbox=""` UND jede mit `allow-same-origin`
+      // kombinierte Variante lassen die Blob-URL gar nicht mehr laden
+      // (Chrome blockiert blob:-Navigation grundsätzlich in sandboxten
+      // Frames, unabhängig von den vergebenen Rechten) — die Vorschau bliebe
+      // dann in jedem Fall leer, nicht nur potenziell. Ein Sandbox-Attribut
+      // eigens für dieses iframe würde also nicht mehr Sicherheit bringen,
+      // sondern nur den Regelfall kaputt machen. Der eigentliche Schutz sitzt
+      // deshalb davor: validateImportedMediaBlob() prüft die Signatur, bevor
+      // eine Datei überhaupt als PDF gespeichert wird, das feste
+      // `type: 'application/pdf'` unten sorgt dafür, dass der native
+      // PDF-Betrachter greift statt einer HTML-Interpretation, und object-src
+      // 'none' in der CSP verbietet zusätzlich jedes <object>/<embed> von
+      // fremder Seite. Der „Öffnen"-Knopf oben bleibt unabhängig von dieser
+      // eingebetteten Vorschau nutzbar — bleibt sie in einem Browser leer,
+      // ist er der explizite Weg zur Datei.
+      //
       // Kein `loading="lazy"`: das Panel ist beim Einfügen bereits sichtbar
       // (siehe setPlayerTab), ein zusätzliches Lazy-Loading brachte auf
       // manchen Geräten nur eine leer bleibende Vorschau statt Zeitersparnis.
@@ -10392,12 +10592,34 @@ function updateMediaPosition() {
 let openPlaylist = null;
 let playQueue = null;   // { name, items: [{title, id}], index } während des Abspielens
 
+// Grenzwerte für den Setlisten-Textimport (Datei oder eingefügter Text).
+// Eine Setlistendatei kommt von außen (Dropbox, Zwischenablage, von Hand
+// bearbeitet) und darf die App nicht mit einer unbegrenzt langen Zeilenliste
+// lahmlegen. Die Werte sind bewusst großzügig für eine gewachsene Setliste
+// (real einige hundert Titel), aber endlich. Geprüft wird VOR dem vollständigen
+// Einlesen (Dateigröße) bzw. vor der Zeilenverarbeitung (Textlänge) — ein
+// Überschreiten bricht den Import vollständig ab, statt still abzuschneiden.
+const PLAYLIST_IMPORT_MAX_FILE_BYTES  = 2 * 1024 * 1024;   // rohe .txt-Datei
+const PLAYLIST_IMPORT_MAX_TEXT_LENGTH = 200000;            // Zeichen, Datei wie Zwischenablage
+const PLAYLIST_IMPORT_MAX_TITLES      = 2000;              // Liedtitel je Setliste
+const PLAYLIST_IMPORT_MAX_TITLE_LENGTH = 200;              // Zeichen je Titel
+const PLAYLIST_IMPORT_MAX_NAME_LENGTH  = 200;               // Zeichen im Setlistennamen
+
 /**
  * Liest eine Playlist-Textdatei. Bewusst tolerant: die Dateien schreiben
  * Menschen, nicht Maschinen.
- * @returns {{name: string|null, titles: string[]}}
+ *
+ * Bricht bei einer Grenzüberschreitung vollständig ab (kein stillschweigendes
+ * Abschneiden) — der Aufrufer erkennt das am gesetzten `error`, in dem Fall
+ * sind `name`/`titles` nicht gesetzt.
+ *
+ * @returns {{name: string|null, titles: string[], error?: string}}
  */
 function parsePlaylistText(text, fallbackName) {
+  if (text.length > PLAYLIST_IMPORT_MAX_TEXT_LENGTH) {
+    return { error: `Dieser Text ist zu lang (${text.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_TEXT_LENGTH}).` };
+  }
+
   const lines = text.split(/\r?\n/);
   let name = null;
   const titles = [];
@@ -10423,10 +10645,22 @@ function parsePlaylistText(text, fallbackName) {
       .replace(/^[-–*•]\s*/, '')
       .trim();
 
-    if (cleaned) titles.push(cleaned);
+    if (!cleaned) continue;
+    if (cleaned.length > PLAYLIST_IMPORT_MAX_TITLE_LENGTH) {
+      return { error: `Ein Liedtitel ist zu lang („${cleaned.slice(0, 40)}…", ${cleaned.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_TITLE_LENGTH}).` };
+    }
+    if (titles.length >= PLAYLIST_IMPORT_MAX_TITLES) {
+      return { error: `Diese Setliste enthält zu viele Titel (mehr als ${PLAYLIST_IMPORT_MAX_TITLES}).` };
+    }
+    titles.push(cleaned);
   }
 
-  return { name: name || fallbackName || null, titles };
+  const finalName = name || fallbackName || null;
+  if (finalName && finalName.length > PLAYLIST_IMPORT_MAX_NAME_LENGTH) {
+    return { error: `Der Setlistenname ist zu lang (${finalName.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_NAME_LENGTH}).` };
+  }
+
+  return { name: finalName, titles };
 }
 
 function playlistToText(pl) {
@@ -10475,7 +10709,12 @@ async function toggleFavoritePlaylist(pl, lists) {
  * wenn der Nutzer es ausdrücklich sagt.
  */
 async function createPlaylistFromText(text, fallbackName) {
-  const { name, titles } = parsePlaylistText(text, fallbackName);
+  const result = parsePlaylistText(text, fallbackName);
+  if (result.error) {
+    banner(result.error, { kind: 'error' });
+    return null;
+  }
+  const { name, titles } = result;
   if (!titles.length) {
     banner('In diesem Text stehen keine Liedtitel.', { kind: 'error' });
     return null;
@@ -10512,6 +10751,13 @@ $('#pl-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
+  // Größe VOR dem Einlesen prüfen (nicht erst danach) — eine überdimensionierte
+  // Datei soll nicht erst vollständig gelesen werden, bevor überhaupt geprüft
+  // wird, ob das plausibel ist (dieselbe Reihenfolge wie beim ZIP-Import).
+  if (file.size > PLAYLIST_IMPORT_MAX_FILE_BYTES) {
+    banner(`Diese Datei ist zu groß (${fmtBytes(file.size)}, erlaubt sind ${fmtBytes(PLAYLIST_IMPORT_MAX_FILE_BYTES)}).`, { kind: 'error' });
+    return;
+  }
   try {
     const text = await readTextBlob(file);
     await createPlaylistFromText(text, file.name.replace(/\.txt$/i, ''));
@@ -11037,7 +11283,12 @@ function openPlaylistTextDialog(pl) {
     el('div', { class: 'dialog-actions', style: 'margin-top:10px' },
       el('button', { class: 'btn', type: 'button', text: 'Schließen', onclick: done }),
       el('button', { class: 'btn btn--primary', type: 'button', text: 'Übernehmen', onclick: async () => {
-        const { name, titles } = parsePlaylistText(textarea.value, pl.name);
+        const result = parsePlaylistText(textarea.value, pl.name);
+        if (result.error) {
+          banner(result.error, { kind: 'error' });
+          return;
+        }
+        const { name, titles } = result;
         if (!titles.length) {
           banner('In diesem Text stehen keine Liedtitel.', { kind: 'error' });
           return;
@@ -11171,7 +11422,7 @@ const BACKUP_FORMAT_VERSION = 2;
 // großen Schleife oder einem Speicher-Erschöpfungsversuch lahmlegen. Die
 // Werte sind bewusst großzügig für ein gewachsenes Chorarchiv (siehe
 // backupSizeEstimate() — realistisch einige hundert Songs, siehe auch der
-// Kommentar an ZIP_MAX_ENTRIES), aber endlich. Geprüft wird VOR jedem
+// Kommentar an IMPORT_MAX_ENTRIES), aber endlich. Geprüft wird VOR jedem
 // Datenbank-Write, siehe validateBackupSkeleton() und die Größenschätzung in
 // readBackupFile().
 const BACKUP_MAX_FILE_BYTES          = 4 * 1024 * 1024 * 1024;  // rohe Sicherungsdatei
@@ -11187,7 +11438,7 @@ const BACKUP_MAX_PLAYLIST_SONGS      = 5000; // Songtitel je Setliste
 const BACKUP_MAX_TITLE_LEN           = 300;   // Song-/Loop-/Setlistenname
 const BACKUP_MAX_TEXT_LEN            = 200000; // Notiz/eigener Liedtext, Zeichen
 const BACKUP_MAX_FILENAME_LEN        = 300;
-// Dieselbe Einzeldatei-Grenze wie beim ZIP-Import (ZIP_MAX_ENTRY_BYTES) —
+// Dieselbe Einzeldatei-Grenze wie beim ZIP-/Ordnerimport (IMPORT_MAX_ENTRY_BYTES) —
 // entpackte Audiodaten/Noten-PDFs sind hier wie dort dieselbe Art Inhalt.
 const BACKUP_MAX_DECODED_ENTRY_BYTES = 512 * 1024 * 1024;
 const BACKUP_MAX_DECODED_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // über alle @B64#-Werte einer Sicherung
@@ -11917,6 +12168,11 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // lassen. Der volle Base64-Inhalt wird dabei bewusst nicht vorab aufgelöst
   // (das vermeidet readBackupFile() bereits gezielt, wegen des Speichers).
   let discardedSongAudio = 0, discardedRecordings = 0;
+  // Zusätzlich verworfen, weil der Inhalt nicht zum behaupteten Dateityp
+  // passt (Signaturprüfung, siehe validateImportedMediaBlob()) — eine
+  // Sicherungsdatei kommt von außen und darf keinen falsch deklarierten
+  // Inhalt in die Wiedergabe/den PDF-Betrachter tragen.
+  let discardedTracks = 0, discardedScores = 0;
 
   let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
   let addedLoops = 0, addedPl = 0, keptPending = 0;
@@ -11971,6 +12227,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           const voice = VOICE_ORDER.includes(t.voice) ? t.voice : 'OTHER';
           const base64 = await resolveAudioBase64(t.audioBase64);
           const blob = base64ToBlob(base64, t.mimeType || 'audio/mpeg');
+          if (!(await validateImportedMediaBlob(blob, 'audio'))) { discardedTracks++; continue; }
           const fileKey = newFileKey();
           const fileName = t.fileName || `${voice}.mp3`;
           batch.files.push(await fileRecord(fileKey, blob, fileName));
@@ -11995,6 +12252,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           if (sc.fileName && (typeof sc.fileName !== 'string' || sc.fileName.length > BACKUP_MAX_FILENAME_LEN)) continue;
           const base64 = await resolveAudioBase64(sc.audioBase64);
           const blob = base64ToBlob(base64, 'application/pdf');
+          if (!(await validateImportedMediaBlob(blob, 'pdf'))) { discardedScores++; continue; }
           const fileKey = newFileKey();
           const fileName = sc.fileName || 'Noten.pdf';
           batch.files.push(await fileRecord(fileKey, blob, fileName));
@@ -12143,6 +12401,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       const mimeType = r.mimeType || 'audio/webm';
       const base64 = await resolveAudioBase64(r.audioBase64);
       const blob = base64ToBlob(base64, mimeType);
+      if (!(await validateImportedMediaBlob(blob, 'audio'))) { discardedRecordings++; continue; }
       const fileKey = newFileKey();
       const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('mpeg') ? 'mp3' : 'webm');
       const fileRec = await fileRecord(fileKey, blob, `${r.name || 'REC'}.${ext}`);
@@ -12201,6 +12460,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       addedLyricsNotes, skippedLyricsNotes,
       addedRecordings, skippedRecordings,
       discardedSongAudio, discardedRecordings,
+      discardedTracks, discardedScores,
     };
     throw err;
   }
@@ -12253,7 +12513,9 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     + (skippedRecordings ? ` ${plural(skippedRecordings, 'REC', 'RECs')} übersprungen, weil schon vorhanden.` : '')
     + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : '')
     + (discardedSongAudio ? ` ${plural(discardedSongAudio, 'Songeintrag', 'Songeinträge')} ohne verwertbaren Inhalt verworfen.` : '')
-    + (discardedRecordings ? ` ${plural(discardedRecordings, 'REC', 'RECs')} ohne Audiodaten verworfen.` : ''),
+    + (discardedRecordings ? ` ${plural(discardedRecordings, 'REC', 'RECs')} ohne Audiodaten verworfen.` : '')
+    + (discardedTracks ? ` ${plural(discardedTracks, 'Spur', 'Spuren')} verworfen, weil der Inhalt nicht zu einer Audiodatei passt.` : '')
+    + (discardedScores ? ` ${plural(discardedScores, 'Notenblatt', 'Notenblätter')} verworfen, weil der Inhalt nicht zu einer PDF-Datei passt.` : ''),
     { kind: 'ok' });
 }
 
@@ -13006,6 +13268,146 @@ function runSelfTests() {
     });
   }
 
+  // Setlisten-Textimport (Punkt 1 des Import-Härtungsauftrags): normaler
+  // Import sowie jede der vier inhaltlichen Grenzen einzeln.
+  checks++;
+  {
+    const text = '# Sommerkonzert 2026\nAve Maria\nBlaue Augen\n1. Nochmal Blaue Augen\n';
+    const result = parsePlaylistText(text, 'Fallback');
+    if (result.error || result.name !== 'Sommerkonzert 2026' || result.titles.length !== 3) {
+      failed.push(`parsePlaylistText: normaler Import schlägt fehl (${JSON.stringify(result)})`);
+    }
+  }
+  checks++;
+  {
+    const tooLong = 'x'.repeat(PLAYLIST_IMPORT_MAX_TEXT_LENGTH + 1);
+    const result = parsePlaylistText(tooLong, null);
+    if (!result.error) failed.push('parsePlaylistText: zu langer Text müsste abgelehnt werden');
+  }
+  checks++;
+  {
+    const lines = Array.from({ length: PLAYLIST_IMPORT_MAX_TITLES + 1 }, (_, i) => `Titel ${i}`);
+    const result = parsePlaylistText(lines.join('\n'), null);
+    if (!result.error) failed.push('parsePlaylistText: zu viele Titel müssten abgelehnt werden');
+  }
+  checks++;
+  {
+    const result = parsePlaylistText(`# Setliste\n${'a'.repeat(PLAYLIST_IMPORT_MAX_TITLE_LENGTH + 1)}\n`, null);
+    if (!result.error) failed.push('parsePlaylistText: zu langer Titel müsste abgelehnt werden');
+  }
+  checks++;
+  {
+    const longName = `# ${'a'.repeat(PLAYLIST_IMPORT_MAX_NAME_LENGTH + 1)}\nAve Maria\n`;
+    const result = parsePlaylistText(longName, null);
+    if (!result.error) failed.push('parsePlaylistText: zu langer Setlistenname müsste abgelehnt werden');
+  }
+  // Ein Abbruch darf nie stillschweigend abschneiden — die zuvor
+  // eingelesenen Titel dürfen bei einer Grenzüberschreitung nicht als
+  // Teilergebnis zurückkommen.
+  checks++;
+  {
+    const lines = ['Ave Maria', 'a'.repeat(PLAYLIST_IMPORT_MAX_TITLE_LENGTH + 1), 'Blaue Augen'];
+    const result = parsePlaylistText(lines.join('\n'), null);
+    if (!result.error || result.titles) {
+      failed.push('parsePlaylistText: Abbruch nach überlangem Titel darf keine Teilliste liefern');
+    }
+  }
+
+  // Ordnerimport-Vorprüfung (Punkt 2 des Import-Härtungsauftrags): dieselben
+  // Grenzen wie beim ZIP-Import, aber vor scanFiles() geprüft.
+  checks++;
+  {
+    const files = Array.from({ length: IMPORT_MAX_ENTRIES + 1 }, (_, i) => ({ size: 1, webkitRelativePath: `Song/${i}.mp3` }));
+    if (!validateFolderImportSelection(files)) {
+      failed.push('validateFolderImportSelection: zu viele Dateien müssten abgelehnt werden');
+    }
+  }
+  checks++;
+  {
+    const files = [{ size: 1, webkitRelativePath: `Song/${'a'.repeat(IMPORT_MAX_PATH_LENGTH + 1)}.mp3` }];
+    if (!validateFolderImportSelection(files)) {
+      failed.push('validateFolderImportSelection: zu langer Pfad müsste abgelehnt werden');
+    }
+  }
+  checks++;
+  {
+    const files = [{ size: IMPORT_MAX_ENTRY_BYTES + 1, webkitRelativePath: 'Song/FULL.mp3' }];
+    if (!validateFolderImportSelection(files)) {
+      failed.push('validateFolderImportSelection: zu große Einzeldatei müsste abgelehnt werden');
+    }
+  }
+  checks++;
+  {
+    // Viele Dateien genau am Einzellimit, die zusammen das Gesamtlimit
+    // überschreiten — dieselbe Überlegung wie bei IMPORT_MAX_TOTAL_BYTES.
+    const filesNeeded = Math.ceil(IMPORT_MAX_TOTAL_BYTES / IMPORT_MAX_ENTRY_BYTES) + 1;
+    const files = Array.from({ length: filesNeeded }, (_, i) => (
+      { size: IMPORT_MAX_ENTRY_BYTES, webkitRelativePath: `Song/${i}.mp3` }));
+    if (!validateFolderImportSelection(files)) {
+      failed.push('validateFolderImportSelection: zu große Gesamtsumme müsste abgelehnt werden');
+    }
+  }
+  checks++;
+  {
+    const casesInvalidSize = [
+      [{ size: -1, webkitRelativePath: 'Song/A.mp3' }],
+      [{ size: NaN, webkitRelativePath: 'Song/A.mp3' }],
+      [{ size: Infinity, webkitRelativePath: 'Song/A.mp3' }],
+      [{ size: 1.5, webkitRelativePath: 'Song/A.mp3' }],
+    ];
+    for (const files of casesInvalidSize) {
+      if (!validateFolderImportSelection(files)) {
+        failed.push(`validateFolderImportSelection: ungültiger Größenwert müsste abgelehnt werden (${JSON.stringify(files)})`);
+      }
+    }
+  }
+  checks++;
+  {
+    const files = [
+      { size: 1000, webkitRelativePath: 'Blaue Augen/FULL.mp3' },
+      { size: 2000, webkitRelativePath: 'Blaue Augen/SOP.mp3' },
+    ];
+    if (validateFolderImportSelection(files) !== null) {
+      failed.push('validateFolderImportSelection: ein normaler Ordnerimport müsste durchgehen');
+    }
+  }
+
+  // Signaturprüfung importierter Medien (Punkt 3): Endung sagt nichts über
+  // den Inhalt — looksLikeAudio()/looksLikePdf() prüfen echte Signaturen.
+  const pdfBytes = new TextEncoder().encode('%PDF-1.4\n%âãÏÓ\n1 0 obj');
+  checks++;
+  if (!looksLikePdf(pdfBytes)) failed.push('looksLikePdf: eine echte PDF-Signatur müsste erkannt werden');
+  checks++;
+  if (looksLikePdf(new TextEncoder().encode('Das ist nur Text, kein PDF.'))) {
+    failed.push('looksLikePdf: reiner Text darf nicht als PDF durchgehen');
+  }
+  checks++;
+  if (looksLikePdf(new Uint8Array(0))) failed.push('looksLikePdf: eine leere Datei darf nicht als PDF durchgehen');
+
+  const audioCases = [
+    ['ID3-Tag (MP3)', new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0])],
+    ['MPEG-Frame-Sync (MP3 ohne ID3)', new Uint8Array([0xFF, 0xFB, 0x90, 0x00])],
+    ['WAV', (() => { const b = new Uint8Array(12); b.set(new TextEncoder().encode('RIFF'), 0); b.set(new TextEncoder().encode('WAVE'), 8); return b; })()],
+    ['Ogg/Opus', new TextEncoder().encode('OggS\x00\x02')],
+    ['FLAC', new TextEncoder().encode('fLaC\x00\x00')],
+    ['M4A/AAC (ISO-BMFF)', (() => { const b = new Uint8Array(12); b.set(new TextEncoder().encode('ftyp'), 4); return b; })()],
+    ['ADTS (rohes AAC)', new Uint8Array([0xFF, 0xF1, 0x50, 0x00])],
+  ];
+  for (const [label, bytes] of audioCases) {
+    checks++;
+    if (!looksLikeAudio(bytes)) failed.push(`looksLikeAudio: ${label} müsste erkannt werden`);
+  }
+  checks++;
+  if (looksLikeAudio(new TextEncoder().encode('Das ist nur Text, keine Audiodatei.'))) {
+    failed.push('looksLikeAudio: reiner Text darf nicht als Audiodatei durchgehen');
+  }
+  checks++;
+  if (looksLikeAudio(new Uint8Array(0))) failed.push('looksLikeAudio: eine leere Datei darf nicht als Audiodatei durchgehen');
+  checks++;
+  if (looksLikeAudio(new Uint8Array([0xFF]))) {
+    failed.push('looksLikeAudio: ein einzelnes, abgeschnittenes Byte darf nicht als Audiodatei durchgehen');
+  }
+
   const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
@@ -13022,6 +13424,135 @@ function runSelfTests() {
  * blockieren. Läuft asynchron und getrennt von runSelfTests() (das rein
  * synchron ist), wird aber vom selben Aufrufer (boot()) mit ausgelöst.
  */
+// CRC-32 (IEEE 802.3), nur für die Testdaten unten — eigene, winzige Kopie
+// statt eines Imports aus zip-reader.js (dessen Tabelle ist Modul-intern),
+// derselbe Ansatz wie fmtBytes()/readArrayBuffer() dort: kleine Helfer lieber
+// doppelt halten, als ein Blatt-Modul mit einem test-only Export aufblähen.
+const TEST_CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+function testCrc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = TEST_CRC32_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+/**
+ * Baut ein synthetisches, minimales ZIP-Archiv aus „stored"- oder
+ * „deflate"-Einträgen — ausschließlich für die Parser-Selbsttests unten
+ * (siehe runAsyncSelfTests). Liefert neben den fertigen Bytes die
+ * Byteposition einzelner Kopffelder zurück, damit ein Test gezielt einzelne
+ * Werte nachträglich verfälschen kann (falsche CRC, Header-Offset außerhalb
+ * der Datei, …), ohne den Archivaufbau je Testfall neu zu schreiben.
+ *
+ * @param {Array<{name: string, data: Uint8Array, method?: 0|8, flags?: number,
+ *   crc?: number, useZip64Extra?: boolean}>} files
+ */
+async function testBuildZip(files) {
+  const enc = new TextEncoder();
+  const u16 = (n) => new Uint8Array([n & 0xFF, (n >> 8) & 0xFF]);
+  const u32 = (n) => new Uint8Array([n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >>> 24) & 0xFF]);
+  const u64le = (n) => [...u32(n >>> 0), ...u32(Math.floor(n / 0x100000000))];
+  const concat = (parts) => {
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const out = new Uint8Array(total);
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  };
+
+  const chunks = [];
+  let offset = 0;
+  const push = (bytes) => { chunks.push(bytes); offset += bytes.length; };
+
+  const recs = [];
+  for (const f of files) {
+    const nameBytes = enc.encode(f.name);
+    const method = f.method || 0;
+    let stored = f.data;
+    if (method === 8) {
+      const cs = new CompressionStream('deflate-raw');
+      const writer = cs.writable.getWriter();
+      writer.write(f.data);
+      writer.close();
+      stored = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+    }
+    const crc = f.crc !== undefined ? f.crc : testCrc32(f.data);
+    const headerOffset = offset;
+
+    push(concat([
+      u32(0x04034b50), u16(20), u16(f.flags || 0), u16(method),
+      u16(0), u16(0), u32(crc), u32(stored.length), u32(f.data.length),
+      u16(nameBytes.length), u16(0),
+    ]));
+    push(nameBytes);
+    push(stored);
+
+    recs.push({
+      nameBytes, method, flags: f.flags || 0, crc,
+      compSize: stored.length, size: f.data.length, headerOffset,
+      useZip64: !!f.useZip64Extra,
+    });
+  }
+
+  const cdStart = offset;
+  const cdEntries = [];
+  for (const r of recs) {
+    let sizeField = r.size, compField = r.compSize;
+    let extra = new Uint8Array(0);
+    if (r.useZip64) {
+      // Größe/Kompressionsgröße als Platzhalter markieren — die echten Werte
+      // stehen im Zusatzfeld, genau das Muster, das ein echter Packer für
+      // sehr große Einträge erzeugt (siehe zipReadDirectory()).
+      sizeField = 0xFFFFFFFF;
+      compField = 0xFFFFFFFF;
+      const zip64Payload = new Uint8Array([...u64le(r.size), ...u64le(r.compSize)]);
+      extra = concat([u16(0x0001), u16(zip64Payload.length), zip64Payload]);
+    }
+
+    const entryStart = offset;
+    push(concat([
+      u32(0x02014b50), u16(20), u16(20), u16(r.flags), u16(r.method),
+      u16(0), u16(0), u32(r.crc), u32(compField), u32(sizeField),
+      u16(r.nameBytes.length), u16(extra.length), u16(0),
+      u16(0), u16(0), u32(0), u32(r.headerOffset),
+    ]));
+    push(r.nameBytes);
+    push(extra);
+
+    cdEntries.push({
+      sigPos: entryStart, crcPos: entryStart + 16,
+      compSizePos: entryStart + 20, sizePos: entryStart + 24,
+      headerOffsetPos: entryStart + 42,
+    });
+  }
+  const cdSize = offset - cdStart;
+
+  const eocdPos = offset;
+  push(concat([
+    u32(0x06054b50), u16(0), u16(0),
+    u16(recs.length), u16(recs.length),
+    u32(cdSize), u32(cdStart), u16(0),
+  ]));
+
+  return {
+    bytes: concat(chunks),
+    cdEntries,
+    eocdTotalPos: eocdPos + 10,
+  };
+}
+
+/** Kleines Blob-ähnliches Objekt mit `.size`/`.slice()`, wie zip-reader.js es erwartet. */
+function testZipFile(bytes) {
+  return new Blob([bytes]);
+}
+
 async function runAsyncSelfTests() {
   const failed = [];
 
@@ -13233,6 +13764,202 @@ async function runAsyncSelfTests() {
       recStarting = savedStarting;
       recMediaRecorder = savedRecorder;
       Audio.ready = savedReady;
+    }
+  }
+
+  // Signaturprüfung ganzer Blobs (Punkt 3 des Import-Härtungsauftrags,
+  // ergänzt die reinen Bytefunktionen aus runSelfTests): echte und falsch
+  // benannte Beispieldateien, sowie leere/abgeschnittene und sehr große.
+  {
+    const check = async (label, blob, kind, expected) => {
+      const got = await validateImportedMediaBlob(blob, kind);
+      if (got !== expected) failed.push(`validateImportedMediaBlob: ${label} = ${got}, erwartet ${expected}`);
+    };
+    await check('echtes PDF', new Blob([new TextEncoder().encode('%PDF-1.4\n%âãÏÓ\n1 0 obj')]), 'pdf', true);
+    await check('falsch als .pdf benannte Textdatei', new Blob([new TextEncoder().encode('Das ist gar kein PDF.')]), 'pdf', false);
+    await check('leere Datei als PDF', new Blob([]), 'pdf', false);
+    await check('abgeschnittenes PDF (ein Byte)', new Blob([new Uint8Array([0x25])]), 'pdf', false);
+    await check('echtes MP3 (ID3-Tag)', new Blob([new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0])]), 'audio', true);
+    await check('falsch als .mp3 benannte Textdatei', new Blob([new TextEncoder().encode('Das ist gar keine Audiodatei.')]), 'audio', false);
+    await check('leere Datei als Audio', new Blob([]), 'audio', false);
+    // Eine sehr große, aber am Anfang gültige Datei muss trotzdem erkannt
+    // werden — validateImportedMediaBlob() darf dafür nicht mehr als die
+    // ersten Bytes lesen müssen.
+    const bigValid = new Blob([new Uint8Array([0x49, 0x44, 0x33]), new Uint8Array(5 * 1024 * 1024)]);
+    await check('großes, aber gültiges MP3', bigValid, 'audio', true);
+  }
+
+  // ---- ZIP-Parser: synthetische Archive gegen die Härtung des Central-
+  // Directory-Lesens (Punkt 4 des Import-Härtungsauftrags) — jeweils ein
+  // minimaler, aber vollständiger Central-Directory-Aufbau, an genau einer
+  // Stelle gezielt verfälscht.
+  {
+    const lenientLimits = {
+      maxFileBytes: 10000000, maxCdBytes: 1000000, maxPathLen: 512,
+      maxRatio: 1e9, minRatioCheckSize: 1e9,
+      maxTotalBytes: 10000000, maxEntries: 1000, maxEntryBytes: 10000000,
+    };
+    const zr = createZipReader(lenientLimits, () => {});
+    const textData = (s) => new TextEncoder().encode(s);
+
+    const expectZipError = async (fn, label) => {
+      try {
+        await fn();
+        failed.push(`ZIP-Test „${label}": hätte einen ZipError auslösen müssen`);
+      } catch (err) {
+        if (!(err instanceof ZipError)) {
+          failed.push(`ZIP-Test „${label}": falscher Fehlertyp (${err?.constructor?.name}: ${err?.message})`);
+        }
+      }
+    };
+
+    // 1. Gültiges Archiv (stored) — Grundlage der meisten Tests unten und
+    // zugleich der Positivfall: Lesen, Auspacken, Inhalt bleibt identisch.
+    try {
+      const data = textData('hallo welt, dies ist eine testdatei');
+      const built = await testBuildZip([{ name: 'Song/FULL.mp3', data, method: 0 }]);
+      const file = testZipFile(built.bytes);
+      const entries = await zr.zipReadDirectory(file);
+      if (entries.length !== 1 || entries[0].path !== 'Song/FULL.mp3') {
+        failed.push(`ZIP-Test „gültiges Archiv": unerwartete Einträge ${JSON.stringify(entries)}`);
+      }
+      const blob = await zr.zipExtract(file, entries[0]);
+      const got = new Uint8Array(await blob.arrayBuffer());
+      if (got.length !== data.length || !got.every((b, i) => b === data[i])) {
+        failed.push('ZIP-Test „gültiges Archiv": Inhalt nach dem Auspacken verändert');
+      }
+    } catch (err) {
+      failed.push(`ZIP-Test „gültiges Archiv": unerwarteter Fehler ${err?.message}`);
+    }
+
+    // 2. Gültiges Archiv mit ZIP64-Zusatzfeld je Eintrag (Größe/Kompressions-
+    // größe als Platzhalter, echte Werte im Extra-Feld) — der übliche Weg für
+    // einzelne sehr große Dateien in einem sonst normal großen Archiv.
+    try {
+      const data = textData('zip64 testinhalt');
+      const built = await testBuildZip([{ name: 'Song/FULL.mp3', data, method: 0, useZip64Extra: true }]);
+      const file = testZipFile(built.bytes);
+      const entries = await zr.zipReadDirectory(file);
+      const blob = await zr.zipExtract(file, entries[0]);
+      const got = new Uint8Array(await blob.arrayBuffer());
+      if (got.length !== data.length || !got.every((b, i) => b === data[i])) {
+        failed.push('ZIP-Test „ZIP64-Archiv": Inhalt nach dem Auspacken verändert');
+      }
+    } catch (err) {
+      failed.push(`ZIP-Test „ZIP64-Archiv": unerwarteter Fehler ${err?.message}`);
+    }
+
+    // 3. Vorzeitig endendes Central Directory: der zweite angekündigte Header
+    // ist Datenmüll statt einer echten Central-Directory-Signatur — darf
+    // nicht als „ein gültiger Eintrag gefunden" durchgehen (vorher: `break`).
+    await expectZipError(async () => {
+      const built = await testBuildZip([
+        { name: 'A.mp3', data: textData('eins'), method: 0 },
+        { name: 'B.mp3', data: textData('zwei'), method: 0 },
+      ]);
+      built.bytes.set([0, 0, 0, 0], built.cdEntries[1].sigPos);
+      await zr.zipReadDirectory(testZipFile(built.bytes));
+    }, 'vorzeitig endendes Central Directory');
+
+    // 4. Falsche angekündigte Eintragszahl: EOCD behauptet einen dritten
+    // Eintrag, den es im Central Directory gar nicht gibt.
+    await expectZipError(async () => {
+      const built = await testBuildZip([
+        { name: 'A.mp3', data: textData('eins'), method: 0 },
+        { name: 'B.mp3', data: textData('zwei'), method: 0 },
+      ]);
+      new DataView(built.bytes.buffer).setUint16(built.eocdTotalPos, 3, true);
+      await zr.zipReadDirectory(testZipFile(built.bytes));
+    }, 'falsche angekündigte Eintragszahl');
+
+    // 5. Lokaler Header außerhalb der Datei: headerOffset zeigt so nah ans
+    // Dateiende, dass der 30-Byte-Header selbst nicht mehr hineinpasst.
+    await expectZipError(async () => {
+      const built = await testBuildZip([{ name: 'A.mp3', data: textData('eins'), method: 0 }]);
+      new DataView(built.bytes.buffer).setUint32(
+        built.cdEntries[0].headerOffsetPos, built.bytes.length - 10, true);
+      const file = testZipFile(built.bytes);
+      const entries = await zr.zipReadDirectory(file);
+      await zr.zipExtract(file, entries[0]);
+    }, 'lokaler Header außerhalb der Datei');
+
+    // 6. Datenbereich außerhalb der Datei: die im Central Directory
+    // behauptete Kompressionsgröße reicht über das Dateiende hinaus.
+    await expectZipError(async () => {
+      const built = await testBuildZip([{ name: 'A.mp3', data: textData('eins'), method: 0 }]);
+      new DataView(built.bytes.buffer).setUint32(
+        built.cdEntries[0].compSizePos, built.bytes.length + 10000, true);
+      const file = testZipFile(built.bytes);
+      const entries = await zr.zipReadDirectory(file);
+      await zr.zipExtract(file, entries[0]);
+    }, 'Datenbereich außerhalb der Datei');
+
+    // 7. Integerüberlauf: eine per ZIP64-Zusatzfeld behauptete
+    // Kompressionsgröße nahe Number.MAX_SAFE_INTEGER lässt
+    // dataStart + compressedSize über den sicheren Ganzzahlbereich hinaus.
+    await expectZipError(async () => {
+      const name = 'A.mp3';
+      const built = await testBuildZip([{ name, data: textData('eins'), method: 0, useZip64Extra: true }]);
+      // Extra-Feld beginnt direkt hinter dem headerOffset-Feld und dem Namen;
+      // darin zuerst die (unangetastete) reale Größe (8 Byte), danach die
+      // hier manipulierte Kompressionsgröße (8 Byte) — siehe testBuildZip().
+      const extraStart = built.cdEntries[0].headerOffsetPos + 4 + name.length;
+      const compSizeStart = extraStart + 4 /* id+len */ + 8 /* size */;
+      const view = new DataView(built.bytes.buffer);
+      const bigValue = Number.MAX_SAFE_INTEGER - 10;
+      view.setUint32(compSizeStart, bigValue >>> 0, true);
+      view.setUint32(compSizeStart + 4, Math.floor(bigValue / 0x100000000), true);
+      const file = testZipFile(built.bytes);
+      const entries = await zr.zipReadDirectory(file);
+      await zr.zipExtract(file, entries[0]);
+    }, 'Integerüberlauf bei Datenbereich');
+
+    // 8. Verschlüsselter Eintrag: General-Purpose-Bit 0 gesetzt — muss schon
+    // beim Lesen des Inhaltsverzeichnisses abgelehnt werden, nicht erst beim
+    // (dann ohnehin falschen) Entpacken.
+    await expectZipError(async () => {
+      const built = await testBuildZip([{ name: 'A.mp3', data: textData('eins'), method: 0, flags: 0x1 }]);
+      await zr.zipReadDirectory(testZipFile(built.bytes));
+    }, 'verschlüsselter Eintrag');
+
+    // 9. Falsche CRC (stored): der Central-Directory-Eintrag behauptet eine
+    // Prüfsumme, die nicht zum tatsächlichen Inhalt passt.
+    await expectZipError(async () => {
+      const built = await testBuildZip([{ name: 'A.mp3', data: textData('eins'), method: 0 }]);
+      new DataView(built.bytes.buffer).setUint32(built.cdEntries[0].crcPos, 0x12345678, true);
+      const file = testZipFile(built.bytes);
+      const entries = await zr.zipReadDirectory(file);
+      await zr.zipExtract(file, entries[0]);
+    }, 'falsche CRC (stored)');
+
+    // 10. Dieselbe Prüfung muss auch bei deflate-komprimierten Einträgen
+    // greifen (dort wird die CRC im selben Durchlauf wie die
+    // Größenüberwachung mitgerechnet, siehe zipExtract()).
+    if (canInflate) {
+      await expectZipError(async () => {
+        const built = await testBuildZip([{ name: 'A.mp3', data: textData('eins zwei drei vier fünf'), method: 8 }]);
+        new DataView(built.bytes.buffer).setUint32(built.cdEntries[0].crcPos, 0x12345678, true);
+        const file = testZipFile(built.bytes);
+        const entries = await zr.zipReadDirectory(file);
+        await zr.zipExtract(file, entries[0]);
+      }, 'falsche CRC (deflate)');
+    }
+
+    // 11. Bestehende Zip-Bomb-Grenzen bleiben erhalten: eine stark
+    // komprimierbare, künstlich wiederholte Nutzlast überschreitet mit engen
+    // Test-Grenzwerten das zulässige Kompressionsverhältnis — ganz ohne
+    // manipulierte Felder, echtes Deflate reicht dafür schon.
+    if (canInflate) {
+      const bombLimits = {
+        maxFileBytes: 10000000, maxCdBytes: 1000000, maxPathLen: 512,
+        maxRatio: 10, minRatioCheckSize: 100,
+        maxTotalBytes: 10000000, maxEntries: 1000, maxEntryBytes: 10000000,
+      };
+      const bombReader = createZipReader(bombLimits, () => {});
+      await expectZipError(async () => {
+        const built = await testBuildZip([{ name: 'A.mp3', data: textData('a'.repeat(2000)), method: 8 }]);
+        await bombReader.zipReadDirectory(testZipFile(built.bytes));
+      }, 'Zip-Bomb-Verdacht (Kompressionsverhältnis)');
     }
   }
 

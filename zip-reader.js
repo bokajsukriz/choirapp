@@ -157,7 +157,52 @@ function u64(view, offset) {
   return Number(value);
 }
 
-class ZipError extends Error {}
+/**
+ * CRC-32 (IEEE 802.3/zlib-Polynom), streamend über Chunks — nie den ganzen
+ * Inhalt auf einmal im Speicher. Der Central-Directory-Header trägt die
+ * erwartete Prüfsumme schon vor dem eigentlichen Auspacken; ohne diesen
+ * Abgleich könnte ein manipuliertes Archiv mit korrekten Größenangaben, aber
+ * vertauschtem/verändertem Inhalt unbemerkt durchgehen.
+ */
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+/** Ein Chunk in den laufenden (noch nicht final invertierten) CRC-Zustand einrechnen. */
+function crc32Step(state, chunk) {
+  let c = state;
+  for (let i = 0; i < chunk.length; i++) c = CRC32_TABLE[(c ^ chunk[i]) & 0xFF] ^ (c >>> 8);
+  return c;
+}
+
+/** Startzustand für crc32Step(). */
+function crc32Start() { return 0xFFFFFFFF; }
+
+/** Laufenden Zustand in die übliche CRC-32-Darstellung überführen. */
+function crc32Finish(state) { return (state ^ 0xFFFFFFFF) >>> 0; }
+
+/** CRC-32 eines Blobs, in Chunks über dessen Stream gelesen. */
+async function crc32OfBlob(blob) {
+  let state = crc32Start();
+  const reader = blob.stream().getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    state = crc32Step(state, value);
+  }
+  return crc32Finish(state);
+}
+
+// Exportiert (u.a. für die Parser-Selbsttests in app.js, siehe
+// runAsyncSelfTests) — zipReadFailureMessage() bleibt der reguläre Weg, eine
+// Nutzermeldung aus einem gescheiterten Lesevorgang zu gewinnen.
+export class ZipError extends Error {}
 
 /**
  * Nachricht für einen gescheiterten ZIP-Lesevorgang.
@@ -197,6 +242,16 @@ export const canInflate = typeof DecompressionStream === 'function';
  */
 async function zipDataStart(file, entry) {
   if (entry.dataStart !== undefined) return entry.dataStart;
+
+  // headerOffset kommt aus dem Inhaltsverzeichnis (ggf. über ein ZIP64-Feld) —
+  // zipReadDirectory() prüft ihn bereits grob, hier noch einmal vollständig
+  // gegen die tatsächliche Dateigröße, bevor er in einer Bereichsrechnung
+  // verwendet wird.
+  if (!Number.isSafeInteger(entry.headerOffset) || entry.headerOffset < 0
+      || entry.headerOffset + 30 > file.size) {
+    throw new ZipError(`„${entry.path}" hat einen unplausiblen Header-Offset im Archiv.`);
+  }
+
   const head = await sliceView(file, entry.headerOffset, entry.headerOffset + 30);
   // sliceView() kappt am Dateiende — bei einem beschädigten headerOffset nahe
   // EOF kämen hier weniger als 30 Bytes zurück, und getUint32() würde mit
@@ -204,8 +259,30 @@ async function zipDataStart(file, entry) {
   if (head.byteLength < 30 || head.getUint32(0, true) !== SIG_LOC) {
     throw new ZipError(`„${entry.path}" konnte im Archiv nicht gefunden werden.`);
   }
-  entry.dataStart = entry.headerOffset + 30
+
+  const dataStart = entry.headerOffset + 30
     + head.getUint16(26, true) + head.getUint16(28, true);
+  if (!Number.isSafeInteger(dataStart) || dataStart < 0 || dataStart > file.size) {
+    throw new ZipError(`„${entry.path}" hat einen unplausiblen Datenanfang im Archiv.`);
+  }
+
+  // dataStart + compressedSize darf weder überlaufen noch über das Dateiende
+  // hinausreichen — ein manipulierter lokaler Header (Namens-/Extra-Feldlänge)
+  // könnte sonst einen Datenbereich behaupten, den es in der Datei gar nicht
+  // gibt.
+  const dataEnd = dataStart + entry.compressedSize;
+  if (!Number.isSafeInteger(dataEnd) || dataEnd < dataStart || dataEnd > file.size) {
+    throw new ZipError(`„${entry.path}" hat einen unplausiblen Datenbereich im Archiv.`);
+  }
+
+  // Der Datenbereich darf sich nicht mit dem Inhaltsverzeichnis überschneiden
+  // — sonst könnte ein präparierter lokaler Header versuchen, Central-
+  // Directory-Bytes als „Nutzdaten" eines Eintrags auszugeben.
+  if (entry.cdStart !== undefined && dataStart < entry.cdEnd && dataEnd > entry.cdStart) {
+    throw new ZipError(`„${entry.path}" überschneidet sich mit dem Inhaltsverzeichnis des Archivs.`);
+  }
+
+  entry.dataStart = dataStart;
   return entry.dataStart;
 }
 
@@ -322,6 +399,7 @@ export function createZipReader(limits, onDiagnostic) {
     // Das gesamte Inhaltsverzeichnis am Stück lesen — bei 2000 Einträgen sind
     // das rund 100 KB, und es geht in Sekundenbruchteilen.
     const cd = await sliceView(file, cdOff, cdOff + cdSize);
+    const cdStart = cdOff, cdEnd = cdOff + cdSize;
     const entries = [];
     let p = 0;
     // Über alle Einträge mitgeführt, gegen maxTotalBytes geprüft — die
@@ -329,11 +407,28 @@ export function createZipReader(limits, onDiagnostic) {
     // bleiben und trotzdem zusammen beliebig viel Speicher/Quota verbrauchen.
     let totalDeclaredSize = 0;
 
+    // Getrennte Zähler statt nur der entries-Liste: nach der Schleife muss
+    // jeder der `total` angekündigten Header in genau einer dieser
+    // Kategorien gelandet sein (siehe Konsistenzprüfung unten) — sonst könnte
+    // ein manipuliertes Verzeichnis mit widersprüchlichen Zählern teilweise
+    // durchgehen.
+    let dirCount = 0;       // reine Verzeichniseinträge
+    let junkSkipped = 0;    // z.B. __MACOSX/.DS_Store
+    let pathRejected = 0;   // Pfad länger als L.maxPathLen
+
     for (let i = 0; i < total; i++) {
-      if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== SIG_CEN) break;
+      // Ein fehlender oder falscher Header während der angekündigten
+      // Eintragszahl bricht das ganze Archiv ab, statt es mit einem
+      // teilweise gefüllten Verzeichnis als „gültig" durchgehen zu lassen
+      // (vorher: `break`, akzeptierte ein unvollständiges Central Directory
+      // sobald mindestens ein Eintrag gefunden war).
+      if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== SIG_CEN) {
+        throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (Inhaltsverzeichnis bricht vor dem Ende ab).');
+      }
 
       const flags    = cd.getUint16(p + 8, true);
       const method   = cd.getUint16(p + 10, true);
+      const crc32    = cd.getUint32(p + 16, true) >>> 0;
       let   compSize = cd.getUint32(p + 20, true);
       let   size     = cd.getUint32(p + 24, true);
       const nameLen  = cd.getUint16(p + 28, true);
@@ -373,9 +468,16 @@ export function createZipReader(limits, onDiagnostic) {
 
       p += 46 + nameLen + extraLen + cmtLen;
 
-      if (path.endsWith('/')) continue;      // reiner Verzeichniseintrag
-      if (isJunkPath(path)) continue;
-      if (path.length > L.maxPathLen) continue;
+      if (path.endsWith('/')) { dirCount++; continue; }      // reiner Verzeichniseintrag
+      if (isJunkPath(path)) { junkSkipped++; continue; }
+      if (path.length > L.maxPathLen) { pathRejected++; continue; }
+
+      // Verschlüsselte Einträge ausdrücklich ablehnen, statt sie erst beim
+      // Entpacken (falscher Klartext, kaputte CRC) mit einer irreführenden
+      // Meldung scheitern zu lassen — General-Purpose-Bit 0.
+      if (flags & 0x1) {
+        throw new ZipError(`„${path}" ist verschlüsselt — verschlüsselte Archive werden nicht unterstützt.`);
+      }
 
       // Deklarierte Größen (aus dem Inhaltsverzeichnis, noch nichts gelesen)
       // gegen eine verdächtige Kompressionsrate prüfen — ein klassisches
@@ -384,6 +486,13 @@ export function createZipReader(limits, onDiagnostic) {
       // schlagen auch harmlose winzige Dateien (leere Textdateien u.ä.) an.
       if (!Number.isSafeInteger(size) || !Number.isSafeInteger(compSize) || size < 0 || compSize < 0) {
         throw new ZipError(`„${path}" hat eine unplausible Größenangabe im Archiv.`);
+      }
+      // headerOffset vollständig gegen die Archivgrenzen prüfen — zipDataStart()
+      // prüft ihn beim tatsächlichen Lesen erneut (dort auch gegen die
+      // Byteposition des lokalen Headers), aber offensichtlicher Unsinn wird
+      // schon hier, ohne jede zusätzliche Dateioperation, abgelehnt.
+      if (!Number.isSafeInteger(headerOffset) || headerOffset < 0 || headerOffset >= file.size) {
+        throw new ZipError(`„${path}" hat einen unplausiblen Header-Offset im Archiv.`);
       }
       if (size > L.minRatioCheckSize && size > compSize * L.maxRatio) {
         throw new ZipError(`„${path}" hat ein verdächtig hohes Kompressionsverhältnis und wird abgelehnt.`);
@@ -394,8 +503,21 @@ export function createZipReader(limits, onDiagnostic) {
         throw new ZipError(`Dieses Archiv ist ausgepackt zusammen zu groß (über ${fmtBytes(L.maxTotalBytes)}).`);
       }
 
-      entries.push({ path, method, compressedSize: compSize, size, headerOffset });
+      entries.push({ path, method, compressedSize: compSize, size, headerOffset, crc32, cdStart, cdEnd });
     }
+
+    // Konsistenzprüfung: jeder der `total` angekündigten Header muss in genau
+    // einer der vier Kategorien gelandet sein (Nutzeintrag, Verzeichnis, Junk,
+    // wegen Pfadlänge abgelehnt). Weicht die Summe ab, steckt im Verzeichnis
+    // selbst ein Widerspruch — die Schleife oben wäre sonst schon mit einer
+    // ZipError abgebrochen, bevor dieser Punkt je erreicht wird.
+    if (entries.length + dirCount + junkSkipped + pathRejected !== total) {
+      throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (Inhaltsverzeichnis widersprüchlich).');
+    }
+
+    diag('import:zip:directoryParsed', {
+      total, usable: entries.length, dirCount, junkSkipped, pathRejected,
+    });
 
     if (!entries.length) {
       throw new ZipError('In dieser ZIP-Datei sind keine Dateien enthalten.');
@@ -432,6 +554,13 @@ export function createZipReader(limits, onDiagnostic) {
           throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
         }
       }
+      // CRC-32 aus dem Central Directory gegen den tatsächlichen Inhalt
+      // prüfen — in Chunks über raw.stream() gelesen, nie den ganzen Inhalt
+      // zusätzlich im Speicher. „stored" heißt unverändert übernommen, die
+      // Prüfsumme gilt also direkt für diese Bytes.
+      if (await crc32OfBlob(raw) !== entry.crc32) {
+        throw new ZipError(`„${entry.path}" ist beschädigt (CRC-Prüfsumme stimmt nicht mit dem Inhaltsverzeichnis überein).`);
+      }
       return raw;
     }
 
@@ -441,8 +570,11 @@ export function createZipReader(limits, onDiagnostic) {
       }
       // Die Größenangabe im Inhaltsverzeichnis lässt sich fälschen — deshalb
       // zusätzlich während des Entpackens mitzählen, statt ihr blind zu
-      // vertrauen (siehe Prüfung oben).
+      // vertrauen (siehe Prüfung oben). Die CRC-32 wird im selben Durchlauf
+      // mitgerechnet (kein zweiter Lesevorgang nötig) und danach gegen den
+      // Central-Directory-Wert geprüft.
       let seen = 0;
+      let crcState = crc32Start();
       const guard = new TransformStream({
         transform(chunk, controller) {
           seen += chunk.byteLength;
@@ -452,6 +584,7 @@ export function createZipReader(limits, onDiagnostic) {
           if (budget && budget.used + seen > L.maxTotalBytes) {
             throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
           }
+          crcState = crc32Step(crcState, chunk);
           controller.enqueue(chunk);
         },
       });
@@ -460,6 +593,9 @@ export function createZipReader(limits, onDiagnostic) {
         .pipeThrough(guard);
       const blob = await new Response(stream).blob();
       if (budget) budget.used += seen;
+      if (crc32Finish(crcState) !== entry.crc32) {
+        throw new ZipError(`„${entry.path}" ist beschädigt (CRC-Prüfsumme stimmt nicht mit dem Inhaltsverzeichnis überein).`);
+      }
       return blob;
     }
 
