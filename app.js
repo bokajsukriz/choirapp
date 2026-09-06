@@ -8585,21 +8585,33 @@ function drawTakeWaveform() {
   drawLevelHistory(ctx, bucketizeColumns(levelTakeHistory, bucketCount), width, height);
 }
 
+/**
+ * Ältester Balken links, jüngster rechts — bei einer noch nicht vollen
+ * Historie (der Regelfall: die meisten RECs sind kürzer als die Kanalbreite)
+ * füllt sich die Anzeige also sichtbar von links nach rechts, statt von
+ * Anfang an rechtsbündig mit einer Lücke links zu stehen. Der jüngste Balken
+ * ist zusätzlich etwas größer gezeichnet — der "das gerade eben"-Effekt, den
+ * ein gleich hoher letzter Balken sonst nicht zeigt.
+ */
 function drawLevelHistory(ctx, columns, width, height) {
   if (!ctx) return;
   ctx.clearRect(0, 0, width, height);
 
   const midY = height / 2;
   const maxHalf = height / 2 - 3;
-  let x = width - LEVEL_COLUMN_WIDTH;
-  for (let i = columns.length - 1; i >= 0 && x > -LEVEL_COLUMN_WIDTH; i--, x -= (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
+  const lastIdx = columns.length - 1;
+  let x = 0;
+  for (let i = 0; i < columns.length && x < width; i++, x += (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
     const { amp, clipping } = columns[i];
-    const half = Math.max(1.5, amp * maxHalf);
+    const boosted = i === lastIdx ? Math.min(1, amp * 1.2) : amp;
+    const half = Math.max(1.5, boosted * maxHalf);
     ctx.fillStyle = clipping ? levelDangerColor : (amp >= 0.75 ? '#FFD93D' : '#6BCB77');
+    ctx.globalAlpha = i === lastIdx ? 1 : 0.82;
     const radius = Math.min(LEVEL_COLUMN_WIDTH / 2, half);
     roundedBar(ctx, x, midY - half, LEVEL_COLUMN_WIDTH, half * 2, radius);
     ctx.fill();
   }
+  ctx.globalAlpha = 1;
 }
 
 function roundedBar(ctx, x, y, w, h, r) {
@@ -8987,7 +8999,14 @@ async function loadSongRecordings() {
  * genau dort weiterlaufen lassen kann.
  */
 async function previewRecordingBlob(blob, tag) {
-  if (!Audio.ready) { banner('Die Wiedergabe ist noch nicht bereit.', { kind: 'error' }); return; }
+  // Ohne je geöffneten Song lief audioInit() noch nie (z. B. direkt nach dem
+  // Start in den allgemeinen Recorder) — hier statt nur zu melden selbst
+  // nachholen, sonst scheitert die allererste Vorschau in genau diesem Ablauf
+  // immer mit einer Fehlermeldung, obwohl nichts wirklich kaputt ist.
+  if (!Audio.ready) {
+    try { await audioInit(); }
+    catch (err) { bannerError('Die Wiedergabe konnte nicht vorbereitet werden.', 'AUDIO-INIT', err); return; }
+  }
 
   // Läuft schon eine Vorschau, gilt weiter der allererste Rücksprungpunkt —
   // sonst würde ein zweiter angehörter REC den echten Song überschreiben.

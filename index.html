@@ -678,11 +678,17 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
    Beide Reiter beginnen an derselben Stelle; nur im Lyrics-Reiter steht
    davor noch die Werkzeugleiste. Damit die beiden Knöpfe beim Reiterwechsel
    nicht springen, hält der Notizen-Reiter denselben Abstand frei. */
+/* Nicht vertikal mittig: `min-height` rechnet mit `vh`, und iOS Safari legt
+   `vh` gegen die größtmögliche (Adressleiste eingeklappte) Ansicht aus — auf
+   kurzen Geräten (iPhone SE) lag der Knopf dadurch unterhalb des tatsächlich
+   sichtbaren Bereichs und war ohne Scrollen nicht zu sehen. Oben mit etwas
+   Abstand ist unabhängig von der tatsächlichen Höhe immer sofort sichtbar. */
 .empty-add {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-top: 32px;
   gap: 10px;
   min-height: var(--empty-add-h);
   text-align: center;
@@ -1099,12 +1105,16 @@ input[type="checkbox"] {
 .icon-btn svg { width: 24px; height: 24px; }
 .icon-btn:active { background: var(--surface-2); }
 
+/* appearance:none, weil ohne das auf manchen iOS-Versionen die native
+   Button-Chrome durchscheint statt der eigenen Farben — auf einem iPhone SE
+   blieb sonst nur der rote Rand sichtbar, ohne den gefüllten Punkt darin. */
 .rec-global-btn {
-  width: 34px; height: 34px; min-width: 0; min-height: 0; border-radius: 50%; flex: 0 0 auto;
-  border: 2px solid var(--danger); background: var(--surface);
+  width: 28px; height: 28px; min-width: 0; min-height: 0; border-radius: 50%; flex: 0 0 auto;
+  border: 1.5px solid var(--danger); background: var(--surface);
+  appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
 }
-.rec-global-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); }
+.rec-global-dot { width: 10px; height: 10px; flex: 0 0 auto; fill: var(--danger); }
 
 /* Langes Halten löst hier die einmalige Dienstauswahl aus (siehe
    Pointer-Handler bei btn-song-search) — ohne manipulation würde ein
@@ -1642,19 +1652,35 @@ input[type="checkbox"] {
   background: var(--danger);
 }
 
+/* Aktiv = Pause-Symbol statt Punkt: zwei Balken per Flexbox, kein eigenes
+   Icon/Markup nötig — derselbe leere <span class="rec-btn-dot"> reicht. */
 .rec-btn[aria-pressed="true"] .rec-btn-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 5px;
-  background: #fff;
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   animation: rec-pulse 1.4s ease-in-out infinite;
+}
+.rec-btn[aria-pressed="true"] .rec-btn-dot::before,
+.rec-btn[aria-pressed="true"] .rec-btn-dot::after {
+  content: '';
+  width: 5px;
+  height: 100%;
+  background: #fff;
+  border-radius: 1.5px;
 }
 
 /* Großer REC-Knopf im allgemeinen Recorder (siehe #recorder-view) — gleiche
  * Bausteine wie im Player, nur größer, weil er dort die einzige Bedienung ist. */
 .rec-btn--lg { width: 84px; height: 84px; margin: 0 auto; }
 .rec-btn--lg .rec-btn-dot { width: 33px; height: 33px; }
-.rec-btn--lg[aria-pressed="true"] .rec-btn-dot { width: 24px; height: 24px; border-radius: 8px; }
+.rec-btn--lg[aria-pressed="true"] .rec-btn-dot { width: 26px; height: 26px; gap: 6px; }
+.rec-btn--lg[aria-pressed="true"] .rec-btn-dot::before,
+.rec-btn--lg[aria-pressed="true"] .rec-btn-dot::after { width: 7px; }
 
 @keyframes rec-pulse {
   0%, 100% { opacity: 1; }
@@ -3268,7 +3294,7 @@ input[type="checkbox"] {
              data-i18n-placeholder="songs.searchPlaceholder" data-i18n-aria="songs.searchAria">
       <button class="rec-global-btn" id="btn-rec-global" type="button"
               aria-label="Aufnehmen" data-i18n-aria="songs.recordAria">
-        <span class="rec-global-dot" aria-hidden="true"></span>
+        <svg class="rec-global-dot" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg>
       </button>
       <button class="icon-btn" id="btn-feeling-lucky" type="button"
               aria-label="Feeling Lucky — zufälliges Lied abspielen" data-i18n-aria="songs.feelingLuckyAria">
