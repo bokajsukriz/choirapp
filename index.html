@@ -2419,6 +2419,10 @@ input[type="checkbox"] {
   <div class="dialog">
     <h2 id="dlg-title"></h2>
     <p id="dlg-text"></p>
+    <label class="select-field" id="dlg-select-field" hidden style="margin-bottom:14px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+      <select id="dlg-select"></select>
+    </label>
     <div class="dialog-actions">
       <button class="btn" id="dlg-cancel" type="button">Abbrechen</button>
       <button class="btn btn--primary" id="dlg-ok" type="button">OK</button>
@@ -3020,28 +3024,12 @@ input[type="checkbox"] {
     <div id="import-report"></div>
 
     <div class="card">
-      <h2 data-i18n="import.howToTitle">So kommt der Ordner aufs Handy</h2>
-      <p class="small" style="margin-top:0" data-i18n-html="import.howToWarning">
-        Wichtig: <strong>dropbox.com im Browser öffnen, nicht die Dropbox-App</strong> —
-        die App bietet für Ordner keinen ZIP-Download an, nur der Browser kann das.
-      </p>
-      <ol class="steps small">
-        <li data-i18n-html="import.howToStep1">Im Browser bei dropbox.com anmelden, beim gewünschten Ordner auf <strong>⋮</strong>
-          (Android) bzw. <strong>…</strong> (iPhone) tippen.</li>
-        <li data-i18n-html="import.howToStep2"><strong>Herunterladen</strong> (Android) bzw.
-          <strong>Exportieren → In Dateien sichern</strong> (iPhone) wählen —
-          der Ordner landet als ZIP in „Downloads“ bzw. „Dateien“.</li>
-        <li data-i18n-html="import.howToStep3">Zurück in dieser App auf <strong>ZIP-Datei auswählen</strong>
-          tippen und die Datei dort wählen.</li>
-      </ol>
-    </div>
-
-    <div class="card">
       <h2 data-i18n="import.goodToKnowTitle">Gut zu wissen</h2>
       <ul class="steps small" style="list-style: disc">
         <li data-i18n-html="import.goodToKnow1">Jeder Import <strong>ergänzt</strong> die Bibliothek. Bereits vorhandene Songs bleiben erhalten.</li>
         <li data-i18n="import.goodToKnow2">Du kannst später einzelne Lieder oder fehlende Stimmen nachladen.</li>
         <li data-i18n="import.goodToKnow3">Vor dem Speichern kannst du auswählen, welche Stimmen aufs Handy sollen — das spart Speicherplatz.</li>
+        <li data-i18n="import.goodToKnow4">Die heruntergeladene ZIP-Datei lässt sich danach gefahrlos löschen — alles Nötige ist jetzt auf dem Gerät.</li>
       </ul>
     </div>
 
@@ -3314,22 +3302,16 @@ input[type="checkbox"] {
   <!-- ===== Einstellungen =============================================== -->
   <section class="view" id="view-settings">
 
-    <!-- Öffnet die abgetrennte Import-Vollbildansicht (siehe #import-view
-         weiter unten) — hier steht nur noch der Einstiegsknopf. -->
-    <button class="btn btn--primary btn--block" id="btn-open-import" type="button" style="margin-bottom:10px" data-i18n="settings.importBtn">
-      Songs importieren
-    </button>
-
-    <!-- Eigener, gleichrangiger Einstieg statt in der ZIP-Importansicht
-         versteckt: RECs kommen meist einzeln per Messenger (z.B. Signal),
-         nicht als ganzer Dropbox-Ordner — ein Tipp genügt, keine eigene Seite. -->
-    <button class="btn btn--block" id="btn-rec-import" type="button" style="margin-bottom:14px">
-      Recordings importieren
-    </button>
+    <!-- Import läuft über den +-Knopf auf der Songs-Übersicht (siehe
+         songs-fab-menu: „Aus der Dropbox" → #import-view, „Aus Recordings" →
+         klickt dieses versteckte Eingabefeld direkt an). Kein eigener
+         Einstieg mehr hier — das doppelte Angebot verwirrte mehr, als es half. -->
     <input class="visually-hidden" id="rec-import-input" type="file" accept=".mp3,audio/mpeg" multiple>
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span data-i18n="settings.personal.title">Make it yours!</span></h2>
+
+      <p class="section-title" style="margin-top:0" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.tabHint">
         Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.
       </p>
@@ -3352,8 +3334,24 @@ input[type="checkbox"] {
         </button>
       </div>
 
-      <p class="section-title" data-i18n="settings.personal.language">Sprache</p>
-      <div class="preset-row" id="language-picker" role="group" aria-label="Sprache"></div>
+      <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
+        Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
+      </p>
+      <label class="select-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        <select id="song-search-service-picker" aria-label="Suchdienst"></select>
+      </label>
+      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
+        Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.
+      </p>
+
+      <p class="section-title" data-i18n="settings.personal.displayTitle">Anzeige</p>
+      <p class="section-title" style="margin-top:0" data-i18n="settings.personal.language">Sprache</p>
+      <label class="select-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/></svg>
+        <select id="language-picker" aria-label="Sprache"></select>
+      </label>
 
       <p class="section-title" data-i18n="settings.personal.accent">Akzentfarbe</p>
       <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
@@ -3364,18 +3362,7 @@ input[type="checkbox"] {
       </p>
       <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
 
-      <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
-        Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
-      </p>
-      <div class="chip-grid" id="song-search-service-picker" role="group" aria-label="Suchdienst"></div>
-      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
-        Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.
-      </p>
-    </div>
-
-    <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M9 21h6"/></svg><span data-i18n="settings.voices.title">Meine Stimmen</span></h2>
+      <p class="section-title" data-i18n="settings.voices.title">Meine Stimmen</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.voices.hint">
         Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
         Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
@@ -3397,75 +3384,23 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/></svg><span data-i18n="settings.bike.title">Fahrradfahren-Modus</span></h2>
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
+
+      <p class="section-title" style="margin-top:0" data-i18n="settings.bike.title">Fahrradfahren-Modus</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.bike.hint">
         Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
         Seite gemischt, hört man sie sonst je nach Ohr gar nicht.
       </p>
-      <div class="preset-row" id="channel-mode" role="group" aria-label="Kanalwiedergabe">
-        <button class="preset" type="button" data-mode="off" aria-pressed="true" data-i18n="settings.bike.normal">Normal</button>
-        <button class="preset" type="button" data-mode="mono" data-i18n="settings.bike.mono">Mono</button>
-        <button class="preset" type="button" data-mode="swap" data-i18n="settings.bike.swap">Tauschen</button>
-      </div>
-    </div>
+      <label class="select-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="5" height="7" rx="2"/><rect x="16" y="14" width="5" height="7" rx="2"/></svg>
+        <select id="channel-mode" aria-label="Kanalwiedergabe">
+          <option value="off" data-i18n="settings.bike.normal">Normal</option>
+          <option value="mono" data-i18n="settings.bike.mono">Mono</option>
+          <option value="swap" data-i18n="settings.bike.swap">Tauschen</option>
+        </select>
+      </label>
 
-    <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span data-i18n="settings.screen.title">Bildschirm &amp; Hintergrund</span></h2>
-      <div class="row">
-        <span class="small" style="max-width:70%" data-i18n="settings.screen.keepOn">
-          Bildschirm anlassen, solange ein Lied geöffnet ist
-        </span>
-        <button class="switch" id="btn-screen-toggle" type="button" role="switch"
-                aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
-          <span class="switch-knob"></span>
-        </button>
-      </div>
-      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
-        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
-        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
-      </p>
-      <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
-
-      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
-              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
-        Hören im Hintergrund klappt nicht?
-      </button>
-      <div id="bg-help" hidden style="margin-top:12px">
-        <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
-          Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
-          nicht an dieser App: Android entscheidet, ob eine Web-App im
-          Hintergrund weiterlaufen darf, und das steuern zwei
-          Systemeinstellungen — beide lassen sich nur von Hand ändern, keine
-          Website darf sie selbst setzen.
-        </p>
-        <ol class="steps small">
-          <li data-i18n-html="settings.screen.step1">Android-Einstellungen → <strong>Apps</strong> → deinen Browser
-            öffnen (z. B. <strong>Vanadium</strong> oder
-            <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm
-            hinzufügen“ verwendet hast).</li>
-          <li data-i18n-html="settings.screen.step2"><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
-            wählen. Sonst beendet Android den Browser im Hintergrund, sobald
-            der Bildschirm aus ist.</li>
-          <li data-i18n-html="settings.screen.step3"><strong>Benachrichtigungen</strong> → erlauben. Android
-            verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf
-            keine Web-App im Hintergrund weiterspielen.</li>
-        </ol>
-        <p class="small muted" style="margin:10px 0 0" data-i18n-html="settings.screen.grapheneNote">
-          Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
-          Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
-          eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
-          Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
-          „BVG“-Symbol.
-        </p>
-        <p class="small" id="notif-state" style="margin:14px 0 0"></p>
-        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px" data-i18n="settings.screen.notifyBtn">
-          Benachrichtigungen für diese Seite erlauben
-        </button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16a8 8 0 0 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.perf.title">Kompatibilität &amp; Performance</span></h2>
+      <p class="section-title" data-i18n="settings.perf.title">Kompatibilität &amp; Performance</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.perf.modeHint">
         Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.
       </p>
@@ -3602,6 +3537,61 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span data-i18n="settings.screen.title">Bildschirm &amp; Hintergrund</span></h2>
+      <div class="row">
+        <span class="small" style="max-width:70%" data-i18n="settings.screen.keepOn">
+          Bildschirm anlassen, solange ein Lied geöffnet ist
+        </span>
+        <button class="switch" id="btn-screen-toggle" type="button" role="switch"
+                aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
+        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
+        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
+      </p>
+      <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
+
+      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
+              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
+        Hören im Hintergrund klappt nicht?
+      </button>
+      <div id="bg-help" hidden style="margin-top:12px">
+        <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
+          Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
+          nicht an dieser App: Android entscheidet, ob eine Web-App im
+          Hintergrund weiterlaufen darf, und das steuern zwei
+          Systemeinstellungen — beide lassen sich nur von Hand ändern, keine
+          Website darf sie selbst setzen.
+        </p>
+        <ol class="steps small">
+          <li data-i18n-html="settings.screen.step1">Android-Einstellungen → <strong>Apps</strong> → deinen Browser
+            öffnen (z. B. <strong>Vanadium</strong> oder
+            <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm
+            hinzufügen“ verwendet hast).</li>
+          <li data-i18n-html="settings.screen.step2"><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
+            wählen. Sonst beendet Android den Browser im Hintergrund, sobald
+            der Bildschirm aus ist.</li>
+          <li data-i18n-html="settings.screen.step3"><strong>Benachrichtigungen</strong> → erlauben. Android
+            verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf
+            keine Web-App im Hintergrund weiterspielen.</li>
+        </ol>
+        <p class="small muted" style="margin:10px 0 0" data-i18n-html="settings.screen.grapheneNote">
+          Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
+          Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
+          eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
+          Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
+          „BVG“-Symbol.
+        </p>
+        <p class="small" id="notif-state" style="margin:14px 0 0"></p>
+        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px" data-i18n="settings.screen.notifyBtn">
+          Benachrichtigungen für diese Seite erlauben
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
       <div class="stack">
         <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
@@ -3629,52 +3619,73 @@ input[type="checkbox"] {
           Kilobyte groß und lässt sich per Mail oder Messenger verschicken.
         </p>
         <p class="small" id="backup-age" style="margin:0"></p>
-        <button class="btn btn--primary btn--block" id="btn-backup-export" type="button" data-i18n="settings.data.backupBtn">
-          Backup
-        </button>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn--primary" id="btn-backup-export" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
+            <span data-i18n="settings.data.backupBtn">Backup</span>
+          </button>
+          <button class="btn" id="btn-backup-import" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v12"/><path d="M17 16l-5 5-5-5"/><path d="M5 3h14"/></svg>
+            <span data-i18n="settings.data.restoreBtn">Restore</span>
+          </button>
+        </div>
         <input class="visually-hidden" id="backup-input" type="file" accept=".json,application/json">
-        <button class="btn btn--block" id="btn-backup-import" type="button" data-i18n="settings.data.restoreBtn">
-          Restore
-        </button>
-        <p class="small" id="notes-count" style="margin:8px 0 0"></p>
-        <button class="btn btn--block" id="btn-notes-export" type="button" data-i18n="settings.data.printNotesBtn">
-          Notizen drucken
-        </button>
-        <p class="small" id="lyrics-notes-count" style="margin:8px 0 0"></p>
-        <button class="btn btn--block" id="btn-lyrics-notes-export" type="button">
-          Eigene Liedtexte drucken
-        </button>
       </div>
 
-      <p class="section-title" data-i18n="settings.data.freeSpaceTitle">Speicherplatz freigeben</p>
+      <p class="section-title" data-i18n="settings.data.exportTitle">Exportieren</p>
       <div class="stack">
-        <p class="small muted" style="margin:0" data-i18n="settings.data.freeSpaceHint1">
-          Einzelne Songs oder Stimmen löschen. Loops, Notizen, eigene
-          Liedtexte und Setlisten bleiben dabei erhalten.
-        </p>
-        <button class="btn btn--danger btn--block" id="btn-drop-audio" type="button" data-i18n="settings.data.dropAudioBtn">
-          Alle Aufnahmen löschen
-        </button>
-        <p class="small muted" style="margin:0" data-i18n="settings.data.freeSpaceHint2">
-          Entfernt nur die Audiodateien. Loops, Notizen, eigene Liedtexte,
-          Setlisten und Einstellungen bleiben erhalten und verbinden sich
-          beim nächsten Import wieder.
-        </p>
+        <p class="small" id="notes-count" style="margin:0"></p>
+        <p class="small" id="lyrics-notes-count" style="margin:0"></p>
+        <div style="display:flex; gap:8px">
+          <button class="btn" id="btn-notes-export" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17v4h12v-4"/></svg>
+            <span data-i18n="settings.data.printNotesBtn">Notizen drucken</span>
+          </button>
+          <button class="btn" id="btn-lyrics-notes-export" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17v4h12v-4"/></svg>
+            <span data-i18n="settings.data.printLyricsBtn">Eigene Liedtexte drucken</span>
+          </button>
+        </div>
+      </div>
+
+      <p class="section-title" data-i18n="settings.data.manageTitle">Songs verwalten</p>
+      <div class="stack">
         <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false" data-i18n="settings.data.manageStorageBtn">
           Einzelne Songs verwalten
         </button>
         <div id="storage-manager" hidden></div>
       </div>
 
-      <p class="section-title" data-i18n="settings.data.wipeTitle">Alles löschen</p>
+      <p class="section-title" data-i18n="settings.data.deleteTitle">Löschen</p>
       <div class="stack">
-        <p class="small muted" style="margin:0" data-i18n="settings.data.wipeHint">
-          Löscht alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte
-          und Setlisten von diesem Gerät. Die Dateien in der Dropbox bleiben
-          unberührt.
+        <p class="small muted" style="margin:0" data-i18n="settings.data.deleteHint">
+          Beides lässt sich nicht rückgängig machen; die Dateien in der Dropbox
+          bleiben in jedem Fall unberührt. „Aufnahmen löschen“ entfernt nur die
+          Audiodateien — Loops, Notizen, eigene Liedtexte und Setlisten bleiben
+          erhalten und verbinden sich beim nächsten Import neu. „Alles löschen“
+          entfernt zusätzlich auch diese.
         </p>
-        <button class="btn btn--danger btn--block" id="btn-wipe" type="button" data-i18n="settings.data.wipeBtn">
-          Alle Daten löschen
+        <div style="display:flex; gap:8px">
+          <button class="btn btn--danger" id="btn-drop-audio" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+            <span data-i18n="settings.data.dropAudioBtn">Alle Aufnahmen löschen</span>
+          </button>
+          <button class="btn btn--danger" id="btn-wipe" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+            <span data-i18n="settings.data.wipeBtn">Alle Daten löschen</span>
+          </button>
+        </div>
+      </div>
+
+      <p class="section-title" data-i18n="settings.storage.title">Speicher</p>
+      <div class="stack">
+        <div class="row">
+          <span id="storage-text" class="small" data-i18n="settings.storage.measuring">wird ermittelt …</span>
+        </div>
+        <div class="meter" id="storage-meter"><i></i></div>
+        <p class="small muted" id="persist-text" style="margin:0"></p>
+        <button class="btn btn--block" id="btn-persist" type="button" hidden data-i18n="settings.storage.persistBtn">
+          Dauerhafte Speicherung anfordern
         </button>
       </div>
     </div>
@@ -3690,24 +3701,27 @@ input[type="checkbox"] {
           (Lupe im Player), gehen Songtitel und ggf. Interpret an den dort gewählten
           externen Dienst (Tidal, Spotify, Deezer, YouTube oder Google).
         </p>
-        <p style="margin:0" data-i18n-html="settings.about.lame">
-          MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf
-          <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.
-        </p>
-        <p style="margin:0" data-i18n-html="settings.about.stretch">
-          Verlangsamung im Modus „HD" mit <strong>signalsmith-stretch</strong>
-          (MIT) von Geraint Luff / Signalsmith Audio Ltd. —
-          <a href="https://signalsmith-audio.co.uk/code/stretch/" target="_blank" rel="noopener noreferrer">signalsmith-audio.co.uk</a>.
-        </p>
+        <p class="small" style="margin:0" data-i18n="settings.about.librariesTitle">Verwendete externe Bibliotheken:</p>
+        <ul class="steps small" style="list-style: disc; margin:0">
+          <li data-i18n-html="settings.about.lame">
+            MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf
+            <strong>LAME</strong> — <a href="https://lame.sourceforge.net/" target="_blank" rel="noopener noreferrer">lame.sourceforge.net</a>.
+          </li>
+          <li data-i18n-html="settings.about.stretch">
+            Verlangsamung im Modus „HD" mit <strong>signalsmith-stretch</strong>
+            (MIT) von Geraint Luff / Signalsmith Audio Ltd. —
+            <a href="https://signalsmith-audio.co.uk/code/stretch/" target="_blank" rel="noopener noreferrer">signalsmith-audio.co.uk</a>.
+          </li>
+        </ul>
       </div>
 
       <p class="section-title" data-i18n="settings.about.errorLogTitle">Fehlerprotokoll</p>
-      <p class="small muted" style="margin-top:0" data-i18n="settings.about.errorLogHint">
+      <p class="small muted" id="error-log-hint" style="margin-top:0" data-i18n="settings.about.errorLogHint">
         Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim
         Melden eines Problems. Bleibt nur auf diesem Gerät.
       </p>
       <div class="stack small" id="error-log-list"></div>
-      <div style="display:flex; gap:8px; margin-top:12px">
+      <div id="error-log-actions" style="display:flex; gap:8px; margin-top:12px">
         <button class="btn" id="btn-errorlog-copy" type="button" style="flex:1" data-i18n="settings.about.copyLogBtn">Protokoll kopieren</button>
         <button class="btn" id="btn-errorlog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
@@ -3728,25 +3742,11 @@ input[type="checkbox"] {
         eines Problems (z. B. Import, dann Bildschirm sperren); danach hier
         exportieren und beim Melden mitschicken.
       </p>
-      <div style="display:flex; gap:8px; margin-top:12px">
+      <div id="debuglog-actions" style="display:flex; gap:8px; margin-top:12px">
         <button class="btn" id="btn-debuglog-export" type="button" style="flex:1" data-i18n="settings.about.exportLogBtn">Log exportieren</button>
         <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
-    </div>
-
-    <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span data-i18n="settings.storage.title">Speicher</span></h2>
-      <div class="stack">
-        <div class="row">
-          <span id="storage-text" class="small" data-i18n="settings.storage.measuring">wird ermittelt …</span>
-        </div>
-        <div class="meter" id="storage-meter"><i></i></div>
-        <p class="small muted" id="persist-text" style="margin:0"></p>
-        <button class="btn btn--block" id="btn-persist" type="button" hidden data-i18n="settings.storage.persistBtn">
-          Dauerhafte Speicherung anfordern
-        </button>
-      </div>
     </div>
 
   </section>
