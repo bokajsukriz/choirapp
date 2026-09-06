@@ -6674,12 +6674,31 @@ $('#btn-lightshow-sync-reset').addEventListener('click', async () => {
 });
 
 /* ==========================================================================
-   INTERNETZEIT-ABGLEICH — zweite automatische Variante, ganz ohne zweites
+   INTERNETZEIT-ABGLEICH — dritte automatische Variante, ganz ohne zweites
    Handy: Statt sich an einem anderen Gerät zu orientieren, fragt DIESES
-   Gerät einmalig bei einem externen Zeitserver nach der aktuellen Uhrzeit
+   Gerät einmalig die Atomuhr der PTB (Physikalisch-Technische Bundesanstalt,
+   Deutschlands nationales Metrologie-Institut) nach der aktuellen Uhrzeit
    und setzt den Handversatz auf die Differenz zur eigenen Uhr. Vergleichen
    sich alle Geräte gegen dieselbe externe Uhr, landen sie automatisch auch
    untereinander im Gleichklang — keine Kamera, kein zweites Handy nötig.
+
+   Die PTB verteilt ihre Zeit extra für genau diesen Zweck über WebSocket
+   statt NTP: normaler TLS-Verkehr auf Port 443, der durch Firmen-Proxys und
+   Sandboxes kommt, wo ein UDP-NTP-Paket (Port 123) meist blockiert wäre
+   (siehe https://uhr.ptb.de/wst/paper). Protokoll: nach dem Verbindungsaufbau
+   einen beliebigen Client-Wert als {c: …} senden, die PTB schickt ihn
+   zusammen mit ihrer eigenen Zeit als {s: …, e: …} (Serverzeit in ms seit
+   Epoch UTC, e = ihre eigene Fehlerabschätzung in ms) zurück.
+
+   Hauptfehlerquelle ist laut PTB nicht die Uhr selbst, sondern asymmetrische
+   Netzlaufzeit (Hin- und Rückweg unterschiedlich lang, z.B. durch
+   Warteschlangen unterwegs) — die eigentliche Rechnung (Serverzeit +
+   Laufzeit/2) geht von SYMMETRISCHER Laufzeit aus, und je länger die
+   gemessene Laufzeit, desto mehr Spielraum hat eine Asymmetrie, den Fehler
+   wachsen zu lassen. Deshalb mehrere Anfragen über dieselbe Verbindung und
+   die mit der kürzesten Laufzeit nehmen (PTBs eigene Empfehlung) statt nur
+   eine einzelne — die erste Anfrage kann noch Verbindungs-/JIT-Anlaufkosten
+   mittragen und wird deshalb verworfen.
 
    Das ist die einzige Stelle im ganzen Programm, die eine Netzwerkanfrage
    auslöst, ohne dass der Nutzer aktiv etwas laden wollte (siehe README:
@@ -6689,8 +6708,67 @@ $('#btn-lightshow-sync-reset').addEventListener('click', async () => {
    einer Netzwerkanfrage soll jedes Mal klar sein, dass sie gerade passiert.
    ========================================================================== */
 
-const LIGHTSHOW_NTP_URL = 'https://worldtimeapi.org/api/timezone/Etc/UTC';
-const LIGHTSHOW_NTP_TIMEOUT_MS = 6000;
+const LIGHTSHOW_NTP_URL = 'wss://uhr.ptb.de/time';
+const LIGHTSHOW_NTP_SUBPROTOCOL = 'time';
+const LIGHTSHOW_NTP_TIMEOUT_MS = 10000;
+const LIGHTSHOW_NTP_SAMPLES = 9;         // insgesamt gesendete Anfragen …
+const LIGHTSHOW_NTP_WARMUP_SAMPLES = 1;  // … davon die ersten als Anlauf verwerfen
+const LIGHTSHOW_NTP_PROBE_GAP_MS = 40;   // kleine Pause zwischen Anfragen, um den Server nicht zu hämmern
+
+/**
+ * Schickt mehrere Zeitanfragen über dieselbe WebSocket-Verbindung und
+ * liefert die mit der kürzesten Laufzeit — siehe Erklärung oben.
+ * @returns {Promise<{serverMs: number, t1: number, rtt: number, ptbErrorMs: number|null}>}
+ */
+function lightshowNtpMeasure() {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const ws = new WebSocket(LIGHTSHOW_NTP_URL, LIGHTSHOW_NTP_SUBPROTOCOL);
+    const samples = [];
+    let sent = 0;
+
+    const finish = (fn, arg) => {
+      if (settled) return; // z.B. Timeout UND onerror fast gleichzeitig
+      settled = true;
+      clearTimeout(timeoutId);
+      ws.close();
+      fn(arg);
+    };
+
+    const timeoutId = setTimeout(() => finish(reject, new Error('timeout')), LIGHTSHOW_NTP_TIMEOUT_MS);
+
+    const sendProbe = () => {
+      sent += 1;
+      // Der eigene performance.now()-Wert dient nur als Marke, die die PTB
+      // unverändert zurückschickt; t0 unten liest sie aus data.c zurück statt
+      // aus einer eigenen Variable, damit jede Probe für sich in ihrer
+      // onmessage vollständig nachvollziehbar bleibt.
+      ws.send(JSON.stringify({ c: String(performance.now()) }));
+    };
+
+    ws.onopen = () => sendProbe();
+
+    ws.onmessage = (event) => {
+      const t1 = performance.now();
+      let data;
+      try { data = JSON.parse(event.data); } catch (err) { finish(reject, err); return; }
+      const t0 = Number(data.c);
+      const serverMs = Number(data.s);
+      if (!Number.isFinite(serverMs) || !Number.isFinite(t0)) { finish(reject, new Error('unparsable response')); return; }
+      samples.push({ serverMs, t1, rtt: t1 - t0, ptbErrorMs: data.e != null ? Number(data.e) : null });
+
+      if (sent >= LIGHTSHOW_NTP_SAMPLES) {
+        const usable = samples.slice(LIGHTSHOW_NTP_WARMUP_SAMPLES);
+        const pool = usable.length ? usable : samples; // Notnagel, falls fast alle Proben verworfen würden
+        pool.sort((a, b) => a.rtt - b.rtt);
+        finish(resolve, pool[0]);
+        return;
+      }
+      setTimeout(sendProbe, LIGHTSHOW_NTP_PROBE_GAP_MS);
+    };
+    ws.onerror = () => finish(reject, new Error('websocket error'));
+  });
+}
 
 async function lightshowNtpSync() {
   const ok = await confirmDialog({
@@ -6705,40 +6783,37 @@ async function lightshowNtpSync() {
   statusEl.hidden = false;
   statusEl.textContent = t('lightshow.ntpcal.statusChecking');
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), LIGHTSHOW_NTP_TIMEOUT_MS);
   try {
-    const t0 = performance.now();
-    const res = await fetch(LIGHTSHOW_NTP_URL, { signal: controller.signal, cache: 'no-store' });
-    const t1 = performance.now(); // Antwortkopf da, aber JSON noch nicht geparst
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const serverMs = Date.parse(data.datetime ?? data.utc_datetime ?? '');
-    if (!Number.isFinite(serverMs)) throw new Error('unparsable datetime');
+    const best = await lightshowNtpMeasure();
 
-    // Laufzeit zur Hälfte der Antwortzeit zuschlagen (übliche Annahme: Hin-
-    // und Rückweg dauern etwa gleich lang) — die Serverzeit im JSON wurde ja
-    // schon bei t0..t1 geschrieben, nicht erst, als sie hier ankam. Beide
-    // Zeitpunkte auf denselben Moment (t1) beziehen, damit die JSON-Verarbeitung
-    // selbst nicht mit in die Differenz einfließt.
-    const rtt = t1 - t0;
-    const trueAtT1 = serverMs + rtt / 2;
-    const localAtT1 = Date.now() - (performance.now() - t1);
+    // Laufzeit zur Hälfte zuschlagen (übliche Annahme: Hin- und Rückweg
+    // dauern etwa gleich lang, siehe PTB-Empfehlung) — die Serverzeit wurde
+    // ja schon beim Senden auf PTB-Seite geschrieben, nicht erst, als die
+    // Antwort hier ankam. Beide Zeitpunkte auf denselben Moment (t1, Empfang
+    // dieser einen Probe) beziehen, damit die JSON-Verarbeitung selbst nicht
+    // mit in die Differenz einfließt.
+    const trueAtT1 = best.serverMs + best.rtt / 2;
+    const localAtT1 = Date.now() - (performance.now() - best.t1);
     const next = Math.max(-5000, Math.min(5000, Math.round(trueAtT1 - localAtT1)));
 
     await saveSettings({ lightshowOffsetMs: next });
     lightshowRenderSyncOffset();
+
+    // Grobe, bewusst konservative Anzeige-Schätzung fürs UI — keine strenge
+    // metrologische Unsicherheitsrechnung: die halbe Laufzeit deckt die
+    // Asymmetrie-Annahme oben ab, dazu PTBs eigene Fehlerangabe, falls
+    // mitgeliefert.
+    const uncertainty = Math.round(best.rtt / 2 + (best.ptbErrorMs ?? 0));
     statusEl.textContent = t('lightshow.ntpcal.statusDone')
       .replace('{value}', `${next} ms`)
-      .replace('{rtt}', `${Math.round(rtt)} ms`);
+      .replace('{rtt}', `${Math.round(best.rtt)} ms`)
+      .replace('{uncertainty}', `${uncertainty} ms`);
   } catch {
-    // Netzwerkfehler, Timeout, unerwarteter Statuscode oder unlesbares Datum
-    // laufen alle hier zusammen — der Nutzer kann ohnehin nur "nochmal
-    // versuchen" oder auf Kamera/Handeinstellung ausweichen, eine genauere
-    // Fehlerunterscheidung würde daran nichts ändern.
+    // Netzwerkfehler, Timeout oder unlesbare Antwort laufen alle hier
+    // zusammen — der Nutzer kann ohnehin nur "nochmal versuchen" oder auf
+    // Kamera/Handeinstellung ausweichen, eine genauere Fehlerunterscheidung
+    // würde daran nichts ändern.
     statusEl.textContent = t('lightshow.ntpcal.statusError');
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

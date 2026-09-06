@@ -322,11 +322,11 @@ export const STRINGS = {
 
     'lightshow.ntpcal.openBtn': 'Mit Internetzeit abgleichen',
     'lightshow.ntpcal.dialogTitle': 'Mit Internetzeit abgleichen?',
-    'lightshow.ntpcal.dialogText': 'Dafür schickt die App eine einmalige Anfrage an worldtimeapi.org, um die aktuelle Uhrzeit abzufragen. Es werden keine weiteren Daten übertragen — nur diese eine Zeitabfrage.',
+    'lightshow.ntpcal.dialogText': 'Dafür schickt die App eine einmalige Anfrage an die Atomuhr der PTB (Physikalisch-Technische Bundesanstalt, uhr.ptb.de), um die aktuelle Uhrzeit abzufragen. Es werden keine weiteren Daten übertragen — nur diese eine Zeitabfrage.',
     'lightshow.ntpcal.dialogOk': 'Abgleichen',
     'lightshow.ntpcal.dialogCancel': 'Abbrechen',
     'lightshow.ntpcal.statusChecking': 'Frage Zeitserver ab …',
-    'lightshow.ntpcal.statusDone': 'Fertig — Handversatz automatisch auf {value} gesetzt (Laufzeit {rtt}).',
+    'lightshow.ntpcal.statusDone': 'Fertig — Handversatz automatisch auf {value} gesetzt (Laufzeit {rtt}, geschätzte Genauigkeit ±{uncertainty}).',
     'lightshow.ntpcal.statusError': 'Zeitserver nicht erreichbar — später erneut versuchen oder Kamera-Abgleich/Handeinstellung nutzen.',
   },
   en: {
@@ -635,11 +635,11 @@ export const STRINGS = {
 
     'lightshow.ntpcal.openBtn': 'Sync with internet time',
     'lightshow.ntpcal.dialogTitle': 'Sync with internet time?',
-    'lightshow.ntpcal.dialogText': 'This sends a one-off request to worldtimeapi.org to look up the current time. No other data is transmitted — just this one time lookup.',
+    'lightshow.ntpcal.dialogText': 'This sends a one-off request to PTB’s atomic clock (Physikalisch-Technische Bundesanstalt, Germany’s national metrology institute, uhr.ptb.de) to look up the current time. No other data is transmitted — just this one time lookup.',
     'lightshow.ntpcal.dialogOk': 'Sync',
     'lightshow.ntpcal.dialogCancel': 'Cancel',
     'lightshow.ntpcal.statusChecking': 'Checking time server …',
-    'lightshow.ntpcal.statusDone': 'Done — manual offset automatically set to {value} (round-trip {rtt}).',
+    'lightshow.ntpcal.statusDone': 'Done — manual offset automatically set to {value} (round-trip {rtt}, estimated accuracy ±{uncertainty}).',
     'lightshow.ntpcal.statusError': 'Time server unreachable — try again later, or use the camera calibration / manual offset instead.',
   },
   pl: {
@@ -948,11 +948,11 @@ export const STRINGS = {
 
     'lightshow.ntpcal.openBtn': 'Synchronizuj z czasem internetowym',
     'lightshow.ntpcal.dialogTitle': 'Zsynchronizować z czasem internetowym?',
-    'lightshow.ntpcal.dialogText': 'Wyśle to jednorazowe zapytanie do worldtimeapi.org o aktualny czas. Żadne inne dane nie zostaną przesłane — tylko to jedno zapytanie o czas.',
+    'lightshow.ntpcal.dialogText': 'Wyśle to jednorazowe zapytanie do zegara atomowego PTB (Physikalisch-Technische Bundesanstalt, niemiecki instytut metrologiczny, uhr.ptb.de) o aktualny czas. Żadne inne dane nie zostaną przesłane — tylko to jedno zapytanie o czas.',
     'lightshow.ntpcal.dialogOk': 'Synchronizuj',
     'lightshow.ntpcal.dialogCancel': 'Anuluj',
     'lightshow.ntpcal.statusChecking': 'Odpytuję serwer czasu …',
-    'lightshow.ntpcal.statusDone': 'Gotowe — ręczne przesunięcie ustawione automatycznie na {value} (czas odpowiedzi {rtt}).',
+    'lightshow.ntpcal.statusDone': 'Gotowe — ręczne przesunięcie ustawione automatycznie na {value} (czas odpowiedzi {rtt}, szacowana dokładność ±{uncertainty}).',
     'lightshow.ntpcal.statusError': 'Serwer czasu niedostępny — spróbuj ponownie później albo użyj kalibracji kamerą / ręcznego przesunięcia.',
   },
 };
