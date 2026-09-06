@@ -6711,6 +6711,7 @@ let lightshowCamCalPeaks = [];
 let lightshowCamCalBaseline = null;
 let lightshowCamCalCooldownUntil = 0;
 let lightshowCamCalWarmupUntil = 0;
+let lightshowCamCalArmed = true;
 
 function lightshowCamCalSampleBrightness(video) {
   if (!lightshowCamCalCanvas) {
@@ -6766,6 +6767,7 @@ function lightshowCamCalResetMeasurement() {
   lightshowCamCalAnchorPerf = performance.now();
   lightshowCamCalPeaks = [];
   lightshowCamCalCooldownUntil = 0;
+  lightshowCamCalArmed = true;
   lightshowCamCalRenderStatus();
 }
 
@@ -6837,18 +6839,38 @@ function lightshowCamCalStep() {
     return;
   }
 
+  const rise = brightness - lightshowCamCalBaseline;
   const threshold = Math.max(LIGHTSHOW_CAMCAL_MIN_ABS_DELTA, lightshowCamCalBaseline * LIGHTSHOW_CAMCAL_REL_DELTA);
-  const isPeak = (brightness - lightshowCamCalBaseline) > threshold && now >= lightshowCamCalCooldownUntil;
+  const above = rise > threshold;
+  const isPeak = above && lightshowCamCalArmed && now >= lightshowCamCalCooldownUntil;
 
   if (isPeak) {
     lightshowCamCalPeaks.push(now);
     lightshowCamCalCooldownUntil = now + LIGHTSHOW_CAMCAL_COOLDOWN_MS;
+    // Erst wieder scharf, wenn die Helligkeit sichtbar zurückgegangen ist —
+    // sonst zählt ein Bild, das nach dem Blitz einfach hell BLEIBT (Kamera
+    // zu nah dran, Umgebungslicht, Belichtung überschossen), alle 400ms
+    // (den Cooldown) einen weiteren „Blitz", ohne dass echtes Blinken
+    // stattfindet. lightshowCamCalConsistentRun() verwirft diese ~400ms-
+    // Serie zwar wieder (kein Sekundenabstand), aber erst NACHDEM sechs
+    // Fehltreffer den Zähler durchgejagt haben — sichtbar als scheinbar
+    // sinnloses Hochzählen mit anschließendem Sprung zurück auf 0.
+    lightshowCamCalArmed = false;
     lightshowCamCalRenderStatus();
     if (lightshowCamCalPeaks.length >= LIGHTSHOW_CAMCAL_NEEDED_PEAKS) lightshowCamCalFinish();
-  } else if (now >= lightshowCamCalCooldownUntil) {
-    // Hintergrund nur außerhalb der Cooldown-Phase nachziehen, sonst zöge
-    // der Blitz selbst ihn hoch und würde beim nächsten Mal nicht mehr auffallen.
-    lightshowCamCalBaseline += (brightness - lightshowCamCalBaseline) * 0.08;
+    return;
+  }
+
+  if (!above) {
+    // Hysterese: erst unterhalb der halben Schwelle wieder scharf machen,
+    // damit ein Signal, das genau um die Schwelle herum zittert, nicht
+    // mehrfach als eigener Blitz zählt.
+    if (rise < threshold * 0.5) lightshowCamCalArmed = true;
+    if (now >= lightshowCamCalCooldownUntil) {
+      // Hintergrund nur außerhalb der Cooldown-Phase nachziehen, sonst zöge
+      // der Blitz selbst ihn hoch und würde beim nächsten Mal nicht mehr auffallen.
+      lightshowCamCalBaseline += rise * 0.08;
+    }
   }
 }
 
