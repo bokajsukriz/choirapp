@@ -3764,6 +3764,7 @@ async function setupAudioGraph() {
     if (Audio.loop && s >= Audio.loop.end) {
       el.currentTime = Audio.loop.start;
       Audio.position = Audio.loop.start;
+      updateRecTakePosition();
       Audio.onPosition?.(Audio.loop.start);
       // Der Rücksprung läuft nicht über audioSeek() — dieselbe Diskontinuität
       // explizit auslösen, sonst bleibt der alte Überlappungspuffer des
@@ -3802,6 +3803,7 @@ async function setupAudioGraph() {
       });
       lastPosLog = { wall: nowWall, pos: s };
     }
+    updateRecTakePosition();
     Audio.onPosition?.(s);
   });
 
@@ -7418,6 +7420,7 @@ function onPlaybackEnded() {
     endRecordingPreview();
     renderRecordingList();
     updateRecPreviewButton();
+    updateRecTakePosition();
     return;
   }
   dlog('playback:ended', { repeatMode: settings.repeatMode, hasQueue: !!playQueue });
@@ -7494,7 +7497,7 @@ $('#btn-play').addEventListener('click', async () => {
   updateMediaSession();
   // Läuft gerade eine REC-Vorschau, muss deren eigener Anhören-Knopf
   // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
-  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); syncBackingPlayState(); }
+  if (audioPreview) { updateRecPreviewButton(); updateRecTakePosition(); renderRecordingList(); syncBackingPlayState(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
@@ -8092,7 +8095,7 @@ const RID = {
     controls: 'rec-controls', toggle: 'btn-rec-toggle', timer: 'rec-timer', status: 'rec-status',
     meter: 'rec-meter', meterCanvas: 'rec-meter-canvas', meterWarning: 'rec-meter-warning',
     inputWarning: 'rec-input-warning',
-    take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration',
+    take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
     voiceBtn: 'btn-rec-take-voice', voiceLabel: 'rec-take-voice-label',
     wave: 'rec-take-wave', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
     save: 'btn-rec-save', discard: 'btn-rec-discard',
@@ -8101,7 +8104,7 @@ const RID = {
     controls: 'recorder-idle', toggle: 'btn-recorder-toggle', timer: 'recorder-timer', status: 'recorder-status',
     meter: 'recorder-meter', meterCanvas: 'recorder-meter-canvas', meterWarning: 'recorder-meter-warning',
     inputWarning: 'recorder-input-warning',
-    take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration',
+    take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration', hint: 'recorder-take-hint',
     voiceBtn: 'btn-recorder-take-voice', voiceLabel: 'recorder-take-voice-label',
     wave: 'recorder-take-wave', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
     save: 'btn-recorder-save', discard: 'btn-recorder-discard',
@@ -8697,6 +8700,7 @@ function renderPendingTake() {
   renderTakeVoiceLabel();
   drawTakeWaveform();
   updateRecPreviewButton();
+  updateRecTakePosition();
   updateRecSaveLocked();
   // Kein Song ist vorausgewählt — die Liste erscheint erst mit dem Take.
   if (recHost === 'recorder' && isNew) {
@@ -8723,14 +8727,40 @@ function updateRecSaveLocked() {
   rn('save').setAttribute('aria-disabled', locked ? 'true' : 'false');
 }
 
-/** Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die Hauptsteuerung läuft. */
+/**
+ * Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die
+ * Hauptsteuerung läuft. `.is-playing` füllt den Knopf sichtbar grün statt nur
+ * das Symbol zu tauschen — ein Dreieck/Balken-Wechsel allein ging in der
+ * Rückmeldung unter, die Füllung macht den Pause-Zustand auf einen Blick klar
+ * (dieselbe Sprache wie `.tbtn[aria-pressed="true"]` im Hauptplayer).
+ */
 function updateRecPreviewButton() {
   const btn = rn('preview');
   if (!btn) return;
   const playing = !!(audioPreview?.tag?.pending && Audio.playing);
   rn('playIcon').hidden = playing;
   rn('pauseIcon').hidden = !playing;
+  btn.classList.toggle('is-playing', playing);
   btn.setAttribute('aria-label', playing ? 'REC pausieren' : 'REC anhören');
+}
+
+/**
+ * Live-Position während der Take-Vorschau ("0:07 / 0:34") statt des
+ * statischen Hinweistexts — sonst ließ sich beim Anhören eines frischen
+ * Takes nirgends ablesen, wie weit man ist (besonders im allgemeinen
+ * Recorder ohne Songkontext, wo die Hauptsuchleiste dahinter nicht sichtbar
+ * ist). Läuft bei jedem Positions-Tick, auch ohne je geöffneten Song (siehe
+ * Aufrufstelle im timeupdate-Listener von setupAudioGraph()) — deshalb hier
+ * defensiv statt über pendingTake/Audio als gegeben vorauszusetzen.
+ */
+function updateRecTakePosition() {
+  if (!pendingTake) return;
+  const hint = rn('hint');
+  if (!hint) return;
+  const playing = !!(audioPreview?.tag?.pending && Audio.playing);
+  hint.textContent = playing
+    ? `${fmtTime(Audio.position)} / ${fmtTime(pendingTake.duration)}`
+    : 'gerade aufgenommen';
 }
 
 $('#rec-take-name').addEventListener('input', (e) => {
@@ -8760,6 +8790,7 @@ async function onTakePreviewClick() {
     catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
+  updateRecTakePosition();
 }
 $('#btn-rec-preview').addEventListener('click', onTakePreviewClick);
 $('#btn-recorder-preview').addEventListener('click', onTakePreviewClick);

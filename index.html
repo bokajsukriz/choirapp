@@ -1717,9 +1717,14 @@ input[type="checkbox"] {
   width: 56px; height: 56px; flex: 0 0 auto; border-radius: 50%;
   border: 3px solid var(--ok); background: var(--surface);
   display: flex; align-items: center; justify-content: center;
+  transition: background .12s ease, border-color .12s ease;
 }
 .rec-play svg { width: 24px; height: 24px; color: var(--ok); }
-.rec-play svg#icon-rec-play { margin-left: 3px; }  /* Dreieck optisch mitten */
+.rec-play svg#icon-rec-play, .rec-play svg#icon-recorder-play { margin-left: 3px; }  /* Dreieck optisch mitten */
+/* Gefüllt statt nur das Symbol zu tauschen — der Pause-Zustand soll auch auf
+   den ersten Blick eindeutig sein, nicht erst über die Dreieck-/Balken-Form. */
+.rec-play.is-playing { background: var(--ok); border-color: var(--ok); }
+.rec-play.is-playing svg { color: var(--surface); }
 
 .take-icon {
   width: var(--tap); height: var(--tap); border-radius: 50%; flex: 0 0 auto;
