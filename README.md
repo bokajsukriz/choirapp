@@ -124,7 +124,12 @@ QR-Kopplung —, sondern laufen rein über die Systemuhr synchron: das Bild ist
 eine reine Funktion der Zeit (`lightshowFrame()`), auf jedem Gerät identisch.
 Damit das funktioniert, sollte „Datum & Uhrzeit automatisch“ im Betriebssystem
 eingeschaltet bleiben; ein Sync-Prüfbild in der Ansicht zeigt, ob eine Uhr
-grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich.
+grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich. Alternativ
+lässt sich dieser Ausgleich per Kamera automatisch ermitteln: Ein Gerät
+filmt das Sync-Prüfbild eines zweiten und berechnet aus dem Zeitpunkt von
+dessen Sekundenblitz den eigenen Handversatz. Das Kamerabild verlässt dabei
+das Gerät nie und wird nirgends gespeichert — auch das bleibt eine rein
+lokale Auswertung ohne Verbindung zwischen den Handys.
 
 ## Wichtige Regel für Änderungen
 
