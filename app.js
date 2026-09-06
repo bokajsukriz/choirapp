@@ -1175,6 +1175,13 @@ async function loadSettings() {
   }
   settings.hdOptions = sanitizeHdOptions(settings.hdOptions);
 
+  // Den Reiter „Sheets" gibt es nicht mehr (siehe PLAYER_TABS) — die
+  // Vorschau der Noten läuft jetzt über einen Hinweis im Notes-Reiter
+  // (renderScoresHint()). Ein „sheets" aus einer alten Sicherung würde
+  // setPlayerTab() sonst stumm ignorieren und der Player bliebe auf dem
+  // zuletzt sichtbaren Reiter hängen, statt auf einen gültigen zu fallen.
+  if (settings.defaultPlayerTab === 'sheets') settings.defaultPlayerTab = 'notes';
+
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
   settings.recBackingOffsetMs = Math.max(-BACKING_OFFSET_MAX_MS, Math.min(BACKING_OFFSET_MAX_MS, settings.recBackingOffsetMs || 0));
@@ -10111,7 +10118,7 @@ function iconPdf() {
  * kleine Punkt am Reiter zeigt schon vorm Antippen, ob dort etwas hinterlegt
  * ist (siehe renderLoopList/updateLoopsTabDot/renderPlayerExtras/renderNoteBlock).
  */
-const PLAYER_TABS = ['loops', 'rec', 'lyrics', 'notes', 'sheets'];
+const PLAYER_TABS = ['loops', 'rec', 'lyrics', 'notes'];
 
 function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
@@ -10123,8 +10130,6 @@ function setPlayerTab(tab) {
     $(`#tab-btn-${name}`).tabIndex = name === tab ? 0 : -1;
     $(`#tab-panel-${name}`).hidden = name !== tab;
   }
-  // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
-  if (tab === 'sheets') loadScorePreviews();
   // Der Vollbild-Knopf sitzt außerhalb der Reiter-Panels (siehe
   // .lyrics-present-fab) und muss sich daher hier selbst um sein
   // Verstecken/Zeigen kümmern.
@@ -10184,14 +10189,13 @@ async function renderPlayerExtras() {
 
   // --- Noten --------------------------------------------------------------
   // Nur die Dateinamen sofort — das Einlesen der PDF-Bytes aus IndexedDB und
-  // die eingebettete Vorschau folgen erst, wenn der Sheets-Reiter tatsächlich
+  // die eingebettete Vorschau folgen erst, wenn #scores-modal tatsächlich
   // geöffnet wird (loadScorePreviews). Sonst würde jeder Songwechsel jede
   // hinterlegte Partitur laden, obwohl sie kaum je angesehen wird.
   const list = $('#scores-list');
   list.textContent = '';
   const scores = playerSong?.scores || [];
-  $('#scores-empty').hidden = scores.length > 0;
-  setTabHasContent('sheets', scores.length > 0);
+  $('#btn-scores-hint').hidden = scores.length === 0;
   scoresPreviewLoaded = false;
 
   for (const score of scores) {
@@ -10201,10 +10205,6 @@ async function renderPlayerExtras() {
     row.append(head);
     list.append(row);
   }
-
-  // Ist der Sheets-Reiter schon offen (z. B. weil er der Standard-Reiter
-  // ist), lädt die Vorschau sofort mit — sonst erst beim Antippen des Reiters.
-  if ($('#tab-btn-sheets')?.getAttribute('aria-selected') === 'true') loadScorePreviews();
 }
 
 /**
@@ -10289,9 +10289,10 @@ async function loadScorePreviews() {
       // eingebetteten Vorschau nutzbar — bleibt sie in einem Browser leer,
       // ist er der explizite Weg zur Datei.
       //
-      // Kein `loading="lazy"`: das Panel ist beim Einfügen bereits sichtbar
-      // (siehe setPlayerTab), ein zusätzliches Lazy-Loading brachte auf
-      // manchen Geräten nur eine leer bleibende Vorschau statt Zeitersparnis.
+      // Kein `loading="lazy"`: das Subfenster ist beim Einfügen bereits
+      // sichtbar (siehe openScoresModal), ein zusätzliches Lazy-Loading
+      // brachte auf manchen Geräten nur eine leer bleibende Vorschau statt
+      // Zeitersparnis.
       row.append(
         el('iframe', { class: 'score-preview', src: url, title: score.fileName }),
         el('p', { class: 'small muted', style: 'margin:6px 0 0',
@@ -10302,6 +10303,26 @@ async function loadScorePreviews() {
     }
   }
 }
+
+/**
+ * Subfenster für die Noten-Vorschau — ersetzt den früheren eigenen
+ * Sheets-Reiter (siehe btn-scores-hint im Notes-Reiter). Dieselbe
+ * openModal()/closeModal()-Mechanik wie #sheet (Fokusfalle, Escape, inert
+ * für den Rest der Seite).
+ */
+function openScoresModal() {
+  $('#scores-modal').hidden = false;
+  openModal($('#scores-modal'), { onEscape: () => closeScoresModal() });
+  loadScorePreviews();
+}
+
+function closeScoresModal() {
+  $('#scores-modal').hidden = true;
+  closeModal($('#scores-modal'));
+}
+
+$('#btn-scores-hint').addEventListener('click', openScoresModal);
+$('#scores-modal-close').addEventListener('click', closeScoresModal);
 
 /* ==========================================================================
    NOTIZEN — freier Text je Lied (ohne Formatierung)

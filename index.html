@@ -1387,7 +1387,7 @@ input[type="checkbox"] {
    Antippen, ob in einem Reiter überhaupt etwas hinterlegt ist. */
 .player-tabs {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -2743,11 +2743,6 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         <span data-i18n="tabs.notes">Notes</span>
       </button>
-      <button class="player-tab" type="button" role="tab" id="tab-btn-sheets"
-              data-tab="sheets" aria-selected="false" aria-controls="tab-panel-sheets" tabindex="-1">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
-        <span data-i18n="tabs.sheets">Sheets</span>
-      </button>
     </div>
 
     <div id="tab-panel-loops" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-loops" tabindex="0">
@@ -2885,6 +2880,13 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-notes" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-notes" tabindex="0" hidden>
+      <!-- Ersetzt den früheren eigenen Sheets-Reiter: die Noten sind selten
+           genug im Weg, dass sie hier nur als Hinweis auftauchen, statt einen
+           ganzen Reiter für sich zu beanspruchen. Öffnet #scores-modal. -->
+      <button class="btn btn--block" id="btn-scores-hint" type="button" hidden style="margin-bottom:12px">
+        <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
+        <span id="scores-hint-label" data-i18n="scores.hintLabel">Noten verfügbar</span>
+      </button>
       <!-- Leerzustand wie beim eigenen Liedtext: dezenter +-Knopf mittig,
            statt eines breiten Knopfs oben am Rand. -->
       <div class="empty-add" id="note-empty" hidden>
@@ -2913,10 +2915,6 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div id="tab-panel-sheets" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-sheets" tabindex="0" hidden>
-      <div id="scores-list"></div>
-      <p class="small muted" id="scores-empty" style="margin:0">Keine Noten hinterlegt.</p>
-    </div>
     </div>
   </div>
 
@@ -3237,6 +3235,27 @@ input[type="checkbox"] {
   </div>
 </section>
 
+<!-- Noten-Vorschau als Subfenster statt eines eigenen Player-Reiters (siehe
+     btn-scores-hint im Notes-Reiter) — dieselbe volle Überlagerung wie
+     #sheet oben, nur mit eigenem Inhalt. -->
+<section class="sheet" id="scores-modal" hidden role="dialog" aria-modal="true" aria-labelledby="scores-modal-title">
+  <div class="sheet-head">
+    <div class="row" style="align-items:flex-start">
+      <div class="grow" style="flex:1">
+        <h2 class="sheet-title" id="scores-modal-title" data-i18n="scores.modalTitle">Noten</h2>
+      </div>
+      <button class="disclose" id="scores-modal-close" type="button" aria-label="Schließen" data-i18n-aria="common.close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div class="sheet-body" id="scores-modal-body">
+    <div id="scores-list"></div>
+  </div>
+</section>
+
 <main class="app-main" id="main">
 
   <!-- ===== Bibliothek =================================================== -->
@@ -3398,10 +3417,6 @@ input[type="checkbox"] {
         <button class="player-tab" type="button" data-tab="notes" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           <span data-i18n="tabs.notes">Notes</span>
-        </button>
-        <button class="player-tab" type="button" data-tab="sheets" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/><circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/></svg>
-          <span data-i18n="tabs.sheets">Sheets</span>
         </button>
       </div>
 

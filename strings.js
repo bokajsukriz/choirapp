@@ -26,7 +26,8 @@ export const STRINGS = {
     'tabs.rec': 'REC',
     'tabs.lyrics': 'Lyrics',
     'tabs.notes': 'Notes',
-    'tabs.sheets': 'Sheets',
+    'scores.hintLabel': 'Noten verfügbar',
+    'scores.modalTitle': 'Noten',
 
     'settings.importBtn': 'Songs importieren',
     'settings.personal.title': 'Make it yours!',
@@ -300,7 +301,8 @@ export const STRINGS = {
     'tabs.rec': 'REC',
     'tabs.lyrics': 'Lyrics',
     'tabs.notes': 'Notes',
-    'tabs.sheets': 'Sheets',
+    'scores.hintLabel': 'Scores available',
+    'scores.modalTitle': 'Scores',
 
     'settings.importBtn': 'Import songs',
     'settings.personal.title': 'Make it yours!',
@@ -574,7 +576,8 @@ export const STRINGS = {
     'tabs.rec': 'REC',
     'tabs.lyrics': 'Tekst',
     'tabs.notes': 'Notatki',
-    'tabs.sheets': 'Nuty',
+    'scores.hintLabel': 'Dostępne nuty',
+    'scores.modalTitle': 'Nuty',
 
     'settings.importBtn': 'Importuj utwory',
     'settings.personal.title': 'Make it yours!',
