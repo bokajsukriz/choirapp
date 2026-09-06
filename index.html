@@ -362,6 +362,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 .chip-grid--lg .chip--voice {
@@ -378,20 +379,19 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-color: var(--accent);
 }
 
-/* Dieselbe volltonige Pille wie bei den kleinen Stimm-Markierungen hinter
-   den Songs in der Übersicht (.voice-chip) — dort nur zu klein/überlappend
-   zum Antippen, deshalb hier als eigenständige, größer treffbare Pille
-   nachgebaut. Die Farbe kommt als CSS-Variable von außen (siehe
-   renderVoicePicker), damit jede Stimme ihre eigene Farbe aus VOICE_COLOR
-   trägt statt der einheitlichen Akzentfarbe. Gewählt zeigt sich über einen
-   Rahmen statt einer anderen Füllung — die Stimmfarbe selbst bleibt so in
-   beiden Zuständen wiedererkennbar. */
+/* Die Farbe kommt als CSS-Variable von außen (siehe renderVoicePicker),
+   damit jede Stimme ihre eigene Farbe aus VOICE_COLOR trägt. Nicht gewählte
+   Stimmen erscheinen bewusst als helle Pastelltöne; die volltonige Füllung
+   und der zusätzliche Ring machen die aktive Auswahl auf einen Blick klar. */
 .chip--voice {
+  background: color-mix(in srgb, var(--voice-c) 24%, white);
+  border-color: color-mix(in srgb, var(--voice-c) 48%, white);
+  color: color-mix(in srgb, var(--voice-c) 48%, var(--text));
+}
+.chip--voice[aria-pressed="true"] {
   background: var(--voice-c);
   border-color: var(--voice-c);
   color: #fff;
-}
-.chip--voice[aria-pressed="true"] {
   box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text);
 }
 
@@ -1427,7 +1427,25 @@ input[type="checkbox"] {
   flex: 1 1 auto;
 }
 .section-divider:first-of-type { margin-top: 0; }
-.search-privacy-hint { padding-left: 42px; }
+.section-divider--spacious { margin-top: 42px; }
+
+/* Inhalte stehen eingerückt unter ihrer jeweiligen Überschrift. Die
+   Abschnittsüberschriften selbst bleiben an der bisherigen Fluchtlinie. */
+#view-settings .card-body { padding-inline: 10px; }
+#view-settings .card-body > .section-title { margin-inline: -10px; }
+
+.search-privacy-hint {
+  position: relative;
+  padding-left: 56px;
+}
+.search-privacy-icon {
+  position: absolute;
+  left: 24px;
+  top: .1em;
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+}
 
 /* In aufgeklappten Einstellungskarten beginnt jede weitere Unterüberschrift
    nach einer echten Leerzeile. So kleben etwa Exportieren, Songs verwalten,
@@ -1534,6 +1552,7 @@ input[type="checkbox"] {
 .accent-picker {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
   margin-top: 10px;
 }
@@ -2598,7 +2617,7 @@ input[type="checkbox"] {
         <li data-i18n-html="onb.slide2.li2"><strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du
             sie bei jedem Lied neu einstellst.</li>
       </ul>
-      <div class="chip-grid" id="onb-voice"></div>
+      <div class="chip-grid chip-grid--lg voice-pill-picker" id="onb-voice"></div>
       <p class="small muted" style="margin-top:12px" data-i18n-html="onb.slide2.footnote">
         Alle Stimmen bleiben trotzdem wählbar. Änderbar unter
         <strong>Einstellungen&nbsp;→&nbsp;Meine Stimmen</strong>.
@@ -3544,11 +3563,12 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <select id="song-search-service-picker" aria-label="Suchdienst"></select>
       </label>
-      <p class="small muted search-privacy-hint" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
-        Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.
+      <p class="small muted search-privacy-hint" style="margin:6px 0 0">
+        <svg class="search-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        <span data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</span>
       </p>
 
-      <p class="section-title section-divider" data-i18n="settings.personal.displayTitle">Anzeige</p>
+      <p class="section-title section-divider section-divider--spacious" data-i18n="settings.personal.displayTitle">Anzeige</p>
       <p class="section-title" style="margin-top:0" data-i18n="settings.personal.accent">Akzentfarbe</p>
       <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
 
@@ -3599,20 +3619,15 @@ input[type="checkbox"] {
         <button class="preset" type="button" data-mode="hd" data-i18n="settings.perf.modeHd">HD</button>
       </div>
       <p class="small muted" style="margin:8px 0 0" data-i18n="settings.perf.hdHint">
-        HD rechnet den Klang selbst um, statt es dem Browser zu überlassen —
-        deutlich sauberer bei lang gehaltenen Tönen. Kostet dafür mehr
-        Rechenleistung. Stockt die Wiedergabe auf einem älteren Handy oder
-        wird es warm, wieder auf Standard stellen.
+        HD klingt bei langsamem Tempo klarer, braucht aber mehr Leistung. Bei
+        Ruckeln oder Wärme: Standard wählen.
       </p>
       <p class="small muted" id="hd-unsupported-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.hdUnsupported">
         Dieses Gerät unterstützt HD nicht — Standard funktioniert trotzdem.
       </p>
       <p class="small muted" id="hd-webkit-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.webkitHint">
-        Bekannter Fehler in Safari/WebKit: Verlangsamte Wiedergabe klingt dort
-        abgehackt, und die Tonhöhe stimmt in HD nicht. Deshalb laufen
-        Kanal-Matrix und HD hier vorerst nicht mit. Der Fehler ist beim
-        Hersteller bereits behoben, aber noch in keinem Safari-Release
-        angekommen — falls doch, lässt sich das unten schon vorab ausprobieren.
+        Safari kann langsames Audio noch fehlerhaft wiedergeben. Deshalb ist HD
+        dort vorerst aus; mit „Trotzdem versuchen“ lässt es sich testen.
       </p>
       <div class="row" id="webkit-force-graph-row" hidden style="margin-top:8px">
         <span class="small" style="max-width:70%" data-i18n="settings.perf.webkitForceGraph">
@@ -3742,7 +3757,8 @@ input[type="checkbox"] {
         Tonausgabe neu aufbauen
       </button>
       <p class="small muted" style="margin:6px 0 0" data-i18n="settings.perf.rebuildHint">
-        Klingt die Wiedergabe nach langer Zeit im Hintergrund abgehackt oder falsch, obwohl Pause/Abspielen nicht hilft: hiermit die Audioausgabe von Grund auf neu aufbauen. Wirkt nur, während gerade nichts läuft, und stoppt eine laufende Wiedergabe kurz dafür.
+        Hilft bei abgehacktem Ton nach langer Hintergrundwiedergabe. Nur
+        verwenden, wenn gerade nichts läuft.
       </p>
     </div>
 
@@ -3769,12 +3785,7 @@ input[type="checkbox"] {
 
       <p class="section-title" style="margin-top:0" data-i18n="settings.data.backupTitle">Sicherung</p>
       <div class="stack">
-        <p class="small muted" style="margin:0" data-i18n="settings.data.backupHint">
-          Sichert Loops, Notizen, eigene Liedtexte, Setlisten, Einstellungen
-          und die Songliste — ohne Aufnahmen. Die Datei ist nur wenige
-          Kilobyte groß und lässt sich per Mail oder Messenger verschicken.
-        </p>
-        <p class="small" id="backup-age" style="margin:0"></p>
+        <p class="small" id="backup-age" style="margin:0; padding-left:10px"></p>
         <div style="display:flex; gap:8px">
           <button class="btn btn--primary" id="btn-backup-export" type="button" style="flex:1">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
@@ -3794,13 +3805,25 @@ input[type="checkbox"] {
         <div style="display:flex; gap:8px">
           <button class="btn" id="btn-notes-export" type="button" style="flex:1">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17v4h12v-4"/></svg>
-            <span data-i18n="settings.data.printNotesBtn">Notizen drucken</span>
+            <span data-i18n="settings.data.printNotesBtn">Notizen</span>
           </button>
           <button class="btn" id="btn-lyrics-notes-export" type="button" style="flex:1">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17v4h12v-4"/></svg>
-            <span data-i18n="settings.data.printLyricsBtn">Eigene Liedtexte drucken</span>
+            <span data-i18n="settings.data.printLyricsBtn">Eigene Liedtexte</span>
           </button>
         </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn" id="btn-notes-import" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+            <span data-i18n="settings.data.importNotesBtn">Notizen importieren</span>
+          </button>
+          <button class="btn" id="btn-lyrics-notes-import" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+            <span data-i18n="settings.data.importLyricsBtn">Liedtexte importieren</span>
+          </button>
+        </div>
+        <input class="visually-hidden" id="notes-import-input" type="file" accept=".txt,text/plain">
+        <input class="visually-hidden" id="lyrics-notes-import-input" type="file" accept=".txt,text/plain">
       </div>
 
       <p class="section-title" data-i18n="settings.data.manageTitle">Songs verwalten</p>
@@ -3815,7 +3838,7 @@ input[type="checkbox"] {
       <div class="stack">
         <p class="small muted" style="margin:0" data-i18n="settings.data.deleteHint">
           Beides lässt sich nicht rückgängig machen; die Dateien in der Dropbox
-          bleiben in jedem Fall unberührt. „Aufnahmen löschen“ entfernt nur die
+          bleiben in jedem Fall unberührt. „Nur Aufnahmen löschen“ entfernt nur die
           Audiodateien — Loops, Notizen, eigene Liedtexte und Setlisten bleiben
           erhalten und verbinden sich beim nächsten Import neu. „Alles löschen“
           entfernt zusätzlich auch diese.
@@ -3823,11 +3846,11 @@ input[type="checkbox"] {
         <div style="display:flex; gap:8px">
           <button class="btn btn--danger" id="btn-drop-audio" type="button" style="flex:1">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
-            <span data-i18n="settings.data.dropAudioBtn">Alle Aufnahmen löschen</span>
+            <span data-i18n="settings.data.dropAudioBtn">Nur Aufnahmen löschen</span>
           </button>
           <button class="btn btn--danger" id="btn-wipe" type="button" style="flex:1">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
-            <span data-i18n="settings.data.wipeBtn">Alle Daten löschen</span>
+            <span data-i18n="settings.data.wipeBtn">Alles löschen</span>
           </button>
         </div>
       </div>
