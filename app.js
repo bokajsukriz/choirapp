@@ -2796,12 +2796,12 @@ function renderSlowMode() {
 }
 
 /**
- * Erklärdialog beim allerersten Verlangsamen (0,85×/0,7×/0,6×): kurz, was HD
- * bringt (sauberer bei langen Tönen) und kostet (mehr Rechenleistung, kann auf
- * älteren Handys stottern) — mit echter Wahl statt stillem Voreinstellen.
- * Bleibt bei „Standard" (Werkseinstellung), wer HD will, aktiviert es hier
- * mit einem Tipp; jederzeit unter Einstellungen → Audioeinstellungen wieder
- * umschaltbar. Läuft genau einmal pro Installation (settings.hdIntroShown).
+ * Erklärdialog beim allerersten Verlangsamen (0,85×/0,7×/0,6×) — läuft neben
+ * der bereits laufenden Standard-Wiedergabe her, blockiert sie also nicht.
+ * Aktiviert der Nutzer HD, wird es sofort auf die laufende Wiedergabe
+ * angewandt (hdApplyTransition), sonst bleibt es bei Standard. Jederzeit
+ * unter Einstellungen → Audioeinstellungen wieder umschaltbar. Läuft genau
+ * einmal pro Installation (settings.hdIntroShown).
  */
 async function maybeOfferHdIntro() {
   if (settings.hdIntroShown) return;
@@ -2815,6 +2815,7 @@ async function maybeOfferHdIntro() {
   if (!activateHd) return;
   await saveSettings({ slowMode: 'hd' });
   renderSlowMode();
+  await hdApplyTransition('hd-intro');
 }
 
 /** Schreibt die gespeicherten Reglerstände in die Bedienelemente. */
@@ -7303,11 +7304,14 @@ $('#btn-song-search').addEventListener('click', () => {
   openSongSearch(settings.songSearchService);
 });
 
-$('#rate-select').addEventListener('change', async (e) => {
+$('#rate-select').addEventListener('change', (e) => {
   const rate = Number(e.target.value);
-  if (rate !== 1) await maybeOfferHdIntro();
+  // Erst verlangsamen, dann (falls nötig) den HD-Dialog nebenher einblenden —
+  // der Nutzer hört die neue Geschwindigkeit sofort, ohne auf eine
+  // Bestätigung warten zu müssen.
   audioSetRate(rate);
   updateMediaSession();
+  if (rate !== 1) maybeOfferHdIntro();
 });
 
 $('#btn-repeat').addEventListener('click', async () => {
