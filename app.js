@@ -6753,9 +6753,17 @@ function lightshowCamCalRenderStatus(textKey) {
     : t('lightshow.camcal.statusCounting').replace('{n}', String(n)).replace('{needed}', String(LIGHTSHOW_CAMCAL_NEEDED_PEAKS));
 }
 
-/** Nullt nur die laufende Messung (Peaks/Cooldown) — Hintergrund und
- *  Aufwärmphase bleiben stehen, die Kamera ist ja schon eingependelt. */
+/** Nullt die laufende Messung (Peaks/Cooldown) und verankert Wanduhrzeit neu —
+ *  Hintergrund und Aufwärmphase bleiben stehen, die Kamera ist ja schon
+ *  eingependelt. Die Neuverankerung ist Pflicht, nicht optional: lief schon
+ *  eine erfolgreiche Kalibrierung in diesem Overlay, hat lightshowCamCalFinish()
+ *  bereits einen neuen Handversatz gespeichert. Ohne Neuverankerung würde die
+ *  nächste Messung (z.B. über „Erneut versuchen") weiterhin mit dem alten,
+ *  unkorrigierten Anker rechnen — sie „entdeckt" dieselbe Abweichung erneut und
+ *  addiert die Korrektur ein zweites Mal obendrauf, statt zu konvergieren. */
 function lightshowCamCalResetMeasurement() {
+  lightshowCamCalAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
+  lightshowCamCalAnchorPerf = performance.now();
   lightshowCamCalPeaks = [];
   lightshowCamCalCooldownUntil = 0;
   lightshowCamCalRenderStatus();
