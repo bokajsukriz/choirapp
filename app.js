@@ -6602,8 +6602,6 @@ $('#lightshow-close').addEventListener('click', () => closeLightshowStage());
 
 let lightshowSyncOpen = false;
 let lightshowSyncRaf = null;
-let lightshowSyncAnchorWall = 0;
-let lightshowSyncAnchorPerf = 0;
 
 function lightshowRenderSyncOffset() {
   $('#lightshow-sync-value').textContent = `${settings.lightshowOffsetMs || 0} ms`;
@@ -6617,7 +6615,14 @@ async function lightshowAdjustOffset(deltaMs) {
 
 function lightshowSyncStep() {
   lightshowSyncRaf = requestAnimationFrame(lightshowSyncStep);
-  const wall = lightshowSyncAnchorWall + (performance.now() - lightshowSyncAnchorPerf);
+  // Direkt aus Date.now() statt über einen Anker+performance.now() interpoliert
+  // (wie z.B. lightshowWallNow() für die eigentliche Bühne) — das Prüfbild ist
+  // ein kurzer Diagnose-Blick, kein stundenlanger Auftritt, und muss jede
+  // Änderung am Handversatz (Tasten, Zurücksetzen, Kamera-Abgleich) sofort
+  // zeigen, nicht erst nach Schließen/Neuöffnen. Vorher stand hier fälschlich
+  // reines Date.now() ohne den Handversatz — das Prüfbild zeigte immer die
+  // ungeglättete Rohuhr, komplett unabhängig vom eingestellten Ausgleich.
+  const wall = Date.now() + (settings.lightshowOffsetMs || 0);
   const msIntoSecond = ((wall % 1000) + 1000) % 1000;
 
   const track = $('#lightshow-sync-track');
@@ -6637,8 +6642,6 @@ function openLightshowSync() {
   const el = $('#lightshow-sync');
   el.hidden = false;
   openModal(el, { initialFocus: $('#lightshow-sync-close'), onEscape: () => closeLightshowSync() });
-  lightshowSyncAnchorWall = Date.now();
-  lightshowSyncAnchorPerf = performance.now();
   if (lightshowSyncRaf) cancelAnimationFrame(lightshowSyncRaf);
   lightshowSyncStep();
 }
@@ -6654,8 +6657,6 @@ function closeLightshowSync() {
 document.addEventListener('visibilitychange', () => {
   if (!lightshowSyncOpen) return;
   if (document.visibilityState === 'visible') {
-    lightshowSyncAnchorWall = Date.now();
-    lightshowSyncAnchorPerf = performance.now();
     if (!lightshowSyncRaf) lightshowSyncStep();
   } else if (lightshowSyncRaf) {
     cancelAnimationFrame(lightshowSyncRaf);
