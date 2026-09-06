@@ -7869,9 +7869,10 @@ async function loadSongLoops() {
   renderLoopList();
 }
 
-/** Der Punkt am Loops-Reiter gilt jetzt Loops UND RECs — beide leben im selben Tab. */
+/** Setzt die Punkte an Loops- und REC-Reiter — beide Listen können sich unabhängig ändern. */
 function updateLoopsTabDot() {
-  setTabHasContent('loops', songLoops.length > 0 || songRecordings.length > 0);
+  setTabHasContent('loops', songLoops.length > 0);
+  setTabHasContent('rec', songRecordings.length > 0);
 }
 
 function renderLoopList() {
@@ -10106,11 +10107,11 @@ function iconPdf() {
 }
 
 /**
- * Reiter Loops/Lyrics/Notes/Sheets: immer genau ein Panel sichtbar, der
+ * Reiter Loops/REC/Lyrics/Notes/Sheets: immer genau ein Panel sichtbar, der
  * kleine Punkt am Reiter zeigt schon vorm Antippen, ob dort etwas hinterlegt
- * ist (siehe renderLoopList/renderPlayerExtras/renderNoteBlock).
+ * ist (siehe renderLoopList/updateLoopsTabDot/renderPlayerExtras/renderNoteBlock).
  */
-const PLAYER_TABS = ['loops', 'lyrics', 'notes', 'sheets'];
+const PLAYER_TABS = ['loops', 'rec', 'lyrics', 'notes', 'sheets'];
 
 function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;

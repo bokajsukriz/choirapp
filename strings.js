@@ -23,6 +23,7 @@ export const STRINGS = {
     'nav.settings': 'Einstellungen',
 
     'tabs.loops': 'Loops',
+    'tabs.rec': 'REC',
     'tabs.lyrics': 'Lyrics',
     'tabs.notes': 'Notes',
     'tabs.sheets': 'Sheets',
@@ -296,6 +297,7 @@ export const STRINGS = {
     'nav.settings': 'Settings',
 
     'tabs.loops': 'Loops',
+    'tabs.rec': 'REC',
     'tabs.lyrics': 'Lyrics',
     'tabs.notes': 'Notes',
     'tabs.sheets': 'Sheets',
@@ -569,6 +571,7 @@ export const STRINGS = {
     'nav.settings': 'Ustawienia',
 
     'tabs.loops': 'Loopy',
+    'tabs.rec': 'REC',
     'tabs.lyrics': 'Tekst',
     'tabs.notes': 'Notatki',
     'tabs.sheets': 'Nuty',
