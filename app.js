@@ -2153,13 +2153,20 @@ async function renderStorageManager() {
     });
     del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
 
+    const rename = el('button', {
+      class: 'icon-btn', type: 'button',
+      'aria-label': `${song.title} umbenennen`,
+      onclick: () => renameSong(song),
+    });
+    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+
     host.append(el('div', { class: 'pick-song' },
       el('div', { class: 'pick-head' },
         el('div', { class: 'grow' },
           el('strong', { text: song.title }),
           el('div', { class: 'small muted',
             text: `${plural(song.tracks.length, 'Stimme', 'Stimmen')} · ${fmtBytes(bytes)}` })),
-        del, toggle),
+        rename, del, toggle),
       tracksHost));
   }
 }
@@ -2192,6 +2199,57 @@ async function detachSongLinks(song, preloaded = null) {
     rec.songTitle = song.title;
   }
   await DB.metaPutMany(detached);
+}
+
+/**
+ * Benennt einen Song samt seiner titelbasierten Verknüpfungen um. Die ID
+ * folgt weiterhin dem normalisierten Titel, damit insbesondere ein späterer
+ * Import zu einem umbenannten Platzhalter wieder denselben Song ergänzt.
+ */
+async function renameSong(song) {
+  const value = await promptDialog({
+    title: t('settings.data.renameSongTitle'),
+    value: song.title,
+    placeholder: t('settings.data.renameSongPlaceholder'),
+    okLabel: t('settings.data.renameSongAction'),
+  });
+  const title = value?.trim();
+  if (!title || title === song.title) return;
+
+  const normTitle = normalizeTitle(title);
+  const id = hashId(normTitle);
+  const key = `song:${id}`;
+  if (key !== song.key && await DB.metaGet(key).catch(() => null)) {
+    banner(t('settings.data.renameSongExists'), { kind: 'error' });
+    return;
+  }
+
+  const [links, playlists] = await Promise.all([
+    songLinkRecords(),
+    DB.metaByType('playlist').catch(() => []),
+  ]);
+  const linked = links.filter((record) => record.songId === song.id);
+  for (const record of linked) {
+    record.songId = id;
+    record.songTitle = title;
+  }
+  const oldNorm = song.normTitle || normalizeTitle(song.title);
+  const changedPlaylists = playlists.filter((playlist) =>
+    (playlist.songTitles || []).some((songTitle) => normalizeTitle(songTitle) === oldNorm));
+  for (const playlist of changedPlaylists) {
+    playlist.songTitles = playlist.songTitles.map((songTitle) =>
+      normalizeTitle(songTitle) === oldNorm ? title : songTitle);
+  }
+
+  const renamed = { ...song, key, id, title, normTitle };
+  await DB.metaPutMany([renamed, ...linked, ...changedPlaylists]);
+  if (key !== song.key) await DB.metaDelete(song.key);
+  if (playerSong?.id === song.id) playerSong = renamed;
+  playQueue = null;
+  await renderStorageManager();
+  await renderSongs();
+  await renderPlaylists();
+  banner(t('settings.data.renameSongDone'), { kind: 'ok' });
 }
 
 /** Alle Datensätze, die an einem Song hängen — Loops, Notizen, eigene Liedtexte und Aufnahmen. */
@@ -10793,8 +10851,8 @@ function printItems(heading, items) {
 }
 
 /** Baut aus den ausgewählten Einträgen einen menschenlesbaren Klartext. */
-function printableToText(heading, items) {
-  const lines = [heading, `Exportiert am ${new Date().toLocaleDateString('de-DE')}`, ''];
+function printableToText(kind, heading, items) {
+  const lines = [`Chor-App-Export: ${kind}`, heading, `Exportiert am ${new Date().toLocaleDateString('de-DE')}`, ''];
   for (const item of items) {
     lines.push('='.repeat(40), item.songTitle, '='.repeat(40));
     lines.push(String(item.text).replace(/\s+$/, ''), '');
@@ -10807,8 +10865,8 @@ function printableToText(heading, items) {
  * einen anderen Computer und dortigen Weiterbearbeiten. Reiner Text statt
  * RTF/OTF, weil das auf jedem Gerät ohne Zusatz-App lesbar und editierbar ist.
  */
-async function exportPrintableFile(heading, items) {
-  const text = printableToText(heading, items);
+async function exportPrintableFile(kind, heading, items) {
+  const text = printableToText(kind, heading, items);
   const date = new Date().toISOString().slice(0, 10);
   const safeHeading = heading.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'Export';
   const fileName = `${safeHeading}-${date}.txt`;
@@ -10836,11 +10894,104 @@ async function printFlow(kind, label, heading, readErrorCode) {
   const result = await showPrintSelectionDialog(`${label} drucken`, items);
   if (!result || !result.items.length) return;
   if (result.action === 'print') printItems(heading, result.items);
-  else await exportPrintableFile(heading, result.items);
+  else await exportPrintableFile(kind, heading, result.items);
 }
 
 $('#btn-notes-export').addEventListener('click', () => printFlow('note', 'Notizen', 'Notizen', 'NOTES-READ'));
 $('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', 'Eigene Liedtexte', 'Eigene Liedtexte', 'LYRICS-PRINT-READ'));
+
+const PRINTABLE_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+const PRINTABLE_IMPORT_MAX_ITEMS = 10000;
+
+/**
+ * Liest genau das Klartextformat, das printableToText() erzeugt. Exporte aus
+ * älteren App-Versionen ohne maschinenlesbare Kopfzeile bleiben kompatibel.
+ */
+function parsePrintableText(text, expectedKind) {
+  const normalized = String(text).replace(/\r\n?/g, '\n').replace(/^\uFEFF/, '');
+  const marker = normalized.match(/^Chor-App-Export: (note|lyricsNote)\s*$/m);
+  if (marker && marker[1] !== expectedKind) throw new Error('WRONG_KIND');
+
+  const lines = normalized.split('\n');
+  const items = [];
+  const seenTitles = new Set();
+  for (let i = 0; i < lines.length;) {
+    if (lines[i] !== '='.repeat(40)) { i++; continue; }
+    if (i + 2 >= lines.length || lines[i + 2] !== '='.repeat(40)) throw new Error('INVALID_FORMAT');
+    const songTitle = lines[i + 1].trim();
+    i += 3;
+    const content = [];
+    while (i < lines.length && lines[i] !== '='.repeat(40)) content.push(lines[i++]);
+    const entryText = content.join('\n').trimEnd();
+    if (!songTitle || !entryText) throw new Error('INVALID_FORMAT');
+    const normalizedTitle = normalizeTitle(songTitle);
+    if (seenTitles.has(normalizedTitle)) throw new Error('INVALID_FORMAT');
+    seenTitles.add(normalizedTitle);
+    items.push({ songTitle, text: entryText });
+    if (items.length > PRINTABLE_IMPORT_MAX_ITEMS) throw new Error('TOO_MANY_ITEMS');
+  }
+  if (!items.length) throw new Error('INVALID_FORMAT');
+  return items;
+}
+
+async function importPrintableFile(kind, file) {
+  if (!file || file.size > PRINTABLE_IMPORT_MAX_BYTES) throw new Error('FILE_TOO_LARGE');
+  const items = parsePrintableText(await file.text(), kind);
+  const label = kind === 'note' ? t('settings.data.importNotesLabel') : t('settings.data.importLyricsLabel');
+  const ok = await confirmDialog({
+    title: t('settings.data.importConfirmTitle'),
+    text: t('settings.data.importConfirmText').replace('{count}', items.length).replace('{label}', label),
+    okLabel: t('settings.data.importAction'),
+  });
+  if (!ok) return;
+
+  if (kind === 'note') await notePending.catch(() => {});
+  else await lyricsNotePending.catch(() => {});
+  const [songs, existing] = await Promise.all([
+    DB.metaByType('song').catch(() => []),
+    DB.metaByType(kind).catch(() => []),
+  ]);
+  const bySongId = new Map(existing.filter((entry) => entry.songId).map((entry) => [entry.songId, entry]));
+  const detachedByTitle = new Map(existing.filter((entry) => !entry.songId)
+    .map((entry) => [normalizeTitle(entry.songTitle || ''), entry]));
+  const now = new Date().toISOString();
+  const records = items.map((item) => {
+    const song = findSongByTitle(songs, item.songTitle);
+    const current = (song && bySongId.get(song.id)) || detachedByTitle.get(normalizeTitle(item.songTitle));
+    const id = current?.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    return {
+      ...(current || {}), key: current?.key || `${kind}:${id}`, type: kind, id,
+      songId: song?.id || null, songTitle: song?.title || item.songTitle,
+      text: item.text, updatedAt: now,
+    };
+  });
+  const write = () => DB.metaPutMany(records);
+  if (kind === 'note') await noteWrite(write); else await lyricsNoteWrite(write);
+  await renderExportCount();
+  await renderSongs();
+  if (playerSong) { await loadSongNote(); await loadSongLyricsNote(); }
+  banner(t('settings.data.importDone').replace('{count}', records.length).replace('{label}', label), { kind: 'ok' });
+}
+
+function wirePrintableImport(buttonId, inputId, kind, errorCode) {
+  $(`#${buttonId}`).addEventListener('click', () => $(`#${inputId}`).click());
+  $(`#${inputId}`).addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      await importPrintableFile(kind, file);
+    } catch (err) {
+      const message = err.message === 'WRONG_KIND'
+        ? t('settings.data.importWrongKind')
+        : t('settings.data.importInvalid');
+      bannerError(message, errorCode, err);
+    }
+  });
+}
+
+wirePrintableImport('btn-notes-import', 'notes-import-input', 'note', 'NOTES-IMPORT');
+wirePrintableImport('btn-lyrics-notes-import', 'lyrics-notes-import-input', 'lyricsNote', 'LYRICS-IMPORT');
 
 /**
  * Notizen (oder eigene Liedtexte — Typ `note`/`lyricsNote`), die beim
@@ -13078,6 +13229,24 @@ function runSelfTests() {
   // Zähler statt Handzählung — wächst automatisch mit jeder neuen Prüfung
   // unten mit, statt eine Summe von Hand nachpflegen zu müssen.
   let checks = 0;
+  const printableFixture = printableToText('note', 'Notizen', [
+    { songTitle: 'Erster Song', text: 'Zeile eins\nZeile zwei' },
+    { songTitle: 'Zweiter Song', text: 'Noch eine Notiz' },
+  ]);
+  checks++;
+  const parsedPrintable = parsePrintableText(printableFixture, 'note');
+  if (parsedPrintable.length !== 2
+      || parsedPrintable[0].songTitle !== 'Erster Song'
+      || parsedPrintable[0].text !== 'Zeile eins\nZeile zwei') {
+    failed.push('Notiz-Export müsste sich verlustfrei wieder importieren lassen');
+  }
+  checks++;
+  try {
+    parsePrintableText(printableFixture, 'lyricsNote');
+    failed.push('Notiz-Export dürfte nicht als eigener Liedtext importiert werden');
+  } catch (err) {
+    if (err.message !== 'WRONG_KIND') failed.push('Falsche Textart müsste eindeutig erkannt werden');
+  }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
     failed.push('songSearchQuery müsste Interpret und aktuellen Titel verbinden');

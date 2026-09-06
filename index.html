@@ -1428,7 +1428,24 @@ input[type="checkbox"] {
 }
 .section-divider:first-of-type { margin-top: 0; }
 .section-divider--spacious { margin-top: 42px; }
-.search-privacy-hint { padding-left: 42px; }
+
+/* Inhalte stehen eingerückt unter ihrer jeweiligen Überschrift. Die
+   Abschnittsüberschriften selbst bleiben an der bisherigen Fluchtlinie. */
+#view-settings .card-body { padding-inline: 10px; }
+#view-settings .card-body > .section-title { margin-inline: -10px; }
+
+.search-privacy-hint {
+  position: relative;
+  padding-left: 56px;
+}
+.search-privacy-icon {
+  position: absolute;
+  left: 24px;
+  top: .1em;
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+}
 
 /* In aufgeklappten Einstellungskarten beginnt jede weitere Unterüberschrift
    nach einer echten Leerzeile. So kleben etwa Exportieren, Songs verwalten,
@@ -3546,8 +3563,9 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <select id="song-search-service-picker" aria-label="Suchdienst"></select>
       </label>
-      <p class="small muted search-privacy-hint" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
-        Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.
+      <p class="small muted search-privacy-hint" style="margin:6px 0 0">
+        <svg class="search-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        <span data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</span>
       </p>
 
       <p class="section-title section-divider section-divider--spacious" data-i18n="settings.personal.displayTitle">Anzeige</p>
@@ -3794,6 +3812,18 @@ input[type="checkbox"] {
             <span data-i18n="settings.data.printLyricsBtn">Eigene Liedtexte</span>
           </button>
         </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn" id="btn-notes-import" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+            <span data-i18n="settings.data.importNotesBtn">Notizen importieren</span>
+          </button>
+          <button class="btn" id="btn-lyrics-notes-import" type="button" style="flex:1">
+            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+            <span data-i18n="settings.data.importLyricsBtn">Liedtexte importieren</span>
+          </button>
+        </div>
+        <input class="visually-hidden" id="notes-import-input" type="file" accept=".txt,text/plain">
+        <input class="visually-hidden" id="lyrics-notes-import-input" type="file" accept=".txt,text/plain">
       </div>
 
       <p class="section-title" data-i18n="settings.data.manageTitle">Songs verwalten</p>
