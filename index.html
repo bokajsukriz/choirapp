@@ -2105,19 +2105,6 @@ input[type="checkbox"] {
 }
 .lightshow-stage[hidden] { display: none; }
 
-.lightshow-countdown {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: rgba(255,255,255,.55);
-  font-weight: 700;
-  font-size: clamp(48px, 16vmin, 160px);
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-}
-.lightshow-countdown:empty { display: none; }
-
 /* Stark gedimmt, damit der Knopf auf der hellen Bühnenfläche nicht als
    heller Fleck auffällt — aber immer an derselben Stelle und mit
    mindestens 44×44 px Trefferfläche, damit er auch im Dunkeln zu finden ist. */
@@ -2734,7 +2721,6 @@ input[type="checkbox"] {
      dieser Funktion. Derselbe Stapelplatz wie #lyrics-present, dieselbe Regel:
      eine reine Vollflächen-Ebene ohne Innencontainer, der die Farbe überdeckt. -->
 <div class="lightshow-stage" id="lightshow-stage" hidden role="dialog" aria-modal="true" aria-label="Lichtshow">
-  <div class="lightshow-countdown" id="lightshow-countdown" aria-hidden="true"></div>
   <button class="lightshow-close" id="lightshow-close" type="button" aria-label="Schließen">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
   </button>
