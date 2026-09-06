@@ -960,6 +960,14 @@ const DEFAULT_SETTINGS = {
   // lässt es sich in den Einstellungen.
   slowMode: 'standard',
   hdIntroShown: false, // einmaliger Erklärdialog beim ersten Verlangsamen schon gezeigt?
+  // AUS per Voreinstellung: auf WebKit (jeder iOS-Browser, macOS Safari)
+  // baut setupAudioGraph() den Web-Audio-Graphen wegen WebKit-Bug 240405
+  // sonst gar nicht erst auf (siehe isWebKitBrowser) — Kanal-Matrix und HD
+  // fehlen dadurch. Der Fix liegt seit 2026-03-27 im WebKit-Hauptzweig, ist
+  // aber noch in keinem regulären Safari-Release angekommen; sobald das der
+  // Fall ist, macht dieser Schalter beides ohne App-Update wieder nutzbar.
+  // Nur auf WebKit sichtbar, siehe renderWebkitGraphToggle().
+  webkitForceGraph: false,
   // Regler des Zeitdehners (Modus HD, Karte „Kompatibilität & Performance"
   // → „Erweitert"). Die Werte entsprechen den Voreinstellungen der
   // Bibliothek; `formantCompensation` bleibt bewusst aus, siehe die
@@ -2360,6 +2368,7 @@ async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
+  renderWebkitGraphToggle();
   renderSlowMode();
   renderHdOptions();
   renderNotificationState();
@@ -2429,14 +2438,51 @@ $('#btn-errorlog-clear').addEventListener('click', async () => {
   renderErrorLog();
 });
 
+// Ob setupAudioGraph() den Web-Audio-Graphen (aktuell) meidet — siehe dort.
+// settings.webkitForceGraph ist der Notausgang, sobald der WebKit-Fehler
+// beim Hersteller behoben ist (siehe DEFAULT_SETTINGS): dann greift diese
+// Bedingung nicht mehr, und Kanal-Matrix/HD werden wieder normal angeboten.
+function webkitGraphBlocked() {
+  return isWebKitBrowser && !settings.webkitForceGraph;
+}
+
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
-  // Kanal-Matrix gibt es auf WebKit nicht (siehe isWebKitBrowser/
-  // setupAudioGraph()) — die Auswahl anwählbar zu lassen würde nur
-  // vorgaukeln, dass Mono/Tauschen etwas bewirken.
-  $('#channel-mode').disabled = isWebKitBrowser;
-  $('#channel-mode-unsupported-hint').hidden = !isWebKitBrowser;
+  // Kanal-Matrix gibt es auf WebKit ohne den Graphen nicht (siehe
+  // webkitGraphBlocked()/setupAudioGraph()) — die Auswahl anwählbar zu
+  // lassen würde nur vorgaukeln, dass Mono/Tauschen etwas bewirken.
+  $('#channel-mode').disabled = webkitGraphBlocked();
+  $('#channel-mode-unsupported-hint').hidden = !webkitGraphBlocked();
 }
+
+/**
+ * Notausgang für webkitGraphBlocked(): WebKit-Bug 240405 ist beim Hersteller
+ * bereits behoben, nur noch in keinem Safari-Release angekommen (siehe
+ * DEFAULT_SETTINGS.webkitForceGraph) — wer nicht warten will, kann den
+ * Graphen hier trotzdem erzwingen und selbst hören, ob der Fehler auf dem
+ * eigenen Gerät noch auftritt. Nur auf WebKit sichtbar: auf jedem anderen
+ * Browser gibt es nichts zu erzwingen, der Graph steht dort ohnehin schon.
+ */
+function renderWebkitGraphToggle() {
+  const row = $('#webkit-force-graph-row');
+  row.hidden = !isWebKitBrowser;
+  $('#hd-webkit-hint').hidden = !isWebKitBrowser;
+  $('#webkit-force-graph-hint').hidden = !isWebKitBrowser;
+  if (!isWebKitBrowser) return;
+  $('#webkit-force-graph').setAttribute('aria-checked', settings.webkitForceGraph ? 'true' : 'false');
+}
+
+$('#webkit-force-graph').addEventListener('click', async () => {
+  await saveSettings({ webkitForceGraph: !settings.webkitForceGraph });
+  renderWebkitGraphToggle();
+  renderChannelMode();
+  renderSlowMode();
+  // Der Graph lässt sich am laufenden Element nicht nachrüsten oder wieder
+  // entfernen (createMediaElementSource() darf pro Element nur einmal
+  // laufen, siehe setupAudioGraph()) — ohne Neuaufbau bliebe die Umstellung
+  // bis zum nächsten Songwechsel wirkungslos.
+  if (Audio.ready) await rebuildAudioGraph('webkit-force-graph');
+});
 
 function renderDefaultTabPicker() {
   for (const btn of $$('#default-tab-picker .player-tab')) {
@@ -2783,18 +2829,24 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
  */
 function renderSlowMode() {
   const mode = settings.slowMode || 'standard';
-  // isWebKitBrowser: der Zeitdehner bräuchte den Web-Audio-Graphen, den
-  // setupAudioGraph() dort wegen WebKit-Bug 240405 erst gar nicht aufbaut
-  // (siehe dort) — Audio.ctx bleibt null, ensureHdNode() käme also ohnehin
-  // nie über den ersten Check hinaus. Hier trotzdem schon vorab sperren,
-  // statt das über hdInitBlocked()s Fehlversuchszähler laufen zu lassen:
-  // sonst wirkt HD kurz anwählbar, obwohl es nie etwas bewirken könnte.
-  const broken = hdInitBlocked() || isWebKitBrowser;
+  // webkitGraphBlocked(): der Zeitdehner bräuchte den Web-Audio-Graphen, den
+  // setupAudioGraph() dann erst gar nicht aufbaut (siehe dort) — Audio.ctx
+  // bleibt null, ensureHdNode() käme also ohnehin nie über den ersten Check
+  // hinaus. Hier trotzdem schon vorab sperren, statt das über
+  // hdInitBlocked()s Fehlversuchszähler laufen zu lassen: sonst wirkt HD
+  // kurz anwählbar, obwohl es nie etwas bewirken könnte.
+  const webkitBlocked = webkitGraphBlocked();
+  const broken = hdInitBlocked() || webkitBlocked;
   for (const btn of $$('#slow-mode .preset')) {
     btn.disabled = btn.dataset.mode === 'hd' && broken;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
   }
-  $('#hd-unsupported-hint').hidden = !broken;
+  // Zwei verschiedene Gründe, zwei verschiedene Hinweise: hdInitBlocked() ist
+  // ein wiederholter technischer Fehlschlag auf diesem Gerät, webkitGraphBlocked()
+  // ist ein bekannter, vorübergehender Browser-Fehler mit Notausgang (siehe
+  // renderWebkitGraphToggle()) — in denselben Text gepackt klänge der eine
+  // Fall unnötig hoffnungsvoll, der andere unnötig endgültig.
+  $('#hd-unsupported-hint').hidden = !(hdInitBlocked() && !webkitBlocked);
   // Die Werkbank hat nur Sinn, wenn HD auch läuft — sonst verwirrt sie nur.
   const advBtn = $('#btn-hd-advanced-toggle');
   advBtn.hidden = mode !== 'hd' || broken;
@@ -3790,8 +3842,11 @@ async function setupAudioGraph() {
   // null) — beides degradiert an seiner jeweiligen Stelle bereits von selbst
   // auf „kein Effekt"/„nativer Fallback", siehe audioApplyChannelMode() und
   // hdApplyTransition(). Die Einstellungen weisen eigens darauf hin, siehe
-  // renderChannelMode() und renderSlowMode().
-  if (isWebKitBrowser) {
+  // renderChannelMode() und renderSlowMode() — und bieten mit
+  // settings.webkitForceGraph einen Notausgang: der Fehler ist beim
+  // Hersteller bereits behoben, nur noch nicht ausgeliefert, ein Update kann
+  // das also jederzeit stillschweigend obsolet machen.
+  if (isWebKitBrowser && !settings.webkitForceGraph) {
     dlog('audio:route', { mode: 'direct', name: 'webkit-240405' });
     return;
   }

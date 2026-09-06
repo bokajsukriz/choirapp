@@ -3400,7 +3400,7 @@ input[type="checkbox"] {
         </select>
       </label>
       <p class="small muted" id="channel-mode-unsupported-hint" style="margin-top:4px" hidden data-i18n="settings.bike.unsupported">
-        In diesem Browser nicht verfügbar (bekannter Safari/WebKit-Fehler bei verlangsamter Wiedergabe).
+        In diesem Browser nicht verfügbar — siehe „Kompatibilität &amp; Performance" weiter unten.
       </p>
 
       <p class="section-title" data-i18n="settings.perf.title">Kompatibilität &amp; Performance</p>
@@ -3419,6 +3419,26 @@ input[type="checkbox"] {
       </p>
       <p class="small muted" id="hd-unsupported-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.hdUnsupported">
         Dieses Gerät unterstützt HD nicht — Standard funktioniert trotzdem.
+      </p>
+      <p class="small muted" id="hd-webkit-hint" style="margin:8px 0 0" hidden data-i18n="settings.perf.webkitHint">
+        Bekannter Fehler in Safari/WebKit: Verlangsamte Wiedergabe klingt dort
+        abgehackt, und die Tonhöhe stimmt in HD nicht. Deshalb laufen
+        Kanal-Matrix und HD hier vorerst nicht mit. Der Fehler ist beim
+        Hersteller bereits behoben, aber noch in keinem Safari-Release
+        angekommen — falls doch, lässt sich das unten schon vorab ausprobieren.
+      </p>
+      <div class="row" id="webkit-force-graph-row" hidden style="margin-top:8px">
+        <span class="small" style="max-width:70%" data-i18n="settings.perf.webkitForceGraph">
+          Trotzdem versuchen
+        </span>
+        <button class="switch" id="webkit-force-graph" type="button" role="switch"
+                aria-checked="false" data-i18n-aria="settings.perf.webkitForceGraphAria"
+                aria-label="Kanal-Matrix und HD trotz bekanntem Safari-Fehler erzwingen">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" id="webkit-force-graph-hint" style="margin:4px 0 0" hidden data-i18n="settings.perf.webkitForceGraphHint">
+        Klingt es abgehackt oder mit falscher Tonhöhe, war der Fehler noch nicht behoben — dann hier wieder ausschalten.
       </p>
 
       <button class="btn btn--block" id="btn-hd-advanced-toggle" type="button"
