@@ -6479,6 +6479,11 @@ $('#btn-lightshow-sync').addEventListener('click', () => openLightshowSync());
    ihre Hintergrundfarbe; die Farbe ist eine reine Funktion der Systemzeit
    (siehe lightshowFrame), es gibt keinen Startzeitpunkt, der zwischen
    Geräten abgestimmt werden müsste.
+
+   Start ist sofort: lightshowStartWall liegt auf dem letzten Rasterpunkt
+   VOR jetzt (Math.floor), nicht dem nächsten danach. Alle Geräte beziehen
+   sich auf denselben Rasterpunkt und zeigen dieselbe Phase, auch wenn diese
+   Phase mitten im Zyklus liegt — kein Warten, kein Countdown nötig.
    ========================================================================== */
 
 let lightshowStageOpen = false;
@@ -6486,13 +6491,12 @@ let lightshowStageRaf = null;
 let lightshowWakeLock = null;
 let lightshowAnchorWall = 0;   // Date.now() + Handversatz zum Zeitpunkt der letzten Verankerung
 let lightshowAnchorPerf = 0;   // performance.now() zum selben Zeitpunkt — monotoner Bezug dazu
-let lightshowStartWall = 0;    // Rasterpunkt, ab dem die Show synchron läuft
+let lightshowStartWall = 0;    // Rasterpunkt, auf den sich die Phasenberechnung bezieht
 let lightshowStageCycleMs = 0;
 let lightshowStageShowId = null;
 let lightshowStageVoice = null;
 let lightshowStageSeed = 1;
 let lightshowLastBg = null;
-let lightshowLastCountdownSec = null;
 
 /**
  * Aktuelle „Wanduhrzeit" aus dem monotonen performance.now()-Zähler
@@ -6514,20 +6518,6 @@ function lightshowStageStep() {
   lightshowStageRaf = requestAnimationFrame(lightshowStageStep);
   const wall = lightshowWallNow();
   const stage = $('#lightshow-stage');
-
-  if (wall < lightshowStartWall) {
-    const secLeft = Math.ceil((lightshowStartWall - wall) / 1000);
-    if (secLeft !== lightshowLastCountdownSec) {
-      lightshowLastCountdownSec = secLeft;
-      $('#lightshow-countdown').textContent = secLeft > 0 ? String(secLeft) : '';
-    }
-    if (lightshowLastBg !== '#000000') { stage.style.backgroundColor = '#000000'; lightshowLastBg = '#000000'; }
-    return;
-  }
-  if (lightshowLastCountdownSec !== null) {
-    lightshowLastCountdownSec = null;
-    $('#lightshow-countdown').textContent = '';
-  }
 
   // Im synchronen Betrieb liegt startWall auf dem Epochen-Raster, also ist
   // das hier gleichbedeutend mit `wall % cycleMs` — das ist der eigentliche
@@ -6572,11 +6562,9 @@ async function openLightshowStage(showId, { rehearsal = false } = {}) {
   lightshowStageVoice = lightshowActiveVoice();
   lightshowStageSeed = settings.lightshowSeed || 1;
   lightshowLastBg = null;
-  lightshowLastCountdownSec = null;
 
   const stage = $('#lightshow-stage');
   stage.style.backgroundColor = '#000000';
-  $('#lightshow-countdown').textContent = '';
   stage.hidden = false;
   openModal(stage, { initialFocus: $('#lightshow-close'), onEscape: () => closeLightshowStage() });
 
@@ -6586,7 +6574,7 @@ async function openLightshowStage(showId, { rehearsal = false } = {}) {
   lightshowReanchorStage();
   lightshowStartWall = rehearsal
     ? lightshowAnchorWall
-    : Math.ceil(lightshowAnchorWall / lightshowStageCycleMs) * lightshowStageCycleMs;
+    : Math.floor(lightshowAnchorWall / lightshowStageCycleMs) * lightshowStageCycleMs;
 
   if (lightshowStageRaf) cancelAnimationFrame(lightshowStageRaf);
   lightshowStageStep();
