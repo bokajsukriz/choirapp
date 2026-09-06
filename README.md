@@ -5,7 +5,11 @@ Installierbare, rein lokale Progressive-Web-App zum Üben mit den
 die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine
 Daten. Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel
 und ggf. Interpret an den gewählten externen Dienst — siehe
-[Externe Liedsuche](#externe-liedsuche).
+[Externe Liedsuche](#externe-liedsuche). Der Internetzeit-Abgleich der
+Lichtshow (siehe [Lichtshow](#lichtshow)) fragt nach ausdrücklicher
+Bestätigung einmalig die Atomuhr der PTB (uhr.ptb.de) nach der aktuellen
+Uhrzeit ab — außer diesen beiden Fällen verlässt die App nie von sich aus
+das Gerät.
 
 ## Daten und Speicherorte
 
@@ -124,7 +128,24 @@ QR-Kopplung —, sondern laufen rein über die Systemuhr synchron: das Bild ist
 eine reine Funktion der Zeit (`lightshowFrame()`), auf jedem Gerät identisch.
 Damit das funktioniert, sollte „Datum & Uhrzeit automatisch“ im Betriebssystem
 eingeschaltet bleiben; ein Sync-Prüfbild in der Ansicht zeigt, ob eine Uhr
-grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich.
+grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich. Alternativ
+lässt sich dieser Ausgleich per Kamera automatisch ermitteln: Ein Gerät
+filmt das Sync-Prüfbild eines zweiten und berechnet aus dem Zeitpunkt von
+dessen Blitz den eigenen Handversatz. Das Kamerabild verlässt dabei das
+Gerät nie und wird nirgends gespeichert — auch das bleibt eine rein lokale
+Auswertung ohne Verbindung zwischen den Handys.
+
+Dritte Möglichkeit — ganz ohne zweites Handy: „Mit Internetzeit abgleichen"
+fragt die Atomuhr der PTB (Physikalisch-Technische Bundesanstalt,
+Deutschlands nationales Metrologie-Institut, `wss://uhr.ptb.de/time`) nach
+der aktuellen Uhrzeit ab und setzt den Handversatz auf die Differenz zur
+eigenen Uhr. Die PTB verteilt ihre Zeit extra für den Browser-Einsatz über
+WebSocket statt NTP — normaler TLS-Verkehr auf Port 443, der durch
+Firmen-/Schul-WLANs kommt, wo klassisches UDP-NTP (Port 123) oft blockiert
+wäre. Anders als bei der externen Liedsuche (deren Hinweis nur beim
+allerersten Mal erscheint) fragt der Bestätigungsdialog hier jedes Mal
+neu, weil eine echte Netzwerkanfrage etwas anderes ist als ein rein
+lokaler Kamera- oder Zeitabgleich.
 
 ## Wichtige Regel für Änderungen
 
@@ -140,6 +161,10 @@ noch Skripte von der eigenen Herkunft, `blob:` (für das AudioWorklet-Modul
 des Zeitdehners) und `'wasm-unsafe-eval'` (für dessen WASM-Instanziierung);
 Styles bleiben inline erlaubt (`'unsafe-inline'`, wegen der `style="…"`-
 Attribute im Markup), `<object>`/`<embed>` und `<base>` sind ganz gesperrt.
+`connect-src` erlaubt neben der eigenen Herkunft ausschließlich
+`wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
+WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
+Netzwerkanfrage aus dem Code wäre damit von vornherein blockiert.
 `frame-ancestors` ist absichtlich nicht Teil davon — über ein Meta-Tag
 ohnehin nicht durchsetzbar, GitHub Pages kann keine Header setzen. Ob
 Zeitdehner-Worklets zusätzlich `worker-src blob:` brauchen, ist auf echtem

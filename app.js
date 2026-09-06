@@ -6602,8 +6602,6 @@ $('#lightshow-close').addEventListener('click', () => closeLightshowStage());
 
 let lightshowSyncOpen = false;
 let lightshowSyncRaf = null;
-let lightshowSyncAnchorWall = 0;
-let lightshowSyncAnchorPerf = 0;
 
 function lightshowRenderSyncOffset() {
   $('#lightshow-sync-value').textContent = `${settings.lightshowOffsetMs || 0} ms`;
@@ -6617,7 +6615,14 @@ async function lightshowAdjustOffset(deltaMs) {
 
 function lightshowSyncStep() {
   lightshowSyncRaf = requestAnimationFrame(lightshowSyncStep);
-  const wall = lightshowSyncAnchorWall + (performance.now() - lightshowSyncAnchorPerf);
+  // Direkt aus Date.now() statt über einen Anker+performance.now() interpoliert
+  // (wie z.B. lightshowWallNow() für die eigentliche Bühne) — das Prüfbild ist
+  // ein kurzer Diagnose-Blick, kein stundenlanger Auftritt, und muss jede
+  // Änderung am Handversatz (Tasten, Zurücksetzen, Kamera-Abgleich) sofort
+  // zeigen, nicht erst nach Schließen/Neuöffnen. Vorher stand hier fälschlich
+  // reines Date.now() ohne den Handversatz — das Prüfbild zeigte immer die
+  // ungeglättete Rohuhr, komplett unabhängig vom eingestellten Ausgleich.
+  const wall = Date.now() + (settings.lightshowOffsetMs || 0);
   const msIntoSecond = ((wall % 1000) + 1000) % 1000;
 
   const track = $('#lightshow-sync-track');
@@ -6637,8 +6642,6 @@ function openLightshowSync() {
   const el = $('#lightshow-sync');
   el.hidden = false;
   openModal(el, { initialFocus: $('#lightshow-sync-close'), onEscape: () => closeLightshowSync() });
-  lightshowSyncAnchorWall = Date.now();
-  lightshowSyncAnchorPerf = performance.now();
   if (lightshowSyncRaf) cancelAnimationFrame(lightshowSyncRaf);
   lightshowSyncStep();
 }
@@ -6654,8 +6657,6 @@ function closeLightshowSync() {
 document.addEventListener('visibilitychange', () => {
   if (!lightshowSyncOpen) return;
   if (document.visibilityState === 'visible') {
-    lightshowSyncAnchorWall = Date.now();
-    lightshowSyncAnchorPerf = performance.now();
     if (!lightshowSyncRaf) lightshowSyncStep();
   } else if (lightshowSyncRaf) {
     cancelAnimationFrame(lightshowSyncRaf);
@@ -6670,6 +6671,416 @@ $$('#lightshow-sync .preset').forEach((btn) => {
 $('#btn-lightshow-sync-reset').addEventListener('click', async () => {
   await saveSettings({ lightshowOffsetMs: 0 });
   lightshowRenderSyncOffset();
+});
+
+/* ==========================================================================
+   INTERNETZEIT-ABGLEICH — dritte automatische Variante, ganz ohne zweites
+   Handy: Statt sich an einem anderen Gerät zu orientieren, fragt DIESES
+   Gerät einmalig die Atomuhr der PTB (Physikalisch-Technische Bundesanstalt,
+   Deutschlands nationales Metrologie-Institut) nach der aktuellen Uhrzeit
+   und setzt den Handversatz auf die Differenz zur eigenen Uhr. Vergleichen
+   sich alle Geräte gegen dieselbe externe Uhr, landen sie automatisch auch
+   untereinander im Gleichklang — keine Kamera, kein zweites Handy nötig.
+
+   Die PTB verteilt ihre Zeit extra für genau diesen Zweck über WebSocket
+   statt NTP: normaler TLS-Verkehr auf Port 443, der durch Firmen-Proxys und
+   Sandboxes kommt, wo ein UDP-NTP-Paket (Port 123) meist blockiert wäre
+   (siehe https://uhr.ptb.de/wst/paper). Protokoll: nach dem Verbindungsaufbau
+   einen beliebigen Client-Wert als {c: …} senden, die PTB schickt ihn
+   zusammen mit ihrer eigenen Zeit als {s: …, e: …} (Serverzeit in ms seit
+   Epoch UTC, e = ihre eigene Fehlerabschätzung in ms) zurück.
+
+   Hauptfehlerquelle ist laut PTB nicht die Uhr selbst, sondern asymmetrische
+   Netzlaufzeit (Hin- und Rückweg unterschiedlich lang, z.B. durch
+   Warteschlangen unterwegs) — die eigentliche Rechnung (Serverzeit +
+   Laufzeit/2) geht von SYMMETRISCHER Laufzeit aus, und je länger die
+   gemessene Laufzeit, desto mehr Spielraum hat eine Asymmetrie, den Fehler
+   wachsen zu lassen. Deshalb mehrere Anfragen über dieselbe Verbindung und
+   die mit der kürzesten Laufzeit nehmen (PTBs eigene Empfehlung) statt nur
+   eine einzelne — die erste Anfrage kann noch Verbindungs-/JIT-Anlaufkosten
+   mittragen und wird deshalb verworfen.
+
+   Das ist die einzige Stelle im ganzen Programm, die eine Netzwerkanfrage
+   auslöst, ohne dass der Nutzer aktiv etwas laden wollte (siehe README:
+   „die App selbst stellt keine automatischen Netzwerkanfragen"), deshalb
+   ausdrücklich nur nach Zustimmung im Dialog — analog zur externen
+   Liedsuche (openSongSearch), nur ohne den „nicht mehr fragen"-Teil: bei
+   einer Netzwerkanfrage soll jedes Mal klar sein, dass sie gerade passiert.
+   ========================================================================== */
+
+const LIGHTSHOW_NTP_URL = 'wss://uhr.ptb.de/time';
+const LIGHTSHOW_NTP_SUBPROTOCOL = 'time';
+const LIGHTSHOW_NTP_TIMEOUT_MS = 10000;
+const LIGHTSHOW_NTP_SAMPLES = 9;         // insgesamt gesendete Anfragen …
+const LIGHTSHOW_NTP_WARMUP_SAMPLES = 1;  // … davon die ersten als Anlauf verwerfen
+const LIGHTSHOW_NTP_PROBE_GAP_MS = 40;   // kleine Pause zwischen Anfragen, um den Server nicht zu hämmern
+
+/**
+ * Schickt mehrere Zeitanfragen über dieselbe WebSocket-Verbindung und
+ * liefert die mit der kürzesten Laufzeit — siehe Erklärung oben.
+ * @returns {Promise<{serverMs: number, t1: number, rtt: number, ptbErrorMs: number|null}>}
+ */
+function lightshowNtpMeasure() {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const ws = new WebSocket(LIGHTSHOW_NTP_URL, LIGHTSHOW_NTP_SUBPROTOCOL);
+    const samples = [];
+    let sent = 0;
+
+    const finish = (fn, arg) => {
+      if (settled) return; // z.B. Timeout UND onerror fast gleichzeitig
+      settled = true;
+      clearTimeout(timeoutId);
+      ws.close();
+      fn(arg);
+    };
+
+    const timeoutId = setTimeout(() => finish(reject, new Error('timeout')), LIGHTSHOW_NTP_TIMEOUT_MS);
+
+    const sendProbe = () => {
+      sent += 1;
+      // Der eigene performance.now()-Wert dient nur als Marke, die die PTB
+      // unverändert zurückschickt; t0 unten liest sie aus data.c zurück statt
+      // aus einer eigenen Variable, damit jede Probe für sich in ihrer
+      // onmessage vollständig nachvollziehbar bleibt.
+      ws.send(JSON.stringify({ c: String(performance.now()) }));
+    };
+
+    ws.onopen = () => sendProbe();
+
+    ws.onmessage = (event) => {
+      const t1 = performance.now();
+      let data;
+      try { data = JSON.parse(event.data); } catch (err) { finish(reject, err); return; }
+      const t0 = Number(data.c);
+      const serverMs = Number(data.s);
+      if (!Number.isFinite(serverMs) || !Number.isFinite(t0)) { finish(reject, new Error('unparsable response')); return; }
+      samples.push({ serverMs, t1, rtt: t1 - t0, ptbErrorMs: data.e != null ? Number(data.e) : null });
+
+      if (sent >= LIGHTSHOW_NTP_SAMPLES) {
+        const usable = samples.slice(LIGHTSHOW_NTP_WARMUP_SAMPLES);
+        const pool = usable.length ? usable : samples; // Notnagel, falls fast alle Proben verworfen würden
+        pool.sort((a, b) => a.rtt - b.rtt);
+        finish(resolve, pool[0]);
+        return;
+      }
+      setTimeout(sendProbe, LIGHTSHOW_NTP_PROBE_GAP_MS);
+    };
+    ws.onerror = () => finish(reject, new Error('websocket error'));
+  });
+}
+
+async function lightshowNtpSync() {
+  const ok = await confirmDialog({
+    title: t('lightshow.ntpcal.dialogTitle'),
+    text: t('lightshow.ntpcal.dialogText'),
+    okLabel: t('lightshow.ntpcal.dialogOk'),
+    cancelLabel: t('lightshow.ntpcal.dialogCancel'),
+  });
+  if (!ok) return;
+
+  const statusEl = $('#lightshow-ntpcal-status');
+  statusEl.hidden = false;
+  statusEl.textContent = t('lightshow.ntpcal.statusChecking');
+
+  try {
+    const best = await lightshowNtpMeasure();
+
+    // Laufzeit zur Hälfte zuschlagen (übliche Annahme: Hin- und Rückweg
+    // dauern etwa gleich lang, siehe PTB-Empfehlung) — die Serverzeit wurde
+    // ja schon beim Senden auf PTB-Seite geschrieben, nicht erst, als die
+    // Antwort hier ankam. Beide Zeitpunkte auf denselben Moment (t1, Empfang
+    // dieser einen Probe) beziehen, damit die JSON-Verarbeitung selbst nicht
+    // mit in die Differenz einfließt.
+    const trueAtT1 = best.serverMs + best.rtt / 2;
+    const localAtT1 = Date.now() - (performance.now() - best.t1);
+    const next = Math.max(-5000, Math.min(5000, Math.round(trueAtT1 - localAtT1)));
+
+    await saveSettings({ lightshowOffsetMs: next });
+    lightshowRenderSyncOffset();
+
+    // Grobe, bewusst konservative Anzeige-Schätzung fürs UI — keine strenge
+    // metrologische Unsicherheitsrechnung: die halbe Laufzeit deckt die
+    // Asymmetrie-Annahme oben ab, dazu PTBs eigene Fehlerangabe, falls
+    // mitgeliefert.
+    const uncertainty = Math.round(best.rtt / 2 + (best.ptbErrorMs ?? 0));
+    statusEl.textContent = t('lightshow.ntpcal.statusDone')
+      .replace('{value}', `${next} ms`)
+      .replace('{rtt}', `${Math.round(best.rtt)} ms`)
+      .replace('{uncertainty}', `${uncertainty} ms`);
+  } catch {
+    // Netzwerkfehler, Timeout oder unlesbare Antwort laufen alle hier
+    // zusammen — der Nutzer kann ohnehin nur "nochmal versuchen" oder auf
+    // Kamera/Handeinstellung ausweichen, eine genauere Fehlerunterscheidung
+    // würde daran nichts ändern.
+    statusEl.textContent = t('lightshow.ntpcal.statusError');
+  }
+}
+
+$('#btn-lightshow-ntpcal').addEventListener('click', () => lightshowNtpSync());
+
+/* ==========================================================================
+   KAMERA-ABGLEICH — automatische Variante des Sync-Prüfbilds oben. Statt
+   den Handversatz nach Auge einzustellen, beobachtet die Kamera dieses
+   Geräts das Sync-Prüfbild eines zweiten Handys: Der Sekundenblitz dort
+   trifft auf DIESES Gerät zu einem bestimmten Zeitpunkt der eigenen Uhr
+   (plus aktuellem Handversatz) ein — dessen Phase innerhalb der Sekunde
+   ist genau der Fehler, den der Handversatz ausgleichen soll.
+
+   Nur ~30 Kamera-Bilder pro Sekunde verfügbar, daher liegt die Genauigkeit
+   bei grob einer Framedauer (~15–30 ms) — für den Feinabgleich, für den
+   der Handversatz gedacht ist, reicht das (siehe lightshow.sync.autoNote:
+   ab ~0,5 s Abweichung ohnehin lieber „Datum & Uhrzeit automatisch").
+   ========================================================================== */
+
+const LIGHTSHOW_CAMCAL_MIN_ABS_DELTA = 15;   // Mindest-Helligkeitssprung (0–255), sonst zu rauschanfällig
+const LIGHTSHOW_CAMCAL_REL_DELTA = 0.12;     // …oder relativ zum Hintergrund, je nachdem was größer ist
+const LIGHTSHOW_CAMCAL_COOLDOWN_MS = 400;    // ein Blitz dauert ~80ms; danach nicht sofort erneut auslösen
+const LIGHTSHOW_CAMCAL_NEEDED_PEAKS = 6;
+const LIGHTSHOW_CAMCAL_SAMPLE_SIZE = 16;     // Downscale-Canvas — Helligkeit reicht, keine Details nötig
+// Nach dem Öffnen der Kamera pendeln sich Belichtung/Weißabgleich noch ein
+// paar hundert ms lang ein; dieser Helligkeits-„Ramp" sieht selbst wie ein
+// Blitz aus, landet aber zu einem zufälligen Zeitpunkt und hat schon einen
+// scheinbaren Versatz von ganzen Sekunden verursacht. In dieser Zeit nur den
+// Hintergrund nachziehen, keine Blitze werten.
+const LIGHTSHOW_CAMCAL_WARMUP_MS = 700;
+const LIGHTSHOW_CAMCAL_INTERVAL_TOLERANCE_MS = 150;
+
+let lightshowCamCalOpen = false;
+let lightshowCamCalStream = null;
+let lightshowCamCalRaf = null;
+let lightshowCamCalCanvas = null;
+let lightshowCamCalCtx = null;
+let lightshowCamCalAnchorWall = 0;
+let lightshowCamCalAnchorPerf = 0;
+let lightshowCamCalPeaks = [];
+let lightshowCamCalBaseline = null;
+let lightshowCamCalCooldownUntil = 0;
+let lightshowCamCalWarmupUntil = 0;
+let lightshowCamCalArmed = true;
+
+function lightshowCamCalSampleBrightness(video) {
+  if (!lightshowCamCalCanvas) {
+    lightshowCamCalCanvas = document.createElement('canvas');
+    lightshowCamCalCanvas.width = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
+    lightshowCamCalCanvas.height = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
+    lightshowCamCalCtx = lightshowCamCalCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  const n = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
+  lightshowCamCalCtx.drawImage(video, 0, 0, n, n);
+  const { data } = lightshowCamCalCtx.getImageData(0, 0, n, n);
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 4) sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+  return sum / (n * n);
+}
+
+function lightshowCamCalWallAt(perfTime) {
+  return lightshowCamCalAnchorWall + (perfTime - lightshowCamCalAnchorPerf);
+}
+
+/** Kreismittelwert der Phasen (0..1000) — vermeidet den Bruch an der 0/1000-Grenze. */
+function lightshowCamCalCircularPhase(phases) {
+  let sumSin = 0, sumCos = 0;
+  for (const p of phases) {
+    const angle = (p / 1000) * 2 * Math.PI;
+    sumSin += Math.sin(angle);
+    sumCos += Math.cos(angle);
+  }
+  const meanAngle = Math.atan2(sumSin, sumCos);
+  const meanPhase = (meanAngle / (2 * Math.PI)) * 1000;
+  return meanPhase < 0 ? meanPhase + 1000 : meanPhase;
+}
+
+function lightshowCamCalRenderStatus(textKey) {
+  const el = $('#lightshow-camcal-status');
+  if (textKey) { el.textContent = t(textKey); return; }
+  const n = lightshowCamCalPeaks.length;
+  el.textContent = n === 0
+    ? t('lightshow.camcal.statusWaiting')
+    : t('lightshow.camcal.statusCounting').replace('{n}', String(n)).replace('{needed}', String(LIGHTSHOW_CAMCAL_NEEDED_PEAKS));
+}
+
+/** Nullt die laufende Messung (Peaks/Cooldown) und verankert Wanduhrzeit neu —
+ *  Hintergrund und Aufwärmphase bleiben stehen, die Kamera ist ja schon
+ *  eingependelt. Die Neuverankerung ist Pflicht, nicht optional: lief schon
+ *  eine erfolgreiche Kalibrierung in diesem Overlay, hat lightshowCamCalFinish()
+ *  bereits einen neuen Handversatz gespeichert. Ohne Neuverankerung würde die
+ *  nächste Messung (z.B. über „Erneut versuchen") weiterhin mit dem alten,
+ *  unkorrigierten Anker rechnen — sie „entdeckt" dieselbe Abweichung erneut und
+ *  addiert die Korrektur ein zweites Mal obendrauf, statt zu konvergieren. */
+function lightshowCamCalResetMeasurement() {
+  lightshowCamCalAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
+  lightshowCamCalAnchorPerf = performance.now();
+  lightshowCamCalPeaks = [];
+  lightshowCamCalCooldownUntil = 0;
+  lightshowCamCalArmed = true;
+  lightshowCamCalRenderStatus();
+}
+
+/** Längste zusammenhängende Folge von Peaks mit plausiblem ~1-Sekunden-Abstand
+ *  zueinander — verwirft einzelne Ausreißer (z.B. die Belichtungsanpassung
+ *  kurz nach dem Kamerastart), statt an ihnen die ganze Messung zu verwerfen. */
+function lightshowCamCalConsistentRun(peaks) {
+  if (peaks.length < 3) return null;
+  const intervals = [];
+  for (let i = 1; i < peaks.length; i++) intervals.push(peaks[i] - peaks[i - 1]);
+  const sorted = [...intervals].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median < 700 || median > 1300) return null; // kein Abstand passt zum Sekundentakt
+
+  let bestStart = 0, bestLen = 1, curStart = 0, curLen = 1;
+  intervals.forEach((d, i) => {
+    if (Math.abs(d - median) <= LIGHTSHOW_CAMCAL_INTERVAL_TOLERANCE_MS) {
+      curLen++;
+    } else {
+      curStart = i + 1;
+      curLen = 1;
+    }
+    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+  });
+  return bestLen >= 4 ? peaks.slice(bestStart, bestStart + bestLen) : null;
+}
+
+function lightshowCamCalFinish() {
+  const run = lightshowCamCalConsistentRun(lightshowCamCalPeaks);
+  if (!run) {
+    // Zu viele Ausreißer in den Abständen — vermutlich Fehltreffer statt
+    // echtem Sekundenblitz (Umgebungslicht, Kamerabewegung). Neu messen
+    // statt einen falschen Wert zu übernehmen.
+    lightshowCamCalRenderStatus('lightshow.camcal.statusRetry');
+    lightshowCamCalResetMeasurement();
+    return;
+  }
+
+  const phases = run.map((p) => {
+    const wall = lightshowCamCalWallAt(p);
+    return ((wall % 1000) + 1000) % 1000;
+  });
+  const meanPhase = lightshowCamCalCircularPhase(phases);
+  const delta = meanPhase > 500 ? meanPhase - 1000 : meanPhase;
+  const current = settings.lightshowOffsetMs || 0;
+  const next = Math.max(-5000, Math.min(5000, Math.round(current - delta)));
+
+  lightshowCamCalStopSampling();
+  saveSettings({ lightshowOffsetMs: next }).then(() => {
+    lightshowRenderSyncOffset();
+    $('#lightshow-camcal-status').textContent = t('lightshow.camcal.statusDone').replace('{value}', `${next} ms`);
+  });
+}
+
+function lightshowCamCalStep() {
+  lightshowCamCalRaf = requestAnimationFrame(lightshowCamCalStep);
+  const video = $('#lightshow-camcal-video');
+  if (video.readyState < 2) return;
+
+  const now = performance.now();
+  const brightness = lightshowCamCalSampleBrightness(video);
+  if (lightshowCamCalBaseline == null) {
+    lightshowCamCalBaseline = brightness;
+    lightshowCamCalWarmupUntil = now + LIGHTSHOW_CAMCAL_WARMUP_MS;
+    return;
+  }
+  if (now < lightshowCamCalWarmupUntil) {
+    lightshowCamCalBaseline += (brightness - lightshowCamCalBaseline) * 0.3;
+    return;
+  }
+
+  const rise = brightness - lightshowCamCalBaseline;
+  const threshold = Math.max(LIGHTSHOW_CAMCAL_MIN_ABS_DELTA, lightshowCamCalBaseline * LIGHTSHOW_CAMCAL_REL_DELTA);
+  const above = rise > threshold;
+  const isPeak = above && lightshowCamCalArmed && now >= lightshowCamCalCooldownUntil;
+
+  if (isPeak) {
+    lightshowCamCalPeaks.push(now);
+    lightshowCamCalCooldownUntil = now + LIGHTSHOW_CAMCAL_COOLDOWN_MS;
+    // Erst wieder scharf, wenn die Helligkeit sichtbar zurückgegangen ist —
+    // sonst zählt ein Bild, das nach dem Blitz einfach hell BLEIBT (Kamera
+    // zu nah dran, Umgebungslicht, Belichtung überschossen), alle 400ms
+    // (den Cooldown) einen weiteren „Blitz", ohne dass echtes Blinken
+    // stattfindet. lightshowCamCalConsistentRun() verwirft diese ~400ms-
+    // Serie zwar wieder (kein Sekundenabstand), aber erst NACHDEM sechs
+    // Fehltreffer den Zähler durchgejagt haben — sichtbar als scheinbar
+    // sinnloses Hochzählen mit anschließendem Sprung zurück auf 0.
+    lightshowCamCalArmed = false;
+    lightshowCamCalRenderStatus();
+    if (lightshowCamCalPeaks.length >= LIGHTSHOW_CAMCAL_NEEDED_PEAKS) lightshowCamCalFinish();
+    return;
+  }
+
+  if (!above) {
+    // Hysterese: erst unterhalb der halben Schwelle wieder scharf machen,
+    // damit ein Signal, das genau um die Schwelle herum zittert, nicht
+    // mehrfach als eigener Blitz zählt.
+    if (rise < threshold * 0.5) lightshowCamCalArmed = true;
+    if (now >= lightshowCamCalCooldownUntil) {
+      // Hintergrund nur außerhalb der Cooldown-Phase nachziehen, sonst zöge
+      // der Blitz selbst ihn hoch und würde beim nächsten Mal nicht mehr auffallen.
+      lightshowCamCalBaseline += rise * 0.08;
+    }
+  }
+}
+
+function lightshowCamCalStopSampling() {
+  if (lightshowCamCalRaf) { cancelAnimationFrame(lightshowCamCalRaf); lightshowCamCalRaf = null; }
+}
+
+function lightshowCamCalStopCamera() {
+  if (lightshowCamCalStream) {
+    lightshowCamCalStream.getTracks().forEach((tr) => tr.stop());
+    lightshowCamCalStream = null;
+  }
+  $('#lightshow-camcal-video').srcObject = null;
+}
+
+async function openLightshowCamCal() {
+  lightshowCamCalOpen = true;
+  lightshowCamCalResetMeasurement();
+  lightshowCamCalBaseline = null;   // erzwingt eine frische Aufwärmphase (siehe lightshowCamCalStep)
+  const el = $('#lightshow-camcal');
+  el.hidden = false;
+  openModal(el, { initialFocus: $('#lightshow-camcal-close'), onEscape: () => closeLightshowCamCal() });
+
+  try {
+    lightshowCamCalStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+  } catch {
+    lightshowCamCalRenderStatus('lightshow.camcal.errorPermission');
+    return;
+  }
+  if (!lightshowCamCalOpen) { lightshowCamCalStream.getTracks().forEach((tr) => tr.stop()); return; } // inzwischen geschlossen
+
+  const video = $('#lightshow-camcal-video');
+  video.srcObject = lightshowCamCalStream;
+  try { await video.play(); } catch { /* autoplay-Attribut greift in aller Regel trotzdem */ }
+
+  lightshowCamCalAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
+  lightshowCamCalAnchorPerf = performance.now();
+  lightshowCamCalStopSampling();
+  lightshowCamCalStep();
+}
+
+function closeLightshowCamCal() {
+  lightshowCamCalOpen = false;
+  lightshowCamCalStopSampling();
+  lightshowCamCalStopCamera();
+  const el = $('#lightshow-camcal');
+  closeModal(el);
+  el.hidden = true;
+}
+
+document.addEventListener('visibilitychange', () => {
+  // Kamera nie im Hintergrund weiterlaufen lassen — Messung ist ohnehin
+  // nur ein kurzer, wiederholbarer Vorgang.
+  if (lightshowCamCalOpen && document.visibilityState !== 'visible') closeLightshowCamCal();
+});
+
+$('#btn-lightshow-camcal').addEventListener('click', () => openLightshowCamCal());
+$('#lightshow-camcal-close').addEventListener('click', () => closeLightshowCamCal());
+$('#btn-lightshow-camcal-retry').addEventListener('click', () => {
+  lightshowCamCalResetMeasurement();
+  if (!lightshowCamCalRaf && lightshowCamCalStream) lightshowCamCalStep();
 });
 
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
