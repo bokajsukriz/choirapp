@@ -64,6 +64,7 @@ export const STRINGS = {
     'settings.bike.normal': 'Normal',
     'settings.bike.mono': 'Mono',
     'settings.bike.swap': 'Tauschen',
+    'settings.bike.unsupported': 'In diesem Browser nicht verfügbar (bekannter Safari/WebKit-Fehler bei verlangsamter Wiedergabe).',
 
     'settings.screen.title': 'Bildschirm & Hintergrund',
     'settings.screen.keepOn': 'Bildschirm anlassen, solange ein Lied geöffnet ist',
@@ -333,6 +334,7 @@ export const STRINGS = {
     'settings.bike.normal': 'Normal',
     'settings.bike.mono': 'Mono',
     'settings.bike.swap': 'Swap',
+    'settings.bike.unsupported': 'Not available in this browser (known Safari/WebKit bug with slowed-down playback).',
 
     'settings.screen.title': 'Screen & background',
     'settings.screen.keepOn': 'Keep the screen on while a song is open',
@@ -602,6 +604,7 @@ export const STRINGS = {
     'settings.bike.normal': 'Normalny',
     'settings.bike.mono': 'Mono',
     'settings.bike.swap': 'Zamień',
+    'settings.bike.unsupported': 'Niedostępne w tej przeglądarce (znany błąd Safari/WebKit przy zwolnionym odtwarzaniu).',
 
     'settings.screen.title': 'Ekran i tło',
     'settings.screen.keepOn': 'Ekran włączony, dopóki utwór jest otwarty',

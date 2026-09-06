@@ -2431,6 +2431,11 @@ $('#btn-errorlog-clear').addEventListener('click', async () => {
 
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
+  // Kanal-Matrix gibt es auf WebKit nicht (siehe isWebKitBrowser/
+  // setupAudioGraph()) — die Auswahl anwählbar zu lassen würde nur
+  // vorgaukeln, dass Mono/Tauschen etwas bewirken.
+  $('#channel-mode').disabled = isWebKitBrowser;
+  $('#channel-mode-unsupported-hint').hidden = !isWebKitBrowser;
 }
 
 function renderDefaultTabPicker() {
@@ -2778,7 +2783,13 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
  */
 function renderSlowMode() {
   const mode = settings.slowMode || 'standard';
-  const broken = hdInitBlocked();
+  // isWebKitBrowser: der Zeitdehner bräuchte den Web-Audio-Graphen, den
+  // setupAudioGraph() dort wegen WebKit-Bug 240405 erst gar nicht aufbaut
+  // (siehe dort) — Audio.ctx bleibt null, ensureHdNode() käme also ohnehin
+  // nie über den ersten Check hinaus. Hier trotzdem schon vorab sperren,
+  // statt das über hdInitBlocked()s Fehlversuchszähler laufen zu lassen:
+  // sonst wirkt HD kurz anwählbar, obwohl es nie etwas bewirken könnte.
+  const broken = hdInitBlocked() || isWebKitBrowser;
   for (const btn of $$('#slow-mode .preset')) {
     btn.disabled = btn.dataset.mode === 'hd' && broken;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
@@ -3329,6 +3340,30 @@ $('#btn-wipe').addEventListener('click', async () => {
 const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+// Nur auf dem Schreibtisch bringt ausschließlich echtes Safari WebKit mit —
+// Chrome, Firefox und Edge haben dort ihre eigene Engine. Auf iOS erzwingt
+// Apple WebKit für jeden Browser, das deckt isIOSDevice schon ab. Übliches
+// Sniff-Muster: „Safari" im UA, aber keiner der Chromium-/Gecko-Marker.
+const isDesktopSafari = /^((?!chrome|crios|fxios|edg|opr|brave|android).)*safari/i
+  .test(navigator.userAgent || '');
+
+// WebKit hat einen offenen Fehler (WebKit-Bug 240405, „HTMLMediaElement
+// preservesPitch=false and playbackRate aren't correctly handled when
+// hooked up to AudioContext"): sobald ein <audio>-Element per
+// createMediaElementSource() im Web-Audio-Graphen hängt UND playbackRate
+// ≠ 1 ist, wird der Ton abgehackt UND preservesPitch=false ignoriert — auf
+// dem Gerät bestätigt bei Standard *und* HD, auf iPhone (Firefox/iOS) *und*
+// macOS Safari gleichermaßen (Apple erzwingt WebKit auf iOS für jeden
+// Browser, auf dem Mac ist nur Safari selbst betroffen). Der Fix landete am
+// 27.03.2026 im WebKit-Hauptzweig, ist Stand jetzt aber in keinem regulären
+// Safari-Release angekommen. `createMediaElementSource()` wirft dabei keinen
+// Fehler — sie liefert nur kaputten Ton —, ein try/catch um den Graphenaufbau
+// kann den Fall also nicht erkennen. setupAudioGraph() meidet den Graphen
+// auf diesen Browsern deshalb von vornherein (siehe dort); Kanal-Matrix
+// („Fahrradfahren-Modus") und HD bleiben dabei zwangsläufig auf der Strecke,
+// siehe renderChannelMode() und renderSlowMode().
+const isWebKitBrowser = isIOSDevice || isDesktopSafari;
+
 // Dateiendung -> MIME-Typ fürs Blob, aus dem das <audio>-Element liest.
 // Browser sniffen Audiodaten zwar meist auch ohne korrekten Typ, ein
 // passender Wert ist aber die zuverlässigere Grundlage.
@@ -3744,6 +3779,22 @@ async function setupAudioGraph() {
   });
 
   el.addEventListener('error', () => dlog('audio:error', { code: el.error?.code }));
+
+  // Siehe isWebKitBrowser weiter oben: der Graph selbst ist auf WebKit die
+  // Bug-Ursache, sobald playbackRate ≠ 1 läuft — und createMediaElementSource()
+  // schlägt dabei nicht fehl, sie liefert nur kaputten Ton. Ein try/catch
+  // reicht hier also nicht, die Weiche muss vor dem Aufbau fallen. Das
+  // Element spielt dann exakt so, wie es auch der catch-Zweig unten für jeden
+  // anderen Browser vorsieht: direkt, ganz ohne Web-Audio-Kontakt. Kanal-
+  // Matrix und HD sind dabei zwangsläufig nicht verfügbar (Audio.ctx bleibt
+  // null) — beides degradiert an seiner jeweiligen Stelle bereits von selbst
+  // auf „kein Effekt"/„nativer Fallback", siehe audioApplyChannelMode() und
+  // hdApplyTransition(). Die Einstellungen weisen eigens darauf hin, siehe
+  // renderChannelMode() und renderSlowMode().
+  if (isWebKitBrowser) {
+    dlog('audio:route', { mode: 'direct', name: 'webkit-240405' });
+    return;
+  }
 
   // Kanal-Matrix für den „Fahrradfahren-Modus" (Spec: nur ein Ohrstöpsel):
   // eine feste Verdrahtung aus vier Gains, die je nach Einstellung normal
@@ -4459,7 +4510,12 @@ async function hdApplyTransition(reason, opts = {}) {
   // Bibliothek selbst darf trotzdem sofort nachladen, sobald HD gewählt ist —
   // das kostet nichts und macht den ersten Tempowechsel schneller.
   if (settings.slowMode === 'hd' && Audio.rate !== 1) ensureHdNode();
-  else if (settings.slowMode === 'hd') ensureStretchLib().catch(() => {});
+  // isWebKitBrowser: ensureHdNode() bräche oben ohnehin an !Audio.ctx ab (der
+  // Graph existiert dort gar nicht, siehe setupAudioGraph()) — die 113-KB-
+  // Bibliothek müsste also für nichts geladen werden. Nur relevant für eine
+  // Sicherung mit altem slowMode:'hd' aus der Zeit vor diesem Umbau oder von
+  // einem anderen (Android-)Gerät, die App selbst bietet HD hier nicht mehr an.
+  else if (settings.slowMode === 'hd' && !isWebKitBrowser) ensureStretchLib().catch(() => {});
   const node = Audio.hdNode;
   if (!node) {
     hdWasEngaged = false;
