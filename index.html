@@ -355,6 +355,23 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .chip-grid--lg { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .chip-grid--lg .chip { min-height: 56px; font-size: 1rem; }
 
+/* Stimmwahlen greifen die kleinen, farbigen Ellipsen aus der Songliste auf.
+   Die Pille selbst bleibt dabei mindestens 44 px hoch und damit ein bequemes
+   Touch-Ziel; anders als das alte Raster wird sie nicht zur Kachel gestreckt. */
+.voice-pill-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.chip-grid--lg .chip--voice {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-size: .88rem;
+}
+
 .chip[aria-pressed="true"] {
   background: var(--accent);
   color: var(--accent-ink);
@@ -375,8 +392,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   color: #fff;
 }
 .chip--voice[aria-pressed="true"] {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text);
 }
 
 /* Lichtshow — Ansicht unter Einstellungen → Lichtshow. --lightshow-voice-c
@@ -1394,6 +1410,25 @@ input[type="checkbox"] {
   font-weight: 650;
 }
 
+/* Hauptabschnitte innerhalb „Make it yours" sind bewusst deutlicher als
+   die einzelnen Feldüberschriften: Text zwischen zwei durchgezogenen Linien. */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 14px;
+  white-space: nowrap;
+}
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  height: 1px;
+  background: var(--line);
+  flex: 1 1 auto;
+}
+.section-divider:first-of-type { margin-top: 0; }
+.search-privacy-hint { padding-left: 42px; }
+
 .spinner {
   width: 22px;
   height: 22px;
@@ -1650,6 +1685,10 @@ input[type="checkbox"] {
 .rec-btn {
   width: 56px;
   height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  max-width: 56px;
+  max-height: 56px;
   aspect-ratio: 1 / 1;
   flex: 0 0 auto;
   border-radius: 50%;
@@ -1698,7 +1737,12 @@ input[type="checkbox"] {
 
 /* Großer REC-Knopf im allgemeinen Recorder (siehe #recorder-view) — gleiche
  * Bausteine wie im Player, nur größer, weil er dort die einzige Bedienung ist. */
-.rec-btn--lg { width: 84px; height: 84px; margin: 0 auto; }
+.rec-btn--lg {
+  width: 84px; height: 84px;
+  min-width: 84px; min-height: 84px;
+  max-width: 84px; max-height: 84px;
+  margin: 0 auto;
+}
 .rec-btn--lg .rec-btn-dot { width: 33px; height: 33px; }
 .rec-btn--lg[aria-pressed="true"] .rec-btn-dot { width: 26px; height: 26px; gap: 6px; }
 .rec-btn--lg[aria-pressed="true"] .rec-btn-dot::before,
@@ -1766,7 +1810,8 @@ input[type="checkbox"] {
    wie bei .rec-btn/.rec-global-btn) — ohne die feste Form wirkte das
    Dreieck darin winzig und schief. */
 .rec-play {
-  width: 68px; height: 68px; aspect-ratio: 1 / 1; flex: 0 0 auto; border-radius: 50%;
+  width: 68px; height: 68px; min-width: 68px; min-height: 68px;
+  max-width: 68px; max-height: 68px; aspect-ratio: 1 / 1; flex: 0 0 auto; border-radius: 50%;
   border: 3px solid var(--ok); background: var(--surface);
   appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
@@ -1787,7 +1832,8 @@ input[type="checkbox"] {
 .rec-play.is-playing svg { color: var(--surface); }
 
 .take-icon {
-  width: 54px; height: 54px; aspect-ratio: 1 / 1; border-radius: 50%; flex: 0 0 auto;
+  width: 54px; height: 54px; min-width: 54px; min-height: 54px;
+  max-width: 54px; max-height: 54px; aspect-ratio: 1 / 1; border-radius: 50%; flex: 0 0 auto;
   appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--line); background: var(--surface); color: var(--text);
@@ -2852,7 +2898,7 @@ input[type="checkbox"] {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
             </button>
             <button class="take-icon take-icon--save" id="btn-rec-save" type="button" aria-label="REC speichern">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
             </button>
           </div>
         </div>
@@ -3142,7 +3188,7 @@ input[type="checkbox"] {
         <span class="lightshow-voice-dot" id="lightshow-voice-dot" aria-hidden="true"></span>
         <span id="lightshow-voice-text"></span>
       </div>
-      <div class="chip-grid chip-grid--lg" id="lightshow-voice-picker" role="group" aria-label="Stimme für die Lichtshow" data-i18n-aria="lightshow.voicePickerAria"></div>
+      <div class="chip-grid chip-grid--lg voice-pill-picker" id="lightshow-voice-picker" role="group" aria-label="Stimme für die Lichtshow" data-i18n-aria="lightshow.voicePickerAria"></div>
     </div>
 
     <div class="card">
@@ -3240,7 +3286,7 @@ input[type="checkbox"] {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
           </button>
           <button class="take-icon take-icon--save" id="btn-recorder-save" type="button" aria-label="REC speichern" aria-disabled="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
           </button>
         </div>
       </div>
@@ -3327,10 +3373,6 @@ input[type="checkbox"] {
              autocomplete="off" autocorrect="off" spellcheck="false"
              placeholder="Song suchen …" aria-label="Song suchen"
              data-i18n-placeholder="songs.searchPlaceholder" data-i18n-aria="songs.searchAria">
-      <button class="rec-global-btn" id="btn-rec-global" type="button"
-              aria-label="Aufnehmen" data-i18n-aria="songs.recordAria">
-        <svg class="rec-global-dot" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg>
-      </button>
       <button class="icon-btn" id="btn-feeling-lucky" type="button"
               aria-label="Feeling Lucky — zufälliges Lied abspielen" data-i18n-aria="songs.feelingLuckyAria">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3341,6 +3383,10 @@ input[type="checkbox"] {
           <circle cx="15.7" cy="15.7" r="1.15" fill="currentColor" stroke="none"/>
           <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
         </svg>
+      </button>
+      <button class="rec-global-btn" id="btn-rec-global" type="button"
+              aria-label="Aufnehmen" data-i18n-aria="songs.recordAria">
+        <svg class="rec-global-dot" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg>
       </button>
     </div>
     <div class="filterbar" id="filterbar" hidden></div>
@@ -3458,7 +3504,7 @@ input[type="checkbox"] {
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span data-i18n="settings.personal.title">Make it yours!</span></h2>
 
-      <p class="section-title" style="margin-top:0" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
+      <p class="section-title section-divider" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.tabHint">
         Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.
       </p>
@@ -3489,19 +3535,19 @@ input[type="checkbox"] {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <select id="song-search-service-picker" aria-label="Suchdienst"></select>
       </label>
-      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
+      <p class="small muted search-privacy-hint" style="margin:6px 0 0" data-i18n="settings.personal.searchPrivacyHint">
         Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.
       </p>
 
-      <p class="section-title" data-i18n="settings.personal.displayTitle">Anzeige</p>
-      <p class="section-title" style="margin-top:0" data-i18n="settings.personal.language">Sprache</p>
+      <p class="section-title section-divider" data-i18n="settings.personal.displayTitle">Anzeige</p>
+      <p class="section-title" style="margin-top:0" data-i18n="settings.personal.accent">Akzentfarbe</p>
+      <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
+
+      <p class="section-title" data-i18n="settings.personal.language">Sprache</p>
       <label class="select-field">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/></svg>
         <select id="language-picker" aria-label="Sprache"></select>
       </label>
-
-      <p class="section-title" data-i18n="settings.personal.accent">Akzentfarbe</p>
-      <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
 
       <p class="section-title" data-i18n="settings.personal.presentTitle">Textanzeige für andere</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.presentHint">
@@ -3515,7 +3561,7 @@ input[type="checkbox"] {
         Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
         Stimme der Player zuerst zeigt.
       </p>
-      <div class="chip-grid chip-grid--lg" id="voice-picker"></div>
+      <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
     </div>
 
     <div class="card">
@@ -3735,8 +3781,7 @@ input[type="checkbox"] {
 
       <p class="section-title" data-i18n="settings.data.exportTitle">Exportieren</p>
       <div class="stack">
-        <p class="small" id="notes-count" style="margin:0"></p>
-        <p class="small" id="lyrics-notes-count" style="margin:0"></p>
+        <p class="small" id="export-count" style="margin:0"></p>
         <div style="display:flex; gap:8px">
           <button class="btn" id="btn-notes-export" type="button" style="flex:1">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17v4h12v-4"/></svg>

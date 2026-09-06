@@ -516,11 +516,11 @@ function editRecordingDialog({ name, voice }) {
     // renderVoicePicker) statt der neutralen preset-row — exklusive Auswahl.
     const voiceBtns = voiceOptions.map((opt) => {
       const btn = el('button', {
-        class: opt.value ? 'chip chip--voice' : 'chip', type: 'button',
+        class: 'chip chip--voice', type: 'button',
         'aria-pressed': opt.value === selected ? 'true' : 'false',
         text: opt.label,
       });
-      if (opt.value) btn.style.setProperty('--voice-c', VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER);
+      btn.style.setProperty('--voice-c', opt.value ? (VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER) : 'var(--muted)');
       return btn;
     });
     voiceBtns.forEach((btn, i) => btn.addEventListener('click', () => {
@@ -528,7 +528,7 @@ function editRecordingDialog({ name, voice }) {
       voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
     }));
-    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
 
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
@@ -2315,8 +2315,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
 
 async function refreshAfterDelete() {
   await renderStorage();
-  await renderNotesCount();
-  await renderLyricsNotesCount();
+  await renderExportCount();
   await renderStorageManager();
   await renderSongs();
   await renderPlaylists();
@@ -2382,8 +2381,7 @@ async function renderSettings() {
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
-  await renderNotesCount();
-  await renderLyricsNotesCount();
+  await renderExportCount();
   await renderStorageManager();
   renderErrorLog();
   renderDebugLogState();
@@ -8609,12 +8607,12 @@ function bucketizeColumns(columns, bucketCount) {
   return result;
 }
 
-/** Zeichnet die eingefrorene Wellenform der ganzen Aufnahme auf die Take-Karte. */
-function drawTakeWaveform() {
+/** Zeichnet die Wellenform; bei der Vorschau wandert der Fokus von links nach rechts. */
+function drawTakeWaveform(progress = null) {
   const canvas = rn('wave');
   const { ctx, width, height } = setupLevelCanvas(canvas);
   const bucketCount = Math.max(1, Math.floor(width / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
-  drawLevelHistory(ctx, bucketizeColumns(levelTakeHistory, bucketCount), width, height);
+  drawLevelHistory(ctx, bucketizeColumns(levelTakeHistory, bucketCount), width, height, progress);
 }
 
 /**
@@ -8625,22 +8623,29 @@ function drawTakeWaveform() {
  * ist zusätzlich etwas größer gezeichnet — der "das gerade eben"-Effekt, den
  * ein gleich hoher letzter Balken sonst nicht zeigt.
  */
-function drawLevelHistory(ctx, columns, width, height) {
+function drawLevelHistory(ctx, columns, width, height, progress = null) {
   if (!ctx) return;
   ctx.clearRect(0, 0, width, height);
 
   const midY = height / 2;
   const maxHalf = height / 2 - 3;
   const lastIdx = columns.length - 1;
+  const playheadIdx = progress === null || !columns.length
+    ? -1
+    : Math.min(lastIdx, Math.max(0, Math.floor(progress * columns.length)));
   let x = 0;
   for (let i = 0; i < columns.length && x < width; i++, x += (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
     const { amp, clipping } = columns[i];
-    const boosted = i === lastIdx ? Math.min(1, amp * 1.2) : amp;
+    const focused = i === playheadIdx;
+    const boosted = focused || (playheadIdx < 0 && i === lastIdx) ? Math.min(1, amp * 1.25) : amp;
     const half = Math.max(1.5, boosted * maxHalf);
-    ctx.fillStyle = clipping ? levelDangerColor : (amp >= 0.75 ? '#FFD93D' : '#6BCB77');
-    ctx.globalAlpha = i === lastIdx ? 1 : 0.82;
-    const radius = Math.min(LEVEL_COLUMN_WIDTH / 2, half);
-    roundedBar(ctx, x, midY - half, LEVEL_COLUMN_WIDTH, half * 2, radius);
+    ctx.fillStyle = focused
+      ? getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+      : (clipping ? levelDangerColor : (amp >= 0.75 ? '#FFD93D' : '#6BCB77'));
+    ctx.globalAlpha = playheadIdx < 0 ? (i === lastIdx ? 1 : 0.82) : (i <= playheadIdx ? 1 : 0.28);
+    const barWidth = focused ? LEVEL_COLUMN_WIDTH + 2 : LEVEL_COLUMN_WIDTH;
+    const radius = Math.min(barWidth / 2, half);
+    roundedBar(ctx, x - (barWidth - LEVEL_COLUMN_WIDTH) / 2, midY - half, barWidth, half * 2, radius);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -8813,6 +8818,10 @@ function updateRecTakePosition() {
   const hint = rn('hint');
   if (!hint) return;
   const playing = !!(audioPreview?.tag?.pending && Audio.playing);
+  const previewing = !!audioPreview?.tag?.pending;
+  drawTakeWaveform(previewing && pendingTake.duration
+    ? Math.min(1, Audio.position / pendingTake.duration)
+    : null);
   hint.textContent = playing
     ? `${fmtTime(Audio.position)} / ${fmtTime(pendingTake.duration)}`
     : 'gerade aufgenommen';
@@ -9922,7 +9931,9 @@ async function loadSongLyricsNote() {
 }
 
 const LYRICS_EDIT_ICON = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
-const LYRICS_DONE_ICON = '<polyline points="20 6 9 17 4 12"/>';
+// Beim Beenden der Bearbeitung dieselbe Diskette wie beim Speichern von
+// Loops und RECs — ein Haken wirkte eher wie „bestätigen" als „speichern".
+const LYRICS_DONE_ICON = '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>';
 
 /** Welcher Text gerade sichtbar ist — genutzt fürs Ein-/Ausblenden des
  *  Vorlesemodus-Knopfs UND für dessen Inhalt (siehe openLyricsPresent). */
@@ -10651,21 +10662,23 @@ async function collectPrintable(kind) {
     .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
 }
 
-async function renderPrintCount(kind, countId, btnId, noneLabel) {
-  const node = $(`#${countId}`);
+async function printableCount(kind, btnId) {
   const btn  = $(`#${btnId}`);
   const items = await collectPrintable(kind);
-  node.textContent = items.length
-    ? `${plural(items.length, 'Song', 'Songs')} verfügbar.`
-    : noneLabel;
   btn.disabled = items.length === 0;
+  return items.length;
 }
 
-async function renderNotesCount() {
-  await renderPrintCount('note', 'notes-count', 'btn-notes-export', 'Noch keine Notizen.');
-}
-async function renderLyricsNotesCount() {
-  await renderPrintCount('lyricsNote', 'lyrics-notes-count', 'btn-lyrics-notes-export', 'Noch keine eigenen Liedtexte.');
+/** Eine kompakte gemeinsame Bestandszeile statt zweier sich wiederholender Sätze. */
+async function renderExportCount() {
+  const [notes, lyrics] = await Promise.all([
+    printableCount('note', 'btn-notes-export'),
+    printableCount('lyricsNote', 'btn-lyrics-notes-export'),
+  ]);
+  const noteLabel = notes ? plural(notes, 'Notiz', 'Notizen') : 'noch keine Notizen';
+  const lyricsLabel = lyrics ? plural(lyrics, 'eigener Liedtext', 'eigene Liedtexte') : 'noch keine eigenen Liedtexte';
+  const sentence = `${noteLabel} und ${lyricsLabel}`;
+  $('#export-count').textContent = sentence.charAt(0).toUpperCase() + sentence.slice(1) + '.';
 }
 
 /**
@@ -11640,15 +11653,30 @@ function playlistStep(delta, autoplay) {
     i = randomQueueIndex(playQueue);
     if (i < 0) return;
   } else {
-    i = playQueue.index;
-    do {
-      i += delta;
-      if (i < 0 || i >= playQueue.items.length) return;
-    } while (!playQueue.items[i].playable);
+    i = stepPlayableIndex(playQueue.items, playQueue.index, delta);
+    if (i < 0) return;
   }
   playQueue.index = i;
+  if (playerSong && playerSong.id === playQueue.items[i].id) {
+    updateSeekUI(audioSeek(0));
+    if (autoplay ?? Audio.playing) audioPlay().then(() => setPlayIcon(true));
+    renderQueue();
+    return;
+  }
   pendingAutoPlay = autoplay ?? Audio.playing;
   navigate(`#song/${playQueue.items[i].id}`, { replace: true });
+}
+
+/** Nächster/vorheriger abspielbarer Eintrag, zirkulär wie das automatische Weiterschalten. */
+function stepPlayableIndex(items, from, delta) {
+  const total = items.length;
+  if (!total || !delta) return -1;
+  const direction = Math.sign(delta);
+  for (let step = 1; step <= total; step++) {
+    const i = (from + step * direction + total) % total;
+    if (items[i].playable) return i;
+  }
+  return -1;
 }
 
 /**
@@ -13518,6 +13546,11 @@ function runSelfTests() {
     const results = items.map((_, i) => nextPlayableIndex(items, i));
     if (results.some((r) => r !== 1)) {
       failed.push(`nextPlayableIndex müsste von jedem Startpunkt aus 1 liefern, war ${JSON.stringify(results)}`);
+    }
+    const forward = items.map((_, i) => stepPlayableIndex(items, i, 1));
+    const backward = items.map((_, i) => stepPlayableIndex(items, i, -1));
+    if (forward.some((r) => r !== 1) || backward.some((r) => r !== 1)) {
+      failed.push(`Manuelles Setlisten-Weiterschalten müsste Platzhalter zirkulär überspringen, war vor ${JSON.stringify(forward)}, zurück ${JSON.stringify(backward)}`);
     }
   }
   checks++;
