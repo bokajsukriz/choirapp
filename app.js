@@ -528,7 +528,7 @@ function editRecordingDialog({ name, voice }) {
       voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
     }));
-    const voiceRow = el('div', { class: 'chip-grid', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
 
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
@@ -960,6 +960,15 @@ const DEFAULT_SETTINGS = {
   // lässt es sich in den Einstellungen.
   slowMode: 'standard',
   hdIntroShown: false, // einmaliger Erklärdialog beim ersten Verlangsamen schon gezeigt?
+  // AUS per Voreinstellung: auf WebKit (jeder iOS-Browser, macOS Safari)
+  // baut setupAudioGraph() den Web-Audio-Graphen wegen WebKit-Bug 240405
+  // sonst nicht eigens für HD auf (siehe isWebKitBrowser/hdWebkitBlocked) —
+  // HD fehlt dadurch (die Kanal-Matrix ist davon unabhängig verfügbar, siehe
+  // setupAudioGraph()). Der Fix liegt seit 2026-03-27 im WebKit-Hauptzweig,
+  // ist aber noch in keinem regulären Safari-Release angekommen; sobald das
+  // der Fall ist, macht dieser Schalter HD ohne App-Update wieder nutzbar.
+  // Nur auf WebKit sichtbar, siehe renderWebkitGraphToggle().
+  webkitForceGraph: false,
   // Regler des Zeitdehners (Modus HD, Karte „Kompatibilität & Performance"
   // → „Erweitert"). Die Werte entsprechen den Voreinstellungen der
   // Bibliothek; `formantCompensation` bleibt bewusst aus, siehe die
@@ -1165,6 +1174,13 @@ async function loadSettings() {
     settings.slowMode = (settings.slowMode === 'hq' || settings.slowMode === 'hqmono') ? 'hd' : 'standard';
   }
   settings.hdOptions = sanitizeHdOptions(settings.hdOptions);
+
+  // Den Reiter „Sheets" gibt es nicht mehr (siehe PLAYER_TABS) — die
+  // Vorschau der Noten läuft jetzt über einen Hinweis im Notes-Reiter
+  // (renderScoresHint()). Ein „sheets" aus einer alten Sicherung würde
+  // setPlayerTab() sonst stumm ignorieren und der Player bliebe auf dem
+  // zuletzt sichtbaren Reiter hängen, statt auf einen gültigen zu fallen.
+  if (settings.defaultPlayerTab === 'sheets') settings.defaultPlayerTab = 'notes';
 
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
@@ -2360,6 +2376,7 @@ async function renderSettings() {
   renderVoicePicker();
   renderChannelMode();
   renderScreenMode();
+  renderWebkitGraphToggle();
   renderSlowMode();
   renderHdOptions();
   renderNotificationState();
@@ -2429,9 +2446,56 @@ $('#btn-errorlog-clear').addEventListener('click', async () => {
   renderErrorLog();
 });
 
+// Ob HD auf WebKit (aktuell) blockiert bleibt — siehe hdApplyTransition().
+// settings.webkitForceGraph ist der Notausgang, sobald der WebKit-Fehler
+// beim Hersteller behoben ist (siehe DEFAULT_SETTINGS): dann greift diese
+// Bedingung nicht mehr, und HD wird wieder normal angeboten.
+//
+// Die Kanal-Matrix („Fahrradfahren-Modus") hängt NICHT hieran: auf dem Gerät
+// bestätigt lief sie auf WebKit unauffällig, auch ohne den Notausgang — sie
+// nutzt den Graphen nur zum Kanaltausch/-mischen bei sonst unverändertem
+// playbackRate, und genau der Ratenwechsel ist die Voraussetzung für den
+// WebKit-Fehler (siehe setupAudioGraph()). setupAudioGraph() baut den Graphen
+// deshalb schon dann auf, wenn channelMode das braucht — unabhängig von
+// webkitForceGraph. Bleibt HD dabei trotzdem aktiv (Sicherung von vor diesem
+// Umbau, oder Rate ungleich 1 während Kanal-Matrix läuft), zeigt sich der
+// ursprüngliche Fehler wieder — deshalb bleibt HD ausdrücklich hierüber
+// gesperrt, unabhängig davon, ob Audio.ctx aus einem anderen Grund schon steht.
+function hdWebkitBlocked() {
+  return isWebKitBrowser && !settings.webkitForceGraph;
+}
+
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
 }
+
+/**
+ * Notausgang für hdWebkitBlocked(): WebKit-Bug 240405 ist beim Hersteller
+ * bereits behoben, nur noch in keinem Safari-Release angekommen (siehe
+ * DEFAULT_SETTINGS.webkitForceGraph) — wer nicht warten will, kann den
+ * Graphen hier trotzdem für HD erzwingen und selbst hören, ob der Fehler auf
+ * dem eigenen Gerät noch auftritt. Nur auf WebKit sichtbar: auf jedem anderen
+ * Browser gibt es nichts zu erzwingen, der Graph steht dort ohnehin schon.
+ */
+function renderWebkitGraphToggle() {
+  const row = $('#webkit-force-graph-row');
+  row.hidden = !isWebKitBrowser;
+  $('#hd-webkit-hint').hidden = !isWebKitBrowser;
+  $('#webkit-force-graph-hint').hidden = !isWebKitBrowser;
+  if (!isWebKitBrowser) return;
+  $('#webkit-force-graph').setAttribute('aria-checked', settings.webkitForceGraph ? 'true' : 'false');
+}
+
+$('#webkit-force-graph').addEventListener('click', async () => {
+  await saveSettings({ webkitForceGraph: !settings.webkitForceGraph });
+  renderWebkitGraphToggle();
+  renderSlowMode();
+  // Der Graph lässt sich am laufenden Element nicht nachrüsten oder wieder
+  // entfernen (createMediaElementSource() darf pro Element nur einmal
+  // laufen, siehe setupAudioGraph()) — ohne Neuaufbau bliebe die Umstellung
+  // bis zum nächsten Songwechsel wirkungslos.
+  if (Audio.ready) await rebuildAudioGraph('webkit-force-graph');
+});
 
 function renderDefaultTabPicker() {
   for (const btn of $$('#default-tab-picker .player-tab')) {
@@ -2778,12 +2842,23 @@ $('#btn-screen-toggle').addEventListener('click', async () => {
  */
 function renderSlowMode() {
   const mode = settings.slowMode || 'standard';
-  const broken = hdInitBlocked();
+  // hdWebkitBlocked(): siehe dort — HD bleibt auf WebKit ohne den
+  // Notausgang gesperrt, unabhängig davon, ob der Graph aus einem anderen
+  // Grund (Kanal-Matrix) gerade sowieso steht. Hier trotzdem schon vorab
+  // sperren, statt das über hdInitBlocked()s Fehlversuchszähler laufen zu
+  // lassen: sonst wirkt HD kurz anwählbar, obwohl es nie etwas bewirken könnte.
+  const webkitBlocked = hdWebkitBlocked();
+  const broken = hdInitBlocked() || webkitBlocked;
   for (const btn of $$('#slow-mode .preset')) {
     btn.disabled = btn.dataset.mode === 'hd' && broken;
     btn.setAttribute('aria-pressed', btn.dataset.mode === mode ? 'true' : 'false');
   }
-  $('#hd-unsupported-hint').hidden = !broken;
+  // Zwei verschiedene Gründe, zwei verschiedene Hinweise: hdInitBlocked() ist
+  // ein wiederholter technischer Fehlschlag auf diesem Gerät, hdWebkitBlocked()
+  // ist ein bekannter, vorübergehender Browser-Fehler mit Notausgang (siehe
+  // renderWebkitGraphToggle()) — in denselben Text gepackt klänge der eine
+  // Fall unnötig hoffnungsvoll, der andere unnötig endgültig.
+  $('#hd-unsupported-hint').hidden = !(hdInitBlocked() && !webkitBlocked);
   // Die Werkbank hat nur Sinn, wenn HD auch läuft — sonst verwirrt sie nur.
   const advBtn = $('#btn-hd-advanced-toggle');
   advBtn.hidden = mode !== 'hd' || broken;
@@ -3250,6 +3325,15 @@ $('#btn-notify-request').addEventListener('click', async () => {
 $('#channel-mode').addEventListener('change', async (e) => {
   await saveSettings({ channelMode: e.target.value });
   audioApplyChannelMode(settings.channelMode);
+  // Auf WebKit ohne Notausgang entscheidet channelMode mit, ob setupAudioGraph()
+  // den Graphen überhaupt aufbaut (siehe dort) — createMediaElementSource()
+  // lässt sich am laufenden Element nicht nachrüsten oder wieder entfernen,
+  // ein Wechsel über/unter 'off' bleibt also ohne Neuaufbau wirkungslos
+  // (audioApplyChannelMode() liefe dann gegen ein weiterhin fehlendes/
+  // weiterhin bestehendes Audio.channel).
+  if (isWebKitBrowser && !settings.webkitForceGraph && Audio.ready) {
+    await rebuildAudioGraph('channel-mode');
+  }
 });
 
 $$('#default-tab-picker .player-tab').forEach((btn) => {
@@ -3328,6 +3412,33 @@ $('#btn-wipe').addEventListener('click', async () => {
 // unterscheidet sie vom echten Mac.
 const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// Nur auf dem Schreibtisch bringt ausschließlich echtes Safari WebKit mit —
+// Chrome, Firefox und Edge haben dort ihre eigene Engine. Auf iOS erzwingt
+// Apple WebKit für jeden Browser, das deckt isIOSDevice schon ab. Übliches
+// Sniff-Muster: „Safari" im UA, aber keiner der Chromium-/Gecko-Marker.
+const isDesktopSafari = /^((?!chrome|crios|fxios|edg|opr|brave|android).)*safari/i
+  .test(navigator.userAgent || '');
+
+// WebKit hat einen offenen Fehler (WebKit-Bug 240405, „HTMLMediaElement
+// preservesPitch=false and playbackRate aren't correctly handled when
+// hooked up to AudioContext"): sobald ein <audio>-Element per
+// createMediaElementSource() im Web-Audio-Graphen hängt UND playbackRate
+// ≠ 1 ist, wird der Ton abgehackt UND preservesPitch=false ignoriert — auf
+// dem Gerät bestätigt bei Standard *und* HD, auf iPhone (Firefox/iOS) *und*
+// macOS Safari gleichermaßen (Apple erzwingt WebKit auf iOS für jeden
+// Browser, auf dem Mac ist nur Safari selbst betroffen). Der Fix landete am
+// 27.03.2026 im WebKit-Hauptzweig, ist Stand jetzt aber in keinem regulären
+// Safari-Release angekommen. `createMediaElementSource()` wirft dabei keinen
+// Fehler — sie liefert nur kaputten Ton —, ein try/catch um den Graphenaufbau
+// kann den Fall also nicht erkennen. setupAudioGraph() baut den Graphen auf
+// diesen Browsern deshalb nicht mehr ungefragt auf HD hin auf; HD bleibt
+// gesperrt, bis settings.webkitForceGraph das aufhebt (siehe
+// hdWebkitBlocked()/renderSlowMode()). Die Kanal-Matrix („Fahrradfahren-
+// Modus") ist davon unabhängig: sie ändert playbackRate nicht selbst und
+// lief auf dem Gerät bestätigt unauffällig, deshalb baut setupAudioGraph()
+// den Graphen dafür trotzdem auf (siehe dort).
+const isWebKitBrowser = isIOSDevice || isDesktopSafari;
 
 // Dateiendung -> MIME-Typ fürs Blob, aus dem das <audio>-Element liest.
 // Browser sniffen Audiodaten zwar meist auch ohne korrekten Typ, ein
@@ -3660,6 +3771,7 @@ async function setupAudioGraph() {
     if (Audio.loop && s >= Audio.loop.end) {
       el.currentTime = Audio.loop.start;
       Audio.position = Audio.loop.start;
+      updateRecTakePosition();
       Audio.onPosition?.(Audio.loop.start);
       // Der Rücksprung läuft nicht über audioSeek() — dieselbe Diskontinuität
       // explizit auslösen, sonst bleibt der alte Überlappungspuffer des
@@ -3698,6 +3810,7 @@ async function setupAudioGraph() {
       });
       lastPosLog = { wall: nowWall, pos: s };
     }
+    updateRecTakePosition();
     Audio.onPosition?.(s);
   });
 
@@ -3744,6 +3857,31 @@ async function setupAudioGraph() {
   });
 
   el.addEventListener('error', () => dlog('audio:error', { code: el.error?.code }));
+
+  // Siehe isWebKitBrowser weiter oben: der Graph selbst ist auf WebKit die
+  // Bug-Ursache, sobald playbackRate ≠ 1 läuft — und createMediaElementSource()
+  // schlägt dabei nicht fehl, sie liefert nur kaputten Ton. Ein try/catch
+  // reicht hier also nicht, die Weiche muss vor dem Aufbau fallen. Das
+  // Element spielt dann exakt so, wie es auch der catch-Zweig unten für jeden
+  // anderen Browser vorsieht: direkt, ganz ohne Web-Audio-Kontakt.
+  //
+  // Ausnahme: braucht die Kanal-Matrix („Fahrradfahren-Modus", channelMode
+  // ≠ 'off') den Graphen, wird er trotzdem aufgebaut — auf dem Gerät
+  // bestätigt läuft sie auf WebKit unauffällig, weil sie für sich genommen
+  // playbackRate nicht anfasst. HD bleibt in diesem Fall trotzdem gesperrt
+  // (siehe hdWebkitBlocked()/hdApplyTransition()): dort ist genau der
+  // Ratenwechsel der Zweck, der den Fehler auslöst. Ändert sich später auch
+  // die Rate, während die Matrix aktiv ist, tritt der ursprüngliche Fehler
+  // wieder auf — das ist der bewusst hingenommene Rest des Kompromisses.
+  //
+  // settings.webkitForceGraph ist der zusätzliche Notausgang für HD: der
+  // Fehler ist beim Hersteller bereits behoben, nur noch nicht ausgeliefert,
+  // ein Update kann das also jederzeit stillschweigend obsolet machen, siehe
+  // renderWebkitGraphToggle() und renderSlowMode().
+  if (isWebKitBrowser && !settings.webkitForceGraph && (settings.channelMode || 'off') === 'off') {
+    dlog('audio:route', { mode: 'direct', name: 'webkit-240405' });
+    return;
+  }
 
   // Kanal-Matrix für den „Fahrradfahren-Modus" (Spec: nur ein Ohrstöpsel):
   // eine feste Verdrahtung aus vier Gains, die je nach Einstellung normal
@@ -4458,8 +4596,15 @@ async function hdApplyTransition(reason, opts = {}) {
   // Zweig des Prozessors ruft _process() weiterhin jede Runde auf). Die
   // Bibliothek selbst darf trotzdem sofort nachladen, sobald HD gewählt ist —
   // das kostet nichts und macht den ersten Tempowechsel schneller.
-  if (settings.slowMode === 'hd' && Audio.rate !== 1) ensureHdNode();
-  else if (settings.slowMode === 'hd') ensureStretchLib().catch(() => {});
+  // hdWebkitBlocked(): explizit hier geprüft statt sich auf ein fehlendes
+  // Audio.ctx zu verlassen — die Kanal-Matrix kann den Graphen auf WebKit
+  // inzwischen auch ohne Notausgang aufgebaut haben (siehe setupAudioGraph()),
+  // HD soll trotzdem gesperrt bleiben.
+  if (settings.slowMode === 'hd' && Audio.rate !== 1 && !hdWebkitBlocked()) ensureHdNode();
+  // Nur relevant für eine Sicherung mit altem slowMode:'hd' aus der Zeit vor
+  // diesem Umbau oder von einem anderen (Android-)Gerät — die 113-KB-
+  // Bibliothek müsste sonst für nichts geladen werden.
+  else if (settings.slowMode === 'hd' && !hdWebkitBlocked()) ensureStretchLib().catch(() => {});
   const node = Audio.hdNode;
   if (!node) {
     hdWasEngaged = false;
@@ -6076,6 +6221,11 @@ let recorderCloseConfirmed = false;
 function openRecorderView() {
   recorderOpen = true;
   $('#recorder-view').hidden = false;
+  // Hier fehlt der Songkontext (keine Stimme, kein Anker) — ein im
+  // Hintergrund weiterlaufender Song oder REC-Mitsing-Track ergibt darum
+  // keinen Sinn und würde sich zudem ins Mikrofon mischen.
+  if (Audio.playing) { audioPause(); setPlayIcon(false); }
+  stopBacking();
 }
 
 /** Bricht eine laufende Recorder-Aufnahme bzw. einen offenen Recorder-Take ab
@@ -7277,6 +7427,7 @@ function onPlaybackEnded() {
     endRecordingPreview();
     renderRecordingList();
     updateRecPreviewButton();
+    updateRecTakePosition();
     return;
   }
   dlog('playback:ended', { repeatMode: settings.repeatMode, hasQueue: !!playQueue });
@@ -7353,7 +7504,7 @@ $('#btn-play').addEventListener('click', async () => {
   updateMediaSession();
   // Läuft gerade eine REC-Vorschau, muss deren eigener Anhören-Knopf
   // und die Liste mitziehen — beide zeigen sonst den falschen Zustand an.
-  if (audioPreview) { updateRecPreviewButton(); renderRecordingList(); syncBackingPlayState(); }
+  if (audioPreview) { updateRecPreviewButton(); updateRecTakePosition(); renderRecordingList(); syncBackingPlayState(); }
 });
 
 $('#btn-restart').addEventListener('click', () => {
@@ -7725,9 +7876,10 @@ async function loadSongLoops() {
   renderLoopList();
 }
 
-/** Der Punkt am Loops-Reiter gilt jetzt Loops UND RECs — beide leben im selben Tab. */
+/** Setzt die Punkte an Loops- und REC-Reiter — beide Listen können sich unabhängig ändern. */
 function updateLoopsTabDot() {
-  setTabHasContent('loops', songLoops.length > 0 || songRecordings.length > 0);
+  setTabHasContent('loops', songLoops.length > 0);
+  setTabHasContent('rec', songRecordings.length > 0);
 }
 
 function renderLoopList() {
@@ -7951,7 +8103,7 @@ const RID = {
     controls: 'rec-controls', toggle: 'btn-rec-toggle', timer: 'rec-timer', status: 'rec-status',
     meter: 'rec-meter', meterCanvas: 'rec-meter-canvas', meterWarning: 'rec-meter-warning',
     inputWarning: 'rec-input-warning',
-    take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration',
+    take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
     voiceBtn: 'btn-rec-take-voice', voiceLabel: 'rec-take-voice-label',
     wave: 'rec-take-wave', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
     save: 'btn-rec-save', discard: 'btn-rec-discard',
@@ -7960,7 +8112,7 @@ const RID = {
     controls: 'recorder-idle', toggle: 'btn-recorder-toggle', timer: 'recorder-timer', status: 'recorder-status',
     meter: 'recorder-meter', meterCanvas: 'recorder-meter-canvas', meterWarning: 'recorder-meter-warning',
     inputWarning: 'recorder-input-warning',
-    take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration',
+    take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration', hint: 'recorder-take-hint',
     voiceBtn: 'btn-recorder-take-voice', voiceLabel: 'recorder-take-voice-label',
     wave: 'recorder-take-wave', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
     save: 'btn-recorder-save', discard: 'btn-recorder-discard',
@@ -8433,21 +8585,33 @@ function drawTakeWaveform() {
   drawLevelHistory(ctx, bucketizeColumns(levelTakeHistory, bucketCount), width, height);
 }
 
+/**
+ * Ältester Balken links, jüngster rechts — bei einer noch nicht vollen
+ * Historie (der Regelfall: die meisten RECs sind kürzer als die Kanalbreite)
+ * füllt sich die Anzeige also sichtbar von links nach rechts, statt von
+ * Anfang an rechtsbündig mit einer Lücke links zu stehen. Der jüngste Balken
+ * ist zusätzlich etwas größer gezeichnet — der "das gerade eben"-Effekt, den
+ * ein gleich hoher letzter Balken sonst nicht zeigt.
+ */
 function drawLevelHistory(ctx, columns, width, height) {
   if (!ctx) return;
   ctx.clearRect(0, 0, width, height);
 
   const midY = height / 2;
   const maxHalf = height / 2 - 3;
-  let x = width - LEVEL_COLUMN_WIDTH;
-  for (let i = columns.length - 1; i >= 0 && x > -LEVEL_COLUMN_WIDTH; i--, x -= (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
+  const lastIdx = columns.length - 1;
+  let x = 0;
+  for (let i = 0; i < columns.length && x < width; i++, x += (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)) {
     const { amp, clipping } = columns[i];
-    const half = Math.max(1.5, amp * maxHalf);
+    const boosted = i === lastIdx ? Math.min(1, amp * 1.2) : amp;
+    const half = Math.max(1.5, boosted * maxHalf);
     ctx.fillStyle = clipping ? levelDangerColor : (amp >= 0.75 ? '#FFD93D' : '#6BCB77');
+    ctx.globalAlpha = i === lastIdx ? 1 : 0.82;
     const radius = Math.min(LEVEL_COLUMN_WIDTH / 2, half);
     roundedBar(ctx, x, midY - half, LEVEL_COLUMN_WIDTH, half * 2, radius);
     ctx.fill();
   }
+  ctx.globalAlpha = 1;
 }
 
 function roundedBar(ctx, x, y, w, h, r) {
@@ -8556,6 +8720,7 @@ function renderPendingTake() {
   renderTakeVoiceLabel();
   drawTakeWaveform();
   updateRecPreviewButton();
+  updateRecTakePosition();
   updateRecSaveLocked();
   // Kein Song ist vorausgewählt — die Liste erscheint erst mit dem Take.
   if (recHost === 'recorder' && isNew) {
@@ -8582,14 +8747,40 @@ function updateRecSaveLocked() {
   rn('save').setAttribute('aria-disabled', locked ? 'true' : 'false');
 }
 
-/** Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die Hauptsteuerung läuft. */
+/**
+ * Beschriftung des Anhören-Knopfs — Pause, solange genau dieser Take über die
+ * Hauptsteuerung läuft. `.is-playing` füllt den Knopf sichtbar grün statt nur
+ * das Symbol zu tauschen — ein Dreieck/Balken-Wechsel allein ging in der
+ * Rückmeldung unter, die Füllung macht den Pause-Zustand auf einen Blick klar
+ * (dieselbe Sprache wie `.tbtn[aria-pressed="true"]` im Hauptplayer).
+ */
 function updateRecPreviewButton() {
   const btn = rn('preview');
   if (!btn) return;
   const playing = !!(audioPreview?.tag?.pending && Audio.playing);
   rn('playIcon').hidden = playing;
   rn('pauseIcon').hidden = !playing;
+  btn.classList.toggle('is-playing', playing);
   btn.setAttribute('aria-label', playing ? 'REC pausieren' : 'REC anhören');
+}
+
+/**
+ * Live-Position während der Take-Vorschau ("0:07 / 0:34") statt des
+ * statischen Hinweistexts — sonst ließ sich beim Anhören eines frischen
+ * Takes nirgends ablesen, wie weit man ist (besonders im allgemeinen
+ * Recorder ohne Songkontext, wo die Hauptsuchleiste dahinter nicht sichtbar
+ * ist). Läuft bei jedem Positions-Tick, auch ohne je geöffneten Song (siehe
+ * Aufrufstelle im timeupdate-Listener von setupAudioGraph()) — deshalb hier
+ * defensiv statt über pendingTake/Audio als gegeben vorauszusetzen.
+ */
+function updateRecTakePosition() {
+  if (!pendingTake) return;
+  const hint = rn('hint');
+  if (!hint) return;
+  const playing = !!(audioPreview?.tag?.pending && Audio.playing);
+  hint.textContent = playing
+    ? `${fmtTime(Audio.position)} / ${fmtTime(pendingTake.duration)}`
+    : 'gerade aufgenommen';
 }
 
 $('#rec-take-name').addEventListener('input', (e) => {
@@ -8619,6 +8810,7 @@ async function onTakePreviewClick() {
     catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
+  updateRecTakePosition();
 }
 $('#btn-rec-preview').addEventListener('click', onTakePreviewClick);
 $('#btn-recorder-preview').addEventListener('click', onTakePreviewClick);
@@ -8705,27 +8897,47 @@ $('#rec-song-search').addEventListener('input', () => {
 /**
  * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
  * `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". `current`
- * (nur beim Bearbeiten gesetzt) zeigt die bisherige Zuordnung im Dialogtext.
+ * markiert die bisherige Zuordnung als bereits gewählte Pille.
+ *
+ * Dieselben farbigen Stimm-Pills wie bei „meine Stimme"/editRecordingDialog()
+ * statt der neutralen choiceDialog()-Knopfliste von vorher — eine Stimme
+ * auszuwählen soll überall gleich aussehen. Tippen entscheidet sofort (kein
+ * separater Speichern-Knopf nötig, anders als in editRecordingDialog(), wo
+ * daneben noch der Name steht).
  */
 async function pickRecordingVoice(current) {
-  const currentLabel = current === undefined ? null
-    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
-  const value = await choiceDialog({
-    title: 'Stimme zuordnen?',
-    text: currentLabel
-      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
-      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
-    options: [
-      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
-      { value: 'SOP', label: VOICE_LABEL.SOP },
-      { value: 'ALT', label: VOICE_LABEL.ALT },
-      { value: 'TEN', label: VOICE_LABEL.TEN },
-      { value: 'BASS', label: VOICE_LABEL.BASS },
-      { value: 'LEAD', label: VOICE_LABEL.LEAD },
-    ],
+  const options = [
+    { value: null, label: 'Keine bestimmte Stimme' },
+    { value: 'SOP', label: VOICE_LABEL.SOP },
+    { value: 'ALT', label: VOICE_LABEL.ALT },
+    { value: 'TEN', label: VOICE_LABEL.TEN },
+    { value: 'BASS', label: VOICE_LABEL.BASS },
+    { value: 'LEAD', label: VOICE_LABEL.LEAD },
+  ];
+  return new Promise((resolve) => {
+    const done = (v) => { closeModal(layer); layer.remove(); resolve(v); };
+    const grid = el('div', { class: 'chip-grid chip-grid--lg', role: 'group', 'aria-label': 'Stimme' },
+      ...options.map((opt) => {
+        const btn = el('button', {
+          class: opt.value ? 'chip chip--voice' : 'chip', type: 'button',
+          'aria-pressed': (current ?? null) === opt.value ? 'true' : 'false',
+          text: opt.label,
+          onclick: () => done(opt.value),
+        });
+        if (opt.value) btn.style.setProperty('--voice-c', VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER);
+        return btn;
+      }));
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'Stimme zuordnen?' }),
+      el('p', { text: 'Damit lässt sich der REC später leichter wiederfinden — optional.' }),
+      grid,
+      el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
+        el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(undefined) })));
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Stimme zuordnen' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(undefined); });
+    document.body.append(layer);
+    openModal(layer, { onEscape: () => done(undefined) });
   });
-  if (value === null) return undefined;
-  return value === 'NONE' ? null : value;
 }
 
 /**
@@ -8807,7 +9019,14 @@ async function loadSongRecordings() {
  * genau dort weiterlaufen lassen kann.
  */
 async function previewRecordingBlob(blob, tag) {
-  if (!Audio.ready) { banner('Die Wiedergabe ist noch nicht bereit.', { kind: 'error' }); return; }
+  // Ohne je geöffneten Song lief audioInit() noch nie (z. B. direkt nach dem
+  // Start in den allgemeinen Recorder) — hier statt nur zu melden selbst
+  // nachholen, sonst scheitert die allererste Vorschau in genau diesem Ablauf
+  // immer mit einer Fehlermeldung, obwohl nichts wirklich kaputt ist.
+  if (!Audio.ready) {
+    try { await audioInit(); }
+    catch (err) { bannerError('Die Wiedergabe konnte nicht vorbereitet werden.', 'AUDIO-INIT', err); return; }
+  }
 
   // Läuft schon eine Vorschau, gilt weiter der allererste Rücksprungpunkt —
   // sonst würde ein zweiter angehörter REC den echten Song überschreiben.
@@ -9515,6 +9734,12 @@ function renderRecordingList() {
   const host = $('#recording-list');
   host.textContent = '';
   updateLoopsTabDot();
+  // Der Erklärtext ("Nimm dich selbst auf …") richtet sich an alle, die noch
+  // nie hier waren — wer für diesen Song schon Aufnahmen hat, weiß das
+  // längst und braucht ihn nicht mehr. setRecUI() blendet ihn zusätzlich
+  // während einer laufenden Aufnahme aus; das bleibt davon unberührt, weil
+  // diese Funktion währenddessen nicht aufgerufen wird.
+  $('#rec-status').hidden = songRecordings.length > 0;
   if (!songRecordings.length) return;
 
   for (const recording of songRecordings) {
@@ -9934,11 +10159,11 @@ function iconPdf() {
 }
 
 /**
- * Reiter Loops/Lyrics/Notes/Sheets: immer genau ein Panel sichtbar, der
+ * Reiter Loops/REC/Lyrics/Notes/Sheets: immer genau ein Panel sichtbar, der
  * kleine Punkt am Reiter zeigt schon vorm Antippen, ob dort etwas hinterlegt
- * ist (siehe renderLoopList/renderPlayerExtras/renderNoteBlock).
+ * ist (siehe renderLoopList/updateLoopsTabDot/renderPlayerExtras/renderNoteBlock).
  */
-const PLAYER_TABS = ['loops', 'lyrics', 'notes', 'sheets'];
+const PLAYER_TABS = ['loops', 'rec', 'lyrics', 'notes'];
 
 function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
@@ -9950,8 +10175,6 @@ function setPlayerTab(tab) {
     $(`#tab-btn-${name}`).tabIndex = name === tab ? 0 : -1;
     $(`#tab-panel-${name}`).hidden = name !== tab;
   }
-  // Die PDF-Vorschau lädt erst jetzt — spart Arbeit, solange niemand hinsieht.
-  if (tab === 'sheets') loadScorePreviews();
   // Der Vollbild-Knopf sitzt außerhalb der Reiter-Panels (siehe
   // .lyrics-present-fab) und muss sich daher hier selbst um sein
   // Verstecken/Zeigen kümmern.
@@ -10011,14 +10234,13 @@ async function renderPlayerExtras() {
 
   // --- Noten --------------------------------------------------------------
   // Nur die Dateinamen sofort — das Einlesen der PDF-Bytes aus IndexedDB und
-  // die eingebettete Vorschau folgen erst, wenn der Sheets-Reiter tatsächlich
+  // die eingebettete Vorschau folgen erst, wenn #scores-modal tatsächlich
   // geöffnet wird (loadScorePreviews). Sonst würde jeder Songwechsel jede
   // hinterlegte Partitur laden, obwohl sie kaum je angesehen wird.
   const list = $('#scores-list');
   list.textContent = '';
   const scores = playerSong?.scores || [];
-  $('#scores-empty').hidden = scores.length > 0;
-  setTabHasContent('sheets', scores.length > 0);
+  $('#btn-scores-hint').hidden = scores.length === 0;
   scoresPreviewLoaded = false;
 
   for (const score of scores) {
@@ -10028,10 +10250,6 @@ async function renderPlayerExtras() {
     row.append(head);
     list.append(row);
   }
-
-  // Ist der Sheets-Reiter schon offen (z. B. weil er der Standard-Reiter
-  // ist), lädt die Vorschau sofort mit — sonst erst beim Antippen des Reiters.
-  if ($('#tab-btn-sheets')?.getAttribute('aria-selected') === 'true') loadScorePreviews();
 }
 
 /**
@@ -10116,9 +10334,10 @@ async function loadScorePreviews() {
       // eingebetteten Vorschau nutzbar — bleibt sie in einem Browser leer,
       // ist er der explizite Weg zur Datei.
       //
-      // Kein `loading="lazy"`: das Panel ist beim Einfügen bereits sichtbar
-      // (siehe setPlayerTab), ein zusätzliches Lazy-Loading brachte auf
-      // manchen Geräten nur eine leer bleibende Vorschau statt Zeitersparnis.
+      // Kein `loading="lazy"`: das Subfenster ist beim Einfügen bereits
+      // sichtbar (siehe openScoresModal), ein zusätzliches Lazy-Loading
+      // brachte auf manchen Geräten nur eine leer bleibende Vorschau statt
+      // Zeitersparnis.
       row.append(
         el('iframe', { class: 'score-preview', src: url, title: score.fileName }),
         el('p', { class: 'small muted', style: 'margin:6px 0 0',
@@ -10129,6 +10348,26 @@ async function loadScorePreviews() {
     }
   }
 }
+
+/**
+ * Subfenster für die Noten-Vorschau — ersetzt den früheren eigenen
+ * Sheets-Reiter (siehe btn-scores-hint im Notes-Reiter). Dieselbe
+ * openModal()/closeModal()-Mechanik wie #sheet (Fokusfalle, Escape, inert
+ * für den Rest der Seite).
+ */
+function openScoresModal() {
+  $('#scores-modal').hidden = false;
+  openModal($('#scores-modal'), { onEscape: () => closeScoresModal() });
+  loadScorePreviews();
+}
+
+function closeScoresModal() {
+  $('#scores-modal').hidden = true;
+  closeModal($('#scores-modal'));
+}
+
+$('#btn-scores-hint').addEventListener('click', openScoresModal);
+$('#scores-modal-close').addEventListener('click', closeScoresModal);
 
 /* ==========================================================================
    NOTIZEN — freier Text je Lied (ohne Formatierung)
