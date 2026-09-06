@@ -322,6 +322,15 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .btn--block   { display: flex; width: 100%; }
 .btn[disabled] { opacity: 0.5; pointer-events: none; }
 
+/* Knopf, der wie ein Textlink aussieht — für kleine Aktionen mitten in einer
+   Zeile (z.B. "Version … prüfen"), wo ein voller .btn zu schwer wäre. */
+.link-btn {
+  min-height: 0; padding: 2px 0; border: 0; background: transparent;
+  color: var(--accent-foreground); font-weight: 650; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn[disabled] { opacity: 0.5; pointer-events: none; }
+
 /* Auswahl der eigenen Stimme: Raster aus großen, gut treffbaren Knöpfen. */
 .chip-grid {
   display: grid;
@@ -339,9 +348,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   padding: 10px 6px;
 }
 
-/* Etwas größer als die Standard-Chips (z.B. „Meine Stimmen" in den
-   Einstellungen) — in einem Dialog, in dem die Auswahl der ganze Inhalt
-   ist (REC-Stimme zuordnen/bearbeiten), darf jede Pille mehr Fläche haben. */
+/* Größer als der Standard-.chip-grid: überall dort, wo eine Stimme aktiv
+   ausgewählt wird (REC bearbeiten, „Meine Stimmen" in den Einstellungen,
+   Lichtshow) statt nur nebenbei angezeigt — mehr Fläche pro Pille trifft
+   sich leichter. */
 .chip-grid--lg { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .chip-grid--lg .chip { min-height: 56px; font-size: 1rem; }
 
@@ -351,19 +361,22 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   border-color: var(--accent);
 }
 
-/* Stimmen-Chips: gedeckt in der Stimmfarbe, solange nicht gewählt — knallig,
-   sobald sie zu „meinen Stimmen" gehören. Die Farbe kommt als CSS-Variable
-   von außen (siehe renderVoicePicker), damit jede Stimme ihre eigene Farbe
-   aus VOICE_COLOR trägt statt der einheitlichen Akzentfarbe. */
+/* Dieselbe volltonige Pille wie bei den kleinen Stimm-Markierungen hinter
+   den Songs in der Übersicht (.voice-chip) — dort nur zu klein/überlappend
+   zum Antippen, deshalb hier als eigenständige, größer treffbare Pille
+   nachgebaut. Die Farbe kommt als CSS-Variable von außen (siehe
+   renderVoicePicker), damit jede Stimme ihre eigene Farbe aus VOICE_COLOR
+   trägt statt der einheitlichen Akzentfarbe. Gewählt zeigt sich über einen
+   Rahmen statt einer anderen Füllung — die Stimmfarbe selbst bleibt so in
+   beiden Zuständen wiedererkennbar. */
 .chip--voice {
-  background: color-mix(in srgb, var(--voice-c) 20%, var(--surface-2));
-  border-color: color-mix(in srgb, var(--voice-c) 45%, transparent);
-  color: var(--text);
-}
-.chip--voice[aria-pressed="true"] {
   background: var(--voice-c);
   border-color: var(--voice-c);
   color: #fff;
+}
+.chip--voice[aria-pressed="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Lichtshow — Ansicht unter Einstellungen → Lichtshow. --lightshow-voice-c
@@ -1753,13 +1766,20 @@ input[type="checkbox"] {
    wie bei .rec-btn/.rec-global-btn) — ohne die feste Form wirkte das
    Dreieck darin winzig und schief. */
 .rec-play {
-  width: 60px; height: 60px; aspect-ratio: 1 / 1; flex: 0 0 auto; border-radius: 50%;
+  width: 68px; height: 68px; aspect-ratio: 1 / 1; flex: 0 0 auto; border-radius: 50%;
   border: 3px solid var(--ok); background: var(--surface);
   appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
   transition: background .12s ease, border-color .12s ease;
 }
-.rec-play svg { width: 28px; height: 28px; color: var(--ok); }
+/* display:none/.rec-icon-visible statt nur der hidden-Eigenschaft: auf einem
+   iPhone SE blieb bei einer laufenden Vorschau zwar die Knopf-Füllung grün
+   (.is-playing, siehe unten), aber das Dreieck-Icon selbst wich nicht dem
+   Pause-Symbol — dieselben zwei verschachtelten <svg> mit dem Sichtbarkeits-
+   Umschalter über eine eigene Klasse statt über die hidden-Eigenschaft
+   umgangen, das lässt keinen Interpretationsspielraum für die Darstellung. */
+.rec-play svg { width: 32px; height: 32px; color: var(--ok); display: none; }
+.rec-play svg.rec-icon-visible { display: block; }
 .rec-play svg#icon-rec-play, .rec-play svg#icon-recorder-play { margin-left: 3px; }  /* Dreieck optisch mitten */
 /* Gefüllt statt nur das Symbol zu tauschen — der Pause-Zustand soll auch auf
    den ersten Blick eindeutig sein, nicht erst über die Dreieck-/Balken-Form. */
@@ -1767,12 +1787,12 @@ input[type="checkbox"] {
 .rec-play.is-playing svg { color: var(--surface); }
 
 .take-icon {
-  width: 48px; height: 48px; aspect-ratio: 1 / 1; border-radius: 50%; flex: 0 0 auto;
+  width: 54px; height: 54px; aspect-ratio: 1 / 1; border-radius: 50%; flex: 0 0 auto;
   appearance: none; -webkit-appearance: none;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--line); background: var(--surface); color: var(--text);
 }
-.take-icon svg { width: 24px; height: 24px; }
+.take-icon svg { width: 26px; height: 26px; }
 .take-icon--save { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .take-icon--discard { color: var(--danger); border-color: rgba(255,77,109,.45); }
 /* Gesperrt, aber antippbar: der Tipp erklärt, was noch fehlt (siehe allgemeiner Recorder). */
@@ -2824,8 +2844,8 @@ input[type="checkbox"] {
             <span aria-hidden="true">▾</span>
           </button>
           <button class="rec-play" id="btn-rec-preview" type="button" aria-label="REC anhören">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-play"><path d="M8 5.5v13l11-6.5z"/></svg>
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-pause" hidden><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-play" class="rec-icon-visible"><path d="M8 5.5v13l11-6.5z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
           </button>
           <div class="take-actions">
             <button class="take-icon take-icon--discard" id="btn-rec-discard" type="button" aria-label="REC verwerfen">
@@ -3122,7 +3142,7 @@ input[type="checkbox"] {
         <span class="lightshow-voice-dot" id="lightshow-voice-dot" aria-hidden="true"></span>
         <span id="lightshow-voice-text"></span>
       </div>
-      <div class="chip-grid" id="lightshow-voice-picker" role="group" aria-label="Stimme für die Lichtshow" data-i18n-aria="lightshow.voicePickerAria"></div>
+      <div class="chip-grid chip-grid--lg" id="lightshow-voice-picker" role="group" aria-label="Stimme für die Lichtshow" data-i18n-aria="lightshow.voicePickerAria"></div>
     </div>
 
     <div class="card">
@@ -3212,8 +3232,8 @@ input[type="checkbox"] {
           <span aria-hidden="true">▾</span>
         </button>
         <button class="rec-play" id="btn-recorder-preview" type="button" aria-label="REC anhören">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-recorder-play"><path d="M8 5.5v13l11-6.5z"/></svg>
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-recorder-pause" hidden><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-recorder-play" class="rec-icon-visible"><path d="M8 5.5v13l11-6.5z"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-recorder-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
         </button>
         <div class="take-actions">
           <button class="take-icon take-icon--discard" id="btn-recorder-discard" type="button" aria-label="REC verwerfen">
@@ -3495,7 +3515,7 @@ input[type="checkbox"] {
         Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
         Stimme der Player zuerst zeigt.
       </p>
-      <div class="chip-grid" id="voice-picker"></div>
+      <div class="chip-grid chip-grid--lg" id="voice-picker"></div>
     </div>
 
     <div class="card">
@@ -3786,15 +3806,18 @@ input[type="checkbox"] {
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.about.title">Über die App</span></h2>
       <div class="stack small muted">
-        <div class="row"><span data-i18n="settings.about.version">Version</span><span id="app-version">–</span></div>
+        <div class="row">
+          <span data-i18n="settings.about.version">Version</span>
+          <span><span id="app-version">–</span> · <button type="button" id="btn-check-update" class="link-btn" data-i18n="settings.about.checkUpdate">prüfen</button></span>
+        </div>
         <div class="row"><span data-i18n="settings.about.offline">Offline verfügbar</span><span id="offline-state">–</span></div>
-        <p style="margin:0" data-i18n="settings.about.privacy">
+        <p style="margin-left:12px" data-i18n="settings.about.privacy">
           Die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine
           Daten — alles bleibt auf diesem Gerät. Nutzt man die optionale Liedsuche
           (Lupe im Player), gehen Songtitel und ggf. Interpret an den dort gewählten
           externen Dienst (Tidal, Spotify, Deezer, YouTube oder Google).
         </p>
-        <p class="small" style="margin:0" data-i18n="settings.about.librariesTitle">Verwendete externe Bibliotheken:</p>
+        <p class="small" style="margin-top:18px" data-i18n="settings.about.librariesTitle">Verwendete externe Bibliotheken:</p>
         <ul class="steps small" style="list-style: disc; margin:0">
           <li data-i18n-html="settings.about.lame">
             MP3-Export mit <strong>lamejs</strong> (LGPL-3.0), basierend auf

@@ -6713,6 +6713,9 @@ function setupFolderImport() {
 
 let reloadingForUpdate = false;
 let updateBannerClose = null;
+// Gemerkt für den manuellen "prüfen"-Knopf unter „Über die App" — sonst
+// bräuchte der eine zweite Registrierung oder ein erneutes .ready.
+let swRegistration = null;
 
 function offerUpdate(worker) {
   // Ein zweites Update während derselben (langen) Sitzung machte den älteren
@@ -6749,6 +6752,7 @@ async function registerServiceWorker() {
   try {
     // Relativ registrieren, damit der Scope den Unterpfad der Seite trifft.
     const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    swRegistration = reg;
 
     // Wartet bereits eine neue Fassung? (Tab war zwischendurch offen)
     if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
@@ -6789,6 +6793,34 @@ async function registerServiceWorker() {
     bannerError('Der Offline-Betrieb konnte nicht eingerichtet werden.', 'OFFLINE-SETUP', err);
   }
 }
+
+/**
+ * Manueller Update-Check unter „Über die App" — der Browser prüft sonst nur
+ * beiläufig bei eigener Gelegenheit, das kann sich anfühlen, als käme eine
+ * gerade veröffentlichte Version nie an. update() fragt sw.js aktiv neu ab;
+ * wird dabei eine neue Fassung gefunden, übernimmt der ganz normale
+ * 'updatefound'-Listener oben (offerUpdate()) — hier wird nur der Fall
+ * abgedeckt, dass NICHTS gefunden wird, sonst bliebe der Knopf ohne jede
+ * Rückmeldung stumm.
+ */
+async function checkForUpdateManually() {
+  if (!swRegistration) {
+    banner(t('settings.about.checkUpdateUnsupported'), { kind: 'error' });
+    return;
+  }
+  banner(t('settings.about.checkingUpdate'), { kind: 'info', timeout: 2500 });
+  const hadBannerAlready = !!updateBannerClose;
+  try {
+    await swRegistration.update();
+  } catch (err) {
+    bannerError(t('settings.about.checkUpdateFailed'), 'SW-UPDATE-CHECK', err);
+    return;
+  }
+  setTimeout(() => {
+    if (!hadBannerAlready && !updateBannerClose) banner(t('settings.about.upToDate'), { kind: 'ok' });
+  }, 2000);
+}
+$('#btn-check-update').addEventListener('click', checkForUpdateManually);
 
 /* ==========================================================================
    PLAYER — Oberfläche
@@ -8758,8 +8790,11 @@ function updateRecPreviewButton() {
   const btn = rn('preview');
   if (!btn) return;
   const playing = !!(audioPreview?.tag?.pending && Audio.playing);
-  rn('playIcon').hidden = playing;
-  rn('pauseIcon').hidden = !playing;
+  // .rec-icon-visible statt der hidden-Eigenschaft (siehe CSS-Kommentar bei
+  // .rec-play svg) — auf einem iPhone SE blieb die Füllung zwar grün, aber
+  // das Dreieck wich der hidden-Eigenschaft nach nicht dem Pause-Symbol.
+  rn('playIcon').classList.toggle('rec-icon-visible', !playing);
+  rn('pauseIcon').classList.toggle('rec-icon-visible', playing);
   btn.classList.toggle('is-playing', playing);
   btn.setAttribute('aria-label', playing ? 'REC pausieren' : 'REC anhören');
 }
@@ -8897,47 +8932,27 @@ $('#rec-song-search').addEventListener('input', () => {
 /**
  * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
  * `undefined` = abgebrochen, `null` = bewusst „keine bestimmte". `current`
- * markiert die bisherige Zuordnung als bereits gewählte Pille.
- *
- * Dieselben farbigen Stimm-Pills wie bei „meine Stimme"/editRecordingDialog()
- * statt der neutralen choiceDialog()-Knopfliste von vorher — eine Stimme
- * auszuwählen soll überall gleich aussehen. Tippen entscheidet sofort (kein
- * separater Speichern-Knopf nötig, anders als in editRecordingDialog(), wo
- * daneben noch der Name steht).
+ * (nur beim Bearbeiten gesetzt) zeigt die bisherige Zuordnung im Dialogtext.
  */
 async function pickRecordingVoice(current) {
-  const options = [
-    { value: null, label: 'Keine bestimmte Stimme' },
-    { value: 'SOP', label: VOICE_LABEL.SOP },
-    { value: 'ALT', label: VOICE_LABEL.ALT },
-    { value: 'TEN', label: VOICE_LABEL.TEN },
-    { value: 'BASS', label: VOICE_LABEL.BASS },
-    { value: 'LEAD', label: VOICE_LABEL.LEAD },
-  ];
-  return new Promise((resolve) => {
-    const done = (v) => { closeModal(layer); layer.remove(); resolve(v); };
-    const grid = el('div', { class: 'chip-grid chip-grid--lg', role: 'group', 'aria-label': 'Stimme' },
-      ...options.map((opt) => {
-        const btn = el('button', {
-          class: opt.value ? 'chip chip--voice' : 'chip', type: 'button',
-          'aria-pressed': (current ?? null) === opt.value ? 'true' : 'false',
-          text: opt.label,
-          onclick: () => done(opt.value),
-        });
-        if (opt.value) btn.style.setProperty('--voice-c', VOICE_COLOR[opt.value] || VOICE_COLOR.OTHER);
-        return btn;
-      }));
-    const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'Stimme zuordnen?' }),
-      el('p', { text: 'Damit lässt sich der REC später leichter wiederfinden — optional.' }),
-      grid,
-      el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
-        el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(undefined) })));
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Stimme zuordnen' }, box);
-    layer.addEventListener('click', (e) => { if (e.target === layer) done(undefined); });
-    document.body.append(layer);
-    openModal(layer, { onEscape: () => done(undefined) });
+  const currentLabel = current === undefined ? null
+    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
+  const value = await choiceDialog({
+    title: 'Stimme zuordnen?',
+    text: currentLabel
+      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
+      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
+    options: [
+      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
+      { value: 'SOP', label: VOICE_LABEL.SOP },
+      { value: 'ALT', label: VOICE_LABEL.ALT },
+      { value: 'TEN', label: VOICE_LABEL.TEN },
+      { value: 'BASS', label: VOICE_LABEL.BASS },
+      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+    ],
   });
+  if (value === null) return undefined;
+  return value === 'NONE' ? null : value;
 }
 
 /**
