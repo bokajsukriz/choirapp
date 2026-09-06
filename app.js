@@ -227,8 +227,12 @@ function renderErrorLog() {
   const host = $('#error-log-list');
   if (!host) return;
   host.textContent = '';
+  // Ohne Einträge lohnt sich weder der Erklärtext noch „Kopieren"/„Leeren" —
+  // dann reichen Überschrift und ein einziger Satz.
+  $('#error-log-hint').hidden = !errorLog.length;
+  $('#error-log-actions').hidden = !errorLog.length;
   if (!errorLog.length) {
-    host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Keine Fehler aufgezeichnet.' }));
+    host.append(el('p', { class: 'small muted', style: 'margin:0', text: t('settings.about.errorLogEmpty') }));
     return;
   }
   for (const e of errorLog) {
@@ -379,19 +383,27 @@ function closeModal(layer) {
   if (entry.restore && document.body.contains(entry.restore)) entry.restore.focus?.();
 }
 
-const overlay   = $('#overlay');
-const dlgTitle  = $('#dlg-title');
-const dlgText   = $('#dlg-text');
-const dlgOk     = $('#dlg-ok');
-const dlgCancel = $('#dlg-cancel');
+const overlay      = $('#overlay');
+const dlgTitle     = $('#dlg-title');
+const dlgText      = $('#dlg-text');
+const dlgOk        = $('#dlg-ok');
+const dlgCancel    = $('#dlg-cancel');
+const dlgSelectField = $('#dlg-select-field');
+const dlgSelect    = $('#dlg-select');
 let dlgResolve  = null;
 
 /**
  * Sicherheitsabfrage als eigener Dialog (confirm() wäre auf iOS im
  * Standalone-Modus optisch ein Fremdkörper und blockiert den Hauptthread).
+ *
+ * `selectOptions` blendet zusätzlich eine Dropdown-Auswahl ein (z.B. den
+ * Suchdienst bei openSongSearch) — `selectText(value)` liefert dann den
+ * Text passend zur jeweils gewählten Option, sonst bleibt `text` fest.
+ * Der gewählte Wert steht nach dem Auflösen über dialogSelectValue() bereit.
  * @returns {Promise<boolean>}
  */
-function confirmDialog({ title, text, okLabel = 'OK', cancelLabel = 'Abbrechen', danger = false }) {
+function confirmDialog({ title, text, okLabel = 'OK', cancelLabel = 'Abbrechen', danger = false,
+                          selectOptions = null, selectValue = null, selectLabel = '', selectText = null }) {
   // Ein noch offener vorheriger Aufruf würde sonst für immer hängen, sobald
   // dieser Aufruf dlgResolve gleich überschreibt — lieber sauber mit
   // „Abbrechen" auflösen, als den ersten Aufrufer nie wieder aufwachen zu
@@ -399,16 +411,37 @@ function confirmDialog({ title, text, okLabel = 'OK', cancelLabel = 'Abbrechen',
   if (dlgResolve) closeDialog(false);
 
   dlgTitle.textContent  = title;
-  dlgText.textContent   = text;
+  const updateText = (value) => { dlgText.textContent = selectText ? selectText(value) : text; };
+  updateText(selectValue);
   dlgOk.textContent     = okLabel;
   dlgCancel.textContent = cancelLabel;
   dlgOk.className       = danger ? 'btn btn--danger' : 'btn btn--primary';
+
+  dlgSelect.textContent = '';
+  dlgSelect.onchange = null;
+  if (selectOptions) {
+    for (const opt of selectOptions) dlgSelect.append(el('option', { value: opt.value, text: opt.label }));
+    dlgSelect.value = selectValue;
+    if (selectLabel) dlgSelect.setAttribute('aria-label', selectLabel);
+    dlgSelect.onchange = () => updateText(dlgSelect.value);
+    dlgSelectField.hidden = false;
+  } else {
+    dlgSelectField.hidden = true;
+  }
+
   overlay.hidden = false;
   openModal(overlay, { initialFocus: dlgOk, onEscape: () => closeDialog(false) });
 
   return new Promise((resolve) => {
     dlgResolve = resolve;
   });
+}
+
+/** Wert der optionalen Dropdown-Auswahl aus dem letzten confirmDialog()-Aufruf,
+ *  oder null, wenn keine Auswahl eingeblendet war. Erst nach dem Auflösen des
+ *  Promise abfragen — bis dahin steht der Dialog noch offen. */
+function dialogSelectValue() {
+  return dlgSelectField.hidden ? null : dlgSelect.value;
 }
 
 function closeDialog(result) {
@@ -926,6 +959,7 @@ const DEFAULT_SETTINGS = {
   // Bleibt 'standard', bis HD auf echter Hardware sauber läuft; umschalten
   // lässt es sich in den Einstellungen.
   slowMode: 'standard',
+  hdIntroShown: false, // einmaliger Erklärdialog beim ersten Verlangsamen schon gezeigt?
   // Regler des Zeitdehners (Modus HD, Karte „Kompatibilität & Performance"
   // → „Erweitert"). Die Werte entsprechen den Voreinstellungen der
   // Bibliothek; `formantCompensation` bleibt bewusst aus, siehe die
@@ -2347,6 +2381,9 @@ function renderDebugLogState() {
   $('#debuglog-count').textContent = settings.debugLog
     ? `Zeichnet auf — ${plural(n, 'Ereignis', 'Ereignisse')} gespeichert.`
     : (n ? `Ausgeschaltet — ${plural(n, 'Ereignis', 'Ereignisse')} vom letzten Mal gespeichert.` : 'Ausgeschaltet.');
+  // Export/Leeren sind ohne aufgezeichnete Ereignisse witzlos — erst
+  // einblenden, wenn tatsächlich ein Log da ist.
+  $('#debuglog-actions').hidden = n === 0;
 }
 
 $('#btn-debuglog-toggle').addEventListener('click', async () => {
@@ -2393,9 +2430,7 @@ $('#btn-errorlog-clear').addEventListener('click', async () => {
 });
 
 function renderChannelMode() {
-  for (const btn of $$('#channel-mode .preset')) {
-    btn.setAttribute('aria-pressed', btn.dataset.mode === (settings.channelMode || 'off') ? 'true' : 'false');
-  }
+  $('#channel-mode').value = settings.channelMode || 'off';
 }
 
 function renderDefaultTabPicker() {
@@ -2407,21 +2442,15 @@ function renderDefaultTabPicker() {
 function renderLanguagePicker() {
   const host = $('#language-picker');
   host.textContent = '';
-  const current = settings.language || DEFAULT_SETTINGS.language;
-
   for (const lang of LANGUAGES) {
-    const btn = el('button', {
-      class: 'preset', type: 'button',
-      'aria-pressed': lang.id === current ? 'true' : 'false',
-      text: lang.label,
-      onclick: async () => {
-        await saveSettings({ language: lang.id });
-        renderLanguagePicker();
-      },
-    });
-    host.append(btn);
+    host.append(el('option', { value: lang.id, text: lang.label }));
   }
+  host.value = settings.language || DEFAULT_SETTINGS.language;
 }
+
+$('#language-picker').addEventListener('change', async (e) => {
+  await saveSettings({ language: e.target.value });
+});
 
 function renderAccentPicker() {
   const host = $('#accent-picker');
@@ -2667,15 +2696,29 @@ async function openSongSearch(serviceId) {
   if (!playerSong) return;
   const query = (playerSong.artist ? `${playerSong.artist} ${playerSong.title}` : playerSong.title || '').trim();
   if (!query) return;
-  const service = songSearchServiceById(serviceId);
+  let service = songSearchServiceById(serviceId);
 
   if (!settings.songSearchNoticeShown) {
+    // Einmaliger Hinweis vor der allerersten externen Suche — gleich mit
+    // Dropdown, damit der Standarddienst nicht erst über das versteckte
+    // lange Halten entdeckt werden muss (siehe Pointer-Handler bei
+    // btn-song-search).
     const ok = await confirmDialog({
       title: t('songsearch.dialogTitle'),
       text: `${t('songsearch.dialogPrefix')}${service.label}${t('songsearch.dialogSuffix')}`,
+      selectText: (id) => `${t('songsearch.dialogPrefix')}${songSearchServiceById(id).label}${t('songsearch.dialogSuffix')}`,
       okLabel: t('songsearch.dialogOk'),
       cancelLabel: t('songsearch.dialogCancel'),
+      selectLabel: t('songsearch.dialogServiceLabel'),
+      selectOptions: SONG_SEARCH_SERVICES.map((s) => ({ value: s.id, label: s.label })),
+      selectValue: service.id,
     });
+    const chosen = dialogSelectValue();
+    if (chosen && chosen !== service.id) {
+      service = songSearchServiceById(chosen);
+      await saveSettings({ songSearchService: chosen });
+      renderSongSearchServicePicker();
+    }
     await saveSettings({ songSearchNoticeShown: true });
     if (!ok) return;
   }
@@ -2691,21 +2734,15 @@ async function openSongSearch(serviceId) {
 function renderSongSearchServicePicker() {
   const host = $('#song-search-service-picker');
   host.textContent = '';
-  const current = settings.songSearchService || 'youtube';
-
   for (const service of SONG_SEARCH_SERVICES) {
-    const btn = el('button', {
-      class: 'chip', type: 'button',
-      'aria-pressed': service.id === current ? 'true' : 'false',
-      text: service.label,
-      onclick: async () => {
-        await saveSettings({ songSearchService: service.id });
-        renderSongSearchServicePicker();
-      },
-    });
-    host.append(btn);
+    host.append(el('option', { value: service.id, text: service.label }));
   }
+  host.value = settings.songSearchService || 'youtube';
 }
+
+$('#song-search-service-picker').addEventListener('change', async (e) => {
+  await saveSettings({ songSearchService: e.target.value });
+});
 
 function renderScreenMode() {
   $('#btn-screen-toggle').setAttribute('aria-checked', settings.keepScreenOn ? 'true' : 'false');
@@ -2756,6 +2793,29 @@ function renderSlowMode() {
     advBtn.setAttribute('aria-expanded', 'false');
   }
   updateHdLoadVisibility();
+}
+
+/**
+ * Erklärdialog beim allerersten Verlangsamen (0,85×/0,7×/0,6×) — läuft neben
+ * der bereits laufenden Standard-Wiedergabe her, blockiert sie also nicht.
+ * Aktiviert der Nutzer HD, wird es sofort auf die laufende Wiedergabe
+ * angewandt (hdApplyTransition), sonst bleibt es bei Standard. Jederzeit
+ * unter Einstellungen → Audioeinstellungen wieder umschaltbar. Läuft genau
+ * einmal pro Installation (settings.hdIntroShown).
+ */
+async function maybeOfferHdIntro() {
+  if (settings.hdIntroShown) return;
+  await saveSettings({ hdIntroShown: true });
+  const activateHd = await confirmDialog({
+    title: t('settings.perf.introTitle'),
+    text: t('settings.perf.introText'),
+    okLabel: t('settings.perf.introActivate'),
+    cancelLabel: t('settings.perf.introStay'),
+  });
+  if (!activateHd) return;
+  await saveSettings({ slowMode: 'hd' });
+  renderSlowMode();
+  await hdApplyTransition('hd-intro');
 }
 
 /** Schreibt die gespeicherten Reglerstände in die Bedienelemente. */
@@ -3187,12 +3247,9 @@ $('#btn-notify-request').addEventListener('click', async () => {
   renderNotificationState();
 });
 
-$$('#channel-mode .preset').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    await saveSettings({ channelMode: btn.dataset.mode });
-    audioApplyChannelMode(settings.channelMode);
-    renderChannelMode();
-  });
+$('#channel-mode').addEventListener('change', async (e) => {
+  await saveSettings({ channelMode: e.target.value });
+  audioApplyChannelMode(settings.channelMode);
 });
 
 $$('#default-tab-picker .player-tab').forEach((btn) => {
@@ -6003,8 +6060,6 @@ function closeImportView() {
   $('#import-view').hidden = true;
 }
 
-$('#btn-open-import').addEventListener('click', () => navigate('#import'));
-
 /**
  * Allgemeine Aufnahme-Ansicht (#recorder-view), Vorbild #import-view — liegt
  * ebenso über allen vier Hauptreitern. Anders als dort bleibt der Player
@@ -7427,8 +7482,13 @@ $('#btn-song-search').addEventListener('click', () => {
 });
 
 $('#rate-select').addEventListener('change', (e) => {
-  audioSetRate(Number(e.target.value));
+  const rate = Number(e.target.value);
+  // Erst verlangsamen, dann (falls nötig) den HD-Dialog nebenher einblenden —
+  // der Nutzer hört die neue Geschwindigkeit sofort, ohne auf eine
+  // Bestätigung warten zu müssen.
+  audioSetRate(rate);
   updateMediaSession();
+  if (rate !== 1) maybeOfferHdIntro();
 });
 
 $('#btn-repeat').addEventListener('click', async () => {
@@ -12011,8 +12071,6 @@ function backupPartialTallyText(t) {
   const done = parts.length ? ` Bis zum Abbruch übernommen: ${parts.join(', ')}.` : ' Bis zum Abbruch wurde nichts übernommen.';
   return `Die Sicherung konnte nicht vollständig eingespielt werden.${done}`;
 }
-
-$('#btn-rec-import').addEventListener('click', () => $('#rec-import-input').click());
 
 $('#rec-import-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
