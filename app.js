@@ -6689,8 +6689,15 @@ $('#btn-lightshow-sync-reset').addEventListener('click', async () => {
 const LIGHTSHOW_CAMCAL_MIN_ABS_DELTA = 15;   // Mindest-Helligkeitssprung (0–255), sonst zu rauschanfällig
 const LIGHTSHOW_CAMCAL_REL_DELTA = 0.12;     // …oder relativ zum Hintergrund, je nachdem was größer ist
 const LIGHTSHOW_CAMCAL_COOLDOWN_MS = 400;    // ein Blitz dauert ~80ms; danach nicht sofort erneut auslösen
-const LIGHTSHOW_CAMCAL_NEEDED_PEAKS = 5;
+const LIGHTSHOW_CAMCAL_NEEDED_PEAKS = 6;
 const LIGHTSHOW_CAMCAL_SAMPLE_SIZE = 16;     // Downscale-Canvas — Helligkeit reicht, keine Details nötig
+// Nach dem Öffnen der Kamera pendeln sich Belichtung/Weißabgleich noch ein
+// paar hundert ms lang ein; dieser Helligkeits-„Ramp" sieht selbst wie ein
+// Blitz aus, landet aber zu einem zufälligen Zeitpunkt und hat schon einen
+// scheinbaren Versatz von ganzen Sekunden verursacht. In dieser Zeit nur den
+// Hintergrund nachziehen, keine Blitze werten.
+const LIGHTSHOW_CAMCAL_WARMUP_MS = 700;
+const LIGHTSHOW_CAMCAL_INTERVAL_TOLERANCE_MS = 150;
 
 let lightshowCamCalOpen = false;
 let lightshowCamCalStream = null;
@@ -6702,6 +6709,7 @@ let lightshowCamCalAnchorPerf = 0;
 let lightshowCamCalPeaks = [];
 let lightshowCamCalBaseline = null;
 let lightshowCamCalCooldownUntil = 0;
+let lightshowCamCalWarmupUntil = 0;
 
 function lightshowCamCalSampleBrightness(video) {
   if (!lightshowCamCalCanvas) {
@@ -6744,19 +6752,41 @@ function lightshowCamCalRenderStatus(textKey) {
     : t('lightshow.camcal.statusCounting').replace('{n}', String(n)).replace('{needed}', String(LIGHTSHOW_CAMCAL_NEEDED_PEAKS));
 }
 
+/** Nullt nur die laufende Messung (Peaks/Cooldown) — Hintergrund und
+ *  Aufwärmphase bleiben stehen, die Kamera ist ja schon eingependelt. */
 function lightshowCamCalResetMeasurement() {
   lightshowCamCalPeaks = [];
-  lightshowCamCalBaseline = null;
   lightshowCamCalCooldownUntil = 0;
   lightshowCamCalRenderStatus();
 }
 
-function lightshowCamCalFinish() {
-  const peaks = lightshowCamCalPeaks;
+/** Längste zusammenhängende Folge von Peaks mit plausiblem ~1-Sekunden-Abstand
+ *  zueinander — verwirft einzelne Ausreißer (z.B. die Belichtungsanpassung
+ *  kurz nach dem Kamerastart), statt an ihnen die ganze Messung zu verwerfen. */
+function lightshowCamCalConsistentRun(peaks) {
+  if (peaks.length < 3) return null;
   const intervals = [];
   for (let i = 1; i < peaks.length; i++) intervals.push(peaks[i] - peaks[i - 1]);
-  const consistent = intervals.filter((d) => d > 700 && d < 1300).length;
-  if (consistent < intervals.length - 1) {
+  const sorted = [...intervals].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median < 700 || median > 1300) return null; // kein Abstand passt zum Sekundentakt
+
+  let bestStart = 0, bestLen = 1, curStart = 0, curLen = 1;
+  intervals.forEach((d, i) => {
+    if (Math.abs(d - median) <= LIGHTSHOW_CAMCAL_INTERVAL_TOLERANCE_MS) {
+      curLen++;
+    } else {
+      curStart = i + 1;
+      curLen = 1;
+    }
+    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+  });
+  return bestLen >= 4 ? peaks.slice(bestStart, bestStart + bestLen) : null;
+}
+
+function lightshowCamCalFinish() {
+  const run = lightshowCamCalConsistentRun(lightshowCamCalPeaks);
+  if (!run) {
     // Zu viele Ausreißer in den Abständen — vermutlich Fehltreffer statt
     // echtem Sekundenblitz (Umgebungslicht, Kamerabewegung). Neu messen
     // statt einen falschen Wert zu übernehmen.
@@ -6765,7 +6795,7 @@ function lightshowCamCalFinish() {
     return;
   }
 
-  const phases = peaks.map((p) => {
+  const phases = run.map((p) => {
     const wall = lightshowCamCalWallAt(p);
     return ((wall % 1000) + 1000) % 1000;
   });
@@ -6788,7 +6818,15 @@ function lightshowCamCalStep() {
 
   const now = performance.now();
   const brightness = lightshowCamCalSampleBrightness(video);
-  if (lightshowCamCalBaseline == null) { lightshowCamCalBaseline = brightness; return; }
+  if (lightshowCamCalBaseline == null) {
+    lightshowCamCalBaseline = brightness;
+    lightshowCamCalWarmupUntil = now + LIGHTSHOW_CAMCAL_WARMUP_MS;
+    return;
+  }
+  if (now < lightshowCamCalWarmupUntil) {
+    lightshowCamCalBaseline += (brightness - lightshowCamCalBaseline) * 0.3;
+    return;
+  }
 
   const threshold = Math.max(LIGHTSHOW_CAMCAL_MIN_ABS_DELTA, lightshowCamCalBaseline * LIGHTSHOW_CAMCAL_REL_DELTA);
   const isPeak = (brightness - lightshowCamCalBaseline) > threshold && now >= lightshowCamCalCooldownUntil;
@@ -6820,6 +6858,7 @@ function lightshowCamCalStopCamera() {
 async function openLightshowCamCal() {
   lightshowCamCalOpen = true;
   lightshowCamCalResetMeasurement();
+  lightshowCamCalBaseline = null;   // erzwingt eine frische Aufwärmphase (siehe lightshowCamCalStep)
   const el = $('#lightshow-camcal');
   el.hidden = false;
   openModal(el, { initialFocus: $('#lightshow-camcal-close'), onEscape: () => closeLightshowCamCal() });
