@@ -943,10 +943,10 @@ const DEFAULT_SETTINGS = {
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
   songSearchNoticeShown: false, // einmaliger Hinweis vor der allerersten externen Liedsuche schon gezeigt? (AP-04)
-  lightshowOffsetMs: 0,       // Handversatz der Geräteuhr in ms (siehe Sync-Prüfbild)
+  lightshowOffsetMs: 0,       // vom PTB-Zeitserver ermittelte Korrektur der Geräteuhr in ms
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
-  lightshowSeed: 0,           // geräteeigener Keim für „Sternenhimmel", 0 = noch keiner
+  lightshowSeed: 0,           // Altbestand; aktuelle Shows steuern jede Stimme geschlossen als Block
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
   recBackingOffsetMs: 0,    // Handversatz des Originaltracks in ms (+ = später), siehe backingLagSeconds
@@ -6348,8 +6348,7 @@ $('#import-back').addEventListener('click', () => history.back());
 
 /* ==========================================================================
    LICHTSHOW — Vollbild-Unteransicht (#lightshow-view), Vorbild #import-view.
-   Die eigentliche Bühne (#lightshow-stage) und das Sync-Prüfbild
-   (#lightshow-sync) sind eigene Overlays, siehe weiter unten.
+   Die eigentliche Bühne (#lightshow-stage) ist ein eigenes Overlay.
    ========================================================================== */
 
 let lightshowOpen = false;
@@ -6357,21 +6356,9 @@ let lightshowOpen = false;
 // sonst stünde jemand auf der Bühne im Probelauf.
 let lightshowRehearsal = false;
 
-/** Stimme, in deren Takt/Farbe die Lichtshow läuft — Sopran-Timing/Pink, wenn keine gewählt ist. */
+/** Räumlicher Stimmenblock der Lichtshow — Sopran, wenn keine Stimme gewählt ist. */
 function lightshowActiveVoice() {
   return settings.lightshowVoice || settings.myVoices?.[0] || null;
-}
-
-/**
- * Zieht einmalig einen geräteeigenen Zufallskeim für „Sternenhimmel" — darf
- * sich danach nie wieder ändern, sonst funkelt dasselbe Handy bei jedem
- * Start anders.
- */
-async function ensureLightshowSeed() {
-  if (settings.lightshowSeed) return;
-  const buf = new Uint32Array(1);
-  crypto.getRandomValues(buf);
-  await saveSettings({ lightshowSeed: buf[0] || 1 }); // 0 bliebe „noch keiner"
 }
 
 function renderLightshowVoiceLine() {
@@ -6414,34 +6401,35 @@ function renderLightshowMotionHint() {
 // echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass.
 const LIGHTSHOW_PREVIEW_COUNTS = [20, 17, 6, 10];
 const LIGHTSHOW_PREVIEW_POINTS = LIGHTSHOW_PREVIEW_COUNTS.flatMap((count, voiceIdx) => {
-  const columns = Math.ceil(count / 4);
-  const blockLeft = [0.04, 0.31, 0.58, 0.72][voiceIdx];
-  const blockWidth = [0.22, 0.22, 0.10, 0.23][voiceIdx];
+  const blockLeft = [0.03, 0.37, 0.65, 0.75][voiceIdx];
+  const blockWidth = [0.34, 0.28, 0.10, 0.22][voiceIdx];
   return Array.from({ length: count }, (_, pointIdx) => {
-    const column = pointIdx % columns;
-    const row = Math.floor(pointIdx / columns);
+    const jitterX = ((pointIdx * 37 + voiceIdx * 11) % 17) / 17 - 0.5;
+    const jitterY = ((pointIdx * 53 + voiceIdx * 19) % 101) / 100;
     return {
       voice: LIGHTSHOW_VOICES[voiceIdx],
-      x: blockLeft + ((column + 0.5 + (row % 2) * 0.12) / columns) * blockWidth,
-      y: 0.22 + row * 0.18,
-      seed: voiceIdx * 1000 + pointIdx * 97 + 1,
+      x: blockLeft + ((pointIdx + 0.5 + jitterX * 0.7) / count) * blockWidth,
+      y: 0.28 + jitterY * 0.44,
     };
   });
 });
 
 let lightshowPreviewRaf = null;
 let lightshowPreviewLastPaint = 0;
+let lightshowPreviewShowId = null;
 
 function paintLightshowPreviews(now = performance.now()) {
   if (!lightshowOpen) { lightshowPreviewRaf = null; return; }
-  lightshowPreviewRaf = requestAnimationFrame(paintLightshowPreviews);
-  if (now - lightshowPreviewLastPaint < 80) return;
-  lightshowPreviewLastPaint = now;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  lightshowPreviewRaf = reducedMotion ? null : requestAnimationFrame(paintLightshowPreviews);
+  if (now - lightshowPreviewLastPaint < 32) return;
+  lightshowPreviewLastPaint = now;
   const wall = Date.now() + (settings.lightshowOffsetMs || 0);
   document.querySelectorAll('.lightshow-tile-preview').forEach((canvas) => {
     const show = LIGHTSHOWS.find((candidate) => candidate.id === canvas.dataset.showId);
     if (!show) return;
+    const active = show.id === lightshowPreviewShowId;
+    if (!active && canvas.dataset.staticPainted === 'true') return;
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.round(rect.width * dpr));
@@ -6458,16 +6446,36 @@ function paintLightshowPreviews(now = performance.now()) {
     for (const point of LIGHTSHOW_PREVIEW_POINTS) {
       ctx.beginPath();
       ctx.arc(point.x * width, point.y * height, radius, 0, Math.PI * 2);
-      ctx.fillStyle = lightshowFrame(show.id, tMs, point.voice, point.seed);
+      ctx.fillStyle = active ? lightshowFrame(show.id, tMs, point.voice) : '#25252b';
       ctx.fill();
     }
+    canvas.dataset.staticPainted = active ? 'false' : 'true';
   });
+}
+
+function selectLightshowPreview(showId) {
+  lightshowPreviewShowId = showId;
+  document.querySelectorAll('.lightshow-tile-preview').forEach((canvas) => { canvas.dataset.staticPainted = 'false'; });
+  document.querySelectorAll('.lightshow-preview-play').forEach((button) => {
+    const active = button.dataset.showId === showId;
+    button.hidden = active;
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  if (!lightshowPreviewRaf && lightshowOpen) {
+    lightshowPreviewLastPaint = -Infinity;
+    lightshowPreviewRaf = requestAnimationFrame(paintLightshowPreviews);
+  }
 }
 
 function startLightshowPreviews() {
   if (lightshowPreviewRaf) cancelAnimationFrame(lightshowPreviewRaf);
+  lightshowPreviewRaf = null;
   lightshowPreviewLastPaint = -Infinity;
-  lightshowPreviewRaf = requestAnimationFrame(paintLightshowPreviews);
+  if (!LIGHTSHOWS.some((show) => show.id === lightshowPreviewShowId)) {
+    lightshowPreviewShowId = settings.lightshowShow || LIGHTSHOWS[0].id;
+  }
+  selectLightshowPreview(lightshowPreviewShowId);
+  if (!lightshowPreviewRaf) lightshowPreviewRaf = requestAnimationFrame(paintLightshowPreviews);
 }
 
 function stopLightshowPreviews() {
@@ -6478,18 +6486,25 @@ function stopLightshowPreviews() {
 function renderLightshowList() {
   const host = $('#lightshow-list');
   host.textContent = '';
-  // Bevorzugt weniger Bewegung: „Sternenhimmel" bekommt einen Hinweis, bleibt
+  // Bevorzugt weniger Bewegung: „Sternenmeer" bekommt einen Hinweis, bleibt
   // aber genau wie die anderen Shows startbar — eine bewusste Bühnenhandlung
   // ist keine unerwartete Animation (siehe LICHTSHOW-PLAN.md Abschnitt 9.3).
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   for (const show of LIGHTSHOWS) {
     const recommended = reducedMotion && show.id === 'sterne';
     host.append(el('div', { class: recommended ? 'lightshow-tile is-recommended' : 'lightshow-tile' },
-      el('canvas', {
-        class: 'lightshow-tile-preview',
-        'data-show-id': show.id,
-        'aria-hidden': 'true',
-      }),
+      el('div', { class: 'lightshow-preview-wrap' },
+        el('canvas', {
+          class: 'lightshow-tile-preview',
+          'data-show-id': show.id,
+          'aria-hidden': 'true',
+        }),
+        el('button', {
+          class: 'lightshow-preview-play', type: 'button',
+          'data-show-id': show.id, 'aria-pressed': 'false',
+          'aria-label': `${t('lightshow.previewBtn')}: ${t(`lightshow.show.${show.id}.name`)}`,
+          onclick: () => selectLightshowPreview(show.id),
+        }, el('span', { 'aria-hidden': 'true', text: '▶' }))),
       el('div', { style: 'display:flex; align-items:center; gap:6px' },
         el('strong', { text: t(`lightshow.show.${show.id}.name`) }),
         recommended ? el('span', { class: 'lightshow-tile-badge', text: t('lightshow.recommendedBadge') }) : null),
@@ -6520,7 +6535,6 @@ async function openLightshowView() {
   lightshowRehearsal = false;
   $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', 'false');
   $('#lightshow-view').hidden = false;
-  await ensureLightshowSeed();
   renderLightshowView();
 }
 
@@ -6539,7 +6553,6 @@ $('#lightshow-rehearsal-toggle').addEventListener('click', () => {
   $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', lightshowRehearsal ? 'true' : 'false');
 });
 
-$('#btn-lightshow-sync').addEventListener('click', () => openLightshowSync());
 
 /* ==========================================================================
    LICHTSHOW-BÜHNE — Vollbild-Overlay (#lightshow-stage). Zeigt ausschließlich
@@ -6562,7 +6575,6 @@ let lightshowStartWall = 0;    // Rasterpunkt, auf den sich die Phasenberechnung
 let lightshowStageCycleMs = 0;
 let lightshowStageShowId = null;
 let lightshowStageVoice = null;
-let lightshowStageSeed = 1;
 let lightshowLastBg = null;
 
 /**
@@ -6591,7 +6603,7 @@ function lightshowStageStep() {
   // Punkt der ganzen Konstruktion: zwei Geräte mit derselben Uhr zeigen
   // zwangsläufig dasselbe, ganz ohne Nachricht zwischen ihnen.
   const tMs = (wall - lightshowStartWall) % lightshowStageCycleMs;
-  const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice, lightshowStageSeed);
+  const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice);
   if (bg !== lightshowLastBg) { stage.style.backgroundColor = bg; lightshowLastBg = bg; }
 }
 
@@ -6627,7 +6639,6 @@ async function openLightshowStage(showId, { rehearsal = false } = {}) {
   lightshowStageShowId = showId;
   lightshowStageCycleMs = show.cycleMs;
   lightshowStageVoice = lightshowActiveVoice();
-  lightshowStageSeed = settings.lightshowSeed || 1;
   lightshowLastBg = null;
 
   const stage = $('#lightshow-stage');
@@ -6663,91 +6674,11 @@ async function closeLightshowStage() {
 $('#lightshow-close').addEventListener('click', () => closeLightshowStage());
 
 /* ==========================================================================
-   SYNC-PRÜFBILD — ohne Netz feststellen, ob eine Handyuhr grob danebenliegt
-   (#lightshow-sync), und das über den Handversatz ausgleichen.
-   ========================================================================== */
-
-let lightshowSyncOpen = false;
-let lightshowSyncRaf = null;
-
-function lightshowRenderSyncOffset() {
-  $('#lightshow-sync-value').textContent = `${settings.lightshowOffsetMs || 0} ms`;
-}
-
-async function lightshowAdjustOffset(deltaMs) {
-  const next = Math.max(-5000, Math.min(5000, (settings.lightshowOffsetMs || 0) + deltaMs));
-  await saveSettings({ lightshowOffsetMs: next });
-  lightshowRenderSyncOffset();
-}
-
-function lightshowSyncStep() {
-  lightshowSyncRaf = requestAnimationFrame(lightshowSyncStep);
-  // Direkt aus Date.now() statt über einen Anker+performance.now() interpoliert
-  // (wie z.B. lightshowWallNow() für die eigentliche Bühne) — das Prüfbild ist
-  // ein kurzer Diagnose-Blick, kein stundenlanger Auftritt, und muss jede
-  // Änderung am Handversatz (Tasten, Zurücksetzen, Kamera-Abgleich) sofort
-  // zeigen, nicht erst nach Schließen/Neuöffnen. Vorher stand hier fälschlich
-  // reines Date.now() ohne den Handversatz — das Prüfbild zeigte immer die
-  // ungeglättete Rohuhr, komplett unabhängig vom eingestellten Ausgleich.
-  const wall = Date.now() + (settings.lightshowOffsetMs || 0);
-  const msIntoSecond = ((wall % 1000) + 1000) % 1000;
-
-  const track = $('#lightshow-sync-track');
-  const bar = $('#lightshow-sync-bar');
-  const travel = Math.max(0, track.clientWidth - bar.clientWidth);
-  bar.style.transform = `translateX(${(msIntoSecond / 1000) * travel}px)`;
-
-  // Kurzer Vollflächen-Blitz von 80 ms zum Sekundenwechsel — klingt schneller
-  // ab als die Sekunde selbst, damit er nicht in die nächste hineinragt.
-  const flash = $('#lightshow-sync-flash');
-  flash.style.opacity = msIntoSecond < 80 ? String(1 - msIntoSecond / 80) : '0';
-}
-
-function openLightshowSync() {
-  lightshowSyncOpen = true;
-  lightshowRenderSyncOffset();
-  const el = $('#lightshow-sync');
-  el.hidden = false;
-  openModal(el, { initialFocus: $('#lightshow-sync-close'), onEscape: () => closeLightshowSync() });
-  if (lightshowSyncRaf) cancelAnimationFrame(lightshowSyncRaf);
-  lightshowSyncStep();
-}
-
-function closeLightshowSync() {
-  lightshowSyncOpen = false;
-  if (lightshowSyncRaf) { cancelAnimationFrame(lightshowSyncRaf); lightshowSyncRaf = null; }
-  const el = $('#lightshow-sync');
-  closeModal(el);
-  el.hidden = true;
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (!lightshowSyncOpen) return;
-  if (document.visibilityState === 'visible') {
-    if (!lightshowSyncRaf) lightshowSyncStep();
-  } else if (lightshowSyncRaf) {
-    cancelAnimationFrame(lightshowSyncRaf);
-    lightshowSyncRaf = null;
-  }
-});
-
-$('#lightshow-sync-close').addEventListener('click', () => closeLightshowSync());
-$$('#lightshow-sync .preset').forEach((btn) => {
-  btn.addEventListener('click', () => lightshowAdjustOffset(Number(btn.dataset.delta)));
-});
-$('#btn-lightshow-sync-reset').addEventListener('click', async () => {
-  await saveSettings({ lightshowOffsetMs: 0 });
-  lightshowRenderSyncOffset();
-});
-
-/* ==========================================================================
-   INTERNETZEIT-ABGLEICH — dritte automatische Variante, ganz ohne zweites
-   Handy: Statt sich an einem anderen Gerät zu orientieren, fragt DIESES
-   Gerät einmalig die Atomuhr der PTB (Physikalisch-Technische Bundesanstalt,
-   Deutschlands nationales Metrologie-Institut) nach der aktuellen Uhrzeit
-   und setzt den Handversatz auf die Differenz zur eigenen Uhr. Vergleichen
-   sich alle Geräte gegen dieselbe externe Uhr, landen sie automatisch auch
-   untereinander im Gleichklang — keine Kamera, kein zweites Handy nötig.
+   INTERNETZEIT-ABGLEICH — die einzige angebotene Synchronisierung. Dieses
+   Gerät fragt einmalig die Atomuhr der PTB (Physikalisch-Technische
+   Bundesanstalt, Deutschlands nationales Metrologie-Institut) ab und speichert
+   die Differenz zur Geräteuhr. Vergleichen sich alle Geräte mit derselben
+   externen Uhr, landen sie auch untereinander im Gleichklang.
 
    Die PTB verteilt ihre Zeit extra für genau diesen Zweck über WebSocket
    statt NTP: normaler TLS-Verkehr auf Port 443, der durch Firmen-Proxys und
@@ -6864,8 +6795,6 @@ async function lightshowNtpSync() {
     const next = Math.max(-5000, Math.min(5000, Math.round(trueAtT1 - localAtT1)));
 
     await saveSettings({ lightshowOffsetMs: next });
-    lightshowRenderSyncOffset();
-
     // Grobe, bewusst konservative Anzeige-Schätzung fürs UI — keine strenge
     // metrologische Unsicherheitsrechnung: die halbe Laufzeit deckt die
     // Asymmetrie-Annahme oben ab, dazu PTBs eigene Fehlerangabe, falls
@@ -6877,278 +6806,13 @@ async function lightshowNtpSync() {
       .replace('{uncertainty}', `${uncertainty} ms`);
   } catch {
     // Netzwerkfehler, Timeout oder unlesbare Antwort laufen alle hier
-    // zusammen — der Nutzer kann ohnehin nur "nochmal versuchen" oder auf
-    // Kamera/Handeinstellung ausweichen, eine genauere Fehlerunterscheidung
-    // würde daran nichts ändern.
+    // zusammen — der Nutzer kann ohnehin nur den Serverabgleich später erneut
+    // versuchen; eine genauere Fehlerunterscheidung würde daran nichts ändern.
     statusEl.textContent = t('lightshow.ntpcal.statusError');
   }
 }
 
-$('#btn-lightshow-ntpcal').addEventListener('click', () => lightshowNtpSync());
-
-/* ==========================================================================
-   KAMERA-ABGLEICH — automatische Variante des Sync-Prüfbilds oben. Statt
-   den Handversatz nach Auge einzustellen, beobachtet die Kamera dieses
-   Geräts das Sync-Prüfbild eines zweiten Handys: Der Sekundenblitz dort
-   trifft auf DIESES Gerät zu einem bestimmten Zeitpunkt der eigenen Uhr
-   (plus aktuellem Handversatz) ein — dessen Phase innerhalb der Sekunde
-   ist genau der Fehler, den der Handversatz ausgleichen soll.
-
-   Nur ~30 Kamera-Bilder pro Sekunde verfügbar, daher liegt die Genauigkeit
-   bei grob einer Framedauer (~15–30 ms) — für den Feinabgleich, für den
-   der Handversatz gedacht ist, reicht das (siehe lightshow.sync.autoNote:
-   ab ~0,5 s Abweichung ohnehin lieber „Datum & Uhrzeit automatisch").
-   ========================================================================== */
-
-const LIGHTSHOW_CAMCAL_MIN_ABS_DELTA = 15;   // Mindest-Helligkeitssprung (0–255), sonst zu rauschanfällig
-const LIGHTSHOW_CAMCAL_REL_DELTA = 0.12;     // …oder relativ zum Hintergrund, je nachdem was größer ist
-const LIGHTSHOW_CAMCAL_COOLDOWN_MS = 400;    // ein Blitz dauert ~80ms; danach nicht sofort erneut auslösen
-const LIGHTSHOW_CAMCAL_NEEDED_PEAKS = 6;
-const LIGHTSHOW_CAMCAL_SAMPLE_SIZE = 16;     // Downscale-Canvas — Helligkeit reicht, keine Details nötig
-// Nach dem Öffnen der Kamera pendeln sich Belichtung/Weißabgleich noch ein
-// paar hundert ms lang ein; dieser Helligkeits-„Ramp" sieht selbst wie ein
-// Blitz aus, landet aber zu einem zufälligen Zeitpunkt und hat schon einen
-// scheinbaren Versatz von ganzen Sekunden verursacht. In dieser Zeit nur den
-// Hintergrund nachziehen, keine Blitze werten.
-const LIGHTSHOW_CAMCAL_WARMUP_MS = 700;
-const LIGHTSHOW_CAMCAL_INTERVAL_TOLERANCE_MS = 150;
-
-let lightshowCamCalOpen = false;
-let lightshowCamCalStream = null;
-let lightshowCamCalRaf = null;
-let lightshowCamCalCanvas = null;
-let lightshowCamCalCtx = null;
-let lightshowCamCalAnchorWall = 0;
-let lightshowCamCalAnchorPerf = 0;
-let lightshowCamCalPeaks = [];
-let lightshowCamCalBaseline = null;
-let lightshowCamCalCooldownUntil = 0;
-let lightshowCamCalWarmupUntil = 0;
-let lightshowCamCalArmed = true;
-
-function lightshowCamCalSampleBrightness(video) {
-  if (!lightshowCamCalCanvas) {
-    lightshowCamCalCanvas = document.createElement('canvas');
-    lightshowCamCalCanvas.width = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
-    lightshowCamCalCanvas.height = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
-    lightshowCamCalCtx = lightshowCamCalCanvas.getContext('2d', { willReadFrequently: true });
-  }
-  const n = LIGHTSHOW_CAMCAL_SAMPLE_SIZE;
-  lightshowCamCalCtx.drawImage(video, 0, 0, n, n);
-  const { data } = lightshowCamCalCtx.getImageData(0, 0, n, n);
-  let sum = 0;
-  for (let i = 0; i < data.length; i += 4) sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
-  return sum / (n * n);
-}
-
-function lightshowCamCalWallAt(perfTime) {
-  return lightshowCamCalAnchorWall + (perfTime - lightshowCamCalAnchorPerf);
-}
-
-/** Kreismittelwert der Phasen (0..1000) — vermeidet den Bruch an der 0/1000-Grenze. */
-function lightshowCamCalCircularPhase(phases) {
-  let sumSin = 0, sumCos = 0;
-  for (const p of phases) {
-    const angle = (p / 1000) * 2 * Math.PI;
-    sumSin += Math.sin(angle);
-    sumCos += Math.cos(angle);
-  }
-  const meanAngle = Math.atan2(sumSin, sumCos);
-  const meanPhase = (meanAngle / (2 * Math.PI)) * 1000;
-  return meanPhase < 0 ? meanPhase + 1000 : meanPhase;
-}
-
-function lightshowCamCalRenderStatus(textKey) {
-  const el = $('#lightshow-camcal-status');
-  if (textKey) { el.textContent = t(textKey); return; }
-  const n = lightshowCamCalPeaks.length;
-  el.textContent = n === 0
-    ? t('lightshow.camcal.statusWaiting')
-    : t('lightshow.camcal.statusCounting').replace('{n}', String(n)).replace('{needed}', String(LIGHTSHOW_CAMCAL_NEEDED_PEAKS));
-}
-
-/** Nullt die laufende Messung (Peaks/Cooldown) und verankert Wanduhrzeit neu —
- *  Hintergrund und Aufwärmphase bleiben stehen, die Kamera ist ja schon
- *  eingependelt. Die Neuverankerung ist Pflicht, nicht optional: lief schon
- *  eine erfolgreiche Kalibrierung in diesem Overlay, hat lightshowCamCalFinish()
- *  bereits einen neuen Handversatz gespeichert. Ohne Neuverankerung würde die
- *  nächste Messung (z.B. über „Erneut versuchen") weiterhin mit dem alten,
- *  unkorrigierten Anker rechnen — sie „entdeckt" dieselbe Abweichung erneut und
- *  addiert die Korrektur ein zweites Mal obendrauf, statt zu konvergieren. */
-function lightshowCamCalResetMeasurement() {
-  lightshowCamCalAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
-  lightshowCamCalAnchorPerf = performance.now();
-  lightshowCamCalPeaks = [];
-  lightshowCamCalCooldownUntil = 0;
-  lightshowCamCalArmed = true;
-  lightshowCamCalRenderStatus();
-}
-
-/** Längste zusammenhängende Folge von Peaks mit plausiblem ~1-Sekunden-Abstand
- *  zueinander — verwirft einzelne Ausreißer (z.B. die Belichtungsanpassung
- *  kurz nach dem Kamerastart), statt an ihnen die ganze Messung zu verwerfen. */
-function lightshowCamCalConsistentRun(peaks) {
-  if (peaks.length < 3) return null;
-  const intervals = [];
-  for (let i = 1; i < peaks.length; i++) intervals.push(peaks[i] - peaks[i - 1]);
-  const sorted = [...intervals].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
-  if (median < 700 || median > 1300) return null; // kein Abstand passt zum Sekundentakt
-
-  let bestStart = 0, bestLen = 1, curStart = 0, curLen = 1;
-  intervals.forEach((d, i) => {
-    if (Math.abs(d - median) <= LIGHTSHOW_CAMCAL_INTERVAL_TOLERANCE_MS) {
-      curLen++;
-    } else {
-      curStart = i + 1;
-      curLen = 1;
-    }
-    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
-  });
-  return bestLen >= 4 ? peaks.slice(bestStart, bestStart + bestLen) : null;
-}
-
-function lightshowCamCalFinish() {
-  const run = lightshowCamCalConsistentRun(lightshowCamCalPeaks);
-  if (!run) {
-    // Zu viele Ausreißer in den Abständen — vermutlich Fehltreffer statt
-    // echtem Sekundenblitz (Umgebungslicht, Kamerabewegung). Neu messen
-    // statt einen falschen Wert zu übernehmen.
-    lightshowCamCalRenderStatus('lightshow.camcal.statusRetry');
-    lightshowCamCalResetMeasurement();
-    return;
-  }
-
-  const phases = run.map((p) => {
-    const wall = lightshowCamCalWallAt(p);
-    return ((wall % 1000) + 1000) % 1000;
-  });
-  const meanPhase = lightshowCamCalCircularPhase(phases);
-  const delta = meanPhase > 500 ? meanPhase - 1000 : meanPhase;
-  const current = settings.lightshowOffsetMs || 0;
-  const next = Math.max(-5000, Math.min(5000, Math.round(current - delta)));
-
-  lightshowCamCalStopSampling();
-  saveSettings({ lightshowOffsetMs: next }).then(() => {
-    lightshowRenderSyncOffset();
-    $('#lightshow-camcal-status').textContent = t('lightshow.camcal.statusDone').replace('{value}', `${next} ms`);
-  });
-}
-
-function lightshowCamCalStep() {
-  lightshowCamCalRaf = requestAnimationFrame(lightshowCamCalStep);
-  const video = $('#lightshow-camcal-video');
-  if (video.readyState < 2) return;
-
-  const now = performance.now();
-  const brightness = lightshowCamCalSampleBrightness(video);
-  if (lightshowCamCalBaseline == null) {
-    lightshowCamCalBaseline = brightness;
-    lightshowCamCalWarmupUntil = now + LIGHTSHOW_CAMCAL_WARMUP_MS;
-    return;
-  }
-  if (now < lightshowCamCalWarmupUntil) {
-    lightshowCamCalBaseline += (brightness - lightshowCamCalBaseline) * 0.3;
-    return;
-  }
-
-  const rise = brightness - lightshowCamCalBaseline;
-  const threshold = Math.max(LIGHTSHOW_CAMCAL_MIN_ABS_DELTA, lightshowCamCalBaseline * LIGHTSHOW_CAMCAL_REL_DELTA);
-  const above = rise > threshold;
-  const isPeak = above && lightshowCamCalArmed && now >= lightshowCamCalCooldownUntil;
-
-  if (isPeak) {
-    lightshowCamCalPeaks.push(now);
-    lightshowCamCalCooldownUntil = now + LIGHTSHOW_CAMCAL_COOLDOWN_MS;
-    // Erst wieder scharf, wenn die Helligkeit sichtbar zurückgegangen ist —
-    // sonst zählt ein Bild, das nach dem Blitz einfach hell BLEIBT (Kamera
-    // zu nah dran, Umgebungslicht, Belichtung überschossen), alle 400ms
-    // (den Cooldown) einen weiteren „Blitz", ohne dass echtes Blinken
-    // stattfindet. lightshowCamCalConsistentRun() verwirft diese ~400ms-
-    // Serie zwar wieder (kein Sekundenabstand), aber erst NACHDEM sechs
-    // Fehltreffer den Zähler durchgejagt haben — sichtbar als scheinbar
-    // sinnloses Hochzählen mit anschließendem Sprung zurück auf 0.
-    lightshowCamCalArmed = false;
-    lightshowCamCalRenderStatus();
-    if (lightshowCamCalPeaks.length >= LIGHTSHOW_CAMCAL_NEEDED_PEAKS) lightshowCamCalFinish();
-    return;
-  }
-
-  if (!above) {
-    // Hysterese: erst unterhalb der halben Schwelle wieder scharf machen,
-    // damit ein Signal, das genau um die Schwelle herum zittert, nicht
-    // mehrfach als eigener Blitz zählt.
-    if (rise < threshold * 0.5) lightshowCamCalArmed = true;
-    if (now >= lightshowCamCalCooldownUntil) {
-      // Hintergrund nur außerhalb der Cooldown-Phase nachziehen, sonst zöge
-      // der Blitz selbst ihn hoch und würde beim nächsten Mal nicht mehr auffallen.
-      lightshowCamCalBaseline += rise * 0.08;
-    }
-  }
-}
-
-function lightshowCamCalStopSampling() {
-  if (lightshowCamCalRaf) { cancelAnimationFrame(lightshowCamCalRaf); lightshowCamCalRaf = null; }
-}
-
-function lightshowCamCalStopCamera() {
-  if (lightshowCamCalStream) {
-    lightshowCamCalStream.getTracks().forEach((tr) => tr.stop());
-    lightshowCamCalStream = null;
-  }
-  $('#lightshow-camcal-video').srcObject = null;
-}
-
-async function openLightshowCamCal() {
-  lightshowCamCalOpen = true;
-  lightshowCamCalResetMeasurement();
-  lightshowCamCalBaseline = null;   // erzwingt eine frische Aufwärmphase (siehe lightshowCamCalStep)
-  const el = $('#lightshow-camcal');
-  el.hidden = false;
-  openModal(el, { initialFocus: $('#lightshow-camcal-close'), onEscape: () => closeLightshowCamCal() });
-
-  try {
-    lightshowCamCalStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
-      audio: false,
-    });
-  } catch {
-    lightshowCamCalRenderStatus('lightshow.camcal.errorPermission');
-    return;
-  }
-  if (!lightshowCamCalOpen) { lightshowCamCalStream.getTracks().forEach((tr) => tr.stop()); return; } // inzwischen geschlossen
-
-  const video = $('#lightshow-camcal-video');
-  video.srcObject = lightshowCamCalStream;
-  try { await video.play(); } catch { /* autoplay-Attribut greift in aller Regel trotzdem */ }
-
-  lightshowCamCalAnchorWall = Date.now() + (settings.lightshowOffsetMs || 0);
-  lightshowCamCalAnchorPerf = performance.now();
-  lightshowCamCalStopSampling();
-  lightshowCamCalStep();
-}
-
-function closeLightshowCamCal() {
-  lightshowCamCalOpen = false;
-  lightshowCamCalStopSampling();
-  lightshowCamCalStopCamera();
-  const el = $('#lightshow-camcal');
-  closeModal(el);
-  el.hidden = true;
-}
-
-document.addEventListener('visibilitychange', () => {
-  // Kamera nie im Hintergrund weiterlaufen lassen — Messung ist ohnehin
-  // nur ein kurzer, wiederholbarer Vorgang.
-  if (lightshowCamCalOpen && document.visibilityState !== 'visible') closeLightshowCamCal();
-});
-
-$('#btn-lightshow-camcal').addEventListener('click', () => openLightshowCamCal());
-$('#lightshow-camcal-close').addEventListener('click', () => closeLightshowCamCal());
-$('#btn-lightshow-camcal-retry').addEventListener('click', () => {
-  lightshowCamCalResetMeasurement();
-  if (!lightshowCamCalRaf && lightshowCamCalStream) lightshowCamCalStep();
-});
+$('#btn-lightshow-sync').addEventListener('click', () => lightshowNtpSync());
 
 /** Bericht des letzten Imports — Fehler werden nie verschwiegen (Spec 4.4). */
 function renderImportReport() {

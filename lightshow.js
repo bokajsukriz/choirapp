@@ -47,18 +47,17 @@ export function lightshowVoiceColor(voice) {
   return LIGHTSHOW_VOICES.includes(voice) ? LIGHTSHOW_VOICE_COLOR[voice] : LIGHTSHOW_VOICE_COLOR.FULL;
 }
 
-// `sync` ist reine Anzeige-Information für die Show-Auswahl (siehe
-// renderLightshowPicker): aufsteigende Empfindlichkeit gegenüber einer schief
-// gehenden Handy-Uhr. Die sichere Bank steht oben.
+// `sync` ist reine Anzeige-Information für die Show-Auswahl. Der vorherige
+// Serverabgleich macht auch die Shows mit harten Schnitten zuverlässig.
 export const LIGHTSHOWS = [
-  { id: 'sterne', cycleMs: 40000, sync: 'unkritisch' },
-  { id: 'puls',   cycleMs: 24000, sync: 'hoch' },
-  { id: 'welle',  cycleMs: 32000, sync: 'mittel' },
-  { id: 'finale', cycleMs: 32000, sync: 'empfindlich' },
-  { id: 'prisma', cycleMs: 32000, sync: 'empfindlich' },
-  { id: 'domino', cycleMs: 36000, sync: 'empfindlich' },
-  { id: 'dialog', cycleMs: 32000, sync: 'empfindlich' },
-  { id: 'kaleidoskop', cycleMs: 40000, sync: 'empfindlich' },
+  { id: 'sterne', cycleMs: 60000, sync: 'unkritisch' },
+  { id: 'puls',   cycleMs: 60000, sync: 'hoch' },
+  { id: 'welle',  cycleMs: 64000, sync: 'mittel' },
+  { id: 'finale', cycleMs: 60000, sync: 'empfindlich' },
+  { id: 'prisma', cycleMs: 60000, sync: 'empfindlich' },
+  { id: 'domino', cycleMs: 60000, sync: 'empfindlich' },
+  { id: 'dialog', cycleMs: 60000, sync: 'empfindlich' },
+  { id: 'kaleidoskop', cycleMs: 64000, sync: 'empfindlich' },
 ];
 
 function lightshowByte(v) { return Math.max(0, Math.min(255, Math.round(v))); }
@@ -87,8 +86,8 @@ export function lightshowMix(hexA, hexB, f) {
 /**
  * Deterministischer 32-Bit-Mix (Wang/xorshift, kein Math.random) — derselbe
  * (seed, n) ergibt auf jedem Gerät und in jedem Selbsttest denselben Wert.
- * Trägt „Sternenhimmel" (siehe unten): entscheidet je 800-ms-Zeitschlitz,
- * ob und wie hell dieses Gerät funkelt.
+ * Trägt „Sternenmeer" (siehe unten): entscheidet reproduzierbar, welches
+ * Sternbild in einem Stimmenblock erscheint.
  */
 function lightshowHash(seed, n) {
   let h = (seed ^ (n * 0x9e3779b1)) >>> 0;
@@ -99,201 +98,131 @@ function lightshowHash(seed, n) {
   return h >>> 0;
 }
 
-/** Sternenhimmel — braucht keine Synchronität, deshalb die erste Show. */
-function lightshowFrameSterne(tMs, voice, seed) {
-  const color = lightshowVoiceColor(voice);
-  const base = lightshowScale(color, 0.06); // Grundton, damit auch dunkle Momente ein Farbfeld ergeben
-  const slot = Math.floor(tMs / 800);
-  const local = tMs - slot * 800;
-  const hash = lightshowHash(seed >>> 0, slot);
-  const sparkles = (hash % 4) === 0; // etwa jeder vierte Schlitz
-  if (!sparkles) return base;
-  const peak = 0.45 + ((hash >>> 8) % 1000) / 1000 * 0.55; // 0,45 … 1,0
-  let envelope;
-  if (local < 250) envelope = local / 250;                 // 250 ms Aufblende
-  else if (local < 550) envelope = 1;                       // Halten
-  else envelope = Math.max(0, 1 - (local - 550) / 250);     // 250 ms Abblende
-  return lightshowMix(base, lightshowScale(color, peak), envelope);
-}
+// Alle Choreografien dauern ungefähr eine Minute. Die Stimme bezeichnet
+// ausschließlich den gemeinsamen Bühnenblock; der Geräte-Seed beeinflusst die
+// Farbe nicht, damit wirklich alle Handys einer Stimme dasselbe Bild zeigen.
+const LIGHTSHOW_PALETTES = {
+  neon: ['#ff1744', '#ffb300', '#00e5ff', '#7c4dff'],
+  ocean: ['#00b8d4', '#00e676', '#2979ff', '#651fff'],
+  sunset: ['#ff3d8d', '#ff6d00', '#ffea00', '#d500f9'],
+};
+const stageColor = (palette, idx, shift = 0) => LIGHTSHOW_PALETTES[palette][(idx + shift) % 4];
+const dark = (color, level = 0.055) => lightshowScale(color, level);
 
-/** Weiche Glocke (erhabener Kosinus) um distMs=0, 0 außerhalb ±halfWidthMs — nie ein Rechteck. */
 function lightshowBeatBell(distMs, halfWidthMs) {
   if (Math.abs(distMs) >= halfWidthMs) return 0;
   return Math.cos((Math.PI / 2) * (distMs / halfWidthMs)) ** 2;
 }
 
-/** Herzschlag — Grundschlag 2000 ms, Gruppen um je 500 ms versetzt. */
+function showBoundary(tMs, cycleMs, color) {
+  if (tMs < 600) return lightshowMix('#000000', color, tMs / 600);
+  if (tMs >= cycleMs - 3000) return lightshowMix(color, '#000000', (tMs - cycleMs + 3000) / 3000);
+  return null;
+}
+
+/** Sternenmeer — ruhige gemeinsame Nacht, durch die farbige Sternbilder wandern. */
+function lightshowFrameSterne(tMs, voice) {
+  const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
+  const slot = Math.floor(tMs / 1200);
+  const constellation = lightshowHash(0x51a7 + idx * 101, slot);
+  const shared = lightshowHash(0xa11ce, slot) % 5 === 0;
+  const sparkle = shared || constellation % 4 === 0;
+  const hue = stageColor('ocean', idx, Math.floor(slot / 8));
+  const base = lightshowMix('#02040d', '#102050', 0.35 + 0.2 * Math.sin(tMs / 7000));
+  const color = sparkle ? lightshowMix(hue, '#ffffff', 0.35) : base;
+  return showBoundary(tMs, cycleMs, color) ?? color;
+}
+
+/** Herzschlag — viel gemeinsames Rot, dazwischen wandernde farbige Echos. */
 function lightshowFramePuls(tMs, voice) {
-  const color = lightshowVoiceColor(voice);
-  const idx = lightshowVoiceIndex(voice);
-  const cycleMs = 24000;
-  const beatMs = 2000;
-  const halfWidth = 420; // Aufstiegsflanke ≥ 400 ms
-  // Phasenversatz, damit bei tMs=0 (Zyklusstart) keine Gruppe exakt auf dem
-  // Schlag steht — sonst gäbe es dort einen Sprung zwischen der wachsenden
-  // und der am Zyklusende wieder fallenden Amplitude (siehe Selbsttest L7.4).
-  const phaseShiftMs = 250;
-  const offset = idx * 500 + phaseShiftMs;
-  let tGroup = (tMs - offset) % beatMs;
-  if (tGroup < 0) tGroup += beatMs;
-  const dMain = tGroup <= beatMs / 2 ? tGroup : tGroup - beatMs;   // Hauptschlag bei Phase 0
-  const dSec = tGroup - beatMs * 0.22;                              // Nachschlag bei Phase 0,22
-  const envelope = Math.max(lightshowBeatBell(dMain, halfWidth), 0.55 * lightshowBeatBell(dSec, halfWidth));
-  // Amplitude wächst über den Zyklus, fällt in den letzten 3000 ms wieder ab
-  // — ein Bogen statt nur zu blinken.
-  let amp;
-  if (tMs < cycleMs - 3000) amp = 0.35 + (1 - 0.35) * (tMs / (cycleMs - 3000));
-  else amp = 1 - (1 - 0.2) * ((tMs - (cycleMs - 3000)) / 3000);
-  const b = envelope * amp;
-  return lightshowMix(lightshowScale(color, 0.05), lightshowMix(color, '#ffffff', 0.3), b); // in der Spitze 30% Richtung Weiß
+  const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
+  const beat = tMs % 2000;
+  const bell = Math.max(lightshowBeatBell(beat - 500, 360), 0.6 * lightshowBeatBell(beat - 950, 280));
+  let color;
+  if (tMs < 20000) color = lightshowMix('#170006', '#ff1744', bell);
+  else if (tMs < 40000) color = lightshowMix(dark(stageColor('sunset', idx)), stageColor('sunset', idx), bell * 0.9);
+  else color = lightshowMix('#210011', tMs < 52000 ? '#ff3d8d' : '#ffffff', bell);
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
-/** Helligkeit der Welle für eine Stimme an einer Stelle innerhalb der 4000-ms-Periode. */
-function lightshowWaveBrightness(idx, localMs) {
-  // Versatz, damit bei localMs=0 keine Gruppe exakt in der Wellenmitte steht
-  // — siehe lightshowFrameWelle für den Grund.
-  const waveOffset = 0.125;
-  const p = ((localMs % 4000) / 4000 + waveOffset) % 1;
-  const phi = idx / LIGHTSHOW_VOICES.length;
-  let d = Math.abs(p - phi);
-  if (d > 0.5) d = 1 - d; // kürzeste Distanz auf dem Kreis
-  return Math.max(0, 1 - d / 0.28) ** 1.6;
-}
-
-/** Welle — sieben Durchläufe von Sopran nach Bass, dann eine gemeinsame Atmung. */
+/** Aurora — alle Blöcke bleiben sichtbar, ein heller Saum zieht durch ihre Farbflächen. */
 function lightshowFrameWelle(tMs, voice) {
-  const color = lightshowVoiceColor(voice);
-  const idx = lightshowVoiceIndex(voice);
-  if (tMs < 28000) {
-    const b = lightshowWaveBrightness(idx, tMs);
-    return lightshowScale(color, 0.04 + 0.96 * b);
-  }
-  // 28 000 … 32 000 ms: alle gemeinsam eine Atmung nach Weiß und zurück.
-  // Sie endet exakt auf dem Helligkeitswert, mit dem die Welle bei tMs=0
-  // wieder einsteigt (lightshowWaveBrightness ist 4000-ms-periodisch) —
-  // damit springt das Bild beim Loop nicht (Selbsttest L7.4).
-  const boundary = lightshowWaveBrightness(idx, 0);
-  const boundaryColor = lightshowScale(color, 0.04 + 0.96 * boundary);
-  const r = (tMs - 28000) / 4000;
-  const breathe = Math.sin(Math.PI * r);
-  return lightshowMix(boundaryColor, '#ffffff', breathe);
+  const idx = lightshowVoiceIndex(voice), cycleMs = 64000;
+  const phase = (tMs % 8000) / 8000;
+  const center = phase * 5 - 0.5;
+  const glow = Math.max(0, 1 - Math.abs(idx - center) / 1.5);
+  const reverse = Math.floor(tMs / 16000) % 2;
+  const spatialIdx = reverse ? 3 - idx : idx;
+  const base = stageColor('ocean', spatialIdx, Math.floor(tMs / 16000));
+  let color = lightshowMix(dark(base, 0.22), base, 0.35 + 0.65 * glow);
+  if (tMs >= 48000) color = lightshowMix(color, '#ffffff', 0.35 * Math.sin(Math.PI * ((tMs - 48000) % 4000) / 4000) ** 2);
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
-/** Finale — die einzige Show mit harten Schnitten, deshalb „empfindlich". */
+/** Finale — große Tutti-Flächen werden von kurzen symmetrischen Schnitten unterbrochen. */
 function lightshowFrameFinale(tMs, voice) {
-  const color = lightshowVoiceColor(voice);
-  const idx = lightshowVoiceIndex(voice);
-  if (tMs < 12000) {
-    // Gruppen-Jagd im 500-ms-Raster: genau eine Gruppe hell, sonst 5 %.
-    const slot = Math.floor(tMs / 500);
-    const activeIdx = slot % LIGHTSHOW_VOICES.length;
-    const isActive = idx === activeIdx;
-    // Der allererste Schlitz blendet aus dem Schwarz auf, statt hart
-    // einzuschalten — die vorige Runde endet in Schwarz (siehe unten), ohne
-    // diesen weichen Einstieg gäbe es am Loop-Punkt einen Sprung.
-    let attack = 1;
-    if (slot === 0) attack = tMs / 500;
-    const level = (isActive ? 1 : 0.05) * attack;
-    return lightshowScale(color, level);
-  }
-  if (tMs < 24000) {
-    // Alle gemeinsam im 1000-ms-Puls, Amplitude linear steigend, Richtung Weiß.
-    const t2 = tMs - 12000;
-    const amp = t2 / 12000;
-    const phase = (t2 % 1000) / 1000;
-    const pulse = lightshowBeatBell((phase - 0.5) * 1000, 500);
-    return lightshowMix(lightshowScale(color, 0.05), '#ffffff', amp * pulse);
-  }
-  if (tMs < 28500) return '#ffffff'; // Höhepunkt: alle voll Weiß, stehend
-  const f = Math.min(1, (tMs - 28500) / (32000 - 28500));
-  return lightshowMix('#ffffff', '#000000', f); // Blende nach Schwarz
+  const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
+  const slot = Math.floor(tMs / 1000);
+  let color;
+  if (tMs < 18000) color = slot % 4 < 3 ? '#ff1744' : (idx < 2 ? '#ffea00' : '#7c4dff');
+  else if (tMs < 36000) {
+    const motif = slot % 4;
+    const accent = motif === 0 ? idx === 0 || idx === 3 : motif === 2 ? idx === 1 || idx === 2 : true;
+    color = accent ? stageColor('neon', idx, Math.floor(slot / 4)) : '#120018';
+  } else if (tMs < 52000) color = slot % 2 ? '#ffffff' : stageColor('sunset', idx, Math.floor(slot / 2));
+  else color = '#ffffff';
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
-// Die neuen Shows benutzen bewusst eine eigene Bühnenpalette: Die Stimme ist
-// hier nur die räumliche Position (Sopran, Alt, Tenor, Bass von links nach
-// rechts), nicht die Farbe des Stimm-Pickers.
-const LIGHTSHOW_STAGE_COLORS = ['#ff1744', '#ffb300', '#00e5ff', '#7c4dff'];
-const lightshowStageColor = (idx, shift = 0) => LIGHTSHOW_STAGE_COLORS[(idx + shift) % 4];
-
-/** Prisma — harte geometrische Schnitte: Einzelblöcke, Paare, Spiegel und Tutti. */
+/** Prisma — vollflächige Farbakkorde drehen, spiegeln und vereinigen sich. */
 function lightshowFramePrisma(tMs, voice) {
-  const idx = lightshowVoiceIndex(voice);
-  if (tMs < 500) return '#000000';
-  if (tMs < 16000) {
-    const slot = Math.floor(tMs / 1000);
-    const routes = [0, 1, 2, 3, 3, 2, 1, 0, 0, 2, 1, 3, 3, 1, 2, 0];
-    return idx === routes[slot] ? lightshowStageColor(idx, slot % 4) : '#030306';
-  }
-  if (tMs < 24000) {
-    const slot = Math.floor((tMs - 16000) / 1000);
-    const pair = slot % 4;
-    const active = pair === 0 ? idx < 2 : pair === 1 ? idx >= 2 : pair === 2 ? idx % 2 === 0 : idx % 2 === 1;
-    return active ? lightshowStageColor(idx, slot) : '#030306';
-  }
-  if (tMs < 30000) {
-    const slot = Math.floor((tMs - 24000) / 750);
-    return lightshowStageColor(idx, slot + (idx % 2) * 2);
-  }
-  return lightshowMix(lightshowStageColor(idx), '#000000', (tMs - 30000) / 2000);
+  const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
+  const slot = Math.floor(tMs / 1500);
+  let color;
+  if (tMs < 18000) color = stageColor('neon', idx, Math.floor(slot / 3));
+  else if (tMs < 36000) color = stageColor('sunset', slot % 2 ? 3 - idx : idx, Math.floor(slot / 4));
+  else if (tMs < 51000) color = slot % 3 === 0 ? '#00e5ff' : slot % 3 === 1 ? '#ff1744' : '#ffea00';
+  else color = lightshowMix(stageColor('neon', idx, slot), '#ffffff', 0.45);
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
-/** Domino — ein Lichtimpuls fällt links nach rechts, prallt zurück und stapelt sich. */
+/** Domino — ganze Farbteppiche mit wandernden dunklen und hellen Akzenten. */
 function lightshowFrameDomino(tMs, voice) {
-  const idx = lightshowVoiceIndex(voice);
-  if (tMs < 500) return '#000000';
-  if (tMs < 16000) {
-    const slot = Math.floor(tMs / 500);
-    const pass = Math.floor(slot / 8);
-    const step = slot % 8;
-    const active = step < 4 ? step : 7 - step;
-    return idx === active ? lightshowStageColor(idx, pass) : '#020205';
-  }
-  if (tMs < 28000) {
-    const slot = Math.floor((tMs - 16000) / 1500);
-    const filled = slot < 4 ? idx <= slot : idx >= 7 - slot;
-    return filled ? lightshowStageColor(idx, slot) : '#020205';
-  }
-  if (tMs < 34000) {
-    const slot = Math.floor((tMs - 28000) / 750);
-    return lightshowStageColor(idx, slot % 2 ? 2 : 0);
-  }
-  return lightshowMix(lightshowStageColor(idx, 2), '#000000', (tMs - 34000) / 2000);
+  const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
+  const slot = Math.floor(tMs / 1000);
+  const runner = slot % 8 < 4 ? slot % 4 : 3 - (slot % 4);
+  let color = stageColor('sunset', idx, Math.floor(slot / 8));
+  if (tMs < 24000) color = idx === runner ? lightshowMix(color, '#ffffff', 0.55) : lightshowScale(color, 0.55);
+  else if (tMs < 42000) color = slot % 3 === 0 ? '#ff6d00' : lightshowMix(color, '#ffea00', 0.3);
+  else color = idx === runner ? '#ffffff' : lightshowMix('#651fff', '#00e5ff', idx / 3);
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
-/** Dialog — linke und rechte Chorhälfte antworten einander, dann kreuzen sich die Innen- und Außenstimmen. */
+/** Dialog — gemeinsame Aussagen wechseln mit Antworten der Bühnenhälften und Paare. */
 function lightshowFrameDialog(tMs, voice) {
-  const idx = lightshowVoiceIndex(voice);
-  if (tMs < 500) return '#000000';
-  if (tMs < 12000) {
-    const slot = Math.floor(tMs / 1500);
-    const left = slot % 2 === 0;
-    return (left ? idx < 2 : idx >= 2) ? (left ? '#ff3d8d' : '#18ffff') : '#030306';
-  }
-  if (tMs < 24000) {
-    const slot = Math.floor((tMs - 12000) / 1500);
-    const outside = slot % 2 === 0;
-    const active = outside ? idx === 0 || idx === 3 : idx === 1 || idx === 2;
-    return active ? (outside ? '#ffea00' : '#651fff') : '#030306';
-  }
-  if (tMs < 30000) {
-    const slot = Math.floor((tMs - 24000) / 750);
-    const active = slot % 2 === 0 ? idx % 2 === 0 : idx % 2 === 1;
-    return active ? lightshowStageColor(idx, slot) : '#030306';
-  }
-  return lightshowMix(lightshowStageColor(idx, 1), '#000000', (tMs - 30000) / 2000);
+  const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
+  const slot = Math.floor(tMs / 1500);
+  let color;
+  if (tMs < 18000) color = slot % 2 === 0 ? '#ff3d8d' : (idx < 2 ? '#ff6d00' : '#00e5ff');
+  else if (tMs < 36000) {
+    const outside = idx === 0 || idx === 3;
+    color = slot % 3 === 0 ? '#7c4dff' : outside === (slot % 2 === 0) ? '#ffea00' : '#006064';
+  } else if (tMs < 51000) color = slot % 2 ? '#00e676' : stageColor('ocean', idx, slot);
+  else color = '#18ffff';
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
-/** Kaleidoskop — acht wechselnde symmetrische Bühnenbilder mit rotierender Farbzuordnung. */
+/** Kaleidoskop — schnelle, symmetrische Farbflächen; selten wird ein Block nur gedimmt. */
 function lightshowFrameKaleidoskop(tMs, voice) {
-  const idx = lightshowVoiceIndex(voice);
-  if (tMs < 500) return '#000000';
-  if (tMs >= 38000) return lightshowMix(lightshowStageColor(idx, 3), '#000000', (tMs - 38000) / 2000);
+  const idx = lightshowVoiceIndex(voice), cycleMs = 64000;
   const slot = Math.floor(tMs / 1000);
   const motif = slot % 8;
-  const active = [idx === 0 || idx === 3, idx === 1 || idx === 2, idx < 2, idx >= 2,
-    idx % 2 === 0, idx % 2 === 1, idx === motif % 4, idx !== motif % 4][motif];
-  if (!active) return '#020205';
-  return lightshowStageColor(idx, Math.floor(slot / 4));
+  const mirror = motif % 2 ? 3 - idx : idx;
+  let color = stageColor(motif < 4 ? 'neon' : 'sunset', mirror, Math.floor(slot / 4));
+  if (motif === 2 || motif === 6) color = idx % 2 ? '#00e5ff' : '#ff1744';
+  if (motif === 3 || motif === 7) color = motif === 3 ? '#ffea00' : '#7c4dff';
+  if (tMs > 48000 && slot % 4 === 0) color = lightshowMix(color, '#ffffff', 0.6);
+  return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
 /**
@@ -304,7 +233,7 @@ function lightshowFrameKaleidoskop(tMs, voice) {
  * @param {string} showId  aus LIGHTSHOWS
  * @param {number} tMs     Millisekunden seit Zyklusbeginn, 0 <= tMs < cycleMs
  * @param {string} voice   'SOP' | 'ALT' | 'TEN' | 'BASS' | …
- * @param {number} seed    geräteeigener Zufallskeim (nur Show „sterne")
+ * @param {number} seed    aus Kompatibilitätsgründen; aktuelle Shows ignorieren ihn
  * @returns {string}       Hintergrundfarbe '#rrggbb'
  */
 export function lightshowFrame(showId, tMs, voice, seed) {
