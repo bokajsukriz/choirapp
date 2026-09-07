@@ -121,31 +121,23 @@ Drei Punkte dazu:
 
 ## Lichtshow
 
-Unter Einstellungen → Lichtshow gibt es vier kleine Bühnen-Einlagen für den
-Auftritt: Vollbild-Lichtfarben, die sich nach der eigenen Stimme richten. Die
-Handys reden nicht miteinander — es gibt keinen Server, keine Bluetooth- oder
-QR-Kopplung —, sondern laufen rein über die Systemuhr synchron: das Bild ist
-eine reine Funktion der Zeit (`lightshowFrame()`), auf jedem Gerät identisch.
-Damit das funktioniert, sollte „Datum & Uhrzeit automatisch“ im Betriebssystem
-eingeschaltet bleiben; ein Sync-Prüfbild in der Ansicht zeigt, ob eine Uhr
-grob danebenliegt, und erlaubt einen kleinen manuellen Ausgleich. Alternativ
-lässt sich dieser Ausgleich per Kamera automatisch ermitteln: Ein Gerät
-filmt das Sync-Prüfbild eines zweiten und berechnet aus dem Zeitpunkt von
-dessen Blitz den eigenen Handversatz. Das Kamerabild verlässt dabei das
-Gerät nie und wird nirgends gespeichert — auch das bleibt eine rein lokale
-Auswertung ohne Verbindung zwischen den Handys.
-
-Dritte Möglichkeit — ganz ohne zweites Handy: „Mit Internetzeit abgleichen"
-fragt die Atomuhr der PTB (Physikalisch-Technische Bundesanstalt,
-Deutschlands nationales Metrologie-Institut, `wss://uhr.ptb.de/time`) nach
-der aktuellen Uhrzeit ab und setzt den Handversatz auf die Differenz zur
-eigenen Uhr. Die PTB verteilt ihre Zeit extra für den Browser-Einsatz über
+Unter Einstellungen → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
+Auftritt: Vollbild-Lichtfarben, die jede Stimme als räumlichen Block behandeln.
+Von links nach rechts werden Sopran, Alt, Tenor und Bass inszeniert; die Farben
+sind dabei bewusst unabhängig von den sonst verwendeten Stimmfarben.
+Die Handys reden während der Show nicht miteinander. Vorher wird jedes Gerät
+über den Knopf am Anfang der Lichtshow-Ansicht einmal mit der Atomuhr der PTB
+(Physikalisch-Technische Bundesanstalt,
+Deutschlands nationales Metrologie-Institut, `wss://uhr.ptb.de/time`)
+abgeglichen. Die daraus ermittelte Zeitkorrektur fließt
+in alle Vorschauen und Shows ein. Danach ist das Bild wieder eine reine
+Funktion der korrigierten Zeit (`lightshowFrame()`), auf jedem Gerät identisch.
+Die PTB verteilt ihre Zeit extra für den Browser-Einsatz über
 WebSocket statt NTP — normaler TLS-Verkehr auf Port 443, der durch
 Firmen-/Schul-WLANs kommt, wo klassisches UDP-NTP (Port 123) oft blockiert
 wäre. Anders als bei der externen Liedsuche (deren Hinweis nur beim
 allerersten Mal erscheint) fragt der Bestätigungsdialog hier jedes Mal
-neu, weil eine echte Netzwerkanfrage etwas anderes ist als ein rein
-lokaler Kamera- oder Zeitabgleich.
+neu, weil dabei eine echte Netzwerkanfrage ausgelöst wird.
 
 ## Wichtige Regel für Änderungen
 
