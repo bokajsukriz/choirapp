@@ -6398,18 +6398,19 @@ function renderLightshowMotionHint() {
 
 // Kleine stilisierte Handy-Aufstellung für die Vorschauen. Die vier Blöcke
 // stehen wie auf der Bühne von links nach rechts und bilden ungefähr die
-// echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass. Blockbreite nach
-// Wurzel der Stimmenzahl (statt linear), wie im Lichtprobe-Mockup. Anders
-// als dort aber eine einzige flache Zeile je Block statt eines mehrreihigen
-// Rasters — der Chor steht nicht auf Stufen, ein Raster mit mehreren Reihen
-// sah wie Bühnenstufen aus.
+// echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass. Blockbreite
+// proportional zur Personenzahl (nicht zur Wurzel wie im Lichtprobe-Mockup)
+// — das hält den Punktabstand über die ganze Breite gleich, statt die
+// kleine Tenorgruppe sichtbar ausgedünnt wirken zu lassen. Eine einzige
+// flache Zeile je Block statt eines mehrreihigen Rasters — der Chor steht
+// nicht auf Stufen.
 const LIGHTSHOW_PREVIEW_COUNTS = [20, 17, 6, 10];
 const LIGHTSHOW_PREVIEW_POINTS = (() => {
-  const padLeft = 0.03, padRight = 0.03, gap = 0.025;
+  const padLeft = 0.03, padRight = 0.03;
   const centerY = 0.5, bandHeight = 0.16;
-  const weights = LIGHTSHOW_PREVIEW_COUNTS.map((count) => Math.sqrt(count));
+  const weights = LIGHTSHOW_PREVIEW_COUNTS;
   const weightSum = weights.reduce((a, b) => a + b, 0);
-  const usable = 1 - padLeft - padRight - gap * (LIGHTSHOW_PREVIEW_COUNTS.length - 1);
+  const usable = 1 - padLeft - padRight;
   const points = [];
   let xCursor = padLeft;
   LIGHTSHOW_PREVIEW_COUNTS.forEach((count, voiceIdx) => {
@@ -6425,7 +6426,7 @@ const LIGHTSHOW_PREVIEW_POINTS = (() => {
         depth: 0.85 + ((i * 71 + voiceIdx * 29) % 11) / 11 * 0.15,
       });
     }
-    xCursor += blockWidth + gap;
+    xCursor += blockWidth;
   });
   return points;
 })();
