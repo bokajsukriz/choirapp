@@ -8512,6 +8512,10 @@ let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, ret
 // Anker der laufenden Aufnahme — welche Stimme an welcher Stelle lief, siehe
 // captureRecAnchor(). null, solange kein Song lief oder schon ein REC.
 let recAnchor = null;
+// Android kann das Bluetooth-Freisprechprofil auch nach dem Schließen des
+// Mikrofon-Streams beibehalten. Ein einmal in dieser Seitensitzung geöffneter
+// verdächtiger Eingang bleibt deshalb sichtbar, bis die Seite neu geladen wird.
+let recOpenedBluetoothOrNarrowband = false;
 
 /* ---------- Mikrofon ----------
    echoCancellation/noiseSuppression/autoGainControl sind für Telefonate
@@ -8533,6 +8537,7 @@ function recConstraints() {
    Treffer ist ein Verdacht, kein Beweis: entscheidend ist die Abtastrate,
    die aber nicht jeder Browser herausgibt (Safari meist nicht). */
 const REC_HEADSET_LABEL_RE = /bluetooth|airpods|air pods|beats|buds|headset|hands[\s-]?free|freisprech|\bhfp\b|\bbt\b/i;
+const REC_BUILTIN_LABEL_RE = /built[\s-]?in|internal|eingebaut|integriert|microphone array|mikrofonarray|wbudowan/i;
 
 function isLikelyHeadsetInput(label) {
   return REC_HEADSET_LABEL_RE.test(String(label || ''));
@@ -8546,28 +8551,34 @@ function isLikelyHeadsetInput(label) {
  * liefern sollte.
  */
 function recInputQuality({ label = '', sampleRate = 0 } = {}) {
-  // Eine bekannte Abtastrate ist die härtere Auskunft als der Gerätename:
-  // ein Kopfhörer, der in voller Bandbreite aufnimmt, braucht keine Warnung.
-  if (sampleRate > 0) return sampleRate <= 24000 ? 'narrowband' : 'ok';
+  // Chrome/Android kann Bluetooth-Telefonie auf 48 kHz resampeln. Der Zahlenwert
+  // widerlegt daher einen eindeutigen Gerätenamen nicht.
+  if (sampleRate > 0 && sampleRate <= 24000) return 'narrowband';
   if (isLikelyHeadsetInput(label)) return 'headset';
   return 'ok';
 }
 
 /**
- * Sucht ein eingebautes Mikrofon, wenn der offene Eingang nach Headset
- * aussieht. 'default' und 'communications' sind Verweise auf genau die
- * Systemvorgabe, die gerade das Headset ist — die würden dasselbe Gerät
- * erneut öffnen und sind deshalb keine Kandidaten.
+ * Sucht genau einen ausdrücklich als eingebaut bezeichneten Eingang.
+ * Beliebige Nicht-Headsets (USB-Interfaces etc.) werden nicht geraten;
+ * 'default' und 'communications' sind zudem nur Verweise auf die womöglich
+ * gerade auf Bluetooth zeigende Systemvorgabe.
  */
-function pickBuiltInMicId(devices, currentLabel) {
-  if (!isLikelyHeadsetInput(currentLabel)) return null;
+function pickBuiltInMicId(devices) {
+  const ids = new Set();
   for (const device of devices || []) {
     if (device.kind !== 'audioinput') continue;
     if (!device.deviceId || device.deviceId === 'default' || device.deviceId === 'communications') continue;
-    if (isLikelyHeadsetInput(device.label)) continue;
-    return device.deviceId;
+    if (!REC_BUILTIN_LABEL_RE.test(String(device.label || ''))) continue;
+    ids.add(device.deviceId);
   }
-  return null;
+  return ids.size === 1 ? [...ids][0] : null;
+}
+
+function recordingAudioConstraints(deviceId = null) {
+  return deviceId
+    ? { ...recConstraints(), deviceId: { exact: deviceId } }
+    : recConstraints();
 }
 
 function recStreamInfo(stream) {
@@ -8586,12 +8597,13 @@ function recStreamInfo(stream) {
  */
 async function preferWideBandMic(stream) {
   const info = recStreamInfo(stream);
+  if (recInputQuality(info) !== 'ok') recOpenedBluetoothOrNarrowband = true;
   if (recInputQuality(info) === 'ok') return stream;
   if (!navigator.mediaDevices?.enumerateDevices) return stream;
 
   let deviceId = null;
   try {
-    deviceId = pickBuiltInMicId(await navigator.mediaDevices.enumerateDevices(), info.label);
+    deviceId = pickBuiltInMicId(await navigator.mediaDevices.enumerateDevices());
   } catch (err) {
     dlog('rec:devices:fail', { name: err?.name });
     return stream;
@@ -8601,7 +8613,7 @@ async function preferWideBandMic(stream) {
   for (const track of stream.getTracks()) track.stop();
   try {
     const better = await navigator.mediaDevices.getUserMedia({
-      audio: { ...recConstraints(), deviceId: { exact: deviceId } },
+      audio: recordingAudioConstraints(deviceId),
     });
     dlog('rec:mic:switched', { sampleRate: recStreamInfo(better).sampleRate });
     return better;
@@ -8620,15 +8632,19 @@ function updateRecInputWarning(stream) {
   if (!el) return;
   const info = recStreamInfo(stream);
   const quality = stream ? recInputQuality(info) : 'ok';
+  if (stream && quality !== 'ok') recOpenedBluetoothOrNarrowband = true;
   dlog('rec:input', { quality, sampleRate: info.sampleRate, channelCount: info.channelCount });
+  if (recOpenedBluetoothOrNarrowband && !stream) {
+    el.textContent = t('rec.input.bluetoothAfterUse');
+    el.hidden = false;
+    return;
+  }
   if (quality === 'ok') {
     el.hidden = true;
     el.textContent = '';
     return;
   }
-  el.textContent = quality === 'narrowband'
-    ? 'Das Mikrofon läuft in Telefonqualität — typisch für Bluetooth-Kopfhörer, die beim Aufnehmen aufs Freisprechprofil umschalten. Dann klingt auch der Song dumpf. Kabelgebundene Kopfhörer oder Bluetooth aus helfen.'
-    : 'Aufnahme über ein Bluetooth-Headset. Viele Kopfhörer schalten dabei auf Telefonqualität um — auch für die Wiedergabe. Kabelgebundene Kopfhörer klingen deutlich besser.';
+  el.textContent = t(quality === 'narrowband' ? 'rec.input.narrowband' : 'rec.input.bluetooth');
   el.hidden = false;
 }
 
@@ -8711,7 +8727,26 @@ async function startRecording() {
 
   recStarting = true;
   try {
-    recStream = await navigator.mediaDevices.getUserMedia({ audio: recConstraints() });
+    // Nach einer bereits erteilten Berechtigung liefert enumerateDevices()
+    // Labels. So kann Androids Bluetooth-Standardinput vermieden werden, ohne
+    // ihn zuvor kurz zu öffnen und damit das Freisprechprofil zu aktivieren.
+    let preferredDeviceId = null;
+    if (navigator.mediaDevices.enumerateDevices) {
+      try {
+        preferredDeviceId = pickBuiltInMicId(await navigator.mediaDevices.enumerateDevices());
+      } catch (err) {
+        dlog('rec:devices:fail', { name: err?.name });
+      }
+    }
+    try {
+      recStream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints(preferredDeviceId) });
+    } catch (err) {
+      if (!preferredDeviceId) throw err;
+      // Zwischen Auflistung und Öffnen kann ein Gerät verschwinden. Die
+      // Systemvorgabe ist dann besser als ein komplett gescheiterter REC.
+      dlog('rec:mic:preselectfail', { name: err?.name });
+      recStream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints() });
+    }
     // Erst danach steht fest, welches Mikrofon der Browser genommen hat —
     // ein Bluetooth-Kopfhörer würde Aufnahme und Wiedergabe zugleich auf
     // Telefonqualität herunterziehen.
@@ -9033,6 +9068,7 @@ function teardownRecording() {
   recAnchor = null;
   stopLevelMeter();
   setRecUI(false);
+  updateRecInputWarning(null);
   updateWakeLock();
 }
 
@@ -13786,13 +13822,13 @@ function runSelfTests() {
     }
   }
 
-  // Die nachgewiesene Abtastrate schlägt den Namen: ein Headset, das in
-  // voller Bandbreite läuft, braucht keine Warnung.
+  // Eine gemeldete hohe oder fehlende Rate entkräftet den Bluetooth-Namen
+  // nicht: Chrome/Android kann Telefon-Audio auf 48 kHz resampeln.
   const qualityCases = [
     [{ label: 'AirPods', sampleRate: 16000 }, 'narrowband'],
     [{ label: 'Eingebautes Mikrofon', sampleRate: 8000 }, 'narrowband'],
     [{ label: 'AirPods', sampleRate: 0 }, 'headset'],
-    [{ label: 'AirPods', sampleRate: 48000 }, 'ok'],
+    [{ label: 'AirPods', sampleRate: 48000 }, 'headset'],
     [{ label: 'Eingebautes Mikrofon', sampleRate: 48000 }, 'ok'],
     [{}, 'ok'],
   ];
@@ -13812,20 +13848,27 @@ function runSelfTests() {
     { kind: 'audioinput', deviceId: 'mic1', label: 'Eingebautes Mikrofon' },
   ];
   checks++;
-  if (pickBuiltInMicId(micDevices, 'AirPods Pro') !== 'mic1') {
+  if (pickBuiltInMicId(micDevices) !== 'mic1') {
     failed.push('pickBuiltInMicId müsste das eingebaute Mikrofon wählen');
   }
   checks++;
-  if (pickBuiltInMicId(micDevices, 'Eingebautes Mikrofon') !== null) {
-    failed.push('ohne Headset-Verdacht darf pickBuiltInMicId nicht umschalten');
+  if (recordingAudioConstraints(pickBuiltInMicId(micDevices)).deviceId?.exact !== 'mic1') {
+    failed.push('der Aufnahmebeginn müsste das eingebaute Mikrofon exakt vorauswählen');
   }
   checks++;
-  if (pickBuiltInMicId([{ kind: 'audioinput', deviceId: 'bt1', label: 'AirPods Pro' }], 'AirPods Pro') !== null) {
+  if (pickBuiltInMicId([{ kind: 'audioinput', deviceId: 'bt1', label: 'AirPods Pro' }]) !== null) {
     failed.push('ohne Alternative müsste pickBuiltInMicId beim Headset bleiben');
   }
   checks++;
-  if (pickBuiltInMicId(undefined, 'AirPods') !== null) {
+  if (pickBuiltInMicId(undefined) !== null) {
     failed.push('pickBuiltInMicId müsste eine fehlende Geräteliste verkraften');
+  }
+  checks++;
+  if (pickBuiltInMicId([
+    { kind: 'audioinput', deviceId: 'mic1', label: 'Built-in microphone' },
+    { kind: 'audioinput', deviceId: 'mic2', label: 'Internal microphone' },
+  ]) !== null) {
+    failed.push('mehrere eingebaute Mikrofone dürften nicht geraten werden');
   }
 
   // Anker-Mathematik (Original leise mitlaufen, siehe REC-MITSING-PLAN.md 1.4).
