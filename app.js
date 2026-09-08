@@ -7066,6 +7066,75 @@ async function checkForUpdateManually() {
 }
 $('#btn-check-update').addEventListener('click', checkForUpdateManually);
 
+/**
+ * Wartet, bis ein neu installierter Worker den Zustand 'installed' erreicht
+ * (also als reg.waiting bereitsteht), oder bricht nach `timeoutMs` ab.
+ * Deckt sowohl eine gerade erst durch update() angestoßene Installation ab
+ * (reg.installing) als auch eine, die schon vorher lief.
+ */
+function waitForNewWaitingWorker(reg, timeoutMs) {
+  return new Promise((resolve) => {
+    if (reg.waiting) { resolve(reg.waiting); return; }
+    let settled = false;
+    const finish = (worker) => {
+      if (settled) return;
+      settled = true;
+      reg.removeEventListener('updatefound', onUpdateFound);
+      clearTimeout(timer);
+      resolve(worker || null);
+    };
+    const watch = (worker) => {
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed') finish(worker);
+      });
+    };
+    const onUpdateFound = () => watch(reg.installing);
+    reg.addEventListener('updatefound', onUpdateFound);
+    watch(reg.installing);
+    const timer = setTimeout(() => finish(null), timeoutMs);
+  });
+}
+
+/**
+ * „Sofort aktualisieren" unter „Über die App" — für genau die Situation, in
+ * der ein frisches Deployment noch nicht als Banner ankam (siehe
+ * offerUpdate()/registerServiceWorker() oben): statt zu prüfen und dann auf
+ * den Banner-Klick zu warten, wird eine gefundene neue Fassung sofort
+ * aktiviert. Der reguläre Update-Fluss bleibt unverändert — er kann parallel
+ * denselben Worker ebenfalls anbieten, das eigentliche Neuladen läuft in
+ * beiden Fällen über denselben 'controllerchange'-Listener.
+ */
+async function forceUpdateNow() {
+  if (!swRegistration) {
+    banner(t('settings.about.checkUpdateUnsupported'), { kind: 'error' });
+    return;
+  }
+  if (swRegistration.waiting) {
+    updateBannerClose?.();
+    updateBannerClose = null;
+    swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    return;
+  }
+  banner(t('settings.about.forcingUpdate'), { kind: 'info', timeout: 4000 });
+  try {
+    await swRegistration.update();
+  } catch (err) {
+    bannerError(t('settings.about.checkUpdateFailed'), 'SW-UPDATE-CHECK', err);
+    return;
+  }
+  const worker = await waitForNewWaitingWorker(swRegistration, 4000);
+  if (worker) {
+    updateBannerClose?.();
+    updateBannerClose = null;
+    banner(t('settings.about.forceUpdateApplying'), { kind: 'info', timeout: 2000 });
+    worker.postMessage({ type: 'SKIP_WAITING' });
+  } else if (!updateBannerClose) {
+    banner(t('settings.about.upToDate'), { kind: 'ok' });
+  }
+}
+$('#btn-force-update').addEventListener('click', forceUpdateNow);
+
 /* ==========================================================================
    PLAYER — Oberfläche
    ========================================================================== */
