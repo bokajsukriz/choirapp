@@ -946,7 +946,7 @@ const DEFAULT_SETTINGS = {
   lightshowOffsetMs: 0,       // vom PTB-Zeitserver ermittelte Korrektur der Geräteuhr in ms
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
-  lightshowSeed: 0,           // Altbestand; aktuelle Shows steuern jede Stimme geschlossen als Block
+  lightshowSeed: 0,           // pro Gerät einmalig zufällig vergeben (siehe loadSettings) — lässt „Sternenmeer" pro Handy eigenständig funkeln
   recBacking: false,        // Originaltrack beim Anhören eines RECs leise mitlaufen lassen
   recBackingVolume: 0.20,   // Lautstärke des mitlaufenden Originaltracks (0…0,6)
   recBackingOffsetMs: 0,    // Handversatz des Originaltracks in ms (+ = später), siehe backingLagSeconds
@@ -1186,6 +1186,16 @@ async function loadSettings() {
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
   settings.recBackingOffsetMs = Math.max(-BACKING_OFFSET_MAX_MS, Math.min(BACKING_OFFSET_MAX_MS, settings.recBackingOffsetMs || 0));
   applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
+
+  // Jedes Gerät bekommt genau einmal einen eigenen Zufallswert, den es von da
+  // an behält (kein Neuwürfeln bei jedem Laden). „Sternenmeer" mischt ihn in
+  // sein Funkeln ein, damit nicht auf jedem Handy einer Stimme gleichzeitig
+  // dieselben Handys hell werden — ohne dass die Geräte sich dafür absprechen
+  // müssten (siehe lightshowFrame in lightshow.js).
+  if (!settings.lightshowSeed) {
+    const rnd = crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 0xffffffff);
+    await saveSettings({ lightshowSeed: (rnd >>> 0) || 1 });
+  }
   return settings;
 }
 
@@ -6443,6 +6453,10 @@ const LIGHTSHOW_PREVIEW_POINTS = (() => {
         x: xCursor + colT * blockWidth + ((hx1 + hx2) / 2 - 0.5) * (blockWidth / Math.max(1, count)) * 1.4,
         y: centerY + ((hy1 + hy2) / 2 - 0.5) * bandHeight * 2,
         depth: 0.8 + hd * 0.2,
+        // Eigener Geräte-Seed je simuliertem Handy — zeigt in der Vorschau
+        // dasselbe unabhängige Funkeln, das „Sternenmeer" auf echten Geräten
+        // erzeugt (siehe lightshowSeed in DEFAULT_SETTINGS).
+        seed: (seed * 2654435761) >>> 0 || 1,
       });
     }
     xCursor += blockWidth;
@@ -6495,7 +6509,7 @@ function paintLightshowPreviews(now = performance.now()) {
     // größer/heller) kommt aus LIGHTSHOW_PREVIEW_POINTS.
     const baseRadius = Math.max(1.5 * dpr, Math.min(width / 130, height / 34));
     for (const point of LIGHTSHOW_PREVIEW_POINTS) {
-      const color = active ? lightshowFrame(show.id, tMs, point.voice) : '#25252b';
+      const color = active ? lightshowFrame(show.id, tMs, point.voice, point.seed) : '#25252b';
       const px = point.x * width, py = point.y * height;
       const coreR = baseRadius * (0.82 + point.depth * 0.36);
       const glowR = coreR * (active ? 2.6 : 1.4);
@@ -6665,7 +6679,7 @@ function lightshowStageStep() {
   // Punkt der ganzen Konstruktion: zwei Geräte mit derselben Uhr zeigen
   // zwangsläufig dasselbe, ganz ohne Nachricht zwischen ihnen.
   const tMs = (wall - lightshowStartWall) % lightshowStageCycleMs;
-  const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice);
+  const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice, settings.lightshowSeed);
   if (bg !== lightshowLastBg) { stage.style.backgroundColor = bg; lightshowLastBg = bg; }
 }
 

@@ -141,8 +141,11 @@ neu, weil dabei eine echte Netzwerkanfrage ausgelöst wird.
 
 ## Wichtige Regel für Änderungen
 
-Bei jeder Änderung an `index.html`, `app.js`, `boot-guard.js`, `sw.js` oder
-`manifest.json` muss `SW_VERSION` in `sw.js` erhöht werden. Ohne das bekommt
+Bei jeder Änderung an einer der in `SHELL_REQUIRED`/`SHELL_OPTIONAL` in
+`sw.js` gelisteten Dateien — aktuell `index.html`, `app.js`, `lightshow.js`,
+`strings.js`, `zip-reader.js`, `groove-lab.js`, `signalsmith-stretch.js`,
+`boot-guard.js`, `lame.min.js`, `manifest.json`, den Icons und `sw.js`
+selbst — muss `SW_VERSION` in `sw.js` erhöht werden. Ohne das bekommt
 niemand das Update, weil der Shell-Cache unter dem alten Namen bestehen
 bleibt.
 
