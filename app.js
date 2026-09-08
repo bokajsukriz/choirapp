@@ -6396,18 +6396,33 @@ function renderLightshowMotionHint() {
   $('#lightshow-motion-hint').hidden = !reduced;
 }
 
+/**
+ * Gut gemischter, deterministischer Zufallswert in [0,1) aus zwei Ganzzahlen
+ * — für den Punkte-Jitter unten. Ein einfacher `(i * k) % m`-Jitter wie
+ * vorher erzeugt bei kleinem m sichtbare diagonale Streifen (aufeinander-
+ * folgende Punkte wandern in einem festen Muster durchs Raster); die
+ * Bit-Mischung hier verhindert das.
+ */
+function lightshowPreviewHash(a, b) {
+  let h = (a ^ Math.imul(b + 0x9e3779b9, 2654435761)) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 3266489917);
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h / 4294967296;
+}
+
 // Kleine stilisierte Handy-Aufstellung für die Vorschauen. Die vier Blöcke
 // stehen wie auf der Bühne von links nach rechts und bilden ungefähr die
 // echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass. Blockbreite
-// proportional zur Personenzahl (nicht zur Wurzel wie im Lichtprobe-Mockup)
-// — das hält den Punktabstand über die ganze Breite gleich, statt die
-// kleine Tenorgruppe sichtbar ausgedünnt wirken zu lassen. Eine einzige
-// flache Zeile je Block statt eines mehrreihigen Rasters — der Chor steht
-// nicht auf Stufen.
+// proportional zur Personenzahl, damit der Punktabstand über die ganze
+// Breite gleich bleibt. Innerhalb eines Blocks eine diffuse Wolke statt
+// eines Rasters oder einer geraden Zeile — zwei gemittelte Zufallswerte je
+// Achse geben eine weiche, zur Mitte hin dichtere Streuung statt harter
+// Kanten oder eines technisch wirkenden Musters.
 const LIGHTSHOW_PREVIEW_COUNTS = [20, 17, 6, 10];
 const LIGHTSHOW_PREVIEW_POINTS = (() => {
   const padLeft = 0.03, padRight = 0.03;
-  const centerY = 0.5, bandHeight = 0.16;
+  const centerY = 0.5, bandHeight = 0.22;
   const weights = LIGHTSHOW_PREVIEW_COUNTS;
   const weightSum = weights.reduce((a, b) => a + b, 0);
   const usable = 1 - padLeft - padRight;
@@ -6417,13 +6432,17 @@ const LIGHTSHOW_PREVIEW_POINTS = (() => {
     const blockWidth = usable * weights[voiceIdx] / weightSum;
     for (let i = 0; i < count; i++) {
       const colT = count > 1 ? i / (count - 1) : 0.5;
-      const jitterX = ((i * 37 + voiceIdx * 11) % 17) / 17 - 0.5;
-      const jitterY = ((i * 53 + voiceIdx * 19) % 17) / 17 - 0.5;
+      const seed = voiceIdx * 1000 + i;
+      const hx1 = lightshowPreviewHash(seed, 11);
+      const hx2 = lightshowPreviewHash(seed, 29);
+      const hy1 = lightshowPreviewHash(seed, 47);
+      const hy2 = lightshowPreviewHash(seed, 71);
+      const hd = lightshowPreviewHash(seed, 97);
       points.push({
         voice: LIGHTSHOW_VOICES[voiceIdx],
-        x: xCursor + colT * blockWidth + jitterX * (blockWidth / Math.max(1, count)) * 0.6,
-        y: centerY + jitterY * bandHeight,
-        depth: 0.85 + ((i * 71 + voiceIdx * 29) % 11) / 11 * 0.15,
+        x: xCursor + colT * blockWidth + ((hx1 + hx2) / 2 - 0.5) * (blockWidth / Math.max(1, count)) * 1.4,
+        y: centerY + ((hy1 + hy2) / 2 - 0.5) * bandHeight * 2,
+        depth: 0.8 + hd * 0.2,
       });
     }
     xCursor += blockWidth;
