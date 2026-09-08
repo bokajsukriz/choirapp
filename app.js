@@ -6398,21 +6398,48 @@ function renderLightshowMotionHint() {
 
 // Kleine stilisierte Handy-Aufstellung für die Vorschauen. Die vier Blöcke
 // stehen wie auf der Bühne von links nach rechts und bilden ungefähr die
-// echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass.
+// echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass. Blockbreite nach
+// Wurzel der Stimmenzahl (statt linear) und innen als lockeres Raster
+// gepackt, wie im Lichtprobe-Mockup — das hält auch die kleine Tenorgruppe
+// sichtbar dicht statt sie über die volle Höhe zu verstreuen.
 const LIGHTSHOW_PREVIEW_COUNTS = [20, 17, 6, 10];
-const LIGHTSHOW_PREVIEW_POINTS = LIGHTSHOW_PREVIEW_COUNTS.flatMap((count, voiceIdx) => {
-  const blockLeft = [0.03, 0.37, 0.65, 0.75][voiceIdx];
-  const blockWidth = [0.34, 0.28, 0.10, 0.22][voiceIdx];
-  return Array.from({ length: count }, (_, pointIdx) => {
-    const jitterX = ((pointIdx * 37 + voiceIdx * 11) % 17) / 17 - 0.5;
-    const jitterY = ((pointIdx * 53 + voiceIdx * 19) % 101) / 100;
-    return {
-      voice: LIGHTSHOW_VOICES[voiceIdx],
-      x: blockLeft + ((pointIdx + 0.5 + jitterX * 0.7) / count) * blockWidth,
-      y: 0.28 + jitterY * 0.44,
-    };
+const LIGHTSHOW_PREVIEW_POINTS = (() => {
+  const padLeft = 0.03, padRight = 0.03, gap = 0.025;
+  const blockTop = 0.20, blockHeight = 0.60;
+  const weights = LIGHTSHOW_PREVIEW_COUNTS.map((count) => Math.sqrt(count));
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  const usable = 1 - padLeft - padRight - gap * (LIGHTSHOW_PREVIEW_COUNTS.length - 1);
+  const points = [];
+  let xCursor = padLeft;
+  LIGHTSHOW_PREVIEW_COUNTS.forEach((count, voiceIdx) => {
+    const blockWidth = usable * weights[voiceIdx] / weightSum;
+    const cols = Math.max(1, Math.round(Math.sqrt(count * (blockWidth / blockHeight))));
+    const rows = Math.ceil(count / cols);
+    for (let i = 0; i < count; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const colT = cols > 1 ? col / (cols - 1) : 0.5;
+      const rowT = rows > 1 ? row / (rows - 1) : 0.5;
+      const jitterX = ((i * 37 + voiceIdx * 11) % 17) / 17 - 0.5;
+      const jitterY = ((i * 53 + voiceIdx * 19) % 13) / 13 - 0.5;
+      points.push({
+        voice: LIGHTSHOW_VOICES[voiceIdx],
+        x: xCursor + colT * blockWidth + jitterX * (blockWidth / Math.max(1, cols)) * 0.55,
+        y: blockTop + rowT * blockHeight + jitterY * (blockHeight / Math.max(1, rows)) * 0.5,
+        depth: rows > 1 ? 1 - rowT : 1,
+      });
+    }
+    xCursor += blockWidth + gap;
   });
-});
+  return points;
+})();
+
+/** '#rrggbb' -> 'rgba(r,g,b,alpha)', für die weichen Vorschau-Leuchtpunkte. */
+function lightshowPreviewRgba(hex, alpha) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return `rgba(255,255,255,${alpha})`;
+  return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`;
+}
 
 let lightshowPreviewRaf = null;
 let lightshowPreviewLastPaint = 0;
@@ -6422,7 +6449,11 @@ function paintLightshowPreviews(now = performance.now()) {
   if (!lightshowOpen) { lightshowPreviewRaf = null; return; }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   lightshowPreviewRaf = reducedMotion ? null : requestAnimationFrame(paintLightshowPreviews);
-  if (now - lightshowPreviewLastPaint < 32) return;
+  // 16ms statt vorher 32ms Mindestabstand: die einzelnen Leuchtpunkte
+  // bewegen sich zwar nicht, aber ihre Helligkeit/Farbe blendet stetig
+  // ineinander (siehe Lichtprobe-Mockup) — bei 30fps sah das noch leicht
+  // ruckelig aus, bei 60fps wirkt der Verlauf glatt.
+  if (now - lightshowPreviewLastPaint < 16) return;
   lightshowPreviewLastPaint = now;
   const wall = Date.now() + (settings.lightshowOffsetMs || 0);
   document.querySelectorAll('.lightshow-tile-preview').forEach((canvas) => {
@@ -6442,11 +6473,26 @@ function paintLightshowPreviews(now = performance.now()) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
     const tMs = reducedMotion ? show.cycleMs * 0.37 : wall % show.cycleMs;
-    const radius = Math.max(1.7 * dpr, Math.min(width / 105, height / 30));
+    // Kernpunkt plus weicher Glow-Saum statt einer harten Kreisfläche —
+    // dieselbe zweistufige Verlaufstechnik wie im Lichtprobe-Mockup, nur
+    // ohne dessen Bühnenkoordinaten. `depth` (vordere Reihe je Block etwas
+    // größer/heller) kommt aus LIGHTSHOW_PREVIEW_POINTS.
+    const baseRadius = Math.max(1.5 * dpr, Math.min(width / 130, height / 34));
     for (const point of LIGHTSHOW_PREVIEW_POINTS) {
+      const color = active ? lightshowFrame(show.id, tMs, point.voice) : '#25252b';
+      const px = point.x * width, py = point.y * height;
+      const coreR = baseRadius * (0.82 + point.depth * 0.36);
+      const glowR = coreR * (active ? 2.6 : 1.4);
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+      glow.addColorStop(0, lightshowPreviewRgba(color, active ? 0.55 : 0.3));
+      glow.addColorStop(1, lightshowPreviewRgba(color, 0));
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(point.x * width, point.y * height, radius, 0, Math.PI * 2);
-      ctx.fillStyle = active ? lightshowFrame(show.id, tMs, point.voice) : '#25252b';
+      ctx.arc(px, py, glowR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(px, py, coreR, 0, Math.PI * 2);
       ctx.fill();
     }
     canvas.dataset.staticPainted = active ? 'false' : 'true';
