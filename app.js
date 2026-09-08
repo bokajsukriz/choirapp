@@ -6399,13 +6399,14 @@ function renderLightshowMotionHint() {
 // Kleine stilisierte Handy-Aufstellung für die Vorschauen. Die vier Blöcke
 // stehen wie auf der Bühne von links nach rechts und bilden ungefähr die
 // echte Besetzung ab: 20 Sopran, 17 Alt, 6 Tenor, 10 Bass. Blockbreite nach
-// Wurzel der Stimmenzahl (statt linear) und innen als lockeres Raster
-// gepackt, wie im Lichtprobe-Mockup — das hält auch die kleine Tenorgruppe
-// sichtbar dicht statt sie über die volle Höhe zu verstreuen.
+// Wurzel der Stimmenzahl (statt linear), wie im Lichtprobe-Mockup. Anders
+// als dort aber eine einzige flache Zeile je Block statt eines mehrreihigen
+// Rasters — der Chor steht nicht auf Stufen, ein Raster mit mehreren Reihen
+// sah wie Bühnenstufen aus.
 const LIGHTSHOW_PREVIEW_COUNTS = [20, 17, 6, 10];
 const LIGHTSHOW_PREVIEW_POINTS = (() => {
   const padLeft = 0.03, padRight = 0.03, gap = 0.025;
-  const blockTop = 0.20, blockHeight = 0.60;
+  const centerY = 0.5, bandHeight = 0.16;
   const weights = LIGHTSHOW_PREVIEW_COUNTS.map((count) => Math.sqrt(count));
   const weightSum = weights.reduce((a, b) => a + b, 0);
   const usable = 1 - padLeft - padRight - gap * (LIGHTSHOW_PREVIEW_COUNTS.length - 1);
@@ -6413,20 +6414,15 @@ const LIGHTSHOW_PREVIEW_POINTS = (() => {
   let xCursor = padLeft;
   LIGHTSHOW_PREVIEW_COUNTS.forEach((count, voiceIdx) => {
     const blockWidth = usable * weights[voiceIdx] / weightSum;
-    const cols = Math.max(1, Math.round(Math.sqrt(count * (blockWidth / blockHeight))));
-    const rows = Math.ceil(count / cols);
     for (let i = 0; i < count; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const colT = cols > 1 ? col / (cols - 1) : 0.5;
-      const rowT = rows > 1 ? row / (rows - 1) : 0.5;
+      const colT = count > 1 ? i / (count - 1) : 0.5;
       const jitterX = ((i * 37 + voiceIdx * 11) % 17) / 17 - 0.5;
-      const jitterY = ((i * 53 + voiceIdx * 19) % 13) / 13 - 0.5;
+      const jitterY = ((i * 53 + voiceIdx * 19) % 17) / 17 - 0.5;
       points.push({
         voice: LIGHTSHOW_VOICES[voiceIdx],
-        x: xCursor + colT * blockWidth + jitterX * (blockWidth / Math.max(1, cols)) * 0.55,
-        y: blockTop + rowT * blockHeight + jitterY * (blockHeight / Math.max(1, rows)) * 0.5,
-        depth: rows > 1 ? 1 - rowT : 1,
+        x: xCursor + colT * blockWidth + jitterX * (blockWidth / Math.max(1, count)) * 0.6,
+        y: centerY + jitterY * bandHeight,
+        depth: 0.85 + ((i * 71 + voiceIdx * 29) % 11) / 11 * 0.15,
       });
     }
     xCursor += blockWidth + gap;
