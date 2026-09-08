@@ -86,8 +86,8 @@ export function lightshowMix(hexA, hexB, f) {
 /**
  * Deterministischer 32-Bit-Mix (Wang/xorshift, kein Math.random) — derselbe
  * (seed, n) ergibt auf jedem Gerät und in jedem Selbsttest denselben Wert.
- * Trägt „Sternenmeer" (siehe unten): entscheidet reproduzierbar, welches
- * Sternbild in einem Stimmenblock erscheint.
+ * Trägt „Sternenmeer" (siehe unten): daraus entsteht pro Gerät ein eigenes,
+ * reproduzierbares Funkeln.
  */
 function lightshowHash(seed, n) {
   let h = (seed ^ (n * 0x9e3779b1)) >>> 0;
@@ -99,8 +99,10 @@ function lightshowHash(seed, n) {
 }
 
 // Alle Choreografien dauern ungefähr eine Minute. Die Stimme bezeichnet
-// ausschließlich den gemeinsamen Bühnenblock; der Geräte-Seed beeinflusst die
-// Farbe nicht, damit wirklich alle Handys einer Stimme dasselbe Bild zeigen.
+// ausschließlich den gemeinsamen Bühnenblock; bis auf „Sternenmeer" (das den
+// Geräte-Seed für sein individuelles Funkeln nutzt) beeinflusst der
+// Geräte-Seed die Farbe nicht, damit alle Handys einer Stimme dasselbe Bild
+// zeigen.
 const LIGHTSHOW_PALETTES = {
   neon: ['#ff1744', '#ffb300', '#00e5ff', '#7c4dff'],
   ocean: ['#00b8d4', '#00e676', '#2979ff', '#651fff'],
@@ -120,16 +122,58 @@ function showBoundary(tMs, cycleMs, color) {
   return null;
 }
 
-/** Sternenmeer — ruhige gemeinsame Nacht, durch die farbige Sternbilder wandern. */
-function lightshowFrameSterne(tMs, voice) {
+// Zufallsfarben für den Schlussteil von „Sternenmeer" — je Gerät eine davon,
+// gewählt über lightshowHash, damit alle Handys am Ende leuchten, aber nicht
+// exakt in derselben Farbe.
+const LIGHTSHOW_STAR_HUES = ['#8ecbff', '#a3e4d7', '#ffe29a', '#ffb3c6', '#c9b6ff', '#9df2c2', '#ffd9b3', '#dfefff'];
+
+/**
+ * Weiches, unregelmäßiges Auf- und Abschwellen statt eines harten Ein/Aus —
+ * zwei überlagerte, langsame Sinusschwingungen mit aus `key` abgeleiteter
+ * Periode/Phase, per Smoothstep geglättet. Bleibt langsam genug (Perioden im
+ * Sekundenbereich), um die Blitzgrenze im Selbsttest sicher einzuhalten.
+ */
+function lightshowTwinkle(tMs, key) {
+  const periodA = 5500 + 3500 * (lightshowHash(key, 1) / 4294967296);
+  const phaseA = 2 * Math.PI * (lightshowHash(key, 2) / 4294967296);
+  const periodB = 2600 + 1800 * (lightshowHash(key, 3) / 4294967296);
+  const phaseB = 2 * Math.PI * (lightshowHash(key, 4) / 4294967296);
+  const raw = 0.5
+    + 0.32 * Math.sin((2 * Math.PI * tMs) / periodA + phaseA)
+    + 0.18 * Math.sin((2 * Math.PI * tMs) / periodB + phaseB);
+  const c = Math.max(0, Math.min(1, raw));
+  return c * c * (3 - 2 * c);
+}
+
+/**
+ * Sternenmeer — eine gemeinsame tiefe Nachtfläche, über der jedes Gerät für
+ * sich funkelt. `seed` (aus settings.lightshowSeed, siehe app.js) macht aus
+ * jedem Handy einen eigenen „Stern" mit eigener Funkel-Periode und -Phase:
+ * mal sind in einer Stimme Handy 1, 4 und 6 heller, mal 2, 3 und 5 — ganz
+ * ohne dass die Geräte sich dafür abstimmen müssten, weil beide weiterhin
+ * derselben reinen Zeitfunktion folgen. Gegen Zyklusende (ab 48 s) blendet
+ * die Show in ein gemeinsames, ruhiges Leuchten über, in dem jedes Gerät eine
+ * von mehreren Zufallsfarben trägt.
+ */
+function lightshowFrameSterne(tMs, voice, seed) {
   const idx = lightshowVoiceIndex(voice), cycleMs = 60000;
-  const slot = Math.floor(tMs / 1200);
-  const constellation = lightshowHash(0x51a7 + idx * 101, slot);
-  const shared = lightshowHash(0xa11ce, slot) % 5 === 0;
-  const sparkle = shared || constellation % 4 === 0;
-  const hue = stageColor('ocean', idx, Math.floor(slot / 8));
-  const base = lightshowMix('#02040d', '#102050', 0.35 + 0.2 * Math.sin(tMs / 7000));
-  const color = sparkle ? lightshowMix(hue, '#ffffff', 0.35) : base;
+  const starKey = lightshowHash((seed >>> 0) || 0, idx + 1);
+
+  const hue = stageColor('ocean', idx, Math.floor(tMs / 32000));
+  const base = lightshowMix('#02040d', '#102050', 0.35 + 0.2 * Math.sin(tMs / 11000));
+  const twinkle = lightshowTwinkle(tMs, starKey);
+  let color = lightshowMix(base, lightshowMix(hue, '#ffffff', 0.4), twinkle);
+
+  const finaleStart = 48000, finaleEnd = 57000;
+  if (tMs >= finaleStart) {
+    const p = Math.min(1, (tMs - finaleStart) / (finaleEnd - finaleStart));
+    const ease = p * p * (3 - 2 * p);
+    const starHue = LIGHTSHOW_STAR_HUES[lightshowHash(starKey, 13) % LIGHTSHOW_STAR_HUES.length];
+    const finaleGlow = lightshowTwinkle(tMs, lightshowHash(starKey, 21));
+    const finaleColor = lightshowMix(dark(starHue, 0.2), lightshowMix(starHue, '#ffffff', 0.3), 0.55 + 0.35 * finaleGlow);
+    color = lightshowMix(color, finaleColor, ease);
+  }
+
   return showBoundary(tMs, cycleMs, color) ?? color;
 }
 
@@ -233,7 +277,9 @@ function lightshowFrameKaleidoskop(tMs, voice) {
  * @param {string} showId  aus LIGHTSHOWS
  * @param {number} tMs     Millisekunden seit Zyklusbeginn, 0 <= tMs < cycleMs
  * @param {string} voice   'SOP' | 'ALT' | 'TEN' | 'BASS' | …
- * @param {number} seed    aus Kompatibilitätsgründen; aktuelle Shows ignorieren ihn
+ * @param {number} seed    gerätespezifischer Zufallswert (settings.lightshowSeed); nur
+ *                         „Sternenmeer" nutzt ihn für sein Funkeln pro Gerät, alle
+ *                         anderen Shows ignorieren ihn weiterhin
  * @returns {string}       Hintergrundfarbe '#rrggbb'
  */
 export function lightshowFrame(showId, tMs, voice, seed) {
