@@ -29,6 +29,22 @@ gegen diese Liste prüfen.
 - Keine neuen Abhängigkeiten, kein Bundler, keine Build-Pipeline einführen —
   bewusste Design-Entscheidung (siehe README).
 - Selbsttests laufen im Browser über `runSelfTests()` in `app.js` (kein
-  separater Testrunner). Reine Funktionen wie `lightshowFrame()` lassen sich
-  aber auch per `node --input-type=module -e "import ... from './lightshow.js'"`
-  isoliert prüfen.
+  separater Testrunner, kein CI). Reine Funktionen wie `lightshowFrame()`
+  lassen sich aber per `node --input-type=module -e "import ... from
+  './lightshow.js'"` isoliert und schnell prüfen, ohne den Browser zu
+  starten — bei `lightshow.js`-Änderungen zuerst so gegenprüfen (Determinismus,
+  gültiges `#rrggbb`, WCAG-2.3.1-Blitzgrenze: max. 3 steigende
+  Helligkeits-Übergänge über 0,5 je 1000-ms-Fenster — siehe Test 5 in
+  `runSelfTests()`), bevor die App im Browser läuft.
+- `lightshow.js` ist bewusst ein reines Blatt (kein DOM, kein `Date.now()`,
+  kein `Math.random`, keine Imports zurück nach `app.js`) — jede Show ist
+  `Farbe = f(Zeit, Stimme, Seed)`. Neuer Zufall gehört als deterministischer
+  Hash rein (`lightshowHash`), nicht als `Math.random`.
+- Ändert sich `lightshowFrame()`s Verhalten, auch die Vorschau-Kacheln in
+  `app.js` (`LIGHTSHOW_PREVIEW_POINTS`/`paintLightshowPreviews`) mitziehen —
+  die rufen dieselbe Funktion separat auf und laufen sonst auseinander.
+- Einstellungen (`settings`) liegen in IndexedDB (`DB.metaGet`/`metaPut`),
+  nicht `localStorage` — der ist nur für Fehler-/Diagnose-Log reserviert.
+- Auf `*-PLAN.md` verweisende Kommentare (z. B. „siehe LICHTSHOW-PLAN.md")
+  sind oft Verweise auf längst gelöschte Planungsdokumente — nicht danach
+  suchen, sie existieren im Repo nicht mehr.
