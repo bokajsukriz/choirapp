@@ -7208,6 +7208,48 @@ function isPlayableSong(song) {
   return !!song && Array.isArray(song.tracks) && song.tracks.length > 0;
 }
 
+/**
+ * Ob ein Song wirklich klingt — als importierte Spur oder ersatzweise über
+ * mindestens ein REC (Spec-Erweiterung: Setlisten sollen auch reine
+ * REC-Songs anzeigen und abspielen, nicht nur echte Importe).
+ * `recordingsBySongId` kommt aus groupRecordingsBySongId().
+ */
+function songHasAudio(song, recordingsBySongId) {
+  if (!song) return false;
+  if (Array.isArray(song.tracks) && song.tracks.length > 0) return true;
+  const recs = recordingsBySongId?.get(song.id);
+  return !!(recs && recs.length);
+}
+
+/** Gruppiert Aufnahmen nach songId — einmal je Aufruf statt je Song neu gefiltert. */
+function groupRecordingsBySongId(recordings) {
+  const map = new Map();
+  for (const r of recordings) {
+    if (!r.songId) continue;
+    if (!map.has(r.songId)) map.set(r.songId, []);
+    map.get(r.songId).push(r);
+  }
+  return map;
+}
+
+/**
+ * Wählt das REC, das einen Song ohne importierte Spuren beim Öffnen ersetzt —
+ * dieselbe Stimmpriorität wie preferredTrack() (zuletzt gewählte Stimme, dann
+ * die eigenen Stimmen aus den Einstellungen), je Stimme die aktuellste
+ * Aufnahme. Ohne Treffer in diesen Stimmen zählt schlicht das aktuellste REC.
+ */
+function bestRecordingForSong(recordings) {
+  if (!recordings || !recordings.length) return null;
+  const newestOf = (voice) => recordings
+    .filter((r) => r.voice === voice)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+  for (const v of [settings.lastVoice, ...settings.myVoices]) {
+    const rec = v ? newestOf(v) : null;
+    if (rec) return rec;
+  }
+  return recordings.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
 function renderLoadingState() {
   $('#player-loading').hidden = Audio.loading.size === 0;
@@ -7425,6 +7467,46 @@ function setPlayerFootUnavailable(unavailable) {
 // den falschen Song, obwohl schon der neue läuft.
 let openPlayerToken = 0;
 
+/**
+ * Ersetzt beim Öffnen eines Songs ohne importierte Spuren die fehlende Spur
+ * durch das passendste REC (siehe bestRecordingForSong) — abgespielt über
+ * die normale Vorschau-Mechanik (previewRecordingBlob), die schon Audio.el,
+ * Transportleiste und Medientasten bedient. `token` ist derselbe wie in
+ * openPlayer(), damit ein inzwischen überholter Aufruf hier nicht noch den
+ * falschen Song hörbar macht.
+ *
+ * @returns {Promise<boolean>} true, wenn ein REC geladen wurde.
+ */
+async function tryPlaySongFromRecording(song, token) {
+  const recordings = await DB.metaByType('recording').catch(() => []);
+  if (token !== openPlayerToken) return true;
+  const best = bestRecordingForSong(recordings.filter((r) => r.songId === song.id));
+  if (!best) return false;
+
+  // Ein Block wie in toggleSavedRecordingPreview(): Laden und Abspielen
+  // gehören zusammen, ein Fehler in previewRecordingBlob() (z.B. ein Codec,
+  // den dieses Gerät nicht dekodiert) darf hier genauso wenig unbehandelt
+  // durchschlagen wie beim manuellen REC-Anhören.
+  try {
+    const rec = await DB.fileGet(best.fileKey);
+    if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
+    const blob = recordBlob(rec, best.mimeType);
+    if (token !== openPlayerToken) return true;
+    $('#player-foot').hidden = false;
+    await previewRecordingBlob(blob, { savedId: best.id, anchor: best.anchor });
+  } catch (err) {
+    bannerError('Diese Aufnahme konnte nicht abgespielt werden.', 'REC-PLAY', err);
+    return false;
+  }
+  if (token !== openPlayerToken) return true;
+  // previewRecordingBlob() startet immer sofort die Wiedergabe (Safari bindet
+  // sie an die Nutzergeste) — ohne echte Absicht „gleich losspielen" gleich
+  // wieder pausieren, wie es selectTrack() für importierte Spuren auch tut.
+  if (!pendingAutoPlay) { audioPause(); setPlayIcon(false); }
+  pendingAutoPlay = false;
+  return true;
+}
+
 async function openPlayer(songId) {
   const token = ++openPlayerToken;
   // Während der neue Datensatz noch aus IndexedDB kommt, gehört playerSong
@@ -7551,6 +7633,17 @@ async function openPlayer(songId) {
   const first = preferredTrack(song);
   if (!first) {
     if (!song.tracks.length) {
+      // Keine importierte Spur — aber vielleicht ein REC (Setlisten führen
+      // solche Songs jetzt als abspielbar, siehe startPlaylist()). Dann
+      // ersatzweise das passendste REC laden statt in den Platzhalter-Zweig
+      // zu fallen.
+      if (await tryPlaySongFromRecording(song, token)) {
+        if (token !== openPlayerToken) return;
+        showLengthNotice(song);
+        updateMediaSession();
+        return;
+      }
+      if (token !== openPlayerToken) return;
       // Platzhalter-Song ohne Aufnahme (siehe createPlaceholderSong) — kein
       // Fehler, sondern der erwartete Zustand vor dem nächsten Import. Die
       // Transportleiste bleibt trotzdem sichtbar (nur gesperrt/ausgegraut),
@@ -7731,7 +7824,10 @@ async function renderQueue() {
       onclick: (e) => { e.stopPropagation(); removeFromQueue(index); },
     }, '×');
 
-    const unplayable = song && !isPlayableSong(song);
+    // item.playable kommt aus startPlaylist() und berücksichtigt auch RECs —
+    // ein frisches isPlayableSong(song) hier würde reine REC-Songs wieder
+    // fälschlich als unspielbar zeigen.
+    const unplayable = song && !item.playable;
     const open = el('button', {
       class: 'grow', type: 'button', style: 'text-align:left; background:none; border:0; color:inherit; padding:0; font:inherit',
       disabled: song ? null : true,
@@ -11603,16 +11699,29 @@ function starIcon(filled) {
 }
 
 /** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
-function renderCurrentSetlist(favorite, songs) {
+function renderCurrentSetlist(favorite, songs, recsBySong) {
   const host = $('#current-setlist-host');
   host.textContent = '';
   if (!favorite) return;
 
   const titles = favorite.songTitles || [];
   const list = el('ol', { class: 'gig-list small' });
-  for (const t of titles) {
-    const found = findSongByTitle(songs, t);
-    list.append(el('li', { class: found ? '' : 'muted', text: t }));
+  for (const title of titles) {
+    const found = findSongByTitle(songs, title);
+    // Kein Ton vorhanden — weder Spur noch REC: dasselbe Verbotssymbol wie
+    // beim Platzhalter-Song in Bibliothek und Player (iconUnavailable()).
+    const noAudio = found && !songHasAudio(found, recsBySong);
+    const li = el('li', {
+      class: found ? '' : 'muted',
+      style: noAudio ? 'display:flex; align-items:center; gap:6px' : null,
+    }, title);
+    if (noAudio) {
+      li.append(el('span', {
+        class: 'placeholder-badge', role: 'img',
+        'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge'),
+      }, iconUnavailable()));
+    }
+    list.append(li);
   }
 
   const play = el('button', {
@@ -11646,11 +11755,13 @@ async function renderPlaylists() {
   }
 
   const songs = await DB.metaByType('song').catch(() => []);
+  const recordings = await DB.metaByType('recording').catch(() => []);
   if (token !== playlistsRenderToken) return;
   host.textContent = '';
   lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
+  const recsBySong = groupRecordingsBySongId(recordings);
 
-  renderCurrentSetlist(lists.find((pl) => pl.favorite) || null, songs);
+  renderCurrentSetlist(lists.find((pl) => pl.favorite) || null, songs, recsBySong);
 
   const ul = el('ul', { class: 'list' });
   for (const pl of lists) {
@@ -11707,9 +11818,11 @@ async function renderPlaylists() {
 /** Startet eine Playlist von vorn. Fehlende Titel bleiben als Platzhalter drin. */
 async function startPlaylist(pl) {
   const songs = await DB.metaByType('song').catch(() => []);
+  const recordings = await DB.metaByType('recording').catch(() => []);
+  const recsBySong = groupRecordingsBySongId(recordings);
   const items = (pl.songTitles || []).map((t) => {
     const song = findSongByTitle(songs, t);
-    return { title: t, id: song ? song.id : null, playable: isPlayableSong(song) };
+    return { title: t, id: song ? song.id : null, playable: songHasAudio(song, recsBySong) };
   });
   const firstIndex = items.findIndex((it) => it.playable);
 
