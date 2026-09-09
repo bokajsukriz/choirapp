@@ -10588,9 +10588,11 @@ async function exportRecording(recording, anchorBtn) {
 /**
  * Importiert eine mit exportRecording() erzeugte MP3-Datei — auch aus einer
  * anderen App-Instanz. Findet sich der Song (per Titel) nicht in der
- * Bibliothek, bleibt der REC ohne songId gespeichert und verbindet
- * sich automatisch, sobald der Song importiert wird (reconnectPendingRecordings)
- * — genau wie bei Loops und Notizen.
+ * Bibliothek, legt createPlaceholderSong() ihn als Platzhalter an, damit der
+ * REC sofort zugeordnet ist. Nur wenn der Titel selbst unbekannt bleibt (kein
+ * ID3-Tag, alter Dateiname ohne auswertbaren Titel), bleibt der REC ohne
+ * songId liegen und verbindet sich automatisch, sobald der Song doch noch
+ * importiert wird (reconnectPendingRecordings) — genau wie bei Loops und Notizen.
  */
 async function importRecordingFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -10630,7 +10632,11 @@ async function importRecordingFile(file) {
   const duration = await probeAudioDuration(blob);
 
   const songs = await DB.metaByType('song').catch(() => []);
-  const song = findSongByTitle(songs, songTitle);
+  // Anders als bei Loops/Notizen bleibt der REC hier nicht auf einen später
+  // importierten Song wartend liegen — Titel ist ja schon bekannt, also legt
+  // createPlaceholderSong() ihn gleich als Platzhalter an (dedupliziert über
+  // dieselbe hashId(normTitle) wie ein echter Import).
+  const song = findSongByTitle(songs, songTitle) || (songTitle ? await createPlaceholderSong(songTitle) : null);
 
   const fileKey = newFileKey();
   await DB.filePut(await fileRecord(fileKey, blob, file.name));
