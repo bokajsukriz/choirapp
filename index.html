@@ -1951,6 +1951,15 @@ input[type="checkbox"] {
 .trim-handle--start { left: 0%; }
 .trim-handle--end { left: 100%; }
 
+/* Vorschau-Zeile im Zuschneide-Dialog: kleinerer Zwilling von .rec-play
+   (dieselbe grüne Füllung im .is-playing-Zustand, siehe dort) links vom
+   Zeit-Label. */
+.trim-preview-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.trim-play {
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px; max-width: 44px; max-height: 44px;
+}
+.trim-play svg { width: 20px; height: 20px; margin-left: 2px; }
+
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .recording-item .go span.rec-meta { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }

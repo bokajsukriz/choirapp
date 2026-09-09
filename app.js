@@ -10114,8 +10114,13 @@ function trimSelectDialog(audioBuffer) {
   return new Promise((resolve) => {
     const durationSec = audioBuffer.duration;
     const MIN_LEN = Math.min(0.3, durationSec);
+    const PREVIEW_LEN = 5; // Sekunden — sowohl der Vorlauf vor endSec als auch das Fenster ab startSec
     let startSec = 0;
     let endSec = durationSec;
+    // Welcher Griff zuletzt bewegt wurde, entscheidet, was die Vorschau
+    // spielt (siehe startPreview()) — ohne das wüsste sie nicht, ob Anfang
+    // oder Ende gerade interessiert.
+    let lastMoved = 'start';
 
     const canvas = el('canvas', { class: 'take-wave' });
     const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
@@ -10123,7 +10128,7 @@ function trimSelectDialog(audioBuffer) {
     const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': 'Anfang' });
     const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': 'Ende' });
     const wrap = el('div', { class: 'trim-wave-wrap' }, canvas, shadeLeft, shadeRight, startHandle, endHandle);
-    const label = el('p', { class: 'small muted', style: 'margin:10px 0 0; text-align:center' });
+    const label = el('p', { class: 'small muted', style: 'margin:0; text-align:center' });
 
     const pct = (sec) => (durationSec > 0 ? Math.max(0, Math.min(100, (sec / durationSec) * 100)) : 0);
     const layout = () => {
@@ -10137,6 +10142,7 @@ function trimSelectDialog(audioBuffer) {
     };
 
     const nudge = (isStart, delta) => {
+      lastMoved = isStart ? 'start' : 'end';
       if (isStart) startSec = Math.max(0, Math.min(startSec + delta, endSec - MIN_LEN));
       else endSec = Math.min(durationSec, Math.max(endSec + delta, startSec + MIN_LEN));
       layout();
@@ -10163,12 +10169,46 @@ function trimSelectDialog(audioBuffer) {
     wireHandle(startHandle, true);
     wireHandle(endHandle, false);
 
-    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
+    // Vorschau: eigener, kurzlebiger AudioContext (die decodeToPcm()-Instanz
+    // ist längst wieder geschlossen) — spielt ab dem zuletzt bewegten Griff,
+    // damit man genau die Stelle hört, die man gerade zieht, statt den ganzen
+    // Take. Am Anfang ab startSec, am Ende die letzten PREVIEW_LEN Sekunden
+    // davor und noch etwas darüber hinaus — so hört man auch, was direkt
+    // abgeschnitten würde.
+    let playCtx = null;
+    let playSource = null;
+    const stopPreview = () => {
+      if (playSource) { try { playSource.stop(); } catch { /* schon zu Ende */ } playSource = null; }
+      playBtn.classList.remove('is-playing');
+    };
+    const startPreview = () => {
+      stopPreview();
+      if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const from = lastMoved === 'end' ? Math.max(0, endSec - PREVIEW_LEN) : startSec;
+      const to = lastMoved === 'end' ? Math.min(durationSec, endSec + 2) : Math.min(durationSec, startSec + PREVIEW_LEN);
+      const source = playCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(playCtx.destination);
+      source.addEventListener('ended', () => { if (playSource === source) { playSource = null; playBtn.classList.remove('is-playing'); } });
+      source.start(0, from, Math.max(0.05, to - from));
+      playSource = source;
+      playBtn.classList.add('is-playing');
+    };
+    const playBtn = el('button', { class: 'rec-play trim-play', type: 'button', 'aria-label': 'Vorschau abspielen' });
+    playBtn.innerHTML = '<svg class="rec-icon-visible" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+    playBtn.addEventListener('click', () => { if (playSource) stopPreview(); else startPreview(); });
+    const previewRow = el('div', { class: 'trim-preview-row' }, playBtn, label);
+
+    const done = (result) => {
+      stopPreview();
+      if (playCtx) playCtx.close().catch(() => {});
+      closeModal(layer); layer.remove(); resolve(result);
+    };
     const box = el('div', { class: 'dialog' },
       el('h2', { text: 'REC zuschneiden' }),
       el('p', { text: 'Anfang und Ende an den Griffen ziehen.' }),
       wrap,
-      label,
+      previewRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: 'Übernehmen',
