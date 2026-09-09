@@ -10144,12 +10144,30 @@ async function exportRecording(recording) {
     const file = new File([tagged], fileName, { type: 'audio/mpeg' });
 
     closeBanner();
-    let shared = false;
+
+    // Kann geteilt werden (z.B. per Signal, WhatsApp, Mail …), lässt man die
+    // Wahl: Teilen (mit dem Dateinamen als vorbereitete Nachricht — die
+    // Ziel-App zeigt sie als Text neben dem Anhang) oder direkt herunterladen.
+    // Welche App im Teilen-Dialog erscheint, entscheidet das Betriebssystem;
+    // die Web-Share-API kann keine bestimmte App vorauswählen.
+    let action = 'download';
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'REC' }); shared = true; }
+      action = await choiceDialog({
+        title: 'REC exportieren',
+        text: `„${fileName}" ist bereit.`,
+        options: [
+          { label: 'Teilen', value: 'share', primary: true },
+          { label: 'Herunterladen', value: 'download' },
+        ],
+      });
+      if (!action) return;
+    }
+
+    if (action === 'share') {
+      try { await navigator.share({ files: [file], title: 'REC', text: fileName }); return; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
-    if (!shared) downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
+    downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
   } catch (err) {
     closeBanner();
     bannerError('Der REC konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
