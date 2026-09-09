@@ -633,6 +633,32 @@ function wireFabMenu(btnSel, backdropSel, onAction) {
   });
 }
 
+/**
+ * Einmaliges Menü im selben Fab-Stil (siehe placeFabMenu), aber ohne festen
+ * HTML-Backdrop: für Knöpfe, die es viele gibt (ein Export-Knopf pro REC)
+ * und für die sich kein einzelnes, statisches Menü im Markup anlegen lässt.
+ * Baut Menü und Backdrop bei Bedarf, entfernt sie nach der Auswahl wieder.
+ * Löst mit dem gewählten value auf, oder null bei Abbruch (daneben/Escape).
+ */
+function floatingMenu(btn, items) {
+  return new Promise((resolve) => {
+    const done = (v) => { closeModal(backdrop); backdrop.remove(); resolve(v); };
+    const menu = el('div', { class: 'fab-menu', role: 'menu' },
+      items.map((it) => {
+        const item = el('button', { class: 'fab-menu-item', type: 'button', role: 'menuitem' });
+        item.insertAdjacentHTML('afterbegin', it.icon);
+        item.append(el('span', { text: it.label }));
+        item.addEventListener('click', () => done(it.value));
+        return item;
+      }));
+    const backdrop = el('div', { class: 'fab-menu-backdrop' }, menu);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) done(null); });
+    document.body.append(backdrop);
+    placeFabMenu(btn, backdrop);
+    openModal(backdrop, { initialFocus: $('.fab-menu-item', backdrop), onEscape: () => done(null) });
+  });
+}
+
 // Nach einer Drehung stimmt die gemessene Lage nicht mehr — neu setzen,
 // statt das Menü einem Knopf hinterherhängen zu lassen, der weg ist.
 window.addEventListener('resize', () => {
@@ -9926,8 +9952,13 @@ function floatTo16BitPCM(floatSamples) {
   return out;
 }
 
-/** PCM aus einem AudioBuffer mit lamejs zu MP3 kodieren (mono oder stereo, je nach Quelle). */
-function encodePcmToMp3(audioBuffer, kbps = 128) {
+/**
+ * PCM aus einem AudioBuffer mit lamejs zu MP3 kodieren (mono oder stereo, je
+ * nach Quelle). Tritt alle 200 Blöcke einmal ans Event-Loop ab (statt in
+ * einem Zug durchzulaufen), damit onProgress() den Fortschritt tatsächlich
+ * anzeigen kann und der Tab währenddessen nicht einfriert.
+ */
+async function encodePcmToMp3(audioBuffer, kbps = 128, onProgress) {
   const channels = Math.min(audioBuffer.numberOfChannels, 2);
   const left = floatTo16BitPCM(audioBuffer.getChannelData(0));
   const right = channels === 2 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null;
@@ -9935,14 +9966,21 @@ function encodePcmToMp3(audioBuffer, kbps = 128) {
   const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, kbps);
   const chunks = [];
   const blockSize = 1152;
-  for (let i = 0; i < left.length; i += blockSize) {
+  const totalBlocks = Math.max(1, Math.ceil(left.length / blockSize));
+  let block = 0;
+  for (let i = 0; i < left.length; i += blockSize, block++) {
     const buf = channels === 2
       ? encoder.encodeBuffer(left.subarray(i, i + blockSize), right.subarray(i, i + blockSize))
       : encoder.encodeBuffer(left.subarray(i, i + blockSize));
     if (buf.length > 0) chunks.push(buf);
+    if (onProgress && block % 200 === 0) {
+      onProgress(block / totalBlocks);
+      await new Promise((r) => setTimeout(r, 0));
+    }
   }
   const end = encoder.flush();
   if (end.length > 0) chunks.push(end);
+  onProgress?.(1);
 
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const merged = new Uint8Array(total);
@@ -10114,15 +10152,56 @@ function probeAudioDuration(blob) {
   });
 }
 
+/** Fortschrittsbalken beim MP3-Export eines RECs — dieselbe Optik wie showBackupProgressDialog(). */
+function showRecExportProgressDialog() {
+  const bar = el('i');
+  const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: '0%' });
+  const box = el('div', { class: 'dialog' },
+    el('h2', { text: 'REC wird exportiert' }),
+    el('p', { text: 'Wird als MP3 kodiert — bei längeren Aufnahmen kann das kurz dauern.' }),
+    el('div', { class: 'meter' }, bar),
+    status);
+  const layer = el('div', { class: 'overlay' }, box);
+  document.body.append(layer);
+  return {
+    update(fraction) {
+      const pct = Math.min(100, Math.round(fraction * 100));
+      bar.style.width = `${pct}%`;
+      status.textContent = `${pct}%`;
+    },
+    close() { layer.remove(); },
+  };
+}
+
+const REC_EXPORT_SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.6l7.4-4.3M8.3 13.4l7.4 4.3"/></svg>';
+const REC_EXPORT_DOWNLOAD_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
+
 /**
  * Exportiert einen REC als eigenständige MP3-Datei — abspielbar und
  * verschickbar überall, ganz ohne diese App. Songtitel, Stimme und Name
  * stehen im Dateinamen (für Menschen); Songtitel, Stimme, Name und Datum
  * zusätzlich als ID3-Tags (überlebt ein Umbenennen) — importRecordingFile
  * liest zuerst die Tags, fällt sonst auf den Dateinamen zurück.
+ *
+ * Fragt zuerst per Fab-Menü (floatingMenu(), wächst aus dem Export-Knopf
+ * heraus) nach dem Ziel — Teilen oder Herunterladen —, bevor überhaupt
+ * kodiert wird: wer herunterladen will, wartet so nicht erst auf den
+ * Encoder, um am Ende doch nur einen Teilen-Dialog zu sehen. Ein winziges
+ * leeres Probe-File reicht canShare() zur Prüfung, ob Teilen überhaupt
+ * möglich ist — der eigentliche Inhalt kommt erst nach der Auswahl.
  */
-async function exportRecording(recording) {
-  const closeBanner = banner('REC wird als MP3 exportiert …', { timeout: 0 });
+async function exportRecording(recording, anchorBtn) {
+  const probeFile = new File([], 'probe.mp3', { type: 'audio/mpeg' });
+  let action = 'download';
+  if (navigator.canShare?.({ files: [probeFile] })) {
+    action = await floatingMenu(anchorBtn, [
+      { value: 'share', label: 'Teilen', icon: REC_EXPORT_SHARE_ICON },
+      { value: 'download', label: 'Herunterladen', icon: REC_EXPORT_DOWNLOAD_ICON },
+    ]);
+    if (!action) return;
+  }
+
+  const progress = showRecExportProgressDialog();
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
@@ -10130,7 +10209,7 @@ async function exportRecording(recording) {
 
     await ensureLameLoaded();
     const audioBuffer = await decodeToPcm(sourceBlob);
-    const mp3Bytes = encodePcmToMp3(audioBuffer);
+    const mp3Bytes = await encodePcmToMp3(audioBuffer, 128, (fraction) => progress.update(fraction));
 
     const songTitle = playerSong?.title || recording.songTitle || '';
     const tagged = attachId3Tag(mp3Bytes, {
@@ -10143,33 +10222,18 @@ async function exportRecording(recording) {
     })}.mp3`;
     const file = new File([tagged], fileName, { type: 'audio/mpeg' });
 
-    closeBanner();
+    progress.close();
 
-    // Kann geteilt werden (z.B. per Signal, WhatsApp, Mail …), lässt man die
-    // Wahl: Teilen (mit dem Dateinamen als vorbereitete Nachricht — die
-    // Ziel-App zeigt sie als Text neben dem Anhang) oder direkt herunterladen.
-    // Welche App im Teilen-Dialog erscheint, entscheidet das Betriebssystem;
-    // die Web-Share-API kann keine bestimmte App vorauswählen.
-    let action = 'download';
-    if (navigator.canShare?.({ files: [file] })) {
-      action = await choiceDialog({
-        title: 'REC exportieren',
-        text: `„${fileName}" ist bereit.`,
-        options: [
-          { label: 'Teilen', value: 'share', primary: true },
-          { label: 'Herunterladen', value: 'download' },
-        ],
-      });
-      if (!action) return;
-    }
-
+    // Die Ziel-App zeigt `text` als vorbereitete Nachricht neben dem Anhang
+    // (z.B. Signal) — welche App im Teilen-Dialog erscheint, entscheidet
+    // aber das Betriebssystem, nicht die Auswahl oben.
     if (action === 'share') {
       try { await navigator.share({ files: [file], title: 'REC', text: fileName }); return; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
     downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
   } catch (err) {
-    closeBanner();
+    progress.close();
     bannerError('Der REC konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
   }
 }
@@ -10294,7 +10358,7 @@ function renderRecordingList() {
       class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" exportieren`,
     });
     exportBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>';
-    exportBtn.addEventListener('click', () => exportRecording(recording));
+    exportBtn.addEventListener('click', () => exportRecording(recording, exportBtn));
 
     const rename = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
