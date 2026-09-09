@@ -11711,20 +11711,24 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   const list = el('ol', { class: 'gig-list small' });
   for (const title of titles) {
     const found = findSongByTitle(songs, title);
-    // Kein Ton vorhanden — weder Spur noch REC: dasselbe Verbotssymbol wie
-    // beim Platzhalter-Song in Bibliothek und Player (iconUnavailable()).
-    const noAudio = found && !songHasAudio(found, recsBySong);
+    // Zwei verschiedene Gründe für "kein Ton", beide mit demselben
+    // Verbotssymbol wie in Bibliothek und Player (iconUnavailable()), aber
+    // mit unterschiedlichem Label: der Titel steht gar nicht in der
+    // Bibliothek (found ist null), oder er steht drin, hat aber weder Spur
+    // noch REC (songHasAudio() liefert false).
+    const noAudio = !found || !songHasAudio(found, recsBySong);
     // display:flex direkt auf dem <li> würde in manchen Browsern die
     // ::marker-Nummerierung des <ol> abschalten (nur list-item generiert
     // einen Marker) — deshalb Flex nur auf einem inneren Wrapper, der Marker
     // bleibt am unveränderten <li> erhalten.
     const li = el('li', { class: found ? '' : 'muted' });
     if (noAudio) {
+      const label = found ? t('songs.placeholderBadge') : t('songs.setlistMissingBadge');
       li.append(el('span', { class: 'gig-list-line' },
         title,
         el('span', {
           class: 'placeholder-badge', role: 'img',
-          'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge'),
+          'aria-label': label, title: label,
         }, iconUnavailable()),
       ));
     } else {
