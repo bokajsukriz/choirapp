@@ -270,17 +270,30 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 
 /* Einstellungsseite: jede Karte startet eingeklappt, siehe
    initSettingsAccordion() — nur die Überschrift plus Pfeil ist sichtbar,
-   bis man antippt. */
-#view-settings .card h2.card-toggle {
+   bis man antippt. Der <button> steckt IM <h2> (nicht der h2 selbst als
+   role=button), damit Screenreader-Überschriftennavigation die Karten der
+   Einstellungsseite weiterhin findet (Befund F-14 im Audit vom 9. September
+   2026). */
+#view-settings .card h2 { margin-bottom: 0; }
+#view-settings .card h2.card-toggle--expanded { margin-bottom: 12px; }
+.card-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   cursor: pointer;
   user-select: none;
-  margin-bottom: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: left;
 }
-#view-settings .card h2.card-toggle[aria-expanded="true"] { margin-bottom: 12px; }
-#view-settings .card h2.card-toggle:focus-visible {
+.card-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 6px;
@@ -290,7 +303,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .card-icon { flex: 0 0 auto; width: 19px; height: 19px; }
 .card-chevron { flex: 0 0 auto; margin-left: auto; display: flex; transition: transform .15s ease; }
 .card-chevron svg { width: 16px; height: 16px; }
-#view-settings .card h2.card-toggle[aria-expanded="true"] .card-chevron { transform: rotate(180deg); }
+.card-toggle[aria-expanded="true"] .card-chevron { transform: rotate(180deg); }
 
 .muted { color: var(--muted); }
 .small { font-size: 0.86rem; }
@@ -2610,7 +2623,7 @@ input[type="checkbox"] {
         </svg>
       </div>
       <p class="onb-step" data-i18n="onb.step1of5">Schritt 1 von 5</p>
-      <h2 id="onb-title-1" data-i18n-html="onb.slide1.title">Auf den Home&#8209;Bildschirm legen</h2>
+      <h2 id="onb-title-1" tabindex="-1" data-i18n-html="onb.slide1.title">Auf den Home&#8209;Bildschirm legen</h2>
       <p data-i18n="onb.slide1.text">
         So startet die App wie jede andere: eigenes Symbol, kein Browserfenster,
         volle Bildschirmhöhe. Vor allem aber behält das System die Aufnahmen
@@ -2630,7 +2643,7 @@ input[type="checkbox"] {
         </svg>
       </div>
       <p class="onb-step" data-i18n="onb.step2of5">Schritt 2 von 5</p>
-      <h2 id="onb-title-2" data-i18n="onb.slide2.title">Welche Stimme singst du?</h2>
+      <h2 id="onb-title-2" tabindex="-1" data-i18n="onb.slide2.title">Welche Stimme singst du?</h2>
       <p data-i18n="onb.slide2.text">
         Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine
         Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:
@@ -2656,7 +2669,7 @@ input[type="checkbox"] {
         </svg>
       </div>
       <p class="onb-step" data-i18n="onb.step3of5">Schritt 3 von 5</p>
-      <h2 id="onb-title-3" data-i18n="onb.slide3.title">Aufnahmen dauerhaft behalten</h2>
+      <h2 id="onb-title-3" tabindex="-1" data-i18n="onb.slide3.title">Aufnahmen dauerhaft behalten</h2>
       <p data-i18n="onb.slide3.text1">
         Web-Apps dürfen ihre Daten normalerweise nur „auf Probe“ speichern: wird
         der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie
@@ -2684,7 +2697,7 @@ input[type="checkbox"] {
         </svg>
       </div>
       <p class="onb-step" data-i18n="onb.step4of5">Schritt 4 von 5</p>
-      <h2 id="onb-title-4" data-i18n="onb.slide4.title">Die schwere Stelle üben</h2>
+      <h2 id="onb-title-4" tabindex="-1" data-i18n="onb.slide4.title">Die schwere Stelle üben</h2>
       <p data-i18n-html="onb.slide4.intro"><strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben“:</p>
       <ol class="steps small">
         <li data-i18n-html="onb.slide4.li1">An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.</li>
@@ -2709,7 +2722,7 @@ input[type="checkbox"] {
         </svg>
       </div>
       <p class="onb-step" data-i18n="onb.step5of5">Schritt 5 von 5</p>
-      <h2 id="onb-title-5" data-i18n="onb.slide5.title">Songs holen, Programm planen</h2>
+      <h2 id="onb-title-5" tabindex="-1" data-i18n="onb.slide5.title">Songs holen, Programm planen</h2>
       <p data-i18n-html="onb.slide5.import"><strong>Import.</strong> Die Aufnahmen liegen im geteilten
         Dropbox-Ordner. Öffne ihn dafür im <strong>Browser</strong> — nicht in
         der Dropbox-App, die kann Ordner nicht als ZIP herunterladen —, lade ihn

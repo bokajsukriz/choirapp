@@ -229,7 +229,25 @@ export function isJunkPath(path) {
   return base.startsWith('._') || base.startsWith('.');
 }
 
-export const canInflate = typeof DecompressionStream === 'function';
+/**
+ * Prüft die tatsächlich gebrauchte Fähigkeit (Konstruktor mit 'deflate-raw'),
+ * nicht nur ob die Schnittstelle existiert — der Konstruktor darf laut MDN
+ * mit TypeError scheitern, wenn ein Browser das Interface hat, aber dieses
+ * konkrete Format nicht unterstützt (Befund F-16 im Audit vom 9. September
+ * 2026). Sonst würde ein Eintrag als „entpackbar" vorklassifiziert und erst
+ * beim tatsächlichen Entpacken mit einer generischen Fehlermeldung scheitern.
+ */
+function detectInflateSupport() {
+  if (typeof DecompressionStream !== 'function') return false;
+  try {
+    new DecompressionStream('deflate-raw');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const canInflate = detectInflateSupport();
 
 /**
  * Wo beginnen die Nutzdaten eines Eintrags?

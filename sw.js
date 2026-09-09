@@ -8,9 +8,11 @@
    Loops und Playlisten des Nutzers bleiben bei jedem Update erhalten.
    ========================================================================== */
 
-// Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
-// Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v195';
+// Bei jeder Änderung an einer Datei aus SHELL_REQUIRED oder SHELL_OPTIONAL
+// weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
+// die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
+// Cache-Name ab; ein neuer Name = frischer Shell-Cache.
+const SW_VERSION = 'v196';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -114,6 +116,27 @@ self.addEventListener('message', (event) => {
   }
 });
 
+/**
+ * Fällt auf eine andere zurückbehaltene chor-app-shell-*-Cache zurück, falls
+ * CACHE_NAME die Datei nicht hat. Das greift praktisch nur in dem seltenen
+ * Fall, in dem activate() einen Pflichtteil im neuen Cache als unvollständig
+ * erkannt und deshalb absichtlich eine ältere, vollständige Cache stehen
+ * gelassen hat (siehe activate() unten) — im Normalfall existiert keine
+ * andere chor-app-shell-*-Cache mehr, und diese Funktion liefert sofort
+ * null. Ohne diesen Rückfall war das Stehenlassen der alten Cache bisher
+ * wirkungslos: fetch() hat ausschließlich CACHE_NAME gelesen, ein
+ * unvollständiger neuer Worker konnte den vollständigen alten Stand also nie
+ * wirklich bedienen (Befund F-03 im Audit vom 9. September 2026).
+ */
+async function matchAnyShellCache(req, opts) {
+  const names = (await caches.keys()).filter((n) => n.startsWith('chor-app-shell-') && n !== CACHE_NAME);
+  for (const name of names) {
+    const hit = await (await caches.open(name)).match(req, opts);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -130,10 +153,22 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const cached = await caches.match('./index.html', { cacheName: CACHE_NAME, ignoreSearch: true });
+        const cached = await caches.match('./index.html', { cacheName: CACHE_NAME, ignoreSearch: true })
+          || await matchAnyShellCache('./index.html', { ignoreSearch: true });
         if (cached) return cached;
         try {
-          return await fetch(req);
+          const res = await fetch(req);
+          // Erfolgreiche Online-Erholung nach einem Cache-Miss nur „repariert"
+          // die aktuelle Sitzung, nicht die Offlinefähigkeit — ohne diesen
+          // Nachtrag unter dem kanonischen Schlüssel fehlt index.html beim
+          // nächsten Offline-Start wieder (Befund F-07). Der Schreibfehler
+          // (z.B. Kontingent voll) darf die Antwort selbst nicht verhindern.
+          if (res && res.ok) {
+            try {
+              await (await caches.open(CACHE_NAME)).put('./index.html', res.clone());
+            } catch (err) { console.warn('[sw] konnte index.html nicht nachtragen:', err); }
+          }
+          return res;
         } catch {
           return new Response(
             '<!doctype html><meta charset="utf-8">' +
@@ -152,13 +187,18 @@ self.addEventListener('fetch', (event) => {
   // cacheName aus demselben Grund wie oben bei index.html.
   event.respondWith(
     (async () => {
-      const cached = await caches.match(req, { cacheName: CACHE_NAME, ignoreSearch: true });
+      const cached = await caches.match(req, { cacheName: CACHE_NAME, ignoreSearch: true })
+        || await matchAnyShellCache(req, { ignoreSearch: true });
       if (cached) return cached;
       try {
         const res = await fetch(req);
         if (res && res.ok && res.type === 'basic') {
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(req, res.clone());
+          // Nachtragen erst abwarten (F-07): ohne await darf der Worker schon
+          // vor dem Commit des Caches idle werden, der Nachtrag bliebe dann
+          // unzuverlässig zwischen zwei Fetches hängen.
+          try {
+            await (await caches.open(CACHE_NAME)).put(req, res.clone());
+          } catch (err) { console.warn('[sw] konnte Antwort nicht nachtragen:', req.url, err); }
         }
         return res;
       } catch (err) {
