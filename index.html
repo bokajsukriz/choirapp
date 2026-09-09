@@ -1916,6 +1916,41 @@ input[type="checkbox"] {
 .rec-take-meta { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 2px 0; }
 .rec-take-meta span { color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
 
+/* Schere rechts von der Vorschauwelle — Take-Karte (frischer Take) wie
+   REC-bearbeiten-Dialog (schon gespeicherter REC) teilen sich dasselbe
+   Layout, siehe onTakeTrimClick() / editRecordingDialog(). */
+.take-wave-row { display: flex; align-items: center; gap: 8px; }
+.take-wave-row .take-wave { flex: 1; min-width: 0; }
+.take-trim-btn {
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px;
+  margin-top: 10px; border-radius: 50%; flex: 0 0 auto;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  appearance: none; -webkit-appearance: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.take-trim-btn:active { background: var(--surface-2); }
+.take-trim-btn svg { width: 19px; height: 19px; }
+
+/* Zuschneide-Dialog (trimSelectDialog): dieselbe Wellenform-Optik wie
+   .take-wave, darüber zwei ziehbare Griffe und eine Abdunklung für den
+   verworfenen Rand links/rechts der Auswahl. */
+.trim-wave-wrap { position: relative; margin-top: 10px; touch-action: none; }
+.trim-wave-wrap .take-wave { margin-top: 0; }
+.trim-shade {
+  position: absolute; top: 0; bottom: 0; border-radius: 12px;
+  background: rgba(0,0,0,.45); pointer-events: none;
+}
+.trim-shade--left { left: 0; }
+.trim-shade--right { right: 0; }
+.trim-handle {
+  position: absolute; top: -6px; bottom: -6px; width: 18px; margin-left: -9px;
+  border: 0; border-radius: 6px; background: var(--accent); cursor: ew-resize;
+  touch-action: none; padding: 0;
+}
+.trim-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.trim-handle--start { left: 0%; }
+.trim-handle--end { left: 100%; }
+
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .recording-item .go span.rec-meta { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
@@ -2857,7 +2892,12 @@ input[type="checkbox"] {
         <label class="visually-hidden" for="rec-take-name">Name des RECs</label>
         <input class="take-name" id="rec-take-name" type="text" maxlength="60"
                autocomplete="off" autocorrect="off" spellcheck="false">
-        <canvas class="take-wave" id="rec-take-wave"></canvas>
+        <div class="take-wave-row">
+          <canvas class="take-wave" id="rec-take-wave"></canvas>
+          <button class="take-trim-btn" id="btn-rec-take-trim" type="button" aria-label="REC zuschneiden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+          </button>
+        </div>
         <div class="rec-take-meta">
           <span id="rec-take-duration"></span>
           <span id="rec-take-hint">gerade aufgenommen</span>
@@ -3253,7 +3293,12 @@ input[type="checkbox"] {
       <label class="visually-hidden" for="recorder-take-name">Name des RECs</label>
       <input class="take-name" id="recorder-take-name" type="text" maxlength="60"
              autocomplete="off" autocorrect="off" spellcheck="false">
-      <canvas class="take-wave" id="recorder-take-wave"></canvas>
+      <div class="take-wave-row">
+        <canvas class="take-wave" id="recorder-take-wave"></canvas>
+        <button class="take-trim-btn" id="btn-recorder-take-trim" type="button" aria-label="REC zuschneiden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+        </button>
+      </div>
       <div class="rec-take-meta">
         <span id="recorder-take-duration"></span>
         <span id="recorder-take-hint">gerade aufgenommen</span>

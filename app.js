@@ -490,20 +490,35 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
   });
 }
 
+// Schere — auch am Take (siehe onTakeTrimClick) und hier bei schon
+// gespeicherten RECs, deshalb ein gemeinsames Icon statt zweimal derselben
+// SVG-Zeichenkette.
+const REC_SCISSORS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
+
 /**
- * REC bearbeiten: Name und Stimmwahl in einem Dialog statt zwei
- * hintereinander (Name per promptDialog(), Stimme per pickRecordingVoice()
- * — das war der vorherige Weg beim Umbenennen; pickRecordingVoice() bleibt
- * fürs Speichern eines frischen Takes weiter in Gebrauch). Die Stimmwahl
- * läuft als exklusive Reihe der farbigen Stimm-Pills (wie bei „meine
- * Stimme", siehe renderVoicePicker) statt als eigener Dialog.
+ * REC bearbeiten: Name, Stimmwahl und Zuschneiden in einem Dialog statt
+ * verteilt (Name per promptDialog(), Stimme per pickRecordingVoice() — das
+ * war der vorherige Weg beim Umbenennen; pickRecordingVoice() bleibt fürs
+ * Speichern eines frischen Takes weiter in Gebrauch). Die Stimmwahl läuft
+ * als exklusive Reihe der farbigen Stimm-Pills (wie bei „meine Stimme",
+ * siehe renderVoicePicker) statt als eigener Dialog.
+ *
+ * Der Zuschneide-Knopf lädt den Blob selbst nach (recording.fileKey ist
+ * alles, was er braucht) und schreibt bei „Übernehmen" sofort in die DB
+ * zurück — unabhängig vom „Speichern" unten, das nur Name/Stimme betrifft.
+ * Ein Abbruch dieses Dialogs verwirft also nie einen schon angewandten
+ * Zuschnitt, genauso wenig wie ein Klick auf „Abbrechen" hier eine
+ * frühere Umbenennung zurückdrehen würde.
+ *
+ * @param {object} recording — dasselbe Objekt aus songRecordings (wird bei
+ *   einem Zuschnitt direkt mutiert: mimeType/duration/size)
  * @returns {Promise<{name: string, voice: string|null}|null>} null bei Abbruch
  */
-function editRecordingDialog({ name, voice }) {
+function editRecordingDialog(recording) {
   return new Promise((resolve) => {
-    const input = el('input', { type: 'text', value: name, 'aria-label': 'Name' });
+    const input = el('input', { type: 'text', value: recording.name, 'aria-label': 'Name' });
 
-    let selected = voice || null;
+    let selected = recording.voice || null;
     const voiceOptions = [
       { value: null, label: 'Keine' },
       { value: 'SOP', label: VOICE_LABEL.SOP },
@@ -530,11 +545,52 @@ function editRecordingDialog({ name, voice }) {
     }));
     const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
 
+    const canvas = el('canvas', { class: 'take-wave' });
+    const trimBtn = el('button', { class: 'take-trim-btn', type: 'button', 'aria-label': 'REC zuschneiden' });
+    trimBtn.innerHTML = REC_SCISSORS_ICON;
+    const waveRow = el('div', { class: 'take-wave-row', style: 'margin-top:12px' }, canvas, trimBtn);
+
+    const drawEditWave = async () => {
+      try {
+        const rec = await DB.fileGet(recording.fileKey);
+        if (!rec) return;
+        const buffer = await decodeToPcm(recordBlob(rec, recording.mimeType));
+        const bucketCount = Math.max(1, Math.floor((canvas.getBoundingClientRect().width || 280) / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
+        const { ctx, width, height } = setupLevelCanvas(canvas);
+        drawLevelHistory(ctx, waveformPeaksFromBuffer(buffer, bucketCount), width, height);
+      } catch { /* Wellenform ist nur zur Orientierung — kein Blocker, wenn sie mal ausfällt */ }
+    };
+
+    trimBtn.addEventListener('click', async () => {
+      let blob;
+      try {
+        const rec = await DB.fileGet(recording.fileKey);
+        if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
+        blob = recordBlob(rec, recording.mimeType);
+      } catch (err) { bannerError('Der REC konnte nicht geladen werden.', 'REC-TRIM', err); return; }
+
+      let result;
+      try { result = await trimAudioBlob(blob); }
+      catch (err) { bannerError('Der REC konnte nicht zum Zuschneiden geöffnet werden.', 'REC-TRIM', err); return; }
+      if (!result) return;
+
+      try {
+        await DB.filePut(await fileRecord(recording.fileKey, result.blob, `${recording.name}.wav`));
+        recording.mimeType = 'audio/wav';
+        recording.duration = result.duration;
+        recording.size = result.blob.size;
+        await DB.metaPut(recording);
+        banner('REC zugeschnitten.', { kind: 'ok' });
+        await drawEditWave();
+      } catch (err) { bannerError('Der zugeschnittene REC konnte nicht gespeichert werden.', 'REC-TRIM-SAVE', err); }
+    });
+
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const box = el('div', { class: 'dialog' },
       el('h2', { text: 'REC bearbeiten' }),
       input,
+      waveRow,
       voiceRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
@@ -553,6 +609,7 @@ function editRecordingDialog({ name, voice }) {
     document.body.append(layer);
     openModal(layer, { initialFocus: input, onEscape: () => done(null) });
     input.select();
+    drawEditWave();
   });
 }
 
@@ -630,6 +687,32 @@ function wireFabMenu(btnSel, backdropSel, onAction) {
     if (!item) return;
     closeFabMenu();
     onAction(item.dataset.action);
+  });
+}
+
+/**
+ * Einmaliges Menü im selben Fab-Stil (siehe placeFabMenu), aber ohne festen
+ * HTML-Backdrop: für Knöpfe, die es viele gibt (ein Export-Knopf pro REC)
+ * und für die sich kein einzelnes, statisches Menü im Markup anlegen lässt.
+ * Baut Menü und Backdrop bei Bedarf, entfernt sie nach der Auswahl wieder.
+ * Löst mit dem gewählten value auf, oder null bei Abbruch (daneben/Escape).
+ */
+function floatingMenu(btn, items) {
+  return new Promise((resolve) => {
+    const done = (v) => { closeModal(backdrop); backdrop.remove(); resolve(v); };
+    const menu = el('div', { class: 'fab-menu', role: 'menu' },
+      items.map((it) => {
+        const item = el('button', { class: 'fab-menu-item', type: 'button', role: 'menuitem' });
+        item.insertAdjacentHTML('afterbegin', it.icon);
+        item.append(el('span', { text: it.label }));
+        item.addEventListener('click', () => done(it.value));
+        return item;
+      }));
+    const backdrop = el('div', { class: 'fab-menu-backdrop' }, menu);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) done(null); });
+    document.body.append(backdrop);
+    placeFabMenu(btn, backdrop);
+    openModal(backdrop, { initialFocus: $('.fab-menu-item', backdrop), onEscape: () => done(null) });
   });
 }
 
@@ -8585,7 +8668,7 @@ const RID = {
     inputWarning: 'rec-input-warning',
     take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
     voiceBtn: 'btn-rec-take-voice', voiceLabel: 'rec-take-voice-label',
-    wave: 'rec-take-wave', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
+    wave: 'rec-take-wave', trimBtn: 'btn-rec-take-trim', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
     save: 'btn-rec-save', discard: 'btn-rec-discard',
   },
   recorder: {
@@ -8594,7 +8677,7 @@ const RID = {
     inputWarning: 'recorder-input-warning',
     take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration', hint: 'recorder-take-hint',
     voiceBtn: 'btn-recorder-take-voice', voiceLabel: 'recorder-take-voice-label',
-    wave: 'recorder-take-wave', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
+    wave: 'recorder-take-wave', trimBtn: 'btn-recorder-take-trim', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
     save: 'btn-recorder-save', discard: 'btn-recorder-discard',
   },
 };
@@ -9345,6 +9428,37 @@ async function onTakePreviewClick() {
 $('#btn-rec-preview').addEventListener('click', onTakePreviewClick);
 $('#btn-recorder-preview').addEventListener('click', onTakePreviewClick);
 
+/**
+ * Schneidet den noch nicht gespeicherten Take zu (siehe trimAudioBlob()).
+ * Ersetzt pendingTake.blob durch das WAV-Ergebnis und baut levelTakeHistory
+ * aus der echten (neuen) Wellenform neu auf — die bisherige Historie kam ja
+ * von der Live-Aufnahme und passt nach dem Schnitt nicht mehr.
+ */
+async function onTakeTrimClick() {
+  if (!pendingTake) return;
+  if (audioPreview?.tag?.pending) await endRecordingPreview();
+
+  let result;
+  try { result = await trimAudioBlob(pendingTake.blob); }
+  catch (err) { bannerError('Der REC konnte nicht zum Zuschneiden geöffnet werden.', 'REC-TRIM', err); return; }
+  if (!result) return;
+
+  pendingTake.blob = result.blob;
+  pendingTake.mimeType = 'audio/wav';
+  pendingTake.duration = result.duration;
+  resetLevelTakeHistory();
+  try {
+    const buffer = await decodeToPcm(pendingTake.blob);
+    const canvasWidth = rn('wave').getBoundingClientRect().width || 280;
+    const bucketCount = Math.max(1, Math.floor(canvasWidth / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
+    levelTakeHistory = waveformPeaksFromBuffer(buffer, bucketCount);
+  } catch { /* Wellenform bleibt leer — nicht kritisch, der Take selbst ist geschnitten */ }
+  renderPendingTake();
+  updateRecPreviewButton();
+}
+$('#btn-rec-take-trim').addEventListener('click', onTakeTrimClick);
+$('#btn-recorder-take-trim').addEventListener('click', onTakeTrimClick);
+
 async function onTakeDiscardClick() {
   if (!pendingTake) return;
   const ok = await confirmDialog({
@@ -9480,7 +9594,7 @@ async function onTakeSaveClick() {
 
   const { blob, mimeType, duration, anchor } = pendingTake;
   const fileKey = newFileKey();
-  const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+  const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('wav') ? 'wav' : 'webm');
   await DB.filePut(await fileRecord(fileKey, blob, `${name}.${ext}`));
 
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -9926,8 +10040,177 @@ function floatTo16BitPCM(floatSamples) {
   return out;
 }
 
-/** PCM aus einem AudioBuffer mit lamejs zu MP3 kodieren (mono oder stereo, je nach Quelle). */
-function encodePcmToMp3(audioBuffer, kbps = 128) {
+/* ---------- REC zuschneiden: Anfang/Ende kürzen ----------
+   Läuft für frische Takes wie für schon gespeicherte RECs über denselben
+   Weg (trimAudioBlob()) — beide haben am Ende nur einen Blob und eine
+   Dauer, keine Sonderfälle nötig. Das Ergebnis ist immer WAV: kein neuer
+   Encoder, kein Bundler — WAV ist reines PCM plus 44-Byte-Header, jeder
+   Browser spielt es zurück, unabhängig vom Ursprungsformat (WebM/Opus vom
+   Rekorder, M4A/MP3 aus einem Import). Größer als komprimiertes Audio,
+   aber für ein paar Sekunden Vorne/Hinten-Schnitt unerheblich. */
+
+/** Downsample einer Kanalspur auf `bucketCount` Amplituden-Werte (0..1) — dieselbe {amp,clipping}-Form wie levelTakeHistory, für drawLevelHistory(). */
+function waveformPeaksFromBuffer(audioBuffer, bucketCount) {
+  const data = audioBuffer.getChannelData(0);
+  const columns = [];
+  for (let b = 0; b < bucketCount; b++) {
+    const start = Math.floor((b * data.length) / bucketCount);
+    const end = Math.max(start + 1, Math.floor(((b + 1) * data.length) / bucketCount));
+    let peak = 0;
+    for (let i = start; i < end && i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+    columns.push({ amp: Math.max(0.04, Math.min(1, peak)), clipping: false });
+  }
+  return columns;
+}
+
+/** Baut eine unkomprimierte WAV-Datei aus einem Ausschnitt (startSec..endSec) eines AudioBuffers. */
+function audioBufferToWav(audioBuffer, startSec, endSec) {
+  const sampleRate = audioBuffer.sampleRate;
+  const channels = audioBuffer.numberOfChannels;
+  const startSample = Math.max(0, Math.floor(startSec * sampleRate));
+  const endSample = Math.min(audioBuffer.length, Math.ceil(endSec * sampleRate));
+  const frameCount = Math.max(0, endSample - startSample);
+
+  const blockAlign = channels * 2; // 16-Bit
+  const dataSize = frameCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  const channelData = [];
+  for (let c = 0; c < channels; c++) channelData.push(audioBuffer.getChannelData(c));
+  let offset = 44;
+  for (let i = startSample; i < endSample; i++) {
+    for (let c = 0; c < channels; c++) {
+      const s = Math.max(-1, Math.min(1, channelData[c][i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+/**
+ * Zuschneide-Dialog: zeigt die echte Wellenform von `audioBuffer` mit zwei
+ * ziehbaren Griffen für Anfang und Ende. Löst mit { startSec, endSec } auf,
+ * oder null bei Abbruch. Reine Auswahl-UI — geschnitten wird erst danach
+ * (siehe trimAudioBlob()).
+ */
+function trimSelectDialog(audioBuffer) {
+  return new Promise((resolve) => {
+    const durationSec = audioBuffer.duration;
+    const MIN_LEN = Math.min(0.3, durationSec);
+    let startSec = 0;
+    let endSec = durationSec;
+
+    const canvas = el('canvas', { class: 'take-wave' });
+    const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
+    const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
+    const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': 'Anfang' });
+    const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': 'Ende' });
+    const wrap = el('div', { class: 'trim-wave-wrap' }, canvas, shadeLeft, shadeRight, startHandle, endHandle);
+    const label = el('p', { class: 'small muted', style: 'margin:10px 0 0; text-align:center' });
+
+    const pct = (sec) => (durationSec > 0 ? Math.max(0, Math.min(100, (sec / durationSec) * 100)) : 0);
+    const layout = () => {
+      startHandle.style.left = `${pct(startSec)}%`;
+      endHandle.style.left = `${pct(endSec)}%`;
+      shadeLeft.style.width = `${pct(startSec)}%`;
+      shadeRight.style.width = `${100 - pct(endSec)}%`;
+      startHandle.setAttribute('aria-valuetext', fmtTime(startSec));
+      endHandle.setAttribute('aria-valuetext', fmtTime(endSec));
+      label.textContent = `${fmtTime(startSec)} – ${fmtTime(endSec)} · Länge ${fmtTime(endSec - startSec)}`;
+    };
+
+    const nudge = (isStart, delta) => {
+      if (isStart) startSec = Math.max(0, Math.min(startSec + delta, endSec - MIN_LEN));
+      else endSec = Math.min(durationSec, Math.max(endSec + delta, startSec + MIN_LEN));
+      layout();
+    };
+    const dragTo = (isStart, clientX) => {
+      const rect = wrap.getBoundingClientRect();
+      const frac = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
+      nudge(isStart, (frac * durationSec) - (isStart ? startSec : endSec));
+    };
+    const wireHandle = (handle, isStart) => {
+      const onMove = (e) => dragTo(isStart, e.clientX);
+      const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        dragTo(isStart, e.clientX);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      });
+      handle.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(isStart, e.shiftKey ? -1 : -0.1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(isStart, e.shiftKey ? 1 : 0.1); }
+      });
+    };
+    wireHandle(startHandle, true);
+    wireHandle(endHandle, false);
+
+    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: 'REC zuschneiden' }),
+      el('p', { text: 'Anfang und Ende an den Griffen ziehen.' }),
+      wrap,
+      label,
+      el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: 'Übernehmen',
+                       onclick: () => done({ startSec, endSec }) })));
+
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC zuschneiden' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+
+    const bucketCount = Math.max(1, Math.floor((canvas.getBoundingClientRect().width || 280) / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
+    const columns = waveformPeaksFromBuffer(audioBuffer, bucketCount);
+    const { ctx, width, height } = setupLevelCanvas(canvas);
+    drawLevelHistory(ctx, columns, width, height);
+
+    layout();
+    openModal(layer, { initialFocus: startHandle, onEscape: () => done(null) });
+  });
+}
+
+/**
+ * Öffnet den Zuschneide-Dialog für einen REC-Blob — egal ob frischer Take
+ * oder schon gespeicherter REC, beide laufen über denselben Weg. Liefert
+ * bei „Übernehmen" { blob, duration } (WAV, siehe audioBufferToWav()),
+ * sonst null bei Abbruch.
+ */
+async function trimAudioBlob(blob) {
+  const audioBuffer = await decodeToPcm(blob);
+  const result = await trimSelectDialog(audioBuffer);
+  if (!result) return null;
+  return {
+    blob: audioBufferToWav(audioBuffer, result.startSec, result.endSec),
+    duration: result.endSec - result.startSec,
+  };
+}
+
+/**
+ * PCM aus einem AudioBuffer mit lamejs zu MP3 kodieren (mono oder stereo, je
+ * nach Quelle). Tritt alle 200 Blöcke einmal ans Event-Loop ab (statt in
+ * einem Zug durchzulaufen), damit onProgress() den Fortschritt tatsächlich
+ * anzeigen kann und der Tab währenddessen nicht einfriert.
+ */
+async function encodePcmToMp3(audioBuffer, kbps = 128, onProgress) {
   const channels = Math.min(audioBuffer.numberOfChannels, 2);
   const left = floatTo16BitPCM(audioBuffer.getChannelData(0));
   const right = channels === 2 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null;
@@ -9935,14 +10218,21 @@ function encodePcmToMp3(audioBuffer, kbps = 128) {
   const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, kbps);
   const chunks = [];
   const blockSize = 1152;
-  for (let i = 0; i < left.length; i += blockSize) {
+  const totalBlocks = Math.max(1, Math.ceil(left.length / blockSize));
+  let block = 0;
+  for (let i = 0; i < left.length; i += blockSize, block++) {
     const buf = channels === 2
       ? encoder.encodeBuffer(left.subarray(i, i + blockSize), right.subarray(i, i + blockSize))
       : encoder.encodeBuffer(left.subarray(i, i + blockSize));
     if (buf.length > 0) chunks.push(buf);
+    if (onProgress && block % 200 === 0) {
+      onProgress(block / totalBlocks);
+      await new Promise((r) => setTimeout(r, 0));
+    }
   }
   const end = encoder.flush();
   if (end.length > 0) chunks.push(end);
+  onProgress?.(1);
 
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const merged = new Uint8Array(total);
@@ -10114,15 +10404,56 @@ function probeAudioDuration(blob) {
   });
 }
 
+/** Fortschrittsbalken beim MP3-Export eines RECs — dieselbe Optik wie showBackupProgressDialog(). */
+function showRecExportProgressDialog() {
+  const bar = el('i');
+  const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: '0%' });
+  const box = el('div', { class: 'dialog' },
+    el('h2', { text: 'REC wird exportiert' }),
+    el('p', { text: 'Wird als MP3 kodiert — bei längeren Aufnahmen kann das kurz dauern.' }),
+    el('div', { class: 'meter' }, bar),
+    status);
+  const layer = el('div', { class: 'overlay' }, box);
+  document.body.append(layer);
+  return {
+    update(fraction) {
+      const pct = Math.min(100, Math.round(fraction * 100));
+      bar.style.width = `${pct}%`;
+      status.textContent = `${pct}%`;
+    },
+    close() { layer.remove(); },
+  };
+}
+
+const REC_EXPORT_SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.6l7.4-4.3M8.3 13.4l7.4 4.3"/></svg>';
+const REC_EXPORT_DOWNLOAD_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
+
 /**
  * Exportiert einen REC als eigenständige MP3-Datei — abspielbar und
  * verschickbar überall, ganz ohne diese App. Songtitel, Stimme und Name
  * stehen im Dateinamen (für Menschen); Songtitel, Stimme, Name und Datum
  * zusätzlich als ID3-Tags (überlebt ein Umbenennen) — importRecordingFile
  * liest zuerst die Tags, fällt sonst auf den Dateinamen zurück.
+ *
+ * Fragt zuerst per Fab-Menü (floatingMenu(), wächst aus dem Export-Knopf
+ * heraus) nach dem Ziel — Teilen oder Herunterladen —, bevor überhaupt
+ * kodiert wird: wer herunterladen will, wartet so nicht erst auf den
+ * Encoder, um am Ende doch nur einen Teilen-Dialog zu sehen. Ein winziges
+ * leeres Probe-File reicht canShare() zur Prüfung, ob Teilen überhaupt
+ * möglich ist — der eigentliche Inhalt kommt erst nach der Auswahl.
  */
-async function exportRecording(recording) {
-  const closeBanner = banner('REC wird als MP3 exportiert …', { timeout: 0 });
+async function exportRecording(recording, anchorBtn) {
+  const probeFile = new File([], 'probe.mp3', { type: 'audio/mpeg' });
+  let action = 'download';
+  if (navigator.canShare?.({ files: [probeFile] })) {
+    action = await floatingMenu(anchorBtn, [
+      { value: 'share', label: 'Teilen', icon: REC_EXPORT_SHARE_ICON },
+      { value: 'download', label: 'Herunterladen', icon: REC_EXPORT_DOWNLOAD_ICON },
+    ]);
+    if (!action) return;
+  }
+
+  const progress = showRecExportProgressDialog();
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
@@ -10130,7 +10461,7 @@ async function exportRecording(recording) {
 
     await ensureLameLoaded();
     const audioBuffer = await decodeToPcm(sourceBlob);
-    const mp3Bytes = encodePcmToMp3(audioBuffer);
+    const mp3Bytes = await encodePcmToMp3(audioBuffer, 128, (fraction) => progress.update(fraction));
 
     const songTitle = playerSong?.title || recording.songTitle || '';
     const tagged = attachId3Tag(mp3Bytes, {
@@ -10143,33 +10474,18 @@ async function exportRecording(recording) {
     })}.mp3`;
     const file = new File([tagged], fileName, { type: 'audio/mpeg' });
 
-    closeBanner();
+    progress.close();
 
-    // Kann geteilt werden (z.B. per Signal, WhatsApp, Mail …), lässt man die
-    // Wahl: Teilen (mit dem Dateinamen als vorbereitete Nachricht — die
-    // Ziel-App zeigt sie als Text neben dem Anhang) oder direkt herunterladen.
-    // Welche App im Teilen-Dialog erscheint, entscheidet das Betriebssystem;
-    // die Web-Share-API kann keine bestimmte App vorauswählen.
-    let action = 'download';
-    if (navigator.canShare?.({ files: [file] })) {
-      action = await choiceDialog({
-        title: 'REC exportieren',
-        text: `„${fileName}" ist bereit.`,
-        options: [
-          { label: 'Teilen', value: 'share', primary: true },
-          { label: 'Herunterladen', value: 'download' },
-        ],
-      });
-      if (!action) return;
-    }
-
+    // Die Ziel-App zeigt `text` als vorbereitete Nachricht neben dem Anhang
+    // (z.B. Signal) — welche App im Teilen-Dialog erscheint, entscheidet
+    // aber das Betriebssystem, nicht die Auswahl oben.
     if (action === 'share') {
       try { await navigator.share({ files: [file], title: 'REC', text: fileName }); return; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
     downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
   } catch (err) {
-    closeBanner();
+    progress.close();
     bannerError('Der REC konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
   }
 }
@@ -10294,14 +10610,14 @@ function renderRecordingList() {
       class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" exportieren`,
     });
     exportBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>';
-    exportBtn.addEventListener('click', () => exportRecording(recording));
+    exportBtn.addEventListener('click', () => exportRecording(recording, exportBtn));
 
     const rename = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
     rename.addEventListener('click', async () => {
-      const result = await editRecordingDialog({ name: recording.name, voice: recording.voice || null });
+      const result = await editRecordingDialog(recording);
       if (!result) return;
       recording.name = result.name.trim() || recording.name;
       recording.voice = result.voice;
