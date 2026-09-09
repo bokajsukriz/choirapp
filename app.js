@@ -11724,8 +11724,12 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     const li = el('li', { class: found ? '' : 'muted' });
     if (noAudio) {
       const label = found ? t('songs.placeholderBadge') : t('songs.setlistMissingBadge');
+      // Titel ganz ohne Song: zusätzlich zur grauen Farbe kursiv und in
+      // eckigen Klammern — macht "existiert nicht" schon im Text sichtbar,
+      // nicht erst über den Tooltip am Symbol (der auf Touch nicht greift).
+      const titleNode = found ? title : el('em', {}, `[${title}]`);
       li.append(el('span', { class: 'gig-list-line' },
-        title,
+        titleNode,
         el('span', {
           class: 'placeholder-badge', role: 'img',
           'aria-label': label, title: label,
