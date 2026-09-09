@@ -1722,9 +1722,11 @@ function iconEmptyNote() {
 }
 
 /**
- * Verbotssymbol für Platzhalter-Songs ohne Aufnahme — dieselbe Grafik wie im
+ * Symbol für Platzhalter-Songs ohne Aufnahme — dieselbe Grafik wie im
  * Player-Abspielknopf (siehe #icon-unavailable), damit Songliste und Player
- * denselben Zustand gleich zeigen.
+ * denselben Zustand gleich zeigen. Dieselbe Note wie iconEmptyNote(), aber
+ * durchgestrichen — passt thematisch besser zu „kein Ton" als ein generisches
+ * Verbotssymbol.
  */
 function iconUnavailable() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1733,8 +1735,9 @@ function iconUnavailable() {
   svg.setAttribute('stroke', 'currentColor');
   svg.setAttribute('stroke-width', '2');
   svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
-  svg.innerHTML = '<circle cx="12" cy="12" r="9"/><path d="M5.5 5.5l13 13"/>';
+  svg.innerHTML = '<path d="M9 17V5l10-2v12"/><circle cx="7" cy="17" r="2.4"/><circle cx="17" cy="15" r="2.4"/><path d="M3 3l18 18"/>';
   return svg;
 }
 
@@ -11711,15 +11714,21 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     // Kein Ton vorhanden — weder Spur noch REC: dasselbe Verbotssymbol wie
     // beim Platzhalter-Song in Bibliothek und Player (iconUnavailable()).
     const noAudio = found && !songHasAudio(found, recsBySong);
-    const li = el('li', {
-      class: found ? '' : 'muted',
-      style: noAudio ? 'display:flex; align-items:center; gap:6px' : null,
-    }, title);
+    // display:flex direkt auf dem <li> würde in manchen Browsern die
+    // ::marker-Nummerierung des <ol> abschalten (nur list-item generiert
+    // einen Marker) — deshalb Flex nur auf einem inneren Wrapper, der Marker
+    // bleibt am unveränderten <li> erhalten.
+    const li = el('li', { class: found ? '' : 'muted' });
     if (noAudio) {
-      li.append(el('span', {
-        class: 'placeholder-badge', role: 'img',
-        'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge'),
-      }, iconUnavailable()));
+      li.append(el('span', { class: 'gig-list-line' },
+        title,
+        el('span', {
+          class: 'placeholder-badge', role: 'img',
+          'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge'),
+        }, iconUnavailable()),
+      ));
+    } else {
+      li.append(title);
     }
     list.append(li);
   }
