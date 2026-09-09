@@ -11711,15 +11711,21 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     // Kein Ton vorhanden — weder Spur noch REC: dasselbe Verbotssymbol wie
     // beim Platzhalter-Song in Bibliothek und Player (iconUnavailable()).
     const noAudio = found && !songHasAudio(found, recsBySong);
-    const li = el('li', {
-      class: found ? '' : 'muted',
-      style: noAudio ? 'display:flex; align-items:center; gap:6px' : null,
-    }, title);
+    // display:flex direkt auf dem <li> würde in manchen Browsern die
+    // ::marker-Nummerierung des <ol> abschalten (nur list-item generiert
+    // einen Marker) — deshalb Flex nur auf einem inneren Wrapper, der Marker
+    // bleibt am unveränderten <li> erhalten.
+    const li = el('li', { class: found ? '' : 'muted' });
     if (noAudio) {
-      li.append(el('span', {
-        class: 'placeholder-badge', role: 'img',
-        'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge'),
-      }, iconUnavailable()));
+      li.append(el('span', { class: 'gig-list-line' },
+        title,
+        el('span', {
+          class: 'placeholder-badge', role: 'img',
+          'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge'),
+        }, iconUnavailable()),
+      ));
+    } else {
+      li.append(title);
     }
     list.append(li);
   }
