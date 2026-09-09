@@ -1920,7 +1920,11 @@ input[type="checkbox"] {
    REC-bearbeiten-Dialog (schon gespeicherter REC) teilen sich dasselbe
    Layout, siehe onTakeTrimClick() / editRecordingDialog(). */
 .take-wave-row { display: flex; align-items: center; gap: 8px; }
-.take-wave-row .take-wave { flex: 1; min-width: 0; }
+.wave-shade-wrap { position: relative; flex: 1; min-width: 0; }
+/* Abdunklung außerhalb der Auswahl, dieselbe Optik wie im Zuschneide-Dialog
+   (siehe .trim-shade weiter unten) — hier ohne eigenes Zutun, solange kein
+   Zuschnitt gesetzt ist bleiben beide Ränder bei width:0 unsichtbar. */
+.wave-shade-wrap .trim-shade { border-radius: 12px; }
 .take-trim-btn {
   width: 40px; height: 40px; min-width: 40px; min-height: 40px;
   margin-top: 10px; border-radius: 50%; flex: 0 0 auto;
@@ -1951,14 +1955,34 @@ input[type="checkbox"] {
 .trim-handle--start { left: 0%; }
 .trim-handle--end { left: 100%; }
 
+/* Playerhead während der Vorschau (siehe runPreview() in trimSelectDialog) —
+   wandert über die Wellenform, solange Play oder Ende abspielt. */
+.trim-playhead {
+  position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px;
+  background: var(--accent); border-radius: 1px; pointer-events: none;
+}
+
 /* Vorschau-Zeile im Zuschneide-Dialog: kleinerer Zwilling von .rec-play
    (dieselbe grüne Füllung im .is-playing-Zustand, siehe dort) links vom
-   Zeit-Label. */
+   Zeit-Label, der „Ende"-Knopf rechts am Dialog — bewusst anders gestaltet
+   (Pille statt Kreis) als optischer Hinweis, dass er nur die letzten paar
+   Sekunden vor dem Ende anspielt, nicht die ganze Auswahl. */
 .trim-preview-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .trim-play {
   width: 44px; height: 44px; min-width: 44px; min-height: 44px; max-width: 44px; max-height: 44px;
 }
 .trim-play svg { width: 20px; height: 20px; margin-left: 2px; }
+.trim-end-btn {
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
+  padding: 8px 14px; min-height: 40px; border-radius: 999px; flex: 0 0 auto;
+  border: 1px solid rgba(var(--accent-rgb), .32); background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  color: var(--text); font-weight: 650; font-size: .86rem;
+  appearance: none; -webkit-appearance: none;
+}
+.trim-end-btn:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
+.trim-end-btn svg { width: 18px; height: 18px; color: var(--accent-foreground); flex: 0 0 auto; }
+.trim-end-btn.is-playing { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.trim-end-btn.is-playing svg { color: var(--surface); }
 
 .recording-item .go { display: flex; align-items: center; gap: 10px; }
 .recording-item .go svg { width: 20px; height: 20px; flex: 0 0 auto; }
@@ -2902,7 +2926,11 @@ input[type="checkbox"] {
         <input class="take-name" id="rec-take-name" type="text" maxlength="60"
                autocomplete="off" autocorrect="off" spellcheck="false">
         <div class="take-wave-row">
-          <canvas class="take-wave" id="rec-take-wave"></canvas>
+          <div class="wave-shade-wrap">
+            <canvas class="take-wave" id="rec-take-wave"></canvas>
+            <div class="trim-shade trim-shade--left" id="rec-take-shade-left"></div>
+            <div class="trim-shade trim-shade--right" id="rec-take-shade-right"></div>
+          </div>
           <button class="take-trim-btn" id="btn-rec-take-trim" type="button" aria-label="REC zuschneiden">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
           </button>
@@ -3303,7 +3331,11 @@ input[type="checkbox"] {
       <input class="take-name" id="recorder-take-name" type="text" maxlength="60"
              autocomplete="off" autocorrect="off" spellcheck="false">
       <div class="take-wave-row">
-        <canvas class="take-wave" id="recorder-take-wave"></canvas>
+        <div class="wave-shade-wrap">
+          <canvas class="take-wave" id="recorder-take-wave"></canvas>
+          <div class="trim-shade trim-shade--left" id="recorder-take-shade-left"></div>
+          <div class="trim-shade trim-shade--right" id="recorder-take-shade-right"></div>
+        </div>
         <button class="take-trim-btn" id="btn-recorder-take-trim" type="button" aria-label="REC zuschneiden">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
         </button>

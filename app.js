@@ -503,15 +503,16 @@ const REC_SCISSORS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentC
  * als exklusive Reihe der farbigen Stimm-Pills (wie bei „meine Stimme",
  * siehe renderVoicePicker) statt als eigener Dialog.
  *
- * Der Zuschneide-Knopf lädt den Blob selbst nach (recording.fileKey ist
- * alles, was er braucht) und schreibt bei „Übernehmen" sofort in die DB
- * zurück — unabhängig vom „Speichern" unten, das nur Name/Stimme betrifft.
- * Ein Abbruch dieses Dialogs verwirft also nie einen schon angewandten
- * Zuschnitt, genauso wenig wie ein Klick auf „Abbrechen" hier eine
- * frühere Umbenennung zurückdrehen würde.
+ * Der Zuschneide-Knopf lädt den Blob nur zum Anzeigen/Vorhören nach
+ * (recording.fileKey ist alles, was er braucht) — der Blob selbst bleibt
+ * unangetastet, „Übernehmen" schreibt nur trimStart/trimEnd sofort in die
+ * DB zurück (siehe recordingTrimRange()), unabhängig vom „Speichern" unten,
+ * das nur Name/Stimme betrifft. Ein Abbruch dieses Dialogs verwirft also nie
+ * einen schon angewandten Zuschnitt, genauso wenig wie ein Klick auf
+ * „Abbrechen" hier eine frühere Umbenennung zurückdrehen würde.
  *
  * @param {object} recording — dasselbe Objekt aus songRecordings (wird bei
- *   einem Zuschnitt direkt mutiert: mimeType/duration/size)
+ *   einem Zuschnitt direkt mutiert: trimStart/trimEnd)
  * @returns {Promise<{name: string, voice: string|null}|null>} null bei Abbruch
  */
 function editRecordingDialog(recording) {
@@ -546,9 +547,21 @@ function editRecordingDialog(recording) {
     const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
 
     const canvas = el('canvas', { class: 'take-wave' });
+    const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
+    const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
+    const waveShadeWrap = el('div', { class: 'wave-shade-wrap' }, canvas, shadeLeft, shadeRight);
     const trimBtn = el('button', { class: 'take-trim-btn', type: 'button', 'aria-label': 'REC zuschneiden' });
     trimBtn.innerHTML = REC_SCISSORS_ICON;
-    const waveRow = el('div', { class: 'take-wave-row', style: 'margin-top:12px' }, canvas, trimBtn);
+    const waveRow = el('div', { class: 'take-wave-row', style: 'margin-top:12px' }, waveShadeWrap, trimBtn);
+
+    // Zeigt die aktuelle Trim-Auswahl als Abdunklung über der Wellenform —
+    // dieselbe Optik wie im Zuschneide-Dialog selbst (siehe .trim-shade).
+    const setShade = () => {
+      const range = recordingTrimRange(recording);
+      const pct = (sec) => (recording.duration > 0 ? Math.max(0, Math.min(100, (sec / recording.duration) * 100)) : 0);
+      shadeLeft.style.width = `${pct(range.start)}%`;
+      shadeRight.style.width = `${100 - pct(range.end)}%`;
+    };
 
     const drawEditWave = async () => {
       try {
@@ -558,9 +571,13 @@ function editRecordingDialog(recording) {
         const bucketCount = Math.max(1, Math.floor((canvas.getBoundingClientRect().width || 280) / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
         const { ctx, width, height } = setupLevelCanvas(canvas);
         drawLevelHistory(ctx, waveformPeaksFromBuffer(buffer, bucketCount), width, height);
+        setShade();
       } catch { /* Wellenform ist nur zur Orientierung — kein Blocker, wenn sie mal ausfällt */ }
     };
 
+    // Nicht destruktiv: der REC bleibt der volle Stem, nur trimStart/trimEnd
+    // ändern sich — unabhängig vom „Speichern"-Knopf unten, der nur
+    // Name/Stimme betrifft (siehe editRecordingDialog()-Kommentar oben).
     trimBtn.addEventListener('click', async () => {
       let blob;
       try {
@@ -569,20 +586,18 @@ function editRecordingDialog(recording) {
         blob = recordBlob(rec, recording.mimeType);
       } catch (err) { bannerError('Der REC konnte nicht geladen werden.', 'REC-TRIM', err); return; }
 
+      const range = recordingTrimRange(recording);
       let result;
-      try { result = await trimAudioBlob(blob); }
+      try { result = await pickTrimRange(blob, range.start, range.end); }
       catch (err) { bannerError('Der REC konnte nicht zum Zuschneiden geöffnet werden.', 'REC-TRIM', err); return; }
       if (!result) return;
 
       try {
-        await DB.filePut(await fileRecord(recording.fileKey, result.blob, `${recording.name}.wav`));
-        recording.mimeType = 'audio/wav';
-        recording.duration = result.duration;
-        recording.size = result.blob.size;
+        recording.trimStart = result.startSec;
+        recording.trimEnd = result.endSec;
         await DB.metaPut(recording);
-        banner('REC zugeschnitten.', { kind: 'ok' });
-        await drawEditWave();
-      } catch (err) { bannerError('Der zugeschnittene REC konnte nicht gespeichert werden.', 'REC-TRIM-SAVE', err); }
+        setShade();
+      } catch (err) { bannerError('Der Zuschnitt konnte nicht gespeichert werden.', 'REC-TRIM-SAVE', err); }
     });
 
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
@@ -3886,6 +3901,7 @@ const Audio = {
   playing: false,
   rate: 1,
   loop: null,             // { start, end } in Sekunden, oder null
+  previewBound: null,     // { start, end } in Sekunden — Grenzen der REC-Vorschau (Trim-Auswahl), oder null
   wakeLock: null,
   onPosition: null,
   onEnded: null,
@@ -3941,6 +3957,23 @@ async function setupAudioGraph() {
       // explizit auslösen, sonst bleibt der alte Überlappungspuffer des
       // Zeitdehners gerade beim Loop am hörbarsten stehen.
       hdApplyTransition('loop', { discontinuous: true });
+      return;
+    }
+
+    // Grenzen einer REC-Vorschau mit Trim-Auswahl (siehe previewRecordingBlob()):
+    // anders als beim A-B-Loop kein Rücksprung mitten in der Wiedergabe,
+    // sondern ein echtes Stopp am Ende der Auswahl — „nur die Auswahl"
+    // bedeutet anhören, nicht wiederholen. Zurück auf den Anfang der Auswahl,
+    // damit ein erneuter Play-Tipp wieder genau dieselbe Stelle abspielt.
+    if (Audio.previewBound && s >= Audio.previewBound.end - 0.02) {
+      audioPause();
+      el.currentTime = Audio.previewBound.start;
+      Audio.position = Audio.previewBound.start;
+      setPlayIcon(false);
+      if (audioPreview?.tag?.pending) updateRecPreviewButton();
+      if (audioPreview?.tag?.savedId) renderRecordingList();
+      updateRecTakePosition();
+      Audio.onPosition?.(Audio.previewBound.start);
       return;
     }
 
@@ -7579,7 +7612,7 @@ async function tryPlaySongFromRecording(song, token) {
     const blob = recordBlob(rec, best.mimeType);
     if (token !== openPlayerToken) return true;
     $('#player-foot').hidden = false;
-    await previewRecordingBlob(blob, { savedId: best.id, anchor: best.anchor });
+    await previewRecordingBlob(blob, { savedId: best.id, anchor: best.anchor }, recordingTrimRange(best));
   } catch (err) {
     bannerError('Diese Aufnahme konnte nicht abgespielt werden.', 'REC-PLAY', err);
     return false;
@@ -8669,6 +8702,7 @@ const RID = {
     take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
     voiceBtn: 'btn-rec-take-voice', voiceLabel: 'rec-take-voice-label',
     wave: 'rec-take-wave', trimBtn: 'btn-rec-take-trim', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
+    shadeLeft: 'rec-take-shade-left', shadeRight: 'rec-take-shade-right',
     save: 'btn-rec-save', discard: 'btn-rec-discard',
   },
   recorder: {
@@ -8678,6 +8712,7 @@ const RID = {
     take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration', hint: 'recorder-take-hint',
     voiceBtn: 'btn-recorder-take-voice', voiceLabel: 'recorder-take-voice-label',
     wave: 'recorder-take-wave', trimBtn: 'btn-recorder-take-trim', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
+    shadeLeft: 'recorder-take-shade-left', shadeRight: 'recorder-take-shade-right',
     save: 'btn-recorder-save', discard: 'btn-recorder-discard',
   },
 };
@@ -9183,6 +9218,13 @@ function drawTakeWaveform(progress = null) {
   drawLevelHistory(ctx, bucketizeColumns(levelTakeHistory, bucketCount), width, height, progress);
 }
 
+/** Abdunklung der Take-Wellenform außerhalb der Trim-Auswahl — dieselbe Optik wie im Zuschneide-Dialog (siehe .trim-shade). Beide Ränder bleiben bei width:0, solange nicht zugeschnitten wurde. */
+function setTakeShade(range, duration) {
+  const pct = (sec) => (duration > 0 ? Math.max(0, Math.min(100, (sec / duration) * 100)) : 0);
+  rn('shadeLeft').style.width = `${pct(range.start)}%`;
+  rn('shadeRight').style.width = `${100 - pct(range.end)}%`;
+}
+
 /**
  * Ältester Balken links, jüngster rechts — bei einer noch nicht vollen
  * Historie (der Regelfall: die meisten RECs sind kürzer als die Kanalbreite)
@@ -9322,7 +9364,9 @@ function renderPendingTake() {
     // ohne erst hinzutippen zu müssen.
     rn('name').focus();
   }
-  rn('duration').textContent = fmtTime(pendingTake.duration);
+  const range = recordingTrimRange(pendingTake);
+  rn('duration').textContent = fmtTime(range.end - range.start);
+  setTakeShade(range, pendingTake.duration);
   renderTakeVoiceLabel();
   drawTakeWaveform();
   updateRecPreviewButton();
@@ -9419,7 +9463,7 @@ async function onTakePreviewClick() {
     if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
     syncBackingPlayState();
   } else {
-    try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }); }
+    try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }, recordingTrimRange(pendingTake)); }
     catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
@@ -9429,32 +9473,25 @@ $('#btn-rec-preview').addEventListener('click', onTakePreviewClick);
 $('#btn-recorder-preview').addEventListener('click', onTakePreviewClick);
 
 /**
- * Schneidet den noch nicht gespeicherten Take zu (siehe trimAudioBlob()).
- * Ersetzt pendingTake.blob durch das WAV-Ergebnis und baut levelTakeHistory
- * aus der echten (neuen) Wellenform neu auf — die bisherige Historie kam ja
- * von der Live-Aufnahme und passt nach dem Schnitt nicht mehr.
+ * Legt eine Trim-Auswahl für den noch nicht gespeicherten Take fest — nicht
+ * destruktiv: pendingTake.blob bleibt der volle Take, nur trimStart/trimEnd
+ * ändern sich (siehe recordingTrimRange()). Anhören (onTakePreviewClick)
+ * und später der gespeicherte REC beschränken sich von da an auf diesen
+ * Bereich.
  */
 async function onTakeTrimClick() {
   if (!pendingTake) return;
   if (audioPreview?.tag?.pending) await endRecordingPreview();
 
+  const range = recordingTrimRange(pendingTake);
   let result;
-  try { result = await trimAudioBlob(pendingTake.blob); }
+  try { result = await pickTrimRange(pendingTake.blob, range.start, range.end); }
   catch (err) { bannerError('Der REC konnte nicht zum Zuschneiden geöffnet werden.', 'REC-TRIM', err); return; }
   if (!result) return;
 
-  pendingTake.blob = result.blob;
-  pendingTake.mimeType = 'audio/wav';
-  pendingTake.duration = result.duration;
-  resetLevelTakeHistory();
-  try {
-    const buffer = await decodeToPcm(pendingTake.blob);
-    const canvasWidth = rn('wave').getBoundingClientRect().width || 280;
-    const bucketCount = Math.max(1, Math.floor(canvasWidth / (LEVEL_COLUMN_WIDTH + LEVEL_COLUMN_GAP)));
-    levelTakeHistory = waveformPeaksFromBuffer(buffer, bucketCount);
-  } catch { /* Wellenform bleibt leer — nicht kritisch, der Take selbst ist geschnitten */ }
+  pendingTake.trimStart = result.startSec;
+  pendingTake.trimEnd = result.endSec;
   renderPendingTake();
-  updateRecPreviewButton();
 }
 $('#btn-rec-take-trim').addEventListener('click', onTakeTrimClick);
 $('#btn-recorder-take-trim').addEventListener('click', onTakeTrimClick);
@@ -9594,7 +9631,7 @@ async function onTakeSaveClick() {
 
   const { blob, mimeType, duration, anchor } = pendingTake;
   const fileKey = newFileKey();
-  const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('wav') ? 'wav' : 'webm');
+  const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
   await DB.filePut(await fileRecord(fileKey, blob, `${name}.${ext}`));
 
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -9605,8 +9642,15 @@ async function onTakeSaveClick() {
     size: blob.size,
     createdAt: new Date().toISOString(),
   };
-  // Nur anhängen, wenn vorhanden — kein `anchor: null` in jedem Datensatz.
+  // Nur anhängen, wenn vorhanden — kein `anchor: null`/keine Trim-Marken in
+  // jedem Datensatz. Der gespeicherte REC bleibt so oder so der volle Take;
+  // trimStart/trimEnd sind nur die Auswahl aus dem Zuschneiden vor dem
+  // Speichern (siehe onTakeTrimClick/recordingTrimRange).
   if (anchor) recording.anchor = anchor;
+  if (pendingTake.trimStart || pendingTake.trimEnd != null) {
+    recording.trimStart = pendingTake.trimStart || 0;
+    recording.trimEnd = pendingTake.trimEnd ?? duration;
+  }
   await DB.metaPut(recording);
 
   if (audioPreview?.tag?.pending) await endRecordingPreview();
@@ -9642,7 +9686,7 @@ async function loadSongRecordings() {
  * Position und Wiedergabestatus, damit endRecordingPreview() den Song danach
  * genau dort weiterlaufen lassen kann.
  */
-async function previewRecordingBlob(blob, tag) {
+async function previewRecordingBlob(blob, tag, range) {
   // Ohne je geöffneten Song lief audioInit() noch nie (z. B. direkt nach dem
   // Start in den allgemeinen Recorder) — hier statt nur zu melden selbst
   // nachholen, sonst scheitert die allererste Vorschau in genau diesem Ablauf
@@ -9699,7 +9743,13 @@ async function previewRecordingBlob(blob, tag) {
   setPlayerFootUnavailable(false);
 
   audioPreview = { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable };
-  updateSeekUI(0);
+  // Nur ein echter Ausschnitt zählt als Grenze — sonst würde ein 0..duration
+  // „Trim" (nichts geschnitten) unnötig am winzigen Rundungsfehler beim Ende
+  // stolpern (siehe timeupdate-Grenzprüfung).
+  const hasRange = range && (range.start > 0.05 || range.end < (el.duration || 0) - 0.05);
+  Audio.previewBound = hasRange ? { start: range.start, end: range.end } : null;
+  updateSeekUI(hasRange ? range.start : 0);
+  if (hasRange) audioSeek(range.start);
   // audioPlay() zuerst und ohne vorheriges await davor: Safari bindet die
   // Abspielerlaubnis an die Nutzergeste (siehe Kommentar in audioPlay()).
   await audioPlay();
@@ -9714,6 +9764,7 @@ async function endRecordingPreview() {
   stopBacking();
   const { returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable } = audioPreview;
   audioPreview = null;
+  Audio.previewBound = null;
   audioPause();
 
   if (returnTrack) {
@@ -9994,7 +10045,7 @@ async function toggleSavedRecordingPreview(recording) {
   try {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
-    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor });
+    await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor }, recordingTrimRange(recording));
   } catch (err) {
     bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
   }
@@ -10040,14 +10091,14 @@ function floatTo16BitPCM(floatSamples) {
   return out;
 }
 
-/* ---------- REC zuschneiden: Anfang/Ende kürzen ----------
-   Läuft für frische Takes wie für schon gespeicherte RECs über denselben
-   Weg (trimAudioBlob()) — beide haben am Ende nur einen Blob und eine
-   Dauer, keine Sonderfälle nötig. Das Ergebnis ist immer WAV: kein neuer
-   Encoder, kein Bundler — WAV ist reines PCM plus 44-Byte-Header, jeder
-   Browser spielt es zurück, unabhängig vom Ursprungsformat (WebM/Opus vom
-   Rekorder, M4A/MP3 aus einem Import). Größer als komprimiertes Audio,
-   aber für ein paar Sekunden Vorne/Hinten-Schnitt unerheblich. */
+/* ---------- REC zuschneiden: Anfang/Ende auswählen ----------
+   Bewusst nicht destruktiv: der gespeicherte REC (bzw. ein noch nicht
+   gespeicherter Take) bleibt immer der volle Stem, ganz gleich was hier
+   ausgewählt wird. trimSelectDialog()/pickTrimRange() liefern nur eine
+   Auswahl { startSec, endSec } zurück — Vorschau (previewRecordingBlob(),
+   Audio.previewBound) und Export (exportRecording(), sliceAudioBuffer())
+   beschränken sich später auf diesen Bereich, ohne je den Blob selbst
+   anzufassen. Ein Zuschnitt lässt sich dadurch jederzeit wieder erweitern. */
 
 /** Downsample einer Kanalspur auf `bucketCount` Amplituden-Werte (0..1) — dieselbe {amp,clipping}-Form wie levelTakeHistory, für drawLevelHistory(). */
 function waveformPeaksFromBuffer(audioBuffer, bucketCount) {
@@ -10063,71 +10114,41 @@ function waveformPeaksFromBuffer(audioBuffer, bucketCount) {
   return columns;
 }
 
-/** Baut eine unkomprimierte WAV-Datei aus einem Ausschnitt (startSec..endSec) eines AudioBuffers. */
-function audioBufferToWav(audioBuffer, startSec, endSec) {
+/** Kopiert einen Ausschnitt (startSec..endSec) eines AudioBuffers in einen neuen, kürzeren AudioBuffer — für den Export, siehe exportRecording(). */
+function sliceAudioBuffer(audioBuffer, startSec, endSec) {
   const sampleRate = audioBuffer.sampleRate;
   const channels = audioBuffer.numberOfChannels;
   const startSample = Math.max(0, Math.floor(startSec * sampleRate));
   const endSample = Math.min(audioBuffer.length, Math.ceil(endSec * sampleRate));
-  const frameCount = Math.max(0, endSample - startSample);
-
-  const blockAlign = channels * 2; // 16-Bit
-  const dataSize = frameCount * blockAlign;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
-
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, channels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  const channelData = [];
-  for (let c = 0; c < channels; c++) channelData.push(audioBuffer.getChannelData(c));
-  let offset = 44;
-  for (let i = startSample; i < endSample; i++) {
-    for (let c = 0; c < channels; c++) {
-      const s = Math.max(-1, Math.min(1, channelData[c][i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-      offset += 2;
-    }
+  const length = Math.max(1, endSample - startSample);
+  const sliced = new AudioBuffer({ length, numberOfChannels: channels, sampleRate });
+  for (let c = 0; c < channels; c++) {
+    sliced.copyToChannel(audioBuffer.getChannelData(c).subarray(startSample, endSample), c);
   }
-  return new Blob([buffer], { type: 'audio/wav' });
+  return sliced;
 }
 
 /**
  * Zuschneide-Dialog: zeigt die echte Wellenform von `audioBuffer` mit zwei
- * ziehbaren Griffen für Anfang und Ende. Löst mit { startSec, endSec } auf,
- * oder null bei Abbruch. Reine Auswahl-UI — geschnitten wird erst danach
- * (siehe trimAudioBlob()).
+ * ziehbaren Griffen für Anfang und Ende, dazu eine Wiedergabe zur Kontrolle.
+ * Löst mit { startSec, endSec } auf, oder null bei Abbruch — reine
+ * Auswahl, siehe Kommentar oben.
  */
-function trimSelectDialog(audioBuffer) {
+function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffer.duration) {
   return new Promise((resolve) => {
     const durationSec = audioBuffer.duration;
     const MIN_LEN = Math.min(0.3, durationSec);
-    const PREVIEW_LEN = 5; // Sekunden — sowohl der Vorlauf vor endSec als auch das Fenster ab startSec
-    let startSec = 0;
-    let endSec = durationSec;
-    // Welcher Griff zuletzt bewegt wurde, entscheidet, was die Vorschau
-    // spielt (siehe startPreview()) — ohne das wüsste sie nicht, ob Anfang
-    // oder Ende gerade interessiert.
-    let lastMoved = 'start';
+    const END_PREVIEW_LEN = 5; // Sekunden, die der „Ende"-Knopf vor endSec anspielt
+    let startSec = Math.max(0, Math.min(initialStart, durationSec));
+    let endSec = Math.max(startSec + MIN_LEN, Math.min(initialEnd, durationSec));
 
     const canvas = el('canvas', { class: 'take-wave' });
     const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
     const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
+    const playhead = el('div', { class: 'trim-playhead', hidden: true });
     const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': 'Anfang' });
     const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': 'Ende' });
-    const wrap = el('div', { class: 'trim-wave-wrap' }, canvas, shadeLeft, shadeRight, startHandle, endHandle);
+    const wrap = el('div', { class: 'trim-wave-wrap' }, canvas, shadeLeft, shadeRight, playhead, startHandle, endHandle);
     const label = el('p', { class: 'small muted', style: 'margin:0; text-align:center' });
 
     const pct = (sec) => (durationSec > 0 ? Math.max(0, Math.min(100, (sec / durationSec) * 100)) : 0);
@@ -10142,7 +10163,6 @@ function trimSelectDialog(audioBuffer) {
     };
 
     const nudge = (isStart, delta) => {
-      lastMoved = isStart ? 'start' : 'end';
       if (isStart) startSec = Math.max(0, Math.min(startSec + delta, endSec - MIN_LEN));
       else endSec = Math.min(durationSec, Math.max(endSec + delta, startSec + MIN_LEN));
       layout();
@@ -10169,35 +10189,59 @@ function trimSelectDialog(audioBuffer) {
     wireHandle(startHandle, true);
     wireHandle(endHandle, false);
 
-    // Vorschau: eigener, kurzlebiger AudioContext (die decodeToPcm()-Instanz
-    // ist längst wieder geschlossen) — spielt ab dem zuletzt bewegten Griff,
-    // damit man genau die Stelle hört, die man gerade zieht, statt den ganzen
-    // Take. Am Anfang ab startSec, am Ende die letzten PREVIEW_LEN Sekunden
-    // davor und noch etwas darüber hinaus — so hört man auch, was direkt
-    // abgeschnitten würde.
+    // Wiedergabe: eigener, kurzlebiger AudioContext (der von decodeToPcm()
+    // ist zu diesem Zeitpunkt schon wieder geschlossen). Zwei Startpunkte,
+    // ein gemeinsamer Ablauf (runPreview) — "Play" für die ganze Auswahl,
+    // "Ende" nur für die letzten END_PREVIEW_LEN Sekunden davor. Beide
+    // stoppen spätestens an endSec, nie darüber hinaus: dieselbe Regel wie
+    // bei jeder anderen Vorschau im Haus, siehe Audio.previewBound.
     let playCtx = null;
     let playSource = null;
+    let playheadRaf = null;
+    const stopPlayheadLoop = () => { if (playheadRaf) cancelAnimationFrame(playheadRaf); playheadRaf = null; playhead.hidden = true; };
     const stopPreview = () => {
       if (playSource) { try { playSource.stop(); } catch { /* schon zu Ende */ } playSource = null; }
       playBtn.classList.remove('is-playing');
+      endBtn.classList.remove('is-playing');
+      stopPlayheadLoop();
     };
-    const startPreview = () => {
+    const runPreview = (from, to, btn) => {
       stopPreview();
       if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const from = lastMoved === 'end' ? Math.max(0, endSec - PREVIEW_LEN) : startSec;
-      const to = lastMoved === 'end' ? Math.min(durationSec, endSec + 2) : Math.min(durationSec, startSec + PREVIEW_LEN);
       const source = playCtx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(playCtx.destination);
-      source.addEventListener('ended', () => { if (playSource === source) { playSource = null; playBtn.classList.remove('is-playing'); } });
+      const startedAt = playCtx.currentTime;
+      source.addEventListener('ended', () => { if (playSource === source) { playSource = null; btn.classList.remove('is-playing'); stopPlayheadLoop(); } });
       source.start(0, from, Math.max(0.05, to - from));
       playSource = source;
-      playBtn.classList.add('is-playing');
+      btn.classList.add('is-playing');
+      playhead.hidden = false;
+      const tick = () => {
+        const pos = Math.min(to, from + (playCtx.currentTime - startedAt));
+        playhead.style.left = `${pct(pos)}%`;
+        if (playSource === source && pos < to) playheadRaf = requestAnimationFrame(tick);
+      };
+      tick();
     };
-    const playBtn = el('button', { class: 'rec-play trim-play', type: 'button', 'aria-label': 'Vorschau abspielen' });
+
+    const playBtn = el('button', { class: 'rec-play trim-play', type: 'button', 'aria-label': 'Auswahl von Anfang abspielen' });
     playBtn.innerHTML = '<svg class="rec-icon-visible" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
-    playBtn.addEventListener('click', () => { if (playSource) stopPreview(); else startPreview(); });
-    const previewRow = el('div', { class: 'trim-preview-row' }, playBtn, label);
+    playBtn.addEventListener('click', () => {
+      if (playBtn.classList.contains('is-playing')) { stopPreview(); return; }
+      runPreview(startSec, endSec, playBtn);
+    });
+
+    const endBtn = el('button', { class: 'trim-end-btn', type: 'button',
+      'aria-label': `Letzte ${END_PREVIEW_LEN} Sekunden vor dem Ende der Auswahl abspielen` });
+    endBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13l8-6.5z"/><path d="M17 5v14"/></svg>';
+    endBtn.append(el('span', { text: 'Ende' }));
+    endBtn.addEventListener('click', () => {
+      if (endBtn.classList.contains('is-playing')) { stopPreview(); return; }
+      runPreview(Math.max(startSec, endSec - END_PREVIEW_LEN), endSec, endBtn);
+    });
+
+    const previewRow = el('div', { class: 'trim-preview-row' }, playBtn, label, endBtn);
 
     const done = (result) => {
       stopPreview();
@@ -10206,7 +10250,7 @@ function trimSelectDialog(audioBuffer) {
     };
     const box = el('div', { class: 'dialog' },
       el('h2', { text: 'REC zuschneiden' }),
-      el('p', { text: 'Anfang und Ende an den Griffen ziehen.' }),
+      el('p', { text: 'Anfang und Ende an den Griffen ziehen. Der REC selbst bleibt dabei vollständig erhalten — nur Anhören und Export beschränken sich auf die Auswahl.' }),
       wrap,
       previewRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
@@ -10231,17 +10275,12 @@ function trimSelectDialog(audioBuffer) {
 /**
  * Öffnet den Zuschneide-Dialog für einen REC-Blob — egal ob frischer Take
  * oder schon gespeicherter REC, beide laufen über denselben Weg. Liefert
- * bei „Übernehmen" { blob, duration } (WAV, siehe audioBufferToWav()),
- * sonst null bei Abbruch.
+ * bei „Übernehmen" nur die Auswahl { startSec, endSec }, sonst null bei
+ * Abbruch. Der Blob bleibt unangetastet (siehe Kommentar oben).
  */
-async function trimAudioBlob(blob) {
+async function pickTrimRange(blob, initialStart, initialEnd) {
   const audioBuffer = await decodeToPcm(blob);
-  const result = await trimSelectDialog(audioBuffer);
-  if (!result) return null;
-  return {
-    blob: audioBufferToWav(audioBuffer, result.startSec, result.endSec),
-    duration: result.endSec - result.startSec,
-  };
+  return trimSelectDialog(audioBuffer, initialStart, initialEnd);
 }
 
 /**
@@ -10431,6 +10470,17 @@ function recFileBaseName({ songTitle, voice, name }) {
   return [REC_NAME_MARKER, ...parts].join('_');
 }
 
+/**
+ * Trim-Bereich eines RECs (recording oder pendingTake) in Sekunden — per
+ * Default die volle Länge, wenn nie zugeschnitten wurde. Bewusst nicht
+ * destruktiv: der Blob bleibt immer der ganze Stem, nur Vorschau und Export
+ * beschränken sich auf diesen Bereich (siehe previewRecordingBlob() und
+ * exportRecording()).
+ */
+function recordingTrimRange(rec) {
+  return { start: rec.trimStart || 0, end: rec.trimEnd ?? rec.duration ?? 0 };
+}
+
 /** Über ein unsichtbares <audio> die Dauer einer Datei ermitteln. */
 function probeAudioDuration(blob) {
   return new Promise((resolve) => {
@@ -10500,7 +10550,12 @@ async function exportRecording(recording, anchorBtn) {
     const sourceBlob = recordBlob(rec, recording.mimeType);
 
     await ensureLameLoaded();
-    const audioBuffer = await decodeToPcm(sourceBlob);
+    const fullBuffer = await decodeToPcm(sourceBlob);
+    // Exportiert wird nur die Trim-Auswahl, falls es eine gibt — der
+    // gespeicherte REC selbst bleibt unangetastet (siehe recordingTrimRange()).
+    const range = recordingTrimRange(recording);
+    const trimmed = range.start > 0.05 || range.end < fullBuffer.duration - 0.05;
+    const audioBuffer = trimmed ? sliceAudioBuffer(fullBuffer, range.start, range.end) : fullBuffer;
     const mp3Bytes = await encodePcmToMp3(audioBuffer, 128, (fraction) => progress.update(fraction));
 
     const songTitle = playerSong?.title || recording.songTitle || '';
@@ -10633,7 +10688,10 @@ function renderRecordingList() {
       ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
       : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 
-    const meta = [fmtTime(recording.duration)];
+    // Zeigt die Länge der Auswahl, nicht die volle Aufnahme — das ist auch,
+    // was Anhören und Export tatsächlich liefern (siehe recordingTrimRange()).
+    const trimRange = recordingTrimRange(recording);
+    const meta = [fmtTime(trimRange.end - trimRange.start)];
     if (recording.voice) meta.push(VOICE_LABEL[recording.voice] || recording.voice);
 
     const go = el('button', {
