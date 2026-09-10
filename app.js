@@ -173,6 +173,20 @@ function loadErrorLog() {
 
 let errorLog = loadErrorLog();
 
+/**
+ * Entfernt in „…"-Anführungszeichen stehende Fragmente aus einer technischen
+ * Fehlermeldung, bevor sie ins Diagnose-Log darf. ZipError-Texte zitieren
+ * dort z.B. den Pfad eines Archiveintrags (`„${entry.path}" ist …`) — das
+ * Diagnose-Log verspricht aber ausdrücklich, nie Dateinamen zu speichern
+ * (siehe Kommentar über DEBUG_LOG_KEY unten). Der lokale, nicht exportierte
+ * errorLog bleibt unverändert und behält die volle Meldung für die
+ * Fehleransicht in den Einstellungen.
+ */
+function redactErrorMessage(message) {
+  if (!message) return message;
+  return message.replace(/„[^"]*"/g, '„…"');
+}
+
 function logAppError(code, err) {
   const entry = {
     code,
@@ -183,7 +197,7 @@ function logAppError(code, err) {
   errorLog = [entry, ...errorLog].slice(0, MAX_ERROR_LOG);
   try { localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(errorLog)); } catch { /* z.B. privater Modus */ }
   console.error(`[${code}]`, err);
-  dlog('error', { code, name: entry.name, message: entry.message });
+  dlog('error', { code, name: entry.name, message: redactErrorMessage(entry.message) });
   return entry;
 }
 
@@ -783,7 +797,12 @@ let dbPromise = null;
 function openDB() {
   if (dbPromise) return dbPromise;
 
-  dbPromise = new Promise((resolve, reject) => {
+  // Eigene Referenz statt der Closure-Variable dbPromise: onversionchange
+  // feuert womöglich erst, nachdem ein zwischenzeitlicher Fehlerfall
+  // dbPromise schon durch eine neuere Verbindung ersetzt hat — sonst würde
+  // die alte, längst abgelöste Verbindung die neue fälschlich mit ungültig
+  // machen.
+  const thisOpen = new Promise((resolve, reject) => {
     if (!('indexedDB' in window)) {
       reject(new Error('Dieser Browser kann keine Daten dauerhaft speichern.'));
       return;
@@ -805,7 +824,14 @@ function openDB() {
     req.onsuccess = () => {
       const db = req.result;
       // Läuft in einem anderen Tab ein Update, muss diese Verbindung weichen.
-      db.onversionchange = () => db.close();
+      // dbPromise bleibt sonst auf eine geschlossene Verbindung aufgelöst
+      // stehen — jeder weitere DB.*-Aufruf würde bis zum nächsten Reload mit
+      // InvalidStateError scheitern, obwohl ein erneutes openDB() sofort eine
+      // neue Verbindung aufbauen könnte.
+      db.onversionchange = () => {
+        db.close();
+        if (dbPromise === thisOpen) dbPromise = null;
+      };
       resolve(db);
     };
 
@@ -816,10 +842,11 @@ function openDB() {
     // kurzzeitig durch einen anderen Tab blockiert) für den Rest der Sitzung
     // hängen — jeder weitere DB.*-Aufruf würde denselben alten Fehler wieder
     // zurückbekommen, obwohl die Ursache längst behoben sein könnte.
-    dbPromise = null;
+    if (dbPromise === thisOpen) dbPromise = null;
     throw err;
   });
 
+  dbPromise = thisOpen;
   return dbPromise;
 }
 
@@ -991,6 +1018,25 @@ const DB = {
 
   async filePut(record) {
     await tx('files', 'readwrite', (files) => { files.put(record); });
+  },
+
+  /**
+   * Schreibt Dateibytes und den zugehörigen meta-Datensatz in einer
+   * Transaktion — wie flushImportBatch()/Backup-Restore, nur für den
+   * Einzelfall (ein neuer REC). Getrennte filePut()+metaPut()-Aufrufe
+   * könnten sonst Bytes ohne Metadatensatz hinterlassen, falls der zweite
+   * Schreibvorgang fehlschlägt (Speicher voll, Tab beendet) — verwaiste
+   * Bytes, die die Oberfläche nie anzeigt und die niemand löschen kann.
+   */
+  async putFileAndMeta(fileRec, metaRec) {
+    await tx(['files', 'meta'], 'readwrite', (files, meta) => {
+      files.put(fileRec);
+      meta.put(metaRec);
+    });
+    if (metaRec.type === 'song') dropSongCache();
+    if (metaRec.type === 'note') dropNoteCache();
+    if (metaRec.type === 'lyricsNote') dropLyricsNoteCache();
+    return metaRec;
   },
 
   async fileDelete(keys) {
@@ -2490,11 +2536,21 @@ async function refreshAfterDelete() {
   await renderPlaylists();
 }
 
+let settingsAccordionUid = 0;
+
 /**
  * Alle Karten der Einstellungsseite als Akkordeon: eingeklappt bis zum
  * Antippen der Überschrift. Verschiebt dazu einmalig alles nach dem <h2>
  * in einen eigenen, zunächst verborgenen Container — IDs und bestehende
  * Event-Listener bleiben davon unberührt, sie hängen ja an denselben Knoten.
+ *
+ * Der Umschalter ist ein echter <button> INNERHALB des <h2>, nicht das <h2>
+ * selbst mit role=button — sonst verdrängt die ARIA-Rolle die native
+ * Überschriftenrolle, und Screenreader-Überschriftennavigation überspringt
+ * die Einstellungskarten komplett (Befund F-14 im Audit vom 9. September
+ * 2026). Icon und Titel (bereits vorhandene Kindknoten des <h2>) wandern
+ * unverändert in den Button, damit i18n weiter denselben <span data-i18n>
+ * aktualisiert.
  */
 function initSettingsAccordion() {
   for (const card of $$('#view-settings > .card')) {
@@ -2504,7 +2560,7 @@ function initSettingsAccordion() {
     const h2 = card.querySelector('h2');
     if (!h2) continue;
 
-    const body = el('div', { class: 'card-body' });
+    const body = el('div', { class: 'card-body', id: `settings-card-body-${settingsAccordionUid++}` });
     body.hidden = true;
     let node = h2.nextSibling;
     while (node) {
@@ -2514,22 +2570,21 @@ function initSettingsAccordion() {
     }
     card.append(body);
 
-    h2.classList.add('card-toggle');
-    h2.tabIndex = 0;
-    h2.setAttribute('role', 'button');
-    h2.setAttribute('aria-expanded', 'false');
-    h2.append(el('span', { class: 'card-chevron', 'aria-hidden': 'true' }));
-    h2.querySelector('.card-chevron').innerHTML =
+    const btn = el('button', {
+      type: 'button', class: 'card-toggle',
+      'aria-expanded': 'false', 'aria-controls': body.id,
+    });
+    while (h2.firstChild) btn.append(h2.firstChild);
+    btn.append(el('span', { class: 'card-chevron', 'aria-hidden': 'true' }));
+    btn.querySelector('.card-chevron').innerHTML =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+    h2.append(btn);
 
-    const toggle = () => {
-      const expanded = h2.getAttribute('aria-expanded') === 'true';
-      h2.setAttribute('aria-expanded', String(!expanded));
+    btn.addEventListener('click', () => {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!expanded));
+      h2.classList.toggle('card-toggle--expanded', !expanded);
       body.hidden = expanded;
-    };
-    h2.addEventListener('click', toggle);
-    h2.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
   }
 }
@@ -8933,6 +8988,34 @@ function captureRecAnchor(stream) {
   return { voice, pos: audioLivePosition(), rate: Audio.rate, lat: measureBackingLatency(stream) };
 }
 
+/**
+ * Verklemmt die drei MediaRecorder-Ereignisse mit einem Session-Wächter.
+ * MDN dokumentiert für 'error' ausdrücklich, dass danach noch ein letztes
+ * 'dataavailable' und 'stop' nachkommen kann — ohne diesen Wächter würde ein
+ * solcher verspäteter Rest die bereits als abgebrochen gemeldete Aufnahme
+ * über onRecordingStopped() zu einem normalen pendingTake wiederbeleben
+ * (Befund F-02 im Audit vom 9. September 2026). `recorder` bleibt ein
+ * separater Parameter (statt recMediaRecorder direkt zu lesen), damit sich
+ * die Verklemmung im Selbsttest gegen einen Fake prüfen lässt.
+ */
+function wireRecorderEvents(recorder, session) {
+  recorder.addEventListener('dataavailable', (e) => {
+    if (session.failed) return;
+    if (e.data.size) recChunks.push(e.data);
+  });
+  recorder.addEventListener('stop', onRecordingStopped);
+  // Kein garantiertes 'stop' nach einem 'error' in jedem Browser — ohne
+  // eigenen Handler bliebe das Mikrofon offen und die REC-UI für immer im
+  // "nimmt auf"-Zustand hängen.
+  recorder.addEventListener('error', (e) => {
+    console.warn('[rec] MediaRecorder error', e.error);
+    session.failed = true;
+    recChunks = [];
+    teardownRecording();
+    bannerError('Die Aufnahme wurde abgebrochen.', 'REC-ERROR', e.error);
+  });
+}
+
 async function startRecording() {
   // Im Player braucht es einen offenen Song; im allgemeinen Recorder ist noch
   // keiner ausgewählt — der Song wird erst beim Speichern zugeordnet.
@@ -8994,19 +9077,9 @@ async function startRecording() {
   recStarting = false;
 
   recChunks = [];
-  recMediaRecorder.addEventListener('dataavailable', (e) => {
-    if (e.data.size) recChunks.push(e.data);
-  });
-  recMediaRecorder.addEventListener('stop', onRecordingStopped);
-  // Kein garantiertes 'stop' nach einem 'error' in jedem Browser — ohne
-  // eigenen Handler bliebe das Mikrofon offen und die REC-UI für immer im
-  // "nimmt auf"-Zustand hängen.
-  recMediaRecorder.addEventListener('error', (e) => {
-    console.warn('[rec] MediaRecorder error', e.error);
-    recChunks = [];
-    teardownRecording();
-    bannerError('Die Aufnahme wurde abgebrochen.', 'REC-ERROR', e.error);
-  });
+  const recSession = { failed: false };
+  recMediaRecorder.__recSession = recSession;
+  wireRecorderEvents(recMediaRecorder, recSession);
 
   // Erst wenn der Recorder wirklich läuft, steht der Anker fest — zwischen
   // getUserMedia() und dem ersten aufgezeichneten Sample liegt sonst eine
@@ -9306,6 +9379,13 @@ function discardActiveRecording() {
 }
 
 async function onRecordingStopped() {
+  // `this` ist der MediaRecorder, an dem der Listener hängt (EventTarget-
+  // Semantik) — bei einem 'stop' nach bereits gemeldetem 'error' ist dessen
+  // Session als gescheitert markiert. Ohne diese Prüfung könnte ein laut MDN
+  // nachgelieferter Rest (dataavailable + stop) trotzdem einen pendingTake
+  // erzeugen, obwohl die Aufnahme der Nutzerin schon als abgebrochen
+  // gemeldet wurde (Befund F-02).
+  if (this?.__recSession?.failed) return;
   const duration = (Date.now() - recStartedAt) / 1000;
   const mimeType = recMimeType || recChunks[0]?.type || 'audio/webm';
   const chunks = recChunks;
@@ -9632,7 +9712,7 @@ async function onTakeSaveClick() {
   const { blob, mimeType, duration, anchor } = pendingTake;
   const fileKey = newFileKey();
   const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
-  await DB.filePut(await fileRecord(fileKey, blob, `${name}.${ext}`));
+  const fileRec = await fileRecord(fileKey, blob, `${name}.${ext}`);
 
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const recording = {
@@ -9651,7 +9731,7 @@ async function onTakeSaveClick() {
     recording.trimStart = pendingTake.trimStart || 0;
     recording.trimEnd = pendingTake.trimEnd ?? duration;
   }
-  await DB.metaPut(recording);
+  await DB.putFileAndMeta(fileRec, recording);
 
   if (audioPreview?.tag?.pending) await endRecordingPreview();
   const wasRecorder = recHost === 'recorder';
@@ -10639,7 +10719,7 @@ async function importRecordingFile(file) {
   const song = findSongByTitle(songs, songTitle) || (songTitle ? await createPlaceholderSong(songTitle) : null);
 
   const fileKey = newFileKey();
-  await DB.filePut(await fileRecord(fileKey, blob, file.name));
+  const fileRec = await fileRecord(fileKey, blob, file.name);
 
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const recording = {
@@ -10652,7 +10732,7 @@ async function importRecordingFile(file) {
     size: blob.size,
     createdAt: dateIso ? `${dateIso}T00:00:00.000Z` : new Date().toISOString(),
   };
-  await DB.metaPut(recording);
+  await DB.putFileAndMeta(fileRec, recording);
   if (playerSong && song && playerSong.id === song.id) await loadSongRecordings();
   return { song, recording };
 }
@@ -14848,6 +14928,32 @@ function runSelfTests() {
     failed.push('looksLikeAudio: ein einzelnes, abgeschnittenes Byte darf nicht als Audiodatei durchgehen');
   }
 
+  // redactErrorMessage() (Befund F-09 im Audit vom 9. September 2026): das
+  // Diagnose-Log verspricht, nie Dateinamen zu speichern — ZipError-Texte
+  // zitieren aber genau die in „…"-Anführungszeichen, z.B.
+  // `„${entry.path}" ist beschädigt …`.
+  {
+    const sentinel = 'Geheimer_Songname_privat.mp3';
+    checks++;
+    const redacted = redactErrorMessage(`„${sentinel}" ist beschädigt (CRC-Prüfsumme stimmt nicht überein).`);
+    if (redacted.includes(sentinel)) {
+      failed.push('redactErrorMessage: ein in „…" zitierter Dateiname bleibt in der Meldung erhalten');
+    }
+    checks++;
+    if (!redacted.includes('beschädigt')) {
+      failed.push('redactErrorMessage: der restliche technische Text geht beim Redigieren verloren');
+    }
+    checks++;
+    const plain = 'RangeError: Invalid typed array length';
+    if (redactErrorMessage(plain) !== plain) {
+      failed.push('redactErrorMessage: eine Meldung ohne „…"-Zitat darf unverändert bleiben');
+    }
+    checks++;
+    if (redactErrorMessage('') !== '' || redactErrorMessage(undefined) !== undefined) {
+      failed.push('redactErrorMessage: leere/fehlende Meldungen müssen unverändert durchgereicht werden');
+    }
+  }
+
   const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
@@ -15207,6 +15313,49 @@ async function runAsyncSelfTests() {
     }
   }
 
+  // MediaRecorder-Ereignisreihenfolge (Befund F-02 im Audit vom 9. September
+  // 2026): MDN dokumentiert, dass nach 'error' noch ein letztes
+  // 'dataavailable' und 'stop' nachkommen kann. wireRecorderEvents() muss
+  // das über session.failed abfangen. Bewusst wird 'stop' nur im Fehlerfall
+  // ausgelöst (dort per Wächter ein Frühausstieg vor jeder Zustandsänderung)
+  // — ein echter Erfolgsdurchlauf riefe onRecordingStopped() bis zum Ende
+  // durch und würde dabei sichtbare REC-UI/pendingTake-Zustände hinterlassen,
+  // die derselbe Vorsicht wie beim bestehenden REC-Riegel-Test verbietet.
+  {
+    const savedRecorder = recMediaRecorder, savedChunks = recChunks, savedPending = pendingTake;
+    try {
+      recChunks = [];
+      pendingTake = null;
+
+      // Normalfall bleibt unverändert: ein dataavailable ohne vorherigen
+      // Fehler landet weiterhin in recChunks.
+      const okRecorder = testMakeFakeRecorder();
+      const okSession = { failed: false };
+      okRecorder.__recSession = okSession;
+      recMediaRecorder = okRecorder;
+      wireRecorderEvents(okRecorder, okSession);
+      okRecorder.dispatch('dataavailable', { data: new Blob(['inhalt']) });
+      if (recChunks.length !== 1) failed.push('wireRecorderEvents(): ein dataavailable ohne Fehler landet nicht mehr in recChunks');
+
+      // Fehlerfall: eine als gescheitert markierte Session (session.failed,
+      // wie der echte 'error'-Handler es setzt) darf ein nachgeliefertes
+      // dataavailable/stop nicht mehr verarbeiten.
+      recChunks = [];
+      pendingTake = null;
+      const failRecorder = testMakeFakeRecorder();
+      const failSession = { failed: true };
+      failRecorder.__recSession = failSession;
+      recMediaRecorder = failRecorder;
+      wireRecorderEvents(failRecorder, failSession);
+      failRecorder.dispatch('dataavailable', { data: new Blob(['spät']) });
+      failRecorder.dispatch('stop');
+      if (recChunks.length) failed.push('wireRecorderEvents(): dataavailable nach einem Fehler landet trotzdem in recChunks');
+      if (pendingTake) failed.push('wireRecorderEvents(): ein verspätetes stop nach einem Fehler erzeugt trotzdem einen pendingTake');
+    } finally {
+      recMediaRecorder = savedRecorder; recChunks = savedChunks; pendingTake = savedPending;
+    }
+  }
+
   // Signaturprüfung ganzer Blobs (Punkt 3 des Import-Härtungsauftrags,
   // ergänzt die reinen Bytefunktionen aus runSelfTests): echte und falsch
   // benannte Beispieldateien, sowie leere/abgeschnittene und sehr große.
@@ -15543,6 +15692,24 @@ function testMakeFakeSource() {
   return src;
 }
 
+/** Minimaler EventTarget-Doppelgänger für wireRecorderEvents()-Tests (F-02):
+ *  dispatch() ruft die Listener wie ein echtes EventTarget mit `this` =
+ *  dieses Fake-Objekt auf, genau die Bindung, auf die sich onRecordingStopped()
+ *  für seinen Session-Wächter verlässt. */
+function testMakeFakeRecorder() {
+  const listeners = {};
+  return {
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      listeners[type] = listeners[type].filter((f) => f !== fn);
+    },
+    dispatch(type, detail) {
+      for (const fn of (listeners[type] || []).slice()) fn.call(this, detail);
+    },
+  };
+}
+
 /** Kontrollierbares Promise, um RPC-Wartezeiten (schedule()/reset()) in
  *  Tests gezielt offenzuhalten und erst zum gewünschten Zeitpunkt aufzulösen. */
 function testMakeDeferred() {
@@ -15875,6 +16042,7 @@ const onbDots  = $('#onb-dots');
 const onbPrev  = $('#onb-prev');
 const onbNext  = $('#onb-next');
 const onbSkip  = $('#onb-skip');
+const onbSlides = $$('.onb-slide', onbEl);
 
 let onbIndex = 0;
 let onbOpen  = false;
@@ -16049,11 +16217,31 @@ function renderOnbDots() {
   onbNext.textContent = onbIndex === ONB_SLIDES - 1 ? 'Los geht’s' : 'Weiter';
 }
 
+/**
+ * Hält Fokus/Vorlesbarkeit der waagerecht liegenden Schritte synchron mit
+ * onbIndex: nur der sichtbare Schritt bleibt fokussierbar/vorlesbar, die
+ * übrigen werden inert — sonst könnten Tastatur/Screenreader-Nutzer:innen in
+ * unsichtbar links/rechts liegende Schritte hineintabben (Befund F-10 im
+ * Audit vom 9. September 2026). Der Dialogname (aria-labelledby) folgt dem
+ * aktuellen Schritt, statt dauerhaft an Schritt 1 zu hängen.
+ */
+function applyOnbSlideState(focusHeading) {
+  onbSlides.forEach((slide, i) => {
+    const active = i === onbIndex;
+    slide.toggleAttribute('inert', !active);
+    slide.setAttribute('aria-hidden', active ? 'false' : 'true');
+  });
+  const activeTitle = onbSlides[onbIndex]?.querySelector('h2');
+  if (activeTitle?.id) onbEl.setAttribute('aria-labelledby', activeTitle.id);
+  if (focusHeading) activeTitle?.focus();
+}
+
 function onbGoTo(index) {
   onbIndex = Math.max(0, Math.min(ONB_SLIDES - 1, index));
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   onbTrack.scrollTo({ left: onbIndex * onbTrack.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
   renderOnbDots();
+  applyOnbSlideState(true);
   if (onbIndex === 2) renderOnbPersist();
 }
 
@@ -16069,6 +16257,8 @@ onbTrack.addEventListener('scroll', () => {
     if (i !== onbIndex && i >= 0 && i < ONB_SLIDES) {
       onbIndex = i;
       renderOnbDots();
+      // Kein Fokusdiebstahl beim Wischen — nur bei Knopf-/Punkt-Navigation.
+      applyOnbSlideState(false);
       if (onbIndex === 2) renderOnbPersist();
     }
   });
@@ -16090,6 +16280,8 @@ function openOnboarding() {
   renderOnbVoice();
   renderOnbPersist();
   renderOnbDots();
+  // Kein Fokusdiebstahl hier — openModal() setzt initialFocus gleich unten.
+  applyOnbSlideState(false);
   // Ohne Verzögerung steht die Breite des Streifens noch nicht fest.
   requestAnimationFrame(() => { onbTrack.scrollLeft = 0; });
   openModal(onbEl, { initialFocus: onbNext, onEscape: () => closeOnboarding() });

@@ -8,9 +8,11 @@
    Loops und Playlisten des Nutzers bleiben bei jedem Update erhalten.
    ========================================================================== */
 
-// Bei jeder Änderung an index.html/sw.js/manifest.json erhöhen.
-// Daraus leitet sich der Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v195';
+// Bei jeder Änderung an einer Datei aus SHELL_REQUIRED oder SHELL_OPTIONAL
+// weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
+// die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
+// Cache-Name ab; ein neuer Name = frischer Shell-Cache.
+const SW_VERSION = 'v197';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -114,6 +116,58 @@ self.addEventListener('message', (event) => {
   }
 });
 
+/** Ob `name` alle SHELL_REQUIRED-Einträge enthält. */
+async function isCacheComplete(name) {
+  const cache = await caches.open(name);
+  const hits = await Promise.all(SHELL_REQUIRED.map((path) => cache.match(path)));
+  return hits.every(Boolean);
+}
+
+// Pro Worker-Instanz einmal ermittelt (siehe resolveActiveShellCacheName) —
+// KEIN eigener Persistenzmechanismus nötig: Cache Storage überlebt einen
+// Worker-Neustart, dieses Modul-Level-Memo nicht. Nach einem Neustart läuft
+// das sw.js-Skript von vorn durch, `activeShellCachePromise` ist wieder
+// `null`, und der nächste Aufruf wertet Cache Storage frisch aus — dieselbe
+// Quelle, die auch vorher schon galt. Die Auswahl ist also allein durch
+// Cache Storage bestimmt, nie durch etwas, das einen Neustart nicht überlebt.
+let activeShellCachePromise = null;
+
+/**
+ * Liefert EINEN vollständig geprüften Shell-Cache-Namen, der für JEDE
+ * Anfrage dieser Worker-Instanz gilt — nie eine pro Datei unabhängig
+ * getroffene Wahl. Ein früherer Rückfall (matchAnyShellCache) prüfte jede
+ * Datei einzeln gegen mehrere Caches und konnte so index.html aus einer
+ * älteren, vollständigen Version mit app.js aus einer neueren, unvollständigen
+ * Version mischen — genau der Versionsversatz, den die AP-C-Invariante
+ * eigentlich verhindern soll (reproduziert: neuer Cache mit app.js, aber ohne
+ * index.html; alter Cache vollständig → altes index.html + neues app.js).
+ *
+ * Ist CACHE_NAME vollständig, ist es die aktive Shell — der Normalfall.
+ * Sonst wird unter den übrigen chor-app-shell-*-Caches (neueste zuerst,
+ * absteigend sortiert — der Name trägt SW_VERSION) der erste vollständige
+ * genommen; das ist praktisch immer genau der eine, den activate() für
+ * diesen Fall bewusst stehen lässt. Existiert gar kein vollständiger Cache,
+ * bleibt CACHE_NAME die einzig sinnvolle Wahl (auch unvollständig) — ohne
+ * das gäbe es keinen Cache-Namen zum Lesen.
+ */
+function resolveActiveShellCacheName() {
+  if (!activeShellCachePromise) {
+    activeShellCachePromise = (async () => {
+      if (await isCacheComplete(CACHE_NAME)) return CACHE_NAME;
+      console.warn('[sw] Shell-Cache unvollständig, weiche auf älteren vollständigen Stand aus');
+      const names = (await caches.keys())
+        .filter((n) => n.startsWith('chor-app-shell-') && n !== CACHE_NAME)
+        .sort()
+        .reverse();
+      for (const name of names) {
+        if (await isCacheComplete(name)) return name;
+      }
+      return CACHE_NAME;
+    })();
+  }
+  return activeShellCachePromise;
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -124,16 +178,33 @@ self.addEventListener('fetch', (event) => {
   // Seitenaufrufe immer aus der gecachten index.html bedienen — so startet die
   // App auch offline, egal über welchen Einstieg sie geöffnet wurde. Mit
   // cacheName statt eines globalen caches.match(): ohne das würde über ALLE
-  // Caches gesucht, nicht nur CACHE_NAME — bei einer einzigen Datei folgenlos,
-  // aber seit app.js dazugehört (AP-C) müssen index.html und app.js aus
-  // demselben Cache-Stand kommen, sonst droht Versionsversatz zwischen beiden.
+  // Caches gesucht, nicht nur die aktive Shell — bei einer einzigen Datei
+  // folgenlos, aber seit app.js dazugehört (AP-C) müssen index.html und
+  // app.js aus demselben Cache-Stand kommen, sonst droht Versionsversatz
+  // zwischen beiden. resolveActiveShellCacheName() ist genau deshalb EIN
+  // für die ganze Worker-Instanz fester Name, nicht pro Datei neu gewählt.
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const cached = await caches.match('./index.html', { cacheName: CACHE_NAME, ignoreSearch: true });
+        const activeCacheName = await resolveActiveShellCacheName();
+        const cached = await caches.match('./index.html', { cacheName: activeCacheName, ignoreSearch: true });
         if (cached) return cached;
         try {
-          return await fetch(req);
+          const res = await fetch(req);
+          // Erfolgreiche Online-Erholung nach einem Cache-Miss nur „repariert"
+          // die aktuelle Sitzung, nicht die Offlinefähigkeit — ohne diesen
+          // Nachtrag unter dem kanonischen Schlüssel fehlt index.html beim
+          // nächsten Offline-Start wieder (Befund F-07). Nachgetragen wird in
+          // die gerade aktive Shell (nicht immer CACHE_NAME), damit eine
+          // Reparatur nie eine andere Version als die gewählte anfasst. Der
+          // Schreibfehler (z.B. Kontingent voll) darf die Antwort selbst
+          // nicht verhindern.
+          if (res && res.ok) {
+            try {
+              await (await caches.open(activeCacheName)).put('./index.html', res.clone());
+            } catch (err) { console.warn('[sw] konnte index.html nicht nachtragen:', err); }
+          }
+          return res;
         } catch {
           return new Response(
             '<!doctype html><meta charset="utf-8">' +
@@ -152,13 +223,19 @@ self.addEventListener('fetch', (event) => {
   // cacheName aus demselben Grund wie oben bei index.html.
   event.respondWith(
     (async () => {
-      const cached = await caches.match(req, { cacheName: CACHE_NAME, ignoreSearch: true });
+      const activeCacheName = await resolveActiveShellCacheName();
+      const cached = await caches.match(req, { cacheName: activeCacheName, ignoreSearch: true });
       if (cached) return cached;
       try {
         const res = await fetch(req);
         if (res && res.ok && res.type === 'basic') {
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(req, res.clone());
+          // Nachtragen erst abwarten (F-07): ohne await darf der Worker schon
+          // vor dem Commit des Caches idle werden, der Nachtrag bliebe dann
+          // unzuverlässig zwischen zwei Fetches hängen. Auch hier in die
+          // aktive Shell, nicht fest in CACHE_NAME (siehe oben).
+          try {
+            await (await caches.open(activeCacheName)).put(req, res.clone());
+          } catch (err) { console.warn('[sw] konnte Antwort nicht nachtragen:', req.url, err); }
         }
         return res;
       } catch (err) {
