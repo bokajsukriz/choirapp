@@ -331,6 +331,7 @@ export const STRINGS = {
     'lightshow.ntpcal.dialogCancel': 'Abbrechen',
     'lightshow.ntpcal.statusChecking': 'Frage Zeitserver ab …',
     'lightshow.ntpcal.statusDone': 'Fertig — Zeitkorrektur auf {value} gesetzt (Laufzeit {rtt}, geschätzte Genauigkeit ±{uncertainty}).',
+    'lightshow.ntpcal.statusClockError': 'Die Geräteuhr weicht um {value} ab. Bitte zuerst Datum und Uhrzeit des Geräts korrigieren.',
     'lightshow.ntpcal.statusError': 'Zeitserver nicht erreichbar — bitte später erneut versuchen.',
   },
   en: {
@@ -648,6 +649,7 @@ export const STRINGS = {
     'lightshow.ntpcal.dialogCancel': 'Cancel',
     'lightshow.ntpcal.statusChecking': 'Checking time server …',
     'lightshow.ntpcal.statusDone': 'Done — time correction set to {value} (round-trip {rtt}, estimated accuracy ±{uncertainty}).',
+    'lightshow.ntpcal.statusClockError': 'The device clock differs by {value}. Please correct the device date and time first.',
     'lightshow.ntpcal.statusError': 'Time server unreachable — please try again later.',
   },
   pl: {
@@ -965,6 +967,7 @@ export const STRINGS = {
     'lightshow.ntpcal.dialogCancel': 'Anuluj',
     'lightshow.ntpcal.statusChecking': 'Odpytuję serwer czasu …',
     'lightshow.ntpcal.statusDone': 'Gotowe — korekta czasu ustawiona na {value} (czas odpowiedzi {rtt}, szacowana dokładność ±{uncertainty}).',
+    'lightshow.ntpcal.statusClockError': 'Zegar urządzenia różni się o {value}. Najpierw popraw datę i godzinę urządzenia.',
     'lightshow.ntpcal.statusError': 'Serwer czasu niedostępny — spróbuj ponownie później.',
   },
 };
