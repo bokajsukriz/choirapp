@@ -2751,6 +2751,10 @@ $('#normalization-retry').addEventListener('click', async () => {
   for (const song of songs) {
     for (const track of song.tracks || []) {
       if (!normalizationHasRecord(track) || track.normalization.status === 'analyzed') continue;
+      // A crash-guard deferral is deliberately excluded from bulk retry —
+      // only its own "Diese Datei erneut versuchen" button (retryNormalizationTrack())
+      // re-queues it, per normalizationRecoverFromCrash().
+      if (track.normalization.reasonCode === 'crashGuard') continue;
       // Atomic per-track clear: re-locates the live track by fileKey right
       // before writing (see commitTrackMutation), never a blind whole-song
       // write of this stale `songs` snapshot.
@@ -2766,7 +2770,28 @@ $('#normalization-retry').addEventListener('click', async () => {
       if (cleared && status === 'failed') normalizationProgress.failed = Math.max(0, normalizationProgress.failed - 1);
     }
   }
+  renderNormalizationProgress();
   scheduleNormalizationReconciliation();
+});
+
+$('#normalization-crashguard-resume').addEventListener('click', async () => {
+  await resumeNormalizationAfterCrashGuard();
+});
+
+$('#normalization-crashguard-retry').addEventListener('click', async (e) => {
+  if (!normalizationPaused) return;
+  e.currentTarget.disabled = true;
+  await retryNormalizationTrack(normalizationPaused.fileKey, normalizationPaused.sourceRevision);
+  e.currentTarget.disabled = false;
+});
+
+$('#normalization-details').addEventListener('toggle', (e) => {
+  if (e.target.open) renderNormalizationDetails();
+});
+
+$('#normalization-details-more').addEventListener('click', () => {
+  normalizationDetailsExpanded = true;
+  renderNormalizationDetails();
 });
 
 /**
@@ -4599,10 +4624,21 @@ async function onAudioContextStateChange() {
 // kollidieren, bevor dessen `loadedmetadata` eingetroffen ist.
 let audioLoadMutex = null;
 
-const NORMALIZATION_ALGO_VERSION = 2;
+const NORMALIZATION_ALGO_VERSION = 2;             // the analysis math itself — unchanged by a limit bump
 const NORMALIZATION_MAX_SECONDS = 600;
 const NORMALIZATION_MAX_BYTES = 60 * 1024 * 1024;
-const NORMALIZATION_MAX_PCM_BYTES = 64 * 1024 * 1024;
+// PCM *budget*, not a guaranteed ceiling on total app memory: the decoder,
+// the compressed source, and the rest of the app all need memory on top of
+// this. 128 MiB covers 5 minutes of stereo at 44.1/48 kHz (≈101/110 MiB
+// PCM) on modern phones — a reasonable test point, not a promise that every
+// device can actually afford it. Never raised automatically on failure.
+const NORMALIZATION_MAX_PCM_BYTES = 128 * 1024 * 1024;
+// Versions the *pre-decode eligibility limits* above, separately from
+// NORMALIZATION_ALGO_VERSION (the unchanged RMS/peak analysis math) — bump
+// this when a limit changes so previously PCM-skipped files get one
+// automatic re-check under the new limit (see normalizationHasRecord()),
+// without invalidating already-analyzed results or other skip reasons.
+const NORMALIZATION_ELIGIBILITY_POLICY_VERSION = 2;
 const NORMALIZATION_TARGET_DB = -20;
 const NORMALIZATION_METADATA_PROBE_TIMEOUT_MS = 5000;
 let normalizationGeneration = 0;
@@ -4615,6 +4651,38 @@ const normalizationQueue = new Map();
 // exact same job a second time while the worker already holds it.
 const normalizationInFlight = new Set();
 const normalizationProgress = { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' };
+
+/* --------------------------------------------------------------------------
+   Crash guard — a full decode (OfflineAudioContext.decodeAudioData on a
+   file up to the PCM budget above) is exactly the kind of operation that
+   can take a tab down on a constrained device. If that happens mid-decode,
+   nothing in this tab ever runs again to notice — so the *next* boot must
+   find evidence of the abandoned attempt itself, before it schedules any
+   further automatic analysis, and refuse to retry that same file
+   automatically forever after (a repeat crash loop). See
+   normalizationRecoverFromCrash()/writeNormalizationMarker().
+   -------------------------------------------------------------------------- */
+const NORMALIZATION_MARKER_KEY = 'normalization:inflight';
+const NORMALIZATION_PAUSE_KEY = 'normalization:paused';
+const normalizationOwnerId = newSourceRevision();
+let normalizationPaused = null;         // the persisted pause record, or null
+let normalizationCrashCheckPending = true; // blocks all scheduling until normalizationRecoverFromCrash() resolves
+// Cross-tab coordination for the marker: BroadcastChannel lets a fresh boot
+// ask "is anyone else still actively decoding this?" before concluding a
+// leftover marker means a crash. Older WebKit without BroadcastChannel just
+// skips that check (same as a single-tab session) — the marker mechanism's
+// core crash protection still works, only the multi-tab nuance is lost.
+let normalizationChannel = null;
+try { if ('BroadcastChannel' in window) normalizationChannel = new BroadcastChannel('chorapp-normalization'); } catch { /* unsupported */ }
+if (normalizationChannel) {
+  normalizationChannel.addEventListener('message', (e) => {
+    // Answering only while a decode is genuinely in flight here is what
+    // makes this a real liveness signal, not just "the tab is open".
+    if (e.data?.type === 'ping' && normalizationWorkerPromise) {
+      normalizationChannel.postMessage({ type: 'pong' });
+    }
+  });
+}
 
 function newSourceRevision() {
   return `${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(2)).join('-')}`;
@@ -4633,12 +4701,25 @@ function normalizationCacheValue(track) {
   return Number.isFinite(cached.gainDb) ? cached.gainDb : null;
 }
 
+/** A 'pcm' skip recorded under an older, stricter eligibility policy (a
+ *  lower NORMALIZATION_MAX_PCM_BYTES) deserves exactly one automatic
+ *  re-check under the current one — a file that no longer exceeds a raised
+ *  limit shouldn't stay skipped forever. Every other skip/fail reason, and
+ *  every already-analyzed result, is unaffected: those limits didn't
+ *  change, and re-running a successful analysis would just waste a decode. */
+function normalizationPcmSkipNeedsRecheck(cached) {
+  if (cached?.status !== 'skipped') return false;
+  const isPcm = cached.reasonCode === 'pcm' || (cached.reasonCode == null && cached.reason === 'pcm');
+  return isPcm && cached.eligibilityPolicyVersion !== NORMALIZATION_ELIGIBILITY_POLICY_VERSION;
+}
+
 /** A terminal record for the track's *current* source revision and algorithm version. */
 function normalizationHasRecord(track) {
   const cached = track?.normalization;
-  return cached?.version === NORMALIZATION_ALGO_VERSION
-    && cached.fileKey === track?.fileKey && cached.sourceRevision === track?.sourceRevision
-    && (cached.status === 'skipped' || cached.status === 'failed' || Number.isFinite(cached.gainDb));
+  if (cached?.version !== NORMALIZATION_ALGO_VERSION
+      || cached.fileKey !== track?.fileKey || cached.sourceRevision !== track?.sourceRevision) return false;
+  if (normalizationPcmSkipNeedsRecheck(cached)) return false;
+  return cached.status === 'skipped' || cached.status === 'failed' || Number.isFinite(cached.gainDb);
 }
 
 /** Duration/sample-rate/channel-count are all present and usable — as opposed
@@ -4650,9 +4731,10 @@ function normalizationMetadataUsable(track) {
 }
 
 function normalizationEligibility({ durationSec, sampleRate, channelCount, compressedBytes }) {
-  if (![durationSec, sampleRate, channelCount, compressedBytes].every(Number.isFinite)
-      || durationSec <= 0 || sampleRate <= 0 || !Number.isInteger(channelCount)
-      || channelCount <= 0 || compressedBytes < 0) return { ok: false, reason: 'metadata' };
+  if (!Number.isFinite(compressedBytes) || compressedBytes < 0) return { ok: false, reason: 'metadataInvalid' };
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return { ok: false, reason: 'durationInvalid' };
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0
+      || !Number.isInteger(channelCount) || channelCount <= 0) return { ok: false, reason: 'metadataInvalid' };
   if (durationSec > NORMALIZATION_MAX_SECONDS) return { ok: false, reason: 'duration' };
   if (compressedBytes > NORMALIZATION_MAX_BYTES) return { ok: false, reason: 'compressed' };
   const pcmBytes = durationSec * sampleRate * channelCount * 4;
@@ -4733,12 +4815,30 @@ function probeMediaDuration(blob, timeoutMs = NORMALIZATION_METADATA_PROBE_TIMEO
  * null if reliable metadata could not be obtained — the caller skips with
  * an accurate reason rather than guessing.
  */
+/** Tags `err` with a stable reasonCode so callers up the chain (the per-file
+ *  diagnostic list in particular) can show a specific, truthful reason
+ *  instead of a generic "something went wrong" — see normalizationDiagnosticText(). */
+function normalizationTagError(err, reasonCode) {
+  err.normalizationReasonCode = reasonCode;
+  return err;
+}
+
+/** Throws a tagged Error for control-flow failures that were never a real
+ *  Error to begin with (e.g. "the header didn't parse"). */
+function normalizationReasonError(reasonCode) {
+  return normalizationTagError(new Error(reasonCode), reasonCode);
+}
+
 async function acquireNormalizationMetadata(blob) {
   const header = await inspectNormalizationMetadata(blob).catch(() => null);
   if (!header || !Number.isFinite(header.sampleRate) || header.sampleRate <= 0
-      || !Number.isInteger(header.channelCount) || header.channelCount <= 0) return null;
-  const durationSec = await probeMediaDuration(blob).catch(() => null);
-  if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
+      || !Number.isInteger(header.channelCount) || header.channelCount <= 0) {
+    throw normalizationReasonError('metadataInvalid');
+  }
+  const durationSec = await probeMediaDuration(blob).catch((err) => {
+    throw normalizationReasonError(err?.message === 'timeout' ? 'metadataTimeout' : 'durationInvalid');
+  });
+  if (!Number.isFinite(durationSec) || durationSec <= 0) throw normalizationReasonError('durationInvalid');
   return { durationSec, sampleRate: header.sampleRate, channelCount: header.channelCount };
 }
 
@@ -4856,8 +4956,111 @@ function normalizationRecordingActive() {
   return !!(recStarting || (recMediaRecorder && recMediaRecorder.state !== 'inactive'));
 }
 
+/**
+ * Writes the crash-guard marker for `job` and waits for the transaction to
+ * actually commit — if this fails, the caller must not start decoding at
+ * all (a marker that silently failed to write would defeat the whole
+ * point). Call immediately before the full read/decode, never earlier.
+ */
+async function writeNormalizationMarker(job) {
+  const marker = {
+    key: NORMALIZATION_MARKER_KEY, type: 'normalizationMarker',
+    fileKey: job.fileKey, sourceRevision: job.sourceRevision, algoVersion: NORMALIZATION_ALGO_VERSION,
+    ownerId: normalizationOwnerId, startedAt: Date.now(),
+  };
+  try {
+    await DB.metaPut(marker);
+  } catch (err) {
+    throw normalizationTagError(err, 'storageError');
+  }
+}
+
+/** Removed only after the decode this session actually settled — success,
+ *  a real error, or a cooperative interruption all count; a crash never
+ *  reaches this line, which is exactly the condition the next boot checks for. */
+async function clearNormalizationMarker() {
+  await DB.metaDelete(NORMALIZATION_MARKER_KEY).catch(() => {});
+}
+
+/** Asks other open tabs whether they're still actively decoding, so a
+ *  leftover marker isn't mistaken for a crash while it's genuinely still
+ *  owned elsewhere. Resolves false (assume no other tab) when
+ *  BroadcastChannel isn't available, or nobody answers in time. */
+function normalizationOtherTabActive(timeoutMs = 400) {
+  if (!normalizationChannel) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => { if (settled) return; settled = true; cleanup(); resolve(value); };
+    const onMessage = (e) => { if (e.data?.type === 'pong') finish(true); };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    const cleanup = () => { normalizationChannel.removeEventListener('message', onMessage); clearTimeout(timer); };
+    normalizationChannel.addEventListener('message', onMessage);
+    normalizationChannel.postMessage({ type: 'ping' });
+  });
+}
+
+/**
+ * Runs once at boot, before any automatic scheduling — normalizationCanWork()
+ * refuses to work while normalizationCrashCheckPending is true, so nothing
+ * can jump ahead of this regardless of call order elsewhere (activation,
+ * import completion, visibility change, …).
+ *
+ * A leftover in-flight marker with nobody else claiming it means the tab
+ * that wrote it never reached the point of clearing it — most likely it
+ * crashed or was killed mid-decode, though an ordinary manual close can
+ * leave the same trace, so the UI must not claim a memory crash as a
+ * confirmed cause. That one file is permanently set aside (recorded as a
+ * 'failed'/'crashGuard' result, so only its own explicit retry button
+ * re-queues it — reconciliation and a raised PCM limit both leave it
+ * alone), and a persisted global pause blocks *all* further automatic
+ * analysis until the user explicitly resumes.
+ */
+async function normalizationRecoverFromCrash() {
+  try {
+    const existingPause = await DB.metaGet(NORMALIZATION_PAUSE_KEY).catch(() => null);
+    if (existingPause) { normalizationPaused = existingPause; return; }
+    const marker = await DB.metaGet(NORMALIZATION_MARKER_KEY).catch(() => null);
+    if (!marker) return;
+    if (await normalizationOtherTabActive()) return; // genuinely still in flight elsewhere
+
+    const songs = await DB.metaByType('song').catch(() => []);
+    const song = songs.find((s) => s.tracks?.some((t) => t.fileKey === marker.fileKey));
+    const track = song?.tracks?.find((t) => t.fileKey === marker.fileKey);
+    if (track && track.sourceRevision === marker.sourceRevision) {
+      await commitTrackMutation(marker.fileKey, (t) => {
+        if (t.sourceRevision !== marker.sourceRevision) return false;
+        t.normalization = {
+          version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+          fileKey: t.fileKey, sourceRevision: t.sourceRevision, status: 'failed', reasonCode: 'crashGuard',
+        };
+        return true;
+      }).catch(() => {});
+    }
+    const pauseRecord = {
+      key: NORMALIZATION_PAUSE_KEY, type: 'normalizationPause', pausedAt: Date.now(),
+      fileKey: marker.fileKey, sourceRevision: marker.sourceRevision,
+      fileName: track?.fileName || '', songTitle: song?.title || '', voice: track?.voice || '',
+    };
+    await DB.metaPut(pauseRecord).catch(() => {});
+    normalizationPaused = pauseRecord;
+    await DB.metaDelete(NORMALIZATION_MARKER_KEY).catch(() => {});
+  } finally {
+    normalizationCrashCheckPending = false;
+  }
+}
+
+/** Clears the persisted global pause (does not touch the deferred file's
+ *  own record — only its own retry button re-queues that one). */
+async function resumeNormalizationAfterCrashGuard() {
+  await DB.metaDelete(NORMALIZATION_PAUSE_KEY).catch(() => {});
+  normalizationPaused = null;
+  renderNormalization();
+  if (settings.normalizationEnabled) await scheduleNormalizationReconciliation();
+}
+
 function normalizationCanWork() {
-  return settings.normalizationEnabled && normalizationAvailable()
+  return !normalizationCrashCheckPending && !normalizationPaused
+    && settings.normalizationEnabled && normalizationAvailable()
     && document.visibilityState === 'visible' && !Audio.playing && !audioPreview
     && !Audio.bgVoice && !normalizationRecordingActive() && !normalizationImportActive;
 }
@@ -4889,6 +5092,182 @@ function renderNormalizationProgress() {
     || (pauseReason ? t(`settings.normalization.paused.${pauseReason}`) : '') || p.reason || '';
   $('#normalization-progress-counts').textContent = t('settings.normalization.counts')
     .replace('{analyzed}', p.analyzed).replace('{skipped}', p.skipped).replace('{failed}', p.failed);
+  renderNormalizationCrashGuard();
+  renderNormalizationDetailsIfOpen();
+}
+
+/* --------------------------------------------------------------------------
+   Per-file diagnostics — "Übersprungene und fehlgeschlagene Dateien".
+   Reconstructed on demand straight from the persisted per-track records
+   (see processNormalizationJob()/normalizationCommitSkip()); nothing extra
+   to store or migrate on top of what's already there. Only ever reads;
+   text is always assigned via textContent/el(), never innerHTML.
+   -------------------------------------------------------------------------- */
+const NORMALIZATION_DETAILS_PAGE = 20;
+let normalizationDetailsExpanded = false;
+
+function fmtMiBNumber(bytes) {
+  return Number.isFinite(bytes) ? Math.round(bytes / (1024 * 1024)) : '–';
+}
+
+function fmtNormalizationMinutes(seconds) {
+  if (!Number.isFinite(seconds)) return '–';
+  return t('settings.normalization.detail.minutes').replace('{time}', fmtTime(seconds));
+}
+
+function normalizationChannelsLabel(channelCount) {
+  if (channelCount === 1) return t('settings.normalization.channels.mono');
+  if (channelCount === 2) return t('settings.normalization.channels.stereo');
+  if (Number.isInteger(channelCount) && channelCount > 0) {
+    return t('settings.normalization.channels.multi').replace('{count}', channelCount);
+  }
+  return '';
+}
+
+/**
+ * Normalizes track.normalization into a rendering-ready shape, tolerating
+ * records written before structured diagnostics existed (plain `reason`
+ * string, no `reasonCode`/`measurements`) — those still render a sensible,
+ * honest message instead of an empty or broken row.
+ */
+function normalizationDiagnostic(track) {
+  const n = track?.normalization;
+  if (!n || (n.status !== 'skipped' && n.status !== 'failed')) return null;
+  let reasonCode = n.reasonCode;
+  let errorName = n.errorName;
+  if (!reasonCode) {
+    if (n.status === 'skipped') {
+      reasonCode = ['duration', 'compressed', 'pcm'].includes(n.reason) ? n.reason : 'metadataInvalid';
+    } else {
+      errorName = n.reason || errorName;
+      reasonCode = 'decodeError';
+    }
+  }
+  return { status: n.status, reasonCode, measurements: n.measurements || {}, errorName };
+}
+
+/** Full sentence + optional secondary "file info" line for one diagnostic —
+ *  built only from the reasonCode-specific measurements actually recorded,
+ *  never guessed. */
+function normalizationDetailText(diag) {
+  const m = diag.measurements || {};
+  const key = `settings.normalization.detail.${diag.reasonCode}`;
+  let text = t(key);
+  if (text === key) text = t('settings.normalization.detail.unknown'); // no translation for this code — say so honestly
+  if (diag.reasonCode === 'duration') {
+    text = text.replace('{duration}', fmtNormalizationMinutes(m.durationSec))
+      .replace('{limit}', fmtNormalizationMinutes(m.limitSeconds));
+  } else if (diag.reasonCode === 'compressed') {
+    text = text.replace('{sizeMiB}', fmtMiBNumber(m.compressedBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes));
+  } else if (diag.reasonCode === 'pcm') {
+    text = text.replace('{estimatedMiB}', fmtMiBNumber(m.pcmBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes));
+  }
+  let fileInfo = null;
+  if (diag.reasonCode === 'pcm' && Number.isFinite(m.durationSec) && Number.isFinite(m.sampleRate) && Number.isInteger(m.channelCount)) {
+    fileInfo = t('settings.normalization.detail.fileInfo')
+      .replace('{duration}', fmtNormalizationMinutes(m.durationSec))
+      .replace('{channels}', normalizationChannelsLabel(m.channelCount))
+      .replace('{rate}', `${Math.round(m.sampleRate / 1000)} kHz`);
+  }
+  return { text, fileInfo };
+}
+
+/** Scans every song for skipped/failed tracks — the list IS the persisted
+ *  state, so this alone reconstructs it correctly after a restart, in the
+ *  current language, for the current source revision only (a replaced or
+ *  deleted track's old record simply won't be found here any more). */
+async function collectNormalizationDiagnostics() {
+  const songs = await DB.metaByType('song').catch(() => []);
+  const rows = [];
+  for (const song of songs) {
+    for (const track of song.tracks || []) {
+      const diag = normalizationDiagnostic(track);
+      if (diag) rows.push({ song, track, diag });
+    }
+  }
+  rows.sort((a, b) => collator.compare(a.song.title || '', b.song.title || '')
+    || collator.compare(String(a.track.voice || ''), String(b.track.voice || '')));
+  return rows;
+}
+
+/** Clears one track's failed record (crash-guard included — reasonCode
+ *  'crashGuard' is just a specific 'failed' entry) and reschedules it —
+ *  the only way that specific file is ever retried automatically. Reuses
+ *  the normal atomic commit + scheduling path, so it can't start a second
+ *  decoder or double-queue the job. */
+async function retryNormalizationTrack(fileKey, sourceRevision) {
+  const cleared = await commitTrackMutation(fileKey, (t) => {
+    if (t.sourceRevision !== sourceRevision) return false;
+    if (t.normalization?.status !== 'failed') return false;
+    delete t.normalization;
+    return true;
+  }).catch(() => null);
+  if (!cleared) return false;
+  normalizationProgress.failed = Math.max(0, normalizationProgress.failed - 1);
+  scheduleTrackNormalization(fileKey, cleared.track);
+  renderNormalizationProgress();
+  return true;
+}
+
+function buildNormalizationDetailRow(row) {
+  const { song, track, diag } = row;
+  const { text, fileInfo } = normalizationDetailText(diag);
+  const context = [song?.title, VOICE_LABEL[track.voice] || track.label || track.voice].filter(Boolean).join(' · ');
+  const children = [
+    el('div', { style: 'font-weight:600' }, track.fileName || track.label || track.voice || ''),
+  ];
+  if (context) children.push(el('div', { class: 'muted' }, context));
+  children.push(el('div', {}, text));
+  if (fileInfo) children.push(el('div', { class: 'muted' }, fileInfo));
+  if (diag.errorName) {
+    children.push(el('details', { style: 'margin-top:4px' },
+      el('summary', { class: 'muted', style: 'cursor:pointer' }, t('settings.normalization.details.technical')),
+      el('div', { class: 'muted' }, diag.errorName)));
+  }
+  if (diag.status === 'failed') {
+    const btn = el('button', { class: 'btn btn--ghost', type: 'button' }, t('settings.normalization.details.retryFile'));
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await retryNormalizationTrack(track.fileKey, track.sourceRevision);
+    });
+    children.push(btn);
+  }
+  return el('li', { style: 'padding:10px 0;border-top:1px solid rgba(127,127,127,.25)' }, children);
+}
+
+async function renderNormalizationDetails() {
+  const host = $('#normalization-details');
+  const list = $('#normalization-details-list');
+  const moreBtn = $('#normalization-details-more');
+  if (!host || !list || !moreBtn) return;
+  const rows = await collectNormalizationDiagnostics();
+  // Visibility must be independent of `open`: while hidden, the <summary>
+  // itself isn't rendered either, so the user could never click it to open
+  // it in the first place — that would make the whole section unreachable.
+  host.hidden = !settings.normalizationEnabled || !rows.length;
+  if (host.hidden || !host.open) return;
+  list.textContent = '';
+  const shown = normalizationDetailsExpanded ? rows : rows.slice(0, NORMALIZATION_DETAILS_PAGE);
+  for (const row of shown) list.append(buildNormalizationDetailRow(row));
+  const remaining = rows.length - shown.length;
+  moreBtn.hidden = remaining <= 0;
+  if (remaining > 0) moreBtn.textContent = t('settings.normalization.details.showAll').replace('{count}', rows.length);
+}
+
+/** Always keeps the section's visibility (and thus its clickable <summary>)
+ *  correct. Rebuilding the <li> list itself is still skipped while collapsed
+ *  (the common case) — renderNormalizationDetails() re-checks `open` for that. */
+function renderNormalizationDetailsIfOpen() {
+  renderNormalizationDetails();
+}
+
+function renderNormalizationCrashGuard() {
+  const host = $('#normalization-crashguard');
+  if (!host) return;
+  host.hidden = !normalizationPaused;
+  if (!normalizationPaused) return;
+  const name = normalizationPaused.fileName || normalizationPaused.songTitle || '';
+  $('#normalization-crashguard-message').textContent = t('settings.normalization.crashGuard.message').replace('{fileName}', name);
 }
 
 function stopNormalizationScheduling() {
@@ -4957,9 +5336,10 @@ async function processNormalizationJob(job) {
   const generation = normalizationGeneration;
   const stillGood = () => generation === normalizationGeneration && normalizationCanWork();
   let buffer = null;
+  let markerWritten = false;
   try {
     // 1) Recheck right after the async DB read.
-    const songs = await DB.metaByType('song');
+    const songs = await DB.metaByType('song').catch((err) => { throw normalizationTagError(err, 'storageError'); });
     const song = songs.find((s) => s.tracks?.some((tr) => tr.fileKey === job.fileKey));
     let track = song?.tracks.find((tr) => tr.fileKey === job.fileKey);
     if (!track) return { outcome: 'obsolete' }; // song/track deleted
@@ -4975,7 +5355,7 @@ async function processNormalizationJob(job) {
     normalizationProgress.current = `${song.title || ''} · ${VOICE_LABEL[track.voice] || track.label || track.voice || ''}`;
     renderNormalizationProgress();
 
-    const rec = await DB.fileGet(job.fileKey);
+    const rec = await DB.fileGet(job.fileKey).catch((err) => { throw normalizationTagError(err, 'storageError'); });
     if (!rec) return { outcome: 'obsolete' }; // bytes gone — song/track deleted concurrently
     if (!stillGood()) return { outcome: 'interrupted' };
     const blob = recordBlob(rec, mimeForTrack(track));
@@ -4983,21 +5363,18 @@ async function processNormalizationJob(job) {
     // Cheap, already-known check first — no point probing metadata (which
     // touches the file) for a source that's ineligible on size alone.
     if (blob.size > NORMALIZATION_MAX_BYTES) {
-      const committed = await commitNormalizationResult(job, {
-        version: NORMALIZATION_ALGO_VERSION, status: 'skipped', reason: 'compressed',
-      });
-      return committed ? { outcome: 'skipped', reason: 'compressed', track: committed.track } : { outcome: 'obsolete' };
+      return normalizationCommitSkip(job, 'compressed', { compressedBytes: blob.size, limitBytes: NORMALIZATION_MAX_BYTES });
     }
 
     if (!normalizationMetadataUsable(track)) {
-      const metadata = await normalizationMetadataProbeImpl(blob).catch(() => null);
-      if (!stillGood()) return { outcome: 'interrupted' }; // don't persist a maybe-stale probe result
-      if (!metadata) {
-        const committed = await commitNormalizationResult(job, {
-          version: NORMALIZATION_ALGO_VERSION, status: 'skipped', reason: 'metadata',
-        });
-        return committed ? { outcome: 'skipped', reason: 'metadata', track: committed.track } : { outcome: 'obsolete' };
+      let metadata = null, probeReasonCode = 'metadataInvalid';
+      try {
+        metadata = await normalizationMetadataProbeImpl(blob);
+      } catch (err) {
+        probeReasonCode = err?.normalizationReasonCode || 'metadataInvalid';
       }
+      if (!stillGood()) return { outcome: 'interrupted' }; // don't persist a maybe-stale probe result
+      if (!metadata) return normalizationCommitSkip(job, probeReasonCode);
       const committed = await commitTrackMutation(job.fileKey, (t) => {
         if (t.sourceRevision !== job.sourceRevision) return false; // replaced while probing
         if (normalizationMetadataUsable(t)) return false; // someone else already resolved it (race)
@@ -5011,10 +5388,13 @@ async function processNormalizationJob(job) {
     const eligible = normalizationEligibility({ durationSec: track.durationSec,
       sampleRate: track.sampleRate, channelCount: track.channelCount, compressedBytes: blob.size });
     if (!eligible.ok) {
-      const committed = await commitNormalizationResult(job, {
-        version: NORMALIZATION_ALGO_VERSION, status: 'skipped', reason: eligible.reason,
-      });
-      return committed ? { outcome: 'skipped', reason: eligible.reason, track: committed.track } : { outcome: 'obsolete' };
+      const measurements = eligible.reason === 'duration'
+        ? { durationSec: track.durationSec, limitSeconds: NORMALIZATION_MAX_SECONDS }
+        : eligible.reason === 'pcm'
+          ? { pcmBytes: eligible.pcmBytes, limitBytes: NORMALIZATION_MAX_PCM_BYTES,
+              durationSec: track.durationSec, sampleRate: track.sampleRate, channelCount: track.channelCount }
+          : undefined;
+      return normalizationCommitSkip(job, eligible.reason, measurements);
     }
 
     // 2/3) Before allocating full (compressed) file bytes / before decode —
@@ -5025,7 +5405,20 @@ async function processNormalizationJob(job) {
     // (potentially slow) byte read, and decodeAudioData() isn't cancellable
     // once it begins, so checking only here would be too late.
     if (!stillGood()) return { outcome: 'interrupted' };
-    buffer = await normalizationDecodeImpl(blob, track.sampleRate, stillGood);
+    // Crash guard: persisted *before* the risky full read/decode, so a
+    // crashed tab leaves evidence the next boot can find. A failed write
+    // must prevent the decode from starting — never guess it's safe.
+    await writeNormalizationMarker(job);
+    markerWritten = true;
+    try {
+      buffer = await normalizationDecodeImpl(blob, track.sampleRate, stillGood);
+    } finally {
+      // Cleared only once the (non-cancellable) decode has actually
+      // settled — success, a real error, or a cooperative interruption all
+      // reach here; a genuine crash never does, which is the whole point.
+      await clearNormalizationMarker();
+      markerWritten = false;
+    }
 
     // 4) Immediately after decode.
     if (!stillGood()) return { outcome: 'interrupted' };
@@ -5033,20 +5426,34 @@ async function processNormalizationJob(job) {
     if (gainDb == null) return { outcome: 'interrupted' }; // interrupted mid-scan
 
     const committed = await commitNormalizationResult(job, {
-      version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb,
+      version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+      status: 'analyzed', gainDb,
     });
     if (!committed) return { outcome: 'obsolete' };
     return { outcome: 'analyzed', track: committed.track };
   } catch (err) {
     if (err?.normalizationInterrupted) return { outcome: 'interrupted' };
+    const reasonCode = err?.normalizationReasonCode || 'decodeError';
     const committed = await commitNormalizationResult(job, {
-      version: NORMALIZATION_ALGO_VERSION, status: 'failed', reason: err?.name || 'decode',
+      version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+      status: 'failed', reasonCode, errorName: err?.name || err?.message || 'Error',
     }).catch(() => null);
     dlog('audio:normalization', { name: err?.name || err?.message || 'error' });
-    return committed ? { outcome: 'failed', track: committed.track } : { outcome: 'obsolete' };
+    return committed ? { outcome: 'failed', reasonCode, track: committed.track } : { outcome: 'obsolete' };
   } finally {
     buffer = null;
+    if (markerWritten) await clearNormalizationMarker().catch(() => {});
   }
+}
+
+/** Commits a 'skipped' result with the given reasonCode/measurements —
+ *  shared by every pre-decode eligibility exit in processNormalizationJob(). */
+async function normalizationCommitSkip(job, reasonCode, measurements) {
+  const committed = await commitNormalizationResult(job, {
+    version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+    status: 'skipped', reasonCode, measurements,
+  });
+  return committed ? { outcome: 'skipped', reasonCode, track: committed.track } : { outcome: 'obsolete' };
 }
 
 async function runNormalizationWorker() {
@@ -5069,12 +5476,12 @@ async function runNormalizationWorker() {
           break;
         case 'skipped':
           normalizationProgress.skipped++;
-          normalizationProgress.reason = t(`settings.normalization.reason.${result.reason}`);
+          normalizationProgress.reason = t(`settings.normalization.reason.${result.reasonCode}`);
           syncPlayerSongTrack(result.track);
           break;
         case 'failed':
           normalizationProgress.failed++;
-          normalizationProgress.reason = t('settings.normalization.reason.failed');
+          normalizationProgress.reason = t(`settings.normalization.reason.${result.reasonCode}`);
           syncPlayerSongTrack(result.track);
           break;
         case 'analyzed':
@@ -5094,6 +5501,7 @@ async function runNormalizationWorker() {
       normalizationInFlight.delete(id);
       normalizationProgress.current = '';
       renderNormalizationProgress();
+      renderNormalizationDetailsIfOpen();
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }
@@ -5110,7 +5518,7 @@ function normalizationInterruptedError() {
 
 async function decodeNormalizationBlob(blob, sampleRate, stillGood = () => true) {
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  if (!OfflineCtx) throw new Error('offline-context');
+  if (!OfflineCtx) throw normalizationReasonError('decoderUnsupported');
   // Checked once more right before allocating the full compressed byte
   // array — the caller's own check can be stale by the time we get here.
   if (!stillGood()) throw normalizationInterruptedError();
@@ -5121,7 +5529,11 @@ async function decodeNormalizationBlob(blob, sampleRate, stillGood = () => true)
   // once it begins, so this is the last point an interruption can still be
   // honored instead of running an expensive decode alongside it.
   if (!stillGood()) throw normalizationInterruptedError();
-  return new OfflineCtx(1, 1, sampleRate).decodeAudioData(bytes);
+  try {
+    return await new OfflineCtx(1, 1, sampleRate).decodeAudioData(bytes);
+  } catch (err) {
+    throw normalizationTagError(err, 'decodeError');
+  }
 }
 
 // Swappable indirection so tests can substitute a controllable deferred
@@ -5311,11 +5723,16 @@ async function rememberDuration(track, duration, sourceMetadata = null) {
       // Real metadata just arrived from actual playback — a previous
       // "could not acquire metadata" skip for this same revision no longer
       // reflects reality; clearing it lets reconciliation reconsider the
-      // track automatically, without the user retrying anything.
-      if (t.normalization?.status === 'skipped' && t.normalization.reason === 'metadata'
-          && t.normalization.sourceRevision === t.sourceRevision) {
-        delete t.normalization; changed = true;
-      }
+      // track automatically, without the user retrying anything. Duration
+      // (this call always has one) resolves durationInvalid/metadataTimeout;
+      // metadataInvalid (rate/channels unknown) only resolves once
+      // sourceMetadata actually supplies them.
+      const skip = t.normalization;
+      const skipReasonCode = skip?.reasonCode || (skip?.reason === 'metadata' ? 'metadataInvalid' : skip?.reason);
+      const metadataSkipResolved = skip?.status === 'skipped' && skip.sourceRevision === t.sourceRevision
+        && (skipReasonCode === 'durationInvalid' || skipReasonCode === 'metadataTimeout'
+            || (skipReasonCode === 'metadataInvalid' && sourceMetadata));
+      if (metadataSkipResolved) { delete t.normalization; changed = true; }
       return changed;
     });
     if (committed) scheduleTrackNormalization(committed.track.fileKey, committed.track);
@@ -16087,13 +16504,23 @@ async function runAsyncSelfTests() {
       sampleRate: pcmSampleRate, channelCount: pcmChannels, compressedBytes: 1 });
     if (overPcm.reason !== 'pcm') failed.push('Normalisierung: knapp über dem PCM-Budget nicht abgelehnt');
 
+    // 128 MiB covers five minutes of real-world stereo at 44.1 and 48 kHz
+    // (≈101/110 MiB PCM) — the concrete scenario the 64→128 MiB bump exists
+    // for, not just an abstract boundary.
+    const fiveMinStereo441 = normalizationEligibility({ durationSec: 300, sampleRate: 44100, channelCount: 2, compressedBytes: 1 });
+    if (!fiveMinStereo441.ok) failed.push(`Normalisierung: 5 Min. Stereo @ 44,1 kHz müssten zulässig sein (${fiveMinStereo441.reason})`);
+    const fiveMinStereo48 = normalizationEligibility({ durationSec: 300, sampleRate: 48000, channelCount: 2, compressedBytes: 1 });
+    if (!fiveMinStereo48.ok) failed.push(`Normalisierung: 5 Min. Stereo @ 48 kHz müssten zulässig sein (${fiveMinStereo48.reason})`);
+
     // Invalid/missing metadata is rejected before any full-file allocation
-    // would even be considered (eligibility runs first — see processNormalizationJob()).
-    if (normalizationEligibility({ durationSec: NaN, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: ungültige Metadaten nicht abgelehnt');
-    if (normalizationEligibility({ durationSec: null, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: fehlende Dauer nicht abgelehnt');
-    if (normalizationEligibility({ durationSec: 10, sampleRate: null, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: fehlende Samplerate nicht abgelehnt');
-    if (normalizationEligibility({ durationSec: 10, sampleRate: 48000, channelCount: 1.5, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: nicht-ganzzahlige Kanalzahl nicht abgelehnt');
-    if (normalizationEligibility({ durationSec: 0, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: Dauer 0 wird als gültig statt fehlend behandelt');
+    // would even be considered (eligibility runs first — see processNormalizationJob()),
+    // with a reason distinguishing "duration unclear" from "rate/channels unclear".
+    if (normalizationEligibility({ durationSec: NaN, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'durationInvalid') failed.push('Normalisierung: NaN-Dauer nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: null, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'durationInvalid') failed.push('Normalisierung: fehlende Dauer nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 0, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'durationInvalid') failed.push('Normalisierung: Dauer 0 wird als gültig statt fehlend behandelt');
+    if (normalizationEligibility({ durationSec: 10, sampleRate: null, channelCount: 2, compressedBytes: 1 }).reason !== 'metadataInvalid') failed.push('Normalisierung: fehlende Samplerate nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 10, sampleRate: 48000, channelCount: 1.5, compressedBytes: 1 }).reason !== 'metadataInvalid') failed.push('Normalisierung: nicht-ganzzahlige Kanalzahl nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 10, sampleRate: 48000, channelCount: 2, compressedBytes: -1 }).reason !== 'metadataInvalid') failed.push('Normalisierung: negative Dateigröße nicht abgelehnt');
 
     const a = { fileKey: 'same', sourceRevision: 'a', normalization: { version: NORMALIZATION_ALGO_VERSION, fileKey: 'same', sourceRevision: 'a', gainDb: 1 } };
     const b = { ...a, sourceRevision: 'b' };
@@ -17099,12 +17526,19 @@ async function testWithNormalizationEnv(fn) {
     currentKey: Audio.currentKey, currentRevision: Audio.currentRevision,
     currentSourceKind: Audio.currentSourceKind, normalizationDb: Audio.normalizationDb,
     song: Audio.song, playerSong, playerVoice,
+    paused: normalizationPaused, crashCheckPending: normalizationCrashCheckPending,
+    channel: normalizationChannel,
   };
   settings.normalizationEnabled = true;
   Audio.playing = false; audioPreview = null; Audio.bgVoice = null;
   recStarting = false; recMediaRecorder = null; normalizationImportActive = false;
   normalizationQueue.clear(); normalizationInFlight.clear();
   Object.assign(normalizationProgress, { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' });
+  // The real boot() crash-check has already resolved by the time self-tests
+  // run — this baseline matches that, so tests that don't specifically
+  // exercise the crash guard aren't blocked by it.
+  normalizationPaused = null;
+  normalizationCrashCheckPending = false;
   try {
     return await fn();
   } finally {
@@ -17120,6 +17554,8 @@ async function testWithNormalizationEnv(fn) {
     Audio.currentKey = saved.currentKey; Audio.currentRevision = saved.currentRevision;
     Audio.currentSourceKind = saved.currentSourceKind; Audio.normalizationDb = saved.normalizationDb;
     Audio.song = saved.song; playerSong = saved.playerSong; playerVoice = saved.playerVoice;
+    normalizationPaused = saved.paused; normalizationCrashCheckPending = saved.crashCheckPending;
+    normalizationChannel = saved.channel;
   }
 }
 
@@ -17435,7 +17871,7 @@ async function runNormalizationWorkerTests() {
       normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(0.3, sampleRate);
       const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
       const result = await processNormalizationJob(job);
-      if (result.outcome !== 'analyzed') fail(`3a) erwartete automatische Analyse, war '${result.outcome}' (${result.reason || ''})`);
+      if (result.outcome !== 'analyzed') fail(`3a) erwartete automatische Analyse, war '${result.outcome}' (${result.reasonCode || ''})`);
       const after = await DB.metaGet(seed.songKey);
       const track = after?.tracks[0];
       if (!track?.sampleRate || !track?.channelCount || !Number.isFinite(track?.durationSec)) {
@@ -17451,8 +17887,8 @@ async function runNormalizationWorkerTests() {
       const seed = await testSeedNormalizationTrack({ durationSec: null, blob: garbage });
       const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
       const result = await processNormalizationJob(job);
-      if (result.outcome !== 'skipped' || result.reason !== 'metadata') {
-        fail(`3b) erwartete 'skipped'/'metadata' für eine nicht unterstützte Quelle, war '${result.outcome}'/'${result.reason}'`);
+      if (result.outcome !== 'skipped' || result.reasonCode !== 'metadataInvalid') {
+        fail(`3b) erwartete 'skipped'/'metadataInvalid' für eine nicht unterstützte Quelle, war '${result.outcome}'/'${result.reasonCode}'`);
       }
       const after = await DB.metaGet(seed.songKey);
       if (after.tracks[0].normalization?.status !== 'skipped') fail('3b) kein Skip-Datensatz für die nicht unterstützte Quelle hinterlegt');
@@ -17758,6 +18194,322 @@ async function runNormalizationWorkerTests() {
       });
       await seed.cleanup();
     }
+  });
+
+  // --- Section 6: 128 MiB budget, PCM re-check, per-file diagnostics/retry, persistence ---
+  await testWithNormalizationEnv(async () => {
+    // 6a) A pre-bump 64 MiB-era 'pcm' skip that fits the new 128 MiB budget
+    //     is re-queued exactly once and reused afterward.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      // 500 s * 48000 Hz * 1 ch * 4 B ≈ 91.6 MiB — over the old 64 MiB limit,
+      // under the new 128 MiB one, and well within the 600 s duration cap
+      // (isolating the PCM re-check from the unrelated duration limit).
+      const seed = await testSeedNormalizationTrack({ durationSec: 500, sampleRate: 48000, channelCount: 1, blob: wav });
+      await commitTrackMutation(seed.fileKey, (t) => {
+        t.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: t.fileKey, sourceRevision: t.sourceRevision,
+          status: 'skipped', reason: 'pcm' }; // legacy shape: no reasonCode/eligibilityPolicyVersion
+        return true;
+      });
+      const liveTrack = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (normalizationHasRecord(liveTrack)) fail('6a) ein alter 64-MiB-PCM-Skip gilt unter dem neuen Limit fälschlich als terminal');
+
+      normalizationDecodeImpl = async (blob, sr) => testMakeNormalizationBuffer(0.2, sr);
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const result = await processNormalizationJob(job);
+      if (result.outcome !== 'analyzed') fail(`6a) erwartete automatische Neubewertung zu 'analyzed', war '${result.outcome}'`);
+      else if (result.track.normalization.eligibilityPolicyVersion !== NORMALIZATION_ELIGIBILITY_POLICY_VERSION) {
+        fail('6a) das neue Ergebnis trägt nicht die aktuelle Eligibility-Policy-Version');
+      }
+
+      normalizationImportActive = true; // quiet: only check what gets queued, don't actually decode again
+      await scheduleNormalizationReconciliation();
+      normalizationImportActive = false;
+      if (normalizationQueue.has(normalizationIdentity(result.track))) {
+        fail('6a) ein bereits unter der aktuellen Policy analysiertes Ergebnis wurde erneut eingeplant');
+      }
+      normalizationQueue.clear();
+      await seed.cleanup();
+    }
+
+    // 6b) A file still over 128 MiB after the re-check is skipped again
+    //     under the *current* policy version — and further reconciliation
+    //     passes never re-queue it (no automatic retry loop).
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 600, sampleRate: 48000, channelCount: 2, blob: wav }); // ≈219.7 MiB
+      await commitTrackMutation(seed.fileKey, (t) => {
+        t.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: t.fileKey, sourceRevision: t.sourceRevision,
+          status: 'skipped', reason: 'pcm' };
+        return true;
+      });
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const result = await processNormalizationJob(job);
+      if (result.outcome !== 'skipped' || result.reasonCode !== 'pcm') {
+        fail(`6b) erwartete erneutes 'skipped'/'pcm', war '${result.outcome}'/'${result.reasonCode}'`);
+      } else if (result.track.normalization.eligibilityPolicyVersion !== NORMALIZATION_ELIGIBILITY_POLICY_VERSION) {
+        fail('6b) der neue Skip trägt nicht die aktuelle Policy-Version — würde erneut geprüft werden');
+      }
+      normalizationImportActive = true;
+      await scheduleNormalizationReconciliation();
+      normalizationImportActive = false;
+      if (result.track && normalizationQueue.has(normalizationIdentity(result.track))) {
+        fail('6b) ein weiterhin zu großes Ergebnis wurde erneut eingeplant (Endlosschleifen-Risiko)');
+      }
+      normalizationQueue.clear();
+      await seed.cleanup();
+    }
+
+    // 6c) Already-analyzed results (even without an eligibilityPolicyVersion —
+    //     a legacy record) are reused, never touched by the PCM re-check.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      await commitNormalizationResult({ fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision },
+        { version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb: 3 });
+      const liveTrack = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (!normalizationHasRecord(liveTrack)) fail('6c) ein analysiertes Ergebnis ohne Policy-Version gilt fälschlich als nicht-terminal');
+      normalizationImportActive = true;
+      await scheduleNormalizationReconciliation();
+      normalizationImportActive = false;
+      if (normalizationQueue.has(normalizationIdentity(liveTrack))) fail('6c) ein bereits analysiertes Ergebnis wurde erneut eingeplant');
+      normalizationQueue.clear();
+      await seed.cleanup();
+    }
+
+    // 6d) Per-file diagnostics: filename/reason/measurements render
+    //     correctly, survive a "reload" (fresh DB read), and switch language.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 398, sampleRate: 48000, channelCount: 2, blob: wav, extra: { fileName: 'Probe.mp3' },
+      });
+      await commitNormalizationResult({ fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision }, {
+        version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+        status: 'skipped', reasonCode: 'pcm',
+        measurements: { pcmBytes: 153092096, limitBytes: NORMALIZATION_MAX_PCM_BYTES, durationSec: 398, sampleRate: 48000, channelCount: 2 },
+      });
+
+      // "Reload": collectNormalizationDiagnostics() is a completely fresh
+      // DB read — exactly what a real app restart reconstructs the list from.
+      const rows = await collectNormalizationDiagnostics();
+      const row = rows.find((r) => r.track.fileKey === seed.fileKey);
+      if (!row) fail('6d) der Diagnose-Eintrag wurde nach dem "Neuladen" nicht rekonstruiert');
+      else {
+        const savedLang = settings.language;
+        try {
+          settings.language = 'de';
+          const de = normalizationDetailText(row.diag);
+          if (!de.text.includes('146 MiB') || !de.text.includes('128 MiB')) fail(`6d) DE-Text enthält nicht die erwarteten Messwerte: "${de.text}"`);
+          if (!de.fileInfo || !de.fileInfo.includes('6:38') || !de.fileInfo.includes('Stereo') || !de.fileInfo.includes('48 kHz')) {
+            fail(`6d) DE-Zusatzzeile unvollständig: "${de.fileInfo}"`);
+          }
+          settings.language = 'en';
+          const en = normalizationDetailText(row.diag);
+          if (en.text === de.text) fail('6d) Sprachwechsel hat den Diagnosetext nicht verändert');
+          if (!en.text.includes('146 MiB')) fail(`6d) EN-Text enthält nicht den Messwert: "${en.text}"`);
+        } finally {
+          settings.language = savedLang;
+        }
+      }
+      await seed.cleanup();
+    }
+
+    // 6e) A successful per-file retry removes the old failed entry, resets
+    //     the counter, and reschedules.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      await commitNormalizationResult({ fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision }, {
+        version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+        status: 'failed', reasonCode: 'decodeError', errorName: 'EncodingError',
+      });
+      normalizationProgress.failed = 1;
+      normalizationImportActive = true; // quiet: only scheduling matters here, not an actual decode
+      const ok = await retryNormalizationTrack(seed.fileKey, seed.track.sourceRevision);
+      normalizationImportActive = false;
+      if (!ok) fail('6e) retryNormalizationTrack() meldete keinen Erfolg für einen echten Fehlereintrag');
+      if (normalizationProgress.failed !== 0) fail('6e) der Fehlgeschlagen-Zähler wurde beim Retry nicht heruntergezählt');
+      const afterRetry = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (afterRetry.normalization) fail('6e) der alte Fehlereintrag besteht nach dem Retry weiter');
+      const rowsAfter = await collectNormalizationDiagnostics();
+      if (rowsAfter.some((r) => r.track.fileKey === seed.fileKey)) fail('6e) der Diagnose-Eintrag verschwindet nach erfolgreichem Retry nicht');
+      normalizationQueue.delete(normalizationIdentity(afterRetry));
+      await seed.cleanup();
+    }
+
+    // 6f) Replacement/deletion remove stale diagnostics (current-revision-only filter).
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      await commitNormalizationResult({ fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision }, {
+        version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+        status: 'skipped', reasonCode: 'duration', measurements: { durationSec: 700, limitSeconds: 600 },
+      });
+      let rows = await collectNormalizationDiagnostics();
+      if (!rows.some((r) => r.track.fileKey === seed.fileKey)) fail('6f) Testaufbau ungültig: Eintrag fehlt vor der Ersetzung');
+      await commitTrackMutation(seed.fileKey, (t) => { t.sourceRevision = newSourceRevision(); delete t.normalization; return true; });
+      rows = await collectNormalizationDiagnostics();
+      if (rows.some((r) => r.track.fileKey === seed.fileKey)) fail('6f) ein veralteter Diagnose-Eintrag überlebt eine Ersetzung');
+      await seed.cleanup();
+      rows = await collectNormalizationDiagnostics();
+      if (rows.some((r) => r.track.fileKey === seed.fileKey)) fail('6f) ein veralteter Diagnose-Eintrag überlebt eine Löschung');
+    }
+
+    // 6g) An interruption is never stored as an error/skip.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred);
+      Audio.playing = true; // interrupt
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      const result = await p;
+      Audio.playing = false;
+      if (result.outcome !== 'interrupted') fail(`6g) erwartete 'interrupted', war '${result.outcome}'`);
+      const rows = await collectNormalizationDiagnostics();
+      if (rows.some((r) => r.track.fileKey === seed.fileKey)) fail('6g) eine Unterbrechung wurde fälschlich als Fehler/Skip gespeichert');
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 7: crash guard — persistent protection against repeated crashes ---
+  await testWithNormalizationEnv(async () => {
+    const cleanupMarkerAndPause = async () => {
+      await DB.metaDelete(NORMALIZATION_MARKER_KEY).catch(() => {});
+      await DB.metaDelete(NORMALIZATION_PAUSE_KEY).catch(() => {});
+      normalizationPaused = null;
+    };
+    await cleanupMarkerAndPause();
+
+    // 7a-7f) A leftover marker with nobody claiming it (normalizationChannel
+    //     set to null here — deterministic, no BroadcastChannel round trip)
+    //     blocks all automatic decoding after "restart": the specific file
+    //     is permanently deferred (a 'failed'/'crashGuard' record) and a
+    //     persisted global pause blocks everything else, across further
+    //     restarts, immune to otherwise-favorable conditions, until
+    //     "Fortsetzen" — which never retries the deferred file itself.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav, extra: { fileName: 'Tenor.mp3' } });
+      normalizationChannel = null;
+      await DB.metaPut({
+        key: NORMALIZATION_MARKER_KEY, type: 'normalizationMarker',
+        fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision, algoVersion: NORMALIZATION_ALGO_VERSION,
+        ownerId: 'selftest-other-owner', startedAt: Date.now() - 60000,
+      });
+
+      await normalizationRecoverFromCrash(); // "restart" #1
+      if (!normalizationPaused) fail('7a) ein verwaister Marker hat keine globale Pause ausgelöst');
+      else if (normalizationPaused.fileKey !== seed.fileKey) fail('7a) die globale Pause nennt nicht die betroffene Datei');
+      if (normalizationCanWork()) fail('7a) normalizationCanWork() ignoriert die globale Pause');
+
+      let trackAfter = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (trackAfter.normalization?.reasonCode !== 'crashGuard') fail('7a) die betroffene Datei wurde nicht als crashGuard-Fehler zurückgestellt');
+
+      // 7b) Otherwise-favorable conditions (import/visibility-equivalent
+      //     state, all clear) still don't bypass the pause.
+      normalizationImportActive = false;
+      Audio.playing = false;
+      if (normalizationCanWork()) fail('7b) günstige Bedingungen umgehen die globale Pause');
+
+      // 7c) The pause (and the deferral) survive a further "restart" — reset
+      //     the in-memory cache first so this genuinely re-reads the
+      //     persisted record instead of trivially reusing what's already set.
+      normalizationPaused = null;
+      await normalizationRecoverFromCrash(); // "restart" #2
+      if (!normalizationPaused) fail('7c) die globale Pause ging bei einem weiteren Neustart verloren');
+      trackAfter = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (trackAfter.normalization?.reasonCode !== 'crashGuard') fail('7c) die Zurückstellung ging bei einem weiteren Neustart verloren');
+
+      // 7d) "Fortsetzen" lifts the pause and continues other files, without
+      //     ever re-queuing the deferred one itself.
+      const otherWav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const other = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: otherWav });
+      normalizationImportActive = true; // quiet: only check what got queued
+      await resumeNormalizationAfterCrashGuard();
+      normalizationImportActive = false;
+      if (normalizationPaused) fail('7d) "Fortsetzen" hat die globale Pause nicht aufgehoben');
+      if (normalizationQueue.has(normalizationIdentity(trackAfter))) fail('7d) "Fortsetzen" hat die zurückgestellte Datei ungefragt erneut eingeplant');
+      if (!normalizationQueue.has(normalizationIdentity(other.track))) fail('7d) "Fortsetzen" hat andere Dateien nicht fortgesetzt');
+      normalizationQueue.clear();
+
+      // 7e) The per-file retry button re-arms the marker before decode.
+      let markerDuringDecode = null;
+      const deferredDecode = testMakeDeferredImpl();
+      normalizationDecodeImpl = async (...args) => {
+        markerDuringDecode = await DB.metaGet(NORMALIZATION_MARKER_KEY);
+        return deferredDecode.impl(...args);
+      };
+      let retryOk = null;
+      const retryPromise = retryNormalizationTrack(seed.fileKey, seed.track.sourceRevision).then((ok) => { retryOk = ok; });
+      await testWaitForCall(deferredDecode);
+      if (!markerDuringDecode || markerDuringDecode.fileKey !== seed.fileKey) {
+        fail('7e) der Einzeldatei-Retry hat vor dem Decode keinen Marker gesetzt');
+      }
+      deferredDecode.resolve(testMakeNormalizationBuffer(1, 8000));
+      await retryPromise;
+      if (retryOk !== true) fail('7e) retryNormalizationTrack() für die crashGuard-Datei schlug fehl');
+      if (normalizationWorkerPromise) await normalizationWorkerPromise.catch(() => {});
+
+      // 7f) Successful completion leaves no marker behind.
+      const markerAfterSuccess = await DB.metaGet(NORMALIZATION_MARKER_KEY);
+      if (markerAfterSuccess) fail('7f) nach erfolgreichem Abschluss ist noch ein Marker vorhanden');
+
+      await seed.cleanup();
+      await other.cleanup();
+    }
+
+    // 7g) A controlled interruption also leaves no marker — only an actual
+    //     crash (the JS thread dying mid-decode) should ever leave one.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred);
+      const markerDuring = await DB.metaGet(NORMALIZATION_MARKER_KEY);
+      if (!markerDuring || markerDuring.fileKey !== seed.fileKey) fail('7g) vor dem Decode wurde kein Marker gesetzt');
+      Audio.playing = true; // interrupt
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      const result = await p;
+      Audio.playing = false;
+      if (result.outcome !== 'interrupted') fail(`7g) erwartete 'interrupted', war '${result.outcome}'`);
+      const markerAfter = await DB.metaGet(NORMALIZATION_MARKER_KEY);
+      if (markerAfter) fail('7g) eine kontrollierte Unterbrechung hat den Marker nicht entfernt (falsche Absturzsperre beim nächsten Start)');
+      await seed.cleanup();
+    }
+
+    // 7h) A failure to write the marker must prevent the decode from starting.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      let decodeCalls = 0;
+      normalizationDecodeImpl = async () => { decodeCalls++; return testMakeNormalizationBuffer(1, 8000); };
+      const realMetaPut = DB.metaPut.bind(DB);
+      DB.metaPut = async (record) => {
+        if (record.key === NORMALIZATION_MARKER_KEY) throw new Error('selftest: simulated marker write failure');
+        return realMetaPut(record);
+      };
+      try {
+        const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+        const result = await processNormalizationJob(job);
+        if (decodeCalls !== 0) fail('7h) trotz gescheitertem Marker-Schreiben wurde dekodiert');
+        if (result.outcome !== 'failed' || result.reasonCode !== 'storageError') {
+          fail(`7h) erwartete 'failed'/'storageError', war '${result.outcome}'/'${result.reasonCode}'`);
+        }
+      } finally {
+        DB.metaPut = realMetaPut;
+      }
+      await seed.cleanup();
+    }
+
+    await cleanupMarkerAndPause();
   });
 
   if (failed.length) {
@@ -18167,7 +18919,16 @@ async function boot() {
   }
 
   await loadSettings();
-  if (settings.normalizationEnabled) setTimeout(() => scheduleNormalizationReconciliation(), 0);
+  // Must resolve — and flip normalizationCrashCheckPending, which gates
+  // normalizationCanWork() — before any automatic analysis is scheduled.
+  // Not awaited here: it runs its own (bounded, ~400 ms worst case)
+  // async chain in the background rather than delaying first paint; nothing
+  // can jump ahead of it regardless of call order elsewhere, since the same
+  // gate blocks every scheduling path.
+  normalizationRecoverFromCrash().then(() => {
+    renderNormalization();
+    if (settings.normalizationEnabled) scheduleNormalizationReconciliation();
+  });
   applyTranslations();
   initGrooveLabEasterEgg();
   setupFolderImport();
