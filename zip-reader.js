@@ -566,6 +566,12 @@ export function createZipReader(limits, onDiagnostic) {
     // Methode 0 (stored) ist bei MP3s der Normalfall — Dropbox komprimiert sie
     // nicht noch einmal. Dann kostet das Extrahieren praktisch nichts.
     if (entry.method === 0) {
+      if (entry.compressedSize !== entry.size || raw.size !== entry.size) {
+        throw new ZipError(`„${entry.path}“ ist beschädigt (widersprüchliche Dateigröße).`);
+      }
+      if (raw.size > L.maxEntryBytes) {
+        throw new ZipError(`„${entry.path}“ ist ausgepackt größer als erwartet und wird übersprungen.`);
+      }
       if (budget) {
         budget.used += raw.size;
         if (budget.used > L.maxTotalBytes) {
@@ -610,6 +616,9 @@ export function createZipReader(limits, onDiagnostic) {
         .pipeThrough(new DecompressionStream('deflate-raw'))
         .pipeThrough(guard);
       const blob = await new Response(stream).blob();
+      if (seen !== entry.size) {
+        throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
+      }
       if (budget) budget.used += seen;
       if (crc32Finish(crcState) !== entry.crc32) {
         throw new ZipError(`„${entry.path}" ist beschädigt (CRC-Prüfsumme stimmt nicht mit dem Inhaltsverzeichnis überein).`);

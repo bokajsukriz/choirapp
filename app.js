@@ -2383,7 +2383,7 @@ async function renameSong(song) {
 
   const [links, playlists] = await Promise.all([
     songLinkRecords(),
-    DB.metaByType('playlist').catch(() => []),
+    DB.metaByType('playlist'),
   ]);
   const linked = links.filter((record) => record.songId === song.id);
   for (const record of linked) {
@@ -2399,8 +2399,12 @@ async function renameSong(song) {
   }
 
   const renamed = { ...song, key, id, title, normTitle };
-  await DB.metaPutMany([renamed, ...linked, ...changedPlaylists]);
-  if (key !== song.key) await DB.metaDelete(song.key);
+  await tx(['meta'], 'readwrite', (store) => {
+    store.put(renamed);
+    for (const record of linked) store.put(record);
+    for (const playlist of changedPlaylists) store.put(playlist);
+    if (key !== song.key) store.delete(song.key);
+  });
   if (playerSong?.id === song.id) playerSong = renamed;
   playQueue = null;
   await renderStorageManager();
@@ -2412,10 +2416,10 @@ async function renameSong(song) {
 /** Alle Datensätze, die an einem Song hängen — Loops, Notizen, eigene Liedtexte und Aufnahmen. */
 async function songLinkRecords() {
   const [loops, notes, lyricsNotes, recordings] = await Promise.all([
-    DB.metaByType('loop').catch(() => []),
-    DB.metaByType('note').catch(() => []),
-    DB.metaByType('lyricsNote').catch(() => []),
-    DB.metaByType('recording').catch(() => []),
+    DB.metaByType('loop'),
+    DB.metaByType('note'),
+    DB.metaByType('lyricsNote'),
+    DB.metaByType('recording'),
   ]);
   return [...loops, ...notes, ...lyricsNotes, ...recordings];
 }
@@ -3587,6 +3591,8 @@ $('#btn-persist').addEventListener('click', async () => {
   await renderStorage();
 });
 
+let dataGeneration = 0;
+
 $('#btn-wipe').addEventListener('click', async () => {
   const ok = await confirmDialog({
     title: 'Alle Daten löschen?',
@@ -3598,6 +3604,26 @@ $('#btn-wipe').addEventListener('click', async () => {
   if (!ok) return;
 
   try {
+    // Ab jetzt darf kein bereits eingeplanter Callback mehr Daten anlegen.
+    dataGeneration++;
+    recStartGeneration++;
+    clearTimeout(noteSaveTimer);
+    clearTimeout(lyricsNoteSaveTimer);
+    noteSaveTimer = null;
+    lyricsNoteSaveTimer = null;
+    await Promise.allSettled([notePending, lyricsNotePending]);
+    discardActiveRecording();
+    pendingTake = null;
+    takeDraft = null;
+    recorderOpen = false;
+    $('#recorder-view').hidden = true;
+    stopBacking();
+    openPlayerToken++;
+    audioReset();
+    playerNote = null;
+    playerLyricsNote = null;
+    playerSong = null;
+    renderPendingTake();
     await DB.wipe();
     clearDebugLog();
     clearErrorLog();
@@ -6201,7 +6227,9 @@ async function runImport() {
         importedAt: new Date().toISOString(),
       };
       song.collections = [...(song.collections || [])];
-      song.scores = [...(song.scores || [])];
+      // Auch die Einträge kopieren: fehlgeschlagene Ersetzungen dürfen die
+      // Objekte des bereits gespeicherten Songs nicht nebenbei verändern.
+      song.scores = (song.scores || []).map((score) => ({ ...score }));
       // Nur wenn hier tatsächlich etwas übernommen wird, entsteht ein neuer
       // Songdatensatz bzw. zählt der Import (siehe „keep" weiter unten) —
       // sonst bleibt bei einer einzigen unlesbaren Datei ein leerer,
@@ -6312,6 +6340,9 @@ async function runImport() {
             report.failed.push(`${pdf.name} (Inhalt passt nicht zu einer PDF-Datei)`);
           } else {
             const fileKey = newFileKey();
+            // Vollständig lesen, bevor Referenzen oder Löschungen vorgemerkt
+            // werden. Ein Lesefehler lässt damit das alte Notenblatt intakt.
+            const fileRec = await fileRecord(fileKey, blob, pdf.name);
             const existing = song.scores.find((sc) => sc.fileName === pdf.name);
             if (existing) {
               batch.obsolete.push(existing.fileKey);
@@ -6320,10 +6351,13 @@ async function runImport() {
             } else {
               song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
             }
-            batch.files.push(await fileRecord(fileKey, blob, pdf.name));
+            batch.files.push(fileRec);
             songGotContent = true;
             batch.bytes += blob.size;
             batch.songs.add(song);
+            if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
+              await flushImportBatch(batch);
+            }
           }
         } catch (err) {
           if (err && err.name === 'QuotaExceededError') throw err;
@@ -6486,6 +6520,7 @@ function openRecorderView() {
  *  Player laufende Aufnahme bleibt unangetastet. */
 function abandonRecorderSession() {
   if (recHost !== 'recorder') return;
+  recStartGeneration++;
   const wasRecording = !!(recMediaRecorder && recMediaRecorder.state !== 'inactive');
   const hadTake = !!pendingTake;
   if (wasRecording) discardActiveRecording();
@@ -6826,6 +6861,7 @@ let lightshowStageCycleMs = 0;
 let lightshowStageShowId = null;
 let lightshowStageVoice = null;
 let lightshowLastBg = null;
+let lightshowStageGeneration = 0;
 
 /**
  * Aktuelle „Wanduhrzeit" aus dem monotonen performance.now()-Zähler
@@ -6844,6 +6880,7 @@ function lightshowReanchorStage() {
 }
 
 function lightshowStageStep() {
+  if (!lightshowStageOpen) { lightshowStageRaf = null; return; }
   lightshowStageRaf = requestAnimationFrame(lightshowStageStep);
   const wall = lightshowWallNow();
   const stage = $('#lightshow-stage');
@@ -6873,11 +6910,16 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /** Eigener Wake Lock für die Bühne — updateWakeLock() gehört dem Player und bleibt unangetastet. */
-async function lightshowAcquireStageWakeLock() {
+async function lightshowAcquireStageWakeLock(generation = lightshowStageGeneration) {
   if (!('wakeLock' in navigator)) return;
   try {
-    lightshowWakeLock = await navigator.wakeLock.request('screen');
-    lightshowWakeLock.addEventListener('release', () => { lightshowWakeLock = null; });
+    const lock = await navigator.wakeLock.request('screen');
+    if (!lightshowStageOpen || generation !== lightshowStageGeneration) {
+      await lock.release().catch(() => {});
+      return;
+    }
+    lightshowWakeLock = lock;
+    lock.addEventListener('release', () => { if (lightshowWakeLock === lock) lightshowWakeLock = null; });
   } catch { /* z. B. Berechtigung verweigert — die Show läuft trotzdem weiter */ }
 }
 
@@ -6886,6 +6928,7 @@ async function openLightshowStage(showId, { rehearsal = false } = {}) {
   if (!show) return;
 
   lightshowStageOpen = true;
+  const generation = ++lightshowStageGeneration;
   lightshowStageShowId = showId;
   lightshowStageCycleMs = show.cycleMs;
   lightshowStageVoice = lightshowActiveVoice();
@@ -6897,7 +6940,9 @@ async function openLightshowStage(showId, { rehearsal = false } = {}) {
   openModal(stage, { initialFocus: $('#lightshow-close'), onEscape: () => closeLightshowStage() });
 
   try { await stage.requestFullscreen?.(); } catch { /* z. B. iOS Safari ohne Element-Vollbild */ }
-  await lightshowAcquireStageWakeLock();
+  if (!lightshowStageOpen || generation !== lightshowStageGeneration) return;
+  await lightshowAcquireStageWakeLock(generation);
+  if (!lightshowStageOpen || generation !== lightshowStageGeneration) return;
 
   lightshowReanchorStage();
   lightshowStartWall = rehearsal
@@ -6910,6 +6955,7 @@ async function openLightshowStage(showId, { rehearsal = false } = {}) {
 
 async function closeLightshowStage() {
   lightshowStageOpen = false;
+  lightshowStageGeneration++;
   if (lightshowStageRaf) { cancelAnimationFrame(lightshowStageRaf); lightshowStageRaf = null; }
   if (lightshowWakeLock) { lightshowWakeLock.release().catch(() => {}); lightshowWakeLock = null; }
   const stage = $('#lightshow-stage');
@@ -7042,7 +7088,12 @@ async function lightshowNtpSync() {
     // mit in die Differenz einfließt.
     const trueAtT1 = best.serverMs + best.rtt / 2;
     const localAtT1 = Date.now() - (performance.now() - best.t1);
-    const next = Math.max(-5000, Math.min(5000, Math.round(trueAtT1 - localAtT1)));
+    const measured = Math.round(trueAtT1 - localAtT1);
+    if (Math.abs(measured) > 5000) {
+      statusEl.textContent = t('lightshow.ntpcal.statusClockError').replace('{value}', `${measured} ms`);
+      return;
+    }
+    const next = measured;
 
     await saveSettings({ lightshowOffsetMs: next });
     // Grobe, bewusst konservative Anzeige-Schätzung fürs UI — keine strenge
@@ -7682,6 +7733,7 @@ async function tryPlaySongFromRecording(song, token) {
 }
 
 async function openPlayer(songId) {
+  if (recHost === 'player') recStartGeneration++;
   const token = ++openPlayerToken;
   // Während der neue Datensatz noch aus IndexedDB kommt, gehört playerSong
   // weiterhin zum vorigen Titel. Die Lupe kurz sperren, statt eine Suche mit
@@ -7727,6 +7779,7 @@ async function openPlayer(songId) {
   }
   // Eine laufende Vorschau gehört zum alten Song — Audio.el wird gleich für
   // den neuen ohnehin frisch geladen, ein Rücksprung ergäbe hier keinen Sinn.
+  stopBacking();
   audioPreview = null;
 
   playerSong = song;
@@ -8098,6 +8151,7 @@ function closePlayer() {
   // Verwirft einen noch ladenden openPlayer()-Aufruf — sonst öffnet der sich
   // gleich von selbst wieder, sobald seine DB-Abfrage verspätet eintrifft.
   openPlayerToken++;
+  if (recHost === 'player') recStartGeneration++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
   flushLyricsNote();
@@ -8778,6 +8832,8 @@ function rn(key) { return $('#' + RID[recHost][key]); }
 // beim ersten Aufruf überhaupt zurückkommt — recMediaRecorder wird erst nach
 // diesem await gesetzt, wäre also für den Klick-Handler bis dahin kein Schutz.
 let recStarting = false;
+let recStartGeneration = 0;
+let takeSaveInProgress = false;
 let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration, anchor } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
@@ -9026,10 +9082,15 @@ async function startRecording() {
   }
 
   recStarting = true;
+  const generation = ++recStartGeneration;
+  const startingHost = recHost;
+  const startingSongId = playerSong?.id || null;
+  const stillCurrent = () => generation === recStartGeneration
+    && recHost === startingHost
+    && (startingHost !== 'recorder' || recorderOpen)
+    && (startingHost !== 'player' || playerSong?.id === startingSongId);
+  let stream = null;
   try {
-    // Nach einer bereits erteilten Berechtigung liefert enumerateDevices()
-    // Labels. So kann Androids Bluetooth-Standardinput vermieden werden, ohne
-    // ihn zuvor kurz zu öffnen und damit das Freisprechprofil zu aktivieren.
     let preferredDeviceId = null;
     if (navigator.mediaDevices.enumerateDevices) {
       try {
@@ -9038,22 +9099,31 @@ async function startRecording() {
         dlog('rec:devices:fail', { name: err?.name });
       }
     }
+    if (!stillCurrent()) { recStarting = false; return; }
     try {
-      recStream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints(preferredDeviceId) });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints(preferredDeviceId) });
     } catch (err) {
       if (!preferredDeviceId) throw err;
-      // Zwischen Auflistung und Öffnen kann ein Gerät verschwinden. Die
-      // Systemvorgabe ist dann besser als ein komplett gescheiterter REC.
+      if (!stillCurrent()) { recStarting = false; return; }
       dlog('rec:mic:preselectfail', { name: err?.name });
-      recStream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints() });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints() });
     }
-    // Erst danach steht fest, welches Mikrofon der Browser genommen hat —
-    // ein Bluetooth-Kopfhörer würde Aufnahme und Wiedergabe zugleich auf
-    // Telefonqualität herunterziehen.
-    recStream = await preferWideBandMic(recStream);
+    if (!stillCurrent()) {
+      for (const track of stream.getTracks()) track.stop();
+      recStarting = false;
+      return;
+    }
+    stream = await preferWideBandMic(stream);
+    if (!stillCurrent()) {
+      for (const track of stream.getTracks()) track.stop();
+      recStarting = false;
+      return;
+    }
+    recStream = stream;
   } catch (err) {
     recStarting = false;
-    if (recStream) { for (const track of recStream.getTracks()) track.stop(); recStream = null; }
+    if (stream) for (const track of stream.getTracks()) track.stop();
+    if (!stillCurrent()) return;
     bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
     return;
   }
@@ -9689,63 +9759,75 @@ async function pickRecordingVoice(current) {
  * antippbar, damit der Tipp erklären kann, was fehlt.
  */
 async function onTakeSaveClick() {
-  if (!pendingTake || !takeDraft) return;
+  if (!pendingTake || !takeDraft || takeSaveInProgress) return;
 
-  let song;
-  if (recHost === 'recorder') {
-    if (!takeDraft.songId) {
-      banner('Bitte zuerst einen Song wählen — dann lässt sich der REC speichern.');
-      $('#rec-song-search').scrollIntoView({ block: 'center', behavior: 'smooth' });
-      return;
+  // Alles, was zum Commit gehört, vor dem ersten await festhalten. Navigation
+  // darf die globale Take-Karte danach schließen, ohne den laufenden Commit
+  // unvollständig zu machen oder einen neueren Take aufzuräumen.
+  const take = pendingTake;
+  const draft = { ...takeDraft };
+  const savingHost = recHost;
+  const savingDataGeneration = dataGeneration;
+  takeSaveInProgress = true;
+  try {
+    let song;
+    if (savingHost === 'recorder') {
+      if (!draft.songId) {
+        banner('Bitte zuerst einen Song wählen — dann lässt sich der REC speichern.');
+        $('#rec-song-search').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+      try { song = await DB.metaGet(`song:${draft.songId}`); } catch (err) { console.error(err); }
+      if (!song) { banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' }); return; }
+    } else {
+      song = playerSong;
+      if (!song) return;
     }
-    try { song = await DB.metaGet(`song:${takeDraft.songId}`); } catch (err) { console.error(err); }
-    if (!song) { banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' }); return; }
-  } else {
-    song = playerSong;
-    if (!song) return;
-  }
 
-  const suggestion = recHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
-  const name = takeDraft.name.trim() || suggestion;
-  const voice = takeDraft.voice;
+    const suggestion = savingHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
+    const name = draft.name.trim() || suggestion;
+    const voice = draft.voice;
+    const { blob, mimeType, duration, anchor, trimStart, trimEnd } = take;
+    const fileKey = newFileKey();
+    const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const fileRec = await fileRecord(fileKey, blob, `${name}.${ext}`);
+    if (savingDataGeneration !== dataGeneration) return;
 
-  const { blob, mimeType, duration, anchor } = pendingTake;
-  const fileKey = newFileKey();
-  const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
-  const fileRec = await fileRecord(fileKey, blob, `${name}.${ext}`);
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const recording = {
+      key: `recording:${id}`, type: 'recording', id,
+      songId: song.id, songTitle: song.title,
+      name, voice, fileKey, mimeType, duration,
+      size: blob.size,
+      createdAt: new Date().toISOString(),
+    };
+    if (anchor) recording.anchor = anchor;
+    if (trimStart || trimEnd != null) {
+      recording.trimStart = trimStart || 0;
+      recording.trimEnd = trimEnd ?? duration;
+    }
+    await DB.putFileAndMeta(fileRec, recording);
+    if (savingDataGeneration !== dataGeneration) return;
 
-  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const recording = {
-    key: `recording:${id}`, type: 'recording', id,
-    songId: song.id, songTitle: song.title,
-    name, voice, fileKey, mimeType, duration,
-    size: blob.size,
-    createdAt: new Date().toISOString(),
-  };
-  // Nur anhängen, wenn vorhanden — kein `anchor: null`/keine Trim-Marken in
-  // jedem Datensatz. Der gespeicherte REC bleibt so oder so der volle Take;
-  // trimStart/trimEnd sind nur die Auswahl aus dem Zuschneiden vor dem
-  // Speichern (siehe onTakeTrimClick/recordingTrimRange).
-  if (anchor) recording.anchor = anchor;
-  if (pendingTake.trimStart || pendingTake.trimEnd != null) {
-    recording.trimStart = pendingTake.trimStart || 0;
-    recording.trimEnd = pendingTake.trimEnd ?? duration;
-  }
-  await DB.putFileAndMeta(fileRec, recording);
-
-  if (audioPreview?.tag?.pending) await endRecordingPreview();
-  const wasRecorder = recHost === 'recorder';
-  pendingTake = null;
-  resetLevelTakeHistory();
-  renderPendingTake();
-  banner('REC gespeichert.', { kind: 'ok' });
-  if (wasRecorder) {
-    // Der Player zeigt evtl. denselben Song schon offen — sonst fehlt der
-    // neue Eintrag im Loops-Reiter, bis man den Song erneut öffnet.
-    history.back();
-    if (playerSong?.id === song.id) await loadSongRecordings();
-  } else {
-    await loadSongRecordings();
+    if (audioPreview?.tag?.pending) await endRecordingPreview();
+    // Nur die Take-Karte entfernen, die tatsächlich gespeichert wurde. Eine
+    // zwischenzeitlich neu geöffnete Sitzung behält ihren eigenen Take.
+    if (pendingTake === take) {
+      pendingTake = null;
+      resetLevelTakeHistory();
+      renderPendingTake();
+    }
+    banner('REC gespeichert.', { kind: 'ok' });
+    if (savingHost === 'recorder') {
+      if (recorderOpen && recHost === 'recorder') history.back();
+      if (playerSong?.id === song.id) await loadSongRecordings();
+    } else if (playerSong?.id === song.id) {
+      await loadSongRecordings();
+    }
+  } catch (err) {
+    bannerError('Der REC konnte nicht gespeichert werden.', 'REC-SAVE', err);
+  } finally {
+    takeSaveInProgress = false;
   }
 }
 $('#btn-rec-save').addEventListener('click', onTakeSaveClick);
@@ -9840,8 +9922,8 @@ async function previewRecordingBlob(blob, tag, range) {
 
 /** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
 async function endRecordingPreview() {
-  if (!audioPreview) return;
   stopBacking();
+  if (!audioPreview) return;
   const { returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable } = audioPreview;
   audioPreview = null;
   Audio.previewBound = null;
@@ -9922,7 +10004,10 @@ function ensureBackingAudio() {
  * auf (nicht über einen fileKey — siehe 1.5 im Plan). Fehlt die Stimme im
  * Song, wird abgebrochen statt stillschweigend eine andere zu nehmen.
  */
+let backingGeneration = 0;
+
 async function startBacking(anchor) {
+  const generation = ++backingGeneration;
   const track = anchor && playerSong ? playerSong.tracks.find((t) => t.voice === anchor.voice) : null;
   if (!track) { stopBacking(); return; }
 
@@ -9933,6 +10018,10 @@ async function startBacking(anchor) {
     const rec = await DB.fileGet(track.fileKey);
     if (!rec) throw new Error('Die Spur fehlt in der Datenbank.');
     const url = URL.createObjectURL(recordBlob(rec, mimeForTrack(track)));
+    if (generation !== backingGeneration || !audioPreview) {
+      URL.revokeObjectURL(url);
+      return;
+    }
     Audio.bgUrl = url;
     Audio.bgVoice = anchor.voice;
 
@@ -9948,6 +10037,7 @@ async function startBacking(anchor) {
       bg.src = url;
       bg.load();
     });
+    if (generation !== backingGeneration || !audioPreview) return;
 
     // Live-Position statt Audio.position: das ist der Stand des letzten
     // `timeupdate` und gehört beim Start einer Vorschau noch dem Song von
@@ -9968,6 +10058,7 @@ async function startBacking(anchor) {
 
 /** Hält den Hintergrundtrack an und gibt seine Ressourcen frei. */
 function stopBacking() {
+  backingGeneration++;
   if (Audio.bg) {
     Audio.bg.pause();
     Audio.bg.removeAttribute('src');
@@ -10876,6 +10967,7 @@ const LYRICS_NOTE_SAVE_DELAY = 900;
 
 let playerLyricsNote = null;     // eigener Liedtext des offenen Songs, null = keiner
 let lyricsNoteSaveTimer = null;
+const lyricsNotePersistedText = new WeakMap();
 let lyricsSource = 'official';   // nur relevant, wenn beide Fassungen existieren
 // Lesemodus (reiner Text wie die offizielle Fassung) vs. Bearbeitungsmodus
 // (Textfeld) — siehe renderLyricsBlock(). Ohne eigenen Eintrag irrelevant.
@@ -10883,7 +10975,9 @@ let lyricsNoteEditing = false;
 
 let lyricsNotePending = Promise.resolve();
 function lyricsNoteWrite(run) {
-  const op = lyricsNotePending.then(run, run);
+  const generation = dataGeneration;
+  const guarded = () => generation === dataGeneration ? run() : undefined;
+  const op = lyricsNotePending.then(guarded, guarded);
   // Die Warteschlange selbst darf nie im Fehlerzustand hängen bleiben —
   // sonst stünde jede spätere Schreiboperation still. Der Aufrufer bekommt
   // dagegen die echte, ggf. abgelehnte Promise: nur so kann die Oberfläche
@@ -10926,6 +11020,7 @@ async function loadSongLyricsNote() {
         lyricsNoteWrite(() => DB.metaPut(found)).catch((err) => console.error('[liedtext]', err));
       }
       playerLyricsNote = found;
+      lyricsNotePersistedText.set(found, found.text || '');
     }
   }
 
@@ -11073,6 +11168,7 @@ $$('#lyrics-source-switch .preset').forEach((btn) => {
 function startLyricsNoteEditing() {
   if (!playerSong || lyricsNoteEditing) return;
   if (!playerLyricsNote) playerLyricsNote = newLyricsNote(playerSong);
+  if (!lyricsNotePersistedText.has(playerLyricsNote)) lyricsNotePersistedText.set(playerLyricsNote, '');
   lyricsNoteEditing = true;
   renderLyricsBlock();
   setLyricsNoteState('none');
@@ -11120,6 +11216,7 @@ async function saveLyricsNote({ announce = false } = {}) {
 
   try {
     await lyricsNoteWrite(() => DB.metaPut(note));
+    lyricsNotePersistedText.set(note, text);
     if (playerLyricsNote === note) setLyricsNoteState('saved');
     if (announce) banner('Liedtext gespeichert.', { kind: 'ok' });
   } catch (err) {
@@ -11167,13 +11264,16 @@ function flushLyricsNote() {
     lyricsNoteWrite(() => DB.metaDelete(note.key)).catch(console.error);
     return;
   }
-  if (text === note.text && !lyricsNoteSaveTimer) return;
+  if (text === lyricsNotePersistedText.get(note) && !lyricsNoteSaveTimer) return;
 
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = null;
   note.text = text;
   note.updatedAt = new Date().toISOString();
-  lyricsNoteWrite(() => DB.metaPut(note)).catch(console.error);
+  const saved = { ...note };
+  lyricsNoteWrite(() => DB.metaPut(saved))
+    .then(() => lyricsNotePersistedText.set(note, text))
+    .catch(console.error);
 }
 
 function iconPdf() {
@@ -11417,13 +11517,16 @@ const NOTE_SAVE_DELAY = 900;   // ms Tippruhe, bevor automatisch gespeichert wir
 
 let playerNote   = null;   // Notiz des offenen Songs, null = keine
 let noteSaveTimer = null;  // läuft nach dem Tippen
+const notePersistedText = new WeakMap();
 
 // Schreibvorgänge laufen nacheinander. Sonst liest das nächste Lied seine
 // Notiz, während die des vorherigen noch geschrieben wird.
 let notePending = Promise.resolve();
 
 function noteWrite(run) {
-  const op = notePending.then(run, run);
+  const generation = dataGeneration;
+  const guarded = () => generation === dataGeneration ? run() : undefined;
+  const op = notePending.then(guarded, guarded);
   // Die Warteschlange selbst darf nie im Fehlerzustand hängen bleiben —
   // sonst stünde jede spätere Schreiboperation still. Der Aufrufer bekommt
   // dagegen die echte, ggf. abgelehnte Promise: nur so kann die Oberfläche
@@ -11480,6 +11583,7 @@ async function loadSongNote() {
   }
 
   playerNote = found;
+  notePersistedText.set(found, found.text || '');
   renderNoteBlock();
 }
 
@@ -11518,6 +11622,7 @@ $('#btn-note-add').addEventListener('click', () => {
   // Erst beim Speichern entsteht ein Datensatz: wer den Knopf nur ausprobiert,
   // hinterlässt keine leere Notiz.
   playerNote = newNote(playerSong);
+  notePersistedText.set(playerNote, '');
   renderNoteBlock();
   setNoteState('none');
   $('#note-text').focus();
@@ -11571,6 +11676,7 @@ async function saveNote({ announce = false } = {}) {
 
   try {
     await noteWrite(() => DB.metaPut(note));
+    notePersistedText.set(note, text);
     if (playerNote === note) setNoteState('saved');
     if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
   } catch (err) {
@@ -11615,13 +11721,16 @@ function flushNote() {
     noteWrite(() => DB.metaDelete(note.key)).catch(console.error);
     return;
   }
-  if (text === note.text && !noteSaveTimer) return;
+  if (text === notePersistedText.get(note) && !noteSaveTimer) return;
 
   clearTimeout(noteSaveTimer);
   noteSaveTimer = null;
   note.text = text;
   note.updatedAt = new Date().toISOString();
-  noteWrite(() => DB.metaPut(note)).catch(console.error);
+  const saved = { ...note };
+  noteWrite(() => DB.metaPut(saved))
+    .then(() => notePersistedText.set(note, text))
+    .catch(console.error);
 }
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
@@ -12497,9 +12606,22 @@ function renderPlaylistEntries(songs) {
 
     const grip = el('button', {
       class: 'icon-btn pl-grip', type: 'button',
-      'aria-label': `„${title}" verschieben`, 'data-index': String(index),
+      'aria-label': `„${title}" verschieben, Position ${index + 1} von ${titles.length}. Pfeiltasten verschieben.`,
+      'data-index': String(index),
     });
     grip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 7h8M8 12h8M8 17h8"/></svg>';
+    grip.addEventListener('keydown', async (event) => {
+      const delta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+      if (!delta) return;
+      event.preventDefault();
+      const to = Math.max(0, Math.min(titles.length - 1, index + delta));
+      if (to === index) return;
+      const [moved] = plDraft.songTitles.splice(index, 1);
+      plDraft.songTitles.splice(to, 0, moved);
+      markDirty();
+      await renderPlaylistDetail();
+      host.querySelector(`.pl-grip[data-index="${to}"]`)?.focus();
+    });
 
     const label = el('div', { class: 'grow' },
       el('strong', { text: song ? songLabel(song) : title }),
@@ -13169,7 +13291,10 @@ async function buildBackupParts(opts, onProgress) {
   parts.push(`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":${BACKUP_FORMAT_VERSION},"exportedAt":${JSON.stringify(new Date().toISOString())}`);
   parts.push(`,"songs":${JSON.stringify(songs
     .sort((a, b) => collator.compare(a.title, b.title))
-    .map((s) => ({ title: s.title, voices: s.tracks.map((t) => t.voice) })))}`);
+    .map((s) => ({
+      title: s.title, voices: s.tracks.map((t) => t.voice),
+      artist: s.artist || null, lyrics: s.lyrics || null,
+    })))}`);
 
   if (opts.settings) {
     parts.push(`,"settings":${JSON.stringify({
@@ -13224,6 +13349,8 @@ async function buildBackupParts(opts, onProgress) {
         name: r.name, voice: r.voice || null, duration: r.duration,
         mimeType: r.mimeType, createdAt: r.createdAt,
       };
+      if (Number.isFinite(r.trimStart)) meta.trimStart = r.trimStart;
+      if (Number.isFinite(r.trimEnd)) meta.trimEnd = r.trimEnd;
       // Nur wenn vorhanden — ohne diesen Schritt verlöre jeder REC beim
       // Sichern und Zurückspielen seinen Anker (siehe restoreBackup).
       if (r.anchor) meta.anchor = r.anchor;
@@ -13271,7 +13398,7 @@ async function buildBackupParts(opts, onProgress) {
       if (!trackParts.length && !scoreParts.length) continue;
       if (!firstSong) parts.push(',');
       firstSong = false;
-      parts.push(`{"title":${JSON.stringify(s.title)},"tracks":[`, ...trackParts, '],"scores":[', ...scoreParts, ']}');
+      parts.push(`{"title":${JSON.stringify(s.title)},"artist":${JSON.stringify(s.artist || null)},"lyrics":${JSON.stringify(s.lyrics || null)},"tracks":[`, ...trackParts, '],"scores":[', ...scoreParts, ']}');
     }
     parts.push(']');
     counts.songAudioTracks = trackCount;
@@ -13613,6 +13740,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
   const recordingsIn = Array.isArray(data.recordings) ? data.recordings : [];
   const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
+  const songMetaIn = Array.isArray(data.songs) ? data.songs : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
 
   // Nur noch Zusammenführen — „Alles ersetzen" ist als Datenverlust-Falle
@@ -13675,26 +13803,43 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           discardedSongAudio++;
           continue;
         }
-        if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+        const existingSong = findSongByTitle(songs, s.title);
+        // Ein vorhandener Song ganz ohne Spuren und Noten ist nur ein
+        // Platzhalter — z.B. aus dem Metadaten-Teil einer zuvor eingespielten
+        // Sicherung, der nur Titel/Interpret/Text kennt (siehe unten). Den
+        // darf diese Sicherung noch mit Audio befüllen. Hat er dagegen schon
+        // eigene Spuren oder Noten, bleibt es beim normalen ZIP-Import, der
+        // gezielt ersetzen/ergänzen kann (siehe Kommentar oben).
+        if (existingSong && (existingSong.tracks.length || existingSong.scores.length)) {
+          songsSkipped++;
+          continue;
+        }
 
         const title = s.title.trim();
         const normTitle = normalizeTitle(title);
         // Der Datensatz entsteht nur im Speicher — das Schreiben übernimmt
         // der Batch. Würde er (wie createPlaceholderSong()) sofort
         // geschrieben, bliebe bei einem Abbruch mitten im Restore ein leerer
-        // Song zurück (dasselbe Problem wie bei F-02).
-        const song = {
+        // Song zurück (dasselbe Problem wie bei F-02). Ein vorhandener
+        // Platzhalter wird stattdessen direkt weiterverwendet, statt ihn zu
+        // duplizieren.
+        const song = existingSong || {
           key: `song:${hashId(normTitle)}`,
           type: 'song',
           id: hashId(normTitle),
           title,
           normTitle,
+          artist: typeof s.artist === 'string' ? s.artist : undefined,
           collections: [],
           tracks: [],
-          lyrics: null,
+          lyrics: typeof s.lyrics === 'string' ? s.lyrics : null,
           scores: [],
           importedAt: new Date().toISOString(),
         };
+        if (existingSong) {
+          if (!song.artist && typeof s.artist === 'string') song.artist = s.artist;
+          if (!song.lyrics && typeof s.lyrics === 'string') song.lyrics = s.lyrics;
+        }
         let songGotContent = false;
 
         for (const t of s.tracks || []) {
@@ -13743,13 +13888,37 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           }
         }
         // Kein Inhalt übernommen (z.B. alle audioBase64-Felder fehlten) →
-        // kein leerer Song, aus demselben Grund wie oben.
+        // kein leerer Song, aus demselben Grund wie oben. War es ein
+        // vorhandener Platzhalter, steht er schon in `songs` — nicht erneut
+        // eintragen, sonst gäbe es ihn doppelt.
         if (songGotContent) {
-          songs.push(song);
+          if (!existingSong) songs.push(song);
           songsCreated++;
         }
       }
       await flushImportBatch(batch);
+      dropSongCache();
+    }
+
+    const metadataSongs = [];
+    for (const meta of songMetaIn) {
+      if (!meta || typeof meta.title !== 'string' || !meta.title.trim()) continue;
+      if (findSongByTitle(songs, meta.title)) continue;
+      const title = meta.title.trim();
+      const normTitle = normalizeTitle(title);
+      const song = {
+        key: `song:${hashId(normTitle)}`, type: 'song', id: hashId(normTitle),
+        title, normTitle, collections: [], tracks: [], scores: [],
+        lyrics: typeof meta.lyrics === 'string' ? meta.lyrics : null,
+        importedAt: new Date().toISOString(),
+      };
+      if (typeof meta.artist === 'string') song.artist = meta.artist;
+      metadataSongs.push(song);
+      songs.push(song);
+      songsCreated++;
+    }
+    if (metadataSongs.length) {
+      await DB.metaPutMany(metadataSongs);
       dropSongCache();
     }
 
@@ -13893,6 +14062,12 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         size: blob.size,
         createdAt: r.createdAt || new Date().toISOString(),
       };
+      const duration = recording.duration;
+      if (Number.isFinite(r.trimStart) && Number.isFinite(r.trimEnd)
+          && r.trimStart >= 0 && r.trimEnd > r.trimStart && r.trimEnd <= duration) {
+        recording.trimStart = r.trimStart;
+        recording.trimEnd = r.trimEnd;
+      }
       // Ungültiger Anker wird verworfen, statt den REC ohne ihn scheitern zu
       // lassen — eine Sicherungsdatei ist eine Datei von außen.
       const anchor = sanitizeRecAnchor(r.anchor);

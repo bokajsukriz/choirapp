@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v197';
+const SW_VERSION = 'v201';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -189,6 +189,16 @@ self.addEventListener('fetch', (event) => {
         const activeCacheName = await resolveActiveShellCacheName();
         const cached = await caches.match('./index.html', { cacheName: activeCacheName, ignoreSearch: true });
         if (cached) return cached;
+        // Eine ausgewählte ältere Shell niemals mit Bytes der aktuellen,
+        // unversionierten Deployment-URL mischen. Erst ein vollständig
+        // installierter neuer Cache darf die Release-Grenze wechseln.
+        if (activeCacheName !== CACHE_NAME) {
+          return new Response(
+            '<!doctype html><meta charset="utf-8"><h1>App-Update erforderlich</h1>'
+              + '<p>Die gespeicherte App-Version ist unvollständig. Bitte mit Internetverbindung neu laden.</p>',
+            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+          );
+        }
         try {
           const res = await fetch(req);
           // Erfolgreiche Online-Erholung nach einem Cache-Miss nur „repariert"
@@ -226,6 +236,9 @@ self.addEventListener('fetch', (event) => {
       const activeCacheName = await resolveActiveShellCacheName();
       const cached = await caches.match(req, { cacheName: activeCacheName, ignoreSearch: true });
       if (cached) return cached;
+      if (activeCacheName !== CACHE_NAME) {
+        return new Response('', { status: 504, statusText: 'Shell version unavailable' });
+      }
       try {
         const res = await fetch(req);
         if (res && res.ok && res.type === 'basic') {
