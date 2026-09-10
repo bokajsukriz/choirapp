@@ -4804,6 +4804,47 @@ function normalizationEligibility({ durationSec, sampleRate, channelCount, compr
   return { ok: true, pcmBytes };
 }
 
+// Sample rates per MPEG audio version, indexed by the header's 2-bit
+// sampling-rate-index field. Version-ID bits: 0b11 = MPEG-1, 0b10 = MPEG-2,
+// 0b00 = MPEG-2.5; 0b01 is reserved and never a key here.
+const MP3_SAMPLE_RATES_BY_VERSION = {
+  0b11: [44100, 48000, 32000],
+  0b10: [22050, 24000, 16000],
+  0b00: [11025, 12000, 8000],
+};
+
+/** Locates one MPEG-1/2/2.5 Layer III frame header within `bytes`, skipping
+ *  a leading ID3v2 tag by its synchsafe size first — walking blindly past a
+ *  tag risks matching a frame-sync-like byte pair inside its payload (album
+ *  art, comments) before the real frame. Rejects anything reserved or
+ *  ambiguous rather than guessing. Other/ambiguous codecs are deliberately
+ *  left unknown. */
+function inspectMp3Header(bytes) {
+  let start = 0;
+  if (bytes.length >= 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) { // 'ID3'
+    const size = ((bytes[6] & 0x7f) << 21) | ((bytes[7] & 0x7f) << 14) | ((bytes[8] & 0x7f) << 7) | (bytes[9] & 0x7f);
+    const hasFooter = (bytes[5] & 0x10) !== 0;
+    const tagEnd = 10 + size + (hasFooter ? 10 : 0);
+    // The tag runs past our bounded read window — the real frame (if any)
+    // is out of reach within budget, so don't guess by scanning the tag itself.
+    if (tagEnd > bytes.length) return null;
+    start = tagEnd;
+  }
+  for (let p = start; p + 3 < bytes.length; p++) {
+    if (bytes[p] !== 0xff || (bytes[p + 1] & 0xe0) !== 0xe0) continue; // 11-bit frame sync
+    const version = (bytes[p + 1] >> 3) & 0x03;
+    const layer = (bytes[p + 1] >> 1) & 0x03;
+    if (version === 0x01 || layer !== 0x01) continue; // reserved version, or not Layer III
+    const bitrateIndex = (bytes[p + 2] >> 4) & 0x0f;
+    const rateIndex = (bytes[p + 2] >> 2) & 0x03;
+    if (bitrateIndex === 0x0f || rateIndex === 0x03) continue; // reserved bitrate/sampling-rate index
+    const rate = MP3_SAMPLE_RATES_BY_VERSION[version][rateIndex];
+    const channelMode = (bytes[p + 3] >> 6) & 0x03;
+    return { sampleRate: rate, channelCount: channelMode === 0x03 ? 1 : 2 };
+  }
+  return null;
+}
+
 /** Bounded source-header inspection; never reads the complete compressed file. */
 async function inspectNormalizationMetadata(blob) {
   const bytes = new Uint8Array(await blob.slice(0, 64 * 1024).arrayBuffer());
@@ -4819,15 +4860,7 @@ async function inspectNormalizationMetadata(blob) {
       p += 8 + size + (size & 1);
     }
   }
-  // MPEG-1 Layer III header (ID3 may precede it). Other/ambiguous codecs are
-  // deliberately left unknown rather than guessed into eligibility.
-  const rates = [44100, 48000, 32000];
-  for (let p = 0; p + 3 < bytes.length; p++) {
-    if (bytes[p] !== 0xff || (bytes[p + 1] & 0xfe) !== 0xfa) continue;
-    const rate = rates[(bytes[p + 2] >> 2) & 3];
-    if (rate) return { sampleRate: rate, channelCount: ((bytes[p + 3] >> 6) === 3 ? 1 : 2) };
-  }
-  return null;
+  return inspectMp3Header(bytes);
 }
 
 /**
@@ -17214,6 +17247,65 @@ async function runAsyncSelfTests() {
         await bombReader.zipReadDirectory(testZipFile(built.bytes));
       }, 'Zip-Bomb-Verdacht (Kompressionsverhältnis)');
     }
+  }
+
+  // inspectNormalizationMetadata()/inspectMp3Header(): MPEG-1/2/2.5 Layer III
+  // recognition, correct ID3v2 skipping (by synchsafe size, not a blind scan
+  // that could match a decoy sync pattern inside the tag payload), and
+  // consistent rejection of reserved/ambiguous header fields.
+  {
+    const synchsafe = (n) => [(n >> 21) & 0x7f, (n >> 14) & 0x7f, (n >> 7) & 0x7f, n & 0x7f];
+    const mp3Blob = (bytes) => new Blob([new Uint8Array(bytes)]);
+
+    // MPEG-1 Layer III, 44100 Hz stereo.
+    const mpeg1 = await inspectNormalizationMetadata(mp3Blob([0xff, 0xfb, 0x90, 0x00]));
+    if (mpeg1?.sampleRate !== 44100 || mpeg1?.channelCount !== 2) {
+      failed.push(`MP3-Header: MPEG-1 44,1 kHz Stereo nicht erkannt (${JSON.stringify(mpeg1)})`);
+    }
+
+    // MPEG-2 Layer III, 22050 Hz stereo.
+    const mpeg2 = await inspectNormalizationMetadata(mp3Blob([0xff, 0xf3, 0x90, 0x00]));
+    if (mpeg2?.sampleRate !== 22050 || mpeg2?.channelCount !== 2) {
+      failed.push(`MP3-Header: MPEG-2 22,05 kHz Stereo nicht erkannt (${JSON.stringify(mpeg2)})`);
+    }
+
+    // MPEG-2.5 Layer III, 11025 Hz mono.
+    const mpeg25 = await inspectNormalizationMetadata(mp3Blob([0xff, 0xe3, 0x90, 0xc0]));
+    if (mpeg25?.sampleRate !== 11025 || mpeg25?.channelCount !== 1) {
+      failed.push(`MP3-Header: MPEG-2.5 11,025 kHz Mono nicht erkannt (${JSON.stringify(mpeg25)})`);
+    }
+
+    // ID3v2-Tag mit einem Sync-artigen Lockvogel-Byte-Paar im Payload, das
+    // eine blinde Suche fälschlich als (falschen) Frame lesen würde — der
+    // Tag muss anhand seiner synchsafe Größe übersprungen werden, damit der
+    // echte, dahinterliegende Frame gefunden wird.
+    const decoyPayload = new Array(50).fill(0);
+    decoyPayload[5] = 0xff; decoyPayload[6] = 0xfb; decoyPayload[7] = 0x94; decoyPayload[8] = 0x00; // MPEG-1 48 kHz (falsch)
+    const id3Bytes = [
+      0x49, 0x44, 0x33, 3, 0, 0, ...synchsafe(50), // 'ID3', v2.3, keine Flags, Größe 50
+      ...decoyPayload,
+      0xff, 0xfb, 0x90, 0x00, // echter Frame: MPEG-1 44,1 kHz Stereo
+    ];
+    const withId3 = await inspectNormalizationMetadata(mp3Blob(id3Bytes));
+    if (withId3?.sampleRate !== 44100 || withId3?.channelCount !== 2) {
+      failed.push(`MP3-Header: Frame hinter großem ID3v2-Tag nicht (korrekt) erkannt (${JSON.stringify(withId3)})`);
+    }
+
+    // ID3v2-Tag, dessen angegebene Größe über das 64-KiB-Lesefenster
+    // hinausreicht — der echte Frame ist damit außer Reichweite, also muss
+    // null zurückkommen statt zu raten.
+    const oversizedId3 = [0x49, 0x44, 0x33, 3, 0, 0, ...synchsafe(70000), 0, 0, 0, 0];
+    const tooBig = await inspectNormalizationMetadata(mp3Blob(oversizedId3));
+    if (tooBig !== null) failed.push(`MP3-Header: zu großer ID3v2-Tag müsste null ergeben (${JSON.stringify(tooBig)})`);
+
+    // Ungültige/reservierte Headerwerte: reservierte MPEG-Version, reservierter
+    // Bitrate-Index, reservierter Sampling-Rate-Index — alle müssen abgelehnt werden.
+    const reservedVersion = await inspectNormalizationMetadata(mp3Blob([0xff, 0xeb, 0x90, 0x00]));
+    if (reservedVersion !== null) failed.push(`MP3-Header: reservierte MPEG-Version müsste null ergeben (${JSON.stringify(reservedVersion)})`);
+    const reservedBitrate = await inspectNormalizationMetadata(mp3Blob([0xff, 0xfb, 0xf0, 0x00]));
+    if (reservedBitrate !== null) failed.push(`MP3-Header: reservierter Bitrate-Index müsste null ergeben (${JSON.stringify(reservedBitrate)})`);
+    const reservedRate = await inspectNormalizationMetadata(mp3Blob([0xff, 0xfb, 0x9c, 0x00]));
+    if (reservedRate !== null) failed.push(`MP3-Header: reservierter Sampling-Rate-Index müsste null ergeben (${JSON.stringify(reservedRate)})`);
   }
 
   if (failed.length) {
