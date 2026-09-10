@@ -3618,8 +3618,8 @@ $('#btn-wipe').addEventListener('click', async () => {
     recorderOpen = false;
     $('#recorder-view').hidden = true;
     stopBacking();
-    audioReset();
     openPlayerToken++;
+    audioReset();
     playerNote = null;
     playerLyricsNote = null;
     playerSong = null;
@@ -13803,15 +13803,27 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           discardedSongAudio++;
           continue;
         }
-        if (findSongByTitle(songs, s.title)) { songsSkipped++; continue; }
+        const existingSong = findSongByTitle(songs, s.title);
+        // Ein vorhandener Song ganz ohne Spuren und Noten ist nur ein
+        // Platzhalter — z.B. aus dem Metadaten-Teil einer zuvor eingespielten
+        // Sicherung, der nur Titel/Interpret/Text kennt (siehe unten). Den
+        // darf diese Sicherung noch mit Audio befüllen. Hat er dagegen schon
+        // eigene Spuren oder Noten, bleibt es beim normalen ZIP-Import, der
+        // gezielt ersetzen/ergänzen kann (siehe Kommentar oben).
+        if (existingSong && (existingSong.tracks.length || existingSong.scores.length)) {
+          songsSkipped++;
+          continue;
+        }
 
         const title = s.title.trim();
         const normTitle = normalizeTitle(title);
         // Der Datensatz entsteht nur im Speicher — das Schreiben übernimmt
         // der Batch. Würde er (wie createPlaceholderSong()) sofort
         // geschrieben, bliebe bei einem Abbruch mitten im Restore ein leerer
-        // Song zurück (dasselbe Problem wie bei F-02).
-        const song = {
+        // Song zurück (dasselbe Problem wie bei F-02). Ein vorhandener
+        // Platzhalter wird stattdessen direkt weiterverwendet, statt ihn zu
+        // duplizieren.
+        const song = existingSong || {
           key: `song:${hashId(normTitle)}`,
           type: 'song',
           id: hashId(normTitle),
@@ -13824,6 +13836,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           scores: [],
           importedAt: new Date().toISOString(),
         };
+        if (existingSong) {
+          if (!song.artist && typeof s.artist === 'string') song.artist = s.artist;
+          if (!song.lyrics && typeof s.lyrics === 'string') song.lyrics = s.lyrics;
+        }
         let songGotContent = false;
 
         for (const t of s.tracks || []) {
@@ -13872,9 +13888,11 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           }
         }
         // Kein Inhalt übernommen (z.B. alle audioBase64-Felder fehlten) →
-        // kein leerer Song, aus demselben Grund wie oben.
+        // kein leerer Song, aus demselben Grund wie oben. War es ein
+        // vorhandener Platzhalter, steht er schon in `songs` — nicht erneut
+        // eintragen, sonst gäbe es ihn doppelt.
         if (songGotContent) {
-          songs.push(song);
+          if (!existingSong) songs.push(song);
           songsCreated++;
         }
       }
