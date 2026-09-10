@@ -3641,6 +3641,24 @@ input[type="checkbox"] {
         </select>
       </label>
 
+      <div class="row" style="margin-top:14px">
+        <span class="small" style="max-width:70%" data-i18n="settings.normalization.label">
+          Lautstärke der Stimmen angleichen
+        </span>
+        <button class="switch" id="normalization-toggle" type="button" role="switch"
+                aria-checked="false" data-i18n-aria="settings.normalization.aria"
+                aria-label="Lautstärke der Stimmen automatisch angleichen">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.normalization.hint">
+        Analysiert kurze und mittelgroße Spuren in Wiedergabepausen und gleicht Lautstärkeunterschiede aus.
+      </p>
+      <p class="small muted" id="normalization-status" style="margin:6px 0 0" hidden
+         data-i18n="settings.normalization.unavailable">
+        Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.
+      </p>
+
       <p class="section-title" data-i18n="settings.perf.title">Kompatibilität &amp; Performance</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.perf.modeHint">
         Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.
