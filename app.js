@@ -4814,6 +4814,44 @@ function maybeApplyLiveGain(track) {
   applyNormalizationGain();
 }
 
+/**
+ * Freshly reads a track's current record from the database, by fileKey.
+ * playerSong (see trackByVoiceKey()) retains the same track objects across
+ * voice switches for as long as a song stays open, and an atomic commit
+ * (commitTrackMutation/commitNormalizationResult) deliberately never mutates
+ * those retained objects — it re-locates and writes its own fresh copy.
+ * Without this, switching A → B → A reads normalizationCacheValue() off the
+ * stale retained object and applies unity gain even though the database
+ * (and a live Audio.normalizationDb, had it not just been overwritten) hold
+ * a valid result. Read-only; never gates on or waits for an actual analysis
+ * (decode) — only ever reads whatever is already committed.
+ */
+async function fetchCurrentTrackRecord(fileKey) {
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) {
+    const track = song.tracks?.find((t) => t.fileKey === fileKey);
+    if (track) return track;
+  }
+  return null;
+}
+
+/**
+ * Keeps a retained playerSong track object in sync with a just-committed
+ * normalization outcome — mutated in place (never reassigning
+ * playerSong.tracks) so every existing reference (trackByVoiceKey(), the
+ * voice picker, …) sees it immediately, without a further database round
+ * trip. A mismatched sourceRevision means the retained object already
+ * describes a replacement the commit doesn't apply to — left untouched.
+ * Never writes to the database itself.
+ */
+function syncPlayerSongTrack(committedTrack) {
+  if (!committedTrack || !playerSong) return;
+  const retained = playerSong.tracks?.find((t) => t.fileKey === committedTrack.fileKey);
+  if (!retained || retained === committedTrack) return;
+  if (retained.sourceRevision !== committedTrack.sourceRevision) return;
+  retained.normalization = committedTrack.normalization;
+}
+
 function normalizationRecordingActive() {
   return !!(recStarting || (recMediaRecorder && recMediaRecorder.state !== 'inactive'));
 }
@@ -4926,7 +4964,12 @@ async function processNormalizationJob(job) {
     let track = song?.tracks.find((tr) => tr.fileKey === job.fileKey);
     if (!track) return { outcome: 'obsolete' }; // song/track deleted
     if (track.sourceRevision !== job.sourceRevision) return { outcome: 'obsolete' }; // replaced
-    if (normalizationHasRecord(track)) return { outcome: 'raced' };
+    // Another attempt already committed a valid result for this exact
+    // revision (e.g. the caller's own retained track object was stale and
+    // rescheduled work that was already done) — that result is still good
+    // and reusable, not a failure: hand the fresh track back so the caller
+    // can (re-)apply its gain instead of silently dropping it.
+    if (normalizationHasRecord(track)) return { outcome: 'raced', track };
     if (!stillGood()) return { outcome: 'interrupted' };
 
     normalizationProgress.current = `${song.title || ''} · ${VOICE_LABEL[track.voice] || track.label || track.voice || ''}`;
@@ -4974,9 +5017,15 @@ async function processNormalizationJob(job) {
       return committed ? { outcome: 'skipped', reason: eligible.reason, track: committed.track } : { outcome: 'obsolete' };
     }
 
-    // 2/3) Before allocating full (compressed) file bytes / before decode.
+    // 2/3) Before allocating full (compressed) file bytes / before decode —
+    // normalizationDecodeImpl() (decodeNormalizationBlob() in production)
+    // is handed the same predicate and rechecks it itself immediately after
+    // blob.arrayBuffer() resolves, with no await before starting
+    // decodeAudioData(): playback/recording/etc. can start during that
+    // (potentially slow) byte read, and decodeAudioData() isn't cancellable
+    // once it begins, so checking only here would be too late.
     if (!stillGood()) return { outcome: 'interrupted' };
-    buffer = await normalizationDecodeImpl(blob, track.sampleRate);
+    buffer = await normalizationDecodeImpl(blob, track.sampleRate, stillGood);
 
     // 4) Immediately after decode.
     if (!stillGood()) return { outcome: 'interrupted' };
@@ -4989,6 +5038,7 @@ async function processNormalizationJob(job) {
     if (!committed) return { outcome: 'obsolete' };
     return { outcome: 'analyzed', track: committed.track };
   } catch (err) {
+    if (err?.normalizationInterrupted) return { outcome: 'interrupted' };
     const committed = await commitNormalizationResult(job, {
       version: NORMALIZATION_ALGO_VERSION, status: 'failed', reason: err?.name || 'decode',
     }).catch(() => null);
@@ -5020,16 +5070,25 @@ async function runNormalizationWorker() {
         case 'skipped':
           normalizationProgress.skipped++;
           normalizationProgress.reason = t(`settings.normalization.reason.${result.reason}`);
+          syncPlayerSongTrack(result.track);
           break;
         case 'failed':
           normalizationProgress.failed++;
           normalizationProgress.reason = t('settings.normalization.reason.failed');
+          syncPlayerSongTrack(result.track);
           break;
         case 'analyzed':
           normalizationProgress.analyzed++;
+          syncPlayerSongTrack(result.track);
           maybeApplyLiveGain(result.track);
           break;
-        // 'raced': nothing to do — another attempt already resolved this track.
+        case 'raced':
+          // Another attempt already committed a result for this track —
+          // still valid and reusable, so bring playerSong/live gain up to
+          // date with it instead of treating the race as a no-op.
+          syncPlayerSongTrack(result.track);
+          maybeApplyLiveGain(result.track);
+          break;
       }
     } finally {
       normalizationInFlight.delete(id);
@@ -5040,11 +5099,28 @@ async function runNormalizationWorker() {
   }
 }
 
-async function decodeNormalizationBlob(blob, sampleRate) {
+/** Throws to signal a cooperative interruption rather than a real decode
+ *  failure — processNormalizationJob() must requeue this, never persist it
+ *  as 'failed'. */
+function normalizationInterruptedError() {
+  const err = new Error('normalization-interrupted');
+  err.normalizationInterrupted = true;
+  return err;
+}
+
+async function decodeNormalizationBlob(blob, sampleRate, stillGood = () => true) {
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   if (!OfflineCtx) throw new Error('offline-context');
-  // Eligibility was checked before this full compressed allocation.
+  // Checked once more right before allocating the full compressed byte
+  // array — the caller's own check can be stale by the time we get here.
+  if (!stillGood()) throw normalizationInterruptedError();
   const bytes = await blob.arrayBuffer();
+  // No await between this check and starting decode: blob.arrayBuffer()
+  // can take a while for a large file, and playback/recording/etc. could
+  // have started during that wait — decodeAudioData() is not cancellable
+  // once it begins, so this is the last point an interruption can still be
+  // honored instead of running an expensive decode alongside it.
+  if (!stillGood()) throw normalizationInterruptedError();
   return new OfflineCtx(1, 1, sampleRate).decodeAudioData(bytes);
 }
 
@@ -5117,8 +5193,37 @@ async function audioLoadTrack(track) {
 async function audioLoadTrackNow(track) {
   setLoading(track.fileKey, true);
   try {
-    const rec = await DB.fileGet(track.fileKey);
+    // Run alongside DB.fileGet() (not after it) — this never gates on or
+    // waits for an actual analysis, only a cheap read of whatever's already
+    // committed, so it adds no latency before playback can resume.
+    const [rec, currentRecord] = await Promise.all([
+      DB.fileGet(track.fileKey),
+      fetchCurrentTrackRecord(track.fileKey),
+    ]);
     if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
+    // `track` is playerSong's retained object (see trackByVoiceKey()) and an
+    // atomic commit never mutates it directly — without this, switching
+    // A → B → A would read normalizationCacheValue() off a stale object
+    // that never learned about a normalization result committed while A
+    // wasn't loaded, and apply unity gain instead of the saved one.
+    //
+    // The database record for this exact fileKey is authoritative for these
+    // fields, not just the cached normalization: adopting sourceRevision
+    // wholesale (not only when it already happens to match) also covers a
+    // retained object whose *own* sourceRevision itself went stale — e.g. a
+    // reload/rename path elsewhere assigned a new revision to this fileKey
+    // without updating this particular in-memory reference — so a gain that
+    // was valid for the revision this object still remembers can never be
+    // applied to what is actually about to play. durationSec/sampleRate/
+    // channelCount are corrected the same way; rememberDuration() below
+    // still re-derives durationSec from the real decoded duration.
+    if (currentRecord) {
+      track.sourceRevision = currentRecord.sourceRevision;
+      track.durationSec = currentRecord.durationSec;
+      if (currentRecord.sampleRate != null) track.sampleRate = currentRecord.sampleRate;
+      if (currentRecord.channelCount != null) track.channelCount = currentRecord.channelCount;
+      track.normalization = currentRecord.normalization;
+    }
     const blob = recordBlob(rec, mimeForTrack(track));
     if (!blob.size) throw new Error('Die gespeicherte Aufnahme ist leer.');
 
@@ -16993,7 +17098,7 @@ async function testWithNormalizationEnv(fn) {
     decodeImpl: normalizationDecodeImpl, metadataProbeImpl: normalizationMetadataProbeImpl,
     currentKey: Audio.currentKey, currentRevision: Audio.currentRevision,
     currentSourceKind: Audio.currentSourceKind, normalizationDb: Audio.normalizationDb,
-    song: Audio.song,
+    song: Audio.song, playerSong, playerVoice,
   };
   settings.normalizationEnabled = true;
   Audio.playing = false; audioPreview = null; Audio.bgVoice = null;
@@ -17014,13 +17119,138 @@ async function testWithNormalizationEnv(fn) {
     normalizationDecodeImpl = saved.decodeImpl; normalizationMetadataProbeImpl = saved.metadataProbeImpl;
     Audio.currentKey = saved.currentKey; Audio.currentRevision = saved.currentRevision;
     Audio.currentSourceKind = saved.currentSourceKind; Audio.normalizationDb = saved.normalizationDb;
-    Audio.song = saved.song;
+    Audio.song = saved.song; playerSong = saved.playerSong; playerVoice = saved.playerVoice;
   }
+}
+
+/** Minimal <audio>-Doppelgänger für audioLoadTrackNow() — genug Oberfläche
+ *  (load()/addEventListener()/playbackRate/…) um den echten Ladepfad ohne
+ *  ein reales Audio-Element/AudioContext zu durchlaufen, im selben Geist wie
+ *  testMakeFakeElement()/testMakeFakeSource() für die HD-Tests oben. load()
+ *  feuert 'loadedmetadata' als Microtask, wie ein echtes Element es
+ *  asynchron täte. */
+function testMakeFakeMediaElement() {
+  const listeners = {};
+  const el = {
+    playbackRate: 1, preservesPitch: false, webkitPreservesPitch: false, mozPreservesPitch: false,
+    src: '', duration: 1, error: null,
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      listeners[type] = listeners[type].filter((f) => f !== fn);
+    },
+    load() {
+      Promise.resolve().then(() => {
+        for (const fn of (listeners.loadedmetadata || []).slice()) fn();
+      });
+    },
+    pause() {},
+    removeAttribute() {},
+  };
+  return el;
+}
+
+/**
+ * Legt einen Song mit mehreren Spuren an (eine je tracksSpec-Eintrag) — für
+ * Tests, die zwischen Stimmen hin- und herwechseln, ohne den Song neu zu
+ * öffnen (siehe trackByVoiceKey()). Jeder Eintrag: { voice, blob,
+ * durationSec?, sampleRate?, channelCount?, sourceRevision? }.
+ */
+async function testSeedNormalizationSong(tracksSpec) {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const songKey = `song:__selftest_norm_multi_${suffix}__`;
+  const tracks = [];
+  const fileKeys = [];
+  for (const spec of tracksSpec) {
+    const fileKey = `f_selftest_norm_${suffix}_${spec.voice}`;
+    fileKeys.push(fileKey);
+    tracks.push({
+      voice: spec.voice, label: spec.voice, fileName: 'selftest.wav', fileKey, size: spec.blob.size,
+      durationSec: spec.durationSec ?? 1, sampleRate: spec.sampleRate ?? 8000, channelCount: spec.channelCount ?? 1,
+      sourceRevision: spec.sourceRevision ?? newSourceRevision(),
+    });
+    await DB.filePut(await fileRecord(fileKey, spec.blob, 'selftest.wav'));
+  }
+  const song = {
+    key: songKey, type: 'song', id: `selftest_norm_multi_${suffix}`,
+    title: `__Selftest Normalization Multi ${suffix}__`, normTitle: `selftest normalization multi ${suffix}`,
+    tracks,
+  };
+  await DB.metaPut(song);
+  return {
+    song, songKey, fileKeys,
+    async cleanup() {
+      await DB.metaDelete(songKey).catch(() => {});
+      await DB.fileDelete(fileKeys).catch(() => {});
+    },
+  };
+}
+
+/** Setzt playerSong (und ein passendes Fake-Audio-Element/-Quelle, für
+ *  hdApplyTransition() innerhalb von audioLoadTrackNow()) für die Dauer von
+ *  fn() und stellt beim Verlassen alles wieder her. Audio.song bleibt
+ *  bewusst null, damit rememberDuration() innerhalb von audioLoadTrackNow()
+ *  ein No-Op bleibt (dessen DB-Verhalten ist bereits in Abschnitt 3
+ *  geprüft) — dieser Abschnitt gilt ausschließlich dem Gain-Cache. */
+async function testWithPlayerSong(song, fn) {
+  const savedSong = playerSong, savedVoice = playerVoice;
+  const savedEl = Audio.el, savedSrc = Audio.elSource, savedHdNode = Audio.hdNode;
+  const savedAudioSong = Audio.song;
+  playerSong = song;
+  Audio.el = testMakeFakeMediaElement();
+  Audio.elSource = testMakeFakeSource();
+  Audio.hdNode = null;
+  Audio.song = null;
+  try {
+    return await fn();
+  } finally {
+    playerSong = savedSong; playerVoice = savedVoice;
+    Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedHdNode;
+    Audio.song = savedAudioSong;
+  }
+}
+
+/**
+ * Ersetzt blob.arrayBuffer() (nur auf dieser Instanz) durch ein
+ * kontrollierbares Deferred, das — sobald aufgelöst — die echten Bytes
+ * liefert. So läuft decodeNormalizationBlob() unverändert (dieselbe Funktion
+ * wie in Produktion — ARGUMENTS in Aufgabe 2 verlangt genau das, ein
+ * Ersetzen des ganzen Hilfsmittels würde den Fehler verdecken), aber der
+ * Zeitpunkt, zu dem der Byte-Read "fertig" ist, liegt beim Test statt beim
+ * echten Blob. */
+function testDeferBlobArrayBuffer(blob) {
+  const realArrayBuffer = blob.arrayBuffer.bind(blob);
+  const calls = [];
+  let settle;
+  const gate = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+  blob.arrayBuffer = () => { calls.push(true); return gate; };
+  return {
+    calls,
+    async resolve() { settle.resolve(await realArrayBuffer()); },
+    reject(err) { settle.reject(err); },
+  };
+}
+
+/** Spy-Ersatz für window.OfflineAudioContext: zählt Konstruktions- und
+ *  decodeAudioData()-Aufrufe, ohne wirklich zu dekodieren — der "Decoder-
+ *  Spion", den Aufgabe 2 für die echte decodeNormalizationBlob() verlangt. */
+function testMakeOfflineCtxSpy() {
+  const calls = { constructed: 0, decodeAudioData: 0 };
+  function SpyOfflineCtx(channels, length, sampleRate) {
+    calls.constructed++;
+    this.sampleRate = sampleRate;
+  }
+  SpyOfflineCtx.prototype.decodeAudioData = async function decodeAudioData(bytes) {
+    calls.decodeAudioData++;
+    return testMakeNormalizationBuffer(bytes.byteLength / 2 / this.sampleRate || 0.1, this.sampleRate);
+  };
+  return { Ctor: SpyOfflineCtx, calls };
 }
 
 async function runNormalizationWorkerTests() {
   const failed = [];
   const fail = (msg) => failed.push(msg);
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
   // --- Section 1: atomic result commit rejects stale writes ---------------
   await testWithNormalizationEnv(async () => {
@@ -17286,6 +17516,246 @@ async function runNormalizationWorkerTests() {
       if (track.sampleRate === 8000 && track.sourceRevision !== replaced.track.sourceRevision) {
         fail('3e) veraltete Metadaten wurden trotz Ersetzung übernommen');
       }
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 4: playerSong / live gain stay in sync across track loads ---
+  await testWithNormalizationEnv(async () => {
+    // audioLoadTrackNow() unconditionally (re)schedules analysis for a
+    // track that doesn't yet carry a valid record for its revision — left
+    // alone, that could auto-start the real shared worker mid-test and
+    // race with the explicit processNormalizationJob() calls below, that
+    // deliberately control *when* analysis happens. normalizationImportActive
+    // blocks normalizationCanWork(), so startNormalizationWorker() no-ops;
+    // the queue entry it still adds is irrelevant, cleared with the rest of
+    // normalizationQueue when testWithNormalizationEnv() restores it.
+    const quietLoad = async (track) => {
+      normalizationImportActive = true;
+      try { await audioLoadTrackNow(track); } finally { normalizationImportActive = false; }
+    };
+
+    // 4a) Analyze A while its original playerSong track object remains in
+    //     memory; switch A → B → A without reopening the song: A restores
+    //     the saved gain and does not decode again.
+    {
+      const wavA = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.3 });
+      const wavB = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.05 });
+      const seed = await testSeedNormalizationSong([{ voice: 'A', blob: wavA }, { voice: 'B', blob: wavB }]);
+      const trackA = seed.song.tracks.find((t) => t.voice === 'A');
+      const trackB = seed.song.tracks.find((t) => t.voice === 'B');
+
+      await testWithPlayerSong(seed.song, async () => {
+        await quietLoad(trackA);
+        if (Audio.normalizationDb !== 0) fail('4a) erstes Laden von A müsste Unity-Gain sein');
+
+        // Analyze A directly with the real commit helper — trackA (the
+        // object playerSong still holds) is deliberately never touched by
+        // this, exactly the staleness the regression exploited.
+        normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(0.3, sampleRate, 1, 0.3);
+        const job = { fileKey: trackA.fileKey, sourceRevision: trackA.sourceRevision };
+        const analyzed = await processNormalizationJob(job);
+        if (analyzed.outcome !== 'analyzed') fail(`4a) Analyse von A schlug fehl: ${analyzed.outcome}`);
+        if (trackA.normalization) {
+          fail('4a) Testaufbau ungültig: das im Speicher gehaltene Objekt wurde direkt verändert');
+        }
+        normalizationQueue.delete(normalizationIdentity(trackA));
+
+        await quietLoad(trackB);
+        if (Audio.currentKey !== trackB.fileKey) fail('4a) Wechsel zu B ist nicht angekommen');
+        normalizationQueue.delete(normalizationIdentity(trackB));
+
+        // trackA already carries a valid record after this load (synced
+        // from the database, see audioLoadTrackNow()) — no quietLoad()
+        // needed, this is exactly the no-new-work path under test.
+        let decodeCalls = 0;
+        normalizationDecodeImpl = async (blob, sampleRate) => { decodeCalls++; return testMakeNormalizationBuffer(0.3, sampleRate); };
+        const idA = normalizationIdentity(trackA);
+        await audioLoadTrackNow(trackA);
+        if (Audio.currentKey !== trackA.fileKey) fail('4a) Rückkehr zu A ist nicht angekommen');
+        if (!near(Audio.normalizationDb, analyzed.track.normalization.gainDb, 1e-6)) {
+          fail(`4a) A hat den gespeicherten Gain nicht wiederhergestellt (war ${Audio.normalizationDb}, erwartet ${analyzed.track.normalization.gainDb})`);
+        }
+        if (decodeCalls !== 0) fail(`4a) Rückkehr zu A hat erneut dekodiert (${decodeCalls}x)`);
+        if (normalizationQueue.has(idA)) fail('4a) Rückkehr zu A hat unnötig einen neuen Analyseauftrag eingereiht');
+
+        // 4b) Repeat after a REC preview: the same restore must still work
+        //     once Audio.currentSourceKind briefly went through 'preview'.
+        Audio.currentSourceKind = 'preview';
+        Audio.currentKey = 'preview';
+        Audio.currentRevision = null;
+        Audio.normalizationDb = 0;
+        await audioLoadTrackNow(trackA); // still a valid record — safe without quietLoad()
+        if (!near(Audio.normalizationDb, analyzed.track.normalization.gainDb, 1e-6)) {
+          fail(`4b) A hat den Gain nach einer REC-Vorschau nicht wiederhergestellt (war ${Audio.normalizationDb})`);
+        }
+        if (Audio.currentSourceKind !== 'track') fail('4b) currentSourceKind steht nach dem Laden von A nicht auf \'track\'');
+      });
+      await seed.cleanup();
+    }
+
+    // 4c) Replace A with a new revision under the same fileKey: the old
+    //     gain must not apply to what is actually about to play.
+    {
+      const wavA = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.3 });
+      const seed = await testSeedNormalizationSong([{ voice: 'A', blob: wavA }]);
+      const trackA = seed.song.tracks.find((t) => t.voice === 'A');
+
+      await testWithPlayerSong(seed.song, async () => {
+        normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(0.3, sampleRate, 1, 0.3);
+        const job = { fileKey: trackA.fileKey, sourceRevision: trackA.sourceRevision };
+        const analyzed = await processNormalizationJob(job);
+        if (analyzed.outcome !== 'analyzed') fail(`4c) Analyse von A schlug fehl: ${analyzed.outcome}`);
+
+        // Load once so the retained object legitimately carries the gain
+        // for its (still current) revision — already valid, safe as-is.
+        await audioLoadTrackNow(trackA);
+        if (!near(Audio.normalizationDb, analyzed.track.normalization.gainDb, 1e-6)) {
+          fail('4c) Testaufbau ungültig: A hat den ursprünglichen Gain nicht übernommen');
+        }
+
+        // Now the *database* moves on to a new revision under the very same
+        // fileKey — without the retained trackA object learning about it,
+        // simulating a path that updated the source but not this reference.
+        await commitTrackMutation(trackA.fileKey, (t) => {
+          t.sourceRevision = newSourceRevision();
+          delete t.normalization;
+          return true;
+        });
+
+        Audio.currentKey = null; Audio.currentRevision = null; Audio.currentSourceKind = null;
+        // Quiet: the replaced revision has no record yet, so this would
+        // otherwise (re)start real analysis of it — irrelevant to what
+        // this specific assertion checks (that the *old* gain never
+        // applies), and racing it would make the check non-deterministic.
+        await quietLoad(trackA);
+        if (Audio.normalizationDb !== 0) {
+          fail(`4c) der alte Gain wurde auf die ersetzte Revision angewandt (${Audio.normalizationDb} dB)`);
+        }
+        if (trackA.normalization) fail('4c) das veraltete Analyseergebnis hängt noch am aktualisierten Objekt');
+        normalizationQueue.delete(normalizationIdentity(trackA));
+      });
+      await seed.cleanup();
+    }
+
+    // 4d) With normalization disabled, every path above stays at unity.
+    {
+      const wavA = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.3 });
+      const seed = await testSeedNormalizationSong([{ voice: 'A', blob: wavA }]);
+      const trackA = seed.song.tracks.find((t) => t.voice === 'A');
+      settings.normalizationEnabled = false;
+      try {
+        await testWithPlayerSong(seed.song, async () => {
+          const job = { fileKey: trackA.fileKey, sourceRevision: trackA.sourceRevision };
+          await commitNormalizationResult(job, { version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb: 6 });
+          // A valid record already exists, so this never touches the
+          // worker regardless of normalizationEnabled — no quietLoad() needed.
+          await audioLoadTrackNow(trackA);
+          // normalizationCacheValue() itself is gain-value-agnostic (it
+          // does not consult settings.normalizationEnabled) — applyNormalizationGain()
+          // is what must gate on the setting when actually driving the node.
+          const node = { gain: { setTargetAtTime: (v) => { node.lastValue = v; } }, context: { currentTime: 0 } };
+          const savedNode = Audio.normalizationGain;
+          Audio.normalizationGain = node;
+          try {
+            applyNormalizationGain();
+            if (!near(node.lastValue, 1, 1e-9)) fail(`4d) Normalisierung deaktiviert, trotzdem kein Unity-Gain angewandt (${node.lastValue})`);
+          } finally {
+            Audio.normalizationGain = savedNode;
+          }
+        });
+      } finally {
+        settings.normalizationEnabled = true;
+      }
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 5: recheck eligibility/generation around the byte read -----
+  await testWithNormalizationEnv(async () => {
+    const interruptionScenarios = [
+      { label: 'Wiedergabe', break: () => { Audio.playing = true; }, restore: () => { Audio.playing = false; } },
+      { label: 'Aufnahme', break: () => { recMediaRecorder = { state: 'recording' }; }, restore: () => { recMediaRecorder = null; } },
+      { label: 'Import', break: () => { normalizationImportActive = true; }, restore: () => { normalizationImportActive = false; } },
+      { label: 'Deaktiviert', break: () => { settings.normalizationEnabled = false; }, restore: () => { settings.normalizationEnabled = true; } },
+      { label: 'Generation (Sichtbarkeit)', break: () => { normalizationGeneration++; }, restore: () => {} },
+    ];
+    for (const scenario of interruptionScenarios) {
+      const wav = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 0.3, sampleRate: 8000, channelCount: 1, blob: wav,
+      });
+      const spy = testMakeOfflineCtxSpy();
+      await testWithGlobal('OfflineAudioContext', spy.Ctor, async () => {
+        // normalizationDecodeImpl is left at its default (the real
+        // decodeNormalizationBlob()) — only blob.arrayBuffer() is deferred,
+        // so this exercises the production decoder helper itself, exactly
+        // what the task calls for (swapping the whole helper would hide
+        // the defect this recheck fixes). recordBlob() returns rec.blob
+        // as-is when present (no rec.data) — pointing DB.fileGet() at a
+        // record shaped that way, instead of one directly, guarantees
+        // processNormalizationJob()'s own recordBlob() call gets this exact
+        // (deferred-patched) Blob instance rather than a fresh one built
+        // from bytes.
+        const deferred = testDeferBlobArrayBuffer(wav);
+        const fakeRec = { key: seed.fileKey, blob: wav, size: wav.size, name: 'selftest.wav' };
+        const realFileGet = DB.fileGet.bind(DB);
+        DB.fileGet = async (key) => (key === seed.fileKey ? fakeRec : realFileGet(key));
+        const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+        try {
+          const p = processNormalizationJob(job);
+          await testWaitForCall(deferred);
+          if (spy.calls.decodeAudioData !== 0) fail(`5·${scenario.label}) decodeAudioData() lief schon vor der Unterbrechung`);
+          scenario.break();
+          await deferred.resolve();
+          const result = await p;
+          if (result.outcome !== 'interrupted') fail(`5·${scenario.label}) erwartete 'interrupted', war '${result.outcome}'`);
+          if (spy.calls.decodeAudioData !== 0) {
+            fail(`5·${scenario.label}) decodeAudioData() lief trotz Unterbrechung nach dem Byte-Read (${spy.calls.decodeAudioData}x)`);
+          }
+          const midway = await DB.metaGet(seed.songKey);
+          if (midway.tracks[0].normalization) fail(`5·${scenario.label}) eine Unterbrechung hat trotzdem einen Datensatz geschrieben`);
+          scenario.restore();
+
+          // Idle again: the identical job completes, and decode really did run.
+          const retry = await processNormalizationJob(job);
+          if (retry.outcome !== 'analyzed') fail(`5·${scenario.label}) nach Wiederherstellung: erwartete 'analyzed', war '${retry.outcome}'`);
+          if (spy.calls.decodeAudioData !== 1) fail(`5·${scenario.label}) erwartete genau einen echten Dekodiervorgang, waren ${spy.calls.decodeAudioData}`);
+        } finally {
+          DB.fileGet = realFileGet;
+        }
+      });
+      await seed.cleanup();
+    }
+
+    // Confirm an already-started decode still holds the lock and no second
+    // decode starts concurrently, using the real decoder helper end to end.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 0.3, sampleRate: 8000, channelCount: 1, blob: wav,
+      });
+      const spy = testMakeOfflineCtxSpy();
+      await testWithGlobal('OfflineAudioContext', spy.Ctor, async () => {
+        const deferred = testDeferBlobArrayBuffer(wav);
+        const fakeRec = { key: seed.fileKey, blob: wav, size: wav.size, name: 'selftest.wav' };
+        const realFileGet = DB.fileGet.bind(DB);
+        DB.fileGet = async (key) => (key === seed.fileKey ? fakeRec : realFileGet(key));
+        try {
+          scheduleTrackNormalization(seed.fileKey, seed.track);
+          for (let i = 0; i < 5; i++) startNormalizationWorker();
+          await testWaitForCall(deferred);
+          for (let i = 0; i < 5; i++) startNormalizationWorker(); // still mid-read — must still no-op
+          if (deferred.calls.length > 1) fail(`5·Lock) mehr als ein gleichzeitiger Byte-Read: ${deferred.calls.length}`);
+          await deferred.resolve();
+          if (normalizationWorkerPromise) await normalizationWorkerPromise.catch(() => {});
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (spy.calls.decodeAudioData !== 1) fail(`5·Lock) erwartete genau einen Dekodiervorgang, waren ${spy.calls.decodeAudioData}`);
+          if (normalizationWorkerPromise) fail('5·Lock) der Worker-Riegel wurde nach Abschluss nicht freigegeben');
+        } finally {
+          DB.fileGet = realFileGet;
+        }
+      });
       await seed.cleanup();
     }
   });
