@@ -177,3 +177,10 @@ Verfügung) — offen, bis das nachgeholt ist.
 
 Siehe [`THIRD-PARTY.md`](./THIRD-PARTY.md) für Herkunft, Version und Lizenz
 der vendorierten Komponente `lame.min.js` (lamejs/LAME, LGPL-3.0).
+
+
+### Optionale Lautstärkenormalisierung
+
+Die standardmäßig ausgeschaltete Einstellung analysiert importierte Übungsspuren lokal und speichert nur einen kleinen Verstärkungswert; Originaldateien, Exporte, RECs und Hintergrundspur bleiben unverändert. Gemessen wird sample-gewichtete RMS-Energie aller Kanäle in 400-ms-Fenstern mit zweistufigem −70-dBFS/−10-dB-Gate. Der Verstärkungswert ist auf +12 dB und auf −1 dBFS absoluten Sample-Peak begrenzt. Das ist RMS-Normalisierung, kein EBU R128/LUFS. Die Sample-Peak-Grenze garantiert weder True-Peak-Schutz noch Schutz vor Spitzen nach HD-Verarbeitung oder Mischung.
+
+Vor dem Decodieren gelten konservative Grenzen: höchstens 600 Sekunden, 60 MiB komprimierte Daten und geschätzt 64 MiB PCM (`Dauer × Quell-Samplerate × Kanäle × 4`). Unbekannte oder ungültige, nicht zur Quellenrevision gehörende Metadaten werden nicht als Null behandelt, sondern übersprungen. Zehn Minuten sind daher nur eine Obergrenze; kürzere Mehrkanal-/Hochratenaufnahmen können bereits das Budget überschreiten. Diese Grenzen reduzieren den Speicherbedarf, garantieren aber keine Browser-Spitzenspeichersicherheit. Die Offline-Decodierung ist nicht abbrechbar; ein einzelner serialisierter Worker wartet auf ihr Ende und verwirft veraltete Ergebnisse. Analyse läuft nur bei sichtbarer, inaktiver App und nicht über den Service Worker bei geschlossener App.
