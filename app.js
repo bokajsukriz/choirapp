@@ -1073,6 +1073,7 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
+  normalizationEnabled: false, // gleicht importierte Stimmen im vorhandenen Web-Audio-Graphen an
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
   keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
   shuffleMode: false,         // zufälliges statt geordnetes „nächstes Lied"
@@ -1318,6 +1319,7 @@ async function loadSettings() {
     settings.slowMode = (settings.slowMode === 'hq' || settings.slowMode === 'hqmono') ? 'hd' : 'standard';
   }
   settings.hdOptions = sanitizeHdOptions(settings.hdOptions);
+  if (typeof settings.normalizationEnabled !== 'boolean') settings.normalizationEnabled = false;
 
   // Den Reiter „Sheets" gibt es nicht mehr (siehe PLAYER_TABS) — die
   // Vorschau der Noten läuft jetzt über einen Hinweis im Notes-Reiter
@@ -2602,6 +2604,7 @@ async function renderSettings() {
   renderSongSearchServicePicker();
   renderVoicePicker();
   renderChannelMode();
+  renderNormalization();
   renderScreenMode();
   renderWebkitGraphToggle();
   renderSlowMode();
@@ -2694,6 +2697,77 @@ function hdWebkitBlocked() {
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
 }
+
+function normalizationAvailable() {
+  // Prospective capability is enough for the preference UI.  In particular,
+  // do not build a live graph just to inspect support.  WebKit's deliberate
+  // direct-media route remains unavailable until another feature builds it.
+  const offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!offline) return false;
+  return !(isWebKitBrowser && !settings.webkitForceGraph
+    && (settings.channelMode || 'off') === 'off');
+}
+
+function renderNormalization() {
+  const toggle = $('#normalization-toggle');
+  const hint = $('#normalization-status');
+  toggle.setAttribute('aria-checked', settings.normalizationEnabled ? 'true' : 'false');
+  const available = normalizationAvailable();
+  // An already saved preference must always remain switchable off.
+  toggle.disabled = !available && !settings.normalizationEnabled;
+  hint.hidden = available;
+  applyNormalizationGain();
+  renderNormalizationProgress();
+  // Availability can change under us (channel-mode switch, WebKit compat
+  // toggle, graph rebuild) — every render is a cheap opportunity to resume
+  // work that was only temporarily ineligible, without a dedicated hook at
+  // every call site that might have changed it.
+  startNormalizationWorker();
+}
+
+$('#normalization-toggle').addEventListener('click', async () => {
+  if (settings.normalizationEnabled) {
+    stopNormalizationScheduling();
+    await saveSettings({ normalizationEnabled: false });
+    renderNormalization();
+    return;
+  }
+  if (!normalizationAvailable()) return;
+  const ok = await confirmDialog({
+    title: t('settings.normalization.confirmTitle'),
+    text: t('settings.normalization.confirmText'),
+    okLabel: t('settings.normalization.activate'),
+    cancelLabel: t('settings.normalization.cancel'),
+  });
+  if (!ok) { renderNormalization(); return; }
+  await saveSettings({ normalizationEnabled: true });
+  renderNormalization();
+  scheduleNormalizationReconciliation();
+});
+
+$('#normalization-retry').addEventListener('click', async () => {
+  normalizationGeneration++; // interrupts any in-flight scan cooperatively; the decode itself still settles under the worker lock
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) {
+    for (const track of song.tracks || []) {
+      if (!normalizationHasRecord(track) || track.normalization.status === 'analyzed') continue;
+      // Atomic per-track clear: re-locates the live track by fileKey right
+      // before writing (see commitTrackMutation), never a blind whole-song
+      // write of this stale `songs` snapshot.
+      const status = track.normalization.status;
+      const revision = track.sourceRevision;
+      const cleared = await commitTrackMutation(track.fileKey, (t) => {
+        if (t.sourceRevision !== revision) return false;
+        if (t.normalization?.status !== status) return false;
+        delete t.normalization;
+        return true;
+      }).catch(() => null);
+      if (cleared && status === 'skipped') normalizationProgress.skipped = Math.max(0, normalizationProgress.skipped - 1);
+      if (cleared && status === 'failed') normalizationProgress.failed = Math.max(0, normalizationProgress.failed - 1);
+    }
+  }
+  scheduleNormalizationReconciliation();
+});
 
 /**
  * Notausgang für hdWebkitBlocked(): WebKit-Bug 240405 ist beim Hersteller
@@ -3572,6 +3646,7 @@ $('#channel-mode').addEventListener('change', async (e) => {
   if (isWebKitBrowser && !settings.webkitForceGraph && Audio.ready) {
     await rebuildAudioGraph('channel-mode');
   }
+  renderNormalization();
 });
 
 $$('#default-tab-picker .player-tab').forEach((btn) => {
@@ -3964,6 +4039,9 @@ const Audio = {
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
   channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
   channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
+  playbackIn: null,       // Normalisierungs-Gain vor der Matrix (nur für den Haupttrack)
+  normalizationGain: null,
+  normalizationDb: 0,
   elSource: null,         // MediaElementSource von el — createMediaElementSource() darf nur einmal pro Element laufen, daher gemerkt statt neu erzeugt
   hdNode: null,           // Zeitdehner-Knoten des HD-Modus, oder null solange nicht gebraucht/nicht verfügbar (siehe hdCreateNode)
   hdLatency: 0,           // Latenz des Zeitdehners in Sekunden, zuletzt abgefragt (siehe refreshHdLatency)
@@ -3975,6 +4053,8 @@ const Audio = {
   ready: false,
   song: null,
   currentKey: null,      // fileKey der Spur, die gerade in `el` geladen ist
+  currentRevision: null, // sourceRevision dieser Spur — für den Normalisierungs-Gain-Gate
+  currentSourceKind: null, // 'track' (importierte Übungsspur) | 'preview' (REC) | null — nur 'track' darf Normalisierungs-Gain bekommen
   blobUrl: null,          // aktive Blob-URL, für revokeObjectURL beim Wechsel
   loading: new Set(),    // fileKey, solange geladen wird (immer höchstens einer)
   position: 0,
@@ -4183,11 +4263,13 @@ async function setupAudioGraph() {
     const gLR = ctx.createGain(); // links  -> rechts
     const gRL = ctx.createGain(); // rechts -> links
     const gRR = ctx.createGain(); // rechts -> rechts
+    const normalizationGain = ctx.createGain();
     splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
     splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
     splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
     splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
     merger.connect(ctx.destination);
+    normalizationGain.connect(splitter);
 
     // Der Zeitdehner für HD wird hier NICHT angelegt: die Bibliothek ist
     // 113 KB und wird erst nachgeladen, wenn HD tatsächlich gewählt ist
@@ -4204,9 +4286,13 @@ async function setupAudioGraph() {
     // Einspeisepunkt für den Hintergrundtrack (siehe ensureBackingAudio) — im
     // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
     Audio.channelIn = splitter;
+    Audio.playbackIn = normalizationGain;
+    Audio.normalizationGain = normalizationGain;
     Audio.elSource = elSource;
     hdApplyTransition('init'); // verdrahtet elSource -> hdNode -> splitter oder elSource -> splitter direkt
     audioApplyChannelMode(settings.channelMode);
+    applyNormalizationGain();
+    renderNormalization();
     dlog('audio:route', { mode: 'matrix' });
 
     // Läuft das Element durch die Matrix, kommt kein Ton mehr durch, sobald
@@ -4306,6 +4392,8 @@ async function rebuildAudioGraph(reason) {
     Audio.ctx = null;
     Audio.channel = null;
     Audio.channelIn = null;
+    Audio.playbackIn = null;
+    Audio.normalizationGain = null;
     Audio.elSource = null;
     Audio.hdNode = null;
     Audio.el = null;
@@ -4328,6 +4416,7 @@ async function rebuildAudioGraph(reason) {
 
     await setupAudioGraph();
     Audio.ready = true;
+    renderNormalization();
 
     if (savedBlobUrl && savedKey) {
       const el = Audio.el;
@@ -4510,6 +4599,583 @@ async function onAudioContextStateChange() {
 // kollidieren, bevor dessen `loadedmetadata` eingetroffen ist.
 let audioLoadMutex = null;
 
+const NORMALIZATION_ALGO_VERSION = 2;
+const NORMALIZATION_MAX_SECONDS = 600;
+const NORMALIZATION_MAX_BYTES = 60 * 1024 * 1024;
+const NORMALIZATION_MAX_PCM_BYTES = 64 * 1024 * 1024;
+const NORMALIZATION_TARGET_DB = -20;
+const NORMALIZATION_METADATA_PROBE_TIMEOUT_MS = 5000;
+let normalizationGeneration = 0;
+let normalizationWorkerPromise = null;
+let normalizationImportActive = false;
+const normalizationQueue = new Map();
+// Ids currently being decoded/analyzed — dedup while genuinely in flight.
+// Unlike the terminal DB record (analyzed/skipped/failed), this is never a
+// reason on its own to stop scheduling: it only guards against queuing the
+// exact same job a second time while the worker already holds it.
+const normalizationInFlight = new Set();
+const normalizationProgress = { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' };
+
+function newSourceRevision() {
+  return `${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(2)).join('-')}`;
+}
+
+function normalizationIdentity(track) {
+  return track?.fileKey && track?.sourceRevision
+    ? `${track.fileKey}:${track.sourceRevision}:${NORMALIZATION_ALGO_VERSION}` : null;
+}
+
+function normalizationCacheValue(track) {
+  const cached = track?.normalization;
+  if (cached?.version !== NORMALIZATION_ALGO_VERSION
+      || cached.fileKey !== track?.fileKey
+      || cached.sourceRevision !== track?.sourceRevision) return null;
+  return Number.isFinite(cached.gainDb) ? cached.gainDb : null;
+}
+
+/** A terminal record for the track's *current* source revision and algorithm version. */
+function normalizationHasRecord(track) {
+  const cached = track?.normalization;
+  return cached?.version === NORMALIZATION_ALGO_VERSION
+    && cached.fileKey === track?.fileKey && cached.sourceRevision === track?.sourceRevision
+    && (cached.status === 'skipped' || cached.status === 'failed' || Number.isFinite(cached.gainDb));
+}
+
+/** Duration/sample-rate/channel-count are all present and usable — as opposed
+ *  to a fresh import (durationSec: null, no sample-rate/channel yet). */
+function normalizationMetadataUsable(track) {
+  return Number.isFinite(track?.durationSec) && track.durationSec > 0
+    && Number.isFinite(track?.sampleRate) && track.sampleRate > 0
+    && Number.isInteger(track?.channelCount) && track.channelCount > 0;
+}
+
+function normalizationEligibility({ durationSec, sampleRate, channelCount, compressedBytes }) {
+  if (![durationSec, sampleRate, channelCount, compressedBytes].every(Number.isFinite)
+      || durationSec <= 0 || sampleRate <= 0 || !Number.isInteger(channelCount)
+      || channelCount <= 0 || compressedBytes < 0) return { ok: false, reason: 'metadata' };
+  if (durationSec > NORMALIZATION_MAX_SECONDS) return { ok: false, reason: 'duration' };
+  if (compressedBytes > NORMALIZATION_MAX_BYTES) return { ok: false, reason: 'compressed' };
+  const pcmBytes = durationSec * sampleRate * channelCount * 4;
+  if (!Number.isFinite(pcmBytes) || pcmBytes > NORMALIZATION_MAX_PCM_BYTES) return { ok: false, reason: 'pcm' };
+  return { ok: true, pcmBytes };
+}
+
+/** Bounded source-header inspection; never reads the complete compressed file. */
+async function inspectNormalizationMetadata(blob) {
+  const bytes = new Uint8Array(await blob.slice(0, 64 * 1024).arrayBuffer());
+  if (bytes.length >= 28 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF'
+      && String.fromCharCode(...bytes.slice(8, 12)) === 'WAVE') {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let p = 12; p + 8 <= bytes.length;) {
+      const name = String.fromCharCode(...bytes.slice(p, p + 4));
+      const size = view.getUint32(p + 4, true);
+      if (name === 'fmt ' && size >= 16 && p + 24 <= bytes.length) {
+        return { channelCount: view.getUint16(p + 10, true), sampleRate: view.getUint32(p + 12, true) };
+      }
+      p += 8 + size + (size & 1);
+    }
+  }
+  // MPEG-1 Layer III header (ID3 may precede it). Other/ambiguous codecs are
+  // deliberately left unknown rather than guessed into eligibility.
+  const rates = [44100, 48000, 32000];
+  for (let p = 0; p + 3 < bytes.length; p++) {
+    if (bytes[p] !== 0xff || (bytes[p + 1] & 0xfe) !== 0xfa) continue;
+    const rate = rates[(bytes[p + 2] >> 2) & 3];
+    if (rate) return { sampleRate: rate, channelCount: ((bytes[p + 3] >> 6) === 3 ? 1 : 2) };
+  }
+  return null;
+}
+
+/**
+ * Duration only, via a temporary metadata-only media element — never
+ * Audio.el, never playback, never a live AudioContext. `preload="metadata"`
+ * asks the browser to read just enough of the (already in-memory) blob to
+ * report duration, not to decode it. Always cleans up, even on timeout.
+ */
+function probeMediaDuration(blob, timeoutMs = NORMALIZATION_METADATA_PROBE_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const probe = document.createElement('audio');
+    probe.preload = 'metadata';
+    probe.muted = true;
+    const url = URL.createObjectURL(blob);
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      probe.removeEventListener('loadedmetadata', onLoaded);
+      probe.removeEventListener('error', onError);
+      probe.removeAttribute('src');
+      probe.load();
+      URL.revokeObjectURL(url);
+    };
+    const onLoaded = () => {
+      const duration = probe.duration;
+      cleanup();
+      if (Number.isFinite(duration) && duration > 0) resolve(duration);
+      else reject(new Error('duration'));
+    };
+    const onError = () => { cleanup(); reject(new Error('metadata')); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, timeoutMs);
+    probe.addEventListener('loadedmetadata', onLoaded, { once: true });
+    probe.addEventListener('error', onError, { once: true });
+    probe.src = url;
+  });
+}
+
+/**
+ * Fresh imports arrive with durationSec: null and no sample-rate/channel
+ * data (see runImport()) — normalizationMetadataUsable() is false for them.
+ * This obtains just enough to decide eligibility, without decoding the
+ * whole recording: bounded header bytes for sample rate/channel count
+ * (inspectNormalizationMetadata, shared with audioLoadTrackNow()), and a
+ * bounded, timeout-guarded temporary media element for duration. Returns
+ * null if reliable metadata could not be obtained — the caller skips with
+ * an accurate reason rather than guessing.
+ */
+async function acquireNormalizationMetadata(blob) {
+  const header = await inspectNormalizationMetadata(blob).catch(() => null);
+  if (!header || !Number.isFinite(header.sampleRate) || header.sampleRate <= 0
+      || !Number.isInteger(header.channelCount) || header.channelCount <= 0) return null;
+  const durationSec = await probeMediaDuration(blob).catch(() => null);
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
+  return { durationSec, sampleRate: header.sampleRate, channelCount: header.channelCount };
+}
+
+/**
+ * Atomically mutates exactly one track's record. Opens one short read-write
+ * transaction, locates the *current* song/track by fileKey through the
+ * `type` index right before writing — song keys change on rename (see
+ * renameSong(), which deletes the old meta key) — so this always lands on
+ * the live record, never a whole-song snapshot read earlier. `mutate(track)`
+ * inspects/edits the track object in place and returns false to discard
+ * (nothing is written) or true/non-false to commit. `mutate` must be
+ * synchronous — no decoding/scanning/awaiting may happen while the
+ * transaction is open. Resolves to `{ song, track }` on a real commit, or
+ * null if nothing matched or `mutate` declined.
+ */
+async function commitTrackMutation(fileKey, mutate) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('meta', 'readwrite');
+    const store = t.objectStore('meta');
+    const idx = store.index('type');
+    let outcome = null;
+    const req = idx.getAll(IDBKeyRange.only('song'));
+    req.onsuccess = () => {
+      const songs = req.result;
+      const song = songs.find((s) => s.tracks?.some((tr) => tr.fileKey === fileKey));
+      const track = song?.tracks?.find((tr) => tr.fileKey === fileKey);
+      if (song && track && mutate(track) !== false) {
+        store.put(song);
+        outcome = { song, track };
+      }
+    };
+    req.onerror = () => reject(req.error);
+    t.oncomplete = () => resolve(outcome);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error || new Error('Transaktion abgebrochen'));
+  }).then((outcome) => { if (outcome) dropSongCache(); return outcome; });
+}
+
+/**
+ * Atomically commits one analysis outcome (analyzed/skipped/failed) for the
+ * exact track/revision/algorithm-version the job was created for — discards
+ * silently if the song/track no longer exists, the fileKey or
+ * sourceRevision no longer match (deleted, renamed away, or replaced with
+ * new audio during analysis), or the algorithm version no longer applies.
+ * Never touches any other field on the track or song.
+ */
+async function commitNormalizationResult(job, patch) {
+  return commitTrackMutation(job.fileKey, (track) => {
+    if (track.sourceRevision !== job.sourceRevision) return false;
+    if (patch.version !== NORMALIZATION_ALGO_VERSION) return false;
+    track.normalization = { ...patch, fileKey: track.fileKey, sourceRevision: track.sourceRevision };
+    return true;
+  });
+}
+
+function applyNormalizationGain() {
+  const node = Audio.normalizationGain;
+  if (!node) return;
+  const db = settings.normalizationEnabled ? Audio.normalizationDb : 0;
+  const value = 10 ** (db / 20);
+  node.gain.setTargetAtTime(value, node.context.currentTime, 0.025); // settles in roughly 100 ms
+}
+
+/** Applies a freshly analyzed gain to live playback — only if the track that
+ *  was just analyzed is still the one currently loaded, at the same source
+ *  revision, and is an imported practice track (never a REC preview). */
+function maybeApplyLiveGain(track) {
+  if (Audio.currentSourceKind !== 'track') return;
+  if (Audio.currentKey !== track.fileKey || Audio.currentRevision !== track.sourceRevision) return;
+  if (track.normalization?.status !== 'analyzed') return;
+  Audio.normalizationDb = track.normalization.gainDb;
+  applyNormalizationGain();
+}
+
+/**
+ * Freshly reads a track's current record from the database, by fileKey.
+ * playerSong (see trackByVoiceKey()) retains the same track objects across
+ * voice switches for as long as a song stays open, and an atomic commit
+ * (commitTrackMutation/commitNormalizationResult) deliberately never mutates
+ * those retained objects — it re-locates and writes its own fresh copy.
+ * Without this, switching A → B → A reads normalizationCacheValue() off the
+ * stale retained object and applies unity gain even though the database
+ * (and a live Audio.normalizationDb, had it not just been overwritten) hold
+ * a valid result. Read-only; never gates on or waits for an actual analysis
+ * (decode) — only ever reads whatever is already committed.
+ */
+async function fetchCurrentTrackRecord(fileKey) {
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) {
+    const track = song.tracks?.find((t) => t.fileKey === fileKey);
+    if (track) return track;
+  }
+  return null;
+}
+
+/**
+ * Keeps a retained playerSong track object in sync with a just-committed
+ * normalization outcome — mutated in place (never reassigning
+ * playerSong.tracks) so every existing reference (trackByVoiceKey(), the
+ * voice picker, …) sees it immediately, without a further database round
+ * trip. A mismatched sourceRevision means the retained object already
+ * describes a replacement the commit doesn't apply to — left untouched.
+ * Never writes to the database itself.
+ */
+function syncPlayerSongTrack(committedTrack) {
+  if (!committedTrack || !playerSong) return;
+  const retained = playerSong.tracks?.find((t) => t.fileKey === committedTrack.fileKey);
+  if (!retained || retained === committedTrack) return;
+  if (retained.sourceRevision !== committedTrack.sourceRevision) return;
+  retained.normalization = committedTrack.normalization;
+}
+
+function normalizationRecordingActive() {
+  return !!(recStarting || (recMediaRecorder && recMediaRecorder.state !== 'inactive'));
+}
+
+function normalizationCanWork() {
+  return settings.normalizationEnabled && normalizationAvailable()
+    && document.visibilityState === 'visible' && !Audio.playing && !audioPreview
+    && !Audio.bgVoice && !normalizationRecordingActive() && !normalizationImportActive;
+}
+
+/** Why the worker isn't currently running, for the progress area — null
+ *  while it's fine to run (whether or not there's anything queued). */
+function normalizationPauseReason() {
+  if (!settings.normalizationEnabled || !normalizationAvailable()) return null;
+  if (document.visibilityState !== 'visible') return null; // backgrounded — not worth surfacing
+  if (normalizationImportActive) return 'import';
+  if (normalizationRecordingActive()) return 'recording';
+  if (Audio.playing || audioPreview || Audio.bgVoice) return 'playback';
+  return null;
+}
+
+function renderNormalizationProgress() {
+  const host = $('#normalization-progress');
+  if (!host) return;
+  const p = normalizationProgress;
+  const finished = p.analyzed + p.skipped + p.failed;
+  host.hidden = !settings.normalizationEnabled;
+  $('#normalization-progress-bar').max = Math.max(1, p.total);
+  $('#normalization-progress-bar').value = finished;
+  $('#normalization-progress-summary').textContent = t('settings.normalization.progress')
+    .replace('{done}', finished).replace('{total}', p.total);
+  const pending = normalizationQueue.size + normalizationInFlight.size;
+  const pauseReason = pending && !p.current ? normalizationPauseReason() : null;
+  $('#normalization-progress-current').textContent = p.current
+    || (pauseReason ? t(`settings.normalization.paused.${pauseReason}`) : '') || p.reason || '';
+  $('#normalization-progress-counts').textContent = t('settings.normalization.counts')
+    .replace('{analyzed}', p.analyzed).replace('{skipped}', p.skipped).replace('{failed}', p.failed);
+}
+
+function stopNormalizationScheduling() {
+  normalizationGeneration++; // cooperative interruption; in-flight decode still settles under the worker lock
+  normalizationQueue.clear();
+  normalizationProgress.current = '';
+}
+
+/** A job that will never complete (song/track/file gone, or replaced) is
+ *  removed from the outstanding total instead of leaving progress stuck
+ *  short of 100%. Never drops below what's already finished. */
+function discardNormalizationJob() {
+  const finished = normalizationProgress.analyzed + normalizationProgress.skipped + normalizationProgress.failed;
+  normalizationProgress.total = Math.max(finished, normalizationProgress.total - 1);
+}
+
+function scheduleTrackNormalization(fileKey, track) {
+  if (!fileKey || !track || normalizationHasRecord(track)) return;
+  const id = normalizationIdentity(track);
+  if (!id || normalizationQueue.has(id) || normalizationInFlight.has(id)) { startNormalizationWorker(); return; }
+  normalizationQueue.set(id, { fileKey, sourceRevision: track.sourceRevision });
+  normalizationProgress.total = Math.max(normalizationProgress.total, normalizationQueue.size
+    + normalizationInFlight.size + normalizationProgress.analyzed + normalizationProgress.skipped + normalizationProgress.failed);
+  startNormalizationWorker();
+}
+
+async function scheduleNormalizationReconciliation() {
+  if (!settings.normalizationEnabled) return;
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) for (const track of song.tracks || []) {
+    if (track.sourceRevision) { scheduleTrackNormalization(track.fileKey, track); continue; }
+    // Legacy record from before sourceRevision existed — atomic per-track
+    // assignment, re-located by fileKey right before writing, never a
+    // blind write of this (possibly already stale) `songs` snapshot.
+    const fileKey = track.fileKey;
+    const assigned = await commitTrackMutation(fileKey, (t) => {
+      if (t.sourceRevision) return false; // someone else already assigned one
+      t.sourceRevision = newSourceRevision();
+      delete t.normalization;
+      return true;
+    }).catch(() => null);
+    if (assigned) scheduleTrackNormalization(fileKey, assigned.track);
+  }
+  renderNormalizationProgress();
+}
+
+function startNormalizationWorker() {
+  if (normalizationWorkerPromise || !normalizationCanWork()) { renderNormalizationProgress(); return; }
+  normalizationWorkerPromise = runNormalizationWorker().finally(() => {
+    // The lock is intentionally held through decode settlement and reference release.
+    normalizationWorkerPromise = null;
+    if (normalizationQueue.size && normalizationCanWork()) setTimeout(startNormalizationWorker, 0);
+  });
+}
+
+/**
+ * Processes exactly one job. Never throws for conditions a caller needs to
+ * branch on — genuine decode/analysis errors are caught and committed as a
+ * 'failed' result. Returns:
+ *   - { outcome: 'analyzed' | 'skipped' | 'failed', track }  — committed
+ *   - { outcome: 'obsolete' }   — song/track/file gone or replaced; nothing written, do not requeue
+ *   - { outcome: 'interrupted' } — environment turned uncooperative mid-job; requeue for later
+ *   - { outcome: 'raced' }      — another attempt already committed a result first; nothing to do
+ */
+async function processNormalizationJob(job) {
+  const generation = normalizationGeneration;
+  const stillGood = () => generation === normalizationGeneration && normalizationCanWork();
+  let buffer = null;
+  try {
+    // 1) Recheck right after the async DB read.
+    const songs = await DB.metaByType('song');
+    const song = songs.find((s) => s.tracks?.some((tr) => tr.fileKey === job.fileKey));
+    let track = song?.tracks.find((tr) => tr.fileKey === job.fileKey);
+    if (!track) return { outcome: 'obsolete' }; // song/track deleted
+    if (track.sourceRevision !== job.sourceRevision) return { outcome: 'obsolete' }; // replaced
+    // Another attempt already committed a valid result for this exact
+    // revision (e.g. the caller's own retained track object was stale and
+    // rescheduled work that was already done) — that result is still good
+    // and reusable, not a failure: hand the fresh track back so the caller
+    // can (re-)apply its gain instead of silently dropping it.
+    if (normalizationHasRecord(track)) return { outcome: 'raced', track };
+    if (!stillGood()) return { outcome: 'interrupted' };
+
+    normalizationProgress.current = `${song.title || ''} · ${VOICE_LABEL[track.voice] || track.label || track.voice || ''}`;
+    renderNormalizationProgress();
+
+    const rec = await DB.fileGet(job.fileKey);
+    if (!rec) return { outcome: 'obsolete' }; // bytes gone — song/track deleted concurrently
+    if (!stillGood()) return { outcome: 'interrupted' };
+    const blob = recordBlob(rec, mimeForTrack(track));
+
+    // Cheap, already-known check first — no point probing metadata (which
+    // touches the file) for a source that's ineligible on size alone.
+    if (blob.size > NORMALIZATION_MAX_BYTES) {
+      const committed = await commitNormalizationResult(job, {
+        version: NORMALIZATION_ALGO_VERSION, status: 'skipped', reason: 'compressed',
+      });
+      return committed ? { outcome: 'skipped', reason: 'compressed', track: committed.track } : { outcome: 'obsolete' };
+    }
+
+    if (!normalizationMetadataUsable(track)) {
+      const metadata = await normalizationMetadataProbeImpl(blob).catch(() => null);
+      if (!stillGood()) return { outcome: 'interrupted' }; // don't persist a maybe-stale probe result
+      if (!metadata) {
+        const committed = await commitNormalizationResult(job, {
+          version: NORMALIZATION_ALGO_VERSION, status: 'skipped', reason: 'metadata',
+        });
+        return committed ? { outcome: 'skipped', reason: 'metadata', track: committed.track } : { outcome: 'obsolete' };
+      }
+      const committed = await commitTrackMutation(job.fileKey, (t) => {
+        if (t.sourceRevision !== job.sourceRevision) return false; // replaced while probing
+        if (normalizationMetadataUsable(t)) return false; // someone else already resolved it (race)
+        Object.assign(t, metadata);
+        return true;
+      });
+      if (!committed) return { outcome: 'obsolete' };
+      track = committed.track;
+    }
+
+    const eligible = normalizationEligibility({ durationSec: track.durationSec,
+      sampleRate: track.sampleRate, channelCount: track.channelCount, compressedBytes: blob.size });
+    if (!eligible.ok) {
+      const committed = await commitNormalizationResult(job, {
+        version: NORMALIZATION_ALGO_VERSION, status: 'skipped', reason: eligible.reason,
+      });
+      return committed ? { outcome: 'skipped', reason: eligible.reason, track: committed.track } : { outcome: 'obsolete' };
+    }
+
+    // 2/3) Before allocating full (compressed) file bytes / before decode —
+    // normalizationDecodeImpl() (decodeNormalizationBlob() in production)
+    // is handed the same predicate and rechecks it itself immediately after
+    // blob.arrayBuffer() resolves, with no await before starting
+    // decodeAudioData(): playback/recording/etc. can start during that
+    // (potentially slow) byte read, and decodeAudioData() isn't cancellable
+    // once it begins, so checking only here would be too late.
+    if (!stillGood()) return { outcome: 'interrupted' };
+    buffer = await normalizationDecodeImpl(blob, track.sampleRate, stillGood);
+
+    // 4) Immediately after decode.
+    if (!stillGood()) return { outcome: 'interrupted' };
+    const gainDb = await analyzeNormalizationBuffer(buffer, () => !stillGood());
+    if (gainDb == null) return { outcome: 'interrupted' }; // interrupted mid-scan
+
+    const committed = await commitNormalizationResult(job, {
+      version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb,
+    });
+    if (!committed) return { outcome: 'obsolete' };
+    return { outcome: 'analyzed', track: committed.track };
+  } catch (err) {
+    if (err?.normalizationInterrupted) return { outcome: 'interrupted' };
+    const committed = await commitNormalizationResult(job, {
+      version: NORMALIZATION_ALGO_VERSION, status: 'failed', reason: err?.name || 'decode',
+    }).catch(() => null);
+    dlog('audio:normalization', { name: err?.name || err?.message || 'error' });
+    return committed ? { outcome: 'failed', track: committed.track } : { outcome: 'obsolete' };
+  } finally {
+    buffer = null;
+  }
+}
+
+async function runNormalizationWorker() {
+  while (normalizationQueue.size && normalizationCanWork()) {
+    const [id, job] = normalizationQueue.entries().next().value;
+    normalizationQueue.delete(id);
+    normalizationInFlight.add(id);
+    try {
+      const result = await processNormalizationJob(job);
+      switch (result.outcome) {
+        case 'interrupted':
+          // Temporarily interrupted, not terminal — put it straight back so
+          // the next opportunity (any startNormalizationWorker() call, or
+          // the next reconciliation) picks it up again without needing a
+          // fresh DB scan to rediscover it.
+          normalizationQueue.set(id, job);
+          break;
+        case 'obsolete':
+          discardNormalizationJob();
+          break;
+        case 'skipped':
+          normalizationProgress.skipped++;
+          normalizationProgress.reason = t(`settings.normalization.reason.${result.reason}`);
+          syncPlayerSongTrack(result.track);
+          break;
+        case 'failed':
+          normalizationProgress.failed++;
+          normalizationProgress.reason = t('settings.normalization.reason.failed');
+          syncPlayerSongTrack(result.track);
+          break;
+        case 'analyzed':
+          normalizationProgress.analyzed++;
+          syncPlayerSongTrack(result.track);
+          maybeApplyLiveGain(result.track);
+          break;
+        case 'raced':
+          // Another attempt already committed a result for this track —
+          // still valid and reusable, so bring playerSong/live gain up to
+          // date with it instead of treating the race as a no-op.
+          syncPlayerSongTrack(result.track);
+          maybeApplyLiveGain(result.track);
+          break;
+      }
+    } finally {
+      normalizationInFlight.delete(id);
+      normalizationProgress.current = '';
+      renderNormalizationProgress();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+}
+
+/** Throws to signal a cooperative interruption rather than a real decode
+ *  failure — processNormalizationJob() must requeue this, never persist it
+ *  as 'failed'. */
+function normalizationInterruptedError() {
+  const err = new Error('normalization-interrupted');
+  err.normalizationInterrupted = true;
+  return err;
+}
+
+async function decodeNormalizationBlob(blob, sampleRate, stillGood = () => true) {
+  const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OfflineCtx) throw new Error('offline-context');
+  // Checked once more right before allocating the full compressed byte
+  // array — the caller's own check can be stale by the time we get here.
+  if (!stillGood()) throw normalizationInterruptedError();
+  const bytes = await blob.arrayBuffer();
+  // No await between this check and starting decode: blob.arrayBuffer()
+  // can take a while for a large file, and playback/recording/etc. could
+  // have started during that wait — decodeAudioData() is not cancellable
+  // once it begins, so this is the last point an interruption can still be
+  // honored instead of running an expensive decode alongside it.
+  if (!stillGood()) throw normalizationInterruptedError();
+  return new OfflineCtx(1, 1, sampleRate).decodeAudioData(bytes);
+}
+
+// Swappable indirection so tests can substitute a controllable deferred
+// promise instead of a real (non-cancellable) decodeAudioData() call —
+// see runNormalizationWorkerTests(). Production code always goes through
+// decodeNormalizationBlob().
+let normalizationDecodeImpl = decodeNormalizationBlob;
+// Same indirection for the metadata-acquisition step (header probe + the
+// temporary media-element duration probe) — lets tests exercise "replaced
+// while metadata acquisition is pending" with a controllable deferred
+// promise instead of racing a real media element.
+let normalizationMetadataProbeImpl = acquireNormalizationMetadata;
+
+async function analyzeNormalizationBuffer(buffer, interrupted = () => false) {
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+  const windowSamples = Math.max(1, Math.round(buffer.sampleRate * 0.4));
+  const windows = [];
+  let peak = 0;
+  let sliceStarted = performance.now();
+  for (let start = 0; start < buffer.length; start += windowSamples) {
+    let sum = 0, count = 0;
+    const end = Math.min(buffer.length, start + windowSamples);
+    for (const channel of channels) {
+      for (let i = start; i < end; i++) {
+        const sample = channel[i];
+        if (!Number.isFinite(sample)) return 0;
+        sum += sample * sample;
+        peak = Math.max(peak, Math.abs(sample));
+      }
+      count += end - start;
+    }
+    windows.push({ energy: sum, count });
+    if (performance.now() - sliceStarted >= 3) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (interrupted()) return null;
+      sliceStarted = performance.now();
+    }
+  }
+  if (!(peak > 0) || !windows.length) return 0;
+  const floor = 10 ** (-70 / 10);
+  const preliminary = windows.filter((w) => w.energy / w.count >= floor);
+  if (!preliminary.length) return 0;
+  const weighted = (items) => items.reduce((a, w) => a + w.energy, 0)
+    / items.reduce((a, w) => a + w.count, 0);
+  const preliminaryDb = 10 * Math.log10(weighted(preliminary));
+  const threshold = Math.max(floor, 10 ** ((preliminaryDb - 10) / 10));
+  const active = windows.filter((w) => w.energy / w.count >= threshold);
+  if (!active.length) return 0;
+  const activeRmsDb = 10 * Math.log10(weighted(active));
+  const peakDb = 20 * Math.log10(peak);
+  const gainDb = Math.min(NORMALIZATION_TARGET_DB - activeRmsDb, 12, -1 - peakDb);
+  return Number.isFinite(gainDb) ? gainDb : 0;
+}
+
 /** Lädt eine Spur in das Element. Läuft schon dieselbe, ist nichts zu tun. */
 async function audioLoadTrack(track) {
   if (audioLoadMutex) await audioLoadMutex.catch(() => {});
@@ -4527,8 +5193,37 @@ async function audioLoadTrack(track) {
 async function audioLoadTrackNow(track) {
   setLoading(track.fileKey, true);
   try {
-    const rec = await DB.fileGet(track.fileKey);
+    // Run alongside DB.fileGet() (not after it) — this never gates on or
+    // waits for an actual analysis, only a cheap read of whatever's already
+    // committed, so it adds no latency before playback can resume.
+    const [rec, currentRecord] = await Promise.all([
+      DB.fileGet(track.fileKey),
+      fetchCurrentTrackRecord(track.fileKey),
+    ]);
     if (!rec) throw new Error('Die Aufnahme fehlt in der Datenbank.');
+    // `track` is playerSong's retained object (see trackByVoiceKey()) and an
+    // atomic commit never mutates it directly — without this, switching
+    // A → B → A would read normalizationCacheValue() off a stale object
+    // that never learned about a normalization result committed while A
+    // wasn't loaded, and apply unity gain instead of the saved one.
+    //
+    // The database record for this exact fileKey is authoritative for these
+    // fields, not just the cached normalization: adopting sourceRevision
+    // wholesale (not only when it already happens to match) also covers a
+    // retained object whose *own* sourceRevision itself went stale — e.g. a
+    // reload/rename path elsewhere assigned a new revision to this fileKey
+    // without updating this particular in-memory reference — so a gain that
+    // was valid for the revision this object still remembers can never be
+    // applied to what is actually about to play. durationSec/sampleRate/
+    // channelCount are corrected the same way; rememberDuration() below
+    // still re-derives durationSec from the real decoded duration.
+    if (currentRecord) {
+      track.sourceRevision = currentRecord.sourceRevision;
+      track.durationSec = currentRecord.durationSec;
+      if (currentRecord.sampleRate != null) track.sampleRate = currentRecord.sampleRate;
+      if (currentRecord.channelCount != null) track.channelCount = currentRecord.channelCount;
+      track.normalization = currentRecord.normalization;
+    }
     const blob = recordBlob(rec, mimeForTrack(track));
     if (!blob.size) throw new Error('Die gespeicherte Aufnahme ist leer.');
 
@@ -4562,6 +5257,10 @@ async function audioLoadTrackNow(track) {
     if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
     Audio.blobUrl = url;
     Audio.currentKey = track.fileKey;
+    Audio.currentRevision = track.sourceRevision;
+    Audio.currentSourceKind = 'track';
+    Audio.normalizationDb = normalizationCacheValue(track) ?? 0;
+    applyNormalizationGain();
 
     // Tempo und Tonhöhenerhalt gelten dem Element, nicht der Quelle — nach
     // Spec bleiben sie über einen Ladevorgang hinweg erhalten. Sicherheits-
@@ -4576,7 +5275,9 @@ async function audioLoadTrackNow(track) {
     // Die Dauer wird bei jedem Laden aktualisiert. Nur so lässt sich später
     // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
     // Loops verschoben sein könnten.
-    rememberDuration(track, el.duration);
+    const sourceMetadata = await inspectNormalizationMetadata(blob).catch(() => null);
+    await rememberDuration(track, el.duration, sourceMetadata);
+    scheduleTrackNormalization(track.fileKey, track);
   } finally {
     setLoading(track.fileKey, false);
   }
@@ -4589,17 +5290,35 @@ function setLoading(key, active) {
   Audio.onLoadingChange?.();
 }
 
-async function rememberDuration(track, duration) {
+async function rememberDuration(track, duration, sourceMetadata = null) {
   if (!Audio.song || !Number.isFinite(duration)) return;
-  if (typeof track.durationSec === 'number' && Math.abs(track.durationSec - duration) < 0.05) return;
   track.durationSec = duration;
+  if (sourceMetadata) Object.assign(track, sourceMetadata);
+  const revision = track.sourceRevision;
   try {
-    const song = await DB.metaGet(Audio.song.key);
-    if (!song) return;
-    const stored = song.tracks.find((t) => t.fileKey === track.fileKey);
-    if (!stored) return;
-    stored.durationSec = duration;
-    await DB.metaPut(song);
+    // Atomic per-track update, re-located by fileKey right before writing
+    // (see commitTrackMutation) — a rename or a concurrent edit elsewhere
+    // must survive this, not get clobbered by a stale whole-song write.
+    const committed = await commitTrackMutation(track.fileKey, (t) => {
+      if (revision != null && t.sourceRevision !== revision) return false; // replaced meanwhile
+      let changed = false;
+      if (t.durationSec !== duration) { t.durationSec = duration; changed = true; }
+      if (sourceMetadata) {
+        for (const key of Object.keys(sourceMetadata)) {
+          if (t[key] !== sourceMetadata[key]) { t[key] = sourceMetadata[key]; changed = true; }
+        }
+      }
+      // Real metadata just arrived from actual playback — a previous
+      // "could not acquire metadata" skip for this same revision no longer
+      // reflects reality; clearing it lets reconciliation reconsider the
+      // track automatically, without the user retrying anything.
+      if (t.normalization?.status === 'skipped' && t.normalization.reason === 'metadata'
+          && t.normalization.sourceRevision === t.sourceRevision) {
+        delete t.normalization; changed = true;
+      }
+      return changed;
+    });
+    if (committed) scheduleTrackNormalization(committed.track.fileKey, committed.track);
   } catch (err) {
     console.warn('[player] Dauer konnte nicht gemerkt werden', err);
   }
@@ -4673,6 +5392,7 @@ function audioPause() {
   dlog('audio:pause');
   updateWakeLock();
   updateHdLoadVisibility();
+  startNormalizationWorker();
 }
 
 function audioSeek(seconds) {
@@ -4865,7 +5585,7 @@ async function hdApplyTransition(reason, opts = {}) {
   // der sichere Zustand schon — im Standard-Modus bei jedem Sprung der Fall —,
   // bleiben Element und Verdrahtung unberührt und der Sprung damit knackfrei.
   hdSetElementPlayback(el, Audio.rate, true);
-  hdWireSource(src, Audio.channelIn);
+  hdWireSource(src, Audio.playbackIn);
   if (Audio.hdNode) Audio.hdNode.disconnect();
 
   // Schritt 3: Knoten nur sicherstellen, wenn er wirklich gebraucht wird
@@ -4968,8 +5688,8 @@ async function hdApplyTransition(reason, opts = {}) {
   if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
 
   // Schritt 7: erst jetzt hörbar verbinden.
-  hdWireSource(src, useHd ? node : Audio.channelIn);
-  if (useHd && Audio.channelIn) node.connect(Audio.channelIn);
+  hdWireSource(src, useHd ? node : Audio.playbackIn);
+  if (useHd && Audio.playbackIn) node.connect(Audio.playbackIn);
   else node.disconnect();
   hdSetElementPlayback(el, Audio.rate, !useHd);
   hdWasEngaged = useHd;
@@ -5177,12 +5897,15 @@ document.addEventListener('visibilitychange', () => {
     elPaused: Audio.el?.paused, ctxState: Audio.ctx?.state,
   });
   if (document.visibilityState !== 'visible') {
+    normalizationGeneration++; // cooperative PCM scan interruption; decode itself settles under the worker lock
     audioHiddenSince = performance.now();
     // Frischer Abschnitt: was im vorigen Hintergrund gemessen wurde, ist
     // beim Zurückkehren längst gemeldet und ausgewertet worden.
     hdResetBackgroundHealth();
     return;
   }
+  startNormalizationWorker();
+  if (settings.normalizationEnabled) scheduleNormalizationReconciliation();
   const backgroundMs = audioHiddenSince ? performance.now() - audioHiddenSince : 0;
   audioHiddenSince = null;
   updateWakeLock();
@@ -5241,6 +5964,8 @@ async function audioReset() {
   Audio.el.removeAttribute('src');
   Audio.el.load();
   Audio.currentKey = null;
+  Audio.currentRevision = null;
+  Audio.currentSourceKind = null;
   Audio.loading.clear();
   Audio.onLoadingChange?.();
   Audio.song = null;
@@ -6151,6 +6876,7 @@ async function runImport() {
     banner('Diese Auswahl enthält ungewöhnlich viele Songs oder Dateien — das sieht nicht nach einem Chorarchiv aus.', { kind: 'error' });
     return;
   }
+  normalizationImportActive = true;
 
   sheetImport.disabled = true;
   sheetProgress.hidden = false;
@@ -6272,6 +6998,7 @@ async function runImport() {
               fileKey,
               size: blob.size,
               durationSec: null,
+              sourceRevision: newSourceRevision(),
             };
 
             // Gegen die laufend mitgeführte Arbeitskopie prüfen, nicht gegen
@@ -6404,6 +7131,8 @@ async function runImport() {
     try { await flushImportBatch(batch); } catch (e) { console.warn('[import] Rest', e); }
   } finally {
     importLock?.release().catch(() => {});
+    normalizationImportActive = false;
+    startNormalizationWorker();
   }
 
   report.unchanged = selectionStats().unchanged;
@@ -6470,6 +7199,8 @@ async function runImport() {
     quotaHit: report.quotaHit, doneFiles: done, doneBytes,
   });
   showView('songs');
+  // Reconcile committed database state only; import success never waits for analysis.
+  setTimeout(() => scheduleNormalizationReconciliation(), 0);
 }
 
 /**
@@ -9437,6 +10168,7 @@ function teardownRecording() {
   setRecUI(false);
   updateRecInputWarning(null);
   updateWakeLock();
+  startNormalizationWorker();
 }
 
 /** Verwirft eine laufende Aufnahme sofort, z.B. beim Verlassen des Songs. */
@@ -9868,6 +10600,10 @@ async function previewRecordingBlob(blob, tag, range) {
   const returnFootUnavailable = prior ? prior.returnFootUnavailable : $('#player-foot').classList.contains('player-foot--unavailable');
 
   if (Audio.playing) audioPause();
+  // A REC is never a practice track. Reset before assigning/loading its URL,
+  // so no cached gain can leak into the first audible preview frame.
+  Audio.normalizationDb = 0;
+  applyNormalizationGain();
 
   const el = Audio.el;
   const url = URL.createObjectURL(blob);
@@ -9892,6 +10628,8 @@ async function previewRecordingBlob(blob, tag, range) {
   if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
   Audio.blobUrl = url;
   Audio.currentKey = 'preview'; // keine echte Spur — audioLoadTrack() vergleicht nie darauf
+  Audio.currentRevision = null;
+  Audio.currentSourceKind = 'preview'; // niemals eine importierte Übungsspur — kein Normalisierungs-Gain
   Audio.duration = el.duration || 0;
   audioSetLoop(null);
   // A/B-Marken gehören zur Song-Zeitleiste — bei der (meist viel kürzeren)
@@ -9938,6 +10676,8 @@ async function endRecordingPreview() {
     Audio.el.removeAttribute('src');
     Audio.el.load();
     Audio.currentKey = null;
+    Audio.currentRevision = null;
+    Audio.currentSourceKind = null;
     Audio.duration = 0;
     audioSeek(0);
   }
@@ -10066,6 +10806,7 @@ function stopBacking() {
   }
   if (Audio.bgUrl) { URL.revokeObjectURL(Audio.bgUrl); Audio.bgUrl = null; }
   Audio.bgVoice = null;
+  startNormalizationWorker();
 }
 
 /**
@@ -13857,6 +14598,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           song.tracks.push({
             voice, label: VOICE_LABEL[voice] || voice,
             fileName, fileKey, size: blob.size, durationSec: null,
+            sourceRevision: newSourceRevision(),
           });
           songGotContent = true;
           batch.songs.add(song);
@@ -15277,6 +16019,87 @@ function testZipFile(bytes) {
 async function runAsyncSelfTests() {
   const failed = [];
 
+  // RMS normalisation: full-band, all-channel sample weighting and absolute
+  // sample peak protection. Fake AudioBuffers keep this deterministic.
+  const fakeBuffer = (arrays, sampleRate = 10) => ({ numberOfChannels: arrays.length,
+    sampleRate, length: arrays[0].length, getChannelData: (i) => arrays[i] });
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  {
+    const silence = await analyzeNormalizationBuffer(fakeBuffer([new Float32Array(10)]));
+    if (silence !== 0) failed.push('Normalisierung: Stille müsste Unity ergeben');
+    const invalid = new Float32Array(10); invalid[3] = NaN;
+    if (await analyzeNormalizationBuffer(fakeBuffer([invalid])) !== 0) failed.push('Normalisierung: NaN müsste Unity ergeben');
+
+    const quiet = new Float32Array(100).fill(0.04); quiet[50] = 0.98;
+    const transientGainDb = await analyzeNormalizationBuffer(fakeBuffer([quiet], 100));
+    if (transientGainDb > (-1 - 20 * Math.log10(0.98)) + 1e-6
+        || 0.98 * (10 ** (transientGainDb / 20)) > 10 ** (-1 / 20) + 1e-6) {
+      failed.push(`Normalisierung: lauter Transient verletzt Sample-Peak-Cap (${transientGainDb} dB)`);
+    }
+
+    const boost = await analyzeNormalizationBuffer(fakeBuffer([new Float32Array(40).fill(0.001)]));
+    if (boost > 12 + 1e-9) failed.push('Normalisierung: Boost-Cap über +12 dB');
+    const stereo = [new Float32Array(40).fill(0.1), new Float32Array(40).fill(0.02)];
+    const stereoDb = await analyzeNormalizationBuffer(fakeBuffer(stereo));
+    if (!Number.isFinite(stereoDb)) failed.push('Normalisierung: Stereoanalyse liefert keinen gemeinsamen Gain');
+
+    const weighted = [new Float32Array(5).fill(0.1)]; // partial 100-ms tail must count by samples
+    const weightedDb = await analyzeNormalizationBuffer(fakeBuffer(weighted, 10));
+    if (!near(weightedDb, 0, 1e-4)) failed.push(`Normalisierung: gewichtete RMS unerwartet (${weightedDb})`);
+  }
+  {
+    // Duration boundary: full-band *mono* metadata that fits the PCM
+    // budget on its own (600 s @ 16 kHz mono ≈ 36.6 MiB) — a 600 s @ 48 kHz
+    // *stereo* source (≈ 219.7 MiB PCM) would fail on the PCM limit first
+    // and can't isolate the duration boundary. This fixture stands for an
+    // actual 16 kHz mono source; production analysis is never downsampled.
+    const monoBase = { sampleRate: 16000, channelCount: 1, compressedBytes: 1 };
+    const atDuration = normalizationEligibility({ ...monoBase, durationSec: NORMALIZATION_MAX_SECONDS });
+    if (!atDuration.ok) failed.push(`Normalisierung: ${NORMALIZATION_MAX_SECONDS} s bei 16 kHz mono müssten zulässig sein (${atDuration.reason})`);
+    if (normalizationEligibility({ ...monoBase, durationSec: NORMALIZATION_MAX_SECONDS + 0.001 }).reason !== 'duration') {
+      failed.push('Normalisierung: über 600 s nicht abgelehnt');
+    }
+    // Same 600 s, but 48 kHz stereo: legitimate duration, but the PCM
+    // estimate alone exceeds the budget — the two limits are independent.
+    const stereoAtDuration = normalizationEligibility({ durationSec: NORMALIZATION_MAX_SECONDS,
+      sampleRate: 48000, channelCount: 2, compressedBytes: 1 });
+    if (stereoAtDuration.reason !== 'pcm') {
+      failed.push(`Normalisierung: 600 s bei 48 kHz Stereo müssten am PCM-Budget scheitern, war ${stereoAtDuration.ok ? 'ok' : stereoAtDuration.reason}`);
+    }
+
+    // Compressed-size boundary, isolated from duration/PCM (tiny payload otherwise).
+    const tinyPcm = { durationSec: 1, sampleRate: 8000, channelCount: 1 };
+    if (!normalizationEligibility({ ...tinyPcm, compressedBytes: NORMALIZATION_MAX_BYTES }).ok) {
+      failed.push('Normalisierung: exakt an der Kompressionsgrenze müsste zulässig sein');
+    }
+    if (normalizationEligibility({ ...tinyPcm, compressedBytes: NORMALIZATION_MAX_BYTES + 1 }).reason !== 'compressed') {
+      failed.push('Normalisierung: einen Byte über der Kompressionsgrenze nicht abgelehnt');
+    }
+
+    // PCM-size boundary, isolated from duration (small enough duration/rate
+    // combination that the exact limit lands well under 600 s).
+    const pcmSampleRate = 192000, pcmChannels = 1;
+    const pcmLimitDuration = NORMALIZATION_MAX_PCM_BYTES / (pcmSampleRate * pcmChannels * 4);
+    const atPcm = normalizationEligibility({ durationSec: pcmLimitDuration, sampleRate: pcmSampleRate,
+      channelCount: pcmChannels, compressedBytes: 1 });
+    if (!atPcm.ok) failed.push(`Normalisierung: exakt am PCM-Budget müsste zulässig sein (${atPcm.reason})`);
+    const overPcm = normalizationEligibility({ durationSec: pcmLimitDuration + 1 / pcmSampleRate,
+      sampleRate: pcmSampleRate, channelCount: pcmChannels, compressedBytes: 1 });
+    if (overPcm.reason !== 'pcm') failed.push('Normalisierung: knapp über dem PCM-Budget nicht abgelehnt');
+
+    // Invalid/missing metadata is rejected before any full-file allocation
+    // would even be considered (eligibility runs first — see processNormalizationJob()).
+    if (normalizationEligibility({ durationSec: NaN, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: ungültige Metadaten nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: null, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: fehlende Dauer nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 10, sampleRate: null, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: fehlende Samplerate nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 10, sampleRate: 48000, channelCount: 1.5, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: nicht-ganzzahlige Kanalzahl nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 0, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: Dauer 0 wird als gültig statt fehlend behandelt');
+
+    const a = { fileKey: 'same', sourceRevision: 'a', normalization: { version: NORMALIZATION_ALGO_VERSION, fileKey: 'same', sourceRevision: 'a', gainDb: 1 } };
+    const b = { ...a, sourceRevision: 'b' };
+    if (normalizationCacheValue(a) !== 1 || normalizationCacheValue(b) !== null) failed.push('Normalisierung: Quellenrevision invalidiert Cache nicht');
+  }
+
   let rejected = false;
   try {
     await noteWrite(() => Promise.reject(new Error('Testfehler')));
@@ -15339,16 +16162,19 @@ async function runAsyncSelfTests() {
   // laufenden Quelle ist als Knacken hörbar (siehe hdWireSource).
   {
     const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
-    const savedIn = Audio.channelIn, savedRate = Audio.rate, savedMode = settings.slowMode;
+    // Foreground standard/HD/bypass routing wires through Audio.playbackIn
+    // (the normalization gain ahead of the channel matrix), not
+    // Audio.channelIn directly — see hdApplyTransition()/hdWireSource().
+    const savedIn = Audio.playbackIn, savedRate = Audio.rate, savedMode = settings.slowMode;
     const savedWiredSrc = hdWiredSrc, savedWiredTo = hdWiredTo;
     try {
       let connects = 0, disconnects = 0;
-      const fakeEl = { playbackRate: 0.8, preservesPitch: true, webkitPreservesPitch: true, mozPreservesPitch: true };
       const fakeIn = {};
       const fakeSrc = { connect: () => { connects++; }, disconnect: () => { disconnects++; } };
+      const fakeEl = { playbackRate: 0.8, preservesPitch: true, webkitPreservesPitch: true, mozPreservesPitch: true };
       Audio.el = fakeEl;
       Audio.elSource = fakeSrc;
-      Audio.channelIn = fakeIn;
+      Audio.playbackIn = fakeIn;
       Audio.hdNode = null;
       Audio.rate = 0.8;
       settings.slowMode = 'standard';
@@ -15370,7 +16196,7 @@ async function runAsyncSelfTests() {
       Audio.el = savedEl;
       Audio.elSource = savedSrc;
       Audio.hdNode = savedNode;
-      Audio.channelIn = savedIn;
+      Audio.playbackIn = savedIn;
       Audio.rate = savedRate;
       settings.slowMode = savedMode;
       hdWiredSrc = savedWiredSrc;
@@ -15920,15 +16746,18 @@ async function runAudioPathCharacterizationTests() {
   //    Falle 1 in ARCHITEKTUR-PLAN.md beschreibt.
   {
     const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
-    const savedChannelIn = Audio.channelIn, savedRate = Audio.rate;
+    // Foreground routing wires through Audio.playbackIn now, not
+    // Audio.channelIn directly (Audio.channelIn stays the backing track's
+    // fixed matrix input — see ensureBackingAudio()).
+    const savedPlaybackIn = Audio.playbackIn, savedRate = Audio.rate;
     const savedMode = settings.slowMode, savedEngaged = hdWasEngaged;
     try {
       const el = testMakeFakeElement();
       const src = testMakeFakeSource();
-      const channelIn = {};
+      const playbackIn = {};
       const deferred = testMakeDeferred();
       const node = testMakeFakeHdNode({ schedule: () => deferred.promise });
-      Audio.el = el; Audio.elSource = src; Audio.channelIn = channelIn;
+      Audio.el = el; Audio.elSource = src; Audio.playbackIn = playbackIn;
       Audio.hdNode = node; Audio.rate = 0.6;
       settings.slowMode = 'hd';
       // Schon eingehängt: becomingEngaged bleibt falsch, hdReset() wird
@@ -15938,8 +16767,8 @@ async function runAudioPathCharacterizationTests() {
       if (el.playbackRate !== 0.6) {
         failed.push(`native Rückfall: playbackRate nicht sofort gesetzt, war ${el.playbackRate}`);
       }
-      if (src.connectedTo !== channelIn) {
-        failed.push('native Rückfall: Quelle hängt nicht sofort direkt an der Kanal-Matrix');
+      if (src.connectedTo !== playbackIn) {
+        failed.push('native Rückfall: Quelle hängt nicht sofort direkt am Normalisierungs-Gain');
       }
       if (node.calls.disconnect !== 1) {
         failed.push('native Rückfall: der alte Zeitdehner-Knoten wurde nicht sofort abgeklemmt');
@@ -15948,7 +16777,7 @@ async function runAudioPathCharacterizationTests() {
       await p;
     } finally {
       Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedNode;
-      Audio.channelIn = savedChannelIn; Audio.rate = savedRate;
+      Audio.playbackIn = savedPlaybackIn; Audio.rate = savedRate;
       settings.slowMode = savedMode; hdWasEngaged = savedEngaged;
     }
   }
@@ -15958,7 +16787,7 @@ async function runAudioPathCharacterizationTests() {
   //    statt nur den einen im bestehenden Selbsttest.
   {
     const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
-    const savedChannelIn = Audio.channelIn, savedRate = Audio.rate;
+    const savedPlaybackIn = Audio.playbackIn, savedRate = Audio.rate;
     const savedMode = settings.slowMode, savedEngaged = hdWasEngaged;
     try {
       const scenarios = [
@@ -15971,7 +16800,7 @@ async function runAudioPathCharacterizationTests() {
       ];
       for (const s of scenarios) {
         const el = testMakeFakeElement();
-        Audio.el = el; Audio.elSource = testMakeFakeSource(); Audio.channelIn = {};
+        Audio.el = el; Audio.elSource = testMakeFakeSource(); Audio.playbackIn = {};
         Audio.hdNode = s.node; Audio.rate = s.rate; settings.slowMode = s.mode;
         hdWasEngaged = s.engaged;
         await hdApplyTransition(`char-early-return-${s.label}`);
@@ -15981,7 +16810,7 @@ async function runAudioPathCharacterizationTests() {
       }
     } finally {
       Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedNode;
-      Audio.channelIn = savedChannelIn; Audio.rate = savedRate;
+      Audio.playbackIn = savedPlaybackIn; Audio.rate = savedRate;
       settings.slowMode = savedMode; hdWasEngaged = savedEngaged;
     }
   }
@@ -15993,17 +16822,17 @@ async function runAudioPathCharacterizationTests() {
   //    hdApplyTransition()).
   {
     const savedEl = Audio.el, savedSrc = Audio.elSource, savedNode = Audio.hdNode;
-    const savedChannelIn = Audio.channelIn, savedRate = Audio.rate;
+    const savedPlaybackIn = Audio.playbackIn, savedRate = Audio.rate;
     const savedMode = settings.slowMode, savedEngaged = hdWasEngaged;
     try {
       const el = testMakeFakeElement();
       const src = testMakeFakeSource();
-      const channelIn = {};
+      const playbackIn = {};
       const scheduleDeferreds = [];
       const node = testMakeFakeHdNode({
         schedule: () => { const d = testMakeDeferred(); scheduleDeferreds.push(d); return d.promise; },
       });
-      Audio.el = el; Audio.elSource = src; Audio.channelIn = channelIn;
+      Audio.el = el; Audio.elSource = src; Audio.playbackIn = playbackIn;
       Audio.hdNode = node; Audio.rate = 0.6; settings.slowMode = 'hd';
       // Schon eingehängt: kein hdReset()-Abwarten, node.schedule() ist damit
       // der einzige await-Punkt beider Aufrufe.
@@ -16027,7 +16856,7 @@ async function runAudioPathCharacterizationTests() {
       }
     } finally {
       Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedNode;
-      Audio.channelIn = savedChannelIn; Audio.rate = savedRate;
+      Audio.playbackIn = savedPlaybackIn; Audio.rate = savedRate;
       settings.slowMode = savedMode; hdWasEngaged = savedEngaged;
     }
   }
@@ -16157,6 +16986,790 @@ async function runAudioPathCharacterizationTests() {
 }
 
 /* ==========================================================================
+   AP-N — Worker-/Datenbanktests für die Lautstärkenormalisierung
+
+   Läuft gegen die echte IndexedDB mit eigens angelegten, eindeutig
+   präfixierten Song-/Datei-Datensätzen (nie gegen echte Nutzerdaten) und
+   ruft processNormalizationJob()/commitTrackMutation()/commitNormalizationResult()
+   direkt auf — denselben Code, den runNormalizationWorker() im Betrieb
+   nutzt, keinen separaten Demo-Scheduler. decodeAudioData() ist nicht
+   abbrechbar, deshalb hängt jeder Interrupt-Test an einem kontrollierbaren
+   Deferred anstelle einer echten Dekodierung (normalizationDecodeImpl /
+   normalizationMetadataProbeImpl — austauschbare Indirektionen genau dafür).
+   ========================================================================== */
+
+function testMakeNormalizationBuffer(seconds, sampleRate, channelCount = 1, amplitude = 0.1) {
+  const length = Math.max(1, Math.round(seconds * sampleRate));
+  const channels = Array.from({ length: channelCount }, () => new Float32Array(length).fill(amplitude));
+  return { numberOfChannels: channelCount, sampleRate, length, getChannelData: (i) => channels[i] };
+}
+
+/** Minimal, aber gültiges Mono/Stereo-PCM16-WAV — echte Header, damit sowohl
+ *  inspectNormalizationMetadata() (Byte-Parser) als auch probeMediaDuration()
+ *  (echtes <audio>-Element) an derselben Datei arbeiten wie in Produktion. */
+function testMakeWavBlob({ seconds = 0.2, sampleRate = 8000, channels = 1, amplitude = 0.2 } = {}) {
+  const frameCount = Math.max(1, Math.round(seconds * sampleRate));
+  const blockAlign = channels * 2;
+  const dataSize = frameCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (let i = 0; i < frameCount; i++) {
+    const sample = Math.round(Math.sin(i / 20) * amplitude * 32767);
+    for (let c = 0; c < channels; c++) { view.setInt16(offset, sample, true); offset += 2; }
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+/** Kontrollierbares Deferred, als drop-in für normalizationDecodeImpl bzw.
+ *  normalizationMetadataProbeImpl — zählt Aufrufe, löst nie von selbst auf. */
+function testMakeDeferredImpl() {
+  const calls = [];
+  let settle;
+  const promise = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+  const impl = async (...args) => { calls.push(args); return promise; };
+  return { impl, calls, resolve: (v) => settle.resolve(v), reject: (e) => settle.reject(e) };
+}
+
+/** Wartet, bis ein testMakeDeferredImpl() wirklich aufgerufen wurde — die
+ *  vorausgehenden Schritte in processNormalizationJob() (DB-Lesevorgänge)
+ *  sind echte asynchrone IndexedDB-Requests, kein einzelner Microtask-Tick
+ *  (ein bloßes `await Promise.resolve()` reicht hier NICHT). Ohne dieses
+ *  Warten könnte die im Test simulierte Löschung/Ersetzung/Bedingungsänderung
+ *  VOR dem eigentlichen Dekodieraufruf laufen statt währenddessen — der
+ *  Testfall würde dann etwas anderes prüfen, als er behauptet. */
+async function testWaitForCall(deferred, timeoutMs = 2000) {
+  const start = performance.now();
+  while (deferred.calls.length === 0) {
+    if (performance.now() - start > timeoutMs) throw new Error('testWaitForCall: Zeitüberschreitung');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/** Legt Song+Spur+Dateibytes unter eindeutigen, mit __selftest_norm__
+ *  präfixierten Schlüsseln an — niemals unter einem Schlüssel, den echte
+ *  Songs verwenden könnten (siehe hashId()). Liefert eine cleanup(), die in
+ *  jedem Testfall garantiert (finally) läuft. */
+async function testSeedNormalizationTrack({ durationSec = null, sampleRate, channelCount,
+  blob, sourceRevision, voice = 'sopran', extra = {} } = {}) {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const songKey = `song:__selftest_norm_${suffix}__`;
+  const fileKey = `f_selftest_norm_${suffix}`;
+  const track = {
+    voice, label: voice, fileName: 'selftest.wav', fileKey, size: blob.size,
+    durationSec, sourceRevision: sourceRevision ?? newSourceRevision(), ...extra,
+  };
+  if (sampleRate != null) track.sampleRate = sampleRate;
+  if (channelCount != null) track.channelCount = channelCount;
+  const song = {
+    key: songKey, type: 'song', id: `selftest_norm_${suffix}`,
+    title: `__Selftest Normalization ${suffix}__`, normTitle: `selftest normalization ${suffix}`,
+    tracks: [track],
+  };
+  await DB.metaPut(song);
+  await DB.filePut(await fileRecord(fileKey, blob, 'selftest.wav'));
+  return {
+    song, track, fileKey, songKey,
+    async cleanup() {
+      await DB.metaDelete(songKey).catch(() => {});
+      await DB.fileDelete(fileKey).catch(() => {});
+    },
+  };
+}
+
+/** Setzt die für normalizationCanWork() relevanten Zustände auf eine
+ *  garantiert arbeitsfähige Baseline und stellt beim Verlassen alles wieder
+ *  her — inklusive der austauschbaren decode-/metadata-Indirektionen und
+ *  aller geteilten Warteschlangen-Singletons, damit ein Testfall keinen
+ *  anderen (oder die echte Wiedergabe) kontaminieren kann. */
+async function testWithNormalizationEnv(fn) {
+  const saved = {
+    normalizationEnabled: settings.normalizationEnabled,
+    playing: Audio.playing, preview: audioPreview, bgVoice: Audio.bgVoice,
+    recStarting, recMediaRecorder, importActive: normalizationImportActive,
+    generation: normalizationGeneration, queue: new Map(normalizationQueue),
+    inFlight: new Set(normalizationInFlight), progress: { ...normalizationProgress },
+    decodeImpl: normalizationDecodeImpl, metadataProbeImpl: normalizationMetadataProbeImpl,
+    currentKey: Audio.currentKey, currentRevision: Audio.currentRevision,
+    currentSourceKind: Audio.currentSourceKind, normalizationDb: Audio.normalizationDb,
+    song: Audio.song, playerSong, playerVoice,
+  };
+  settings.normalizationEnabled = true;
+  Audio.playing = false; audioPreview = null; Audio.bgVoice = null;
+  recStarting = false; recMediaRecorder = null; normalizationImportActive = false;
+  normalizationQueue.clear(); normalizationInFlight.clear();
+  Object.assign(normalizationProgress, { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' });
+  try {
+    return await fn();
+  } finally {
+    settings.normalizationEnabled = saved.normalizationEnabled;
+    Audio.playing = saved.playing; audioPreview = saved.preview; Audio.bgVoice = saved.bgVoice;
+    recStarting = saved.recStarting; recMediaRecorder = saved.recMediaRecorder;
+    normalizationImportActive = saved.importActive;
+    normalizationGeneration = saved.generation;
+    normalizationQueue.clear(); for (const [k, v] of saved.queue) normalizationQueue.set(k, v);
+    normalizationInFlight.clear(); for (const id of saved.inFlight) normalizationInFlight.add(id);
+    Object.assign(normalizationProgress, saved.progress);
+    normalizationDecodeImpl = saved.decodeImpl; normalizationMetadataProbeImpl = saved.metadataProbeImpl;
+    Audio.currentKey = saved.currentKey; Audio.currentRevision = saved.currentRevision;
+    Audio.currentSourceKind = saved.currentSourceKind; Audio.normalizationDb = saved.normalizationDb;
+    Audio.song = saved.song; playerSong = saved.playerSong; playerVoice = saved.playerVoice;
+  }
+}
+
+/** Minimal <audio>-Doppelgänger für audioLoadTrackNow() — genug Oberfläche
+ *  (load()/addEventListener()/playbackRate/…) um den echten Ladepfad ohne
+ *  ein reales Audio-Element/AudioContext zu durchlaufen, im selben Geist wie
+ *  testMakeFakeElement()/testMakeFakeSource() für die HD-Tests oben. load()
+ *  feuert 'loadedmetadata' als Microtask, wie ein echtes Element es
+ *  asynchron täte. */
+function testMakeFakeMediaElement() {
+  const listeners = {};
+  const el = {
+    playbackRate: 1, preservesPitch: false, webkitPreservesPitch: false, mozPreservesPitch: false,
+    src: '', duration: 1, error: null,
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      listeners[type] = listeners[type].filter((f) => f !== fn);
+    },
+    load() {
+      Promise.resolve().then(() => {
+        for (const fn of (listeners.loadedmetadata || []).slice()) fn();
+      });
+    },
+    pause() {},
+    removeAttribute() {},
+  };
+  return el;
+}
+
+/**
+ * Legt einen Song mit mehreren Spuren an (eine je tracksSpec-Eintrag) — für
+ * Tests, die zwischen Stimmen hin- und herwechseln, ohne den Song neu zu
+ * öffnen (siehe trackByVoiceKey()). Jeder Eintrag: { voice, blob,
+ * durationSec?, sampleRate?, channelCount?, sourceRevision? }.
+ */
+async function testSeedNormalizationSong(tracksSpec) {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const songKey = `song:__selftest_norm_multi_${suffix}__`;
+  const tracks = [];
+  const fileKeys = [];
+  for (const spec of tracksSpec) {
+    const fileKey = `f_selftest_norm_${suffix}_${spec.voice}`;
+    fileKeys.push(fileKey);
+    tracks.push({
+      voice: spec.voice, label: spec.voice, fileName: 'selftest.wav', fileKey, size: spec.blob.size,
+      durationSec: spec.durationSec ?? 1, sampleRate: spec.sampleRate ?? 8000, channelCount: spec.channelCount ?? 1,
+      sourceRevision: spec.sourceRevision ?? newSourceRevision(),
+    });
+    await DB.filePut(await fileRecord(fileKey, spec.blob, 'selftest.wav'));
+  }
+  const song = {
+    key: songKey, type: 'song', id: `selftest_norm_multi_${suffix}`,
+    title: `__Selftest Normalization Multi ${suffix}__`, normTitle: `selftest normalization multi ${suffix}`,
+    tracks,
+  };
+  await DB.metaPut(song);
+  return {
+    song, songKey, fileKeys,
+    async cleanup() {
+      await DB.metaDelete(songKey).catch(() => {});
+      await DB.fileDelete(fileKeys).catch(() => {});
+    },
+  };
+}
+
+/** Setzt playerSong (und ein passendes Fake-Audio-Element/-Quelle, für
+ *  hdApplyTransition() innerhalb von audioLoadTrackNow()) für die Dauer von
+ *  fn() und stellt beim Verlassen alles wieder her. Audio.song bleibt
+ *  bewusst null, damit rememberDuration() innerhalb von audioLoadTrackNow()
+ *  ein No-Op bleibt (dessen DB-Verhalten ist bereits in Abschnitt 3
+ *  geprüft) — dieser Abschnitt gilt ausschließlich dem Gain-Cache. */
+async function testWithPlayerSong(song, fn) {
+  const savedSong = playerSong, savedVoice = playerVoice;
+  const savedEl = Audio.el, savedSrc = Audio.elSource, savedHdNode = Audio.hdNode;
+  const savedAudioSong = Audio.song;
+  playerSong = song;
+  Audio.el = testMakeFakeMediaElement();
+  Audio.elSource = testMakeFakeSource();
+  Audio.hdNode = null;
+  Audio.song = null;
+  try {
+    return await fn();
+  } finally {
+    playerSong = savedSong; playerVoice = savedVoice;
+    Audio.el = savedEl; Audio.elSource = savedSrc; Audio.hdNode = savedHdNode;
+    Audio.song = savedAudioSong;
+  }
+}
+
+/**
+ * Ersetzt blob.arrayBuffer() (nur auf dieser Instanz) durch ein
+ * kontrollierbares Deferred, das — sobald aufgelöst — die echten Bytes
+ * liefert. So läuft decodeNormalizationBlob() unverändert (dieselbe Funktion
+ * wie in Produktion — ARGUMENTS in Aufgabe 2 verlangt genau das, ein
+ * Ersetzen des ganzen Hilfsmittels würde den Fehler verdecken), aber der
+ * Zeitpunkt, zu dem der Byte-Read "fertig" ist, liegt beim Test statt beim
+ * echten Blob. */
+function testDeferBlobArrayBuffer(blob) {
+  const realArrayBuffer = blob.arrayBuffer.bind(blob);
+  const calls = [];
+  let settle;
+  const gate = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+  blob.arrayBuffer = () => { calls.push(true); return gate; };
+  return {
+    calls,
+    async resolve() { settle.resolve(await realArrayBuffer()); },
+    reject(err) { settle.reject(err); },
+  };
+}
+
+/** Spy-Ersatz für window.OfflineAudioContext: zählt Konstruktions- und
+ *  decodeAudioData()-Aufrufe, ohne wirklich zu dekodieren — der "Decoder-
+ *  Spion", den Aufgabe 2 für die echte decodeNormalizationBlob() verlangt. */
+function testMakeOfflineCtxSpy() {
+  const calls = { constructed: 0, decodeAudioData: 0 };
+  function SpyOfflineCtx(channels, length, sampleRate) {
+    calls.constructed++;
+    this.sampleRate = sampleRate;
+  }
+  SpyOfflineCtx.prototype.decodeAudioData = async function decodeAudioData(bytes) {
+    calls.decodeAudioData++;
+    return testMakeNormalizationBuffer(bytes.byteLength / 2 / this.sampleRate || 0.1, this.sampleRate);
+  };
+  return { Ctor: SpyOfflineCtx, calls };
+}
+
+async function runNormalizationWorkerTests() {
+  const failed = [];
+  const fail = (msg) => failed.push(msg);
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+
+  // --- Section 1: atomic result commit rejects stale writes ---------------
+  await testWithNormalizationEnv(async () => {
+    // 1a) Delete a song during a deferred decode: completion must not
+    //     recreate it.
+    {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred); // the job reached the (now pending) decode call
+      await DB.metaDelete(seed.songKey); // song deleted while "decoding"
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      const result = await p;
+      if (result.outcome !== 'obsolete') fail(`1a) erwartete 'obsolete' nach Löschung, war '${result.outcome}'`);
+      const revived = await DB.metaGet(seed.songKey);
+      if (revived) fail('1a) ein gelöschter Song wurde durch die späte Analyse wiederhergestellt');
+      await seed.cleanup();
+    }
+
+    // 1b) Replace audio during analysis: the old result must not attach to
+    //     the replacement.
+    {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred);
+      // Replacement: a fresh fileKey/sourceRevision for the same voice —
+      // exactly what runImport()/restoreBackup() do on replace.
+      const replacement = { ...seed.track, fileKey: newFileKey(), sourceRevision: newSourceRevision() };
+      delete replacement.normalization;
+      const song = await DB.metaGet(seed.songKey);
+      song.tracks = [replacement];
+      await DB.metaPut(song);
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      const result = await p;
+      if (result.outcome !== 'obsolete') fail(`1b) erwartete 'obsolete' nach Ersetzung, war '${result.outcome}'`);
+      const after = await DB.metaGet(seed.songKey);
+      if (after.tracks[0].normalization) fail('1b) das alte Ergebnis hat sich an die ersetzte Aufnahme angehängt');
+      await DB.metaDelete(seed.songKey); await DB.fileDelete([seed.fileKey, replacement.fileKey]);
+    }
+
+    // 1c) Rename a song or edit another track during analysis: those edits
+    //     survive.
+    {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const other = { voice: 'alt', label: 'Alt', fileName: 'other.wav', fileKey: newFileKey(),
+        size: 1, durationSec: 1, sourceRevision: newSourceRevision() };
+      let song = await DB.metaGet(seed.songKey);
+      song.tracks.push(other);
+      await DB.metaPut(song);
+
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred);
+
+      // Rename: new key, old key gone (see renameSong()) — plus an
+      // unrelated edit to the other track, both concurrent with the decode.
+      const newKey = `song:__selftest_norm_renamed_${seed.songKey}__`;
+      song = await DB.metaGet(seed.songKey);
+      const renamed = { ...song, key: newKey, title: 'Renamed While Analyzing' };
+      renamed.tracks = renamed.tracks.map((t) => t.fileKey === other.fileKey ? { ...t, label: 'Edited' } : t);
+      await tx(['meta'], 'readwrite', (store) => { store.put(renamed); store.delete(song.key); });
+
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      const result = await p;
+      if (result.outcome !== 'analyzed') fail(`1c) erwartete 'analyzed' trotz Umbenennung, war '${result.outcome}'`);
+      const after = await DB.metaGet(newKey);
+      if (!after) fail('1c) die Umbenennung während der Analyse ist verloren gegangen');
+      else {
+        if (after.title !== 'Renamed While Analyzing') fail('1c) der neue Titel wurde überschrieben');
+        const editedOther = after.tracks.find((t) => t.fileKey === other.fileKey);
+        if (editedOther?.label !== 'Edited') fail('1c) die Bearbeitung der anderen Spur ist verloren gegangen');
+        const analyzedTrack = after.tracks.find((t) => t.fileKey === seed.fileKey);
+        if (analyzedTrack?.normalization?.status !== 'analyzed') fail('1c) das Analyseergebnis der umbenannten Spur fehlt');
+      }
+      await DB.metaDelete(newKey).catch(() => {});
+      await DB.fileDelete([seed.fileKey, other.fileKey]).catch(() => {});
+    }
+
+    // 1d) Different audio with identical size/duration: old results remain
+    //     invalid (a late commit tied to the old revision is rejected).
+    {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const staleJob = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      // "Different audio, identical size/duration": same size/duration/rate
+      // fields, but a fresh sourceRevision — the only thing that actually
+      // changes on new content with coincidentally identical metrics.
+      await commitTrackMutation(seed.fileKey, (t) => { t.sourceRevision = newSourceRevision(); return true; });
+      const committed = await commitNormalizationResult(staleJob, { version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb: -3 });
+      if (committed) fail('1d) ein Ergebnis für eine alte Quellenrevision wurde trotz neuer Revision übernommen');
+      const after = await DB.metaGet(seed.songKey);
+      if (after.tracks[0].normalization) fail('1d) die neue Revision trägt fälschlich ein Normalisierungsergebnis');
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 2: interrupted jobs resume, never a second concurrent decode ---
+  await testWithNormalizationEnv(async () => {
+    // 2a/2b/2c/2d) A job interrupted immediately after decode (by
+    // generation, visibility, disabling, playback/recording/import — all
+    // funnel through the same stillGood() check in processNormalizationJob())
+    // is reported 'interrupted', not written anywhere; once conditions are
+    // idle again the identical job runs again and completes.
+    const interruptionScenarios = [
+      { label: 'Generation (Sichtbarkeit/Deaktivieren)', break: () => { normalizationGeneration++; }, restore: () => {} },
+      { label: 'Wiedergabe', break: () => { Audio.playing = true; }, restore: () => { Audio.playing = false; } },
+      { label: 'Aufnahme', break: () => { recMediaRecorder = { state: 'recording' }; }, restore: () => { recMediaRecorder = null; } },
+      { label: 'Import', break: () => { normalizationImportActive = true; }, restore: () => { normalizationImportActive = false; } },
+      { label: 'Deaktiviert', break: () => { settings.normalizationEnabled = false; }, restore: () => { settings.normalizationEnabled = true; } },
+    ];
+    for (const scenario of interruptionScenarios) {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred);
+      scenario.break();
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      const result = await p;
+      if (result.outcome !== 'interrupted') fail(`2·${scenario.label}) erwartete 'interrupted', war '${result.outcome}'`);
+      const midway = await DB.metaGet(seed.songKey);
+      if (midway.tracks[0].normalization) fail(`2·${scenario.label}) eine Unterbrechung hat trotzdem einen Datensatz geschrieben`);
+      scenario.restore();
+
+      // Idle again — reconcile: the identical job runs again and completes.
+      normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(1, sampleRate);
+      const retry = await processNormalizationJob(job);
+      if (retry.outcome !== 'analyzed') fail(`2·${scenario.label}) nach Wiederherstellung: erwartete 'analyzed', war '${retry.outcome}'`);
+      await seed.cleanup();
+    }
+
+    // 2e) Repeated scheduling while a decode is pending: at most one
+    //     concurrent decode (the shared single-worker lock).
+    {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      scheduleTrackNormalization(seed.fileKey, seed.track);
+      // Simulates repeated triggers (pause, visibility, retry-button …)
+      // while the first decode is still outstanding.
+      for (let i = 0; i < 5; i++) startNormalizationWorker();
+      await testWaitForCall(deferred);
+      for (let i = 0; i < 5; i++) startNormalizationWorker(); // still pending — must still no-op
+      if (deferred.calls.length > 1) fail(`2e) mehr als ein gleichzeitiger Dekodiervorgang: ${deferred.calls.length}`);
+      deferred.resolve(testMakeNormalizationBuffer(1, 8000));
+      if (normalizationWorkerPromise) await normalizationWorkerPromise.catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (normalizationWorkerPromise) fail('2e) der Worker-Riegel wurde nach Abschluss nicht freigegeben');
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 3: fresh-import metadata acquisition ------------------------
+  await testWithNormalizationEnv(async () => {
+    // 3a) A supported short recording with initially absent metadata
+    //     (durationSec: null, no sample-rate/channel — exactly runImport()'s
+    //     shape for a fresh track) obtains metadata and analyzes
+    //     automatically, with no eligibility pre-check possible beforehand.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: null, blob: wav });
+      if (normalizationMetadataUsable(seed.track)) fail('3a) Fixtur hat bereits Metadaten — Testaufbau ungültig');
+      normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(0.3, sampleRate);
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const result = await processNormalizationJob(job);
+      if (result.outcome !== 'analyzed') fail(`3a) erwartete automatische Analyse, war '${result.outcome}' (${result.reason || ''})`);
+      const after = await DB.metaGet(seed.songKey);
+      const track = after?.tracks[0];
+      if (!track?.sampleRate || !track?.channelCount || !Number.isFinite(track?.durationSec)) {
+        fail('3a) Metadaten wurden nicht aus der Quelle übernommen');
+      }
+      await seed.cleanup();
+    }
+
+    // 3b) An unsupported/corrupt source terminates with a clear skip
+    //     reason — not an endless retry loop.
+    {
+      const garbage = new Blob([crypto.getRandomValues(new Uint8Array(256))], { type: 'application/octet-stream' });
+      const seed = await testSeedNormalizationTrack({ durationSec: null, blob: garbage });
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const result = await processNormalizationJob(job);
+      if (result.outcome !== 'skipped' || result.reason !== 'metadata') {
+        fail(`3b) erwartete 'skipped'/'metadata' für eine nicht unterstützte Quelle, war '${result.outcome}'/'${result.reason}'`);
+      }
+      const after = await DB.metaGet(seed.songKey);
+      if (after.tracks[0].normalization?.status !== 'skipped') fail('3b) kein Skip-Datensatz für die nicht unterstützte Quelle hinterlegt');
+      // 3c uses this same seed to verify automatic reconsideration.
+
+      // 3c) Real metadata arriving later (rememberDuration(), as real
+      //     playback would call it) clears the stale metadata-skip and
+      //     re-queues the track automatically — no manual retry.
+      // normalizationImportActive blocks normalizationCanWork() so the
+      // rescheduling this triggers only queues the job (what's asserted
+      // below) without actually starting the worker/a real decode.
+      Audio.song = { key: seed.songKey };
+      const liveTrack = after.tracks[0];
+      normalizationImportActive = true;
+      await rememberDuration(liveTrack, 0.3, { sampleRate: 8000, channelCount: 1 });
+      normalizationImportActive = false;
+      const reconsidered = await DB.metaGet(seed.songKey);
+      if (reconsidered.tracks[0].normalization) fail('3c) der veraltete Metadaten-Skip wurde nicht gelöscht');
+      const id = normalizationIdentity(reconsidered.tracks[0]);
+      if (!normalizationQueue.has(id)) fail('3c) die Spur wurde nach neuen Metadaten nicht automatisch neu eingeplant');
+      normalizationQueue.delete(id);
+      await seed.cleanup();
+    }
+
+    // 3d) Partial import: reconciliation only ever sees committed sources
+    //     (nothing failed/aborted mid-import ever reaches the database).
+    //     normalizationImportActive again keeps this to queueing only —
+    //     scheduleNormalizationReconciliation() scans every song, so this
+    //     must never let a real decode actually start.
+    {
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      const uncommittedId = `f_selftest_norm_never_committed`;
+      normalizationImportActive = true;
+      await scheduleNormalizationReconciliation();
+      normalizationImportActive = false;
+      const id = normalizationIdentity(seed.track);
+      if (!normalizationQueue.has(id)) fail('3d) eine committete Quelle wurde bei der Reconciliation nicht eingeplant');
+      for (const job of normalizationQueue.values()) {
+        if (job.fileKey === uncommittedId) fail('3d) eine nie committete Quelle wurde eingeplant');
+      }
+      await seed.cleanup();
+    }
+
+    // 3e) Replacement while metadata acquisition is pending: the stale
+    //     probe result is rejected, never attached to the replacement.
+    {
+      const seed = await testSeedNormalizationTrack({ durationSec: null, blob: testMakeWavBlob() });
+      const deferredMeta = testMakeDeferredImpl();
+      normalizationMetadataProbeImpl = deferredMeta.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferredMeta);
+      const replaced = await commitTrackMutation(seed.fileKey, (t) => { t.sourceRevision = newSourceRevision(); return true; });
+      deferredMeta.resolve({ durationSec: 1, sampleRate: 8000, channelCount: 1 });
+      const result = await p;
+      if (result.outcome !== 'obsolete') fail(`3e) erwartete 'obsolete' nach Ersetzung während der Metadatenermittlung, war '${result.outcome}'`);
+      const after = await DB.metaGet(seed.songKey);
+      const track = after.tracks[0];
+      if (track.sampleRate === 8000 && track.sourceRevision !== replaced.track.sourceRevision) {
+        fail('3e) veraltete Metadaten wurden trotz Ersetzung übernommen');
+      }
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 4: playerSong / live gain stay in sync across track loads ---
+  await testWithNormalizationEnv(async () => {
+    // audioLoadTrackNow() unconditionally (re)schedules analysis for a
+    // track that doesn't yet carry a valid record for its revision — left
+    // alone, that could auto-start the real shared worker mid-test and
+    // race with the explicit processNormalizationJob() calls below, that
+    // deliberately control *when* analysis happens. normalizationImportActive
+    // blocks normalizationCanWork(), so startNormalizationWorker() no-ops;
+    // the queue entry it still adds is irrelevant, cleared with the rest of
+    // normalizationQueue when testWithNormalizationEnv() restores it.
+    const quietLoad = async (track) => {
+      normalizationImportActive = true;
+      try { await audioLoadTrackNow(track); } finally { normalizationImportActive = false; }
+    };
+
+    // 4a) Analyze A while its original playerSong track object remains in
+    //     memory; switch A → B → A without reopening the song: A restores
+    //     the saved gain and does not decode again.
+    {
+      const wavA = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.3 });
+      const wavB = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.05 });
+      const seed = await testSeedNormalizationSong([{ voice: 'A', blob: wavA }, { voice: 'B', blob: wavB }]);
+      const trackA = seed.song.tracks.find((t) => t.voice === 'A');
+      const trackB = seed.song.tracks.find((t) => t.voice === 'B');
+
+      await testWithPlayerSong(seed.song, async () => {
+        await quietLoad(trackA);
+        if (Audio.normalizationDb !== 0) fail('4a) erstes Laden von A müsste Unity-Gain sein');
+
+        // Analyze A directly with the real commit helper — trackA (the
+        // object playerSong still holds) is deliberately never touched by
+        // this, exactly the staleness the regression exploited.
+        normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(0.3, sampleRate, 1, 0.3);
+        const job = { fileKey: trackA.fileKey, sourceRevision: trackA.sourceRevision };
+        const analyzed = await processNormalizationJob(job);
+        if (analyzed.outcome !== 'analyzed') fail(`4a) Analyse von A schlug fehl: ${analyzed.outcome}`);
+        if (trackA.normalization) {
+          fail('4a) Testaufbau ungültig: das im Speicher gehaltene Objekt wurde direkt verändert');
+        }
+        normalizationQueue.delete(normalizationIdentity(trackA));
+
+        await quietLoad(trackB);
+        if (Audio.currentKey !== trackB.fileKey) fail('4a) Wechsel zu B ist nicht angekommen');
+        normalizationQueue.delete(normalizationIdentity(trackB));
+
+        // trackA already carries a valid record after this load (synced
+        // from the database, see audioLoadTrackNow()) — no quietLoad()
+        // needed, this is exactly the no-new-work path under test.
+        let decodeCalls = 0;
+        normalizationDecodeImpl = async (blob, sampleRate) => { decodeCalls++; return testMakeNormalizationBuffer(0.3, sampleRate); };
+        const idA = normalizationIdentity(trackA);
+        await audioLoadTrackNow(trackA);
+        if (Audio.currentKey !== trackA.fileKey) fail('4a) Rückkehr zu A ist nicht angekommen');
+        if (!near(Audio.normalizationDb, analyzed.track.normalization.gainDb, 1e-6)) {
+          fail(`4a) A hat den gespeicherten Gain nicht wiederhergestellt (war ${Audio.normalizationDb}, erwartet ${analyzed.track.normalization.gainDb})`);
+        }
+        if (decodeCalls !== 0) fail(`4a) Rückkehr zu A hat erneut dekodiert (${decodeCalls}x)`);
+        if (normalizationQueue.has(idA)) fail('4a) Rückkehr zu A hat unnötig einen neuen Analyseauftrag eingereiht');
+
+        // 4b) Repeat after a REC preview: the same restore must still work
+        //     once Audio.currentSourceKind briefly went through 'preview'.
+        Audio.currentSourceKind = 'preview';
+        Audio.currentKey = 'preview';
+        Audio.currentRevision = null;
+        Audio.normalizationDb = 0;
+        await audioLoadTrackNow(trackA); // still a valid record — safe without quietLoad()
+        if (!near(Audio.normalizationDb, analyzed.track.normalization.gainDb, 1e-6)) {
+          fail(`4b) A hat den Gain nach einer REC-Vorschau nicht wiederhergestellt (war ${Audio.normalizationDb})`);
+        }
+        if (Audio.currentSourceKind !== 'track') fail('4b) currentSourceKind steht nach dem Laden von A nicht auf \'track\'');
+      });
+      await seed.cleanup();
+    }
+
+    // 4c) Replace A with a new revision under the same fileKey: the old
+    //     gain must not apply to what is actually about to play.
+    {
+      const wavA = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.3 });
+      const seed = await testSeedNormalizationSong([{ voice: 'A', blob: wavA }]);
+      const trackA = seed.song.tracks.find((t) => t.voice === 'A');
+
+      await testWithPlayerSong(seed.song, async () => {
+        normalizationDecodeImpl = async (blob, sampleRate) => testMakeNormalizationBuffer(0.3, sampleRate, 1, 0.3);
+        const job = { fileKey: trackA.fileKey, sourceRevision: trackA.sourceRevision };
+        const analyzed = await processNormalizationJob(job);
+        if (analyzed.outcome !== 'analyzed') fail(`4c) Analyse von A schlug fehl: ${analyzed.outcome}`);
+
+        // Load once so the retained object legitimately carries the gain
+        // for its (still current) revision — already valid, safe as-is.
+        await audioLoadTrackNow(trackA);
+        if (!near(Audio.normalizationDb, analyzed.track.normalization.gainDb, 1e-6)) {
+          fail('4c) Testaufbau ungültig: A hat den ursprünglichen Gain nicht übernommen');
+        }
+
+        // Now the *database* moves on to a new revision under the very same
+        // fileKey — without the retained trackA object learning about it,
+        // simulating a path that updated the source but not this reference.
+        await commitTrackMutation(trackA.fileKey, (t) => {
+          t.sourceRevision = newSourceRevision();
+          delete t.normalization;
+          return true;
+        });
+
+        Audio.currentKey = null; Audio.currentRevision = null; Audio.currentSourceKind = null;
+        // Quiet: the replaced revision has no record yet, so this would
+        // otherwise (re)start real analysis of it — irrelevant to what
+        // this specific assertion checks (that the *old* gain never
+        // applies), and racing it would make the check non-deterministic.
+        await quietLoad(trackA);
+        if (Audio.normalizationDb !== 0) {
+          fail(`4c) der alte Gain wurde auf die ersetzte Revision angewandt (${Audio.normalizationDb} dB)`);
+        }
+        if (trackA.normalization) fail('4c) das veraltete Analyseergebnis hängt noch am aktualisierten Objekt');
+        normalizationQueue.delete(normalizationIdentity(trackA));
+      });
+      await seed.cleanup();
+    }
+
+    // 4d) With normalization disabled, every path above stays at unity.
+    {
+      const wavA = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1, amplitude: 0.3 });
+      const seed = await testSeedNormalizationSong([{ voice: 'A', blob: wavA }]);
+      const trackA = seed.song.tracks.find((t) => t.voice === 'A');
+      settings.normalizationEnabled = false;
+      try {
+        await testWithPlayerSong(seed.song, async () => {
+          const job = { fileKey: trackA.fileKey, sourceRevision: trackA.sourceRevision };
+          await commitNormalizationResult(job, { version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb: 6 });
+          // A valid record already exists, so this never touches the
+          // worker regardless of normalizationEnabled — no quietLoad() needed.
+          await audioLoadTrackNow(trackA);
+          // normalizationCacheValue() itself is gain-value-agnostic (it
+          // does not consult settings.normalizationEnabled) — applyNormalizationGain()
+          // is what must gate on the setting when actually driving the node.
+          const node = { gain: { setTargetAtTime: (v) => { node.lastValue = v; } }, context: { currentTime: 0 } };
+          const savedNode = Audio.normalizationGain;
+          Audio.normalizationGain = node;
+          try {
+            applyNormalizationGain();
+            if (!near(node.lastValue, 1, 1e-9)) fail(`4d) Normalisierung deaktiviert, trotzdem kein Unity-Gain angewandt (${node.lastValue})`);
+          } finally {
+            Audio.normalizationGain = savedNode;
+          }
+        });
+      } finally {
+        settings.normalizationEnabled = true;
+      }
+      await seed.cleanup();
+    }
+  });
+
+  // --- Section 5: recheck eligibility/generation around the byte read -----
+  await testWithNormalizationEnv(async () => {
+    const interruptionScenarios = [
+      { label: 'Wiedergabe', break: () => { Audio.playing = true; }, restore: () => { Audio.playing = false; } },
+      { label: 'Aufnahme', break: () => { recMediaRecorder = { state: 'recording' }; }, restore: () => { recMediaRecorder = null; } },
+      { label: 'Import', break: () => { normalizationImportActive = true; }, restore: () => { normalizationImportActive = false; } },
+      { label: 'Deaktiviert', break: () => { settings.normalizationEnabled = false; }, restore: () => { settings.normalizationEnabled = true; } },
+      { label: 'Generation (Sichtbarkeit)', break: () => { normalizationGeneration++; }, restore: () => {} },
+    ];
+    for (const scenario of interruptionScenarios) {
+      const wav = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 0.3, sampleRate: 8000, channelCount: 1, blob: wav,
+      });
+      const spy = testMakeOfflineCtxSpy();
+      await testWithGlobal('OfflineAudioContext', spy.Ctor, async () => {
+        // normalizationDecodeImpl is left at its default (the real
+        // decodeNormalizationBlob()) — only blob.arrayBuffer() is deferred,
+        // so this exercises the production decoder helper itself, exactly
+        // what the task calls for (swapping the whole helper would hide
+        // the defect this recheck fixes). recordBlob() returns rec.blob
+        // as-is when present (no rec.data) — pointing DB.fileGet() at a
+        // record shaped that way, instead of one directly, guarantees
+        // processNormalizationJob()'s own recordBlob() call gets this exact
+        // (deferred-patched) Blob instance rather than a fresh one built
+        // from bytes.
+        const deferred = testDeferBlobArrayBuffer(wav);
+        const fakeRec = { key: seed.fileKey, blob: wav, size: wav.size, name: 'selftest.wav' };
+        const realFileGet = DB.fileGet.bind(DB);
+        DB.fileGet = async (key) => (key === seed.fileKey ? fakeRec : realFileGet(key));
+        const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+        try {
+          const p = processNormalizationJob(job);
+          await testWaitForCall(deferred);
+          if (spy.calls.decodeAudioData !== 0) fail(`5·${scenario.label}) decodeAudioData() lief schon vor der Unterbrechung`);
+          scenario.break();
+          await deferred.resolve();
+          const result = await p;
+          if (result.outcome !== 'interrupted') fail(`5·${scenario.label}) erwartete 'interrupted', war '${result.outcome}'`);
+          if (spy.calls.decodeAudioData !== 0) {
+            fail(`5·${scenario.label}) decodeAudioData() lief trotz Unterbrechung nach dem Byte-Read (${spy.calls.decodeAudioData}x)`);
+          }
+          const midway = await DB.metaGet(seed.songKey);
+          if (midway.tracks[0].normalization) fail(`5·${scenario.label}) eine Unterbrechung hat trotzdem einen Datensatz geschrieben`);
+          scenario.restore();
+
+          // Idle again: the identical job completes, and decode really did run.
+          const retry = await processNormalizationJob(job);
+          if (retry.outcome !== 'analyzed') fail(`5·${scenario.label}) nach Wiederherstellung: erwartete 'analyzed', war '${retry.outcome}'`);
+          if (spy.calls.decodeAudioData !== 1) fail(`5·${scenario.label}) erwartete genau einen echten Dekodiervorgang, waren ${spy.calls.decodeAudioData}`);
+        } finally {
+          DB.fileGet = realFileGet;
+        }
+      });
+      await seed.cleanup();
+    }
+
+    // Confirm an already-started decode still holds the lock and no second
+    // decode starts concurrently, using the real decoder helper end to end.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.3, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 0.3, sampleRate: 8000, channelCount: 1, blob: wav,
+      });
+      const spy = testMakeOfflineCtxSpy();
+      await testWithGlobal('OfflineAudioContext', spy.Ctor, async () => {
+        const deferred = testDeferBlobArrayBuffer(wav);
+        const fakeRec = { key: seed.fileKey, blob: wav, size: wav.size, name: 'selftest.wav' };
+        const realFileGet = DB.fileGet.bind(DB);
+        DB.fileGet = async (key) => (key === seed.fileKey ? fakeRec : realFileGet(key));
+        try {
+          scheduleTrackNormalization(seed.fileKey, seed.track);
+          for (let i = 0; i < 5; i++) startNormalizationWorker();
+          await testWaitForCall(deferred);
+          for (let i = 0; i < 5; i++) startNormalizationWorker(); // still mid-read — must still no-op
+          if (deferred.calls.length > 1) fail(`5·Lock) mehr als ein gleichzeitiger Byte-Read: ${deferred.calls.length}`);
+          await deferred.resolve();
+          if (normalizationWorkerPromise) await normalizationWorkerPromise.catch(() => {});
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (spy.calls.decodeAudioData !== 1) fail(`5·Lock) erwartete genau einen Dekodiervorgang, waren ${spy.calls.decodeAudioData}`);
+          if (normalizationWorkerPromise) fail('5·Lock) der Worker-Riegel wurde nach Abschluss nicht freigegeben');
+        } finally {
+          DB.fileGet = realFileGet;
+        }
+      });
+      await seed.cleanup();
+    }
+  });
+
+  if (failed.length) {
+    console.error(`[Selbsttest Normalisierungs-Worker] ${failed.length} Prüfung(en) fehlgeschlagen:`);
+    for (const f of failed) console.error('  ✗ ' + f);
+  } else {
+    console.info('[Selbsttest Normalisierungs-Worker] Worker-/Datenbanktests bestanden.');
+  }
+  return failed;
+}
+
+/* ==========================================================================
    BOOT — Start
    ========================================================================== */
 
@@ -16169,6 +17782,7 @@ window.chorApp = {
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
   selfTestAudioPath: runAudioPathCharacterizationTests,
+  selfTestNormalizationWorker: runNormalizationWorkerTests,
   lightshowFrame,
   // AP-A (ARCHITEKTUR-PLAN.md): Testadapter für Playwright-getriebene Tests
   // von außen, siehe Kommentar dort. Eigener Unterbereich statt die Felder
@@ -16553,6 +18167,7 @@ async function boot() {
   }
 
   await loadSettings();
+  if (settings.normalizationEnabled) setTimeout(() => scheduleNormalizationReconciliation(), 0);
   applyTranslations();
   initGrooveLabEasterEgg();
   setupFolderImport();
@@ -16571,7 +18186,9 @@ async function boot() {
     runAsyncSelfTests()
       .catch((err) => { console.error('[Selbsttest async] abgebrochen', err); })
       .then(() => runAudioPathCharacterizationTests())
-      .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err));
+      .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err))
+      .then(() => runNormalizationWorkerTests())
+      .catch((err) => console.error('[Selbsttest Normalisierungs-Worker] abgebrochen', err));
   }
 
   const start = (location.hash || '#songs').slice(1);
