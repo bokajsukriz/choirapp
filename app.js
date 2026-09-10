@@ -4624,7 +4624,13 @@ async function onAudioContextStateChange() {
 // kollidieren, bevor dessen `loadedmetadata` eingetroffen ist.
 let audioLoadMutex = null;
 
-const NORMALIZATION_ALGO_VERSION = 2;             // the analysis math itself — unchanged by a limit bump
+// Bumped: analysis now decodes/measures at min(sourceSampleRate, 32 kHz)
+// instead of the source's own rate (see NORMALIZATION_ANALYSIS_SAMPLE_RATE)
+// — the measurement basis changed, so every existing result (analyzed,
+// skipped, and failed alike) needs one fresh look under the new math, not
+// just a PCM-budget recheck (that narrower mechanism is
+// NORMALIZATION_ELIGIBILITY_POLICY_VERSION below).
+const NORMALIZATION_ALGO_VERSION = 3;
 const NORMALIZATION_MAX_SECONDS = 600;
 const NORMALIZATION_MAX_BYTES = 60 * 1024 * 1024;
 // PCM *budget*, not a guaranteed ceiling on total app memory: the decoder,
@@ -4633,14 +4639,38 @@ const NORMALIZATION_MAX_BYTES = 60 * 1024 * 1024;
 // PCM) on modern phones — a reasonable test point, not a promise that every
 // device can actually afford it. Never raised automatically on failure.
 const NORMALIZATION_MAX_PCM_BYTES = 128 * 1024 * 1024;
+// The analysis never needs more temporal resolution than this — RMS/gate
+// windows are 400 ms wide (see analyzeNormalizationBuffer()) and the sample
+// peak only needs to be roughly right (see the safety-margin note there).
+// Decoding at min(sourceSampleRate, 32 kHz) instead of the source's own
+// rate cuts decode time and PCM memory for typical 44.1/48 kHz recordings
+// by roughly a third to a half, without touching playback or the stored
+// file. A source already at or below 32 kHz is left alone — resampling it
+// *up* would waste memory/time for no analysis benefit.
+const NORMALIZATION_ANALYSIS_SAMPLE_RATE = 32000;
 // Versions the *pre-decode eligibility limits* above, separately from
-// NORMALIZATION_ALGO_VERSION (the unchanged RMS/peak analysis math) — bump
-// this when a limit changes so previously PCM-skipped files get one
-// automatic re-check under the new limit (see normalizationHasRecord()),
-// without invalidating already-analyzed results or other skip reasons.
-const NORMALIZATION_ELIGIBILITY_POLICY_VERSION = 2;
+// NORMALIZATION_ALGO_VERSION (the analysis math itself) — bump this when a
+// limit or its underlying formula changes so previously PCM-skipped files
+// get one automatic re-check under the new policy (see
+// normalizationHasRecord()), without invalidating already-analyzed results
+// or other skip reasons. The PCM estimate now keys off the same capped
+// analysis rate as the decode itself (a source's true PCM footprint during
+// analysis is what the budget is meant to bound), which is a formula
+// change even though NORMALIZATION_MAX_PCM_BYTES itself didn't move. Bumped
+// alongside NORMALIZATION_ALGO_VERSION above; that bump alone already
+// forces a full recheck of everything this round, so this one has no
+// additional effect *right now* — it's bumped anyway so the eligibility
+// policy's own version history stays accurate for whatever changes next.
+const NORMALIZATION_ELIGIBILITY_POLICY_VERSION = 3;
 const NORMALIZATION_TARGET_DB = -20;
 const NORMALIZATION_METADATA_PROBE_TIMEOUT_MS = 5000;
+// How long analyzeNormalizationBuffer() computes before yielding a tick to
+// the event loop. 12 ms keeps the UI responsive (well under a frame budget)
+// while cutting the setTimeout()/microtask overhead of the previous 3 ms
+// slices roughly fourfold on long files — cooperative interruptibility
+// (playback/recording/import/hidden — see stillGood()) is unchanged, just
+// checked less often.
+const NORMALIZATION_ANALYSIS_SLICE_MS = 12;
 let normalizationGeneration = 0;
 let normalizationWorkerPromise = null;
 let normalizationImportActive = false;
@@ -4651,6 +4681,16 @@ const normalizationQueue = new Map();
 // exact same job a second time while the worker already holds it.
 const normalizationInFlight = new Set();
 const normalizationProgress = { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' };
+// Identities (see normalizationIdentity()) already reflected in
+// normalizationProgress's counters — whether counted live as this session's
+// worker finished the job, or backfilled from a record persisted by an
+// earlier session (see scheduleNormalizationReconciliation()). Without this,
+// reconciliation runs (settings toggle, tab visibility, app boot, every
+// import) would recount the same terminal record every time, and a record
+// from before this session started would never be counted at all — leaving
+// the progress line stuck at "0 skipped" while the diagnostics list (which
+// scans the DB directly) already shows it.
+const normalizationCountedIdentities = new Set();
 
 /* --------------------------------------------------------------------------
    Crash guard — a full decode (OfflineAudioContext.decodeAudioData on a
@@ -4730,6 +4770,13 @@ function normalizationMetadataUsable(track) {
     && Number.isInteger(track?.channelCount) && track.channelCount > 0;
 }
 
+/** The rate the decode/analysis step will actually run at — never higher
+ *  than the source's own rate, since upsampling a low-rate source would
+ *  cost memory/time for no analysis benefit. */
+function normalizationAnalysisSampleRate(sourceSampleRate) {
+  return Math.min(sourceSampleRate, NORMALIZATION_ANALYSIS_SAMPLE_RATE);
+}
+
 function normalizationEligibility({ durationSec, sampleRate, channelCount, compressedBytes }) {
   if (!Number.isFinite(compressedBytes) || compressedBytes < 0) return { ok: false, reason: 'metadataInvalid' };
   if (!Number.isFinite(durationSec) || durationSec <= 0) return { ok: false, reason: 'durationInvalid' };
@@ -4737,7 +4784,10 @@ function normalizationEligibility({ durationSec, sampleRate, channelCount, compr
       || !Number.isInteger(channelCount) || channelCount <= 0) return { ok: false, reason: 'metadataInvalid' };
   if (durationSec > NORMALIZATION_MAX_SECONDS) return { ok: false, reason: 'duration' };
   if (compressedBytes > NORMALIZATION_MAX_BYTES) return { ok: false, reason: 'compressed' };
-  const pcmBytes = durationSec * sampleRate * channelCount * 4;
+  // The PCM budget bounds what the decode step actually allocates — the
+  // analysis buffer at its (possibly capped) analysis rate, not a buffer at
+  // the source's own rate that's never created.
+  const pcmBytes = durationSec * normalizationAnalysisSampleRate(sampleRate) * channelCount * 4;
   if (!Number.isFinite(pcmBytes) || pcmBytes > NORMALIZATION_MAX_PCM_BYTES) return { ok: false, reason: 'pcm' };
   return { ok: true, pcmBytes };
 }
@@ -5110,6 +5160,17 @@ function fmtMiBNumber(bytes) {
   return Number.isFinite(bytes) ? Math.round(bytes / (1024 * 1024)) : '–';
 }
 
+/** One decimal place, comma separator — matches the app's existing
+ *  convention for compact numeric UI (see fmtBytes(), the crop-dialog
+ *  duration display) rather than a full locale-aware number format. */
+function fmtNormalizationSeconds(ms) {
+  return Number.isFinite(ms) ? (ms / 1000).toFixed(1).replace('.', ',') : null;
+}
+
+function fmtNormalizationMiBDecimal(bytes) {
+  return Number.isFinite(bytes) ? (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') : null;
+}
+
 function fmtNormalizationMinutes(seconds) {
   if (!Number.isFinite(seconds)) return '–';
   return t('settings.normalization.detail.minutes').replace('{time}', fmtTime(seconds));
@@ -5128,11 +5189,22 @@ function normalizationChannelsLabel(channelCount) {
  * Normalizes track.normalization into a rendering-ready shape, tolerating
  * records written before structured diagnostics existed (plain `reason`
  * string, no `reasonCode`/`measurements`) — those still render a sensible,
- * honest message instead of an empty or broken row.
+ * honest message instead of an empty or broken row. A successfully
+ * analyzed track only produces a row when it actually carries the timing
+ * fields (decodeMs/analysisMs/estimatedPcmBytes) — a result from before
+ * those existed simply isn't shown here, rather than faking zeros.
  */
 function normalizationDiagnostic(track) {
   const n = track?.normalization;
-  if (!n || (n.status !== 'skipped' && n.status !== 'failed')) return null;
+  if (!n) return null;
+  if (n.status === 'analyzed') {
+    if (!Number.isFinite(n.decodeMs) || !Number.isFinite(n.analysisMs) || !Number.isFinite(n.estimatedPcmBytes)) return null;
+    return {
+      status: 'analyzed',
+      measurements: { decodeMs: n.decodeMs, analysisMs: n.analysisMs, estimatedPcmBytes: n.estimatedPcmBytes },
+    };
+  }
+  if (n.status !== 'skipped' && n.status !== 'failed') return null;
   let reasonCode = n.reasonCode;
   let errorName = n.errorName;
   if (!reasonCode) {
@@ -5148,19 +5220,36 @@ function normalizationDiagnostic(track) {
 
 /** Full sentence + optional secondary "file info" line for one diagnostic —
  *  built only from the reasonCode-specific measurements actually recorded,
- *  never guessed. */
+ *  never guessed. Records written before structured diagnostics existed
+ *  carry no `measurements` at all, so the numeric detail sentence would
+ *  otherwise render with literal "–" placeholders where the sizes belong
+ *  ("... beträgt – MiB. Erlaubt sind – MiB.") — falling back to the plain
+ *  reason string here keeps that case honest instead of confusing. */
 function normalizationDetailText(diag) {
+  if (diag.status === 'analyzed') {
+    const m = diag.measurements;
+    const text = t('settings.normalization.detail.analyzed')
+      .replace('{decodeS}', fmtNormalizationSeconds(m.decodeMs))
+      .replace('{analysisS}', fmtNormalizationSeconds(m.analysisMs))
+      .replace('{pcmMiB}', fmtNormalizationMiBDecimal(m.estimatedPcmBytes));
+    return { text, fileInfo: null };
+  }
   const m = diag.measurements || {};
   const key = `settings.normalization.detail.${diag.reasonCode}`;
   let text = t(key);
   if (text === key) text = t('settings.normalization.detail.unknown'); // no translation for this code — say so honestly
   if (diag.reasonCode === 'duration') {
-    text = text.replace('{duration}', fmtNormalizationMinutes(m.durationSec))
-      .replace('{limit}', fmtNormalizationMinutes(m.limitSeconds));
+    text = Number.isFinite(m.durationSec) && Number.isFinite(m.limitSeconds)
+      ? text.replace('{duration}', fmtNormalizationMinutes(m.durationSec)).replace('{limit}', fmtNormalizationMinutes(m.limitSeconds))
+      : t(`settings.normalization.reason.${diag.reasonCode}`);
   } else if (diag.reasonCode === 'compressed') {
-    text = text.replace('{sizeMiB}', fmtMiBNumber(m.compressedBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes));
+    text = Number.isFinite(m.compressedBytes) && Number.isFinite(m.limitBytes)
+      ? text.replace('{sizeMiB}', fmtMiBNumber(m.compressedBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes))
+      : t(`settings.normalization.reason.${diag.reasonCode}`);
   } else if (diag.reasonCode === 'pcm') {
-    text = text.replace('{estimatedMiB}', fmtMiBNumber(m.pcmBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes));
+    text = Number.isFinite(m.pcmBytes) && Number.isFinite(m.limitBytes)
+      ? text.replace('{estimatedMiB}', fmtMiBNumber(m.pcmBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes))
+      : t(`settings.normalization.reason.${diag.reasonCode}`);
   }
   let fileInfo = null;
   if (diag.reasonCode === 'pcm' && Number.isFinite(m.durationSec) && Number.isFinite(m.sampleRate) && Number.isInteger(m.channelCount)) {
@@ -5172,10 +5261,11 @@ function normalizationDetailText(diag) {
   return { text, fileInfo };
 }
 
-/** Scans every song for skipped/failed tracks — the list IS the persisted
- *  state, so this alone reconstructs it correctly after a restart, in the
- *  current language, for the current source revision only (a replaced or
- *  deleted track's old record simply won't be found here any more). */
+/** Scans every song for tracks worth a row here — skipped, failed, or
+ *  successfully analyzed with timing data — so the list IS the persisted
+ *  state, reconstructing it correctly after a restart, in the current
+ *  language, for the current source revision only (a replaced or deleted
+ *  track's old record simply won't be found here any more). */
 async function collectNormalizationDiagnostics() {
   const songs = await DB.metaByType('song').catch(() => []);
   const rows = [];
@@ -5217,7 +5307,9 @@ function buildNormalizationDetailRow(row) {
     el('div', { style: 'font-weight:600' }, track.fileName || track.label || track.voice || ''),
   ];
   if (context) children.push(el('div', { class: 'muted' }, context));
-  children.push(el('div', {}, text));
+  const textAttrs = diag.status === 'analyzed'
+    ? { class: 'muted', title: t('settings.normalization.detail.analyzedHint') } : {};
+  children.push(el('div', textAttrs, text));
   if (fileInfo) children.push(el('div', { class: 'muted' }, fileInfo));
   if (diag.errorName) {
     children.push(el('details', { style: 'margin-top:4px' },
@@ -5284,8 +5376,30 @@ function discardNormalizationJob() {
   normalizationProgress.total = Math.max(finished, normalizationProgress.total - 1);
 }
 
+/** A track already carrying a terminal record (from this session's own
+ *  worker, or persisted by an earlier session/device) is backfilled into
+ *  normalizationProgress's counters exactly once, keyed by
+ *  normalizationCountedIdentities — otherwise every reconciliation pass
+ *  (settings toggle, tab visibility, app boot, every import) would either
+ *  recount it or, for records from before this session, never count it at
+ *  all, leaving the summary line out of sync with the diagnostics list
+ *  below it (which reads the same records straight from the DB). */
+function countExistingNormalizationRecord(track) {
+  const id = normalizationIdentity(track);
+  if (!id || normalizationCountedIdentities.has(id)) return;
+  normalizationCountedIdentities.add(id);
+  const status = track.normalization?.status;
+  if (status === 'skipped') normalizationProgress.skipped++;
+  else if (status === 'failed') normalizationProgress.failed++;
+  else if (status === 'analyzed') normalizationProgress.analyzed++;
+  else return;
+  normalizationProgress.total = Math.max(normalizationProgress.total,
+    normalizationProgress.analyzed + normalizationProgress.skipped + normalizationProgress.failed);
+}
+
 function scheduleTrackNormalization(fileKey, track) {
-  if (!fileKey || !track || normalizationHasRecord(track)) return;
+  if (!fileKey || !track) return;
+  if (normalizationHasRecord(track)) { countExistingNormalizationRecord(track); return; }
   const id = normalizationIdentity(track);
   if (!id || normalizationQueue.has(id) || normalizationInFlight.has(id)) { startNormalizationWorker(); return; }
   normalizationQueue.set(id, { fileKey, sourceRevision: track.sourceRevision });
@@ -5410,8 +5524,12 @@ async function processNormalizationJob(job) {
     // must prevent the decode from starting — never guess it's safe.
     await writeNormalizationMarker(job);
     markerWritten = true;
+    const analysisSampleRate = normalizationAnalysisSampleRate(track.sampleRate);
+    let decodeMs;
     try {
-      buffer = await normalizationDecodeImpl(blob, track.sampleRate, stillGood);
+      const decodeStarted = performance.now();
+      buffer = await normalizationDecodeImpl(blob, analysisSampleRate, stillGood);
+      decodeMs = performance.now() - decodeStarted;
     } finally {
       // Cleared only once the (non-cancellable) decode has actually
       // settled — success, a real error, or a cooperative interruption all
@@ -5422,12 +5540,17 @@ async function processNormalizationJob(job) {
 
     // 4) Immediately after decode.
     if (!stillGood()) return { outcome: 'interrupted' };
+    // Estimated size of the analysis buffer only — never the file on disk,
+    // never total browser/tab memory (see the UI's PCM-figure tooltip).
+    const estimatedPcmBytes = buffer.length * buffer.numberOfChannels * 4;
+    const analysisStarted = performance.now();
     const gainDb = await analyzeNormalizationBuffer(buffer, () => !stillGood());
-    if (gainDb == null) return { outcome: 'interrupted' }; // interrupted mid-scan
+    const analysisMs = performance.now() - analysisStarted;
+    if (gainDb == null) return { outcome: 'interrupted' }; // interrupted mid-scan — timings discarded, nothing committed
 
     const committed = await commitNormalizationResult(job, {
       version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
-      status: 'analyzed', gainDb,
+      status: 'analyzed', gainDb, decodeMs, analysisMs, analysisSampleRate, estimatedPcmBytes,
     });
     if (!committed) return { outcome: 'obsolete' };
     return { outcome: 'analyzed', track: committed.track };
@@ -5476,23 +5599,28 @@ async function runNormalizationWorker() {
           break;
         case 'skipped':
           normalizationProgress.skipped++;
+          normalizationCountedIdentities.add(normalizationIdentity(result.track));
           normalizationProgress.reason = t(`settings.normalization.reason.${result.reasonCode}`);
           syncPlayerSongTrack(result.track);
           break;
         case 'failed':
           normalizationProgress.failed++;
+          normalizationCountedIdentities.add(normalizationIdentity(result.track));
           normalizationProgress.reason = t(`settings.normalization.reason.${result.reasonCode}`);
           syncPlayerSongTrack(result.track);
           break;
         case 'analyzed':
           normalizationProgress.analyzed++;
+          normalizationCountedIdentities.add(normalizationIdentity(result.track));
           syncPlayerSongTrack(result.track);
           maybeApplyLiveGain(result.track);
           break;
         case 'raced':
           // Another attempt already committed a result for this track —
           // still valid and reusable, so bring playerSong/live gain up to
-          // date with it instead of treating the race as a no-op.
+          // date with it instead of treating the race as a no-op. Whichever
+          // attempt actually committed it already counted it (or
+          // reconciliation will, on its next pass); nothing to add here.
           syncPlayerSongTrack(result.track);
           maybeApplyLiveGain(result.track);
           break;
@@ -5516,7 +5644,16 @@ function normalizationInterruptedError() {
   return err;
 }
 
-async function decodeNormalizationBlob(blob, sampleRate, stillGood = () => true) {
+/**
+ * Decodes for analysis only, at `analysisSampleRate` (the caller passes
+ * normalizationAnalysisSampleRate(track.sampleRate) — never higher than the
+ * source's own rate). This never touches the stored file or playback: the
+ * OfflineAudioContext here, and the AudioBuffer it produces, exist only for
+ * the duration of this analysis job and are discarded afterward. Channel
+ * count is whatever decodeAudioData() decodes from the source — never
+ * downmixed — only the sample rate is capped.
+ */
+async function decodeNormalizationBlob(blob, analysisSampleRate, stillGood = () => true) {
   const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   if (!OfflineCtx) throw normalizationReasonError('decoderUnsupported');
   // Checked once more right before allocating the full compressed byte
@@ -5530,7 +5667,7 @@ async function decodeNormalizationBlob(blob, sampleRate, stillGood = () => true)
   // honored instead of running an expensive decode alongside it.
   if (!stillGood()) throw normalizationInterruptedError();
   try {
-    return await new OfflineCtx(1, 1, sampleRate).decodeAudioData(bytes);
+    return await new OfflineCtx(1, 1, analysisSampleRate).decodeAudioData(bytes);
   } catch (err) {
     throw normalizationTagError(err, 'decodeError');
   }
@@ -5566,7 +5703,7 @@ async function analyzeNormalizationBuffer(buffer, interrupted = () => false) {
       count += end - start;
     }
     windows.push({ energy: sum, count });
-    if (performance.now() - sliceStarted >= 3) {
+    if (performance.now() - sliceStarted >= NORMALIZATION_ANALYSIS_SLICE_MS) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (interrupted()) return null;
       sliceStarted = performance.now();
@@ -5583,6 +5720,10 @@ async function analyzeNormalizationBuffer(buffer, interrupted = () => false) {
   const active = windows.filter((w) => w.energy / w.count >= threshold);
   if (!active.length) return 0;
   const activeRmsDb = 10 * Math.log10(weighted(active));
+  // `peak` is the sample peak of the (possibly downsampled-for-analysis)
+  // buffer passed in, not necessarily the original file's true sample
+  // peak — resampling can shift inter-sample peaks slightly either way.
+  // Still a reasonable, cheap safety margin; see the -1 dB headroom below.
   const peakDb = 20 * Math.log10(peak);
   const gainDb = Math.min(NORMALIZATION_TARGET_DB - activeRmsDb, 12, -1 - peakDb);
   return Number.isFinite(gainDb) ? gainDb : 0;
@@ -16467,9 +16608,10 @@ async function runAsyncSelfTests() {
   {
     // Duration boundary: full-band *mono* metadata that fits the PCM
     // budget on its own (600 s @ 16 kHz mono ≈ 36.6 MiB) — a 600 s @ 48 kHz
-    // *stereo* source (≈ 219.7 MiB PCM) would fail on the PCM limit first
-    // and can't isolate the duration boundary. This fixture stands for an
-    // actual 16 kHz mono source; production analysis is never downsampled.
+    // *stereo* source (capped to the 32 kHz analysis rate, ≈ 146.5 MiB PCM)
+    // would fail on the PCM limit first and can't isolate the duration
+    // boundary. 16 kHz is already below the analysis cap, so this fixture's
+    // PCM math is unaffected by it either way.
     const monoBase = { sampleRate: 16000, channelCount: 1, compressedBytes: 1 };
     const atDuration = normalizationEligibility({ ...monoBase, durationSec: NORMALIZATION_MAX_SECONDS });
     if (!atDuration.ok) failed.push(`Normalisierung: ${NORMALIZATION_MAX_SECONDS} s bei 16 kHz mono müssten zulässig sein (${atDuration.reason})`);
@@ -16494,19 +16636,27 @@ async function runAsyncSelfTests() {
     }
 
     // PCM-size boundary, isolated from duration (small enough duration/rate
-    // combination that the exact limit lands well under 600 s).
-    const pcmSampleRate = 192000, pcmChannels = 1;
-    const pcmLimitDuration = NORMALIZATION_MAX_PCM_BYTES / (pcmSampleRate * pcmChannels * 4);
-    const atPcm = normalizationEligibility({ durationSec: pcmLimitDuration, sampleRate: pcmSampleRate,
+    // combination that the exact limit lands well under 600 s). Deliberately
+    // above the 32 kHz analysis cap (see NORMALIZATION_ANALYSIS_SAMPLE_RATE)
+    // — the PCM math must key off the *capped* rate, never the raw source
+    // sample rate, or this boundary would land somewhere else entirely.
+    const pcmSourceSampleRate = 192000, pcmChannels = 2;
+    const pcmAnalysisRate = normalizationAnalysisSampleRate(pcmSourceSampleRate);
+    if (pcmAnalysisRate !== NORMALIZATION_ANALYSIS_SAMPLE_RATE) {
+      failed.push(`Normalisierung: 192 kHz-Quelle wurde nicht auf ${NORMALIZATION_ANALYSIS_SAMPLE_RATE} Hz gedeckelt (${pcmAnalysisRate})`);
+    }
+    const pcmLimitDuration = NORMALIZATION_MAX_PCM_BYTES / (pcmAnalysisRate * pcmChannels * 4);
+    const atPcm = normalizationEligibility({ durationSec: pcmLimitDuration, sampleRate: pcmSourceSampleRate,
       channelCount: pcmChannels, compressedBytes: 1 });
     if (!atPcm.ok) failed.push(`Normalisierung: exakt am PCM-Budget müsste zulässig sein (${atPcm.reason})`);
-    const overPcm = normalizationEligibility({ durationSec: pcmLimitDuration + 1 / pcmSampleRate,
-      sampleRate: pcmSampleRate, channelCount: pcmChannels, compressedBytes: 1 });
+    const overPcm = normalizationEligibility({ durationSec: pcmLimitDuration + 1 / pcmAnalysisRate,
+      sampleRate: pcmSourceSampleRate, channelCount: pcmChannels, compressedBytes: 1 });
     if (overPcm.reason !== 'pcm') failed.push('Normalisierung: knapp über dem PCM-Budget nicht abgelehnt');
 
-    // 128 MiB covers five minutes of real-world stereo at 44.1 and 48 kHz
-    // (≈101/110 MiB PCM) — the concrete scenario the 64→128 MiB bump exists
-    // for, not just an abstract boundary.
+    // 32 kHz-capped analysis means 44.1 and 48 kHz stereo sources now cost
+    // the *same* PCM estimate (≈73.2 MiB for 5 minutes) — well under the
+    // 128 MiB budget, comfortably covering the real-world scenario the
+    // 64→128 MiB bump originally existed for.
     const fiveMinStereo441 = normalizationEligibility({ durationSec: 300, sampleRate: 44100, channelCount: 2, compressedBytes: 1 });
     if (!fiveMinStereo441.ok) failed.push(`Normalisierung: 5 Min. Stereo @ 44,1 kHz müssten zulässig sein (${fiveMinStereo441.reason})`);
     const fiveMinStereo48 = normalizationEligibility({ durationSec: 300, sampleRate: 48000, channelCount: 2, compressedBytes: 1 });
@@ -17671,9 +17821,10 @@ function testDeferBlobArrayBuffer(blob) {
  *  decodeAudioData()-Aufrufe, ohne wirklich zu dekodieren — der "Decoder-
  *  Spion", den Aufgabe 2 für die echte decodeNormalizationBlob() verlangt. */
 function testMakeOfflineCtxSpy() {
-  const calls = { constructed: 0, decodeAudioData: 0 };
+  const calls = { constructed: 0, decodeAudioData: 0, sampleRates: [] };
   function SpyOfflineCtx(channels, length, sampleRate) {
     calls.constructed++;
+    calls.sampleRates.push(sampleRate);
     this.sampleRate = sampleRate;
   }
   SpyOfflineCtx.prototype.decodeAudioData = async function decodeAudioData(bytes) {
@@ -18202,9 +18353,10 @@ async function runNormalizationWorkerTests() {
     //     is re-queued exactly once and reused afterward.
     {
       const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
-      // 500 s * 48000 Hz * 1 ch * 4 B ≈ 91.6 MiB — over the old 64 MiB limit,
-      // under the new 128 MiB one, and well within the 600 s duration cap
-      // (isolating the PCM re-check from the unrelated duration limit).
+      // 500 s, capped to the 32 kHz analysis rate, 1 ch, 4 B ≈ 61.0 MiB —
+      // over the old 64 MiB limit at the *source's* 48 kHz (≈91.6 MiB), under
+      // the new 128 MiB one either way, and well within the 600 s duration
+      // cap (isolating the PCM re-check from the unrelated duration limit).
       const seed = await testSeedNormalizationTrack({ durationSec: 500, sampleRate: 48000, channelCount: 1, blob: wav });
       await commitTrackMutation(seed.fileKey, (t) => {
         t.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: t.fileKey, sourceRevision: t.sourceRevision,
@@ -18237,7 +18389,7 @@ async function runNormalizationWorkerTests() {
     //     passes never re-queue it (no automatic retry loop).
     {
       const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
-      const seed = await testSeedNormalizationTrack({ durationSec: 600, sampleRate: 48000, channelCount: 2, blob: wav }); // ≈219.7 MiB
+      const seed = await testSeedNormalizationTrack({ durationSec: 600, sampleRate: 48000, channelCount: 2, blob: wav }); // ≈146.5 MiB capped to 32 kHz — still over budget
       await commitTrackMutation(seed.fileKey, (t) => {
         t.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: t.fileKey, sourceRevision: t.sourceRevision,
           status: 'skipped', reason: 'pcm' };
@@ -18510,6 +18662,124 @@ async function runNormalizationWorkerTests() {
     }
 
     await cleanupMarkerAndPause();
+  });
+
+  // --- Section 8: 32 kHz-capped analysis rate, per-track timing/PCM metadata ---
+  await testWithNormalizationEnv(async () => {
+    // 8a/8b) Sources at or above the analysis cap (48 kHz, 44.1 kHz) are
+    // decoded for analysis at exactly 32 kHz — real decodeNormalizationBlob()
+    // end to end (only window.OfflineAudioContext is a spy, never
+    // normalizationDecodeImpl itself), exactly as task 2 calls for.
+    for (const sourceSampleRate of [48000, 44100]) {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({
+        durationSec: 0.2, sampleRate: sourceSampleRate, channelCount: 1, blob: wav,
+      });
+      const spy = testMakeOfflineCtxSpy();
+      await testWithGlobal('OfflineAudioContext', spy.Ctor, async () => {
+        const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+        const result = await processNormalizationJob(job);
+        if (result.outcome !== 'analyzed') fail(`8·${sourceSampleRate} Hz) erwartete 'analyzed', war '${result.outcome}'`);
+        if (spy.calls.sampleRates[0] !== NORMALIZATION_ANALYSIS_SAMPLE_RATE) {
+          fail(`8·${sourceSampleRate} Hz) OfflineAudioContext lief mit ${spy.calls.sampleRates[0]} Hz statt ${NORMALIZATION_ANALYSIS_SAMPLE_RATE} Hz`);
+        }
+        if (result.track.normalization.analysisSampleRate !== NORMALIZATION_ANALYSIS_SAMPLE_RATE) {
+          fail(`8·${sourceSampleRate} Hz) gespeicherte analysisSampleRate stimmt nicht mit der tatsächlichen Analyse überein`);
+        }
+      });
+      await seed.cleanup();
+    }
+
+    // 8c) A source already below the cap (22.05 kHz) is never upsampled —
+    // decoding at a higher rate would cost memory/time for no benefit.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 0.2, sampleRate: 22050, channelCount: 1, blob: wav });
+      const spy = testMakeOfflineCtxSpy();
+      await testWithGlobal('OfflineAudioContext', spy.Ctor, async () => {
+        const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+        const result = await processNormalizationJob(job);
+        if (result.outcome !== 'analyzed') fail(`8c) erwartete 'analyzed', war '${result.outcome}'`);
+        if (spy.calls.sampleRates[0] !== 22050) {
+          fail(`8c) eine 22,05-kHz-Quelle wurde unnötig auf ${spy.calls.sampleRates[0]} Hz umgerechnet`);
+        }
+        if (result.track.normalization.analysisSampleRate !== 22050) fail('8c) gespeicherte analysisSampleRate weicht von der ungedeckelten Quellrate ab');
+      });
+      await seed.cleanup();
+    }
+
+    // 8d) A successful job stores decode/analysis timing and an
+    // estimatedPcmBytes that matches the actual decoded analysis buffer —
+    // never invented, never left over from a different job.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 48000, channelCount: 2, blob: wav });
+      normalizationDecodeImpl = async (blob, sr) => testMakeNormalizationBuffer(0.05, sr, 2);
+      const expectedBytes = Math.round(0.05 * NORMALIZATION_ANALYSIS_SAMPLE_RATE) * 2 * 4;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const result = await processNormalizationJob(job);
+      if (result.outcome !== 'analyzed') fail(`8d) erwartete 'analyzed', war '${result.outcome}'`);
+      else {
+        const n = result.track.normalization;
+        if (!Number.isFinite(n.decodeMs) || n.decodeMs < 0) fail(`8d) decodeMs fehlt oder ist unplausibel (${n.decodeMs})`);
+        if (!Number.isFinite(n.analysisMs) || n.analysisMs < 0) fail(`8d) analysisMs fehlt oder ist unplausibel (${n.analysisMs})`);
+        if (n.estimatedPcmBytes !== expectedBytes) {
+          fail(`8d) estimatedPcmBytes (${n.estimatedPcmBytes}) entspricht nicht dem tatsächlichen Analysebuffer (${expectedBytes})`);
+        }
+      }
+      await seed.cleanup();
+    }
+
+    // 8e) An interrupted job never persists timing (or any other result) —
+    // requeued as 'interrupted', exactly like before this change. The
+    // generation bump happens *while the (deferred) decode is pending*, not
+    // before the job even starts — otherwise processNormalizationJob() would
+    // simply capture the already-bumped generation as its own and never see
+    // an interruption at all.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 48000, channelCount: 1, blob: wav });
+      const deferred = testMakeDeferredImpl();
+      normalizationDecodeImpl = deferred.impl;
+      const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
+      const p = processNormalizationJob(job);
+      await testWaitForCall(deferred);
+      normalizationGeneration++; // interrupts cooperatively — stillGood() goes false right after decode settles
+      deferred.resolve(testMakeNormalizationBuffer(0.05, 32000));
+      const result = await p;
+      if (result.outcome !== 'interrupted') fail(`8e) erwartete 'interrupted', war '${result.outcome}'`);
+      const after = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (after.normalization) fail('8e) eine unterbrochene Analyse hat trotzdem Timingdaten/ein Ergebnis gespeichert');
+      await seed.cleanup();
+    }
+
+    // 8f) A legacy 'analyzed' record without timing fields (from before this
+    // change) renders no diagnostics row — never fabricated zeros — and
+    // collectNormalizationDiagnostics() doesn't choke on it.
+    {
+      const wav = testMakeWavBlob({ seconds: 0.2, sampleRate: 8000, channels: 1 });
+      const seed = await testSeedNormalizationTrack({ durationSec: 1, sampleRate: 8000, channelCount: 1, blob: wav });
+      await commitNormalizationResult({ fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision },
+        { version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb: -2 }); // no decodeMs/analysisMs/estimatedPcmBytes
+      const liveTrack = (await DB.metaGet(seed.songKey)).tracks[0];
+      if (!normalizationHasRecord(liveTrack)) fail('8f) ein analysiertes Legacy-Ergebnis ohne Timingfelder gilt fälschlich als nicht-terminal');
+      let threw = false;
+      let rows = [];
+      try { rows = await collectNormalizationDiagnostics(); } catch { threw = true; }
+      if (threw) fail('8f) collectNormalizationDiagnostics() wirft bei fehlenden Timingfeldern statt sie zu ignorieren');
+      if (rows.some((r) => r.track.fileKey === seed.fileKey)) fail('8f) ein Legacy-Ergebnis ohne Timingfelder erzeugt fälschlich eine Performancezeile');
+      await seed.cleanup();
+    }
+
+    // 8g) Eligibility math itself keys off the capped analysis rate, not the
+    // raw source sample rate — a direct unit check alongside the end-to-end
+    // decode checks above.
+    {
+      if (normalizationAnalysisSampleRate(48000) !== 32000) fail('8g) 48 kHz wurde nicht auf 32 kHz gedeckelt');
+      if (normalizationAnalysisSampleRate(44100) !== 32000) fail('8g) 44,1 kHz wurde nicht auf 32 kHz gedeckelt');
+      if (normalizationAnalysisSampleRate(22050) !== 22050) fail('8g) 22,05 kHz wurde unnötig verändert');
+      if (normalizationAnalysisSampleRate(8000) !== 8000) fail('8g) 8 kHz wurde unnötig verändert');
+    }
   });
 
   if (failed.length) {
