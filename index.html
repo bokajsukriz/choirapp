@@ -3644,6 +3644,13 @@ input[type="checkbox"] {
          data-i18n="settings.normalization.unavailable">
         Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.
       </p>
+      <div id="normalization-crashguard" class="small" style="margin-top:8px" hidden>
+        <p id="normalization-crashguard-message" role="status"></p>
+        <button id="normalization-crashguard-resume" class="btn btn--ghost" type="button"
+                data-i18n="settings.normalization.crashGuard.resume">Fortsetzen</button>
+        <button id="normalization-crashguard-retry" class="btn btn--ghost" type="button"
+                data-i18n="settings.normalization.details.retryFile">Diese Datei erneut versuchen</button>
+      </div>
       <div id="normalization-progress" class="small muted" style="margin-top:8px" hidden>
         <progress id="normalization-progress-bar" max="1" value="0" aria-label="Normalisierungsanalyse"></progress>
         <div id="normalization-progress-summary" role="status" aria-live="polite"></div>
@@ -3651,6 +3658,11 @@ input[type="checkbox"] {
         <div id="normalization-progress-counts"></div>
         <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry">Erneut versuchen</button>
       </div>
+      <details id="normalization-details" class="small" style="margin-top:8px" hidden>
+        <summary data-i18n="settings.normalization.details.title">Übersprungene und fehlgeschlagene Dateien</summary>
+        <ul id="normalization-details-list" style="list-style:none;padding:0;margin:8px 0 0"></ul>
+        <button id="normalization-details-more" class="btn btn--ghost" type="button" hidden></button>
+      </details>
 
       <p class="section-title"  data-i18n="settings.bike.title">Fahrradfahren-Modus</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.bike.hint">
