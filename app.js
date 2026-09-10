@@ -1073,6 +1073,7 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
+  normalizationEnabled: false, // gleicht importierte Stimmen im vorhandenen Web-Audio-Graphen an
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
   keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
   shuffleMode: false,         // zufälliges statt geordnetes „nächstes Lied"
@@ -2602,6 +2603,7 @@ async function renderSettings() {
   renderSongSearchServicePicker();
   renderVoicePicker();
   renderChannelMode();
+  renderNormalization();
   renderScreenMode();
   renderWebkitGraphToggle();
   renderSlowMode();
@@ -2694,6 +2696,27 @@ function hdWebkitBlocked() {
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
 }
+
+function normalizationAvailable() {
+  return !!Audio.normalizationGain;
+}
+
+function renderNormalization() {
+  const toggle = $('#normalization-toggle');
+  const hint = $('#normalization-status');
+  toggle.setAttribute('aria-checked', settings.normalizationEnabled ? 'true' : 'false');
+  const available = normalizationAvailable();
+  toggle.disabled = !available;
+  hint.hidden = available;
+  applyNormalizationGain();
+}
+
+$('#normalization-toggle').addEventListener('click', async () => {
+  if (!normalizationAvailable()) return;
+  await saveSettings({ normalizationEnabled: !settings.normalizationEnabled });
+  renderNormalization();
+  if (settings.normalizationEnabled) scheduleTrackNormalization(Audio.currentKey);
+});
 
 /**
  * Notausgang für hdWebkitBlocked(): WebKit-Bug 240405 ist beim Hersteller
@@ -3572,6 +3595,7 @@ $('#channel-mode').addEventListener('change', async (e) => {
   if (isWebKitBrowser && !settings.webkitForceGraph && Audio.ready) {
     await rebuildAudioGraph('channel-mode');
   }
+  renderNormalization();
 });
 
 $$('#default-tab-picker .player-tab').forEach((btn) => {
@@ -3964,6 +3988,9 @@ const Audio = {
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
   channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
   channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
+  playbackIn: null,       // Normalisierungs-Gain vor der Matrix (nur für den Haupttrack)
+  normalizationGain: null,
+  normalizationDb: 0,
   elSource: null,         // MediaElementSource von el — createMediaElementSource() darf nur einmal pro Element laufen, daher gemerkt statt neu erzeugt
   hdNode: null,           // Zeitdehner-Knoten des HD-Modus, oder null solange nicht gebraucht/nicht verfügbar (siehe hdCreateNode)
   hdLatency: 0,           // Latenz des Zeitdehners in Sekunden, zuletzt abgefragt (siehe refreshHdLatency)
@@ -4183,11 +4210,13 @@ async function setupAudioGraph() {
     const gLR = ctx.createGain(); // links  -> rechts
     const gRL = ctx.createGain(); // rechts -> links
     const gRR = ctx.createGain(); // rechts -> rechts
+    const normalizationGain = ctx.createGain();
     splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
     splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
     splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
     splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
     merger.connect(ctx.destination);
+    normalizationGain.connect(splitter);
 
     // Der Zeitdehner für HD wird hier NICHT angelegt: die Bibliothek ist
     // 113 KB und wird erst nachgeladen, wenn HD tatsächlich gewählt ist
@@ -4204,9 +4233,13 @@ async function setupAudioGraph() {
     // Einspeisepunkt für den Hintergrundtrack (siehe ensureBackingAudio) — im
     // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
     Audio.channelIn = splitter;
+    Audio.playbackIn = normalizationGain;
+    Audio.normalizationGain = normalizationGain;
     Audio.elSource = elSource;
     hdApplyTransition('init'); // verdrahtet elSource -> hdNode -> splitter oder elSource -> splitter direkt
     audioApplyChannelMode(settings.channelMode);
+    applyNormalizationGain();
+    renderNormalization();
     dlog('audio:route', { mode: 'matrix' });
 
     // Läuft das Element durch die Matrix, kommt kein Ton mehr durch, sobald
@@ -4306,6 +4339,8 @@ async function rebuildAudioGraph(reason) {
     Audio.ctx = null;
     Audio.channel = null;
     Audio.channelIn = null;
+    Audio.playbackIn = null;
+    Audio.normalizationGain = null;
     Audio.elSource = null;
     Audio.hdNode = null;
     Audio.el = null;
@@ -4328,6 +4363,7 @@ async function rebuildAudioGraph(reason) {
 
     await setupAudioGraph();
     Audio.ready = true;
+    renderNormalization();
 
     if (savedBlobUrl && savedKey) {
       const el = Audio.el;
@@ -4510,6 +4546,119 @@ async function onAudioContextStateChange() {
 // kollidieren, bevor dessen `loadedmetadata` eingetroffen ist.
 let audioLoadMutex = null;
 
+const NORMALIZATION_ALGO_VERSION = 1;
+const NORMALIZATION_SAMPLE_RATE = 16000;
+const NORMALIZATION_MAX_SECONDS = 15 * 60;
+const NORMALIZATION_MAX_BYTES = 60 * 1024 * 1024;
+const NORMALIZATION_TARGET_DB = -20;
+let normalizationJobToken = 0;
+
+function normalizationCacheValue(track, rec, duration) {
+  const cached = track?.normalization;
+  const size = rec?.size ?? rec?.data?.byteLength ?? rec?.blob?.size;
+  if (cached?.version !== NORMALIZATION_ALGO_VERSION
+      || cached.fileKey !== track?.fileKey
+      || cached.size !== size
+      || Math.abs((cached.durationSec || 0) - (duration || 0)) >= 0.05) return null;
+  return Number.isFinite(cached.gainDb) ? cached.gainDb : null;
+}
+
+function applyNormalizationGain() {
+  const node = Audio.normalizationGain;
+  if (!node) return;
+  const db = settings.normalizationEnabled ? Audio.normalizationDb : 0;
+  const value = 10 ** (db / 20);
+  node.gain.setTargetAtTime(value, node.context.currentTime, 0.015);
+}
+
+function scheduleTrackNormalization(fileKey, knownTrack, knownRec, knownBlob) {
+  const token = ++normalizationJobToken;
+  if (!settings.normalizationEnabled || !normalizationAvailable() || !fileKey) return;
+  // Analyse konkurriert nie mit laufender Wiedergabe. Ein späterer Pause-
+  // Zustand oder erneutes Auswählen stößt sie erneut an.
+  setTimeout(async () => {
+    if (token !== normalizationJobToken || Audio.playing || Audio.currentKey !== fileKey) return;
+    const track = knownTrack || playerSong?.tracks.find((item) => item.fileKey === fileKey);
+    if (!track) return;
+    try {
+      const rec = knownRec || await DB.fileGet(fileKey);
+      if (!rec || token !== normalizationJobToken) return;
+      const duration = Audio.el?.duration || track.durationSec || 0;
+      const cached = normalizationCacheValue(track, rec, duration);
+      if (cached != null) {
+        Audio.normalizationDb = cached;
+        applyNormalizationGain();
+        return;
+      }
+      const size = rec.size ?? rec.data?.byteLength ?? rec.blob?.size ?? 0;
+      if (size > NORMALIZATION_MAX_BYTES || duration > NORMALIZATION_MAX_SECONDS) {
+        dlog('audio:normalization', { skipped: size > NORMALIZATION_MAX_BYTES ? 'size' : 'duration' });
+        return;
+      }
+      const blob = knownBlob || recordBlob(rec, mimeForTrack(track));
+      const gainDb = await analyzeNormalization(blob, token);
+      if (gainDb == null || token !== normalizationJobToken || Audio.currentKey !== fileKey) return;
+      const normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey, size, durationSec: duration, gainDb };
+      track.normalization = normalization;
+      Audio.normalizationDb = gainDb;
+      applyNormalizationGain();
+      const song = Audio.song && await DB.metaGet(Audio.song.key);
+      const stored = song?.tracks?.find((item) => item.fileKey === fileKey);
+      if (stored) { stored.normalization = normalization; await DB.metaPut(song); }
+      dlog('audio:normalization', { gainDb: Math.round(gainDb * 10) / 10 });
+    } catch (err) {
+      dlog('audio:normalization', { name: err?.name || 'error' });
+    }
+  }, 0);
+}
+
+async function analyzeNormalization(blob, token) {
+  const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OfflineCtx) return null;
+  const bytes = await blob.arrayBuffer();
+  if (token !== normalizationJobToken || Audio.playing) return null;
+  // Bewusst kein AudioContext: ein Offline-Kontext aktiviert auf iOS keine
+  // AVAudioSession. Seine niedrige Rate begrenzt PCM-Speicher und Scanzeit.
+  const buffer = await new OfflineCtx(1, 1, NORMALIZATION_SAMPLE_RATE).decodeAudioData(bytes);
+  if (buffer.duration > NORMALIZATION_MAX_SECONDS) return null;
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+  const windowSamples = Math.max(1, Math.round(buffer.sampleRate * 0.4));
+  const windows = [];
+  const peakBins = new Uint32Array(1000);
+  let sliceStarted = performance.now();
+  for (let start = 0; start < buffer.length; start += windowSamples) {
+    let sum = 0, count = 0;
+    const end = Math.min(buffer.length, start + windowSamples);
+    for (const channel of channels) {
+      for (let i = start; i < end; i++) {
+        const sample = channel[i];
+        sum += sample * sample;
+        peakBins[Math.min(999, Math.floor(Math.abs(sample) * 1000))]++;
+      }
+      count += end - start;
+    }
+    windows.push(sum / Math.max(1, count));
+    if (performance.now() - sliceStarted >= 3) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (token !== normalizationJobToken || Audio.playing) return null;
+      sliceStarted = performance.now();
+    }
+  }
+  const loudest = Math.max(...windows);
+  const gate = Math.max(10 ** (-50 / 10), loudest / 100); // −20 dB relativ, −50 dBFS als Boden
+  const active = windows.filter((energy) => energy >= gate);
+  if (!active.length) return 0;
+  const rmsDb = 10 * Math.log10(active.reduce((a, b) => a + b, 0) / active.length);
+  const total = peakBins.reduce((a, b) => a + b, 0);
+  let cumulative = 0, percentileBin = 0;
+  for (; percentileBin < peakBins.length; percentileBin++) {
+    cumulative += peakBins[percentileBin];
+    if (cumulative >= total * 0.999) break;
+  }
+  const peakDb = 20 * Math.log10(Math.max(0.001, (percentileBin + 1) / 1000));
+  return Math.max(-12, Math.min(12, NORMALIZATION_TARGET_DB - rmsDb, -2 - peakDb));
+}
+
 /** Lädt eine Spur in das Element. Läuft schon dieselbe, ist nichts zu tun. */
 async function audioLoadTrack(track) {
   if (audioLoadMutex) await audioLoadMutex.catch(() => {});
@@ -4562,6 +4711,8 @@ async function audioLoadTrackNow(track) {
     if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
     Audio.blobUrl = url;
     Audio.currentKey = track.fileKey;
+    Audio.normalizationDb = normalizationCacheValue(track, rec, el.duration) ?? 0;
+    applyNormalizationGain();
 
     // Tempo und Tonhöhenerhalt gelten dem Element, nicht der Quelle — nach
     // Spec bleiben sie über einen Ladevorgang hinweg erhalten. Sicherheits-
@@ -4577,6 +4728,7 @@ async function audioLoadTrackNow(track) {
     // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
     // Loops verschoben sein könnten.
     rememberDuration(track, el.duration);
+    scheduleTrackNormalization(track.fileKey, track, rec, blob);
   } finally {
     setLoading(track.fileKey, false);
   }
@@ -4673,6 +4825,7 @@ function audioPause() {
   dlog('audio:pause');
   updateWakeLock();
   updateHdLoadVisibility();
+  scheduleTrackNormalization(Audio.currentKey);
 }
 
 function audioSeek(seconds) {
@@ -4865,7 +5018,7 @@ async function hdApplyTransition(reason, opts = {}) {
   // der sichere Zustand schon — im Standard-Modus bei jedem Sprung der Fall —,
   // bleiben Element und Verdrahtung unberührt und der Sprung damit knackfrei.
   hdSetElementPlayback(el, Audio.rate, true);
-  hdWireSource(src, Audio.channelIn);
+  hdWireSource(src, Audio.playbackIn);
   if (Audio.hdNode) Audio.hdNode.disconnect();
 
   // Schritt 3: Knoten nur sicherstellen, wenn er wirklich gebraucht wird
@@ -4968,8 +5121,8 @@ async function hdApplyTransition(reason, opts = {}) {
   if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
 
   // Schritt 7: erst jetzt hörbar verbinden.
-  hdWireSource(src, useHd ? node : Audio.channelIn);
-  if (useHd && Audio.channelIn) node.connect(Audio.channelIn);
+  hdWireSource(src, useHd ? node : Audio.playbackIn);
+  if (useHd && Audio.playbackIn) node.connect(Audio.playbackIn);
   else node.disconnect();
   hdSetElementPlayback(el, Audio.rate, !useHd);
   hdWasEngaged = useHd;

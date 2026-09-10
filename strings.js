@@ -66,6 +66,10 @@ export const STRINGS = {
     'settings.bike.normal': 'Normal',
     'settings.bike.mono': 'Mono',
     'settings.bike.swap': 'Tauschen',
+    'settings.normalization.label': 'Lautstärke der Stimmen angleichen',
+    'settings.normalization.aria': 'Lautstärke der Stimmen automatisch angleichen',
+    'settings.normalization.hint': 'Analysiert kurze und mittelgroße Spuren in Wiedergabepausen und gleicht Lautstärkeunterschiede aus.',
+    'settings.normalization.unavailable': 'Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.',
 
     'settings.screen.title': 'Bildschirm & Hintergrund',
     'settings.screen.keepOn': 'Bildschirm anlassen, solange ein Lied geöffnet ist',
@@ -384,6 +388,10 @@ export const STRINGS = {
     'settings.bike.normal': 'Normal',
     'settings.bike.mono': 'Mono',
     'settings.bike.swap': 'Swap',
+    'settings.normalization.label': 'Match voice-track volume',
+    'settings.normalization.aria': 'Automatically match voice-track volume',
+    'settings.normalization.hint': 'Analyses short and medium-sized tracks while playback is paused and evens out volume differences.',
+    'settings.normalization.unavailable': 'Normalisation is not available in this playback mode.',
 
     'settings.screen.title': 'Screen & background',
     'settings.screen.keepOn': 'Keep the screen on while a song is open',
@@ -702,6 +710,10 @@ export const STRINGS = {
     'settings.bike.normal': 'Normalny',
     'settings.bike.mono': 'Mono',
     'settings.bike.swap': 'Zamień',
+    'settings.normalization.label': 'Wyrównaj głośność ścieżek głosowych',
+    'settings.normalization.aria': 'Automatycznie wyrównaj głośność ścieżek głosowych',
+    'settings.normalization.hint': 'Analizuje krótkie i średnie ścieżki podczas pauzy i wyrównuje różnice głośności.',
+    'settings.normalization.unavailable': 'Normalizacja nie jest dostępna w tym trybie odtwarzania.',
 
     'settings.screen.title': 'Ekran i tło',
     'settings.screen.keepOn': 'Ekran włączony, dopóki utwór jest otwarty',
