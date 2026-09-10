@@ -82,6 +82,9 @@ export const STRINGS = {
     'settings.normalization.reason.pcm': 'Übersprungen: geschätztes PCM über 64 MiB.',
     'settings.normalization.reason.failed': 'Analyse fehlgeschlagen; „Erneut versuchen“ startet einen neuen Versuch.',
     'settings.normalization.unavailable': 'Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.',
+    'settings.normalization.paused.playback': 'Pausiert: läuft weiter, sobald Wiedergabe/Vorschau beendet ist.',
+    'settings.normalization.paused.recording': 'Pausiert: läuft weiter, sobald die Aufnahme beendet ist.',
+    'settings.normalization.paused.import': 'Pausiert: läuft weiter, sobald der Import abgeschlossen ist.',
 
     'settings.screen.title': 'Bildschirm & Hintergrund',
     'settings.screen.keepOn': 'Bildschirm anlassen, solange ein Lied geöffnet ist',
@@ -416,6 +419,9 @@ export const STRINGS = {
     'settings.normalization.reason.pcm': 'Skipped: estimated PCM exceeds 64 MiB.',
     'settings.normalization.reason.failed': 'Analysis failed; Retry starts a new attempt.',
     'settings.normalization.unavailable': 'Normalisation is not available in this playback mode.',
+    'settings.normalization.paused.playback': 'Paused: resumes once playback/preview ends.',
+    'settings.normalization.paused.recording': 'Paused: resumes once recording ends.',
+    'settings.normalization.paused.import': 'Paused: resumes once the import finishes.',
 
     'settings.screen.title': 'Screen & background',
     'settings.screen.keepOn': 'Keep the screen on while a song is open',
@@ -750,6 +756,9 @@ export const STRINGS = {
     'settings.normalization.reason.pcm': 'Pominięto: szacowane PCM przekracza 64 MiB.',
     'settings.normalization.reason.failed': 'Analiza nie powiodła się; ponowienie rozpocznie nową próbę.',
     'settings.normalization.unavailable': 'Normalizacja nie jest dostępna w tym trybie odtwarzania.',
+    'settings.normalization.paused.playback': 'Wstrzymano: wznowi się po zakończeniu odtwarzania/podglądu.',
+    'settings.normalization.paused.recording': 'Wstrzymano: wznowi się po zakończeniu nagrywania.',
+    'settings.normalization.paused.import': 'Wstrzymano: wznowi się po zakończeniu importu.',
 
     'settings.screen.title': 'Ekran i tło',
     'settings.screen.keepOn': 'Ekran włączony, dopóki utwór jest otwarty',
