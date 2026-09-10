@@ -4651,6 +4651,16 @@ const normalizationQueue = new Map();
 // exact same job a second time while the worker already holds it.
 const normalizationInFlight = new Set();
 const normalizationProgress = { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' };
+// Identities (see normalizationIdentity()) already reflected in
+// normalizationProgress's counters — whether counted live as this session's
+// worker finished the job, or backfilled from a record persisted by an
+// earlier session (see scheduleNormalizationReconciliation()). Without this,
+// reconciliation runs (settings toggle, tab visibility, app boot, every
+// import) would recount the same terminal record every time, and a record
+// from before this session started would never be counted at all — leaving
+// the progress line stuck at "0 skipped" while the diagnostics list (which
+// scans the DB directly) already shows it.
+const normalizationCountedIdentities = new Set();
 
 /* --------------------------------------------------------------------------
    Crash guard — a full decode (OfflineAudioContext.decodeAudioData on a
@@ -5148,19 +5158,28 @@ function normalizationDiagnostic(track) {
 
 /** Full sentence + optional secondary "file info" line for one diagnostic —
  *  built only from the reasonCode-specific measurements actually recorded,
- *  never guessed. */
+ *  never guessed. Records written before structured diagnostics existed
+ *  carry no `measurements` at all, so the numeric detail sentence would
+ *  otherwise render with literal "–" placeholders where the sizes belong
+ *  ("... beträgt – MiB. Erlaubt sind – MiB.") — falling back to the plain
+ *  reason string here keeps that case honest instead of confusing. */
 function normalizationDetailText(diag) {
   const m = diag.measurements || {};
   const key = `settings.normalization.detail.${diag.reasonCode}`;
   let text = t(key);
   if (text === key) text = t('settings.normalization.detail.unknown'); // no translation for this code — say so honestly
   if (diag.reasonCode === 'duration') {
-    text = text.replace('{duration}', fmtNormalizationMinutes(m.durationSec))
-      .replace('{limit}', fmtNormalizationMinutes(m.limitSeconds));
+    text = Number.isFinite(m.durationSec) && Number.isFinite(m.limitSeconds)
+      ? text.replace('{duration}', fmtNormalizationMinutes(m.durationSec)).replace('{limit}', fmtNormalizationMinutes(m.limitSeconds))
+      : t(`settings.normalization.reason.${diag.reasonCode}`);
   } else if (diag.reasonCode === 'compressed') {
-    text = text.replace('{sizeMiB}', fmtMiBNumber(m.compressedBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes));
+    text = Number.isFinite(m.compressedBytes) && Number.isFinite(m.limitBytes)
+      ? text.replace('{sizeMiB}', fmtMiBNumber(m.compressedBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes))
+      : t(`settings.normalization.reason.${diag.reasonCode}`);
   } else if (diag.reasonCode === 'pcm') {
-    text = text.replace('{estimatedMiB}', fmtMiBNumber(m.pcmBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes));
+    text = Number.isFinite(m.pcmBytes) && Number.isFinite(m.limitBytes)
+      ? text.replace('{estimatedMiB}', fmtMiBNumber(m.pcmBytes)).replace('{limitMiB}', fmtMiBNumber(m.limitBytes))
+      : t(`settings.normalization.reason.${diag.reasonCode}`);
   }
   let fileInfo = null;
   if (diag.reasonCode === 'pcm' && Number.isFinite(m.durationSec) && Number.isFinite(m.sampleRate) && Number.isInteger(m.channelCount)) {
@@ -5284,8 +5303,30 @@ function discardNormalizationJob() {
   normalizationProgress.total = Math.max(finished, normalizationProgress.total - 1);
 }
 
+/** A track already carrying a terminal record (from this session's own
+ *  worker, or persisted by an earlier session/device) is backfilled into
+ *  normalizationProgress's counters exactly once, keyed by
+ *  normalizationCountedIdentities — otherwise every reconciliation pass
+ *  (settings toggle, tab visibility, app boot, every import) would either
+ *  recount it or, for records from before this session, never count it at
+ *  all, leaving the summary line out of sync with the diagnostics list
+ *  below it (which reads the same records straight from the DB). */
+function countExistingNormalizationRecord(track) {
+  const id = normalizationIdentity(track);
+  if (!id || normalizationCountedIdentities.has(id)) return;
+  normalizationCountedIdentities.add(id);
+  const status = track.normalization?.status;
+  if (status === 'skipped') normalizationProgress.skipped++;
+  else if (status === 'failed') normalizationProgress.failed++;
+  else if (status === 'analyzed') normalizationProgress.analyzed++;
+  else return;
+  normalizationProgress.total = Math.max(normalizationProgress.total,
+    normalizationProgress.analyzed + normalizationProgress.skipped + normalizationProgress.failed);
+}
+
 function scheduleTrackNormalization(fileKey, track) {
-  if (!fileKey || !track || normalizationHasRecord(track)) return;
+  if (!fileKey || !track) return;
+  if (normalizationHasRecord(track)) { countExistingNormalizationRecord(track); return; }
   const id = normalizationIdentity(track);
   if (!id || normalizationQueue.has(id) || normalizationInFlight.has(id)) { startNormalizationWorker(); return; }
   normalizationQueue.set(id, { fileKey, sourceRevision: track.sourceRevision });
@@ -5476,23 +5517,28 @@ async function runNormalizationWorker() {
           break;
         case 'skipped':
           normalizationProgress.skipped++;
+          normalizationCountedIdentities.add(normalizationIdentity(result.track));
           normalizationProgress.reason = t(`settings.normalization.reason.${result.reasonCode}`);
           syncPlayerSongTrack(result.track);
           break;
         case 'failed':
           normalizationProgress.failed++;
+          normalizationCountedIdentities.add(normalizationIdentity(result.track));
           normalizationProgress.reason = t(`settings.normalization.reason.${result.reasonCode}`);
           syncPlayerSongTrack(result.track);
           break;
         case 'analyzed':
           normalizationProgress.analyzed++;
+          normalizationCountedIdentities.add(normalizationIdentity(result.track));
           syncPlayerSongTrack(result.track);
           maybeApplyLiveGain(result.track);
           break;
         case 'raced':
           // Another attempt already committed a result for this track —
           // still valid and reusable, so bring playerSong/live gain up to
-          // date with it instead of treating the race as a no-op.
+          // date with it instead of treating the race as a no-op. Whichever
+          // attempt actually committed it already counted it (or
+          // reconciliation will, on its next pass); nothing to add here.
           syncPlayerSongTrack(result.track);
           maybeApplyLiveGain(result.track);
           break;
