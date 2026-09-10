@@ -1073,6 +1073,7 @@ const DEFAULT_SETTINGS = {
   repeatMode: 'next',         // 'song' | 'next' (frühere 'off'-Sicherungen zählen als 'next')
   lastVoice: null,            // zuletzt bewusst gewählte Stimme
   channelMode: 'off',         // 'off' | 'mono' | 'swap' — Fahrradfahren-Modus (ein Ohrstöpsel)
+  normalizationEnabled: false, // gleicht importierte Stimmen im vorhandenen Web-Audio-Graphen an
   setupDoneAt: null,          // Zeitstempel der abgeschlossenen Ersteinrichtung
   keepScreenOn: false,        // Bildschirm im Player nicht sperren lassen
   shuffleMode: false,         // zufälliges statt geordnetes „nächstes Lied"
@@ -1318,6 +1319,7 @@ async function loadSettings() {
     settings.slowMode = (settings.slowMode === 'hq' || settings.slowMode === 'hqmono') ? 'hd' : 'standard';
   }
   settings.hdOptions = sanitizeHdOptions(settings.hdOptions);
+  if (typeof settings.normalizationEnabled !== 'boolean') settings.normalizationEnabled = false;
 
   // Den Reiter „Sheets" gibt es nicht mehr (siehe PLAYER_TABS) — die
   // Vorschau der Noten läuft jetzt über einen Hinweis im Notes-Reiter
@@ -2602,6 +2604,7 @@ async function renderSettings() {
   renderSongSearchServicePicker();
   renderVoicePicker();
   renderChannelMode();
+  renderNormalization();
   renderScreenMode();
   renderWebkitGraphToggle();
   renderSlowMode();
@@ -2694,6 +2697,64 @@ function hdWebkitBlocked() {
 function renderChannelMode() {
   $('#channel-mode').value = settings.channelMode || 'off';
 }
+
+function normalizationAvailable() {
+  // Prospective capability is enough for the preference UI.  In particular,
+  // do not build a live graph just to inspect support.  WebKit's deliberate
+  // direct-media route remains unavailable until another feature builds it.
+  const offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!offline) return false;
+  return !(isWebKitBrowser && !settings.webkitForceGraph
+    && (settings.channelMode || 'off') === 'off');
+}
+
+function renderNormalization() {
+  const toggle = $('#normalization-toggle');
+  const hint = $('#normalization-status');
+  toggle.setAttribute('aria-checked', settings.normalizationEnabled ? 'true' : 'false');
+  const available = normalizationAvailable();
+  // An already saved preference must always remain switchable off.
+  toggle.disabled = !available && !settings.normalizationEnabled;
+  hint.hidden = available;
+  applyNormalizationGain();
+  renderNormalizationProgress();
+}
+
+$('#normalization-toggle').addEventListener('click', async () => {
+  if (settings.normalizationEnabled) {
+    stopNormalizationScheduling();
+    await saveSettings({ normalizationEnabled: false });
+    renderNormalization();
+    return;
+  }
+  if (!normalizationAvailable()) return;
+  const ok = await confirmDialog({
+    title: t('settings.normalization.confirmTitle'),
+    text: t('settings.normalization.confirmText'),
+    okLabel: t('settings.normalization.activate'),
+    cancelLabel: t('settings.normalization.cancel'),
+  });
+  if (!ok) { renderNormalization(); return; }
+  await saveSettings({ normalizationEnabled: true });
+  renderNormalization();
+  scheduleNormalizationReconciliation();
+});
+
+$('#normalization-retry').addEventListener('click', async () => {
+  normalizationAttempted.clear();
+  normalizationGeneration++;
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) {
+    let changed = false;
+    for (const track of song.tracks || []) {
+      if (normalizationHasRecord(track) && track.normalization.status !== 'analyzed') {
+        delete track.normalization; changed = true;
+      }
+    }
+    if (changed) await DB.metaPut(song);
+  }
+  scheduleNormalizationReconciliation();
+});
 
 /**
  * Notausgang für hdWebkitBlocked(): WebKit-Bug 240405 ist beim Hersteller
@@ -3572,6 +3633,7 @@ $('#channel-mode').addEventListener('change', async (e) => {
   if (isWebKitBrowser && !settings.webkitForceGraph && Audio.ready) {
     await rebuildAudioGraph('channel-mode');
   }
+  renderNormalization();
 });
 
 $$('#default-tab-picker .player-tab').forEach((btn) => {
@@ -3964,6 +4026,9 @@ const Audio = {
   ctx: null,              // AudioContext für die Kanal-Matrix, falls verfügbar
   channel: null,          // { gLL, gLR, gRL, gRR }, falls die Matrix steht
   channelIn: null,        // Eingang der Matrix (Splitter) — Einspeisepunkt für den Hintergrundtrack
+  playbackIn: null,       // Normalisierungs-Gain vor der Matrix (nur für den Haupttrack)
+  normalizationGain: null,
+  normalizationDb: 0,
   elSource: null,         // MediaElementSource von el — createMediaElementSource() darf nur einmal pro Element laufen, daher gemerkt statt neu erzeugt
   hdNode: null,           // Zeitdehner-Knoten des HD-Modus, oder null solange nicht gebraucht/nicht verfügbar (siehe hdCreateNode)
   hdLatency: 0,           // Latenz des Zeitdehners in Sekunden, zuletzt abgefragt (siehe refreshHdLatency)
@@ -4183,11 +4248,13 @@ async function setupAudioGraph() {
     const gLR = ctx.createGain(); // links  -> rechts
     const gRL = ctx.createGain(); // rechts -> links
     const gRR = ctx.createGain(); // rechts -> rechts
+    const normalizationGain = ctx.createGain();
     splitter.connect(gLL, 0); gLL.connect(merger, 0, 0);
     splitter.connect(gLR, 0); gLR.connect(merger, 0, 1);
     splitter.connect(gRL, 1); gRL.connect(merger, 0, 0);
     splitter.connect(gRR, 1); gRR.connect(merger, 0, 1);
     merger.connect(ctx.destination);
+    normalizationGain.connect(splitter);
 
     // Der Zeitdehner für HD wird hier NICHT angelegt: die Bibliothek ist
     // 113 KB und wird erst nachgeladen, wenn HD tatsächlich gewählt ist
@@ -4204,9 +4271,13 @@ async function setupAudioGraph() {
     // Einspeisepunkt für den Hintergrundtrack (siehe ensureBackingAudio) — im
     // catch-Zweig bleibt er null, dann läuft bg ohne Matrix direkt.
     Audio.channelIn = splitter;
+    Audio.playbackIn = normalizationGain;
+    Audio.normalizationGain = normalizationGain;
     Audio.elSource = elSource;
     hdApplyTransition('init'); // verdrahtet elSource -> hdNode -> splitter oder elSource -> splitter direkt
     audioApplyChannelMode(settings.channelMode);
+    applyNormalizationGain();
+    renderNormalization();
     dlog('audio:route', { mode: 'matrix' });
 
     // Läuft das Element durch die Matrix, kommt kein Ton mehr durch, sobald
@@ -4306,6 +4377,8 @@ async function rebuildAudioGraph(reason) {
     Audio.ctx = null;
     Audio.channel = null;
     Audio.channelIn = null;
+    Audio.playbackIn = null;
+    Audio.normalizationGain = null;
     Audio.elSource = null;
     Audio.hdNode = null;
     Audio.el = null;
@@ -4328,6 +4401,7 @@ async function rebuildAudioGraph(reason) {
 
     await setupAudioGraph();
     Audio.ready = true;
+    renderNormalization();
 
     if (savedBlobUrl && savedKey) {
       const el = Audio.el;
@@ -4510,6 +4584,263 @@ async function onAudioContextStateChange() {
 // kollidieren, bevor dessen `loadedmetadata` eingetroffen ist.
 let audioLoadMutex = null;
 
+const NORMALIZATION_ALGO_VERSION = 2;
+const NORMALIZATION_MAX_SECONDS = 600;
+const NORMALIZATION_MAX_BYTES = 60 * 1024 * 1024;
+const NORMALIZATION_MAX_PCM_BYTES = 64 * 1024 * 1024;
+const NORMALIZATION_TARGET_DB = -20;
+let normalizationGeneration = 0;
+let normalizationWorkerPromise = null;
+let normalizationImportActive = false;
+const normalizationQueue = new Map();
+const normalizationAttempted = new Set();
+const normalizationProgress = { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' };
+
+function newSourceRevision() {
+  return `${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(2)).join('-')}`;
+}
+
+function normalizationIdentity(track) {
+  return track?.fileKey && track?.sourceRevision
+    ? `${track.fileKey}:${track.sourceRevision}:${NORMALIZATION_ALGO_VERSION}` : null;
+}
+
+function normalizationCacheValue(track) {
+  const cached = track?.normalization;
+  if (cached?.version !== NORMALIZATION_ALGO_VERSION
+      || cached.fileKey !== track?.fileKey
+      || cached.sourceRevision !== track?.sourceRevision) return null;
+  return Number.isFinite(cached.gainDb) ? cached.gainDb : null;
+}
+
+function normalizationHasRecord(track) {
+  const cached = track?.normalization;
+  return cached?.version === NORMALIZATION_ALGO_VERSION
+    && cached.fileKey === track?.fileKey && cached.sourceRevision === track?.sourceRevision
+    && (cached.status === 'skipped' || cached.status === 'failed' || Number.isFinite(cached.gainDb));
+}
+
+function normalizationEligibility({ durationSec, sampleRate, channelCount, compressedBytes }) {
+  if (![durationSec, sampleRate, channelCount, compressedBytes].every(Number.isFinite)
+      || durationSec <= 0 || sampleRate <= 0 || !Number.isInteger(channelCount)
+      || channelCount <= 0 || compressedBytes < 0) return { ok: false, reason: 'metadata' };
+  if (durationSec > NORMALIZATION_MAX_SECONDS) return { ok: false, reason: 'duration' };
+  if (compressedBytes > NORMALIZATION_MAX_BYTES) return { ok: false, reason: 'compressed' };
+  const pcmBytes = durationSec * sampleRate * channelCount * 4;
+  if (!Number.isFinite(pcmBytes) || pcmBytes > NORMALIZATION_MAX_PCM_BYTES) return { ok: false, reason: 'pcm' };
+  return { ok: true, pcmBytes };
+}
+
+/** Bounded source-header inspection; never reads the complete compressed file. */
+async function inspectNormalizationMetadata(blob) {
+  const bytes = new Uint8Array(await blob.slice(0, 64 * 1024).arrayBuffer());
+  if (bytes.length >= 28 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF'
+      && String.fromCharCode(...bytes.slice(8, 12)) === 'WAVE') {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let p = 12; p + 8 <= bytes.length;) {
+      const name = String.fromCharCode(...bytes.slice(p, p + 4));
+      const size = view.getUint32(p + 4, true);
+      if (name === 'fmt ' && size >= 16 && p + 24 <= bytes.length) {
+        return { channelCount: view.getUint16(p + 10, true), sampleRate: view.getUint32(p + 12, true) };
+      }
+      p += 8 + size + (size & 1);
+    }
+  }
+  // MPEG-1 Layer III header (ID3 may precede it). Other/ambiguous codecs are
+  // deliberately left unknown rather than guessed into eligibility.
+  const rates = [44100, 48000, 32000];
+  for (let p = 0; p + 3 < bytes.length; p++) {
+    if (bytes[p] !== 0xff || (bytes[p + 1] & 0xfe) !== 0xfa) continue;
+    const rate = rates[(bytes[p + 2] >> 2) & 3];
+    if (rate) return { sampleRate: rate, channelCount: ((bytes[p + 3] >> 6) === 3 ? 1 : 2) };
+  }
+  return null;
+}
+
+function applyNormalizationGain() {
+  const node = Audio.normalizationGain;
+  if (!node) return;
+  const db = settings.normalizationEnabled ? Audio.normalizationDb : 0;
+  const value = 10 ** (db / 20);
+  node.gain.setTargetAtTime(value, node.context.currentTime, 0.025); // settles in roughly 100 ms
+}
+
+function normalizationCanWork() {
+  const recording = recStarting || (recMediaRecorder && recMediaRecorder.state !== 'inactive');
+  return settings.normalizationEnabled && normalizationAvailable()
+    && document.visibilityState === 'visible' && !Audio.playing && !audioPreview
+    && !Audio.bgVoice && !recording && !normalizationImportActive;
+}
+
+function renderNormalizationProgress() {
+  const host = $('#normalization-progress');
+  if (!host) return;
+  const p = normalizationProgress;
+  const finished = p.analyzed + p.skipped + p.failed;
+  host.hidden = !settings.normalizationEnabled;
+  $('#normalization-progress-bar').max = Math.max(1, p.total);
+  $('#normalization-progress-bar').value = finished;
+  $('#normalization-progress-summary').textContent = t('settings.normalization.progress')
+    .replace('{done}', finished).replace('{total}', p.total);
+  $('#normalization-progress-current').textContent = p.current || p.reason || '';
+  $('#normalization-progress-counts').textContent = t('settings.normalization.counts')
+    .replace('{analyzed}', p.analyzed).replace('{skipped}', p.skipped).replace('{failed}', p.failed);
+}
+
+function stopNormalizationScheduling() {
+  normalizationGeneration++;
+  normalizationQueue.clear();
+  normalizationProgress.current = '';
+}
+
+function scheduleTrackNormalization(fileKey, track) {
+  if (!fileKey || !track || normalizationHasRecord(track)) return;
+  const id = normalizationIdentity(track);
+  if (!id || normalizationAttempted.has(id)) return;
+  normalizationQueue.set(id, { fileKey, sourceRevision: track.sourceRevision });
+  normalizationProgress.total = Math.max(normalizationProgress.total, normalizationQueue.size
+    + normalizationProgress.analyzed + normalizationProgress.skipped + normalizationProgress.failed);
+  startNormalizationWorker();
+}
+
+async function scheduleNormalizationReconciliation() {
+  if (!settings.normalizationEnabled) return;
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) for (const track of song.tracks || []) {
+    if (!track.sourceRevision) { track.sourceRevision = newSourceRevision(); delete track.normalization; await DB.metaPut(song); }
+    scheduleTrackNormalization(track.fileKey, track);
+  }
+  renderNormalizationProgress();
+}
+
+function startNormalizationWorker() {
+  if (normalizationWorkerPromise || !normalizationCanWork()) { renderNormalizationProgress(); return; }
+  normalizationWorkerPromise = runNormalizationWorker().finally(() => {
+    // The lock is intentionally held through decode settlement and reference release.
+    normalizationWorkerPromise = null;
+    if (normalizationQueue.size && normalizationCanWork()) setTimeout(startNormalizationWorker, 0);
+  });
+}
+
+async function runNormalizationWorker() {
+  while (normalizationQueue.size && normalizationCanWork()) {
+    const [id, job] = normalizationQueue.entries().next().value;
+    normalizationQueue.delete(id);
+    normalizationAttempted.add(id);
+    const generation = normalizationGeneration;
+    let buffer = null;
+    try {
+      const songs = await DB.metaByType('song');
+      const song = songs.find((s) => s.tracks?.some((t) => t.fileKey === job.fileKey));
+      const track = song?.tracks.find((t) => t.fileKey === job.fileKey);
+      if (!track || track.sourceRevision !== job.sourceRevision || normalizationHasRecord(track)) continue;
+      normalizationProgress.current = `${song.title || ''} · ${VOICE_LABEL[track.voice] || track.label || track.voice || ''}`;
+      renderNormalizationProgress();
+      const rec = await DB.fileGet(job.fileKey);
+      if (!rec) continue;
+      const blob = recordBlob(rec, mimeForTrack(track));
+      const eligible = normalizationEligibility({ durationSec: track.durationSec,
+        sampleRate: track.sampleRate, channelCount: track.channelCount, compressedBytes: blob.size });
+      if (!eligible.ok) {
+        track.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: track.fileKey,
+          sourceRevision: track.sourceRevision, status: 'skipped', reason: eligible.reason };
+        normalizationProgress.skipped++;
+        normalizationProgress.reason = t(`settings.normalization.reason.${eligible.reason}`);
+      } else {
+        buffer = await decodeNormalizationBlob(blob, track.sampleRate);
+        const gainDb = await analyzeNormalizationBuffer(buffer, () => generation !== normalizationGeneration || !normalizationCanWork());
+        if (gainDb == null) throw new Error('interrupted');
+        if (generation !== normalizationGeneration || track.sourceRevision !== job.sourceRevision) continue;
+        track.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: track.fileKey,
+          sourceRevision: track.sourceRevision, status: 'analyzed', gainDb };
+        normalizationProgress.analyzed++;
+      }
+      await DB.metaPut(song);
+      if (Audio.currentKey === track.fileKey && track.normalization.status === 'analyzed') {
+        Audio.normalizationDb = track.normalization.gainDb; applyNormalizationGain();
+      }
+    } catch (err) {
+      if (err?.message === 'interrupted') {
+        // Interruption is not a completed attempt. Playback, recording,
+        // imports and page hiding are temporary, so retain this exact
+        // source-revision job for the next idle period. Switching the feature
+        // off is different: stopNormalizationScheduling() clears pending work
+        // and settings.normalizationEnabled prevents this requeue.
+        if (settings.normalizationEnabled) {
+          normalizationAttempted.delete(id);
+          normalizationQueue.set(id, job);
+        }
+      } else {
+        normalizationProgress.failed++;
+        normalizationProgress.reason = t('settings.normalization.reason.failed');
+        const songs = await DB.metaByType('song').catch(() => []);
+        const song = songs.find((s) => s.tracks?.some((t) => t.fileKey === job.fileKey));
+        const track = song?.tracks.find((t) => t.fileKey === job.fileKey);
+        if (track?.sourceRevision === job.sourceRevision) {
+          track.normalization = { version: NORMALIZATION_ALGO_VERSION, fileKey: track.fileKey,
+            sourceRevision: track.sourceRevision, status: 'failed', reason: err?.name || 'decode' };
+          await DB.metaPut(song).catch(() => {});
+        }
+      }
+      dlog('audio:normalization', { name: err?.name || err?.message || 'error' });
+    } finally {
+      buffer = null;
+      normalizationProgress.current = '';
+      renderNormalizationProgress();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+}
+
+async function decodeNormalizationBlob(blob, sampleRate) {
+  const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OfflineCtx) throw new Error('offline-context');
+  // Eligibility was checked before this full compressed allocation.
+  const bytes = await blob.arrayBuffer();
+  return new OfflineCtx(1, 1, sampleRate).decodeAudioData(bytes);
+}
+
+async function analyzeNormalizationBuffer(buffer, interrupted = () => false) {
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+  const windowSamples = Math.max(1, Math.round(buffer.sampleRate * 0.4));
+  const windows = [];
+  let peak = 0;
+  let sliceStarted = performance.now();
+  for (let start = 0; start < buffer.length; start += windowSamples) {
+    let sum = 0, count = 0;
+    const end = Math.min(buffer.length, start + windowSamples);
+    for (const channel of channels) {
+      for (let i = start; i < end; i++) {
+        const sample = channel[i];
+        if (!Number.isFinite(sample)) return 0;
+        sum += sample * sample;
+        peak = Math.max(peak, Math.abs(sample));
+      }
+      count += end - start;
+    }
+    windows.push({ energy: sum, count });
+    if (performance.now() - sliceStarted >= 3) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (interrupted()) return null;
+      sliceStarted = performance.now();
+    }
+  }
+  if (!(peak > 0) || !windows.length) return 0;
+  const floor = 10 ** (-70 / 10);
+  const preliminary = windows.filter((w) => w.energy / w.count >= floor);
+  if (!preliminary.length) return 0;
+  const weighted = (items) => items.reduce((a, w) => a + w.energy, 0)
+    / items.reduce((a, w) => a + w.count, 0);
+  const preliminaryDb = 10 * Math.log10(weighted(preliminary));
+  const threshold = Math.max(floor, 10 ** ((preliminaryDb - 10) / 10));
+  const active = windows.filter((w) => w.energy / w.count >= threshold);
+  if (!active.length) return 0;
+  const activeRmsDb = 10 * Math.log10(weighted(active));
+  const peakDb = 20 * Math.log10(peak);
+  const gainDb = Math.min(NORMALIZATION_TARGET_DB - activeRmsDb, 12, -1 - peakDb);
+  return Number.isFinite(gainDb) ? gainDb : 0;
+}
+
 /** Lädt eine Spur in das Element. Läuft schon dieselbe, ist nichts zu tun. */
 async function audioLoadTrack(track) {
   if (audioLoadMutex) await audioLoadMutex.catch(() => {});
@@ -4562,6 +4893,8 @@ async function audioLoadTrackNow(track) {
     if (Audio.blobUrl) URL.revokeObjectURL(Audio.blobUrl);
     Audio.blobUrl = url;
     Audio.currentKey = track.fileKey;
+    Audio.normalizationDb = normalizationCacheValue(track) ?? 0;
+    applyNormalizationGain();
 
     // Tempo und Tonhöhenerhalt gelten dem Element, nicht der Quelle — nach
     // Spec bleiben sie über einen Ladevorgang hinweg erhalten. Sicherheits-
@@ -4576,7 +4909,9 @@ async function audioLoadTrackNow(track) {
     // Die Dauer wird bei jedem Laden aktualisiert. Nur so lässt sich später
     // erkennen, dass eine ersetzte Aufnahme anders lang ist und gespeicherte
     // Loops verschoben sein könnten.
-    rememberDuration(track, el.duration);
+    const sourceMetadata = await inspectNormalizationMetadata(blob).catch(() => null);
+    await rememberDuration(track, el.duration, sourceMetadata);
+    scheduleTrackNormalization(track.fileKey, track);
   } finally {
     setLoading(track.fileKey, false);
   }
@@ -4589,16 +4924,17 @@ function setLoading(key, active) {
   Audio.onLoadingChange?.();
 }
 
-async function rememberDuration(track, duration) {
+async function rememberDuration(track, duration, sourceMetadata = null) {
   if (!Audio.song || !Number.isFinite(duration)) return;
-  if (typeof track.durationSec === 'number' && Math.abs(track.durationSec - duration) < 0.05) return;
   track.durationSec = duration;
+  if (sourceMetadata) Object.assign(track, sourceMetadata);
   try {
     const song = await DB.metaGet(Audio.song.key);
     if (!song) return;
     const stored = song.tracks.find((t) => t.fileKey === track.fileKey);
     if (!stored) return;
     stored.durationSec = duration;
+    if (sourceMetadata) Object.assign(stored, sourceMetadata);
     await DB.metaPut(song);
   } catch (err) {
     console.warn('[player] Dauer konnte nicht gemerkt werden', err);
@@ -4673,6 +5009,8 @@ function audioPause() {
   dlog('audio:pause');
   updateWakeLock();
   updateHdLoadVisibility();
+  scheduleTrackNormalization(Audio.currentKey);
+  startNormalizationWorker();
 }
 
 function audioSeek(seconds) {
@@ -4865,7 +5203,7 @@ async function hdApplyTransition(reason, opts = {}) {
   // der sichere Zustand schon — im Standard-Modus bei jedem Sprung der Fall —,
   // bleiben Element und Verdrahtung unberührt und der Sprung damit knackfrei.
   hdSetElementPlayback(el, Audio.rate, true);
-  hdWireSource(src, Audio.channelIn);
+  hdWireSource(src, Audio.playbackIn);
   if (Audio.hdNode) Audio.hdNode.disconnect();
 
   // Schritt 3: Knoten nur sicherstellen, wenn er wirklich gebraucht wird
@@ -4968,8 +5306,8 @@ async function hdApplyTransition(reason, opts = {}) {
   if (generation !== hdTransitionGeneration || node !== Audio.hdNode) return;
 
   // Schritt 7: erst jetzt hörbar verbinden.
-  hdWireSource(src, useHd ? node : Audio.channelIn);
-  if (useHd && Audio.channelIn) node.connect(Audio.channelIn);
+  hdWireSource(src, useHd ? node : Audio.playbackIn);
+  if (useHd && Audio.playbackIn) node.connect(Audio.playbackIn);
   else node.disconnect();
   hdSetElementPlayback(el, Audio.rate, !useHd);
   hdWasEngaged = useHd;
@@ -5177,12 +5515,15 @@ document.addEventListener('visibilitychange', () => {
     elPaused: Audio.el?.paused, ctxState: Audio.ctx?.state,
   });
   if (document.visibilityState !== 'visible') {
+    normalizationGeneration++; // cooperative PCM scan interruption; decode itself settles under the worker lock
     audioHiddenSince = performance.now();
     // Frischer Abschnitt: was im vorigen Hintergrund gemessen wurde, ist
     // beim Zurückkehren längst gemeldet und ausgewertet worden.
     hdResetBackgroundHealth();
     return;
   }
+  startNormalizationWorker();
+  if (settings.normalizationEnabled) scheduleNormalizationReconciliation();
   const backgroundMs = audioHiddenSince ? performance.now() - audioHiddenSince : 0;
   audioHiddenSince = null;
   updateWakeLock();
@@ -6151,6 +6492,7 @@ async function runImport() {
     banner('Diese Auswahl enthält ungewöhnlich viele Songs oder Dateien — das sieht nicht nach einem Chorarchiv aus.', { kind: 'error' });
     return;
   }
+  normalizationImportActive = true;
 
   sheetImport.disabled = true;
   sheetProgress.hidden = false;
@@ -6272,6 +6614,7 @@ async function runImport() {
               fileKey,
               size: blob.size,
               durationSec: null,
+              sourceRevision: newSourceRevision(),
             };
 
             // Gegen die laufend mitgeführte Arbeitskopie prüfen, nicht gegen
@@ -6404,6 +6747,7 @@ async function runImport() {
     try { await flushImportBatch(batch); } catch (e) { console.warn('[import] Rest', e); }
   } finally {
     importLock?.release().catch(() => {});
+    normalizationImportActive = false;
   }
 
   report.unchanged = selectionStats().unchanged;
@@ -6470,6 +6814,8 @@ async function runImport() {
     quotaHit: report.quotaHit, doneFiles: done, doneBytes,
   });
   showView('songs');
+  // Reconcile committed database state only; import success never waits for analysis.
+  setTimeout(() => scheduleNormalizationReconciliation(), 0);
 }
 
 /**
@@ -9868,6 +10214,10 @@ async function previewRecordingBlob(blob, tag, range) {
   const returnFootUnavailable = prior ? prior.returnFootUnavailable : $('#player-foot').classList.contains('player-foot--unavailable');
 
   if (Audio.playing) audioPause();
+  // A REC is never a practice track. Reset before assigning/loading its URL,
+  // so no cached gain can leak into the first audible preview frame.
+  Audio.normalizationDb = 0;
+  applyNormalizationGain();
 
   const el = Audio.el;
   const url = URL.createObjectURL(blob);
@@ -13857,6 +14207,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           song.tracks.push({
             voice, label: VOICE_LABEL[voice] || voice,
             fileName, fileKey, size: blob.size, durationSec: null,
+            sourceRevision: newSourceRevision(),
           });
           songGotContent = true;
           batch.songs.add(song);
@@ -15277,6 +15628,45 @@ function testZipFile(bytes) {
 async function runAsyncSelfTests() {
   const failed = [];
 
+  // RMS normalisation: full-band, all-channel sample weighting and absolute
+  // sample peak protection. Fake AudioBuffers keep this deterministic.
+  const fakeBuffer = (arrays, sampleRate = 10) => ({ numberOfChannels: arrays.length,
+    sampleRate, length: arrays[0].length, getChannelData: (i) => arrays[i] });
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  {
+    const silence = await analyzeNormalizationBuffer(fakeBuffer([new Float32Array(10)]));
+    if (silence !== 0) failed.push('Normalisierung: Stille müsste Unity ergeben');
+    const invalid = new Float32Array(10); invalid[3] = NaN;
+    if (await analyzeNormalizationBuffer(fakeBuffer([invalid])) !== 0) failed.push('Normalisierung: NaN müsste Unity ergeben');
+
+    const quiet = new Float32Array(100).fill(0.04); quiet[50] = 0.98;
+    const transientGainDb = await analyzeNormalizationBuffer(fakeBuffer([quiet], 100));
+    if (transientGainDb > (-1 - 20 * Math.log10(0.98)) + 1e-6
+        || 0.98 * (10 ** (transientGainDb / 20)) > 10 ** (-1 / 20) + 1e-6) {
+      failed.push(`Normalisierung: lauter Transient verletzt Sample-Peak-Cap (${transientGainDb} dB)`);
+    }
+
+    const boost = await analyzeNormalizationBuffer(fakeBuffer([new Float32Array(40).fill(0.001)]));
+    if (boost > 12 + 1e-9) failed.push('Normalisierung: Boost-Cap über +12 dB');
+    const stereo = [new Float32Array(40).fill(0.1), new Float32Array(40).fill(0.02)];
+    const stereoDb = await analyzeNormalizationBuffer(fakeBuffer(stereo));
+    if (!Number.isFinite(stereoDb)) failed.push('Normalisierung: Stereoanalyse liefert keinen gemeinsamen Gain');
+
+    const weighted = [new Float32Array(5).fill(0.1)]; // partial 100-ms tail must count by samples
+    const weightedDb = await analyzeNormalizationBuffer(fakeBuffer(weighted, 10));
+    if (!near(weightedDb, 0, 1e-4)) failed.push(`Normalisierung: gewichtete RMS unerwartet (${weightedDb})`);
+  }
+  {
+    const base = { sampleRate: 48000, channelCount: 2, compressedBytes: 1 };
+    if (!normalizationEligibility({ ...base, durationSec: 600 }).ok) failed.push('Normalisierung: 600 s müssten zulässig sein');
+    if (normalizationEligibility({ ...base, durationSec: 600.001 }).reason !== 'duration') failed.push('Normalisierung: über 600 s nicht abgelehnt');
+    if (normalizationEligibility({ durationSec: 100, sampleRate: 192000, channelCount: 2, compressedBytes: 1 }).reason !== 'pcm') failed.push('Normalisierung: PCM-Budget nicht geprüft');
+    if (normalizationEligibility({ durationSec: NaN, sampleRate: 48000, channelCount: 2, compressedBytes: 1 }).reason !== 'metadata') failed.push('Normalisierung: ungültige Metadaten nicht abgelehnt');
+    const a = { fileKey: 'same', sourceRevision: 'a', normalization: { version: NORMALIZATION_ALGO_VERSION, fileKey: 'same', sourceRevision: 'a', gainDb: 1 } };
+    const b = { ...a, sourceRevision: 'b' };
+    if (normalizationCacheValue(a) !== 1 || normalizationCacheValue(b) !== null) failed.push('Normalisierung: Quellenrevision invalidiert Cache nicht');
+  }
+
   let rejected = false;
   try {
     await noteWrite(() => Promise.reject(new Error('Testfehler')));
@@ -16553,6 +16943,7 @@ async function boot() {
   }
 
   await loadSettings();
+  if (settings.normalizationEnabled) setTimeout(() => scheduleNormalizationReconciliation(), 0);
   applyTranslations();
   initGrooveLabEasterEgg();
   setupFolderImport();

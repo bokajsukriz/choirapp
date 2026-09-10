@@ -3627,7 +3627,32 @@ input[type="checkbox"] {
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
 
-      <p class="section-title" style="margin-top:0" data-i18n="settings.bike.title">Fahrradfahren-Modus</p>
+      <div class="row" style="margin-top:0">
+        <span class="small" style="max-width:70%" data-i18n="settings.normalization.label">
+          Lautstärke normalisieren
+        </span>
+        <button class="switch" id="normalization-toggle" type="button" role="switch"
+                aria-checked="false" data-i18n-aria="settings.normalization.aria"
+                aria-label="Lautstärke normalisieren">
+          <span class="switch-knob"></span>
+        </button>
+      </div>
+      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.normalization.hint">
+        Gleicht Lautstärkeunterschiede zwischen Aufnahmen aus. Die Dynamik innerhalb einer Aufnahme bleibt erhalten.
+      </p>
+      <p class="small muted" id="normalization-status" style="margin:6px 0 0" hidden
+         data-i18n="settings.normalization.unavailable">
+        Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.
+      </p>
+      <div id="normalization-progress" class="small muted" style="margin-top:8px" hidden>
+        <progress id="normalization-progress-bar" max="1" value="0" aria-label="Normalisierungsanalyse"></progress>
+        <div id="normalization-progress-summary" role="status" aria-live="polite"></div>
+        <div id="normalization-progress-current"></div>
+        <div id="normalization-progress-counts"></div>
+        <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry">Erneut versuchen</button>
+      </div>
+
+      <p class="section-title"  data-i18n="settings.bike.title">Fahrradfahren-Modus</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.bike.hint">
         Bei nur einem Ohrstöpsel: Ist eine Stimme (z. B. Bass) hart auf eine
         Seite gemischt, hört man sie sonst je nach Ohr gar nicht.
@@ -3640,6 +3665,8 @@ input[type="checkbox"] {
           <option value="swap" data-i18n="settings.bike.swap">Tauschen</option>
         </select>
       </label>
+
+
 
       <p class="section-title" data-i18n="settings.perf.title">Kompatibilität &amp; Performance</p>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.perf.modeHint">
