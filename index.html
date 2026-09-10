@@ -3659,9 +3659,12 @@ input[type="checkbox"] {
         <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry">Erneut versuchen</button>
       </div>
       <details id="normalization-details" class="small" style="margin-top:8px" hidden>
-        <summary data-i18n="settings.normalization.details.title">Übersprungene und fehlgeschlagene Dateien</summary>
+        <summary data-i18n="settings.normalization.details.title">Analyseergebnisse je Datei</summary>
+        <div id="normalization-details-filter" class="filterbar" style="margin-top:8px"></div>
         <ul id="normalization-details-list" style="list-style:none;padding:0;margin:8px 0 0"></ul>
         <button id="normalization-details-more" class="btn btn--ghost" type="button" hidden></button>
+        <button id="normalization-clear-all" class="btn btn--ghost" type="button" style="margin-top:8px"
+                data-i18n="settings.normalization.clearAll">Alle Informationen löschen</button>
       </details>
 
       <p class="section-title"  data-i18n="settings.bike.title">Fahrradfahren-Modus</p>

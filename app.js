@@ -2774,6 +2774,18 @@ $('#normalization-retry').addEventListener('click', async () => {
   scheduleNormalizationReconciliation();
 });
 
+$('#normalization-clear-all').addEventListener('click', async () => {
+  const ok = await confirmDialog({
+    title: t('settings.normalization.clearAllConfirmTitle'),
+    text: t('settings.normalization.clearAllConfirmText'),
+    okLabel: t('settings.normalization.clearAllConfirm'),
+    cancelLabel: t('settings.normalization.cancel'),
+    danger: true,
+  });
+  if (!ok) return;
+  await clearAllNormalizationResults();
+});
+
 $('#normalization-crashguard-resume').addEventListener('click', async () => {
   await resumeNormalizationAfterCrashGuard();
 });
@@ -5155,6 +5167,9 @@ function renderNormalizationProgress() {
    -------------------------------------------------------------------------- */
 const NORMALIZATION_DETAILS_PAGE = 20;
 let normalizationDetailsExpanded = false;
+// 'all' | 'analyzed' | 'problems' — which rows collectNormalizationDiagnostics()
+// finds are actually shown; see renderNormalizationDetailsFilterBar().
+let normalizationDetailsFilter = 'all';
 
 function fmtMiBNumber(bytes) {
   return Number.isFinite(bytes) ? Math.round(bytes / (1024 * 1024)) : '–';
@@ -5299,6 +5314,36 @@ async function retryNormalizationTrack(fileKey, sourceRevision) {
   return true;
 }
 
+/** Hard reset for experimentation ("Alle Informationen löschen"): clears
+ *  every track's persisted normalization result — analyzed, skipped, and
+ *  failed alike — across the whole library, resets the in-memory progress
+ *  counters, and neutralizes any currently applied live gain (its source
+ *  record is gone). stopNormalizationScheduling() runs first so a job
+ *  that's already past its last stillGood() check can't write a fresh
+ *  result back in right after this clears it — same generation-bump
+ *  mechanism the enable/disable toggle already relies on. If the feature
+ *  is still enabled, everything is rescheduled fresh right after. */
+async function clearAllNormalizationResults() {
+  stopNormalizationScheduling();
+  const songs = await DB.metaByType('song').catch(() => []);
+  for (const song of songs) {
+    for (const track of song.tracks || []) {
+      if (!track.normalization) continue;
+      await commitTrackMutation(track.fileKey, (t) => {
+        if (!t.normalization) return false;
+        delete t.normalization;
+        return true;
+      }).catch(() => {});
+    }
+  }
+  Object.assign(normalizationProgress, { total: 0, analyzed: 0, skipped: 0, failed: 0, current: '', reason: '' });
+  normalizationCountedIdentities.clear();
+  Audio.normalizationDb = 0;
+  applyNormalizationGain();
+  renderNormalizationProgress();
+  if (settings.normalizationEnabled) await scheduleNormalizationReconciliation();
+}
+
 function buildNormalizationDetailRow(row) {
   const { song, track, diag } = row;
   const { text, fileInfo } = normalizationDetailText(diag);
@@ -5327,6 +5372,39 @@ function buildNormalizationDetailRow(row) {
   return el('li', { style: 'padding:10px 0;border-top:1px solid rgba(127,127,127,.25)' }, children);
 }
 
+/** true if `row` belongs in the current normalizationDetailsFilter bucket —
+ *  'analyzed' is a successfully analyzed track, 'problems' is everything
+ *  else (skipped or failed), 'all' is everything. */
+function normalizationRowMatchesFilter(row, filter) {
+  if (filter === 'analyzed') return row.diag.status === 'analyzed';
+  if (filter === 'problems') return row.diag.status !== 'analyzed';
+  return true;
+}
+
+/** Filter chips above the list — counts always reflect the *unfiltered*
+ *  rows, so switching filters never requires a second DB read. Hidden for
+ *  zero/one row: nothing to usefully filter yet. */
+function renderNormalizationDetailsFilterBar(rows) {
+  const host = $('#normalization-details-filter');
+  if (!host) return;
+  host.hidden = rows.length <= 1;
+  if (host.hidden) return;
+  let analyzedCount = 0;
+  for (const row of rows) if (row.diag.status === 'analyzed') analyzedCount++;
+  host.textContent = '';
+  const makeChip = (value, label) => el('button', {
+    class: 'filter-chip', type: 'button',
+    'aria-pressed': normalizationDetailsFilter === value ? 'true' : 'false',
+    text: label,
+    onclick: () => { normalizationDetailsFilter = value; renderNormalizationDetails(); },
+  });
+  host.append(
+    makeChip('all', `${t('settings.normalization.filter.all')} (${rows.length})`),
+    makeChip('analyzed', `${t('settings.normalization.filter.analyzed')} (${analyzedCount})`),
+    makeChip('problems', `${t('settings.normalization.filter.problems')} (${rows.length - analyzedCount})`),
+  );
+}
+
 async function renderNormalizationDetails() {
   const host = $('#normalization-details');
   const list = $('#normalization-details-list');
@@ -5336,14 +5414,22 @@ async function renderNormalizationDetails() {
   // Visibility must be independent of `open`: while hidden, the <summary>
   // itself isn't rendered either, so the user could never click it to open
   // it in the first place — that would make the whole section unreachable.
-  host.hidden = !settings.normalizationEnabled || !rows.length;
+  // Independent of settings.normalizationEnabled on purpose: turning the
+  // feature off shouldn't hide what it already found — the whole point of
+  // this panel while experimenting is to inspect results after the fact.
+  host.hidden = !rows.length;
   if (host.hidden || !host.open) return;
+  renderNormalizationDetailsFilterBar(rows);
+  const filtered = rows.filter((row) => normalizationRowMatchesFilter(row, normalizationDetailsFilter));
   list.textContent = '';
-  const shown = normalizationDetailsExpanded ? rows : rows.slice(0, NORMALIZATION_DETAILS_PAGE);
+  if (!filtered.length) {
+    list.append(el('li', { class: 'muted', style: 'padding:10px 0' }, t('settings.normalization.details.emptyFilter')));
+  }
+  const shown = normalizationDetailsExpanded ? filtered : filtered.slice(0, NORMALIZATION_DETAILS_PAGE);
   for (const row of shown) list.append(buildNormalizationDetailRow(row));
-  const remaining = rows.length - shown.length;
+  const remaining = filtered.length - shown.length;
   moreBtn.hidden = remaining <= 0;
-  if (remaining > 0) moreBtn.textContent = t('settings.normalization.details.showAll').replace('{count}', rows.length);
+  if (remaining > 0) moreBtn.textContent = t('settings.normalization.details.showAll').replace('{count}', filtered.length);
 }
 
 /** Always keeps the section's visibility (and thus its clickable <summary>)
@@ -18779,6 +18865,87 @@ async function runNormalizationWorkerTests() {
       if (normalizationAnalysisSampleRate(44100) !== 32000) fail('8g) 44,1 kHz wurde nicht auf 32 kHz gedeckelt');
       if (normalizationAnalysisSampleRate(22050) !== 22050) fail('8g) 22,05 kHz wurde unnötig verändert');
       if (normalizationAnalysisSampleRate(8000) !== 8000) fail('8g) 8 kHz wurde unnötig verändert');
+    }
+  });
+
+  // --- Section 9: details-list filter classification + "clear all" reset ---
+  await testWithNormalizationEnv(async () => {
+    // 9a) normalizationRowMatchesFilter() classifies every diag status.
+    {
+      const analyzedRow = { diag: { status: 'analyzed' } };
+      const skippedRow = { diag: { status: 'skipped' } };
+      const failedRow = { diag: { status: 'failed' } };
+      for (const row of [analyzedRow, skippedRow, failedRow]) {
+        if (!normalizationRowMatchesFilter(row, 'all')) fail(`9a) 'all' schließt ${row.diag.status} fälschlich aus`);
+      }
+      if (!normalizationRowMatchesFilter(analyzedRow, 'analyzed')) fail("9a) 'analyzed' verpasst einen analysierten Eintrag");
+      if (normalizationRowMatchesFilter(skippedRow, 'analyzed')) fail("9a) 'analyzed' lässt einen übersprungenen Eintrag durch");
+      if (normalizationRowMatchesFilter(failedRow, 'analyzed')) fail("9a) 'analyzed' lässt einen fehlgeschlagenen Eintrag durch");
+      if (normalizationRowMatchesFilter(analyzedRow, 'problems')) fail("9a) 'problems' lässt einen analysierten Eintrag durch");
+      if (!normalizationRowMatchesFilter(skippedRow, 'problems')) fail("9a) 'problems' verpasst einen übersprungenen Eintrag");
+      if (!normalizationRowMatchesFilter(failedRow, 'problems')) fail("9a) 'problems' verpasst einen fehlgeschlagenen Eintrag");
+    }
+
+    // 9b) clearAllNormalizationResults() wipes every status across multiple
+    // songs, resets the counters, and never leaves a stale live gain applied.
+    // Disabled for the duration so the reschedule at the end doesn't kick
+    // off a real background decode with whatever decodeImpl an earlier
+    // section left behind. clearAllNormalizationResults() scans the *whole*
+    // library by design (DB.metaByType('song')) — exercising the real,
+    // unmocked function here must never let it touch any song beyond this
+    // test's own three, so DB.metaByType is scoped to just those for the
+    // duration of the call, restored immediately after.
+    {
+      const seed1 = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      await commitNormalizationResult({ fileKey: seed1.fileKey, sourceRevision: seed1.track.sourceRevision },
+        { version: NORMALIZATION_ALGO_VERSION, status: 'analyzed', gainDb: -2 });
+      const seed2 = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      await commitNormalizationResult({ fileKey: seed2.fileKey, sourceRevision: seed2.track.sourceRevision }, {
+        version: NORMALIZATION_ALGO_VERSION, eligibilityPolicyVersion: NORMALIZATION_ELIGIBILITY_POLICY_VERSION,
+        status: 'skipped', reasonCode: 'duration',
+      });
+      const seed3 = await testSeedNormalizationTrack({
+        durationSec: 1, sampleRate: 8000, channelCount: 1, blob: testMakeWavBlob(),
+      });
+      await commitNormalizationResult({ fileKey: seed3.fileKey, sourceRevision: seed3.track.sourceRevision }, {
+        version: NORMALIZATION_ALGO_VERSION, status: 'failed', reasonCode: 'decodeError', errorName: 'Err',
+      });
+
+      Object.assign(normalizationProgress, { analyzed: 1, skipped: 1, failed: 1, total: 3 });
+      Audio.normalizationDb = -2;
+      settings.normalizationEnabled = false;
+      const realMetaByType = DB.metaByType.bind(DB);
+      const testSongKeys = new Set([seed1.songKey, seed2.songKey, seed3.songKey]);
+      DB.metaByType = async (type) => {
+        if (type !== 'song') return realMetaByType(type);
+        const all = await realMetaByType(type);
+        return all.filter((s) => testSongKeys.has(s.key));
+      };
+      try {
+        await clearAllNormalizationResults();
+      } finally {
+        DB.metaByType = realMetaByType;
+      }
+
+      const seeds = [seed1, seed2, seed3];
+      const rowsAfter = await collectNormalizationDiagnostics();
+      if (seeds.some((s) => rowsAfter.some((r) => r.track.fileKey === s.fileKey))) {
+        fail('9b) mindestens ein Datensatz besteht nach "Alle löschen" weiter');
+      }
+      if (normalizationProgress.analyzed !== 0 || normalizationProgress.skipped !== 0
+          || normalizationProgress.failed !== 0 || normalizationProgress.total !== 0) {
+        fail('9b) die Zähler wurden nicht auf 0 zurückgesetzt');
+      }
+      if (Audio.normalizationDb !== 0) fail('9b) eine veraltete Live-Verstärkung blieb nach dem Löschen aktiv');
+      for (const s of seeds) {
+        const live = (await DB.metaGet(s.songKey)).tracks[0];
+        if (live.normalization) fail(`9b) ${s.songKey} trägt nach dem Löschen weiterhin ein Ergebnis`);
+      }
+      for (const s of seeds) await s.cleanup();
     }
   });
 
