@@ -5176,17 +5176,24 @@ function renderNormalizationProgress() {
   if (!host) return;
   const p = normalizationProgress;
   const finished = p.analyzed + p.skipped + p.failed;
-  host.hidden = !settings.normalizationEnabled;
+  const pending = normalizationQueue.size + normalizationInFlight.size;
+  const isAnalyzing = pending > 0 || p.total > 0 && finished < p.total;
+  host.hidden = !settings.normalizationEnabled || !isAnalyzing;
+  if (host.hidden) {
+    renderNormalizationCrashGuard();
+    renderNormalizationDetailsIfOpen();
+    return;
+  }
   $('#normalization-progress-bar').max = Math.max(1, p.total);
   $('#normalization-progress-bar').value = finished;
   $('#normalization-progress-summary').textContent = t('settings.normalization.progress')
     .replace('{done}', finished).replace('{total}', p.total);
-  const pending = normalizationQueue.size + normalizationInFlight.size;
   const pauseReason = pending && !p.current ? normalizationPauseReason() : null;
   $('#normalization-progress-current').textContent = p.current
     || (pauseReason ? t(`settings.normalization.paused.${pauseReason}`) : '') || p.reason || '';
   $('#normalization-progress-counts').textContent = t('settings.normalization.counts')
-    .replace('{analyzed}', p.analyzed).replace('{skipped}', p.skipped).replace('{failed}', p.failed);
+    .replace('{analyzed}', p.analyzed).replace('{total}', p.total).replace('{failed}', p.failed);
+  $('#normalization-retry').hidden = true;
   renderNormalizationCrashGuard();
   renderNormalizationDetailsIfOpen();
 }
@@ -5442,6 +5449,7 @@ async function renderNormalizationDetails() {
   const host = $('#normalization-details');
   const list = $('#normalization-details-list');
   const moreBtn = $('#normalization-details-more');
+  const clearAllBtn = $('#normalization-clear-all');
   if (!host || !list || !moreBtn) return;
   const rows = await collectNormalizationDiagnostics();
   // Visibility must be independent of `open`: while hidden, the <summary>
@@ -5451,6 +5459,7 @@ async function renderNormalizationDetails() {
   // feature off shouldn't hide what it already found — the whole point of
   // this panel while experimenting is to inspect results after the fact.
   host.hidden = !rows.length;
+  if (clearAllBtn) clearAllBtn.hidden = !host.open;
   if (host.hidden || !host.open) return;
   renderNormalizationDetailsFilterBar(rows);
   const filtered = rows.filter((row) => normalizationRowMatchesFilter(row, normalizationDetailsFilter));
