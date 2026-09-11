@@ -1735,6 +1735,28 @@ input[type="checkbox"] {
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
+.loop-item .loop-repeat { flex: 0 0 auto; }
+.loop-menu { position: relative; flex: 0 0 auto; }
+.loop-menu summary { list-style: none; }
+.loop-menu summary::-webkit-details-marker { display: none; }
+.loop-menu-popover {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  top: calc(100% + 5px);
+  width: max-content;
+  min-width: 180px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 8px 28px rgba(0,0,0,.2);
+}
+.loop-menu-popover button { display: block; width: 100%; text-align: left; }
+.practice-step { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.practice-step select { min-height: var(--tap); border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text); padding: 0 8px; }
+.practice-add { margin-bottom: 16px; }
+
 /* REC */
 .rec-controls {
   display: flex;
@@ -2616,13 +2638,13 @@ input[type="checkbox"] {
   <div class="onb-track" id="onb-track">
 
     <!-- 1 — Auf den Home-Bildschirm ------------------------------------- -->
-    <article class="onb-slide" id="onb-slide-1" aria-label="Schritt 1 von 5">
+    <article class="onb-slide" id="onb-slide-1" aria-label="Schritt 1 von 2">
       <div class="onb-badge" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 6v7"/><path d="M9 9l3-3 3 3"/>
         </svg>
       </div>
-      <p class="onb-step" data-i18n="onb.step1of5">Schritt 1 von 5</p>
+      <p class="onb-step" data-i18n="onb.step1of5">Schritt 1 von 2</p>
       <h2 id="onb-title-1" tabindex="-1" data-i18n-html="onb.slide1.title">Auf den Home&#8209;Bildschirm legen</h2>
       <p data-i18n="onb.slide1.text">
         So startet die App wie jede andere: eigenes Symbol, kein Browserfenster,
@@ -2635,110 +2657,26 @@ input[type="checkbox"] {
       <div class="preset-row" id="onb-language-picker"></div>
     </article>
 
-    <!-- 2 — Meine Stimme ------------------------------------------------- -->
-    <article class="onb-slide" id="onb-slide-2" aria-label="Schritt 2 von 5">
-      <div class="onb-badge" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
-        </svg>
-      </div>
-      <p class="onb-step" data-i18n="onb.step2of5">Schritt 2 von 5</p>
-      <h2 id="onb-title-2" tabindex="-1" data-i18n="onb.slide2.title">Welche Stimme singst du?</h2>
-      <p data-i18n="onb.slide2.text">
-        Zu jedem Lied gibt es mehrere Aufnahmen — eine je Stimme und eine
-        Gesamtmischung. Mit deiner Stimme weiß die App zweierlei:
-      </p>
-      <ul class="steps small" style="list-style: disc; color: var(--muted)">
-        <li data-i18n-html="onb.slide2.li1"><strong>Beim Import</strong> sind deine Stimme und die Gesamtmischung
-            vorausgewählt — der Rest bleibt draußen und spart Speicherplatz.</li>
-        <li data-i18n-html="onb.slide2.li2"><strong>Im Player</strong> klingt gleich deine Stimme, ohne dass du
-            sie bei jedem Lied neu einstellst.</li>
-      </ul>
-      <div class="chip-grid chip-grid--lg voice-pill-picker" id="onb-voice"></div>
-      <p class="small muted" style="margin-top:12px" data-i18n-html="onb.slide2.footnote">
-        Alle Stimmen bleiben trotzdem wählbar. Änderbar unter
-        <strong>Einstellungen&nbsp;→&nbsp;Meine Stimmen</strong>.
-      </p>
-    </article>
-
     <!-- 3 — Dauerhafte Speicherung --------------------------------------- -->
-    <article class="onb-slide" id="onb-slide-3" aria-label="Schritt 3 von 5">
+    <article class="onb-slide" id="onb-slide-3" aria-label="Schritt 2 von 2">
       <div class="onb-badge" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3l8 3.5V12c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6.5z"/><path d="M9 12l2 2 4-4"/>
         </svg>
       </div>
-      <p class="onb-step" data-i18n="onb.step3of5">Schritt 3 von 5</p>
+      <p class="onb-step" data-i18n="onb.step3of5">Schritt 2 von 2</p>
       <h2 id="onb-title-3" tabindex="-1" data-i18n="onb.slide3.title">Aufnahmen dauerhaft behalten</h2>
       <p data-i18n="onb.slide3.text1">
-        Web-Apps dürfen ihre Daten normalerweise nur „auf Probe“ speichern: wird
-        der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie
-        weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.
+        Bei knappem Speicher darf das System die Daten einer Web-App löschen.
       </p>
       <p data-i18n-html="onb.slide3.text2">
-        Mit einem Klick fragen wir das Betriebssystem, ob es die Daten
-        <strong>dauerhaft</strong> behalten soll. Der Browser entscheidet
-        selbst — ein Dialog erscheint dabei in der Regel nicht.
+        Mit einem Klick bitten wir darum, die Aufnahmen <strong>dauerhaft</strong> zu behalten.
       </p>
       <div class="stack">
         <button class="btn btn--primary btn--block" id="onb-persist" type="button" data-i18n="settings.storage.persistBtn">
           Dauerhafte Speicherung anfordern
         </button>
         <div class="onb-note" id="onb-persist-note" hidden></div>
-      </div>
-    </article>
-
-    <!-- 4 — Üben: Abschnitt und Tempo ------------------------------------ -->
-    <article class="onb-slide" id="onb-slide-4" aria-label="Schritt 4 von 5">
-      <div class="onb-badge" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-        </svg>
-      </div>
-      <p class="onb-step" data-i18n="onb.step4of5">Schritt 4 von 5</p>
-      <h2 id="onb-title-4" tabindex="-1" data-i18n="onb.slide4.title">Die schwere Stelle üben</h2>
-      <p data-i18n-html="onb.slide4.intro"><strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben“:</p>
-      <ol class="steps small">
-        <li data-i18n-html="onb.slide4.li1">An der Stelle, wo es losgehen soll, auf <strong>A</strong> tippen.</li>
-        <li data-i18n-html="onb.slide4.li2">Am Ende der Stelle auf <strong>B</strong> tippen.</li>
-        <li data-i18n-html="onb.slide4.li3">Den <strong>Schalter</strong> daneben einschalten — der Abschnitt
-            läuft jetzt in der Schleife, bis du ihn kannst.</li>
-        <li data-i18n-html="onb.slide4.li4">Über das <strong>Disketten-Symbol</strong> lässt sich der Abschnitt
-            benennen und bleibt gespeichert, auch nach dem Schließen.</li>
-      </ol>
-      <p data-i18n-html="onb.slide4.speed"><strong>Langsamer üben.</strong> Unten rechts im Player steht die
-        Geschwindigkeit: <strong>1,0×</strong>, <strong>0,85×</strong>,
-        <strong>0,7×</strong> oder <strong>0,6×</strong>. Die Tonhöhe bleibt dabei gleich — es klingt
-        langsamer, nicht tiefer. Beides zusammen ist der Kern der App: einen
-        kurzen Abschnitt so lange langsam wiederholen, bis er sitzt.</p>
-    </article>
-
-    <!-- 5 — Setlisten und Import ---------------------------------------- -->
-    <article class="onb-slide" id="onb-slide-5" aria-label="Schritt 5 von 5">
-      <div class="onb-badge" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/>
-        </svg>
-      </div>
-      <p class="onb-step" data-i18n="onb.step5of5">Schritt 5 von 5</p>
-      <h2 id="onb-title-5" tabindex="-1" data-i18n="onb.slide5.title">Songs holen, Programm planen</h2>
-      <p data-i18n-html="onb.slide5.import"><strong>Import.</strong> Die Aufnahmen liegen im geteilten
-        Dropbox-Ordner. Öffne ihn dafür im <strong>Browser</strong> — nicht in
-        der Dropbox-App, die kann Ordner nicht als ZIP herunterladen —, lade ihn
-        einmal als <strong>ZIP-Datei</strong> herunter und wählst sie unter
-        „Einstellungen → Songs importieren“ aus. Vor dem Speichern zeigt die App,
-        was sie gefunden hat, und du hakst ab, welche Stimmen wirklich aufs Handy
-        sollen. Jeder weitere Import <strong>ergänzt</strong> nur — Vorhandenes
-        bleibt, fehlende Stimmen lassen sich nachladen.</p>
-      <p data-i18n-html="onb.slide5.setlists"><strong>Setlisten.</strong> Eine Setliste ist ein Programm: die Lieder
-        in der Reihenfolge, in der sie gesungen werden. Am Ende eines Liedes
-        schaltet die App von selbst weiter. Der Chorleiter kann eine Setliste
-        als schlichte Textdatei verteilen — ein Titel je Zeile —, du spielst sie
-        unter „Setlisten“ ein.</p>
-      <div class="onb-note" data-i18n="onb.slide5.note">
-        Alles bleibt auf diesem Gerät. Die App sendet nichts und braucht nach dem
-        Import kein Internet mehr.
       </div>
     </article>
 
