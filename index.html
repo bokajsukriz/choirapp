@@ -3627,9 +3627,12 @@ input[type="checkbox"] {
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
 
-      <div class="row" style="margin-top:0">
-        <span class="small" style="max-width:70%" data-i18n="settings.normalization.label">
-          Lautstärke normalisieren
+      <p class="section-title" style="margin-top:0" data-i18n="settings.normalization.label">
+        Lautstärke normalisieren
+      </p>
+      <div class="row" style="margin-top:6px">
+        <span class="small muted" style="max-width:70%" data-i18n="settings.normalization.hint">
+          Gleicht Lautstärkeunterschiede zwischen Aufnahmen aus. Die Dynamik innerhalb einer Aufnahme bleibt erhalten.
         </span>
         <button class="switch" id="normalization-toggle" type="button" role="switch"
                 aria-checked="false" data-i18n-aria="settings.normalization.aria"
@@ -3637,9 +3640,6 @@ input[type="checkbox"] {
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" style="margin:6px 0 0" data-i18n="settings.normalization.hint">
-        Gleicht Lautstärkeunterschiede zwischen Aufnahmen aus. Die Dynamik innerhalb einer Aufnahme bleibt erhalten.
-      </p>
       <p class="small muted" id="normalization-status" style="margin:6px 0 0" hidden
          data-i18n="settings.normalization.unavailable">
         Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.
@@ -3653,9 +3653,10 @@ input[type="checkbox"] {
       </div>
       <div id="normalization-progress" class="small muted" style="margin-top:8px;margin-left:calc(-1*var(--pad));margin-right:calc(-1*var(--pad));padding-left:var(--pad);padding-right:var(--pad)" hidden>
         <progress id="normalization-progress-bar" max="1" value="0" aria-label="Normalisierungsanalyse" style="width:100%"></progress>
-        <div id="normalization-progress-summary" role="status" aria-live="polite"></div>
         <div id="normalization-progress-current"></div>
-        <div id="normalization-progress-counts"></div>
+        <details id="normalization-progress-details" style="margin-top:4px;margin-left:12px">
+          <summary id="normalization-progress-summary" role="status" aria-live="polite" style="cursor:pointer"></summary>
+        </details>
         <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry" hidden>Erneut versuchen</button>
       </div>
       <details id="normalization-details" class="small" style="margin-top:8px" hidden>

@@ -5178,20 +5178,24 @@ function renderNormalizationProgress() {
   const finished = p.analyzed + p.skipped + p.failed;
   const pending = normalizationQueue.size + normalizationInFlight.size;
   const isAnalyzing = pending > 0 || p.total > 0 && finished < p.total;
-  host.hidden = !settings.normalizationEnabled || !isAnalyzing;
+  const hasResult = finished > 0;
+  host.hidden = !settings.normalizationEnabled || (!isAnalyzing && !hasResult);
   if (host.hidden) {
     renderNormalizationCrashGuard();
     renderNormalizationDetailsIfOpen();
     return;
   }
+  // While analyzing: progress bar + current title above the (indented)
+  // summary. Once finished: only the summary remains, so the settled
+  // count stays visible without the bar/title suggesting work in progress.
+  $('#normalization-progress-bar').hidden = !isAnalyzing;
+  $('#normalization-progress-current').hidden = !isAnalyzing;
   $('#normalization-progress-bar').max = Math.max(1, p.total);
   $('#normalization-progress-bar').value = finished;
-  $('#normalization-progress-summary').textContent = t('settings.normalization.progress')
-    .replace('{done}', finished).replace('{total}', p.total);
   const pauseReason = pending && !p.current ? normalizationPauseReason() : null;
   $('#normalization-progress-current').textContent = p.current
     || (pauseReason ? t(`settings.normalization.paused.${pauseReason}`) : '') || p.reason || '';
-  $('#normalization-progress-counts').textContent = t('settings.normalization.counts')
+  $('#normalization-progress-summary').textContent = t('settings.normalization.counts')
     .replace('{analyzed}', p.analyzed).replace('{total}', p.total).replace('{failed}', p.failed);
   $('#normalization-retry').hidden = true;
   renderNormalizationCrashGuard();
