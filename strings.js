@@ -258,9 +258,9 @@ export const STRINGS = {
     'settings.storage.measuring': 'wird ermittelt …',
     'settings.storage.persistBtn': 'Dauerhafte Speicherung anfordern',
 
-    'onb.step1of5': 'Schritt 1 von 5',
+    'onb.step1of5': 'Schritt 1 von 2',
     'onb.step2of5': 'Schritt 2 von 5',
-    'onb.step3of5': 'Schritt 3 von 5',
+    'onb.step3of5': 'Schritt 2 von 2',
     'onb.step4of5': 'Schritt 4 von 5',
     'onb.step5of5': 'Schritt 5 von 5',
     'onb.skip': 'Überspringen',
@@ -277,8 +277,8 @@ export const STRINGS = {
     'onb.slide2.footnote': 'Alle Stimmen bleiben trotzdem wählbar. Änderbar unter <strong>Einstellungen&nbsp;→&nbsp;Meine Stimmen</strong>.',
 
     'onb.slide3.title': 'Aufnahmen dauerhaft behalten',
-    'onb.slide3.text1': 'Web-Apps dürfen ihre Daten normalerweise nur „auf Probe" speichern: wird der Platz knapp oder liegt die App länger ungenutzt, räumt das System sie weg. Bei ein paar Gigabyte Aufnahmen wäre das ärgerlich.',
-    'onb.slide3.text2': 'Mit einem Klick fragen wir das Betriebssystem, ob es die Daten <strong>dauerhaft</strong> behalten soll. Der Browser entscheidet selbst — ein Dialog erscheint dabei in der Regel nicht.',
+    'onb.slide3.text1': 'Bei knappem Speicher darf das System die Daten einer Web-App löschen.',
+    'onb.slide3.text2': 'Mit einem Klick bitten wir darum, die Aufnahmen <strong>dauerhaft</strong> zu behalten.',
 
     'onb.slide4.title': 'Die schwere Stelle üben',
     'onb.slide4.intro': '<strong>Abschnitt wiederholen.</strong> Im Player unter „Abschnitt üben":',
@@ -633,9 +633,9 @@ export const STRINGS = {
     'settings.storage.measuring': 'measuring …',
     'settings.storage.persistBtn': 'Request persistent storage',
 
-    'onb.step1of5': 'Step 1 of 5',
+    'onb.step1of5': 'Step 1 of 2',
     'onb.step2of5': 'Step 2 of 5',
-    'onb.step3of5': 'Step 3 of 5',
+    'onb.step3of5': 'Step 2 of 2',
     'onb.step4of5': 'Step 4 of 5',
     'onb.step5of5': 'Step 5 of 5',
     'onb.skip': 'Skip',
@@ -652,8 +652,8 @@ export const STRINGS = {
     'onb.slide2.footnote': 'All voices stay selectable regardless. Change it under <strong>Settings&nbsp;→&nbsp;My voices</strong>.',
 
     'onb.slide3.title': 'Keep recordings for good',
-    'onb.slide3.text1': 'Web apps are normally only allowed to store data "on trial": if space gets tight or the app sits unused for a while, the system may clear it out. With a few gigabytes of recordings, that would be annoying.',
-    'onb.slide3.text2': 'With one tap we ask the operating system to keep the data <strong>permanently</strong>. The browser decides for itself — usually no dialog appears.',
+    'onb.slide3.text1': 'When storage is tight, the system may delete a web app’s data.',
+    'onb.slide3.text2': 'With one tap, we ask it to keep the recordings <strong>permanently</strong>.',
 
     'onb.slide4.title': 'Practice the hard part',
     'onb.slide4.intro': '<strong>Loop a section.</strong> In the player, under "Practice a section":',
@@ -1008,9 +1008,9 @@ export const STRINGS = {
     'settings.storage.measuring': 'sprawdzanie …',
     'settings.storage.persistBtn': 'Poproś o trwałe przechowywanie',
 
-    'onb.step1of5': 'Krok 1 z 5',
+    'onb.step1of5': 'Krok 1 z 2',
     'onb.step2of5': 'Krok 2 z 5',
-    'onb.step3of5': 'Krok 3 z 5',
+    'onb.step3of5': 'Krok 2 z 2',
     'onb.step4of5': 'Krok 4 z 5',
     'onb.step5of5': 'Krok 5 z 5',
     'onb.skip': 'Pomiń',
@@ -1027,8 +1027,8 @@ export const STRINGS = {
     'onb.slide2.footnote': 'Wszystkie głosy nadal można wybrać. Zmienisz to w <strong>Ustawienia&nbsp;→&nbsp;Moje głosy</strong>.',
 
     'onb.slide3.title': 'Zachowaj nagrania na stałe',
-    'onb.slide3.text1': 'Aplikacje webowe zwykle mogą przechowywać dane tylko „na próbę": gdy zabraknie miejsca albo aplikacja długo nie jest używana, system może je usunąć. Przy kilku gigabajtach nagrań byłoby to uciążliwe.',
-    'onb.slide3.text2': 'Jednym dotknięciem pytamy system operacyjny, czy może zachować dane <strong>na stałe</strong>. Przeglądarka decyduje sama — zwykle bez żadnego okna dialogowego.',
+    'onb.slide3.text1': 'Gdy brakuje miejsca, system może usunąć dane aplikacji internetowej.',
+    'onb.slide3.text2': 'Jednym dotknięciem prosimy, aby zachował nagrania <strong>na stałe</strong>.',
 
     'onb.slide4.title': 'Ćwicz trudny fragment',
     'onb.slide4.intro': '<strong>Powtarzaj fragment.</strong> W odtwarzaczu, w sekcji „Ćwicz fragment":',

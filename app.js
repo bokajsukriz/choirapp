@@ -9844,6 +9844,71 @@ let loopB = null;
 let loopOn = false;
 let activeLoopId = null;
 let songLoops = [];
+let practiceRunId = 0;
+let practiceActiveLoopId = null;
+
+function stopLoopPractice() {
+  practiceRunId++;
+  practiceActiveLoopId = null;
+  audioPause();
+  renderLoopList();
+}
+
+function loopPracticeDialog(loop) {
+  return new Promise((resolve) => {
+    const rows = el('div');
+    const addRow = (repeats = '5', rate = '0.85') => {
+      const repeat = el('select', { 'aria-label': 'Wiederholungen' });
+      for (const [value, label] of [['3','3×'], ['5','5×'], ['10','10×'], ['20','20×'], ['infinity','unendlich']]) repeat.append(el('option', { value, text: label }));
+      repeat.value = repeats;
+      const speed = el('select', { 'aria-label': 'Geschwindigkeit' });
+      for (const value of ['0.6', '0.7', '0.85', '1']) speed.append(el('option', { value, text: `${value.replace('.', ',')}×` }));
+      speed.value = rate;
+      const remove = el('button', { class: 'icon-btn', type: 'button', text: '−', 'aria-label': 'Schritt entfernen' });
+      const row = el('div', { class: 'practice-step' }, repeat, speed, remove);
+      remove.onclick = () => { if (rows.children.length > 1) row.remove(); };
+      rows.append(row);
+    };
+    addRow();
+    const done = (value) => { closeModal(layer); layer.remove(); resolve(value); };
+    const add = el('button', { class: 'btn practice-add', type: 'button', text: '+ Weiterer Schritt', onclick: () => addRow('5', '1') });
+    const start = el('button', { class: 'btn btn--primary', type: 'button', text: 'Starten', onclick: () => done([...rows.children].map((row) => ({ repeats: row.children[0].value === 'infinity' ? Infinity : Number(row.children[0].value), rate: Number(row.children[1].value) }))) });
+    const box = el('div', { class: 'dialog' }, el('h2', { text: `„${loop.name}“ üben` }), el('p', { text: 'Zwischen allen Wiederholungen liegt eine Sekunde Pause.' }), rows, add,
+      el('div', { class: 'dialog-actions' }, el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }), start));
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Loop wiederholen' }, box);
+    layer.addEventListener('click', (event) => { if (event.target === layer) done(null); });
+    document.body.append(layer);
+    openModal(layer, { initialFocus: start, onEscape: () => done(null) });
+  });
+}
+
+async function startLoopPractice(loop, steps) {
+  await endRecordingPreview();
+  const runId = ++practiceRunId;
+  practiceActiveLoopId = loop.id;
+  activeLoopId = loop.id;
+  loopA = loop.start; loopB = loop.end; loopOn = false; applyLoop();
+  renderLoopList(); updateLoopUI();
+  for (const [stepIndex, step] of steps.entries()) {
+    for (let n = 0; n < step.repeats && runId === practiceRunId; n++) {
+      audioSetRate(step.rate);
+      updateSeekUI(audioSeek(loop.start));
+      await audioPlay();
+      await new Promise((finish) => {
+        const timer = setInterval(() => {
+          if (runId !== practiceRunId || Audio.position >= loop.end - 0.04 || Audio.el?.ended) {
+            clearInterval(timer); finish();
+          }
+        }, 50);
+      });
+      if (runId !== practiceRunId) return;
+      audioPause();
+      const hasAnotherRepeat = n + 1 < step.repeats || stepIndex < steps.length - 1;
+      if (hasAnotherRepeat) await new Promise((finish) => setTimeout(finish, 1000));
+    }
+  }
+  if (runId === practiceRunId) { practiceRunId++; practiceActiveLoopId = null; renderLoopList(); }
+}
 
 /**
  * Der aktuell gesetzte Abschnitt, auf die Länge der Aufnahme begrenzt.
@@ -10015,7 +10080,7 @@ function renderLoopList() {
   if (!songLoops.length) return;
 
   for (const loop of songLoops) {
-    const go = el('button', { class: 'go', type: 'button' },
+    const go = el('div', { class: 'go' },
       el('strong', { text: loop.name }),
       el('span', { text: `${fmtTime(loop.start)} – ${fmtTime(loop.end)}` }));
 
@@ -10061,10 +10126,23 @@ function renderLoopList() {
       await loadSongLoops();
     });
 
+    const once = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Loop starten' });
+    once.onclick = () => { menu.open = false; go.click(); };
+    const menu = el('details', { class: 'loop-menu' },
+      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${loop.name}“`, text: '⋮' }),
+      el('div', { class: 'loop-menu-popover' }, once, rename, del));
+    const repeat = el('button', { class: 'icon-btn loop-repeat', type: 'button', 'aria-label': `„${loop.name}“ wiederholen` });
+    repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+    repeat.onclick = async () => {
+      if (practiceActiveLoopId === loop.id) { stopLoopPractice(); return; }
+      const steps = await loopPracticeDialog(loop);
+      if (steps) startLoopPractice(loop, steps);
+    };
+
     host.append(el('div', {
       class: 'loop-item',
       'data-active': activeLoopId === loop.id ? 'true' : 'false',
-    }, go, rename, del));
+    }, go, repeat, menu));
   }
 }
 
@@ -13759,6 +13837,31 @@ function starIcon(filled) {
   return `<svg viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.8-6.2 3.8 1.6-7-5.4-4.8 7.1-.7z"/></svg>`;
 }
 
+/** Addiert pro Setlisten-Eintrag die längste bekannte Spur des Songs. */
+function playlistDurationSec(playlist, songs) {
+  return (playlist.songTitles || []).reduce((total, title) => {
+    const song = findSongByTitle(songs, title);
+    const durations = (song?.tracks || [])
+      .map((track) => Number(track.durationSec))
+      .filter((duration) => Number.isFinite(duration) && duration > 0);
+    return total + (durations.length ? Math.max(...durations) : 0);
+  }, 0);
+}
+
+function fmtPlaylistDuration(seconds) {
+  const rounded = Math.floor(Math.max(0, seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function playlistDurationLabel(playlist, songs) {
+  return `Gesamtdauer: ${fmtPlaylistDuration(playlistDurationSec(playlist, songs))}`;
+}
+
 /** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
 function renderCurrentSetlist(favorite, songs, recsBySong) {
   const host = $('#current-setlist-host');
@@ -13809,7 +13912,8 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
-        el('strong', { text: favorite.name })),
+        el('strong', { text: favorite.name }),
+        el('div', { class: 'small muted', text: playlistDurationLabel(favorite, songs) })),
       play),
     list));
 }
@@ -13853,7 +13957,7 @@ async function renderPlaylists() {
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: pl.name }),
         el('div', { class: 'small muted',
-          text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+          text: `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
     if (!playable) open.style.opacity = '.6';
 
     const fav = el('button', {
@@ -14006,7 +14110,7 @@ async function renderPlaylistDetail() {
   $('#pl-title').textContent = pl.name;
   const titles = pl.songTitles || [];
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
-  $('#pl-sub').textContent = plural(titles.length, 'Titel', 'Titel');
+  $('#pl-sub').textContent = `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}`;
 
   const hint = $('#pl-missing');
   if (missing.length) {
@@ -15672,14 +15776,19 @@ async function updateBackupReminder() {
 
   const days = daysSince(settings.lastBackupAt);
   const loops = await DB.metaByType('loop').catch(() => []);
-  if (loops.length < 5 || (days !== null && days <= 30)) { box.hidden = true; return; }
+  const notes = await DB.metaByType('note').catch(() => []);
+  const lyrics = await DB.metaByType('lyricsNote').catch(() => []);
+  const workCount = loops.length
+    + notes.filter((note) => (note.text || '').trim()).length
+    + lyrics.filter((note) => (note.text || '').trim()).length;
+  if (workCount < 5 || (days !== null && days <= 30)) { box.hidden = true; return; }
 
   box.textContent = '';
   box.append(
     el('p', { style: 'margin:0 0 10px',
       text: days === null
-        ? `Du hast ${plural(loops.length, 'Loop', 'Loops')} angelegt, aber noch nie gesichert. Eine Sicherung ist in zehn Sekunden erstellt.`
-        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops und Setlisten wären bei einem Problem verloren.` }),
+        ? `Du hast ${workCount} ungesicherte Loops, Notizen oder Liedtexte angelegt. Eine Sicherung ist in zehn Sekunden erstellt.`
+        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops, Notizen und Liedtexte wären bei einem Problem verloren.` }),
     el('div', { style: 'display:flex; gap:8px' },
       el('button', { class: 'btn', type: 'button', text: 'Jetzt sichern',
         onclick: () => { box.hidden = true; showView('settings'); $('#btn-backup-export').focus(); } }),
@@ -19110,14 +19219,14 @@ window.chorApp = {
 };
 
 /* ==========================================================================
-   ERSTEINRICHTUNG — fünf Slides beim allerersten Start
+   ERSTEINRICHTUNG — zwei kurze Slides beim allerersten Start
 
    Absichtlich kein Zwang: jeder Schritt lässt sich überspringen, und über die
    Einstellungen ist die Einführung jederzeit wieder erreichbar. Gemerkt wird
    nur ein Zeitstempel in den Einstellungen (`setupDoneAt`).
    ========================================================================== */
 
-const ONB_SLIDES = 5;
+const ONB_SLIDES = 2;
 
 const onbEl    = $('#onboarding');
 const onbTrack = $('#onb-track');
@@ -19125,7 +19234,7 @@ const onbDots  = $('#onb-dots');
 const onbPrev  = $('#onb-prev');
 const onbNext  = $('#onb-next');
 const onbSkip  = $('#onb-skip');
-const onbSlides = $$('.onb-slide', onbEl);
+const onbSlides = $$('.onb-slide:not([hidden])', onbEl);
 
 let onbIndex = 0;
 let onbOpen  = false;
@@ -19325,7 +19434,7 @@ function onbGoTo(index) {
   onbTrack.scrollTo({ left: onbIndex * onbTrack.clientWidth, behavior: reduce ? 'auto' : 'smooth' });
   renderOnbDots();
   applyOnbSlideState(true);
-  if (onbIndex === 2) renderOnbPersist();
+  if (onbIndex === 1) renderOnbPersist();
 }
 
 // Beim Wischen die Punkte nachziehen — gedrosselt über einen Frame, damit das
@@ -19342,7 +19451,7 @@ onbTrack.addEventListener('scroll', () => {
       renderOnbDots();
       // Kein Fokusdiebstahl beim Wischen — nur bei Knopf-/Punkt-Navigation.
       applyOnbSlideState(false);
-      if (onbIndex === 2) renderOnbPersist();
+      if (onbIndex === 1) renderOnbPersist();
     }
   });
 }, { passive: true });
@@ -19360,7 +19469,6 @@ function openOnboarding() {
   onbEl.hidden = false;
   renderOnbInstall();
   renderOnbLanguage();
-  renderOnbVoice();
   renderOnbPersist();
   renderOnbDots();
   // Kein Fokusdiebstahl hier — openModal() setzt initialFocus gleich unten.
