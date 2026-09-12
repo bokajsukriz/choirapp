@@ -738,6 +738,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
 .fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent-foreground); }
+/* Löschen-Einträge (Loops/RECs): dieselbe rote Warnfarbe wie die übrigen
+   Löschen-Knöpfe im Bestand, statt der neutralen Akzentfarbe. */
+.fab-menu-item--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.fab-menu-item--danger svg { color: var(--danger); }
 
 /* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie
    die schwebenden Knöpfe, aber bewusst zurückhaltend — gestrichelter Umriss
@@ -1736,23 +1740,6 @@ input[type="checkbox"] {
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
 .loop-item .loop-repeat { flex: 0 0 auto; }
-.loop-menu { position: relative; flex: 0 0 auto; }
-.loop-menu summary { list-style: none; }
-.loop-menu summary::-webkit-details-marker { display: none; }
-.loop-menu-popover {
-  position: absolute;
-  z-index: 20;
-  right: 0;
-  top: calc(100% + 5px);
-  width: max-content;
-  min-width: 180px;
-  padding: 5px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 8px 28px rgba(0,0,0,.2);
-}
-.loop-menu-popover button { display: block; width: 100%; text-align: left; }
 .practice-step { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
 .practice-step select { min-height: var(--tap); border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text); padding: 0 8px; }
 .practice-add { margin-bottom: 16px; }

@@ -731,7 +731,9 @@ function floatingMenu(btn, items) {
     const done = (v) => { closeModal(backdrop); backdrop.remove(); resolve(v); };
     const menu = el('div', { class: 'fab-menu', role: 'menu' },
       items.map((it) => {
-        const item = el('button', { class: 'fab-menu-item', type: 'button', role: 'menuitem' });
+        const item = el('button', {
+          class: `fab-menu-item${it.danger ? ' fab-menu-item--danger' : ''}`, type: 'button', role: 'menuitem',
+        });
         item.insertAdjacentHTML('afterbegin', it.icon);
         item.append(el('span', { text: it.label }));
         item.addEventListener('click', () => done(it.value));
@@ -10118,6 +10120,21 @@ function updateLoopsTabDot() {
   setTabHasContent('rec', songRecordings.length > 0);
 }
 
+/** Drei-Linien-Menüknopf — derselbe Hamburger wie beim Setlisten-Menü, jetzt
+ *  auch für die floatenden Fab-Menüs von Loops und RECs (statt des früheren
+ *  ⋮-Knopfs mit nativem <details>-Popover). */
+function hamburgerIcon() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+}
+
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+const ICON_DELETE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
+// Kasten mit Pfeil nach außen oben rechts — bewusst anders als das
+// Teilen-Symbol (drei Punkte) und das Herunterladen-Symbol (Pfeil in
+// Ablage) aus exportRecording(), die im nachgelagerten Menü „Teilen/
+// Herunterladen" stecken; dieses Icon steht nur für den Menüeintrag selbst.
+const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h7v7"/><path d="M21 3l-9 9"/><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>';
+
 function renderLoopList() {
   const host = $('#loop-list');
   host.textContent = '';
@@ -10143,39 +10160,34 @@ function renderLoopList() {
       renderLoopList();
     });
 
-    const rename = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${loop.name}" umbenennen`,
+    const menu = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${loop.name}“`,
     });
-    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
-    rename.addEventListener('click', async () => {
-      const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
-      if (name === null) return;
-      loop.name = name.trim() || loop.name;
-      await DB.metaPut(loop);
-      renderLoopList();
+    menu.innerHTML = hamburgerIcon();
+    menu.addEventListener('click', async () => {
+      // „Loop starten“ entfällt bewusst — dafür reicht der Tipp auf die Zeile
+      // selbst (siehe go oben).
+      const action = await floatingMenu(menu, [
+        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
+        { value: 'delete', label: 'Löschen', icon: ICON_DELETE, danger: true },
+      ]);
+      if (action === 'rename') {
+        const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
+        if (name === null) return;
+        loop.name = name.trim() || loop.name;
+        await DB.metaPut(loop);
+        renderLoopList();
+      } else if (action === 'delete') {
+        const ok = await confirmDialog({
+          title: 'Loop löschen?', text: `„${loop.name}" wird entfernt.`,
+          okLabel: 'Löschen', danger: true,
+        });
+        if (!ok) return;
+        await DB.metaDelete(loop.key);
+        if (activeLoopId === loop.id) activeLoopId = null;
+        await loadSongLoops();
+      }
     });
-
-    const del = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${loop.name}" löschen`,
-      style: 'color: var(--danger)',
-    });
-    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
-    del.addEventListener('click', async () => {
-      const ok = await confirmDialog({
-        title: 'Loop löschen?', text: `„${loop.name}" wird entfernt.`,
-        okLabel: 'Löschen', danger: true,
-      });
-      if (!ok) return;
-      await DB.metaDelete(loop.key);
-      if (activeLoopId === loop.id) activeLoopId = null;
-      await loadSongLoops();
-    });
-
-    const once = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Loop starten' });
-    once.onclick = () => { menu.open = false; go.click(); };
-    const menu = el('details', { class: 'loop-menu' },
-      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${loop.name}“`, text: '⋮' }),
-      el('div', { class: 'loop-menu-popover' }, once, rename, del));
     const repeat = el('button', { class: 'icon-btn loop-repeat', type: 'button', 'aria-label': `„${loop.name}“ wiederholen` });
     repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
     repeat.onclick = async () => {
@@ -12446,44 +12458,37 @@ function renderRecordingList() {
         el('span', { class: 'rec-meta', text: meta.join(' · ') })));
     go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
 
-    const exportBtn = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Exportieren' });
-    exportBtn.onclick = () => { menu.open = false; exportRecording(recording, exportBtn); };
-
-    const rename = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
+    const menu = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${recording.name}“`,
     });
-    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
-    rename.addEventListener('click', async () => {
-      menu.open = false;
-      const result = await editRecordingDialog(recording);
-      if (!result) return;
-      recording.name = result.name.trim() || recording.name;
-      recording.voice = result.voice;
-      await DB.metaPut(recording);
-      renderRecordingList();
+    menu.innerHTML = hamburgerIcon();
+    menu.addEventListener('click', async () => {
+      const action = await floatingMenu(menu, [
+        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
+        { value: 'export', label: 'Exportieren', icon: ICON_EXPORT },
+        { value: 'delete', label: 'Löschen', icon: ICON_DELETE, danger: true },
+      ]);
+      if (action === 'rename') {
+        const result = await editRecordingDialog(recording);
+        if (!result) return;
+        recording.name = result.name.trim() || recording.name;
+        recording.voice = result.voice;
+        await DB.metaPut(recording);
+        renderRecordingList();
+      } else if (action === 'export') {
+        await exportRecording(recording, menu);
+      } else if (action === 'delete') {
+        const ok = await confirmDialog({
+          title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
+          okLabel: 'Löschen', danger: true,
+        });
+        if (!ok) return;
+        if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
+        await DB.fileDelete(recording.fileKey);
+        await DB.metaDelete(recording.key);
+        await loadSongRecordings();
+      }
     });
-
-    const del = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" löschen`,
-      style: 'color: var(--danger)',
-    });
-    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
-    del.addEventListener('click', async () => {
-      menu.open = false;
-      const ok = await confirmDialog({
-        title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
-        okLabel: 'Löschen', danger: true,
-      });
-      if (!ok) return;
-      if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
-      await DB.fileDelete(recording.fileKey);
-      await DB.metaDelete(recording.key);
-      await loadSongRecordings();
-    });
-
-    const menu = el('details', { class: 'loop-menu' },
-      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${recording.name}“`, text: '⋮' }),
-      el('div', { class: 'loop-menu-popover' }, exportBtn, rename, del));
 
     const looping = recordingLoopId === recording.id;
     const repeat = el('button', {
@@ -14447,31 +14452,6 @@ function starIcon(filled) {
   return `<svg viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.8-6.2 3.8 1.6-7-5.4-4.8 7.1-.7z"/></svg>`;
 }
 
-/** Addiert pro Setlisten-Eintrag die längste bekannte Spur des Songs. */
-function playlistDurationSec(playlist, songs) {
-  return (playlist.songTitles || []).reduce((total, title) => {
-    const song = findSongByTitle(songs, title);
-    const durations = (song?.tracks || [])
-      .map((track) => Number(track.durationSec))
-      .filter((duration) => Number.isFinite(duration) && duration > 0);
-    return total + (durations.length ? Math.max(...durations) : 0);
-  }, 0);
-}
-
-function fmtPlaylistDuration(seconds) {
-  const rounded = Math.floor(Math.max(0, seconds));
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
-  const secs = rounded % 60;
-  return hours
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-    : `${minutes}:${String(secs).padStart(2, '0')}`;
-}
-
-function playlistDurationLabel(playlist, songs) {
-  return `Gesamtdauer: ${fmtPlaylistDuration(playlistDurationSec(playlist, songs))}`;
-}
-
 /** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
 function renderCurrentSetlist(favorite, songs, recsBySong) {
   const host = $('#current-setlist-host');
@@ -14528,8 +14508,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
-        el('strong', { text: favorite.name }),
-        el('div', { class: 'small muted', text: playlistDurationLabel(favorite, songs) })),
+        el('strong', { text: favorite.name })),
       play),
     list,
     el('div', { class: 'row', style: 'justify-content:flex-end; margin-top:8px' }, practice)));
@@ -14574,7 +14553,7 @@ async function renderPlaylists() {
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: pl.name }),
         el('div', { class: 'small muted',
-          text: `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+          text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
     if (!playable) open.style.opacity = '.6';
 
     const fav = el('button', {
@@ -14729,7 +14708,7 @@ async function renderPlaylistDetail() {
   $('#pl-title').textContent = pl.name;
   const titles = pl.songTitles || [];
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
-  $('#pl-sub').textContent = `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}`;
+  $('#pl-sub').textContent = plural(titles.length, 'Titel', 'Titel');
 
   const hint = $('#pl-missing');
   if (missing.length) {
