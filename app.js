@@ -9229,7 +9229,6 @@ async function openPlayer(songId) {
   playerVoice = null;
   resetBrokenNotice();
   loopA = loopB = null;
-  loopOn = false;
   activeLoopId = null;
   setPlayIcon(false);
   updateSeekUI(0);
@@ -9888,7 +9887,6 @@ function renderShuffleMode() {
 
 let loopA = null;
 let loopB = null;
-let loopOn = false;
 let activeLoopId = null;
 let songLoops = [];
 let practiceRunId = 0;
@@ -9934,7 +9932,10 @@ async function startLoopPractice(loop, steps) {
   const runId = ++practiceRunId;
   practiceActiveLoopId = loop.id;
   activeLoopId = loop.id;
-  loopA = loop.start; loopB = loop.end; loopOn = false; applyLoop();
+  // Kein applyLoop() hier — dieser Ablauf steuert Wiederholungen und Pausen
+  // selbst (unten), ein zusätzlicher nativer A-B-Loop käme sich damit in die
+  // Quere.
+  loopA = loop.start; loopB = loop.end; audioSetLoop(null);
   renderLoopList(); updateLoopUI();
   for (const [stepIndex, step] of steps.entries()) {
     for (let n = 0; n < step.repeats && runId === practiceRunId; n++) {
@@ -10009,11 +10010,7 @@ function updateLoopMarks() {
 
 function updateLoopUI() {
   const r = loopRange();
-  $('#btn-loop-toggle').disabled = !r;
   $('#btn-loop-save').disabled = !r;
-  $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
-  $('#btn-loop-toggle').setAttribute('aria-checked', loopOn ? 'true' : 'false');
-  $('#btn-loop-toggle').setAttribute('aria-label', loopOn ? 'Loop ausschalten' : 'Loop einschalten');
   $('#btn-loop-a').setAttribute('aria-pressed', loopA !== null ? 'true' : 'false');
   $('#btn-loop-b').setAttribute('aria-pressed', loopB !== null ? 'true' : 'false');
 
@@ -10028,20 +10025,11 @@ function updateLoopUI() {
   updateLoopMarks();
 }
 
+// Ein gültiger Abschnitt (A vor B) läuft immer in Schleife — dafür gibt es
+// keinen eigenen An/Aus-Schalter mehr, der ohnehin nur denselben Zustand
+// doppelt hätte abbilden können.
 function applyLoop() {
-  const r = loopRange();
-  audioSetLoop(loopOn && r ? r : null);
-}
-
-/** Loop einschalten und, falls nötig, an den Anfang des Abschnitts springen. */
-function activateLoop() {
-  loopOn = true;
-  applyLoop();
-  const r = loopRange();
-  if (r && (Audio.position < r.start || Audio.position > r.end)) {
-    updateSeekUI(audioSeek(r.start));
-  }
-  updateLoopUI();
+  audioSetLoop(loopRange());
 }
 
 $('#btn-loop-a').addEventListener('click', async () => {
@@ -10061,21 +10049,12 @@ $('#btn-loop-b').addEventListener('click', async () => {
   if (loopA !== null && loopA >= loopB) loopA = null;
   activeLoopId = null;
   renderLoopList();
-  // Mit B ist der Abschnitt vollständig — direkt in Schleife üben, ohne
-  // dass noch extra auf den Schalter getippt werden muss.
-  if (loopRange()) activateLoop();
-  else { updateLoopUI(); applyLoop(); }
-});
-
-$('#btn-loop-toggle').addEventListener('click', async () => {
-  await endRecordingPreview();
-  if (loopOn) {
-    loopOn = false;
-    applyLoop();
-    updateLoopUI();
-  } else {
-    activateLoop();
-  }
+  applyLoop();
+  // Mit B ist der Abschnitt vollständig und läuft schon in Schleife — steht
+  // die Wiedergabeposition noch außerhalb, direkt an den Anfang springen.
+  const r = loopRange();
+  if (r && (Audio.position < r.start || Audio.position > r.end)) updateSeekUI(audioSeek(r.start));
+  updateLoopUI();
 });
 
 $('#btn-loop-save').addEventListener('click', async () => {
@@ -10152,7 +10131,6 @@ function renderLoopList() {
       await endRecordingPreview();
       loopA = loop.start;
       loopB = loop.end;
-      loopOn = true;
       activeLoopId = loop.id;
       applyLoop();
       updateSeekUI(audioSeek(loop.start));
@@ -14115,7 +14093,7 @@ function routineApplyCurrentElement() {
 
   if (routine.scope === 'loops') {
     // Derselbe Pfad wie der Klick-Handler der Loop-Liste (10.3 der Anweisung).
-    loopA = current.start; loopB = current.end; loopOn = true; activeLoopId = current.id;
+    loopA = current.start; loopB = current.end; activeLoopId = current.id;
     applyLoop();
     updateSeekUI(audioSeek(current.start));
     updateLoopUI();
@@ -14146,20 +14124,26 @@ function routineAdvance() {
   routine.repIndex = next.repIndex;
 
   if (!next.itemChanged) {
-    if (routine.scope === 'loops') {
-      // Der Rücksprung an den Loop-Anfang ist schon passiert (Audio.onLoopWrap
-      // feuert genau dort) — nur der Schritt (Tempo/Stimme) muss noch greifen.
+    // Zwischen allen Wiederholungen liegt eine Sekunde Pause (wie beim alten
+    // Loop-Übungsdialog). Bei „loops“ ist der native Rücksprung an den
+    // Abschnittsanfang an dieser Stelle schon passiert (Audio.onLoopWrap
+    // feuert genau dort) und die Wiedergabe läuft dort ungebremst weiter —
+    // dafür hier extra anhalten, statt einfach weiterspielen zu lassen.
+    // `activeRoutine` schützt vor einem zwischenzeitlich beendeten/neu
+    // gestarteten Programm (identisch zum `runId`-Muster bei
+    // startLoopPractice()).
+    if (routine.scope === 'loops') audioPause();
+    setPlayIcon(false);
+    const activeRoutine = routine;
+    setTimeout(() => {
+      if (routine !== activeRoutine) return;
       routineApplyStep();
-    } else if (routine.scope === 'rec') {
-      routineApplyStep();
-      const bound = Audio.previewBound;
-      updateSeekUI(audioSeek(bound ? bound.start : 0));
+      let start = 0;
+      if (routine.scope === 'rec') start = Audio.previewBound?.start || 0;
+      else if (routine.scope === 'loops') start = loopRange()?.start || 0;
+      updateSeekUI(audioSeek(start));
       audioPlay().then(() => setPlayIcon(true));
-    } else {
-      routineApplyStep();
-      updateSeekUI(audioSeek(0));
-      audioPlay().then(() => setPlayIcon(true));
-    }
+    }, 1000);
     return;
   }
 
