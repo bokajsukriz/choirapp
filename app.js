@@ -731,7 +731,9 @@ function floatingMenu(btn, items) {
     const done = (v) => { closeModal(backdrop); backdrop.remove(); resolve(v); };
     const menu = el('div', { class: 'fab-menu', role: 'menu' },
       items.map((it) => {
-        const item = el('button', { class: 'fab-menu-item', type: 'button', role: 'menuitem' });
+        const item = el('button', {
+          class: `fab-menu-item${it.danger ? ' fab-menu-item--danger' : ''}`, type: 'button', role: 'menuitem',
+        });
         item.insertAdjacentHTML('afterbegin', it.icon);
         item.append(el('span', { text: it.label }));
         item.addEventListener('click', () => done(it.value));
@@ -4104,6 +4106,8 @@ const Audio = {
   onPosition: null,
   onEnded: null,
   onLoadingChange: null,
+  onLoopWrap: null,        // A-B-Loop ist gerade an den Anfang zurückgesprungen (siehe timeupdate)
+  onPreviewBoundStop: null, // eine zugeschnittene REC-Vorschau hat am Auswahlende gestoppt (siehe timeupdate)
 };
 
 // Referenzpunkt für die Aussetzer-Erkennung im Diagnose-Log (Echtzeit +
@@ -4155,6 +4159,7 @@ async function setupAudioGraph() {
       // explizit auslösen, sonst bleibt der alte Überlappungspuffer des
       // Zeitdehners gerade beim Loop am hörbarsten stehen.
       hdApplyTransition('loop', { discontinuous: true });
+      Audio.onLoopWrap?.();
       return;
     }
 
@@ -4172,6 +4177,7 @@ async function setupAudioGraph() {
       if (audioPreview?.tag?.savedId) renderRecordingList();
       updateRecTakePosition();
       Audio.onPosition?.(Audio.previewBound.start);
+      Audio.onPreviewBoundStop?.();
       return;
     }
 
@@ -9276,6 +9282,16 @@ async function openPlayer(songId) {
     syncBacking();
   };
   Audio.onEnded = onPlaybackEnded;
+  Audio.onLoopWrap = () => { if (routine?.scope === 'loops' && routine.targetId === playerSong?.id) routineAdvance(); };
+  Audio.onPreviewBoundStop = () => { if (routine?.scope === 'rec' && audioPreview?.tag?.savedId) routineAdvance(); };
+
+  // Ein laufendes Setlisten-Programm gehört zur jeweiligen Setliste — wechselt
+  // der Song außerhalb davon (z.B. übers Nachschlagen in der Bibliothek),
+  // bricht das Programm ab (siehe Auftrag „Trainingsroutinen" 5.1). Tempo und
+  // Stimme bleiben bewusst stehen, wie sie gerade sind.
+  if (routine?.scope === 'setlist' && !(playQueue && routine.targetId === playQueue.id)) {
+    routineStop();
+  }
 
   // Nur die bevorzugte Stimme laden — ein Stimmwechsel lädt bei Bedarf nach.
   const first = preferredTrack(song);
@@ -9318,6 +9334,12 @@ async function openPlayer(songId) {
   $('#player-foot').hidden = false;
   await selectTrack(first);
   if (token !== openPlayerToken) return;
+
+  // Setlisten-Programm: Stimme/Tempo des aktuellen Schritts gelten für jeden
+  // Song neu, weil jeder Song eigene Spuren hat (siehe 5.2 der Anweisung).
+  if (routine?.scope === 'setlist' && playQueue && routine.targetId === playQueue.id) {
+    routineApplyStep();
+  }
 
   // Beim automatischen Weiterschalten in einer Playlist gleich losspielen.
   if (pendingAutoPlay) {
@@ -9556,6 +9578,13 @@ function onPlaybackEnded() {
       audioPlay().then(() => setPlayIcon(true));
       return;
     }
+    // Ein REC-Programm schaltet selbst weiter (siehe 5.4 der Anweisung) — vor
+    // dem sonst hier folgenden Beenden der Vorschau, sonst schaltet eine
+    // laufende Routine nie zur nächsten Aufnahme weiter.
+    if (routine?.scope === 'rec' && audioPreview.tag?.savedId) {
+      routineAdvance();
+      return;
+    }
     endRecordingPreview();
     renderRecordingList();
     updateRecPreviewButton();
@@ -9566,6 +9595,12 @@ function onPlaybackEnded() {
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
 
+  // Ein Setlisten-Programm hat Vorrang vor Wiederholungsmodus und normalem
+  // Weiterschalten (siehe 5.1: „hat die Routine Vorrang").
+  if (routine?.scope === 'setlist' && playQueue && routine.targetId === playQueue.id) {
+    routineAdvance();
+    return;
+  }
   if (settings.repeatMode === 'song') {
     updateSeekUI(audioSeek(0));
     audioPlay().then(() => setPlayIcon(true));
@@ -9580,6 +9615,10 @@ function closePlayer() {
   // Verwirft einen noch ladenden openPlayer()-Aufruf — sonst öffnet der sich
   // gleich von selbst wieder, sobald seine DB-Abfrage verspätet eintrifft.
   openPlayerToken++;
+  // Loops-/REC-Programme hängen am gerade geöffneten Song — schließt der
+  // Player, gibt es kein Ziel mehr dafür (siehe 5.1). Ein Setlisten-Programm
+  // überlebt das absichtlich, denn es begleitet ja gerade den Songwechsel.
+  if (routine && routine.scope !== 'setlist') routineStop();
   if (recHost === 'player') recStartGeneration++;
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
@@ -10081,6 +10120,21 @@ function updateLoopsTabDot() {
   setTabHasContent('rec', songRecordings.length > 0);
 }
 
+/** Drei-Linien-Menüknopf — derselbe Hamburger wie beim Setlisten-Menü, jetzt
+ *  auch für die floatenden Fab-Menüs von Loops und RECs (statt des früheren
+ *  ⋮-Knopfs mit nativem <details>-Popover). */
+function hamburgerIcon() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+}
+
+const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
+const ICON_DELETE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
+// Kasten mit Pfeil nach außen oben rechts — bewusst anders als das
+// Teilen-Symbol (drei Punkte) und das Herunterladen-Symbol (Pfeil in
+// Ablage) aus exportRecording(), die im nachgelagerten Menü „Teilen/
+// Herunterladen" stecken; dieses Icon steht nur für den Menüeintrag selbst.
+const ICON_EXPORT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h7v7"/><path d="M21 3l-9 9"/><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>';
+
 function renderLoopList() {
   const host = $('#loop-list');
   host.textContent = '';
@@ -10106,39 +10160,34 @@ function renderLoopList() {
       renderLoopList();
     });
 
-    const rename = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${loop.name}" umbenennen`,
+    const menu = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${loop.name}“`,
     });
-    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
-    rename.addEventListener('click', async () => {
-      const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
-      if (name === null) return;
-      loop.name = name.trim() || loop.name;
-      await DB.metaPut(loop);
-      renderLoopList();
+    menu.innerHTML = hamburgerIcon();
+    menu.addEventListener('click', async () => {
+      // „Loop starten“ entfällt bewusst — dafür reicht der Tipp auf die Zeile
+      // selbst (siehe go oben).
+      const action = await floatingMenu(menu, [
+        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
+        { value: 'delete', label: 'Löschen', icon: ICON_DELETE, danger: true },
+      ]);
+      if (action === 'rename') {
+        const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
+        if (name === null) return;
+        loop.name = name.trim() || loop.name;
+        await DB.metaPut(loop);
+        renderLoopList();
+      } else if (action === 'delete') {
+        const ok = await confirmDialog({
+          title: 'Loop löschen?', text: `„${loop.name}" wird entfernt.`,
+          okLabel: 'Löschen', danger: true,
+        });
+        if (!ok) return;
+        await DB.metaDelete(loop.key);
+        if (activeLoopId === loop.id) activeLoopId = null;
+        await loadSongLoops();
+      }
     });
-
-    const del = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${loop.name}" löschen`,
-      style: 'color: var(--danger)',
-    });
-    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
-    del.addEventListener('click', async () => {
-      const ok = await confirmDialog({
-        title: 'Loop löschen?', text: `„${loop.name}" wird entfernt.`,
-        okLabel: 'Löschen', danger: true,
-      });
-      if (!ok) return;
-      await DB.metaDelete(loop.key);
-      if (activeLoopId === loop.id) activeLoopId = null;
-      await loadSongLoops();
-    });
-
-    const once = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Loop starten' });
-    once.onclick = () => { menu.open = false; go.click(); };
-    const menu = el('details', { class: 'loop-menu' },
-      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${loop.name}“`, text: '⋮' }),
-      el('div', { class: 'loop-menu-popover' }, once, rename, del));
     const repeat = el('button', { class: 'icon-btn loop-repeat', type: 'button', 'aria-label': `„${loop.name}“ wiederholen` });
     repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
     repeat.onclick = async () => {
@@ -11433,7 +11482,9 @@ async function previewRecordingBlob(blob, tag, range) {
   await audioPlay();
   setPlayIcon(true);
   updateBackingUI();
-  if (settings.recBacking && tag?.anchor) startBacking(tag.anchor);
+  // Solange ein REC-Programm läuft, bleibt der Mitlauf erzwungen aus (siehe
+  // 4.4 der Anweisung) — die Einstellung selbst bleibt dabei unangetastet.
+  if (settings.recBacking && !routineRecBackingSuspended && tag?.anchor) startBacking(tag.anchor);
 }
 
 /** Beendet die Vorschau und stellt Spur, Position und Wiedergabestatus von davor wieder her. */
@@ -11686,6 +11737,11 @@ function updateBackingUI() {
   host.hidden = !resolvable;
   if (!resolvable) return;
   $('#btn-rec-backing').setAttribute('aria-checked', settings.recBacking ? 'true' : 'false');
+  // Während eines REC-Programms bleibt der Schalter sichtbar, aber gesperrt
+  // (siehe 4.4 der Anweisung) — die gespeicherte Einstellung selbst bleibt
+  // unangetastet und greift nach Programmende wieder wie zuvor.
+  $('#btn-rec-backing').disabled = routineRecBackingSuspended;
+  $('#rec-backing-suspended-hint').hidden = !routineRecBackingSuspended;
   $('#rec-backing-volume').value = Math.round(settings.recBackingVolume * 100);
   // Der Versatz lässt sich nur einstellen, während man ihn hört — eingeklappt,
   // solange die Funktion aus ist.
@@ -11695,6 +11751,7 @@ function updateBackingUI() {
 }
 
 $('#btn-rec-backing').addEventListener('click', async () => {
+  if (routineRecBackingSuspended) return;
   await saveSettings({ recBacking: !settings.recBacking });
   updateBackingUI();
   // Wirkt sofort auf die laufende Vorschau, nicht erst beim nächsten Anhören.
@@ -12401,44 +12458,37 @@ function renderRecordingList() {
         el('span', { class: 'rec-meta', text: meta.join(' · ') })));
     go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
 
-    const exportBtn = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Exportieren' });
-    exportBtn.onclick = () => { menu.open = false; exportRecording(recording, exportBtn); };
-
-    const rename = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
+    const menu = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${recording.name}“`,
     });
-    rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
-    rename.addEventListener('click', async () => {
-      menu.open = false;
-      const result = await editRecordingDialog(recording);
-      if (!result) return;
-      recording.name = result.name.trim() || recording.name;
-      recording.voice = result.voice;
-      await DB.metaPut(recording);
-      renderRecordingList();
+    menu.innerHTML = hamburgerIcon();
+    menu.addEventListener('click', async () => {
+      const action = await floatingMenu(menu, [
+        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
+        { value: 'export', label: 'Exportieren', icon: ICON_EXPORT },
+        { value: 'delete', label: 'Löschen', icon: ICON_DELETE, danger: true },
+      ]);
+      if (action === 'rename') {
+        const result = await editRecordingDialog(recording);
+        if (!result) return;
+        recording.name = result.name.trim() || recording.name;
+        recording.voice = result.voice;
+        await DB.metaPut(recording);
+        renderRecordingList();
+      } else if (action === 'export') {
+        await exportRecording(recording, menu);
+      } else if (action === 'delete') {
+        const ok = await confirmDialog({
+          title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
+          okLabel: 'Löschen', danger: true,
+        });
+        if (!ok) return;
+        if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
+        await DB.fileDelete(recording.fileKey);
+        await DB.metaDelete(recording.key);
+        await loadSongRecordings();
+      }
     });
-
-    const del = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" löschen`,
-      style: 'color: var(--danger)',
-    });
-    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
-    del.addEventListener('click', async () => {
-      menu.open = false;
-      const ok = await confirmDialog({
-        title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
-        okLabel: 'Löschen', danger: true,
-      });
-      if (!ok) return;
-      if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
-      await DB.fileDelete(recording.fileKey);
-      await DB.metaDelete(recording.key);
-      await loadSongRecordings();
-    });
-
-    const menu = el('details', { class: 'loop-menu' },
-      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${recording.name}“`, text: '⋮' }),
-      el('div', { class: 'loop-menu-popover' }, exportBtn, rename, del));
 
     const looping = recordingLoopId === recording.id;
     const repeat = el('button', {
@@ -13892,33 +13942,514 @@ async function createPlaylistFromPastedText() {
 // schon fertige Liste (Playlisten erschienen doppelt).
 let playlistsRenderToken = 0;
 
+/* ==========================================================================
+   ÜBE-PROGRAMM (ROUTINE) — automatisierter Übe-Ablauf für Setlisten, Loops
+   und RECs (Auftrag „Trainingsroutinen"). Ein Programm ist ein meta-Eintrag
+   vom Typ 'routine', gerätelokal wie Loops/Playlisten. Reine Normalisierungs-
+   und Ablauflogik zuerst — ungetestet durch den DOM, deshalb in
+   runSelfTests() abgedeckt; Zustand und DOM-Verdrahtung danach.
+   ========================================================================== */
+
+const ROUTINE_RATES = [1, 0.85, 0.7, 0.6];
+
+function routineKeyFor(scope, targetId) { return `routine:${scope}:${targetId}`; }
+
+/** Ein Schritt mit gültigen Vorgabewerten — 0/unbekannte Werte fallen auf
+ *  neutrale Standardwerte zurück (Selbsttest 1). */
+function normalizeRoutineStep(step, withVoice) {
+  const reps = Number.isInteger(step?.reps) && step.reps >= 1 && step.reps <= 10 ? step.reps : 2;
+  const rate = ROUTINE_RATES.includes(step?.rate) ? step.rate : 1;
+  if (!withVoice) return { reps, rate };
+  const voice = step?.voice === 'MINE' || VOICE_ORDER.includes(step?.voice) ? step.voice : 'FULL';
+  return { reps, rate, voice };
+}
+
+/** Vervollständigt ein ganzes Programm — mindestens ein Schritt, gültige
+ *  Werte (Selbsttest 1). `scope: 'rec'` hat bewusst kein `voice`-Feld (4.4). */
+function normalizeRoutine(routine) {
+  const withVoice = routine?.scope !== 'rec';
+  const steps = Array.isArray(routine?.steps) && routine.steps.length
+    ? routine.steps.map((s) => normalizeRoutineStep(s, withVoice))
+    : [normalizeRoutineStep({}, withVoice)];
+  const after = routine?.scope === 'setlist' ? 'next' : (routine?.after === 'playlist' ? 'playlist' : 'next');
+  const items = after === 'playlist' && Array.isArray(routine?.items) ? routine.items.slice() : [];
+  return {
+    key: routineKeyFor(routine.scope, routine.targetId), type: 'routine',
+    scope: routine.scope, targetId: routine.targetId,
+    steps, after, items,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Vorgabewerte für eine neue, noch ungespeicherte Zeile (siehe Tabelle in
+ *  Abschnitt 2 der Anweisung): erste Zeile 3×/1,0×/eigene Stimme, jede
+ *  weitere über „+" 2×/1,0×/Gesamt (ab der dritten Zeile Kopie der zuletzt
+ *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). */
+function newRoutineDefaultStep(isFirst, withVoice) {
+  if (!withVoice) return isFirst ? { reps: 3, rate: 1 } : { reps: 2, rate: 1 };
+  return isFirst
+    ? { reps: 3, rate: 1, voice: settings.myVoices.length ? 'MINE' : 'FULL' }
+    : { reps: 2, rate: 1, voice: 'FULL' };
+}
+
+/** Reine Fortschaltfunktion (5.1 „Fortschalten"): nächster Zustand nach einer
+ *  abgeschlossenen Wiederholung. `itemChanged` zeigt an, ob zum nächsten
+ *  Element (Song/Loop/Aufnahme) gewechselt wird — dort beginnen die Schritte
+ *  wieder von vorn, und nach dem letzten Element geht es wieder beim ersten
+ *  los (Selbsttest 2). */
+function routineNextState(state, steps, itemCount) {
+  let { itemIndex, stepIndex, repIndex } = state;
+  let itemChanged = false;
+  repIndex++;
+  if (repIndex >= steps[stepIndex].reps) {
+    repIndex = 0;
+    stepIndex++;
+    if (stepIndex >= steps.length) {
+      stepIndex = 0;
+      itemIndex = itemCount ? (itemIndex + 1) % itemCount : 0;
+      itemChanged = true;
+    }
+  }
+  return { itemIndex, stepIndex, repIndex, itemChanged };
+}
+
+/** 'MINE' bzw. eine im Song fehlende Stimme auflösen (Abschnitt 2 der
+ *  Anweisung): erste in `myVoices` vorhandene Spur, sonst FULL, sonst die
+ *  erste nicht-`broken` Spur (Selbsttest 3). */
+function resolveRoutineVoice(voiceSetting, song, myVoices) {
+  const tracks = (song?.tracks || []).filter((tr) => !tr.broken);
+  const hasVoice = (v) => tracks.some((tr) => tr.voice === v);
+  if (voiceSetting !== 'MINE' && hasVoice(voiceSetting)) return voiceSetting;
+  for (const v of myVoices || []) if (hasVoice(v)) return v;
+  if (hasVoice('FULL')) return 'FULL';
+  return tracks[0]?.voice || null;
+}
+
+/** Verwaiste IDs beim Laden herausfiltern (Setliste/Song/Loop kann inzwischen
+ *  gelöscht sein) — ein stiller Filter ist Pflicht, kein Fehler (Abschnitt 2,
+ *  Selbsttest 4). */
+function filterRoutineItems(routine, existingIds) {
+  if (routine.after !== 'playlist') return routine;
+  const idSet = new Set(existingIds);
+  const items = routine.items.filter((id) => idSet.has(id));
+  return items.length === routine.items.length ? routine : { ...routine, items };
+}
+
+/* ---------- Laufender Zustand -------------------------------------------- */
+
+// { scope, targetId, steps, after, items, itemIndex, stepIndex, repIndex,
+//   hdOffered, resolvedVoice } — siehe Abschnitt 5 der Anweisung. Nur eines
+// gleichzeitig aktiv (5.1 „Ein Programm auf einmal").
+let routine = null;
+// Solange ein REC-Programm läuft, bleibt der Mitlauf-Schalter erzwungen aus,
+// ohne settings.recBacking selbst zu verändern (4.4).
+let routineRecBackingSuspended = false;
+let routineStatusLastKey = null;
+
+/** Beendet ein laufendes Programm. Tempo/Stimme bleiben stehen (5.1) — kein
+ *  Zurücksetzen, das wäre überraschend. */
+function routineStop() {
+  if (!routine) return;
+  const wasRec = routine.scope === 'rec';
+  routine = null;
+  routineStatusLastKey = null;
+  if (wasRec) { routineRecBackingSuspended = false; updateBackingUI(); }
+  renderRoutineStatus();
+}
+
+/** Die aktuell iterierten Elemente eines Programms — Loops/RECs des Songs
+ *  (Reihenfolge „nächster Abschnitt/nächste Aufnahme") oder die vom Dialog
+ *  gewählte Playlist-Reihenfolge (4.3/4.4). Setlisten laufen stattdessen über
+ *  playQueue (siehe routineAdvance). */
+function routineElements(r) {
+  if (r.scope === 'loops') {
+    if (r.after === 'playlist') {
+      const byId = new Map(songLoops.map((l) => [l.id, l]));
+      return r.items.map((id) => byId.get(id)).filter(Boolean);
+    }
+    return songLoops;
+  }
+  if (r.scope === 'rec') {
+    if (r.after === 'playlist') {
+      const byId = new Map(songRecordings.map((rec) => [rec.id, rec]));
+      return r.items.map((id) => byId.get(id)).filter(Boolean);
+    }
+    return songRecordings;
+  }
+  return [];
+}
+
+/** Wendet Tempo und (außer bei REC) die aufgelöste Stimme des aktuellen
+ *  Schritts an — über die vorhandenen Funktionen, nie durch direktes
+ *  Verändern der <select>-Werte (5.1). Höchstens einmal je Programmstart
+ *  wird bei Tempo ≠ 1,0× der HD-Hinweis angeboten (Randfall in Abschnitt 6). */
+function routineApplyStep() {
+  if (!routine) return;
+  const step = routine.steps[routine.stepIndex];
+  audioSetRate(step.rate);
+  $('#rate-select').value = String(step.rate);
+  if (step.rate !== 1 && !routine.hdOffered) {
+    routine.hdOffered = true;
+    maybeOfferHdIntro();
+  }
+  if (routine.scope !== 'rec' && step.voice && playerSong) {
+    const resolved = resolveRoutineVoice(step.voice, playerSong, settings.myVoices);
+    routine.resolvedVoice = resolved;
+    const track = resolved ? playerSong.tracks.find((tr) => tr.voice === resolved && !tr.broken) : null;
+    if (track) selectTrack(track);
+  }
+  renderRoutineStatus();
+}
+
+/** Wechselt zum aktuellen Element (Loop/Aufnahme) — Setlisten laufen über
+ *  startPlaylist()/playlistAdvance() und brauchen das nicht. */
+function routineApplyCurrentElement() {
+  if (!routine) return;
+  const elements = routineElements(routine);
+  const current = elements[routine.itemIndex];
+  if (!current) {
+    banner('Für dieses Programm ist kein Element mehr übrig.', { kind: 'error' });
+    routineStop();
+    return;
+  }
+
+  if (routine.scope === 'loops') {
+    // Derselbe Pfad wie der Klick-Handler der Loop-Liste (10.3 der Anweisung).
+    loopA = current.start; loopB = current.end; loopOn = true; activeLoopId = current.id;
+    applyLoop();
+    updateSeekUI(audioSeek(current.start));
+    updateLoopUI();
+    renderLoopList();
+    routineApplyStep();
+    audioPlay().then(() => setPlayIcon(true));
+  } else if (routine.scope === 'rec') {
+    routineApplyStep();
+    toggleSavedRecordingPreview(current);
+  }
+  renderRoutineStatus();
+}
+
+/** Fortschalten nach einer abgeschlossenen Wiederholung (5.1). Wird von
+ *  onPlaybackEnded() (Setliste/REC) bzw. Audio.onLoopWrap/onPreviewBoundStop
+ *  (Loops/REC mit Zuschnitt) aufgerufen. */
+function routineAdvance() {
+  if (!routine) return;
+  const itemCount = routine.scope === 'setlist' ? (playQueue?.items.length || 0) : routineElements(routine).length;
+  if (!itemCount) {
+    banner('Für dieses Programm ist kein Element mehr übrig.', { kind: 'error' });
+    routineStop();
+    return;
+  }
+
+  const next = routineNextState(routine, routine.steps, itemCount);
+  routine.stepIndex = next.stepIndex;
+  routine.repIndex = next.repIndex;
+
+  if (!next.itemChanged) {
+    if (routine.scope === 'loops') {
+      // Der Rücksprung an den Loop-Anfang ist schon passiert (Audio.onLoopWrap
+      // feuert genau dort) — nur der Schritt (Tempo/Stimme) muss noch greifen.
+      routineApplyStep();
+    } else if (routine.scope === 'rec') {
+      routineApplyStep();
+      const bound = Audio.previewBound;
+      updateSeekUI(audioSeek(bound ? bound.start : 0));
+      audioPlay().then(() => setPlayIcon(true));
+    } else {
+      routineApplyStep();
+      updateSeekUI(audioSeek(0));
+      audioPlay().then(() => setPlayIcon(true));
+    }
+    return;
+  }
+
+  if (routine.scope === 'setlist') { playlistAdvance(); return; }
+  routine.itemIndex = next.itemIndex;
+  routineApplyCurrentElement();
+}
+
+/** Speichert das Programm und startet es sofort (4: „Speichern passiert genau
+ *  beim Start"). `plRef` erspart bei der Setliste eine zweite DB-Abfrage. */
+async function routineStart(scope, targetId, draft, plRef) {
+  routineStop();
+  let record = normalizeRoutine({ scope, targetId, steps: draft.steps, after: draft.after, items: draft.items });
+  if (scope !== 'setlist') {
+    const validIds = scope === 'loops' ? songLoops.map((l) => l.id) : songRecordings.map((r) => r.id);
+    record = filterRoutineItems(record, validIds);
+  }
+  await DB.metaPut(record).catch((err) => console.error('[routine] konnte nicht gespeichert werden', err));
+  routine = { ...record, itemIndex: 0, stepIndex: 0, repIndex: 0, hdOffered: false };
+
+  if (scope === 'setlist') {
+    const pl = plRef || await DB.metaGet(`playlist:${targetId}`).catch(() => null);
+    if (!pl) { banner('Diese Setliste ist nicht mehr vorhanden.', { kind: 'error' }); routine = null; return; }
+    await startPlaylist(pl);
+    return;
+  }
+
+  const elements = routineElements(routine);
+  if (!elements.length) {
+    banner('Für dieses Programm ist kein Element mehr übrig.', { kind: 'error' });
+    routine = null;
+    return;
+  }
+  if (scope === 'rec') { routineRecBackingSuspended = true; updateBackingUI(); }
+  routineApplyCurrentElement();
+}
+
+/* ---------- Statuszeile (5.5) --------------------------------------------- */
+
+function routineStatusText() {
+  if (!routine) return '';
+  const step = routine.steps[routine.stepIndex];
+  const rateLabel = `${String(step.rate).replace('.', ',')}×`;
+  const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] || null);
+  const parts = ['Üben', `Durchlauf ${routine.repIndex + 1} von ${step.reps}`];
+  if (voiceLabel) parts.push(voiceLabel);
+  parts.push(rateLabel);
+  const current = routineElements(routine)[routine.itemIndex];
+  if (current && routine.scope !== 'setlist') parts.push(current.name);
+  return parts.join(' · ');
+}
+
+/** Aktualisiert nur bei Schrittwechsel (nicht bei jedem timeupdate) — siehe
+ *  aria-live-Hinweis in 5.5 der Anweisung. */
+function renderRoutineStatus() {
+  const box = $('#routine-status');
+  if (!box) return;
+  if (!routine) { box.hidden = true; routineStatusLastKey = null; return; }
+  box.hidden = false;
+  const key = `${routine.itemIndex}:${routine.stepIndex}:${routine.repIndex}:${routine.resolvedVoice}`;
+  if (key === routineStatusLastKey) return;
+  routineStatusLastKey = key;
+  $('#routine-status-text').textContent = routineStatusText();
+}
+
+$('#btn-routine-stop').addEventListener('click', () => routineStop());
+
+/* ---------- Dialog (Abschnitt 4) ------------------------------------------ */
+
+function dumbbellIcon() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>';
+}
+
+/** Eine reihenfolgen-/auswahlbare Liste für „… dann Playlist" (4.3/4.4):
+ *  Checkbox je Element, Pfeile zum Sortieren. `elements`: [{id,label}]. */
+function routineOrderList(elements, initialOrder) {
+  let order = (initialOrder && initialOrder.length ? initialOrder : []).filter((id) => elements.some((e) => e.id === id));
+  for (const e of elements) if (!order.includes(e.id)) order.push(e.id);
+  const checked = new Set(initialOrder && initialOrder.length ? initialOrder : order);
+  const byId = new Map(elements.map((e) => [e.id, e]));
+
+  const host = el('div', { class: 'routine-order-list' });
+  const render = () => {
+    host.textContent = '';
+    order.forEach((id, i) => {
+      const item = byId.get(id);
+      if (!item) return;
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = checked.has(id);
+      cb.addEventListener('change', () => { if (cb.checked) checked.add(id); else checked.delete(id); });
+      const up = el('button', {
+        class: 'icon-btn', type: 'button', 'aria-label': `„${item.label}" nach oben`,
+        disabled: i === 0 ? true : null,
+        onclick: () => { [order[i - 1], order[i]] = [order[i], order[i - 1]]; render(); },
+      }, '▲');
+      const down = el('button', {
+        class: 'icon-btn', type: 'button', 'aria-label': `„${item.label}" nach unten`,
+        disabled: i === order.length - 1 ? true : null,
+        onclick: () => { [order[i + 1], order[i]] = [order[i], order[i + 1]]; render(); },
+      }, '▼');
+      host.append(el('label', { class: 'routine-order-row' }, cb, el('span', { class: 'grow', text: item.label }), up, down));
+    });
+  };
+  render();
+  return { host, getItems: () => order.filter((id) => checked.has(id)) };
+}
+
+/**
+ * Übe-Programm-Dialog (Abschnitt 4 der Anweisung). Öffnen speichert nichts;
+ * Speichern und Starten passieren zusammen beim Tippen auf „Üben starten".
+ * `opts`: { scope, targetId, stored, itemLabel, withVoice, elements,
+ *           emptyHint, isRunning }.
+ * Löst auf zu: { action: 'start', steps, after, items } | { action: 'stop' }
+ *              | null (Abbrechen/Escape/Klick daneben).
+ */
+function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elements, emptyHint, isRunning }) {
+  return new Promise((resolve) => {
+    const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
+
+    const normalized = stored ? normalizeRoutine(stored) : null;
+    const draftSteps = normalized ? normalized.steps.map((s) => ({ ...s })) : [newRoutineDefaultStep(true, withVoice)];
+    let afterMode = normalized ? normalized.after : 'next';
+    let orderWidget = null;
+
+    const voiceOptions = () => {
+      const opts = [];
+      if (settings.myVoices.length) opts.push(['MINE', 'Meine Stimme']);
+      opts.push(['FULL', 'Gesamt']);
+      for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
+      return opts;
+    };
+
+    const rowsHost = el('div', { class: 'stack', style: 'gap:8px' });
+    const renderRows = () => {
+      rowsHost.textContent = '';
+      draftSteps.forEach((step, i) => {
+        const repsSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Wiederholungen` });
+        for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: String(n) }));
+        repsSel.value = String(step.reps);
+        repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); });
+
+        const rateSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Tempo` });
+        for (const r of ROUTINE_RATES) rateSel.append(el('option', { value: r, text: `${String(r).replace('.', ',')}×` }));
+        rateSel.value = String(step.rate);
+        rateSel.addEventListener('change', () => { step.rate = Number(rateSel.value); });
+
+        let voiceSel = null;
+        if (withVoice) {
+          voiceSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Stimme` });
+          for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
+          if (![...voiceSel.options].some((o) => o.value === step.voice)) step.voice = settings.myVoices.length ? 'MINE' : 'FULL';
+          voiceSel.value = step.voice;
+          voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; });
+        }
+
+        const removeBtn = i > 0 ? el('button', {
+          class: 'icon-btn', type: 'button', 'aria-label': 'Schritt entfernen',
+          onclick: () => { draftSteps.splice(i, 1); renderRows(); },
+        }, '✕') : null;
+
+        rowsHost.append(el('div', { class: 'routine-step-row' },
+          el('span', { text: itemLabel }), repsSel, el('span', { text: 'mal auf' }), rateSel,
+          withVoice ? el('span', { text: 'als' }) : null, voiceSel, el('span', { text: 'dann' }), removeBtn));
+      });
+    };
+    renderRows();
+
+    const addBtn = el('button', {
+      class: 'btn', type: 'button', text: '+', 'aria-label': 'Schritt hinzufügen',
+      onclick: () => {
+        const last = draftSteps[draftSteps.length - 1];
+        draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice) : { ...last });
+        renderRows();
+      },
+    });
+
+    let afterHost = null;
+    const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: '… dann nächster Song.' }) : null;
+    if (scope !== 'setlist') {
+      const groupName = `routine-after-${scope}`;
+      const radioNext = el('input', { type: 'radio', name: groupName, value: 'next' });
+      const radioPl = el('input', { type: 'radio', name: groupName, value: 'playlist' });
+      radioNext.checked = afterMode === 'next';
+      radioPl.checked = afterMode === 'playlist';
+      const orderContainer = el('div');
+      const buildOrder = () => {
+        orderContainer.textContent = '';
+        if (afterMode !== 'playlist') return;
+        orderWidget = routineOrderList(elements, normalized?.items || []);
+        orderContainer.append(orderWidget.host);
+      };
+      radioNext.addEventListener('change', () => { afterMode = 'next'; buildOrder(); });
+      radioPl.addEventListener('change', () => { afterMode = 'playlist'; buildOrder(); });
+      buildOrder();
+      const nextLabel = scope === 'loops' ? 'dann nächster Abschnitt.' : 'dann nächste Aufnahme.';
+      afterHost = el('div', { class: 'stack', style: 'gap:6px; margin-top:10px' },
+        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioNext, el('span', { text: `… ${nextLabel}` })),
+        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioPl, el('span', { text: '… dann Playlist' })),
+        orderContainer);
+    }
+
+    const startBtn = el('button', {
+      class: 'btn btn--primary', type: 'button', text: 'Üben starten', disabled: !!emptyHint,
+    });
+    startBtn.addEventListener('click', () => {
+      const items = scope !== 'setlist' && afterMode === 'playlist' && orderWidget ? orderWidget.getItems() : [];
+      if (scope !== 'setlist' && afterMode === 'playlist' && !items.length) {
+        banner('Bitte mindestens ein Element auswählen.', { kind: 'error' });
+        return;
+      }
+      done({ action: 'start', steps: draftSteps.map((s) => ({ ...s })), after: scope === 'setlist' ? 'next' : afterMode, items });
+    });
+
+    const stopBtn = isRunning
+      ? el('button', { class: 'btn', type: 'button', text: 'Programm beenden', onclick: () => done({ action: 'stop' }) })
+      : null;
+
+    const box = el('div', { class: 'dialog routine-dialog', style: 'max-height:86vh; display:flex; flex-direction:column; overflow-y:auto' },
+      el('h2', { text: 'Übe-Programm' }),
+      emptyHint ? el('p', { class: 'small muted', text: emptyHint }) : null,
+      rowsHost,
+      el('div', { class: 'row', style: 'justify-content:center; margin-top:4px' }, addBtn),
+      trailer, afterHost,
+      el('div', { class: 'dialog-actions', style: 'margin-top:14px' },
+        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        stopBtn, startBtn));
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Übe-Programm' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    document.body.append(layer);
+    openModal(layer, { initialFocus: rowsHost.querySelector('select'), onEscape: () => done(null) });
+  });
+}
+
+/* ---------- Einstiegspunkte (Abschnitt 3) --------------------------------- */
+
+async function openRoutineDialogForSetlist(pl) {
+  if (!pl) return;
+  const [songs, recordings] = await Promise.all([
+    DB.metaByType('song').catch(() => []),
+    DB.metaByType('recording').catch(() => []),
+  ]);
+  const recsBySong = groupRecordingsBySongId(recordings);
+  const anyAudio = (pl.songTitles || []).some((title) => songHasAudio(findSongByTitle(songs, title), recsBySong));
+  const stored = await DB.metaGet(routineKeyFor('setlist', pl.id)).catch(() => null);
+  const isRunning = !!(routine && routine.scope === 'setlist' && routine.targetId === pl.id);
+  const result = await showRoutineDialog({
+    scope: 'setlist', targetId: pl.id, stored, itemLabel: 'Song', withVoice: true, elements: [],
+    emptyHint: anyAudio ? null : `Aus „${pl.name}" ist noch kein Titel importiert.`,
+    isRunning,
+  });
+  if (!result) return;
+  if (result.action === 'stop') { routineStop(); return; }
+  await routineStart('setlist', pl.id, result, pl);
+}
+
+async function openRoutineDialogForLoops() {
+  if (!playerSong) return;
+  const stored = await DB.metaGet(routineKeyFor('loops', playerSong.id)).catch(() => null);
+  const isRunning = !!(routine && routine.scope === 'loops' && routine.targetId === playerSong.id);
+  const elements = songLoops.map((l) => ({ id: l.id, label: `${l.name} (${fmtTime(l.start)}–${fmtTime(l.end)})` }));
+  const result = await showRoutineDialog({
+    scope: 'loops', targetId: playerSong.id, stored, itemLabel: 'Abschnitt', withVoice: true, elements,
+    emptyHint: songLoops.length ? null : 'Für diesen Song sind noch keine Abschnitte gespeichert.',
+    isRunning,
+  });
+  if (!result) return;
+  if (result.action === 'stop') { routineStop(); return; }
+  await routineStart('loops', playerSong.id, result);
+}
+
+async function openRoutineDialogForRec() {
+  if (!playerSong) return;
+  const stored = await DB.metaGet(routineKeyFor('rec', playerSong.id)).catch(() => null);
+  const isRunning = !!(routine && routine.scope === 'rec' && routine.targetId === playerSong.id);
+  const elements = songRecordings.map((r) => ({ id: r.id, label: r.name }));
+  const result = await showRoutineDialog({
+    scope: 'rec', targetId: playerSong.id, stored, itemLabel: 'Aufnahme', withVoice: false, elements,
+    emptyHint: songRecordings.length ? null : 'Für diesen Song sind noch keine Aufnahmen gespeichert.',
+    isRunning,
+  });
+  if (!result) return;
+  if (result.action === 'stop') { routineStop(); return; }
+  await routineStart('rec', playerSong.id, result);
+}
+
+$('#btn-loop-routine').addEventListener('click', () => openRoutineDialogForLoops());
+$('#btn-rec-routine').addEventListener('click', () => openRoutineDialogForRec());
+
 function starIcon(filled) {
   return `<svg viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.8-6.2 3.8 1.6-7-5.4-4.8 7.1-.7z"/></svg>`;
-}
-
-/** Addiert pro Setlisten-Eintrag die längste bekannte Spur des Songs. */
-function playlistDurationSec(playlist, songs) {
-  return (playlist.songTitles || []).reduce((total, title) => {
-    const song = findSongByTitle(songs, title);
-    const durations = (song?.tracks || [])
-      .map((track) => Number(track.durationSec))
-      .filter((duration) => Number.isFinite(duration) && duration > 0);
-    return total + (durations.length ? Math.max(...durations) : 0);
-  }, 0);
-}
-
-function fmtPlaylistDuration(seconds) {
-  const rounded = Math.floor(Math.max(0, seconds));
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
-  const secs = rounded % 60;
-  return hours
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-    : `${minutes}:${String(secs).padStart(2, '0')}`;
-}
-
-function playlistDurationLabel(playlist, songs) {
-  return `Gesamtdauer: ${fmtPlaylistDuration(playlistDurationSec(playlist, songs))}`;
 }
 
 /** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
@@ -13967,14 +14498,20 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   });
   play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 
+  const practice = el('button', {
+    class: 'icon-btn', type: 'button', 'aria-label': 'Übe-Programm',
+    onclick: () => openRoutineDialogForSetlist(favorite),
+  });
+  practice.innerHTML = dumbbellIcon();
+
   host.append(el('div', { class: 'card' },
     el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
-        el('strong', { text: favorite.name }),
-        el('div', { class: 'small muted', text: playlistDurationLabel(favorite, songs) })),
+        el('strong', { text: favorite.name })),
       play),
-    list));
+    list,
+    el('div', { class: 'row', style: 'justify-content:flex-end; margin-top:8px' }, practice)));
 }
 
 async function renderPlaylists() {
@@ -14016,7 +14553,7 @@ async function renderPlaylists() {
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: pl.name }),
         el('div', { class: 'small muted',
-          text: `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+          text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
     if (!playable) open.style.opacity = '.6';
 
     const fav = el('button', {
@@ -14034,12 +14571,14 @@ async function renderPlaylists() {
         const choice = await choiceDialog({
           title: pl.name, text: 'Was möchtest du tun?',
           options: [
+            { value: 'practice', label: 'Üben …' },
             { value: 'file', label: 'Als Datei speichern' },
             { value: 'text', label: 'Als Text anzeigen' },
             { value: 'edit', label: 'Bearbeiten' },
           ],
         });
-        if (choice === 'file') await sharePlaylistFile(pl);
+        if (choice === 'practice') await openRoutineDialogForSetlist(pl);
+        else if (choice === 'file') await sharePlaylistFile(pl);
         else if (choice === 'text') openPlaylistTextDialog(pl);
         else if (choice === 'edit') navigate(`#playlist/${pl.id}`);
       },
@@ -14169,7 +14708,7 @@ async function renderPlaylistDetail() {
   $('#pl-title').textContent = pl.name;
   const titles = pl.songTitles || [];
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
-  $('#pl-sub').textContent = `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}`;
+  $('#pl-sub').textContent = plural(titles.length, 'Titel', 'Titel');
 
   const hint = $('#pl-missing');
   if (missing.length) {
@@ -14825,13 +15364,13 @@ async function readBackupFile(file) {
  * Anzeige im Auswahl-Dialog geeignet; *1,34 gleicht den Base64-Aufschlag aus.
  */
 async function backupSizeEstimate() {
-  const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
+  const [songs, loops, playlists, notes, lyricsNotes, recordings, routines] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
-    DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'),
+    DB.metaByType('note'), DB.metaByType('lyricsNote'), DB.metaByType('recording'), DB.metaByType('routine'),
   ]);
   // .length zählt UTF-16-Einheiten, keine Bytes — bei Umlauten/ß (2 Byte in
   // UTF-8) unterschätzt das sonst die tatsächliche Dateigröße.
-  const textBytes = new TextEncoder().encode(JSON.stringify({ loops, notes, lyricsNotes, playlists })).length + 500;
+  const textBytes = new TextEncoder().encode(JSON.stringify({ loops, notes, lyricsNotes, playlists, routines })).length + 500;
   const recAudioBytes = recordings.reduce((n, r) => n + (r.size || 0), 0) * 1.34;
   // Noten (Notenblätter) hängen an derselben Auswahl wie die Song-Audiodateien
   // (siehe buildBackupParts) — zählen deshalb hier mit rein.
@@ -14930,6 +15469,34 @@ async function buildBackupParts(opts, onProgress) {
     counts.lyricsNotes = arr.length;
   }
 
+  if (opts.loops || opts.playlists || opts.recordings) {
+    // Übe-Programme hängen an ihrem jeweiligen Song/ihrer Setliste — sie
+    // reisen deshalb mit derselben Auswahl-Checkbox mit, statt eine eigene
+    // zu brauchen. Die Playlist-Reihenfolge eines „… dann Playlist"-
+    // Programms wird bewusst nicht exportiert (geräteeigene Loop-/REC-IDs,
+    // siehe restoreBackup) — nach dem Einspielen gilt wieder „… dann
+    // nächster Abschnitt/nächste Aufnahme".
+    const routines = await DB.metaByType('routine').catch(() => []);
+    const arr = routines.map((r) => {
+      if (r.scope === 'setlist' && opts.playlists) {
+        const target = playlists.find((p) => p.id === r.targetId)?.name;
+        return target ? { scope: 'setlist', target, steps: r.steps } : null;
+      }
+      if (r.scope === 'loops' && opts.loops) {
+        const target = byId.get(r.targetId)?.title;
+        return target ? { scope: 'loops', target, steps: r.steps } : null;
+      }
+      if (r.scope === 'rec' && opts.recordings) {
+        const target = byId.get(r.targetId)?.title;
+        return target ? { scope: 'rec', target, steps: r.steps } : null;
+      }
+      return null;
+    }).filter(Boolean);
+    if (arr.length) {
+      parts.push(`,"routines":${JSON.stringify(arr)}`);
+      counts.routines = arr.length;
+    }
+  }
   if (opts.recordings) {
     parts.push(',"recordings":[');
     let first = true, n = 0;
@@ -15709,6 +16276,34 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       discardedTracks, discardedScores,
     };
     throw err;
+  }
+
+  // Übe-Programme (Auftrag „Trainingsroutinen"): über Song-/Setlistennamen
+  // zugeordnet, wie Loops/Notizen auch — die eigene Geräte-ID gilt nur lokal.
+  // Kein Treffer ist kein Fehler, sondern derselbe stille Filter wie beim
+  // normalen Laden (verwaiste Programme werden einfach nicht übernommen).
+  // Die Playlist-Reihenfolge eines „… dann Playlist"-Programms wird dabei
+  // bewusst nicht mit übertragen (sie hinge an geräteeigenen Loop-/REC-IDs,
+  // die eine fremde Sicherung nicht kennt) — nach dem Einspielen gilt „…
+  // dann nächster Abschnitt/nächste Aufnahme".
+  const routinesIn = Array.isArray(data.routines) ? data.routines : [];
+  if (routinesIn.length) {
+    const currentSongs = await DB.metaByType('song').catch(() => []);
+    const currentPlaylists = await DB.metaByType('playlist').catch(() => []);
+    const existingRoutineKeys = new Set((await DB.metaByType('routine').catch(() => [])).map((r) => r.key));
+    const restoredRoutines = [];
+    for (const r of routinesIn) {
+      if (!r || (r.scope !== 'setlist' && r.scope !== 'loops' && r.scope !== 'rec') || typeof r.target !== 'string') continue;
+      const targetId = r.scope === 'setlist'
+        ? currentPlaylists.find((p) => normalizeTitle(p.name) === normalizeTitle(r.target))?.id
+        : findSongByTitle(currentSongs, r.target)?.id;
+      if (!targetId) continue;
+      // Ein hier schon vorhandenes Programm gilt als aktueller als das aus
+      // der Sicherung — nicht überschreiben, wie bei Notizen auch.
+      if (existingRoutineKeys.has(routineKeyFor(r.scope, targetId))) continue;
+      restoredRoutines.push(normalizeRoutine({ scope: r.scope, targetId, steps: r.steps, after: 'next' }));
+    }
+    if (restoredRoutines.length) await DB.metaPutMany(restoredRoutines);
   }
 
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
@@ -16726,6 +17321,54 @@ function runSelfTests() {
     checks++;
     if (redactErrorMessage('') !== '' || redactErrorMessage(undefined) !== undefined) {
       failed.push('redactErrorMessage: leere/fehlende Meldungen müssen unverändert durchgereicht werden');
+    }
+  }
+
+  // Übe-Programme (Auftrag „Trainingsroutinen"): reine Normalisierungs- und
+  // Ablauflogik, ohne DOM prüfbar.
+  checks++;
+  {
+    const normalized = normalizeRoutine({ scope: 'loops', targetId: 'x', steps: [{ reps: 0, rate: 99, voice: 'NOPE' }] });
+    const step = normalized.steps[0];
+    if (!(step.reps >= 1 && step.reps <= 10) || !ROUTINE_RATES.includes(step.rate)
+        || !(step.voice === 'FULL' || VOICE_ORDER.includes(step.voice))) {
+      failed.push(`normalizeRoutine: ungültige Werte wurden nicht auf Vorgaben zurückgesetzt (${JSON.stringify(step)})`);
+    }
+  }
+
+  checks++;
+  {
+    // steps: 2×/1× über 2 Elemente — Element0/Schritt0 ×2, Element0/Schritt1
+    // ×1, Element1 …, danach zyklisch wieder von vorn.
+    const steps = [{ reps: 2, rate: 1 }, { reps: 1, rate: 1 }];
+    let state = { itemIndex: 0, stepIndex: 0, repIndex: 0 };
+    const seq = [[state.itemIndex, state.stepIndex]];
+    for (let i = 0; i < 7; i++) {
+      const next = routineNextState(state, steps, 2);
+      state = { itemIndex: next.itemIndex, stepIndex: next.stepIndex, repIndex: next.repIndex };
+      seq.push([state.itemIndex, state.stepIndex]);
+    }
+    const expected = [[0, 0], [0, 0], [0, 1], [1, 0], [1, 0], [1, 1], [0, 0], [0, 0]];
+    if (JSON.stringify(seq) !== JSON.stringify(expected)) {
+      failed.push(`routineNextState: Schrittfolge stimmt nicht (${JSON.stringify(seq)}, erwartet ${JSON.stringify(expected)})`);
+    }
+  }
+
+  checks++;
+  {
+    const withFull = { tracks: [{ voice: 'FULL' }, { voice: 'TEN' }] };
+    const gotFull = resolveRoutineVoice('MINE', withFull, ['BASS']);
+    if (gotFull !== 'FULL') failed.push(`resolveRoutineVoice: ohne Bass müsste FULL herauskommen, war ${gotFull}`);
+    const withoutFull = { tracks: [{ voice: 'TEN' }] };
+    const gotFirst = resolveRoutineVoice('MINE', withoutFull, ['BASS']);
+    if (gotFirst !== 'TEN') failed.push(`resolveRoutineVoice: ohne Bass/FULL müsste die erste Spur herauskommen, war ${gotFirst}`);
+  }
+
+  checks++;
+  {
+    const filtered = filterRoutineItems({ after: 'playlist', items: ['a', 'gone', 'b'] }, ['a', 'b']);
+    if (filtered.items.join(',') !== 'a,b') {
+      failed.push(`filterRoutineItems: verwaiste ID wurde nicht entfernt (${filtered.items.join(',')})`);
     }
   }
 

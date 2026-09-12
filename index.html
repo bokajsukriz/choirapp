@@ -738,6 +738,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
 .fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent-foreground); }
+/* Löschen-Einträge (Loops/RECs): dieselbe rote Warnfarbe wie die übrigen
+   Löschen-Knöpfe im Bestand, statt der neutralen Akzentfarbe. */
+.fab-menu-item--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.fab-menu-item--danger svg { color: var(--danger); }
 
 /* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie
    die schwebenden Knöpfe, aber bewusst zurückhaltend — gestrichelter Umriss
@@ -1665,7 +1669,7 @@ input[type="checkbox"] {
 /* Loops */
 .loop-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr auto auto;
+  grid-template-columns: 1fr 1fr auto auto auto;
   align-items: center;
   gap: 6px;
 }
@@ -1736,23 +1740,6 @@ input[type="checkbox"] {
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
 .loop-item .loop-repeat { flex: 0 0 auto; }
-.loop-menu { position: relative; flex: 0 0 auto; }
-.loop-menu summary { list-style: none; }
-.loop-menu summary::-webkit-details-marker { display: none; }
-.loop-menu-popover {
-  position: absolute;
-  z-index: 20;
-  right: 0;
-  top: calc(100% + 5px);
-  width: max-content;
-  min-width: 180px;
-  padding: 5px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 8px 28px rgba(0,0,0,.2);
-}
-.loop-menu-popover button { display: block; width: 100%; text-align: left; }
 .practice-step { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
 .practice-step select { min-height: var(--tap); border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text); padding: 0 8px; }
 .practice-add { margin-bottom: 16px; }
@@ -1765,6 +1752,52 @@ input[type="checkbox"] {
   gap: 8px;
   padding: 6px 0;
 }
+
+/* Der Aufnahmeknopf muss optisch zentriert bleiben — die Hantel sitzt
+   deshalb absolut am rechten Rand einer eigenen Zeile, statt den Knopf
+   selbst zu verschieben (siehe Auftrag „Trainingsroutinen" 3.4). */
+.rec-toggle-row {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.rec-toggle-row-routine {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Übe-Programm-Dialog */
+.routine-step-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.routine-step-row .select-field { min-width: 0; }
+.routine-order-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.routine-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Statuszeile eines laufenden Übe-Programms (5.5) */
+.routine-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.routine-status span:first-child { flex: 1; min-width: 0; }
 
 .rec-btn {
   width: 56px;
@@ -2800,6 +2833,11 @@ input[type="checkbox"] {
       <div id="queue-list"></div>
     </div>
 
+    <div class="routine-status" id="routine-status" hidden aria-live="polite">
+      <span id="routine-status-text"></span>
+      <button class="btn btn--ghost" id="btn-routine-stop" type="button">Beenden</button>
+    </div>
+
     <div class="player-tabs" id="player-tabs" role="tablist" aria-label="Lied-Bereiche">
       <button class="player-tab" type="button" role="tab" id="tab-btn-loops"
               data-tab="loops" aria-selected="true" aria-controls="tab-panel-loops" tabindex="0">
@@ -2833,6 +2871,9 @@ input[type="checkbox"] {
         <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         </button>
+        <button class="btn icon-only" id="btn-loop-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Übe-Programm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>
+        </button>
       </div>
       <p class="small muted" id="loop-info" style="margin:10px 0 0; text-align:center"></p>
       <div id="loop-list"></div>
@@ -2840,9 +2881,14 @@ input[type="checkbox"] {
 
     <div id="tab-panel-rec" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-rec" tabindex="0" hidden>
       <div class="rec-controls" id="rec-controls">
-        <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
-          <span class="rec-btn-dot"></span>
-        </button>
+        <div class="rec-toggle-row">
+          <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
+            <span class="rec-btn-dot"></span>
+          </button>
+          <button class="btn icon-only rec-toggle-row-routine" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Übe-Programm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>
+          </button>
+        </div>
         <div class="rec-meter" id="rec-meter" hidden>
           <canvas class="rec-meter-canvas" id="rec-meter-canvas"></canvas>
           <p class="small rec-meter-warning" id="rec-meter-warning" hidden>Zu laut — die Aufnahme übersteuert</p>
@@ -2900,6 +2946,7 @@ input[type="checkbox"] {
           <span>Original leise mitlaufen</span>
           <input type="range" id="rec-backing-volume" min="0" max="60" step="5" value="20" aria-label="Lautstärke des Originaltracks">
         </div>
+        <p class="small muted" id="rec-backing-suspended-hint" hidden style="margin:2px 0 0">Während eines Übe-Programms aus.</p>
         <div class="rec-backing-fine" id="rec-backing-fine" hidden>
           <div class="rec-backing-row">
             <span>Versatz</span>
