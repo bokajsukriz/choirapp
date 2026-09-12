@@ -14357,6 +14357,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     });
 
     let afterHost = null;
+    let setAfterMode = null;
     const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: '… dann nächster Song.' }) : null;
     if (scope !== 'setlist') {
       const nextLabel = scope === 'loops' ? 'Alle Loops abspielen' : 'Alle Aufnahmen abspielen';
@@ -14369,7 +14370,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         orderWidget = routineOrderList(elements, normalized?.items || []);
         orderContainer.append(orderWidget.host);
       };
-      const setAfterMode = (mode) => {
+      setAfterMode = (mode) => {
         afterMode = mode;
         nextBtn.setAttribute('aria-pressed', mode === 'next' ? 'true' : 'false');
         plBtn.setAttribute('aria-pressed', mode === 'playlist' ? 'true' : 'false');
@@ -14384,7 +14385,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     }
 
     const startBtn = el('button', {
-      class: 'btn btn--primary', type: 'button', text: 'Üben starten', disabled: !!emptyHint,
+      class: 'btn btn--primary', type: 'button', text: 'Üben', disabled: !!emptyHint,
     });
     startBtn.addEventListener('click', () => {
       const items = scope !== 'setlist' && afterMode === 'playlist' && orderWidget ? orderWidget.getItems() : [];
@@ -14399,6 +14400,23 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       ? el('button', { class: 'btn', type: 'button', text: 'Programm beenden', onclick: () => done({ action: 'stop' }) })
       : null;
 
+    // Löscht die gespeicherten Einstellungen (nicht nur den Entwurf hier im
+    // Dialog) — der Dialog bleibt offen und zeigt danach die Vorgabewerte,
+    // damit sich sofort ein neues Programm zusammenstellen lässt.
+    const clearBtn = stored
+      ? el('button', {
+        class: 'btn', type: 'button', text: 'Leeren', style: 'flex: 0 0 auto',
+        onclick: async () => {
+          await DB.metaDelete(routineKeyFor(scope, targetId)).catch(() => {});
+          draftSteps.length = 0;
+          draftSteps.push(newRoutineDefaultStep(true, withVoice));
+          renderRows();
+          if (setAfterMode) setAfterMode('next');
+          clearBtn.hidden = true;
+        },
+      })
+      : null;
+
     const box = el('div', { class: 'dialog routine-dialog', style: 'max-height:86vh; display:flex; flex-direction:column; overflow-y:auto' },
       el('h2', { text: 'Übe-Programm' }),
       emptyHint ? el('p', { class: 'small muted', text: emptyHint }) : null,
@@ -14406,6 +14424,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       el('div', { class: 'row', style: 'justify-content:center; margin-top:4px' }, addBtn),
       trailer, afterHost,
       el('div', { class: 'dialog-actions', style: 'margin-top:14px' },
+        clearBtn,
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
         stopBtn, startBtn));
     const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Übe-Programm' }, box);
