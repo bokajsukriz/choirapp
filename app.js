@@ -14185,9 +14185,30 @@ function tempoFieldIcon() {
 function trashIcon() {
   return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>');
 }
+function repeatIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>');
+}
+function resetIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>');
+}
+function playIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>');
+}
+function listIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><circle cx="19" cy="17" r="2"/><path d="M21 17V6"/></svg>');
+}
+function checkIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>');
+}
+function dragHandleIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>');
+}
 
 /** Eine reihenfolgen-/auswahlbare Liste für „… dann Playlist" (4.3/4.4):
- *  Checkbox je Element, Pfeile zum Sortieren. `elements`: [{id,label}]. */
+ *  Häkchen-Kreis je Element, Reihenfolge per Ziehpunkt (Pointer Events —
+ *  funktioniert für Maus und Touch gleichermaßen, ohne die
+ *  HTML5-Drag-and-Drop-API, die auf Touch inkonsistent ist).
+ *  `elements`: [{id,label}]. */
 function routineOrderList(elements, initialOrder) {
   let order = (initialOrder && initialOrder.length ? initialOrder : []).filter((id) => elements.some((e) => e.id === id));
   for (const e of elements) if (!order.includes(e.id)) order.push(e.id);
@@ -14195,34 +14216,96 @@ function routineOrderList(elements, initialOrder) {
   const byId = new Map(elements.map((e) => [e.id, e]));
 
   const host = el('div', { class: 'routine-order-list' });
+
+  // Verschiebt die Zeile live während des Ziehens (Nachbar-Mittelpunkt
+  // über-/unterschritten), statt erst beim Loslassen — die eigentliche
+  // `order` wird beim Loslassen aus der dann aktuellen DOM-Reihenfolge
+  // gelesen, ein erneutes render() während des Ziehens würde die laufende
+  // Pointer-Capture auf dem Griff verlieren.
+  function attachDrag(row, handle) {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      row.classList.add('is-dragging');
+      const onMove = (ev) => {
+        const y = ev.clientY;
+        const siblings = [...host.children];
+        const idx = siblings.indexOf(row);
+        const prev = siblings[idx - 1];
+        if (prev) {
+          const r = prev.getBoundingClientRect();
+          if (y < r.top + r.height / 2) { host.insertBefore(row, prev); return; }
+        }
+        const next = siblings[idx + 1];
+        if (next) {
+          const r = next.getBoundingClientRect();
+          if (y > r.top + r.height / 2) { host.insertBefore(row, next.nextSibling); return; }
+        }
+      };
+      const onUp = () => {
+        row.classList.remove('is-dragging');
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        order = [...host.children].map((r) => r.dataset.id);
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
+    // Tastatur-Fallback ohne sichtbare Pfeiltasten: Pfeil hoch/runter am
+    // fokussierten Ziehpunkt verschiebt die Zeile genauso wie ein Drag.
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const siblings = [...host.children];
+      const idx = siblings.indexOf(row);
+      if (e.key === 'ArrowUp' && idx > 0) host.insertBefore(row, siblings[idx - 1]);
+      if (e.key === 'ArrowDown' && idx < siblings.length - 1) host.insertBefore(siblings[idx + 1], row);
+      order = [...host.children].map((r) => r.dataset.id);
+      handle.focus();
+    });
+  }
+
   const render = () => {
     host.textContent = '';
-    order.forEach((id, i) => {
+    order.forEach((id) => {
       const item = byId.get(id);
       if (!item) return;
-      const cb = el('input', { type: 'checkbox' });
-      cb.checked = checked.has(id);
-      cb.addEventListener('change', () => { if (cb.checked) checked.add(id); else checked.delete(id); });
-      const up = el('button', {
-        class: 'icon-btn', type: 'button', 'aria-label': `„${item.label}" nach oben`,
-        disabled: i === 0 ? true : null,
-        onclick: () => { [order[i - 1], order[i]] = [order[i], order[i - 1]]; render(); },
-      }, '▲');
-      const down = el('button', {
-        class: 'icon-btn', type: 'button', 'aria-label': `„${item.label}" nach unten`,
-        disabled: i === order.length - 1 ? true : null,
-        onclick: () => { [order[i + 1], order[i]] = [order[i], order[i + 1]]; render(); },
-      }, '▼');
-      host.append(el('label', { class: 'routine-order-row' }, cb, el('span', { class: 'grow', text: item.label }), up, down));
+      const on = checked.has(id);
+      const check = el('button', {
+        type: 'button', class: 'routine-order-check', 'aria-pressed': on ? 'true' : 'false',
+        'aria-label': `„${item.label}" ${on ? 'abwählen' : 'auswählen'}`,
+        onclick: () => { if (checked.has(id)) checked.delete(id); else checked.add(id); render(); },
+      }, on ? checkIcon() : null);
+      const label = el('span', { class: 'routine-order-label', text: item.label });
+      const handle = el('button', { type: 'button', class: 'routine-order-handle', 'aria-label': `„${item.label}" verschieben` }, dragHandleIcon());
+      const row = el('div', { class: `routine-order-row ${on ? 'is-on' : 'is-off'}`, 'data-id': id }, check, label, handle);
+      attachDrag(row, handle);
+      host.append(row);
     });
   };
   render();
   return { host, getItems: () => order.filter((id) => checked.has(id)) };
 }
 
+/** Ist ein Schritt-Array genau der Ausgangszustand (ein Schritt mit den
+ *  Vorgabewerten aus newRoutineDefaultStep)? Grundlage für das
+ *  Ghost-Reset-Icon: das taucht nur auf, wenn es wirklich etwas
+ *  zurückzusetzen gibt. */
+function routineStepsAreDefault(steps, withVoice) {
+  if (steps.length !== 1) return false;
+  const def = newRoutineDefaultStep(true, withVoice);
+  const s = steps[0];
+  if (s.reps !== def.reps || s.rate !== def.rate) return false;
+  return !withVoice || s.voice === def.voice;
+}
+
 /**
- * Übe-Programm-Dialog (Abschnitt 4 der Anweisung). Öffnen speichert nichts;
- * Speichern und Starten passieren zusammen beim Tippen auf „Üben starten".
+ * Choirgym-Dialog (Abschnitt 4 der Anweisung, früher „Übe-Programm").
+ * Öffnen speichert nichts; Speichern und Starten passieren zusammen beim
+ * Tippen auf „Üben".
  * `opts`: { scope, targetId, stored, itemLabel, withVoice, elements,
  *           emptyHint, isRunning }.
  * Löst auf zu: { action: 'start', steps, after, items } | { action: 'stop' }
@@ -14236,6 +14319,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     const draftSteps = normalized ? normalized.steps.map((s) => ({ ...s })) : [newRoutineDefaultStep(true, withVoice)];
     let afterMode = normalized ? normalized.after : 'next';
     let orderWidget = null;
+    let setAfterMode = null;
 
     const voiceOptions = () => {
       const opts = [];
@@ -14244,59 +14328,80 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       return opts;
     };
 
-    const rowsHost = el('div', { class: 'stack', style: 'gap:8px' });
+    // Ghost-Reset oben rechts: nur sichtbar, wenn der Entwurf vom
+    // Ausgangszustand abweicht (Schritte verändert/hinzugefügt oder
+    // „Auswahl" statt „Alle" aktiv) — sonst bräuchte es nichts zu tun.
+    const resetBtn = el('button', {
+      class: 'routine-reset', type: 'button', 'aria-label': 'Zurücksetzen', hidden: true,
+      onclick: async () => {
+        await DB.metaDelete(routineKeyFor(scope, targetId)).catch(() => {});
+        draftSteps.length = 0;
+        draftSteps.push(newRoutineDefaultStep(true, withVoice));
+        renderRows();
+        if (setAfterMode) setAfterMode('next');
+        updateResetVisibility();
+      },
+    }, resetIcon());
+    function updateResetVisibility() {
+      resetBtn.hidden = afterMode === 'next' && routineStepsAreDefault(draftSteps, withVoice);
+    }
+
+    const table = el('div', { class: 'routine-table', 'data-cols': withVoice ? '4' : '3' });
+    const thead = el('div', { class: 'routine-thead' },
+      el('span', {}, repeatIcon(), el('span', { class: 'lbl', text: 'Wdh.' })),
+      el('span', {}, tempoFieldIcon(), el('span', { class: 'lbl', text: 'Tempo' })),
+      withVoice ? el('span', {}, voiceFieldIcon(), el('span', { class: 'lbl', text: 'Stimme' })) : null,
+      el('span', {}));
+    const rowsHost = el('div');
+    table.append(thead, rowsHost);
+
     const renderRows = () => {
       rowsHost.textContent = '';
       draftSteps.forEach((step, i) => {
-        const repsSel = el('select', { 'aria-label': `${itemLabel} — Wiederholungen` });
+        const repsSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Wiederholungen` });
         for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: String(n) }));
         repsSel.value = String(step.reps);
-        repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); });
-        const repsField = el('label', { class: 'select-field routine-reps-field' }, repsSel);
+        repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); updateResetVisibility(); });
 
-        const rateSel = el('select', { 'aria-label': `${itemLabel} — Tempo` });
+        const rateSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Tempo` });
         for (const r of ROUTINE_RATES) rateSel.append(el('option', { value: r, text: `${String(r).replace('.', ',')}×` }));
         rateSel.value = String(step.rate);
-        rateSel.addEventListener('change', () => { step.rate = Number(rateSel.value); });
-        const rateField = el('label', { class: 'select-field' }, tempoFieldIcon(), rateSel);
+        rateSel.addEventListener('change', () => { step.rate = Number(rateSel.value); updateResetVisibility(); });
 
-        let voiceField = null;
+        let voiceSel = null;
         if (withVoice) {
-          const voiceSel = el('select', { 'aria-label': `${itemLabel} — Stimme` });
+          voiceSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Stimme` });
           for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
           if (![...voiceSel.options].some((o) => o.value === step.voice)) step.voice = settings.myVoices[0] || 'FULL';
           voiceSel.value = step.voice;
-          voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; });
-          voiceField = el('label', { class: 'select-field' }, voiceFieldIcon(), voiceSel);
+          voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; updateResetVisibility(); });
         }
 
         const removeBtn = i > 0 ? el('button', {
-          class: 'icon-btn routine-step-remove', type: 'button', 'aria-label': 'Schritt entfernen',
-          onclick: () => { draftSteps.splice(i, 1); renderRows(); },
-        }, trashIcon()) : null;
+          class: 'routine-trash', type: 'button', 'aria-label': 'Schritt entfernen',
+          onclick: () => { draftSteps.splice(i, 1); renderRows(); updateResetVisibility(); },
+        }, trashIcon()) : el('span', {});
 
-        rowsHost.append(el('div', { class: 'routine-step-row' },
-          repsField, el('span', { class: 'routine-step-x', text: '×' }), rateField, voiceField, removeBtn));
+        rowsHost.append(el('div', { class: 'routine-row' }, repsSel, rateSel, voiceSel, removeBtn));
       });
     };
     renderRows();
 
     const addBtn = el('button', {
-      class: 'btn', type: 'button', text: '+', 'aria-label': 'Schritt hinzufügen',
+      class: 'routine-addbtn', type: 'button', text: '+', 'aria-label': 'Schritt hinzufügen',
       onclick: () => {
         const last = draftSteps[draftSteps.length - 1];
         draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice) : { ...last });
         renderRows();
+        updateResetVisibility();
       },
     });
 
     let afterHost = null;
-    let setAfterMode = null;
     const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: '… dann nächster Song.' }) : null;
     if (scope !== 'setlist') {
-      const nextLabel = scope === 'loops' ? 'Alle Loops abspielen' : 'Alle Aufnahmen abspielen';
-      const nextBtn = el('button', { type: 'button', class: 'chip', 'aria-pressed': afterMode === 'next' ? 'true' : 'false', text: nextLabel });
-      const plBtn = el('button', { type: 'button', class: 'chip', 'aria-pressed': afterMode === 'playlist' ? 'true' : 'false', text: 'Playliste erstellen' });
+      const allBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'next' ? 'true' : 'false' }, playIcon(), 'Alle');
+      const selBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'playlist' ? 'true' : 'false' }, listIcon(), 'Auswahl');
       const orderContainer = el('div');
       const buildOrder = () => {
         orderContainer.textContent = '';
@@ -14306,15 +14411,16 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       };
       setAfterMode = (mode) => {
         afterMode = mode;
-        nextBtn.setAttribute('aria-pressed', mode === 'next' ? 'true' : 'false');
-        plBtn.setAttribute('aria-pressed', mode === 'playlist' ? 'true' : 'false');
+        allBtn.setAttribute('aria-pressed', mode === 'next' ? 'true' : 'false');
+        selBtn.setAttribute('aria-pressed', mode === 'playlist' ? 'true' : 'false');
         buildOrder();
+        updateResetVisibility();
       };
-      nextBtn.addEventListener('click', () => setAfterMode('next'));
-      plBtn.addEventListener('click', () => setAfterMode('playlist'));
+      allBtn.addEventListener('click', () => setAfterMode('next'));
+      selBtn.addEventListener('click', () => setAfterMode('playlist'));
       buildOrder();
-      afterHost = el('div', { class: 'stack', style: 'gap:8px; margin-top:10px' },
-        el('div', { class: 'row', style: 'flex-wrap:wrap; gap:8px; justify-content:flex-start' }, nextBtn, plBtn),
+      afterHost = el('div', {},
+        el('div', { class: 'routine-after' }, el('div', { class: 'routine-toggle' }, allBtn, selBtn)),
         orderContainer);
     }
 
@@ -14331,37 +14437,23 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     });
 
     const stopBtn = isRunning
-      ? el('button', { class: 'btn', type: 'button', text: 'Programm beenden', onclick: () => done({ action: 'stop' }) })
+      ? el('button', { class: 'btn btn--block', type: 'button', text: 'Programm beenden', onclick: () => done({ action: 'stop' }) })
       : null;
 
-    // Löscht die gespeicherten Einstellungen (nicht nur den Entwurf hier im
-    // Dialog) — der Dialog bleibt offen und zeigt danach die Vorgabewerte,
-    // damit sich sofort ein neues Programm zusammenstellen lässt.
-    const clearBtn = stored
-      ? el('button', {
-        class: 'btn', type: 'button', text: 'Leeren', style: 'flex: 0 0 auto',
-        onclick: async () => {
-          await DB.metaDelete(routineKeyFor(scope, targetId)).catch(() => {});
-          draftSteps.length = 0;
-          draftSteps.push(newRoutineDefaultStep(true, withVoice));
-          renderRows();
-          if (setAfterMode) setAfterMode('next');
-          clearBtn.hidden = true;
-        },
-      })
-      : null;
+    updateResetVisibility();
 
     const box = el('div', { class: 'dialog routine-dialog', style: 'max-height:86vh; display:flex; flex-direction:column; overflow-y:auto' },
-      el('h2', { text: 'Übe-Programm' }),
+      el('div', { class: 'routine-head' }, el('h2', { text: 'Choirgym' }), resetBtn),
       emptyHint ? el('p', { class: 'small muted', text: emptyHint }) : null,
-      rowsHost,
-      el('div', { class: 'row', style: 'justify-content:center; margin-top:4px' }, addBtn),
+      table,
+      el('div', { class: 'routine-add' }, addBtn),
       trailer, afterHost,
-      el('div', { class: 'dialog-actions', style: 'margin-top:14px' },
-        clearBtn,
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        stopBtn, startBtn));
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Übe-Programm' }, box);
+      stopBtn ? el('div', { class: 'row', style: 'margin-top:6px' }, stopBtn) : null,
+      el('div', { class: 'routine-actionbar' },
+        el('div', { class: 'dialog-actions' },
+          el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+          startBtn)));
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Choirgym' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
     openModal(layer, { initialFocus: rowsHost.querySelector('select'), onEscape: () => done(null) });
@@ -14440,7 +14532,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 
   const practice = el('button', {
-    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': 'Übe-Programm',
+    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': 'Choirgym',
     onclick: () => openRoutineDialogForSetlist(favorite),
   });
   practice.innerHTML = dumbbellIcon();

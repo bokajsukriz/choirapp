@@ -1771,37 +1771,103 @@ input[type="checkbox"] {
   justify-self: end;
 }
 
-/* Übe-Programm-Dialog */
-.routine-step-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
+/* Choirgym-Dialog (früher „Übe-Programm") */
+
+/* Auf breiten Screens (Tablet/Desktop) darf der Dialog etwas mehr Platz für
+   die Schritt-Zeilen bekommen, statt an der telefon-typischen 420px-Grenze
+   von .dialog zu kleben — die Spaltenbreiten unten reagieren auf denselben
+   Breakpoint (Kopfzeilen-Wortlabel erscheint erst hier). */
+/* Zwei Klassen (.dialog.routine-dialog) statt nur .routine-dialog, damit
+   die Regel unabhängig von der Reihenfolge im Stylesheet die allgemeine
+   .dialog-Regel (max-width:420px) an gleicher Spezifität schlägt. */
+.dialog.routine-dialog { max-width: 420px; }
+@media (min-width: 640px) { .dialog.routine-dialog { max-width: 520px; } }
+
+.routine-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.routine-head h2 { margin: 0; }
+/* Ghost-Reset: bleibt unsichtbar, solange der Entwurf noch den
+   Vorgabewerten entspricht — taucht erst auf, wenn es tatsächlich etwas
+   zurückzusetzen gibt (siehe updateResetVisibility() in app.js). */
+.routine-reset { min-width: 34px; min-height: 34px; border: 0; background: transparent; color: var(--muted); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.routine-reset svg { width: 18px; height: 18px; }
+.routine-reset[hidden] { display: none; }
+
+/* Schritt-Zeilen als gemeinsame Tabellen-Karte statt einzelner Pillen pro
+   Feld — Icons wandern in die Kopfzeile. `data-cols` steuert die Anzahl der
+   Werte-Spalten (4 mit Stimme, 3 ohne, siehe REC-Programme ohne Stimmwahl). */
+.routine-table { border-radius: 16px; background: var(--surface-2); border: 1px solid var(--pill-line); overflow: hidden; }
+.routine-thead {
+  display: grid; gap: 6px; padding: 8px 10px; align-items: center;
+  font-size: 0.68rem; font-weight: 750; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); border-bottom: 1px solid var(--line);
 }
-/* min-width:0, damit die select-field-Felder auf ihren Inhalt schrumpfen
-   statt in der flex-wrap-Zeile unnötig breit zu bleiben (siehe .select-field
-   selbst: dort ist select flex:1, das braucht eine begrenzte Elternbreite). */
-.routine-step-row .select-field { min-width: 0; width: auto; min-height: 34px; padding: 0 18px 0 10px; }
-.routine-step-row .select-field select { flex: 0 1 auto; font-size: 0.85rem; padding: 6px 0; }
-.routine-step-row .select-field svg { width: 16px; height: 16px; }
-/* Wiederholungen brauchen kein Icon und nur Platz für ein-/zweistellige
-   Zahlen — deutlich schmaler als die Icon-Felder. */
-.routine-reps-field { padding-left: 10px; }
-.routine-reps-field select { min-width: 1.4em; }
-.routine-step-x { color: var(--muted); font-weight: 650; font-size: 0.85rem; }
-/* Kleiner als der übliche Icon-Knopf (44×44), damit die Zeile trotz
-   Löschen-Symbol schmal bleibt — Mülleimer statt „✕", weil er sich ohne
-   Erklärung als „Schritt löschen" statt als „Schritt schließen" liest. */
-.routine-step-remove { min-width: 30px; min-height: 30px; }
-.routine-step-remove svg { width: 18px; height: 18px; }
-.routine-order-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
-.routine-order-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--line);
+.routine-thead > span { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.routine-thead svg { width: 13px; height: 13px; flex: 0 0 auto; }
+/* Wortlabel neben dem Icon erst ab der breiten Ansicht — schmal reichen die
+   Icons allein (siehe .routine-dialog-Breakpoint oben). */
+.routine-thead .lbl { display: none; }
+@media (min-width: 640px) { .routine-thead .lbl { display: inline; } }
+
+.routine-row { display: grid; gap: 6px; align-items: center; padding: 8px 10px; }
+.routine-row + .routine-row { border-top: 1px solid var(--line); }
+.routine-table[data-cols="4"] .routine-thead, .routine-table[data-cols="4"] .routine-row { grid-template-columns: 40px 1fr 1fr 32px; }
+.routine-table[data-cols="3"] .routine-thead, .routine-table[data-cols="3"] .routine-row { grid-template-columns: 40px 1fr 32px; }
+
+/* Die <select>-Werte selbst wirken jetzt wie reine Werte-Pillen statt wie
+   klassische Dropdowns: kein Pfeil-Chevron mehr (appearance:none ohne
+   Ersatz-Icon), Text zentriert. Bleibt aber ein echtes <select> — Tippen
+   öffnet weiterhin die native Auswahl. */
+.routine-value {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 32px; width: 100%; box-sizing: border-box;
+  border-radius: 10px; background: var(--surface); border: 1px solid var(--pill-line);
+  font: inherit; font-weight: 700; font-size: 0.84rem; color: var(--text);
+  padding: 0 6px; text-align: center; text-align-last: center;
+  appearance: none; -webkit-appearance: none;
 }
+.routine-value:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.routine-trash { min-width: 28px; min-height: 28px; border-radius: 999px; border: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; margin: 0 auto; }
+.routine-trash svg { width: 15px; height: 15px; }
+
+.routine-add { display: flex; justify-content: center; margin: 10px 0 18px; }
+.routine-addbtn { min-width: 40px; min-height: 40px; border-radius: 999px; border: 1.5px dashed var(--pill-line); background: var(--surface-2); font-size: 1.1rem; font-weight: 700; color: var(--accent-foreground); }
+
+/* „Danach": eingelassener Segment-Track statt Chip-Duo — sieht bewusst
+   anders aus als die Bestätigungs-Knöpfe unten (dritte Formsprache). */
+.routine-after { display: flex; align-items: center; margin-bottom: 16px; }
+.routine-toggle { flex: 1; display: flex; gap: 3px; padding: 3px; border-radius: 12px; background: var(--surface-2); box-shadow: inset 0 1px 2px rgba(var(--accent-rgb),.10); }
+.routine-seg { flex: 1; min-height: 38px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 650; font-size: 0.82rem; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.routine-seg svg { width: 14px; height: 14px; }
+.routine-seg[aria-pressed="true"] { background: var(--surface); color: var(--accent-foreground); box-shadow: 0 2px 6px rgba(var(--accent-rgb),.16); }
+
+/* Fußleiste als eigene, helle Akzent-Kapsel — setzt „Abbrechen"/„Üben"
+   sichtbar vom weißen Panel ab; beide Knöpfe darin voll durchgerundet. */
+.routine-actionbar {
+  margin: 14px -20px calc(-20px - var(--safe-bottom));
+  padding: 16px 20px calc(20px + var(--safe-bottom));
+  background: linear-gradient(180deg, rgba(var(--accent-rgb),.10), rgba(var(--accent-rgb),.16));
+  border-radius: 0 0 18px 18px;
+}
+.routine-actionbar .dialog-actions .btn { border-radius: 999px; }
+
+/* Playliste/Auswahl-Liste (erscheint bei aktivem „Auswahl"-Segment):
+   Häkchen-Kreis + Ziehpunkt statt Checkbox + Auf/Ab-Knöpfen — Reihenfolge
+   per Ziehen am Handle (Pointer Events, siehe routineOrderList()). */
+.routine-order-list { margin: 4px 0 16px; display: flex; flex-direction: column; gap: 6px; }
+.routine-order-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); }
+.routine-order-row.is-off { opacity: .5; }
+.routine-order-row.is-dragging { opacity: .6; }
+.routine-order-check {
+  width: 20px; height: 20px; border-radius: 999px; border: 1.5px solid var(--pill-line);
+  display: flex; align-items: center; justify-content: center; color: var(--accent-ink);
+  flex: 0 0 auto; background: transparent; padding: 0;
+}
+.routine-order-check svg { width: 12px; height: 12px; }
+.routine-order-row.is-on .routine-order-check { background: var(--accent); border-color: var(--accent); }
+.routine-order-label { flex: 1; font-weight: 650; font-size: 0.86rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routine-order-handle { min-width: 28px; min-height: 28px; border: 0; background: transparent; color: var(--muted); flex: 0 0 auto; touch-action: none; display: inline-flex; align-items: center; justify-content: center; }
+.routine-order-handle svg { width: 16px; height: 16px; display: block; }
 
 /* Statuszeile eines laufenden Übe-Programms (5.5) */
 .routine-status {
@@ -2888,7 +2954,7 @@ input[type="checkbox"] {
         <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         </button>
-        <button class="btn icon-only" id="btn-loop-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Übe-Programm">
+        <button class="btn icon-only" id="btn-loop-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>
         </button>
       </div>
@@ -2903,7 +2969,7 @@ input[type="checkbox"] {
           <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
             <span class="rec-btn-dot"></span>
           </button>
-          <button class="btn icon-only rec-toggle-row-routine" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Übe-Programm">
+          <button class="btn icon-only rec-toggle-row-routine" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>
           </button>
         </div>
