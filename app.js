@@ -62,7 +62,7 @@ const VOICE_LABEL = {
   TEN:   'Tenor',
   BASS:  'Bass',
   BAR:   'Bariton',
-  LEAD:  'Solo / Lead',
+  LEAD:  'Solo',
   PIANO: 'Klavier',
   OTHER: 'Sonstige',
 };
@@ -9229,6 +9229,7 @@ async function openPlayer(songId) {
   playerVoice = null;
   resetBrokenNotice();
   loopA = loopB = null;
+  loopOn = false;
   activeLoopId = null;
   setPlayIcon(false);
   updateSeekUI(0);
@@ -9887,76 +9888,9 @@ function renderShuffleMode() {
 
 let loopA = null;
 let loopB = null;
+let loopOn = false;
 let activeLoopId = null;
 let songLoops = [];
-let practiceRunId = 0;
-let practiceActiveLoopId = null;
-
-function stopLoopPractice() {
-  practiceRunId++;
-  practiceActiveLoopId = null;
-  audioPause();
-  renderLoopList();
-}
-
-function loopPracticeDialog(loop) {
-  return new Promise((resolve) => {
-    const rows = el('div');
-    const addRow = (repeats = '5', rate = '0.85') => {
-      const repeat = el('select', { 'aria-label': 'Wiederholungen' });
-      for (const [value, label] of [['3','3×'], ['5','5×'], ['10','10×'], ['20','20×'], ['infinity','unendlich']]) repeat.append(el('option', { value, text: label }));
-      repeat.value = repeats;
-      const speed = el('select', { 'aria-label': 'Geschwindigkeit' });
-      for (const value of ['0.6', '0.7', '0.85', '1']) speed.append(el('option', { value, text: `${value.replace('.', ',')}×` }));
-      speed.value = rate;
-      const remove = el('button', { class: 'icon-btn', type: 'button', text: '−', 'aria-label': 'Schritt entfernen' });
-      const row = el('div', { class: 'practice-step' }, repeat, speed, remove);
-      remove.onclick = () => { if (rows.children.length > 1) row.remove(); };
-      rows.append(row);
-    };
-    addRow();
-    const done = (value) => { closeModal(layer); layer.remove(); resolve(value); };
-    const add = el('button', { class: 'btn practice-add', type: 'button', text: '+ Weiterer Schritt', onclick: () => addRow('5', '1') });
-    const start = el('button', { class: 'btn btn--primary', type: 'button', text: 'Starten', onclick: () => done([...rows.children].map((row) => ({ repeats: row.children[0].value === 'infinity' ? Infinity : Number(row.children[0].value), rate: Number(row.children[1].value) }))) });
-    const box = el('div', { class: 'dialog' }, el('h2', { text: `„${loop.name}“ üben` }), el('p', { text: 'Zwischen allen Wiederholungen liegt eine Sekunde Pause.' }), rows, add,
-      el('div', { class: 'dialog-actions' }, el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }), start));
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Loop wiederholen' }, box);
-    layer.addEventListener('click', (event) => { if (event.target === layer) done(null); });
-    document.body.append(layer);
-    openModal(layer, { initialFocus: start, onEscape: () => done(null) });
-  });
-}
-
-async function startLoopPractice(loop, steps) {
-  await endRecordingPreview();
-  const runId = ++practiceRunId;
-  practiceActiveLoopId = loop.id;
-  activeLoopId = loop.id;
-  // Kein applyLoop() hier — dieser Ablauf steuert Wiederholungen und Pausen
-  // selbst (unten), ein zusätzlicher nativer A-B-Loop käme sich damit in die
-  // Quere.
-  loopA = loop.start; loopB = loop.end; audioSetLoop(null);
-  renderLoopList(); updateLoopUI();
-  for (const [stepIndex, step] of steps.entries()) {
-    for (let n = 0; n < step.repeats && runId === practiceRunId; n++) {
-      audioSetRate(step.rate);
-      updateSeekUI(audioSeek(loop.start));
-      await audioPlay();
-      await new Promise((finish) => {
-        const timer = setInterval(() => {
-          if (runId !== practiceRunId || Audio.position >= loop.end - 0.04 || Audio.el?.ended) {
-            clearInterval(timer); finish();
-          }
-        }, 50);
-      });
-      if (runId !== practiceRunId) return;
-      audioPause();
-      const hasAnotherRepeat = n + 1 < step.repeats || stepIndex < steps.length - 1;
-      if (hasAnotherRepeat) await new Promise((finish) => setTimeout(finish, 1000));
-    }
-  }
-  if (runId === practiceRunId) { practiceRunId++; practiceActiveLoopId = null; renderLoopList(); }
-}
 
 /**
  * Der aktuell gesetzte Abschnitt, auf die Länge der Aufnahme begrenzt.
@@ -10010,7 +9944,11 @@ function updateLoopMarks() {
 
 function updateLoopUI() {
   const r = loopRange();
+  $('#btn-loop-toggle').disabled = !r;
   $('#btn-loop-save').disabled = !r;
+  $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
+  $('#btn-loop-toggle').setAttribute('aria-checked', loopOn ? 'true' : 'false');
+  $('#btn-loop-toggle').setAttribute('aria-label', loopOn ? 'Loop ausschalten' : 'Loop einschalten');
   $('#btn-loop-a').setAttribute('aria-pressed', loopA !== null ? 'true' : 'false');
   $('#btn-loop-b').setAttribute('aria-pressed', loopB !== null ? 'true' : 'false');
 
@@ -10025,11 +9963,20 @@ function updateLoopUI() {
   updateLoopMarks();
 }
 
-// Ein gültiger Abschnitt (A vor B) läuft immer in Schleife — dafür gibt es
-// keinen eigenen An/Aus-Schalter mehr, der ohnehin nur denselben Zustand
-// doppelt hätte abbilden können.
 function applyLoop() {
-  audioSetLoop(loopRange());
+  const r = loopRange();
+  audioSetLoop(loopOn && r ? r : null);
+}
+
+/** Loop einschalten und, falls nötig, an den Anfang des Abschnitts springen. */
+function activateLoop() {
+  loopOn = true;
+  applyLoop();
+  const r = loopRange();
+  if (r && (Audio.position < r.start || Audio.position > r.end)) {
+    updateSeekUI(audioSeek(r.start));
+  }
+  updateLoopUI();
 }
 
 $('#btn-loop-a').addEventListener('click', async () => {
@@ -10049,12 +9996,21 @@ $('#btn-loop-b').addEventListener('click', async () => {
   if (loopA !== null && loopA >= loopB) loopA = null;
   activeLoopId = null;
   renderLoopList();
-  applyLoop();
-  // Mit B ist der Abschnitt vollständig und läuft schon in Schleife — steht
-  // die Wiedergabeposition noch außerhalb, direkt an den Anfang springen.
-  const r = loopRange();
-  if (r && (Audio.position < r.start || Audio.position > r.end)) updateSeekUI(audioSeek(r.start));
-  updateLoopUI();
+  // Mit B ist der Abschnitt vollständig — direkt in Schleife üben, ohne
+  // dass noch extra auf den Schalter getippt werden muss.
+  if (loopRange()) activateLoop();
+  else { updateLoopUI(); applyLoop(); }
+});
+
+$('#btn-loop-toggle').addEventListener('click', async () => {
+  await endRecordingPreview();
+  if (loopOn) {
+    loopOn = false;
+    applyLoop();
+    updateLoopUI();
+  } else {
+    activateLoop();
+  }
 });
 
 $('#btn-loop-save').addEventListener('click', async () => {
@@ -10131,6 +10087,7 @@ function renderLoopList() {
       await endRecordingPreview();
       loopA = loop.start;
       loopB = loop.end;
+      loopOn = true;
       activeLoopId = loop.id;
       applyLoop();
       updateSeekUI(audioSeek(loop.start));
@@ -10166,18 +10123,10 @@ function renderLoopList() {
         await loadSongLoops();
       }
     });
-    const repeat = el('button', { class: 'icon-btn loop-repeat', type: 'button', 'aria-label': `„${loop.name}“ wiederholen` });
-    repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
-    repeat.onclick = async () => {
-      if (practiceActiveLoopId === loop.id) { stopLoopPractice(); return; }
-      const steps = await loopPracticeDialog(loop);
-      if (steps) startLoopPractice(loop, steps);
-    };
-
     host.append(el('div', {
       class: 'loop-item',
       'data-active': activeLoopId === loop.id ? 'true' : 'false',
-    }, go, repeat, menu));
+    }, go, menu));
   }
 }
 
@@ -14093,7 +14042,7 @@ function routineApplyCurrentElement() {
 
   if (routine.scope === 'loops') {
     // Derselbe Pfad wie der Klick-Handler der Loop-Liste (10.3 der Anweisung).
-    loopA = current.start; loopB = current.end; activeLoopId = current.id;
+    loopA = current.start; loopB = current.end; loopOn = true; activeLoopId = current.id;
     applyLoop();
     updateSeekUI(audioSeek(current.start));
     updateLoopUI();
@@ -14130,8 +14079,7 @@ function routineAdvance() {
     // feuert genau dort) und die Wiedergabe läuft dort ungebremst weiter —
     // dafür hier extra anhalten, statt einfach weiterspielen zu lassen.
     // `activeRoutine` schützt vor einem zwischenzeitlich beendeten/neu
-    // gestarteten Programm (identisch zum `runId`-Muster bei
-    // startLoopPractice()).
+    // gestarteten Programm.
     if (routine.scope === 'loops') audioPause();
     setPlayIcon(false);
     const activeRoutine = routine;
@@ -14288,7 +14236,6 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
 
     const voiceOptions = () => {
       const opts = [];
-      if (settings.myVoices.length) opts.push(['MINE', 'Meine Stimme']);
       opts.push(['FULL', 'Gesamt']);
       for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
       return opts;
