@@ -1722,6 +1722,8 @@ input[type="checkbox"] {
 
 .loop-item .go {
   flex: 1;
+  font: inherit;
+  cursor: pointer;
   min-height: var(--tap);
   text-align: left;
   padding: 10px 12px;
@@ -1736,6 +1738,7 @@ input[type="checkbox"] {
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
 .loop-item .loop-repeat { flex: 0 0 auto; }
+.loop-item .loop-repeat[aria-pressed="true"] { color: var(--accent); background: var(--surface-2); }
 .loop-menu { position: relative; flex: 0 0 auto; }
 .loop-menu summary { list-style: none; }
 .loop-menu summary::-webkit-details-marker { display: none; }
@@ -2644,7 +2647,7 @@ input[type="checkbox"] {
           <rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 6v7"/><path d="M9 9l3-3 3 3"/>
         </svg>
       </div>
-      <p class="onb-step" data-i18n="onb.step1of5">Schritt 1 von 2</p>
+      <p class="onb-step" data-i18n="onb.step1of2">Schritt 1 von 2</p>
       <h2 id="onb-title-1" tabindex="-1" data-i18n-html="onb.slide1.title">Auf den Home&#8209;Bildschirm legen</h2>
       <p data-i18n="onb.slide1.text">
         So startet die App wie jede andere: eigenes Symbol, kein Browserfenster,
@@ -2657,19 +2660,19 @@ input[type="checkbox"] {
       <div class="preset-row" id="onb-language-picker"></div>
     </article>
 
-    <!-- 3 — Dauerhafte Speicherung --------------------------------------- -->
-    <article class="onb-slide" id="onb-slide-3" aria-label="Schritt 2 von 2">
+    <!-- 2 — Dauerhafte Speicherung --------------------------------------- -->
+    <article class="onb-slide" id="onb-slide-2" aria-label="Schritt 2 von 2">
       <div class="onb-badge" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3l8 3.5V12c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6.5z"/><path d="M9 12l2 2 4-4"/>
         </svg>
       </div>
-      <p class="onb-step" data-i18n="onb.step3of5">Schritt 2 von 2</p>
-      <h2 id="onb-title-3" tabindex="-1" data-i18n="onb.slide3.title">Aufnahmen dauerhaft behalten</h2>
-      <p data-i18n="onb.slide3.text1">
+      <p class="onb-step" data-i18n="onb.step2of2">Schritt 2 von 2</p>
+      <h2 id="onb-title-2" tabindex="-1" data-i18n="onb.slide2.title">Aufnahmen dauerhaft behalten</h2>
+      <p data-i18n="onb.slide2.text1">
         Bei knappem Speicher darf das System die Daten einer Web-App löschen.
       </p>
-      <p data-i18n-html="onb.slide3.text2">
+      <p data-i18n-html="onb.slide2.text2">
         Mit einem Klick bitten wir darum, die Aufnahmen <strong>dauerhaft</strong> zu behalten.
       </p>
       <div class="stack">

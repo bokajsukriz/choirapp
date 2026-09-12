@@ -949,6 +949,11 @@ let lyricsNoteSongIds = null;
 let lyricsNoteCacheStamp = 0;
 function dropLyricsNoteCache() { lyricsNoteSongIds = null; lyricsNoteCacheStamp++; }
 
+// Die Sicherungserinnerung braucht nur eine Zahl, nicht bei jedem Zeichnen
+// der Songliste erneut den kompletten Inhalt dreier Datensatztypen.
+let backupWorkCount = null;
+function dropBackupWorkCount() { backupWorkCount = null; }
+
 const DB = {
   async metaGet(key) {
     const db = await openDB();
@@ -960,6 +965,7 @@ const DB = {
     if (record.type === 'song') dropSongCache();
     if (record.type === 'note') dropNoteCache();
     if (record.type === 'lyricsNote') dropLyricsNoteCache();
+    if (['loop', 'note', 'lyricsNote'].includes(record.type)) dropBackupWorkCount();
     return record;
   },
 
@@ -969,6 +975,7 @@ const DB = {
     if (records.some((r) => r.type === 'song')) dropSongCache();
     if (records.some((r) => r.type === 'note')) dropNoteCache();
     if (records.some((r) => r.type === 'lyricsNote')) dropLyricsNoteCache();
+    if (records.some((r) => ['loop', 'note', 'lyricsNote'].includes(r.type))) dropBackupWorkCount();
   },
 
   async metaDelete(key) {
@@ -976,6 +983,7 @@ const DB = {
     if (String(key).startsWith('song:')) dropSongCache();
     if (String(key).startsWith('note:')) dropNoteCache();
     if (String(key).startsWith('lyricsNote:')) dropLyricsNoteCache();
+    if (/^(loop|note|lyricsNote):/.test(String(key))) dropBackupWorkCount();
   },
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
@@ -999,6 +1007,17 @@ const DB = {
     const notes = await this.metaByType('lyricsNote').catch((err) => { console.warn('[db] songIdsWithLyricsNotes', err); return []; });
     lyricsNoteSongIds = new Set(notes.filter((n) => n.songId && (n.text || '').trim()).map((n) => n.songId));
     return lyricsNoteSongIds;
+  },
+
+  async backupWorkCount() {
+    if (backupWorkCount !== null) return backupWorkCount;
+    const [loops, notes, lyrics] = await Promise.all([
+      this.metaByType('loop'), this.metaByType('note'), this.metaByType('lyricsNote'),
+    ]);
+    backupWorkCount = loops.length
+      + notes.filter((note) => (note.text || '').trim()).length
+      + lyrics.filter((note) => (note.text || '').trim()).length;
+    return backupWorkCount;
   },
 
   /**
@@ -6015,7 +6034,7 @@ async function rememberDuration(track, duration, sourceMetadata = null) {
 }
 
 async function audioPlay() {
-  if (!Audio.ready || !Audio.currentKey) return;
+  if (!Audio.ready || !Audio.currentKey) return false;
 
   // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne
   // das bleibt das Element am Ende stehen und es passiert schlicht nichts —
@@ -6032,7 +6051,7 @@ async function audioPlay() {
   } catch (err) {
     dlog('audio:play:fail', { name: err?.name });
     bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', err);
-    return;
+    return false;
   }
 
   // Läuft das Element durch die Kanal-Matrix (Variante A), kommt ohne
@@ -6046,7 +6065,7 @@ async function audioPlay() {
     dlog('audio:play:fail', { name: 'ctx-not-running' });
     Audio.el.pause();
     bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', new Error('Der AudioContext lief nicht an.'));
-    return;
+    return false;
   }
 
   Audio.playing = true;
@@ -6055,6 +6074,7 @@ async function audioPlay() {
   lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
   updateHdLoadVisibility();
+  return true;
 }
 
 /**
@@ -8935,6 +8955,7 @@ let loadToken = 0;
  */
 async function selectTrack(track, userChoice = false) {
   if (!playerSong || track.broken) return;
+  if (practiceActiveLoopId !== null) stopLoopPractice();
   // Eine laufende REC-Vorschau hat Audio.el gerade belegt — vor dem
   // Stimmwechsel erst normal weiterlaufen lassen, sonst würde audioLoadTrack()
   // gleich wieder wegwerfen, was previewRecordingBlob() sich fürs Zurück gemerkt hat.
@@ -9154,6 +9175,10 @@ async function tryPlaySongFromRecording(song, token) {
 }
 
 async function openPlayer(songId) {
+  // Die Übungsroutine besitzt Zeitmarken des aktuell geladenen Songs. Schon
+  // vor dem asynchronen DB-Zugriff abbrechen, damit sie während des Ladens
+  // nicht noch in den alten Song springt oder später den neuen manipuliert.
+  if (playerSong?.id !== songId && practiceActiveLoopId !== null) stopLoopPractice();
   if (recHost === 'player') recStartGeneration++;
   const token = ++openPlayerToken;
   // Während der neue Datensatz noch aus IndexedDB kommt, gehört playerSong
@@ -9576,6 +9601,7 @@ function closePlayer() {
   // Zuerst sichern: gleich ist der Player zu und der Text nicht mehr erreichbar.
   flushNote();
   flushLyricsNote();
+  if (practiceActiveLoopId !== null) stopLoopPractice();
   audioReset();
   releaseScoreURLs();
   // Nur eine hier (im Player) laufende Aufnahme betrifft das Schließen des
@@ -9859,7 +9885,7 @@ function loopPracticeDialog(loop) {
     const rows = el('div');
     const addRow = (repeats = '5', rate = '0.85') => {
       const repeat = el('select', { 'aria-label': 'Wiederholungen' });
-      for (const [value, label] of [['3','3×'], ['5','5×'], ['10','10×'], ['20','20×'], ['infinity','unendlich']]) repeat.append(el('option', { value, text: label }));
+      for (const [value, label] of [['3','3×'], ['5','5×'], ['10','10×'], ['20','20×'], ['infinity',t('loops.infinite')]]) repeat.append(el('option', { value, text: label }));
       repeat.value = repeats;
       const speed = el('select', { 'aria-label': 'Geschwindigkeit' });
       for (const value of ['0.6', '0.7', '0.85', '1']) speed.append(el('option', { value, text: `${value.replace('.', ',')}×` }));
@@ -9871,8 +9897,8 @@ function loopPracticeDialog(loop) {
     };
     addRow();
     const done = (value) => { closeModal(layer); layer.remove(); resolve(value); };
-    const add = el('button', { class: 'btn practice-add', type: 'button', text: '+ Weiterer Schritt', onclick: () => addRow('5', '1') });
-    const start = el('button', { class: 'btn btn--primary', type: 'button', text: 'Starten', onclick: () => done([...rows.children].map((row) => ({ repeats: row.children[0].value === 'infinity' ? Infinity : Number(row.children[0].value), rate: Number(row.children[1].value) }))) });
+    const add = el('button', { class: 'btn practice-add', type: 'button', text: `+ ${t('loops.addStep')}`, onclick: () => addRow('5', '1') });
+    const start = el('button', { class: 'btn btn--primary', type: 'button', text: t('loops.start'), onclick: () => done([...rows.children].map((row) => ({ repeats: row.children[0].value === 'infinity' ? Infinity : Number(row.children[0].value), rate: Number(row.children[1].value) }))) });
     const box = el('div', { class: 'dialog' }, el('h2', { text: `„${loop.name}“ üben` }), el('p', { text: 'Zwischen allen Wiederholungen liegt eine Sekunde Pause.' }), rows, add,
       el('div', { class: 'dialog-actions' }, el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }), start));
     const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Loop wiederholen' }, box);
@@ -9893,7 +9919,16 @@ async function startLoopPractice(loop, steps) {
     for (let n = 0; n < step.repeats && runId === practiceRunId; n++) {
       audioSetRate(step.rate);
       updateSeekUI(audioSeek(loop.start));
-      await audioPlay();
+      // audioPlay() meldet erwartbare Startfehler selbst. Ohne diese Prüfung
+      // würde der folgende Poller für immer auf ein nie erreichtes Ende warten.
+      if (!await audioPlay()) {
+        if (runId === practiceRunId) {
+          practiceRunId++;
+          practiceActiveLoopId = null;
+          renderLoopList();
+        }
+        return;
+      }
       await new Promise((finish) => {
         const timer = setInterval(() => {
           if (runId !== practiceRunId || Audio.position >= loop.end - 0.04 || Audio.el?.ended) {
@@ -10080,7 +10115,7 @@ function renderLoopList() {
   if (!songLoops.length) return;
 
   for (const loop of songLoops) {
-    const go = el('div', { class: 'go' },
+    const go = el('button', { class: 'go', type: 'button' },
       el('strong', { text: loop.name }),
       el('span', { text: `${fmtTime(loop.start)} – ${fmtTime(loop.end)}` }));
 
@@ -10121,6 +10156,7 @@ function renderLoopList() {
         okLabel: 'Löschen', danger: true,
       });
       if (!ok) return;
+      if (practiceActiveLoopId === loop.id) stopLoopPractice();
       await DB.metaDelete(loop.key);
       if (activeLoopId === loop.id) activeLoopId = null;
       await loadSongLoops();
@@ -10129,9 +10165,17 @@ function renderLoopList() {
     const once = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Loop starten' });
     once.onclick = () => { menu.open = false; go.click(); };
     const menu = el('details', { class: 'loop-menu' },
-      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${loop.name}“`, text: '⋮' }),
+      el('summary', { class: 'icon-btn', 'aria-label': t('loops.menuAria').replace('{name}', loop.name), text: '⋮' }),
       el('div', { class: 'loop-menu-popover' }, once, rename, del));
-    const repeat = el('button', { class: 'icon-btn loop-repeat', type: 'button', 'aria-label': `„${loop.name}“ wiederholen` });
+    menu.addEventListener('toggle', () => {
+      if (menu.open) $$('.loop-menu[open]').forEach((other) => { if (other !== menu) other.open = false; });
+    });
+    const practicing = practiceActiveLoopId === loop.id;
+    const repeat = el('button', {
+      class: 'icon-btn loop-repeat', type: 'button',
+      'aria-label': t(practicing ? 'loops.practiceStopAria' : 'loops.practiceStartAria').replace('{name}', loop.name),
+      'aria-pressed': practicing ? 'true' : 'false',
+    });
     repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
     repeat.onclick = async () => {
       if (practiceActiveLoopId === loop.id) { stopLoopPractice(); return; }
@@ -10145,6 +10189,17 @@ function renderLoopList() {
     }, go, repeat, menu));
   }
 }
+
+document.addEventListener('click', (event) => {
+  $$('.loop-menu[open]').forEach((menu) => { if (!menu.contains(event.target)) menu.open = false; });
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const openMenus = $$('.loop-menu[open]');
+  if (!openMenus.length) return;
+  openMenus.forEach((menu) => { menu.open = false; });
+  event.preventDefault();
+});
 
 /* Feinjustierung der Marken durch Ziehen direkt im Fortschrittsbalken. */
 (() => {
@@ -13838,14 +13893,22 @@ function starIcon(filled) {
 }
 
 /** Addiert pro Setlisten-Eintrag die längste bekannte Spur des Songs. */
-function playlistDurationSec(playlist, songs) {
-  return (playlist.songTitles || []).reduce((total, title) => {
+function playlistDurationInfo(playlist, songs) {
+  return (playlist.songTitles || []).reduce((info, title) => {
     const song = findSongByTitle(songs, title);
     const durations = (song?.tracks || [])
       .map((track) => Number(track.durationSec))
       .filter((duration) => Number.isFinite(duration) && duration > 0);
-    return total + (durations.length ? Math.max(...durations) : 0);
-  }, 0);
+    if (durations.length) {
+      info.seconds += Math.max(...durations);
+      info.known++;
+    }
+    return info;
+  }, { seconds: 0, known: 0, total: (playlist.songTitles || []).length });
+}
+
+function playlistDurationSec(playlist, songs) {
+  return playlistDurationInfo(playlist, songs).seconds;
 }
 
 function fmtPlaylistDuration(seconds) {
@@ -13859,7 +13922,12 @@ function fmtPlaylistDuration(seconds) {
 }
 
 function playlistDurationLabel(playlist, songs) {
-  return `Gesamtdauer: ${fmtPlaylistDuration(playlistDurationSec(playlist, songs))}`;
+  const info = playlistDurationInfo(playlist, songs);
+  if (!info.known) return '';
+  const duration = fmtPlaylistDuration(info.seconds);
+  if (info.known === info.total) return t('playlists.durationTotal').replace('{duration}', duration);
+  return t('playlists.durationPartial')
+    .replace('{duration}', duration).replace('{known}', info.known).replace('{total}', info.total);
 }
 
 /** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
@@ -13869,6 +13937,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   if (!favorite) return;
 
   const titles = favorite.songTitles || [];
+  const durationLabel = playlistDurationLabel(favorite, songs);
   const list = el('ol', { class: 'gig-list small' });
   for (const title of titles) {
     const found = findSongByTitle(songs, title);
@@ -13913,7 +13982,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
         el('strong', { text: favorite.name }),
-        el('div', { class: 'small muted', text: playlistDurationLabel(favorite, songs) })),
+        el('div', { class: 'small muted', text: durationLabel, hidden: !durationLabel })),
       play),
     list));
 }
@@ -13957,7 +14026,7 @@ async function renderPlaylists() {
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: pl.name }),
         el('div', { class: 'small muted',
-          text: `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+          text: [plural(titles.length, 'Titel', 'Titel'), playlistDurationLabel(pl, songs), missing ? `${missing} noch nicht importiert` : ''].filter(Boolean).join(' · ') })));
     if (!playable) open.style.opacity = '.6';
 
     const fav = el('button', {
@@ -14110,7 +14179,7 @@ async function renderPlaylistDetail() {
   $('#pl-title').textContent = pl.name;
   const titles = pl.songTitles || [];
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
-  $('#pl-sub').textContent = `${plural(titles.length, 'Titel', 'Titel')} · ${playlistDurationLabel(pl, songs)}`;
+  $('#pl-sub').textContent = [plural(titles.length, 'Titel', 'Titel'), playlistDurationLabel(pl, songs)].filter(Boolean).join(' · ');
 
   const hint = $('#pl-missing');
   if (missing.length) {
@@ -15775,12 +15844,7 @@ async function updateBackupReminder() {
   if (reminderDismissed) { box.hidden = true; return; }
 
   const days = daysSince(settings.lastBackupAt);
-  const loops = await DB.metaByType('loop').catch(() => []);
-  const notes = await DB.metaByType('note').catch(() => []);
-  const lyrics = await DB.metaByType('lyricsNote').catch(() => []);
-  const workCount = loops.length
-    + notes.filter((note) => (note.text || '').trim()).length
-    + lyrics.filter((note) => (note.text || '').trim()).length;
+  const workCount = await DB.backupWorkCount().catch(() => 0);
   if (workCount < 5 || (days !== null && days <= 30)) { box.hidden = true; return; }
 
   box.textContent = '';
@@ -16448,6 +16512,19 @@ function runSelfTests() {
   {
     const noneItems = [{ playable: false }, { playable: false }];
     if (nextPlayableIndex(noneItems, 0) !== -1) failed.push('nextPlayableIndex ohne abspielbaren Eintrag müsste -1 liefern');
+  }
+
+  checks++;
+  {
+    const playlist = { songTitles: ['Bekannt', 'Unbekannt', 'Bekannt'] };
+    const songs = [{ title: 'Bekannt', normTitle: normalizeTitle('Bekannt'), tracks: [{ durationSec: 125 }] }];
+    const info = playlistDurationInfo(playlist, songs);
+    if (info.seconds !== 250 || info.known !== 2 || info.total !== 3) {
+      failed.push(`Setlistendauer müsste bekannte Einträge und Gesamtzahl getrennt zählen, war ${JSON.stringify(info)}`);
+    }
+    if (playlistDurationLabel({ songTitles: ['Unbekannt'] }, songs) !== '') {
+      failed.push('Setlistendauer ohne bekannte Dauer müsste vollständig ausgeblendet werden');
+    }
   }
 
   checks++;
@@ -19329,30 +19406,7 @@ function renderOnbLanguage() {
   }
 }
 
-/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
-function renderOnbVoice() {
-  const host = $('#onb-voice');
-  host.textContent = '';
-  for (const voice of MY_VOICE_CHOICES) {
-    const btn = el('button', {
-      class: 'chip chip--voice', type: 'button',
-      'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
-      onclick: async () => {
-        await toggleMyVoice(voice);
-        // Wer hier zum ersten Mal wählt, will beim Import genau diese
-        // Stimme(n) — aber nur, solange mindestens eine gewählt ist.
-        if (settings.myVoices.length) await saveSettings({ defaultImportScope: 'mine' });
-        renderOnbVoice();
-        renderVoicePicker();
-      },
-    });
-    btn.style.setProperty('--voice-c', VOICE_COLOR[voice] || VOICE_COLOR.OTHER);
-    host.append(btn);
-  }
-}
-
-/** Schritt 3: Stand der dauerhaften Speicherung anzeigen. */
+/** Schritt 2: Stand der dauerhaften Speicherung anzeigen. */
 async function renderOnbPersist() {
   const btn  = $('#onb-persist');
   const note = $('#onb-persist-note');
