@@ -48,6 +48,11 @@ function fmtBytes(bytes) {
   return `${v.toFixed(digits).replace('.', ',')} ${units[i]}`;
 }
 
+/** Wiedergabetempo als Prozent der normalen Geschwindigkeit, z.B. 0.85 -> "85 %". */
+function fmtRatePercent(rate) {
+  return `${Math.round(rate * 100)} %`;
+}
+
 /* ==========================================================================
    VOICES — Stimmen, Reihenfolge und Anzeigenamen
    Die Reihenfolge ist verbindlich für die Spurensortierung: FULL zuerst.
@@ -14134,7 +14139,7 @@ async function routineStart(scope, targetId, draft, plRef) {
 function routineStatusText() {
   if (!routine) return '';
   const step = routine.steps[routine.stepIndex];
-  const rateLabel = `${String(step.rate).replace('.', ',')}×`;
+  const rateLabel = fmtRatePercent(step.rate);
   const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] || null);
   const parts = ['Üben', `Durchlauf ${routine.repIndex + 1} von ${step.reps}`];
   if (voiceLabel) parts.push(voiceLabel);
@@ -14364,7 +14369,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); updateResetVisibility(); });
 
         const rateSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Tempo` });
-        for (const r of ROUTINE_RATES) rateSel.append(el('option', { value: r, text: `${String(r).replace('.', ',')}×` }));
+        for (const r of ROUTINE_RATES) rateSel.append(el('option', { value: r, text: fmtRatePercent(r) }));
         rateSel.value = String(step.rate);
         rateSel.addEventListener('change', () => { step.rate = Number(rateSel.value); updateResetVisibility(); });
 

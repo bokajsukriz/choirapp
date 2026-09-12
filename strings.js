@@ -138,7 +138,7 @@ export const STRINGS = {
     'settings.screen.notifyBtn': 'Benachrichtigungen für diese Seite erlauben',
 
     'settings.perf.title': 'Kompatibilität & Performance',
-    'settings.perf.modeHint': 'Wie das Verlangsamen bei 0,85×, 0,7× und 0,6× berechnet wird.',
+    'settings.perf.modeHint': 'Wie das Verlangsamen bei 85 %, 70 % und 60 % berechnet wird.',
     'settings.perf.modeStandard': 'Standard',
     'settings.perf.modeHd': 'HD',
     'settings.perf.hdHint': 'HD klingt bei langsamem Tempo klarer, braucht aber mehr Leistung. Bei Ruckeln oder Wärme: Standard wählen.',
@@ -514,7 +514,7 @@ export const STRINGS = {
     'settings.screen.notifyBtn': 'Allow notifications for this page',
 
     'settings.perf.title': 'Compatibility & performance',
-    'settings.perf.modeHint': 'How slowing down at 0.85×, 0.7× and 0.6× is computed.',
+    'settings.perf.modeHint': 'How slowing down at 85%, 70% and 60% is computed.',
     'settings.perf.modeStandard': 'Standard',
     'settings.perf.modeHd': 'HD',
     'settings.perf.hdHint': 'HD sounds clearer at slower speeds but uses more power. If playback stutters or the phone gets warm, choose Standard.',
@@ -890,7 +890,7 @@ export const STRINGS = {
     'settings.screen.notifyBtn': 'Zezwól na powiadomienia dla tej strony',
 
     'settings.perf.title': 'Kompatybilność i wydajność',
-    'settings.perf.modeHint': 'Jak liczone jest spowolnienie przy 0,85×, 0,7× i 0,6×.',
+    'settings.perf.modeHint': 'Jak liczone jest spowolnienie przy 85 %, 70 % i 60 %.',
     'settings.perf.modeStandard': 'Standard',
     'settings.perf.modeHd': 'HD',
     'settings.perf.hdHint': 'HD brzmi wyraźniej przy wolniejszym tempie, ale wymaga więcej mocy. Przy zacinaniu lub nagrzewaniu wybierz Standard.',
