@@ -14182,6 +14182,9 @@ function voiceFieldIcon() {
 function tempoFieldIcon() {
   return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>');
 }
+function trashIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>');
+}
 
 /** Eine reihenfolgen-/auswahlbare Liste für „… dann Playlist" (4.3/4.4):
  *  Checkbox je Element, Pfeile zum Sortieren. `elements`: [{id,label}]. */
@@ -14268,9 +14271,9 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         }
 
         const removeBtn = i > 0 ? el('button', {
-          class: 'icon-btn', type: 'button', 'aria-label': 'Schritt entfernen',
+          class: 'icon-btn routine-step-remove', type: 'button', 'aria-label': 'Schritt entfernen',
           onclick: () => { draftSteps.splice(i, 1); renderRows(); },
-        }, '✕') : null;
+        }, trashIcon()) : null;
 
         rowsHost.append(el('div', { class: 'routine-step-row' },
           repsField, el('span', { class: 'routine-step-x', text: '×' }), rateField, voiceField, removeBtn));
