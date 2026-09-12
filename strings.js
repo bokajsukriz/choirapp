@@ -28,6 +28,7 @@ export const STRINGS = {
     'tabs.notes': 'Notes',
     'scores.hintLabel': 'Noten verfügbar',
     'scores.modalTitle': 'Noten',
+    'routine.ariaLabel': 'Übe-Programm',
 
     'settings.importBtn': 'Songs importieren',
     'settings.personal.title': 'Make it yours!',
@@ -403,6 +404,7 @@ export const STRINGS = {
     'tabs.notes': 'Notes',
     'scores.hintLabel': 'Scores available',
     'scores.modalTitle': 'Scores',
+    'routine.ariaLabel': 'Practice routine',
 
     'settings.importBtn': 'Import songs',
     'settings.personal.title': 'Make it yours!',
@@ -778,6 +780,7 @@ export const STRINGS = {
     'tabs.notes': 'Notatki',
     'scores.hintLabel': 'Dostępne nuty',
     'scores.modalTitle': 'Nuty',
+    'routine.ariaLabel': 'Program ćwiczeń',
 
     'settings.importBtn': 'Importuj utwory',
     'settings.personal.title': 'Make it yours!',

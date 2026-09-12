@@ -119,6 +119,20 @@ Drei Punkte dazu:
   Versatz-Regler nach Gehör ein. Er gilt geräteweit, weil die Latenz am
   Gerät und am Kopfhörer hängt, nicht am Lied.
 
+## Übe-Programme
+
+An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im
+Player) öffnet ein Hantel-Symbol einen Dialog zum Zusammenstellen eines
+Übe-Programms: eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
+danach automatisch der nächste Song/Loop/REC. Je Setliste bzw. Song wird
+genau ein zuletzt benutztes Programm gespeichert (`meta`-Typ `routine`) und
+beim nächsten Öffnen des Dialogs wieder vorbelegt — gespeichert wird erst
+beim Starten, nie schon beim Bearbeiten. Läuft ein Programm, hat es Vorrang
+vor `repeatMode`/Shuffle und der normalen Playlist-Weiterschaltung; bei
+REC-Programmen bleibt der leise mitlaufende Originaltrack für die Dauer des
+Programms erzwungen aus. Verwaiste Verweise (gelöschte Setliste/Song/Loop)
+werden beim Laden still herausgefiltert, nie als Fehler gemeldet.
+
 ## Lichtshow
 
 Unter Einstellungen → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
