@@ -9548,6 +9548,14 @@ function onPlaybackEnded() {
   // Eine zu Ende gelaufene REC-Vorschau darf nie zum nächsten Song
   // weiterschalten oder sich wiederholen — beides gehört zur Song-Wiedergabe.
   if (audioPreview) {
+    // Läuft der REC in Dauerschleife, kommt das native „ended" manchmal vor
+    // dem Rücksprung in timeupdate (siehe Audio.loop) — dann einfach von
+    // vorn beginnen statt die Vorschau zu beenden.
+    if (recordingLoopId && audioPreview.tag?.savedId === recordingLoopId && Audio.loop) {
+      updateSeekUI(audioSeek(Audio.loop.start));
+      audioPlay().then(() => setPlayIcon(true));
+      return;
+    }
     endRecordingPreview();
     renderRecordingList();
     updateRecPreviewButton();
@@ -10336,6 +10344,7 @@ let takeSaveInProgress = false;
 let songRecordings = [];
 let pendingTake = null;     // { blob, mimeType, duration, anchor } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
+let recordingLoopId = null; // id des RECs, das gerade in Dauerschleife läuft, oder null
 // Anker der laufenden Aufnahme — welche Stimme an welcher Stelle lief, siehe
 // captureRecAnchor(). null, solange kein Song lief oder schon ein REC.
 let recAnchor = null;
@@ -11400,6 +11409,7 @@ async function previewRecordingBlob(blob, tag, range) {
   Audio.currentSourceKind = 'preview'; // niemals eine importierte Übungsspur — kein Normalisierungs-Gain
   Audio.duration = el.duration || 0;
   audioSetLoop(null);
+  recordingLoopId = null;
   // A/B-Marken gehören zur Song-Zeitleiste — bei der (meist viel kürzeren)
   // REC-Dauer wären ihre Positionen auf der Suchleiste bloß irreführend.
   $('#seek-mark-a').hidden = true;
@@ -11433,6 +11443,7 @@ async function endRecordingPreview() {
   const { returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable } = audioPreview;
   audioPreview = null;
   Audio.previewBound = null;
+  recordingLoopId = null;
   audioPause();
 
   if (returnTrack) {
@@ -12390,17 +12401,15 @@ function renderRecordingList() {
         el('span', { class: 'rec-meta', text: meta.join(' · ') })));
     go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
 
-    const exportBtn = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" exportieren`,
-    });
-    exportBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>';
-    exportBtn.addEventListener('click', () => exportRecording(recording, exportBtn));
+    const exportBtn = el('button', { class: 'btn btn--ghost', type: 'button', text: 'Exportieren' });
+    exportBtn.onclick = () => { menu.open = false; exportRecording(recording, exportBtn); };
 
     const rename = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': `„${recording.name}" bearbeiten`,
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
     rename.addEventListener('click', async () => {
+      menu.open = false;
       const result = await editRecordingDialog(recording);
       if (!result) return;
       recording.name = result.name.trim() || recording.name;
@@ -12415,6 +12424,7 @@ function renderRecordingList() {
     });
     del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
     del.addEventListener('click', async () => {
+      menu.open = false;
       const ok = await confirmDialog({
         title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
         okLabel: 'Löschen', danger: true,
@@ -12426,11 +12436,60 @@ function renderRecordingList() {
       await loadSongRecordings();
     });
 
+    const menu = el('details', { class: 'loop-menu' },
+      el('summary', { class: 'icon-btn', role: 'button', 'aria-label': `Menü für „${recording.name}“`, text: '⋮' }),
+      el('div', { class: 'loop-menu-popover' }, exportBtn, rename, del));
+
+    const looping = recordingLoopId === recording.id;
+    const repeat = el('button', {
+      class: 'icon-btn loop-repeat', type: 'button', 'aria-pressed': looping ? 'true' : 'false',
+      'aria-label': `„${recording.name}“ in Dauerschleife ${looping ? 'stoppen' : 'abspielen'}`,
+      style: looping ? 'color: var(--accent)' : '',
+    });
+    repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+    repeat.addEventListener('click', () => toggleRecordingLoop(recording));
+
     host.append(el('div', {
       class: 'loop-item recording-item',
       'data-active': playing ? 'true' : 'false',
-    }, go, exportBtn, rename, del));
+    }, go, repeat, menu));
   }
+}
+
+/** Startet oder beendet die Dauerschleife eines RECs (wiederholt die getrimmte Auswahl). */
+async function toggleRecordingLoop(recording) {
+  if (recordingLoopId === recording.id) {
+    recordingLoopId = null;
+    if (audioPreview?.tag?.savedId === recording.id) {
+      audioSetLoop(null);
+      const range = recordingTrimRange(recording);
+      const hasRange = range.start > 0.05 || range.end < (Audio.duration || 0) - 0.05;
+      Audio.previewBound = hasRange ? { start: range.start, end: range.end } : null;
+    }
+    renderRecordingList();
+    return;
+  }
+
+  if (audioPreview?.tag?.savedId !== recording.id) {
+    try {
+      const rec = await DB.fileGet(recording.fileKey);
+      if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
+      await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor }, recordingTrimRange(recording));
+    } catch (err) {
+      bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
+      return;
+    }
+  } else if (!Audio.playing) {
+    await audioPlay();
+    setPlayIcon(true);
+  }
+
+  const range = recordingTrimRange(recording);
+  Audio.previewBound = null;
+  audioSetLoop({ start: range.start, end: range.end });
+  recordingLoopId = recording.id;
+  renderRecordingList();
+  updateRecPreviewButton();
 }
 
 /* ==========================================================================
