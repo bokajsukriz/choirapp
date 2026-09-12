@@ -9150,7 +9150,11 @@ async function tryPlaySongFromRecording(song, token) {
     const blob = recordBlob(rec, best.mimeType);
     if (token !== openPlayerToken) return true;
     $('#player-foot').hidden = false;
-    await previewRecordingBlob(blob, { savedId: best.id, anchor: best.anchor }, recordingTrimRange(best));
+    // `asSong`: diese Vorschau vertritt den Song selbst, sie ist kein
+    // nebenher angehörtes REC. Daran erkennt das Ende der Wiedergabe, dass
+    // Setliste und Setlisten-Programm weiterschalten müssen, statt die
+    // Vorschau einfach zu beenden (siehe onPlaybackEnded).
+    await previewRecordingBlob(blob, { savedId: best.id, anchor: best.anchor, asSong: true }, recordingTrimRange(best));
   } catch (err) {
     bannerError('Diese Aufnahme konnte nicht abgespielt werden.', 'REC-PLAY', err);
     return false;
@@ -9288,7 +9292,12 @@ async function openPlayer(songId) {
   };
   Audio.onEnded = onPlaybackEnded;
   Audio.onLoopWrap = () => { if (routine?.scope === 'loops' && routine.targetId === playerSong?.id) routineAdvance(); };
-  Audio.onPreviewBoundStop = () => { if (routine?.scope === 'rec' && audioPreview?.tag?.savedId) routineAdvance(); };
+  Audio.onPreviewBoundStop = () => {
+    if (routine?.scope === 'rec' && audioPreview?.tag?.savedId) { routineAdvance(); return; }
+    // Ein zugeschnittenes REC, das den Song vertritt, endet am Auswahlende
+    // statt über 'ended' — sonst bliebe die Setliste genau dort stehen.
+    if (audioPreview?.tag?.asSong) onPlaybackEnded();
+  };
 
   // Ein laufendes Setlisten-Programm gehört zur jeweiligen Setliste — wechselt
   // der Song außerhalb davon (z.B. übers Nachschlagen in der Bibliothek),
@@ -9343,7 +9352,10 @@ async function openPlayer(songId) {
   // Setlisten-Programm: Stimme/Tempo des aktuellen Schritts gelten für jeden
   // Song neu, weil jeder Song eigene Spuren hat (siehe 5.2 der Anweisung).
   if (routine?.scope === 'setlist' && playQueue && routine.targetId === playQueue.id) {
-    routineApplyStep();
+    // Abwarten: das gleich folgende pendingAutoPlay darf erst loslaufen, wenn
+    // die Stimme dieses Schritts wirklich geladen ist (siehe routineApplyStep).
+    await routineApplyStep();
+    if (token !== openPlayerToken) return;
   }
 
   // Beim automatischen Weiterschalten in einer Playlist gleich losspielen.
@@ -9589,6 +9601,17 @@ function onPlaybackEnded() {
     if (routine?.scope === 'rec' && audioPreview.tag?.savedId) {
       routineAdvance();
       return;
+    }
+    // Ein Song ohne importierte Spur läuft stellvertretend über sein REC
+    // (siehe tryPlaySongFromRecording). Dessen Ende ist das Ende *des Songs*
+    // — Setlisten-Programm und Setliste gehören hier genauso bedient wie bei
+    // einer normalen Spur, sonst blieb die Setliste an so einem Titel hängen.
+    if (audioPreview.tag?.asSong) {
+      if (routine?.scope === 'setlist' && playQueue && routine.targetId === playQueue.id) {
+        routineAdvance();
+        return;
+      }
+      if (playQueue) { playlistAdvance(); return; }
     }
     endRecordingPreview();
     renderRecordingList();
@@ -13913,15 +13936,40 @@ function normalizeRoutine(routine) {
   };
 }
 
+/** Die Stimmen, die dieser Song wirklich anbietet — in der kanonischen
+ *  Reihenfolge (dieselbe wie im `#voice-select` des Players), defekte Spuren
+ *  ausgenommen. Grundlage für die Stimm-Auswahl in Loops-Programmen: dort ist
+ *  der Song bekannt, also hat eine Stimme, die es hier nicht gibt, in der
+ *  Auswahl auch nichts verloren. Setlisten haben keinen einzelnen Song —
+ *  jeder Titel bringt andere Spuren mit — und bekommen deshalb weiterhin die
+ *  vollständige Liste (Selbsttest 5). */
+function songVoiceChoices(song) {
+  const have = new Set((song?.tracks || []).filter((tr) => !tr.broken).map((tr) => tr.voice));
+  return VOICE_ORDER.filter((v) => have.has(v));
+}
+
+/** Erster Wunsch, den `voices` wirklich hergibt — sonst dessen erste Stimme
+ *  überhaupt. Dieselbe Rangfolge wie resolveRoutineVoice() zur Laufzeit, nur
+ *  eben schon beim Befüllen des Dialogs, damit dort nie ein Wert steht, den
+ *  die Auswahl gar nicht kennt. Ohne bekannte Stimmenliste (Setliste) bleibt
+ *  der erste gültige Wunsch stehen (Selbsttest 5). */
+function pickRoutineVoice(wishes, voices) {
+  const clean = wishes.filter(Boolean);
+  if (!voices || !voices.length) return clean[0] || 'FULL';
+  for (const w of clean) if (voices.includes(w)) return w;
+  return voices[0];
+}
+
 /** Vorgabewerte für eine neue, noch ungespeicherte Zeile (siehe Tabelle in
  *  Abschnitt 2 der Anweisung): erste Zeile 3×/1,0×/eigene Stimme, jede
  *  weitere über „+" 2×/1,0×/Gesamt (ab der dritten Zeile Kopie der zuletzt
- *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). */
-function newRoutineDefaultStep(isFirst, withVoice) {
+ *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). `voices`
+ *  begrenzt die Stimme auf das, was der Song hat. */
+function newRoutineDefaultStep(isFirst, withVoice, voices) {
   if (!withVoice) return isFirst ? { reps: 3, rate: 1 } : { reps: 2, rate: 1 };
   return isFirst
-    ? { reps: 3, rate: 1, voice: settings.myVoices[0] || 'FULL' }
-    : { reps: 2, rate: 1, voice: 'FULL' };
+    ? { reps: 3, rate: 1, voice: pickRoutineVoice([settings.myVoices[0], 'FULL'], voices) }
+    : { reps: 2, rate: 1, voice: pickRoutineVoice(['FULL'], voices) };
 }
 
 /** Reine Fortschaltfunktion (5.1 „Fortschalten"): nächster Zustand nach einer
@@ -14014,9 +14062,18 @@ function routineElements(r) {
 /** Wendet Tempo und (außer bei REC) die aufgelöste Stimme des aktuellen
  *  Schritts an — über die vorhandenen Funktionen, nie durch direktes
  *  Verändern der <select>-Werte (5.1). Höchstens einmal je Programmstart
- *  wird bei Tempo ≠ 1,0× der HD-Hinweis angeboten (Randfall in Abschnitt 6). */
-function routineApplyStep() {
+ *  wird bei Tempo ≠ 1,0× der HD-Hinweis angeboten (Randfall in Abschnitt 6).
+ *
+ *  Muss abgewartet werden, bevor der Aufrufer die Wiedergabe anwirft:
+ *  selectTrack() lädt die neue Spur asynchron nach und merkt sich dabei, ob
+ *  gerade gespielt wurde. Ein audioPlay(), das noch während dieses Ladens
+ *  losläuft, startet die alte Spur an, wird vom Spurwechsel gleich wieder
+ *  abgeräumt — und selectTrack() nimmt die Wiedergabe nicht auf, weil es
+ *  beim Merken „pausiert" vorfand. Das Programm stand danach stumm auf dem
+ *  ersten Stimmwechsel still. */
+async function routineApplyStep() {
   if (!routine) return;
+  const active = routine;
   const step = routine.steps[routine.stepIndex];
   audioSetRate(step.rate);
   $('#rate-select').value = String(step.rate);
@@ -14028,15 +14085,19 @@ function routineApplyStep() {
     const resolved = resolveRoutineVoice(step.voice, playerSong, settings.myVoices);
     routine.resolvedVoice = resolved;
     const track = resolved ? playerSong.tracks.find((tr) => tr.voice === resolved && !tr.broken) : null;
-    if (track) selectTrack(track);
+    if (track) await selectTrack(track);
+    // Während des Ladens kann das Programm beendet oder neu gestartet worden
+    // sein — dann gehört der Rest hier nicht mehr dazu.
+    if (routine !== active) return;
   }
   renderRoutineStatus();
 }
 
 /** Wechselt zum aktuellen Element (Loop/Aufnahme) — Setlisten laufen über
  *  startPlaylist()/playlistAdvance() und brauchen das nicht. */
-function routineApplyCurrentElement() {
+async function routineApplyCurrentElement() {
   if (!routine) return;
+  const active = routine;
   const elements = routineElements(routine);
   const current = elements[routine.itemIndex];
   if (!current) {
@@ -14052,11 +14113,21 @@ function routineApplyCurrentElement() {
     updateSeekUI(audioSeek(current.start));
     updateLoopUI();
     renderLoopList();
-    routineApplyStep();
-    audioPlay().then(() => setPlayIcon(true));
+    await routineApplyStep();
+    if (routine !== active) return;
+    // Noch einmal an den Abschnittsanfang: hat routineApplyStep() die Spur
+    // gewechselt, stellt selectTrack() danach die Position wieder her, die es
+    // sich selbst gemerkt hatte — und das war (wenn gerade ein REC lief) die
+    // Rückkehrposition des Songs, nicht der Anfang dieses Abschnitts.
+    updateSeekUI(audioSeek(current.start));
+    await audioPlay();
+    if (routine !== active) return;
+    setPlayIcon(true);
   } else if (routine.scope === 'rec') {
-    routineApplyStep();
-    toggleSavedRecordingPreview(current);
+    await routineApplyStep();
+    if (routine !== active) return;
+    await toggleSavedRecordingPreview(current);
+    if (routine !== active) return;
   }
   renderRoutineStatus();
 }
@@ -14064,7 +14135,7 @@ function routineApplyCurrentElement() {
 /** Fortschalten nach einer abgeschlossenen Wiederholung (5.1). Wird von
  *  onPlaybackEnded() (Setliste/REC) bzw. Audio.onLoopWrap/onPreviewBoundStop
  *  (Loops/REC mit Zuschnitt) aufgerufen. */
-function routineAdvance() {
+async function routineAdvance() {
   if (!routine) return;
   const itemCount = routine.scope === 'setlist' ? (playQueue?.items.length || 0) : routineElements(routine).length;
   if (!itemCount) {
@@ -14088,21 +14159,27 @@ function routineAdvance() {
     if (routine.scope === 'loops') audioPause();
     setPlayIcon(false);
     const activeRoutine = routine;
-    setTimeout(() => {
+    setTimeout(async () => {
       if (routine !== activeRoutine) return;
-      routineApplyStep();
+      // Erst den Schritt (und damit einen möglichen Stimmwechsel) fertig
+      // anwenden, dann die Position setzen und abspielen — sonst räumt die
+      // nachgeladene Spur das gerade gestartete Abspielen wieder ab.
+      await routineApplyStep();
+      if (routine !== activeRoutine) return;
       let start = 0;
       if (routine.scope === 'rec') start = Audio.previewBound?.start || 0;
       else if (routine.scope === 'loops') start = loopRange()?.start || 0;
       updateSeekUI(audioSeek(start));
-      audioPlay().then(() => setPlayIcon(true));
+      await audioPlay();
+      if (routine !== activeRoutine) return;
+      setPlayIcon(true);
     }, 1000);
     return;
   }
 
-  if (routine.scope === 'setlist') { playlistAdvance(); return; }
+  if (routine.scope === 'setlist') { await playlistAdvance(); return; }
   routine.itemIndex = next.itemIndex;
-  routineApplyCurrentElement();
+  await routineApplyCurrentElement();
 }
 
 /** Speichert das Programm und startet es sofort (4: „Speichern passiert genau
@@ -14131,7 +14208,7 @@ async function routineStart(scope, targetId, draft, plRef) {
     return;
   }
   if (scope === 'rec') { routineRecBackingSuspended = true; updateBackingUI(); }
-  routineApplyCurrentElement();
+  await routineApplyCurrentElement();
 }
 
 /* ---------- Statuszeile (5.5) --------------------------------------------- */
@@ -14299,9 +14376,9 @@ function routineOrderList(elements, initialOrder) {
  *  Vorgabewerten aus newRoutineDefaultStep)? Grundlage für das
  *  Ghost-Reset-Icon: das taucht nur auf, wenn es wirklich etwas
  *  zurückzusetzen gibt. */
-function routineStepsAreDefault(steps, withVoice) {
+function routineStepsAreDefault(steps, withVoice, voices) {
   if (steps.length !== 1) return false;
-  const def = newRoutineDefaultStep(true, withVoice);
+  const def = newRoutineDefaultStep(true, withVoice, voices);
   const s = steps[0];
   if (s.reps !== def.reps || s.rate !== def.rate) return false;
   return !withVoice || s.voice === def.voice;
@@ -14312,23 +14389,36 @@ function routineStepsAreDefault(steps, withVoice) {
  * Öffnen speichert nichts; Speichern und Starten passieren zusammen beim
  * Tippen auf „Üben".
  * `opts`: { scope, targetId, stored, itemLabel, withVoice, elements,
- *           emptyHint, isRunning }.
+ *           emptyHint, isRunning, voices }.
+ * `voices`: die Stimmen des Songs (Loops-Programme) — nur diese stehen dann
+ * zur Auswahl. Leer/fehlend (Setlisten) ⇒ die vollständige Liste.
  * Löst auf zu: { action: 'start', steps, after, items } | { action: 'stop' }
  *              | null (Abbrechen/Escape/Klick daneben).
  */
-function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elements, emptyHint, isRunning }) {
+function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elements, emptyHint, isRunning, voices }) {
   return new Promise((resolve) => {
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const normalized = stored ? normalizeRoutine(stored) : null;
-    const draftSteps = normalized ? normalized.steps.map((s) => ({ ...s })) : [newRoutineDefaultStep(true, withVoice)];
+    // Hat der Song keine brauchbare Spur (z. B. ein Titel, der nur als REC
+    // vorliegt), bliebe die gefilterte Liste leer — dann lieber die
+    // vollständige zeigen als ein leeres Auswahlfeld.
+    const voiceList = voices && voices.length ? voices : null;
+    const draftSteps = normalized ? normalized.steps.map((s) => ({ ...s })) : [newRoutineDefaultStep(true, withVoice, voiceList)];
     let afterMode = normalized ? normalized.after : 'next';
     let orderWidget = null;
     let setAfterMode = null;
+    // Die zuletzt gültige Auswahl/Reihenfolge für „Auswahl" — anfangs die
+    // gespeicherte. Sie überlebt das Umschalten auf „Alle" und zurück (die
+    // Liste wird dabei neu gebaut) und wird vom Zurücksetzen geleert.
+    let storedItems = normalized?.items ? normalized.items.slice() : [];
 
+    // Mit bekannter Stimmenliste genau die Stimmen des Songs (also auch
+    // Bariton/Klavier, die es sonst nirgends zur Wahl gibt) — ohne sie die
+    // allgemeine Auswahl wie bisher.
     const voiceOptions = () => {
-      const opts = [];
-      opts.push(['FULL', 'Gesamt']);
+      if (voiceList) return voiceList.map((v) => [v, VOICE_LABEL[v] || v]);
+      const opts = [['FULL', 'Gesamt']];
       for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
       return opts;
     };
@@ -14341,14 +14431,17 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       onclick: async () => {
         await DB.metaDelete(routineKeyFor(scope, targetId)).catch(() => {});
         draftSteps.length = 0;
-        draftSteps.push(newRoutineDefaultStep(true, withVoice));
+        draftSteps.push(newRoutineDefaultStep(true, withVoice, voiceList));
         renderRows();
         if (setAfterMode) setAfterMode('next');
+        // Erst nach setAfterMode('next'): das sichert die noch sichtbare
+        // Auswahl nach storedItems zurück, die hier gerade verworfen wird.
+        storedItems = [];
         updateResetVisibility();
       },
     }, resetIcon());
     function updateResetVisibility() {
-      resetBtn.hidden = afterMode === 'next' && routineStepsAreDefault(draftSteps, withVoice);
+      resetBtn.hidden = afterMode === 'next' && routineStepsAreDefault(draftSteps, withVoice, voiceList);
     }
 
     const table = el('div', { class: 'routine-table', 'data-cols': withVoice ? '4' : '3' });
@@ -14377,7 +14470,16 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         if (withVoice) {
           voiceSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Stimme` });
           for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
-          if (![...voiceSel.options].some((o) => o.value === step.voice)) step.voice = settings.myVoices[0] || 'FULL';
+          // Eine gespeicherte Stimme, die diese Auswahl nicht kennt (Bariton
+          // aus einer Sicherung; seit der Filterung auch jede Stimme, die
+          // dieser Song gar nicht hat), auf einen vorhandenen Wert ziehen —
+          // sonst fiele `select.value` auf '' zurück und die Zelle stünde
+          // leer da. Auch 'FULL' taugt dafür nicht mehr blind: ein Song ohne
+          // Gesamtmischung bietet es nicht an.
+          const optionValues = [...voiceSel.options].map((o) => o.value);
+          if (!optionValues.includes(step.voice)) {
+            step.voice = pickRoutineVoice([step.voice, settings.myVoices[0], 'FULL'], optionValues);
+          }
           voiceSel.value = step.voice;
           voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; updateResetVisibility(); });
         }
@@ -14396,7 +14498,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       class: 'routine-addbtn', type: 'button', text: '+', 'aria-label': 'Schritt hinzufügen',
       onclick: () => {
         const last = draftSteps[draftSteps.length - 1];
-        draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice) : { ...last });
+        draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice, voiceList) : { ...last });
         renderRows();
         updateResetVisibility();
       },
@@ -14411,10 +14513,14 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       const buildOrder = () => {
         orderContainer.textContent = '';
         if (afterMode !== 'playlist') return;
-        orderWidget = routineOrderList(elements, normalized?.items || []);
+        orderWidget = routineOrderList(elements, storedItems);
         orderContainer.append(orderWidget.host);
       };
       setAfterMode = (mode) => {
+        // Auswahl festhalten, bevor die Liste abgebaut wird — sonst stellt ein
+        // Hin und Her zwischen „Alle" und „Auswahl" wieder den gespeicherten
+        // Stand her und verwirft, was gerade angetippt wurde.
+        if (afterMode === 'playlist' && orderWidget) storedItems = orderWidget.getItems();
         afterMode = mode;
         allBtn.setAttribute('aria-pressed', mode === 'next' ? 'true' : 'false');
         selBtn.setAttribute('aria-pressed', mode === 'playlist' ? 'true' : 'false');
@@ -14495,7 +14601,7 @@ async function openRoutineDialogForLoops() {
   const result = await showRoutineDialog({
     scope: 'loops', targetId: playerSong.id, stored, itemLabel: 'Abschnitt', withVoice: true, elements,
     emptyHint: songLoops.length ? null : 'Für diesen Song sind noch keine Abschnitte gespeichert.',
-    isRunning,
+    isRunning, voices: songVoiceChoices(playerSong),
   });
   if (!result) return;
   if (result.action === 'stop') { routineStop(); return; }
@@ -14689,7 +14795,24 @@ async function startPlaylist(pl) {
     return;
   }
   playQueue = { id: pl.id, name: pl.name, items, index: firstIndex };
-  navigate(`#song/${items[firstIndex].id}`);
+  const id = items[firstIndex].id;
+  // „Abspielen" und „Üben" sollen die Setliste auch wirklich anspielen —
+  // bisher wurde nur der erste Titel geöffnet und es blieb still stehen.
+  //
+  // Steht dieser Titel schon im Player, ruft navigate() kein openPlayer()
+  // auf (siehe applyRoute) — dann bliebe `pendingAutoPlay` ungenutzt stehen
+  // und der nächste von Hand geöffnete Song spielte ungefragt los. Deshalb
+  // in diesem Fall gar nicht erst setzen, sondern hier selbst anspielen.
+  const alreadyOpen = !!(playerSong && playerSong.id === id);
+  pendingAutoPlay = !alreadyOpen;
+  navigate(`#song/${id}`);
+  if (!alreadyOpen) return;
+  // Ohne openPlayer() wendet auch niemand den ersten Schritt eines
+  // Setlisten-Programms an (Tempo/Stimme) — das gehört hierher.
+  await routineApplyStepForQueue();
+  updateSeekUI(audioSeek(0));
+  await audioPlay();
+  setPlayIcon(true);
 }
 
 /* ---------- Detailansicht: Entwurf, Speichern, Verwerfen ---------------- */
@@ -15151,7 +15274,7 @@ function stepPlayableIndex(items, from, delta) {
  * Nach Songende automatisch zum nächsten (verfügbaren) Titel der Playlist.
  * Am Ende der Playlist geht es wieder beim ersten (verfügbaren) Titel los.
  */
-function playlistAdvance() {
+async function playlistAdvance() {
   if (!playQueue) return;
   if (settings.shuffleMode) {
     const i = randomQueueIndex(playQueue);
@@ -15159,8 +15282,10 @@ function playlistAdvance() {
     playQueue.index = i;
     const id = playQueue.items[i].id;
     if (playerSong && playerSong.id === id) {
+      await routineApplyStepForQueue();
       updateSeekUI(audioSeek(0));
-      audioPlay().then(() => setPlayIcon(true));
+      await audioPlay();
+      setPlayIcon(true);
       return;
     }
     pendingAutoPlay = true;
@@ -15180,12 +15305,24 @@ function playlistAdvance() {
   // auf den laufenden Song. Dann gibt es nichts zu navigieren — er fängt
   // einfach wieder von vorn an. (Sonst blieb die Wiedergabe stehen.)
   if (playerSong && playerSong.id === id) {
+    await routineApplyStepForQueue();
     updateSeekUI(audioSeek(0));
-    audioPlay().then(() => setPlayIcon(true));
+    await audioPlay();
+    setPlayIcon(true);
     return;
   }
   pendingAutoPlay = true;
   navigate(`#song/${id}`, { replace: true });
+}
+
+/** Der Schritt eines laufenden Setlisten-Programms, wenn das Weiterschalten
+ *  auf demselben Song landet (nur ein abspielbarer Titel, oder Zufallswiedergabe
+ *  mit derselben Wahl). Ohne Songwechsel läuft kein openPlayer() — und damit
+ *  bliebe der Schritt unangewendet: der Zähler sprang zurück auf Schritt 1,
+ *  Tempo und Stimme blieben aber die des letzten Schritts stehen. */
+async function routineApplyStepForQueue() {
+  if (!(routine?.scope === 'setlist' && playQueue && routine.targetId === playQueue.id)) return;
+  await routineApplyStep();
 }
 
 /** Nächster abspielbarer Eintrag nach `from` (zirkulär durch die Liste),
@@ -17446,6 +17583,36 @@ function runSelfTests() {
     const filtered = filterRoutineItems({ after: 'playlist', items: ['a', 'gone', 'b'] }, ['a', 'b']);
     if (filtered.items.join(',') !== 'a,b') {
       failed.push(`filterRoutineItems: verwaiste ID wurde nicht entfernt (${filtered.items.join(',')})`);
+    }
+  }
+
+  // Stimm-Auswahl im Choirgym-Dialog: sie zeigt genau die Stimmen des Songs
+  // (kanonische Reihenfolge, defekte Spuren raus) — und jeder vorbelegte Wert
+  // muss in dieser Auswahl auch wirklich vorkommen.
+  checks++;
+  {
+    const song = { tracks: [{ voice: 'BASS' }, { voice: 'FULL' }, { voice: 'BAR' }, { voice: 'SOP', broken: true }] };
+    const got = songVoiceChoices(song).join(',');
+    if (got !== 'FULL,BASS,BAR') {
+      failed.push(`songVoiceChoices: erwartet FULL,BASS,BAR — war ${got}`);
+    }
+    if (songVoiceChoices({ tracks: [] }).length) {
+      failed.push('songVoiceChoices: ein Song ohne Spuren darf keine Stimme anbieten');
+    }
+    const cases = [
+      [['BASS', 'FULL'], ['FULL', 'SOP', 'BASS'], 'BASS', 'vorhandener Wunsch gewinnt'],
+      [['BASS', 'FULL'], ['FULL', 'SOP'], 'FULL', 'fehlender Wunsch fällt auf FULL'],
+      [['BASS', 'FULL'], ['SOP'], 'SOP', 'ohne FULL die erste vorhandene Stimme'],
+      [['BASS', 'FULL'], null, 'BASS', 'ohne Stimmenliste bleibt der Wunsch stehen'],
+      [[null, 'FULL'], ['SOP', 'ALT'], 'SOP', 'leere Wünsche werden übersprungen'],
+    ];
+    for (const [wishes, voices, want, why] of cases) {
+      const picked = pickRoutineVoice(wishes, voices);
+      if (picked !== want) failed.push(`pickRoutineVoice (${why}): erwartet ${want}, war ${picked}`);
+      // Die eigentliche Zusage: nie ein Wert außerhalb der Auswahl.
+      if (voices && voices.length && !voices.includes(picked)) {
+        failed.push(`pickRoutineVoice (${why}): ${picked} steht gar nicht zur Auswahl`);
+      }
     }
   }
 
