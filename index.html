@@ -1178,6 +1178,13 @@ input[type="checkbox"] {
 .icon-btn svg { width: 24px; height: 24px; }
 .icon-btn:active { background: var(--surface-2); }
 
+/* Kreis-Variante: Rand ringsum, für Knöpfe, die als eigenständige runde
+   Buttons statt als schmucklose Icons wirken sollen (z.B. „Nächster Gig"). */
+.icon-btn--ring {
+  border: 1px solid var(--pill-line);
+  border-radius: 999px;
+}
+
 /* appearance:none, weil ohne das auf manchen iOS-Versionen die native
    Button-Chrome durchscheint statt der eigenen Farben — auf einem iPhone SE
    blieb sonst nur der rote Rand sichtbar, ohne den gefüllten Punkt darin. */
@@ -1681,7 +1688,8 @@ input[type="checkbox"] {
 }
 
 .loop-controls .icon-only { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
-.loop-controls .icon-only svg { width: 20px; height: 20px; }
+.loop-controls .icon-only svg, .rec-toggle-row-routine svg { width: 20px; height: 20px; }
+.rec-toggle-row-routine { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
 
 /* Schalter — echte Wippe mit Knopf, damit der Zustand auf den ersten Blick
    klar ist (nicht nur eine Farbänderung). Für Loop an/aus und für einzelne
@@ -1753,20 +1761,25 @@ input[type="checkbox"] {
   padding: 6px 0;
 }
 
-/* Der Aufnahmeknopf muss optisch zentriert bleiben — die Hantel sitzt
-   deshalb absolut am rechten Rand einer eigenen Zeile, statt den Knopf
-   selbst zu verschieben (siehe Auftrag „Trainingsroutinen" 3.4). */
+/* Der Aufnahmeknopf muss optisch zentriert bleiben, obwohl die Zeile auf
+   breiten Bildschirmen viel breiter als die beiden Knöpfe ist. Ein
+   unsichtbarer Platzhalter in Breite der Hantel balanciert das aus, statt
+   die Hantel (wie zuvor) absolut an den rechten Zeilenrand zu setzen — dort
+   landete sie auf breiteren Viewports weit entfernt vom Knopf und wirkte
+   dadurch als fehlend (siehe Auftrag „Trainingsroutinen" 3.4). */
 .rec-toggle-row {
-  position: relative;
   width: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 12px;
+}
+.rec-toggle-row-spacer {
+  width: 42px;
+  flex: 0 0 auto;
 }
 .rec-toggle-row-routine {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
 }
 
 /* Übe-Programm-Dialog */
@@ -2882,6 +2895,7 @@ input[type="checkbox"] {
     <div id="tab-panel-rec" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-rec" tabindex="0" hidden>
       <div class="rec-controls" id="rec-controls">
         <div class="rec-toggle-row">
+          <span class="rec-toggle-row-spacer" aria-hidden="true"></span>
           <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
             <span class="rec-btn-dot"></span>
           </button>

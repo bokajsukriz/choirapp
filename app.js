@@ -13988,7 +13988,7 @@ function normalizeRoutine(routine) {
 function newRoutineDefaultStep(isFirst, withVoice) {
   if (!withVoice) return isFirst ? { reps: 3, rate: 1 } : { reps: 2, rate: 1 };
   return isFirst
-    ? { reps: 3, rate: 1, voice: settings.myVoices.length ? 'MINE' : 'FULL' }
+    ? { reps: 3, rate: 1, voice: settings.myVoices[0] || 'FULL' }
     : { reps: 2, rate: 1, voice: 'FULL' };
 }
 
@@ -14310,7 +14310,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         if (withVoice) {
           voiceSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Stimme` });
           for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
-          if (![...voiceSel.options].some((o) => o.value === step.voice)) step.voice = settings.myVoices.length ? 'MINE' : 'FULL';
+          if (![...voiceSel.options].some((o) => o.value === step.voice)) step.voice = settings.myVoices[0] || 'FULL';
           voiceSel.value = step.voice;
           voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; });
         }
@@ -14321,8 +14321,8 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         }, '✕') : null;
 
         rowsHost.append(el('div', { class: 'routine-step-row' },
-          el('span', { text: itemLabel }), repsSel, el('span', { text: 'mal auf' }), rateSel,
-          withVoice ? el('span', { text: 'als' }) : null, voiceSel, el('span', { text: 'dann' }), removeBtn));
+          repsSel, el('span', { text: 'mal auf' }), rateSel,
+          withVoice ? el('span', { text: 'als' }) : null, voiceSel, removeBtn));
       });
     };
     renderRows();
@@ -14354,10 +14354,10 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       radioNext.addEventListener('change', () => { afterMode = 'next'; buildOrder(); });
       radioPl.addEventListener('change', () => { afterMode = 'playlist'; buildOrder(); });
       buildOrder();
-      const nextLabel = scope === 'loops' ? 'dann nächster Abschnitt.' : 'dann nächste Aufnahme.';
+      const nextLabel = scope === 'loops' ? 'Alle Loops abspielen' : 'Alle Aufnahmen abspielen';
       afterHost = el('div', { class: 'stack', style: 'gap:6px; margin-top:10px' },
-        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioNext, el('span', { text: `… ${nextLabel}` })),
-        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioPl, el('span', { text: '… dann Playlist' })),
+        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioNext, el('span', { text: nextLabel })),
+        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioPl, el('span', { text: 'Playliste erstellen' })),
         orderContainer);
     }
 
@@ -14493,25 +14493,24 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   }
 
   const play = el('button', {
-    class: 'icon-btn', type: 'button', 'aria-label': `„${favorite.name}" abspielen`,
+    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': `„${favorite.name}" abspielen`,
     onclick: () => startPlaylist(favorite),
   });
   play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 
   const practice = el('button', {
-    class: 'icon-btn', type: 'button', 'aria-label': 'Übe-Programm',
+    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': 'Übe-Programm',
     onclick: () => openRoutineDialogForSetlist(favorite),
   });
   practice.innerHTML = dumbbellIcon();
 
   host.append(el('div', { class: 'card' },
-    el('div', { class: 'row', style: 'align-items:flex-start' },
+    el('div', { class: 'row', style: 'align-items:flex-start; gap:4px' },
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
         el('strong', { text: favorite.name })),
-      play),
-    list,
-    el('div', { class: 'row', style: 'justify-content:flex-end; margin-top:8px' }, practice)));
+      practice, play),
+    list));
 }
 
 async function renderPlaylists() {
