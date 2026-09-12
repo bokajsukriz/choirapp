@@ -14233,6 +14233,24 @@ function dumbbellIcon() {
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>';
 }
 
+/** SVG-Markup in ein echtes Element wandeln (per innerHTML, damit der Browser
+ *  den SVG-Namespace korrekt setzt — `el('svg', …)` würde ein HTML-Element
+ *  ohne Namespace erzeugen und nicht rendern). */
+function iconEl(markup) {
+  const wrap = document.createElement('span');
+  wrap.innerHTML = markup;
+  return wrap.firstElementChild;
+}
+
+// Dieselben Icons wie im Player (`#voice-select`/`#rate-select`), damit die
+// Stimmen-/Tempo-Auswahl im Übe-Programm-Dialog gleich aussieht.
+function voiceFieldIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>');
+}
+function tempoFieldIcon() {
+  return iconEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>');
+}
+
 /** Eine reihenfolgen-/auswahlbare Liste für „… dann Playlist" (4.3/4.4):
  *  Checkbox je Element, Pfeile zum Sortieren. `elements`: [{id,label}]. */
 function routineOrderList(elements, initialOrder) {
@@ -14296,23 +14314,26 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     const renderRows = () => {
       rowsHost.textContent = '';
       draftSteps.forEach((step, i) => {
-        const repsSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Wiederholungen` });
+        const repsSel = el('select', { 'aria-label': `${itemLabel} — Wiederholungen` });
         for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: String(n) }));
         repsSel.value = String(step.reps);
         repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); });
+        const repsField = el('label', { class: 'select-field routine-reps-field' }, repsSel);
 
-        const rateSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Tempo` });
+        const rateSel = el('select', { 'aria-label': `${itemLabel} — Tempo` });
         for (const r of ROUTINE_RATES) rateSel.append(el('option', { value: r, text: `${String(r).replace('.', ',')}×` }));
         rateSel.value = String(step.rate);
         rateSel.addEventListener('change', () => { step.rate = Number(rateSel.value); });
+        const rateField = el('label', { class: 'select-field' }, tempoFieldIcon(), rateSel);
 
-        let voiceSel = null;
+        let voiceField = null;
         if (withVoice) {
-          voiceSel = el('select', { class: 'select-field', 'aria-label': `${itemLabel} — Stimme` });
+          const voiceSel = el('select', { 'aria-label': `${itemLabel} — Stimme` });
           for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
           if (![...voiceSel.options].some((o) => o.value === step.voice)) step.voice = settings.myVoices[0] || 'FULL';
           voiceSel.value = step.voice;
           voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; });
+          voiceField = el('label', { class: 'select-field' }, voiceFieldIcon(), voiceSel);
         }
 
         const removeBtn = i > 0 ? el('button', {
@@ -14321,8 +14342,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         }, '✕') : null;
 
         rowsHost.append(el('div', { class: 'routine-step-row' },
-          repsSel, el('span', { text: 'mal auf' }), rateSel,
-          withVoice ? el('span', { text: 'als' }) : null, voiceSel, removeBtn));
+          repsField, el('span', { class: 'routine-step-x', text: '×' }), rateField, voiceField, removeBtn));
       });
     };
     renderRows();
@@ -14339,11 +14359,9 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     let afterHost = null;
     const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: '… dann nächster Song.' }) : null;
     if (scope !== 'setlist') {
-      const groupName = `routine-after-${scope}`;
-      const radioNext = el('input', { type: 'radio', name: groupName, value: 'next' });
-      const radioPl = el('input', { type: 'radio', name: groupName, value: 'playlist' });
-      radioNext.checked = afterMode === 'next';
-      radioPl.checked = afterMode === 'playlist';
+      const nextLabel = scope === 'loops' ? 'Alle Loops abspielen' : 'Alle Aufnahmen abspielen';
+      const nextBtn = el('button', { type: 'button', class: 'chip', 'aria-pressed': afterMode === 'next' ? 'true' : 'false', text: nextLabel });
+      const plBtn = el('button', { type: 'button', class: 'chip', 'aria-pressed': afterMode === 'playlist' ? 'true' : 'false', text: 'Playliste erstellen' });
       const orderContainer = el('div');
       const buildOrder = () => {
         orderContainer.textContent = '';
@@ -14351,13 +14369,17 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         orderWidget = routineOrderList(elements, normalized?.items || []);
         orderContainer.append(orderWidget.host);
       };
-      radioNext.addEventListener('change', () => { afterMode = 'next'; buildOrder(); });
-      radioPl.addEventListener('change', () => { afterMode = 'playlist'; buildOrder(); });
+      const setAfterMode = (mode) => {
+        afterMode = mode;
+        nextBtn.setAttribute('aria-pressed', mode === 'next' ? 'true' : 'false');
+        plBtn.setAttribute('aria-pressed', mode === 'playlist' ? 'true' : 'false');
+        buildOrder();
+      };
+      nextBtn.addEventListener('click', () => setAfterMode('next'));
+      plBtn.addEventListener('click', () => setAfterMode('playlist'));
       buildOrder();
-      const nextLabel = scope === 'loops' ? 'Alle Loops abspielen' : 'Alle Aufnahmen abspielen';
-      afterHost = el('div', { class: 'stack', style: 'gap:6px; margin-top:10px' },
-        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioNext, el('span', { text: nextLabel })),
-        el('label', { class: 'row', style: 'gap:8px; align-items:center' }, radioPl, el('span', { text: 'Playliste erstellen' })),
+      afterHost = el('div', { class: 'stack', style: 'gap:8px; margin-top:10px' },
+        el('div', { class: 'row', style: 'flex-wrap:wrap; gap:8px; justify-content:flex-start' }, nextBtn, plBtn),
         orderContainer);
     }
 
@@ -14458,40 +14480,6 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   host.textContent = '';
   if (!favorite) return;
 
-  const titles = favorite.songTitles || [];
-  const list = el('ol', { class: 'gig-list small' });
-  for (const title of titles) {
-    const found = findSongByTitle(songs, title);
-    // Zwei verschiedene Gründe für "kein Ton", beide mit demselben
-    // Verbotssymbol wie in Bibliothek und Player (iconUnavailable()), aber
-    // mit unterschiedlichem Label: der Titel steht gar nicht in der
-    // Bibliothek (found ist null), oder er steht drin, hat aber weder Spur
-    // noch REC (songHasAudio() liefert false).
-    const noAudio = !found || !songHasAudio(found, recsBySong);
-    // display:flex direkt auf dem <li> würde in manchen Browsern die
-    // ::marker-Nummerierung des <ol> abschalten (nur list-item generiert
-    // einen Marker) — deshalb Flex nur auf einem inneren Wrapper, der Marker
-    // bleibt am unveränderten <li> erhalten.
-    const li = el('li', { class: found ? '' : 'muted' });
-    if (noAudio) {
-      const label = found ? t('songs.placeholderBadge') : t('songs.setlistMissingBadge');
-      // Titel ganz ohne Song: zusätzlich zur grauen Farbe kursiv und in
-      // eckigen Klammern — macht "existiert nicht" schon im Text sichtbar,
-      // nicht erst über den Tooltip am Symbol (der auf Touch nicht greift).
-      const titleNode = found ? title : el('em', {}, `[${title}]`);
-      li.append(el('span', { class: 'gig-list-line' },
-        titleNode,
-        el('span', {
-          class: 'placeholder-badge', role: 'img',
-          'aria-label': label, title: label,
-        }, iconUnavailable()),
-      ));
-    } else {
-      li.append(title);
-    }
-    list.append(li);
-  }
-
   const play = el('button', {
     class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': `„${favorite.name}" abspielen`,
     onclick: () => startPlaylist(favorite),
@@ -14504,12 +14492,52 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   });
   practice.innerHTML = dumbbellIcon();
 
+  const titles = favorite.songTitles || [];
+  const list = el('ol', { class: 'gig-list small' });
+  titles.forEach((title, i) => {
+    const found = findSongByTitle(songs, title);
+    // Zwei verschiedene Gründe für "kein Ton", beide mit demselben
+    // Verbotssymbol wie in Bibliothek und Player (iconUnavailable()), aber
+    // mit unterschiedlichem Label: der Titel steht gar nicht in der
+    // Bibliothek (found ist null), oder er steht drin, hat aber weder Spur
+    // noch REC (songHasAudio() liefert false).
+    const noAudio = !found || !songHasAudio(found, recsBySong);
+    // display:flex direkt auf dem <li> würde in manchen Browsern die
+    // ::marker-Nummerierung des <ol> abschalten (nur list-item generiert
+    // einen Marker) — deshalb Flex nur auf einem inneren Wrapper, der Marker
+    // bleibt am unveränderten <li> erhalten. Dieser Wrapper trägt in der
+    // letzten Zeile zusätzlich das Übe-Programm-Icon rechtsbündig, statt es
+    // (wie zuvor) in eine eigene Zeile unter der Liste zu setzen.
+    const li = el('li', { class: found ? '' : 'muted' });
+    const lineWrap = el('div', { class: 'row', style: 'align-items:center; gap:8px' });
+    if (noAudio) {
+      const label = found ? t('songs.placeholderBadge') : t('songs.setlistMissingBadge');
+      // Titel ganz ohne Song: zusätzlich zur grauen Farbe kursiv und in
+      // eckigen Klammern — macht "existiert nicht" schon im Text sichtbar,
+      // nicht erst über den Tooltip am Symbol (der auf Touch nicht greift).
+      const titleNode = found ? title : el('em', {}, `[${title}]`);
+      lineWrap.append(el('span', { class: 'gig-list-line' },
+        titleNode,
+        el('span', {
+          class: 'placeholder-badge', role: 'img',
+          'aria-label': label, title: label,
+        }, iconUnavailable()),
+      ));
+    } else {
+      lineWrap.append(title);
+    }
+    if (i === titles.length - 1) lineWrap.append(el('span', { style: 'flex:1' }), practice);
+    li.append(lineWrap);
+    list.append(li);
+  });
+  if (!titles.length) list.append(el('li', { style: 'display:flex; justify-content:flex-end' }, practice));
+
   host.append(el('div', { class: 'card' },
-    el('div', { class: 'row', style: 'align-items:flex-start; gap:4px' },
+    el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
         el('strong', { text: favorite.name })),
-      practice, play),
+      play),
     list));
 }
 

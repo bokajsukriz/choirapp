@@ -1789,7 +1789,16 @@ input[type="checkbox"] {
   align-items: center;
   gap: 6px 8px;
 }
-.routine-step-row .select-field { min-width: 0; }
+/* min-width:0, damit die select-field-Felder auf ihren Inhalt schrumpfen
+   statt in der flex-wrap-Zeile unnötig breit zu bleiben (siehe .select-field
+   selbst: dort ist select flex:1, das braucht eine begrenzte Elternbreite). */
+.routine-step-row .select-field { min-width: 0; width: auto; }
+.routine-step-row .select-field select { flex: 0 1 auto; }
+/* Wiederholungen brauchen kein Icon und nur Platz für ein-/zweistellige
+   Zahlen — deutlich schmaler als die Icon-Felder. */
+.routine-reps-field { padding-left: 12px; }
+.routine-reps-field select { min-width: 1.6em; }
+.routine-step-x { color: var(--muted); font-weight: 650; }
 .routine-order-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .routine-order-row {
   display: flex;
