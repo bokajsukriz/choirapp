@@ -1761,25 +1761,19 @@ input[type="checkbox"] {
   padding: 6px 0;
 }
 
-/* Der Aufnahmeknopf muss optisch zentriert bleiben, obwohl die Zeile auf
-   breiten Bildschirmen viel breiter als die beiden Knöpfe ist. Ein
-   unsichtbarer Platzhalter in Breite der Hantel balanciert das aus, statt
-   die Hantel (wie zuvor) absolut an den rechten Zeilenrand zu setzen — dort
-   landete sie auf breiteren Viewports weit entfernt vom Knopf und wirkte
-   dadurch als fehlend (siehe Auftrag „Trainingsroutinen" 3.4). */
+/* Drei gleich breite Spalten statt fester Pixelbreiten: der Aufnahmeknopf
+   sitzt in der mittleren Spalte und bleibt dadurch exakt zentriert, egal wie
+   breit die äußeren Spalten sind — die Hantel steht rechtsbündig in der
+   rechten Spalte, ohne den Aufnahmeknopf zu verschieben. */
 .rec-toggle-row {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
   gap: 12px;
 }
-.rec-toggle-row-spacer {
-  width: 42px;
-  flex: 0 0 auto;
-}
 .rec-toggle-row-routine {
-  flex: 0 0 auto;
+  justify-self: end;
 }
 
 /* Übe-Programm-Dialog */
@@ -1789,7 +1783,16 @@ input[type="checkbox"] {
   align-items: center;
   gap: 6px 8px;
 }
-.routine-step-row .select-field { min-width: 0; }
+/* min-width:0, damit die select-field-Felder auf ihren Inhalt schrumpfen
+   statt in der flex-wrap-Zeile unnötig breit zu bleiben (siehe .select-field
+   selbst: dort ist select flex:1, das braucht eine begrenzte Elternbreite). */
+.routine-step-row .select-field { min-width: 0; width: auto; }
+.routine-step-row .select-field select { flex: 0 1 auto; }
+/* Wiederholungen brauchen kein Icon und nur Platz für ein-/zweistellige
+   Zahlen — deutlich schmaler als die Icon-Felder. */
+.routine-reps-field { padding-left: 12px; }
+.routine-reps-field select { min-width: 1.6em; }
+.routine-step-x { color: var(--muted); font-weight: 650; }
 .routine-order-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .routine-order-row {
   display: flex;
@@ -2878,9 +2881,6 @@ input[type="checkbox"] {
       <div class="loop-controls">
         <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">Start</button>
         <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">Ende</button>
-        <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
-          <span class="loop-switch-knob"></span>
-        </button>
         <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         </button>
@@ -2895,7 +2895,7 @@ input[type="checkbox"] {
     <div id="tab-panel-rec" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-rec" tabindex="0" hidden>
       <div class="rec-controls" id="rec-controls">
         <div class="rec-toggle-row">
-          <span class="rec-toggle-row-spacer" aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
           <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten">
             <span class="rec-btn-dot"></span>
           </button>
