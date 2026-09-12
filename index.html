@@ -1747,11 +1747,6 @@ input[type="checkbox"] {
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
 
-.loop-item .loop-repeat { flex: 0 0 auto; }
-.practice-step { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
-.practice-step select { min-height: var(--tap); border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text); padding: 0 8px; }
-.practice-add { margin-bottom: 16px; }
-
 /* REC */
 .rec-controls {
   display: flex;
@@ -2881,6 +2876,9 @@ input[type="checkbox"] {
       <div class="loop-controls">
         <button class="btn" id="btn-loop-a" type="button" aria-pressed="false">Start</button>
         <button class="btn" id="btn-loop-b" type="button" aria-pressed="false">Ende</button>
+        <button class="loop-switch" id="btn-loop-toggle" type="button" role="switch" aria-checked="false" aria-pressed="false" aria-label="Loop" disabled>
+          <span class="loop-switch-knob"></span>
+        </button>
         <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         </button>
