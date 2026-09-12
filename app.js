@@ -14364,7 +14364,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       rowsHost.textContent = '';
       draftSteps.forEach((step, i) => {
         const repsSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Wiederholungen` });
-        for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: String(n) }));
+        for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: `${n}×` }));
         repsSel.value = String(step.reps);
         repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); updateResetVisibility(); });
 
