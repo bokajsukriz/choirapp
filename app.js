@@ -13936,15 +13936,40 @@ function normalizeRoutine(routine) {
   };
 }
 
+/** Die Stimmen, die dieser Song wirklich anbietet — in der kanonischen
+ *  Reihenfolge (dieselbe wie im `#voice-select` des Players), defekte Spuren
+ *  ausgenommen. Grundlage für die Stimm-Auswahl in Loops-Programmen: dort ist
+ *  der Song bekannt, also hat eine Stimme, die es hier nicht gibt, in der
+ *  Auswahl auch nichts verloren. Setlisten haben keinen einzelnen Song —
+ *  jeder Titel bringt andere Spuren mit — und bekommen deshalb weiterhin die
+ *  vollständige Liste (Selbsttest 5). */
+function songVoiceChoices(song) {
+  const have = new Set((song?.tracks || []).filter((tr) => !tr.broken).map((tr) => tr.voice));
+  return VOICE_ORDER.filter((v) => have.has(v));
+}
+
+/** Erster Wunsch, den `voices` wirklich hergibt — sonst dessen erste Stimme
+ *  überhaupt. Dieselbe Rangfolge wie resolveRoutineVoice() zur Laufzeit, nur
+ *  eben schon beim Befüllen des Dialogs, damit dort nie ein Wert steht, den
+ *  die Auswahl gar nicht kennt. Ohne bekannte Stimmenliste (Setliste) bleibt
+ *  der erste gültige Wunsch stehen (Selbsttest 5). */
+function pickRoutineVoice(wishes, voices) {
+  const clean = wishes.filter(Boolean);
+  if (!voices || !voices.length) return clean[0] || 'FULL';
+  for (const w of clean) if (voices.includes(w)) return w;
+  return voices[0];
+}
+
 /** Vorgabewerte für eine neue, noch ungespeicherte Zeile (siehe Tabelle in
  *  Abschnitt 2 der Anweisung): erste Zeile 3×/1,0×/eigene Stimme, jede
  *  weitere über „+" 2×/1,0×/Gesamt (ab der dritten Zeile Kopie der zuletzt
- *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). */
-function newRoutineDefaultStep(isFirst, withVoice) {
+ *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). `voices`
+ *  begrenzt die Stimme auf das, was der Song hat. */
+function newRoutineDefaultStep(isFirst, withVoice, voices) {
   if (!withVoice) return isFirst ? { reps: 3, rate: 1 } : { reps: 2, rate: 1 };
   return isFirst
-    ? { reps: 3, rate: 1, voice: settings.myVoices[0] || 'FULL' }
-    : { reps: 2, rate: 1, voice: 'FULL' };
+    ? { reps: 3, rate: 1, voice: pickRoutineVoice([settings.myVoices[0], 'FULL'], voices) }
+    : { reps: 2, rate: 1, voice: pickRoutineVoice(['FULL'], voices) };
 }
 
 /** Reine Fortschaltfunktion (5.1 „Fortschalten"): nächster Zustand nach einer
@@ -14351,9 +14376,9 @@ function routineOrderList(elements, initialOrder) {
  *  Vorgabewerten aus newRoutineDefaultStep)? Grundlage für das
  *  Ghost-Reset-Icon: das taucht nur auf, wenn es wirklich etwas
  *  zurückzusetzen gibt. */
-function routineStepsAreDefault(steps, withVoice) {
+function routineStepsAreDefault(steps, withVoice, voices) {
   if (steps.length !== 1) return false;
-  const def = newRoutineDefaultStep(true, withVoice);
+  const def = newRoutineDefaultStep(true, withVoice, voices);
   const s = steps[0];
   if (s.reps !== def.reps || s.rate !== def.rate) return false;
   return !withVoice || s.voice === def.voice;
@@ -14364,16 +14389,22 @@ function routineStepsAreDefault(steps, withVoice) {
  * Öffnen speichert nichts; Speichern und Starten passieren zusammen beim
  * Tippen auf „Üben".
  * `opts`: { scope, targetId, stored, itemLabel, withVoice, elements,
- *           emptyHint, isRunning }.
+ *           emptyHint, isRunning, voices }.
+ * `voices`: die Stimmen des Songs (Loops-Programme) — nur diese stehen dann
+ * zur Auswahl. Leer/fehlend (Setlisten) ⇒ die vollständige Liste.
  * Löst auf zu: { action: 'start', steps, after, items } | { action: 'stop' }
  *              | null (Abbrechen/Escape/Klick daneben).
  */
-function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elements, emptyHint, isRunning }) {
+function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elements, emptyHint, isRunning, voices }) {
   return new Promise((resolve) => {
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const normalized = stored ? normalizeRoutine(stored) : null;
-    const draftSteps = normalized ? normalized.steps.map((s) => ({ ...s })) : [newRoutineDefaultStep(true, withVoice)];
+    // Hat der Song keine brauchbare Spur (z. B. ein Titel, der nur als REC
+    // vorliegt), bliebe die gefilterte Liste leer — dann lieber die
+    // vollständige zeigen als ein leeres Auswahlfeld.
+    const voiceList = voices && voices.length ? voices : null;
+    const draftSteps = normalized ? normalized.steps.map((s) => ({ ...s })) : [newRoutineDefaultStep(true, withVoice, voiceList)];
     let afterMode = normalized ? normalized.after : 'next';
     let orderWidget = null;
     let setAfterMode = null;
@@ -14382,9 +14413,12 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     // Liste wird dabei neu gebaut) und wird vom Zurücksetzen geleert.
     let storedItems = normalized?.items ? normalized.items.slice() : [];
 
+    // Mit bekannter Stimmenliste genau die Stimmen des Songs (also auch
+    // Bariton/Klavier, die es sonst nirgends zur Wahl gibt) — ohne sie die
+    // allgemeine Auswahl wie bisher.
     const voiceOptions = () => {
-      const opts = [];
-      opts.push(['FULL', 'Gesamt']);
+      if (voiceList) return voiceList.map((v) => [v, VOICE_LABEL[v] || v]);
+      const opts = [['FULL', 'Gesamt']];
       for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
       return opts;
     };
@@ -14397,7 +14431,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       onclick: async () => {
         await DB.metaDelete(routineKeyFor(scope, targetId)).catch(() => {});
         draftSteps.length = 0;
-        draftSteps.push(newRoutineDefaultStep(true, withVoice));
+        draftSteps.push(newRoutineDefaultStep(true, withVoice, voiceList));
         renderRows();
         if (setAfterMode) setAfterMode('next');
         // Erst nach setAfterMode('next'): das sichert die noch sichtbare
@@ -14407,7 +14441,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       },
     }, resetIcon());
     function updateResetVisibility() {
-      resetBtn.hidden = afterMode === 'next' && routineStepsAreDefault(draftSteps, withVoice);
+      resetBtn.hidden = afterMode === 'next' && routineStepsAreDefault(draftSteps, withVoice, voiceList);
     }
 
     const table = el('div', { class: 'routine-table', 'data-cols': withVoice ? '4' : '3' });
@@ -14436,12 +14470,16 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         if (withVoice) {
           voiceSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Stimme` });
           for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
-          // Zweistufiger Rückfall: eine gespeicherte Stimme, die diese Auswahl
-          // nicht kennt (z. B. Bariton aus einer Sicherung), darf nicht durch
-          // eine ebenso unbekannte Vorgabe ersetzt werden — `select.value` fiele
-          // sonst auf '' zurück und die Zelle stünde leer da.
-          const hasOption = (v) => [...voiceSel.options].some((o) => o.value === v);
-          if (!hasOption(step.voice)) step.voice = hasOption(settings.myVoices[0]) ? settings.myVoices[0] : 'FULL';
+          // Eine gespeicherte Stimme, die diese Auswahl nicht kennt (Bariton
+          // aus einer Sicherung; seit der Filterung auch jede Stimme, die
+          // dieser Song gar nicht hat), auf einen vorhandenen Wert ziehen —
+          // sonst fiele `select.value` auf '' zurück und die Zelle stünde
+          // leer da. Auch 'FULL' taugt dafür nicht mehr blind: ein Song ohne
+          // Gesamtmischung bietet es nicht an.
+          const optionValues = [...voiceSel.options].map((o) => o.value);
+          if (!optionValues.includes(step.voice)) {
+            step.voice = pickRoutineVoice([step.voice, settings.myVoices[0], 'FULL'], optionValues);
+          }
           voiceSel.value = step.voice;
           voiceSel.addEventListener('change', () => { step.voice = voiceSel.value; updateResetVisibility(); });
         }
@@ -14460,7 +14498,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       class: 'routine-addbtn', type: 'button', text: '+', 'aria-label': 'Schritt hinzufügen',
       onclick: () => {
         const last = draftSteps[draftSteps.length - 1];
-        draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice) : { ...last });
+        draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice, voiceList) : { ...last });
         renderRows();
         updateResetVisibility();
       },
@@ -14563,7 +14601,7 @@ async function openRoutineDialogForLoops() {
   const result = await showRoutineDialog({
     scope: 'loops', targetId: playerSong.id, stored, itemLabel: 'Abschnitt', withVoice: true, elements,
     emptyHint: songLoops.length ? null : 'Für diesen Song sind noch keine Abschnitte gespeichert.',
-    isRunning,
+    isRunning, voices: songVoiceChoices(playerSong),
   });
   if (!result) return;
   if (result.action === 'stop') { routineStop(); return; }
@@ -17545,6 +17583,36 @@ function runSelfTests() {
     const filtered = filterRoutineItems({ after: 'playlist', items: ['a', 'gone', 'b'] }, ['a', 'b']);
     if (filtered.items.join(',') !== 'a,b') {
       failed.push(`filterRoutineItems: verwaiste ID wurde nicht entfernt (${filtered.items.join(',')})`);
+    }
+  }
+
+  // Stimm-Auswahl im Choirgym-Dialog: sie zeigt genau die Stimmen des Songs
+  // (kanonische Reihenfolge, defekte Spuren raus) — und jeder vorbelegte Wert
+  // muss in dieser Auswahl auch wirklich vorkommen.
+  checks++;
+  {
+    const song = { tracks: [{ voice: 'BASS' }, { voice: 'FULL' }, { voice: 'BAR' }, { voice: 'SOP', broken: true }] };
+    const got = songVoiceChoices(song).join(',');
+    if (got !== 'FULL,BASS,BAR') {
+      failed.push(`songVoiceChoices: erwartet FULL,BASS,BAR — war ${got}`);
+    }
+    if (songVoiceChoices({ tracks: [] }).length) {
+      failed.push('songVoiceChoices: ein Song ohne Spuren darf keine Stimme anbieten');
+    }
+    const cases = [
+      [['BASS', 'FULL'], ['FULL', 'SOP', 'BASS'], 'BASS', 'vorhandener Wunsch gewinnt'],
+      [['BASS', 'FULL'], ['FULL', 'SOP'], 'FULL', 'fehlender Wunsch fällt auf FULL'],
+      [['BASS', 'FULL'], ['SOP'], 'SOP', 'ohne FULL die erste vorhandene Stimme'],
+      [['BASS', 'FULL'], null, 'BASS', 'ohne Stimmenliste bleibt der Wunsch stehen'],
+      [[null, 'FULL'], ['SOP', 'ALT'], 'SOP', 'leere Wünsche werden übersprungen'],
+    ];
+    for (const [wishes, voices, want, why] of cases) {
+      const picked = pickRoutineVoice(wishes, voices);
+      if (picked !== want) failed.push(`pickRoutineVoice (${why}): erwartet ${want}, war ${picked}`);
+      // Die eigentliche Zusage: nie ein Wert außerhalb der Auswahl.
+      if (voices && voices.length && !voices.includes(picked)) {
+        failed.push(`pickRoutineVoice (${why}): ${picked} steht gar nicht zur Auswahl`);
+      }
     }
   }
 
