@@ -62,7 +62,7 @@ const VOICE_LABEL = {
   TEN:   'Tenor',
   BASS:  'Bass',
   BAR:   'Bariton',
-  LEAD:  'Solo / Lead',
+  LEAD:  'Solo',
   PIANO: 'Klavier',
   OTHER: 'Sonstige',
 };
@@ -14288,7 +14288,6 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
 
     const voiceOptions = () => {
       const opts = [];
-      if (settings.myVoices.length) opts.push(['MINE', 'Meine Stimme']);
       opts.push(['FULL', 'Gesamt']);
       for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
       return opts;
