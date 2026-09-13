@@ -2566,7 +2566,7 @@ let settingsAccordionUid = 0;
  * aktualisiert.
  */
 function initSettingsAccordion() {
-  for (const card of $$('#view-settings > .card')) {
+  for (const card of $$('#view-settings .card')) {
     if (card.dataset.accordionReady) continue;
     card.dataset.accordionReady = '1';
 
