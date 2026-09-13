@@ -5206,7 +5206,7 @@ function renderNormalizationProgress() {
   const pauseReason = pending && !p.current ? normalizationPauseReason() : null;
   $('#normalization-progress-current').textContent = p.current
     || (pauseReason ? t(`settings.normalization.paused.${pauseReason}`) : '') || p.reason || '';
-  $('#normalization-progress-summary').textContent = t('settings.normalization.counts')
+  $('#normalization-details-summary').textContent = t('settings.normalization.counts')
     .replace('{analyzed}', p.analyzed).replace('{total}', p.total).replace('{failed}', p.failed);
   $('#normalization-retry').hidden = true;
   renderNormalizationCrashGuard();
