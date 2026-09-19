@@ -2357,7 +2357,10 @@ $('#btn-manage-storage').addEventListener('click', async () => {
   const open = host.hidden;
   host.hidden = !open;
   $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
-  $('#btn-manage-storage').textContent = open ? 'Einzelne Songs verwalten ausblenden' : 'Einzelne Songs verwalten';
+  // Der Knopf trägt data-i18n="settings.data.manageStorageBtn"; wird er hier
+  // umbeschriftet, muss auch der zweite Zustand aus STRINGS kommen, sonst
+  // steht in EN/PL nach dem ersten Klick deutscher Text.
+  $('#btn-manage-storage').textContent = t(open ? 'settings.data.manageStorageBtnHide' : 'settings.data.manageStorageBtn');
   await renderStorageManager();
 });
 
