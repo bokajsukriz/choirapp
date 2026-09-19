@@ -268,6 +268,8 @@ export const STRINGS = {
     'onb.skip': 'Überspringen',
     'onb.back': 'Zurück',
     'onb.next': 'Weiter',
+    'onb.start': 'Los geht’s',
+    'onb.dot': 'Schritt {n} von {total}',
 
     'onb.slide1.title': 'Auf den Home&#8209;Bildschirm legen',
     'onb.slide1.text': 'So startet die App wie jede andere: eigenes Symbol, kein Browserfenster, volle Bildschirmhöhe. Vor allem aber behält das System die Aufnahmen länger, wenn die App installiert ist.',
@@ -645,6 +647,8 @@ export const STRINGS = {
     'onb.skip': 'Skip',
     'onb.back': 'Back',
     'onb.next': 'Next',
+    'onb.start': 'Let’s go',
+    'onb.dot': 'Step {n} of {total}',
 
     'onb.slide1.title': 'Add it to your home screen',
     'onb.slide1.text': 'This makes the app start like any other: its own icon, no browser window, full screen height. Most importantly, the system keeps recordings around longer once the app is installed.',
@@ -1022,6 +1026,8 @@ export const STRINGS = {
     'onb.skip': 'Pomiń',
     'onb.back': 'Wstecz',
     'onb.next': 'Dalej',
+    'onb.start': 'Zaczynamy',
+    'onb.dot': 'Krok {n} z {total}',
 
     'onb.slide1.title': 'Dodaj do ekranu głównego',
     'onb.slide1.text': 'Dzięki temu aplikacja startuje jak każda inna: własna ikona, bez okna przeglądarki, pełny ekran. Przede wszystkim system dłużej przechowuje nagrania, gdy aplikacja jest zainstalowana.',

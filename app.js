@@ -20353,13 +20353,16 @@ function renderOnbDots() {
     onbDots.append(el('button', {
       class: 'onb-dot', type: 'button',
       'aria-current': i === onbIndex ? 'true' : 'false',
-      'aria-label': `Schritt ${i + 1} von ${ONB_SLIDES}`,
+      'aria-label': t('onb.dot').replace('{n}', i + 1).replace('{total}', ONB_SLIDES),
       onclick: () => onbGoTo(i),
     }));
   }
   onbPrev.hidden = onbIndex === 0;
   onbSkip.hidden = onbIndex === ONB_SLIDES - 1;
-  onbNext.textContent = onbIndex === ONB_SLIDES - 1 ? 'Los geht’s' : 'Weiter';
+  // Der Knopf trägt zwar data-i18n="onb.next", wird hier aber je nach Schritt
+  // neu beschriftet — also muss der Text auch hier durch t() laufen, sonst
+  // steht in EN/PL deutsch „Weiter"/„Los geht's".
+  onbNext.textContent = t(onbIndex === ONB_SLIDES - 1 ? 'onb.start' : 'onb.next');
 }
 
 /**
