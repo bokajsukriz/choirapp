@@ -308,17 +308,23 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Gruppierte oberste Ebene der Einstellungen: mehrere Karten teilen sich eine
    Fläche mit Trennlinien statt je einer eigenen Box, darüber ein schmales
    Gruppen-Label. Das Auf-/Zuklappen je Karte (initSettingsAccordion) bleibt
-   unverändert — hier ändert sich nur die geschlossene Optik. */
+   unverändert — hier ändert sich nur die geschlossene Optik.
+
+   Wichtig: Die gemeinsame Fläche ist .settings-group-box, nicht
+   .settings-group. Das Label steht als Geschwister DAVOR und bleibt damit
+   außerhalb der Box — lag es (wie zuvor) mit in der Fläche, schnitt deren
+   abgerundete Oberkante die Versalien oben an und das Label klebte ohne
+   Innenabstand an der Rahmenlinie. */
 .settings-group { margin-bottom: 20px; }
 .settings-group-label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 500;
   color: var(--accent-foreground);
-  margin: 0 4px 8px;
+  margin: 0 6px 8px;
 }
-#view-settings .settings-group {
+#view-settings .settings-group-box {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -3077,7 +3083,7 @@ input[type="checkbox"] {
           <span>Original leise mitlaufen</span>
           <input type="range" id="rec-backing-volume" min="0" max="60" step="5" value="20" aria-label="Lautstärke des Originaltracks">
         </div>
-        <p class="small muted" id="rec-backing-suspended-hint" hidden style="margin:2px 0 0">Während eines Übe-Programms aus.</p>
+        <p class="small muted" id="rec-backing-suspended-hint" hidden style="margin:2px 0 0">Im Choirgym aus.</p>
         <div class="rec-backing-fine" id="rec-backing-fine" hidden>
           <div class="rec-backing-row">
             <span>Versatz</span>
@@ -3624,6 +3630,7 @@ input[type="checkbox"] {
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.makeItYours">Make it yours</p>
+      <div class="settings-group-box">
 
       <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span data-i18n="settings.voice.title">Stimme</span></h2>
@@ -3693,10 +3700,12 @@ input[type="checkbox"] {
         </p>
         <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
       </div>
+      </div>
     </div>
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.practice">Beim Üben</p>
+      <div class="settings-group-box">
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
@@ -3731,7 +3740,7 @@ input[type="checkbox"] {
         <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry" hidden>Erneut versuchen</button>
       </div>
       <details id="normalization-details" class="small" style="margin-top:8px" hidden>
-        <summary id="normalization-details-summary" data-i18n="settings.normalization.details.title">Analyseergebnisse je Datei</summary>
+        <summary id="normalization-details-summary">Analyseergebnisse je Datei</summary>
         <div id="normalization-details-filter" class="filterbar" style="margin-top:8px"></div>
         <ul id="normalization-details-list" style="list-style:none;padding:0;margin:8px 0 0"></ul>
         <button id="normalization-details-more" class="btn btn--ghost" type="button" hidden></button>
@@ -3928,7 +3937,7 @@ input[type="checkbox"] {
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
-        Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
+        Acht kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
         sich nach der eigenen Stimme richten und über die Systemuhr synchron
         laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
       </p>
@@ -3936,10 +3945,12 @@ input[type="checkbox"] {
         Lichtshow öffnen
       </button>
     </div>
+      </div>
     </div>
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.appData">App &amp; Daten</p>
+      <div class="settings-group-box">
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6Z"/></svg><span data-i18n="settings.data.title">Daten &amp; Sicherung</span></h2>
@@ -4088,7 +4099,7 @@ input[type="checkbox"] {
       <div class="stack small muted">
         <div class="row">
           <span data-i18n="settings.about.version">Version</span>
-          <span><span id="app-version">–</span> · <button type="button" id="btn-check-update" class="link-btn" data-i18n="settings.about.checkUpdate">prüfen</button> · <button type="button" id="btn-force-update" class="link-btn" data-i18n="settings.about.forceUpdate">sofort aktualisieren</button></span>
+          <span><span id="app-version">–</span> · <button type="button" id="btn-force-update" class="link-btn" data-i18n="settings.about.forceUpdate">Aktualisieren</button></span>
         </div>
         <div class="row"><span data-i18n="settings.about.offline">Offline verfügbar</span><span id="offline-state">–</span></div>
         <p style="margin-left:12px" data-i18n="settings.about.privacy">
@@ -4132,18 +4143,13 @@ input[type="checkbox"] {
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.about.debugLogHint">
-        Zeichnet technische Abläufe auf (Zeitstempel, Zustände, Zahlen) — nie
-        Songtitel, Dateinamen oder Namen. Sinnvoll direkt vor dem Nachstellen
-        eines Problems (z. B. Import, dann Bildschirm sperren); danach hier
-        exportieren und beim Melden mitschicken.
-      </p>
       <div id="debuglog-actions" style="display:flex; gap:8px; margin-top:12px">
         <button class="btn" id="btn-debuglog-export" type="button" style="flex:1" data-i18n="settings.about.exportLogBtn">Log exportieren</button>
         <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
     </div>
+      </div>
     </div>
 
   </section>
