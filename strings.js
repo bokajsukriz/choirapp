@@ -31,7 +31,12 @@ export const STRINGS = {
     'routine.ariaLabel': 'Choirgym',
 
     'settings.importBtn': 'Songs importieren',
-    'settings.personal.title': 'Make it yours!',
+    'settings.group.makeItYours': 'Make it yours',
+    'settings.group.practice': 'Beim Üben',
+    'settings.group.appData': 'App & Daten',
+    'settings.voice.title': 'Stimme',
+    'settings.player.title': 'Player',
+    'settings.appearance.title': 'Aussehen und Sprache',
     'settings.personal.behaviorTitle': 'Verhalten',
     'settings.personal.displayTitle': 'Anzeige',
     'settings.personal.tabHint': 'Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.',
@@ -53,7 +58,6 @@ export const STRINGS = {
     'songsearch.dialogOk': 'Passt',
     'songsearch.dialogCancel': 'Dann nicht',
 
-    'settings.voices.title': 'Meine Stimmen',
     'settings.voices.hint': 'Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
 
     'settings.lightshow.title': 'Lichtshow',
@@ -407,7 +411,12 @@ export const STRINGS = {
     'routine.ariaLabel': 'Choirgym',
 
     'settings.importBtn': 'Import songs',
-    'settings.personal.title': 'Make it yours!',
+    'settings.group.makeItYours': 'Make it yours',
+    'settings.group.practice': 'While practicing',
+    'settings.group.appData': 'App & data',
+    'settings.voice.title': 'Voice',
+    'settings.player.title': 'Player',
+    'settings.appearance.title': 'Appearance & language',
     'settings.personal.behaviorTitle': 'Behavior',
     'settings.personal.displayTitle': 'Display',
     'settings.personal.tabHint': 'Tab that shows first when you open a song.',
@@ -429,7 +438,6 @@ export const STRINGS = {
     'songsearch.dialogOk': 'Sounds good',
     'songsearch.dialogCancel': 'Not now',
 
-    'settings.voices.title': 'My voices',
     'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
 
     'settings.lightshow.title': 'Light show',
@@ -783,7 +791,12 @@ export const STRINGS = {
     'routine.ariaLabel': 'Choirgym',
 
     'settings.importBtn': 'Importuj utwory',
-    'settings.personal.title': 'Make it yours!',
+    'settings.group.makeItYours': 'Make it yours',
+    'settings.group.practice': 'Podczas ćwiczeń',
+    'settings.group.appData': 'Aplikacja i dane',
+    'settings.voice.title': 'Głos',
+    'settings.player.title': 'Odtwarzacz',
+    'settings.appearance.title': 'Wygląd i język',
     'settings.personal.behaviorTitle': 'Zachowanie',
     'settings.personal.displayTitle': 'Wygląd',
     'settings.personal.tabHint': 'Zakładka widoczna jako pierwsza po otwarciu utworu.',
@@ -805,7 +818,6 @@ export const STRINGS = {
     'songsearch.dialogOk': 'Pasuje',
     'songsearch.dialogCancel': 'Nie teraz',
 
-    'settings.voices.title': 'Moje głosy',
     'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
 
     'settings.lightshow.title': 'Pokaz świateł',

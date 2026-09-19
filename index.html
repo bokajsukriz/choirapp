@@ -305,6 +305,53 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .card-chevron svg { width: 16px; height: 16px; }
 .card-toggle[aria-expanded="true"] .card-chevron { transform: rotate(180deg); }
 
+/* Gruppierte oberste Ebene der Einstellungen: mehrere Karten teilen sich eine
+   Fläche mit Trennlinien statt je einer eigenen Box, darüber ein schmales
+   Gruppen-Label. Das Auf-/Zuklappen je Karte (initSettingsAccordion) bleibt
+   unverändert — hier ändert sich nur die geschlossene Optik. */
+.settings-group { margin-bottom: 20px; }
+.settings-group-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: var(--accent-foreground);
+  margin: 0 4px 8px;
+}
+#view-settings .settings-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+#view-settings .settings-group .card {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  margin-bottom: 0;
+}
+#view-settings .settings-group .card:last-child { border-bottom: 0; }
+#view-settings .settings-group .card h2 {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.98rem;
+  font-weight: 400;
+  color: var(--text);
+}
+/* Icon in farbigem Badge statt freistehend — nur im Umschalter der
+   Einstellungs-Zeile, nicht bei den (viel kleineren) Icons in Buttons
+   innerhalb einer aufgeklappten Karte, die dieselbe Klasse teilen. */
+#view-settings .settings-group .card-toggle > .card-icon {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: rgba(var(--accent-rgb), .14);
+  color: var(--accent-foreground);
+  border-radius: 11px;
+}
+
 .muted { color: var(--muted); }
 .small { font-size: 0.86rem; }
 .stack > * + * { margin-top: 10px; }
@@ -3575,123 +3622,81 @@ input[type="checkbox"] {
          Einstieg mehr hier — das doppelte Angebot verwirrte mehr, als es half. -->
     <input class="visually-hidden" id="rec-import-input" type="file" accept=".mp3,audio/mpeg" multiple>
 
-    <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
-      <div class="stack">
-        <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
-          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
-          Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone
-          und auf Android geht.
+    <div class="settings-group">
+      <p class="settings-group-label" data-i18n="settings.group.makeItYours">Make it yours</p>
+
+      <div class="card">
+        <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span data-i18n="settings.voice.title">Stimme</span></h2>
+        <p class="small muted" style="margin-top:0" data-i18n="settings.voices.hint">
+          Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
+          Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
+          Stimme der Player zuerst zeigt.
         </p>
-        <button class="btn btn--block" id="btn-help-import" type="button" data-i18n="settings.help.howToBtn">
-          Wie bekomme ich Songs in die App?
-        </button>
-        <button class="btn btn--block" id="btn-setup-again" type="button" data-i18n="settings.help.replayOnboarding">
-          Einführung noch einmal ansehen
-        </button>
+        <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
       </div>
 
-      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
-              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
-        Hören im Hintergrund klappt nicht?
-      </button>
-      <div id="bg-help" hidden style="margin-top:12px">
-        <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
-          Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
-          nicht an dieser App: Android entscheidet, ob eine Web-App im
-          Hintergrund weiterlaufen darf, und das steuern zwei
-          Systemeinstellungen — beide lassen sich nur von Hand ändern, keine
-          Website darf sie selbst setzen.
+      <div class="card">
+        <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.5 8.5v7l6-3.5-6-3.5Z"/></svg><span data-i18n="settings.player.title">Player</span></h2>
+
+        <p class="section-title" style="margin-top:0" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
+        <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.tabHint">
+          Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.
         </p>
-        <ol class="steps small">
-          <li data-i18n-html="settings.screen.step1">Android-Einstellungen → <strong>Apps</strong> → deinen Browser
-            öffnen (z. B. <strong>Vanadium</strong> oder
-            <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm
-            hinzufügen“ verwendet hast).</li>
-          <li data-i18n-html="settings.screen.step2"><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
-            wählen. Sonst beendet Android den Browser im Hintergrund, sobald
-            der Bildschirm aus ist.</li>
-          <li data-i18n-html="settings.screen.step3"><strong>Benachrichtigungen</strong> → erlauben. Android
-            verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf
-            keine Web-App im Hintergrund weiterspielen.</li>
-        </ol>
-        <p class="small muted" style="margin:10px 0 0" data-i18n-html="settings.screen.grapheneNote">
-          Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
-          Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
-          eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
-          Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
-          „BVG“-Symbol.
+        <div class="player-tabs player-tabs--mini" id="default-tab-picker" role="group" aria-label="Standard-Reiter im Player" data-i18n-aria="settings.personal.tabGroupAria">
+          <button class="player-tab" type="button" data-tab="loops" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span data-i18n="tabs.loops">Loops</span>
+          </button>
+          <button class="player-tab" type="button" data-tab="rec" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/><path d="M9 22h6"/></svg>
+            <span data-i18n="tabs.rec">REC</span>
+          </button>
+          <button class="player-tab" type="button" data-tab="lyrics" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
+            <span data-i18n="tabs.lyrics">Lyrics</span>
+          </button>
+          <button class="player-tab" type="button" data-tab="notes" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            <span data-i18n="tabs.notes">Notes</span>
+          </button>
+        </div>
+
+        <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
+        <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
+          Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
         </p>
-        <p class="small" id="notif-state" style="margin:14px 0 0"></p>
-        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px" data-i18n="settings.screen.notifyBtn">
-          Benachrichtigungen für diese Seite erlauben
-        </button>
+        <label class="select-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+          <select id="song-search-service-picker" aria-label="Suchdienst"></select>
+        </label>
+        <p class="small muted search-privacy-hint" style="margin:6px 0 0">
+          <svg class="search-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+          <span data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</span>
+        </p>
+      </div>
+
+      <div class="card">
+        <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg><span data-i18n="settings.appearance.title">Aussehen und Sprache</span></h2>
+
+        <p class="section-title" style="margin-top:0" data-i18n="settings.personal.accent">Akzentfarbe</p>
+        <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
+
+        <p class="section-title" data-i18n="settings.personal.language">Sprache</p>
+        <label class="select-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/></svg>
+          <select id="language-picker" aria-label="Sprache"></select>
+        </label>
+
+        <p class="section-title" data-i18n="settings.personal.presentTitle">Textanzeige für andere</p>
+        <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.presentHint">
+          Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).
+        </p>
+        <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
       </div>
     </div>
 
-    <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span data-i18n="settings.personal.title">Make it yours!</span></h2>
-
-      <p class="section-title section-divider" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.tabHint">
-        Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.
-      </p>
-      <div class="player-tabs player-tabs--mini" id="default-tab-picker" role="group" aria-label="Standard-Reiter im Player" data-i18n-aria="settings.personal.tabGroupAria">
-        <button class="player-tab" type="button" data-tab="loops" aria-pressed="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          <span data-i18n="tabs.loops">Loops</span>
-        </button>
-        <button class="player-tab" type="button" data-tab="rec" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/><path d="M9 22h6"/></svg>
-          <span data-i18n="tabs.rec">REC</span>
-        </button>
-        <button class="player-tab" type="button" data-tab="lyrics" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
-          <span data-i18n="tabs.lyrics">Lyrics</span>
-        </button>
-        <button class="player-tab" type="button" data-tab="notes" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          <span data-i18n="tabs.notes">Notes</span>
-        </button>
-      </div>
-
-      <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
-        Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
-      </p>
-      <label class="select-field">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-        <select id="song-search-service-picker" aria-label="Suchdienst"></select>
-      </label>
-      <p class="small muted search-privacy-hint" style="margin:6px 0 0">
-        <svg class="search-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-        <span data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</span>
-      </p>
-
-      <p class="section-title section-divider section-divider--spacious" data-i18n="settings.personal.displayTitle">Anzeige</p>
-      <p class="section-title" style="margin-top:0" data-i18n="settings.personal.accent">Akzentfarbe</p>
-      <div class="accent-picker" id="accent-picker" role="group" aria-label="Akzentfarbe"></div>
-
-      <p class="section-title" data-i18n="settings.personal.language">Sprache</p>
-      <label class="select-field">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/></svg>
-        <select id="language-picker" aria-label="Sprache"></select>
-      </label>
-
-      <p class="section-title" data-i18n="settings.personal.presentTitle">Textanzeige für andere</p>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.presentHint">
-        Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).
-      </p>
-      <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
-
-      <p class="section-title" data-i18n="settings.voices.title">Meine Stimmen</p>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.voices.hint">
-        Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
-        Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
-        Stimme der Player zuerst zeigt.
-      </p>
-      <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
-    </div>
+    <div class="settings-group">
+      <p class="settings-group-label" data-i18n="settings.group.practice">Beim Üben</p>
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
@@ -3921,6 +3926,22 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
+      <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
+        Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
+        sich nach der eigenen Stimme richten und über die Systemuhr synchron
+        laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
+      </p>
+      <button class="btn btn--primary btn--block" id="btn-open-lightshow" type="button" data-i18n="settings.lightshow.openBtn">
+        Lichtshow öffnen
+      </button>
+    </div>
+    </div>
+
+    <div class="settings-group">
+      <p class="settings-group-label" data-i18n="settings.group.appData">App &amp; Daten</p>
+
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6Z"/></svg><span data-i18n="settings.data.title">Daten &amp; Sicherung</span></h2>
 
       <p class="section-title" style="margin-top:0" data-i18n="settings.data.backupTitle">Sicherung</p>
@@ -4009,15 +4030,57 @@ input[type="checkbox"] {
     </div>
 
     <div class="card">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
-        Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
-        sich nach der eigenen Stimme richten und über die Systemuhr synchron
-        laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
-      </p>
-      <button class="btn btn--primary btn--block" id="btn-open-lightshow" type="button" data-i18n="settings.lightshow.openBtn">
-        Lichtshow öffnen
+      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
+      <div class="stack">
+        <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
+          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
+          Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone
+          und auf Android geht.
+        </p>
+        <button class="btn btn--block" id="btn-help-import" type="button" data-i18n="settings.help.howToBtn">
+          Wie bekomme ich Songs in die App?
+        </button>
+        <button class="btn btn--block" id="btn-setup-again" type="button" data-i18n="settings.help.replayOnboarding">
+          Einführung noch einmal ansehen
+        </button>
+      </div>
+
+      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
+              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
+        Hören im Hintergrund klappt nicht?
       </button>
+      <div id="bg-help" hidden style="margin-top:12px">
+        <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
+          Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
+          nicht an dieser App: Android entscheidet, ob eine Web-App im
+          Hintergrund weiterlaufen darf, und das steuern zwei
+          Systemeinstellungen — beide lassen sich nur von Hand ändern, keine
+          Website darf sie selbst setzen.
+        </p>
+        <ol class="steps small">
+          <li data-i18n-html="settings.screen.step1">Android-Einstellungen → <strong>Apps</strong> → deinen Browser
+            öffnen (z. B. <strong>Vanadium</strong> oder
+            <strong>Chrome</strong> — die App, in der du „Zum Startbildschirm
+            hinzufügen“ verwendet hast).</li>
+          <li data-i18n-html="settings.screen.step2"><strong>Akku</strong> → <strong>Nicht eingeschränkt</strong>
+            wählen. Sonst beendet Android den Browser im Hintergrund, sobald
+            der Bildschirm aus ist.</li>
+          <li data-i18n-html="settings.screen.step3"><strong>Benachrichtigungen</strong> → erlauben. Android
+            verlangt dafür eine sichtbare Benachrichtigung — ohne sie darf
+            keine Web-App im Hintergrund weiterspielen.</li>
+        </ol>
+        <p class="small muted" style="margin:10px 0 0" data-i18n-html="settings.screen.grapheneNote">
+          Ohne Google-Play-Dienste — etwa auf GrapheneOS — legt „Zum
+          Startbildschirm hinzufügen“ meist nur eine Verknüpfung an, kein
+          eigenes App-Symbol mit eigenen Berechtigungen. Die beiden
+          Einstellungen betreffen dann den Browser selbst, nicht ein eigenes
+          „BVG“-Symbol.
+        </p>
+        <p class="small" id="notif-state" style="margin:14px 0 0"></p>
+        <button class="btn btn--block" id="btn-notify-request" type="button" style="margin-top:8px" data-i18n="settings.screen.notifyBtn">
+          Benachrichtigungen für diese Seite erlauben
+        </button>
+      </div>
     </div>
 
     <div class="card">
@@ -4080,6 +4143,7 @@ input[type="checkbox"] {
         <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
+    </div>
     </div>
 
   </section>
