@@ -3731,7 +3731,7 @@ input[type="checkbox"] {
         <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry" hidden>Erneut versuchen</button>
       </div>
       <details id="normalization-details" class="small" style="margin-top:8px" hidden>
-        <summary id="normalization-details-summary" data-i18n="settings.normalization.details.title">Analyseergebnisse je Datei</summary>
+        <summary id="normalization-details-summary">Analyseergebnisse je Datei</summary>
         <div id="normalization-details-filter" class="filterbar" style="margin-top:8px"></div>
         <ul id="normalization-details-list" style="list-style:none;padding:0;margin:8px 0 0"></ul>
         <button id="normalization-details-more" class="btn btn--ghost" type="button" hidden></button>
@@ -4088,7 +4088,7 @@ input[type="checkbox"] {
       <div class="stack small muted">
         <div class="row">
           <span data-i18n="settings.about.version">Version</span>
-          <span><span id="app-version">–</span> · <button type="button" id="btn-check-update" class="link-btn" data-i18n="settings.about.checkUpdate">prüfen</button> · <button type="button" id="btn-force-update" class="link-btn" data-i18n="settings.about.forceUpdate">sofort aktualisieren</button></span>
+          <span><span id="app-version">–</span> · <button type="button" id="btn-force-update" class="link-btn" data-i18n="settings.about.forceUpdate">Aktualisieren</button></span>
         </div>
         <div class="row"><span data-i18n="settings.about.offline">Offline verfügbar</span><span id="offline-state">–</span></div>
         <p style="margin-left:12px" data-i18n="settings.about.privacy">
@@ -4132,12 +4132,6 @@ input[type="checkbox"] {
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" style="margin:8px 0 0" data-i18n="settings.about.debugLogHint">
-        Zeichnet technische Abläufe auf (Zeitstempel, Zustände, Zahlen) — nie
-        Songtitel, Dateinamen oder Namen. Sinnvoll direkt vor dem Nachstellen
-        eines Problems (z. B. Import, dann Bildschirm sperren); danach hier
-        exportieren und beim Melden mitschicken.
-      </p>
       <div id="debuglog-actions" style="display:flex; gap:8px; margin-top:12px">
         <button class="btn" id="btn-debuglog-export" type="button" style="flex:1" data-i18n="settings.about.exportLogBtn">Log exportieren</button>
         <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
