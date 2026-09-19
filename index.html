@@ -308,17 +308,23 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Gruppierte oberste Ebene der Einstellungen: mehrere Karten teilen sich eine
    Fläche mit Trennlinien statt je einer eigenen Box, darüber ein schmales
    Gruppen-Label. Das Auf-/Zuklappen je Karte (initSettingsAccordion) bleibt
-   unverändert — hier ändert sich nur die geschlossene Optik. */
+   unverändert — hier ändert sich nur die geschlossene Optik.
+
+   Wichtig: Die gemeinsame Fläche ist .settings-group-box, nicht
+   .settings-group. Das Label steht als Geschwister DAVOR und bleibt damit
+   außerhalb der Box — lag es (wie zuvor) mit in der Fläche, schnitt deren
+   abgerundete Oberkante die Versalien oben an und das Label klebte ohne
+   Innenabstand an der Rahmenlinie. */
 .settings-group { margin-bottom: 20px; }
 .settings-group-label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 500;
   color: var(--accent-foreground);
-  margin: 0 4px 8px;
+  margin: 0 6px 8px;
 }
-#view-settings .settings-group {
+#view-settings .settings-group-box {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -3624,6 +3630,7 @@ input[type="checkbox"] {
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.makeItYours">Make it yours</p>
+      <div class="settings-group-box">
 
       <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span data-i18n="settings.voice.title">Stimme</span></h2>
@@ -3693,10 +3700,12 @@ input[type="checkbox"] {
         </p>
         <div class="present-theme-picker" id="present-theme-picker" role="group" aria-label="Farbe der Textanzeige"></div>
       </div>
+      </div>
     </div>
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.practice">Beim Üben</p>
+      <div class="settings-group-box">
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
@@ -3936,10 +3945,12 @@ input[type="checkbox"] {
         Lichtshow öffnen
       </button>
     </div>
+      </div>
     </div>
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.appData">App &amp; Daten</p>
+      <div class="settings-group-box">
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6Z"/></svg><span data-i18n="settings.data.title">Daten &amp; Sicherung</span></h2>
@@ -4138,6 +4149,7 @@ input[type="checkbox"] {
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
     </div>
+      </div>
     </div>
 
   </section>
