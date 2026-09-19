@@ -438,7 +438,7 @@ export const STRINGS = {
     'songsearch.dialogOk': 'Sounds good',
     'songsearch.dialogCancel': 'Not now',
 
-    'settings.voices.hint': 'Multiple selection possible, for anyone switching between voices. Determines which tracks are pre-selected on import and which voice the player shows first.',
+    'settings.voices.hint': 'Determines which tracks are pre-selected on import and which voice the player shows first.',
 
     'settings.lightshow.title': 'Light show',
     'settings.lightshow.hint': 'Eight on-stage moments for the concert: full-screen colours stage each voice as a separate block and stay in sync via the system clock.',
@@ -818,7 +818,7 @@ export const STRINGS = {
     'songsearch.dialogOk': 'Pasuje',
     'songsearch.dialogCancel': 'Nie teraz',
 
-    'settings.voices.hint': 'Można wybrać kilka — dla osób śpiewających różnymi głosami. Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
+    'settings.voices.hint': 'Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
 
     'settings.lightshow.title': 'Pokaz świateł',
     'settings.lightshow.hint': 'Osiem scenicznych pokazów na koncert: pełnoekranowe kolory traktują każdy głos jako osobny blok i działają synchronicznie według zegara systemowego.',

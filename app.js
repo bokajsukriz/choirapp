@@ -20285,28 +20285,6 @@ function renderOnbLanguage() {
   }
 }
 
-/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
-function renderOnbVoice() {
-  const host = $('#onb-voice');
-  host.textContent = '';
-  for (const voice of MY_VOICE_CHOICES) {
-    const btn = el('button', {
-      class: 'chip chip--voice', type: 'button',
-      'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
-      onclick: async () => {
-        await toggleMyVoice(voice);
-        // Wer hier zum ersten Mal wählt, will beim Import genau diese
-        // Stimme(n) — aber nur, solange mindestens eine gewählt ist.
-        if (settings.myVoices.length) await saveSettings({ defaultImportScope: 'mine' });
-        renderOnbVoice();
-        renderVoicePicker();
-      },
-    });
-    btn.style.setProperty('--voice-c', VOICE_COLOR[voice] || VOICE_COLOR.OTHER);
-    host.append(btn);
-  }
-}
 
 /** Schritt 3: Stand der dauerhaften Speicherung anzeigen. */
 async function renderOnbPersist() {
