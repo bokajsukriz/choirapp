@@ -431,7 +431,7 @@ let dlgResolve  = null;
  * Der gewählte Wert steht nach dem Auflösen über dialogSelectValue() bereit.
  * @returns {Promise<boolean>}
  */
-function confirmDialog({ title, text, okLabel = 'OK', cancelLabel = 'Abbrechen', danger = false,
+function confirmDialog({ title, text, okLabel = t('common.ok'), cancelLabel = t('common.cancel'), danger = false,
                           selectOptions = null, selectValue = null, selectLabel = '', selectText = null }) {
   // Ein noch offener vorheriger Aufruf würde sonst für immer hängen, sobald
   // dieser Aufruf dlgResolve gleich überschreibt — lieber sauber mit
@@ -486,7 +486,7 @@ function closeDialog(result) {
  * @returns {Promise<string|null>} null, wenn abgebrochen wurde
  */
 function promptDialog({ title, text = '', value = '', placeholder = '',
-                        okLabel = 'Speichern', multiline = false }) {
+                        okLabel = t('common.save'), multiline = false }) {
   return new Promise((resolve) => {
     // Mehrzeilig für eingefügte Programme: ein Liedtitel je Zeile.
     const input = multiline
@@ -9148,7 +9148,7 @@ function setPlayIcon(playing) {
   if ($('#player-foot').classList.contains('player-foot--unavailable')) return;
   $('#icon-play').style.display = playing ? 'none' : '';
   $('#icon-pause').style.display = playing ? '' : 'none';
-  $('#btn-play').setAttribute('aria-label', playing ? 'Pause' : 'Abspielen');
+  $('#btn-play').setAttribute('aria-label', t(playing ? 'player.pauseAria' : 'player.playAria'));
 }
 
 /**
@@ -9548,7 +9548,8 @@ async function renderQueue() {
 
   const total = playQueue.items.length;
   const pos = playQueue.index + 1;
-  $('#queue-title-text').textContent = `Setliste: ${playQueue.name} · ${pos} von ${total}`;
+  $('#queue-title-text').textContent = t('player.queueLine')
+    .replace('{name}', playQueue.name).replace('{pos}', pos).replace('{total}', total);
   $('#btn-queue-edit').hidden = !playQueue.id;
 
   const songs = await DB.metaByType('song').catch(() => []);
@@ -9732,7 +9733,7 @@ function closePlayer() {
   // audioReset() hat die Blob-URL einer laufenden Vorschau schon freigegeben.
   audioPreview = null;
   playerSong = null;
-  $('#player-title').textContent = 'Kein Song ausgewählt';
+  $('#player-title').textContent = t('player.emptyTitle');
   $('#btn-song-search').hidden = true;
   $('#btn-song-search').disabled = true;
   $('#player-empty').hidden = false;
@@ -9921,7 +9922,7 @@ function renderRepeatMode() {
   const song = settings.repeatMode === 'song';
   const btn = $('#btn-repeat');
   btn.setAttribute('aria-pressed', song ? 'true' : 'false');
-  btn.setAttribute('aria-label', song ? 'Am Ende: Wiederholen' : 'Am Ende: Nächstes Lied');
+  btn.setAttribute('aria-label', t(song ? 'player.repeatSameAria' : 'player.repeatNextAria'));
 }
 
 $('#btn-shuffle').addEventListener('click', async () => {
@@ -10045,17 +10046,20 @@ function updateLoopUI() {
   $('#btn-loop-save').disabled = !r;
   $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
   $('#btn-loop-toggle').setAttribute('aria-checked', loopOn ? 'true' : 'false');
-  $('#btn-loop-toggle').setAttribute('aria-label', loopOn ? 'Loop ausschalten' : 'Loop einschalten');
+  $('#btn-loop-toggle').setAttribute('aria-label', t(loopOn ? 'player.loopOffAria' : 'player.loopOnAria'));
   $('#btn-loop-a').setAttribute('aria-pressed', loopA !== null ? 'true' : 'false');
   $('#btn-loop-b').setAttribute('aria-pressed', loopB !== null ? 'true' : 'false');
 
   const info = $('#loop-info');
   if (!r) {
-    info.textContent = loopA === null && loopB === null
-      ? 'Setze A und B, um eine Stelle in Schleife zu üben.'
-      : 'Setze auch den zweiten Punkt.';
+    info.textContent = t(loopA === null && loopB === null
+      ? 'player.loopHintBoth'
+      : 'player.loopHintSecond');
   } else {
-    info.textContent = `Abschnitt ${fmtTime(r.start)} – ${fmtTime(r.end)} (${(r.end - r.start).toFixed(1).replace('.', ',')} s)`;
+    info.textContent = t('player.loopRange')
+      .replace('{start}', fmtTime(r.start))
+      .replace('{end}', fmtTime(r.end))
+      .replace('{length}', (r.end - r.start).toFixed(1).replace('.', ','));
   }
   updateLoopMarks();
 }
@@ -10580,7 +10584,7 @@ function pickRecMimeType() {
 function setRecUI(recording) {
   const btn = rn('toggle');
   btn.setAttribute('aria-pressed', recording ? 'true' : 'false');
-  btn.setAttribute('aria-label', recording ? 'REC stoppen' : 'REC starten');
+  btn.setAttribute('aria-label', t(recording ? 'rec.stopAria' : 'rec.startAria'));
   rn('timer').hidden = !recording;
   rn('status').hidden = recording;
 }
@@ -11146,7 +11150,7 @@ function updateRecPreviewButton() {
   rn('playIcon').classList.toggle('rec-icon-visible', !playing);
   rn('pauseIcon').classList.toggle('rec-icon-visible', playing);
   btn.classList.toggle('is-playing', playing);
-  btn.setAttribute('aria-label', playing ? 'REC pausieren' : 'REC anhören');
+  btn.setAttribute('aria-label', t(playing ? 'rec.pauseAria' : 'rec.previewAria'));
 }
 
 /**
@@ -12714,7 +12718,7 @@ function renderLyricsBlock() {
   // Quellenwechsel hin und her.
   $('#btn-lyrics-note-edit').classList.toggle('slot-hidden', showOfficial);
   $('#lyrics-edit-icon').innerHTML = editing ? LYRICS_DONE_ICON : LYRICS_EDIT_ICON;
-  $('#btn-lyrics-note-edit').setAttribute('aria-label', editing ? 'Fertig' : 'Bearbeiten');
+  $('#btn-lyrics-note-edit').setAttribute('aria-label', t(editing ? 'lyrics.doneAria' : 'lyrics.editAria'));
 
   $('#lyrics-text').hidden = !showOfficial;
   if (showOfficial) $('#lyrics-text').textContent = playerSong.lyrics;
@@ -12784,11 +12788,11 @@ $('#lyrics-present').addEventListener('click', (e) => { if (e.target === e.curre
 function setLyricsNoteState(kind) {
   const node = $('#lyrics-note-state');
   node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
-  if (kind === 'dirty')  { node.textContent = 'Noch nicht gespeichert …'; return; }
-  if (kind === 'saving') { node.textContent = 'Speichert …'; return; }
+  if (kind === 'dirty')  { node.textContent = t('notes.stateDirty'); return; }
+  if (kind === 'saving') { node.textContent = t('notes.stateSaving'); return; }
   if (kind === 'saved') {
     const at = fmtClock(playerLyricsNote?.updatedAt);
-    node.textContent = at ? `Gespeichert um ${at} Uhr` : 'Gespeichert';
+    node.textContent = at ? t('notes.stateSavedAt').replace('{time}', at) : t('notes.stateSaved');
     return;
   }
   node.textContent = '';
@@ -13242,11 +13246,11 @@ function renderNoteBlock() {
 function setNoteState(kind) {
   const node = $('#note-state');
   node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
-  if (kind === 'dirty')  { node.textContent = 'Noch nicht gespeichert …'; return; }
-  if (kind === 'saving') { node.textContent = 'Speichert …'; return; }
+  if (kind === 'dirty')  { node.textContent = t('notes.stateDirty'); return; }
+  if (kind === 'saving') { node.textContent = t('notes.stateSaving'); return; }
   if (kind === 'saved') {
     const at = fmtClock(playerNote?.updatedAt);
-    node.textContent = at ? `Gespeichert um ${at} Uhr` : 'Gespeichert';
+    node.textContent = at ? t('notes.stateSavedAt').replace('{time}', at) : t('notes.stateSaved');
     return;
   }
   node.textContent = '';
@@ -20593,6 +20597,10 @@ async function boot() {
     if (settings.normalizationEnabled) scheduleNormalizationReconciliation();
   });
   applyTranslations();
+  // Der Kopftitel des Players trägt ab dem ersten geöffneten Lied dessen
+  // Namen und kann deshalb kein data-i18n tragen (das überschriebe ihn beim
+  // Sprachwechsel) — der Leerzustand wird darum hier einmal gesetzt.
+  if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
   initGrooveLabEasterEgg();
   setupFolderImport();
   if (shouldAutoRunSelfTests()) {
