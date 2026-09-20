@@ -1367,7 +1367,27 @@ async function saveSettings(patch) {
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
   if ('language' in patch) {
     applyTranslations();
-    renderNormalizationProgress();
+    // applyTranslations() setzt nur das data-i18n-Markup neu. Alles, was
+    // JavaScript in die Einstellungen schreibt (Speicherstand, Sicherungsalter,
+    // Fehlerprotokoll, Stimmenauswahl …), bliebe sonst in der alten Sprache
+    // stehen — und `#storage-text` trägt zusätzlich data-i18n, dessen
+    // Platzhalter („wird ermittelt …") den gemessenen Wert hier gerade
+    // überschrieben hat. Deshalb die ganze Seite neu aufbauen, solange sie
+    // sichtbar ist; sonst reicht die Normalisierungszeile, die auch außerhalb
+    // der Einstellungen weiterläuft.
+    if ($('#view-settings')?.classList.contains('is-active')) {
+      renderSettings().catch((err) => console.warn('[settings] Neuaufbau nach Sprachwechsel', err));
+    } else {
+      renderNormalizationProgress();
+    }
+    // Die Ersteinrichtung enthält ihre eigene Sprachauswahl — ihre
+    // JS-erzeugten Teile (Installationsschritte, Speicher-Hinweis) müssen
+    // beim Umschalten auf derselben Seite sofort mitziehen.
+    if (onbOpen) {
+      renderOnbInstall();
+      renderOnbPersist().catch(() => {});
+      renderOnbDots();
+    }
   }
   try {
     await DB.metaPut(settings);
@@ -2240,7 +2260,7 @@ async function renderStorage() {
   // Browsers ist) stand vorher zusätzlich als Balken daneben und suggerierte
   // eine Genauigkeit, die die Zahl gar nicht hat.
   text.textContent = (!info || !info.quota)
-    ? 'Dieser Browser nennt keinen Speicherstand.'
+    ? t('settings.storage.unknown')
     : fmtBytes(info.usage);
 
   const persisted = navigator.storage?.persisted
@@ -2251,10 +2271,10 @@ async function renderStorage() {
   const persistBtn  = $('#btn-persist');
 
   if (persisted) {
-    persistText.textContent = 'Dauerhafte Speicherung ist aktiv — das System löscht die Aufnahmen nicht von selbst.';
+    persistText.textContent = t('settings.storage.persistOn');
     persistBtn.hidden = true;
   } else {
-    persistText.textContent = 'Dauerhafte Speicherung ist nicht aktiv. Ohne sie kann das System die Aufnahmen bei Platzmangel entfernen.';
+    persistText.textContent = t('settings.storage.persistOff');
     persistBtn.hidden = !(navigator.storage && navigator.storage.persist);
   }
 }
@@ -2646,16 +2666,17 @@ async function renderSettings() {
   renderErrorLog();
   renderDebugLogState();
   $('#offline-state').textContent = navigator.serviceWorker?.controller
-    ? 'ja'
-    : 'wird eingerichtet …';
+    ? t('settings.about.offlineYes')
+    : t('settings.about.offlineSetup');
 }
 
 function renderDebugLogState() {
   $('#btn-debuglog-toggle').setAttribute('aria-checked', settings.debugLog ? 'true' : 'false');
   const n = debugLog.length;
+  const events = tPlural(n, 'settings.about.debugLogEventOne', 'settings.about.debugLogEventMany');
   $('#debuglog-count').textContent = settings.debugLog
-    ? `Zeichnet auf — ${plural(n, 'Ereignis', 'Ereignisse')} gespeichert.`
-    : (n ? `Ausgeschaltet — ${plural(n, 'Ereignis', 'Ereignisse')} vom letzten Mal gespeichert.` : 'Ausgeschaltet.');
+    ? t('settings.about.debugLogOn').replace('{events}', events)
+    : (n ? t('settings.about.debugLogOffKept').replace('{events}', events) : t('settings.about.debugLogOff'));
   // Export/Leeren sind ohne aufgezeichnete Ereignisse witzlos — erst
   // einblenden, wenn tatsächlich ein Log da ist.
   $('#debuglog-actions').hidden = n === 0;
@@ -2923,7 +2944,7 @@ function renderPresentThemePicker() {
         renderPresentThemePicker();
       },
     },
-      el('span', { class: 'present-theme-preview', style: `background:${theme.bg}; color:${theme.fg}`, text: 'Hallelujah — Lied Text' }),
+      el('span', { class: 'present-theme-preview', style: `background:${theme.bg}; color:${theme.fg}`, text: t('settings.personal.presentPreview') }),
       el('span', { class: 'present-theme-label', text: label, 'data-i18n': theme.labelKey }));
     host.append(btn);
   }
@@ -3195,9 +3216,7 @@ function renderScreenMode() {
     note.hidden = true;
   } else {
     note.hidden = false;
-    note.textContent = 'Dieser Browser kann den Bildschirm nicht anlassen. Am '
-      + 'zuverlässigsten läuft die Wiedergabe, wenn die App auf dem '
-      + 'Home-Bildschirm liegt.';
+    note.textContent = t('settings.screen.noWakeLock');
   }
 }
 
@@ -3709,21 +3728,19 @@ function renderNotificationState() {
   const btn = $('#btn-notify-request');
 
   if (!('Notification' in window)) {
-    node.textContent = 'Dieser Browser kennt keine Benachrichtigungen.';
+    node.textContent = t('settings.screen.notifyUnsupported');
     btn.hidden = true;
     return;
   }
 
   if (Notification.permission === 'granted') {
-    node.textContent = 'Benachrichtigungen sind erlaubt.';
+    node.textContent = t('settings.screen.notifyGranted');
     btn.hidden = true;
   } else if (Notification.permission === 'denied') {
-    node.textContent = 'Benachrichtigungen sind blockiert. Das lässt sich nur '
-      + 'in den Android-Einstellungen wieder ändern (Apps → Browser → '
-      + 'Benachrichtigungen).';
+    node.textContent = t('settings.screen.notifyDenied');
     btn.hidden = true;
   } else {
-    node.textContent = 'Noch nicht erteilt.';
+    node.textContent = t('settings.screen.notifyDefault');
     btn.hidden = false;
   }
 }
@@ -7020,6 +7037,16 @@ function selectionStats() {
 }
 
 function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
+
+/**
+ * Wie plural(), nur mit Schlüsseln statt fester deutscher Wörter: Singular-
+ * und Pluralform kommen aus STRINGS, die Zahl setzt `{n}` ein. Zwei Formen
+ * reichen für DE/EN; Polnisch kennt zwar drei, die dritte (2–4) steht aber
+ * bisher an keiner Stelle, an der sie hier gebraucht würde.
+ */
+function tPlural(n, oneKey, manyKey) {
+  return t(n === 1 ? oneKey : manyKey).replace('{n}', n);
+}
 
 function updateSheetSummary() {
   const s = selectionStats();
@@ -16663,12 +16690,12 @@ function renderBackupAge() {
   const days = daysSince(settings.lastBackupAt);
   const node = $('#backup-age');
   if (days === null) {
-    node.textContent = 'Noch keine Sicherung erstellt.';
+    node.textContent = t('settings.data.backupNone');
     node.style.color = 'var(--warn)';
   } else {
     node.textContent = days === 0
-      ? 'Letzte Sicherung: heute'
-      : `Letzte Sicherung: vor ${plural(days, 'Tag', 'Tagen')}`;
+      ? t('settings.data.backupToday')
+      : t('settings.data.backupDays').replace('{days}', tPlural(days, 'settings.data.backupDayOne', 'settings.data.backupDayMany'));
     node.style.color = days > 30 ? 'var(--warn)' : 'var(--muted)';
   }
 }
@@ -20268,13 +20295,13 @@ function renderOnbInstall() {
 
   if (isStandalone()) {
     host.append(el('div', { class: 'onb-note onb-note--ok',
-      text: 'Erledigt — die App läuft bereits vom Home-Bildschirm.' }));
+      text: t('onb.installDone') }));
     return;
   }
 
   if (installPrompt) {
     host.append(el('button', {
-      class: 'btn btn--primary btn--block', type: 'button', text: 'App installieren',
+      class: 'btn btn--primary btn--block', type: 'button', text: t('onb.installBtn'),
       onclick: async () => {
         const prompt = installPrompt;
         installPrompt = null;
@@ -20290,13 +20317,9 @@ function renderOnbInstall() {
     return;
   }
 
-  const steps = isIOSDevice
-    ? ['In <strong>Safari</strong> unten auf das Teilen-Symbol tippen (Quadrat mit Pfeil nach oben).',
-       'In der Liste nach unten wischen bis <strong>„Zum Home-Bildschirm“</strong>.',
-       'Oben rechts auf <strong>Hinzufügen</strong> tippen — fertig.']
-    : ['Im Browser oben rechts das <strong>Menü</strong> öffnen (⋮).',
-       'Dort <strong>„App installieren“</strong> bzw. <strong>„Zum Startbildschirm hinzufügen“</strong> wählen.',
-       'Bestätigen — das Symbol liegt danach neben den übrigen Apps.'];
+  const steps = (isIOSDevice
+    ? ['onb.installIosStep1', 'onb.installIosStep2', 'onb.installIosStep3']
+    : ['onb.installOtherStep1', 'onb.installOtherStep2', 'onb.installOtherStep3']).map(t);
 
   const list = el('ol', { class: 'steps small' });
   for (const s of steps) {
@@ -20308,7 +20331,7 @@ function renderOnbInstall() {
 
   if (isIOSDevice) {
     host.append(el('div', { class: 'onb-note',
-      text: 'Ohne diesen Schritt löscht iOS die gespeicherten Aufnahmen, wenn die App längere Zeit nicht geöffnet wird.' }));
+      text: t('onb.installIosNote') }));
   }
 }
 
@@ -20342,7 +20365,7 @@ async function renderOnbPersist() {
     btn.hidden = true;
     note.hidden = false;
     note.className = 'onb-note';
-    note.textContent = 'Dieser Browser kennt die Einstellung nicht. Die Aufnahmen werden trotzdem gespeichert — nur ohne ausdrückliche Zusage.';
+    note.textContent = t('onb.persistUnsupported');
     return;
   }
 
@@ -20351,7 +20374,7 @@ async function renderOnbPersist() {
   note.hidden = !persisted;
   if (persisted) {
     note.className = 'onb-note onb-note--ok';
-    note.textContent = 'Dauerhafte Speicherung ist aktiv — das System löscht die Aufnahmen nicht von selbst.';
+    note.textContent = t('settings.storage.persistOn');
   }
 }
 
@@ -20365,18 +20388,24 @@ $('#onb-persist').addEventListener('click', async () => {
   if (ok) {
     btn.hidden = true;
     note.className = 'onb-note onb-note--ok';
-    note.textContent = 'Zugesagt — das System löscht die Aufnahmen nicht von selbst.';
+    note.textContent = t('onb.persistGranted');
   } else {
     note.className = 'onb-note onb-note--warn';
-    note.textContent = isStandalone()
-      ? 'Der Browser hat noch nicht zugesagt. Das holt er oft von selbst nach, sobald die App ein paar Mal benutzt wurde.'
-      : 'Der Browser hat noch nicht zugesagt. Am zuverlässigsten klappt es, wenn die App auf dem Home-Bildschirm liegt (Schritt 1).';
+    note.textContent = t(isStandalone() ? 'onb.persistPendingStandalone' : 'onb.persistPendingBrowser');
   }
   renderStorage().catch(() => {});
 });
 
 function renderOnbDots() {
   onbDots.textContent = '';
+  // Die Schritt-Beschriftung der Folien selbst trägt eine Zahl und kann
+  // deshalb nicht über data-i18n-aria laufen — sie wird hier mitgesetzt,
+  // damit sie dem Sprachwechsel folgt wie die Punkte darunter.
+  const slides = $$('#onb-track .onb-slide');
+  slides.forEach((slide, i) => {
+    slide.setAttribute('aria-label', t('onb.slideAria')
+      .replace('{n}', i + 1).replace('{total}', slides.length));
+  });
   for (let i = 0; i < ONB_SLIDES; i++) {
     onbDots.append(el('button', {
       class: 'onb-dot', type: 'button',
