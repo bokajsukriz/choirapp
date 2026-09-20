@@ -122,6 +122,16 @@ const bannersHost = $('#banners');
 function banner(text, opts = {}) {
   const { kind = 'info', action = null, timeout = kind === 'error' ? 0 : 5000 } = opts;
 
+  // Eine Meldung ohne Text ist nur eine leere Box mit Schließen-Kreuz — nie
+  // gewollt und schon einmal ein echter Fehler gewesen (versehentlich
+  // geleerte Übersetzungen in strings.js). Lieber nichts zeigen und die
+  // Ursache in der Konsole nennen. Ein Banner, das nur einen Knopf trägt,
+  // bleibt ausdrücklich erlaubt.
+  if (!String(text ?? '').trim() && !action) {
+    console.warn('[banner] ohne Text unterdrückt', { kind });
+    return () => {};
+  }
+
   const node = el('div', { class: `banner banner--${kind}` });
   node.append(el('p', { text }));
 
@@ -1355,7 +1365,10 @@ async function loadSettings() {
 async function saveSettings(patch) {
   settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
-  if ('language' in patch) applyTranslations();
+  if ('language' in patch) {
+    applyTranslations();
+    renderNormalizationProgress();
+  }
   try {
     await DB.metaPut(settings);
   } catch (err) {
@@ -2344,7 +2357,10 @@ $('#btn-manage-storage').addEventListener('click', async () => {
   const open = host.hidden;
   host.hidden = !open;
   $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
-  $('#btn-manage-storage').textContent = open ? 'Einzelne Songs verwalten ausblenden' : 'Einzelne Songs verwalten';
+  // Der Knopf trägt data-i18n="settings.data.manageStorageBtn"; wird er hier
+  // umbeschriftet, muss auch der zweite Zustand aus STRINGS kommen, sonst
+  // steht in EN/PL nach dem ersten Klick deutscher Text.
+  $('#btn-manage-storage').textContent = t(open ? 'settings.data.manageStorageBtnHide' : 'settings.data.manageStorageBtn');
   await renderStorageManager();
 });
 
@@ -5191,6 +5207,15 @@ function renderNormalizationProgress() {
   const isAnalyzing = pending > 0 || p.total > 0 && finished < p.total;
   const hasResult = finished > 0;
   host.hidden = !settings.normalizationEnabled || (!isAnalyzing && !hasResult);
+  // Die <summary> der Detail-Liste steht auch dann noch da, wenn dieser
+  // Fortschrittsblock längst ausgeblendet ist (renderNormalizationDetails()
+  // blendet sie unabhängig davon ein) — deshalb wird ihr Text hier immer
+  // gesetzt, vor dem Ausstieg. Ohne Zahlen aus dieser Sitzung bleibt es bei
+  // der Überschrift.
+  $('#normalization-details-summary').textContent = hasResult
+    ? t('settings.normalization.counts')
+      .replace('{analyzed}', p.analyzed).replace('{total}', p.total).replace('{failed}', p.failed)
+    : t('settings.normalization.details.title');
   if (host.hidden) {
     renderNormalizationCrashGuard();
     renderNormalizationDetailsIfOpen();
@@ -5206,8 +5231,6 @@ function renderNormalizationProgress() {
   const pauseReason = pending && !p.current ? normalizationPauseReason() : null;
   $('#normalization-progress-current').textContent = p.current
     || (pauseReason ? t(`settings.normalization.paused.${pauseReason}`) : '') || p.reason || '';
-  $('#normalization-details-summary').textContent = t('settings.normalization.counts')
-    .replace('{analyzed}', p.analyzed).replace('{total}', p.total).replace('{failed}', p.failed);
   $('#normalization-retry').hidden = true;
   renderNormalizationCrashGuard();
   renderNormalizationDetailsIfOpen();
@@ -8724,34 +8747,6 @@ async function registerServiceWorker() {
     bannerError('Der Offline-Betrieb konnte nicht eingerichtet werden.', 'OFFLINE-SETUP', err);
   }
 }
-
-/**
- * Manueller Update-Check unter „Über die App" — der Browser prüft sonst nur
- * beiläufig bei eigener Gelegenheit, das kann sich anfühlen, als käme eine
- * gerade veröffentlichte Version nie an. update() fragt sw.js aktiv neu ab;
- * wird dabei eine neue Fassung gefunden, übernimmt der ganz normale
- * 'updatefound'-Listener oben (offerUpdate()) — hier wird nur der Fall
- * abgedeckt, dass NICHTS gefunden wird, sonst bliebe der Knopf ohne jede
- * Rückmeldung stumm.
- */
-async function checkForUpdateManually() {
-  if (!swRegistration) {
-    banner(t('settings.about.checkUpdateUnsupported'), { kind: 'error' });
-    return;
-  }
-  banner(t('settings.about.checkingUpdate'), { kind: 'info', timeout: 2500 });
-  const hadBannerAlready = !!updateBannerClose;
-  try {
-    await swRegistration.update();
-  } catch (err) {
-    bannerError(t('settings.about.checkUpdateFailed'), 'SW-UPDATE-CHECK', err);
-    return;
-  }
-  setTimeout(() => {
-    if (!hadBannerAlready && !updateBannerClose) banner(t('settings.about.upToDate'), { kind: 'ok' });
-  }, 2000);
-}
-$('#btn-check-update').addEventListener('click', checkForUpdateManually);
 
 /**
  * Wartet, bis ein neu installierter Worker den Zustand 'installed' erreicht
@@ -17370,6 +17365,21 @@ function runSelfTests() {
         failed.push(`STRINGS.${l}: ${missing.length} Schlüssel fehlen (${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', …' : ''})`);
       }
     });
+
+    // Gleiche Schlüssel genügen nicht: ein versehentlich auf '' gesetzter
+    // Wert bestand die Prüfung oben anstandslos und wurde erst als leerer
+    // Knopf bzw. leere Meldungs-Box auf dem Gerät sichtbar (t() fällt mit ??
+    // nur bei undefined zurück, nicht bei ''). Leer in einer Sprache, gefüllt
+    // in einer anderen ist deshalb immer ein Fehler — soll ein Text weg,
+    // gehört er in allen dreien weg.
+    checks++;
+    const blank = (v) => typeof v === 'string' && !v.trim();
+    for (const k of allKeys) {
+      const empty = langs.filter((l) => blank(STRINGS[l][k]));
+      if (empty.length && empty.length < langs.length) {
+        failed.push(`STRINGS: '${k}' ist in ${empty.join('/')} leer, in den übrigen Sprachen nicht`);
+      }
+    }
   }
 
   // Setlisten-Textimport (Punkt 1 des Import-Härtungsauftrags): normaler
@@ -20275,28 +20285,6 @@ function renderOnbLanguage() {
   }
 }
 
-/** Schritt 2: Stimmenauswahl — dieselben Werte wie in den Einstellungen. */
-function renderOnbVoice() {
-  const host = $('#onb-voice');
-  host.textContent = '';
-  for (const voice of MY_VOICE_CHOICES) {
-    const btn = el('button', {
-      class: 'chip chip--voice', type: 'button',
-      'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
-      onclick: async () => {
-        await toggleMyVoice(voice);
-        // Wer hier zum ersten Mal wählt, will beim Import genau diese
-        // Stimme(n) — aber nur, solange mindestens eine gewählt ist.
-        if (settings.myVoices.length) await saveSettings({ defaultImportScope: 'mine' });
-        renderOnbVoice();
-        renderVoicePicker();
-      },
-    });
-    btn.style.setProperty('--voice-c', VOICE_COLOR[voice] || VOICE_COLOR.OTHER);
-    host.append(btn);
-  }
-}
 
 /** Schritt 3: Stand der dauerhaften Speicherung anzeigen. */
 async function renderOnbPersist() {
@@ -20346,13 +20334,16 @@ function renderOnbDots() {
     onbDots.append(el('button', {
       class: 'onb-dot', type: 'button',
       'aria-current': i === onbIndex ? 'true' : 'false',
-      'aria-label': `Schritt ${i + 1} von ${ONB_SLIDES}`,
+      'aria-label': t('onb.dot').replace('{n}', i + 1).replace('{total}', ONB_SLIDES),
       onclick: () => onbGoTo(i),
     }));
   }
   onbPrev.hidden = onbIndex === 0;
   onbSkip.hidden = onbIndex === ONB_SLIDES - 1;
-  onbNext.textContent = onbIndex === ONB_SLIDES - 1 ? 'Los geht’s' : 'Weiter';
+  // Der Knopf trägt zwar data-i18n="onb.next", wird hier aber je nach Schritt
+  // neu beschriftet — also muss der Text auch hier durch t() laufen, sonst
+  // steht in EN/PL deutsch „Weiter"/„Los geht's".
+  onbNext.textContent = t(onbIndex === ONB_SLIDES - 1 ? 'onb.start' : 'onb.next');
 }
 
 /**
