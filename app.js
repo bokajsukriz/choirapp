@@ -2233,20 +2233,15 @@ function renderVoicePicker() {
 
 async function renderStorage() {
   const info = await storageInfo();
-  const text  = $('#storage-text');
-  const meter = $('#storage-meter');
-  const bar   = meter.firstElementChild;
+  const text = $('#storage-text');
 
-  if (!info || !info.quota) {
-    text.textContent = 'Dieser Browser nennt keinen Speicherstand.';
-    meter.hidden = true;
-  } else {
-    meter.hidden = false;
-    const pct = Math.min(100, (info.usage / info.quota) * 100);
-    text.textContent = `Belegt: ${fmtBytes(info.usage)} von ${fmtBytes(info.quota)}`;
-    bar.style.width = `${Math.max(pct, info.usage > 0 ? 1.5 : 0)}%`;
-    meter.classList.toggle('is-full', pct >= 85);
-  }
+  // Nur der direkt belegte Speicher zählt hier — das Verhältnis zur Quota
+  // (die auf vielen Geräten ohnehin nur ein optimistischer Schätzwert des
+  // Browsers ist) stand vorher zusätzlich als Balken daneben und suggerierte
+  // eine Genauigkeit, die die Zahl gar nicht hat.
+  text.textContent = (!info || !info.quota)
+    ? 'Dieser Browser nennt keinen Speicherstand.'
+    : fmtBytes(info.usage);
 
   const persisted = navigator.storage?.persisted
     ? await navigator.storage.persisted().catch(() => false)
@@ -2356,11 +2351,17 @@ $('#btn-manage-storage').addEventListener('click', async () => {
   const host = $('#storage-manager');
   const open = host.hidden;
   host.hidden = !open;
-  $('#btn-manage-storage').setAttribute('aria-expanded', open ? 'true' : 'false');
-  // Der Knopf trägt data-i18n="settings.data.manageStorageBtn"; wird er hier
-  // umbeschriftet, muss auch der zweite Zustand aus STRINGS kommen, sonst
-  // steht in EN/PL nach dem ersten Klick deutscher Text.
-  $('#btn-manage-storage').textContent = t(open ? 'settings.data.manageStorageBtnHide' : 'settings.data.manageStorageBtn');
+  const btn = $('#btn-manage-storage');
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // Nur das Label umbeschriften, nicht den ganzen Knopf — der trägt seit dem
+  // Zeilenmuster auch noch den Pfeil (.setting-chevron) als Geschwister.
+  // Die Umschrift selbst bleibt nötig: das Label trägt data-i18n, wird es
+  // hier umbeschriftet, muss auch der zweite Zustand aus STRINGS kommen,
+  // sonst steht in EN/PL nach dem ersten Klick deutscher Text.
+  const label = btn.querySelector('.setting-label');
+  const key = open ? 'settings.data.manageStorageBtnHide' : 'settings.data.manageStorageBtn';
+  label.textContent = t(key);
+  label.dataset.i18n = key;
   await renderStorageManager();
 });
 
@@ -2585,6 +2586,11 @@ function initSettingsAccordion() {
   for (const card of $$('#view-settings .card')) {
     if (card.dataset.accordionReady) continue;
     card.dataset.accordionReady = '1';
+    // Lichtshow (data-no-accordion): einziger Inhalt ist Hinweistext plus ein
+    // Knopf — das Einklappen kostet hier nur einen Tipp, ohne etwas zu
+    // verbergen, das seinen Platz wert wäre. Bleibt deshalb dauerhaft offen,
+    // ganz ohne Umschalter.
+    if (card.dataset.noAccordion) continue;
 
     const h2 = card.querySelector('h2');
     if (!h2) continue;
