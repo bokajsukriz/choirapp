@@ -36,7 +36,23 @@ function el(tag, attrs = {}, ...children) {
 // Deutsche Sortierung: „Ärger" gehört zu A, nicht ans Listenende.
 const collator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 
-/** Bytes menschenlesbar, deutsche Schreibweise mit Komma. */
+/**
+ * BCP-47-Kennung zur eingestellten Sprache — für Datum, Uhrzeit und
+ * Dezimaltrennzeichen. `settings` steht beim ersten Aufruf womöglich noch
+ * nicht (fmtBytes läuft schon während des Ladens), deshalb der Fallback.
+ */
+const LOCALE_BY_LANGUAGE = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL' };
+function currentLocale() {
+  return LOCALE_BY_LANGUAGE[settings?.language] || LOCALE_BY_LANGUAGE.de;
+}
+
+/** Zahl mit dem Dezimaltrennzeichen der eingestellten Sprache. */
+function fmtDecimal(value, digits) {
+  return Number(value).toLocaleString(currentLocale(),
+    { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/** Bytes menschenlesbar, mit dem Dezimaltrennzeichen der Sprache. */
 function fmtBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return '–';
   if (bytes < 1024) return `${bytes} B`;
@@ -45,7 +61,7 @@ function fmtBytes(bytes) {
   let i = 0;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
   const digits = v < 10 && i > 0 ? 1 : 0;
-  return `${v.toFixed(digits).replace('.', ',')} ${units[i]}`;
+  return `${fmtDecimal(v, digits)} ${units[i]}`;
 }
 
 /** Wiedergabetempo als Prozent der normalen Geschwindigkeit, z.B. 0.85 -> "85 %". */
@@ -147,7 +163,7 @@ function banner(text, opts = {}) {
   node.append(el('button', {
     class: 'banner-close',
     type: 'button',
-    'aria-label': 'Meldung schließen',
+    'aria-label': t('common.dismissAria'),
     text: '×',
     onclick: () => close(),
   }));
@@ -246,7 +262,7 @@ function bannerError(text, code, err, opts = {}) {
 function errorLogText() {
   if (!errorLog.length) return 'Keine Fehler aufgezeichnet.';
   return errorLog.map((e) => {
-    const time = new Date(e.time).toLocaleString('de-DE');
+    const time = new Date(e.time).toLocaleString(currentLocale());
     const tech = [e.name, e.message].filter(Boolean).join(': ');
     return `${time} · ${e.code}${tech ? ` · ${tech}` : ''}`;
   }).join('\n');
@@ -265,7 +281,7 @@ function renderErrorLog() {
     return;
   }
   for (const e of errorLog) {
-    const time = new Date(e.time).toLocaleString('de-DE');
+    const time = new Date(e.time).toLocaleString(currentLocale());
     const tech = [e.name, e.message].filter(Boolean).join(': ');
     host.append(el('div', { style: 'padding:6px 0; border-top: 1px solid var(--pill-line)' },
       el('p', { class: 'small', style: 'margin:0; font-weight:600', text: `${time} · ${e.code}` }),
@@ -613,12 +629,12 @@ function editRecordingDialog(recording) {
         const rec = await DB.fileGet(recording.fileKey);
         if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
         blob = recordBlob(rec, recording.mimeType);
-      } catch (err) { bannerError('Der REC konnte nicht geladen werden.', 'REC-TRIM', err); return; }
+      } catch (err) { bannerError(t('msg.recLoadFailed'), 'REC-TRIM', err); return; }
 
       const range = recordingTrimRange(recording);
       let result;
       try { result = await pickTrimRange(blob, range.start, range.end); }
-      catch (err) { bannerError('Der REC konnte nicht zum Zuschneiden geöffnet werden.', 'REC-TRIM', err); return; }
+      catch (err) { bannerError(t('msg.recTrimOpenFailed'), 'REC-TRIM', err); return; }
       if (!result) return;
 
       try {
@@ -626,7 +642,7 @@ function editRecordingDialog(recording) {
         recording.trimEnd = result.endSec;
         await DB.metaPut(recording);
         setShade();
-      } catch (err) { bannerError('Der Zuschnitt konnte nicht gespeichert werden.', 'REC-TRIM-SAVE', err); }
+      } catch (err) { bannerError(t('msg.recTrimSaveFailed'), 'REC-TRIM-SAVE', err); }
     });
 
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
@@ -638,7 +654,7 @@ function editRecordingDialog(recording) {
       voiceRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        el('button', { class: 'btn btn--primary', type: 'button', text: 'Speichern',
+        el('button', { class: 'btn btn--primary', type: 'button', text: t('common.save'),
                        onclick: () => done({ name: input.value, voice: selected }) })));
 
     input.addEventListener('keydown', (e) => {
@@ -776,10 +792,10 @@ wireFabMenu('#btn-songs-import-fab', '#songs-fab-backdrop', async (action) => {
   if (action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); return; }
   if (action === 'placeholder') {
     const title = await promptDialog({
-      title: 'Platzhalter hinzufügen',
-      text: 'Die Aufnahme kann später ergänzt werden — Liedtext, Notizen und Setlisten funktionieren schon vorher.',
-      placeholder: 'Songtitel',
-      okLabel: 'Anlegen',
+      title: t('songs.placeholderTitle'),
+      text: t('songs.placeholderText'),
+      placeholder: t('songs.titlePlaceholder'),
+      okLabel: t('common.create'),
     });
     if (!title || !title.trim()) return;
     const song = await createPlaceholderSong(title);
@@ -1392,7 +1408,7 @@ async function saveSettings(patch) {
   try {
     await DB.metaPut(settings);
   } catch (err) {
-    bannerError('Die Einstellung konnte nicht gespeichert werden.', 'SETTINGS-SAVE', err);
+    bannerError(t('msg.settingSaveFailed'), 'SETTINGS-SAVE', err);
   }
   return settings;
 }
@@ -1668,7 +1684,7 @@ function scanFiles(files, zipTitle) {
     // niemand weiß, warum.
     for (const item of items) {
       if (AUDIO_RE.test(item.name) || TXT_RE.test(item.name) || PDF_RE.test(item.name)) continue;
-      notes.push(`„${item.name}" wurde übersprungen — die App erkennt dieses Dateiformat nicht als Aufnahme.`);
+      notes.push(t('import.noteUnknownFormat').replace('{file}', item.name));
     }
 
     const segments = folder ? folder.split('/') : [];
@@ -1694,7 +1710,8 @@ function scanFiles(files, zipTitle) {
         // Präfix, der nicht zum Ordner passt, deutet auf einen Ablagefehler hin.
         const folderNorm = normalizeTitle(folderName || title);
         if (rest && folderNorm && rest !== folderNorm) {
-          notes.push(`„${item.name}" liegt im Ordner „${folderName || title}", der Dateiname deutet aber auf ein anderes Lied hin.`);
+          notes.push(t('import.noteWrongFolder')
+            .replace('{file}', item.name).replace('{folder}', folderName || title));
         }
       } else {
         withoutVoice.push(item);
@@ -2053,7 +2070,7 @@ async function renderSongs() {
     songsRenderSignature = null;
     host.textContent = '';
     host.append(el('div', { class: 'card' },
-      el('p', { class: 'small', text: 'Die Songliste konnte nicht geladen werden.' })));
+      el('p', { class: 'small', text: t('msg.songListFailed') })));
     return;
   }
   if (token !== songsRenderToken) return;
@@ -2209,7 +2226,7 @@ $('#btn-feeling-lucky').addEventListener('click', async () => {
   const all = lastVisibleSongs.length ? lastVisibleSongs : await DB.metaByType('song').catch(() => []);
   const pool = all.filter(isPlayableSong);
   if (!pool.length) {
-    banner('Kein Lied mit Aufnahme in dieser Auswahl.', { kind: 'error' });
+    banner(t('msg.noRecordingInSelection'), { kind: 'error' });
     return;
   }
   if (!settings.shuffleMode) await saveSettings({ shuffleMode: true });
@@ -2299,7 +2316,7 @@ async function renderStorageManager() {
 
   const songs = await DB.metaByType('song').catch(() => []);
   if (!songs.length) {
-    host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Es sind keine Songs gespeichert.' }));
+    host.append(el('p', { class: 'small muted', style: 'margin:0', text: t('msg.noSongsStored') }));
     return;
   }
 
@@ -2316,7 +2333,7 @@ async function renderStorageManager() {
         el('span', { class: 'size', text: fmtBytes(track.size || 0) }),
         el('button', {
           class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
-          'aria-label': `${track.label} von ${song.title} löschen`,
+          'aria-label': t('storage.deleteVoiceAria').replace('{voice}', track.label).replace('{song}', song.title),
           onclick: () => deleteTrack(song, track),
         }, (() => {
           const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2332,7 +2349,7 @@ async function renderStorageManager() {
 
     const toggle = el('button', {
       class: 'disclose', type: 'button', 'aria-expanded': 'false',
-      'aria-label': `Stimmen von ${song.title} anzeigen`,
+      'aria-label': t('storage.showVoicesAria').replace('{song}', song.title),
     }, iconChevron());
     toggle.addEventListener('click', () => {
       const open = tracksHost.hidden;
@@ -2342,7 +2359,7 @@ async function renderStorageManager() {
 
     const del = el('button', {
       class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
-      'aria-label': `${song.title} vollständig löschen`,
+      'aria-label': t('storage.deleteSongAria').replace('{song}', song.title),
       onclick: () => deleteSong(song),
     });
     del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
@@ -2493,9 +2510,11 @@ async function attachSimilarSongData(requests) {
 
 async function deleteTrack(song, track) {
   const ok = await confirmDialog({
-    title: 'Stimme löschen?',
-    text: `„${track.label}" von „${song.title}" wird vom Gerät entfernt (${fmtBytes(track.size || 0)}). Loops, Notizen und eigene Liedtexte bleiben erhalten.`,
-    okLabel: 'Löschen', danger: true,
+    title: t('dlg.deleteVoiceTitle'),
+    text: t('dlg.deleteVoiceText')
+      .replace('{voice}', track.label).replace('{song}', song.title)
+      .replace('{size}', fmtBytes(track.size || 0)),
+    okLabel: t('common.delete'), danger: true,
   });
   if (!ok) return;
 
@@ -2514,14 +2533,14 @@ async function deleteTrack(song, track) {
     await DB.fileDelete([track.fileKey, ...(song.scores || []).map((s) => s.fileKey)]);
   }
   await refreshAfterDelete();
-  banner('Stimme gelöscht.', { kind: 'ok' });
+  banner(t('msg.voiceDeleted'), { kind: 'ok' });
 }
 
 async function deleteSong(song) {
   const ok = await confirmDialog({
-    title: 'Song löschen?',
-    text: `Alle Aufnahmen von „${song.title}" werden entfernt. Gespeicherte Loops, Notizen und eigene Liedtexte bleiben erhalten und werden wieder aktiv, wenn du den Song erneut importierst.`,
-    okLabel: 'Löschen', danger: true,
+    title: t('dlg.deleteSongTitle'),
+    text: t('dlg.deleteSongText').replace('{song}', song.title),
+    okLabel: t('common.delete'), danger: true,
   });
   if (!ok) return;
 
@@ -2533,7 +2552,7 @@ async function deleteSong(song) {
   if (playerSong && playerSong.id === song.id) closePlayer();
   await DB.fileDelete(keys);
   await refreshAfterDelete();
-  banner('Song gelöscht.', { kind: 'ok' });
+  banner(t('msg.songDeleted'), { kind: 'ok' });
 }
 
 /**
@@ -2544,7 +2563,7 @@ async function deleteSong(song) {
 $('#btn-drop-audio').addEventListener('click', async () => {
   const songs = await DB.metaByType('song').catch(() => []);
   if (!songs.length) {
-    banner('Es sind keine Aufnahmen gespeichert.');
+    banner(t('msg.noRecordingsStored'));
     return;
   }
   const bytes = songs.reduce((n, s) =>
@@ -2552,11 +2571,11 @@ $('#btn-drop-audio').addEventListener('click', async () => {
       + (s.scores || []).reduce((m, x) => m + (x.size || 0), 0), 0);
 
   const ok = await confirmDialog({
-    title: 'Alle Aufnahmen löschen?',
-    text: `${plural(songs.length, 'Song', 'Songs')} mit ${fmtBytes(bytes)} werden vom Gerät entfernt. `
-        + 'Loops, Notizen, eigene Liedtexte, Setlisten und Einstellungen bleiben erhalten '
-        + 'und verbinden sich wieder, sobald du die Lieder erneut importierst.',
-    okLabel: 'Aufnahmen löschen', danger: true,
+    title: t('dlg.deleteAllRecordingsTitle'),
+    text: t('dlg.deleteAllRecordingsText')
+      .replace('{songs}', tPlural(songs.length, 'common.songOne', 'common.songMany'))
+      .replace('{size}', fmtBytes(bytes)),
+    okLabel: t('dlg.deleteAllRecordingsOk'), danger: true,
   });
   if (!ok) return;
 
@@ -2574,7 +2593,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
     banner(`${plural(songs.length, 'Song', 'Songs')} entfernt, ${fmtBytes(bytes)} frei.`, { kind: 'ok' });
     await refreshAfterDelete();
   } catch (err) {
-    bannerError('Die Aufnahmen konnten nicht vollständig gelöscht werden.', 'AUDIO-DROP', err);
+    bannerError(t('msg.recordingsDeleteFailed'), 'AUDIO-DROP', err);
   }
 });
 
@@ -2711,11 +2730,11 @@ $('#btn-errorlog-copy').addEventListener('click', async () => {
   const text = errorLogText();
   try {
     await navigator.clipboard.writeText(text);
-    banner('Protokoll in die Zwischenablage kopiert.', { kind: 'ok' });
+    banner(t('msg.logCopied'), { kind: 'ok' });
   } catch {
     await promptDialog({
-      title: 'Fehlerprotokoll', text: 'Text markieren und kopieren.',
-      value: text, okLabel: 'Fertig', multiline: true,
+      title: t('dlg.errorLogTitle'), text: t('common.selectAndCopy'),
+      value: text, okLabel: t('dlg.done'), multiline: true,
     });
   }
 });
@@ -3701,8 +3720,8 @@ $('#btn-hd-copy').addEventListener('click', async () => {
     banner(t('settings.perf.advCopied'), { kind: 'ok' });
   } catch {
     await promptDialog({
-      title: 'Erweiterte Einstellungen (Zeitdehner)', text: 'Text markieren und kopieren.',
-      value: text, okLabel: 'Fertig', multiline: true,
+      title: t('dlg.hdCopyTitle'), text: t('common.selectAndCopy'),
+      value: text, okLabel: t('dlg.done'), multiline: true,
     });
   }
 });
@@ -3781,8 +3800,8 @@ $('#btn-setup-again').addEventListener('click', () => openOnboarding());
 
 $('#btn-persist').addEventListener('click', async () => {
   const ok = await requestPersistence();
-  if (ok) banner('Dauerhafte Speicherung ist jetzt aktiv.', { kind: 'ok' });
-  else banner('Das System hat die dauerhafte Speicherung abgelehnt. Die App funktioniert trotzdem — sichere deine Loops und Setlisten gelegentlich.', { kind: 'error' });
+  if (ok) banner(t('msg.persistGranted'), { kind: 'ok' });
+  else banner(t('msg.persistDenied'), { kind: 'error' });
   await renderStorage();
 });
 
@@ -3790,10 +3809,9 @@ let dataGeneration = 0;
 
 $('#btn-wipe').addEventListener('click', async () => {
   const ok = await confirmDialog({
-    title: 'Alle Daten löschen?',
-    text: 'Alle Songs, Aufnahmen, Loops, Notizen, eigene Liedtexte und Setlisten sowie Fehler- und '
-        + 'Diagnoseprotokolle werden von diesem Gerät entfernt. Das lässt sich nicht rückgängig machen.',
-    okLabel: 'Löschen',
+    title: t('dlg.wipeTitle'),
+    text: t('dlg.wipeText'),
+    okLabel: t('common.delete'),
     danger: true,
   });
   if (!ok) return;
@@ -3827,12 +3845,12 @@ $('#btn-wipe').addEventListener('click', async () => {
     lastReport = null;
     playQueue = null;
     reminderDismissed = false;
-    banner('Alle Daten wurden gelöscht.', { kind: 'ok' });
+    banner(t('msg.allDataDeleted'), { kind: 'ok' });
     await renderSettings();
     await renderSongs();
     await renderPlaylists();
   } catch (err) {
-    bannerError('Die Daten konnten nicht vollständig gelöscht werden.', 'DATA-WIPE', err);
+    bannerError(t('msg.dataDeleteFailed'), 'DATA-WIPE', err);
   }
 });
 
@@ -4335,7 +4353,7 @@ async function setupAudioGraph() {
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     updateHdLoadVisibility();
-    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
+    banner(t('msg.playbackInterrupted'));
   });
 
   el.addEventListener('error', () => dlog('audio:error', { code: el.error?.code }));
@@ -4714,7 +4732,7 @@ async function onAudioContextStateChange() {
     Audio.playing = false;
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-    banner('Die Wiedergabe wurde vom System unterbrochen. Zum Fortsetzen auf Abspielen tippen.');
+    banner(t('msg.playbackInterrupted'));
   }
 }
 
@@ -5321,11 +5339,11 @@ function fmtMiBNumber(bytes) {
  *  convention for compact numeric UI (see fmtBytes(), the crop-dialog
  *  duration display) rather than a full locale-aware number format. */
 function fmtNormalizationSeconds(ms) {
-  return Number.isFinite(ms) ? (ms / 1000).toFixed(1).replace('.', ',') : null;
+  return Number.isFinite(ms) ? fmtDecimal(ms / 1000, 1) : null;
 }
 
 function fmtNormalizationMiBDecimal(bytes) {
-  return Number.isFinite(bytes) ? (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') : null;
+  return Number.isFinite(bytes) ? fmtDecimal(bytes / (1024 * 1024), 1) : null;
 }
 
 function fmtNormalizationMinutes(seconds) {
@@ -6129,7 +6147,7 @@ async function audioPlay() {
     await Audio.el.play();
   } catch (err) {
     dlog('audio:play:fail', { name: err?.name });
-    bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', err);
+    bannerError(t('msg.playbackStartFailed'), 'AUDIO-PLAY', err);
     return;
   }
 
@@ -6143,7 +6161,7 @@ async function audioPlay() {
   if (!ctxOk) {
     dlog('audio:play:fail', { name: 'ctx-not-running' });
     Audio.el.pause();
-    bannerError('Die Wiedergabe konnte nicht gestartet werden.', 'AUDIO-PLAY', new Error('Der AudioContext lief nicht an.'));
+    bannerError(t('msg.playbackStartFailed'), 'AUDIO-PLAY', new Error('Der AudioContext lief nicht an.'));
     return;
   }
 
@@ -7068,7 +7086,8 @@ function updateSheetSummary() {
   if (warnBox) {
     warnBox.hidden = !tight;
     if (tight) {
-      warnBox.textContent = `Die Auswahl belegt einen großen Teil des freien Speichers (${fmtBytes(s.bytes)} von ${fmtBytes(free)}). Wähle notfalls weniger Stimmen aus.`;
+      warnBox.textContent = t('import.storageWarning')
+        .replace('{used}', fmtBytes(s.bytes)).replace('{free}', fmtBytes(free));
     }
   }
 
@@ -7153,7 +7172,7 @@ function renderSheetSong(song) {
     songBox.checked = song.tracks.some((t) => t.checked);
     songBox.indeterminate = !songBox.checked ? false
       : song.tracks.some((t) => !t.checked) && song.tracks.some((t) => t.checked);
-    songBox.setAttribute('aria-label', `Alle Spuren von ${song.title}`);
+    songBox.setAttribute('aria-label', t('import.allTracksAria').replace('{song}', song.title));
 
     const tracksHost = el('div', { class: 'pick-tracks', hidden: true });
 
@@ -7167,7 +7186,7 @@ function renderSheetSong(song) {
     for (const track of song.tracks) {
       const cb = el('input', { type: 'checkbox' });
       cb.checked = track.checked;
-      cb.setAttribute('aria-label', `${track.label} von ${song.title}`);
+      cb.setAttribute('aria-label', t('import.trackAria').replace('{track}', track.label).replace('{song}', song.title));
       cb.addEventListener('change', () => {
         track.checked = cb.checked;
         refreshSongBox();
@@ -7178,7 +7197,7 @@ function renderSheetSong(song) {
       if (track.status === 'same') {
         info.append(el('span', { class: 'badge', text: 'bereits vorhanden' }));
       } else if (track.status === 'changed') {
-        info.append(el('span', { class: 'badge badge--changed', text: 'geändert' }));
+        info.append(el('span', { class: 'badge badge--changed', text: t('import.changedBadge') }));
       } else if (song.existing) {
         info.append(el('span', { class: 'badge badge--new', text: 'neue Stimme' }));
       }
@@ -7231,7 +7250,7 @@ function renderSheetSong(song) {
     } else if (song.similar) {
       titleBlock.append(el('span', {
         class: 'badge badge--changed',
-        text: `ähnlich vorhanden: ${song.similar.title}`,
+        text: t('import.similarBadge').replace('{title}', song.similar.title),
       }));
     }
 
@@ -7258,7 +7277,7 @@ function renderSheetSong(song) {
       class: 'disclose',
       type: 'button',
       'aria-expanded': 'false',
-      'aria-label': `Spuren von ${song.title} anzeigen`,
+      'aria-label': t('import.showTracksAria').replace('{song}', song.title),
     }, iconChevron());
 
     toggle.addEventListener('click', () => {
@@ -7326,8 +7345,8 @@ async function ensureMyVoice() {
   const chosen = await new Promise((resolve) => {
     const picked = new Set();
     const host = el('div', { class: 'dialog' },
-      el('h2', { text: 'Welche Stimme singst du?' }),
-      el('p', { text: 'Auch mehrere möglich, wer zwischen Stimmen wechselt. Danach sind sie beim Import zusammen mit der Gesamtmischung vorausgewählt — jederzeit änderbar.' }));
+      el('h2', { text: t('onb.voiceQuestion') }),
+      el('p', { text: t('import.voiceHint') }));
 
     const grid = el('div', { class: 'chip-grid' });
     for (const v of MY_VOICE_CHOICES) {
@@ -7344,7 +7363,7 @@ async function ensureMyVoice() {
 
     host.append(grid, el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
       el('button', {
-        class: 'btn', type: 'button', text: 'Überspringen',
+        class: 'btn', type: 'button', text: t('common.skip'),
         onclick: () => { layer.remove(); resolve(null); },
       }),
       el('button', {
@@ -7490,7 +7509,7 @@ async function startZipImport(file) {
     close();
 
     if (!songs.length) {
-      banner('In dieser ZIP-Datei wurden keine Songs gefunden. Erwartet werden Ordner, in denen die MP3-Dateien liegen.', { kind: 'error' });
+      banner(t('import.noSongsInZip'), { kind: 'error' });
       return;
     }
 
@@ -7564,7 +7583,7 @@ async function startFolderImport(fileList) {
     return;
   }
 
-  const close = banner('Ordner wird gelesen …', { timeout: 0 });
+  const close = banner(t('import.folderReading'), { timeout: 0 });
   await paintNow();
   try {
     const items = [];
@@ -7580,7 +7599,7 @@ async function startFolderImport(fileList) {
     close();
 
     if (!songs.length) {
-      banner('In diesem Ordner wurden keine Songs gefunden. Erwartet werden Unterordner, in denen die MP3-Dateien liegen.', { kind: 'error' });
+      banner(t('import.noSongsInFolder'), { kind: 'error' });
       return;
     }
 
@@ -7592,7 +7611,7 @@ async function startFolderImport(fileList) {
     await openPicker({ songs, notes, skipped: [], source: { kind: 'folder' }, foundFiles, foundBytes });
   } catch (err) {
     close();
-    bannerError('Der Ordner konnte nicht gelesen werden.', 'IMPORT-FOLDER', err);
+    bannerError(t('import.folderReadFailed'), 'IMPORT-FOLDER', err);
   }
 }
 
@@ -7671,7 +7690,7 @@ async function runImport() {
   // scanFiles()), falls die Auswahlmaske zwischen Scan und Import verändert
   // werden könnte.
   if (chosenSongs.length > IMPORT_MAX_SONGS || chosenTracks.length > IMPORT_MAX_TRACKS) {
-    banner('Diese Auswahl enthält ungewöhnlich viele Songs oder Dateien — das sieht nicht nach einem Chorarchiv aus.', { kind: 'error' });
+    banner(t('import.suspiciousSelection'), { kind: 'error' });
     return;
   }
   normalizationImportActive = true;
@@ -7716,9 +7735,13 @@ async function runImport() {
     let rest = '';
     if (ratio > 0.05 && elapsed > 3) {
       const left = Math.round(elapsed / ratio - elapsed);
-      if (left > 5) rest = ` · noch etwa ${left < 60 ? `${left} s` : `${Math.round(left / 60)} min`}`;
+      if (left > 5) {
+        rest = t('import.remainingTime')
+          .replace('{time}', left < 60 ? `${left} s` : `${Math.round(left / 60)} min`);
+      }
     }
-    sheetSummary.textContent = `${done} von ${totalFiles} Dateien${rest}`;
+    sheetSummary.textContent = t('import.sheetProgress')
+      .replace('{done}', done).replace('{total}', totalFiles).replace('{rest}', rest);
     sheetPlan.textContent = label || '';
   };
   showProgress('');
@@ -7978,12 +8001,15 @@ async function runImport() {
   renderPlaylists();
 
   if (report.quotaHit) {
-    banner(`Zu wenig Speicherplatz. ${report.quotaAt} von ${report.quotaTotal} Songs wurden importiert.`, {
+    banner(t('import.quotaReached')
+      .replace('{at}', report.quotaAt).replace('{total}', report.quotaTotal), {
       kind: 'error',
-      action: { label: 'Speicher', onClick: () => showView('settings') },
+      action: { label: t('import.storageAction'), onClick: () => showView('settings') },
     });
   } else if (report.failed.length) {
-    banner(`${plural(report.songsImported, 'Song', 'Songs')} importiert, ${plural(report.failed.length, 'Datei', 'Dateien')} übersprungen.`, {
+    banner(t('import.doneSummary')
+      .replace('{songs}', tPlural(report.songsImported, 'common.songOne', 'common.songMany'))
+      .replace('{files}', tPlural(report.failed.length, 'common.fileOne', 'common.fileMany')), {
       kind: 'error',
       action: { label: 'Bericht', onClick: () => showView('import') },
     });
@@ -8078,7 +8104,7 @@ function closeRecorderView() {
 async function requestCloseRecorderView() {
   if (recHost === 'recorder' && (pendingTake || (recMediaRecorder && recMediaRecorder.state !== 'inactive'))) {
     const ok = await confirmDialog({
-      title: 'Aufnahme verlassen?', text: 'Die Aufnahme wird verworfen.',
+      title: 'Aufnahme verlassen?', text: t('msg.recDiscarded'),
       okLabel: 'Verlassen', danger: true,
     });
     if (!ok) return;
@@ -8651,32 +8677,42 @@ function renderImportReport() {
   if (!lastReport) return;
 
   const r = lastReport;
-  const card = el('div', { class: 'card' }, el('h2', { text: 'Letzter Import' }));
+  const card = el('div', { class: 'card' }, el('h2', { text: t('import.reportTitle') }));
 
   const lines = [];
-  if (r.songsImported) lines.push(`${plural(r.songsImported, 'Song', 'Songs')} geschrieben.`);
-  if (r.tracksAdded)   lines.push(`${plural(r.tracksAdded, 'Spur', 'Spuren')} hinzugefügt.`);
-  if (r.tracksReplaced) lines.push(`${plural(r.tracksReplaced, 'Aufnahme', 'Aufnahmen')} ersetzt.`);
-  if (r.unchanged)     lines.push(`${plural(r.unchanged, 'Datei', 'Dateien')} waren unverändert und wurden übersprungen.`);
-  if (r.quotaHit)      lines.push(`Abgebrochen: zu wenig Speicherplatz. ${r.quotaAt} von ${r.quotaTotal} Songs wurden geschrieben.`);
-  if (r.reconnected)   lines.push(`${plural(r.reconnected, 'gespeicherter Loop', 'gespeicherte Loops')} aus einer Sicherung wieder verbunden.`);
-  if (r.notesLinked)   lines.push(`${plural(r.notesLinked, 'gespeicherte Notiz', 'gespeicherte Notizen')} wieder verbunden.`);
-  if (r.lyricsNotesLinked) lines.push(`${plural(r.lyricsNotesLinked, 'eigener Liedtext', 'eigene Liedtexte')} wieder verbunden.`);
-  if (r.similarAttached) lines.push(`${plural(r.similarAttached, 'gespeicherter Eintrag', 'gespeicherte Einträge')} vom ähnlichen Song übernommen.`);
+  if (r.songsImported) lines.push(t('import.reportWritten')
+    .replace('{songs}', tPlural(r.songsImported, 'common.songOne', 'common.songMany')));
+  if (r.tracksAdded)   lines.push(t('import.reportTracksAdded')
+    .replace('{tracks}', tPlural(r.tracksAdded, 'count.trackOne', 'count.trackMany')));
+  if (r.tracksReplaced) lines.push(t('import.reportReplaced')
+    .replace('{recordings}', tPlural(r.tracksReplaced, 'count.recordingOne', 'count.recordingMany')));
+  if (r.unchanged)     lines.push(t('import.reportUnchanged')
+    .replace('{files}', tPlural(r.unchanged, 'common.fileOne', 'common.fileMany')));
+  if (r.quotaHit)      lines.push(t('import.reportQuota')
+    .replace('{at}', r.quotaAt).replace('{total}', r.quotaTotal));
+  if (r.reconnected)   lines.push(t('import.reportReconnected')
+    .replace('{loops}', tPlural(r.reconnected, 'count.savedLoopOne', 'count.savedLoopMany')));
+  if (r.notesLinked)   lines.push(t('import.reportNotesLinked')
+    .replace('{notes}', tPlural(r.notesLinked, 'count.savedNoteOne', 'count.savedNoteMany')));
+  if (r.lyricsNotesLinked) lines.push(t('import.reportLyricsLinked')
+    .replace('{lyrics}', tPlural(r.lyricsNotesLinked, 'count.lyricsOne', 'count.lyricsMany')));
+  if (r.similarAttached) lines.push(t('import.reportSimilar')
+    .replace('{entries}', tPlural(r.similarAttached, 'count.savedEntryOne', 'count.savedEntryMany')));
 
   card.append(el('p', { class: 'small', style: 'margin:0', text: lines.join(' ') }));
 
   if (r.failed.length) {
     card.append(
       el('p', { class: 'small', style: 'margin:12px 0 4px; color: var(--warn)',
-                text: `${plural(r.failed.length, 'Datei', 'Dateien')} übersprungen:` }),
+                text: t('import.skippedFiles')
+                  .replace('{files}', tPlural(r.failed.length, 'common.fileOne', 'common.fileMany')) }),
       el('ul', { class: 'steps small muted', style: 'list-style: disc' },
         r.failed.map((f) => el('li', { text: f }))));
   }
 
   if (r.notes.length) {
     card.append(
-      el('p', { class: 'small', style: 'margin:12px 0 4px', text: 'Hinweise:' }),
+      el('p', { class: 'small', style: 'margin:12px 0 4px', text: t('import.reportNotesHeading') }),
       el('ul', { class: 'steps small muted', style: 'list-style: disc' },
         r.notes.map((n) => el('li', { text: n }))));
   }
@@ -8709,7 +8745,7 @@ $('#sheet-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.preset');
   if (!btn || !pick) return;
   if (btn.dataset.preset === 'mine' && !settings.myVoices.length) {
-    banner('Wähle zuerst in den Einstellungen deine Stimme(n).', { kind: 'error' });
+    banner(t('msg.pickVoicesFirst'), { kind: 'error' });
     return;
   }
   applyPreset(btn.dataset.preset);
@@ -8752,7 +8788,7 @@ function offerUpdate(worker) {
   // gar nichts mehr getan. Erst den alten Banner schließen, dann den neuen
   // zeigen — es gibt so nie mehr als einen anklickbaren Stand gleichzeitig.
   updateBannerClose?.();
-  updateBannerClose = banner('Neue Version verfügbar.', {
+  updateBannerClose = banner(t('msg.newVersion'), {
     kind: 'info',
     timeout: 0,
     action: {
@@ -8764,7 +8800,7 @@ function offerUpdate(worker) {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) {
-    banner('Dieser Browser unterstützt keinen Offline-Betrieb. Die App braucht dann eine Internetverbindung.', { kind: 'error' });
+    banner(t('msg.noOffline'), { kind: 'error' });
     return;
   }
 
@@ -8818,7 +8854,7 @@ async function registerServiceWorker() {
       r.active?.postMessage({ type: 'GET_VERSION' });
     });
   } catch (err) {
-    bannerError('Der Offline-Betrieb konnte nicht eingerichtet werden.', 'OFFLINE-SETUP', err);
+    bannerError(t('msg.offlineSetupFailed'), 'OFFLINE-SETUP', err);
   }
 }
 
@@ -9225,7 +9261,7 @@ async function tryPlaySongFromRecording(song, token) {
     // Vorschau einfach zu beenden (siehe onPlaybackEnded).
     await previewRecordingBlob(blob, { savedId: best.id, anchor: best.anchor, asSong: true }, recordingTrimRange(best));
   } catch (err) {
-    bannerError('Diese Aufnahme konnte nicht abgespielt werden.', 'REC-PLAY', err);
+    bannerError(t('msg.recordingPlayFailed'), 'REC-PLAY', err);
     return false;
   }
   if (token !== openPlayerToken) return true;
@@ -9252,7 +9288,7 @@ async function openPlayer(songId) {
   }
   if (token !== openPlayerToken) return;
   if (!song) {
-    banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' });
+    banner(t('msg.songGone'), { kind: 'error' });
     showView('songs');
     return;
   }
@@ -9275,9 +9311,9 @@ async function openPlayer(songId) {
   if (recHost === 'player') {
     if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
       discardActiveRecording();
-      banner('REC abgebrochen, weil der Song gewechselt wurde.');
+      banner(t('msg.recCancelledSongChange'));
     } else if (pendingTake) {
-      banner('Nicht gespeicherter REC wurde verworfen, weil der Song gewechselt wurde.');
+      banner(t('msg.recDiscardedSongChange'));
     }
     pendingTake = null;
     renderPendingTake();
@@ -9325,7 +9361,7 @@ async function openPlayer(songId) {
   try {
     await audioInit();
   } catch (err) {
-    bannerError('Die Audiowiedergabe konnte nicht gestartet werden.', 'AUDIO-INIT', err);
+    bannerError(t('msg.audioStartFailed'), 'AUDIO-INIT', err);
     return;
   }
   if (token !== openPlayerToken) return;
@@ -9405,7 +9441,7 @@ async function openPlayer(songId) {
       $('#player-foot').hidden = false;
       setPlayerFootUnavailable(true);
     } else {
-      banner('Für diesen Song ist keine Aufnahme gespeichert.', { kind: 'error' });
+      banner(t('msg.noRecordingForSong'), { kind: 'error' });
     }
     // Die Absicht „gleich losspielen" galt dem übersprungenen Song, nicht
     // dem übernächsten Handgriff — sonst startet der nächste von Hand
@@ -9484,10 +9520,10 @@ function showReplacedNotice(song) {
     if (!dur || Math.abs(dur - prevDurationSec) <= 1) return;
 
     const diff = Math.round(Math.abs(dur - prevDurationSec));
-    const longer = dur > prevDurationSec ? 'länger' : 'kürzer';
+    const longer = t(dur > prevDurationSec ? 'msg.longer' : 'msg.shorter');
     box.append(
       el('p', { style: 'margin:0 0 10px',
-        text: `Die Aufnahme wurde ersetzt und ist ${diff} Sekunden ${longer}. Deine gespeicherten Loops könnten verschoben sein.` }),
+        text: t('msg.recordingReplaced').replace('{diff}', diff).replace('{direction}', longer) }),
       el('button', {
         class: 'btn', type: 'button', text: 'Verstanden',
         onclick: async () => {
@@ -9511,7 +9547,7 @@ function showLengthNotice(song) {
   if (durations.length < 2) return;
   if (Math.max(...durations) - Math.min(...durations) > 1) {
     lengthNoticeShown = true;
-    banner('Die Stimmen dieses Songs sind unterschiedlich lang. Die Wiedergabe richtet sich nach der längsten.');
+    banner(t('msg.voicesDifferentLength'));
   }
 }
 
@@ -9577,7 +9613,8 @@ async function renderQueue() {
 
     const remove = el('button', {
       class: 'queue-remove', type: 'button',
-      'aria-label': `„${song ? songLabel(song) : item.title}" aus der Wiedergabe entfernen`,
+      'aria-label': t('player.queueRemoveAria')
+        .replace('{title}', song ? songLabel(song) : item.title),
       onclick: (e) => { e.stopPropagation(); removeFromQueue(index); },
     }, '×');
 
@@ -9603,8 +9640,8 @@ async function renderQueue() {
       'data-missing': song ? 'false' : 'true',
       'data-unplayable': unplayable ? 'true' : 'false',
     }, remove, open);
-    if (current) row.append(el('span', { class: 'small muted', text: 'läuft' }));
-    else if (!song) row.append(el('span', { class: 'small muted', text: 'nicht verfügbar' }));
+    if (current) row.append(el('span', { class: 'small muted', text: t('player.queuePlaying') }));
+    else if (!song) row.append(el('span', { class: 'small muted', text: t('player.queueUnavailable') }));
     host.append(row);
   }
 
@@ -9799,7 +9836,7 @@ $('#btn-restart').addEventListener('click', () => {
 async function goToNextLibrarySong(autoplay) {
   const songs = (await DB.metaByType('song').catch(() => [])).filter(isPlayableSong);
   if (!songs.length) {
-    banner('Kein Lied mit Aufnahme in der Bibliothek.', { kind: 'error' });
+    banner(t('msg.noRecordingInLibrary'), { kind: 'error' });
     return;
   }
   songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
@@ -9823,7 +9860,7 @@ async function goToNextLibrarySong(autoplay) {
 async function goToPreviousLibrarySong(autoplay) {
   const songs = (await DB.metaByType('song').catch(() => [])).filter(isPlayableSong);
   if (!songs.length) {
-    banner('Kein Lied mit Aufnahme in der Bibliothek.', { kind: 'error' });
+    banner(t('msg.noRecordingInLibrary'), { kind: 'error' });
     return;
   }
   songs.sort((a, b) => collator.compare(a.title || '', b.title || ''));
@@ -9888,7 +9925,7 @@ $('#btn-song-search').addEventListener('pointerdown', (e) => {
     songSearchLongPressFired = true;
     const picked = await choiceDialog({
       title: 'Song suchen bei …',
-      text: 'Einmalige Auswahl — dein Standarddienst bleibt unverändert.',
+      text: t('msg.oneTimeSearchChoice'),
       options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
     });
     if (picked) openSongSearch(picked);
@@ -10059,7 +10096,7 @@ function updateLoopUI() {
     info.textContent = t('player.loopRange')
       .replace('{start}', fmtTime(r.start))
       .replace('{end}', fmtTime(r.end))
-      .replace('{length}', (r.end - r.start).toFixed(1).replace('.', ','));
+      .replace('{length}', fmtDecimal(r.end - r.start, 1));
   }
   updateLoopMarks();
 }
@@ -10123,7 +10160,7 @@ $('#btn-loop-save').addEventListener('click', async () => {
     title: 'Loop speichern',
     text: `${fmtTime(r.start)} – ${fmtTime(r.end)}`,
     value: suggestion,
-    placeholder: 'z. B. Refrain oder Takt 32–48',
+    placeholder: t('loops.namePlaceholder'),
   });
   if (name === null) return;
 
@@ -10197,7 +10234,7 @@ function renderLoopList() {
     });
 
     const menu = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${loop.name}“`,
+      class: 'icon-btn', type: 'button', 'aria-label': t('loops.menuAria').replace('{name}', loop.name),
     });
     menu.innerHTML = hamburgerIcon();
     menu.addEventListener('click', async () => {
@@ -10205,7 +10242,7 @@ function renderLoopList() {
       // selbst (siehe go oben).
       const action = await floatingMenu(menu, [
         { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
-        { value: 'delete', label: 'Löschen', icon: ICON_DELETE, danger: true },
+        { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
       if (action === 'rename') {
         const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
@@ -10215,8 +10252,8 @@ function renderLoopList() {
         renderLoopList();
       } else if (action === 'delete') {
         const ok = await confirmDialog({
-          title: 'Loop löschen?', text: `„${loop.name}" wird entfernt.`,
-          okLabel: 'Löschen', danger: true,
+          title: t('loops.deleteTitle'), text: t('common.willBeRemoved').replace('{name}', loop.name),
+          okLabel: t('common.delete'), danger: true,
         });
         if (!ok) return;
         await DB.metaDelete(loop.key);
@@ -10653,7 +10690,7 @@ function wireRecorderEvents(recorder, session) {
     session.failed = true;
     recChunks = [];
     teardownRecording();
-    bannerError('Die Aufnahme wurde abgebrochen.', 'REC-ERROR', e.error);
+    bannerError(t('msg.recAborted'), 'REC-ERROR', e.error);
   });
 }
 
@@ -10662,7 +10699,7 @@ async function startRecording() {
   // keiner ausgewählt — der Song wird erst beim Speichern zugeordnet.
   if ((recHost === 'player' && !playerSong) || pendingTake || recStarting) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    banner('Dieser Browser kann keine Mikrofonaufnahmen aufzeichnen.', { kind: 'error' });
+    banner(t('msg.micUnsupported'), { kind: 'error' });
     return;
   }
 
@@ -10709,7 +10746,7 @@ async function startRecording() {
     recStarting = false;
     if (stream) for (const track of stream.getTracks()) track.stop();
     if (!stillCurrent()) return;
-    bannerError('Der Zugriff aufs Mikrofon wurde nicht erlaubt.', 'REC-MIC', err);
+    bannerError(t('msg.micDenied'), 'REC-MIC', err);
     return;
   }
   updateRecInputWarning(recStream);
@@ -10726,7 +10763,7 @@ async function startRecording() {
     recStarting = false;
     for (const track of recStream.getTracks()) track.stop();
     recStream = null;
-    bannerError('Die Aufnahme ließ sich nicht starten.', 'REC-START', err);
+    bannerError(t('msg.recStartFailed'), 'REC-START', err);
     return;
   }
   recStarting = false;
@@ -11051,7 +11088,7 @@ async function onRecordingStopped() {
   teardownRecording();
 
   if (!chunks.length || duration < 0.5) {
-    if (chunks.length) banner('Der REC war zu kurz und wurde verworfen.');
+    if (chunks.length) banner(t('msg.recTooShort'));
     return;
   }
   // Nicht sofort speichern — erst anhören und entscheiden lassen.
@@ -11068,7 +11105,7 @@ async function onRecordingStopped() {
 function onRecToggleClick(host) {
   const active = recMediaRecorder && recMediaRecorder.state !== 'inactive';
   if (active || pendingTake) {
-    if (recHost !== host) { banner('Es läuft schon eine Aufnahme.', { kind: 'error' }); return; }
+    if (recHost !== host) { banner(t('msg.recAlreadyRunning'), { kind: 'error' }); return; }
     if (active) stopRecording();
     return;
   }
@@ -11200,7 +11237,7 @@ async function onTakePreviewClick() {
     syncBackingPlayState();
   } else {
     try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }, recordingTrimRange(pendingTake)); }
-    catch (err) { bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err); }
+    catch (err) { bannerError(t('msg.recPlayFailed'), 'REC-PLAY', err); }
   }
   updateRecPreviewButton();
   updateRecTakePosition();
@@ -11222,7 +11259,7 @@ async function onTakeTrimClick() {
   const range = recordingTrimRange(pendingTake);
   let result;
   try { result = await pickTrimRange(pendingTake.blob, range.start, range.end); }
-  catch (err) { bannerError('Der REC konnte nicht zum Zuschneiden geöffnet werden.', 'REC-TRIM', err); return; }
+  catch (err) { bannerError(t('msg.recTrimOpenFailed'), 'REC-TRIM', err); return; }
   if (!result) return;
 
   pendingTake.trimStart = result.startSec;
@@ -11235,7 +11272,7 @@ $('#btn-recorder-take-trim').addEventListener('click', onTakeTrimClick);
 async function onTakeDiscardClick() {
   if (!pendingTake) return;
   const ok = await confirmDialog({
-    title: 'REC verwerfen?', text: 'Die Aufnahme wird nicht gespeichert.',
+    title: 'REC verwerfen?', text: t('msg.recNotSaved'),
     okLabel: 'Verwerfen', danger: true,
   });
   if (!ok) return;
@@ -11286,7 +11323,7 @@ async function renderRecSongPicker() {
     },
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: `„${rawQuery}" als neues Lied anlegen` }),
-        el('div', { class: 'small muted', text: 'Verbindet sich beim nächsten Import automatisch.' }))));
+        el('div', { class: 'small muted', text: t('rec.connectsOnImport') }))));
   }
 
   for (const song of visible) {
@@ -11359,12 +11396,12 @@ async function onTakeSaveClick() {
     let song;
     if (savingHost === 'recorder') {
       if (!draft.songId) {
-        banner('Bitte zuerst einen Song wählen — dann lässt sich der REC speichern.');
+        banner(t('msg.recPickSongFirst'));
         $('#rec-song-search').scrollIntoView({ block: 'center', behavior: 'smooth' });
         return;
       }
       try { song = await DB.metaGet(`song:${draft.songId}`); } catch (err) { console.error(err); }
-      if (!song) { banner('Dieser Song ist nicht mehr vorhanden.', { kind: 'error' }); return; }
+      if (!song) { banner(t('msg.songGone'), { kind: 'error' }); return; }
     } else {
       song = playerSong;
       if (!song) return;
@@ -11411,7 +11448,7 @@ async function onTakeSaveClick() {
       await loadSongRecordings();
     }
   } catch (err) {
-    bannerError('Der REC konnte nicht gespeichert werden.', 'REC-SAVE', err);
+    bannerError(t('msg.recSaveFailed'), 'REC-SAVE', err);
   } finally {
     takeSaveInProgress = false;
   }
@@ -11441,7 +11478,7 @@ async function previewRecordingBlob(blob, tag, range) {
   // immer mit einer Fehlermeldung, obwohl nichts wirklich kaputt ist.
   if (!Audio.ready) {
     try { await audioInit(); }
-    catch (err) { bannerError('Die Wiedergabe konnte nicht vorbereitet werden.', 'AUDIO-INIT', err); return; }
+    catch (err) { bannerError(t('msg.recPrepareFailed'), 'AUDIO-INIT', err); return; }
   }
 
   // Läuft schon eine Vorschau, gilt weiter der allererste Rücksprungpunkt —
@@ -11823,7 +11860,7 @@ async function toggleSavedRecordingPreview(recording) {
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
     await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor }, recordingTrimRange(recording));
   } catch (err) {
-    bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
+    bannerError(t('msg.recPlayFailed'), 'REC-PLAY', err);
   }
   renderRecordingList();
   updateRecPreviewButton();
@@ -11935,7 +11972,9 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
       shadeRight.style.width = `${100 - pct(endSec)}%`;
       startHandle.setAttribute('aria-valuetext', fmtTime(startSec));
       endHandle.setAttribute('aria-valuetext', fmtTime(endSec));
-      label.textContent = `${fmtTime(startSec)} – ${fmtTime(endSec)} · Länge ${fmtTime(endSec - startSec)}`;
+      label.textContent = t('rec.trimRange')
+        .replace('{start}', fmtTime(startSec)).replace('{end}', fmtTime(endSec))
+        .replace('{length}', fmtTime(endSec - startSec));
     };
 
     const nudge = (isStart, delta) => {
@@ -12001,7 +12040,7 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
       tick();
     };
 
-    const playBtn = el('button', { class: 'rec-play trim-play', type: 'button', 'aria-label': 'Auswahl von Anfang abspielen' });
+    const playBtn = el('button', { class: 'rec-play trim-play', type: 'button', 'aria-label': t('rec.trimPlayStart') });
     playBtn.innerHTML = '<svg class="rec-icon-visible" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
     playBtn.addEventListener('click', () => {
       if (playBtn.classList.contains('is-playing')) { stopPreview(); return; }
@@ -12009,7 +12048,7 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
     });
 
     const endBtn = el('button', { class: 'trim-end-btn', type: 'button',
-      'aria-label': `Letzte ${END_PREVIEW_LEN} Sekunden vor dem Ende der Auswahl abspielen` });
+      'aria-label': t('rec.trimPlayEnd').replace('{seconds}', END_PREVIEW_LEN) });
     endBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13l8-6.5z"/><path d="M17 5v14"/></svg>';
     endBtn.append(el('span', { text: 'Ende' }));
     endBtn.addEventListener('click', () => {
@@ -12026,12 +12065,12 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
     };
     const box = el('div', { class: 'dialog' },
       el('h2', { text: 'REC zuschneiden' }),
-      el('p', { text: 'Anfang und Ende an den Griffen ziehen. Der REC selbst bleibt dabei vollständig erhalten — nur Anhören und Export beschränken sich auf die Auswahl.' }),
+      el('p', { text: t('rec.trimHint') }),
       wrap,
       previewRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        el('button', { class: 'btn btn--primary', type: 'button', text: 'Übernehmen',
+        el('button', { class: 'btn btn--primary', type: 'button', text: t('common.apply'),
                        onclick: () => done({ startSec, endSec }) })));
 
     const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC zuschneiden' }, box);
@@ -12275,8 +12314,8 @@ function showRecExportProgressDialog() {
   const bar = el('i');
   const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: '0%' });
   const box = el('div', { class: 'dialog' },
-    el('h2', { text: 'REC wird exportiert' }),
-    el('p', { text: 'Wird als MP3 kodiert — bei längeren Aufnahmen kann das kurz dauern.' }),
+    el('h2', { text: t('rec.exportTitle') }),
+    el('p', { text: t('rec.exportText') }),
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
@@ -12357,7 +12396,7 @@ async function exportRecording(recording, anchorBtn) {
     downloadBlob(new Blob([tagged], { type: 'audio/mpeg' }), fileName);
   } catch (err) {
     progress.close();
-    bannerError('Der REC konnte nicht als MP3 exportiert werden.', 'REC-EXPORT', err);
+    bannerError(t('msg.recExportFailed'), 'REC-EXPORT', err);
   }
 }
 
@@ -12478,7 +12517,7 @@ function renderRecordingList() {
 
     const go = el('button', {
       class: 'go', type: 'button',
-      'aria-label': `„${recording.name}" ${playing ? 'pausieren' : 'über die Wiedergabe oben abspielen'}`,
+      'aria-label': t(playing ? 'rec.pauseNamedAria' : 'rec.playAria').replace('{name}', recording.name),
     },
       icon,
       el('span', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:2px' },
@@ -12487,14 +12526,14 @@ function renderRecordingList() {
     go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
 
     const menu = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${recording.name}“`,
+      class: 'icon-btn', type: 'button', 'aria-label': t('rec.menuAria').replace('{name}', recording.name),
     });
     menu.innerHTML = hamburgerIcon();
     menu.addEventListener('click', async () => {
       const action = await floatingMenu(menu, [
         { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
         { value: 'export', label: 'Exportieren', icon: ICON_EXPORT },
-        { value: 'delete', label: 'Löschen', icon: ICON_DELETE, danger: true },
+        { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
       if (action === 'rename') {
         const result = await editRecordingDialog(recording);
@@ -12507,8 +12546,8 @@ function renderRecordingList() {
         await exportRecording(recording, menu);
       } else if (action === 'delete') {
         const ok = await confirmDialog({
-          title: 'REC löschen?', text: `„${recording.name}" wird entfernt.`,
-          okLabel: 'Löschen', danger: true,
+          title: t('rec.deleteTitle'), text: t('common.willBeRemoved').replace('{name}', recording.name),
+          okLabel: t('common.delete'), danger: true,
         });
         if (!ok) return;
         if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
@@ -12554,7 +12593,7 @@ async function toggleRecordingLoop(recording) {
       if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
       await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor }, recordingTrimRange(recording));
     } catch (err) {
-      bannerError('Der REC konnte nicht abgespielt werden.', 'REC-PLAY', err);
+      bannerError(t('msg.recPlayFailed'), 'REC-PLAY', err);
       return;
     }
   } else if (!Audio.playing) {
@@ -12867,7 +12906,7 @@ async function saveLyricsNote({ announce = false } = {}) {
     if (announce) banner('Liedtext gespeichert.', { kind: 'ok' });
   } catch (err) {
     if (playerLyricsNote === note) setLyricsNoteState('dirty');
-    bannerError('Der Liedtext konnte nicht gespeichert werden.', 'LYRICS-NOTE-SAVE', err);
+    bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err);
   }
 }
 
@@ -12894,7 +12933,7 @@ async function deleteLyricsNote() {
     lyricsNoteEditing = prevEditing;
     lyricsSource = prevSource;
     renderLyricsBlock();
-    bannerError('Der Liedtext konnte nicht gelöscht werden.', 'LYRICS-NOTE-DELETE', err);
+    bannerError(t('msg.lyricsDeleteFailed'), 'LYRICS-NOTE-DELETE', err);
     return false;
   }
 }
@@ -13069,7 +13108,7 @@ async function loadScorePreviews() {
       // aber ganz normal in einem eigenen Tab. Deshalb gibt es diesen Knopf
       // immer — nicht erst, wenn die Vorschau sichtbar bleibt.
       head.append(el('button', {
-        class: 'btn', type: 'button', text: 'Öffnen',
+        class: 'btn', type: 'button', text: t('common.open'),
         style: 'padding:8px 14px; min-height:38px',
         onclick: (e) => { e.stopPropagation(); window.open(url, '_blank', 'noopener'); },
       }));
@@ -13117,10 +13156,10 @@ async function loadScorePreviews() {
       row.append(
         el('iframe', { class: 'score-preview', src: url, title: score.fileName }),
         el('p', { class: 'small muted', style: 'margin:6px 0 0',
-          text: 'Bleibt die Vorschau leer, öffnet „Öffnen“ die Datei im eigenen PDF-Betrachter.' }));
+          text: t('scores.pdfHint') }));
     } catch (err) {
       console.error('[noten]', err);
-      head.append(el('span', { class: 'small muted', text: 'nicht lesbar' }));
+      head.append(el('span', { class: 'small muted', text: t('scores.unreadable') }));
     }
   }
 }
@@ -13260,7 +13299,7 @@ function fmtClock(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return '';
-  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 $('#btn-note-add').addEventListener('click', () => {
@@ -13290,9 +13329,9 @@ $('#btn-note-delete').addEventListener('click', async () => {
   if (!playerNote) return;
   if ($('#note-text').value.trim()) {
     const ok = await confirmDialog({
-      title: 'Notiz löschen?',
-      text: `Die Notiz zu „${playerSong?.title || 'diesem Lied'}" wird entfernt.`,
-      okLabel: 'Löschen', danger: true,
+      title: t('notes.deleteTitle'),
+      text: t('notes.deleteText').replace('{song}', playerSong?.title || t('notes.thisSong')),
+      okLabel: t('common.delete'), danger: true,
     });
     if (!ok) return;
   }
@@ -13327,7 +13366,7 @@ async function saveNote({ announce = false } = {}) {
     if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
   } catch (err) {
     if (playerNote === note) setNoteState('dirty');
-    bannerError('Die Notiz konnte nicht gespeichert werden.', 'NOTE-SAVE', err);
+    bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err);
   }
 }
 
@@ -13348,7 +13387,7 @@ async function deleteNote() {
     // unerwartet wieder da.
     playerNote = note;
     renderNoteBlock();
-    bannerError('Die Notiz konnte nicht gelöscht werden.', 'NOTE-DELETE', err);
+    bannerError(t('msg.noteDeleteFailed'), 'NOTE-DELETE', err);
     return false;
   }
 }
@@ -13454,7 +13493,10 @@ async function showPrintSelectionDialog(title, items) {
     const done = (result) => { layer.remove(); resolve(result); };
 
     const countLabel = el('span', { class: 'small muted' });
-    const updateCount = () => { countLabel.textContent = `${selected.size} von ${items.length} ausgewählt`; };
+    const updateCount = () => {
+      countLabel.textContent = t('printable.selectedCount')
+        .replace('{selected}', selected.size).replace('{total}', items.length);
+    };
 
     const rows = items.map((item, i) => {
       const cb = el('input', { type: 'checkbox' });
@@ -13477,7 +13519,7 @@ async function showPrintSelectionDialog(title, items) {
     let playlistSelect = null;
     const playlistRow = playlists.length ? el('label', { class: 'select-field', style: 'margin-bottom:10px' },
       playlistSelect = el('select', {},
-        el('option', { value: '', text: 'Für eine Setliste auswählen …' }),
+        el('option', { value: '', text: t('printable.pickForSetlist') }),
         ...playlists.map((p) => el('option', { value: p.name, text: p.name })))
     ) : null;
 
@@ -13535,7 +13577,12 @@ function printItems(heading, items) {
 
 /** Baut aus den ausgewählten Einträgen einen menschenlesbaren Klartext. */
 function printableToText(kind, heading, items) {
-  const lines = [`Chor-App-Export: ${kind}`, heading, `Exportiert am ${new Date().toLocaleDateString('de-DE')}`, ''];
+  const lines = [
+    t('printable.exportHeader').replace('{kind}', kind),
+    heading,
+    t('printable.exportedOn').replace('{date}', new Date().toLocaleDateString(currentLocale())),
+    '',
+  ];
   for (const item of items) {
     lines.push('='.repeat(40), item.songTitle, '='.repeat(40));
     lines.push(String(item.text).replace(/\s+$/, ''), '');
@@ -13567,11 +13614,11 @@ async function printFlow(kind, label, heading, readErrorCode) {
   try {
     items = await collectPrintable(kind);
   } catch (err) {
-    bannerError(`${label} konnten nicht gelesen werden.`, readErrorCode, err);
+    bannerError(t('printable.readFailed').replace('{label}', label), readErrorCode, err);
     return;
   }
   if (!items.length) {
-    banner(`Es sind noch keine ${label.toLowerCase()} gespeichert.`);
+    banner(t('printable.emptyStored').replace('{label}', label.toLowerCase()));
     return;
   }
   const result = await showPrintSelectionDialog(`${label} drucken`, items);
@@ -13903,7 +13950,7 @@ async function createPlaylistFromText(text, fallbackName) {
   }
   const { name, titles } = result;
   if (!titles.length) {
-    banner('In diesem Text stehen keine Liedtitel.', { kind: 'error' });
+    banner(t('playlists.noTitlesInText'), { kind: 'error' });
     return null;
   }
 
@@ -13912,7 +13959,10 @@ async function createPlaylistFromText(text, fallbackName) {
 
   // Nicht gefundene Titel werden immer genannt, nie still verworfen.
   if (missing.length) {
-    banner(`${missing.length} von ${titles.length} Titeln nicht gefunden: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ' …' : ''} — vermutlich noch nicht importiert. Sie bleiben als Platzhalter stehen.`,
+    banner(t('playlists.titlesNotFound')
+      .replace('{missing}', missing.length).replace('{total}', titles.length)
+      .replace('{names}', missing.slice(0, 4).join(', '))
+      .replace('{ellipsis}', missing.length > 4 ? ' …' : ''),
       { kind: 'error' });
   }
 
@@ -13942,22 +13992,24 @@ $('#pl-input').addEventListener('change', async (e) => {
   // Datei soll nicht erst vollständig gelesen werden, bevor überhaupt geprüft
   // wird, ob das plausibel ist (dieselbe Reihenfolge wie beim ZIP-Import).
   if (file.size > PLAYLIST_IMPORT_MAX_FILE_BYTES) {
-    banner(`Diese Datei ist zu groß (${fmtBytes(file.size)}, erlaubt sind ${fmtBytes(PLAYLIST_IMPORT_MAX_FILE_BYTES)}).`, { kind: 'error' });
+    banner(t('playlists.fileTooLarge')
+      .replace('{size}', fmtBytes(file.size))
+      .replace('{limit}', fmtBytes(PLAYLIST_IMPORT_MAX_FILE_BYTES)), { kind: 'error' });
     return;
   }
   try {
     const text = await readTextBlob(file);
     await createPlaylistFromText(text, file.name.replace(/\.txt$/i, ''));
   } catch (err) {
-    bannerError('Diese Datei konnte nicht gelesen werden.', 'IMPORT-TEXT', err);
+    bannerError(t('playlists.fileReadFailed'), 'IMPORT-TEXT', err);
   }
 });
 
 async function createPlaylistFromPastedText() {
   const text = await promptDialog({
-    title: 'Setliste einfügen',
-    text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.',
-    value: '', okLabel: 'Übernehmen', multiline: true,
+    title: t('playlists.pasteTitle'),
+    text: t('playlists.pasteHint'),
+    value: '', okLabel: t('common.apply'), multiline: true,
     placeholder: '# Sommerkonzert 2026\nAve Maria\nBlaue Augen',
   });
   if (text === null || !text.trim()) return;
@@ -14269,7 +14321,7 @@ async function routineStart(scope, targetId, draft, plRef) {
 
   if (scope === 'setlist') {
     const pl = plRef || await DB.metaGet(`playlist:${targetId}`).catch(() => null);
-    if (!pl) { banner('Diese Setliste ist nicht mehr vorhanden.', { kind: 'error' }); routine = null; return; }
+    if (!pl) { banner(t('playlists.gone'), { kind: 'error' }); routine = null; return; }
     await startPlaylist(pl);
     return;
   }
@@ -14568,7 +14620,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     renderRows();
 
     const addBtn = el('button', {
-      class: 'routine-addbtn', type: 'button', text: '+', 'aria-label': 'Schritt hinzufügen',
+      class: 'routine-addbtn', type: 'button', text: '+', 'aria-label': t('playlists.addStep'),
       onclick: () => {
         const last = draftSteps[draftSteps.length - 1];
         draftSteps.push(draftSteps.length === 1 ? newRoutineDefaultStep(false, withVoice, voiceList) : { ...last });
@@ -14578,7 +14630,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     });
 
     let afterHost = null;
-    const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: '… dann nächster Song.' }) : null;
+    const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: t('playlists.thenNextSong') }) : null;
     if (scope !== 'setlist') {
       const allBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'next' ? 'true' : 'false' }, playIcon(), t('routine.allSegment'));
       const selBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'playlist' ? 'true' : 'false' }, listIcon(), t('routine.selectionSegment'));
@@ -14814,7 +14866,8 @@ async function renderPlaylists() {
 
     const fav = el('button', {
       class: 'icon-btn', type: 'button',
-      'aria-label': pl.favorite ? `„${pl.name}" nicht mehr als aktuelle Setliste` : `„${pl.name}" als aktuelle Setliste markieren`,
+      'aria-label': t(pl.favorite ? 'playlists.unsetCurrentAria' : 'playlists.setCurrentAria')
+        .replace('{name}', pl.name),
       'aria-pressed': pl.favorite ? 'true' : 'false',
       style: pl.favorite ? 'color: var(--warn)' : null,
       onclick: () => toggleFavoritePlaylist(pl, lists),
@@ -14822,12 +14875,12 @@ async function renderPlaylists() {
     fav.innerHTML = starIcon(!!pl.favorite);
 
     const menu = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `Menü für „${pl.name}"`,
+      class: 'icon-btn', type: 'button', 'aria-label': t('playlists.menuAria').replace('{name}', pl.name),
       onclick: async () => {
         const choice = await choiceDialog({
-          title: pl.name, text: 'Was möchtest du tun?',
+          title: pl.name, text: t('playlists.whatToDo'),
           options: [
-            { value: 'practice', label: 'Üben …' },
+            { value: 'practice', label: t('playlists.practice') },
             { value: 'file', label: 'Als Datei speichern' },
             { value: 'text', label: 'Als Text anzeigen' },
             { value: 'edit', label: 'Bearbeiten' },
@@ -14861,9 +14914,9 @@ async function startPlaylist(pl) {
 
   if (firstIndex === -1) {
     if (!items.some((it) => it.id)) {
-      banner(`Von „${pl.name}" ist noch kein Lied importiert.`, { kind: 'error' });
+      banner(t('playlists.noSongImported').replace('{name}', pl.name), { kind: 'error' });
     } else {
-      banner(`Von „${pl.name}" ist noch keine Aufnahme importiert.`, { kind: 'error' });
+      banner(t('playlists.noRecordingImported').replace('{name}', pl.name), { kind: 'error' });
     }
     return;
   }
@@ -14929,7 +14982,7 @@ async function openPlaylistView(id) {
   }
   const pl = await DB.metaGet(`playlist:${id}`).catch(() => null);
   if (!pl) {
-    banner('Diese Setliste ist nicht mehr vorhanden.', { kind: 'error' });
+    banner(t('playlists.gone'), { kind: 'error' });
     showView('playlists');
     return;
   }
@@ -14955,10 +15008,10 @@ $('#btn-pl-save').addEventListener('click', async () => {
 async function confirmLeaveDraft() {
   if (!plDirty || !plDraft) return true;
   const choice = await choiceDialog({
-    title: 'Nicht gespeicherte Änderungen',
-    text: `„${plDraft.name}" wurde geändert.`,
+    title: t('playlists.unsavedTitle'),
+    text: t('playlists.unsavedText').replace('{name}', plDraft.name),
     options: [
-      { value: 'save', label: 'Speichern', primary: true },
+      { value: 'save', label: t('common.save'), primary: true },
       { value: 'drop', label: 'Verwerfen', danger: true },
     ],
   });
@@ -14986,7 +15039,9 @@ async function renderPlaylistDetail() {
   const hint = $('#pl-missing');
   if (missing.length) {
     hint.hidden = false;
-    hint.textContent = `${missing.length} ${missing.length === 1 ? 'Titel ist' : 'Titel sind'} noch nicht importiert: ${missing.join(', ')}. Die Einträge bleiben stehen und verbinden sich automatisch.`;
+    hint.textContent = t('playlists.missingHint')
+      .replace('{count}', tPlural(missing.length, 'playlists.missingOne', 'playlists.missingMany'))
+      .replace('{names}', missing.join(', '));
   } else {
     hint.hidden = true;
   }
@@ -15003,7 +15058,7 @@ function renderPlaylistEntries(songs) {
 
   if (!titles.length) {
     host.append(el('p', { class: 'small muted', style: 'margin:0',
-      text: 'Noch keine Titel. Suche unten nach Songs und tippe sie an.' }));
+      text: t('playlists.emptyDraft') }));
     return;
   }
 
@@ -15012,7 +15067,8 @@ function renderPlaylistEntries(songs) {
 
     const grip = el('button', {
       class: 'icon-btn pl-grip', type: 'button',
-      'aria-label': `„${title}" verschieben, Position ${index + 1} von ${titles.length}. Pfeiltasten verschieben.`,
+      'aria-label': t('playlists.reorderAria')
+        .replace('{title}', title).replace('{pos}', index + 1).replace('{total}', titles.length),
       'data-index': String(index),
     });
     grip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 7h8M8 12h8M8 17h8"/></svg>';
@@ -15032,7 +15088,7 @@ function renderPlaylistEntries(songs) {
     const label = el('div', { class: 'grow' },
       el('strong', { text: song ? songLabel(song) : title }),
       el('div', { class: 'small muted',
-        text: song ? plural(song.tracks.length, 'Stimme', 'Stimmen') : 'noch nicht importiert' }));
+        text: song ? plural(song.tracks.length, 'Stimme', 'Stimmen') : t('playlists.notImportedBadge') }));
 
     const remove = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': `„${title}" entfernen`,
@@ -15149,7 +15205,7 @@ function renderPlaylistCandidates(songs) {
     },
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: `„${raw.trim()}“ eintragen` }),
-        el('div', { class: 'small muted', text: 'Noch nicht importiertes Lied als Platzhalter hinzufügen' }))));
+        el('div', { class: 'small muted', text: t('playlists.addPlaceholderAria') }))));
   }
 
   const inList = new Set((plDraft.songTitles || []).map(normalizeTitle));
@@ -15180,7 +15236,7 @@ function renderPlaylistCandidates(songs) {
       },
     },
       el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) })),
-      el('span', { class: 'small muted', text: already ? 'entfernen' : 'hinzufügen' })));
+      el('span', { class: 'small muted', text: t(already ? 'common.remove' : 'common.add') })));
   }
 }
 
@@ -15202,9 +15258,9 @@ $('#pl-rename').addEventListener('click', async () => {
 
 $('#btn-pl-delete').addEventListener('click', async () => {
   const ok = await confirmDialog({
-    title: 'Setliste löschen?',
-    text: `„${plDraft.name}" wird entfernt. Die Songs bleiben erhalten.`,
-    okLabel: 'Löschen', danger: true,
+    title: t('playlists.deleteTitle'),
+    text: t('playlists.deleteText').replace('{name}', plDraft.name),
+    okLabel: t('common.delete'), danger: true,
   });
   if (!ok) return;
   if (plSaved) await DB.metaDelete(plDraft.key);
@@ -15253,27 +15309,27 @@ function openPlaylistTextDialog(pl) {
 
   const box = el('div', { class: 'dialog' },
     el('h2', { text: `„${pl.name}" als Text` }),
-    el('p', { class: 'small muted', text: 'Ein Liedtitel pro Zeile. Eine Zeile mit # davor wird zum Namen.' }),
+    el('p', { class: 'small muted', text: t('playlists.pasteHint') }),
     textarea,
     el('div', { class: 'dialog-actions' },
       el('button', { class: 'btn', type: 'button', text: 'Kopieren', onclick: async () => {
         try {
           await navigator.clipboard.writeText(textarea.value);
-          banner('In die Zwischenablage kopiert.', { kind: 'ok' });
+          banner(t('common.copiedClipboard'), { kind: 'ok' });
         } catch {
           textarea.select();
         }
       } }),
-      el('button', { class: 'btn', type: 'button', text: 'Einfügen', onclick: async () => {
+      el('button', { class: 'btn', type: 'button', text: t('common.paste'), onclick: async () => {
         try {
           textarea.value = await navigator.clipboard.readText();
         } catch {
-          banner('Einfügen aus der Zwischenablage ist hier nicht möglich.', { kind: 'error' });
+          banner(t('playlists.pasteUnavailable'), { kind: 'error' });
         }
       } })),
     el('div', { class: 'dialog-actions', style: 'margin-top:10px' },
-      el('button', { class: 'btn', type: 'button', text: 'Schließen', onclick: done }),
-      el('button', { class: 'btn btn--primary', type: 'button', text: 'Übernehmen', onclick: async () => {
+      el('button', { class: 'btn', type: 'button', text: t('common.close'), onclick: done }),
+      el('button', { class: 'btn btn--primary', type: 'button', text: t('common.apply'), onclick: async () => {
         const result = parsePlaylistText(textarea.value, pl.name);
         if (result.error) {
           banner(result.error, { kind: 'error' });
@@ -15281,7 +15337,7 @@ function openPlaylistTextDialog(pl) {
         }
         const { name, titles } = result;
         if (!titles.length) {
-          banner('In diesem Text stehen keine Liedtitel.', { kind: 'error' });
+          banner(t('playlists.noTitlesInText'), { kind: 'error' });
           return;
         }
         pl.name = name || pl.name;
@@ -15289,7 +15345,7 @@ function openPlaylistTextDialog(pl) {
         await savePlaylist(pl);
         if (plDraft?.id === pl.id) { plDraft = JSON.parse(JSON.stringify(pl)); plDirty = false; }
         await renderPlaylists();
-        banner('Setliste übernommen.', { kind: 'ok' });
+        banner(t('playlists.applied'), { kind: 'ok' });
         done();
       } })));
 
@@ -15367,11 +15423,11 @@ async function playlistAdvance() {
   }
   const i = nextPlayableIndex(playQueue.items, playQueue.index);
   if (i < 0) {
-    banner(`Setliste „${playQueue.name}" enthält keine abspielbaren Titel.`, { kind: 'error' });
+    banner(t('playlists.noPlayableTitles').replace('{name}', playQueue.name), { kind: 'error' });
     playQueue = null;
     return;
   }
-  if (i <= playQueue.index) banner(`Setliste „${playQueue.name}" beginnt von vorn.`);
+  if (i <= playQueue.index) banner(t('playlists.restarting').replace('{name}', playQueue.name));
   playQueue.index = i;
   const id = playQueue.items[i].id;
   // Ist nur ein einziger Titel abspielbar, führt das Weiterschalten zurück
@@ -15932,13 +15988,13 @@ async function showBackupOptionsDialog() {
 
     const box = el('div', { class: 'dialog' },
       el('h2', { text: 'Sicherung erstellen' }),
-      el('p', { text: 'Text-Daten sind immer klein und stehen deshalb schon an. Audio nur, wenn gewünscht — beides lässt sich einzeln abwählen.' }),
+      el('p', { text: t('backup.scopeHint') }),
       el('div', { class: 'preset-row', style: 'grid-template-columns:repeat(2,1fr); margin-bottom:10px' },
         presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
         presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Alles sichern', onclick: () => applyPreset(true) })),
       el('div', { class: 'stack', style: 'gap:2px' }, ...rowNodes),
       el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
-        el('span', { text: 'Geschätzte Dateigröße' }), totalLabel),
+        el('span', { text: t('backup.estimatedSize') }), totalLabel),
       el('div', { class: 'dialog-actions' },
         el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
@@ -15956,10 +16012,10 @@ const BACKUP_PROGRESS_THRESHOLD = 10 * 1024 * 1024; // ab 10 MB eigener Fortschr
 /** Fortschrittsbalken für große Sicherungen — dieselbe Optik wie der Speicherbalken in den Einstellungen. */
 function showBackupProgressDialog(estimatedTotal) {
   const bar = el('i');
-  const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: 'Sicherung wird erstellt …' });
+  const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: t('backup.running') });
   const box = el('div', { class: 'dialog' },
-    el('h2', { text: 'Sicherung wird erstellt' }),
-    el('p', { text: 'Bitte die App währenddessen nicht schließen — bei viel Audio kann das etwas dauern.' }),
+    el('h2', { text: t('backup.runningTitle') }),
+    el('p', { text: t('backup.runningText') }),
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
@@ -15968,7 +16024,8 @@ function showBackupProgressDialog(estimatedTotal) {
     update(doneBytes) {
       const pct = estimatedTotal > 0 ? Math.min(100, Math.round((doneBytes / estimatedTotal) * 100)) : 0;
       bar.style.width = `${pct}%`;
-      status.textContent = `${pct}% · ${fmtBytes(doneBytes)} von ${fmtBytes(estimatedTotal)}`;
+      status.textContent = t('backup.progress').replace('{pct}', pct)
+        .replace('{done}', fmtBytes(doneBytes)).replace('{total}', fmtBytes(estimatedTotal));
     },
     close() { layer.remove(); },
   };
@@ -15983,7 +16040,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
   const progress = showProgress ? showBackupProgressDialog(estimatedBytes) : null;
   const heavy = opts.songAudio || opts.recordings;
   const closeBanner = !showProgress && heavy
-    ? banner('Sicherung wird erstellt … bei viel Audio kann das etwas dauern.', { timeout: 0 })
+    ? banner(t('backup.runningBanner'), { timeout: 0 })
     : null;
   try {
     const { parts: blobParts, counts } = await buildBackupParts(opts, (done) => progress?.update(done));
@@ -16013,7 +16070,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
   } catch (err) {
     progress?.close();
     closeBanner?.();
-    bannerError('Die Sicherung konnte nicht erstellt werden.', 'BACKUP-EXPORT', err);
+    bannerError(t('backup.createFailed'), 'BACKUP-EXPORT', err);
   }
 });
 
@@ -16028,15 +16085,15 @@ $('#backup-input').addEventListener('change', async (e) => {
   try {
     ({ data, resolveAudioBase64 } = await readBackupFile(file));
   } catch (err) {
-    bannerError('Diese Datei ist keine gültige Sicherung.', 'BACKUP-IMPORT', err);
+    bannerError(t('backup.invalidFile'), 'BACKUP-IMPORT', err);
     return;
   }
   if (!data || data.format !== BACKUP_FORMAT) {
-    banner('Diese Datei stammt nicht aus dieser App.', { kind: 'error' });
+    banner(t('backup.foreignFile'), { kind: 'error' });
     return;
   }
   if (typeof data.version === 'number' && data.version > BACKUP_FORMAT_VERSION) {
-    banner('Diese Sicherung stammt aus einer neueren Version der App. Bitte die App aktualisieren und erneut versuchen.', { kind: 'error' });
+    banner(t('backup.newerVersion'), { kind: 'error' });
     return;
   }
   try {
@@ -16205,7 +16262,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
         + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird. '
         + 'Vorhandene Daten bleiben erhalten, es wird nur ergänzt.',
-    okLabel: 'Zusammenführen',
+    okLabel: t('common.merge'),
   });
   if (!ok) return;
 
@@ -16627,23 +16684,31 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   await renderPlaylists();
   await renderSettings();
   if (playerSong) { await loadSongNote(); await loadSongLyricsNote(); }
-  banner(`${plural(addedLoops, 'Loop', 'Loops')}, ${plural(addedNotes, 'Notiz', 'Notizen')} `
-    + `und ${plural(addedPl, 'Setliste', 'Setlisten')} eingespielt.`
-    + (addedLyricsNotes ? ` ${plural(addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} dazu.` : '')
-    + (addedRecordings ? ` ${plural(addedRecordings, 'REC', 'RECs')} dazu.` : '')
-    + (songsCreated ? ` ${plural(songsCreated, 'Song', 'Songs')} neu angelegt.` : '')
-    + (scoresRestored ? ` ${plural(scoresRestored, 'Notenblatt', 'Notenblätter')} dazu.` : '')
-    + (keptPending ? ` ${keptPending} Loops warten auf ihren Song.` : '')
-    + (skippedNotes ? ` ${plural(skippedNotes, 'Notiz', 'Notizen')} übersprungen, `
-        + 'weil zu dem Lied schon eine Notiz vorhanden ist.' : '')
-    + (skippedLyricsNotes ? ` ${plural(skippedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte')} übersprungen, `
-        + 'weil zu dem Lied schon ein eigener Liedtext vorhanden ist.' : '')
-    + (skippedRecordings ? ` ${plural(skippedRecordings, 'REC', 'RECs')} übersprungen, weil schon vorhanden.` : '')
-    + (songsSkipped ? ` ${plural(songsSkipped, 'Song', 'Songs')} mit Audio übersprungen, weil schon in der Bibliothek — Stimmen dafür bitte über den normalen Import nachladen.` : '')
-    + (discardedSongAudio ? ` ${plural(discardedSongAudio, 'Songeintrag', 'Songeinträge')} ohne verwertbaren Inhalt verworfen.` : '')
-    + (discardedRecordings ? ` ${plural(discardedRecordings, 'REC', 'RECs')} ohne Audiodaten verworfen.` : '')
-    + (discardedTracks ? ` ${plural(discardedTracks, 'Spur', 'Spuren')} verworfen, weil der Inhalt nicht zu einer Audiodatei passt.` : '')
-    + (discardedScores ? ` ${plural(discardedScores, 'Notenblatt', 'Notenblätter')} verworfen, weil der Inhalt nicht zu einer PDF-Datei passt.` : ''),
+  const nLoops = (n) => tPlural(n, 'count.loopOne', 'count.loopMany');
+  const nNotes = (n) => tPlural(n, 'count.noteOne', 'count.noteMany');
+  const nLyrics = (n) => tPlural(n, 'count.lyricsOne', 'count.lyricsMany');
+  const nRecs = (n) => tPlural(n, 'count.recOne', 'count.recMany');
+  const nSongs = (n) => tPlural(n, 'common.songOne', 'common.songMany');
+  const nScores = (n) => tPlural(n, 'count.scoreOne', 'count.scoreMany');
+  banner(t('backup.restoreMain')
+      .replace('{loops}', nLoops(addedLoops))
+      .replace('{notes}', nNotes(addedNotes))
+      .replace('{playlists}', tPlural(addedPl, 'count.playlistOne', 'count.playlistMany'))
+    + (addedLyricsNotes ? t('backup.restoreLyrics').replace('{lyrics}', nLyrics(addedLyricsNotes)) : '')
+    + (addedRecordings ? t('backup.restoreRecs').replace('{recs}', nRecs(addedRecordings)) : '')
+    + (songsCreated ? t('backup.restoreSongs').replace('{songs}', nSongs(songsCreated)) : '')
+    + (scoresRestored ? t('backup.restoreScores').replace('{scores}', nScores(scoresRestored)) : '')
+    + (keptPending ? t('backup.restorePending').replace('{n}', keptPending) : '')
+    + (skippedNotes ? t('backup.restoreSkippedNotes').replace('{notes}', nNotes(skippedNotes)) : '')
+    + (skippedLyricsNotes ? t('backup.restoreSkippedLyrics').replace('{lyrics}', nLyrics(skippedLyricsNotes)) : '')
+    + (skippedRecordings ? t('backup.restoreSkippedRecs').replace('{recs}', nRecs(skippedRecordings)) : '')
+    + (songsSkipped ? t('backup.restoreSkippedSongs').replace('{songs}', nSongs(songsSkipped)) : '')
+    + (discardedSongAudio ? t('backup.restoreDiscardedSongs')
+        .replace('{entries}', tPlural(discardedSongAudio, 'count.songEntryOne', 'count.songEntryMany')) : '')
+    + (discardedRecordings ? t('backup.restoreDiscardedRecs').replace('{recs}', nRecs(discardedRecordings)) : '')
+    + (discardedTracks ? t('backup.restoreDiscardedTracks')
+        .replace('{tracks}', tPlural(discardedTracks, 'count.trackOne', 'count.trackMany')) : '')
+    + (discardedScores ? t('backup.restoreDiscardedScores').replace('{scores}', nScores(discardedScores)) : ''),
     { kind: 'ok' });
 }
 
@@ -16733,7 +16798,7 @@ async function updateBackupReminder() {
     el('div', { style: 'display:flex; gap:8px' },
       el('button', { class: 'btn', type: 'button', text: 'Jetzt sichern',
         onclick: () => { box.hidden = true; showView('settings'); $('#btn-backup-export').focus(); } }),
-      el('button', { class: 'btn', type: 'button', text: 'Später',
+      el('button', { class: 'btn', type: 'button', text: t('common.later'),
         onclick: () => { reminderDismissed = true; box.hidden = true; } })));
   box.hidden = false;
 }
@@ -16757,10 +16822,10 @@ function showCompatWarningDialog() {
 
   const box = el('div', { class: 'dialog' },
     el('h2', { style: 'display:flex; align-items:center; gap:8px' },
-      warnIcon, el('span', { text: 'Hinweis zur Datenkompatibilität' })),
-    el('p', { style: 'margin-bottom:0', text: 'Diese App wird noch weiterentwickelt. Beim Wechsel auf die finale Version ist es möglich, dass selbst angelegte Daten — Notizen, eigene Liedtexte, Loops und RECs — nicht automatisch übernommen werden können.' }),
+      warnIcon, el('span', { text: t('compat.title') })),
+    el('p', { style: 'margin-bottom:0', text: t('compat.text') }),
     el('div', { class: 'dialog-actions' },
-      el('button', { class: 'btn btn--primary', type: 'button', text: 'Verstanden', onclick: () => done() })));
+      el('button', { class: 'btn btn--primary', type: 'button', text: t('common.understood'), onclick: () => done() })));
   const done = () => layer.remove();
   const layer = el('div', { class: 'overlay' }, box);
   layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
@@ -16855,7 +16920,7 @@ function runSelfTests() {
   let checks = 0;
   const printableFixture = printableToText('note', 'Notizen', [
     { songTitle: 'Erster Song', text: 'Zeile eins\nZeile zwei' },
-    { songTitle: 'Zweiter Song', text: 'Noch eine Notiz' },
+    { songTitle: 'Zweiter Song', text: t('notes.another') },
   ]);
   checks++;
   const parsedPrintable = parsePrintableText(printableFixture, 'note');
@@ -20554,7 +20619,7 @@ function initGrooveLabEasterEgg() {
       const lab = await loadGrooveLab();
       lab.open({ accent: settings.accentColor || DEFAULT_SETTINGS.accentColor });
     } catch (err) {
-      bannerError('Das Groove Lab konnte nicht geöffnet werden.', 'GROOVE-LAB', err);
+      bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
     }
   });
 }
@@ -20582,7 +20647,7 @@ async function boot() {
   try {
     await openDB();
   } catch (err) {
-    bannerError('Die Datenbank konnte nicht geöffnet werden. Im privaten Modus mancher Browser ist das Speichern gesperrt.', 'DB-OPEN', err);
+    bannerError(t('msg.dbOpenFailed'), 'DB-OPEN', err);
   }
 
   await loadSettings();
