@@ -3746,21 +3746,29 @@ button.setting-item {
 
       <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span data-i18n="settings.voice.title">Stimme</span></h2>
-        <p class="small muted" style="margin-top:0" data-i18n="settings.voices.hint">
-          Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
-          Bestimmt, welche Spuren beim Import vorausgewählt sind und welche
-          Stimme der Player zuerst zeigt.
-        </p>
-        <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
+        <!-- Das Chip-Gitter ist zu breit für die rechte Kante einer Zeile und
+             steht deshalb im Slot darunter. -->
+        <div class="setting-item">
+          <span class="setting-item-main">
+            <span class="setting-label" data-i18n="settings.voices.title">Meine Stimmen</span>
+            <span class="setting-sub" data-i18n="settings.voices.hint">Mehrfachauswahl möglich — bestimmt die Vorauswahl beim Import</span>
+          </span>
+        </div>
+        <div class="setting-slot">
+          <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
+        </div>
       </div>
 
       <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.5 8.5v7l6-3.5-6-3.5Z"/></svg><span data-i18n="settings.player.title">Player</span></h2>
 
-        <p class="section-title" style="margin-top:0" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
-        <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.tabHint">
-          Reiter, der beim Öffnen eines Songs zuerst zu sehen ist.
-        </p>
+        <div class="setting-item">
+          <span class="setting-item-main">
+            <span class="setting-label" data-i18n="settings.personal.behaviorTitle">Erster Reiter</span>
+            <span class="setting-sub" data-i18n="settings.personal.tabHint">Was beim Öffnen eines Songs zuerst zu sehen ist</span>
+          </span>
+        </div>
+        <div class="setting-slot">
         <div class="player-tabs player-tabs--mini" id="default-tab-picker" role="group" aria-label="Standard-Reiter im Player" data-i18n-aria="settings.personal.tabGroupAria">
           <button class="player-tab" type="button" data-tab="loops" aria-pressed="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
@@ -3780,18 +3788,21 @@ button.setting-item {
           </button>
         </div>
 
-        <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
-        <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
-          Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
-        </p>
-        <label class="select-field">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        </div>
+
+        <label class="setting-item">
+          <span class="setting-item-main">
+            <span class="setting-label" data-i18n="settings.personal.searchTitle">Song-Suche</span>
+            <span class="setting-sub" data-i18n="settings.personal.searchHint">Dienst für das Lupen-Symbol im Player</span>
+          </span>
           <select id="song-search-service-picker" aria-label="Suchdienst"></select>
         </label>
+        <div class="setting-slot">
         <p class="small muted search-privacy-hint" style="margin:6px 0 0">
           <svg class="search-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
           <span data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</span>
         </p>
+        </div>
       </div>
 
       <div class="card">
@@ -4058,31 +4069,35 @@ button.setting-item {
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span data-i18n="settings.screen.title">Bildschirm &amp; Hintergrund</span></h2>
-      <div class="row">
-        <span class="small" style="max-width:70%" data-i18n="settings.screen.keepOn">
-          Bildschirm anlassen, solange ein Lied geöffnet ist
+      <div class="setting-item">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.screen.keepOn">Bildschirm anlassen</span>
+          <span class="setting-sub" data-i18n="settings.screen.keepOnSub">Solange ein Lied geöffnet ist</span>
         </span>
         <button class="switch" id="btn-screen-toggle" type="button" role="switch"
                 aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
           <span class="switch-knob"></span>
         </button>
       </div>
-      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
-        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
-        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
-      </p>
-      <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
+      <div class="setting-slot">
+        <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
+          Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
+          nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
+        </p>
+        <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
+      </div>
     </div>
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
-        Vier kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
-        sich nach der eigenen Stimme richten und über die Systemuhr synchron
-        laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
-      </p>
-      <button class="btn btn--primary btn--block" id="btn-open-lightshow" type="button" data-i18n="settings.lightshow.openBtn">
-        Lichtshow öffnen
+      <button class="setting-item" id="btn-open-lightshow" type="button">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.lightshow.openBtn">Lichtshow öffnen</span>
+          <span class="setting-sub" data-i18n="settings.lightshow.hint">Vier Bühnen-Einlagen, synchron über die Systemuhr — ohne Internet</span>
+        </span>
+        <span class="setting-value" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </span>
       </button>
     </div>
     </div>
@@ -4212,24 +4227,37 @@ button.setting-item {
 
     <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
-      <div class="stack">
-        <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
-          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
-          Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone
-          und auf Android geht.
-        </p>
-        <button class="btn btn--block" id="btn-help-import" type="button" data-i18n="settings.help.howToBtn">
-          Wie bekomme ich Songs in die App?
-        </button>
-        <button class="btn btn--block" id="btn-setup-again" type="button" data-i18n="settings.help.replayOnboarding">
-          Einführung noch einmal ansehen
-        </button>
-      </div>
-
-      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
-              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
-        Hören im Hintergrund klappt nicht?
+      <button class="setting-item" id="btn-help-import" type="button">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.help.howToBtn">Wie bekomme ich Songs in die App?</span>
+          <span class="setting-sub" data-i18n="settings.help.intro">Schritt für Schritt, für iPhone und Android</span>
+        </span>
+        <span class="setting-value" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </span>
       </button>
+
+      <button class="setting-item" id="btn-setup-again" type="button">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.help.replayOnboarding">Einführung noch einmal ansehen</span>
+        </span>
+        <span class="setting-value" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </span>
+      </button>
+
+      <!-- Klappt an Ort und Stelle auf statt woanders hin zu führen — deshalb
+           der Pfeil nach unten. -->
+      <button class="setting-item" id="btn-bg-help-toggle" type="button" aria-expanded="false">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.screen.bgHelpToggle">Hören im Hintergrund klappt nicht?</span>
+          <span class="setting-sub" data-i18n="settings.screen.bgHelpSub">Zwei Android-Systemeinstellungen, von Hand zu setzen</span>
+        </span>
+        <span class="setting-value setting-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
+      </button>
+      <div class="setting-slot">
       <div id="bg-help" hidden style="margin-top:12px">
         <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
           Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
@@ -4262,6 +4290,7 @@ button.setting-item {
           Benachrichtigungen für diese Seite erlauben
         </button>
       </div>
+      </div>
     </div>
 
     <div class="card">
@@ -4292,27 +4321,31 @@ button.setting-item {
         </ul>
       </div>
 
-      <p class="section-title" data-i18n="settings.about.errorLogTitle">Fehlerprotokoll</p>
-      <p class="small muted" id="error-log-hint" style="margin-top:0" data-i18n="settings.about.errorLogHint">
-        Technische Fehlermeldungen der App, neueste zuerst — hilfreich beim
-        Melden eines Problems. Bleibt nur auf diesem Gerät.
-      </p>
+      <div class="setting-item">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.about.errorLogTitle">Fehlerprotokoll</span>
+          <span class="setting-sub" id="error-log-hint" data-i18n="settings.about.errorLogHint">Fehlermeldungen der App, neueste zuerst — bleibt auf diesem Gerät</span>
+        </span>
+      </div>
+      <div class="setting-slot">
       <div class="stack small" id="error-log-list"></div>
       <div id="error-log-actions" style="display:flex; gap:8px; margin-top:12px">
         <button class="btn" id="btn-errorlog-copy" type="button" style="flex:1" data-i18n="settings.about.copyLogBtn">Protokoll kopieren</button>
         <button class="btn" id="btn-errorlog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
+      </div>
 
-      <p class="section-title" data-i18n="settings.about.debugLogTitle">Diagnose-Log</p>
-      <div class="row">
-        <span class="small" style="max-width:70%" data-i18n="settings.about.debugLogSwitch">
-          Ausführliches Protokoll für schwer fassbare Fehler aufzeichnen
+      <div class="setting-item">
+        <span class="setting-item-main">
+          <span class="setting-label" data-i18n="settings.about.debugLogTitle">Diagnose-Log</span>
+          <span class="setting-sub" data-i18n="settings.about.debugLogSwitch">Ausführliches Protokoll für schwer fassbare Fehler</span>
         </span>
         <button class="switch" id="btn-debuglog-toggle" type="button" role="switch"
                 aria-checked="false" aria-label="Diagnose-Log aufzeichnen" data-i18n-aria="settings.about.debugLogAria">
           <span class="switch-knob"></span>
         </button>
       </div>
+      <div class="setting-slot">
       <p class="small muted" style="margin:8px 0 0" data-i18n="settings.about.debugLogHint">
         Zeichnet technische Abläufe auf (Zeitstempel, Zustände, Zahlen) — nie
         Songtitel, Dateinamen oder Namen. Sinnvoll direkt vor dem Nachstellen
@@ -4324,6 +4357,7 @@ button.setting-item {
         <button class="btn" id="btn-debuglog-clear" type="button" style="flex:1" data-i18n="settings.about.clearBtn">Leeren</button>
       </div>
       <p class="small muted" id="debuglog-count" style="margin:8px 0 0"></p>
+      </div>
     </div>
     </div>
 
