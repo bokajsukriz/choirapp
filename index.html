@@ -364,15 +364,30 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   color: var(--accent-foreground);
   border-radius: 11px;
 }
-/* Beim Aufklappen färbt sich die ganze Kopfzeile in der Akzentfarbe ein —
-   bis an den Kartenrand, die Rundung übernimmt die äußere
-   .settings-group-box (overflow:hidden). Betrifft nur Karten mit
-   Klapplogik; .card-row (Lichtshow, Bildschirm & Hintergrund) hat dafür
-   nichts zum Ein-/Ausklappen. */
-#view-settings .settings-group .card h2.card-toggle--expanded {
-  background: rgba(var(--accent-rgb), .1);
-  margin: calc(-1 * var(--pad)) calc(-1 * var(--pad)) 12px;
+/* Die Kopfzeile jeder Karte/Zeile auf oberster Ebene ist durchgehend in der
+   Akzentfarbe hinterlegt — nicht nur beim Aufklappen, damit die ganze
+   Titelliste einheitlich farbig wirkt. Bis an den Kartenrand, die Rundung
+   übernimmt die äußere .settings-group-box (overflow:hidden). */
+#view-settings .settings-group .card > h2 {
+  background: rgba(var(--accent-rgb), .07);
+  margin: calc(-1 * var(--pad));
   padding: var(--pad);
+}
+/* Eingeklappt bleibt sonst das Karten-Padding unter der Kopfzeile als
+   ungefärbte Lücke stehen (die Karte selbst polstert ja weiterhin nach
+   allen Seiten) — die untere Randlinie zieht also näher heran. Nur beim
+   Aufklappen kommt der kleine Abstand vor dem Karteninhalt zurück; höhere
+   Spezifität als die allgemeine Regel weiter oben gewinnt zuverlässig. */
+#view-settings .settings-group .card > h2.card-toggle--expanded {
+  margin-bottom: 12px;
+}
+/* Karten ohne Klapplogik (Lichtshow, Bildschirm & Hintergrund): deren h2
+   bekommt nie die .card-toggle--expanded-Klasse oben, bleibt also immer
+   randständig eingezogen. Ein direkt folgender .setting-detail (siehe
+   Bildschirm & Hintergrund) braucht dafür seinen eigenen Abstand zur
+   Kopfzeile zurück, statt darunter/-über zu rutschen. */
+#view-settings .settings-group .card[data-no-accordion] > .setting-detail {
+  margin-top: calc(var(--pad) + 8px);
 }
 
 /* Karten ohne Klapplogik (Lichtshow, Bildschirm & Hintergrund): Icon,
@@ -382,9 +397,9 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
 }
 button.card-row {
+  width: 100%;
   background: none;
   border: 0;
   padding: 0;
@@ -400,6 +415,7 @@ button.card-row:focus-visible {
   border-radius: 6px;
 }
 #view-settings .settings-group .card-row-label { flex: 1 1 auto; min-width: 0; }
+#view-settings .settings-group .card-row > .setting-label-line { flex: 1 1 auto; min-width: 0; }
 #view-settings .settings-group .card-arrow { flex: 0 0 auto; margin-left: auto; color: var(--muted); display: flex; }
 #view-settings .settings-group .card-arrow svg { width: 16px; height: 16px; }
 
@@ -1559,6 +1575,8 @@ input[type="checkbox"] {
 /* Name und „?"-Knopf in einer Zeile — der Knopf hängt direkt am Text, nicht
    rechtsbündig am Zeilenende (dort stehen Zustand/Wert/Pfeil). */
 #view-settings .setting-label-line { display: flex; align-items: center; gap: 6px; }
+#view-settings .setting-label-count { color: var(--muted); font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+#view-settings .setting-label-count:empty { display: none; }
 
 /* „?"-Knopf: klappt die frühere Dauertext-Erklärung direkt unter der Zeile
    auf, statt sie permanent stehen zu lassen. */
@@ -3835,6 +3853,7 @@ input[type="checkbox"] {
           <span class="setting-main">
             <span class="setting-label-line">
               <span class="setting-label" data-i18n="settings.normalization.label">Lautstärke normalisieren</span>
+              <span class="setting-label-count" id="normalization-count"></span>
               <button class="setting-info" type="button" aria-expanded="false" aria-controls="normalization-hint-detail"
                       data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
             </span>
@@ -3845,33 +3864,35 @@ input[type="checkbox"] {
             <span class="switch-knob"></span>
           </button>
         </div>
-        <p class="setting-detail" id="normalization-hint-detail" hidden data-i18n="settings.normalization.hint">
-          Gleicht Lautstärkeunterschiede zwischen Aufnahmen aus. Die Dynamik innerhalb einer Aufnahme bleibt erhalten.
-        </p>
-        <p class="small muted" id="normalization-status" style="margin:0 0 10px" hidden
-           data-i18n="settings.normalization.unavailable">
-          Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.
-        </p>
-        <div id="normalization-crashguard" class="small" style="margin-bottom:10px" hidden>
-          <p id="normalization-crashguard-message" role="status"></p>
-          <button id="normalization-crashguard-resume" class="btn btn--ghost" type="button"
-                  data-i18n="settings.normalization.crashGuard.resume">Fortsetzen</button>
-          <button id="normalization-crashguard-retry" class="btn btn--ghost" type="button"
-                  data-i18n="settings.normalization.details.retryFile">Diese Datei erneut versuchen</button>
+        <div class="setting-detail" id="normalization-hint-detail" hidden>
+          <p data-i18n="settings.normalization.hint">
+            Gleicht Lautstärkeunterschiede zwischen Aufnahmen aus. Die Dynamik innerhalb einer Aufnahme bleibt erhalten.
+          </p>
+          <p class="small muted" id="normalization-status" style="margin:0 0 10px" hidden
+             data-i18n="settings.normalization.unavailable">
+            Normalisierung ist in diesem Wiedergabemodus nicht verfügbar.
+          </p>
+          <div id="normalization-crashguard" class="small" style="margin-bottom:10px" hidden>
+            <p id="normalization-crashguard-message" role="status"></p>
+            <button id="normalization-crashguard-resume" class="btn btn--ghost" type="button"
+                    data-i18n="settings.normalization.crashGuard.resume">Fortsetzen</button>
+            <button id="normalization-crashguard-retry" class="btn btn--ghost" type="button"
+                    data-i18n="settings.normalization.details.retryFile">Diese Datei erneut versuchen</button>
+          </div>
+          <div id="normalization-progress" class="small muted" style="margin-bottom:10px;margin-left:calc(-1*var(--pad));margin-right:calc(-1*var(--pad));padding-left:var(--pad);padding-right:var(--pad)" hidden>
+            <progress id="normalization-progress-bar" max="1" value="0" aria-label="Normalisierungsanalyse" style="width:100%"></progress>
+            <div id="normalization-progress-current"></div>
+            <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry" hidden>Erneut versuchen</button>
+          </div>
+          <details id="normalization-details" class="small" style="margin-bottom:10px" hidden>
+            <summary id="normalization-details-summary">Analyseergebnisse je Datei</summary>
+            <div id="normalization-details-filter" class="filterbar" style="margin-top:8px"></div>
+            <ul id="normalization-details-list" style="list-style:none;padding:0;margin:8px 0 0"></ul>
+            <button id="normalization-details-more" class="btn btn--ghost" type="button" hidden></button>
+            <button id="normalization-clear-all" class="btn btn--ghost" type="button" style="margin-top:8px"
+                    data-i18n="settings.normalization.clearAll">Alle Informationen löschen</button>
+          </details>
         </div>
-        <div id="normalization-progress" class="small muted" style="margin-bottom:10px;margin-left:calc(-1*var(--pad));margin-right:calc(-1*var(--pad));padding-left:var(--pad);padding-right:var(--pad)" hidden>
-          <progress id="normalization-progress-bar" max="1" value="0" aria-label="Normalisierungsanalyse" style="width:100%"></progress>
-          <div id="normalization-progress-current"></div>
-          <button id="normalization-retry" class="btn btn--ghost" type="button" data-i18n="settings.normalization.retry" hidden>Erneut versuchen</button>
-        </div>
-        <details id="normalization-details" class="small" style="margin-bottom:10px" hidden>
-          <summary id="normalization-details-summary">Analyseergebnisse je Datei</summary>
-          <div id="normalization-details-filter" class="filterbar" style="margin-top:8px"></div>
-          <ul id="normalization-details-list" style="list-style:none;padding:0;margin:8px 0 0"></ul>
-          <button id="normalization-details-more" class="btn btn--ghost" type="button" hidden></button>
-          <button id="normalization-clear-all" class="btn btn--ghost" type="button" style="margin-top:8px"
-                  data-i18n="settings.normalization.clearAll">Alle Informationen löschen</button>
-        </details>
 
         <div class="setting-item">
           <span class="setting-main">
@@ -4061,18 +4082,20 @@ input[type="checkbox"] {
     <div class="card" data-no-accordion="1">
       <h2 class="card-row">
         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>
-        <span class="card-row-label" data-i18n="settings.screen.keepOn">Bildschirm anlassen, solange ein Lied geöffnet ist</span>
+        <span class="setting-label-line">
+          <span class="card-row-label" data-i18n="settings.screen.keepOn">Bildschirm anlassen</span>
+          <button class="setting-info" type="button" aria-expanded="false" aria-controls="screen-hint-detail"
+                  data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
+        </span>
         <button class="switch" id="btn-screen-toggle" type="button" role="switch"
                 aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
           <span class="switch-knob"></span>
         </button>
       </h2>
-      <!-- Nur sichtbar, solange die Einstellung an ist (siehe renderScreenMode())
-           — der Hinweis erklärt eine Nebenwirkung des aktuellen Zustands,
-           keine Dauererklärung, die eine eigene Zeile bräuchte. -->
-      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
-        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
-        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
+      <p class="setting-detail" id="screen-hint-detail" hidden data-i18n="settings.screen.hint">
+        Verhindert, dass der Bildschirm abdunkelt, solange ein Lied geöffnet ist. Wirkt nur
+        gegen automatisches Abdunkeln bei Untätigkeit — hilft nicht, wenn du das Handy
+        bewusst über die Ein/Aus-Taste sperrst.
       </p>
       <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
     </div>
