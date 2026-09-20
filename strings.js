@@ -81,8 +81,6 @@ export const STRINGS = {
     'settings.voices.hint': 'Bestimmt, welche Spuren beim Import vorausgewählt sind und welche Stimme der Player zuerst zeigt.',
 
     'settings.lightshow.title': 'Lichtshow',
-    'settings.lightshow.hint': 'Acht kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die jede Stimme als eigenen Block inszenieren und über die Systemuhr synchron laufen.',
-    'settings.lightshow.openBtn': 'Lichtshow öffnen',
 
     'settings.audio.title': 'Audioeinstellungen',
 
@@ -481,8 +479,6 @@ export const STRINGS = {
     'settings.voices.hint': 'Determines which tracks are pre-selected on import and which voice the player shows first.',
 
     'settings.lightshow.title': 'Light show',
-    'settings.lightshow.hint': 'Eight on-stage moments for the concert: full-screen colours stage each voice as a separate block and stay in sync via the system clock.',
-    'settings.lightshow.openBtn': 'Open light show',
 
     'settings.audio.title': 'Audio settings',
 
@@ -881,8 +877,6 @@ export const STRINGS = {
     'settings.voices.hint': 'Decyduje, które ścieżki są wstępnie zaznaczone przy imporcie i który głos odtwarzacz pokazuje jako pierwszy.',
 
     'settings.lightshow.title': 'Pokaz świateł',
-    'settings.lightshow.hint': 'Osiem scenicznych pokazów na koncert: pełnoekranowe kolory traktują każdy głos jako osobny blok i działają synchronicznie według zegara systemowego.',
-    'settings.lightshow.openBtn': 'Otwórz pokaz świateł',
 
     'settings.audio.title': 'Ustawienia audio',
 

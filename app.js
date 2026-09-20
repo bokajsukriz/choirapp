@@ -3639,11 +3639,17 @@ $('#btn-audio-rebuild').addEventListener('click', async () => {
   const btn = $('#btn-audio-rebuild');
   if (btn.disabled) return;
   btn.disabled = true;
+  // Sichtbare Rückmeldung während des Neuaufbaus — davor gab es außer dem
+  // deaktivierten Knopf kein Anzeichen, dass überhaupt etwas passiert.
+  $('#btn-audio-rebuild-chevron').hidden = true;
+  $('#btn-audio-rebuild-spinner').hidden = false;
   try {
     const rebuilt = await rebuildAudioGraph('manual');
     if (rebuilt) banner(t('settings.perf.rebuildDone'));
   } finally {
     btn.disabled = false;
+    $('#btn-audio-rebuild-spinner').hidden = true;
+    $('#btn-audio-rebuild-chevron').hidden = false;
   }
 });
 

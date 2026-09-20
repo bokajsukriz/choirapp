@@ -348,29 +348,60 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 /* Icon in farbigem Badge statt freistehend — nur im Umschalter der
    Einstellungs-Zeile, nicht bei den (viel kleineren) Icons in Buttons
    innerhalb einer aufgeklappten Karte, die dieselbe Klasse teilen.
-   Jede Karte trägt ihre eigene Farbe über --card-tint (Inline-Style als
-   "r,g,b", siehe HTML) — ohne eigene Farbe fällt es auf die Akzentfarbe
-   zurück. .card > h2 > .card-icon deckt die eine Karte ohne Klapplogik
-   ab (Lichtshow, siehe initSettingsAccordion()), deren Icon nicht in
-   einem .card-toggle-Knopf steckt. */
+   Einheitlich in der Akzentfarbe, wie der Rest der App — bewusst kein
+   Farbcode je Karte. .card-row > .card-icon deckt die Karten ohne
+   Klapplogik ab (Lichtshow, Bildschirm & Hintergrund; siehe
+   initSettingsAccordion() / data-no-accordion), deren Icon nicht in
+   einem JS-erzeugten .card-toggle-Knopf steckt, sondern in der von Hand
+   geschriebenen .card-row. */
 #view-settings .settings-group .card-toggle > .card-icon,
-#view-settings .settings-group .card > h2 > .card-icon {
+#view-settings .settings-group .card-row > .card-icon {
   width: 34px;
   height: 34px;
   padding: 8px;
   box-sizing: border-box;
-  background: rgba(var(--card-tint, var(--accent-rgb)), .16);
-  color: rgb(var(--card-tint, var(--accent-rgb)));
+  background: rgba(var(--accent-rgb), .14);
+  color: var(--accent-foreground);
   border-radius: 11px;
 }
-/* Beim Aufklappen färbt sich die ganze Kopfzeile in derselben Farbe wie
-   das Icon — bis an den Kartenrand, die Rundung übernimmt die äußere
-   .settings-group-box (overflow:hidden). */
+/* Beim Aufklappen färbt sich die ganze Kopfzeile in der Akzentfarbe ein —
+   bis an den Kartenrand, die Rundung übernimmt die äußere
+   .settings-group-box (overflow:hidden). Betrifft nur Karten mit
+   Klapplogik; .card-row (Lichtshow, Bildschirm & Hintergrund) hat dafür
+   nichts zum Ein-/Ausklappen. */
 #view-settings .settings-group .card h2.card-toggle--expanded {
-  background: rgba(var(--card-tint, var(--accent-rgb)), .12);
+  background: rgba(var(--accent-rgb), .1);
   margin: calc(-1 * var(--pad)) calc(-1 * var(--pad)) 12px;
   padding: var(--pad);
 }
+
+/* Karten ohne Klapplogik (Lichtshow, Bildschirm & Hintergrund): Icon,
+   Beschriftung und Bedienelement in einer Zeile auf derselben Fluchtlinie
+   wie die aufklappbaren Karten, nur ohne Pfeil-nach-unten/Körper. */
+#view-settings .settings-group .card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+button.card-row {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.card-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+#view-settings .settings-group .card-row-label { flex: 1 1 auto; min-width: 0; }
+#view-settings .settings-group .card-arrow { flex: 0 0 auto; margin-left: auto; color: var(--muted); display: flex; }
+#view-settings .settings-group .card-arrow svg { width: 16px; height: 16px; }
 
 .muted { color: var(--muted); }
 .small { font-size: 0.86rem; }
@@ -1553,6 +1584,8 @@ input[type="checkbox"] {
   background: none; border: 0; border-top: 1px solid var(--line); cursor: pointer;
 }
 #view-settings .setting-chevron { flex: 0 0 auto; color: var(--muted); display: flex; transition: transform .15s ease; }
+#view-settings .setting-item .spinner { width: 18px; height: 18px; border-width: 2px; }
+#view-settings .setting-item--toggle[disabled] { opacity: .5; pointer-events: none; }
 #view-settings .setting-chevron svg { width: 16px; height: 16px; }
 #view-settings .setting-item--toggle[aria-expanded="true"] .setting-chevron { transform: rotate(90deg); }
 #view-settings .setting-panel { padding: 2px 0 14px; }
@@ -3695,7 +3728,7 @@ input[type="checkbox"] {
       <p class="settings-group-label" data-i18n="settings.group.makeItYours">Make it yours</p>
       <div class="settings-group-box">
 
-      <div class="card" style="--card-tint:217,119,6">
+      <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span data-i18n="settings.voice.title">Stimme</span></h2>
         <p class="small muted" style="margin-top:0" data-i18n="settings.voices.hint">
           Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
@@ -3705,7 +3738,7 @@ input[type="checkbox"] {
         <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
       </div>
 
-      <div class="card" style="--card-tint:37,99,235">
+      <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.5 8.5v7l6-3.5-6-3.5Z"/></svg><span data-i18n="settings.player.title">Player</span></h2>
 
         <p class="section-title" style="margin-top:0" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
@@ -3749,7 +3782,7 @@ input[type="checkbox"] {
         </div>
       </div>
 
-      <div class="card" style="--card-tint:124,58,237">
+      <div class="card">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg><span data-i18n="settings.appearance.title">Aussehen und Sprache</span></h2>
 
         <div class="setting-list">
@@ -3793,7 +3826,7 @@ input[type="checkbox"] {
       <p class="settings-group-label" data-i18n="settings.group.practice">Beim Üben</p>
       <div class="settings-group-box">
 
-    <div class="card" style="--card-tint:13,148,136">
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
 
       <div class="setting-list">
@@ -4018,45 +4051,40 @@ input[type="checkbox"] {
             <span class="setting-label" data-i18n="settings.perf.rebuildBtn">Tonausgabe neu aufbauen</span>
             <span class="setting-sub" data-i18n="settings.perf.rebuildHint">Hilft bei abgehacktem Ton nach langer Hintergrundwiedergabe. Nur verwenden, wenn gerade nichts läuft.</span>
           </span>
-          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+          <span class="spinner" id="btn-audio-rebuild-spinner" hidden aria-hidden="true"></span>
+          <span class="setting-chevron" id="btn-audio-rebuild-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
 
       </div>
     </div>
 
-    <div class="card" style="--card-tint:79,70,229">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span data-i18n="settings.screen.title">Bildschirm &amp; Hintergrund</span></h2>
-      <div class="setting-list">
-        <div class="setting-item">
-          <span class="setting-main">
-            <span class="setting-label" data-i18n="settings.screen.keepOn">Bildschirm anlassen, solange ein Lied geöffnet ist</span>
-          </span>
-          <button class="switch" id="btn-screen-toggle" type="button" role="switch"
-                  aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
-            <span class="switch-knob"></span>
-          </button>
-        </div>
-        <!-- Nur sichtbar, solange die Einstellung an ist (siehe renderScreenMode())
-             — kein "?": der Hinweis erklärt eine Nebenwirkung des aktuellen
-             Zustands, keine Dauererklärung. -->
-        <p class="small muted" id="screen-hint" style="margin:0 0 10px" hidden data-i18n="settings.screen.hint">
-          Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
-          nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
-        </p>
-        <p class="small muted" id="screen-note" style="margin:0 0 10px" hidden></p>
-      </div>
+    <div class="card" data-no-accordion="1">
+      <h2 class="card-row">
+        <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>
+        <span class="card-row-label" data-i18n="settings.screen.keepOn">Bildschirm anlassen, solange ein Lied geöffnet ist</span>
+        <button class="switch" id="btn-screen-toggle" type="button" role="switch"
+                aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
+          <span class="switch-knob"></span>
+        </button>
+      </h2>
+      <!-- Nur sichtbar, solange die Einstellung an ist (siehe renderScreenMode())
+           — der Hinweis erklärt eine Nebenwirkung des aktuellen Zustands,
+           keine Dauererklärung, die eine eigene Zeile bräuchte. -->
+      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
+        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
+        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
+      </p>
+      <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
     </div>
 
-    <div class="card" style="--card-tint:22,163,74" data-no-accordion="1">
-      <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
-      <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
-        Acht kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
-        sich nach der eigenen Stimme richten und über die Systemuhr synchron
-        laufen — ganz ohne Internet oder Verbindung zwischen den Handys.
-      </p>
-      <button class="btn btn--primary btn--block" id="btn-open-lightshow" type="button" data-i18n="settings.lightshow.openBtn">
-        Lichtshow öffnen
-      </button>
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-lightshow" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg>
+          <span class="card-row-label" data-i18n="settings.lightshow.title">Lichtshow</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
     </div>
       </div>
     </div>
@@ -4065,7 +4093,7 @@ input[type="checkbox"] {
       <p class="settings-group-label" data-i18n="settings.group.appData">App &amp; Daten</p>
       <div class="settings-group-box">
 
-    <div class="card" style="--card-tint:8,145,178">
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6Z"/></svg><span data-i18n="settings.data.title">Daten &amp; Sicherung</span></h2>
 
       <div class="setting-list">
@@ -4177,7 +4205,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div class="card" style="--card-tint:234,88,12">
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
       <p class="small muted" style="margin:0 0 10px" data-i18n="settings.help.intro">
         Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
@@ -4241,7 +4269,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div class="card" style="--card-tint:71,85,105">
+    <div class="card">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.about.title">Über die App</span></h2>
       <div class="stack small muted">
         <div class="row">
