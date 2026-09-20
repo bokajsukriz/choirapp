@@ -347,15 +347,29 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 /* Icon in farbigem Badge statt freistehend — nur im Umschalter der
    Einstellungs-Zeile, nicht bei den (viel kleineren) Icons in Buttons
-   innerhalb einer aufgeklappten Karte, die dieselbe Klasse teilen. */
-#view-settings .settings-group .card-toggle > .card-icon {
+   innerhalb einer aufgeklappten Karte, die dieselbe Klasse teilen.
+   Jede Karte trägt ihre eigene Farbe über --card-tint (Inline-Style als
+   "r,g,b", siehe HTML) — ohne eigene Farbe fällt es auf die Akzentfarbe
+   zurück. .card > h2 > .card-icon deckt die eine Karte ohne Klapplogik
+   ab (Lichtshow, siehe initSettingsAccordion()), deren Icon nicht in
+   einem .card-toggle-Knopf steckt. */
+#view-settings .settings-group .card-toggle > .card-icon,
+#view-settings .settings-group .card > h2 > .card-icon {
   width: 34px;
   height: 34px;
   padding: 8px;
   box-sizing: border-box;
-  background: rgba(var(--accent-rgb), .14);
-  color: var(--accent-foreground);
+  background: rgba(var(--card-tint, var(--accent-rgb)), .16);
+  color: rgb(var(--card-tint, var(--accent-rgb)));
   border-radius: 11px;
+}
+/* Beim Aufklappen färbt sich die ganze Kopfzeile in derselben Farbe wie
+   das Icon — bis an den Kartenrand, die Rundung übernimmt die äußere
+   .settings-group-box (overflow:hidden). */
+#view-settings .settings-group .card h2.card-toggle--expanded {
+  background: rgba(var(--card-tint, var(--accent-rgb)), .12);
+  margin: calc(-1 * var(--pad)) calc(-1 * var(--pad)) 12px;
+  padding: var(--pad);
 }
 
 .muted { color: var(--muted); }
@@ -514,26 +528,6 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   background: var(--accent);
   color: var(--accent-ink);
 }
-
-/* Speicherbalken */
-.meter {
-  height: 12px;
-  margin: 4px 0;
-  border-radius: 999px;
-  background: var(--surface-2);
-  overflow: hidden;
-  border: 1px solid var(--line);
-}
-
-.meter > i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width .3s ease;
-}
-
-.meter.is-full > i { background: var(--danger); }
 
 .row {
   display: flex;
@@ -1531,17 +1525,23 @@ input[type="checkbox"] {
 #view-settings .setting-sub { display: block; margin-top: 1px; font-size: 0.8rem; color: var(--muted); line-height: 1.35; }
 #view-settings .setting-value { flex: 0 0 auto; font-size: 0.88rem; font-weight: 650; color: var(--accent-foreground); white-space: nowrap; }
 
+/* Name und „?"-Knopf in einer Zeile — der Knopf hängt direkt am Text, nicht
+   rechtsbündig am Zeilenende (dort stehen Zustand/Wert/Pfeil). */
+#view-settings .setting-label-line { display: flex; align-items: center; gap: 6px; }
+
 /* „?"-Knopf: klappt die frühere Dauertext-Erklärung direkt unter der Zeile
    auf, statt sie permanent stehen zu lassen. */
 #view-settings .setting-info {
-  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%;
+  flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%;
   border: 1px solid var(--line); background: transparent; color: var(--muted);
-  font-size: 0.7rem; font-weight: 700; padding: 0;
+  font-size: 0.64rem; font-weight: 700; padding: 0;
   display: flex; align-items: center; justify-content: center;
 }
 #view-settings .setting-info[aria-expanded="true"] { color: var(--accent-foreground); border-color: var(--accent-foreground); }
 #view-settings .setting-detail { margin: 0 0 10px; font-size: 0.86rem; color: var(--muted); line-height: 1.4; }
 #view-settings .setting-detail[hidden] { display: none; }
+#view-settings .setting-detail > p { margin: 0 0 6px; }
+#view-settings .setting-detail > p:last-child { margin-bottom: 0; }
 
 /* Zeile, die selbst der Umschalter ist (Pfeil statt Wert) — klappt Inhalt
    direkt darunter auf, ohne die Seite zu verlassen (z.B. Zeitdehner-
@@ -1607,19 +1607,6 @@ input[type="checkbox"] {
    Abschnittsüberschriften selbst bleiben an der bisherigen Fluchtlinie. */
 #view-settings .card-body { padding-inline: 10px; }
 #view-settings .card-body > .section-title { margin-inline: -10px; }
-
-.search-privacy-hint {
-  position: relative;
-  padding-left: 56px;
-}
-.search-privacy-icon {
-  position: absolute;
-  left: 24px;
-  top: .1em;
-  width: 17px;
-  height: 17px;
-  color: var(--muted);
-}
 
 /* In aufgeklappten Einstellungskarten beginnt jede weitere Unterüberschrift
    nach einer echten Leerzeile. So kleben etwa Exportieren, Songs verwalten,
@@ -3708,7 +3695,7 @@ input[type="checkbox"] {
       <p class="settings-group-label" data-i18n="settings.group.makeItYours">Make it yours</p>
       <div class="settings-group-box">
 
-      <div class="card">
+      <div class="card" style="--card-tint:217,119,6">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span data-i18n="settings.voice.title">Stimme</span></h2>
         <p class="small muted" style="margin-top:0" data-i18n="settings.voices.hint">
           Mehrfachauswahl möglich, für alle, die zwischen Stimmen wechseln.
@@ -3718,7 +3705,7 @@ input[type="checkbox"] {
         <div class="chip-grid chip-grid--lg voice-pill-picker" id="voice-picker"></div>
       </div>
 
-      <div class="card">
+      <div class="card" style="--card-tint:37,99,235">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10.5 8.5v7l6-3.5-6-3.5Z"/></svg><span data-i18n="settings.player.title">Player</span></h2>
 
         <p class="section-title" style="margin-top:0" data-i18n="settings.personal.behaviorTitle">Verhalten</p>
@@ -3744,21 +3731,25 @@ input[type="checkbox"] {
           </button>
         </div>
 
-        <p class="section-title" data-i18n="settings.personal.searchTitle">Song-Suche</p>
-        <p class="small muted" style="margin-top:-4px" data-i18n="settings.personal.searchHint">
-          Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.
-        </p>
-        <label class="select-field">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-          <select id="song-search-service-picker" aria-label="Suchdienst"></select>
-        </label>
-        <p class="small muted search-privacy-hint" style="margin:6px 0 0">
-          <svg class="search-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-          <span data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</span>
-        </p>
+        <div class="setting-item">
+          <span class="setting-main">
+            <span class="setting-label-line">
+              <span class="setting-label" data-i18n="settings.personal.searchTitle">Song-Suche</span>
+              <button class="setting-info" type="button" aria-expanded="false" aria-controls="search-hint-detail"
+                      data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
+            </span>
+          </span>
+          <span class="setting-value-select">
+            <select id="song-search-service-picker" aria-label="Suchdienst"></select>
+          </span>
+        </div>
+        <div class="setting-detail" id="search-hint-detail" hidden>
+          <p data-i18n="settings.personal.searchHint">Dienst für das Lupen-Symbol im Player. Langes Halten fragt einmalig nach einem anderen Dienst.</p>
+          <p data-i18n="settings.personal.searchPrivacyHint">Beim Antippen der Lupe im Player gehen Songtitel (und, falls hinterlegt, der Interpret) an den hier gewählten Dienst.</p>
+        </div>
       </div>
 
-      <div class="card">
+      <div class="card" style="--card-tint:124,58,237">
         <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg><span data-i18n="settings.appearance.title">Aussehen und Sprache</span></h2>
 
         <div class="setting-list">
@@ -3781,10 +3772,12 @@ input[type="checkbox"] {
 
           <div class="setting-item">
             <span class="setting-main">
-              <span class="setting-label" data-i18n="settings.personal.presentTitle">Textanzeige für andere</span>
+              <span class="setting-label-line">
+                <span class="setting-label" data-i18n="settings.personal.presentTitle">Textanzeige für andere</span>
+                <button class="setting-info" type="button" aria-expanded="false" aria-controls="present-theme-hint-detail"
+                        data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
+              </span>
             </span>
-            <button class="setting-info" type="button" aria-expanded="false" aria-controls="present-theme-hint-detail"
-                    data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
           </div>
           <p class="setting-detail" id="present-theme-hint-detail" hidden data-i18n="settings.personal.presentHint">
             Farbe der großen Vollbildanzeige zum Mitlesen (Vollbild-Knopf beim Liedtext).
@@ -3800,17 +3793,19 @@ input[type="checkbox"] {
       <p class="settings-group-label" data-i18n="settings.group.practice">Beim Üben</p>
       <div class="settings-group-box">
 
-    <div class="card">
+    <div class="card" style="--card-tint:13,148,136">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l2-8 4 16 3-11 2 3h4"/></svg><span data-i18n="settings.audio.title">Audioeinstellungen</span></h2>
 
       <div class="setting-list">
 
         <div class="setting-item">
           <span class="setting-main">
-            <span class="setting-label" data-i18n="settings.normalization.label">Lautstärke normalisieren</span>
+            <span class="setting-label-line">
+              <span class="setting-label" data-i18n="settings.normalization.label">Lautstärke normalisieren</span>
+              <button class="setting-info" type="button" aria-expanded="false" aria-controls="normalization-hint-detail"
+                      data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
+            </span>
           </span>
-          <button class="setting-info" type="button" aria-expanded="false" aria-controls="normalization-hint-detail"
-                  data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
           <button class="switch" id="normalization-toggle" type="button" role="switch"
                   aria-checked="false" data-i18n-aria="settings.normalization.aria"
                   aria-label="Lautstärke normalisieren">
@@ -3847,10 +3842,12 @@ input[type="checkbox"] {
 
         <div class="setting-item">
           <span class="setting-main">
-            <span class="setting-label" data-i18n="settings.bike.title">Fahrradfahren-Modus</span>
+            <span class="setting-label-line">
+              <span class="setting-label" data-i18n="settings.bike.title">Fahrradfahren-Modus</span>
+              <button class="setting-info" type="button" aria-expanded="false" aria-controls="bike-hint-detail"
+                      data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
+            </span>
           </span>
-          <button class="setting-info" type="button" aria-expanded="false" aria-controls="bike-hint-detail"
-                  data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
           <span class="setting-value-select">
             <select id="channel-mode" aria-label="Kanalwiedergabe">
               <option value="off" data-i18n="settings.bike.normal">Normal</option>
@@ -3866,22 +3863,21 @@ input[type="checkbox"] {
 
         <div class="setting-item">
           <span class="setting-main">
-            <span class="setting-label" data-i18n="settings.perf.title">Kompatibilität &amp; Performance</span>
+            <span class="setting-label-line">
+              <span class="setting-label" data-i18n="settings.perf.title">Langsames Abspielen</span>
+              <button class="setting-info" type="button" aria-expanded="false" aria-controls="perf-hint-detail"
+                      data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
+            </span>
           </span>
-          <button class="setting-info" type="button" aria-expanded="false" aria-controls="perf-hint-detail"
-                  data-i18n-aria="settings.info.moreAria" aria-label="Mehr Informationen">?</button>
           <div class="preset-row" id="slow-mode" role="group" aria-label="Verlangsamung">
             <button class="preset" type="button" data-mode="standard" aria-pressed="true" data-i18n="settings.perf.modeStandard">Standard</button>
             <button class="preset" type="button" data-mode="hd" data-i18n="settings.perf.modeHd">HD</button>
           </div>
         </div>
-        <p class="setting-detail" id="perf-hint-detail" hidden data-i18n="settings.perf.modeHint">
-          Wie das Verlangsamen bei 85 %, 70 % und 60 % berechnet wird.
-        </p>
-        <p class="small muted" style="margin:0 0 10px" data-i18n="settings.perf.hdHint">
-          HD klingt bei langsamem Tempo klarer, braucht aber mehr Leistung. Bei
-          Ruckeln oder Wärme: Standard wählen.
-        </p>
+        <div class="setting-detail" id="perf-hint-detail" hidden>
+          <p data-i18n="settings.perf.modeHint">Wie das Verlangsamen bei 85 %, 70 % und 60 % berechnet wird.</p>
+          <p data-i18n="settings.perf.hdHint">HD klingt bei langsamem Tempo klarer, braucht aber mehr Leistung. Bei Ruckeln oder Wärme: Standard wählen.</p>
+        </div>
         <p class="small muted" id="hd-unsupported-hint" style="margin:0 0 10px" hidden data-i18n="settings.perf.hdUnsupported">
           Dieses Gerät unterstützt HD nicht — Standard funktioniert trotzdem.
         </p>
@@ -4022,30 +4018,36 @@ input[type="checkbox"] {
             <span class="setting-label" data-i18n="settings.perf.rebuildBtn">Tonausgabe neu aufbauen</span>
             <span class="setting-sub" data-i18n="settings.perf.rebuildHint">Hilft bei abgehacktem Ton nach langer Hintergrundwiedergabe. Nur verwenden, wenn gerade nichts läuft.</span>
           </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
 
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="--card-tint:79,70,229">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg><span data-i18n="settings.screen.title">Bildschirm &amp; Hintergrund</span></h2>
-      <div class="row">
-        <span class="small" style="max-width:70%" data-i18n="settings.screen.keepOn">
-          Bildschirm anlassen, solange ein Lied geöffnet ist
-        </span>
-        <button class="switch" id="btn-screen-toggle" type="button" role="switch"
-                aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
-          <span class="switch-knob"></span>
-        </button>
+      <div class="setting-list">
+        <div class="setting-item">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="settings.screen.keepOn">Bildschirm anlassen, solange ein Lied geöffnet ist</span>
+          </span>
+          <button class="switch" id="btn-screen-toggle" type="button" role="switch"
+                  aria-checked="false" aria-label="Bildschirm anlassen" data-i18n-aria="settings.screen.keepOnAria">
+            <span class="switch-knob"></span>
+          </button>
+        </div>
+        <!-- Nur sichtbar, solange die Einstellung an ist (siehe renderScreenMode())
+             — kein "?": der Hinweis erklärt eine Nebenwirkung des aktuellen
+             Zustands, keine Dauererklärung. -->
+        <p class="small muted" id="screen-hint" style="margin:0 0 10px" hidden data-i18n="settings.screen.hint">
+          Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
+          nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
+        </p>
+        <p class="small muted" id="screen-note" style="margin:0 0 10px" hidden></p>
       </div>
-      <p class="small muted" id="screen-hint" style="margin:8px 0 0" hidden data-i18n="settings.screen.hint">
-        Verhindert nur das automatische Abdunkeln bei Untätigkeit — hilft
-        nicht, wenn du das Handy bewusst über die Ein/Aus-Taste sperrst.
-      </p>
-      <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
     </div>
 
-    <div class="card">
+    <div class="card" style="--card-tint:22,163,74" data-no-accordion="1">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg><span data-i18n="settings.lightshow.title">Lichtshow</span></h2>
       <p class="small muted" style="margin-top:-4px" data-i18n="settings.lightshow.hint">
         Acht kleine Bühnen-Einlagen für den Auftritt: Vollbild-Lichtfarben, die
@@ -4063,34 +4065,26 @@ input[type="checkbox"] {
       <p class="settings-group-label" data-i18n="settings.group.appData">App &amp; Daten</p>
       <div class="settings-group-box">
 
-    <div class="card">
+    <div class="card" style="--card-tint:8,145,178">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6Z"/></svg><span data-i18n="settings.data.title">Daten &amp; Sicherung</span></h2>
 
       <div class="setting-list">
 
-        <button class="setting-item setting-item--toggle setting-row-toggle" type="button"
-                aria-expanded="false" aria-controls="panel-backup">
+        <button class="setting-item setting-item--toggle" id="btn-backup-export" type="button">
           <span class="setting-main">
             <span class="setting-label" data-i18n="settings.data.backupTitle">Sicherung</span>
+            <span class="setting-sub" id="backup-age"></span>
           </span>
           <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
-        <div class="setting-panel" id="panel-backup" hidden>
-          <div class="stack">
-            <p class="small" id="backup-age" style="margin:0"></p>
-            <div style="display:flex; gap:8px">
-              <button class="btn btn--primary" id="btn-backup-export" type="button" style="flex:1">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
-                <span data-i18n="settings.data.backupBtn">Backup</span>
-              </button>
-              <button class="btn" id="btn-backup-import" type="button" style="flex:1">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v12"/><path d="M17 16l-5 5-5-5"/><path d="M5 3h14"/></svg>
-                <span data-i18n="settings.data.restoreBtn">Restore</span>
-              </button>
-            </div>
-            <input class="visually-hidden" id="backup-input" type="file" accept=".json,application/json">
-          </div>
-        </div>
+
+        <button class="setting-item setting-item--toggle" id="btn-backup-import" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="settings.data.restoreBtn">Wiederherstellen</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+        <input class="visually-hidden" id="backup-input" type="file" accept=".json,application/json">
 
         <button class="setting-item setting-item--toggle setting-row-toggle" type="button"
                 aria-expanded="false" aria-controls="panel-notes-lyrics">
@@ -4127,34 +4121,30 @@ input[type="checkbox"] {
           </div>
         </div>
 
-        <button class="setting-item setting-item--toggle setting-row-toggle" type="button"
-                aria-expanded="false" aria-controls="panel-storage">
+        <button class="setting-item setting-item--toggle" id="btn-manage-storage" type="button"
+                aria-expanded="false" aria-controls="storage-manager">
           <span class="setting-main">
-            <span class="setting-label" data-i18n="settings.storage.title">Speicher</span>
+            <span class="setting-label" data-i18n="settings.data.manageStorageBtn">Einzelne Songs verwalten</span>
           </span>
           <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
-        <div class="setting-panel" id="panel-storage" hidden>
-          <div class="stack">
-            <div class="row">
-              <span id="storage-text" class="small" data-i18n="settings.storage.measuring">wird ermittelt …</span>
-            </div>
-            <div class="meter" id="storage-meter"><i></i></div>
-            <p class="small muted" id="persist-text" style="margin:0"></p>
-            <button class="btn btn--block" id="btn-persist" type="button" hidden data-i18n="settings.storage.persistBtn">
-              Dauerhafte Speicherung anfordern
-            </button>
-            <button class="btn btn--block" id="btn-manage-storage" type="button" aria-expanded="false" data-i18n="settings.data.manageStorageBtn">
-              Einzelne Songs verwalten
-            </button>
-            <div id="storage-manager" hidden></div>
-          </div>
+        <div id="storage-manager" class="setting-panel" hidden></div>
+
+        <div class="setting-item">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="settings.storage.title">Speicher</span>
+          </span>
+          <span class="setting-value" id="storage-text" data-i18n="settings.storage.measuring">wird ermittelt …</span>
         </div>
+        <p class="small muted" id="persist-text" style="margin:0 0 10px"></p>
+        <button class="btn btn--block" id="btn-persist" type="button" hidden data-i18n="settings.storage.persistBtn">
+          Dauerhafte Speicherung anfordern
+        </button>
 
         <button class="setting-item setting-item--toggle setting-row-toggle" type="button"
                 aria-expanded="false" aria-controls="panel-delete">
           <span class="setting-main">
-            <span class="setting-label setting-label--danger" data-i18n="settings.data.deleteTitle">Löschen</span>
+            <span class="setting-label setting-label--danger" data-i18n="settings.data.deleteTitle">Daten löschen</span>
           </span>
           <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
@@ -4187,27 +4177,37 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="--card-tint:234,88,12">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.help.title">Hilfe</span></h2>
-      <div class="stack">
-        <p class="small muted" style="margin:0" data-i18n="settings.help.intro">
-          Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
-          Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone
-          und auf Android geht.
-        </p>
-        <button class="btn btn--block" id="btn-help-import" type="button" data-i18n="settings.help.howToBtn">
-          Wie bekomme ich Songs in die App?
+      <p class="small muted" style="margin:0 0 10px" data-i18n="settings.help.intro">
+        Die Aufnahmen kommen als ZIP-Datei aus der Dropbox in die App.
+        Der Knopf unten zeigt Schritt für Schritt, wie das auf dem iPhone
+        und auf Android geht.
+      </p>
+      <div class="setting-list">
+
+        <button class="setting-item setting-item--toggle" id="btn-help-import" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="settings.help.howToBtn">Wie bekomme ich Songs in die App?</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
-        <button class="btn btn--block" id="btn-setup-again" type="button" data-i18n="settings.help.replayOnboarding">
-          Einführung noch einmal ansehen
+
+        <button class="setting-item setting-item--toggle" id="btn-setup-again" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="settings.help.replayOnboarding">Einführung noch einmal ansehen</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+
+        <button class="setting-item setting-item--toggle" id="btn-bg-help-toggle" type="button" aria-expanded="false" aria-controls="bg-help">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="settings.screen.bgHelpToggle">Hören im Hintergrund klappt nicht?</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
       </div>
-
-      <button class="btn btn--block" id="btn-bg-help-toggle" type="button"
-              aria-expanded="false" style="margin-top:14px" data-i18n="settings.screen.bgHelpToggle">
-        Hören im Hintergrund klappt nicht?
-      </button>
-      <div id="bg-help" hidden style="margin-top:12px">
+      <div id="bg-help" class="setting-panel" hidden>
         <p class="small muted" style="margin-top:0" data-i18n="settings.screen.bgHelpIntro">
           Bricht die Wiedergabe ab, sobald du das Handy sperrst, liegt das
           nicht an dieser App: Android entscheidet, ob eine Web-App im
@@ -4241,7 +4241,7 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="--card-tint:71,85,105">
       <h2><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor" stroke="none"/></svg><span data-i18n="settings.about.title">Über die App</span></h2>
       <div class="stack small muted">
         <div class="row">
