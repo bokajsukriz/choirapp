@@ -3546,6 +3546,38 @@ $('#btn-hd-advanced-toggle').addEventListener('click', () => {
   else { hdAbRestore(); }
 });
 
+/**
+ * „?"-Knöpfe neben Einstellungszeilen (.setting-info): klappen den früher
+ * permanent sichtbaren Erklärtext direkt unter der Zeile auf/zu. Rein
+ * statisches Markup, einmalig beim Laden verdrahtet — wie die übrigen
+ * Einstellungs-Listener in diesem Abschnitt.
+ */
+for (const btn of $$('#view-settings .setting-info[aria-controls]')) {
+  const detail = document.getElementById(btn.getAttribute('aria-controls'));
+  if (!detail) continue;
+  btn.addEventListener('click', () => {
+    const open = detail.hidden;
+    detail.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+}
+
+/**
+ * Zeilen, die selbst der Umschalter sind (.setting-row-toggle) — klappen
+ * ihr .setting-panel direkt darunter auf, ohne die Seite zu verlassen
+ * (siehe „Daten & Sicherung": Sicherung, Notizen und Liedtexte, Speicher,
+ * Löschen).
+ */
+for (const btn of $$('#view-settings .setting-row-toggle[aria-controls]')) {
+  const panel = document.getElementById(btn.getAttribute('aria-controls'));
+  if (!panel) continue;
+  btn.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+}
+
 $('#hd-formant-comp').addEventListener('click', () => {
   updateHdOption({ formantCompensation: !settings.hdOptions.formantCompensation }, false);
 });
