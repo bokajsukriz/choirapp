@@ -20617,7 +20617,14 @@ function initGrooveLabEasterEgg() {
     if (Audio.playing) audioPause();
     try {
       const lab = await loadGrooveLab();
-      lab.open({ accent: settings.accentColor || DEFAULT_SETTINGS.accentColor });
+      lab.open({
+        accent: settings.accentColor || DEFAULT_SETTINGS.accentColor,
+        // groove-lab.js wird erst hier nachgeladen und ist ein klassisches
+        // Skript ohne eigenen STRINGS-Zugriff — es bekommt t() und die
+        // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
+        t,
+        lang: settings.language,
+      });
     } catch (err) {
       bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
     }
