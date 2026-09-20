@@ -14096,7 +14096,7 @@ async function routineApplyCurrentElement() {
   const elements = routineElements(routine);
   const current = elements[routine.itemIndex];
   if (!current) {
-    banner('Für dieses Programm ist kein Element mehr übrig.', { kind: 'error' });
+    banner(t('routine.noItemsLeft'), { kind: 'error' });
     routineStop();
     return;
   }
@@ -14134,7 +14134,7 @@ async function routineAdvance() {
   if (!routine) return;
   const itemCount = routine.scope === 'setlist' ? (playQueue?.items.length || 0) : routineElements(routine).length;
   if (!itemCount) {
-    banner('Für dieses Programm ist kein Element mehr übrig.', { kind: 'error' });
+    banner(t('routine.noItemsLeft'), { kind: 'error' });
     routineStop();
     return;
   }
@@ -14198,7 +14198,7 @@ async function routineStart(scope, targetId, draft, plRef) {
 
   const elements = routineElements(routine);
   if (!elements.length) {
-    banner('Für dieses Programm ist kein Element mehr übrig.', { kind: 'error' });
+    banner(t('routine.noItemsLeft'), { kind: 'error' });
     routine = null;
     return;
   }
@@ -14213,7 +14213,7 @@ function routineStatusText() {
   const step = routine.steps[routine.stepIndex];
   const rateLabel = fmtRatePercent(step.rate);
   const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] || null);
-  const parts = ['Üben', `Durchlauf ${routine.repIndex + 1} von ${step.reps}`];
+  const parts = [t('routine.statusPracticing'), t('routine.repProgress').replace('{current}', routine.repIndex + 1).replace('{total}', step.reps)];
   if (voiceLabel) parts.push(voiceLabel);
   parts.push(rateLabel);
   const current = routineElements(routine)[routine.itemIndex];
@@ -14353,7 +14353,7 @@ function routineOrderList(elements, initialOrder) {
       const on = checked.has(id);
       const check = el('button', {
         type: 'button', class: 'routine-order-check', 'aria-pressed': on ? 'true' : 'false',
-        'aria-label': `„${item.label}" ${on ? 'abwählen' : 'auswählen'}`,
+        'aria-label': `„${item.label}" ${on ? t('routine.deselectItem') : t('routine.selectItem')}`,
         onclick: () => { if (checked.has(id)) checked.delete(id); else checked.add(id); render(); },
       }, on ? checkIcon() : null);
       const label = el('span', { class: 'routine-order-label', text: item.label });
@@ -14422,7 +14422,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     // Ausgangszustand abweicht (Schritte verändert/hinzugefügt oder
     // „Auswahl" statt „Alle" aktiv) — sonst bräuchte es nichts zu tun.
     const resetBtn = el('button', {
-      class: 'routine-reset', type: 'button', 'aria-label': 'Zurücksetzen', hidden: true,
+      class: 'routine-reset', type: 'button', 'aria-label': t('routine.resetAria'), hidden: true,
       onclick: async () => {
         await DB.metaDelete(routineKeyFor(scope, targetId)).catch(() => {});
         draftSteps.length = 0;
@@ -14441,9 +14441,9 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
 
     const table = el('div', { class: 'routine-table', 'data-cols': withVoice ? '4' : '3' });
     const thead = el('div', { class: 'routine-thead' },
-      el('span', {}, repeatIcon(), el('span', { class: 'lbl', text: 'Wdh.' })),
-      el('span', {}, tempoFieldIcon(), el('span', { class: 'lbl', text: 'Tempo' })),
-      withVoice ? el('span', {}, voiceFieldIcon(), el('span', { class: 'lbl', text: 'Stimme' })) : null,
+      el('span', {}, repeatIcon(), el('span', { class: 'lbl', text: t('routine.repsHeader') })),
+      el('span', {}, tempoFieldIcon(), el('span', { class: 'lbl', text: t('routine.tempoHeader') })),
+      withVoice ? el('span', {}, voiceFieldIcon(), el('span', { class: 'lbl', text: t('routine.voiceHeader') })) : null,
       el('span', {}));
     const rowsHost = el('div');
     table.append(thead, rowsHost);
@@ -14456,14 +14456,14 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         repsSel.value = String(step.reps);
         repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); updateResetVisibility(); });
 
-        const rateSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Tempo` });
+        const rateSel = el('select', { class: 'routine-value', 'aria-label': t('routine.tempoAria').replace('{item}', itemLabel) });
         for (const r of ROUTINE_RATES) rateSel.append(el('option', { value: r, text: fmtRatePercent(r) }));
         rateSel.value = String(step.rate);
         rateSel.addEventListener('change', () => { step.rate = Number(rateSel.value); updateResetVisibility(); });
 
         let voiceSel = null;
         if (withVoice) {
-          voiceSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Stimme` });
+          voiceSel = el('select', { class: 'routine-value', 'aria-label': t('routine.voiceAria').replace('{item}', itemLabel) });
           for (const [value, label] of voiceOptions()) voiceSel.append(el('option', { value, text: label }));
           // Eine gespeicherte Stimme, die diese Auswahl nicht kennt (Bariton
           // aus einer Sicherung; seit der Filterung auch jede Stimme, die
@@ -14480,7 +14480,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         }
 
         const removeBtn = i > 0 ? el('button', {
-          class: 'routine-trash', type: 'button', 'aria-label': 'Schritt entfernen',
+          class: 'routine-trash', type: 'button', 'aria-label': t('routine.removeStepAria'),
           onclick: () => { draftSteps.splice(i, 1); renderRows(); updateResetVisibility(); },
         }, trashIcon()) : el('span', {});
 
@@ -14502,8 +14502,8 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     let afterHost = null;
     const trailer = scope === 'setlist' ? el('p', { class: 'small muted', text: '… dann nächster Song.' }) : null;
     if (scope !== 'setlist') {
-      const allBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'next' ? 'true' : 'false' }, playIcon(), 'Alle');
-      const selBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'playlist' ? 'true' : 'false' }, listIcon(), 'Auswahl');
+      const allBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'next' ? 'true' : 'false' }, playIcon(), t('routine.allSegment'));
+      const selBtn = el('button', { type: 'button', class: 'routine-seg', 'aria-pressed': afterMode === 'playlist' ? 'true' : 'false' }, listIcon(), t('routine.selectionSegment'));
       const orderContainer = el('div');
       const buildOrder = () => {
         orderContainer.textContent = '';
@@ -14531,19 +14531,19 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     }
 
     const startBtn = el('button', {
-      class: 'btn btn--primary', type: 'button', text: 'Üben', disabled: !!emptyHint,
+      class: 'btn btn--primary', type: 'button', text: t('routine.startBtn'), disabled: !!emptyHint,
     });
     startBtn.addEventListener('click', () => {
       const items = scope !== 'setlist' && afterMode === 'playlist' && orderWidget ? orderWidget.getItems() : [];
       if (scope !== 'setlist' && afterMode === 'playlist' && !items.length) {
-        banner('Bitte mindestens ein Element auswählen.', { kind: 'error' });
+        banner(t('routine.selectAtLeastOne'), { kind: 'error' });
         return;
       }
       done({ action: 'start', steps: draftSteps.map((s) => ({ ...s })), after: scope === 'setlist' ? 'next' : afterMode, items });
     });
 
     const stopBtn = isRunning
-      ? el('button', { class: 'btn btn--block', type: 'button', text: 'Programm beenden', onclick: () => done({ action: 'stop' }) })
+      ? el('button', { class: 'btn btn--block', type: 'button', text: t('routine.stopProgramBtn'), onclick: () => done({ action: 'stop' }) })
       : null;
 
     updateResetVisibility();
@@ -14557,7 +14557,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
       stopBtn ? el('div', { class: 'row', style: 'margin-top:6px' }, stopBtn) : null,
       el('div', { class: 'routine-actionbar' },
         el('div', { class: 'dialog-actions' },
-          el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+          el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
           startBtn)));
     const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Choirgym' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
@@ -14595,7 +14595,7 @@ async function openRoutineDialogForLoops() {
   const elements = songLoops.map((l) => ({ id: l.id, label: `${l.name} (${fmtTime(l.start)}–${fmtTime(l.end)})` }));
   const result = await showRoutineDialog({
     scope: 'loops', targetId: playerSong.id, stored, itemLabel: 'Abschnitt', withVoice: true, elements,
-    emptyHint: songLoops.length ? null : 'Für diesen Song sind noch keine Abschnitte gespeichert.',
+    emptyHint: songLoops.length ? null : t('routine.noSectionsSaved'),
     isRunning, voices: songVoiceChoices(playerSong),
   });
   if (!result) return;
