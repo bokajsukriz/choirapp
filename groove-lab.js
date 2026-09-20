@@ -19,6 +19,15 @@
 
   const STEP_COUNT = 16; // ein Takt = 16 Sechzehntel
 
+  /**
+   * Übersetzung. Diese Datei ist ein klassisches Skript (kein ES-Modul) und
+   * wird erst nach dem Auslöser nachgeladen — sie kann STRINGS deshalb nicht
+   * selbst importieren. Stattdessen reicht app.js seine t()-Funktion beim
+   * Öffnen herein (siehe ChorGrooveLab.open()). Ohne sie bleibt der
+   * Schlüssel stehen, statt dass die Ansicht zerfällt.
+   */
+  let t = (key) => key;
+
   /* ------------------------------------------------------------------------
      INHALT — 16 Drumloops, 20 Melodien (je 2–4 Takte), 16 Synth-Voreinstel-
      lungen. Jeder Eintrag ist eigenständig; die Icons werden weiter unten
@@ -230,29 +239,37 @@
   // Für den Arpeggiator: feste Akkorde (Halbtonabstände zur Grundtonart) —
   // "Gehaltene Töne" nutzt stattdessen die per Latch gehaltene Auswahl der
   // Mini-Tastatur (siehe GrooveLabView._arpPool()).
+  // Die sichtbaren Namen stehen als STRINGS-Schlüssel in den Tabellen und
+  // werden erst beim Rendern durch t() aufgelöst — die Tabellen selbst sind
+  // Daten und werden einmal beim Laden ausgewertet, die Sprache steht da
+  // noch nicht fest.
   const ARP_SOURCES = [
-    { id: 'latch', name: 'Gehaltene Töne' },
-    { id: 'fifths', name: 'Quinten', intervals: [0, 7] },
-    { id: 'major', name: 'Dur', intervals: [0, 4, 7] },
-    { id: 'minor', name: 'Moll', intervals: [0, 3, 7] },
-    { id: 'maj7', name: 'Maj7', intervals: [0, 4, 7, 11] },
-    { id: 'min7', name: 'Moll7', intervals: [0, 3, 7, 10] },
-    { id: 'sus2', name: 'Sus2', intervals: [0, 2, 7] },
-    { id: 'sus4', name: 'Sus4', intervals: [0, 5, 7] },
-    { id: 'add9', name: 'Add9', intervals: [0, 4, 7, 14] },
+    { id: 'latch', nameKey: 'lab.arpLatch' },
+    { id: 'fifths', nameKey: 'lab.arpFifths', intervals: [0, 7] },
+    { id: 'major', nameKey: 'lab.arpMajor', intervals: [0, 4, 7] },
+    { id: 'minor', nameKey: 'lab.arpMinor', intervals: [0, 3, 7] },
+    { id: 'maj7', nameKey: 'lab.arpMaj7', intervals: [0, 4, 7, 11] },
+    { id: 'min7', nameKey: 'lab.arpMin7', intervals: [0, 3, 7, 10] },
+    { id: 'sus2', nameKey: 'lab.arpSus2', intervals: [0, 2, 7] },
+    { id: 'sus4', nameKey: 'lab.arpSus4', intervals: [0, 5, 7] },
+    { id: 'add9', nameKey: 'lab.arpAdd9', intervals: [0, 4, 7, 14] },
   ];
 
   const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'bass'];
-  const TRACK_LABEL = { kick: 'Kick', snare: 'Snare', clap: 'Clap', hat: 'Hi-Hat', bass: 'Basslauf' };
+  const TRACK_KEY = { kick: 'lab.trackKick', snare: 'lab.trackSnare', clap: 'lab.trackClap',
+                      hat: 'lab.trackHat', bass: 'lab.trackBass' };
+  const trackLabel = (track) => t(TRACK_KEY[track]);
 
   const WAVE_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'];
-  const WAVE_LABEL = { sine: 'Sinus', triangle: 'Dreieck', square: 'Rechteck', sawtooth: 'Sägezahn' };
+  const WAVE_KEY = { sine: 'lab.waveSine', triangle: 'lab.waveTriangle',
+                     square: 'lab.waveSquare', sawtooth: 'lab.waveSawtooth' };
+  const waveLabel = (wave) => t(WAVE_KEY[wave]);
 
   const TABS = [
-    { id: 'beat', label: 'Beat' },
-    { id: 'melody', label: 'Melodie' },
-    { id: 'synth', label: 'Synth' },
-    { id: 'keys', label: 'Keys' },
+    { id: 'beat', labelKey: 'lab.tabBeat' },
+    { id: 'melody', labelKey: 'lab.tabMelody' },
+    { id: 'synth', labelKey: 'lab.tabSynth' },
+    { id: 'keys', labelKey: 'lab.tabKeys' },
   ];
 
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
@@ -852,7 +869,7 @@
         await this.engine.start();
         this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]);
       } catch {
-        this._setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.');
+        this._setStatus(t('lab.statusNoAudioDevice'));
         return;
       }
       this.playing = true;
@@ -863,7 +880,7 @@
       const btn = this.$('.transport-play');
       btn.innerHTML = UI_ICON.pause;
       btn.setAttribute('aria-label', 'Groove pausieren');
-      this._setStatus('Groove läuft …');
+      this._setStatus(t('lab.statusRunning'));
 
       this._scheduleAhead();
       this._drawSteps();
@@ -882,8 +899,8 @@
       this.$all('.step-cell').forEach((cell) => cell.classList.remove('is-now'));
       const btn = this.$('.transport-play');
       btn.innerHTML = UI_ICON.play;
-      btn.setAttribute('aria-label', 'Groove starten');
-      this._setStatus('Bereit — am besten mit Kopfhörern.');
+      btn.setAttribute('aria-label', t('lab.startAria'));
+      this._setStatus(t('lab.statusReady'));
     }
 
     randomize() {
@@ -1002,7 +1019,7 @@
     async _startRoll(track) {
       if (this.rollTimers[track]) return;
       try { await this.engine.start(); this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]); }
-      catch { this._setStatus('Web Audio ist hier nicht verfügbar.'); return; }
+      catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
 
       const pattern = DRUM_PATTERNS[this.state.patternIndex];
       const cell = (pattern.roll && pattern.roll.length) ? pattern.roll : [[1, 1]];
@@ -1038,7 +1055,8 @@
 
       this.$('.pattern-name').textContent = DRUM_PATTERNS[this.state.patternIndex].name;
       const melody = MELODIES[this.state.melodyIndex];
-      this.$('.melody-name').textContent = `${melody.name} · ${melody.bars || 1} Takte`;
+      this.$('.melody-name').textContent = t('lab.melodyBars')
+        .replace('{name}', melody.name).replace('{bars}', melody.bars || 1);
       this.$('.preset-name').textContent = SYNTH_PRESETS[this.state.presetIndex].name;
 
       this._renderTracks();
@@ -1048,11 +1066,11 @@
 
       const melodyBtn = this.$('.melody-toggle');
       melodyBtn.setAttribute('aria-pressed', String(this.state.melodyOn));
-      melodyBtn.textContent = this.state.melodyOn ? 'Melodie an' : 'Melodie aus';
+      melodyBtn.textContent = t(this.state.melodyOn ? 'lab.melodyOn' : 'lab.melodyOff');
 
       const arpBtn = this.$('.arp-toggle');
       arpBtn.setAttribute('aria-pressed', String(this.state.arpOn));
-      arpBtn.textContent = this.state.arpOn ? 'Arp an' : 'Arp aus';
+      arpBtn.textContent = t(this.state.arpOn ? 'lab.arpOn' : 'lab.arpOff');
 
       const latchBtn = this.$('.latch-toggle');
       latchBtn.setAttribute('aria-pressed', String(this.state.latchOn));
@@ -1098,8 +1116,8 @@
         const roll = document.createElement('button');
         roll.type = 'button';
         roll.className = 'track-roll';
-        roll.setAttribute('aria-label', `${TRACK_LABEL[track]} halten für die zweite Line`);
-        roll.title = 'Halten für die zweite Line';
+        roll.setAttribute('aria-label', t('lab.rollAria').replace('{track}', trackLabel(track)));
+        roll.title = t('lab.rollTitle');
         roll.innerHTML = svg('<circle cx="12" cy="12" r="7"/>');
         roll.addEventListener('pointerdown', (e) => {
           e.preventDefault();
@@ -1117,7 +1135,7 @@
 
         const label = document.createElement('span');
         label.className = 'track-name';
-        label.textContent = TRACK_LABEL[track];
+        label.textContent = trackLabel(track);
 
         const cells = document.createElement('div');
         cells.className = 'step-row';
@@ -1153,8 +1171,8 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'wave-btn';
-        btn.title = WAVE_LABEL[wave];
-        btn.setAttribute('aria-label', WAVE_LABEL[wave]);
+        btn.title = waveLabel(wave);
+        btn.setAttribute('aria-label', waveLabel(wave));
         btn.setAttribute('aria-pressed', String(wave === preset.wave));
         btn.innerHTML = waveIcon(wave);
         btn.addEventListener('click', () => {
@@ -1168,10 +1186,10 @@
       // --- ADSR: vier Schieberegler plus Hüllkurven-Grafik ---
       const adsrHost = this.$('.adsr-sliders');
       adsrHost.replaceChildren(...[
-        ['attack', 'Attack', .005, 1, .005],
-        ['decay', 'Decay', .05, 1.5, .01],
-        ['sustain', 'Sustain', .05, 1, .01],
-        ['release', 'Release', .05, 2, .01],
+        ['attack', t('lab.envAttack'), .005, 1, .005],
+        ['decay', t('lab.envDecay'), .05, 1.5, .01],
+        ['sustain', t('lab.envSustain'), .05, 1, .01],
+        ['release', t('lab.envRelease'), .05, 2, .01],
       ].map(([key, label, min, max, step]) => {
         const wrap = document.createElement('label');
         wrap.className = 'slider-field';
@@ -1194,19 +1212,19 @@
       const knobHost = this.$('.filter-knobs');
       knobHost.replaceChildren();
       const cutoffKnob = new Knob({
-        label: 'Cutoff', min: 200, max: 10000, value: preset.cutoff,
+        label: t('lab.knobCutoff'), min: 200, max: 10000, value: preset.cutoff,
         format: (v) => `${Math.round(v)} Hz`,
         onInput: (v) => { preset.cutoff = v; this._markCustom(); },
       });
       const resonanceKnob = new Knob({
-        label: 'Resonanz', min: 0, max: 15, value: preset.resonance,
+        label: t('lab.knobResonance'), min: 0, max: 15, value: preset.resonance,
         format: (v) => v.toFixed(1),
         onInput: (v) => { preset.resonance = v; this._markCustom(); },
       });
       // Klassischer Analog-Synth-Regler: die Lautstärke-Hüllkurve zieht beim
       // Anschlag den Filter mit auf, statt dass er starr auf Cutoff bleibt.
       const envAmountKnob = new Knob({
-        label: 'Env→Filter', min: 0, max: 4000, value: preset.filterEnvAmount,
+        label: t('lab.knobEnvFilter'), min: 0, max: 4000, value: preset.filterEnvAmount,
         format: (v) => `${Math.round(v)} Hz`,
         onInput: (v) => { preset.filterEnvAmount = v; this._markCustom(); },
       });
@@ -1217,17 +1235,17 @@
       const characterHost = this.$('.character-knobs');
       characterHost.replaceChildren();
       const detuneKnob = new Knob({
-        label: 'Detune', min: 0, max: 25, value: preset.detune || 0,
+        label: t('lab.knobDetune'), min: 0, max: 25, value: preset.detune || 0,
         format: (v) => `${Math.round(v)}¢`,
         onInput: (v) => { preset.detune = v; this._markCustom(); },
       });
       const subKnob = new Knob({
-        label: 'Sub-Level', min: 0, max: 1, value: preset.subLevel || 0,
+        label: t('lab.knobSubLevel'), min: 0, max: 1, value: preset.subLevel || 0,
         format: (v) => `${Math.round(v * 100)}%`,
         onInput: (v) => { preset.subLevel = v; this._markCustom(); },
       });
       const pitchDropKnob = new Knob({
-        label: 'Pitch-Drop', min: 0, max: 300, value: preset.pitchDrop || 0,
+        label: t('lab.knobPitchDrop'), min: 0, max: 300, value: preset.pitchDrop || 0,
         format: (v) => `${Math.round(v)}¢`,
         onInput: (v) => { preset.pitchDrop = v; this._markCustom(); },
       });
@@ -1237,17 +1255,17 @@
       const vibratoHost = this.$('.vibrato-knobs');
       vibratoHost.replaceChildren();
       const vibRateKnob = new Knob({
-        label: 'Rate', min: 0, max: 8, value: preset.vibratoRate || 0,
+        label: t('lab.knobRate'), min: 0, max: 8, value: preset.vibratoRate || 0,
         format: (v) => `${v.toFixed(1)} Hz`,
         onInput: (v) => { preset.vibratoRate = v; this._markCustom(); },
       });
       const vibDepthKnob = new Knob({
-        label: 'Tiefe', min: 0, max: 20, value: preset.vibratoDepth || 0,
+        label: t('lab.knobDepth'), min: 0, max: 20, value: preset.vibratoDepth || 0,
         format: (v) => `${Math.round(v)}¢`,
         onInput: (v) => { preset.vibratoDepth = v; this._markCustom(); },
       });
       const vibDelayKnob = new Knob({
-        label: 'Einsatz', min: 0, max: 1, value: preset.vibratoDelay ?? 0,
+        label: t('lab.knobOnset'), min: 0, max: 1, value: preset.vibratoDelay ?? 0,
         format: (v) => `${v.toFixed(2)} s`,
         onInput: (v) => { preset.vibratoDelay = v; this._markCustom(); },
       });
@@ -1257,12 +1275,12 @@
       const reverbHost = this.$('.reverb-knobs');
       reverbHost.replaceChildren();
       const reverbWetKnob = new Knob({
-        label: 'Dry/Wet', min: 0, max: 1, value: preset.reverbWet,
+        label: t('lab.knobDryWet'), min: 0, max: 1, value: preset.reverbWet,
         format: (v) => `${Math.round(v * 100)}%`,
         onInput: (v) => { preset.reverbWet = v; this._markCustom(); this.engine.setReverbWet(v); },
       });
       const reverbLengthKnob = new Knob({
-        label: 'Länge', min: .1, max: 4, value: preset.reverbLength,
+        label: t('lab.knobLength'), min: .1, max: 4, value: preset.reverbLength,
         format: (v) => `${v.toFixed(1)} s`,
         onInput: (v) => { preset.reverbLength = v; this._markCustom(); this.engine.setReverbLength(v); },
       });
@@ -1272,12 +1290,12 @@
       const echoHost = this.$('.echo-knobs');
       echoHost.replaceChildren();
       const echoWetKnob = new Knob({
-        label: 'Dry/Wet', min: 0, max: 1, value: preset.echoWet,
+        label: t('lab.knobDryWet'), min: 0, max: 1, value: preset.echoWet,
         format: (v) => `${Math.round(v * 100)}%`,
         onInput: (v) => { preset.echoWet = v; this._markCustom(); this.engine.setEchoWet(v); },
       });
       const echoRateKnob = new Knob({
-        label: 'Rate', min: 40, max: 700, value: preset.echoRate,
+        label: t('lab.knobRate'), min: 40, max: 700, value: preset.echoRate,
         format: (v) => `${Math.round(v)} ms`,
         onInput: (v) => { preset.echoRate = v; this._markCustom(); this.engine.setEchoRate(v); },
       });
@@ -1330,7 +1348,7 @@
       const host = this.$('[data-field="arpSource"]');
       host.replaceChildren(...ARP_SOURCES.map((source) => {
         const opt = document.createElement('option');
-        opt.value = source.id; opt.textContent = source.name;
+        opt.value = source.id; opt.textContent = t(source.nameKey);
         return opt;
       }));
       host.value = this.state.arpSourceId;
@@ -1397,7 +1415,7 @@
 
         (async () => {
           try { await this.engine.start(); this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]); }
-          catch { this._setStatus('Web Audio ist hier nicht verfügbar.'); return; }
+          catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
           // Der Finger kann während des Wartens schon weitergezogen sein —
           // dann gehört dieser (veraltete) Aufruf nicht mehr zur aktuellen Taste.
           if (this.keyVoices.get(pointerId) !== entry) return;
@@ -1698,20 +1716,20 @@
 
 <header class="lab-head">
   <div class="lab-head-title">
-    <div class="eyebrow">Du hast das Easter Egg gefunden</div>
+    <div class="eyebrow">${t('lab.eyebrow')}</div>
     <h1>Chor <span>Groove</span> Lab</h1>
   </div>
-  <button class="icon-btn close-btn" type="button" data-action="close" aria-label="Groove Lab schließen">${UI_ICON.close}</button>
+  <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
 </header>
 
 <nav class="tab-bar" role="tablist">
-  ${TABS.map((tab) => `<button class="tab-btn" type="button" role="tab" data-action="tab" data-tab="${tab.id}" aria-selected="${tab.id === 'beat'}">${tab.label}</button>`).join('')}
+  ${TABS.map((tab) => `<button class="tab-btn" type="button" role="tab" data-action="tab" data-tab="${tab.id}" aria-selected="${tab.id === 'beat'}">${t(tab.labelKey)}</button>`).join('')}
 </nav>
 
 <div class="lab-body">
   <section class="tab-panel" data-tab-panel="beat">
     <section class="panel">
-      <div class="panel-head"><h2>Drumloop</h2><span class="item-name pattern-name"></span></div>
+      <div class="panel-head"><h2>${t('lab.drumloop')}</h2><span class="item-name pattern-name"></span></div>
       <div class="pattern-grid"></div>
       <div class="track-list"></div>
     </section>
@@ -1720,29 +1738,29 @@
   <section class="tab-panel" data-tab-panel="melody" hidden>
     <section class="panel">
       <div class="panel-head">
-        <h2>Melodie</h2>
-        <button class="toggle-pill melody-toggle" type="button" data-action="toggle-melody" aria-pressed="true">Melodie an</button>
+        <h2>${t('lab.melody')}</h2>
+        <button class="toggle-pill melody-toggle" type="button" data-action="toggle-melody" aria-pressed="true">${t('lab.melodyOn')}</button>
       </div>
       <div class="panel-head"><span class="item-name melody-name"></span></div>
       <div class="melody-grid"></div>
-      <p class="foot-note">Jede Melodie entwickelt ihr Motiv über 2–4 Takte weiter, statt sich nur zu wiederholen.</p>
+      <p class="foot-note">${t('lab.melodyHint')}</p>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="synth" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>Voreinstellung</h2><span class="item-name preset-name"></span></div>
+      <div class="panel-head"><h2>${t('lab.preset')}</h2><span class="item-name preset-name"></span></div>
       <div class="preset-grid"></div>
     </section>
 
     <div class="module-grid">
       <div class="module">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>Oszillator</h3></div>
-        <div class="wave-row" role="group" aria-label="Wellenform"></div>
+        <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3></div>
+        <div class="wave-row" role="group" aria-label="${t('lab.waveformAria')}"></div>
       </div>
 
       <div class="module">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>Hüllkurve</h3></div>
+        <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3></div>
         <div class="adsr-row">
           <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none">
             <path class="envelope-path" d=""/>
@@ -1752,29 +1770,29 @@
       </div>
 
       <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>Filter</h3></div>
+        <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3></div>
         <div class="knob-row filter-knobs"></div>
       </div>
 
       <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>Charakter</h3></div>
+        <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3></div>
         <div class="knob-row character-knobs"></div>
       </div>
 
       <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>Vibrato</h3></div>
+        <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3></div>
         <div class="knob-row vibrato-knobs"></div>
       </div>
 
       <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('repeat')}</span><h3>Raum &amp; Echo</h3></div>
+        <div class="module-head"><span class="module-icon">${pictogramIcon('repeat')}</span><h3>${t('lab.roomEcho')}</h3></div>
         <div class="fx-columns">
           <div>
-            <span class="fx-label">Reverb</span>
+            <span class="fx-label">${t('lab.reverb')}</span>
             <div class="knob-row reverb-knobs"></div>
           </div>
           <div>
-            <span class="fx-label">Echo</span>
+            <span class="fx-label">${t('lab.echo')}</span>
             <div class="knob-row echo-knobs"></div>
           </div>
         </div>
@@ -1784,54 +1802,54 @@
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>Arpeggiator</h2></div>
+      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2></div>
       <div class="arp-toggles">
-        <button class="toggle-pill arp-toggle" type="button" data-action="toggle-arp" aria-pressed="false">Arp aus</button>
-        <button class="toggle-pill latch-toggle" type="button" data-action="toggle-latch" aria-pressed="false">${UI_ICON.latch} Latch</button>
+        <button class="toggle-pill arp-toggle" type="button" data-action="toggle-arp" aria-pressed="false">${t('lab.arpOff')}</button>
+        <button class="toggle-pill latch-toggle" type="button" data-action="toggle-latch" aria-pressed="false">${UI_ICON.latch} ${t('lab.latch')}</button>
       </div>
       <div class="arp-controls">
-        <select data-field="arpSource" aria-label="Notenvorrat"></select>
-        <select data-field="arpMode" aria-label="Richtung">
-          <option value="up">Aufwärts</option>
-          <option value="down">Abwärts</option>
-          <option value="updown">Auf/Ab</option>
-          <option value="random">Zufall</option>
+        <select data-field="arpSource" aria-label="${t('lab.noteSourceAria')}"></select>
+        <select data-field="arpMode" aria-label="${t('lab.directionAria')}">
+          <option value="up">${t('lab.arpUp')}</option>
+          <option value="down">${t('lab.arpDown')}</option>
+          <option value="updown">${t('lab.arpUpDown')}</option>
+          <option value="random">${t('lab.arpRandom')}</option>
         </select>
-        <select data-field="arpDivision" aria-label="Geschwindigkeit">
+        <select data-field="arpDivision" aria-label="${t('lab.speedAria')}">
           <option value="1">1/16</option>
           <option value="2">1/8</option>
           <option value="4">1/4</option>
         </select>
-        <select data-field="arpOctaves" aria-label="Oktavbereich">
-          <option value="1">1 Oktave</option>
-          <option value="2">2 Oktaven</option>
-          <option value="3">3 Oktaven</option>
+        <select data-field="arpOctaves" aria-label="${t('lab.octaveRangeAria')}">
+          <option value="1">${t('lab.octave1')}</option>
+          <option value="2">${t('lab.octave2')}</option>
+          <option value="3">${t('lab.octave3')}</option>
         </select>
       </div>
-      <p class="foot-note">Latch an: Tasten antippen hält sie — der Arp läuft über die gehaltenen Töne, bis du sie erneut antippst.</p>
+      <p class="foot-note">${t('lab.latchHint')}</p>
     </section>
 
     <section class="panel">
       <div class="keyboard-head">
-        <strong>Mini-Klaviatur</strong>
+        <strong>${t('lab.miniKeyboard')}</strong>
         <div class="octave-list"></div>
       </div>
       <div class="keyboard"></div>
-      <p class="foot-note">100 % lokal · Web Audio API · beim Schließen vollständig beendet</p>
+      <p class="foot-note">${t('lab.footNote')}</p>
     </section>
   </section>
 </div>
 
 <footer class="transport-bar">
   <div class="transport-row">
-    <button class="icon-btn transport-play" type="button" data-action="toggle-transport" aria-label="Groove starten">${UI_ICON.play}</button>
+    <button class="icon-btn transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
     <label class="tempo-field">
       <output class="bpm-out">106 BPM</output>
-      <input class="bpm-input" type="range" min="72" max="144" value="106" aria-label="Tempo">
+      <input class="bpm-input" type="range" min="72" max="144" value="106" aria-label="${t('lab.tempoAria')}">
     </label>
-    <button class="icon-btn dice-btn" type="button" data-action="randomize" aria-label="Zufälliger Groove">${UI_ICON.dice}</button>
+    <button class="icon-btn dice-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}">${UI_ICON.dice}</button>
   </div>
-  <p class="status-line" role="status">Bereit — am besten mit Kopfhörern.</p>
+  <p class="status-line" role="status">${t('lab.statusReady')}</p>
 </footer>`;
     }
   }
@@ -1840,9 +1858,22 @@
 
   global.ChorGrooveLab = {
     open(options) {
+      // app.js reicht seine t()-Funktion herein; diese Datei ist ein
+      // klassisches Skript und kann STRINGS nicht selbst importieren.
+      if (typeof options?.t === 'function') t = options.t;
+
       let lab = document.querySelector('chor-groove-lab');
+      // Die Vorlage wird einmal beim Aufbau der Komponente gerendert. Wurde
+      // die Sprache seitdem umgestellt, stünde sie sonst weiter in der alten
+      // da — dann lieber neu aufbauen (der Lab-Zustand ist ein Spielstand,
+      // kein Nutzerdatenbestand).
+      if (lab && lab.dataset.lang !== (options?.lang || '')) {
+        lab.remove();
+        lab = null;
+      }
       if (!lab) {
         lab = document.createElement('chor-groove-lab');
+        lab.dataset.lang = options?.lang || '';
         lab.hidden = true;
         document.body.append(lab);
       }
