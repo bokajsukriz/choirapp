@@ -3188,7 +3188,6 @@ $('#song-search-service-picker').addEventListener('change', async (e) => {
 
 function renderScreenMode() {
   $('#btn-screen-toggle').setAttribute('aria-checked', settings.keepScreenOn ? 'true' : 'false');
-  $('#screen-hint').hidden = !settings.keepScreenOn;
   const note = $('#screen-note');
   // Im Regelfall (Wake Lock verfügbar) sagt der Schalter schon alles Nötige —
   // die Zeile bleibt dann weg, damit die Karte kurz bleibt.
@@ -5246,6 +5245,10 @@ function renderNormalizationProgress() {
   const host = $('#normalization-progress');
   if (!host) return;
   const p = normalizationProgress;
+  // Einziger Wert, der neben der Überschrift stehen bleibt, wenn alles
+  // andere hinter dem "?" verschwindet — wie viele Aufnahmen tatsächlich
+  // normalisiert sind, nicht übersprungene/fehlgeschlagene mitgezählt.
+  $('#normalization-count').textContent = p.analyzed > 0 ? `(${p.analyzed})` : '';
   const finished = p.analyzed + p.skipped + p.failed;
   const pending = normalizationQueue.size + normalizationInFlight.size;
   const isAnalyzing = pending > 0 || p.total > 0 && finished < p.total;
