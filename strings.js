@@ -24,8 +24,8 @@ export const STRINGS = {
 
     'tabs.loops': 'Loops',
     'tabs.rec': 'REC',
-    'tabs.lyrics': 'Liedtext',
-    'tabs.notes': 'Notizen',
+    'tabs.lyrics': 'Lyrics',
+    'tabs.notes': 'Notes',
     'scores.hintLabel': 'Noten verfügbar',
     'scores.modalTitle': 'Noten',
     'routine.ariaLabel': 'Choirgym',
@@ -51,7 +51,7 @@ export const STRINGS = {
 
     'settings.importBtn': 'Songs importieren',
     'settings.info.moreAria': 'Mehr Informationen',
-    'settings.group.makeItYours': 'Persönliches',
+    'settings.group.makeItYours': 'Make it yours',
     'settings.group.practice': 'Beim Üben',
     'settings.group.appData': 'App & Daten',
     'settings.voice.title': 'Stimme',
