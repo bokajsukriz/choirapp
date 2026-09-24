@@ -428,6 +428,43 @@ function closeModal(layer) {
   if (entry.restore && document.body.contains(entry.restore)) entry.restore.focus?.();
 }
 
+let modalHeadingSeq = 0;
+
+/**
+ * Hängt ein selbst gebautes `.overlay` als echten modalen Dialog ein: Rolle
+ * und Beschriftung (aus der ersten h2) für Screenreader, Fokusfalle, Esc und
+ * inerter Hintergrund über openModal(). Vorher waren mehrere Dialoge nur
+ * `<div class="overlay">` — Tab lief dahinter in die Bibliothek, Esc tat
+ * nichts, der Fokus blieb auf dem Auslöser (U2).
+ *
+ * `layer.remove()` wird so überschrieben, dass es closeModal() gleich
+ * mitmacht — jeder bestehende Schließen-Pfad der Dialoge räumt damit auch
+ * Fokusfalle und `inert` wieder auf, ohne dass jeder ihn kennen muss.
+ * Fortschrittsdialoge (`busy`) sind `alertdialog` ohne Esc.
+ */
+function mountModal(layer, { onEscape, initialFocus, busy = false } = {}) {
+  layer.setAttribute('role', busy ? 'alertdialog' : 'dialog');
+  layer.setAttribute('aria-modal', 'true');
+  if (busy) layer.setAttribute('aria-busy', 'true');
+  const heading = layer.querySelector('h2');
+  if (heading && !layer.hasAttribute('aria-label')) {
+    if (!heading.id) heading.id = `modal-heading-${++modalHeadingSeq}`;
+    layer.setAttribute('aria-labelledby', heading.id);
+  }
+  const removeNode = Element.prototype.remove.bind(layer);
+  layer.remove = () => { closeModal(layer); removeNode(); };
+  if (!layer.isConnected) document.body.append(layer);
+  let focusTarget = initialFocus || focusableIn(layer)[0];
+  if (!focusTarget) {
+    // Nichts Bedienbares (Fortschritt): den Dialog selbst fokussieren, damit
+    // Screenreader ihn ansagen und der Fokus nicht dahinter liegen bleibt.
+    const box = layer.firstElementChild || layer;
+    box.setAttribute('tabindex', '-1');
+    focusTarget = box;
+  }
+  openModal(layer, { initialFocus: focusTarget, onEscape: busy ? () => {} : onEscape });
+}
+
 const overlay      = $('#overlay');
 const dlgTitle     = $('#dlg-title');
 const dlgText      = $('#dlg-text');
@@ -7579,7 +7616,7 @@ async function ensureMyVoice() {
       })));
 
     const layer = el('div', { class: 'overlay' }, host);
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => { layer.remove(); resolve(null); } });
   });
 
   if (chosen?.length) await saveSettings({ myVoices: chosen, defaultImportScope: 'mine' });
@@ -8252,6 +8289,47 @@ async function runImport() {
 }
 
 /**
+ * Vollbild-Unteransichten (Import, Aufnahme, Lichtshow) liegen als eigene
+ * Sections über Einstellungen und Navigation. Ohne das hier blieb der Fokus
+ * unsichtbar auf dem Knopf darunter stehen, Tab lief erst durch die
+ * verdeckten Einstellungen, und Esc tat nichts (U3). Jetzt: Hintergrund
+ * inert, Fokus auf den Zurück-Pfeil, beim Schließen zurück zum Auslöser,
+ * Esc wirkt wie der Zurück-Pfeil.
+ */
+const subviewStack = [];
+
+function enterSubview(section, backBtn) {
+  if (subviewStack.some((v) => v.section === section)) return;
+  const restore = document.activeElement;
+  const inerted = [];
+  for (const node of [$('#main'), $('#nav'), ...document.querySelectorAll('section.player')]) {
+    if (!node || node === section || node.hidden || node.inert) continue;
+    node.inert = true;
+    inerted.push(node);
+  }
+  subviewStack.push({ section, backBtn, restore, inerted });
+  backBtn?.focus();
+}
+
+function leaveSubview(section) {
+  const idx = subviewStack.findIndex((v) => v.section === section);
+  if (idx < 0) return;
+  const [entry] = subviewStack.splice(idx, 1);
+  for (const node of entry.inerted) node.inert = false;
+  if (entry.restore && document.body.contains(entry.restore) && !entry.restore.closest('[inert]')) {
+    entry.restore.focus?.();
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  // Modale Ebenen (Dialoge, Lichtshow-Bühne) haben Vorrang — die behandelt
+  // onModalKeydown.
+  if (e.key !== 'Escape' || modalStack.length || !subviewStack.length) return;
+  e.preventDefault();
+  subviewStack[subviewStack.length - 1].backBtn?.click();
+});
+
+/**
  * Import-Vollbildansicht: die einzige Ansicht neben der Setlisten-Detailseite,
  * die noch einen echten Zurück-Pfeil braucht — sie liegt über allen vier
  * Hauptreitern und wird nur über den Knopf in den Einstellungen erreicht.
@@ -8263,11 +8341,13 @@ function openImportView() {
   $('#import-view').hidden = false;
   renderImportReport();
   renderImportStats();
+  enterSubview($('#import-view'), $('#import-back'));
 }
 
 function closeImportView() {
   importOpen = false;
   $('#import-view').hidden = true;
+  leaveSubview($('#import-view'));
 }
 
 /**
@@ -8286,6 +8366,7 @@ let recorderCloseConfirmed = false;
 function openRecorderView() {
   recorderOpen = true;
   $('#recorder-view').hidden = false;
+  enterSubview($('#recorder-view'), $('#recorder-back'));
   // Hier fehlt der Songkontext (keine Stimme, kein Anker) — ein im
   // Hintergrund weiterlaufender Song oder REC-Mitsing-Track ergibt darum
   // keinen Sinn und würde sich zudem ins Mikrofon mischen.
@@ -8317,6 +8398,7 @@ function abandonRecorderSession() {
 function closeRecorderView() {
   recorderOpen = false;
   $('#recorder-view').hidden = true;
+  leaveSubview($('#recorder-view'));
   abandonRecorderSession();
   // Nichts (mehr) offen hier — zurück auf den Normalzustand, damit ein
   // späterer Blick auf recHost nicht die geschlossene Ansicht meint.
@@ -8600,13 +8682,15 @@ async function openLightshowView() {
   $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', 'false');
   $('#lightshow-view').hidden = false;
   renderLightshowView();
+  enterSubview($('#lightshow-view'), $('#lightshow-back'));
 }
 
 function closeLightshowView() {
   lightshowOpen = false;
   stopLightshowPreviews();
-  $('#lightshow-view').hidden = true;
   if (lightshowStageOpen) closeLightshowStage();
+  $('#lightshow-view').hidden = true;
+  leaveSubview($('#lightshow-view'));
 }
 
 $('#btn-open-lightshow').addEventListener('click', () => navigate('#lightshow'));
@@ -12640,7 +12724,7 @@ function showRecExportProgressDialog() {
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
-  document.body.append(layer);
+  mountModal(layer, { busy: true });
   return {
     update(fraction) {
       const pct = Math.min(100, Math.round(fraction * 100));
@@ -13898,7 +13982,7 @@ async function showPrintSelectionDialog(title, items) {
     updateCount();
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => done(null) });
   });
 }
 
@@ -15691,8 +15775,7 @@ function openPlaylistTextDialog(pl) {
 
   const layer = el('div', { class: 'overlay' }, box);
   layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
-  document.body.append(layer);
-  textarea.focus();
+  mountModal(layer, { initialFocus: textarea, onEscape: () => done() });
 }
 
 /** Zufälliger, vorhandener Index der Playlist — nie der aktuelle, außer es
@@ -16343,7 +16426,7 @@ async function showBackupOptionsDialog() {
     updatePresetHighlight();
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => done(null) });
   });
 }
 
@@ -16359,7 +16442,7 @@ function showBackupProgressDialog(estimatedTotal) {
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
-  document.body.append(layer);
+  mountModal(layer, { busy: true });
   return {
     update(doneBytes) {
       const pct = estimatedTotal > 0 ? Math.min(100, Math.round((doneBytes / estimatedTotal) * 100)) : 0;
@@ -17203,7 +17286,7 @@ function showCompatWarningDialog() {
   const done = () => layer.remove();
   const layer = el('div', { class: 'overlay' }, box);
   layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
-  document.body.append(layer);
+  mountModal(layer, { onEscape: () => done() });
 }
 
 async function checkCompatWarning() {
@@ -17247,7 +17330,7 @@ function choiceDialog({ title, text, options }) {
         el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(null) })));
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => done(null) });
   });
 }
 
