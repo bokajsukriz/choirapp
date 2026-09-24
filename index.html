@@ -668,8 +668,8 @@ button.card-row:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
-  font-size: 0.72rem;
+  height: 19px;
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: .02em;
   padding: 0 7px;
@@ -690,13 +690,12 @@ button.card-row:focus-visible {
 .voice-pills {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 3px;
 }
-/* Früher überlappend gestapelt (margin-left:-15px) — dann blieben nur
-   Bruchstücke wie „FU", „SO" lesbar. Jetzt nebeneinander, bei Bedarf mit
-   Zeilenumbruch. */
-.voice-pills .voice-chip { margin: 0; }
+.voice-pills .voice-chip {
+  margin: 0;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.voice-pills .voice-chip:not(:first-child) { margin-left: -15px; }
 
 /* Anleitungs-Schritte im Import-Bereich */
 .steps { margin: 0; padding-left: 1.25em; }
