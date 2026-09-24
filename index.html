@@ -539,7 +539,7 @@ button.card-row:focus-visible {
 .chip--voice[aria-pressed="true"] {
   background: var(--voice-c);
   border-color: var(--voice-c);
-  color: var(--text);   /* Weiß auf den hellen Stimmfarben lag bei 1,4–3,6:1 */
+  color: #fff;
   box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text);
 }
 
@@ -676,9 +676,7 @@ button.card-row:focus-visible {
   margin: 0 3px 3px 0;
   border-radius: 999px;
   background: var(--muted);
-  /* Dunkle Schrift: auf den hellen Stimmfarben 4,5–11,7:1 statt 1,4–3,6:1
-     mit Weiß (Tenor-Gelb war praktisch unlesbar). */
-  color: var(--text);
+  color: #fff;
   vertical-align: middle;
 }
 
