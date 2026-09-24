@@ -6276,8 +6276,24 @@ async function rememberDuration(track, duration, sourceMetadata = null) {
   }
 }
 
+/**
+ * Zählt jede Pause hoch. audioPlay() merkt sich den Stand vor seinem await
+ * und erkennt so eine Pause, die während des (auf iOS teils mehrere hundert
+ * Millisekunden langen) AudioContext-Resumes eintraf — sonst überschrieb es
+ * sie danach mit „spielt" (LOG-4).
+ */
+let audioPauseGeneration = 0;
+
+/**
+ * Startet die Wiedergabe.
+ * @returns {Promise<boolean>} ob tatsächlich abgespielt wird. Aufrufer setzen
+ *   das Play-Symbol nach `Audio.playing` bzw. diesem Ergebnis, nie blind auf
+ *   „spielt" — ein vom System verweigerter Start zeigte sonst „spielt",
+ *   während es still blieb (LOG-3).
+ */
 async function audioPlay() {
-  if (!Audio.ready || !Audio.currentKey) return;
+  if (!Audio.ready || !Audio.currentKey) return false;
+  const pauseGen = audioPauseGeneration;
 
   // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne
   // das bleibt das Element am Ende stehen und es passiert schlicht nichts —
@@ -6294,7 +6310,7 @@ async function audioPlay() {
   } catch (err) {
     dlog('audio:play:fail', { name: err?.name });
     bannerError(t('msg.playbackStartFailed'), 'AUDIO-PLAY', err);
-    return;
+    return false;
   }
 
   // Läuft das Element durch die Kanal-Matrix (Variante A), kommt ohne
@@ -6308,7 +6324,15 @@ async function audioPlay() {
     dlog('audio:play:fail', { name: 'ctx-not-running' });
     Audio.el.pause();
     bannerError(t('msg.playbackStartFailed'), 'AUDIO-PLAY', new Error('Der AudioContext lief nicht an.'));
-    return;
+    return false;
+  }
+
+  // Während des Wartens pausiert (Kopfhörer-/Sperrbildschirm-Pause, Anruf,
+  // Songwechsel)? Dann gilt die Pause, nicht dieser ältere Startwunsch.
+  if (pauseGen !== audioPauseGeneration || Audio.el.paused) {
+    dlog('audio:play:superseded', {});
+    if (!Audio.el.paused) Audio.el.pause();
+    return false;
   }
 
   Audio.playing = true;
@@ -6317,6 +6341,7 @@ async function audioPlay() {
   lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
   updateHdLoadVisibility();
+  return true;
 }
 
 /**
@@ -6333,10 +6358,11 @@ async function audioPlay() {
  */
 async function audioPlayFromControls() {
   if (audioRebuildInFlight) await audioRebuildInFlight.catch(() => {});
-  await audioPlay();
+  return audioPlay();
 }
 
 function audioPause() {
+  audioPauseGeneration++;
   if (!Audio.ready) return;
   Audio.el.pause();
   Audio.playing = false;
@@ -9548,7 +9574,7 @@ async function openPlayer(songId) {
   Audio.onEnded = onPlaybackEnded;
   Audio.onLoopWrap = () => { if (routine?.scope === 'loops' && routine.targetId === playerSong?.id) routineAdvance(); };
   Audio.onPreviewBoundStop = () => {
-    if (routine?.scope === 'rec' && audioPreview?.tag?.savedId) { routineAdvance(); return; }
+    if (routine?.scope === 'rec' && routine.targetId === playerSong?.id && audioPreview?.tag?.savedId) { routineAdvance(); return; }
     // Ein zugeschnittenes REC, das den Song vertritt, endet am Auswahlende
     // statt über 'ended' — sonst bliebe die Setliste genau dort stehen.
     if (audioPreview?.tag?.asSong) onPlaybackEnded();
@@ -9559,6 +9585,12 @@ async function openPlayer(songId) {
   // bricht das Programm ab (siehe Auftrag „Trainingsroutinen" 5.1). Tempo und
   // Stimme bleiben bewusst stehen, wie sie gerade sind.
   if (routine?.scope === 'setlist' && !(playQueue && routine.targetId === playQueue.id)) {
+    routineStop();
+  }
+  // Loops-/REC-Programme gehören zu genau einem Song. Ein Songwechsel läuft
+  // nicht über closePlayer() (das sie beendet), also hier: sonst lief das
+  // Programm mit den Loops bzw. Aufnahmen des *neuen* Songs weiter (LOG-2).
+  if (routine && routine.scope !== 'setlist' && routine.targetId !== song.id) {
     routineStop();
   }
 
@@ -9617,7 +9649,7 @@ async function openPlayer(songId) {
   if (pendingAutoPlay) {
     pendingAutoPlay = false;
     await audioPlay();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   }
 
   showReplacedNotice(song);
@@ -9849,13 +9881,13 @@ function onPlaybackEnded() {
     // vorn beginnen statt die Vorschau zu beenden.
     if (recordingLoopId && audioPreview.tag?.savedId === recordingLoopId && Audio.loop) {
       updateSeekUI(audioSeek(Audio.loop.start));
-      audioPlay().then(() => setPlayIcon(true));
+      audioPlay().then(() => setPlayIcon(Audio.playing));
       return;
     }
     // Ein REC-Programm schaltet selbst weiter (siehe 5.4 der Anweisung) — vor
     // dem sonst hier folgenden Beenden der Vorschau, sonst schaltet eine
     // laufende Routine nie zur nächsten Aufnahme weiter.
-    if (routine?.scope === 'rec' && audioPreview.tag?.savedId) {
+    if (routine?.scope === 'rec' && routine.targetId === playerSong?.id && audioPreview.tag?.savedId) {
       routineAdvance();
       return;
     }
@@ -9888,7 +9920,7 @@ function onPlaybackEnded() {
   }
   if (settings.repeatMode === 'song') {
     updateSeekUI(audioSeek(0));
-    audioPlay().then(() => setPlayIcon(true));
+    audioPlay().then(() => setPlayIcon(Audio.playing));
     return;
   }
   updateSeekUI(Audio.duration);
@@ -9954,7 +9986,7 @@ $('#btn-play').addEventListener('click', async () => {
     repairSuspectAudioGraph('pause').catch((err) => dlog('audio:repair', { name: err?.name }));
   } else {
     await audioPlayFromControls();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   }
   if (navigator.mediaSession) {
     navigator.mediaSession.playbackState = Audio.playing ? 'playing' : 'paused';
@@ -11383,7 +11415,7 @@ $('#btn-recorder-take-voice').addEventListener('click', onTakeVoiceClick);
 async function onTakePreviewClick() {
   if (!pendingTake) return;
   if (audioPreview?.tag?.pending) {
-    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(Audio.playing); }
     syncBackingPlayState();
   } else {
     try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }, recordingTrimRange(pendingTake)); }
@@ -11695,7 +11727,7 @@ async function previewRecordingBlob(blob, tag, range) {
   // audioPlay() zuerst und ohne vorheriges await davor: Safari bindet die
   // Abspielerlaubnis an die Nutzergeste (siehe Kommentar in audioPlay()).
   await audioPlay();
-  setPlayIcon(true);
+  setPlayIcon(Audio.playing);
   updateBackingUI();
   // Solange ein REC-Programm läuft, bleibt der Mitlauf erzwungen aus (siehe
   // 4.4 der Anweisung) — die Einstellung selbst bleibt dabei unangetastet.
@@ -11998,7 +12030,7 @@ $('#rec-backing-volume').addEventListener('input', async (e) => {
 
 async function toggleSavedRecordingPreview(recording) {
   if (audioPreview?.tag?.savedId === recording.id) {
-    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(Audio.playing); }
     syncBackingPlayState();
     renderRecordingList();
     updateRecPreviewButton();
@@ -12748,7 +12780,7 @@ async function toggleRecordingLoop(recording) {
     }
   } else if (!Audio.playing) {
     await audioPlay();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   }
 
   const range = recordingTrimRange(recording);
@@ -13927,7 +13959,7 @@ function updateMediaSession() {
     try { ms.setActionHandler(action, handler); } catch { /* nicht unterstützt */ }
   };
 
-  set('play', async () => { await audioPlayFromControls(); setPlayIcon(true); ms.playbackState = 'playing'; });
+  set('play', async () => { await audioPlayFromControls(); setPlayIcon(Audio.playing); ms.playbackState = Audio.playing ? 'playing' : 'paused'; });
   set('pause', () => { audioPause(); setPlayIcon(false); ms.playbackState = 'paused'; });
   set('seekbackward', (d) => updateSeekUI(audioSeek(Audio.position - (d?.seekOffset || 10))));
   set('seekforward', (d) => updateSeekUI(audioSeek(Audio.position + (d?.seekOffset || 10))));
@@ -14397,7 +14429,7 @@ async function routineApplyCurrentElement() {
     updateSeekUI(audioSeek(current.start));
     await audioPlay();
     if (routine !== active) return;
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   } else if (routine.scope === 'rec') {
     await routineApplyStep();
     if (routine !== active) return;
@@ -14447,7 +14479,7 @@ async function routineAdvance() {
       updateSeekUI(audioSeek(start));
       await audioPlay();
       if (routine !== activeRoutine) return;
-      setPlayIcon(true);
+      setPlayIcon(Audio.playing);
     }, 1000);
     return;
   }
@@ -15088,7 +15120,7 @@ async function startPlaylist(pl) {
   await routineApplyStepForQueue();
   updateSeekUI(audioSeek(0));
   await audioPlay();
-  setPlayIcon(true);
+  setPlayIcon(Audio.playing);
 }
 
 /* ---------- Detailansicht: Entwurf, Speichern, Verwerfen ---------------- */
@@ -15529,7 +15561,7 @@ function playlistStep(delta, autoplay) {
   playQueue.index = i;
   if (playerSong && playerSong.id === playQueue.items[i].id) {
     updateSeekUI(audioSeek(0));
-    if (autoplay ?? Audio.playing) audioPlay().then(() => setPlayIcon(true));
+    if (autoplay ?? Audio.playing) audioPlay().then(() => setPlayIcon(Audio.playing));
     renderQueue();
     return;
   }
@@ -15564,7 +15596,7 @@ async function playlistAdvance() {
       await routineApplyStepForQueue();
       updateSeekUI(audioSeek(0));
       await audioPlay();
-      setPlayIcon(true);
+      setPlayIcon(Audio.playing);
       return;
     }
     pendingAutoPlay = true;
@@ -15587,7 +15619,7 @@ async function playlistAdvance() {
     await routineApplyStepForQueue();
     updateSeekUI(audioSeek(0));
     await audioPlay();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
     return;
   }
   pendingAutoPlay = true;
