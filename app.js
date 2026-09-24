@@ -869,6 +869,15 @@ function openDB() {
         db.close();
         if (dbPromise === thisOpen) dbPromise = null;
       };
+      // WebKit schließt Verbindungen gelegentlich von sich aus (Hintergrund,
+      // Speicherdruck: „Connection to Indexed Database server lost"). Dann
+      // feuert `close`, nicht `versionchange` — ohne das blieb dbPromise auf
+      // der toten Verbindung stehen und jeder Zugriff scheiterte bis zum
+      // Neuladen (LOG-5).
+      db.onclose = () => {
+        dlog('db:closed', {});
+        if (dbPromise === thisOpen) dbPromise = null;
+      };
       resolve(db);
     };
 
@@ -887,9 +896,33 @@ function openDB() {
   return dbPromise;
 }
 
+/**
+ * Führt `run(db)` aus. Meldet die Verbindung dabei InvalidStateError (vom
+ * Browser geschlossen, ohne dass `close` rechtzeitig kam), wird sie einmal
+ * verworfen, neu geöffnet und `run` wiederholt. Beim ersten Versuch ist dann
+ * noch keine Transaktion zustande gekommen — die Wiederholung schreibt also
+ * nichts doppelt (und alle Schreibzugriffe hier sind ohnehin put/delete).
+ */
+async function withDb(run) {
+  const db = await openDB();
+  try {
+    return await run(db);
+  } catch (err) {
+    if (err?.name !== 'InvalidStateError') throw err;
+    dlog('db:reopen', {});
+    const stale = dbPromise;
+    if (stale && await stale.catch(() => null) === db && dbPromise === stale) dbPromise = null;
+    try { db.close(); } catch { /* schon zu */ }
+    return run(await openDB());
+  }
+}
+
 /** Führt `fn` in einer Transaktion aus und wartet auf deren Abschluss. */
 async function tx(storeNames, mode, fn) {
-  const db = await openDB();
+  return withDb((db) => txOn(db, storeNames, mode, fn));
+}
+
+function txOn(db, storeNames, mode, fn) {
   const names = Array.isArray(storeNames) ? storeNames : [storeNames];
   return new Promise((resolve, reject) => {
     const t = db.transaction(names, mode);
@@ -988,8 +1021,7 @@ function dropLyricsNoteCache() { lyricsNoteSongIds = null; lyricsNoteCacheStamp+
 
 const DB = {
   async metaGet(key) {
-    const db = await openDB();
-    return reqPromise(db.transaction('meta', 'readonly').objectStore('meta').get(key));
+    return withDb((db) => reqPromise(db.transaction('meta', 'readonly').objectStore('meta').get(key)));
   },
 
   async metaPut(record) {
@@ -1017,9 +1049,10 @@ const DB = {
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
   async metaByType(type) {
-    const db = await openDB();
-    const idx = db.transaction('meta', 'readonly').objectStore('meta').index('type');
-    return reqPromise(idx.getAll(IDBKeyRange.only(type)));
+    return withDb((db) => {
+      const idx = db.transaction('meta', 'readonly').objectStore('meta').index('type');
+      return reqPromise(idx.getAll(IDBKeyRange.only(type)));
+    });
   },
 
   /** IDs der Songs mit mindestens einer nicht leeren Notiz — zwischengespeichert. */
@@ -1049,8 +1082,7 @@ const DB = {
   },
 
   async fileGet(key) {
-    const db = await openDB();
-    return reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key));
+    return withDb((db) => reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key)));
   },
 
   async filePut(record) {
@@ -5201,8 +5233,7 @@ async function acquireNormalizationMetadata(blob) {
  * null if nothing matched or `mutate` declined.
  */
 async function commitTrackMutation(fileKey, mutate) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+  return withDb((db) => new Promise((resolve, reject) => {
     const t = db.transaction('meta', 'readwrite');
     const store = t.objectStore('meta');
     const idx = store.index('type');
@@ -5221,7 +5252,7 @@ async function commitTrackMutation(fileKey, mutate) {
     t.oncomplete = () => resolve(outcome);
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error || new Error('Transaktion abgebrochen'));
-  }).then((outcome) => { if (outcome) dropSongCache(); return outcome; });
+  })).then((outcome) => { if (outcome) dropSongCache(); return outcome; });
 }
 
 /**
@@ -7829,12 +7860,22 @@ async function flushImportBatch(batch) {
   const obsolete = batch.obsolete;
   const bytes = batch.bytes;
   const start = performance.now();
-  await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
-    for (const rec of files) fileStore.put(rec);
-    for (const song of songs) metaStore.put(song);
-    // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
-    for (const key of obsolete) fileStore.delete(key);
-  });
+  try {
+    await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
+      for (const rec of files) fileStore.put(rec);
+      for (const song of songs) metaStore.put(song);
+      // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
+      for (const key of obsolete) fileStore.delete(key);
+    });
+  } catch (err) {
+    // Markiert, damit die Einzeldatei-catch-Blöcke in runImport() einen
+    // Schreibfehler nicht der gerade gelesenen Datei anlasten und einfach
+    // weitermachen — der Stapel wüchse dann mit jeder Datei weiter im
+    // Speicher, bis der Tab abstürzt (LOG-6). Ein Schreibfehler bricht den
+    // Import ab; runImport() versucht danach einmal, den Rest zu sichern.
+    if (err && typeof err === 'object') err.importFlush = true;
+    throw err;
+  }
   // Erst nach erfolgreichem Commit leeren: schlägt tx() fehl (nicht nur bei
   // vollem Speicher — z.B. auch AbortError/UnknownError einer wackligen
   // Verbindung), greift runImport()s Rettungsversuch „flushImportBatch(batch)
@@ -8029,7 +8070,7 @@ async function runImport() {
             }
           }
         } catch (err) {
-          if (err && err.name === 'QuotaExceededError') throw err;
+          if (err && (err.name === 'QuotaExceededError' || err.importFlush)) throw err;
           console.error('[import]', track.fileName, err);
           dlog('import:file:fail', { index: done, bytes: track.size || 0, name: err?.name, message: err?.message });
           report.failed.push(`${track.fileName} (nicht lesbar)`);
@@ -8084,7 +8125,7 @@ async function runImport() {
             }
           }
         } catch (err) {
-          if (err && err.name === 'QuotaExceededError') throw err;
+          if (err && (err.name === 'QuotaExceededError' || err.importFlush)) throw err;
           console.warn('[import] Noten', err);
           report.failed.push(`${pdf.name} (nicht lesbar)`);
         }
@@ -8116,7 +8157,14 @@ async function runImport() {
   } catch (err) {
     console.error('[import] abgebrochen', err);
     dlog('import:run:abort', { name: err?.name, message: err?.message, songsImported: report.songsImported, done, doneBytes });
-    if (err && err.name === 'QuotaExceededError') {
+    // Safari meldet vollen Speicher teils nur als UnknownError — dann per
+    // Schätzung gegenprüfen, damit der Bericht die richtige Ursache nennt.
+    let quotaLike = err && err.name === 'QuotaExceededError';
+    if (!quotaLike && err?.importFlush && navigator.storage?.estimate) {
+      const est = await navigator.storage.estimate().catch(() => null);
+      if (est?.quota && est.usage / est.quota > 0.9) quotaLike = true;
+    }
+    if (quotaLike) {
       report.quotaHit = true;
       report.quotaAt = report.songsImported;
       report.quotaTotal = chosenSongs.length;
@@ -12066,9 +12114,34 @@ function ensureLameLoaded() {
   return lameLoadPromise;
 }
 
-/** WebM/Opus oder MP4/AAC zu rohem PCM dekodieren — ein kurzlebiger eigener AudioContext, unabhängig von Audio.ctx. */
+/** Samplerate, mit der RECs für Zuschneiden/Export dekodiert werden. */
+const REC_DECODE_RATE = 44100;
+/**
+ * Obergrenze für das dekodierte Float-PCM beim MP3-Export (Dauer × Rate ×
+ * Kanäle × 4 B). Darüber stürzte der Tab auf Handys ab, ohne jede Meldung
+ * (LOG-7) — solche RECs gehen stattdessen im Originalformat raus.
+ */
+const REC_EXPORT_MAX_PCM_BYTES = 512 * 1024 * 1024;
+
+/**
+ * WebM/Opus oder MP4/AAC zu rohem PCM dekodieren. Bevorzugt über einen
+ * OfflineAudioContext mit fester Rate (44,1 kHz statt der Geräterate, oft
+ * 48 kHz — spart Speicher und braucht keine Audio-Hardware); sonst über
+ * einen kurzlebigen eigenen AudioContext, unabhängig von Audio.ctx.
+ */
 async function decodeToPcm(blob) {
   const arrayBuffer = await blob.arrayBuffer();
+  const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (Offline) {
+    try {
+      // Sehr alte WebKit-Versionen liefern ohne Callback kein Promise — dann
+      // unten über den normalen AudioContext.
+      const buffer = await new Offline(1, 1, REC_DECODE_RATE).decodeAudioData(arrayBuffer.slice(0));
+      if (buffer) return buffer;
+    } catch (err) {
+      dlog('rec:decode:offline-fail', { name: err?.name });
+    }
+  }
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   try {
     return await ctx.decodeAudioData(arrayBuffer);
@@ -12288,18 +12361,21 @@ async function pickTrimRange(blob, initialStart, initialEnd) {
  */
 async function encodePcmToMp3(audioBuffer, kbps = 128, onProgress) {
   const channels = Math.min(audioBuffer.numberOfChannels, 2);
-  const left = floatTo16BitPCM(audioBuffer.getChannelData(0));
-  const right = channels === 2 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null;
+  // Blockweise nach Int16 wandeln statt als Vollkopie je Kanal — die hätte
+  // bei langen RECs noch einmal die halbe Float-Größe gekostet (LOG-7).
+  const leftF = audioBuffer.getChannelData(0);
+  const rightF = channels === 2 ? audioBuffer.getChannelData(1) : null;
 
   const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, kbps);
   const chunks = [];
   const blockSize = 1152;
-  const totalBlocks = Math.max(1, Math.ceil(left.length / blockSize));
+  const totalBlocks = Math.max(1, Math.ceil(leftF.length / blockSize));
   let block = 0;
-  for (let i = 0; i < left.length; i += blockSize, block++) {
+  for (let i = 0; i < leftF.length; i += blockSize, block++) {
+    const left = floatTo16BitPCM(leftF.subarray(i, i + blockSize));
     const buf = channels === 2
-      ? encoder.encodeBuffer(left.subarray(i, i + blockSize), right.subarray(i, i + blockSize))
-      : encoder.encodeBuffer(left.subarray(i, i + blockSize));
+      ? encoder.encodeBuffer(left, floatTo16BitPCM(rightF.subarray(i, i + blockSize)))
+      : encoder.encodeBuffer(left);
     if (buf.length > 0) chunks.push(buf);
     if (onProgress && block % 200 === 0) {
       onProgress(block / totalBlocks);
@@ -12545,6 +12621,25 @@ async function exportRecording(recording, anchorBtn) {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
     const sourceBlob = recordBlob(rec, recording.mimeType);
+
+    // Zu lang für die Umwandlung im Speicher des Geräts? Dann das Original
+    // weitergeben (WebM/M4A spielt jede gängige App ab) statt abzustürzen.
+    const estPcmBytes = (Number(recording.duration) || 0) * REC_DECODE_RATE * 4;
+    if (estPcmBytes > REC_EXPORT_MAX_PCM_BYTES) {
+      progress.close();
+      const mime = sourceBlob.type || recording.mimeType || 'audio/webm';
+      const ext = mime.includes('mp4') ? 'm4a' : (mime.includes('mpeg') ? 'mp3' : 'webm');
+      banner(t('msg.recExportTooLong').replace('{ext}', ext.toUpperCase()), { timeout: 8000 });
+      const fileName = `${recFileBaseName({
+        songTitle: playerSong?.title || recording.songTitle || '', voice: recording.voice, name: recording.name,
+      })}.${ext}`;
+      if (action === 'share') {
+        try { await navigator.share({ files: [new File([sourceBlob], fileName, { type: mime })], title: 'REC', text: fileName }); return; }
+        catch (err) { if (err?.name === 'AbortError') return; }
+      }
+      downloadBlob(sourceBlob, fileName);
+      return;
+    }
 
     await ensureLameLoaded();
     const fullBuffer = await decodeToPcm(sourceBlob);
@@ -18805,6 +18900,21 @@ async function runAsyncSelfTests() {
     if (reservedBitrate !== null) failed.push(`MP3-Header: reservierter Bitrate-Index müsste null ergeben (${JSON.stringify(reservedBitrate)})`);
     const reservedRate = await inspectNormalizationMetadata(mp3Blob([0xff, 0xfb, 0x9c, 0x00]));
     if (reservedRate !== null) failed.push(`MP3-Header: reservierter Sampling-Rate-Index müsste null ergeben (${JSON.stringify(reservedRate)})`);
+  }
+
+  // LOG-5: Eine vom Browser geschlossene Verbindung (hier von Hand
+  // geschlossen — `close` feuert dabei nicht, wie bei manchen WebKit-Fällen)
+  // darf nicht jeden weiteren Zugriff bis zum Neuladen scheitern lassen.
+  {
+    const db = await openDB();
+    db.close();
+    try {
+      await DB.metaGet(SETTINGS_KEY);
+      const again = await openDB();
+      if (again === db) failed.push('LOG-5: nach InvalidStateError müsste eine neue Verbindung geöffnet werden');
+    } catch (err) {
+      failed.push(`LOG-5: DB-Zugriff nach geschlossener Verbindung scheitert (${err?.name})`);
+    }
   }
 
   // LOG-1: Ein Lesefehler in loadSettings() darf einen intakten Settings-
