@@ -9532,13 +9532,22 @@ async function openPlayer(songId) {
   // am Ende dem falschen Lied zugeordnet werden. Läuft die Aufnahme gerade im
   // allgemeinen Recorder (recHost 'recorder'), gehört sie nicht zu diesem
   // Songwechsel und bleibt unangetastet.
-  if (recHost === 'player') {
+  // Früher wurde beides verworfen — ein ganzer Durchlauf Mitsingen war dann
+  // weg (U1). Jetzt landet er beim bisherigen Song, samt Hinweis.
+  if (recHost === 'player' && playerSong) {
+    const oldSong = playerSong;
+    const nameHint = takeDraft?.name?.trim() || `REC ${songRecordings.length + 1}`;
+    const voice = takeDraft?.voice ?? null;
     if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
-      discardActiveRecording();
-      banner(t('msg.recCancelledSongChange'));
-    } else if (pendingTake) {
-      banner(t('msg.recDiscardedSongChange'));
+      recAutoSaveTarget = { song: oldSong, name: nameHint, voice };
+      stopRecording();
+    } else if (pendingTake && !takeSaveInProgress) {
+      autoSaveTake(pendingTake, { song: oldSong, name: nameHint, voice });
     }
+    pendingTake = null;
+    renderPendingTake();
+  } else if (recHost === 'player') {
+    if (recMediaRecorder && recMediaRecorder.state !== 'inactive') discardActiveRecording();
     pendingTake = null;
     renderPendingTake();
   }
@@ -9959,6 +9968,18 @@ function onPlaybackEnded() {
   dlog('playback:ended', { repeatMode: settings.repeatMode, hasQueue: !!playQueue });
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
+
+  // Wer zum Song mitsingt und aufnimmt, will am Songende die Aufnahme
+  // anhören und speichern — nicht zum nächsten Lied springen (U1). Also:
+  // Aufnahme anhalten, Take-Karte zeigen, nicht weiterschalten. „Song
+  // wiederholen" läuft dagegen wie gewohnt weiter (mehrere Durchläufe).
+  const recordingHere = recHost === 'player' && recMediaRecorder && recMediaRecorder.state !== 'inactive';
+  if (recordingHere && settings.repeatMode !== 'song') {
+    updateSeekUI(Audio.duration);
+    stopRecording();
+    banner(t('msg.recStoppedAtSongEnd'), { timeout: 8000 });
+    return;
+  }
 
   // Ein Setlisten-Programm hat Vorrang vor Wiederholungsmodus und normalem
   // Weiterschalten (siehe 5.1: „hat die Routine Vorrang").
@@ -11317,13 +11338,55 @@ async function onRecordingStopped() {
   recChunks = [];
   teardownRecording();
 
+  const autoTarget = recAutoSaveTarget;
+  recAutoSaveTarget = null;
   if (!chunks.length || duration < 0.5) {
     if (chunks.length) banner(t('msg.recTooShort'));
     return;
   }
+  const take = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration, anchor };
+  // Wegen eines Songwechsels angehalten: direkt beim bisherigen Song sichern
+  // (siehe openPlayer), nicht als offene Take-Karte beim neuen Song zeigen.
+  if (autoTarget) { autoSaveTake(take, autoTarget); return; }
   // Nicht sofort speichern — erst anhören und entscheiden lassen.
-  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration, anchor };
+  pendingTake = take;
   renderPendingTake();
+}
+
+/** Ziel für eine Aufnahme, die wegen eines Songwechsels gestoppt wurde. */
+let recAutoSaveTarget = null;
+
+/**
+ * Speichert einen Take ohne Rückfrage bei `song` — für den Songwechsel, bei
+ * dem die Take-Karte nicht mehr beim richtigen Song stehen kann.
+ */
+async function autoSaveTake(take, { song, name, voice }) {
+  const savingDataGeneration = dataGeneration;
+  try {
+    const { blob, mimeType, duration, anchor, trimStart, trimEnd } = take;
+    const fileKey = newFileKey();
+    const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const fileRec = await fileRecord(fileKey, blob, `${name}.${ext}`);
+    if (savingDataGeneration !== dataGeneration) return;
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const recording = {
+      key: `recording:${id}`, type: 'recording', id,
+      songId: song.id, songTitle: song.title,
+      name, voice, fileKey, mimeType, duration,
+      size: blob.size,
+      createdAt: new Date().toISOString(),
+    };
+    if (anchor) recording.anchor = anchor;
+    if (trimStart || trimEnd != null) {
+      recording.trimStart = trimStart || 0;
+      recording.trimEnd = trimEnd ?? duration;
+    }
+    await DB.putFileAndMeta(fileRec, recording);
+    banner(t('msg.recAutoSavedSongChange').replace('{song}', songLabel(song)), { kind: 'ok', timeout: 8000 });
+    if (playerSong?.id === song.id) await loadSongRecordings();
+  } catch (err) {
+    bannerError(t('msg.recSaveFailed'), 'REC-SAVE', err);
+  }
 }
 
 /**
