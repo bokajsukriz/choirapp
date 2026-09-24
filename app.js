@@ -1176,6 +1176,14 @@ const DEFAULT_SETTINGS = {
 };
 
 let settings = { ...DEFAULT_SETTINGS };
+// Schlägt der erste Lesezugriff in loadSettings() fehl (z.B. ein einmaliger
+// IndexedDB-Wackler beim Start), basiert `settings` bis auf Weiteres auf
+// DEFAULT_SETTINGS. saveSettings() darf diesen Snapshot dann NICHT einfach
+// über einen eventuell noch intakten DB-Datensatz schreiben — das hätte
+// vorher jede gespeicherte Einstellung mit einem einzigen transienten Fehler
+// dauerhaft gelöscht (LOG-1). Das Flag zwingt saveSettings() stattdessen zu
+// einem Read-Modify-Write, bis ein Lesezugriff wieder gelingt.
+let settingsLoadFailed = false;
 
 /**
  * Auswahl in "Persönliches". Bewusst helle, kräftige Töne — dieselbe
@@ -1342,9 +1350,21 @@ async function loadSettings() {
   try {
     const stored = await DB.metaGet(SETTINGS_KEY);
     settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+    settingsLoadFailed = false;
   } catch (err) {
-    console.warn('[settings] konnten nicht geladen werden', err);
-    settings = { ...DEFAULT_SETTINGS };
+    // Ein einzelner Lesefehler (z.B. ein kurzzeitig blockierter IDB-Zugriff
+    // beim Aufwecken) soll nicht sofort auf Defaults zurückfallen — einmal
+    // kurz erneut versuchen.
+    console.warn('[settings] Lesezugriff fehlgeschlagen, versuche erneut', err);
+    try {
+      const stored = await DB.metaGet(SETTINGS_KEY);
+      settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+      settingsLoadFailed = false;
+    } catch (err2) {
+      console.warn('[settings] Lesezugriff auch im zweiten Versuch fehlgeschlagen, arbeite nur im Speicher', err2);
+      settings = { ...DEFAULT_SETTINGS };
+      settingsLoadFailed = true;
+    }
   }
   // Ältere Datensätze kennen nur eine einzelne Stimme (`myVoice`). Wer
   // zwischen Stimmen wechselt, soll die aber nicht neu wählen müssen.
@@ -1380,13 +1400,21 @@ async function loadSettings() {
   // müssten (siehe lightshowFrame in lightshow.js).
   if (!settings.lightshowSeed) {
     const rnd = crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 0xffffffff);
-    await saveSettings({ lightshowSeed: (rnd >>> 0) || 1 });
+    const seed = (rnd >>> 0) || 1;
+    if (settingsLoadFailed) {
+      // Nicht über saveSettings() schreiben, solange der echte Datensatz
+      // nicht gelesen werden konnte (siehe settingsLoadFailed) — der Seed
+      // gilt dann nur für diese Sitzung im Speicher.
+      settings.lightshowSeed = seed;
+    } else {
+      await saveSettings({ lightshowSeed: seed });
+    }
   }
   return settings;
 }
 
-async function saveSettings(patch) {
-  settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+/** Nebenwirkungen eines Settings-Patches auf die schon sichtbare Oberfläche — unabhängig davon, ob der Patch am Ende auch gespeichert werden konnte. */
+function applySettingsSideEffects(patch) {
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
   if ('language' in patch) {
     applyTranslations();
@@ -1412,6 +1440,31 @@ async function saveSettings(patch) {
       renderOnbDots();
     }
   }
+}
+
+async function saveSettings(patch) {
+  if (settingsLoadFailed) {
+    // Der ursprüngliche Lesezugriff in loadSettings() ist gescheitert;
+    // `settings` beruht seitdem auf DEFAULT_SETTINGS. Ein einfaches
+    // { ...settings, ...patch } würde diese Defaults über einen eventuell
+    // noch intakten DB-Datensatz schreiben und ihn damit löschen (LOG-1).
+    // Stattdessen jetzt den echten Stand frisch lesen (Read-Modify-Write)
+    // und nur den angeforderten Patch darauf anwenden.
+    try {
+      const stored = await DB.metaGet(SETTINGS_KEY);
+      settings = { ...DEFAULT_SETTINGS, ...(stored || {}), ...patch, key: SETTINGS_KEY, type: 'settings' };
+      settingsLoadFailed = false;
+    } catch (err) {
+      console.warn('[settings] Datensatz weiterhin nicht lesbar, Patch bleibt nur im Speicher', err);
+      settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+      applySettingsSideEffects(patch);
+      bannerError(t('msg.settingSaveFailed'), 'SETTINGS-SAVE', err);
+      return settings; // nicht schreiben, solange der echte Stand unbekannt ist
+    }
+  } else {
+    settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+  }
+  applySettingsSideEffects(patch);
   try {
     await DB.metaPut(settings);
   } catch (err) {
@@ -18634,6 +18687,47 @@ async function runAsyncSelfTests() {
     if (reservedBitrate !== null) failed.push(`MP3-Header: reservierter Bitrate-Index müsste null ergeben (${JSON.stringify(reservedBitrate)})`);
     const reservedRate = await inspectNormalizationMetadata(mp3Blob([0xff, 0xfb, 0x9c, 0x00]));
     if (reservedRate !== null) failed.push(`MP3-Header: reservierter Sampling-Rate-Index müsste null ergeben (${JSON.stringify(reservedRate)})`);
+  }
+
+  // LOG-1: Ein Lesefehler in loadSettings() darf einen intakten Settings-
+  // Datensatz nicht mit Defaults überschreiben — weder direkt noch über
+  // einen folgenden saveSettings()-Aufruf.
+  {
+    const originalStored = await DB.metaGet(SETTINGS_KEY).catch(() => null);
+    const originalSettings = settings;
+    const originalFlag = settingsLoadFailed;
+    const fixture = { key: SETTINGS_KEY, type: 'settings', myVoices: ['ALT'], language: 'en', lightshowSeed: 424242, _selftestMarker: 'log1' };
+    const realMetaGet = DB.metaGet.bind(DB);
+    try {
+      await DB.metaPut(fixture);
+      let getCalls = 0;
+      DB.metaGet = async (key) => {
+        if (key === SETTINGS_KEY && getCalls < 2) { getCalls++; throw new Error('selftest: simulated read failure'); }
+        return realMetaGet(key);
+      };
+      await loadSettings();
+      if (!settingsLoadFailed) failed.push('LOG-1: settingsLoadFailed müsste nach zwei Lesefehlern in Folge gesetzt sein');
+      if (settings.language !== 'de' || settings.myVoices.length) {
+        failed.push('LOG-1: settings müsste bei anhaltendem Lesefehler im Speicher auf Defaults stehen');
+      }
+      DB.metaGet = realMetaGet;
+      const untouched = await DB.metaGet(SETTINGS_KEY);
+      if (!untouched || untouched._selftestMarker !== 'log1' || untouched.language !== 'en') {
+        failed.push('LOG-1: ein Lesefehler beim Start hat den gespeicherten Datensatz überschrieben');
+      }
+      await saveSettings({ afterFailure: true });
+      const merged = await DB.metaGet(SETTINGS_KEY);
+      if (!merged || merged._selftestMarker !== 'log1' || merged.language !== 'en' || merged.afterFailure !== true) {
+        failed.push('LOG-1: saveSettings() nach einem Lesefehler müsste ein Read-Modify-Write statt eines Gesamt-Snapshots machen');
+      }
+      if (settingsLoadFailed) failed.push('LOG-1: settingsLoadFailed müsste nach erfolgreichem Read-Modify-Write wieder false sein');
+    } finally {
+      DB.metaGet = realMetaGet;
+      if (originalStored) await DB.metaPut(originalStored).catch(() => {});
+      else await DB.metaDelete(SETTINGS_KEY).catch(() => {});
+      settings = originalSettings;
+      settingsLoadFailed = originalFlag;
+    }
   }
 
   if (failed.length) {
