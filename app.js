@@ -1289,12 +1289,19 @@ function deriveAccentForeground(hex) {
   return rgbToHex(rgb);
 }
 
-/** Schaltet --accent, --accent-rgb und die daraus abgeleitete --accent-foreground auf dem Wurzelelement um. */
+/**
+ * Schaltet --accent, --accent-rgb und die daraus abgeleitete --accent-foreground
+ * auf dem Wurzelelement um. Prüft `hex` selbst noch einmal per Regex (Defense
+ * in Depth für Altbestände, die schon vor sanitizeSettingsPatch() in
+ * IndexedDB gelandet sein könnten) und fällt sonst auf die Standardfarbe
+ * zurück — siehe sanitizeSettingsPatch() zur eigentlichen Prüfung.
+ */
 function applyAccentColor(hex) {
   const root = document.documentElement.style;
-  root.setProperty('--accent', hex);
-  root.setProperty('--accent-rgb', hexToRgbTriplet(hex));
-  root.setProperty('--accent-foreground', deriveAccentForeground(hex));
+  const safeHex = (typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex)) ? hex : DEFAULT_SETTINGS.accentColor;
+  root.setProperty('--accent', safeHex);
+  root.setProperty('--accent-rgb', hexToRgbTriplet(safeHex));
+  root.setProperty('--accent-foreground', deriveAccentForeground(safeHex));
 }
 
 /* ==========================================================================
@@ -16228,6 +16235,50 @@ function validateBackupSkeleton(data) {
 }
 
 /**
+ * Prüft `settings`-Felder aus einer Sicherung (oder einer anderen fremden
+ * Quelle) gegen ihre bekannten Wertebereiche und lässt alles andere weg.
+ * Eine unbeaufsichtigt übernommene `accentColor` etwa liefe als CSS-Custom-
+ * Property in `background: var(--accent)` (index.html) und könnte mit einem
+ * `url(...)`-Wert zu einem dauerhaften externen Tracking-Beacon werden.
+ * `applyAccentColor()` prüft dieselbe Regel zusätzlich selbst (Defense in
+ * Depth, auch für Altbestände direkt in IndexedDB).
+ * @returns {object} nur die Felder, die die Prüfung bestanden haben
+ */
+function sanitizeSettingsPatch(raw) {
+  const patch = {};
+  if (!raw || typeof raw !== 'object') return patch;
+  if (typeof raw.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.accentColor)) {
+    patch.accentColor = raw.accentColor;
+  }
+  if (typeof raw.lyricsFontSize === 'number' && Number.isFinite(raw.lyricsFontSize)) {
+    patch.lyricsFontSize = Math.max(13, Math.min(30, raw.lyricsFontSize));
+  }
+  if (raw.defaultPlayerTab === 'sheets') {
+    // Reiter aus alten Sicherungen, siehe dieselbe Migration in loadSettings().
+    patch.defaultPlayerTab = 'notes';
+  } else if (PLAYER_TABS.includes(raw.defaultPlayerTab)) {
+    patch.defaultPlayerTab = raw.defaultPlayerTab;
+  }
+  if (LANGUAGES.some((l) => l.id === raw.language)) {
+    patch.language = raw.language;
+  }
+  if (raw.lightshowShow != null && LIGHTSHOWS.some((show) => show.id === raw.lightshowShow)) {
+    patch.lightshowShow = raw.lightshowShow;
+  }
+  if (raw.lightshowVoice === null || LIGHTSHOW_VOICES.includes(raw.lightshowVoice)) {
+    if (raw.lightshowVoice !== undefined) patch.lightshowVoice = raw.lightshowVoice;
+  }
+  if (Array.isArray(raw.myVoices)) {
+    const voices = raw.myVoices.filter((v) => MY_VOICE_CHOICES.includes(v));
+    if (voices.length) patch.myVoices = voices;
+  }
+  if (typeof raw.lightshowSeed === 'number' && Number.isFinite(raw.lightshowSeed)) {
+    patch.lightshowSeed = raw.lightshowSeed;
+  }
+  return patch;
+}
+
+/**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
  * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
  * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
@@ -16650,35 +16701,25 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     if (restoredRoutines.length) await DB.metaPutMany(restoredRoutines);
   }
 
+  // Settings aus der Sicherung sind fremder, ungeprüfter Input — nur validierte
+  // Felder übernehmen (siehe sanitizeSettingsPatch()), sonst ließe sich z.B.
+  // über `accentColor` ein dauerhafter externer Tracking-Beacon einschleusen.
+  const rawSettings = (data.settings && typeof data.settings === 'object') ? data.settings : {};
+  const settingsPatch = sanitizeSettingsPatch(rawSettings);
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
-  const savedVoices = Array.isArray(data.settings?.myVoices) ? data.settings.myVoices
-    : (data.settings?.myVoice ? [data.settings.myVoice] : []);
+  const savedVoices = Array.isArray(rawSettings.myVoices) ? rawSettings.myVoices
+    : (rawSettings.myVoice ? [rawSettings.myVoice] : []);
   if (savedVoices.length && !settings.myVoices.length) {
-    await saveSettings({ myVoices: savedVoices });
+    const voices = savedVoices.filter((v) => MY_VOICE_CHOICES.includes(v));
+    if (voices.length) settingsPatch.myVoices = voices;
+  } else {
+    delete settingsPatch.myVoices;
   }
-  if (data.settings?.lyricsFontSize) {
-    await saveSettings({ lyricsFontSize: data.settings.lyricsFontSize });
+  if (typeof rawSettings.lightshowOffsetMs === 'number' && Number.isFinite(rawSettings.lightshowOffsetMs)) {
+    settingsPatch.lightshowOffsetMs = Math.max(-5000, Math.min(5000, rawSettings.lightshowOffsetMs));
   }
-  if (data.settings?.defaultPlayerTab) {
-    await saveSettings({ defaultPlayerTab: data.settings.defaultPlayerTab });
-  }
-  if (data.settings?.accentColor) {
-    await saveSettings({ accentColor: data.settings.accentColor }); // wendet die Farbe gleich mit an
-  }
-  if (data.settings?.language) {
-    await saveSettings({ language: data.settings.language }); // übersetzt die Oberfläche gleich mit
-  }
-  if (typeof data.settings?.lightshowOffsetMs === 'number') {
-    await saveSettings({ lightshowOffsetMs: Math.max(-5000, Math.min(5000, data.settings.lightshowOffsetMs)) });
-  }
-  if (data.settings?.lightshowVoice) {
-    await saveSettings({ lightshowVoice: data.settings.lightshowVoice });
-  }
-  if (data.settings?.lightshowShow) {
-    await saveSettings({ lightshowShow: data.settings.lightshowShow });
-  }
-  if (data.settings?.lightshowSeed) {
-    await saveSettings({ lightshowSeed: data.settings.lightshowSeed });
+  if (Object.keys(settingsPatch).length) {
+    await saveSettings(settingsPatch); // accentColor/language wenden sich in saveSettings gleich mit an
   }
 
   await renderPlaylists();
@@ -16935,6 +16976,44 @@ function runSelfTests() {
     failed.push('Notiz-Export dürfte nicht als eigener Liedtext importiert werden');
   } catch (err) {
     if (err.message !== 'WRONG_KIND') failed.push('Falsche Textart müsste eindeutig erkannt werden');
+  }
+  checks++;
+  {
+    const dirty = sanitizeSettingsPatch({
+      accentColor: 'url(https://tracker.example/beacon.png)',
+      lyricsFontSize: 999,
+      defaultPlayerTab: 'sheets',
+      language: 'xx',
+      lightshowShow: 'nichtvorhanden',
+      lightshowVoice: 'LEAD',
+      myVoices: ['ALT', 'NOPE', 42],
+      lightshowSeed: NaN,
+    });
+    const clean = sanitizeSettingsPatch({
+      accentColor: '#AB12ef',
+      lyricsFontSize: 22,
+      defaultPlayerTab: 'notes',
+      language: 'en',
+      lightshowShow: 'welle',
+      lightshowVoice: 'ALT',
+      myVoices: ['ALT', 'BASS'],
+      lightshowSeed: 12345,
+    });
+    if ('accentColor' in dirty) failed.push('sanitizeSettingsPatch müsste ein url()-accentColor verwerfen');
+    if (dirty.lyricsFontSize !== 30) failed.push('sanitizeSettingsPatch müsste lyricsFontSize auf 30 klemmen');
+    if (dirty.defaultPlayerTab !== 'notes') failed.push('sanitizeSettingsPatch müsste "sheets" auf "notes" migrieren');
+    if ('language' in dirty) failed.push('sanitizeSettingsPatch müsste eine unbekannte Sprache verwerfen');
+    if ('lightshowShow' in dirty) failed.push('sanitizeSettingsPatch müsste eine unbekannte Show verwerfen');
+    if ('lightshowVoice' in dirty) failed.push('sanitizeSettingsPatch müsste "LEAD" als lightshowVoice verwerfen');
+    if ('myVoices' in dirty && (dirty.myVoices.includes('NOPE') || dirty.myVoices.includes(42))) {
+      failed.push('sanitizeSettingsPatch müsste ungültige myVoices-Einträge herausfiltern');
+    }
+    if ('lightshowSeed' in dirty) failed.push('sanitizeSettingsPatch müsste NaN als lightshowSeed verwerfen');
+    if (clean.accentColor !== '#AB12ef' || clean.lyricsFontSize !== 22 || clean.defaultPlayerTab !== 'notes'
+        || clean.language !== 'en' || clean.lightshowShow !== 'welle' || clean.lightshowVoice !== 'ALT'
+        || clean.lightshowSeed !== 12345 || clean.myVoices.length !== 2) {
+      failed.push('sanitizeSettingsPatch müsste gültige Werte unverändert übernehmen');
+    }
   }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
