@@ -379,6 +379,15 @@ export function createZipReader(limits, onDiagnostic) {
         tailHex: hexBytes(tail, tail.byteLength - 16, 16),
         pkCount: pk.count, pkFirst: pk.first, pkLast: pk.last,
       });
+      // Gar keine ZIP-Kennung, auch nicht am Dateianfang: dann ist es schlicht
+      // keine ZIP-Datei (z.B. versehentlich eine MP3 oder ein PDF gewählt).
+      // „Erneut aus Dropbox herunterladen" wäre dafür der falsche Rat (U18).
+      if (!pk.count) {
+        const head = await sliceView(file, 0, 4);
+        if (head.byteLength < 4 || head.getUint32(0, true) !== SIG_LOC) {
+          throw new ZipError('Das ist keine ZIP-Datei. Bitte den Ordner in Dropbox als ZIP herunterladen und genau diese Datei hier auswählen.');
+        }
+      }
       throw new ZipError(file.size > 2 ** 31
         ? tooBigMessage()
         : 'Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');

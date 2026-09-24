@@ -35,6 +35,18 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+/**
+ * Liegt der Fokus nach einer Aktion nirgends mehr (das angetippte Element
+ * wurde entfernt oder ausgeblendet), landen Screenreader und Tastatur am
+ * Seitenanfang. Dann gezielt auf `target` setzen — ohne einen noch
+ * gültigen Fokus zu stehlen (U14).
+ */
+function restoreLostFocus(target) {
+  const a = document.activeElement;
+  if (a && a !== document.body && a.isConnected && !a.closest('[hidden],[inert]')) return;
+  target?.focus?.({ preventScroll: true });
+}
+
 // Deutsche Sortierung: „Ärger" gehört zu A, nicht ans Listenende.
 const collator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 
@@ -150,7 +162,9 @@ function banner(text, opts = {}) {
     return () => {};
   }
 
-  const node = el('div', { class: `banner banner--${kind}` });
+  // Fehler als role=alert, damit Screenreader sie sofort ansagen — in der
+  // höflichen Statusregion gingen sie hinter anderen Ansagen unter (U11).
+  const node = el('div', { class: `banner banner--${kind}`, role: kind === 'error' ? 'alert' : null });
   node.append(el('p', { text }));
 
   if (action) {
@@ -2052,6 +2066,12 @@ function showTab(name) {
     else b.removeAttribute('aria-current');
   });
 
+  // Überschrift und Seitentitel je Ansicht — vorher gab es keine h1, und der
+  // Titel blieb immer „BVG"; beim Wechsel hörten Screenreader nichts (U17).
+  const viewName = t(`nav.${name}`);
+  $('#view-heading').textContent = viewName;
+  document.title = `${viewName} – BVG`;
+
   VIEWS[name].render?.();
 }
 
@@ -2192,6 +2212,9 @@ function renderVoicePills(tracks) {
     const chip = el('span', {
       class: 'voice-chip',
       title: full,
+      // role=img, damit Screenreader den vollen Namen statt des Kürzels lesen
+      // (aria-label an einem generischen <span> wird oft ignoriert).
+      role: 'img',
       'aria-label': full,
       style: `background:${VOICE_COLOR[t.voice] || VOICE_COLOR.OTHER}; z-index:${i + 1}`,
       text: t.voice === 'OTHER' ? (full || '?').slice(0, 4).toUpperCase() : (VOICE_ICON[t.voice] || full.slice(0, 4).toUpperCase()),
@@ -2557,7 +2580,7 @@ async function renderStorageManager() {
         el('div', { class: 'grow' }, el('div', { text: track.label })),
         el('span', { class: 'size', text: fmtBytes(track.size || 0) }),
         el('button', {
-          class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
+          class: 'icon-btn', type: 'button', style: 'color: var(--danger-fg)',
           'aria-label': t('storage.deleteVoiceAria').replace('{voice}', track.label).replace('{song}', song.title),
           onclick: () => deleteTrack(song, track),
         }, (() => {
@@ -2583,7 +2606,7 @@ async function renderStorageManager() {
     });
 
     const del = el('button', {
-      class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
+      class: 'icon-btn', type: 'button', style: 'color: var(--danger-fg)',
       'aria-label': t('storage.deleteSongAria').replace('{song}', song.title),
       onclick: () => deleteSong(song),
     });
@@ -7380,7 +7403,7 @@ function renderSheetList() {
     if (group.members.length > 1) {
       const chosen = pick.chosenVersion.get(group.core);
       const head = el('div', { class: 'version-group' },
-        el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn)',
+        el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn-fg)',
           text: `${group.members.length} Versionen gefunden — Vorschlag: „${group.suggested.title}" (${plural(countVoices(group.suggested), 'Stimme', 'Stimmen')})` }),
         el('div', { class: 'version-row' },
           group.members.map((m) => el('button', {
@@ -8844,6 +8867,7 @@ async function closeLightshowStage() {
   if (document.fullscreenElement === stage) {
     try { await document.exitFullscreen(); } catch { /* schon zu */ }
   }
+  restoreLostFocus($('#lightshow-back'));
 }
 
 $('#lightshow-close').addEventListener('click', () => closeLightshowStage());
@@ -9027,7 +9051,7 @@ function renderImportReport() {
 
   if (r.failed.length) {
     card.append(
-      el('p', { class: 'small', style: 'margin:12px 0 4px; color: var(--warn)',
+      el('p', { class: 'small', style: 'margin:12px 0 4px; color: var(--warn-fg)',
                 text: t('import.skippedFiles')
                   .replace('{files}', tPlural(r.failed.length, 'common.fileOne', 'common.fileMany')) }),
       el('ul', { class: 'steps small muted', style: 'list-style: disc' },
@@ -9694,7 +9718,10 @@ async function openPlayer(songId) {
   renderRepeatMode();
   renderShuffleMode();
   renderVoiceSelect();
-  setPlayerTab(settings.defaultPlayerTab || 'loops');
+  // Wer z.B. in einer Setliste den Liedtext mitliest, soll nach dem
+  // Weiterschalten nicht jedes Mal neu auf „Liedtext" tippen müssen (U20).
+  // Die Einstellung „Reiter beim Öffnen" gilt bis zur ersten eigenen Wahl.
+  setPlayerTab(userPlayerTab || settings.defaultPlayerTab || 'loops');
   renderPlayerExtras();
   loadSongLoops();
   loadSongRecordings();
@@ -9822,6 +9849,8 @@ async function openPlayer(songId) {
   showReplacedNotice(song);
   showLengthNotice(song);
   updateMediaSession();
+  // Der angetippte Listeneintrag ist jetzt ausgeblendet — Fokus auf den Titel.
+  restoreLostFocus($('#player-title'));
 }
 
 /**
@@ -10281,21 +10310,35 @@ $('#btn-song-search').addEventListener('pointerdown', (e) => {
   if (e.button != null && e.button !== 0) return;
   songSearchLongPressFired = false;
   cancelSongSearchLongPress();
-  songSearchLongPressTimer = setTimeout(async () => {
+  songSearchLongPressTimer = setTimeout(() => {
     songSearchLongPressTimer = null;
     songSearchLongPressFired = true;
-    const picked = await choiceDialog({
-      title: 'Song suchen bei …',
-      text: t('msg.oneTimeSearchChoice'),
-      options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
-    });
-    if (picked) openSongSearch(picked);
+    pickOneTimeSearchService();
   }, 500);
 });
+
+/** Einmalig bei einem anderen Dienst suchen (langes Drücken, Rechtsklick,
+ *  Kontextmenü-Taste bzw. Umschalt+F10). */
+async function pickOneTimeSearchService() {
+  const picked = await choiceDialog({
+    title: 'Song suchen bei …',
+    text: t('msg.oneTimeSearchChoice'),
+    options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
+  });
+  if (picked) openSongSearch(picked);
+}
 $('#btn-song-search').addEventListener('pointerup', cancelSongSearchLongPress);
 $('#btn-song-search').addEventListener('pointerleave', cancelSongSearchLongPress);
 $('#btn-song-search').addEventListener('pointercancel', cancelSongSearchLongPress);
-$('#btn-song-search').addEventListener('contextmenu', (e) => e.preventDefault());
+// Das Kontextmenü (Rechtsklick, Kontextmenü-Taste, Umschalt+F10) öffnet
+// dieselbe Dienstwahl wie das lange Drücken — sonst war sie per Tastatur gar
+// nicht erreichbar (U19). Auf Touch feuert contextmenu beim langen Drücken
+// ebenfalls; der Long-Press-Timer hat sie dann schon geöffnet.
+$('#btn-song-search').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (songSearchLongPressFired || songSearchLongPressTimer) return;
+  pickOneTimeSearchService();
+});
 $('#btn-song-search').addEventListener('click', () => {
   if (songSearchLongPressFired) { songSearchLongPressFired = false; return; }
   openSongSearch(settings.songSearchService);
@@ -10620,6 +10663,7 @@ function renderLoopList() {
         await DB.metaDelete(loop.key);
         if (activeLoopId === loop.id) activeLoopId = null;
         await loadSongLoops();
+        restoreLostFocus($('#loop-list .loop-item button') || $('#tab-btn-loops'));
       }
     });
     host.append(el('div', {
@@ -11107,7 +11151,11 @@ async function startRecording() {
     recStarting = false;
     if (stream) for (const track of stream.getTracks()) track.stop();
     if (!stillCurrent()) return;
-    bannerError(t('msg.micDenied'), 'REC-MIC', err);
+    // Nach Ursache statt pauschal „nicht erlaubt" — ein belegtes oder
+    // fehlendes Mikrofon braucht eine ganz andere Abhilfe (U10). Technische
+    // Details nur ins Fehlerprotokoll, nicht in den Hinweis.
+    logAppError('REC-MIC', err);
+    banner(t(micErrorKey(err)), { kind: 'error' });
     return;
   }
   updateRecInputWarning(recStream);
@@ -11151,6 +11199,23 @@ async function startRecording() {
   recTimerHandle = setInterval(updateRecTimer, 250);
   startLevelMeter(recStream);
   updateWakeLock();
+}
+
+/** Passender Hinweistext zu einem getUserMedia-Fehler. */
+function micErrorKey(err) {
+  switch (err?.name) {
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'msg.micNotFound';
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'msg.micBusy';
+    case 'NotSupportedError':
+    case 'TypeError':
+      return 'msg.micUnsupported';
+    default:
+      return 'msg.micDenied';
+  }
 }
 
 function stopRecording() {
@@ -13451,8 +13516,11 @@ function setTabHasContent(tab, has) {
   $(`#tab-btn-${tab}`).classList.toggle('has-content', has);
 }
 
+/** In dieser Sitzung zuletzt bewusst gewählter Reiter (Klick/Pfeiltasten). */
+let userPlayerTab = null;
+
 for (const name of PLAYER_TABS) {
-  $(`#tab-btn-${name}`).addEventListener('click', () => setPlayerTab(name));
+  $(`#tab-btn-${name}`).addEventListener('click', () => { userPlayerTab = name; setPlayerTab(name); });
 }
 
 // Pfeiltasten/Home/End nach dem ARIA-Tab-Muster: wechseln UND fokussieren
@@ -13468,6 +13536,7 @@ $('#player-tabs').addEventListener('keydown', (e) => {
   else return;
   e.preventDefault();
   const name = PLAYER_TABS[nextIdx];
+  userPlayerTab = name;
   setPlayerTab(name);
   $(`#tab-btn-${name}`).focus();
 });
@@ -15542,7 +15611,7 @@ function renderPlaylistEntries(songs) {
 
     const remove = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': `„${title}" entfernen`,
-      style: 'color: var(--danger)',
+      style: 'color: var(--danger-fg)',
     });
     remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     remove.addEventListener('click', async () => {
@@ -15643,9 +15712,12 @@ function renderPlaylistCandidates(songs) {
   // Chorleiter plant oft, bevor die Aufnahme überhaupt vorliegt. Ein Titel,
   // zu dem die Suche keinen vorhandenen Song findet, lässt sich deshalb als
   // reiner Platzhalter eintragen (genau wie beim Text-Import).
-  if (raw.trim() && !songs.some((s) => s.normTitle === q)) {
-    host.append(el('button', {
-      class: 'list-item', type: 'button',
+  // Der Platzhalter steht bewusst UNTER den echten Treffern und sieht anders
+  // aus (gestrichelt): stand er vorne, trug ein Tipp auf den obersten Eintrag
+  // nach „Halle" einen Phantomtitel statt „Hallelujah" ein (U9).
+  const placeholder = raw.trim() && !songs.some((s) => s.normTitle === q)
+    ? el('button', {
+      class: 'list-item', type: 'button', style: 'border-style:dashed; background:transparent',
       onclick: async () => {
         plDraft.songTitles.push(raw.trim());
         markDirty();
@@ -15654,9 +15726,9 @@ function renderPlaylistCandidates(songs) {
       },
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `„${raw.trim()}“ eintragen` }),
-        el('div', { class: 'small muted', text: t('playlists.addPlaceholderAria') }))));
-  }
+        el('strong', { text: `Nicht dabei? „${raw.trim()}“ als Platzhalter eintragen` }),
+        el('div', { class: 'small muted', text: t('playlists.addPlaceholderAria') })))
+    : null;
 
   const inList = new Set((plDraft.songTitles || []).map(normalizeTitle));
 
@@ -15667,6 +15739,7 @@ function renderPlaylistCandidates(songs) {
 
   if (!list.length) {
     if (!raw.trim()) host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
+    if (placeholder) host.append(placeholder);
     return;
   }
 
@@ -15688,6 +15761,7 @@ function renderPlaylistCandidates(songs) {
       el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) })),
       el('span', { class: 'small muted', text: t(already ? 'common.remove' : 'common.add') })));
   }
+  if (placeholder) host.append(placeholder);
 }
 
 $('#pl-search').addEventListener('input', async () => {
