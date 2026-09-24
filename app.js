@@ -20833,17 +20833,20 @@ function initGrooveLabEasterEgg() {
 }
 
 /**
- * Automatischer Lauf nur lokal (Entwicklung) oder mit explizitem Opt-in
- * (`?selftest=1`) — auf jeder echten Domain, auch der installierten PWA,
- * kostet runSelfTests() sonst ~150ms auf dem kritischen Pfad vor der ersten
- * Ansicht, ohne dass je jemand außer der Entwicklung die Konsole liest.
- * Manuell bleibt es über chorApp.selfTest()/selfTestAsync()/
- * selfTestAudioPath() überall auslösbar.
+ * Automatischer Lauf nur auf Loopback-Hosts (Entwicklung) — auf jeder echten
+ * Domain, auch der installierten PWA, kostet runSelfTests() sonst ~150ms auf
+ * dem kritischen Pfad vor der ersten Ansicht, ohne dass je jemand außer der
+ * Entwicklung die Konsole liest. Der `?selftest=1`-URL-Opt-in griff früher
+ * auf jeder Domain — ein geteilter Link hätte damit Testdaten (temporäre
+ * `__Selftest …`-Songs, zurückgesetzte Crash-Guard-Marker) in die Bibliothek
+ * echter Nutzer:innen geschrieben (SEC-DOM-5/ARCH-3). Er zählt deshalb nur
+ * noch auf einem Loopback-Host, auf dem ohnehin schon automatisch getestet
+ * wird. Manuell bleibt es überall über chorApp.selfTest()/selfTestAsync()/
+ * selfTestAudioPath() auslösbar.
  */
 function shouldAutoRunSelfTests() {
-  const explicitlyEnabled = new URLSearchParams(location.search).get('selftest') === '1';
   const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
-  return explicitlyEnabled || loopbackHosts.has(location.hostname);
+  return loopbackHosts.has(location.hostname);
 }
 
 async function boot() {

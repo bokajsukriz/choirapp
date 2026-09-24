@@ -68,10 +68,14 @@ Danach `http://localhost:8000` im Browser öffnen.
 `runSelfTests()` (synchron) und `runAsyncSelfTests()` (asynchron, prüft die
 Speicher-Warteschlange von Notizen/Liedtexten) laufen automatisch beim Start
 und melden sich in der Browser-Konsole — allerdings nur unter `localhost`,
-`127.0.0.1`/`[::1]` (lokale Entwicklung) oder mit `?selftest=1` in der URL.
-Auf jeder echten Domain, auch der installierten PWA, würden sie sonst
-~150 ms auf dem kritischen Pfad vor der ersten Ansicht kosten, ohne dass
-dort je jemand die Konsole liest. Manuell überall auslösbar:
+`127.0.0.1`/`[::1]` (lokale Entwicklung). Auf jeder echten Domain, auch der
+installierten PWA, würden sie sonst ~150 ms auf dem kritischen Pfad vor der
+ersten Ansicht kosten, ohne dass dort je jemand die Konsole liest — und ein
+`?selftest=1`-URL-Opt-in zählt dort deshalb bewusst nicht mehr: die Tests
+legen vorübergehend echte Datensätze an (`__Selftest …`-Songs) und greifen
+in Laufzeitzustand ein (Crash-Guard-Marker der Normalisierung), ein geteilter
+Link hätte das sonst in der Bibliothek echter Nutzer:innen ausgelöst. Manuell
+überall auslösbar:
 
 ```js
 chorApp.selfTest()
