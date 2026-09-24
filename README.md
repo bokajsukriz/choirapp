@@ -2,14 +2,16 @@
 
 Installierbare, rein lokale Progressive-Web-App zum Üben mit den
 Übe-Aufnahmen des Chores BVG. Kein Backend, kein Konto, keine Telemetrie —
-die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine
-Daten. Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel
-und ggf. Interpret an den gewählten externen Dienst — siehe
+Inhalte (Songs, Aufnahmen, Notizen, Einstellungen) verlassen nie das Gerät.
+Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel und ggf.
+Interpret an den gewählten externen Dienst — siehe
 [Externe Liedsuche](#externe-liedsuche). Der Internetzeit-Abgleich der
-Lichtshow (siehe [Lichtshow](#lichtshow)) fragt nach ausdrücklicher
-Bestätigung einmalig die Atomuhr der PTB (uhr.ptb.de) nach der aktuellen
-Uhrzeit ab — außer diesen beiden Fällen verlässt die App nie von sich aus
-das Gerät.
+Lichtshow (siehe [Lichtshow](#lichtshow)) baut nach ausdrücklicher
+Bestätigung eine kurze Verbindung zur Atomuhr der PTB (uhr.ptb.de) auf und
+fragt darüber einige Male die Uhrzeit ab. Unabhängig davon prüft der Browser
+beim Öffnen bei GitHub Pages, ob es eine neue App-Version gibt (Service-Worker-
+Update) — dabei sieht GitHub wie bei jedem Seitenaufruf IP-Adresse und
+Zeitpunkt, aber keine Inhalte.
 
 ## Daten und Speicherorte
 
@@ -20,10 +22,11 @@ Alles bleibt auf dem Gerät:
   (Audio-/PDF-Bytes) und `meta` (alles Übrige).
 - **`localStorage`** — Fehlerprotokoll (`bvg-error-log`) und Diagnose-Log
   (`bvg-debug-log`), je bis zu einer festen Anzahl Einträge.
-- **Cache Storage** — die App-Shell (`index.html`, `sw.js`, `manifest.json`,
-  Icons), verwaltet vom Service Worker.
+- **Cache Storage** — die App-Shell (`index.html`, alle Skripte, `manifest.json`,
+  Icons; maßgeblich ist `SHELL_REQUIRED`/`SHELL_OPTIONAL` in `sw.js`), verwaltet
+  vom Service Worker.
 
-„Alle Daten löschen“ in den Einstellungen entfernt IndexedDB vollständig
+„Alle Daten löschen“ in den Einstellungen leert beide IndexedDB-Speicher vollständig
 sowie Fehler- und Diagnoseprotokoll. Dateien in einer verbundenen Dropbox
 bleiben davon unberührt — die App greift nie direkt auf Dropbox zu, sondern
 nur auf lokal heruntergeladene ZIP-Archive.
@@ -68,10 +71,14 @@ Danach `http://localhost:8000` im Browser öffnen.
 `runSelfTests()` (synchron) und `runAsyncSelfTests()` (asynchron, prüft die
 Speicher-Warteschlange von Notizen/Liedtexten) laufen automatisch beim Start
 und melden sich in der Browser-Konsole — allerdings nur unter `localhost`,
-`127.0.0.1`/`[::1]` (lokale Entwicklung) oder mit `?selftest=1` in der URL.
-Auf jeder echten Domain, auch der installierten PWA, würden sie sonst
-~150 ms auf dem kritischen Pfad vor der ersten Ansicht kosten, ohne dass
-dort je jemand die Konsole liest. Manuell überall auslösbar:
+`127.0.0.1`/`[::1]` (lokale Entwicklung). Auf jeder echten Domain, auch der
+installierten PWA, würden sie sonst ~150 ms auf dem kritischen Pfad vor der
+ersten Ansicht kosten, ohne dass dort je jemand die Konsole liest — und ein
+`?selftest=1`-URL-Opt-in zählt dort deshalb bewusst nicht mehr: die Tests
+legen vorübergehend echte Datensätze an (`__Selftest …`-Songs) und greifen
+in Laufzeitzustand ein (Crash-Guard-Marker der Normalisierung), ein geteilter
+Link hätte das sonst in der Bibliothek echter Nutzer:innen ausgelöst. Manuell
+überall auslösbar:
 
 ```js
 chorApp.selfTest()
@@ -165,15 +172,33 @@ bleibt.
 
 ## Content-Security-Policy
 
-Ein `<meta http-equiv="Content-Security-Policy">` in `index.html` erlaubt nur
-noch Skripte von der eigenen Herkunft, `blob:` (für das AudioWorklet-Modul
-des Zeitdehners) und `'wasm-unsafe-eval'` (für dessen WASM-Instanziierung);
-Styles bleiben inline erlaubt (`'unsafe-inline'`, wegen der `style="…"`-
-Attribute im Markup), `<object>`/`<embed>` und `<base>` sind ganz gesperrt.
-`connect-src` erlaubt neben der eigenen Herkunft ausschließlich
-`wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
-WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
-Netzwerkanfrage aus dem Code wäre damit von vornherein blockiert.
+Ein `<meta http-equiv="Content-Security-Policy">` in `index.html` setzt
+`default-src 'none'` als Grundhärtung und erlaubt darüber hinaus nur explizit
+Genanntes:
+
+```
+default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self';
+style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
+media-src 'self' blob:; frame-src blob:; connect-src 'self' wss://uhr.ptb.de;
+manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
+```
+
+- `script-src`/`worker-src`: die eigene Herkunft, dazu `blob:` (für das
+  AudioWorklet-Modul des Zeitdehners) und `'wasm-unsafe-eval'` (für dessen
+  WASM-Instanziierung).
+- `style-src`: `'unsafe-inline'` bleibt nötig wegen der `style="…"`-Attribute
+  im Markup.
+- `img-src`/`font-src`: `data:` für Icons bzw. die eingebettete
+  woff2-Schrift.
+- `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
+  bzw. die PDF-Vorschau im iframe.
+- `connect-src` erlaubt neben der eigenen Herkunft ausschließlich
+  `wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
+  WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
+  Netzwerkanfrage aus dem Code wäre damit von vornherein blockiert.
+- `manifest-src 'self'`, `object-src 'none'`, `base-uri 'none'` und
+  `form-action 'none'` schließen die übrigen Kanäle.
+
 `frame-ancestors` ist absichtlich nicht Teil davon — über ein Meta-Tag
 ohnehin nicht durchsetzbar, GitHub Pages kann keine Header setzen. Ob
 Zeitdehner-Worklets zusätzlich `worker-src blob:` brauchen, ist auf echtem
@@ -189,8 +214,10 @@ Verfügung) — offen, bis das nachgeholt ist.
 
 ## Third-Party
 
-Siehe [`THIRD-PARTY.md`](./THIRD-PARTY.md) für Herkunft, Version und Lizenz
-der vendorierten Komponente `lame.min.js` (lamejs/LAME, LGPL-3.0).
+Siehe [`THIRD-PARTY.md`](./THIRD-PARTY.md) für Herkunft, Version, Hashes und
+Lizenz der vendorierten Komponenten `lame.min.js` (lamejs/LAME, LGPL-3.0; der
+unminifizierte Quelltext liegt unter `third-party/lamejs-1.2.1/`) und
+`signalsmith-stretch.js` (MIT).
 
 
 ### Optionale Lautstärkenormalisierung

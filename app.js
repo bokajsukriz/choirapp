@@ -7,6 +7,19 @@ import { createZipReader, zipReadFailureMessage, isJunkPath, zipPrefetchStarts, 
 
 'use strict';
 (() => {
+// Für boot-guard.js: das Modul wurde geladen und verknüpft (siehe dort).
+window.__chorStarted = true;
+
+// Synchrone Fehler in Event-Handlern landeten bisher nur in der Konsole, die
+// am Handy niemand sieht — nicht im Fehlerprotokoll (LOG-14). Früh
+// registriert (vor boot()), damit auch Fehler beim Aufbau erfasst werden.
+// Nur protokollieren, kein Banner: sonst würde jeder Folgefehler eine
+// Meldung stapeln; die Stelle meldet sich ggf. selbst. Fremde Skripte
+// (Erweiterungen) haben einen anderen `filename` und bleiben außen vor.
+window.addEventListener('error', (e) => {
+  if (!(e instanceof ErrorEvent) || !String(e.filename || '').startsWith(location.origin)) return;
+  try { logAppError('UNCAUGHT', e.error || new Error(e.message)); } catch { /* Protokoll selbst kaputt */ }
+});
 
 /* ==========================================================================
    UTIL — kleine Helfer
@@ -31,6 +44,41 @@ function el(tag, attrs = {}, ...children) {
     node.append(typeof c === 'string' ? document.createTextNode(c) : c);
   }
   return node;
+}
+
+/**
+ * „Bin ich noch der neueste Lauf?" — dasselbe Muster stand an vielen Stellen
+ * je von Hand (`const token = ++x; … await …; if (token !== x) return;`), und
+ * genau dort lagen wiederkehrende Race-Fixes (ARCH-2). Einheitlich:
+ *
+ *   const run = songsRenderRuns.begin();
+ *   await …;
+ *   if (run.stale) return;
+ *
+ * `invalidate()` macht alle laufenden Läufe veraltet, ohne einen neuen zu
+ * beginnen.
+ */
+function latestRuns() {
+  let generation = 0;
+  return {
+    begin() {
+      const mine = ++generation;
+      return { get stale() { return mine !== generation; } };
+    },
+    invalidate() { generation++; },
+  };
+}
+
+/**
+ * Liegt der Fokus nach einer Aktion nirgends mehr (das angetippte Element
+ * wurde entfernt oder ausgeblendet), landen Screenreader und Tastatur am
+ * Seitenanfang. Dann gezielt auf `target` setzen — ohne einen noch
+ * gültigen Fokus zu stehlen (U14).
+ */
+function restoreLostFocus(target) {
+  const a = document.activeElement;
+  if (a && a !== document.body && a.isConnected && !a.closest('[hidden],[inert]')) return;
+  target?.focus?.({ preventScroll: true });
 }
 
 // Deutsche Sortierung: „Ärger" gehört zu A, nicht ans Listenende.
@@ -87,6 +135,22 @@ const VOICE_LABEL = {
   PIANO: 'Klavier',
   OTHER: 'Sonstige',
 };
+
+/**
+ * Anzeigename einer Stimme in der eingestellten Sprache. VOICE_LABEL selbst
+ * bleibt deutsch: es landet in gespeicherten Spurnamen, ID3-Tags und
+ * Dateinamen und wird beim Wiedereinlesen daran zurückerkannt.
+ */
+function voiceName(code) {
+  return VOICE_LABEL[code] ? t(`voice.${code}`) : code;
+}
+
+/** Anzeigename einer Spur: der beim Import gespeicherte deutsche
+ *  Standardname wird übersetzt, eigene Namen (Stimme OTHER) bleiben. */
+function trackName(track) {
+  return track.voice && track.voice !== 'OTHER' && track.label === VOICE_LABEL[track.voice]
+    ? voiceName(track.voice) : track.label;
+}
 
 // Kurzform für die kompakten Stimm-Icons in der Songliste.
 const VOICE_ICON = {
@@ -148,7 +212,9 @@ function banner(text, opts = {}) {
     return () => {};
   }
 
-  const node = el('div', { class: `banner banner--${kind}` });
+  // Fehler als role=alert, damit Screenreader sie sofort ansagen — in der
+  // höflichen Statusregion gingen sie hinter anderen Ansagen unter (U11).
+  const node = el('div', { class: `banner banner--${kind}`, role: kind === 'error' ? 'alert' : null });
   node.append(el('p', { text }));
 
   if (action) {
@@ -215,7 +281,11 @@ let errorLog = loadErrorLog();
  */
 function redactErrorMessage(message) {
   if (!message) return message;
-  return message.replace(/„[^"]*"/g, '„…"');
+  // Alles in Anführungszeichen — deutsche („…“, „…"), englische ("…", “…”)
+  // und französische («…») Schreibweise. Vorher erfasste die Regex nur „…"
+  // mit geradem Schlusszeichen; Meldungen wie „Sopran/Name.mp3“ blieben
+  // stehen (SEC-NET-6).
+  return String(message).replace(/[„“"«][^„“”"«»\n]*[“”"»]/g, '„…“');
 }
 
 function logAppError(code, err) {
@@ -336,7 +406,11 @@ function saveDebugLogSoon() {
  */
 function dlog(event, data) {
   if (!settings?.debugLog) return;
-  debugLog.push({ t: Math.round(performance.now() - bootTime), event, ...(data || {}) });
+  // Zentral statt an jeder Aufrufstelle: Fehlermeldungen tragen oft
+  // Archivpfade und Dateinamen, die hier nie landen dürfen (SEC-NET-6).
+  const safe = data && typeof data.message === 'string'
+    ? { ...data, message: redactErrorMessage(data.message) } : data;
+  debugLog.push({ t: Math.round(performance.now() - bootTime), event, ...(safe || {}) });
   if (debugLog.length > MAX_DEBUG_LOG) debugLog = debugLog.slice(-MAX_DEBUG_LOG);
   saveDebugLogSoon();
 }
@@ -428,6 +502,43 @@ function closeModal(layer) {
   if (entry.restore && document.body.contains(entry.restore)) entry.restore.focus?.();
 }
 
+let modalHeadingSeq = 0;
+
+/**
+ * Hängt ein selbst gebautes `.overlay` als echten modalen Dialog ein: Rolle
+ * und Beschriftung (aus der ersten h2) für Screenreader, Fokusfalle, Esc und
+ * inerter Hintergrund über openModal(). Vorher waren mehrere Dialoge nur
+ * `<div class="overlay">` — Tab lief dahinter in die Bibliothek, Esc tat
+ * nichts, der Fokus blieb auf dem Auslöser (U2).
+ *
+ * `layer.remove()` wird so überschrieben, dass es closeModal() gleich
+ * mitmacht — jeder bestehende Schließen-Pfad der Dialoge räumt damit auch
+ * Fokusfalle und `inert` wieder auf, ohne dass jeder ihn kennen muss.
+ * Fortschrittsdialoge (`busy`) sind `alertdialog` ohne Esc.
+ */
+function mountModal(layer, { onEscape, initialFocus, busy = false } = {}) {
+  layer.setAttribute('role', busy ? 'alertdialog' : 'dialog');
+  layer.setAttribute('aria-modal', 'true');
+  if (busy) layer.setAttribute('aria-busy', 'true');
+  const heading = layer.querySelector('h2');
+  if (heading && !layer.hasAttribute('aria-label')) {
+    if (!heading.id) heading.id = `modal-heading-${++modalHeadingSeq}`;
+    layer.setAttribute('aria-labelledby', heading.id);
+  }
+  const removeNode = Element.prototype.remove.bind(layer);
+  layer.remove = () => { closeModal(layer); removeNode(); };
+  if (!layer.isConnected) document.body.append(layer);
+  let focusTarget = initialFocus || focusableIn(layer)[0];
+  if (!focusTarget) {
+    // Nichts Bedienbares (Fortschritt): den Dialog selbst fokussieren, damit
+    // Screenreader ihn ansagen und der Fokus nicht dahinter liegen bleibt.
+    const box = layer.firstElementChild || layer;
+    box.setAttribute('tabindex', '-1');
+    focusTarget = box;
+  }
+  openModal(layer, { initialFocus: focusTarget, onEscape: busy ? () => {} : onEscape });
+}
+
 const overlay      = $('#overlay');
 const dlgTitle     = $('#dlg-title');
 const dlgText      = $('#dlg-text');
@@ -475,7 +586,11 @@ function confirmDialog({ title, text, okLabel = t('common.ok'), cancelLabel = t(
   }
 
   overlay.hidden = false;
-  openModal(overlay, { initialFocus: dlgOk, onEscape: () => closeDialog(false) });
+  // Bei destruktiven Aktionen (danger) startet der Fokus auf „Abbrechen" statt
+  // auf dem roten Knopf — sonst löscht ein versehentliches zweites Enter
+  // (Tastatur/Switch-Bedienung) sofort alles, ohne dass ein zweiter bewusster
+  // Tastendruck auf den gefährlichen Knopf nötig wäre (UI-04).
+  openModal(overlay, { initialFocus: danger ? dlgCancel : dlgOk, onEscape: () => closeDialog(false) });
 
   return new Promise((resolve) => {
     dlgResolve = resolve;
@@ -517,7 +632,7 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
       text ? el('p', { text }) : null,
       input,
       el('div', { class: 'dialog-actions' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: okLabel,
                        onclick: () => done(input.value) })));
 
@@ -562,16 +677,16 @@ const REC_SCISSORS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentC
  */
 function editRecordingDialog(recording) {
   return new Promise((resolve) => {
-    const input = el('input', { type: 'text', value: recording.name, 'aria-label': 'Name' });
+    const input = el('input', { type: 'text', value: recording.name, 'aria-label': t('rec.nameLabel') });
 
     let selected = recording.voice || null;
     const voiceOptions = [
-      { value: null, label: 'Keine' },
-      { value: 'SOP', label: VOICE_LABEL.SOP },
-      { value: 'ALT', label: VOICE_LABEL.ALT },
-      { value: 'TEN', label: VOICE_LABEL.TEN },
-      { value: 'BASS', label: VOICE_LABEL.BASS },
-      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+      { value: null, label: t('rec.voiceNone') },
+      { value: 'SOP', label: voiceName('SOP') },
+      { value: 'ALT', label: voiceName('ALT') },
+      { value: 'TEN', label: voiceName('TEN') },
+      { value: 'BASS', label: voiceName('BASS') },
+      { value: 'LEAD', label: voiceName('LEAD') },
     ];
     // Dieselben farbigen Stimm-Pills wie bei „meine Stimme" (siehe
     // renderVoicePicker) statt der neutralen preset-row — exklusive Auswahl.
@@ -589,13 +704,13 @@ function editRecordingDialog(recording) {
       voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
     }));
-    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': t('player.voiceAria') }, ...voiceBtns);
 
     const canvas = el('canvas', { class: 'take-wave' });
     const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
     const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
     const waveShadeWrap = el('div', { class: 'wave-shade-wrap' }, canvas, shadeLeft, shadeRight);
-    const trimBtn = el('button', { class: 'take-trim-btn', type: 'button', 'aria-label': 'REC zuschneiden' });
+    const trimBtn = el('button', { class: 'take-trim-btn', type: 'button', 'aria-label': t('rec.trimAria') });
     trimBtn.innerHTML = REC_SCISSORS_ICON;
     const waveRow = el('div', { class: 'take-wave-row', style: 'margin-top:12px' }, waveShadeWrap, trimBtn);
 
@@ -648,12 +763,12 @@ function editRecordingDialog(recording) {
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'REC bearbeiten' }),
+      el('h2', { text: t('rec.editTitle') }),
       input,
       waveRow,
       voiceRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: t('common.save'),
                        onclick: () => done({ name: input.value, voice: selected }) })));
 
@@ -664,7 +779,7 @@ function editRecordingDialog(recording) {
 
     // overlay--top: das Fenster bleibt am oberen Rand, damit die
     // aufklappende Tastatur (wegen des Namensfelds) es nicht verdeckt.
-    const layer = el('div', { class: 'overlay overlay--top', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC bearbeiten' }, box);
+    const layer = el('div', { class: 'overlay overlay--top', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('rec.editTitle') }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
     openModal(layer, { initialFocus: input, onEscape: () => done(null) });
@@ -865,6 +980,15 @@ function openDB() {
         db.close();
         if (dbPromise === thisOpen) dbPromise = null;
       };
+      // WebKit schließt Verbindungen gelegentlich von sich aus (Hintergrund,
+      // Speicherdruck: „Connection to Indexed Database server lost"). Dann
+      // feuert `close`, nicht `versionchange` — ohne das blieb dbPromise auf
+      // der toten Verbindung stehen und jeder Zugriff scheiterte bis zum
+      // Neuladen (LOG-5).
+      db.onclose = () => {
+        dlog('db:closed', {});
+        if (dbPromise === thisOpen) dbPromise = null;
+      };
       resolve(db);
     };
 
@@ -883,9 +1007,33 @@ function openDB() {
   return dbPromise;
 }
 
+/**
+ * Führt `run(db)` aus. Meldet die Verbindung dabei InvalidStateError (vom
+ * Browser geschlossen, ohne dass `close` rechtzeitig kam), wird sie einmal
+ * verworfen, neu geöffnet und `run` wiederholt. Beim ersten Versuch ist dann
+ * noch keine Transaktion zustande gekommen — die Wiederholung schreibt also
+ * nichts doppelt (und alle Schreibzugriffe hier sind ohnehin put/delete).
+ */
+async function withDb(run) {
+  const db = await openDB();
+  try {
+    return await run(db);
+  } catch (err) {
+    if (err?.name !== 'InvalidStateError') throw err;
+    dlog('db:reopen', {});
+    const stale = dbPromise;
+    if (stale && await stale.catch(() => null) === db && dbPromise === stale) dbPromise = null;
+    try { db.close(); } catch { /* schon zu */ }
+    return run(await openDB());
+  }
+}
+
 /** Führt `fn` in einer Transaktion aus und wartet auf deren Abschluss. */
 async function tx(storeNames, mode, fn) {
-  const db = await openDB();
+  return withDb((db) => txOn(db, storeNames, mode, fn));
+}
+
+function txOn(db, storeNames, mode, fn) {
   const names = Array.isArray(storeNames) ? storeNames : [storeNames];
   return new Promise((resolve, reject) => {
     const t = db.transaction(names, mode);
@@ -984,8 +1132,7 @@ function dropLyricsNoteCache() { lyricsNoteSongIds = null; lyricsNoteCacheStamp+
 
 const DB = {
   async metaGet(key) {
-    const db = await openDB();
-    return reqPromise(db.transaction('meta', 'readonly').objectStore('meta').get(key));
+    return withDb((db) => reqPromise(db.transaction('meta', 'readonly').objectStore('meta').get(key)));
   },
 
   async metaPut(record) {
@@ -1013,9 +1160,10 @@ const DB = {
 
   /** Alle Datensätze eines Typs, z.B. 'song'. */
   async metaByType(type) {
-    const db = await openDB();
-    const idx = db.transaction('meta', 'readonly').objectStore('meta').index('type');
-    return reqPromise(idx.getAll(IDBKeyRange.only(type)));
+    return withDb((db) => {
+      const idx = db.transaction('meta', 'readonly').objectStore('meta').index('type');
+      return reqPromise(idx.getAll(IDBKeyRange.only(type)));
+    });
   },
 
   /** IDs der Songs mit mindestens einer nicht leeren Notiz — zwischengespeichert. */
@@ -1045,8 +1193,7 @@ const DB = {
   },
 
   async fileGet(key) {
-    const db = await openDB();
-    return reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key));
+    return withDb((db) => reqPromise(db.transaction('files', 'readonly').objectStore('files').get(key)));
   },
 
   async filePut(record) {
@@ -1076,6 +1223,21 @@ const DB = {
     const list = Array.isArray(keys) ? keys : [keys];
     if (!list.length) return;
     await tx('files', 'readwrite', (files) => { for (const k of list) files.delete(k); });
+  },
+
+  /**
+   * Datensatz und seine Dateien in EINER Transaktion löschen — ein Abbruch
+   * dazwischen (Tab weggewischt) hinterließ sonst je nach Reihenfolge einen
+   * Datensatz mit toten Dateiverweisen oder unsichtbar belegten Speicher
+   * (LOG-10).
+   */
+  async deleteMetaAndFiles(metaKey, fileKeys) {
+    const list = (Array.isArray(fileKeys) ? fileKeys : [fileKeys]).filter(Boolean);
+    await tx(['files', 'meta'], 'readwrite', (files, meta) => {
+      meta.delete(metaKey);
+      for (const k of list) files.delete(k);
+    });
+    if (String(metaKey).startsWith('song:')) dropSongCache();
   },
 
   /** Löscht restlos alles — nur aus der Einstellung „Alle Daten löschen". */
@@ -1176,6 +1338,14 @@ const DEFAULT_SETTINGS = {
 };
 
 let settings = { ...DEFAULT_SETTINGS };
+// Schlägt der erste Lesezugriff in loadSettings() fehl (z.B. ein einmaliger
+// IndexedDB-Wackler beim Start), basiert `settings` bis auf Weiteres auf
+// DEFAULT_SETTINGS. saveSettings() darf diesen Snapshot dann NICHT einfach
+// über einen eventuell noch intakten DB-Datensatz schreiben — das hätte
+// vorher jede gespeicherte Einstellung mit einem einzigen transienten Fehler
+// dauerhaft gelöscht (LOG-1). Das Flag zwingt saveSettings() stattdessen zu
+// einem Read-Modify-Write, bis ein Lesezugriff wieder gelingt.
+let settingsLoadFailed = false;
 
 /**
  * Auswahl in "Persönliches". Bewusst helle, kräftige Töne — dieselbe
@@ -1184,12 +1354,12 @@ let settings = { ...DEFAULT_SETTINGS };
  * zu müssen.
  */
 const ACCENT_PRESETS = [
-  { name: 'Pink',     hex: '#F868B0' },   // Standard
-  { name: 'Koralle',  hex: '#FF6B6B' },
-  { name: 'Gelb',     hex: '#FFD93D' },
-  { name: 'Türkis',   hex: '#4ECDC4' },
-  { name: 'Violett',  hex: '#A78BFA' },
-  { name: 'Grün',     hex: '#6BCB77' },
+  { id: 'pink', name: 'Pink',     hex: '#F868B0' },   // Standard
+  { id: 'coral', name: 'Koralle',  hex: '#FF6B6B' },
+  { id: 'yellow', name: 'Gelb',     hex: '#FFD93D' },
+  { id: 'turquoise', name: 'Türkis',   hex: '#4ECDC4' },
+  { id: 'violet', name: 'Violett',  hex: '#A78BFA' },
+  { id: 'green', name: 'Grün',     hex: '#6BCB77' },
 ];
 
 function hexToRgbTriplet(hex) {
@@ -1289,12 +1459,19 @@ function deriveAccentForeground(hex) {
   return rgbToHex(rgb);
 }
 
-/** Schaltet --accent, --accent-rgb und die daraus abgeleitete --accent-foreground auf dem Wurzelelement um. */
+/**
+ * Schaltet --accent, --accent-rgb und die daraus abgeleitete --accent-foreground
+ * auf dem Wurzelelement um. Prüft `hex` selbst noch einmal per Regex (Defense
+ * in Depth für Altbestände, die schon vor sanitizeSettingsPatch() in
+ * IndexedDB gelandet sein könnten) und fällt sonst auf die Standardfarbe
+ * zurück — siehe sanitizeSettingsPatch() zur eigentlichen Prüfung.
+ */
 function applyAccentColor(hex) {
   const root = document.documentElement.style;
-  root.setProperty('--accent', hex);
-  root.setProperty('--accent-rgb', hexToRgbTriplet(hex));
-  root.setProperty('--accent-foreground', deriveAccentForeground(hex));
+  const safeHex = (typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex)) ? hex : DEFAULT_SETTINGS.accentColor;
+  root.setProperty('--accent', safeHex);
+  root.setProperty('--accent-rgb', hexToRgbTriplet(safeHex));
+  root.setProperty('--accent-foreground', deriveAccentForeground(safeHex));
 }
 
 /* ==========================================================================
@@ -1335,9 +1512,21 @@ async function loadSettings() {
   try {
     const stored = await DB.metaGet(SETTINGS_KEY);
     settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+    settingsLoadFailed = false;
   } catch (err) {
-    console.warn('[settings] konnten nicht geladen werden', err);
-    settings = { ...DEFAULT_SETTINGS };
+    // Ein einzelner Lesefehler (z.B. ein kurzzeitig blockierter IDB-Zugriff
+    // beim Aufwecken) soll nicht sofort auf Defaults zurückfallen — einmal
+    // kurz erneut versuchen.
+    console.warn('[settings] Lesezugriff fehlgeschlagen, versuche erneut', err);
+    try {
+      const stored = await DB.metaGet(SETTINGS_KEY);
+      settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+      settingsLoadFailed = false;
+    } catch (err2) {
+      console.warn('[settings] Lesezugriff auch im zweiten Versuch fehlgeschlagen, arbeite nur im Speicher', err2);
+      settings = { ...DEFAULT_SETTINGS };
+      settingsLoadFailed = true;
+    }
   }
   // Ältere Datensätze kennen nur eine einzelne Stimme (`myVoice`). Wer
   // zwischen Stimmen wechselt, soll die aber nicht neu wählen müssen.
@@ -1373,13 +1562,21 @@ async function loadSettings() {
   // müssten (siehe lightshowFrame in lightshow.js).
   if (!settings.lightshowSeed) {
     const rnd = crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 0xffffffff);
-    await saveSettings({ lightshowSeed: (rnd >>> 0) || 1 });
+    const seed = (rnd >>> 0) || 1;
+    if (settingsLoadFailed) {
+      // Nicht über saveSettings() schreiben, solange der echte Datensatz
+      // nicht gelesen werden konnte (siehe settingsLoadFailed) — der Seed
+      // gilt dann nur für diese Sitzung im Speicher.
+      settings.lightshowSeed = seed;
+    } else {
+      await saveSettings({ lightshowSeed: seed });
+    }
   }
   return settings;
 }
 
-async function saveSettings(patch) {
-  settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+/** Nebenwirkungen eines Settings-Patches auf die schon sichtbare Oberfläche — unabhängig davon, ob der Patch am Ende auch gespeichert werden konnte. */
+function applySettingsSideEffects(patch) {
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
   if ('language' in patch) {
     applyTranslations();
@@ -1405,6 +1602,113 @@ async function saveSettings(patch) {
       renderOnbDots();
     }
   }
+}
+
+/* Nach einem anhaltenden Lesefehler (settingsLoadFailed) läuft die App mit
+   Standardwerten im Speicher. Statt dann die Ersteinrichtung zu zeigen — die
+   Person hat ihre Einstellungen ja, sie sind nur gerade nicht lesbar —, steht
+   ein Hinweis mit „Neu laden" da, und die App versucht es im Hintergrund
+   selbst noch einmal: nach ein paar Sekunden und jedes Mal, wenn sie wieder
+   in den Vordergrund kommt. Klappt es, werden die echten Einstellungen
+   übernommen und der Hinweis verschwindet. */
+let closeSettingsLoadBanner = null;
+let settingsRetryTimer = null;
+/** Patches, die während settingsLoadFailed nur im Speicher landen konnten. */
+let pendingSettingsPatch = {};
+const SETTINGS_RETRY_DELAYS_MS = [3000, 10000, 30000];
+
+function showSettingsLoadFailed() {
+  if (!closeSettingsLoadBanner) {
+    logAppError('SETTINGS-LOAD', new Error('settings read failed twice'));
+    closeSettingsLoadBanner = banner(t('msg.settingsLoadFailed'), {
+      kind: 'error',
+      timeout: 0,
+      action: { label: t('common.reload'), onClick: () => location.reload() },
+    });
+  }
+  document.addEventListener('visibilitychange', onSettingsRetryVisibility);
+  scheduleSettingsRetry(0);
+}
+
+function onSettingsRetryVisibility() {
+  if (document.visibilityState === 'visible') retrySettingsLoad();
+}
+
+function scheduleSettingsRetry(attempt) {
+  clearTimeout(settingsRetryTimer);
+  if (attempt >= SETTINGS_RETRY_DELAYS_MS.length) return;
+  settingsRetryTimer = setTimeout(async () => {
+    if (!await retrySettingsLoad()) scheduleSettingsRetry(attempt + 1);
+  }, SETTINGS_RETRY_DELAYS_MS[attempt]);
+}
+
+/** @returns {Promise<boolean>} true, sobald die Einstellungen wieder lesbar waren */
+async function retrySettingsLoad() {
+  if (!settingsLoadFailed) return true;
+  try {
+    // Erst nur prüfen, ob der Zugriff wieder klappt: loadSettings() setzt im
+    // Fehlerfall `settings` auf Defaults zurück und verwürfe damit
+    // Änderungen, die in der Zwischenzeit nur im Speicher stehen.
+    await DB.metaGet(SETTINGS_KEY);
+  } catch {
+    return false;
+  }
+  const unsaved = pendingSettingsPatch;
+  await loadSettings();
+  if (settingsLoadFailed) return false;
+  // Was in der Zwischenzeit bewusst geändert wurde (nur im Speicher, weil
+  // nicht gespeichert werden durfte), jetzt nachtragen statt verwerfen.
+  pendingSettingsPatch = {};
+  if (Object.keys(unsaved).length) await saveSettings(unsaved);
+  settingsRecovered();
+  return true;
+}
+
+function settingsRecovered() {
+  clearTimeout(settingsRetryTimer);
+  document.removeEventListener('visibilitychange', onSettingsRetryVisibility);
+  const wasShowingBanner = !!closeSettingsLoadBanner;
+  closeSettingsLoadBanner?.();
+  closeSettingsLoadBanner = null;
+  applyAccentColor(settings.accentColor);
+  applyTranslations();
+  if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
+  renderVoicePicker();
+  if (currentView === 'settings') renderSettings();
+  if (!wasShowingBanner) return;
+  // Jetzt steht fest, ob es wirklich eine Neuinstallation ist.
+  if (!settings.setupDoneAt) openOnboarding();
+  else checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
+}
+
+async function saveSettings(patch) {
+  if (settingsLoadFailed) {
+    // Der ursprüngliche Lesezugriff in loadSettings() ist gescheitert;
+    // `settings` beruht seitdem auf DEFAULT_SETTINGS. Ein einfaches
+    // { ...settings, ...patch } würde diese Defaults über einen eventuell
+    // noch intakten DB-Datensatz schreiben und ihn damit löschen (LOG-1).
+    // Stattdessen jetzt den echten Stand frisch lesen (Read-Modify-Write)
+    // und nur den angeforderten Patch darauf anwenden.
+    try {
+      const stored = await DB.metaGet(SETTINGS_KEY);
+      settings = { ...DEFAULT_SETTINGS, ...(stored || {}), ...pendingSettingsPatch, ...patch, key: SETTINGS_KEY, type: 'settings' };
+      pendingSettingsPatch = {};
+      settingsLoadFailed = false;
+      // Der Rest des echten Datensatzes (Sprache, Akzentfarbe, Stimmen …)
+      // war bisher nicht angewendet — das holt settingsRecovered() nach.
+      queueMicrotask(() => settingsRecovered());
+    } catch (err) {
+      console.warn('[settings] Datensatz weiterhin nicht lesbar, Patch bleibt nur im Speicher', err);
+      settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+      pendingSettingsPatch = { ...pendingSettingsPatch, ...patch };
+      applySettingsSideEffects(patch);
+      bannerError(t('msg.settingSaveFailed'), 'SETTINGS-SAVE', err);
+      return settings; // nicht schreiben, solange der echte Stand unbekannt ist
+    }
+  } else {
+    settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+  }
+  applySettingsSideEffects(patch);
   try {
     await DB.metaPut(settings);
   } catch (err) {
@@ -1827,6 +2131,12 @@ function showTab(name) {
     else b.removeAttribute('aria-current');
   });
 
+  // Überschrift und Seitentitel je Ansicht — vorher gab es keine h1, und der
+  // Titel blieb immer „BVG"; beim Wechsel hörten Screenreader nichts (U17).
+  const viewName = t(`nav.${name}`);
+  $('#view-heading').textContent = viewName;
+  document.title = `${viewName} – BVG`;
+
   VIEWS[name].render?.();
 }
 
@@ -1963,10 +2273,13 @@ function renderVoicePills(tracks) {
   // Von hinten nach vorne gestapelt: die rechteste Pille liegt obenauf und
   // bleibt lesbar, die davor liegenden picken nur mit einem Farbrand hervor.
   sorted.forEach((t, i) => {
-    const full = t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice);
+    const full = t.voice === 'OTHER' ? t.label : voiceName(t.voice);
     const chip = el('span', {
       class: 'voice-chip',
       title: full,
+      // role=img, damit Screenreader den vollen Namen statt des Kürzels lesen
+      // (aria-label an einem generischen <span> wird oft ignoriert).
+      role: 'img',
       'aria-label': full,
       style: `background:${VOICE_COLOR[t.voice] || VOICE_COLOR.OTHER}; z-index:${i + 1}`,
       text: t.voice === 'OTHER' ? (full || '?').slice(0, 4).toUpperCase() : (VOICE_ICON[t.voice] || full.slice(0, 4).toUpperCase()),
@@ -1992,12 +2305,12 @@ function markIcon(kind) {
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('role', 'img');
   if (kind === 'lyrics') {
-    svg.innerHTML = '<title>Liedtext vorhanden</title><path d="M5 5h14M5 10h14M5 15h9"/>';
+    svg.innerHTML = `<title>${t('songs.markLyrics')}</title>` + '<path d="M5 5h14M5 10h14M5 15h9"/>';
   } else if (kind === 'notes') {
-    svg.innerHTML = '<title>Notiz vorhanden</title>' +
+    svg.innerHTML = `<title>${t('songs.markNotes')}</title>` +
       '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
   } else {
-    svg.innerHTML = '<title>Noten vorhanden</title>' +
+    svg.innerHTML = `<title>${t('songs.markScore')}</title>` +
       '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/>' +
       '<circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/>';
   }
@@ -2023,7 +2336,7 @@ let lastVisibleSongs = [];
 
 // Wie bei renderQueue()/renderPlaylists(): nur der letzte überlappende
 // Aufruf darf die Liste zeichnen.
-let songsRenderToken = 0;
+const songsRenderRuns = latestRuns();
 
 // Woraus die aktuell sichtbare Liste entstanden ist. Stimmt das noch, muss
 // nichts neu gebaut werden — der Wechsel zurück auf den Reiter „Songs" ist
@@ -2058,7 +2371,7 @@ async function createPlaceholderSong(rawTitle) {
 }
 
 async function renderSongs() {
-  const token = ++songsRenderToken;
+  const run = songsRenderRuns.begin();
   const host = $('#song-list-host');
 
   let songs = [];
@@ -2066,14 +2379,14 @@ async function renderSongs() {
     songs = await DB.songsForDisplay();
   } catch (err) {
     console.error(err);
-    if (token !== songsRenderToken) return;
+    if (run.stale) return;
     songsRenderSignature = null;
     host.textContent = '';
     host.append(el('div', { class: 'card' },
       el('p', { class: 'small', text: t('msg.songListFailed') })));
     return;
   }
-  if (token !== songsRenderToken) return;
+  if (run.stale) return;
 
   // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
   if (songs.length) updateBackupReminder();
@@ -2121,7 +2434,7 @@ async function renderSongs() {
       onclick: () => { songFilter = value; renderSongs(); },
     });
 
-    filterbar.append(makeChip('Alle', null), ...collections.map((c) => makeChip(c, c)));
+    filterbar.append(makeChip(t('songs.filterAll'), null), ...collections.map((c) => makeChip(c, c)));
   } else {
     filterbar.hidden = true;
     songFilter = null;
@@ -2163,7 +2476,7 @@ async function renderSongs() {
       },
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `„${rawQuery}" ${t('songs.createPlaceholderSuffix')}` }),
+        el('strong', { text: `${t('common.quoted').replace('{text}', rawQuery)} ${t('songs.createPlaceholderSuffix')}` }),
         el('div', { class: 'small muted', text: t('songs.createPlaceholderHint') }))));
   }
 
@@ -2174,7 +2487,7 @@ async function renderSongs() {
   // Zwei weitere awaits seit dem letzten Abgleich (z.B. Filter-Chip-Klicks
   // ohne Debounce) — ohne erneute Prüfung könnte ein überholter Aufruf hier
   // seine Liste noch zusätzlich anhängen.
-  if (token !== songsRenderToken) return;
+  if (run.stale) return;
 
   const list = el('ul', { class: 'list' });
   for (const song of visible) {
@@ -2196,7 +2509,7 @@ async function renderSongs() {
         },
       },
         el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
-          el('strong', { text: songLabel(song) || 'Ohne Titel' }),
+          el('strong', { text: songLabel(song) || t('songs.untitled') }),
           song.tracks.length
             ? renderVoicePills(song.tracks)
             : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
@@ -2257,7 +2570,7 @@ function renderVoicePicker() {
       class: 'chip chip--voice',
       type: 'button',
       'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
+      text: voiceName(voice),
       onclick: async () => {
         await toggleMyVoice(voice);
         renderVoicePicker();
@@ -2329,11 +2642,11 @@ async function renderStorageManager() {
     const tracksHost = el('div', { class: 'pick-tracks', hidden: true });
     for (const track of song.tracks) {
       tracksHost.append(el('div', { class: 'pick-track' },
-        el('div', { class: 'grow' }, el('div', { text: track.label })),
+        el('div', { class: 'grow' }, el('div', { text: trackName(track) })),
         el('span', { class: 'size', text: fmtBytes(track.size || 0) }),
         el('button', {
-          class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
-          'aria-label': t('storage.deleteVoiceAria').replace('{voice}', track.label).replace('{song}', song.title),
+          class: 'icon-btn', type: 'button', style: 'color: var(--danger-fg)',
+          'aria-label': t('storage.deleteVoiceAria').replace('{voice}', trackName(track)).replace('{song}', song.title),
           onclick: () => deleteTrack(song, track),
         }, (() => {
           const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2358,7 +2671,7 @@ async function renderStorageManager() {
     });
 
     const del = el('button', {
-      class: 'icon-btn', type: 'button', style: 'color: var(--danger)',
+      class: 'icon-btn', type: 'button', style: 'color: var(--danger-fg)',
       'aria-label': t('storage.deleteSongAria').replace('{song}', song.title),
       onclick: () => deleteSong(song),
     });
@@ -2366,7 +2679,7 @@ async function renderStorageManager() {
 
     const rename = el('button', {
       class: 'icon-btn', type: 'button',
-      'aria-label': `${song.title} umbenennen`,
+      'aria-label': t('storage.renameSongAria').replace('{song}', song.title),
       onclick: () => renameSong(song),
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
@@ -2376,7 +2689,7 @@ async function renderStorageManager() {
         el('div', { class: 'grow' },
           el('strong', { text: song.title }),
           el('div', { class: 'small muted',
-            text: `${plural(song.tracks.length, 'Stimme', 'Stimmen')} · ${fmtBytes(bytes)}` })),
+            text: `${tPlural(song.tracks.length, 'count.voiceOne', 'count.voiceMany')} · ${fmtBytes(bytes)}` })),
         rename, del, toggle),
       tracksHost));
   }
@@ -2512,7 +2825,7 @@ async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: t('dlg.deleteVoiceTitle'),
     text: t('dlg.deleteVoiceText')
-      .replace('{voice}', track.label).replace('{song}', song.title)
+      .replace('{voice}', trackName(track)).replace('{song}', song.title)
       .replace('{size}', fmtBytes(track.size || 0)),
     okLabel: t('common.delete'), danger: true,
   });
@@ -2544,13 +2857,11 @@ async function deleteSong(song) {
   });
   if (!ok) return;
 
-  // Erst den Datensatz weg, dann die Dateien (siehe deleteTrack) — sonst
-  // könnte ein Abbruch mittendrin einen Song mit toten Dateiverweisen zurücklassen.
+  // Datensatz und Dateien atomar (siehe DB.deleteMetaAndFiles).
   const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
   await detachSongLinks(song);
-  await DB.metaDelete(song.key);
+  await DB.deleteMetaAndFiles(song.key, keys);
   if (playerSong && playerSong.id === song.id) closePlayer();
-  await DB.fileDelete(keys);
   await refreshAfterDelete();
   banner(t('msg.songDeleted'), { kind: 'ok' });
 }
@@ -2583,21 +2894,41 @@ $('#btn-drop-audio').addEventListener('click', async () => {
     const links = await songLinkRecords();
     for (const song of songs) {
       await detachSongLinks(song, links);
-      await DB.fileDelete([
+      await DB.deleteMetaAndFiles(song.key, [
         ...song.tracks.map((t) => t.fileKey),
         ...(song.scores || []).map((x) => x.fileKey),
       ]);
-      await DB.metaDelete(song.key);
     }
     if (playerSong) closePlayer();
-    banner(`${plural(songs.length, 'Song', 'Songs')} entfernt, ${fmtBytes(bytes)} frei.`, { kind: 'ok' });
+    banner(t('msg.songsRemovedFreed').replace('{songs}', tPlural(songs.length, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(bytes)), { kind: 'ok' });
     await refreshAfterDelete();
   } catch (err) {
     bannerError(t('msg.recordingsDeleteFailed'), 'AUDIO-DROP', err);
   }
 });
 
+/**
+ * Bewertet eine laufende Setliste nach einem Löschen neu. Die Einträge
+ * stammen vom Start der Setliste — ein inzwischen gelöschter Song blieb dort
+ * „abspielbar", playlistAdvance() sprang hin und die Setliste brach mit
+ * „Song nicht mehr vorhanden" ab, statt zum nächsten Titel zu gehen (LOG-8).
+ */
+async function refreshQueueAfterDelete() {
+  if (!playQueue) return;
+  const songs = await DB.metaByType('song').catch(() => null);
+  if (!songs) return;
+  const recordings = await DB.metaByType('recording').catch(() => []);
+  const recsBySong = groupRecordingsBySongId(recordings);
+  for (const item of playQueue.items) {
+    const song = findSongByTitle(songs, item.title);
+    item.id = song ? song.id : null;
+    item.playable = songHasAudio(song, recsBySong);
+  }
+  renderQueue();
+}
+
 async function refreshAfterDelete() {
+  await refreshQueueAfterDelete();
   await renderStorage();
   await renderExportCount();
   await renderStorageManager();
@@ -2715,7 +3046,7 @@ $('#btn-debuglog-export').addEventListener('click', async () => {
 
   let shared = false;
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'BVG Diagnose-Log' }); shared = true; }
+    try { await navigator.share({ files: [file], title: t('settings.about.debugLogShareTitle') }); shared = true; }
     catch (err) { if (err?.name === 'AbortError') return; }
   }
   if (!shared) downloadBlob(new Blob([text], { type: 'text/plain' }), fileName);
@@ -2931,7 +3262,7 @@ function renderAccentPicker() {
     const btn = el('button', {
       class: 'accent-swatch', type: 'button', style: `background:${preset.hex}`,
       'aria-pressed': preset.hex === current ? 'true' : 'false',
-      'aria-label': preset.name,
+      'aria-label': t(`settings.accentName.${preset.id}`),
       onclick: async () => {
         await saveSettings({ accentColor: preset.hex });
         renderAccentPicker();
@@ -3845,14 +4176,27 @@ $('#btn-wipe').addEventListener('click', async () => {
     lastReport = null;
     playQueue = null;
     reminderDismissed = false;
-    banner(t('msg.allDataDeleted'), { kind: 'ok' });
-    await renderSettings();
-    await renderSongs();
-    await renderPlaylists();
+    // Neu laden statt Stück für Stück zurücksetzen: Übe-Programm,
+    // Normalisierungs-Pause, Sprache, Akzentfarbe, Lichtshow-Seed und
+    // Ersteinrichtung stünden sonst bis zum nächsten Start auf dem alten
+    // Stand (LOG-9). Andere offene Tabs laden ebenfalls neu — sonst
+    // schrieben sie ihren alten Einstellungs-Snapshot gleich wieder zurück.
+    try { dataChannel?.postMessage({ type: 'wiped' }); } catch { /* egal */ }
+    try { sessionStorage.setItem(WIPED_FLAG, '1'); } catch { /* z.B. privater Modus */ }
+    location.reload();
   } catch (err) {
     bannerError(t('msg.dataDeleteFailed'), 'DATA-WIPE', err);
   }
 });
+
+const WIPED_FLAG = 'bvg-data-wiped';
+let dataChannel = null;
+try {
+  if ('BroadcastChannel' in window) {
+    dataChannel = new BroadcastChannel('chorapp-data');
+    dataChannel.onmessage = (e) => { if (e.data?.type === 'wiped') location.reload(); };
+  }
+} catch { /* nicht unterstützt */ }
 
 /* ==========================================================================
    AUDIO — Wiedergabe über ein natives <audio>-Element
@@ -5055,8 +5399,7 @@ async function acquireNormalizationMetadata(blob) {
  * null if nothing matched or `mutate` declined.
  */
 async function commitTrackMutation(fileKey, mutate) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+  return withDb((db) => new Promise((resolve, reject) => {
     const t = db.transaction('meta', 'readwrite');
     const store = t.objectStore('meta');
     const idx = store.index('type');
@@ -5075,7 +5418,7 @@ async function commitTrackMutation(fileKey, mutate) {
     t.oncomplete = () => resolve(outcome);
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error || new Error('Transaktion abgebrochen'));
-  }).then((outcome) => { if (outcome) dropSongCache(); return outcome; });
+  })).then((outcome) => { if (outcome) dropSongCache(); return outcome; });
 }
 
 /**
@@ -5507,7 +5850,7 @@ async function clearAllNormalizationResults() {
 function buildNormalizationDetailRow(row) {
   const { song, track, diag } = row;
   const { text, fileInfo } = normalizationDetailText(diag);
-  const context = [song?.title, VOICE_LABEL[track.voice] || track.label || track.voice].filter(Boolean).join(' · ');
+  const context = [song?.title, (VOICE_LABEL[track.voice] && voiceName(track.voice)) || track.label || track.voice].filter(Boolean).join(' · ');
   const children = [
     el('div', { style: 'font-weight:600' }, track.fileName || track.label || track.voice || ''),
   ];
@@ -5714,7 +6057,7 @@ async function processNormalizationJob(job) {
     if (normalizationHasRecord(track)) return { outcome: 'raced', track };
     if (!stillGood()) return { outcome: 'interrupted' };
 
-    normalizationProgress.current = `${song.title || ''} · ${VOICE_LABEL[track.voice] || track.label || track.voice || ''}`;
+    normalizationProgress.current = `${song.title || ''} · ${(VOICE_LABEL[track.voice] && voiceName(track.voice)) || track.label || track.voice || ''}`;
     renderNormalizationProgress();
 
     const rec = await DB.fileGet(job.fileKey).catch((err) => { throw normalizationTagError(err, 'storageError'); });
@@ -6130,8 +6473,24 @@ async function rememberDuration(track, duration, sourceMetadata = null) {
   }
 }
 
+/**
+ * Zählt jede Pause hoch. audioPlay() merkt sich den Stand vor seinem await
+ * und erkennt so eine Pause, die während des (auf iOS teils mehrere hundert
+ * Millisekunden langen) AudioContext-Resumes eintraf — sonst überschrieb es
+ * sie danach mit „spielt" (LOG-4).
+ */
+let audioPauseGeneration = 0;
+
+/**
+ * Startet die Wiedergabe.
+ * @returns {Promise<boolean>} ob tatsächlich abgespielt wird. Aufrufer setzen
+ *   das Play-Symbol nach `Audio.playing` bzw. diesem Ergebnis, nie blind auf
+ *   „spielt" — ein vom System verweigerter Start zeigte sonst „spielt",
+ *   während es still blieb (LOG-3).
+ */
 async function audioPlay() {
-  if (!Audio.ready || !Audio.currentKey) return;
+  if (!Audio.ready || !Audio.currentKey) return false;
+  const pauseGen = audioPauseGeneration;
 
   // Steht die Wiedergabe am Ende, fängt Abspielen wieder von vorn an. Ohne
   // das bleibt das Element am Ende stehen und es passiert schlicht nichts —
@@ -6148,7 +6507,7 @@ async function audioPlay() {
   } catch (err) {
     dlog('audio:play:fail', { name: err?.name });
     bannerError(t('msg.playbackStartFailed'), 'AUDIO-PLAY', err);
-    return;
+    return false;
   }
 
   // Läuft das Element durch die Kanal-Matrix (Variante A), kommt ohne
@@ -6162,7 +6521,15 @@ async function audioPlay() {
     dlog('audio:play:fail', { name: 'ctx-not-running' });
     Audio.el.pause();
     bannerError(t('msg.playbackStartFailed'), 'AUDIO-PLAY', new Error('Der AudioContext lief nicht an.'));
-    return;
+    return false;
+  }
+
+  // Während des Wartens pausiert (Kopfhörer-/Sperrbildschirm-Pause, Anruf,
+  // Songwechsel)? Dann gilt die Pause, nicht dieser ältere Startwunsch.
+  if (pauseGen !== audioPauseGeneration || Audio.el.paused) {
+    dlog('audio:play:superseded', {});
+    if (!Audio.el.paused) Audio.el.pause();
+    return false;
   }
 
   Audio.playing = true;
@@ -6171,6 +6538,7 @@ async function audioPlay() {
   lastPosLog = { wall: performance.now(), pos: Audio.position };
   updateWakeLock();
   updateHdLoadVisibility();
+  return true;
 }
 
 /**
@@ -6187,10 +6555,11 @@ async function audioPlay() {
  */
 async function audioPlayFromControls() {
   if (audioRebuildInFlight) await audioRebuildInFlight.catch(() => {});
-  await audioPlay();
+  return audioPlay();
 }
 
 function audioPause() {
+  audioPauseGeneration++;
   if (!Audio.ready) return;
   Audio.el.pause();
   Audio.playing = false;
@@ -6832,8 +7201,12 @@ function splitLyricsHeader(raw) {
 
   // „Interpret - Titel"; als Trenner gelten Bindestrich, Gedanken- und
   // Halbgeviertstrich, jeweils mit Leerzeichen ringsum, damit Titel wie
-  // „Sing-Sang" nicht zerschnitten werden.
-  const m = head.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+  // „Sing-Sang" nicht zerschnitten werden. Der Regex ist mit `\s+` auf
+  // beiden Seiten quadratisch in der Länge der Kopfzeile (ReDoS, siehe
+  // SEC-FILE-1: eine Kopfzeile mit vielen Leerzeichen und ohne Trenner
+  // friert sonst den Tab minutenlang ein) — ab 300 Zeichen gilt die Zeile
+  // deshalb von vornherein als „kein Interpret", ohne den Regex zu bemühen.
+  const m = head.length <= 300 ? head.match(/^(.+?)\s+[-–—]\s+(.+)$/) : null;
   if (m) return { artist: m[1].trim(), title: m[2].trim(), text: rest };
   return { artist: null, title: head || null, text: rest };
 }
@@ -7054,16 +7427,23 @@ function selectionStats() {
   return { songCount, fileCount, bytes, newSongs, extended, replaced, unchanged };
 }
 
-function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
-
 /**
- * Wie plural(), nur mit Schlüsseln statt fester deutscher Wörter: Singular-
- * und Pluralform kommen aus STRINGS, die Zahl setzt `{n}` ein. Zwei Formen
- * reichen für DE/EN; Polnisch kennt zwar drei, die dritte (2–4) steht aber
- * bisher an keiner Stelle, an der sie hier gebraucht würde.
+ * Mengenangabe aus STRINGS statt fester deutscher Wörter; die Zahl setzt
+ * `{n}` ein. Welche Form gilt, entscheidet Intl.PluralRules der
+ * eingestellten Sprache: gesucht wird `…One`/`…Few`/`…Many`/`…Other` (Basis
+ * ist `oneKey` ohne „One"). Fehlt die passende Form, gilt wie früher `oneKey`
+ * für genau 1 und sonst `manyKey`. So bekommt Polnisch seine eigene Form für
+ * 2–4 („2 utwory", aber „5 utworów"), DE/EN kommen mit One/Many aus.
  */
+const PLURAL_SUFFIX = { one: 'One', few: 'Few', many: 'Many', other: 'Other' };
 function tPlural(n, oneKey, manyKey) {
-  return t(n === 1 ? oneKey : manyKey).replace('{n}', n);
+  let category = null;
+  try { category = new Intl.PluralRules(currentLocale()).select(n); } catch { /* Fallback unten */ }
+  const suffix = PLURAL_SUFFIX[category];
+  const lang = STRINGS[settings?.language] || STRINGS.de;
+  let key = suffix ? oneKey.replace(/One$/, suffix) : null;
+  if (!key || !(key in lang || key in STRINGS.de)) key = n === 1 ? oneKey : manyKey;
+  return t(key).replace('{n}', n);
 }
 
 function updateSheetSummary() {
@@ -7072,8 +7452,8 @@ function updateSheetSummary() {
   const free = info ? Math.max(0, info.quota - info.usage) : null;
 
   sheetSummary.textContent = free === null
-    ? `Auswahl: ${plural(s.songCount, 'Song', 'Songs')}, ${fmtBytes(s.bytes)}`
-    : `Auswahl: ${plural(s.songCount, 'Song', 'Songs')}, ${fmtBytes(s.bytes)} — verfügbar: ${fmtBytes(free)}`;
+    ? t('import.selectionSummary').replace('{songs}', tPlural(s.songCount, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(s.bytes))
+    : t('import.selectionSummaryFree').replace('{songs}', tPlural(s.songCount, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(s.bytes)).replace('{free}', fmtBytes(free));
 
   // Warnung, sobald die Auswahl 60 % des freien Speichers übersteigt.
   const tight = free !== null && free > 0 && s.bytes > free * 0.6;
@@ -7092,16 +7472,16 @@ function updateSheetSummary() {
   }
 
   const parts = [];
-  if (s.newSongs)  parts.push(plural(s.newSongs, 'neuer Song', 'neue Songs'));
-  if (s.extended)  parts.push(`${plural(s.extended, 'Song', 'Songs')} um Stimmen ergänzt`);
-  if (s.replaced)  parts.push(`${plural(s.replaced, 'Aufnahme', 'Aufnahmen')} ersetzt`);
-  if (s.unchanged) parts.push(`${plural(s.unchanged, 'Datei', 'Dateien')} unverändert`);
+  if (s.newSongs)  parts.push(tPlural(s.newSongs, 'count.newSongOne', 'count.newSongMany'));
+  if (s.extended)  parts.push(t('import.planExtended').replace('{songs}', tPlural(s.extended, 'common.songOne', 'common.songMany')));
+  if (s.replaced)  parts.push(t('import.planReplaced').replace('{recordings}', tPlural(s.replaced, 'count.recordingOne', 'count.recordingMany')));
+  if (s.unchanged) parts.push(t('import.planUnchanged').replace('{files}', tPlural(s.unchanged, 'common.fileOne', 'common.fileMany')));
   sheetPlan.textContent = parts.join(' · ');
 
   sheetImport.disabled = s.fileCount === 0;
   sheetImport.textContent = s.fileCount
-    ? `Importieren (${plural(s.fileCount, 'Datei', 'Dateien')})`
-    : 'Nichts ausgewählt';
+    ? t('import.importBtnCount').replace('{files}', tPlural(s.fileCount, 'common.fileOne', 'common.fileMany'))
+    : t('import.nothingSelected');
 }
 
 function iconChevron() {
@@ -7126,8 +7506,8 @@ function renderSheetList() {
     if (group.members.length > 1) {
       const chosen = pick.chosenVersion.get(group.core);
       const head = el('div', { class: 'version-group' },
-        el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn)',
-          text: `${group.members.length} Versionen gefunden — Vorschlag: „${group.suggested.title}" (${plural(countVoices(group.suggested), 'Stimme', 'Stimmen')})` }),
+        el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn-fg)',
+          text: t('import.versionsFound').replace('{count}', group.members.length).replace('{voices}', tPlural(countVoices(group.suggested), 'count.voiceOne', 'count.voiceMany')).replace('{title}', group.suggested.title) }),
         el('div', { class: 'version-row' },
           group.members.map((m) => el('button', {
             class: 'chip', type: 'button',
@@ -7141,7 +7521,7 @@ function renderSheetList() {
           },
             el('span', { text: m.title }),
             el('small', { style: 'display:block; font-weight:500; font-size:0.72rem',
-              text: plural(countVoices(m), 'Stimme', 'Stimmen') })))));
+              text: tPlural(countVoices(m), 'count.voiceOne', 'count.voiceMany') })))));
       sheetBody.append(head);
     }
 
@@ -7154,7 +7534,7 @@ function renderSheetList() {
   // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
   if (pick.notes.length) {
     sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
-      el('h2', { text: 'Hinweise' }),
+      el('h2', { text: t('import.notesTitle') }),
       el('ul', { class: 'steps small muted', style: 'list-style: disc' },
         pick.notes.map((n) => el('li', { text: n })))));
   }
@@ -7186,20 +7566,20 @@ function renderSheetSong(song) {
     for (const track of song.tracks) {
       const cb = el('input', { type: 'checkbox' });
       cb.checked = track.checked;
-      cb.setAttribute('aria-label', t('import.trackAria').replace('{track}', track.label).replace('{song}', song.title));
+      cb.setAttribute('aria-label', t('import.trackAria').replace('{track}', trackName(track)).replace('{song}', song.title));
       cb.addEventListener('change', () => {
         track.checked = cb.checked;
         refreshSongBox();
         updateSheetSummary();
       });
 
-      const info = el('div', { class: 'grow' }, el('div', { text: track.label }));
+      const info = el('div', { class: 'grow' }, el('div', { text: trackName(track) }));
       if (track.status === 'same') {
-        info.append(el('span', { class: 'badge', text: 'bereits vorhanden' }));
+        info.append(el('span', { class: 'badge', text: t('import.alreadyPresent') }));
       } else if (track.status === 'changed') {
         info.append(el('span', { class: 'badge badge--changed', text: t('import.changedBadge') }));
       } else if (song.existing) {
-        info.append(el('span', { class: 'badge badge--new', text: 'neue Stimme' }));
+        info.append(el('span', { class: 'badge badge--new', text: t('import.newVoiceBadge') }));
       }
 
       const row = el('label', { class: 'pick-track' }, cb, info,
@@ -7220,11 +7600,11 @@ function renderSheetSong(song) {
 
     const totalBytes = song.tracks.reduce((sum, t) => sum + t.size, 0);
     const extras = [];
-    if (song.lyricsEntry) extras.push('Text');
-    if (song.pdfEntries.length) extras.push('Noten');
+    if (song.lyricsEntry) extras.push(t('import.extraLyrics'));
+    if (song.pdfEntries.length) extras.push(t('import.extraScore'));
 
     const meta = [
-      plural(song.tracks.length, 'Spur', 'Spuren'),
+      tPlural(song.tracks.length, 'count.trackOne', 'count.trackMany'),
       fmtBytes(totalBytes),
       ...(song.collections.length ? [song.collections.join(', ')] : []),
       ...extras,
@@ -7240,12 +7620,12 @@ function renderSheetSong(song) {
       const neu = song.tracks.filter((t) => t.status === 'new').length;
       const geaendert = song.tracks.filter((t) => t.status === 'changed').length;
       const parts = [];
-      if (neu) parts.push(plural(neu, 'neue Stimme', 'neue Stimmen'));
-      if (geaendert) parts.push(`${plural(geaendert, 'Aufnahme', 'Aufnahmen')} neuer`);
+      if (neu) parts.push(tPlural(neu, 'count.newVoiceOne', 'count.newVoiceMany'));
+      if (geaendert) parts.push(t('import.recordingsNewer').replace('{recordings}', tPlural(geaendert, 'count.recordingOne', 'count.recordingMany')));
 
       titleBlock.append(el('span', {
         class: parts.length ? 'badge badge--new' : 'badge',
-        text: parts.length ? parts.join(' · ') : 'bereits vorhanden',
+        text: parts.length ? parts.join(' · ') : t('import.alreadyPresent'),
       }));
     } else if (song.similar) {
       titleBlock.append(el('span', {
@@ -7268,7 +7648,7 @@ function renderSheetSong(song) {
         attachBox,
         el('span', {
           class: 'small muted', style: 'flex:1',
-          text: `${t('import.attachSimilarPrefix')} „${song.similar.title}" ${t('import.attachSimilarSuffix')}`,
+          text: `${t('import.attachSimilarPrefix')} ${t('common.quoted').replace('{text}', song.similar.title)} ${t('import.attachSimilarSuffix')}`,
         })
       );
     }
@@ -7321,8 +7701,8 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
   };
 
   sheetFound.textContent =
-    `Gefunden: ${plural(songs.length, 'Song', 'Songs')}, ` +
-    `${plural(foundFiles, 'Datei', 'Dateien')}, ${fmtBytes(foundBytes)}`;
+    t('import.foundSummary').replace('{songs}', tPlural(songs.length, 'common.songOne', 'common.songMany'))
+    .replace('{files}', tPlural(foundFiles, 'common.fileOne', 'common.fileMany')).replace('{size}', fmtBytes(foundBytes));
 
   // Ohne eigene Stimme ergibt „Meine Stimmen" keinen Sinn.
   if (!settings.myVoices.length && pick.preset === 'mine') pick.preset = 'full';
@@ -7351,7 +7731,7 @@ async function ensureMyVoice() {
     const grid = el('div', { class: 'chip-grid' });
     for (const v of MY_VOICE_CHOICES) {
       const btn = el('button', {
-        class: 'chip chip--voice', type: 'button', text: VOICE_LABEL[v], 'aria-pressed': 'false',
+        class: 'chip chip--voice', type: 'button', text: voiceName(v), 'aria-pressed': 'false',
         onclick: () => {
           if (picked.has(v)) picked.delete(v); else picked.add(v);
           btn.setAttribute('aria-pressed', picked.has(v) ? 'true' : 'false');
@@ -7367,12 +7747,12 @@ async function ensureMyVoice() {
         onclick: () => { layer.remove(); resolve(null); },
       }),
       el('button', {
-        class: 'btn btn--primary', type: 'button', text: 'Fertig',
+        class: 'btn btn--primary', type: 'button', text: t('common.done'),
         onclick: () => { layer.remove(); resolve(MY_VOICE_CHOICES.filter((v) => picked.has(v))); },
       })));
 
     const layer = el('div', { class: 'overlay' }, host);
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => { layer.remove(); resolve(null); } });
   });
 
   if (chosen?.length) await saveSettings({ myVoices: chosen, defaultImportScope: 'mine' });
@@ -7446,6 +7826,7 @@ const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
 // Kompressionsverhältnis), bleibt als ZIP_MAX_* daneben stehen.
 const IMPORT_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
 const IMPORT_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // je Datei, unkomprimiert
+const LYRICS_MAX_BYTES = 1024 * 1024; // Liedtext-Datei im Archiv (echte Texte haben wenige KB)
 const IMPORT_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // über alle Dateien
 const IMPORT_MAX_PATH_LENGTH = 512;               // Zeichen je Pfad/Dateiname
 const IMPORT_MAX_SONGS  = 5000;  // Obergrenze für runImport(), unabhängig von der Quelle (ZIP/Ordner)
@@ -7479,10 +7860,8 @@ async function startZipImport(file) {
   dlog('import:zip:begin', { bytes: file.size });
   const bigWithoutWakeLock = file.size > LARGE_IMPORT_BYTES && !('wakeLock' in navigator);
   const close = banner(bigWithoutWakeLock
-    ? `Große Datei (${fmtBytes(file.size)}) wird gelesen — das kann dauern. `
-      + 'Bitte den Bildschirm eingeschaltet lassen, dieser Browser kann das '
-      + 'nicht automatisch übernehmen.'
-    : 'ZIP-Datei wird gelesen …', { timeout: 0 });
+    ? t('import.zipReadingLarge').replace('{size}', fmtBytes(file.size))
+    : t('import.zipReading'), { timeout: 0 });
 
   // Erst sicher malen lassen, bevor die erste (möglicherweise lange
   // blockierende) Leseoperation beginnt — sonst bleibt die Meldung im
@@ -7501,7 +7880,7 @@ async function startZipImport(file) {
     const skipped = [];
     for (const e of entries) {
       if (e.method === 0 || (e.method === 8 && canInflate)) usable.push(e);
-      else skipped.push({ path: e.path, reason: 'unbekanntes Komprimierungsverfahren' });
+      else skipped.push({ path: e.path, reason: t('import.skipUnknownCompression') });
     }
 
     const zipTitle = cleanFolderTitle(file.name.replace(/\.zip$/i, ''));
@@ -7542,7 +7921,7 @@ async function startZipImport(file) {
  */
 function validateFolderImportSelection(fileList) {
   if (fileList.length > IMPORT_MAX_ENTRIES) {
-    return 'Dieser Ordner enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.';
+    return t('import.folderTooManyFiles');
   }
 
   // Summe der Dateigrößen sicher aufbauen: Number.isSafeInteger fängt sowohl
@@ -7553,17 +7932,17 @@ function validateFolderImportSelection(fileList) {
   for (const f of fileList) {
     const path = f.webkitRelativePath || f.name || '';
     if (path.length > IMPORT_MAX_PATH_LENGTH) {
-      return `„${path.slice(0, 60)}…" hat einen zu langen Pfad.`;
+      return t('import.folderPathTooLong').replace('{path}', path.slice(0, 60));
     }
     if (!Number.isSafeInteger(f.size) || f.size < 0) {
-      return `„${path}" hat eine unplausible Größenangabe.`;
+      return t('import.folderSizeInvalid').replace('{path}', path);
     }
     if (f.size > IMPORT_MAX_ENTRY_BYTES) {
-      return `„${path}" ist mit ${fmtBytes(f.size)} größer als erlaubt (${fmtBytes(IMPORT_MAX_ENTRY_BYTES)}).`;
+      return t('import.folderFileTooLarge').replace('{size}', fmtBytes(f.size)).replace('{limit}', fmtBytes(IMPORT_MAX_ENTRY_BYTES)).replace('{path}', path);
     }
     totalBytes += f.size;
     if (!Number.isSafeInteger(totalBytes) || totalBytes > IMPORT_MAX_TOTAL_BYTES) {
-      return `Dieser Ordner ist zusammen zu groß (über ${fmtBytes(IMPORT_MAX_TOTAL_BYTES)}).`;
+      return t('import.folderTooLarge').replace('{limit}', fmtBytes(IMPORT_MAX_TOTAL_BYTES));
     }
   }
   return null;
@@ -7653,12 +8032,22 @@ async function flushImportBatch(batch) {
   const obsolete = batch.obsolete;
   const bytes = batch.bytes;
   const start = performance.now();
-  await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
-    for (const rec of files) fileStore.put(rec);
-    for (const song of songs) metaStore.put(song);
-    // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
-    for (const key of obsolete) fileStore.delete(key);
-  });
+  try {
+    await tx(['files', 'meta'], 'readwrite', (fileStore, metaStore) => {
+      for (const rec of files) fileStore.put(rec);
+      for (const song of songs) metaStore.put(song);
+      // Erst nach dem Songdatensatz löschen: der zeigt jetzt auf die neuen Keys.
+      for (const key of obsolete) fileStore.delete(key);
+    });
+  } catch (err) {
+    // Markiert, damit die Einzeldatei-catch-Blöcke in runImport() einen
+    // Schreibfehler nicht der gerade gelesenen Datei anlasten und einfach
+    // weitermachen — der Stapel wüchse dann mit jeder Datei weiter im
+    // Speicher, bis der Tab abstürzt (LOG-6). Ein Schreibfehler bricht den
+    // Import ab; runImport() versucht danach einmal, den Rest zu sichern.
+    if (err && typeof err === 'object') err.importFlush = true;
+    throw err;
+  }
   // Erst nach erfolgreichem Commit leeren: schlägt tx() fehl (nicht nur bei
   // vollem Speicher — z.B. auch AbortError/UnknownError einer wackligen
   // Verbindung), greift runImport()s Rettungsversuch „flushImportBatch(batch)
@@ -7760,8 +8149,16 @@ async function runImport() {
 
   try {
     for (const scan of chosenSongs) {
+      // Den vorhandenen Song frisch lesen statt den Stand vom Öffnen der
+      // Auswahlmaske zu nehmen: zwischenzeitliche Änderungen (Normalisierung,
+      // Dauer, Umbenennen/Löschen in einem anderen Tab) würden sonst mit dem
+      // alten Schnappschuss überschrieben (LOG-11). Wurde der Song inzwischen
+      // gelöscht, wird er — wie gewählt — neu angelegt.
+      const existing = scan.existing
+        ? await DB.metaGet(scan.existing.key).catch(() => scan.existing)
+        : null;
       // Vorhandenen Song erweitern statt einen zweiten anzulegen (4.6).
-      const song = scan.existing ? { ...scan.existing, tracks: [...scan.existing.tracks] } : {
+      const song = existing ? { ...existing, tracks: [...(existing.tracks || [])] } : {
         key: `song:${hashId(scan.normTitle)}`,
         type: 'song',
         id: hashId(scan.normTitle),
@@ -7804,7 +8201,7 @@ async function runImport() {
           // der restliche Import läuft weiter, genau wie bei jedem anderen
           // Lesefehler hier.
           if (!(await validateImportedMediaBlob(blob, 'audio'))) {
-            report.failed.push(`${track.fileName} (Inhalt passt nicht zu einer Audiodatei)`);
+            report.failed.push(t('import.failedNotAudio').replace('{file}', track.fileName));
           } else {
             const fileKey = newFileKey();
             batch.files.push(await fileRecord(fileKey, blob, track.fileName));
@@ -7853,10 +8250,10 @@ async function runImport() {
             }
           }
         } catch (err) {
-          if (err && err.name === 'QuotaExceededError') throw err;
+          if (err && (err.name === 'QuotaExceededError' || err.importFlush)) throw err;
           console.error('[import]', track.fileName, err);
           dlog('import:file:fail', { index: done, bytes: track.size || 0, name: err?.name, message: err?.message });
-          report.failed.push(`${track.fileName} (nicht lesbar)`);
+          report.failed.push(t('import.failedUnreadable').replace('{file}', track.fileName));
         }
         done++;
         doneBytes += track.size || 0;
@@ -7864,7 +8261,12 @@ async function runImport() {
       }
 
       // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
-      if (scan.lyricsEntry) {
+      if (scan.lyricsEntry && Number(scan.lyricsEntry.size) > LYRICS_MAX_BYTES) {
+        // Ein Liedtext liegt im Songdatensatz und wird bei jedem Start
+        // mitgeladen — ein riesiger (präparierter) Text machte die App
+        // dauerhaft langsam (SEC-FILE-4).
+        report.failed.push(t('import.failedTextTooLarge').replace('{file}', scan.lyricsEntry.name));
+      } else if (scan.lyricsEntry) {
         try {
           const raw = await readTextBlob(await entryBlob(scan.lyricsEntry));
           const { artist, text } = splitLyricsHeader(raw);
@@ -7873,7 +8275,7 @@ async function runImport() {
           if (artist) song.artist = artist;
         } catch (err) {
           console.warn('[import] Liedtext', err);
-          report.failed.push(`${scan.lyricsEntry.name} (Text nicht lesbar)`);
+          report.failed.push(t('import.failedTextUnreadable').replace('{file}', scan.lyricsEntry.name));
         }
       }
 
@@ -7885,7 +8287,7 @@ async function runImport() {
           // PDF-Kennung — bevor die Datei später als „application/pdf" in
           // ein iframe/einen neuen Tab wandert (siehe loadScorePreviews()).
           if (!(await validateImportedMediaBlob(blob, 'pdf'))) {
-            report.failed.push(`${pdf.name} (Inhalt passt nicht zu einer PDF-Datei)`);
+            report.failed.push(t('import.failedNotPdf').replace('{file}', pdf.name));
           } else {
             const fileKey = newFileKey();
             // Vollständig lesen, bevor Referenzen oder Löschungen vorgemerkt
@@ -7908,9 +8310,9 @@ async function runImport() {
             }
           }
         } catch (err) {
-          if (err && err.name === 'QuotaExceededError') throw err;
+          if (err && (err.name === 'QuotaExceededError' || err.importFlush)) throw err;
           console.warn('[import] Noten', err);
-          report.failed.push(`${pdf.name} (nicht lesbar)`);
+          report.failed.push(t('import.failedUnreadable').replace('{file}', pdf.name));
         }
       }
 
@@ -7940,12 +8342,19 @@ async function runImport() {
   } catch (err) {
     console.error('[import] abgebrochen', err);
     dlog('import:run:abort', { name: err?.name, message: err?.message, songsImported: report.songsImported, done, doneBytes });
-    if (err && err.name === 'QuotaExceededError') {
+    // Safari meldet vollen Speicher teils nur als UnknownError — dann per
+    // Schätzung gegenprüfen, damit der Bericht die richtige Ursache nennt.
+    let quotaLike = err && err.name === 'QuotaExceededError';
+    if (!quotaLike && err?.importFlush && navigator.storage?.estimate) {
+      const est = await navigator.storage.estimate().catch(() => null);
+      if (est?.quota && est.usage / est.quota > 0.9) quotaLike = true;
+    }
+    if (quotaLike) {
       report.quotaHit = true;
       report.quotaAt = report.songsImported;
       report.quotaTotal = chosenSongs.length;
     } else {
-      report.failed.push('Der Import wurde vorzeitig abgebrochen.');
+      report.failed.push(t('import.abortedEarly'));
     }
     // Was schon ausgepackt ist, soll nicht verloren gehen. Bei vollem Speicher
     // scheitert auch das — dann bleibt eben der Stand davor.
@@ -8011,10 +8420,10 @@ async function runImport() {
       .replace('{songs}', tPlural(report.songsImported, 'common.songOne', 'common.songMany'))
       .replace('{files}', tPlural(report.failed.length, 'common.fileOne', 'common.fileMany')), {
       kind: 'error',
-      action: { label: 'Bericht', onClick: () => showView('import') },
+      action: { label: t('import.reportAction'), onClick: () => showView('import') },
     });
   } else {
-    banner(`${plural(report.songsImported, 'Song', 'Songs')} importiert.`, { kind: 'ok' });
+    banner(t('import.doneOk').replace('{songs}', tPlural(report.songsImported, 'common.songOne', 'common.songMany')), { kind: 'ok' });
   }
 
   dlog('import:run:end', {
@@ -8028,6 +8437,47 @@ async function runImport() {
 }
 
 /**
+ * Vollbild-Unteransichten (Import, Aufnahme, Lichtshow) liegen als eigene
+ * Sections über Einstellungen und Navigation. Ohne das hier blieb der Fokus
+ * unsichtbar auf dem Knopf darunter stehen, Tab lief erst durch die
+ * verdeckten Einstellungen, und Esc tat nichts (U3). Jetzt: Hintergrund
+ * inert, Fokus auf den Zurück-Pfeil, beim Schließen zurück zum Auslöser,
+ * Esc wirkt wie der Zurück-Pfeil.
+ */
+const subviewStack = [];
+
+function enterSubview(section, backBtn) {
+  if (subviewStack.some((v) => v.section === section)) return;
+  const restore = document.activeElement;
+  const inerted = [];
+  for (const node of [$('#main'), $('#nav'), ...document.querySelectorAll('section.player')]) {
+    if (!node || node === section || node.hidden || node.inert) continue;
+    node.inert = true;
+    inerted.push(node);
+  }
+  subviewStack.push({ section, backBtn, restore, inerted });
+  backBtn?.focus();
+}
+
+function leaveSubview(section) {
+  const idx = subviewStack.findIndex((v) => v.section === section);
+  if (idx < 0) return;
+  const [entry] = subviewStack.splice(idx, 1);
+  for (const node of entry.inerted) node.inert = false;
+  if (entry.restore && document.body.contains(entry.restore) && !entry.restore.closest('[inert]')) {
+    entry.restore.focus?.();
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  // Modale Ebenen (Dialoge, Lichtshow-Bühne) haben Vorrang — die behandelt
+  // onModalKeydown.
+  if (e.key !== 'Escape' || modalStack.length || !subviewStack.length) return;
+  e.preventDefault();
+  subviewStack[subviewStack.length - 1].backBtn?.click();
+});
+
+/**
  * Import-Vollbildansicht: die einzige Ansicht neben der Setlisten-Detailseite,
  * die noch einen echten Zurück-Pfeil braucht — sie liegt über allen vier
  * Hauptreitern und wird nur über den Knopf in den Einstellungen erreicht.
@@ -8039,11 +8489,13 @@ function openImportView() {
   $('#import-view').hidden = false;
   renderImportReport();
   renderImportStats();
+  enterSubview($('#import-view'), $('#import-back'));
 }
 
 function closeImportView() {
   importOpen = false;
   $('#import-view').hidden = true;
+  leaveSubview($('#import-view'));
 }
 
 /**
@@ -8062,6 +8514,7 @@ let recorderCloseConfirmed = false;
 function openRecorderView() {
   recorderOpen = true;
   $('#recorder-view').hidden = false;
+  enterSubview($('#recorder-view'), $('#recorder-back'));
   // Hier fehlt der Songkontext (keine Stimme, kein Anker) — ein im
   // Hintergrund weiterlaufender Song oder REC-Mitsing-Track ergibt darum
   // keinen Sinn und würde sich zudem ins Mikrofon mischen.
@@ -8084,8 +8537,8 @@ function abandonRecorderSession() {
   renderPendingTake();
   if (!recorderCloseConfirmed && (wasRecording || hadTake)) {
     banner(wasRecording
-      ? 'REC abgebrochen, weil die Aufnahme-Ansicht verlassen wurde.'
-      : 'Nicht gespeicherter REC wurde verworfen, weil die Aufnahme-Ansicht verlassen wurde.');
+      ? t('rec.abortedLeftView')
+      : t('rec.discardedLeftView'));
   }
   recorderCloseConfirmed = false;
 }
@@ -8093,6 +8546,7 @@ function abandonRecorderSession() {
 function closeRecorderView() {
   recorderOpen = false;
   $('#recorder-view').hidden = true;
+  leaveSubview($('#recorder-view'));
   abandonRecorderSession();
   // Nichts (mehr) offen hier — zurück auf den Normalzustand, damit ein
   // späterer Blick auf recHost nicht die geschlossene Ansicht meint.
@@ -8104,8 +8558,8 @@ function closeRecorderView() {
 async function requestCloseRecorderView() {
   if (recHost === 'recorder' && (pendingTake || (recMediaRecorder && recMediaRecorder.state !== 'inactive'))) {
     const ok = await confirmDialog({
-      title: 'Aufnahme verlassen?', text: t('msg.recDiscarded'),
-      okLabel: 'Verlassen', danger: true,
+      title: t('rec.leaveTitle'), text: t('msg.recDiscarded'),
+      okLabel: t('common.leave'), danger: true,
     });
     if (!ok) return;
     recorderCloseConfirmed = true;
@@ -8139,7 +8593,7 @@ function renderLightshowVoiceLine() {
   const voice = lightshowActiveVoice();
   $('#lightshow-novoice-hint').hidden = !!voice;
   $('#lightshow-voice-dot').style.setProperty('--lightshow-voice-c', lightshowVoiceColor(voice));
-  $('#lightshow-voice-text').textContent = voice ? `${t('lightshow.voicePrefix')} ${VOICE_LABEL[voice]}` : '';
+  $('#lightshow-voice-text').textContent = voice ? `${t('lightshow.voicePrefix')} ${voiceName(voice)}` : '';
 }
 
 function renderLightshowVoicePicker() {
@@ -8150,7 +8604,7 @@ function renderLightshowVoicePicker() {
       class: 'chip chip--voice',
       type: 'button',
       'aria-pressed': lightshowActiveVoice() === voice ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
+      text: voiceName(voice),
       onclick: async () => {
         // Nur für die Show überschreiben — wer zwei Stimmen singt oder die
         // Reihe wechselt, soll dafür nicht die Import-Einstellung anfassen.
@@ -8376,13 +8830,15 @@ async function openLightshowView() {
   $('#lightshow-rehearsal-toggle').setAttribute('aria-checked', 'false');
   $('#lightshow-view').hidden = false;
   renderLightshowView();
+  enterSubview($('#lightshow-view'), $('#lightshow-back'));
 }
 
 function closeLightshowView() {
   lightshowOpen = false;
   stopLightshowPreviews();
-  $('#lightshow-view').hidden = true;
   if (lightshowStageOpen) closeLightshowStage();
+  $('#lightshow-view').hidden = true;
+  leaveSubview($('#lightshow-view'));
 }
 
 $('#btn-open-lightshow').addEventListener('click', () => navigate('#lightshow'));
@@ -8444,7 +8900,10 @@ function lightshowStageStep() {
   // das hier gleichbedeutend mit `wall % cycleMs` — das ist der eigentliche
   // Punkt der ganzen Konstruktion: zwei Geräte mit derselben Uhr zeigen
   // zwangsläufig dasselbe, ganz ohne Nachricht zwischen ihnen.
-  const tMs = (wall - lightshowStartWall) % lightshowStageCycleMs;
+  // Positiver Rest: JS-% liefert bei negativem Zähler (Uhr zurückgestellt,
+  // z.B. nach dem Zurückkehren) einen negativen Wert — alle Shows zeigten
+  // dann Schwarz, bis die Zeit aufgeholt war (LOG-12).
+  const tMs = (((wall - lightshowStartWall) % lightshowStageCycleMs) + lightshowStageCycleMs) % lightshowStageCycleMs;
   const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice, settings.lightshowSeed);
   if (bg !== lightshowLastBg) { stage.style.backgroundColor = bg; lightshowLastBg = bg; }
 }
@@ -8520,6 +8979,7 @@ async function closeLightshowStage() {
   if (document.fullscreenElement === stage) {
     try { await document.exitFullscreen(); } catch { /* schon zu */ }
   }
+  restoreLostFocus($('#lightshow-back'));
 }
 
 $('#lightshow-close').addEventListener('click', () => closeLightshowStage());
@@ -8703,7 +9163,7 @@ function renderImportReport() {
 
   if (r.failed.length) {
     card.append(
-      el('p', { class: 'small', style: 'margin:12px 0 4px; color: var(--warn)',
+      el('p', { class: 'small', style: 'margin:12px 0 4px; color: var(--warn-fg)',
                 text: t('import.skippedFiles')
                   .replace('{files}', tPlural(r.failed.length, 'common.fileOne', 'common.fileMany')) }),
       el('ul', { class: 'steps small muted', style: 'list-style: disc' },
@@ -8792,7 +9252,7 @@ function offerUpdate(worker) {
     kind: 'info',
     timeout: 0,
     action: {
-      label: 'Aktualisieren',
+      label: t('common.update'),
       onClick: () => worker.postMessage({ type: 'SKIP_WAITING' }),
     },
   });
@@ -8926,6 +9386,16 @@ async function forceUpdateNow() {
   }
 }
 $('#btn-force-update').addEventListener('click', forceUpdateNow);
+$('#btn-rebuild-offline').addEventListener('click', async () => {
+  const ok = await confirmDialog({
+    title: t('settings.about.rebuildOfflineTitle'),
+    text: t('settings.about.rebuildOfflineText'),
+    okLabel: t('settings.about.rebuildOffline'),
+  });
+  // Dieselbe Funktion wie der Knopf in #boot-error (boot-guard.js), damit
+  // es genau einen Weg gibt, der auch bei kaputtem app.js funktioniert.
+  if (ok) window.chorResetOfflineCopy?.();
+});
 
 /* ==========================================================================
    PLAYER — Oberfläche
@@ -9004,12 +9474,12 @@ function bestRecordingForSong(recordings) {
   if (!recordings || !recordings.length) return null;
   const newestOf = (voice) => recordings
     .filter((r) => r.voice === voice)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null;
   for (const v of [settings.lastVoice, ...settings.myVoices]) {
     const rec = v ? newestOf(v) : null;
     if (rec) return rec;
   }
-  return recordings.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return recordings.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
 }
 
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
@@ -9027,9 +9497,9 @@ function renderVoiceSelect() {
   // Stimme klingt. Lädt eine Spur gerade oder ist sie unspielbar, steht das
   // knapp hinter dem Namen.
   for (const track of playerSong.tracks) {
-    let label = track.label;
-    if (track.broken) label += ' — nicht abspielbar';
-    else if (Audio.loading.has(track.fileKey)) label += ' — lädt …';
+    let label = trackName(track);
+    if (track.broken) label += t('player.voiceBrokenSuffix');
+    else if (Audio.loading.has(track.fileKey)) label += t('player.voiceLoadingSuffix');
     sel.append(el('option', { value: track.fileKey, text: label, disabled: track.broken || null }));
   }
   sel.value = playerVoice || '';
@@ -9104,7 +9574,7 @@ function markBroken(track, err) {
 
 /** Name und Text der Ausnahme — auf dem Handy gibt es keine Konsole. */
 function errText(err) {
-  if (!err) return 'unbekannter Fehler';
+  if (!err) return t('msg.unknownError');
   const name = err.name && err.name !== 'Error' ? `${err.name}: ` : '';
   return `${name}${err.message || String(err)}`;
 }
@@ -9128,7 +9598,7 @@ function showBrokenNotice(track) {
     brokenNotice = { songId: song.id, labels: [], reasons: new Set(), close: null };
   }
   const n = brokenNotice;
-  if (!n.labels.includes(track.label)) n.labels.push(track.label);
+  if (!n.labels.includes(trackName(track))) n.labels.push(trackName(track));
   n.reasons.add(track.brokenReason);
   n.close?.();
 
@@ -9138,15 +9608,13 @@ function showBrokenNotice(track) {
   // ist. Dann hilft nur ein neuer Import — also gleich den Weg dorthin zeigen.
   const allBroken = song.tracks.every((t) => t.broken);
   const text = allBroken
-    ? `Keine Stimme von „${song.title}" lässt sich abspielen (${reason}). `
-      + 'Die Aufnahmen sind auf diesem Gerät nicht mehr lesbar — bitte neu importieren.'
-    : `${n.labels.map((l) => `„${l}"`).join(', ')} `
-      + `${n.labels.length === 1 ? 'lässt sich' : 'lassen sich'} nicht abspielen (${reason}). `
-      + 'Die übrigen Stimmen funktionieren.';
+    ? t('player.brokenAll').replace('{song}', song.title).replace('{reason}', reason)
+    : t(n.labels.length === 1 ? 'player.brokenOne' : 'player.brokenMany').replace('{reason}', reason)
+      .replace('{voices}', n.labels.map((l) => t('common.quoted').replace('{text}', l)).join(', '));
 
   n.close = banner(text, {
     kind: 'error',
-    action: allBroken ? { label: 'Reparieren', onClick: () => repairBrokenSong(song) } : null,
+    action: allBroken ? { label: t('player.repair'), onClick: () => repairBrokenSong(song) } : null,
   });
 }
 
@@ -9308,13 +9776,22 @@ async function openPlayer(songId) {
   // am Ende dem falschen Lied zugeordnet werden. Läuft die Aufnahme gerade im
   // allgemeinen Recorder (recHost 'recorder'), gehört sie nicht zu diesem
   // Songwechsel und bleibt unangetastet.
-  if (recHost === 'player') {
+  // Früher wurde beides verworfen — ein ganzer Durchlauf Mitsingen war dann
+  // weg (U1). Jetzt landet er beim bisherigen Song, samt Hinweis.
+  if (recHost === 'player' && playerSong) {
+    const oldSong = playerSong;
+    const nameHint = takeDraft?.name?.trim() || `REC ${songRecordings.length + 1}`;
+    const voice = takeDraft?.voice ?? null;
     if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
-      discardActiveRecording();
-      banner(t('msg.recCancelledSongChange'));
-    } else if (pendingTake) {
-      banner(t('msg.recDiscardedSongChange'));
+      recAutoSaveTarget = { song: oldSong, name: nameHint, voice };
+      stopRecording();
+    } else if (pendingTake && !takeSaveInProgress) {
+      autoSaveTake(pendingTake, { song: oldSong, name: nameHint, voice });
     }
+    pendingTake = null;
+    renderPendingTake();
+  } else if (recHost === 'player') {
+    if (recMediaRecorder && recMediaRecorder.state !== 'inactive') discardActiveRecording();
     pendingTake = null;
     renderPendingTake();
   }
@@ -9351,7 +9828,10 @@ async function openPlayer(songId) {
   renderRepeatMode();
   renderShuffleMode();
   renderVoiceSelect();
-  setPlayerTab(settings.defaultPlayerTab || 'loops');
+  // Wer z.B. in einer Setliste den Liedtext mitliest, soll nach dem
+  // Weiterschalten nicht jedes Mal neu auf „Liedtext" tippen müssen (U20).
+  // Die Einstellung „Reiter beim Öffnen" gilt bis zur ersten eigenen Wahl.
+  setPlayerTab(userPlayerTab || settings.defaultPlayerTab || 'loops');
   renderPlayerExtras();
   loadSongLoops();
   loadSongRecordings();
@@ -9398,7 +9878,7 @@ async function openPlayer(songId) {
   Audio.onEnded = onPlaybackEnded;
   Audio.onLoopWrap = () => { if (routine?.scope === 'loops' && routine.targetId === playerSong?.id) routineAdvance(); };
   Audio.onPreviewBoundStop = () => {
-    if (routine?.scope === 'rec' && audioPreview?.tag?.savedId) { routineAdvance(); return; }
+    if (routine?.scope === 'rec' && routine.targetId === playerSong?.id && audioPreview?.tag?.savedId) { routineAdvance(); return; }
     // Ein zugeschnittenes REC, das den Song vertritt, endet am Auswahlende
     // statt über 'ended' — sonst bliebe die Setliste genau dort stehen.
     if (audioPreview?.tag?.asSong) onPlaybackEnded();
@@ -9409,6 +9889,12 @@ async function openPlayer(songId) {
   // bricht das Programm ab (siehe Auftrag „Trainingsroutinen" 5.1). Tempo und
   // Stimme bleiben bewusst stehen, wie sie gerade sind.
   if (routine?.scope === 'setlist' && !(playQueue && routine.targetId === playQueue.id)) {
+    routineStop();
+  }
+  // Loops-/REC-Programme gehören zu genau einem Song. Ein Songwechsel läuft
+  // nicht über closePlayer() (das sie beendet), also hier: sonst lief das
+  // Programm mit den Loops bzw. Aufnahmen des *neuen* Songs weiter (LOG-2).
+  if (routine && routine.scope !== 'setlist' && routine.targetId !== song.id) {
     routineStop();
   }
 
@@ -9467,12 +9953,14 @@ async function openPlayer(songId) {
   if (pendingAutoPlay) {
     pendingAutoPlay = false;
     await audioPlay();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   }
 
   showReplacedNotice(song);
   showLengthNotice(song);
   updateMediaSession();
+  // Der angetippte Listeneintrag ist jetzt ausgeblendet — Fokus auf den Titel.
+  restoreLostFocus($('#player-title'));
 }
 
 /**
@@ -9525,7 +10013,7 @@ function showReplacedNotice(song) {
       el('p', { style: 'margin:0 0 10px',
         text: t('msg.recordingReplaced').replace('{diff}', diff).replace('{direction}', longer) }),
       el('button', {
-        class: 'btn', type: 'button', text: 'Verstanden',
+        class: 'btn', type: 'button', text: t('common.understood'),
         onclick: async () => {
           box.hidden = true;
           delete song.replacedNotice;
@@ -9567,11 +10055,11 @@ function songLabel(song) {
 // Aufruf die Liste zeichnen — sonst hängt eine überholte, verzögert
 // eintreffende Antwort ihre Einträge hinter die schon fertige Liste
 // („1, 2, 3, 1, 2, 3").
-let queueRenderToken = 0;
+const queueRenderRuns = latestRuns();
 let queueExpanded = false;
 
 async function renderQueue() {
-  const token = ++queueRenderToken;
+  const run = queueRenderRuns.begin();
   const block = $('#queue-block');
   const host = $('#queue-list');
 
@@ -9589,7 +10077,7 @@ async function renderQueue() {
   $('#btn-queue-edit').hidden = !playQueue.id;
 
   const songs = await DB.metaByType('song').catch(() => []);
-  if (token !== queueRenderToken) return; // eine neuere Anzeige läuft schon
+  if (run.stale) return; // eine neuere Anzeige läuft schon
   host.textContent = '';
   const byId = new Map(songs.map((s) => [s.id, s]));
 
@@ -9603,7 +10091,7 @@ async function renderQueue() {
     host.append(el('button', {
       class: 'queue-more', type: 'button',
       onclick: () => { queueExpanded = true; renderQueue(); },
-    }, `⋯ ${plural(playQueue.index, 'Titel', 'Titel')} davor`));
+    }, tPlural(playQueue.index, 'player.queueBeforeOne', 'player.queueBeforeMany')));
   }
 
   for (const index of rows) {
@@ -9650,13 +10138,13 @@ async function renderQueue() {
     host.append(el('button', {
       class: 'queue-more', type: 'button',
       onclick: () => { queueExpanded = true; renderQueue(); },
-    }, `⋯ ${plural(restAfter, 'Titel', 'Titel')} danach`));
+    }, tPlural(restAfter, 'player.queueAfterOne', 'player.queueAfterMany')));
   }
 
   if (queueExpanded) {
     host.append(el('button', {
       class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
-      text: 'Weniger anzeigen',
+      text: t('player.queueShowLess'),
       onclick: () => { queueExpanded = false; renderQueue(); },
     }));
   }
@@ -9699,13 +10187,13 @@ function onPlaybackEnded() {
     // vorn beginnen statt die Vorschau zu beenden.
     if (recordingLoopId && audioPreview.tag?.savedId === recordingLoopId && Audio.loop) {
       updateSeekUI(audioSeek(Audio.loop.start));
-      audioPlay().then(() => setPlayIcon(true));
+      audioPlay().then(() => setPlayIcon(Audio.playing));
       return;
     }
     // Ein REC-Programm schaltet selbst weiter (siehe 5.4 der Anweisung) — vor
     // dem sonst hier folgenden Beenden der Vorschau, sonst schaltet eine
     // laufende Routine nie zur nächsten Aufnahme weiter.
-    if (routine?.scope === 'rec' && audioPreview.tag?.savedId) {
+    if (routine?.scope === 'rec' && routine.targetId === playerSong?.id && audioPreview.tag?.savedId) {
       routineAdvance();
       return;
     }
@@ -9730,6 +10218,18 @@ function onPlaybackEnded() {
   setPlayIcon(false);
   if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
 
+  // Wer zum Song mitsingt und aufnimmt, will am Songende die Aufnahme
+  // anhören und speichern — nicht zum nächsten Lied springen (U1). Also:
+  // Aufnahme anhalten, Take-Karte zeigen, nicht weiterschalten. „Song
+  // wiederholen" läuft dagegen wie gewohnt weiter (mehrere Durchläufe).
+  const recordingHere = recHost === 'player' && recMediaRecorder && recMediaRecorder.state !== 'inactive';
+  if (recordingHere && settings.repeatMode !== 'song') {
+    updateSeekUI(Audio.duration);
+    stopRecording();
+    banner(t('msg.recStoppedAtSongEnd'), { timeout: 8000 });
+    return;
+  }
+
   // Ein Setlisten-Programm hat Vorrang vor Wiederholungsmodus und normalem
   // Weiterschalten (siehe 5.1: „hat die Routine Vorrang").
   if (routine?.scope === 'setlist' && playQueue && routine.targetId === playQueue.id) {
@@ -9738,7 +10238,7 @@ function onPlaybackEnded() {
   }
   if (settings.repeatMode === 'song') {
     updateSeekUI(audioSeek(0));
-    audioPlay().then(() => setPlayIcon(true));
+    audioPlay().then(() => setPlayIcon(Audio.playing));
     return;
   }
   updateSeekUI(Audio.duration);
@@ -9804,7 +10304,7 @@ $('#btn-play').addEventListener('click', async () => {
     repairSuspectAudioGraph('pause').catch((err) => dlog('audio:repair', { name: err?.name }));
   } else {
     await audioPlayFromControls();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   }
   if (navigator.mediaSession) {
     navigator.mediaSession.playbackState = Audio.playing ? 'playing' : 'paused';
@@ -9920,21 +10420,35 @@ $('#btn-song-search').addEventListener('pointerdown', (e) => {
   if (e.button != null && e.button !== 0) return;
   songSearchLongPressFired = false;
   cancelSongSearchLongPress();
-  songSearchLongPressTimer = setTimeout(async () => {
+  songSearchLongPressTimer = setTimeout(() => {
     songSearchLongPressTimer = null;
     songSearchLongPressFired = true;
-    const picked = await choiceDialog({
-      title: 'Song suchen bei …',
-      text: t('msg.oneTimeSearchChoice'),
-      options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
-    });
-    if (picked) openSongSearch(picked);
+    pickOneTimeSearchService();
   }, 500);
 });
+
+/** Einmalig bei einem anderen Dienst suchen (langes Drücken, Rechtsklick,
+ *  Kontextmenü-Taste bzw. Umschalt+F10). */
+async function pickOneTimeSearchService() {
+  const picked = await choiceDialog({
+    title: t('player.searchWithTitle'),
+    text: t('msg.oneTimeSearchChoice'),
+    options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
+  });
+  if (picked) openSongSearch(picked);
+}
 $('#btn-song-search').addEventListener('pointerup', cancelSongSearchLongPress);
 $('#btn-song-search').addEventListener('pointerleave', cancelSongSearchLongPress);
 $('#btn-song-search').addEventListener('pointercancel', cancelSongSearchLongPress);
-$('#btn-song-search').addEventListener('contextmenu', (e) => e.preventDefault());
+// Das Kontextmenü (Rechtsklick, Kontextmenü-Taste, Umschalt+F10) öffnet
+// dieselbe Dienstwahl wie das lange Drücken — sonst war sie per Tastatur gar
+// nicht erreichbar (U19). Auf Touch feuert contextmenu beim langen Drücken
+// ebenfalls; der Long-Press-Timer hat sie dann schon geöffnet.
+$('#btn-song-search').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (songSearchLongPressFired || songSearchLongPressTimer) return;
+  pickOneTimeSearchService();
+});
 $('#btn-song-search').addEventListener('click', () => {
   if (songSearchLongPressFired) { songSearchLongPressFired = false; return; }
   openSongSearch(settings.songSearchService);
@@ -10155,9 +10669,9 @@ $('#btn-loop-save').addEventListener('click', async () => {
   const r = loopRange();
   if (!r || !playerSong) return;
 
-  const suggestion = `Abschnitt ${songLoops.length + 1}`;
+  const suggestion = t('loops.defaultName').replace('{n}', songLoops.length + 1);
   const name = await promptDialog({
-    title: 'Loop speichern',
+    title: t('loops.saveTitle'),
     text: `${fmtTime(r.start)} – ${fmtTime(r.end)}`,
     value: suggestion,
     placeholder: t('loops.namePlaceholder'),
@@ -10175,7 +10689,7 @@ $('#btn-loop-save').addEventListener('click', async () => {
   await DB.metaPut(loop);
   activeLoopId = id;
   await loadSongLoops();
-  banner('Loop gespeichert.', { kind: 'ok' });
+  banner(t('loops.saved'), { kind: 'ok' });
 });
 
 async function loadSongLoops() {
@@ -10241,11 +10755,11 @@ function renderLoopList() {
       // „Loop starten“ entfällt bewusst — dafür reicht der Tipp auf die Zeile
       // selbst (siehe go oben).
       const action = await floatingMenu(menu, [
-        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
+        { value: 'rename', label: t('common.edit'), icon: ICON_EDIT },
         { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
       if (action === 'rename') {
-        const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
+        const name = await promptDialog({ title: t('loops.renameTitle'), value: loop.name });
         if (name === null) return;
         loop.name = name.trim() || loop.name;
         await DB.metaPut(loop);
@@ -10259,6 +10773,7 @@ function renderLoopList() {
         await DB.metaDelete(loop.key);
         if (activeLoopId === loop.id) activeLoopId = null;
         await loadSongLoops();
+        restoreLostFocus($('#loop-list .loop-item button') || $('#tab-btn-loops'));
       }
     });
     host.append(el('div', {
@@ -10746,7 +11261,11 @@ async function startRecording() {
     recStarting = false;
     if (stream) for (const track of stream.getTracks()) track.stop();
     if (!stillCurrent()) return;
-    bannerError(t('msg.micDenied'), 'REC-MIC', err);
+    // Nach Ursache statt pauschal „nicht erlaubt" — ein belegtes oder
+    // fehlendes Mikrofon braucht eine ganz andere Abhilfe (U10). Technische
+    // Details nur ins Fehlerprotokoll, nicht in den Hinweis.
+    logAppError('REC-MIC', err);
+    banner(t(micErrorKey(err)), { kind: 'error' });
     return;
   }
   updateRecInputWarning(recStream);
@@ -10784,12 +11303,40 @@ async function startRecording() {
   }, { once: true });
 
   recStartedAt = Date.now();
-  recMediaRecorder.start();
+  try {
+    recMediaRecorder.start();
+  } catch (err) {
+    // Z.B. InvalidStateError, weil die Mikrofonspur schon beendet ist. Ohne
+    // das blieb das Mikrofon offen und nur „Unerwarteter Fehler" stand da;
+    // ein neuer Versuch öffnete einen zweiten Stream (LOG-13).
+    recSession.failed = true;
+    recChunks = [];
+    teardownRecording();
+    bannerError(t('msg.recStartFailed'), 'REC-START', err);
+    return;
+  }
   setRecUI(true);
   updateRecTimer();
   recTimerHandle = setInterval(updateRecTimer, 250);
   startLevelMeter(recStream);
   updateWakeLock();
+}
+
+/** Passender Hinweistext zu einem getUserMedia-Fehler. */
+function micErrorKey(err) {
+  switch (err?.name) {
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'msg.micNotFound';
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'msg.micBusy';
+    case 'NotSupportedError':
+    case 'TypeError':
+      return 'msg.micUnsupported';
+    default:
+      return 'msg.micDenied';
+  }
 }
 
 function stopRecording() {
@@ -11087,13 +11634,55 @@ async function onRecordingStopped() {
   recChunks = [];
   teardownRecording();
 
+  const autoTarget = recAutoSaveTarget;
+  recAutoSaveTarget = null;
   if (!chunks.length || duration < 0.5) {
     if (chunks.length) banner(t('msg.recTooShort'));
     return;
   }
+  const take = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration, anchor };
+  // Wegen eines Songwechsels angehalten: direkt beim bisherigen Song sichern
+  // (siehe openPlayer), nicht als offene Take-Karte beim neuen Song zeigen.
+  if (autoTarget) { autoSaveTake(take, autoTarget); return; }
   // Nicht sofort speichern — erst anhören und entscheiden lassen.
-  pendingTake = { blob: new Blob(chunks, { type: mimeType }), mimeType, duration, anchor };
+  pendingTake = take;
   renderPendingTake();
+}
+
+/** Ziel für eine Aufnahme, die wegen eines Songwechsels gestoppt wurde. */
+let recAutoSaveTarget = null;
+
+/**
+ * Speichert einen Take ohne Rückfrage bei `song` — für den Songwechsel, bei
+ * dem die Take-Karte nicht mehr beim richtigen Song stehen kann.
+ */
+async function autoSaveTake(take, { song, name, voice }) {
+  const savingDataGeneration = dataGeneration;
+  try {
+    const { blob, mimeType, duration, anchor, trimStart, trimEnd } = take;
+    const fileKey = newFileKey();
+    const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const fileRec = await fileRecord(fileKey, blob, `${name}.${ext}`);
+    if (savingDataGeneration !== dataGeneration) return;
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const recording = {
+      key: `recording:${id}`, type: 'recording', id,
+      songId: song.id, songTitle: song.title,
+      name, voice, fileKey, mimeType, duration,
+      size: blob.size,
+      createdAt: new Date().toISOString(),
+    };
+    if (anchor) recording.anchor = anchor;
+    if (trimStart || trimEnd != null) {
+      recording.trimStart = trimStart || 0;
+      recording.trimEnd = trimEnd ?? duration;
+    }
+    await DB.putFileAndMeta(fileRec, recording);
+    banner(t('msg.recAutoSavedSongChange').replace('{song}', songLabel(song)), { kind: 'ok', timeout: 8000 });
+    if (playerSong?.id === song.id) await loadSongRecordings();
+  } catch (err) {
+    bannerError(t('msg.recSaveFailed'), 'REC-SAVE', err);
+  }
 }
 
 /**
@@ -11155,7 +11744,7 @@ function renderPendingTake() {
 /** Beschriftung des Stimme-Knopfs auf der Take-Karte. */
 function renderTakeVoiceLabel() {
   const btn = rn('voiceBtn');
-  rn('voiceLabel').textContent = takeDraft?.voice ? (VOICE_LABEL[takeDraft.voice] || takeDraft.voice) : 'Stimme';
+  rn('voiceLabel').textContent = takeDraft?.voice ? voiceName(takeDraft.voice) : t('rec.voicePlaceholder');
   btn.dataset.empty = takeDraft?.voice ? 'false' : 'true';
 }
 
@@ -11210,7 +11799,7 @@ function updateRecTakePosition() {
     : null);
   hint.textContent = playing
     ? `${fmtTime(Audio.position)} / ${fmtTime(pendingTake.duration)}`
-    : 'gerade aufgenommen';
+    : t('rec.justRecorded');
 }
 
 $('#rec-take-name').addEventListener('input', (e) => {
@@ -11233,7 +11822,7 @@ $('#btn-recorder-take-voice').addEventListener('click', onTakeVoiceClick);
 async function onTakePreviewClick() {
   if (!pendingTake) return;
   if (audioPreview?.tag?.pending) {
-    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(Audio.playing); }
     syncBackingPlayState();
   } else {
     try { await previewRecordingBlob(pendingTake.blob, { pending: true, anchor: pendingTake.anchor }, recordingTrimRange(pendingTake)); }
@@ -11272,8 +11861,8 @@ $('#btn-recorder-take-trim').addEventListener('click', onTakeTrimClick);
 async function onTakeDiscardClick() {
   if (!pendingTake) return;
   const ok = await confirmDialog({
-    title: 'REC verwerfen?', text: t('msg.recNotSaved'),
-    okLabel: 'Verwerfen', danger: true,
+    title: t('rec.discardTitle'), text: t('msg.recNotSaved'),
+    okLabel: t('common.discard'), danger: true,
   });
   if (!ok) return;
   if (audioPreview?.tag?.pending) await endRecordingPreview();
@@ -11288,8 +11877,8 @@ const REC_SONG_PICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="current
 
 // Läuft renderRecSongPicker() mehrfach überlappend (schnelles Tippen in der
 // Suche), darf nur der jeweils letzte Aufruf zeichnen — dieselbe Regel wie
-// bei renderQueue()/queueRenderToken.
-let recSongPickerToken = 0;
+// bei renderQueue()/queueRenderRuns.
+const recSongPickerRuns = latestRuns();
 
 /**
  * Songauswahl im allgemeinen Recorder — die Auswahl ist die Songliste selbst,
@@ -11298,13 +11887,13 @@ let recSongPickerToken = 0;
  * Kein Song ist vorausgewählt; die gewählte Zeile merkt sich takeDraft.songId.
  */
 async function renderRecSongPicker() {
-  const token = ++recSongPickerToken;
+  const run = recSongPickerRuns.begin();
   const host = $('#rec-song-list');
   const query = $('#rec-song-search').value;
 
   let songs = [];
   try { songs = await DB.metaByType('song').catch(() => []); } catch (err) { console.error(err); }
-  if (token !== recSongPickerToken) return;
+  if (run.stale) return;
 
   const rawQuery = query.trim();
   const visible = filterSongsByQuery(songs, query).sort((a, b) => collator.compare(a.title || '', b.title || ''));
@@ -11322,7 +11911,7 @@ async function renderRecSongPicker() {
       onclick: async () => selectSong(await createPlaceholderSong(rawQuery)),
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `„${rawQuery}" als neues Lied anlegen` }),
+        el('strong', { text: t('rec.createSongLine').replace('{title}', rawQuery) }),
         el('div', { class: 'small muted', text: t('rec.connectsOnImport') }))));
   }
 
@@ -11355,19 +11944,19 @@ $('#rec-song-search').addEventListener('input', () => {
  */
 async function pickRecordingVoice(current) {
   const currentLabel = current === undefined ? null
-    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
+    : current ? voiceName(current) : t('rec.voiceNoneSpecific');
   const value = await choiceDialog({
-    title: 'Stimme zuordnen?',
+    title: t('rec.assignVoiceTitle'),
     text: currentLabel
-      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
-      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
+      ? t('rec.assignVoiceCurrent').replace('{voice}', currentLabel)
+      : t('rec.assignVoiceHint'),
     options: [
-      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
-      { value: 'SOP', label: VOICE_LABEL.SOP },
-      { value: 'ALT', label: VOICE_LABEL.ALT },
-      { value: 'TEN', label: VOICE_LABEL.TEN },
-      { value: 'BASS', label: VOICE_LABEL.BASS },
-      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+      { value: 'NONE', label: t('rec.voiceNoneSpecific'), primary: true },
+      { value: 'SOP', label: voiceName('SOP') },
+      { value: 'ALT', label: voiceName('ALT') },
+      { value: 'TEN', label: voiceName('TEN') },
+      { value: 'BASS', label: voiceName('BASS') },
+      { value: 'LEAD', label: voiceName('LEAD') },
     ],
   });
   if (value === null) return undefined;
@@ -11440,7 +12029,7 @@ async function onTakeSaveClick() {
       resetLevelTakeHistory();
       renderPendingTake();
     }
-    banner('REC gespeichert.', { kind: 'ok' });
+    banner(t('rec.saved'), { kind: 'ok' });
     if (savingHost === 'recorder') {
       if (recorderOpen && recHost === 'recorder') history.back();
       if (playerSong?.id === song.id) await loadSongRecordings();
@@ -11461,7 +12050,7 @@ async function loadSongRecordings() {
   const all = await DB.metaByType('recording').catch(() => []);
   songRecordings = all
     .filter((r) => r.songId === playerSong.id)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   renderRecordingList();
 }
 
@@ -11545,7 +12134,7 @@ async function previewRecordingBlob(blob, tag, range) {
   // audioPlay() zuerst und ohne vorheriges await davor: Safari bindet die
   // Abspielerlaubnis an die Nutzergeste (siehe Kommentar in audioPlay()).
   await audioPlay();
-  setPlayIcon(true);
+  setPlayIcon(Audio.playing);
   updateBackingUI();
   // Solange ein REC-Programm läuft, bleibt der Mitlauf erzwungen aus (siehe
   // 4.4 der Anweisung) — die Einstellung selbst bleibt dabei unangetastet.
@@ -11848,7 +12437,7 @@ $('#rec-backing-volume').addEventListener('input', async (e) => {
 
 async function toggleSavedRecordingPreview(recording) {
   if (audioPreview?.tag?.savedId === recording.id) {
-    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(true); }
+    if (Audio.playing) { audioPause(); setPlayIcon(false); } else { await audioPlay(); setPlayIcon(Audio.playing); }
     syncBackingPlayState();
     renderRecordingList();
     updateRecPreviewButton();
@@ -11884,9 +12473,34 @@ function ensureLameLoaded() {
   return lameLoadPromise;
 }
 
-/** WebM/Opus oder MP4/AAC zu rohem PCM dekodieren — ein kurzlebiger eigener AudioContext, unabhängig von Audio.ctx. */
+/** Samplerate, mit der RECs für Zuschneiden/Export dekodiert werden. */
+const REC_DECODE_RATE = 44100;
+/**
+ * Obergrenze für das dekodierte Float-PCM beim MP3-Export (Dauer × Rate ×
+ * Kanäle × 4 B). Darüber stürzte der Tab auf Handys ab, ohne jede Meldung
+ * (LOG-7) — solche RECs gehen stattdessen im Originalformat raus.
+ */
+const REC_EXPORT_MAX_PCM_BYTES = 512 * 1024 * 1024;
+
+/**
+ * WebM/Opus oder MP4/AAC zu rohem PCM dekodieren. Bevorzugt über einen
+ * OfflineAudioContext mit fester Rate (44,1 kHz statt der Geräterate, oft
+ * 48 kHz — spart Speicher und braucht keine Audio-Hardware); sonst über
+ * einen kurzlebigen eigenen AudioContext, unabhängig von Audio.ctx.
+ */
 async function decodeToPcm(blob) {
   const arrayBuffer = await blob.arrayBuffer();
+  const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (Offline) {
+    try {
+      // Sehr alte WebKit-Versionen liefern ohne Callback kein Promise — dann
+      // unten über den normalen AudioContext.
+      const buffer = await new Offline(1, 1, REC_DECODE_RATE).decodeAudioData(arrayBuffer.slice(0));
+      if (buffer) return buffer;
+    } catch (err) {
+      dlog('rec:decode:offline-fail', { name: err?.name });
+    }
+  }
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   try {
     return await ctx.decodeAudioData(arrayBuffer);
@@ -11959,8 +12573,8 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
     const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
     const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
     const playhead = el('div', { class: 'trim-playhead', hidden: true });
-    const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': 'Anfang' });
-    const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': 'Ende' });
+    const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': t('rec.trimStart') });
+    const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': t('rec.trimEnd') });
     const wrap = el('div', { class: 'trim-wave-wrap' }, canvas, shadeLeft, shadeRight, playhead, startHandle, endHandle);
     const label = el('p', { class: 'small muted', style: 'margin:0; text-align:center' });
 
@@ -12050,7 +12664,7 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
     const endBtn = el('button', { class: 'trim-end-btn', type: 'button',
       'aria-label': t('rec.trimPlayEnd').replace('{seconds}', END_PREVIEW_LEN) });
     endBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13l8-6.5z"/><path d="M17 5v14"/></svg>';
-    endBtn.append(el('span', { text: 'Ende' }));
+    endBtn.append(el('span', { text: t('rec.trimEnd') }));
     endBtn.addEventListener('click', () => {
       if (endBtn.classList.contains('is-playing')) { stopPreview(); return; }
       runPreview(Math.max(startSec, endSec - END_PREVIEW_LEN), endSec, endBtn);
@@ -12064,16 +12678,16 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
       closeModal(layer); layer.remove(); resolve(result);
     };
     const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'REC zuschneiden' }),
+      el('h2', { text: t('rec.trimAria') }),
       el('p', { text: t('rec.trimHint') }),
       wrap,
       previewRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: t('common.apply'),
                        onclick: () => done({ startSec, endSec }) })));
 
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC zuschneiden' }, box);
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('rec.trimAria') }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
 
@@ -12106,18 +12720,21 @@ async function pickTrimRange(blob, initialStart, initialEnd) {
  */
 async function encodePcmToMp3(audioBuffer, kbps = 128, onProgress) {
   const channels = Math.min(audioBuffer.numberOfChannels, 2);
-  const left = floatTo16BitPCM(audioBuffer.getChannelData(0));
-  const right = channels === 2 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null;
+  // Blockweise nach Int16 wandeln statt als Vollkopie je Kanal — die hätte
+  // bei langen RECs noch einmal die halbe Float-Größe gekostet (LOG-7).
+  const leftF = audioBuffer.getChannelData(0);
+  const rightF = channels === 2 ? audioBuffer.getChannelData(1) : null;
 
   const encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, kbps);
   const chunks = [];
   const blockSize = 1152;
-  const totalBlocks = Math.max(1, Math.ceil(left.length / blockSize));
+  const totalBlocks = Math.max(1, Math.ceil(leftF.length / blockSize));
   let block = 0;
-  for (let i = 0; i < left.length; i += blockSize, block++) {
+  for (let i = 0; i < leftF.length; i += blockSize, block++) {
+    const left = floatTo16BitPCM(leftF.subarray(i, i + blockSize));
     const buf = channels === 2
-      ? encoder.encodeBuffer(left.subarray(i, i + blockSize), right.subarray(i, i + blockSize))
-      : encoder.encodeBuffer(left.subarray(i, i + blockSize));
+      ? encoder.encodeBuffer(left, floatTo16BitPCM(rightF.subarray(i, i + blockSize)))
+      : encoder.encodeBuffer(left);
     if (buf.length > 0) chunks.push(buf);
     if (onProgress && block % 200 === 0) {
       onProgress(block / totalBlocks);
@@ -12319,7 +12936,7 @@ function showRecExportProgressDialog() {
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
-  document.body.append(layer);
+  mountModal(layer, { busy: true });
   return {
     update(fraction) {
       const pct = Math.min(100, Math.round(fraction * 100));
@@ -12352,8 +12969,8 @@ async function exportRecording(recording, anchorBtn) {
   let action = 'download';
   if (navigator.canShare?.({ files: [probeFile] })) {
     action = await floatingMenu(anchorBtn, [
-      { value: 'share', label: 'Teilen', icon: REC_EXPORT_SHARE_ICON },
-      { value: 'download', label: 'Herunterladen', icon: REC_EXPORT_DOWNLOAD_ICON },
+      { value: 'share', label: t('common.share'), icon: REC_EXPORT_SHARE_ICON },
+      { value: 'download', label: t('common.download'), icon: REC_EXPORT_DOWNLOAD_ICON },
     ]);
     if (!action) return;
   }
@@ -12363,6 +12980,25 @@ async function exportRecording(recording, anchorBtn) {
     const rec = await DB.fileGet(recording.fileKey);
     if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
     const sourceBlob = recordBlob(rec, recording.mimeType);
+
+    // Zu lang für die Umwandlung im Speicher des Geräts? Dann das Original
+    // weitergeben (WebM/M4A spielt jede gängige App ab) statt abzustürzen.
+    const estPcmBytes = (Number(recording.duration) || 0) * REC_DECODE_RATE * 4;
+    if (estPcmBytes > REC_EXPORT_MAX_PCM_BYTES) {
+      progress.close();
+      const mime = sourceBlob.type || recording.mimeType || 'audio/webm';
+      const ext = mime.includes('mp4') ? 'm4a' : (mime.includes('mpeg') ? 'mp3' : 'webm');
+      banner(t('msg.recExportTooLong').replace('{ext}', ext.toUpperCase()), { timeout: 8000 });
+      const fileName = `${recFileBaseName({
+        songTitle: playerSong?.title || recording.songTitle || '', voice: recording.voice, name: recording.name,
+      })}.${ext}`;
+      if (action === 'share') {
+        try { await navigator.share({ files: [new File([sourceBlob], fileName, { type: mime })], title: 'REC', text: fileName }); return; }
+        catch (err) { if (err?.name === 'AbortError') return; }
+      }
+      downloadBlob(sourceBlob, fileName);
+      return;
+    }
 
     await ensureLameLoaded();
     const fullBuffer = await decodeToPcm(sourceBlob);
@@ -12513,7 +13149,7 @@ function renderRecordingList() {
     // was Anhören und Export tatsächlich liefern (siehe recordingTrimRange()).
     const trimRange = recordingTrimRange(recording);
     const meta = [fmtTime(trimRange.end - trimRange.start)];
-    if (recording.voice) meta.push(VOICE_LABEL[recording.voice] || recording.voice);
+    if (recording.voice) meta.push(voiceName(recording.voice));
 
     const go = el('button', {
       class: 'go', type: 'button',
@@ -12531,8 +13167,8 @@ function renderRecordingList() {
     menu.innerHTML = hamburgerIcon();
     menu.addEventListener('click', async () => {
       const action = await floatingMenu(menu, [
-        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
-        { value: 'export', label: 'Exportieren', icon: ICON_EXPORT },
+        { value: 'rename', label: t('common.edit'), icon: ICON_EDIT },
+        { value: 'export', label: t('common.export'), icon: ICON_EXPORT },
         { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
       if (action === 'rename') {
@@ -12551,8 +13187,7 @@ function renderRecordingList() {
         });
         if (!ok) return;
         if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
-        await DB.fileDelete(recording.fileKey);
-        await DB.metaDelete(recording.key);
+        await DB.deleteMetaAndFiles(recording.key, recording.fileKey);
         await loadSongRecordings();
       }
     });
@@ -12560,7 +13195,7 @@ function renderRecordingList() {
     const looping = recordingLoopId === recording.id;
     const repeat = el('button', {
       class: 'icon-btn loop-repeat', type: 'button', 'aria-pressed': looping ? 'true' : 'false',
-      'aria-label': `„${recording.name}“ in Dauerschleife ${looping ? 'stoppen' : 'abspielen'}`,
+      'aria-label': t(looping ? 'rec.repeatStopAria' : 'rec.repeatStartAria').replace('{name}', recording.name),
       style: looping ? 'color: var(--accent)' : '',
     });
     repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
@@ -12598,7 +13233,7 @@ async function toggleRecordingLoop(recording) {
     }
   } else if (!Audio.playing) {
     await audioPlay();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   }
 
   const range = recordingTrimRange(recording);
@@ -12890,7 +13525,7 @@ async function saveLyricsNote({ announce = false } = {}) {
   const text = $('#lyrics-note-text').value;
 
   if (announce && !text.trim()) {
-    if (await deleteLyricsNote()) banner('Leeren Liedtext entfernt.');
+    if (await deleteLyricsNote()) banner(t('lyrics.emptyRemoved'));
     return;
   }
 
@@ -12903,7 +13538,7 @@ async function saveLyricsNote({ announce = false } = {}) {
     await lyricsNoteWrite(() => DB.metaPut(note));
     lyricsNotePersistedText.set(note, text);
     if (playerLyricsNote === note) setLyricsNoteState('saved');
-    if (announce) banner('Liedtext gespeichert.', { kind: 'ok' });
+    if (announce) banner(t('lyrics.saved'), { kind: 'ok' });
   } catch (err) {
     if (playerLyricsNote === note) setLyricsNoteState('dirty');
     bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err);
@@ -13001,8 +13636,11 @@ function setTabHasContent(tab, has) {
   $(`#tab-btn-${tab}`).classList.toggle('has-content', has);
 }
 
+/** In dieser Sitzung zuletzt bewusst gewählter Reiter (Klick/Pfeiltasten). */
+let userPlayerTab = null;
+
 for (const name of PLAYER_TABS) {
-  $(`#tab-btn-${name}`).addEventListener('click', () => setPlayerTab(name));
+  $(`#tab-btn-${name}`).addEventListener('click', () => { userPlayerTab = name; setPlayerTab(name); });
 }
 
 // Pfeiltasten/Home/End nach dem ARIA-Tab-Muster: wechseln UND fokussieren
@@ -13018,6 +13656,7 @@ $('#player-tabs').addEventListener('keydown', (e) => {
   else return;
   e.preventDefault();
   const name = PLAYER_TABS[nextIdx];
+  userPlayerTab = name;
   setPlayerTab(name);
   $(`#tab-btn-${name}`).focus();
 });
@@ -13034,13 +13673,13 @@ function playerTabsActive() {
 // Playlist startet mehrere Durchläufe. Ohne Marke würde ein überholter
 // Durchlauf seine Notenzeilen hinter die bereits fertige Liste hängen und die
 // gerade erzeugten Objekt-URLs des neuen Songs wieder freigeben.
-let extrasRenderToken = 0;
+const extrasRenderRuns = latestRuns();
 
 async function renderPlayerExtras() {
   // Kein await hier, also keine eigene Marke nötig — die Zählung erhöht
-  // trotzdem extrasRenderToken, damit ein noch laufendes loadScorePreviews()
+  // trotzdem extrasRenderRuns, damit ein noch laufendes loadScorePreviews()
   // vom vorigen Song sich selbst als überholt erkennt (siehe dort).
-  extrasRenderToken++;
+  extrasRenderRuns.invalidate();
   releaseScoreURLs();
 
   // Liedtext: eigener Ablauf über loadSongLyricsNote()/renderLyricsBlock(),
@@ -13075,7 +13714,7 @@ async function renderPlayerExtras() {
 async function loadScorePreviews() {
   if (scoresPreviewLoaded || !playerSong?.scores?.length) return;
   scoresPreviewLoaded = true;
-  const token = ++extrasRenderToken;
+  const run = extrasRenderRuns.begin();
   const rows = $$('#scores-list .score-item');
 
   for (const score of playerSong.scores) {
@@ -13085,7 +13724,7 @@ async function loadScorePreviews() {
 
     try {
       const rec = await DB.fileGet(score.fileKey);
-      if (token !== extrasRenderToken) return;
+      if (run.stale) return;
       if (!rec) { head.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
       const file = new File([recordBlob(rec, 'application/pdf')], score.fileName,
@@ -13115,7 +13754,7 @@ async function loadScorePreviews() {
 
       if (navigator.canShare?.({ files: [file] })) {
         head.append(el('button', {
-          class: 'btn', type: 'button', text: 'Teilen',
+          class: 'btn', type: 'button', text: t('common.share'),
           style: 'padding:8px 14px; min-height:38px',
           onclick: (e) => {
             e.stopPropagation();
@@ -13125,7 +13764,7 @@ async function loadScorePreviews() {
         }));
       } else {
         const dl = el('a', {
-          class: 'btn', href: url, download: score.fileName, text: 'Sichern',
+          class: 'btn', href: url, download: score.fileName, text: t('scores.download'),
           style: 'padding:8px 14px; min-height:38px',
           onclick: (e) => e.stopPropagation(),
         });
@@ -13350,7 +13989,7 @@ async function saveNote({ announce = false } = {}) {
   // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
   // Händen, während jemand den Text gerade neu schreibt.
   if (announce && !text.trim()) {
-    if (await deleteNote()) banner('Leere Notiz entfernt.');
+    if (await deleteNote()) banner(t('notes.emptyRemoved'));
     return;
   }
 
@@ -13363,7 +14002,7 @@ async function saveNote({ announce = false } = {}) {
     await noteWrite(() => DB.metaPut(note));
     notePersistedText.set(note, text);
     if (playerNote === note) setNoteState('saved');
-    if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
+    if (announce) banner(t('notes.saved'), { kind: 'ok' });
   } catch (err) {
     if (playerNote === note) setNoteState('dirty');
     bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err);
@@ -13455,7 +14094,7 @@ async function collectPrintable(kind) {
   const byId = new Map(songs.map((s) => [s.id, s]));
 
   return items
-    .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || 'Ohne Titel' }))
+    .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || t('songs.untitled') }))
     .filter((n) => (n.text || '').trim())
     .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
 }
@@ -13473,9 +14112,9 @@ async function renderExportCount() {
     printableCount('note', 'btn-notes-export'),
     printableCount('lyricsNote', 'btn-lyrics-notes-export'),
   ]);
-  const noteLabel = notes ? plural(notes, 'Notiz', 'Notizen') : 'noch keine Notizen';
-  const lyricsLabel = lyrics ? plural(lyrics, 'eigener Liedtext', 'eigene Liedtexte') : 'noch keine eigenen Liedtexte';
-  const sentence = `${noteLabel} und ${lyricsLabel}`;
+  const noteLabel = notes ? tPlural(notes, 'count.noteOne', 'count.noteMany') : t('settings.data.exportNoNotes');
+  const lyricsLabel = lyrics ? tPlural(lyrics, 'count.lyricsOne', 'count.lyricsMany') : t('settings.data.exportNoLyrics');
+  const sentence = t('settings.data.exportCount').replace('{notes}', noteLabel).replace('{lyrics}', lyricsLabel);
   $('#export-count').textContent = sentence.charAt(0).toUpperCase() + sentence.slice(1) + '.';
 }
 
@@ -13544,21 +14183,21 @@ async function showPrintSelectionDialog(title, items) {
       el('h2', { text: title }),
       playlistRow,
       el('div', { class: 'row', style: 'margin-bottom:6px' },
-        el('button', { class: 'btn', type: 'button', text: 'Alle', onclick: () => setAll(true) }),
-        el('button', { class: 'btn', type: 'button', text: 'Keine', onclick: () => setAll(false) }),
+        el('button', { class: 'btn', type: 'button', text: t('printable.selectAll'), onclick: () => setAll(true) }),
+        el('button', { class: 'btn', type: 'button', text: t('printable.selectNone'), onclick: () => setAll(false) }),
         countLabel),
       el('div', { class: 'stack', style: 'overflow-y:auto; flex:1; gap:0' }, ...rows),
       el('div', { class: 'stack', style: 'gap:10px; margin-top:12px' },
         el('div', { class: 'dialog-actions' },
-          el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-          el('button', { class: 'btn', type: 'button', text: 'Drucken', onclick: () => pick('print') })),
-        el('button', { class: 'btn btn--primary', type: 'button', style: 'width:100%', text: 'Als Datei exportieren',
+          el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
+          el('button', { class: 'btn', type: 'button', text: t('printable.print'), onclick: () => pick('print') })),
+        el('button', { class: 'btn btn--primary', type: 'button', style: 'width:100%', text: t('printable.exportFile'),
                        onclick: () => pick('export') })));
 
     updateCount();
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => done(null) });
   });
 }
 
@@ -13570,7 +14209,7 @@ function printItems(heading, items) {
   for (const item of items) {
     host.append(el('div', { class: 'print-entry' },
       el('h2', { text: item.songTitle }),
-      el('div', { class: 'print-text', text: String(item.text).replace(/\s+$/, '') })));
+      el('div', { class: 'print-text', text: String(item.text).trimEnd() })));
   }
   window.print();
 }
@@ -13585,7 +14224,7 @@ function printableToText(kind, heading, items) {
   ];
   for (const item of items) {
     lines.push('='.repeat(40), item.songTitle, '='.repeat(40));
-    lines.push(String(item.text).replace(/\s+$/, ''), '');
+    lines.push(String(item.text).trimEnd(), '');
   }
   return lines.join('\n');
 }
@@ -13621,14 +14260,14 @@ async function printFlow(kind, label, heading, readErrorCode) {
     banner(t('printable.emptyStored').replace('{label}', label.toLowerCase()));
     return;
   }
-  const result = await showPrintSelectionDialog(`${label} drucken`, items);
+  const result = await showPrintSelectionDialog(t('printable.dialogTitle').replace('{label}', label), items);
   if (!result || !result.items.length) return;
   if (result.action === 'print') printItems(heading, result.items);
   else await exportPrintableFile(kind, heading, result.items);
 }
 
-$('#btn-notes-export').addEventListener('click', () => printFlow('note', 'Notizen', 'Notizen', 'NOTES-READ'));
-$('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', 'Eigene Liedtexte', 'Eigene Liedtexte', 'LYRICS-PRINT-READ'));
+$('#btn-notes-export').addEventListener('click', () => printFlow('note', t('printable.notesLabel'), t('printable.notesLabel'), 'NOTES-READ'));
+$('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', t('printable.lyricsLabel'), t('printable.lyricsLabel'), 'LYRICS-PRINT-READ'));
 
 const PRINTABLE_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 const PRINTABLE_IMPORT_MAX_ITEMS = 10000;
@@ -13639,8 +14278,15 @@ const PRINTABLE_IMPORT_MAX_ITEMS = 10000;
  */
 function parsePrintableText(text, expectedKind) {
   const normalized = String(text).replace(/\r\n?/g, '\n').replace(/^\uFEFF/, '');
-  const marker = normalized.match(/^Chor-App-Export: (note|lyricsNote)\s*$/m);
-  if (marker && marker[1] !== expectedKind) throw new Error('WRONG_KIND');
+  // Die Kopfzeile ist übersetzt (printable.exportHeader) — erkannt wird sie
+  // deshalb in jeder Sprache, sonst fiele die Artprüfung für Dateien aus der
+  // englischen oder polnischen Oberfläche stillschweigend weg.
+  const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const headers = [...new Set(Object.values(STRINGS).map((lang) => lang['printable.exportHeader']).filter(Boolean))]
+    .map((h) => escRe(h).replace(escRe('{kind}'), '(note|lyricsNote)'));
+  const marker = normalized.match(new RegExp(`^(?:${headers.join('|')})\\s*$`, 'm'));
+  const markerKind = marker ? marker.slice(1).find(Boolean) : null;
+  if (markerKind && markerKind !== expectedKind) throw new Error('WRONG_KIND');
 
   const lines = normalized.split('\n');
   const items = [];
@@ -13764,10 +14410,11 @@ function updateMediaSession() {
   const ms = navigator.mediaSession;
 
   try {
-    const voiceLabel = playerVoice ? trackByVoiceKey(playerVoice)?.label : null;
+    const voiceTrack = playerVoice ? trackByVoiceKey(playerVoice) : null;
+    const voiceLabel = voiceTrack ? trackName(voiceTrack) : null;
     ms.metadata = new MediaMetadata({
       title: playerSong.title,
-      artist: voiceLabel || 'Chor',
+      artist: voiceLabel || t('player.mediaArtistFallback'),
       album: (playerSong.collections || [])[0] || 'BVG',
       artwork: [{ src: './icon-512.png', sizes: '512x512', type: 'image/png' }],
     });
@@ -13777,7 +14424,7 @@ function updateMediaSession() {
     try { ms.setActionHandler(action, handler); } catch { /* nicht unterstützt */ }
   };
 
-  set('play', async () => { await audioPlayFromControls(); setPlayIcon(true); ms.playbackState = 'playing'; });
+  set('play', async () => { await audioPlayFromControls(); setPlayIcon(Audio.playing); ms.playbackState = Audio.playing ? 'playing' : 'paused'; });
   set('pause', () => { audioPause(); setPlayIcon(false); ms.playbackState = 'paused'; });
   set('seekbackward', (d) => updateSeekUI(audioSeek(Audio.position - (d?.seekOffset || 10))));
   set('seekforward', (d) => updateSeekUI(audioSeek(Audio.position + (d?.seekOffset || 10))));
@@ -13851,7 +14498,7 @@ const PLAYLIST_IMPORT_MAX_NAME_LENGTH  = 200;               // Zeichen im Setlis
  */
 function parsePlaylistText(text, fallbackName) {
   if (text.length > PLAYLIST_IMPORT_MAX_TEXT_LENGTH) {
-    return { error: `Dieser Text ist zu lang (${text.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_TEXT_LENGTH}).` };
+    return { error: t('playlists.textTooLong').replace('{length}', text.length).replace('{limit}', PLAYLIST_IMPORT_MAX_TEXT_LENGTH) };
   }
 
   const lines = text.split(/\r?\n/);
@@ -13881,17 +14528,17 @@ function parsePlaylistText(text, fallbackName) {
 
     if (!cleaned) continue;
     if (cleaned.length > PLAYLIST_IMPORT_MAX_TITLE_LENGTH) {
-      return { error: `Ein Liedtitel ist zu lang („${cleaned.slice(0, 40)}…", ${cleaned.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_TITLE_LENGTH}).` };
+      return { error: t('playlists.titleTooLong').replace('{length}', cleaned.length).replace('{limit}', PLAYLIST_IMPORT_MAX_TITLE_LENGTH).replace('{title}', cleaned.slice(0, 40)) };
     }
     if (titles.length >= PLAYLIST_IMPORT_MAX_TITLES) {
-      return { error: `Diese Setliste enthält zu viele Titel (mehr als ${PLAYLIST_IMPORT_MAX_TITLES}).` };
+      return { error: t('playlists.tooManyTitles').replace('{limit}', PLAYLIST_IMPORT_MAX_TITLES) };
     }
     titles.push(cleaned);
   }
 
   const finalName = name || fallbackName || null;
   if (finalName && finalName.length > PLAYLIST_IMPORT_MAX_NAME_LENGTH) {
-    return { error: `Der Setlistenname ist zu lang (${finalName.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_NAME_LENGTH}).` };
+    return { error: t('playlists.nameTooLong').replace('{length}', finalName.length).replace('{limit}', PLAYLIST_IMPORT_MAX_NAME_LENGTH) };
   }
 
   return { name: finalName, titles };
@@ -13966,7 +14613,7 @@ async function createPlaylistFromText(text, fallbackName) {
       { kind: 'error' });
   }
 
-  openDraft(newPlaylist(name || 'Setliste', titles), true);
+  openDraft(newPlaylist(name || t('playlists.defaultName'), titles), true);
   return plDraft;
 }
 
@@ -13977,7 +14624,7 @@ wireFabMenu('#btn-playlist-add-fab', '#playlists-fab-backdrop', async (action) =
   if (action === 'paste') { await createPlaylistFromPastedText(); return; }
   if (action === 'new') {
     const name = await promptDialog({
-      title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
+      title: t('playlists.newTitle'), value: '', placeholder: t('playlists.namePlaceholder'), okLabel: t('common.next'),
     });
     if (name === null || !name.trim()) return;
     openDraft(newPlaylist(name.trim()), true);
@@ -14010,17 +14657,17 @@ async function createPlaylistFromPastedText() {
     title: t('playlists.pasteTitle'),
     text: t('playlists.pasteHint'),
     value: '', okLabel: t('common.apply'), multiline: true,
-    placeholder: '# Sommerkonzert 2026\nAve Maria\nBlaue Augen',
+    placeholder: t('playlists.pastePlaceholder'),
   });
   if (text === null || !text.trim()) return;
-  await createPlaylistFromText(text, 'Eingefügte Setliste');
+  await createPlaylistFromText(text, t('playlists.pastedName'));
 }
 
 // Läuft renderPlaylists() mehrfach überlappend (z. B. Import und Tab-Wechsel
 // dicht hintereinander), darf nur der letzte Aufruf die Liste zeichnen —
 // sonst hängt eine verzögert eintreffende Antwort ihre Einträge hinter die
 // schon fertige Liste (Playlisten erschienen doppelt).
-let playlistsRenderToken = 0;
+const playlistsRenderRuns = latestRuns();
 
 /* ==========================================================================
    ÜBE-PROGRAMM (ROUTINE) — automatisierter Übe-Ablauf für Setlisten, Loops
@@ -14247,7 +14894,7 @@ async function routineApplyCurrentElement() {
     updateSeekUI(audioSeek(current.start));
     await audioPlay();
     if (routine !== active) return;
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
   } else if (routine.scope === 'rec') {
     await routineApplyStep();
     if (routine !== active) return;
@@ -14297,7 +14944,7 @@ async function routineAdvance() {
       updateSeekUI(audioSeek(start));
       await audioPlay();
       if (routine !== activeRoutine) return;
-      setPlayIcon(true);
+      setPlayIcon(Audio.playing);
     }, 1000);
     return;
   }
@@ -14342,7 +14989,7 @@ function routineStatusText() {
   if (!routine) return '';
   const step = routine.steps[routine.stepIndex];
   const rateLabel = fmtRatePercent(step.rate);
-  const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] || null);
+  const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] ? voiceName(routine.resolvedVoice) : null);
   const parts = [t('routine.statusPracticing'), t('routine.repProgress').replace('{current}', routine.repIndex + 1).replace('{total}', step.reps)];
   if (voiceLabel) parts.push(voiceLabel);
   parts.push(rateLabel);
@@ -14483,11 +15130,11 @@ function routineOrderList(elements, initialOrder) {
       const on = checked.has(id);
       const check = el('button', {
         type: 'button', class: 'routine-order-check', 'aria-pressed': on ? 'true' : 'false',
-        'aria-label': `„${item.label}" ${on ? t('routine.deselectItem') : t('routine.selectItem')}`,
+        'aria-label': `${t('common.quoted').replace('{text}', item.label)} ${on ? t('routine.deselectItem') : t('routine.selectItem')}`,
         onclick: () => { if (checked.has(id)) checked.delete(id); else checked.add(id); render(); },
       }, on ? checkIcon() : null);
       const label = el('span', { class: 'routine-order-label', text: item.label });
-      const handle = el('button', { type: 'button', class: 'routine-order-handle', 'aria-label': `„${item.label}" verschieben` }, dragHandleIcon());
+      const handle = el('button', { type: 'button', class: 'routine-order-handle', 'aria-label': t('routine.moveItemAria').replace('{item}', item.label) }, dragHandleIcon());
       const row = el('div', { class: `routine-order-row ${on ? 'is-on' : 'is-off'}`, 'data-id': id }, check, label, handle);
       attachDrag(row, handle);
       host.append(row);
@@ -14542,9 +15189,9 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     // Bariton/Klavier, die es sonst nirgends zur Wahl gibt) — ohne sie die
     // allgemeine Auswahl wie bisher.
     const voiceOptions = () => {
-      if (voiceList) return voiceList.map((v) => [v, VOICE_LABEL[v] || v]);
-      const opts = [['FULL', 'Gesamt']];
-      for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
+      if (voiceList) return voiceList.map((v) => [v, voiceName(v)]);
+      const opts = [['FULL', voiceName('FULL')]];
+      for (const v of MY_VOICE_CHOICES) opts.push([v, voiceName(v)]);
       return opts;
     };
 
@@ -14581,7 +15228,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     const renderRows = () => {
       rowsHost.textContent = '';
       draftSteps.forEach((step, i) => {
-        const repsSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Wiederholungen` });
+        const repsSel = el('select', { class: 'routine-value', 'aria-label': t('routine.repsAria').replace('{item}', itemLabel) });
         for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: `${n}×` }));
         repsSel.value = String(step.reps);
         repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); updateResetVisibility(); });
@@ -14709,8 +15356,8 @@ async function openRoutineDialogForSetlist(pl) {
   const stored = await DB.metaGet(routineKeyFor('setlist', pl.id)).catch(() => null);
   const isRunning = !!(routine && routine.scope === 'setlist' && routine.targetId === pl.id);
   const result = await showRoutineDialog({
-    scope: 'setlist', targetId: pl.id, stored, itemLabel: 'Song', withVoice: true, elements: [],
-    emptyHint: anyAudio ? null : `Aus „${pl.name}" ist noch kein Titel importiert.`,
+    scope: 'setlist', targetId: pl.id, stored, itemLabel: t('routine.itemSong'), withVoice: true, elements: [],
+    emptyHint: anyAudio ? null : t('routine.setlistNothingImported').replace('{name}', pl.name),
     isRunning,
   });
   if (!result) return;
@@ -14724,7 +15371,7 @@ async function openRoutineDialogForLoops() {
   const isRunning = !!(routine && routine.scope === 'loops' && routine.targetId === playerSong.id);
   const elements = songLoops.map((l) => ({ id: l.id, label: `${l.name} (${fmtTime(l.start)}–${fmtTime(l.end)})` }));
   const result = await showRoutineDialog({
-    scope: 'loops', targetId: playerSong.id, stored, itemLabel: 'Abschnitt', withVoice: true, elements,
+    scope: 'loops', targetId: playerSong.id, stored, itemLabel: t('routine.itemSection'), withVoice: true, elements,
     emptyHint: songLoops.length ? null : t('routine.noSectionsSaved'),
     isRunning, voices: songVoiceChoices(playerSong),
   });
@@ -14739,8 +15386,8 @@ async function openRoutineDialogForRec() {
   const isRunning = !!(routine && routine.scope === 'rec' && routine.targetId === playerSong.id);
   const elements = songRecordings.map((r) => ({ id: r.id, label: r.name }));
   const result = await showRoutineDialog({
-    scope: 'rec', targetId: playerSong.id, stored, itemLabel: 'Aufnahme', withVoice: false, elements,
-    emptyHint: songRecordings.length ? null : 'Für diesen Song sind noch keine Aufnahmen gespeichert.',
+    scope: 'rec', targetId: playerSong.id, stored, itemLabel: t('routine.itemRecording'), withVoice: false, elements,
+    emptyHint: songRecordings.length ? null : t('routine.noRecordingsSaved'),
     isRunning,
   });
   if (!result) return;
@@ -14762,7 +15409,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   if (!favorite) return;
 
   const play = el('button', {
-    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': `„${favorite.name}" abspielen`,
+    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': t('playlists.playAria').replace('{name}', favorite.name),
     onclick: () => startPlaylist(favorite),
   });
   play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
@@ -14816,18 +15463,18 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   host.append(el('div', { class: 'card' },
     el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
-        el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
+        el('p', { class: 'small muted', style: 'margin:0' }, t('playlists.nextGig')),
         el('strong', { text: favorite.name })),
       play),
     list));
 }
 
 async function renderPlaylists() {
-  const token = ++playlistsRenderToken;
+  const run = playlistsRenderRuns.begin();
   const host = $('#playlist-list-host');
 
   const lists = await DB.metaByType('playlist').catch(() => []);
-  if (token !== playlistsRenderToken) return;
+  if (run.stale) return;
   if (!lists.length) {
     $('#current-setlist-host').textContent = '';
     host.textContent = '';
@@ -14839,7 +15486,7 @@ async function renderPlaylists() {
 
   const songs = await DB.metaByType('song').catch(() => []);
   const recordings = await DB.metaByType('recording').catch(() => []);
-  if (token !== playlistsRenderToken) return;
+  if (run.stale) return;
   host.textContent = '';
   lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
   const recsBySong = groupRecordingsBySongId(recordings);
@@ -14861,7 +15508,7 @@ async function renderPlaylists() {
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: pl.name }),
         el('div', { class: 'small muted',
-          text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+          text: `${tPlural(titles.length, 'count.titleOne', 'count.titleMany')}${missing ? ` · ${t('playlists.notImportedCount').replace('{n}', missing)}` : ''}` })));
     if (!playable) open.style.opacity = '.6';
 
     const fav = el('button', {
@@ -14881,9 +15528,9 @@ async function renderPlaylists() {
           title: pl.name, text: t('playlists.whatToDo'),
           options: [
             { value: 'practice', label: t('playlists.practice') },
-            { value: 'file', label: 'Als Datei speichern' },
-            { value: 'text', label: 'Als Text anzeigen' },
-            { value: 'edit', label: 'Bearbeiten' },
+            { value: 'file', label: t('playlists.saveAsFile') },
+            { value: 'text', label: t('playlists.showAsText') },
+            { value: 'edit', label: t('common.edit') },
           ],
         });
         if (choice === 'practice') await openRoutineDialogForSetlist(pl);
@@ -14938,7 +15585,7 @@ async function startPlaylist(pl) {
   await routineApplyStepForQueue();
   updateSeekUI(audioSeek(0));
   await audioPlay();
-  setPlayIcon(true);
+  setPlayIcon(Audio.playing);
 }
 
 /* ---------- Detailansicht: Entwurf, Speichern, Verwerfen ---------------- */
@@ -15001,7 +15648,7 @@ $('#btn-pl-save').addEventListener('click', async () => {
   plDirty = false;
   updateDraftButtons();
   await renderPlaylists();
-  banner('Setliste gespeichert.', { kind: 'ok' });
+  banner(t('playlists.saved'), { kind: 'ok' });
 });
 
 /** Vor dem Verlassen nachfragen, wenn etwas offen ist. */
@@ -15012,14 +15659,14 @@ async function confirmLeaveDraft() {
     text: t('playlists.unsavedText').replace('{name}', plDraft.name),
     options: [
       { value: 'save', label: t('common.save'), primary: true },
-      { value: 'drop', label: 'Verwerfen', danger: true },
+      { value: 'drop', label: t('common.discard'), danger: true },
     ],
   });
   if (!choice) return false;
   if (choice === 'save') {
     await savePlaylist(plDraft);
     await renderPlaylists();
-    banner('Setliste gespeichert.', { kind: 'ok' });
+    banner(t('playlists.saved'), { kind: 'ok' });
   }
   plDirty = false;
   plDraft = null;
@@ -15034,7 +15681,7 @@ async function renderPlaylistDetail() {
   $('#pl-title').textContent = pl.name;
   const titles = pl.songTitles || [];
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
-  $('#pl-sub').textContent = plural(titles.length, 'Titel', 'Titel');
+  $('#pl-sub').textContent = tPlural(titles.length, 'count.titleOne', 'count.titleMany');
 
   const hint = $('#pl-missing');
   if (missing.length) {
@@ -15088,11 +15735,11 @@ function renderPlaylistEntries(songs) {
     const label = el('div', { class: 'grow' },
       el('strong', { text: song ? songLabel(song) : title }),
       el('div', { class: 'small muted',
-        text: song ? plural(song.tracks.length, 'Stimme', 'Stimmen') : t('playlists.notImportedBadge') }));
+        text: song ? tPlural(song.tracks.length, 'count.voiceOne', 'count.voiceMany') : t('playlists.notImportedBadge') }));
 
     const remove = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${title}" entfernen`,
-      style: 'color: var(--danger)',
+      class: 'icon-btn', type: 'button', 'aria-label': t('playlists.removeTitleAria').replace('{title}', title),
+      style: 'color: var(--danger-fg)',
     });
     remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     remove.addEventListener('click', async () => {
@@ -15193,9 +15840,12 @@ function renderPlaylistCandidates(songs) {
   // Chorleiter plant oft, bevor die Aufnahme überhaupt vorliegt. Ein Titel,
   // zu dem die Suche keinen vorhandenen Song findet, lässt sich deshalb als
   // reiner Platzhalter eintragen (genau wie beim Text-Import).
-  if (raw.trim() && !songs.some((s) => s.normTitle === q)) {
-    host.append(el('button', {
-      class: 'list-item', type: 'button',
+  // Der Platzhalter steht bewusst UNTER den echten Treffern und sieht anders
+  // aus (gestrichelt): stand er vorne, trug ein Tipp auf den obersten Eintrag
+  // nach „Halle" einen Phantomtitel statt „Hallelujah" ein (U9).
+  const placeholder = raw.trim() && !songs.some((s) => s.normTitle === q)
+    ? el('button', {
+      class: 'list-item', type: 'button', style: 'border-style:dashed; background:transparent',
       onclick: async () => {
         plDraft.songTitles.push(raw.trim());
         markDirty();
@@ -15204,9 +15854,9 @@ function renderPlaylistCandidates(songs) {
       },
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `„${raw.trim()}“ eintragen` }),
-        el('div', { class: 'small muted', text: t('playlists.addPlaceholderAria') }))));
-  }
+        el('strong', { text: t('playlists.addPlaceholderLine').replace('{title}', raw.trim()) }),
+        el('div', { class: 'small muted', text: t('playlists.addPlaceholderAria') })))
+    : null;
 
   const inList = new Set((plDraft.songTitles || []).map(normalizeTitle));
 
@@ -15216,7 +15866,8 @@ function renderPlaylistCandidates(songs) {
   if (q) list = list.filter((s) => s.normTitle.includes(q));
 
   if (!list.length) {
-    if (!raw.trim()) host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
+    if (!raw.trim()) host.append(el('p', { class: 'small muted', style: 'margin:0', text: t('playlists.noSongFound') }));
+    if (placeholder) host.append(placeholder);
     return;
   }
 
@@ -15238,6 +15889,7 @@ function renderPlaylistCandidates(songs) {
       el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) })),
       el('span', { class: 'small muted', text: t(already ? 'common.remove' : 'common.add') })));
   }
+  if (placeholder) host.append(placeholder);
 }
 
 $('#pl-search').addEventListener('input', async () => {
@@ -15249,7 +15901,7 @@ $('#pl-back').addEventListener('click', async () => {
 });
 
 $('#pl-rename').addEventListener('click', async () => {
-  const name = await promptDialog({ title: 'Setliste umbenennen', value: plDraft.name });
+  const name = await promptDialog({ title: t('playlists.renameAria'), value: plDraft.name });
   if (name === null || !name.trim()) return;
   plDraft.name = name.trim();
   markDirty();
@@ -15273,7 +15925,7 @@ $('#btn-pl-delete').addEventListener('click', async () => {
 /** Teilt oder sichert eine Setliste als Textdatei. */
 async function sharePlaylistFile(pl) {
   const text = playlistToText(pl);
-  const fileName = `${pl.name.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+  const fileName = `${String(pl.name ?? '').replace(/[\\/:*?"<>|]/g, '_')}.txt`;
   const file = new File([text], fileName, { type: 'text/plain' });
 
   if (navigator.canShare?.({ files: [file] })) {
@@ -15302,17 +15954,17 @@ function downloadBlob(blob, fileName) {
  * verlassen). „Übernehmen" schreibt den Text zurück in die Setliste.
  */
 function openPlaylistTextDialog(pl) {
-  const textarea = el('textarea', { rows: '10', 'aria-label': `„${pl.name}" als Text` });
+  const textarea = el('textarea', { rows: '10', 'aria-label': t('playlists.asTextTitle').replace('{name}', pl.name) });
   textarea.value = playlistToText(pl);
 
   const done = () => layer.remove();
 
   const box = el('div', { class: 'dialog' },
-    el('h2', { text: `„${pl.name}" als Text` }),
+    el('h2', { text: t('playlists.asTextTitle').replace('{name}', pl.name) }),
     el('p', { class: 'small muted', text: t('playlists.pasteHint') }),
     textarea,
     el('div', { class: 'dialog-actions' },
-      el('button', { class: 'btn', type: 'button', text: 'Kopieren', onclick: async () => {
+      el('button', { class: 'btn', type: 'button', text: t('common.copy'), onclick: async () => {
         try {
           await navigator.clipboard.writeText(textarea.value);
           banner(t('common.copiedClipboard'), { kind: 'ok' });
@@ -15351,8 +16003,7 @@ function openPlaylistTextDialog(pl) {
 
   const layer = el('div', { class: 'overlay' }, box);
   layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
-  document.body.append(layer);
-  textarea.focus();
+  mountModal(layer, { initialFocus: textarea, onEscape: () => done() });
 }
 
 /** Zufälliger, vorhandener Index der Playlist — nie der aktuelle, außer es
@@ -15379,7 +16030,7 @@ function playlistStep(delta, autoplay) {
   playQueue.index = i;
   if (playerSong && playerSong.id === playQueue.items[i].id) {
     updateSeekUI(audioSeek(0));
-    if (autoplay ?? Audio.playing) audioPlay().then(() => setPlayIcon(true));
+    if (autoplay ?? Audio.playing) audioPlay().then(() => setPlayIcon(Audio.playing));
     renderQueue();
     return;
   }
@@ -15414,7 +16065,7 @@ async function playlistAdvance() {
       await routineApplyStepForQueue();
       updateSeekUI(audioSeek(0));
       await audioPlay();
-      setPlayIcon(true);
+      setPlayIcon(Audio.playing);
       return;
     }
     pendingAutoPlay = true;
@@ -15437,7 +16088,7 @@ async function playlistAdvance() {
     await routineApplyStepForQueue();
     updateSeekUI(audioSeek(0));
     await audioPlay();
-    setPlayIcon(true);
+    setPlayIcon(Audio.playing);
     return;
   }
   pendingAutoPlay = true;
@@ -15559,6 +16210,8 @@ function base64ToBlob(base64, mimeType) {
 const BACKUP_AUDIO_B64_MARKER = '"audioBase64":"';
 const BACKUP_AUDIO_B64_MARKER_BYTES = new TextEncoder().encode(BACKUP_AUDIO_B64_MARKER);
 const BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX = '@B64#';
+/** Obergrenze für alles außer den ausgelagerten Audiodaten einer Sicherung. */
+const BACKUP_MAX_SKELETON_BYTES = 64 * 1024 * 1024;
 const BACKUP_READ_CHUNK = 8 * 1024 * 1024;
 const JSON_QUOTE_BYTE = 0x22; // '"' — Base64 selbst enthält nie ein Anführungszeichen.
 
@@ -15682,6 +16335,14 @@ async function readBackupFile(file) {
   }
 
   const skeletonBlob = new Blob(skeletonParts);
+  // Alles außer den ausgelagerten Audiodaten ist klein (Titel, Notizen,
+  // Einstellungen). Ein riesiges Skelett heißt: Audiodaten stehen in einer
+  // Schreibweise, die der Scanner oben nicht erkennt (z.B. `"audioBase64" :
+  // "…"` mit Leerzeichen) — die Größenlimits griffen dann nicht, und die
+  // ganze Datei landete als ein String im Speicher (SEC-FILE-7).
+  if (skeletonBlob.size > BACKUP_MAX_SKELETON_BYTES) {
+    throw new Error(`Diese Sicherung ist zu groß oder ungewöhnlich aufgebaut (${fmtBytes(skeletonBlob.size)} ohne Audiodaten).`);
+  }
   let data;
   try {
     data = JSON.parse(await readTextBlob(skeletonBlob));
@@ -15693,8 +16354,13 @@ async function readBackupFile(file) {
     data,
     /** Löst einen `@B64#n`-Platzhalter direkt aus der Originaldatei auf — nie als Teil eines größeren Strings. */
     async resolveAudioBase64(placeholder) {
-      const idx = Number(String(placeholder).slice(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX.length));
-      const span = spans[idx];
+      const value = String(placeholder);
+      // Kein Platzhalter: der Wert steht (klein, siehe Skelett-Limit) direkt
+      // im JSON. Früher wurde er trotzdem als Index gedeutet — „XXXXX0"
+      // lieferte dann die Audiodaten eines ganz anderen RECs.
+      if (!value.startsWith(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX)) return value;
+      const idx = Number(value.slice(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX.length));
+      const span = Number.isInteger(idx) ? spans[idx] : null;
       if (!span || span.end < 0) throw new Error('Beschädigte Sicherung: Audiodaten nicht gefunden.');
       return readTextBlob(file.slice(span.start, span.end));
     },
@@ -15971,13 +16637,13 @@ async function showBackupOptionsDialog() {
     };
 
     const checkboxRows = [
-      ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) samt hinterlegten Notenblättern — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
-      ['recordings', `Eigene RECs (${plural(est.recCount, 'Aufnahme', 'Aufnahmen')})`, null, est.recAudioBytes],
-      ['loops', 'Loops', null, null],
-      ['notes', 'Notizen', null, null],
-      ['lyricsNotes', 'Eigene Liedtexte', null, null],
-      ['playlists', 'Setlisten', null, null],
-      ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße, Standardreiter, Akzentfarbe, Sprache.', null],
+      ['songAudio', t('backup.scopeSongAudio'), t('backup.scopeSongAudioHint').replace('{tracks}', tPlural(est.trackCount, 'count.trackOne', 'count.trackMany')), est.songAudioBytes],
+      ['recordings', t('backup.scopeRecordings').replace('{recordings}', tPlural(est.recCount, 'count.recordingOne', 'count.recordingMany')), null, est.recAudioBytes],
+      ['loops', t('backup.scopeLoops'), null, null],
+      ['notes', t('backup.scopeNotes'), null, null],
+      ['lyricsNotes', t('backup.scopeLyrics'), null, null],
+      ['playlists', t('backup.scopePlaylists'), null, null],
+      ['settings', t('backup.scopeSettings'), t('backup.scopeSettingsHint'), null],
     ];
     const checkboxes = {};
     const rowNodes = checkboxRows.map(([key, title, hint, bytes]) => {
@@ -15987,23 +16653,23 @@ async function showBackupOptionsDialog() {
     });
 
     const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'Sicherung erstellen' }),
+      el('h2', { text: t('backup.createTitle') }),
       el('p', { text: t('backup.scopeHint') }),
       el('div', { class: 'preset-row', style: 'grid-template-columns:repeat(2,1fr); margin-bottom:10px' },
-        presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
-        presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Alles sichern', onclick: () => applyPreset(true) })),
+        presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: t('backup.presetUserOnly'), onclick: () => applyPreset(false) }),
+        presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: t('backup.presetAll'), onclick: () => applyPreset(true) })),
       el('div', { class: 'stack', style: 'gap:2px' }, ...rowNodes),
       el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
         el('span', { text: t('backup.estimatedSize') }), totalLabel),
       el('div', { class: 'dialog-actions' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: t('backup.createTitle'), onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
 
     updateTotal();
     updatePresetHighlight();
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => done(null) });
   });
 }
 
@@ -16019,7 +16685,7 @@ function showBackupProgressDialog(estimatedTotal) {
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
-  document.body.append(layer);
+  mountModal(layer, { busy: true });
   return {
     update(doneBytes) {
       const pct = estimatedTotal > 0 ? Math.min(100, Math.round((doneBytes / estimatedTotal) * 100)) : 0;
@@ -16052,7 +16718,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
 
     let shared = false;
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Chor-Sicherung' }); shared = true; }
+      try { await navigator.share({ files: [file], title: t('backup.shareTitle') }); shared = true; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
     if (!shared) downloadBlob(new Blob(blobParts, { type: 'application/json' }), fileName);
@@ -16061,12 +16727,12 @@ $('#btn-backup-export').addEventListener('click', async () => {
     renderBackupAge();
     updateBackupReminder();
     const parts = [];
-    if (opts.loops) parts.push(plural(counts.loops, 'Loop', 'Loops'));
-    if (opts.notes) parts.push(plural(counts.notes, 'Notiz', 'Notizen'));
-    if (opts.playlists) parts.push(plural(counts.playlists, 'Setliste', 'Setlisten'));
-    if (opts.recordings) parts.push(plural(counts.recordings, 'REC', 'RECs'));
-    if (opts.songAudio) parts.push(`${plural(counts.songAudioTracks, 'Spur', 'Spuren')} Song-Audio`);
-    banner(`Sicherung erstellt (${fmtBytes(file.size)}): ${parts.join(', ')}.`, { kind: 'ok' });
+    if (opts.loops) parts.push(tPlural(counts.loops, 'count.loopOne', 'count.loopMany'));
+    if (opts.notes) parts.push(tPlural(counts.notes, 'count.noteOne', 'count.noteMany'));
+    if (opts.playlists) parts.push(tPlural(counts.playlists, 'count.playlistOne', 'count.playlistMany'));
+    if (opts.recordings) parts.push(tPlural(counts.recordings, 'count.recOne', 'count.recMany'));
+    if (opts.songAudio) parts.push(t('backup.createdSongAudio').replace('{tracks}', tPlural(counts.songAudioTracks, 'count.trackOne', 'count.trackMany')));
+    banner(t('backup.created').replace('{size}', fmtBytes(file.size)).replace('{parts}', parts.join(', ')), { kind: 'ok' });
   } catch (err) {
     progress?.close();
     closeBanner?.();
@@ -16108,18 +16774,18 @@ $('#backup-input').addEventListener('change', async (e) => {
  * restoreBackup()) eine konkrete Meldung statt der bisherigen Pauschalmeldung
  * — wer abbricht, soll wissen, was bis dahin schon übernommen wurde.
  */
-function backupPartialTallyText(t) {
-  if (!t) return 'Die Sicherung konnte nicht vollständig eingespielt werden.';
+function backupPartialTallyText(tally) {
+  if (!tally) return t('backup.restoreIncomplete');
   const parts = [];
-  if (t.songsCreated) parts.push(plural(t.songsCreated, 'Song', 'Songs'));
-  if (t.scoresRestored) parts.push(plural(t.scoresRestored, 'Notenblatt', 'Notenblätter'));
-  if (t.addedLoops) parts.push(plural(t.addedLoops, 'Loop', 'Loops'));
-  if (t.addedPl) parts.push(plural(t.addedPl, 'Setliste', 'Setlisten'));
-  if (t.addedNotes) parts.push(plural(t.addedNotes, 'Notiz', 'Notizen'));
-  if (t.addedLyricsNotes) parts.push(plural(t.addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte'));
-  if (t.addedRecordings) parts.push(plural(t.addedRecordings, 'REC', 'RECs'));
-  const done = parts.length ? ` Bis zum Abbruch übernommen: ${parts.join(', ')}.` : ' Bis zum Abbruch wurde nichts übernommen.';
-  return `Die Sicherung konnte nicht vollständig eingespielt werden.${done}`;
+  if (tally.songsCreated) parts.push(tPlural(tally.songsCreated, 'common.songOne', 'common.songMany'));
+  if (tally.scoresRestored) parts.push(tPlural(tally.scoresRestored, 'count.scoreOne', 'count.scoreMany'));
+  if (tally.addedLoops) parts.push(tPlural(tally.addedLoops, 'count.loopOne', 'count.loopMany'));
+  if (tally.addedPl) parts.push(tPlural(tally.addedPl, 'count.playlistOne', 'count.playlistMany'));
+  if (tally.addedNotes) parts.push(tPlural(tally.addedNotes, 'count.noteOne', 'count.noteMany'));
+  if (tally.addedLyricsNotes) parts.push(tPlural(tally.addedLyricsNotes, 'count.lyricsOne', 'count.lyricsMany'));
+  if (tally.addedRecordings) parts.push(tPlural(tally.addedRecordings, 'count.recOne', 'count.recMany'));
+  const done = parts.length ? t('backup.restorePartialDone').replace('{parts}', parts.join(', ')) : t('backup.restorePartialNothing');
+  return t('backup.restoreIncomplete') + done;
 }
 
 $('#rec-import-input').addEventListener('change', async (e) => {
@@ -16140,9 +16806,9 @@ $('#rec-import-input').addEventListener('change', async (e) => {
 
   await renderImportStats();
   const parts = [];
-  if (linked) parts.push(`${plural(linked, 'REC', 'RECs')} zugeordnet`);
-  if (pending) parts.push(`${plural(pending, 'REC', 'RECs')} warten auf den passenden Song`);
-  if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als REC erkannt`);
+  if (linked) parts.push(tPlural(linked, 'rec.importLinkedOne', 'rec.importLinkedMany'));
+  if (pending) parts.push(tPlural(pending, 'rec.importPendingOne', 'rec.importPendingMany'));
+  if (failed) parts.push(tPlural(failed, 'rec.importFailedOne', 'rec.importFailedMany'));
   banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
 
@@ -16228,6 +16894,50 @@ function validateBackupSkeleton(data) {
 }
 
 /**
+ * Prüft `settings`-Felder aus einer Sicherung (oder einer anderen fremden
+ * Quelle) gegen ihre bekannten Wertebereiche und lässt alles andere weg.
+ * Eine unbeaufsichtigt übernommene `accentColor` etwa liefe als CSS-Custom-
+ * Property in `background: var(--accent)` (index.html) und könnte mit einem
+ * `url(...)`-Wert zu einem dauerhaften externen Tracking-Beacon werden.
+ * `applyAccentColor()` prüft dieselbe Regel zusätzlich selbst (Defense in
+ * Depth, auch für Altbestände direkt in IndexedDB).
+ * @returns {object} nur die Felder, die die Prüfung bestanden haben
+ */
+function sanitizeSettingsPatch(raw) {
+  const patch = {};
+  if (!raw || typeof raw !== 'object') return patch;
+  if (typeof raw.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.accentColor)) {
+    patch.accentColor = raw.accentColor;
+  }
+  if (typeof raw.lyricsFontSize === 'number' && Number.isFinite(raw.lyricsFontSize)) {
+    patch.lyricsFontSize = Math.max(13, Math.min(30, raw.lyricsFontSize));
+  }
+  if (raw.defaultPlayerTab === 'sheets') {
+    // Reiter aus alten Sicherungen, siehe dieselbe Migration in loadSettings().
+    patch.defaultPlayerTab = 'notes';
+  } else if (PLAYER_TABS.includes(raw.defaultPlayerTab)) {
+    patch.defaultPlayerTab = raw.defaultPlayerTab;
+  }
+  if (LANGUAGES.some((l) => l.id === raw.language)) {
+    patch.language = raw.language;
+  }
+  if (raw.lightshowShow != null && LIGHTSHOWS.some((show) => show.id === raw.lightshowShow)) {
+    patch.lightshowShow = raw.lightshowShow;
+  }
+  if (raw.lightshowVoice === null || LIGHTSHOW_VOICES.includes(raw.lightshowVoice)) {
+    if (raw.lightshowVoice !== undefined) patch.lightshowVoice = raw.lightshowVoice;
+  }
+  if (Array.isArray(raw.myVoices)) {
+    const voices = raw.myVoices.filter((v) => MY_VOICE_CHOICES.includes(v));
+    if (voices.length) patch.myVoices = voices;
+  }
+  if (typeof raw.lightshowSeed === 'number' && Number.isFinite(raw.lightshowSeed)) {
+    patch.lightshowSeed = raw.lightshowSeed;
+  }
+  return patch;
+}
+
+/**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
  * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
  * verloren; wer wirklich neu anfangen will, löscht vorher von Hand).
@@ -16252,16 +16962,14 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // entfernt: wer wirklich bei null anfangen will, löscht vorher von Hand
   // über „Alle Daten löschen" und spielt die Sicherung danach ein.
   const ok = await confirmDialog({
-    title: 'Sicherung einspielen',
-    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
-        + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
-        + `${plural(playlists.length, 'Setliste', 'Setlisten')}`
-        + (recordingsIn.length ? `, ${plural(recordingsIn.length, 'REC', 'RECs')}` : '')
-        + (songAudioIn.length ? ` und Audio für ${plural(songAudioIn.length, 'Song', 'Songs')}` : '')
-        + ' gefunden. '
-        + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
-        + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird. '
-        + 'Vorhandene Daten bleiben erhalten, es wird nur ergänzt.',
+    title: t('backup.restoreConfirmTitle'),
+    text: t('backup.restoreConfirmFound').replace('{loops}', tPlural(loops.length, 'count.loopOne', 'count.loopMany')).replace('{notes}', tPlural(notes.length, 'count.noteOne', 'count.noteMany'))
+        .replace('{lyrics}', tPlural(lyricsNotes.length, 'count.lyricsOne', 'count.lyricsMany'))
+        .replace('{playlists}', tPlural(playlists.length, 'count.playlistOne', 'count.playlistMany'))
+        .replace('{recs}', recordingsIn.length ? t('backup.restoreConfirmRecs').replace('{recs}', tPlural(recordingsIn.length, 'count.recOne', 'count.recMany')) : '')
+        .replace('{audio}', songAudioIn.length ? t('backup.restoreConfirmAudio').replace('{songs}', tPlural(songAudioIn.length, 'common.songOne', 'common.songMany')) : '')
+        + ' '
+        + t('backup.restoreConfirmMatched').replace('{matched}', matched).replace('{unmatched}', loops.length - matched),
     okLabel: t('common.merge'),
   });
   if (!ok) return;
@@ -16337,13 +17045,13 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           artist: typeof s.artist === 'string' ? s.artist : undefined,
           collections: [],
           tracks: [],
-          lyrics: typeof s.lyrics === 'string' ? s.lyrics : null,
+          lyrics: typeof s.lyrics === 'string' && s.lyrics.length <= BACKUP_MAX_TEXT_LEN ? s.lyrics : null,
           scores: [],
           importedAt: new Date().toISOString(),
         };
         if (existingSong) {
           if (!song.artist && typeof s.artist === 'string') song.artist = s.artist;
-          if (!song.lyrics && typeof s.lyrics === 'string') song.lyrics = s.lyrics;
+          if (!song.lyrics && typeof s.lyrics === 'string' && s.lyrics.length <= BACKUP_MAX_TEXT_LEN) song.lyrics = s.lyrics;
         }
         let songGotContent = false;
 
@@ -16415,7 +17123,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       const song = {
         key: `song:${hashId(normTitle)}`, type: 'song', id: hashId(normTitle),
         title, normTitle, collections: [], tracks: [], scores: [],
-        lyrics: typeof meta.lyrics === 'string' ? meta.lyrics : null,
+        lyrics: typeof meta.lyrics === 'string' && meta.lyrics.length <= BACKUP_MAX_TEXT_LEN ? meta.lyrics : null,
         importedAt: new Date().toISOString(),
       };
       if (typeof meta.artist === 'string') song.artist = meta.artist;
@@ -16433,9 +17141,15 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const existingNotes = await DB.metaByType('note');
   const existingLyricsNotes = await DB.metaByType('lyricsNote');
   const fresh = [];
+  // Eine Sicherung ist eine Datei von außen: Zahlen oder Objekte statt
+  // Strings landeten sonst dauerhaft in IndexedDB und warfen später bei
+  // jedem Öffnen TypeErrors (z.B. createdAt.localeCompare, SEC-FILE-6).
+  const optStr = (v) => v == null || typeof v === 'string';
+  const isoOrNow = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : new Date().toISOString());
 
   for (const l of loops) {
     if (!l || !Number.isFinite(l.start) || !Number.isFinite(l.end)) continue;
+    if (!optStr(l.name) || !optStr(l.songTitle)) continue;
     if (l.start < 0 || l.end < 0) continue;
     if ((l.name && l.name.length > BACKUP_MAX_TITLE_LEN) || (l.songTitle && l.songTitle.length > BACKUP_MAX_TITLE_LEN)) continue;
     const song = findSongByTitle(songs, l.songTitle || '');
@@ -16463,7 +17177,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // Notizen: eine je Lied. Eine vorhandene Notiz wird nie überschrieben —
   // sonst wäre beim „Zusammenführen" plötzlich der eigene Text weg.
   for (const n of notes) {
-    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || typeof n.songTitle !== 'string' || !n.songTitle) continue;
     if (n.text.length > BACKUP_MAX_TEXT_LEN || n.songTitle.length > BACKUP_MAX_TITLE_LEN) continue;
     const song = findSongByTitle(songs, n.songTitle);
     const norm = normalizeTitle(n.songTitle);
@@ -16481,7 +17195,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       songId: song ? song.id : null,
       songTitle: n.songTitle,           // bleibt erhalten, auch ohne Song
       text: n.text,
-      updatedAt: n.updatedAt || new Date().toISOString(),
+      updatedAt: isoOrNow(n.updatedAt),
     });
     addedNotes++;
   }
@@ -16490,7 +17204,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // vorhandene offizielle Fassung des Songs verhindert das nicht, denn beide
   // können nebeneinander bestehen (siehe LIEDTEXT UND NOTEN).
   for (const n of lyricsNotes) {
-    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || typeof n.songTitle !== 'string' || !n.songTitle) continue;
     if (n.text.length > BACKUP_MAX_TEXT_LEN || n.songTitle.length > BACKUP_MAX_TITLE_LEN) continue;
     const song = findSongByTitle(songs, n.songTitle);
     const norm = normalizeTitle(n.songTitle);
@@ -16508,19 +17222,20 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       songId: song ? song.id : null,
       songTitle: n.songTitle,
       text: n.text,
-      updatedAt: n.updatedAt || new Date().toISOString(),
+      updatedAt: isoOrNow(n.updatedAt),
     });
     addedLyricsNotes++;
   }
 
   for (const p of playlists) {
-    if (!p || !Array.isArray(p.songTitles)) continue;
+    if (!p || !Array.isArray(p.songTitles) || !optStr(p.name)) continue;
     if (p.songTitles.length > BACKUP_MAX_PLAYLIST_SONGS) continue;
     if (p.name && p.name.length > BACKUP_MAX_TITLE_LEN) continue;
     const name = normalizeTitle(p.name || '');
     if (existingPl.some((x) => normalizeTitle(x.name) === name)) continue;
     if (fresh.some((x) => x.type === 'playlist' && normalizeTitle(x.name) === name)) continue;
-    fresh.push(newPlaylist(p.name || 'Setliste', p.songTitles));
+    const titles = p.songTitles.filter((x) => typeof x === 'string' && x.length <= BACKUP_MAX_TITLE_LEN);
+    fresh.push(newPlaylist(p.name || 'Setliste', titles));
     addedPl++;
   }
 
@@ -16533,7 +17248,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   if (recordingsIn.length) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
     for (const r of recordingsIn) {
-      if (!r || !r.audioBase64) { discardedRecordings++; continue; }
+      if (!r || !r.audioBase64 || !optStr(r.name) || !optStr(r.songTitle)) { discardedRecordings++; continue; }
       // Nicht-endliche Werte (Infinity, NaN) rutschen an `|| 0` vorbei — NaN
       // ist zwar falsy, Infinity aber nicht (AP-01: "nicht-endliche Zahlen").
       if (r.duration !== undefined && !Number.isFinite(r.duration)) { discardedRecordings++; continue; }
@@ -16566,7 +17281,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         voice: VOICE_ORDER.includes(r.voice) ? r.voice : null,
         fileKey, mimeType, duration: Number.isFinite(r.duration) ? r.duration : 0,
         size: blob.size,
-        createdAt: r.createdAt || new Date().toISOString(),
+        createdAt: isoOrNow(r.createdAt),
       };
       const duration = recording.duration;
       if (Number.isFinite(r.trimStart) && Number.isFinite(r.trimEnd)
@@ -16650,35 +17365,25 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     if (restoredRoutines.length) await DB.metaPutMany(restoredRoutines);
   }
 
+  // Settings aus der Sicherung sind fremder, ungeprüfter Input — nur validierte
+  // Felder übernehmen (siehe sanitizeSettingsPatch()), sonst ließe sich z.B.
+  // über `accentColor` ein dauerhafter externer Tracking-Beacon einschleusen.
+  const rawSettings = (data.settings && typeof data.settings === 'object') ? data.settings : {};
+  const settingsPatch = sanitizeSettingsPatch(rawSettings);
   // Ältere Sicherungen kennen nur ein einzelnes `myVoice` — beides abholen.
-  const savedVoices = Array.isArray(data.settings?.myVoices) ? data.settings.myVoices
-    : (data.settings?.myVoice ? [data.settings.myVoice] : []);
+  const savedVoices = Array.isArray(rawSettings.myVoices) ? rawSettings.myVoices
+    : (rawSettings.myVoice ? [rawSettings.myVoice] : []);
   if (savedVoices.length && !settings.myVoices.length) {
-    await saveSettings({ myVoices: savedVoices });
+    const voices = savedVoices.filter((v) => MY_VOICE_CHOICES.includes(v));
+    if (voices.length) settingsPatch.myVoices = voices;
+  } else {
+    delete settingsPatch.myVoices;
   }
-  if (data.settings?.lyricsFontSize) {
-    await saveSettings({ lyricsFontSize: data.settings.lyricsFontSize });
+  if (typeof rawSettings.lightshowOffsetMs === 'number' && Number.isFinite(rawSettings.lightshowOffsetMs)) {
+    settingsPatch.lightshowOffsetMs = Math.max(-5000, Math.min(5000, rawSettings.lightshowOffsetMs));
   }
-  if (data.settings?.defaultPlayerTab) {
-    await saveSettings({ defaultPlayerTab: data.settings.defaultPlayerTab });
-  }
-  if (data.settings?.accentColor) {
-    await saveSettings({ accentColor: data.settings.accentColor }); // wendet die Farbe gleich mit an
-  }
-  if (data.settings?.language) {
-    await saveSettings({ language: data.settings.language }); // übersetzt die Oberfläche gleich mit
-  }
-  if (typeof data.settings?.lightshowOffsetMs === 'number') {
-    await saveSettings({ lightshowOffsetMs: Math.max(-5000, Math.min(5000, data.settings.lightshowOffsetMs)) });
-  }
-  if (data.settings?.lightshowVoice) {
-    await saveSettings({ lightshowVoice: data.settings.lightshowVoice });
-  }
-  if (data.settings?.lightshowShow) {
-    await saveSettings({ lightshowShow: data.settings.lightshowShow });
-  }
-  if (data.settings?.lightshowSeed) {
-    await saveSettings({ lightshowSeed: data.settings.lightshowSeed });
+  if (Object.keys(settingsPatch).length) {
+    await saveSettings(settingsPatch); // accentColor/language wenden sich in saveSettings gleich mit an
   }
 
   await renderPlaylists();
@@ -16744,8 +17449,8 @@ async function renderImportStats() {
 
   const days = daysSince(settings.lastImportAt);
   $('#stat-last-import').textContent = days === null
-    ? 'noch nie'
-    : days === 0 ? 'heute' : `vor ${plural(days, 'Tag', 'Tagen')}`;
+    ? t('import.lastImportNever')
+    : days === 0 ? t('import.lastImportToday') : t('import.lastImportDaysAgo').replace('{days}', tPlural(days, 'settings.data.backupDayOne', 'settings.data.backupDayMany'));
 }
 
 function daysSince(iso) {
@@ -16793,10 +17498,10 @@ async function updateBackupReminder() {
   box.append(
     el('p', { style: 'margin:0 0 10px',
       text: days === null
-        ? `Du hast ${workCount} ungesicherte Loops, Notizen oder Liedtexte angelegt. Eine Sicherung ist in zehn Sekunden erstellt.`
-        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops, Notizen und Liedtexte wären bei einem Problem verloren.` }),
+        ? t('backup.reminderUnsaved').replace('{count}', workCount)
+        : tPlural(days, 'backup.reminderDaysOne', 'backup.reminderDaysMany') }),
     el('div', { style: 'display:flex; gap:8px' },
-      el('button', { class: 'btn', type: 'button', text: 'Jetzt sichern',
+      el('button', { class: 'btn', type: 'button', text: t('backup.backupNow'),
         onclick: () => { box.hidden = true; showView('settings'); $('#btn-backup-export').focus(); } }),
       el('button', { class: 'btn', type: 'button', text: t('common.later'),
         onclick: () => { reminderDismissed = true; box.hidden = true; } })));
@@ -16807,14 +17512,73 @@ async function updateBackupReminder() {
    KOMPATIBILITÄTSHINWEIS — die App ist noch in Entwicklung; das Datenformat
    von Notizen/Liedtexten/Loops/RECs kann sich bis zur finalen Version noch
    ändern, sodass eine Übernahme beim Update nicht garantiert ist. Der
-   Hinweis erscheint bei der ersten Nutzung, nach jeder Aktualisierung
-   (COMPAT_UPDATE_FLAG, gesetzt kurz vor dem Reload in registerServiceWorker)
-   sowie nach 3, 7 und 30 Tagen — Tages-Schwellen je nur einmal
+   Hinweis erscheint bei der ersten Nutzung, nach einer Aktualisierung, die
+   das gespeicherte Datenformat ändert (DATA_VERSION, siehe unten), sowie nach
+   3, 7 und 30 Tagen — Tages-Schwellen je nur einmal
    (siehe settings.compatWarningsShown).
+
+   Früher kam er nach JEDER Aktualisierung — bei mehreren Releases am Tag
+   verlor er so jede Bedeutung (ARCH-6). Jetzt zählt nur ein echter
+   Formatwechsel.
    ========================================================================== */
 
 const COMPAT_WARNING_DAYS = [3, 7, 30];
 const COMPAT_UPDATE_FLAG = 'chor-app-just-updated';
+
+/**
+ * Version des gespeicherten Datenformats (Songs, Loops, Notizen, RECs,
+ * Setlisten, Einstellungen). NUR erhöhen, wenn sich die Bedeutung
+ * gespeicherter Felder so ändert, dass ältere Datensätze angepasst werden
+ * müssen — dann zugleich unter DATA_MIGRATIONS[neue Version] eine
+ * idempotente Umstellung eintragen. Reine Code-Änderungen brauchen das nicht.
+ */
+const DATA_VERSION = 1;
+
+/**
+ * Umstellungen je Zielversion, `async (db) => void`. Laufen einmalig beim
+ * Start, in aufsteigender Reihenfolge, für alle Versionen über der zuletzt
+ * gesehenen. Regel: unbekannte Felder immer erhalten ({...alt, ...neu}), nie
+ * Felder löschen, deren Bedeutung man nicht kennt — eine ältere App-Fassung
+ * (Rückfall auf einen älteren Shell-Cache) soll die Daten weiter lesen können.
+ */
+const DATA_MIGRATIONS = {
+  // 2: async () => { … },
+};
+
+/** @returns {Promise<boolean>} ob sich das Datenformat seit dem letzten Start geändert hat */
+async function runDataMigrations() {
+  if (settingsLoadFailed) return false;
+  const seen = Number.isInteger(settings.dataVersion) ? settings.dataVersion : null;
+  if (seen === DATA_VERSION) return false;
+  if (seen === null) {
+    // Erster Start mit diesem Mechanismus (oder Neuinstallation): Die Daten
+    // stammen aus der aktuellen Fassung, es gibt nichts umzustellen.
+    await saveSettings({ dataVersion: DATA_VERSION });
+    return false;
+  }
+  if (seen > DATA_VERSION) {
+    // Neuere Daten, ältere App (Rückfall auf einen alten Cache): nichts
+    // anfassen, nur protokollieren.
+    dlog('data:newer-than-app', { seen, app: DATA_VERSION });
+    return false;
+  }
+  for (let v = seen + 1; v <= DATA_VERSION; v++) {
+    const migrate = DATA_MIGRATIONS[v];
+    if (migrate) {
+      try {
+        await migrate();
+      } catch (err) {
+        bannerError(t('msg.dataMigrationFailed'), 'DATA-MIGRATION', err);
+        return true; // Version nicht hochzählen — beim nächsten Start erneut
+      }
+    }
+  }
+  await saveSettings({ dataVersion: DATA_VERSION });
+  return true;
+}
+
+/** Vom Start gesetzt: hat sich das Datenformat bei diesem Start geändert? */
+let dataFormatChanged = false;
 
 function showCompatWarningDialog() {
   const warnIcon = el('span', { style: 'flex:0 0 auto; width:24px; height:24px; color:var(--warn)', 'aria-hidden': 'true' });
@@ -16829,7 +17593,7 @@ function showCompatWarningDialog() {
   const done = () => layer.remove();
   const layer = el('div', { class: 'overlay' }, box);
   layer.addEventListener('click', (e) => { if (e.target === layer) done(); });
-  document.body.append(layer);
+  mountModal(layer, { onEscape: () => done() });
 }
 
 async function checkCompatWarning() {
@@ -16844,7 +17608,7 @@ async function checkCompatWarning() {
     justUpdated = sessionStorage.getItem(COMPAT_UPDATE_FLAG) === '1';
     sessionStorage.removeItem(COMPAT_UPDATE_FLAG);
   } catch { /* z.B. privater Modus */ }
-  if (justUpdated) {
+  if (justUpdated && dataFormatChanged) {
     showCompatWarningDialog();
     return;
   }
@@ -16870,10 +17634,10 @@ function choiceDialog({ title, text, options }) {
           class: `btn btn--block${o.primary ? ' btn--primary' : ''}${o.danger ? ' btn--danger' : ''}`,
           type: 'button', text: o.label, onclick: () => done(o.value),
         })),
-        el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(null) })));
+        el('button', { class: 'btn btn--block', type: 'button', text: t('common.cancel'), onclick: () => done(null) })));
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
-    document.body.append(layer);
+    mountModal(layer, { onEscape: () => done(null) });
   });
 }
 
@@ -16929,12 +17693,74 @@ function runSelfTests() {
       || parsedPrintable[0].text !== 'Zeile eins\nZeile zwei') {
     failed.push('Notiz-Export müsste sich verlustfrei wieder importieren lassen');
   }
+  // latestRuns(): nur der jüngste Lauf ist aktuell, invalidate() macht alle veraltet.
+  checks++;
+  {
+    const runs = latestRuns();
+    const a = runs.begin();
+    const b = runs.begin();
+    if (!a.stale || b.stale) failed.push('latestRuns: der ältere Lauf müsste veraltet sein, der neuere aktuell');
+    runs.invalidate();
+    if (!b.stale) failed.push('latestRuns: invalidate() müsste auch den neuesten Lauf veralten lassen');
+  }
+  // ReDoS-Regression (SEC-FILE-9): String(...).replace(/\s+$/, '') war für
+  // sehr viel abschließenden Leerraum quadratisch — printableToText() nutzt
+  // jetzt trimEnd(). Laufzeitschutz statt Zeitmessung, siehe oben.
+  checks++;
+  const trimStart = Date.now();
+  const trimmedExport = printableToText('note', 'Notizen', [
+    { songTitle: 'Song', text: 'Text' + ' '.repeat(200000) },
+  ]);
+  if (Date.now() - trimStart > 2000) {
+    failed.push('printableToText mit sehr viel Leerraum am Ende dauert zu lange (ReDoS?)');
+  }
+  if (trimmedExport.includes('Text' + ' '.repeat(200000))) {
+    failed.push('printableToText müsste abschließenden Leerraum entfernen (trimEnd)');
+  }
   checks++;
   try {
     parsePrintableText(printableFixture, 'lyricsNote');
     failed.push('Notiz-Export dürfte nicht als eigener Liedtext importiert werden');
   } catch (err) {
     if (err.message !== 'WRONG_KIND') failed.push('Falsche Textart müsste eindeutig erkannt werden');
+  }
+  checks++;
+  {
+    const dirty = sanitizeSettingsPatch({
+      accentColor: 'url(https://tracker.example/beacon.png)',
+      lyricsFontSize: 999,
+      defaultPlayerTab: 'sheets',
+      language: 'xx',
+      lightshowShow: 'nichtvorhanden',
+      lightshowVoice: 'LEAD',
+      myVoices: ['ALT', 'NOPE', 42],
+      lightshowSeed: NaN,
+    });
+    const clean = sanitizeSettingsPatch({
+      accentColor: '#AB12ef',
+      lyricsFontSize: 22,
+      defaultPlayerTab: 'notes',
+      language: 'en',
+      lightshowShow: 'welle',
+      lightshowVoice: 'ALT',
+      myVoices: ['ALT', 'BASS'],
+      lightshowSeed: 12345,
+    });
+    if ('accentColor' in dirty) failed.push('sanitizeSettingsPatch müsste ein url()-accentColor verwerfen');
+    if (dirty.lyricsFontSize !== 30) failed.push('sanitizeSettingsPatch müsste lyricsFontSize auf 30 klemmen');
+    if (dirty.defaultPlayerTab !== 'notes') failed.push('sanitizeSettingsPatch müsste "sheets" auf "notes" migrieren');
+    if ('language' in dirty) failed.push('sanitizeSettingsPatch müsste eine unbekannte Sprache verwerfen');
+    if ('lightshowShow' in dirty) failed.push('sanitizeSettingsPatch müsste eine unbekannte Show verwerfen');
+    if ('lightshowVoice' in dirty) failed.push('sanitizeSettingsPatch müsste "LEAD" als lightshowVoice verwerfen');
+    if ('myVoices' in dirty && (dirty.myVoices.includes('NOPE') || dirty.myVoices.includes(42))) {
+      failed.push('sanitizeSettingsPatch müsste ungültige myVoices-Einträge herausfiltern');
+    }
+    if ('lightshowSeed' in dirty) failed.push('sanitizeSettingsPatch müsste NaN als lightshowSeed verwerfen');
+    if (clean.accentColor !== '#AB12ef' || clean.lyricsFontSize !== 22 || clean.defaultPlayerTab !== 'notes'
+        || clean.language !== 'en' || clean.lightshowShow !== 'welle' || clean.lightshowVoice !== 'ALT'
+        || clean.lightshowSeed !== 12345 || clean.myVoices.length !== 2) {
+      failed.push('sanitizeSettingsPatch müsste gültige Werte unverändert übernehmen');
+    }
   }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
@@ -17020,6 +17846,16 @@ function runSelfTests() {
   if (noDash.artist !== null || noDash.title !== 'Sing-Sang') {
     failed.push(`Kopfzeile ohne Interpret: ${JSON.stringify(noDash)}`);
   }
+  // ReDoS-Regression (SEC-FILE-1): eine sehr lange Kopfzeile ohne Trenner
+  // darf nicht mehr quadratisch laufen — Laufzeitschutz statt Zeitmessung,
+  // damit der Test auf langsamer CI-Hardware nicht flattert.
+  checks++;
+  const longHeadStart = Date.now();
+  const longHead = splitLyricsHeader(`# a${' '.repeat(200000)}b\nText\n`);
+  if (Date.now() - longHeadStart > 2000) {
+    failed.push('Liedtext-Kopfzeile mit sehr viel Leerraum dauert zu lange (ReDoS?)');
+  }
+  if (longHead.artist !== null) failed.push('Sehr lange Kopfzeile ohne Trenner müsste als "kein Interpret" gelten');
 
   // Mehrere Fassungen: vorgeschlagen wird die mit den meisten Stimmen.
   checks++;
@@ -17124,6 +17960,9 @@ function runSelfTests() {
   }
 
   // 5. Blitzgrenze (WCAG 2.3.1): höchstens 3 steigende Übergänge über 0,5 je 1000-ms-Fenster.
+  //    Mit Hysterese (erst unter 0,45 „scharf", dann über 0,55 gezählt):
+  //    ohne sie zählte Rundungsrauschen knapp um 0,5 (0,4993 ↔ 0,5007) bei
+  //    feinerer Abtastung als Scheinblitze (LOG-15).
   for (const show of LIGHTSHOWS) {
     for (const voice of LIGHTSHOW_VOICES) {
       const seeds = show.id === 'sterne' ? [1, 2, 3, 4, 5, 99, 12345] : [0];
@@ -17138,8 +17977,12 @@ function runSelfTests() {
         let maxCount = 0;
         for (let i = 0; i < n; i++) {
           let count = 0;
-          for (let j = 1; j < windowSize; j++) {
-            if (doubled[i + j] > 0.5 && doubled[i + j - 1] <= 0.5) count++;
+          let armed = doubled[i] <= 0.45;
+          // j <= windowSize: das Fenster umfasst volle 1000 ms (vorher 980).
+          for (let j = 1; j <= windowSize; j++) {
+            const v = doubled[i + j];
+            if (armed && v > 0.55) { count++; armed = false; }
+            else if (v <= 0.45) armed = true;
           }
           if (count > maxCount) maxCount = count;
         }
@@ -17914,7 +18757,14 @@ function testZipFile(bytes) {
   return new Blob([bytes]);
 }
 
-async function runAsyncSelfTests() {
+/**
+ * `mutateSettings`: die LOG-1-Tests tauschen vorübergehend den globalen
+ * Einstellungszustand aus. Beim automatischen Lauf während des Starts
+ * überschnitt sich das mit dem echten Ersteinrichtungs-Ablauf (Hinweis kam
+ * verspätet und in der Test-Sprache) — deshalb dort ausgelassen, beim
+ * manuellen chorApp.selfTestAsync() aber dabei.
+ */
+async function runAsyncSelfTests({ mutateSettings = true } = {}) {
   const failed = [];
 
   // RMS normalisation: full-band, all-channel sample weighting and absolute
@@ -18527,6 +19377,86 @@ async function runAsyncSelfTests() {
     if (reservedBitrate !== null) failed.push(`MP3-Header: reservierter Bitrate-Index müsste null ergeben (${JSON.stringify(reservedBitrate)})`);
     const reservedRate = await inspectNormalizationMetadata(mp3Blob([0xff, 0xfb, 0x9c, 0x00]));
     if (reservedRate !== null) failed.push(`MP3-Header: reservierter Sampling-Rate-Index müsste null ergeben (${JSON.stringify(reservedRate)})`);
+  }
+
+  if (mutateSettings) {
+  // LOG-5: Eine vom Browser geschlossene Verbindung (hier von Hand
+  // geschlossen — `close` feuert dabei nicht, wie bei manchen WebKit-Fällen)
+  // darf nicht jeden weiteren Zugriff bis zum Neuladen scheitern lassen.
+  {
+    const db = await openDB();
+    db.close();
+    try {
+      await DB.metaGet(SETTINGS_KEY);
+      const again = await openDB();
+      if (again === db) failed.push('LOG-5: nach InvalidStateError müsste eine neue Verbindung geöffnet werden');
+    } catch (err) {
+      failed.push(`LOG-5: DB-Zugriff nach geschlossener Verbindung scheitert (${err?.name})`);
+    }
+  }
+
+  // LOG-1: Ein Lesefehler in loadSettings() darf einen intakten Settings-
+  // Datensatz nicht mit Defaults überschreiben — weder direkt noch über
+  // einen folgenden saveSettings()-Aufruf.
+  {
+    const originalStored = await DB.metaGet(SETTINGS_KEY).catch(() => null);
+    const originalSettings = settings;
+    const originalFlag = settingsLoadFailed;
+    // Ein echter Lesefehler-Hinweis aus boot() darf von diesem Test weder
+    // geschlossen noch „wiederhergestellt" werden (settingsRecovered).
+    const originalBannerClose = closeSettingsLoadBanner;
+    closeSettingsLoadBanner = null;
+    const fixture = { key: SETTINGS_KEY, type: 'settings', myVoices: ['ALT'], language: 'en', lightshowSeed: 424242, _selftestMarker: 'log1' };
+    const realMetaGet = DB.metaGet.bind(DB);
+    try {
+      await DB.metaPut(fixture);
+      let getCalls = 0;
+      DB.metaGet = async (key) => {
+        if (key === SETTINGS_KEY && getCalls < 2) { getCalls++; throw new Error('selftest: simulated read failure'); }
+        return realMetaGet(key);
+      };
+      await loadSettings();
+      if (!settingsLoadFailed) failed.push('LOG-1: settingsLoadFailed müsste nach zwei Lesefehlern in Folge gesetzt sein');
+      if (settings.language !== 'de' || settings.myVoices.length) {
+        failed.push('LOG-1: settings müsste bei anhaltendem Lesefehler im Speicher auf Defaults stehen');
+      }
+      DB.metaGet = realMetaGet;
+      const untouched = await DB.metaGet(SETTINGS_KEY);
+      if (!untouched || untouched._selftestMarker !== 'log1' || untouched.language !== 'en') {
+        failed.push('LOG-1: ein Lesefehler beim Start hat den gespeicherten Datensatz überschrieben');
+      }
+      await saveSettings({ afterFailure: true });
+      const merged = await DB.metaGet(SETTINGS_KEY);
+      if (!merged || merged._selftestMarker !== 'log1' || merged.language !== 'en' || merged.afterFailure !== true) {
+        failed.push('LOG-1: saveSettings() nach einem Lesefehler müsste ein Read-Modify-Write statt eines Gesamt-Snapshots machen');
+      }
+      if (settingsLoadFailed) failed.push('LOG-1: settingsLoadFailed müsste nach erfolgreichem Read-Modify-Write wieder false sein');
+
+      // Hintergrund-Neuversuch: Ein nur im Speicher gelandeter Patch wird
+      // nach erfolgreichem Lesen nachgetragen, ohne den Rest zu überschreiben.
+      settingsLoadFailed = true;
+      pendingSettingsPatch = { lyricsFontSize: 25 };
+      const recovered = await retrySettingsLoad();
+      const afterRetry = await DB.metaGet(SETTINGS_KEY);
+      if (!recovered || settingsLoadFailed) failed.push('LOG-1: retrySettingsLoad() müsste bei lesbarer DB den Fehlerzustand beenden');
+      if (!afterRetry || afterRetry.lyricsFontSize !== 25 || afterRetry.language !== 'en' || afterRetry._selftestMarker !== 'log1') {
+        failed.push('LOG-1: retrySettingsLoad() müsste offene Patches nachtragen und den Rest des Datensatzes erhalten');
+      }
+    } finally {
+      DB.metaGet = realMetaGet;
+      if (originalStored) await DB.metaPut(originalStored).catch(() => {});
+      else await DB.metaDelete(SETTINGS_KEY).catch(() => {});
+      settings = originalSettings;
+      settingsLoadFailed = originalFlag;
+      pendingSettingsPatch = {};
+      closeSettingsLoadBanner = originalBannerClose;
+      // settingsRecovered() hat die Test-Sprache/-Farbe angewendet — zurück.
+      await Promise.resolve();
+      applyAccentColor(settings.accentColor);
+      applyTranslations();
+    }
+  }
+
   }
 
   if (failed.length) {
@@ -19433,7 +20363,11 @@ async function runNormalizationWorkerTests() {
     // 3b) An unsupported/corrupt source terminates with a clear skip
     //     reason — not an endless retry loop.
     {
-      const garbage = new Blob([crypto.getRandomValues(new Uint8Array(256))], { type: 'application/octet-stream' });
+      // Feste Bytes statt Zufall: 256 Zufallsbytes enthielten in etwa jedem
+      // achten Lauf eine gültige MP3-Frame-Sync (0xFF 0xE…) — dann meldete
+      // die Prüfung 'durationInvalid' statt 'metadataInvalid' und der Test
+      // schlug sporadisch fehl. Werte 0–250 enthalten nie 0xFF.
+      const garbage = new Blob([Uint8Array.from({ length: 256 }, (_, i) => (i * 97 + 13) % 251)], { type: 'application/octet-stream' });
       const seed = await testSeedNormalizationTrack({ durationSec: null, blob: garbage });
       const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
       const result = await processNormalizationJob(job);
@@ -20632,23 +21566,26 @@ function initGrooveLabEasterEgg() {
 }
 
 /**
- * Automatischer Lauf nur lokal (Entwicklung) oder mit explizitem Opt-in
- * (`?selftest=1`) — auf jeder echten Domain, auch der installierten PWA,
- * kostet runSelfTests() sonst ~150ms auf dem kritischen Pfad vor der ersten
- * Ansicht, ohne dass je jemand außer der Entwicklung die Konsole liest.
- * Manuell bleibt es über chorApp.selfTest()/selfTestAsync()/
- * selfTestAudioPath() überall auslösbar.
+ * Automatischer Lauf nur auf Loopback-Hosts (Entwicklung) — auf jeder echten
+ * Domain, auch der installierten PWA, kostet runSelfTests() sonst ~150ms auf
+ * dem kritischen Pfad vor der ersten Ansicht, ohne dass je jemand außer der
+ * Entwicklung die Konsole liest. Der `?selftest=1`-URL-Opt-in griff früher
+ * auf jeder Domain — ein geteilter Link hätte damit Testdaten (temporäre
+ * `__Selftest …`-Songs, zurückgesetzte Crash-Guard-Marker) in die Bibliothek
+ * echter Nutzer:innen geschrieben (SEC-DOM-5/ARCH-3). Er zählt deshalb nur
+ * noch auf einem Loopback-Host, auf dem ohnehin schon automatisch getestet
+ * wird. Manuell bleibt es überall über chorApp.selfTest()/selfTestAsync()/
+ * selfTestAudioPath() auslösbar.
  */
 function shouldAutoRunSelfTests() {
-  const explicitlyEnabled = new URLSearchParams(location.search).get('selftest') === '1';
   const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
-  return explicitlyEnabled || loopbackHosts.has(location.hostname);
+  return loopbackHosts.has(location.hostname);
 }
 
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
-    bannerError('Unerwarteter Fehler.', 'UNHANDLED', e.reason);
+    bannerError(t('msg.unexpectedError'), 'UNHANDLED', e.reason);
   });
 
   try {
@@ -20658,6 +21595,10 @@ async function boot() {
   }
 
   await loadSettings();
+  dataFormatChanged = await runDataMigrations().catch((err) => {
+    console.error('[data-migration]', err);
+    return false;
+  });
   // Must resolve — and flip normalizationCrashCheckPending, which gates
   // normalizationCanWork() — before any automatic analysis is scheduled.
   // Not awaited here: it runs its own (bounded, ~400 ms worst case)
@@ -20687,7 +21628,7 @@ async function boot() {
     // Nacheinander statt parallel: beide fassen dieselben Audio-/settings-Felder
     // testweise an (Fehler-A/B-Fakes hier, Charakterisierungstests dort) — liefen
     // sie gleichzeitig, würden sich ihre Fakes gegenseitig überschreiben.
-    runAsyncSelfTests()
+    runAsyncSelfTests({ mutateSettings: false })
       .catch((err) => { console.error('[Selbsttest async] abgebrochen', err); })
       .then(() => runAudioPathCharacterizationTests())
       .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err))
@@ -20701,7 +21642,20 @@ async function boot() {
   // ist kein Haupt-Reiter mehr, aber weiterhin ein gültiges Kaltstart-Ziel.
   navigate(VIEWS[start] || start === 'import' ? `#${start}` : '#songs', { replace: true });
 
-  if (!settings.setupDoneAt) {
+  try {
+    if (sessionStorage.getItem(WIPED_FLAG) === '1') {
+      sessionStorage.removeItem(WIPED_FLAG);
+      banner(t('msg.allDataDeleted'), { kind: 'ok' });
+    }
+  } catch { /* z.B. privater Modus */ }
+
+  if (settingsLoadFailed) {
+    // Ob das eine Neuinstallation ist, lässt sich gerade nicht sagen — also
+    // weder Ersteinrichtung noch Kompatibilitätshinweis, sondern der Hinweis
+    // auf den Lesefehler samt Hintergrund-Neuversuch.
+    requestPersistence();
+    showSettingsLoadFailed();
+  } else if (!settings.setupDoneAt) {
     // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
     // Fingertipp, was manche Browser voraussetzen. Der Kompatibilitätshinweis
     // kommt hier erst nach dem Schließen (closeOnboarding), damit er nicht
@@ -20713,6 +21667,7 @@ async function boot() {
   }
 
   registerServiceWorker();
+  window.__chorBooted = true;
 }
 
 boot();
