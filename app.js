@@ -1446,6 +1446,83 @@ function applySettingsSideEffects(patch) {
   }
 }
 
+/* Nach einem anhaltenden Lesefehler (settingsLoadFailed) läuft die App mit
+   Standardwerten im Speicher. Statt dann die Ersteinrichtung zu zeigen — die
+   Person hat ihre Einstellungen ja, sie sind nur gerade nicht lesbar —, steht
+   ein Hinweis mit „Neu laden" da, und die App versucht es im Hintergrund
+   selbst noch einmal: nach ein paar Sekunden und jedes Mal, wenn sie wieder
+   in den Vordergrund kommt. Klappt es, werden die echten Einstellungen
+   übernommen und der Hinweis verschwindet. */
+let closeSettingsLoadBanner = null;
+let settingsRetryTimer = null;
+/** Patches, die während settingsLoadFailed nur im Speicher landen konnten. */
+let pendingSettingsPatch = {};
+const SETTINGS_RETRY_DELAYS_MS = [3000, 10000, 30000];
+
+function showSettingsLoadFailed() {
+  if (!closeSettingsLoadBanner) {
+    logAppError('SETTINGS-LOAD', new Error('settings read failed twice'));
+    closeSettingsLoadBanner = banner(t('msg.settingsLoadFailed'), {
+      kind: 'error',
+      timeout: 0,
+      action: { label: t('common.reload'), onClick: () => location.reload() },
+    });
+  }
+  document.addEventListener('visibilitychange', onSettingsRetryVisibility);
+  scheduleSettingsRetry(0);
+}
+
+function onSettingsRetryVisibility() {
+  if (document.visibilityState === 'visible') retrySettingsLoad();
+}
+
+function scheduleSettingsRetry(attempt) {
+  clearTimeout(settingsRetryTimer);
+  if (attempt >= SETTINGS_RETRY_DELAYS_MS.length) return;
+  settingsRetryTimer = setTimeout(async () => {
+    if (!await retrySettingsLoad()) scheduleSettingsRetry(attempt + 1);
+  }, SETTINGS_RETRY_DELAYS_MS[attempt]);
+}
+
+/** @returns {Promise<boolean>} true, sobald die Einstellungen wieder lesbar waren */
+async function retrySettingsLoad() {
+  if (!settingsLoadFailed) return true;
+  try {
+    // Erst nur prüfen, ob der Zugriff wieder klappt: loadSettings() setzt im
+    // Fehlerfall `settings` auf Defaults zurück und verwürfe damit
+    // Änderungen, die in der Zwischenzeit nur im Speicher stehen.
+    await DB.metaGet(SETTINGS_KEY);
+  } catch {
+    return false;
+  }
+  const unsaved = pendingSettingsPatch;
+  await loadSettings();
+  if (settingsLoadFailed) return false;
+  // Was in der Zwischenzeit bewusst geändert wurde (nur im Speicher, weil
+  // nicht gespeichert werden durfte), jetzt nachtragen statt verwerfen.
+  pendingSettingsPatch = {};
+  if (Object.keys(unsaved).length) await saveSettings(unsaved);
+  settingsRecovered();
+  return true;
+}
+
+function settingsRecovered() {
+  clearTimeout(settingsRetryTimer);
+  document.removeEventListener('visibilitychange', onSettingsRetryVisibility);
+  const wasShowingBanner = !!closeSettingsLoadBanner;
+  closeSettingsLoadBanner?.();
+  closeSettingsLoadBanner = null;
+  applyAccentColor(settings.accentColor);
+  applyTranslations();
+  if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
+  renderVoicePicker();
+  if (currentView === 'settings') renderSettings();
+  if (!wasShowingBanner) return;
+  // Jetzt steht fest, ob es wirklich eine Neuinstallation ist.
+  if (!settings.setupDoneAt) openOnboarding();
+  else checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
+}
+
 async function saveSettings(patch) {
   if (settingsLoadFailed) {
     // Der ursprüngliche Lesezugriff in loadSettings() ist gescheitert;
@@ -1456,11 +1533,16 @@ async function saveSettings(patch) {
     // und nur den angeforderten Patch darauf anwenden.
     try {
       const stored = await DB.metaGet(SETTINGS_KEY);
-      settings = { ...DEFAULT_SETTINGS, ...(stored || {}), ...patch, key: SETTINGS_KEY, type: 'settings' };
+      settings = { ...DEFAULT_SETTINGS, ...(stored || {}), ...pendingSettingsPatch, ...patch, key: SETTINGS_KEY, type: 'settings' };
+      pendingSettingsPatch = {};
       settingsLoadFailed = false;
+      // Der Rest des echten Datensatzes (Sprache, Akzentfarbe, Stimmen …)
+      // war bisher nicht angewendet — das holt settingsRecovered() nach.
+      queueMicrotask(() => settingsRecovered());
     } catch (err) {
       console.warn('[settings] Datensatz weiterhin nicht lesbar, Patch bleibt nur im Speicher', err);
       settings = { ...settings, ...patch, key: SETTINGS_KEY, type: 'settings' };
+      pendingSettingsPatch = { ...pendingSettingsPatch, ...patch };
       applySettingsSideEffects(patch);
       bannerError(t('msg.settingSaveFailed'), 'SETTINGS-SAVE', err);
       return settings; // nicht schreiben, solange der echte Stand unbekannt ist
@@ -18700,6 +18782,10 @@ async function runAsyncSelfTests() {
     const originalStored = await DB.metaGet(SETTINGS_KEY).catch(() => null);
     const originalSettings = settings;
     const originalFlag = settingsLoadFailed;
+    // Ein echter Lesefehler-Hinweis aus boot() darf von diesem Test weder
+    // geschlossen noch „wiederhergestellt" werden (settingsRecovered).
+    const originalBannerClose = closeSettingsLoadBanner;
+    closeSettingsLoadBanner = null;
     const fixture = { key: SETTINGS_KEY, type: 'settings', myVoices: ['ALT'], language: 'en', lightshowSeed: 424242, _selftestMarker: 'log1' };
     const realMetaGet = DB.metaGet.bind(DB);
     try {
@@ -18725,12 +18811,29 @@ async function runAsyncSelfTests() {
         failed.push('LOG-1: saveSettings() nach einem Lesefehler müsste ein Read-Modify-Write statt eines Gesamt-Snapshots machen');
       }
       if (settingsLoadFailed) failed.push('LOG-1: settingsLoadFailed müsste nach erfolgreichem Read-Modify-Write wieder false sein');
+
+      // Hintergrund-Neuversuch: Ein nur im Speicher gelandeter Patch wird
+      // nach erfolgreichem Lesen nachgetragen, ohne den Rest zu überschreiben.
+      settingsLoadFailed = true;
+      pendingSettingsPatch = { lyricsFontSize: 25 };
+      const recovered = await retrySettingsLoad();
+      const afterRetry = await DB.metaGet(SETTINGS_KEY);
+      if (!recovered || settingsLoadFailed) failed.push('LOG-1: retrySettingsLoad() müsste bei lesbarer DB den Fehlerzustand beenden');
+      if (!afterRetry || afterRetry.lyricsFontSize !== 25 || afterRetry.language !== 'en' || afterRetry._selftestMarker !== 'log1') {
+        failed.push('LOG-1: retrySettingsLoad() müsste offene Patches nachtragen und den Rest des Datensatzes erhalten');
+      }
     } finally {
       DB.metaGet = realMetaGet;
       if (originalStored) await DB.metaPut(originalStored).catch(() => {});
       else await DB.metaDelete(SETTINGS_KEY).catch(() => {});
       settings = originalSettings;
       settingsLoadFailed = originalFlag;
+      pendingSettingsPatch = {};
+      closeSettingsLoadBanner = originalBannerClose;
+      // settingsRecovered() hat die Test-Sprache/-Farbe angewendet — zurück.
+      await Promise.resolve();
+      applyAccentColor(settings.accentColor);
+      applyTranslations();
     }
   }
 
@@ -20909,7 +21012,13 @@ async function boot() {
   // ist kein Haupt-Reiter mehr, aber weiterhin ein gültiges Kaltstart-Ziel.
   navigate(VIEWS[start] || start === 'import' ? `#${start}` : '#songs', { replace: true });
 
-  if (!settings.setupDoneAt) {
+  if (settingsLoadFailed) {
+    // Ob das eine Neuinstallation ist, lässt sich gerade nicht sagen — also
+    // weder Ersteinrichtung noch Kompatibilitätshinweis, sondern der Hinweis
+    // auf den Lesefehler samt Hintergrund-Neuversuch.
+    requestPersistence();
+    showSettingsLoadFailed();
+  } else if (!settings.setupDoneAt) {
     // Die Ersteinrichtung fragt die dauerhafte Speicherung selbst — mit
     // Fingertipp, was manche Browser voraussetzen. Der Kompatibilitätshinweis
     // kommt hier erst nach dem Schließen (closeOnboarding), damit er nicht
