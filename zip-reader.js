@@ -533,6 +533,12 @@ export function createZipReader(limits, onDiagnostic) {
       throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (Inhaltsverzeichnis widersprüchlich).');
     }
 
+    // Vor der Überlappungsprüfung (sortiert alle Einträge): ein Archiv mit
+    // Millionen Einträgen soll ohne diesen Aufwand sofort abgelehnt werden.
+    if (entries.length > L.maxEntries) {
+      throw new ZipError('Dieses Archiv enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.');
+    }
+
     // Mehrere Central-Directory-Einträge dürfen nicht denselben oder
     // überlappende Datenbereiche referenzieren (SEC-FILE-3) — sonst ließe
     // sich derselbe komprimierte Strom beliebig oft "wiederverwenden" und
@@ -550,7 +556,7 @@ export function createZipReader(limits, onDiagnostic) {
       const cur = byOffset[k];
       const prevEnd = prev.headerOffset + 30 + prev.nameLen + prev.compressedSize;
       if (cur.headerOffset < prevEnd) {
-        throw new ZipError(`„${cur.path}" überlappt im Archiv mit einem anderen Eintrag.`);
+        throw new ZipError(`„${cur.path}“ überlappt im Archiv mit einem anderen Eintrag.`);
       }
     }
 
@@ -568,9 +574,6 @@ export function createZipReader(limits, onDiagnostic) {
 
     if (!entries.length) {
       throw new ZipError('In dieser ZIP-Datei sind keine Dateien enthalten.');
-    }
-    if (entries.length > L.maxEntries) {
-      throw new ZipError('Dieses Archiv enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.');
     }
     return entries;
   }
