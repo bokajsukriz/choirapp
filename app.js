@@ -20624,6 +20624,12 @@ function initGrooveLabEasterEgg() {
         // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
         t,
         lang: settings.language,
+        // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
+        // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
+        storage: {
+          load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
+          save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data }),
+        },
       });
     } catch (err) {
       bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);

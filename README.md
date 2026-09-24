@@ -49,9 +49,6 @@ ein Dialog mit echter Wahl).
   vollständige Oberfläche stehen.
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — nachgeladenes Easter Egg, kein Teil der eigentlichen App.
-- `dev/groove-lab.html` — Werkbank: öffnet nur das Groove Lab, ohne die
-  restliche App und am Service-Worker-Cache vorbei (Entwicklung, kein Teil
-  der App-Shell).
 - `lame.min.js` — vendorierter MP3-Encoder (siehe [Third-Party](#third-party)).
 - `manifest.json`, `icon-192.png`, `icon-512.png` — PWA-Manifest und Icons.
 
