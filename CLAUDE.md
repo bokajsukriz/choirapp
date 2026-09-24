@@ -44,6 +44,11 @@ gegen diese Liste prüfen.
 - Ändert sich `lightshowFrame()`s Verhalten, auch die Vorschau-Kacheln in
   `app.js` (`LIGHTSHOW_PREVIEW_POINTS`/`paintLightshowPreviews`) mitziehen —
   die rufen dieselbe Funktion separat auf und laufen sonst auseinander.
+- Ändert sich die Bedeutung gespeicherter Felder so, dass alte Datensätze
+  angepasst werden müssen: `DATA_VERSION` in `app.js` erhöhen und unter
+  `DATA_MIGRATIONS[neue Version]` eine idempotente Umstellung eintragen
+  (unbekannte Felder erhalten). Nur dann erscheint nach dem Update der
+  Kompatibilitätshinweis — reine Code-Änderungen brauchen das nicht.
 - Einstellungen (`settings`) liegen in IndexedDB (`DB.metaGet`/`metaPut`),
   nicht `localStorage` — der ist nur für Fehler-/Diagnose-Log reserviert.
 - Auf `*-PLAN.md` verweisende Kommentare (z. B. „siehe LICHTSHOW-PLAN.md")

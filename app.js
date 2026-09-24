@@ -47,6 +47,29 @@ function el(tag, attrs = {}, ...children) {
 }
 
 /**
+ * „Bin ich noch der neueste Lauf?" — dasselbe Muster stand an vielen Stellen
+ * je von Hand (`const token = ++x; … await …; if (token !== x) return;`), und
+ * genau dort lagen wiederkehrende Race-Fixes (ARCH-2). Einheitlich:
+ *
+ *   const run = songsRenderRuns.begin();
+ *   await …;
+ *   if (run.stale) return;
+ *
+ * `invalidate()` macht alle laufenden Läufe veraltet, ohne einen neuen zu
+ * beginnen.
+ */
+function latestRuns() {
+  let generation = 0;
+  return {
+    begin() {
+      const mine = ++generation;
+      return { get stale() { return mine !== generation; } };
+    },
+    invalidate() { generation++; },
+  };
+}
+
+/**
  * Liegt der Fokus nach einer Aktion nirgends mehr (das angetippte Element
  * wurde entfernt oder ausgeblendet), landen Screenreader und Tastatur am
  * Seitenanfang. Dann gezielt auf `target` setzen — ohne einen noch
@@ -2297,7 +2320,7 @@ let lastVisibleSongs = [];
 
 // Wie bei renderQueue()/renderPlaylists(): nur der letzte überlappende
 // Aufruf darf die Liste zeichnen.
-let songsRenderToken = 0;
+const songsRenderRuns = latestRuns();
 
 // Woraus die aktuell sichtbare Liste entstanden ist. Stimmt das noch, muss
 // nichts neu gebaut werden — der Wechsel zurück auf den Reiter „Songs" ist
@@ -2332,7 +2355,7 @@ async function createPlaceholderSong(rawTitle) {
 }
 
 async function renderSongs() {
-  const token = ++songsRenderToken;
+  const run = songsRenderRuns.begin();
   const host = $('#song-list-host');
 
   let songs = [];
@@ -2340,14 +2363,14 @@ async function renderSongs() {
     songs = await DB.songsForDisplay();
   } catch (err) {
     console.error(err);
-    if (token !== songsRenderToken) return;
+    if (run.stale) return;
     songsRenderSignature = null;
     host.textContent = '';
     host.append(el('div', { class: 'card' },
       el('p', { class: 'small', text: t('msg.songListFailed') })));
     return;
   }
-  if (token !== songsRenderToken) return;
+  if (run.stale) return;
 
   // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
   if (songs.length) updateBackupReminder();
@@ -2448,7 +2471,7 @@ async function renderSongs() {
   // Zwei weitere awaits seit dem letzten Abgleich (z.B. Filter-Chip-Klicks
   // ohne Debounce) — ohne erneute Prüfung könnte ein überholter Aufruf hier
   // seine Liste noch zusätzlich anhängen.
-  if (token !== songsRenderToken) return;
+  if (run.stale) return;
 
   const list = el('ul', { class: 'list' });
   for (const song of visible) {
@@ -10013,11 +10036,11 @@ function songLabel(song) {
 // Aufruf die Liste zeichnen — sonst hängt eine überholte, verzögert
 // eintreffende Antwort ihre Einträge hinter die schon fertige Liste
 // („1, 2, 3, 1, 2, 3").
-let queueRenderToken = 0;
+const queueRenderRuns = latestRuns();
 let queueExpanded = false;
 
 async function renderQueue() {
-  const token = ++queueRenderToken;
+  const run = queueRenderRuns.begin();
   const block = $('#queue-block');
   const host = $('#queue-list');
 
@@ -10035,7 +10058,7 @@ async function renderQueue() {
   $('#btn-queue-edit').hidden = !playQueue.id;
 
   const songs = await DB.metaByType('song').catch(() => []);
-  if (token !== queueRenderToken) return; // eine neuere Anzeige läuft schon
+  if (run.stale) return; // eine neuere Anzeige läuft schon
   host.textContent = '';
   const byId = new Map(songs.map((s) => [s.id, s]));
 
@@ -11835,8 +11858,8 @@ const REC_SONG_PICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="current
 
 // Läuft renderRecSongPicker() mehrfach überlappend (schnelles Tippen in der
 // Suche), darf nur der jeweils letzte Aufruf zeichnen — dieselbe Regel wie
-// bei renderQueue()/queueRenderToken.
-let recSongPickerToken = 0;
+// bei renderQueue()/queueRenderRuns.
+const recSongPickerRuns = latestRuns();
 
 /**
  * Songauswahl im allgemeinen Recorder — die Auswahl ist die Songliste selbst,
@@ -11845,13 +11868,13 @@ let recSongPickerToken = 0;
  * Kein Song ist vorausgewählt; die gewählte Zeile merkt sich takeDraft.songId.
  */
 async function renderRecSongPicker() {
-  const token = ++recSongPickerToken;
+  const run = recSongPickerRuns.begin();
   const host = $('#rec-song-list');
   const query = $('#rec-song-search').value;
 
   let songs = [];
   try { songs = await DB.metaByType('song').catch(() => []); } catch (err) { console.error(err); }
-  if (token !== recSongPickerToken) return;
+  if (run.stale) return;
 
   const rawQuery = query.trim();
   const visible = filterSongsByQuery(songs, query).sort((a, b) => collator.compare(a.title || '', b.title || ''));
@@ -13631,13 +13654,13 @@ function playerTabsActive() {
 // Playlist startet mehrere Durchläufe. Ohne Marke würde ein überholter
 // Durchlauf seine Notenzeilen hinter die bereits fertige Liste hängen und die
 // gerade erzeugten Objekt-URLs des neuen Songs wieder freigeben.
-let extrasRenderToken = 0;
+const extrasRenderRuns = latestRuns();
 
 async function renderPlayerExtras() {
   // Kein await hier, also keine eigene Marke nötig — die Zählung erhöht
-  // trotzdem extrasRenderToken, damit ein noch laufendes loadScorePreviews()
+  // trotzdem extrasRenderRuns, damit ein noch laufendes loadScorePreviews()
   // vom vorigen Song sich selbst als überholt erkennt (siehe dort).
-  extrasRenderToken++;
+  extrasRenderRuns.invalidate();
   releaseScoreURLs();
 
   // Liedtext: eigener Ablauf über loadSongLyricsNote()/renderLyricsBlock(),
@@ -13672,7 +13695,7 @@ async function renderPlayerExtras() {
 async function loadScorePreviews() {
   if (scoresPreviewLoaded || !playerSong?.scores?.length) return;
   scoresPreviewLoaded = true;
-  const token = ++extrasRenderToken;
+  const run = extrasRenderRuns.begin();
   const rows = $$('#scores-list .score-item');
 
   for (const score of playerSong.scores) {
@@ -13682,7 +13705,7 @@ async function loadScorePreviews() {
 
     try {
       const rec = await DB.fileGet(score.fileKey);
-      if (token !== extrasRenderToken) return;
+      if (run.stale) return;
       if (!rec) { head.append(el('span', { class: 'small muted', text: 'fehlt' })); continue; }
 
       const file = new File([recordBlob(rec, 'application/pdf')], score.fileName,
@@ -14617,7 +14640,7 @@ async function createPlaylistFromPastedText() {
 // dicht hintereinander), darf nur der letzte Aufruf die Liste zeichnen —
 // sonst hängt eine verzögert eintreffende Antwort ihre Einträge hinter die
 // schon fertige Liste (Playlisten erschienen doppelt).
-let playlistsRenderToken = 0;
+const playlistsRenderRuns = latestRuns();
 
 /* ==========================================================================
    ÜBE-PROGRAMM (ROUTINE) — automatisierter Übe-Ablauf für Setlisten, Loops
@@ -15420,11 +15443,11 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
 }
 
 async function renderPlaylists() {
-  const token = ++playlistsRenderToken;
+  const run = playlistsRenderRuns.begin();
   const host = $('#playlist-list-host');
 
   const lists = await DB.metaByType('playlist').catch(() => []);
-  if (token !== playlistsRenderToken) return;
+  if (run.stale) return;
   if (!lists.length) {
     $('#current-setlist-host').textContent = '';
     host.textContent = '';
@@ -15436,7 +15459,7 @@ async function renderPlaylists() {
 
   const songs = await DB.metaByType('song').catch(() => []);
   const recordings = await DB.metaByType('recording').catch(() => []);
-  if (token !== playlistsRenderToken) return;
+  if (run.stale) return;
   host.textContent = '';
   lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
   const recsBySong = groupRecordingsBySongId(recordings);
@@ -17464,14 +17487,73 @@ async function updateBackupReminder() {
    KOMPATIBILITÄTSHINWEIS — die App ist noch in Entwicklung; das Datenformat
    von Notizen/Liedtexten/Loops/RECs kann sich bis zur finalen Version noch
    ändern, sodass eine Übernahme beim Update nicht garantiert ist. Der
-   Hinweis erscheint bei der ersten Nutzung, nach jeder Aktualisierung
-   (COMPAT_UPDATE_FLAG, gesetzt kurz vor dem Reload in registerServiceWorker)
-   sowie nach 3, 7 und 30 Tagen — Tages-Schwellen je nur einmal
+   Hinweis erscheint bei der ersten Nutzung, nach einer Aktualisierung, die
+   das gespeicherte Datenformat ändert (DATA_VERSION, siehe unten), sowie nach
+   3, 7 und 30 Tagen — Tages-Schwellen je nur einmal
    (siehe settings.compatWarningsShown).
+
+   Früher kam er nach JEDER Aktualisierung — bei mehreren Releases am Tag
+   verlor er so jede Bedeutung (ARCH-6). Jetzt zählt nur ein echter
+   Formatwechsel.
    ========================================================================== */
 
 const COMPAT_WARNING_DAYS = [3, 7, 30];
 const COMPAT_UPDATE_FLAG = 'chor-app-just-updated';
+
+/**
+ * Version des gespeicherten Datenformats (Songs, Loops, Notizen, RECs,
+ * Setlisten, Einstellungen). NUR erhöhen, wenn sich die Bedeutung
+ * gespeicherter Felder so ändert, dass ältere Datensätze angepasst werden
+ * müssen — dann zugleich unter DATA_MIGRATIONS[neue Version] eine
+ * idempotente Umstellung eintragen. Reine Code-Änderungen brauchen das nicht.
+ */
+const DATA_VERSION = 1;
+
+/**
+ * Umstellungen je Zielversion, `async (db) => void`. Laufen einmalig beim
+ * Start, in aufsteigender Reihenfolge, für alle Versionen über der zuletzt
+ * gesehenen. Regel: unbekannte Felder immer erhalten ({...alt, ...neu}), nie
+ * Felder löschen, deren Bedeutung man nicht kennt — eine ältere App-Fassung
+ * (Rückfall auf einen älteren Shell-Cache) soll die Daten weiter lesen können.
+ */
+const DATA_MIGRATIONS = {
+  // 2: async () => { … },
+};
+
+/** @returns {Promise<boolean>} ob sich das Datenformat seit dem letzten Start geändert hat */
+async function runDataMigrations() {
+  if (settingsLoadFailed) return false;
+  const seen = Number.isInteger(settings.dataVersion) ? settings.dataVersion : null;
+  if (seen === DATA_VERSION) return false;
+  if (seen === null) {
+    // Erster Start mit diesem Mechanismus (oder Neuinstallation): Die Daten
+    // stammen aus der aktuellen Fassung, es gibt nichts umzustellen.
+    await saveSettings({ dataVersion: DATA_VERSION });
+    return false;
+  }
+  if (seen > DATA_VERSION) {
+    // Neuere Daten, ältere App (Rückfall auf einen alten Cache): nichts
+    // anfassen, nur protokollieren.
+    dlog('data:newer-than-app', { seen, app: DATA_VERSION });
+    return false;
+  }
+  for (let v = seen + 1; v <= DATA_VERSION; v++) {
+    const migrate = DATA_MIGRATIONS[v];
+    if (migrate) {
+      try {
+        await migrate();
+      } catch (err) {
+        bannerError(t('msg.dataMigrationFailed'), 'DATA-MIGRATION', err);
+        return true; // Version nicht hochzählen — beim nächsten Start erneut
+      }
+    }
+  }
+  await saveSettings({ dataVersion: DATA_VERSION });
+  return true;
+}
+
+/** Vom Start gesetzt: hat sich das Datenformat bei diesem Start geändert? */
+let dataFormatChanged = false;
 
 function showCompatWarningDialog() {
   const warnIcon = el('span', { style: 'flex:0 0 auto; width:24px; height:24px; color:var(--warn)', 'aria-hidden': 'true' });
@@ -17501,7 +17583,7 @@ async function checkCompatWarning() {
     justUpdated = sessionStorage.getItem(COMPAT_UPDATE_FLAG) === '1';
     sessionStorage.removeItem(COMPAT_UPDATE_FLAG);
   } catch { /* z.B. privater Modus */ }
-  if (justUpdated) {
+  if (justUpdated && dataFormatChanged) {
     showCompatWarningDialog();
     return;
   }
@@ -17585,6 +17667,16 @@ function runSelfTests() {
       || parsedPrintable[0].songTitle !== 'Erster Song'
       || parsedPrintable[0].text !== 'Zeile eins\nZeile zwei') {
     failed.push('Notiz-Export müsste sich verlustfrei wieder importieren lassen');
+  }
+  // latestRuns(): nur der jüngste Lauf ist aktuell, invalidate() macht alle veraltet.
+  checks++;
+  {
+    const runs = latestRuns();
+    const a = runs.begin();
+    const b = runs.begin();
+    if (!a.stale || b.stale) failed.push('latestRuns: der ältere Lauf müsste veraltet sein, der neuere aktuell');
+    runs.invalidate();
+    if (!b.stale) failed.push('latestRuns: invalidate() müsste auch den neuesten Lauf veralten lassen');
   }
   // ReDoS-Regression (SEC-FILE-9): String(...).replace(/\s+$/, '') war für
   // sehr viel abschließenden Leerraum quadratisch — printableToText() nutzt
@@ -18640,7 +18732,14 @@ function testZipFile(bytes) {
   return new Blob([bytes]);
 }
 
-async function runAsyncSelfTests() {
+/**
+ * `mutateSettings`: die LOG-1-Tests tauschen vorübergehend den globalen
+ * Einstellungszustand aus. Beim automatischen Lauf während des Starts
+ * überschnitt sich das mit dem echten Ersteinrichtungs-Ablauf (Hinweis kam
+ * verspätet und in der Test-Sprache) — deshalb dort ausgelassen, beim
+ * manuellen chorApp.selfTestAsync() aber dabei.
+ */
+async function runAsyncSelfTests({ mutateSettings = true } = {}) {
   const failed = [];
 
   // RMS normalisation: full-band, all-channel sample weighting and absolute
@@ -19255,6 +19354,7 @@ async function runAsyncSelfTests() {
     if (reservedRate !== null) failed.push(`MP3-Header: reservierter Sampling-Rate-Index müsste null ergeben (${JSON.stringify(reservedRate)})`);
   }
 
+  if (mutateSettings) {
   // LOG-5: Eine vom Browser geschlossene Verbindung (hier von Hand
   // geschlossen — `close` feuert dabei nicht, wie bei manchen WebKit-Fällen)
   // darf nicht jeden weiteren Zugriff bis zum Neuladen scheitern lassen.
@@ -19330,6 +19430,8 @@ async function runAsyncSelfTests() {
       applyAccentColor(settings.accentColor);
       applyTranslations();
     }
+  }
+
   }
 
   if (failed.length) {
@@ -21468,6 +21570,10 @@ async function boot() {
   }
 
   await loadSettings();
+  dataFormatChanged = await runDataMigrations().catch((err) => {
+    console.error('[data-migration]', err);
+    return false;
+  });
   // Must resolve — and flip normalizationCrashCheckPending, which gates
   // normalizationCanWork() — before any automatic analysis is scheduled.
   // Not awaited here: it runs its own (bounded, ~400 ms worst case)
@@ -21497,7 +21603,7 @@ async function boot() {
     // Nacheinander statt parallel: beide fassen dieselben Audio-/settings-Felder
     // testweise an (Fehler-A/B-Fakes hier, Charakterisierungstests dort) — liefen
     // sie gleichzeitig, würden sich ihre Fakes gegenseitig überschreiben.
-    runAsyncSelfTests()
+    runAsyncSelfTests({ mutateSettings: false })
       .catch((err) => { console.error('[Selbsttest async] abgebrochen', err); })
       .then(() => runAudioPathCharacterizationTests())
       .catch((err) => console.error('[Selbsttest Audiopfad] abgebrochen', err))
