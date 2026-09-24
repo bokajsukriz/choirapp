@@ -26,7 +26,7 @@ Alles bleibt auf dem Gerät:
   Icons; maßgeblich ist `SHELL_REQUIRED`/`SHELL_OPTIONAL` in `sw.js`), verwaltet
   vom Service Worker.
 
-„Alle Daten löschen“ in den Einstellungen entfernt IndexedDB vollständig
+„Alle Daten löschen“ in den Einstellungen leert beide IndexedDB-Speicher vollständig
 sowie Fehler- und Diagnoseprotokoll. Dateien in einer verbundenen Dropbox
 bleiben davon unberührt — die App greift nie direkt auf Dropbox zu, sondern
 nur auf lokal heruntergeladene ZIP-Archive.

@@ -34,8 +34,9 @@ gegen diese Liste prüfen.
   './lightshow.js'"` isoliert und schnell prüfen, ohne den Browser zu
   starten — bei `lightshow.js`-Änderungen zuerst so gegenprüfen (Determinismus,
   gültiges `#rrggbb`, WCAG-2.3.1-Blitzgrenze: max. 3 steigende
-  Helligkeits-Übergänge über 0,5 je 1000-ms-Fenster — siehe Test 5 in
-  `runSelfTests()`), bevor die App im Browser läuft.
+  Helligkeits-Übergänge über 0,5 je 1000-ms-Fenster, gezählt mit Hysterese
+  0,45/0,55 — siehe Test 5 in `runSelfTests()`), bevor die App im Browser
+  läuft.
 - `lightshow.js` ist bewusst ein reines Blatt (kein DOM, kein `Date.now()`,
   kein `Math.random`, keine Imports zurück nach `app.js`) — jede Show ist
   `Farbe = f(Zeit, Stimme, Seed)`. Neuer Zufall gehört als deterministischer

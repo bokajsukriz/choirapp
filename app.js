@@ -10,6 +10,17 @@ import { createZipReader, zipReadFailureMessage, isJunkPath, zipPrefetchStarts, 
 // Für boot-guard.js: das Modul wurde geladen und verknüpft (siehe dort).
 window.__chorStarted = true;
 
+// Synchrone Fehler in Event-Handlern landeten bisher nur in der Konsole, die
+// am Handy niemand sieht — nicht im Fehlerprotokoll (LOG-14). Früh
+// registriert (vor boot()), damit auch Fehler beim Aufbau erfasst werden.
+// Nur protokollieren, kein Banner: sonst würde jeder Folgefehler eine
+// Meldung stapeln; die Stelle meldet sich ggf. selbst. Fremde Skripte
+// (Erweiterungen) haben einen anderen `filename` und bleiben außen vor.
+window.addEventListener('error', (e) => {
+  if (!(e instanceof ErrorEvent) || !String(e.filename || '').startsWith(location.origin)) return;
+  try { logAppError('UNCAUGHT', e.error || new Error(e.message)); } catch { /* Protokoll selbst kaputt */ }
+});
+
 /* ==========================================================================
    UTIL — kleine Helfer
    ========================================================================== */
@@ -1173,6 +1184,21 @@ const DB = {
     const list = Array.isArray(keys) ? keys : [keys];
     if (!list.length) return;
     await tx('files', 'readwrite', (files) => { for (const k of list) files.delete(k); });
+  },
+
+  /**
+   * Datensatz und seine Dateien in EINER Transaktion löschen — ein Abbruch
+   * dazwischen (Tab weggewischt) hinterließ sonst je nach Reihenfolge einen
+   * Datensatz mit toten Dateiverweisen oder unsichtbar belegten Speicher
+   * (LOG-10).
+   */
+  async deleteMetaAndFiles(metaKey, fileKeys) {
+    const list = (Array.isArray(fileKeys) ? fileKeys : [fileKeys]).filter(Boolean);
+    await tx(['files', 'meta'], 'readwrite', (files, meta) => {
+      meta.delete(metaKey);
+      for (const k of list) files.delete(k);
+    });
+    if (String(metaKey).startsWith('song:')) dropSongCache();
   },
 
   /** Löscht restlos alles — nur aus der Einstellung „Alle Daten löschen". */
@@ -2792,13 +2818,11 @@ async function deleteSong(song) {
   });
   if (!ok) return;
 
-  // Erst den Datensatz weg, dann die Dateien (siehe deleteTrack) — sonst
-  // könnte ein Abbruch mittendrin einen Song mit toten Dateiverweisen zurücklassen.
+  // Datensatz und Dateien atomar (siehe DB.deleteMetaAndFiles).
   const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
   await detachSongLinks(song);
-  await DB.metaDelete(song.key);
+  await DB.deleteMetaAndFiles(song.key, keys);
   if (playerSong && playerSong.id === song.id) closePlayer();
-  await DB.fileDelete(keys);
   await refreshAfterDelete();
   banner(t('msg.songDeleted'), { kind: 'ok' });
 }
@@ -2831,11 +2855,10 @@ $('#btn-drop-audio').addEventListener('click', async () => {
     const links = await songLinkRecords();
     for (const song of songs) {
       await detachSongLinks(song, links);
-      await DB.fileDelete([
+      await DB.deleteMetaAndFiles(song.key, [
         ...song.tracks.map((t) => t.fileKey),
         ...(song.scores || []).map((x) => x.fileKey),
       ]);
-      await DB.metaDelete(song.key);
     }
     if (playerSong) closePlayer();
     banner(`${plural(songs.length, 'Song', 'Songs')} entfernt, ${fmtBytes(bytes)} frei.`, { kind: 'ok' });
@@ -2845,7 +2868,28 @@ $('#btn-drop-audio').addEventListener('click', async () => {
   }
 });
 
+/**
+ * Bewertet eine laufende Setliste nach einem Löschen neu. Die Einträge
+ * stammen vom Start der Setliste — ein inzwischen gelöschter Song blieb dort
+ * „abspielbar", playlistAdvance() sprang hin und die Setliste brach mit
+ * „Song nicht mehr vorhanden" ab, statt zum nächsten Titel zu gehen (LOG-8).
+ */
+async function refreshQueueAfterDelete() {
+  if (!playQueue) return;
+  const songs = await DB.metaByType('song').catch(() => null);
+  if (!songs) return;
+  const recordings = await DB.metaByType('recording').catch(() => []);
+  const recsBySong = groupRecordingsBySongId(recordings);
+  for (const item of playQueue.items) {
+    const song = findSongByTitle(songs, item.title);
+    item.id = song ? song.id : null;
+    item.playable = songHasAudio(song, recsBySong);
+  }
+  renderQueue();
+}
+
 async function refreshAfterDelete() {
+  await refreshQueueAfterDelete();
   await renderStorage();
   await renderExportCount();
   await renderStorageManager();
@@ -4093,14 +4137,27 @@ $('#btn-wipe').addEventListener('click', async () => {
     lastReport = null;
     playQueue = null;
     reminderDismissed = false;
-    banner(t('msg.allDataDeleted'), { kind: 'ok' });
-    await renderSettings();
-    await renderSongs();
-    await renderPlaylists();
+    // Neu laden statt Stück für Stück zurücksetzen: Übe-Programm,
+    // Normalisierungs-Pause, Sprache, Akzentfarbe, Lichtshow-Seed und
+    // Ersteinrichtung stünden sonst bis zum nächsten Start auf dem alten
+    // Stand (LOG-9). Andere offene Tabs laden ebenfalls neu — sonst
+    // schrieben sie ihren alten Einstellungs-Snapshot gleich wieder zurück.
+    try { dataChannel?.postMessage({ type: 'wiped' }); } catch { /* egal */ }
+    try { sessionStorage.setItem(WIPED_FLAG, '1'); } catch { /* z.B. privater Modus */ }
+    location.reload();
   } catch (err) {
     bannerError(t('msg.dataDeleteFailed'), 'DATA-WIPE', err);
   }
 });
+
+const WIPED_FLAG = 'bvg-data-wiped';
+let dataChannel = null;
+try {
+  if ('BroadcastChannel' in window) {
+    dataChannel = new BroadcastChannel('chorapp-data');
+    dataChannel.onmessage = (e) => { if (e.data?.type === 'wiped') location.reload(); };
+  }
+} catch { /* nicht unterstützt */ }
 
 /* ==========================================================================
    AUDIO — Wiedergabe über ein natives <audio>-Element
@@ -8048,8 +8105,16 @@ async function runImport() {
 
   try {
     for (const scan of chosenSongs) {
+      // Den vorhandenen Song frisch lesen statt den Stand vom Öffnen der
+      // Auswahlmaske zu nehmen: zwischenzeitliche Änderungen (Normalisierung,
+      // Dauer, Umbenennen/Löschen in einem anderen Tab) würden sonst mit dem
+      // alten Schnappschuss überschrieben (LOG-11). Wurde der Song inzwischen
+      // gelöscht, wird er — wie gewählt — neu angelegt.
+      const existing = scan.existing
+        ? await DB.metaGet(scan.existing.key).catch(() => scan.existing)
+        : null;
       // Vorhandenen Song erweitern statt einen zweiten anzulegen (4.6).
-      const song = scan.existing ? { ...scan.existing, tracks: [...scan.existing.tracks] } : {
+      const song = existing ? { ...existing, tracks: [...(existing.tracks || [])] } : {
         key: `song:${hashId(scan.normTitle)}`,
         type: 'song',
         id: hashId(scan.normTitle),
@@ -8791,7 +8856,10 @@ function lightshowStageStep() {
   // das hier gleichbedeutend mit `wall % cycleMs` — das ist der eigentliche
   // Punkt der ganzen Konstruktion: zwei Geräte mit derselben Uhr zeigen
   // zwangsläufig dasselbe, ganz ohne Nachricht zwischen ihnen.
-  const tMs = (wall - lightshowStartWall) % lightshowStageCycleMs;
+  // Positiver Rest: JS-% liefert bei negativem Zähler (Uhr zurückgestellt,
+  // z.B. nach dem Zurückkehren) einen negativen Wert — alle Shows zeigten
+  // dann Schwarz, bis die Zeit aufgeholt war (LOG-12).
+  const tMs = (((wall - lightshowStartWall) % lightshowStageCycleMs) + lightshowStageCycleMs) % lightshowStageCycleMs;
   const bg = lightshowFrame(lightshowStageShowId, tMs, lightshowStageVoice, settings.lightshowSeed);
   if (bg !== lightshowLastBg) { stage.style.backgroundColor = bg; lightshowLastBg = bg; }
 }
@@ -11193,7 +11261,18 @@ async function startRecording() {
   }, { once: true });
 
   recStartedAt = Date.now();
-  recMediaRecorder.start();
+  try {
+    recMediaRecorder.start();
+  } catch (err) {
+    // Z.B. InvalidStateError, weil die Mikrofonspur schon beendet ist. Ohne
+    // das blieb das Mikrofon offen und nur „Unerwarteter Fehler" stand da;
+    // ein neuer Versuch öffnete einen zweiten Stream (LOG-13).
+    recSession.failed = true;
+    recChunks = [];
+    teardownRecording();
+    bannerError(t('msg.recStartFailed'), 'REC-START', err);
+    return;
+  }
   setRecUI(true);
   updateRecTimer();
   recTimerHandle = setInterval(updateRecTimer, 250);
@@ -13066,8 +13145,7 @@ function renderRecordingList() {
         });
         if (!ok) return;
         if (audioPreview?.tag?.savedId === recording.id) await endRecordingPreview();
-        await DB.fileDelete(recording.fileKey);
-        await DB.metaDelete(recording.key);
+        await DB.deleteMetaAndFiles(recording.key, recording.fileKey);
         await loadSongRecordings();
       }
     });
@@ -17765,6 +17843,9 @@ function runSelfTests() {
   }
 
   // 5. Blitzgrenze (WCAG 2.3.1): höchstens 3 steigende Übergänge über 0,5 je 1000-ms-Fenster.
+  //    Mit Hysterese (erst unter 0,45 „scharf", dann über 0,55 gezählt):
+  //    ohne sie zählte Rundungsrauschen knapp um 0,5 (0,4993 ↔ 0,5007) bei
+  //    feinerer Abtastung als Scheinblitze (LOG-15).
   for (const show of LIGHTSHOWS) {
     for (const voice of LIGHTSHOW_VOICES) {
       const seeds = show.id === 'sterne' ? [1, 2, 3, 4, 5, 99, 12345] : [0];
@@ -17779,8 +17860,12 @@ function runSelfTests() {
         let maxCount = 0;
         for (let i = 0; i < n; i++) {
           let count = 0;
-          for (let j = 1; j < windowSize; j++) {
-            if (doubled[i + j] > 0.5 && doubled[i + j - 1] <= 0.5) count++;
+          let armed = doubled[i] <= 0.45;
+          // j <= windowSize: das Fenster umfasst volle 1000 ms (vorher 980).
+          for (let j = 1; j <= windowSize; j++) {
+            const v = doubled[i + j];
+            if (armed && v > 0.55) { count++; armed = false; }
+            else if (v <= 0.45) armed = true;
           }
           if (count > maxCount) maxCount = count;
         }
@@ -21425,6 +21510,13 @@ async function boot() {
   // Eintrag, sonst braucht die Zurück-Taste einen Schritt zu viel. `import`
   // ist kein Haupt-Reiter mehr, aber weiterhin ein gültiges Kaltstart-Ziel.
   navigate(VIEWS[start] || start === 'import' ? `#${start}` : '#songs', { replace: true });
+
+  try {
+    if (sessionStorage.getItem(WIPED_FLAG) === '1') {
+      sessionStorage.removeItem(WIPED_FLAG);
+      banner(t('msg.allDataDeleted'), { kind: 'ok' });
+    }
+  } catch { /* z.B. privater Modus */ }
 
   if (settingsLoadFailed) {
     // Ob das eine Neuinstallation ist, lässt sich gerade nicht sagen — also
