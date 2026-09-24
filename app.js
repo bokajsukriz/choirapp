@@ -6839,8 +6839,12 @@ function splitLyricsHeader(raw) {
 
   // „Interpret - Titel"; als Trenner gelten Bindestrich, Gedanken- und
   // Halbgeviertstrich, jeweils mit Leerzeichen ringsum, damit Titel wie
-  // „Sing-Sang" nicht zerschnitten werden.
-  const m = head.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+  // „Sing-Sang" nicht zerschnitten werden. Der Regex ist mit `\s+` auf
+  // beiden Seiten quadratisch in der Länge der Kopfzeile (ReDoS, siehe
+  // SEC-FILE-1: eine Kopfzeile mit vielen Leerzeichen und ohne Trenner
+  // friert sonst den Tab minutenlang ein) — ab 300 Zeichen gilt die Zeile
+  // deshalb von vornherein als „kein Interpret", ohne den Regex zu bemühen.
+  const m = head.length <= 300 ? head.match(/^(.+?)\s+[-–—]\s+(.+)$/) : null;
   if (m) return { artist: m[1].trim(), title: m[2].trim(), text: rest };
   return { artist: null, title: head || null, text: rest };
 }
@@ -13577,7 +13581,7 @@ function printItems(heading, items) {
   for (const item of items) {
     host.append(el('div', { class: 'print-entry' },
       el('h2', { text: item.songTitle }),
-      el('div', { class: 'print-text', text: String(item.text).replace(/\s+$/, '') })));
+      el('div', { class: 'print-text', text: String(item.text).trimEnd() })));
   }
   window.print();
 }
@@ -13592,7 +13596,7 @@ function printableToText(kind, heading, items) {
   ];
   for (const item of items) {
     lines.push('='.repeat(40), item.songTitle, '='.repeat(40));
-    lines.push(String(item.text).replace(/\s+$/, ''), '');
+    lines.push(String(item.text).trimEnd(), '');
   }
   return lines.join('\n');
 }
@@ -16970,6 +16974,20 @@ function runSelfTests() {
       || parsedPrintable[0].text !== 'Zeile eins\nZeile zwei') {
     failed.push('Notiz-Export müsste sich verlustfrei wieder importieren lassen');
   }
+  // ReDoS-Regression (SEC-FILE-9): String(...).replace(/\s+$/, '') war für
+  // sehr viel abschließenden Leerraum quadratisch — printableToText() nutzt
+  // jetzt trimEnd(). Laufzeitschutz statt Zeitmessung, siehe oben.
+  checks++;
+  const trimStart = Date.now();
+  const trimmedExport = printableToText('note', 'Notizen', [
+    { songTitle: 'Song', text: 'Text' + ' '.repeat(200000) },
+  ]);
+  if (Date.now() - trimStart > 2000) {
+    failed.push('printableToText mit sehr viel Leerraum am Ende dauert zu lange (ReDoS?)');
+  }
+  if (trimmedExport.includes('Text' + ' '.repeat(200000))) {
+    failed.push('printableToText müsste abschließenden Leerraum entfernen (trimEnd)');
+  }
   checks++;
   try {
     parsePrintableText(printableFixture, 'lyricsNote');
@@ -17099,6 +17117,16 @@ function runSelfTests() {
   if (noDash.artist !== null || noDash.title !== 'Sing-Sang') {
     failed.push(`Kopfzeile ohne Interpret: ${JSON.stringify(noDash)}`);
   }
+  // ReDoS-Regression (SEC-FILE-1): eine sehr lange Kopfzeile ohne Trenner
+  // darf nicht mehr quadratisch laufen — Laufzeitschutz statt Zeitmessung,
+  // damit der Test auf langsamer CI-Hardware nicht flattert.
+  checks++;
+  const longHeadStart = Date.now();
+  const longHead = splitLyricsHeader(`# a${' '.repeat(200000)}b\nText\n`);
+  if (Date.now() - longHeadStart > 2000) {
+    failed.push('Liedtext-Kopfzeile mit sehr viel Leerraum dauert zu lange (ReDoS?)');
+  }
+  if (longHead.artist !== null) failed.push('Sehr lange Kopfzeile ohne Trenner müsste als "kein Interpret" gelten');
 
   // Mehrere Fassungen: vorgeschlagen wird die mit den meisten Stimmen.
   checks++;
