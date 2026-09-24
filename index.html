@@ -5,10 +5,15 @@
 <!-- AP-C (ARCHITEKTUR-PLAN.md): muss vor allem stehen, was sie regeln soll —
      GitHub Pages kann keine Header setzen, frame-ancestors ist über ein
      Meta-Tag ohnehin nicht durchsetzbar und deshalb bewusst nicht Teil davon.
-     blob: wegen des AudioWorklet-Moduls (signalsmith-stretch.js erzeugt eine
-     Blob-URL für audioWorklet.addModule()), 'wasm-unsafe-eval' wegen der
-     WASM-Instanziierung darin. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://uhr.ptb.de; object-src 'none'; base-uri 'none';">
+     default-src 'none' als Grundhärtung, alles andere explizit erlaubt:
+     blob: in script-src/worker-src wegen des AudioWorklet-Moduls
+     (signalsmith-stretch.js erzeugt eine Blob-URL für
+     audioWorklet.addModule()), 'wasm-unsafe-eval' wegen der
+     WASM-Instanziierung darin, media-src blob: für <audio> mit Blob-URLs,
+     frame-src blob: für die PDF-Vorschau im iframe, font-src data: für die
+     eingebettete woff2-Schrift weiter unten, img-src data: blob: für Icons
+     und (Vorsichtshalber) Blob-Vorschauen. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src blob:; connect-src 'self' wss://uhr.ptb.de; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BVG</title>
 

@@ -165,15 +165,33 @@ bleibt.
 
 ## Content-Security-Policy
 
-Ein `<meta http-equiv="Content-Security-Policy">` in `index.html` erlaubt nur
-noch Skripte von der eigenen Herkunft, `blob:` (für das AudioWorklet-Modul
-des Zeitdehners) und `'wasm-unsafe-eval'` (für dessen WASM-Instanziierung);
-Styles bleiben inline erlaubt (`'unsafe-inline'`, wegen der `style="…"`-
-Attribute im Markup), `<object>`/`<embed>` und `<base>` sind ganz gesperrt.
-`connect-src` erlaubt neben der eigenen Herkunft ausschließlich
-`wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
-WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
-Netzwerkanfrage aus dem Code wäre damit von vornherein blockiert.
+Ein `<meta http-equiv="Content-Security-Policy">` in `index.html` setzt
+`default-src 'none'` als Grundhärtung und erlaubt darüber hinaus nur explizit
+Genanntes:
+
+```
+default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self';
+style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
+media-src 'self' blob:; frame-src blob:; connect-src 'self' wss://uhr.ptb.de;
+manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
+```
+
+- `script-src`/`worker-src`: die eigene Herkunft, dazu `blob:` (für das
+  AudioWorklet-Modul des Zeitdehners) und `'wasm-unsafe-eval'` (für dessen
+  WASM-Instanziierung).
+- `style-src`: `'unsafe-inline'` bleibt nötig wegen der `style="…"`-Attribute
+  im Markup.
+- `img-src`/`font-src`: `data:` für Icons bzw. die eingebettete
+  woff2-Schrift.
+- `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
+  bzw. die PDF-Vorschau im iframe.
+- `connect-src` erlaubt neben der eigenen Herkunft ausschließlich
+  `wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
+  WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
+  Netzwerkanfrage aus dem Code wäre damit von vornherein blockiert.
+- `manifest-src 'self'`, `object-src 'none'`, `base-uri 'none'` und
+  `form-action 'none'` schließen die übrigen Kanäle.
+
 `frame-ancestors` ist absichtlich nicht Teil davon — über ein Meta-Tag
 ohnehin nicht durchsetzbar, GitHub Pages kann keine Header setzen. Ob
 Zeitdehner-Worklets zusätzlich `worker-src blob:` brauchen, ist auf echtem
