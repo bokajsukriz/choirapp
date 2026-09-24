@@ -34,8 +34,9 @@ gegen diese Liste prüfen.
   './lightshow.js'"` isoliert und schnell prüfen, ohne den Browser zu
   starten — bei `lightshow.js`-Änderungen zuerst so gegenprüfen (Determinismus,
   gültiges `#rrggbb`, WCAG-2.3.1-Blitzgrenze: max. 3 steigende
-  Helligkeits-Übergänge über 0,5 je 1000-ms-Fenster — siehe Test 5 in
-  `runSelfTests()`), bevor die App im Browser läuft.
+  Helligkeits-Übergänge über 0,5 je 1000-ms-Fenster, gezählt mit Hysterese
+  0,45/0,55 — siehe Test 5 in `runSelfTests()`), bevor die App im Browser
+  läuft.
 - `lightshow.js` ist bewusst ein reines Blatt (kein DOM, kein `Date.now()`,
   kein `Math.random`, keine Imports zurück nach `app.js`) — jede Show ist
   `Farbe = f(Zeit, Stimme, Seed)`. Neuer Zufall gehört als deterministischer
@@ -43,6 +44,11 @@ gegen diese Liste prüfen.
 - Ändert sich `lightshowFrame()`s Verhalten, auch die Vorschau-Kacheln in
   `app.js` (`LIGHTSHOW_PREVIEW_POINTS`/`paintLightshowPreviews`) mitziehen —
   die rufen dieselbe Funktion separat auf und laufen sonst auseinander.
+- Ändert sich die Bedeutung gespeicherter Felder so, dass alte Datensätze
+  angepasst werden müssen: `DATA_VERSION` in `app.js` erhöhen und unter
+  `DATA_MIGRATIONS[neue Version]` eine idempotente Umstellung eintragen
+  (unbekannte Felder erhalten). Nur dann erscheint nach dem Update der
+  Kompatibilitätshinweis — reine Code-Änderungen brauchen das nicht.
 - Einstellungen (`settings`) liegen in IndexedDB (`DB.metaGet`/`metaPut`),
   nicht `localStorage` — der ist nur für Fehler-/Diagnose-Log reserviert.
 - Auf `*-PLAN.md` verweisende Kommentare (z. B. „siehe LICHTSHOW-PLAN.md")

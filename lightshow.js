@@ -283,6 +283,9 @@ function lightshowFrameKaleidoskop(tMs, voice) {
  * @returns {string}       Hintergrundfarbe '#rrggbb'
  */
 export function lightshowFrame(showId, tMs, voice, seed) {
+  // Nicht-endliche Zeit ergab sonst „#NaNNaNNaN" bzw. undefined — die Bühne
+  // bliebe dann stumm auf der letzten Farbe stehen.
+  if (!Number.isFinite(tMs)) return '#000000';
   switch (showId) {
     case 'sterne': return lightshowFrameSterne(tMs, voice, seed);
     case 'puls':   return lightshowFramePuls(tMs, voice);

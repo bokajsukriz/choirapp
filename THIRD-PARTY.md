@@ -5,14 +5,17 @@
 | Komponente | lamejs |
 | Version | 1.2.1 |
 | Datei | `lame.min.js` |
-| SHA-256 | `194ee71034bb400f05648d2f7cd552f53edb43b5a106a8c9d809bee3d6275ea5` |
+| SHA-256 (ausgeliefert) | `121adb027f464dea02200e180ca9a3476c8aea2434286edc84e9bbd8015b61fc` — die Datei in diesem Repository (Upstream-Datei plus vorangestellter Kopfkommentar) |
+| SHA-256 (Upstream) | `15d285e2587b3bdbfd18a68de6ce07cc074f7480a82c3815da2dc1c348ec6df4` — `lame.min.js` aus dem npm-Tarball `lamejs@1.2.1`; ohne den Kopfkommentar byte-identisch |
+| Quelltext (LGPL) | `third-party/lamejs-1.2.1/lame.all.js` — unminifizierte Fassung aus demselben npm-Tarball (SHA-256 `026bd88846040f357a937cd85821a48492a362eff0812cda734f23fca55fea3b`), liegt im Repository, damit der Quelltext unabhängig vom Upstream-Repository verfügbar bleibt |
 | Quelle | https://github.com/zhuker/lamejs — npm `lamejs@1.2.1` |
 | Lizenz | LGPL-3.0 (Volltext siehe `LICENSE-lamejs-LGPL-3.0.txt`; die zugrundeliegende GPL-3.0 siehe `LICENSE-lamejs-GPL-3.0.txt`; `LICENSE-lamejs.txt` enthält weiterhin nur den LAME-FAQ-Auszug zur Einordnung) |
-| Verändert | nein |
+| Verändert | nein (nur ein vorangestellter Kopfkommentar mit Herkunft und Lizenz) |
 | Verwendung | MP3-Export der eigenen Aufnahmen, per `<script>` nachgeladen |
 
-Der SHA-256-Wert wurde mit `sha256sum lame.min.js` gegen die Datei in diesem
-Repository nachgerechnet, nicht übernommen.
+Die SHA-256-Werte wurden mit `sha256sum` nachgerechnet, nicht übernommen —
+der ausgelieferte gegen die Datei in diesem Repository, der Upstream-Wert
+und der Quelltext-Wert gegen den frisch gezogenen npm-Tarball.
 
 | Feld | Wert |
 |---|---|
@@ -20,7 +23,7 @@ Repository nachgerechnet, nicht übernommen.
 | Version | 1.3.2 |
 | Datei | `signalsmith-stretch.js` |
 | SHA-256 (Original) | `fe0e23b6bb5dbffb231a91e7dc39f9d2a7d10c7f793fb0237d819ca748f7f778` — Originaldatei aus dem npm-Tarball, **vor** der lokalen Änderung |
-| SHA-256 (ausgeliefert) | `8e4ee66b9960a42836806bebfdf82eb9a65e09bc4abc90b2178ddbd3bc322e05` — die Datei in diesem Repository, **mit** den sechs Patches unten |
+| SHA-256 (ausgeliefert) | `252cd583024331f7df0a6275961d499a1dceffc5b47d780759d78888f7453579` — die Datei in diesem Repository, **mit** den sechs Patches unten und dem vorangestellten MIT-Lizenzhinweis |
 | Quelle | https://signalsmith-audio.co.uk/code/stretch/ — npm `signalsmith-stretch@1.3.2` |
 | Lizenz | MIT (Volltext siehe `LICENSE-signalsmith-stretch.txt`) |
 | Verändert | **ja** — sechs lokale Patches, siehe Kommentarblock am Kopf von `signalsmith-stretch.js`: ein `reset`-Fernmethode für den AudioWorklet-Prozessor (setzt nur den WASM-Zustand zurück, nicht die Zeitabbildung), `this.configure()` statt `configure()` im Kanalzahl-Zweig von `process()` (Upstream-Bug), Zwischenspeichern der Blob-URL des Worklet-Moduls (`createNode.moduleUrl`) statt bei jedem `AudioContext` neu zu erzeugen, Timeout/Reject sowie `processorerror`/`messageerror`-Behandlung für die Promise-RPCs, eine `terminate`-Fernmethode, die `process()` `false` liefern lässt (disconnect() allein hält den Prozessor auf manchen Geräten nicht zuverlässig davon ab, weiterzurechnen), und `requestMap['ready']` als reguläres `{resolve, reject}`-Objekt statt einer nackten Funktion, damit ein Fehler vor der ready-Nachricht (processorerror/messageerror) die Erzeugung sauber ablehnt und den bis dahin unerreichbaren Knoten selbst mit abklemmt, statt die Promise für immer offen zu lassen. Bei einem Update der Datei müssen diese sechs Stellen erneut angewandt werden. |

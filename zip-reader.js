@@ -379,6 +379,15 @@ export function createZipReader(limits, onDiagnostic) {
         tailHex: hexBytes(tail, tail.byteLength - 16, 16),
         pkCount: pk.count, pkFirst: pk.first, pkLast: pk.last,
       });
+      // Gar keine ZIP-Kennung, auch nicht am Dateianfang: dann ist es schlicht
+      // keine ZIP-Datei (z.B. versehentlich eine MP3 oder ein PDF gewählt).
+      // „Erneut aus Dropbox herunterladen" wäre dafür der falsche Rat (U18).
+      if (!pk.count) {
+        const head = await sliceView(file, 0, 4);
+        if (head.byteLength < 4 || head.getUint32(0, true) !== SIG_LOC) {
+          throw new ZipError('Das ist keine ZIP-Datei. Bitte den Ordner in Dropbox als ZIP herunterladen und genau diese Datei hier auswählen.');
+        }
+      }
       throw new ZipError(file.size > 2 ** 31
         ? tooBigMessage()
         : 'Diese Datei konnte nicht gelesen werden. Bitte den Ordner erneut aus Dropbox herunterladen.');
@@ -394,7 +403,8 @@ export function createZipReader(limits, onDiagnostic) {
       if (locRel < 0) throw new ZipError('Diese ZIP-Datei verwendet ein Format, das die App nicht lesen kann.');
       const z64Off = u64(tail, locRel + 8);
       const z64 = await sliceView(file, z64Off, z64Off + 56);
-      if (z64.getUint32(0, true) !== SIG_ZIP64_E) {
+      // Hinter dem Dateiende gekappt: sonst RangeError statt klarer Meldung.
+      if (z64.byteLength < 56 || z64.getUint32(0, true) !== SIG_ZIP64_E) {
         throw new ZipError('Diese ZIP-Datei verwendet ein Format, das die App nicht lesen kann.');
       }
       total  = u64(z64, 32);
@@ -475,6 +485,13 @@ export function createZipReader(limits, onDiagnostic) {
           const len = cd.getUint16(e + 2, true);
           if (id === 0x0001 && e + 4 + len <= cd.byteLength) {
             let q = e + 4;
+            const fieldEnd = e + 4 + len;
+            // Ein zu kurzes Extrafeld las sonst über sein Ende hinaus
+            // (RangeError bzw. fremde Bytes) statt als beschädigt zu gelten.
+            const need = (size === 0xFFFFFFFF) + (compSize === 0xFFFFFFFF) + (headerOffset === 0xFFFFFFFF);
+            if (q + need * 8 > fieldEnd) {
+              throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (ZIP64-Angaben unvollständig).');
+            }
             if (size === 0xFFFFFFFF)         { size = u64(cd, q); q += 8; }
             if (compSize === 0xFFFFFFFF)     { compSize = u64(cd, q); q += 8; }
             if (headerOffset === 0xFFFFFFFF) { headerOffset = u64(cd, q); q += 8; }
@@ -521,7 +538,7 @@ export function createZipReader(limits, onDiagnostic) {
         throw new ZipError(`Dieses Archiv ist ausgepackt zusammen zu groß (über ${fmtBytes(L.maxTotalBytes)}).`);
       }
 
-      entries.push({ path, method, compressedSize: compSize, size, headerOffset, crc32, cdStart, cdEnd });
+      entries.push({ path, method, compressedSize: compSize, size, headerOffset, crc32, cdStart, cdEnd, nameLen });
     }
 
     // Konsistenzprüfung: jeder der `total` angekündigten Header muss in genau
@@ -533,15 +550,47 @@ export function createZipReader(limits, onDiagnostic) {
       throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (Inhaltsverzeichnis widersprüchlich).');
     }
 
+    // Vor der Überlappungsprüfung (sortiert alle Einträge): ein Archiv mit
+    // Millionen Einträgen soll ohne diesen Aufwand sofort abgelehnt werden.
+    if (entries.length > L.maxEntries) {
+      throw new ZipError('Dieses Archiv enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.');
+    }
+
+    // Mehrere Central-Directory-Einträge dürfen nicht denselben oder
+    // überlappende Datenbereiche referenzieren (SEC-FILE-3) — sonst ließe
+    // sich derselbe komprimierte Strom beliebig oft "wiederverwenden" und
+    // damit die Ratio-Prüfung je Eintrag umgehen, ohne dass die Summe der
+    // tatsächlich unterschiedlichen Daten das rechtfertigt. Die lokale
+    // nameLen/extraLen ist erst beim tatsächlichen Lesen bekannt; 30 (fester
+    // Teil des lokalen Headers) + die aus dem Central Directory bekannte
+    // nameLen + die deklarierte komprimierte Größe genügt als konservative
+    // obere Schranke für den belegten Bereich — auch identische Offsets
+    // (dieselben Bytes doppelt referenziert) fallen darunter, weil ihr
+    // Bereich sich dann zwangsläufig mit sich selbst "überlappt".
+    const byOffset = [...entries].sort((a, b) => a.headerOffset - b.headerOffset);
+    for (let k = 1; k < byOffset.length; k++) {
+      const prev = byOffset[k - 1];
+      const cur = byOffset[k];
+      const prevEnd = prev.headerOffset + 30 + prev.nameLen + prev.compressedSize;
+      if (cur.headerOffset < prevEnd) {
+        throw new ZipError(`„${cur.path}“ überlappt im Archiv mit einem anderen Eintrag.`);
+      }
+    }
+
+    // Archivweite Rate: Auch wenn kein einzelner Eintrag für sich die
+    // Ratio-Prüfung oben auslöst, kann die Summe aller deklarierten Größen
+    // gegenüber der tatsächlichen Dateigröße verdächtig hoch sein (viele
+    // knapp unterdeklarierte Einträge, siehe SEC-FILE-2/3).
+    if (totalDeclaredSize > L.minRatioCheckSize && totalDeclaredSize > file.size * L.maxRatio) {
+      throw new ZipError('Dieses Archiv hat insgesamt ein verdächtig hohes Kompressionsverhältnis und wird abgelehnt.');
+    }
+
     diag('import:zip:directoryParsed', {
       total, usable: entries.length, dirCount, junkSkipped, pathRejected,
     });
 
     if (!entries.length) {
       throw new ZipError('In dieser ZIP-Datei sind keine Dateien enthalten.');
-    }
-    if (entries.length > L.maxEntries) {
-      throw new ZipError('Dieses Archiv enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.');
     }
     return entries;
   }
@@ -599,23 +648,53 @@ export function createZipReader(limits, onDiagnostic) {
       // Central-Directory-Wert geprüft.
       let seen = 0;
       let crcState = crc32Start();
+      // Chromium reicht einen im TransformStream geworfenen Fehler über
+      // Response.blob() nur als „TypeError: Failed to fetch" weiter — die
+      // eigene, verständliche Meldung ginge verloren. Deshalb merken und
+      // unten selbst werfen (SEC-FILE-8).
+      let guardError = null;
       const guard = new TransformStream({
         transform(chunk, controller) {
-          seen += chunk.byteLength;
-          if (seen > L.maxEntryBytes) {
-            throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+          try {
+            guardStep(chunk, controller);
+          } catch (err) {
+            guardError = err;
+            throw err;
           }
-          if (budget && budget.used + seen > L.maxTotalBytes) {
-            throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
-          }
-          crcState = crc32Step(crcState, chunk);
-          controller.enqueue(chunk);
         },
       });
+      const guardStep = (chunk, controller) => {
+        seen += chunk.byteLength;
+        if (seen > L.maxEntryBytes) {
+          throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+        }
+        // Die deklarierte Größe ist ohnehin verbindlich (siehe die
+        // Endprüfung `seen !== entry.size` unten) — ein unterdeklarierter
+        // Eintrag (z.B. deklarierte 1000 B, tatsächlich hunderte MB) soll
+        // deshalb schon hier abbrechen, statt bis maxEntryBytes weiter
+        // entpackt zu werden (SEC-FILE-2).
+        if (seen > entry.size) {
+          throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
+        }
+        if (budget && budget.used + seen > L.maxTotalBytes) {
+          throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
+        }
+        crcState = crc32Step(crcState, chunk);
+        controller.enqueue(chunk);
+      };
       const stream = raw.stream()
         .pipeThrough(new DecompressionStream('deflate-raw'))
         .pipeThrough(guard);
-      const blob = await new Response(stream).blob();
+      let blob;
+      try {
+        blob = await new Response(stream).blob();
+      } catch (err) {
+        if (guardError) throw guardError;
+        if (err instanceof ZipError) throw err;
+        // Kaputter Deflate-Strom (abgeschnitten, Müll): verständlich melden
+        // statt „Failed to fetch"/TypeError.
+        throw new ZipError(`„${entry.path}“ ist beschädigt (Entpacken fehlgeschlagen).`);
+      }
       if (seen !== entry.size) {
         throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
       }

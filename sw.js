@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v249';
+const SW_VERSION = 'v270';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -31,7 +31,6 @@ const SHELL_REQUIRED = [
   './lightshow.js',
   './strings.js',
   './zip-reader.js',
-  './groove-lab.js',
   './signalsmith-stretch.js',
 ];
 // Kürteil: fehlt eine davon, bleibt die App trotzdem offlinefähig — der
@@ -39,10 +38,17 @@ const SHELL_REQUIRED = [
 // Update sie nachträgt. boot-guard.js gehört hierher, nicht in den
 // Pflichtteil: fehlt es, bleibt bei einem gescheiterten app.js-Fetch nur die
 // Fehlermeldung aus (siehe AP-C in ARCHITEKTUR-PLAN.md) — nicht schön, aber
-// kein Totalausfall wie bei einer der Dateien oben.
+// kein Totalausfall wie bei einer der Dateien oben. groove-lab.js (Easter
+// Egg) gehört ebenfalls hierher: Es wird erst bei Bedarf zur Laufzeit per
+// <script src> nachgeladen (siehe app.js), nie beim Boot importiert. Fehlt
+// es offline, scheitert nur dieses Nachladen mit einem Banner — kein Grund,
+// deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für
+// uebe-lab.html (Spielplatz, Einstellungen → Tools), das nur als iframe
+// geöffnet wird.
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
+  './groove-lab.js',
   './uebe-lab.html',
   './manifest.json',
   './icon-192.png',
@@ -113,7 +119,12 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
   if (event.data && event.data.type === 'GET_VERSION') {
-    event.source?.postMessage({ type: 'VERSION', version: SW_VERSION });
+    // `served`: der tatsächlich ausgelieferte Shell-Cache — weicht von
+    // SW_VERSION ab, wenn auf einen älteren vollständigen Stand ausgewichen
+    // wird (sonst zeigte die App eine Version an, die sie gar nicht fährt).
+    event.waitUntil(resolveActiveShellCacheName().then((served) => {
+      event.source?.postMessage({ type: 'VERSION', version: SW_VERSION, served: served.replace('chor-app-shell-', '') });
+    }));
   }
 });
 
@@ -156,10 +167,12 @@ function resolveActiveShellCacheName() {
     activeShellCachePromise = (async () => {
       if (await isCacheComplete(CACHE_NAME)) return CACHE_NAME;
       console.warn('[sw] Shell-Cache unvollständig, weiche auf älteren vollständigen Stand aus');
+      // Numerisch nach Version, nicht lexikografisch — sonst stünde v999
+      // vor v1000.
+      const versionOf = (n) => Number((/-v(\d+)$/.exec(n) || [])[1]) || 0;
       const names = (await caches.keys())
         .filter((n) => n.startsWith('chor-app-shell-') && n !== CACHE_NAME)
-        .sort()
-        .reverse();
+        .sort((a, b) => versionOf(b) - versionOf(a));
       for (const name of names) {
         if (await isCacheComplete(name)) return name;
       }
@@ -168,6 +181,36 @@ function resolveActiveShellCacheName() {
   }
   return activeShellCachePromise;
 }
+
+/**
+ * Liefert der Worker gerade eine ältere Shell aus (CACHE_NAME unvollständig,
+ * z.B. nach einer Teil-Räumung durch den Browser), holt das die fehlenden
+ * Pflichtdateien im Hintergrund nach. Vorher heilte dieser Zustand nie von
+ * selbst, und neue Dateien, die der alte Stand nicht kennt, bekamen 504.
+ * Einmal je Worker-Instanz.
+ */
+let shellRefillStarted = false;
+async function refillShellCache() {
+  if (shellRefillStarted) return;
+  shellRefillStarted = true;
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    for (const path of SHELL_REQUIRED) {
+      if (await cache.match(path)) continue;
+      const res = await fetch(new Request(path, { cache: 'reload' }));
+      if (!res.ok) throw new Error(`${path}: ${res.status}`);
+      await cache.put(path, res);
+    }
+    if (await isCacheComplete(CACHE_NAME)) activeShellCachePromise = null;
+  } catch (err) {
+    console.warn('[sw] Nachladen der Shell gescheitert:', err);
+    shellRefillStarted = false;
+  }
+}
+
+/** Nur diese Pfade gehören in den Shell-Cache. */
+const SHELL_URLS = new Set([...SHELL_REQUIRED, ...SHELL_OPTIONAL]
+  .map((path) => new URL(path, self.location.href).href));
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -210,6 +253,7 @@ self.addEventListener('fetch', (event) => {
         // unversionierten Deployment-URL mischen. Erst ein vollständig
         // installierter neuer Cache darf die Release-Grenze wechseln.
         if (activeCacheName !== CACHE_NAME) {
+          event.waitUntil(refillShellCache());
           return new Response(
             '<!doctype html><meta charset="utf-8"><h1>App-Update erforderlich</h1>'
               + '<p>Die gespeicherte App-Version ist unvollständig. Bitte mit Internetverbindung neu laden.</p>',
@@ -217,7 +261,10 @@ self.addEventListener('fetch', (event) => {
           );
         }
         try {
-          const res = await fetch(req);
+          // Gezielt index.html holen, nicht die navigierte URL: sonst landete
+          // z.B. ein Aufruf von …/README.md oder …/app.js als „Startseite"
+          // im Cache und die App startete offline als Textdatei.
+          const res = await fetch(new Request('./index.html', { cache: 'reload' }));
           // Erfolgreiche Online-Erholung nach einem Cache-Miss nur „repariert"
           // die aktuelle Sitzung, nicht die Offlinefähigkeit — ohne diesen
           // Nachtrag unter dem kanonischen Schlüssel fehlt index.html beim
@@ -254,11 +301,14 @@ self.addEventListener('fetch', (event) => {
       const cached = await caches.match(req, { cacheName: activeCacheName, ignoreSearch: true });
       if (cached) return cached;
       if (activeCacheName !== CACHE_NAME) {
+        event.waitUntil(refillShellCache());
         return new Response('', { status: 504, statusText: 'Shell version unavailable' });
       }
       try {
         const res = await fetch(req);
-        if (res && res.ok && res.type === 'basic') {
+        // Nur echte Shell-Dateien nachtragen — beliebige andere Antworten
+        // des Origins würden sonst für immer cache-first ausgeliefert.
+        if (res && res.ok && res.type === 'basic' && SHELL_URLS.has(url.origin + url.pathname)) {
           // Nachtragen erst abwarten (F-07): ohne await darf der Worker schon
           // vor dem Commit des Caches idle werden, der Nachtrag bliebe dann
           // unzuverlässig zwischen zwei Fetches hängen. Auch hier in die

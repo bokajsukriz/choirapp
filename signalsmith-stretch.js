@@ -1,6 +1,14 @@
 /*
+ * signalsmith-stretch 1.3.2 — MIT License
+ * Copyright (c) 2023 Geraint Luff / Signalsmith Audio Ltd.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software; the full license text (including the permission notice
+ * and warranty disclaimer) is in LICENSE-signalsmith-stretch.txt and must
+ * accompany all copies or substantial portions of the Software.
+ */
+/*
  * Lokale Abweichung vom npm-Paket signalsmith-stretch@1.3.2 (siehe
- * THIRD-PARTY.md). Ein `npm update` dieser Datei würde die folgenden fünf
+ * THIRD-PARTY.md). Ein `npm update` dieser Datei würde die folgenden sechs
  * Stellen verschlucken — vor jedem Update erneut anwenden:
  *
  * 1. `remoteMethods.reset` (im AudioWorklet-Prozessor): ruft
