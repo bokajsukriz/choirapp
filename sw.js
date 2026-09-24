@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v252';
+const SW_VERSION = 'v253';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -31,7 +31,6 @@ const SHELL_REQUIRED = [
   './lightshow.js',
   './strings.js',
   './zip-reader.js',
-  './groove-lab.js',
   './signalsmith-stretch.js',
 ];
 // Kürteil: fehlt eine davon, bleibt die App trotzdem offlinefähig — der
@@ -39,10 +38,15 @@ const SHELL_REQUIRED = [
 // Update sie nachträgt. boot-guard.js gehört hierher, nicht in den
 // Pflichtteil: fehlt es, bleibt bei einem gescheiterten app.js-Fetch nur die
 // Fehlermeldung aus (siehe AP-C in ARCHITEKTUR-PLAN.md) — nicht schön, aber
-// kein Totalausfall wie bei einer der Dateien oben.
+// kein Totalausfall wie bei einer der Dateien oben. groove-lab.js (Easter
+// Egg) gehört ebenfalls hierher: Es wird erst bei Bedarf zur Laufzeit per
+// <script src> nachgeladen (siehe app.js), nie beim Boot importiert. Fehlt
+// es offline, scheitert nur dieses Nachladen mit einem Banner — kein Grund,
+// deswegen ein ganzes Shell-Update zu verwerfen.
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
+  './groove-lab.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
