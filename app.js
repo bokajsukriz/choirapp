@@ -20595,6 +20595,63 @@ function loadGrooveLab() {
   return grooveLabLoadPromise;
 }
 
+/** Öffnet das Groove Lab — vom Easter Egg und von Einstellungen → Tools. */
+async function openGrooveLab() {
+  // Zwei Audioquellen sollen nie gegeneinander spielen. Die vorhandene
+  // Aufnahme wird sauber pausiert, bevor das unabhängige Lab startet.
+  if (Audio.playing) audioPause();
+  try {
+    const lab = await loadGrooveLab();
+    lab.open({
+      accent: settings.accentColor || DEFAULT_SETTINGS.accentColor,
+      // groove-lab.js wird erst hier nachgeladen und ist ein klassisches
+      // Skript ohne eigenen STRINGS-Zugriff — es bekommt t() und die
+      // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
+      t,
+      lang: settings.language,
+      // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
+      // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
+      storage: {
+        load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
+        save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data }),
+      },
+    });
+  } catch (err) {
+    bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
+  }
+}
+
+/* Spielplatz (uebe-lab.html): eigenständige Seite mit eigener Audio-Engine,
+   deshalb als gleichherkünftiges iframe statt als Modul. Das iframe wird
+   beim Schließen entfernt — so enden Ton, Timer und Mikrofon garantiert.
+   Der Service Worker liefert die Seite aus dem Shell-Cache (siehe sw.js),
+   sonst würde die iframe-Navigation durch index.html ersetzt. */
+let playgroundReturnFocus = null;
+
+function openPlayground() {
+  if (Audio.playing) audioPause();
+  const host = $('#tool-frame');
+  if (!host.querySelector('iframe')) {
+    const frame = document.createElement('iframe');
+    frame.src = './uebe-lab.html?embedded=1';
+    frame.title = t('settings.tools.playground');
+    frame.allow = 'microphone; autoplay';
+    host.append(frame);
+  }
+  playgroundReturnFocus = document.activeElement;
+  host.hidden = false;
+  document.body.style.overflow = 'hidden';
+  $('#tool-frame-close').focus();
+}
+
+function closePlayground() {
+  const host = $('#tool-frame');
+  host.querySelector('iframe')?.remove();
+  host.hidden = true;
+  document.body.style.overflow = '';
+  playgroundReturnFocus?.focus?.();
+}
+
 // Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem
 // Player als Hauptreiter entfallen. Neue Heimat: der Songtitel im
 // Player-Reiter, weil er (anders als der Rest des Players) immer im DOM
@@ -20604,36 +20661,25 @@ function initGrooveLabEasterEgg() {
   if (!title) return;
 
   let taps = [];
-  title.addEventListener('pointerup', async (event) => {
+  title.addEventListener('pointerup', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     const now = performance.now();
     taps = taps.filter((time) => now - time < 3200);
     taps.push(now);
     if (taps.length < 7) return;
     taps = [];
+    openGrooveLab();
+  });
+}
 
-    // Zwei Audioquellen sollen nie gegeneinander spielen. Die vorhandene
-    // Aufnahme wird sauber pausiert, bevor das unabhängige Lab startet.
-    if (Audio.playing) audioPause();
-    try {
-      const lab = await loadGrooveLab();
-      lab.open({
-        accent: settings.accentColor || DEFAULT_SETTINGS.accentColor,
-        // groove-lab.js wird erst hier nachgeladen und ist ein klassisches
-        // Skript ohne eigenen STRINGS-Zugriff — es bekommt t() und die
-        // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
-        t,
-        lang: settings.language,
-        // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
-        // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
-        storage: {
-          load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
-          save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data }),
-        },
-      });
-    } catch (err) {
-      bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
-    }
+/** Einstellungen → Tools: Groove Lab und Spielplatz (die Lichtshow hängt
+ *  wie bisher an #btn-open-lightshow). */
+function initTools() {
+  $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
+  $('#btn-open-playground').addEventListener('click', openPlayground);
+  $('#tool-frame-close').addEventListener('click', closePlayground);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('#tool-frame').hidden) closePlayground();
   });
 }
 
@@ -20680,6 +20726,7 @@ async function boot() {
   // Sprachwechsel) — der Leerzustand wird darum hier einmal gesetzt.
   if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
   initGrooveLabEasterEgg();
+  initTools();
   setupFolderImport();
   if (shouldAutoRunSelfTests()) {
     try {

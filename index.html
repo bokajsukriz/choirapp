@@ -2498,6 +2498,19 @@ input[type="checkbox"] {
   color: #000;
 }
 
+/* Spielplatz-Ebene (siehe openPlayground): Vollbild wie das Groove Lab,
+   Schließen-Knopf oben rechts über dem Kopf des eingebetteten Übe-Labs. */
+.tool-frame { position: fixed; inset: 0; z-index: 2147483000; background: #fff7ec; }
+.tool-frame[hidden] { display: none; }
+.tool-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+.tool-frame-close {
+  position: absolute; z-index: 1;
+  top: max(12px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border: 1px solid #f1ddd0; border-radius: 13px; background: #fff1e2; color: #8c81a6;
+}
+.tool-frame-close svg { width: 20px; height: 20px; }
+
 /* Lichtshow-Bühne (siehe openLightshowStage/closeLightshowStage). Keine
    Übergänge — die Blenden rechnet lightshowFrame() selbst, eine
    CSS-Transition würde dagegenarbeiten. */
@@ -2983,6 +2996,15 @@ input[type="checkbox"] {
   </div>
   <button class="lyrics-present-close" id="lyrics-present-close" type="button" aria-label="Schließen" data-i18n-aria="player.presentCloseAria">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</div>
+
+<!-- Spielplatz (uebe-lab.html) als Vollbild-Ebene. Das iframe wird erst
+     beim Öffnen gesetzt und beim Schließen entfernt — damit enden auch
+     dessen Ton und Mikrofon zuverlässig (siehe openPlayground). -->
+<div class="tool-frame" id="tool-frame" hidden role="dialog" aria-modal="true" aria-label="Spielplatz" data-i18n-aria="settings.tools.playground">
+  <button class="tool-frame-close" id="tool-frame-close" type="button" aria-label="Schließen" data-i18n-aria="common.close">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
   </button>
 </div>
 
@@ -4101,11 +4123,40 @@ input[type="checkbox"] {
       <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
     </div>
 
+      </div>
+    </div>
+
+    <!-- Tools: eigenständige Zusatz-Ansichten. Groove Lab (groove-lab.js)
+         und Spielplatz (uebe-lab.html, als Vollbild-iframe, siehe
+         openPlayground) werden erst beim Antippen geladen. -->
+    <div class="settings-group">
+      <p class="settings-group-label" data-i18n="settings.group.tools">Tools</p>
+      <div class="settings-group-box">
     <div class="card" data-no-accordion="1">
       <h2>
         <button class="card-row" id="btn-open-lightshow" type="button">
           <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg>
           <span class="card-row-label" data-i18n="settings.lightshow.title">Lichtshow</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-groove-lab" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8v8M12 8v8M17 8v8"/><circle cx="7" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="10" r="1.6" fill="currentColor"/><circle cx="17" cy="14" r="1.6" fill="currentColor"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.grooveLab">Groove Lab</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-playground" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3ZM3 19a2 2 0 0 0 2 2h1v-6H3Z"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.playground">Spielplatz</span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
       </h2>

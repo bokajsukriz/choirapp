@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v248';
+const SW_VERSION = 'v249';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -43,6 +43,7 @@ const SHELL_REQUIRED = [
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
+  './uebe-lab.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
@@ -183,6 +184,22 @@ self.addEventListener('fetch', (event) => {
   // app.js aus demselben Cache-Stand kommen, sonst droht Versionsversatz
   // zwischen beiden. resolveActiveShellCacheName() ist genau deshalb EIN
   // für die ganze Worker-Instanz fester Name, nicht pro Datei neu gewählt.
+  // Der Spielplatz (uebe-lab.html, Einstellungen → Tools) ist eine eigene
+  // Seite, die die App als iframe lädt. Auch das ist eine Navigation — ohne
+  // diese Ausnahme käme dort die index.html an. Erst Shell-Cache, dann Netz.
+  if (req.mode === 'navigate' && url.pathname.endsWith('/uebe-lab.html')) {
+    event.respondWith(
+      (async () => {
+        const activeCacheName = await resolveActiveShellCacheName();
+        const cached = await caches.match('./uebe-lab.html', { cacheName: activeCacheName, ignoreSearch: true });
+        if (cached) return cached;
+        try { return await fetch(req); }
+        catch { return new Response('', { status: 504, statusText: 'Offline' }); }
+      })()
+    );
+    return;
+  }
+
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {

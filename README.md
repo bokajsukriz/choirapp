@@ -48,11 +48,13 @@ ein Dialog mit echter Wahl).
   (Netzwerkfehler, korrupter Cache) — sonst bliebe nur die leere, aber
   vollständige Oberfläche stehen.
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
-- `groove-lab.js` — nachgeladenes Easter Egg, kein Teil der eigentlichen App.
-- `uebe-lab.html` — Prototyp einer eigenen Übe-App (Metronom, Einsingen,
-  Rhythmus nachklatschen, Hören: Intervalle und Akkordfolgen, Stimm-Tuner
-  per Mikrofon), eigenständig,
-  noch nicht eingebunden und kein Teil der App-Shell.
+- `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über Einstellungen →
+  Tools oder das Easter Egg (7× auf den Songtitel im Player).
+- `uebe-lab.html` — „Spielplatz“ (Metronom, Einsingen, Rhythmus nachklatschen,
+  Hören: Intervalle und Akkordfolgen, Stimm-Tuner per Mikrofon). Eigenständige
+  Seite, in der App über Einstellungen → Tools als Vollbild-iframe geöffnet;
+  im Shell-Cache (`SHELL_OPTIONAL`). Das Mikrofon wird nur live ausgewertet,
+  nichts wird aufgenommen oder gesendet.
 - `lame.min.js` — vendorierter MP3-Encoder (siehe [Third-Party](#third-party)).
 - `manifest.json`, `icon-192.png`, `icon-512.png` — PWA-Manifest und Icons.
 
@@ -139,7 +141,7 @@ werden beim Laden still herausgefiltert, nie als Fehler gemeldet.
 
 ## Lichtshow
 
-Unter Einstellungen → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
+Unter Einstellungen → Tools → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
 Auftritt: Vollbild-Lichtfarben, die jede Stimme als räumlichen Block behandeln.
 Von links nach rechts werden Sopran, Alt, Tenor und Bass inszeniert; die Farben
 sind dabei bewusst unabhängig von den sonst verwendeten Stimmfarben.
