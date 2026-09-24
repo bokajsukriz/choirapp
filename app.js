@@ -136,6 +136,22 @@ const VOICE_LABEL = {
   OTHER: 'Sonstige',
 };
 
+/**
+ * Anzeigename einer Stimme in der eingestellten Sprache. VOICE_LABEL selbst
+ * bleibt deutsch: es landet in gespeicherten Spurnamen, ID3-Tags und
+ * Dateinamen und wird beim Wiedereinlesen daran zurückerkannt.
+ */
+function voiceName(code) {
+  return VOICE_LABEL[code] ? t(`voice.${code}`) : code;
+}
+
+/** Anzeigename einer Spur: der beim Import gespeicherte deutsche
+ *  Standardname wird übersetzt, eigene Namen (Stimme OTHER) bleiben. */
+function trackName(track) {
+  return track.voice && track.voice !== 'OTHER' && track.label === VOICE_LABEL[track.voice]
+    ? voiceName(track.voice) : track.label;
+}
+
 // Kurzform für die kompakten Stimm-Icons in der Songliste.
 const VOICE_ICON = {
   FULL:  'FULL',
@@ -616,7 +632,7 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
       text ? el('p', { text }) : null,
       input,
       el('div', { class: 'dialog-actions' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: okLabel,
                        onclick: () => done(input.value) })));
 
@@ -661,16 +677,16 @@ const REC_SCISSORS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentC
  */
 function editRecordingDialog(recording) {
   return new Promise((resolve) => {
-    const input = el('input', { type: 'text', value: recording.name, 'aria-label': 'Name' });
+    const input = el('input', { type: 'text', value: recording.name, 'aria-label': t('rec.nameLabel') });
 
     let selected = recording.voice || null;
     const voiceOptions = [
-      { value: null, label: 'Keine' },
-      { value: 'SOP', label: VOICE_LABEL.SOP },
-      { value: 'ALT', label: VOICE_LABEL.ALT },
-      { value: 'TEN', label: VOICE_LABEL.TEN },
-      { value: 'BASS', label: VOICE_LABEL.BASS },
-      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+      { value: null, label: t('rec.voiceNone') },
+      { value: 'SOP', label: voiceName('SOP') },
+      { value: 'ALT', label: voiceName('ALT') },
+      { value: 'TEN', label: voiceName('TEN') },
+      { value: 'BASS', label: voiceName('BASS') },
+      { value: 'LEAD', label: voiceName('LEAD') },
     ];
     // Dieselben farbigen Stimm-Pills wie bei „meine Stimme" (siehe
     // renderVoicePicker) statt der neutralen preset-row — exklusive Auswahl.
@@ -688,13 +704,13 @@ function editRecordingDialog(recording) {
       voiceBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
     }));
-    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': 'Stimme' }, ...voiceBtns);
+    const voiceRow = el('div', { class: 'chip-grid chip-grid--lg voice-pill-picker', style: 'margin-top:12px', role: 'group', 'aria-label': t('player.voiceAria') }, ...voiceBtns);
 
     const canvas = el('canvas', { class: 'take-wave' });
     const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
     const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
     const waveShadeWrap = el('div', { class: 'wave-shade-wrap' }, canvas, shadeLeft, shadeRight);
-    const trimBtn = el('button', { class: 'take-trim-btn', type: 'button', 'aria-label': 'REC zuschneiden' });
+    const trimBtn = el('button', { class: 'take-trim-btn', type: 'button', 'aria-label': t('rec.trimAria') });
     trimBtn.innerHTML = REC_SCISSORS_ICON;
     const waveRow = el('div', { class: 'take-wave-row', style: 'margin-top:12px' }, waveShadeWrap, trimBtn);
 
@@ -747,12 +763,12 @@ function editRecordingDialog(recording) {
     const done = (result) => { closeModal(layer); layer.remove(); resolve(result); };
 
     const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'REC bearbeiten' }),
+      el('h2', { text: t('rec.editTitle') }),
       input,
       waveRow,
       voiceRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: t('common.save'),
                        onclick: () => done({ name: input.value, voice: selected }) })));
 
@@ -763,7 +779,7 @@ function editRecordingDialog(recording) {
 
     // overlay--top: das Fenster bleibt am oberen Rand, damit die
     // aufklappende Tastatur (wegen des Namensfelds) es nicht verdeckt.
-    const layer = el('div', { class: 'overlay overlay--top', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC bearbeiten' }, box);
+    const layer = el('div', { class: 'overlay overlay--top', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('rec.editTitle') }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
     openModal(layer, { initialFocus: input, onEscape: () => done(null) });
@@ -1338,12 +1354,12 @@ let settingsLoadFailed = false;
  * zu müssen.
  */
 const ACCENT_PRESETS = [
-  { name: 'Pink',     hex: '#F868B0' },   // Standard
-  { name: 'Koralle',  hex: '#FF6B6B' },
-  { name: 'Gelb',     hex: '#FFD93D' },
-  { name: 'Türkis',   hex: '#4ECDC4' },
-  { name: 'Violett',  hex: '#A78BFA' },
-  { name: 'Grün',     hex: '#6BCB77' },
+  { id: 'pink', name: 'Pink',     hex: '#F868B0' },   // Standard
+  { id: 'coral', name: 'Koralle',  hex: '#FF6B6B' },
+  { id: 'yellow', name: 'Gelb',     hex: '#FFD93D' },
+  { id: 'turquoise', name: 'Türkis',   hex: '#4ECDC4' },
+  { id: 'violet', name: 'Violett',  hex: '#A78BFA' },
+  { id: 'green', name: 'Grün',     hex: '#6BCB77' },
 ];
 
 function hexToRgbTriplet(hex) {
@@ -2257,7 +2273,7 @@ function renderVoicePills(tracks) {
   // Von hinten nach vorne gestapelt: die rechteste Pille liegt obenauf und
   // bleibt lesbar, die davor liegenden picken nur mit einem Farbrand hervor.
   sorted.forEach((t, i) => {
-    const full = t.voice === 'OTHER' ? t.label : (VOICE_LABEL[t.voice] || t.voice);
+    const full = t.voice === 'OTHER' ? t.label : voiceName(t.voice);
     const chip = el('span', {
       class: 'voice-chip',
       title: full,
@@ -2289,12 +2305,12 @@ function markIcon(kind) {
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('role', 'img');
   if (kind === 'lyrics') {
-    svg.innerHTML = '<title>Liedtext vorhanden</title><path d="M5 5h14M5 10h14M5 15h9"/>';
+    svg.innerHTML = `<title>${t('songs.markLyrics')}</title>` + '<path d="M5 5h14M5 10h14M5 15h9"/>';
   } else if (kind === 'notes') {
-    svg.innerHTML = '<title>Notiz vorhanden</title>' +
+    svg.innerHTML = `<title>${t('songs.markNotes')}</title>` +
       '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
   } else {
-    svg.innerHTML = '<title>Noten vorhanden</title>' +
+    svg.innerHTML = `<title>${t('songs.markScore')}</title>` +
       '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/>' +
       '<circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/>';
   }
@@ -2418,7 +2434,7 @@ async function renderSongs() {
       onclick: () => { songFilter = value; renderSongs(); },
     });
 
-    filterbar.append(makeChip('Alle', null), ...collections.map((c) => makeChip(c, c)));
+    filterbar.append(makeChip(t('songs.filterAll'), null), ...collections.map((c) => makeChip(c, c)));
   } else {
     filterbar.hidden = true;
     songFilter = null;
@@ -2460,7 +2476,7 @@ async function renderSongs() {
       },
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `„${rawQuery}" ${t('songs.createPlaceholderSuffix')}` }),
+        el('strong', { text: `${t('common.quoted').replace('{text}', rawQuery)} ${t('songs.createPlaceholderSuffix')}` }),
         el('div', { class: 'small muted', text: t('songs.createPlaceholderHint') }))));
   }
 
@@ -2493,7 +2509,7 @@ async function renderSongs() {
         },
       },
         el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
-          el('strong', { text: songLabel(song) || 'Ohne Titel' }),
+          el('strong', { text: songLabel(song) || t('songs.untitled') }),
           song.tracks.length
             ? renderVoicePills(song.tracks)
             : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
@@ -2554,7 +2570,7 @@ function renderVoicePicker() {
       class: 'chip chip--voice',
       type: 'button',
       'aria-pressed': settings.myVoices.includes(voice) ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
+      text: voiceName(voice),
       onclick: async () => {
         await toggleMyVoice(voice);
         renderVoicePicker();
@@ -2626,11 +2642,11 @@ async function renderStorageManager() {
     const tracksHost = el('div', { class: 'pick-tracks', hidden: true });
     for (const track of song.tracks) {
       tracksHost.append(el('div', { class: 'pick-track' },
-        el('div', { class: 'grow' }, el('div', { text: track.label })),
+        el('div', { class: 'grow' }, el('div', { text: trackName(track) })),
         el('span', { class: 'size', text: fmtBytes(track.size || 0) }),
         el('button', {
           class: 'icon-btn', type: 'button', style: 'color: var(--danger-fg)',
-          'aria-label': t('storage.deleteVoiceAria').replace('{voice}', track.label).replace('{song}', song.title),
+          'aria-label': t('storage.deleteVoiceAria').replace('{voice}', trackName(track)).replace('{song}', song.title),
           onclick: () => deleteTrack(song, track),
         }, (() => {
           const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2663,7 +2679,7 @@ async function renderStorageManager() {
 
     const rename = el('button', {
       class: 'icon-btn', type: 'button',
-      'aria-label': `${song.title} umbenennen`,
+      'aria-label': t('storage.renameSongAria').replace('{song}', song.title),
       onclick: () => renameSong(song),
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
@@ -2673,7 +2689,7 @@ async function renderStorageManager() {
         el('div', { class: 'grow' },
           el('strong', { text: song.title }),
           el('div', { class: 'small muted',
-            text: `${plural(song.tracks.length, 'Stimme', 'Stimmen')} · ${fmtBytes(bytes)}` })),
+            text: `${tPlural(song.tracks.length, 'count.voiceOne', 'count.voiceMany')} · ${fmtBytes(bytes)}` })),
         rename, del, toggle),
       tracksHost));
   }
@@ -2809,7 +2825,7 @@ async function deleteTrack(song, track) {
   const ok = await confirmDialog({
     title: t('dlg.deleteVoiceTitle'),
     text: t('dlg.deleteVoiceText')
-      .replace('{voice}', track.label).replace('{song}', song.title)
+      .replace('{voice}', trackName(track)).replace('{song}', song.title)
       .replace('{size}', fmtBytes(track.size || 0)),
     okLabel: t('common.delete'), danger: true,
   });
@@ -2884,7 +2900,7 @@ $('#btn-drop-audio').addEventListener('click', async () => {
       ]);
     }
     if (playerSong) closePlayer();
-    banner(`${plural(songs.length, 'Song', 'Songs')} entfernt, ${fmtBytes(bytes)} frei.`, { kind: 'ok' });
+    banner(t('msg.songsRemovedFreed').replace('{songs}', tPlural(songs.length, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(bytes)), { kind: 'ok' });
     await refreshAfterDelete();
   } catch (err) {
     bannerError(t('msg.recordingsDeleteFailed'), 'AUDIO-DROP', err);
@@ -3030,7 +3046,7 @@ $('#btn-debuglog-export').addEventListener('click', async () => {
 
   let shared = false;
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'BVG Diagnose-Log' }); shared = true; }
+    try { await navigator.share({ files: [file], title: t('settings.about.debugLogShareTitle') }); shared = true; }
     catch (err) { if (err?.name === 'AbortError') return; }
   }
   if (!shared) downloadBlob(new Blob([text], { type: 'text/plain' }), fileName);
@@ -3246,7 +3262,7 @@ function renderAccentPicker() {
     const btn = el('button', {
       class: 'accent-swatch', type: 'button', style: `background:${preset.hex}`,
       'aria-pressed': preset.hex === current ? 'true' : 'false',
-      'aria-label': preset.name,
+      'aria-label': t(`settings.accentName.${preset.id}`),
       onclick: async () => {
         await saveSettings({ accentColor: preset.hex });
         renderAccentPicker();
@@ -5834,7 +5850,7 @@ async function clearAllNormalizationResults() {
 function buildNormalizationDetailRow(row) {
   const { song, track, diag } = row;
   const { text, fileInfo } = normalizationDetailText(diag);
-  const context = [song?.title, VOICE_LABEL[track.voice] || track.label || track.voice].filter(Boolean).join(' · ');
+  const context = [song?.title, (VOICE_LABEL[track.voice] && voiceName(track.voice)) || track.label || track.voice].filter(Boolean).join(' · ');
   const children = [
     el('div', { style: 'font-weight:600' }, track.fileName || track.label || track.voice || ''),
   ];
@@ -6041,7 +6057,7 @@ async function processNormalizationJob(job) {
     if (normalizationHasRecord(track)) return { outcome: 'raced', track };
     if (!stillGood()) return { outcome: 'interrupted' };
 
-    normalizationProgress.current = `${song.title || ''} · ${VOICE_LABEL[track.voice] || track.label || track.voice || ''}`;
+    normalizationProgress.current = `${song.title || ''} · ${(VOICE_LABEL[track.voice] && voiceName(track.voice)) || track.label || track.voice || ''}`;
     renderNormalizationProgress();
 
     const rec = await DB.fileGet(job.fileKey).catch((err) => { throw normalizationTagError(err, 'storageError'); });
@@ -7411,16 +7427,23 @@ function selectionStats() {
   return { songCount, fileCount, bytes, newSongs, extended, replaced, unchanged };
 }
 
-function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
-
 /**
- * Wie plural(), nur mit Schlüsseln statt fester deutscher Wörter: Singular-
- * und Pluralform kommen aus STRINGS, die Zahl setzt `{n}` ein. Zwei Formen
- * reichen für DE/EN; Polnisch kennt zwar drei, die dritte (2–4) steht aber
- * bisher an keiner Stelle, an der sie hier gebraucht würde.
+ * Mengenangabe aus STRINGS statt fester deutscher Wörter; die Zahl setzt
+ * `{n}` ein. Welche Form gilt, entscheidet Intl.PluralRules der
+ * eingestellten Sprache: gesucht wird `…One`/`…Few`/`…Many`/`…Other` (Basis
+ * ist `oneKey` ohne „One"). Fehlt die passende Form, gilt wie früher `oneKey`
+ * für genau 1 und sonst `manyKey`. So bekommt Polnisch seine eigene Form für
+ * 2–4 („2 utwory", aber „5 utworów"), DE/EN kommen mit One/Many aus.
  */
+const PLURAL_SUFFIX = { one: 'One', few: 'Few', many: 'Many', other: 'Other' };
 function tPlural(n, oneKey, manyKey) {
-  return t(n === 1 ? oneKey : manyKey).replace('{n}', n);
+  let category = null;
+  try { category = new Intl.PluralRules(currentLocale()).select(n); } catch { /* Fallback unten */ }
+  const suffix = PLURAL_SUFFIX[category];
+  const lang = STRINGS[settings?.language] || STRINGS.de;
+  let key = suffix ? oneKey.replace(/One$/, suffix) : null;
+  if (!key || !(key in lang || key in STRINGS.de)) key = n === 1 ? oneKey : manyKey;
+  return t(key).replace('{n}', n);
 }
 
 function updateSheetSummary() {
@@ -7429,8 +7452,8 @@ function updateSheetSummary() {
   const free = info ? Math.max(0, info.quota - info.usage) : null;
 
   sheetSummary.textContent = free === null
-    ? `Auswahl: ${plural(s.songCount, 'Song', 'Songs')}, ${fmtBytes(s.bytes)}`
-    : `Auswahl: ${plural(s.songCount, 'Song', 'Songs')}, ${fmtBytes(s.bytes)} — verfügbar: ${fmtBytes(free)}`;
+    ? t('import.selectionSummary').replace('{songs}', tPlural(s.songCount, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(s.bytes))
+    : t('import.selectionSummaryFree').replace('{songs}', tPlural(s.songCount, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(s.bytes)).replace('{free}', fmtBytes(free));
 
   // Warnung, sobald die Auswahl 60 % des freien Speichers übersteigt.
   const tight = free !== null && free > 0 && s.bytes > free * 0.6;
@@ -7449,16 +7472,16 @@ function updateSheetSummary() {
   }
 
   const parts = [];
-  if (s.newSongs)  parts.push(plural(s.newSongs, 'neuer Song', 'neue Songs'));
-  if (s.extended)  parts.push(`${plural(s.extended, 'Song', 'Songs')} um Stimmen ergänzt`);
-  if (s.replaced)  parts.push(`${plural(s.replaced, 'Aufnahme', 'Aufnahmen')} ersetzt`);
-  if (s.unchanged) parts.push(`${plural(s.unchanged, 'Datei', 'Dateien')} unverändert`);
+  if (s.newSongs)  parts.push(tPlural(s.newSongs, 'count.newSongOne', 'count.newSongMany'));
+  if (s.extended)  parts.push(t('import.planExtended').replace('{songs}', tPlural(s.extended, 'common.songOne', 'common.songMany')));
+  if (s.replaced)  parts.push(t('import.planReplaced').replace('{recordings}', tPlural(s.replaced, 'count.recordingOne', 'count.recordingMany')));
+  if (s.unchanged) parts.push(t('import.planUnchanged').replace('{files}', tPlural(s.unchanged, 'common.fileOne', 'common.fileMany')));
   sheetPlan.textContent = parts.join(' · ');
 
   sheetImport.disabled = s.fileCount === 0;
   sheetImport.textContent = s.fileCount
-    ? `Importieren (${plural(s.fileCount, 'Datei', 'Dateien')})`
-    : 'Nichts ausgewählt';
+    ? t('import.importBtnCount').replace('{files}', tPlural(s.fileCount, 'common.fileOne', 'common.fileMany'))
+    : t('import.nothingSelected');
 }
 
 function iconChevron() {
@@ -7484,7 +7507,7 @@ function renderSheetList() {
       const chosen = pick.chosenVersion.get(group.core);
       const head = el('div', { class: 'version-group' },
         el('p', { class: 'small', style: 'margin:0 0 8px; color: var(--warn-fg)',
-          text: `${group.members.length} Versionen gefunden — Vorschlag: „${group.suggested.title}" (${plural(countVoices(group.suggested), 'Stimme', 'Stimmen')})` }),
+          text: t('import.versionsFound').replace('{count}', group.members.length).replace('{voices}', tPlural(countVoices(group.suggested), 'count.voiceOne', 'count.voiceMany')).replace('{title}', group.suggested.title) }),
         el('div', { class: 'version-row' },
           group.members.map((m) => el('button', {
             class: 'chip', type: 'button',
@@ -7498,7 +7521,7 @@ function renderSheetList() {
           },
             el('span', { text: m.title }),
             el('small', { style: 'display:block; font-weight:500; font-size:0.72rem',
-              text: plural(countVoices(m), 'Stimme', 'Stimmen') })))));
+              text: tPlural(countVoices(m), 'count.voiceOne', 'count.voiceMany') })))));
       sheetBody.append(head);
     }
 
@@ -7511,7 +7534,7 @@ function renderSheetList() {
   // Hinweise aus dem Scan (z.B. Dateiname passt nicht zum Ordner)
   if (pick.notes.length) {
     sheetBody.append(el('div', { class: 'card', style: 'margin-top:12px' },
-      el('h2', { text: 'Hinweise' }),
+      el('h2', { text: t('import.notesTitle') }),
       el('ul', { class: 'steps small muted', style: 'list-style: disc' },
         pick.notes.map((n) => el('li', { text: n })))));
   }
@@ -7543,20 +7566,20 @@ function renderSheetSong(song) {
     for (const track of song.tracks) {
       const cb = el('input', { type: 'checkbox' });
       cb.checked = track.checked;
-      cb.setAttribute('aria-label', t('import.trackAria').replace('{track}', track.label).replace('{song}', song.title));
+      cb.setAttribute('aria-label', t('import.trackAria').replace('{track}', trackName(track)).replace('{song}', song.title));
       cb.addEventListener('change', () => {
         track.checked = cb.checked;
         refreshSongBox();
         updateSheetSummary();
       });
 
-      const info = el('div', { class: 'grow' }, el('div', { text: track.label }));
+      const info = el('div', { class: 'grow' }, el('div', { text: trackName(track) }));
       if (track.status === 'same') {
-        info.append(el('span', { class: 'badge', text: 'bereits vorhanden' }));
+        info.append(el('span', { class: 'badge', text: t('import.alreadyPresent') }));
       } else if (track.status === 'changed') {
         info.append(el('span', { class: 'badge badge--changed', text: t('import.changedBadge') }));
       } else if (song.existing) {
-        info.append(el('span', { class: 'badge badge--new', text: 'neue Stimme' }));
+        info.append(el('span', { class: 'badge badge--new', text: t('import.newVoiceBadge') }));
       }
 
       const row = el('label', { class: 'pick-track' }, cb, info,
@@ -7577,11 +7600,11 @@ function renderSheetSong(song) {
 
     const totalBytes = song.tracks.reduce((sum, t) => sum + t.size, 0);
     const extras = [];
-    if (song.lyricsEntry) extras.push('Text');
-    if (song.pdfEntries.length) extras.push('Noten');
+    if (song.lyricsEntry) extras.push(t('import.extraLyrics'));
+    if (song.pdfEntries.length) extras.push(t('import.extraScore'));
 
     const meta = [
-      plural(song.tracks.length, 'Spur', 'Spuren'),
+      tPlural(song.tracks.length, 'count.trackOne', 'count.trackMany'),
       fmtBytes(totalBytes),
       ...(song.collections.length ? [song.collections.join(', ')] : []),
       ...extras,
@@ -7597,12 +7620,12 @@ function renderSheetSong(song) {
       const neu = song.tracks.filter((t) => t.status === 'new').length;
       const geaendert = song.tracks.filter((t) => t.status === 'changed').length;
       const parts = [];
-      if (neu) parts.push(plural(neu, 'neue Stimme', 'neue Stimmen'));
-      if (geaendert) parts.push(`${plural(geaendert, 'Aufnahme', 'Aufnahmen')} neuer`);
+      if (neu) parts.push(tPlural(neu, 'count.newVoiceOne', 'count.newVoiceMany'));
+      if (geaendert) parts.push(t('import.recordingsNewer').replace('{recordings}', tPlural(geaendert, 'count.recordingOne', 'count.recordingMany')));
 
       titleBlock.append(el('span', {
         class: parts.length ? 'badge badge--new' : 'badge',
-        text: parts.length ? parts.join(' · ') : 'bereits vorhanden',
+        text: parts.length ? parts.join(' · ') : t('import.alreadyPresent'),
       }));
     } else if (song.similar) {
       titleBlock.append(el('span', {
@@ -7625,7 +7648,7 @@ function renderSheetSong(song) {
         attachBox,
         el('span', {
           class: 'small muted', style: 'flex:1',
-          text: `${t('import.attachSimilarPrefix')} „${song.similar.title}" ${t('import.attachSimilarSuffix')}`,
+          text: `${t('import.attachSimilarPrefix')} ${t('common.quoted').replace('{text}', song.similar.title)} ${t('import.attachSimilarSuffix')}`,
         })
       );
     }
@@ -7678,8 +7701,8 @@ async function openPicker({ songs, notes, skipped, source, foundFiles, foundByte
   };
 
   sheetFound.textContent =
-    `Gefunden: ${plural(songs.length, 'Song', 'Songs')}, ` +
-    `${plural(foundFiles, 'Datei', 'Dateien')}, ${fmtBytes(foundBytes)}`;
+    t('import.foundSummary').replace('{songs}', tPlural(songs.length, 'common.songOne', 'common.songMany'))
+    .replace('{files}', tPlural(foundFiles, 'common.fileOne', 'common.fileMany')).replace('{size}', fmtBytes(foundBytes));
 
   // Ohne eigene Stimme ergibt „Meine Stimmen" keinen Sinn.
   if (!settings.myVoices.length && pick.preset === 'mine') pick.preset = 'full';
@@ -7708,7 +7731,7 @@ async function ensureMyVoice() {
     const grid = el('div', { class: 'chip-grid' });
     for (const v of MY_VOICE_CHOICES) {
       const btn = el('button', {
-        class: 'chip chip--voice', type: 'button', text: VOICE_LABEL[v], 'aria-pressed': 'false',
+        class: 'chip chip--voice', type: 'button', text: voiceName(v), 'aria-pressed': 'false',
         onclick: () => {
           if (picked.has(v)) picked.delete(v); else picked.add(v);
           btn.setAttribute('aria-pressed', picked.has(v) ? 'true' : 'false');
@@ -7724,7 +7747,7 @@ async function ensureMyVoice() {
         onclick: () => { layer.remove(); resolve(null); },
       }),
       el('button', {
-        class: 'btn btn--primary', type: 'button', text: 'Fertig',
+        class: 'btn btn--primary', type: 'button', text: t('common.done'),
         onclick: () => { layer.remove(); resolve(MY_VOICE_CHOICES.filter((v) => picked.has(v))); },
       })));
 
@@ -7837,10 +7860,8 @@ async function startZipImport(file) {
   dlog('import:zip:begin', { bytes: file.size });
   const bigWithoutWakeLock = file.size > LARGE_IMPORT_BYTES && !('wakeLock' in navigator);
   const close = banner(bigWithoutWakeLock
-    ? `Große Datei (${fmtBytes(file.size)}) wird gelesen — das kann dauern. `
-      + 'Bitte den Bildschirm eingeschaltet lassen, dieser Browser kann das '
-      + 'nicht automatisch übernehmen.'
-    : 'ZIP-Datei wird gelesen …', { timeout: 0 });
+    ? t('import.zipReadingLarge').replace('{size}', fmtBytes(file.size))
+    : t('import.zipReading'), { timeout: 0 });
 
   // Erst sicher malen lassen, bevor die erste (möglicherweise lange
   // blockierende) Leseoperation beginnt — sonst bleibt die Meldung im
@@ -7859,7 +7880,7 @@ async function startZipImport(file) {
     const skipped = [];
     for (const e of entries) {
       if (e.method === 0 || (e.method === 8 && canInflate)) usable.push(e);
-      else skipped.push({ path: e.path, reason: 'unbekanntes Komprimierungsverfahren' });
+      else skipped.push({ path: e.path, reason: t('import.skipUnknownCompression') });
     }
 
     const zipTitle = cleanFolderTitle(file.name.replace(/\.zip$/i, ''));
@@ -7900,7 +7921,7 @@ async function startZipImport(file) {
  */
 function validateFolderImportSelection(fileList) {
   if (fileList.length > IMPORT_MAX_ENTRIES) {
-    return 'Dieser Ordner enthält ungewöhnlich viele Dateien — das sieht nicht nach einem Chorarchiv aus.';
+    return t('import.folderTooManyFiles');
   }
 
   // Summe der Dateigrößen sicher aufbauen: Number.isSafeInteger fängt sowohl
@@ -7911,17 +7932,17 @@ function validateFolderImportSelection(fileList) {
   for (const f of fileList) {
     const path = f.webkitRelativePath || f.name || '';
     if (path.length > IMPORT_MAX_PATH_LENGTH) {
-      return `„${path.slice(0, 60)}…" hat einen zu langen Pfad.`;
+      return t('import.folderPathTooLong').replace('{path}', path.slice(0, 60));
     }
     if (!Number.isSafeInteger(f.size) || f.size < 0) {
-      return `„${path}" hat eine unplausible Größenangabe.`;
+      return t('import.folderSizeInvalid').replace('{path}', path);
     }
     if (f.size > IMPORT_MAX_ENTRY_BYTES) {
-      return `„${path}" ist mit ${fmtBytes(f.size)} größer als erlaubt (${fmtBytes(IMPORT_MAX_ENTRY_BYTES)}).`;
+      return t('import.folderFileTooLarge').replace('{size}', fmtBytes(f.size)).replace('{limit}', fmtBytes(IMPORT_MAX_ENTRY_BYTES)).replace('{path}', path);
     }
     totalBytes += f.size;
     if (!Number.isSafeInteger(totalBytes) || totalBytes > IMPORT_MAX_TOTAL_BYTES) {
-      return `Dieser Ordner ist zusammen zu groß (über ${fmtBytes(IMPORT_MAX_TOTAL_BYTES)}).`;
+      return t('import.folderTooLarge').replace('{limit}', fmtBytes(IMPORT_MAX_TOTAL_BYTES));
     }
   }
   return null;
@@ -8180,7 +8201,7 @@ async function runImport() {
           // der restliche Import läuft weiter, genau wie bei jedem anderen
           // Lesefehler hier.
           if (!(await validateImportedMediaBlob(blob, 'audio'))) {
-            report.failed.push(`${track.fileName} (Inhalt passt nicht zu einer Audiodatei)`);
+            report.failed.push(t('import.failedNotAudio').replace('{file}', track.fileName));
           } else {
             const fileKey = newFileKey();
             batch.files.push(await fileRecord(fileKey, blob, track.fileName));
@@ -8232,7 +8253,7 @@ async function runImport() {
           if (err && (err.name === 'QuotaExceededError' || err.importFlush)) throw err;
           console.error('[import]', track.fileName, err);
           dlog('import:file:fail', { index: done, bytes: track.size || 0, name: err?.name, message: err?.message });
-          report.failed.push(`${track.fileName} (nicht lesbar)`);
+          report.failed.push(t('import.failedUnreadable').replace('{file}', track.fileName));
         }
         done++;
         doneBytes += track.size || 0;
@@ -8244,7 +8265,7 @@ async function runImport() {
         // Ein Liedtext liegt im Songdatensatz und wird bei jedem Start
         // mitgeladen — ein riesiger (präparierter) Text machte die App
         // dauerhaft langsam (SEC-FILE-4).
-        report.failed.push(`${scan.lyricsEntry.name} (Text zu groß)`);
+        report.failed.push(t('import.failedTextTooLarge').replace('{file}', scan.lyricsEntry.name));
       } else if (scan.lyricsEntry) {
         try {
           const raw = await readTextBlob(await entryBlob(scan.lyricsEntry));
@@ -8254,7 +8275,7 @@ async function runImport() {
           if (artist) song.artist = artist;
         } catch (err) {
           console.warn('[import] Liedtext', err);
-          report.failed.push(`${scan.lyricsEntry.name} (Text nicht lesbar)`);
+          report.failed.push(t('import.failedTextUnreadable').replace('{file}', scan.lyricsEntry.name));
         }
       }
 
@@ -8266,7 +8287,7 @@ async function runImport() {
           // PDF-Kennung — bevor die Datei später als „application/pdf" in
           // ein iframe/einen neuen Tab wandert (siehe loadScorePreviews()).
           if (!(await validateImportedMediaBlob(blob, 'pdf'))) {
-            report.failed.push(`${pdf.name} (Inhalt passt nicht zu einer PDF-Datei)`);
+            report.failed.push(t('import.failedNotPdf').replace('{file}', pdf.name));
           } else {
             const fileKey = newFileKey();
             // Vollständig lesen, bevor Referenzen oder Löschungen vorgemerkt
@@ -8291,7 +8312,7 @@ async function runImport() {
         } catch (err) {
           if (err && (err.name === 'QuotaExceededError' || err.importFlush)) throw err;
           console.warn('[import] Noten', err);
-          report.failed.push(`${pdf.name} (nicht lesbar)`);
+          report.failed.push(t('import.failedUnreadable').replace('{file}', pdf.name));
         }
       }
 
@@ -8333,7 +8354,7 @@ async function runImport() {
       report.quotaAt = report.songsImported;
       report.quotaTotal = chosenSongs.length;
     } else {
-      report.failed.push('Der Import wurde vorzeitig abgebrochen.');
+      report.failed.push(t('import.abortedEarly'));
     }
     // Was schon ausgepackt ist, soll nicht verloren gehen. Bei vollem Speicher
     // scheitert auch das — dann bleibt eben der Stand davor.
@@ -8399,10 +8420,10 @@ async function runImport() {
       .replace('{songs}', tPlural(report.songsImported, 'common.songOne', 'common.songMany'))
       .replace('{files}', tPlural(report.failed.length, 'common.fileOne', 'common.fileMany')), {
       kind: 'error',
-      action: { label: 'Bericht', onClick: () => showView('import') },
+      action: { label: t('import.reportAction'), onClick: () => showView('import') },
     });
   } else {
-    banner(`${plural(report.songsImported, 'Song', 'Songs')} importiert.`, { kind: 'ok' });
+    banner(t('import.doneOk').replace('{songs}', tPlural(report.songsImported, 'common.songOne', 'common.songMany')), { kind: 'ok' });
   }
 
   dlog('import:run:end', {
@@ -8516,8 +8537,8 @@ function abandonRecorderSession() {
   renderPendingTake();
   if (!recorderCloseConfirmed && (wasRecording || hadTake)) {
     banner(wasRecording
-      ? 'REC abgebrochen, weil die Aufnahme-Ansicht verlassen wurde.'
-      : 'Nicht gespeicherter REC wurde verworfen, weil die Aufnahme-Ansicht verlassen wurde.');
+      ? t('rec.abortedLeftView')
+      : t('rec.discardedLeftView'));
   }
   recorderCloseConfirmed = false;
 }
@@ -8537,8 +8558,8 @@ function closeRecorderView() {
 async function requestCloseRecorderView() {
   if (recHost === 'recorder' && (pendingTake || (recMediaRecorder && recMediaRecorder.state !== 'inactive'))) {
     const ok = await confirmDialog({
-      title: 'Aufnahme verlassen?', text: t('msg.recDiscarded'),
-      okLabel: 'Verlassen', danger: true,
+      title: t('rec.leaveTitle'), text: t('msg.recDiscarded'),
+      okLabel: t('common.leave'), danger: true,
     });
     if (!ok) return;
     recorderCloseConfirmed = true;
@@ -8572,7 +8593,7 @@ function renderLightshowVoiceLine() {
   const voice = lightshowActiveVoice();
   $('#lightshow-novoice-hint').hidden = !!voice;
   $('#lightshow-voice-dot').style.setProperty('--lightshow-voice-c', lightshowVoiceColor(voice));
-  $('#lightshow-voice-text').textContent = voice ? `${t('lightshow.voicePrefix')} ${VOICE_LABEL[voice]}` : '';
+  $('#lightshow-voice-text').textContent = voice ? `${t('lightshow.voicePrefix')} ${voiceName(voice)}` : '';
 }
 
 function renderLightshowVoicePicker() {
@@ -8583,7 +8604,7 @@ function renderLightshowVoicePicker() {
       class: 'chip chip--voice',
       type: 'button',
       'aria-pressed': lightshowActiveVoice() === voice ? 'true' : 'false',
-      text: VOICE_LABEL[voice],
+      text: voiceName(voice),
       onclick: async () => {
         // Nur für die Show überschreiben — wer zwei Stimmen singt oder die
         // Reihe wechselt, soll dafür nicht die Import-Einstellung anfassen.
@@ -9231,7 +9252,7 @@ function offerUpdate(worker) {
     kind: 'info',
     timeout: 0,
     action: {
-      label: 'Aktualisieren',
+      label: t('common.update'),
       onClick: () => worker.postMessage({ type: 'SKIP_WAITING' }),
     },
   });
@@ -9476,9 +9497,9 @@ function renderVoiceSelect() {
   // Stimme klingt. Lädt eine Spur gerade oder ist sie unspielbar, steht das
   // knapp hinter dem Namen.
   for (const track of playerSong.tracks) {
-    let label = track.label;
-    if (track.broken) label += ' — nicht abspielbar';
-    else if (Audio.loading.has(track.fileKey)) label += ' — lädt …';
+    let label = trackName(track);
+    if (track.broken) label += t('player.voiceBrokenSuffix');
+    else if (Audio.loading.has(track.fileKey)) label += t('player.voiceLoadingSuffix');
     sel.append(el('option', { value: track.fileKey, text: label, disabled: track.broken || null }));
   }
   sel.value = playerVoice || '';
@@ -9553,7 +9574,7 @@ function markBroken(track, err) {
 
 /** Name und Text der Ausnahme — auf dem Handy gibt es keine Konsole. */
 function errText(err) {
-  if (!err) return 'unbekannter Fehler';
+  if (!err) return t('msg.unknownError');
   const name = err.name && err.name !== 'Error' ? `${err.name}: ` : '';
   return `${name}${err.message || String(err)}`;
 }
@@ -9577,7 +9598,7 @@ function showBrokenNotice(track) {
     brokenNotice = { songId: song.id, labels: [], reasons: new Set(), close: null };
   }
   const n = brokenNotice;
-  if (!n.labels.includes(track.label)) n.labels.push(track.label);
+  if (!n.labels.includes(trackName(track))) n.labels.push(trackName(track));
   n.reasons.add(track.brokenReason);
   n.close?.();
 
@@ -9587,15 +9608,13 @@ function showBrokenNotice(track) {
   // ist. Dann hilft nur ein neuer Import — also gleich den Weg dorthin zeigen.
   const allBroken = song.tracks.every((t) => t.broken);
   const text = allBroken
-    ? `Keine Stimme von „${song.title}" lässt sich abspielen (${reason}). `
-      + 'Die Aufnahmen sind auf diesem Gerät nicht mehr lesbar — bitte neu importieren.'
-    : `${n.labels.map((l) => `„${l}"`).join(', ')} `
-      + `${n.labels.length === 1 ? 'lässt sich' : 'lassen sich'} nicht abspielen (${reason}). `
-      + 'Die übrigen Stimmen funktionieren.';
+    ? t('player.brokenAll').replace('{song}', song.title).replace('{reason}', reason)
+    : t(n.labels.length === 1 ? 'player.brokenOne' : 'player.brokenMany').replace('{reason}', reason)
+      .replace('{voices}', n.labels.map((l) => t('common.quoted').replace('{text}', l)).join(', '));
 
   n.close = banner(text, {
     kind: 'error',
-    action: allBroken ? { label: 'Reparieren', onClick: () => repairBrokenSong(song) } : null,
+    action: allBroken ? { label: t('player.repair'), onClick: () => repairBrokenSong(song) } : null,
   });
 }
 
@@ -9994,7 +10013,7 @@ function showReplacedNotice(song) {
       el('p', { style: 'margin:0 0 10px',
         text: t('msg.recordingReplaced').replace('{diff}', diff).replace('{direction}', longer) }),
       el('button', {
-        class: 'btn', type: 'button', text: 'Verstanden',
+        class: 'btn', type: 'button', text: t('common.understood'),
         onclick: async () => {
           box.hidden = true;
           delete song.replacedNotice;
@@ -10072,7 +10091,7 @@ async function renderQueue() {
     host.append(el('button', {
       class: 'queue-more', type: 'button',
       onclick: () => { queueExpanded = true; renderQueue(); },
-    }, `⋯ ${plural(playQueue.index, 'Titel', 'Titel')} davor`));
+    }, tPlural(playQueue.index, 'player.queueBeforeOne', 'player.queueBeforeMany')));
   }
 
   for (const index of rows) {
@@ -10119,13 +10138,13 @@ async function renderQueue() {
     host.append(el('button', {
       class: 'queue-more', type: 'button',
       onclick: () => { queueExpanded = true; renderQueue(); },
-    }, `⋯ ${plural(restAfter, 'Titel', 'Titel')} danach`));
+    }, tPlural(restAfter, 'player.queueAfterOne', 'player.queueAfterMany')));
   }
 
   if (queueExpanded) {
     host.append(el('button', {
       class: 'btn btn--block', type: 'button', style: 'margin-top:8px',
-      text: 'Weniger anzeigen',
+      text: t('player.queueShowLess'),
       onclick: () => { queueExpanded = false; renderQueue(); },
     }));
   }
@@ -10412,7 +10431,7 @@ $('#btn-song-search').addEventListener('pointerdown', (e) => {
  *  Kontextmenü-Taste bzw. Umschalt+F10). */
 async function pickOneTimeSearchService() {
   const picked = await choiceDialog({
-    title: 'Song suchen bei …',
+    title: t('player.searchWithTitle'),
     text: t('msg.oneTimeSearchChoice'),
     options: SONG_SEARCH_SERVICES.map((s) => ({ label: s.label, value: s.id })),
   });
@@ -10650,9 +10669,9 @@ $('#btn-loop-save').addEventListener('click', async () => {
   const r = loopRange();
   if (!r || !playerSong) return;
 
-  const suggestion = `Abschnitt ${songLoops.length + 1}`;
+  const suggestion = t('loops.defaultName').replace('{n}', songLoops.length + 1);
   const name = await promptDialog({
-    title: 'Loop speichern',
+    title: t('loops.saveTitle'),
     text: `${fmtTime(r.start)} – ${fmtTime(r.end)}`,
     value: suggestion,
     placeholder: t('loops.namePlaceholder'),
@@ -10670,7 +10689,7 @@ $('#btn-loop-save').addEventListener('click', async () => {
   await DB.metaPut(loop);
   activeLoopId = id;
   await loadSongLoops();
-  banner('Loop gespeichert.', { kind: 'ok' });
+  banner(t('loops.saved'), { kind: 'ok' });
 });
 
 async function loadSongLoops() {
@@ -10736,11 +10755,11 @@ function renderLoopList() {
       // „Loop starten“ entfällt bewusst — dafür reicht der Tipp auf die Zeile
       // selbst (siehe go oben).
       const action = await floatingMenu(menu, [
-        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
+        { value: 'rename', label: t('common.edit'), icon: ICON_EDIT },
         { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
       if (action === 'rename') {
-        const name = await promptDialog({ title: 'Loop umbenennen', value: loop.name });
+        const name = await promptDialog({ title: t('loops.renameTitle'), value: loop.name });
         if (name === null) return;
         loop.name = name.trim() || loop.name;
         await DB.metaPut(loop);
@@ -11725,7 +11744,7 @@ function renderPendingTake() {
 /** Beschriftung des Stimme-Knopfs auf der Take-Karte. */
 function renderTakeVoiceLabel() {
   const btn = rn('voiceBtn');
-  rn('voiceLabel').textContent = takeDraft?.voice ? (VOICE_LABEL[takeDraft.voice] || takeDraft.voice) : 'Stimme';
+  rn('voiceLabel').textContent = takeDraft?.voice ? voiceName(takeDraft.voice) : t('rec.voicePlaceholder');
   btn.dataset.empty = takeDraft?.voice ? 'false' : 'true';
 }
 
@@ -11780,7 +11799,7 @@ function updateRecTakePosition() {
     : null);
   hint.textContent = playing
     ? `${fmtTime(Audio.position)} / ${fmtTime(pendingTake.duration)}`
-    : 'gerade aufgenommen';
+    : t('rec.justRecorded');
 }
 
 $('#rec-take-name').addEventListener('input', (e) => {
@@ -11842,8 +11861,8 @@ $('#btn-recorder-take-trim').addEventListener('click', onTakeTrimClick);
 async function onTakeDiscardClick() {
   if (!pendingTake) return;
   const ok = await confirmDialog({
-    title: 'REC verwerfen?', text: t('msg.recNotSaved'),
-    okLabel: 'Verwerfen', danger: true,
+    title: t('rec.discardTitle'), text: t('msg.recNotSaved'),
+    okLabel: t('common.discard'), danger: true,
   });
   if (!ok) return;
   if (audioPreview?.tag?.pending) await endRecordingPreview();
@@ -11892,7 +11911,7 @@ async function renderRecSongPicker() {
       onclick: async () => selectSong(await createPlaceholderSong(rawQuery)),
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `„${rawQuery}" als neues Lied anlegen` }),
+        el('strong', { text: t('rec.createSongLine').replace('{title}', rawQuery) }),
         el('div', { class: 'small muted', text: t('rec.connectsOnImport') }))));
   }
 
@@ -11925,19 +11944,19 @@ $('#rec-song-search').addEventListener('input', () => {
  */
 async function pickRecordingVoice(current) {
   const currentLabel = current === undefined ? null
-    : current ? (VOICE_LABEL[current] || current) : 'Keine bestimmte Stimme';
+    : current ? voiceName(current) : t('rec.voiceNoneSpecific');
   const value = await choiceDialog({
-    title: 'Stimme zuordnen?',
+    title: t('rec.assignVoiceTitle'),
     text: currentLabel
-      ? `Aktuell: ${currentLabel}. Damit lässt sich der REC leichter wiederfinden.`
-      : 'Damit lässt sich der REC später leichter wiederfinden — optional.',
+      ? t('rec.assignVoiceCurrent').replace('{voice}', currentLabel)
+      : t('rec.assignVoiceHint'),
     options: [
-      { value: 'NONE', label: 'Keine bestimmte Stimme', primary: true },
-      { value: 'SOP', label: VOICE_LABEL.SOP },
-      { value: 'ALT', label: VOICE_LABEL.ALT },
-      { value: 'TEN', label: VOICE_LABEL.TEN },
-      { value: 'BASS', label: VOICE_LABEL.BASS },
-      { value: 'LEAD', label: VOICE_LABEL.LEAD },
+      { value: 'NONE', label: t('rec.voiceNoneSpecific'), primary: true },
+      { value: 'SOP', label: voiceName('SOP') },
+      { value: 'ALT', label: voiceName('ALT') },
+      { value: 'TEN', label: voiceName('TEN') },
+      { value: 'BASS', label: voiceName('BASS') },
+      { value: 'LEAD', label: voiceName('LEAD') },
     ],
   });
   if (value === null) return undefined;
@@ -12010,7 +12029,7 @@ async function onTakeSaveClick() {
       resetLevelTakeHistory();
       renderPendingTake();
     }
-    banner('REC gespeichert.', { kind: 'ok' });
+    banner(t('rec.saved'), { kind: 'ok' });
     if (savingHost === 'recorder') {
       if (recorderOpen && recHost === 'recorder') history.back();
       if (playerSong?.id === song.id) await loadSongRecordings();
@@ -12554,8 +12573,8 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
     const shadeLeft = el('div', { class: 'trim-shade trim-shade--left' });
     const shadeRight = el('div', { class: 'trim-shade trim-shade--right' });
     const playhead = el('div', { class: 'trim-playhead', hidden: true });
-    const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': 'Anfang' });
-    const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': 'Ende' });
+    const startHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--start', 'aria-label': t('rec.trimStart') });
+    const endHandle = el('button', { type: 'button', class: 'trim-handle trim-handle--end', 'aria-label': t('rec.trimEnd') });
     const wrap = el('div', { class: 'trim-wave-wrap' }, canvas, shadeLeft, shadeRight, playhead, startHandle, endHandle);
     const label = el('p', { class: 'small muted', style: 'margin:0; text-align:center' });
 
@@ -12645,7 +12664,7 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
     const endBtn = el('button', { class: 'trim-end-btn', type: 'button',
       'aria-label': t('rec.trimPlayEnd').replace('{seconds}', END_PREVIEW_LEN) });
     endBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13l8-6.5z"/><path d="M17 5v14"/></svg>';
-    endBtn.append(el('span', { text: 'Ende' }));
+    endBtn.append(el('span', { text: t('rec.trimEnd') }));
     endBtn.addEventListener('click', () => {
       if (endBtn.classList.contains('is-playing')) { stopPreview(); return; }
       runPreview(Math.max(startSec, endSec - END_PREVIEW_LEN), endSec, endBtn);
@@ -12659,16 +12678,16 @@ function trimSelectDialog(audioBuffer, initialStart = 0, initialEnd = audioBuffe
       closeModal(layer); layer.remove(); resolve(result);
     };
     const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'REC zuschneiden' }),
+      el('h2', { text: t('rec.trimAria') }),
       el('p', { text: t('rec.trimHint') }),
       wrap,
       previewRow,
       el('div', { class: 'dialog-actions', style: 'margin-top:16px' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
         el('button', { class: 'btn btn--primary', type: 'button', text: t('common.apply'),
                        onclick: () => done({ startSec, endSec }) })));
 
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'REC zuschneiden' }, box);
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('rec.trimAria') }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
 
@@ -12950,8 +12969,8 @@ async function exportRecording(recording, anchorBtn) {
   let action = 'download';
   if (navigator.canShare?.({ files: [probeFile] })) {
     action = await floatingMenu(anchorBtn, [
-      { value: 'share', label: 'Teilen', icon: REC_EXPORT_SHARE_ICON },
-      { value: 'download', label: 'Herunterladen', icon: REC_EXPORT_DOWNLOAD_ICON },
+      { value: 'share', label: t('common.share'), icon: REC_EXPORT_SHARE_ICON },
+      { value: 'download', label: t('common.download'), icon: REC_EXPORT_DOWNLOAD_ICON },
     ]);
     if (!action) return;
   }
@@ -13130,7 +13149,7 @@ function renderRecordingList() {
     // was Anhören und Export tatsächlich liefern (siehe recordingTrimRange()).
     const trimRange = recordingTrimRange(recording);
     const meta = [fmtTime(trimRange.end - trimRange.start)];
-    if (recording.voice) meta.push(VOICE_LABEL[recording.voice] || recording.voice);
+    if (recording.voice) meta.push(voiceName(recording.voice));
 
     const go = el('button', {
       class: 'go', type: 'button',
@@ -13148,8 +13167,8 @@ function renderRecordingList() {
     menu.innerHTML = hamburgerIcon();
     menu.addEventListener('click', async () => {
       const action = await floatingMenu(menu, [
-        { value: 'rename', label: 'Bearbeiten', icon: ICON_EDIT },
-        { value: 'export', label: 'Exportieren', icon: ICON_EXPORT },
+        { value: 'rename', label: t('common.edit'), icon: ICON_EDIT },
+        { value: 'export', label: t('common.export'), icon: ICON_EXPORT },
         { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
       if (action === 'rename') {
@@ -13176,7 +13195,7 @@ function renderRecordingList() {
     const looping = recordingLoopId === recording.id;
     const repeat = el('button', {
       class: 'icon-btn loop-repeat', type: 'button', 'aria-pressed': looping ? 'true' : 'false',
-      'aria-label': `„${recording.name}“ in Dauerschleife ${looping ? 'stoppen' : 'abspielen'}`,
+      'aria-label': t(looping ? 'rec.repeatStopAria' : 'rec.repeatStartAria').replace('{name}', recording.name),
       style: looping ? 'color: var(--accent)' : '',
     });
     repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
@@ -13506,7 +13525,7 @@ async function saveLyricsNote({ announce = false } = {}) {
   const text = $('#lyrics-note-text').value;
 
   if (announce && !text.trim()) {
-    if (await deleteLyricsNote()) banner('Leeren Liedtext entfernt.');
+    if (await deleteLyricsNote()) banner(t('lyrics.emptyRemoved'));
     return;
   }
 
@@ -13519,7 +13538,7 @@ async function saveLyricsNote({ announce = false } = {}) {
     await lyricsNoteWrite(() => DB.metaPut(note));
     lyricsNotePersistedText.set(note, text);
     if (playerLyricsNote === note) setLyricsNoteState('saved');
-    if (announce) banner('Liedtext gespeichert.', { kind: 'ok' });
+    if (announce) banner(t('lyrics.saved'), { kind: 'ok' });
   } catch (err) {
     if (playerLyricsNote === note) setLyricsNoteState('dirty');
     bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err);
@@ -13735,7 +13754,7 @@ async function loadScorePreviews() {
 
       if (navigator.canShare?.({ files: [file] })) {
         head.append(el('button', {
-          class: 'btn', type: 'button', text: 'Teilen',
+          class: 'btn', type: 'button', text: t('common.share'),
           style: 'padding:8px 14px; min-height:38px',
           onclick: (e) => {
             e.stopPropagation();
@@ -13745,7 +13764,7 @@ async function loadScorePreviews() {
         }));
       } else {
         const dl = el('a', {
-          class: 'btn', href: url, download: score.fileName, text: 'Sichern',
+          class: 'btn', href: url, download: score.fileName, text: t('scores.download'),
           style: 'padding:8px 14px; min-height:38px',
           onclick: (e) => e.stopPropagation(),
         });
@@ -13970,7 +13989,7 @@ async function saveNote({ announce = false } = {}) {
   // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
   // Händen, während jemand den Text gerade neu schreibt.
   if (announce && !text.trim()) {
-    if (await deleteNote()) banner('Leere Notiz entfernt.');
+    if (await deleteNote()) banner(t('notes.emptyRemoved'));
     return;
   }
 
@@ -13983,7 +14002,7 @@ async function saveNote({ announce = false } = {}) {
     await noteWrite(() => DB.metaPut(note));
     notePersistedText.set(note, text);
     if (playerNote === note) setNoteState('saved');
-    if (announce) banner('Notiz gespeichert.', { kind: 'ok' });
+    if (announce) banner(t('notes.saved'), { kind: 'ok' });
   } catch (err) {
     if (playerNote === note) setNoteState('dirty');
     bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err);
@@ -14075,7 +14094,7 @@ async function collectPrintable(kind) {
   const byId = new Map(songs.map((s) => [s.id, s]));
 
   return items
-    .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || 'Ohne Titel' }))
+    .map((n) => ({ ...n, songTitle: byId.get(n.songId)?.title || n.songTitle || t('songs.untitled') }))
     .filter((n) => (n.text || '').trim())
     .sort((a, b) => collator.compare(a.songTitle, b.songTitle));
 }
@@ -14093,9 +14112,9 @@ async function renderExportCount() {
     printableCount('note', 'btn-notes-export'),
     printableCount('lyricsNote', 'btn-lyrics-notes-export'),
   ]);
-  const noteLabel = notes ? plural(notes, 'Notiz', 'Notizen') : 'noch keine Notizen';
-  const lyricsLabel = lyrics ? plural(lyrics, 'eigener Liedtext', 'eigene Liedtexte') : 'noch keine eigenen Liedtexte';
-  const sentence = `${noteLabel} und ${lyricsLabel}`;
+  const noteLabel = notes ? tPlural(notes, 'count.noteOne', 'count.noteMany') : t('settings.data.exportNoNotes');
+  const lyricsLabel = lyrics ? tPlural(lyrics, 'count.lyricsOne', 'count.lyricsMany') : t('settings.data.exportNoLyrics');
+  const sentence = t('settings.data.exportCount').replace('{notes}', noteLabel).replace('{lyrics}', lyricsLabel);
   $('#export-count').textContent = sentence.charAt(0).toUpperCase() + sentence.slice(1) + '.';
 }
 
@@ -14164,15 +14183,15 @@ async function showPrintSelectionDialog(title, items) {
       el('h2', { text: title }),
       playlistRow,
       el('div', { class: 'row', style: 'margin-bottom:6px' },
-        el('button', { class: 'btn', type: 'button', text: 'Alle', onclick: () => setAll(true) }),
-        el('button', { class: 'btn', type: 'button', text: 'Keine', onclick: () => setAll(false) }),
+        el('button', { class: 'btn', type: 'button', text: t('printable.selectAll'), onclick: () => setAll(true) }),
+        el('button', { class: 'btn', type: 'button', text: t('printable.selectNone'), onclick: () => setAll(false) }),
         countLabel),
       el('div', { class: 'stack', style: 'overflow-y:auto; flex:1; gap:0' }, ...rows),
       el('div', { class: 'stack', style: 'gap:10px; margin-top:12px' },
         el('div', { class: 'dialog-actions' },
-          el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-          el('button', { class: 'btn', type: 'button', text: 'Drucken', onclick: () => pick('print') })),
-        el('button', { class: 'btn btn--primary', type: 'button', style: 'width:100%', text: 'Als Datei exportieren',
+          el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
+          el('button', { class: 'btn', type: 'button', text: t('printable.print'), onclick: () => pick('print') })),
+        el('button', { class: 'btn btn--primary', type: 'button', style: 'width:100%', text: t('printable.exportFile'),
                        onclick: () => pick('export') })));
 
     updateCount();
@@ -14241,14 +14260,14 @@ async function printFlow(kind, label, heading, readErrorCode) {
     banner(t('printable.emptyStored').replace('{label}', label.toLowerCase()));
     return;
   }
-  const result = await showPrintSelectionDialog(`${label} drucken`, items);
+  const result = await showPrintSelectionDialog(t('printable.dialogTitle').replace('{label}', label), items);
   if (!result || !result.items.length) return;
   if (result.action === 'print') printItems(heading, result.items);
   else await exportPrintableFile(kind, heading, result.items);
 }
 
-$('#btn-notes-export').addEventListener('click', () => printFlow('note', 'Notizen', 'Notizen', 'NOTES-READ'));
-$('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', 'Eigene Liedtexte', 'Eigene Liedtexte', 'LYRICS-PRINT-READ'));
+$('#btn-notes-export').addEventListener('click', () => printFlow('note', t('printable.notesLabel'), t('printable.notesLabel'), 'NOTES-READ'));
+$('#btn-lyrics-notes-export').addEventListener('click', () => printFlow('lyricsNote', t('printable.lyricsLabel'), t('printable.lyricsLabel'), 'LYRICS-PRINT-READ'));
 
 const PRINTABLE_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 const PRINTABLE_IMPORT_MAX_ITEMS = 10000;
@@ -14259,8 +14278,15 @@ const PRINTABLE_IMPORT_MAX_ITEMS = 10000;
  */
 function parsePrintableText(text, expectedKind) {
   const normalized = String(text).replace(/\r\n?/g, '\n').replace(/^\uFEFF/, '');
-  const marker = normalized.match(/^Chor-App-Export: (note|lyricsNote)\s*$/m);
-  if (marker && marker[1] !== expectedKind) throw new Error('WRONG_KIND');
+  // Die Kopfzeile ist übersetzt (printable.exportHeader) — erkannt wird sie
+  // deshalb in jeder Sprache, sonst fiele die Artprüfung für Dateien aus der
+  // englischen oder polnischen Oberfläche stillschweigend weg.
+  const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const headers = [...new Set(Object.values(STRINGS).map((lang) => lang['printable.exportHeader']).filter(Boolean))]
+    .map((h) => escRe(h).replace(escRe('{kind}'), '(note|lyricsNote)'));
+  const marker = normalized.match(new RegExp(`^(?:${headers.join('|')})\\s*$`, 'm'));
+  const markerKind = marker ? marker.slice(1).find(Boolean) : null;
+  if (markerKind && markerKind !== expectedKind) throw new Error('WRONG_KIND');
 
   const lines = normalized.split('\n');
   const items = [];
@@ -14384,10 +14410,11 @@ function updateMediaSession() {
   const ms = navigator.mediaSession;
 
   try {
-    const voiceLabel = playerVoice ? trackByVoiceKey(playerVoice)?.label : null;
+    const voiceTrack = playerVoice ? trackByVoiceKey(playerVoice) : null;
+    const voiceLabel = voiceTrack ? trackName(voiceTrack) : null;
     ms.metadata = new MediaMetadata({
       title: playerSong.title,
-      artist: voiceLabel || 'Chor',
+      artist: voiceLabel || t('player.mediaArtistFallback'),
       album: (playerSong.collections || [])[0] || 'BVG',
       artwork: [{ src: './icon-512.png', sizes: '512x512', type: 'image/png' }],
     });
@@ -14471,7 +14498,7 @@ const PLAYLIST_IMPORT_MAX_NAME_LENGTH  = 200;               // Zeichen im Setlis
  */
 function parsePlaylistText(text, fallbackName) {
   if (text.length > PLAYLIST_IMPORT_MAX_TEXT_LENGTH) {
-    return { error: `Dieser Text ist zu lang (${text.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_TEXT_LENGTH}).` };
+    return { error: t('playlists.textTooLong').replace('{length}', text.length).replace('{limit}', PLAYLIST_IMPORT_MAX_TEXT_LENGTH) };
   }
 
   const lines = text.split(/\r?\n/);
@@ -14501,17 +14528,17 @@ function parsePlaylistText(text, fallbackName) {
 
     if (!cleaned) continue;
     if (cleaned.length > PLAYLIST_IMPORT_MAX_TITLE_LENGTH) {
-      return { error: `Ein Liedtitel ist zu lang („${cleaned.slice(0, 40)}…", ${cleaned.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_TITLE_LENGTH}).` };
+      return { error: t('playlists.titleTooLong').replace('{length}', cleaned.length).replace('{limit}', PLAYLIST_IMPORT_MAX_TITLE_LENGTH).replace('{title}', cleaned.slice(0, 40)) };
     }
     if (titles.length >= PLAYLIST_IMPORT_MAX_TITLES) {
-      return { error: `Diese Setliste enthält zu viele Titel (mehr als ${PLAYLIST_IMPORT_MAX_TITLES}).` };
+      return { error: t('playlists.tooManyTitles').replace('{limit}', PLAYLIST_IMPORT_MAX_TITLES) };
     }
     titles.push(cleaned);
   }
 
   const finalName = name || fallbackName || null;
   if (finalName && finalName.length > PLAYLIST_IMPORT_MAX_NAME_LENGTH) {
-    return { error: `Der Setlistenname ist zu lang (${finalName.length} Zeichen, erlaubt sind ${PLAYLIST_IMPORT_MAX_NAME_LENGTH}).` };
+    return { error: t('playlists.nameTooLong').replace('{length}', finalName.length).replace('{limit}', PLAYLIST_IMPORT_MAX_NAME_LENGTH) };
   }
 
   return { name: finalName, titles };
@@ -14586,7 +14613,7 @@ async function createPlaylistFromText(text, fallbackName) {
       { kind: 'error' });
   }
 
-  openDraft(newPlaylist(name || 'Setliste', titles), true);
+  openDraft(newPlaylist(name || t('playlists.defaultName'), titles), true);
   return plDraft;
 }
 
@@ -14597,7 +14624,7 @@ wireFabMenu('#btn-playlist-add-fab', '#playlists-fab-backdrop', async (action) =
   if (action === 'paste') { await createPlaylistFromPastedText(); return; }
   if (action === 'new') {
     const name = await promptDialog({
-      title: 'Neue Setliste', value: '', placeholder: 'z. B. Sommerkonzert 2026', okLabel: 'Weiter',
+      title: t('playlists.newTitle'), value: '', placeholder: t('playlists.namePlaceholder'), okLabel: t('common.next'),
     });
     if (name === null || !name.trim()) return;
     openDraft(newPlaylist(name.trim()), true);
@@ -14630,10 +14657,10 @@ async function createPlaylistFromPastedText() {
     title: t('playlists.pasteTitle'),
     text: t('playlists.pasteHint'),
     value: '', okLabel: t('common.apply'), multiline: true,
-    placeholder: '# Sommerkonzert 2026\nAve Maria\nBlaue Augen',
+    placeholder: t('playlists.pastePlaceholder'),
   });
   if (text === null || !text.trim()) return;
-  await createPlaylistFromText(text, 'Eingefügte Setliste');
+  await createPlaylistFromText(text, t('playlists.pastedName'));
 }
 
 // Läuft renderPlaylists() mehrfach überlappend (z. B. Import und Tab-Wechsel
@@ -14962,7 +14989,7 @@ function routineStatusText() {
   if (!routine) return '';
   const step = routine.steps[routine.stepIndex];
   const rateLabel = fmtRatePercent(step.rate);
-  const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] || null);
+  const voiceLabel = routine.scope === 'rec' ? null : (VOICE_LABEL[routine.resolvedVoice] ? voiceName(routine.resolvedVoice) : null);
   const parts = [t('routine.statusPracticing'), t('routine.repProgress').replace('{current}', routine.repIndex + 1).replace('{total}', step.reps)];
   if (voiceLabel) parts.push(voiceLabel);
   parts.push(rateLabel);
@@ -15103,11 +15130,11 @@ function routineOrderList(elements, initialOrder) {
       const on = checked.has(id);
       const check = el('button', {
         type: 'button', class: 'routine-order-check', 'aria-pressed': on ? 'true' : 'false',
-        'aria-label': `„${item.label}" ${on ? t('routine.deselectItem') : t('routine.selectItem')}`,
+        'aria-label': `${t('common.quoted').replace('{text}', item.label)} ${on ? t('routine.deselectItem') : t('routine.selectItem')}`,
         onclick: () => { if (checked.has(id)) checked.delete(id); else checked.add(id); render(); },
       }, on ? checkIcon() : null);
       const label = el('span', { class: 'routine-order-label', text: item.label });
-      const handle = el('button', { type: 'button', class: 'routine-order-handle', 'aria-label': `„${item.label}" verschieben` }, dragHandleIcon());
+      const handle = el('button', { type: 'button', class: 'routine-order-handle', 'aria-label': t('routine.moveItemAria').replace('{item}', item.label) }, dragHandleIcon());
       const row = el('div', { class: `routine-order-row ${on ? 'is-on' : 'is-off'}`, 'data-id': id }, check, label, handle);
       attachDrag(row, handle);
       host.append(row);
@@ -15162,9 +15189,9 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     // Bariton/Klavier, die es sonst nirgends zur Wahl gibt) — ohne sie die
     // allgemeine Auswahl wie bisher.
     const voiceOptions = () => {
-      if (voiceList) return voiceList.map((v) => [v, VOICE_LABEL[v] || v]);
-      const opts = [['FULL', 'Gesamt']];
-      for (const v of MY_VOICE_CHOICES) opts.push([v, VOICE_LABEL[v]]);
+      if (voiceList) return voiceList.map((v) => [v, voiceName(v)]);
+      const opts = [['FULL', voiceName('FULL')]];
+      for (const v of MY_VOICE_CHOICES) opts.push([v, voiceName(v)]);
       return opts;
     };
 
@@ -15201,7 +15228,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     const renderRows = () => {
       rowsHost.textContent = '';
       draftSteps.forEach((step, i) => {
-        const repsSel = el('select', { class: 'routine-value', 'aria-label': `${itemLabel} — Wiederholungen` });
+        const repsSel = el('select', { class: 'routine-value', 'aria-label': t('routine.repsAria').replace('{item}', itemLabel) });
         for (let n = 1; n <= 10; n++) repsSel.append(el('option', { value: n, text: `${n}×` }));
         repsSel.value = String(step.reps);
         repsSel.addEventListener('change', () => { step.reps = Number(repsSel.value); updateResetVisibility(); });
@@ -15329,8 +15356,8 @@ async function openRoutineDialogForSetlist(pl) {
   const stored = await DB.metaGet(routineKeyFor('setlist', pl.id)).catch(() => null);
   const isRunning = !!(routine && routine.scope === 'setlist' && routine.targetId === pl.id);
   const result = await showRoutineDialog({
-    scope: 'setlist', targetId: pl.id, stored, itemLabel: 'Song', withVoice: true, elements: [],
-    emptyHint: anyAudio ? null : `Aus „${pl.name}" ist noch kein Titel importiert.`,
+    scope: 'setlist', targetId: pl.id, stored, itemLabel: t('routine.itemSong'), withVoice: true, elements: [],
+    emptyHint: anyAudio ? null : t('routine.setlistNothingImported').replace('{name}', pl.name),
     isRunning,
   });
   if (!result) return;
@@ -15344,7 +15371,7 @@ async function openRoutineDialogForLoops() {
   const isRunning = !!(routine && routine.scope === 'loops' && routine.targetId === playerSong.id);
   const elements = songLoops.map((l) => ({ id: l.id, label: `${l.name} (${fmtTime(l.start)}–${fmtTime(l.end)})` }));
   const result = await showRoutineDialog({
-    scope: 'loops', targetId: playerSong.id, stored, itemLabel: 'Abschnitt', withVoice: true, elements,
+    scope: 'loops', targetId: playerSong.id, stored, itemLabel: t('routine.itemSection'), withVoice: true, elements,
     emptyHint: songLoops.length ? null : t('routine.noSectionsSaved'),
     isRunning, voices: songVoiceChoices(playerSong),
   });
@@ -15359,8 +15386,8 @@ async function openRoutineDialogForRec() {
   const isRunning = !!(routine && routine.scope === 'rec' && routine.targetId === playerSong.id);
   const elements = songRecordings.map((r) => ({ id: r.id, label: r.name }));
   const result = await showRoutineDialog({
-    scope: 'rec', targetId: playerSong.id, stored, itemLabel: 'Aufnahme', withVoice: false, elements,
-    emptyHint: songRecordings.length ? null : 'Für diesen Song sind noch keine Aufnahmen gespeichert.',
+    scope: 'rec', targetId: playerSong.id, stored, itemLabel: t('routine.itemRecording'), withVoice: false, elements,
+    emptyHint: songRecordings.length ? null : t('routine.noRecordingsSaved'),
     isRunning,
   });
   if (!result) return;
@@ -15382,7 +15409,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   if (!favorite) return;
 
   const play = el('button', {
-    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': `„${favorite.name}" abspielen`,
+    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': t('playlists.playAria').replace('{name}', favorite.name),
     onclick: () => startPlaylist(favorite),
   });
   play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
@@ -15436,7 +15463,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
   host.append(el('div', { class: 'card' },
     el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
-        el('p', { class: 'small muted', style: 'margin:0' }, 'Nächster Gig'),
+        el('p', { class: 'small muted', style: 'margin:0' }, t('playlists.nextGig')),
         el('strong', { text: favorite.name })),
       play),
     list));
@@ -15481,7 +15508,7 @@ async function renderPlaylists() {
       el('div', { style: 'flex:1; min-width:0' },
         el('strong', { text: pl.name }),
         el('div', { class: 'small muted',
-          text: `${plural(titles.length, 'Titel', 'Titel')}${missing ? ` · ${missing} noch nicht importiert` : ''}` })));
+          text: `${tPlural(titles.length, 'count.titleOne', 'count.titleMany')}${missing ? ` · ${t('playlists.notImportedCount').replace('{n}', missing)}` : ''}` })));
     if (!playable) open.style.opacity = '.6';
 
     const fav = el('button', {
@@ -15501,9 +15528,9 @@ async function renderPlaylists() {
           title: pl.name, text: t('playlists.whatToDo'),
           options: [
             { value: 'practice', label: t('playlists.practice') },
-            { value: 'file', label: 'Als Datei speichern' },
-            { value: 'text', label: 'Als Text anzeigen' },
-            { value: 'edit', label: 'Bearbeiten' },
+            { value: 'file', label: t('playlists.saveAsFile') },
+            { value: 'text', label: t('playlists.showAsText') },
+            { value: 'edit', label: t('common.edit') },
           ],
         });
         if (choice === 'practice') await openRoutineDialogForSetlist(pl);
@@ -15621,7 +15648,7 @@ $('#btn-pl-save').addEventListener('click', async () => {
   plDirty = false;
   updateDraftButtons();
   await renderPlaylists();
-  banner('Setliste gespeichert.', { kind: 'ok' });
+  banner(t('playlists.saved'), { kind: 'ok' });
 });
 
 /** Vor dem Verlassen nachfragen, wenn etwas offen ist. */
@@ -15632,14 +15659,14 @@ async function confirmLeaveDraft() {
     text: t('playlists.unsavedText').replace('{name}', plDraft.name),
     options: [
       { value: 'save', label: t('common.save'), primary: true },
-      { value: 'drop', label: 'Verwerfen', danger: true },
+      { value: 'drop', label: t('common.discard'), danger: true },
     ],
   });
   if (!choice) return false;
   if (choice === 'save') {
     await savePlaylist(plDraft);
     await renderPlaylists();
-    banner('Setliste gespeichert.', { kind: 'ok' });
+    banner(t('playlists.saved'), { kind: 'ok' });
   }
   plDirty = false;
   plDraft = null;
@@ -15654,7 +15681,7 @@ async function renderPlaylistDetail() {
   $('#pl-title').textContent = pl.name;
   const titles = pl.songTitles || [];
   const missing = titles.filter((t) => !findSongByTitle(songs, t));
-  $('#pl-sub').textContent = plural(titles.length, 'Titel', 'Titel');
+  $('#pl-sub').textContent = tPlural(titles.length, 'count.titleOne', 'count.titleMany');
 
   const hint = $('#pl-missing');
   if (missing.length) {
@@ -15708,10 +15735,10 @@ function renderPlaylistEntries(songs) {
     const label = el('div', { class: 'grow' },
       el('strong', { text: song ? songLabel(song) : title }),
       el('div', { class: 'small muted',
-        text: song ? plural(song.tracks.length, 'Stimme', 'Stimmen') : t('playlists.notImportedBadge') }));
+        text: song ? tPlural(song.tracks.length, 'count.voiceOne', 'count.voiceMany') : t('playlists.notImportedBadge') }));
 
     const remove = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': `„${title}" entfernen`,
+      class: 'icon-btn', type: 'button', 'aria-label': t('playlists.removeTitleAria').replace('{title}', title),
       style: 'color: var(--danger-fg)',
     });
     remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -15827,7 +15854,7 @@ function renderPlaylistCandidates(songs) {
       },
     },
       el('div', { style: 'flex:1; min-width:0' },
-        el('strong', { text: `Nicht dabei? „${raw.trim()}“ als Platzhalter eintragen` }),
+        el('strong', { text: t('playlists.addPlaceholderLine').replace('{title}', raw.trim()) }),
         el('div', { class: 'small muted', text: t('playlists.addPlaceholderAria') })))
     : null;
 
@@ -15839,7 +15866,7 @@ function renderPlaylistCandidates(songs) {
   if (q) list = list.filter((s) => s.normTitle.includes(q));
 
   if (!list.length) {
-    if (!raw.trim()) host.append(el('p', { class: 'small muted', style: 'margin:0', text: 'Kein Song gefunden.' }));
+    if (!raw.trim()) host.append(el('p', { class: 'small muted', style: 'margin:0', text: t('playlists.noSongFound') }));
     if (placeholder) host.append(placeholder);
     return;
   }
@@ -15874,7 +15901,7 @@ $('#pl-back').addEventListener('click', async () => {
 });
 
 $('#pl-rename').addEventListener('click', async () => {
-  const name = await promptDialog({ title: 'Setliste umbenennen', value: plDraft.name });
+  const name = await promptDialog({ title: t('playlists.renameAria'), value: plDraft.name });
   if (name === null || !name.trim()) return;
   plDraft.name = name.trim();
   markDirty();
@@ -15927,17 +15954,17 @@ function downloadBlob(blob, fileName) {
  * verlassen). „Übernehmen" schreibt den Text zurück in die Setliste.
  */
 function openPlaylistTextDialog(pl) {
-  const textarea = el('textarea', { rows: '10', 'aria-label': `„${pl.name}" als Text` });
+  const textarea = el('textarea', { rows: '10', 'aria-label': t('playlists.asTextTitle').replace('{name}', pl.name) });
   textarea.value = playlistToText(pl);
 
   const done = () => layer.remove();
 
   const box = el('div', { class: 'dialog' },
-    el('h2', { text: `„${pl.name}" als Text` }),
+    el('h2', { text: t('playlists.asTextTitle').replace('{name}', pl.name) }),
     el('p', { class: 'small muted', text: t('playlists.pasteHint') }),
     textarea,
     el('div', { class: 'dialog-actions' },
-      el('button', { class: 'btn', type: 'button', text: 'Kopieren', onclick: async () => {
+      el('button', { class: 'btn', type: 'button', text: t('common.copy'), onclick: async () => {
         try {
           await navigator.clipboard.writeText(textarea.value);
           banner(t('common.copiedClipboard'), { kind: 'ok' });
@@ -16610,13 +16637,13 @@ async function showBackupOptionsDialog() {
     };
 
     const checkboxRows = [
-      ['songAudio', 'Song-Audiodateien', `Die Chor-Aufnahmen selbst (${plural(est.trackCount, 'Spur', 'Spuren')}) samt hinterlegten Notenblättern — meist groß, liegen ohnehin in der Dropbox.`, est.songAudioBytes],
-      ['recordings', `Eigene RECs (${plural(est.recCount, 'Aufnahme', 'Aufnahmen')})`, null, est.recAudioBytes],
-      ['loops', 'Loops', null, null],
-      ['notes', 'Notizen', null, null],
-      ['lyricsNotes', 'Eigene Liedtexte', null, null],
-      ['playlists', 'Setlisten', null, null],
-      ['settings', 'Einstellungen', 'Eigene Stimme, Schriftgröße, Standardreiter, Akzentfarbe, Sprache.', null],
+      ['songAudio', t('backup.scopeSongAudio'), t('backup.scopeSongAudioHint').replace('{tracks}', tPlural(est.trackCount, 'count.trackOne', 'count.trackMany')), est.songAudioBytes],
+      ['recordings', t('backup.scopeRecordings').replace('{recordings}', tPlural(est.recCount, 'count.recordingOne', 'count.recordingMany')), null, est.recAudioBytes],
+      ['loops', t('backup.scopeLoops'), null, null],
+      ['notes', t('backup.scopeNotes'), null, null],
+      ['lyricsNotes', t('backup.scopeLyrics'), null, null],
+      ['playlists', t('backup.scopePlaylists'), null, null],
+      ['settings', t('backup.scopeSettings'), t('backup.scopeSettingsHint'), null],
     ];
     const checkboxes = {};
     const rowNodes = checkboxRows.map(([key, title, hint, bytes]) => {
@@ -16626,17 +16653,17 @@ async function showBackupOptionsDialog() {
     });
 
     const box = el('div', { class: 'dialog' },
-      el('h2', { text: 'Sicherung erstellen' }),
+      el('h2', { text: t('backup.createTitle') }),
       el('p', { text: t('backup.scopeHint') }),
       el('div', { class: 'preset-row', style: 'grid-template-columns:repeat(2,1fr); margin-bottom:10px' },
-        presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Nur Nutzerdaten', onclick: () => applyPreset(false) }),
-        presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: 'Alles sichern', onclick: () => applyPreset(true) })),
+        presetBtnUser = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: t('backup.presetUserOnly'), onclick: () => applyPreset(false) }),
+        presetBtnFull = el('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: t('backup.presetAll'), onclick: () => applyPreset(true) })),
       el('div', { class: 'stack', style: 'gap:2px' }, ...rowNodes),
       el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
         el('span', { text: t('backup.estimatedSize') }), totalLabel),
       el('div', { class: 'dialog-actions' },
-        el('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => done(null) }),
-        el('button', { class: 'btn btn--primary', type: 'button', text: 'Sicherung erstellen', onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: t('backup.createTitle'), onclick: () => done({ ...opts, estimatedBytes: currentTotalBytes }) })));
 
     updateTotal();
     updatePresetHighlight();
@@ -16691,7 +16718,7 @@ $('#btn-backup-export').addEventListener('click', async () => {
 
     let shared = false;
     if (navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Chor-Sicherung' }); shared = true; }
+      try { await navigator.share({ files: [file], title: t('backup.shareTitle') }); shared = true; }
       catch (err) { if (err?.name === 'AbortError') return; }
     }
     if (!shared) downloadBlob(new Blob(blobParts, { type: 'application/json' }), fileName);
@@ -16700,12 +16727,12 @@ $('#btn-backup-export').addEventListener('click', async () => {
     renderBackupAge();
     updateBackupReminder();
     const parts = [];
-    if (opts.loops) parts.push(plural(counts.loops, 'Loop', 'Loops'));
-    if (opts.notes) parts.push(plural(counts.notes, 'Notiz', 'Notizen'));
-    if (opts.playlists) parts.push(plural(counts.playlists, 'Setliste', 'Setlisten'));
-    if (opts.recordings) parts.push(plural(counts.recordings, 'REC', 'RECs'));
-    if (opts.songAudio) parts.push(`${plural(counts.songAudioTracks, 'Spur', 'Spuren')} Song-Audio`);
-    banner(`Sicherung erstellt (${fmtBytes(file.size)}): ${parts.join(', ')}.`, { kind: 'ok' });
+    if (opts.loops) parts.push(tPlural(counts.loops, 'count.loopOne', 'count.loopMany'));
+    if (opts.notes) parts.push(tPlural(counts.notes, 'count.noteOne', 'count.noteMany'));
+    if (opts.playlists) parts.push(tPlural(counts.playlists, 'count.playlistOne', 'count.playlistMany'));
+    if (opts.recordings) parts.push(tPlural(counts.recordings, 'count.recOne', 'count.recMany'));
+    if (opts.songAudio) parts.push(t('backup.createdSongAudio').replace('{tracks}', tPlural(counts.songAudioTracks, 'count.trackOne', 'count.trackMany')));
+    banner(t('backup.created').replace('{size}', fmtBytes(file.size)).replace('{parts}', parts.join(', ')), { kind: 'ok' });
   } catch (err) {
     progress?.close();
     closeBanner?.();
@@ -16747,18 +16774,18 @@ $('#backup-input').addEventListener('change', async (e) => {
  * restoreBackup()) eine konkrete Meldung statt der bisherigen Pauschalmeldung
  * — wer abbricht, soll wissen, was bis dahin schon übernommen wurde.
  */
-function backupPartialTallyText(t) {
-  if (!t) return 'Die Sicherung konnte nicht vollständig eingespielt werden.';
+function backupPartialTallyText(tally) {
+  if (!tally) return t('backup.restoreIncomplete');
   const parts = [];
-  if (t.songsCreated) parts.push(plural(t.songsCreated, 'Song', 'Songs'));
-  if (t.scoresRestored) parts.push(plural(t.scoresRestored, 'Notenblatt', 'Notenblätter'));
-  if (t.addedLoops) parts.push(plural(t.addedLoops, 'Loop', 'Loops'));
-  if (t.addedPl) parts.push(plural(t.addedPl, 'Setliste', 'Setlisten'));
-  if (t.addedNotes) parts.push(plural(t.addedNotes, 'Notiz', 'Notizen'));
-  if (t.addedLyricsNotes) parts.push(plural(t.addedLyricsNotes, 'eigener Liedtext', 'eigene Liedtexte'));
-  if (t.addedRecordings) parts.push(plural(t.addedRecordings, 'REC', 'RECs'));
-  const done = parts.length ? ` Bis zum Abbruch übernommen: ${parts.join(', ')}.` : ' Bis zum Abbruch wurde nichts übernommen.';
-  return `Die Sicherung konnte nicht vollständig eingespielt werden.${done}`;
+  if (tally.songsCreated) parts.push(tPlural(tally.songsCreated, 'common.songOne', 'common.songMany'));
+  if (tally.scoresRestored) parts.push(tPlural(tally.scoresRestored, 'count.scoreOne', 'count.scoreMany'));
+  if (tally.addedLoops) parts.push(tPlural(tally.addedLoops, 'count.loopOne', 'count.loopMany'));
+  if (tally.addedPl) parts.push(tPlural(tally.addedPl, 'count.playlistOne', 'count.playlistMany'));
+  if (tally.addedNotes) parts.push(tPlural(tally.addedNotes, 'count.noteOne', 'count.noteMany'));
+  if (tally.addedLyricsNotes) parts.push(tPlural(tally.addedLyricsNotes, 'count.lyricsOne', 'count.lyricsMany'));
+  if (tally.addedRecordings) parts.push(tPlural(tally.addedRecordings, 'count.recOne', 'count.recMany'));
+  const done = parts.length ? t('backup.restorePartialDone').replace('{parts}', parts.join(', ')) : t('backup.restorePartialNothing');
+  return t('backup.restoreIncomplete') + done;
 }
 
 $('#rec-import-input').addEventListener('change', async (e) => {
@@ -16779,9 +16806,9 @@ $('#rec-import-input').addEventListener('change', async (e) => {
 
   await renderImportStats();
   const parts = [];
-  if (linked) parts.push(`${plural(linked, 'REC', 'RECs')} zugeordnet`);
-  if (pending) parts.push(`${plural(pending, 'REC', 'RECs')} warten auf den passenden Song`);
-  if (failed) parts.push(`${plural(failed, 'Datei', 'Dateien')} nicht als REC erkannt`);
+  if (linked) parts.push(tPlural(linked, 'rec.importLinkedOne', 'rec.importLinkedMany'));
+  if (pending) parts.push(tPlural(pending, 'rec.importPendingOne', 'rec.importPendingMany'));
+  if (failed) parts.push(tPlural(failed, 'rec.importFailedOne', 'rec.importFailedMany'));
   banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
 
@@ -16935,16 +16962,14 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // entfernt: wer wirklich bei null anfangen will, löscht vorher von Hand
   // über „Alle Daten löschen" und spielt die Sicherung danach ein.
   const ok = await confirmDialog({
-    title: 'Sicherung einspielen',
-    text: `${plural(loops.length, 'Loop', 'Loops')}, ${plural(notes.length, 'Notiz', 'Notizen')}, `
-        + `${plural(lyricsNotes.length, 'eigener Liedtext', 'eigene Liedtexte')}, `
-        + `${plural(playlists.length, 'Setliste', 'Setlisten')}`
-        + (recordingsIn.length ? `, ${plural(recordingsIn.length, 'REC', 'RECs')}` : '')
-        + (songAudioIn.length ? ` und Audio für ${plural(songAudioIn.length, 'Song', 'Songs')}` : '')
-        + ' gefunden. '
-        + `Davon ${matched} Loops zuordenbar, ${loops.length - matched} gehören zu Songs, die nicht in der Bibliothek sind. `
-        + 'Diese bleiben aufbewahrt und werden aktiv, sobald der Song importiert wird. '
-        + 'Vorhandene Daten bleiben erhalten, es wird nur ergänzt.',
+    title: t('backup.restoreConfirmTitle'),
+    text: t('backup.restoreConfirmFound').replace('{loops}', tPlural(loops.length, 'count.loopOne', 'count.loopMany')).replace('{notes}', tPlural(notes.length, 'count.noteOne', 'count.noteMany'))
+        .replace('{lyrics}', tPlural(lyricsNotes.length, 'count.lyricsOne', 'count.lyricsMany'))
+        .replace('{playlists}', tPlural(playlists.length, 'count.playlistOne', 'count.playlistMany'))
+        .replace('{recs}', recordingsIn.length ? t('backup.restoreConfirmRecs').replace('{recs}', tPlural(recordingsIn.length, 'count.recOne', 'count.recMany')) : '')
+        .replace('{audio}', songAudioIn.length ? t('backup.restoreConfirmAudio').replace('{songs}', tPlural(songAudioIn.length, 'common.songOne', 'common.songMany')) : '')
+        + ' '
+        + t('backup.restoreConfirmMatched').replace('{matched}', matched).replace('{unmatched}', loops.length - matched),
     okLabel: t('common.merge'),
   });
   if (!ok) return;
@@ -17424,8 +17449,8 @@ async function renderImportStats() {
 
   const days = daysSince(settings.lastImportAt);
   $('#stat-last-import').textContent = days === null
-    ? 'noch nie'
-    : days === 0 ? 'heute' : `vor ${plural(days, 'Tag', 'Tagen')}`;
+    ? t('import.lastImportNever')
+    : days === 0 ? t('import.lastImportToday') : t('import.lastImportDaysAgo').replace('{days}', tPlural(days, 'settings.data.backupDayOne', 'settings.data.backupDayMany'));
 }
 
 function daysSince(iso) {
@@ -17473,10 +17498,10 @@ async function updateBackupReminder() {
   box.append(
     el('p', { style: 'margin:0 0 10px',
       text: days === null
-        ? `Du hast ${workCount} ungesicherte Loops, Notizen oder Liedtexte angelegt. Eine Sicherung ist in zehn Sekunden erstellt.`
-        : `Die letzte Sicherung ist ${plural(days, 'Tag', 'Tage')} her. Deine Loops, Notizen und Liedtexte wären bei einem Problem verloren.` }),
+        ? t('backup.reminderUnsaved').replace('{count}', workCount)
+        : tPlural(days, 'backup.reminderDaysOne', 'backup.reminderDaysMany') }),
     el('div', { style: 'display:flex; gap:8px' },
-      el('button', { class: 'btn', type: 'button', text: 'Jetzt sichern',
+      el('button', { class: 'btn', type: 'button', text: t('backup.backupNow'),
         onclick: () => { box.hidden = true; showView('settings'); $('#btn-backup-export').focus(); } }),
       el('button', { class: 'btn', type: 'button', text: t('common.later'),
         onclick: () => { reminderDismissed = true; box.hidden = true; } })));
@@ -17609,7 +17634,7 @@ function choiceDialog({ title, text, options }) {
           class: `btn btn--block${o.primary ? ' btn--primary' : ''}${o.danger ? ' btn--danger' : ''}`,
           type: 'button', text: o.label, onclick: () => done(o.value),
         })),
-        el('button', { class: 'btn btn--block', type: 'button', text: 'Abbrechen', onclick: () => done(null) })));
+        el('button', { class: 'btn btn--block', type: 'button', text: t('common.cancel'), onclick: () => done(null) })));
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     mountModal(layer, { onEscape: () => done(null) });
@@ -21560,7 +21585,7 @@ function shouldAutoRunSelfTests() {
 async function boot() {
   // Fehler nie verschweigen: unerwartete Ausnahmen als Banner zeigen.
   window.addEventListener('unhandledrejection', (e) => {
-    bannerError('Unerwarteter Fehler.', 'UNHANDLED', e.reason);
+    bannerError(t('msg.unexpectedError'), 'UNHANDLED', e.reason);
   });
 
   try {
