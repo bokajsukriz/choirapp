@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v245';
+const SW_VERSION = 'v246';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -174,6 +174,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // die App lädt ohnehin nichts Fremdes
+
+  // Werkbank-Seiten unter ./dev/ (z. B. dev/groove-lab.html) und alles, was
+  // sie mit ?dev=… nachladen, gehen immer ans Netz: Sie sollen den frisch
+  // gepushten Stand zeigen, nicht den Shell-Cache — und eine Navigation
+  // dorthin darf nicht wie jede andere durch index.html ersetzt werden.
+  if (url.pathname.includes('/dev/') || url.searchParams.has('dev')) return;
 
   // Seitenaufrufe immer aus der gecachten index.html bedienen — so startet die
   // App auch offline, egal über welchen Einstieg sie geöffnet wurde. Mit
