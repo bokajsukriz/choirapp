@@ -475,7 +475,11 @@ function confirmDialog({ title, text, okLabel = t('common.ok'), cancelLabel = t(
   }
 
   overlay.hidden = false;
-  openModal(overlay, { initialFocus: dlgOk, onEscape: () => closeDialog(false) });
+  // Bei destruktiven Aktionen (danger) startet der Fokus auf „Abbrechen" statt
+  // auf dem roten Knopf — sonst löscht ein versehentliches zweites Enter
+  // (Tastatur/Switch-Bedienung) sofort alles, ohne dass ein zweiter bewusster
+  // Tastendruck auf den gefährlichen Knopf nötig wäre (UI-04).
+  openModal(overlay, { initialFocus: danger ? dlgCancel : dlgOk, onEscape: () => closeDialog(false) });
 
   return new Promise((resolve) => {
     dlgResolve = resolve;
