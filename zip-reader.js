@@ -521,7 +521,7 @@ export function createZipReader(limits, onDiagnostic) {
         throw new ZipError(`Dieses Archiv ist ausgepackt zusammen zu groß (über ${fmtBytes(L.maxTotalBytes)}).`);
       }
 
-      entries.push({ path, method, compressedSize: compSize, size, headerOffset, crc32, cdStart, cdEnd });
+      entries.push({ path, method, compressedSize: compSize, size, headerOffset, crc32, cdStart, cdEnd, nameLen });
     }
 
     // Konsistenzprüfung: jeder der `total` angekündigten Header muss in genau
@@ -531,6 +531,35 @@ export function createZipReader(limits, onDiagnostic) {
     // ZipError abgebrochen, bevor dieser Punkt je erreicht wird.
     if (entries.length + dirCount + junkSkipped + pathRejected !== total) {
       throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (Inhaltsverzeichnis widersprüchlich).');
+    }
+
+    // Mehrere Central-Directory-Einträge dürfen nicht denselben oder
+    // überlappende Datenbereiche referenzieren (SEC-FILE-3) — sonst ließe
+    // sich derselbe komprimierte Strom beliebig oft "wiederverwenden" und
+    // damit die Ratio-Prüfung je Eintrag umgehen, ohne dass die Summe der
+    // tatsächlich unterschiedlichen Daten das rechtfertigt. Die lokale
+    // nameLen/extraLen ist erst beim tatsächlichen Lesen bekannt; 30 (fester
+    // Teil des lokalen Headers) + die aus dem Central Directory bekannte
+    // nameLen + die deklarierte komprimierte Größe genügt als konservative
+    // obere Schranke für den belegten Bereich — auch identische Offsets
+    // (dieselben Bytes doppelt referenziert) fallen darunter, weil ihr
+    // Bereich sich dann zwangsläufig mit sich selbst "überlappt".
+    const byOffset = [...entries].sort((a, b) => a.headerOffset - b.headerOffset);
+    for (let k = 1; k < byOffset.length; k++) {
+      const prev = byOffset[k - 1];
+      const cur = byOffset[k];
+      const prevEnd = prev.headerOffset + 30 + prev.nameLen + prev.compressedSize;
+      if (cur.headerOffset < prevEnd) {
+        throw new ZipError(`„${cur.path}" überlappt im Archiv mit einem anderen Eintrag.`);
+      }
+    }
+
+    // Archivweite Rate: Auch wenn kein einzelner Eintrag für sich die
+    // Ratio-Prüfung oben auslöst, kann die Summe aller deklarierten Größen
+    // gegenüber der tatsächlichen Dateigröße verdächtig hoch sein (viele
+    // knapp unterdeklarierte Einträge, siehe SEC-FILE-2/3).
+    if (totalDeclaredSize > L.minRatioCheckSize && totalDeclaredSize > file.size * L.maxRatio) {
+      throw new ZipError('Dieses Archiv hat insgesamt ein verdächtig hohes Kompressionsverhältnis und wird abgelehnt.');
     }
 
     diag('import:zip:directoryParsed', {
@@ -604,6 +633,14 @@ export function createZipReader(limits, onDiagnostic) {
           seen += chunk.byteLength;
           if (seen > L.maxEntryBytes) {
             throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+          }
+          // Die deklarierte Größe ist ohnehin verbindlich (siehe die
+          // Endprüfung `seen !== entry.size` unten) — ein unterdeklarierter
+          // Eintrag (z.B. deklarierte 1000 B, tatsächlich hunderte MB) soll
+          // deshalb schon hier abbrechen, statt bis maxEntryBytes weiter
+          // entpackt zu werden (SEC-FILE-2).
+          if (seen > entry.size) {
+            throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
           }
           if (budget && budget.used + seen > L.maxTotalBytes) {
             throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
