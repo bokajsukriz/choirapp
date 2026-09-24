@@ -394,7 +394,8 @@ export function createZipReader(limits, onDiagnostic) {
       if (locRel < 0) throw new ZipError('Diese ZIP-Datei verwendet ein Format, das die App nicht lesen kann.');
       const z64Off = u64(tail, locRel + 8);
       const z64 = await sliceView(file, z64Off, z64Off + 56);
-      if (z64.getUint32(0, true) !== SIG_ZIP64_E) {
+      // Hinter dem Dateiende gekappt: sonst RangeError statt klarer Meldung.
+      if (z64.byteLength < 56 || z64.getUint32(0, true) !== SIG_ZIP64_E) {
         throw new ZipError('Diese ZIP-Datei verwendet ein Format, das die App nicht lesen kann.');
       }
       total  = u64(z64, 32);
@@ -475,6 +476,13 @@ export function createZipReader(limits, onDiagnostic) {
           const len = cd.getUint16(e + 2, true);
           if (id === 0x0001 && e + 4 + len <= cd.byteLength) {
             let q = e + 4;
+            const fieldEnd = e + 4 + len;
+            // Ein zu kurzes Extrafeld las sonst über sein Ende hinaus
+            // (RangeError bzw. fremde Bytes) statt als beschädigt zu gelten.
+            const need = (size === 0xFFFFFFFF) + (compSize === 0xFFFFFFFF) + (headerOffset === 0xFFFFFFFF);
+            if (q + need * 8 > fieldEnd) {
+              throw new ZipError('Diese Datei ist beschädigt oder kein gültiges ZIP-Archiv (ZIP64-Angaben unvollständig).');
+            }
             if (size === 0xFFFFFFFF)         { size = u64(cd, q); q += 8; }
             if (compSize === 0xFFFFFFFF)     { compSize = u64(cd, q); q += 8; }
             if (headerOffset === 0xFFFFFFFF) { headerOffset = u64(cd, q); q += 8; }
@@ -631,31 +639,53 @@ export function createZipReader(limits, onDiagnostic) {
       // Central-Directory-Wert geprüft.
       let seen = 0;
       let crcState = crc32Start();
+      // Chromium reicht einen im TransformStream geworfenen Fehler über
+      // Response.blob() nur als „TypeError: Failed to fetch" weiter — die
+      // eigene, verständliche Meldung ginge verloren. Deshalb merken und
+      // unten selbst werfen (SEC-FILE-8).
+      let guardError = null;
       const guard = new TransformStream({
         transform(chunk, controller) {
-          seen += chunk.byteLength;
-          if (seen > L.maxEntryBytes) {
-            throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+          try {
+            guardStep(chunk, controller);
+          } catch (err) {
+            guardError = err;
+            throw err;
           }
-          // Die deklarierte Größe ist ohnehin verbindlich (siehe die
-          // Endprüfung `seen !== entry.size` unten) — ein unterdeklarierter
-          // Eintrag (z.B. deklarierte 1000 B, tatsächlich hunderte MB) soll
-          // deshalb schon hier abbrechen, statt bis maxEntryBytes weiter
-          // entpackt zu werden (SEC-FILE-2).
-          if (seen > entry.size) {
-            throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
-          }
-          if (budget && budget.used + seen > L.maxTotalBytes) {
-            throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
-          }
-          crcState = crc32Step(crcState, chunk);
-          controller.enqueue(chunk);
         },
       });
+      const guardStep = (chunk, controller) => {
+        seen += chunk.byteLength;
+        if (seen > L.maxEntryBytes) {
+          throw new ZipError(`„${entry.path}" ist beim Auspacken unerwartet groß geworden.`);
+        }
+        // Die deklarierte Größe ist ohnehin verbindlich (siehe die
+        // Endprüfung `seen !== entry.size` unten) — ein unterdeklarierter
+        // Eintrag (z.B. deklarierte 1000 B, tatsächlich hunderte MB) soll
+        // deshalb schon hier abbrechen, statt bis maxEntryBytes weiter
+        // entpackt zu werden (SEC-FILE-2).
+        if (seen > entry.size) {
+          throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
+        }
+        if (budget && budget.used + seen > L.maxTotalBytes) {
+          throw new ZipError(`Dieses Archiv ist beim Auspacken insgesamt zu groß geworden (über ${fmtBytes(L.maxTotalBytes)}).`);
+        }
+        crcState = crc32Step(crcState, chunk);
+        controller.enqueue(chunk);
+      };
       const stream = raw.stream()
         .pipeThrough(new DecompressionStream('deflate-raw'))
         .pipeThrough(guard);
-      const blob = await new Response(stream).blob();
+      let blob;
+      try {
+        blob = await new Response(stream).blob();
+      } catch (err) {
+        if (guardError) throw guardError;
+        if (err instanceof ZipError) throw err;
+        // Kaputter Deflate-Strom (abgeschnitten, Müll): verständlich melden
+        // statt „Failed to fetch"/TypeError.
+        throw new ZipError(`„${entry.path}“ ist beschädigt (Entpacken fehlgeschlagen).`);
+      }
       if (seen !== entry.size) {
         throw new ZipError(`„${entry.path}“ ist beschädigt (ausgepackte Größe stimmt nicht mit dem Inhaltsverzeichnis überein).`);
       }

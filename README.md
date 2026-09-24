@@ -2,14 +2,16 @@
 
 Installierbare, rein lokale Progressive-Web-App zum Üben mit den
 Übe-Aufnahmen des Chores BVG. Kein Backend, kein Konto, keine Telemetrie —
-die App selbst stellt keine automatischen Netzwerkanfragen und sendet keine
-Daten. Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel
-und ggf. Interpret an den gewählten externen Dienst — siehe
+Inhalte (Songs, Aufnahmen, Notizen, Einstellungen) verlassen nie das Gerät.
+Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel und ggf.
+Interpret an den gewählten externen Dienst — siehe
 [Externe Liedsuche](#externe-liedsuche). Der Internetzeit-Abgleich der
-Lichtshow (siehe [Lichtshow](#lichtshow)) fragt nach ausdrücklicher
-Bestätigung einmalig die Atomuhr der PTB (uhr.ptb.de) nach der aktuellen
-Uhrzeit ab — außer diesen beiden Fällen verlässt die App nie von sich aus
-das Gerät.
+Lichtshow (siehe [Lichtshow](#lichtshow)) baut nach ausdrücklicher
+Bestätigung eine kurze Verbindung zur Atomuhr der PTB (uhr.ptb.de) auf und
+fragt darüber einige Male die Uhrzeit ab. Unabhängig davon prüft der Browser
+beim Öffnen bei GitHub Pages, ob es eine neue App-Version gibt (Service-Worker-
+Update) — dabei sieht GitHub wie bei jedem Seitenaufruf IP-Adresse und
+Zeitpunkt, aber keine Inhalte.
 
 ## Daten und Speicherorte
 
@@ -20,8 +22,9 @@ Alles bleibt auf dem Gerät:
   (Audio-/PDF-Bytes) und `meta` (alles Übrige).
 - **`localStorage`** — Fehlerprotokoll (`bvg-error-log`) und Diagnose-Log
   (`bvg-debug-log`), je bis zu einer festen Anzahl Einträge.
-- **Cache Storage** — die App-Shell (`index.html`, `sw.js`, `manifest.json`,
-  Icons), verwaltet vom Service Worker.
+- **Cache Storage** — die App-Shell (`index.html`, alle Skripte, `manifest.json`,
+  Icons; maßgeblich ist `SHELL_REQUIRED`/`SHELL_OPTIONAL` in `sw.js`), verwaltet
+  vom Service Worker.
 
 „Alle Daten löschen“ in den Einstellungen entfernt IndexedDB vollständig
 sowie Fehler- und Diagnoseprotokoll. Dateien in einer verbundenen Dropbox
@@ -211,8 +214,10 @@ Verfügung) — offen, bis das nachgeholt ist.
 
 ## Third-Party
 
-Siehe [`THIRD-PARTY.md`](./THIRD-PARTY.md) für Herkunft, Version und Lizenz
-der vendorierten Komponente `lame.min.js` (lamejs/LAME, LGPL-3.0).
+Siehe [`THIRD-PARTY.md`](./THIRD-PARTY.md) für Herkunft, Version, Hashes und
+Lizenz der vendorierten Komponenten `lame.min.js` (lamejs/LAME, LGPL-3.0; der
+unminifizierte Quelltext liegt unter `third-party/lamejs-1.2.1/`) und
+`signalsmith-stretch.js` (MIT).
 
 
 ### Optionale Lautstärkenormalisierung

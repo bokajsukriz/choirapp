@@ -2898,6 +2898,8 @@ input[type="checkbox"] {
     <h1>Die App konnte nicht geladen werden</h1>
     <p>Bitte die Seite neu laden. Hilft das nicht, die App einmal mit
        bestehender Internetverbindung neu öffnen.</p>
+    <p>Bleibt es dabei: <button type="button" class="btn btn--primary" id="boot-error-reset">Offline-Kopie neu laden</button><br>
+       Deine Songs, Aufnahmen und Einstellungen bleiben dabei erhalten.</p>
   </div>
 </div>
 
@@ -4303,7 +4305,7 @@ input[type="checkbox"] {
       <div class="stack small muted">
         <div class="row">
           <span data-i18n="settings.about.version">Version</span>
-          <span><span id="app-version">–</span> · <button type="button" id="btn-force-update" class="link-btn" data-i18n="settings.about.forceUpdate">Aktualisieren</button></span>
+          <span><span id="app-version">–</span> · <button type="button" id="btn-force-update" class="link-btn" data-i18n="settings.about.forceUpdate">Aktualisieren</button> · <button type="button" id="btn-rebuild-offline" class="link-btn" data-i18n="settings.about.rebuildOffline">Offline-Kopie neu laden</button></span>
         </div>
         <div class="row"><span data-i18n="settings.about.offline">Offline verfügbar</span><span id="offline-state">–</span></div>
         <p style="margin-left:12px" data-i18n="settings.about.privacy">
@@ -4322,6 +4324,10 @@ input[type="checkbox"] {
             Verlangsamung im Modus „HD" mit <strong>signalsmith-stretch</strong>
             (MIT) von Geraint Luff / Signalsmith Audio Ltd. —
             <a href="https://signalsmith-audio.co.uk/code/stretch/" target="_blank" rel="noopener noreferrer">signalsmith-audio.co.uk</a>.
+          </li>
+          <li data-i18n-html="settings.about.licenses">
+            Lizenztexte, Herkunft und Quelltext der Bibliotheken:
+            <a href="https://github.com/bokajsukriz/choirapp/blob/main/THIRD-PARTY.md" target="_blank" rel="noopener noreferrer">THIRD-PARTY.md</a>.
           </li>
         </ul>
       </div>

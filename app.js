@@ -7,6 +7,8 @@ import { createZipReader, zipReadFailureMessage, isJunkPath, zipPrefetchStarts, 
 
 'use strict';
 (() => {
+// Für boot-guard.js: das Modul wurde geladen und verknüpft (siehe dort).
+window.__chorStarted = true;
 
 /* ==========================================================================
    UTIL — kleine Helfer
@@ -215,7 +217,11 @@ let errorLog = loadErrorLog();
  */
 function redactErrorMessage(message) {
   if (!message) return message;
-  return message.replace(/„[^"]*"/g, '„…"');
+  // Alles in Anführungszeichen — deutsche („…“, „…"), englische ("…", “…”)
+  // und französische («…») Schreibweise. Vorher erfasste die Regex nur „…"
+  // mit geradem Schlusszeichen; Meldungen wie „Sopran/Name.mp3“ blieben
+  // stehen (SEC-NET-6).
+  return String(message).replace(/[„“"«][^„“”"«»\n]*[“”"»]/g, '„…“');
 }
 
 function logAppError(code, err) {
@@ -336,7 +342,11 @@ function saveDebugLogSoon() {
  */
 function dlog(event, data) {
   if (!settings?.debugLog) return;
-  debugLog.push({ t: Math.round(performance.now() - bootTime), event, ...(data || {}) });
+  // Zentral statt an jeder Aufrufstelle: Fehlermeldungen tragen oft
+  // Archivpfade und Dateinamen, die hier nie landen dürfen (SEC-NET-6).
+  const safe = data && typeof data.message === 'string'
+    ? { ...data, message: redactErrorMessage(data.message) } : data;
+  debugLog.push({ t: Math.round(performance.now() - bootTime), event, ...(safe || {}) });
   if (debugLog.length > MAX_DEBUG_LOG) debugLog = debugLog.slice(-MAX_DEBUG_LOG);
   saveDebugLogSoon();
 }
@@ -7690,6 +7700,7 @@ const LARGE_IMPORT_BYTES = 1024 * 1024 * 1024;
 // Kompressionsverhältnis), bleibt als ZIP_MAX_* daneben stehen.
 const IMPORT_MAX_ENTRIES     = 20000;             // ein Chorarchiv liegt bei einigen hundert
 const IMPORT_MAX_ENTRY_BYTES = 512 * 1024 * 1024; // je Datei, unkomprimiert
+const LYRICS_MAX_BYTES = 1024 * 1024; // Liedtext-Datei im Archiv (echte Texte haben wenige KB)
 const IMPORT_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024; // über alle Dateien
 const IMPORT_MAX_PATH_LENGTH = 512;               // Zeichen je Pfad/Dateiname
 const IMPORT_MAX_SONGS  = 5000;  // Obergrenze für runImport(), unabhängig von der Quelle (ZIP/Ordner)
@@ -8118,7 +8129,12 @@ async function runImport() {
       }
 
       // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
-      if (scan.lyricsEntry) {
+      if (scan.lyricsEntry && Number(scan.lyricsEntry.size) > LYRICS_MAX_BYTES) {
+        // Ein Liedtext liegt im Songdatensatz und wird bei jedem Start
+        // mitgeladen — ein riesiger (präparierter) Text machte die App
+        // dauerhaft langsam (SEC-FILE-4).
+        report.failed.push(`${scan.lyricsEntry.name} (Text zu groß)`);
+      } else if (scan.lyricsEntry) {
         try {
           const raw = await readTextBlob(await entryBlob(scan.lyricsEntry));
           const { artist, text } = splitLyricsHeader(raw);
@@ -9234,6 +9250,16 @@ async function forceUpdateNow() {
   }
 }
 $('#btn-force-update').addEventListener('click', forceUpdateNow);
+$('#btn-rebuild-offline').addEventListener('click', async () => {
+  const ok = await confirmDialog({
+    title: t('settings.about.rebuildOfflineTitle'),
+    text: t('settings.about.rebuildOfflineText'),
+    okLabel: t('settings.about.rebuildOffline'),
+  });
+  // Dieselbe Funktion wie der Knopf in #boot-error (boot-guard.js), damit
+  // es genau einen Weg gibt, der auch bei kaputtem app.js funktioniert.
+  if (ok) window.chorResetOfflineCopy?.();
+});
 
 /* ==========================================================================
    PLAYER — Oberfläche
@@ -9312,12 +9338,12 @@ function bestRecordingForSong(recordings) {
   if (!recordings || !recordings.length) return null;
   const newestOf = (voice) => recordings
     .filter((r) => r.voice === voice)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null;
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null;
   for (const v of [settings.lastVoice, ...settings.myVoices]) {
     const rec = v ? newestOf(v) : null;
     if (rec) return rec;
   }
-  return recordings.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return recordings.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
 }
 
 /** Ein einziger unauffälliger Ladeindikator oben in der Kopfzeile. */
@@ -11838,7 +11864,7 @@ async function loadSongRecordings() {
   const all = await DB.metaByType('recording').catch(() => []);
   songRecordings = all
     .filter((r) => r.songId === playerSong.id)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   renderRecordingList();
 }
 
@@ -15697,7 +15723,7 @@ $('#btn-pl-delete').addEventListener('click', async () => {
 /** Teilt oder sichert eine Setliste als Textdatei. */
 async function sharePlaylistFile(pl) {
   const text = playlistToText(pl);
-  const fileName = `${pl.name.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+  const fileName = `${String(pl.name ?? '').replace(/[\\/:*?"<>|]/g, '_')}.txt`;
   const file = new File([text], fileName, { type: 'text/plain' });
 
   if (navigator.canShare?.({ files: [file] })) {
@@ -15982,6 +16008,8 @@ function base64ToBlob(base64, mimeType) {
 const BACKUP_AUDIO_B64_MARKER = '"audioBase64":"';
 const BACKUP_AUDIO_B64_MARKER_BYTES = new TextEncoder().encode(BACKUP_AUDIO_B64_MARKER);
 const BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX = '@B64#';
+/** Obergrenze für alles außer den ausgelagerten Audiodaten einer Sicherung. */
+const BACKUP_MAX_SKELETON_BYTES = 64 * 1024 * 1024;
 const BACKUP_READ_CHUNK = 8 * 1024 * 1024;
 const JSON_QUOTE_BYTE = 0x22; // '"' — Base64 selbst enthält nie ein Anführungszeichen.
 
@@ -16105,6 +16133,14 @@ async function readBackupFile(file) {
   }
 
   const skeletonBlob = new Blob(skeletonParts);
+  // Alles außer den ausgelagerten Audiodaten ist klein (Titel, Notizen,
+  // Einstellungen). Ein riesiges Skelett heißt: Audiodaten stehen in einer
+  // Schreibweise, die der Scanner oben nicht erkennt (z.B. `"audioBase64" :
+  // "…"` mit Leerzeichen) — die Größenlimits griffen dann nicht, und die
+  // ganze Datei landete als ein String im Speicher (SEC-FILE-7).
+  if (skeletonBlob.size > BACKUP_MAX_SKELETON_BYTES) {
+    throw new Error(`Diese Sicherung ist zu groß oder ungewöhnlich aufgebaut (${fmtBytes(skeletonBlob.size)} ohne Audiodaten).`);
+  }
   let data;
   try {
     data = JSON.parse(await readTextBlob(skeletonBlob));
@@ -16116,8 +16152,13 @@ async function readBackupFile(file) {
     data,
     /** Löst einen `@B64#n`-Platzhalter direkt aus der Originaldatei auf — nie als Teil eines größeren Strings. */
     async resolveAudioBase64(placeholder) {
-      const idx = Number(String(placeholder).slice(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX.length));
-      const span = spans[idx];
+      const value = String(placeholder);
+      // Kein Platzhalter: der Wert steht (klein, siehe Skelett-Limit) direkt
+      // im JSON. Früher wurde er trotzdem als Index gedeutet — „XXXXX0"
+      // lieferte dann die Audiodaten eines ganz anderen RECs.
+      if (!value.startsWith(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX)) return value;
+      const idx = Number(value.slice(BACKUP_AUDIO_B64_PLACEHOLDER_PREFIX.length));
+      const span = Number.isInteger(idx) ? spans[idx] : null;
       if (!span || span.end < 0) throw new Error('Beschädigte Sicherung: Audiodaten nicht gefunden.');
       return readTextBlob(file.slice(span.start, span.end));
     },
@@ -16804,13 +16845,13 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
           artist: typeof s.artist === 'string' ? s.artist : undefined,
           collections: [],
           tracks: [],
-          lyrics: typeof s.lyrics === 'string' ? s.lyrics : null,
+          lyrics: typeof s.lyrics === 'string' && s.lyrics.length <= BACKUP_MAX_TEXT_LEN ? s.lyrics : null,
           scores: [],
           importedAt: new Date().toISOString(),
         };
         if (existingSong) {
           if (!song.artist && typeof s.artist === 'string') song.artist = s.artist;
-          if (!song.lyrics && typeof s.lyrics === 'string') song.lyrics = s.lyrics;
+          if (!song.lyrics && typeof s.lyrics === 'string' && s.lyrics.length <= BACKUP_MAX_TEXT_LEN) song.lyrics = s.lyrics;
         }
         let songGotContent = false;
 
@@ -16882,7 +16923,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       const song = {
         key: `song:${hashId(normTitle)}`, type: 'song', id: hashId(normTitle),
         title, normTitle, collections: [], tracks: [], scores: [],
-        lyrics: typeof meta.lyrics === 'string' ? meta.lyrics : null,
+        lyrics: typeof meta.lyrics === 'string' && meta.lyrics.length <= BACKUP_MAX_TEXT_LEN ? meta.lyrics : null,
         importedAt: new Date().toISOString(),
       };
       if (typeof meta.artist === 'string') song.artist = meta.artist;
@@ -16900,9 +16941,15 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const existingNotes = await DB.metaByType('note');
   const existingLyricsNotes = await DB.metaByType('lyricsNote');
   const fresh = [];
+  // Eine Sicherung ist eine Datei von außen: Zahlen oder Objekte statt
+  // Strings landeten sonst dauerhaft in IndexedDB und warfen später bei
+  // jedem Öffnen TypeErrors (z.B. createdAt.localeCompare, SEC-FILE-6).
+  const optStr = (v) => v == null || typeof v === 'string';
+  const isoOrNow = (v) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : new Date().toISOString());
 
   for (const l of loops) {
     if (!l || !Number.isFinite(l.start) || !Number.isFinite(l.end)) continue;
+    if (!optStr(l.name) || !optStr(l.songTitle)) continue;
     if (l.start < 0 || l.end < 0) continue;
     if ((l.name && l.name.length > BACKUP_MAX_TITLE_LEN) || (l.songTitle && l.songTitle.length > BACKUP_MAX_TITLE_LEN)) continue;
     const song = findSongByTitle(songs, l.songTitle || '');
@@ -16930,7 +16977,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // Notizen: eine je Lied. Eine vorhandene Notiz wird nie überschrieben —
   // sonst wäre beim „Zusammenführen" plötzlich der eigene Text weg.
   for (const n of notes) {
-    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || typeof n.songTitle !== 'string' || !n.songTitle) continue;
     if (n.text.length > BACKUP_MAX_TEXT_LEN || n.songTitle.length > BACKUP_MAX_TITLE_LEN) continue;
     const song = findSongByTitle(songs, n.songTitle);
     const norm = normalizeTitle(n.songTitle);
@@ -16948,7 +16995,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       songId: song ? song.id : null,
       songTitle: n.songTitle,           // bleibt erhalten, auch ohne Song
       text: n.text,
-      updatedAt: n.updatedAt || new Date().toISOString(),
+      updatedAt: isoOrNow(n.updatedAt),
     });
     addedNotes++;
   }
@@ -16957,7 +17004,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // vorhandene offizielle Fassung des Songs verhindert das nicht, denn beide
   // können nebeneinander bestehen (siehe LIEDTEXT UND NOTEN).
   for (const n of lyricsNotes) {
-    if (!n || typeof n.text !== 'string' || !n.text.trim() || !n.songTitle) continue;
+    if (!n || typeof n.text !== 'string' || !n.text.trim() || typeof n.songTitle !== 'string' || !n.songTitle) continue;
     if (n.text.length > BACKUP_MAX_TEXT_LEN || n.songTitle.length > BACKUP_MAX_TITLE_LEN) continue;
     const song = findSongByTitle(songs, n.songTitle);
     const norm = normalizeTitle(n.songTitle);
@@ -16975,19 +17022,20 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       songId: song ? song.id : null,
       songTitle: n.songTitle,
       text: n.text,
-      updatedAt: n.updatedAt || new Date().toISOString(),
+      updatedAt: isoOrNow(n.updatedAt),
     });
     addedLyricsNotes++;
   }
 
   for (const p of playlists) {
-    if (!p || !Array.isArray(p.songTitles)) continue;
+    if (!p || !Array.isArray(p.songTitles) || !optStr(p.name)) continue;
     if (p.songTitles.length > BACKUP_MAX_PLAYLIST_SONGS) continue;
     if (p.name && p.name.length > BACKUP_MAX_TITLE_LEN) continue;
     const name = normalizeTitle(p.name || '');
     if (existingPl.some((x) => normalizeTitle(x.name) === name)) continue;
     if (fresh.some((x) => x.type === 'playlist' && normalizeTitle(x.name) === name)) continue;
-    fresh.push(newPlaylist(p.name || 'Setliste', p.songTitles));
+    const titles = p.songTitles.filter((x) => typeof x === 'string' && x.length <= BACKUP_MAX_TITLE_LEN);
+    fresh.push(newPlaylist(p.name || 'Setliste', titles));
     addedPl++;
   }
 
@@ -17000,7 +17048,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   if (recordingsIn.length) {
     const existingRecordings = await DB.metaByType('recording').catch(() => []);
     for (const r of recordingsIn) {
-      if (!r || !r.audioBase64) { discardedRecordings++; continue; }
+      if (!r || !r.audioBase64 || !optStr(r.name) || !optStr(r.songTitle)) { discardedRecordings++; continue; }
       // Nicht-endliche Werte (Infinity, NaN) rutschen an `|| 0` vorbei — NaN
       // ist zwar falsy, Infinity aber nicht (AP-01: "nicht-endliche Zahlen").
       if (r.duration !== undefined && !Number.isFinite(r.duration)) { discardedRecordings++; continue; }
@@ -17033,7 +17081,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         voice: VOICE_ORDER.includes(r.voice) ? r.voice : null,
         fileKey, mimeType, duration: Number.isFinite(r.duration) ? r.duration : 0,
         size: blob.size,
-        createdAt: r.createdAt || new Date().toISOString(),
+        createdAt: isoOrNow(r.createdAt),
       };
       const duration = recording.duration;
       if (Number.isFinite(r.trimStart) && Number.isFinite(r.trimEnd)
@@ -21322,6 +21370,7 @@ async function boot() {
   }
 
   registerServiceWorker();
+  window.__chorBooted = true;
 }
 
 boot();
