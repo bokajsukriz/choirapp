@@ -7,7 +7,8 @@
 <title>Chor Übe-Lab</title>
 <!--
   CHOR ÜBE-LAB — Prototyp einer eigenen Übe-App (Metronom, Einsingen,
-  Rhythmus nachklatschen, Gehörbildung: Intervalle und Akkordfolgen). Aus dem Groove Lab herausgelöst und noch NICHT
+  Rhythmus nachklatschen, Gehörbildung: Intervalle und Akkordfolgen,
+  Stimm-Tuner mit Tonhöhenerkennung übers Mikrofon). Aus dem Groove Lab herausgelöst und noch NICHT
   in die App eingebunden: eigenständige Datei, kein Teil der App-Shell
   (steht nicht in SHELL_REQUIRED/SHELL_OPTIONAL in sw.js), keine STRINGS
   (vorerst nur Deutsch), keine Abhängigkeiten. Direkt im Browser öffnen.
@@ -41,8 +42,8 @@
   h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   h1 span { color: var(--accent); }
 
-  .tab-bar { display: flex; gap: 6px; padding: 0 16px 12px; }
-  .tab-btn { flex: 1; padding: 9px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: .76rem; font-weight: 700; }
+  .tab-bar { display: flex; gap: 4px; padding: 0 16px 12px; }
+  .tab-btn { flex: 1 1 auto; padding: 9px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 700; }
   .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   main { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 18px; }
@@ -99,7 +100,34 @@
   .tap-btn { height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 800; }
   .status { font-size: .68rem; color: var(--muted); text-align: center; margin: 8px 0 0; }
   /* ---- Hören ---- */
-  body[data-tab="ear"] footer { display: none; }
+  body[data-tab="ear"] footer, body[data-tab="voice"] footer { display: none; }
+
+  /* ---- Stimme (Tuner) ---- */
+  .tuner { text-align: center; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 16px 14px 14px; }
+  .tuner-note { font-size: 3.4rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; min-height: 1em; font-variant-numeric: tabular-nums; }
+  .tuner-note.is-idle { color: var(--line); }
+  .tuner-hz { font-size: .74rem; color: var(--muted); font-weight: 700; min-height: 1.2em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .gauge { position: relative; height: 44px; margin: 14px 4px 4px; border-radius: 10px; background: var(--surface-2); overflow: hidden; }
+  .gauge-zone { position: absolute; top: 0; bottom: 0; left: 45%; width: 10%; background: rgba(47,158,91,.18); }
+  .gauge-tick { position: absolute; top: 0; width: 1px; height: 30%; background: var(--line); }
+  .gauge-tick.is-major { height: 55%; background: var(--muted); opacity: .5; }
+  .gauge-needle { position: absolute; top: 4px; bottom: 4px; width: 4px; margin-left: -2px; border-radius: 2px; left: 50%; background: var(--muted); transition: left .08s linear, background .15s; }
+  .gauge-needle.is-ok { background: #2f9e5b; }
+  .gauge-needle.is-near { background: #e0a100; }
+  .gauge-needle.is-off { background: var(--bad); }
+  .gauge-needle.is-idle { opacity: .25; }
+  .gauge-labels { display: flex; justify-content: space-between; font-size: .62rem; color: var(--muted); font-weight: 700; margin: 0 4px; font-variant-numeric: tabular-nums; }
+  .tuner-msg { margin: 10px 0 0; font-weight: 800; font-size: .86rem; min-height: 1.2em; }
+  .tuner-msg.is-ok { color: #2f9e5b; } .tuner-msg.is-near { color: #b07e00; } .tuner-msg.is-off { color: var(--bad); }
+  .pitch-history { display: block; width: 100%; height: 170px; margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+  .target-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .target-note { min-width: 64px; text-align: center; font-weight: 800; font-size: 1.1rem; }
+  .step-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: 1.1rem; }
+  .range-out { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .range-box { border-radius: 12px; background: var(--surface); border: 1px solid var(--line); padding: 10px; text-align: center; }
+  .range-box span { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .range-box strong { font-size: 1.3rem; }
+  .mic-error { color: var(--bad); font-weight: 700; font-size: .78rem; text-align: center; margin: 10px 0 0; min-height: 0; }
   .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: var(--muted); }
   .ear-stage { margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 16px 12px; text-align: center; }
   .ear-prompt { margin: 0; font-weight: 800; font-size: .95rem; }
@@ -148,6 +176,7 @@
   <button class="tab-btn" type="button" role="tab" data-tab="warmup" aria-selected="false">Einsingen</button>
   <button class="tab-btn" type="button" role="tab" data-tab="rhythm" aria-selected="false">Rhythmus</button>
   <button class="tab-btn" type="button" role="tab" data-tab="ear" aria-selected="false">Hören</button>
+  <button class="tab-btn" type="button" role="tab" data-tab="voice" aria-selected="false">Stimme</button>
 </nav>
 
 <main>
@@ -215,6 +244,41 @@
       <p class="ear-feedback" role="status"></p>
       <p class="score ear-score"></p>
     </section>
+  </section>
+  <section data-panel="voice" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>Stimm-Tuner</h2>
+        <button class="big-btn" type="button" data-voice="mic">Mikrofon an</button></div>
+      <div class="tuner">
+        <div class="tuner-note is-idle">–</div>
+        <div class="tuner-hz"></div>
+        <div class="gauge" aria-hidden="true"><div class="gauge-zone"></div><div class="gauge-needle is-idle"></div></div>
+        <div class="gauge-labels" aria-hidden="true"><span class="gauge-min">−50</span><span>0</span><span class="gauge-max">+50 Cent</span></div>
+        <p class="tuner-msg" role="status" aria-live="polite"></p>
+      </div>
+      <canvas class="pitch-history" aria-label="Tonhöhen-Verlauf der letzten Sekunden"></canvas>
+      <p class="mic-error" role="alert"></p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Zielton</h2></div>
+      <div class="switch-row"><label class="switch"><input type="checkbox" role="switch" data-voiceswitch="useTarget"><span class="switch-track"></span>Auf Zielton stimmen</label></div>
+      <div class="target-row">
+        <button class="step-btn" type="button" data-voice="target-down" aria-label="Zielton einen Halbton tiefer">−</button>
+        <span class="target-note" aria-live="polite"></span>
+        <button class="step-btn" type="button" data-voice="target-up" aria-label="Zielton einen Halbton höher">+</button>
+        <button class="big-btn secondary" type="button" data-voice="target-play">Anspielen</button>
+      </div>
+      <p class="foot-note">Die Oktave ist egal: Männer- und Frauenstimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Tonumfang heute</h2><button class="chip" type="button" data-voice="range-reset">Zurücksetzen</button></div>
+      <div class="range-out">
+        <div class="range-box"><span>Tiefster Ton</span><strong class="range-low">–</strong></div>
+        <div class="range-box"><span>Höchster Ton</span><strong class="range-high">–</strong></div>
+      </div>
+      <p class="foot-note">Zählt nur Töne, die etwa eine halbe Sekunde sicher gehalten werden. Nie pressen — bei Kratzen oder Schmerz aufhören.</p>
+    </section>
+    <p class="foot-note">Das Mikrofon wird nur live ausgewertet, nichts wird aufgenommen, gespeichert oder gesendet.</p>
   </section>
 </main>
 
@@ -768,6 +832,7 @@
     renderResult();
     renderTransport();
     renderEar();
+    renderVoice();
   }
 
   function setTab(tab) {
@@ -779,6 +844,8 @@
     game.last = null; game.hits = 0; game.total = 0; game.streak = 0;
     document.body.dataset.tab = tab;
     if (tab !== 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); }
+    // Das Mikrofon läuft nie im Hintergrund weiter, wenn man den Reiter verlässt.
+    if (tab !== 'voice' && voice.analyser) micOff();
     renderAll();
   }
 
@@ -1170,12 +1237,274 @@
   }
 
   /* ------------------------------------------------------------------------
+     STIMME — Tuner mit Tonhöhenerkennung übers Mikrofon.
+
+     Erkennung per YIN (de Cheveigné & Kawahara 2002) auf dem Zeitsignal
+     eines AnalyserNode: kumulativ-normierte Differenzfunktion, erster
+     Einbruch unter die Schwelle, parabolisch verfeinert. Vorher auf die
+     halbe Abtastrate gemittelt — für Singstimmen (ca. 65–1100 Hz) reicht
+     das und viertelt die Rechenlast, was auf dem Handy bei 60 Bildern pro
+     Sekunde zählt. Ein Median über die letzten Werte glättet einzelne
+     Oktavfehler. Das Mikrofon läuft ohne Echo-Unterdrückung, Rausch-
+     filter und automatische Pegelanpassung — die verfälschen Tonhöhe und
+     Einsätze (siehe RECORDING_CONSTRAINTS in app.js).
+     ------------------------------------------------------------------------ */
+
+  const PITCH_MIN_HZ = 65;
+  const PITCH_MAX_HZ = 1100;
+  const HISTORY_SECONDS = 6;
+  const noteLabel = (midi) => `${NOTE_NAMES[mod(midi, 12)]}${Math.floor(midi / 12) - 1}`;
+
+  const voice = {
+    stream: null, source: null, analyser: null, buffer: null, frame: 0,
+    x: null, d: null,
+    recent: [],          // letzte erkannte MIDI-Werte (für den Median)
+    lastVoiced: 0,
+    history: [],         // [{ t, midi }] für die Verlaufslinie
+    hold: [],            // [{ t, midi }] fürs "sicher gehalten"
+    low: null, high: null,
+    useTarget: false, target: 57, // A3
+  };
+
+  function detectPitch(buf, sampleRate) {
+    const n = buf.length >> 1;
+    if (!voice.x || voice.x.length !== n) voice.x = new Float32Array(n);
+    const x = voice.x;
+    let energy = 0;
+    for (let i = 0; i < n; i++) { const v = (buf[2 * i] + buf[2 * i + 1]) * .5; x[i] = v; energy += v * v; }
+    const rms = Math.sqrt(energy / n);
+    if (rms < .01) return null;
+    const sr = sampleRate / 2;
+    const w = n >> 1;
+    const minTau = Math.max(2, Math.floor(sr / PITCH_MAX_HZ));
+    const maxTau = Math.min(w - 2, Math.ceil(sr / PITCH_MIN_HZ));
+    if (!voice.d || voice.d.length < maxTau + 2) voice.d = new Float32Array(maxTau + 2);
+    const d = voice.d;
+    d[0] = 1;
+    let running = 0;
+    for (let tau = 1; tau <= maxTau + 1; tau++) {
+      let sum = 0;
+      for (let i = 0; i < w; i++) { const diff = x[i] - x[i + tau]; sum += diff * diff; }
+      running += sum;
+      d[tau] = running ? sum * tau / running : 1;
+    }
+    let tau = -1;
+    for (let t = minTau; t <= maxTau; t++) {
+      if (d[t] < .15) {
+        while (t + 1 <= maxTau && d[t + 1] < d[t]) t++;
+        tau = t;
+        break;
+      }
+    }
+    if (tau < 0) return null;
+    const s0 = d[tau - 1], s1 = d[tau], s2 = d[tau + 1];
+    const denom = s0 - 2 * s1 + s2;
+    const shift = denom ? clamp((s0 - s2) / (2 * denom), -1, 1) : 0;
+    return { freq: sr / (tau + shift), clarity: 1 - s1, rms };
+  }
+
+  const median = (list) => { const s = [...list].sort((a, b) => a - b); return s[s.length >> 1]; };
+
+  async function micOn() {
+    const err = $('.mic-error');
+    err.textContent = '';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      err.textContent = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).';
+      return;
+    }
+    try {
+      await engine.start();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      voice.stream = stream;
+      voice.source = engine.ctx.createMediaStreamSource(stream);
+      voice.analyser = engine.ctx.createAnalyser();
+      voice.analyser.fftSize = 2048;
+      voice.buffer = new Float32Array(voice.analyser.fftSize);
+      voice.source.connect(voice.analyser); // bewusst NICHT zum Ausgang — keine Rückkopplung
+      voice.recent = []; voice.history = []; voice.hold = [];
+      renderVoice();
+      voiceLoop();
+    } catch (e) {
+      err.textContent = e?.name === 'NotAllowedError' ? 'Der Zugriff aufs Mikrofon wurde nicht erlaubt.'
+        : e?.name === 'NotFoundError' ? 'Es wurde kein Mikrofon gefunden.'
+        : 'Das Mikrofon konnte nicht gestartet werden.';
+      micOff();
+    }
+  }
+
+  function micOff() {
+    cancelAnimationFrame(voice.frame);
+    voice.frame = 0;
+    voice.stream?.getTracks().forEach((track) => track.stop());
+    try { voice.source?.disconnect(); } catch { /* schon getrennt */ }
+    voice.stream = null; voice.source = null; voice.analyser = null;
+    showPitch(null);
+    renderVoice();
+  }
+
+  function voiceLoop() {
+    if (!voice.analyser) return;
+    const now = engine.ctx.currentTime;
+    voice.analyser.getFloatTimeDomainData(voice.buffer);
+    const result = detectPitch(voice.buffer, engine.ctx.sampleRate);
+    let midi = null;
+    if (result && result.clarity > .8) {
+      const raw = 69 + 12 * Math.log2(result.freq / 440);
+      if (now - voice.lastVoiced > .15) voice.recent = [];
+      voice.lastVoiced = now;
+      voice.recent.push(raw);
+      if (voice.recent.length > 5) voice.recent.shift();
+      midi = median(voice.recent);
+    }
+    voice.history.push({ t: now, midi });
+    while (voice.history.length && voice.history[0].t < now - HISTORY_SECONDS) voice.history.shift();
+    trackRange(now, midi);
+    showPitch(midi, result?.freq);
+    drawHistory(now);
+    voice.frame = requestAnimationFrame(voiceLoop);
+  }
+
+  /** Tonumfang: ein Ton zählt, wenn er ~0,5 s ohne Aussetzer innerhalb
+   *  eines Halbtons gehalten wurde — Ausrutscher beim Einsatz zählen nicht. */
+  function trackRange(now, midi) {
+    if (midi === null) { voice.hold = []; return; }
+    voice.hold.push({ t: now, midi });
+    while (voice.hold.length && voice.hold[0].t < now - .5) voice.hold.shift();
+    if (voice.hold[voice.hold.length - 1].t - voice.hold[0].t < .45) return;
+    const values = voice.hold.map((h) => h.midi);
+    if (Math.max(...values) - Math.min(...values) > 1) return;
+    const note = Math.round(median(values));
+    let changed = false;
+    if (voice.low === null || note < voice.low) { voice.low = note; changed = true; }
+    if (voice.high === null || note > voice.high) { voice.high = note; changed = true; }
+    if (changed) renderRange();
+  }
+
+  function showPitch(midi, freq) {
+    const noteEl = $('.tuner-note');
+    const needle = $('.gauge-needle');
+    const msg = $('.tuner-msg');
+    const range = voice.useTarget ? 100 : 50;
+    $('.gauge-min').textContent = `−${range}`;
+    $('.gauge-max').textContent = `+${range} Cent`;
+    if (midi === null) {
+      noteEl.classList.add('is-idle');
+      if (!voice.analyser) noteEl.textContent = '–';
+      $('.tuner-hz').textContent = voice.analyser ? 'Singe einen Ton …' : '';
+      needle.className = 'gauge-needle is-idle';
+      msg.textContent = '';
+      msg.className = 'tuner-msg';
+      return;
+    }
+    const nearest = Math.round(midi);
+    let cents;
+    if (voice.useTarget) {
+      // Abweichung zum Zielton, Oktave egal (auf ±6 Halbtöne gefaltet).
+      cents = (mod(midi - voice.target + 6, 12) - 6) * 100;
+      noteEl.textContent = noteLabel(nearest);
+    } else {
+      cents = (midi - nearest) * 100;
+      noteEl.textContent = noteLabel(nearest);
+    }
+    noteEl.classList.remove('is-idle');
+    $('.tuner-hz').textContent = `${freq ? freq.toFixed(1) : '–'} Hz · ${cents >= 0 ? '+' : '−'}${Math.abs(Math.round(cents))} Cent`;
+    const abs = Math.abs(cents);
+    const kind = abs <= 10 ? 'ok' : abs <= 25 ? 'near' : 'off';
+    needle.className = `gauge-needle is-${kind}`;
+    needle.style.left = `${50 + clamp(cents / range, -1, 1) * 50}%`;
+    msg.className = `tuner-msg is-${kind}`;
+    if (voice.useTarget && abs > 60) msg.textContent = cents < 0 ? `Zu tief — ${NOTE_NAMES[mod(voice.target, 12)]} liegt höher` : `Zu hoch — ${NOTE_NAMES[mod(voice.target, 12)]} liegt tiefer`;
+    else msg.textContent = kind === 'ok' ? 'Sauber!' : cents < 0 ? 'etwas zu tief' : 'etwas zu hoch';
+  }
+
+  /** Verlaufslinie: Halbton-Raster um die zuletzt gesungene Lage (bzw. den
+   *  Zielton), gesungene Tonhöhe als Linie, Lücken bei Stille. */
+  function drawHistory(now) {
+    const canvas = $('.pitch-history');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    const g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const css = getComputedStyle(document.documentElement);
+    const voiced = voice.history.filter((p) => p.midi !== null);
+    const centre = voiced.length ? median(voiced.slice(-30).map((p) => p.midi)) : (voice.useTarget ? voice.target : 60);
+    const span = 14; // Halbtöne sichtbar
+    const lo = Math.round(centre) - span / 2;
+    const pad = 10; // Platz, damit die Notennamen oben und unten nicht abgeschnitten werden
+    const y = (m) => h - pad - ((m - lo) / span) * (h - 2 * pad);
+    g.font = '700 10px -apple-system, Segoe UI, Roboto, sans-serif';
+    g.textBaseline = 'middle';
+    for (let m = lo; m <= lo + span; m++) {
+      const isC = mod(m, 12) === 0;
+      const isTarget = voice.useTarget && mod(m - voice.target, 12) === 0;
+      g.strokeStyle = isTarget ? 'rgba(47,158,91,.55)' : isC ? 'rgba(140,129,166,.45)' : 'rgba(140,129,166,.15)';
+      g.lineWidth = isTarget ? 2 : 1;
+      g.beginPath(); g.moveTo(34, y(m)); g.lineTo(w, y(m)); g.stroke();
+      if (isC || isTarget || [4, 7].includes(mod(m, 12))) {
+        g.fillStyle = isTarget ? '#2f9e5b' : css.getPropertyValue('--muted');
+        g.fillText(noteLabel(m), 6, y(m));
+      }
+    }
+    g.strokeStyle = css.getPropertyValue('--accent').trim() || '#F868B0';
+    g.lineWidth = 3; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath();
+    let pen = false;
+    for (const p of voice.history) {
+      const px = 34 + (1 - (now - p.t) / HISTORY_SECONDS) * (w - 40);
+      if (p.midi === null) { pen = false; continue; }
+      const py = y(p.midi);
+      if (pen) g.lineTo(px, py); else g.moveTo(px, py);
+      pen = true;
+    }
+    g.stroke();
+  }
+
+  function renderRange() {
+    $('.range-low').textContent = voice.low === null ? '–' : noteLabel(voice.low);
+    $('.range-high').textContent = voice.high === null ? '–' : noteLabel(voice.high);
+  }
+
+  function renderVoice() {
+    const btn = $('[data-voice="mic"]');
+    btn.textContent = voice.analyser ? 'Mikrofon aus' : 'Mikrofon an';
+    btn.classList.toggle('secondary', !!voice.analyser);
+    $('.target-note').textContent = noteLabel(voice.target);
+    $('[data-voiceswitch="useTarget"]').checked = voice.useTarget;
+    renderRange();
+    if (!voice.analyser) { showPitch(null); drawHistory(engine.ctx?.currentTime || 0); }
+  }
+
+  async function playTarget() {
+    try { await engine.start(); } catch { return; }
+    engine.keys(voice.target, engine.ctx.currentTime + .03, 1.4, { velocity: .2 });
+  }
+
+  /* ------------------------------------------------------------------------
      VERKABELUNG
      ------------------------------------------------------------------------ */
 
   document.addEventListener('click', (e) => {
     const tabBtn = e.target.closest('.tab-btn');
     if (tabBtn) { setTab(tabBtn.dataset.tab); return; }
+
+    // --- Stimme
+    const voiceBtn = e.target.closest('[data-voice]');
+    if (voiceBtn) {
+      const action = voiceBtn.dataset.voice;
+      if (action === 'mic') { if (voice.analyser) micOff(); else micOn(); }
+      else if (action === 'target-up' || action === 'target-down') {
+        voice.target = clamp(voice.target + (action === 'target-up' ? 1 : -1), 36, 84);
+        renderVoice();
+        playTarget();
+      }
+      else if (action === 'target-play') playTarget();
+      else if (action === 'range-reset') { voice.low = null; voice.high = null; renderRange(); }
+      return;
+    }
 
     // --- Hören
     const earBtn = e.target.closest('[data-ear]');
@@ -1231,6 +1560,7 @@
 
   document.addEventListener('change', (e) => {
     if (e.target.dataset?.set) { onSettingChange(e.target); return; }
+    if (e.target.dataset?.voiceswitch) { voice.useTarget = e.target.checked; drawHistory(engine.ctx?.currentTime || 0); return; }
     const key = e.target.dataset?.switch;
     if (!key) return;
     if (key === 'drone') setDrone(e.target.checked);
@@ -1243,6 +1573,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.sheet').hidden) { closeSettings(); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (state.tab === 'voice') return;
     if (state.tab === 'ear') {
       // Leertaste = nochmal hören (bzw. starten), sofern kein Knopf den Fokus hat.
       if (e.code === 'Space' && $('.sheet').hidden && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName))) {
