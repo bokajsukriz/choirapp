@@ -19946,7 +19946,11 @@ async function runNormalizationWorkerTests() {
     // 3b) An unsupported/corrupt source terminates with a clear skip
     //     reason — not an endless retry loop.
     {
-      const garbage = new Blob([crypto.getRandomValues(new Uint8Array(256))], { type: 'application/octet-stream' });
+      // Feste Bytes statt Zufall: 256 Zufallsbytes enthielten in etwa jedem
+      // achten Lauf eine gültige MP3-Frame-Sync (0xFF 0xE…) — dann meldete
+      // die Prüfung 'durationInvalid' statt 'metadataInvalid' und der Test
+      // schlug sporadisch fehl. Werte 0–250 enthalten nie 0xFF.
+      const garbage = new Blob([Uint8Array.from({ length: 256 }, (_, i) => (i * 97 + 13) % 251)], { type: 'application/octet-stream' });
       const seed = await testSeedNormalizationTrack({ durationSec: null, blob: garbage });
       const job = { fileKey: seed.fileKey, sourceRevision: seed.track.sourceRevision };
       const result = await processNormalizationJob(job);
