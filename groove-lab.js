@@ -1822,8 +1822,9 @@
       // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
-      if (recPhase === 'done' && this.rec.loopBars) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars);
-      else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
+      if (recPhase === 'done') {
+        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars);
+      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
 
       if (s.arpOn) {
         const trigger = this._arpTrigger(g);
@@ -3449,6 +3450,7 @@
       rec.phase = rec.take && rec.take.some((bar) => bar.length) ? 'done' : 'idle';
       // Fertig: direkt im Loop weiterspielen (der Groove läuft ja noch).
       rec.loopBars = rec.phase === 'done' ? this._recRotated(rec.take) : null;
+      rec.looping = rec.phase === 'done';
       if (rec.phase === 'idle') this._setStatus(t('lab.recEmpty'));
       this._renderRec();
     }
@@ -3459,6 +3461,7 @@
       if (rec.phase !== 'done') return;
       const ph = this.$('.rec-roll .mel-playhead');
       if (!ph) return;
+      if (!rec.looping) g = -1;
       const n = rec.take.length;
       const steps = rec.barSteps;
       ph.hidden = g < 0;
@@ -3467,12 +3470,28 @@
       ph.style.left = `${((k * steps + (g % steps)) / (n * steps)) * 100}%`;
     }
 
-    /** Schwebender Play/Pause-Knopf über der Aufnahme = Transport. */
+    /** Schwebender Play/Pause-Knopf über der Aufnahme: schaltet nur den
+     *  Loop — der Groove läuft weiter (steht er, startet Play ihn mit). */
     _renderRecPlay() {
       const btn = this.$('.rec-play');
       if (!btn) return;
-      btn.innerHTML = this.playing ? UI_ICON.pause : UI_ICON.play;
-      btn.setAttribute('aria-label', t(this.playing ? 'lab.recLoopPause' : 'lab.recLoopPlay'));
+      const on = this.playing && this.rec.looping;
+      btn.innerHTML = on ? UI_ICON.pause : UI_ICON.play;
+      btn.setAttribute('aria-label', t(on ? 'lab.recLoopPause' : 'lab.recLoopPlay'));
+      const ph = this.$('.rec-roll .mel-playhead');
+      if (ph && !on) ph.hidden = true;
+    }
+
+    _toggleRecLoop() {
+      const rec = this.rec;
+      if (this.playing && rec.looping) {
+        rec.looping = false;
+        this.engine.releaseLayers(['melody']);
+      } else {
+        rec.looping = true;
+        if (!this.playing) this.start();
+      }
+      this._renderRecPlay();
     }
 
     /** Aufnahme-Rolle zeichnen: Takte in Aufnahme-Reihenfolge. */
@@ -3799,7 +3818,7 @@
           else this._recArm();
           break;
         case 'rec-save': this._recSave(); break;
-        case 'rec-loop': if (this.playing) this.stop(); else this.start(); break;
+        case 'rec-loop': this._toggleRecLoop(); break;
         case 'rec-discard': this.rec.phase = 'idle'; this.rec.take = null; this._renderRec(); break;
         case 'mel-delete': this._melDeleteOwn(); break;
         case 'melody-octave': s.melodyOctave = Number(value); this._renderMelody(); break;
