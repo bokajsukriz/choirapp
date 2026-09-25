@@ -452,10 +452,37 @@
      SONSTIGE AUSWAHLLISTEN
      ------------------------------------------------------------------------ */
 
-  // Arpeggiator: was eine einzeln gehaltene Taste spielt, und was ohne
-  // gedrückte Taste passiert (siehe _arpPool).
-  const ARP_KEY_MODES = [['chord', 'lab.arpKeyChord'], ['notes', 'lab.arpKeyNotes']];
-  const ARP_IDLE_MODES = [['progression', 'lab.arpIdleProg'], ['off', 'lab.arpIdleOff']];
+  // Arpeggiator-Muster (siehe _arpSequence). Stufen-Abstände in der
+  // Tonleiter: 0 = der Ton selbst, 2 = Terz, 4 = Quinte, 6 = Septime,
+  // 7 = Oktave. Manuell wird jede gewählte Taste so erweitert; automatisch
+  // gilt das Muster ab dem Grundton des gerade klingenden Akkords.
+  const ARP_PATTERNS = [
+    ['selection', 'lab.patSelection', [0]],
+    ['thirds', 'lab.patThirds', [0, 2]],
+    ['fifths', 'lab.patFifths', [0, 4]],
+    ['octaves', 'lab.patOctaves', [0, 7]],
+    ['triad', 'lab.patTriad', [0, 2, 4]],
+    ['seventh', 'lab.patSeventh', [0, 2, 4, 6]],
+  ];
+  const ARP_AUTO_PATTERNS = [
+    ['root', 'lab.autoRoot', [0]],
+    ['rootFifth', 'lab.autoRootFifth', [0, 4]],
+    ['rootOctave', 'lab.autoRootOctave', [0, 7]],
+    ['triad', 'lab.autoTriad', [0, 2, 4]],
+    ['seventh', 'lab.autoSeventh', [0, 2, 4, 6]],
+  ];
+  const ARP_MODES = [['up', 'lab.arpUp'], ['down', 'lab.arpDown'], ['updown', 'lab.arpUpDown'], ['order', 'lab.arpOrder'], ['random', 'lab.arpRandom']];
+  // Tempo in Sechzehnteln; 3 und 6 sind punktierte Achtel bzw. Viertel —
+  // die punktierte Achtel gegen den geraden Beat ist ein klassischer
+  // Arp-Trick (die Töne verschieben sich jeden Schlag gegeneinander).
+  const ARP_DIVISIONS = [[1, '1/16'], [2, '1/8'], [3, '1/8 ·'], [4, '1/4'], [6, '1/4 ·']];
+  // Rhythmus: Längen je Schritt als Vielfache einer Einheit (siehe _arpTrigger).
+  const ARP_RHYTHMS = [
+    ['straight', 'lab.rhythmStraight', null],
+    ['longShort', 'lab.rhythmLongShort', [1.5, .5]],
+    ['shortLong', 'lab.rhythmShortLong', [.5, 1.5]],
+    ['gallop', 'lab.rhythmGallop', [.5, .5, 1]],
+  ];
 
   const BEAT_CATS = ['all', 'calm', 'dance', 'funky', 'breaks'];
   const MELODY_CATS = ['all', 'calm', 'dance', 'funky'];
@@ -508,7 +535,8 @@
       chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       droneOn: false, droneFifth: true,
       melodyIndex: 0, melodyOn: true, melodyOctave: 4,
-      arpOn: false, arpKeyMode: 'chord', arpIdle: 'progression', arpMode: 'up', arpDivision: 1, arpOctaves: 1,
+      arpOn: false, arpAuto: false, arpPattern: 'triad', arpAutoPattern: 'triad', arpMode: 'up',
+      arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1,
       keysLayout: 'piano',
       octave: 4,
       sound: soundFromPreset(presetIndexByName('Velvet Choir')),
@@ -551,11 +579,13 @@
     s.melodyOn = bool(raw.melodyOn, true);
     s.melodyOctave = int(raw.melodyOctave, 3, 5, 4);
     s.arpOn = bool(raw.arpOn, false);
-    s.arpKeyMode = oneOf(raw.arpKeyMode, ARP_KEY_MODES.map(([id]) => id), 'chord');
-    s.arpIdle = oneOf(raw.arpIdle, ARP_IDLE_MODES.map(([id]) => id), 'progression');
+    s.arpAuto = bool(raw.arpAuto, false);
+    s.arpPattern = oneOf(raw.arpPattern, ARP_PATTERNS.map(([id]) => id), 'triad');
+    s.arpAutoPattern = oneOf(raw.arpAutoPattern, ARP_AUTO_PATTERNS.map(([id]) => id), 'triad');
+    s.arpRhythm = oneOf(raw.arpRhythm, ARP_RHYTHMS.map(([id]) => id), 'straight');
     s.keysLayout = oneOf(raw.keysLayout, ['piano', 'scale'], 'piano');
-    s.arpMode = oneOf(raw.arpMode, ['up', 'down', 'updown', 'random'], 'up');
-    s.arpDivision = oneOf(raw.arpDivision, [1, 2, 4], 1);
+    s.arpMode = oneOf(raw.arpMode, ARP_MODES.map(([id]) => id), 'up');
+    s.arpDivision = oneOf(raw.arpDivision, ARP_DIVISIONS.map(([v]) => v), 2);
     s.arpOctaves = oneOf(raw.arpOctaves, [1, 2, 3], 1);
     s.octave = int(raw.octave, 2, 5, 4);
     // Ältere Stände hatten je Ebene einen eigenen Klang — dann gilt der der Melodie.
@@ -1690,56 +1720,119 @@
       if (h.chordStart && s.chordsOn) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
       if (s.melodyOn) this._playMelodyStep(g, h, swung, stepSec);
 
-      if (s.arpOn && g % s.arpDivision === 0) this._playArp(g, swung, h);
+      if (s.arpOn) {
+        const trigger = this._arpTrigger(g);
+        if (trigger) this._playArp(trigger, swung, h);
+      }
     }
 
-    /** Ein Arp-Schritt — vom Groove-Scheduler (im Takt, mit Swing) oder,
-     *  wenn der Groove steht, von der eigenen Arp-Uhr (_ensureArpClock). */
-    _playArp(g, time, h) {
+    /**
+     * Fällt auf diesen Sechzehntel-Schritt ein Arp-Ton? Liefert dessen
+     * laufende Nummer (für die Tonfolge) und Länge in Schritten, sonst null.
+     * "Gerade" = alle arpDivision Schritte; die punktierten Rhythmen
+     * wiederholen eine Längen-Zelle (lang–kurz, kurz–lang, Galopp) auf Basis
+     * einer Achtel (bzw. Viertel bei langsamem Tempo) — Sechzehntel lassen
+     * sich im Schrittraster nicht weiter teilen.
+     */
+    _arpTrigger(g) {
       const s = this.state;
-      const pool = this._arpPool(h);
-      if (!pool.length) return;
+      const cells = ARP_RHYTHMS.find(([id]) => id === s.arpRhythm)?.[2];
+      if (!cells) return g % s.arpDivision === 0 ? { index: g / s.arpDivision, len: s.arpDivision } : null;
+      const unit = s.arpDivision >= 4 ? 4 : 2;
+      const lengths = cells.map((c) => c * unit);
+      const cycle = lengths.reduce((a, b) => a + b, 0);
+      const pos = g % cycle;
+      let at = 0;
+      for (let i = 0; i < lengths.length; i++) {
+        if (pos === at) return { index: Math.floor(g / cycle) * lengths.length + i, len: lengths[i] };
+        at += lengths[i];
+      }
+      return null;
+    }
+
+    /** Ein Arp-Ton — vom Groove-Scheduler (im Takt, mit Swing) oder, wenn
+     *  der Groove steht, von der eigenen Arp-Uhr (_ensureArpClock). */
+    _playArp({ index, len }, time, h) {
+      const s = this.state;
+      const seq = this._arpSequence(h);
+      if (!seq.length) return;
       const stepSec = this._stepSeconds();
-      const midi = pool[this._arpIndex(Math.floor(g / s.arpDivision), pool.length)];
-      this.engine.playTone(s.sound, midi, time, .15, stepSec * s.arpDivision * .9, { layer: 'arp', stepSeconds: stepSec });
+      const midi = seq[this._arpIndex(index, seq.length)];
+      this.engine.playTone(s.sound, midi, time, .15, stepSec * len * .9, { layer: 'arp', stepSeconds: stepSec });
       this._flashKey(midi, time);
     }
 
-    /** Die gerade gedrückten (und per "Halten" gemerkten) Töne, sortiert. */
+    /** Manuell: Arp gibt es, sobald er an und nicht auf Automatik ist. */
+    _arpManual() { return this.state.arpOn && !this.state.arpAuto; }
+    /** "Halten" wirkt nur im manuellen Arp. */
+    _latchActive() { return this._arpManual() && this.ui.latchOn; }
+
+    /** Die gewählten Töne in der Reihenfolge, in der sie gedrückt wurden:
+     *  mit "Halten" die gesammelten, sonst die gerade gedrückten. */
     _arpHeld() {
-      const notes = new Set();
-      this.keyVoices.forEach((held) => notes.add(held.midi));
-      if (this.ui.latchOn) this.latchedNotes.forEach((midi) => notes.add(midi));
-      return [...notes].sort((a, b) => a - b);
+      if (this._latchActive()) return [...this.latchedNotes];
+      const notes = [];
+      this.keyVoices.forEach((held) => { if (!notes.includes(held.midi)) notes.push(held.midi); });
+      return notes;
     }
 
-    /** Dreiklang der Tonart auf einer Taste (liegt sie außerhalb der Tonart:
-     *  Dur-Dreiklang) — so klingt schon ein einzelner gehaltener Ton nach
-     *  Arpeggio statt nach Tonwiederholung. */
-    _chordOnNote(midi) {
+    /** Ton k Tonleiterstufen über einer Taste (in der gewählten Tonart;
+     *  liegt die Taste außerhalb, gelten Dur-Abstände). */
+    _diatonicAbove(midi, k) {
+      if (!k) return midi;
       const steps = this._mode().steps;
       const d = steps.indexOf(mod(midi - this.state.keyRoot, 12));
-      if (d === -1) return [midi, midi + 4, midi + 7];
-      return [0, 2, 4].map((o) => midi + degreeSemis(steps, d + o) - steps[d]);
+      if (d === -1) return midi + ({ 2: 4, 4: 7, 6: 10, 7: 12 }[k] ?? 0);
+      return midi + degreeSemis(steps, d + k) - steps[d];
+    }
+
+    /**
+     * Die Tonfolge des Arps, noch vor der Richtung:
+     * - automatisch: das Muster ab dem Grundton des aktuellen Akkords (nur
+     *   solange der Groove läuft — ohne Groove gibt es keine Harmonie);
+     * - manuell: jede gewählte Taste nach dem Muster erweitert, in der
+     *   Reihenfolge des Drückens.
+     * Danach über die Oktavzahl gestreut. Außer bei "Spielreihenfolge" wird
+     * aufsteigend sortiert, damit auf-/abwärts wirklich steigt bzw. fällt.
+     */
+    _arpSequence(h) {
+      const s = this.state;
+      let seq = [];
+      if (s.arpAuto) {
+        if (!h || !this.playing) return [];
+        const offsets = ARP_AUTO_PATTERNS.find(([id]) => id === s.arpAutoPattern)[2];
+        const root = 12 * (s.octave + 1) + foldRoot(h.keyRoot);
+        const deg = foldDegree(h.deg);
+        seq = offsets.map((o) => root + degreeSemis(h.steps, deg + o));
+      } else {
+        const offsets = ARP_PATTERNS.find(([id]) => id === s.arpPattern)[2];
+        seq = this._arpHeld().flatMap((midi) => offsets.map((o) => this._diatonicAbove(midi, o)));
+      }
+      if (!seq.length) return [];
+      const spread = [];
+      for (let oct = 0; oct < s.arpOctaves; oct++) for (const midi of seq) spread.push(midi + oct * 12);
+      if (s.arpMode === 'order') return spread;
+      return [...new Set(spread)].sort((a, b) => a - b);
     }
 
     /**
      * Arp-Uhr für den Fall, dass der Groove NICHT läuft: Sobald Tasten
-     * gehalten werden, spielt der Arp trotzdem — im eingestellten Tempo, auf
-     * der Audio-Uhr vorausgeplant wie der Haupt-Scheduler. Sie endet von
-     * selbst, wenn nichts mehr gehalten wird oder der Groove startet (dann
-     * übernimmt dessen Scheduler, taktgenau mit Beat und Swing).
+     * gewählt sind, spielt der manuelle Arp trotzdem — im eingestellten
+     * Tempo, auf der Audio-Uhr vorausgeplant wie der Haupt-Scheduler. Sie
+     * endet von selbst, wenn nichts mehr gewählt ist oder der Groove startet
+     * (dann übernimmt dessen Scheduler, taktgenau mit Beat und Swing).
      */
     _ensureArpClock() {
-      if (this.playing || !this.state.arpOn || this._arpTimer || !this.engine.ready) return;
+      if (this.playing || !this._arpManual() || this._arpTimer || !this.engine.ready) return;
       if (!this._arpHeld().length) return;
       const ctx = this.engine.ctx;
       let step = 0;
       let next = ctx.currentTime + .03;
       const tick = () => {
-        if (this.playing || !this.state.arpOn || !this.engine.ready || !this._arpHeld().length) { this._arpTimer = 0; return; }
+        if (this.playing || !this._arpManual() || !this.engine.ready || !this._arpHeld().length) { this._arpTimer = 0; return; }
         while (next < ctx.currentTime + .1) {
-          if (step % this.state.arpDivision === 0) this._playArp(step, next, null);
+          const trigger = this._arpTrigger(step);
+          if (trigger) this._playArp(trigger, next, null);
           next += this._stepSeconds();
           step++;
         }
@@ -1793,31 +1886,6 @@
       }
     }
 
-    /**
-     * Notenvorrat des Arps:
-     * - Tasten gedrückt (oder per "Halten" gemerkt): genau diese Töne; eine
-     *   einzelne Taste spielt auf Wunsch den Dreiklang darauf (arpKeyMode).
-     * - keine Taste: während der Groove läuft der aktuelle Akkord der
-     *   Akkordfolge (arpIdle = 'progression'), sonst Pause.
-     * Danach über die eingestellte Oktavzahl gestreut.
-     */
-    _arpPool(h) {
-      const s = this.state;
-      const held = this._arpHeld();
-      let base = [];
-      if (held.length) {
-        base = s.arpKeyMode === 'chord' && held.length === 1 ? this._chordOnNote(held[0]) : held;
-      } else if (s.arpIdle === 'progression' && h && this.playing) {
-        const root = 12 * (s.octave + 1) + foldRoot(h.keyRoot);
-        const deg = foldDegree(h.deg);
-        base = (h.sevenths ? [0, 2, 4, 6] : [0, 2, 4]).map((o) => root + degreeSemis(h.steps, deg + o));
-      }
-      if (!base.length) return [];
-      const pool = [];
-      for (let oct = 0; oct < s.arpOctaves; oct++) for (const midi of base) pool.push(midi + oct * 12);
-      return pool;
-    }
-
     _arpIndex(phase, n) {
       if (this.state.arpMode === 'down') return n - 1 - (phase % n);
       if (this.state.arpMode === 'updown') {
@@ -1826,7 +1894,7 @@
         return p < n ? p : cycle - p;
       }
       if (this.state.arpMode === 'random') return Math.floor(Math.random() * n);
-      return phase % n; // 'up'
+      return phase % n; // 'up' und 'order' (die Folge ist dann schon so geordnet)
     }
 
     /* ---- Anzeige im Takt ---- */
@@ -2461,14 +2529,24 @@
       const s = this.state;
       this._setSwitch('arpOn', s.arpOn);
       this._setSwitch('latchOn', this.ui.latchOn);
-      // "Halten" gibt es nur zusammen mit dem Arp — ohne ihn gäbe es nichts,
-      // was die gemerkten Töne spielen würde.
-      const latch = this.$('[data-switch="latchOn"]');
-      latch.disabled = !s.arpOn;
-      latch.closest('.switch').classList.toggle('is-disabled', !s.arpOn);
+      this._setSwitch('arpAuto', s.arpAuto);
+      // "Halten" gibt es nur beim manuellen Arp, "Automatisch" nur mit Arp.
+      const enable = (key, on) => {
+        const input = this.$(`[data-switch="${key}"]`);
+        input.disabled = !on;
+        input.closest('.switch').classList.toggle('is-disabled', !on);
+      };
+      enable('latchOn', this._arpManual());
+      enable('arpAuto', s.arpOn);
       this.$('.arp-options').classList.toggle('is-off', !s.arpOn);
-      this._chips(this.$('.arp-keymode'), ARP_KEY_MODES.map(([id, key]) => ({ value: id, label: t(key) })), s.arpKeyMode, 'arp-keymode');
-      this._chips(this.$('.arp-idle'), ARP_IDLE_MODES.map(([id, key]) => ({ value: id, label: t(key) })), s.arpIdle, 'arp-idle');
+      const patterns = s.arpAuto ? ARP_AUTO_PATTERNS : ARP_PATTERNS;
+      this._options(this.$('[data-field="arpPattern"]'), patterns.map(([id, key]) => [id, t(key)]), s.arpAuto ? s.arpAutoPattern : s.arpPattern);
+      this._options(this.$('[data-field="arpMode"]'), ARP_MODES.map(([id, key]) => [id, t(key)]), s.arpMode);
+      this._options(this.$('[data-field="arpDivision"]'), ARP_DIVISIONS.map(([v, label]) => [v, label]), s.arpDivision);
+      this._options(this.$('[data-field="arpRhythm"]'), ARP_RHYTHMS.map(([id, key]) => [id, t(key)]), s.arpRhythm);
+      this.$('[data-action="arp-clear"]').hidden = !(this._latchActive() && this.latchedNotes.size);
+      this.$('.arp-status').textContent = !s.arpOn ? '' : s.arpAuto ? t('lab.arpStatusAuto')
+        : this._latchActive() ? t('lab.arpStatusLatch') : t('lab.arpStatusHold');
       this._chips(this.$('.keys-layout'), [
         { value: 'piano', label: t('lab.keysPiano') }, { value: 'scale', label: t('lab.keysScale') },
       ], s.keysLayout, 'keys-layout');
@@ -2476,8 +2554,6 @@
       this.$('.scale-pads').hidden = s.keysLayout !== 'scale';
       if (s.keysLayout === 'scale') this._buildPads();
       this._paintHeld();
-      this.$('[data-field="arpMode"]').value = s.arpMode;
-      this.$('[data-field="arpDivision"]').value = String(s.arpDivision);
       this.$('[data-field="arpOctaves"]').value = String(s.arpOctaves);
       this._chips(this.$('.octave-list'), [2, 3, 4, 5].map((o) => ({ value: o, label: String(o), title: tf('lab.octaveAria', { n: o }) })), s.octave, 'key-octave');
     }
@@ -2659,7 +2735,7 @@
       });
 
       host.addEventListener('pointermove', (e) => {
-        if (!pressedPointers.has(e.pointerId)) return;
+        if (!pressedPointers.has(e.pointerId) || this._latchActive()) return; // Halten: nur Antippen
         const key = keyFromPoint(e.clientX, e.clientY);
         if (key) this._enterKey(e.pointerId, key, this._midiForKey(key));
         else this._releaseKey(e.pointerId);
@@ -2692,26 +2768,20 @@
      * schnellen Überstreichen mehrerer Tasten ein Wettlauf, bei dem Tasten
      * an der falschen Stelle "hängen" blieben.
      *
-     * Mit Arpeggiator klingt die Taste nicht selbst, sondern speist den Arp.
-     * Mit "Halten" merkt er sich die Töne auch nach dem Loslassen; der
-     * nächste Anschlag, nachdem alle Tasten losgelassen wurden, ersetzt den
-     * gemerkten Satz (wie bei einem Hardware-Arpeggiator).
+     * Mit manuellem Arpeggiator klingt die Taste nicht selbst, sondern
+     * speist den Arp. (Mit "Halten" läuft das über _toggleLatched.)
      */
     _enterKey(id, keyEl, midi) {
+      if (this._latchActive()) { this._toggleLatched(midi); return; }
       const prev = this.keyVoices.get(id);
       if (prev && prev.midi === midi) return;
-      const arp = this.state.arpOn;
-      const latch = arp && this.ui.latchOn;
+      const arp = this._arpManual();
       if (prev) {
         this.keyVoices.delete(id);
         this.engine.releaseVoice(prev.voice);
-        if (latch) this.latchedNotes.delete(prev.midi); // Gleiten ersetzt, statt zu sammeln
-      } else if (latch && this.keyVoices.size === 0) {
-        this.latchedNotes.clear();
       }
       const entry = { keyEl, voice: null, midi };
       this.keyVoices.set(id, entry);
-      if (latch) this.latchedNotes.add(midi);
       this._paintHeld();
       (async () => {
         try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
@@ -2719,6 +2789,21 @@
         if (arp) { this._ensureArpClock(); return; }
         entry.voice = this.engine.playTone(this.state.sound, midi, this.engine.ctx.currentTime, .3, undefined,
           { layer: 'keys', stepSeconds: this._stepSeconds() });
+      })();
+    }
+
+    /** "Halten": Antippen nimmt einen Ton in die Auswahl auf, erneutes
+     *  Antippen nimmt ihn wieder heraus — Töne lassen sich so nacheinander
+     *  sammeln, ohne dass ein neuer Anschlag alles zurücksetzt. Die
+     *  Reihenfolge des Antippens bleibt erhalten (Richtung "Spielreihenfolge"). */
+    _toggleLatched(midi) {
+      if (this.latchedNotes.has(midi)) this.latchedNotes.delete(midi);
+      else this.latchedNotes.add(midi);
+      this._paintHeld();
+      this.$('[data-action="arp-clear"]').hidden = !this.latchedNotes.size;
+      (async () => {
+        try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+        this._ensureArpClock();
       })();
     }
 
@@ -2734,7 +2819,7 @@
     _paintHeld() {
       const pressed = new Set();
       this.keyVoices.forEach((held) => pressed.add(held.midi));
-      const latched = this.state.arpOn && this.ui.latchOn ? this.latchedNotes : new Set();
+      const latched = this._latchActive() ? this.latchedNotes : new Set();
       this.$all('.keyboard .key, .scale-pads .pad').forEach((el) => {
         const midi = this._midiForKey(el);
         el.classList.toggle('is-hot', pressed.has(midi) || latched.has(midi));
@@ -2789,6 +2874,8 @@
         if (field === 'chordBars') { s.chordBars = Number(el.value); this._renderNow(); }
         else if (field === 'arpMode') s.arpMode = el.value;
         else if (field === 'arpDivision') s.arpDivision = Number(el.value);
+        else if (field === 'arpRhythm') s.arpRhythm = el.value;
+        else if (field === 'arpPattern') s[s.arpAuto ? 'arpAutoPattern' : 'arpPattern'] = el.value;
         else if (field === 'arpOctaves') s.arpOctaves = Number(el.value);
         else if (field === 'echoDiv') { s.fx.echoDiv = Number(el.value); this.engine.setFx(s.fx, this._stepSeconds()); }
         else if (field === 'lfoSync') { s.sound.lfoSync = Number(el.value); this._onSoundEdit(); }
@@ -2811,11 +2898,11 @@
       if (key === 'droneOn') { this._setDrone(on); return; }
       if (key === 'droneFifth') { s.droneFifth = on; if (s.droneOn) this._startDrone(); return; }
       if (key === 'latchOn') { this.ui.latchOn = on; if (!on) this._releaseAllKeys(); this._renderKeys(); return; }
-      if (key === 'arpOn') {
-        // Beim Umschalten nichts hängen lassen: klingende Tasten bzw. den
-        // gemerkten Arp-Satz freigeben; "Halten" gehört zum Arp.
-        s.arpOn = on;
-        if (!on) this.ui.latchOn = false;
+      if (key === 'arpOn' || key === 'arpAuto') {
+        // Beim Umschalten nichts hängen lassen: klingende Tasten bzw. die
+        // gemerkte Auswahl freigeben; "Halten" gehört zum manuellen Arp.
+        s[key] = on;
+        if (!this._arpManual()) this.ui.latchOn = false;
         this._releaseAllKeys();
         this._renderKeys();
         return;
@@ -2896,8 +2983,7 @@
         case 'filter-type': s.sound.filterType = value; this._onSoundEdit(); this._renderSynthControls(); break;
 
         // Keys
-        case 'arp-keymode': s.arpKeyMode = value; this._renderKeys(); break;
-        case 'arp-idle': s.arpIdle = value; this._renderKeys(); break;
+        case 'arp-clear': this.latchedNotes.clear(); this._paintHeld(); this._renderKeys(); break;
         case 'keys-layout': this._releaseAllKeys(); s.keysLayout = value; this._renderKeys(); break;
         case 'help': {
           const text = this.$(`[data-help-text="${target.dataset.help}"]`);
@@ -3276,7 +3362,10 @@
   .module .chip-row { margin-bottom: 10px; }
   .module .select-line { margin-top: 8px; }
 
-  .arp-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .arp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .arp-grid .arp-pattern { grid-column: span 2; }
+  .arp-status { margin: 0 0 10px; font-size: .72rem; font-weight: 700; color: var(--accent); min-height: 1em; }
+  .arp-clear { margin-top: 12px; }
   .arp-options.is-off { opacity: .45; }
   .switch.is-disabled { opacity: .4; cursor: default; }
   .scale-pads { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -3512,30 +3601,23 @@
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}</div>
       ${helpText('helpArp')}
-      <div class="switch-row">${toggle('arpOn', 'lab.arpOn')}${toggle('latchOn', 'lab.latch')}</div>
+      <div class="switch-row">${toggle('arpOn', 'lab.arpOn')}${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
       <div class="arp-options">
-        <span class="sub-label">${t('lab.arpKeyMode')}</span>
-        <div class="chip-row arp-keymode"></div>
-        <span class="sub-label">${t('lab.arpIdle')}</span>
-        <div class="chip-row arp-idle"></div>
-        <div class="arp-controls">
-          <select data-field="arpMode" aria-label="${t('lab.directionAria')}">
-            <option value="up">${t('lab.arpUp')}</option>
-            <option value="down">${t('lab.arpDown')}</option>
-            <option value="updown">${t('lab.arpUpDown')}</option>
-            <option value="random">${t('lab.arpRandom')}</option>
-          </select>
-          <select data-field="arpDivision" aria-label="${t('lab.speedAria')}">
-            <option value="1">1/16</option>
-            <option value="2">1/8</option>
-            <option value="4">1/4</option>
-          </select>
-          <select data-field="arpOctaves" aria-label="${t('lab.octaveRangeAria')}">
-            <option value="1">${t('lab.octave1')}</option>
-            <option value="2">${t('lab.octave2')}</option>
-            <option value="3">${t('lab.octave3')}</option>
-          </select>
+        <p class="arp-status" role="status"></p>
+        <div class="arp-grid">
+          <label class="select-field arp-pattern"><span>${t('lab.arpPattern')}</span><select data-field="arpPattern"></select></label>
+          <label class="select-field"><span>${t('lab.directionAria')}</span><select data-field="arpMode"></select></label>
+          <label class="select-field"><span>${t('lab.speedAria')}</span><select data-field="arpDivision"></select></label>
+          <label class="select-field"><span>${t('lab.arpRhythm')}</span><select data-field="arpRhythm"></select></label>
+          <label class="select-field"><span>${t('lab.octaveRangeAria')}</span>
+            <select data-field="arpOctaves">
+              <option value="1">${t('lab.octave1')}</option>
+              <option value="2">${t('lab.octave2')}</option>
+              <option value="3">${t('lab.octave3')}</option>
+            </select>
+          </label>
         </div>
+        <button class="chip arp-clear" type="button" data-action="arp-clear" hidden>${t('lab.arpClear')}</button>
       </div>
     </section>
 
