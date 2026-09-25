@@ -572,14 +572,20 @@
     const steps = METERS[meter].steps;
     return raw.slice(0, MEL_MAX_BARS).map((bar) => {
       if (!Array.isArray(bar)) return [];
+      // Position und Länge dürfen gebrochen sein (eingespielt, ohne Raster).
+      const r2 = (v) => Math.round(v * 100) / 100;
       const notes = bar
-        .filter((n) => Array.isArray(n) && [0, 1, 2].every((k) => Number.isInteger(n[k]))
-          && n[0] >= 0 && n[0] < steps && n[1] >= MEL_LOW && n[1] <= MEL_HIGH && n[2] >= 1)
-        .slice(0, 32)
-        .map(([at, deg, len, alt]) => (alt === 1 || alt === -1 ? [at, deg, Math.min(len, steps - at), alt] : [at, deg, Math.min(len, steps - at)]))
+        .filter((n) => Array.isArray(n) && Number.isFinite(n[0]) && Number.isInteger(n[1]) && Number.isFinite(n[2])
+          && n[0] >= 0 && n[0] < steps && n[1] >= MEL_LOW && n[1] <= MEL_HIGH && n[2] >= .1)
+        .slice(0, 64)
+        .map(([at, deg, len, alt]) => {
+          const note = [r2(at), deg, r2(Math.min(len, steps - at))];
+          if (alt === 1 || alt === -1) note.push(alt);
+          return note;
+        })
         .sort((a, b) => a[0] - b[0])
         .filter((n, i, arr) => !i || arr[i - 1][0] !== n[0]);
-      notes.forEach((n, i) => { if (notes[i + 1] && n[0] + n[2] > notes[i + 1][0]) n[2] = notes[i + 1][0] - n[0]; });
+      notes.forEach((n, i) => { if (notes[i + 1] && n[0] + n[2] > notes[i + 1][0]) n[2] = Math.round((notes[i + 1][0] - n[0]) * 100) / 100; });
       return notes;
     });
   }
@@ -1437,6 +1443,8 @@
       this.state = defaultState();
       this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null,
         melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [] };
+      // Einspielen: Phase idle → armed (zählt ein) → recording → done.
+      this.rec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, notes: [], open: new Map(), take: null };
 
       this.playing = false;
       this.globalStep = 0;
@@ -1708,6 +1716,8 @@
       if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
       this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
       this._showMelodyStep(-1);
+      if (this.rec.phase === 'recording') this._recFinish();
+      else if (this.rec.phase === 'armed') { this.rec.phase = 'idle'; this._renderRec(); }
       this._renderTransport();
       this._renderNow();
       this._setStatus(t('lab.statusReady'));
@@ -1776,6 +1786,10 @@
       while (this.nextStepTime < ctx.currentTime + .1) {
         const g = this.globalStep;
         const h = this._harmonyAt(g);
+        if (this.rec.phase === 'armed' && g === this.rec.startStep) {
+          this.rec.startTime = this.nextStepTime;
+          this.rec.stepSec = this._stepSeconds();
+        }
         this._playStep(g, this.nextStepTime, h);
         this.scheduledSteps.push({ g, time: this.nextStepTime, h });
         this.nextStepTime += this._stepSeconds();
@@ -1804,7 +1818,7 @@
       }
 
       if (h.chordStart && s.chordsOn) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
-      if (s.melodyOn) this._playMelodyStep(g, h, swung, stepSec);
+      if (s.melodyOn && this.rec.phase !== 'armed' && this.rec.phase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
 
       if (s.arpOn) {
         const trigger = this._arpTrigger(g);
@@ -1966,9 +1980,11 @@
       const shift = foldDegree(h.deg);
       const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
       for (const [at, deg, len, alt = 0] of notes) {
-        if (at !== step) continue;
+        // Eingespielte Töne liegen zwischen den Sechzehnteln: im Schritt, in
+        // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
+        if (Math.floor(at) !== step) continue;
         const midi = base + degreeSemis(h.steps, deg + shift) + alt;
-        this.engine.playTone(s.sound, midi, time, .2, len * stepSec, { layer: 'melody', stepSeconds: stepSec });
+        this.engine.playTone(s.sound, midi, time + (at - step) * stepSec, .2, len * stepSec, { layer: 'melody', stepSeconds: stepSec });
       }
     }
 
@@ -1995,6 +2011,7 @@
         this.shown = latest;
         this._showStep(latest, chordChanged);
       }
+      if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recTick(now);
       this.visualFrame = global.requestAnimationFrame(() => this._drawSteps());
     }
 
@@ -2088,6 +2105,7 @@
       this._renderSound();
       this._renderMixer();
       this._renderKeys();
+      this._renderRec();
       this._renderTransport();
       this._renderNow();
     }
@@ -2384,8 +2402,7 @@
 
     /** Notenrolle zeichnen — klein (alle Takte, zum Anschauen) oder groß
      *  (ein Takt, zum Bearbeiten, mit Stufen-Beschriftung links). */
-    _paintMelRoll(host, barIdx, large) {
-      const bars = this._melody().bars;
+    _paintMelRoll(host, barIdx, large, bars = this._melody().bars) {
       const steps = this._barSteps();
       const meter = METERS[this._meter()];
       const cols = barIdx.length * steps;
@@ -2879,7 +2896,9 @@
       };
       enable('latchOn', this._arpManual());
       enable('arpAuto', s.arpOn);
-      this.$('.arp-options').classList.toggle('is-off', !s.arpOn);
+      // Ausgeschaltet eingeklappt: nur Überschrift und An/Aus bleiben.
+      this.$('.arp-options').hidden = !s.arpOn;
+      this.$('.arp-switches').hidden = !s.arpOn;
       const patterns = s.arpAuto ? ARP_AUTO_PATTERNS : ARP_PATTERNS;
       this._options(this.$('[data-field="arpPattern"]'), patterns.map(([id, key]) => [id, t(key)]), s.arpAuto ? s.arpAutoPattern : s.arpPattern);
       this._options(this.$('[data-field="arpMode"]'), ARP_MODES.map(([id, key]) => [id, t(key)]), s.arpMode);
@@ -3276,9 +3295,11 @@
       if (prev) {
         this.keyVoices.delete(id);
         this.engine.releaseVoice(prev.voice);
+        this._recNoteOff(id);
       }
       const entry = { keyEl, voice: null, midi };
       this.keyVoices.set(id, entry);
+      this._recNoteOn(id, midi);
       this._paintHeld();
       (async () => {
         try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
@@ -3309,6 +3330,7 @@
       if (!held) return;
       this.keyVoices.delete(id);
       if (held.voice) this.engine.releaseVoice(held.voice);
+      this._recNoteOff(id);
       this._paintHeld();
     }
 
@@ -3325,12 +3347,195 @@
     }
 
     _releaseAllKeys() {
-      this.keyVoices.forEach((held) => this.engine.releaseVoiceFast(held.voice));
+      this.keyVoices.forEach((held, id) => { this.engine.releaseVoiceFast(held.voice); this._recNoteOff(id); });
       this.keyVoices.clear();
       this.latchedNotes.clear();
       this._pressedPointerSets?.forEach((set) => set.clear());
       this._stopArpClock();
       this._paintHeld();
+    }
+
+    /* ---- Einspielen ----
+       Aufnahme über die Groove-Uhr: Nach einem Takt Einzählen werden die
+       gewählten Takte lang alle Tastenanschläge mit ihrer Audio-Zeit
+       mitgeschrieben — ohne Raster. Beim Speichern wird jeder Ton in eine
+       Stufe über dem Akkord umgerechnet, der an dieser Stelle klang (plus
+       ♭/♯, falls er außerhalb der Tonart liegt); so verhält sich die
+       Aufnahme wie jede andere Melodie und lässt sich im Editor bearbeiten. */
+
+    /** Audio-Zeitpunkt, den man gerade HÖRT (Ausgabelatenz abgezogen). */
+    _recNow() {
+      const ctx = this.engine.ctx;
+      return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+    }
+
+    async _recArm() {
+      const rec = this.rec;
+      const barSteps = this._barSteps();
+      rec.barSteps = barSteps;
+      rec.notes = [];
+      rec.open.clear();
+      rec.take = null;
+      rec.startTime = 0;
+      if (!this.playing) {
+        await this.start();
+        if (!this.playing) return;
+        rec.startStep = barSteps; // ein Takt Einzählen
+      } else {
+        // nächster Taktanfang, der noch mindestens einen halben Takt entfernt ist
+        let next = Math.ceil(this.globalStep / barSteps) * barSteps;
+        if (next - this.globalStep < barSteps / 2) next += barSteps;
+        rec.startStep = next;
+      }
+      rec.phase = 'armed';
+      this._renderRec();
+    }
+
+    _recTick(now) {
+      const rec = this.rec;
+      // Noch nicht vom Scheduler erreicht: Startzeit aus dem Raster schätzen.
+      const startTime = rec.startTime || this.nextStepTime + (rec.startStep - this.globalStep) * this._stepSeconds();
+      const heard = now - (this.engine.ctx.outputLatency || this.engine.ctx.baseLatency || 0);
+      const total = rec.bars * rec.barSteps * rec.stepSec;
+      if (rec.phase === 'armed') {
+        const left = startTime - heard;
+        const beats = METERS[this._meter()].beats.length;
+        const beatSec = (rec.barSteps / beats) * this._stepSeconds();
+        this.$('.rec-count').textContent = left > 0 ? String(Math.min(beats, Math.ceil(left / beatSec))) : '';
+        if (left <= 0 && rec.startTime) { rec.phase = 'recording'; this._renderRec(); }
+        return;
+      }
+      const pos = clamp((heard - rec.startTime) / total, 0, 1);
+      this.$('.rec-progress i').style.width = `${pos * 100}%`;
+      this.$('.rec-bar-now').textContent = tf('lab.recBarOf', { n: Math.min(rec.bars, Math.floor(pos * rec.bars) + 1), total: rec.bars });
+      if (pos >= 1) this._recFinish();
+    }
+
+    _recNoteOn(id, midi) {
+      const rec = this.rec;
+      if (rec.phase !== 'armed' && rec.phase !== 'recording') return;
+      if (!this.engine.ready) return;
+      rec.open.set(id, { midi, t0: this._recNow() });
+    }
+
+    _recNoteOff(id) {
+      const rec = this.rec;
+      const open = rec.open.get(id);
+      if (!open) return;
+      rec.open.delete(id);
+      rec.notes.push({ ...open, t1: this._recNow() });
+    }
+
+    _recFinish() {
+      const rec = this.rec;
+      if (rec.phase !== 'recording' && rec.phase !== 'armed') return;
+      const end = rec.startTime + rec.bars * rec.barSteps * rec.stepSec;
+      const now = this.engine.ready ? this._recNow() : end;
+      rec.open.forEach((open) => rec.notes.push({ ...open, t1: Math.min(now, end) }));
+      rec.open.clear();
+      rec.take = rec.startTime ? this._recToBars() : null;
+      rec.phase = rec.take && rec.take.some((bar) => bar.length) ? 'done' : 'idle';
+      if (rec.phase === 'idle') this._setStatus(t('lab.recEmpty'));
+      this._renderRec();
+    }
+
+    /** Mitschrift → Takte aus [Schritt, Stufe, Länge, Vorzeichen?]. */
+    _recToBars() {
+      const rec = this.rec;
+      const s = this.state;
+      const steps = rec.barSteps;
+      const total = rec.bars * steps;
+      const r2 = (v) => Math.round(v * 100) / 100;
+      const notes = rec.notes.map(({ midi, t0, t1 }) => {
+        let pos = (t0 - rec.startTime) / rec.stepSec;
+        // knapp vor dem Einsatz angeschlagen zählt als "auf Eins"
+        if (pos < 0 && pos > -.5) pos = 0;
+        const endPos = Math.min(total, (t1 - rec.startTime) / rec.stepSec);
+        if (pos < 0 || pos >= total) return null;
+        const h = this._harmonyAt(rec.startStep + Math.floor(pos));
+        const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
+        const shift = foldDegree(h.deg);
+        const target = midi - base;
+        // Stufe suchen, die genau passt — sonst die darunter mit ♯
+        let deg = null;
+        let alt = 0;
+        for (let d = -28; d <= 35 && deg === null; d++) if (degreeSemis(h.steps, d) === target) deg = d - shift;
+        for (let d = -28; d <= 35 && deg === null; d++) if (degreeSemis(h.steps, d) === target - 1) { deg = d - shift; alt = 1; }
+        if (deg === null) return null;
+        return { pos, len: Math.max(.25, endPos - pos), deg, alt };
+      }).filter(Boolean).sort((a, b) => a.pos - b.pos);
+      // Ganze Aufnahme in den Editorbereich schieben (in Oktaven), Rest falten.
+      if (notes.length) {
+        const hi = Math.max(...notes.map((n) => n.deg));
+        const lo = Math.min(...notes.map((n) => n.deg));
+        let move = 0;
+        while (hi + move > MEL_HIGH && lo + move - 7 >= MEL_LOW) move -= 7;
+        while (lo + move < MEL_LOW && hi + move + 7 <= MEL_HIGH) move += 7;
+        notes.forEach((n) => {
+          n.deg += move;
+          while (n.deg > MEL_HIGH) n.deg -= 7;
+          while (n.deg < MEL_LOW) n.deg += 7;
+        });
+      }
+      const bars = Array.from({ length: rec.bars }, () => []);
+      notes.forEach((n) => {
+        const bar = Math.floor(n.pos / steps);
+        const at = r2(n.pos - bar * steps);
+        // Takt-übergreifende Töne enden am Taktstrich (Melodien sind taktweise).
+        const len = r2(Math.max(.25, Math.min(n.len, steps - at)));
+        bars[bar].push(n.alt ? [at, n.deg, len, n.alt] : [at, n.deg, len]);
+      });
+      // Melodie-Takt k klingt später im Groove-Takt (k mod Anzahl). Die
+      // Aufnahme begann im Groove-Takt startBar — also so drehen, dass jeder
+      // Takt wieder über dem Akkord landet, über dem er eingespielt wurde.
+      const startBar = Math.round(rec.startStep / steps);
+      const rotated = bars.map((_, k) => bars[mod(k - startBar, bars.length)]);
+      return sanitizeMelodyBars(rotated, this._meter()) || rotated;
+    }
+
+    _recSave() {
+      const rec = this.rec;
+      if (!rec.take) return;
+      const s = this.state;
+      const lib = this._saved.melodies;
+      if (lib.length >= MEL_MAX_OWN) { this._setStatus(t('lab.melLibraryFull')); return; }
+      let n = 1;
+      while (lib.some((m) => m.name === tf('lab.recTakeN', { n }))) n++;
+      const name = tf('lab.recTakeN', { n });
+      const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      lib.push({ id, name, meter: this._meter(), bars: rec.take.map((bar) => bar.map((note) => [...note])) });
+      this._clearMelodyEdit();
+      s.melodyBars = rec.take.map((bar) => bar.map((note) => [...note]));
+      s.melodyMeter = this._meter();
+      s.melodyName = name;
+      s.melodyOwnId = id;
+      s.melodyOn = true;
+      rec.phase = 'idle';
+      rec.take = null;
+      this._persist();
+      this._renderMelody();
+      this._renderRec();
+      this._setStatus(tf('lab.melSaved', { name }));
+    }
+
+    _renderRec() {
+      const rec = this.rec;
+      const phase = rec.phase;
+      this._chips(this.$('.rec-bars'), [1, 2, 3, 4].map((n) => ({ value: n, label: String(n) })), rec.bars, 'rec-bars');
+      this.$all('.rec-bars .chip').forEach((chip) => { chip.disabled = phase === 'armed' || phase === 'recording'; });
+      const btn = this.$('[data-action="rec-toggle"]');
+      const busy = phase === 'armed' || phase === 'recording';
+      btn.classList.toggle('is-live', busy);
+      btn.querySelector('span').textContent = t(busy ? 'lab.recStop' : 'lab.recStart');
+      this.$('.rec-live').hidden = !busy;
+      this.$('.rec-count').hidden = phase !== 'armed';
+      this.$('.rec-status').textContent = phase === 'armed' ? t('lab.recArmed') : phase === 'recording' ? '' : '';
+      this.$('.rec-progress').hidden = phase !== 'recording';
+      this.$('.rec-bar-now').hidden = phase !== 'recording';
+      if (phase !== 'recording') this.$('.rec-progress i').style.width = '0';
+      const result = this.$('.rec-result');
+      result.hidden = phase !== 'done';
+      if (phase === 'done') this._paintMelRoll(this.$('.rec-roll'), rec.take.map((_, i) => i), false, rec.take);
     }
 
     /* ---- Verkabelung ---- */
@@ -3518,6 +3723,13 @@
         case 'mel-len': this.ui.melLen = Number(value); this._renderMelEditor(); break;
         case 'mel-alt': this.ui.melAlt = Number(value); this._renderMelEditor(); break;
         case 'mel-save': this._melSaveOwn(); break;
+        case 'rec-bars': this.rec.bars = Number(value); this._renderRec(); break;
+        case 'rec-toggle':
+          if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recFinish();
+          else this._recArm();
+          break;
+        case 'rec-save': this._recSave(); break;
+        case 'rec-discard': this.rec.phase = 'idle'; this.rec.take = null; this._renderRec(); break;
         case 'mel-delete': this._melDeleteOwn(); break;
         case 'melody-octave': s.melodyOctave = Number(value); this._renderMelody(); break;
 
@@ -3926,7 +4138,7 @@
   .arp-grid .arp-pattern { grid-column: span 2; }
   .arp-status { margin: 0 0 10px; font-size: .72rem; font-weight: 700; color: var(--accent); min-height: 1em; }
   .arp-clear { margin-top: 12px; }
-  .arp-options.is-off { opacity: .45; }
+
   .switch.is-disabled { opacity: .4; cursor: default; }
   .scale-pads { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; touch-action: none; user-select: none; -webkit-user-select: none; }
   .pad {
@@ -4030,6 +4242,23 @@
   .mel-name { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 7px 9px; font-size: .8rem; color: var(--text); }
   .mel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
   .mel-done { margin-left: auto; padding: 9px 20px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .76rem; }
+
+  .rec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rec-bars .chip { min-width: 34px; text-align: center; }
+  .rec-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .76rem; }
+  .rec-btn i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); }
+  .rec-btn.is-live { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .rec-btn.is-live i { background: #fff; border-radius: 2px; animation: rec-blink 1s steps(2) infinite; }
+  @keyframes rec-blink { 50% { opacity: .3; } }
+  .rec-live { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 30px; }
+  .rec-count { font-size: 1.4rem; font-weight: 800; color: var(--bad); min-width: 1ch; }
+  .rec-status, .rec-bar-now { font-size: .72rem; font-weight: 700; color: var(--muted); }
+  .rec-progress { flex: 1; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .rec-progress i { display: block; height: 100%; width: 0; background: var(--bad); }
+  .rec-result { margin-top: 10px; }
+  .rec-result .mel-mini { border: 1px solid var(--line); }
+  .rec-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
   .picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; justify-content: flex-end; }
   .picker-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); opacity: 0; transition: opacity .22s; }
@@ -4281,7 +4510,7 @@
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}${bareToggle('arpOn', 'lab.arpOn')}</div>
       ${helpText('helpArp')}
-      <div class="switch-row">${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
+      <div class="switch-row arp-switches">${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
       <div class="arp-options">
         <p class="arp-status" role="status"></p>
         <div class="arp-grid">
@@ -4310,6 +4539,30 @@
       </div>
       <div class="keyboard"></div>
       <div class="scale-pads" hidden></div>
+    </section>
+
+    <section class="panel rec-panel">
+      <div class="panel-head"><h2>${t('lab.recTitle')}</h2>${help('recHint')}</div>
+      ${helpText('recHint')}
+      <div class="rec-row">
+        <span class="chip-label">${t('lab.recBars')}</span>
+        <div class="chip-row rec-bars" role="group" aria-label="${t('lab.recBars')}"></div>
+        <button class="rec-btn" type="button" data-action="rec-toggle"><i aria-hidden="true"></i><span>${t('lab.recStart')}</span></button>
+      </div>
+      <div class="rec-live" hidden>
+        <strong class="rec-count" aria-live="polite"></strong>
+        <span class="rec-status"></span>
+        <div class="rec-progress" hidden><i></i></div>
+        <span class="rec-bar-now" hidden></span>
+      </div>
+      <div class="rec-result" hidden>
+        <div class="mel-mini rec-roll" aria-hidden="true"></div>
+        <div class="rec-actions">
+          <button class="chip" type="button" data-action="rec-discard">${t('lab.recDiscard')}</button>
+          <button class="chip" type="button" data-action="rec-toggle">${t('lab.recAgain')}</button>
+          <button class="mel-done" type="button" data-action="rec-save">${t('lab.recSave')}</button>
+        </div>
+      </div>
     </section>
   </section>
 </div>
