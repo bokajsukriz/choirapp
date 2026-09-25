@@ -117,6 +117,8 @@
   .stage .is-near { fill: var(--near); stroke: var(--near); }
   .stage .is-miss { fill: var(--surface); stroke: var(--bad); stroke-width: 2.2; }
   .stage .hd.is-miss { fill: var(--bad); }
+  /* Halbe/Ganze bleiben hohl, auch wenn sie eingefärbt werden. */
+  .stage .hd-o.is-good, .stage .hd-o.is-near, .stage .hd-o.is-miss { fill: var(--surface); stroke-width: 2.2; }
   .stage .is-extra { fill: var(--bad); }
   .stage .ph { stroke: var(--accent); stroke-width: 2; opacity: .75; }
 
