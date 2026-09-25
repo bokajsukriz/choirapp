@@ -487,9 +487,11 @@
   // Filter-Kategorien; 'all' (kein Filter) hat keine eigene Bubble, sondern ein X.
   const BEAT_CATS = ['calm', 'dance', 'funky', 'breaks'];
   const MELODY_CATS = ['calm', 'dance', 'funky'];
+  // Eigene Melodien bekommen eine eigene Filter-Kategorie (nur sichtbar, wenn es welche gibt).
+  const OWN_CAT = 'own';
   const PRESET_CATS = ['pad', 'keys', 'lead'];
   const CAT_KEY = { calm: 'lab.catCalm', dance: 'lab.catDance', funky: 'lab.catFunky', breaks: 'lab.catBreaks',
-                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead' };
+                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead', own: 'lab.catOwn' };
 
   // Mischpult-Kanäle. Melodie, Arp und Tasten teilen sich EINEN Synth-Klang
   // (SOUND_LAYERS), haben aber eigene Kanäle für die Lautstärke.
@@ -536,6 +538,9 @@
       chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       droneOn: false, droneFifth: true,
       melodyIndex: 0, melodyOn: true, melodyOctave: 4,
+      // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
+      // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
+      melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
       arpOn: false, arpAuto: false, arpPattern: 'triad', arpAutoPattern: 'triad', arpMode: 'up',
       arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1,
       keysLayout: 'piano',
@@ -546,6 +551,50 @@
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2 },
       locks: { beat: false, harmony: false, melody: false, sound: false },
     };
+  }
+
+  /* Melodie-Editor: sichtbarer Stufenbereich (8 oben … eine Oktave tiefer
+     bis zur 5 unten), wählbare Tonlängen in Sechzehnteln und Obergrenzen. */
+  const MEL_HIGH = 7;
+  const MEL_LOW = -3;
+  const MEL_LENGTHS = [[1, '1/16'], [2, '1/8'], [4, '1/4'], [6, '1/4 ·'], [8, '1/2']];
+  const MEL_MAX_BARS = 4;
+  const MEL_MAX_OWN = 24;
+  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+  /** Takte einer Melodie prüfen: [Schritt, Stufe, Länge, Vorzeichen?] —
+   *  einstimmig, im Takt, Stufe im Editorbereich, Vorzeichen nur ±1.
+   *  Liefert null, wenn nichts Brauchbares übrig bleibt. */
+  function sanitizeMelodyBars(raw, meter) {
+    if (!hasOwn(METERS, meter) || !Array.isArray(raw) || !raw.length) return null;
+    const steps = METERS[meter].steps;
+    return raw.slice(0, MEL_MAX_BARS).map((bar) => {
+      if (!Array.isArray(bar)) return [];
+      const notes = bar
+        .filter((n) => Array.isArray(n) && [0, 1, 2].every((k) => Number.isInteger(n[k]))
+          && n[0] >= 0 && n[0] < steps && n[1] >= MEL_LOW && n[1] <= MEL_HIGH && n[2] >= 1)
+        .slice(0, 32)
+        .map(([at, deg, len, alt]) => (alt === 1 || alt === -1 ? [at, deg, Math.min(len, steps - at), alt] : [at, deg, Math.min(len, steps - at)]))
+        .sort((a, b) => a[0] - b[0])
+        .filter((n, i, arr) => !i || arr[i - 1][0] !== n[0]);
+      notes.forEach((n, i) => { if (notes[i + 1] && n[0] + n[2] > notes[i + 1][0]) n[2] = notes[i + 1][0] - n[0]; });
+      return notes;
+    });
+  }
+
+  /** Bibliothek eigener Melodien (liegt neben den Speicherplätzen, nicht im
+   *  Stand — ein geladener Speicherplatz soll sie nicht überschreiben). */
+  function sanitizeMelodyLibrary(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    return raw.slice(0, MEL_MAX_OWN).map((m) => {
+      if (!m || typeof m !== 'object' || typeof m.id !== 'string' || seen.has(m.id)) return null;
+      const bars = sanitizeMelodyBars(m.bars, m.meter);
+      if (!bars) return null;
+      seen.add(m.id);
+      const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 40) : 'Melody';
+      return { id: m.id.slice(0, 24), name, meter: m.meter, bars };
+    }).filter(Boolean);
   }
 
   /** Eingelesenen Stand (Speicherplatz, geteilter Code, Undo) Feld für Feld
@@ -606,6 +655,14 @@
     s.droneOn = false;
     if (MELODIES[s.melodyIndex].meter !== pattern.meter) {
       s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === pattern.meter));
+    }
+    if (raw.melodyMeter === pattern.meter) {
+      s.melodyBars = sanitizeMelodyBars(raw.melodyBars, pattern.meter);
+      if (s.melodyBars) {
+        s.melodyMeter = pattern.meter;
+        s.melodyName = typeof raw.melodyName === 'string' && raw.melodyName.trim() ? raw.melodyName.trim().slice(0, 40) : null;
+        s.melodyOwnId = typeof raw.melodyOwnId === 'string' ? raw.melodyOwnId.slice(0, 24) : null;
+      }
     }
     return s;
   }
@@ -676,6 +733,9 @@
   const UI_ICON = {
     close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
     prev: svg('<path d="m15 6-6 6 6 6"/>'),
+    edit: svg('<path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m14 6 4 4"/>'),
+    redo: svg('<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>'),
+    newPage: svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z"/><path d="M14 3v5h5M12 11v6M9 14h6"/>'),
     next: svg('<path d="m9 6 6 6-6 6"/>'),
     play: svg('<path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/>'),
     pause: svg('<path d="M8 5v14M16 5v14"/>'),
@@ -757,7 +817,8 @@
 
   /** Mini-Notenrolle des ersten Takts einer Melodie. */
   function melodyPreview(melody) {
-    const notes = melody.bars[0];
+    const notes = melody.bars.find((bar) => bar.length) || [];
+    if (!notes.length) return '<svg class="preview" viewBox="0 0 64 16" aria-hidden="true"></svg>';
     const degrees = notes.map((n) => n[1]);
     const lo = Math.min(...degrees);
     const span = Math.max(1, Math.max(...degrees) - lo);
@@ -1372,7 +1433,8 @@
 
       this.engine = new GrooveEngine();
       this.state = defaultState();
-      this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null };
+      this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null,
+        melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [] };
 
       this.playing = false;
       this.globalStep = 0;
@@ -1393,7 +1455,7 @@
       this._soundKnobs = {};
 
       this._storage = null;
-      this._saved = { slots: [null, null, null, null], last: null };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [] };
       this._storageRequested = false;
       this._restoreFocusTo = null;
       this._bodyOverflow = '';
@@ -1465,6 +1527,8 @@
         if (!data || typeof data !== 'object') return;
         const slots = Array.isArray(data.slots) ? data.slots : [];
         this._saved.slots = [0, 1, 2, 3].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
+        this._saved.melodies = sanitizeMelodyLibrary(data.melodies);
+        this._renderMelody();
         // Den letzten Stand nur übernehmen, solange noch nichts gespielt oder
         // verändert wurde — sonst überschriebe ein langsames Laden Eingaben.
         if (data.last && !this.playing && !this.history.length) {
@@ -1536,7 +1600,18 @@
     _stepSeconds() { return 60 / this.state.bpm / 4; }
     _mode() { return MODES.find((m) => m.id === this.state.modeId) || MODES[0]; }
     _progression() { return PROGRESSIONS.find((p) => p.id === this.state.progId) || PROGRESSIONS[0]; }
-    _melody() { return MELODIES[this.state.melodyIndex]; }
+    /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
+    _melody() {
+      const s = this.state;
+      const base = MELODIES[s.melodyIndex];
+      if (!s.melodyBars) return base;
+      return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars };
+    }
+    _clearMelodyEdit() {
+      const s = this.state;
+      s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null;
+      this.ui.melUndo = []; this.ui.melRedo = []; this.ui.melBar = 0;
+    }
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
 
     /** Harmonie an einem Schritt: Tonart, Modus, Akkordstufe. */
@@ -1630,6 +1705,7 @@
       // Liegeton und gehaltene Tasten laufen unabhängig vom Transport weiter.
       if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
       this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
+      this._showMelodyStep(-1);
       this._renderTransport();
       this._renderNow();
       this._setStatus(t('lab.statusReady'));
@@ -1655,6 +1731,7 @@
       if (!locks.melody) {
         const candidates = MELODIES.map((m, i) => [m, i]).filter(([m]) => m.meter === this._meter());
         s.melodyIndex = pick(candidates)[1];
+        this._clearMelodyEdit();
       }
       this._ensureMelodyMeter();
       if (!locks.sound) {
@@ -1668,6 +1745,7 @@
      *  Wechsel des Loops still die erste passende Melodie. */
     _ensureMelodyMeter() {
       const s = this.state;
+      if (s.melodyBars && s.melodyMeter !== this._meter()) this._clearMelodyEdit();
       if (MELODIES[s.melodyIndex].meter === this._meter()) return;
       s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === this._meter()));
     }
@@ -1885,9 +1963,9 @@
       const step = g % barSteps;
       const shift = foldDegree(h.deg);
       const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
-      for (const [at, deg, len] of notes) {
+      for (const [at, deg, len, alt = 0] of notes) {
         if (at !== step) continue;
-        const midi = base + degreeSemis(h.steps, deg + shift);
+        const midi = base + degreeSemis(h.steps, deg + shift) + alt;
         this.engine.playTone(s.sound, midi, time, .2, len * stepSec, { layer: 'melody', stepSeconds: stepSec });
       }
     }
@@ -1922,6 +2000,7 @@
       const step = g % this._barSteps();
       this.$all('.track-list .step-cell').forEach((cell) => cell.classList.toggle('is-now', Number(cell.dataset.step) === step));
       this._renderBeatDots(step);
+      this._showMelodyStep(g);
       if (chordChanged) this._renderNow();
     }
 
@@ -2240,6 +2319,268 @@
       this._renderPickerFor('melody');
       this._chips(this.$('.melody-octaves'), [3, 4, 5].map((o) => ({ value: o, label: String(o) })), s.melodyOctave, 'melody-octave');
       this._renderLock('melody');
+      this._renderMelEditor();
+    }
+
+    /* ---- Melodie-Editor (Notenrolle) ----
+       Zeilen sind Tonleiterstufen über dem gerade klingenden Akkord, wie bei
+       den eingebauten Melodien — eigene Melodien wandern dadurch mit der
+       Akkordfolge mit und bleiben in der Tonart. "Zwischentöne" erlaubt
+       bewusst ♭/♯ (ein Halbton neben der Stufe), als Vorzeichen am Ton. */
+
+    _renderMelEditor() {
+      const s = this.state;
+      const editing = this.ui.melEdit;
+      const bars = this._melody().bars;
+      this.ui.melBar = Math.min(this.ui.melBar, bars.length - 1);
+      this.$('.mel-view').hidden = editing;
+      this.$('.mel-editor').hidden = !editing;
+      this._paintMelRoll(this.$('.mel-mini'), bars.map((_, i) => i), false);
+      if (!editing) return;
+      // Takt-Reiter, dazu + (Takt anhängen) und − (gewählten Takt entfernen)
+      const tabs = bars.map((_, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mel-bar-tab';
+        btn.dataset.action = 'mel-bar';
+        btn.dataset.value = String(i);
+        btn.textContent = String(i + 1);
+        btn.setAttribute('aria-label', tf('lab.melBarAria', { n: i + 1 }));
+        btn.setAttribute('aria-pressed', String(i === this.ui.melBar));
+        return btn;
+      });
+      const extra = (action, label, text, disabled) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mel-bar-tab is-extra';
+        btn.dataset.action = action;
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+        btn.textContent = text;
+        btn.disabled = disabled;
+        return btn;
+      };
+      this.$('.mel-bars').replaceChildren(...tabs,
+        extra('mel-add-bar', t('lab.melAddBar'), '+', bars.length >= MEL_MAX_BARS),
+        extra('mel-remove-bar', t('lab.melRemoveBar'), '−', bars.length <= 1));
+      this.$('[data-action="mel-undo"]').disabled = !this.ui.melUndo.length;
+      this.$('[data-action="mel-redo"]').disabled = !this.ui.melRedo.length;
+      this._paintMelRoll(this.$('.mel-grid'), [this.ui.melBar], true);
+      this._chips(this.$('.mel-lengths'), MEL_LENGTHS.map(([v, label]) => ({ value: v, label })), this.ui.melLen, 'mel-len');
+      this._setSwitch('melChroma', this.ui.melChroma);
+      const alts = this.$('.mel-alts');
+      alts.hidden = !this.ui.melChroma;
+      this._chips(alts, [[-1, '♭'], [0, '♮'], [1, '♯']].map(([v, label]) => ({ value: v, label })), this.ui.melAlt, 'mel-alt');
+      const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      this.$('.mel-name-row').hidden = !own;
+      const nameInput = this.$('.mel-name');
+      if (own && this.shadowRoot.activeElement !== nameInput) nameInput.value = own.name;
+      this.$('[data-action="mel-original"]').hidden = !s.melodyBars || !!s.melodyName;
+      this.$('[data-action="mel-save"]').hidden = !!own;
+      this.$('[data-action="mel-delete"]').hidden = !own;
+    }
+
+    /** Notenrolle zeichnen — klein (alle Takte, zum Anschauen) oder groß
+     *  (ein Takt, zum Bearbeiten, mit Stufen-Beschriftung links). */
+    _paintMelRoll(host, barIdx, large) {
+      const bars = this._melody().bars;
+      const steps = this._barSteps();
+      const meter = METERS[this._meter()];
+      const cols = barIdx.length * steps;
+      const rows = MEL_HIGH - MEL_LOW + 1;
+      const pct = (v) => `${(v * 100).toFixed(3)}%`;
+      let html = '';
+      for (let d = MEL_HIGH; d >= MEL_LOW; d--) {
+        const cls = [mod(d, 7) === 0 ? 'is-root' : '', [2, 4].includes(mod(d, 7)) ? 'is-chord' : '', d < 0 ? 'is-low' : '', d === -1 ? 'is-split' : ''].join(' ');
+        html += `<span class="mel-row ${cls}" style="top:${pct((MEL_HIGH - d) / rows)};height:${pct(1 / rows)}"></span>`;
+      }
+      for (let c = 1; c < cols; c++) {
+        const inBar = c % steps;
+        if (!inBar) html += `<span class="mel-line is-bar" style="left:${pct(c / cols)}"></span>`;
+        else if (meter.beats.includes(inBar)) html += `<span class="mel-line is-beat" style="left:${pct(c / cols)}"></span>`;
+        else if (large) html += `<span class="mel-line" style="left:${pct(c / cols)}"></span>`;
+      }
+      barIdx.forEach((bi, k) => (bars[bi] || []).forEach(([at, deg, len, alt]) => {
+        const sign = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
+        html += `<span class="mel-note${alt ? ' is-alt' : ''}" style="left:${pct((k * steps + at) / cols)};width:${pct(len / cols)};top:${pct((MEL_HIGH - deg) / rows)};height:${pct(1 / rows)}">${large && sign ? `<b>${sign}</b>` : ''}</span>`;
+      }));
+      html += '<span class="mel-playhead" hidden></span>';
+      host.innerHTML = html;
+      host.dataset.bars = barIdx.join(',');
+      if (large) {
+        // Beschriftung: 1 = Grundton des Akkords; Akkordtöne rosa; unter der
+        // Linie eine Oktave tiefer (mit Klammer "tiefer" statt Sonderzeichen).
+        let labels = '';
+        for (let d = MEL_HIGH; d >= MEL_LOW; d--) {
+          labels += `<span class="${[0, 2, 4].includes(mod(d, 7)) ? 'is-chord' : ''}${d < 0 ? ' is-low' : ''}">${d === 7 ? 8 : mod(d, 7) + 1}</span>`;
+        }
+        labels += `<span class="mel-low-band" style="top:${pct((MEL_HIGH + 1) / rows)};height:${pct(-MEL_LOW / rows)}"><i>${t('lab.melLower')}</i></span>`;
+        this.$('.mel-labels').innerHTML = labels;
+      }
+    }
+
+    /** Abspielmarke in Mini- und großer Rolle. */
+    _showMelodyStep(g) {
+      const bars = this._melody().bars.length;
+      const steps = this._barSteps();
+      for (const host of [this.$('.mel-mini'), this.ui.melEdit ? this.$('.mel-grid') : null]) {
+        const ph = host?.querySelector('.mel-playhead');
+        if (!ph) continue;
+        const shown = (host.dataset.bars || '').split(',').map(Number);
+        const k = g < 0 || !this.state.melodyOn ? -1 : shown.indexOf(Math.floor(g / steps) % bars);
+        ph.hidden = k === -1;
+        if (k !== -1) ph.style.left = `${((k * steps + (g % steps)) / (shown.length * steps)) * 100}%`;
+      }
+    }
+
+    /** Veränderbare Takte der aktuellen Melodie (legt beim ersten Eingriff
+     *  eine Kopie der Vorlage an) — vorher den Stand fürs Rückgängig merken. */
+    _melBegin() {
+      const s = this.state;
+      this.ui.melUndo.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId]));
+      if (this.ui.melUndo.length > 60) this.ui.melUndo.shift();
+      this.ui.melRedo = [];
+      if (!s.melodyBars) {
+        s.melodyBars = MELODIES[s.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
+        s.melodyMeter = this._meter();
+      }
+      return s.melodyBars;
+    }
+
+    /** Nach jeder Änderung: unveränderte Vorlage wieder als Vorlage führen,
+     *  eigene Melodie in der Bibliothek nachziehen, neu zeichnen. */
+    _melCommit({ persist = true } = {}) {
+      const s = this.state;
+      if (s.melodyBars && !s.melodyName && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
+        s.melodyBars = null; s.melodyMeter = null;
+      }
+      const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      if (own && s.melodyBars) {
+        own.bars = s.melodyBars.map((bar) => bar.map((n) => [...n]));
+        own.name = s.melodyName || own.name;
+        if (persist) this._persist();
+      }
+      this._renderMelody();
+    }
+
+    _melRestore(from, to) {
+      const snap = from.pop();
+      if (!snap) return;
+      const s = this.state;
+      to.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId]));
+      [s.melodyBars, s.melodyName, s.melodyOwnId] = JSON.parse(snap);
+      s.melodyMeter = s.melodyBars ? this._meter() : null;
+      this._melCommit();
+    }
+
+    /** Einstimmig setzen: kürzt die vorige Note, verdrängt, was im neuen
+     *  Bereich beginnt. Liefert die neue Note. */
+    _melPlace(bar, at, deg, len, alt) {
+      const steps = this._barSteps();
+      const notes = bar;
+      len = Math.max(1, Math.min(len, steps - at));
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const [a, , l] = notes[i];
+        if (a >= at && a < at + len) notes.splice(i, 1);
+        else if (a < at && a + l > at) notes[i][2] = at - a;
+      }
+      const note = alt ? [at, deg, len, alt] : [at, deg, len];
+      notes.push(note);
+      notes.sort((x, y) => x[0] - y[0]);
+      return note;
+    }
+
+    /** Einen Ton kurz anspielen — über dem Akkord, der in diesem Takt klingt. */
+    async _melPreview(deg, alt, barIndex) {
+      try { await this._ensureAudio(); } catch { return; }
+      const s = this.state;
+      const h = this._harmonyAt(barIndex * this._barSteps());
+      const midi = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot) + degreeSemis(h.steps, deg + foldDegree(h.deg)) + (alt || 0);
+      this.engine.playTone(s.sound, midi, this.engine.ctx.currentTime + .01, .22, this._stepSeconds() * 2.5,
+        { layer: 'keys', stepSeconds: this._stepSeconds() });
+    }
+
+    /** Tippen/Ziehen in der großen Rolle. */
+    _wireMelGrid() {
+      const grid = this.$('.mel-grid');
+      let drag = null;
+      const cellAt = (e) => {
+        const r = grid.getBoundingClientRect();
+        const steps = this._barSteps();
+        const rows = MEL_HIGH - MEL_LOW + 1;
+        return {
+          step: clamp(Math.floor(((e.clientX - r.left) / r.width) * steps), 0, steps - 1),
+          deg: MEL_HIGH - clamp(Math.floor(((e.clientY - r.top) / r.height) * rows), 0, rows - 1),
+        };
+      };
+      grid.addEventListener('pointerdown', (e) => {
+        if (e.button > 0) return;
+        e.preventDefault();
+        const { step, deg } = cellAt(e);
+        const barIndex = this.ui.melBar;
+        const bars = this._melBegin();
+        const bar = bars[barIndex];
+        const hit = bar.find(([a, d, l]) => d === deg && step >= a && step < a + l);
+        if (hit) {
+          bar.splice(bar.indexOf(hit), 1);
+          this._melCommit();
+          return;
+        }
+        const alt = this.ui.melChroma ? this.ui.melAlt : 0;
+        drag = { note: this._melPlace(bar, step, deg, this.ui.melLen, alt), start: step, bar, id: e.pointerId, stretched: false };
+        try { grid.setPointerCapture(e.pointerId); } catch { /* siehe Knob._startDrag */ }
+        this._melPreview(deg, alt, barIndex);
+        this._melCommit({ persist: false });
+      });
+      grid.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const { step } = cellAt(e);
+        const len = step - drag.start + 1;
+        // Weiterziehen macht den Ton länger (nie kürzer als die gewählte Länge,
+        // außer man zieht bewusst zurück in den ersten Schritt).
+        if (len < 1 || (!drag.stretched && len <= drag.note[2])) return;
+        drag.stretched = true;
+        drag.bar.splice(drag.bar.indexOf(drag.note), 1);
+        drag.note = this._melPlace(drag.bar, drag.start, drag.note[1], len, drag.note[3]);
+        this._melCommit({ persist: false });
+      });
+      const end = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag = null;
+        this._melCommit();
+      };
+      grid.addEventListener('pointerup', end);
+      grid.addEventListener('pointercancel', end);
+    }
+
+    _melSaveOwn() {
+      const s = this.state;
+      const bars = (s.melodyBars || MELODIES[s.melodyIndex].bars).map((bar) => bar.map((n) => [...n]));
+      const lib = this._saved.melodies;
+      if (lib.length >= MEL_MAX_OWN) { this._setStatus(t('lab.melLibraryFull')); return; }
+      let n = lib.length + 1;
+      while (lib.some((m) => m.name === tf('lab.myMelodyN', { n }))) n++;
+      const name = s.melodyName && !s.melodyOwnId && s.melodyName !== t('lab.newMelody') ? s.melodyName : tf('lab.myMelodyN', { n });
+      const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      lib.push({ id, name, meter: this._meter(), bars });
+      s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
+      s.melodyMeter = this._meter();
+      s.melodyName = name;
+      s.melodyOwnId = id;
+      this._persist();
+      this._renderMelody();
+      this._setStatus(tf('lab.melSaved', { name }));
+    }
+
+    _melDeleteOwn() {
+      const s = this.state;
+      const own = this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      if (!own || !global.confirm(tf('lab.melDeleteConfirm', { name: own.name }))) return;
+      this._saved.melodies = this._saved.melodies.filter((m) => m !== own);
+      this._clearMelodyEdit();
+      this.ui.melEdit = false;
+      this._persist();
+      this._renderMelody();
     }
 
     /* ---- Klang ---- */
@@ -2582,11 +2923,18 @@
         };
       }
       if (which === 'melody') {
+        const own = this._saved.melodies.filter((m) => m.meter === meter);
         return {
-          title: 'lab.pickMelody', action: 'pick-melody', catAction: 'melody-cat', cats: MELODY_CATS, cat: this.ui.melodyCat,
-          current: s.melodyIndex, wide: true,
-          items: MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
-            inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })),
+          title: 'lab.pickMelody', action: 'pick-melody', catAction: 'melody-cat',
+          cats: own.length ? [...MELODY_CATS, OWN_CAT] : MELODY_CATS, cat: this.ui.melodyCat,
+          current: s.melodyOwnId && own.some((m) => m.id === s.melodyOwnId) ? `own:${s.melodyOwnId}` : s.melodyOwnId ? -1 : s.melodyIndex,
+          wide: true,
+          items: [
+            ...MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
+              inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })),
+            ...own.map((m) => ({ i: `own:${m.id}`, name: m.name, visual: melodyPreview(m), cat: OWN_CAT,
+              inMeter: true, sub: `${m.meter} · ${catLabel(OWN_CAT)}`, short: catLabel(OWN_CAT) })),
+          ],
         };
       }
       return {
@@ -2610,8 +2958,14 @@
           name = t('lab.customSound');
           sub = tf('lab.basedOn', { name: base.name });
           visual = pictogramIcon(base.icon);
+        } else if (which === 'melody') {
+          const melody = this._melody();
+          const s = this.state;
+          name = melody.name;
+          sub = `${this._meter()} · ${t(CAT_KEY[melody.cat])}${s.melodyBars && !s.melodyName ? ` · ${t('lab.edited')}` : ''}`;
+          visual = melodyPreview(melody);
         } else {
-          const item = def.items[def.current];
+          const item = def.items.find((it) => it.i === def.current);
           name = item.name;
           sub = item.sub + (def.edited ? ` · ${t('lab.edited')}` : '');
           visual = item.visual;
@@ -2699,7 +3053,9 @@
     _stepPicker(which, dir) {
       const def = this._pickerDef(which);
       const list = def.items.filter((it) => it.inMeter);
-      const pos = list.findIndex((it) => it.i === (which === 'sound' ? this.state.sound.presetIndex : def.current));
+      const current = which === 'sound' ? this.state.sound.presetIndex
+        : which === 'melody' && def.current === -1 ? this.state.melodyIndex : def.current;
+      const pos = list.findIndex((it) => it.i === current);
       const next = list[(pos + dir + list.length) % list.length];
       this._handleAction(def.action, String(next.i), null);
     }
@@ -2972,6 +3328,9 @@
           this._paintLevel(el);
           if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master);
           else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix]);
+        } else if (el.classList.contains('mel-name')) {
+          const name = el.value.trim().slice(0, 40);
+          if (name && s.melodyOwnId) { s.melodyName = name; this._melCommit({ persist: false }); }
         } else if (el.dataset.sound) {
           const sound = s.sound;
           sound[el.dataset.sound] = Number(el.value);
@@ -2994,8 +3353,10 @@
         else if (field === 'lfoSync') { s.sound.lfoSync = Number(el.value); this._onSoundEdit(); }
         else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
+        else if (el.classList.contains('mel-name')) this._persist();
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
       });
+      this._wireMelGrid();
     }
 
     _onHarmonyChange() {
@@ -3021,6 +3382,7 @@
         return;
       }
       if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
+      if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -3077,7 +3439,58 @@
 
         // Melodie
         case 'melody-cat': this.ui.melodyCat = value === this.ui.melodyCat ? 'all' : value; this._renderMelody(); break;
-        case 'pick-melody': s.melodyIndex = Number(value); s.melodyOn = true; this._renderMelody(); break;
+        case 'pick-melody': {
+          this._clearMelodyEdit();
+          const own = String(value).startsWith('own:') && this._saved.melodies.find((m) => `own:${m.id}` === value);
+          if (own) {
+            s.melodyBars = own.bars.map((bar) => bar.map((n) => [...n]));
+            s.melodyMeter = own.meter;
+            s.melodyName = own.name;
+            s.melodyOwnId = own.id;
+          } else if (!String(value).startsWith('own:')) {
+            s.melodyIndex = Number(value);
+          }
+          s.melodyOn = true;
+          this._renderMelody();
+          break;
+        }
+        case 'mel-edit': this.ui.melEdit = true; this.ui.melBar = 0; this._renderMelEditor(); break;
+        case 'mel-done': this.ui.melEdit = false; this._renderMelEditor(); this.$('[data-action="mel-edit"]').focus(); break;
+        case 'mel-bar': this.ui.melBar = Number(value); this._renderMelEditor(); break;
+        case 'mel-add-bar': {
+          const bars = this._melBegin();
+          if (bars.length < MEL_MAX_BARS) { bars.push([]); this.ui.melBar = bars.length - 1; }
+          this._melCommit();
+          break;
+        }
+        case 'mel-remove-bar': {
+          const bars = this._melBegin();
+          if (bars.length > 1) bars.splice(this.ui.melBar, 1);
+          this.ui.melBar = Math.max(0, this.ui.melBar - 1);
+          this._melCommit();
+          break;
+        }
+        case 'mel-undo': this._melRestore(this.ui.melUndo, this.ui.melRedo); break;
+        case 'mel-redo': this._melRestore(this.ui.melRedo, this.ui.melUndo); break;
+        case 'mel-new':
+          this._melBegin();
+          s.melodyBars = [[]];
+          s.melodyMeter = this._meter();
+          s.melodyName = t('lab.newMelody');
+          s.melodyOwnId = null;
+          s.melodyOn = true;
+          this.ui.melBar = 0;
+          this._melCommit();
+          break;
+        case 'mel-original':
+          this._melBegin();
+          s.melodyBars = null; s.melodyMeter = null;
+          this._melCommit();
+          break;
+        case 'mel-len': this.ui.melLen = Number(value); this._renderMelEditor(); break;
+        case 'mel-alt': this.ui.melAlt = Number(value); this._renderMelEditor(); break;
+        case 'mel-save': this._melSaveOwn(); break;
+        case 'mel-delete': this._melDeleteOwn(); break;
         case 'melody-octave': s.melodyOctave = Number(value); this._renderMelody(); break;
 
         // Mixer & Klang
@@ -3542,6 +3955,50 @@
   .reset-sound-row { margin-top: 8px; }
   .reset-sound-row:has([hidden]) { display: none; }
 
+  .mel-card { margin-top: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px; }
+  .mel-mini, .mel-grid { position: relative; overflow: hidden; background: var(--surface); }
+  .mel-mini { height: 80px; border-radius: 10px; }
+  .mel-row { position: absolute; left: 0; right: 0; }
+  .mel-row.is-root { background: rgba(var(--accent-rgb), .07); }
+  .mel-grid .mel-row.is-chord { background: rgba(var(--accent-rgb), .04); }
+  .mel-grid .mel-row.is-low { background-color: rgba(140,129,166,.07); }
+  .mel-grid .mel-row.is-low.is-root { background: rgba(var(--accent-rgb), .07); }
+  .mel-grid .mel-row { border-top: 1px solid rgba(241,221,208,.7); }
+  .mel-grid .mel-row.is-split { border-top: 2px solid #d9bfae; }
+  .mel-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #f6ebe2; }
+  .mel-line.is-beat { background: #ead6c8; }
+  .mel-line.is-bar { width: 2px; background: #d9bfae; }
+  .mel-note { position: absolute; border-radius: 5px; background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0,0,0,.12); pointer-events: none;
+    display: flex; align-items: center; padding-left: 3px; color: #fff; font-size: .62rem; }
+  .mel-note { border: 1px solid var(--surface); }
+  .mel-note.is-alt { background: #8c6bf0; }
+  .mel-mini .mel-note { border-radius: 3px; box-shadow: none; }
+  .mel-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(36,27,61,.55); pointer-events: none; }
+  .mel-edit-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: .74rem; font-weight: 800; color: var(--accent); }
+  .mel-edit-link svg { width: 16px; height: 16px; }
+  .mel-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+  .mel-bars { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
+  .mel-bar-tab { min-width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); font-size: .74rem; font-weight: 800; color: var(--muted); background: var(--surface-2); }
+  .mel-bar-tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mel-bar-tab.is-extra { background: var(--surface); font-size: .9rem; }
+  .mel-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
+  .mel-icon svg { width: 18px; height: 18px; }
+  .mel-roll { display: grid; grid-template-columns: 26px 1fr; gap: 4px; }
+  .mel-grid { height: 231px; border-radius: 10px; border: 1px solid var(--line); touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+  .mel-labels { position: relative; display: grid; grid-template-rows: repeat(11, 1fr); height: 231px; padding: 1px 0; }
+  .mel-labels span { display: grid; place-items: center end; padding-right: 2px; font-size: .64rem; font-weight: 800; color: var(--muted); }
+  .mel-labels span.is-chord { color: var(--accent); }
+  .mel-labels span.is-low { opacity: .7; }
+  .mel-low-band { position: absolute !important; left: 0; width: 9px; border: 1.5px solid #cbbfd8; border-right: 0; border-radius: 4px 0 0 4px; padding: 0 !important; }
+  .mel-low-band i { position: absolute; left: -3px; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); font-size: .5rem; font-style: normal; font-weight: 800; color: var(--muted); background: var(--surface); padding: 0 2px; text-transform: uppercase; letter-spacing: .04em; }
+  .mel-tools { margin-top: 4px; }
+  .mel-chroma { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .mel-alts .chip { min-width: 36px; text-align: center; font-size: .82rem; }
+  .mel-name-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .7rem; font-weight: 800; color: var(--muted); }
+  .mel-name { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 7px 9px; font-size: .8rem; color: var(--text); }
+  .mel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+  .mel-done { margin-left: auto; padding: 9px 20px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .76rem; }
+
   .picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; justify-content: flex-end; }
   .picker-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); opacity: 0; transition: opacity .22s; }
   .picker-card {
@@ -3677,6 +4134,36 @@
       </div>
       ${helpText('melodyHint')}
       ${pickerTrigger('melody')}
+      <div class="mel-card">
+        <div class="mel-view">
+          <div class="mel-mini" aria-hidden="true"></div>
+          <button class="mel-edit-link" type="button" data-action="mel-edit">${UI_ICON.edit}${t('lab.melEdit')}</button>
+        </div>
+        <div class="mel-editor" hidden>
+          <div class="mel-top">
+            <div class="mel-bars" role="group" aria-label="${t('lab.melBarsAria')}"></div>
+            <button class="mel-icon" type="button" data-action="mel-undo" aria-label="${t('lab.melUndo')}" title="${t('lab.melUndo')}">${UI_ICON.undo}</button>
+            <button class="mel-icon" type="button" data-action="mel-redo" aria-label="${t('lab.melRedo')}" title="${t('lab.melRedo')}">${UI_ICON.redo}</button>
+            <button class="mel-icon" type="button" data-action="mel-new" aria-label="${t('lab.melNew')}" title="${t('lab.melNew')}">${UI_ICON.newPage}</button>
+          </div>
+          <div class="mel-roll">
+            <div class="mel-labels" aria-hidden="true"></div>
+            <div class="mel-grid" role="img" aria-label="${t('lab.melRollAria')}"></div>
+          </div>
+          <div class="mel-tools">
+            <span class="sub-label">${t('lab.melLength')}</span>
+            <div class="chip-row mel-lengths"></div>
+            <div class="mel-chroma">${toggle('melChroma', 'lab.melChroma')}<div class="chip-row mel-alts" role="group" aria-label="${t('lab.melAltAria')}"></div></div>
+          </div>
+          <label class="mel-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name" type="text" maxlength="40" autocomplete="off"></label>
+          <div class="mel-foot">
+            <button class="chip" type="button" data-action="mel-original">${t('lab.melOriginal')}</button>
+            <button class="chip" type="button" data-action="mel-save">${t('lab.melSave')}</button>
+            <button class="chip" type="button" data-action="mel-delete">${t('lab.melDelete')}</button>
+            <button class="mel-done" type="button" data-action="mel-done">${t('lab.melDone')}</button>
+          </div>
+        </div>
+      </div>
       <span class="sub-label">${t('lab.melodyOctave')}</span>
       <div class="chip-row melody-octaves"></div>
     </section>
