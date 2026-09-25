@@ -1716,6 +1716,7 @@
       if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
       this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
       this._showMelodyStep(-1);
+      this._showRecLoopStep(-1);
       if (this.rec.phase === 'recording') this._recFinish();
       else if (this.rec.phase === 'armed') { this.rec.phase = 'idle'; this._renderRec(); }
       this._renderTransport();
@@ -1818,7 +1819,11 @@
       }
 
       if (h.chordStart && s.chordsOn) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
-      if (s.melodyOn && this.rec.phase !== 'armed' && this.rec.phase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
+      // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
+      // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
+      const recPhase = this.rec.phase;
+      if (recPhase === 'done' && this.rec.loopBars) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars);
+      else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
 
       if (s.arpOn) {
         const trigger = this._arpTrigger(g);
@@ -1971,11 +1976,10 @@
       }
     }
 
-    _playMelodyStep(g, h, time, stepSec) {
+    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars) {
       const s = this.state;
-      const melody = this._melody();
       const barSteps = this._barSteps();
-      const notes = melody.bars[Math.floor(g / barSteps) % melody.bars.length];
+      const notes = bars[Math.floor(g / barSteps) % bars.length];
       const step = g % barSteps;
       const shift = foldDegree(h.deg);
       const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
@@ -2020,6 +2024,7 @@
       this.$all('.track-list .step-cell').forEach((cell) => cell.classList.toggle('is-now', Number(cell.dataset.step) === step));
       this._renderBeatDots(step);
       this._showMelodyStep(g);
+      this._showRecLoopStep(g);
       if (chordChanged) this._renderNow();
     }
 
@@ -2924,6 +2929,7 @@
       const btn = this.$('.transport-play');
       btn.innerHTML = this.playing ? UI_ICON.pause : UI_ICON.play;
       btn.setAttribute('aria-label', t(this.playing ? 'lab.stopAria' : 'lab.startAria'));
+      this._renderRecPlay();
       this.$all('.bpm-input').forEach((el) => { el.value = String(this.state.bpm); });
       this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
       this.$('[data-action="undo"]').disabled = !this.history.length;
@@ -3441,8 +3447,32 @@
       rec.open.clear();
       rec.take = rec.startTime ? this._recToBars() : null;
       rec.phase = rec.take && rec.take.some((bar) => bar.length) ? 'done' : 'idle';
+      // Fertig: direkt im Loop weiterspielen (der Groove läuft ja noch).
+      rec.loopBars = rec.phase === 'done' ? this._recRotated(rec.take) : null;
       if (rec.phase === 'idle') this._setStatus(t('lab.recEmpty'));
       this._renderRec();
+    }
+
+    /** Abspielmarke der loopenden Aufnahme (Takte in Aufnahme-Reihenfolge). */
+    _showRecLoopStep(g) {
+      const rec = this.rec;
+      if (rec.phase !== 'done') return;
+      const ph = this.$('.rec-roll .mel-playhead');
+      if (!ph) return;
+      const n = rec.take.length;
+      const steps = rec.barSteps;
+      ph.hidden = g < 0;
+      if (g < 0) return;
+      const k = mod(Math.floor(g / steps) - Math.round(rec.startStep / steps), n);
+      ph.style.left = `${((k * steps + (g % steps)) / (n * steps)) * 100}%`;
+    }
+
+    /** Schwebender Play/Pause-Knopf über der Aufnahme = Transport. */
+    _renderRecPlay() {
+      const btn = this.$('.rec-play');
+      if (!btn) return;
+      btn.innerHTML = this.playing ? UI_ICON.pause : UI_ICON.play;
+      btn.setAttribute('aria-label', t(this.playing ? 'lab.recLoopPause' : 'lab.recLoopPlay'));
     }
 
     /** Aufnahme-Rolle zeichnen: Takte in Aufnahme-Reihenfolge. */
@@ -3574,6 +3604,8 @@
       if (phase === 'armed') this._paintRecRoll(Array.from({ length: rec.bars }, () => []), null);
       if (phase === 'recording') this._paintRecRoll(this._recToBars({ until: this._recNow() }), 0);
       if (phase === 'done') this._paintRecRoll(rec.take, 1);
+      this.$('.rec-play').hidden = phase !== 'done';
+      this._renderRecPlay();
     }
 
     /* ---- Verkabelung ---- */
@@ -3767,6 +3799,7 @@
           else this._recArm();
           break;
         case 'rec-save': this._recSave(); break;
+        case 'rec-loop': if (this.playing) this.stop(); else this.start(); break;
         case 'rec-discard': this.rec.phase = 'idle'; this.rec.take = null; this._renderRec(); break;
         case 'mel-delete': this._melDeleteOwn(); break;
         case 'melody-octave': s.melodyOctave = Number(value); this._renderMelody(); break;
@@ -4299,6 +4332,10 @@
   .rec-meter b { position: relative; display: grid; place-items: center; height: 100%; font-size: .62rem; font-weight: 800; color: var(--text); }
   .rec-meter span.is-full b { color: #fff; }
   .rec-roll .mel-playhead { background: var(--bad); width: 2px; }
+  .rec-stage { position: relative; }
+  .rec-play { position: absolute; right: 8px; bottom: 8px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(var(--accent-rgb), .45); }
+  .rec-play svg { width: 18px; height: 18px; }
   .rec-result { margin-top: 10px; }
   .rec-result .mel-mini { border: 1px solid var(--line); }
   .rec-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
@@ -4597,7 +4634,10 @@
         <span class="rec-status"></span>
       </div>
       <div class="rec-result" hidden>
-        <div class="mel-mini rec-roll" aria-hidden="true"></div>
+        <div class="rec-stage">
+          <div class="mel-mini rec-roll" aria-hidden="true"></div>
+          <button class="rec-play" type="button" data-action="rec-loop" hidden></button>
+        </div>
         <div class="rec-meter" aria-hidden="true"></div>
         <div class="rec-actions">
           <button class="chip" type="button" data-action="rec-discard">${t('lab.recDiscard')}</button>
