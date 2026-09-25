@@ -3105,6 +3105,8 @@
       // An/Aus-Schalter: echte Checkbox mit role="switch" — Tastatur,
       // Screenreader und Formular-Semantik gibt es dadurch geschenkt.
       const toggle = (key, labelKey) => `<label class="switch"><input type="checkbox" role="switch" data-switch="${key}"><span class="switch-track" aria-hidden="true"></span><span>${t(labelKey)}</span></label>`;
+      // Ohne sichtbaren Text, z. B. rechts oben im Panel-Kopf als An/Aus.
+      const bareToggle = (key, labelKey) => `<label class="switch switch-bare"><input type="checkbox" role="switch" data-switch="${key}" aria-label="${t(labelKey)}"><span class="switch-track" aria-hidden="true"></span></label>`;
       // Erklärungen stecken hinter einem (?) neben der Überschrift und
       // klappen darunter auf — der Text steht nicht mehr dauerhaft im Weg.
       const help = (key) => `<button class="help-btn" type="button" data-action="help" data-help="${key}" aria-expanded="false" aria-label="${t('lab.helpAria')}">?</button>`;
@@ -3599,9 +3601,9 @@
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}</div>
+      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}${bareToggle('arpOn', 'lab.arpOn')}</div>
       ${helpText('helpArp')}
-      <div class="switch-row">${toggle('arpOn', 'lab.arpOn')}${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
+      <div class="switch-row">${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
       <div class="arp-options">
         <p class="arp-status" role="status"></p>
         <div class="arp-grid">
