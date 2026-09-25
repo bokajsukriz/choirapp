@@ -674,6 +674,8 @@
 
   const UI_ICON = {
     close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+    prev: svg('<path d="m15 6-6 6 6 6"/>'),
+    next: svg('<path d="m9 6 6 6-6 6"/>'),
     play: svg('<path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/>'),
     pause: svg('<path d="M8 5v14M16 5v14"/>'),
     dice: svg('<rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"/>'),
@@ -733,6 +735,8 @@
   };
 
   const pictogramIcon = (name) => svg(PICTOGRAM[name] || '');
+  /** Kurzbeschreibung eines Klang-Presets, z. B. 'lab.toneVelvetChoir'. */
+  const presetDescKey = (preset) => `lab.tone${preset.name.replace(/[^A-Za-z]/g, '')}`;
 
   /** Eine Periode der Oszillator-Wellenform — für die Wellenform-Auswahl. */
   function waveIcon(wave) {
@@ -1367,7 +1371,7 @@
 
       this.engine = new GrooveEngine();
       this.state = defaultState();
-      this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false };
+      this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null };
 
       this.playing = false;
       this.globalStep = 0;
@@ -1433,6 +1437,7 @@
       this._stopDrone();
       this.state.droneOn = false;
       this._closeSheet();
+      this._closePicker({ focus: false });
       this._saved.last = this._snapshot();
       this._persist();
       this.hidden = true;
@@ -2022,20 +2027,6 @@
       }));
     }
 
-    /** Auswahlkarte. `iconHtml` ist entweder ein Piktogramm (Loops, Presets:
-     *  Icon neben dem Namen) oder eine Mini-Notenrolle (Melodien: darüber). */
-    _card(action, index, active, iconHtml, name, { icon = false } = {}) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `card${icon ? ' is-icon' : ''}`;
-      btn.dataset.action = action;
-      btn.dataset.value = String(index);
-      btn.setAttribute('aria-pressed', String(active));
-      btn.innerHTML = `${iconHtml}<span class="card-name"></span>`;
-      btn.querySelector('.card-name').textContent = name;
-      return btn;
-    }
-
     _options(select, entries, value) {
       select.replaceChildren(...entries.map(([v, label]) => {
         const opt = document.createElement('option');
@@ -2063,14 +2054,7 @@
 
     _renderBeat() {
       const s = this.state;
-      const meter = this._meter();
-      this._chips(this.$('.meter-chips'), METER_IDS.map((id) => ({ value: id, label: id })), meter, 'meter');
-      this._chips(this.$('.beat-cats'), BEAT_CATS.map((c) => ({ value: c, label: t(CAT_KEY[c]) })), this.ui.beatCat, 'beat-cat');
-      const cards = DRUM_PATTERNS.map((p, i) => [p, i])
-        .filter(([p]) => p.meter === meter && (this.ui.beatCat === 'all' || p.cat === this.ui.beatCat))
-        .map(([p, i]) => this._card('pick-pattern', i, i === s.patternIndex, pictogramIcon(p.icon), p.name, { icon: true }));
-      this.$('.pattern-grid').replaceChildren(...cards);
-      this.$('.pattern-name').textContent = this._pattern().name + (s.beatEdited ? ` · ${t('lab.edited')}` : '');
+      this._renderPickerFor('beat');
       this.$('.reset-beat').hidden = !s.beatEdited;
       this._renderLock('beat');
       this._renderTracks();
@@ -2251,14 +2235,8 @@
 
     _renderMelody() {
       const s = this.state;
-      const meter = this._meter();
       this._setSwitch('melodyOn', s.melodyOn);
-      this._chips(this.$('.melody-cats'), MELODY_CATS.map((c) => ({ value: c, label: t(CAT_KEY[c]) })), this.ui.melodyCat, 'melody-cat');
-      const cards = MELODIES.map((m, i) => [m, i])
-        .filter(([m]) => m.meter === meter && (this.ui.melodyCat === 'all' || m.cat === this.ui.melodyCat))
-        .map(([m, i]) => this._card('pick-melody', i, i === s.melodyIndex, melodyPreview(m), m.name));
-      this.$('.melody-grid').replaceChildren(...cards);
-      this.$('.melody-name').textContent = this._melody().name;
+      this._renderPickerFor('melody');
       this._chips(this.$('.melody-octaves'), [3, 4, 5].map((o) => ({ value: o, label: String(o) })), s.melodyOctave, 'melody-octave');
       this._renderLock('melody');
     }
@@ -2266,12 +2244,6 @@
     /* ---- Klang ---- */
 
     _renderSound() {
-      const sound = this.state.sound;
-      this._chips(this.$('.preset-cats'), PRESET_CATS.map((c) => ({ value: c, label: t(CAT_KEY[c]) })), this.ui.presetCat, 'preset-cat');
-      const cards = SYNTH_PRESETS.map((p, i) => [p, i])
-        .filter(([p]) => this.ui.presetCat === 'all' || p.cat === this.ui.presetCat)
-        .map(([p, i]) => this._card('pick-preset', i, !sound.custom && sound.presetIndex === i, pictogramIcon(p.icon), p.name, { icon: true }));
-      this.$('.preset-grid').replaceChildren(...cards);
       this._renderLock('sound');
       this._renderSoundName();
       this._renderMacros();
@@ -2281,8 +2253,8 @@
 
     _renderSoundName() {
       const sound = this.state.sound;
-      this.$('.preset-name').textContent = sound.custom ? t('lab.customSound') : SYNTH_PRESETS[sound.presetIndex].name;
       this.$('[data-action="reset-sound"]').hidden = !sound.custom;
+      this._renderPickerFor('sound');
     }
 
     /** Mixer als Kanalzüge: je Kanal ein breiter Pegelbalken (ein
@@ -2368,7 +2340,6 @@
       const sound = this.state.sound;
       if (!sound.custom) {
         sound.custom = true;
-        this.$all('.preset-grid .card').forEach((card) => card.setAttribute('aria-pressed', 'false'));
       }
       this._renderSoundName();
       this._applySound();
@@ -2589,6 +2560,135 @@
       if (!this.playing) this._renderBeatDots(-1);
       this._renderChordStrip();
       this._renderSatb();
+    }
+
+    /* ---- Auswahl-Dialog (Drumloop, Melodie, Klang) ----
+       Im Panel steht nur die aktuelle Auswahl, mit ‹ › zum direkten
+       Weiterblättern. Ein Tipp darauf öffnet ein Blatt von unten mit
+       Filtern und allen Optionen; Antippen wählt sofort (das Blatt bleibt
+       offen, damit man in Ruhe durchhören kann), "Fertig" schließt. */
+
+    _pickerDef(which) {
+      const s = this.state;
+      const meter = this._meter();
+      const catLabel = (c) => t(CAT_KEY[c]);
+      if (which === 'beat') {
+        return {
+          title: 'lab.pickBeat', action: 'pick-pattern', catAction: 'beat-cat', cats: BEAT_CATS, cat: this.ui.beatCat,
+          current: s.patternIndex, edited: s.beatEdited,
+          items: DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+            inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })),
+        };
+      }
+      if (which === 'melody') {
+        return {
+          title: 'lab.pickMelody', action: 'pick-melody', catAction: 'melody-cat', cats: MELODY_CATS, cat: this.ui.melodyCat,
+          current: s.melodyIndex, wide: true,
+          items: MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
+            inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })),
+        };
+      }
+      return {
+        title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this.ui.presetCat,
+        current: s.sound.custom ? -1 : s.sound.presetIndex,
+        items: SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+          inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })),
+      };
+    }
+
+    /** Anzeige im Panel und — falls gerade offen — das Blatt. */
+    _renderPickerFor(which) {
+      const def = this._pickerDef(which);
+      const trigger = this.$(`.picker-trigger[data-picker="${which}"]`);
+      if (trigger) {
+        let name;
+        let sub;
+        let visual;
+        if (which === 'sound' && this.state.sound.custom) {
+          const base = SYNTH_PRESETS[this.state.sound.presetIndex];
+          name = t('lab.customSound');
+          sub = tf('lab.basedOn', { name: base.name });
+          visual = pictogramIcon(base.icon);
+        } else {
+          const item = def.items[def.current];
+          name = item.name;
+          sub = item.sub + (def.edited ? ` · ${t('lab.edited')}` : '');
+          visual = item.visual;
+        }
+        trigger.querySelector('.picker-ico').innerHTML = visual;
+        trigger.querySelector('.picker-name').textContent = name;
+        trigger.querySelector('.picker-sub').textContent = sub;
+      }
+      if (this.ui.picker === which) this._renderPicker();
+    }
+
+    _renderPicker() {
+      const which = this.ui.picker;
+      if (!which) return;
+      const def = this._pickerDef(which);
+      const root = this.$('.picker');
+      root.querySelector('.picker-title').textContent = t(def.title);
+      const chips = root.querySelector('.picker-chips');
+      const catChips = def.cats.map((c) => ({ value: c, label: t(CAT_KEY[c]) }));
+      this._chips(chips, catChips, def.cat, def.catAction);
+      if (which === 'beat') {
+        // Taktart gehört zum Drumloop: 3/4 antippen wechselt gleich den Loop.
+        const meterHost = document.createElement('div');
+        this._chips(meterHost, METER_IDS.map((id) => ({ value: id, label: id })), this._meter(), 'meter');
+        const sep = document.createElement('span');
+        sep.className = 'chip-sep';
+        chips.prepend(...meterHost.children, sep);
+      }
+      const cards = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat)).map((it) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `pick-card${def.wide ? ' is-wide' : ''}`;
+        btn.dataset.action = def.action;
+        btn.dataset.value = String(it.i);
+        btn.setAttribute('aria-pressed', String(it.i === def.current));
+        btn.innerHTML = `<span class="pick-ico">${it.visual}</span><span class="pick-text"><strong></strong><span></span></span>`;
+        btn.querySelector('strong').textContent = it.name;
+        btn.querySelector('.pick-text span').textContent = it.short;
+        return btn;
+      });
+      root.querySelector('.picker-grid').replaceChildren(...cards);
+      root.querySelector('.picker-now-name').textContent = this.$(`.picker-trigger[data-picker="${which}"] .picker-name`).textContent;
+    }
+
+    _openPicker(which) {
+      this.ui.picker = which;
+      const root = this.$('.picker');
+      root.hidden = false;
+      this._renderPicker();
+      const grid = root.querySelector('.picker-grid');
+      grid.scrollTop = 0;
+      requestAnimationFrame(() => {
+        root.classList.add('is-open');
+        const active = grid.querySelector('[aria-pressed="true"]') || grid.querySelector('button');
+        if (active) {
+          active.scrollIntoView({ block: 'center' });
+          active.focus({ preventScroll: true });
+        }
+      });
+    }
+
+    _closePicker({ focus = true } = {}) {
+      const which = this.ui.picker;
+      if (!which) return;
+      this.ui.picker = null;
+      const root = this.$('.picker');
+      root.classList.remove('is-open');
+      root.hidden = true;
+      if (focus) this.$(`.picker-trigger[data-picker="${which}"] .picker-main`)?.focus();
+    }
+
+    /** ‹ › im Panel: nächster/voriger Eintrag (in der aktuellen Taktart). */
+    _stepPicker(which, dir) {
+      const def = this._pickerDef(which);
+      const list = def.items.filter((it) => it.inMeter);
+      const pos = list.findIndex((it) => it.i === (which === 'sound' ? this.state.sound.presetIndex : def.current));
+      const next = list[(pos + dir + list.length) % list.length];
+      this._handleAction(def.action, String(next.i), null);
     }
 
     /* ---- Speichern-Blatt ---- */
@@ -2922,6 +3022,9 @@
         case 'tab': this._setTab(target.dataset.tab); break;
         case 'lock': s.locks[target.dataset.lock] = !s.locks[target.dataset.lock]; this._renderLock(target.dataset.lock); break;
         case 'open-sheet': this._openSheet(); break;
+        case 'picker-open': this._openPicker(target.dataset.picker); break;
+        case 'picker-close': this._closePicker(); break;
+        case 'picker-step': this._stepPicker(target.dataset.picker, Number(value)); break;
         case 'close-sheet': this._closeSheet(); break;
 
         // Beat
@@ -2937,13 +3040,16 @@
           break;
         }
         case 'beat-cat': this.ui.beatCat = value; this._renderBeat(); break;
-        case 'pick-pattern':
+        case 'pick-pattern': {
+          const meterBefore = this._meter();
           s.patternIndex = Number(value);
           s.beat = beatFromPattern(this._pattern());
           s.beatEdited = false;
           this._ensureMelodyMeter();
+          if (this.playing && this._meter() !== meterBefore) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
           this._renderBeat(); this._renderMelody();
           break;
+        }
         case 'cell': this._toggleCell(target.dataset.track, Number(target.dataset.step)); break;
         case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); break;
         case 'reset-beat':
@@ -3052,7 +3158,9 @@
     _handleKeydown(event) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (!this.$('.sheet').hidden) this._closeSheet(); else this.close();
+        if (this.ui.picker) this._closePicker();
+        else if (!this.$('.sheet').hidden) this._closeSheet();
+        else this.close();
         return;
       }
       if (event.key === 'Tab') { this._trapFocus(event); return; }
@@ -3089,10 +3197,10 @@
     }
 
     _trapFocus(event) {
-      const scope = this.$('.sheet').hidden ? this.shadowRoot : this.$('.sheet');
+      const scope = [this.$('.picker-card'), this.$('.sheet')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
       const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
         .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
-        .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet'));
+        .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -3111,7 +3219,13 @@
       // klappen darunter auf — der Text steht nicht mehr dauerhaft im Weg.
       const help = (key) => `<button class="help-btn" type="button" data-action="help" data-help="${key}" aria-expanded="false" aria-label="${t('lab.helpAria')}">?</button>`;
       const helpText = (key) => `<p class="help-text" data-help-text="${key}" hidden>${t(`lab.${key}`)}</p>`;
-      const filterRow = (cls) => `<div class="chip-row ${cls}"><span class="chip-label">${t('lab.filterLabel')}</span></div>`;
+      // Aktuelle Auswahl mit ‹ › — ein Tipp auf die Mitte öffnet den Auswahl-Dialog.
+      const pickerTrigger = (which) => `<div class="picker-trigger" data-picker="${which}">
+        <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="-1" aria-label="${t('lab.prevAria')}">${UI_ICON.prev}</button>
+        <button class="picker-main${which === 'melody' ? ' is-wide' : ''}" type="button" data-action="picker-open" data-picker="${which}" aria-haspopup="dialog">
+          <span class="picker-ico"></span><span class="picker-text"><strong class="picker-name"></strong><span class="picker-sub"></span></span></button>
+        <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="1" aria-label="${t('lab.nextAria')}">${UI_ICON.next}</button>
+      </div>`;
       return `
 <style>
   :host {
@@ -3198,7 +3312,7 @@
   .lock-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
 
   .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip-row + .chip-row, .chip-row + .card-grid { margin-top: 8px; }
+  .chip-row + .chip-row { margin-top: 8px; }
   .chip {
     border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
     padding: 6px 11px; font-size: .7rem; font-weight: 700; color: var(--muted);
@@ -3226,17 +3340,7 @@
   .select-field { display: grid; gap: 5px; font-size: .64rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .select-field select { font-size: .86rem; font-weight: 700; padding: 10px; text-transform: none; letter-spacing: 0; color: var(--text); }
 
-  .card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .card {
-    border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 7px 7px 6px;
-    display: grid; gap: 4px; text-align: left; color: var(--muted); min-width: 0;
-  }
-  .card .preview { width: 100%; height: 22px; fill: currentColor; stroke: none; }
-  .card.is-icon { grid-template-columns: auto 1fr; align-items: center; gap: 6px; }
-  .card.is-icon svg { width: 19px; height: 19px; }
-  .card.is-icon .card-name { white-space: normal; line-height: 1.2; }
-  .card-name { font-size: .64rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .14); color: var(--accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .3) inset; }
+  .preview { fill: currentColor; stroke: none; }
 
   .track-list { display: grid; gap: 7px; }
   .track-row { display: grid; grid-template-columns: 30px 46px 1fr 34px; gap: 6px; align-items: center; }
@@ -3411,6 +3515,54 @@
   .now-chord { font-weight: 800; font-size: .8rem; color: var(--accent); }
   .status-line { flex: 1; font-size: .66rem; color: var(--muted); text-align: right; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .picker-trigger { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
+  .picker-step { flex: 0 0 42px; display: grid; place-items: center; color: var(--muted); }
+  .picker-step svg { width: 20px; height: 20px; }
+  .picker-step:active { background: var(--surface-2); }
+  .picker-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; text-align: left; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .picker-ico { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(var(--accent-rgb), .12); color: var(--accent); }
+  .picker-main.is-wide .picker-ico { width: 64px; padding: 0 7px; }
+  .picker-ico .preview, .pick-ico .preview { width: 100%; height: 20px; }
+  .picker-text { min-width: 0; display: grid; }
+  .picker-name { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker-sub { font-size: .66rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reset-sound-row { margin-top: 8px; }
+  .reset-sound-row:has([hidden]) { display: none; }
+
+  .picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; justify-content: flex-end; }
+  .picker-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); opacity: 0; transition: opacity .22s; }
+  .picker-card {
+    position: relative; width: 100%; max-width: 560px; margin: 0 auto; height: 82%; display: flex; flex-direction: column;
+    background: var(--bg); border-radius: 24px 24px 0 0; box-shadow: 0 -10px 30px rgba(36,27,61,.18);
+    transform: translateY(100%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+  }
+  .picker.is-open .picker-backdrop { opacity: 1; }
+  .picker.is-open .picker-card { transform: none; }
+  .picker-grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 8px auto 2px; flex: 0 0 auto; }
+  .picker-card > .panel-head { padding: 4px 16px 0; margin-bottom: 8px; }
+  .picker-title { font-size: .95rem !important; color: var(--text) !important; text-transform: none !important; letter-spacing: 0 !important; }
+  .picker-chips { padding: 0 16px 10px; flex: 0 0 auto; }
+  .chip-sep { flex: 0 0 1px; align-self: stretch; background: var(--line); margin: 3px 2px; }
+  .picker-grid { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+  .pick-card { display: flex; align-items: center; gap: 9px; padding: 9px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); text-align: left; min-width: 0; }
+  .pick-card.is-wide { flex-direction: column; align-items: stretch; gap: 6px; }
+  .pick-ico { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: rgba(var(--accent-rgb), .12); color: var(--accent); }
+  .pick-ico svg { width: 19px; height: 19px; }
+  .pick-card.is-wide .pick-ico { width: 100%; height: 30px; padding: 0 8px; }
+  .pick-card.is-wide .pick-ico .preview { width: 100%; }
+  .pick-text { min-width: 0; display: grid; }
+  .pick-text strong { font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-text span { font-size: .64rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset; }
+  .pick-card[aria-pressed="true"] .pick-ico { background: var(--accent); color: #fff; }
+  .picker-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line);
+    padding: 10px max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .picker-now { flex: 1; min-width: 0; display: grid; }
+  .picker-now span { font-size: .62rem; color: var(--muted); font-weight: 700; }
+  .picker-now strong { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker-done { padding: 11px 24px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .8rem; }
+  @media (prefers-reduced-motion: reduce) { .picker-card, .picker-backdrop { transition: none; } }
+
   .sheet { position: absolute; inset: 0; background: rgba(36,27,61,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
   .sheet-card {
     width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0;
@@ -3428,7 +3580,6 @@
     .adsr-sliders { grid-template-columns: repeat(2, 1fr); }
     .module-grid { grid-template-columns: 1fr; }
     .module, .module.module-half { grid-column: span 1; }
-    .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .track-row { grid-template-columns: 28px 38px 1fr 30px; gap: 5px; }
     .satb-row { grid-template-columns: 12px 1fr 44px 84px; gap: 6px; }
   }
@@ -3451,10 +3602,8 @@
 <div class="lab-body">
   <section class="tab-panel" data-tab-panel="beat">
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.drumloop')}</h2><span class="item-name pattern-name"></span>${lockBtn('beat')}</div>
-      <div class="chip-row meter-chips" role="group" aria-label="${t('lab.meterAria')}"></div>
-      ${filterRow('beat-cats')}
-      <div class="card-grid pattern-grid"></div>
+      <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
+      ${pickerTrigger('beat')}
     </section>
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
@@ -3509,13 +3658,10 @@
     <section class="panel">
       <div class="panel-head">
         <h2>${t('lab.melody')}</h2>${help('melodyHint')}
-        <span class="item-name melody-name"></span>
-        ${lockBtn('melody')}
+        ${lockBtn('melody')}${bareToggle('melodyOn', 'lab.melodyOn')}
       </div>
       ${helpText('melodyHint')}
-      <div class="switch-row">${toggle('melodyOn', 'lab.melodyOn')}</div>
-      ${filterRow('melody-cats')}
-      <div class="card-grid melody-grid"></div>
+      ${pickerTrigger('melody')}
       <span class="sub-label">${t('lab.melodyOctave')}</span>
       <div class="chip-row melody-octaves"></div>
     </section>
@@ -3525,10 +3671,8 @@
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.sound')}</h2>${help('helpSound')}${lockBtn('sound')}</div>
       ${helpText('helpSound')}
-      ${filterRow('preset-cats')}
-      <div class="card-grid preset-grid"></div>
-      <div class="panel-head" style="margin:12px 0 4px"><span class="item-name preset-name" style="text-align:left"></span>
-        <button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
+      ${pickerTrigger('sound')}
+      <div class="reset-sound-row"><button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
       <div class="knob-row macro-knobs"></div>
 
       <details class="expert">
@@ -3667,6 +3811,21 @@
     <textarea class="code-in" aria-label="${t('lab.importTitle')}" placeholder="GL1.…"></textarea>
     <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="import-code">${t('lab.importCode')}</button></div>
     <p class="sheet-status" role="status"></p>
+  </div>
+</div>
+
+<div class="picker" hidden>
+  <div class="picker-backdrop" data-action="picker-close"></div>
+  <div class="picker-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="picker-grab" aria-hidden="true"></div>
+    <div class="panel-head"><h2 class="picker-title" id="picker-title"></h2>
+      <button class="icon-btn" type="button" data-action="picker-close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button></div>
+    <div class="chip-row picker-chips"></div>
+    <div class="picker-grid"></div>
+    <div class="picker-foot">
+      <div class="picker-now"><span>${t('lab.pickerChosen')}</span><strong class="picker-now-name"></strong></div>
+      <button class="picker-done" type="button" data-action="picker-close">${t('lab.pickerDone')}</button>
+    </div>
   </div>
 </div>`;
     }
