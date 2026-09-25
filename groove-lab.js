@@ -484,10 +484,11 @@
     ['gallop', 'lab.rhythmGallop', [.5, .5, 1]],
   ];
 
-  const BEAT_CATS = ['all', 'calm', 'dance', 'funky', 'breaks'];
-  const MELODY_CATS = ['all', 'calm', 'dance', 'funky'];
-  const PRESET_CATS = ['all', 'pad', 'keys', 'lead'];
-  const CAT_KEY = { all: 'lab.catAll', calm: 'lab.catCalm', dance: 'lab.catDance', funky: 'lab.catFunky', breaks: 'lab.catBreaks',
+  // Filter-Kategorien; 'all' (kein Filter) hat keine eigene Bubble, sondern ein X.
+  const BEAT_CATS = ['calm', 'dance', 'funky', 'breaks'];
+  const MELODY_CATS = ['calm', 'dance', 'funky'];
+  const PRESET_CATS = ['pad', 'keys', 'lead'];
+  const CAT_KEY = { calm: 'lab.catCalm', dance: 'lab.catDance', funky: 'lab.catFunky', breaks: 'lab.catBreaks',
                     pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead' };
 
   // Mischpult-Kanäle. Melodie, Arp und Tasten teilen sich EINEN Synth-Klang
@@ -2631,6 +2632,18 @@
       const chips = root.querySelector('.picker-chips');
       const catChips = def.cats.map((c) => ({ value: c, label: t(CAT_KEY[c]) }));
       this._chips(chips, catChips, def.cat, def.catAction);
+      if (def.cat !== 'all') {
+        // Filter aktiv: X zum Zurücksetzen (statt einer "Alle"-Bubble).
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'chip chip-clear';
+        clear.dataset.action = def.catAction;
+        clear.dataset.value = 'all';
+        clear.setAttribute('aria-label', t('lab.filterClear'));
+        clear.title = t('lab.filterClear');
+        clear.innerHTML = UI_ICON.close;
+        chips.append(clear);
+      }
       if (which === 'beat') {
         // Taktart gehört zum Drumloop: 3/4 antippen wechselt gleich den Loop.
         const meterHost = document.createElement('div');
@@ -3039,7 +3052,7 @@
           this._afterStateChange();
           break;
         }
-        case 'beat-cat': this.ui.beatCat = value; this._renderBeat(); break;
+        case 'beat-cat': this.ui.beatCat = value === this.ui.beatCat ? 'all' : value; this._renderBeat(); break;
         case 'pick-pattern': {
           const meterBefore = this._meter();
           s.patternIndex = Number(value);
@@ -3063,7 +3076,7 @@
         case 'satb': s.satb[value] = { on: 'focus', focus: 'mute', mute: 'on' }[s.satb[value]]; this._renderSatb(); break;
 
         // Melodie
-        case 'melody-cat': this.ui.melodyCat = value; this._renderMelody(); break;
+        case 'melody-cat': this.ui.melodyCat = value === this.ui.melodyCat ? 'all' : value; this._renderMelody(); break;
         case 'pick-melody': s.melodyIndex = Number(value); s.melodyOn = true; this._renderMelody(); break;
         case 'melody-octave': s.melodyOctave = Number(value); this._renderMelody(); break;
 
@@ -3073,7 +3086,7 @@
           this.engine.setBusLevel(value, s.mute[value] ? 0 : s.mix[value]);
           this._renderMixer();
           break;
-        case 'preset-cat': this.ui.presetCat = value; this._renderSound(); break;
+        case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
         case 'pick-preset':
           s.sound = soundFromPreset(Number(value));
           this._applySound();
@@ -3542,6 +3555,8 @@
   .picker-card > .panel-head { padding: 4px 16px 0; margin-bottom: 8px; }
   .picker-title { font-size: .95rem !important; color: var(--text) !important; text-transform: none !important; letter-spacing: 0 !important; }
   .picker-chips { padding: 0 16px 10px; flex: 0 0 auto; }
+  .chip-clear { display: inline-grid; place-items: center; padding: 0; width: 32px; align-self: stretch; color: var(--accent); border-color: var(--accent); }
+  .chip-clear svg { width: 14px; height: 14px; stroke-width: 2.4; }
   .chip-sep { flex: 0 0 1px; align-self: stretch; background: var(--line); margin: 3px 2px; }
   .picker-grid { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
   .pick-card { display: flex; align-items: center; gap: 9px; padding: 9px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); text-align: left; min-width: 0; }
