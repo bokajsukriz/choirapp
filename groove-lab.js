@@ -555,8 +555,10 @@
 
   /* Melodie-Editor: sichtbarer Stufenbereich (8 oben … eine Oktave tiefer
      bis zur 5 unten), wählbare Tonlängen in Sechzehnteln und Obergrenzen. */
-  const MEL_HIGH = 7;
-  const MEL_LOW = -3;
+  // Drei Oktaven: 1–7 höher, 1–7 (Mitte), 1–7 tiefer.
+  const MEL_HIGH = 13;
+  const MEL_LOW = -7;
+  const MEL_ROW_PX = 21;
   const MEL_LENGTHS = [[1, '1/16'], [2, '1/8'], [4, '1/4'], [6, '1/4 ·'], [8, '1/2']];
   const MEL_MAX_BARS = 4;
   const MEL_MAX_OWN = 24;
@@ -2387,12 +2389,23 @@
       const steps = this._barSteps();
       const meter = METERS[this._meter()];
       const cols = barIdx.length * steps;
-      const rows = MEL_HIGH - MEL_LOW + 1;
+      // Groß: alle drei Oktaven (scrollbar). Klein: nur der benutzte Bereich,
+      // mindestens die mittlere Oktave — sonst würden die Töne winzig.
+      let hi = MEL_HIGH;
+      let lo = MEL_LOW;
+      if (!large) {
+        const degs = barIdx.flatMap((bi) => (bars[bi] || []).map((n) => n[1]));
+        hi = Math.max(7, ...degs);
+        lo = Math.min(0, ...degs);
+      }
+      const rows = hi - lo + 1;
       const pct = (v) => `${(v * 100).toFixed(3)}%`;
+      if (large) host.style.height = `${rows * MEL_ROW_PX}px`;
       let html = '';
-      for (let d = MEL_HIGH; d >= MEL_LOW; d--) {
-        const cls = [mod(d, 7) === 0 ? 'is-root' : '', [2, 4].includes(mod(d, 7)) ? 'is-chord' : '', d < 0 ? 'is-low' : '', d === -1 ? 'is-split' : ''].join(' ');
-        html += `<span class="mel-row ${cls}" style="top:${pct((MEL_HIGH - d) / rows)};height:${pct(1 / rows)}"></span>`;
+      for (let d = hi; d >= lo; d--) {
+        const cls = [mod(d, 7) === 0 ? 'is-root' : '', [2, 4].includes(mod(d, 7)) ? 'is-chord' : '',
+          d < 0 || d > 6 ? 'is-outer' : '', d === -1 || d === 6 ? 'is-split' : ''].join(' ');
+        html += `<span class="mel-row ${cls}" style="top:${pct((hi - d) / rows)};height:${pct(1 / rows)}"></span>`;
       }
       for (let c = 1; c < cols; c++) {
         const inBar = c % steps;
@@ -2402,21 +2415,36 @@
       }
       barIdx.forEach((bi, k) => (bars[bi] || []).forEach(([at, deg, len, alt]) => {
         const sign = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
-        html += `<span class="mel-note${alt ? ' is-alt' : ''}" style="left:${pct((k * steps + at) / cols)};width:${pct(len / cols)};top:${pct((MEL_HIGH - deg) / rows)};height:${pct(1 / rows)}">${large && sign ? `<b>${sign}</b>` : ''}</span>`;
+        html += `<span class="mel-note${alt ? ' is-alt' : ''}" style="left:${pct((k * steps + at) / cols)};width:${pct(len / cols)};top:${pct((hi - deg) / rows)};height:${pct(1 / rows)}">${large && sign ? `<b>${sign}</b>` : ''}</span>`;
       }));
       html += '<span class="mel-playhead" hidden></span>';
       host.innerHTML = html;
       host.dataset.bars = barIdx.join(',');
       if (large) {
-        // Beschriftung: 1 = Grundton des Akkords; Akkordtöne rosa; unter der
-        // Linie eine Oktave tiefer (mit Klammer "tiefer" statt Sonderzeichen).
+        // Beschriftung: 1–7 je Oktave, 1 = Grundton des Akkords, Akkordtöne
+        // rosa; die äußeren Oktaven tragen eine Klammer "höher"/"tiefer".
+        // Die Leiste ist zugleich der Griff zum Scrollen (die Rolle selbst
+        // fängt Berührungen zum Zeichnen ab).
         let labels = '';
-        for (let d = MEL_HIGH; d >= MEL_LOW; d--) {
-          labels += `<span class="${[0, 2, 4].includes(mod(d, 7)) ? 'is-chord' : ''}${d < 0 ? ' is-low' : ''}">${d === 7 ? 8 : mod(d, 7) + 1}</span>`;
+        for (let d = hi; d >= lo; d--) {
+          labels += `<span class="${[0, 2, 4].includes(mod(d, 7)) ? 'is-chord' : ''}${d < 0 || d > 6 ? ' is-outer' : ''}">${mod(d, 7) + 1}</span>`;
         }
-        labels += `<span class="mel-low-band" style="top:${pct((MEL_HIGH + 1) / rows)};height:${pct(-MEL_LOW / rows)}"><i>${t('lab.melLower')}</i></span>`;
-        this.$('.mel-labels').innerHTML = labels;
+        labels += `<span class="mel-band" style="top:0;height:${pct((hi - 6) / rows)}"><i>${t('lab.melHigher')}</i></span>`;
+        labels += `<span class="mel-band" style="top:${pct((hi + 1) / rows)};height:${pct(-lo / rows)}"><i>${t('lab.melLower')}</i></span>`;
+        const labelHost = this.$('.mel-labels');
+        labelHost.innerHTML = labels;
+        labelHost.style.height = `${rows * MEL_ROW_PX}px`;
       }
+    }
+
+    /** Rolle so scrollen, dass die Töne des Takts (sonst die mittlere
+     *  Oktave) mittig im Blick sind. */
+    _scrollMelRoll() {
+      const roll = this.$('.mel-roll');
+      const notes = this._melody().bars[this.ui.melBar] || [];
+      const degs = notes.map((n) => n[1]);
+      const center = degs.length ? (Math.max(...degs) + Math.min(...degs)) / 2 : 3;
+      roll.scrollTop = (MEL_HIGH - center + .5) * MEL_ROW_PX - roll.clientHeight / 2;
     }
 
     /** Abspielmarke in Mini- und großer Rolle. */
@@ -3454,9 +3482,9 @@
           this._renderMelody();
           break;
         }
-        case 'mel-edit': this.ui.melEdit = true; this.ui.melBar = 0; this._renderMelEditor(); break;
+        case 'mel-edit': this.ui.melEdit = true; this.ui.melBar = 0; this._renderMelEditor(); this._scrollMelRoll(); break;
         case 'mel-done': this.ui.melEdit = false; this._renderMelEditor(); this.$('[data-action="mel-edit"]').focus(); break;
-        case 'mel-bar': this.ui.melBar = Number(value); this._renderMelEditor(); break;
+        case 'mel-bar': this.ui.melBar = Number(value); this._renderMelEditor(); this._scrollMelRoll(); break;
         case 'mel-add-bar': {
           const bars = this._melBegin();
           if (bars.length < MEL_MAX_BARS) { bars.push([]); this.ui.melBar = bars.length - 1; }
@@ -3961,8 +3989,8 @@
   .mel-row { position: absolute; left: 0; right: 0; }
   .mel-row.is-root { background: rgba(var(--accent-rgb), .07); }
   .mel-grid .mel-row.is-chord { background: rgba(var(--accent-rgb), .04); }
-  .mel-grid .mel-row.is-low { background-color: rgba(140,129,166,.07); }
-  .mel-grid .mel-row.is-low.is-root { background: rgba(var(--accent-rgb), .07); }
+  .mel-grid .mel-row.is-outer { background-color: rgba(140,129,166,.07); }
+  .mel-grid .mel-row.is-outer.is-root { background: rgba(var(--accent-rgb), .07); }
   .mel-grid .mel-row { border-top: 1px solid rgba(241,221,208,.7); }
   .mel-grid .mel-row.is-split { border-top: 2px solid #d9bfae; }
   .mel-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #f6ebe2; }
@@ -3983,14 +4011,18 @@
   .mel-bar-tab.is-extra { background: var(--surface); font-size: .9rem; }
   .mel-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
   .mel-icon svg { width: 18px; height: 18px; }
-  .mel-roll { display: grid; grid-template-columns: 26px 1fr; gap: 4px; }
-  .mel-grid { height: 231px; border-radius: 10px; border: 1px solid var(--line); touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
-  .mel-labels { position: relative; display: grid; grid-template-rows: repeat(11, 1fr); height: 231px; padding: 1px 0; }
-  .mel-labels span { display: grid; place-items: center end; padding-right: 2px; font-size: .64rem; font-weight: 800; color: var(--muted); }
+  /* Die Rolle zeigt ~12 der 21 Zeilen; gescrollt wird über die Leiste links
+     (bzw. Mausrad) — das Raster selbst zeichnet und scrollt deshalb nicht. */
+  .mel-roll { display: grid; grid-template-columns: 30px 1fr; gap: 4px; height: 256px; overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 10px; scrollbar-width: thin; }
+  .mel-grid { border-radius: 10px; border: 1px solid var(--line); touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+  .mel-labels { position: relative; display: grid; grid-auto-rows: 1fr; padding: 1px 0; border-radius: 10px; background: var(--surface-2);
+    touch-action: pan-y; cursor: ns-resize; }
+  .mel-labels span { display: grid; place-items: center end; padding-right: 4px; font-size: .64rem; font-weight: 800; color: var(--muted); }
   .mel-labels span.is-chord { color: var(--accent); }
-  .mel-labels span.is-low { opacity: .7; }
-  .mel-low-band { position: absolute !important; left: 0; width: 9px; border: 1.5px solid #cbbfd8; border-right: 0; border-radius: 4px 0 0 4px; padding: 0 !important; }
-  .mel-low-band i { position: absolute; left: -3px; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); font-size: .5rem; font-style: normal; font-weight: 800; color: var(--muted); background: var(--surface); padding: 0 2px; text-transform: uppercase; letter-spacing: .04em; }
+  .mel-labels span.is-outer { opacity: .7; }
+  .mel-band { position: absolute !important; left: 3px; width: 8px; border: 1.5px solid #cbbfd8; border-right: 0; border-radius: 4px 0 0 4px; padding: 0 !important; }
+  .mel-band i { position: absolute; left: 5px; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); font-size: .5rem; font-style: normal; font-weight: 800; color: var(--muted); background: var(--surface-2); padding: 0 2px; text-transform: uppercase; letter-spacing: .04em; }
   .mel-tools { margin-top: 4px; }
   .mel-chroma { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   .mel-alts .chip { min-width: 36px; text-align: center; font-size: .82rem; }
