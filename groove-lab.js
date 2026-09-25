@@ -648,6 +648,8 @@
     undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
     save: svg('<path d="M6 3h12v18l-6-4-6 4Z"/>'),
     reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
+    speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
+    speakerOff: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
   };
 
   // Ein Piktogramm je Drumloop und Klang-Preset (siehe `icon`) plus die
@@ -2128,37 +2130,57 @@
       this.$('[data-action="reset-sound"]').hidden = !sound.custom;
     }
 
+    /** Mixer als Kanalzüge: je Kanal ein breiter Pegelbalken (ein
+     *  gestyltes <input type=range> — Tastatur und Screenreader bleiben
+     *  erhalten) mit Name und Prozentwert im Balken, davor ein
+     *  Lautsprecher-Knopf zum Stummschalten. "Gesamt" steht abgesetzt. */
     _renderMixer() {
       const s = this.state;
       const host = this.$('.mixer-list');
       const row = (bus, label, value, muted) => {
         const wrap = document.createElement('div');
-        wrap.className = `mixer-row${muted ? ' is-muted' : ''}`;
-        const name = document.createElement('span');
-        name.textContent = label;
-        const input = document.createElement('input');
-        input.type = 'range'; input.min = '0'; input.max = '1'; input.step = '.01';
-        input.value = String(value);
-        input.dataset.mix = bus;
-        input.setAttribute('aria-label', label);
-        wrap.append(name, input);
+        wrap.className = `mixer-row${muted ? ' is-muted' : ''}${bus === 'master' ? ' is-master' : ''}`;
         if (bus !== 'master') {
           const mute = document.createElement('button');
           mute.type = 'button';
-          mute.className = 'chip mute-btn';
+          mute.className = 'mute-btn';
           mute.dataset.action = 'mute';
           mute.dataset.value = bus;
-          mute.textContent = 'M';
+          mute.innerHTML = muted ? UI_ICON.speakerOff : UI_ICON.speaker;
           mute.setAttribute('aria-pressed', String(muted));
           mute.setAttribute('aria-label', tf('lab.muteAria', { bus: label }));
           wrap.append(mute);
         }
+        const bar = document.createElement('label');
+        bar.className = 'level-wrap';
+        const input = document.createElement('input');
+        input.type = 'range'; input.min = '0'; input.max = '1'; input.step = '.01';
+        input.className = 'level';
+        input.value = String(value);
+        input.dataset.mix = bus;
+        input.setAttribute('aria-label', label);
+        const name = document.createElement('span');
+        name.className = 'level-label';
+        name.textContent = label;
+        const out = document.createElement('span');
+        out.className = 'level-value';
+        bar.append(input, name, out);
+        wrap.append(bar);
+        this._paintLevel(input);
         return wrap;
       };
       host.replaceChildren(
         ...BUSES.map((bus) => row(bus, t(BUS_KEY[bus]), s.mix[bus], s.mute[bus])),
         row('master', t('lab.master'), s.mix.master, false),
       );
+    }
+
+    /** Füllung und Prozentangabe eines Pegelbalkens nachziehen. */
+    _paintLevel(input) {
+      const pct = Math.round(Number(input.value) * 100);
+      input.style.setProperty('--val', `${pct}%`);
+      const out = input.parentElement?.querySelector('.level-value');
+      if (out) out.textContent = `${pct} %`;
     }
 
     /** Vier Makro-Regler für die schnelle Ansicht — jeder bewegt einen oder
@@ -2580,6 +2602,7 @@
           this.$(`[data-out="${el.dataset.field}"]`).textContent = `${Math.round(Number(el.value) * 100)} %`;
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
+          this._paintLevel(el);
           if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master);
           else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix]);
         } else if (el.dataset.sound) {
@@ -2951,10 +2974,41 @@
   .satb-row.is-focus { border-color: var(--voice); box-shadow: 0 0 0 1px var(--voice) inset; }
   .satb-row.is-mute .satb-name, .satb-row.is-mute .satb-note { opacity: .35; text-decoration: line-through; }
 
-  .mixer-list { display: grid; gap: 4px; }
-  .mixer-row { display: grid; grid-template-columns: 74px 1fr 34px; gap: 8px; align-items: center; font-size: .7rem; font-weight: 700; }
-  .mixer-row.is-muted span { opacity: .4; }
-  .mute-btn { padding: 5px 0; text-align: center; }
+  .mixer-list { display: grid; gap: 8px; }
+  .mixer-row { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: center; }
+  .mixer-row.is-master { grid-template-columns: 1fr; margin-top: 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .mute-btn {
+    width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: var(--surface); color: var(--accent);
+  }
+  .mute-btn svg { width: 19px; height: 19px; }
+  .mute-btn[aria-pressed="true"] { color: var(--muted); background: var(--surface-2); }
+  .level-wrap { position: relative; display: block; }
+  /* Pegelbalken: das Range-Feld selbst ist der Balken, die Füllung kommt
+     aus --val (siehe _paintLevel); der Griff ist nur ein schmaler Strich. */
+  .level {
+    -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 40px; margin: 0;
+    border-radius: 12px; border: 1px solid var(--line); cursor: pointer; touch-action: pan-y;
+    background: linear-gradient(to right, rgba(var(--accent-rgb), .5) var(--val, 0%), var(--surface) var(--val, 0%));
+  }
+  .level::-webkit-slider-runnable-track { background: transparent; height: 100%; }
+  .level::-moz-range-track { background: transparent; height: 100%; }
+  .level::-webkit-slider-thumb { -webkit-appearance: none; width: 5px; height: 40px; border-radius: 3px; background: var(--accent); }
+  .level::-moz-range-thumb { width: 5px; height: 40px; border: 0; border-radius: 3px; background: var(--accent); }
+  .level-label, .level-value {
+    position: absolute; top: 50%; transform: translateY(-50%); pointer-events: none;
+    font-size: .76rem; font-weight: 800; color: var(--text);
+  }
+  .level-label { left: 12px; }
+  .level-value { right: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .mixer-row.is-muted .level { background: linear-gradient(to right, rgba(140,129,166,.22) var(--val, 0%), var(--surface-2) var(--val, 0%)); }
+  .mixer-row.is-muted .level::-webkit-slider-thumb { background: var(--muted); }
+  .mixer-row.is-muted .level::-moz-range-thumb { background: var(--muted); }
+  .mixer-row.is-muted .level-label { color: var(--muted); text-decoration: line-through; }
+  .mixer-row.is-master .level { height: 46px; background: linear-gradient(to right, var(--accent) var(--val, 0%), var(--surface) var(--val, 0%)); }
+  .mixer-row.is-master .level::-webkit-slider-thumb { height: 46px; background: var(--text); }
+  .mixer-row.is-master .level::-moz-range-thumb { height: 46px; background: var(--text); }
+  .mixer-row.is-master .level-label { color: #fff; text-shadow: 0 1px 2px rgba(36,27,61,.35); }
 
   .macro-knobs { justify-content: space-between; }
   .expert { margin-top: 12px; }

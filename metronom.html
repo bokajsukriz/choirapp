@@ -55,23 +55,24 @@
     border: 1px solid rgba(var(--accent-rgb), .3);
     box-shadow: 0 10px 30px -18px rgba(var(--accent-rgb), .8);
   }
-  .beats { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  /* Schläge als Kreise. Stufen: betont = vollfarbig, mittel = heller,
+     normal = heller und halb gefüllt, stumm = leer (nur Rand). */
+  .beats { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
   .beat {
-    width: 34px; display: grid; justify-items: center; gap: 4px; padding: 0;
-    font-size: .64rem; font-weight: 800; color: var(--muted);
+    width: 38px; height: 38px; border-radius: 50%; padding: 0; position: relative; overflow: hidden;
+    border: 2px solid var(--accent); background: var(--surface);
+    transition: transform .08s;
   }
-  .beat-bar { width: 26px; height: 52px; border-radius: 9px; background: var(--surface); border: 2px solid var(--line); position: relative; overflow: hidden; }
-  .beat-fill { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(var(--accent-rgb), .45); transition: height .12s; }
-  .beat[data-level="3"] .beat-fill { height: 100%; background: rgba(var(--accent-rgb), .7); }
-  .beat[data-level="2"] .beat-fill { height: 66%; }
-  .beat[data-level="1"] .beat-fill { height: 36%; }
-  .beat[data-level="0"] .beat-fill { height: 0; }
-  .beat[data-level="0"] .beat-bar { border-style: dashed; }
-  .beat.is-now .beat-bar { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .25); }
-  .beat.is-now .beat-fill { background: var(--accent); }
-  .beat.is-now { color: var(--accent); }
-  .beats.is-silent .beat-bar { opacity: .35; }
-  .beats-hint { text-align: center; font-size: .64rem; color: var(--muted); margin: 6px 0 0; }
+  .beat::after { content: ""; position: absolute; inset: 0; }
+  .beat[data-level="3"]::after { background: var(--accent); }
+  .beat[data-level="2"]::after { background: rgba(var(--accent-rgb), .45); }
+  .beat[data-level="1"]::after { background: linear-gradient(to top, rgba(var(--accent-rgb), .45) 50%, transparent 50%); }
+  .beat[data-level="1"], .beat[data-level="2"] { border-color: rgba(var(--accent-rgb), .6); }
+  .beat[data-level="0"] { border-color: rgba(var(--accent-rgb), .3); }
+  .beat.is-now { transform: scale(1.18); box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .25); }
+  .beats.is-silent .beat { opacity: .35; }
+  .beats.is-many { gap: 4px; }
+  .beats.is-many .beat { width: 22px; height: 22px; }
 
   .tempo-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 14px; }
   .round-btn { width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); font-size: 1.4rem; font-weight: 700; line-height: 1; touch-action: manipulation; }
@@ -81,8 +82,6 @@
   @keyframes pulse { from { transform: scale(1.06); color: var(--accent); } to { transform: none; } }
   .bpm-unit { font-size: .74rem; font-weight: 800; color: var(--muted); letter-spacing: .06em; }
   .tempo-name { color: var(--accent); }
-  .fine-row { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
-  .fine-btn { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .7rem; font-weight: 800; color: var(--muted); }
   input[type=range] { width: 100%; accent-color: var(--accent); }
   .tempo-slider { margin-top: 10px; }
   .silent-msg { text-align: center; font-weight: 800; font-size: .8rem; color: var(--accent); min-height: 1.2em; margin: 8px 0 0; }
@@ -104,14 +103,14 @@
 
   .sound-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .sound {
-    border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 4px 8px;
-    display: grid; justify-items: center; gap: 5px; font-size: .7rem; font-weight: 700; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 7px 8px;
+    display: flex; align-items: center; justify-content: center; gap: 5px; font-size: .72rem; font-weight: 700; color: var(--muted);
+    white-space: nowrap; min-width: 0;
   }
-  .sound svg { width: 22px; height: 22px; }
+  .sound svg { width: 15px; height: 15px; flex: 0 0 auto; }
   .sound[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .14); color: var(--accent); }
   .loop-box { margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px dashed rgba(var(--accent-rgb), .5); }
   .loop-box .chip { background: var(--surface-2); }
-  .volume-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; margin-top: 14px; font-size: .74rem; font-weight: 700; }
 
   .extra { border-top: 1px solid var(--line); padding: 12px 0 2px; }
   .extra:first-of-type { border-top: 0; padding-top: 0; }
@@ -155,8 +154,7 @@
 
 <main>
   <section class="hero" aria-label="Tempo und Schläge">
-    <div class="beats" role="group" aria-label="Betonung je Schlag — antippen zum Ändern"></div>
-    <p class="beats-hint">Schläge antippen: betont → mittel → normal → stumm</p>
+    <div class="beats" role="group" aria-label="Betonung je Schlag — antippen: betont, mittel, normal, stumm"></div>
     <div class="tempo-row">
       <button class="round-btn" type="button" data-bpm="-1" aria-label="Langsamer">−</button>
       <div class="bpm-display">
@@ -164,12 +162,6 @@
         <div class="bpm-unit">BPM · <span class="tempo-name"></span></div>
       </div>
       <button class="round-btn" type="button" data-bpm="1" aria-label="Schneller">+</button>
-    </div>
-    <div class="fine-row">
-      <button class="fine-btn" type="button" data-bpm="-10">−10</button>
-      <button class="fine-btn" type="button" data-bpm="-5">−5</button>
-      <button class="fine-btn" type="button" data-bpm="5">+5</button>
-      <button class="fine-btn" type="button" data-bpm="10">+10</button>
     </div>
     <input class="tempo-slider" type="range" min="30" max="250" value="100" aria-label="Tempo in BPM">
     <p class="silent-msg" role="status"></p>
@@ -200,7 +192,6 @@
         <label class="switch"><input type="checkbox" role="switch" data-switch="clickWithLoop" aria-label="Klick zusätzlich zum Drumloop"><span class="switch-track"></span></label>
       </div>
     </div>
-    <label class="volume-row"><span>Lautstärke</span><input type="range" min="0" max="1" step=".01" data-range="volume" aria-label="Lautstärke"></label>
   </section>
 
   <section class="card">
@@ -243,6 +234,13 @@
       </div>
     </div>
 
+    <div class="extra">
+      <div class="extra-head">
+        <span><span class="extra-title">Bildschirm anlassen</span><span class="extra-sub">Solange das Metronom läuft, geht das Display nicht aus</span></span>
+        <label class="switch"><input type="checkbox" role="switch" data-switch="keepAwake" aria-label="Bildschirm anlassen"><span class="switch-track"></span></label>
+      </div>
+    </div>
+
     <div class="extra" data-extra="vibrate">
       <div class="extra-head">
         <span><span class="extra-title">Vibration</span><span class="extra-sub">Jeder Schlag auch spürbar (nur Android)</span></span>
@@ -250,7 +248,7 @@
       </div>
     </div>
 
-    <p class="foot-note">Solange das Metronom läuft, bleibt der Bildschirm an. Tastatur: Leertaste startet/stoppt, Pfeil hoch/runter ändert das Tempo, T tippt das Tempo ein.</p>
+    <p class="foot-note">Tastatur: Leertaste startet/stoppt, Pfeil hoch/runter ändert das Tempo, T tippt das Tempo ein.</p>
   </section>
 </main>
 
@@ -348,11 +346,11 @@
 
   const state = {
     bpm: 100, meter: '4/4', subdivision: 'none', accents: {},
-    sound: 'click', loop: 'pop', clickWithLoop: false, volume: .8,
+    sound: 'click', loop: 'pop', clickWithLoop: false,
     trainer: false, trainerTarget: 130, trainerStep: 2, trainerEvery: 4,
     gap: false, gapPlay: 2, gapMute: 2,
     timer: false, timerMinutes: 10,
-    vibrate: false,
+    vibrate: false, keepAwake: true,
   };
 
   function sanitize(raw) {
@@ -364,8 +362,7 @@
     set('subdivision', SUBDIVISIONS.some((x) => x.id === raw.subdivision) ? raw.subdivision : null);
     set('sound', SOUNDS.some((x) => x.id === raw.sound) ? raw.sound : null);
     set('loop', LOOPS.some((x) => x.id === raw.loop) ? raw.loop : null);
-    if (typeof raw.volume === 'number' && Number.isFinite(raw.volume)) state.volume = clamp(raw.volume, 0, 1);
-    for (const key of ['clickWithLoop', 'trainer', 'gap', 'timer', 'vibrate']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
+    for (const key of ['clickWithLoop', 'trainer', 'gap', 'timer', 'vibrate', 'keepAwake']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
     for (const [key, cfg] of Object.entries(STEPPERS)) set(key, num(raw[key], cfg.min, cfg.max));
     set('timerMinutes', TIMER_CHOICES.includes(raw.timerMinutes) ? raw.timerMinutes : null);
     if (raw.accents && typeof raw.accents === 'object') {
@@ -411,7 +408,7 @@
       const ctx = new Ctx({ latencyHint: 'interactive' });
       this.ctx = ctx;
       this.out = ctx.createGain();
-      this.out.gain.value = state.volume;
+      this.out.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
       limiter.threshold.value = -10; limiter.ratio.value = 8;
       this.out.connect(limiter).connect(ctx.destination);
@@ -420,8 +417,6 @@
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       await ctx.resume();
     },
-
-    setVolume(v) { if (this.ctx) this.out.gain.setTargetAtTime(v, this.ctx.currentTime, .02); },
 
     tone(time, { freq, type = 'sine', gain, decay, attack = .001, filter }) {
       const ctx = this.ctx;
@@ -618,7 +613,6 @@
 
   async function start() {
     try { await engine.start(); } catch { renderStatus(null, 'Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
-    engine.setVolume(state.volume);
     run.playing = true;
     run.tick = 0;
     run.queue = [];
@@ -626,7 +620,7 @@
     run.startedAt = performance.now();
     run.startBpm = state.bpm;
     // Bildschirm anlassen, solange es läuft (im iframe per allow="screen-wake-lock").
-    requestWakeLock();
+    if (state.keepAwake) requestWakeLock();
     renderTransport();
     scheduleAhead();
     draw();
@@ -661,9 +655,9 @@
       b.dataset.beatIndex = String(i);
       b.dataset.level = String(level);
       b.setAttribute('aria-label', `Schlag ${i + 1}: ${label[level]}`);
-      b.innerHTML = `<span class="beat-bar"><span class="beat-fill"></span></span>${i + 1}`;
       return b;
     }));
+    $('.beats').classList.toggle('is-many', list.length > 7);
   }
 
   function renderTempo() {
@@ -750,7 +744,6 @@
     chips('meter', METERS.map((x) => [x.id, x.id]), state.meter);
     chips('subdivision', SUBDIVISIONS.map((x) => [x.id, x.label, x.quarterOnly && m.unit !== 12]), state.subdivision);
     renderSounds();
-    $('[data-range="volume"]').value = String(state.volume);
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     $$('[data-body]').forEach((body) => { body.hidden = !state[body.dataset.body]; });
     chips('timerMinutes', TIMER_CHOICES.map((n) => [n, `${n} min`]), state.timerMinutes);
@@ -839,13 +832,16 @@
     if (!key) return;
     state[key] = e.target.checked;
     if (key === 'trainer' && run.playing) run.startBpm = state.bpm;
+    if (key === 'keepAwake' && run.playing) {
+      if (state.keepAwake) requestWakeLock();
+      else { run.wakeLock?.release?.().catch(() => {}); run.wakeLock = null; }
+    }
     renderAll();
     persist();
   });
 
   document.addEventListener('input', (e) => {
     if (e.target.classList.contains('tempo-slider')) setBpm(Number(e.target.value));
-    else if (e.target.dataset?.range === 'volume') { state.volume = Number(e.target.value); engine.setVolume(state.volume); persist(); }
   });
 
   document.addEventListener('keydown', (e) => {
@@ -863,7 +859,6 @@
   /** Ein Takt zum Vorhören des gewählten Klangs bzw. Loops. */
   async function preview() {
     try { await engine.start(); } catch { return; }
-    engine.setVolume(state.volume);
     const t0 = engine.ctx.currentTime + .05;
     const bt = barTicks();
     const saved = run.queue;
@@ -887,7 +882,7 @@
   document.addEventListener('visibilitychange', () => {
     // Die Bildschirm-Sperre verfällt beim Wegschalten; zurück im
     // Vordergrund neu anfordern, solange das Metronom läuft.
-    if (document.visibilityState === 'visible' && run.playing && !run.wakeLock) requestWakeLock();
+    if (document.visibilityState === 'visible' && run.playing && state.keepAwake && !run.wakeLock) requestWakeLock();
   });
 
   renderAll();
