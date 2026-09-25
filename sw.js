@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v284';
+const SW_VERSION = 'v285';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -43,7 +43,7 @@ const SHELL_REQUIRED = [
 // <script src> nachgeladen (siehe app.js), nie beim Boot importiert. Fehlt
 // es offline, scheitert nur dieses Nachladen mit einem Banner — kein Grund,
 // deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für die
-// Tool-Seiten uebe-lab.html (Spielplatz) und metronom.html (Einstellungen →
+// Tool-Seiten uebe-lab.html (Ausbildung), einsingen.html und metronom.html (Einstellungen →
 // Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES).
 const SHELL_OPTIONAL = [
   './boot-guard.js',
@@ -51,13 +51,14 @@ const SHELL_OPTIONAL = [
   './groove-lab.js',
   './uebe-lab.html',
   './metronom.html',
+  './einsingen.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
 ];
 const SHELL = [...SHELL_REQUIRED, ...SHELL_OPTIONAL];
 // Eigene Seiten, die die App als iframe öffnet — siehe fetch-Handler.
-const TOOL_PAGES = ['./uebe-lab.html', './metronom.html'];
+const TOOL_PAGES = ['./uebe-lab.html', './metronom.html', './einsingen.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

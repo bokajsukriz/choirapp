@@ -53,12 +53,14 @@ ein Dialog mit echter Wahl).
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über Einstellungen →
   Tools oder das Easter Egg (7× auf den Songtitel im Player).
-- `uebe-lab.html` — „Spielplatz“ (Einsingen, Rhythmus nachklatschen, Hören:
-  Intervalle und Akkordfolgen, Stimm-Tuner per Mikrofon). Das Mikrofon wird
-  nur live ausgewertet, nichts wird aufgenommen oder gesendet.
+- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training, Hören: Intervalle und
+  Akkordfolgen, Stimm-Tuner per Mikrofon). Das Mikrofon wird nur live
+  ausgewertet, nichts wird aufgenommen oder gesendet.
+- `einsingen.html` — Einsingen (Einsing-Übungen nach Stimmlage, geführtes
+  Einsing-Programm).
 - `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
   Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer).
-- Beide Tool-Seiten sind eigenständig, werden in der App über Einstellungen →
+- Die Tool-Seiten sind eigenständig, werden in der App über Einstellungen →
   Tools als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache
   über `SHELL_OPTIONAL`) und merken sich Einstellungen über
   `window.parent.chorToolStorage` (IndexedDB, meta-Typ `toolState`).
@@ -202,7 +204,7 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   woff2-Schrift.
 - `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
   bzw. die PDF-Vorschau im iframe; `frame-src 'self'` zusätzlich für die
-  Tool-Seiten (`uebe-lab.html`, `metronom.html`, Einstellungen → Tools). Die
+  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `metronom.html`, Einstellungen → Tools). Die
   haben als eigene Seiten keine eigene CSP-Meta-Angabe; sie laden nichts von
   außen.
 - `connect-src` erlaubt neben der eigenen Herkunft ausschließlich

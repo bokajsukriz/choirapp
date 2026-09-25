@@ -21555,7 +21555,7 @@ async function openGrooveLab() {
   }
 }
 
-/* Tool-Seiten (Spielplatz = uebe-lab.html, Metronom = metronom.html):
+/* Tool-Seiten (Ausbildung = uebe-lab.html, Einsingen = einsingen.html, Metronom = metronom.html):
    eigenständige Seiten mit eigener Audio-Engine, deshalb als gleich-
    herkünftiges iframe statt als Modul. Das iframe wird beim Schließen
    entfernt — so enden Ton, Timer, Mikrofon und Bildschirm-Sperre garantiert.
@@ -21617,11 +21617,12 @@ function initGrooveLabEasterEgg() {
   });
 }
 
-/** Einstellungen → Tools: Metronom, Groove Lab und Spielplatz (die
+/** Einstellungen → Tools: Metronom, Groove Lab, Einsingen und Ausbildung (die
  *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
+  $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
   $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   document.addEventListener('keydown', (event) => {
