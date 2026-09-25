@@ -352,16 +352,66 @@
 
   // Stufen (0 = I). Die Beschriftung (I–V–vi–IV …) wird je Modus berechnet,
   // weil dieselbe Stufenfolge in Moll anders klingt und heißt.
+  /* Akkordfolgen: Stufen der gewählten Tonart (0 = I … 6 = VII), je
+     Eintrag ein Akkord (ein oder zwei Takte, siehe chordBars). Name und
+     Kurz-Erklärung stehen in strings.js (lab.progName…/lab.progInfo…).
+     Die alten Ids bleiben, damit gespeicherte Stände weiter passen. */
   const PROGRESSIONS = [
-    { id: 'pop', degrees: [0, 4, 5, 3] },
-    { id: 'fifties', degrees: [0, 5, 3, 4] },
-    { id: 'sad', degrees: [5, 3, 0, 4] },
-    { id: 'jazz', degrees: [1, 4, 0, 0], sevenths: true },
-    { id: 'plagal', degrees: [0, 3, 0, 3] },
-    { id: 'modal', degrees: [0, 6, 3, 0] },
-    { id: 'andalusian', degrees: [0, 6, 5, 4] },
-    { id: 'drone', degrees: [0], nameKey: 'lab.progDrone' },
+    { id: 'pop', cat: 'pop', degrees: [0, 4, 5, 3] },
+    { id: 'sad', cat: 'pop', degrees: [5, 3, 0, 4] },
+    { id: 'fifties', cat: 'pop', degrees: [0, 5, 3, 4] },
+    { id: 'royal', cat: 'pop', degrees: [3, 4, 2, 5] },
+    { id: 'pendulum', cat: 'pop', degrees: [0, 3] },
+    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0] },
+    { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0] },
+    { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4] },
+    { id: 'amen', cat: 'classic', degrees: [0, 3, 0] },
+    { id: 'plagal', cat: 'classic', degrees: [0, 3, 0, 3] },
+    { id: 'pachelbel', cat: 'classic', degrees: [0, 4, 5, 2, 3, 0, 3, 4] },
+    { id: 'circle', cat: 'classic', degrees: [0, 3, 6, 2, 5, 1, 4, 0] },
+    { id: 'jazz', cat: 'jazz', degrees: [1, 4, 0, 0], sevenths: true },
+    { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true },
+    { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true },
+    { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true },
+    { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0] },
+    { id: 'rock3', cat: 'modal', degrees: [0, 6, 3] },
+    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4] },
+    { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6] },
+    { id: 'drone', cat: 'modal', degrees: [0] },
   ];
+  const PROG_CATS = ['pop', 'classic', 'jazz', 'modal'];
+  const PROG_MAX_CHORDS = 16;
+  const PROG_MAX_OWN = 24;
+  const progKey = (kind, id) => `lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`;
+
+  /** Mini-Bild einer Akkordfolge: je Akkord ein Balken, Höhe = Stufe. */
+  function progPreview(degrees) {
+    const w = 64 / degrees.length;
+    const rects = degrees.map((d, i) => {
+      const h = 3 + (mod(d, 7) / 6) * 11;
+      return `<rect x="${(i * w + .6).toFixed(2)}" y="${(15 - h).toFixed(2)}" width="${Math.max(1, w - 1.2).toFixed(2)}" height="${h.toFixed(2)}" rx="1"/>`;
+    }).join('');
+    return `<svg class="preview" viewBox="0 0 64 16" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
+  }
+
+  function sanitizeProgDegrees(raw) {
+    if (!Array.isArray(raw) || !raw.length) return null;
+    const list = raw.slice(0, PROG_MAX_CHORDS).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    return list.length ? list : null;
+  }
+
+  function sanitizeProgLibrary(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    return raw.slice(0, PROG_MAX_OWN).map((p) => {
+      if (!p || typeof p !== 'object' || typeof p.id !== 'string' || seen.has(p.id)) return null;
+      const degrees = sanitizeProgDegrees(p.degrees);
+      if (!degrees) return null;
+      seen.add(p.id);
+      const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : 'Progression';
+      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true };
+    }).filter(Boolean);
+  }
 
   function degreeSemis(steps, deg) { return steps[mod(deg, 7)] + 12 * Math.floor(deg / 7); }
   /** Stufe in den Bereich -3…3 falten — ein Motiv, das dem Akkord folgt,
@@ -491,7 +541,8 @@
   const OWN_CAT = 'own';
   const PRESET_CATS = ['pad', 'keys', 'lead'];
   const CAT_KEY = { calm: 'lab.catCalm', dance: 'lab.catDance', funky: 'lab.catFunky', breaks: 'lab.catBreaks',
-                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead', own: 'lab.catOwn' };
+                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead', own: 'lab.catOwn',
+                    pop: 'lab.catPop', classic: 'lab.catClassic', jazz: 'lab.catJazz', modal: 'lab.catModal' };
 
   // Mischpult-Kanäle. Melodie, Arp und Tasten teilen sich EINEN Synth-Klang
   // (SOUND_LAYERS), haben aber eigene Kanäle für die Lautstärke.
@@ -535,6 +586,8 @@
       trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, bass: true },
       bassSoundId: 'pluck',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
+      // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
+      progDegrees: null, progSevenths: false, progName: null, progOwnId: null,
       chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       droneOn: false, droneFifth: true,
       melodyIndex: 0, melodyOn: true, melodyOctave: 4,
@@ -629,6 +682,12 @@
     s.keyRoot = int(raw.keyRoot, 0, 11, 0);
     s.modeId = oneOf(raw.modeId, MODES.map((m) => m.id), s.modeId);
     s.progId = oneOf(raw.progId, PROGRESSIONS.map((p) => p.id), s.progId);
+    s.progDegrees = sanitizeProgDegrees(raw.progDegrees);
+    if (s.progDegrees) {
+      s.progSevenths = bool(raw.progSevenths, false);
+      s.progName = typeof raw.progName === 'string' && raw.progName.trim() ? raw.progName.trim().slice(0, 40) : null;
+      s.progOwnId = typeof raw.progOwnId === 'string' ? raw.progOwnId.slice(0, 24) : null;
+    }
     s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
     s.chordsOn = bool(raw.chordsOn, false);
     for (const v of SATB) s.satb[v] = oneOf(obj(raw.satb)[v], ['on', 'focus', 'mute'], 'on');
@@ -1442,7 +1501,8 @@
       this.engine = new GrooveEngine();
       this.state = defaultState();
       this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null,
-        melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [] };
+        melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [],
+        progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [] };
       // Einspielen: Phase idle → armed (zählt ein) → recording → done.
       this.rec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, notes: [], open: new Map(), take: null };
 
@@ -1465,7 +1525,7 @@
       this._soundKnobs = {};
 
       this._storage = null;
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [] };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [] };
       this._storageRequested = false;
       this._restoreFocusTo = null;
       this._bodyOverflow = '';
@@ -1538,7 +1598,9 @@
         const slots = Array.isArray(data.slots) ? data.slots : [];
         this._saved.slots = [0, 1, 2, 3].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
         this._saved.melodies = sanitizeMelodyLibrary(data.melodies);
+        this._saved.progressions = sanitizeProgLibrary(data.progressions);
         this._renderMelody();
+        this._renderHarmony();
         // Den letzten Stand nur übernehmen, solange noch nichts gespielt oder
         // verändert wurde — sonst überschriebe ein langsames Laden Eingaben.
         if (data.last && !this.playing && !this.history.length) {
@@ -1609,7 +1671,22 @@
     _barSteps() { return METERS[this._meter()].steps; }
     _stepSeconds() { return 60 / this.state.bpm / 4; }
     _mode() { return MODES.find((m) => m.id === this.state.modeId) || MODES[0]; }
-    _progression() { return PROGRESSIONS.find((p) => p.id === this.state.progId) || PROGRESSIONS[0]; }
+    /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
+    _progression() {
+      const s = this.state;
+      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+      if (!s.progDegrees) return base;
+      return { ...base, degrees: s.progDegrees, sevenths: s.progSevenths, custom: true };
+    }
+    _progName() {
+      const s = this.state;
+      return s.progName || t(progKey('Name', (PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0]).id));
+    }
+    _clearProgEdit() {
+      const s = this.state;
+      s.progDegrees = null; s.progSevenths = false; s.progName = null; s.progOwnId = null;
+      this.ui.progUndo = []; this.ui.progRedo = []; this.ui.progSel = 0;
+    }
     /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
     _melody() {
       const s = this.state;
@@ -1644,9 +1721,9 @@
      *  Akkord, damit auch der Übergang Ende → Anfang geführt ist. */
     _voicings() {
       const s = this.state;
-      const key = `${s.keyRoot}|${s.modeId}|${s.progId}`;
-      if (this._voicingCache?.key === key) return this._voicingCache.list;
       const prog = this._progression();
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}`;
+      if (this._voicingCache?.key === key) return this._voicingCache.list;
       const steps = this._mode().steps;
       let prev = { S: 67, A: 62, T: 55, B: 48 };
       let list = [];
@@ -1740,6 +1817,7 @@
         s.keyRoot = Math.floor(Math.random() * 12);
         s.modeId = pick(MODES).id;
         s.progId = pick(PROGRESSIONS.filter((p) => p.id !== 'drone')).id;
+        this._clearProgEdit();
       }
       if (!locks.melody) {
         const candidates = MELODIES.map((m, i) => [m, i]).filter(([m]) => m.meter === this._meter());
@@ -2273,10 +2351,7 @@
       const names = noteNames();
       this._options(this.$('[data-field="keyRoot"]'), names.map((name, i) => [i, name]), s.keyRoot);
       this._options(this.$('[data-field="modeId"]'), MODES.map((m) => [m.id, t(m.nameKey)]), s.modeId);
-      this._chips(this.$('.prog-chips'), PROGRESSIONS.map((p) => ({
-        value: p.id,
-        label: p.nameKey ? t(p.nameKey) : p.degrees.map((d) => romanNumeral(mode.steps, d, p.sevenths)).join('–'),
-      })), s.progId, 'prog');
+      this._renderPickerFor('prog');
       this.$('.key-name').textContent = `${names[s.keyRoot]} ${t(mode.nameKey)}`;
       this.$('[data-field="chordBars"]').value = String(s.chordBars);
       this._renderLock('harmony');
@@ -2285,6 +2360,7 @@
       this._setSwitch('droneOn', s.droneOn);
       this._setSwitch('droneFifth', s.droneFifth);
       this._renderChordStrip();
+      this._renderProgEditor();
       this._renderSatb();
     }
 
@@ -2294,9 +2370,17 @@
       const mode = this._mode();
       const current = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : -1;
       const host = this.$('.chord-strip');
+      const editing = this.ui.progEdit;
       host.replaceChildren(...prog.degrees.map((deg, i) => {
-        const box = document.createElement('div');
-        box.className = `chord-box${i === current ? ' is-now' : ''}`;
+        // Im Editor sind die Akkorde Knöpfe: antippen wählt den Platz.
+        const box = document.createElement(editing ? 'button' : 'div');
+        box.className = `chord-box${i === current ? ' is-now' : ''}${editing && i === this.ui.progSel ? ' is-selected' : ''}`;
+        if (editing) {
+          box.type = 'button';
+          box.dataset.action = 'prog-slot';
+          box.dataset.value = String(i);
+          box.setAttribute('aria-pressed', String(i === this.ui.progSel));
+        }
         const roman = document.createElement('span');
         roman.className = 'chord-roman';
         roman.textContent = romanNumeral(mode.steps, deg, prog.sevenths);
@@ -2958,6 +3042,132 @@
       this._renderSatb();
     }
 
+    /* ---- Akkordfolgen-Editor ----
+       Die Akkordleiste wird zum Bearbeiten antippbar; darunter die sieben
+       Akkorde der Tonart zum Austauschen, dazu Einfügen, Entfernen,
+       Verschieben und Septakkorde. Eigene Folgen landen wie eigene
+       Melodien in einer Bibliothek neben den Speicherplätzen. */
+
+    _renderProgEditor() {
+      const s = this.state;
+      const editing = this.ui.progEdit;
+      const prog = this._progression();
+      this.$('[data-action="prog-edit"]').hidden = editing;
+      this.$('.prog-editor').hidden = !editing;
+      this.$('.prog-info').textContent = s.progOwnId || (s.progDegrees && s.progName) ? '' : t(progKey('Info', prog.id));
+      if (!editing) return;
+      this.ui.progSel = Math.min(this.ui.progSel, prog.degrees.length - 1);
+      const mode = this._mode();
+      const sel = prog.degrees[this.ui.progSel];
+      const degHost = this.$('.prog-degrees');
+      degHost.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((d) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'prog-deg';
+        btn.dataset.action = 'prog-deg';
+        btn.dataset.value = String(d);
+        btn.setAttribute('aria-pressed', String(d === sel));
+        btn.innerHTML = '<span></span><strong></strong>';
+        btn.querySelector('span').textContent = romanNumeral(mode.steps, d, prog.sevenths);
+        btn.querySelector('strong').textContent = chordName(s.keyRoot, mode.steps, d, prog.sevenths);
+        return btn;
+      }));
+      this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
+      this.$('[data-action="prog-undo"]').disabled = !this.ui.progUndo.length;
+      this.$('[data-action="prog-redo"]').disabled = !this.ui.progRedo.length;
+      this.$('[data-action="prog-add"]').disabled = prog.degrees.length >= PROG_MAX_CHORDS;
+      this.$('[data-action="prog-remove"]').disabled = prog.degrees.length <= 1;
+      this.$('[data-action="prog-move"][data-value="-1"]').disabled = this.ui.progSel <= 0;
+      this.$('[data-action="prog-move"][data-value="1"]').disabled = this.ui.progSel >= prog.degrees.length - 1;
+      this._setSwitch('progSevenths', !!prog.sevenths);
+      const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
+      this.$('.prog-name-row').hidden = !own;
+      const nameInput = this.$('.prog-name');
+      if (own && this.shadowRoot.activeElement !== nameInput) nameInput.value = own.name;
+      this.$('[data-action="prog-original"]').hidden = !s.progDegrees || !!s.progName;
+      this.$('[data-action="prog-save"]').hidden = !!own;
+      this.$('[data-action="prog-delete"]').hidden = !own;
+    }
+
+    _progBegin() {
+      const s = this.state;
+      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
+      if (this.ui.progUndo.length > 60) this.ui.progUndo.shift();
+      this.ui.progRedo = [];
+      if (!s.progDegrees) {
+        const base = this._progression();
+        s.progDegrees = [...base.degrees];
+        s.progSevenths = !!base.sevenths;
+      }
+      return s.progDegrees;
+    }
+
+    _progCommit() {
+      const s = this.state;
+      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+      if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths) {
+        s.progDegrees = null; s.progSevenths = false;
+      }
+      const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
+      if (own && s.progDegrees) {
+        own.degrees = [...s.progDegrees];
+        own.sevenths = s.progSevenths;
+        own.name = s.progName || own.name;
+        this._persist();
+      }
+      this._onHarmonyChange();
+    }
+
+    _progRestore(from, to) {
+      const snap = from.pop();
+      if (!snap) return;
+      const s = this.state;
+      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
+      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId] = JSON.parse(snap);
+      this._progCommit();
+    }
+
+    /** Akkord kurz anspielen (vierstimmig, im Chorklang). */
+    async _previewChord(deg) {
+      try { await this._ensureAudio(); } catch { return; }
+      const s = this.state;
+      const voicing = voiceChord(chordPitchClasses(s.keyRoot, this._mode().steps, deg, this._progression().sevenths), { S: 67, A: 62, T: 55, B: 48 });
+      const now = this.engine.ctx.currentTime + .01;
+      for (const voice of SATB) {
+        this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
+      }
+    }
+
+    _progSaveOwn() {
+      const s = this.state;
+      const lib = this._saved.progressions;
+      if (lib.length >= PROG_MAX_OWN) { this._setStatus(t('lab.progLibraryFull')); return; }
+      const prog = this._progression();
+      let n = 1;
+      while (lib.some((p) => p.name === tf('lab.myProgN', { n }))) n++;
+      const name = s.progName && !s.progOwnId && s.progName !== t('lab.newProg') ? s.progName : tf('lab.myProgN', { n });
+      const id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths });
+      s.progDegrees = [...prog.degrees];
+      s.progSevenths = !!prog.sevenths;
+      s.progName = name;
+      s.progOwnId = id;
+      this._persist();
+      this._onHarmonyChange();
+      this._setStatus(tf('lab.progSaved', { name }));
+    }
+
+    _progDeleteOwn() {
+      const s = this.state;
+      const own = this._saved.progressions.find((p) => p.id === s.progOwnId);
+      if (!own || !global.confirm(tf('lab.melDeleteConfirm', { name: own.name }))) return;
+      this._saved.progressions = this._saved.progressions.filter((p) => p !== own);
+      this._clearProgEdit();
+      this.ui.progEdit = false;
+      this._persist();
+      this._onHarmonyChange();
+    }
+
     /* ---- Auswahl-Dialog (Drumloop, Melodie, Klang) ----
        Im Panel steht nur die aktuelle Auswahl, mit ‹ › zum direkten
        Weiterblättern. Ein Tipp darauf öffnet ein Blatt von unten mit
@@ -2974,6 +3184,23 @@
           current: s.patternIndex, edited: s.beatEdited,
           items: DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
             inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })),
+        };
+      }
+      if (which === 'prog') {
+        const steps = this._mode().steps;
+        const romans = (degrees, sevenths) => degrees.map((d) => romanNumeral(steps, d, sevenths)).join('–');
+        const own = this._saved.progressions;
+        return {
+          title: 'lab.pickProg', action: 'pick-prog', catAction: 'prog-cat',
+          cats: own.length ? [...PROG_CATS, OWN_CAT] : PROG_CATS, cat: this.ui.progCat,
+          current: s.progOwnId && own.some((p) => p.id === s.progOwnId) ? `own:${s.progOwnId}` : s.progOwnId ? -1 : s.progId,
+          fallback: s.progId, wide: true,
+          items: [
+            ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
+              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths), info: t(progKey('Info', p.id)) })),
+            ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
+              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths) })),
+          ],
         };
       }
       if (which === 'melody') {
@@ -3012,6 +3239,13 @@
           name = t('lab.customSound');
           sub = tf('lab.basedOn', { name: base.name });
           visual = pictogramIcon(base.icon);
+        } else if (which === 'prog') {
+          const prog = this._progression();
+          const s = this.state;
+          const steps = this._mode().steps;
+          name = this._progName();
+          sub = prog.degrees.map((d) => romanNumeral(steps, d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '');
+          visual = progPreview(prog.degrees);
         } else if (which === 'melody') {
           const melody = this._melody();
           const s = this.state;
@@ -3070,6 +3304,11 @@
         btn.innerHTML = `<span class="pick-ico">${it.visual}</span><span class="pick-text"><strong></strong><span></span></span>`;
         btn.querySelector('strong').textContent = it.name;
         btn.querySelector('.pick-text span').textContent = it.short;
+        if (it.info) {
+          const info = document.createElement('em');
+          info.textContent = it.info;
+          btn.querySelector('.pick-text').append(info);
+        }
         return btn;
       });
       root.querySelector('.picker-grid').replaceChildren(...cards);
@@ -3108,7 +3347,8 @@
       const def = this._pickerDef(which);
       const list = def.items.filter((it) => it.inMeter);
       const current = which === 'sound' ? this.state.sound.presetIndex
-        : which === 'melody' && def.current === -1 ? this.state.melodyIndex : def.current;
+        : which === 'melody' && def.current === -1 ? this.state.melodyIndex
+          : def.current === -1 ? def.fallback : def.current;
       const pos = list.findIndex((it) => it.i === current);
       const next = list[(pos + dir + list.length) % list.length];
       this._handleAction(def.action, String(next.i), null);
@@ -3650,6 +3890,14 @@
           this._paintLevel(el);
           if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master);
           else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix]);
+        } else if (el.classList.contains('prog-name')) {
+          const name = el.value.trim().slice(0, 40);
+          if (name && s.progOwnId) {
+            s.progName = name;
+            const own = this._saved.progressions.find((p) => p.id === s.progOwnId);
+            if (own) own.name = name;
+            this._renderPickerFor('prog');
+          }
         } else if (el.classList.contains('mel-name')) {
           const name = el.value.trim().slice(0, 40);
           if (name && s.melodyOwnId) { s.melodyName = name; this._melCommit({ persist: false }); }
@@ -3675,7 +3923,7 @@
         else if (field === 'lfoSync') { s.sound.lfoSync = Number(el.value); this._onSoundEdit(); }
         else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
-        else if (el.classList.contains('mel-name')) this._persist();
+        else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
       });
       this._wireMelGrid();
@@ -3705,6 +3953,7 @@
       }
       if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
       if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
+      if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -3756,7 +4005,79 @@
         case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
         // Harmonie
-        case 'prog': s.progId = value; this._onHarmonyChange(); break;
+        case 'prog-cat': this.ui.progCat = value === this.ui.progCat ? 'all' : value; this._renderHarmony(); break;
+        case 'pick-prog': {
+          this._clearProgEdit();
+          const own = String(value).startsWith('own:') && this._saved.progressions.find((p) => `own:${p.id}` === value);
+          if (own) {
+            s.progDegrees = [...own.degrees];
+            s.progSevenths = own.sevenths;
+            s.progName = own.name;
+            s.progOwnId = own.id;
+          } else if (PROGRESSIONS.some((p) => p.id === value)) {
+            s.progId = value;
+          }
+          this._onHarmonyChange();
+          break;
+        }
+        case 'prog-edit': this.ui.progEdit = true; this.ui.progSel = 0; this._renderHarmony(); break;
+        case 'prog-done': this.ui.progEdit = false; this._renderHarmony(); this.$('[data-action="prog-edit"]').focus(); break;
+        case 'prog-slot':
+          this.ui.progSel = Number(value);
+          this._renderChordStrip(); this._renderProgEditor();
+          this._previewChord(this._progression().degrees[this.ui.progSel]);
+          break;
+        case 'prog-deg': {
+          const degrees = this._progBegin();
+          degrees[this.ui.progSel] = Number(value);
+          this._progCommit();
+          this._previewChord(Number(value));
+          break;
+        }
+        case 'prog-add': {
+          const degrees = this._progBegin();
+          if (degrees.length < PROG_MAX_CHORDS) {
+            degrees.splice(this.ui.progSel + 1, 0, degrees[this.ui.progSel]);
+            this.ui.progSel++;
+          }
+          this._progCommit();
+          break;
+        }
+        case 'prog-remove': {
+          const degrees = this._progBegin();
+          if (degrees.length > 1) degrees.splice(this.ui.progSel, 1);
+          this.ui.progSel = Math.max(0, this.ui.progSel - 1);
+          this._progCommit();
+          break;
+        }
+        case 'prog-move': {
+          const to = this.ui.progSel + Number(value);
+          const degrees = this._progBegin();
+          if (to >= 0 && to < degrees.length) {
+            [degrees[this.ui.progSel], degrees[to]] = [degrees[to], degrees[this.ui.progSel]];
+            this.ui.progSel = to;
+          }
+          this._progCommit();
+          break;
+        }
+        case 'prog-undo': this._progRestore(this.ui.progUndo, this.ui.progRedo); break;
+        case 'prog-redo': this._progRestore(this.ui.progRedo, this.ui.progUndo); break;
+        case 'prog-new':
+          this._progBegin();
+          s.progDegrees = [0];
+          s.progSevenths = false;
+          s.progName = t('lab.newProg');
+          s.progOwnId = null;
+          this.ui.progSel = 0;
+          this._progCommit();
+          break;
+        case 'prog-original':
+          this._progBegin();
+          s.progDegrees = null; s.progSevenths = false;
+          this._progCommit();
+          break;
+        case 'prog-save': this._progSaveOwn(); break;
+        case 'prog-delete': this._progDeleteOwn(); break;
         case 'satb': s.satb[value] = { on: 'focus', focus: 'mute', mute: 'on' }[s.satb[value]]; this._renderSatb(); break;
 
         // Melodie
@@ -3978,7 +4299,7 @@
       // Aktuelle Auswahl mit ‹ › — ein Tipp auf die Mitte öffnet den Auswahl-Dialog.
       const pickerTrigger = (which) => `<div class="picker-trigger" data-picker="${which}">
         <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="-1" aria-label="${t('lab.prevAria')}">${UI_ICON.prev}</button>
-        <button class="picker-main${which === 'melody' ? ' is-wide' : ''}" type="button" data-action="picker-open" data-picker="${which}" aria-haspopup="dialog">
+        <button class="picker-main${which === 'melody' || which === 'prog' ? ' is-wide' : ''}" type="button" data-action="picker-open" data-picker="${which}" aria-haspopup="dialog">
           <span class="picker-ico"></span><span class="picker-text"><strong class="picker-name"></strong><span class="picker-sub"></span></span></button>
         <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="1" aria-label="${t('lab.nextAria')}">${UI_ICON.next}</button>
       </div>`;
@@ -4132,6 +4453,21 @@
   .chord-roman { font-size: .6rem; font-weight: 800; color: var(--muted); }
   .chord-box.is-now { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); }
   .chord-box.is-now strong { color: var(--accent); }
+  button.chord-box { font: inherit; color: inherit; cursor: pointer; }
+  .chord-box.is-selected { border-color: var(--text); box-shadow: 0 0 0 1.5px var(--text) inset; }
+  .prog-info { font-size: .7rem; color: var(--muted); margin: 8px 2px 0; line-height: 1.4; }
+  .prog-info:empty { display: none; }
+  .prog-editor { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .prog-count { margin-right: auto; font-size: .72rem; font-weight: 800; color: var(--muted); }
+  .prog-degrees { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .prog-deg { display: grid; gap: 1px; padding: 6px 2px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); text-align: center; }
+  .prog-deg span { font-size: .56rem; font-weight: 800; color: var(--muted); }
+  .prog-deg strong { font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prog-deg[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .prog-deg[aria-pressed="true"] span { color: rgba(255,255,255,.85); }
+  .prog-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .prog-tools .chip svg { width: 14px; height: 14px; }
+  .prog-tools .chip { display: inline-flex; align-items: center; gap: 4px; }
 
   .satb-list { display: grid; gap: 6px; }
   .satb-row { display: grid; grid-template-columns: 12px 1fr 52px 96px; gap: 10px; align-items: center; border-radius: 12px; background: var(--surface); padding: 7px 8px 7px 10px; border: 1px solid var(--line); }
@@ -4328,8 +4664,8 @@
   .mel-tools { margin-top: 4px; }
   .mel-chroma { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   .mel-alts .chip { min-width: 36px; text-align: center; font-size: .82rem; }
-  .mel-name-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .7rem; font-weight: 800; color: var(--muted); }
-  .mel-name { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 7px 9px; font-size: .8rem; color: var(--text); }
+  .mel-name-row, .prog-name-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .7rem; font-weight: 800; color: var(--muted); }
+  .mel-name, .prog-name { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 7px 9px; font-size: .8rem; color: var(--text); }
   .mel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
   .mel-done { margin-left: auto; padding: 9px 20px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .76rem; }
 
@@ -4385,6 +4721,8 @@
   .pick-text { min-width: 0; display: grid; }
   .pick-text strong { font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pick-text span { font-size: .64rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-text em { font-style: normal; font-size: .6rem; line-height: 1.35; color: var(--muted); margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .pick-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset; }
   .pick-card[aria-pressed="true"] .pick-ico { background: var(--accent); color: #fff; }
   .picker-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line);
@@ -4467,8 +4805,34 @@
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.progression')}</h2>${help('helpProgression')}</div>
       ${helpText('helpProgression')}
-      <div class="chip-row prog-chips"></div>
+      ${pickerTrigger('prog')}
+      <p class="prog-info"></p>
       <div class="chord-strip"></div>
+      <button class="mel-edit-link" type="button" data-action="prog-edit">${UI_ICON.edit}${t('lab.progEdit')}</button>
+      <div class="prog-editor" hidden>
+        <div class="mel-top">
+          <span class="prog-count"></span>
+          <button class="mel-icon" type="button" data-action="prog-undo" aria-label="${t('lab.melUndo')}" title="${t('lab.melUndo')}">${UI_ICON.undo}</button>
+          <button class="mel-icon" type="button" data-action="prog-redo" aria-label="${t('lab.melRedo')}" title="${t('lab.melRedo')}">${UI_ICON.redo}</button>
+          <button class="mel-icon" type="button" data-action="prog-new" aria-label="${t('lab.progNew')}" title="${t('lab.progNew')}">${UI_ICON.newPage}</button>
+        </div>
+        <span class="sub-label">${t('lab.progChordAt')}</span>
+        <div class="prog-degrees" role="group" aria-label="${t('lab.progChordAt')}"></div>
+        <div class="prog-tools">
+          <button class="chip" type="button" data-action="prog-move" data-value="-1" aria-label="${t('lab.progMoveLeft')}">${UI_ICON.prev}</button>
+          <button class="chip" type="button" data-action="prog-move" data-value="1" aria-label="${t('lab.progMoveRight')}">${UI_ICON.next}</button>
+          <button class="chip" type="button" data-action="prog-add">+ ${t('lab.progAdd')}</button>
+          <button class="chip" type="button" data-action="prog-remove">− ${t('lab.progRemove')}</button>
+        </div>
+        <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}</div>
+        <label class="prog-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name-input prog-name" type="text" maxlength="40" autocomplete="off"></label>
+        <div class="mel-foot">
+          <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
+          <button class="chip" type="button" data-action="prog-save">${t('lab.melSave')}</button>
+          <button class="chip" type="button" data-action="prog-delete">${t('lab.melDelete')}</button>
+          <button class="mel-done" type="button" data-action="prog-done">${t('lab.melDone')}</button>
+        </div>
+      </div>
       <label class="select-line"><span>${t('lab.chordChange')}</span>
         <select data-field="chordBars"><option value="1">${t('lab.everyBar')}</option><option value="2">${t('lab.everyTwoBars')}</option></select>
       </label>
