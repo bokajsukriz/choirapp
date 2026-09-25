@@ -166,46 +166,50 @@
      für Takt mit der Akkordfolge mit (klassische Sequenz) und bleibt immer
      in der Tonart. `vary` enthält je Takt eine Abwandlung: rhythmShift
      (Schritte, mit Umbruch im Takt), extendLast (verlängert die letzte Note
-     — kadenzierender Schluss) und shift (zusätzliche Stufen).
+     — kadenzierender Schluss), shift (zusätzliche Stufen) oder ein eigenes
+     `motif` — so entstehen echte Frage-Antwort-Phrasen über zwei Takte.
+     Bewusst sparsam: lieber Pausen und Synkopen als Dauerlauf, damit die
+     Melodie Platz neben Beat und Stimmen lässt.
      ------------------------------------------------------------------------ */
 
   const MELODIES = [
-    { name: 'Rising Third', meter: '4/4', cat: 'calm', motif: [[0, 0, 2], [4, 2, 2], [8, 4, 2], [12, 5, 2]],
-      vary: [{}, { rhythmShift: -1, extendLast: 2 }] },
-    { name: 'Falling Fourth', meter: '4/4', cat: 'calm', motif: [[0, 7, 2], [4, 4, 2], [8, 2, 2], [12, 0, 2]],
-      vary: [{}, { rhythmShift: 2, extendLast: 3 }] },
-    { name: 'Skip Step', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [2, 1, 1], [4, 2, 1], [6, 3, 1], [8, 4, 1], [10, 5, 1], [12, 6, 1], [14, 7, 1]],
-      vary: [{}, { rhythmShift: 1, shift: -3 }, { rhythmShift: -1, extendLast: 2 }] },
-    { name: 'Call & Response', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [4, 2, 1], [6, 3, 1], [8, 0, 2], [12, 2, 1], [14, 3, 1]],
-      vary: [{}, { extendLast: 1 }] },
-    { name: 'Arch Line', meter: '4/4', cat: 'calm', motif: [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 5, 1], [8, 4, 1], [10, 2, 1], [12, 0, 2]],
-      vary: [{}, { rhythmShift: -2, extendLast: 2 }] },
-    { name: 'Syncopated Hook', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [3, 2, 1], [6, 4, 1], [9, 2, 1], [11, 5, 1], [14, 4, 1]],
-      vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1, extendLast: 2 }] },
-    { name: 'Night Window', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [4, 4, 1], [7, 6, 2], [10, 2, 1], [13, 1, 1], [15, 0, 2]],
+    // --- zuerst die markanten, luftigen: Pausen und Synkopen statt Dauerlauf
+    { name: 'Hook Line', meter: '4/4', cat: 'dance', motif: [[0, 4, 2], [3, 4, 1], [6, 2, 3], [10, 0, 2]],
+      vary: [{}, { motif: [[2, 4, 1], [4, 5, 2], [8, 4, 4]] }] },
+    { name: 'Offbeat Pop', meter: '4/4', cat: 'dance', motif: [[2, 0, 1], [4, 2, 2], [7, 4, 1], [10, 2, 3]],
+      vary: [{}, { motif: [[2, 4, 1], [4, 5, 1], [6, 4, 2], [10, 7, 4]] }] },
+    { name: 'Call & Response', meter: '4/4', cat: 'funky', motif: [[0, 4, 1], [2, 4, 1], [4, 2, 2]],
+      vary: [{}, { motif: [[8, 2, 1], [10, 1, 1], [12, 0, 4]] }] },
+    { name: 'Sunday Hymn', meter: '4/4', cat: 'calm', motif: [[0, 4, 6], [6, 2, 2], [8, 0, 8]],
+      vary: [{}, { motif: [[0, 2, 4], [4, 4, 4], [8, 5, 8]] }] },
+    { name: 'Pentatonic Riff', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [3, 2, 1], [6, 4, 2], [11, 2, 1], [14, 0, 2]],
+      vary: [{}, { motif: [[0, 4, 1], [3, 5, 1], [6, 4, 2], [10, 2, 4]] }] },
+    { name: 'Bounce', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [2, 7, 1], [6, 4, 1], [10, 7, 1], [14, 4, 2]],
+      vary: [{}, { motif: [[0, 2, 1], [2, 7, 1], [6, 5, 2], [12, 4, 4]] }] },
+    { name: 'Question & Answer', meter: '4/4', cat: 'calm', motif: [[0, 0, 2], [4, 2, 2], [8, 4, 4], [14, 5, 2]],
+      vary: [{}, { motif: [[0, 4, 3], [6, 2, 2], [10, 1, 6]] }] },
+    { name: 'Long Tones', meter: '4/4', cat: 'calm', motif: [[0, 4, 8], [8, 2, 8]],
+      vary: [{}, { motif: [[0, 1, 4], [4, 2, 4], [8, 0, 8]] }] },
+    { name: 'Syncopated Hook', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [3, 2, 1], [6, 4, 2], [11, 5, 1], [14, 4, 2]],
+      vary: [{}, { rhythmShift: 1 }, { extendLast: 2 }] },
+    { name: 'Night Window', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [4, 4, 1], [7, 6, 3], [12, 2, 1], [14, 0, 2]],
       vary: [{}, { rhythmShift: 1, extendLast: 1 }] },
     { name: 'Blue Third', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 2, 1], [6, 2, 1], [9, 4, 1], [12, 6, 1], [14, 4, 1]],
       vary: [{}, {}, { rhythmShift: -1, extendLast: 2 }] },
-    { name: 'Gentle Wave', meter: '4/4', cat: 'calm', motif: [[0, 2, 1], [2, 4, 1], [4, 5, 1], [7, 6, 1], [9, 4, 1], [11, 2, 1], [14, 1, 1]],
-      vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1, extendLast: 2 }] },
-    { name: 'Descending Run', meter: '4/4', cat: 'funky', motif: [[0, 7, 1], [1, 6, 1], [3, 5, 1], [4, 4, 1], [6, 3, 1], [7, 2, 1], [9, 1, 1], [10, 0, 2]],
-      vary: [{}, { rhythmShift: 2 }, { extendLast: 3 }] },
     { name: 'Suspended Glow', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [5, 3, 2], [9, 4, 2], [13, 0, 3]],
       vary: [{}, {}, { rhythmShift: -2 }, { extendLast: 3 }] },
-    { name: 'Funk Thread', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [2, 2, 1], [4, 3, 1], [6, 4, 1], [9, 6, 1], [11, 4, 1], [13, 2, 1]],
+    { name: 'Funk Thread', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [2, 2, 1], [6, 4, 1], [9, 6, 1], [13, 2, 2]],
       vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1, extendLast: 2 }] },
-    { name: 'Glass Runner', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [1, 1, 1], [3, 2, 1], [6, 4, 1], [9, 6, 1], [11, 5, 1], [13, 4, 1], [15, 1, 1]],
-      vary: [{}, { extendLast: 1 }] },
     { name: 'Afterglow', meter: '4/4', cat: 'calm', motif: [[0, -3, 2], [4, 0, 2], [8, 2, 1], [10, 4, 2], [12, 5, 1], [14, 4, 1]],
       vary: [{}, {}, { rhythmShift: -2, extendLast: 3 }] },
-    { name: 'Modal Drift', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 1, 1], [5, 2, 1], [8, 4, 2], [11, 6, 1], [13, 5, 1], [15, 3, 1]],
+    { name: 'Modal Drift', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 1, 1], [8, 4, 2], [11, 6, 1], [14, 3, 2]],
       vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1 }, { extendLast: 2 }] },
-    { name: 'Triplet Cascade', meter: '4/4', cat: 'dance', motif: [[0, 7, 1], [2, 5, 1], [4, 3, 1], [5, 7, 1], [7, 5, 1], [9, 3, 1], [10, 7, 1], [12, 2, 1], [14, 0, 2]],
-      vary: [{}, { extendLast: 1 }] },
-    { name: 'Sevenths Hook', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 6, 1], [8, 8, 2], [12, 4, 1], [14, 2, 2]],
+    { name: 'Sevenths Hook', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 6, 2], [10, 4, 1], [12, 2, 4]],
       vary: [{}, {}, { rhythmShift: -2, extendLast: 2 }] },
-    { name: 'Echo Motif', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [2, 3, 1], [4, 4, 1], [8, 0, 1], [10, 3, 1], [12, 4, 1], [14, 7, 2]],
+    { name: 'Echo Motif', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [2, 3, 1], [4, 4, 2], [8, 0, 1], [10, 3, 1], [12, 4, 4]],
       vary: [{}, {}, { rhythmShift: 1 }, { extendLast: 2 }] },
+    { name: 'Gentle Wave', meter: '4/4', cat: 'calm', motif: [[0, 2, 2], [3, 4, 1], [6, 5, 2], [10, 4, 1], [12, 2, 4]],
+      vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1, extendLast: 2 }] },
     { name: 'Waltz Line', meter: '3/4', cat: 'calm', motif: [[0, 4, 4], [4, 2, 2], [6, 3, 2], [8, 4, 4]],
       vary: [{}, { extendLast: 2 }] },
     { name: 'Turning Waltz', meter: '3/4', cat: 'dance', motif: [[0, 7, 2], [2, 6, 2], [4, 4, 4], [8, 2, 2], [10, 4, 2]],
@@ -219,8 +223,8 @@
   // Je Abwandlung einmal fertig ausrechnen — der Scheduler liest nur noch.
   MELODIES.forEach((melody) => {
     const steps = METERS[melody.meter].steps;
-    melody.bars = melody.vary.map(({ rhythmShift = 0, extendLast = 0, shift = 0 }) => {
-      const bar = melody.motif.map(([at, deg, len]) => [mod(at + rhythmShift, steps), deg + shift, len]);
+    melody.bars = melody.vary.map(({ rhythmShift = 0, extendLast = 0, shift = 0, motif = melody.motif }) => {
+      const bar = motif.map(([at, deg, len]) => [mod(at + rhythmShift, steps), deg + shift, len]);
       if (extendLast && bar.length) bar[bar.length - 1][2] += extendLast;
       return bar.sort((a, b) => a[0] - b[0]);
     });
@@ -299,6 +303,9 @@
     glide: [0, 1], reverbWet: [0, 1], echoWet: [0, 1],
   };
   const WAVE_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'];
+  // Lautheitsausgleich je Wellenform (Säge und Rechteck sind bei gleichem
+  // Pegel deutlich lauter als Sinus/Dreieck), siehe playTone.
+  const WAVE_LEVEL = { sine: 1, triangle: .9, square: .55, sawtooth: .6 };
   const WAVE_KEY = { sine: 'lab.waveSine', triangle: 'lab.waveTriangle', square: 'lab.waveSquare', sawtooth: 'lab.waveSawtooth' };
   const FILTER_TYPES = [
     { id: 'lowpass', nameKey: 'lab.filterLow' },
@@ -445,18 +452,10 @@
      SONSTIGE AUSWAHLLISTEN
      ------------------------------------------------------------------------ */
 
-  const ARP_SOURCES = [
-    { id: 'chord', nameKey: 'lab.arpChord' },
-    { id: 'latch', nameKey: 'lab.arpLatch' },
-    { id: 'fifths', nameKey: 'lab.arpFifths', intervals: [0, 7] },
-    { id: 'major', nameKey: 'lab.arpMajor', intervals: [0, 4, 7] },
-    { id: 'minor', nameKey: 'lab.arpMinor', intervals: [0, 3, 7] },
-    { id: 'maj7', nameKey: 'lab.arpMaj7', intervals: [0, 4, 7, 11] },
-    { id: 'min7', nameKey: 'lab.arpMin7', intervals: [0, 3, 7, 10] },
-    { id: 'sus2', nameKey: 'lab.arpSus2', intervals: [0, 2, 7] },
-    { id: 'sus4', nameKey: 'lab.arpSus4', intervals: [0, 5, 7] },
-    { id: 'add9', nameKey: 'lab.arpAdd9', intervals: [0, 4, 7, 14] },
-  ];
+  // Arpeggiator: was eine einzeln gehaltene Taste spielt, und was ohne
+  // gedrückte Taste passiert (siehe _arpPool).
+  const ARP_KEY_MODES = [['chord', 'lab.arpKeyChord'], ['notes', 'lab.arpKeyNotes']];
+  const ARP_IDLE_MODES = [['progression', 'lab.arpIdleProg'], ['off', 'lab.arpIdleOff']];
 
   const BEAT_CATS = ['all', 'calm', 'dance', 'funky', 'breaks'];
   const MELODY_CATS = ['all', 'calm', 'dance', 'funky'];
@@ -480,6 +479,9 @@
   // also zwischen T und U, genau richtig für Gis.
   const KEY_CODES = ['KeyA', 'KeyW', 'KeyS', 'KeyE', 'KeyD', 'KeyF', 'KeyT', 'KeyG', 'KeyY', 'KeyH',
                      'KeyU', 'KeyJ', 'KeyK', 'KeyO', 'KeyL', 'KeyP', 'Semicolon', 'Quote'];
+  // Tonart-Tasten: die Grundreihe spielt die Stufen der Tonart der Reihe nach.
+  const SCALE_KEY_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote'];
+  const SCALE_PAD_COUNT = 15; // zwei Oktaven Tonleiter plus Grundton oben
 
   const TABS = [
     { id: 'beat', labelKey: 'lab.tabBeat' },
@@ -506,7 +508,8 @@
       chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       droneOn: false, droneFifth: true,
       melodyIndex: 0, melodyOn: true, melodyOctave: 4,
-      arpOn: false, arpSourceId: 'chord', arpMode: 'up', arpDivision: 1, arpOctaves: 1,
+      arpOn: false, arpKeyMode: 'chord', arpIdle: 'progression', arpMode: 'up', arpDivision: 1, arpOctaves: 1,
+      keysLayout: 'piano',
       octave: 4,
       sound: soundFromPreset(presetIndexByName('Velvet Choir')),
       mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
@@ -548,7 +551,9 @@
     s.melodyOn = bool(raw.melodyOn, true);
     s.melodyOctave = int(raw.melodyOctave, 3, 5, 4);
     s.arpOn = bool(raw.arpOn, false);
-    s.arpSourceId = oneOf(raw.arpSourceId, ARP_SOURCES.map((a) => a.id), 'chord');
+    s.arpKeyMode = oneOf(raw.arpKeyMode, ARP_KEY_MODES.map(([id]) => id), 'chord');
+    s.arpIdle = oneOf(raw.arpIdle, ARP_IDLE_MODES.map(([id]) => id), 'progression');
+    s.keysLayout = oneOf(raw.keysLayout, ['piano', 'scale'], 'piano');
     s.arpMode = oneOf(raw.arpMode, ['up', 'down', 'updown', 'random'], 'up');
     s.arpDivision = oneOf(raw.arpDivision, [1, 2, 4], 1);
     s.arpOctaves = oneOf(raw.arpOctaves, [1, 2, 3], 1);
@@ -774,7 +779,13 @@
       const drums = gain(.72, master);
       const bass = gain(.8, master);
       const duck = gain(1, master);
-      const synthSum = gain(.55, duck);
+      // Synth-Summe: leiser als früher (.55) und mit Hochpass bei 140 Hz —
+      // unten gehört der Platz Bass und Kick; ohne diese Trennung klang der
+      // Synth erst bei ~30 % Kanalpegel "im Mix", vorher darüber.
+      const synthHighpass = ctx.createBiquadFilter();
+      synthHighpass.type = 'highpass'; synthHighpass.frequency.value = 140; synthHighpass.Q.value = .5;
+      synthHighpass.connect(duck);
+      const synthSum = gain(.4, synthHighpass);
 
       // Chorus: zwei kurze, gegenläufig modulierte Verzögerungen, hart links
       // und rechts — macht auch Mono-Klänge breit.
@@ -1058,8 +1069,12 @@
       // Lautstärke-Hüllkurve. Ist die Note kürzer als Attack+Decay, wird die
       // Kurve an der Stelle abgeschnitten, statt spätere Rampen stehen zu
       // lassen, die nach dem Loslassen wieder hochziehen würden.
-      const peak = velocity;
-      const sustainLevel = velocity * sound.sustain;
+      // Pegelausgleich: drei verstimmte Stimmen, ein Sub-Oszillator oder eine
+      // obertonreiche Welle (Säge/Rechteck) machten ein Preset bisher bis zu
+      // doppelt so laut wie ein schlichtes — jetzt klingen alle etwa gleich laut.
+      const voiceCount = 1 + (sound.detune ? 1.1 : 0) + (sound.subLevel || 0) * .6;
+      const peak = velocity * (WAVE_LEVEL[sound.wave] ?? 1) / voiceCount;
+      const sustainLevel = peak * sound.sustain;
       gain.gain.setValueAtTime(.0001, time);
       if (duration && duration < attack) {
         gain.gain.linearRampToValueAtTime(Math.max(.0001, peak * duration / attack), time + duration);
@@ -1352,7 +1367,8 @@
 
       this._wireControls();
       this._buildKeyboard();
-      this._wireKeyboard();
+      this._wireKeyboard(this.$('.keyboard'), '.key');
+      this._wireKeyboard(this.$('.scale-pads'), '.pad');
       this._renderAll();
       this._setTab('beat');
     }
@@ -1557,6 +1573,7 @@
         return;
       }
       this.playing = true;
+      this._stopArpClock(); // ab jetzt spielt der Arp im Groove-Scheduler
       this.globalStep = 0;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .06;
@@ -1580,6 +1597,7 @@
       this._renderTransport();
       this._renderNow();
       this._setStatus(t('lab.statusReady'));
+      this._ensureArpClock(); // noch gehaltene Tasten: der Arp läuft allein weiter
     }
 
     randomize() {
@@ -1672,13 +1690,78 @@
       if (h.chordStart && s.chordsOn) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
       if (s.melodyOn) this._playMelodyStep(g, h, swung, stepSec);
 
-      if (s.arpOn && g % s.arpDivision === 0) {
-        const pool = this._arpPool(h);
-        if (pool.length) {
-          const midi = pool[this._arpIndex(Math.floor(g / s.arpDivision), pool.length)];
-          this.engine.playTone(s.sound, midi, swung, .15, stepSec * s.arpDivision * .9, { layer: 'arp', stepSeconds: stepSec });
+      if (s.arpOn && g % s.arpDivision === 0) this._playArp(g, swung, h);
+    }
+
+    /** Ein Arp-Schritt — vom Groove-Scheduler (im Takt, mit Swing) oder,
+     *  wenn der Groove steht, von der eigenen Arp-Uhr (_ensureArpClock). */
+    _playArp(g, time, h) {
+      const s = this.state;
+      const pool = this._arpPool(h);
+      if (!pool.length) return;
+      const stepSec = this._stepSeconds();
+      const midi = pool[this._arpIndex(Math.floor(g / s.arpDivision), pool.length)];
+      this.engine.playTone(s.sound, midi, time, .15, stepSec * s.arpDivision * .9, { layer: 'arp', stepSeconds: stepSec });
+      this._flashKey(midi, time);
+    }
+
+    /** Die gerade gedrückten (und per "Halten" gemerkten) Töne, sortiert. */
+    _arpHeld() {
+      const notes = new Set();
+      this.keyVoices.forEach((held) => notes.add(held.midi));
+      if (this.ui.latchOn) this.latchedNotes.forEach((midi) => notes.add(midi));
+      return [...notes].sort((a, b) => a - b);
+    }
+
+    /** Dreiklang der Tonart auf einer Taste (liegt sie außerhalb der Tonart:
+     *  Dur-Dreiklang) — so klingt schon ein einzelner gehaltener Ton nach
+     *  Arpeggio statt nach Tonwiederholung. */
+    _chordOnNote(midi) {
+      const steps = this._mode().steps;
+      const d = steps.indexOf(mod(midi - this.state.keyRoot, 12));
+      if (d === -1) return [midi, midi + 4, midi + 7];
+      return [0, 2, 4].map((o) => midi + degreeSemis(steps, d + o) - steps[d]);
+    }
+
+    /**
+     * Arp-Uhr für den Fall, dass der Groove NICHT läuft: Sobald Tasten
+     * gehalten werden, spielt der Arp trotzdem — im eingestellten Tempo, auf
+     * der Audio-Uhr vorausgeplant wie der Haupt-Scheduler. Sie endet von
+     * selbst, wenn nichts mehr gehalten wird oder der Groove startet (dann
+     * übernimmt dessen Scheduler, taktgenau mit Beat und Swing).
+     */
+    _ensureArpClock() {
+      if (this.playing || !this.state.arpOn || this._arpTimer || !this.engine.ready) return;
+      if (!this._arpHeld().length) return;
+      const ctx = this.engine.ctx;
+      let step = 0;
+      let next = ctx.currentTime + .03;
+      const tick = () => {
+        if (this.playing || !this.state.arpOn || !this.engine.ready || !this._arpHeld().length) { this._arpTimer = 0; return; }
+        while (next < ctx.currentTime + .1) {
+          if (step % this.state.arpDivision === 0) this._playArp(step, next, null);
+          next += this._stepSeconds();
+          step++;
         }
-      }
+        this._arpTimer = global.setTimeout(tick, 25);
+      };
+      tick();
+    }
+
+    _stopArpClock() {
+      global.clearTimeout(this._arpTimer);
+      this._arpTimer = 0;
+    }
+
+    /** Taste kurz aufleuchten lassen, wenn der Arp sie spielt (zur geplanten Zeit). */
+    _flashKey(midi, time) {
+      const el = this._keyElFor(midi);
+      if (!el || !this.engine.ready) return;
+      const delay = Math.max(0, (time - this.engine.ctx.currentTime) * 1000);
+      global.setTimeout(() => {
+        el.classList.add('is-arp');
+        global.setTimeout(() => el.classList.remove('is-arp'), 110);
+      }, delay);
     }
 
     _playChord(h, time, duration) {
@@ -1710,20 +1793,24 @@
       }
     }
 
-    /** Notenvorrat des Arps: aktueller Akkord, per Latch gehaltene Tasten
-     *  oder ein fester Akkord auf dem Grundton, über die Oktavzahl gestreut. */
+    /**
+     * Notenvorrat des Arps:
+     * - Tasten gedrückt (oder per "Halten" gemerkt): genau diese Töne; eine
+     *   einzelne Taste spielt auf Wunsch den Dreiklang darauf (arpKeyMode).
+     * - keine Taste: während der Groove läuft der aktuelle Akkord der
+     *   Akkordfolge (arpIdle = 'progression'), sonst Pause.
+     * Danach über die eingestellte Oktavzahl gestreut.
+     */
     _arpPool(h) {
       const s = this.state;
-      const root = 12 * (s.octave + 1) + foldRoot(h.keyRoot);
-      let base;
-      if (s.arpSourceId === 'latch') {
-        base = Array.from(this.latchedNotes).sort((a, b) => a - b);
-      } else if (s.arpSourceId === 'chord') {
+      const held = this._arpHeld();
+      let base = [];
+      if (held.length) {
+        base = s.arpKeyMode === 'chord' && held.length === 1 ? this._chordOnNote(held[0]) : held;
+      } else if (s.arpIdle === 'progression' && h && this.playing) {
+        const root = 12 * (s.octave + 1) + foldRoot(h.keyRoot);
         const deg = foldDegree(h.deg);
         base = (h.sevenths ? [0, 2, 4, 6] : [0, 2, 4]).map((o) => root + degreeSemis(h.steps, deg + o));
-      } else {
-        const source = ARP_SOURCES.find((a) => a.id === s.arpSourceId) || ARP_SOURCES[3];
-        base = source.intervals.map((iv) => root + iv);
       }
       if (!base.length) return [];
       const pool = [];
@@ -2317,9 +2404,9 @@
       knob(glideHost, 'glide', t('lab.knobGlide'), 0, 1, (v) => `${Math.round(v * 1000)} ms`);
       this._setSwitch('mono', sound.mono);
 
-      const sendHost = this.$('.send-knobs'); sendHost.replaceChildren();
-      knob(sendHost, 'reverbWet', t('lab.reverb'), 0, 1, pct);
-      knob(sendHost, 'echoWet', t('lab.echo'), 0, 1, pct);
+      // Hall- und Echo-Anteil gehören zum Klang, stehen aber bei den
+      // Effekten (siehe _renderFx) — ein Ort für alles, was Raum macht.
+      this._soundKnob = knob;
     }
 
     /** Zeichnet die ADSR-Hüllkurve als kleine Linie — Phasenbreiten sind
@@ -2337,20 +2424,28 @@
       this.$('.envelope-path').setAttribute('d', 'M' + points.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' L'));
     }
 
+    /** Effekte an EINER Stelle: je Effekt der Anteil des Synths (gehört zum
+     *  Klang, wird mit dem Preset gespeichert) und die Einstellungen des
+     *  Effekts selbst (global). Früher standen die Anteile getrennt davon
+     *  unter "Mehr Einstellungen" — doppelt und verwirrend. */
     _renderFx() {
       const fx = this.state.fx;
-      const host = this.$('.fx-knobs');
-      host.replaceChildren();
-      const add = (key, label, min, max, format, log) => {
+      const pct = (v) => `${Math.round(v * 100)}%`;
+      const fxKnob = (host, key, label, min, max, format, log) => {
         const k = new Knob({
           label, min, max, value: fx[key], format, log,
           onInput: (v) => { fx[key] = v; this.engine.setFx(fx, this._stepSeconds()); },
         });
         host.append(k.el);
       };
-      add('reverbLength', t('lab.knobRoomSize'), .2, 4, (v) => `${v.toFixed(1)} s`, true);
-      add('echoFeedback', t('lab.knobFeedback'), 0, .85, (v) => `${Math.round(v * 100)}%`);
-      add('chorus', t('lab.knobChorus'), 0, 1, (v) => `${Math.round(v * 100)}%`);
+      const reverb = this.$('.fx-reverb'); reverb.replaceChildren();
+      this._soundKnob(reverb, 'reverbWet', t('lab.knobAmount'), 0, 1, pct);
+      fxKnob(reverb, 'reverbLength', t('lab.knobLength'), .2, 4, (v) => `${v.toFixed(1)} s`, true);
+      const echo = this.$('.fx-echo'); echo.replaceChildren();
+      this._soundKnob(echo, 'echoWet', t('lab.knobAmount'), 0, 1, pct);
+      fxKnob(echo, 'echoFeedback', t('lab.knobFeedback'), 0, .85, pct);
+      const chorus = this.$('.fx-chorus'); chorus.replaceChildren();
+      fxKnob(chorus, 'chorus', t('lab.knobAmount'), 0, 1, pct);
       const select = this.$('[data-field="echoDiv"]');
       select.replaceChildren(...ECHO_DIVISIONS.map(([value, label]) => {
         const opt = document.createElement('option');
@@ -2366,7 +2461,21 @@
       const s = this.state;
       this._setSwitch('arpOn', s.arpOn);
       this._setSwitch('latchOn', this.ui.latchOn);
-      this._options(this.$('[data-field="arpSource"]'), ARP_SOURCES.map((a) => [a.id, t(a.nameKey)]), s.arpSourceId);
+      // "Halten" gibt es nur zusammen mit dem Arp — ohne ihn gäbe es nichts,
+      // was die gemerkten Töne spielen würde.
+      const latch = this.$('[data-switch="latchOn"]');
+      latch.disabled = !s.arpOn;
+      latch.closest('.switch').classList.toggle('is-disabled', !s.arpOn);
+      this.$('.arp-options').classList.toggle('is-off', !s.arpOn);
+      this._chips(this.$('.arp-keymode'), ARP_KEY_MODES.map(([id, key]) => ({ value: id, label: t(key) })), s.arpKeyMode, 'arp-keymode');
+      this._chips(this.$('.arp-idle'), ARP_IDLE_MODES.map(([id, key]) => ({ value: id, label: t(key) })), s.arpIdle, 'arp-idle');
+      this._chips(this.$('.keys-layout'), [
+        { value: 'piano', label: t('lab.keysPiano') }, { value: 'scale', label: t('lab.keysScale') },
+      ], s.keysLayout, 'keys-layout');
+      this.$('.keyboard').hidden = s.keysLayout !== 'piano';
+      this.$('.scale-pads').hidden = s.keysLayout !== 'scale';
+      if (s.keysLayout === 'scale') this._buildPads();
+      this._paintHeld();
       this.$('[data-field="arpMode"]').value = s.arpMode;
       this.$('[data-field="arpDivision"]').value = String(s.arpDivision);
       this.$('[data-field="arpOctaves"]').value = String(s.arpOctaves);
@@ -2491,33 +2600,65 @@
       }
     }
 
-    _wireKeyboard() {
-      const host = this.$('.keyboard');
+    /** Tonart-Tasten: die Töne der gewählten Tonart über zwei Oktaven,
+     *  obere Oktave oben — nichts kann "falsch" klingen. Nur neu gebaut, wenn
+     *  sich Tonart, Tongeschlecht oder Oktave ändern (nie mitten im Spielen). */
+    _buildPads() {
+      const s = this.state;
+      const signature = `${s.keyRoot}|${s.modeId}|${s.octave}`;
+      if (this._padsSignature === signature) return;
+      this._padsSignature = signature;
+      const steps = this._mode().steps;
+      const names = noteNames();
+      const makePad = (d) => {
+        const offset = foldRoot(s.keyRoot) + degreeSemis(steps, d);
+        const pad = document.createElement('button');
+        pad.type = 'button';
+        pad.tabIndex = -1;
+        pad.className = `pad${d % 7 === 0 ? ' is-root' : ''}`;
+        pad.dataset.offset = String(offset);
+        pad.dataset.degree = String(d);
+        pad.textContent = names[mod(s.keyRoot + steps[d % 7], 12)];
+        pad.setAttribute('aria-label', names[mod(s.keyRoot + steps[d % 7], 12)]);
+        return pad;
+      };
+      // Obere Reihe = obere Oktave (Stufe 8–15), untere = Stufe 1–8. Der
+      // Oktavton steht bewusst in beiden Reihen — als zwei eigene Tasten.
+      const upper = [];
+      for (let d = 7; d < SCALE_PAD_COUNT; d++) upper.push(makePad(d));
+      const lower = [];
+      for (let d = 0; d <= 7; d++) lower.push(makePad(d));
+      this.$('.scale-pads').replaceChildren(...upper, ...lower);
+    }
 
+    /** Bedienung einer Spielfläche (Klaviatur oder Tonart-Tasten). Das
+     *  Capture liegt auf dem Container (nicht auf der einzelnen Taste) — nur
+     *  so bleiben Move/Up/Cancel für einen Finger zuverlässig adressierbar,
+     *  auch beim Gleiten über mehrere Tasten oder Loslassen außerhalb. */
+    _wireKeyboard(host, selector) {
       const keyFromPoint = (x, y) => {
         const el = this.shadowRoot.elementFromPoint ? this.shadowRoot.elementFromPoint(x, y) : document.elementFromPoint(x, y);
-        const key = el?.closest?.('.key');
+        const key = el?.closest?.(selector);
         return key && host.contains(key) ? key : null;
       };
 
-      // Ob ein Finger gerade innerhalb der Tastatur unten ist — unabhängig
+      // Ob ein Finger gerade innerhalb der Fläche unten ist — unabhängig
       // davon, ob er GERADE eine Taste trifft (sonst beendete ein kurzes
       // Rutschen über eine Kante das ganze Glissando).
       const pressedPointers = new Set();
-      this._pressedPointers = pressedPointers;
+      this._pressedPointerSets = this._pressedPointerSets || [];
+      this._pressedPointerSets.push(pressedPointers);
 
       host.addEventListener('pointerdown', (e) => {
-        const key = e.target.closest('.key');
+        const key = e.target.closest(selector);
         if (!key) return;
         e.preventDefault();
         try { host.setPointerCapture(e.pointerId); } catch { /* siehe Knob._startDrag */ }
         pressedPointers.add(e.pointerId);
-        if (this.ui.latchOn) { this._toggleLatch(key); return; }
         this._enterKey(e.pointerId, key, this._midiForKey(key));
       });
 
       host.addEventListener('pointermove', (e) => {
-        if (this.ui.latchOn) return; // Latch reagiert nur auf Tap, kein Glissando nötig
         if (!pressedPointers.has(e.pointerId)) return;
         const key = keyFromPoint(e.clientX, e.clientY);
         if (key) this._enterKey(e.pointerId, key, this._midiForKey(key));
@@ -2526,7 +2667,7 @@
 
       const end = (e) => {
         pressedPointers.delete(e.pointerId);
-        if (!this.ui.latchOn) this._releaseKey(e.pointerId);
+        this._releaseKey(e.pointerId);
       };
       host.addEventListener('pointerup', end);
       host.addEventListener('pointercancel', end);
@@ -2534,27 +2675,48 @@
 
     _midiForKey(key) { return 12 * (this.state.octave + 1) + Number(key.dataset.offset); }
 
+    /** Die sichtbare Taste zu einer MIDI-Note in der gerade gezeigten Fläche. */
+    _keyElFor(midi) {
+      const offset = midi - 12 * (this.state.octave + 1);
+      const host = this.state.keysLayout === 'scale' ? this.$('.scale-pads') : this.$('.keyboard');
+      // Bei den Tonart-Tasten gibt es den Oktavton zweimal — die untere Reihe
+      // (zuletzt im DOM) ist die "Hauptheimat" für Computer-Tasten und Arp.
+      const all = host.querySelectorAll(`[data-offset="${offset}"]`);
+      return all[all.length - 1] || null;
+    }
+
     /**
-     * Wechselt die für diesen Finger (bzw. diese Computertaste) klingende
+     * Wechselt die für diesen Finger (bzw. diese Computertaste) gedrückte
      * Taste. Der sichtbare Zustand wird SOFORT gesetzt — nur das Auslösen
      * des Tons wartet auf die Engine. Ohne diese Trennung entstand beim
      * schnellen Überstreichen mehrerer Tasten ein Wettlauf, bei dem Tasten
      * an der falschen Stelle "hängen" blieben.
+     *
+     * Mit Arpeggiator klingt die Taste nicht selbst, sondern speist den Arp.
+     * Mit "Halten" merkt er sich die Töne auch nach dem Loslassen; der
+     * nächste Anschlag, nachdem alle Tasten losgelassen wurden, ersetzt den
+     * gemerkten Satz (wie bei einem Hardware-Arpeggiator).
      */
     _enterKey(id, keyEl, midi) {
       const prev = this.keyVoices.get(id);
       if (prev && prev.midi === midi) return;
+      const arp = this.state.arpOn;
+      const latch = arp && this.ui.latchOn;
       if (prev) {
         this.keyVoices.delete(id);
         this.engine.releaseVoice(prev.voice);
-        if (prev.keyEl && !this.latchedNotes.has(prev.midi)) prev.keyEl.classList.remove('is-hot');
+        if (latch) this.latchedNotes.delete(prev.midi); // Gleiten ersetzt, statt zu sammeln
+      } else if (latch && this.keyVoices.size === 0) {
+        this.latchedNotes.clear();
       }
-      keyEl?.classList.add('is-hot');
       const entry = { keyEl, voice: null, midi };
       this.keyVoices.set(id, entry);
+      if (latch) this.latchedNotes.add(midi);
+      this._paintHeld();
       (async () => {
         try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
         if (this.keyVoices.get(id) !== entry) return;
+        if (arp) { this._ensureArpClock(); return; }
         entry.voice = this.engine.playTone(this.state.sound, midi, this.engine.ctx.currentTime, .3, undefined,
           { layer: 'keys', stepSeconds: this._stepSeconds() });
       })();
@@ -2565,21 +2727,28 @@
       if (!held) return;
       this.keyVoices.delete(id);
       if (held.voice) this.engine.releaseVoice(held.voice);
-      if (held.keyEl && !this.latchedNotes.has(held.midi)) held.keyEl.classList.remove('is-hot');
+      this._paintHeld();
     }
 
-    _toggleLatch(keyEl) {
-      const midi = this._midiForKey(keyEl);
-      if (this.latchedNotes.has(midi)) { this.latchedNotes.delete(midi); keyEl.classList.remove('is-hot', 'is-latched'); }
-      else { this.latchedNotes.add(midi); keyEl.classList.add('is-hot', 'is-latched'); }
+    /** Gedrückte und gemerkte Tasten markieren — in beiden Flächen. */
+    _paintHeld() {
+      const pressed = new Set();
+      this.keyVoices.forEach((held) => pressed.add(held.midi));
+      const latched = this.state.arpOn && this.ui.latchOn ? this.latchedNotes : new Set();
+      this.$all('.keyboard .key, .scale-pads .pad').forEach((el) => {
+        const midi = this._midiForKey(el);
+        el.classList.toggle('is-hot', pressed.has(midi) || latched.has(midi));
+        el.classList.toggle('is-latched', latched.has(midi) && !pressed.has(midi));
+      });
     }
 
     _releaseAllKeys() {
       this.keyVoices.forEach((held) => this.engine.releaseVoiceFast(held.voice));
       this.keyVoices.clear();
       this.latchedNotes.clear();
-      this._pressedPointers?.clear();
-      this._keyElements?.forEach((key) => key.classList.remove('is-hot', 'is-latched'));
+      this._pressedPointerSets?.forEach((set) => set.clear());
+      this._stopArpClock();
+      this._paintHeld();
     }
 
     /* ---- Verkabelung ---- */
@@ -2618,7 +2787,6 @@
         const s = this.state;
         const field = el.dataset.field;
         if (field === 'chordBars') { s.chordBars = Number(el.value); this._renderNow(); }
-        else if (field === 'arpSource') s.arpSourceId = el.value;
         else if (field === 'arpMode') s.arpMode = el.value;
         else if (field === 'arpDivision') s.arpDivision = Number(el.value);
         else if (field === 'arpOctaves') s.arpOctaves = Number(el.value);
@@ -2634,6 +2802,7 @@
       this._voicingCache = null;
       this._renderHarmony();
       this._renderNow();
+      this._renderKeys(); // Tonart-Tasten folgen der Tonart
     }
 
     /** Alle An/Aus-Schalter (Checkbox mit role="switch") laufen hier durch. */
@@ -2641,9 +2810,18 @@
       const s = this.state;
       if (key === 'droneOn') { this._setDrone(on); return; }
       if (key === 'droneFifth') { s.droneFifth = on; if (s.droneOn) this._startDrone(); return; }
-      if (key === 'latchOn') { this.ui.latchOn = on; if (!on) this._releaseAllKeys(); return; }
+      if (key === 'latchOn') { this.ui.latchOn = on; if (!on) this._releaseAllKeys(); this._renderKeys(); return; }
+      if (key === 'arpOn') {
+        // Beim Umschalten nichts hängen lassen: klingende Tasten bzw. den
+        // gemerkten Arp-Satz freigeben; "Halten" gehört zum Arp.
+        s.arpOn = on;
+        if (!on) this.ui.latchOn = false;
+        this._releaseAllKeys();
+        this._renderKeys();
+        return;
+      }
       if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
-      s[key] = on; // melodyOn, arpOn, chordsOn
+      s[key] = on; // melodyOn, chordsOn
     }
 
     _handleAction(action, value, target) {
@@ -2718,6 +2896,16 @@
         case 'filter-type': s.sound.filterType = value; this._onSoundEdit(); this._renderSynthControls(); break;
 
         // Keys
+        case 'arp-keymode': s.arpKeyMode = value; this._renderKeys(); break;
+        case 'arp-idle': s.arpIdle = value; this._renderKeys(); break;
+        case 'keys-layout': this._releaseAllKeys(); s.keysLayout = value; this._renderKeys(); break;
+        case 'help': {
+          const text = this.$(`[data-help-text="${target.dataset.help}"]`);
+          const open = text.hidden;
+          text.hidden = !open;
+          target.setAttribute('aria-expanded', String(open));
+          break;
+        }
         case 'key-octave': s.octave = Number(value); this._renderKeys(); break;
 
         // Speichern
@@ -2769,7 +2957,10 @@
 
     _isTyping() {
       const el = this.shadowRoot.activeElement;
-      return !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type !== 'range'));
+      // Nur echte Texteingaben zählen — ein fokussierter Schalter (Checkbox)
+      // oder Regler darf die Computer-Klaviatur nicht blockieren.
+      return !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
+        || (el.tagName === 'INPUT' && !['range', 'checkbox', 'radio'].includes(el.type)));
     }
 
     _handleKeydown(event) {
@@ -2785,20 +2976,30 @@
         // Leertaste auf einem fokussierten Knopf löst den Knopf aus — dort
         // nicht zusätzlich den Transport umschalten.
         const focused = this.shadowRoot.activeElement;
-        if (focused && (focused.tagName === 'BUTTON' || focused.tagName === 'SUMMARY')) return;
+        if (focused && (focused.tagName === 'BUTTON' || focused.tagName === 'SUMMARY' || focused.type === 'checkbox')) return;
         event.preventDefault();
         if (this.playing) this.stop(); else this.start();
         return;
       }
-      const offset = KEY_CODES.indexOf(event.code);
-      if (offset !== -1 && !event.repeat) {
+      if (event.repeat) return;
+      const base = 12 * (this.state.octave + 1);
+      if (this.state.keysLayout === 'scale') {
+        const degree = SCALE_KEY_CODES.indexOf(event.code);
+        if (degree === -1) return;
         event.preventDefault();
-        this._enterKey(`kbd:${event.code}`, this._keyElements.get(offset), 12 * (this.state.octave + 1) + offset);
+        const midi = base + foldRoot(this.state.keyRoot) + degreeSemis(this._mode().steps, degree);
+        this._enterKey(`kbd:${event.code}`, this._keyElFor(midi), midi);
+        return;
+      }
+      const offset = KEY_CODES.indexOf(event.code);
+      if (offset !== -1) {
+        event.preventDefault();
+        this._enterKey(`kbd:${event.code}`, this._keyElements.get(offset), base + offset);
       }
     }
 
     _handleKeyup(event) {
-      if (KEY_CODES.includes(event.code)) this._releaseKey(`kbd:${event.code}`);
+      if (KEY_CODES.includes(event.code) || SCALE_KEY_CODES.includes(event.code)) this._releaseKey(`kbd:${event.code}`);
     }
 
     _trapFocus(event) {
@@ -2818,6 +3019,10 @@
       // An/Aus-Schalter: echte Checkbox mit role="switch" — Tastatur,
       // Screenreader und Formular-Semantik gibt es dadurch geschenkt.
       const toggle = (key, labelKey) => `<label class="switch"><input type="checkbox" role="switch" data-switch="${key}"><span class="switch-track" aria-hidden="true"></span><span>${t(labelKey)}</span></label>`;
+      // Erklärungen stecken hinter einem (?) neben der Überschrift und
+      // klappen darunter auf — der Text steht nicht mehr dauerhaft im Weg.
+      const help = (key) => `<button class="help-btn" type="button" data-action="help" data-help="${key}" aria-expanded="false" aria-label="${t('lab.helpAria')}">?</button>`;
+      const helpText = (key) => `<p class="help-text" data-help-text="${key}" hidden>${t(`lab.${key}`)}</p>`;
       const filterRow = (cls) => `<div class="chip-row ${cls}"><span class="chip-label">${t('lab.filterLabel')}</span></div>`;
       return `
 <style>
@@ -2880,7 +3085,22 @@
 
   .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
   .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .panel-head h2 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; flex: 1; }
+  .panel-head h2 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; }
+  /* Überschrift links, ein (?) direkt daneben, alles Weitere rechts. */
+  .panel-head > h2 { margin-right: auto; }
+  .panel-head > h2:has(+ .help-btn) { margin-right: 0; }
+  .panel-head > .help-btn { margin: 0 auto 0 -4px; }
+  .help-btn {
+    width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+    color: var(--muted); font-size: .68rem; font-weight: 800; line-height: 1; display: grid; place-items: center; padding: 0;
+  }
+  .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .help-text {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line);
+    font-size: .72rem; line-height: 1.45; color: var(--text);
+  }
+  .module-head .help-btn { margin-left: auto; }
+  .module .help-text { margin-top: -2px; }
   .item-name { font-size: .74rem; font-weight: 700; color: var(--accent); text-align: right; }
   .sub-label { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
   .foot-note { text-align: center; color: var(--muted); font-size: .66rem; line-height: 1.4; padding: 10px 0 0; margin: 0; }
@@ -3056,7 +3276,21 @@
   .module .chip-row { margin-bottom: 10px; }
   .module .select-line { margin-top: 8px; }
 
-  .arp-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .arp-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .arp-options.is-off { opacity: .45; }
+  .switch.is-disabled { opacity: .4; cursor: default; }
+  .scale-pads { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .pad {
+    height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0;
+    font-size: .74rem; font-weight: 800; color: var(--text); touch-action: none;
+  }
+  .pad.is-root { border-color: rgba(var(--accent-rgb), .55); background: rgba(var(--accent-rgb), .08); }
+  .pad.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pad.is-latched, .key.is-latched { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--accent); }
+  .key.is-arp, .pad.is-arp { filter: brightness(1.15); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .55); }
+  .fx-groups { display: grid; gap: 12px; }
+  .fx-group + .fx-group { padding-top: 12px; border-top: 1px dashed var(--line); }
+  .fx-group .sub-label { margin-top: 0; }
 
   .keyboard-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; gap: 10px; }
   .keyboard-head strong { font-size: .8rem; }
@@ -3065,7 +3299,6 @@
   .key.is-white { height: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 9px 9px; color: var(--muted); font-size: .5rem; font-weight: 800; z-index: 1; }
   .key.is-black { height: 60%; background: #2d2639; border-radius: 0 0 7px 7px; z-index: 2; }
   .key.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .key.is-latched { box-shadow: inset 0 0 0 2px #fff; }
 
   .transport-bar {
     flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--surface);
@@ -3133,16 +3366,18 @@
       <div class="card-grid pattern-grid"></div>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.pattern')}</h2><button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
+      <div class="panel-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
+      ${helpText('editHint')}
       <div class="track-list"></div>
-      <p class="foot-note">${t('lab.editHint')}</p>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.bassSound')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
+      ${helpText('helpBass')}
       <div class="chip-row bass-chips"></div>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.groove')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.groove')}</h2>${help('helpGroove')}</div>
+      ${helpText('helpGroove')}
       <label class="slider-line"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
       <label class="slider-line"><span>${t('lab.pump')}</span><input type="range" data-field="pump" min="0" max="1" step=".01"><output data-out="pump"></output></label>
     </section>
@@ -3150,14 +3385,16 @@
 
   <section class="tab-panel" data-tab-panel="harmony" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.key')}</h2><span class="item-name key-name"></span>${lockBtn('harmony')}</div>
+      <div class="panel-head"><h2>${t('lab.key')}</h2>${help('helpKey')}<span class="item-name key-name"></span>${lockBtn('harmony')}</div>
+      ${helpText('helpKey')}
       <div class="select-grid">
         <label class="select-field"><span>${t('lab.keyRoot')}</span><select data-field="keyRoot"></select></label>
         <label class="select-field"><span>${t('lab.keyMode')}</span><select data-field="modeId"></select></label>
       </div>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.progression')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.progression')}</h2>${help('helpProgression')}</div>
+      ${helpText('helpProgression')}
       <div class="chip-row prog-chips"></div>
       <div class="chord-strip"></div>
       <label class="select-line"><span>${t('lab.chordChange')}</span>
@@ -3165,135 +3402,152 @@
       </label>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.satbTitle')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.satbTitle')}</h2>${help('satbHint')}</div>
+      ${helpText('satbHint')}
       <div class="switch-row">${toggle('chordsOn', 'lab.chordsPlay')}</div>
       <div class="satb-list"></div>
-      <p class="foot-note">${t('lab.satbHint')}</p>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.drone')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.drone')}</h2>${help('droneHint')}</div>
+      ${helpText('droneHint')}
       <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
-      <p class="foot-note">${t('lab.droneHint')}</p>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="melody" hidden>
     <section class="panel">
       <div class="panel-head">
-        <h2>${t('lab.melody')}</h2>
+        <h2>${t('lab.melody')}</h2>${help('melodyHint')}
         <span class="item-name melody-name"></span>
         ${lockBtn('melody')}
       </div>
+      ${helpText('melodyHint')}
       <div class="switch-row">${toggle('melodyOn', 'lab.melodyOn')}</div>
       ${filterRow('melody-cats')}
       <div class="card-grid melody-grid"></div>
       <span class="sub-label">${t('lab.melodyOctave')}</span>
       <div class="chip-row melody-octaves"></div>
-      <p class="foot-note">${t('lab.melodyHint')}</p>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="sound" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.sound')}</h2>${lockBtn('sound')}</div>
+      <div class="panel-head"><h2>${t('lab.sound')}</h2>${help('helpSound')}${lockBtn('sound')}</div>
+      ${helpText('helpSound')}
       ${filterRow('preset-cats')}
       <div class="card-grid preset-grid"></div>
       <div class="panel-head" style="margin:12px 0 4px"><span class="item-name preset-name" style="text-align:left"></span>
         <button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
       <div class="knob-row macro-knobs"></div>
-      <p class="foot-note">${t('lab.soundHint')}</p>
 
       <details class="expert">
         <summary>${pictogramIcon('sliders')} ${t('lab.allControls')}</summary>
         <div class="module-grid">
           <div class="module">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3></div>
+            <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3>${help('helpOsc')}</div>
+            ${helpText('helpOsc')}
             <div class="wave-row" role="group" aria-label="${t('lab.waveformAria')}"></div>
           </div>
           <div class="module">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3></div>
+            <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3>${help('helpEnv')}</div>
+            ${helpText('helpEnv')}
             <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none"><path class="envelope-path" d=""/></svg>
             <div class="adsr-sliders"></div>
           </div>
           <div class="module">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3></div>
+            <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3>${help('helpFilter')}</div>
+            ${helpText('helpFilter')}
             <div class="chip-row filter-type-chips"></div>
             <div class="knob-row filter-knobs"></div>
           </div>
-          <div class="module module-half">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.lfo')}</h3></div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.lfo')}</h3>${help('helpLfo')}</div>
+            ${helpText('helpLfo')}
             <div class="knob-row lfo-knobs"></div>
             <label class="select-line"><span>${t('lab.lfoSyncLabel')}</span><select data-field="lfoSync"></select></label>
           </div>
-          <div class="module module-half">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3></div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3>${help('helpCharacter')}</div>
+            ${helpText('helpCharacter')}
             <div class="knob-row character-knobs"></div>
           </div>
-          <div class="module module-half">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3></div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3>${help('helpVibrato')}</div>
+            ${helpText('helpVibrato')}
             <div class="knob-row vibrato-knobs"></div>
           </div>
-          <div class="module module-half">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.glide')}</h3></div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.glide')}</h3>${help('helpGlide')}</div>
+            ${helpText('helpGlide')}
             <div class="knob-row glide-knobs"></div>
             <div class="switch-row" style="margin-top:8px">${toggle('mono', 'lab.mono')}</div>
-          </div>
-          <div class="module">
-            <div class="module-head"><span class="module-icon">${pictogramIcon('repeat')}</span><h3>${t('lab.sends')}</h3></div>
-            <div class="knob-row send-knobs"></div>
           </div>
         </div>
       </details>
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.effects')}</h2></div>
-      <div class="knob-row fx-knobs"></div>
-      <label class="select-line"><span>${t('lab.echoTime')}</span><select data-field="echoDiv"></select></label>
+      <div class="panel-head"><h2>${t('lab.effects')}</h2>${help('helpEffects')}</div>
+      ${helpText('helpEffects')}
+      <div class="fx-groups">
+        <div class="fx-group"><span class="sub-label">${t('lab.reverb')}</span><div class="knob-row fx-reverb"></div></div>
+        <div class="fx-group">
+          <span class="sub-label">${t('lab.echo')}</span><div class="knob-row fx-echo"></div>
+          <label class="select-line"><span>${t('lab.echoTime')}</span><select data-field="echoDiv"></select></label>
+        </div>
+        <div class="fx-group"><span class="sub-label">${t('lab.knobChorus')}</span><div class="knob-row fx-chorus"></div></div>
+      </div>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="mixer" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.mixer')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.mixer')}</h2>${help('helpMixer')}</div>
+      ${helpText('helpMixer')}
       <div class="mixer-list"></div>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2></div>
+      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}</div>
+      ${helpText('helpArp')}
       <div class="switch-row">${toggle('arpOn', 'lab.arpOn')}${toggle('latchOn', 'lab.latch')}</div>
-      <div class="arp-controls">
-        <select data-field="arpSource" aria-label="${t('lab.noteSourceAria')}"></select>
-        <select data-field="arpMode" aria-label="${t('lab.directionAria')}">
-          <option value="up">${t('lab.arpUp')}</option>
-          <option value="down">${t('lab.arpDown')}</option>
-          <option value="updown">${t('lab.arpUpDown')}</option>
-          <option value="random">${t('lab.arpRandom')}</option>
-        </select>
-        <select data-field="arpDivision" aria-label="${t('lab.speedAria')}">
-          <option value="1">1/16</option>
-          <option value="2">1/8</option>
-          <option value="4">1/4</option>
-        </select>
-        <select data-field="arpOctaves" aria-label="${t('lab.octaveRangeAria')}">
-          <option value="1">${t('lab.octave1')}</option>
-          <option value="2">${t('lab.octave2')}</option>
-          <option value="3">${t('lab.octave3')}</option>
-        </select>
+      <div class="arp-options">
+        <span class="sub-label">${t('lab.arpKeyMode')}</span>
+        <div class="chip-row arp-keymode"></div>
+        <span class="sub-label">${t('lab.arpIdle')}</span>
+        <div class="chip-row arp-idle"></div>
+        <div class="arp-controls">
+          <select data-field="arpMode" aria-label="${t('lab.directionAria')}">
+            <option value="up">${t('lab.arpUp')}</option>
+            <option value="down">${t('lab.arpDown')}</option>
+            <option value="updown">${t('lab.arpUpDown')}</option>
+            <option value="random">${t('lab.arpRandom')}</option>
+          </select>
+          <select data-field="arpDivision" aria-label="${t('lab.speedAria')}">
+            <option value="1">1/16</option>
+            <option value="2">1/8</option>
+            <option value="4">1/4</option>
+          </select>
+          <select data-field="arpOctaves" aria-label="${t('lab.octaveRangeAria')}">
+            <option value="1">${t('lab.octave1')}</option>
+            <option value="2">${t('lab.octave2')}</option>
+            <option value="3">${t('lab.octave3')}</option>
+          </select>
+        </div>
       </div>
-      <p class="foot-note">${t('lab.latchHint')}</p>
     </section>
 
     <section class="panel">
+      <div class="panel-head"><h2>${t('lab.miniKeyboard')}</h2>${help('keysHint')}</div>
+      ${helpText('keysHint')}
       <div class="keyboard-head">
-        <strong>${t('lab.miniKeyboard')}</strong>
+        <div class="chip-row keys-layout" role="group" aria-label="${t('lab.keysLayoutAria')}"></div>
         <div class="chip-row octave-list"></div>
       </div>
       <div class="keyboard"></div>
-      <p class="foot-note">${t('lab.keysHint')}</p>
-      <p class="foot-note">${t('lab.footNote')}</p>
+      <div class="scale-pads" hidden></div>
     </section>
   </section>
 </div>
