@@ -17,6 +17,14 @@
   wie im Groove Lab; die Anzeige folgt per requestAnimationFrame den
   tatsächlich geplanten Zeiten, nicht dem setTimeout-Takt.
 
+  Hintergrund: Läuft das Metronom, wenn die App die Ebene schließt, bleibt
+  das iframe bestehen (nur ausgeblendet) und spielt weiter. Die Seite meldet
+  der App dazu per postMessage ihren Stand ({type:'chor-metronome', running,
+  bpm, showFab, beat?, level?}; siehe notifyParent) und nimmt Befehle an
+  ({type:'chor-metronome-cmd', action:'stop'|'status'}). Ein ausgeblendetes
+  iframe bekommt kein requestAnimationFrame — deshalb übernimmt dann der
+  Scheduler-Takt (pump) Anzeige, Trainer-Stand und Übungs-Timer.
+
   Einstellungen merkt sich das Tool über window.parent.chorToolStorage
   (von app.js bereitgestellt, IndexedDB-meta-Store) — nicht localStorage,
   der ist in dieser App dem Fehlerprotokoll vorbehalten. Direkt geöffnet
@@ -241,6 +249,13 @@
       </div>
     </div>
 
+    <div class="extra">
+      <div class="extra-head">
+        <span><span class="extra-title">Schnellzugriff-Knopf</span><span class="extra-sub">Beim Schließen läuft das Metronom weiter — ein kleiner Knopf oben links holt es zurück oder stoppt es</span></span>
+        <label class="switch"><input type="checkbox" role="switch" data-switch="showFab" aria-label="Schnellzugriff-Knopf zeigen, solange das Metronom im Hintergrund läuft"><span class="switch-track"></span></label>
+      </div>
+    </div>
+
     <div class="extra" data-extra="vibrate">
       <div class="extra-head">
         <span><span class="extra-title">Vibration</span><span class="extra-sub">Jeder Schlag auch spürbar (nur Android)</span></span>
@@ -350,7 +365,7 @@
     trainer: false, trainerTarget: 130, trainerStep: 2, trainerEvery: 4,
     gap: false, gapPlay: 2, gapMute: 2,
     timer: false, timerMinutes: 10,
-    vibrate: false, keepAwake: true,
+    vibrate: false, keepAwake: true, showFab: true,
   };
 
   function sanitize(raw) {
@@ -362,7 +377,7 @@
     set('subdivision', SUBDIVISIONS.some((x) => x.id === raw.subdivision) ? raw.subdivision : null);
     set('sound', SOUNDS.some((x) => x.id === raw.sound) ? raw.sound : null);
     set('loop', LOOPS.some((x) => x.id === raw.loop) ? raw.loop : null);
-    for (const key of ['clickWithLoop', 'trainer', 'gap', 'timer', 'vibrate', 'keepAwake']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
+    for (const key of ['clickWithLoop', 'trainer', 'gap', 'timer', 'vibrate', 'keepAwake', 'showFab']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
     for (const [key, cfg] of Object.entries(STEPPERS)) set(key, num(raw[key], cfg.min, cfg.max));
     set('timerMinutes', TIMER_CHOICES.includes(raw.timerMinutes) ? raw.timerMinutes : null);
     if (raw.accents && typeof raw.accents === 'object') {
@@ -521,8 +536,25 @@
 
   const run = {
     playing: false, tick: 0, nextTime: 0, timer: 0, frame: 0, queue: [],
-    startedAt: 0, lastVisual: null, wakeLock: null, startBpm: 100,
+    startedAt: 0, lastVisual: null, wakeLock: null, startBpm: 100, lastFrameAt: 0,
   };
+
+  /* ------------------------------------------------------------------------
+     VERBINDUNG ZUR APP (nur eingebettet, nur gleiche Herkunft)
+     ------------------------------------------------------------------------ */
+
+  const embeddedParent = window.parent !== window ? window.parent : null;
+  function notifyParent(extra) {
+    if (!embeddedParent) return;
+    try {
+      embeddedParent.postMessage({ type: 'chor-metronome', running: run.playing, bpm: state.bpm, showFab: state.showFab, ...extra }, location.origin);
+    } catch { /* App weg oder fremde Herkunft — egal */ }
+  }
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || e.source !== embeddedParent || e.data?.type !== 'chor-metronome-cmd') return;
+    if (e.data.action === 'stop' && run.playing) stop();
+    else notifyParent();
+  });
   let tapTimes = [];
 
   const tickSeconds = () => 60 / state.bpm / TICKS_PER_QUARTER;
@@ -580,21 +612,32 @@
       run.nextTime += tickSeconds();
       run.tick++;
     }
+    // Ausgeblendet (App hat die Ebene geschlossen) läuft kein
+    // requestAnimationFrame — dann hier fällige Schläge, Trainer und Timer
+    // abarbeiten, sonst wüchse run.queue endlos und der Timer stoppte nie.
+    if (performance.now() - run.lastFrameAt > 150 && !pump()) return;
     run.timer = setTimeout(scheduleAhead, 25);
   }
 
-  function draw() {
-    if (!run.playing) return;
+  /** Fällige Anzeige-Ereignisse abarbeiten. false = Timer abgelaufen, gestoppt. */
+  function pump() {
     const now = engine.ctx.currentTime;
     let latest = null;
     while (run.queue.length && run.queue[0].time <= now + .01) latest = run.queue.shift();
     if (latest) showBeat(latest);
-    if (run.bpmChanged) { run.bpmChanged = false; renderTempo(); persist(); }
+    if (run.bpmChanged) { run.bpmChanged = false; renderTempo(); persist(); notifyParent(); }
     if (state.timer) {
       const left = state.timerMinutes * 60 - (performance.now() - run.startedAt) / 1000;
-      if (left <= 0) { stop('Übungszeit vorbei — gut gemacht!'); return; }
+      if (left <= 0) { stop('Übungszeit vorbei — gut gemacht!'); return false; }
       renderStatus(left);
     }
+    return true;
+  }
+
+  function draw() {
+    if (!run.playing) return;
+    run.lastFrameAt = performance.now();
+    if (!pump()) return;
     run.frame = requestAnimationFrame(draw);
   }
 
@@ -603,6 +646,7 @@
     $('.beats').classList.toggle('is-silent', silent);
     $('.silent-msg').textContent = silent ? 'Stumm — innerlich weiterzählen!' : '';
     run.lastVisual = { beat, bar };
+    notifyParent({ beat, level: silent ? 0 : accents()[beat] });
     if (!silent) {
       const v = $('.bpm-value');
       v.classList.remove('is-pulse'); void v.offsetWidth; v.classList.add('is-pulse');
@@ -619,9 +663,11 @@
     run.nextTime = engine.ctx.currentTime + .06;
     run.startedAt = performance.now();
     run.startBpm = state.bpm;
+    run.lastFrameAt = performance.now();
     // Bildschirm anlassen, solange es läuft (im iframe per allow="screen-wake-lock").
     if (state.keepAwake) requestWakeLock();
     renderTransport();
+    notifyParent();
     scheduleAhead();
     draw();
   }
@@ -639,6 +685,7 @@
     $('.silent-msg').textContent = '';
     renderTransport();
     renderStatus(null, message);
+    notifyParent();
   }
 
   /* ------------------------------------------------------------------------
@@ -761,6 +808,7 @@
     state.bpm = clamp(Math.round(value), 30, 250);
     renderTempo();
     persist();
+    notifyParent();
   }
 
   function tapTempo() {
@@ -838,6 +886,7 @@
     }
     renderAll();
     persist();
+    if (key === 'showFab') notifyParent();
   });
 
   document.addEventListener('input', (e) => {
@@ -887,8 +936,9 @@
 
   renderAll();
   if (storage) {
-    Promise.resolve(storage.load('metronome')).then((data) => { if (data && !run.playing) { sanitize(data); renderAll(); } }).catch(() => {});
+    Promise.resolve(storage.load('metronome')).then((data) => { if (data && !run.playing) { sanitize(data); renderAll(); notifyParent(); } }).catch(() => {});
   }
+  notifyParent();
 })();
 </script>
 </body>

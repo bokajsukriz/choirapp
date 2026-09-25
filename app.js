@@ -1580,6 +1580,7 @@ function applySettingsSideEffects(patch) {
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
   if ('language' in patch) {
     applyTranslations();
+    updateMetronomeFab(); // dynamisches aria-label (mit BPM)
     // applyTranslations() setzt nur das data-i18n-Markup neu. Alles, was
     // JavaScript in die Einstellungen schreibt (Speicherstand, Sicherungsalter,
     // Fehlerprotokoll, Stimmenauswahl …), bliebe sonst in der alten Sprache
@@ -21560,31 +21561,140 @@ async function openGrooveLab() {
    herkünftiges iframe statt als Modul. Das iframe wird beim Schließen
    entfernt — so enden Ton, Timer, Mikrofon und Bildschirm-Sperre garantiert.
    Der Service Worker liefert die Seiten aus dem Shell-Cache (TOOL_PAGES in
-   sw.js), sonst würde die iframe-Navigation durch index.html ersetzt. */
+   sw.js), sonst würde die iframe-Navigation durch index.html ersetzt.
+
+   Ausnahme Metronom: Läuft es beim Schließen, bleibt sein iframe in
+   #tool-frame stehen, nur ausgeblendet (`hidden`) — umhängen in einen
+   anderen Container ginge nicht, ein verschobenes iframe lädt neu und
+   verstummt. Es spielt dann im Hintergrund weiter, auch während ein anderes
+   Tool in derselben Ebene offen ist; der Schnellzugriff-Knopf
+   (#metronome-fab, siehe updateMetronomeFab) holt es zurück oder stoppt es.
+   Den Stand meldet die Seite per postMessage ({type:'chor-metronome', …}). */
 let toolFrameReturnFocus = null;
+const METRONOME_PAGE = 'metronom.html';
+/** Zuletzt gemeldeter Stand des Metronom-iframes (siehe onMetronomeMessage). */
+const metronomeBg = { running: false, bpm: null, showFab: true };
+let metronomeStopFallback = 0;
+
+const metronomeFrame = () => $('#tool-frame iframe[data-tool="metronome"]');
+
+/** Metronom-iframe verwerfen (stoppt Ton, Timer und Bildschirm-Sperre). */
+function removeMetronomeFrame() {
+  metronomeFrame()?.remove();
+  clearTimeout(metronomeStopFallback);
+  metronomeBg.running = false;
+  updateMetronomeFab();
+}
+
+/** Läuft das Metronom gerade ungesehen (Ebene zu oder anderes Tool vorn)? */
+function metronomeInBackground() {
+  const frame = metronomeFrame();
+  return !!frame && (frame.hidden || $('#tool-frame').hidden);
+}
 
 function openToolFrame(page, titleKey) {
   if (Audio.playing) audioPause();
   const host = $('#tool-frame');
-  host.querySelector('iframe')?.remove();
-  const frame = document.createElement('iframe');
-  frame.src = `./${page}?embedded=1`;
-  frame.title = t(titleKey);
-  frame.allow = 'microphone; autoplay; screen-wake-lock';
-  host.append(frame);
+  // Andere Tools gibt es immer nur einmal; das Metronom bleibt, falls es läuft.
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  let metro = metronomeFrame();
+  if (metro && !metronomeBg.running && page !== METRONOME_PAGE) {
+    metro.remove();
+    metro = null;
+  }
+  if (page === METRONOME_PAGE && metro) {
+    // Dieselbe (ggf. laufende) Instanz wieder zeigen, keine zweite anlegen.
+    metro.hidden = false;
+  } else {
+    if (metro) metro.hidden = true;
+    const frame = document.createElement('iframe');
+    frame.src = `./${page}?embedded=1`;
+    frame.title = t(titleKey);
+    frame.allow = 'microphone; autoplay; screen-wake-lock';
+    if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
+    host.append(frame);
+  }
   host.setAttribute('aria-label', t(titleKey));
   toolFrameReturnFocus = document.activeElement;
   host.hidden = false;
   document.body.style.overflow = 'hidden';
+  updateMetronomeFab();
   $('#tool-frame-close').focus();
 }
 
 function closeToolFrame() {
   const host = $('#tool-frame');
-  host.querySelector('iframe')?.remove();
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  const metro = metronomeFrame();
+  if (metro) {
+    if (metronomeBg.running) metro.hidden = true;
+    else removeMetronomeFrame();
+  }
   host.hidden = true;
   document.body.style.overflow = '';
-  toolFrameReturnFocus?.focus?.();
+  updateMetronomeFab();
+  const fab = $('#metronome-fab');
+  // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
+  // Ebene; dann auf den Schnellzugriff, falls da.
+  const back = toolFrameReturnFocus;
+  if (back && back.isConnected && !host.contains(back)) back.focus?.();
+  else if (!fab.hidden) $('#metronome-fab-open').focus();
+}
+
+/** Schnellzugriff oben links: nur solange das Metronom im Hintergrund läuft
+ *  und die Seite ihn nicht abgeschaltet hat (Extras → Schnellzugriff-Knopf). */
+function updateMetronomeFab() {
+  const fab = $('#metronome-fab');
+  if (!fab) return;
+  const show = metronomeBg.running && metronomeBg.showFab && metronomeInBackground();
+  fab.hidden = !show;
+  document.body.classList.toggle('has-metronome-fab', show);
+  if (!show) return;
+  const bpm = metronomeBg.bpm ?? '';
+  $('#metronome-fab-bpm').textContent = String(bpm);
+  $('#metronome-fab-open').setAttribute('aria-label', t('tools.metronomeFab.openAria').replace('{bpm}', bpm));
+  $('#metronome-fab-stop').setAttribute('aria-label', t('tools.metronomeFab.stopAria'));
+}
+
+function pulseMetronomeFab(level) {
+  const fab = $('#metronome-fab');
+  if (!fab || fab.hidden || !level) return;
+  const ring = $('#metronome-fab-open');
+  ring.classList.remove('is-beat', 'is-accent');
+  void ring.offsetWidth; // Animation neu starten
+  ring.classList.add(level >= 3 ? 'is-accent' : 'is-beat');
+}
+
+function stopBackgroundMetronome() {
+  const frame = metronomeFrame();
+  if (!frame) return updateMetronomeFab();
+  // Höflich stoppen (die Seite speichert dabei ihren Stand und meldet
+  // running:false, woraufhin onMetronomeMessage das iframe entfernt). Kommt
+  // keine Antwort, hart entfernen — Stille ist hier wichtiger als Eleganz.
+  try {
+    frame.contentWindow.postMessage({ type: 'chor-metronome-cmd', action: 'stop' }, location.origin);
+  } catch { /* weg */ }
+  clearTimeout(metronomeStopFallback);
+  metronomeStopFallback = setTimeout(() => {
+    if (metronomeFrame() === frame && metronomeInBackground()) removeMetronomeFrame();
+  }, 800);
+  $('#metronome-fab').hidden = true;
+  document.body.classList.remove('has-metronome-fab');
+}
+
+function onMetronomeMessage(data) {
+  metronomeBg.running = !!data.running;
+  if (Number.isFinite(data.bpm)) metronomeBg.bpm = data.bpm;
+  if (typeof data.showFab === 'boolean') metronomeBg.showFab = data.showFab;
+  // Im Hintergrund gestoppt (Übungs-Timer abgelaufen, Stopp am Knopf): aufräumen.
+  if (!metronomeBg.running && metronomeInBackground()) {
+    const hadFocus = $('#metronome-fab').contains(document.activeElement);
+    removeMetronomeFrame();
+    if (hadFocus) document.querySelector('.nav-btn.is-active, .nav-btn')?.focus();
+    return;
+  }
+  updateMetronomeFab();
+  if ('beat' in data) pulseMetronomeFab(data.level);
 }
 
 /* Ablage für die Tool-Seiten: Sie greifen als gleichherkünftige iframes
@@ -21625,13 +21735,19 @@ function initTools() {
   $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
   $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
+  $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));
+  $('#metronome-fab-stop').addEventListener('click', stopBackgroundMetronome);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !$('#tool-frame').hidden) closeToolFrame();
   });
   // Esc aus dem Inneren einer Tool-Seite (dort liegt dann der Fokus, der
-  // keydown erreicht dieses Dokument nicht). Nur gleiche Herkunft zählt.
+  // keydown erreicht dieses Dokument nicht) und Standmeldungen des Metronoms.
+  // Nur gleiche Herkunft zählt, beim Metronom nur dessen eigenes iframe.
   window.addEventListener('message', (event) => {
-    if (event.origin === location.origin && event.data?.type === 'chor-tool-close' && !$('#tool-frame').hidden) closeToolFrame();
+    if (event.origin !== location.origin) return;
+    const type = event.data?.type;
+    if (type === 'chor-tool-close' && !$('#tool-frame').hidden) closeToolFrame();
+    else if (type === 'chor-metronome' && event.source && event.source === metronomeFrame()?.contentWindow) onMetronomeMessage(event.data);
   });
 }
 

@@ -59,7 +59,11 @@ ein Dialog mit echter Wahl).
 - `einsingen.html` — Einsingen (Einsing-Übungen nach Stimmlage, geführtes
   Einsing-Programm).
 - `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
-  Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer).
+  Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer). Läuft beim
+  Schließen weiter, solange es spielt (das iframe wird nur ausgeblendet);
+  ein schwebender Knopf oben links (`#metronome-fab`, abschaltbar unter
+  Extras) öffnet es wieder oder stoppt es. Nachrichten laufen per
+  postMessage (`chor-metronome` / `chor-metronome-cmd`).
 - Die Tool-Seiten sind eigenständig, werden in der App über Einstellungen →
   Tools als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache
   über `SHELL_OPTIONAL`) und merken sich Einstellungen über
