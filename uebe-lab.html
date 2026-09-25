@@ -6,10 +6,11 @@
 <meta name="robots" content="noindex">
 <title>Spielplatz</title>
 <!--
-  SPIELPLATZ (Datei: uebe-lab.html) — Prototyp einer eigenen Übe-App (Metronom, Einsingen,
+  SPIELPLATZ (Datei: uebe-lab.html) — Prototyp einer eigenen Übe-App (Einsingen,
   Rhythmus nachklatschen, Gehörbildung: Intervalle und Akkordfolgen,
-  Stimm-Tuner mit Tonhöhenerkennung übers Mikrofon). Aus dem Groove Lab herausgelöst und noch NICHT
-  in die App eingebettet: Einstellungen → Tools → Spielplatz lädt diese
+  Stimm-Tuner mit Tonhöhenerkennung übers Mikrofon). Ursprünglich aus dem
+  Groove Lab herausgelöst; das Metronom ist inzwischen ein eigenes Tool
+  (metronom.html). In die App eingebettet: Einstellungen → Tools → Spielplatz lädt diese
   Seite als Vollbild-iframe (?embedded=1, siehe openPlayground in app.js;
   der Schließen-Knopf gehört der App). Offline über SHELL_OPTIONAL in
   sw.js. Keine STRINGS (vorerst nur Deutsch), keine Abhängigkeiten —
@@ -69,12 +70,6 @@
   .switch input:checked + .switch-track { background: var(--accent); }
   .switch input:checked + .switch-track::after { transform: translateX(16px); }
   .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
-
-  .beat-big { display: flex; justify-content: center; gap: 10px; margin: 6px 0 4px; flex-wrap: wrap; }
-  .beat-big i { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line); }
-  .beat-big i.is-strong { border-color: rgba(var(--accent-rgb), .5); }
-  .beat-big i.is-now { background: var(--accent); border-color: var(--accent); }
-  .count-label { text-align: center; font-weight: 800; font-size: 2.4rem; min-height: 1.2em; font-variant-numeric: tabular-nums; color: var(--accent); }
 
   .warmup-display { margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 14px 12px; text-align: center; }
   .warmup-key { font-size: .8rem; font-weight: 800; color: var(--muted); }
@@ -176,32 +171,14 @@
 </header>
 
 <nav class="tab-bar" role="tablist">
-  <button class="tab-btn" type="button" role="tab" data-tab="metronome" aria-selected="true">Metronom</button>
-  <button class="tab-btn" type="button" role="tab" data-tab="warmup" aria-selected="false">Einsingen</button>
+  <button class="tab-btn" type="button" role="tab" data-tab="warmup" aria-selected="true">Einsingen</button>
   <button class="tab-btn" type="button" role="tab" data-tab="rhythm" aria-selected="false">Rhythmus</button>
   <button class="tab-btn" type="button" role="tab" data-tab="ear" aria-selected="false">Hören</button>
   <button class="tab-btn" type="button" role="tab" data-tab="voice" aria-selected="false">Stimme</button>
 </nav>
 
 <main>
-  <section data-panel="metronome">
-    <section class="panel">
-      <div class="panel-head"><h2>Metronom</h2></div>
-      <div class="count-label" aria-live="off"></div>
-      <div class="beat-big" aria-hidden="true"></div>
-      <span class="sub-label">Taktart</span>
-      <div class="chip-row" data-chips="meter"></div>
-      <span class="sub-label">Unterteilung</span>
-      <div class="chip-row" data-chips="subdivision"></div>
-      <div class="switch-row" style="margin-top:14px">
-        <label class="switch"><input type="checkbox" role="switch" data-switch="countIn"><span class="switch-track"></span>Einzähler</label>
-        <label class="switch"><input type="checkbox" role="switch" data-switch="accent" checked><span class="switch-track"></span>Eins betonen</label>
-      </div>
-      <p class="foot-note">Der Einzähler gibt vor dem Start einen Takt Klicks — gilt auch fürs Einsingen und den Rhythmus.</p>
-    </section>
-  </section>
-
-  <section data-panel="warmup" hidden>
+  <section data-panel="warmup">
     <section class="panel">
       <div class="panel-head"><h2>Einsingen</h2></div>
       <div class="chip-row" data-chips="exercise"></div>
@@ -211,6 +188,7 @@
       <div class="chip-row" data-chips="direction"></div>
       <div class="switch-row" style="margin-top:14px">
         <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
+        <label class="switch"><input type="checkbox" role="switch" data-switch="countIn"><span class="switch-track"></span>Einzähler</label>
       </div>
       <div class="warmup-display"><div class="warmup-key"></div><div class="warmup-syllables"></div></div>
       <p class="foot-note">Vor jeder Runde erklingt der Akkord, dann die Übung, danach geht es einen Halbton weiter. Die Stimme bestimmt die Startlage.</p>
@@ -221,6 +199,9 @@
     <section class="panel">
       <div class="panel-head"><h2>Rhythmus nachklatschen</h2></div>
       <div class="chip-row" data-chips="level"></div>
+      <div class="switch-row" style="margin-top:12px">
+        <label class="switch"><input type="checkbox" role="switch" data-switch="countIn"><span class="switch-track"></span>Einzähler</label>
+      </div>
       <button class="tap-pad" type="button" data-phase="idle">Starte mit Play</button>
       <div class="result-row" aria-hidden="true"></div>
       <p class="score" role="status"></p>
@@ -323,14 +304,11 @@
      INHALT
      ------------------------------------------------------------------------ */
 
-  // Ein Schritt ist immer eine Sechzehntel; das Tempo meint Viertel.
+  // Ein Schritt ist immer eine Sechzehntel; das Tempo meint Viertel. Einsingen
+  // und Rhythmus laufen im 4/4-Takt (Taktarten hat das Metronom-Tool).
   const METERS = {
-    '2/4': { steps: 8, beats: [0, 4], strong: [0] },
-    '3/4': { steps: 12, beats: [0, 4, 8], strong: [0] },
     '4/4': { steps: 16, beats: [0, 4, 8, 12], strong: [0] },
-    '6/8': { steps: 12, beats: [0, 2, 4, 6, 8, 10], strong: [0, 6] },
   };
-  const SUBDIVISIONS = [['1', 'Zählzeiten'], ['2', 'Achtel'], ['4', 'Sechzehntel']];
 
   // Übungsnoten: [Stufe in Dur, Dauer in 16teln, optional klingende Länge].
   const WARMUP_CUE = 4;
@@ -545,7 +523,7 @@
      ------------------------------------------------------------------------ */
 
   const state = {
-    tab: 'metronome', bpm: 92, meter: '4/4', subdivision: '1', countIn: false, accent: true,
+    tab: 'warmup', bpm: 92, meter: '4/4', countIn: false,
     exercise: 'fiveTone', voice: 'A', direction: 'updown', drone: false, level: '1',
   };
   const run = { playing: false, step: 0, nextTime: 0, timer: 0, frame: 0, queue: [], shown: null };
@@ -578,25 +556,17 @@
      SCHEDULER
      ------------------------------------------------------------------------ */
 
-  /** Klick auf den Zählzeiten (die Eins auf Wunsch höher); im Metronom-
-   *  Reiter zusätzlich leise Unterteilungs-Klicks. Der Einzähler (`countIn`)
-   *  klickt nur die Zählzeiten. */
-  function playClick(step, countIn) {
-    const time = run.nextTime;
-    if (meterNow().beats.includes(step)) {
-      engine.click(time, state.accent && step === 0 ? 2 : 1);
-    } else if (!countIn && state.tab === 'metronome' && state.subdivision !== '1' && step % (4 / Number(state.subdivision)) === 0) {
-      engine.click(time, 0);
-    }
+  /** Klick auf den Zählzeiten, die Eins höher — für den Einzähler und den
+   *  Rhythmus-Reiter. (Das eigentliche Metronom ist ein eigenes Tool.) */
+  function playClick(step) {
+    if (meterNow().beats.includes(step)) engine.click(run.nextTime, step === 0 ? 2 : 1);
   }
 
   function playStep(g) {
     const time = run.nextTime;
     const bs = barSteps();
-    if (g < 0) { playClick(mod(g, bs), true); return; }
+    if (g < 0) { playClick(mod(g, bs)); return; }
     const step = g % bs;
-
-    if (state.tab === 'metronome') { playClick(step, false); return; }
 
     if (state.tab === 'warmup') {
       const r = warmupRound(g);
@@ -616,7 +586,7 @@
     }
 
     // Rhythmus: Takt 1 vorklatschen, Takt 2 nachklatschen
-    playClick(step, false);
+    playClick(step);
     const listen = Math.floor(g / 16) % 2 === 0;
     if (step === 0 && listen) {
       const bank = RHYTHM_BANK[state.level];
@@ -670,8 +640,6 @@
     cancelAnimationFrame(run.frame);
     run.queue = [];
     renderTransport();
-    renderBeats(-1);
-    $('.count-label').textContent = '';
     renderPad('idle');
     renderSyllables(-1);
     setStatus('Bereit — am besten mit Kopfhörern.');
@@ -739,11 +707,10 @@
   function show(g) {
     const bs = barSteps();
     const step = mod(g, bs);
-    renderBeats(step);
-    const meter = meterNow();
-    const beatIndex = meter.beats.filter((b) => b <= step).length;
-    $('.count-label').textContent = g < 0 ? `Einzähler ${beatIndex}` : String(beatIndex);
-    if (g < 0) { setStatus('Einzähler …'); return; }
+    if (g < 0) {
+      setStatus(`Einzähler ${meterNow().beats.filter((b) => b <= step).length} …`);
+      return;
+    }
     if (g === 0 || $('.status').textContent !== 'Läuft …') setStatus('Läuft …');
     if (state.tab === 'warmup') {
       const r = warmupRound(g);
@@ -753,22 +720,6 @@
     } else if (state.tab === 'rhythm') {
       renderPad(Math.floor(g / 16) % 2 === 0 ? 'listen' : 'play');
     }
-  }
-
-  function renderBeats(step) {
-    const meter = meterNow();
-    const host = $('.beat-big');
-    if (host.childElementCount !== meter.beats.length || host.dataset.meter !== state.meter) {
-      host.dataset.meter = state.meter;
-      host.replaceChildren(...meter.beats.map((b) => {
-        const i = document.createElement('i');
-        if (meter.strong.includes(b)) i.className = 'is-strong';
-        return i;
-      }));
-    }
-    let current = -1;
-    meter.beats.forEach((b, i) => { if (step >= b) current = i; });
-    Array.from(host.children).forEach((dot, i) => dot.classList.toggle('is-now', run.playing && i === current));
   }
 
   function chips(name, entries, value) {
@@ -825,14 +776,11 @@
   }
 
   function renderAll() {
-    chips('meter', Object.keys(METERS).map((m) => [m, m]), state.meter);
-    chips('subdivision', SUBDIVISIONS, state.subdivision);
     chips('exercise', WARMUPS.map((w) => [w.id, w.name]), state.exercise);
     chips('voice', VOICES, state.voice);
     chips('direction', [['up', 'nur aufwärts'], ['updown', 'auf und ab']], state.direction);
     chips('level', LEVELS, state.level);
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
-    renderBeats(-1);
     renderSyllables(-1);
     renderWarmupKey(warmupRound(0));
     renderResult();
@@ -1545,7 +1493,7 @@
       return;
     }
     if (chip) {
-      const key = { meter: 'meter', subdivision: 'subdivision', exercise: 'exercise', voice: 'voice', direction: 'direction', level: 'level' }[chip.dataset.chip];
+      const key = { exercise: 'exercise', voice: 'voice', direction: 'direction', level: 'level' }[chip.dataset.chip];
       state[key] = chip.dataset.value;
       if (key === 'voice' && droneVoice) droneVoice.retune(droneMidis(WARMUP_START[state.voice]), engine.ctx.currentTime);
       renderAll();
@@ -1578,6 +1526,9 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.sheet').hidden) { closeSettings(); return; }
+    // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
+    // (die App hört auf diese Nachricht, siehe initTools in app.js).
+    if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     if (state.tab === 'voice') return;
     if (state.tab === 'ear') {

@@ -21555,36 +21555,47 @@ async function openGrooveLab() {
   }
 }
 
-/* Spielplatz (uebe-lab.html): eigenständige Seite mit eigener Audio-Engine,
-   deshalb als gleichherkünftiges iframe statt als Modul. Das iframe wird
-   beim Schließen entfernt — so enden Ton, Timer und Mikrofon garantiert.
-   Der Service Worker liefert die Seite aus dem Shell-Cache (siehe sw.js),
-   sonst würde die iframe-Navigation durch index.html ersetzt. */
-let playgroundReturnFocus = null;
+/* Tool-Seiten (Spielplatz = uebe-lab.html, Metronom = metronom.html):
+   eigenständige Seiten mit eigener Audio-Engine, deshalb als gleich-
+   herkünftiges iframe statt als Modul. Das iframe wird beim Schließen
+   entfernt — so enden Ton, Timer, Mikrofon und Bildschirm-Sperre garantiert.
+   Der Service Worker liefert die Seiten aus dem Shell-Cache (TOOL_PAGES in
+   sw.js), sonst würde die iframe-Navigation durch index.html ersetzt. */
+let toolFrameReturnFocus = null;
 
-function openPlayground() {
+function openToolFrame(page, titleKey) {
   if (Audio.playing) audioPause();
   const host = $('#tool-frame');
-  if (!host.querySelector('iframe')) {
-    const frame = document.createElement('iframe');
-    frame.src = './uebe-lab.html?embedded=1';
-    frame.title = t('settings.tools.playground');
-    frame.allow = 'microphone; autoplay';
-    host.append(frame);
-  }
-  playgroundReturnFocus = document.activeElement;
+  host.querySelector('iframe')?.remove();
+  const frame = document.createElement('iframe');
+  frame.src = `./${page}?embedded=1`;
+  frame.title = t(titleKey);
+  frame.allow = 'microphone; autoplay; screen-wake-lock';
+  host.append(frame);
+  host.setAttribute('aria-label', t(titleKey));
+  toolFrameReturnFocus = document.activeElement;
   host.hidden = false;
   document.body.style.overflow = 'hidden';
   $('#tool-frame-close').focus();
 }
 
-function closePlayground() {
+function closeToolFrame() {
   const host = $('#tool-frame');
   host.querySelector('iframe')?.remove();
   host.hidden = true;
   document.body.style.overflow = '';
-  playgroundReturnFocus?.focus?.();
+  toolFrameReturnFocus?.focus?.();
 }
+
+/* Ablage für die Tool-Seiten: Sie greifen als gleichherkünftige iframes
+   über window.parent.chorToolStorage darauf zu und merken sich so ihre
+   Einstellungen in IndexedDB (meta-Typ `toolState`, je Tool ein Datensatz)
+   — nicht in localStorage, der bleibt dem Fehler-/Diagnoseprotokoll
+   vorbehalten. Der Typ taucht in keiner Song-/Setlisten-Abfrage auf. */
+window.chorToolStorage = {
+  load: (id) => DB.metaGet(`tool:${id}`).then((record) => record?.data ?? null),
+  save: (id, data) => DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) }),
+};
 
 // Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem
 // Player als Hauptreiter entfallen. Neue Heimat: der Songtitel im
@@ -21606,14 +21617,20 @@ function initGrooveLabEasterEgg() {
   });
 }
 
-/** Einstellungen → Tools: Groove Lab und Spielplatz (die Lichtshow hängt
- *  wie bisher an #btn-open-lightshow). */
+/** Einstellungen → Tools: Metronom, Groove Lab und Spielplatz (die
+ *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
+  $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
-  $('#btn-open-playground').addEventListener('click', openPlayground);
-  $('#tool-frame-close').addEventListener('click', closePlayground);
+  $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
+  $('#tool-frame-close').addEventListener('click', closeToolFrame);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !$('#tool-frame').hidden) closePlayground();
+    if (event.key === 'Escape' && !$('#tool-frame').hidden) closeToolFrame();
+  });
+  // Esc aus dem Inneren einer Tool-Seite (dort liegt dann der Fokus, der
+  // keydown erreicht dieses Dokument nicht). Nur gleiche Herkunft zählt.
+  window.addEventListener('message', (event) => {
+    if (event.origin === location.origin && event.data?.type === 'chor-tool-close' && !$('#tool-frame').hidden) closeToolFrame();
   });
 }
 
