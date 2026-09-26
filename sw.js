@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v269';
+const SW_VERSION = 'v293';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -42,16 +42,24 @@ const SHELL_REQUIRED = [
 // Egg) gehört ebenfalls hierher: Es wird erst bei Bedarf zur Laufzeit per
 // <script src> nachgeladen (siehe app.js), nie beim Boot importiert. Fehlt
 // es offline, scheitert nur dieses Nachladen mit einem Banner — kein Grund,
-// deswegen ein ganzes Shell-Update zu verwerfen.
+// deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für die
+// Tool-Seiten uebe-lab.html (Ausbildung), einsingen.html und metronom.html (Einstellungen →
+// Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES).
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
   './groove-lab.js',
+  './uebe-lab.html',
+  './metronom.html',
+  './einsingen.html',
+  './piano.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
 ];
 const SHELL = [...SHELL_REQUIRED, ...SHELL_OPTIONAL];
+// Eigene Seiten, die die App als iframe öffnet — siehe fetch-Handler.
+const TOOL_PAGES = ['./uebe-lab.html', './metronom.html', './einsingen.html', './piano.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -215,6 +223,23 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // die App lädt ohnehin nichts Fremdes
+
+  // Tool-Seiten (Einstellungen → Tools), die die App als iframe lädt. Auch
+  // das sind Navigationen — ohne diese Ausnahme käme dort die index.html
+  // an. Erst Shell-Cache, dann Netz.
+  const toolPage = TOOL_PAGES.find((path) => url.pathname.endsWith(path.slice(1)));
+  if (req.mode === 'navigate' && toolPage) {
+    event.respondWith(
+      (async () => {
+        const activeCacheName = await resolveActiveShellCacheName();
+        const cached = await caches.match(toolPage, { cacheName: activeCacheName, ignoreSearch: true });
+        if (cached) return cached;
+        try { return await fetch(req); }
+        catch { return new Response('', { status: 504, statusText: 'Offline' }); }
+      })()
+    );
+    return;
+  }
 
   // Seitenaufrufe immer aus der gecachten index.html bedienen — so startet die
   // App auch offline, egal über welchen Einstieg sie geöffnet wurde. Mit

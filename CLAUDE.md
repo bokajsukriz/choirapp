@@ -10,7 +10,7 @@ dort unter „Dateiübersicht".
 
 `index.html`, `app.js`, `lightshow.js`, `strings.js`, `zip-reader.js`,
 `groove-lab.js`, `signalsmith-stretch.js`, `boot-guard.js`, `lame.min.js`,
-`manifest.json`, `icon-192.png`, `icon-512.png`, `sw.js` selbst
+`uebe-lab.html`, `einsingen.html`, `piano.html`, `metronom.html`, `manifest.json`, `icon-192.png`, `icon-512.png`, `sw.js` selbst
 
 (maßgeblich ist immer `SHELL_REQUIRED`/`SHELL_OPTIONAL` in `sw.js` — dort
 nachsehen, falls diese Liste veraltet wirkt.)

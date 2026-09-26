@@ -1580,6 +1580,7 @@ function applySettingsSideEffects(patch) {
   if ('accentColor' in patch) applyAccentColor(settings.accentColor);
   if ('language' in patch) {
     applyTranslations();
+    updateMetronomeFab(); // dynamisches aria-label (mit BPM)
     // applyTranslations() setzt nur das data-i18n-Markup neu. Alles, was
     // JavaScript in die Einstellungen schreibt (Speicherstand, Sicherungsalter,
     // Fehlerprotokoll, Stimmenauswahl …), bliebe sonst in der alten Sprache
@@ -21529,6 +21530,183 @@ function loadGrooveLab() {
   return grooveLabLoadPromise;
 }
 
+/** Öffnet das Groove Lab — vom Easter Egg und von Einstellungen → Tools. */
+async function openGrooveLab() {
+  // Zwei Audioquellen sollen nie gegeneinander spielen. Die vorhandene
+  // Aufnahme wird sauber pausiert, bevor das unabhängige Lab startet.
+  if (Audio.playing) audioPause();
+  try {
+    const lab = await loadGrooveLab();
+    lab.open({
+      accent: settings.accentColor || DEFAULT_SETTINGS.accentColor,
+      // groove-lab.js wird erst hier nachgeladen und ist ein klassisches
+      // Skript ohne eigenen STRINGS-Zugriff — es bekommt t() und die
+      // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
+      t,
+      lang: settings.language,
+      // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
+      // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
+      storage: {
+        load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
+        save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data }),
+      },
+    });
+  } catch (err) {
+    bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
+  }
+}
+
+/* Tool-Seiten (Ausbildung = uebe-lab.html, Einsingen = einsingen.html, Metronom = metronom.html):
+   eigenständige Seiten mit eigener Audio-Engine, deshalb als gleich-
+   herkünftiges iframe statt als Modul. Das iframe wird beim Schließen
+   entfernt — so enden Ton, Timer, Mikrofon und Bildschirm-Sperre garantiert.
+   Der Service Worker liefert die Seiten aus dem Shell-Cache (TOOL_PAGES in
+   sw.js), sonst würde die iframe-Navigation durch index.html ersetzt.
+
+   Ausnahme Metronom: Läuft es beim Schließen, bleibt sein iframe in
+   #tool-frame stehen, nur ausgeblendet (`hidden`) — umhängen in einen
+   anderen Container ginge nicht, ein verschobenes iframe lädt neu und
+   verstummt. Es spielt dann im Hintergrund weiter, auch während ein anderes
+   Tool in derselben Ebene offen ist; der Schnellzugriff-Knopf
+   (#metronome-fab, siehe updateMetronomeFab) holt es zurück oder stoppt es.
+   Den Stand meldet die Seite per postMessage ({type:'chor-metronome', …}). */
+let toolFrameReturnFocus = null;
+const METRONOME_PAGE = 'metronom.html';
+/** Zuletzt gemeldeter Stand des Metronom-iframes (siehe onMetronomeMessage). */
+const metronomeBg = { running: false, bpm: null, showFab: true };
+let metronomeStopFallback = 0;
+
+const metronomeFrame = () => $('#tool-frame iframe[data-tool="metronome"]');
+
+/** Metronom-iframe verwerfen (stoppt Ton, Timer und Bildschirm-Sperre). */
+function removeMetronomeFrame() {
+  metronomeFrame()?.remove();
+  clearTimeout(metronomeStopFallback);
+  metronomeBg.running = false;
+  updateMetronomeFab();
+}
+
+/** Läuft das Metronom gerade ungesehen (Ebene zu oder anderes Tool vorn)? */
+function metronomeInBackground() {
+  const frame = metronomeFrame();
+  return !!frame && (frame.hidden || $('#tool-frame').hidden);
+}
+
+function openToolFrame(page, titleKey) {
+  if (Audio.playing) audioPause();
+  const host = $('#tool-frame');
+  // Andere Tools gibt es immer nur einmal; das Metronom bleibt, falls es läuft.
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  let metro = metronomeFrame();
+  if (metro && !metronomeBg.running && page !== METRONOME_PAGE) {
+    metro.remove();
+    metro = null;
+  }
+  if (page === METRONOME_PAGE && metro) {
+    // Dieselbe (ggf. laufende) Instanz wieder zeigen, keine zweite anlegen.
+    metro.hidden = false;
+  } else {
+    if (metro) metro.hidden = true;
+    const frame = document.createElement('iframe');
+    frame.src = `./${page}?embedded=1`;
+    frame.title = t(titleKey);
+    frame.allow = 'microphone; autoplay; screen-wake-lock';
+    if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
+    host.append(frame);
+  }
+  host.setAttribute('aria-label', t(titleKey));
+  toolFrameReturnFocus = document.activeElement;
+  host.hidden = false;
+  document.body.style.overflow = 'hidden';
+  updateMetronomeFab();
+  $('#tool-frame-close').focus();
+}
+
+function closeToolFrame() {
+  const host = $('#tool-frame');
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  const metro = metronomeFrame();
+  if (metro) {
+    if (metronomeBg.running) metro.hidden = true;
+    else removeMetronomeFrame();
+  }
+  host.hidden = true;
+  document.body.style.overflow = '';
+  updateMetronomeFab();
+  const fab = $('#metronome-fab');
+  // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
+  // Ebene; dann auf den Schnellzugriff, falls da.
+  const back = toolFrameReturnFocus;
+  if (back && back.isConnected && !host.contains(back)) back.focus?.();
+  else if (!fab.hidden) $('#metronome-fab-open').focus();
+}
+
+/** Schnellzugriff oben links: nur solange das Metronom im Hintergrund läuft
+ *  und die Seite ihn nicht abgeschaltet hat (Extras → Schnellzugriff-Knopf). */
+function updateMetronomeFab() {
+  const fab = $('#metronome-fab');
+  if (!fab) return;
+  const show = metronomeBg.running && metronomeBg.showFab && metronomeInBackground();
+  fab.hidden = !show;
+  document.body.classList.toggle('has-metronome-fab', show);
+  if (!show) return;
+  const bpm = metronomeBg.bpm ?? '';
+  $('#metronome-fab-bpm').textContent = String(bpm);
+  $('#metronome-fab-open').setAttribute('aria-label', t('tools.metronomeFab.openAria').replace('{bpm}', bpm));
+  $('#metronome-fab-stop').setAttribute('aria-label', t('tools.metronomeFab.stopAria'));
+}
+
+function pulseMetronomeFab(level) {
+  const fab = $('#metronome-fab');
+  if (!fab || fab.hidden || !level) return;
+  const ring = $('#metronome-fab-open');
+  ring.classList.remove('is-beat', 'is-accent');
+  void ring.offsetWidth; // Animation neu starten
+  ring.classList.add(level >= 3 ? 'is-accent' : 'is-beat');
+}
+
+function stopBackgroundMetronome() {
+  const frame = metronomeFrame();
+  if (!frame) return updateMetronomeFab();
+  // Höflich stoppen (die Seite speichert dabei ihren Stand und meldet
+  // running:false, woraufhin onMetronomeMessage das iframe entfernt). Kommt
+  // keine Antwort, hart entfernen — Stille ist hier wichtiger als Eleganz.
+  try {
+    frame.contentWindow.postMessage({ type: 'chor-metronome-cmd', action: 'stop' }, location.origin);
+  } catch { /* weg */ }
+  clearTimeout(metronomeStopFallback);
+  metronomeStopFallback = setTimeout(() => {
+    if (metronomeFrame() === frame && metronomeInBackground()) removeMetronomeFrame();
+  }, 800);
+  $('#metronome-fab').hidden = true;
+  document.body.classList.remove('has-metronome-fab');
+}
+
+function onMetronomeMessage(data) {
+  metronomeBg.running = !!data.running;
+  if (Number.isFinite(data.bpm)) metronomeBg.bpm = data.bpm;
+  if (typeof data.showFab === 'boolean') metronomeBg.showFab = data.showFab;
+  // Im Hintergrund gestoppt (Übungs-Timer abgelaufen, Stopp am Knopf): aufräumen.
+  if (!metronomeBg.running && metronomeInBackground()) {
+    const hadFocus = $('#metronome-fab').contains(document.activeElement);
+    removeMetronomeFrame();
+    if (hadFocus) document.querySelector('.nav-btn.is-active, .nav-btn')?.focus();
+    return;
+  }
+  updateMetronomeFab();
+  if ('beat' in data) pulseMetronomeFab(data.level);
+}
+
+/* Ablage für die Tool-Seiten: Sie greifen als gleichherkünftige iframes
+   über window.parent.chorToolStorage darauf zu und merken sich so ihre
+   Einstellungen in IndexedDB (meta-Typ `toolState`, je Tool ein Datensatz)
+   — nicht in localStorage, der bleibt dem Fehler-/Diagnoseprotokoll
+   vorbehalten. Der Typ taucht in keiner Song-/Setlisten-Abfrage auf. */
+window.chorToolStorage = {
+  load: (id) => DB.metaGet(`tool:${id}`).then((record) => record?.data ?? null),
+  save: (id, data) => DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) }),
+};
+
 // Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem
 // Player als Hauptreiter entfallen. Neue Heimat: der Songtitel im
 // Player-Reiter, weil er (anders als der Rest des Players) immer im DOM
@@ -21538,30 +21716,39 @@ function initGrooveLabEasterEgg() {
   if (!title) return;
 
   let taps = [];
-  title.addEventListener('pointerup', async (event) => {
+  title.addEventListener('pointerup', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     const now = performance.now();
     taps = taps.filter((time) => now - time < 3200);
     taps.push(now);
     if (taps.length < 7) return;
     taps = [];
+    openGrooveLab();
+  });
+}
 
-    // Zwei Audioquellen sollen nie gegeneinander spielen. Die vorhandene
-    // Aufnahme wird sauber pausiert, bevor das unabhängige Lab startet.
-    if (Audio.playing) audioPause();
-    try {
-      const lab = await loadGrooveLab();
-      lab.open({
-        accent: settings.accentColor || DEFAULT_SETTINGS.accentColor,
-        // groove-lab.js wird erst hier nachgeladen und ist ein klassisches
-        // Skript ohne eigenen STRINGS-Zugriff — es bekommt t() und die
-        // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
-        t,
-        lang: settings.language,
-      });
-    } catch (err) {
-      bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
-    }
+/** Einstellungen → Tools: Metronom, Groove Lab, Einsingen und Ausbildung (die
+ *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
+function initTools() {
+  $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
+  $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
+  $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
+  $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
+  $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
+  $('#tool-frame-close').addEventListener('click', closeToolFrame);
+  $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));
+  $('#metronome-fab-stop').addEventListener('click', stopBackgroundMetronome);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('#tool-frame').hidden) closeToolFrame();
+  });
+  // Esc aus dem Inneren einer Tool-Seite (dort liegt dann der Fokus, der
+  // keydown erreicht dieses Dokument nicht) und Standmeldungen des Metronoms.
+  // Nur gleiche Herkunft zählt, beim Metronom nur dessen eigenes iframe.
+  window.addEventListener('message', (event) => {
+    if (event.origin !== location.origin) return;
+    const type = event.data?.type;
+    if (type === 'chor-tool-close' && !$('#tool-frame').hidden) closeToolFrame();
+    else if (type === 'chor-metronome' && event.source && event.source === metronomeFrame()?.contentWindow) onMetronomeMessage(event.data);
   });
 }
 
@@ -21615,6 +21802,7 @@ async function boot() {
   // Sprachwechsel) — der Leerzustand wird darum hier einmal gesetzt.
   if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
   initGrooveLabEasterEgg();
+  initTools();
   setupFolderImport();
   if (shouldAutoRunSelfTests()) {
     try {

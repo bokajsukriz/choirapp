@@ -1,0 +1,2006 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Ausbildung</title>
+<!--
+  AUSBILDUNG (Datei: uebe-lab.html, früher „Spielplatz“) — Übe-Seite mit
+  Rhythmus-Training (nachklatschen, mitklatschen, vom Blatt), Gehörbildung
+  (Intervalle und Akkordfolgen) und Stimm-Tuner mit Tonhöhenerkennung übers
+  Mikrofon. Das Einsingen ist ein eigenes Tool (einsingen.html), ebenso das
+  Metronom (metronom.html). In die App eingebettet: Einstellungen → Tools →
+  Ausbildung lädt diese Seite als Vollbild-iframe (?embedded=1, siehe
+  openToolFrame in app.js; der Schließen-Knopf gehört der App). Offline über
+  SHELL_OPTIONAL in sw.js. Keine STRINGS (vorerst nur Deutsch), keine
+  Abhängigkeiten — funktioniert auch direkt im Browser geöffnet.
+
+  Einstellungen merkt sich die Seite über window.parent.chorToolStorage
+  (Datensatz „playground“, IndexedDB der App); direkt geöffnet gibt es
+  keine Ablage, dann gelten die Voreinstellungen.
+
+  Rhythmus: Engine (reine Klangerzeugung) → Takt-Scheduler auf der Audio-Uhr
+  (ein Takt wird komplett ~0,2 s vorher geplant, über eine eigene Bus-Schiene,
+  die beim Stoppen ausgeblendet wird) → Anzeige per requestAnimationFrame.
+  Raster: 12 Ticks je Viertel, damit Sechzehntel und Triolen aufgehen.
+-->
+<style>
+  :root {
+    --accent: #F868B0; --accent-rgb: 248,104,176;
+    --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
+    --text: #241b3d; --muted: #8c81a6; --bad: #e0445a; --good: #2f9e5b; --near: #d99a00;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; color: var(--text);
+    background: radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .14), transparent 55%), var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  [hidden] { display: none !important; }
+
+  header { padding: max(14px, env(safe-area-inset-top)) 16px 10px; }
+  /* In der App eingebettet: rechts Platz für den Schließen-Knopf der App. */
+  html.is-embedded header { padding-right: 68px; }
+  h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
+  h1 span { color: var(--accent); }
+
+  .tab-bar { display: flex; gap: 4px; padding: 0 16px 12px; }
+  .tab-btn { flex: 1 1 auto; padding: 9px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 700; }
+  .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  main { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 18px; }
+  .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .panel-head h2 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; }
+  .sub-label { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
+  .foot-note { text-align: center; color: var(--muted); font-size: .68rem; line-height: 1.4; margin: 10px 0 0; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 7px 12px; font-size: .72rem; font-weight: 700; color: var(--muted); }
+  .chip[aria-pressed="true"] { background: rgba(var(--accent-rgb), .16); border-color: var(--accent); color: var(--accent); }
+
+  .switch-row { display: flex; gap: 8px 18px; flex-wrap: wrap; }
+  .switch { display: inline-flex; align-items: center; gap: 9px; font-size: .78rem; font-weight: 700; cursor: pointer; position: relative; }
+  .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .switch-track { width: 40px; height: 24px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; }
+  .switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(36,27,61,.3); transition: transform .15s; }
+  .switch input:checked + .switch-track { background: var(--accent); }
+  .switch input:checked + .switch-track::after { transform: translateX(16px); }
+  .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- Rhythmus ---- */
+  .head-tools { display: flex; align-items: center; gap: 6px; }
+  .help-btn { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: .72rem; font-weight: 800; line-height: 1; display: inline-grid; place-items: center; }
+  .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .help-text { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .74rem; line-height: 1.45; }
+  .help-text b { font-weight: 800; }
+  .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 6px; }
+  .label-row .sub-label { margin: 0; }
+  .rhythm-sum { margin: 8px 0 0; font-size: .72rem; color: var(--muted); font-weight: 700; }
+  .rhythm-sum button { color: var(--accent); font-weight: 800; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+  .seg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .seg-grid small { display: block; font-size: .64rem; font-weight: 700; color: var(--muted); margin: 0 0 4px 2px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 2px; }
+  .seg .chip { flex: 1; border: 0; padding: 6px 0; text-align: center; background: none; font-variant-numeric: tabular-nums; }
+  .seg .chip[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .seg .chip:disabled { opacity: .45; cursor: default; }
+  .bar-strip { display: flex; gap: 4px; margin-top: 14px; }
+  .bar-pill { flex: 1 1 0; min-width: 0; text-align: center; font-size: .6rem; font-weight: 800; padding: 5px 0; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; overflow: hidden; }
+  .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); }
+  .bar-pill[data-kind="rest"] { border-style: dashed; }
+  .bar-pill.is-now { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .bar-pill[data-kind="rest"].is-now, .bar-pill[data-kind="count"].is-now { background: var(--text); border-color: var(--text); }
+  .stage { margin-top: 8px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 4px 2px; }
+  .stage svg { display: block; width: 100%; height: auto; fill: var(--text); stroke: none; }
+  .stage .ln { stroke: var(--text); stroke-width: 1.5; fill: none; }
+  .stage .staff { stroke: var(--muted); stroke-width: 1; opacity: .6; }
+  .stage .hd-o { fill: var(--surface); stroke: var(--text); stroke-width: 1.7; }
+  .stage .rest-s { fill: none; stroke: var(--text); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+  .stage .flag { fill: none; stroke: var(--text); stroke-width: 1.9; stroke-linecap: round; }
+  .stage .sig { font-weight: 800; font-size: 15px; font-family: Georgia, "Times New Roman", serif; }
+  .stage .tri { font-weight: 800; font-size: 10px; font-style: italic; fill: var(--muted); }
+  .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted); }
+  .stage .hint-big { font-weight: 800; font-size: 26px; fill: var(--line); }
+  .stage .tl { stroke: var(--line); stroke-width: 2; }
+  .stage .tl-beat { stroke: var(--line); stroke-width: 1.5; }
+  .stage .tl-beat.is-strong { stroke: var(--muted); opacity: .6; }
+  .stage .tg { fill: var(--surface); stroke: var(--muted); stroke-width: 1.8; }
+  .stage .tp { fill: var(--accent); }
+  .stage .is-good { fill: var(--good); stroke: var(--good); }
+  .stage .is-near { fill: var(--near); stroke: var(--near); }
+  .stage .is-miss { fill: var(--surface); stroke: var(--bad); stroke-width: 2.2; }
+  .stage .hd.is-miss { fill: var(--bad); }
+  /* Halbe/Ganze bleiben hohl, auch wenn sie eingefärbt werden. */
+  .stage .hd-o.is-good, .stage .hd-o.is-near, .stage .hd-o.is-miss { fill: var(--surface); stroke-width: 2.2; }
+  .stage .is-extra { fill: var(--bad); }
+  .stage .ph { stroke: var(--accent); stroke-width: 2; opacity: .75; }
+
+  .tap-pad { width: 100%; height: 112px; margin-top: 10px; border-radius: 22px; border: 2px dashed var(--line); background: var(--surface); font-weight: 800; font-size: .95rem; color: var(--muted); touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-content: center; gap: 10px; }
+  .tap-pad[data-phase="listen"], .tap-pad[data-phase="read"], .tap-pad[data-phase="rest"], .tap-pad[data-phase="count"] { border-style: solid; }
+  .tap-pad[data-phase="rest"] { color: var(--text); }
+  .tap-pad[data-phase="you"], .tap-pad[data-phase="along"] { border-style: solid; border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+  .tap-pad[data-phase="done"] { border-style: solid; border-color: var(--good); color: var(--good); }
+  .tap-pad.is-tapped { animation: tap .16s ease-out; }
+  @keyframes tap { from { transform: scale(.97); background: rgba(var(--accent-rgb), .3); } to { transform: none; } }
+  .pad-beats { display: flex; gap: 7px; justify-content: center; min-height: 9px; }
+  .pad-beats i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .pad-beats i.is-strong { width: 11px; height: 11px; margin-top: -1px; }
+  .pad-beats i.is-on { background: currentColor; }
+  .score { text-align: center; font-weight: 800; font-size: .86rem; margin-top: 10px; min-height: 1.2em; }
+  .score-sub { text-align: center; font-size: .72rem; font-weight: 700; color: var(--muted); margin: 4px 0 0; min-height: 1.2em; font-variant-numeric: tabular-nums; }
+
+  footer { border-top: 1px solid var(--line); background: var(--surface); padding: 10px 16px max(10px, env(safe-area-inset-bottom)); }
+  .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+  .play { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7); }
+  .tempo { display: grid; gap: 2px; }
+  .bpm-out { font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; }
+  .bpm-out small { font-size: .7rem; color: var(--muted); font-weight: 700; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .tap-btn { height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 800; }
+  .status { font-size: .68rem; color: var(--muted); text-align: center; margin: 8px 0 0; }
+  /* ---- Hören ---- */
+  body[data-tab="ear"] footer, body[data-tab="voice"] footer { display: none; }
+
+  /* ---- Stimme (Tuner) ---- */
+  .tuner { text-align: center; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 16px 14px 14px; }
+  .tuner-note { font-size: 3.4rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; min-height: 1em; font-variant-numeric: tabular-nums; }
+  .tuner-note.is-idle { color: var(--line); }
+  .tuner-hz { font-size: .74rem; color: var(--muted); font-weight: 700; min-height: 1.2em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .gauge { position: relative; height: 44px; margin: 14px 4px 4px; border-radius: 10px; background: var(--surface-2); overflow: hidden; }
+  .gauge-zone { position: absolute; top: 0; bottom: 0; left: 45%; width: 10%; background: rgba(47,158,91,.18); }
+  .gauge-tick { position: absolute; top: 0; width: 1px; height: 30%; background: var(--line); }
+  .gauge-tick.is-major { height: 55%; background: var(--muted); opacity: .5; }
+  .gauge-needle { position: absolute; top: 4px; bottom: 4px; width: 4px; margin-left: -2px; border-radius: 2px; left: 50%; background: var(--muted); transition: left .08s linear, background .15s; }
+  .gauge-needle.is-ok { background: #2f9e5b; }
+  .gauge-needle.is-near { background: #e0a100; }
+  .gauge-needle.is-off { background: var(--bad); }
+  .gauge-needle.is-idle { opacity: .25; }
+  .gauge-labels { display: flex; justify-content: space-between; font-size: .62rem; color: var(--muted); font-weight: 700; margin: 0 4px; font-variant-numeric: tabular-nums; }
+  .tuner-msg { margin: 10px 0 0; font-weight: 800; font-size: .86rem; min-height: 1.2em; }
+  .tuner-msg.is-ok { color: #2f9e5b; } .tuner-msg.is-near { color: #b07e00; } .tuner-msg.is-off { color: var(--bad); }
+  .pitch-history { display: block; width: 100%; height: 170px; margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+  .target-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .target-note { min-width: 64px; text-align: center; font-weight: 800; font-size: 1.1rem; }
+  .step-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: 1.1rem; }
+  .range-out { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .range-box { border-radius: 12px; background: var(--surface); border: 1px solid var(--line); padding: 10px; text-align: center; }
+  .range-box span { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .range-box strong { font-size: 1.3rem; }
+  .mic-error { color: var(--bad); font-weight: 700; font-size: .78rem; text-align: center; margin: 10px 0 0; min-height: 0; }
+  .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: var(--muted); }
+  .ear-stage { margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 16px 12px; text-align: center; }
+  .ear-prompt { margin: 0; font-weight: 800; font-size: .95rem; }
+  .level-chip { min-width: 40px; text-align: center; }
+  .level-note { margin: 6px 0 0; font-size: .72rem; font-weight: 700; color: var(--text); }
+  .ear-sub { margin: 4px 0 0; font-size: .72rem; color: var(--muted); min-height: 1.2em; }
+  .ear-controls { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+  .big-btn { display: inline-flex; align-items: center; gap: 6px; padding: 11px 18px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
+  .big-btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+  .big-btn svg { width: 16px; height: 16px; }
+  .slot-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
+  .slot { border: 2px dashed var(--line); border-radius: 12px; padding: 10px 0; font-weight: 800; font-size: 1rem; min-height: 46px; display: grid; place-items: center; }
+  .slot.is-filled { border-style: solid; border-color: var(--accent); color: var(--accent); }
+  .slot.is-playing { background: rgba(var(--accent-rgb), .14); }
+  .slot.is-ok { border-style: solid; border-color: #2f9e5b; color: #2f9e5b; background: rgba(47,158,91,.08); }
+  .slot.is-bad { border-style: solid; border-color: var(--bad); color: var(--bad); background: rgba(224,68,90,.08); }
+  .slot small { display: block; font-size: .62rem; color: var(--muted); font-weight: 700; }
+  .answer-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 12px; }
+  .answer-grid.is-chords { grid-template-columns: repeat(4, 1fr); }
+  .answer { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 11px 6px; font-weight: 800; font-size: .8rem; }
+  .answer.is-ok { background: #2f9e5b; border-color: #2f9e5b; color: #fff; }
+  .answer.is-bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .answer.is-backspace { color: var(--muted); }
+  .ear-feedback { text-align: center; font-weight: 800; font-size: .86rem; margin: 12px 0 0; min-height: 1.2em; }
+  .ear-feedback.is-ok { color: #2f9e5b; }
+  .ear-feedback.is-bad { color: var(--bad); }
+
+  .sheet { position: fixed; inset: 0; background: rgba(36,27,61,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
+  .sheet-card { width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 16px 16px max(18px, env(safe-area-inset-bottom)); }
+  .check-list { display: grid; gap: 6px; }
+  .check-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-size: .8rem; font-weight: 700; cursor: pointer; }
+  .check-row input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+  .check-row small { margin-left: auto; color: var(--muted); font-weight: 700; }
+  .check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .sheet-hint { color: var(--bad); font-size: .72rem; font-weight: 700; text-align: center; min-height: 1.2em; margin: 10px 0 0; }
+
+  .check-row.is-off { opacity: .5; }
+  .sheet .seg { max-width: 260px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chor-<span>Ausbildung</span></h1>
+</header>
+
+<nav class="tab-bar" role="tablist">
+  <button class="tab-btn" type="button" role="tab" data-tab="rhythm" aria-selected="true">Rhythmus</button>
+  <button class="tab-btn" type="button" role="tab" data-tab="ear" aria-selected="false">Hören</button>
+  <button class="tab-btn" type="button" role="tab" data-tab="voice" aria-selected="false">Stimme</button>
+</nav>
+
+<main>
+  <section data-panel="rhythm">
+    <section class="panel">
+      <div class="panel-head"><h2>Rhythmus-Training</h2>
+        <div class="head-tools">
+          <button class="help-btn" type="button" data-help="help-modes" aria-expanded="false" aria-label="Erklärung der Übungsarten">?</button>
+          <button class="icon-btn" type="button" data-rhythm="settings" aria-label="Einstellungen: Taktart, Bausteine, Ablauf" title="Einstellungen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="chip-row" data-chips="rmode"></div>
+      <p class="help-text" id="help-modes" hidden><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste. Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart und Rundenzahl stellt das Zahnrad ein.</p>
+      <p class="rhythm-sum"></p>
+
+      <div class="label-row"><span class="sub-label">Leertakte</span>
+        <button class="help-btn" type="button" data-help="help-gaps" aria-expanded="false" aria-label="Erklärung der Leertakte">?</button></div>
+      <div class="seg-grid">
+        <div><small>vor dem Nachklatschen</small><div class="seg" data-chips="gapBefore"></div></div>
+        <div><small>nach jeder Runde</small><div class="seg" data-chips="gapAfter"></div></div>
+      </div>
+      <p class="help-text" id="help-gaps" hidden>In einem Leertakt läuft nur der Klick weiter (ohne Klick: Stille) — wie ein Pausentakt im Chorsatz. <b>Vor dem Nachklatschen:</b> Zwischen Vorbild und deinem Einsatz liegen 1–2 Takte; du musst den Rhythmus behalten und weiterzählen, um wieder richtig einzusetzen. <b>Nach jeder Runde:</b> Verschnaufpause, um das Ergebnis anzusehen, bevor die nächste Runde beginnt. Die Leiste unten zeigt den Ablauf einer Runde.</p>
+
+      <div class="bar-strip" aria-hidden="true"></div>
+      <div class="stage"></div>
+      <button class="tap-pad" type="button" data-phase="idle"><span class="pad-label">Starte mit Play</span><span class="pad-beats"></span></button>
+      <p class="score" role="status"></p>
+      <p class="score-sub"></p>
+      <div class="label-row" style="justify-content:center;margin-top:6px">
+        <button class="help-btn" type="button" data-help="help-timing" aria-expanded="false" aria-label="Erklärung der Auswertung">?</button></div>
+      <p class="help-text" id="help-timing" hidden>Unter den Noten markieren Striche deine Tipper: <b style="color:var(--good)">grün</b> = genau (bis 40 ms daneben), <b style="color:var(--near)">gelb</b> = knapp, <b style="color:var(--bad)">rot</b> = verpasst oder zu viel. „Ø 25 ms zu spät“ ist die mittlere Abweichung deiner Treffer. Eine Runde ist fehlerfrei, wenn alle Noten getroffen sind und kein Tipper zu viel ist. Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>
+    </section>
+  </section>
+  <section data-panel="ear" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>Gehörbildung</h2>
+        <button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        </button>
+      </div>
+      <div class="chip-row" data-chips="earMode"></div>
+      <div class="ear-stage">
+        <p class="ear-prompt"></p>
+        <p class="ear-sub"></p>
+        <div class="slot-row" hidden></div>
+        <div class="ear-controls">
+          <button class="big-btn" type="button" data-ear="play"></button>
+          <button class="big-btn secondary" type="button" data-ear="next" hidden>Weiter</button>
+        </div>
+      </div>
+      <div class="answer-grid"></div>
+      <p class="ear-feedback" role="status"></p>
+      <p class="score ear-score"></p>
+    </section>
+  </section>
+  <section data-panel="voice" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>Stimm-Tuner</h2>
+        <button class="big-btn" type="button" data-voice="mic">Mikrofon an</button></div>
+      <div class="tuner">
+        <div class="tuner-note is-idle">–</div>
+        <div class="tuner-hz"></div>
+        <div class="gauge" aria-hidden="true"><div class="gauge-zone"></div><div class="gauge-needle is-idle"></div></div>
+        <div class="gauge-labels" aria-hidden="true"><span class="gauge-min">−50</span><span>0</span><span class="gauge-max">+50 Cent</span></div>
+        <p class="tuner-msg" role="status" aria-live="polite"></p>
+      </div>
+      <canvas class="pitch-history" aria-label="Tonhöhen-Verlauf der letzten Sekunden"></canvas>
+      <p class="mic-error" role="alert"></p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Zielton</h2></div>
+      <div class="switch-row"><label class="switch"><input type="checkbox" role="switch" data-voiceswitch="useTarget"><span class="switch-track"></span>Auf Zielton stimmen</label></div>
+      <div class="target-row">
+        <button class="step-btn" type="button" data-voice="target-down" aria-label="Zielton einen Halbton tiefer">−</button>
+        <span class="target-note" aria-live="polite"></span>
+        <button class="step-btn" type="button" data-voice="target-up" aria-label="Zielton einen Halbton höher">+</button>
+        <button class="big-btn secondary" type="button" data-voice="target-play">Anspielen</button>
+      </div>
+      <p class="foot-note">Die Oktave ist egal: Männer- und Frauenstimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Tonumfang heute</h2><button class="chip" type="button" data-voice="range-reset">Zurücksetzen</button></div>
+      <div class="range-out">
+        <div class="range-box"><span>Tiefster Ton</span><strong class="range-low">–</strong></div>
+        <div class="range-box"><span>Höchster Ton</span><strong class="range-high">–</strong></div>
+      </div>
+      <p class="foot-note">Zählt nur Töne, die etwa eine halbe Sekunde sicher gehalten werden. Nie pressen — bei Kratzen oder Schmerz aufhören.</p>
+    </section>
+    <p class="foot-note">Das Mikrofon wird nur live ausgewertet, nichts wird aufgenommen, gespeichert oder gesendet.</p>
+  </section>
+</main>
+
+<div class="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="panel-head"><h2 id="sheet-title">Einstellungen</h2>
+      <button class="icon-btn" type="button" data-ear="close-settings" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="sheet-body"></div>
+    <p class="sheet-hint" role="status"></p>
+    <div class="ear-controls"><button class="big-btn" type="button" data-ear="close-settings">Fertig</button></div>
+  </div>
+</div>
+
+<footer>
+  <div class="transport-row">
+    <button class="play" type="button" aria-label="Starten"></button>
+    <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="40" max="200" value="92" aria-label="Tempo"></label>
+    <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
+  </div>
+  <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
+  try {
+    if (window.parent !== window) {
+      const appStyle = getComputedStyle(window.parent.document.documentElement);
+      const accent = appStyle.getPropertyValue('--accent').trim();
+      const rgb = appStyle.getPropertyValue('--accent-rgb').trim();
+      if (/^#[0-9a-f]{6}$/i.test(accent)) document.documentElement.style.setProperty('--accent', accent);
+      if (/^\d+,\s*\d+,\s*\d+$/.test(rgb)) document.documentElement.style.setProperty('--accent-rgb', rgb);
+    }
+  } catch { /* eigenständig geöffnet oder fremde Herkunft: Standardfarbe */ }
+
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const mod = (n, m) => ((n % m) + m) % m;
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+  const NOTE_NAMES = 'C,C♯,D,E♭,E,F,F♯,G,A♭,A,B,H'.split(',');
+
+  /* ------------------------------------------------------------------------
+     RHYTHMUS — INHALT
+
+     Raster: 12 Ticks je Viertel (Sechzehntel 3, Triolen-Achtel 4, Achtel 6).
+     `beat` ist der Zählschlag, auf den sich das Tempo bezieht und auf dem
+     der Klick liegt (in 6/8 die Achtel — gezählt wird "in 6"); `unit` ist
+     die Balken- und Baustein-Einheit (Viertel bzw. punktierte Viertel).
+     ------------------------------------------------------------------------ */
+
+  const METERS = {
+    '4/4': { ticks: 48, beat: 12, unit: 12, top: '4', bottom: '4' },
+    '3/4': { ticks: 36, beat: 12, unit: 12, top: '3', bottom: '4' },
+    '6/8': { ticks: 36, beat: 6, unit: 18, top: '6', bottom: '8' },
+  };
+
+  // Wählbare Bausteine (Viertel und Halbe sind immer dabei).
+  const ELEMENTS = [
+    ['e', 'Achtel', ''],
+    ['r', 'Pausen', ''],
+    ['d', 'Punktierte Noten', 'z. B. ♩. ♪'],
+    ['sy', 'Synkopen', 'z. B. ♪ ♩ ♪'],
+    ['s', 'Sechzehntel', ''],
+    ['t', 'Triolen', 'nicht in 6/8'],
+  ];
+  const ELEMENT_SHORT = { e: 'Achtel', r: 'Pausen', d: 'Punktiert', sy: 'Synkopen', s: 'Sechzehntel', t: 'Triolen' };
+
+  // Bausteine: Dauern in Ticks, negativ = Pause; span = Anzahl Einheiten.
+  // Ein Baustein kommt nur vor, wenn alle seine tags ausgewählt sind; neu
+  // gewählte Bausteine werden bevorzugt (Gewicht 3, sonst w bzw. 1).
+  const CELLS = {
+    simple: [
+      { v: [12] }, { v: [24], span: 2, free: true }, { v: [48], span: 4, w: .3 },
+      { v: [36], span: 3, tags: ['d'], w: 1 }, { v: [18, 6], span: 2, tags: ['d'] },
+      { v: [-12], tags: ['r'], w: 1 }, { v: [-24], span: 2, tags: ['r'], w: .4 },
+      { v: [6, 6], tags: ['e'] }, { v: [6, -6], tags: ['e', 'r'] }, { v: [-6, 6], tags: ['e', 'r'] },
+      { v: [6, 12, 6], span: 2, free: true, tags: ['sy'] }, { v: [-6, 12, 6], span: 2, tags: ['r', 'sy'] },
+      { v: [3, 3, 3, 3], tags: ['s'] }, { v: [6, 3, 3], tags: ['s'] }, { v: [3, 3, 6], tags: ['s'] },
+      { v: [3, 6, 3], tags: ['s', 'sy'] }, { v: [9, 3], tags: ['d', 's'] },
+      { v: [4, 4, 4], tags: ['t'] },
+    ],
+    compound: [
+      { v: [18] }, { v: [12, 6] }, { v: [6, 6, 6] }, { v: [36], span: 2, w: .5 },
+      { v: [12, -6], tags: ['r'], w: 1 }, { v: [-6, 6, 6], tags: ['r'], w: 1 }, { v: [6, -6, 6], tags: ['r'], w: 1 },
+      { v: [6, 12], tags: ['sy'] }, { v: [9, 3, 6], tags: ['d', 's'] },
+      { v: [3, 3, 6, 6], tags: ['s'] }, { v: [6, 3, 3, 6], tags: ['s'] }, { v: [6, 6, 3, 3], tags: ['s'] },
+    ],
+  };
+
+  /** Ein Takt aus zufälligen Bausteinen. Mindestens (Einheiten − 1) Einsätze,
+   *  bei gewählten Bausteinen mindestens einer davon, nie zweimal derselbe
+   *  Takt hintereinander. */
+  function makePattern(meterId, chosen, previousKey) {
+    const m = METERS[meterId];
+    const lib = CELLS[m.unit === 18 ? 'compound' : 'simple'].filter((c) => (c.tags || []).every((t) => chosen.includes(t)));
+    const units = m.ticks / m.unit;
+    const wantTagged = lib.some((c) => c.tags);
+    let best = null;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const cells = [];
+      let u = 0;
+      while (u < units) {
+        const fits = lib.filter((c) => {
+          const s = c.span || 1;
+          if (u + s > units) return false;
+          // Halbe Takte in 4/4 nur auf 1 oder 3 — außer Halbe und Synkope (♪ ♩ ♪ auf 2 ist üblich).
+          return s === 1 || (s === 2 ? (units !== 4 || u % 2 === 0 || c.free) : u === 0);
+        });
+        const weights = fits.map((c) => c.w ?? (c.tags ? 3 : 1));
+        let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+        let cell = fits[fits.length - 1];
+        for (let i = 0; i < fits.length; i++) { r -= weights[i]; if (r <= 0) { cell = fits[i]; break; } }
+        cells.push(cell);
+        u += cell.span || 1;
+      }
+      const notes = [];
+      let t = 0;
+      cells.forEach((c) => c.v.forEach((v) => { notes.push({ t, d: Math.abs(v), rest: v < 0 }); t += Math.abs(v); }));
+      const onsets = notes.filter((n) => !n.rest).map((n) => n.t);
+      const key = cells.map((c) => c.v.join(',')).join('|');
+      const pattern = { meter: meterId, notes, onsets, key };
+      const ok = onsets.length >= Math.max(2, units - 1) && key !== previousKey;
+      if (ok && (!wantTagged || cells.some((c) => c.tags) || attempt > 150)) return pattern;
+      if (ok && !best) best = pattern;
+    }
+    return best || { meter: meterId, notes: [{ t: 0, d: m.ticks / 2, rest: false }, { t: m.ticks / 2, d: m.ticks / 2, rest: false }], onsets: [0, m.ticks / 2], key: 'fallback' };
+  }
+
+  /* ------------------------------------------------------------------------
+     ENGINE — Klick, Clap und ein klavierähnlicher Ton für die Hör-Aufgaben.
+     ------------------------------------------------------------------------ */
+
+  const engine = {
+    ctx: null, master: null, noise: null,
+
+    async start() {
+      if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
+      const ctx = new Ctx({ latencyHint: 'interactive' });
+      this.ctx = ctx;
+      this.master = ctx.createGain();
+      this.master.gain.value = .8;
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -12; limiter.ratio.value = 6;
+      this.master.connect(limiter).connect(ctx.destination);
+      // kleiner Hall für die Hör-Aufgaben — ohne klingt es sehr nackt
+      this.reverb = ctx.createConvolver();
+      const len = ctx.sampleRate * 1.6;
+      const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.4; }
+      this.reverb.buffer = ir;
+      this.wet = ctx.createGain(); this.wet.gain.value = .25;
+      this.reverb.connect(this.wet).connect(this.master);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate * .3, ctx.sampleRate);
+      const nd = this.noise.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      await ctx.resume();
+    },
+
+    click(time, level, dest) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = [900, 1320, 1760][level];
+      gain.gain.setValueAtTime([.12, .24, .34][level], time);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + .05);
+      osc.connect(gain).connect(dest || this.master);
+      osc.start(time); osc.stop(time + .06);
+    },
+
+    burst(time, { cutoff, q, length, volume }, dest) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      src.buffer = this.noise;
+      filter.type = 'bandpass'; filter.frequency.value = cutoff; filter.Q.value = q;
+      gain.gain.setValueAtTime(volume, time);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + length);
+      src.connect(filter).connect(gain).connect(dest || this.master);
+      src.start(time); src.stop(time + length + .02);
+    },
+
+    clap(time, dest) {
+      [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: i === 2 ? .3 : .18 }, dest));
+    },
+
+    /** Eigene Wiedergabe-Schiene (Hör-Aufgabe bzw. Rhythmus-Lauf): ein
+     *  Gain-Knoten, den man bei "Nochmal"/"Stopp" ausblendet, statt jede
+     *  geplante Note einzeln abbrechen zu müssen. */
+    newBus({ reverb = true } = {}) {
+      const bus = this.ctx.createGain();
+      bus.connect(this.master);
+      if (reverb) bus.connect(this.reverb);
+      return bus;
+    },
+
+    fadeBus(bus) {
+      if (!bus) return;
+      const t = this.ctx.currentTime;
+      bus.gain.cancelScheduledValues(t);
+      bus.gain.setValueAtTime(bus.gain.value, t);
+      bus.gain.linearRampToValueAtTime(0, t + .08);
+      setTimeout(() => bus.disconnect(), 400);
+    },
+
+    /** Klavierähnlicher Ton für die Hör-Aufgaben: kurzer Anschlag, dann
+     *  abklingend, Filter schließt sich — deutlich "gezupft" statt gesungen,
+     *  damit Intervall und Akkord klar konturiert sind. */
+    keys(midi, time, duration, { velocity = .2, dest } = {}) {
+      const ctx = this.ctx;
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(4500, time);
+      filter.frequency.exponentialRampToValueAtTime(1300, time + .7);
+      const oscs = [['triangle', 1, 1], ['sine', 1, .6], ['sine', 2, .22]].map(([type, ratio, level]) => {
+        const osc = ctx.createOscillator();
+        osc.type = type;
+        osc.frequency.value = noteHz(midi) * ratio;
+        const g = ctx.createGain(); g.gain.value = level;
+        osc.connect(g).connect(filter);
+        return osc;
+      });
+      gain.gain.setValueAtTime(.0001, time);
+      gain.gain.linearRampToValueAtTime(velocity, time + .008);
+      gain.gain.exponentialRampToValueAtTime(velocity * .4, time + .45);
+      gain.gain.setTargetAtTime(0, time + duration, .1);
+      filter.connect(gain).connect(dest || this.master);
+      oscs.forEach((o) => { o.start(time); o.stop(time + duration + .7); });
+    },
+  };
+
+  /* ------------------------------------------------------------------------
+     ZUSTAND
+     ------------------------------------------------------------------------ */
+
+  const MODES = [['echo', 'Nachklatschen'], ['along', 'Mitklatschen'], ['read', 'Vom Blatt']];
+  const ROUND_CHOICES = [[4, '4'], [8, '8'], [12, '12'], [0, 'endlos']];
+  const SPEED_STEP = 3;   // BPM mehr nach jeder fehlerfreien Runde
+  const GOOD_SEC = .04;   // bis hier gilt ein Treffer als "genau"
+
+  const state = {
+    tab: 'rhythm', bpm: 92,
+    mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 8,
+    countIn: true, click: true, speedUp: false, showNotes: false,
+  };
+  const run = { playing: false, bus: null, timer: 0, frame: 0, nextBar: 0, bars: [], round: null, barInRound: 0, ended: false, viewKey: '', stripKey: '', padKey: '', shown: null };
+  const game = { rounds: [], taps: [], streak: 0, best: 0, finished: false, stats: null };
+  let tapTimes = [];
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+  const freshStats = () => ({ rounds: 0, perfect: 0, targets: 0, hits: 0, good: 0, offSum: 0 });
+  game.stats = freshStats();
+
+  /* ------------------------------------------------------------------------
+     SCHEDULER — taktweise: jede Runde ist eine Folge von Takten
+     (Vorbild/Lesen, Leertakte, dein Takt, Leertakte). Tempo, Taktart und
+     Ablauf werden je Runde beim Planen ihres ersten Takts festgelegt;
+     Änderungen während des Laufs gelten also ab der nächsten Runde.
+     ------------------------------------------------------------------------ */
+
+  function roundSeq(mode, last) {
+    const rests = (n) => Array(n).fill('rest');
+    const seq = mode === 'along'
+      ? ['along', ...rests(state.gapAfter)]
+      : [mode === 'read' ? 'read' : 'listen', ...rests(state.gapBefore), 'you', ...rests(state.gapAfter)];
+    // In der letzten Runde braucht es keine Leertakte mehr hinterher.
+    if (last) while (seq[seq.length - 1] === 'rest') seq.pop();
+    return seq;
+  }
+
+  function newRound() {
+    const index = game.rounds.length;
+    const previous = game.rounds[index - 1];
+    const m = METERS[state.meter];
+    const round = {
+      index, mode: state.mode, meter: state.meter, bpm: state.bpm,
+      tickSec: 60 / state.bpm / m.beat,
+      pattern: makePattern(state.meter, state.elements, previous?.pattern.key),
+      seq: roundSeq(state.mode, !!state.rounds && index === state.rounds - 1),
+      showNotes: state.mode !== 'echo' || state.showNotes,
+      youStart: null, result: null,
+    };
+    round.youPos = round.seq.indexOf(round.mode === 'along' ? 'along' : 'you');
+    round.barSec = m.ticks * round.tickSec;
+    round.tol = tolerance(round);
+    game.rounds.push(round);
+    return round;
+  }
+
+  /** Trefferfenster: knapp unter der halben kürzesten Notenlänge (damit sich
+   *  die Fenster benachbarter Noten nie überlappen), aber 60–130 ms. */
+  function tolerance(round) {
+    const on = round.pattern.onsets;
+    let minGap = METERS[round.meter].ticks;
+    for (let i = 1; i < on.length; i++) minGap = Math.min(minGap, on[i] - on[i - 1]);
+    return clamp(minGap * round.tickSec * .45, .06, .13);
+  }
+
+  function scheduleBar() {
+    let round = run.round;
+    if (run.barInRound >= round.seq.length) {
+      if (state.rounds && game.rounds.length >= state.rounds) { run.ended = true; return; }
+      round = run.round = newRound();
+      run.barInRound = 0;
+    }
+    const kind = run.barInRound < 0 ? 'count' : round.seq[run.barInRound];
+    const m = METERS[round.meter];
+    const time = run.nextBar;
+    if (state.click || kind === 'count') {
+      for (let t = 0; t < m.ticks; t += m.beat) engine.click(time + t * round.tickSec, t === 0 ? 2 : t % m.unit === 0 ? 1 : 0, run.bus);
+    }
+    if (kind === 'listen' || kind === 'along') round.pattern.onsets.forEach((t) => engine.clap(time + t * round.tickSec, run.bus));
+    if (kind === 'you' || kind === 'along') round.youStart = time;
+    run.bars.push({ time, dur: round.barSec, kind, round, pos: run.barInRound });
+    run.nextBar = time + round.barSec;
+    run.barInRound++;
+  }
+
+  function scheduleAhead() {
+    if (!run.playing) return;
+    while (!run.ended && run.nextBar < engine.ctx.currentTime + .2) scheduleBar();
+    run.timer = setTimeout(scheduleAhead, 25);
+  }
+
+  function draw() {
+    if (!run.playing) return;
+    const now = engine.ctx.currentTime;
+    while (run.bars.length > 1 && run.bars[1].time <= now) run.bars.shift();
+    const bar = run.bars[0] && run.bars[0].time <= now && now < run.bars[0].time + run.bars[0].dur ? run.bars[0] : null;
+    for (const r of game.rounds) {
+      if (r.youStart !== null && !r.result && now > r.youStart + r.barSec + r.tol) evaluate(r);
+    }
+    updateView(now, bar);
+    if (run.ended && !bar && game.rounds.every((r) => r.result)) { finish(); return; }
+    run.frame = requestAnimationFrame(draw);
+  }
+
+  async function start() {
+    try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
+    run.playing = true;
+    run.bus = engine.newBus({ reverb: false });
+    run.bars = [];
+    run.ended = false;
+    run.viewKey = ''; run.stripKey = ''; run.padKey = '';
+    game.rounds = []; game.taps = []; game.streak = 0; game.best = 0; game.finished = false; game.last = null;
+    run.shown = null;
+    game.stats = freshStats();
+    run.round = newRound();
+    run.barInRound = state.countIn ? -1 : 0;
+    run.nextBar = engine.ctx.currentTime + .08;
+    renderTransport();
+    renderScore();
+    setStatus('Läuft …');
+    scheduleAhead();
+    draw();
+  }
+
+  function stop(message = 'Bereit — am besten mit Kopfhörern.') {
+    if (!run.playing) return;
+    run.playing = false;
+    clearTimeout(run.timer);
+    cancelAnimationFrame(run.frame);
+    engine.fadeBus(run.bus);
+    run.bus = null;
+    run.bars = [];
+    renderTransport();
+    renderStrip(null);
+    renderPad(game.finished ? 'done' : 'idle');
+    // Letzte Runde mit Ergebnis stehen lassen, Wiedergabe-Marke weg.
+    if (run.shown) renderStage(run.shown.round, run.shown.reveal || !!run.shown.round.result);
+    setStatus(message);
+  }
+
+  function finish() {
+    game.finished = true;
+    const s = game.stats;
+    stop(`Geschafft: ${s.perfect} von ${s.rounds} Runden fehlerfrei.`);
+    renderScore();
+  }
+
+  /* ------------------------------------------------------------------------
+     RHYTHMUS-AUSWERTUNG — erst, wenn dein Takt auf der Audio-Uhr wirklich
+     vorbei ist, nicht schon beim Vorausplanen.
+     ------------------------------------------------------------------------ */
+
+  function tap() {
+    if (state.tab !== 'rhythm' || !run.playing) return;
+    const ctx = engine.ctx;
+    // Gehört wird der Klick erst nach der Ausgabelatenz — abziehen, sonst
+    // gälten alle Tipps als zu spät.
+    game.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0));
+    engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
+    const pad = $('.tap-pad');
+    pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+  }
+
+  /** Jede Note bekommt den nächstgelegenen freien Tipper im Trefferfenster
+   *  (die Fenster überlappen nicht, daher reicht die einfache Zuordnung).
+   *  Übrige Tipper innerhalb des Takts zählen als "zu viel"; Tipper kurz vor
+   *  Taktende bleiben liegen — sie gehören ggf. schon zur nächsten Runde. */
+  function evaluate(round) {
+    const { tol, youStart, tickSec, barSec } = round;
+    const end = youStart + barSec;
+    const pool = game.taps.filter((x) => x >= youStart - tol && x <= end + tol);
+    const used = new Set();
+    const notes = round.pattern.onsets.map((step) => {
+      const target = youStart + step * tickSec;
+      let best = -1, bestDist = Infinity;
+      pool.forEach((x, i) => { const d = Math.abs(x - target); if (!used.has(i) && d < bestDist) { bestDist = d; best = i; } });
+      if (best === -1 || bestDist > tol) return { t: step, status: 'miss' };
+      used.add(best);
+      const off = pool[best] - target;
+      return { t: step, status: Math.abs(off) <= GOOD_SEC ? 'good' : 'near', off, tap: pool[best] };
+    });
+    const extras = pool.filter((x, i) => !used.has(i) && x >= youStart && x < end - tol);
+    const usedTaps = new Set([...used].map((i) => pool[i]));
+    game.taps = game.taps.filter((x) => !usedTaps.has(x) && x >= end - tol);
+    const hitNotes = notes.filter((n) => n.status !== 'miss');
+    const meanOff = hitNotes.length ? hitNotes.reduce((a, n) => a + n.off, 0) / hitNotes.length : 0;
+    const perfect = hitNotes.length === notes.length && extras.length === 0;
+    round.result = {
+      notes, perfect, meanOff,
+      hits: hitNotes.length, count: notes.length, extras: extras.length,
+      taps: [...notes.filter((n) => n.tap !== undefined).map((n) => ({ at: n.tap, cls: n.status })), ...extras.map((x) => ({ at: x, cls: 'extra' }))],
+    };
+    const s = game.stats;
+    s.rounds++; s.targets += notes.length; s.hits += hitNotes.length;
+    s.good += notes.filter((n) => n.status === 'good').length;
+    s.offSum += hitNotes.reduce((a, n) => a + n.off, 0);
+    if (perfect) { s.perfect++; game.streak++; game.best = Math.max(game.best, game.streak); } else game.streak = 0;
+    game.last = round;
+    if (perfect && state.speedUp && state.bpm < 200) {
+      state.bpm = Math.min(200, state.bpm + SPEED_STEP);
+      renderTransport();
+      persist();
+      setStatus(`Fehlerfrei — nächste Runde mit ${state.bpm} BPM.`);
+    }
+    run.viewKey = '';
+    renderScore();
+  }
+
+  /* ------------------------------------------------------------------------
+     ANZEIGE
+     ------------------------------------------------------------------------ */
+
+  function setStatus(text) { $('.status').textContent = text; }
+
+  function timingText(sec) {
+    const ms = Math.round(sec * 1000);
+    if (Math.abs(ms) < 15) return 'genau im Takt';
+    return ms > 0 ? `Ø ${ms} ms zu spät` : `Ø ${-ms} ms zu früh`;
+  }
+
+  function renderScore() {
+    const last = game.last;
+    const s = game.stats;
+    if (!s.rounds || !last?.result) { $('.score').textContent = ''; $('.score-sub').textContent = ''; return; }
+    const r = last.result;
+    if (game.finished) {
+      $('.score').textContent = `Fertig! ${s.perfect}/${s.rounds} Runden fehlerfrei`;
+    } else {
+      const parts = [r.perfect ? 'Fehlerfrei!' : `${r.hits} von ${r.count} getroffen`];
+      if (r.extras) parts.push(`${r.extras} zu viel`);
+      if (r.hits) parts.push(timingText(r.meanOff));
+      $('.score').textContent = parts.join(' · ');
+    }
+    const sub = [];
+    sub.push(`Runde ${s.rounds}${state.rounds ? `/${state.rounds}` : ''}`);
+    sub.push(`${Math.round(100 * s.hits / s.targets)} % getroffen`);
+    if (game.finished && s.hits) sub.push(timingText(s.offSum / s.hits));
+    if (game.streak > 1) sub.push(`${game.streak} in Folge`);
+    else if (game.finished && game.best > 1) sub.push(`beste Serie ${game.best}`);
+    $('.score-sub').textContent = sub.join(' · ');
+  }
+
+  const PAD_LABELS = {
+    idle: 'Starte mit Play', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
+    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft! Nochmal mit Play',
+  };
+
+  function renderPad(phase, beat = -1, round = null) {
+    const m = METERS[round ? round.meter : state.meter];
+    const beats = phase === 'idle' || phase === 'done' ? 0 : m.ticks / m.beat;
+    const key = `${phase}|${beat}|${beats}`;
+    if (run.padKey === key) return;
+    run.padKey = key;
+    const pad = $('.tap-pad');
+    pad.dataset.phase = phase;
+    $('.pad-label').textContent = PAD_LABELS[phase];
+    $('.pad-beats').replaceChildren(...Array.from({ length: beats }, (_, i) => {
+      const dot = document.createElement('i');
+      if ((i * m.beat) % m.unit === 0) dot.className = 'is-strong';
+      if (i <= beat) dot.classList.add('is-on');
+      return dot;
+    }));
+  }
+
+  const STRIP_LABELS = { count: 'Einz.', listen: 'Hören', read: 'Lesen', rest: 'Pause', you: 'Du', along: 'Mit' };
+
+  /** Ablauf einer Runde als Leiste — zeigt vor dem Start, was die Leertakte
+   *  bewirken, und beim Üben, wo man gerade ist. */
+  function renderStrip(bar) {
+    const seq = bar ? bar.round.seq : roundSeq(state.mode, false);
+    const kinds = bar?.kind === 'count' ? ['count', ...seq] : seq;
+    const now = bar ? (bar.kind === 'count' ? 0 : bar.pos) : -1;
+    const key = `${kinds.join(',')}|${now}`;
+    if (run.stripKey === key) return;
+    run.stripKey = key;
+    $('.bar-strip').replaceChildren(...kinds.map((kind, i) => {
+      const pill = document.createElement('span');
+      pill.className = `bar-pill${i === now ? ' is-now' : ''}`;
+      pill.dataset.kind = kind;
+      pill.textContent = STRIP_LABELS[kind];
+      return pill;
+    }));
+  }
+
+  /** Welche Runde zeigt die Notenfläche? Beim Nachklatschen ohne Noten bleibt
+   *  das Ergebnis der vorigen Runde stehen, bis du wieder dran bist. */
+  function pickDisplay(bar) {
+    const r = bar.round;
+    if (r.showNotes) return { round: r, reveal: true };
+    if (bar.kind === 'count' || bar.pos >= r.youPos) return { round: r, reveal: !!r.result };
+    const prev = game.rounds[r.index - 1];
+    if (prev) return { round: prev, reveal: !!prev.result };
+    return { round: r, reveal: false };
+  }
+
+  function updateView(now, bar) {
+    if (!bar) return;
+    const r = bar.round;
+    const m = METERS[r.meter];
+    const beat = Math.floor((now - bar.time) / (m.beat * r.tickSec));
+    renderPad(bar.kind, beat, r);
+    renderStrip(bar);
+    const disp = pickDisplay(bar);
+    const liveTaps = disp.round.result ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
+    const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}`;
+    if (key !== run.viewKey) { run.viewKey = key; run.shown = disp; renderStage(disp.round, disp.reveal); }
+    // Wiedergabe-Marke: nur im Takt der gezeigten Runde, in dem etwas passiert.
+    const ph = $('.stage .ph');
+    if (ph) {
+      const active = bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
+      if (active) {
+        const x = xAt((now - bar.time) / r.tickSec, m.ticks);
+        ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1));
+      }
+      ph.style.visibility = active ? 'visible' : 'hidden';
+    }
+  }
+
+  /* ---- Notenbild (SVG, proportional gesetzt: x ∝ Zeit im Takt) ---- */
+
+  const ST = { W: 340, H: 104, X0: 48, X1: 324, LY: 44, STEM: 14, TY: 86 };
+  const xAt = (t, ticks) => ST.X0 + (t / ticks) * (ST.X1 - ST.X0);
+  const f1 = (n) => n.toFixed(1);
+
+  function beamGroups(notes, unit) {
+    const groups = [];
+    let cur = [];
+    const flush = () => { if (cur.length) groups.push(cur); cur = []; };
+    notes.forEach((n, i) => {
+      if (n.rest || n.d >= 12) { flush(); return; }
+      if (cur.length && Math.floor(notes[cur[0]].t / unit) !== Math.floor(n.t / unit)) flush();
+      cur.push(i);
+    });
+    flush();
+    return groups;
+  }
+
+  function restSvg(n, x) {
+    const y = ST.LY;
+    if (n.d >= 24) return `<rect x="${f1(x - 6)}" y="${y - 5}" width="12" height="5"/>`;
+    if (n.d >= 12) return `<path class="rest-s" d="M${f1(x - 3)} ${y - 14} l5.5 6.5 l-4.5 5 l5.5 6.5 c-4 -1.8 -7 .6 -3.2 5.8"/>`;
+    return `<circle cx="${f1(x - 2)}" cy="${y - 6}" r="2.4"/><path class="rest-s" style="stroke-width:1.7" d="M${f1(x - 2.5)} ${y - 4.5} q3.5 1.2 6 -2.5 l-5 14"/>`;
+  }
+
+  function notationSvg(pattern, statusOf) {
+    const m = METERS[pattern.meter];
+    const out = [];
+    const stemX = (x) => x + 5.2;
+    const xs = pattern.notes.map((n) => xAt(n.t, m.ticks));
+    pattern.notes.forEach((n, i) => {
+      const x = xs[i];
+      if (n.rest) { out.push(restSvg(n, x)); if (n.d === 18 || n.d === 9) out.push(`<circle cx="${f1(x + 8)}" cy="${ST.LY - 6}" r="1.9"/>`); return; }
+      const cls = statusOf(n.t);
+      out.push(`<ellipse class="${n.d >= 24 ? 'hd-o' : 'hd'}${cls ? ` is-${cls}` : ''}" cx="${f1(x)}" cy="${ST.LY}" rx="5.8" ry="4.3" transform="rotate(-20 ${f1(x)} ${ST.LY})"/>`);
+      if (n.d < 48) out.push(`<line class="ln" x1="${f1(stemX(x))}" y1="${ST.LY - 1.5}" x2="${f1(stemX(x))}" y2="${ST.STEM}"/>`);
+      if ([36, 18, 9].includes(n.d)) out.push(`<circle cx="${f1(x + 10.5)}" cy="${ST.LY - 2}" r="1.9"/>`);
+    });
+    beamGroups(pattern.notes, m.unit).forEach((group) => {
+      if (group.length === 1) {
+        const n = pattern.notes[group[0]];
+        const sx = stemX(xs[group[0]]);
+        const flags = n.d === 3 ? 2 : 1;
+        for (let f = 0; f < flags; f++) out.push(`<path class="flag" d="M${f1(sx)} ${ST.STEM + f * 6} c.5 5 8 7 6.5 15"/>`);
+        return;
+      }
+      const a = stemX(xs[group[0]]), b = stemX(xs[group[group.length - 1]]);
+      out.push(`<rect x="${f1(a - .9)}" y="${ST.STEM - .5}" width="${f1(b - a + 1.8)}" height="4.6"/>`);
+      // zweiter Balken für Sechzehntel, einzelne als kurzer Stummel
+      group.forEach((idx, k) => {
+        if (pattern.notes[idx].d !== 3) return;
+        const next = group[k + 1], prev = group[k - 1];
+        const x = stemX(xs[idx]);
+        if (next !== undefined && pattern.notes[next].d === 3) {
+          out.push(`<rect x="${f1(x - .9)}" y="${ST.STEM + 6.5}" width="${f1(stemX(xs[next]) - x + 1.8)}" height="4"/>`);
+        } else if (!(prev !== undefined && pattern.notes[prev].d === 3)) {
+          const toLeft = prev !== undefined;
+          out.push(`<rect x="${f1(toLeft ? x - 8 : x - .9)}" y="${ST.STEM + 6.5}" width="8.9" height="4"/>`);
+        }
+      });
+      const tri = group.filter((idx) => pattern.notes[idx].d === 4);
+      if (tri.length === 3) out.push(`<text class="tri" x="${f1((a + b) / 2)}" y="${ST.STEM - 4}" text-anchor="middle">3</text>`);
+    });
+    return out.join('');
+  }
+
+  function renderStage(round, reveal) {
+    const meterId = round ? round.meter : state.meter;
+    const m = METERS[meterId];
+    const res = round?.result;
+    const statusOf = (t) => res?.notes.find((n) => n.t === t)?.status || '';
+    const parts = [];
+    parts.push(`<line class="staff" x1="8" y1="${ST.LY}" x2="${ST.X1 + 10}" y2="${ST.LY}"/>`);
+    parts.push(`<line class="ln" x1="${ST.X1 + 10}" y1="${ST.LY - 10}" x2="${ST.X1 + 10}" y2="${ST.LY + 10}"/>`);
+    parts.push(`<text class="sig" x="24" y="${ST.LY - 3}" text-anchor="middle">${m.top}</text><text class="sig" x="24" y="${ST.LY + 13}" text-anchor="middle">${m.bottom}</text>`);
+    if (round && reveal) parts.push(notationSvg(round.pattern, statusOf));
+    else parts.push(`<text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">${round ? 'Rhythmus nach Gehör' : 'Hier erscheinen die Noten'}</text>`);
+    // Zeitleiste: Zählzeiten, Soll-Einsätze (wenn aufgedeckt), deine Tipper
+    parts.push(`<line class="tl" x1="${ST.X0 - 8}" y1="${ST.TY}" x2="${ST.X1 + 10}" y2="${ST.TY}"/>`);
+    for (let t = 0; t < m.ticks; t += m.beat) {
+      parts.push(`<line class="tl-beat${t % m.unit === 0 ? ' is-strong' : ''}" x1="${f1(xAt(t, m.ticks))}" y1="${ST.TY - 6}" x2="${f1(xAt(t, m.ticks))}" y2="${ST.TY + 6}"/>`);
+    }
+    if (round && reveal) {
+      round.pattern.onsets.forEach((t) => {
+        const cls = statusOf(t);
+        parts.push(`<circle class="tg${cls ? ` is-${cls}` : ''}" cx="${f1(xAt(t, m.ticks))}" cy="${ST.TY}" r="4.6"/>`);
+      });
+    }
+    if (round && round.youStart !== null) {
+      const taps = res ? res.taps : game.taps.filter((x) => x >= round.youStart - round.tol && x <= round.youStart + round.barSec + round.tol).map((at) => ({ at, cls: '' }));
+      taps.forEach(({ at, cls }) => {
+        const x = clamp(xAt((at - round.youStart) / round.tickSec, m.ticks), ST.X0 - 12, ST.X1 + 12);
+        parts.push(`<rect class="tp${cls ? ` is-${cls}` : ''}" x="${f1(x - 1.5)}" y="${ST.TY - 12}" width="3" height="24" rx="1.5"/>`);
+      });
+    }
+    parts.push(`<line class="ph" x1="0" x2="0" y1="4" y2="${ST.H - 4}" style="visibility:hidden"/>`);
+    const label = round && reveal ? `Rhythmus im ${meterId}-Takt${res ? `, ${res.hits} von ${res.count} getroffen` : ''}` : 'Notenfläche';
+    $('.stage').innerHTML = `<svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="${label}">${parts.join('')}</svg>`;
+  }
+
+  function chips(name, entries, value, disabled = false) {
+    $(`[data-chips="${name}"]`).replaceChildren(...entries.map(([v, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip';
+      b.dataset.chip = name; b.dataset.value = String(v);
+      b.textContent = label;
+      b.disabled = disabled;
+      b.setAttribute('aria-pressed', String(String(v) === String(value)));
+      return b;
+    }));
+  }
+
+  function renderRhythm() {
+    chips('rmode', MODES, state.mode);
+    const gaps = [[0, '0'], [1, '1'], [2, '2']];
+    chips('gapBefore', gaps, state.gapBefore, state.mode === 'along');
+    chips('gapAfter', gaps, state.gapAfter);
+    const els = ELEMENTS.filter(([id]) => state.elements.includes(id) && !(id === 't' && state.meter === '6/8')).map(([id]) => ELEMENT_SHORT[id]);
+    $('.rhythm-sum').innerHTML = '';
+    $('.rhythm-sum').append(`${state.meter} · ${els.length ? `Viertel, ${els.join(', ')}` : 'nur Viertel und Halbe'} · ${state.rounds ? `${state.rounds} Runden` : 'endlos'} `);
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.dataset.rhythm = 'settings'; edit.textContent = 'ändern';
+    $('.rhythm-sum').append(edit);
+    if (!run.playing) {
+      renderStrip(null);
+      renderPad(game.finished ? 'done' : 'idle');
+      if (!run.shown) renderStage(null, false);
+    }
+    renderScore();
+  }
+
+  function renderTransport() {
+    const btn = $('.play');
+    btn.innerHTML = run.playing
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
+    btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
+    $('.bpm').value = String(state.bpm);
+    $('.bpm-out').innerHTML = `${state.bpm} BPM${state.meter === '6/8' ? ' <small>(Achtel)</small>' : ''}`;
+  }
+
+  function renderAll() {
+    renderRhythm();
+    renderTransport();
+    renderEar();
+    renderVoice();
+  }
+
+  function setTab(tab) {
+    if (run.playing) stop();
+    state.tab = tab;
+    $$('.tab-btn').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    $$('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+    document.body.dataset.tab = tab;
+    if (tab !== 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); }
+    // Das Mikrofon läuft nie im Hintergrund weiter, wenn man den Reiter verlässt.
+    if (tab !== 'voice' && voice.analyser) micOff();
+    renderAll();
+  }
+
+  function toggleHelp(btn) {
+    const box = document.getElementById(btn.dataset.help);
+    if (!box) return;
+    box.hidden = !box.hidden;
+    btn.setAttribute('aria-expanded', String(!box.hidden));
+  }
+
+  /* ------------------------------------------------------------------------
+     HÖREN — Gehörbildung: Intervalle bestimmen, Akkordfolgen heraushören.
+
+     Jede Aufgabe liegt in einer zufälligen Tonart/Lage, damit man Abstände
+     und Funktionen hört und nicht absolute Tonhöhen auswendig lernt. Was
+     vorkommen kann, stellt das Zahnrad ein (ear.settings); jede Wiedergabe
+     läuft über eine eigene Bus-Schiene und wird beim Neustart ausgeblendet.
+     ------------------------------------------------------------------------ */
+
+  const INTERVALS = [
+    [1, 'kleine Sekunde'], [2, 'große Sekunde'], [3, 'kleine Terz'], [4, 'große Terz'],
+    [5, 'reine Quarte'], [6, 'Tritonus'], [7, 'reine Quinte'], [8, 'kleine Sexte'],
+    [9, 'große Sexte'], [10, 'kleine Septime'], [11, 'große Septime'], [12, 'Oktave'],
+  ];
+  const INTERVAL_PRESETS = [
+    ['Einstieg', [3, 4, 5, 7, 12]],
+    ['Terzen und Sexten', [3, 4, 8, 9]],
+    ['Sekunden und Septimen', [1, 2, 10, 11]],
+    ['Alle', INTERVALS.map(([n]) => n)],
+  ];
+  const INTERVAL_DIRS = [['up', 'aufwärts'], ['down', 'abwärts'], ['harmonic', 'zusammen']];
+
+  // Akkordsymbol → [Halbtöne über dem Grundton der Tonart, Tongeschlecht].
+  // "V" gibt es in Moll bewusst als Dur-Akkord (harmonisches Moll) — so klingt
+  // eine Kadenz in Moll, wie sie im Chorsatz meist steht.
+  const CHORD_SYMBOLS = {
+    I: [0, 'maj'], ii: [2, 'min'], iii: [4, 'min'], IV: [5, 'maj'], V: [7, 'maj'], vi: [9, 'min'], 'vii°': [11, 'dim'],
+    i: [0, 'min'], 'ii°': [2, 'dim'], III: [3, 'maj'], iv: [5, 'min'], v: [7, 'min'], VI: [8, 'maj'], VII: [10, 'maj'],
+  };
+  const SYMBOL_ORDER = ['I', 'i', 'ii', 'ii°', 'III', 'iii', 'IV', 'iv', 'V', 'v', 'VI', 'vi', 'VII', 'vii°'];
+  const EAR_PROGRESSIONS = [
+    { id: 'pop', mode: 'major', chords: ['I', 'V', 'vi', 'IV'], name: 'Pop-Klassiker' },
+    { id: 'fifties', mode: 'major', chords: ['I', 'vi', 'IV', 'V'], name: '50er-Jahre' },
+    { id: 'sad', mode: 'major', chords: ['vi', 'IV', 'I', 'V'], name: 'Pop in Moll-Farbe' },
+    { id: 'cadence', mode: 'major', chords: ['I', 'IV', 'V', 'I'], name: 'Kadenz' },
+    { id: 'plagal', mode: 'major', chords: ['I', 'IV', 'I', 'V'], name: 'Pendel mit Halbschluss' },
+    { id: 'jazz', mode: 'major', chords: ['ii', 'V', 'I', 'I'], name: 'II–V–I' },
+    { id: 'rising', mode: 'major', chords: ['I', 'iii', 'IV', 'V'], name: 'Aufsteigend' },
+    { id: 'hymn', mode: 'major', chords: ['I', 'ii', 'V', 'I'], name: 'Choral-Schluss' },
+    { id: 'epic', mode: 'minor', chords: ['i', 'VI', 'III', 'VII'], name: 'Epische Moll-Folge' },
+    { id: 'mcadence', mode: 'minor', chords: ['i', 'iv', 'V', 'i'], name: 'Moll-Kadenz' },
+    { id: 'andalusian', mode: 'minor', chords: ['i', 'VII', 'VI', 'V'], name: 'Andalusische Kadenz' },
+    { id: 'mpop', mode: 'minor', chords: ['i', 'iv', 'VII', 'III'], name: 'Moll-Pop' },
+    { id: 'mnatural', mode: 'minor', chords: ['i', 'VI', 'iv', 'v'], name: 'Natürliches Moll' },
+    // Kurze und lange Folgen (drei bis acht Akkorde)
+    { id: 'tsd', mode: 'major', chords: ['I', 'IV', 'V'], name: 'Kadenz in drei' },
+    { id: 'amen', mode: 'major', chords: ['I', 'IV', 'I'], name: 'Amen-Schluss (plagal)' },
+    { id: 'deceptive', mode: 'major', chords: ['I', 'IV', 'V', 'vi'], name: 'Trugschluss' },
+    { id: 'quintfall', mode: 'major', chords: ['vi', 'ii', 'V', 'I'], name: 'Quintfall' },
+    { id: 'turnaround', mode: 'major', chords: ['I', 'vi', 'ii', 'V'], name: 'Turnaround' },
+    { id: 'circle', mode: 'major', chords: ['I', 'IV', 'vii°', 'iii', 'vi', 'ii', 'V', 'I'], name: 'Quintfallsequenz' },
+    { id: 'm3', mode: 'minor', chords: ['i', 'iv', 'V'], name: 'Moll-Kadenz in drei' },
+    { id: 'mdeceptive', mode: 'minor', chords: ['i', 'iv', 'V', 'VI'], name: 'Trugschluss in Moll' },
+  ];
+
+  /* Stufen 1–6: je eine Auswahl an Folgen plus Klang (Bass in Grundstellung
+     oder in zufälliger Umkehrung, enge oder weite Lage). Jede Stufe
+     enthält die vorige und nimmt etwas Neues dazu. */
+  const EAR_LEVELS = [
+    { n: 1, label: 'Grundkadenzen', progs: ['cadence', 'tsd', 'amen'], inversion: 'root', spread: 'close' },
+    { n: 2, label: 'Pop-Folgen dazu', progs: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'plagal'], inversion: 'root', spread: 'close' },
+    { n: 3, label: 'Moll und Trugschluss', progs: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'plagal', 'mcadence', 'm3', 'deceptive', 'sad'], inversion: 'root', spread: 'close' },
+    { n: 4, label: 'Nebenstufen, weite Lage', progs: ['cadence', 'pop', 'fifties', 'deceptive', 'sad', 'mcadence', 'jazz', 'hymn', 'quintfall', 'turnaround', 'rising', 'epic'], inversion: 'root', spread: 'open' },
+    { n: 5, label: 'Umkehrungen', progs: ['cadence', 'pop', 'deceptive', 'mcadence', 'jazz', 'quintfall', 'turnaround', 'epic', 'andalusian', 'mpop', 'mnatural', 'mdeceptive'], inversion: 'random', spread: 'close' },
+    { n: 6, label: 'Alles, Umkehrungen in weiter Lage', progs: null, inversion: 'random', spread: 'open' },
+  ];
+  const EAR_INVERSIONS = [['root', 'Grundstellung'], ['random', 'Umkehrungen zufällig']];
+  const EAR_SPREADS = [['close', 'enge Lage'], ['open', 'weite Lage']];
+  const CHORD_TEMPI = [['slow', 'langsam', 1.7], ['mid', 'mittel', 1.25], ['fast', 'schnell', .9]];
+
+  const ear = {
+    mode: 'interval',
+    settings: {
+      intervals: [3, 4, 5, 7, 12],
+      dirs: ['up'],
+      progs: ['pop', 'fifties', 'cadence', 'epic', 'mcadence'],
+      level: 0,            // 1–6 = Stufe, 0 = eigene Auswahl
+      inversion: 'root',   // Bass: 'root' Grundton | 'random' zufällige Umkehrung
+      spread: 'close',     // Oberstimmen: 'close' enge | 'open' weite Lage
+      tempo: 'mid',
+      tonicCue: true,
+      autoNext: true,
+    },
+    task: null,        // aktuelle Aufgabe
+    revealed: false,   // Antwort schon aufgelöst?
+    bus: null,
+    timers: [],
+    stats: { interval: { right: 0, total: 0 }, chords: { right: 0, total: 0, chordsRight: 0, chordsTotal: 0 } },
+    streak: 0,
+  };
+
+  const intervalName = (semis) => INTERVALS.find(([n]) => n === semis)[1];
+  const keyName = (pc, mode) => `${NOTE_NAMES[mod(pc, 12)]}-${mode === 'major' ? 'Dur' : 'Moll'}`;
+
+  function chordPcs(key, symbol) {
+    const [root, quality] = CHORD_SYMBOLS[symbol];
+    const shape = quality === 'maj' ? [0, 4, 7] : quality === 'min' ? [0, 3, 7] : [0, 3, 6];
+    return shape.map((x) => mod(key + root + x, 12));
+  }
+
+  /** Enge Lage mit Stimmführung: Bass auf dem Grundton, darüber die drei
+   *  Akkordtöne in der Umkehrung, die sich am wenigsten vom vorigen
+   *  Akkord entfernt — so hört man Funktionen statt Sprünge.
+   *  Optionen: `inversion` 'random' legt den Bass auf einen zufälligen
+   *  Akkordton (Grundton, Terz oder Quinte = Grundstellung, Sext-, Quartsext-
+   *  akkord); `spread` 'open' spreizt die Oberstimmen zur weiten Lage (die
+   *  mittlere Stimme eine Oktave höher, Umfang über eine Oktave). */
+  function voiceProgression(key, symbols, { inversion = 'root', spread = 'close' } = {}) {
+    const close = voiceClose(key, symbols);
+    return close.map((v, i) => {
+      const pcs = chordPcs(key, symbols[i]);
+      let upper = v.upper;
+      if (spread === 'open') {
+        const [a, b, c] = upper;
+        upper = [a, c, b + 12].sort((x, y) => x - y);
+        if (upper[2] > 81) upper = upper.map((m) => m - 12);
+      }
+      let bass = v.bass;
+      if (inversion === 'random') {
+        const pc = pick(pcs);
+        bass = 36 + mod(pc, 12);
+        if (bass < 40) bass += 12;
+      }
+      return { bass, upper };
+    });
+  }
+
+  function voiceClose(key, symbols) {
+    let prev = [60, 64, 67];
+    return symbols.map((symbol) => {
+      const pcs = chordPcs(key, symbol);
+      let best = null;
+      let bestScore = Infinity;
+      for (let rot = 0; rot < 3; rot++) {
+        const order = [pcs[rot], pcs[(rot + 1) % 3], pcs[(rot + 2) % 3]];
+        for (let start = 55; start <= 66; start++) {
+          if (mod(start, 12) !== order[0]) continue;
+          const notes = [start];
+          for (const pc of order.slice(1)) { let n = notes[notes.length - 1] + 1; while (mod(n, 12) !== pc) n++; notes.push(n); }
+          const score = notes.reduce((sum, n, i) => sum + Math.abs(n - prev[i]), 0);
+          if (score < bestScore) { bestScore = score; best = notes; }
+        }
+      }
+      prev = best;
+      return { bass: 36 + mod(key + CHORD_SYMBOLS[symbol][0], 12), upper: best };
+    });
+  }
+
+  function earSummary() {
+    const s = ear.settings;
+    const level = s.level ? `Stufe ${s.level}` : 'Eigene Auswahl';
+    const inv = EAR_INVERSIONS.find(([id]) => id === s.inversion)[1];
+    const spread = EAR_SPREADS.find(([id]) => id === s.spread)[1];
+    return `${level} · ${enabledProgs().length} Folgen · ${inv}, ${spread}`;
+  }
+
+  function applyEarLevel(n) {
+    const level = EAR_LEVELS.find((l) => l.n === n);
+    if (!level) return;
+    const s = ear.settings;
+    s.level = n;
+    s.progs = level.progs ? [...level.progs] : EAR_PROGRESSIONS.map((p) => p.id);
+    s.inversion = level.inversion;
+    s.spread = level.spread;
+  }
+
+  function enabledProgs() { return EAR_PROGRESSIONS.filter((p) => ear.settings.progs.includes(p.id)); }
+
+  function newTask() {
+    ear.revealed = false;
+    if (ear.mode === 'interval') {
+      const semis = pick(ear.settings.intervals);
+      const dir = pick(ear.settings.dirs);
+      const root = 52 + Math.floor(Math.random() * (dir === 'down' ? 16 : 12)) + (dir === 'down' ? semis : 0);
+      ear.task = { kind: 'interval', semis, dir, root, answer: null };
+    } else {
+      const prog = pick(enabledProgs());
+      const key = Math.floor(Math.random() * 12);
+      // Klang einmal je Aufgabe festlegen — "Nochmal hören" klingt gleich.
+      const voicings = voiceProgression(key, prog.chords, ear.settings);
+      ear.task = { kind: 'chords', prog, key, input: [], voicings };
+    }
+  }
+
+  function clearEarTimers() { ear.timers.forEach(clearTimeout); ear.timers = []; }
+
+  /** Spielt die aktuelle Aufgabe (oder, nach dem Auflösen, eine gewählte
+   *  Vergleichs-Antwort) ab. */
+  async function playEar({ compareSemis } = {}) {
+    try { await engine.start(); } catch { setEarFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); return; }
+    engine.fadeBus(ear.bus);
+    clearEarTimers();
+    ear.bus = engine.newBus();
+    const bus = ear.bus;
+    const t0 = engine.ctx.currentTime + .08;
+    const task = ear.task;
+    if (task.kind === 'interval') {
+      const semis = compareSemis ?? task.semis;
+      const low = task.dir === 'down' ? task.root - semis : task.root;
+      const high = low + semis;
+      if (task.dir === 'harmonic') {
+        engine.keys(low, t0, 1.6, { velocity: .18, dest: bus });
+        engine.keys(high, t0, 1.6, { velocity: .18, dest: bus });
+      } else {
+        const [a, b] = task.dir === 'down' ? [high, low] : [low, high];
+        engine.keys(a, t0, .75, { velocity: .22, dest: bus });
+        engine.keys(b, t0 + .8, 1.1, { velocity: .22, dest: bus });
+      }
+      return;
+    }
+    const secs = CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
+    const voicings = task.voicings || voiceProgression(task.key, task.prog.chords, ear.settings);
+    let t = t0;
+    if (ear.settings.tonicCue) {
+      // Grundakkord als Orientierung, dann eine kurze Pause.
+      const [cue] = voiceProgression(task.key, [task.prog.mode === 'major' ? 'I' : 'i'], { spread: ear.settings.spread });
+      [cue.bass, ...cue.upper].forEach((m) => engine.keys(m, t, secs * .8, { velocity: .12, dest: bus }));
+      t += secs * 1.5;
+    }
+    voicings.forEach((v, i) => {
+      [v.bass, ...v.upper].forEach((m) => engine.keys(m, t, secs * .92, { velocity: .13, dest: bus }));
+      const at = (t - engine.ctx.currentTime) * 1000;
+      ear.timers.push(setTimeout(() => highlightSlot(i), Math.max(0, at)));
+      t += secs;
+    });
+    ear.timers.push(setTimeout(() => highlightSlot(-1), (t - engine.ctx.currentTime) * 1000));
+  }
+
+  function playChordSymbol(symbol) {
+    if (!engine.ctx || !ear.task) return;
+    engine.fadeBus(ear.bus);
+    ear.bus = engine.newBus();
+    const [v] = voiceProgression(ear.task.key, [symbol], { spread: ear.settings.spread });
+    const t = engine.ctx.currentTime + .03;
+    [v.bass, ...v.upper].forEach((m) => engine.keys(m, t, .9, { velocity: .13, dest: ear.bus }));
+  }
+
+  function highlightSlot(index) {
+    $$('.slot').forEach((el, i) => el.classList.toggle('is-playing', i === index));
+  }
+
+  function answerInterval(semis) {
+    const task = ear.task;
+    if (!task) return;
+    if (ear.revealed) { playEar({ compareSemis: semis }); return; } // nach dem Auflösen: vergleichen
+    const ok = semis === task.semis;
+    task.answer = semis;
+    ear.revealed = true;
+    ear.stats.interval.total++;
+    if (ok) { ear.stats.interval.right++; ear.streak++; } else ear.streak = 0;
+    const dirLabel = { up: 'aufwärts', down: 'abwärts', harmonic: 'zusammen' }[task.dir];
+    setEarFeedback(ok ? `Richtig: ${intervalName(task.semis)}!` : `Leider nein, richtig ist: ${intervalName(task.semis)} (${dirLabel}).`, ok ? 'ok' : 'bad');
+    renderEar();
+    if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1100));
+  }
+
+  function answerChord(symbol) {
+    const task = ear.task;
+    if (!task) return;
+    if (ear.revealed) { playChordSymbol(symbol); return; }
+    if (symbol === 'back') { task.input.pop(); renderEar(); return; }
+    if (task.input.length >= task.prog.chords.length) return;
+    task.input.push(symbol);
+    if (task.input.length < task.prog.chords.length) { renderEar(); return; }
+    // vollständig → auswerten
+    const right = task.input.filter((s, i) => s === task.prog.chords[i]).length;
+    const ok = right === task.prog.chords.length;
+    ear.revealed = true;
+    const st = ear.stats.chords;
+    st.total++; st.chordsTotal += task.prog.chords.length; st.chordsRight += right;
+    if (ok) { st.right++; ear.streak++; } else ear.streak = 0;
+    setEarFeedback(ok
+      ? `Richtig! ${task.prog.name} in ${keyName(task.key, task.prog.mode)}.`
+      : `${right} von ${task.prog.chords.length} richtig — gespielt wurde ${task.prog.chords.join(' – ')} (${task.prog.name}, ${keyName(task.key, task.prog.mode)}).`, ok ? 'ok' : 'bad');
+    renderEar();
+    if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
+  }
+
+  function nextEar() {
+    clearEarTimers();
+    newTask();
+    setEarFeedback('', '');
+    renderEar();
+    playEar();
+  }
+
+  function setEarFeedback(text, kind) {
+    const el = $('.ear-feedback');
+    el.textContent = text;
+    el.className = `ear-feedback${kind ? ` is-${kind}` : ''}`;
+  }
+
+  function renderEar() {
+    chips('earMode', [['interval', 'Intervalle'], ['chords', 'Akkordfolgen']], ear.mode);
+    const task = ear.task;
+    const playBtn = $('[data-ear="play"]');
+    playBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>${task ? 'Nochmal hören' : 'Start'}`;
+    $('[data-ear="next"]').hidden = !task;
+    const prompt = $('.ear-prompt');
+    const sub = $('.ear-sub');
+    const slots = $('.slot-row');
+    const grid = $('.answer-grid');
+    grid.classList.toggle('is-chords', ear.mode === 'chords');
+
+    if (ear.mode === 'interval') {
+      slots.hidden = true;
+      prompt.textContent = task ? 'Welches Intervall war das?' : 'Zwei Töne — welcher Abstand?';
+      sub.textContent = task
+        ? { up: 'aufwärts gespielt', down: 'abwärts gespielt', harmonic: 'zusammen angeschlagen' }[task.dir] + (ear.revealed ? ' · Antworten antippen zum Vergleichen' : '')
+        : `${ear.settings.intervals.length} Intervalle ausgewählt · Zahnrad zum Ändern`;
+      grid.replaceChildren(...ear.settings.intervals.map((semis) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'answer';
+        b.dataset.answer = String(semis);
+        b.textContent = intervalName(semis);
+        b.disabled = !task;
+        if (task && ear.revealed) {
+          if (semis === task.semis) b.classList.add('is-ok');
+          else if (semis === task.answer) b.classList.add('is-bad');
+        }
+        return b;
+      }));
+    } else {
+      slots.hidden = !task;
+      prompt.textContent = task ? `Welche ${task.prog.chords.length} Akkorde waren das?` : 'Akkordfolge — welche Stufen?';
+      sub.textContent = task
+        ? `${task.prog.mode === 'major' ? 'Dur' : 'Moll'}${ear.settings.tonicCue ? ' · vorab erklingt der Grundakkord' : ''}${ear.revealed ? ' · Akkorde antippen zum Anhören' : ''}`
+        : `${earSummary()} · Zahnrad zum Ändern`;
+      if (task) {
+        slots.replaceChildren(...task.prog.chords.map((symbol, i) => {
+          const el = document.createElement('div');
+          el.className = 'slot';
+          const given = task.input[i];
+          if (given) el.classList.add('is-filled');
+          if (ear.revealed) el.classList.add(given === symbol ? 'is-ok' : 'is-bad');
+          el.textContent = given || '?';
+          if (ear.revealed && given !== symbol) {
+            const small = document.createElement('small');
+            small.textContent = symbol;
+            el.append(small);
+          }
+          return el;
+        }));
+      }
+      // Nur Akkorde anbieten, die in den gewählten Folgen des Tongeschlechts
+      // vorkommen — das hält die Auswahl übersichtlich.
+      const mode = task?.prog.mode || (enabledProgs()[0]?.mode ?? 'major');
+      const used = new Set(enabledProgs().filter((p) => p.mode === mode).flatMap((p) => p.chords));
+      const symbols = SYMBOL_ORDER.filter((sym) => used.has(sym));
+      const buttons = symbols.map((symbol) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'answer';
+        b.dataset.chord = symbol;
+        b.textContent = symbol;
+        b.disabled = !task;
+        return b;
+      });
+      const back = document.createElement('button');
+      back.type = 'button'; back.className = 'answer is-backspace';
+      back.dataset.chord = 'back';
+      back.textContent = '⌫';
+      back.setAttribute('aria-label', 'Letzten Akkord löschen');
+      back.disabled = !task || ear.revealed || !task.input.length;
+      grid.replaceChildren(...buttons, back);
+    }
+
+    const st = ear.stats[ear.mode];
+    const parts = [];
+    if (st.total) parts.push(`${st.right}/${st.total} richtig`);
+    if (ear.mode === 'chords' && st.chordsTotal) parts.push(`Akkorde ${st.chordsRight}/${st.chordsTotal}`);
+    if (ear.streak > 1) parts.push(`${ear.streak} in Folge`);
+    $('.ear-score').textContent = parts.join(' · ');
+  }
+
+  /* ---- Einstellungen (Zahnrad) — ein Blatt für Hören und Rhythmus ---- */
+
+  let sheetKind = 'ear';
+
+  function openSettings(kind) {
+    sheetKind = kind;
+    $('#sheet-title').textContent = kind === 'rhythm' ? 'Rhythmus-Einstellungen' : 'Einstellungen';
+    $('.sheet').hidden = false;
+    renderSettings();
+    $('.sheet [data-ear="close-settings"]').focus();
+  }
+
+  function closeSettings() {
+    const problem = settingsProblem();
+    if (problem) { $('.sheet-hint').textContent = problem; return; }
+    $('.sheet').hidden = true;
+    if (sheetKind === 'rhythm') {
+      // Ruhend: alte Runde ausblenden, damit Taktart & Co. gleich sichtbar sind.
+      // Läuft es, gelten die Änderungen ab der nächsten Runde.
+      if (!run.playing) { run.shown = null; game.finished = false; }
+      renderRhythm();
+      renderTransport();
+      $('[data-rhythm="settings"]').focus();
+      return;
+    }
+    // Aufgabe verwerfen, wenn sie mit den neuen Einstellungen nicht mehr vorkäme.
+    const task = ear.task;
+    if (task && ((task.kind === 'interval' && (!ear.settings.intervals.includes(task.semis) || !ear.settings.dirs.includes(task.dir)))
+      || (task.kind === 'chords' && !ear.settings.progs.includes(task.prog.id)))) {
+      ear.task = null;
+      setEarFeedback('', '');
+    }
+    renderEar();
+  }
+
+  function settingsProblem() {
+    if (sheetKind === 'rhythm') return '';
+    const s = ear.settings;
+    if (ear.mode === 'interval') {
+      if (s.intervals.length < 2) return 'Bitte mindestens zwei Intervalle auswählen.';
+      if (!s.dirs.length) return 'Bitte mindestens eine Richtung auswählen.';
+    } else if (!s.progs.length) return 'Bitte mindestens eine Akkordfolge auswählen.';
+    return '';
+  }
+
+  function checkRow(group, value, label, checked, note = '', attr = 'set') {
+    return `<label class="check-row"><input type="checkbox" data-${attr}="${group}" value="${value}"${checked ? ' checked' : ''}>${label}${note ? `<small>${note}</small>` : ''}</label>`;
+  }
+
+  function renderRhythmSettings() {
+    const choice = (name, entries, value) => `<div class="chip-row">${entries.map(([v, label]) =>
+      `<button class="chip" type="button" data-rset="${name}" data-value="${v}" aria-pressed="${String(v) === String(value)}">${label}</button>`).join('')}</div>`;
+    const row = (key, label, note = '') => checkRow(key, 'on', label, state[key], note, 'rset');
+    $('.sheet-body').innerHTML = `
+      <span class="sub-label" style="margin-top:0">Taktart</span>
+      ${choice('meter', Object.keys(METERS).map((id) => [id, id]), state.meter)}
+      <span class="sub-label">Bausteine · Viertel und Halbe sind immer dabei</span>
+      <div class="check-list">${ELEMENTS.map(([id, label, note]) => checkRow('elements', id, label, state.elements.includes(id),
+        id === 't' ? (state.meter === '6/8' ? 'nicht in 6/8' : '') : note, 'rset')).join('')}</div>
+      <span class="sub-label">Runden</span>
+      ${choice('rounds', ROUND_CHOICES, state.rounds)}
+      <span class="sub-label">Ablauf</span>
+      <div class="check-list">
+        ${row('countIn', 'Einzähler', 'ein Takt vorweg')}
+        ${row('click', 'Klick auf den Zählzeiten')}
+        ${row('speedUp', 'Tempo steigern', `+${SPEED_STEP} BPM je fehlerfreie Runde`)}
+        ${row('showNotes', 'Noten beim Nachklatschen zeigen', 'sonst erst danach')}
+      </div>`;
+    $$('.sheet [data-rset="elements"][value="t"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', state.meter === '6/8'));
+    $('.sheet-hint').textContent = '';
+  }
+
+  function renderSettings() {
+    if (sheetKind === 'rhythm') { renderRhythmSettings(); return; }
+    const s = ear.settings;
+    const body = $('.sheet-body');
+    if (ear.mode === 'interval') {
+      body.innerHTML = `
+        <span class="sub-label" style="margin-top:0">Schnellauswahl</span>
+        <div class="chip-row">${INTERVAL_PRESETS.map(([name], i) => `<button class="chip" type="button" data-preset="${i}">${name}</button>`).join('')}</div>
+        <span class="sub-label">Intervalle</span>
+        <div class="check-grid">${INTERVALS.map(([n, name]) => checkRow('intervals', n, name, s.intervals.includes(n))).join('')}</div>
+        <span class="sub-label">Richtung</span>
+        <div class="check-grid">${INTERVAL_DIRS.map(([id, name]) => checkRow('dirs', id, name, s.dirs.includes(id))).join('')}</div>
+        <span class="sub-label">Ablauf</span>
+        <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
+    } else {
+      const group = (mode, title) => `<span class="sub-label">${title}</span><div class="check-list">${
+        EAR_PROGRESSIONS.filter((p) => p.mode === mode).map((p) => checkRow('progs', p.id, p.name, s.progs.includes(p.id), p.chords.join(' – '))).join('')}</div>`;
+      const level = EAR_LEVELS.find((l) => l.n === s.level);
+      const choice = (name, entries, value) => `<div class="chip-row">${entries.map(([v, label]) =>
+        `<button class="chip" type="button" data-earset="${name}" data-value="${v}" aria-pressed="${v === value}">${label}</button>`).join('')}</div>`;
+      body.innerHTML = `
+        <div class="label-row"><span class="sub-label" style="margin-top:0">Stufe</span>
+          <button class="help-btn" type="button" data-help="help-levels" aria-expanded="false" aria-label="Erklärung der Stufen">?</button></div>
+        <div class="chip-row">${EAR_LEVELS.map((l) => `<button class="chip level-chip" type="button" data-level="${l.n}" aria-pressed="${l.n === s.level}">${l.n}</button>`).join('')}</div>
+        <p class="level-note">${level ? `Stufe ${level.n}: ${level.label}` : 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'}</p>
+        <p class="help-text" id="help-levels" hidden>Jede Stufe wählt Folgen und Klang vor und nimmt zur vorigen etwas dazu: <b>1</b> Grundkadenzen · <b>2</b> Pop-Folgen · <b>3</b> Moll und Trugschluss · <b>4</b> Nebenstufen und weite Lage · <b>5</b> Umkehrungen · <b>6</b> alle Folgen, Umkehrungen in weiter Lage. Änderst du danach etwas, gilt es als eigene Auswahl.<br><b>Umkehrungen:</b> Der Bass liegt nicht immer auf dem Grundton, sondern auch auf Terz oder Quinte — die Stufe bleibt dieselbe, klingt aber anders. <b>Weite Lage:</b> Die Oberstimmen liegen weiter auseinander (über eine Oktave), wie oft im Chorsatz.</p>
+        <span class="sub-label">Bass</span>
+        ${choice('inversion', EAR_INVERSIONS, s.inversion)}
+        <span class="sub-label">Lage</span>
+        ${choice('spread', EAR_SPREADS, s.spread)}
+        ${group('major', 'Folgen in Dur')}
+        ${group('minor', 'Folgen in Moll')}
+        <span class="sub-label">Tempo</span>
+        <div class="chip-row">${CHORD_TEMPI.map(([id, name]) => `<button class="chip" type="button" data-tempo="${id}" aria-pressed="${id === s.tempo}">${name}</button>`).join('')}</div>
+        <span class="sub-label">Ablauf</span>
+        <div class="check-list">
+          ${checkRow('tonicCue', 'on', 'Grundakkord vorab als Orientierung', s.tonicCue)}
+          ${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}
+        </div>`;
+    }
+    $('.sheet-hint').textContent = '';
+  }
+
+  function onSettingChange(input) {
+    const s = ear.settings;
+    const group = input.dataset.set;
+    if (group === 'tonicCue' || group === 'autoNext') { s[group] = input.checked; return; }
+    if (group === 'progs') { s.level = 0; const note = $('.level-note'); if (note) note.textContent = 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'; $$('.level-chip').forEach((c) => c.setAttribute('aria-pressed', 'false')); }
+    const value = group === 'intervals' ? Number(input.value) : input.value;
+    const list = new Set(s[group]);
+    if (input.checked) list.add(value); else list.delete(value);
+    s[group] = group === 'intervals' ? [...list].sort((a, b) => a - b) : [...list];
+    $('.sheet-hint').textContent = settingsProblem();
+  }
+
+  /* ------------------------------------------------------------------------
+     STIMME — Tuner mit Tonhöhenerkennung übers Mikrofon.
+
+     Erkennung per YIN (de Cheveigné & Kawahara 2002) auf dem Zeitsignal
+     eines AnalyserNode: kumulativ-normierte Differenzfunktion, erster
+     Einbruch unter die Schwelle, parabolisch verfeinert. Vorher auf die
+     halbe Abtastrate gemittelt — für Singstimmen (ca. 65–1100 Hz) reicht
+     das und viertelt die Rechenlast, was auf dem Handy bei 60 Bildern pro
+     Sekunde zählt. Ein Median über die letzten Werte glättet einzelne
+     Oktavfehler. Das Mikrofon läuft ohne Echo-Unterdrückung, Rausch-
+     filter und automatische Pegelanpassung — die verfälschen Tonhöhe und
+     Einsätze (siehe RECORDING_CONSTRAINTS in app.js).
+     ------------------------------------------------------------------------ */
+
+  const PITCH_MIN_HZ = 65;
+  const PITCH_MAX_HZ = 1100;
+  const HISTORY_SECONDS = 6;
+  const noteLabel = (midi) => `${NOTE_NAMES[mod(midi, 12)]}${Math.floor(midi / 12) - 1}`;
+
+  const voice = {
+    stream: null, source: null, analyser: null, buffer: null, frame: 0,
+    x: null, d: null,
+    recent: [],          // letzte erkannte MIDI-Werte (für den Median)
+    lastVoiced: 0,
+    history: [],         // [{ t, midi }] für die Verlaufslinie
+    hold: [],            // [{ t, midi }] fürs "sicher gehalten"
+    low: null, high: null,
+    useTarget: false, target: 57, // A3
+  };
+
+  function detectPitch(buf, sampleRate) {
+    const n = buf.length >> 1;
+    if (!voice.x || voice.x.length !== n) voice.x = new Float32Array(n);
+    const x = voice.x;
+    let energy = 0;
+    for (let i = 0; i < n; i++) { const v = (buf[2 * i] + buf[2 * i + 1]) * .5; x[i] = v; energy += v * v; }
+    const rms = Math.sqrt(energy / n);
+    if (rms < .01) return null;
+    const sr = sampleRate / 2;
+    const w = n >> 1;
+    const minTau = Math.max(2, Math.floor(sr / PITCH_MAX_HZ));
+    const maxTau = Math.min(w - 2, Math.ceil(sr / PITCH_MIN_HZ));
+    if (!voice.d || voice.d.length < maxTau + 2) voice.d = new Float32Array(maxTau + 2);
+    const d = voice.d;
+    d[0] = 1;
+    let running = 0;
+    for (let tau = 1; tau <= maxTau + 1; tau++) {
+      let sum = 0;
+      for (let i = 0; i < w; i++) { const diff = x[i] - x[i + tau]; sum += diff * diff; }
+      running += sum;
+      d[tau] = running ? sum * tau / running : 1;
+    }
+    let tau = -1;
+    for (let t = minTau; t <= maxTau; t++) {
+      if (d[t] < .15) {
+        while (t + 1 <= maxTau && d[t + 1] < d[t]) t++;
+        tau = t;
+        break;
+      }
+    }
+    if (tau < 0) return null;
+    const s0 = d[tau - 1], s1 = d[tau], s2 = d[tau + 1];
+    const denom = s0 - 2 * s1 + s2;
+    const shift = denom ? clamp((s0 - s2) / (2 * denom), -1, 1) : 0;
+    return { freq: sr / (tau + shift), clarity: 1 - s1, rms };
+  }
+
+  const median = (list) => { const s = [...list].sort((a, b) => a - b); return s[s.length >> 1]; };
+
+  async function micOn() {
+    const err = $('.mic-error');
+    err.textContent = '';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      err.textContent = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).';
+      return;
+    }
+    try {
+      await engine.start();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      voice.stream = stream;
+      voice.source = engine.ctx.createMediaStreamSource(stream);
+      voice.analyser = engine.ctx.createAnalyser();
+      voice.analyser.fftSize = 2048;
+      voice.buffer = new Float32Array(voice.analyser.fftSize);
+      voice.source.connect(voice.analyser); // bewusst NICHT zum Ausgang — keine Rückkopplung
+      voice.recent = []; voice.history = []; voice.hold = [];
+      renderVoice();
+      voiceLoop();
+    } catch (e) {
+      err.textContent = e?.name === 'NotAllowedError' ? 'Der Zugriff aufs Mikrofon wurde nicht erlaubt.'
+        : e?.name === 'NotFoundError' ? 'Es wurde kein Mikrofon gefunden.'
+        : 'Das Mikrofon konnte nicht gestartet werden.';
+      micOff();
+    }
+  }
+
+  function micOff() {
+    cancelAnimationFrame(voice.frame);
+    voice.frame = 0;
+    voice.stream?.getTracks().forEach((track) => track.stop());
+    try { voice.source?.disconnect(); } catch { /* schon getrennt */ }
+    voice.stream = null; voice.source = null; voice.analyser = null;
+    showPitch(null);
+    renderVoice();
+  }
+
+  function voiceLoop() {
+    if (!voice.analyser) return;
+    const now = engine.ctx.currentTime;
+    voice.analyser.getFloatTimeDomainData(voice.buffer);
+    const result = detectPitch(voice.buffer, engine.ctx.sampleRate);
+    let midi = null;
+    if (result && result.clarity > .8) {
+      const raw = 69 + 12 * Math.log2(result.freq / 440);
+      if (now - voice.lastVoiced > .15) voice.recent = [];
+      voice.lastVoiced = now;
+      voice.recent.push(raw);
+      if (voice.recent.length > 5) voice.recent.shift();
+      midi = median(voice.recent);
+    }
+    voice.history.push({ t: now, midi });
+    while (voice.history.length && voice.history[0].t < now - HISTORY_SECONDS) voice.history.shift();
+    trackRange(now, midi);
+    showPitch(midi, result?.freq);
+    drawHistory(now);
+    voice.frame = requestAnimationFrame(voiceLoop);
+  }
+
+  /** Tonumfang: ein Ton zählt, wenn er ~0,5 s ohne Aussetzer innerhalb
+   *  eines Halbtons gehalten wurde — Ausrutscher beim Einsatz zählen nicht. */
+  function trackRange(now, midi) {
+    if (midi === null) { voice.hold = []; return; }
+    voice.hold.push({ t: now, midi });
+    while (voice.hold.length && voice.hold[0].t < now - .5) voice.hold.shift();
+    if (voice.hold[voice.hold.length - 1].t - voice.hold[0].t < .45) return;
+    const values = voice.hold.map((h) => h.midi);
+    if (Math.max(...values) - Math.min(...values) > 1) return;
+    const note = Math.round(median(values));
+    let changed = false;
+    if (voice.low === null || note < voice.low) { voice.low = note; changed = true; }
+    if (voice.high === null || note > voice.high) { voice.high = note; changed = true; }
+    if (changed) renderRange();
+  }
+
+  function showPitch(midi, freq) {
+    const noteEl = $('.tuner-note');
+    const needle = $('.gauge-needle');
+    const msg = $('.tuner-msg');
+    const range = voice.useTarget ? 100 : 50;
+    $('.gauge-min').textContent = `−${range}`;
+    $('.gauge-max').textContent = `+${range} Cent`;
+    if (midi === null) {
+      noteEl.classList.add('is-idle');
+      if (!voice.analyser) noteEl.textContent = '–';
+      $('.tuner-hz').textContent = voice.analyser ? 'Singe einen Ton …' : '';
+      needle.className = 'gauge-needle is-idle';
+      msg.textContent = '';
+      msg.className = 'tuner-msg';
+      return;
+    }
+    const nearest = Math.round(midi);
+    let cents;
+    if (voice.useTarget) {
+      // Abweichung zum Zielton, Oktave egal (auf ±6 Halbtöne gefaltet).
+      cents = (mod(midi - voice.target + 6, 12) - 6) * 100;
+      noteEl.textContent = noteLabel(nearest);
+    } else {
+      cents = (midi - nearest) * 100;
+      noteEl.textContent = noteLabel(nearest);
+    }
+    noteEl.classList.remove('is-idle');
+    $('.tuner-hz').textContent = `${freq ? freq.toFixed(1) : '–'} Hz · ${cents >= 0 ? '+' : '−'}${Math.abs(Math.round(cents))} Cent`;
+    const abs = Math.abs(cents);
+    const kind = abs <= 10 ? 'ok' : abs <= 25 ? 'near' : 'off';
+    needle.className = `gauge-needle is-${kind}`;
+    needle.style.left = `${50 + clamp(cents / range, -1, 1) * 50}%`;
+    msg.className = `tuner-msg is-${kind}`;
+    if (voice.useTarget && abs > 60) msg.textContent = cents < 0 ? `Zu tief — ${NOTE_NAMES[mod(voice.target, 12)]} liegt höher` : `Zu hoch — ${NOTE_NAMES[mod(voice.target, 12)]} liegt tiefer`;
+    else msg.textContent = kind === 'ok' ? 'Sauber!' : cents < 0 ? 'etwas zu tief' : 'etwas zu hoch';
+  }
+
+  /** Verlaufslinie: Halbton-Raster um die zuletzt gesungene Lage (bzw. den
+   *  Zielton), gesungene Tonhöhe als Linie, Lücken bei Stille. */
+  function drawHistory(now) {
+    const canvas = $('.pitch-history');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    const g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const css = getComputedStyle(document.documentElement);
+    const voiced = voice.history.filter((p) => p.midi !== null);
+    const centre = voiced.length ? median(voiced.slice(-30).map((p) => p.midi)) : (voice.useTarget ? voice.target : 60);
+    const span = 14; // Halbtöne sichtbar
+    const lo = Math.round(centre) - span / 2;
+    const pad = 10; // Platz, damit die Notennamen oben und unten nicht abgeschnitten werden
+    const y = (m) => h - pad - ((m - lo) / span) * (h - 2 * pad);
+    g.font = '700 10px -apple-system, Segoe UI, Roboto, sans-serif';
+    g.textBaseline = 'middle';
+    for (let m = lo; m <= lo + span; m++) {
+      const isC = mod(m, 12) === 0;
+      const isTarget = voice.useTarget && mod(m - voice.target, 12) === 0;
+      g.strokeStyle = isTarget ? 'rgba(47,158,91,.55)' : isC ? 'rgba(140,129,166,.45)' : 'rgba(140,129,166,.15)';
+      g.lineWidth = isTarget ? 2 : 1;
+      g.beginPath(); g.moveTo(34, y(m)); g.lineTo(w, y(m)); g.stroke();
+      if (isC || isTarget || [4, 7].includes(mod(m, 12))) {
+        g.fillStyle = isTarget ? '#2f9e5b' : css.getPropertyValue('--muted');
+        g.fillText(noteLabel(m), 6, y(m));
+      }
+    }
+    g.strokeStyle = css.getPropertyValue('--accent').trim() || '#F868B0';
+    g.lineWidth = 3; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath();
+    let pen = false;
+    for (const p of voice.history) {
+      const px = 34 + (1 - (now - p.t) / HISTORY_SECONDS) * (w - 40);
+      if (p.midi === null) { pen = false; continue; }
+      const py = y(p.midi);
+      if (pen) g.lineTo(px, py); else g.moveTo(px, py);
+      pen = true;
+    }
+    g.stroke();
+  }
+
+  function renderRange() {
+    $('.range-low').textContent = voice.low === null ? '–' : noteLabel(voice.low);
+    $('.range-high').textContent = voice.high === null ? '–' : noteLabel(voice.high);
+  }
+
+  function renderVoice() {
+    const btn = $('[data-voice="mic"]');
+    btn.textContent = voice.analyser ? 'Mikrofon aus' : 'Mikrofon an';
+    btn.classList.toggle('secondary', !!voice.analyser);
+    $('.target-note').textContent = noteLabel(voice.target);
+    $('[data-voiceswitch="useTarget"]').checked = voice.useTarget;
+    renderRange();
+    if (!voice.analyser) { showPitch(null); drawHistory(engine.ctx?.currentTime || 0); }
+  }
+
+  async function playTarget() {
+    try { await engine.start(); } catch { return; }
+    engine.keys(voice.target, engine.ctx.currentTime + .03, 1.4, { velocity: .2 });
+  }
+
+  /* ------------------------------------------------------------------------
+     ABLAGE — über die App (window.parent.chorToolStorage, IndexedDB). Gleiche
+     Herkunft, der Zugriff auf window.parent ist erlaubt; direkt geöffnet
+     gibt es sie nicht, dann gelten die Voreinstellungen.
+     ------------------------------------------------------------------------ */
+
+  const STORAGE_ID = 'playground';
+  const storage = (() => {
+    try { if (window.parent !== window && window.parent.chorToolStorage) return window.parent.chorToolStorage; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  let saveTimer = 0;
+
+  function snapshot() {
+    return {
+      tab: state.tab, bpm: state.bpm,
+      rhythm: {
+        mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
+        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
+      },
+      ear: { mode: ear.mode, settings: ear.settings },
+      voice: { target: voice.target, useTarget: voice.useTarget },
+    };
+  }
+
+  function persist() {
+    if (!storage) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, snapshot())).catch(() => {}); }, 400);
+  }
+
+  /** Gespeichertes übernehmen, alles Unbekannte ignorieren. Ein alter Reiter
+   *  „warmup“ (Einsingen, inzwischen eigenes Tool) fällt auf Rhythmus zurück. */
+  function restore(data) {
+    if (!data || typeof data !== 'object') return;
+    state.tab = ['rhythm', 'ear', 'voice'].includes(data.tab) ? data.tab : 'rhythm';
+    if (Number.isFinite(data.bpm)) state.bpm = clamp(Math.round(data.bpm), 40, 200);
+    const r = data.rhythm && typeof data.rhythm === 'object' ? data.rhythm : {};
+    if (MODES.some(([id]) => id === r.mode)) state.mode = r.mode;
+    if (METERS[r.meter]) state.meter = r.meter;
+    if (Array.isArray(r.elements)) state.elements = ELEMENTS.map(([id]) => id).filter((id) => r.elements.includes(id));
+    ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
+    if (ROUND_CHOICES.some(([n]) => n === r.rounds)) state.rounds = r.rounds;
+    ['countIn', 'click', 'speedUp', 'showNotes'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
+    const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
+    if (e.mode === 'interval' || e.mode === 'chords') ear.mode = e.mode;
+    const es = e.settings && typeof e.settings === 'object' ? e.settings : {};
+    const subset = (all, list) => (Array.isArray(list) ? all.filter((x) => list.includes(x)) : []);
+    const intervals = subset(INTERVALS.map(([n]) => n), es.intervals);
+    if (intervals.length >= 2) ear.settings.intervals = intervals;
+    const dirs = subset(INTERVAL_DIRS.map(([id]) => id), es.dirs);
+    if (dirs.length) ear.settings.dirs = dirs;
+    const progs = subset(EAR_PROGRESSIONS.map((p) => p.id), es.progs);
+    if (progs.length) ear.settings.progs = progs;
+    if (CHORD_TEMPI.some(([id]) => id === es.tempo)) ear.settings.tempo = es.tempo;
+    if (EAR_INVERSIONS.some(([id]) => id === es.inversion)) ear.settings.inversion = es.inversion;
+    if (EAR_SPREADS.some(([id]) => id === es.spread)) ear.settings.spread = es.spread;
+    if (Number.isInteger(es.level) && es.level >= 0 && es.level <= 6) ear.settings.level = es.level;
+    ['tonicCue', 'autoNext'].forEach((k) => { if (typeof es[k] === 'boolean') ear.settings[k] = es[k]; });
+    const v = data.voice && typeof data.voice === 'object' ? data.voice : {};
+    if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
+    if (typeof v.useTarget === 'boolean') voice.useTarget = v.useTarget;
+  }
+
+  /* ------------------------------------------------------------------------
+     VERKABELUNG
+     ------------------------------------------------------------------------ */
+
+  function onClick(e) {
+    const tabBtn = e.target.closest('.tab-btn');
+    if (tabBtn) { setTab(tabBtn.dataset.tab); return; }
+    const helpBtn = e.target.closest('[data-help]');
+    if (helpBtn) { toggleHelp(helpBtn); return; }
+
+    // --- Rhythmus
+    const rhythmBtn = e.target.closest('[data-rhythm]');
+    if (rhythmBtn) { if (rhythmBtn.dataset.rhythm === 'settings') openSettings('rhythm'); return; }
+    const rset = e.target.closest('button[data-rset]');
+    if (rset) {
+      const key = rset.dataset.rset;
+      state[key] = key === 'rounds' ? Number(rset.dataset.value) : rset.dataset.value;
+      renderSettings();
+      return;
+    }
+
+    // --- Stimme
+    const voiceBtn = e.target.closest('[data-voice]');
+    if (voiceBtn) {
+      const action = voiceBtn.dataset.voice;
+      if (action === 'mic') { if (voice.analyser) micOff(); else micOn(); }
+      else if (action === 'target-up' || action === 'target-down') {
+        voice.target = clamp(voice.target + (action === 'target-up' ? 1 : -1), 36, 84);
+        renderVoice();
+        playTarget();
+      }
+      else if (action === 'target-play') playTarget();
+      else if (action === 'range-reset') { voice.low = null; voice.high = null; renderRange(); }
+      return;
+    }
+
+    // --- Hören
+    const earBtn = e.target.closest('[data-ear]');
+    if (earBtn) {
+      const action = earBtn.dataset.ear;
+      if (action === 'settings') openSettings('ear');
+      else if (action === 'close-settings') closeSettings();
+      else if (action === 'play') { if (!ear.task) { nextEar(); } else playEar(); }
+      else if (action === 'next') nextEar();
+      return;
+    }
+    const answer = e.target.closest('[data-answer]');
+    if (answer) { answerInterval(Number(answer.dataset.answer)); return; }
+    const chordBtn = e.target.closest('[data-chord]');
+    if (chordBtn) { answerChord(chordBtn.dataset.chord); return; }
+    const preset = e.target.closest('[data-preset]');
+    if (preset) { ear.settings.intervals = [...INTERVAL_PRESETS[Number(preset.dataset.preset)][1]]; renderSettings(); return; }
+    const levelChip = e.target.closest('[data-level]');
+    if (levelChip) { applyEarLevel(Number(levelChip.dataset.level)); renderSettings(); $('.sheet-hint').textContent = settingsProblem(); return; }
+    const earSet = e.target.closest('[data-earset]');
+    if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
+    const tempo = e.target.closest('[data-tempo]');
+    if (tempo) { ear.settings.tempo = tempo.dataset.tempo; renderSettings(); return; }
+    if (e.target === $('.sheet')) { closeSettings(); return; }
+
+    const chip = e.target.closest('[data-chip]');
+    if (chip && chip.dataset.chip === 'earMode') {
+      if (ear.mode !== chip.dataset.value) {
+        ear.mode = chip.dataset.value;
+        ear.task = null; ear.streak = 0;
+        clearEarTimers();
+        if (engine.ctx) engine.fadeBus(ear.bus);
+        setEarFeedback('', '');
+        renderEar();
+      }
+      return;
+    }
+    if (chip) {
+      // Modus und Leertakte gelten während des Laufs ab der nächsten Runde.
+      const name = chip.dataset.chip;
+      if (name === 'rmode') state.mode = chip.dataset.value;
+      else if (name === 'gapBefore' || name === 'gapAfter') state[name] = Number(chip.dataset.value);
+      renderRhythm();
+      return;
+    }
+    if (e.target.closest('.play')) { if (run.playing) stop(); else start(); return; }
+    if (e.target.closest('.tap-btn')) {
+      const now = performance.now();
+      tapTimes = tapTimes.filter((x) => now - x < 2500);
+      tapTimes.push(now);
+      if (tapTimes.length >= 2) {
+        const recent = tapTimes.slice(-5);
+        state.bpm = clamp(Math.round(60000 / ((recent[recent.length - 1] - recent[0]) / (recent.length - 1))), 40, 200);
+        renderTransport();
+      }
+    }
+  }
+
+  document.addEventListener('click', (e) => { onClick(e); persist(); });
+
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.dataset?.set) onSettingChange(t);
+    else if (t.dataset?.rset) {
+      const key = t.dataset.rset;
+      if (key === 'elements') {
+        const list = new Set(state.elements);
+        if (t.checked) list.add(t.value); else list.delete(t.value);
+        state.elements = ELEMENTS.map(([id]) => id).filter((id) => list.has(id));
+      } else state[key] = t.checked;
+    }
+    else if (t.dataset?.voiceswitch) { voice.useTarget = t.checked; drawHistory(engine.ctx?.currentTime || 0); }
+    persist();
+  });
+
+  $('.bpm').addEventListener('input', (e) => { state.bpm = Number(e.target.value); renderTransport(); persist(); });
+  $('.tap-pad').addEventListener('pointerdown', (e) => { e.preventDefault(); tap(); });
+  // Tastatur-"Klick" aufs Feld (Enter/Leertaste bei Fokus) nicht doppelt zählen.
+  $('.tap-pad').addEventListener('click', (e) => e.preventDefault());
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('.sheet').hidden) { closeSettings(); return; }
+    // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
+    // (die App hört auf diese Nachricht, siehe initTools in app.js).
+    if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (!$('.sheet').hidden) return;
+    if (state.tab === 'voice') return;
+    if (state.tab === 'ear') {
+      // Leertaste = nochmal hören (bzw. starten), sofern kein Knopf den Fokus hat.
+      if (e.code === 'Space' && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName))) {
+        e.preventDefault();
+        if (!ear.task) nextEar(); else playEar();
+      }
+      return;
+    }
+    if ((e.code === 'Space' || e.code === 'Enter') && run.playing) { e.preventDefault(); tap(); return; }
+    if (e.code === 'Space' && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName) && !document.activeElement.classList.contains('tap-pad'))) {
+      e.preventDefault();
+      start();
+    }
+  });
+
+  setTab(state.tab);
+  if (storage) {
+    Promise.resolve(storage.load(STORAGE_ID)).then((data) => {
+      if (!data || run.playing || ear.task || voice.analyser) return;
+      restore(data);
+      setTab(state.tab);
+    }).catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>

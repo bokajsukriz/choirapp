@@ -1,23 +1,26 @@
 /* ==========================================================================
    CHOR GROOVE LAB — verstecktes Easter Egg der BVG-App.
    Sieben Tipps auf den Songtitel im Player öffnen einen kleinen, komplett
-   lokalen Beat-/Synth-Spielplatz (Web Audio API, kein Sample, kein Netz).
-   Vollbild wie die übrigen Vollbild-Ansichten der App — kein Dialog-Karten-
-   Look. Diese Datei wird erst nach dem Auslöser nachgeladen.
+   lokalen Beat-/Synth-Spielplatz (Web Audio API, kein Sample, kein Netz). Vollbild wie die übrigen Vollbild-Ansichten der App — kein Dialog-
+   Karten-Look. Diese Datei wird erst nach dem Auslöser nachgeladen.
 
    Aufbau:
+   - Inhalt:        Drumloops, Melodien, Klang-Presets, Tonarten, Akkord-
+                    folgen. (Metronom, Einsingen und Rhythmus-Spiel sind in
+                    eine eigene Übe-App gewandert, siehe uebe-lab.html.)
+   - Harmonik:      Tonleiterstufen → Halbtöne, Akkordnamen, SATB-Satz.
+                    Melodie, Bass, Arp und Akkorde hängen alle an derselben
+                    Tonart + Akkordfolge — sie können nicht mehr gegen-
+                    einander klingen.
    - GrooveEngine:  reine Klangerzeugung (AudioContext, Bus-Struktur, Voices).
                     Kennt weder Muster noch UI-Zustand.
-   - Knob:          eigenständiger Dreh-Regler (Pointer-Events, Tastatur),
-                    genutzt für alle Synth-Parameter.
-   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — vier Reiter (Beat,
-                    Melodie, Synth, Keys) unter einer festen Transportleiste,
-                    Zustand, Scheduler, Rendering.
+   - Knob:          eigenständiger Dreh-Regler (Pointer-Events, Tastatur).
+   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — sechs Reiter unter
+                    einer festen Transportleiste, Zustand, Scheduler,
+                    Rendering, Speichern.
    ========================================================================== */
 (function (global) {
   'use strict';
-
-  const STEP_COUNT = 16; // ein Takt = 16 Sechzehntel
 
   /**
    * Übersetzung. Diese Datei ist ein klassisches Skript (kein ES-Modul) und
@@ -27,274 +30,795 @@
    * Schlüssel stehen, statt dass die Ansicht zerfällt.
    */
   let t = (key) => key;
-
-  /* ------------------------------------------------------------------------
-     INHALT — 16 Drumloops, 20 Melodien (je 2–4 Takte), 16 Synth-Voreinstel-
-     lungen. Jeder Eintrag ist eigenständig; die Icons werden weiter unten
-     aus genau diesen Daten gezeichnet statt aus Emoji ausgewählt.
-     ------------------------------------------------------------------------ */
-
-  // `bass`/`bassNotes` sind bewusst eigenständig von `kick`: eine Basslinie,
-  // die nur die Kick-Schläge dopplet, hat kein eigenes musikalisches Profil.
-  // Hier laufen Bass und Kick rhythmisch bewusst auseinander (Synkopen,
-  // Durchgangstöne) — nur an wenigen Punkten treffen sie sich. Beide Arrays
-  // sind gleich lang — bassNotes[i] ist der Halbtonabstand zur Grundtonart
-  // für den Schlag bei bass[i] (siehe GrooveLabView._playStep()).
-  //
-  // `roll`: die "zweite Line" fürs Halten eines Pads (siehe
-  // GrooveLabView._startRoll()) — eine je Loop eigene, artikulierte
-  // Rhythmuszelle aus [Dauer in 16teln, Lautstärke 0–1]-Paaren, die beim
-  // Halten in Schleife läuft. Bewusst NICHT einfach Sechzehntel im Gleich-
-  // takt: unterschiedliche Notenlängen und Akzente pro Loop, passend zum
-  // jeweiligen Groove-Charakter.
-  const DRUM_PATTERNS = [
-    { name: 'Pulse Basic',    icon: 'pulse',       kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [0, 3, 6, 8, 11, 14], bassNotes: [0, 7, 10, 0, 7, 3],
-      roll: [[1.5, 1], [.5, .6], [1, .85], [1, .6]] },
-    { name: 'Backbeat Open',  icon: 'unlock',       kick: [0, 4, 8, 12], snare: [4, 12], hat: [2, 6, 10, 14], open: [14],
-      bass: [2, 5, 8, 11, 14], bassNotes: [0, 3, 7, 3, 0],
-      roll: [[1.33, 1], [.67, .55]] },
-    { name: 'Disco Clap',     icon: 'star',         kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [6, 14],
-      bass: [0, 3, 7, 10, 13, 15], bassNotes: [0, 0, 7, 0, 0, 10],
-      roll: [[.5, .6], [.5, 1], [.5, .6], [.5, 1], [1, .9], [1, .6]] },
-    { name: 'Swing Soul',     icon: 'note',         kick: [0, 3, 7, 10, 13], snare: [4, 12], ghost: [6, 9, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15],
-      bass: [1, 4, 8, 11, 14], bassNotes: [0, 5, 3, 7, 0],
-      roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
-    { name: 'Glass Funk',     icon: 'diamond',      kick: [0, 3, 6, 10, 13], snare: [4, 12], ghost: [2, 9, 14], hat: [0, 2, 4, 6, 8, 9, 11, 13, 15],
-      bass: [2, 5, 8, 12, 15], bassNotes: [0, 7, 5, 3, 0],
-      roll: [[.5, 1], [.25, .5], [.25, .7], [1, .9], [.5, .6], [1.5, 1]] },
-    { name: 'Afrobeat Skip',  icon: 'footprints',   kick: [0, 3, 6, 10, 12], clap: [4, 12], ghost: [7, 9], hat: [1, 3, 5, 8, 10, 13, 15],
-      bass: [1, 4, 8, 11, 13], bassNotes: [0, 3, 7, 10, 3],
-      roll: [[1.5, 1], [1.5, .75], [1, .9]] },
-    { name: 'Half-Time Drop', icon: 'clock',        kick: [0, 6, 10], snare: [8], ghost: [3, 13, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [12],
-      bass: [2, 4, 9, 13], bassNotes: [0, 7, 3, 0],
-      roll: [[2, 1], [1, .6], [1, .8]] },
-    { name: 'House Bounce',   icon: 'house',        kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [10, 14],
-      bass: [2, 5, 9, 11, 14], bassNotes: [0, 7, 0, 5, 7],
-      roll: [[.75, 1], [.75, .55], [.75, .8], [.75, .55], [1, .9]] },
-    { name: 'Circuit Pulse',  icon: 'bolt',         kick: [0, 5, 9, 13], snare: [4, 11], clap: [7, 14], hat: [1, 3, 6, 8, 10, 13], open: [15],
-      bass: [0, 3, 6, 10, 12, 15], bassNotes: [0, 5, 10, 5, 0, 7],
-      roll: [[.5, 1], [.5, .5], [.25, .7], [.25, .5], [1, .9], [1.5, .6]] },
-    { name: 'Boom Bap',       icon: 'speaker',      kick: [0, 10], snare: [4, 12], ghost: [7], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [3, 6, 9, 13, 15], bassNotes: [0, 7, 3, 0, 7],
-      roll: [[1.5, 1], [.5, .5], [1, .85], [1, .6]] },
-    { name: 'Latin Skip',     icon: 'sun',          kick: [0, 3, 6, 8, 11, 14], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [1, 4, 7, 9, 12, 15], bassNotes: [0, 7, 0, 3, 7, 0],
-      roll: [[1.5, 1], [1, .6], [.5, .8], [1, .9]] },
-    { name: 'Breakbeat Cut',  icon: 'scissors',     kick: [0, 10, 12], snare: [4, 11], ghost: [2, 9], hat: [0, 2, 4, 6, 7, 9, 11, 13, 15],
-      bass: [1, 4, 6, 9, 13, 15], bassNotes: [0, 0, 7, 5, 0, 10],
-      roll: [[.25, 1], [.25, .6], [.5, .9], [1, .5], [2, 1]] },
-    { name: 'Minimal Click',  icon: 'target',       kick: [0, 8], snare: [12], ghost: [4], hat: [2, 6, 10, 14],
-      bass: [2, 6, 10, 14], bassNotes: [0, 7, 3, 7],
-      roll: [[2, 1], [2, .4]] },
-    { name: 'Triplet Roll',   icon: 'repeat',       kick: [0, 7, 10], snare: [4, 12], hat: [0, 2, 3, 5, 6, 8, 10, 11, 13, 14],
-      bass: [1, 4, 6, 9, 12, 14], bassNotes: [0, 7, 0, 7, 0, 3],
-      roll: [[1.33, 1], [1.33, .7], [1.34, .85]] },
-    { name: 'Deep House',     icon: 'moon',         kick: [0, 4, 8, 12], clap: [4, 12], hat: [1, 3, 5, 7, 9, 11, 13, 15], open: [7, 15],
-      bass: [2, 6, 9, 13], bassNotes: [0, 0, 7, 0],
-      roll: [[.5, .6], [1.5, 1], [.5, .6], [1.5, .9]] },
-    { name: 'Broken Beat',    icon: 'puzzle',       kick: [0, 5, 8, 11], snare: [3, 10, 14], ghost: [6, 13], hat: [0, 2, 4, 6, 8, 10, 12, 14],
-      bass: [1, 4, 7, 10, 14], bassNotes: [0, 3, 7, 10, 5],
-      roll: [[.75, 1], [1.25, .6], [.5, .9], [1.5, .7]] },
-  ];
-
-  /** Baut eine mehrtaktige Melodie aus einem Ein-Takt-Motiv: das Original
-   *  plus transponierte, rhythmisch leicht verschobene "Sequenzen" (ein
-   *  klassisches Kompositionsmittel) statt bloßer Wiederholung — dadurch
-   *  wirkt eine 2–4-taktige Melodie entwickelnd statt eintönig. `plan`
-   *  enthält einen Eintrag je weiterem Takt: transpose (Halbtöne),
-   *  rhythmShift (Schritte, mit Umbruch innerhalb des Takts) und optional
-   *  extendLast (verlängert die letzte Note des Takts — kadenzierender
-   *  Schluss). motif bleibt unverändert im ersten Takt erhalten. */
-  function phrase(motif, plan) {
-    const bars = [motif.map((n) => [...n])];
-    plan.forEach(({ transpose = 0, rhythmShift = 0, extendLast = 0 }, i) => {
-      const barIndex = i + 1;
-      const bar = motif.map(([at, offset, len]) => {
-        let a = (at + rhythmShift) % STEP_COUNT;
-        if (a < 0) a += STEP_COUNT;
-        return [a + barIndex * STEP_COUNT, offset + transpose, len];
-      });
-      if (extendLast && bar.length) bar[bar.length - 1][2] += extendLast;
-      bars.push(bar);
-    });
-    return bars.flat().sort((a, b) => a[0] - b[0]);
-  }
-
-  // [Schritt, Halbtonabstand zur Grundtonart, Länge in 16teln] — je Melodie
-  // 2–4 Takte lang (siehe `bars`), aus einem Ein-Takt-Motiv per phrase()
-  // entwickelt statt als einzelner, sich wiederholender Takt.
-  const MELODIES = [
-    { name: 'Rising Third',    icon: 'trendUp',   bars: 2, notes: phrase(
-      [[0, 0, 2], [4, 4, 2], [8, 7, 2], [12, 9, 2]],
-      [{ transpose: 5, rhythmShift: -1, extendLast: 2 }]) },
-    { name: 'Falling Fourth',  icon: 'trendDown', bars: 2, notes: phrase(
-      [[0, 12, 2], [4, 7, 2], [8, 4, 2], [12, 0, 2]],
-      [{ transpose: -7, rhythmShift: 2, extendLast: 3 }]) },
-    { name: 'Skip Step',       icon: 'stairs',    bars: 3, notes: phrase(
-      [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 5, 1], [8, 7, 1], [10, 9, 1], [12, 11, 1], [14, 12, 1]],
-      [{ transpose: -12, rhythmShift: 1 }, { transpose: -5, rhythmShift: -1, extendLast: 2 }]) },
-    { name: 'Call & Response', icon: 'chat',      bars: 2, notes: phrase(
-      [[0, 0, 2], [4, 3, 1], [6, 5, 1], [8, 0, 2], [12, 3, 1], [14, 5, 1]],
-      [{ transpose: 7, rhythmShift: 0, extendLast: 1 }]) },
-    { name: 'Arch Line',       icon: 'arch',      bars: 2, notes: phrase(
-      [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 9, 1], [8, 7, 1], [10, 4, 1], [12, 0, 2]],
-      [{ transpose: 3, rhythmShift: -2, extendLast: 2 }]) },
-    { name: 'Syncopated Hook', icon: 'magnet',    bars: 3, notes: phrase(
-      [[0, 0, 1], [3, 4, 1], [6, 7, 1], [9, 4, 1], [11, 9, 1], [14, 7, 1]],
-      [{ transpose: 5, rhythmShift: 1 }, { transpose: -2, rhythmShift: -1, extendLast: 2 }]) },
-    { name: 'Night Window',    icon: 'window',    bars: 2, notes: phrase(
-      [[0, 0, 3], [4, 7, 1], [7, 10, 2], [10, 3, 1], [13, 2, 1], [15, 0, 2]],
-      [{ transpose: -5, rhythmShift: 1, extendLast: 1 }]) },
-    { name: 'Blue Third',      icon: 'droplet',   bars: 3, notes: phrase(
-      [[0, 0, 2], [3, 3, 1], [6, 3, 1], [9, 7, 1], [12, 10, 1], [14, 7, 1]],
-      [{ transpose: 5, rhythmShift: 0 }, { transpose: 0, rhythmShift: -1, extendLast: 2 }]) },
-    { name: 'Wide Leap',       icon: 'expand',    bars: 2, notes: phrase(
-      [[0, 0, 2], [4, 12, 2], [8, 7, 2], [12, -5, 2]],
-      [{ transpose: 7, rhythmShift: 0, extendLast: 2 }]) },
-    { name: 'Gentle Wave',     icon: 'wave',      bars: 3, notes: phrase(
-      [[0, 4, 1], [2, 7, 1], [4, 9, 1], [7, 11, 1], [9, 7, 1], [11, 4, 1], [14, 2, 1]],
-      [{ transpose: -3, rhythmShift: 1 }, { transpose: 2, rhythmShift: -1, extendLast: 2 }]) },
-    { name: 'Two-Note Pulse',  icon: 'heart',     bars: 2, notes: phrase(
-      [[0, 0, 1], [2, 7, 1], [4, 0, 1], [6, 7, 1], [8, 0, 1], [10, 3, 1], [12, 0, 1], [14, 7, 2]],
-      [{ transpose: 5, rhythmShift: 0, extendLast: 1 }]) },
-    { name: 'Descending Run',  icon: 'chevrons',  bars: 3, notes: phrase(
-      [[0, 12, 1], [1, 11, 1], [3, 9, 1], [4, 7, 1], [6, 5, 1], [7, 4, 1], [9, 2, 1], [10, 0, 2]],
-      [{ transpose: -12, rhythmShift: 2 }, { transpose: -5, rhythmShift: 0, extendLast: 3 }]) },
-    { name: 'Suspended Glow',  icon: 'bulb',      bars: 4, notes: phrase(
-      [[0, 0, 3], [5, 5, 2], [9, 7, 2], [13, 0, 3]],
-      [{ transpose: 5, rhythmShift: 0 }, { transpose: 9, rhythmShift: -2 }, { transpose: 0, rhythmShift: 0, extendLast: 3 }]) },
-    { name: 'Funk Thread',     icon: 'thread',    bars: 3, notes: phrase(
-      [[0, 0, 1], [2, 3, 1], [4, 5, 1], [6, 7, 1], [9, 10, 1], [11, 7, 1], [13, 3, 1]],
-      [{ transpose: 2, rhythmShift: 1 }, { transpose: -2, rhythmShift: -1, extendLast: 2 }]) },
-    { name: 'Glass Runner',    icon: 'runner',    bars: 2, notes: phrase(
-      [[0, 0, 1], [1, 2, 1], [3, 4, 1], [6, 7, 1], [9, 11, 1], [11, 9, 1], [13, 7, 1], [15, 2, 1]],
-      [{ transpose: 5, rhythmShift: 0, extendLast: 1 }]) },
-    { name: 'Afterglow',       icon: 'sunset',    bars: 3, notes: phrase(
-      [[0, -5, 2], [4, 0, 2], [8, 4, 1], [10, 7, 2], [12, 9, 1], [14, 7, 1]],
-      [{ transpose: 5, rhythmShift: 0 }, { transpose: 0, rhythmShift: -2, extendLast: 3 }]) },
-    { name: 'Modal Drift',     icon: 'compass',   bars: 4, notes: phrase(
-      [[0, 0, 2], [3, 2, 1], [5, 3, 1], [8, 7, 2], [11, 10, 1], [13, 8, 1], [15, 5, 1]],
-      [{ transpose: 5, rhythmShift: 1 }, { transpose: -3, rhythmShift: -1 }, { transpose: 0, rhythmShift: 0, extendLast: 2 }]) },
-    { name: 'Triplet Cascade', icon: 'diamond',   bars: 2, notes: phrase(
-      [[0, 12, 1], [2, 9, 1], [4, 5, 1], [5, 12, 1], [7, 9, 1], [9, 5, 1], [10, 12, 1], [12, 4, 1], [14, 0, 2]],
-      [{ transpose: -7, rhythmShift: 0, extendLast: 1 }]) },
-    { name: 'Sevenths Hook',   icon: 'bolt',      bars: 3, notes: phrase(
-      [[0, 0, 1], [2, 4, 1], [4, 7, 1], [6, 11, 1], [8, 14, 2], [12, 7, 1], [14, 4, 2]],
-      [{ transpose: 5, rhythmShift: 0 }, { transpose: 0, rhythmShift: -2, extendLast: 2 }]) },
-    { name: 'Echo Motif',      icon: 'repeat',    bars: 4, notes: phrase(
-      [[0, 0, 1], [2, 5, 1], [4, 7, 1], [8, 0, 1], [10, 5, 1], [12, 7, 1], [14, 12, 2]],
-      [{ transpose: 5, rhythmShift: 0 }, { transpose: -5, rhythmShift: 1 }, { transpose: 0, rhythmShift: 0, extendLast: 2 }]) },
-  ];
-
-  // reverbLength in Sekunden (Nachhall-Dauer), echoRate in Millisekunden
-  // (Verzögerungszeit), filterEnvAmount in Hz: wie stark die Lautstärke-
-  // Hüllkurve den Filter mit aufzieht (0 = Filter bleibt starr auf cutoff).
-  // Vier weitere, optionale Zutaten für mehr Klangcharakter (Standard je 0 =
-  // aus, siehe GrooveEngine.playTone): detune (Cent) mischt zwei zusätzlich
-  // verstimmte Unisono-Stimmen dazu — dickerer Chor-/Pad-Klang. vibratoRate/
-  // -Depth/-Delay legen eine Tonhöhen-LFO, die erst nach der Verzögerung
-  // einschwingt (klingt sonst wie Seekrankheit ab dem ersten Millisekunden).
-  // pitchDrop (Cent) lässt die Note aus der Höhe in die Ziel-Tonhöhe
-  // gleiten — der perkussive "Bender"-Einsatz vieler Analog-Leads/-Bässe.
-  // subLevel (0–1) mischt eine Sinus-Suboktave dazu, für Fundament ohne
-  // dumpfen Cutoff. Alle diese Felder sind jetzt auch im Synth-Reiter als
-  // Regler editierbar (siehe GrooveLabView._renderSynthControls()) — nicht
-  // nur über die Presets erreichbar.
-  const SYNTH_PRESETS = [
-    { name: 'Velvet Choir',   icon: 'users',    wave: 'triangle', attack: .16,  decay: .22, sustain: .68, release: .8,  cutoff: 2900, resonance: 2,  filterEnvAmount: 600,  reverbWet: .38, reverbLength: 1.6, echoWet: .10, echoRate: 220,
-      detune: 9, vibratoRate: 4.5, vibratoDepth: 6, vibratoDelay: .3 },
-    { name: 'Breath Glass',   icon: 'wind',     wave: 'sine',     attack: .32,  decay: .38, sustain: .72, release: 1.1, cutoff: 6400, resonance: 1,  filterEnvAmount: 300,  reverbWet: .5,  reverbLength: 2.2, echoWet: .16, echoRate: 260,
-      subLevel: .12, vibratoRate: 3.8, vibratoDepth: 5, vibratoDelay: .35 },
-    { name: 'Tape Keys',      icon: 'cassette', wave: 'triangle', attack: .01,  decay: .16, sustain: .5,  release: .32, cutoff: 3100, resonance: 3,  filterEnvAmount: 900,  reverbWet: .12, reverbLength: .8,  echoWet: .06, echoRate: 160,
-      detune: 5, vibratoRate: .7, vibratoDepth: 4, vibratoDelay: 0 },
-    { name: 'Neon Pluck',     icon: 'zap',      wave: 'sawtooth', attack: .004, decay: .1,  sustain: .3,  release: .16, cutoff: 5200, resonance: 6,  filterEnvAmount: 2400, reverbWet: .1,  reverbLength: .6,  echoWet: .22, echoRate: 180,
-      pitchDrop: 180 },
-    { name: 'Moon Pad',       icon: 'moon',     wave: 'sine',     attack: .58,  decay: .55, sustain: .82, release: 1.6, cutoff: 2100, resonance: 2,  filterEnvAmount: 400,  reverbWet: .58, reverbLength: 2.6, echoWet: .24, echoRate: 300,
-      detune: 10, subLevel: .25, vibratoRate: 4, vibratoDepth: 8, vibratoDelay: .4 },
-    { name: 'Soft Brass',     icon: 'horn',     wave: 'sawtooth', attack: .06,  decay: .26, sustain: .58, release: .3,  cutoff: 2600, resonance: 4,  filterEnvAmount: 1400, reverbWet: .16, reverbLength: 1.0, echoWet: .08, echoRate: 200,
-      pitchDrop: 55, vibratoRate: 5.5, vibratoDepth: 9, vibratoDelay: .28 },
-    { name: 'Crystal Drops',  icon: 'droplet',  wave: 'sine',     attack: .005, decay: .18, sustain: .4,  release: 1.3, cutoff: 9000, resonance: 7,  filterEnvAmount: 1800, reverbWet: .55, reverbLength: 2.0, echoWet: .3,  echoRate: 240,
-      detune: 4, pitchDrop: 35 },
-    { name: 'Dub Chamber',    icon: 'door',     wave: 'square',   attack: .02,  decay: .32, sustain: .55, release: .44, cutoff: 1400, resonance: 8,  filterEnvAmount: 700,  reverbWet: .26, reverbLength: 1.4, echoWet: .34, echoRate: 340,
-      detune: 12, subLevel: .2 },
-    { name: 'Warm Sub',       icon: 'flame',    wave: 'sine',     attack: .03,  decay: .2,  sustain: .7,  release: .5,  cutoff: 900,  resonance: 3,  filterEnvAmount: 200,  reverbWet: .15, reverbLength: .7,  echoWet: .05, echoRate: 140,
-      subLevel: .5, pitchDrop: 80 },
-    { name: 'Square Bell',    icon: 'bell',     wave: 'square',   attack: .005, decay: .4,  sustain: .25, release: 1.8, cutoff: 4200, resonance: 5,  filterEnvAmount: 2000, reverbWet: .45, reverbLength: 1.9, echoWet: .2,  echoRate: 260,
-      detune: 5, pitchDrop: 25 },
-    { name: 'Analog Lead',    icon: 'compass',  wave: 'sawtooth', attack: .008, decay: .15, sustain: .6,  release: .25, cutoff: 3800, resonance: 9,  filterEnvAmount: 2600, reverbWet: .08, reverbLength: .5,  echoWet: .14, echoRate: 170,
-      pitchDrop: 130, vibratoRate: 6, vibratoDepth: 14, vibratoDelay: .18 },
-    { name: 'Airy Choir',     icon: 'cloud',    wave: 'triangle', attack: .4,   decay: .4,  sustain: .75, release: 1.4, cutoff: 3400, resonance: 1,  filterEnvAmount: 350,  reverbWet: .5,  reverbLength: 2.4, echoWet: .12, echoRate: 280,
-      detune: 11, subLevel: .1, vibratoRate: 4.2, vibratoDepth: 7, vibratoDelay: .3 },
-    { name: 'Deep Pad',       icon: 'anchor',   wave: 'sine',     attack: .7,   decay: .6,  sustain: .85, release: 2.0, cutoff: 1700, resonance: 2,  filterEnvAmount: 250,  reverbWet: .6,  reverbLength: 2.8, echoWet: .2,  echoRate: 320,
-      detune: 8, subLevel: .3, vibratoRate: 3.5, vibratoDepth: 5, vibratoDelay: .5 },
-    { name: 'Bright Saw',     icon: 'sun',      wave: 'sawtooth', attack: .01,  decay: .2,  sustain: .45, release: .4,  cutoff: 7200, resonance: 5,  filterEnvAmount: 1600, reverbWet: .2,  reverbLength: 1.1, echoWet: .16, echoRate: 210,
-      pitchDrop: 90, vibratoRate: 5, vibratoDepth: 9, vibratoDelay: .2 },
-    { name: 'Vintage Organ',  icon: 'key',      wave: 'triangle', attack: .01,  decay: .05, sustain: .9,  release: .2,  cutoff: 4600, resonance: 3,  filterEnvAmount: 100,  reverbWet: .3,  reverbLength: 1.3, echoWet: .1,  echoRate: 190,
-      detune: 7, vibratoRate: 5.8, vibratoDepth: 4, vibratoDelay: 0 },
-    { name: 'Growl Bass',     icon: 'target',   wave: 'sawtooth', attack: .01,  decay: .18, sustain: .6,  release: .28, cutoff: 900,  resonance: 9,  filterEnvAmount: 500,  reverbWet: .1,  reverbLength: .6,  echoWet: .08, echoRate: 160,
-      detune: 6, subLevel: .45, pitchDrop: 220 },
-  ];
-
-  // Für den Arpeggiator: feste Akkorde (Halbtonabstände zur Grundtonart) —
-  // "Gehaltene Töne" nutzt stattdessen die per Latch gehaltene Auswahl der
-  // Mini-Tastatur (siehe GrooveLabView._arpPool()).
-  // Die sichtbaren Namen stehen als STRINGS-Schlüssel in den Tabellen und
-  // werden erst beim Rendern durch t() aufgelöst — die Tabellen selbst sind
-  // Daten und werden einmal beim Laden ausgewertet, die Sprache steht da
-  // noch nicht fest.
-  const ARP_SOURCES = [
-    { id: 'latch', nameKey: 'lab.arpLatch' },
-    { id: 'fifths', nameKey: 'lab.arpFifths', intervals: [0, 7] },
-    { id: 'major', nameKey: 'lab.arpMajor', intervals: [0, 4, 7] },
-    { id: 'minor', nameKey: 'lab.arpMinor', intervals: [0, 3, 7] },
-    { id: 'maj7', nameKey: 'lab.arpMaj7', intervals: [0, 4, 7, 11] },
-    { id: 'min7', nameKey: 'lab.arpMin7', intervals: [0, 3, 7, 10] },
-    { id: 'sus2', nameKey: 'lab.arpSus2', intervals: [0, 2, 7] },
-    { id: 'sus4', nameKey: 'lab.arpSus4', intervals: [0, 5, 7] },
-    { id: 'add9', nameKey: 'lab.arpAdd9', intervals: [0, 4, 7, 14] },
-  ];
-
-  const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'bass'];
-  const TRACK_KEY = { kick: 'lab.trackKick', snare: 'lab.trackSnare', clap: 'lab.trackClap',
-                      hat: 'lab.trackHat', bass: 'lab.trackBass' };
-  const trackLabel = (track) => t(TRACK_KEY[track]);
-
-  const WAVE_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'];
-  const WAVE_KEY = { sine: 'lab.waveSine', triangle: 'lab.waveTriangle',
-                     square: 'lab.waveSquare', sawtooth: 'lab.waveSawtooth' };
-  const waveLabel = (wave) => t(WAVE_KEY[wave]);
-
-  const TABS = [
-    { id: 'beat', labelKey: 'lab.tabBeat' },
-    { id: 'melody', labelKey: 'lab.tabMelody' },
-    { id: 'synth', labelKey: 'lab.tabSynth' },
-    { id: 'keys', labelKey: 'lab.tabKeys' },
-  ];
+  const tf = (key, vars) => t(key).replace(/\{(\w+)\}/g, (match, name) => (name in vars ? String(vars[name]) : match));
 
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const mod = (n, m) => ((n % m) + m) % m;
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-  function stepsForTrack(pattern, track) {
-    if (track === 'kick') return pattern.kick || [];
-    if (track === 'bass') return pattern.bass || [];
-    if (track === 'snare') return [...(pattern.snare || []), ...(pattern.ghost || [])];
-    if (track === 'clap') return pattern.clap || [];
-    return [...(pattern.hat || []), ...(pattern.open || [])]; // hat
-  }
+  /* ------------------------------------------------------------------------
+     TAKTARTEN — ein Schritt ist immer eine Sechzehntel. 6/8 hat deshalb 12
+     Schritte (sechs Achtel); die Zählzeiten für die Anzeige stehen in
+     `beats`, die Gruppierung im Raster in `group`.
+     ------------------------------------------------------------------------ */
 
-  /** Halbtonabstand der Basslinie an einem Schritt — eigene Notenfolge statt
-   *  eines starren Musters, siehe DRUM_PATTERNS. */
-  function bassOffsetForStep(pattern, step) {
-    const steps = pattern.bass || [];
-    const i = steps.indexOf(step);
-    return i === -1 ? 0 : (pattern.bassNotes?.[i] ?? 0);
+  const METERS = {
+    '4/4': { steps: 16, beats: [0, 4, 8, 12], group: 4 },
+    '3/4': { steps: 12, beats: [0, 4, 8], group: 4 },
+    '6/8': { steps: 12, beats: [0, 2, 4, 6, 8, 10], group: 6 },
+  };
+  const METER_IDS = Object.keys(METERS);
+
+  /* ------------------------------------------------------------------------
+     INHALT — Drumloops.
+
+     `bass`/`bassNotes` sind bewusst eigenständig von `kick`: eine Basslinie,
+     die nur die Kick-Schläge doppelt, hat kein eigenes musikalisches Profil.
+     bassNotes[i] ist eine TONLEITERSTUFE relativ zum Grundton des gerade
+     klingenden Akkords (0 = Grundton, 2 = Terz, 4 = Quinte, 7 = Oktave,
+     -1 = Stufe darunter als Auftakt) — keine feste Halbtonzahl mehr. Nur so
+     passt die Linie zu jeder Tonart, jedem Modus und jedem Akkord; vorher
+     lagen 14 der 16 Basslinien fest in Moll unter überwiegend Dur-Melodien.
+
+     `roll`: die "zweite Line" fürs Halten eines Pads (siehe _startRoll) —
+     eine je Loop eigene Rhythmuszelle aus [Dauer in 16teln, Lautstärke].
+     `cat`: Filter in der Auswahl (calm/dance/funky/breaks); `icon`: siehe
+     PICTOGRAM — ein bekanntes Symbol je Loop, keins doppelt.
+     ------------------------------------------------------------------------ */
+
+  const DRUM_PATTERNS = [
+    { name: 'Pulse Basic', icon: 'pulse', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      bass: [0, 3, 6, 8, 11, 14], bassNotes: [0, 4, -1, 0, 4, 2],
+      roll: [[1.5, 1], [.5, .6], [1, .85], [1, .6]] },
+    { name: 'Backbeat Open', icon: 'unlock', meter: '4/4', cat: 'calm', kick: [0, 4, 8, 12], snare: [4, 12], hat: [2, 6, 10, 14], open: [14],
+      bass: [2, 5, 8, 11, 14], bassNotes: [0, 2, 4, 2, 0],
+      roll: [[1.33, 1], [.67, .55]] },
+    { name: 'Disco Clap', icon: 'star', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [6, 14],
+      bass: [0, 3, 7, 10, 13, 15], bassNotes: [0, 0, 4, 0, 0, -1],
+      roll: [[.5, .6], [.5, 1], [.5, .6], [.5, 1], [1, .9], [1, .6]] },
+    { name: 'Swing Soul', icon: 'note', meter: '4/4', cat: 'funky', kick: [0, 3, 7, 10, 13], snare: [4, 12], ghost: [6, 9, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15],
+      bass: [1, 4, 8, 11, 14], bassNotes: [0, 3, 2, 4, 0],
+      roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
+    { name: 'Glass Funk', icon: 'diamond', meter: '4/4', cat: 'funky', kick: [0, 3, 6, 10, 13], snare: [4, 12], ghost: [2, 9, 14], hat: [0, 2, 4, 6, 8, 9, 11, 13, 15],
+      bass: [2, 5, 8, 12, 15], bassNotes: [0, 4, 3, 2, 0],
+      roll: [[.5, 1], [.25, .5], [.25, .7], [1, .9], [.5, .6], [1.5, 1]] },
+    { name: 'Afrobeat Skip', icon: 'footprints', meter: '4/4', cat: 'funky', kick: [0, 3, 6, 10, 12], clap: [4, 12], ghost: [7, 9], hat: [1, 3, 5, 8, 10, 13, 15],
+      bass: [1, 4, 8, 11, 13], bassNotes: [0, 2, 4, 6, 2],
+      roll: [[1.5, 1], [1.5, .75], [1, .9]] },
+    { name: 'Half-Time Drop', icon: 'clock', meter: '4/4', cat: 'calm', kick: [0, 6, 10], snare: [8], ghost: [3, 13, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [12],
+      bass: [2, 4, 9, 13], bassNotes: [0, 4, 2, 0],
+      roll: [[2, 1], [1, .6], [1, .8]] },
+    { name: 'House Bounce', icon: 'house', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [10, 14],
+      bass: [2, 5, 9, 11, 14], bassNotes: [0, 4, 0, 3, 4],
+      roll: [[.75, 1], [.75, .55], [.75, .8], [.75, .55], [1, .9]] },
+    { name: 'Circuit Pulse', icon: 'bolt', meter: '4/4', cat: 'breaks', kick: [0, 5, 9, 13], snare: [4, 11], clap: [7, 14], hat: [1, 3, 6, 8, 10, 13], open: [15],
+      bass: [0, 3, 6, 10, 12, 15], bassNotes: [0, 3, 6, 3, 0, 4],
+      roll: [[.5, 1], [.5, .5], [.25, .7], [.25, .5], [1, .9], [1.5, .6]] },
+    { name: 'Boom Bap', icon: 'speaker', meter: '4/4', cat: 'breaks', kick: [0, 10], snare: [4, 12], ghost: [7], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      bass: [3, 6, 9, 13, 15], bassNotes: [0, 4, 2, 0, 4],
+      roll: [[1.5, 1], [.5, .5], [1, .85], [1, .6]] },
+    { name: 'Latin Skip', icon: 'sun', meter: '4/4', cat: 'funky', kick: [0, 3, 6, 8, 11, 14], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      bass: [1, 4, 7, 9, 12, 15], bassNotes: [0, 4, 0, 2, 4, 0],
+      roll: [[1.5, 1], [1, .6], [.5, .8], [1, .9]] },
+    { name: 'Breakbeat Cut', icon: 'scissors', meter: '4/4', cat: 'breaks', kick: [0, 10, 12], snare: [4, 11], ghost: [2, 9], hat: [0, 2, 4, 6, 7, 9, 11, 13, 15],
+      bass: [1, 4, 6, 9, 13, 15], bassNotes: [0, 0, 4, 3, 0, -1],
+      roll: [[.25, 1], [.25, .6], [.5, .9], [1, .5], [2, 1]] },
+    { name: 'Minimal Click', icon: 'target', meter: '4/4', cat: 'calm', kick: [0, 8], snare: [12], ghost: [4], hat: [2, 6, 10, 14],
+      bass: [2, 6, 10, 14], bassNotes: [0, 4, 2, 4],
+      roll: [[2, 1], [2, .4]] },
+    { name: 'Triplet Roll', icon: 'repeat', meter: '4/4', cat: 'breaks', kick: [0, 7, 10], snare: [4, 12], hat: [0, 2, 3, 5, 6, 8, 10, 11, 13, 14],
+      bass: [1, 4, 6, 9, 12, 14], bassNotes: [0, 4, 0, 4, 0, 2],
+      roll: [[1.33, 1], [1.33, .7], [1.34, .85]] },
+    { name: 'Deep House', icon: 'moon', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], clap: [4, 12], hat: [1, 3, 5, 7, 9, 11, 13, 15], open: [7, 15],
+      bass: [2, 6, 9, 13], bassNotes: [0, 0, 4, 0],
+      roll: [[.5, .6], [1.5, 1], [.5, .6], [1.5, .9]] },
+    { name: 'Broken Beat', icon: 'puzzle', meter: '4/4', cat: 'breaks', kick: [0, 5, 8, 11], snare: [3, 10, 14], ghost: [6, 13], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      bass: [1, 4, 7, 10, 14], bassNotes: [0, 2, 4, 6, 3],
+      roll: [[.75, 1], [1.25, .6], [.5, .9], [1.5, .7]] },
+    // --- 3/4 und 6/8 — für Walzer, Balladen und Volkslied-Repertoire ---
+    { name: 'Waltz Step', icon: 'feather', meter: '3/4', cat: 'calm', kick: [0], ghost: [4, 8], hat: [0, 2, 4, 6, 8, 10],
+      bass: [0, 8], bassNotes: [0, 4],
+      roll: [[4, 1], [4, .5], [4, .5]] },
+    { name: 'Jazz Waltz', icon: 'glass', meter: '3/4', cat: 'funky', kick: [0, 7], snare: [8], ghost: [3, 10], hat: [0, 4, 7, 8], open: [11],
+      bass: [0, 4, 8], bassNotes: [0, 2, 4],
+      roll: [[2.67, 1], [1.33, .6]] },
+    { name: '6/8 Ballad', icon: 'sunset', meter: '6/8', cat: 'calm', kick: [0], snare: [6], hat: [0, 2, 4, 6, 8, 10],
+      bass: [0, 6, 10], bassNotes: [0, 4, 7],
+      roll: [[2, 1], [2, .5], [2, .6]] },
+    { name: 'Folk Jig', icon: 'flag', meter: '6/8', cat: 'dance', kick: [0, 4, 6], snare: [6], ghost: [9], hat: [0, 2, 4, 6, 8, 10], open: [10],
+      bass: [0, 4, 6, 10], bassNotes: [0, 4, 0, 2],
+      roll: [[2, 1], [1, .5], [1, .7], [2, .9]] },
+  ];
+
+  const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'open', 'bass'];
+  const DRUM_TRACKS = TRACK_IDS.filter((track) => track !== 'bass');
+  const TRACK_KEY = { kick: 'lab.trackKick', snare: 'lab.trackSnare', clap: 'lab.trackClap',
+                      hat: 'lab.trackHat', open: 'lab.trackOpen', bass: 'lab.trackBass' };
+  const trackLabel = (track) => t(TRACK_KEY[track]);
+
+  // Antippen einer Zelle im Raster schaltet durch diese Werte, danach aus.
+  // Snare: voll → Ghost-Note; Bass: Grundton → Quinte → Oktave
+  // (Tonleiterstufen, siehe DRUM_PATTERNS).
+  const CELL_CYCLE = { kick: [1], snare: [1, .45], clap: [1], hat: [1], open: [1], bass: [0, 4, 7] };
+
+  /** Bearbeitbare Arbeitskopie eines Loops: je Spur { Schritt: Wert }. Die
+   *  Vorlagen in DRUM_PATTERNS bleiben unangetastet — "Original" stellt
+   *  sie wieder her. */
+  function beatFromPattern(pattern) {
+    const beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+    (pattern.kick || []).forEach((s) => { beat.kick[s] = 1; });
+    (pattern.snare || []).forEach((s) => { beat.snare[s] = 1; });
+    (pattern.ghost || []).forEach((s) => { beat.snare[s] = .45; });
+    (pattern.clap || []).forEach((s) => { beat.clap[s] = 1; });
+    (pattern.hat || []).forEach((s) => { beat.hat[s] = 1; });
+    (pattern.open || []).forEach((s) => { beat.open[s] = 1; });
+    (pattern.bass || []).forEach((s, i) => { beat.bass[s] = pattern.bassNotes?.[i] ?? 0; });
+    return beat;
   }
 
   /* ------------------------------------------------------------------------
-     ICONS — bekannte, einfarbige Piktogramme (Haus, Uhr, Stern, Note …),
-     keine erfundenen Formen und keine Farbe pro Symbol. Strichstärke und
-     -stil wie die übrigen Icons in der App.
+     INHALT — Melodien.
+
+     Jede Melodie ist ein Ein-Takt-Motiv aus [Schritt, Stufe, Länge] — die
+     Stufe ist eine TONLEITERSTUFE relativ zum Grundton des gerade
+     klingenden Akkords, keine Halbtonzahl. Das Motiv wandert dadurch Takt
+     für Takt mit der Akkordfolge mit (klassische Sequenz) und bleibt immer
+     in der Tonart. `vary` enthält je Takt eine Abwandlung: rhythmShift
+     (Schritte, mit Umbruch im Takt), extendLast (verlängert die letzte Note
+     — kadenzierender Schluss), shift (zusätzliche Stufen) oder ein eigenes
+     `motif` — so entstehen echte Frage-Antwort-Phrasen über zwei Takte.
+     Bewusst sparsam: lieber Pausen und Synkopen als Dauerlauf, damit die
+     Melodie Platz neben Beat und Stimmen lässt.
+     ------------------------------------------------------------------------ */
+
+  const MELODIES = [
+    // --- zuerst die markanten, luftigen: Pausen und Synkopen statt Dauerlauf
+    { name: 'Hook Line', meter: '4/4', cat: 'dance', motif: [[0, 4, 2], [3, 4, 1], [6, 2, 3], [10, 0, 2]],
+      vary: [{}, { motif: [[2, 4, 1], [4, 5, 2], [8, 4, 4]] }] },
+    { name: 'Offbeat Pop', meter: '4/4', cat: 'dance', motif: [[2, 0, 1], [4, 2, 2], [7, 4, 1], [10, 2, 3]],
+      vary: [{}, { motif: [[2, 4, 1], [4, 5, 1], [6, 4, 2], [10, 7, 4]] }] },
+    { name: 'Call & Response', meter: '4/4', cat: 'funky', motif: [[0, 4, 1], [2, 4, 1], [4, 2, 2]],
+      vary: [{}, { motif: [[8, 2, 1], [10, 1, 1], [12, 0, 4]] }] },
+    { name: 'Sunday Hymn', meter: '4/4', cat: 'calm', motif: [[0, 4, 6], [6, 2, 2], [8, 0, 8]],
+      vary: [{}, { motif: [[0, 2, 4], [4, 4, 4], [8, 5, 8]] }] },
+    { name: 'Pentatonic Riff', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [3, 2, 1], [6, 4, 2], [11, 2, 1], [14, 0, 2]],
+      vary: [{}, { motif: [[0, 4, 1], [3, 5, 1], [6, 4, 2], [10, 2, 4]] }] },
+    { name: 'Bounce', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [2, 7, 1], [6, 4, 1], [10, 7, 1], [14, 4, 2]],
+      vary: [{}, { motif: [[0, 2, 1], [2, 7, 1], [6, 5, 2], [12, 4, 4]] }] },
+    { name: 'Question & Answer', meter: '4/4', cat: 'calm', motif: [[0, 0, 2], [4, 2, 2], [8, 4, 4], [14, 5, 2]],
+      vary: [{}, { motif: [[0, 4, 3], [6, 2, 2], [10, 1, 6]] }] },
+    { name: 'Long Tones', meter: '4/4', cat: 'calm', motif: [[0, 4, 8], [8, 2, 8]],
+      vary: [{}, { motif: [[0, 1, 4], [4, 2, 4], [8, 0, 8]] }] },
+    { name: 'Syncopated Hook', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [3, 2, 1], [6, 4, 2], [11, 5, 1], [14, 4, 2]],
+      vary: [{}, { rhythmShift: 1 }, { extendLast: 2 }] },
+    { name: 'Night Window', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [4, 4, 1], [7, 6, 3], [12, 2, 1], [14, 0, 2]],
+      vary: [{}, { rhythmShift: 1, extendLast: 1 }] },
+    { name: 'Blue Third', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 2, 1], [6, 2, 1], [9, 4, 1], [12, 6, 1], [14, 4, 1]],
+      vary: [{}, {}, { rhythmShift: -1, extendLast: 2 }] },
+    { name: 'Suspended Glow', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [5, 3, 2], [9, 4, 2], [13, 0, 3]],
+      vary: [{}, {}, { rhythmShift: -2 }, { extendLast: 3 }] },
+    { name: 'Funk Thread', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [2, 2, 1], [6, 4, 1], [9, 6, 1], [13, 2, 2]],
+      vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1, extendLast: 2 }] },
+    { name: 'Afterglow', meter: '4/4', cat: 'calm', motif: [[0, -3, 2], [4, 0, 2], [8, 2, 1], [10, 4, 2], [12, 5, 1], [14, 4, 1]],
+      vary: [{}, {}, { rhythmShift: -2, extendLast: 3 }] },
+    { name: 'Modal Drift', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 1, 1], [8, 4, 2], [11, 6, 1], [14, 3, 2]],
+      vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1 }, { extendLast: 2 }] },
+    { name: 'Sevenths Hook', meter: '4/4', cat: 'funky', motif: [[0, 0, 1], [2, 2, 1], [4, 4, 1], [6, 6, 2], [10, 4, 1], [12, 2, 4]],
+      vary: [{}, {}, { rhythmShift: -2, extendLast: 2 }] },
+    { name: 'Echo Motif', meter: '4/4', cat: 'dance', motif: [[0, 0, 1], [2, 3, 1], [4, 4, 2], [8, 0, 1], [10, 3, 1], [12, 4, 4]],
+      vary: [{}, {}, { rhythmShift: 1 }, { extendLast: 2 }] },
+    { name: 'Gentle Wave', meter: '4/4', cat: 'calm', motif: [[0, 2, 2], [3, 4, 1], [6, 5, 2], [10, 4, 1], [12, 2, 4]],
+      vary: [{}, { rhythmShift: 1 }, { rhythmShift: -1, extendLast: 2 }] },
+    { name: 'Waltz Line', meter: '3/4', cat: 'calm', motif: [[0, 4, 4], [4, 2, 2], [6, 3, 2], [8, 4, 4]],
+      vary: [{}, { extendLast: 2 }] },
+    { name: 'Turning Waltz', meter: '3/4', cat: 'dance', motif: [[0, 7, 2], [2, 6, 2], [4, 4, 4], [8, 2, 2], [10, 4, 2]],
+      vary: [{}, {}, { extendLast: 2 }] },
+    { name: 'Lullaby', meter: '6/8', cat: 'calm', motif: [[0, 2, 4], [4, 3, 2], [6, 4, 4], [10, 2, 2]],
+      vary: [{}, { extendLast: 2 }] },
+    { name: 'Jig Hop', meter: '6/8', cat: 'dance', motif: [[0, 0, 2], [2, 2, 2], [4, 4, 2], [6, 5, 2], [8, 4, 2], [10, 2, 2]],
+      vary: [{}, {}, { extendLast: 2 }] },
+  ];
+
+  // Je Abwandlung einmal fertig ausrechnen — der Scheduler liest nur noch.
+  MELODIES.forEach((melody) => {
+    const steps = METERS[melody.meter].steps;
+    melody.bars = melody.vary.map(({ rhythmShift = 0, extendLast = 0, shift = 0, motif = melody.motif }) => {
+      const bar = motif.map(([at, deg, len]) => [mod(at + rhythmShift, steps), deg + shift, len]);
+      if (extendLast && bar.length) bar[bar.length - 1][2] += extendLast;
+      return bar.sort((a, b) => a[0] - b[0]);
+    });
+  });
+
+  /* ------------------------------------------------------------------------
+     INHALT — Klang-Presets.
+
+     Alle Felder außer name/icon/cat sind editierbar (siehe SOUND_RANGES).
+     Gewählt wird immer eine KOPIE (soundFromPreset) — Drehen an einem Regler
+     verändert nie mehr die Vorlage selbst, "Zurücksetzen" holt sie zurück.
+     Neu gegenüber früher: filterType, drive, LFO auf den Filter (lfoRate in
+     Hz oder lfoSync in 16teln, lfoDepth in Cent), width (Stereo-Breite der
+     Unisono-Stimmen), glide (Sekunden) und mono. Hall-Länge und Echo-Zeit
+     sind jetzt global (Effekte), nur die Anteile (reverbWet/echoWet) hängen
+     am Klang.
+     ------------------------------------------------------------------------ */
+
+  const SOUND_DEFAULTS = {
+    wave: 'triangle', attack: .01, decay: .2, sustain: .6, release: .4,
+    cutoff: 3000, resonance: 2, filterEnvAmount: 0, filterType: 'lowpass', drive: 0,
+    lfoRate: 0, lfoDepth: 0, lfoSync: 0,
+    detune: 0, width: 0, subLevel: 0, pitchDrop: 0,
+    vibratoRate: 0, vibratoDepth: 0, vibratoDelay: 0,
+    glide: 0, mono: false, reverbWet: .2, echoWet: .1,
+  };
+
+  const SYNTH_PRESETS = [
+    { name: 'Velvet Choir', icon: 'users', cat: 'pad', wave: 'triangle', attack: .16, decay: .22, sustain: .68, release: .8, cutoff: 2900, resonance: 2, filterEnvAmount: 600, reverbWet: .38, echoWet: .1,
+      detune: 9, width: .4, vibratoRate: 4.5, vibratoDepth: 6, vibratoDelay: .3 },
+    { name: 'Breath Glass', icon: 'wind', cat: 'pad', wave: 'sine', attack: .32, decay: .38, sustain: .72, release: 1.1, cutoff: 6400, resonance: 1, filterEnvAmount: 300, reverbWet: .5, echoWet: .16,
+      subLevel: .12, vibratoRate: 3.8, vibratoDepth: 5, vibratoDelay: .35 },
+    { name: 'Tape Keys', icon: 'cassette', cat: 'keys', wave: 'triangle', attack: .01, decay: .16, sustain: .5, release: .32, cutoff: 3100, resonance: 3, filterEnvAmount: 900, reverbWet: .12, echoWet: .06,
+      detune: 5, width: .2, vibratoRate: .7, vibratoDepth: 4 },
+    { name: 'Neon Pluck', icon: 'zap', cat: 'keys', wave: 'sawtooth', attack: .004, decay: .1, sustain: .3, release: .16, cutoff: 5200, resonance: 6, filterEnvAmount: 2400, reverbWet: .1, echoWet: .22,
+      pitchDrop: 180, width: .3 },
+    { name: 'Moon Pad', icon: 'moon', cat: 'pad', wave: 'sine', attack: .58, decay: .55, sustain: .82, release: 1.6, cutoff: 2100, resonance: 2, filterEnvAmount: 400, reverbWet: .58, echoWet: .24,
+      detune: 10, width: .6, subLevel: .25, vibratoRate: 4, vibratoDepth: 8, vibratoDelay: .4 },
+    { name: 'Soft Brass', icon: 'horn', cat: 'lead', wave: 'sawtooth', attack: .06, decay: .26, sustain: .58, release: .3, cutoff: 2600, resonance: 4, filterEnvAmount: 1400, reverbWet: .16, echoWet: .08,
+      pitchDrop: 55, vibratoRate: 5.5, vibratoDepth: 9, vibratoDelay: .28 },
+    { name: 'Crystal Drops', icon: 'droplet', cat: 'keys', wave: 'sine', attack: .005, decay: .18, sustain: .4, release: 1.3, cutoff: 9000, resonance: 7, filterEnvAmount: 1800, reverbWet: .55, echoWet: .3,
+      detune: 4, width: .5, pitchDrop: 35 },
+    { name: 'Dub Chamber', icon: 'door', cat: 'lead', wave: 'square', attack: .02, decay: .32, sustain: .55, release: .44, cutoff: 1400, resonance: 8, filterEnvAmount: 700, reverbWet: .26, echoWet: .34,
+      detune: 12, subLevel: .2, lfoSync: 8, lfoDepth: 700 },
+    { name: 'Warm Sub', icon: 'flame', cat: 'lead', wave: 'sine', attack: .03, decay: .2, sustain: .7, release: .5, cutoff: 900, resonance: 3, filterEnvAmount: 200, reverbWet: .15, echoWet: .05,
+      subLevel: .5, pitchDrop: 80, mono: true, glide: .05 },
+    { name: 'Square Bell', icon: 'bell', cat: 'keys', wave: 'square', attack: .005, decay: .4, sustain: .25, release: 1.8, cutoff: 4200, resonance: 5, filterEnvAmount: 2000, reverbWet: .45, echoWet: .2,
+      detune: 5, pitchDrop: 25 },
+    { name: 'Analog Lead', icon: 'compass', cat: 'lead', wave: 'sawtooth', attack: .008, decay: .15, sustain: .6, release: .25, cutoff: 3800, resonance: 9, filterEnvAmount: 2600, reverbWet: .08, echoWet: .14,
+      pitchDrop: 130, vibratoRate: 6, vibratoDepth: 14, vibratoDelay: .18, drive: .2, mono: true, glide: .08 },
+    { name: 'Airy Choir', icon: 'cloud', cat: 'pad', wave: 'triangle', attack: .4, decay: .4, sustain: .75, release: 1.4, cutoff: 3400, resonance: 1, filterEnvAmount: 350, reverbWet: .5, echoWet: .12,
+      detune: 11, width: .7, subLevel: .1, vibratoRate: 4.2, vibratoDepth: 7, vibratoDelay: .3 },
+    { name: 'Deep Pad', icon: 'anchor', cat: 'pad', wave: 'sine', attack: .7, decay: .6, sustain: .85, release: 2.0, cutoff: 1700, resonance: 2, filterEnvAmount: 250, reverbWet: .6, echoWet: .2,
+      detune: 8, width: .6, subLevel: .3, vibratoRate: 3.5, vibratoDepth: 5, vibratoDelay: .5 },
+    { name: 'Bright Saw', icon: 'sun', cat: 'lead', wave: 'sawtooth', attack: .01, decay: .2, sustain: .45, release: .4, cutoff: 7200, resonance: 5, filterEnvAmount: 1600, reverbWet: .2, echoWet: .16,
+      pitchDrop: 90, width: .5, vibratoRate: 5, vibratoDepth: 9, vibratoDelay: .2 },
+    { name: 'Vintage Organ', icon: 'key', cat: 'keys', wave: 'triangle', attack: .01, decay: .05, sustain: .9, release: .2, cutoff: 4600, resonance: 3, filterEnvAmount: 100, reverbWet: .3, echoWet: .1,
+      detune: 7, width: .3, vibratoRate: 5.8, vibratoDepth: 4 },
+    { name: 'Growl Bass', icon: 'target', cat: 'lead', wave: 'sawtooth', attack: .01, decay: .18, sustain: .6, release: .28, cutoff: 900, resonance: 9, filterEnvAmount: 500, reverbWet: .1, echoWet: .08,
+      detune: 6, subLevel: .45, pitchDrop: 220, drive: .5, mono: true, glide: .06 },
+    { name: 'Wobble', icon: 'wave', cat: 'lead', wave: 'sawtooth', attack: .01, decay: .2, sustain: .8, release: .2, cutoff: 600, resonance: 10, filterEnvAmount: 300, reverbWet: .1, echoWet: .1,
+      lfoSync: 2, lfoDepth: 2000, drive: .35, subLevel: .3, mono: true, glide: .04 },
+    { name: 'Hollow Band', icon: 'bulb', cat: 'keys', wave: 'square', attack: .01, decay: .25, sustain: .5, release: .5, cutoff: 1500, resonance: 5, filterEnvAmount: 800, filterType: 'bandpass', reverbWet: .3, echoWet: .18,
+      detune: 6, width: .5 },
+  ];
+
+  // Wertebereiche für Regler UND fürs Einlesen gespeicherter/geteilter
+  // Stände (sanitizeSound) — ein geteilter Code darf keine Werte setzen, die
+  // die Engine nicht verträgt.
+  const SOUND_RANGES = {
+    attack: [.003, 1.5], decay: [.02, 2], sustain: [0, 1], release: [.03, 3],
+    cutoff: [100, 12000], resonance: [0, 20], filterEnvAmount: [0, 5000], drive: [0, 1],
+    lfoRate: [0, 12], lfoDepth: [0, 2400], lfoSync: [0, 16],
+    detune: [0, 30], width: [0, 1], subLevel: [0, 1], pitchDrop: [0, 400],
+    vibratoRate: [0, 10], vibratoDepth: [0, 30], vibratoDelay: [0, 1.5],
+    glide: [0, 1], reverbWet: [0, 1], echoWet: [0, 1],
+  };
+  const WAVE_SHAPES = ['sine', 'triangle', 'square', 'sawtooth'];
+  // Lautheitsausgleich je Wellenform (Säge und Rechteck sind bei gleichem
+  // Pegel deutlich lauter als Sinus/Dreieck), siehe playTone.
+  const WAVE_LEVEL = { sine: 1, triangle: .9, square: .55, sawtooth: .6 };
+  const WAVE_KEY = { sine: 'lab.waveSine', triangle: 'lab.waveTriangle', square: 'lab.waveSquare', sawtooth: 'lab.waveSawtooth' };
+  const FILTER_TYPES = [
+    { id: 'lowpass', nameKey: 'lab.filterLow' },
+    { id: 'highpass', nameKey: 'lab.filterHigh' },
+    { id: 'bandpass', nameKey: 'lab.filterBand' },
+  ];
+
+  function soundFromPreset(index) {
+    const preset = SYNTH_PRESETS[index] || SYNTH_PRESETS[0];
+    const { name, icon, cat, ...params } = preset;
+    return { ...SOUND_DEFAULTS, ...params, presetIndex: SYNTH_PRESETS.indexOf(preset), custom: false };
+  }
+  const presetIndexByName = (name) => Math.max(0, SYNTH_PRESETS.findIndex((p) => p.name === name));
+
+  // Die SATB-Akkorde sind eine Hörhilfe wie der Liegeton — sie klingen fest
+  // nach Chor, unabhängig vom gerade eingestellten Synth-Klang.
+  const CHORD_SOUND = soundFromPreset(presetIndexByName('Airy Choir'));
+
+  // Liegeton: bewusst schlicht und fest (gefilterte Säge, langsamer Einsatz)
+  // — eine Stimmreferenz soll nicht vom gerade gewählten Klang abhängen.
+  const DRONE_SOUND = { ...SOUND_DEFAULTS, wave: 'sawtooth', attack: .8, decay: .3, sustain: 1, release: 1.2,
+    cutoff: 900, resonance: 1, detune: 5, width: .5, reverbWet: .25, echoWet: 0 };
+
+  // Bass-Klänge für die Basslinie der Drumloops (eigene, einfache Stimme —
+  // kein voller Synth-Klang, damit der Bass immer knapp und trocken bleibt).
+  const BASS_SOUNDS = [
+    { id: 'pluck', name: 'Square Pluck', wave: 'square', cutoff: 480, q: 8, decay: .14, level: .2, envAmount: 0 },
+    { id: 'sub', name: 'Sub Sine', wave: 'sine', cutoff: 2000, q: 0, decay: .32, level: .42, envAmount: 0 },
+    { id: 'growl', name: 'Saw Growl', wave: 'sawtooth', cutoff: 520, q: 7, decay: .22, level: .2, envAmount: 1400 },
+    { id: 'round', name: 'Round Finger', wave: 'triangle', cutoff: 900, q: 1, decay: .26, level: .36, envAmount: 300 },
+  ];
+
+  /* ------------------------------------------------------------------------
+     HARMONIK — Tonarten, Akkordfolgen, SATB-Satz.
+     ------------------------------------------------------------------------ */
+
+  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+  const MODES = [
+    { id: 'major', nameKey: 'lab.modeMajor', steps: MAJOR },
+    { id: 'minor', nameKey: 'lab.modeMinor', steps: [0, 2, 3, 5, 7, 8, 10] },
+    { id: 'dorian', nameKey: 'lab.modeDorian', steps: [0, 2, 3, 5, 7, 9, 10] },
+    { id: 'mixolydian', nameKey: 'lab.modeMixolydian', steps: [0, 2, 4, 5, 7, 9, 10] },
+  ];
+
+  // Stufen (0 = I). Die Beschriftung (I–V–vi–IV …) wird je Modus berechnet,
+  // weil dieselbe Stufenfolge in Moll anders klingt und heißt.
+  /* Akkordfolgen: Stufen der gewählten Tonart (0 = I … 6 = VII), je
+     Eintrag ein Akkord (ein oder zwei Takte, siehe chordBars). Name und
+     Kurz-Erklärung stehen in strings.js (lab.progName…/lab.progInfo…).
+     Die alten Ids bleiben, damit gespeicherte Stände weiter passen. */
+  const PROGRESSIONS = [
+    { id: 'pop', cat: 'pop', degrees: [0, 4, 5, 3] },
+    { id: 'sad', cat: 'pop', degrees: [5, 3, 0, 4] },
+    { id: 'fifties', cat: 'pop', degrees: [0, 5, 3, 4] },
+    { id: 'royal', cat: 'pop', degrees: [3, 4, 2, 5] },
+    { id: 'pendulum', cat: 'pop', degrees: [0, 3] },
+    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0] },
+    { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0] },
+    { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4] },
+    { id: 'amen', cat: 'classic', degrees: [0, 3, 0] },
+    { id: 'plagal', cat: 'classic', degrees: [0, 3, 0, 3] },
+    { id: 'pachelbel', cat: 'classic', degrees: [0, 4, 5, 2, 3, 0, 3, 4] },
+    { id: 'circle', cat: 'classic', degrees: [0, 3, 6, 2, 5, 1, 4, 0] },
+    { id: 'jazz', cat: 'jazz', degrees: [1, 4, 0, 0], sevenths: true },
+    { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true },
+    { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true },
+    { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true },
+    { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0] },
+    { id: 'rock3', cat: 'modal', degrees: [0, 6, 3] },
+    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4] },
+    { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6] },
+    { id: 'drone', cat: 'modal', degrees: [0] },
+  ];
+  const PROG_CATS = ['pop', 'classic', 'jazz', 'modal'];
+  const PROG_MAX_CHORDS = 16;
+  const PROG_MAX_OWN = 24;
+  const progKey = (kind, id) => `lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`;
+
+  /** Mini-Bild einer Akkordfolge: je Akkord ein Balken, Höhe = Stufe. */
+  function progPreview(degrees) {
+    const w = 64 / degrees.length;
+    const rects = degrees.map((d, i) => {
+      const h = 3 + (mod(d, 7) / 6) * 11;
+      return `<rect x="${(i * w + .6).toFixed(2)}" y="${(15 - h).toFixed(2)}" width="${Math.max(1, w - 1.2).toFixed(2)}" height="${h.toFixed(2)}" rx="1"/>`;
+    }).join('');
+    return `<svg class="preview" viewBox="0 0 64 16" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
+  }
+
+  function sanitizeProgDegrees(raw) {
+    if (!Array.isArray(raw) || !raw.length) return null;
+    const list = raw.slice(0, PROG_MAX_CHORDS).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    return list.length ? list : null;
+  }
+
+  function sanitizeProgLibrary(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    return raw.slice(0, PROG_MAX_OWN).map((p) => {
+      if (!p || typeof p !== 'object' || typeof p.id !== 'string' || seen.has(p.id)) return null;
+      const degrees = sanitizeProgDegrees(p.degrees);
+      if (!degrees) return null;
+      seen.add(p.id);
+      const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : 'Progression';
+      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true };
+    }).filter(Boolean);
+  }
+
+  function degreeSemis(steps, deg) { return steps[mod(deg, 7)] + 12 * Math.floor(deg / 7); }
+  /** Stufe in den Bereich -3…3 falten — ein Motiv, das dem Akkord folgt,
+   *  soll nicht mit jeder höheren Stufe weiter nach oben wandern. */
+  function foldDegree(deg) { const d = mod(deg, 7); return d > 3 ? d - 7 : d; }
+  /** Grundton-Versatz so falten, dass hohe Tonarten nicht aus der Lage laufen. */
+  const foldRoot = (pc) => (pc > 6 ? pc - 12 : pc);
+
+  function noteNames() {
+    const names = t('lab.noteNames').split(',');
+    return names.length === 12 ? names : 'C,C♯,D,E♭,E,F,F♯,G,A♭,A,B♭,B'.split(',');
+  }
+  const noteLabel = (midi) => `${noteNames()[mod(midi, 12)]}${Math.floor(midi / 12) - 1}`;
+
+  function chordQuality(steps, deg) {
+    const root = degreeSemis(steps, deg);
+    const third = degreeSemis(steps, deg + 2) - root;
+    const fifth = degreeSemis(steps, deg + 4) - root;
+    if (fifth === 6) return 'dim';
+    if (fifth === 8) return 'aug';
+    return third === 3 ? 'min' : 'maj';
+  }
+
+  function romanNumeral(steps, deg, sevenths) {
+    const d = mod(deg, 7);
+    const quality = chordQuality(steps, d);
+    const base = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][d];
+    const flat = steps[d] < MAJOR[d] ? '♭' : '';
+    const core = quality === 'min' || quality === 'dim' ? base.toLowerCase() : base;
+    return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '');
+  }
+
+  function chordName(keyRoot, steps, deg, sevenths) {
+    const d = mod(deg, 7);
+    const quality = chordQuality(steps, d);
+    const name = noteNames()[mod(keyRoot + steps[d], 12)];
+    if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°');
+    const seventh = sevenths ? (degreeSemis(steps, d + 6) - steps[d] === 11 ? 'maj7' : '7') : '';
+    return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh;
+  }
+
+  function chordPitchClasses(keyRoot, steps, deg, sevenths) {
+    return (sevenths ? [0, 2, 4, 6] : [0, 2, 4]).map((o) => mod(keyRoot + degreeSemis(steps, deg + o), 12));
+  }
+
+  // Stimmumfänge (MIDI) für den vierstimmigen Satz — bewusst die bequeme
+  // Mittellage, nicht die Extreme: das ist eine Übe-Hilfe, kein Solo.
+  const SATB = ['S', 'A', 'T', 'B'];
+  const SATB_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 60] };
+  const SATB_COLOR = { S: '#4ECDC4', A: '#6BCB77', T: '#FFD93D', B: '#A78BFA' }; // wie VOICE_COLOR in app.js
+  const SATB_KEY = { S: 'lab.voiceS', A: 'lab.voiceA', T: 'lab.voiceT', B: 'lab.voiceB' };
+
+  /**
+   * Ein Akkord als vierstimmiger Satz. Bass immer auf dem Grundton; für
+   * Sopran/Alt/Tenor werden alle Lagen im Umfang durchprobiert (wenige
+   * hundert Kombinationen) und die mit der kleinsten Bewegung gegenüber dem
+   * vorigen Akkord gewählt — das ist Stimmführung im Kleinen. Strafen für
+   * fehlende Terz, verdoppelte Terz, Stimmkreuzung und zu weite Abstände
+   * halten den Satz lehrbuchnah.
+   */
+  function voiceChord(pcs, prev) {
+    const within = ([lo, hi], pred) => { const out = []; for (let m = lo; m <= hi; m++) if (pred(m)) out.push(m); return out; };
+    const nearest = (list, target) => list.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
+    const B = nearest(within(SATB_RANGES.B, (m) => mod(m, 12) === pcs[0]), prev.B);
+    const isChordTone = (m) => pcs.includes(mod(m, 12));
+    let best = null;
+    let bestScore = Infinity;
+    for (const T of within(SATB_RANGES.T, isChordTone)) {
+      if (T <= B || T - B > 19) continue;
+      for (const A of within(SATB_RANGES.A, isChordTone)) {
+        if (A <= T || A - T > 12) continue;
+        for (const S of within(SATB_RANGES.S, isChordTone)) {
+          if (S <= A || S - A > 12) continue;
+          const voices = [B, T, A, S].map((m) => mod(m, 12));
+          let score = Math.abs(S - prev.S) + Math.abs(A - prev.A) + Math.abs(T - prev.T);
+          if (!voices.includes(pcs[1])) score += 20;
+          if (pcs[2] !== undefined && !voices.includes(pcs[2])) score += 4;
+          if (pcs[3] !== undefined && !voices.includes(pcs[3])) score += 6;
+          if (voices.filter((pc) => pc === pcs[1]).length > 1) score += 3;
+          if (score < bestScore) { bestScore = score; best = { S, A, T, B }; }
+        }
+      }
+    }
+    return best || { S: prev.S, A: prev.A, T: prev.T, B };
+  }
+
+  /* ------------------------------------------------------------------------
+     SONSTIGE AUSWAHLLISTEN
+     ------------------------------------------------------------------------ */
+
+  // Arpeggiator-Muster (siehe _arpSequence). Stufen-Abstände in der
+  // Tonleiter: 0 = der Ton selbst, 2 = Terz, 4 = Quinte, 6 = Septime,
+  // 7 = Oktave. Manuell wird jede gewählte Taste so erweitert; automatisch
+  // gilt das Muster ab dem Grundton des gerade klingenden Akkords.
+  const ARP_PATTERNS = [
+    ['selection', 'lab.patSelection', [0]],
+    ['thirds', 'lab.patThirds', [0, 2]],
+    ['fifths', 'lab.patFifths', [0, 4]],
+    ['octaves', 'lab.patOctaves', [0, 7]],
+    ['triad', 'lab.patTriad', [0, 2, 4]],
+    ['seventh', 'lab.patSeventh', [0, 2, 4, 6]],
+  ];
+  const ARP_AUTO_PATTERNS = [
+    ['root', 'lab.autoRoot', [0]],
+    ['rootFifth', 'lab.autoRootFifth', [0, 4]],
+    ['rootOctave', 'lab.autoRootOctave', [0, 7]],
+    ['triad', 'lab.autoTriad', [0, 2, 4]],
+    ['seventh', 'lab.autoSeventh', [0, 2, 4, 6]],
+  ];
+  const ARP_MODES = [['up', 'lab.arpUp'], ['down', 'lab.arpDown'], ['updown', 'lab.arpUpDown'], ['order', 'lab.arpOrder'], ['random', 'lab.arpRandom']];
+  // Tempo in Sechzehnteln; 3 und 6 sind punktierte Achtel bzw. Viertel —
+  // die punktierte Achtel gegen den geraden Beat ist ein klassischer
+  // Arp-Trick (die Töne verschieben sich jeden Schlag gegeneinander).
+  const ARP_DIVISIONS = [[1, '1/16'], [2, '1/8'], [3, '1/8 ·'], [4, '1/4'], [6, '1/4 ·']];
+  // Rhythmus: Längen je Schritt als Vielfache einer Einheit (siehe _arpTrigger).
+  const ARP_RHYTHMS = [
+    ['straight', 'lab.rhythmStraight', null],
+    ['longShort', 'lab.rhythmLongShort', [1.5, .5]],
+    ['shortLong', 'lab.rhythmShortLong', [.5, 1.5]],
+    ['gallop', 'lab.rhythmGallop', [.5, .5, 1]],
+  ];
+
+  // Filter-Kategorien; 'all' (kein Filter) hat keine eigene Bubble, sondern ein X.
+  const BEAT_CATS = ['calm', 'dance', 'funky', 'breaks'];
+  const MELODY_CATS = ['calm', 'dance', 'funky'];
+  // Eigene Melodien bekommen eine eigene Filter-Kategorie (nur sichtbar, wenn es welche gibt).
+  const OWN_CAT = 'own';
+  const PRESET_CATS = ['pad', 'keys', 'lead'];
+  const CAT_KEY = { calm: 'lab.catCalm', dance: 'lab.catDance', funky: 'lab.catFunky', breaks: 'lab.catBreaks',
+                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead', own: 'lab.catOwn',
+                    pop: 'lab.catPop', classic: 'lab.catClassic', jazz: 'lab.catJazz', modal: 'lab.catModal' };
+
+  // Mischpult-Kanäle. Melodie, Arp und Tasten teilen sich EINEN Synth-Klang
+  // (SOUND_LAYERS), haben aber eigene Kanäle für die Lautstärke.
+  const BUSES = ['drums', 'bass', 'melody', 'arp', 'chords', 'keys', 'drone'];
+  const BUS_KEY = { drums: 'lab.busDrums', bass: 'lab.busBass', melody: 'lab.busMelody', arp: 'lab.busArp',
+                    chords: 'lab.busChords', keys: 'lab.busKeys', drone: 'lab.busDrone' };
+  const SOUND_LAYERS = ['melody', 'arp', 'keys'];
+  const SYNTH_LAYERS = [...SOUND_LAYERS, 'chords', 'drone'];
+
+  const ECHO_DIVISIONS = [[1, '1/16'], [2, '1/8'], [3, '1/8·'], [4, '1/4'], [6, '1/4·']];
+  const LFO_SYNCS = [[0, 'lab.lfoFree'], [1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, 'lab.bar1']];
+
+  // Computertastatur → Halbton ab dem tiefsten C der Klaviatur. event.code
+  // meint die PHYSISCHE Taste — auf QWERTZ liegt KeyY dort, wo "Z" steht,
+  // also zwischen T und U, genau richtig für Gis.
+  const KEY_CODES = ['KeyA', 'KeyW', 'KeyS', 'KeyE', 'KeyD', 'KeyF', 'KeyT', 'KeyG', 'KeyY', 'KeyH',
+                     'KeyU', 'KeyJ', 'KeyK', 'KeyO', 'KeyL', 'KeyP', 'Semicolon', 'Quote'];
+  // Tonart-Tasten: die Grundreihe spielt die Stufen der Tonart der Reihe nach.
+  const SCALE_KEY_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote'];
+  const SCALE_PAD_COUNT = 15; // zwei Oktaven Tonleiter plus Grundton oben
+
+  const TABS = [
+    { id: 'beat', labelKey: 'lab.tabBeat' },
+    { id: 'harmony', labelKey: 'lab.tabHarmony' },
+    { id: 'melody', labelKey: 'lab.tabMelody' },
+    { id: 'sound', labelKey: 'lab.tabSound' },
+    { id: 'mixer', labelKey: 'lab.tabMixer' },
+    { id: 'keys', labelKey: 'lab.tabKeys' },
+  ];
+
+  /* ------------------------------------------------------------------------
+     ZUSTAND — alles, was gespeichert, geteilt, gewürfelt und rückgängig
+     gemacht werden kann. Flüchtiges (gerade gedrückte Tasten, Latch) liegt
+     bewusst außerhalb in der View.
+     ------------------------------------------------------------------------ */
+
+  function defaultState() {
+    return {
+      bpm: 106, swing: 0, pump: 0,
+      patternIndex: 0, beat: beatFromPattern(DRUM_PATTERNS[0]), beatEdited: false,
+      trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, bass: true },
+      bassSoundId: 'pluck',
+      keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
+      // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
+      progDegrees: null, progSevenths: false, progName: null, progOwnId: null,
+      chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
+      droneOn: false, droneFifth: true,
+      melodyIndex: 0, melodyOn: true, melodyOctave: 4,
+      // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
+      // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
+      melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
+      arpOn: false, arpAuto: false, arpPattern: 'triad', arpAutoPattern: 'triad', arpMode: 'up',
+      arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1,
+      keysLayout: 'piano',
+      octave: 4,
+      sound: soundFromPreset(presetIndexByName('Velvet Choir')),
+      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
+      mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
+      fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
+      // Aufgenommene Reglerbewegungen: je Klang-Parameter ein Wert pro
+      // Sechzehntel, geloopt über `steps` Schritte ab `offset`.
+      automation: null,
+      locks: { beat: false, harmony: false, melody: false, sound: false },
+    };
+  }
+
+  /* Melodie-Editor: sichtbarer Stufenbereich (8 oben … eine Oktave tiefer
+     bis zur 5 unten), wählbare Tonlängen in Sechzehnteln und Obergrenzen. */
+  // Drei Oktaven: 1–7 höher, 1–7 (Mitte), 1–7 tiefer.
+  const MEL_HIGH = 13;
+  const MEL_LOW = -7;
+  const MEL_ROW_PX = 21;
+  const MEL_LENGTHS = [[1, '1/16'], [2, '1/8'], [4, '1/4'], [6, '1/4 ·'], [8, '1/2']];
+  const MEL_MAX_BARS = 4;
+  const MEL_MAX_OWN = 24;
+  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+  /** Takte einer Melodie prüfen: [Schritt, Stufe, Länge, Vorzeichen?] —
+   *  einstimmig, im Takt, Stufe im Editorbereich, Vorzeichen nur ±1.
+   *  Liefert null, wenn nichts Brauchbares übrig bleibt. */
+  function sanitizeMelodyBars(raw, meter) {
+    if (!hasOwn(METERS, meter) || !Array.isArray(raw) || !raw.length) return null;
+    const steps = METERS[meter].steps;
+    return raw.slice(0, MEL_MAX_BARS).map((bar) => {
+      if (!Array.isArray(bar)) return [];
+      // Position und Länge dürfen gebrochen sein (eingespielt, ohne Raster).
+      const r2 = (v) => Math.round(v * 100) / 100;
+      const notes = bar
+        .filter((n) => Array.isArray(n) && Number.isFinite(n[0]) && Number.isInteger(n[1]) && Number.isFinite(n[2])
+          && n[0] >= 0 && n[0] < steps && n[1] >= MEL_LOW && n[1] <= MEL_HIGH && n[2] >= .1)
+        .slice(0, 64)
+        .map(([at, deg, len, alt]) => {
+          // Ein Ton darf über den Taktstrich klingen (gehalten eingespielt),
+          // aber nicht über das Ende der Melodie hinaus.
+          const note = [r2(at), deg, r2(Math.min(len, steps * MEL_MAX_BARS - at))];
+          if (alt === 1 || alt === -1) note.push(alt);
+          return note;
+        })
+        .sort((a, b) => a[0] - b[0])
+        .filter((n, i, arr) => !i || arr[i - 1][0] !== n[0]);
+      notes.forEach((n, i) => { if (notes[i + 1] && n[0] + n[2] > notes[i + 1][0]) n[2] = Math.round((notes[i + 1][0] - n[0]) * 100) / 100; });
+      return notes;
+    });
+  }
+
+  /** Bibliothek eigener Melodien (liegt neben den Speicherplätzen, nicht im
+   *  Stand — ein geladener Speicherplatz soll sie nicht überschreiben). */
+  function sanitizeMelodyLibrary(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    return raw.slice(0, MEL_MAX_OWN).map((m) => {
+      if (!m || typeof m !== 'object' || typeof m.id !== 'string' || seen.has(m.id)) return null;
+      const bars = sanitizeMelodyBars(m.bars, m.meter);
+      if (!bars) return null;
+      seen.add(m.id);
+      const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 40) : 'Melody';
+      return { id: m.id.slice(0, 24), name, meter: m.meter, bars };
+    }).filter(Boolean);
+  }
+
+  function sanitizeAutomation(raw) {
+    if (!raw || typeof raw !== 'object' || !raw.lanes || typeof raw.lanes !== 'object') return null;
+    const steps = Number.isInteger(raw.steps) && raw.steps >= 1 && raw.steps <= 64 ? raw.steps : null;
+    if (!steps) return null;
+    const lanes = {};
+    for (const [key, values] of Object.entries(raw.lanes)) {
+      if (!hasOwn(SOUND_RANGES, key) || !Array.isArray(values) || values.length !== steps) continue;
+      const [lo, hi] = SOUND_RANGES[key];
+      if (!values.every((v) => Number.isFinite(v))) continue;
+      lanes[key] = values.map((v) => clamp(v, lo, hi));
+    }
+    if (!Object.keys(lanes).length) return null;
+    return {
+      on: raw.on !== false, steps, lanes,
+      bars: Number.isInteger(raw.bars) ? clamp(raw.bars, 1, 4) : 1,
+      offset: Number.isInteger(raw.offset) ? mod(raw.offset, steps) : 0,
+    };
+  }
+
+  /** Eingelesenen Stand (Speicherplatz, geteilter Code, Undo) Feld für Feld
+   *  prüfen — fremde Codes dürfen nichts setzen, woran die Engine oder das
+   *  Rendering scheitern würden. Unbekanntes fällt auf den Standard zurück. */
+  function sanitizeState(raw) {
+    const s = defaultState();
+    if (!raw || typeof raw !== 'object') return s;
+    const num = (v, lo, hi, fb) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fb);
+    const int = (v, lo, hi, fb) => (Number.isInteger(v) && v >= lo && v <= hi ? v : fb);
+    const bool = (v, fb) => (typeof v === 'boolean' ? v : fb);
+    const oneOf = (v, list, fb) => (list.includes(v) ? v : fb);
+    const obj = (v) => (v && typeof v === 'object' ? v : {});
+
+    s.bpm = Math.round(num(raw.bpm, 40, 180, s.bpm));
+    s.swing = num(raw.swing, 0, 1, s.swing);
+    s.pump = num(raw.pump, 0, 1, s.pump);
+    s.patternIndex = int(raw.patternIndex, 0, DRUM_PATTERNS.length - 1, 0);
+    const pattern = DRUM_PATTERNS[s.patternIndex];
+    s.beat = sanitizeBeat(raw.beat, pattern);
+    s.beatEdited = bool(raw.beatEdited, false);
+    for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
+    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), s.bassSoundId);
+    s.keyRoot = int(raw.keyRoot, 0, 11, 0);
+    s.modeId = oneOf(raw.modeId, MODES.map((m) => m.id), s.modeId);
+    s.progId = oneOf(raw.progId, PROGRESSIONS.map((p) => p.id), s.progId);
+    s.progDegrees = sanitizeProgDegrees(raw.progDegrees);
+    if (s.progDegrees) {
+      s.progSevenths = bool(raw.progSevenths, false);
+      s.progName = typeof raw.progName === 'string' && raw.progName.trim() ? raw.progName.trim().slice(0, 40) : null;
+      s.progOwnId = typeof raw.progOwnId === 'string' ? raw.progOwnId.slice(0, 24) : null;
+    }
+    s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
+    s.chordsOn = bool(raw.chordsOn, false);
+    for (const v of SATB) s.satb[v] = oneOf(obj(raw.satb)[v], ['on', 'focus', 'mute'], 'on');
+    s.droneFifth = bool(raw.droneFifth, true);
+    s.melodyIndex = int(raw.melodyIndex, 0, MELODIES.length - 1, 0);
+    s.melodyOn = bool(raw.melodyOn, true);
+    s.melodyOctave = int(raw.melodyOctave, 3, 5, 4);
+    s.arpOn = bool(raw.arpOn, false);
+    s.arpAuto = bool(raw.arpAuto, false);
+    s.arpPattern = oneOf(raw.arpPattern, ARP_PATTERNS.map(([id]) => id), 'triad');
+    s.arpAutoPattern = oneOf(raw.arpAutoPattern, ARP_AUTO_PATTERNS.map(([id]) => id), 'triad');
+    s.arpRhythm = oneOf(raw.arpRhythm, ARP_RHYTHMS.map(([id]) => id), 'straight');
+    s.keysLayout = oneOf(raw.keysLayout, ['piano', 'scale'], 'piano');
+    s.arpMode = oneOf(raw.arpMode, ARP_MODES.map(([id]) => id), 'up');
+    s.arpDivision = oneOf(raw.arpDivision, ARP_DIVISIONS.map(([v]) => v), 2);
+    s.arpOctaves = oneOf(raw.arpOctaves, [1, 2, 3], 1);
+    s.octave = int(raw.octave, 2, 5, 4);
+    // Ältere Stände hatten je Ebene einen eigenen Klang — dann gilt der der Melodie.
+    s.sound = sanitizeSound(raw.sound || obj(raw.sounds).melody, s.sound);
+    for (const bus of [...BUSES, 'master']) s.mix[bus] = num(obj(raw.mix)[bus], 0, 1, s.mix[bus]);
+    for (const bus of BUSES) s.mute[bus] = bool(obj(raw.mute)[bus], false);
+    const fx = obj(raw.fx);
+    s.fx = {
+      reverbLength: num(fx.reverbLength, .2, 4, s.fx.reverbLength),
+      echoDiv: oneOf(fx.echoDiv, ECHO_DIVISIONS.map(([v]) => v), s.fx.echoDiv),
+      echoFeedback: num(fx.echoFeedback, 0, .85, s.fx.echoFeedback),
+      chorus: num(fx.chorus, 0, 1, s.fx.chorus),
+      reverbOn: bool(fx.reverbOn, true),
+      echoOn: bool(fx.echoOn, true),
+      chorusOn: bool(fx.chorusOn, true),
+    };
+    s.automation = sanitizeAutomation(raw.automation);
+    for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
+    // Der Liegeton braucht eine Nutzergeste zum Starten — nie aus einem
+    // gespeicherten Stand heraus von selbst loslaufen lassen.
+    s.droneOn = false;
+    if (MELODIES[s.melodyIndex].meter !== pattern.meter) {
+      s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === pattern.meter));
+    }
+    if (raw.melodyMeter === pattern.meter) {
+      s.melodyBars = sanitizeMelodyBars(raw.melodyBars, pattern.meter);
+      if (s.melodyBars) {
+        s.melodyMeter = pattern.meter;
+        s.melodyName = typeof raw.melodyName === 'string' && raw.melodyName.trim() ? raw.melodyName.trim().slice(0, 40) : null;
+        s.melodyOwnId = typeof raw.melodyOwnId === 'string' ? raw.melodyOwnId.slice(0, 24) : null;
+      }
+    }
+    return s;
+  }
+
+  function sanitizeBeat(raw, pattern) {
+    if (!raw || typeof raw !== 'object') return beatFromPattern(pattern);
+    const steps = METERS[pattern.meter].steps;
+    const beat = {};
+    for (const track of TRACK_IDS) {
+      beat[track] = {};
+      const src = raw[track];
+      if (!src || typeof src !== 'object') continue;
+      for (const [key, value] of Object.entries(src)) {
+        const step = Number(key);
+        if (Number.isInteger(step) && step >= 0 && step < steps && typeof value === 'number' && Number.isFinite(value)) {
+          beat[track][step] = clamp(value, -7, 14);
+        }
+      }
+    }
+    // Ein Zwischenstand kannte die offene Hi-Hat nur als Wert 2 in der
+    // Hi-Hat-Spur — solche Stände auf die eigene Spur umziehen.
+    for (const [step, value] of Object.entries(beat.hat)) {
+      if (value === 2) { delete beat.hat[step]; beat.open[step] = 1; }
+    }
+    return beat;
+  }
+
+  function sanitizeSound(raw, fallback) {
+    if (!raw || typeof raw !== 'object') return fallback;
+    const index = Number.isInteger(raw.presetIndex) && SYNTH_PRESETS[raw.presetIndex] ? raw.presetIndex : fallback.presetIndex;
+    const sound = soundFromPreset(index);
+    for (const [key, [lo, hi]] of Object.entries(SOUND_RANGES)) {
+      if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) sound[key] = clamp(raw[key], lo, hi);
+    }
+    if (WAVE_SHAPES.includes(raw.wave)) sound.wave = raw.wave;
+    if (FILTER_TYPES.some((f) => f.id === raw.filterType)) sound.filterType = raw.filterType;
+    if (typeof raw.mono === 'boolean') sound.mono = raw.mono;
+    sound.custom = raw.custom === true;
+    return sound;
+  }
+
+  // Teilen per Code: "GL1." + Base64 des JSON-Stands (UTF-8-sicher).
+  const CODE_PREFIX = 'GL1.';
+  function encodeState(state) {
+    const bytes = new TextEncoder().encode(JSON.stringify(state));
+    let binary = '';
+    bytes.forEach((b) => { binary += String.fromCharCode(b); });
+    return CODE_PREFIX + btoa(binary);
+  }
+  function decodeState(code) {
+    const trimmed = String(code || '').trim();
+    if (!trimmed.startsWith(CODE_PREFIX)) throw new Error('Kein Groove-Lab-Code');
+    const binary = atob(trimmed.slice(CODE_PREFIX.length));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return sanitizeState(JSON.parse(new TextDecoder().decode(bytes)));
+  }
+
+  /* ------------------------------------------------------------------------
+     ICONS — bekannte, einfarbige Piktogramme, keine erfundenen Formen und
+     keine Farbe pro Symbol. Strichstärke und -stil wie die übrigen Icons in
+     der App.
      ------------------------------------------------------------------------ */
 
   function svg(children, viewBox = '0 0 24 24') {
@@ -303,97 +827,126 @@
 
   const UI_ICON = {
     close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+    prev: svg('<path d="m15 6-6 6 6 6"/>'),
+    edit: svg('<path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m14 6 4 4"/>'),
+    redo: svg('<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>'),
+    newPage: svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z"/><path d="M14 3v5h5M12 11v6M9 14h6"/>'),
+    next: svg('<path d="m9 6 6 6-6 6"/>'),
     play: svg('<path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/>'),
     pause: svg('<path d="M8 5v14M16 5v14"/>'),
     dice: svg('<rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"/>'),
     latch: svg('<rect x="5" y="10" width="14" height="9" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0"/>'),
+    lock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+    unlock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/>'),
+    undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
+    save: svg('<path d="M6 3h12v18l-6-4-6 4Z"/>'),
+    reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
+    speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
+    speakerOff: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
   };
 
-  // Ein Piktogramm je Eintrag in DRUM_PATTERNS/MELODIES/SYNTH_PRESETS (siehe
-  // deren `icon`-Feld) — jedes ist ein Symbol, das es so oder sehr ähnlich in
-  // jeder gängigen Icon-Bibliothek gibt.
+  // Ein Piktogramm je Drumloop und Klang-Preset (siehe `icon`) plus die
+  // Modul-Symbole.
   const PICTOGRAM = {
     // --- Drumloops ---
-    pulse: '<path d="M22 12h-4l-3 8L9 3l-3 9H2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    unlock: '<rect x="5" y="11" width="14" height="9" rx="2" fill="none"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7" fill="none" stroke-linecap="round"/>',
-    star: '<path d="M12 3l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6Z" fill="none" stroke-linejoin="round"/>',
-    note: '<path d="M15 17V4l4-1v13" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="17" r="2.6" fill="none"/>',
-    diamond: '<path d="M6 9h12M9 9l3 11 3-11M6 9l3-6h6l3 6-6 11Z" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    unlock: '<rect x="5" y="11" width="14" height="9" rx="2" fill="none"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7" fill="none"/>',
+    note: '<path d="M15 17V4l4-1v13" fill="none"/><circle cx="13" cy="17" r="2.6" fill="none"/>',
+    diamond: '<path d="M6 9h12M9 9l3 11 3-11M6 9l3-6h6l3 6-6 11Z" fill="none"/>',
     footprints: '<ellipse cx="8" cy="15.5" rx="2.4" ry="3.6" transform="rotate(-12 8 15.5)" fill="none"/><circle cx="6" cy="10.7" r=".7" fill="currentColor" stroke="none"/><circle cx="8" cy="10" r=".7" fill="currentColor" stroke="none"/><ellipse cx="16" cy="9.5" rx="2.1" ry="3.2" transform="rotate(10 16 9.5)" fill="none"/><circle cx="14.4" cy="5.4" r=".6" fill="currentColor" stroke="none"/><circle cx="16.2" cy="4.9" r=".6" fill="currentColor" stroke="none"/>',
-    clock: '<circle cx="12" cy="12" r="9" fill="none"/><path d="M12 7v5l3.5 2" fill="none" stroke-linecap="round"/>',
-    house: '<path d="M4 11 12 4 20 11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 11v9h12v-9" fill="none" stroke-linejoin="round"/><path d="M10 20v-5h4v5" fill="none" stroke-linejoin="round"/>',
-    bolt: '<path d="M13 2 5 14h5l-1 8 8-12h-5l1-8Z" fill="none" stroke-linejoin="round"/>',
-    speaker: '<path d="M4 9h3l5-4v14l-5-4H4Z" fill="none" stroke-linejoin="round"/><path d="M16 9a4 4 0 0 1 0 6" fill="none" stroke-linecap="round"/><path d="M18.5 6.5a8 8 0 0 1 0 11" fill="none" stroke-linecap="round"/>',
-    sun: '<circle cx="12" cy="12" r="4.2" fill="none"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke-linecap="round"/>',
-    scissors: '<circle cx="6" cy="6" r="2.2" fill="none"/><circle cx="6" cy="18" r="2.2" fill="none"/><path d="M7.8 7.6 20 19M7.8 16.4 20 5" stroke-linecap="round"/>',
+    clock: '<circle cx="12" cy="12" r="9" fill="none"/><path d="M12 7v5l3.5 2" fill="none"/>',
+    house: '<path d="M4 11 12 4 20 11" fill="none"/><path d="M6 11v9h12v-9" fill="none"/><path d="M10 20v-5h4v5" fill="none"/>',
+    bolt: '<path d="M13 2 5 14h5l-1 8 8-12h-5l1-8Z" fill="none"/>',
+    speaker: '<path d="M4 9h3l5-4v14l-5-4H4Z" fill="none"/><path d="M16 9a4 4 0 0 1 0 6" fill="none"/><path d="M18.5 6.5a8 8 0 0 1 0 11" fill="none"/>',
+    scissors: '<circle cx="6" cy="6" r="2.2" fill="none"/><circle cx="6" cy="18" r="2.2" fill="none"/><path d="M7.8 7.6 20 19M7.8 16.4 20 5"/>',
+    puzzle: '<path d="M4 4h6a2 2 0 1 1 4 0h6v6a2 2 0 1 0 0 4v6h-6a2 2 0 1 1-4 0H4v-6a2 2 0 1 0 0-4Z" fill="none"/>',
+    feather: '<path d="M20 4C11 4 6 9 6 18" fill="none"/><path d="M20 4c0 8-5 12-12 12" fill="none"/><path d="M4 20l6-6"/>',
+    glass: '<path d="M5 4h14l-7 8Z" fill="none"/><path d="M12 12v7M8 20h8"/>',
+    sunset: '<path d="M3 18h18"/><path d="M6 18a6 6 0 0 1 12 0" fill="none"/><path d="M12 4v3M5 9l2 2M19 9l-2 2"/>',
+    flag: '<path d="M5 21V4" fill="none"/><path d="M5 4h12l-2.5 4L17 12H5" fill="none"/>',
+
+    // --- Module und Klang-Presets ---
+    pulse: '<path d="M22 12h-4l-3 8L9 3l-3 9H2" fill="none"/>',
+    star: '<path d="M12 3l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6Z" fill="none"/>',
+    stairs: '<path d="M3 20v-4h4v-4h4v-4h4V4h4" fill="none"/>',
     target: '<circle cx="12" cy="12" r="8" fill="none"/><circle cx="12" cy="12" r="4.2" fill="none"/><circle cx="12" cy="12" r=".8" fill="currentColor" stroke="none"/>',
-    repeat: '<path d="M4 7h11a3 3 0 0 1 3 3v2" fill="none" stroke-linecap="round"/><path d="M15 9l3-3 3 3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 17H9a3 3 0 0 1-3-3v-2" fill="none" stroke-linecap="round"/><path d="M9 15l-3 3-3-3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" fill="none" stroke-linejoin="round"/>',
-    puzzle: '<path d="M4 4h6a2 2 0 1 1 4 0h6v6a2 2 0 1 0 0 4v6h-6a2 2 0 1 1-4 0H4v-6a2 2 0 1 0 0-4Z" fill="none" stroke-linejoin="round"/>',
-
-    // --- Melodien ---
-    trendUp: '<path d="M3 17l6-6 4 4 8-9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 5h6v6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    trendDown: '<path d="M3 7l6 6 4-4 8 9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 19h6v-6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    stairs: '<path d="M3 20v-4h4v-4h4v-4h4V4h4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    chat: '<path d="M3 5h11v6H9l-3 3v-3H3Z" fill="none" stroke-linejoin="round"/><path d="M21 9v6h-3v3l-3-3h-4V9Z" fill="none" stroke-linejoin="round"/>',
-    arch: '<path d="M3 18a9 9 0 0 1 18 0" fill="none" stroke-linecap="round"/><path d="M7 18a5 5 0 0 1 10 0" fill="none" stroke-linecap="round"/>',
-    magnet: '<path d="M6 4v9a6 6 0 0 0 12 0V4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 4h4v5H6ZM14 4h4v5h-4Z" fill="none" stroke-linejoin="round"/>',
-    window: '<rect x="4" y="4" width="16" height="16" rx="1.5" fill="none"/><path d="M12 4v16M4 12h16" fill="none"/>',
-    droplet: '<path d="M12 3c4 5 7 8.5 7 12a7 7 0 0 1-14 0c0-3.5 3-7 7-12Z" fill="none" stroke-linejoin="round"/>',
-    expand: '<path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    wave: '<path d="M2 9c2-3 4-3 6 0s4 3 6 0 4-3 6 0M2 15c2-3 4-3 6 0s4 3 6 0 4-3 6 0" fill="none" stroke-linecap="round"/>',
-    heart: '<path d="M12 20s-7-4.4-9.3-8.8C1.2 8 3 5 6.2 5 8.6 5 10.6 6.4 12 8.6 13.4 6.4 15.4 5 17.8 5 21 5 22.8 8 21.3 11.2 19 15.6 12 20 12 20Z" fill="none" stroke-linejoin="round"/>',
-    chevrons: '<path d="M6 6l6 6 6-6M6 13l6 6 6-6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    bulb: '<path d="M9 18h6M10 21h4" stroke-linecap="round"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V17h5v-1.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3Z" fill="none" stroke-linejoin="round"/>',
-    thread: '<circle cx="17" cy="6" r="2.6" fill="none"/><path d="M15.2 7.8 5 18" fill="none" stroke-linecap="round"/><path d="M5 18c1.6.6 3-.4 2.6-2" fill="none" stroke-linecap="round"/>',
-    runner: '<circle cx="14" cy="4.5" r="1.8" fill="currentColor" stroke="none"/><path d="M8 20l3-5-2-3 1-4 4 1 3 4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 12l4-1 2 3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-    sunset: '<path d="M3 18h18" stroke-linecap="round"/><path d="M6 18a6 6 0 0 1 12 0" fill="none" stroke-linecap="round"/><path d="M12 4v3M5 9l2 2M19 9l-2 2" stroke-linecap="round"/>',
-
-    // --- Synth-Presets ---
-    users: '<circle cx="9" cy="8" r="3" fill="none"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke-linecap="round"/><path d="M16 8.5a2.5 2.5 0 1 1 0-5" fill="none" stroke-linecap="round"/><path d="M15 14.2c2.9.6 5 2.9 5 5.8" fill="none" stroke-linecap="round"/>',
-    wind: '<path d="M2 8h11a2.5 2.5 0 1 0-2.5-2.5" fill="none" stroke-linecap="round"/><path d="M2 13h15a2.5 2.5 0 1 1-2.5 2.5" fill="none" stroke-linecap="round"/><path d="M2 18h9a2 2 0 1 0-2-2" fill="none" stroke-linecap="round"/>',
-    cassette: '<rect x="3" y="6" width="18" height="13" rx="2" fill="none"/><circle cx="8.5" cy="12.5" r="2.2" fill="none"/><circle cx="15.5" cy="12.5" r="2.2" fill="none"/><path d="M8.5 12.5h7M6 17h12" stroke-linecap="round"/>',
+    repeat: '<path d="M4 7h11a3 3 0 0 1 3 3v2" fill="none"/><path d="M15 9l3-3 3 3" fill="none"/><path d="M20 17H9a3 3 0 0 1-3-3v-2" fill="none"/><path d="M9 15l-3 3-3-3" fill="none"/>',
+    moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" fill="none"/>',
+    sun: '<circle cx="12" cy="12" r="4.2" fill="none"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    droplet: '<path d="M12 3c4 5 7 8.5 7 12a7 7 0 0 1-14 0c0-3.5 3-7 7-12Z" fill="none"/>',
+    wave: '<path d="M2 9c2-3 4-3 6 0s4 3 6 0 4-3 6 0M2 15c2-3 4-3 6 0s4 3 6 0 4-3 6 0" fill="none"/>',
+    bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V17h5v-1.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3Z" fill="none"/>',
+    users: '<circle cx="9" cy="8" r="3" fill="none"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none"/><path d="M16 8.5a2.5 2.5 0 1 1 0-5" fill="none"/><path d="M15 14.2c2.9.6 5 2.9 5 5.8" fill="none"/>',
+    wind: '<path d="M2 8h11a2.5 2.5 0 1 0-2.5-2.5" fill="none"/><path d="M2 13h15a2.5 2.5 0 1 1-2.5 2.5" fill="none"/><path d="M2 18h9a2 2 0 1 0-2-2" fill="none"/>',
+    cassette: '<rect x="3" y="6" width="18" height="13" rx="2" fill="none"/><circle cx="8.5" cy="12.5" r="2.2" fill="none"/><circle cx="15.5" cy="12.5" r="2.2" fill="none"/><path d="M8.5 12.5h7M6 17h12"/>',
     zap: '<path d="M13 2 5 14h5l-1 8 8-12h-5l1-8Z" fill="currentColor" stroke="none"/>',
-    horn: '<path d="M3 10v4h3l6 4V6L6 10H3Z" fill="none" stroke-linejoin="round"/><path d="M15 9a4 4 0 0 1 0 6" fill="none" stroke-linecap="round"/>',
+    horn: '<path d="M3 10v4h3l6 4V6L6 10H3Z" fill="none"/><path d="M15 9a4 4 0 0 1 0 6" fill="none"/>',
     door: '<rect x="6" y="3" width="12" height="18" rx="1" fill="none"/><circle cx="14.5" cy="12" r=".9" fill="currentColor" stroke="none"/>',
-    flame: '<path d="M12 3c1 3-3 4-3 8a3 3 0 0 0 6 0c0-1.5-1-2-1-3.5 1.5 1 2.5 3 2.5 5a5.5 5.5 0 1 1-11 0C5.5 8 9 6.5 12 3Z" fill="none" stroke-linejoin="round"/>',
-    bell: '<path d="M12 3a5 5 0 0 0-5 5v3c0 1.5-.5 3-2 4.5h14c-1.5-1.5-2-3-2-4.5V8a5 5 0 0 0-5-5Z" fill="none" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" fill="none" stroke-linecap="round"/>',
-    compass: '<circle cx="12" cy="12" r="9" fill="none"/><path d="M15 9l-2 6-6 2 2-6Z" fill="none" stroke-linejoin="round"/>',
-    cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17 18H7Z" fill="none" stroke-linejoin="round"/>',
-    anchor: '<circle cx="12" cy="5" r="2" fill="none"/><path d="M12 7v14M7 13H2a10 10 0 0 0 10 8 10 10 0 0 0 10-8h-5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 9h8" stroke-linecap="round"/>',
-    key: '<circle cx="7" cy="7" r="4" fill="none"/><path d="M10 10l10 10M17 15l3-3M14 18l2-2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    flame: '<path d="M12 3c1 3-3 4-3 8a3 3 0 0 0 6 0c0-1.5-1-2-1-3.5 1.5 1 2.5 3 2.5 5a5.5 5.5 0 1 1-11 0C5.5 8 9 6.5 12 3Z" fill="none"/>',
+    bell: '<path d="M12 3a5 5 0 0 0-5 5v3c0 1.5-.5 3-2 4.5h14c-1.5-1.5-2-3-2-4.5V8a5 5 0 0 0-5-5Z" fill="none"/><path d="M10 19a2 2 0 0 0 4 0" fill="none"/>',
+    compass: '<circle cx="12" cy="12" r="9" fill="none"/><path d="M15 9l-2 6-6 2 2-6Z" fill="none"/>',
+    cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17 18H7Z" fill="none"/>',
+    anchor: '<circle cx="12" cy="5" r="2" fill="none"/><path d="M12 7v14M7 13H2a10 10 0 0 0 10 8 10 10 0 0 0 10-8h-5" fill="none"/><path d="M8 9h8"/>',
+    key: '<circle cx="7" cy="7" r="4" fill="none"/><path d="M10 10l10 10M17 15l3-3M14 18l2-2" fill="none"/>',
+    sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2" fill="none"/><circle cx="10" cy="12" r="2" fill="none"/><circle cx="18" cy="18" r="2" fill="none"/>',
   };
 
-  function pictogramIcon(name) {
-    return svg(PICTOGRAM[name] || '');
-  }
+  const pictogramIcon = (name) => svg(PICTOGRAM[name] || '');
+  /** Kurzbeschreibung eines Klang-Presets, z. B. 'lab.toneVelvetChoir'. */
+  const presetDescKey = (preset) => `lab.tone${preset.name.replace(/[^A-Za-z]/g, '')}`;
 
   /** Eine Periode der Oszillator-Wellenform — für die Wellenform-Auswahl. */
   function waveIcon(wave) {
     const pts = [];
     const n = 24;
     for (let i = 0; i <= n; i++) {
-      const t = i / n;
+      const x = i / n;
       let y;
-      if (wave === 'sine') y = Math.sin(t * Math.PI * 2);
-      else if (wave === 'square') y = t < .5 ? 1 : -1;
-      else if (wave === 'sawtooth') y = t * 2 - 1;
-      else y = t < .5 ? t * 4 - 1 : 3 - t * 4; // triangle
-      pts.push(`${(2 + t * 20).toFixed(1)},${(12 - y * 8).toFixed(1)}`);
+      if (wave === 'sine') y = Math.sin(x * Math.PI * 2);
+      else if (wave === 'square') y = x < .5 ? 1 : -1;
+      else if (wave === 'sawtooth') y = x * 2 - 1;
+      else y = x < .5 ? x * 4 - 1 : 3 - x * 4; // triangle
+      pts.push(`${(2 + x * 20).toFixed(1)},${(12 - y * 8).toFixed(1)}`);
     }
     return svg(`<polyline points="${pts.join(' ')}" fill="none"/>`);
   }
 
+  /** Mini-Notenrolle des ersten Takts einer Melodie. */
+  function melodyPreview(melody) {
+    const notes = melody.bars.find((bar) => bar.length) || [];
+    if (!notes.length) return '<svg class="preview" viewBox="0 0 64 16" aria-hidden="true"></svg>';
+    const degrees = notes.map((n) => n[1]);
+    const lo = Math.min(...degrees);
+    const span = Math.max(1, Math.max(...degrees) - lo);
+    const rects = notes.map(([at, deg, len]) =>
+      `<rect x="${at * 4}" y="${(12.5 - (deg - lo) / span * 11).toFixed(1)}" width="${Math.max(2, len * 4 - 1)}" height="2.6" rx="1.2"/>`).join('');
+    return `<svg class="preview" viewBox="0 0 64 16" preserveAspectRatio="xMinYMid meet" aria-hidden="true">${rects}</svg>`;
+  }
+
   /* ------------------------------------------------------------------------
      GrooveEngine — reine Klangerzeugung.
+
+     Signalweg:
+       Drums ─┐                       (Kick, Snare, Clap, Hi-Hats)
+       Bass  ─┴──────────────────────────────────────┐
+       Ebene (melody/arp/keys/chords):               ├→ master → Limiter → Ausgang
+         Voices → input → Drive → level ─→ synthSum ─┤ (über "duck" = Pumpen,
+                                    ├→ Hall-Send     │  und Chorus)
+                                    └→ Echo-Send     │
+       Liegeton: eigene Ebene, geht am Pumpen vorbei ┘
      ------------------------------------------------------------------------ */
 
   class GrooveEngine {
     constructor() {
       this.ctx = null;
       this.buses = null;
+      this.layers = null;
       this.noiseBuffer = null;
       this.voices = new Set();
+      this.maxVoices = 32;   // Obergrenze gleichzeitiger Synth-Stimmen (Handy-CPU)
+      this.lastMidi = {};    // je Ebene: letzte Note (für Glide)
+      this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
+      this._reverbTimer = 0;
+      this._reverbLength = 0;
     }
 
     get ready() { return !!this.ctx; }
@@ -407,70 +960,161 @@
       if (!AudioContextClass) throw new Error('Web Audio API nicht verfügbar');
       const ctx = new AudioContextClass({ latencyHint: 'interactive' });
       this.ctx = ctx;
+      const gain = (value, to) => { const g = ctx.createGain(); g.gain.value = value; if (to) g.connect(to); return g; };
 
-      const master = ctx.createGain(); master.gain.value = .7;
+      const master = gain(.8);
       const limiter = ctx.createDynamicsCompressor();
       limiter.threshold.value = -13; limiter.ratio.value = 6;
       master.connect(limiter).connect(ctx.destination);
 
-      const drums = ctx.createGain(); drums.gain.value = .72; drums.connect(master);
-      const synth = ctx.createGain(); synth.gain.value = .55; synth.connect(master);
+      const drums = gain(.72, master);
+      const bass = gain(.8, master);
+      const duck = gain(1, master);
+      // Synth-Summe: leiser als früher (.55) und mit Hochpass bei 140 Hz —
+      // unten gehört der Platz Bass und Kick; ohne diese Trennung klang der
+      // Synth erst bei ~30 % Kanalpegel "im Mix", vorher darüber.
+      const synthHighpass = ctx.createBiquadFilter();
+      synthHighpass.type = 'highpass'; synthHighpass.frequency.value = 140; synthHighpass.Q.value = .5;
+      synthHighpass.connect(duck);
+      const synthSum = gain(.4, synthHighpass);
 
-      const reverbSend = ctx.createGain(); reverbSend.gain.value = 0;
+      // Chorus: zwei kurze, gegenläufig modulierte Verzögerungen, hart links
+      // und rechts — macht auch Mono-Klänge breit.
+      const chorusWet = gain(0, duck);
+      const chorusLfo = ctx.createOscillator();
+      chorusLfo.frequency.value = .7;
+      [[.016, -1, .003], [.023, 1, -.003]].forEach(([base, pan, depth]) => {
+        const d = ctx.createDelay(.1); d.delayTime.value = base;
+        const lfoGain = gain(depth); chorusLfo.connect(lfoGain).connect(d.delayTime);
+        const node = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+        synthSum.connect(d);
+        if (node) { node.pan.value = pan; d.connect(node).connect(chorusWet); } else d.connect(chorusWet);
+      });
+      chorusLfo.start();
+
       const convolver = ctx.createConvolver();
-      convolver.buffer = this._impulseResponse(1.4);
-      synth.connect(convolver).connect(reverbSend).connect(master);
+      convolver.buffer = this._impulseResponse(1.8);
+      this._reverbLength = 1.8;
+      const reverbIn = gain(1);
+      reverbIn.connect(convolver).connect(duck);
 
-      const echoSend = ctx.createGain(); echoSend.gain.value = 0;
-      const delay = ctx.createDelay(1.2); delay.delayTime.value = .22;
-      const feedback = ctx.createGain(); feedback.gain.value = .3;
-      synth.connect(delay);
-      delay.connect(feedback).connect(delay);
-      delay.connect(echoSend).connect(master);
+      const echoIn = gain(1);
+      const delay = ctx.createDelay(2); delay.delayTime.value = .3;
+      const feedback = gain(.35);
+      const echoTone = ctx.createBiquadFilter(); echoTone.type = 'lowpass'; echoTone.frequency.value = 3200;
+      echoIn.connect(delay);
+      delay.connect(echoTone).connect(feedback).connect(delay);
+      delay.connect(duck);
 
-      this.buses = { master, drums, synth, reverbSend, echoSend, convolver, delay };
-      this.noiseBuffer = this._whiteNoise(.4);
+      this.layers = {};
+      for (const id of SYNTH_LAYERS) {
+        const input = gain(1);
+        const shaper = ctx.createWaveShaper();
+        shaper.oversample = '2x';
+        const level = gain(.7, id === 'drone' ? master : synthSum);
+        input.connect(shaper).connect(level);
+        const reverbSend = gain(0, reverbIn);
+        const echoSend = gain(0, echoIn);
+        level.connect(reverbSend);
+        level.connect(echoSend);
+        this.layers[id] = { input, shaper, level, reverbSend, echoSend };
+      }
+
+      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, echoIn };
+      this.noiseBuffer = this._whiteNoise(.5);
+      this.lastMidi = {};
+      this.monoVoice = {};
       await ctx.resume();
     }
 
     async stop() {
       this.voices.forEach((v) => this._releaseVoice(v, true));
       this.voices.clear();
+      clearTimeout(this._reverbTimer);
       const ctx = this.ctx;
       this.ctx = null;
       this.buses = null;
+      this.layers = null;
       try { await ctx?.close(); } catch { /* bereits geschlossen */ }
     }
 
-    /** Live-Effektparameter eines Presets übernehmen — auch ohne gerade
-     *  gespielte Note, damit ein Preset-Wechsel sofort hörbar/eingestellt ist. */
-    applyPreset(preset) {
+    /* ---- Pegel & Effekte ---- */
+
+    setMaster(value) {
+      if (!this.ctx) return;
+      this.buses.master.gain.setTargetAtTime(clamp(value, 0, 1), this.ctx.currentTime, .02);
+    }
+
+    setBusLevel(bus, value) {
+      if (!this.ctx) return;
+      const node = this.layers[bus]?.level || this.buses[bus];
+      node?.gain.setTargetAtTime(clamp(value, 0, 1), this.ctx.currentTime, .02);
+    }
+
+    /** Klangabhängige Teile einer Ebene: Hall-/Echo-Anteil und Drive. */
+    setLayerSound(layer, sound) {
+      const L = this.layers?.[layer];
+      if (!L) return;
+      const now = this.ctx.currentTime;
+      L.reverbSend.gain.setTargetAtTime(sound.reverbWet, now, .03);
+      L.echoSend.gain.setTargetAtTime(sound.echoWet, now, .03);
+      const drive = sound.drive || 0;
+      if (drive !== L.drive) {
+        L.drive = drive;
+        L.shaper.curve = drive > 0 ? this._driveCurve(drive) : null;
+        // Mehr Drive = mehr Pegel; grob ausgleichen, damit der Regler
+        // nach Charakter klingt und nicht bloß nach "lauter".
+        L.input.gain.value = 1 / (1 + drive * 1.2);
+      }
+    }
+
+    setFx(fx, stepSeconds) {
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
-      this.buses.reverbSend.gain.setTargetAtTime(preset.reverbWet, now, .03);
-      this.buses.echoSend.gain.setTargetAtTime(preset.echoWet, now, .03);
-      this.setReverbLength(preset.reverbLength);
-      this.setEchoRate(preset.echoRate);
+      this.buses.delay.delayTime.setTargetAtTime(clamp(fx.echoDiv * stepSeconds, .02, 1.9), now, .05);
+      this.buses.feedback.gain.setTargetAtTime(clamp(fx.echoFeedback, 0, .85), now, .03);
+      this.buses.chorusWet.gain.setTargetAtTime(fx.chorusOn === false ? 0 : clamp(fx.chorus, 0, 1) * .8, now, .03);
+      // An/Aus je Effekt: nur der Eingang wird zu- bzw. aufgedreht — so
+      // klingt ein Hall- oder Echo-Rest natürlich aus statt abzureißen.
+      this.buses.reverbIn.gain.setTargetAtTime(fx.reverbOn === false ? 0 : 1, now, .03);
+      this.buses.echoIn.gain.setTargetAtTime(fx.echoOn === false ? 0 : 1, now, .03);
+      this.setReverbLength(fx.reverbLength);
     }
 
+    /** Neuer Hall-Impuls — entprellt: beim Drehen am Regler käme sonst bei
+     *  jedem Pointer-Move ein neuer Stereo-Puffer von bis zu 4 s zustande
+     *  (spürbares Ruckeln und Knacken auf dem Handy). */
     setReverbLength(seconds) {
       if (!this.ctx) return;
-      this.buses.convolver.buffer = this._impulseResponse(clamp(seconds, .1, 4));
+      const target = clamp(seconds, .2, 4);
+      if (Math.abs(target - this._reverbLength) < .01) return;
+      clearTimeout(this._reverbTimer);
+      this._reverbTimer = global.setTimeout(() => {
+        if (!this.ctx) return;
+        this._reverbLength = target;
+        this.buses.convolver.buffer = this._impulseResponse(target);
+      }, 140);
     }
 
-    setEchoRate(ms) {
-      if (!this.ctx) return;
-      this.buses.delay.delayTime.setTargetAtTime(clamp(ms, 20, 900) / 1000, this.ctx.currentTime, .01);
+    /** Pumpen: die Synth-Ebenen kurz leiser, wenn die Kick kommt, und dann
+     *  zurück hoch — der typische House-Sidechain-Effekt. */
+    duckAt(time, depth, beatSeconds) {
+      const g = this.buses.duck.gain;
+      g.cancelScheduledValues(time);
+      g.setValueAtTime(1 - clamp(depth, 0, 1) * .85, time);
+      g.setTargetAtTime(1, time + .01, beatSeconds * .22);
     }
 
-    setReverbWet(amount) {
-      if (!this.ctx) return;
-      this.buses.reverbSend.gain.setTargetAtTime(clamp(amount, 0, 1), this.ctx.currentTime, .02);
-    }
-
-    setEchoWet(amount) {
-      if (!this.ctx) return;
-      this.buses.echoSend.gain.setTargetAtTime(clamp(amount, 0, 1), this.ctx.currentTime, .02);
+    _driveCurve(amount) {
+      const k = 1 + amount * 12;
+      const n = 1024;
+      const curve = new Float32Array(n);
+      const norm = Math.tanh(k);
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        curve[i] = Math.tanh(k * x) / norm;
+      }
+      return curve;
     }
 
     _whiteNoise(seconds) {
@@ -489,6 +1133,8 @@
       }
       return buffer;
     }
+
+    /* ---- Schlagzeug, Bass, Klick ---- */
 
     playKick(time, velocity = 1) {
       const ctx = this.ctx;
@@ -509,7 +1155,7 @@
       const gain = ctx.createGain();
       source.buffer = this.noiseBuffer;
       filter.type = type; filter.frequency.value = cutoff; filter.Q.value = q;
-      gain.gain.setValueAtTime(volume, time);
+      gain.gain.setValueAtTime(Math.max(.0002, volume), time);
       gain.gain.exponentialRampToValueAtTime(.0001, time + length);
       source.connect(filter).connect(gain).connect(this.buses.drums);
       source.start(time); source.stop(time + length + .02);
@@ -529,13 +1175,12 @@
       bodyGain.gain.exponentialRampToValueAtTime(.0001, time + .09);
       body.connect(bodyGain).connect(this.buses.drums);
       body.start(time); body.stop(time + .1);
-
       this.playNoise(time, { cutoff: 1800, length: .16, volume: .22 * velocity, type: 'bandpass', q: 1.1 });
     }
 
     /** Clap: drei eng gestaffelte, breitere Rausch-Bursts ("Flam") statt
      *  eines einzelnen Treffers — eine echte Handclap ist immer ein kurzer
-     *  Schauer aus mehreren Anschlägen, keine einzelne Attacke wie die Snare. */
+     *  Schauer aus mehreren Anschlägen. */
     playClap(time, velocity = 1) {
       const offsets = [0, .012, .026];
       offsets.forEach((offset, i) => {
@@ -547,126 +1192,219 @@
       });
     }
 
-    playHat(time, velocity = 1) {
-      this.playNoise(time, { cutoff: 6500, length: .045, volume: .055 * velocity, type: 'highpass', q: .7 });
+    /** Hi-Hat: geschlossen kurz und spitz, offen deutlich länger und etwas
+     *  heller — vorher klangen beide gleich, obwohl die Loops sie trennen. */
+    playHat(time, velocity = 1, open = false) {
+      if (open) this.playNoise(time, { cutoff: 7200, length: .3, volume: .05 * velocity, type: 'highpass', q: .9 });
+      else this.playNoise(time, { cutoff: 6500, length: .045, volume: .055 * velocity, type: 'highpass', q: .7 });
     }
 
-    /** Trägt genau einen Trommel-Treffer ein — genutzt vom Sequencer UND vom
-     *  "Halten"-Roll (siehe GrooveLabView._startRoll). Bass läuft separat
-     *  über playBass(), weil er eine Tonhöhe statt nur ein Timing braucht.
-     *  `velocity` (0–1) skaliert die Lautstärke — genutzt für Ghost-Notes
-     *  und die akzentuierte Roll-Rhythmuszelle je Loop. */
     hitTrack(track, time, velocity = 1) {
       if (track === 'kick') this.playKick(time, velocity);
       else if (track === 'snare') this.playSnare(time, velocity);
       else if (track === 'clap') this.playClap(time, velocity);
-      else this.playHat(time, velocity);
+      else this.playHat(time, velocity, track === 'open');
     }
 
-    playBass(time, midi, velocity = 1) {
+    playBass(time, midi, velocity, sound) {
       const ctx = this.ctx;
       const osc = ctx.createOscillator();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
-      osc.type = 'square'; osc.frequency.value = noteHz(midi);
-      filter.type = 'lowpass'; filter.frequency.value = 480; filter.Q.value = 8;
-      gain.gain.setValueAtTime(.2 * velocity, time);
-      gain.gain.exponentialRampToValueAtTime(.0001, time + .14);
-      osc.connect(filter).connect(gain).connect(this.buses.drums);
-      osc.start(time); osc.stop(time + .15);
+      osc.type = sound.wave;
+      osc.frequency.setValueAtTime(noteHz(midi), time);
+      filter.type = 'lowpass'; filter.Q.value = sound.q;
+      filter.frequency.setValueAtTime(sound.cutoff + sound.envAmount, time);
+      if (sound.envAmount) filter.frequency.exponentialRampToValueAtTime(sound.cutoff, time + sound.decay * .8);
+      gain.gain.setValueAtTime(sound.level * velocity, time);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + sound.decay);
+      osc.connect(filter).connect(gain).connect(this.buses.bass);
+      osc.start(time); osc.stop(time + sound.decay + .02);
     }
 
-    playTone(preset, midi, time, velocity, duration) {
+    /* ---- Synth-Stimmen ---- */
+
+    /**
+     * Eine Synth-Note. Mit `duration` wird sie komplett auf der Audio-Uhr
+     * geplant (Anschlag, Hüllkurve, Ausklingen, Stopp) — früher löste ein
+     * setTimeout das Loslassen aus, was im gedrosselten Hintergrund-Tab
+     * hörbar zu spät kam. Ohne `duration` klingt sie, bis releaseVoice().
+     * opts: layer (Ebene/Kanal), stepSeconds (für taktsynchrone LFOs),
+     * glide (überschreibt sound.glide; 0 = aus).
+     */
+    playTone(sound, midi, time, velocity, duration, { layer = 'melody', stepSeconds = .14, glide } = {}) {
       const ctx = this.ctx;
+      const L = this.layers[layer];
+
+      // Stimmenlimit: die älteste Stimme weicht — nie der Liegeton, der
+      // ist absichtlich dauerhaft.
+      if (this.voices.size >= this.maxVoices) {
+        for (const oldest of this.voices) { if (oldest.layer !== 'drone') { this._releaseVoice(oldest, true); break; } }
+      }
+      if (sound.mono) {
+        const prev = this.monoVoice[layer];
+        if (prev && !prev.done) this._releaseVoiceAt(prev, time);
+      }
+
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
-      filter.type = 'lowpass';
       const nyquist = ctx.sampleRate * .45;
-      const baseCutoff = Math.min(preset.cutoff, nyquist);
-      filter.Q.value = preset.resonance;
+      const baseCutoff = Math.min(sound.cutoff, nyquist);
+      filter.type = sound.filterType || 'lowpass';
+      filter.Q.value = sound.resonance;
 
       // Filter-Hüllkurve: dieselbe Attack/Decay-Form wie die Lautstärke,
-      // aber auf den Cutoff gelegt — ein klassischer Analog-Synth-Zug, den
-      // ein starrer Filter nicht hinbekommt (siehe preset.filterEnvAmount).
-      const envAmount = preset.filterEnvAmount || 0;
-      const peakCutoff = Math.min(baseCutoff + envAmount, nyquist);
+      // aber auf den Cutoff gelegt — ein klassischer Analog-Synth-Zug.
+      const attack = Math.max(.003, sound.attack);
+      const peakCutoff = Math.min(baseCutoff + (sound.filterEnvAmount || 0), nyquist);
       filter.frequency.setValueAtTime(baseCutoff, time);
-      filter.frequency.linearRampToValueAtTime(peakCutoff, time + preset.attack);
-      filter.frequency.linearRampToValueAtTime(baseCutoff, time + preset.attack + preset.decay);
+      filter.frequency.linearRampToValueAtTime(peakCutoff, time + attack);
+      filter.frequency.linearRampToValueAtTime(baseCutoff, time + attack + sound.decay);
 
+      // Lautstärke-Hüllkurve. Ist die Note kürzer als Attack+Decay, wird die
+      // Kurve an der Stelle abgeschnitten, statt spätere Rampen stehen zu
+      // lassen, die nach dem Loslassen wieder hochziehen würden.
+      // Pegelausgleich: drei verstimmte Stimmen, ein Sub-Oszillator oder eine
+      // obertonreiche Welle (Säge/Rechteck) machten ein Preset bisher bis zu
+      // doppelt so laut wie ein schlichtes — jetzt klingen alle etwa gleich laut.
+      const voiceCount = 1 + (sound.detune ? 1.1 : 0) + (sound.subLevel || 0) * .6;
+      const peak = velocity * (WAVE_LEVEL[sound.wave] ?? 1) / voiceCount;
+      const sustainLevel = peak * sound.sustain;
       gain.gain.setValueAtTime(.0001, time);
-      gain.gain.linearRampToValueAtTime(velocity, time + preset.attack);
-      gain.gain.linearRampToValueAtTime(velocity * preset.sustain, time + preset.attack + preset.decay);
+      if (duration && duration < attack) {
+        gain.gain.linearRampToValueAtTime(Math.max(.0001, peak * duration / attack), time + duration);
+      } else {
+        gain.gain.linearRampToValueAtTime(peak, time + attack);
+        if (duration && duration < attack + sound.decay) {
+          const v = peak + (sustainLevel - peak) * (duration - attack) / sound.decay;
+          gain.gain.linearRampToValueAtTime(Math.max(.0001, v), time + duration);
+        } else {
+          gain.gain.linearRampToValueAtTime(Math.max(.0001, sustainLevel), time + attack + sound.decay);
+        }
+      }
+      let stopAt = null;
+      if (duration) {
+        gain.gain.setTargetAtTime(0, time + duration, Math.max(.01, sound.release / 4));
+        stopAt = time + duration + sound.release * 1.3 + .05;
+      }
 
       const baseFreq = noteHz(midi);
+      const glideTime = glide ?? sound.glide ?? 0;
+      const fromMidi = this.lastMidi[layer];
+      this.lastMidi[layer] = midi;
+      const setPitch = (param, ratio) => {
+        if (glideTime > 0 && fromMidi !== undefined && fromMidi !== midi) {
+          param.setValueAtTime(noteHz(fromMidi) * ratio, time);
+          param.exponentialRampToValueAtTime(baseFreq * ratio, time + glideTime);
+        } else {
+          param.setValueAtTime(baseFreq * ratio, time);
+        }
+      };
+
       const oscillators = [];
       const lfos = [];
 
-      // Unisono: bei preset.detune zwei zusätzliche, leicht verstimmte
-      // Stimmen dazumischen — macht Chöre/Pads/Bässe dicker, ohne die
-      // wahrgenommene Grundtonhöhe zu verschieben (Cent-Verstimmung ist
-      // symmetrisch nach oben und unten).
-      const detune = preset.detune || 0;
-      const spreads = detune ? [0, detune, -detune] : [0];
-      for (const cents of spreads) {
+      // Unisono: bei sound.detune zwei zusätzliche, leicht verstimmte
+      // Stimmen — mit width links/rechts im Stereobild verteilt.
+      const detune = sound.detune || 0;
+      const spreads = detune ? [[0, 0], [detune, 1], [-detune, -1]] : [[0, 0]];
+      for (const [cents, side] of spreads) {
         const osc = ctx.createOscillator();
-        osc.type = preset.wave;
-        osc.frequency.value = baseFreq;
+        osc.type = sound.wave;
+        osc._ratio = 1;
+        setPitch(osc.frequency, 1);
         osc.detune.value = cents;
 
         const voiceGain = ctx.createGain();
         voiceGain.gain.value = cents === 0 ? 1 : .55;
-        osc.connect(voiceGain).connect(filter);
+        let out = osc.connect(voiceGain);
+        if (side && sound.width && ctx.createStereoPanner) {
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = side * sound.width;
+          out = out.connect(pan);
+        }
+        out.connect(filter);
 
-        // Vibrato: eine Tonhöhen-LFO, die erst nach vibratoDelay einschwingt
-        // (klingt sonst wie Seekrankheit ab der ersten Millisekunde).
-        if (preset.vibratoDepth) {
+        // Vibrato: eine Tonhöhen-LFO, die erst nach vibratoDelay einschwingt.
+        if (sound.vibratoDepth) {
           const lfo = ctx.createOscillator();
-          lfo.frequency.value = preset.vibratoRate || 5;
+          lfo.frequency.value = sound.vibratoRate || 5;
           const lfoGain = ctx.createGain();
-          const delay = preset.vibratoDelay ?? .15;
+          const delay = sound.vibratoDelay ?? .15;
           lfoGain.gain.setValueAtTime(0, time);
           lfoGain.gain.setValueAtTime(0, time + delay);
-          lfoGain.gain.linearRampToValueAtTime(preset.vibratoDepth, time + delay + .25);
+          lfoGain.gain.linearRampToValueAtTime(sound.vibratoDepth, time + delay + .25);
           lfo.connect(lfoGain).connect(osc.detune);
           lfo.start(time);
           lfos.push(lfo);
         }
 
-        // Pitch-Drop: schneller Gleitton von oben in die Zielnote hinein —
-        // gibt Plucks/Bässen/Leads einen perkussiven Anschlag, den eine
-        // starre Tonhöhe nicht hinbekommt.
-        if (preset.pitchDrop) {
-          const glide = Math.max(.02, preset.attack);
-          osc.detune.setValueAtTime(cents + preset.pitchDrop, time);
-          osc.detune.linearRampToValueAtTime(cents, time + glide);
+        // Pitch-Drop: schneller Gleitton von oben in die Zielnote hinein.
+        if (sound.pitchDrop) {
+          const drop = Math.max(.02, attack);
+          osc.detune.setValueAtTime(cents + sound.pitchDrop, time);
+          osc.detune.linearRampToValueAtTime(cents, time + drop);
         }
 
         osc.start(time);
         oscillators.push(osc);
       }
 
-      // Sub-Oszillator: eine Oktave tiefer, immer Sinus (kein Oberton-
-      // Gerassel) — gibt Bässen/Pads Fundament, ohne den Cutoff aufreißen
-      // zu müssen.
-      if (preset.subLevel) {
+      // Sub-Oszillator: eine Oktave tiefer, immer Sinus.
+      if (sound.subLevel) {
         const sub = ctx.createOscillator();
         sub.type = 'sine';
-        sub.frequency.value = baseFreq / 2;
+        sub._ratio = .5;
+        setPitch(sub.frequency, .5);
         const subGain = ctx.createGain();
-        subGain.gain.value = preset.subLevel;
+        subGain.gain.value = sound.subLevel;
         sub.connect(subGain).connect(filter);
         sub.start(time);
         oscillators.push(sub);
       }
 
-      filter.connect(gain).connect(this.buses.synth);
+      // LFO auf den Filter (über filter.detune, also in Cent = Oktaven-
+      // gerecht): frei in Hz oder im Takt (lfoSync in 16teln) — Wah/Wobble.
+      if (sound.lfoDepth && (sound.lfoRate || sound.lfoSync)) {
+        const lfo = ctx.createOscillator();
+        lfo.type = 'triangle';
+        lfo.frequency.value = sound.lfoSync ? 1 / (sound.lfoSync * stepSeconds) : sound.lfoRate;
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = sound.lfoDepth;
+        lfo.connect(lfoGain).connect(filter.detune);
+        lfo.start(time);
+        lfos.push(lfo);
+      }
 
-      const voice = { oscillators, lfos, gain, release: preset.release, done: false };
+      filter.connect(gain).connect(L.input);
+
+      const voice = { oscillators, lfos, gain, filter, envEnd: time + attack + sound.decay, release: sound.release, done: false, layer };
+      if (stopAt !== null) {
+        oscillators.forEach((osc) => osc.stop(stopAt));
+        lfos.forEach((lfo) => lfo.stop(stopAt));
+      }
       this.voices.add(voice);
+      if (sound.mono) this.monoVoice[layer] = voice;
       oscillators[0].addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
-      if (duration) global.setTimeout(() => this._releaseVoice(voice), Math.max(0, (time + duration - ctx.currentTime) * 1000));
       return voice;
+    }
+
+    /** Automation: Filter klingender Stimmen nachführen (nach ihrer
+     *  Filter-Hüllkurve, sonst würde deren Verlauf abgeschnitten). */
+    modulateLive(layers, sound, time) {
+      if (!this.ctx) return;
+      const nyquist = this.ctx.sampleRate / 2 - 100;
+      this.voices.forEach((voice) => {
+        if (voice.done || !voice.filter || !layers.includes(voice.layer) || time < voice.envEnd) return;
+        voice.filter.frequency.setTargetAtTime(Math.min(sound.cutoff, nyquist), time, .03);
+        voice.filter.Q.setTargetAtTime(sound.resonance, time, .03);
+      });
+    }
+
+    /** Stimme auf neue Tonhöhe ziehen (Liegeton folgt der Tonart). */
+    retune(voice, midi, time) {
+      if (!voice || voice.done || !this.ctx) return;
+      voice.oscillators.forEach((osc) => osc.frequency.setTargetAtTime(noteHz(midi) * (osc._ratio || 1), time, .06));
     }
 
     _releaseVoice(voice, fast = false) {
@@ -685,20 +1423,36 @@
       this.voices.delete(voice);
     }
 
+    /** Mono-Modus: die vorige Stimme genau dann abbrechen, wenn die neue
+     *  einsetzt (auf der Audio-Uhr, nicht "jetzt"). */
+    _releaseVoiceAt(voice, time) {
+      try {
+        voice.gain.gain.cancelScheduledValues(time);
+        voice.gain.gain.setTargetAtTime(0, time, .015);
+        voice.oscillators.forEach((osc) => osc.stop(time + .12));
+        voice.lfos.forEach((lfo) => lfo.stop(time + .12));
+      } catch { /* schon beendet */ }
+      voice.done = true;
+      this.voices.delete(voice);
+    }
+
     releaseVoice(voice) { this._releaseVoice(voice, false); }
     releaseVoiceFast(voice) { this._releaseVoice(voice, true); }
+
+    releaseLayers(layers) {
+      this.voices.forEach((voice) => { if (layers.includes(voice.layer)) this._releaseVoice(voice, true); });
+    }
   }
 
   /* ------------------------------------------------------------------------
      Knob — Dreh-Regler für alle Synth-Parameter. 270°-Sweep, Pointer-Drag
-     (vertikal) plus Pfeiltasten für Tastaturbedienung. Kapselt sich selbst
-     vollständig (kein globaler Zustand), damit mehrere Regler nebeneinander
-     unabhängig funktionieren.
+     (vertikal) plus Pfeiltasten. `log: true` für Frequenzen/Zeiten, bei
+     denen die untere Hälfte des Wertebereichs die feinere Hälfte ist.
      ------------------------------------------------------------------------ */
 
   class Knob {
-    constructor({ label, min, max, value, format, onInput }) {
-      this.min = min; this.max = max; this.value = value;
+    constructor({ label, min, max, value, format, onInput, log = false }) {
+      this.min = min; this.max = max; this.value = value; this.log = log && min > 0;
       this.format = format || ((v) => v.toFixed(2));
       this.onInput = onInput;
 
@@ -710,7 +1464,7 @@
           <svg viewBox="0 0 40 40" aria-hidden="true">
             <circle class="knob-track" cx="20" cy="20" r="16"/>
             <circle class="knob-fill" cx="20" cy="20" r="16"/>
-            <circle class="knob-dot" cx="20" cy="6" r="2.4"/>
+            <circle class="knob-dot" cx="20" cy="6" r="2.6"/>
           </svg>
         </button>
         <span class="knob-label">${label}</span>
@@ -720,12 +1474,20 @@
       this.dot = this.el.querySelector('.knob-dot');
       this.fill = this.el.querySelector('.knob-fill');
       this.output = this.el.querySelector('.knob-value');
-
-      this._dragStartY = 0;
-      this._dragStartValue = 0;
       this.button.addEventListener('pointerdown', (e) => this._startDrag(e));
       this.button.addEventListener('keydown', (e) => this._handleKey(e));
       this._render();
+    }
+
+    _toPos(v) {
+      if (this.log) return Math.log(v / this.min) / Math.log(this.max / this.min);
+      return (v - this.min) / (this.max - this.min || 1);
+    }
+
+    _fromPos(p) {
+      const pos = clamp(p, 0, 1);
+      if (this.log) return this.min * Math.pow(this.max / this.min, pos);
+      return this.min + pos * (this.max - this.min);
     }
 
     setValue(value, { silent = true } = {}) {
@@ -737,16 +1499,11 @@
     _startDrag(event) {
       event.preventDefault();
       // Capture kann in seltenen Fällen fehlschlagen (z. B. ein bereits
-      // beendeter Pointer) — das Ziehen selbst funktioniert dann trotzdem,
-      // nur ohne Garantie, dass Loslassen außerhalb des Reglers ankommt.
+      // beendeter Pointer) — das Ziehen selbst funktioniert dann trotzdem.
       try { this.button.setPointerCapture(event.pointerId); } catch { /* siehe oben */ }
-      this._dragStartY = event.clientY;
-      this._dragStartValue = this.value;
-      const move = (e) => {
-        const deltaPx = this._dragStartY - e.clientY; // hoch ziehen = mehr
-        const deltaValue = (deltaPx / 140) * (this.max - this.min);
-        this.setValue(this._dragStartValue + deltaValue, { silent: false });
-      };
+      const startY = event.clientY;
+      const startPos = this._toPos(this.value);
+      const move = (e) => this.setValue(this._fromPos(startPos + (startY - e.clientY) / 150), { silent: false });
       const end = () => {
         this.button.removeEventListener('pointermove', move);
         this.button.removeEventListener('pointerup', end);
@@ -758,19 +1515,19 @@
     }
 
     _handleKey(event) {
-      const step = (this.max - this.min) / 40;
-      if (event.key === 'ArrowUp' || event.key === 'ArrowRight') { event.preventDefault(); this.setValue(this.value + step, { silent: false }); }
-      else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') { event.preventDefault(); this.setValue(this.value - step, { silent: false }); }
+      const delta = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      this.setValue(this._fromPos(this._toPos(this.value) + delta / 40), { silent: false });
     }
 
     _render() {
-      const fraction = (this.value - this.min) / (this.max - this.min || 1);
-      const angle = -135 + fraction * 270;
-      this.dot.setAttribute('transform', `rotate(${angle.toFixed(1)} 20 20)`);
+      const fraction = clamp(this._toPos(this.value), 0, 1);
+      this.dot.setAttribute('transform', `rotate(${(-135 + fraction * 270).toFixed(1)} 20 20)`);
       const circumference = 2 * Math.PI * 16;
-      const arc = circumference * 270 / 360;
-      this.fill.setAttribute('stroke-dasharray', `${(arc * fraction).toFixed(2)} ${circumference}`);
+      this.fill.setAttribute('stroke-dasharray', `${(circumference * .75 * fraction).toFixed(2)} ${circumference}`);
       this.button.setAttribute('aria-valuenow', String(this.value));
+      this.button.setAttribute('aria-valuetext', this.format(this.value));
       this.output.textContent = this.format(this.value);
     }
   }
@@ -786,40 +1543,46 @@
       this.shadowRoot.innerHTML = GrooveLabView.markup();
 
       this.engine = new GrooveEngine();
-      this.state = {
-        bpm: 106,
-        patternIndex: 0,
-        melodyIndex: 0,
-        melodyOn: true,
-        presetIndex: 0,
-        octave: 4,
-        trackOn: { kick: true, snare: true, clap: true, hat: true, bass: true },
-        arpOn: false,
-        arpSourceId: 'latch',
-        arpMode: 'up',
-        arpDivision: 1,
-        arpOctaves: 1,
-        latchOn: false,
-      };
+      this.state = defaultState();
+      this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null,
+        melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [],
+        progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [] };
+      // Einspielen: Phase idle → armed (zählt ein) → recording → done.
+      // Automation aufnehmen: Phase idle → armed (zählt ein) → recording.
+      this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
+      this._soundLabels = {};
+      this.rec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, notes: [], open: new Map(), take: null };
 
       this.playing = false;
-      this.activeTab = 'beat';
       this.globalStep = 0;
       this.nextStepTime = 0;
       this.schedulerTimer = 0;
       this.visualFrame = 0;
       this.scheduledSteps = [];
+      this.shown = null;               // zuletzt angezeigter Schritt {g, h}
 
-      this.keyVoices = new Map();   // pointerId -> { keyEl, voice, midi }
-      this.latchedNotes = new Set(); // MIDI-Noten, per Latch gehalten
-      this.rollTimers = {};          // track -> Timer-Handle des Halten-Rolls
+      this.keyVoices = new Map();      // Pointer-ID/Tastencode -> { keyEl, voice, midi }
+      this.latchedNotes = new Set();   // MIDI-Noten, per Latch gehalten
+      this.rollTimers = {};            // track -> Timer-Handle des Halten-Rolls
+      this.droneVoices = [];
+      this.history = [];               // Undo-Stapel (JSON-Stände)
+      this.tapTimes = [];
+      this._voicingCache = null;
+      this._syncedCtx = null;
+      this._soundKnobs = {};
 
+      this._storage = null;
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [] };
+      this._storageRequested = false;
       this._restoreFocusTo = null;
       this._bodyOverflow = '';
       this._onKeydown = (event) => this._handleKeydown(event);
+      this._onKeyup = (event) => this._handleKeyup(event);
 
       this._wireControls();
-      this._wireKeyboard();
+      this._buildKeyboard();
+      this._wireKeyboard(this.$('.keyboard'), '.key');
+      this._wireKeyboard(this.$('.scale-pads'), '.pad');
       this._renderAll();
       this._setTab('beat');
     }
@@ -829,7 +1592,7 @@
 
     /* ---- Öffentliche API ---- */
 
-    open({ accent } = {}) {
+    open({ accent, storage } = {}) {
       this._restoreFocusTo = document.activeElement;
       this.style.setProperty('--accent', accent || '#f868b0');
       const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent || '');
@@ -837,51 +1600,230 @@
         ? `${parseInt(match[1], 16)},${parseInt(match[2], 16)},${parseInt(match[3], 16)}`
         : '248,104,176');
 
+      if (storage && typeof storage.load === 'function') this._storage = storage;
+      this._loadStorage();
+
       this._bodyOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       this.hidden = false;
       document.addEventListener('keydown', this._onKeydown);
-      requestAnimationFrame(() => this.$('.close-btn')?.focus());
+      document.addEventListener('keyup', this._onKeyup);
+      requestAnimationFrame(() => this.$('.transport-play')?.focus());
     }
 
     async close() {
       this.stop();
       this._releaseAllKeys();
+      this._stopDrone();
+      this.state.droneOn = false;
+      this._closeSheet();
+      this._closePicker({ focus: false });
+      this._saved.last = this._snapshot();
+      this._persist();
       this.hidden = true;
       document.removeEventListener('keydown', this._onKeydown);
+      document.removeEventListener('keyup', this._onKeyup);
       document.body.style.overflow = this._bodyOverflow;
       await this.engine.stop();
+      this._syncedCtx = null;
+      this._renderAll();
       this._restoreFocusTo?.focus?.();
+    }
+
+    /* ---- Speichern ----------------------------------------------------
+       Die Ablage kommt von außen (app.js: IndexedDB-meta-Store, siehe
+       loadGrooveLab-Aufruf), diese Datei kennt keine Datenbank. Ohne
+       Ablage funktionieren Codes und Undo trotzdem, nur nichts überlebt
+       das Schließen. Gemerkt werden vier Speicherplätze plus der letzte
+       Stand beim Schließen. */
+
+    _loadStorage() {
+      if (!this._storage || this._storageRequested) return;
+      this._storageRequested = true;
+      Promise.resolve(this._storage.load()).then((data) => {
+        if (!data || typeof data !== 'object') return;
+        const slots = Array.isArray(data.slots) ? data.slots : [];
+        this._saved.slots = [0, 1, 2, 3].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
+        this._saved.melodies = sanitizeMelodyLibrary(data.melodies);
+        this._saved.progressions = sanitizeProgLibrary(data.progressions);
+        this._renderMelody();
+        this._renderHarmony();
+        // Den letzten Stand nur übernehmen, solange noch nichts gespielt oder
+        // verändert wurde — sonst überschriebe ein langsames Laden Eingaben.
+        if (data.last && !this.playing && !this.history.length) {
+          this.state = sanitizeState(data.last);
+          this._afterStateChange();
+        }
+        this._renderSheet();
+      }).catch((err) => console.warn('[groove-lab] Stand nicht geladen', err));
+    }
+
+    _persist() {
+      if (!this._storage) return;
+      Promise.resolve(this._storage.save(this._saved)).catch((err) => console.warn('[groove-lab] Stand nicht gespeichert', err));
+    }
+
+    _snapshot() {
+      return JSON.parse(JSON.stringify(this.state));
+    }
+
+    _pushHistory() {
+      this.history.push(JSON.stringify(this.state));
+      if (this.history.length > 30) this.history.shift();
+      this._renderTransport();
+    }
+
+    undo() {
+      const prev = this.history.pop();
+      if (!prev) return;
+      this._applyState(sanitizeState(JSON.parse(prev)), { history: false });
+    }
+
+    _applyState(state, { history = true } = {}) {
+      if (history) this._pushHistory();
+      const droneWasOn = this.state.droneOn;
+      this.state = state;
+      this.state.droneOn = droneWasOn;
+      this._afterStateChange();
+    }
+
+    /** Nach jeder größeren Zustandsänderung: Satz neu rechnen, Engine
+     *  angleichen, Liegeton umstimmen, alles neu zeichnen. */
+    _afterStateChange() {
+      this._voicingCache = null;
+      this._syncEngine();
+      this._retuneDrone();
+      this._renderAll();
+    }
+
+    _summary(state) {
+      const pattern = DRUM_PATTERNS[state.patternIndex];
+      const mode = MODES.find((m) => m.id === state.modeId);
+      return `${pattern.name} · ${noteNames()[state.keyRoot]} ${t(mode.nameKey)} · ${state.bpm} BPM`;
     }
 
     /* ---- Reiter ---- */
 
     _setTab(tab) {
-      this.activeTab = tab;
+      this.ui.tab = tab;
       this.$all('.tab-btn').forEach((btn) => btn.setAttribute('aria-selected', String(btn.dataset.tab === tab)));
       this.$all('.tab-panel').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== tab; });
+      this.$('.lab-body').scrollTop = 0;
+    }
+
+    /* ---- Abgeleitete Werte ---- */
+
+    _pattern() { return DRUM_PATTERNS[this.state.patternIndex]; }
+    _meter() { return this._pattern().meter; }
+    _barSteps() { return METERS[this._meter()].steps; }
+    _stepSeconds() { return 60 / this.state.bpm / 4; }
+    _mode() { return MODES.find((m) => m.id === this.state.modeId) || MODES[0]; }
+    /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
+    _progression() {
+      const s = this.state;
+      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+      if (!s.progDegrees) return base;
+      return { ...base, degrees: s.progDegrees, sevenths: s.progSevenths, custom: true };
+    }
+    _progName() {
+      const s = this.state;
+      return s.progName || t(progKey('Name', (PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0]).id));
+    }
+    _clearProgEdit() {
+      const s = this.state;
+      s.progDegrees = null; s.progSevenths = false; s.progName = null; s.progOwnId = null;
+      this.ui.progUndo = []; this.ui.progRedo = []; this.ui.progSel = 0;
+    }
+    /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
+    _melody() {
+      const s = this.state;
+      const base = MELODIES[s.melodyIndex];
+      if (!s.melodyBars) return base;
+      return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars };
+    }
+    _clearMelodyEdit() {
+      const s = this.state;
+      s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null;
+      this.ui.melUndo = []; this.ui.melRedo = []; this.ui.melBar = 0;
+    }
+    _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
+
+    /** Harmonie an einem Schritt: Tonart, Modus, Akkordstufe. */
+    _harmonyAt(g) {
+      const s = this.state;
+      const prog = this._progression();
+      const barSteps = this._barSteps();
+      const bar = Math.floor(g / barSteps);
+      const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
+      return {
+        keyRoot: s.keyRoot, steps: this._mode().steps, deg: prog.degrees[index], sevenths: !!prog.sevenths,
+        index, chordStart: g % (barSteps * s.chordBars) === 0,
+      };
+    }
+
+    _currentHarmony() { return this.shown?.h || this._harmonyAt(0); }
+
+    /** Vierstimmiger Satz für alle Akkorde der aktuellen Folge — einmal je
+     *  Tonart/Modus/Folge gerechnet. Zweiter Durchlauf ab dem letzten
+     *  Akkord, damit auch der Übergang Ende → Anfang geführt ist. */
+    _voicings() {
+      const s = this.state;
+      const prog = this._progression();
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}`;
+      if (this._voicingCache?.key === key) return this._voicingCache.list;
+      const steps = this._mode().steps;
+      let prev = { S: 67, A: 62, T: 55, B: 48 };
+      let list = [];
+      for (let pass = 0; pass < 2; pass++) {
+        list = prog.degrees.map((deg) => {
+          prev = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), prev);
+          return prev;
+        });
+      }
+      this._voicingCache = { key, list };
+      return list;
+    }
+
+    _bassMidi(h, bassDeg) {
+      const rootSemis = degreeSemis(h.steps, h.deg);
+      return 36 + mod(h.keyRoot + rootSemis, 12) + degreeSemis(h.steps, h.deg + bassDeg) - rootSemis;
     }
 
     /* ---- Transport ---- */
 
+    async _ensureAudio() {
+      await this.engine.start();
+      if (this._syncedCtx !== this.engine.ctx) {
+        this._syncedCtx = this.engine.ctx;
+        this._syncEngine();
+      }
+    }
+
+    _syncEngine() {
+      if (!this.engine.ready) return;
+      const s = this.state;
+      this.engine.setMaster(s.mix.master);
+      for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] ? 0 : s.mix[bus]);
+      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, s.sound);
+      this.engine.setLayerSound('chords', CHORD_SOUND);
+      this.engine.setLayerSound('drone', DRONE_SOUND);
+      this.engine.setFx(s.fx, this._stepSeconds());
+    }
+
     async start() {
       try {
-        await this.engine.start();
-        this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]);
+        await this._ensureAudio();
       } catch {
         this._setStatus(t('lab.statusNoAudioDevice'));
         return;
       }
       this.playing = true;
+      this._stopArpClock(); // ab jetzt spielt der Arp im Groove-Scheduler
       this.globalStep = 0;
       this.scheduledSteps.length = 0;
-      this.nextStepTime = this.engine.ctx.currentTime + .05;
-
-      const btn = this.$('.transport-play');
-      btn.innerHTML = UI_ICON.pause;
-      btn.setAttribute('aria-label', 'Groove pausieren');
+      this.nextStepTime = this.engine.ctx.currentTime + .06;
+      this._renderTransport();
       this._setStatus(t('lab.statusRunning'));
-
       this._scheduleAhead();
       this._drawSteps();
     }
@@ -893,24 +1835,74 @@
       this.schedulerTimer = 0;
       this.visualFrame = 0;
       this.scheduledSteps.length = 0;
-
-      this.engine.voices.forEach((voice) => this.engine.releaseVoiceFast(voice));
-
-      this.$all('.step-cell').forEach((cell) => cell.classList.remove('is-now'));
-      const btn = this.$('.transport-play');
-      btn.innerHTML = UI_ICON.play;
-      btn.setAttribute('aria-label', t('lab.startAria'));
+      this.shown = null;
+      // Liegeton und gehaltene Tasten laufen unabhängig vom Transport weiter.
+      if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
+      this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
+      this._showMelodyStep(-1);
+      this._showRecLoopStep(-1);
+      if (this.autoRec.phase !== 'idle') this._autoFinish();
+      if (this.rec.phase === 'recording') this._recFinish();
+      else if (this.rec.phase === 'armed') { this.rec.phase = 'idle'; this._renderRec(); }
+      this._renderTransport();
+      this._renderNow();
       this._setStatus(t('lab.statusReady'));
+      this._ensureArpClock(); // noch gehaltene Tasten: der Arp läuft allein weiter
     }
 
     randomize() {
+      this._pushHistory();
       const s = this.state;
-      s.patternIndex = Math.floor(Math.random() * DRUM_PATTERNS.length);
-      s.melodyIndex = Math.floor(Math.random() * MELODIES.length);
-      s.presetIndex = Math.floor(Math.random() * SYNTH_PRESETS.length);
-      s.bpm = [86, 94, 102, 108, 116, 124, 132][Math.floor(Math.random() * 7)];
-      this._renderAll();
-      if (this.engine.ready) this.engine.applyPreset(SYNTH_PRESETS[s.presetIndex]);
+      const locks = s.locks;
+      if (!locks.beat) {
+        s.patternIndex = Math.floor(Math.random() * DRUM_PATTERNS.length);
+        s.beat = beatFromPattern(this._pattern());
+        s.beatEdited = false;
+        s.bpm = pick([78, 86, 94, 102, 108, 116, 124, 132]);
+        s.swing = pick([0, 0, 0, .25, .45]);
+      }
+      if (!locks.harmony) {
+        s.keyRoot = Math.floor(Math.random() * 12);
+        s.modeId = pick(MODES).id;
+        s.progId = pick(PROGRESSIONS.filter((p) => p.id !== 'drone')).id;
+        this._clearProgEdit();
+      }
+      if (!locks.melody) {
+        const candidates = MELODIES.map((m, i) => [m, i]).filter(([m]) => m.meter === this._meter());
+        s.melodyIndex = pick(candidates)[1];
+        this._clearMelodyEdit();
+      }
+      this._ensureMelodyMeter();
+      if (!locks.sound) {
+        const byCat = (cat) => SYNTH_PRESETS.map((p, i) => [p, i]).filter(([p]) => p.cat === cat).map(([, i]) => i);
+        s.sound = soundFromPreset(pick([...byCat('lead'), ...byCat('keys'), ...byCat('pad')]));
+      }
+      this._afterStateChange();
+    }
+
+    /** Melodie und Loop müssen dieselbe Taktart haben — sonst wählt der
+     *  Wechsel des Loops still die erste passende Melodie. */
+    _ensureMelodyMeter() {
+      const s = this.state;
+      if (s.melodyBars && s.melodyMeter !== this._meter()) this._clearMelodyEdit();
+      if (MELODIES[s.melodyIndex].meter === this._meter()) return;
+      s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === this._meter()));
+    }
+
+    _tapTempo() {
+      const now = performance.now();
+      this.tapTimes = this.tapTimes.filter((time) => now - time < 2500);
+      this.tapTimes.push(now);
+      if (this.tapTimes.length < 2) return;
+      const recent = this.tapTimes.slice(-5);
+      const avg = (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
+      this.state.bpm = clamp(Math.round(60000 / avg), 40, 180);
+      this._onTempoChange();
+    }
+
+    _onTempoChange() {
+      this.engine.setFx(this.state.fx, this._stepSeconds());
+      this._renderTransport();
     }
 
     /* ---- Lookahead-Scheduler ---- */
@@ -918,73 +1910,220 @@
     _scheduleAhead() {
       if (!this.playing) return;
       const ctx = this.engine.ctx;
-      const stepSeconds = 60 / this.state.bpm / 4;
-
       while (this.nextStepTime < ctx.currentTime + .1) {
-        this._playStep(this.globalStep, this.nextStepTime);
-        this.scheduledSteps.push({ step: this.globalStep % STEP_COUNT, time: this.nextStepTime });
-        this.nextStepTime += stepSeconds;
+        const g = this.globalStep;
+        const h = this._harmonyAt(g);
+        if (this.autoRec.phase === 'armed' && g === this.autoRec.startStep) {
+          this.autoRec.startTime = this.nextStepTime;
+          this.autoRec.stepSec = this._stepSeconds();
+        }
+        if (this.rec.phase === 'armed' && g === this.rec.startStep) {
+          this.rec.startTime = this.nextStepTime;
+          this.rec.stepSec = this._stepSeconds();
+        }
+        this._playStep(g, this.nextStepTime, h);
+        this.scheduledSteps.push({ g, time: this.nextStepTime, h });
+        this.nextStepTime += this._stepSeconds();
         this.globalStep++;
       }
       this.schedulerTimer = global.setTimeout(() => this._scheduleAhead(), 25);
     }
 
-    _playStep(globalStep, time) {
-      const pattern = DRUM_PATTERNS[this.state.patternIndex];
-      const drumStep = globalStep % STEP_COUNT;
-      const stepSeconds = 60 / this.state.bpm / 4;
-      for (const track of TRACK_IDS) {
-        if (!this.state.trackOn[track]) continue;
-        if (!stepsForTrack(pattern, track).includes(drumStep)) continue;
-        // Die Basslinie hat eine eigene Notenfolge (siehe DRUM_PATTERNS) —
-        // sie soll nicht einfach die Kick-Tonhöhe wiederholen.
-        if (track === 'bass') this.engine.playBass(time, 36 + bassOffsetForStep(pattern, drumStep));
-        else {
-          // Ghost-Notes der Snare leiser als die "echten" Treffer.
-          const velocity = (track === 'snare' && pattern.ghost?.includes(drumStep)) ? .45 : 1;
-          this.engine.hitTrack(track, time, velocity);
-        }
+    _playStep(g, time, h) {
+      const s = this.state;
+      this._playAutomation(g, time);
+      const stepSec = this._stepSeconds();
+      const barSteps = this._barSteps();
+      const step = g % barSteps;
+      // Swing: jede zweite Sechzehntel bis zu einer halben Sechzehntel später.
+      const swung = time + (step % 2 === 1 ? s.swing * .5 * stepSec : 0);
+
+      const beat = s.beat;
+      for (const track of DRUM_TRACKS) {
+        const value = beat[track]?.[step];
+        if (value === undefined || !s.trackOn[track]) continue;
+        this.engine.hitTrack(track, swung, value);
+        if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
+      }
+      if (s.trackOn.bass && beat.bass?.[step] !== undefined) {
+        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound());
       }
 
-      if (this.state.melodyOn) {
-        const melody = MELODIES[this.state.melodyIndex];
-        const bars = melody.bars || 1;
-        const melodyStep = globalStep % (bars * STEP_COUNT);
-        for (const [at, offset, lengthSteps] of melody.notes) {
-          if (at === melodyStep) {
-            const midi = 60 + offset + (this.state.octave - 4) * 12;
-            this.engine.playTone(SYNTH_PRESETS[this.state.presetIndex], midi, time, .17, lengthSteps * stepSeconds);
-          }
-        }
-      }
+      if (h.chordStart && s.chordsOn) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
+      // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
+      // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
+      const recPhase = this.rec.phase;
+      if (recPhase === 'done') {
+        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars);
+      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
 
-      if (this.state.arpOn && globalStep % this.state.arpDivision === 0) {
-        const pool = this._arpPool();
-        if (pool.length) {
-          const phase = Math.floor(globalStep / this.state.arpDivision);
-          const midi = pool[this._arpIndex(phase, pool.length)];
-          this.engine.playTone(SYNTH_PRESETS[this.state.presetIndex], midi, time, .13, stepSeconds);
-        }
+      if (s.arpOn) {
+        const trigger = this._arpTrigger(g);
+        if (trigger) this._playArp(trigger, swung, h);
       }
     }
 
-    /** Notenvorrat des Arps: entweder die per Latch gehaltenen Tastatur-Noten
-     *  oder ein gewählter Akkord, über die eingestellte Oktavzahl gestreut. */
-    _arpPool() {
-      const root = 12 * (this.state.octave + 1);
-      let base;
-      if (this.state.arpSourceId === 'latch') {
-        base = Array.from(this.latchedNotes).sort((a, b) => a - b);
+    /**
+     * Fällt auf diesen Sechzehntel-Schritt ein Arp-Ton? Liefert dessen
+     * laufende Nummer (für die Tonfolge) und Länge in Schritten, sonst null.
+     * "Gerade" = alle arpDivision Schritte; die punktierten Rhythmen
+     * wiederholen eine Längen-Zelle (lang–kurz, kurz–lang, Galopp) auf Basis
+     * einer Achtel (bzw. Viertel bei langsamem Tempo) — Sechzehntel lassen
+     * sich im Schrittraster nicht weiter teilen.
+     */
+    _arpTrigger(g) {
+      const s = this.state;
+      const cells = ARP_RHYTHMS.find(([id]) => id === s.arpRhythm)?.[2];
+      if (!cells) return g % s.arpDivision === 0 ? { index: g / s.arpDivision, len: s.arpDivision } : null;
+      const unit = s.arpDivision >= 4 ? 4 : 2;
+      const lengths = cells.map((c) => c * unit);
+      const cycle = lengths.reduce((a, b) => a + b, 0);
+      const pos = g % cycle;
+      let at = 0;
+      for (let i = 0; i < lengths.length; i++) {
+        if (pos === at) return { index: Math.floor(g / cycle) * lengths.length + i, len: lengths[i] };
+        at += lengths[i];
+      }
+      return null;
+    }
+
+    /** Ein Arp-Ton — vom Groove-Scheduler (im Takt, mit Swing) oder, wenn
+     *  der Groove steht, von der eigenen Arp-Uhr (_ensureArpClock). */
+    _playArp({ index, len }, time, h) {
+      const s = this.state;
+      const seq = this._arpSequence(h);
+      if (!seq.length) return;
+      const stepSec = this._stepSeconds();
+      const midi = seq[this._arpIndex(index, seq.length)];
+      this.engine.playTone(s.sound, midi, time, .15, stepSec * len * .9, { layer: 'arp', stepSeconds: stepSec });
+      this._flashKey(midi, time);
+    }
+
+    /** Manuell: Arp gibt es, sobald er an und nicht auf Automatik ist. */
+    _arpManual() { return this.state.arpOn && !this.state.arpAuto; }
+    /** "Halten" wirkt nur im manuellen Arp. */
+    _latchActive() { return this._arpManual() && this.ui.latchOn; }
+
+    /** Die gewählten Töne in der Reihenfolge, in der sie gedrückt wurden:
+     *  mit "Halten" die gesammelten, sonst die gerade gedrückten. */
+    _arpHeld() {
+      if (this._latchActive()) return [...this.latchedNotes];
+      const notes = [];
+      this.keyVoices.forEach((held) => { if (!notes.includes(held.midi)) notes.push(held.midi); });
+      return notes;
+    }
+
+    /** Ton k Tonleiterstufen über einer Taste (in der gewählten Tonart;
+     *  liegt die Taste außerhalb, gelten Dur-Abstände). */
+    _diatonicAbove(midi, k) {
+      if (!k) return midi;
+      const steps = this._mode().steps;
+      const d = steps.indexOf(mod(midi - this.state.keyRoot, 12));
+      if (d === -1) return midi + ({ 2: 4, 4: 7, 6: 10, 7: 12 }[k] ?? 0);
+      return midi + degreeSemis(steps, d + k) - steps[d];
+    }
+
+    /**
+     * Die Tonfolge des Arps, noch vor der Richtung:
+     * - automatisch: das Muster ab dem Grundton des aktuellen Akkords (nur
+     *   solange der Groove läuft — ohne Groove gibt es keine Harmonie);
+     * - manuell: jede gewählte Taste nach dem Muster erweitert, in der
+     *   Reihenfolge des Drückens.
+     * Danach über die Oktavzahl gestreut. Außer bei "Spielreihenfolge" wird
+     * aufsteigend sortiert, damit auf-/abwärts wirklich steigt bzw. fällt.
+     */
+    _arpSequence(h) {
+      const s = this.state;
+      let seq = [];
+      if (s.arpAuto) {
+        if (!h || !this.playing) return [];
+        const offsets = ARP_AUTO_PATTERNS.find(([id]) => id === s.arpAutoPattern)[2];
+        const root = 12 * (s.octave + 1) + foldRoot(h.keyRoot);
+        const deg = foldDegree(h.deg);
+        seq = offsets.map((o) => root + degreeSemis(h.steps, deg + o));
       } else {
-        const source = ARP_SOURCES.find((s) => s.id === this.state.arpSourceId) || ARP_SOURCES[1];
-        base = source.intervals.map((iv) => root + iv);
+        const offsets = ARP_PATTERNS.find(([id]) => id === s.arpPattern)[2];
+        seq = this._arpHeld().flatMap((midi) => offsets.map((o) => this._diatonicAbove(midi, o)));
       }
-      if (!base.length) return [];
-      const pool = [];
-      for (let oct = 0; oct < this.state.arpOctaves; oct++) {
-        for (const midi of base) pool.push(midi + oct * 12);
+      if (!seq.length) return [];
+      const spread = [];
+      for (let oct = 0; oct < s.arpOctaves; oct++) for (const midi of seq) spread.push(midi + oct * 12);
+      if (s.arpMode === 'order') return spread;
+      return [...new Set(spread)].sort((a, b) => a - b);
+    }
+
+    /**
+     * Arp-Uhr für den Fall, dass der Groove NICHT läuft: Sobald Tasten
+     * gewählt sind, spielt der manuelle Arp trotzdem — im eingestellten
+     * Tempo, auf der Audio-Uhr vorausgeplant wie der Haupt-Scheduler. Sie
+     * endet von selbst, wenn nichts mehr gewählt ist oder der Groove startet
+     * (dann übernimmt dessen Scheduler, taktgenau mit Beat und Swing).
+     */
+    _ensureArpClock() {
+      if (this.playing || !this._arpManual() || this._arpTimer || !this.engine.ready) return;
+      if (!this._arpHeld().length) return;
+      const ctx = this.engine.ctx;
+      let step = 0;
+      let next = ctx.currentTime + .03;
+      const tick = () => {
+        if (this.playing || !this._arpManual() || !this.engine.ready || !this._arpHeld().length) { this._arpTimer = 0; return; }
+        while (next < ctx.currentTime + .1) {
+          const trigger = this._arpTrigger(step);
+          if (trigger) this._playArp(trigger, next, null);
+          next += this._stepSeconds();
+          step++;
+        }
+        this._arpTimer = global.setTimeout(tick, 25);
+      };
+      tick();
+    }
+
+    _stopArpClock() {
+      global.clearTimeout(this._arpTimer);
+      this._arpTimer = 0;
+    }
+
+    /** Taste kurz aufleuchten lassen, wenn der Arp sie spielt (zur geplanten Zeit). */
+    _flashKey(midi, time) {
+      const el = this._keyElFor(midi);
+      if (!el || !this.engine.ready) return;
+      const delay = Math.max(0, (time - this.engine.ctx.currentTime) * 1000);
+      global.setTimeout(() => {
+        el.classList.add('is-arp');
+        global.setTimeout(() => el.classList.remove('is-arp'), 110);
+      }, delay);
+    }
+
+    _playChord(h, time, duration) {
+      const voicing = this._voicings()[h.index];
+      if (!voicing) return;
+      const s = this.state;
+      const anyFocus = SATB.some((v) => s.satb[v] === 'focus');
+      for (const voice of SATB) {
+        const mode = s.satb[voice];
+        if (mode === 'mute') continue;
+        const velocity = mode === 'focus' ? .22 : anyFocus ? .05 : .11;
+        this.engine.playTone(CHORD_SOUND, voicing[voice], time, velocity, duration * .97,
+          { layer: 'chords', glide: 0, stepSeconds: this._stepSeconds() });
       }
-      return pool;
+    }
+
+    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars) {
+      const s = this.state;
+      const barSteps = this._barSteps();
+      const notes = bars[Math.floor(g / barSteps) % bars.length];
+      const step = g % barSteps;
+      const shift = foldDegree(h.deg);
+      const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
+      for (const [at, deg, len, alt = 0] of notes) {
+        // Eingespielte Töne liegen zwischen den Sechzehnteln: im Schritt, in
+        // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
+        if (Math.floor(at) !== step) continue;
+        const midi = base + degreeSemis(h.steps, deg + shift) + alt;
+        const barIndex = Math.floor(g / barSteps) % bars.length;
+        const room = bars.length * barSteps - (barIndex * barSteps + at);
+        this.engine.playTone(s.sound, midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
+      }
     }
 
     _arpIndex(phase, n) {
@@ -995,20 +2134,33 @@
         return p < n ? p : cycle - p;
       }
       if (this.state.arpMode === 'random') return Math.floor(Math.random() * n);
-      return phase % n; // 'up'
+      return phase % n; // 'up' und 'order' (die Folge ist dann schon so geordnet)
     }
+
+    /* ---- Anzeige im Takt ---- */
 
     _drawSteps() {
       if (!this.playing) return;
-      const ctx = this.engine.ctx;
-      let latestStep;
-      while (this.scheduledSteps.length && this.scheduledSteps[0].time <= ctx.currentTime + .01) {
-        latestStep = this.scheduledSteps.shift().step;
+      const now = this.engine.ctx.currentTime;
+      let latest;
+      while (this.scheduledSteps.length && this.scheduledSteps[0].time <= now + .01) latest = this.scheduledSteps.shift();
+      if (latest) {
+        const chordChanged = latest.h.index !== this.shown?.h?.index;
+        this.shown = latest;
+        this._showStep(latest, chordChanged);
       }
-      if (latestStep !== undefined) {
-        this.$all('.step-cell').forEach((cell) => cell.classList.toggle('is-now', Number(cell.dataset.step) === latestStep));
-      }
+      if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recTick(now);
+      if (this.autoRec.phase !== 'idle') this._autoTick(now);
       this.visualFrame = global.requestAnimationFrame(() => this._drawSteps());
+    }
+
+    _showStep({ g }, chordChanged) {
+      const step = g % this._barSteps();
+      this.$all('.track-list .step-cell').forEach((cell) => cell.classList.toggle('is-now', Number(cell.dataset.step) === step));
+      this._renderBeatDots(step);
+      this._showMelodyStep(g);
+      this._showRecLoopStep(g);
+      if (chordChanged) this._renderNow();
     }
 
     _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
@@ -1018,25 +2170,24 @@
 
     async _startRoll(track) {
       if (this.rollTimers[track]) return;
-      try { await this.engine.start(); this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]); }
-      catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
-
-      const pattern = DRUM_PATTERNS[this.state.patternIndex];
-      const cell = (pattern.roll && pattern.roll.length) ? pattern.roll : [[1, 1]];
-      const notes = pattern.bassNotes?.length ? pattern.bassNotes : [0];
-      const stepSeconds = () => 60 / this.state.bpm / 4;
+      try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+      const pattern = this._pattern();
+      const cell = pattern.roll?.length ? pattern.roll : [[1, 1]];
+      const bassSteps = Object.values(this.state.beat.bass);
+      const notes = bassSteps.length ? bassSteps : [0];
       let cellIndex = 0;
       let bassIndex = 0;
       const tick = () => {
         const [duration, velocity] = cell[cellIndex % cell.length];
+        const now = this.engine.ctx.currentTime;
         if (track === 'bass') {
-          this.engine.playBass(this.engine.ctx.currentTime, 36 + notes[bassIndex % notes.length], velocity);
+          this.engine.playBass(now, this._bassMidi(this._currentHarmony(), notes[bassIndex % notes.length]), velocity, this._bassSound());
           bassIndex++;
         } else {
-          this.engine.hitTrack(track, this.engine.ctx.currentTime, velocity);
+          this.engine.hitTrack(track, now, velocity);
         }
         cellIndex++;
-        this.rollTimers[track] = global.setTimeout(tick, Math.max(30, duration * stepSeconds() * 1000));
+        this.rollTimers[track] = global.setTimeout(tick, Math.max(30, duration * this._stepSeconds() * 1000));
       };
       tick();
     }
@@ -1046,77 +2197,128 @@
       delete this.rollTimers[track];
     }
 
-    /* ---- Rendering ---- */
+    /* ---- Liegeton ---- */
 
-    _renderAll() {
-      this._renderGrid('.pattern-grid', DRUM_PATTERNS, this.state.patternIndex, (i) => { this.state.patternIndex = i; this._renderAll(); }, (p) => pictogramIcon(p.icon));
-      this._renderGrid('.melody-grid', MELODIES, this.state.melodyIndex, (i) => { this.state.melodyIndex = i; this._renderAll(); }, (m) => pictogramIcon(m.icon));
-      this._renderGrid('.preset-grid', SYNTH_PRESETS, this.state.presetIndex, (i) => this._selectPreset(i), (p) => pictogramIcon(p.icon));
-
-      this.$('.pattern-name').textContent = DRUM_PATTERNS[this.state.patternIndex].name;
-      const melody = MELODIES[this.state.melodyIndex];
-      this.$('.melody-name').textContent = t('lab.melodyBars')
-        .replace('{name}', melody.name).replace('{bars}', melody.bars || 1);
-      this.$('.preset-name').textContent = SYNTH_PRESETS[this.state.presetIndex].name;
-
-      this._renderTracks();
-      this._renderSynthControls();
-      this._renderOctaves();
-      this._renderArpSources();
-
-      const melodyBtn = this.$('.melody-toggle');
-      melodyBtn.setAttribute('aria-pressed', String(this.state.melodyOn));
-      melodyBtn.textContent = t(this.state.melodyOn ? 'lab.melodyOn' : 'lab.melodyOff');
-
-      const arpBtn = this.$('.arp-toggle');
-      arpBtn.setAttribute('aria-pressed', String(this.state.arpOn));
-      arpBtn.textContent = t(this.state.arpOn ? 'lab.arpOn' : 'lab.arpOff');
-
-      const latchBtn = this.$('.latch-toggle');
-      latchBtn.setAttribute('aria-pressed', String(this.state.latchOn));
-
-      this.$all('.bpm-input').forEach((el) => { el.value = this.state.bpm; });
-      this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
-      this.$('[data-field="arpMode"]').value = this.state.arpMode;
-      this.$('[data-field="arpDivision"]').value = String(this.state.arpDivision);
-      this.$('[data-field="arpOctaves"]').value = String(this.state.arpOctaves);
+    _droneMidis(pc) {
+      const root = 48 + foldRoot(mod(pc, 12));
+      return this.state.droneFifth ? [root - 12, root, root + 7] : [root - 12, root];
     }
 
-    _renderGrid(hostSelector, items, activeIndex, onPick, iconFor) {
-      const host = this.$(hostSelector);
-      host.replaceChildren(...items.map((item, index) => {
+    async _setDrone(on) {
+      this.state.droneOn = on;
+      if (on) {
+        try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); this.state.droneOn = false; this._renderHarmony(); return; }
+        this._startDrone();
+      } else {
+        this._stopDrone();
+      }
+      this._renderHarmony();
+    }
+
+    _startDrone() {
+      this._stopDrone();
+      if (!this.engine.ready) return;
+      const now = this.engine.ctx.currentTime;
+      this.droneVoices = this._droneMidis(this.state.keyRoot).map((midi, i) =>
+        this.engine.playTone(DRONE_SOUND, midi, now, i === 0 ? .12 : .16, undefined, { layer: 'drone', glide: 0 }));
+    }
+
+    _stopDrone() {
+      this.droneVoices.forEach((voice) => this.engine.releaseVoice(voice));
+      this.droneVoices = [];
+    }
+
+    _retuneDrone(pc = this.state.keyRoot, time) {
+      if (!this.state.droneOn || !this.droneVoices.length || !this.engine.ready) return;
+      const at = time ?? this.engine.ctx.currentTime;
+      this._droneMidis(pc).forEach((midi, i) => this.engine.retune(this.droneVoices[i], midi, at));
+    }
+
+    /* ======================================================================
+       RENDERING
+       ====================================================================== */
+
+    _renderAll() {
+      this._renderBeat();
+      this._renderHarmony();
+      this._renderMelody();
+      this._renderSound();
+      this._renderMixer();
+      this._renderKeys();
+      this._renderRec();
+      this._renderTransport();
+      this._renderNow();
+    }
+
+    /** Chip-Reihe: gleiche Optik und Bedienung für alle Einfach-Auswahlen. */
+    _chips(host, items, active, action) {
+      // Eine vorangestellte Beschriftung ("Filter:") bleibt stehen.
+      const label = host.querySelector(':scope > .chip-label');
+      host.replaceChildren(...(label ? [label] : []), ...items.map(({ value, label: text, title }) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'pick-cell';
-        btn.title = item.name;
-        btn.setAttribute('aria-label', item.name);
-        btn.setAttribute('aria-pressed', String(index === activeIndex));
-        btn.innerHTML = iconFor(item);
-        btn.addEventListener('click', () => onPick(index));
+        btn.className = 'chip';
+        btn.dataset.action = action;
+        btn.dataset.value = String(value);
+        btn.textContent = text;
+        if (title) btn.title = title;
+        btn.setAttribute('aria-pressed', String(String(value) === String(active)));
         return btn;
       }));
     }
 
-    _selectPreset(index) {
-      this.state.presetIndex = index;
-      this._renderAll();
-      if (this.engine.ready) this.engine.applyPreset(SYNTH_PRESETS[index]);
+    _options(select, entries, value) {
+      select.replaceChildren(...entries.map(([v, label]) => {
+        const opt = document.createElement('option');
+        opt.value = String(v);
+        opt.textContent = label;
+        return opt;
+      }));
+      select.value = String(value);
+    }
+
+    _setSwitch(key, on) {
+      const input = this.$(`[data-switch="${key}"]`);
+      if (input) input.checked = !!on;
+    }
+
+    _renderLock(which) {
+      const btn = this.$(`[data-action="lock"][data-lock="${which}"]`);
+      if (!btn) return;
+      const locked = this.state.locks[which];
+      btn.setAttribute('aria-pressed', String(locked));
+      btn.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+    }
+
+    /* ---- Beat ---- */
+
+    _renderBeat() {
+      const s = this.state;
+      this._renderPickerFor('beat');
+      this.$('.reset-beat').hidden = !s.beatEdited;
+      this._renderLock('beat');
+      this._renderTracks();
+
+      this.$('[data-field="swing"]').value = String(s.swing);
+      this.$('[data-out="swing"]').textContent = `${Math.round(s.swing * 100)} %`;
+      this.$('[data-field="pump"]').value = String(s.pump);
+      this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
+      this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
     }
 
     _renderTracks() {
-      const pattern = DRUM_PATTERNS[this.state.patternIndex];
+      const s = this.state;
+      const meter = METERS[this._meter()];
       const host = this.$('.track-list');
       host.replaceChildren(...TRACK_IDS.map((track) => {
-        const on = this.state.trackOn[track];
-        const hits = stepsForTrack(pattern, track);
-
+        const on = s.trackOn[track];
         const row = document.createElement('div');
         row.className = `track-row${on ? '' : ' is-off'}`;
 
         const roll = document.createElement('button');
         roll.type = 'button';
         roll.className = 'track-roll';
-        roll.setAttribute('aria-label', t('lab.rollAria').replace('{track}', trackLabel(track)));
+        roll.setAttribute('aria-label', tf('lab.rollAria', { track: trackLabel(track) }));
         roll.title = t('lab.rollTitle');
         roll.innerHTML = svg('<circle cx="12" cy="12" r="7"/>');
         roll.addEventListener('pointerdown', (e) => {
@@ -1139,350 +2341,1754 @@
 
         const cells = document.createElement('div');
         cells.className = 'step-row';
-        for (let i = 0; i < STEP_COUNT; i++) {
-          const cellEl = document.createElement('i');
-          cellEl.className = `step-cell${hits.includes(i) ? ' is-hit' : ''}`;
-          cellEl.dataset.step = String(i);
-          cells.append(cellEl);
+        cells.style.gridTemplateColumns = `repeat(${meter.steps}, 1fr)`;
+        for (let i = 0; i < meter.steps; i++) {
+          const value = s.beat[track][i];
+          const cell = document.createElement('button');
+          cell.type = 'button';
+          cell.tabIndex = -1;
+          cell.className = 'step-cell';
+          cell.dataset.action = 'cell';
+          cell.dataset.track = track;
+          cell.dataset.step = String(i);
+          // Zählzeit-Gruppen abwechselnd leicht getönt — ein zusätzlicher
+          // Rand an der Gruppengrenze machte einzelne Zellen schmaler.
+          if (Math.floor(i / meter.group) % 2 === 1) cell.classList.add('is-alt');
+          if (value !== undefined) {
+            cell.classList.add('is-hit');
+            if (track === 'snare' && value < 1) cell.classList.add('is-soft');
+            // Stufe als Intervallzahl: 1 = Grundton, 5 = Quinte, 8 = Oktave,
+            // 7 = Ton unter dem Grundton.
+            if (track === 'bass') cell.dataset.label = String(value < 0 ? value + 8 : value + 1);
+          }
+          cell.setAttribute('aria-label', `${trackLabel(track)} ${i + 1}`);
+          cells.append(cell);
         }
 
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.className = 'track-toggle';
+        toggle.dataset.action = 'track-toggle';
+        toggle.dataset.value = track;
         toggle.setAttribute('aria-pressed', String(on));
-        toggle.textContent = on ? 'an' : 'aus';
-        toggle.addEventListener('click', () => {
-          this.state.trackOn[track] = !this.state.trackOn[track];
-          this._renderTracks();
-        });
+        toggle.setAttribute('aria-label', trackLabel(track));
+        toggle.textContent = t(on ? 'lab.trackOn' : 'lab.trackOff');
 
         row.append(roll, label, cells, toggle);
         return row;
       }));
     }
 
-    _renderSynthControls() {
-      const preset = SYNTH_PRESETS[this.state.presetIndex];
+    _toggleCell(track, step) {
+      const s = this.state;
+      const cycle = CELL_CYCLE[track];
+      const current = s.beat[track][step];
+      const index = current === undefined ? -1 : cycle.indexOf(current);
+      if (current !== undefined && (index === -1 || index === cycle.length - 1)) delete s.beat[track][step];
+      else s.beat[track][step] = cycle[index + 1];
+      s.beatEdited = true;
+      this._renderBeat();
+      // Vorhören, damit man beim Bauen nicht erst Play drücken muss.
+      if (!this.playing && s.beat[track][step] !== undefined) this._preview(track, s.beat[track][step]);
+    }
 
-      // --- Oszillator: die vier Wellenformen nebeneinander statt in einem
-      //     Dropdown versteckt — jede zeigt ihre eigene Kurve. ---
+    async _preview(track, value) {
+      try { await this._ensureAudio(); } catch { return; }
+      const now = this.engine.ctx.currentTime;
+      if (track === 'bass') this.engine.playBass(now, this._bassMidi(this._currentHarmony(), value), 1, this._bassSound());
+      else this.engine.hitTrack(track, now, value);
+    }
+
+    /* ---- Harmonie ---- */
+
+    _renderHarmony() {
+      const s = this.state;
+      const mode = this._mode();
+      const names = noteNames();
+      this._options(this.$('[data-field="keyRoot"]'), names.map((name, i) => [i, name]), s.keyRoot);
+      this._options(this.$('[data-field="modeId"]'), MODES.map((m) => [m.id, t(m.nameKey)]), s.modeId);
+      this._renderPickerFor('prog');
+      this.$('.key-name').textContent = `${names[s.keyRoot]} ${t(mode.nameKey)}`;
+      this.$('[data-field="chordBars"]').value = String(s.chordBars);
+      this._renderLock('harmony');
+
+      this._setSwitch('chordsOn', s.chordsOn);
+      this._setSwitch('droneOn', s.droneOn);
+      this._setSwitch('droneFifth', s.droneFifth);
+      this._renderChordStrip();
+      this._renderProgEditor();
+      this._renderSatb();
+    }
+
+    _renderChordStrip() {
+      const s = this.state;
+      const prog = this._progression();
+      const mode = this._mode();
+      const current = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : -1;
+      const host = this.$('.chord-strip');
+      const editing = this.ui.progEdit;
+      host.replaceChildren(...prog.degrees.map((deg, i) => {
+        // Im Editor sind die Akkorde Knöpfe: antippen wählt den Platz.
+        const box = document.createElement(editing ? 'button' : 'div');
+        box.className = `chord-box${i === current ? ' is-now' : ''}${editing && i === this.ui.progSel ? ' is-selected' : ''}`;
+        if (editing) {
+          box.type = 'button';
+          box.dataset.action = 'prog-slot';
+          box.dataset.value = String(i);
+          box.setAttribute('aria-pressed', String(i === this.ui.progSel));
+        }
+        const roman = document.createElement('span');
+        roman.className = 'chord-roman';
+        roman.textContent = romanNumeral(mode.steps, deg, prog.sevenths);
+        const name = document.createElement('strong');
+        name.textContent = chordName(s.keyRoot, mode.steps, deg, prog.sevenths);
+        box.append(roman, name);
+        return box;
+      }));
+    }
+
+    _renderSatb() {
+      const s = this.state;
+      const index = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : 0;
+      const voicing = this._voicings()[index] || this._voicings()[0];
+      const host = this.$('.satb-list');
+      host.replaceChildren(...SATB.map((voice) => {
+        const row = document.createElement('div');
+        row.className = `satb-row is-${s.satb[voice]}`;
+        row.style.setProperty('--voice', SATB_COLOR[voice]);
+        const dot = document.createElement('i');
+        dot.className = 'voice-dot';
+        const name = document.createElement('span');
+        name.className = 'satb-name';
+        name.textContent = t(SATB_KEY[voice]);
+        const note = document.createElement('strong');
+        note.className = 'satb-note';
+        note.textContent = noteLabel(voicing[voice]);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chip';
+        btn.dataset.action = 'satb';
+        btn.dataset.value = voice;
+        btn.setAttribute('aria-pressed', String(s.satb[voice] !== 'on'));
+        btn.textContent = t({ on: 'lab.satbOn', focus: 'lab.satbFocus', mute: 'lab.satbMute' }[s.satb[voice]]);
+        btn.setAttribute('aria-label', `${t(SATB_KEY[voice])}: ${btn.textContent}`);
+        row.append(dot, name, note, btn);
+        return row;
+      }));
+    }
+
+    /* ---- Melodie ---- */
+
+    _renderMelody() {
+      const s = this.state;
+      this._setSwitch('melodyOn', s.melodyOn);
+      this._renderPickerFor('melody');
+      this._chips(this.$('.melody-octaves'), [3, 4, 5].map((o) => ({ value: o, label: String(o) })), s.melodyOctave, 'melody-octave');
+      this._renderLock('melody');
+      this._renderMelEditor();
+    }
+
+    /* ---- Melodie-Editor (Notenrolle) ----
+       Zeilen sind Tonleiterstufen über dem gerade klingenden Akkord, wie bei
+       den eingebauten Melodien — eigene Melodien wandern dadurch mit der
+       Akkordfolge mit und bleiben in der Tonart. "Zwischentöne" erlaubt
+       bewusst ♭/♯ (ein Halbton neben der Stufe), als Vorzeichen am Ton. */
+
+    _renderMelEditor() {
+      const s = this.state;
+      const editing = this.ui.melEdit;
+      const bars = this._melody().bars;
+      this.ui.melBar = Math.min(this.ui.melBar, bars.length - 1);
+      this.$('.mel-view').hidden = editing;
+      this.$('.mel-editor').hidden = !editing;
+      this._paintMelRoll(this.$('.mel-mini'), bars.map((_, i) => i), false);
+      if (!editing) return;
+      // Takt-Reiter, dazu + (Takt anhängen) und − (gewählten Takt entfernen)
+      const tabs = bars.map((_, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mel-bar-tab';
+        btn.dataset.action = 'mel-bar';
+        btn.dataset.value = String(i);
+        btn.textContent = String(i + 1);
+        btn.setAttribute('aria-label', tf('lab.melBarAria', { n: i + 1 }));
+        btn.setAttribute('aria-pressed', String(i === this.ui.melBar));
+        return btn;
+      });
+      const extra = (action, label, text, disabled) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mel-bar-tab is-extra';
+        btn.dataset.action = action;
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+        btn.textContent = text;
+        btn.disabled = disabled;
+        return btn;
+      };
+      this.$('.mel-bars').replaceChildren(...tabs,
+        extra('mel-add-bar', t('lab.melAddBar'), '+', bars.length >= MEL_MAX_BARS),
+        extra('mel-remove-bar', t('lab.melRemoveBar'), '−', bars.length <= 1));
+      this.$('[data-action="mel-undo"]').disabled = !this.ui.melUndo.length;
+      this.$('[data-action="mel-redo"]').disabled = !this.ui.melRedo.length;
+      this._paintMelRoll(this.$('.mel-grid'), [this.ui.melBar], true);
+      this._chips(this.$('.mel-lengths'), MEL_LENGTHS.map(([v, label]) => ({ value: v, label })), this.ui.melLen, 'mel-len');
+      this._setSwitch('melChroma', this.ui.melChroma);
+      const alts = this.$('.mel-alts');
+      alts.hidden = !this.ui.melChroma;
+      this._chips(alts, [[-1, '♭'], [0, '♮'], [1, '♯']].map(([v, label]) => ({ value: v, label })), this.ui.melAlt, 'mel-alt');
+      const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      this.$('.mel-name-row').hidden = !own;
+      const nameInput = this.$('.mel-name');
+      if (own && this.shadowRoot.activeElement !== nameInput) nameInput.value = own.name;
+      this.$('[data-action="mel-original"]').hidden = !s.melodyBars || !!s.melodyName;
+      this.$('[data-action="mel-save"]').hidden = !!own;
+      this.$('[data-action="mel-delete"]').hidden = !own;
+    }
+
+    /** Notenrolle zeichnen — klein (alle Takte, zum Anschauen) oder groß
+     *  (ein Takt, zum Bearbeiten, mit Stufen-Beschriftung links). */
+    _paintMelRoll(host, barIdx, large, bars = this._melody().bars) {
+      const steps = this._barSteps();
+      const meter = METERS[this._meter()];
+      const cols = barIdx.length * steps;
+      // Groß: alle drei Oktaven (scrollbar). Klein: nur der benutzte Bereich,
+      // mindestens die mittlere Oktave — sonst würden die Töne winzig.
+      let hi = MEL_HIGH;
+      let lo = MEL_LOW;
+      if (!large) {
+        const degs = barIdx.flatMap((bi) => (bars[bi] || []).map((n) => n[1]));
+        hi = Math.max(7, ...degs);
+        lo = Math.min(0, ...degs);
+      }
+      const rows = hi - lo + 1;
+      const pct = (v) => `${(v * 100).toFixed(3)}%`;
+      if (large) host.style.height = `${rows * MEL_ROW_PX}px`;
+      let html = '';
+      for (let d = hi; d >= lo; d--) {
+        const cls = [mod(d, 7) === 0 ? 'is-root' : '', [2, 4].includes(mod(d, 7)) ? 'is-chord' : '',
+          d < 0 || d > 6 ? 'is-outer' : '', d === -1 || d === 6 ? 'is-split' : ''].join(' ');
+        html += `<span class="mel-row ${cls}" style="top:${pct((hi - d) / rows)};height:${pct(1 / rows)}"></span>`;
+      }
+      for (let c = 1; c < cols; c++) {
+        const inBar = c % steps;
+        if (!inBar) html += `<span class="mel-line is-bar" style="left:${pct(c / cols)}"></span>`;
+        else if (meter.beats.includes(inBar)) html += `<span class="mel-line is-beat" style="left:${pct(c / cols)}"></span>`;
+        else if (large) html += `<span class="mel-line" style="left:${pct(c / cols)}"></span>`;
+      }
+      // Alle Töne relativ zum ersten gezeigten Takt — so erscheint auch ein
+      // Ton, der aus dem vorigen Takt herüberklingt, im gezeigten Takt.
+      const first = barIdx[0] * steps;
+      bars.forEach((bar, bi) => (bar || []).forEach(([at, deg, len, alt]) => {
+        const start = bi * steps + at - first;
+        if (start + len <= 0 || start >= cols) return;
+        const sign = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
+        html += `<span class="mel-note${alt ? ' is-alt' : ''}" style="left:${pct(start / cols)};width:${pct(len / cols)};top:${pct((hi - deg) / rows)};height:${pct(1 / rows)}">${large && sign ? `<b>${sign}</b>` : ''}</span>`;
+      }));
+      html += '<span class="mel-playhead" hidden></span>';
+      host.innerHTML = html;
+      host.dataset.bars = barIdx.join(',');
+      if (large) {
+        // Beschriftung: 1–7 je Oktave, 1 = Grundton des Akkords, Akkordtöne
+        // rosa; die äußeren Oktaven tragen eine Klammer "höher"/"tiefer".
+        // Die Leiste ist zugleich der Griff zum Scrollen (die Rolle selbst
+        // fängt Berührungen zum Zeichnen ab).
+        let labels = '';
+        for (let d = hi; d >= lo; d--) {
+          labels += `<span class="${[0, 2, 4].includes(mod(d, 7)) ? 'is-chord' : ''}${d < 0 || d > 6 ? ' is-outer' : ''}">${mod(d, 7) + 1}</span>`;
+        }
+        labels += `<span class="mel-band" style="top:0;height:${pct((hi - 6) / rows)}"><i>${t('lab.melHigher')}</i></span>`;
+        labels += `<span class="mel-band" style="top:${pct((hi + 1) / rows)};height:${pct(-lo / rows)}"><i>${t('lab.melLower')}</i></span>`;
+        const labelHost = this.$('.mel-labels');
+        labelHost.innerHTML = labels;
+        labelHost.style.height = `${rows * MEL_ROW_PX}px`;
+      }
+    }
+
+    /** Rolle so scrollen, dass die Töne des Takts (sonst die mittlere
+     *  Oktave) mittig im Blick sind. */
+    _scrollMelRoll() {
+      const roll = this.$('.mel-roll');
+      const notes = this._melody().bars[this.ui.melBar] || [];
+      const degs = notes.map((n) => n[1]);
+      const center = degs.length ? (Math.max(...degs) + Math.min(...degs)) / 2 : 3;
+      roll.scrollTop = (MEL_HIGH - center + .5) * MEL_ROW_PX - roll.clientHeight / 2;
+    }
+
+    /** Abspielmarke in Mini- und großer Rolle. */
+    _showMelodyStep(g) {
+      const bars = this._melody().bars.length;
+      const steps = this._barSteps();
+      for (const host of [this.$('.mel-mini'), this.ui.melEdit ? this.$('.mel-grid') : null]) {
+        const ph = host?.querySelector('.mel-playhead');
+        if (!ph) continue;
+        const shown = (host.dataset.bars || '').split(',').map(Number);
+        const k = g < 0 || !this.state.melodyOn ? -1 : shown.indexOf(Math.floor(g / steps) % bars);
+        ph.hidden = k === -1;
+        if (k !== -1) ph.style.left = `${((k * steps + (g % steps)) / (shown.length * steps)) * 100}%`;
+      }
+    }
+
+    /** Veränderbare Takte der aktuellen Melodie (legt beim ersten Eingriff
+     *  eine Kopie der Vorlage an) — vorher den Stand fürs Rückgängig merken. */
+    _melBegin() {
+      const s = this.state;
+      this.ui.melUndo.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId]));
+      if (this.ui.melUndo.length > 60) this.ui.melUndo.shift();
+      this.ui.melRedo = [];
+      if (!s.melodyBars) {
+        s.melodyBars = MELODIES[s.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
+        s.melodyMeter = this._meter();
+      }
+      return s.melodyBars;
+    }
+
+    /** Nach jeder Änderung: unveränderte Vorlage wieder als Vorlage führen,
+     *  eigene Melodie in der Bibliothek nachziehen, neu zeichnen. */
+    _melCommit({ persist = true } = {}) {
+      const s = this.state;
+      if (s.melodyBars && !s.melodyName && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
+        s.melodyBars = null; s.melodyMeter = null;
+      }
+      const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      if (own && s.melodyBars) {
+        own.bars = s.melodyBars.map((bar) => bar.map((n) => [...n]));
+        own.name = s.melodyName || own.name;
+        if (persist) this._persist();
+      }
+      this._renderMelody();
+    }
+
+    _melRestore(from, to) {
+      const snap = from.pop();
+      if (!snap) return;
+      const s = this.state;
+      to.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId]));
+      [s.melodyBars, s.melodyName, s.melodyOwnId] = JSON.parse(snap);
+      s.melodyMeter = s.melodyBars ? this._meter() : null;
+      this._melCommit();
+    }
+
+    /** Einstimmig setzen: kürzt die vorige Note, verdrängt, was im neuen
+     *  Bereich beginnt. Liefert die neue Note. */
+    _melPlace(bar, at, deg, len, alt) {
+      const steps = this._barSteps();
+      const notes = bar;
+      len = Math.max(1, Math.min(len, steps - at));
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const [a, , l] = notes[i];
+        if (a >= at && a < at + len) notes.splice(i, 1);
+        else if (a < at && a + l > at) notes[i][2] = at - a;
+      }
+      const note = alt ? [at, deg, len, alt] : [at, deg, len];
+      notes.push(note);
+      notes.sort((x, y) => x[0] - y[0]);
+      return note;
+    }
+
+    /** Einen Ton kurz anspielen — über dem Akkord, der in diesem Takt klingt. */
+    async _melPreview(deg, alt, barIndex) {
+      try { await this._ensureAudio(); } catch { return; }
+      const s = this.state;
+      const h = this._harmonyAt(barIndex * this._barSteps());
+      const midi = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot) + degreeSemis(h.steps, deg + foldDegree(h.deg)) + (alt || 0);
+      this.engine.playTone(s.sound, midi, this.engine.ctx.currentTime + .01, .22, this._stepSeconds() * 2.5,
+        { layer: 'keys', stepSeconds: this._stepSeconds() });
+    }
+
+    /** Tippen/Ziehen in der großen Rolle. */
+    _wireMelGrid() {
+      const grid = this.$('.mel-grid');
+      let drag = null;
+      const cellAt = (e) => {
+        const r = grid.getBoundingClientRect();
+        const steps = this._barSteps();
+        const rows = MEL_HIGH - MEL_LOW + 1;
+        return {
+          step: clamp(Math.floor(((e.clientX - r.left) / r.width) * steps), 0, steps - 1),
+          deg: MEL_HIGH - clamp(Math.floor(((e.clientY - r.top) / r.height) * rows), 0, rows - 1),
+        };
+      };
+      grid.addEventListener('pointerdown', (e) => {
+        if (e.button > 0) return;
+        e.preventDefault();
+        const { step, deg } = cellAt(e);
+        const barIndex = this.ui.melBar;
+        const bars = this._melBegin();
+        const bar = bars[barIndex];
+        const hit = bar.find(([a, d, l]) => d === deg && step >= a && step < a + l);
+        if (hit) {
+          bar.splice(bar.indexOf(hit), 1);
+          this._melCommit();
+          return;
+        }
+        const alt = this.ui.melChroma ? this.ui.melAlt : 0;
+        drag = { note: this._melPlace(bar, step, deg, this.ui.melLen, alt), start: step, bar, id: e.pointerId, stretched: false };
+        try { grid.setPointerCapture(e.pointerId); } catch { /* siehe Knob._startDrag */ }
+        this._melPreview(deg, alt, barIndex);
+        this._melCommit({ persist: false });
+      });
+      grid.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const { step } = cellAt(e);
+        const len = step - drag.start + 1;
+        // Weiterziehen macht den Ton länger (nie kürzer als die gewählte Länge,
+        // außer man zieht bewusst zurück in den ersten Schritt).
+        if (len < 1 || (!drag.stretched && len <= drag.note[2])) return;
+        drag.stretched = true;
+        drag.bar.splice(drag.bar.indexOf(drag.note), 1);
+        drag.note = this._melPlace(drag.bar, drag.start, drag.note[1], len, drag.note[3]);
+        this._melCommit({ persist: false });
+      });
+      const end = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag = null;
+        this._melCommit();
+      };
+      grid.addEventListener('pointerup', end);
+      grid.addEventListener('pointercancel', end);
+    }
+
+    _melSaveOwn() {
+      const s = this.state;
+      const bars = (s.melodyBars || MELODIES[s.melodyIndex].bars).map((bar) => bar.map((n) => [...n]));
+      const lib = this._saved.melodies;
+      if (lib.length >= MEL_MAX_OWN) { this._setStatus(t('lab.melLibraryFull')); return; }
+      let n = lib.length + 1;
+      while (lib.some((m) => m.name === tf('lab.myMelodyN', { n }))) n++;
+      const name = s.melodyName && !s.melodyOwnId && s.melodyName !== t('lab.newMelody') ? s.melodyName : tf('lab.myMelodyN', { n });
+      const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      lib.push({ id, name, meter: this._meter(), bars });
+      s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
+      s.melodyMeter = this._meter();
+      s.melodyName = name;
+      s.melodyOwnId = id;
+      this._persist();
+      this._renderMelody();
+      this._setStatus(tf('lab.melSaved', { name }));
+    }
+
+    _melDeleteOwn() {
+      const s = this.state;
+      const own = this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      if (!own || !global.confirm(tf('lab.melDeleteConfirm', { name: own.name }))) return;
+      this._saved.melodies = this._saved.melodies.filter((m) => m !== own);
+      this._clearMelodyEdit();
+      this.ui.melEdit = false;
+      this._persist();
+      this._renderMelody();
+    }
+
+    /* ---- Klang ---- */
+
+    _renderSound() {
+      this._renderLock('sound');
+      this._renderSoundName();
+      this._renderMacros();
+      this._renderSynthControls();
+      this._renderFx();
+      this._renderAutomation();
+    }
+
+    _renderSoundName() {
+      const sound = this.state.sound;
+      this.$('[data-action="reset-sound"]').hidden = !sound.custom;
+      this._renderPickerFor('sound');
+    }
+
+    /** Mixer als Kanalzüge: je Kanal ein breiter Pegelbalken (ein
+     *  gestyltes <input type=range> — Tastatur und Screenreader bleiben
+     *  erhalten) mit Name und Prozentwert im Balken, davor ein
+     *  Lautsprecher-Knopf zum Stummschalten. "Gesamt" steht abgesetzt. */
+    _renderMixer() {
+      const s = this.state;
+      const host = this.$('.mixer-list');
+      const row = (bus, label, value, muted) => {
+        const wrap = document.createElement('div');
+        wrap.className = `mixer-row${muted ? ' is-muted' : ''}${bus === 'master' ? ' is-master' : ''}`;
+        if (bus !== 'master') {
+          const mute = document.createElement('button');
+          mute.type = 'button';
+          mute.className = 'mute-btn';
+          mute.dataset.action = 'mute';
+          mute.dataset.value = bus;
+          mute.innerHTML = muted ? UI_ICON.speakerOff : UI_ICON.speaker;
+          mute.setAttribute('aria-pressed', String(muted));
+          mute.setAttribute('aria-label', tf('lab.muteAria', { bus: label }));
+          wrap.append(mute);
+        }
+        const bar = document.createElement('label');
+        bar.className = 'level-wrap';
+        const input = document.createElement('input');
+        input.type = 'range'; input.min = '0'; input.max = '1'; input.step = '.01';
+        input.className = 'level';
+        input.value = String(value);
+        input.dataset.mix = bus;
+        input.setAttribute('aria-label', label);
+        const name = document.createElement('span');
+        name.className = 'level-label';
+        name.textContent = label;
+        const out = document.createElement('span');
+        out.className = 'level-value';
+        bar.append(input, name, out);
+        wrap.append(bar);
+        this._paintLevel(input);
+        return wrap;
+      };
+      host.replaceChildren(
+        ...BUSES.map((bus) => row(bus, t(BUS_KEY[bus]), s.mix[bus], s.mute[bus])),
+        row('master', t('lab.master'), s.mix.master, false),
+      );
+    }
+
+    /** Füllung und Prozentangabe eines Pegelbalkens nachziehen. */
+    _paintLevel(input) {
+      const pct = Math.round(Number(input.value) * 100);
+      input.style.setProperty('--val', `${pct}%`);
+      const out = input.parentElement?.querySelector('.level-value');
+      if (out) out.textContent = `${pct} %`;
+    }
+
+    /** Vier Makro-Regler für die schnelle Ansicht — jeder bewegt einen oder
+     *  mehrere echte Parameter, die Expertenansicht zeigt sie sofort mit. */
+    _renderMacros() {
+      const sound = this.state.sound;
+      const host = this.$('.macro-knobs');
+      host.replaceChildren();
+      const macros = [
+        { label: t('lab.macroBright'), value: Math.log(clamp(sound.cutoff, 200, 10000) / 200) / Math.log(50),
+          apply: (v) => { sound.cutoff = 200 * Math.pow(50, v); } },
+        { label: t('lab.macroWidth'), value: Math.max(sound.detune / 20, sound.width),
+          apply: (v) => { sound.detune = v * 20; sound.width = v; } },
+        { label: t('lab.macroSpace'), value: sound.reverbWet / .7,
+          apply: (v) => { sound.reverbWet = v * .7; sound.echoWet = v * .35; } },
+        { label: t('lab.macroSoft'), value: Math.log(clamp(sound.attack, .004, .6) / .004) / Math.log(150),
+          apply: (v) => { sound.attack = .004 * Math.pow(150, v); sound.release = clamp(.15 + v * 1.6, .03, 3); } },
+      ];
+      for (const macro of macros) {
+        const knob = new Knob({
+          label: macro.label, min: 0, max: 1, value: clamp(macro.value, 0, 1),
+          format: (v) => `${Math.round(v * 100)}`,
+          onInput: (v) => { macro.apply(v); this._onSoundEdit({ refreshKnobs: true }); },
+        });
+        host.append(knob.el);
+      }
+    }
+
+    _onSoundEdit({ refreshKnobs = false } = {}) {
+      const sound = this.state.sound;
+      this._autoCapture();
+      if (!sound.custom) {
+        sound.custom = true;
+      }
+      this._renderSoundName();
+      this._applySound();
+      if (refreshKnobs) this._refreshSoundControls();
+    }
+
+    /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten. */
+    _applySound() {
+      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this.state.sound);
+    }
+
+    _refreshSoundControls() {
+      const sound = this.state.sound;
+      for (const [key, knob] of Object.entries(this._soundKnobs)) knob.setValue(sound[key]);
+      this.$all('[data-sound]').forEach((input) => { input.value = String(sound[input.dataset.sound]); });
+      this._renderEnvelope(sound);
+    }
+
+    _renderSynthControls() {
+      const sound = this.state.sound;
+      this._soundKnobs = {};
+
       const waveHost = this.$('.wave-row');
       waveHost.replaceChildren(...WAVE_SHAPES.map((wave) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'wave-btn';
-        btn.title = waveLabel(wave);
-        btn.setAttribute('aria-label', waveLabel(wave));
-        btn.setAttribute('aria-pressed', String(wave === preset.wave));
+        btn.dataset.action = 'wave';
+        btn.dataset.value = wave;
+        btn.title = t(WAVE_KEY[wave]);
+        btn.setAttribute('aria-label', t(WAVE_KEY[wave]));
+        btn.setAttribute('aria-pressed', String(wave === sound.wave));
         btn.innerHTML = waveIcon(wave);
-        btn.addEventListener('click', () => {
-          preset.wave = wave;
-          this._markCustom();
-          this._renderSynthControls();
-        });
         return btn;
       }));
 
-      // --- ADSR: vier Schieberegler plus Hüllkurven-Grafik ---
       const adsrHost = this.$('.adsr-sliders');
       adsrHost.replaceChildren(...[
-        ['attack', t('lab.envAttack'), .005, 1, .005],
-        ['decay', t('lab.envDecay'), .05, 1.5, .01],
-        ['sustain', t('lab.envSustain'), .05, 1, .01],
-        ['release', t('lab.envRelease'), .05, 2, .01],
+        ['attack', t('lab.envAttack'), .003, 1.5, .001],
+        ['decay', t('lab.envDecay'), .02, 2, .01],
+        ['sustain', t('lab.envSustain'), 0, 1, .01],
+        ['release', t('lab.envRelease'), .03, 3, .01],
       ].map(([key, label, min, max, step]) => {
         const wrap = document.createElement('label');
         wrap.className = 'slider-field';
         wrap.append(label);
         const input = document.createElement('input');
         input.type = 'range'; input.min = String(min); input.max = String(max); input.step = String(step);
-        input.value = String(preset[key]);
+        input.value = String(sound[key]);
+        input.dataset.sound = key;
         input.setAttribute('aria-label', label);
-        input.addEventListener('input', (e) => {
-          preset[key] = Number(e.target.value);
-          this._markCustom();
-          this._renderEnvelope(preset);
-        });
+        this._soundLabels[key] = label;
         wrap.append(input);
         return wrap;
       }));
-      this._renderEnvelope(preset);
+      this._renderEnvelope(sound);
 
-      // --- Cutoff/Resonanz/Hüllkurventiefe als Drehregler ---
-      const knobHost = this.$('.filter-knobs');
-      knobHost.replaceChildren();
-      const cutoffKnob = new Knob({
-        label: t('lab.knobCutoff'), min: 200, max: 10000, value: preset.cutoff,
-        format: (v) => `${Math.round(v)} Hz`,
-        onInput: (v) => { preset.cutoff = v; this._markCustom(); },
-      });
-      const resonanceKnob = new Knob({
-        label: t('lab.knobResonance'), min: 0, max: 15, value: preset.resonance,
-        format: (v) => v.toFixed(1),
-        onInput: (v) => { preset.resonance = v; this._markCustom(); },
-      });
-      // Klassischer Analog-Synth-Regler: die Lautstärke-Hüllkurve zieht beim
-      // Anschlag den Filter mit auf, statt dass er starr auf Cutoff bleibt.
-      const envAmountKnob = new Knob({
-        label: t('lab.knobEnvFilter'), min: 0, max: 4000, value: preset.filterEnvAmount,
-        format: (v) => `${Math.round(v)} Hz`,
-        onInput: (v) => { preset.filterEnvAmount = v; this._markCustom(); },
-      });
-      knobHost.append(cutoffKnob.el, resonanceKnob.el, envAmountKnob.el);
+      this._chips(this.$('.filter-type-chips'), FILTER_TYPES.map((f) => ({ value: f.id, label: t(f.nameKey) })), sound.filterType, 'filter-type');
 
-      // --- Charakter: Detune (Unisono), Sub-Level, Pitch-Drop — bisher nur
-      //     über Presets erreichbar, jetzt live editierbar. ---
-      const characterHost = this.$('.character-knobs');
-      characterHost.replaceChildren();
-      const detuneKnob = new Knob({
-        label: t('lab.knobDetune'), min: 0, max: 25, value: preset.detune || 0,
-        format: (v) => `${Math.round(v)}¢`,
-        onInput: (v) => { preset.detune = v; this._markCustom(); },
-      });
-      const subKnob = new Knob({
-        label: t('lab.knobSubLevel'), min: 0, max: 1, value: preset.subLevel || 0,
-        format: (v) => `${Math.round(v * 100)}%`,
-        onInput: (v) => { preset.subLevel = v; this._markCustom(); },
-      });
-      const pitchDropKnob = new Knob({
-        label: t('lab.knobPitchDrop'), min: 0, max: 300, value: preset.pitchDrop || 0,
-        format: (v) => `${Math.round(v)}¢`,
-        onInput: (v) => { preset.pitchDrop = v; this._markCustom(); },
-      });
-      characterHost.append(detuneKnob.el, subKnob.el, pitchDropKnob.el);
+      const knob = (host, key, label, min, max, format, extra = {}) => {
+        const k = new Knob({
+          label, min, max, value: sound[key] || 0, format, ...extra,
+          onInput: (v) => { sound[key] = v; this._onSoundEdit(); if (key === 'attack' || key === 'release') this._renderEnvelope(sound); },
+        });
+        this._soundKnobs[key] = k;
+        this._soundLabels[key] = key === 'reverbWet' ? t('lab.reverb') : key === 'echoWet' ? t('lab.echo') : label;
+        host.append(k.el);
+      };
+      const hz = (v) => `${Math.round(v)} Hz`;
+      const cents = (v) => `${Math.round(v)}¢`;
+      const pct = (v) => `${Math.round(v * 100)}%`;
 
-      // --- Vibrato: Rate/Tiefe/Einsatzverzögerung — ebenfalls neu editierbar. ---
-      const vibratoHost = this.$('.vibrato-knobs');
-      vibratoHost.replaceChildren();
-      const vibRateKnob = new Knob({
-        label: t('lab.knobRate'), min: 0, max: 8, value: preset.vibratoRate || 0,
-        format: (v) => `${v.toFixed(1)} Hz`,
-        onInput: (v) => { preset.vibratoRate = v; this._markCustom(); },
-      });
-      const vibDepthKnob = new Knob({
-        label: t('lab.knobDepth'), min: 0, max: 20, value: preset.vibratoDepth || 0,
-        format: (v) => `${Math.round(v)}¢`,
-        onInput: (v) => { preset.vibratoDepth = v; this._markCustom(); },
-      });
-      const vibDelayKnob = new Knob({
-        label: t('lab.knobOnset'), min: 0, max: 1, value: preset.vibratoDelay ?? 0,
-        format: (v) => `${v.toFixed(2)} s`,
-        onInput: (v) => { preset.vibratoDelay = v; this._markCustom(); },
-      });
-      vibratoHost.append(vibRateKnob.el, vibDepthKnob.el, vibDelayKnob.el);
+      const filterHost = this.$('.filter-knobs'); filterHost.replaceChildren();
+      knob(filterHost, 'cutoff', t('lab.knobCutoff'), 100, 12000, hz, { log: true });
+      knob(filterHost, 'resonance', t('lab.knobResonance'), 0, 20, (v) => v.toFixed(1));
+      knob(filterHost, 'filterEnvAmount', t('lab.knobEnvFilter'), 0, 5000, hz);
+      knob(filterHost, 'drive', t('lab.knobDrive'), 0, 1, pct);
 
-      // --- Reverb: Dry/Wet + Länge ---
-      const reverbHost = this.$('.reverb-knobs');
-      reverbHost.replaceChildren();
-      const reverbWetKnob = new Knob({
-        label: t('lab.knobDryWet'), min: 0, max: 1, value: preset.reverbWet,
-        format: (v) => `${Math.round(v * 100)}%`,
-        onInput: (v) => { preset.reverbWet = v; this._markCustom(); this.engine.setReverbWet(v); },
-      });
-      const reverbLengthKnob = new Knob({
-        label: t('lab.knobLength'), min: .1, max: 4, value: preset.reverbLength,
-        format: (v) => `${v.toFixed(1)} s`,
-        onInput: (v) => { preset.reverbLength = v; this._markCustom(); this.engine.setReverbLength(v); },
-      });
-      reverbHost.append(reverbWetKnob.el, reverbLengthKnob.el);
+      const lfoHost = this.$('.lfo-knobs'); lfoHost.replaceChildren();
+      knob(lfoHost, 'lfoRate', t('lab.knobRate'), 0, 12, (v) => `${v.toFixed(1)} Hz`);
+      knob(lfoHost, 'lfoDepth', t('lab.knobDepth'), 0, 2400, cents);
+      const lfoSelect = this.$('[data-field="lfoSync"]');
+      lfoSelect.replaceChildren(...LFO_SYNCS.map(([value, label]) => {
+        const opt = document.createElement('option');
+        opt.value = String(value);
+        opt.textContent = label.startsWith('lab.') ? t(label) : label;
+        return opt;
+      }));
+      lfoSelect.value = String(sound.lfoSync || 0);
 
-      // --- Echo: Dry/Wet + Rate ---
-      const echoHost = this.$('.echo-knobs');
-      echoHost.replaceChildren();
-      const echoWetKnob = new Knob({
-        label: t('lab.knobDryWet'), min: 0, max: 1, value: preset.echoWet,
-        format: (v) => `${Math.round(v * 100)}%`,
-        onInput: (v) => { preset.echoWet = v; this._markCustom(); this.engine.setEchoWet(v); },
-      });
-      const echoRateKnob = new Knob({
-        label: t('lab.knobRate'), min: 40, max: 700, value: preset.echoRate,
-        format: (v) => `${Math.round(v)} ms`,
-        onInput: (v) => { preset.echoRate = v; this._markCustom(); this.engine.setEchoRate(v); },
-      });
-      echoHost.append(echoWetKnob.el, echoRateKnob.el);
-    }
+      const charHost = this.$('.character-knobs'); charHost.replaceChildren();
+      knob(charHost, 'detune', t('lab.knobDetune'), 0, 30, cents);
+      knob(charHost, 'width', t('lab.knobWidth'), 0, 1, pct);
+      knob(charHost, 'subLevel', t('lab.knobSubLevel'), 0, 1, pct);
+      knob(charHost, 'pitchDrop', t('lab.knobPitchDrop'), 0, 400, cents);
 
-    _markCustom() {
-      this.$('.preset-name').textContent = 'Eigene Einstellung';
-      this.$all('.preset-grid .pick-cell').forEach((cell) => cell.setAttribute('aria-pressed', 'false'));
+      const vibHost = this.$('.vibrato-knobs'); vibHost.replaceChildren();
+      knob(vibHost, 'vibratoRate', t('lab.knobRate'), 0, 10, (v) => `${v.toFixed(1)} Hz`);
+      knob(vibHost, 'vibratoDepth', t('lab.knobDepth'), 0, 30, cents);
+      knob(vibHost, 'vibratoDelay', t('lab.knobOnset'), 0, 1.5, (v) => `${v.toFixed(2)} s`);
+
+      const glideHost = this.$('.glide-knobs'); glideHost.replaceChildren();
+      knob(glideHost, 'glide', t('lab.knobGlide'), 0, 1, (v) => `${Math.round(v * 1000)} ms`);
+      this._setSwitch('mono', sound.mono);
+
+      // Hall- und Echo-Anteil gehören zum Klang, stehen aber bei den
+      // Effekten (siehe _renderFx) — ein Ort für alles, was Raum macht.
+      this._soundKnob = knob;
     }
 
     /** Zeichnet die ADSR-Hüllkurve als kleine Linie — Phasenbreiten sind
      *  proportional zu den Werten, nicht linear in Sekunden (sonst wäre ein
      *  kurzer Attack kaum sichtbar). */
-    _renderEnvelope(preset) {
-      const scale = (t, max) => 6 + Math.min(t, max) / max * 22;
-      const raw = [scale(preset.attack, 1), scale(preset.decay, 1.5), 16, scale(preset.release, 2)];
+    _renderEnvelope(sound) {
+      const scale = (value, max) => 6 + Math.min(value, max) / max * 22;
+      const raw = [scale(sound.attack, 1.5), scale(sound.decay, 2), 16, scale(sound.release, 3)];
       const sum = raw.reduce((a, b) => a + b, 0);
-      const widths = raw.map((v) => v / sum * 84);
-      const [aw, dw, hold, rw] = widths;
+      const [aw, dw, hold, rw] = raw.map((v) => v / sum * 84);
       const top = 4, bottom = 34;
-      const sustainY = bottom - preset.sustain * (bottom - top);
+      const sustainY = bottom - sound.sustain * (bottom - top);
       const x0 = 4;
-      const points = [
-        [x0, bottom],
-        [x0 + aw, top],
-        [x0 + aw + dw, sustainY],
-        [x0 + aw + dw + hold, sustainY],
-        [x0 + aw + dw + hold + rw, bottom],
-      ];
-      const d = 'M' + points.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' L');
-      this.$('.envelope-path').setAttribute('d', d);
+      const points = [[x0, bottom], [x0 + aw, top], [x0 + aw + dw, sustainY], [x0 + aw + dw + hold, sustainY], [x0 + aw + dw + hold + rw, bottom]];
+      this.$('.envelope-path').setAttribute('d', 'M' + points.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' L'));
     }
 
-    _renderOctaves() {
-      const host = this.$('.octave-list');
-      host.replaceChildren(...[2, 3, 4, 5, 6].map((octave) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'octave-btn';
-        btn.textContent = String(octave);
-        btn.setAttribute('aria-label', `Oktave ${octave}`);
-        btn.setAttribute('aria-pressed', String(octave === this.state.octave));
-        btn.addEventListener('click', () => { this.state.octave = octave; this._renderOctaves(); });
-        return btn;
-      }));
-    }
-
-    _renderArpSources() {
-      const host = this.$('[data-field="arpSource"]');
-      host.replaceChildren(...ARP_SOURCES.map((source) => {
+    /** Effekte an EINER Stelle: je Effekt der Anteil des Synths (gehört zum
+     *  Klang, wird mit dem Preset gespeichert) und die Einstellungen des
+     *  Effekts selbst (global). Früher standen die Anteile getrennt davon
+     *  unter "Mehr Einstellungen" — doppelt und verwirrend. */
+    _renderFx() {
+      const fx = this.state.fx;
+      const pct = (v) => `${Math.round(v * 100)}%`;
+      const fxKnob = (host, key, label, min, max, format, log) => {
+        const k = new Knob({
+          label, min, max, value: fx[key], format, log,
+          onInput: (v) => { fx[key] = v; this.engine.setFx(fx, this._stepSeconds()); },
+        });
+        host.append(k.el);
+      };
+      const reverb = this.$('.fx-reverb'); reverb.replaceChildren();
+      this._soundKnob(reverb, 'reverbWet', t('lab.knobAmount'), 0, 1, pct);
+      fxKnob(reverb, 'reverbLength', t('lab.knobLength'), .2, 4, (v) => `${v.toFixed(1)} s`, true);
+      const echo = this.$('.fx-echo'); echo.replaceChildren();
+      this._soundKnob(echo, 'echoWet', t('lab.knobAmount'), 0, 1, pct);
+      fxKnob(echo, 'echoFeedback', t('lab.knobFeedback'), 0, .85, pct);
+      const chorus = this.$('.fx-chorus'); chorus.replaceChildren();
+      fxKnob(chorus, 'chorus', t('lab.knobAmount'), 0, 1, pct);
+      const select = this.$('[data-field="echoDiv"]');
+      select.replaceChildren(...ECHO_DIVISIONS.map(([value, label]) => {
         const opt = document.createElement('option');
-        opt.value = source.id; opt.textContent = t(source.nameKey);
+        opt.value = String(value); opt.textContent = label;
         return opt;
       }));
-      host.value = this.state.arpSourceId;
+      select.value = String(fx.echoDiv);
+      for (const [key, cls] of [['reverbOn', 'fx-reverb'], ['echoOn', 'fx-echo'], ['chorusOn', 'fx-chorus']]) {
+        this._setSwitch(key, fx[key]);
+        this.$(`.${cls}`).closest('.fx-group').classList.toggle('is-off', !fx[key]);
+      }
     }
 
-    /* ---- Mini-Tastatur: robuste Pointer-Behandlung -------------------------
-       Das Capture liegt auf dem Tastatur-Container (nicht auf der einzelnen
-       Taste) — nur so bleiben Move/Up/Cancel für einen Finger zuverlässig
-       adressierbar, auch wenn er über mehrere Tasten gleitet oder außerhalb
-       losgelassen wird. Ohne das blieben beim Überstreichen mehrerer Tasten
-       Noten hängen, weil das Capture einer einzelnen Taste alle weiteren
-       Pointer-Ereignisse an genau diese Taste bindet und Nachbartasten dann
-       gar keine eigenen Ereignisse mehr bekommen. */
+    /* ---- Keys ---- */
 
-    _wireKeyboard() {
+    _renderKeys() {
+      const s = this.state;
+      this._setSwitch('arpOn', s.arpOn);
+      this._setSwitch('latchOn', this.ui.latchOn);
+      this._setSwitch('arpAuto', s.arpAuto);
+      // "Halten" gibt es nur beim manuellen Arp, "Automatisch" nur mit Arp.
+      const enable = (key, on) => {
+        const input = this.$(`[data-switch="${key}"]`);
+        input.disabled = !on;
+        input.closest('.switch').classList.toggle('is-disabled', !on);
+      };
+      enable('latchOn', this._arpManual());
+      enable('arpAuto', s.arpOn);
+      // Ausgeschaltet eingeklappt: nur Überschrift und An/Aus bleiben.
+      this.$('.arp-options').hidden = !s.arpOn;
+      this.$('.arp-switches').hidden = !s.arpOn;
+      const patterns = s.arpAuto ? ARP_AUTO_PATTERNS : ARP_PATTERNS;
+      this._options(this.$('[data-field="arpPattern"]'), patterns.map(([id, key]) => [id, t(key)]), s.arpAuto ? s.arpAutoPattern : s.arpPattern);
+      this._options(this.$('[data-field="arpMode"]'), ARP_MODES.map(([id, key]) => [id, t(key)]), s.arpMode);
+      this._options(this.$('[data-field="arpDivision"]'), ARP_DIVISIONS.map(([v, label]) => [v, label]), s.arpDivision);
+      this._options(this.$('[data-field="arpRhythm"]'), ARP_RHYTHMS.map(([id, key]) => [id, t(key)]), s.arpRhythm);
+      this.$('[data-action="arp-clear"]').hidden = !(this._latchActive() && this.latchedNotes.size);
+      this.$('.arp-status').textContent = !s.arpOn ? '' : s.arpAuto ? t('lab.arpStatusAuto')
+        : this._latchActive() ? t('lab.arpStatusLatch') : t('lab.arpStatusHold');
+      this._chips(this.$('.keys-layout'), [
+        { value: 'piano', label: t('lab.keysPiano') }, { value: 'scale', label: t('lab.keysScale') },
+      ], s.keysLayout, 'keys-layout');
+      this.$('.keyboard').hidden = s.keysLayout !== 'piano';
+      this.$('.scale-pads').hidden = s.keysLayout !== 'scale';
+      if (s.keysLayout === 'scale') this._buildPads();
+      this._paintHeld();
+      this.$('[data-field="arpOctaves"]').value = String(s.arpOctaves);
+      this._chips(this.$('.octave-list'), [2, 3, 4, 5].map((o) => ({ value: o, label: String(o), title: tf('lab.octaveAria', { n: o }) })), s.octave, 'key-octave');
+    }
+
+    /* ---- Transport & "Jetzt"-Anzeige ---- */
+
+    _renderTransport() {
+      const btn = this.$('.transport-play');
+      btn.innerHTML = this.playing ? UI_ICON.pause : UI_ICON.play;
+      btn.setAttribute('aria-label', t(this.playing ? 'lab.stopAria' : 'lab.startAria'));
+      this._renderRecPlay();
+      this.$all('.bpm-input').forEach((el) => { el.value = String(this.state.bpm); });
+      this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
+      this.$('[data-action="undo"]').disabled = !this.history.length;
+    }
+
+    _renderBeatDots(step) {
+      const meter = METERS[this._meter()];
+      const host = this.$('.beat-dots');
+      if (host.childElementCount !== meter.beats.length) {
+        host.replaceChildren(...meter.beats.map(() => document.createElement('i')));
+      }
+      let current = -1;
+      meter.beats.forEach((b, i) => { if (step >= b) current = i; });
+      Array.from(host.children).forEach((dot, i) => dot.classList.toggle('is-now', this.playing && i === current));
+    }
+
+    /** Akkord-/Tonart-Anzeige in der Transportleiste plus Akkordleiste und
+     *  SATB-Noten im Harmonie-Reiter — alles, was sich je Akkord ändert. */
+    _renderNow() {
+      const label = this.$('.now-chord');
+      const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
+      label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths);
+      if (!this.playing) this._renderBeatDots(-1);
+      this._renderChordStrip();
+      this._renderSatb();
+    }
+
+    /* ---- Akkordfolgen-Editor ----
+       Die Akkordleiste wird zum Bearbeiten antippbar; darunter die sieben
+       Akkorde der Tonart zum Austauschen, dazu Einfügen, Entfernen,
+       Verschieben und Septakkorde. Eigene Folgen landen wie eigene
+       Melodien in einer Bibliothek neben den Speicherplätzen. */
+
+    _renderProgEditor() {
+      const s = this.state;
+      const editing = this.ui.progEdit;
+      const prog = this._progression();
+      this.$('[data-action="prog-edit"]').hidden = editing;
+      this.$('.prog-editor').hidden = !editing;
+      this.$('.prog-info').textContent = s.progOwnId || (s.progDegrees && s.progName) ? '' : t(progKey('Info', prog.id));
+      if (!editing) return;
+      this.ui.progSel = Math.min(this.ui.progSel, prog.degrees.length - 1);
+      const mode = this._mode();
+      const sel = prog.degrees[this.ui.progSel];
+      const degHost = this.$('.prog-degrees');
+      degHost.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((d) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'prog-deg';
+        btn.dataset.action = 'prog-deg';
+        btn.dataset.value = String(d);
+        btn.setAttribute('aria-pressed', String(d === sel));
+        btn.innerHTML = '<span></span><strong></strong>';
+        btn.querySelector('span').textContent = romanNumeral(mode.steps, d, prog.sevenths);
+        btn.querySelector('strong').textContent = chordName(s.keyRoot, mode.steps, d, prog.sevenths);
+        return btn;
+      }));
+      this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
+      this.$('[data-action="prog-undo"]').disabled = !this.ui.progUndo.length;
+      this.$('[data-action="prog-redo"]').disabled = !this.ui.progRedo.length;
+      this.$('[data-action="prog-add"]').disabled = prog.degrees.length >= PROG_MAX_CHORDS;
+      this.$('[data-action="prog-remove"]').disabled = prog.degrees.length <= 1;
+      this.$('[data-action="prog-move"][data-value="-1"]').disabled = this.ui.progSel <= 0;
+      this.$('[data-action="prog-move"][data-value="1"]').disabled = this.ui.progSel >= prog.degrees.length - 1;
+      this._setSwitch('progSevenths', !!prog.sevenths);
+      const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
+      this.$('.prog-name-row').hidden = !own;
+      const nameInput = this.$('.prog-name');
+      if (own && this.shadowRoot.activeElement !== nameInput) nameInput.value = own.name;
+      this.$('[data-action="prog-original"]').hidden = !s.progDegrees || !!s.progName;
+      this.$('[data-action="prog-save"]').hidden = !!own;
+      this.$('[data-action="prog-delete"]').hidden = !own;
+    }
+
+    _progBegin() {
+      const s = this.state;
+      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
+      if (this.ui.progUndo.length > 60) this.ui.progUndo.shift();
+      this.ui.progRedo = [];
+      if (!s.progDegrees) {
+        const base = this._progression();
+        s.progDegrees = [...base.degrees];
+        s.progSevenths = !!base.sevenths;
+      }
+      return s.progDegrees;
+    }
+
+    _progCommit() {
+      const s = this.state;
+      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+      if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths) {
+        s.progDegrees = null; s.progSevenths = false;
+      }
+      const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
+      if (own && s.progDegrees) {
+        own.degrees = [...s.progDegrees];
+        own.sevenths = s.progSevenths;
+        own.name = s.progName || own.name;
+        this._persist();
+      }
+      this._onHarmonyChange();
+    }
+
+    _progRestore(from, to) {
+      const snap = from.pop();
+      if (!snap) return;
+      const s = this.state;
+      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
+      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId] = JSON.parse(snap);
+      this._progCommit();
+    }
+
+    /** Akkord kurz anspielen (vierstimmig, im Chorklang). */
+    async _previewChord(deg) {
+      try { await this._ensureAudio(); } catch { return; }
+      const s = this.state;
+      const voicing = voiceChord(chordPitchClasses(s.keyRoot, this._mode().steps, deg, this._progression().sevenths), { S: 67, A: 62, T: 55, B: 48 });
+      const now = this.engine.ctx.currentTime + .01;
+      for (const voice of SATB) {
+        this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
+      }
+    }
+
+    _progSaveOwn() {
+      const s = this.state;
+      const lib = this._saved.progressions;
+      if (lib.length >= PROG_MAX_OWN) { this._setStatus(t('lab.progLibraryFull')); return; }
+      const prog = this._progression();
+      let n = 1;
+      while (lib.some((p) => p.name === tf('lab.myProgN', { n }))) n++;
+      const name = s.progName && !s.progOwnId && s.progName !== t('lab.newProg') ? s.progName : tf('lab.myProgN', { n });
+      const id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths });
+      s.progDegrees = [...prog.degrees];
+      s.progSevenths = !!prog.sevenths;
+      s.progName = name;
+      s.progOwnId = id;
+      this._persist();
+      this._onHarmonyChange();
+      this._setStatus(tf('lab.progSaved', { name }));
+    }
+
+    _progDeleteOwn() {
+      const s = this.state;
+      const own = this._saved.progressions.find((p) => p.id === s.progOwnId);
+      if (!own || !global.confirm(tf('lab.melDeleteConfirm', { name: own.name }))) return;
+      this._saved.progressions = this._saved.progressions.filter((p) => p !== own);
+      this._clearProgEdit();
+      this.ui.progEdit = false;
+      this._persist();
+      this._onHarmonyChange();
+    }
+
+    /* ---- Auswahl-Dialog (Drumloop, Melodie, Klang) ----
+       Im Panel steht nur die aktuelle Auswahl, mit ‹ › zum direkten
+       Weiterblättern. Ein Tipp darauf öffnet ein Blatt von unten mit
+       Filtern und allen Optionen; Antippen wählt sofort (das Blatt bleibt
+       offen, damit man in Ruhe durchhören kann), "Fertig" schließt. */
+
+    _pickerDef(which) {
+      const s = this.state;
+      const meter = this._meter();
+      const catLabel = (c) => t(CAT_KEY[c]);
+      if (which === 'beat') {
+        return {
+          title: 'lab.pickBeat', action: 'pick-pattern', catAction: 'beat-cat', cats: BEAT_CATS, cat: this.ui.beatCat,
+          current: s.patternIndex, edited: s.beatEdited,
+          items: DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+            inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })),
+        };
+      }
+      if (which === 'prog') {
+        const steps = this._mode().steps;
+        const romans = (degrees, sevenths) => degrees.map((d) => romanNumeral(steps, d, sevenths)).join('–');
+        const own = this._saved.progressions;
+        return {
+          title: 'lab.pickProg', action: 'pick-prog', catAction: 'prog-cat',
+          cats: own.length ? [...PROG_CATS, OWN_CAT] : PROG_CATS, cat: this.ui.progCat,
+          current: s.progOwnId && own.some((p) => p.id === s.progOwnId) ? `own:${s.progOwnId}` : s.progOwnId ? -1 : s.progId,
+          fallback: s.progId, wide: true,
+          items: [
+            ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
+              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths), info: t(progKey('Info', p.id)) })),
+            ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
+              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths) })),
+          ],
+        };
+      }
+      if (which === 'melody') {
+        const own = this._saved.melodies.filter((m) => m.meter === meter);
+        return {
+          title: 'lab.pickMelody', action: 'pick-melody', catAction: 'melody-cat',
+          cats: own.length ? [...MELODY_CATS, OWN_CAT] : MELODY_CATS, cat: this.ui.melodyCat,
+          current: s.melodyOwnId && own.some((m) => m.id === s.melodyOwnId) ? `own:${s.melodyOwnId}` : s.melodyOwnId ? -1 : s.melodyIndex,
+          wide: true,
+          items: [
+            ...MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
+              inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })),
+            ...own.map((m) => ({ i: `own:${m.id}`, name: m.name, visual: melodyPreview(m), cat: OWN_CAT,
+              inMeter: true, sub: `${m.meter} · ${catLabel(OWN_CAT)}`, short: catLabel(OWN_CAT) })),
+          ],
+        };
+      }
+      return {
+        title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this.ui.presetCat,
+        current: s.sound.custom ? -1 : s.sound.presetIndex,
+        items: SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+          inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })),
+      };
+    }
+
+    /** Anzeige im Panel und — falls gerade offen — das Blatt. */
+    _renderPickerFor(which) {
+      const def = this._pickerDef(which);
+      const trigger = this.$(`.picker-trigger[data-picker="${which}"]`);
+      if (trigger) {
+        let name;
+        let sub;
+        let visual;
+        if (which === 'sound' && this.state.sound.custom) {
+          const base = SYNTH_PRESETS[this.state.sound.presetIndex];
+          name = t('lab.customSound');
+          sub = tf('lab.basedOn', { name: base.name });
+          visual = pictogramIcon(base.icon);
+        } else if (which === 'prog') {
+          const prog = this._progression();
+          const s = this.state;
+          const steps = this._mode().steps;
+          name = this._progName();
+          sub = prog.degrees.map((d) => romanNumeral(steps, d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '');
+          visual = progPreview(prog.degrees);
+        } else if (which === 'melody') {
+          const melody = this._melody();
+          const s = this.state;
+          name = melody.name;
+          sub = `${this._meter()} · ${t(CAT_KEY[melody.cat])}${s.melodyBars && !s.melodyName ? ` · ${t('lab.edited')}` : ''}`;
+          visual = melodyPreview(melody);
+        } else {
+          const item = def.items.find((it) => it.i === def.current);
+          name = item.name;
+          sub = item.sub + (def.edited ? ` · ${t('lab.edited')}` : '');
+          visual = item.visual;
+        }
+        trigger.querySelector('.picker-ico').innerHTML = visual;
+        trigger.querySelector('.picker-name').textContent = name;
+        trigger.querySelector('.picker-sub').textContent = sub;
+      }
+      if (this.ui.picker === which) this._renderPicker();
+    }
+
+    _renderPicker() {
+      const which = this.ui.picker;
+      if (!which) return;
+      const def = this._pickerDef(which);
+      const root = this.$('.picker');
+      root.querySelector('.picker-title').textContent = t(def.title);
+      const chips = root.querySelector('.picker-chips');
+      const catChips = def.cats.map((c) => ({ value: c, label: t(CAT_KEY[c]) }));
+      this._chips(chips, catChips, def.cat, def.catAction);
+      if (def.cat !== 'all') {
+        // Filter aktiv: X zum Zurücksetzen (statt einer "Alle"-Bubble).
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'chip chip-clear';
+        clear.dataset.action = def.catAction;
+        clear.dataset.value = 'all';
+        clear.setAttribute('aria-label', t('lab.filterClear'));
+        clear.title = t('lab.filterClear');
+        clear.innerHTML = UI_ICON.close;
+        chips.append(clear);
+      }
+      if (which === 'beat') {
+        // Taktart gehört zum Drumloop: 3/4 antippen wechselt gleich den Loop.
+        const meterHost = document.createElement('div');
+        this._chips(meterHost, METER_IDS.map((id) => ({ value: id, label: id })), this._meter(), 'meter');
+        const sep = document.createElement('span');
+        sep.className = 'chip-sep';
+        chips.prepend(...meterHost.children, sep);
+      }
+      const cards = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat)).map((it) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `pick-card${def.wide ? ' is-wide' : ''}`;
+        btn.dataset.action = def.action;
+        btn.dataset.value = String(it.i);
+        btn.setAttribute('aria-pressed', String(it.i === def.current));
+        btn.innerHTML = `<span class="pick-ico">${it.visual}</span><span class="pick-text"><strong></strong><span></span></span>`;
+        btn.querySelector('strong').textContent = it.name;
+        btn.querySelector('.pick-text span').textContent = it.short;
+        if (it.info) {
+          const info = document.createElement('em');
+          info.textContent = it.info;
+          btn.querySelector('.pick-text').append(info);
+        }
+        return btn;
+      });
+      root.querySelector('.picker-grid').replaceChildren(...cards);
+      root.querySelector('.picker-now-name').textContent = this.$(`.picker-trigger[data-picker="${which}"] .picker-name`).textContent;
+    }
+
+    _openPicker(which) {
+      this.ui.picker = which;
+      const root = this.$('.picker');
+      root.hidden = false;
+      this._renderPicker();
+      const grid = root.querySelector('.picker-grid');
+      grid.scrollTop = 0;
+      requestAnimationFrame(() => {
+        root.classList.add('is-open');
+        const active = grid.querySelector('[aria-pressed="true"]') || grid.querySelector('button');
+        if (active) {
+          active.scrollIntoView({ block: 'center' });
+          active.focus({ preventScroll: true });
+        }
+      });
+    }
+
+    _closePicker({ focus = true } = {}) {
+      const which = this.ui.picker;
+      if (!which) return;
+      this.ui.picker = null;
+      const root = this.$('.picker');
+      root.classList.remove('is-open');
+      root.hidden = true;
+      if (focus) this.$(`.picker-trigger[data-picker="${which}"] .picker-main`)?.focus();
+    }
+
+    /** ‹ › im Panel: nächster/voriger Eintrag (in der aktuellen Taktart). */
+    _stepPicker(which, dir) {
+      const def = this._pickerDef(which);
+      const list = def.items.filter((it) => it.inMeter);
+      const current = which === 'sound' ? this.state.sound.presetIndex
+        : which === 'melody' && def.current === -1 ? this.state.melodyIndex
+          : def.current === -1 ? def.fallback : def.current;
+      const pos = list.findIndex((it) => it.i === current);
+      const next = list[(pos + dir + list.length) % list.length];
+      this._handleAction(def.action, String(next.i), null);
+    }
+
+    /* ---- Speichern-Blatt ---- */
+
+    _openSheet() {
+      this.$('.sheet').hidden = false;
+      this._renderSheet();
+      this.$('.sheet [data-action="close-sheet"]').focus();
+    }
+
+    _closeSheet() { this.$('.sheet').hidden = true; }
+
+    _renderSheet() {
+      const host = this.$('.slot-list');
+      host.replaceChildren(...this._saved.slots.map((slot, i) => {
+        const row = document.createElement('div');
+        row.className = 'slot-row';
+        const text = document.createElement('div');
+        text.className = 'slot-text';
+        const title = document.createElement('strong');
+        title.textContent = tf('lab.slot', { n: i + 1 });
+        const sub = document.createElement('span');
+        sub.textContent = slot ? this._summary(sanitizeState(slot.state)) : t('lab.slotEmpty');
+        text.append(title, sub);
+        const save = document.createElement('button');
+        save.type = 'button'; save.className = 'chip';
+        save.dataset.action = 'slot-save'; save.dataset.value = String(i);
+        save.textContent = t('lab.save');
+        const load = document.createElement('button');
+        load.type = 'button'; load.className = 'chip';
+        load.dataset.action = 'slot-load'; load.dataset.value = String(i);
+        load.textContent = t('lab.load');
+        load.disabled = !slot;
+        row.append(text, save, load);
+        return row;
+      }));
+      this.$('.code-out').value = encodeState(this.state);
+      this.$('.storage-hint').textContent = t(this._storage ? 'lab.autoSaveHint' : 'lab.noStorageHint');
+    }
+
+    _flash(text) {
+      const el = this.$('.sheet-status');
+      el.textContent = text;
+    }
+
+    /* ---- Mini-Tastatur ----------------------------------------------------
+       Zwei Oktaven im Klavier-Layout: weiße Tasten lückenlos nebeneinander,
+       schwarze darüber. Das schließt die tote Zone aus, wegen der die alte
+       Tastatur alle Tasten gleich hoch hatte — unter einer schwarzen Taste
+       liegt immer eine weiße. Das Capture liegt auf dem Tastatur-Container
+       (nicht auf der einzelnen Taste) — nur so bleiben Move/Up/Cancel für
+       einen Finger zuverlässig adressierbar, auch wenn er über mehrere
+       Tasten gleitet oder außerhalb losgelassen wird. */
+
+    _buildKeyboard() {
       const host = this.$('.keyboard');
-      const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'H'];
-      const BLACK = new Set([1, 3, 6, 8, 10]);
-
-      this._keyElements = NAMES.map((name, offset) => {
+      const names = noteNames();
+      const WHITE = [0, 2, 4, 5, 7, 9, 11];
+      const whites = [];
+      for (let o = 0; o <= 24; o++) if (WHITE.includes(o % 12)) whites.push(o);
+      const w = 100 / whites.length;
+      this._keyElements = new Map();
+      for (let o = 0; o <= 24; o++) {
+        const isWhite = WHITE.includes(o % 12);
         const key = document.createElement('button');
         key.type = 'button';
-        key.className = `key${BLACK.has(offset) ? ' is-black' : ''}`;
-        key.dataset.offset = String(offset);
         key.tabIndex = -1;
-        const label = document.createElement('span');
-        label.className = 'key-name';
-        label.textContent = name;
-        key.append(label);
+        key.className = `key ${isWhite ? 'is-white' : 'is-black'}`;
+        key.dataset.offset = String(o);
+        key.setAttribute('aria-label', names[o % 12]);
+        if (isWhite) {
+          key.style.left = `${whites.indexOf(o) * w}%`;
+          key.style.width = `${w}%`;
+          const label = document.createElement('span');
+          label.className = 'key-name';
+          label.textContent = names[o % 12];
+          key.append(label);
+        } else {
+          const bw = w * .64;
+          key.style.left = `${whites.indexOf(o + 1) * w - bw / 2}%`;
+          key.style.width = `${bw}%`;
+        }
         host.append(key);
-        return key;
-      });
+        this._keyElements.set(o, key);
+      }
+    }
 
+    /** Tonart-Tasten: die Töne der gewählten Tonart über zwei Oktaven,
+     *  obere Oktave oben — nichts kann "falsch" klingen. Nur neu gebaut, wenn
+     *  sich Tonart, Tongeschlecht oder Oktave ändern (nie mitten im Spielen). */
+    _buildPads() {
+      const s = this.state;
+      const signature = `${s.keyRoot}|${s.modeId}|${s.octave}`;
+      if (this._padsSignature === signature) return;
+      this._padsSignature = signature;
+      const steps = this._mode().steps;
+      const names = noteNames();
+      const makePad = (d) => {
+        const offset = foldRoot(s.keyRoot) + degreeSemis(steps, d);
+        const pad = document.createElement('button');
+        pad.type = 'button';
+        pad.tabIndex = -1;
+        pad.className = `pad${d % 7 === 0 ? ' is-root' : ''}`;
+        pad.dataset.offset = String(offset);
+        pad.dataset.degree = String(d);
+        pad.textContent = names[mod(s.keyRoot + steps[d % 7], 12)];
+        pad.setAttribute('aria-label', names[mod(s.keyRoot + steps[d % 7], 12)]);
+        return pad;
+      };
+      // Obere Reihe = obere Oktave (Stufe 8–15), untere = Stufe 1–8. Der
+      // Oktavton steht bewusst in beiden Reihen — als zwei eigene Tasten.
+      const upper = [];
+      for (let d = 7; d < SCALE_PAD_COUNT; d++) upper.push(makePad(d));
+      const lower = [];
+      for (let d = 0; d <= 7; d++) lower.push(makePad(d));
+      this.$('.scale-pads').replaceChildren(...upper, ...lower);
+    }
+
+    /** Bedienung einer Spielfläche (Klaviatur oder Tonart-Tasten). Das
+     *  Capture liegt auf dem Container (nicht auf der einzelnen Taste) — nur
+     *  so bleiben Move/Up/Cancel für einen Finger zuverlässig adressierbar,
+     *  auch beim Gleiten über mehrere Tasten oder Loslassen außerhalb. */
+    _wireKeyboard(host, selector) {
       const keyFromPoint = (x, y) => {
-        const el = (this.shadowRoot.elementFromPoint ? this.shadowRoot.elementFromPoint(x, y) : document.elementFromPoint(x, y));
-        const key = el?.closest?.('.key');
+        const el = this.shadowRoot.elementFromPoint ? this.shadowRoot.elementFromPoint(x, y) : document.elementFromPoint(x, y);
+        const key = el?.closest?.(selector);
         return key && host.contains(key) ? key : null;
       };
 
-      const midiFor = (key) => 12 * (this.state.octave + 1) + Number(key.dataset.offset);
-
-      /**
-       * Wechselt die für diesen Finger klingende Taste. Der sichtbare
-       * Zustand (welche Taste "hot" ist, this.keyVoices) wird SOFORT und
-       * synchron gesetzt — nur das eigentliche Auslösen des Tons wartet auf
-       * engine.start(). Ohne diese Trennung entstand beim schnellen
-       * Überstreichen mehrerer Tasten ein Wettlauf: bis der vorherige
-       * asynchrone Aufruf fertig war, sah der nächste pointermove noch keinen
-       * Eintrag in keyVoices, wurde deshalb verworfen, und die Taste blieb an
-       * der falschen (oder gar keiner) Stelle "hängen".
-       */
-      const enterKey = (pointerId, key) => {
-        const prev = this.keyVoices.get(pointerId);
-        if (prev?.keyEl === key) return;
-        if (prev) {
-          this.keyVoices.delete(pointerId);
-          this.engine.releaseVoice(prev.voice);
-          if (!this.latchedNotes.has(prev.midi)) prev.keyEl.classList.remove('is-hot');
-        }
-        const midi = midiFor(key);
-        key.classList.add('is-hot');
-        const entry = { keyEl: key, voice: null, midi };
-        this.keyVoices.set(pointerId, entry);
-
-        (async () => {
-          try { await this.engine.start(); this.engine.applyPreset(SYNTH_PRESETS[this.state.presetIndex]); }
-          catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
-          // Der Finger kann während des Wartens schon weitergezogen sein —
-          // dann gehört dieser (veraltete) Aufruf nicht mehr zur aktuellen Taste.
-          if (this.keyVoices.get(pointerId) !== entry) return;
-          entry.voice = this.engine.playTone(SYNTH_PRESETS[this.state.presetIndex], midi, this.engine.ctx.currentTime, .3);
-        })();
-      };
-
-      const releaseKey = (pointerId) => {
-        const held = this.keyVoices.get(pointerId);
-        if (!held) return;
-        this.keyVoices.delete(pointerId);
-        if (held.voice) this.engine.releaseVoice(held.voice);
-        if (!this.latchedNotes.has(held.midi)) held.keyEl.classList.remove('is-hot');
-      };
-
-      const toggleLatch = (key) => {
-        const midi = midiFor(key);
-        if (this.latchedNotes.has(midi)) { this.latchedNotes.delete(midi); key.classList.remove('is-hot', 'is-latched'); }
-        else { this.latchedNotes.add(midi); key.classList.add('is-hot', 'is-latched'); }
-      };
-
-      // Ob ein Finger gerade innerhalb der Tastatur unten ist — unabhängig
-      // davon, ob er GERADE eine Taste trifft. Die winzige Lücke zwischen
-      // zwei Tasten (CSS-Grid-Gap) reicht bei einem schnellen Glissando
-      // aus, um kurz zwischen zwei Tasten hindurchzurutschen; ohne diese
-      // eigene Verfolgung hätte das fälschlich das ganze Gleiten beendet,
-      // weil pointermove sich bis dahin an keyVoices orientierte — und das
-      // war während so einer Lücke leer. Genau das ließ die Tastatur
-      // "hängen".
+      // Ob ein Finger gerade innerhalb der Fläche unten ist — unabhängig
+      // davon, ob er GERADE eine Taste trifft (sonst beendete ein kurzes
+      // Rutschen über eine Kante das ganze Glissando).
       const pressedPointers = new Set();
-      this._pressedPointers = pressedPointers; // damit close()/_releaseAllKeys() sie leeren kann
+      this._pressedPointerSets = this._pressedPointerSets || [];
+      this._pressedPointerSets.push(pressedPointers);
 
       host.addEventListener('pointerdown', (e) => {
-        const key = e.target.closest('.key');
+        const key = e.target.closest(selector);
         if (!key) return;
         e.preventDefault();
-        // Capture aufs Container-Element, nicht auf die einzelne Taste — nur
-        // so bleiben Move/Up für diesen Finger adressierbar, auch wenn er
-        // über mehrere Tasten gleitet (siehe Kommentar über _wireKeyboard).
         try { host.setPointerCapture(e.pointerId); } catch { /* siehe Knob._startDrag */ }
         pressedPointers.add(e.pointerId);
-        if (this.state.latchOn) { toggleLatch(key); return; }
-        enterKey(e.pointerId, key);
+        this._enterKey(e.pointerId, key, this._midiForKey(key));
       });
 
       host.addEventListener('pointermove', (e) => {
-        if (this.state.latchOn) return; // Latch reagiert nur auf Tap, kein Glissando nötig
-        if (!pressedPointers.has(e.pointerId)) return;
+        if (!pressedPointers.has(e.pointerId) || this._latchActive()) return; // Halten: nur Antippen
         const key = keyFromPoint(e.clientX, e.clientY);
-        if (key) enterKey(e.pointerId, key);
-        else releaseKey(e.pointerId);
+        if (key) this._enterKey(e.pointerId, key, this._midiForKey(key));
+        else this._releaseKey(e.pointerId);
       });
 
       const end = (e) => {
         pressedPointers.delete(e.pointerId);
-        if (!this.state.latchOn) releaseKey(e.pointerId);
+        this._releaseKey(e.pointerId);
       };
       host.addEventListener('pointerup', end);
       host.addEventListener('pointercancel', end);
     }
 
+    _midiForKey(key) { return 12 * (this.state.octave + 1) + Number(key.dataset.offset); }
+
+    /** Die sichtbare Taste zu einer MIDI-Note in der gerade gezeigten Fläche. */
+    _keyElFor(midi) {
+      const offset = midi - 12 * (this.state.octave + 1);
+      const host = this.state.keysLayout === 'scale' ? this.$('.scale-pads') : this.$('.keyboard');
+      // Bei den Tonart-Tasten gibt es den Oktavton zweimal — die untere Reihe
+      // (zuletzt im DOM) ist die "Hauptheimat" für Computer-Tasten und Arp.
+      const all = host.querySelectorAll(`[data-offset="${offset}"]`);
+      return all[all.length - 1] || null;
+    }
+
+    /**
+     * Wechselt die für diesen Finger (bzw. diese Computertaste) gedrückte
+     * Taste. Der sichtbare Zustand wird SOFORT gesetzt — nur das Auslösen
+     * des Tons wartet auf die Engine. Ohne diese Trennung entstand beim
+     * schnellen Überstreichen mehrerer Tasten ein Wettlauf, bei dem Tasten
+     * an der falschen Stelle "hängen" blieben.
+     *
+     * Mit manuellem Arpeggiator klingt die Taste nicht selbst, sondern
+     * speist den Arp. (Mit "Halten" läuft das über _toggleLatched.)
+     */
+    _enterKey(id, keyEl, midi) {
+      if (this._latchActive()) { this._toggleLatched(midi); return; }
+      const prev = this.keyVoices.get(id);
+      if (prev && prev.midi === midi) return;
+      const arp = this._arpManual();
+      if (prev) {
+        this.keyVoices.delete(id);
+        this.engine.releaseVoice(prev.voice);
+        this._recNoteOff(id);
+      }
+      const entry = { keyEl, voice: null, midi };
+      this.keyVoices.set(id, entry);
+      this._recNoteOn(id, midi);
+      this._paintHeld();
+      (async () => {
+        try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+        if (this.keyVoices.get(id) !== entry) return;
+        if (arp) { this._ensureArpClock(); return; }
+        entry.voice = this.engine.playTone(this.state.sound, midi, this.engine.ctx.currentTime, .3, undefined,
+          { layer: 'keys', stepSeconds: this._stepSeconds() });
+      })();
+    }
+
+    /** "Halten": Antippen nimmt einen Ton in die Auswahl auf, erneutes
+     *  Antippen nimmt ihn wieder heraus — Töne lassen sich so nacheinander
+     *  sammeln, ohne dass ein neuer Anschlag alles zurücksetzt. Die
+     *  Reihenfolge des Antippens bleibt erhalten (Richtung "Spielreihenfolge"). */
+    _toggleLatched(midi) {
+      if (this.latchedNotes.has(midi)) this.latchedNotes.delete(midi);
+      else this.latchedNotes.add(midi);
+      this._paintHeld();
+      this.$('[data-action="arp-clear"]').hidden = !this.latchedNotes.size;
+      (async () => {
+        try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+        this._ensureArpClock();
+      })();
+    }
+
+    _releaseKey(id) {
+      const held = this.keyVoices.get(id);
+      if (!held) return;
+      this.keyVoices.delete(id);
+      if (held.voice) this.engine.releaseVoice(held.voice);
+      this._recNoteOff(id);
+      this._paintHeld();
+    }
+
+    /** Gedrückte und gemerkte Tasten markieren — in beiden Flächen. */
+    _paintHeld() {
+      const pressed = new Set();
+      this.keyVoices.forEach((held) => pressed.add(held.midi));
+      const latched = this._latchActive() ? this.latchedNotes : new Set();
+      this.$all('.keyboard .key, .scale-pads .pad').forEach((el) => {
+        const midi = this._midiForKey(el);
+        el.classList.toggle('is-hot', pressed.has(midi) || latched.has(midi));
+        el.classList.toggle('is-latched', latched.has(midi) && !pressed.has(midi));
+      });
+    }
+
+    /** Nur die gerade gedrückten Tasten loslassen — die mit "Halten"
+     *  gemerkten Töne bleiben (Layout-Wechsel, Arp/Halten umschalten). */
+    _releasePressedKeys() {
+      this.keyVoices.forEach((held, id) => { this.engine.releaseVoiceFast(held.voice); this._recNoteOff(id); });
+      this.keyVoices.clear();
+      this._pressedPointerSets?.forEach((set) => set.clear());
+      this._paintHeld();
+    }
+
     _releaseAllKeys() {
-      this.keyVoices.forEach((held) => this.engine.releaseVoiceFast(held.voice));
+      this.keyVoices.forEach((held, id) => { this.engine.releaseVoiceFast(held.voice); this._recNoteOff(id); });
       this.keyVoices.clear();
       this.latchedNotes.clear();
-      this._pressedPointers?.clear();
-      this._keyElements?.forEach((key) => key.classList.remove('is-hot', 'is-latched'));
+      this._pressedPointerSets?.forEach((set) => set.clear());
+      this._stopArpClock();
+      this._paintHeld();
+    }
+
+    /* ---- Automation ----
+       Reglerbewegungen im Klang-Reiter aufnehmen und im Takt loopen: nach
+       einem Takt Einzählen wird jede Änderung eines Klang-Parameters mit
+       ihrer Position (in Sechzehnteln) mitgeschrieben; daraus wird je
+       Parameter eine Spur mit einem Wert pro Schritt (Wert hält bis zur
+       nächsten Änderung). Filter-Cutoff und -Resonanz wirken auch auf
+       klingende Töne, alles andere ab dem nächsten Ton. */
+
+    _autoSnapshot() {
+      const sound = this.state.sound;
+      const snap = {};
+      for (const key of Object.keys(SOUND_RANGES)) if (Number.isFinite(sound[key])) snap[key] = sound[key];
+      return snap;
+    }
+
+    async _autoArm() {
+      const a = this.autoRec;
+      const barSteps = this._barSteps();
+      a.barSteps = barSteps;
+      a.events = [];
+      a.startTime = 0;
+      a.base = this._autoSnapshot();
+      a.last = { ...a.base };
+      if (!this.playing) {
+        await this.start();
+        if (!this.playing) return;
+        a.startStep = barSteps;
+      } else {
+        let next = Math.ceil(this.globalStep / barSteps) * barSteps;
+        if (next - this.globalStep < barSteps / 2) next += barSteps;
+        a.startStep = next;
+      }
+      a.phase = 'armed';
+      this._renderAutomation();
+    }
+
+    /** Aus _onSoundEdit: geänderte Parameter mit Position mitschreiben. */
+    _autoCapture() {
+      const a = this.autoRec;
+      if (this._autoApplying || (a.phase !== 'armed' && a.phase !== 'recording')) return;
+      const sound = this.state.sound;
+      const pos = a.startTime && this.engine.ready ? (this._recNow() - a.startTime) / a.stepSec : -1;
+      for (const key of Object.keys(a.last)) {
+        if (sound[key] !== a.last[key] && Number.isFinite(sound[key])) {
+          a.events.push({ pos, key, value: sound[key] });
+          a.last[key] = sound[key];
+        }
+      }
+    }
+
+    _autoTick(now) {
+      const a = this.autoRec;
+      const heard = now - (this.engine.ctx.outputLatency || this.engine.ctx.baseLatency || 0);
+      const startTime = a.startTime || this.nextStepTime + (a.startStep - this.globalStep) * this._stepSeconds();
+      if (a.phase === 'armed') {
+        const left = startTime - heard;
+        const beats = METERS[this._meter()].beats.length;
+        const beatSec = (a.barSteps / beats) * this._stepSeconds();
+        this.$('.auto-count').textContent = left > 0 ? String(Math.min(beats, Math.ceil(left / beatSec))) : '';
+        if (left <= 0 && a.startTime) { a.phase = 'recording'; this._renderAutomation(); }
+        return;
+      }
+      const pos = clamp((heard - a.startTime) / (a.bars * a.barSteps * a.stepSec), 0, 1);
+      Array.from(this.$('.auto-meter').children).forEach((seg, i) => {
+        const fill = clamp(pos * a.bars - i, 0, 1);
+        seg.firstChild.style.width = `${fill * 100}%`;
+        seg.classList.toggle('is-full', fill >= 1);
+      });
+      if (pos >= 1) this._autoFinish();
+    }
+
+    _autoFinish() {
+      const a = this.autoRec;
+      if (a.phase === 'recording' && a.events.length) {
+        const steps = a.bars * a.barSteps;
+        const lanes = {};
+        const keys = [...new Set(a.events.map((e) => e.key))];
+        for (const key of keys) {
+          const events = a.events.filter((e) => e.key === key).sort((x, y) => x.pos - y.pos);
+          let value = a.base[key];
+          let i = 0;
+          lanes[key] = Array.from({ length: steps }, (_, step) => {
+            while (i < events.length && events[i].pos < step + .5) value = events[i++].value;
+            return value;
+          });
+        }
+        this.state.automation = { on: true, bars: a.bars, steps, lanes, offset: mod(a.startStep, steps) };
+        this._setStatus(t('lab.autoDone'));
+      } else if (a.phase === 'recording') {
+        this._setStatus(t('lab.autoEmpty'));
+      }
+      a.phase = 'idle';
+      a.events = [];
+      this._renderAutomation();
+    }
+
+    /** Aus dem Scheduler: Spurwerte dieses Schritts setzen (zur Audio-Zeit). */
+    _playAutomation(g, time) {
+      const auto = this.state.automation;
+      if (!auto || !auto.on || this.autoRec.phase === 'recording' || this.autoRec.phase === 'armed') return;
+      const idx = mod(g - auto.offset, auto.steps);
+      const sound = this.state.sound;
+      let changed = false;
+      for (const [key, lane] of Object.entries(auto.lanes)) {
+        if (sound[key] !== lane[idx]) { sound[key] = lane[idx]; changed = true; }
+      }
+      if (!changed) return;
+      this._applySound();
+      this.engine.modulateLive(SOUND_LAYERS, sound, time);
+      // Regler sichtbar mitlaufen lassen — gebündelt, nicht jeden Schritt.
+      if (this.ui.tab === 'sound' && !this._autoRefresh) {
+        this._autoRefresh = global.setTimeout(() => {
+          this._autoRefresh = 0;
+          this._autoApplying = true;
+          try { this._refreshSoundControls(); this._renderMacros(); } finally { this._autoApplying = false; }
+        }, 120);
+      }
+    }
+
+    _renderAutomation() {
+      const a = this.autoRec;
+      const auto = this.state.automation;
+      const busy = a.phase === 'armed' || a.phase === 'recording';
+      this._chips(this.$('.auto-bars'), [1, 2, 4].map((n) => ({ value: n, label: String(n) })), a.bars, 'auto-bars');
+      this.$all('.auto-bars .chip').forEach((chip) => { chip.disabled = busy; });
+      const btn = this.$('[data-action="auto-rec"]');
+      btn.classList.toggle('is-live', busy);
+      btn.querySelector('span').textContent = t(busy ? 'lab.recStop' : 'lab.autoRec');
+      this.$('.auto-live').hidden = !busy;
+      this.$('.auto-count').hidden = a.phase !== 'armed';
+      this.$('.auto-status').textContent = a.phase === 'armed' ? t('lab.autoArmed') : a.phase === 'recording' ? t('lab.autoRecording') : '';
+      const meter = this.$('.auto-meter');
+      meter.hidden = a.phase !== 'recording';
+      if (a.phase === 'recording') meter.innerHTML = Array.from({ length: a.bars }, (_, i) => `<span><i></i><b>${i + 1}</b></span>`).join('');
+      const has = !!auto && !busy;
+      this.$('.auto-result').hidden = !has;
+      if (has) {
+        const names = Object.keys(auto.lanes).map((key) => this._soundLabels[key] || key);
+        this.$('.auto-params').textContent = tf(auto.bars === 1 ? 'lab.autoParamsOne' : 'lab.autoParams', { params: names.join(', '), bars: auto.bars });
+        this._setSwitch('autoOn', auto.on);
+      }
+    }
+
+    /* ---- Einspielen ----
+       Aufnahme über die Groove-Uhr: Nach einem Takt Einzählen werden die
+       gewählten Takte lang alle Tastenanschläge mit ihrer Audio-Zeit
+       mitgeschrieben — ohne Raster. Beim Speichern wird jeder Ton in eine
+       Stufe über dem Akkord umgerechnet, der an dieser Stelle klang (plus
+       ♭/♯, falls er außerhalb der Tonart liegt); so verhält sich die
+       Aufnahme wie jede andere Melodie und lässt sich im Editor bearbeiten. */
+
+    /** Audio-Zeitpunkt, den man gerade HÖRT (Ausgabelatenz abgezogen). */
+    _recNow() {
+      const ctx = this.engine.ctx;
+      return ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+    }
+
+    async _recArm() {
+      const rec = this.rec;
+      const barSteps = this._barSteps();
+      rec.barSteps = barSteps;
+      rec.notes = [];
+      rec.open.clear();
+      rec.take = null;
+      rec.startTime = 0;
+      if (!this.playing) {
+        await this.start();
+        if (!this.playing) return;
+        rec.startStep = barSteps; // ein Takt Einzählen
+      } else {
+        // nächster Taktanfang, der noch mindestens einen halben Takt entfernt ist
+        let next = Math.ceil(this.globalStep / barSteps) * barSteps;
+        if (next - this.globalStep < barSteps / 2) next += barSteps;
+        rec.startStep = next;
+      }
+      rec.phase = 'armed';
+      this._renderRec();
+    }
+
+    _recTick(now) {
+      const rec = this.rec;
+      // Noch nicht vom Scheduler erreicht: Startzeit aus dem Raster schätzen.
+      const startTime = rec.startTime || this.nextStepTime + (rec.startStep - this.globalStep) * this._stepSeconds();
+      const heard = now - (this.engine.ctx.outputLatency || this.engine.ctx.baseLatency || 0);
+      const total = rec.bars * rec.barSteps * rec.stepSec;
+      if (rec.phase === 'armed') {
+        const left = startTime - heard;
+        const beats = METERS[this._meter()].beats.length;
+        const beatSec = (rec.barSteps / beats) * this._stepSeconds();
+        this.$('.rec-count').textContent = left > 0 ? String(Math.min(beats, Math.ceil(left / beatSec))) : '';
+        if (left <= 0 && rec.startTime) { rec.phase = 'recording'; this._renderRec(); }
+        return;
+      }
+      const pos = clamp((heard - rec.startTime) / total, 0, 1);
+      if (pos >= 1) { this._recFinish(); return; }
+      // Notenrolle live mitzeichnen (gehaltene Töne wachsen mit), etwa
+      // zehnmal pro Sekunde — dazu Abspielmarke und Taktleiste.
+      if (!rec.lastPaint || now - rec.lastPaint > .09) {
+        rec.lastPaint = now;
+        this._paintRecRoll(this._recToBars({ until: heard }), pos);
+      } else {
+        this._paintRecProgress(pos);
+      }
+    }
+
+    _recNoteOn(id, midi) {
+      const rec = this.rec;
+      if (rec.phase !== 'armed' && rec.phase !== 'recording') return;
+      if (!this.engine.ready) return;
+      rec.open.set(id, { midi, t0: this._recNow() });
+    }
+
+    _recNoteOff(id) {
+      const rec = this.rec;
+      const open = rec.open.get(id);
+      if (!open) return;
+      rec.open.delete(id);
+      rec.notes.push({ ...open, t1: this._recNow() });
+    }
+
+    _recFinish() {
+      const rec = this.rec;
+      if (rec.phase !== 'recording' && rec.phase !== 'armed') return;
+      const end = rec.startTime + rec.bars * rec.barSteps * rec.stepSec;
+      const now = this.engine.ready ? this._recNow() : end;
+      rec.open.forEach((open) => rec.notes.push({ ...open, t1: Math.min(now, end) }));
+      rec.open.clear();
+      rec.take = rec.startTime ? this._recToBars() : null;
+      rec.phase = rec.take && rec.take.some((bar) => bar.length) ? 'done' : 'idle';
+      // Fertig: direkt im Loop weiterspielen (der Groove läuft ja noch).
+      rec.loopBars = rec.phase === 'done' ? this._recRotated(rec.take) : null;
+      rec.looping = rec.phase === 'done';
+      if (rec.phase === 'idle') this._setStatus(t('lab.recEmpty'));
+      this._renderRec();
+    }
+
+    /** Abspielmarke der loopenden Aufnahme (Takte in Aufnahme-Reihenfolge). */
+    _showRecLoopStep(g) {
+      const rec = this.rec;
+      if (rec.phase !== 'done') return;
+      const ph = this.$('.rec-roll .mel-playhead');
+      if (!ph) return;
+      if (!rec.looping) g = -1;
+      const n = rec.take.length;
+      const steps = rec.barSteps;
+      ph.hidden = g < 0;
+      if (g < 0) return;
+      const k = mod(Math.floor(g / steps) - Math.round(rec.startStep / steps), n);
+      ph.style.left = `${((k * steps + (g % steps)) / (n * steps)) * 100}%`;
+    }
+
+    /** Schwebender Play/Pause-Knopf über der Aufnahme: schaltet nur den
+     *  Loop — der Groove läuft weiter (steht er, startet Play ihn mit). */
+    _renderRecPlay() {
+      const btn = this.$('.rec-play');
+      if (!btn) return;
+      const on = this.playing && this.rec.looping;
+      btn.innerHTML = on ? UI_ICON.pause : UI_ICON.play;
+      btn.setAttribute('aria-label', t(on ? 'lab.recLoopPause' : 'lab.recLoopPlay'));
+      const ph = this.$('.rec-roll .mel-playhead');
+      if (ph && !on) ph.hidden = true;
+    }
+
+    _toggleRecLoop() {
+      const rec = this.rec;
+      if (this.playing && rec.looping) {
+        rec.looping = false;
+        this.engine.releaseLayers(['melody']);
+      } else {
+        rec.looping = true;
+        if (!this.playing) this.start();
+      }
+      this._renderRecPlay();
+    }
+
+    /** Aufnahme-Rolle zeichnen: Takte in Aufnahme-Reihenfolge. */
+    _paintRecRoll(bars, pos) {
+      this._paintMelRoll(this.$('.rec-roll'), bars.map((_, i) => i), false, bars);
+      this._paintRecProgress(pos);
+    }
+
+    /** Abspielmarke in der Rolle und Taktleiste darunter: jeder Takt füllt
+     *  sich, volle Takte sind markiert — so sieht man, wann Schluss ist. */
+    _paintRecProgress(pos) {
+      const rec = this.rec;
+      const ph = this.$('.rec-roll .mel-playhead');
+      if (ph) {
+        ph.hidden = pos === null || pos >= 1;
+        if (pos !== null) ph.style.left = `${pos * 100}%`;
+      }
+      const host = this.$('.rec-meter');
+      if (host.children.length !== rec.bars) {
+        host.innerHTML = Array.from({ length: rec.bars }, (_, i) => `<span><i></i><b>${i + 1}</b></span>`).join('');
+      }
+      Array.from(host.children).forEach((seg, i) => {
+        const fill = pos === null ? 0 : clamp(pos * rec.bars - i, 0, 1);
+        seg.firstChild.style.width = `${fill * 100}%`;
+        seg.classList.toggle('is-full', fill >= 1);
+        seg.classList.toggle('is-now', fill > 0 && fill < 1);
+      });
+    }
+
+    /** Mitschrift → Takte aus [Schritt, Stufe, Länge, Vorzeichen?], in
+     *  Aufnahme-Reihenfolge. `until`: noch gehaltene Töne bis hierhin. */
+    _recToBars({ until = null } = {}) {
+      const rec = this.rec;
+      const s = this.state;
+      const steps = rec.barSteps;
+      const total = rec.bars * steps;
+      const r2 = (v) => Math.round(v * 100) / 100;
+      const all = until === null ? rec.notes : [...rec.notes, ...[...rec.open.values()].map((o) => ({ ...o, t1: until }))];
+      const notes = all.map(({ midi, t0, t1 }) => {
+        let pos = (t0 - rec.startTime) / rec.stepSec;
+        // knapp vor dem Einsatz angeschlagen zählt als "auf Eins"
+        if (pos < 0 && pos > -.5) pos = 0;
+        const endPos = Math.min(total, (t1 - rec.startTime) / rec.stepSec);
+        if (pos < 0 || pos >= total) return null;
+        const h = this._harmonyAt(rec.startStep + Math.floor(pos));
+        const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
+        const shift = foldDegree(h.deg);
+        const target = midi - base;
+        // Stufe suchen, die genau passt — sonst die darunter mit ♯
+        let deg = null;
+        let alt = 0;
+        for (let d = -28; d <= 35 && deg === null; d++) if (degreeSemis(h.steps, d) === target) deg = d - shift;
+        for (let d = -28; d <= 35 && deg === null; d++) if (degreeSemis(h.steps, d) === target - 1) { deg = d - shift; alt = 1; }
+        if (deg === null) return null;
+        return { pos, len: Math.max(.25, endPos - pos), deg, alt };
+      }).filter(Boolean).sort((a, b) => a.pos - b.pos);
+      // Ganze Aufnahme in den Editorbereich schieben (in Oktaven), Rest falten.
+      if (notes.length) {
+        const hi = Math.max(...notes.map((n) => n.deg));
+        const lo = Math.min(...notes.map((n) => n.deg));
+        let move = 0;
+        while (hi + move > MEL_HIGH && lo + move - 7 >= MEL_LOW) move -= 7;
+        while (lo + move < MEL_LOW && hi + move + 7 <= MEL_HIGH) move += 7;
+        notes.forEach((n) => {
+          n.deg += move;
+          while (n.deg > MEL_HIGH) n.deg -= 7;
+          while (n.deg < MEL_LOW) n.deg += 7;
+        });
+      }
+      const bars = Array.from({ length: rec.bars }, () => []);
+      notes.forEach((n) => {
+        const bar = Math.floor(n.pos / steps);
+        const at = r2(n.pos - bar * steps);
+        // Gehaltene Töne klingen über den Taktstrich weiter — nur bis zum
+        // nächsten Anschlag (einstimmig) und bis zum Ende der Aufnahme.
+        const next = notes[notes.indexOf(n) + 1];
+        const limit = Math.min(next ? next.pos - n.pos : Infinity, total - n.pos);
+        const len = r2(Math.max(.25, Math.min(n.len, limit)));
+        bars[bar].push(n.alt ? [at, n.deg, len, n.alt] : [at, n.deg, len]);
+      });
+      return sanitizeMelodyBars(bars, this._meter()) || bars;
+    }
+
+    /** Melodie-Takt k klingt später im Groove-Takt (k mod Anzahl). Die
+     *  Aufnahme begann im Groove-Takt startBar — also so drehen, dass jeder
+     *  Takt wieder über dem Akkord landet, über dem er eingespielt wurde. */
+    _recRotated(bars) {
+      const startBar = Math.round(this.rec.startStep / this.rec.barSteps);
+      return bars.map((_, k) => bars[mod(k - startBar, bars.length)].map((note) => [...note]));
+    }
+
+    _recSave() {
+      const rec = this.rec;
+      if (!rec.take) return;
+      const s = this.state;
+      const lib = this._saved.melodies;
+      if (lib.length >= MEL_MAX_OWN) { this._setStatus(t('lab.melLibraryFull')); return; }
+      let n = 1;
+      while (lib.some((m) => m.name === tf('lab.recTakeN', { n }))) n++;
+      const name = tf('lab.recTakeN', { n });
+      const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      const bars = this._recRotated(rec.take);
+      lib.push({ id, name, meter: this._meter(), bars });
+      this._clearMelodyEdit();
+      s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
+      s.melodyMeter = this._meter();
+      s.melodyName = name;
+      s.melodyOwnId = id;
+      s.melodyOn = true;
+      rec.phase = 'idle';
+      rec.take = null;
+      this._persist();
+      this._renderMelody();
+      this._renderRec();
+      this._setStatus(tf('lab.melSaved', { name }));
+    }
+
+    _renderRec() {
+      const rec = this.rec;
+      const phase = rec.phase;
+      this._chips(this.$('.rec-bars'), [1, 2, 3, 4].map((n) => ({ value: n, label: String(n) })), rec.bars, 'rec-bars');
+      this.$all('.rec-bars .chip').forEach((chip) => { chip.disabled = phase === 'armed' || phase === 'recording'; });
+      const btn = this.$('[data-action="rec-toggle"]');
+      const busy = phase === 'armed' || phase === 'recording';
+      btn.classList.toggle('is-live', busy);
+      btn.querySelector('span').textContent = t(busy ? 'lab.recStop' : 'lab.recStart');
+      this.$('.rec-live').hidden = phase !== 'armed';
+      this.$('.rec-status').textContent = phase === 'armed' ? t('lab.recArmed') : '';
+      // Die Rolle steht ab dem Einzählen da und füllt sich beim Spielen.
+      this.$('.rec-result').hidden = phase === 'idle';
+      this.$('.rec-actions').hidden = phase !== 'done';
+      if (phase === 'armed') this._paintRecRoll(Array.from({ length: rec.bars }, () => []), null);
+      if (phase === 'recording') this._paintRecRoll(this._recToBars({ until: this._recNow() }), 0);
+      if (phase === 'done') this._paintRecRoll(rec.take, 1);
+      this.$('.rec-play').hidden = phase !== 'done';
+      this._renderRecPlay();
     }
 
     /* ---- Verkabelung ---- */
@@ -1490,39 +4096,426 @@
     _wireControls() {
       this.shadowRoot.addEventListener('click', (event) => {
         const target = event.target.closest('[data-action]');
-        const action = target?.dataset.action;
-        if (!action) return;
-        if (action === 'close') this.close();
-        else if (action === 'toggle-transport') this.playing ? this.stop() : this.start();
-        else if (action === 'randomize') this.randomize();
-        else if (action === 'toggle-melody') { this.state.melodyOn = !this.state.melodyOn; this._renderAll(); }
-        else if (action === 'toggle-arp') { this.state.arpOn = !this.state.arpOn; this._renderAll(); }
-        else if (action === 'tab') this._setTab(target.dataset.tab);
-        else if (action === 'toggle-latch') {
-          this.state.latchOn = !this.state.latchOn;
-          if (!this.state.latchOn) this._releaseAllKeys();
-          this._renderAll();
+        if (!target || target.disabled) return;
+        this._handleAction(target.dataset.action, target.dataset.value, target);
+      });
+
+      this.shadowRoot.addEventListener('input', (event) => {
+        const el = event.target;
+        const s = this.state;
+        if (el.classList.contains('bpm-input')) {
+          s.bpm = Number(el.value);
+          this._onTempoChange();
+        } else if (el.dataset.field === 'swing' || el.dataset.field === 'pump') {
+          s[el.dataset.field] = Number(el.value);
+          this.$(`[data-out="${el.dataset.field}"]`).textContent = `${Math.round(Number(el.value) * 100)} %`;
+        } else if (el.dataset.mix) {
+          s.mix[el.dataset.mix] = Number(el.value);
+          this._paintLevel(el);
+          if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master);
+          else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix]);
+        } else if (el.classList.contains('prog-name')) {
+          const name = el.value.trim().slice(0, 40);
+          if (name && s.progOwnId) {
+            s.progName = name;
+            const own = this._saved.progressions.find((p) => p.id === s.progOwnId);
+            if (own) own.name = name;
+            this._renderPickerFor('prog');
+          }
+        } else if (el.classList.contains('mel-name')) {
+          const name = el.value.trim().slice(0, 40);
+          if (name && s.melodyOwnId) { s.melodyName = name; this._melCommit({ persist: false }); }
+        } else if (el.dataset.sound) {
+          const sound = s.sound;
+          sound[el.dataset.sound] = Number(el.value);
+          this._renderEnvelope(sound);
+          this._onSoundEdit();
         }
       });
 
-      this.$all('.bpm-input').forEach((input) => {
-        input.addEventListener('input', (e) => {
-          this.state.bpm = Number(e.target.value);
-          this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
-        });
+      this.shadowRoot.addEventListener('change', (event) => {
+        const el = event.target;
+        const s = this.state;
+        const field = el.dataset.field;
+        if (field === 'chordBars') { s.chordBars = Number(el.value); this._renderNow(); }
+        else if (field === 'arpMode') s.arpMode = el.value;
+        else if (field === 'arpDivision') s.arpDivision = Number(el.value);
+        else if (field === 'arpRhythm') s.arpRhythm = el.value;
+        else if (field === 'arpPattern') s[s.arpAuto ? 'arpAutoPattern' : 'arpPattern'] = el.value;
+        else if (field === 'arpOctaves') s.arpOctaves = Number(el.value);
+        else if (field === 'echoDiv') { s.fx.echoDiv = Number(el.value); this.engine.setFx(s.fx, this._stepSeconds()); }
+        else if (field === 'lfoSync') { s.sound.lfoSync = Number(el.value); this._onSoundEdit(); }
+        else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
+        else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
+        else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
+        else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
       });
+      this._wireMelGrid();
+    }
 
-      this.$('[data-field="arpSource"]').addEventListener('change', (e) => { this.state.arpSourceId = e.target.value; });
-      this.$('[data-field="arpMode"]').addEventListener('change', (e) => { this.state.arpMode = e.target.value; });
-      this.$('[data-field="arpDivision"]').addEventListener('change', (e) => { this.state.arpDivision = Number(e.target.value); });
-      this.$('[data-field="arpOctaves"]').addEventListener('change', (e) => { this.state.arpOctaves = Number(e.target.value); });
+    _onHarmonyChange() {
+      this._voicingCache = null;
+      this._renderHarmony();
+      this._renderNow();
+      this._renderKeys(); // Tonart-Tasten folgen der Tonart
+    }
+
+    /** Alle An/Aus-Schalter (Checkbox mit role="switch") laufen hier durch. */
+    _toggleSwitch(key, on) {
+      const s = this.state;
+      if (key === 'droneOn') { this._setDrone(on); return; }
+      if (key === 'droneFifth') { s.droneFifth = on; if (s.droneOn) this._startDrone(); return; }
+      if (key === 'latchOn' || key === 'arpOn' || key === 'arpAuto') {
+        // Umschalten lässt nur die gedrückten Tasten los. "Halten" und die
+        // gemerkten Töne bleiben erhalten (ruhen nur, solange der Arp aus
+        // oder automatisch ist) und sind beim Wiedereinschalten wieder da.
+        if (key === 'latchOn') this.ui.latchOn = on; else s[key] = on;
+        this._releasePressedKeys();
+        this._renderKeys();
+        if (this._latchActive() && this.latchedNotes.size) {
+          this._ensureAudio().then(() => this._ensureArpClock()).catch(() => {});
+        }
+        return;
+      }
+      if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
+      if (key === 'autoOn') { if (s.automation) s.automation.on = on; this._renderAutomation(); return; }
+      if (key === 'reverbOn' || key === 'echoOn' || key === 'chorusOn') {
+        s.fx[key] = on;
+        this.engine.setFx(s.fx, this._stepSeconds());
+        this._renderFx();
+        return;
+      }
+      if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
+      if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
+      s[key] = on; // melodyOn, chordsOn
+    }
+
+    _handleAction(action, value, target) {
+      const s = this.state;
+      switch (action) {
+        case 'close': this.close(); break;
+        case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
+        case 'randomize': this.randomize(); break;
+        case 'undo': this.undo(); break;
+        case 'tap-tempo': this._tapTempo(); break;
+        case 'tab': this._setTab(target.dataset.tab); break;
+        case 'lock': s.locks[target.dataset.lock] = !s.locks[target.dataset.lock]; this._renderLock(target.dataset.lock); break;
+        case 'open-sheet': this._openSheet(); break;
+        case 'picker-open': this._openPicker(target.dataset.picker); break;
+        case 'picker-close': this._closePicker(); break;
+        case 'picker-step': this._stepPicker(target.dataset.picker, Number(value)); break;
+        case 'close-sheet': this._closeSheet(); break;
+
+        // Beat
+        case 'meter': {
+          if (value === this._meter()) break;
+          s.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === value);
+          s.beat = beatFromPattern(this._pattern());
+          s.beatEdited = false;
+          this.ui.beatCat = 'all';
+          this._ensureMelodyMeter();
+          if (this.playing) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+          this._afterStateChange();
+          break;
+        }
+        case 'beat-cat': this.ui.beatCat = value === this.ui.beatCat ? 'all' : value; this._renderBeat(); break;
+        case 'pick-pattern': {
+          const meterBefore = this._meter();
+          s.patternIndex = Number(value);
+          s.beat = beatFromPattern(this._pattern());
+          s.beatEdited = false;
+          this._ensureMelodyMeter();
+          if (this.playing && this._meter() !== meterBefore) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+          this._renderBeat(); this._renderMelody();
+          break;
+        }
+        case 'cell': this._toggleCell(target.dataset.track, Number(target.dataset.step)); break;
+        case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); break;
+        case 'reset-beat':
+          this._pushHistory();
+          s.beat = beatFromPattern(this._pattern()); s.beatEdited = false; this._renderBeat();
+          break;
+        case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
+
+        // Harmonie
+        case 'prog-cat': this.ui.progCat = value === this.ui.progCat ? 'all' : value; this._renderHarmony(); break;
+        case 'pick-prog': {
+          this._clearProgEdit();
+          const own = String(value).startsWith('own:') && this._saved.progressions.find((p) => `own:${p.id}` === value);
+          if (own) {
+            s.progDegrees = [...own.degrees];
+            s.progSevenths = own.sevenths;
+            s.progName = own.name;
+            s.progOwnId = own.id;
+          } else if (PROGRESSIONS.some((p) => p.id === value)) {
+            s.progId = value;
+          }
+          this._onHarmonyChange();
+          break;
+        }
+        case 'prog-edit': this.ui.progEdit = true; this.ui.progSel = 0; this._renderHarmony(); break;
+        case 'prog-done': this.ui.progEdit = false; this._renderHarmony(); this.$('[data-action="prog-edit"]').focus(); break;
+        case 'prog-slot':
+          this.ui.progSel = Number(value);
+          this._renderChordStrip(); this._renderProgEditor();
+          this._previewChord(this._progression().degrees[this.ui.progSel]);
+          break;
+        case 'prog-deg': {
+          const degrees = this._progBegin();
+          degrees[this.ui.progSel] = Number(value);
+          this._progCommit();
+          this._previewChord(Number(value));
+          break;
+        }
+        case 'prog-add': {
+          const degrees = this._progBegin();
+          if (degrees.length < PROG_MAX_CHORDS) {
+            degrees.splice(this.ui.progSel + 1, 0, degrees[this.ui.progSel]);
+            this.ui.progSel++;
+          }
+          this._progCommit();
+          break;
+        }
+        case 'prog-remove': {
+          const degrees = this._progBegin();
+          if (degrees.length > 1) degrees.splice(this.ui.progSel, 1);
+          this.ui.progSel = Math.max(0, this.ui.progSel - 1);
+          this._progCommit();
+          break;
+        }
+        case 'prog-move': {
+          const to = this.ui.progSel + Number(value);
+          const degrees = this._progBegin();
+          if (to >= 0 && to < degrees.length) {
+            [degrees[this.ui.progSel], degrees[to]] = [degrees[to], degrees[this.ui.progSel]];
+            this.ui.progSel = to;
+          }
+          this._progCommit();
+          break;
+        }
+        case 'prog-undo': this._progRestore(this.ui.progUndo, this.ui.progRedo); break;
+        case 'prog-redo': this._progRestore(this.ui.progRedo, this.ui.progUndo); break;
+        case 'prog-new':
+          this._progBegin();
+          s.progDegrees = [0];
+          s.progSevenths = false;
+          s.progName = t('lab.newProg');
+          s.progOwnId = null;
+          this.ui.progSel = 0;
+          this._progCommit();
+          break;
+        case 'prog-original':
+          this._progBegin();
+          s.progDegrees = null; s.progSevenths = false;
+          this._progCommit();
+          break;
+        case 'prog-save': this._progSaveOwn(); break;
+        case 'prog-delete': this._progDeleteOwn(); break;
+        case 'satb': s.satb[value] = { on: 'focus', focus: 'mute', mute: 'on' }[s.satb[value]]; this._renderSatb(); break;
+
+        // Melodie
+        case 'melody-cat': this.ui.melodyCat = value === this.ui.melodyCat ? 'all' : value; this._renderMelody(); break;
+        case 'pick-melody': {
+          this._clearMelodyEdit();
+          const own = String(value).startsWith('own:') && this._saved.melodies.find((m) => `own:${m.id}` === value);
+          if (own) {
+            s.melodyBars = own.bars.map((bar) => bar.map((n) => [...n]));
+            s.melodyMeter = own.meter;
+            s.melodyName = own.name;
+            s.melodyOwnId = own.id;
+          } else if (!String(value).startsWith('own:')) {
+            s.melodyIndex = Number(value);
+          }
+          s.melodyOn = true;
+          this._renderMelody();
+          break;
+        }
+        case 'mel-edit': this.ui.melEdit = true; this.ui.melBar = 0; this._renderMelEditor(); this._scrollMelRoll(); break;
+        case 'mel-done': this.ui.melEdit = false; this._renderMelEditor(); this.$('[data-action="mel-edit"]').focus(); break;
+        case 'mel-bar': this.ui.melBar = Number(value); this._renderMelEditor(); this._scrollMelRoll(); break;
+        case 'mel-add-bar': {
+          const bars = this._melBegin();
+          if (bars.length < MEL_MAX_BARS) { bars.push([]); this.ui.melBar = bars.length - 1; }
+          this._melCommit();
+          break;
+        }
+        case 'mel-remove-bar': {
+          const bars = this._melBegin();
+          if (bars.length > 1) bars.splice(this.ui.melBar, 1);
+          this.ui.melBar = Math.max(0, this.ui.melBar - 1);
+          this._melCommit();
+          break;
+        }
+        case 'mel-undo': this._melRestore(this.ui.melUndo, this.ui.melRedo); break;
+        case 'mel-redo': this._melRestore(this.ui.melRedo, this.ui.melUndo); break;
+        case 'mel-new':
+          this._melBegin();
+          s.melodyBars = [[]];
+          s.melodyMeter = this._meter();
+          s.melodyName = t('lab.newMelody');
+          s.melodyOwnId = null;
+          s.melodyOn = true;
+          this.ui.melBar = 0;
+          this._melCommit();
+          break;
+        case 'mel-original':
+          this._melBegin();
+          s.melodyBars = null; s.melodyMeter = null;
+          this._melCommit();
+          break;
+        case 'mel-len': this.ui.melLen = Number(value); this._renderMelEditor(); break;
+        case 'mel-alt': this.ui.melAlt = Number(value); this._renderMelEditor(); break;
+        case 'mel-save': this._melSaveOwn(); break;
+        case 'rec-bars': this.rec.bars = Number(value); this._renderRec(); break;
+        case 'auto-bars': this.autoRec.bars = Number(value); this._renderAutomation(); break;
+        case 'auto-rec':
+          if (this.autoRec.phase === 'idle') this._autoArm(); else this._autoFinish();
+          break;
+        case 'auto-clear': s.automation = null; this._renderAutomation(); break;
+        case 'rec-toggle':
+          if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recFinish();
+          else this._recArm();
+          break;
+        case 'rec-save': this._recSave(); break;
+        case 'rec-loop': this._toggleRecLoop(); break;
+        case 'rec-discard': this.rec.phase = 'idle'; this.rec.take = null; this._renderRec(); break;
+        case 'mel-delete': this._melDeleteOwn(); break;
+        case 'melody-octave': s.melodyOctave = Number(value); this._renderMelody(); break;
+
+        // Mixer & Klang
+        case 'mute':
+          s.mute[value] = !s.mute[value];
+          this.engine.setBusLevel(value, s.mute[value] ? 0 : s.mix[value]);
+          this._renderMixer();
+          break;
+        case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
+        case 'pick-preset':
+          s.sound = soundFromPreset(Number(value));
+          this._applySound();
+          this._renderSound();
+          this._auditionSound();
+          break;
+        case 'reset-sound':
+          s.sound = soundFromPreset(s.sound.presetIndex);
+          this._applySound();
+          this._renderSound();
+          break;
+        case 'wave': s.sound.wave = value; this._onSoundEdit(); this._renderSynthControls(); break;
+        case 'filter-type': s.sound.filterType = value; this._onSoundEdit(); this._renderSynthControls(); break;
+
+        // Keys
+        case 'arp-clear': this.latchedNotes.clear(); this._paintHeld(); this._renderKeys(); break;
+        case 'keys-layout': this._releasePressedKeys(); s.keysLayout = value; this._renderKeys(); this._paintHeld(); break;
+        case 'help': {
+          const text = this.$(`[data-help-text="${target.dataset.help}"]`);
+          const open = text.hidden;
+          text.hidden = !open;
+          target.setAttribute('aria-expanded', String(open));
+          break;
+        }
+        case 'key-octave': s.octave = Number(value); this._renderKeys(); break;
+
+        // Speichern
+        case 'slot-save':
+          this._saved.slots[Number(value)] = { state: this._snapshot(), savedAt: Date.now() };
+          this._persist();
+          this._renderSheet();
+          this._flash(tf('lab.savedTo', { n: Number(value) + 1 }));
+          break;
+        case 'slot-load': {
+          const slot = this._saved.slots[Number(value)];
+          if (!slot) break;
+          this._applyState(sanitizeState(slot.state));
+          this._renderSheet();
+          this._flash(tf('lab.loadedFrom', { n: Number(value) + 1 }));
+          break;
+        }
+        case 'copy-code': {
+          const field = this.$('.code-out');
+          field.value = encodeState(this.state);
+          const done = () => this._flash(t('lab.copied'));
+          const fallback = () => { field.select(); this._flash(t('lab.copyManual')); };
+          if (navigator.clipboard?.writeText) navigator.clipboard.writeText(field.value).then(done, fallback);
+          else fallback();
+          break;
+        }
+        case 'import-code':
+          try {
+            this._applyState(decodeState(this.$('.code-in').value));
+            this.$('.code-in').value = '';
+            this._renderSheet();
+            this._flash(t('lab.imported'));
+          } catch {
+            this._flash(t('lab.importFailed'));
+          }
+          break;
+        default: break;
+      }
+    }
+
+    /** Kurzes Vorhören nach einem Preset-Wechsel (nur wenn gerade nichts
+     *  läuft — sonst hört man den Klang ja ohnehin im Groove). */
+    async _auditionSound() {
+      if (this.playing) return;
+      try { await this._ensureAudio(); } catch { return; }
+      this.engine.playTone(this.state.sound, 60 + foldRoot(this.state.keyRoot), this.engine.ctx.currentTime, .22, .5,
+        { layer: 'melody', glide: 0, stepSeconds: this._stepSeconds() });
+    }
+
+    _isTyping() {
+      const el = this.shadowRoot.activeElement;
+      // Nur echte Texteingaben zählen — ein fokussierter Schalter (Checkbox)
+      // oder Regler darf die Computer-Klaviatur nicht blockieren.
+      return !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
+        || (el.tagName === 'INPUT' && !['range', 'checkbox', 'radio'].includes(el.type)));
     }
 
     _handleKeydown(event) {
-      if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
-      if (event.key !== 'Tab') return;
-      const focusable = this.$all('button:not([disabled]), input:not([disabled]), select:not([disabled])')
-        .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (this.ui.picker) this._closePicker();
+        else if (!this.$('.sheet').hidden) this._closeSheet();
+        else this.close();
+        return;
+      }
+      if (event.key === 'Tab') { this._trapFocus(event); return; }
+      if (this._isTyping() || event.metaKey || event.ctrlKey || event.altKey) return;
+
+      if (event.code === 'Space') {
+        // Leertaste auf einem fokussierten Knopf löst den Knopf aus — dort
+        // nicht zusätzlich den Transport umschalten.
+        const focused = this.shadowRoot.activeElement;
+        if (focused && (focused.tagName === 'BUTTON' || focused.tagName === 'SUMMARY' || focused.type === 'checkbox')) return;
+        event.preventDefault();
+        if (this.playing) this.stop(); else this.start();
+        return;
+      }
+      if (event.repeat) return;
+      const base = 12 * (this.state.octave + 1);
+      if (this.state.keysLayout === 'scale') {
+        const degree = SCALE_KEY_CODES.indexOf(event.code);
+        if (degree === -1) return;
+        event.preventDefault();
+        const midi = base + foldRoot(this.state.keyRoot) + degreeSemis(this._mode().steps, degree);
+        this._enterKey(`kbd:${event.code}`, this._keyElFor(midi), midi);
+        return;
+      }
+      const offset = KEY_CODES.indexOf(event.code);
+      if (offset !== -1) {
+        event.preventDefault();
+        this._enterKey(`kbd:${event.code}`, this._keyElements.get(offset), base + offset);
+      }
+    }
+
+    _handleKeyup(event) {
+      if (KEY_CODES.includes(event.code) || SCALE_KEY_CODES.includes(event.code)) this._releaseKey(`kbd:${event.code}`);
+    }
+
+    _trapFocus(event) {
+      const scope = [this.$('.picker-card'), this.$('.sheet')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
+      const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
+        .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
+        .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -1531,6 +4524,23 @@
     }
 
     static markup() {
+      const lockBtn = (which) => `<button class="lock-btn" type="button" data-action="lock" data-lock="${which}" aria-pressed="false" aria-label="${t('lab.lockAria')}" title="${t('lab.lockAria')}"></button>`;
+      // An/Aus-Schalter: echte Checkbox mit role="switch" — Tastatur,
+      // Screenreader und Formular-Semantik gibt es dadurch geschenkt.
+      const toggle = (key, labelKey) => `<label class="switch"><input type="checkbox" role="switch" data-switch="${key}"><span class="switch-track" aria-hidden="true"></span><span>${t(labelKey)}</span></label>`;
+      // Ohne sichtbaren Text, z. B. rechts oben im Panel-Kopf als An/Aus.
+      const bareToggle = (key, labelKey) => `<label class="switch switch-bare"><input type="checkbox" role="switch" data-switch="${key}" aria-label="${t(labelKey)}"><span class="switch-track" aria-hidden="true"></span></label>`;
+      // Erklärungen stecken hinter einem (?) neben der Überschrift und
+      // klappen darunter auf — der Text steht nicht mehr dauerhaft im Weg.
+      const help = (key) => `<button class="help-btn" type="button" data-action="help" data-help="${key}" aria-expanded="false" aria-label="${t('lab.helpAria')}">?</button>`;
+      const helpText = (key) => `<p class="help-text" data-help-text="${key}" hidden>${t(`lab.${key}`)}</p>`;
+      // Aktuelle Auswahl mit ‹ › — ein Tipp auf die Mitte öffnet den Auswahl-Dialog.
+      const pickerTrigger = (which) => `<div class="picker-trigger" data-picker="${which}">
+        <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="-1" aria-label="${t('lab.prevAria')}">${UI_ICON.prev}</button>
+        <button class="picker-main${which === 'melody' || which === 'prog' ? ' is-wide' : ''}" type="button" data-action="picker-open" data-picker="${which}" aria-haspopup="dialog">
+          <span class="picker-ico"></span><span class="picker-text"><strong class="picker-name"></strong><span class="picker-sub"></span></span></button>
+        <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="1" aria-label="${t('lab.nextAria')}">${UI_ICON.next}</button>
+      </div>`;
       return `
 <style>
   :host {
@@ -1542,6 +4552,7 @@
     --line: #f1ddd0;
     --text: #241b3d;
     --muted: #8c81a6;
+    --bad: #e0445a;
     position: fixed; inset: 0; z-index: 2147483000;
     background:
       radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .14), transparent 55%),
@@ -1552,17 +4563,18 @@
   }
   :host([hidden]) { display: none; }
   * { box-sizing: border-box; }
-  button, input, select { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
-  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: .35; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
   .lab-head {
-    flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
+    flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
     padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   }
-  .lab-head-title { flex: 1; }
-  .eyebrow { color: var(--accent); font-size: .66rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .lab-head-title { flex: 1; min-width: 0; }
   .lab-head h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   .lab-head h1 span { color: var(--accent); }
   .icon-btn {
@@ -1571,13 +4583,13 @@
   }
 
   .tab-bar {
-    flex: 0 0 auto; display: flex; gap: 6px; padding: 0 max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+    flex: 0 0 auto; display: flex; gap: 4px; padding: 0 max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
     overflow-x: auto; scrollbar-width: none;
   }
   .tab-bar::-webkit-scrollbar { display: none; }
   .tab-btn {
-    flex: 1 0 auto; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line);
-    background: var(--surface-2); color: var(--muted); font-size: .78rem; font-weight: 700; text-align: center;
+    flex: 1 0 auto; padding: 9px 8px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 700; text-align: center;
     transition: background .15s, border-color .15s, color .15s;
   }
   .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -1586,57 +4598,165 @@
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 2px max(16px, env(safe-area-inset-right)) 18px max(16px, env(safe-area-inset-left));
   }
-  .tab-panel[hidden] { display: none; }
 
   .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
   .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
   .panel-head h2 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; }
+  /* Überschrift links, ein (?) direkt daneben, alles Weitere rechts. */
+  .panel-head > h2 { margin-right: auto; }
+  .panel-head > h2:has(+ .help-btn) { margin-right: 0; }
+  .panel-head > .help-btn { margin: 0 auto 0 -4px; }
+  .help-btn {
+    width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+    color: var(--muted); font-size: .68rem; font-weight: 800; line-height: 1; display: grid; place-items: center; padding: 0;
+  }
+  .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .help-text {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line);
+    font-size: .72rem; line-height: 1.45; color: var(--text);
+  }
+  .module-head .help-btn { margin-left: auto; }
+  .module .help-text { margin-top: -2px; }
   .item-name { font-size: .74rem; font-weight: 700; color: var(--accent); text-align: right; }
+  .sub-label { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
+  .foot-note { text-align: center; color: var(--muted); font-size: .66rem; line-height: 1.4; padding: 10px 0 0; margin: 0; }
 
-  .transport-bar {
-    flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--surface);
-    backdrop-filter: blur(14px);
-    padding: 12px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  .lock-btn { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); border: 1px solid transparent; }
+  .lock-btn svg { width: 16px; height: 16px; }
+  .lock-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip-row + .chip-row { margin-top: 8px; }
+  .chip {
+    border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+    padding: 6px 11px; font-size: .7rem; font-weight: 700; color: var(--muted);
   }
-  .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; }
-  .transport-play {
-    width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
-    background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7);
+  .chip[aria-pressed="true"] { background: rgba(var(--accent-rgb), .16); border-color: var(--accent); color: var(--accent); }
+  .chip-label { align-self: center; font-size: .66rem; font-weight: 800; color: var(--muted); margin-right: 2px; }
+  .pill-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .switch-row { display: flex; gap: 8px 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  .switch { display: inline-flex; align-items: center; gap: 9px; font-size: .76rem; font-weight: 700; cursor: pointer; position: relative; }
+  .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .switch-track {
+    width: 40px; height: 24px; border-radius: 999px; background: var(--line); position: relative; flex: 0 0 auto;
+    transition: background .15s;
   }
-  .icon-btn.dice-btn { width: 46px; height: 46px; border-radius: 15px; }
-  .tempo-field { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
-  .bpm-out { font-weight: 800; font-size: 1.1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .status-line { font-size: .68rem; color: var(--muted); text-align: center; margin: 8px 0 0; }
-
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-
-  .pick-cell {
-    aspect-ratio: 1; border: 1px solid var(--line); border-radius: 13px; background: var(--surface);
-    display: grid; place-items: center; padding: 4px;
+  .switch-track::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(36,27,61,.3); transition: transform .15s;
   }
-  .pick-cell svg { width: 21px; height: 21px; color: var(--muted); }
-  .pick-cell[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .3) inset; }
-  .pick-cell[aria-pressed="true"] svg { color: var(--accent); }
-  .pattern-grid, .melody-grid, .preset-grid { display: grid; grid-template-columns: repeat(8, minmax(0,1fr)); gap: 6px; }
+  .switch input:checked + .switch-track { background: var(--accent); }
+  .switch input:checked + .switch-track::after { transform: translateX(16px); }
+  .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-  .track-list { display: grid; gap: 8px; margin-top: 12px; }
-  .track-row { display: grid; grid-template-columns: 32px 60px 1fr 38px; gap: 8px; align-items: center; }
-  .track-row.is-off { opacity: .38; }
+  .select-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .select-field { display: grid; gap: 5px; font-size: .64rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .select-field select { font-size: .86rem; font-weight: 700; padding: 10px; text-transform: none; letter-spacing: 0; color: var(--text); }
+
+  .preview { fill: currentColor; stroke: none; }
+
+  .track-list { display: grid; gap: 7px; }
+  .track-row { display: grid; grid-template-columns: 30px 46px 1fr 34px; gap: 6px; align-items: center; }
+  .track-row.is-off .step-row, .track-row.is-off .track-name { opacity: .35; }
   .track-roll {
-    width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface);
+    width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface);
     display: grid; place-items: center; color: var(--muted); touch-action: none;
   }
-  .track-roll svg { width: 15px; height: 15px; }
+  .track-roll svg { width: 14px; height: 14px; }
   .track-roll.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .track-name { font-size: .64rem; font-weight: 700; color: var(--muted); }
-  .track-toggle { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 6px; font-size: .58rem; text-align: center; font-weight: 700; }
-  .step-row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; }
-  .step-cell { height: 11px; border-radius: 5px; background: rgba(36,27,61,.09); }
+  .track-name { font-size: .62rem; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .track-toggle { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 6px 0; font-size: .58rem; text-align: center; font-weight: 700; }
+  .step-row { display: grid; gap: 2px; }
+  .step-cell {
+    height: 22px; border-radius: 5px; background: rgba(36,27,61,.08); padding: 0; position: relative;
+    font-size: .5rem; font-weight: 800; color: #fff; display: grid; place-items: center;
+  }
+  .step-cell.is-alt { background: rgba(36,27,61,.15); }
   .step-cell.is-hit { background: var(--accent); }
-  .step-cell.is-now { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .step-cell.is-soft { background: rgba(var(--accent-rgb), .45); }
+  .step-cell[data-label]::after { content: attr(data-label); }
+  .step-cell.is-now { outline: 2px solid var(--text); outline-offset: 1px; }
 
-  .toggle-pill { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 8px 14px; font-size: .72rem; font-weight: 700; }
-  .toggle-pill[aria-pressed="true"] { background: rgba(var(--accent-rgb), .18); border-color: var(--accent); color: var(--accent); }
+  .slider-line { display: grid; grid-template-columns: 72px 1fr 44px; gap: 10px; align-items: center; font-size: .72rem; font-weight: 700; margin: 6px 0; }
+  .slider-line output { font-size: .68rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .select-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: .72rem; font-weight: 700; margin-top: 12px; }
+  select { border: 1px solid var(--line); border-radius: 11px; padding: 7px 8px; background: var(--surface); font-size: .72rem; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .chord-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 6px; margin-top: 12px; }
+  .chord-box { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 7px 4px; text-align: center; display: grid; gap: 2px; }
+  .chord-box strong { font-size: .86rem; }
+  .chord-roman { font-size: .6rem; font-weight: 800; color: var(--muted); }
+  .chord-box.is-now { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); }
+  .chord-box.is-now strong { color: var(--accent); }
+  button.chord-box { font: inherit; color: inherit; cursor: pointer; }
+  .chord-box.is-selected { border-color: var(--text); box-shadow: 0 0 0 1.5px var(--text) inset; }
+  .prog-info { font-size: .7rem; color: var(--muted); margin: 8px 2px 0; line-height: 1.4; }
+  .prog-info:empty { display: none; }
+  .prog-editor { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .prog-count { margin-right: auto; font-size: .72rem; font-weight: 800; color: var(--muted); }
+  .prog-degrees { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .prog-deg { display: grid; gap: 1px; padding: 6px 2px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); text-align: center; }
+  .prog-deg span { font-size: .56rem; font-weight: 800; color: var(--muted); }
+  .prog-deg strong { font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prog-deg[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .prog-deg[aria-pressed="true"] span { color: rgba(255,255,255,.85); }
+  .prog-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .prog-tools .chip svg { width: 14px; height: 14px; }
+  .prog-tools .chip { display: inline-flex; align-items: center; gap: 4px; }
+
+  .satb-list { display: grid; gap: 6px; }
+  .satb-row { display: grid; grid-template-columns: 12px 1fr 52px 96px; gap: 10px; align-items: center; border-radius: 12px; background: var(--surface); padding: 7px 8px 7px 10px; border: 1px solid var(--line); }
+  .voice-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--voice); }
+  .satb-name { font-size: .74rem; font-weight: 700; }
+  .satb-note { font-size: .86rem; font-variant-numeric: tabular-nums; }
+  .satb-row .chip { text-align: center; }
+  .satb-row.is-focus { border-color: var(--voice); box-shadow: 0 0 0 1px var(--voice) inset; }
+  .satb-row.is-mute .satb-name, .satb-row.is-mute .satb-note { opacity: .35; text-decoration: line-through; }
+
+  .mixer-list { display: grid; gap: 8px; }
+  .mixer-row { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: center; }
+  .mixer-row.is-master { grid-template-columns: 1fr; margin-top: 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .mute-btn {
+    width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: var(--surface); color: var(--accent);
+  }
+  .mute-btn svg { width: 19px; height: 19px; }
+  .mute-btn[aria-pressed="true"] { color: var(--muted); background: var(--surface-2); }
+  .level-wrap { position: relative; display: block; }
+  /* Pegelbalken: das Range-Feld selbst ist der Balken, die Füllung kommt
+     aus --val (siehe _paintLevel); der Griff ist nur ein schmaler Strich. */
+  .level {
+    -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 40px; margin: 0;
+    border-radius: 12px; border: 1px solid var(--line); cursor: pointer; touch-action: pan-y;
+    background: linear-gradient(to right, rgba(var(--accent-rgb), .5) var(--val, 0%), var(--surface) var(--val, 0%));
+  }
+  .level::-webkit-slider-runnable-track { background: transparent; height: 100%; }
+  .level::-moz-range-track { background: transparent; height: 100%; }
+  .level::-webkit-slider-thumb { -webkit-appearance: none; width: 5px; height: 40px; border-radius: 3px; background: var(--accent); }
+  .level::-moz-range-thumb { width: 5px; height: 40px; border: 0; border-radius: 3px; background: var(--accent); }
+  .level-label, .level-value {
+    position: absolute; top: 50%; transform: translateY(-50%); pointer-events: none;
+    font-size: .76rem; font-weight: 800; color: var(--text);
+  }
+  .level-label { left: 12px; }
+  .level-value { right: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .mixer-row.is-muted .level { background: linear-gradient(to right, rgba(140,129,166,.22) var(--val, 0%), var(--surface-2) var(--val, 0%)); }
+  .mixer-row.is-muted .level::-webkit-slider-thumb { background: var(--muted); }
+  .mixer-row.is-muted .level::-moz-range-thumb { background: var(--muted); }
+  .mixer-row.is-muted .level-label { color: var(--muted); text-decoration: line-through; }
+  .mixer-row.is-master .level { height: 46px; background: linear-gradient(to right, var(--accent) var(--val, 0%), var(--surface) var(--val, 0%)); }
+  .mixer-row.is-master .level::-webkit-slider-thumb { height: 46px; background: var(--text); }
+  .mixer-row.is-master .level::-moz-range-thumb { height: 46px; background: var(--text); }
+  .mixer-row.is-master .level-label { color: #fff; text-shadow: 0 1px 2px rgba(36,27,61,.35); }
+
+  .macro-knobs { justify-content: space-between; }
+  .expert { margin-top: 12px; }
+  .expert summary { cursor: pointer; font-size: .74rem; font-weight: 800; color: var(--accent); padding: 8px 0; list-style: none; display: flex; align-items: center; gap: 6px; }
+  .expert summary::-webkit-details-marker { display: none; }
+  .expert summary svg { width: 16px; height: 16px; }
+  .expert[open] summary { margin-bottom: 8px; }
 
   .module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .module {
@@ -1651,74 +4771,251 @@
   }
   .module-icon svg { width: 15px; height: 15px; }
   .module-head h3 { font-size: .72rem; color: var(--text); text-transform: uppercase; letter-spacing: .06em; margin: 0; font-weight: 800; }
-  .fx-columns { display: grid; gap: 12px; }
-  .fx-columns > div + div { padding-top: 10px; border-top: 1px dashed var(--line); }
-  .fx-label { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
-  .module-half .knob-row { gap: 8px; }
-  .module-half .knob-field { width: 52px; }
-  .module-half .knob { width: 46px; height: 46px; }
-  .wave-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .wave-row { display: flex; gap: 8px; }
   .wave-btn { flex: 1; aspect-ratio: 1.3; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); display: grid; place-items: center; color: var(--muted); }
   .wave-btn svg { width: 58%; height: 58%; }
   .wave-btn[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); color: var(--accent); }
 
-  .adsr-row { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .envelope-graph { width: 100%; height: 42px; }
   .envelope-path { fill: none; stroke: var(--accent); stroke-width: 2; }
   .adsr-sliders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
   .slider-field { font-size: .58rem; font-weight: 700; display: block; color: var(--muted); }
   .slider-field input { display: block; margin-top: 4px; }
 
-  .knob-row { display: flex; gap: 14px; margin-top: 2px; flex-wrap: wrap; }
-  .knob-field { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 62px; }
-  .knob { width: 54px; height: 54px; touch-action: none; }
-  .knob-track { fill: none; stroke: var(--line); stroke-width: 2.6; }
-  .knob-fill { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; transform: rotate(135deg); transform-origin: 20px 20px; transition: stroke-dasharray .05s linear; }
-  .knob-dot { fill: #fff; }
-  .knob-label { font-size: .58rem; font-weight: 700; color: var(--muted); text-align: center; }
-  .knob-value { font-size: .64rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .knob-row { display: flex; gap: 12px; margin-top: 2px; flex-wrap: wrap; }
+  .knob-field { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 58px; }
+  .knob { width: 50px; height: 50px; padding: 0; touch-action: none; }
+  .knob svg { width: 100%; height: 100%; }
+  .knob-track { fill: none; stroke: var(--line); stroke-width: 3.2; }
+  .knob-fill { fill: none; stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; transform: rotate(135deg); transform-origin: 20px 20px; }
+  .knob-dot { fill: var(--accent); stroke: none; }
+  .knob-label { font-size: .58rem; font-weight: 700; color: var(--muted); text-align: center; line-height: 1.15; }
+  .knob-value { font-size: .62rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .module-half .knob-row { gap: 6px; }
+  .module-half .knob-field { width: 52px; }
+  .module-half .knob { width: 44px; height: 44px; }
+  .module .chip-row { margin-bottom: 10px; }
+  .module .select-line { margin-top: 8px; }
 
-  .arp-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-  .arp-controls select { border: 1px solid var(--line); border-radius: 11px; padding: 8px; background: var(--surface); font-size: .72rem; }
-  .arp-toggles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .arp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .arp-grid .arp-pattern { grid-column: span 2; }
+  .arp-status { margin: 0 0 10px; font-size: .72rem; font-weight: 700; color: var(--accent); min-height: 1em; }
+  .arp-clear { margin-top: 12px; }
 
-  .keyboard-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
-  .keyboard-head strong { font-size: .8rem; }
-  .octave-list { display: flex; gap: 4px; }
-  .octave-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 5px 9px; font-size: .66rem; font-weight: 800; }
-  .octave-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .14); }
-  /* Gap bewusst winzig: bei einem schnellen Glissando über die Tastatur
-     reicht eine größere Lücke zwischen den Tasten aus, den Finger kurz
-     "zwischen" zwei Tasten treffen zu lassen (siehe _wireKeyboard). Alle
-     Tasten sind außerdem gleich hoch — unterschiedliche Höhen wie bei einem
-     echten Klavier hätten unterhalb der kürzeren (schwarzen) Tasten eine
-     zusätzliche tote Zone ohne Trefffläche hinterlassen. */
-  .keyboard { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1px; touch-action: none; }
-  .key {
-    height: 64px; border: 1px solid var(--line); border-radius: 0 0 10px 10px; background: var(--surface);
-    display: flex; align-items: flex-end; justify-content: center; padding: 6px 1px;
-    font-size: .54rem; font-weight: 800; touch-action: none; user-select: none; color: var(--muted);
+  .switch.is-disabled { opacity: .4; cursor: default; }
+  .scale-pads { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .pad {
+    height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0;
+    font-size: .74rem; font-weight: 800; color: var(--text); touch-action: none;
   }
-  .key.is-black { background: #2d2639; color: #cbb8d8; border-color: #2d2639; }
-  .key.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .key.is-latched { box-shadow: inset 0 0 0 2px #fff; }
+  .pad.is-root { border-color: rgba(var(--accent-rgb), .55); background: rgba(var(--accent-rgb), .08); }
+  .pad.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pad.is-latched, .key.is-latched { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--accent); }
+  .key.is-arp, .pad.is-arp { filter: brightness(1.15); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .55); }
+  /* Effekte: Hall und Chorus nebeneinander, Echo darunter in einer Zeile;
+     jeder Block mit eigenem An/Aus rechts oben, Regler etwas kleiner. */
+  .fx-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fx-group { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 8px 10px 10px; transition: opacity .15s; }
+  .fx-group.is-wide { grid-column: 1 / -1; }
+  .fx-group.is-off .knob-row, .fx-group.is-off .fx-echo-time { opacity: .4; }
+  .fx-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
+  .fx-head .sub-label { margin: 0; }
+  .fx-head .switch-track { transform: scale(.85); transform-origin: right center; }
+  .fx-groups .knob-row { gap: 6px; }
+  .fx-groups .knob-field { width: 50px; }
+  .fx-groups .knob { width: 40px; height: 40px; }
+  .fx-echo-row { display: flex; align-items: flex-end; gap: 10px; }
+  .fx-echo-time { flex: 1; min-width: 0; margin-bottom: 4px; }
 
-  .foot-note { text-align: center; color: var(--muted); font-size: .64rem; padding: 10px 0 0; }
+  .keyboard-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; gap: 10px; }
+  .keyboard-head strong { font-size: .8rem; }
+  .keyboard { position: relative; height: 128px; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .key { position: absolute; top: 0; padding: 0 0 6px; display: flex; align-items: flex-end; justify-content: center; touch-action: none; user-select: none; }
+  .key.is-white { height: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 9px 9px; color: var(--muted); font-size: .5rem; font-weight: 800; z-index: 1; }
+  .key.is-black { height: 60%; background: #2d2639; border-radius: 0 0 7px 7px; z-index: 2; }
+  .key.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .transport-bar {
+    flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--surface);
+    padding: 10px max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .transport-row { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 8px; }
+  .transport-play {
+    width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; border: 0;
+    background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7);
+  }
+  .tempo-field { display: grid; gap: 2px; min-width: 0; }
+  .bpm-out { font-weight: 800; font-size: 1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .tap-btn { width: auto; padding: 0 10px; font-size: .68rem; font-weight: 800; }
+  .now-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; min-height: 18px; }
+  .beat-dots { display: flex; gap: 4px; }
+  .beat-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+  .beat-dots i:first-child { width: 10px; height: 10px; margin-top: -1px; }
+  .beat-dots i.is-now { background: var(--accent); }
+  .now-chord { font-weight: 800; font-size: .8rem; color: var(--accent); }
+  .status-line { flex: 1; font-size: .66rem; color: var(--muted); text-align: right; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .picker-trigger { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
+  .picker-step { flex: 0 0 42px; display: grid; place-items: center; color: var(--muted); }
+  .picker-step svg { width: 20px; height: 20px; }
+  .picker-step:active { background: var(--surface-2); }
+  .picker-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; text-align: left; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .picker-ico { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(var(--accent-rgb), .12); color: var(--accent); }
+  .picker-main.is-wide .picker-ico { width: 64px; padding: 0 7px; }
+  .picker-ico .preview, .pick-ico .preview { width: 100%; height: 20px; }
+  .picker-text { min-width: 0; display: grid; }
+  .picker-name { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker-sub { font-size: .66rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reset-sound-row { margin-top: 8px; }
+  .reset-sound-row:has([hidden]) { display: none; }
+
+  .mel-card { margin-top: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px; }
+  .mel-mini, .mel-grid { position: relative; overflow: hidden; background: var(--surface); }
+  .mel-mini { height: 80px; border-radius: 10px; }
+  .mel-row { position: absolute; left: 0; right: 0; }
+  .mel-row.is-root { background: rgba(var(--accent-rgb), .07); }
+  .mel-grid .mel-row.is-chord { background: rgba(var(--accent-rgb), .04); }
+  .mel-grid .mel-row.is-outer { background-color: rgba(140,129,166,.07); }
+  .mel-grid .mel-row.is-outer.is-root { background: rgba(var(--accent-rgb), .07); }
+  .mel-grid .mel-row { border-top: 1px solid rgba(241,221,208,.7); }
+  .mel-grid .mel-row.is-split { border-top: 2px solid #d9bfae; }
+  .mel-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #f6ebe2; }
+  .mel-line.is-beat { background: #ead6c8; }
+  .mel-line.is-bar { width: 2px; background: #d9bfae; }
+  .mel-note { position: absolute; border-radius: 5px; background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0,0,0,.12); pointer-events: none;
+    display: flex; align-items: center; padding-left: 3px; color: #fff; font-size: .62rem; }
+  .mel-note { border: 1px solid var(--surface); }
+  .mel-note.is-alt { background: #8c6bf0; }
+  .mel-mini .mel-note { border-radius: 3px; box-shadow: none; }
+  .mel-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(36,27,61,.55); pointer-events: none; }
+  .mel-edit-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: .74rem; font-weight: 800; color: var(--accent); }
+  .mel-edit-link svg { width: 16px; height: 16px; }
+  .mel-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+  .mel-bars { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
+  .mel-bar-tab { min-width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); font-size: .74rem; font-weight: 800; color: var(--muted); background: var(--surface-2); }
+  .mel-bar-tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mel-bar-tab.is-extra { background: var(--surface); font-size: .9rem; }
+  .mel-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
+  .mel-icon svg { width: 18px; height: 18px; }
+  /* Die Rolle zeigt ~12 der 21 Zeilen; gescrollt wird über die Leiste links
+     (bzw. Mausrad) — das Raster selbst zeichnet und scrollt deshalb nicht. */
+  .mel-roll { display: grid; grid-template-columns: 30px 1fr; gap: 4px; height: 256px; overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 10px; scrollbar-width: thin; }
+  .mel-grid { border-radius: 10px; border: 1px solid var(--line); touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+  .mel-labels { position: relative; display: grid; grid-auto-rows: 1fr; padding: 1px 0; border-radius: 10px; background: var(--surface-2);
+    touch-action: pan-y; cursor: ns-resize; }
+  .mel-labels span { display: grid; place-items: center end; padding-right: 4px; font-size: .64rem; font-weight: 800; color: var(--muted); }
+  .mel-labels span.is-chord { color: var(--accent); }
+  .mel-labels span.is-outer { opacity: .7; }
+  .mel-band { position: absolute !important; left: 3px; width: 8px; border: 1.5px solid #cbbfd8; border-right: 0; border-radius: 4px 0 0 4px; padding: 0 !important; }
+  .mel-band i { position: absolute; left: 5px; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); font-size: .5rem; font-style: normal; font-weight: 800; color: var(--muted); background: var(--surface-2); padding: 0 2px; text-transform: uppercase; letter-spacing: .04em; }
+  .mel-tools { margin-top: 4px; }
+  .mel-chroma { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .mel-alts .chip { min-width: 36px; text-align: center; font-size: .82rem; }
+  .mel-name-row, .prog-name-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .7rem; font-weight: 800; color: var(--muted); }
+  .mel-name, .prog-name { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 7px 9px; font-size: .8rem; color: var(--text); }
+  .mel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+  .mel-done { margin-left: auto; padding: 9px 20px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .76rem; }
+
+  .auto-box { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .auto-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .auto-row .help-btn { margin: 0; }
+  .auto-bars .chip { min-width: 32px; text-align: center; }
+  .auto-live { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .auto-result { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .auto-params { flex: 1; min-width: 0; font-size: .7rem; font-weight: 700; color: var(--text); }
+  .rec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rec-bars .chip { min-width: 34px; text-align: center; }
+  .rec-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .76rem; }
+  .rec-btn i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); }
+  .rec-btn.is-live { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .rec-btn.is-live i { background: #fff; border-radius: 2px; animation: rec-blink 1s steps(2) infinite; }
+  @keyframes rec-blink { 50% { opacity: .3; } }
+  .rec-live { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 30px; }
+  .rec-count { font-size: 1.4rem; font-weight: 800; color: var(--bad); min-width: 1ch; }
+  .rec-status { font-size: .72rem; font-weight: 700; color: var(--muted); }
+  .rec-meter { display: flex; gap: 4px; margin-top: 6px; }
+  .rec-meter span { position: relative; flex: 1; height: 18px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .rec-meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(224,68,90,.55); }
+  .rec-meter span.is-full i { background: var(--bad); }
+  .rec-meter b { position: relative; display: grid; place-items: center; height: 100%; font-size: .62rem; font-weight: 800; color: var(--text); }
+  .rec-meter span.is-full b { color: #fff; }
+  .rec-roll .mel-playhead { background: var(--bad); width: 2px; }
+  .rec-stage { position: relative; }
+  .rec-play { position: absolute; right: 8px; bottom: 8px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(var(--accent-rgb), .45); }
+  .rec-play svg { width: 18px; height: 18px; }
+  .rec-result { margin-top: 10px; }
+  .rec-result .mel-mini { border: 1px solid var(--line); }
+  .rec-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+  .picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; justify-content: flex-end; }
+  .picker-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); opacity: 0; transition: opacity .22s; }
+  .picker-card {
+    position: relative; width: 100%; max-width: 560px; margin: 0 auto; height: 82%; display: flex; flex-direction: column;
+    background: var(--bg); border-radius: 24px 24px 0 0; box-shadow: 0 -10px 30px rgba(36,27,61,.18);
+    transform: translateY(100%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+  }
+  .picker.is-open .picker-backdrop { opacity: 1; }
+  .picker.is-open .picker-card { transform: none; }
+  .picker-grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 8px auto 2px; flex: 0 0 auto; }
+  .picker-card > .panel-head { padding: 4px 16px 0; margin-bottom: 8px; }
+  .picker-title { font-size: .95rem !important; color: var(--text) !important; text-transform: none !important; letter-spacing: 0 !important; }
+  .picker-chips { padding: 0 16px 10px; flex: 0 0 auto; }
+  .chip-clear { display: inline-grid; place-items: center; padding: 0; width: 32px; align-self: stretch; color: var(--accent); border-color: var(--accent); }
+  .chip-clear svg { width: 14px; height: 14px; stroke-width: 2.4; }
+  .chip-sep { flex: 0 0 1px; align-self: stretch; background: var(--line); margin: 3px 2px; }
+  .picker-grid { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+  .pick-card { display: flex; align-items: center; gap: 9px; padding: 9px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); text-align: left; min-width: 0; }
+  .pick-card.is-wide { flex-direction: column; align-items: stretch; gap: 6px; }
+  .pick-ico { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: rgba(var(--accent-rgb), .12); color: var(--accent); }
+  .pick-ico svg { width: 19px; height: 19px; }
+  .pick-card.is-wide .pick-ico { width: 100%; height: 30px; padding: 0 8px; }
+  .pick-card.is-wide .pick-ico .preview { width: 100%; }
+  .pick-text { min-width: 0; display: grid; }
+  .pick-text strong { font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-text span { font-size: .64rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-text em { font-style: normal; font-size: .6rem; line-height: 1.35; color: var(--muted); margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .pick-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset; }
+  .pick-card[aria-pressed="true"] .pick-ico { background: var(--accent); color: #fff; }
+  .picker-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line);
+    padding: 10px max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .picker-now { flex: 1; min-width: 0; display: grid; }
+  .picker-now span { font-size: .62rem; color: var(--muted); font-weight: 700; }
+  .picker-now strong { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker-done { padding: 11px 24px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .8rem; }
+  @media (prefers-reduced-motion: reduce) { .picker-card, .picker-backdrop { transition: none; } }
+
+  .sheet { position: absolute; inset: 0; background: rgba(36,27,61,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
+  .sheet-card {
+    width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0;
+    padding: 16px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .slot-list { display: grid; gap: 6px; }
+  .slot-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 12px; }
+  .slot-text { display: grid; min-width: 0; }
+  .slot-text strong { font-size: .76rem; }
+  .slot-text span { font-size: .64rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 8px; font-size: .66rem; font-family: ui-monospace, monospace; resize: vertical; min-height: 54px; }
+  .sheet-status { min-height: 1.2em; font-size: .7rem; font-weight: 700; color: var(--accent); text-align: center; margin: 10px 0 0; }
 
   @media (max-width: 380px) {
     .adsr-sliders { grid-template-columns: repeat(2, 1fr); }
     .module-grid { grid-template-columns: 1fr; }
     .module, .module.module-half { grid-column: span 1; }
-    .key { height: 54px; font-size: .48rem; }
+    .track-row { grid-template-columns: 28px 38px 1fr 30px; gap: 5px; }
+    .satb-row { grid-template-columns: 12px 1fr 44px 84px; gap: 6px; }
   }
-  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; } }
 </style>
 
 <header class="lab-head">
   <div class="lab-head-title">
-    <div class="eyebrow">${t('lab.eyebrow')}</div>
     <h1>Chor <span>Groove</span> Lab</h1>
   </div>
+  <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
   <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
 </header>
 
@@ -1729,128 +5026,333 @@
 <div class="lab-body">
   <section class="tab-panel" data-tab-panel="beat">
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.drumloop')}</h2><span class="item-name pattern-name"></span></div>
-      <div class="pattern-grid"></div>
+      <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
+      ${pickerTrigger('beat')}
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
+      ${helpText('editHint')}
       <div class="track-list"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
+      ${helpText('helpBass')}
+      <div class="chip-row bass-chips"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.groove')}</h2>${help('helpGroove')}</div>
+      ${helpText('helpGroove')}
+      <label class="slider-line"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
+      <label class="slider-line"><span>${t('lab.pump')}</span><input type="range" data-field="pump" min="0" max="1" step=".01"><output data-out="pump"></output></label>
+    </section>
+  </section>
+
+  <section class="tab-panel" data-tab-panel="harmony" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.key')}</h2>${help('helpKey')}<span class="item-name key-name"></span>${lockBtn('harmony')}</div>
+      ${helpText('helpKey')}
+      <div class="select-grid">
+        <label class="select-field"><span>${t('lab.keyRoot')}</span><select data-field="keyRoot"></select></label>
+        <label class="select-field"><span>${t('lab.keyMode')}</span><select data-field="modeId"></select></label>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.progression')}</h2>${help('helpProgression')}</div>
+      ${helpText('helpProgression')}
+      ${pickerTrigger('prog')}
+      <p class="prog-info"></p>
+      <div class="chord-strip"></div>
+      <button class="mel-edit-link" type="button" data-action="prog-edit">${UI_ICON.edit}${t('lab.progEdit')}</button>
+      <div class="prog-editor" hidden>
+        <div class="mel-top">
+          <span class="prog-count"></span>
+          <button class="mel-icon" type="button" data-action="prog-undo" aria-label="${t('lab.melUndo')}" title="${t('lab.melUndo')}">${UI_ICON.undo}</button>
+          <button class="mel-icon" type="button" data-action="prog-redo" aria-label="${t('lab.melRedo')}" title="${t('lab.melRedo')}">${UI_ICON.redo}</button>
+          <button class="mel-icon" type="button" data-action="prog-new" aria-label="${t('lab.progNew')}" title="${t('lab.progNew')}">${UI_ICON.newPage}</button>
+        </div>
+        <span class="sub-label">${t('lab.progChordAt')}</span>
+        <div class="prog-degrees" role="group" aria-label="${t('lab.progChordAt')}"></div>
+        <div class="prog-tools">
+          <button class="chip" type="button" data-action="prog-move" data-value="-1" aria-label="${t('lab.progMoveLeft')}">${UI_ICON.prev}</button>
+          <button class="chip" type="button" data-action="prog-move" data-value="1" aria-label="${t('lab.progMoveRight')}">${UI_ICON.next}</button>
+          <button class="chip" type="button" data-action="prog-add">+ ${t('lab.progAdd')}</button>
+          <button class="chip" type="button" data-action="prog-remove">− ${t('lab.progRemove')}</button>
+        </div>
+        <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}</div>
+        <label class="prog-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name-input prog-name" type="text" maxlength="40" autocomplete="off"></label>
+        <div class="mel-foot">
+          <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
+          <button class="chip" type="button" data-action="prog-save">${t('lab.melSave')}</button>
+          <button class="chip" type="button" data-action="prog-delete">${t('lab.melDelete')}</button>
+          <button class="mel-done" type="button" data-action="prog-done">${t('lab.melDone')}</button>
+        </div>
+      </div>
+      <label class="select-line"><span>${t('lab.chordChange')}</span>
+        <select data-field="chordBars"><option value="1">${t('lab.everyBar')}</option><option value="2">${t('lab.everyTwoBars')}</option></select>
+      </label>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.satbTitle')}</h2>${help('satbHint')}</div>
+      ${helpText('satbHint')}
+      <div class="switch-row">${toggle('chordsOn', 'lab.chordsPlay')}</div>
+      <div class="satb-list"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.drone')}</h2>${help('droneHint')}</div>
+      ${helpText('droneHint')}
+      <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="melody" hidden>
     <section class="panel">
       <div class="panel-head">
-        <h2>${t('lab.melody')}</h2>
-        <button class="toggle-pill melody-toggle" type="button" data-action="toggle-melody" aria-pressed="true">${t('lab.melodyOn')}</button>
+        <h2>${t('lab.melody')}</h2>${help('melodyHint')}
+        ${lockBtn('melody')}${bareToggle('melodyOn', 'lab.melodyOn')}
       </div>
-      <div class="panel-head"><span class="item-name melody-name"></span></div>
-      <div class="melody-grid"></div>
-      <p class="foot-note">${t('lab.melodyHint')}</p>
+      ${helpText('melodyHint')}
+      ${pickerTrigger('melody')}
+      <div class="mel-card">
+        <div class="mel-view">
+          <div class="mel-mini" aria-hidden="true"></div>
+          <button class="mel-edit-link" type="button" data-action="mel-edit">${UI_ICON.edit}${t('lab.melEdit')}</button>
+        </div>
+        <div class="mel-editor" hidden>
+          <div class="mel-top">
+            <div class="mel-bars" role="group" aria-label="${t('lab.melBarsAria')}"></div>
+            <button class="mel-icon" type="button" data-action="mel-undo" aria-label="${t('lab.melUndo')}" title="${t('lab.melUndo')}">${UI_ICON.undo}</button>
+            <button class="mel-icon" type="button" data-action="mel-redo" aria-label="${t('lab.melRedo')}" title="${t('lab.melRedo')}">${UI_ICON.redo}</button>
+            <button class="mel-icon" type="button" data-action="mel-new" aria-label="${t('lab.melNew')}" title="${t('lab.melNew')}">${UI_ICON.newPage}</button>
+          </div>
+          <div class="mel-roll">
+            <div class="mel-labels" aria-hidden="true"></div>
+            <div class="mel-grid" role="img" aria-label="${t('lab.melRollAria')}"></div>
+          </div>
+          <div class="mel-tools">
+            <span class="sub-label">${t('lab.melLength')}</span>
+            <div class="chip-row mel-lengths"></div>
+            <div class="mel-chroma">${toggle('melChroma', 'lab.melChroma')}<div class="chip-row mel-alts" role="group" aria-label="${t('lab.melAltAria')}"></div></div>
+          </div>
+          <label class="mel-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name" type="text" maxlength="40" autocomplete="off"></label>
+          <div class="mel-foot">
+            <button class="chip" type="button" data-action="mel-original">${t('lab.melOriginal')}</button>
+            <button class="chip" type="button" data-action="mel-save">${t('lab.melSave')}</button>
+            <button class="chip" type="button" data-action="mel-delete">${t('lab.melDelete')}</button>
+            <button class="mel-done" type="button" data-action="mel-done">${t('lab.melDone')}</button>
+          </div>
+        </div>
+      </div>
+      <span class="sub-label">${t('lab.melodyOctave')}</span>
+      <div class="chip-row melody-octaves"></div>
     </section>
   </section>
 
-  <section class="tab-panel" data-tab-panel="synth" hidden>
+  <section class="tab-panel" data-tab-panel="sound" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.preset')}</h2><span class="item-name preset-name"></span></div>
-      <div class="preset-grid"></div>
+      <div class="panel-head"><h2>${t('lab.sound')}</h2>${help('helpSound')}${lockBtn('sound')}</div>
+      ${helpText('helpSound')}
+      ${pickerTrigger('sound')}
+      <div class="reset-sound-row"><button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
+      <div class="knob-row macro-knobs"></div>
+      <div class="auto-box">
+        <div class="auto-row">
+          <span class="chip-label">${t('lab.autoTitle')}</span>${help('autoHint')}
+          <div class="chip-row auto-bars" role="group" aria-label="${t('lab.recBars')}"></div>
+          <button class="rec-btn" type="button" data-action="auto-rec"><i aria-hidden="true"></i><span>${t('lab.autoRec')}</span></button>
+        </div>
+        ${helpText('autoHint')}
+        <div class="auto-live" hidden><strong class="auto-count rec-count"></strong><span class="auto-status rec-status"></span></div>
+        <div class="rec-meter auto-meter" hidden></div>
+        <div class="auto-result" hidden>
+          <span class="auto-params"></span>
+          ${bareToggle('autoOn', 'lab.autoOnAria')}
+          <button class="chip" type="button" data-action="auto-clear">${t('lab.autoClear')}</button>
+        </div>
+      </div>
+
+      <details class="expert">
+        <summary>${pictogramIcon('sliders')} ${t('lab.allControls')}</summary>
+        <div class="module-grid">
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3>${help('helpOsc')}</div>
+            ${helpText('helpOsc')}
+            <div class="wave-row" role="group" aria-label="${t('lab.waveformAria')}"></div>
+          </div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3>${help('helpEnv')}</div>
+            ${helpText('helpEnv')}
+            <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none"><path class="envelope-path" d=""/></svg>
+            <div class="adsr-sliders"></div>
+          </div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3>${help('helpFilter')}</div>
+            ${helpText('helpFilter')}
+            <div class="chip-row filter-type-chips"></div>
+            <div class="knob-row filter-knobs"></div>
+          </div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.lfo')}</h3>${help('helpLfo')}</div>
+            ${helpText('helpLfo')}
+            <div class="knob-row lfo-knobs"></div>
+            <label class="select-line"><span>${t('lab.lfoSyncLabel')}</span><select data-field="lfoSync"></select></label>
+          </div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3>${help('helpCharacter')}</div>
+            ${helpText('helpCharacter')}
+            <div class="knob-row character-knobs"></div>
+          </div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3>${help('helpVibrato')}</div>
+            ${helpText('helpVibrato')}
+            <div class="knob-row vibrato-knobs"></div>
+          </div>
+          <div class="module">
+            <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.glide')}</h3>${help('helpGlide')}</div>
+            ${helpText('helpGlide')}
+            <div class="knob-row glide-knobs"></div>
+            <div class="switch-row" style="margin-top:8px">${toggle('mono', 'lab.mono')}</div>
+          </div>
+        </div>
+      </details>
     </section>
 
-    <div class="module-grid">
-      <div class="module">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3></div>
-        <div class="wave-row" role="group" aria-label="${t('lab.waveformAria')}"></div>
-      </div>
-
-      <div class="module">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3></div>
-        <div class="adsr-row">
-          <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none">
-            <path class="envelope-path" d=""/>
-          </svg>
-          <div class="adsr-sliders"></div>
-        </div>
-      </div>
-
-      <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3></div>
-        <div class="knob-row filter-knobs"></div>
-      </div>
-
-      <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3></div>
-        <div class="knob-row character-knobs"></div>
-      </div>
-
-      <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3></div>
-        <div class="knob-row vibrato-knobs"></div>
-      </div>
-
-      <div class="module module-half">
-        <div class="module-head"><span class="module-icon">${pictogramIcon('repeat')}</span><h3>${t('lab.roomEcho')}</h3></div>
-        <div class="fx-columns">
-          <div>
-            <span class="fx-label">${t('lab.reverb')}</span>
-            <div class="knob-row reverb-knobs"></div>
-          </div>
-          <div>
-            <span class="fx-label">${t('lab.echo')}</span>
-            <div class="knob-row echo-knobs"></div>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.effects')}</h2>${help('helpEffects')}</div>
+      ${helpText('helpEffects')}
+      <div class="fx-groups">
+        <div class="fx-group"><div class="fx-head"><span class="sub-label">${t('lab.reverb')}</span>${bareToggle('reverbOn', 'lab.reverb')}</div>
+          <div class="knob-row fx-reverb"></div></div>
+        <div class="fx-group"><div class="fx-head"><span class="sub-label">${t('lab.knobChorus')}</span>${bareToggle('chorusOn', 'lab.knobChorus')}</div>
+          <div class="knob-row fx-chorus"></div></div>
+        <div class="fx-group is-wide"><div class="fx-head"><span class="sub-label">${t('lab.echo')}</span>${bareToggle('echoOn', 'lab.echo')}</div>
+          <div class="fx-echo-row">
+            <div class="knob-row fx-echo"></div>
+            <label class="select-field fx-echo-time"><span>${t('lab.echoTime')}</span><select data-field="echoDiv"></select></label>
           </div>
         </div>
       </div>
-    </div>
+    </section>
+  </section>
+
+  <section class="tab-panel" data-tab-panel="mixer" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.mixer')}</h2>${help('helpMixer')}</div>
+      ${helpText('helpMixer')}
+      <div class="mixer-list"></div>
+    </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2></div>
-      <div class="arp-toggles">
-        <button class="toggle-pill arp-toggle" type="button" data-action="toggle-arp" aria-pressed="false">${t('lab.arpOff')}</button>
-        <button class="toggle-pill latch-toggle" type="button" data-action="toggle-latch" aria-pressed="false">${UI_ICON.latch} ${t('lab.latch')}</button>
+      <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}${bareToggle('arpOn', 'lab.arpOn')}</div>
+      ${helpText('helpArp')}
+      <div class="switch-row arp-switches">${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
+      <div class="arp-options">
+        <p class="arp-status" role="status"></p>
+        <div class="arp-grid">
+          <label class="select-field arp-pattern"><span>${t('lab.arpPattern')}</span><select data-field="arpPattern"></select></label>
+          <label class="select-field"><span>${t('lab.directionAria')}</span><select data-field="arpMode"></select></label>
+          <label class="select-field"><span>${t('lab.speedAria')}</span><select data-field="arpDivision"></select></label>
+          <label class="select-field"><span>${t('lab.arpRhythm')}</span><select data-field="arpRhythm"></select></label>
+          <label class="select-field"><span>${t('lab.octaveRangeAria')}</span>
+            <select data-field="arpOctaves">
+              <option value="1">${t('lab.octave1')}</option>
+              <option value="2">${t('lab.octave2')}</option>
+              <option value="3">${t('lab.octave3')}</option>
+            </select>
+          </label>
+        </div>
+        <button class="chip arp-clear" type="button" data-action="arp-clear" hidden>${t('lab.arpClear')}</button>
       </div>
-      <div class="arp-controls">
-        <select data-field="arpSource" aria-label="${t('lab.noteSourceAria')}"></select>
-        <select data-field="arpMode" aria-label="${t('lab.directionAria')}">
-          <option value="up">${t('lab.arpUp')}</option>
-          <option value="down">${t('lab.arpDown')}</option>
-          <option value="updown">${t('lab.arpUpDown')}</option>
-          <option value="random">${t('lab.arpRandom')}</option>
-        </select>
-        <select data-field="arpDivision" aria-label="${t('lab.speedAria')}">
-          <option value="1">1/16</option>
-          <option value="2">1/8</option>
-          <option value="4">1/4</option>
-        </select>
-        <select data-field="arpOctaves" aria-label="${t('lab.octaveRangeAria')}">
-          <option value="1">${t('lab.octave1')}</option>
-          <option value="2">${t('lab.octave2')}</option>
-          <option value="3">${t('lab.octave3')}</option>
-        </select>
-      </div>
-      <p class="foot-note">${t('lab.latchHint')}</p>
     </section>
 
     <section class="panel">
+      <div class="panel-head"><h2>${t('lab.miniKeyboard')}</h2>${help('keysHint')}</div>
+      ${helpText('keysHint')}
       <div class="keyboard-head">
-        <strong>${t('lab.miniKeyboard')}</strong>
-        <div class="octave-list"></div>
+        <div class="chip-row keys-layout" role="group" aria-label="${t('lab.keysLayoutAria')}"></div>
+        <div class="chip-row octave-list"></div>
       </div>
       <div class="keyboard"></div>
-      <p class="foot-note">${t('lab.footNote')}</p>
+      <div class="scale-pads" hidden></div>
+    </section>
+
+    <section class="panel rec-panel">
+      <div class="panel-head"><h2>${t('lab.recTitle')}</h2>${help('recHint')}</div>
+      ${helpText('recHint')}
+      <div class="rec-row">
+        <span class="chip-label">${t('lab.recBars')}</span>
+        <div class="chip-row rec-bars" role="group" aria-label="${t('lab.recBars')}"></div>
+        <button class="rec-btn" type="button" data-action="rec-toggle"><i aria-hidden="true"></i><span>${t('lab.recStart')}</span></button>
+      </div>
+      <div class="rec-live" hidden>
+        <strong class="rec-count" aria-live="polite"></strong>
+        <span class="rec-status"></span>
+      </div>
+      <div class="rec-result" hidden>
+        <div class="rec-stage">
+          <div class="mel-mini rec-roll" aria-hidden="true"></div>
+          <button class="rec-play" type="button" data-action="rec-loop" hidden></button>
+        </div>
+        <div class="rec-meter" aria-hidden="true"></div>
+        <div class="rec-actions">
+          <button class="chip" type="button" data-action="rec-discard">${t('lab.recDiscard')}</button>
+          <button class="chip" type="button" data-action="rec-toggle">${t('lab.recAgain')}</button>
+          <button class="mel-done" type="button" data-action="rec-save">${t('lab.recSave')}</button>
+        </div>
+      </div>
     </section>
   </section>
 </div>
 
 <footer class="transport-bar">
   <div class="transport-row">
-    <button class="icon-btn transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
+    <button class="transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
     <label class="tempo-field">
       <output class="bpm-out">106 BPM</output>
-      <input class="bpm-input" type="range" min="72" max="144" value="106" aria-label="${t('lab.tempoAria')}">
+      <input class="bpm-input" type="range" min="40" max="180" value="106" aria-label="${t('lab.tempoAria')}">
     </label>
-    <button class="icon-btn dice-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}">${UI_ICON.dice}</button>
+    <button class="icon-btn tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
+    <button class="icon-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}" title="${t('lab.randomAria')}">${UI_ICON.dice}</button>
+    <button class="icon-btn" type="button" data-action="undo" aria-label="${t('lab.undoAria')}" title="${t('lab.undoAria')}" disabled>${UI_ICON.undo}</button>
   </div>
-  <p class="status-line" role="status">${t('lab.statusReady')}</p>
-</footer>`;
+  <div class="now-row">
+    <div class="beat-dots" aria-hidden="true"></div>
+    <strong class="now-chord"></strong>
+    <p class="status-line" role="status">${t('lab.statusReady')}</p>
+  </div>
+</footer>
+
+<div class="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-label="${t('lab.saveTitle')}">
+    <div class="panel-head"><h2>${t('lab.saveTitle')}</h2>
+      <button class="icon-btn" type="button" data-action="close-sheet" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button></div>
+    <div class="slot-list"></div>
+    <p class="foot-note storage-hint"></p>
+    <span class="sub-label">${t('lab.codeTitle')}</span>
+    <textarea class="code-out" readonly aria-label="${t('lab.codeTitle')}"></textarea>
+    <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="copy-code">${t('lab.copy')}</button></div>
+    <span class="sub-label">${t('lab.importTitle')}</span>
+    <textarea class="code-in" aria-label="${t('lab.importTitle')}" placeholder="GL1.…"></textarea>
+    <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="import-code">${t('lab.importCode')}</button></div>
+    <p class="sheet-status" role="status"></p>
+  </div>
+</div>
+
+<div class="picker" hidden>
+  <div class="picker-backdrop" data-action="picker-close"></div>
+  <div class="picker-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="picker-grab" aria-hidden="true"></div>
+    <div class="panel-head"><h2 class="picker-title" id="picker-title"></h2>
+      <button class="icon-btn" type="button" data-action="picker-close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button></div>
+    <div class="chip-row picker-chips"></div>
+    <div class="picker-grid"></div>
+    <div class="picker-foot">
+      <div class="picker-now"><span>${t('lab.pickerChosen')}</span><strong class="picker-now-name"></strong></div>
+      <button class="picker-done" type="button" data-action="picker-close">${t('lab.pickerDone')}</button>
+    </div>
+  </div>
+</div>`;
     }
   }
 
@@ -1865,8 +5367,8 @@
       let lab = document.querySelector('chor-groove-lab');
       // Die Vorlage wird einmal beim Aufbau der Komponente gerendert. Wurde
       // die Sprache seitdem umgestellt, stünde sie sonst weiter in der alten
-      // da — dann lieber neu aufbauen (der Lab-Zustand ist ein Spielstand,
-      // kein Nutzerdatenbestand).
+      // da — dann neu aufbauen. Der letzte Stand kommt über die Ablage
+      // (options.storage) zurück, sofern eine gereicht wird.
       if (lab && lab.dataset.lang !== (options?.lang || '')) {
         lab.remove();
         lab = null;

@@ -10,10 +10,11 @@
      (signalsmith-stretch.js erzeugt eine Blob-URL für
      audioWorklet.addModule()), 'wasm-unsafe-eval' wegen der
      WASM-Instanziierung darin, media-src blob: für <audio> mit Blob-URLs,
-     frame-src blob: für die PDF-Vorschau im iframe, font-src data: für die
+     frame-src blob: für die PDF-Vorschau im iframe ('self' für den
+     Ausbildung uebe-lab.html, Einsingen einsingen.html unter Einstellungen → Tools), font-src data: für die
      eingebettete woff2-Schrift weiter unten, img-src data: blob: für Icons
      und (Vorsichtshalber) Blob-Vorschauen. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src blob:; connect-src 'self' wss://uhr.ptb.de; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BVG</title>
 
@@ -782,8 +783,7 @@ button.card-row:focus-visible {
   border-radius: 50%;
   border: 0;
   background: var(--accent);
-  background: color-mix(in srgb, var(--accent) 48%, white 52%);
-  color: var(--accent-ink);
+  color: var(--accent-foreground, #fff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2552,6 +2552,86 @@ input[type="checkbox"] {
   color: #000;
 }
 
+/* Tool-Ebene (siehe openToolFrame): Vollbild wie das Groove Lab,
+   Schließen-Knopf oben rechts über dem Kopf der eingebetteten Seite. */
+.tool-frame { position: fixed; inset: 0; z-index: 2147483000; background: #fff7ec; }
+.tool-frame[hidden] { display: none; }
+.tool-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+.tool-frame iframe[hidden] { display: none; } /* Metronom im Hintergrund, siehe openToolFrame */
+.tool-frame-close {
+  position: absolute; z-index: 1;
+  top: max(12px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border: 1px solid #f1ddd0; border-radius: 13px; background: #fff1e2; color: #8c81a6;
+}
+.tool-frame-close svg { width: 20px; height: 20px; }
+
+/* Schnellzugriff aufs Metronom, solange es im Hintergrund läuft (siehe
+   updateMetronomeFab). Oben links auf Höhe der Kopfzeile: im Player sitzt
+   er in deren leerer linker Spalte. Damit er sonst nichts verdeckt, macht
+   body.has-metronome-fab Platz — die Reiter (.view) rücken oben um seine
+   Höhe nach unten, und in den Vollbild-Ansichten mit Zurück-Pfeil
+   (Setlisten-Detail, Import, Aufnahme) rückt die Kopfzeile nach rechts.
+   z-index 66: über den Vollbild-Ansichten (.player, 65), unter den
+   Dialog-Ebenen (.sheet 70, Ersteinrichtung 75, Meldungen 90, .overlay,
+   Tool-/Lichtshow-Ebene). Stopp als eigener, sichtbarer Knopf (Plakette
+   oben rechts) statt langem Druck — auffindbar, und für Screenreader und
+   Tastatur ein ganz normaler Knopf. */
+.metronome-fab {
+  position: fixed;
+  z-index: 66;
+  left: calc(10px + var(--safe-left));
+  top: calc(var(--safe-top) + 8px);
+  width: 44px; height: 44px;
+}
+.has-metronome-fab .view.is-active { padding-top: 44px; }
+.has-metronome-fab .player:not(#player) > .player-head { padding-left: calc(62px + var(--safe-left)); }
+.metronome-fab[hidden] { display: none; }
+.metronome-fab-open {
+  position: relative;
+  width: 44px; height: 44px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-foreground, #fff);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  box-shadow: 0 3px 10px rgba(0,0,0,.2);
+  -webkit-tap-highlight-color: transparent;
+}
+.metronome-fab-open:active { transform: scale(.94); }
+.metronome-fab-open svg { width: 18px; height: 18px; }
+.metronome-fab-bpm { font-size: .66rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+/* Schlag-Puls: ein Ring, der vom Knopf wegläuft (Hauptschlag kräftiger). */
+.metronome-fab-open::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .55);
+}
+.metronome-fab-open.is-beat::after { animation: metronome-fab-pulse .32s ease-out; }
+.metronome-fab-open.is-accent::after { animation: metronome-fab-pulse-strong .4s ease-out; }
+@keyframes metronome-fab-pulse {
+  from { opacity: 1; box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .45); }
+  to { opacity: 0; box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0); }
+}
+@keyframes metronome-fab-pulse-strong {
+  from { opacity: 1; box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .7); }
+  to { opacity: 0; box-shadow: 0 0 0 11px rgba(var(--accent-rgb), 0); }
+}
+.metronome-fab-stop {
+  position: absolute; top: -7px; right: -9px;
+  width: 24px; height: 24px; padding: 0;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); color: var(--text);
+  display: grid; place-items: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  -webkit-tap-highlight-color: transparent;
+}
+/* Größere Trefferfläche als die sichtbare Plakette (32px). */
+.metronome-fab-stop::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; }
+.metronome-fab-stop svg { width: 10px; height: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .metronome-fab-open.is-beat::after, .metronome-fab-open.is-accent::after { animation: none; }
+}
+
 /* Lichtshow-Bühne (siehe openLightshowStage/closeLightshowStage). Keine
    Übergänge — die Blenden rechnet lightshowFrame() selbst, eine
    CSS-Transition würde dagegenarbeiten. */
@@ -3039,6 +3119,28 @@ input[type="checkbox"] {
   </div>
   <button class="lyrics-present-close" id="lyrics-present-close" type="button" aria-label="Schließen" data-i18n-aria="player.presentCloseAria">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</div>
+
+<!-- Schnellzugriff aufs Metronom, solange es im Hintergrund weiterläuft
+     (siehe updateMetronomeFab/openToolFrame). aria-labels setzt app.js
+     (mit aktuellem Tempo). -->
+<div class="metronome-fab" id="metronome-fab" hidden>
+  <button class="metronome-fab-open" id="metronome-fab-open" type="button" aria-label="Metronom öffnen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg>
+    <span class="metronome-fab-bpm" id="metronome-fab-bpm" aria-hidden="true"></span>
+  </button>
+  <button class="metronome-fab-stop" id="metronome-fab-stop" type="button" aria-label="Metronom stoppen">
+    <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
+  </button>
+</div>
+
+<!-- Tool-Seiten (Ausbildung, Einsingen, Metronom) als Vollbild-Ebene. Das iframe wird
+     erst beim Öffnen gesetzt und beim Schließen entfernt — damit enden auch
+     Ton, Mikrofon und Bildschirm-Sperre zuverlässig (siehe openToolFrame). -->
+<div class="tool-frame" id="tool-frame" hidden role="dialog" aria-modal="true" aria-label="Ausbildung" data-i18n-aria="settings.tools.playground">
+  <button class="tool-frame-close" id="tool-frame-close" type="button" aria-label="Schließen" data-i18n-aria="common.close">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
   </button>
 </div>
 
@@ -4159,11 +4261,71 @@ input[type="checkbox"] {
       <p class="small muted" id="screen-note" style="margin:6px 0 0" hidden></p>
     </div>
 
+      </div>
+    </div>
+
+    <!-- Tools: eigenständige Zusatz-Ansichten. Groove Lab (groove-lab.js),
+         Metronom (metronom.html), Einsingen (einsingen.html) und Ausbildung
+         (uebe-lab.html; alle als Vollbild-iframe, siehe openToolFrame)
+         werden erst beim Antippen geladen. -->
+    <div class="settings-group">
+      <p class="settings-group-label" data-i18n="settings.group.tools">Tools</p>
+      <div class="settings-group-box">
     <div class="card" data-no-accordion="1">
       <h2>
         <button class="card-row" id="btn-open-lightshow" type="button">
           <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg>
           <span class="card-row-label" data-i18n="settings.lightshow.title">Lichtshow</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-metronome" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.metronome">Metronom</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-groove-lab" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8v8M12 8v8M17 8v8"/><circle cx="7" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="10" r="1.6" fill="currentColor"/><circle cx="17" cy="14" r="1.6" fill="currentColor"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.grooveLab">Groove Lab</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-warmup" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-4 4-4 6 0s4 4 6 0 3-3 4-2"/><path d="M4 8c2-3 4-3 6 0"/><circle cx="18" cy="7" r="2"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.warmup">Einsingen</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-piano" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M13 5v14M18 5v14"/><path d="M6.5 5v7h3V5M16.5 5v7h3V5" fill="currentColor"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.piano">Piano</span>
+          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+      </h2>
+    </div>
+
+    <div class="card" data-no-accordion="1">
+      <h2>
+        <button class="card-row" id="btn-open-playground" type="button">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3ZM3 19a2 2 0 0 0 2 2h1v-6H3Z"/></svg>
+          <span class="card-row-label" data-i18n="settings.tools.playground">Ausbildung</span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
       </h2>

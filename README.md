@@ -51,7 +51,27 @@ ein Dialog mit echter Wahl).
   (Netzwerkfehler, korrupter Cache) — sonst bliebe nur die leere, aber
   vollständige Oberfläche stehen.
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
-- `groove-lab.js` — nachgeladenes Easter Egg, kein Teil der eigentlichen App.
+- `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über Einstellungen →
+  Tools oder das Easter Egg (7× auf den Songtitel im Player).
+- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training, Hören: Intervalle und
+  Akkordfolgen, Stimm-Tuner per Mikrofon). Das Mikrofon wird nur live
+  ausgewertet, nichts wird aufgenommen oder gesendet.
+- `einsingen.html` — Einsingen (Einsing-Übungen nach Stimmlage, geführtes
+  Einsing-Programm).
+- `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
+  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
+  Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem
+  Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch, Hall).
+- `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
+  Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer). Läuft beim
+  Schließen weiter, solange es spielt (das iframe wird nur ausgeblendet);
+  ein schwebender Knopf oben links (`#metronome-fab`, abschaltbar unter
+  Extras) öffnet es wieder oder stoppt es. Nachrichten laufen per
+  postMessage (`chor-metronome` / `chor-metronome-cmd`).
+- Die Tool-Seiten sind eigenständig, werden in der App über Einstellungen →
+  Tools als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache
+  über `SHELL_OPTIONAL`) und merken sich Einstellungen über
+  `window.parent.chorToolStorage` (IndexedDB, meta-Typ `toolState`).
 - `lame.min.js` — vendorierter MP3-Encoder (siehe [Third-Party](#third-party)).
 - `manifest.json`, `icon-192.png`, `icon-512.png` — PWA-Manifest und Icons.
 
@@ -142,7 +162,7 @@ werden beim Laden still herausgefiltert, nie als Fehler gemeldet.
 
 ## Lichtshow
 
-Unter Einstellungen → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
+Unter Einstellungen → Tools → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
 Auftritt: Vollbild-Lichtfarben, die jede Stimme als räumlichen Block behandeln.
 Von links nach rechts werden Sopran, Alt, Tenor und Bass inszeniert; die Farben
 sind dabei bewusst unabhängig von den sonst verwendeten Stimmfarben.
@@ -179,7 +199,7 @@ Genanntes:
 ```
 default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self';
 style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
-media-src 'self' blob:; frame-src blob:; connect-src 'self' wss://uhr.ptb.de;
+media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de;
 manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
 ```
 
@@ -191,7 +211,10 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
 - `img-src`/`font-src`: `data:` für Icons bzw. die eingebettete
   woff2-Schrift.
 - `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
-  bzw. die PDF-Vorschau im iframe.
+  bzw. die PDF-Vorschau im iframe; `frame-src 'self'` zusätzlich für die
+  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `piano.html`, `metronom.html`, Einstellungen → Tools). Die
+  haben als eigene Seiten keine eigene CSP-Meta-Angabe; sie laden nichts von
+  außen.
 - `connect-src` erlaubt neben der eigenen Herkunft ausschließlich
   `wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
   WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
