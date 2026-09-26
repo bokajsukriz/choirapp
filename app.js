@@ -19547,6 +19547,31 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (st({ progDominant: 'x', progId: 'pop' }) !== false) failed.push('Groove Lab: kaputtes progDominant nicht auf Standard');
   }
 
+  // Paket 4: Modus-Bindung und Zufall.
+  {
+    const want = { modal: ['mixolydian', 'dorian', 'minor'], rock3: ['mixolydian', 'dorian', 'minor'],
+      andalusian: ['minor'], epic: ['minor'], blues: ['major', 'mixolydian'] };
+    for (const p of T.PROGRESSIONS) {
+      if (JSON.stringify(p.modes) !== JSON.stringify(want[p.id])) failed.push(`Groove Lab: ${p.id}.modes = ${JSON.stringify(p.modes)}`);
+    }
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const pick = (list) => list[Math.floor(rnd() * list.length)];
+    let outside = 0;
+    for (let i = 0; i < 1000; i++) {
+      const modeId = pick(T.MODES).id;
+      const p = pick(T.progsForRandom(modeId));
+      if (!T.progFitsMode(p, modeId) || p.id === 'drone') outside++;
+    }
+    if (outside) failed.push(`Groove Lab: Zufall wählt ${outside}× eine Folge außerhalb ihrer Modi`);
+    if (T.modeForProg(prog('andalusian'), 'major') !== 'minor') failed.push('Groove Lab: Andalusisch in Dur schaltet nicht auf Moll');
+    if (T.modeForProg(prog('modal'), 'dorian') !== 'dorian') failed.push('Groove Lab: modal in Dorisch schaltet unnötig um');
+    if (T.modeForProg(prog('pop'), 'dorian') !== 'dorian') failed.push('Groove Lab: pop ohne modes schaltet um');
+    if (!T.progFitsMode({ degrees: [0] }, 'minor')) failed.push('Groove Lab: eigene Folge gilt als unpassend');
+    const loaded = T.sanitizeState({ modeId: 'major', progId: 'andalusian' });
+    if (loaded.modeId !== 'major' || loaded.progId !== 'andalusian') failed.push('Groove Lab: gespeicherte Kombination wird beim Laden umgestellt');
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);

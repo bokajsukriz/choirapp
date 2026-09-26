@@ -358,14 +358,17 @@
      Die alten Ids bleiben, damit gespeicherte Stände weiter passen.
      dominant: in Moll klingt die V. Stufe als Dur-Dominante (mit Leitton,
      siehe chordSteps) — nur bei Folgen mit Kadenz-/Dominantfunktion; bei
-     pop, sad, fifties, pachelbel und epic ist das Moll-v idiomatisch. */
+     pop, sad, fifties, pachelbel und epic ist das Moll-v idiomatisch.
+     modes: nur in diesen Modi sinnvoll (fehlt = alle). In Dur ergäben die
+     modalen Folgen vii° statt ♭VII; wer eine davon wählt, bekommt den Modus
+     modes[0] dazu (siehe modeForProg). */
   const PROGRESSIONS = [
     { id: 'pop', cat: 'pop', degrees: [0, 4, 5, 3] },
     { id: 'sad', cat: 'pop', degrees: [5, 3, 0, 4] },
     { id: 'fifties', cat: 'pop', degrees: [0, 5, 3, 4] },
     { id: 'royal', cat: 'pop', degrees: [3, 4, 2, 5] },
     { id: 'pendulum', cat: 'pop', degrees: [0, 3] },
-    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0], dominant: true },
+    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0], dominant: true, modes: ['major', 'mixolydian'] },
     { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0], dominant: true },
     { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4], dominant: true },
     { id: 'amen', cat: 'classic', degrees: [0, 3, 0] },
@@ -376,13 +379,19 @@
     { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true, dominant: true },
     { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true, dominant: true },
     { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true, dominant: true },
-    { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0] },
-    { id: 'rock3', cat: 'modal', degrees: [0, 6, 3] },
-    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4], dominant: true },
-    { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6] },
+    { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0], modes: ['mixolydian', 'dorian', 'minor'] },
+    { id: 'rock3', cat: 'modal', degrees: [0, 6, 3], modes: ['mixolydian', 'dorian', 'minor'] },
+    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4], dominant: true, modes: ['minor'] },
+    { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6], modes: ['minor'] },
     { id: 'drone', cat: 'modal', degrees: [0] },
   ];
   const PROG_CATS = ['pop', 'classic', 'jazz', 'modal'];
+  /** Passt die Folge zum Modus? Eigene Folgen (ohne `modes`) immer. */
+  const progFitsMode = (prog, modeId) => !prog?.modes || prog.modes.includes(modeId);
+  /** Modus, der beim Wählen einer Folge gilt: der bisherige, wenn er passt. */
+  const modeForProg = (prog, modeId) => (progFitsMode(prog, modeId) ? modeId : prog.modes[0]);
+  /** Folgen, die der Zufall zu einem Modus wählen darf. */
+  const progsForRandom = (modeId) => PROGRESSIONS.filter((p) => p.id !== 'drone' && progFitsMode(p, modeId));
   const PROG_MAX_CHORDS = 16;
   const PROG_MAX_OWN = 24;
   const progKey = (kind, id) => `lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`;
@@ -1890,7 +1899,7 @@
       if (!locks.harmony) {
         s.keyRoot = Math.floor(Math.random() * 12);
         s.modeId = pick(MODES).id;
-        s.progId = pick(PROGRESSIONS.filter((p) => p.id !== 'drone')).id;
+        s.progId = pick(progsForRandom(s.modeId)).id;
         this._clearProgEdit();
       }
       if (!locks.melody) {
@@ -3295,7 +3304,8 @@
           fallback: s.progId, wide: true,
           items: [
             ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
-              inMeter: true, sub: romans(p), short: romans(p), info: t(progKey('Info', p.id)) })),
+              inMeter: true, sub: romans(p), short: romans(p), info: t(progKey('Info', p.id)),
+              mismatch: !progFitsMode(p, s.modeId) })),
             ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
               inMeter: true, sub: romans(p), short: romans(p) })),
           ],
@@ -3341,7 +3351,8 @@
           const prog = this._progression();
           const s = this.state;
           name = this._progName();
-          sub = prog.degrees.map((d) => romanNumeral(this._stepsFor(d, prog), d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '');
+          sub = prog.degrees.map((d) => romanNumeral(this._stepsFor(d, prog), d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '')
+            + (progFitsMode(prog, s.modeId) ? '' : ` · ${t('lab.progModeMismatch')}`);
           visual = progPreview(prog.degrees);
         } else if (which === 'melody') {
           const melody = this._melody();
@@ -3394,7 +3405,7 @@
       const cards = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat)).map((it) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = `pick-card${def.wide ? ' is-wide' : ''}`;
+        btn.className = `pick-card${def.wide ? ' is-wide' : ''}${it.mismatch ? ' is-mismatch' : ''}`;
         btn.dataset.action = def.action;
         btn.dataset.value = String(it.i);
         btn.setAttribute('aria-pressed', String(it.i === def.current));
@@ -3405,6 +3416,12 @@
           const info = document.createElement('em');
           info.textContent = it.info;
           btn.querySelector('.pick-text').append(info);
+        }
+        if (it.mismatch) {
+          const note = document.createElement('small');
+          note.className = 'pick-mismatch';
+          note.textContent = t('lab.progModeMismatch');
+          btn.querySelector('.pick-text').append(note);
         }
         return btn;
       });
@@ -4279,6 +4296,14 @@
             s.progOwnId = own.id;
           } else if (PROGRESSIONS.some((p) => p.id === value)) {
             s.progId = value;
+            // Modale Folgen nur in passenden Modi (Befund 2): sonst den
+            // Modus mitnehmen und das sagen, statt still vii° zu spielen.
+            const prog = PROGRESSIONS.find((p) => p.id === value);
+            const modeId = modeForProg(prog, s.modeId);
+            if (modeId !== s.modeId) {
+              s.modeId = modeId;
+              this._setStatus(tf('lab.progModeSwitched', { name: t(progKey('Name', prog.id)), mode: t(MODES.find((m) => m.id === modeId).nameKey) }));
+            }
           }
           this._onHarmonyChange();
           break;
@@ -5009,6 +5034,8 @@
   .pick-text span { font-size: .64rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pick-text em { font-style: normal; font-size: .6rem; line-height: 1.35; color: var(--muted); margin-top: 3px;
     display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .pick-mismatch { display: block; font-size: .7rem; font-weight: 700; color: var(--muted); }
+  .pick-card.is-mismatch .pick-ico { opacity: .5; }
   .pick-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset; }
   .pick-card[aria-pressed="true"] .pick-ico { background: var(--accent); color: #fff; }
   .picker-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line);
@@ -5393,7 +5420,7 @@
   // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
-    voiceChord, chordPitchClasses, chordSteps, degreeSemis, romanNumeral, chordName, chordQuality,
+    voiceChord, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState,
   };
 
