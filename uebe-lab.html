@@ -176,6 +176,8 @@
   .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: var(--muted); }
   .ear-stage { margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 16px 12px; text-align: center; }
   .ear-prompt { margin: 0; font-weight: 800; font-size: .95rem; }
+  .level-chip { min-width: 40px; text-align: center; }
+  .level-note { margin: 6px 0 0; font-size: .72rem; font-weight: 700; color: var(--text); }
   .ear-sub { margin: 4px 0 0; font-size: .72rem; color: var(--muted); min-height: 1.2em; }
   .ear-controls { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
   .big-btn { display: inline-flex; align-items: center; gap: 6px; padding: 11px 18px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
@@ -1084,7 +1086,30 @@
     { id: 'andalusian', mode: 'minor', chords: ['i', 'VII', 'VI', 'V'], name: 'Andalusische Kadenz' },
     { id: 'mpop', mode: 'minor', chords: ['i', 'iv', 'VII', 'III'], name: 'Moll-Pop' },
     { id: 'mnatural', mode: 'minor', chords: ['i', 'VI', 'iv', 'v'], name: 'Natürliches Moll' },
+    // Kurze und lange Folgen (drei bis acht Akkorde)
+    { id: 'tsd', mode: 'major', chords: ['I', 'IV', 'V'], name: 'Kadenz in drei' },
+    { id: 'amen', mode: 'major', chords: ['I', 'IV', 'I'], name: 'Amen-Schluss (plagal)' },
+    { id: 'deceptive', mode: 'major', chords: ['I', 'IV', 'V', 'vi'], name: 'Trugschluss' },
+    { id: 'quintfall', mode: 'major', chords: ['vi', 'ii', 'V', 'I'], name: 'Quintfall' },
+    { id: 'turnaround', mode: 'major', chords: ['I', 'vi', 'ii', 'V'], name: 'Turnaround' },
+    { id: 'circle', mode: 'major', chords: ['I', 'IV', 'vii°', 'iii', 'vi', 'ii', 'V', 'I'], name: 'Quintfallsequenz' },
+    { id: 'm3', mode: 'minor', chords: ['i', 'iv', 'V'], name: 'Moll-Kadenz in drei' },
+    { id: 'mdeceptive', mode: 'minor', chords: ['i', 'iv', 'V', 'VI'], name: 'Trugschluss in Moll' },
   ];
+
+  /* Stufen 1–6: je eine Auswahl an Folgen plus Klang (Bass in Grundstellung
+     oder in zufälliger Umkehrung, enge oder weite Lage). Jede Stufe
+     enthält die vorige und nimmt etwas Neues dazu. */
+  const EAR_LEVELS = [
+    { n: 1, label: 'Grundkadenzen', progs: ['cadence', 'tsd', 'amen'], inversion: 'root', spread: 'close' },
+    { n: 2, label: 'Pop-Folgen dazu', progs: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'plagal'], inversion: 'root', spread: 'close' },
+    { n: 3, label: 'Moll und Trugschluss', progs: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'plagal', 'mcadence', 'm3', 'deceptive', 'sad'], inversion: 'root', spread: 'close' },
+    { n: 4, label: 'Nebenstufen, weite Lage', progs: ['cadence', 'pop', 'fifties', 'deceptive', 'sad', 'mcadence', 'jazz', 'hymn', 'quintfall', 'turnaround', 'rising', 'epic'], inversion: 'root', spread: 'open' },
+    { n: 5, label: 'Umkehrungen', progs: ['cadence', 'pop', 'deceptive', 'mcadence', 'jazz', 'quintfall', 'turnaround', 'epic', 'andalusian', 'mpop', 'mnatural', 'mdeceptive'], inversion: 'random', spread: 'close' },
+    { n: 6, label: 'Alles, Umkehrungen in weiter Lage', progs: null, inversion: 'random', spread: 'open' },
+  ];
+  const EAR_INVERSIONS = [['root', 'Grundstellung'], ['random', 'Umkehrungen zufällig']];
+  const EAR_SPREADS = [['close', 'enge Lage'], ['open', 'weite Lage']];
   const CHORD_TEMPI = [['slow', 'langsam', 1.7], ['mid', 'mittel', 1.25], ['fast', 'schnell', .9]];
 
   const ear = {
@@ -1093,6 +1118,9 @@
       intervals: [3, 4, 5, 7, 12],
       dirs: ['up'],
       progs: ['pop', 'fifties', 'cadence', 'epic', 'mcadence'],
+      level: 0,            // 1–6 = Stufe, 0 = eigene Auswahl
+      inversion: 'root',   // Bass: 'root' Grundton | 'random' zufällige Umkehrung
+      spread: 'close',     // Oberstimmen: 'close' enge | 'open' weite Lage
       tempo: 'mid',
       tonicCue: true,
       autoNext: true,
@@ -1116,8 +1144,32 @@
 
   /** Enge Lage mit Stimmführung: Bass auf dem Grundton, darüber die drei
    *  Akkordtöne in der Umkehrung, die sich am wenigsten vom vorigen
-   *  Akkord entfernt — so hört man Funktionen statt Sprünge. */
-  function voiceProgression(key, symbols) {
+   *  Akkord entfernt — so hört man Funktionen statt Sprünge.
+   *  Optionen: `inversion` 'random' legt den Bass auf einen zufälligen
+   *  Akkordton (Grundton, Terz oder Quinte = Grundstellung, Sext-, Quartsext-
+   *  akkord); `spread` 'open' spreizt die Oberstimmen zur weiten Lage (die
+   *  mittlere Stimme eine Oktave höher, Umfang über eine Oktave). */
+  function voiceProgression(key, symbols, { inversion = 'root', spread = 'close' } = {}) {
+    const close = voiceClose(key, symbols);
+    return close.map((v, i) => {
+      const pcs = chordPcs(key, symbols[i]);
+      let upper = v.upper;
+      if (spread === 'open') {
+        const [a, b, c] = upper;
+        upper = [a, c, b + 12].sort((x, y) => x - y);
+        if (upper[2] > 81) upper = upper.map((m) => m - 12);
+      }
+      let bass = v.bass;
+      if (inversion === 'random') {
+        const pc = pick(pcs);
+        bass = 36 + mod(pc, 12);
+        if (bass < 40) bass += 12;
+      }
+      return { bass, upper };
+    });
+  }
+
+  function voiceClose(key, symbols) {
     let prev = [60, 64, 67];
     return symbols.map((symbol) => {
       const pcs = chordPcs(key, symbol);
@@ -1138,6 +1190,24 @@
     });
   }
 
+  function earSummary() {
+    const s = ear.settings;
+    const level = s.level ? `Stufe ${s.level}` : 'Eigene Auswahl';
+    const inv = EAR_INVERSIONS.find(([id]) => id === s.inversion)[1];
+    const spread = EAR_SPREADS.find(([id]) => id === s.spread)[1];
+    return `${level} · ${enabledProgs().length} Folgen · ${inv}, ${spread}`;
+  }
+
+  function applyEarLevel(n) {
+    const level = EAR_LEVELS.find((l) => l.n === n);
+    if (!level) return;
+    const s = ear.settings;
+    s.level = n;
+    s.progs = level.progs ? [...level.progs] : EAR_PROGRESSIONS.map((p) => p.id);
+    s.inversion = level.inversion;
+    s.spread = level.spread;
+  }
+
   function enabledProgs() { return EAR_PROGRESSIONS.filter((p) => ear.settings.progs.includes(p.id)); }
 
   function newTask() {
@@ -1149,7 +1219,10 @@
       ear.task = { kind: 'interval', semis, dir, root, answer: null };
     } else {
       const prog = pick(enabledProgs());
-      ear.task = { kind: 'chords', prog, key: Math.floor(Math.random() * 12), input: [] };
+      const key = Math.floor(Math.random() * 12);
+      // Klang einmal je Aufgabe festlegen — "Nochmal hören" klingt gleich.
+      const voicings = voiceProgression(key, prog.chords, ear.settings);
+      ear.task = { kind: 'chords', prog, key, input: [], voicings };
     }
   }
 
@@ -1180,11 +1253,11 @@
       return;
     }
     const secs = CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
-    const voicings = voiceProgression(task.key, task.prog.chords);
+    const voicings = task.voicings || voiceProgression(task.key, task.prog.chords, ear.settings);
     let t = t0;
     if (ear.settings.tonicCue) {
       // Grundakkord als Orientierung, dann eine kurze Pause.
-      const [cue] = voiceProgression(task.key, [task.prog.mode === 'major' ? 'I' : 'i']);
+      const [cue] = voiceProgression(task.key, [task.prog.mode === 'major' ? 'I' : 'i'], { spread: ear.settings.spread });
       [cue.bass, ...cue.upper].forEach((m) => engine.keys(m, t, secs * .8, { velocity: .12, dest: bus }));
       t += secs * 1.5;
     }
@@ -1201,7 +1274,7 @@
     if (!engine.ctx || !ear.task) return;
     engine.fadeBus(ear.bus);
     ear.bus = engine.newBus();
-    const [v] = voiceProgression(ear.task.key, [symbol]);
+    const [v] = voiceProgression(ear.task.key, [symbol], { spread: ear.settings.spread });
     const t = engine.ctx.currentTime + .03;
     [v.bass, ...v.upper].forEach((m) => engine.keys(m, t, .9, { velocity: .13, dest: ear.bus }));
   }
@@ -1293,10 +1366,10 @@
       }));
     } else {
       slots.hidden = !task;
-      prompt.textContent = task ? 'Welche Akkorde waren das?' : 'Vier Akkorde — welche Stufen?';
+      prompt.textContent = task ? `Welche ${task.prog.chords.length} Akkorde waren das?` : 'Akkordfolge — welche Stufen?';
       sub.textContent = task
         ? `${task.prog.mode === 'major' ? 'Dur' : 'Moll'}${ear.settings.tonicCue ? ' · vorab erklingt der Grundakkord' : ''}${ear.revealed ? ' · Akkorde antippen zum Anhören' : ''}`
-        : `${enabledProgs().length} Folgen ausgewählt · Zahnrad zum Ändern`;
+        : `${earSummary()} · Zahnrad zum Ändern`;
       if (task) {
         slots.replaceChildren(...task.prog.chords.map((symbol, i) => {
           const el = document.createElement('div');
@@ -1431,8 +1504,20 @@
         <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
     } else {
       const group = (mode, title) => `<span class="sub-label">${title}</span><div class="check-list">${
-        EAR_PROGRESSIONS.filter((p) => p.mode === mode).map((p) => checkRow('progs', p.id, p.chords.join(' – '), s.progs.includes(p.id), p.name)).join('')}</div>`;
+        EAR_PROGRESSIONS.filter((p) => p.mode === mode).map((p) => checkRow('progs', p.id, p.name, s.progs.includes(p.id), p.chords.join(' – '))).join('')}</div>`;
+      const level = EAR_LEVELS.find((l) => l.n === s.level);
+      const choice = (name, entries, value) => `<div class="chip-row">${entries.map(([v, label]) =>
+        `<button class="chip" type="button" data-earset="${name}" data-value="${v}" aria-pressed="${v === value}">${label}</button>`).join('')}</div>`;
       body.innerHTML = `
+        <div class="label-row"><span class="sub-label" style="margin-top:0">Stufe</span>
+          <button class="help-btn" type="button" data-help="help-levels" aria-expanded="false" aria-label="Erklärung der Stufen">?</button></div>
+        <div class="chip-row">${EAR_LEVELS.map((l) => `<button class="chip level-chip" type="button" data-level="${l.n}" aria-pressed="${l.n === s.level}">${l.n}</button>`).join('')}</div>
+        <p class="level-note">${level ? `Stufe ${level.n}: ${level.label}` : 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'}</p>
+        <p class="help-text" id="help-levels" hidden>Jede Stufe wählt Folgen und Klang vor und nimmt zur vorigen etwas dazu: <b>1</b> Grundkadenzen · <b>2</b> Pop-Folgen · <b>3</b> Moll und Trugschluss · <b>4</b> Nebenstufen und weite Lage · <b>5</b> Umkehrungen · <b>6</b> alle Folgen, Umkehrungen in weiter Lage. Änderst du danach etwas, gilt es als eigene Auswahl.<br><b>Umkehrungen:</b> Der Bass liegt nicht immer auf dem Grundton, sondern auch auf Terz oder Quinte — die Stufe bleibt dieselbe, klingt aber anders. <b>Weite Lage:</b> Die Oberstimmen liegen weiter auseinander (über eine Oktave), wie oft im Chorsatz.</p>
+        <span class="sub-label">Bass</span>
+        ${choice('inversion', EAR_INVERSIONS, s.inversion)}
+        <span class="sub-label">Lage</span>
+        ${choice('spread', EAR_SPREADS, s.spread)}
         ${group('major', 'Folgen in Dur')}
         ${group('minor', 'Folgen in Moll')}
         <span class="sub-label">Tempo</span>
@@ -1450,6 +1535,7 @@
     const s = ear.settings;
     const group = input.dataset.set;
     if (group === 'tonicCue' || group === 'autoNext') { s[group] = input.checked; return; }
+    if (group === 'progs') { s.level = 0; const note = $('.level-note'); if (note) note.textContent = 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'; $$('.level-chip').forEach((c) => c.setAttribute('aria-pressed', 'false')); }
     const value = group === 'intervals' ? Number(input.value) : input.value;
     const list = new Set(s[group]);
     if (input.checked) list.add(value); else list.delete(value);
@@ -1759,6 +1845,9 @@
     const progs = subset(EAR_PROGRESSIONS.map((p) => p.id), es.progs);
     if (progs.length) ear.settings.progs = progs;
     if (CHORD_TEMPI.some(([id]) => id === es.tempo)) ear.settings.tempo = es.tempo;
+    if (EAR_INVERSIONS.some(([id]) => id === es.inversion)) ear.settings.inversion = es.inversion;
+    if (EAR_SPREADS.some(([id]) => id === es.spread)) ear.settings.spread = es.spread;
+    if (Number.isInteger(es.level) && es.level >= 0 && es.level <= 6) ear.settings.level = es.level;
     ['tonicCue', 'autoNext'].forEach((k) => { if (typeof es[k] === 'boolean') ear.settings[k] = es[k]; });
     const v = data.voice && typeof data.voice === 'object' ? data.voice : {};
     if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
@@ -1817,6 +1906,10 @@
     if (chordBtn) { answerChord(chordBtn.dataset.chord); return; }
     const preset = e.target.closest('[data-preset]');
     if (preset) { ear.settings.intervals = [...INTERVAL_PRESETS[Number(preset.dataset.preset)][1]]; renderSettings(); return; }
+    const levelChip = e.target.closest('[data-level]');
+    if (levelChip) { applyEarLevel(Number(levelChip.dataset.level)); renderSettings(); $('.sheet-hint').textContent = settingsProblem(); return; }
+    const earSet = e.target.closest('[data-earset]');
+    if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
     const tempo = e.target.closest('[data-tempo]');
     if (tempo) { ear.settings.tempo = tempo.dataset.tempo; renderSettings(); return; }
     if (e.target === $('.sheet')) { closeSettings(); return; }
