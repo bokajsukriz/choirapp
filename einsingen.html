@@ -179,8 +179,11 @@
     <div class="switch-row">
       <label class="switch"><input type="checkbox" role="switch" data-switch="guide"><span class="switch-track"></span>Melodie</label>
       <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
-      <label class="switch"><input type="checkbox" role="switch" data-switch="countIn"><span class="switch-track"></span>Einzähler</label>
     </div>
+    <span class="sub-label">Einzähler</span>
+    <div class="chip-row" data-chips="countIn"></div>
+    <span class="sub-label">Einstimmung</span>
+    <div class="chip-row" data-chips="cue"></div>
   </section>
   <section class="panel" data-panel="program">
     <div class="panel-head"><h2>Einsing-Programm</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
@@ -241,8 +244,15 @@
   // Schreibweise (F, c, c′, c″), wie sie in Chorproben üblich ist.
   const KEY_NAMES = ['C', 'Des', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'];
   const PITCH_NAMES = ['c', 'cis', 'd', 'es', 'e', 'f', 'fis', 'g', 'as', 'a', 'b', 'h'];
-  function noteLabel(midi) {
-    const name = PITCH_NAMES[mod(midi, 12)];
+  // Mit Tonart (`root`): Einzeltöne so geschrieben wie in der Tonart — in
+  // den ♭-Tonarten (F, B, Es, As, Des) mit ♭-Namen, sonst mit ♯-Namen, damit
+  // „Des-Dur“ nicht mit „cis′“ angezeigt wird.
+  const SHARP_NAMES = ['c', 'cis', 'd', 'dis', 'e', 'f', 'fis', 'g', 'gis', 'a', 'ais', 'h'];
+  const FLAT_NAMES = ['c', 'des', 'd', 'es', 'e', 'f', 'ges', 'g', 'as', 'a', 'b', 'h'];
+  const FLAT_KEYS = [5, 10, 3, 8, 1, 6];
+  function noteLabel(midi, root) {
+    const names = root == null ? PITCH_NAMES : FLAT_KEYS.includes(mod(root, 12)) ? FLAT_NAMES : SHARP_NAMES;
+    const name = names[mod(midi, 12)];
     const octave = Math.floor(midi / 12) - 1; // 60 = c′ = Oktave 4
     if (octave <= 2) return name[0].toUpperCase() + name.slice(1) + (octave < 2 ? '₁' : '');
     return name + ['', '′', '″', '‴'][Math.min(3, octave - 3)];
@@ -256,9 +266,12 @@
   // Ein Schritt ist eine Sechzehntel; das Tempo meint Viertel. Jede Runde:
   // CUE Schritte Akkord (Anfangston finden), dann die Übung, dann Luft bis
   // zum nächsten vollen Takt — so steht der Akkord immer auf der Eins.
+  // Mit Einstimmung „Kadenz“ ist die erste Runde einer Übung einen ganzen
+  // Takt lang Kadenz (CUE_CADENCE: I auf 1–2, V7 auf 3, I auf 4).
   const BAR = 16;
   const CUE = 8;
-  const BREATH = 4;
+  const CUE_CADENCE = 16;
+  const BREATH = 4; // Standard-Atemluft in 16teln; je Übung über `breath`
   const PAUSE = 16; // ein Takt zwischen zwei Programm-Übungen
   const MAX_STEPS = 7; // höchstens so viele Halbtöne über der Startlage
 
@@ -285,10 +298,14 @@
 
   // notes: [Stufe in Dur (0 = Grundton, 7 = Oktave), Dauer in 16teln,
   //         optional klingende Länge in 16teln (Staccato)].
+  // delay: 16tel Pause nach dem Akkord vor dem ersten Ton (Auftakt, damit
+  //        die betonten Silben auf die Zählzeiten fallen).
+  // breath: 16tel Luft nach dem letzten Ton (Standard BREATH); luftintensive
+  //        Übungen bekommen mehr — die Runde wird dadurch ggf. einen Takt länger.
   // lowStart/top: Halbtöne über voice.floor — wo der tiefste Ton der ersten
   // Runde liegt, und wie hoch der höchste Ton der Übung höchstens steigt.
   const EXERCISES = [
-    { id: 'lippen', group: 'lockern', name: 'Lippenflattern', hint: 'brrr', bpm: 88, lowStart: 3, top: 16,
+    { id: 'lippen', group: 'lockern', name: 'Lippenflattern', hint: 'brrr', bpm: 88, lowStart: 3, top: 16, breath: 8,
       notes: legato5, syllables: rep('brrr', 9),
       help: ['Lippen locker aufeinander, Luft strömen lassen, bis sie flattern — und dabei auf den Tönen summen. Das lockert Lippen und Gesicht und bringt den Atem ohne Druck in Gang.',
         'Klappt das Flattern nicht: mit zwei Fingern die Wangen neben den Mundwinkeln leicht anheben. Alternative: Zungenflattern auf „rrr“.'] },
@@ -322,26 +339,29 @@
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ja', 7),
       help: ['Der Dreiklang bis zur Oktave hinauf und wieder hinab, locker und federnd.',
         'Den oberen Ton schon beim Anlauf „von oben“ denken, dann muss man ihn nicht hochdrücken. Er wird nicht lauter als die anderen.'] },
-    { id: 'katze', group: 'beweglich', name: 'Die Katze tritt …', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16,
+    { id: 'katze', group: 'beweglich', name: 'Die Katze tritt …', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16, delay: 2,
       notes: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [1, 2], [0, 6]],
       syllables: ['Die', 'Kat', 'ze', 'tritt', 'die', 'Trep', 'pe', 'krumm'],
       help: ['„Die Katze tritt die Treppe krumm“: Konsonanten knackig und deutlich, Vokale trotzdem gesungen, nicht gesprochen.',
         'Wenn es sitzt, mit dem Tempo-Regler schneller werden. Die Lippen und die Zungenspitze arbeiten, der Kiefer bleibt locker.'] },
-    { id: 'koloratur', group: 'beweglich', name: 'Koloratur', hint: '9 Töne auf „a“', bpm: 80, lowStart: 2, top: 20,
+    { id: 'koloratur', group: 'beweglich', name: 'Koloratur', hint: '9 Töne auf „a“', bpm: 80, lowStart: 2, top: 20, breath: 8,
       notes: [...[0, 1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 5, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], syllables: rep('a', 17),
       help: ['Die Tonleiter bis zur None (9 Töne) hinauf und hinunter, schnell und leicht auf „a“ (Anfänger: „da“ oder „la“).',
         'In einem Bogen denken, nicht jeden Ton einzeln anstoßen. Erst langsam sauber, dann schneller.'] },
 
-    { id: 'oktave', group: 'hoehe', name: 'Oktavsprung', hint: 'ja-a …', bpm: 88, lowStart: 3, top: 22,
+    { id: 'oktave', group: 'hoehe', name: 'Oktavsprung', hint: 'ja-a …', bpm: 88, lowStart: 3, top: 22, breath: 8,
       notes: [[0, 4], [7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['ja', ...rep('a', 8)],
       help: ['Mit „ja“ eine Oktave hinauf springen und in einem Bogen die Tonleiter hinunter.',
         'Beim Sprung nicht hochdrücken: den hohen Ton leicht ansetzen, als würde man ihn von oben abholen. Hohe Runden, die unangenehm sind, einfach auslassen.'] },
   ];
+  // starts: Einsatz jedes Tons in 16teln ab dem Ende des Akkords (also
+  // inklusive `delay`); die Position in der Runde ist cue + starts[i].
+  const roundSteps = (ex, cue) => Math.ceil((cue + ex.length + (ex.breath ?? BREATH)) / BAR) * BAR;
   EXERCISES.forEach((ex) => {
-    let at = CUE;
+    let at = ex.delay || 0;
     ex.starts = ex.notes.map(([, len]) => { const start = at; at += len; return start; });
-    ex.length = at - CUE;
-    ex.steps = Math.ceil((CUE + ex.length + BREATH) / BAR) * BAR;
+    ex.length = at;
+    ex.steps = roundSteps(ex, CUE);
     const semis = ex.notes.map(([deg]) => degreeSemis(deg));
     ex.min = Math.min(...semis);
     ex.max = Math.max(...semis);
@@ -365,7 +385,8 @@
     voice: ['Welche Stimme?', null],
     options: ['Begleitung', ['<b>Melodie:</b> Die Übung wird vorgesungen. Aus = nur der Akkord mit Anfangston, du singst allein.',
       '<b>Liegeton:</b> Ein leiser Grundton mit Quinte klingt die ganze Zeit mit — gut, um die Intonation zu prüfen.',
-      '<b>Einzähler:</b> Ein Takt Klicks vor dem Start.',
+      '<b>Einzähler:</b> „Zu Beginn“ = ein Takt Klicks vor dem Start. „Jede Runde“ = zusätzlich zwei Klicks vor jedem Einsatz.',
+      '<b>Einstimmung:</b> „Akkord“ = vor jeder Runde der Tonika-Akkord. „Kadenz“ = vor der ersten Runde jeder Übung einmal I–V7–I, damit die Tonart klar ist; danach wieder der Akkord.',
       'Den Tempo-Regler merkt sich jede Übung einzeln.']],
   };
 
@@ -510,8 +531,10 @@
 
   const state = {
     mode: 'program', program: 'kurz', exercise: 'mimemamomu', voice: 'A', direction: 'updown',
-    guide: true, drone: false, countIn: false, bpm: {},
+    guide: true, drone: false, countIn: 'off', cue: 'chord', bpm: {},
   };
+  const COUNT_INS = [['off', 'aus'], ['start', 'zu Beginn'], ['round', 'jede Runde']];
+  const CUES = [['chord', 'Akkord'], ['cadence', 'Kadenz']];
   const run = { playing: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, wakeLock: null };
   let plan = null;
   let droneVoice = null;
@@ -528,7 +551,11 @@
     pickFrom('exercise', EXERCISES.map((x) => x.id));
     pickFrom('voice', VOICES.map((v) => v.id));
     pickFrom('direction', DIRECTIONS.map(([id]) => id));
-    for (const key of ['guide', 'drone', 'countIn']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
+    for (const key of ['guide', 'drone']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
+    // countIn war bis v294 ein Schalter (true/false) — alte Stände umrechnen.
+    if (typeof raw.countIn === 'boolean') state.countIn = raw.countIn ? 'start' : 'off';
+    else pickFrom('countIn', COUNT_INS.map(([id]) => id));
+    pickFrom('cue', CUES.map(([id]) => id));
     if (raw.bpm && typeof raw.bpm === 'object') {
       for (const ex of EXERCISES) {
         const v = raw.bpm[ex.id];
@@ -584,9 +611,12 @@
       const offs = offsets(limit == null ? r.steps : Math.min(r.steps, limit), dir, loop);
       offs.forEach((o, i) => {
         const next = loop ? offs[(i + 1) % offs.length] : offs[i + 1];
-        segs.push({ kind: 'round', ex, item, root: r.start + o, start: at, steps: ex.steps, round: i, rounds: offs.length,
+        const cadence = state.cue === 'cadence' && i === 0;
+        const cue = cadence ? CUE_CADENCE : CUE;
+        const steps = roundSteps(ex, cue);
+        segs.push({ kind: 'round', ex, item, root: r.start + o, start: at, steps, cue, cadence, round: i, rounds: offs.length,
           trend: next === undefined || next === o ? '' : next > o ? '↑' : '↓' });
-        at += ex.steps;
+        at += steps;
       });
     };
     let items;
@@ -642,6 +672,13 @@
   const droneMidis = (root) => { const r = 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0); return [r - 12, r, r + 7]; };
   /** Akkord in mittlerer Lage (offene Lage: Grundton, Quinte, Oktave, Terz). */
   const cueChord = (root) => { const r = 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0); return [r, r + 7, r + 12, r + 16]; };
+  /** Dominantseptakkord zu cueChord, eng angeschlossen: Bass Quinte darunter,
+   *  Quinte → Septime, Oktave → Leitton, Terz → None der Tonika (= Quinte von V). */
+  const cueDominant = (root) => { const r = 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0); return [r - 5, r + 5, r + 11, r + 14]; };
+  /** Einstimmung einer Runde: [Position, Akkord, Länge in 16teln]. */
+  const cueParts = (seg) => (seg.cadence
+    ? [[0, cueChord(seg.root), 8], [8, cueDominant(seg.root), 4], [12, cueChord(seg.root), 4]]
+    : [[0, cueChord(seg.root), seg.cue]]);
 
   /* ------------------------------------------------------------------------
      SCHEDULER
@@ -658,15 +695,21 @@
     const { seg, pos } = hit;
     const ex = seg.ex;
     const sec = stepSecondsFor(ex);
-    if (pos === 0) {
-      const chordLen = sec * CUE * .95;
-      cueChord(seg.root).forEach((m) => engine.keys(m, time, chordLen, { velocity: .1 }));
-      // Ohne vorgesungene Melodie: den Anfangston in der eigenen Lage dazu.
-      if (!state.guide) engine.keys(seg.root + degreeSemis(ex.notes[0][0]), time, chordLen, { velocity: .2 });
-      if (droneVoice) droneVoice.retune(droneMidis(seg.root), time);
-    }
+    const parts = cueParts(seg);
+    parts.forEach(([at, chord, len], k) => {
+      if (pos !== at) return;
+      const chordLen = sec * len * .95;
+      chord.forEach((m) => engine.keys(m, time, chordLen, { velocity: .1 }));
+      // Ohne vorgesungene Melodie: den Anfangston in der eigenen Lage zum
+      // (letzten) Tonika-Akkord dazu.
+      if (!state.guide && k === parts.length - 1) engine.keys(seg.root + degreeSemis(ex.notes[0][0]), time, chordLen, { velocity: .2 });
+    });
+    if (pos === 0 && droneVoice) droneVoice.retune(droneMidis(seg.root), time);
+    // Einzähler „jede Runde“: zwei Klicks auf den letzten beiden Schlägen
+    // vor dem Einsatz (bei Auftakt: vor dem Auftakt).
+    if (state.countIn === 'round' && (pos === seg.cue - 8 || pos === seg.cue - 4)) engine.click(time, false);
     if (!state.guide) return;
-    const i = ex.starts.indexOf(pos);
+    const i = ex.starts.indexOf(pos - seg.cue);
     if (i === -1) return;
     const [deg, len, gate] = ex.notes[i];
     const midi = seg.root + degreeSemis(deg);
@@ -702,7 +745,7 @@
     try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
     plan = buildPlan();
     run.playing = true;
-    run.step = state.countIn && fromStep === 0 ? -BAR : fromStep;
+    run.step = state.countIn !== 'off' && fromStep === 0 ? -BAR : fromStep;
     run.nextTime = engine.ctx.currentTime + .08;
     run.endTime = null;
     run.queue = [];
@@ -792,7 +835,7 @@
     const { seg, pos } = hit;
     if (run.shownSeg !== seg) { run.shownSeg = seg; renderStage(seg); renderTransport(); }
     const ex = seg.ex;
-    const active = seg.kind === 'round' ? ex.starts.findIndex((s, i) => pos >= s && pos < s + ex.notes[i][1]) : -1;
+    const active = seg.kind === 'round' ? ex.starts.findIndex((s, i) => pos - seg.cue >= s && pos - seg.cue < s + ex.notes[i][1]) : -1;
     $$('.contour .syl').forEach((el, i) => el.classList.toggle('is-now', i === active));
     if (state.mode === 'program') {
       $('.progress i').style.width = `${(100 * g / plan.total).toFixed(1)}%`;
@@ -832,9 +875,12 @@
 
     // Tonraum dieser Übung (bei Programmen: der aktuellen) für die Stimme.
     const rounds = plan.segs.filter((s) => s.kind === 'round' && s.item === cur.item);
-    const low = Math.min(...rounds.map((s) => s.root)) + ex.min;
-    const high = Math.max(...rounds.map((s) => s.root)) + ex.max;
-    $('.stage-range').textContent = `Tonraum ${noteLabel(low)}${low === high ? '' : `–${noteLabel(high)}`}`;
+    const lowRoot = Math.min(...rounds.map((s) => s.root));
+    const highRoot = Math.max(...rounds.map((s) => s.root));
+    const low = lowRoot + ex.min;
+    const high = highRoot + ex.max;
+    // Jeder Ton in der Schreibweise der Runde, aus der er stammt.
+    $('.stage-range').textContent = `Tonraum ${noteLabel(low, lowRoot)}${low === high ? '' : `–${noteLabel(high, highRoot)}`}`;
     $('.stage-range').title = 'Tiefster und höchster Ton dieser Übung';
     if (cur.kind === 'round') {
       $('.stage-key').textContent = seg
@@ -943,6 +989,8 @@
     renderGroups();
     chips('voice', VOICES.map((v) => [v.id, v.name]), state.voice);
     chips('direction', DIRECTIONS, state.direction);
+    chips('countIn', COUNT_INS, state.countIn);
+    chips('cue', CUES, state.cue);
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     renderStage(run.playing ? run.shownSeg : null);
     renderTransport();
@@ -1074,7 +1122,79 @@
     plan: () => (plan = buildPlan()),
     notes: () => { plan = buildPlan(); return planNotes(); },
     range: exerciseRange,
+    noteLabel,
+    sanitize,
+    selfCheck,
   };
+
+  /** Selbstprüfung (Konsole des iframes: `einsingen.selfCheck()`).
+   *  Liefert die Liste der Fehler — leer = bestanden. Ändert den Zustand
+   *  nicht dauerhaft. */
+  function selfCheck() {
+    const errors = [];
+    const saved = JSON.parse(JSON.stringify(state));
+    const savedPlan = plan;
+    try {
+      // Katze: betonte Silben (Kat, tritt, Trep, krumm) auf Zählzeiten —
+      // bei beiden Einstimmungen.
+      const katze = exById('katze');
+      for (const cue of [CUE, CUE_CADENCE]) {
+        [1, 3, 5, 7].forEach((i) => {
+          const pos = cue + katze.starts[i];
+          if (pos % 4 !== 0) errors.push(`Katze: „${katze.syllables[i]}“ auf 16tel ${pos} (Einstimmung ${cue}) — keine Zählzeit`);
+        });
+      }
+      // Alle Übungen × Stimmen × Einstimmungen: Töne im Umfang, Runden in
+      // ganzen Takten, der erste Ton nach der Einstimmung.
+      for (const cue of ['chord', 'cadence']) {
+        for (const ex of EXERCISES) {
+          for (const v of VOICES) {
+            Object.assign(state, { mode: 'single', exercise: ex.id, voice: v.id, direction: 'updown', cue });
+            plan = buildPlan();
+            for (const n of planNotes()) {
+              if (n.midi < v.floor || n.midi > v.ceil) errors.push(`${ex.id}/${v.id}: Ton ${n.midi} außerhalb ${v.floor}–${v.ceil}`);
+            }
+            for (const sg of plan.segs) {
+              if (sg.steps % BAR) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein ganzer Takt`);
+              const rest = sg.steps - sg.cue - ex.length;
+              if (rest < (ex.breath ?? BREATH)) errors.push(`${ex.id}/${v.id}: nur ${rest} 16tel Luft`);
+            }
+            if (cue === 'cadence' && !(plan.segs[0].cadence && plan.segs[0].cue === CUE_CADENCE && plan.segs.slice(1).every((sg) => !sg.cadence && sg.cue === CUE))) {
+              errors.push(`${ex.id}/${v.id}: Kadenz nicht nur in der ersten Runde`);
+            }
+          }
+        }
+      }
+      for (const [id, len] of [['lippen', 8], ['koloratur', 8], ['oktave', 8], ['mimemamomu', 4]]) {
+        if ((exById(id).breath ?? BREATH) !== len) errors.push(`${id}: Atemluft ${exById(id).breath ?? BREATH} statt ${len}`);
+      }
+      // Tonnamen je Tonart
+      [[61, 61, 'des′'], [61, 57, 'cis′'], [63, 63, 'es′'], [66, 62, 'fis′'], [70, 65, 'b′'], [68, 64, 'gis′'], [60, 60, 'c′'], [47, 55, 'H']].forEach(([midi, root, want]) => {
+        const got = noteLabel(midi, root);
+        if (got !== want) errors.push(`noteLabel(${midi}, ${root}) = ${got}, erwartet ${want}`);
+      });
+      // Gespeicherte Stände: alt (Boolean) → neu, neu → gleich, kaputt → Standard.
+      [[true, 'start'], [false, 'off'], ['round', 'round'], ['start', 'start'], ['off', 'off'], ['quatsch', 'off'], [1, 'off']].forEach(([raw, want]) => {
+        state.countIn = 'off';
+        sanitize({ countIn: raw });
+        if (state.countIn !== want) errors.push(`countIn ${JSON.stringify(raw)} → ${state.countIn}, erwartet ${want}`);
+      });
+      [['cadence', 'cadence'], ['chord', 'chord'], ['x', 'chord'], [true, 'chord']].forEach(([raw, want]) => {
+        state.cue = 'chord';
+        sanitize({ cue: raw });
+        if (state.cue !== want) errors.push(`cue ${JSON.stringify(raw)} → ${state.cue}, erwartet ${want}`);
+      });
+      const round = JSON.parse(JSON.stringify({ ...saved, countIn: 'round', cue: 'cadence' }));
+      state.countIn = 'off'; state.cue = 'chord';
+      sanitize(round);
+      if (state.countIn !== 'round' || state.cue !== 'cadence') errors.push('Speichern/Laden: countIn/cue nicht erhalten');
+    } finally {
+      for (const k of Object.keys(state)) delete state[k];
+      Object.assign(state, saved);
+      plan = savedPlan;
+    }
+    return errors;
+  }
 
   renderAll();
   if (storage) {
