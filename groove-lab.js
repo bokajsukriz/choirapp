@@ -602,6 +602,9 @@
       mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
+      // Aufgenommene Reglerbewegungen: je Klang-Parameter ein Wert pro
+      // Sechzehntel, geloopt über `steps` Schritte ab `offset`.
+      automation: null,
       locks: { beat: false, harmony: false, melody: false, sound: false },
     };
   }
@@ -658,6 +661,25 @@
       const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 40) : 'Melody';
       return { id: m.id.slice(0, 24), name, meter: m.meter, bars };
     }).filter(Boolean);
+  }
+
+  function sanitizeAutomation(raw) {
+    if (!raw || typeof raw !== 'object' || !raw.lanes || typeof raw.lanes !== 'object') return null;
+    const steps = Number.isInteger(raw.steps) && raw.steps >= 1 && raw.steps <= 64 ? raw.steps : null;
+    if (!steps) return null;
+    const lanes = {};
+    for (const [key, values] of Object.entries(raw.lanes)) {
+      if (!hasOwn(SOUND_RANGES, key) || !Array.isArray(values) || values.length !== steps) continue;
+      const [lo, hi] = SOUND_RANGES[key];
+      if (!values.every((v) => Number.isFinite(v))) continue;
+      lanes[key] = values.map((v) => clamp(v, lo, hi));
+    }
+    if (!Object.keys(lanes).length) return null;
+    return {
+      on: raw.on !== false, steps, lanes,
+      bars: Number.isInteger(raw.bars) ? clamp(raw.bars, 1, 4) : 1,
+      offset: Number.isInteger(raw.offset) ? mod(raw.offset, steps) : 0,
+    };
   }
 
   /** Eingelesenen Stand (Speicherplatz, geteilter Code, Undo) Feld für Feld
@@ -721,6 +743,7 @@
       echoOn: bool(fx.echoOn, true),
       chorusOn: bool(fx.chorusOn, true),
     };
+    s.automation = sanitizeAutomation(raw.automation);
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
     // Der Liegeton braucht eine Nutzergeste zum Starten — nie aus einem
     // gespeicherten Stand heraus von selbst loslaufen lassen.
@@ -1355,7 +1378,7 @@
 
       filter.connect(gain).connect(L.input);
 
-      const voice = { oscillators, lfos, gain, release: sound.release, done: false, layer };
+      const voice = { oscillators, lfos, gain, filter, envEnd: time + attack + sound.decay, release: sound.release, done: false, layer };
       if (stopAt !== null) {
         oscillators.forEach((osc) => osc.stop(stopAt));
         lfos.forEach((lfo) => lfo.stop(stopAt));
@@ -1364,6 +1387,18 @@
       if (sound.mono) this.monoVoice[layer] = voice;
       oscillators[0].addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
       return voice;
+    }
+
+    /** Automation: Filter klingender Stimmen nachführen (nach ihrer
+     *  Filter-Hüllkurve, sonst würde deren Verlauf abgeschnitten). */
+    modulateLive(layers, sound, time) {
+      if (!this.ctx) return;
+      const nyquist = this.ctx.sampleRate / 2 - 100;
+      this.voices.forEach((voice) => {
+        if (voice.done || !voice.filter || !layers.includes(voice.layer) || time < voice.envEnd) return;
+        voice.filter.frequency.setTargetAtTime(Math.min(sound.cutoff, nyquist), time, .03);
+        voice.filter.Q.setTargetAtTime(sound.resonance, time, .03);
+      });
     }
 
     /** Stimme auf neue Tonhöhe ziehen (Liegeton folgt der Tonart). */
@@ -1513,6 +1548,9 @@
         melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [],
         progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [] };
       // Einspielen: Phase idle → armed (zählt ein) → recording → done.
+      // Automation aufnehmen: Phase idle → armed (zählt ein) → recording.
+      this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
+      this._soundLabels = {};
       this.rec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, notes: [], open: new Map(), take: null };
 
       this.playing = false;
@@ -1803,6 +1841,7 @@
       this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
       this._showMelodyStep(-1);
       this._showRecLoopStep(-1);
+      if (this.autoRec.phase !== 'idle') this._autoFinish();
       if (this.rec.phase === 'recording') this._recFinish();
       else if (this.rec.phase === 'armed') { this.rec.phase = 'idle'; this._renderRec(); }
       this._renderTransport();
@@ -1874,6 +1913,10 @@
       while (this.nextStepTime < ctx.currentTime + .1) {
         const g = this.globalStep;
         const h = this._harmonyAt(g);
+        if (this.autoRec.phase === 'armed' && g === this.autoRec.startStep) {
+          this.autoRec.startTime = this.nextStepTime;
+          this.autoRec.stepSec = this._stepSeconds();
+        }
         if (this.rec.phase === 'armed' && g === this.rec.startStep) {
           this.rec.startTime = this.nextStepTime;
           this.rec.stepSec = this._stepSeconds();
@@ -1888,6 +1931,7 @@
 
     _playStep(g, time, h) {
       const s = this.state;
+      this._playAutomation(g, time);
       const stepSec = this._stepSeconds();
       const barSteps = this._barSteps();
       const step = g % barSteps;
@@ -2106,6 +2150,7 @@
         this._showStep(latest, chordChanged);
       }
       if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recTick(now);
+      if (this.autoRec.phase !== 'idle') this._autoTick(now);
       this.visualFrame = global.requestAnimationFrame(() => this._drawSteps());
     }
 
@@ -2742,6 +2787,7 @@
       this._renderMacros();
       this._renderSynthControls();
       this._renderFx();
+      this._renderAutomation();
     }
 
     _renderSoundName() {
@@ -2831,6 +2877,7 @@
 
     _onSoundEdit({ refreshKnobs = false } = {}) {
       const sound = this.state.sound;
+      this._autoCapture();
       if (!sound.custom) {
         sound.custom = true;
       }
@@ -2884,6 +2931,7 @@
         input.value = String(sound[key]);
         input.dataset.sound = key;
         input.setAttribute('aria-label', label);
+        this._soundLabels[key] = label;
         wrap.append(input);
         return wrap;
       }));
@@ -2897,6 +2945,7 @@
           onInput: (v) => { sound[key] = v; this._onSoundEdit(); if (key === 'attack' || key === 'release') this._renderEnvelope(sound); },
         });
         this._soundKnobs[key] = k;
+        this._soundLabels[key] = key === 'reverbWet' ? t('lab.reverb') : key === 'echoWet' ? t('lab.echo') : label;
         host.append(k.el);
       };
       const hz = (v) => `${Math.round(v)} Hz`;
@@ -3631,6 +3680,149 @@
       this._paintHeld();
     }
 
+    /* ---- Automation ----
+       Reglerbewegungen im Klang-Reiter aufnehmen und im Takt loopen: nach
+       einem Takt Einzählen wird jede Änderung eines Klang-Parameters mit
+       ihrer Position (in Sechzehnteln) mitgeschrieben; daraus wird je
+       Parameter eine Spur mit einem Wert pro Schritt (Wert hält bis zur
+       nächsten Änderung). Filter-Cutoff und -Resonanz wirken auch auf
+       klingende Töne, alles andere ab dem nächsten Ton. */
+
+    _autoSnapshot() {
+      const sound = this.state.sound;
+      const snap = {};
+      for (const key of Object.keys(SOUND_RANGES)) if (Number.isFinite(sound[key])) snap[key] = sound[key];
+      return snap;
+    }
+
+    async _autoArm() {
+      const a = this.autoRec;
+      const barSteps = this._barSteps();
+      a.barSteps = barSteps;
+      a.events = [];
+      a.startTime = 0;
+      a.base = this._autoSnapshot();
+      a.last = { ...a.base };
+      if (!this.playing) {
+        await this.start();
+        if (!this.playing) return;
+        a.startStep = barSteps;
+      } else {
+        let next = Math.ceil(this.globalStep / barSteps) * barSteps;
+        if (next - this.globalStep < barSteps / 2) next += barSteps;
+        a.startStep = next;
+      }
+      a.phase = 'armed';
+      this._renderAutomation();
+    }
+
+    /** Aus _onSoundEdit: geänderte Parameter mit Position mitschreiben. */
+    _autoCapture() {
+      const a = this.autoRec;
+      if (this._autoApplying || (a.phase !== 'armed' && a.phase !== 'recording')) return;
+      const sound = this.state.sound;
+      const pos = a.startTime && this.engine.ready ? (this._recNow() - a.startTime) / a.stepSec : -1;
+      for (const key of Object.keys(a.last)) {
+        if (sound[key] !== a.last[key] && Number.isFinite(sound[key])) {
+          a.events.push({ pos, key, value: sound[key] });
+          a.last[key] = sound[key];
+        }
+      }
+    }
+
+    _autoTick(now) {
+      const a = this.autoRec;
+      const heard = now - (this.engine.ctx.outputLatency || this.engine.ctx.baseLatency || 0);
+      const startTime = a.startTime || this.nextStepTime + (a.startStep - this.globalStep) * this._stepSeconds();
+      if (a.phase === 'armed') {
+        const left = startTime - heard;
+        const beats = METERS[this._meter()].beats.length;
+        const beatSec = (a.barSteps / beats) * this._stepSeconds();
+        this.$('.auto-count').textContent = left > 0 ? String(Math.min(beats, Math.ceil(left / beatSec))) : '';
+        if (left <= 0 && a.startTime) { a.phase = 'recording'; this._renderAutomation(); }
+        return;
+      }
+      const pos = clamp((heard - a.startTime) / (a.bars * a.barSteps * a.stepSec), 0, 1);
+      Array.from(this.$('.auto-meter').children).forEach((seg, i) => {
+        const fill = clamp(pos * a.bars - i, 0, 1);
+        seg.firstChild.style.width = `${fill * 100}%`;
+        seg.classList.toggle('is-full', fill >= 1);
+      });
+      if (pos >= 1) this._autoFinish();
+    }
+
+    _autoFinish() {
+      const a = this.autoRec;
+      if (a.phase === 'recording' && a.events.length) {
+        const steps = a.bars * a.barSteps;
+        const lanes = {};
+        const keys = [...new Set(a.events.map((e) => e.key))];
+        for (const key of keys) {
+          const events = a.events.filter((e) => e.key === key).sort((x, y) => x.pos - y.pos);
+          let value = a.base[key];
+          let i = 0;
+          lanes[key] = Array.from({ length: steps }, (_, step) => {
+            while (i < events.length && events[i].pos < step + .5) value = events[i++].value;
+            return value;
+          });
+        }
+        this.state.automation = { on: true, bars: a.bars, steps, lanes, offset: mod(a.startStep, steps) };
+        this._setStatus(t('lab.autoDone'));
+      } else if (a.phase === 'recording') {
+        this._setStatus(t('lab.autoEmpty'));
+      }
+      a.phase = 'idle';
+      a.events = [];
+      this._renderAutomation();
+    }
+
+    /** Aus dem Scheduler: Spurwerte dieses Schritts setzen (zur Audio-Zeit). */
+    _playAutomation(g, time) {
+      const auto = this.state.automation;
+      if (!auto || !auto.on || this.autoRec.phase === 'recording' || this.autoRec.phase === 'armed') return;
+      const idx = mod(g - auto.offset, auto.steps);
+      const sound = this.state.sound;
+      let changed = false;
+      for (const [key, lane] of Object.entries(auto.lanes)) {
+        if (sound[key] !== lane[idx]) { sound[key] = lane[idx]; changed = true; }
+      }
+      if (!changed) return;
+      this._applySound();
+      this.engine.modulateLive(SOUND_LAYERS, sound, time);
+      // Regler sichtbar mitlaufen lassen — gebündelt, nicht jeden Schritt.
+      if (this.ui.tab === 'sound' && !this._autoRefresh) {
+        this._autoRefresh = global.setTimeout(() => {
+          this._autoRefresh = 0;
+          this._autoApplying = true;
+          try { this._refreshSoundControls(); this._renderMacros(); } finally { this._autoApplying = false; }
+        }, 120);
+      }
+    }
+
+    _renderAutomation() {
+      const a = this.autoRec;
+      const auto = this.state.automation;
+      const busy = a.phase === 'armed' || a.phase === 'recording';
+      this._chips(this.$('.auto-bars'), [1, 2, 4].map((n) => ({ value: n, label: String(n) })), a.bars, 'auto-bars');
+      this.$all('.auto-bars .chip').forEach((chip) => { chip.disabled = busy; });
+      const btn = this.$('[data-action="auto-rec"]');
+      btn.classList.toggle('is-live', busy);
+      btn.querySelector('span').textContent = t(busy ? 'lab.recStop' : 'lab.autoRec');
+      this.$('.auto-live').hidden = !busy;
+      this.$('.auto-count').hidden = a.phase !== 'armed';
+      this.$('.auto-status').textContent = a.phase === 'armed' ? t('lab.autoArmed') : a.phase === 'recording' ? t('lab.autoRecording') : '';
+      const meter = this.$('.auto-meter');
+      meter.hidden = a.phase !== 'recording';
+      if (a.phase === 'recording') meter.innerHTML = Array.from({ length: a.bars }, (_, i) => `<span><i></i><b>${i + 1}</b></span>`).join('');
+      const has = !!auto && !busy;
+      this.$('.auto-result').hidden = !has;
+      if (has) {
+        const names = Object.keys(auto.lanes).map((key) => this._soundLabels[key] || key);
+        this.$('.auto-params').textContent = tf(auto.bars === 1 ? 'lab.autoParamsOne' : 'lab.autoParams', { params: names.join(', '), bars: auto.bars });
+        this._setSwitch('autoOn', auto.on);
+      }
+    }
+
     /* ---- Einspielen ----
        Aufnahme über die Groove-Uhr: Nach einem Takt Einzählen werden die
        gewählten Takte lang alle Tastenanschläge mit ihrer Audio-Zeit
@@ -3986,6 +4178,7 @@
         return;
       }
       if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
+      if (key === 'autoOn') { if (s.automation) s.automation.on = on; this._renderAutomation(); return; }
       if (key === 'reverbOn' || key === 'echoOn' || key === 'chorusOn') {
         s.fx[key] = on;
         this.engine.setFx(s.fx, this._stepSeconds());
@@ -4174,6 +4367,11 @@
         case 'mel-alt': this.ui.melAlt = Number(value); this._renderMelEditor(); break;
         case 'mel-save': this._melSaveOwn(); break;
         case 'rec-bars': this.rec.bars = Number(value); this._renderRec(); break;
+        case 'auto-bars': this.autoRec.bars = Number(value); this._renderAutomation(); break;
+        case 'auto-rec':
+          if (this.autoRec.phase === 'idle') this._autoArm(); else this._autoFinish();
+          break;
+        case 'auto-clear': s.automation = null; this._renderAutomation(); break;
         case 'rec-toggle':
           if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recFinish();
           else this._recArm();
@@ -4719,6 +4917,13 @@
   .mel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
   .mel-done { margin-left: auto; padding: 9px 20px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .76rem; }
 
+  .auto-box { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .auto-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .auto-row .help-btn { margin: 0; }
+  .auto-bars .chip { min-width: 32px; text-align: center; }
+  .auto-live { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .auto-result { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .auto-params { flex: 1; min-width: 0; font-size: .7rem; font-weight: 700; color: var(--text); }
   .rec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .rec-bars .chip { min-width: 34px; text-align: center; }
   .rec-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px;
@@ -4949,6 +5154,21 @@
       ${pickerTrigger('sound')}
       <div class="reset-sound-row"><button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
       <div class="knob-row macro-knobs"></div>
+      <div class="auto-box">
+        <div class="auto-row">
+          <span class="chip-label">${t('lab.autoTitle')}</span>${help('autoHint')}
+          <div class="chip-row auto-bars" role="group" aria-label="${t('lab.recBars')}"></div>
+          <button class="rec-btn" type="button" data-action="auto-rec"><i aria-hidden="true"></i><span>${t('lab.autoRec')}</span></button>
+        </div>
+        ${helpText('autoHint')}
+        <div class="auto-live" hidden><strong class="auto-count rec-count"></strong><span class="auto-status rec-status"></span></div>
+        <div class="rec-meter auto-meter" hidden></div>
+        <div class="auto-result" hidden>
+          <span class="auto-params"></span>
+          ${bareToggle('autoOn', 'lab.autoOnAria')}
+          <button class="chip" type="button" data-action="auto-clear">${t('lab.autoClear')}</button>
+        </div>
+      </div>
 
       <details class="expert">
         <summary>${pictogramIcon('sliders')} ${t('lab.allControls')}</summary>
