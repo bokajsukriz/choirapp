@@ -355,27 +355,30 @@
   /* Akkordfolgen: Stufen der gewählten Tonart (0 = I … 6 = VII), je
      Eintrag ein Akkord (ein oder zwei Takte, siehe chordBars). Name und
      Kurz-Erklärung stehen in strings.js (lab.progName…/lab.progInfo…).
-     Die alten Ids bleiben, damit gespeicherte Stände weiter passen. */
+     Die alten Ids bleiben, damit gespeicherte Stände weiter passen.
+     dominant: in Moll klingt die V. Stufe als Dur-Dominante (mit Leitton,
+     siehe chordSteps) — nur bei Folgen mit Kadenz-/Dominantfunktion; bei
+     pop, sad, fifties, pachelbel und epic ist das Moll-v idiomatisch. */
   const PROGRESSIONS = [
     { id: 'pop', cat: 'pop', degrees: [0, 4, 5, 3] },
     { id: 'sad', cat: 'pop', degrees: [5, 3, 0, 4] },
     { id: 'fifties', cat: 'pop', degrees: [0, 5, 3, 4] },
     { id: 'royal', cat: 'pop', degrees: [3, 4, 2, 5] },
     { id: 'pendulum', cat: 'pop', degrees: [0, 3] },
-    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0] },
-    { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0] },
-    { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4] },
+    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0], dominant: true },
+    { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0], dominant: true },
+    { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4], dominant: true },
     { id: 'amen', cat: 'classic', degrees: [0, 3, 0] },
     { id: 'plagal', cat: 'classic', degrees: [0, 3, 0, 3] },
     { id: 'pachelbel', cat: 'classic', degrees: [0, 4, 5, 2, 3, 0, 3, 4] },
-    { id: 'circle', cat: 'classic', degrees: [0, 3, 6, 2, 5, 1, 4, 0] },
-    { id: 'jazz', cat: 'jazz', degrees: [1, 4, 0, 0], sevenths: true },
-    { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true },
-    { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true },
-    { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true },
+    { id: 'circle', cat: 'classic', degrees: [0, 3, 6, 2, 5, 1, 4, 0], dominant: true },
+    { id: 'jazz', cat: 'jazz', degrees: [1, 4, 0, 0], sevenths: true, dominant: true },
+    { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true, dominant: true },
+    { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true, dominant: true },
+    { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true, dominant: true },
     { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0] },
     { id: 'rock3', cat: 'modal', degrees: [0, 6, 3] },
-    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4] },
+    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4], dominant: true },
     { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6] },
     { id: 'drone', cat: 'modal', degrees: [0] },
   ];
@@ -409,7 +412,7 @@
       if (!degrees) return null;
       seen.add(p.id);
       const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : 'Progression';
-      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true };
+      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true, dominant: p.dominant === true };
     }).filter(Boolean);
   }
 
@@ -455,6 +458,22 @@
 
   function chordPitchClasses(keyRoot, steps, deg, sevenths) {
     return (sevenths ? [0, 2, 4, 6] : [0, 2, 4]).map((o) => mod(keyRoot + degreeSemis(steps, deg + o), 12));
+  }
+
+  /**
+   * Tonleiter, aus der der Akkord auf Stufe `deg` gebaut wird. In Moll mit
+   * `prog.dominant` ist die V. Stufe die Dur-Dominante: die 7. Stufe wird
+   * erhöht (harmonisches Moll, in a-Moll gis statt g) — V = E–Gis–H,
+   * V7 = E–Gis–H–D. Weil Satz, Bass, Arp, Melodie und Anzeige alle über
+   * diese Tonleiter rechnen, folgen sie dem Dur-Akkord (kein Querstand g
+   * gegen gis). Nur Moll: Dorisch und Mixolydisch leben vom Moll-v und
+   * behalten es (keine Leitton-Regeln dort).
+   */
+  function chordSteps(steps, modeId, prog, deg) {
+    if (!prog || !prog.dominant || modeId !== 'minor' || mod(deg, 7) !== 4) return steps;
+    const out = steps.slice();
+    out[6] = 11;
+    return out;
   }
 
   // Stimmumfänge (MIDI) für den vierstimmigen Satz — bewusst die bequeme
@@ -587,7 +606,7 @@
       bassSoundId: 'pluck',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
-      progDegrees: null, progSevenths: false, progName: null, progOwnId: null,
+      progDegrees: null, progSevenths: false, progDominant: false, progName: null, progOwnId: null,
       chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       droneOn: false, droneFifth: true,
       melodyIndex: 0, melodyOn: true, melodyOctave: 4,
@@ -711,6 +730,11 @@
       s.progSevenths = bool(raw.progSevenths, false);
       s.progName = typeof raw.progName === 'string' && raw.progName.trim() ? raw.progName.trim().slice(0, 40) : null;
       s.progOwnId = typeof raw.progOwnId === 'string' ? raw.progOwnId.slice(0, 24) : null;
+      // progDominant gibt es erst seit v296. Fehlt es, erbt eine bearbeitete
+      // Vorlage (ohne Namen) die Einstellung der Vorlage, alles Eigene bleibt
+      // beim bisherigen Moll-v.
+      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+      s.progDominant = bool(raw.progDominant, !s.progName && !!base.dominant);
     }
     s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
     s.chordsOn = bool(raw.chordsOn, false);
@@ -1723,15 +1747,17 @@
       const s = this.state;
       const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
       if (!s.progDegrees) return base;
-      return { ...base, degrees: s.progDegrees, sevenths: s.progSevenths, custom: true };
+      return { ...base, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, custom: true };
     }
+    /** Tonleiter für den Akkord auf Stufe `deg` (siehe chordSteps). */
+    _stepsFor(deg, prog = this._progression()) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg); }
     _progName() {
       const s = this.state;
       return s.progName || t(progKey('Name', (PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0]).id));
     }
     _clearProgEdit() {
       const s = this.state;
-      s.progDegrees = null; s.progSevenths = false; s.progName = null; s.progOwnId = null;
+      s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progName = null; s.progOwnId = null;
       this.ui.progUndo = []; this.ui.progRedo = []; this.ui.progSel = 0;
     }
     /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
@@ -1755,8 +1781,9 @@
       const barSteps = this._barSteps();
       const bar = Math.floor(g / barSteps);
       const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
+      const deg = prog.degrees[index];
       return {
-        keyRoot: s.keyRoot, steps: this._mode().steps, deg: prog.degrees[index], sevenths: !!prog.sevenths,
+        keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog), deg, sevenths: !!prog.sevenths,
         index, chordStart: g % (barSteps * s.chordBars) === 0,
       };
     }
@@ -1769,14 +1796,13 @@
     _voicings() {
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}`;
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}`;
       if (this._voicingCache?.key === key) return this._voicingCache.list;
-      const steps = this._mode().steps;
       let prev = { S: 67, A: 62, T: 55, B: 48 };
       let list = [];
       for (let pass = 0; pass < 2; pass++) {
         list = prog.degrees.map((deg) => {
-          prev = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), prev);
+          prev = voiceChord(chordPitchClasses(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths), prev);
           return prev;
         });
       }
@@ -2423,7 +2449,6 @@
     _renderChordStrip() {
       const s = this.state;
       const prog = this._progression();
-      const mode = this._mode();
       const current = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : -1;
       const host = this.$('.chord-strip');
       const editing = this.ui.progEdit;
@@ -2439,9 +2464,9 @@
         }
         const roman = document.createElement('span');
         roman.className = 'chord-roman';
-        roman.textContent = romanNumeral(mode.steps, deg, prog.sevenths);
+        roman.textContent = romanNumeral(this._stepsFor(deg, prog), deg, prog.sevenths);
         const name = document.createElement('strong');
-        name.textContent = chordName(s.keyRoot, mode.steps, deg, prog.sevenths);
+        name.textContent = chordName(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths);
         box.append(roman, name);
         return box;
       }));
@@ -3126,7 +3151,6 @@
       this.$('.prog-info').textContent = s.progOwnId || (s.progDegrees && s.progName) ? '' : t(progKey('Info', prog.id));
       if (!editing) return;
       this.ui.progSel = Math.min(this.ui.progSel, prog.degrees.length - 1);
-      const mode = this._mode();
       const sel = prog.degrees[this.ui.progSel];
       const degHost = this.$('.prog-degrees');
       degHost.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((d) => {
@@ -3137,8 +3161,8 @@
         btn.dataset.value = String(d);
         btn.setAttribute('aria-pressed', String(d === sel));
         btn.innerHTML = '<span></span><strong></strong>';
-        btn.querySelector('span').textContent = romanNumeral(mode.steps, d, prog.sevenths);
-        btn.querySelector('strong').textContent = chordName(s.keyRoot, mode.steps, d, prog.sevenths);
+        btn.querySelector('span').textContent = romanNumeral(this._stepsFor(d, prog), d, prog.sevenths);
+        btn.querySelector('strong').textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths);
         return btn;
       }));
       this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
@@ -3149,6 +3173,7 @@
       this.$('[data-action="prog-move"][data-value="-1"]').disabled = this.ui.progSel <= 0;
       this.$('[data-action="prog-move"][data-value="1"]').disabled = this.ui.progSel >= prog.degrees.length - 1;
       this._setSwitch('progSevenths', !!prog.sevenths);
+      this._setSwitch('progDominant', !!prog.dominant);
       const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
       this.$('.prog-name-row').hidden = !own;
       const nameInput = this.$('.prog-name');
@@ -3160,13 +3185,14 @@
 
     _progBegin() {
       const s = this.state;
-      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
+      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant]));
       if (this.ui.progUndo.length > 60) this.ui.progUndo.shift();
       this.ui.progRedo = [];
       if (!s.progDegrees) {
         const base = this._progression();
         s.progDegrees = [...base.degrees];
         s.progSevenths = !!base.sevenths;
+        s.progDominant = !!base.dominant;
       }
       return s.progDegrees;
     }
@@ -3174,13 +3200,15 @@
     _progCommit() {
       const s = this.state;
       const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
-      if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths) {
-        s.progDegrees = null; s.progSevenths = false;
+      if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths
+        && !!s.progDominant === !!base.dominant) {
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false;
       }
       const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
       if (own && s.progDegrees) {
         own.degrees = [...s.progDegrees];
         own.sevenths = s.progSevenths;
+        own.dominant = !!s.progDominant;
         own.name = s.progName || own.name;
         this._persist();
       }
@@ -3191,8 +3219,8 @@
       const snap = from.pop();
       if (!snap) return;
       const s = this.state;
-      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
-      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId] = JSON.parse(snap);
+      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant]));
+      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant = false] = JSON.parse(snap);
       this._progCommit();
     }
 
@@ -3200,7 +3228,8 @@
     async _previewChord(deg) {
       try { await this._ensureAudio(); } catch { return; }
       const s = this.state;
-      const voicing = voiceChord(chordPitchClasses(s.keyRoot, this._mode().steps, deg, this._progression().sevenths), { S: 67, A: 62, T: 55, B: 48 });
+      const prog = this._progression();
+      const voicing = voiceChord(chordPitchClasses(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths), { S: 67, A: 62, T: 55, B: 48 });
       const now = this.engine.ctx.currentTime + .01;
       for (const voice of SATB) {
         this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
@@ -3216,9 +3245,10 @@
       while (lib.some((p) => p.name === tf('lab.myProgN', { n }))) n++;
       const name = s.progName && !s.progOwnId && s.progName !== t('lab.newProg') ? s.progName : tf('lab.myProgN', { n });
       const id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths });
+      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths, dominant: !!prog.dominant });
       s.progDegrees = [...prog.degrees];
       s.progSevenths = !!prog.sevenths;
+      s.progDominant = !!prog.dominant;
       s.progName = name;
       s.progOwnId = id;
       this._persist();
@@ -3256,8 +3286,7 @@
         };
       }
       if (which === 'prog') {
-        const steps = this._mode().steps;
-        const romans = (degrees, sevenths) => degrees.map((d) => romanNumeral(steps, d, sevenths)).join('–');
+        const romans = (p) => p.degrees.map((d) => romanNumeral(this._stepsFor(d, p), d, p.sevenths)).join('–');
         const own = this._saved.progressions;
         return {
           title: 'lab.pickProg', action: 'pick-prog', catAction: 'prog-cat',
@@ -3266,9 +3295,9 @@
           fallback: s.progId, wide: true,
           items: [
             ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
-              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths), info: t(progKey('Info', p.id)) })),
+              inMeter: true, sub: romans(p), short: romans(p), info: t(progKey('Info', p.id)) })),
             ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
-              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths) })),
+              inMeter: true, sub: romans(p), short: romans(p) })),
           ],
         };
       }
@@ -3311,9 +3340,8 @@
         } else if (which === 'prog') {
           const prog = this._progression();
           const s = this.state;
-          const steps = this._mode().steps;
           name = this._progName();
-          sub = prog.degrees.map((d) => romanNumeral(steps, d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '');
+          sub = prog.degrees.map((d) => romanNumeral(this._stepsFor(d, prog), d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '');
           visual = progPreview(prog.degrees);
         } else if (which === 'melody') {
           const melody = this._melody();
@@ -4187,6 +4215,7 @@
       }
       if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
+      if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -4245,6 +4274,7 @@
           if (own) {
             s.progDegrees = [...own.degrees];
             s.progSevenths = own.sevenths;
+            s.progDominant = !!own.dominant;
             s.progName = own.name;
             s.progOwnId = own.id;
           } else if (PROGRESSIONS.some((p) => p.id === value)) {
@@ -4299,6 +4329,7 @@
           this._progBegin();
           s.progDegrees = [0];
           s.progSevenths = false;
+          s.progDominant = false;
           s.progName = t('lab.newProg');
           s.progOwnId = null;
           this.ui.progSel = 0;
@@ -4306,7 +4337,7 @@
           break;
         case 'prog-original':
           this._progBegin();
-          s.progDegrees = null; s.progSevenths = false;
+          s.progDegrees = null; s.progSevenths = false; s.progDominant = false;
           this._progCommit();
           break;
         case 'prog-save': this._progSaveOwn(); break;
@@ -5078,7 +5109,7 @@
           <button class="chip" type="button" data-action="prog-add">+ ${t('lab.progAdd')}</button>
           <button class="chip" type="button" data-action="prog-remove">− ${t('lab.progRemove')}</button>
         </div>
-        <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}</div>
+        <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}${toggle('progDominant', 'lab.progDominant')}</div>
         <label class="prog-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name-input prog-name" type="text" maxlength="40" autocomplete="off"></label>
         <div class="mel-foot">
           <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
@@ -5358,6 +5389,14 @@
 
   if (!customElements.get('chor-groove-lab')) customElements.define('chor-groove-lab', GrooveLabView);
 
+  // Für die Musik-Selbsttests in app.js (runMusicSelfTests) und die Konsole:
+  // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
+  const TEST_EXPORT = {
+    MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
+    voiceChord, chordPitchClasses, chordSteps, degreeSemis, romanNumeral, chordName, chordQuality,
+    sanitizeProgLibrary, sanitizeState, defaultState,
+  };
+
   global.ChorGrooveLab = {
     open(options) {
       // app.js reicht seine t()-Funktion herein; diese Datei ist ein
@@ -5382,5 +5421,6 @@
       lab.open(options);
       return lab;
     },
+    _test: TEST_EXPORT,
   };
 })(window);

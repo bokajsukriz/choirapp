@@ -19460,11 +19460,100 @@ async function runAsyncSelfTests({ mutateSettings = true } = {}) {
 
   }
 
+  // Musik-Tools (Groove Lab): Harmonik, Satz, gespeicherte Stände —
+  // siehe runMusicSelfTests. Lädt groove-lab.js bei Bedarf nach.
+  try {
+    failed.push(...await runMusicSelfTests({ log: false }));
+  } catch (err) {
+    failed.push(`Musik-Selbsttest abgebrochen: ${err?.message || err}`);
+  }
+
   if (failed.length) {
     console.error(`[Selbsttest async] ${failed.length} Prüfung(en) fehlgeschlagen:`);
     for (const f of failed) console.error('  ✗ ' + f);
   } else {
     console.info('[Selbsttest async] Speicher-Warteschlange nach Fehlern bestanden.');
+  }
+  return failed;
+}
+
+/**
+ * Musiktheorie-Selbsttests für die Tools (Groove Lab). groove-lab.js
+ * exportiert dafür Daten und reine Funktionen unter ChorGrooveLab._test.
+ * Die iframe-Tools (Ausbildung, Einsingen, Metronom, Piano) haben je eine
+ * eigene selfCheck()-Funktion in ihrer Konsole. Manuell über
+ * chorApp.selfTestMusic(); läuft außerdem in runAsyncSelfTests mit.
+ */
+async function runMusicSelfTests({ log = true } = {}) {
+  const failed = [];
+  const lab = await loadGrooveLab();
+  const T = lab._test;
+  if (!T) return ['Groove Lab: _test-Export fehlt'];
+  const mod12 = (n) => ((n % 12) + 12) % 12;
+  const sameSet = (a, b) => a.length === b.length && [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
+  const modeSteps = (id) => T.MODES.find((m) => m.id === id).steps;
+  const prog = (id) => T.PROGRESSIONS.find((p) => p.id === id);
+
+  // Paket 3: Dur-Dominante in Moll.
+  {
+    const minor = modeSteps('minor');
+    const A = 9;
+    const steps = (id, deg) => T.chordSteps(minor, 'minor', prog(id), deg);
+    const cadV = T.chordPitchClasses(A, steps('cadence', 4), 4, false);
+    if (!sameSet(cadV, [4, 8, 11])) failed.push(`Groove Lab: cadence a-Moll V = {${cadV}} statt {4, 8, 11}`);
+    const jazzV = T.chordPitchClasses(A, steps('jazz', 4), 4, true);
+    if (!sameSet(jazzV, [4, 8, 11, 2])) failed.push(`Groove Lab: jazz a-Moll V7 = {${jazzV}} statt {4, 8, 11, 2}`);
+    if (T.romanNumeral(steps('cadence', 4), 4, false) !== 'V') failed.push('Groove Lab: cadence a-Moll zeigt nicht „V“');
+    if (T.romanNumeral(steps('jazz', 4), 4, true) !== 'V7') failed.push('Groove Lab: jazz a-Moll zeigt nicht „V7“');
+    if (T.chordName(A, steps('jazz', 4), 4, true).slice(-1) !== '7') failed.push('Groove Lab: jazz a-Moll V7 heißt nicht …7');
+    // Arp (automatisch, Dreiklang) und Melodie rechnen über foldDegree +
+    // degreeSemis mit derselben Tonleiter wie der Akkord.
+    const fold = (d) => { const x = ((d % 7) + 7) % 7; return x > 3 ? x - 7 : x; };
+    const arp = [0, 2, 4].map((o) => mod12(A + T.degreeSemis(steps('cadence', 4), fold(4) + o)));
+    if (!sameSet(arp, [4, 8, 11])) failed.push(`Groove Lab: Arp-Dreiklang über V in a-Moll = {${arp}} statt e–gis–h`);
+    if (arp.includes(7)) failed.push('Groove Lab: Arp über V in a-Moll spielt g statt gis');
+    const mel = mod12(A + T.degreeSemis(steps('cadence', 4), 2 + fold(4)));
+    if (mel !== 8) failed.push(`Groove Lab: Melodiestufe 3 über V in a-Moll = ${mel} statt gis (8)`);
+    const v = T.voiceChord(cadV, { S: 67, A: 62, T: 55, B: 48 });
+    if (!Object.values(v).some((m) => mod12(m) === 8)) failed.push('Groove Lab: Satz über V in a-Moll ohne gis');
+    // Unverändert: Dur, Dorisch, Mixolydisch sowie Folgen ohne `dominant`.
+    for (const p of T.PROGRESSIONS) {
+      for (const mode of T.MODES) {
+        for (const deg of p.degrees) {
+          const changed = T.chordSteps(mode.steps, mode.id, p, deg) !== mode.steps;
+          const expect = mode.id === 'minor' && !!p.dominant && deg % 7 === 4;
+          if (changed !== expect) failed.push(`Groove Lab: chordSteps ${p.id}/${mode.id}/Stufe ${deg} ${changed ? 'verändert' : 'unverändert'}`);
+        }
+      }
+    }
+    const wantDominant = ['cadence', 'cadence3', 'circle', 'jazz', 'twoFiveOne', 'turnaround', 'chain', 'andalusian', 'blues'];
+    for (const p of T.PROGRESSIONS) {
+      if (!!p.dominant !== wantDominant.includes(p.id)) failed.push(`Groove Lab: ${p.id} dominant = ${!!p.dominant}`);
+    }
+    // Gespeicherte Stände: eigene Folgen und bearbeitete Vorlagen.
+    const lib = T.sanitizeProgLibrary([
+      { id: 'a', name: 'A', degrees: [0, 4], dominant: true },
+      { id: 'b', name: 'B', degrees: [0, 4] },
+      { id: 'c', name: 'C', degrees: [0, 4], dominant: 'ja' },
+    ]);
+    if (lib.map((p) => p.dominant).join() !== 'true,false,false') failed.push(`Groove Lab: sanitizeProgLibrary dominant = ${lib.map((p) => p.dominant)}`);
+    const again = T.sanitizeProgLibrary(JSON.parse(JSON.stringify(lib)));
+    if (JSON.stringify(again) !== JSON.stringify(lib)) failed.push('Groove Lab: Folgen-Bibliothek übersteht Speichern/Laden nicht');
+    const st = (raw) => T.sanitizeState({ progId: 'cadence', progDegrees: [0, 3, 4, 0], ...raw }).progDominant;
+    if (st({ progDominant: false }) !== false) failed.push('Groove Lab: progDominant false geht verloren');
+    if (st({ progDominant: true, progId: 'pop' }) !== true) failed.push('Groove Lab: progDominant true geht verloren');
+    if (st({}) !== true) failed.push('Groove Lab: alter Stand (bearbeitete Grundkadenz) erbt dominant nicht');
+    if (st({ progName: 'Meine' }) !== false) failed.push('Groove Lab: alter eigener Stand bekommt dominant');
+    if (st({ progDominant: 'x', progId: 'pop' }) !== false) failed.push('Groove Lab: kaputtes progDominant nicht auf Standard');
+  }
+
+  if (log) {
+    if (failed.length) {
+      console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);
+      for (const f of failed) console.error('  ✗ ' + f);
+    } else {
+      console.info('[Selbsttest Musik] alle Prüfungen bestanden.');
+    }
   }
   return failed;
 }
@@ -21218,6 +21307,7 @@ window.chorApp = {
   settings: () => settings,
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
+  selfTestMusic: runMusicSelfTests,
   selfTestAudioPath: runAudioPathCharacterizationTests,
   selfTestNormalizationWorker: runNormalizationWorkerTests,
   lightshowFrame,
