@@ -19521,7 +19521,8 @@ async function runMusicSelfTests({ log = true } = {}) {
       for (const mode of T.MODES) {
         for (const deg of p.degrees) {
           const changed = T.chordSteps(mode.steps, mode.id, p, deg) !== mode.steps;
-          const expect = mode.id === 'minor' && !!p.dominant && deg % 7 === 4;
+          // dom7 (Blues, Paket 5) baut jeden Akkord aus eigener Leiter.
+          const expect = !!p.dom7 || (mode.id === 'minor' && !!p.dominant && deg % 7 === 4);
           if (changed !== expect) failed.push(`Groove Lab: chordSteps ${p.id}/${mode.id}/Stufe ${deg} ${changed ? 'verändert' : 'unverändert'}`);
         }
       }
@@ -19570,6 +19571,78 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (!T.progFitsMode({ degrees: [0] }, 'minor')) failed.push('Groove Lab: eigene Folge gilt als unpassend');
     const loaded = T.sanitizeState({ modeId: 'major', progId: 'andalusian' });
     if (loaded.modeId !== 'major' || loaded.progId !== 'andalusian') failed.push('Groove Lab: gespeicherte Kombination wird beim Laden umgestellt');
+  }
+
+  // Paket 5: Blues mit Dominantseptakkorden, Blue Note, Beats, Arp.
+  {
+    const major = modeSteps('major');
+    const blues = prog('blues');
+    const dom = (key, deg) => T.chordPitchClasses(key, T.chordSteps(major, 'major', blues, deg), deg, blues.sevenths);
+    [[0, [0, 4, 7, 10], 'C7', 'I7'], [3, [5, 9, 0, 3], 'F7', 'IV7'], [4, [7, 11, 2, 5], 'G7', 'V7']].forEach(([deg, want, name, roman]) => {
+      const got = dom(0, deg);
+      if (!sameSet(got, want)) failed.push(`Groove Lab: Blues Stufe ${deg} = {${got}} statt {${want}}`);
+      const steps = T.chordSteps(major, 'major', blues, deg);
+      if (T.chordName(0, steps, deg, true) !== name) failed.push(`Groove Lab: Blues heißt ${T.chordName(0, steps, deg, true)} statt ${name}`);
+      if (T.romanNumeral(steps, deg, true) !== roman) failed.push(`Groove Lab: Blues zeigt ${T.romanNumeral(steps, deg, true)} statt ${roman}`);
+      // Arp-Septakkord über dem Blues-Akkord = derselbe Dominantseptakkord.
+      const arp = [0, 2, 4, 6].map((o) => mod12(T.degreeSemis(steps, T.foldDegree(deg) + o)));
+      if (!sameSet(arp, want)) failed.push(`Groove Lab: Arp über Blues Stufe ${deg} = {${arp}}`);
+    });
+    const blueThird = T.MELODIES.find((m) => m.name === 'Blue Third');
+    if (!blueThird.bars.every((bar) => bar.some((n) => n[3] === -1))) failed.push('Groove Lab: Blue Third ohne Alteration');
+    // alt −1 auf der Terz: über Dur-Akkord es→e, über Moll-Akkord bleibt c.
+    if (T.melodyOffset(major, 0, 2, -1) !== 3) failed.push('Groove Lab: Blue Third über C-Dur nicht es');
+    if (T.melodyOffset(major, 0, 2, 0) !== 4) failed.push('Groove Lab: Terz über C-Dur nicht e');
+    if (mod12(T.melodyOffset(major, T.foldDegree(5), 2, -1)) !== 0) failed.push('Groove Lab: Blue Third über a-Moll nicht c');
+    if (T.melodyOffset(major, 0, 4, 1) !== 8) failed.push('Groove Lab: alt +1 auf Quinte falsch');
+    // Arp-Rhythmus skaliert mit dem Tempo.
+    const dotted = T.ARP_RHYTHMS.find(([id]) => id === 'longShort')[2];
+    if (T.arpRhythmLengths(dotted, 1).join() !== '3,1') failed.push(`Groove Lab: Arp 1/16 punktiert = ${T.arpRhythmLengths(dotted, 1)}`);
+    if (T.arpRhythmLengths(dotted, 2).join() !== '6,2') failed.push(`Groove Lab: Arp 1/8 punktiert = ${T.arpRhythmLengths(dotted, 2)}`);
+    for (const [, , cells] of T.ARP_RHYTHMS) {
+      for (const div of [1, 2, 3, 4, 6]) {
+        if (cells && !T.arpRhythmLengths(cells, div).every(Number.isInteger)) failed.push(`Groove Lab: Arp-Rhythmus nicht im Raster (${cells}, ${div})`);
+      }
+    }
+    // Arp manuell im Akkord: E + Dreiklang über F-Dur → f–a–c.
+    const fChord = { keyRoot: 0, steps: major, deg: 3, sevenths: false };
+    const arpF = T.chordArpNotes(64, fChord, [0, 2, 4]);
+    if (arpF.join() !== '65,69,72') failed.push(`Groove Lab: Arp im Akkord E über F = ${arpF}`);
+    // Beats (Reihenfolge und Anzahl unverändert).
+    const pat = (name) => T.DRUM_PATTERNS.find((p) => p.name === name);
+    if (T.DRUM_PATTERNS.length !== 20 || T.DRUM_PATTERNS[13].name !== 'Shuffle Roll') failed.push('Groove Lab: Loop-Liste verschoben oder Shuffle Roll fehlt');
+    if (T.MELODIES.length !== 22) failed.push('Groove Lab: Melodie-Liste verändert');
+    const eighths = '0,2,4,6,8,10,12,14';
+    if (pat('Swing Soul').hat.join() !== eighths || pat('Swing Soul').swingUnit !== 8) failed.push('Groove Lab: Swing Soul ohne Achtel-Hat/Achtel-Swing');
+    if (pat('Deep House').hat.join() !== eighths || pat('Deep House').open.join() !== '2,6,10,14') failed.push('Groove Lab: Deep House Hats falsch');
+    if (pat('Waltz Step').bass.join() !== '0') failed.push('Groove Lab: Waltz Step Bass nicht nur auf 1');
+    // Gespeicherte Stände: arpRef, progDom7.
+    for (const [raw, want] of [['chord', 'chord'], ['key', 'key'], ['x', 'key'], [undefined, 'key']]) {
+      const got = T.sanitizeState({ arpRef: raw }).arpRef;
+      if (got !== want) failed.push(`Groove Lab: arpRef ${raw} → ${got}`);
+    }
+    const bl = (raw) => T.sanitizeState({ progId: 'blues', progDegrees: [0, 3, 4, 0], ...raw }).progDom7;
+    if (bl({}) !== true || bl({ progDom7: false }) !== false || bl({ progName: 'X' }) !== false) failed.push('Groove Lab: progDom7 übersteht Laden nicht');
+    // Keine Note außerhalb der Tonart — außer Dominantseptakkorden (dom7),
+    // Dur-Dominante in Moll (dominant) und Melodietönen mit `alt`.
+    let outside = 0;
+    for (const p of T.PROGRESSIONS) {
+      for (const mode of T.MODES) {
+        const scale = new Set(mode.steps);
+        for (const deg of p.degrees) {
+          const steps = T.chordSteps(mode.steps, mode.id, p, deg);
+          if (steps !== mode.steps) continue; // dom7 / dominant: gewollt
+          for (const pc of T.chordPitchClasses(0, steps, deg, p.sevenths)) if (!scale.has(pc)) outside++;
+          for (const m of T.MELODIES) {
+            for (const bar of m.bars) for (const [, d, , alt] of bar) {
+              if (alt) continue;
+              if (!scale.has(mod12(T.melodyOffset(steps, T.foldDegree(deg), d)))) outside++;
+            }
+          }
+        }
+      }
+    }
+    if (outside) failed.push(`Groove Lab: ${outside} Töne außerhalb der Tonart`);
   }
 
   if (log) {
