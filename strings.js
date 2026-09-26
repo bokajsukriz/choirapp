@@ -351,7 +351,6 @@ export const STRINGS = {
     'common.cancel': 'Abbrechen',
 
     /* Groove Lab (Easter Egg, siehe groove-lab.js). */
-    'lab.eyebrow': 'Du hast das Easter Egg gefunden',
     'lab.closeAria': 'Groove Lab schließen',
     'lab.tabBeat': 'Beat',
     'lab.tabMelody': 'Melodie',
@@ -1679,7 +1678,6 @@ export const STRINGS = {
     'common.cancel': 'Cancel',
 
     /* Groove Lab (Easter Egg, siehe groove-lab.js). */
-    'lab.eyebrow': 'You found the Easter egg',
     'lab.closeAria': 'Close Groove Lab',
     'lab.tabBeat': 'Beat',
     'lab.tabMelody': 'Melody',
@@ -3007,7 +3005,6 @@ export const STRINGS = {
     'common.cancel': 'Anuluj',
 
     /* Groove Lab (Easter Egg, siehe groove-lab.js). */
-    'lab.eyebrow': 'Znalazłeś(-aś) easter egga',
     'lab.closeAria': 'Zamknij Groove Lab',
     'lab.tabBeat': 'Beat',
     'lab.tabMelody': 'Melodia',

@@ -601,7 +601,7 @@
       sound: soundFromPreset(presetIndexByName('Velvet Choir')),
       mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
-      fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2 },
+      fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
       locks: { beat: false, harmony: false, melody: false, sound: false },
     };
   }
@@ -632,7 +632,9 @@
           && n[0] >= 0 && n[0] < steps && n[1] >= MEL_LOW && n[1] <= MEL_HIGH && n[2] >= .1)
         .slice(0, 64)
         .map(([at, deg, len, alt]) => {
-          const note = [r2(at), deg, r2(Math.min(len, steps - at))];
+          // Ein Ton darf über den Taktstrich klingen (gehalten eingespielt),
+          // aber nicht über das Ende der Melodie hinaus.
+          const note = [r2(at), deg, r2(Math.min(len, steps * MEL_MAX_BARS - at))];
           if (alt === 1 || alt === -1) note.push(alt);
           return note;
         })
@@ -715,6 +717,9 @@
       echoDiv: oneOf(fx.echoDiv, ECHO_DIVISIONS.map(([v]) => v), s.fx.echoDiv),
       echoFeedback: num(fx.echoFeedback, 0, .85, s.fx.echoFeedback),
       chorus: num(fx.chorus, 0, 1, s.fx.chorus),
+      reverbOn: bool(fx.reverbOn, true),
+      echoOn: bool(fx.echoOn, true),
+      chorusOn: bool(fx.chorusOn, true),
     };
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
     // Der Liegeton braucht eine Nutzergeste zum Starten — nie aus einem
@@ -992,7 +997,7 @@
         this.layers[id] = { input, shaper, level, reverbSend, echoSend };
       }
 
-      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback };
+      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, echoIn };
       this.noiseBuffer = this._whiteNoise(.5);
       this.lastMidi = {};
       this.monoVoice = {};
@@ -1045,7 +1050,11 @@
       const now = this.ctx.currentTime;
       this.buses.delay.delayTime.setTargetAtTime(clamp(fx.echoDiv * stepSeconds, .02, 1.9), now, .05);
       this.buses.feedback.gain.setTargetAtTime(clamp(fx.echoFeedback, 0, .85), now, .03);
-      this.buses.chorusWet.gain.setTargetAtTime(clamp(fx.chorus, 0, 1) * .8, now, .03);
+      this.buses.chorusWet.gain.setTargetAtTime(fx.chorusOn === false ? 0 : clamp(fx.chorus, 0, 1) * .8, now, .03);
+      // An/Aus je Effekt: nur der Eingang wird zu- bzw. aufgedreht — so
+      // klingt ein Hall- oder Echo-Rest natürlich aus statt abzureißen.
+      this.buses.reverbIn.gain.setTargetAtTime(fx.reverbOn === false ? 0 : 1, now, .03);
+      this.buses.echoIn.gain.setTargetAtTime(fx.echoOn === false ? 0 : 1, now, .03);
       this.setReverbLength(fx.reverbLength);
     }
 
@@ -2067,7 +2076,9 @@
         // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
         if (Math.floor(at) !== step) continue;
         const midi = base + degreeSemis(h.steps, deg + shift) + alt;
-        this.engine.playTone(s.sound, midi, time + (at - step) * stepSec, .2, len * stepSec, { layer: 'melody', stepSeconds: stepSec });
+        const barIndex = Math.floor(g / barSteps) % bars.length;
+        const room = bars.length * barSteps - (barIndex * barSteps + at);
+        this.engine.playTone(s.sound, midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
       }
     }
 
@@ -2520,9 +2531,14 @@
         else if (meter.beats.includes(inBar)) html += `<span class="mel-line is-beat" style="left:${pct(c / cols)}"></span>`;
         else if (large) html += `<span class="mel-line" style="left:${pct(c / cols)}"></span>`;
       }
-      barIdx.forEach((bi, k) => (bars[bi] || []).forEach(([at, deg, len, alt]) => {
+      // Alle Töne relativ zum ersten gezeigten Takt — so erscheint auch ein
+      // Ton, der aus dem vorigen Takt herüberklingt, im gezeigten Takt.
+      const first = barIdx[0] * steps;
+      bars.forEach((bar, bi) => (bar || []).forEach(([at, deg, len, alt]) => {
+        const start = bi * steps + at - first;
+        if (start + len <= 0 || start >= cols) return;
         const sign = alt === 1 ? '♯' : alt === -1 ? '♭' : '';
-        html += `<span class="mel-note${alt ? ' is-alt' : ''}" style="left:${pct((k * steps + at) / cols)};width:${pct(len / cols)};top:${pct((hi - deg) / rows)};height:${pct(1 / rows)}">${large && sign ? `<b>${sign}</b>` : ''}</span>`;
+        html += `<span class="mel-note${alt ? ' is-alt' : ''}" style="left:${pct(start / cols)};width:${pct(len / cols)};top:${pct((hi - deg) / rows)};height:${pct(1 / rows)}">${large && sign ? `<b>${sign}</b>` : ''}</span>`;
       }));
       html += '<span class="mel-playhead" hidden></span>';
       host.innerHTML = html;
@@ -2969,6 +2985,10 @@
         return opt;
       }));
       select.value = String(fx.echoDiv);
+      for (const [key, cls] of [['reverbOn', 'fx-reverb'], ['echoOn', 'fx-echo'], ['chorusOn', 'fx-chorus']]) {
+        this._setSwitch(key, fx[key]);
+        this.$(`.${cls}`).closest('.fx-group').classList.toggle('is-off', !fx[key]);
+      }
     }
 
     /* ---- Keys ---- */
@@ -3593,6 +3613,15 @@
       });
     }
 
+    /** Nur die gerade gedrückten Tasten loslassen — die mit "Halten"
+     *  gemerkten Töne bleiben (Layout-Wechsel, Arp/Halten umschalten). */
+    _releasePressedKeys() {
+      this.keyVoices.forEach((held, id) => { this.engine.releaseVoiceFast(held.voice); this._recNoteOff(id); });
+      this.keyVoices.clear();
+      this._pressedPointerSets?.forEach((set) => set.clear());
+      this._paintHeld();
+    }
+
     _releaseAllKeys() {
       this.keyVoices.forEach((held, id) => { this.engine.releaseVoiceFast(held.voice); this._recNoteOff(id); });
       this.keyVoices.clear();
@@ -3805,8 +3834,11 @@
       notes.forEach((n) => {
         const bar = Math.floor(n.pos / steps);
         const at = r2(n.pos - bar * steps);
-        // Takt-übergreifende Töne enden am Taktstrich (Melodien sind taktweise).
-        const len = r2(Math.max(.25, Math.min(n.len, steps - at)));
+        // Gehaltene Töne klingen über den Taktstrich weiter — nur bis zum
+        // nächsten Anschlag (einstimmig) und bis zum Ende der Aufnahme.
+        const next = notes[notes.indexOf(n) + 1];
+        const limit = Math.min(next ? next.pos - n.pos : Infinity, total - n.pos);
+        const len = r2(Math.max(.25, Math.min(n.len, limit)));
         bars[bar].push(n.alt ? [at, n.deg, len, n.alt] : [at, n.deg, len]);
       });
       return sanitizeMelodyBars(bars, this._meter()) || bars;
@@ -3941,17 +3973,25 @@
       const s = this.state;
       if (key === 'droneOn') { this._setDrone(on); return; }
       if (key === 'droneFifth') { s.droneFifth = on; if (s.droneOn) this._startDrone(); return; }
-      if (key === 'latchOn') { this.ui.latchOn = on; if (!on) this._releaseAllKeys(); this._renderKeys(); return; }
-      if (key === 'arpOn' || key === 'arpAuto') {
-        // Beim Umschalten nichts hängen lassen: klingende Tasten bzw. die
-        // gemerkte Auswahl freigeben; "Halten" gehört zum manuellen Arp.
-        s[key] = on;
-        if (!this._arpManual()) this.ui.latchOn = false;
-        this._releaseAllKeys();
+      if (key === 'latchOn' || key === 'arpOn' || key === 'arpAuto') {
+        // Umschalten lässt nur die gedrückten Tasten los. "Halten" und die
+        // gemerkten Töne bleiben erhalten (ruhen nur, solange der Arp aus
+        // oder automatisch ist) und sind beim Wiedereinschalten wieder da.
+        if (key === 'latchOn') this.ui.latchOn = on; else s[key] = on;
+        this._releasePressedKeys();
         this._renderKeys();
+        if (this._latchActive() && this.latchedNotes.size) {
+          this._ensureAudio().then(() => this._ensureArpClock()).catch(() => {});
+        }
         return;
       }
       if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
+      if (key === 'reverbOn' || key === 'echoOn' || key === 'chorusOn') {
+        s.fx[key] = on;
+        this.engine.setFx(s.fx, this._stepSeconds());
+        this._renderFx();
+        return;
+      }
       if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
       s[key] = on; // melodyOn, chordsOn
@@ -4167,7 +4207,7 @@
 
         // Keys
         case 'arp-clear': this.latchedNotes.clear(); this._paintHeld(); this._renderKeys(); break;
-        case 'keys-layout': this._releaseAllKeys(); s.keysLayout = value; this._renderKeys(); break;
+        case 'keys-layout': this._releasePressedKeys(); s.keysLayout = value; this._renderKeys(); this._paintHeld(); break;
         case 'help': {
           const text = this.$(`[data-help-text="${target.dataset.help}"]`);
           const open = text.hidden;
@@ -4337,7 +4377,6 @@
     padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   }
   .lab-head-title { flex: 1; min-width: 0; }
-  .eyebrow { color: var(--accent); font-size: .66rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
   .lab-head h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   .lab-head h1 span { color: var(--accent); }
   .icon-btn {
@@ -4575,9 +4614,20 @@
   .pad.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
   .pad.is-latched, .key.is-latched { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--accent); }
   .key.is-arp, .pad.is-arp { filter: brightness(1.15); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .55); }
-  .fx-groups { display: grid; gap: 12px; }
-  .fx-group + .fx-group { padding-top: 12px; border-top: 1px dashed var(--line); }
-  .fx-group .sub-label { margin-top: 0; }
+  /* Effekte: Hall und Chorus nebeneinander, Echo darunter in einer Zeile;
+     jeder Block mit eigenem An/Aus rechts oben, Regler etwas kleiner. */
+  .fx-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fx-group { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 8px 10px 10px; transition: opacity .15s; }
+  .fx-group.is-wide { grid-column: 1 / -1; }
+  .fx-group.is-off .knob-row, .fx-group.is-off .fx-echo-time { opacity: .4; }
+  .fx-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
+  .fx-head .sub-label { margin: 0; }
+  .fx-head .switch-track { transform: scale(.85); transform-origin: right center; }
+  .fx-groups .knob-row { gap: 6px; }
+  .fx-groups .knob-field { width: 50px; }
+  .fx-groups .knob { width: 40px; height: 40px; }
+  .fx-echo-row { display: flex; align-items: flex-end; gap: 10px; }
+  .fx-echo-time { flex: 1; min-width: 0; margin-bottom: 4px; }
 
   .keyboard-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; gap: 10px; }
   .keyboard-head strong { font-size: .8rem; }
@@ -4758,7 +4808,6 @@
 
 <header class="lab-head">
   <div class="lab-head-title">
-    <div class="eyebrow">${t('lab.eyebrow')}</div>
     <h1>Chor <span>Groove</span> Lab</h1>
   </div>
   <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
@@ -4951,12 +5000,16 @@
       <div class="panel-head"><h2>${t('lab.effects')}</h2>${help('helpEffects')}</div>
       ${helpText('helpEffects')}
       <div class="fx-groups">
-        <div class="fx-group"><span class="sub-label">${t('lab.reverb')}</span><div class="knob-row fx-reverb"></div></div>
-        <div class="fx-group">
-          <span class="sub-label">${t('lab.echo')}</span><div class="knob-row fx-echo"></div>
-          <label class="select-line"><span>${t('lab.echoTime')}</span><select data-field="echoDiv"></select></label>
+        <div class="fx-group"><div class="fx-head"><span class="sub-label">${t('lab.reverb')}</span>${bareToggle('reverbOn', 'lab.reverb')}</div>
+          <div class="knob-row fx-reverb"></div></div>
+        <div class="fx-group"><div class="fx-head"><span class="sub-label">${t('lab.knobChorus')}</span>${bareToggle('chorusOn', 'lab.knobChorus')}</div>
+          <div class="knob-row fx-chorus"></div></div>
+        <div class="fx-group is-wide"><div class="fx-head"><span class="sub-label">${t('lab.echo')}</span>${bareToggle('echoOn', 'lab.echo')}</div>
+          <div class="fx-echo-row">
+            <div class="knob-row fx-echo"></div>
+            <label class="select-field fx-echo-time"><span>${t('lab.echoTime')}</span><select data-field="echoDiv"></select></label>
+          </div>
         </div>
-        <div class="fx-group"><span class="sub-label">${t('lab.knobChorus')}</span><div class="knob-row fx-chorus"></div></div>
       </div>
     </section>
   </section>
