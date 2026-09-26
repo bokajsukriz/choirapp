@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v292';
+const SW_VERSION = 'v293';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -52,13 +52,14 @@ const SHELL_OPTIONAL = [
   './uebe-lab.html',
   './metronom.html',
   './einsingen.html',
+  './piano.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
 ];
 const SHELL = [...SHELL_REQUIRED, ...SHELL_OPTIONAL];
 // Eigene Seiten, die die App als iframe öffnet — siehe fetch-Handler.
-const TOOL_PAGES = ['./uebe-lab.html', './metronom.html', './einsingen.html'];
+const TOOL_PAGES = ['./uebe-lab.html', './metronom.html', './einsingen.html', './piano.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

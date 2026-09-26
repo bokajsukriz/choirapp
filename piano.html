@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Piano</title>
+<!--
+  PIANO (Datei: piano.html) — Klavier zum Singen-Üben: Anfangstöne geben,
+  Linien spielen, Intervalle prüfen. Querformat zuerst (große Tasten über
+  die ganze Breite), im Hochformat kompakter mit Hinweis zum Drehen.
+  In der App: Einstellungen → Tools → Piano (Vollbild-iframe, ?embedded=1,
+  der Schließen-Knopf gehört der App). Offline über SHELL_OPTIONAL in sw.js.
+  Nur Deutsch, keine Abhängigkeiten.
+
+  Klang ohne Samples und ohne Bibliotheken (Web Audio):
+  - je Taste zwei leicht gegeneinander verstimmte "Saiten" (Schwebung wie
+    beim echten Klavier, das zwei bis drei Saiten je Ton hat),
+  - Wellenform mit Obertönen nach dem Anschlagpunkt des Hammers
+    (Amplitude ~ |sin(π·n/7)|/n — der 7. Oberton fehlt fast),
+  - Tiefpass, der nach dem Anschlag dunkler wird (hohe Obertöne klingen
+    beim Klavier schneller ab), Anschlagstärke → Helligkeit,
+  - zweistufiges Abklingen (schneller "Anschlagteil", langer Nachklang),
+    tiefe Töne klingen länger als hohe,
+  - kurzes Hammergeräusch und ein kleiner, erzeugter Raumhall.
+-->
+<style>
+  :root {
+    --accent: #F868B0; --accent-rgb: 248,104,176;
+    --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
+    --text: #241b3d; --muted: #8c81a6;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    display: flex; flex-direction: column; color: var(--text); background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  button, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  [hidden] { display: none !important; }
+
+  .bar {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+  }
+  html.is-embedded .bar { padding-right: calc(60px + env(safe-area-inset-right)); }
+  h1 { margin: 0 6px 0 0; font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; }
+  h1 span { color: var(--accent); }
+  .group { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 2px; }
+  .group button { min-width: 34px; height: 32px; padding: 0 10px; border-radius: 999px; font-size: .74rem; font-weight: 800; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+  .group button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .group .range { min-width: 70px; text-align: center; font-size: .74rem; font-weight: 800; }
+  .vol { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .vol input { width: 90px; accent-color: var(--accent); }
+  .spacer { flex: 1; }
+  .hint { flex: 0 0 auto; margin: 0 12px 8px; padding: 8px 12px; border-radius: 12px; background: rgba(var(--accent-rgb), .12); color: var(--text); font-size: .74rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .hint svg { color: var(--accent); flex: 0 0 auto; }
+  @media (orientation: landscape) { .hint { display: none; } }
+
+  .keyboard-wrap { flex: 1 1 auto; min-height: 0; display: flex; padding: 0 max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .keyboard { position: relative; flex: 1; display: flex; touch-action: none; border-radius: 0 0 12px 12px; overflow: hidden;
+    border-top: 6px solid var(--text); box-shadow: 0 8px 22px rgba(36,27,61,.18); }
+  @media (orientation: portrait) { .keyboard-wrap { align-items: flex-end; } .keyboard { height: min(62vh, 100%); } }
+  .white { position: relative; flex: 1 1 0; border-right: 1px solid #d9cfd6; background: linear-gradient(#fff, #fbf7f3 85%, #efe6ea); border-radius: 0 0 8px 8px; }
+  .white:last-child { border-right: 0; }
+  .white.is-down { background: linear-gradient(#f3eaf0, rgba(var(--accent-rgb), .35)); }
+  .black { position: absolute; top: 0; height: 60%; z-index: 2; border-radius: 0 0 6px 6px;
+    background: linear-gradient(#3a3350, #1c1730 88%); box-shadow: inset 0 -4px 0 rgba(255,255,255,.08), 0 3px 5px rgba(0,0,0,.35); }
+  .black.is-down { background: linear-gradient(#2a2340, rgb(var(--accent-rgb))); }
+  .label { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; font-size: .72rem; font-weight: 800; color: var(--muted); pointer-events: none; }
+  .black .label { bottom: 8px; color: rgba(255,255,255,.75); font-size: .58rem; }
+  .white.is-c .label { color: var(--text); }
+  .mid-c::after { content: ""; position: absolute; left: 50%; bottom: 34px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--accent); pointer-events: none; }
+  .white.is-mark { box-shadow: inset 0 -5px 0 rgba(var(--accent-rgb), .55); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Pi<span>ano</span></h1>
+  <div class="group" role="group" aria-label="Lage">
+    <button type="button" data-act="down" aria-label="Eine Oktave tiefer"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
+    <span class="range" aria-live="polite"></span>
+    <button type="button" data-act="up" aria-label="Eine Oktave höher"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+  </div>
+  <div class="group" role="group" aria-label="Beschriftung">
+    <button type="button" data-labels="none">–</button>
+    <button type="button" data-labels="names">C D E</button>
+    <button type="button" data-labels="solf">Do Re Mi</button>
+  </div>
+  <div class="group">
+    <button type="button" data-act="pedal" aria-pressed="false" title="Pedal (am Computer: Leertaste halten)">Pedal</button>
+    <button type="button" data-act="repeat" aria-label="Letzten Ton oder Akkord nochmal" title="Letzten Ton oder Akkord nochmal">
+      <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></button>
+  </div>
+  <span class="spacer"></span>
+  <label class="vol"><svg viewBox="0 0 24 24"><path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>
+    <input type="range" min="0" max="1" step=".01" value=".8" aria-label="Lautstärke"></label>
+</div>
+<p class="hint"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 9v6M21 9v6"/></svg>Gerät quer halten – dann gibt es mehr und größere Tasten.</p>
+<div class="keyboard-wrap"><div class="keyboard" aria-label="Klaviatur"></div></div>
+
+<script>
+(function () {
+  'use strict';
+
+  if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
+  try {
+    if (window.parent !== window) {
+      const appStyle = getComputedStyle(window.parent.document.documentElement);
+      const accent = appStyle.getPropertyValue('--accent').trim();
+      const rgb = appStyle.getPropertyValue('--accent-rgb').trim();
+      if (/^#[0-9a-f]{6}$/i.test(accent)) document.documentElement.style.setProperty('--accent', accent);
+      if (/^\d+,\s*\d+,\s*\d+$/.test(rgb)) document.documentElement.style.setProperty('--accent-rgb', rgb);
+    }
+  } catch { /* eigenständig geöffnet */ }
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const mod = (n, m) => ((n % m) + m) % m;
+  const NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B', 'H'];
+  const SOLF = ['Do', 'Di', 'Re', 'Ri', 'Mi', 'Fa', 'Fi', 'So', 'Si', 'La', 'Li', 'Ti'];
+  const IS_BLACK = [false, true, false, true, false, false, true, false, true, false, true, false];
+  const LOWEST_C = 24;   // C1
+  const HIGHEST = 96;    // C7
+
+  /* ---------------- Zustand & Ablage ---------------- */
+
+  const state = { startC: 48, labels: 'names', pedal: false, volume: .8 };
+  const STORAGE_ID = 'piano';
+  const storage = (() => { try { return window.parent !== window ? window.parent.chorToolStorage || null : null; } catch { return null; } })();
+  let saveTimer = 0;
+  function persist() {
+    if (!storage) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, { ...state })).catch(() => {}); }, 300);
+  }
+  async function restore() {
+    if (!storage) return;
+    try {
+      const data = await storage.load(STORAGE_ID);
+      if (!data || typeof data !== 'object') return;
+      if (Number.isInteger(data.startC) && mod(data.startC, 12) === 0) state.startC = clamp(data.startC, LOWEST_C, 72);
+      if (['none', 'names', 'solf'].includes(data.labels)) state.labels = data.labels;
+      if (typeof data.pedal === 'boolean') state.pedal = data.pedal;
+      if (Number.isFinite(data.volume)) state.volume = clamp(data.volume, 0, 1);
+    } catch { /* nichts gespeichert */ }
+  }
+
+  /* ---------------- Klang ---------------- */
+
+  const audio = { ctx: null, master: null, dry: null, wet: null, noise: null, waves: new Map(), voices: new Map(), all: new Set() };
+
+  function ensureAudio() {
+    if (audio.ctx) {
+      if (audio.ctx.state !== 'running') audio.ctx.resume();
+      return audio.ctx;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC({ latencyHint: 'interactive' });
+    audio.ctx = ctx;
+    const master = ctx.createGain();
+    master.gain.value = state.volume;
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -10; limiter.ratio.value = 8; limiter.attack.value = .003; limiter.release.value = .2;
+    master.connect(limiter).connect(ctx.destination);
+    // Kleiner Raum: erzeugter Nachhall (abklingendes Rauschen, stereo).
+    const convolver = ctx.createConvolver();
+    const len = Math.floor(ctx.sampleRate * 1.4);
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2) * (i < 200 ? i / 200 : 1);
+    }
+    convolver.buffer = ir;
+    const wet = ctx.createGain(); wet.gain.value = .16;
+    const dry = ctx.createGain(); dry.gain.value = 1;
+    dry.connect(master);
+    dry.connect(convolver).connect(wet).connect(master);
+    // Hammergeräusch: ein kurzer Rauschpuffer, je Anschlag gefiltert.
+    const nlen = Math.floor(ctx.sampleRate * .03);
+    const noise = ctx.createBuffer(1, nlen, ctx.sampleRate);
+    const nd = noise.getChannelData(0);
+    for (let i = 0; i < nlen; i++) nd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / nlen, 2);
+    Object.assign(audio, { master, dry, wet, noise });
+    return ctx;
+  }
+
+  /** Wellenform je Lage (gecacht): Obertöne nach dem Anschlagpunkt —
+   *  tiefe Töne obertonreicher, hohe fast sinusförmig. */
+  function waveFor(midi) {
+    const band = midi < 48 ? 0 : midi < 64 ? 1 : midi < 76 ? 2 : 3;
+    if (audio.waves.has(band)) return audio.waves.get(band);
+    const count = [28, 20, 12, 6][band];
+    const real = new Float32Array(count + 1);
+    const imag = new Float32Array(count + 1);
+    for (let n = 1; n <= count; n++) {
+      const strike = Math.abs(Math.sin(Math.PI * n / 7.2));
+      imag[n] = (strike + .08) / Math.pow(n, band === 0 ? .95 : 1.15);
+    }
+    const wave = audio.ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+    audio.waves.set(band, wave);
+    return wave;
+  }
+
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+  const MAX_VOICES = 28;
+
+  function noteOn(midi, velocity = .8) {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    // Gleiche Taste nochmal: alte Saite abdämpfen (wie beim echten Klavier).
+    const old = audio.voices.get(midi);
+    if (old) damp(old, .03);
+    if (audio.all.size >= MAX_VOICES) { const oldest = audio.all.values().next().value; damp(oldest, .02); }
+    const t = ctx.currentTime + .005;
+    const f = hz(midi);
+    // Abklingzeit: tief lang, hoch kurz.
+    const decay = clamp(9 * Math.pow(110 / f, .55), 1.1, 14);
+    const peak = .22 * (.45 + velocity * .55) * (midi < 40 ? .8 : 1);
+
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(peak, t + .004);
+    out.gain.setTargetAtTime(peak * .42, t + .006, decay * .07);        // Anschlagteil
+    out.gain.setTargetAtTime(0.0001, t + decay * .18, decay * .32);    // Nachklang
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = .4;
+    const bright = clamp(f * (5 + velocity * 9), 900, 15000);
+    lp.frequency.setValueAtTime(bright, t);
+    lp.frequency.setTargetAtTime(clamp(f * 2.2, 400, 6000), t + .02, decay * .22);
+
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) pan.pan.value = clamp((midi - 60) / 40, -.5, .5);
+
+    const wave = waveFor(midi);
+    const oscs = [0, 1].map((i) => {
+      const o = ctx.createOscillator();
+      o.setPeriodicWave(wave);
+      o.frequency.value = f;
+      o.detune.value = i ? 1.8 : -.6;  // zwei Saiten, leicht verstimmt → Schwebung
+      const g = ctx.createGain(); g.gain.value = i ? .45 : .55;
+      o.connect(g).connect(lp);
+      o.start(t);
+      return o;
+    });
+    lp.connect(out);
+    if (pan) out.connect(pan).connect(audio.dry); else out.connect(audio.dry);
+
+    // Hammer: kurzes, gefiltertes Rauschen.
+    const n = ctx.createBufferSource();
+    n.buffer = audio.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = clamp(f * 3.5, 400, 7000); bp.Q.value = .9;
+    const ng = ctx.createGain(); ng.gain.value = .05 * velocity;
+    n.connect(bp).connect(ng).connect(out);
+    n.start(t);
+
+    const voice = { midi, out, oscs, done: false, held: true };
+    const stopAt = t + decay * 2.2;
+    oscs.forEach((o) => o.stop(stopAt));
+    oscs[0].addEventListener('ended', () => { voice.done = true; audio.all.delete(voice); if (audio.voices.get(midi) === voice) audio.voices.delete(midi); }, { once: true });
+    audio.voices.set(midi, voice);
+    audio.all.add(voice);
+  }
+
+  function damp(voice, time = .09) {
+    if (!voice || voice.done || !audio.ctx) return;
+    const now = audio.ctx.currentTime;
+    try {
+      voice.out.gain.cancelScheduledValues(now);
+      voice.out.gain.setValueAtTime(Math.max(voice.out.gain.value, .0001), now);
+      voice.out.gain.setTargetAtTime(0, now, time);
+      voice.oscs.forEach((o) => o.stop(now + time * 8));
+    } catch { /* schon gestoppt */ }
+    voice.done = true;
+    audio.all.delete(voice);
+    if (audio.voices.get(voice.midi) === voice) audio.voices.delete(voice.midi);
+  }
+
+  function noteOff(midi) {
+    const voice = audio.voices.get(midi);
+    if (!voice) return;
+    voice.held = false;
+    // Sehr hohe Saiten haben beim Klavier keinen Dämpfer.
+    if (!state.pedal && midi < 89) damp(voice);
+  }
+
+  function setPedal(on) {
+    state.pedal = on;
+    $('[data-act="pedal"]').setAttribute('aria-pressed', String(on));
+    if (!on) audio.voices.forEach((v) => { if (!v.held && v.midi < 89) damp(v); });
+    persist();
+  }
+
+  /* ---------------- Klaviatur ---------------- */
+
+  let whiteCount = 14;
+  const keyEls = new Map();
+
+  function visibleWhiteKeys() {
+    const w = $('.keyboard').clientWidth || window.innerWidth;
+    const landscape = window.innerWidth > window.innerHeight;
+    const min = landscape ? 40 : 34;
+    return clamp(Math.floor(w / min), 8, 36);
+  }
+
+  function build() {
+    whiteCount = visibleWhiteKeys();
+    // Nicht über das obere Ende hinaus: Start notfalls nach unten schieben.
+    const whites = [];
+    let m = state.startC;
+    while (whites.length < whiteCount) { if (!IS_BLACK[mod(m, 12)]) whites.push(m); m++; }
+    while (whites[whites.length - 1] > HIGHEST && state.startC > LOWEST_C) { state.startC -= 12; return build(); }
+    const kb = $('.keyboard');
+    kb.replaceChildren();
+    keyEls.clear();
+    const wPct = 100 / whites.length;
+    whites.forEach((midi, i) => {
+      const el = document.createElement('div');
+      el.className = `white${mod(midi, 12) === 0 ? ' is-c' : ''}${midi === 60 ? ' mid-c' : ''}`;
+      el.dataset.midi = String(midi);
+      el.innerHTML = '<span class="label"></span>';
+      kb.append(el);
+      keyEls.set(midi, el);
+      const black = midi + 1;
+      if (i < whites.length - 1 && IS_BLACK[mod(black, 12)]) {
+        const b = document.createElement('div');
+        b.className = 'black';
+        b.dataset.midi = String(black);
+        b.style.left = `${(i + 1) * wPct - wPct * .31}%`;
+        b.style.width = `${wPct * .62}%`;
+        b.innerHTML = '<span class="label"></span>';
+        kb.append(b);
+        keyEls.set(black, b);
+      }
+    });
+    renderLabels();
+    const octave = (midi) => Math.floor(midi / 12) - 1;
+    $('.range').textContent = `${NAMES[mod(whites[0], 12)]}${octave(whites[0])} – ${NAMES[mod(whites[whites.length - 1], 12)]}${octave(whites[whites.length - 1])}`;
+    $('[data-act="down"]').disabled = state.startC <= LOWEST_C;
+    $('[data-act="up"]').disabled = whites[whites.length - 1] + 12 > HIGHEST;
+    paintDown();
+  }
+
+  function renderLabels() {
+    keyEls.forEach((el, midi) => {
+      const pc = mod(midi, 12);
+      let text = '';
+      if (state.labels === 'names') text = IS_BLACK[pc] ? NAMES[pc] : `${NAMES[pc]}${pc === 0 ? Math.floor(midi / 12) - 1 : ''}`;
+      else if (state.labels === 'solf') text = SOLF[pc];
+      el.querySelector('.label').textContent = text;
+    });
+    $$('[data-labels]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.labels === state.labels)));
+  }
+
+  /* ---------------- Spielen: Finger, Maus, Tastatur ---------------- */
+
+  const pointers = new Map();   // pointerId → midi
+  const keysDown = new Map();   // KeyboardEvent.code → midi
+  let lastGroup = [];
+  let lastGroupAt = 0;
+
+  function paintDown() {
+    const down = new Set([...pointers.values(), ...keysDown.values()]);
+    keyEls.forEach((el, midi) => el.classList.toggle('is-down', down.has(midi)));
+  }
+
+  function press(midi, velocity) {
+    noteOn(midi, velocity);
+    const now = performance.now();
+    if (now - lastGroupAt > 90) lastGroup = [];
+    lastGroup.push(midi);
+    lastGroupAt = now;
+  }
+
+  function release(midi) {
+    const stillDown = [...pointers.values(), ...keysDown.values()].includes(midi);
+    if (!stillDown) noteOff(midi);
+  }
+
+  function keyAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const key = el && el.closest('.white, .black');
+    return key ? Number(key.dataset.midi) : null;
+  }
+
+  /** Anschlagstärke aus der Tiefe des Tipps auf der Taste (vorn = kräftig). */
+  function velocityAt(midi, y) {
+    const el = keyEls.get(midi);
+    if (!el) return .75;
+    const r = el.getBoundingClientRect();
+    return clamp(.45 + ((y - r.top) / r.height) * .55, .4, 1);
+  }
+
+  const kb = $('.keyboard');
+  kb.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const midi = keyAt(e.clientX, e.clientY);
+    if (midi === null) return;
+    pointers.set(e.pointerId, midi);
+    press(midi, velocityAt(midi, e.clientY));
+    paintDown();
+  });
+  // Gleiten: jeder Finger wechselt beim Überstreichen auf die neue Taste.
+  kb.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    const midi = keyAt(e.clientX, e.clientY);
+    const prev = pointers.get(e.pointerId);
+    if (midi === null || midi === prev) return;
+    pointers.set(e.pointerId, midi);
+    release(prev);
+    press(midi, .7);
+    paintDown();
+  });
+  const up = (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    const midi = pointers.get(e.pointerId);
+    pointers.delete(e.pointerId);
+    release(midi);
+    paintDown();
+  };
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => kb.addEventListener(type, up));
+  kb.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Computertastatur: zwei Reihen wie bei vielen Keyboard-Programmen, ab dem
+  // ersten sichtbaren C (Z und Y sind beide G♯ — deutsches und englisches Layout).
+  const KEY_OFFSETS = {
+    KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyZ: 8, KeyH: 9, KeyU: 10, KeyJ: 11,
+    KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17,
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (document.documentElement.classList.contains('is-embedded')) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin);
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input')) return;
+    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setPedal(true); return; }
+    if (e.repeat) return;
+    const off = KEY_OFFSETS[e.code];
+    if (off === undefined) return;
+    e.preventDefault();
+    const midi = state.startC + off;
+    keysDown.set(e.code, midi);
+    press(midi, .75);
+    paintDown();
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') { setPedal(false); return; }
+    const midi = keysDown.get(e.code);
+    if (midi === undefined) return;
+    keysDown.delete(e.code);
+    release(midi);
+    paintDown();
+  });
+
+  /* ---------------- Bedienleiste ---------------- */
+
+  document.querySelector('.bar').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (btn.dataset.labels) { state.labels = btn.dataset.labels; renderLabels(); persist(); return; }
+    if (act === 'down') { state.startC = Math.max(LOWEST_C, state.startC - 12); build(); persist(); }
+    else if (act === 'up') { state.startC = Math.min(72, state.startC + 12); build(); persist(); }
+    else if (act === 'pedal') setPedal(!state.pedal);
+    else if (act === 'repeat' && lastGroup.length) {
+      const group = [...lastGroup];
+      group.forEach((midi) => noteOn(midi, .75));
+      group.forEach((midi) => { const el = keyEls.get(midi); if (el) { el.classList.add('is-mark'); setTimeout(() => el.classList.remove('is-mark'), 500); } });
+      setTimeout(() => group.forEach((midi) => { if (!state.pedal) { const v = audio.voices.get(midi); if (v) { v.held = false; damp(v, .25); } } }), 1400);
+    }
+  });
+  $('.vol input').addEventListener('input', (e) => {
+    state.volume = Number(e.target.value);
+    if (audio.master) audio.master.gain.setTargetAtTime(state.volume, audio.ctx.currentTime, .02);
+    persist();
+  });
+
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(build, 120); });
+  // Beim Wegschalten alles abdämpfen, damit nichts hängen bleibt.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { pointers.clear(); keysDown.clear(); audio.all.forEach((v) => damp(v, .05)); paintDown(); }
+  });
+
+  // Für Tests: Zugriff auf die Klangerzeugung.
+  window.piano = { state, audio, noteOn, noteOff };
+
+  restore().then(() => {
+    $('.vol input').value = String(state.volume);
+    $('[data-act="pedal"]').setAttribute('aria-pressed', String(state.pedal));
+    build();
+  });
+  build();
+})();
+</script>
+</body>
+</html>

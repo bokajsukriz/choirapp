@@ -58,6 +58,10 @@ ein Dialog mit echter Wahl).
   ausgewertet, nichts wird aufgenommen oder gesendet.
 - `einsingen.html` — Einsingen (Einsing-Übungen nach Stimmlage, geführtes
   Einsing-Programm).
+- `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
+  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
+  Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem
+  Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch, Hall).
 - `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
   Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer). Läuft beim
   Schließen weiter, solange es spielt (das iframe wird nur ausgeblendet);
@@ -208,7 +212,7 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   woff2-Schrift.
 - `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
   bzw. die PDF-Vorschau im iframe; `frame-src 'self'` zusätzlich für die
-  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `metronom.html`, Einstellungen → Tools). Die
+  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `piano.html`, `metronom.html`, Einstellungen → Tools). Die
   haben als eigene Seiten keine eigene CSP-Meta-Angabe; sie laden nichts von
   außen.
 - `connect-src` erlaubt neben der eigenen Herkunft ausschließlich

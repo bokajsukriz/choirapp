@@ -21733,6 +21733,7 @@ function initTools() {
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
   $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
+  $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
   $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));
