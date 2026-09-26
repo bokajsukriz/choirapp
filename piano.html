@@ -89,7 +89,7 @@
   <div class="group" role="group" aria-label="Beschriftung">
     <button type="button" data-labels="none">–</button>
     <button type="button" data-labels="names">C D E</button>
-    <button type="button" data-labels="solf">Do Re Mi</button>
+    <button type="button" data-labels="solf">Do Re Mi (fest)</button>
   </div>
   <div class="group">
     <button type="button" data-act="pedal" aria-pressed="false" title="Pedal (am Computer: Leertaste halten)">Pedal</button>
@@ -123,8 +123,81 @@
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const mod = (n, m) => ((n % m) + m) % m;
-  const NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B', 'H'];
-  const SOLF = ['Do', 'Di', 'Re', 'Ri', 'Mi', 'Fa', 'Fi', 'So', 'Si', 'La', 'Li', 'Ti'];
+  /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
+     uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
+     ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
+
+     spell(pc, keyRoot, mode, lang): Name der Tonhöhenklasse pc in der
+     Tonart keyRoot/mode ('major' | 'minor' | 'dorian' | 'mixolydian').
+     ♭-Tonarten schreiben mit ♭, alle anderen mit ♯ — maßgeblich ist die
+     Dur-Paralleltonart: F, B, Es, As, Des, Ges (Moll also d, g, c, f, b;
+     dis-Moll statt es-Moll). In Moll steht der Leitton (erhöhte 7. Stufe)
+     immer mit ♯ (d-Moll: Cis). Ohne Tonart (keyRoot null) gilt die
+     neutrale Liste C, Cis, D, Es, E, F, Fis, G, As, A, B, H.
+     lang: 'en' englisch (B = H, B♭ = B), sonst deutsch (auch 'pl').
+
+     noteLabel(midi, keyRoot, mode, lang): mit Oktave — deutsch Helmholtz
+     (C₁, C, c, c′, c″ …; 60 = c′), englisch wissenschaftlich (60 = C4). */
+  const SPELL_SHARP = {
+    de: ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'],
+    en: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'],
+  };
+  const SPELL_FLAT = {
+    de: ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_NEUTRAL = {
+    de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_FLAT_MAJORS = [5, 10, 3, 8, 1, 6];
+  const SPELL_RELATIVE_MAJOR = { major: 0, minor: 3, dorian: -2, mixolydian: -7 };
+  const spellPc = (n) => ((n % 12) + 12) % 12;
+  function spellUsesFlats(keyRoot, mode) {
+    const major = spellPc(keyRoot + (SPELL_RELATIVE_MAJOR[mode] ?? 0));
+    if (mode === 'minor' && major === 6) return false; // dis-Moll, nicht es-Moll
+    return SPELL_FLAT_MAJORS.includes(major);
+  }
+  function spell(pc, keyRoot = null, mode = 'major', lang = 'de') {
+    const l = lang === 'en' ? 'en' : 'de';
+    const p = spellPc(pc);
+    if (keyRoot === null || keyRoot === undefined) return SPELL_NEUTRAL[l][p];
+    const k = spellPc(keyRoot);
+    if (mode === 'minor' && p === spellPc(k + 11)) return SPELL_SHARP[l][p];
+    return (spellUsesFlats(k, mode) ? SPELL_FLAT : SPELL_SHARP)[l][p];
+  }
+  function noteLabel(midi, keyRoot = null, mode = 'major', lang = 'de') {
+    const name = spell(midi, keyRoot, mode, lang);
+    const octave = Math.floor(midi / 12) - 1;
+    if (lang === 'en') return `${name}${octave}`;
+    if (octave >= 3) return name.toLowerCase() + '′'.repeat(octave - 3).replace('′′′′', '⁗').replace('′′′', '‴').replace('′′', '″');
+    return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
+  }
+  // [Funktion, Argumente, erwartet] — dieselbe Liste in jedem Tool.
+  const SPELL_CASES = [
+    ['spell', [1, 8, 'major', 'de'], 'Des'], ['spell', [8, 4, 'major', 'de'], 'Gis'], ['spell', [8, 4, 'major', 'en'], 'G♯'],
+    ['spell', [10, 11, 'major', 'de'], 'Ais'], ['spell', [6, 6, 'major', 'de'], 'Ges'], ['spell', [3, 3, 'minor', 'de'], 'Dis'],
+    ['spell', [1, 2, 'minor', 'de'], 'Cis'], ['spell', [10, 2, 'minor', 'de'], 'B'], ['spell', [3, 0, 'minor', 'de'], 'Es'],
+    ['spell', [10, 0, 'mixolydian', 'de'], 'B'], ['spell', [10, 0, 'mixolydian', 'en'], 'B♭'], ['spell', [6, 2, 'dorian', 'de'], 'Fis'],
+    ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
+    ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
+    ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
+    ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
+    ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
+    ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
+  ];
+  /** Prüft SPELL_CASES; liefert die Liste der Abweichungen (leer = ok). */
+  function spellCheck() {
+    const fns = { spell, noteLabel };
+    return SPELL_CASES.map(([fn, args, want]) => {
+      const got = fns[fn](...args);
+      return got === want ? null : `${fn}(${args.join(', ')}) = ${got}, erwartet ${want}`;
+    }).filter(Boolean);
+  }
+
+  // Feste Solmisation (romanische Tradition: Si = H) mit Vorzeichen wie
+  // die neutralen Tonnamen — keine bewegliche Do-Silbe.
+  const SOLF = ['Do', 'Do♯', 'Re', 'Mi♭', 'Mi', 'Fa', 'Fa♯', 'Sol', 'La♭', 'La', 'Si♭', 'Si'];
   const IS_BLACK = [false, true, false, true, false, false, true, false, true, false, true, false];
   const LOWEST_C = 24;   // C1
   const HIGHEST = 96;    // C7
@@ -344,18 +417,26 @@
       }
     });
     renderLabels();
-    const octave = (midi) => Math.floor(midi / 12) - 1;
-    $('.range').textContent = `${NAMES[mod(whites[0], 12)]}${octave(whites[0])} – ${NAMES[mod(whites[whites.length - 1], 12)]}${octave(whites[whites.length - 1])}`;
+    $('.range').textContent = `${noteLabel(whites[0])} – ${noteLabel(whites[whites.length - 1])}`;
     $('[data-act="down"]').disabled = state.startC <= LOWEST_C;
     $('[data-act="up"]').disabled = whites[whites.length - 1] + 12 > HIGHEST;
     paintDown();
+  }
+
+  /** Tastenbeschriftung in Helmholtz-Schreibweise: jedes C mit Oktave
+   *  (c′ = MIDI 60), die übrigen Tasten nur mit Namen in der Groß-/
+   *  Kleinschreibung ihrer Oktave (H, c, d … h, c′). */
+  function keyLabel(midi) {
+    if (mod(midi, 12) === 0) return noteLabel(midi);
+    const name = spell(midi);
+    return Math.floor(midi / 12) - 1 >= 3 ? name.toLowerCase() : name;
   }
 
   function renderLabels() {
     keyEls.forEach((el, midi) => {
       const pc = mod(midi, 12);
       let text = '';
-      if (state.labels === 'names') text = IS_BLACK[pc] ? NAMES[pc] : `${NAMES[pc]}${pc === 0 ? Math.floor(midi / 12) - 1 : ''}`;
+      if (state.labels === 'names') text = keyLabel(midi);
       else if (state.labels === 'solf') text = SOLF[pc];
       el.querySelector('.label').textContent = text;
     });
@@ -493,7 +574,17 @@
   });
 
   // Für Tests: Zugriff auf die Klangerzeugung.
-  window.piano = { state, audio, noteOn, noteOff };
+  /** Selbstprüfung (Konsole des iframes: `piano.selfCheck()`) — leer = ok. */
+  function selfCheck() {
+    const errors = [...spellCheck()];
+    if (SOLF.length !== 12 || SOLF[11] !== 'Si' || SOLF[10] !== 'Si♭' || SOLF[8] !== 'La♭' || SOLF[1] !== 'Do♯') errors.push(`Solmisation: ${SOLF.join(' ')}`);
+    [[60, 'c′'], [62, 'd'], [59, 'h'], [47, 'H'], [58, 'b'], [49, 'cis'], [37, 'Cis'], [36, 'C']].forEach(([midi, want]) => {
+      if (keyLabel(midi) !== want) errors.push(`Tastenname ${midi} = ${keyLabel(midi)}, erwartet ${want}`);
+    });
+    return errors;
+  }
+
+  window.piano = { state, audio, noteOn, noteOff, spell, noteLabel, keyLabel, SOLF, selfCheck };
 
   restore().then(() => {
     $('.vol input').value = String(state.volume);

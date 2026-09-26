@@ -462,7 +462,80 @@
     const names = t('lab.noteNames').split(',');
     return names.length === 12 ? names : 'C,C♯,D,E♭,E,F,F♯,G,A♭,A,B♭,B'.split(',');
   }
-  const noteLabel = (midi) => `${noteNames()[mod(midi, 12)]}${Math.floor(midi / 12) - 1}`;
+  // Sprache der Tonnamen (spell/noteLabel), gesetzt in ChorGrooveLab.open.
+  let labLang = 'de';
+
+  /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
+     uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
+     ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
+
+     spell(pc, keyRoot, mode, lang): Name der Tonhöhenklasse pc in der
+     Tonart keyRoot/mode ('major' | 'minor' | 'dorian' | 'mixolydian').
+     ♭-Tonarten schreiben mit ♭, alle anderen mit ♯ — maßgeblich ist die
+     Dur-Paralleltonart: F, B, Es, As, Des, Ges (Moll also d, g, c, f, b;
+     dis-Moll statt es-Moll). In Moll steht der Leitton (erhöhte 7. Stufe)
+     immer mit ♯ (d-Moll: Cis). Ohne Tonart (keyRoot null) gilt die
+     neutrale Liste C, Cis, D, Es, E, F, Fis, G, As, A, B, H.
+     lang: 'en' englisch (B = H, B♭ = B), sonst deutsch (auch 'pl').
+
+     noteLabel(midi, keyRoot, mode, lang): mit Oktave — deutsch Helmholtz
+     (C₁, C, c, c′, c″ …; 60 = c′), englisch wissenschaftlich (60 = C4). */
+  const SPELL_SHARP = {
+    de: ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'],
+    en: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'],
+  };
+  const SPELL_FLAT = {
+    de: ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_NEUTRAL = {
+    de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_FLAT_MAJORS = [5, 10, 3, 8, 1, 6];
+  const SPELL_RELATIVE_MAJOR = { major: 0, minor: 3, dorian: -2, mixolydian: -7 };
+  const spellPc = (n) => ((n % 12) + 12) % 12;
+  function spellUsesFlats(keyRoot, mode) {
+    const major = spellPc(keyRoot + (SPELL_RELATIVE_MAJOR[mode] ?? 0));
+    if (mode === 'minor' && major === 6) return false; // dis-Moll, nicht es-Moll
+    return SPELL_FLAT_MAJORS.includes(major);
+  }
+  function spell(pc, keyRoot = null, mode = 'major', lang = 'de') {
+    const l = lang === 'en' ? 'en' : 'de';
+    const p = spellPc(pc);
+    if (keyRoot === null || keyRoot === undefined) return SPELL_NEUTRAL[l][p];
+    const k = spellPc(keyRoot);
+    if (mode === 'minor' && p === spellPc(k + 11)) return SPELL_SHARP[l][p];
+    return (spellUsesFlats(k, mode) ? SPELL_FLAT : SPELL_SHARP)[l][p];
+  }
+  function noteLabel(midi, keyRoot = null, mode = 'major', lang = 'de') {
+    const name = spell(midi, keyRoot, mode, lang);
+    const octave = Math.floor(midi / 12) - 1;
+    if (lang === 'en') return `${name}${octave}`;
+    if (octave >= 3) return name.toLowerCase() + '′'.repeat(octave - 3).replace('′′′′', '⁗').replace('′′′', '‴').replace('′′', '″');
+    return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
+  }
+  // [Funktion, Argumente, erwartet] — dieselbe Liste in jedem Tool.
+  const SPELL_CASES = [
+    ['spell', [1, 8, 'major', 'de'], 'Des'], ['spell', [8, 4, 'major', 'de'], 'Gis'], ['spell', [8, 4, 'major', 'en'], 'G♯'],
+    ['spell', [10, 11, 'major', 'de'], 'Ais'], ['spell', [6, 6, 'major', 'de'], 'Ges'], ['spell', [3, 3, 'minor', 'de'], 'Dis'],
+    ['spell', [1, 2, 'minor', 'de'], 'Cis'], ['spell', [10, 2, 'minor', 'de'], 'B'], ['spell', [3, 0, 'minor', 'de'], 'Es'],
+    ['spell', [10, 0, 'mixolydian', 'de'], 'B'], ['spell', [10, 0, 'mixolydian', 'en'], 'B♭'], ['spell', [6, 2, 'dorian', 'de'], 'Fis'],
+    ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
+    ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
+    ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
+    ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
+    ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
+    ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
+  ];
+  /** Prüft SPELL_CASES; liefert die Liste der Abweichungen (leer = ok). */
+  function spellCheck() {
+    const fns = { spell, noteLabel };
+    return SPELL_CASES.map(([fn, args, want]) => {
+      const got = fns[fn](...args);
+      return got === want ? null : `${fn}(${args.join(', ')}) = ${got}, erwartet ${want}`;
+    }).filter(Boolean);
+  }
 
   function chordQuality(steps, deg) {
     const root = degreeSemis(steps, deg);
@@ -482,10 +555,10 @@
     return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '');
   }
 
-  function chordName(keyRoot, steps, deg, sevenths) {
+  function chordName(keyRoot, steps, deg, sevenths, modeId = 'major', lang = labLang) {
     const d = mod(deg, 7);
     const quality = chordQuality(steps, d);
-    const name = noteNames()[mod(keyRoot + steps[d], 12)];
+    const name = spell(keyRoot + steps[d], keyRoot, modeId, lang);
     if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°');
     const seventh = sevenths ? (degreeSemis(steps, d + 6) - steps[d] === 11 ? 'maj7' : '7') : '';
     return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh;
@@ -524,7 +597,8 @@
   // Stimmumfänge (MIDI) für den vierstimmigen Satz — bewusst die bequeme
   // Mittellage, nicht die Extreme: das ist eine Übe-Hilfe, kein Solo.
   const SATB = ['S', 'A', 'T', 'B'];
-  const SATB_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 60] };
+  // Dieselben Umfänge wie im Einsingen (Obergrenzen) und in der Ausbildung.
+  const SATB_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
   const SATB_COLOR = { S: '#4ECDC4', A: '#6BCB77', T: '#FFD93D', B: '#A78BFA' }; // wie VOICE_COLOR in app.js
   const SATB_KEY = { S: 'lab.voiceS', A: 'lab.voiceA', T: 'lab.voiceT', B: 'lab.voiceB' };
 
@@ -1804,7 +1878,7 @@
     _summary(state) {
       const pattern = DRUM_PATTERNS[state.patternIndex];
       const mode = MODES.find((m) => m.id === state.modeId);
-      return `${pattern.name} · ${noteNames()[state.keyRoot]} ${t(mode.nameKey)} · ${state.bpm} BPM`;
+      return `${pattern.name} · ${spell(state.keyRoot, state.keyRoot, state.modeId, labLang)} ${t(mode.nameKey)} · ${state.bpm} BPM`;
     }
 
     /* ---- Reiter ---- */
@@ -1892,6 +1966,17 @@
       }
       this._voicingCache = { key, list };
       return list;
+    }
+
+    /** Tonart, in der die Töne des Akkords `index` geschrieben werden:
+     *  sonst die gewählte, bei Dominantseptakkorden (Blues) die Mixolydisch-
+     *  Leiter des Akkordgrundtons (C7 in C: B, nicht Ais). */
+    _spellKeyAt(index) {
+      const s = this.state;
+      const prog = this._progression();
+      const deg = prog.degrees[index] ?? prog.degrees[0];
+      if (prog.dom7) return [s.keyRoot + this._mode().steps[mod(deg, 7)], 'mixolydian'];
+      return [s.keyRoot, s.modeId];
     }
 
     _bassMidi(h, bassDeg) {
@@ -2536,11 +2621,12 @@
     _renderHarmony() {
       const s = this.state;
       const mode = this._mode();
-      const names = noteNames();
-      this._options(this.$('[data-field="keyRoot"]'), names.map((name, i) => [i, name]), s.keyRoot);
+      // Tonart-Namen je Modus geschrieben (a-Moll-Liste: Cis, Dis, Fis, Gis).
+      const keyNames = Array.from({ length: 12 }, (_, pc) => spell(pc, pc, s.modeId, labLang));
+      this._options(this.$('[data-field="keyRoot"]'), keyNames.map((name, i) => [i, name]), s.keyRoot);
       this._options(this.$('[data-field="modeId"]'), MODES.map((m) => [m.id, t(m.nameKey)]), s.modeId);
       this._renderPickerFor('prog');
-      this.$('.key-name').textContent = `${names[s.keyRoot]} ${t(mode.nameKey)}`;
+      this.$('.key-name').textContent = `${keyNames[s.keyRoot]} ${t(mode.nameKey)}`;
       this.$('[data-field="chordBars"]').value = String(s.chordBars);
       this._renderLock('harmony');
 
@@ -2572,7 +2658,7 @@
         roman.className = 'chord-roman';
         roman.textContent = romanNumeral(this._stepsFor(deg, prog), deg, prog.sevenths);
         const name = document.createElement('strong');
-        name.textContent = chordName(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths);
+        name.textContent = chordName(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths, s.modeId);
         box.append(roman, name);
         return box;
       }));
@@ -2594,7 +2680,7 @@
         name.textContent = t(SATB_KEY[voice]);
         const note = document.createElement('strong');
         note.className = 'satb-note';
-        note.textContent = noteLabel(voicing[voice]);
+        note.textContent = noteLabel(voicing[voice], ...this._spellKeyAt(index), labLang);
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'chip';
@@ -3239,7 +3325,7 @@
     _renderNow() {
       const label = this.$('.now-chord');
       const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
-      label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths);
+      label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId);
       if (!this.playing) this._renderBeatDots(-1);
       this._renderChordStrip();
       this._renderSatb();
@@ -3271,7 +3357,7 @@
         btn.setAttribute('aria-pressed', String(d === sel));
         btn.innerHTML = '<span></span><strong></strong>';
         btn.querySelector('span').textContent = romanNumeral(this._stepsFor(d, prog), d, prog.sevenths);
-        btn.querySelector('strong').textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths);
+        btn.querySelector('strong').textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths, s.modeId);
         return btn;
       }));
       this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
@@ -3665,7 +3751,7 @@
       if (this._padsSignature === signature) return;
       this._padsSignature = signature;
       const steps = this._mode().steps;
-      const names = noteNames();
+      const padName = (d) => spell(s.keyRoot + steps[d % 7], s.keyRoot, s.modeId, labLang);
       const makePad = (d) => {
         const offset = foldRoot(s.keyRoot) + degreeSemis(steps, d);
         const pad = document.createElement('button');
@@ -3674,8 +3760,8 @@
         pad.className = `pad${d % 7 === 0 ? ' is-root' : ''}`;
         pad.dataset.offset = String(offset);
         pad.dataset.degree = String(d);
-        pad.textContent = names[mod(s.keyRoot + steps[d % 7], 12)];
-        pad.setAttribute('aria-label', names[mod(s.keyRoot + steps[d % 7], 12)]);
+        pad.textContent = padName(d);
+        pad.setAttribute('aria-label', padName(d));
         return pad;
       };
       // Obere Reihe = obere Oktave (Stufe 8–15), untere = Stufe 1–8. Der
@@ -5530,7 +5616,8 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
-    melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree, romanNumeral, chordName, chordQuality,
+    melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
+    spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState,
   };
 
@@ -5539,6 +5626,7 @@
       // app.js reicht seine t()-Funktion herein; diese Datei ist ein
       // klassisches Skript und kann STRINGS nicht selbst importieren.
       if (typeof options?.t === 'function') t = options.t;
+      labLang = ['de', 'en', 'pl'].includes(options?.lang) ? options.lang : labLang;
 
       let lab = document.querySelector('chor-groove-lab');
       // Die Vorlage wird einmal beim Aufbau der Komponente gerendert. Wurde

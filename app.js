@@ -19645,6 +19645,26 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (outside) failed.push(`Groove Lab: ${outside} Töne außerhalb der Tonart`);
   }
 
+  // Paket 6: Tonnamen tonartabhängig, Stimmumfänge.
+  {
+    const major = modeSteps('major');
+    failed.push(...T.spellCheck().map((e) => `Groove Lab: ${e}`));
+    [[8, 3, 'de', 'Des'], [4, 2, 'de', 'Gism'], [4, 2, 'en', 'G♯m'], [11, 6, 'de', 'Ais°'], [11, 6, 'en', 'A♯°'], [5, 6, 'de', 'E°'], [5, 3, 'de', 'B']].forEach(([key, deg, lang, want]) => {
+      const got = T.chordName(key, major, deg, false, 'major', lang);
+      if (got !== want) failed.push(`Groove Lab: Akkordname Tonart ${key} Stufe ${deg} (${lang}) = ${got}, erwartet ${want}`);
+    });
+    const minor = modeSteps('minor');
+    if (T.chordName(2, T.chordSteps(minor, 'minor', prog('cadence'), 4), 4, false, 'minor', 'de') !== 'A') failed.push('Groove Lab: d-Moll V heißt nicht A');
+    if (T.chordName(0, minor, 2, false, 'minor', 'de') !== 'Es') failed.push('Groove Lab: c-Moll ♭III heißt nicht Es');
+    if (T.noteLabel(60, null, 'major', 'de') !== 'c′' || T.noteLabel(60, null, 'major', 'en') !== 'C4') failed.push('Groove Lab: MIDI 60 nicht c′ / C4');
+    const minorKeys = Array.from({ length: 12 }, (_, pc) => T.spell(pc, pc, 'minor', 'de')).join(',');
+    if (minorKeys !== 'C,Cis,D,Dis,E,F,Fis,G,Gis,A,B,H') failed.push(`Groove Lab: Moll-Tonartliste ${minorKeys}`);
+    const majorKeys = Array.from({ length: 12 }, (_, pc) => T.spell(pc, pc, 'major', 'de')).join(',');
+    if (majorKeys !== 'C,Des,D,Es,E,F,Ges,G,As,A,B,H') failed.push(`Groove Lab: Dur-Tonartliste ${majorKeys}`);
+    const want = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
+    if (JSON.stringify(T.SATB_RANGES) !== JSON.stringify(want)) failed.push(`Groove Lab: Stimmumfänge ${JSON.stringify(T.SATB_RANGES)}`);
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);

@@ -240,24 +240,80 @@
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const MAJOR = [0, 2, 4, 5, 7, 9, 11];
   const degreeSemis = (deg) => MAJOR[mod(deg, 7)] + 12 * Math.floor(deg / 7);
-  // Deutsche Tonnamen: Tonart groß ("Es-Dur"), Einzeltöne in Helmholtz-
-  // Schreibweise (F, c, c′, c″), wie sie in Chorproben üblich ist.
-  const KEY_NAMES = ['C', 'Des', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'];
-  const PITCH_NAMES = ['c', 'cis', 'd', 'es', 'e', 'f', 'fis', 'g', 'as', 'a', 'b', 'h'];
-  // Mit Tonart (`root`): Einzeltöne so geschrieben wie in der Tonart — in
-  // den ♭-Tonarten (F, B, Es, As, Des) mit ♭-Namen, sonst mit ♯-Namen, damit
-  // „Des-Dur“ nicht mit „cis′“ angezeigt wird.
-  const SHARP_NAMES = ['c', 'cis', 'd', 'dis', 'e', 'f', 'fis', 'g', 'gis', 'a', 'ais', 'h'];
-  const FLAT_NAMES = ['c', 'des', 'd', 'es', 'e', 'f', 'ges', 'g', 'as', 'a', 'b', 'h'];
-  const FLAT_KEYS = [5, 10, 3, 8, 1, 6];
-  function noteLabel(midi, root) {
-    const names = root == null ? PITCH_NAMES : FLAT_KEYS.includes(mod(root, 12)) ? FLAT_NAMES : SHARP_NAMES;
-    const name = names[mod(midi, 12)];
-    const octave = Math.floor(midi / 12) - 1; // 60 = c′ = Oktave 4
-    if (octave <= 2) return name[0].toUpperCase() + name.slice(1) + (octave < 2 ? '₁' : '');
-    return name + ['', '′', '″', '‴'][Math.min(3, octave - 3)];
+  /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
+     uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
+     ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
+
+     spell(pc, keyRoot, mode, lang): Name der Tonhöhenklasse pc in der
+     Tonart keyRoot/mode ('major' | 'minor' | 'dorian' | 'mixolydian').
+     ♭-Tonarten schreiben mit ♭, alle anderen mit ♯ — maßgeblich ist die
+     Dur-Paralleltonart: F, B, Es, As, Des, Ges (Moll also d, g, c, f, b;
+     dis-Moll statt es-Moll). In Moll steht der Leitton (erhöhte 7. Stufe)
+     immer mit ♯ (d-Moll: Cis). Ohne Tonart (keyRoot null) gilt die
+     neutrale Liste C, Cis, D, Es, E, F, Fis, G, As, A, B, H.
+     lang: 'en' englisch (B = H, B♭ = B), sonst deutsch (auch 'pl').
+
+     noteLabel(midi, keyRoot, mode, lang): mit Oktave — deutsch Helmholtz
+     (C₁, C, c, c′, c″ …; 60 = c′), englisch wissenschaftlich (60 = C4). */
+  const SPELL_SHARP = {
+    de: ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'],
+    en: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'],
+  };
+  const SPELL_FLAT = {
+    de: ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_NEUTRAL = {
+    de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_FLAT_MAJORS = [5, 10, 3, 8, 1, 6];
+  const SPELL_RELATIVE_MAJOR = { major: 0, minor: 3, dorian: -2, mixolydian: -7 };
+  const spellPc = (n) => ((n % 12) + 12) % 12;
+  function spellUsesFlats(keyRoot, mode) {
+    const major = spellPc(keyRoot + (SPELL_RELATIVE_MAJOR[mode] ?? 0));
+    if (mode === 'minor' && major === 6) return false; // dis-Moll, nicht es-Moll
+    return SPELL_FLAT_MAJORS.includes(major);
   }
-  const keyLabel = (root) => `${KEY_NAMES[mod(root, 12)]}-Dur`;
+  function spell(pc, keyRoot = null, mode = 'major', lang = 'de') {
+    const l = lang === 'en' ? 'en' : 'de';
+    const p = spellPc(pc);
+    if (keyRoot === null || keyRoot === undefined) return SPELL_NEUTRAL[l][p];
+    const k = spellPc(keyRoot);
+    if (mode === 'minor' && p === spellPc(k + 11)) return SPELL_SHARP[l][p];
+    return (spellUsesFlats(k, mode) ? SPELL_FLAT : SPELL_SHARP)[l][p];
+  }
+  function noteLabel(midi, keyRoot = null, mode = 'major', lang = 'de') {
+    const name = spell(midi, keyRoot, mode, lang);
+    const octave = Math.floor(midi / 12) - 1;
+    if (lang === 'en') return `${name}${octave}`;
+    if (octave >= 3) return name.toLowerCase() + '′'.repeat(octave - 3).replace('′′′′', '⁗').replace('′′′', '‴').replace('′′', '″');
+    return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
+  }
+  // [Funktion, Argumente, erwartet] — dieselbe Liste in jedem Tool.
+  const SPELL_CASES = [
+    ['spell', [1, 8, 'major', 'de'], 'Des'], ['spell', [8, 4, 'major', 'de'], 'Gis'], ['spell', [8, 4, 'major', 'en'], 'G♯'],
+    ['spell', [10, 11, 'major', 'de'], 'Ais'], ['spell', [6, 6, 'major', 'de'], 'Ges'], ['spell', [3, 3, 'minor', 'de'], 'Dis'],
+    ['spell', [1, 2, 'minor', 'de'], 'Cis'], ['spell', [10, 2, 'minor', 'de'], 'B'], ['spell', [3, 0, 'minor', 'de'], 'Es'],
+    ['spell', [10, 0, 'mixolydian', 'de'], 'B'], ['spell', [10, 0, 'mixolydian', 'en'], 'B♭'], ['spell', [6, 2, 'dorian', 'de'], 'Fis'],
+    ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
+    ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
+    ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
+    ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
+    ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
+    ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
+  ];
+  /** Prüft SPELL_CASES; liefert die Liste der Abweichungen (leer = ok). */
+  function spellCheck() {
+    const fns = { spell, noteLabel };
+    return SPELL_CASES.map(([fn, args, want]) => {
+      const got = fns[fn](...args);
+      return got === want ? null : `${fn}(${args.join(', ')}) = ${got}, erwartet ${want}`;
+    }).filter(Boolean);
+  }
+  // Deutsche Tonnamen: Tonart groß („Es-Dur“), Einzeltöne in Helmholtz-
+  // Schreibweise (F, c, c′, c″), wie sie in Chorproben üblich ist.
+  const keyLabel = (root) => `${spell(root, root, 'major')}-Dur`;
 
   /* ------------------------------------------------------------------------
      INHALT
@@ -880,7 +936,7 @@
     const low = lowRoot + ex.min;
     const high = highRoot + ex.max;
     // Jeder Ton in der Schreibweise der Runde, aus der er stammt.
-    $('.stage-range').textContent = `Tonraum ${noteLabel(low, lowRoot)}${low === high ? '' : `–${noteLabel(high, highRoot)}`}`;
+    $('.stage-range').textContent = `Tonraum ${noteLabel(low, lowRoot, 'major')}${low === high ? '' : `–${noteLabel(high, highRoot, 'major')}`}`;
     $('.stage-range').title = 'Tiefster und höchster Ton dieser Übung';
     if (cur.kind === 'round') {
       $('.stage-key').textContent = seg
@@ -1123,6 +1179,8 @@
     notes: () => { plan = buildPlan(); return planNotes(); },
     range: exerciseRange,
     noteLabel,
+    spell,
+    keyLabel,
     sanitize,
     selfCheck,
   };
@@ -1168,9 +1226,10 @@
       for (const [id, len] of [['lippen', 8], ['koloratur', 8], ['oktave', 8], ['mimemamomu', 4]]) {
         if ((exById(id).breath ?? BREATH) !== len) errors.push(`${id}: Atemluft ${exById(id).breath ?? BREATH} statt ${len}`);
       }
-      // Tonnamen je Tonart
+      // Tonnamen je Tonart (gemeinsame Testfälle plus Einsing-Beispiele)
+      errors.push(...spellCheck());
       [[61, 61, 'des′'], [61, 57, 'cis′'], [63, 63, 'es′'], [66, 62, 'fis′'], [70, 65, 'b′'], [68, 64, 'gis′'], [60, 60, 'c′'], [47, 55, 'H']].forEach(([midi, root, want]) => {
-        const got = noteLabel(midi, root);
+        const got = noteLabel(midi, root, 'major');
         if (got !== want) errors.push(`noteLabel(${midi}, ${root}) = ${got}, erwartet ${want}`);
       });
       // Gespeicherte Stände: alt (Boolean) → neu, neu → gleich, kaputt → Standard.

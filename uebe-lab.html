@@ -357,7 +357,78 @@
   const mod = (n, m) => ((n % m) + m) % m;
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
-  const NOTE_NAMES = 'C,C♯,D,E♭,E,F,F♯,G,A♭,A,B,H'.split(',');
+
+  /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
+     uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
+     ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
+
+     spell(pc, keyRoot, mode, lang): Name der Tonhöhenklasse pc in der
+     Tonart keyRoot/mode ('major' | 'minor' | 'dorian' | 'mixolydian').
+     ♭-Tonarten schreiben mit ♭, alle anderen mit ♯ — maßgeblich ist die
+     Dur-Paralleltonart: F, B, Es, As, Des, Ges (Moll also d, g, c, f, b;
+     dis-Moll statt es-Moll). In Moll steht der Leitton (erhöhte 7. Stufe)
+     immer mit ♯ (d-Moll: Cis). Ohne Tonart (keyRoot null) gilt die
+     neutrale Liste C, Cis, D, Es, E, F, Fis, G, As, A, B, H.
+     lang: 'en' englisch (B = H, B♭ = B), sonst deutsch (auch 'pl').
+
+     noteLabel(midi, keyRoot, mode, lang): mit Oktave — deutsch Helmholtz
+     (C₁, C, c, c′, c″ …; 60 = c′), englisch wissenschaftlich (60 = C4). */
+  const SPELL_SHARP = {
+    de: ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'],
+    en: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'],
+  };
+  const SPELL_FLAT = {
+    de: ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_NEUTRAL = {
+    de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
+    en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
+  };
+  const SPELL_FLAT_MAJORS = [5, 10, 3, 8, 1, 6];
+  const SPELL_RELATIVE_MAJOR = { major: 0, minor: 3, dorian: -2, mixolydian: -7 };
+  const spellPc = (n) => ((n % 12) + 12) % 12;
+  function spellUsesFlats(keyRoot, mode) {
+    const major = spellPc(keyRoot + (SPELL_RELATIVE_MAJOR[mode] ?? 0));
+    if (mode === 'minor' && major === 6) return false; // dis-Moll, nicht es-Moll
+    return SPELL_FLAT_MAJORS.includes(major);
+  }
+  function spell(pc, keyRoot = null, mode = 'major', lang = 'de') {
+    const l = lang === 'en' ? 'en' : 'de';
+    const p = spellPc(pc);
+    if (keyRoot === null || keyRoot === undefined) return SPELL_NEUTRAL[l][p];
+    const k = spellPc(keyRoot);
+    if (mode === 'minor' && p === spellPc(k + 11)) return SPELL_SHARP[l][p];
+    return (spellUsesFlats(k, mode) ? SPELL_FLAT : SPELL_SHARP)[l][p];
+  }
+  function noteLabel(midi, keyRoot = null, mode = 'major', lang = 'de') {
+    const name = spell(midi, keyRoot, mode, lang);
+    const octave = Math.floor(midi / 12) - 1;
+    if (lang === 'en') return `${name}${octave}`;
+    if (octave >= 3) return name.toLowerCase() + '′'.repeat(octave - 3).replace('′′′′', '⁗').replace('′′′', '‴').replace('′′', '″');
+    return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
+  }
+  // [Funktion, Argumente, erwartet] — dieselbe Liste in jedem Tool.
+  const SPELL_CASES = [
+    ['spell', [1, 8, 'major', 'de'], 'Des'], ['spell', [8, 4, 'major', 'de'], 'Gis'], ['spell', [8, 4, 'major', 'en'], 'G♯'],
+    ['spell', [10, 11, 'major', 'de'], 'Ais'], ['spell', [6, 6, 'major', 'de'], 'Ges'], ['spell', [3, 3, 'minor', 'de'], 'Dis'],
+    ['spell', [1, 2, 'minor', 'de'], 'Cis'], ['spell', [10, 2, 'minor', 'de'], 'B'], ['spell', [3, 0, 'minor', 'de'], 'Es'],
+    ['spell', [10, 0, 'mixolydian', 'de'], 'B'], ['spell', [10, 0, 'mixolydian', 'en'], 'B♭'], ['spell', [6, 2, 'dorian', 'de'], 'Fis'],
+    ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
+    ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
+    ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
+    ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
+    ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
+    ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
+  ];
+  /** Prüft SPELL_CASES; liefert die Liste der Abweichungen (leer = ok). */
+  function spellCheck() {
+    const fns = { spell, noteLabel };
+    return SPELL_CASES.map(([fn, args, want]) => {
+      const got = fns[fn](...args);
+      return got === want ? null : `${fn}(${args.join(', ')}) = ${got}, erwartet ${want}`;
+    }).filter(Boolean);
+  }
 
   /* ------------------------------------------------------------------------
      RHYTHMUS — INHALT
@@ -1134,7 +1205,8 @@
   };
 
   const intervalName = (semis) => INTERVALS.find(([n]) => n === semis)[1];
-  const keyName = (pc, mode) => `${NOTE_NAMES[mod(pc, 12)]}-${mode === 'major' ? 'Dur' : 'Moll'}`;
+  // „Es-Dur“, „dis-Moll“ — Tonart groß in Dur, klein in Moll.
+  const keyName = (pc, mode) => (mode === 'major' ? `${spell(pc, pc, 'major')}-Dur` : `${spell(pc, pc, 'minor').toLowerCase()}-Moll`);
 
   function chordPcs(key, symbol) {
     const [root, quality] = CHORD_SYMBOLS[symbol];
@@ -1162,12 +1234,16 @@
       let bass = v.bass;
       if (inversion === 'random') {
         const pc = pick(pcs);
-        bass = 36 + mod(pc, 12);
-        if (bass < 40) bass += 12;
+        bass = BASS_LOW + mod(pc - BASS_LOW, 12);
       }
       return { bass, upper };
     });
   }
+
+  // Bass immer in der Oktave E–dis′ (MIDI 40–51): tiefste Lage im
+  // Bassumfang (E–d′, wie Groove Lab und Einsingen), nie darunter.
+  const BASS_LOW = 40;
+  const VOICE_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
 
   function voiceClose(key, symbols) {
     let prev = [60, 64, 67];
@@ -1186,7 +1262,7 @@
         }
       }
       prev = best;
-      return { bass: 36 + mod(key + CHORD_SYMBOLS[symbol][0], 12), upper: best };
+      return { bass: BASS_LOW + mod(key + CHORD_SYMBOLS[symbol][0] - BASS_LOW, 12), upper: best };
     });
   }
 
@@ -1560,7 +1636,6 @@
   const PITCH_MIN_HZ = 65;
   const PITCH_MAX_HZ = 1100;
   const HISTORY_SECONDS = 6;
-  const noteLabel = (midi) => `${NOTE_NAMES[mod(midi, 12)]}${Math.floor(midi / 12) - 1}`;
 
   const voice = {
     stream: null, source: null, analyser: null, buffer: null, frame: 0,
@@ -1722,7 +1797,7 @@
     needle.className = `gauge-needle is-${kind}`;
     needle.style.left = `${50 + clamp(cents / range, -1, 1) * 50}%`;
     msg.className = `tuner-msg is-${kind}`;
-    if (voice.useTarget && abs > 60) msg.textContent = cents < 0 ? `Zu tief — ${NOTE_NAMES[mod(voice.target, 12)]} liegt höher` : `Zu hoch — ${NOTE_NAMES[mod(voice.target, 12)]} liegt tiefer`;
+    if (voice.useTarget && abs > 60) msg.textContent = cents < 0 ? `Zu tief — ${spell(voice.target)} liegt höher` : `Zu hoch — ${spell(voice.target)} liegt tiefer`;
     else msg.textContent = kind === 'ok' ? 'Sauber!' : cents < 0 ? 'etwas zu tief' : 'etwas zu hoch';
   }
 
@@ -1991,6 +2066,36 @@
       start();
     }
   });
+
+  /** Selbstprüfung (Konsole des iframes: `uebeLab.selfCheck()`). Liefert
+   *  die Liste der Fehler — leer = bestanden. Nur reine Funktionen, ändert
+   *  keinen Zustand. */
+  function selfCheck() {
+    const errors = [...spellCheck()];
+    [[8, 'minor', 'gis-Moll'], [1, 'major', 'Des-Dur'], [3, 'minor', 'dis-Moll'], [3, 'major', 'Es-Dur'], [6, 'major', 'Ges-Dur'],
+      [10, 'minor', 'b-Moll'], [1, 'minor', 'cis-Moll'], [11, 'major', 'H-Dur']].forEach(([pc, mode, want]) => {
+      if (keyName(pc, mode) !== want) errors.push(`keyName(${pc}, ${mode}) = ${keyName(pc, mode)}, erwartet ${want}`);
+    });
+    // Bass immer E–dis′ (40–51), in jeder Umkehrung und Lage.
+    for (let i = 0; i < 500; i++) {
+      const prog = EAR_PROGRESSIONS[i % EAR_PROGRESSIONS.length];
+      const key = Math.floor(Math.random() * 12);
+      const inversion = EAR_INVERSIONS[i % EAR_INVERSIONS.length][0];
+      const spread = EAR_SPREADS[i % EAR_SPREADS.length][0];
+      for (const v of voiceProgression(key, prog.chords, { inversion, spread })) {
+        if (v.bass < 40 || v.bass > 51) errors.push(`Bass ${v.bass} außerhalb 40–51 (${prog.id}, Tonart ${key}, ${inversion})`);
+        if (v.bass < VOICE_RANGES.B[0] || v.bass > VOICE_RANGES.B[1]) errors.push(`Bass ${v.bass} außerhalb des Bassumfangs`);
+      }
+    }
+    return errors;
+  }
+
+  // Für die Konsole und Selbstprüfungen: Daten und reine Funktionen.
+  window.uebeLab = {
+    EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
+    chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
+    selfCheck,
+  };
 
   setTab(state.tab);
   if (storage) {
