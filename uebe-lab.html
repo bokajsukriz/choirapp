@@ -213,6 +213,23 @@
   .ear-extra:empty { display: none; }
   .ear-extra .big-btn { min-height: 44px; }
   .ear-extra .sub-label { width: 100%; text-align: center; margin: 4px 0 0; }
+  .sing-opts { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+  .sing-opts .chip { min-height: 36px; }
+  .sing-stage .progress { height: 8px; border-radius: 999px; background: var(--surface-2); margin: 12px 0 0; overflow: hidden; }
+  .sing-stage .progress i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .sing-live { font-weight: 800; font-size: 1.05rem; min-height: 1.3em; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  .sing-syls { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+  .sing-syl { min-width: 44px; padding: 8px 6px; border-radius: 10px; background: var(--surface-2); font-weight: 800; font-size: 1.1rem; }
+  .sing-syl small { display: block; font-size: .66rem; color: var(--muted); }
+  .sing-syl.is-now { background: var(--accent); color: #fff; }
+  .sing-syl.is-ok { background: #2f9e5b; color: #fff; }
+  .sing-syl.is-bad { background: rgba(224,68,90,.14); color: var(--bad); }
+  .sing-staff { margin-top: 10px; }
+  .stage .clef { font-size: 34px; font-family: "Noto Music", "Bravura", serif; }
+  .stage .clef8 { font-size: 9px; font-weight: 800; }
+  .stage .acc { font-size: 13px; font-weight: 700; }
+  .stage .ledger { stroke: var(--text); stroke-width: 1.2; }
+  .stage .is-now { fill: var(--accent); stroke: var(--accent); }
   .tuning-threshold { font-size: .8rem; font-weight: 800; text-align: center; margin: 8px 0 0; }
   .answer.is-ok { background: #2f9e5b; border-color: #2f9e5b; color: #fff; }
   .answer.is-bad { background: var(--bad); border-color: var(--bad); color: #fff; }
@@ -244,7 +261,7 @@
 <nav class="tab-bar" role="tablist">
   <button class="tab-btn" type="button" role="tab" data-tab="rhythm" aria-selected="true">Rhythmus</button>
   <button class="tab-btn" type="button" role="tab" data-tab="ear" aria-selected="false">Hören</button>
-  <button class="tab-btn" type="button" role="tab" data-tab="voice" aria-selected="false">Stimme</button>
+  <button class="tab-btn" type="button" role="tab" data-tab="voice" aria-selected="false">Singen</button>
 </nav>
 
 <main>
@@ -309,6 +326,34 @@
   </section>
   <section data-panel="voice" hidden>
     <section class="panel">
+      <div class="panel-head"><h2>Singen</h2></div>
+      <div class="chip-row" data-chips="singMode"></div>
+    </section>
+    <section class="panel" data-sing-only="task" hidden>
+      <div data-levels="sing"></div>
+      <div class="sing-opts">
+        <div><span class="sub-label">Meine Stimme</span><div class="chip-row" data-chips="singPart"></div></div>
+        <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
+      </div>
+      <div class="ear-stage sing-stage">
+        <p class="ear-prompt sing-prompt"></p>
+        <p class="ear-sub sing-sub"></p>
+        <div class="sing-view"></div>
+        <div class="progress sing-progress" hidden><i></i></div>
+        <p class="sing-live" aria-hidden="true"></p>
+        <div class="ear-controls">
+          <button class="big-btn" type="button" data-sing="start">Start</button>
+          <button class="big-btn secondary" type="button" data-sing="replay" hidden>Vorgabe noch einmal</button>
+          <button class="big-btn secondary" type="button" data-sing="skip" hidden>Ton überspringen</button>
+          <button class="big-btn secondary" type="button" data-sing="stop" hidden>Beenden</button>
+        </div>
+      </div>
+      <div class="answer-grid sing-answers"></div>
+      <p class="sing-feedback ear-feedback" role="status" aria-live="polite"></p>
+      <p class="score sing-score"></p>
+      <p class="foot-note">Mit Kopfhörern üben, sonst hört das Mikrofon die Vorgabe mit. Männerstimmen dürfen eine Oktave tiefer singen — das zählt als Treffer.</p>
+    </section>
+    <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Stimm-Tuner</h2>
         <button class="big-btn" type="button" data-voice="mic">Mikrofon an</button></div>
       <div class="tuner">
@@ -321,7 +366,7 @@
       <canvas class="pitch-history" aria-label="Tonhöhen-Verlauf der letzten Sekunden"></canvas>
       <p class="mic-error" role="alert"></p>
     </section>
-    <section class="panel">
+    <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Zielton</h2></div>
       <div class="switch-row"><label class="switch"><input type="checkbox" role="switch" data-voiceswitch="useTarget"><span class="switch-track"></span>Auf Zielton stimmen</label></div>
       <label class="a4-row">Kammerton a′ = <select data-voice-a4 aria-label="Kammerton in Hertz"></select> Hz</label>
@@ -333,7 +378,7 @@
       </div>
       <p class="foot-note">Die Oktave ist egal: Männer- und Frauenstimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
     </section>
-    <section class="panel">
+    <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Tonumfang heute</h2><button class="chip" type="button" data-voice="range-reset">Zurücksetzen</button></div>
       <div class="range-out">
         <div class="range-box"><span>Tiefster Ton</span><strong class="range-low">–</strong></div>
@@ -1650,6 +1695,14 @@
     renderEar();
     renderVoice();
   }
+  // Das Mikrofon läuft nie im Hintergrund: Seite verdeckt → aus.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    if (run.playing) stop();
+    stopSing();
+    if (voice.analyser) micOff();
+    if (sing.mode !== 'tuner' && state.tab === 'voice') renderSing();
+  });
 
   function setTab(tab) {
     if (run.playing) stop();
@@ -1660,6 +1713,7 @@
     if (tab !== 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); }
     // Das Mikrofon läuft nie im Hintergrund weiter, wenn man den Reiter verlässt.
     if (voice.analyser) micOff();
+    if (tab !== 'voice') stopSing();
     renderAll();
   }
 
@@ -2813,8 +2867,8 @@
       return false;
     }
   }
-  /** Singen mit Mikrofon (Paket 5). */
-  function singFrame() {}
+  /** Singen mit Mikrofon (Paket 5) — wird unten gesetzt. */
+  let singFrame = () => {};
   /** Haken für den Fortschritt (Paket 7: micDenied). */
   function onMicDenied() {}
 
@@ -3023,6 +3077,7 @@
   }
 
   function renderVoice() {
+    renderSing();
     const btn = $('[data-voice="mic"]');
     btn.textContent = voice.analyser ? 'Mikrofon aus' : 'Mikrofon an';
     btn.classList.toggle('secondary', !!voice.analyser);
@@ -3038,6 +3093,668 @@
   async function playTarget() {
     try { await engine.start(); } catch { return; }
     engine.keys(voice.target, engine.ctx.currentTime + .03, 1.4, { velocity: .2 });
+  }
+
+  /* ------------------------------------------------------------------------
+     SINGEN — Didaktik Paket 5: Intervalle singen, Ton finden, Ton halten,
+     Blattsingen (mit Mikrofon) und Diktat (ohne). Mikrofon nur live, nie
+     aufgezeichnet; gemeinsame Treffer-Logik makePitchJudge.
+     ------------------------------------------------------------------------ */
+
+  /** Zustandsautomat für „Ton getroffen?“. Füttert sich mit Rohwerten
+   *  (MIDI, clarity) und glättet selbst (smoothPitch, 0,35 s); nur Rahmen
+   *  mit clarity ≥ .85 zählen. hit: Median der geglätteten Werte der
+   *  letzten holdSec liegt innerhalb ±tolerance Cent um das Ziel (exakte
+   *  Oktave) — oder genau eine Oktave daneben (Treffer mit Oktavhinweis).
+   *  miss: nach timeoutSec ohne Treffer; gemeldet wird die Abweichung des
+   *  am längsten gehaltenen Versuchs. Ergebnis: { hit, cents, octaveOff }. */
+  function makePitchJudge({ target, tolerance = 50, holdSec = .5, timeoutSec = 8 }) {
+    let t0 = null;
+    let lastVoiced = -Infinity;
+    let recent = [];
+    let smooth = [];        // [{ t, midi }] geglättet, aktueller Versuch
+    const attempts = [];    // abgeschlossene Versuche: [{ dur, values }]
+    let result = null;
+    const devOf = (midi) => {
+      const raw = (midi - target) * 100;
+      const oct = clamp(Math.round(raw / 1200), -1, 1);
+      return { cents: raw - oct * 1200, octaveOff: oct };
+    };
+    const close = () => { if (smooth.length > 1) attempts.push({ dur: smooth[smooth.length - 1].t - smooth[0].t, values: smooth.map((p) => p.midi) }); smooth = []; };
+    return {
+      get result() { return result; },
+      push(t, midi, clarity = 1) {
+        if (result) return result;
+        if (t0 === null) t0 = t;
+        const voiced = midi !== null && midi !== undefined && clarity >= .85;
+        if (voiced) {
+          if (t - lastVoiced > .15) { close(); recent = []; }
+          lastVoiced = t;
+          recent.push({ t, midi });
+          while (recent.length && recent[0].t < t - SMOOTH_SECONDS) recent.shift();
+          smooth.push({ t, midi: smoothPitch(recent, t) });
+          // Erst werten, wenn die Glättung und das Haltefenster gefüllt sind.
+          if (smooth[smooth.length - 1].t - smooth[0].t >= holdSec + SMOOTH_SECONDS * .5) {
+            const win = smooth.filter((p) => p.t >= t - holdSec).map((p) => p.midi);
+            const d = devOf(median(win));
+            if (Math.abs(d.cents) <= tolerance && Math.abs(d.octaveOff) <= 1) { result = { hit: true, cents: d.cents, octaveOff: d.octaveOff }; return result; }
+          }
+        }
+        if (timeoutSec !== Infinity && t - t0 >= timeoutSec) {
+          close();
+          const best = attempts.reduce((a, b) => (!a || b.dur > a.dur ? b : a), null);
+          const d = best ? devOf(median(best.values)) : { cents: NaN, octaveOff: 0 };
+          result = { hit: false, cents: d.cents, octaveOff: d.octaveOff };
+        }
+        return result;
+      },
+    };
+  }
+
+  /** Ton halten: Lage (Mittel in Cent), Ruhe (Standardabweichung), Trend
+   *  (Steigung der Ausgleichsgeraden in Cent/s). samples: [{ t, cents }]. */
+  function holdStats(samples) {
+    const n = samples.length;
+    if (n < 3) return null;
+    const mt = samples.reduce((a, p) => a + p.t, 0) / n;
+    const mc = samples.reduce((a, p) => a + p.cents, 0) / n;
+    let sxy = 0, sxx = 0, var2 = 0;
+    for (const p of samples) { sxy += (p.t - mt) * (p.cents - mc); sxx += (p.t - mt) ** 2; var2 += (p.cents - mc) ** 2; }
+    const trend = sxx ? sxy / sxx : 0;
+    return { mean: mc, sd: Math.sqrt(var2 / n), trend };
+  }
+  /** Tonhöhe beim Lauterwerden: lauteste gegen leiseste 30 % (Cent). */
+  function loudnessDrift(samples) {
+    if (samples.length < 10) return 0;
+    const byLevel = [...samples].sort((a, b) => a.rms - b.rms);
+    const k = Math.max(1, Math.floor(samples.length * .3));
+    const mean = (list) => list.reduce((a, p) => a + p.cents, 0) / list.length;
+    return mean(byLevel.slice(-k)) - mean(byLevel.slice(0, k));
+  }
+  const holdHit = (st) => !!st && Math.abs(st.mean) <= 20 && st.sd <= 12 && Math.abs(st.trend) <= 4;
+
+  const HOLD_LEVELS = [
+    { n: 1, label: '3 Sekunden',                  sec: 3, dyn: 'mf' },
+    { n: 2, label: '5 Sekunden',                  sec: 5, dyn: 'mf' },
+    { n: 3, label: '8 Sekunden',                  sec: 8, dyn: 'mf' },
+    { n: 4, label: '5 Sekunden, lauter werden',   sec: 5, dyn: 'cresc' },
+    { n: 5, label: '8 Sekunden, leise',           sec: 8, dyn: 'pp' },
+    { n: 6, label: 'An- und Abschwellen, 8 s',    sec: 8, dyn: 'messa' },
+  ];
+  const FIND_LEVELS = [
+    { n: 1, label: 'Grundton aus dem Akkord',      cue: 'tonic',   ask: ['root'],                  modes: ['major'] },
+    { n: 2, label: 'Grundton oder Quinte',         cue: 'tonic',   ask: ['root', 'fifth'],         modes: ['major'] },
+    { n: 3, label: 'Grundton, Terz oder Quinte',   cue: 'tonic',   ask: ['root', 'third', 'fifth'], modes: ['major'] },
+    { n: 4, label: 'auch in Moll',                 cue: 'tonic',   ask: ['root', 'third', 'fifth'], modes: ['major', 'minor'] },
+    { n: 5, label: 'nach der Kadenz: Stufe 1–7',   cue: 'cadence', ask: ['degree'],                 modes: ['major', 'minor'] },
+    { n: 6, label: 'Nur das a′ (Stimmgabel)',      cue: 'a4',      ask: ['fromA'] },
+  ];
+  const FIND_TOLERANCE = [50, 50, 40, 40, 35, 40];
+  const SING_INTERVAL_TOLERANCE = [50, 50, 40, 35, 35, 30];
+  const SIGHT_TOLERANCE = [50, 50, 45, 40, 40, 35];
+  // Stufen als Tonleiterstufen relativ zu do (0 = do, 4 = so, −3 = tiefes so).
+  const SIGHT_LEVELS = [
+    { n: 1, label: 'do re mi',                 pool: [0, 1, 2],                        len: [3, 4], maxLeap: 1, start: [0, 2],    end: [0] },
+    { n: 2, label: 'dazu so',                  pool: [0, 1, 2, 4],                     len: [4, 4], maxLeap: 2, start: [0, 2, 4], end: [0] },
+    { n: 3, label: 'Pentatonik (dazu la)',     pool: [0, 1, 2, 4, 5],                  len: [5, 5], maxLeap: 4, start: [0, 2, 4], end: [0] },
+    { n: 4, label: 'dazu fa und tiefes so',    pool: [-3, 0, 1, 2, 3, 4, 5],           len: [5, 6], maxLeap: 4, start: [0, 2, 4], end: [0] },
+    { n: 5, label: 'ganze Tonleiter',          pool: [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7], len: [6, 6], maxLeap: 4, start: [0, 2, 4], end: [0], rhythm: true },
+    { n: 6, label: 'Moll (la) und Oktave',     pool: [-2, -1, 0, 1, 2, 3, 4, 5],       len: [6, 8], maxLeap: 7, start: [-2, 0, 2], end: [-2], rhythm: true },
+  ];
+  // Relative Solmisation („Tonika-Do“), Moll la-basiert; alternativ Stufenzahlen.
+  const SOLFA = ['do', 're', 'mi', 'fa', 'so', 'la', 'ti'];
+  /** Silbe (bzw. Stufenzahl) einer Tonleiterstufe relativ zu do. Stufenzahlen
+   *  zählen in Moll ab la (la = 1). Tiefe Töne mit „,“, hohe mit „′“. */
+  function solfaOf(deg, style = 'syllables', minor = false) {
+    const oct = Math.floor(deg / 7);
+    const mark = oct < 0 ? ','.repeat(-oct) : '′'.repeat(oct);
+    if (style === 'numbers') {
+      const rel = deg - (minor ? -2 : 0);
+      const o2 = Math.floor(rel / 7);
+      return `${mod(rel, 7) + 1}${o2 < 0 ? ','.repeat(-o2) : '′'.repeat(o2)}`;
+    }
+    return SOLFA[mod(deg, 7)] + mark;
+  }
+  // Chromatische Silben für Intervalle über/unter do (me, le, te, fi).
+  const SOLFA_CHROMATIC = ['do', 'ra', 're', 'me', 'mi', 'fa', 'fi', 'so', 'le', 'la', 'te', 'ti'];
+  function intervalSolfa(semis, dir) {
+    if (dir === 'down') return `do → ${SOLFA_CHROMATIC[mod(-semis, 12)]}${semis ? ',' : ''}`;
+    return `do → ${SOLFA_CHROMATIC[mod(semis, 12)]}${semis >= 12 ? '′' : ''}`;
+  }
+
+  /** Sprungregel: ein Sprung (> 1 Stufe) wird durch einen Schritt in
+   *  Gegenrichtung aufgelöst — außer der nächste Ton setzt einen Dreiklang
+   *  fort (do–mi–so, la–do–mi, auch abwärts). Ein Sprung auf den letzten
+   *  Ton ist nur als Dreiklangs-Fortsetzung erlaubt. */
+  const TRIADS = [[0, 2, 4], [-2, 0, 2], [-3, -1, 1], [2, 4, 6], [4, 6, 8], [-5, -3, -1], [1, 3, 5], [3, 5, 7]];
+  const isTriadRun = (a, b, c) => TRIADS.some((t) => {
+    const up = [a, b, c].map((x) => x - a);
+    const tr = t.map((x) => x - t[0]);
+    return (up.join() === tr.join() && mod(a - t[0], 7) === 0) || (up.join() === tr.map((x) => -x).join() && mod(c - t[0], 7) === 0);
+  });
+  function leapRuleOk(degs) {
+    for (let i = 1; i < degs.length; i++) {
+      const step = degs[i] - degs[i - 1];
+      if (Math.abs(step) <= 1) continue;
+      const next = degs[i + 1];
+      const prev2 = degs[i - 2];
+      const continuesTriad = (next !== undefined && isTriadRun(degs[i - 1], degs[i], next)) || (prev2 !== undefined && isTriadRun(prev2, degs[i - 1], degs[i]));
+      if (continuesTriad) continue;
+      if (next === undefined) return false;
+      const back = next - degs[i];
+      if (!(Math.abs(back) === 1 && Math.sign(back) === -Math.sign(step))) return false;
+    }
+    return true;
+  }
+  /** Prüft eine Melodie gegen die Regeln ihrer Stufe (Test und Generator). */
+  function melodyOk(level, degs, durs) {
+    if (degs.length < level.len[0] || degs.length > level.len[1]) return false;
+    if (!degs.every((d) => level.pool.includes(d))) return false;
+    if (!level.start.includes(degs[0]) || !level.end.includes(degs[degs.length - 1])) return false;
+    for (let i = 1; i < degs.length; i++) {
+      if (Math.abs(degs[i] - degs[i - 1]) > level.maxLeap) return false;
+      if (level.n <= 3 && degs[i] === degs[i - 1]) return false;
+    }
+    const counts = {};
+    for (const d of degs) if ((counts[d] = (counts[d] || 0) + 1) > 3) return false;
+    if (level.n === 6 && degs.filter((d, i) => i && Math.abs(d - degs[i - 1]) === 7).length > 1) return false;
+    if (level.n === 6 && degs.some((d, i) => i && Math.abs(d - degs[i - 1]) === 7 && Math.min(d, degs[i - 1]) !== -2)) return false;
+    if (!leapRuleOk(degs)) return false;
+    if (durs) {
+      if (level.rhythm) { if (durs[durs.length - 1] !== 2 || durs.some((x) => x !== 1 && x !== 2)) return false; }
+      else if (durs.some((x) => x !== 1)) return false;
+    }
+    return true;
+  }
+  /** Zufallsmelodie einer Stufe; nie dieselbe zweimal in Folge. Dauern in
+   *  Vierteln (ab Stufe 5 Viertel und Halbe, letzter Ton Halbe). */
+  function makeMelody(n, previousKey = null, rnd = Math.random) {
+    const level = SIGHT_LEVELS[n - 1];
+    for (let attempt = 0; attempt < 5000; attempt++) {
+      const len = rndInt(level.len[0], level.len[1], rnd);
+      const degs = [level.start[Math.floor(rnd() * level.start.length)]];
+      let ok = true;
+      for (let i = 1; i < len && ok; i++) {
+        const prev = degs[i - 1];
+        let opts = level.pool.filter((d) => Math.abs(d - prev) <= level.maxLeap);
+        if (i === len - 1) opts = opts.filter((d) => level.end.includes(d));
+        // Nach einem Sprung bevorzugt der Gegenschritt.
+        const lastStep = i >= 2 ? prev - degs[i - 2] : 0;
+        if (Math.abs(lastStep) > 1) {
+          const back = opts.filter((d) => d - prev === -Math.sign(lastStep) || isTriadRun(degs[i - 2], prev, d));
+          if (back.length) opts = back;
+        }
+        // Schritte häufiger als Sprünge.
+        const w = opts.map((d) => (Math.abs(d - prev) <= 1 ? 3 : Math.abs(d - prev) === 7 ? .4 : 1));
+        if (!opts.length) { ok = false; break; }
+        degs.push(pickWeighted(opts, w, rnd));
+      }
+      if (!ok) continue;
+      const durs = degs.map((_, i) => (level.rhythm ? (i === degs.length - 1 ? 2 : rnd() < .25 ? 2 : 1) : 1));
+      if (!melodyOk(level, degs, durs)) continue;
+      const key = `${degs.join(',')}|${durs.join(',')}`;
+      if (key === previousKey) continue;
+      return { level: n, degs, durs, key, minor: level.n === 6 };
+    }
+    return null;
+  }
+  const MAJOR_STEPS = H.MAJOR;
+  const degSemis = (deg) => H.degreeSemis(MAJOR_STEPS, deg);
+  /** do (MIDI) so, dass alle Töne im Innenbereich liegen — mittig. Ohne
+   *  Ges-Dur: spell() schreibt dort „H“ statt „Ces“, die Notenzeile wäre falsch. */
+  function chooseDo(degs, lo, hi, rnd = Math.random) {
+    const semis = degs.map(degSemis);
+    const minS = Math.min(...semis), maxS = Math.max(...semis);
+    const options = [];
+    for (let d = lo - minS; d + maxS <= hi; d++) if (mod(d, 12) !== 6) options.push(d);
+    if (!options.length) return Math.round((lo + hi - minS - maxS) / 2);
+    // bevorzugt die mittleren Lagen
+    const mid = (lo + hi - minS - maxS) / 2;
+    const near = options.filter((d) => Math.abs(d - mid) <= 3);
+    const pool = near.length ? near : options;
+    return pool[Math.floor(rnd() * pool.length)];
+  }
+
+  const SING_MODES = [['tuner', 'Tuner'], ['singInterval', 'Intervalle singen'], ['findTone', 'Ton finden'], ['hold', 'Ton halten'], ['sight', 'Blattsingen'], ['dictation', 'Diktat']];
+  const sing = {
+    mode: 'tuner',
+    levels: { singInterval: 1, findTone: 1, hold: 1, sight: 1, dictation: 1 },
+    solfa: 'syllables',   // 'syllables' (do re mi) | 'numbers' (1 2 3)
+    showSolfa: true,      // Intervalle singen: Hilfe „do → mi“ zeigen
+    task: null, phase: 'idle', judge: null, timers: [], bus: null, lastKey: null,
+    stats: { singInterval: { right: 0, total: 0 }, findTone: { right: 0, total: 0 }, hold: { right: 0, total: 0 }, sight: { right: 0, total: 0 }, dictation: { right: 0, total: 0 } },
+    log: {},              // Intervalle singen: Gewichtung wie beim Hören (eigener Speicher singLog)
+    live: null,           // { midi, cents } der letzten Messung (Anzeige)
+  };
+  const SING_LEVEL_TABLE = { singInterval: () => INTERVAL_LEVELS(), findTone: () => FIND_LEVELS, hold: () => HOLD_LEVELS, sight: () => SIGHT_LEVELS, dictation: () => SIGHT_LEVELS };
+  const PART_CLEF = { S: 'treble', A: 'treble', T: 'treble8', B: 'bass' };
+
+  /** Innenbereich des Übe-Umfangs (je 2 Halbtöne innerhalb). */
+  function singRange(part = ear.part, prof = readProfile()) {
+    const r = H.practiceRange({ part, low: prof?.low ?? null, high: prof?.high ?? null });
+    return { lo: r.floor + 2, hi: r.ceil - 2 };
+  }
+  /** Tonhöhenklasse `pc` in der Oktave, die `mid` am nächsten liegt — im Bereich. */
+  function placeNear(pc, mid, lo, hi) {
+    let m = mid + mod(pc - mid + 6, 12) - 6;
+    while (m < lo) m += 12;
+    while (m > hi) m -= 12;
+    return m;
+  }
+
+  const FIND_ASK = { root: ['Grundton', 0], third: ['Terz', null], fifth: ['Quinte', 7] };
+  const A_RELATIONS = [[0, 'Einklang'], [5, 'Quarte'], [7, 'Quinte'], [4, 'große Terz'], [3, 'kleine Terz'], [9, 'große Sexte'], [8, 'kleine Sexte']];
+
+  /** Aufgabe eines Sing-Modus (reine Funktion bis auf den Zufall). */
+  function makeSingTask(mode, n, range, { rnd = Math.random, log = {}, previousKey = null, solfa = 'syllables' } = {}) {
+    const { lo, hi } = range;
+    if (mode === 'singInterval') {
+      const preset = INTERVAL_PRESETS.filter((p) => p[2] === 'level')[n - 1];
+      const dirs = n === 6 ? ['up', 'down'] : ['up'];
+      const list = preset[1].filter((x) => x <= hi - lo);
+      const semis = pickInterval(list, log, rnd);
+      const dir = dirs[Math.floor(rnd() * dirs.length)];
+      const base = dir === 'up' ? rndInt(lo, hi - semis, rnd) : rndInt(lo + semis, hi, rnd);
+      const target = dir === 'up' ? base + semis : base - semis;
+      return { mode, level: n, semis, dir, base, target, tolerance: SING_INTERVAL_TOLERANCE[n - 1] };
+    }
+    if (mode === 'findTone') {
+      const level = FIND_LEVELS[n - 1];
+      if (level.cue === 'a4') {
+        const [semis, rel] = A_RELATIONS[Math.floor(rnd() * A_RELATIONS.length)];
+        const dir = semis === 0 ? 'same' : rnd() < .5 ? 'down' : 'up';
+        const options = [];
+        for (const aRef of [45, 57, 69, 81]) {
+          const target = dir === 'down' ? aRef - semis : dir === 'up' ? aRef + semis : aRef;
+          if (target >= lo && target <= hi) options.push({ aRef, target });
+        }
+        if (!options.length) return makeSingTask(mode, n, range, { rnd, log, previousKey, solfa });
+        const { aRef, target } = options[Math.floor(rnd() * options.length)];
+        const name = noteLabel(target);
+        const text = semis === 0 ? `${name} – ${target === 69 ? 'Einklang mit a′' : `die Oktave ${target < 69 ? 'unter' : 'über'} a′`}`
+          : `${name} – die ${rel} ${dir === 'down' ? 'unter' : 'über'} ${noteLabel(aRef)}`;
+        return { mode, level: n, cue: 'a4', target, aRef, semis, dir, name, text, tolerance: FIND_TOLERANCE[n - 1] };
+      }
+      const kmode = level.modes[Math.floor(rnd() * level.modes.length)];
+      const key = rndInt(0, 11, rnd);
+      const ask = level.ask[Math.floor(rnd() * level.ask.length)];
+      let semis, text;
+      if (ask === 'degree') {
+        const deg = rndInt(0, 6, rnd);
+        semis = H.degreeSemis(kmode === 'minor' ? H.MINOR : H.MAJOR, deg);
+        const syl = kmode === 'minor' ? SOLFA[mod(deg + 5, 7)] : SOLFA[deg];
+        text = `Singe die ${deg + 1} (${syl})`;
+      } else {
+        semis = ask === 'third' ? (kmode === 'minor' ? 3 : 4) : FIND_ASK[ask][1];
+        text = `Singe ${ask === 'root' ? 'den Grundton' : `die ${FIND_ASK[ask][0]}`}`;
+      }
+      const target = placeNear(key + semis, Math.round((lo + hi) / 2), lo, hi);
+      return { mode, level: n, cue: level.cue, kmode, key, ask, semis, target, text, tolerance: FIND_TOLERANCE[n - 1] };
+    }
+    if (mode === 'hold') {
+      const level = HOLD_LEVELS[n - 1];
+      const target = clamp(Math.round((lo + hi) / 2) + rndInt(-4, 4, rnd), lo, hi);
+      return { mode, level: n, target, sec: level.sec, dyn: level.dyn };
+    }
+    // Blattsingen / Diktat
+    const mel = makeMelody(n, previousKey, rnd);
+    const doMidi = chooseDo(mel.degs, lo, hi, rnd);
+    const notes = mel.degs.map((d) => doMidi + degSemis(d));
+    return { mode, level: n, ...mel, doMidi, notes, tolerance: SIGHT_TOLERANCE[n - 1], labels: mel.degs.map((d) => solfaOf(d, solfa, mel.minor)) };
+  }
+
+  /* ---- Notenzeile fürs Blattsingen: Violinschlüssel (S/A), oktavierter
+     Violinschlüssel (T), Bassschlüssel (B), Vorzeichen der Tonart. ---- */
+  const KEY_SIG = { 0: [0, ''], 7: [1, 's'], 2: [2, 's'], 9: [3, 's'], 4: [4, 's'], 11: [5, 's'], 5: [1, 'f'], 10: [2, 'f'], 3: [3, 'f'], 8: [4, 'f'], 1: [5, 'f'], 6: [6, 'f'] };
+  const SIG_POS = { treble: { s: [38, 35, 39, 36, 33, 37, 34], f: [34, 37, 33, 36, 32, 35, 31] } };
+  SIG_POS.bass = { s: SIG_POS.treble.s.map((d) => d - 14), f: SIG_POS.treble.f.map((d) => d - 14) };
+  SIG_POS.treble8 = SIG_POS.treble;
+  const LETTERS = 'CDEFGAH';
+  /** Diatonische Nummer (C4 = 28) eines Tons in der Schreibweise der Tonart. */
+  function diatonicOf(midi, doPc) {
+    const name = spell(midi, doPc, 'major', 'de');
+    const letter = LETTERS.indexOf(name[0] === 'B' ? 'H' : name[0]);
+    let octave = Math.floor(midi / 12) - 1;
+    if (name[0] === 'C' && mod(midi, 12) === 11) octave += 1; // Ces
+    if (name[0] === 'H' && mod(midi, 12) === 0) octave -= 1;  // His
+    return letter + 7 * octave;
+  }
+  function melodyStaffSvg(task, clef, current = -1, marks = []) {
+    const W = 340, X0 = 62, LS = 8;
+    const bottomD = clef === 'bass' ? 18 : 30;
+    const shift = clef === 'treble8' ? 7 : 0;
+    const top = 26;
+    const bottomY = top + 4 * LS;
+    const y = (d) => bottomY - (d - bottomD) * (LS / 2);
+    const out = [];
+    for (let i = 0; i < 5; i++) out.push(`<line class="staff" x1="6" x2="${W - 6}" y1="${top + i * LS}" y2="${top + i * LS}"/>`);
+    out.push(`<text class="clef" x="10" y="${clef === 'bass' ? top + 22 : top + 30}">${clef === 'bass' ? '𝄢' : '𝄞'}</text>`);
+    if (clef === 'treble8') out.push(`<text class="clef8" x="18" y="${bottomY + 18}">8</text>`);
+    const [count, kind] = KEY_SIG[mod(task.doMidi, 12)];
+    const pos = SIG_POS[clef][kind || 's'];
+    for (let i = 0; i < count; i++) out.push(`<text class="acc" x="${34 + i * 7}" y="${y(pos[i]) + 4}">${kind === 's' ? '♯' : '♭'}</text>`);
+    const x0 = Math.max(X0, 40 + count * 7);
+    const units = task.durs.reduce((a, b) => a + b, 0);
+    let t = 0;
+    task.notes.forEach((m, i) => {
+      const x = x0 + ((t + .5) / units) * (W - x0 - 14);
+      t += task.durs[i];
+      const d = diatonicOf(m, mod(task.doMidi, 12)) + shift;
+      const yy = y(d);
+      for (let l = bottomD - 2; l >= d; l -= 2) out.push(`<line class="ledger" x1="${x - 9}" x2="${x + 9}" y1="${y(l)}" y2="${y(l)}"/>`);
+      for (let l = bottomD + 10; l <= d; l += 2) out.push(`<line class="ledger" x1="${x - 9}" x2="${x + 9}" y1="${y(l)}" y2="${y(l)}"/>`);
+      const cls = marks[i] === 'hit' ? ' is-good' : marks[i] === 'miss' ? ' is-miss' : i === current ? ' is-now' : '';
+      const half = task.durs[i] === 2;
+      out.push(`<ellipse class="${half ? 'hd-o' : 'hd'}${cls}" cx="${x.toFixed(1)}" cy="${yy}" rx="5.8" ry="4.3" transform="rotate(-20 ${x.toFixed(1)} ${yy})"/>`);
+      const up = d < bottomD + 4;
+      out.push(`<line class="ln" x1="${(x + (up ? 5.2 : -5.2)).toFixed(1)}" x2="${(x + (up ? 5.2 : -5.2)).toFixed(1)}" y1="${yy}" y2="${yy + (up ? -26 : 26)}"/>`);
+    });
+    out.push(`<line class="ln" x1="${W - 6}" x2="${W - 6}" y1="${top}" y2="${bottomY}"/>`);
+    return `<svg viewBox="0 0 ${W} ${bottomY + 34}" role="img" aria-label="Melodie in Noten">${out.join('')}</svg>`;
+  }
+
+  /* ---- Ablauf ---- */
+
+  function clearSingTimers() { sing.timers.forEach(clearTimeout); sing.timers = []; }
+  function singBus() {
+    engine.fadeBus(sing.bus);
+    sing.bus = engine.newBus();
+    return sing.bus;
+  }
+  const singLevel = () => sing.levels[sing.mode];
+
+  /** Neue Aufgabe im aktuellen Modus (nicht beim Tuner). */
+  async function startSingTask() {
+    clearSingTimers();
+    try { await engine.start(); } catch { setSingFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); return; }
+    const needsMic = sing.mode !== 'dictation';
+    if (needsMic && !voice.analyser) {
+      setSingFeedback('Mikrofon wird geöffnet …', '');
+      if (!(await micOn('sing'))) { setSingFeedback(voice.error, 'bad'); renderSing(); return; }
+    }
+    sing.task = makeSingTask(sing.mode, singLevel(), singRange(), { log: sing.log, previousKey: sing.lastKey, solfa: sing.solfa });
+    sing.lastKey = sing.task.key || null;
+    sing.task.marks = [];
+    sing.task.idx = 0;
+    sing.task.input = sing.mode === 'dictation' ? [sing.task.degs[0]] : null;
+    sing.task.plays = 0;
+    setSingFeedback('', '');
+    sing.phase = 'cue';
+    renderSing();
+    playSingCue();
+  }
+
+  /** Einstimmung bzw. Vorgabe spielen; danach singen (Mikrofon-Modi). */
+  function playSingCue() {
+    const task = sing.task;
+    if (!task) return;
+    clearSingTimers();
+    const bus = singBus();
+    const t0 = engine.ctx.currentTime + .08;
+    const k = (m, t, dur, v = .18) => engine.keys(m, t, dur, { velocity: v, dest: bus });
+    let end = t0;
+    if (task.mode === 'singInterval' || task.mode === 'hold') { k(task.mode === 'hold' ? task.target : task.base, t0, 1.5, .22); end = t0 + 1.5; }
+    else if (task.mode === 'findTone') {
+      if (task.cue === 'a4') { k(69, t0, 2, .22); end = t0 + 2; }
+      else {
+        const tonic = task.kmode === 'minor' ? 'i' : 'I';
+        const symbols = task.cue === 'cadence' ? (task.kmode === 'minor' ? ['i', 'iv', 'V', 'i'] : ['I', 'IV', 'V', 'I']) : [tonic];
+        const satb = satbOf(task.key, symbols);
+        const dur = task.cue === 'cadence' ? 1 : 2;
+        satb.forEach((c, i) => SATB_PARTS.forEach((x) => k(c[x], t0 + i * dur, dur * .95, .13)));
+        end = t0 + satb.length * dur;
+      }
+    } else {
+      // Blattsingen/Diktat: Tonika-Akkord und Grundton (in Moll auf la)
+      const tonicMidi = task.minor ? task.doMidi - 3 : task.doMidi;
+      const [c] = satbOf(mod(tonicMidi, 12), [task.minor ? 'i' : 'I']);
+      SATB_PARTS.forEach((x) => k(c[x], t0, 1.4, .12));
+      k(tonicMidi, t0 + 1.5, 1, .22);
+      end = t0 + 2.6;
+      if (task.mode === 'dictation') {
+        const beat = 60 / 72;
+        let t = end + .4;
+        for (let rep = 0; rep < 2; rep++) {
+          task.notes.forEach((m, i) => { k(m, t, task.durs[i] * beat * .92, .22); t += task.durs[i] * beat; });
+          t += 4 * beat * .5;
+        }
+        end = t;
+        task.plays++;
+      }
+    }
+    const wait = Math.max(0, (end - engine.ctx.currentTime) * 1000 + 200);
+    sing.timers.push(setTimeout(() => {
+      if (sing.task !== task) return;
+      if (task.mode === 'dictation') { sing.phase = 'answer'; renderSing(); return; }
+      beginSinging();
+    }, wait));
+  }
+
+  function beginSinging() {
+    const task = sing.task;
+    sing.phase = task.mode === 'hold' ? 'holdWait' : 'sing';
+    if (task.mode === 'sight') sing.judge = makePitchJudge({ target: task.notes[task.idx], tolerance: task.tolerance, holdSec: .3, timeoutSec: Infinity });
+    else if (task.mode !== 'hold') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: .5, timeoutSec: 8 });
+    task.samples = [];
+    task.onset = null;
+    renderSing();
+  }
+
+  /** Ein Bild vom Mikrofon (Verbraucher 'sing'). */
+  singFrame = function (now) {
+    voice.analyser.getFloatTimeDomainData(voice.buffer);
+    const r = detectPitch(voice.buffer, engine.ctx.sampleRate);
+    const clarity = r ? r.clarity : 0;
+    const raw = r && clarity >= .85 ? hzToMidi(r.freq) : null;
+    const task = sing.task;
+    const shown = pitchStep(now, raw);
+    const target = task ? (task.mode === 'sight' ? task.notes[task.idx] : task.target) : null;
+    sing.live = shown === null || target == null ? null : { midi: shown, cents: (mod(shown - target + 6, 12) - 6) * 100 };
+    renderSingLive();
+    if (!task) return;
+    if (sing.phase === 'sing' && sing.judge) {
+      const res = sing.judge.push(now, raw, clarity);
+      if (res) onSingJudged(res);
+    } else if (sing.phase === 'holdWait' && raw !== null) {
+      task.onset = now; sing.phase = 'hold'; renderSing();
+    } else if (sing.phase === 'hold') {
+      const from = task.onset + .4;
+      const to = from + task.sec;
+      if (now >= from && shown !== null) task.samples.push({ t: now - from, cents: (shown - task.target) * 100, rms: r ? r.rms : 0 });
+      $('.sing-progress i').style.width = `${clamp((now - task.onset) / (task.sec + .4), 0, 1) * 100}%`;
+      if (now >= to) finishHold();
+    }
+  };
+
+  function centsText(c) { const a = Math.round(Math.abs(c)); return a < 10 ? 'genau' : `${a} Cent ${c < 0 ? 'darunter' : 'darüber'}`; }
+
+  function onSingJudged(res) {
+    const task = sing.task;
+    sing.judge = null;
+    if (task.mode === 'sight') {
+      task.marks[task.idx] = 'hit';
+      task.idx++;
+      if (task.idx < task.notes.length) { sing.judge = makePitchJudge({ target: task.notes[task.idx], tolerance: task.tolerance, holdSec: .3, timeoutSec: Infinity }); renderSing(); return; }
+      finishSight();
+      return;
+    }
+    const oct = res.hit && res.octaveOff ? ` — eine Oktave ${res.octaveOff < 0 ? 'tiefer' : 'höher'} gesungen, der Ton stimmt` : '';
+    const text = res.hit ? `Treffer: ${centsText(res.cents)}${oct}.`
+      : Number.isNaN(res.cents) ? 'Kein Ton erkannt — noch einmal, etwas lauter oder näher am Mikrofon.'
+      : `Noch ${centsText(res.cents)} — hör den Zielton und probier es noch einmal.`;
+    if (task.mode === 'singInterval') {
+      const log = (sing.log[task.semis] ||= []);
+      log.push(res.hit); if (log.length > INTERVAL_MEMORY) log.shift();
+    }
+    finishSing(res.hit, text, { cents: res.cents });
+    // Zielton zum Vergleich
+    const bus = singBus();
+    engine.keys(task.target, engine.ctx.currentTime + .15, 1.2, { velocity: .2, dest: bus });
+  }
+
+  function finishHold() {
+    const task = sing.task;
+    const st = holdStats(task.samples);
+    const expected = task.sec * 50;
+    if (!st || task.samples.length < expected * .15) { finishSing(false, 'Zu wenig Ton erkannt — noch einmal, ruhig und gleichmäßig.', {}); return; }
+    const parts = [`Lage ${st.mean >= 0 ? '+' : '−'}${Math.round(Math.abs(st.mean))} Cent`, `${st.sd <= 12 ? 'ruhig' : 'noch unruhig'} (±${Math.round(st.sd)} Cent)`];
+    if (Math.abs(st.trend) >= 2) parts.push(`${st.trend < 0 ? 'sinkt' : 'steigt'} am Ende leicht (${st.trend < 0 ? '−' : '+'}${Math.abs(st.trend).toFixed(0)} Cent/s)`);
+    else parts.push('bleibt stabil');
+    let text = parts.join(' · ');
+    if (task.dyn === 'cresc' || task.dyn === 'messa') {
+      const drift = loudnessDrift(task.samples);
+      if (Math.abs(drift) >= 8) text += `. Beim Lauterwerden ${Math.round(Math.abs(drift))} Cent ${drift > 0 ? 'gestiegen' : 'gesunken'} – die Tonhöhe beim Lauterwerden bewusst halten.`;
+    }
+    finishSing(holdHit(st), text, { value: Math.abs(st.mean) });
+  }
+
+  function finishSight() {
+    const task = sing.task;
+    const hits = task.marks.filter((m) => m === 'hit').length;
+    const ok = hits === task.notes.length;
+    finishSing(ok, ok ? 'Alle Töne getroffen — hör dir die Melodie noch einmal an.' : `${hits} von ${task.notes.length} Tönen getroffen — hör dir die Melodie an.`, { value: hits / task.notes.length });
+    playMelody(task);
+  }
+
+  function playMelody(task) {
+    const bus = singBus();
+    const beat = 60 / 72;
+    let t = engine.ctx.currentTime + .2;
+    task.notes.forEach((m, i) => { engine.keys(m, t, task.durs[i] * beat * .92, { velocity: .22, dest: bus }); t += task.durs[i] * beat; });
+  }
+
+  function finishSing(ok, text, { value } = {}) {
+    const task = sing.task;
+    sing.phase = 'result';
+    task.ok = ok;
+    const st = sing.stats[task.mode];
+    st.total++; if (ok) st.right++;
+    setSingFeedback(text, ok ? 'ok' : 'bad');
+    onSingResult(task, ok, value);
+    renderSing();
+  }
+  /** Haken für Fortschritt und „Heute üben“ (Paket 6/7). */
+  function onSingResult() {}
+
+  function skipSightNote() {
+    const task = sing.task;
+    if (!task || task.mode !== 'sight' || sing.phase !== 'sing') return;
+    task.marks[task.idx] = 'miss';
+    task.idx++;
+    if (task.idx < task.notes.length) { sing.judge = makePitchJudge({ target: task.notes[task.idx], tolerance: task.tolerance, holdSec: .3, timeoutSec: Infinity }); renderSing(); }
+    else finishSight();
+  }
+
+  function answerDictation(value) {
+    const task = sing.task;
+    if (!task || sing.phase !== 'answer') return;
+    if (value === 'back') { if (task.input.length > 1) task.input.pop(); renderSing(); return; }
+    task.input.push(Number(value));
+    if (task.input.length < task.degs.length) { renderSing(); return; }
+    const right = task.input.filter((d, i) => d === task.degs[i]).length;
+    const ok = right === task.degs.length;
+    task.marks = task.degs.map((d, i) => (task.input[i] === d ? 'hit' : 'miss'));
+    finishSing(ok, ok ? 'Alles richtig!' : `${right} von ${task.degs.length} Tönen richtig — die richtigen Silben stehen darunter.`, { value: right / task.degs.length });
+  }
+
+  function stopSing() {
+    clearSingTimers();
+    sing.task = null; sing.phase = 'idle'; sing.judge = null;
+    if (engine.ctx) engine.fadeBus(sing.bus);
+    if (voice.consumer === 'sing') micOff();
+  }
+
+  /* ---- Anzeige ---- */
+
+  function setSingFeedback(text, kind) {
+    const el = $('.sing-feedback');
+    el.textContent = text;
+    el.className = `sing-feedback ear-feedback${kind ? ` is-${kind}` : ''}`;
+  }
+
+  function renderSingLive() {
+    const out = $('.sing-live');
+    if (!out) return;
+    const live = sing.live;
+    if (!live || !sing.task || !['sing', 'hold', 'holdWait'].includes(sing.phase)) { out.textContent = sing.phase === 'sing' || sing.phase === 'holdWait' ? 'Sing …' : ''; return; }
+    out.textContent = `${noteLabel(Math.round(live.midi))} · ${centsText(live.cents)}`;
+  }
+
+  function renderSing() {
+    chips('singMode', SING_MODES, sing.mode);
+    const tuner = sing.mode === 'tuner';
+    $$('[data-sing-only]').forEach((el) => { el.hidden = (el.dataset.singOnly === 'tuner') !== tuner; });
+    if (tuner) return;
+    const levels = SING_LEVEL_TABLE[sing.mode]();
+    $('[data-levels="sing"]').innerHTML = levelControlHtml(`sing-${sing.mode}`, levels, sing.levels[sing.mode], levelHints[sing.mode]);
+    chips('singPart', SATB_PARTS.map((x) => [x, PART_NAMES[x]]), ear.part);
+    chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
+    $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval'].includes(sing.mode);
+    const task = sing.task;
+    const prompt = $('.sing-prompt');
+    const sub = $('.sing-sub');
+    const view = $('.sing-view');
+    const answers = $('.sing-answers');
+    answers.replaceChildren();
+    view.innerHTML = '';
+    $('.sing-progress').hidden = sing.mode !== 'hold' || !task;
+    const phaseText = { cue: 'Hör zu …', sing: 'Jetzt singen', holdWait: 'Setz ein, wenn du bereit bist', hold: 'Halten …', answer: 'Welche Silben?', result: '' };
+    const r = singRange();
+    if (!task) {
+      const intro = {
+        singInterval: 'Ein Grundton — du singst das Intervall.',
+        findTone: 'Akkord oder a′ — du findest deinen Ton.',
+        hold: 'Einen Ton ruhig halten — Lage, Ruhe und Trend.',
+        sight: 'Eine kurze Melodie vom Blatt singen, Ton für Ton.',
+        dictation: 'Eine kurze Melodie hören und aufschreiben.',
+      }[sing.mode];
+      prompt.textContent = intro;
+      sub.textContent = `${PART_NAMES[ear.part]} · Töne zwischen ${noteLabel(r.lo)} und ${noteLabel(r.hi)}${sing.mode === 'dictation' ? '' : ' · mit Kopfhörern'}`;
+    } else if (task.mode === 'singInterval') {
+      prompt.textContent = `${intervalName(task.semis)} ${task.dir === 'down' ? 'abwärts' : 'aufwärts'}`;
+      sub.textContent = `${sing.showSolfa ? `${intervalSolfa(task.semis, task.dir)} · ` : ''}Grundton ${noteLabel(task.base)} · ${phaseText[sing.phase] || ''}`;
+    } else if (task.mode === 'findTone') {
+      prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
+      sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${task.cue === 'cadence' ? ' · nach der Kadenz' : ''}`} · ${phaseText[sing.phase] || ''}`;
+    } else if (task.mode === 'hold') {
+      prompt.textContent = `${noteLabel(task.target)} halten — ${task.sec} Sekunden`;
+      sub.textContent = `${{ mf: 'mittlere Lautstärke', cresc: 'dabei lauter werden', pp: 'leise', messa: 'an- und abschwellen' }[task.dyn]} · ${phaseText[sing.phase] || ''}`;
+    } else {
+      const minor = task.minor;
+      prompt.textContent = task.mode === 'sight' ? 'Sing die Melodie' : 'Schreib die Melodie auf';
+      sub.textContent = [minor ? 'Moll (la)' : 'Dur (do)', phaseText[sing.phase], task.mode === 'dictation' ? `gehört ${task.plays}×` : ''].filter(Boolean).join(' · ');
+      const labels = task.degs.map((d) => solfaOf(d, sing.solfa, minor));
+      const row = document.createElement('div');
+      row.className = 'sing-syls';
+      const shownDegs = task.mode === 'dictation' ? task.input : task.degs;
+      task.degs.forEach((d, i) => {
+        const span = document.createElement('span');
+        span.className = 'sing-syl';
+        const given = shownDegs[i];
+        span.textContent = given === undefined ? '?' : solfaOf(given, sing.solfa, minor);
+        if (task.marks[i]) span.classList.add(task.marks[i] === 'hit' ? 'is-ok' : 'is-bad');
+        else if (task.mode === 'sight' && i === task.idx && sing.phase === 'sing') span.classList.add('is-now');
+        if (task.mode === 'dictation' && sing.phase === 'result' && task.marks[i] === 'miss') { const s = document.createElement('small'); s.textContent = labels[i]; span.append(s); }
+        row.append(span);
+      });
+      view.append(row);
+      if (task.mode === 'sight') view.insertAdjacentHTML('beforeend', `<div class="stage sing-staff">${melodyStaffSvg(task, PART_CLEF[ear.part], sing.phase === 'sing' ? task.idx : -1, task.marks)}</div>`);
+      if (task.mode === 'dictation' && sing.phase === 'answer') {
+        const pool = SIGHT_LEVELS[task.level - 1].pool;
+        answers.replaceChildren(...pool.map((d, i) => answerButton(d, solfaOf(d, sing.solfa, minor), { dataset: 'dict', aria: `${i + 1}: ${solfaOf(d, sing.solfa, minor)}` })),
+          answerButton('back', '⌫', { dataset: 'dict', cls: 'is-backspace', aria: 'Letzte Silbe löschen', disabled: task.input.length <= 1 }));
+      }
+    }
+    // Knöpfe
+    $('[data-sing="start"]').hidden = !!task && sing.phase !== 'result';
+    $('[data-sing="start"]').textContent = task ? 'Nächste Aufgabe' : 'Start';
+    $('[data-sing="replay"]').hidden = !task || (task.mode === 'dictation' && (task.plays >= 3 || sing.phase === 'result'));
+    $('[data-sing="replay"]').textContent = task?.mode === 'dictation' ? `Noch einmal hören (${3 - task.plays} übrig)` : 'Vorgabe noch einmal';
+    $('[data-sing="skip"]').hidden = !(task?.mode === 'sight' && sing.phase === 'sing');
+    $('[data-sing="stop"]').hidden = !task && !voice.analyser;
+    const st = sing.stats[sing.mode];
+    $('.sing-score').textContent = st.total ? `${st.right}/${st.total} ${sing.mode === 'hold' ? 'ruhig gehalten' : 'getroffen'}` : '';
+    renderSingLive();
   }
 
   /* ------------------------------------------------------------------------
@@ -3064,6 +3781,7 @@
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
+      sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa },
     };
   }
 
@@ -3141,6 +3859,12 @@
     if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
     if (typeof v.useTarget === 'boolean') voice.useTarget = v.useTarget;
     if (A4_CHOICES.includes(v.a4)) tuningA4 = v.a4;
+    const sg = data.sing && typeof data.sing === 'object' ? data.sing : {};
+    if (SING_MODES.some(([id]) => id === sg.mode)) sing.mode = sg.mode;
+    const sl = sg.levels && typeof sg.levels === 'object' ? sg.levels : {};
+    for (const k of Object.keys(sing.levels)) if (Number.isInteger(sl[k]) && sl[k] >= 1 && sl[k] <= 6) sing.levels[k] = sl[k];
+    if (sg.solfa === 'syllables' || sg.solfa === 'numbers') sing.solfa = sg.solfa;
+    if (typeof sg.showSolfa === 'boolean') sing.showSolfa = sg.showSolfa;
   }
 
   /* ------------------------------------------------------------------------
@@ -3180,6 +3904,42 @@
       if (action === 'reset') { if (state.input === 'mic') state.micLatencyMs = 0; else state.latency = 0; }
       if (action === 'suggest' && lastMeanOff() !== null) state.latency = clamp(Math.round(state.latency * 1000 + lastMeanOff()) / 1000, -.05, .3);
       renderSettings();
+      return;
+    }
+
+    // --- Singen
+    const singBtn = e.target.closest('[data-sing]');
+    if (singBtn) {
+      const action = singBtn.dataset.sing;
+      if (action === 'start') startSingTask();
+      else if (action === 'replay' && sing.task) { if (sing.phase !== 'result') sing.judge = null; playSingCue(); }
+      else if (action === 'skip') skipSightNote();
+      else if (action === 'stop') { stopSing(); setSingFeedback('', ''); renderSing(); }
+      return;
+    }
+    const dict = e.target.closest('[data-dict]');
+    if (dict) { answerDictation(dict.dataset.dict); return; }
+    const singLevelBtn = e.target.closest('[data-level-area^="sing-"]');
+    if (singLevelBtn) {
+      sing.levels[singLevelBtn.dataset.levelArea.slice(5)] = Number(singLevelBtn.dataset.levelN);
+      clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null; setSingFeedback('', '');
+      renderSing();
+      return;
+    }
+    const singChip = e.target.closest('[data-chip="singMode"], [data-chip="singPart"], [data-chip="solfa"]');
+    if (singChip) {
+      const v = singChip.dataset.value;
+      if (singChip.dataset.chip === 'singMode' && v !== sing.mode) {
+        stopSing();
+        if (voice.analyser) micOff();
+        sing.mode = v; setSingFeedback('', '');
+        renderVoice();
+      } else if (singChip.dataset.chip === 'singPart' && v !== ear.part) {
+        ear.part = v;
+        try { profileApi?.set({ part: v }); } catch { /* App weg */ }
+        clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null;
+      } else if (singChip.dataset.chip === 'solfa') sing.solfa = v;
+      renderSing();
       return;
     }
 
@@ -3323,7 +4083,13 @@
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     if (!$('.sheet').hidden) return;
-    if (state.tab === 'voice') return;
+    if (state.tab === 'voice') {
+      if (/^[1-9]$/.test(e.key) && sing.phase === 'answer') {
+        const btn = $$('.sing-answers .answer:not(.is-backspace)')[Number(e.key) - 1];
+        if (btn) { e.preventDefault(); btn.click(); }
+      } else if (e.key === 'Backspace' && sing.phase === 'answer') { e.preventDefault(); answerDictation('back'); }
+      return;
+    }
     if (state.tab === 'ear' && /^[1-9]$/.test(e.key)) {
       // Ziffern 1–9 wählen die Antworten (Barrierefreiheit).
       const btn = $$('.answer-grid .answer:not(.is-backspace)')[Number(e.key) - 1];
@@ -3637,6 +4403,104 @@
     return errors;
   }
 
+  /** Didaktik Paket 5: Treffer-Logik, Ziele im Umfang, a′-Aufgaben,
+   *  Ton halten, Melodien. */
+  function singPackageCheck() {
+    const errors = [];
+    let seed = 5;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    // Treffer-Logik mit synthetischen Tonhöhen (60 Bilder/s).
+    const judgeRun = (pitchAt, opts = {}) => {
+      const j = makePitchJudge({ target: 60, tolerance: 50, holdSec: .5, timeoutSec: 4, ...opts });
+      for (let t = 0; t < 5; t += 1 / 60) { const r = j.push(t, pitchAt(t), .95); if (r) return r; }
+      return j.result;
+    };
+    const near = judgeRun(() => 60.2);
+    if (!near?.hit || Math.abs(near.cents - 20) > 1) errors.push(`Treffer: +20 Cent → ${JSON.stringify(near)}`);
+    const nearDown = judgeRun(() => 59.8);
+    if (!nearDown?.hit) errors.push('Treffer: −20 Cent nicht getroffen');
+    const off = judgeRun(() => 60.6);
+    if (!off || off.hit || Math.abs(off.cents - 60) > 2) errors.push(`Treffer: +60 Cent → ${JSON.stringify(off)}`);
+    const oct = judgeRun(() => 48);
+    if (!oct?.hit || oct.octaveOff !== -1 || Math.abs(oct.cents) > 1) errors.push(`Treffer: exakt −1200 Cent → ${JSON.stringify(oct)}`);
+    const vib = judgeRun((t) => 60 + .5 * Math.sin(2 * Math.PI * 5.5 * t));
+    if (!vib?.hit) errors.push(`Treffer: Vibrato ±50 Cent → ${JSON.stringify(vib)}`);
+    const silent = judgeRun(() => null);
+    if (!silent || silent.hit || !Number.isNaN(silent.cents)) errors.push('Treffer: Stille nicht als „kein Ton“ gemeldet');
+    const unclear = makePitchJudge({ target: 60 });
+    for (let t = 0; t < 2; t += 1 / 60) unclear.push(t, 60, .5);
+    if (unclear.result) errors.push('Treffer: unklare Rahmen (clarity < .85) gezählt');
+    const longest = judgeRun((t) => (t < .5 ? 61.5 : t < .9 ? null : t < 2.5 ? 59.3 : null));
+    if (!longest || longest.hit || Math.abs(longest.cents + 70) > 3) errors.push(`Treffer: längster Versuch nicht gemeldet (${JSON.stringify(longest)})`);
+    // Alle Ziele aller Modi × 4 Stimmen im Übe-Umfang ± 2.
+    for (const part of SATB_PARTS) {
+      const range = singRange(part, null);
+      const std = H.PRACTICE_RANGES[part];
+      if (range.lo !== std.floor + 2 || range.hi !== std.ceil - 2) errors.push(`Umfang ${part}: ${range.lo}–${range.hi}`);
+      for (const mode of ['singInterval', 'findTone', 'hold', 'sight', 'dictation']) {
+        for (let n = 1; n <= 6; n++) {
+          let prev = null;
+          for (let i = 0; i < 40; i++) {
+            const task = makeSingTask(mode, n, range, { rnd, previousKey: prev });
+            prev = task.key || null;
+            const targets = task.notes || [task.target, ...(task.base !== undefined ? [task.base] : [])];
+            if (targets.some((m) => m < range.lo || m > range.hi)) errors.push(`${mode} Stufe ${n} ${part}: Ton außerhalb ${range.lo}–${range.hi} (${targets})`);
+            if (mode === 'findTone' && n === 6) {
+              if (task.name !== noteLabel(task.target) || mod(task.name.toLowerCase().replace(/[′″,]/g, '') === '' ? 0 : 0, 1)) errors.push('a′-Aufgabe: Name passt nicht');
+              const dist = task.dir === 'down' ? task.aRef - task.target : task.dir === 'up' ? task.target - task.aRef : 0;
+              if (dist !== task.semis || mod(task.aRef, 12) !== 9) errors.push(`a′-Aufgabe: ${task.text} (${task.target})`);
+              const pcName = spell(task.target).toLowerCase();
+              if (!task.name.toLowerCase().startsWith(pcName)) errors.push(`a′-Aufgabe: ${task.name} ≠ ${pcName}`);
+            }
+            if ((mode === 'sight' || mode === 'dictation') && mod(task.doMidi, 12) === 6) errors.push('Blattsingen in Ges-Dur');
+            if (mode === 'singInterval' && Math.abs(task.target - task.base) !== task.semis) errors.push('Intervall singen: Ziel ≠ Grundton ± Intervall');
+            if (mode === 'singInterval' && n < 6 && task.dir !== 'up') errors.push('Intervall singen: abwärts vor Stufe 6');
+          }
+        }
+      }
+    }
+    // Ton halten: synthetische Linie mit Trend −5 Cent/s → −5 ± 0,5.
+    const line = Array.from({ length: 400 }, (_, i) => ({ t: i / 50, cents: 8 - 5 * (i / 50) + Math.sin(i * 1.7) * 2, rms: .1 }));
+    const hs = holdStats(line);
+    if (!hs || Math.abs(hs.trend + 5) > .5) errors.push(`Ton halten: Trend ${hs?.trend}`);
+    if (holdHit({ mean: 10, sd: 8, trend: -3 }) !== true || holdHit({ mean: 25, sd: 8, trend: 0 }) !== false || holdHit({ mean: 0, sd: 13, trend: 0 }) !== false) errors.push('Ton halten: Treffer-Grenzen falsch');
+    const drift = loudnessDrift(Array.from({ length: 100 }, (_, i) => ({ cents: i < 50 ? 0 : 12, rms: i / 100 })));
+    if (Math.abs(drift - 12) > .5) errors.push(`Ton halten: Lauter-Drift ${drift}`);
+    // 1000 Melodien je Stufe: Pool, Länge, Start/Ende, Sprungregel.
+    for (const level of SIGHT_LEVELS) {
+      let prev = null;
+      for (let i = 0; i < 1000; i++) {
+        const mel = makeMelody(level.n, prev, rnd);
+        if (!mel) { errors.push(`Melodie Stufe ${level.n}: keine erzeugt`); break; }
+        if (mel.key === prev) errors.push(`Melodie Stufe ${level.n}: zweimal dieselbe`);
+        prev = mel.key;
+        const d = mel.degs;
+        if (!d.every((x) => level.pool.includes(x))) errors.push(`Melodie ${level.n}: Ton außerhalb des Pools ${d}`);
+        if (d.length < level.len[0] || d.length > level.len[1]) errors.push(`Melodie ${level.n}: Länge ${d.length}`);
+        if (!level.start.includes(d[0]) || !level.end.includes(d[d.length - 1])) errors.push(`Melodie ${level.n}: Start/Ende ${d}`);
+        if (!leapRuleOk(d)) errors.push(`Melodie ${level.n}: Sprungregel verletzt ${d}`);
+        if (!melodyOk(level, d, mel.durs)) errors.push(`Melodie ${level.n}: Regeln verletzt ${d} / ${mel.durs}`);
+      }
+    }
+    if (!leapRuleOk([0, 2, 4, 2, 0]) || leapRuleOk([0, 4, 5, 0]) || !leapRuleOk([0, 4, 3, 2, 1, 0]) || leapRuleOk([0, 1, 4])) errors.push('Sprungregel: Beispiele falsch');
+    if (solfaOf(-3) !== 'so,' || solfaOf(7) !== 'do′' || solfaOf(-2, 'numbers', true) !== '1' || solfaOf(0, 'numbers') !== '1' || solfaOf(4, 'numbers') !== '5') errors.push('Silben/Stufenzahlen falsch');
+    if (intervalSolfa(4, 'up') !== 'do → mi' || intervalSolfa(3, 'down') !== 'do → la,') errors.push(`Intervall-Silben: ${intervalSolfa(4, 'up')} / ${intervalSolfa(3, 'down')}`);
+    if (diatonicOf(60, 0) !== 28 || diatonicOf(61, 1) !== 29 || diatonicOf(71, 11) !== 34 || diatonicOf(64, 0) !== 30) errors.push('Notenzeile: Tonstufen falsch');
+    // Speichern/Laden
+    const saved = JSON.parse(JSON.stringify({ mode: sing.mode, levels: sing.levels, solfa: sing.solfa }));
+    const savedTab = state.tab;
+    try {
+      Object.assign(sing, { mode: 'sight', solfa: 'numbers' }); Object.assign(sing.levels, { sight: 4, hold: 6 });
+      const snap = JSON.parse(JSON.stringify(snapshot()));
+      Object.assign(sing, { mode: 'tuner', solfa: 'syllables' }); Object.assign(sing.levels, { sight: 1, hold: 1 });
+      restore(snap);
+      if (sing.mode !== 'sight' || sing.solfa !== 'numbers' || sing.levels.sight !== 4 || sing.levels.hold !== 6) errors.push('Singen: Speichern/Laden verliert Werte');
+      restore({ tab: savedTab, sing: { mode: 'x', levels: { sight: 0 }, solfa: 'abc' } });
+      if (sing.mode !== 'sight' || sing.levels.sight !== 4 || sing.solfa !== 'numbers') errors.push('Singen: kaputte Werte übernommen');
+    } finally { Object.assign(sing, { mode: saved.mode, solfa: saved.solfa }); Object.assign(sing.levels, saved.levels); state.tab = savedTab; }
+    return errors;
+  }
+
   /** Stimm-Tuner mit synthetischen Signalen durch detectPitch und die
    *  Glättung (Paket 11). Liefert Fehlermeldungen. */
   function tunerCheck() {
@@ -3762,6 +4626,7 @@
     errors.push(...rhythmCheck());
     errors.push(...rhythmPackageCheck());
     errors.push(...earPackageCheck());
+    errors.push(...singPackageCheck());
     // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
     {
       const saved = [voice.low, voice.high];
