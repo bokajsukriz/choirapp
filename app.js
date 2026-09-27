@@ -2103,7 +2103,7 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
-  tools:     { render: () => { renderQuickStart(); renderWeek(); } },
+  tools:     { render: () => { renderQuickStart(); renderWeek(); renderPracticeTiles(); } },
   settings:  { render: renderSettings },
 };
 
@@ -18671,6 +18671,34 @@ function runSelfTests() {
     }
   }
 
+  // Tools-Reiter (Umbau Tools, Paket 5): Schnellstarts, Minuten, Üben-Kacheln.
+  checks++;
+  {
+    const want = { short: ['einsingen.html', 'from=quick&program=kurz'], long: ['einsingen.html', 'from=quick&program=lang'], more: ['einsingen.html', ''],
+      rhythm: ['uebe-lab.html', 'tab=rhythm'], ear: ['uebe-lab.html', 'tab=ear'], sing: ['uebe-lab.html', 'tab=voice'] };
+    for (const [key, [page, query]] of Object.entries(want)) {
+      const def = QUICK_STARTS[key];
+      if (!def || def[0] !== page || def[2] !== query) failed.push(`QUICK_STARTS.${key}: ${JSON.stringify(def)}`);
+    }
+    for (const [stored, kurz, lang] of [[null, 5, 10], [undefined, 5, 10], [{}, 5, 10], [{ lengths: { kurz: 7, lang: 20 } }, 7, 20], [{ lengths: { kurz: 'x', lang: -3 } }, 5, 10]]) {
+      const m = warmupMinutes(stored);
+      if (m.kurz !== kurz || m.lang !== lang) failed.push(`warmupMinutes(${JSON.stringify(stored)}) = ${JSON.stringify(m)}`);
+    }
+    for (const group of ['rhythm', 'ear', 'sing']) {
+      const st = practiceTileState(emptyProgress(), group);
+      if (!st.isNew) failed.push(`Üben-Kachel ${group}: leerer Fortschritt nicht „Neu“`);
+    }
+    // Beispiel: Intervalle (Stufe 4) vorgestern, Klänge (Stufe 2) heute →
+    // Hören zeigt 2; gleicher Tag bei zwei Modi → höchste Stufe; Singen neu.
+    const sample = applyProgressEntries(emptyProgress(), [{ area: 'interval', level: 4, right: true }], '2026-10-10');
+    applyProgressEntries(sample, [{ area: 'quality', level: 2, right: true }, { area: 'rhythm', level: 3, right: false }], '2026-10-12');
+    const ear = practiceTileState(sample, 'ear');
+    if (ear.isNew || ear.level !== 2) failed.push(`Üben-Kachel Hören: ${JSON.stringify(ear)} statt Stufe 2`);
+    if (practiceTileState(sample, 'rhythm').level !== 3 || !practiceTileState(sample, 'sing').isNew) failed.push('Üben-Kachel Rhythmus/Singen falsch');
+    applyProgressEntries(sample, [{ area: 'parts', level: 5, right: true }], '2026-10-12');
+    if (practiceTileState(sample, 'ear').level !== 5) failed.push('Üben-Kachel Hören: gleicher Tag nicht höchste Stufe');
+  }
+
   const total = checks;
   if (failed.length) {
     console.error(`[Selbsttest] ${failed.length} von ${total} Prüfungen fehlgeschlagen:`);
@@ -18878,7 +18906,6 @@ async function runProgressSelfTests() {
   const sum = await store.summary(7);
   if (sum.practicedDays !== 1 || sum.areas.rhythm?.level !== 2 || sum.days.length !== 7) failed.push(`Fortschritt: Zusammenfassung falsch ${JSON.stringify(sum)}`);
   if ((await store.levelHint('rhythm')).level !== 2) failed.push('Fortschritt: levelHint kennt die zuletzt benutzte Stufe nicht');
-  if (progressMeanLevel([2, 3, 5]) !== 3.3 || progressMeanLevel([4]) !== 4 || progressMeanLevel([1, 2]) !== 1.5) failed.push('Fortschritt: mittlere Stufe falsch');
   return failed;
 }
 
@@ -22209,7 +22236,7 @@ function closeToolFrame({ fromHistory = false } = {}) {
   host.hidden = true;
   document.body.style.overflow = '';
   updateMetronomeFab();
-  if (currentView === 'tools') { renderQuickStart(); window.chorProgress.flush().then(renderWeek); }
+  if (currentView === 'tools') { renderQuickStart(); window.chorProgress.flush().then(() => { renderWeek(); renderPracticeTiles(); }); }
   const fab = $('#metronome-fab');
   // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
   // Ebene; dann auf den Schnellzugriff, falls da.
@@ -22571,38 +22598,104 @@ function weekDates(date = progressDate()) {
 }
 
 /* ==========================================================================
-   SCHNELLSTART — vier Knöpfe oben im Tools-Reiter: Einsingen 5 oder 10
-   Minuten (mit der zuletzt geübten Stimme aus dem Stimmprofil), Hören und
-   Singen (je ein Programm, das mehrere Übungen nacheinander packt — die
-   Ketten stehen in uebe-lab.html, QUICK_CHAINS).
+   SCHNELLSTART — Tools-Reiter: Einsingen Kurz/Lang (Programm direkt im
+   Spielmodus, Länge aus der Tool-Ablage von einsingen) und „Mehr“ (die
+   Übersicht aller Programme und Übungen); Rhythmus, Hören und Singen öffnen
+   uebe-lab.html direkt im jeweiligen Bereich (Liste der Übungsarten).
    ========================================================================== */
 const QUICK_STARTS = {
-  warmup5: ['einsingen.html', 'settings.tools.warmup', 'from=quick&minutes=5'],
-  warmup10: ['einsingen.html', 'settings.tools.warmup', 'from=quick&minutes=10'],
-  ear: ['uebe-lab.html', 'settings.tools.playground', 'from=quick&tab=ear'],
-  sing: ['uebe-lab.html', 'settings.tools.playground', 'from=quick&tab=voice'],
+  short: ['einsingen.html', 'settings.tools.warmup', 'from=quick&program=kurz'],
+  long: ['einsingen.html', 'settings.tools.warmup', 'from=quick&program=lang'],
+  more: ['einsingen.html', 'settings.tools.warmup', ''],
+  rhythm: ['uebe-lab.html', 'tools.practice.rhythm', 'tab=rhythm'],
+  ear: ['uebe-lab.html', 'tools.practice.ear', 'tab=ear'],
+  sing: ['uebe-lab.html', 'tools.practice.sing', 'tab=voice'],
 };
+const WARMUP_DEFAULT_MINUTES = { kurz: 5, lang: 10 };
+
+/** Minuten für Kurz/Lang aus dem gespeicherten Stand von einsingen.html
+ *  (`lengths`, dort in den Einstellungen wählbar); fehlt er → 5/10. */
+function warmupMinutes(stored) {
+  const lengths = stored && typeof stored === 'object' && stored.lengths && typeof stored.lengths === 'object' ? stored.lengths : {};
+  const pick = (id) => (Number.isInteger(lengths[id]) && lengths[id] >= 1 && lengths[id] <= 60 ? lengths[id] : WARMUP_DEFAULT_MINUTES[id]);
+  return { kurz: pick('kurz'), lang: pick('lang') };
+}
+
+/** Stand einer Üben-Kachel (Gruppe aus PROGRESS_GROUPS): Stufe des zuletzt
+ *  geübten Modus. Zuletzt geübt = jüngstes Datum in recent/days; ist das
+ *  nicht eindeutig, die höchste Stufe im Bereich. Nie geübt → { isNew }.
+ *  Stufe 0 = eigene Auswahl. */
+function practiceTileState(data, group) {
+  const areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area]));
+  if (!areas.length) return { isNew: true, level: 0 };
+  const lastDate = (area) => {
+    let last = '';
+    for (const r of data.recent?.[area] || []) if (r.d > last) last = r.d;
+    for (const [date, day] of Object.entries(data.days || {})) if (day?.[area] && date > last) last = date;
+    return last;
+  };
+  const dates = areas.map(lastDate);
+  const newest = dates.reduce((a, b) => (b > a ? b : a), '');
+  const latest = areas.filter((_, i) => newest && dates[i] === newest);
+  const level = latest.length === 1 ? data.levels[latest[0]] : Math.max(...areas.map((area) => data.levels[area]));
+  return { isNew: false, level };
+}
 
 function renderQuickStart() {
   const line = $('#quick-voice');
   if (!line) return;
   const part = window.chorVoiceProfile.get().part;
   line.textContent = part ? t('tools.quick.voice').replace('{part}', t(`tools.area.part${part}`)) : t('tools.quick.noVoice');
+  const paint = (minutes) => {
+    // Geschützte Leerzeichen: bricht der Knopf um, dann nach „·“, nie in „10 Min.“.
+    const label = (key, n) => t(key).replace('{n}', n).replace(/ (?=\S*$)/, '\u00a0').replace(/(\d) /, '$1\u00a0');
+    $('#warmup-short').textContent = label('tools.warmup.short', minutes.kurz);
+    $('#warmup-long').textContent = label('tools.warmup.long', minutes.lang);
+  };
+  paint(WARMUP_DEFAULT_MINUTES);
+  window.chorToolStorage.load('einsingen').then((stored) => paint(warmupMinutes(stored))).catch(() => {});
+}
+
+/** Üben-Kacheln: Stufe (Text + Sechs-Segment-Strahl) bzw. „Neu“. */
+async function renderPracticeTiles() {
+  const tiles = $$('#practice-tiles [data-practice]');
+  if (!tiles.length) return;
+  let data;
+  try { data = await window.chorProgress.data(); } catch { data = emptyProgress(); }
+  for (const tile of tiles) {
+    const key = tile.dataset.practice;
+    const st = practiceTileState(data, key);
+    const host = tile.querySelector('[data-practice-level]');
+    const text = st.isNew ? t('tools.area.new') : st.level ? t('tools.week.level').replace('{n}', st.level) : t('tools.week.custom');
+    const label = document.createElement('span');
+    label.textContent = text;
+    const nodes = [label];
+    if (!st.isNew) {
+      const bar = document.createElement('span');
+      bar.className = 'level-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      for (let i = 1; i <= 6; i++) {
+        const seg = document.createElement('i');
+        if (i <= st.level) seg.className = 'is-on';
+        bar.append(seg);
+      }
+      nodes.push(bar);
+    }
+    host.replaceChildren(...nodes);
+    tile.setAttribute('aria-label', `${t(`tools.practice.${key}`)}, ${text}`);
+  }
 }
 
 function initQuickStart() {
-  $('#quick-start').addEventListener('click', (event) => {
+  $('#view-tools').addEventListener('click', (event) => {
     const btn = event.target.closest('[data-quick]');
     const def = btn && QUICK_STARTS[btn.dataset.quick];
     if (def) openToolFrame(...def);
   });
 }
 
-/** Mittlere Stufe (auf eine Nachkommastelle) für die eingeklappte Anzeige. */
-const progressMeanLevel = (levels) => Math.round(10 * levels.reduce((a, b) => a + b, 0) / levels.length) / 10;
-
-/** Statistik „Fortschritt“ (eingeklappt: mittlere Stufe): sieben Punkte Mo–So (keine Serien), Einsing-
- *  Minuten der Woche und je geübtem Bereich ein Strahl mit der Stufe. */
+/** „Dein Stand“: sieben Punkte Mo–So (keine Serien), darunter die Tage und
+ *  die Einsing-Minuten der Woche. Die Stufen stehen auf den Üben-Kacheln. */
 async function renderWeek() {
   const body = $('#tools-week-body');
   if (!body) return;
@@ -22631,39 +22724,6 @@ async function renderWeek() {
     ? `${t('tools.week.days').replace('{n}', practiced.length)}${warm ? ` · ${t('tools.week.warmup').replace('{n}', Math.round(warm))}` : ''}`
     : t('tools.week.none');
   frag.append(dots, line);
-  const areas = PROGRESS_AREAS.filter((area) => area !== 'warmup' && area in data.levels);
-  // Eingeklappt: Mittel über alle Stufen (ohne eigene Auswahl = 0).
-  const levels = areas.map((area) => data.levels[area]).filter((l) => l > 0);
-  const mean = levels.length ? progressMeanLevel(levels) : null;
-  $('#tools-week-summary').textContent = mean === null ? t('tools.week.summaryNone')
-    : t('tools.week.summary').replace('{n}', mean.toLocaleString(settings.language || 'de', { maximumFractionDigits: 1 }));
-  if (areas.length) {
-    const list = document.createElement('ul');
-    list.className = 'level-bars';
-    for (const area of areas) {
-      const level = data.levels[area];
-      const li = document.createElement('li');
-      const label = document.createElement('span');
-      label.className = 'level-bar-name';
-      label.textContent = t(`tools.area.${area}`);
-      const bar = document.createElement('span');
-      bar.className = 'level-bar';
-      bar.setAttribute('role', 'img');
-      const text = level ? t('tools.week.level').replace('{n}', level) : t('tools.week.custom');
-      bar.setAttribute('aria-label', `${label.textContent}: ${text}`);
-      for (let i = 1; i <= 6; i++) {
-        const seg = document.createElement('i');
-        if (i <= level) seg.className = 'is-on';
-        bar.append(seg);
-      }
-      const value = document.createElement('span');
-      value.className = 'level-bar-value';
-      value.textContent = level ? `${level}/6` : '–';
-      li.append(label, bar, value);
-      list.append(li);
-    }
-    frag.append(list);
-  }
   body.replaceChildren(frag);
 }
 
@@ -22697,15 +22757,13 @@ function initGrooveLabEasterEgg() {
   });
 }
 
-/** Tools-Reiter: Metronom, Groove Lab, Einsingen, Piano und Ausbildung (die
- *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
+/** Tools-Reiter: Metronom, Groove Lab und Piano (Einsingen und Üben laufen
+ *  über QUICK_STARTS, die Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
   initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
-  $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
   $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
-  $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));
   $('#metronome-fab-stop').addEventListener('click', stopBackgroundMetronome);

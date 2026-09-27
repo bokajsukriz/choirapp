@@ -127,9 +127,34 @@
   .stage .voice-l.is-own { fill: var(--accent); }
   /* Einheitliches Stufen-Element */
   .level-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .level-row .level-chip { min-width: 44px; min-height: 44px; }
-  .level-chip.has-dot { position: relative; }
-  .level-chip.has-dot::after { content: ""; position: absolute; top: 3px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  /* Stufen-Stepper: ‹  Stufe 3 · Text  › — ausgeblendete Pfeile lassen ihre
+     Spalte frei, damit die Mitte nicht springt. */
+  .level-stepper { display: grid; grid-template-columns: 44px 1fr 44px auto; align-items: center; gap: 6px; }
+  .level-stepper .lv-prev { grid-column: 1; }
+  .level-stepper .lv-mid { grid-column: 2; text-align: center; font-size: .8rem; font-weight: 800; line-height: 1.3; }
+  .level-stepper .lv-next { grid-column: 3; }
+  .level-stepper .help-btn { grid-column: 4; }
+  .lv-step { width: 44px; height: 44px; border-radius: 13px; border: 1px solid var(--line); background: var(--surface); font-size: 1.3rem; font-weight: 800; color: var(--text); line-height: 1; position: relative; }
+  .lv-step.has-dot::after { content: ""; position: absolute; top: 4px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  /* Liste der Übungsarten */
+  .area-title { display: none; }
+  .mode-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+  .mode-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: 60px; text-align: left; padding: 8px 12px 8px 8px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+  .mode-row .mode-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--text); }
+  .mode-row .mode-ico svg { width: 24px; height: 24px; }
+  .mode-row strong { display: block; font-size: .9rem; }
+  .mode-row .mode-how { display: block; font-size: .76rem; font-weight: 600; color: #5f5577; margin-top: 1px; }
+  .mode-row .mode-lv { font-size: .72rem; font-weight: 800; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mode-row.is-last { border-color: rgba(var(--accent-rgb), .55); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .25) inset; }
+  .mode-row.is-mixed { background: rgba(var(--accent-rgb), .1); border-color: var(--accent); }
+  .mode-row.is-mixed .mode-ico { background: var(--accent); color: #fff; }
+  .ex-head { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0 0 10px; }
+  .back-btn { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 0; font-size: .82rem; font-weight: 800; color: var(--muted); }
+  .back-btn svg { width: 20px; height: 20px; }
+  .mode-title { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+  .duo-lock-text { margin: 0 0 8px; font-size: .86rem; line-height: 1.45; }
+  body[data-view="list"] footer, body.is-duo-locked footer { display: none; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .level-hint { margin: 4px 0 0; font-size: .72rem; font-weight: 800; color: var(--accent); }
 
   .tap-pad { width: 100%; height: 112px; margin-top: 10px; border-radius: 22px; border: 2px dashed var(--line); background: var(--surface); font-weight: 800; font-size: .95rem; color: var(--muted); touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-content: center; gap: 10px; }
@@ -270,8 +295,16 @@
 
 <main>
   <section data-panel="rhythm">
-    <section class="panel">
-      <div class="panel-head"><h2>Rhythmus-Training</h2>
+    <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
+    <div class="mode-list-wrap" data-list="rhythm"></div>
+    <div data-exview="rhythm" hidden>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="rhythm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Rhythmus</button><h2 class="mode-title"></h2></div>
+    <div class="panel duo-lock" hidden>
+      <p class="duo-lock-text">Zweistimmig ist ab Stufe 3 freigeschaltet: Erst sitzen Achtel und Pausen, dann kommt die zweite Stimme dazu.</p>
+      <div class="ear-controls"><button class="big-btn" type="button" data-duo-unlock>Zu Stufe 3</button></div>
+    </div>
+    <section class="panel" data-rhythm-panel>
+      <div class="panel-head"><span></span>
         <div class="head-tools">
           <button class="help-btn" type="button" data-help="help-modes" aria-expanded="false" aria-label="Erklärung der Übungsarten">?</button>
           <button class="icon-btn" type="button" data-rhythm="settings" aria-label="Einstellungen: Taktart, Bausteine, Ablauf" title="Einstellungen">
@@ -280,8 +313,6 @@
         </div>
       </div>
       <div data-levels="rhythm"></div>
-      <span class="sub-label">Übungsart</span>
-      <div class="chip-row" data-chips="rmode"></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
       <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
@@ -295,16 +326,20 @@
         <button class="help-btn" type="button" data-help="help-timing" aria-expanded="false" aria-label="Erklärung der Auswertung">?</button></div>
       <p class="help-text" id="help-timing" hidden>Unter den Noten markieren Striche deine Tipper: <b style="color:var(--good)">grün</b> = genau (bis 40 ms daneben), <b style="color:var(--near)">gelb</b> = knapp, <b style="color:var(--bad)">rot</b> = verpasst oder zu viel. „Ø 25 ms zu spät“ ist die mittlere Abweichung deiner Treffer. Eine Runde ist fehlerfrei, wenn alle Noten getroffen sind und kein Tipper zu viel ist. Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>
     </section>
+    </div>
   </section>
   <section data-panel="ear" hidden>
+    <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
+    <div class="mode-list-wrap" data-list="ear"></div>
+    <div data-exview="ear" hidden>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="ear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Hören</button><h2 class="mode-title"></h2></div>
     <section class="panel">
-      <div class="panel-head"><h2>Gehörbildung</h2>
+      <div class="panel-head"><span></span>
         <button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
         </button>
       </div>
-      <div class="chip-row" data-chips="earMode"></div>
-      <div data-levels="ear" style="margin-top:10px"></div>
+      <div data-levels="ear"></div>
       <div class="ear-stage">
         <p class="ear-prompt"></p>
         <p class="ear-sub"></p>
@@ -319,12 +354,13 @@
       <p class="ear-feedback" role="status" aria-live="polite"></p>
       <p class="score ear-score"></p>
     </section>
+    </div>
   </section>
   <section data-panel="voice" hidden>
-    <section class="panel">
-      <div class="panel-head"><h2>Singen</h2></div>
-      <div class="chip-row" data-chips="singMode"></div>
-    </section>
+    <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
+    <div class="mode-list-wrap" data-list="voice"></div>
+    <div data-exview="voice" hidden>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Singen</button><h2 class="mode-title"></h2></div>
     <section class="panel" data-sing-only="task" hidden>
       <div data-levels="sing"></div>
       <div class="sing-opts">
@@ -388,6 +424,7 @@
       <p class="foot-note" data-range-save-status role="status" aria-live="polite"></p>
     </section>
     <p class="foot-note">Das Mikrofon wird nur live ausgewertet, nichts wird aufgenommen, gespeichert oder gesendet.</p>
+    </div>
   </section>
 </main>
 
@@ -1664,18 +1701,27 @@
     }));
   }
 
-  /* ---- Einheitliches Stufen-Element (alle Bereiche): Chips 1–6, Text,
-     ?-Knopf mit der Liste aller Stufen. 0 = eigene Auswahl. `hint` (Paket 6):
+  /* ---- Einheitliches Stufen-Element (alle Bereiche): Stepper
+     „‹  Stufe 3 · Text  ›“, ?-Knopf mit der Liste aller Stufen. 0 = eigene
+     Auswahl (‹ › springen dann zu Stufe 1 bzw. zur höchsten). Die Pfeile
+     tragen data-level-area/-n (Zielstufe) wie früher die Stufen-Chips —
+     die Klick-Handler der Bereiche bleiben unverändert. `hint` (Paket 6):
      { level, hint: 'up' | 'down' | null } — nur Vorschlag, nie Wechsel. */
   function levelControlHtml(area, levels, current, hint = null) {
     const cur = levels.find((l) => l.n === current);
+    const max = levels[levels.length - 1].n;
     const fits = hint && hint.level === current;
     const next = fits && hint.hint === 'up' && current ? levels.find((l) => l.n === current + 1) : null;
-    const chipsHtml = levels.map((l) => `<button type="button" class="chip level-chip${next && next.n === l.n ? ' has-dot' : ''}" data-level-area="${area}" data-level-n="${l.n}" aria-pressed="${l.n === current}" aria-label="Stufe ${l.n}: ${l.label}">${l.n}</button>`).join('');
+    const step = (cls, n, sym, hide, dot) => {
+      const l = levels.find((x) => x.n === n);
+      return `<button type="button" class="lv-step ${cls}${dot ? ' has-dot' : ''}" data-level-area="${area}" data-level-n="${n}" aria-label="Stufe ${n}${l ? `: ${l.label}` : ''}"${hide ? ' hidden' : ''}>${sym}</button>`;
+    };
     const hintText = next ? `Stufe ${current} sitzt – Stufe ${next.n} ausprobieren?` : fits && hint.hint === 'down' && current > 1 ? 'Eine Stufe zurück kann helfen.' : '';
-    return `<div class="level-row"><div class="chip-row" role="group" aria-label="Stufe">${chipsHtml}</div>
+    return `<div class="level-stepper" role="group" aria-label="Stufe">
+      ${step('lv-prev', cur ? cur.n - 1 : 1, '‹', !!cur && cur.n <= 1, false)}
+      <span class="lv-mid">${cur ? `Stufe ${cur.n} · ${cur.label}` : 'Eigene Auswahl'}</span>
+      ${step('lv-next', cur ? cur.n + 1 : max, '›', !!cur && cur.n >= max, !!next)}
       <button class="help-btn" type="button" data-help="lv-${area}" aria-expanded="false" aria-label="Alle Stufen">?</button></div>
-      <p class="level-note">${cur ? `Stufe ${cur.n}: ${cur.label}` : 'Eigene Auswahl'}</p>
       ${hintText ? `<p class="level-hint" role="status">${hintText}</p>` : ''}
       <p class="help-text" id="lv-${area}" hidden>${levels.map((l) => `<b>${l.n}</b> ${l.label}`).join('<br>')}<br>Jede Stufe enthält die vorigen. Änderst du danach etwas, gilt es als eigene Auswahl.</p>`;
   }
@@ -1689,8 +1735,8 @@
   }
 
   function renderRhythm() {
+    $('[data-exview="rhythm"] .mode-title').textContent = modeName('rhythm', currentMode('rhythm'));
     $('[data-levels="rhythm"]').innerHTML = levelControlHtml('rhythm', RHYTHM_LEVELS, state.rhythmLevel, levelHints.rhythm);
-    chips('rmode', MODES, state.mode, (v) => v === 'duo' && !duoAllowed());
     $('[data-duo-row]').hidden = state.mode !== 'duo';
     chips('duoPart', [['upper', 'obere Stimme'], ['lower', 'untere Stimme']], state.duoPart);
     renderGapChips();
@@ -1751,6 +1797,153 @@
     if (voice.analyser) micOff();
     if (tab !== 'voice') stopSing();
     renderAll();
+    renderArea();
+  }
+
+  /* ------------------------------------------------------------------------
+     BEREICHE: LISTE UND ÜBUNG — jeder Bereich startet mit einer Liste seiner
+     Übungsarten (Icon, Name, ein Satz, Stufe). Antippen öffnet die
+     Übungsansicht mit dem Modus als Überschrift. Mit ?tab=… (ohne
+     from=quick) öffnet die App direkt einen Bereich — ohne Tab-Leiste.
+     ------------------------------------------------------------------------ */
+  const AREA_NAMES = { rhythm: 'Rhythmus', ear: 'Hören', voice: 'Singen' };
+  const MODE_ICONS = {
+    echo: '<path d="M4 9a5 5 0 0 1 10 0c0 3-3 3.5-3 6.5a2.8 2.8 0 0 1-5 1.7"/><path d="M7 9a2 2 0 0 1 4 0"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
+    along: '<circle cx="7" cy="17" r="2.6"/><path d="M9.6 17V4.5l4.4 2"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
+    read: '<rect x="3.5" y="3" width="12" height="18" rx="2"/><path d="M6.5 8h6M6.5 12h6M6.5 16h3.5"/><path d="M20 7v10"/>',
+    duo: '<path d="M3 5h18M3 9h18"/><path d="M3 15h18M3 19h18"/><circle cx="8" cy="7" r="1.6" fill="currentColor"/><circle cx="16" cy="17" r="1.6" fill="currentColor"/>',
+    interval: '<circle cx="6.5" cy="5.5" r="2" fill="currentColor"/><circle cx="6.5" cy="18.5" r="2" fill="currentColor"/><path d="M15 4v16"/><path d="m12 7 3-3 3 3M12 17l3 3 3-3"/>',
+    quality: '<rect x="5" y="3.5" width="14" height="4" rx="1.5"/><rect x="5" y="10" width="14" height="4" rx="1.5"/><rect x="5" y="16.5" width="14" height="4" rx="1.5"/>',
+    cadence: '<path d="M3 19h11"/><path d="M14 19V5"/><path d="M14 5h6.5l-2 3 2 3H14"/>',
+    chords: '<rect x="3" y="12" width="3.2" height="8" rx="1"/><rect x="8.3" y="5" width="3.2" height="15" rx="1"/><rect x="13.6" y="9" width="3.2" height="11" rx="1"/><rect x="18.9" y="14" width="3.2" height="6" rx="1"/>',
+    parts: '<path d="M4 5.5h16M4 10h16M4 19h16"/><path d="M4 14.5h16" stroke-width="3.6"/>',
+    tuning: '<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 8.5V10M6 11l1 1M18 11l-1 1"/><path d="m12 17 4.5-6"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/>',
+    singInterval: '<circle cx="5.5" cy="18.5" r="2" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2" fill="currentColor"/><path d="M8 16l7.5-7.5"/><path d="M10.5 8.5h5v5"/>',
+    findTone: '<circle cx="12" cy="12" r="6.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
+    hold: '<path d="M3 9v6"/><path d="M3 12h14"/><circle cx="19.5" cy="12" r="2.3" fill="currentColor"/>',
+    sight: '<path d="M3 4.5h18M3 8.5h18"/><path d="M2.5 16.5s3.5-4.5 9.5-4.5 9.5 4.5 9.5 4.5-3.5 4.5-9.5 4.5-9.5-4.5-9.5-4.5Z"/><circle cx="12" cy="16.5" r="2"/>',
+    dictation: '<path d="M3 5h12M3 9h12M3 13h8"/><path d="m13 21 .8-3.2 5.7-5.7 2.4 2.4-5.7 5.7Z"/>',
+    tuner: '<path d="M9 3v7a3 3 0 0 0 6 0V3"/><path d="M12 13v7"/><path d="M9.5 21h5"/>',
+    mixed: '<path d="M3 7h3.5c4.5 0 6.5 10 11 10H21"/><path d="M3 17h3.5c1.6 0 2.8-1.3 3.8-3M13.7 10C14.8 8.2 16 7 17.5 7H21"/><path d="m18 4 3 3-3 3M18 14l3 3-3 3"/>',
+  };
+  const modeIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${MODE_ICONS[id] || ''}</svg>`;
+  // [Modus-ID, Name, Satz] je Bereich — Reihenfolge der Liste. Singen: der
+  // Tuner (Tuner, Zielton, Tonumfang) als letzte Zeile.
+  const MODE_TEXT = {
+    echo: 'Hören, dann nachklatschen – ohne Noten', along: 'Noten lesen und gleichzeitig mitklatschen',
+    read: 'Nur Klick hören, Rhythmus selbst klatschen', duo: 'Die App klatscht eine Stimme, du die andere',
+    interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
+    cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
+    tuning: 'Sauber, zu hoch oder zu tief?', singInterval: 'Ein Grundton – du singst das Intervall',
+    findTone: 'Akkord oder a′ – du findest deinen Ton', hold: 'Einen Ton ruhig halten', sight: 'Kurze Melodie vom Blatt singen',
+    dictation: 'Kurze Melodie hören und aufschreiben', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
+  };
+  const areaModes = (tab) => (tab === 'rhythm' ? MODES : tab === 'ear' ? EAR_MODES
+    : [...SING_MODES.filter(([id]) => id !== 'tuner'), ['tuner', 'Tuner und Tonumfang']]);
+  const modeName = (tab, id) => areaModes(tab).find(([m]) => m === id)?.[1] || id;
+  const currentMode = (tab) => (tab === 'rhythm' ? (duoLocked ? 'duo' : state.mode) : tab === 'ear' ? ear.mode : sing.mode);
+  /** Direkt geöffneter Bereich (?tab=… ohne from=quick) — dann ohne Tab-Leiste. */
+  function parseAreaParam(search) {
+    const q = new URLSearchParams(search);
+    return q.get('from') !== 'quick' && AREA_NAMES[q.get('tab')] ? q.get('tab') : null;
+  }
+  const areaOnly = parseAreaParam(location.search);
+  const views = { rhythm: 'list', ear: 'list', voice: 'list' };
+  let duoLocked = false; // „Zweistimmig“ geöffnet, aber noch nicht freigeschaltet
+  let practicedAreas = null; // Set der Fortschrittsbereiche mit Einträgen (null = unbekannt)
+
+  /** Stufen-Text einer Zeile: „Stufe n/6“, „neu“, „ab Stufe 3“ oder „eigene“. */
+  function modeLevelText(tab, id) {
+    if (tab === 'voice' && id === 'tuner') return '';
+    if (tab === 'rhythm' && id === 'duo' && !duoAllowed()) return `ab Stufe ${DUO_MIN_LEVEL}`;
+    const area = tab === 'rhythm' ? 'rhythm' : areaOf(id);
+    if (practicedAreas && !practicedAreas.has(area)) return 'neu';
+    let levels, n;
+    if (tab === 'rhythm') { levels = RHYTHM_LEVELS; n = state.rhythmLevel; }
+    else if (tab === 'ear') [levels, n] = earLevelInfo(id);
+    else { levels = SING_LEVEL_TABLE[id](); n = sing.levels[id]; }
+    return levels.some((l) => l.n === n) ? `Stufe ${n}/${levels[levels.length - 1].n}` : 'eigene';
+  }
+
+  function renderModeList(tab) {
+    const host = $(`[data-list="${tab}"]`);
+    const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
+    const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
+      <span class="mode-ico">${modeIcon(icon)}</span><span><strong>${name}</strong><span class="mode-how">${text}</span></span><span class="mode-lv">${right}</span></button></li>`;
+    const rows = [];
+    if (QUICK_CHAINS[tab]) rows.push(row(`data-mixed="${tab}"`, 'mixed', 'Gemischt üben', 'Alle Übungsarten, ca. 10 Min.', '', ' is-mixed'));
+    for (const [id, name] of areaModes(tab)) {
+      const isLast = id === last;
+      rows.push(row(`data-open-mode="${tab}:${id}"`, id, name + (isLast ? '<span class="visually-hidden"> (zuletzt geöffnet)</span>' : ''), MODE_TEXT[id], modeLevelText(tab, id), isLast ? ' is-last' : ''));
+    }
+    host.innerHTML = `<ul class="mode-list">${rows.join('')}</ul>`;
+  }
+
+  /** Liste oder Übungsansicht des aktuellen Bereichs zeigen. */
+  function renderArea() {
+    const tab = state.tab;
+    document.body.dataset.view = views[tab];
+    for (const t of Object.keys(AREA_NAMES)) {
+      const list = views[t] === 'list';
+      $(`[data-list="${t}"]`).hidden = !list;
+      $(`[data-exview="${t}"]`).hidden = list;
+    }
+    if (views[tab] === 'list') renderModeList(tab);
+    else {
+      $(`[data-exview="${tab}"] .mode-title`).textContent = modeName(tab, currentMode(tab));
+      if (tab === 'rhythm') {
+        $('.duo-lock').hidden = !duoLocked;
+        $('[data-rhythm-panel]').hidden = duoLocked;
+        document.body.classList.toggle('is-duo-locked', duoLocked);
+      }
+    }
+  }
+
+  /** Alles stoppen, was im Bereich läuft (Ton, Mikrofon, Aufgabe). */
+  function quietArea(tab) {
+    if (tab === 'rhythm' && run.playing) stop();
+    if (tab === 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); ear.task = null; ear.pick = null; setEarFeedback('', ''); }
+    if (tab === 'voice') { stopSing(); if (voice.analyser) micOff(); setSingFeedback('', ''); }
+  }
+
+  /** Eine Übungsart aus der Liste öffnen. */
+  function openMode(tab, id) {
+    quietArea(tab);
+    duoLocked = false;
+    if (tab === 'rhythm') {
+      if (id === 'duo' && !duoAllowed()) duoLocked = true;
+      else state.mode = id;
+      run.shown = null; game.finished = false;
+    } else if (tab === 'ear') { ear.mode = id; ear.streak = 0; }
+    else { sing.mode = id; sing.task = null; sing.phase = 'idle'; sing.judge = null; }
+    views[tab] = 'exercise';
+    renderAll();
+    renderArea();
+    $(`[data-exview="${tab}"] .back-btn`)?.focus();
+  }
+
+  function backToList(tab) {
+    quietArea(tab);
+    duoLocked = false;
+    document.body.classList.remove('is-duo-locked');
+    views[tab] = 'list';
+    renderAll();
+    renderArea();
+    loadPracticed();
+    $(`[data-list="${tab}"] .mode-row.is-last, [data-list="${tab}"] .mode-row`)?.focus();
+  }
+
+  /** Fortschritt der App: welche Bereiche schon geübt wurden (für „neu“). */
+  function loadPracticed() {
+    if (!progressApi) return;
+    try {
+      Promise.resolve(progressApi.data()).then((data) => {
+        const set = new Set(Object.keys(data?.recent || {}));
+        for (const day of Object.values(data?.days || {})) for (const a of Object.keys(day || {})) set.add(a);
+        practicedAreas = set;
+        if (views[state.tab] === 'list') renderModeList(state.tab);
+      }).catch(() => {});
+    } catch { /* App weg */ }
   }
 
   function toggleHelp(btn) {
@@ -2475,7 +2668,7 @@
   }
 
   function renderEar() {
-    chips('earMode', EAR_MODES, ear.mode);
+    $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
     const [levels, current] = earLevelInfo(ear.mode);
     $('[data-levels="ear"]').innerHTML = levelControlHtml(`ear-${ear.mode}`, levels, current, levelHints[ear.mode]);
     const task = ear.task;
@@ -3738,7 +3931,7 @@
   }
 
   function renderSing() {
-    chips('singMode', SING_MODES, sing.mode);
+    $('[data-exview="voice"] .mode-title').textContent = modeName('voice', sing.mode);
     const tuner = sing.mode === 'tuner';
     $$('[data-sing-only]').forEach((el) => { el.hidden = (el.dataset.singOnly === 'tuner') !== tuner; });
     if (tuner) return;
@@ -3931,6 +4124,27 @@
   function onClick(e) {
     const tabBtn = e.target.closest('.tab-btn');
     if (tabBtn) { setTab(tabBtn.dataset.tab); return; }
+    const openBtn = e.target.closest('[data-open-mode]');
+    if (openBtn) { const [tab, id] = openBtn.dataset.openMode.split(':'); openMode(tab, id); return; }
+    const backBtn = e.target.closest('[data-back]');
+    if (backBtn) { backToList(backBtn.dataset.back); return; }
+    const mixedBtn = e.target.closest('[data-mixed]');
+    if (mixedBtn) {
+      const tab = mixedBtn.dataset.mixed;
+      quietArea(tab);
+      applyQuickParams({ tab });
+      views[tab] = 'exercise';
+      renderAll(); renderArea();
+      return;
+    }
+    if (e.target.closest('[data-duo-unlock]')) {
+      applyRhythmLevel(DUO_MIN_LEVEL);
+      state.mode = 'duo'; duoLocked = false;
+      document.body.classList.remove('is-duo-locked');
+      run.shown = null; game.finished = false;
+      renderAll(); renderArea();
+      return;
+    }
     const helpBtn = e.target.closest('[data-help]');
     if (helpBtn) { toggleHelp(helpBtn); return; }
 
@@ -4144,6 +4358,8 @@
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     if (!$('.sheet').hidden) return;
+    // In der Liste gibt es nichts zu spielen oder zu beantworten.
+    if (views[state.tab] !== 'exercise' || (state.tab === 'rhythm' && duoLocked)) return;
     if (state.tab === 'voice') {
       if (/^[1-9]$/.test(e.key) && sing.phase === 'answer') {
         const btn = $$('.sing-answers .answer:not(.is-backspace)')[Number(e.key) - 1];
@@ -4706,6 +4922,53 @@
         if (!quickRun.finished) errors.push('Schnellstart endet nicht');
       } finally { quickRun = saved.run; ear.mode = saved.mode; state.tab = saved.tab; renderQuickBar(); }
     }
+    // Umbau Tools Paket 4: Bereich direkt, Liste, Stepper, Zweistimmig.
+    {
+      if (parseAreaParam('?embedded=1&tab=ear') !== 'ear' || parseAreaParam('?tab=rhythm') !== 'rhythm' || parseAreaParam('?from=quick&tab=ear') !== null
+        || parseAreaParam('?embedded=1') !== null || parseAreaParam('?tab=xyz') !== null) errors.push('Bereichs-Parameter falsch');
+      if (areaOnly && (!$('.tab-bar').hidden || $('header h1').textContent !== AREA_NAMES[areaOnly])) errors.push('?tab= ohne from: Tab-Leiste sichtbar');
+      const saved = { run: quickRun, views: { ...views }, tab: state.tab, mode: ear.mode, rl: state.rhythmLevel, rmode: state.mode, q: ear.levels.quality, locked: duoLocked };
+      try {
+        views.ear = 'list';
+        applyQuickParams({ tab: 'ear' });
+        if (views.ear !== 'exercise' || state.tab !== 'ear' || ear.mode !== QUICK_CHAINS.ear[0][0] || !quickRun || quickRun.steps !== QUICK_CHAINS.ear) errors.push('from=quick&tab=ear startet die Kette nicht wie bisher');
+        quickRun = saved.run;
+        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES], ['voice', SING_MODES]]) {
+          renderModeList(tab);
+          for (const [id] of list) {
+            const n = $$(`[data-list="${tab}"] [data-open-mode="${tab}:${id}"]`).length;
+            if (n !== 1) errors.push(`Liste ${tab}: ${id} ${n}×`);
+          }
+          if ($$(`[data-list="${tab}"] [data-open-mode]`).length !== list.length) errors.push(`Liste ${tab}: zusätzliche Zeilen`);
+          if (!!$(`[data-list="${tab}"] [data-mixed]`) !== !!QUICK_CHAINS[tab]) errors.push(`Liste ${tab}: „Gemischt üben“ falsch`);
+        }
+        if ($$('[data-list="voice"] [data-open-mode]').pop()?.dataset.openMode !== 'voice:tuner') errors.push('Tuner nicht letzte Zeile');
+        const box = document.createElement('div');
+        const stepper = (cur, hint = null) => { box.innerHTML = levelControlHtml('ear-quality', QUALITY_LEVELS, cur, hint); return { prev: box.querySelector('.lv-prev'), next: box.querySelector('.lv-next'), mid: box.querySelector('.lv-mid').textContent }; };
+        let st = stepper(1);
+        if (!st.prev.hidden || st.next.hidden || st.next.dataset.levelN !== '2' || !st.mid.startsWith('Stufe 1 · ')) errors.push('Stepper Stufe 1 falsch');
+        st = stepper(6);
+        if (st.prev.hidden || !st.next.hidden || st.prev.dataset.levelN !== '5') errors.push('Stepper Stufe 6 falsch');
+        st = stepper(0);
+        if (st.prev.hidden || st.next.hidden || st.prev.dataset.levelN !== '1' || st.next.dataset.levelN !== '6' || st.mid !== 'Eigene Auswahl') errors.push('Stepper eigene Auswahl falsch');
+        st = stepper(3, { level: 3, hint: 'up' });
+        if (!st.next.classList.contains('has-dot') || !box.querySelector('.level-hint')?.textContent.includes('Stufe 4 ausprobieren')) errors.push('Stepper: Hinweis/Punkt fehlt');
+        if (st.prev.disabled || st.next.disabled) errors.push('Stepper deaktiviert statt ausgeblendet');
+        if (!ear.task && !run.playing) {
+          ear.mode = 'quality'; ear.levels.quality = 2; renderEar();
+          $('[data-levels="ear"] .lv-next').click();
+          if (ear.levels.quality !== 3) errors.push(`Klick auf › setzt Stufe ${ear.levels.quality} statt 3`);
+        }
+        state.rhythmLevel = 1; duoLocked = false;
+        if (modeLevelText('rhythm', 'duo') !== 'ab Stufe 3') errors.push(`Zweistimmig vor Stufe 3: ${modeLevelText('rhythm', 'duo')}`);
+        renderModeList('rhythm');
+        if (!$('[data-open-mode="rhythm:duo"]') || !$('[data-open-mode="rhythm:duo"] .mode-lv').textContent.includes('ab Stufe 3')) errors.push('Zweistimmig fehlt in der Liste');
+      } finally {
+        quickRun = saved.run; Object.assign(views, saved.views); state.tab = saved.tab; ear.mode = saved.mode;
+        state.rhythmLevel = saved.rl; state.mode = saved.rmode; ear.levels.quality = saved.q; duoLocked = saved.locked;
+        renderQuickBar(); renderAll(); renderArea();
+      }
+    }
     // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
     {
       const saved = [voice.low, voice.high];
@@ -4790,6 +5053,7 @@
     const steps = p.tab === 'voice' && memoryCache.micDenied === true ? [['dictation', 6]] : QUICK_CHAINS[p.tab];
     quickRun = { tab: p.tab, steps, idx: 0, done: 0, finished: false };
     state.tab = p.tab;
+    views[p.tab] = 'exercise'; // die Kette läuft in der Übungsansicht
     enterQuickStep();
   }
   function enterQuickStep() {
@@ -4853,6 +5117,16 @@
   loadMemory();
   const quickParams = parseQuickParams(location.search);
   ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation'].forEach(refreshHint);
+  /** ?tab=… ohne from=quick: nur dieser Bereich, Überschrift statt Tab-Leiste. */
+  function applyAreaOnly() {
+    if (!areaOnly) return;
+    state.tab = areaOnly;
+    $('.tab-bar').hidden = true;
+    $('header h1').textContent = AREA_NAMES[areaOnly];
+    document.title = AREA_NAMES[areaOnly];
+  }
+  loadPracticed();
+  applyAreaOnly();
   if (!storage) applyQuickParams(quickParams);
   setTab(state.tab);
   if (storage) {
@@ -4860,9 +5134,10 @@
       if (run.playing || ear.task || voice.analyser) return;
       if (data) restore(data);
       applyProfile();
+      applyAreaOnly();
       applyQuickParams(quickParams);
       setTab(state.tab);
-    }).catch(() => { applyQuickParams(quickParams); setTab(state.tab); });
+    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); setTab(state.tab); });
   }
 })();
 </script>

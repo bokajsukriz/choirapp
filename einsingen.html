@@ -45,7 +45,16 @@
     --accent: #F868B0; --accent-rgb: 248,104,176;
     --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
     --text: #241b3d; --muted: #8c81a6; --ok: #2f9e5b;
+    /* Gruppenfarben (Grund = Text/Linie, -bg = helle Fläche; Grund auf
+       Fläche mindestens 4.5:1). Resonanz: die Akzentfarbe, abgedunkelt,
+       weil #F868B0 auf hellem Grund als Schrift zu schwach wäre. */
+    --g-koerper: #6b5a8a; --g-koerper-bg: #efebf5;
+    --g-lockern: #17736d; --g-lockern-bg: #dcf1ee;
+    --g-resonanz: #b02c72; --g-resonanz-bg: #fde6f1;
+    --g-beweglich: #a14f0c; --g-beweglich-bg: #fcebd9;
+    --g-hoehe: #2c5c9e; --g-hoehe-bg: #e2ecf8;
   }
+  svg.ex-icon { flex: none; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
@@ -65,9 +74,8 @@
   h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   h1 span { color: var(--accent); }
 
-  .tab-bar { display: flex; gap: 4px; padding: 0 16px 12px; }
-  .tab-btn { flex: 1 1 0; padding: 9px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: .74rem; font-weight: 700; }
-  .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .header-tools .gear-btn { width: 44px; height: 44px; }
 
   main { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 18px; }
   .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
@@ -125,11 +133,23 @@
 
   /* ---- Programme ---- */
   .prog-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .prog-card { text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 12px; }
+  .prog-icons { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 8px; color: var(--muted); }
+  .prog-icons .ex-icon { color: var(--text); opacity: .75; }
+  .prog-icons em { font-style: normal; font-size: .66rem; font-weight: 800; margin-left: 2px; }
+  /* Einzelne Übungen: Zeilen mit Icon, Name, Kurzanleitung */
+  .ex-group { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
+  .ex-group:first-child { margin-top: 0; }
+  .ex-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .ex-row { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; width: 100%; min-height: 56px; text-align: left; padding: 6px 12px 6px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .ex-row .ex-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; }
+  .ex-row strong { display: block; font-size: .88rem; }
+  .ex-row span.ex-how { display: block; font-size: .78rem; color: #5f5577; font-weight: 600; margin-top: 1px; }
+  /* Übersicht ohne Spielmodus: keine Bühne und keine Knopfleiste — Antippen
+     einer Karte oder Zeile startet im Spielmodus. */
+  body:not(.is-player) .stage, body:not(.is-player) footer { display: none; }
+  .prog-card { text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-height: 44px; }
   .prog-card strong { display: block; font-size: .86rem; }
   .prog-card span { display: block; font-size: .68rem; color: var(--muted); font-weight: 700; margin-top: 2px; }
-  .prog-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
-  .prog-card[aria-pressed="true"] strong { color: var(--accent); }
   .prog-card-wrap { position: relative; }
   .prog-card-wrap .prog-card { width: 100%; height: 100%; padding-right: 34px; }
   .prog-menu { position: absolute; top: 2px; right: 2px; width: 34px; height: 34px; border-radius: 10px; color: var(--muted); font-weight: 800; font-size: 1rem; }
@@ -155,14 +175,6 @@
   .ed-hint { color: #c0392b; font-size: .72rem; font-weight: 700; text-align: center; min-height: 1.2em; margin: 8px 0 0; }
   .menu-list { display: grid; gap: 8px; }
   .menu-list button { text-align: left; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-weight: 800; }
-  .prog-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; counter-reset: item; }
-  .prog-item { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .8rem; font-weight: 700; }
-  .prog-item .num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: .66rem; font-weight: 800; color: var(--muted); }
-  .prog-item .syl-hint { font-size: .68rem; color: var(--muted); font-weight: 700; }
-  .prog-item.is-done { opacity: .55; }
-  .prog-item.is-done .num { background: var(--ok); color: #fff; }
-  .prog-item.is-now { border-color: var(--accent); background: rgba(var(--accent-rgb), .1); }
-  .prog-item.is-now .num { background: var(--accent); color: #fff; }
 
   footer { border-top: 1px solid var(--line); background: var(--surface); padding: 10px 16px max(10px, env(safe-area-inset-bottom)); }
   .transport-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
@@ -185,21 +197,76 @@
   .sheet-close { display: block; margin: 12px auto 0; padding: 11px 22px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
   .icon-btn { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); }
 
+  /* ---- Spielmodus (body.is-player): nur die Bühne, volle Höhe ---- */
+  .player-top, .player-hero, .player-meta, .player-next, .player-done, .tap-start { display: none; }
+  body.is-player header, body.is-player .tab-bar, body.is-player [data-panel], body.is-player .foot-note,
+  body.is-player .stage-top, body.is-player .stage-meta, body.is-player .stage-program { display: none !important; }
+  body.is-player main { display: flex; flex-direction: column; padding: max(12px, env(safe-area-inset-top)) 12px 10px; }
+  body.is-player .stage { flex: 1 1 auto; min-height: 0; height: 100%; display: flex; flex-direction: column; margin: 0; padding: 12px 16px 14px; position: relative; overflow-y: auto; }
+  body.is-player .player-top { display: flex; align-items: center; gap: 10px; }
+  html.is-embedded body.is-player .player-top { padding-right: 38px; } /* Platz für den Schließen-Knopf der App */
+  .player-top .icon-btn { width: 44px; height: 44px; flex: none; }
+  .segbar { flex: 1 1 auto; display: flex; gap: 3px; height: 8px; }
+  .segbar i { flex: 1 1 0; position: relative; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .segbar i::before { content: ""; position: absolute; inset: 0; background: var(--c); opacity: 0; }
+  .segbar i.is-now::before { opacity: .5; }
+  .segbar i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--c); }
+  .segbar i.is-done b { width: 100%; }
+  body.is-player .player-hero { display: flex; flex-direction: column; align-items: center; text-align: center; margin: 18px 0 6px; }
+  .hero-icon { width: 96px; height: 96px; border-radius: 26px; display: grid; place-items: center; background: var(--gc-bg, var(--surface-2)); color: var(--gc, var(--accent)); }
+  .hero-group { margin-top: 12px; font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--gc, var(--accent)); min-height: 1.2em; }
+  .hero-title-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 2px; }
+  .hero-title { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+  .hero-how { font-size: 1.08rem; line-height: 1.4; margin: 6px 0 0; max-width: 28em; font-weight: 600; }
+  body.is-player .contour { min-height: 130px; margin: auto 0 8px; gap: 5px; }
+  body.is-player .syl { max-width: 76px; font-size: 1.05rem; padding: 12px 2px; border-radius: 12px; }
+  body.is-player .contour.is-dense .syl { font-size: .86rem; padding: 10px 0; }
+  body.is-player .contour.is-wordy .syl { font-size: .9rem; }
+  body.is-player .syl { background: var(--gc-bg, var(--surface-2)); }
+  body.is-player .syl.is-now { background: var(--gc, var(--accent)); color: #fff; }
+  body.is-player .body-stage { margin: auto 0 8px; }
+  body.is-player .body-move { font-size: 1.2rem; }
+  .glide { margin: auto 0 8px; }
+  .glide svg { display: block; width: 100%; height: auto; max-height: 180px; overflow: visible; }
+  .glide-path { fill: none; stroke: var(--gc, var(--accent)); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .45; }
+  .glide-dot { fill: var(--gc, var(--accent)); stroke: #fff; stroke-width: 3; }
+  body.is-player .player-meta { display: block; text-align: center; font-size: .9rem; font-weight: 800; color: var(--muted); margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+  body.is-player .player-next { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: .86rem; font-weight: 700; color: var(--muted); min-height: 44px; }
+  .next-text { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+  .next-text .ex-icon { color: var(--text); }
+  .skip-link { min-height: 44px; padding: 0 6px; font-weight: 800; color: var(--text); }
+  body.is-player .player-done:not([hidden]) { display: block; text-align: center; margin-top: 12px; }
+  .done-text { font-weight: 800; margin: 0 0 10px; }
+  .done-actions { display: flex; gap: 8px; justify-content: center; }
+  .done-actions button { min-height: 44px; padding: 0 20px; border-radius: 999px; font-weight: 800; border: 1px solid var(--line); background: var(--surface-2); }
+  .done-actions .is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  body.is-player .tap-start:not([hidden]) { display: grid; place-items: center; position: absolute; inset: 64px 12px 12px; border-radius: 18px; background: rgba(255,255,255,.92); font-size: 1.3rem; font-weight: 800; color: var(--text); z-index: 2; }
+
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <header>
   <h1>Ein<span>singen</span></h1>
+  <!-- Das Zahnrad wohnt hier in der Übersicht; im Spielmodus wandert es in
+       die obere Leiste der Bühne (enterPlayer/exitPlayer). -->
+  <div class="header-tools"></div>
 </header>
-
-<nav class="tab-bar" role="tablist" aria-label="Art">
-  <button class="tab-btn" type="button" role="tab" data-mode="program" aria-selected="true">Programm</button>
-  <button class="tab-btn" type="button" role="tab" data-mode="single" aria-selected="false">Einzelne Übung</button>
-</nav>
 
 <main>
   <section class="stage" aria-label="Aktuelle Übung">
+    <!-- Spielmodus (body.is-player): X, Segmentbalken, Zahnrad (das
+         bestehende, wird beim Betreten hierher umgehängt). -->
+    <div class="player-top">
+      <button class="icon-btn player-x" type="button" data-action="player-close" aria-label="Spielmodus schließen, zur Übersicht"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <div class="segbar" role="img" aria-label="Fortschritt"></div>
+    </div>
+    <div class="player-hero">
+      <span class="hero-icon" aria-hidden="true"></span>
+      <div class="hero-group"></div>
+      <div class="hero-title-row"><h2 class="hero-title"></h2><button class="help-btn is-lg" type="button" data-help="exercise" aria-label="So geht die Übung">?</button></div>
+      <p class="hero-how"></p>
+    </div>
     <div class="stage-top">
       <div>
         <div class="stage-group"></div>
@@ -212,24 +279,31 @@
       <p class="body-move" aria-live="polite"></p>
       <div class="body-ring" aria-hidden="true"><svg viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="25"/><circle class="ring-fg" cx="29" cy="29" r="25" stroke-dasharray="157.1" stroke-dashoffset="0"/></svg><span></span></div>
     </div>
+    <div class="glide" hidden><svg viewBox="0 0 300 120" aria-hidden="true"><path class="glide-path"/><circle class="glide-dot" r="7"/></svg></div>
     <div class="stage-meta"><span class="stage-key"></span><span class="stage-range"></span></div>
     <div class="stage-program">
       <div class="progress" aria-hidden="true"><i></i></div>
       <div class="stage-prog"><span class="prog-text"></span><button class="skip-btn" type="button" data-action="skip">Nächste Übung ›</button></div>
     </div>
+    <p class="player-meta" aria-live="polite"></p>
+    <div class="player-next"><span class="next-text"></span><button class="skip-link" type="button" data-action="skip">Überspringen ›</button></div>
+    <div class="player-done" hidden>
+      <p class="done-text" role="status"></p>
+      <div class="done-actions"><button type="button" data-action="again">Noch einmal</button><button type="button" class="is-primary" data-action="done-close">Schließen</button></div>
+    </div>
+    <button class="tap-start" type="button" data-action="tap-start" hidden>Tippen zum Starten</button>
   </section>
 
+  <!-- Übersicht (ohne Spielmodus): Programme, dann alle Übungen nach
+       Gruppen. Antippen startet im Spielmodus. -->
   <section class="panel" data-panel="program">
-    <div class="panel-head"><h2>Einsing-Programm</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
+    <div class="panel-head"><h2>Programme</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
     <div class="prog-cards" data-programs></div>
-    <ol class="prog-list"></ol>
   </section>
 
-  <section class="panel" data-panel="single" hidden>
-    <div class="panel-head"><h2>Übung wählen</h2></div>
+  <section class="panel" data-panel="single">
+    <div class="panel-head"><h2>Einzelne Übungen</h2></div>
     <div data-groups></div>
-    <span class="sub-label">Richtung</span>
-    <div class="chip-row" data-chips="direction"></div>
   </section>
 
   <p class="foot-note">Nie pressen: bei Kratzen, Druck oder Schmerz Pause machen. Hohe Runden darf man auslassen.</p>
@@ -258,6 +332,8 @@
     <div class="chip-row" data-chips="lenKurz"></div>
     <span class="sub-label">Länge „Ausführlich“</span>
     <div class="chip-row" data-chips="lenLang"></div>
+    <span class="sub-label">Einzelne Übung: Richtung</span>
+    <div class="chip-row" data-chips="direction"></div>
     <button class="sheet-close" type="button" data-action="close-settings">Fertig</button>
   </div>
 </div>
@@ -380,6 +456,48 @@
     ['beweglich', 'Beweglichkeit & Aussprache'],
     ['hoehe', 'Höhe, Tiefe & Register'],
   ];
+  /** Farbe einer Gruppe als CSS-Variable (`--g-<id>`, Fläche `--g-<id>-bg`). */
+  const groupColor = (gid, bg = false) => `var(--g-${gid}${bg ? '-bg' : ''})`;
+
+  // Icons der Übungen (Schlüssel = Übungs-ID): nur der Inhalt, die Hülle
+  // baut iconSvg(). Stil wie die Kacheln der App: 24er-Raster, Linie 1.8,
+  // runde Enden. Moll-Varianten = Icon der Dur-Schwester plus Mondsichel.
+  const DOT = (x, y, r = 1.7) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor" stroke="none"/>`;
+  const MOON = '<path d="M20.6 1.9a2.5 2.5 0 1 0 2 4.1 2 2 0 0 1-2-4.1Z" fill="currentColor"/>';
+  const ICON_ROOF = [DOT(3.5, 18), DOT(7.5, 13), DOT(11.5, 8), DOT(15.5, 13), DOT(19.5, 18)].join('');
+  const ICON_TRIAD = [DOT(3.5, 20), DOT(7.5, 16), DOT(11.5, 12), DOT(15, 5.5)].join('');
+  const ICONS = {
+    dehnen: '<circle cx="12" cy="5.5" r="2"/><path d="M12 9v6m0 0-3 6m3-6 3 6"/><path d="M12 10 8 2.5M12 10l4-7.5"/>',
+    haltung: '<circle cx="9" cy="4.5" r="2"/><path d="M9 7.5V15m0 0-2.5 6M9 15l2.5 6M9 9.5l-3 4m3-4 3 4"/><path d="M18 3v14" stroke-dasharray="2 2.4"/><path d="M16.3 17.5h3.4L18 20.5Z"/>',
+    kiefer: '<path d="M7 3c4.6 0 8 3.2 8 7.5l2 2.6-2 .6v2.3a2 2 0 0 1-2 2h-2v3"/><path d="M11.5 10h.01" stroke-width="2.6"/><path d="M20 15v6m-2-2 2 2 2-2"/>',
+    atem: '<path d="M3 8h10a3 3 0 1 0-3-3"/><path d="M3 12h15a3 3 0 1 1-3 3"/><path d="M3 16h7"/>',
+    lippen: '<path d="M8 12c2-2.6 4-3.2 6.5-1.6 2.5-1.6 4.5-1 6.5 1.6"/><path d="M8 12c2 3 4.5 4 6.5 4s4.5-1 6.5-4"/><path d="M8 12h13"/><path d="m2.5 8.5 1.4 1.7-1.4 1.8 1.4 1.8-1.4 1.7"/>',
+    summen: '<path d="M3 12c2-2.2 4-2.7 5.5-1.4 1.5-1.3 3.5-.8 5.5 1.4-2 2.6-4 3.4-5.5 3.4S5 14.6 3 12Z"/><path d="M3 12h11"/><path d="M17 9a4 4 0 0 1 0 6"/><path d="M19.5 6.5a7.5 7.5 0 0 1 0 11"/>',
+    sirene: '<path d="M3 19C7 19 8 5 12 5s5 14 9 14"/>',
+    zwerchfell: '<circle cx="9.5" cy="12" r="6"/><path d="M18.5 7.5l2.5-1.5M19 12h3M18.5 16.5l2.5 1.5"/>',
+    strohhalm: '<rect x="10" y="2.5" width="3.4" height="17" rx="1.2" transform="rotate(30 11.7 11)"/><path d="M17.5 2c.7-.8 1.4.8 2.1 0s1.4.8 2.1 0"/>',
+    strohhalm5: '<rect x="4" y="3" width="3.2" height="16" rx="1.2" transform="rotate(15 5.6 11)"/><path d="M11 20h3.5v-4H18v-4h3.5"/>',
+    mimemamomu: ICON_ROOF,
+    nja: '<path d="M3.5 9.5c3 1.3 14 1.3 17 0-.8 6-4.5 8.5-8.5 8.5s-7.7-2.5-8.5-8.5Z"/><path d="M5 12c3.5 1 10.5 1 14 0"/>',
+    vokale: '<ellipse cx="4.3" cy="12" rx="2.8" ry="1"/><ellipse cx="12" cy="12" rx="2.6" ry="4.2"/><circle cx="19.6" cy="12" r="2.1"/>',
+    moll5: ICON_ROOF + MOON,
+    messa: '<path d="M10.5 6.5 2 12l8.5 5.5"/><path d="m13.5 6.5 8.5 5.5-8.5 5.5"/>',
+    akkord: '<g fill="currentColor"><ellipse cx="9.5" cy="18.5" rx="2.6" ry="1.65" transform="rotate(-20 9.5 18.5)"/><ellipse cx="9.5" cy="12.8" rx="2.6" ry="1.65" transform="rotate(-20 9.5 12.8)"/><ellipse cx="9.5" cy="7.1" rx="2.6" ry="1.65" transform="rotate(-20 9.5 7.1)"/></g><path d="M12.3 18V2"/>',
+    umlaute: '<ellipse cx="12" cy="15" rx="4.6" ry="3.6"/><ellipse cx="12" cy="15" rx="1.8" ry="1.2"/>' + DOT(9, 6, 1.5) + DOT(15, 6, 1.5),
+    durMoll: '<circle cx="13" cy="12" r="5"/><path d="M13 7a5 5 0 0 1 0 10 3.2 5 0 0 0 0-10Z" fill="currentColor"/><path d="M2.5 12h2.5M5 5l1.8 1.8M5 19l1.8-1.8M13 2.5V4.5M13 19.5v2"/>',
+    dreiklang: ICON_TRIAD,
+    mollDreiklang: ICON_TRIAD + MOON,
+    katze: '<path d="M4.5 10 4 3.5l5 3h6l5-3-.5 6.5c.4 1 .5 2 .5 3.3 0 4-3.6 6.7-8 6.7s-8-2.7-8-6.7c0-1.3.1-2.3.5-3.3Z"/><path d="M9 11.5h.01M15 11.5h.01" stroke-width="2.6"/><path d="M1.5 14h4M2 17l3.5-1.2M22.5 14h-4M22 17l-3.5-1.2"/><path d="M11.2 14.5h1.6l-.8 1Z"/>',
+    koloratur: '<path d="m2 13 1.6-4 1.6 7 1.6-7 1.6 7 1.6-7 1.6 7 1.6-7 1.6 7 1.6-7 1.6 7 1.6-7 1.6 7L22 11"/>',
+    staccatoLegato: DOT(3, 19, 1.5) + DOT(6.5, 14.5, 1.5) + DOT(10, 10, 1.5) + '<path d="M13 9c3.5-3.5 7.5-1.5 8.5 9.5"/>',
+    oktave: '<path d="M4 20c0-8 5-13.5 13-14.5"/><path d="M13.5 3 17.5 5.5 15 9.5"/>' + DOT(4, 20, 1.5),
+    eule: '<path d="M4 9c0-3 1-6 1-6l3.5 3h7L19 3s1 3 1 6v5c0 4.2-3.6 7-8 7s-8-2.8-8-7Z"/><circle cx="9" cy="11.5" r="2.6"/><circle cx="15" cy="11.5" r="2.6"/><path d="M11.2 15.5 12 17l.8-1.5"/><path d="M9 11.5h.01M15 11.5h.01" stroke-width="2.4"/>',
+    kopfAbwaerts: '<path d="M2 6h4v4h4v4h4v4h4"/><path d="M9 3l11 11m0-5.5V14h-5.5"/>',
+    tiefe: '<path d="M12 3v14"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/>',
+    tiefeGleiten: '<path d="M3 4c3 0 5 3 6 7s3 7 7 7h5"/><path d="M3 21h18"/>',
+  };
+  /** Vollständiges Icon (dekorativ, der Text daneben trägt die Bedeutung). */
+  const iconSvg = (id, size = 24) => `<svg class="ex-icon" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:${size}px;height:${size}px" aria-hidden="true" focusable="false">${ICONS[id] || ''}</svg>`;
 
   const rep = (s, n) => Array(n).fill(s);
   const legato5 = [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 4]];
@@ -398,7 +516,7 @@
   // lowStart/top: Halbtöne über voice.floor — wo der tiefste Ton der ersten
   // Runde liegt, und wie hoch der höchste Ton der Übung höchstens steigt.
   const EXERCISES = [
-    { id: 'dehnen', group: 'koerper', name: 'Strecken & Lockern', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
+    { id: 'dehnen', group: 'koerper', name: 'Strecken & Lockern', how: 'Strecken, ausschütteln, Schultern kreisen', icon: 'dehnen', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
       moves: [
         ['Arme über den Kopf strecken, Fingerspitzen zur Decke — ganz lang werden.', 8],
         ['Arme fallen lassen, Hände und Arme ausschütteln.', 8],
@@ -409,7 +527,7 @@
       ],
       help: ['Ohne Ton: den Körper wecken, bevor die Stimme arbeitet. Jede Bewegung langsam und ohne Schmerz.',
         'Wer nicht stehen kann oder mag, macht die Arm- und Schulterbewegungen im Sitzen.'] },
-    { id: 'haltung', group: 'koerper', name: 'Sängerhaltung', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
+    { id: 'haltung', group: 'koerper', name: 'Sängerhaltung', how: 'Locker aufrecht stehen, ruhig atmen', icon: 'haltung', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
       moves: [
         ['Füße hüftbreit, Knie locker — nicht durchgedrückt.', 6],
         ['Gewicht gleichmäßig auf beiden Füßen, ganz leicht nach vorn.', 6],
@@ -419,7 +537,7 @@
       ],
       help: ['Eine Haltung, in der nichts festgehalten wird: aufrecht, aber nicht steif.',
         'Diese Haltung beim Singen immer wieder kurz prüfen — besonders die Knie und die Schultern.'] },
-    { id: 'kiefer', group: 'koerper', name: 'Kiefer & Gesicht', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
+    { id: 'kiefer', group: 'koerper', name: 'Kiefer & Gesicht', how: 'Kauen, massieren, gähnen – Kiefer lösen', icon: 'kiefer', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
       moves: [
         ['Mit geschlossenem Mund genüsslich kauen.', 8],
         ['Mit den Fingerspitzen die Kaumuskeln vor den Ohren kreisend massieren.', 10],
@@ -430,110 +548,110 @@
       help: ['Ein fester Kiefer und eine feste Zunge sind die häufigsten Ursachen für einen engen Klang.',
         'Gut nach einem Arbeitstag am Bildschirm — und vor Stücken mit viel Text.'] },
 
-    { id: 'atem', group: 'lockern', name: 'Atem', hint: 'sss', bpm: 60, kind: 'breath', lowStart: 0, top: 0,
+    { id: 'atem', group: 'lockern', name: 'Atem', how: 'Einatmen, dann lang auf „sss“ ausatmen', icon: 'atem', hint: 'sss', bpm: 60, kind: 'breath', lowStart: 0, top: 0,
       notes: [[0, 16], [0, 32]], syllables: ['ein', 'sss'],
       help: ['Ohne Ton: vier Schläge lang ruhig durch die Nase einatmen — Bauch und Flanken weiten sich, die Schultern bleiben unten.',
         'Dann auf „sss“ gleichmäßig ausatmen, erst 8 Schläge, jede Runde 2 länger (bis 14). Die Luft nicht herauspressen: der Brustkorb bleibt weit, der Bauch gibt langsam nach.'] },
-    { id: 'lippen', group: 'lockern', name: 'Lippenflattern', hint: 'brrr', bpm: 88, lowStart: 3, top: 16, breath: 8,
+    { id: 'lippen', group: 'lockern', name: 'Lippenflattern', how: 'Lippen flattern lassen und dabei summen', icon: 'lippen', hint: 'brrr', bpm: 88, lowStart: 3, top: 16, breath: 8,
       notes: legato5, syllables: rep('brrr', 9),
       help: ['Lippen locker aufeinander, Luft strömen lassen, bis sie flattern — und dabei auf den Tönen summen. Das lockert Lippen und Gesicht und bringt den Atem ohne Druck in Gang.',
         'Klappt das Flattern nicht: mit zwei Fingern die Wangen neben den Mundwinkeln leicht anheben. Alternative: Zungenflattern auf „rrr“.'] },
-    { id: 'summen', group: 'lockern', name: 'Summen', hint: 'mmm', bpm: 76, lowStart: 3, top: 14,
+    { id: 'summen', group: 'lockern', name: 'Summen', how: 'Mund zu, leise summen, bis es kribbelt', icon: 'summen', hint: 'mmm', bpm: 76, lowStart: 3, top: 14,
       notes: [[4, 4], [3, 4], [2, 4], [1, 4], [0, 12]], syllables: rep('mmm', 5),
       help: ['Lippen locker geschlossen, Zähne auseinander, als hätte man eine kleine Kugel im Mund. Leise summen, bis es an Lippen und Nase kribbelt.',
         'Von oben nach unten — so kommt der leichte Klang in die tiefere Lage mit. Auch gut: „ng“ wie in „singen“.'] },
-    { id: 'sirene', group: 'lockern', name: 'Sirene', hint: 'ng / u', bpm: 72, lowStart: 1, top: 20, glide: true,
+    { id: 'sirene', group: 'lockern', name: 'Sirene', how: 'Auf „ng“ hinauf und hinunter gleiten', icon: 'sirene', hint: 'ng / u', bpm: 72, lowStart: 1, top: 20, glide: true,
       notes: [[0, 4], [7, 8], [0, 8]], syllables: ['ng', 'ng', 'ng'],
       help: ['Auf „ng“ (wie in „singen“) oder „u“ stufenlos eine Oktave hinauf und wieder hinunter gleiten — wie eine Sirene.',
         'Oben leichter werden statt lauter. Die Übung verbindet Brust- und Kopfstimme; ein Knacks unterwegs ist normal und wird mit der Zeit weicher.'] },
-    { id: 'zwerchfell', group: 'lockern', name: 'Zwerchfell-Staccato', hint: 'ha ha ha', bpm: 100, lowStart: 3, top: 16,
+    { id: 'zwerchfell', group: 'lockern', name: 'Zwerchfell-Staccato', how: 'Kurze „ha“ – der Impuls kommt aus dem Bauch', icon: 'zwerchfell', hint: 'ha ha ha', bpm: 100, lowStart: 3, top: 16,
       notes: [[0, 2, .7], [2, 2, .7], [4, 2, .7], [2, 2, .7], [0, 2, .7]], syllables: rep('ha', 5),
       help: ['Kurze, lockere „ha“: Der Impuls kommt aus der Körpermitte, nicht aus dem Hals. Eine Hand auf den Bauch legen — er federt bei jedem Ton nach innen.',
         'Zwischen den Tönen lässt der Bauch los, die Luft strömt von selbst wieder ein. Nicht hauchen, nicht drücken.'] },
-    { id: 'strohhalm', group: 'lockern', name: 'Strohhalm', hint: 'u durch den Halm', bpm: 72, lowStart: 2, top: 17, breath: 6, glide: true,
+    { id: 'strohhalm', group: 'lockern', name: 'Strohhalm', how: 'Durch den Halm auf „u“ auf und ab gleiten', icon: 'strohhalm', hint: 'u durch den Halm', bpm: 72, lowStart: 2, top: 17, breath: 6, glide: true,
       notes: [[0, 4], [4, 8], [0, 8]], syllables: ['u', 'u', 'u'],
       help: ['Einen normalen Trinkhalm locker zwischen die Lippen nehmen (nicht zwischen die Zähne) und hindurch auf „u“ summen — eine Quinte hinauf und wieder zurück gleiten.',
         'Der Halm staut die Luft ein wenig zurück. Das entlastet die Stimmlippen, hoch und tief gehen ohne Druck ineinander über. Ohne Halm: die Lippen fast schließen und auf „w“ summen.'] },
-    { id: 'strohhalm5', group: 'lockern', name: 'Strohhalm-Fünfton', hint: 'Tonleiter im Halm', bpm: 84, lowStart: 3, top: 17, breath: 6,
+    { id: 'strohhalm5', group: 'lockern', name: 'Strohhalm-Fünfton', how: 'Mit dem Halm fünf Töne hinauf und zurück', icon: 'strohhalm5', hint: 'Tonleiter im Halm', bpm: 84, lowStart: 3, top: 17, breath: 6,
       notes: legato5, syllables: rep('u', 9),
       help: ['Mit dem Halm fünf Töne hinauf und wieder hinunter, alles gebunden.',
         'Die Luft strömt gleichmäßig, die Wangen blähen sich nicht auf. Danach einmal ohne Halm auf „u“ singen und hören, ob die Leichtigkeit bleibt.'] },
 
-    { id: 'mimemamomu', group: 'resonanz', name: 'Mi-me-ma-mo-mu', hint: 'Fünftonraum', bpm: 92, lowStart: 3, top: 18,
+    { id: 'mimemamomu', group: 'resonanz', name: 'Mi-me-ma-mo-mu', how: 'Fünf Töne hinauf und zurück, Klang bleibt vorn', icon: 'mimemamomu', hint: 'Fünftonraum', bpm: 92, lowStart: 3, top: 18,
       notes: legato5, syllables: ['mi', 'me', 'ma', 'mo', 'mu', 'mo', 'ma', 'me', 'mi'],
       help: ['Vom Grundton fünf Töne hinauf und wieder hinunter, ein Ton pro Silbe, alles gebunden.',
         'Das „m“ bringt den Klang nach vorn, die Vokale sollen dort bleiben: Von „i“ nach „u“ wird nur der Mund runder, der Klang nicht dunkler oder hinten.'] },
-    { id: 'nja', group: 'resonanz', name: 'Nja-nja-nja', hint: 'frech & vorne', bpm: 96, lowStart: 4, top: 18,
+    { id: 'nja', group: 'resonanz', name: 'Nja-nja-nja', how: 'Frech und hell, der Kiefer fällt locker', icon: 'nja', hint: 'frech & vorne', bpm: 96, lowStart: 4, top: 18,
       notes: [[4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: rep('nja', 5),
       help: ['Frech, hell und ein bisschen „quäkig“ singen — das holt den Klang nach vorn und macht ihn tragfähig.',
         'Der Kiefer fällt bei jedem „a“ locker nach unten, die Zunge macht das „nj“ allein. Wer mag, schüttelt dabei leicht den Kopf.'] },
-    { id: 'vokale', group: 'resonanz', name: 'Vokalreihe', hint: 'auf einem Ton', bpm: 84, lowStart: 6, top: 15,
+    { id: 'vokale', group: 'resonanz', name: 'Vokalreihe', how: 'Alle Vokale auf einem Ton, Klang bleibt gleich', icon: 'vokale', hint: 'auf einem Ton', bpm: 84, lowStart: 6, top: 15,
       notes: [[0, 4], [0, 4], [0, 4], [0, 4], [0, 8]], syllables: ['nu', 'no', 'na', 'ne', 'ni'],
       help: ['Alle Vokale auf einem Ton, ohne abzusetzen. Klang, Lautstärke und Tonhöhe bleiben gleich — nur die Mundform ändert sich.',
         'Ziel ist ein ausgeglichener Chorklang: Das „i“ nicht spitz, das „a“ nicht breit werden lassen.'] },
 
-    { id: 'moll5', group: 'resonanz', name: 'Moll-Fünfton', hint: 'no · Moll', bpm: 92, lowStart: 3, top: 18, mode: 'minor',
+    { id: 'moll5', group: 'resonanz', name: 'Moll-Fünfton', how: 'Fünf Töne auf „no“, die Terz etwas tiefer', icon: 'moll5', hint: 'no · Moll', bpm: 92, lowStart: 3, top: 18, mode: 'minor',
       notes: legato5, syllables: rep('no', 9),
       help: ['Derselbe Fünftonraum wie bei „Mi-me-ma-mo-mu“, aber in Moll: die Terz liegt einen Halbton tiefer.',
         'Auf „no“ ruhig und rund singen und auf die kleine Terz hören — sie wird gern zu tief. Der Klang bleibt vorne, auch wenn Moll dunkler klingt.'] },
-    { id: 'messa', group: 'resonanz', name: 'An- und Abschwellen', hint: 'mo', bpm: 60, lowStart: 5, top: 12, dynamic: 'crescDecresc',
+    { id: 'messa', group: 'resonanz', name: 'An- und Abschwellen', how: 'Ein Ton: leise, lauter, wieder leise', icon: 'messa', hint: 'mo', bpm: 60, lowStart: 5, top: 12, dynamic: 'crescDecresc',
       notes: [[0, 16]], syllables: ['mo'],
       help: ['Ein Ton auf „mo“: leise beginnen, zwei Schläge lang lauter werden, dann wieder zurück ins Leise — die Vorgabe macht es vor.',
         'Die Tonhöhe bleibt dabei ganz ruhig, und der Klang wird nur voller, nicht härter. Im Leisen die Luft weiter strömen lassen.'] },
-    { id: 'akkord', group: 'resonanz', name: 'Akkord', hint: 'no · im Satz', bpm: 72, lowStart: 3, top: 14, chord: true,
+    { id: 'akkord', group: 'resonanz', name: 'Akkord', how: 'Deinen Akkordton zum Klavier halten', icon: 'akkord', hint: 'no · im Satz', bpm: 72, lowStart: 3, top: 14, chord: true,
       notes: [], syllables: rep('no', 5),
       help: ['Intonation im Dreiklang: Das Klavier spielt Grundton und Quinte, du singst deinen Akkordton dazu — Sopran und Tenor die Terz, Alt die Quinte, Bass den Grundton — acht Schläge lang.',
         'Danach die Kadenz I–IV–V–I, je vier Schläge, mit dem Ton, der deine Stimme im vierstimmigen Satz singt. Hören, wie der eigene Ton im Akkord „einrastet“ — besonders die Terz.'] },
-    { id: 'umlaute', group: 'resonanz', name: 'Umlaute', hint: 'i–ü · e–ö', bpm: 84, lowStart: 6, top: 15,
+    { id: 'umlaute', group: 'resonanz', name: 'Umlaute', how: 'Auf einem Ton: ni – nü – ne – nö – nä – na', icon: 'umlaute', hint: 'i–ü · e–ö', bpm: 84, lowStart: 6, top: 15,
       notes: [[0, 4], [0, 4], [0, 4], [0, 4], [0, 4], [0, 8]], syllables: ['ni', 'nü', 'ne', 'nö', 'nä', 'na'],
       help: ['Auf einem Ton: „ni – nü – ne – nö – nä – na“, ohne abzusetzen.',
         'Von „i“ nach „ü“ und von „e“ nach „ö“ bleibt die Zunge, wo sie ist — nur die Lippen werden rund. So klingen ü und ö im Chor hell und einheitlich statt dumpf.'] },
-    { id: 'durMoll', group: 'resonanz', name: 'Dur und Moll', hint: 'no · große/kleine Terz', bpm: 72, lowStart: 4, top: 14, forceDrone: true,
+    { id: 'durMoll', group: 'resonanz', name: 'Dur und Moll', how: 'Große Terz, dann kleine – zum Liegeton', icon: 'durMoll', hint: 'no · große/kleine Terz', bpm: 72, lowStart: 4, top: 14, forceDrone: true,
       notes: [[0, 4], [2, 4], [4, 4], [2, 4, null, -1], [0, 8]], syllables: rep('no', 5),
       help: ['Grundton, große Terz, Quinte — dann die kleine Terz und zurück zum Grundton. Der Liegeton klingt die ganze Zeit mit.',
         'Hören, wie viel kleiner der Schritt zur Mollterz ist. Die große Terz eher knapp, die kleine Terz eher weit genug singen — beide geraten im Chor gern zu tief.'] },
 
-    { id: 'dreiklang', group: 'beweglich', name: 'Dreiklang', hint: 'ja ja ja', bpm: 92, lowStart: 2, top: 19,
+    { id: 'dreiklang', group: 'beweglich', name: 'Dreiklang', how: 'Dreiklang hinauf und hinab, federnd', icon: 'dreiklang', hint: 'ja ja ja', bpm: 92, lowStart: 2, top: 19,
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ja', 7),
       help: ['Der Dreiklang bis zur Oktave hinauf und wieder hinab, locker und federnd.',
         'Den oberen Ton schon beim Anlauf „von oben“ denken, dann muss man ihn nicht hochdrücken. Er wird nicht lauter als die anderen.'] },
-    { id: 'mollDreiklang', group: 'beweglich', name: 'Moll-Dreiklang', hint: 'ma ma ma', bpm: 92, lowStart: 2, top: 19, mode: 'minor',
+    { id: 'mollDreiklang', group: 'beweglich', name: 'Moll-Dreiklang', how: 'Dreiklang in Moll, kleine Terz hoch genug', icon: 'mollDreiklang', hint: 'ma ma ma', bpm: 92, lowStart: 2, top: 19, mode: 'minor',
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ma', 7),
       help: ['Der Dreiklang bis zur Oktave und zurück — in Moll. Die kleine Terz bewusst hoch genug singen.',
         'Leicht und federnd, der obere Ton wird nicht lauter als die anderen.'] },
-    { id: 'katze', group: 'beweglich', name: 'Die Katze tritt …', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16, delay: 2,
+    { id: 'katze', group: 'beweglich', name: 'Die Katze tritt …', how: 'Konsonanten knackig, Vokale singen', icon: 'katze', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16, delay: 2,
       notes: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [1, 2], [0, 6]],
       syllables: ['Die', 'Kat', 'ze', 'tritt', 'die', 'Trep', 'pe', 'krumm'],
       help: ['„Die Katze tritt die Treppe krumm“: Konsonanten knackig und deutlich, Vokale trotzdem gesungen, nicht gesprochen.',
         'Wenn es sitzt, mit dem Tempo-Regler schneller werden. Die Lippen und die Zungenspitze arbeiten, der Kiefer bleibt locker.'] },
-    { id: 'koloratur', group: 'beweglich', name: 'Koloratur', hint: '9 Töne auf „a“', bpm: 80, lowStart: 2, top: 20, breath: 8,
+    { id: 'koloratur', group: 'beweglich', name: 'Koloratur', how: 'Neun Töne schnell und leicht auf „a“', icon: 'koloratur', hint: '9 Töne auf „a“', bpm: 80, lowStart: 2, top: 20, breath: 8,
       notes: [...[0, 1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 5, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], syllables: rep('a', 17),
       help: ['Die Tonleiter bis zur None (9 Töne) hinauf und hinunter, schnell und leicht auf „a“ (Anfänger: „da“ oder „la“).',
         'In einem Bogen denken, nicht jeden Ton einzeln anstoßen. Erst langsam sauber, dann schneller.'],
       easyNotes: [...[0, 1, 2, 3, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], easySyllables: rep('a', 9), easyHint: '5 Töne auf „a“' },
-    { id: 'staccatoLegato', group: 'beweglich', name: 'Staccato – Legato', hint: 'ha · dann ja', bpm: 88, lowStart: 2, top: 19,
+    { id: 'staccatoLegato', group: 'beweglich', name: 'Staccato – Legato', how: 'Hinauf kurz auf „ha“, hinunter gebunden', icon: 'staccatoLegato', hint: 'ha · dann ja', bpm: 88, lowStart: 2, top: 19,
       notes: [[0, 2, .5], [2, 2, .5], [4, 2, .5], [7, 2, .5], [4, 2], [2, 2], [0, 4]], syllables: ['ha', 'ha', 'ha', 'ha', 'ja', 'a', 'a'],
       help: ['Den Dreiklang hinauf kurz und federnd auf „ha“, hinunter gebunden auf „ja-a-a“.',
         'Beim Staccato federt der Bauch, beim Legato strömt die Luft ohne Lücke weiter. Die Tonhöhe bleibt in beiden Hälften gleich sauber.'] },
 
-    { id: 'oktave', group: 'hoehe', name: 'Oktavsprung', hint: 'ja-a …', bpm: 88, lowStart: 3, top: 22, breath: 8,
+    { id: 'oktave', group: 'hoehe', name: 'Oktavsprung', how: 'Mit „ja“ hinaufspringen, Tonleiter herab', icon: 'oktave', hint: 'ja-a …', bpm: 88, lowStart: 3, top: 22, breath: 8,
       notes: [[0, 4], [7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['ja', ...rep('a', 8)],
       help: ['Mit „ja“ eine Oktave hinauf springen und in einem Bogen die Tonleiter hinunter.',
         'Beim Sprung nicht hochdrücken: den hohen Ton leicht ansetzen, als würde man ihn von oben abholen. Hohe Runden, die unangenehm sind, einfach auslassen.'],
       easyNotes: [[0, 4], [4, 4], [3, 2], [2, 2], [1, 2], [0, 6]], easySyllables: ['ja', ...rep('a', 5)], easyHint: 'Quintsprung' },
-    { id: 'eule', group: 'hoehe', name: 'Eulenruf', hint: 'hu-uh · von oben', bpm: 66, lowStart: 3, top: 20, glide: true,
+    { id: 'eule', group: 'hoehe', name: 'Eulenruf', how: 'Leichtes „hu“ oben, dann hinuntergleiten', icon: 'eule', hint: 'hu-uh · von oben', bpm: 66, lowStart: 3, top: 20, glide: true,
       notes: [[7, 6], [0, 10]], syllables: ['hu', 'uh'],
       help: ['Mit einem leichten „hu“ hoch oben beginnen — so leicht wie ein Eulenruf — und auf „u“ eine Oktave hinuntergleiten.',
         'Tiefe Stimmen beginnen in der Kopfstimme (Falsett) und lassen den Klang nach unten in die Bruststimme übergehen, ohne dass er lauter wird. Hohe Stimmen nehmen die leichte Höhe mit in die Mittellage.'] },
-    { id: 'kopfAbwaerts', group: 'hoehe', name: 'Von oben', hint: 'hu · Tonleiter abwärts', bpm: 84, lowStart: 3, top: 20,
+    { id: 'kopfAbwaerts', group: 'hoehe', name: 'Von oben', how: 'Tonleiter von oben, erster Ton ganz leicht', icon: 'kopfAbwaerts', hint: 'hu · Tonleiter abwärts', bpm: 84, lowStart: 3, top: 20,
       notes: [[7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['hu', ...rep('u', 7)],
       help: ['Die Tonleiter von oben eine Oktave hinunter, der erste Ton leicht und fast gehaucht.',
         'Die Leichtigkeit des oberen Tons bleibt beim Hinuntergehen — nicht schwerer werden, nicht „umschalten“. Das gleicht die Register aus und bereitet den Oktavsprung vor.'] },
-    { id: 'tiefe', group: 'hoehe', name: 'Tiefe Lage', hint: 'mo · entspannt', bpm: 76, lowStart: 1, top: 12,
+    { id: 'tiefe', group: 'hoehe', name: 'Tiefe Lage', how: 'Fünf Töne auf „mo“ abwärts, entspannt', icon: 'tiefe', hint: 'mo · entspannt', bpm: 76, lowStart: 1, top: 12,
       notes: [[4, 2], [3, 2], [2, 2], [1, 2], [0, 8]], syllables: ['mo', 'o', 'o', 'o', 'o'],
       help: ['Fünf Töne auf „mo“ hinunter — Runde für Runde etwas tiefer (im Programm läuft die Übung abwärts).',
         'In der Tiefe darf es leiser werden. Den Kehlkopf nicht hinunterdrücken und den Klang nicht künstlich dunkel machen. Ist ein Ton nur noch Knarren: Runde auslassen.'] },
-    { id: 'tiefeGleiten', group: 'hoehe', name: 'Tief gleiten', hint: 'u · Quinte abwärts', bpm: 66, lowStart: 1, top: 12, glide: true,
+    { id: 'tiefeGleiten', group: 'hoehe', name: 'Tief gleiten', how: 'Auf „u“ eine Quinte hinab, unten halten', icon: 'tiefeGleiten', hint: 'u · Quinte abwärts', bpm: 66, lowStart: 1, top: 12, glide: true,
       notes: [[4, 4], [0, 12]], syllables: ['u', 'u'],
       help: ['Auf „u“ eine Quinte hinuntergleiten und unten den Ton ruhig halten.',
         'Wie ein entspanntes Seufzen: Die Luft trägt den Ton nach unten, der Hals bleibt weit. Gut für Alt und Bass vor tiefen Stellen.'] },
@@ -630,7 +748,7 @@
   const HELP = {
     program: ['Einsing-Programm', ['Das Programm spielt mehrere Übungen automatisch nacheinander — wie der Anfang einer Chorprobe: erst lockern und summen, dann Resonanz und Vokale, dann Beweglichkeit, zum Schluss die Höhe und ein ruhiger Ausklang.',
       'Jede Übung beginnt mit einem Akkord und steigt dann Runde für Runde einen Halbton, bevor sie wieder zurückgeht. Zwischen zwei Übungen ist ein Takt Pause.',
-      'Mit „Nächste Übung“ überspringst du etwas; ein Tipp auf eine Übung der Liste springt direkt dorthin.',
+      'Ein Tipp auf eine Karte startet das Programm. Der Balken oben zeigt alle Übungen; mit „Überspringen“ geht es zur nächsten.',
       'Morgens und Vor dem Auftritt sind bewusst kurz und bleiben in der Mittellage. Höhe und Tiefe ersetzen kein Einsingen — erst Schnell oder Kurz, dann eines davon.',
       'Eigene Programme: „+ Eigenes Programm“ oder im Menü (⋯) einer Karte „Als Vorlage kopieren“.']],
     load: ['Belastung', ['<b>Leicht:</b> tiefer, langsamer, weniger Rückungen — für müde Stimmen, morgens, nach Krankheit.',
@@ -818,7 +936,7 @@
   const LENGTH_CHOICES = { kurz: [3, 5, 7], lang: [10, 15, 20] };
   const COUNT_INS = [['off', 'aus'], ['start', 'zu Beginn'], ['round', 'jede Runde']];
   const CUES = [['chord', 'Akkord'], ['cadence', 'Kadenz']];
-  const run = { playing: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, wakeLock: null };
+  const run = { playing: false, starting: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, wakeLock: null };
   let plan = null;
   let droneVoice = null;
   let tapTimes = [];
@@ -911,6 +1029,7 @@
      der Mitte weg (erste und letzte bleiben). Ergebnis je Stimme, Belastung
      und Tempo zwischengespeichert. ---- */
   let quickMinutes = null; // Schnellstart aus der App: Dauer für diesen Aufruf
+  let pendingAutostart = false; // ?program=: nach dem Laden sofort im Spielmodus starten
   const targetMinutes = (id) => (quickMinutes && id === (quickMinutes <= 5 ? 'kurz' : 'lang') ? quickMinutes : state.lengths[id]);
   const fitCache = new Map();
   function fitted(p) {
@@ -1147,13 +1266,24 @@
     const now = engine.ctx.currentTime;
     let latest;
     while (run.queue.length && run.queue[0].time <= now + .01) latest = run.queue.shift();
-    if (latest) show(latest.g);
+    if (latest) { show(latest.g); run.lastDrawn = latest; }
+    // Spielmodus: Füllstand und Gleit-Punkt laufen mit der Audio-Uhr mit.
+    const L = run.lastDrawn;
+    if (L && L.g >= 0 && isPlayer()) updatePlayerFrame(L.g + clamp((now - L.time) / stepSecondsAt(L.g), 0, .999));
     if (run.endTime !== null && now > run.endTime + .8) { finish(); return; }
     run.frame = requestAnimationFrame(draw);
   }
 
   async function start(fromStep = 0) {
-    try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
+    // Nie zweimal starten — auch nicht, solange der AudioContext noch auf
+    // eine Nutzergeste wartet (dann hängt engine.start() bis dahin).
+    if (run.playing || run.starting) return;
+    run.starting = true;
+    $('.player-done').hidden = true;
+    $('.tap-start').hidden = true;
+    try { await engine.start(); } catch { run.starting = false; setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
+    run.starting = false;
+    if (run.playing) return;
     plan = buildPlan();
     run.playing = true;
     run.startedAt = engine.ctx.currentTime;
@@ -1162,6 +1292,7 @@
     run.endTime = null;
     run.queue = [];
     run.shownSeg = null;
+    run.lastDrawn = null;
     if (state.drone) startDrone();
     requestWakeLock();
     renderTransport();
@@ -1186,6 +1317,7 @@
     cancelAnimationFrame(run.frame);
     run.queue = [];
     run.shownSeg = null;
+    run.lastDrawn = null;
     stopDrone();
     if (run.wakeLock) { run.wakeLock.release().catch(() => {}); run.wakeLock = null; }
     renderTransport();
@@ -1193,17 +1325,31 @@
     setStatus(message || 'Bereit — am besten mit Kopfhörern.');
   }
 
-  /* ---- Schnellstart aus der App: ?from=quick&minutes=5|10 — Programm
-     „Kurz“ bzw. „Ausführlich“ auf die gewünschte Dauer gebracht, mit der
-     zuletzt geübten Stimme (Stimmprofil); vorbereitet, Start mit Play. ---- */
+  /* ---- Schnellstart aus der App:
+     ?from=quick&program=<id> — Programm (Länge von Kurz/Ausführlich aus
+       den Einstellungen) sofort im Spielmodus; unbekannte IDs → „kurz“.
+     ?from=quick&minutes=5|10 (alt) — Programm „Kurz“ bzw. „Ausführlich“
+       auf die gewünschte Dauer gebracht, vorbereitet, Start mit Play. ---- */
   function parseQuickParams(search) {
     const q = new URLSearchParams(search);
     if (q.get('from') !== 'quick') return null;
     const minutes = Number(q.get('minutes'));
-    return { minutes: [5, 10].includes(minutes) ? minutes : null };
+    const program = q.has('program') ? (PROGRAMS.some((p) => p.id === q.get('program')) ? q.get('program') : 'kurz') : null;
+    return { minutes: !program && [5, 10].includes(minutes) ? minutes : null, program };
   }
   function applyQuickParams(p) {
+    if (p?.program) {
+      quickMinutes = null;
+      fitCache.clear();
+      state.mode = 'program';
+      state.program = p.program;
+      pendingAutostart = true;
+      return;
+    }
     if (!p?.minutes) return;
+    // Alt (?minutes=): Programm vorbereitet im Spielmodus, Start mit Play
+    // (Übersicht hat keine Bühne mehr).
+    enterPlayer();
     quickMinutes = p.minutes;
     fitCache.clear();
     state.mode = 'program';
@@ -1211,11 +1357,18 @@
     setStatus(`Einsingen ${p.minutes} Minuten — mit Play starten.`);
   }
 
+  const DONE_TEXT = 'Fertig — gut eingesungen! Viel Spaß in der Probe.';
   function finish() {
-    stop('Fertig — gut eingesungen! Viel Spaß in der Probe.', true);
+    stop(DONE_TEXT, true);
     if (state.mode === 'program') {
-      $$('.prog-item').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
       $('.progress i').style.width = '100%';
+    }
+    if (isPlayer()) {
+      $$('.segbar i').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
+      $('.done-text').textContent = DONE_TEXT;
+      $('.player-done').hidden = false;
+      $('.player-next').hidden = true;
+      $('.player-done [data-action="again"]').focus();
     }
   }
 
@@ -1228,6 +1381,7 @@
     run.endTime = null;
     run.queue = [];
     run.shownSeg = null;
+    run.lastDrawn = null;
   }
 
   const itemStart = (k) => plan.segs.find((s) => s.kind === 'round' && s.item === k)?.start ?? 0;
@@ -1304,23 +1458,26 @@
     const group = GROUPS.find(([id]) => id === ex.group)[1];
     $('.stage-group').textContent = cur.kind === 'pause' ? 'Gleich geht es weiter mit' : group;
     $('.stage-title').textContent = ex.name;
-    $('[data-help="exercise"]').setAttribute('aria-label', `So geht: ${ex.name}`);
+    $$('[data-help="exercise"]').forEach((b) => b.setAttribute('aria-label', `So geht: ${ex.name}`));
 
     const host = $('.contour');
     const isBody = ex.kind === 'body';
-    host.hidden = isBody;
+    const player = isPlayer();
+    const glide = player && !!ex.glide;
+    host.hidden = isBody || glide;
+    $('.glide').hidden = !glide;
     $('.body-stage').hidden = !isBody;
     if (isBody) {
       const r = cur.kind === 'round' ? cur : plan.segs.find((sg) => sg.kind === 'round' && sg.item === cur.item);
       $('.body-move').textContent = r.move;
       updateBodyRing(r, 0);
     }
-    if (host.dataset.ex !== `${ex.id}|${state.voice}|${!!ex.isEasy}`) {
-      host.dataset.ex = `${ex.id}|${state.voice}|${!!ex.isEasy}`;
+    if (host.dataset.ex !== `${ex.id}|${state.voice}|${!!ex.isEasy}|${player}`) {
+      host.dataset.ex = `${ex.id}|${state.voice}|${!!ex.isEasy}|${player}`;
       const { min, max } = spanOf(ex, state.voice);
       const semis = notesOf(ex).map((n) => (toneless(ex) ? 0 : noteSemis(ex, n) - min));
       const span = Math.max(1, max - min);
-      const px = Math.min(4, 44 / span);
+      const px = player ? Math.min(9, 100 / span) : Math.min(4, 44 / span);
       host.classList.toggle('is-dense', ex.notes.length > 11);
       host.classList.toggle('is-flat', max === min);
       host.classList.toggle('is-wordy', ex.notes.length <= 11 && ex.syllables.join('').length > 24);
@@ -1378,11 +1535,8 @@
         $('.progress i').style.width = '0%';
         $('.prog-text').textContent = `${plan.items.length} Übungen · ${fmtMinutes(secondsLeft(0))}`;
       }
-      $$('.prog-item').forEach((el, k) => {
-        el.classList.toggle('is-done', !!seg && k < cur.item);
-        el.classList.toggle('is-now', !!seg && k === cur.item);
-      });
     }
+    if (player) renderPlayer(seg, cur);
   }
 
   function chips(name, entries, value) {
@@ -1396,6 +1550,13 @@
     }));
   }
 
+  /** Kleine Icons der Übungen eines Programms (höchstens 8, sonst „+n“). */
+  function programIconsHtml(p) {
+    const ids = p.items.map(([id]) => id);
+    const shown = ids.length > 8 ? ids.slice(0, 7) : ids;
+    return shown.map((id) => iconSvg(id, 16)).join('') + (ids.length > shown.length ? `<em>+${ids.length - shown.length}</em>` : '');
+  }
+
   function renderPrograms() {
     const cards = allPrograms().map((p) => {
       const own = p.id.startsWith('own-');
@@ -1404,11 +1565,12 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-card';
       b.dataset.program = p.id;
-      b.setAttribute('aria-pressed', String(p.id === state.program));
-      b.innerHTML = '<strong></strong><small></small><span></span>';
+      b.innerHTML = '<strong></strong><small></small><span></span><span class="prog-icons" aria-hidden="true"></span>';
       b.children[0].textContent = p.name;
       b.children[1].textContent = own ? 'Eigenes Programm' : p.about || '';
       b.children[2].textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, buildPlan(p)))}`;
+      b.children[3].innerHTML = programIconsHtml(p);
+      b.setAttribute('aria-label', `${p.name} starten, ${b.children[2].textContent}`);
       const menu = document.createElement('button');
       menu.type = 'button'; menu.className = 'prog-menu';
       menu.dataset.progMenu = p.id;
@@ -1424,36 +1586,30 @@
       add.innerHTML = '<strong>+ Eigenes Programm</strong>';
       cards.push(add);
     }
-    plan = buildPlan();
     $('[data-programs]').replaceChildren(...cards);
-    $('.prog-list').replaceChildren(...program().items.map(([id], k) => {
-      const ex = variantOf(exById(id));
-      const li = document.createElement('li');
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'prog-item'; b.dataset.item = String(k);
-      b.innerHTML = `<span class="num">${k + 1}</span><span></span><span class="syl-hint"></span>`;
-      b.children[1].textContent = ex.name;
-      b.children[2].textContent = ex.hint;
-      li.append(b);
-      return li;
-    }));
   }
 
   function renderGroups() {
     $('[data-groups]').replaceChildren(...GROUPS.flatMap(([gid, gname]) => {
-      const label = document.createElement('span');
-      label.className = 'sub-label'; label.textContent = gname;
-      const row = document.createElement('div');
-      row.className = 'chip-row';
-      row.append(...EXERCISES.filter((x) => x.group === gid).map((x) => {
+      const label = document.createElement('h3');
+      label.className = 'ex-group'; label.textContent = gname;
+      label.style.color = groupColor(gid);
+      const list = document.createElement('ul');
+      list.className = 'ex-list';
+      list.append(...EXERCISES.filter((x) => x.group === gid).map((x) => {
+        const li = document.createElement('li');
         const b = document.createElement('button');
-        b.type = 'button'; b.className = 'chip';
-        b.dataset.chip = 'exercise'; b.dataset.value = x.id;
-        b.textContent = x.name;
-        b.setAttribute('aria-pressed', String(x.id === state.exercise));
-        return b;
+        b.type = 'button'; b.className = 'ex-row';
+        b.dataset.playExercise = x.id;
+        b.innerHTML = `<span class="ex-ico">${iconSvg(x.id, 26)}</span><span><strong></strong><span class="ex-how"></span></span>`;
+        b.firstChild.style.background = groupColor(gid, true);
+        b.firstChild.style.color = groupColor(gid);
+        b.querySelector('strong').textContent = x.name;
+        b.querySelector('.ex-how').textContent = x.how;
+        li.append(b);
+        return li;
       }));
-      return [label, row];
+      return [label, list];
     }));
   }
 
@@ -1481,8 +1637,6 @@
 
   function renderAll() {
     plan = buildPlan();
-    $$('[data-mode]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === state.mode)));
-    $$('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== state.mode; });
     renderPrograms();
     renderGroups();
     chips('voice', voiceList().map((v) => [v.id, v.name]), state.voice);
@@ -1495,6 +1649,173 @@
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     renderStage(run.playing ? run.shownSeg : null);
     renderTransport();
+  }
+
+  /* ------------------------------------------------------------------------
+     SPIELMODUS — body.is-player: nur die Bühne im Vollbild (Segmentbalken,
+     großes Icon, Kurzanleitung, Darstellung, Vorschau). Geöffnet über
+     ?from=quick&program=<id> (Autostart) oder aus der Übersicht.
+     ------------------------------------------------------------------------ */
+
+  const isPlayer = () => document.body.classList.contains('is-player');
+  let autostartDone = false;
+
+  function enterPlayer() {
+    document.body.classList.add('is-player');
+    $('.player-top').append($('.gear-btn')); // das bestehende Zahnrad nach oben
+    $('.player-done').hidden = true;
+  }
+  function exitPlayer() {
+    if (run.playing) stop();
+    document.body.classList.remove('is-player');
+    $('.header-tools').append($('.gear-btn'));
+    $('.player-done').hidden = true;
+    $('.tap-start').hidden = true;
+    renderAll();
+  }
+
+  /** Beim Öffnen per ?program= sofort starten. Bleibt der AudioContext ohne
+   *  Nutzergeste stumm (suspended), erscheint „Tippen zum Starten“. Startet
+   *  nie zweimal (start() selbst sperrt zusätzlich). */
+  function autostart(startFn = start, wait = 700) {
+    if (autostartDone) return false;
+    autostartDone = true;
+    startFn(0);
+    setTimeout(() => {
+      if (isPlayer() && !run.playing && !(engine.ctx && engine.ctx.state === 'running' && !run.starting)) $('.tap-start').hidden = false;
+    }, wait);
+    return true;
+  }
+  /** Nutzergeste, während ein Start auf den AudioContext wartet (oder noch
+   *  gar nicht lief): Kontext wecken bzw. jetzt starten — nie doppelt. */
+  function kickStart() {
+    $('.tap-start').hidden = true;
+    if (run.starting) { try { Promise.resolve(engine.ctx?.resume()).catch(() => {}); } catch { /* egal */ } return; }
+    if (!run.playing) start(0);
+  }
+
+  /** Aus der Übersicht: Programm bzw. einzelne Übung im Spielmodus starten. */
+  function playInPlayer({ program: pid = null, exercise = null }) {
+    if (run.playing) stop();
+    if (pid) { state.mode = 'program'; state.program = pid; } else { state.mode = 'single'; state.exercise = exercise; }
+    persist();
+    enterPlayer();
+    renderAll();
+    start(0);
+  }
+
+  /** Grenzen (Schritte) jeder Übung im Plan, ohne die Pausen dazwischen. */
+  function itemBounds() {
+    if (plan.bounds) return plan.bounds;
+    plan.bounds = plan.items.map((_, k) => {
+      const segs = plan.segs.filter((sg) => sg.kind === 'round' && sg.item === k);
+      return { start: segs[0]?.start ?? 0, end: segs.length ? segs[segs.length - 1].start + segs[segs.length - 1].steps : 0 };
+    });
+    return plan.bounds;
+  }
+
+  /** Tonhöhe (Halbtöne über dem Grundton) einer Gleit-Übung zur Zeit t
+   *  (16tel ab Ende der Einstimmung) — wie playStep: jeder Ton gleitet in
+   *  den ersten 75 % seiner Dauer vom vorigen herüber. */
+  function glideValue(ex, t) {
+    const S = notesOf(ex).map((n) => noteSemis(ex, n));
+    for (let i = S.length - 1; i > 0; i--) {
+      if (t < ex.starts[i]) continue;
+      const u = clamp((t - ex.starts[i]) / (notesOf(ex)[i][1] * .75), 0, 1);
+      return S[i - 1] + (S[i] - S[i - 1]) * u * u * (3 - 2 * u);
+    }
+    return S[0];
+  }
+  const GLIDE_W = 300, GLIDE_H = 120, GLIDE_PAD = 12;
+  function glidePoint(ex, t) {
+    const { min, max } = spanOf(ex, state.voice);
+    const x = GLIDE_PAD + (GLIDE_W - 2 * GLIDE_PAD) * clamp(t / ex.length, 0, 1);
+    const y = GLIDE_H - GLIDE_PAD - (GLIDE_H - 2 * GLIDE_PAD) * (glideValue(ex, t) - min) / Math.max(1, max - min);
+    return [x, y];
+  }
+  function glidePath(ex) {
+    const n = 60;
+    return Array.from({ length: n + 1 }, (_, i) => glidePoint(ex, ex.length * i / n))
+      .map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('');
+  }
+
+  function playerMetaText(seg, cur, rounds) {
+    const ex = cur.ex;
+    if (cur.kind === 'pause') return 'Kurze Pause';
+    const r = cur.kind === 'round' ? cur : rounds[0];
+    const mode = ex.mode || 'major';
+    if (!seg || !r) {
+      if (ex.kind === 'body') return `${rounds.length} Bewegungen`;
+      if (ex.kind === 'breath') return `${rounds.length} Runden · ohne Ton`;
+      return `${rounds.length} ${rounds.length === 1 ? 'Runde' : 'Runden'} · ${keyLabel(rounds[0].root, mode)}`;
+    }
+    if (ex.kind === 'body') return `Bewegung ${r.round + 1} von ${r.rounds}`;
+    if (ex.kind === 'breath') return `Runde ${r.round + 1} von ${r.rounds} · aus ${r.exhale} Schläge`;
+    return `Runde ${r.round + 1} von ${r.rounds} · ${keyLabel(r.root, mode)}`;
+  }
+
+  /** Spielmodus-Teil der Bühne (aus renderStage, je Segmentwechsel). */
+  function renderPlayer(seg, cur) {
+    const ex = cur.ex;
+    const stage = $('.stage');
+    stage.style.setProperty('--gc', groupColor(ex.group));
+    stage.style.setProperty('--gc-bg', groupColor(ex.group, true));
+    $('.hero-icon').innerHTML = iconSvg(ex.id, 64);
+    $('.hero-group').textContent = cur.kind === 'pause' ? 'Gleich' : GROUPS.find(([id]) => id === ex.group)[1];
+    $('.hero-title').textContent = ex.name;
+    $('.hero-how').textContent = ex.how;
+    const rounds = plan.segs.filter((s) => s.kind === 'round' && s.item === cur.item);
+    $('.player-meta').textContent = playerMetaText(seg, cur, rounds);
+    if (ex.glide) {
+      $('.glide-path').setAttribute('d', glidePath(ex));
+      const [x, y] = glidePoint(ex, 0);
+      $('.glide-dot').setAttribute('cx', x.toFixed(1)); $('.glide-dot').setAttribute('cy', y.toFixed(1));
+    }
+    // Segmentbalken: eine Übung = ein Segment in ihrer Gruppenfarbe.
+    const bar = $('.segbar');
+    const key = `${plan.items.map((x) => x.id).join()}|${plan.loop}`;
+    if (bar.dataset.key !== key) {
+      bar.dataset.key = key;
+      bar.replaceChildren(...plan.items.map((x) => {
+        const i = document.createElement('i');
+        i.style.setProperty('--c', groupColor(x.group));
+        i.append(document.createElement('b'));
+        return i;
+      }));
+    }
+    bar.setAttribute('aria-label', `Übung ${cur.item + 1} von ${plan.items.length}`);
+    [...bar.children].forEach((el, k) => {
+      el.classList.toggle('is-done', !!seg && k < cur.item);
+      el.classList.toggle('is-now', !!seg && k === cur.item);
+      if (!seg || k !== cur.item) el.firstChild.style.width = '';
+    });
+    // Vorschau: nächste Übung bzw. „Danach: fertig“ (Dauerschleife: keine).
+    const next = $('.player-next');
+    next.hidden = plan.loop || !$('.player-done').hidden;
+    const last = cur.item >= plan.items.length - 1;
+    const text = $('.next-text');
+    if (last) text.textContent = 'Danach: fertig';
+    else {
+      const nx = plan.items[cur.item + 1];
+      text.innerHTML = `Gleich: ${iconSvg(nx.id, 20)}<span></span>`;
+      text.lastChild.textContent = nx.name;
+    }
+    $('.skip-link').hidden = !run.playing || last;
+  }
+
+  /** Je Bild: Füllstand des aktuellen Segments, Punkt auf der Gleitkurve. */
+  function updatePlayerFrame(gf) {
+    const x = plan.loop ? mod(gf, plan.total) : gf;
+    const hit = segAt(Math.floor(x));
+    if (!hit) return;
+    const { seg } = hit;
+    const b = itemBounds()[seg.item];
+    const el = $('.segbar').children[seg.item];
+    if (el && b && b.end > b.start) el.firstChild.style.width = `${(100 * clamp((x - b.start) / (b.end - b.start), 0, 1)).toFixed(1)}%`;
+    if (seg.kind === 'round' && seg.ex.glide) {
+      const [px, py] = glidePoint(seg.ex, x - seg.start - seg.cue);
+      $('.glide-dot').setAttribute('cx', px.toFixed(1)); $('.glide-dot').setAttribute('cy', py.toFixed(1));
+    }
   }
 
   /* ---- Hilfe-Blatt ---- */
@@ -1711,27 +2032,20 @@
     if (t.closest('[data-action="own-new"]')) { openEditor(null); return; }
     const help = t.closest('[data-help]');
     if (help) { openHelp(help.dataset.help); return; }
+    if (t.closest('[data-action="player-close"]')) { exitPlayer(); return; }
+    if (t.closest('[data-action="tap-start"]')) { kickStart(); return; }
+    if (t.closest('[data-action="again"]')) { start(0); return; }
+    if (t.closest('[data-action="done-close"]')) {
+      // Eingebettet: das Tool über den bestehenden Weg schließen (wie Esc).
+      if (window.parent !== window) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin);
+      else exitPlayer();
+      return;
+    }
 
-    const modeBtn = t.closest('[data-mode]');
-    if (modeBtn) {
-      if (state.mode !== modeBtn.dataset.mode) {
-        if (run.playing) stop();
-        state.mode = modeBtn.dataset.mode;
-        renderAll(); persist();
-      }
-      return;
-    }
     const card = t.closest('[data-program]');
-    if (card) {
-      if (state.program !== card.dataset.program) {
-        if (run.playing) stop();
-        state.program = card.dataset.program;
-        renderAll(); persist();
-      }
-      return;
-    }
-    const item = t.closest('[data-item]');
-    if (item) { jumpTo(itemStart(Number(item.dataset.item))); return; }
+    if (card) { playInPlayer({ program: card.dataset.program }); return; }
+    const exRow = t.closest('[data-play-exercise]');
+    if (exRow) { playInPlayer({ exercise: exRow.dataset.playExercise }); return; }
     if (t.closest('[data-action="skip"]')) {
       const hit = segAt(Math.max(0, run.step - 1));
       if (hit && hit.seg.item < plan.items.length - 1) jumpTo(itemStart(hit.seg.item + 1));
@@ -1761,7 +2075,7 @@
       renderAll(); persist();
       return;
     }
-    if (t.closest('.play')) { if (run.playing) stop(); else start(); return; }
+    if (t.closest('.play')) { if (run.playing) stop(); else kickStart(); return; }
     if (t.closest('.tap-btn')) tapTempo();
   });
 
@@ -1786,7 +2100,7 @@
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || !$('.help-sheet').hidden || !$('.settings-sheet').hidden) return;
     const onControl = document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName);
-    if (e.code === 'Space' && !onControl) { e.preventDefault(); if (run.playing) stop(); else start(); }
+    if (e.code === 'Space' && !onControl && isPlayer()) { e.preventDefault(); if (run.playing) stop(); else kickStart(); }
     else if ((e.key === 't' || e.key === 'T') && !e.repeat) tapTempo();
   });
 
@@ -1806,6 +2120,8 @@
     spell,
     keyLabel,
     sanitize,
+    ICONS,
+    iconSvg,
     selfCheck,
   };
 
@@ -2001,11 +2317,77 @@
       }
       state.lengths = savedLen;
       [['T', 'T'], ['X', 'A'], [3, 'A']].forEach(([raw, want]) => { state.voice = 'A'; sanitize({ voice: raw }); if (state.voice !== want) errors.push(`voice ${raw} → ${state.voice}`); });
+      // Umbau Tools Paket 1: Kurzanleitung, Icon, Gruppenfarbe.
+      if (EXERCISES.length !== 28) errors.push(`${EXERCISES.length} Übungen statt 28`);
+      for (const ex of EXERCISES) {
+        if (typeof ex.how !== 'string' || ex.how.length < 1 || ex.how.length > 55 || /\.$/.test(ex.how)) errors.push(`${ex.id}: how „${ex.how}“`);
+        if (!ICONS[ex.icon] || ex.icon !== ex.id) errors.push(`${ex.id}: Icon fehlt`);
+      }
+      const rootStyle = getComputedStyle(document.documentElement);
+      for (const [gid] of GROUPS) {
+        if (!rootStyle.getPropertyValue(`--g-${gid}`).trim() || !rootStyle.getPropertyValue(`--g-${gid}-bg`).trim()) errors.push(`Gruppe ${gid}: keine Farbe`);
+      }
+      const svgDoc = new DOMParser().parseFromString(iconSvg('sirene', 20), 'image/svg+xml').documentElement;
+      if (svgDoc.nodeName !== 'svg' || svgDoc.getAttribute('aria-hidden') !== 'true' || svgDoc.getAttribute('viewBox') !== '0 0 24 24' || !svgDoc.querySelector('path')) errors.push('iconSvg liefert kein gültiges SVG');
+      // Paket 2: Schnellstart mit Programm, Spielmodus.
+      const qp = (q) => JSON.stringify(parseQuickParams(q));
+      if (qp('?embedded=1&from=quick&program=kurz') !== '{"minutes":null,"program":"kurz"}' || qp('?from=quick&program=lang') !== '{"minutes":null,"program":"lang"}'
+        || qp('?from=quick&program=xyz') !== '{"minutes":null,"program":"kurz"}' || qp('?from=quick&minutes=10') !== '{"minutes":10,"program":null}'
+        || parseQuickParams('') !== null || parseQuickParams('?embedded=1') !== null) errors.push('Schnellstart program= falsch');
+      const savedAuto = autostartDone;
+      let starts = 0;
+      autostartDone = false;
+      autostart(() => { starts++; }, 1e9); autostart(() => { starts++; }, 1e9);
+      if (starts !== 1) errors.push(`Autostart ruft start ${starts}× auf`);
+      autostartDone = savedAuto;
+      if (!run.playing) {
+        const wasPlayer = isPlayer();
+        document.body.classList.add('is-player');
+        try {
+          Object.assign(state, { mode: 'program', program: 'kurz', voice: 'A', load: 'normal' });
+          plan = buildPlan(); renderStage();
+          const want = fitted(PROGRAMS.find((x) => x.id === 'kurz')).items.length;
+          if ($$('.segbar i').length !== want) errors.push(`Segmentbalken: ${$$('.segbar i').length} statt ${want}`);
+          for (const ex of EXERCISES) {
+            Object.assign(state, { mode: 'single', exercise: ex.id });
+            plan = buildPlan(); renderStage();
+            if ($('.glide').hidden === !!ex.glide) errors.push(`${ex.id}: Gleitkurve ${ex.glide ? 'fehlt' : 'ohne glide'}`);
+            if ($$('.segbar i').length !== 1) errors.push(`${ex.id}: Segmentbalken nicht einteilig`);
+          }
+        } finally { if (!wasPlayer) document.body.classList.remove('is-player'); }
+      }
+      // Paket 3: Übersicht — jede Übung und jedes Programm genau einmal,
+      // Richtung überlebt Speichern/Laden.
+      state.ownPrograms = [{ id: 'own-test', name: 'Test', items: [['summen', 2, 'up']] }];
+      renderPrograms(); renderGroups();
+      for (const ex of EXERCISES) {
+        const n = $$('[data-play-exercise]').filter((b) => b.dataset.playExercise === ex.id).length;
+        if (n !== 1) errors.push(`Übersicht: ${ex.id} ${n}×`);
+      }
+      if ($$('[data-play-exercise]').length !== EXERCISES.length) errors.push('Übersicht: zusätzliche Übungszeilen');
+      for (const pr of allPrograms()) {
+        const n = $$('[data-program]').filter((b) => b.dataset.program === pr.id).length;
+        if (n !== 1) errors.push(`Übersicht: Programm ${pr.id} ${n}×`);
+      }
+      if ($$('[data-program]').length !== PROGRAMS.length + 1) errors.push('Übersicht: Programmzahl falsch');
+      state.ownPrograms = [];
+      for (const dir of ['up', 'down', 'updown']) {
+        const stored = JSON.parse(JSON.stringify({ ...state, direction: dir }));
+        state.direction = 'updown'; sanitize(stored);
+        if (state.direction !== dir) errors.push(`Richtung ${dir} → ${state.direction}`);
+      }
+      state.direction = 'updown'; sanitize({ direction: 'quer' });
+      if (state.direction !== 'updown') errors.push('Richtung kaputt nicht verworfen');
+      if (!$('.settings-sheet [data-chips="direction"]')) errors.push('Richtung nicht im Einstellungsblatt');
+      for (const [id, dur] of [['moll5', 'mimemamomu'], ['mollDreiklang', 'dreiklang']]) {
+        if (!ICONS[id].startsWith(ICONS[dur]) || ICONS[id] === ICONS[dur]) errors.push(`${id}: Icon nicht Dur-Schwester + Mondsichel`);
+      }
     } finally {
       for (const k of Object.keys(state)) delete state[k];
       Object.assign(state, saved);
       plan = savedPlan;
       profile = savedProfile;
+      if (!run.playing) renderAll();
     }
     return errors;
   }
@@ -2017,9 +2399,15 @@
     if (profile && LOAD_IDS.includes(profile.load)) state.load = profile.load;
   }
   applyProfile();
+  $('.header-tools').append($('.gear-btn'));
   const quickParams = parseQuickParams(location.search);
+  // ?program=: Spielmodus sofort (auch vor dem Laden der Ablage), Start erst
+  // danach — sonst liefe das Programm mit Standard-Längen los.
+  if (quickParams?.program) enterPlayer();
+  const maybeAutostart = () => { if (pendingAutostart) { pendingAutostart = false; autostart(); } };
   if (!storage) applyQuickParams(quickParams);
   renderAll();
+  if (!storage) maybeAutostart();
   if (storage) {
     try {
       Promise.resolve(storage.load('einsingen')).then((data) => {
@@ -2028,8 +2416,9 @@
         applyProfile();
         applyQuickParams(quickParams);
         renderAll();
-      }).catch(() => { applyQuickParams(quickParams); renderAll(); });
-    } catch { /* Ablage weg */ }
+        maybeAutostart();
+      }).catch(() => { applyQuickParams(quickParams); renderAll(); maybeAutostart(); });
+    } catch { applyQuickParams(quickParams); renderAll(); maybeAutostart(); }
   }
 })();
 </script>
