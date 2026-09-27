@@ -239,7 +239,9 @@
   const mod = (n, m) => ((n % m) + m) % m;
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-  const degreeSemis = (deg) => MAJOR[mod(deg, 7)] + 12 * Math.floor(deg / 7);
+  const MINOR = [0, 2, 3, 5, 7, 8, 10];
+  /** Halbtöne der Stufe `deg` über dem Grundton — in Dur oder (natürlichem) Moll. */
+  const degreeSemis = (deg, mode = 'major') => (mode === 'minor' ? MINOR : MAJOR)[mod(deg, 7)] + 12 * Math.floor(deg / 7);
   /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
      uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
      ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
@@ -313,7 +315,7 @@
   }
   // Deutsche Tonnamen: Tonart groß („Es-Dur“), Einzeltöne in Helmholtz-
   // Schreibweise (F, c, c′, c″), wie sie in Chorproben üblich ist.
-  const keyLabel = (root) => `${spell(root, root, 'major')}-Dur`;
+  const keyLabel = (root, mode = 'major') => (mode === 'minor' ? `${spell(root, root, 'minor').toLowerCase()}-Moll` : `${spell(root, root, 'major')}-Dur`);
 
   /* ------------------------------------------------------------------------
      INHALT
@@ -329,6 +331,8 @@
   const CUE_CADENCE = 16;
   const BREATH = 4; // Standard-Atemluft in 16teln; je Übung über `breath`
   const PAUSE = 16; // ein Takt zwischen zwei Programm-Übungen
+  const BREATH_IN = 4; // Atemübung: Schläge einatmen …
+  const BREATH_EXHALES = [8, 10, 12, 14]; // … und ausatmen, je Runde
   const MAX_STEPS = 7; // höchstens so viele Halbtöne über der Startlage
 
   // Klingende MIDI-Töne. Vorsichtige Laienchor-Spannen: lieber ein, zwei
@@ -341,6 +345,74 @@
     { id: 'B', name: 'Bass', floor: 41, ceil: 62 },   // F  – d′
   ];
   const voiceById = (id) => VOICES.find((v) => v.id === id) || VOICES[1];
+
+  /* ---- Vierstimmiger Satz für die Übung „Akkord“ — Kopie aus
+     groove-lab.js (voicePairs/voiceChord, Paket 7), bis harmony.js ihn
+     gemeinsam bereitstellt. Einsingen ist ein eigenes iframe und kann
+     groove-lab.js nicht erreichen. Nicht hier ändern. */
+  const SATB = ['S', 'A', 'T', 'B'];
+  const SATB_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
+  const VOICING_STATS = { fallbacks: 0 };
+  function voicePairs(prev, next) {
+    let parallels = 0;
+    for (let i = 0; i < 4; i++) {
+      for (let j = i + 1; j < 4; j++) {
+        const [x, y] = [SATB[i], SATB[j]];
+        const mx = next[x] - prev[x];
+        const my = next[y] - prev[y];
+        if (!mx || !my || Math.sign(mx) !== Math.sign(my)) continue;
+        const before = mod(prev[x] - prev[y], 12);
+        const after = mod(next[x] - next[y], 12);
+        if (before === after && (after === 0 || after === 7)) parallels++;
+      }
+    }
+    return parallels;
+  }
+  function voiceChord(pcs, prev, { leading = null, prevLeading = null, bassIndex = 0, next: after = null } = {}) {
+    const within = ([lo, hi], pred) => { const out = []; for (let m = lo; m <= hi; m++) if (pred(m)) out.push(m); return out; };
+    const bassPc = pcs[bassIndex] ?? pcs[0];
+    const isChordTone = (m) => pcs.includes(mod(m, 12));
+    let best = null;
+    let bestScore = Infinity;
+    let fallback = null;
+    let fallbackScore = Infinity;
+    let closed = null;
+    let closedScore = Infinity;
+    for (const B of within(SATB_RANGES.B, (m) => mod(m, 12) === bassPc)) {
+      for (const T of within(SATB_RANGES.T, isChordTone)) {
+        if (T <= B || T - B > 19) continue;
+        for (const A of within(SATB_RANGES.A, isChordTone)) {
+          if (A <= T || A - T > 12) continue;
+          for (const S of within(SATB_RANGES.S, isChordTone)) {
+            if (S <= A || S - A > 12) continue;
+            const next = { S, A, T, B };
+            const voices = [B, T, A, S].map((m) => mod(m, 12));
+            let score = Math.abs(S - prev.S) + Math.abs(A - prev.A) + Math.abs(T - prev.T) + Math.abs(B - prev.B) * .5;
+            if (!voices.includes(pcs[1])) score += 20;
+            if (pcs[2] !== undefined && !voices.includes(pcs[2])) score += 4;
+            if (pcs[3] !== undefined && !voices.includes(pcs[3])) score += 6;
+            if (voices.filter((pc) => pc === pcs[1]).length > 1) score += 3;
+            // Verdeckte Quinte/Oktave: Außenstimmen gleichgerichtet in ein
+            // reines Intervall, Sopran springt.
+            const outer = mod(S - B, 12);
+            if ((outer === 0 || outer === 7) && Math.abs(S - prev.S) > 2 && Math.sign(S - prev.S) === Math.sign(B - prev.B) && S !== prev.S) score += 10;
+            if (prevLeading !== null && mod(prev.S, 12) === prevLeading && pcs.includes(mod(prevLeading + 1, 12)) && S !== prev.S + 1) score += 8;
+            if (score < fallbackScore) { fallbackScore = score; fallback = next; }
+            const hard = voicePairs(prev, next) > 0 || (leading !== null && voices.filter((pc) => pc === leading).length > 1);
+            if (!hard && score < bestScore) { bestScore = score; best = next; }
+            if (after && !hard && !voicePairs(next, after)) {
+              const both = score + Math.abs(after.S - S) + Math.abs(after.A - A) + Math.abs(after.T - T);
+              if (both < closedScore) { closedScore = both; closed = next; }
+            }
+          }
+        }
+      }
+    }
+    if (!best && fallback) VOICING_STATS.fallbacks++;
+    return closed || best || fallback || { S: prev.S, A: prev.A, T: prev.T, B: prev.B };
+  }
+
+
 
   const GROUPS = [
     ['lockern', 'Lockern & Atmen'],
@@ -361,6 +433,10 @@
   // lowStart/top: Halbtöne über voice.floor — wo der tiefste Ton der ersten
   // Runde liegt, und wie hoch der höchste Ton der Übung höchstens steigt.
   const EXERCISES = [
+    { id: 'atem', group: 'lockern', name: 'Atem', hint: 'sss', bpm: 60, kind: 'breath', lowStart: 0, top: 0,
+      notes: [[0, 16], [0, 32]], syllables: ['ein', 'sss'],
+      help: ['Ohne Ton: vier Schläge lang ruhig durch die Nase einatmen — Bauch und Flanken weiten sich, die Schultern bleiben unten.',
+        'Dann auf „sss“ gleichmäßig ausatmen, erst 8 Schläge, jede Runde 2 länger (bis 14). Die Luft nicht herauspressen: der Brustkorb bleibt weit, der Bauch gibt langsam nach.'] },
     { id: 'lippen', group: 'lockern', name: 'Lippenflattern', hint: 'brrr', bpm: 88, lowStart: 3, top: 16, breath: 8,
       notes: legato5, syllables: rep('brrr', 9),
       help: ['Lippen locker aufeinander, Luft strömen lassen, bis sie flattern — und dabei auf den Tönen summen. Das lockert Lippen und Gesicht und bringt den Atem ohne Druck in Gang.',
@@ -391,10 +467,27 @@
       help: ['Alle Vokale auf einem Ton, ohne abzusetzen. Klang, Lautstärke und Tonhöhe bleiben gleich — nur die Mundform ändert sich.',
         'Ziel ist ein ausgeglichener Chorklang: Das „i“ nicht spitz, das „a“ nicht breit werden lassen.'] },
 
+    { id: 'moll5', group: 'resonanz', name: 'Moll-Fünfton', hint: 'no · Moll', bpm: 92, lowStart: 3, top: 18, mode: 'minor',
+      notes: legato5, syllables: rep('no', 9),
+      help: ['Derselbe Fünftonraum wie bei „Mi-me-ma-mo-mu“, aber in Moll: die Terz liegt einen Halbton tiefer.',
+        'Auf „no“ ruhig und rund singen und auf die kleine Terz hören — sie wird gern zu tief. Der Klang bleibt vorne, auch wenn Moll dunkler klingt.'] },
+    { id: 'messa', group: 'resonanz', name: 'An- und Abschwellen', hint: 'mo', bpm: 60, lowStart: 5, top: 12, dynamic: 'crescDecresc',
+      notes: [[0, 16]], syllables: ['mo'],
+      help: ['Ein Ton auf „mo“: leise beginnen, zwei Schläge lang lauter werden, dann wieder zurück ins Leise — die Vorgabe macht es vor.',
+        'Die Tonhöhe bleibt dabei ganz ruhig, und der Klang wird nur voller, nicht härter. Im Leisen die Luft weiter strömen lassen.'] },
+    { id: 'akkord', group: 'resonanz', name: 'Akkord', hint: 'no · im Satz', bpm: 72, lowStart: 3, top: 14, chord: true,
+      notes: [], syllables: rep('no', 5),
+      help: ['Intonation im Dreiklang: Das Klavier spielt Grundton und Quinte, du singst deinen Akkordton dazu — Sopran und Tenor die Terz, Alt die Quinte, Bass den Grundton — acht Schläge lang.',
+        'Danach die Kadenz I–IV–V–I, je vier Schläge, mit dem Ton, der deine Stimme im vierstimmigen Satz singt. Hören, wie der eigene Ton im Akkord „einrastet“ — besonders die Terz.'] },
+
     { id: 'dreiklang', group: 'beweglich', name: 'Dreiklang', hint: 'ja ja ja', bpm: 92, lowStart: 2, top: 19,
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ja', 7),
       help: ['Der Dreiklang bis zur Oktave hinauf und wieder hinab, locker und federnd.',
         'Den oberen Ton schon beim Anlauf „von oben“ denken, dann muss man ihn nicht hochdrücken. Er wird nicht lauter als die anderen.'] },
+    { id: 'mollDreiklang', group: 'beweglich', name: 'Moll-Dreiklang', hint: 'ma ma ma', bpm: 92, lowStart: 2, top: 19, mode: 'minor',
+      notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ma', 7),
+      help: ['Der Dreiklang bis zur Oktave und zurück — in Moll. Die kleine Terz bewusst hoch genug singen.',
+        'Leicht und federnd, der obere Ton wird nicht lauter als die anderen.'] },
     { id: 'katze', group: 'beweglich', name: 'Die Katze tritt …', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16, delay: 2,
       notes: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [1, 2], [0, 6]],
       syllables: ['Die', 'Kat', 'ze', 'tritt', 'die', 'Trep', 'pe', 'krumm'],
@@ -410,17 +503,55 @@
       help: ['Mit „ja“ eine Oktave hinauf springen und in einem Bogen die Tonleiter hinunter.',
         'Beim Sprung nicht hochdrücken: den hohen Ton leicht ansetzen, als würde man ihn von oben abholen. Hohe Runden, die unangenehm sind, einfach auslassen.'] },
   ];
+  // Übung „Akkord“: je Stimme erst der eigene Akkordton (acht Schläge),
+  // dann I–IV–V–I (je vier Schläge) mit dem Ton aus dem vierstimmigen
+  // Satz. Gerechnet in C mit Grundton 48 für alle Stimmen; die Stufen
+  // gelten dann relativ zum Grundton der Runde. Start: jede Stimme auf
+  // ihrem Akkordton (S e′, A g, T e, B c), so beginnt der Satz dort.
+  const CHORD_HOME = { S: 9, A: 4, T: 2, B: 0 };
+  const CHORD_STEPS = { ...Object.fromEntries(MAJOR.map((semis, deg) => [semis, deg])) };
+  const semisToDegree = (semis) => CHORD_STEPS[mod(semis, 12)] + 7 * Math.floor(semis / 12);
+  function chordExerciseSatb() {
+    let prev = { S: 48 + degreeSemis(CHORD_HOME.S), A: 48 + degreeSemis(CHORD_HOME.A), T: 48 + degreeSemis(CHORD_HOME.T), B: 48 };
+    const out = [];
+    let prevLeading = null;
+    for (const deg of [0, 3, 4, 0]) {
+      const pcs = [0, 2, 4].map((o) => mod(degreeSemis(deg + o), 12));
+      const leading = deg === 4 ? 11 : null;
+      prev = voiceChord(pcs, prev, { leading, prevLeading });
+      prevLeading = leading;
+      out.push(prev);
+    }
+    return out;
+  }
+
   // starts: Einsatz jedes Tons in 16teln ab dem Ende des Akkords (also
   // inklusive `delay`); die Position in der Runde ist cue + starts[i].
   const roundSteps = (ex, cue) => Math.ceil((cue + ex.length + (ex.breath ?? BREATH)) / BAR) * BAR;
+  /** Töne der Übung für eine Stimme (nur „Akkord“ hat je Stimme eigene). */
+  const notesOf = (ex, voiceId = state.voice) => ex.voiceNotes?.[voiceId] || ex.notes;
+  const semisOf = (ex, deg) => degreeSemis(deg, ex.mode);
+  /** Tiefster und höchster Ton (Halbtöne über dem Grundton) für eine Stimme. */
+  function spanOf(ex, voiceId) {
+    const semis = notesOf(ex, voiceId).map(([deg]) => semisOf(ex, deg));
+    return { min: Math.min(...semis), max: Math.max(...semis) };
+  }
   EXERCISES.forEach((ex) => {
+    if (ex.chord) {
+      const satb = chordExerciseSatb();
+      ex.satb = satb;
+      ex.voiceNotes = Object.fromEntries(SATB.map((v) => [v, [[CHORD_HOME[v], 32], ...satb.map((c) => [semisToDegree(c[v] - 48), 16])]]));
+      ex.notes = ex.voiceNotes.A;
+      // Begleitung: Grundton und Quinte zum gehaltenen Ton, dann der Satz
+      // (in C mit Grundton 48, beim Spielen transponiert).
+      ex.accompany = [[0, [48, 55], 32], ...satb.map((c, k) => [32 + 16 * k, [c.B, c.T, c.A, c.S], 16])];
+    }
     let at = ex.delay || 0;
     ex.starts = ex.notes.map(([, len]) => { const start = at; at += len; return start; });
     ex.length = at;
     ex.steps = roundSteps(ex, CUE);
-    const semis = ex.notes.map(([deg]) => degreeSemis(deg));
-    ex.min = Math.min(...semis);
-    ex.max = Math.max(...semis);
+    if (ex.kind === 'breath') { ex.min = 0; ex.max = 0; return; }
+    Object.assign(ex, spanOf(ex, 'A'));
   });
   const exById = (id) => EXERCISES.find((x) => x.id === id);
 
@@ -429,8 +560,8 @@
   // zurück (Summen abwärts als Ausklang).
   const PROGRAMS = [
     { id: 'kurz', name: 'Kurz', items: [['lippen', 3], ['mimemamomu', 4], ['nja', 3], ['dreiklang', 4], ['oktave', 3], ['summen', 3, 'down']] },
-    { id: 'lang', name: 'Ausführlich', items: [['lippen', 4], ['sirene', 3], ['zwerchfell', 3], ['summen', 3], ['mimemamomu', 4], ['nja', 3],
-      ['vokale', 2], ['katze', 3], ['dreiklang', 4], ['koloratur', 3], ['oktave', 4], ['summen', 4, 'down']] },
+    { id: 'lang', name: 'Ausführlich', items: [['atem'], ['lippen', 4], ['sirene', 3], ['zwerchfell', 3], ['summen', 3], ['mimemamomu', 4], ['nja', 3],
+      ['vokale', 2], ['moll5', 3], ['katze', 3], ['dreiklang', 4], ['koloratur', 3], ['oktave', 4], ['summen', 4, 'down']] },
   ];
   const DIRECTIONS = [['updown', 'auf und ab'], ['up', 'aufwärts'], ['down', 'abwärts']];
 
@@ -488,7 +619,7 @@
 
     /** Weiche "Singstimme": Dreieck + Sinus-Oktave, Tiefpass, verzögertes
      *  Vibrato; mit glide gleitet sie vom Ton `from` herüber (Sirene). */
-    tone(midi, time, duration, { velocity = .22, glide = 0, from = null } = {}) {
+    tone(midi, time, duration, { velocity = .22, glide = 0, from = null, swell = false } = {}) {
       const ctx = this.ctx;
       const gain = ctx.createGain();
       const filter = ctx.createBiquadFilter();
@@ -513,7 +644,13 @@
       oscs.forEach((o) => lfoGain.connect(o.detune));
       const attack = Math.min(.04, duration / 2);
       gain.gain.setValueAtTime(.0001, time);
-      gain.gain.linearRampToValueAtTime(velocity, time + attack);
+      if (swell) {
+        // An- und Abschwellen (messa di voce): leise → laut in der ersten,
+        // zurück ins Leise in der zweiten Hälfte.
+        gain.gain.linearRampToValueAtTime(velocity * .25, time + attack);
+        gain.gain.linearRampToValueAtTime(velocity * 1.5, time + duration / 2);
+        gain.gain.linearRampToValueAtTime(velocity * .2, time + duration);
+      } else gain.gain.linearRampToValueAtTime(velocity, time + attack);
       gain.gain.setTargetAtTime(0, time + duration, .06);
       filter.connect(gain);
       gain.connect(this.master);
@@ -643,8 +780,9 @@
   /** Startlage und Anzahl Halbtonschritte einer Übung für eine Stimme. */
   function exerciseRange(ex, voiceId) {
     const v = voiceById(voiceId);
-    const start = v.floor + ex.lowStart - ex.min;
-    const highestRoot = Math.min(v.floor + ex.top, v.ceil) - ex.max;
+    const { min, max } = ex.kind === 'breath' ? { min: 0, max: 0 } : spanOf(ex, voiceId);
+    const start = v.floor + ex.lowStart - min;
+    const highestRoot = Math.min(v.floor + ex.top, v.ceil) - max;
     return { start, steps: clamp(highestRoot - start, 0, MAX_STEPS) };
   }
 
@@ -662,7 +800,16 @@
   function buildPlan() {
     const segs = [];
     let at = 0;
+    // Atemübung: vier Runden ohne Ton, Ausatmen 8, 10, 12, 14 Schläge.
+    const addBreath = (ex, item) => {
+      BREATH_EXHALES.forEach((exhale, i) => {
+        const steps = (BREATH_IN + exhale) * 4;
+        segs.push({ kind: 'round', ex, item, root: null, start: at, steps, cue: 0, cadence: false, round: i, rounds: BREATH_EXHALES.length, exhale, trend: '' });
+        at += steps;
+      });
+    };
     const addExercise = (ex, dir, limit, loop, item) => {
+      if (ex.kind === 'breath') { addBreath(ex, item); return; }
       const r = exerciseRange(ex, state.voice);
       const offs = offsets(limit == null ? r.steps : Math.min(r.steps, limit), dir, loop);
       offs.forEach((o, i) => {
@@ -719,22 +866,24 @@
   function planNotes() {
     const out = [];
     for (const s of plan.segs) {
-      if (s.kind !== 'round') continue;
-      s.ex.notes.forEach(([deg], i) => out.push({ midi: s.root + degreeSemis(deg), ex: s.ex.id, round: s.round, i }));
+      if (s.kind !== 'round' || s.ex.kind === 'breath') continue;
+      notesOf(s.ex).forEach(([deg], i) => out.push({ midi: s.root + semisOf(s.ex, deg), ex: s.ex.id, round: s.round, i }));
     }
     return out;
   }
 
   const droneMidis = (root) => { const r = 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0); return [r - 12, r, r + 7]; };
   /** Akkord in mittlerer Lage (offene Lage: Grundton, Quinte, Oktave, Terz). */
-  const cueChord = (root) => { const r = 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0); return [r, r + 7, r + 12, r + 16]; };
+  const midRoot = (root) => 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0);
+  /** Tonika-Akkord in mittlerer Lage (offene Lage: Grundton, Quinte, Oktave, Terz). */
+  const cueChord = (root, mode = 'major') => { const r = midRoot(root); return [r, r + 7, r + 12, r + (mode === 'minor' ? 15 : 16)]; };
   /** Dominantseptakkord zu cueChord, eng angeschlossen: Bass Quinte darunter,
    *  Quinte → Septime, Oktave → Leitton, Terz → None der Tonika (= Quinte von V). */
   const cueDominant = (root) => { const r = 48 + mod(root, 12) - (mod(root, 12) > 6 ? 12 : 0); return [r - 5, r + 5, r + 11, r + 14]; };
   /** Einstimmung einer Runde: [Position, Akkord, Länge in 16teln]. */
   const cueParts = (seg) => (seg.cadence
-    ? [[0, cueChord(seg.root), 8], [8, cueDominant(seg.root), 4], [12, cueChord(seg.root), 4]]
-    : [[0, cueChord(seg.root), seg.cue]]);
+    ? [[0, cueChord(seg.root, seg.ex.mode), 8], [8, cueDominant(seg.root), 4], [12, cueChord(seg.root, seg.ex.mode), 4]]
+    : [[0, cueChord(seg.root, seg.ex.mode), seg.cue]]);
 
   /* ------------------------------------------------------------------------
      SCHEDULER
@@ -751,6 +900,12 @@
     const { seg, pos } = hit;
     const ex = seg.ex;
     const sec = stepSecondsFor(ex);
+    if (ex.kind === 'breath') {
+      // Nur Klicks: jeder Schlag, betont beim Ein- und beim Ausatmen.
+      if (pos % 4 === 0) engine.click(time, pos === 0 || pos === BREATH_IN * 4);
+      return;
+    }
+    const notes = notesOf(ex);
     const parts = cueParts(seg);
     parts.forEach(([at, chord, len], k) => {
       if (pos !== at) return;
@@ -758,20 +913,26 @@
       chord.forEach((m) => engine.keys(m, time, chordLen, { velocity: .1 }));
       // Ohne vorgesungene Melodie: den Anfangston in der eigenen Lage zum
       // (letzten) Tonika-Akkord dazu.
-      if (!state.guide && k === parts.length - 1) engine.keys(seg.root + degreeSemis(ex.notes[0][0]), time, chordLen, { velocity: .2 });
+      if (!state.guide && k === parts.length - 1) engine.keys(seg.root + semisOf(ex, notes[0][0]), time, chordLen, { velocity: .2 });
     });
-    if (pos === 0 && droneVoice) droneVoice.retune(droneMidis(seg.root), time);
+    if (pos === 0 && droneVoice && seg.root !== null) droneVoice.retune(droneMidis(seg.root), time);
     // Einzähler „jede Runde“: zwei Klicks auf den letzten beiden Schlägen
     // vor dem Einsatz (bei Auftakt: vor dem Auftakt).
     if (state.countIn === 'round' && (pos === seg.cue - 8 || pos === seg.cue - 4)) engine.click(time, false);
+    // Begleitung der Übung „Akkord“ (auch ohne vorgesungene Melodie).
+    (ex.accompany || []).forEach(([at, midis, len]) => {
+      if (pos - seg.cue !== at) return;
+      const shift = midRoot(seg.root) - 48;
+      midis.forEach((m) => engine.keys(m + shift, time, sec * len * .97, { velocity: .09 }));
+    });
     if (!state.guide) return;
     const i = ex.starts.indexOf(pos - seg.cue);
     if (i === -1) return;
-    const [deg, len, gate] = ex.notes[i];
-    const midi = seg.root + degreeSemis(deg);
+    const [deg, len, gate] = notes[i];
+    const midi = seg.root + semisOf(ex, deg);
     const dur = (gate ?? len * (ex.glide ? 1 : .92)) * sec;
-    const from = i > 0 ? seg.root + degreeSemis(ex.notes[i - 1][0]) : null;
-    engine.tone(midi, time, dur, ex.glide ? { glide: dur * .75, from } : {});
+    const from = i > 0 ? seg.root + semisOf(ex, notes[i - 1][0]) : null;
+    engine.tone(midi, time, dur, ex.glide ? { glide: dur * .75, from } : ex.dynamic === 'crescDecresc' ? { swell: true } : {});
   }
 
   function scheduleAhead() {
@@ -859,7 +1020,7 @@
   function startDrone() {
     if (droneVoice || !engine.ctx) return;
     const hit = segAt(Math.max(0, run.step)) || { seg: plan.segs[0] };
-    droneVoice = engine.hold(droneMidis(hit.seg.root ?? plan.segs.find((s) => s.kind === 'round').root));
+    droneVoice = engine.hold(droneMidis(hit.seg.root ?? plan.segs.find((s) => s.kind === 'round' && s.root !== null)?.root ?? 48));
   }
   function stopDrone() { if (droneVoice) { droneVoice.stop(); droneVoice = null; } }
 
@@ -891,7 +1052,8 @@
     const { seg, pos } = hit;
     if (run.shownSeg !== seg) { run.shownSeg = seg; renderStage(seg); renderTransport(); }
     const ex = seg.ex;
-    const active = seg.kind === 'round' ? ex.starts.findIndex((s, i) => pos - seg.cue >= s && pos - seg.cue < s + ex.notes[i][1]) : -1;
+    const active = seg.kind !== 'round' ? -1 : ex.kind === 'breath' ? (pos < BREATH_IN * 4 ? 0 : 1)
+      : ex.starts.findIndex((s, i) => pos - seg.cue >= s && pos - seg.cue < s + ex.notes[i][1]);
     $$('.contour .syl').forEach((el, i) => el.classList.toggle('is-now', i === active));
     if (state.mode === 'program') {
       $('.progress i').style.width = `${(100 * g / plan.total).toFixed(1)}%`;
@@ -911,13 +1073,14 @@
     $('[data-help="exercise"]').setAttribute('aria-label', `So geht: ${ex.name}`);
 
     const host = $('.contour');
-    if (host.dataset.ex !== ex.id) {
-      host.dataset.ex = ex.id;
-      const semis = ex.notes.map(([deg]) => degreeSemis(deg) - ex.min);
-      const span = Math.max(1, ex.max - ex.min);
+    if (host.dataset.ex !== `${ex.id}|${state.voice}`) {
+      host.dataset.ex = `${ex.id}|${state.voice}`;
+      const { min, max } = ex.kind === 'breath' ? { min: 0, max: 0 } : spanOf(ex, state.voice);
+      const semis = notesOf(ex).map(([deg]) => (ex.kind === 'breath' ? 0 : semisOf(ex, deg) - min));
+      const span = Math.max(1, max - min);
       const px = Math.min(4, 44 / span);
       host.classList.toggle('is-dense', ex.notes.length > 11);
-      host.classList.toggle('is-flat', ex.max === ex.min);
+      host.classList.toggle('is-flat', max === min);
       host.classList.toggle('is-wordy', ex.notes.length <= 11 && ex.syllables.join('').length > 24);
       host.replaceChildren(...ex.syllables.map((s, i) => {
         const e = document.createElement('span');
@@ -931,19 +1094,30 @@
 
     // Tonraum dieser Übung (bei Programmen: der aktuellen) für die Stimme.
     const rounds = plan.segs.filter((s) => s.kind === 'round' && s.item === cur.item);
+    if (ex.kind === 'breath') {
+      $('.stage-range').textContent = 'ohne Ton';
+      $('.stage-range').title = '';
+      const r = cur.kind === 'round' ? cur : rounds[0];
+      $('.stage-key').textContent = seg && cur.kind === 'round'
+        ? `ein ${BREATH_IN} · aus auf sss ${r.exhale} Schläge · Runde ${r.round + 1}/${r.rounds}`
+        : `ein ${BREATH_IN} · aus ${BREATH_EXHALES[0]}–${BREATH_EXHALES[BREATH_EXHALES.length - 1]} Schläge · ${rounds.length} Runden`;
+    } else {
+    const { min, max } = spanOf(ex, state.voice);
     const lowRoot = Math.min(...rounds.map((s) => s.root));
     const highRoot = Math.max(...rounds.map((s) => s.root));
-    const low = lowRoot + ex.min;
-    const high = highRoot + ex.max;
+    const low = lowRoot + min;
+    const high = highRoot + max;
+    const mode = ex.mode || 'major';
     // Jeder Ton in der Schreibweise der Runde, aus der er stammt.
-    $('.stage-range').textContent = `Tonraum ${noteLabel(low, lowRoot, 'major')}${low === high ? '' : `–${noteLabel(high, highRoot, 'major')}`}`;
+    $('.stage-range').textContent = `Tonraum ${noteLabel(low, lowRoot, mode)}${low === high ? '' : `–${noteLabel(high, highRoot, mode)}`}`;
     $('.stage-range').title = 'Tiefster und höchster Ton dieser Übung';
     if (cur.kind === 'round') {
       $('.stage-key').textContent = seg
-        ? `${keyLabel(cur.root)} · Runde ${cur.round + 1}/${cur.rounds} ${cur.trend}`.trim()
-        : `${keyLabel(cur.root)} · ${cur.rounds} Runden`;
+        ? `${keyLabel(cur.root, mode)} · Runde ${cur.round + 1}/${cur.rounds} ${cur.trend}`.trim()
+        : `${keyLabel(cur.root, mode)} · ${cur.rounds} Runden`;
     } else {
-      $('.stage-key').textContent = `${keyLabel(rounds[0].root)} · ${rounds.length} Runden`;
+      $('.stage-key').textContent = `${keyLabel(rounds[0].root, mode)} · ${rounds.length} Runden`;
+    }
     }
 
     const isProgram = state.mode === 'program';
@@ -1212,6 +1386,11 @@
             for (const n of planNotes()) {
               if (n.midi < v.floor || n.midi > v.ceil) errors.push(`${ex.id}/${v.id}: Ton ${n.midi} außerhalb ${v.floor}–${v.ceil}`);
             }
+            if (ex.kind === 'breath') {
+              const ex2 = plan.segs.map((sg) => sg.exhale).join();
+              if (ex2 !== BREATH_EXHALES.join()) errors.push(`atem/${v.id}: Ausatmen ${ex2}`);
+              continue;
+            }
             for (const sg of plan.segs) {
               if (sg.steps % BAR) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein ganzer Takt`);
               const rest = sg.steps - sg.cue - ex.length;
@@ -1223,6 +1402,20 @@
           }
         }
       }
+      // Paket 10: Moll, neue Übungen, Programme.
+      if (keyLabel(9, 'minor') !== 'a-Moll' || keyLabel(3, 'minor') !== 'dis-Moll' || keyLabel(3) !== 'Es-Dur') errors.push(`Tonartname: ${keyLabel(9, 'minor')}, ${keyLabel(3, 'minor')}, ${keyLabel(3)}`);
+      if (exById('moll5').mode !== 'minor' || degreeSemis(2, 'minor') !== 3 || degreeSemis(2) !== 4) errors.push('Moll-Stufen falsch');
+      if (cueChord(57, 'minor')[3] - cueChord(57, 'minor')[0] !== 15) errors.push('Moll-Einstimmung ohne kleine Terz');
+      const akk = exById('akkord');
+      for (const v of VOICES) {
+        const first = akk.voiceNotes[v.id][0][0];
+        if (first !== CHORD_HOME[v.id]) errors.push(`akkord/${v.id}: beginnt auf Stufe ${first}`);
+        if (akk.voiceNotes[v.id].length !== 5) errors.push(`akkord/${v.id}: ${akk.voiceNotes[v.id].length} Töne`);
+      }
+      akk.satb.forEach((c, i) => { if (i && voicePairs(akk.satb[i - 1], c)) errors.push(`akkord: Parallelen im Satz (Akkord ${i + 1})`); });
+      const lang = PROGRAMS.find((pr) => pr.id === 'lang').items.map(([id]) => id);
+      if (lang[0] !== 'atem' || lang[lang.indexOf('vokale') + 1] !== 'moll5') errors.push(`Programm Ausführlich: ${lang.join(', ')}`);
+      if (PROGRAMS.find((pr) => pr.id === 'kurz').items.map(([id]) => id).join() !== 'lippen,mimemamomu,nja,dreiklang,oktave,summen') errors.push('Programm Kurz verändert');
       for (const [id, len] of [['lippen', 8], ['koloratur', 8], ['oktave', 8], ['mimemamomu', 4]]) {
         if ((exById(id).breath ?? BREATH) !== len) errors.push(`${id}: Atemluft ${exById(id).breath ?? BREATH} statt ${len}`);
       }
