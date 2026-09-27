@@ -297,8 +297,11 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .tool-tile:active { background: var(--surface-2); }
 /* Einsingen (breit), Zonen „Üben“ und „Werkzeuge“, „Dein Stand“ */
-.warmup-card, .tools-week { margin-bottom: 12px; }
+.warmup-card { margin-bottom: 12px; }
 .warmup-head { display: flex; align-items: center; gap: 14px; }
+.warmup-head .tool-tile-label { flex: 1 1 auto; min-width: 0; }
+/* Stimme als Pill oben rechts (aus dem Stimmprofil; ohne Stimme ausgeblendet). */
+.voice-pill { flex: 0 0 auto; align-self: flex-start; padding: 4px 12px; border-radius: 999px; background: rgba(var(--accent-rgb), .14); color: var(--text); font-size: .85rem; font-weight: 700; }
 .warmup-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 14px; }
 .warmup-btn { min-height: 48px; padding: 6px 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-weight: 700; font-size: .9rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
 .warmup-btn:active { background: rgba(var(--accent-rgb), .14); }
@@ -316,15 +319,9 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 @media (max-width: 379px) {
   .tools-grid--small .tool-tile { flex-direction: column; align-items: flex-start; justify-content: space-between; }
 }
-.tools-week-title { margin: 0 0 4px; font-size: 1.1rem; }
 .level-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
 .level-bar i { height: 8px; border-radius: 3px; background: var(--line); }
 .level-bar i.is-on { background: var(--accent); }
-.week-dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 6px 0 4px; text-align: center; }
-.week-dot { display: grid; justify-items: center; gap: 4px; font-size: .75rem; color: var(--muted); }
-.week-dot i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); display: block; }
-.week-dot.is-done i { background: var(--accent); border-color: var(--accent); }
-.week-dot.is-today span { font-weight: 800; color: var(--text); }
 .tool-tile-icon {
   width: 48px;
   height: 48px;
@@ -4010,14 +4007,12 @@ input[type="checkbox"] {
          in app.js): Einsingen (Kurz/Lang starten das Programm direkt im
          Spielmodus, „Mehr“ öffnet die Übersicht), Üben (Rhythmus/Hören/
          Singen öffnen uebe-lab.html direkt im Bereich, darunter die Stufe),
-         Werkzeuge. Darunter „Dein Stand“ und die Einstellungen. -->
+         Werkzeuge. Darunter die Einstellungen. -->
     <div class="card warmup-card" id="quick-start">
       <div class="warmup-head">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-4 4-4 6 0s4 4 6 0 3-3 4-2"/><path d="M4 8c2-3 4-3 6 0"/><circle cx="18" cy="7" r="2"/></svg></span>
-        <span class="tool-tile-text">
-          <span class="tool-tile-label" data-i18n="settings.tools.warmup">Einsingen</span>
-          <span class="tool-tile-sub" id="quick-voice"></span>
-        </span>
+        <span class="tool-tile-label" data-i18n="settings.tools.warmup">Einsingen</span>
+        <span class="voice-pill" id="quick-voice" hidden></span>
       </div>
       <div class="warmup-actions">
         <button class="warmup-btn" type="button" data-quick="short" id="warmup-short">Kurz · 5 Min.</button>
@@ -4061,11 +4056,6 @@ input[type="checkbox"] {
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg></span>
         <span class="tool-tile-label" data-i18n="settings.lightshow.title">Lichtshow</span>
       </button>
-    </div>
-    <!-- Statistik: nur lokal, keine Serien (siehe renderWeek in app.js). -->
-    <div class="card tools-week" id="tools-week">
-      <h2 class="tools-week-title" data-i18n="tools.week.title">Dein Stand</h2>
-      <div id="tools-week-body"></div>
     </div>
     <button class="tool-tile tool-tile--wide" id="btn-open-settings" type="button">
       <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></span>

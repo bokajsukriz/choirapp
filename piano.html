@@ -86,6 +86,11 @@
     <span class="range" aria-live="polite"></span>
     <button type="button" data-act="up" aria-label="Eine Oktave höher"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
   </div>
+  <div class="group" role="group" aria-label="Tastenbreite">
+    <button type="button" data-act="narrower" aria-label="Schmalere Tasten (mehr Tasten)">−</button>
+    <span class="range size-out" aria-live="polite" style="min-width:44px">Tasten</span>
+    <button type="button" data-act="wider" aria-label="Breitere Tasten">+</button>
+  </div>
   <div class="group" role="group" aria-label="Beschriftung">
     <button type="button" data-labels="none">–</button>
     <button type="button" data-labels="names">C D E</button>
@@ -137,7 +142,8 @@
 
   /* ---------------- Zustand & Ablage ---------------- */
 
-  const state = { startC: 48, labels: 'names', pedal: false, volume: .8 };
+  // keySize: Stufe der Tastenbreite (KEY_SIZES), Standard breiter als früher.
+  const state = { startC: 48, labels: 'names', pedal: false, volume: .8, keySize: 2 };
   const STORAGE_ID = 'piano';
   const storage = (() => { try { return window.parent !== window ? window.parent.chorToolStorage || null : null; } catch { return null; } })();
   let saveTimer = 0;
@@ -146,7 +152,7 @@
     clearTimeout(saveTimer);
     // Nur Lage, Beschriftung und Lautstärke — das Pedal ist beim Öffnen
     // immer aus (sonst klingt ungewollt alles nach).
-    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume })).catch(() => {}); }, 300);
+    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume, keySize: state.keySize })).catch(() => {}); }, 300);
   }
   async function restore() {
     if (!storage) return;
@@ -156,6 +162,7 @@
       if (Number.isInteger(data.startC) && mod(data.startC, 12) === 0) state.startC = clamp(data.startC, LOWEST_C, 72);
       if (['none', 'names', 'solf'].includes(data.labels)) state.labels = data.labels;
       if (Number.isFinite(data.volume)) state.volume = clamp(data.volume, 0, 1);
+      if (Number.isInteger(data.keySize) && data.keySize >= 0 && data.keySize < KEY_SIZES.length) state.keySize = data.keySize;
     } catch { /* nichts gespeichert */ }
   }
 
@@ -315,11 +322,14 @@
   let whiteCount = 14;
   const keyEls = new Map();
 
+  // Mindestbreite einer weißen Taste in px je Stufe (−/+ in der Leiste);
+  // Stufe 0 entspricht der früheren Breite, Standard ist Stufe 2.
+  const KEY_SIZES = [[34, 40], [42, 48], [50, 56], [60, 66], [72, 80]]; // [hoch, quer]
   function visibleWhiteKeys() {
     const w = $('.keyboard').clientWidth || window.innerWidth;
     const landscape = window.innerWidth > window.innerHeight;
-    const min = landscape ? 40 : 34;
-    return clamp(Math.floor(w / min), 8, 36);
+    const min = KEY_SIZES[state.keySize][landscape ? 1 : 0];
+    return clamp(Math.floor(w / min), 5, 36);
   }
 
   function build() {
@@ -355,6 +365,9 @@
     renderLabels();
     $('.range').textContent = `${noteLabel(whites[0])} – ${noteLabel(whites[whites.length - 1])}`;
     $('[data-act="down"]').disabled = state.startC <= LOWEST_C;
+    $('[data-act="narrower"]').disabled = state.keySize <= 0;
+    $('[data-act="wider"]').disabled = state.keySize >= KEY_SIZES.length - 1;
+    $('.size-out').textContent = `${whites.length} Tasten`;
     $('[data-act="up"]').disabled = whites[whites.length - 1] + 12 > HIGHEST;
     paintDown();
   }
@@ -488,6 +501,7 @@
     if (btn.dataset.labels) { state.labels = btn.dataset.labels; renderLabels(); persist(); return; }
     if (act === 'down') { state.startC = Math.max(LOWEST_C, state.startC - 12); build(); persist(); }
     else if (act === 'up') { state.startC = Math.min(72, state.startC + 12); build(); persist(); }
+    else if (act === 'narrower' || act === 'wider') { state.keySize = clamp(state.keySize + (act === 'wider' ? 1 : -1), 0, KEY_SIZES.length - 1); build(); persist(); }
     else if (act === 'pedal') setPedal(!state.pedal);
     else if (act === 'repeat' && lastGroup.length) {
       const group = [...lastGroup];
@@ -518,6 +532,12 @@
     [[60, 'c′'], [62, 'd'], [59, 'h'], [47, 'H'], [58, 'b'], [49, 'cis'], [37, 'Cis'], [36, 'C']].forEach(([midi, want]) => {
       if (keyLabel(midi) !== want) errors.push(`Tastenname ${midi} = ${keyLabel(midi)}, erwartet ${want}`);
     });
+    // Tastenbreite: breiter = weniger Tasten, nie unter 5.
+    const savedSize = state.keySize;
+    const counts = KEY_SIZES.map((_, i) => { state.keySize = i; return visibleWhiteKeys(); });
+    state.keySize = savedSize;
+    if (counts.some((n, i) => i && n > counts[i - 1]) || Math.min(...counts) < 5) errors.push(`Tastenbreite: ${counts.join(',')}`);
+    if (KEY_SIZES[state.keySize] === undefined) errors.push('Tastenbreite ungültig');
     return errors;
   }
 

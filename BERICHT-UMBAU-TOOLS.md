@@ -158,3 +158,21 @@ Weiterverwendet: `tools.quick.voice`/`tools.quick.noVoice` (Stimm-Zeile),
   Stufe), Üben-Kacheln („Hören, Stufe 2“), Segmentbalken („Übung 2 von 6“).
 - Schließen-Knopf der App neben dem Zahnrad im Spielmodus auf Geräten mit
   Notch (Abstand oben rechts).
+
+## Nachträge nach Rückmeldung
+
+| Commit | Änderung |
+|---|---|
+| `bda63f4` | „Dein Stand“ entfernt (Karte, `renderWeek`, `weekDates`, Texte). Einsingen-Kachel: statt der Erklärzeile zur Stimme eine Pill oben rechts (ohne Stimme ausgeblendet). Einsingen-Übersicht: Programmkarten ohne Icons, nur noch Kurz, Ausführlich, Intonation, Höhe, Tiefe plus „+ Eigenes Programm“ (3 × 2). Schnell, Morgens und Vor dem Auftritt bleiben als IDs gültig, erscheinen aber nicht mehr als Karte. |
+| `6480025` | Piano: breitere Tasten (Standard hochkant 50 statt 34 px, quer 56 statt 40 px), Tastenbreite mit −/+ in fünf Stufen, wird gespeichert. |
+| `ed25f6a` | Ausbildung: Stufe als Karte („Stufe 3 / 6“, Balken, Text, „ändern ›“) mit Auswahlblatt aller Stufen statt Stepper; der Vorschlag erscheint als Knopf „Stufe 3 sitzt – Stufe 4 ausprobieren?“. „Meine Stimme“ nur noch im Zahnrad-Blatt (Singen: neues Zahnrad; Hören → Stimmen: im vorhandenen Blatt). |
+
+**Strings:** neu `tools.warmup.voiceAria`; entfernt `tools.quick.voice`,
+`tools.quick.noVoice`, `tools.week.title`, `tools.week.days`,
+`tools.week.none`, `tools.week.weekdays`, `tools.week.warmup` (DE/EN/PL).
+
+**Angepasste Tests:** Einsingen – Programm-Zählung prüft jetzt die fünf
+sichtbaren Programme + eigenes und 3 × 2; Ausbildung – die Stepper-Tests
+aus Paket 4 sind durch Tests für Karte, Blatt und Vorschlags-Knopf ersetzt
+(genau das geänderte Verhalten). Neu: Piano-Tastenbreite, Stimmauswahl nur
+im Einstellungsblatt.
