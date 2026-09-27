@@ -230,6 +230,16 @@
   .ear-controls { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
   .big-btn { display: inline-flex; align-items: center; gap: 6px; padding: 11px 18px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
   .big-btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+  /* Singen: Knopfleiste mit Icons (Beschriftung klein darunter). */
+  .sing-controls { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; justify-content: center; }
+  .sing-ctl-gap { flex: 1 1 auto; }
+  .sing-controls:has(.big-btn:not([hidden])) .sing-ctl-gap { display: none; }
+  .sing-ctl { display: grid; justify-items: center; gap: 3px; min-width: 56px; padding: 0; color: var(--text); font-size: .64rem; font-weight: 800; }
+  .sing-ctl svg { width: 48px; height: 48px; padding: 12px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); box-sizing: border-box; }
+  .sing-ctl.is-primary svg { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sing-ctl.is-quiet { color: var(--muted); }
+  .sing-ctl.is-quiet svg { background: transparent; }
+  .sing-ctl span { line-height: 1.1; }
   .big-btn svg { width: 16px; height: 16px; }
   .slot-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
   .slot { border: 2px dashed var(--line); border-radius: 12px; padding: 10px 0; font-weight: 800; font-size: 1rem; min-height: 46px; display: grid; place-items: center; }
@@ -387,11 +397,16 @@
         <div class="sing-view"></div>
         <div class="progress sing-progress" hidden><i></i></div>
         <p class="sing-live" aria-hidden="true"></p>
-        <div class="ear-controls">
-          <button class="big-btn" type="button" data-sing="start">Start</button>
-          <button class="big-btn secondary" type="button" data-sing="replay" hidden>Vorgabe noch einmal</button>
-          <button class="big-btn secondary" type="button" data-sing="skip" hidden>Ton überspringen</button>
-          <button class="big-btn secondary" type="button" data-sing="stop" hidden>Beenden</button>
+        <!-- Knopfleiste: links Beenden, rechts Wiederholen (Vorgabe, Zielton)
+             und Weiter (Pfeil); vor der ersten Aufgabe nur „Start“. -->
+        <div class="sing-controls">
+          <button class="sing-ctl is-quiet" type="button" data-sing="stop" aria-label="Beenden" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>Beenden</span></button>
+          <span class="sing-ctl-gap"></span>
+          <button class="sing-ctl" type="button" data-sing="replay" aria-label="Vorgabe noch einmal" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg><span class="replay-label">Vorgabe</span></button>
+          <button class="sing-ctl" type="button" data-sing="target" aria-label="Zielton anhören" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="17" r="3"/><path d="M11 17V4l7 3"/></svg><span>Zielton</span></button>
+          <button class="sing-ctl" type="button" data-sing="skip" aria-label="Ton überspringen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 9 7-9 7z"/><path d="M18 5v14"/></svg><span>Überspringen</span></button>
+          <button class="sing-ctl is-primary" type="button" data-sing="start" aria-label="Weiter" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg><span>Weiter</span></button>
+          <button class="big-btn" type="button" data-sing="begin">Start</button>
         </div>
       </div>
       <div class="answer-grid sing-answers"></div>
@@ -3400,7 +3415,10 @@
    *  Oktave) — oder genau eine Oktave daneben (Treffer mit Oktavhinweis).
    *  miss: nach timeoutSec ohne Treffer; gemeldet wird die Abweichung des
    *  am längsten gehaltenen Versuchs. Ergebnis: { hit, cents, octaveOff }. */
-  function makePitchJudge({ target, tolerance = 50, holdSec = .5, timeoutSec = 8 }) {
+  /** strict: nicht nur der Median, sondern (fast) jeder geglättete Wert im
+   *  Haltefenster muss im Toleranzbereich liegen — kurz durchrutschen zählt
+   *  nicht (Ton finden). */
+  function makePitchJudge({ target, tolerance = 50, holdSec = .5, timeoutSec = 8, strict = false }) {
     let t0 = null;
     let lastVoiced = -Infinity;
     let recent = [];
@@ -3429,7 +3447,8 @@
           if (smooth[smooth.length - 1].t - smooth[0].t >= holdSec + SMOOTH_SECONDS * .5) {
             const win = smooth.filter((p) => p.t >= t - holdSec).map((p) => p.midi);
             const d = devOf(median(win));
-            if (Math.abs(d.cents) <= tolerance && Math.abs(d.octaveOff) <= 1) { result = { hit: true, cents: d.cents, octaveOff: d.octaveOff }; return result; }
+            const steady = !strict || win.filter((m) => Math.abs(devOf(m).cents) <= tolerance).length >= win.length * .9;
+            if (Math.abs(d.cents) <= tolerance && Math.abs(d.octaveOff) <= 1 && steady) { result = { hit: true, cents: d.cents, octaveOff: d.octaveOff }; return result; }
           }
         }
         if (timeoutSec !== Infinity && t - t0 >= timeoutSec) {
@@ -3482,6 +3501,7 @@
     { n: 6, label: 'Nur das a′ (Stimmgabel)',      cue: 'a4',      ask: ['fromA'] },
   ];
   const FIND_TOLERANCE = [50, 50, 40, 40, 35, 40];
+  const FIND_HOLD_SEC = 1.2; // Ton finden: so lange ruhig im Zielbereich halten
   const SING_INTERVAL_TOLERANCE = [50, 50, 40, 35, 35, 30];
   const SIGHT_TOLERANCE = [50, 50, 45, 40, 40, 35];
   // Stufen als Tonleiterstufen relativ zu do (0 = do, 4 = so, −3 = tiefes so).
@@ -3670,18 +3690,19 @@
       const kmode = level.modes[Math.floor(rnd() * level.modes.length)];
       const key = rndInt(0, 11, rnd);
       const ask = level.ask[Math.floor(rnd() * level.ask.length)];
-      let semis, text;
+      let semis, text, degInfo = null;
       if (ask === 'degree') {
         const deg = rndInt(0, 6, rnd);
         semis = H.degreeSemis(kmode === 'minor' ? H.MINOR : H.MAJOR, deg);
         const syl = kmode === 'minor' ? SOLFA[mod(deg + 5, 7)] : SOLFA[deg];
         text = `Singe die ${deg + 1} (${syl})`;
+        degInfo = { deg, syl };
       } else {
         semis = ask === 'third' ? (kmode === 'minor' ? 3 : 4) : FIND_ASK[ask][1];
         text = `Singe ${ask === 'root' ? 'den Grundton' : `die ${FIND_ASK[ask][0]}`}`;
       }
       const target = placeNear(key + semis, Math.round((lo + hi) / 2), lo, hi);
-      return { mode, level: n, cue: level.cue, kmode, key, ask, semis, target, text, tolerance: FIND_TOLERANCE[n - 1] };
+      return { mode, level: n, cue: level.cue, kmode, key, ask, semis, target, text, tolerance: FIND_TOLERANCE[n - 1], ...(degInfo || {}) };
     }
     if (mode === 'hold') {
       const level = HOLD_LEVELS[n - 1];
@@ -3826,6 +3847,7 @@
     const task = sing.task;
     sing.phase = task.mode === 'hold' ? 'holdWait' : 'sing';
     if (task.mode === 'sight') sing.judge = makePitchJudge({ target: task.notes[task.idx], tolerance: task.tolerance, holdSec: .3, timeoutSec: Infinity });
+    else if (task.mode === 'findTone') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: FIND_HOLD_SEC, timeoutSec: 12, strict: true });
     else if (task.mode !== 'hold') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: .5, timeoutSec: 8 });
     task.samples = [];
     task.onset = null;
@@ -3871,7 +3893,7 @@
       return;
     }
     const oct = res.hit && res.octaveOff ? ` — eine Oktave ${res.octaveOff < 0 ? 'tiefer' : 'höher'} gesungen, der Ton stimmt` : '';
-    const text = res.hit ? `Treffer: ${centsText(res.cents)}${oct}.`
+    const text = task.mode === 'findTone' ? findToneResultText(task, res) : res.hit ? `Treffer: ${centsText(res.cents)}${oct}.`
       : Number.isNaN(res.cents) ? 'Kein Ton erkannt — noch einmal, etwas lauter oder näher am Mikrofon.'
       : `Noch ${centsText(res.cents)} — hör den Zielton und probier es noch einmal.`;
     if (task.mode === 'singInterval') {
@@ -3882,6 +3904,26 @@
     // Zielton zum Vergleich
     const bus = singBus();
     engine.keys(task.target, engine.ctx.currentTime + .15, 1.2, { velocity: .2, dest: bus });
+  }
+
+  /** Was gesucht war, in Worten (Ergebnis bei „Ton finden“). */
+  function findToneTarget(task) {
+    if (task.cue === 'a4') return task.text;
+    const key = keyName(task.key, task.kmode);
+    const role = task.ask === 'degree' ? `Stufe ${task.deg + 1} (${task.syl}) in ${key}`
+      : task.ask === 'root' ? `der Grundton von ${key}` : `die ${FIND_ASK[task.ask][0]} von ${key}`;
+    return `${noteLabel(task.target)} – ${role}`;
+  }
+  function findToneResultText(task, res) {
+    const goal = `Gesucht: ${findToneTarget(task)}.`;
+    if (res.hit) {
+      const oct = res.octaveOff ? ` (eine Oktave ${res.octaveOff < 0 ? 'tiefer' : 'höher'} – zählt)` : '';
+      return `Gefunden! ${goal} Du lagst ${centsText(res.cents)}${oct}.`;
+    }
+    if (Number.isNaN(res.cents)) return `Kein ruhiger Ton erkannt. ${goal}`;
+    const semis = Math.round(res.cents / 100);
+    const sung = semis ? `Gesungen: etwa ${noteLabel(task.target + semis)} – ${Math.abs(semis)} Halbton${Math.abs(semis) === 1 ? '' : 'schritte'} zu ${semis < 0 ? 'tief' : 'hoch'}.` : `Knapp daneben: ${centsText(res.cents)}.`;
+    return `${goal} ${sung}`;
   }
 
   function finishHold() {
@@ -3972,6 +4014,9 @@
     const out = $('.sing-live');
     if (!out) return;
     const live = sing.live;
+    // Ton finden: während des Singens keine Anzeige, wie weit man weg ist.
+    if (sing.task?.mode === 'findTone' && sing.phase === 'sing') { out.textContent = 'Sing und halte den Ton ruhig …'; return; }
+    if (sing.task?.mode === 'findTone' && sing.phase === 'result') { out.textContent = `Gesucht: ${noteLabel(sing.task.target)}`; return; }
     if (!live || !sing.task || !['sing', 'hold', 'holdWait'].includes(sing.phase)) { out.textContent = sing.phase === 'sing' || sing.phase === 'holdWait' ? 'Sing …' : ''; return; }
     out.textContent = `${noteLabel(Math.round(live.midi))} · ${centsText(live.cents)}`;
   }
@@ -4010,7 +4055,8 @@
       sub.textContent = `${sing.showSolfa ? `${intervalSolfa(task.semis, task.dir)} · ` : ''}Grundton ${noteLabel(task.base)} · ${phaseText[sing.phase] || ''}`;
     } else if (task.mode === 'findTone') {
       prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
-      sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${task.cue === 'cadence' ? ' · nach der Kadenz' : ''}`} · ${phaseText[sing.phase] || ''}`;
+      const findPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
+      sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${task.cue === 'cadence' ? ' · nach der Kadenz' : ''}`}${findPhase ? ` · ${findPhase}` : ''}`;
     } else if (task.mode === 'hold') {
       prompt.textContent = `${noteLabel(task.target)} halten — ${task.sec} Sekunden`;
       sub.textContent = `${{ mf: 'mittlere Lautstärke', cresc: 'dabei lauter werden', pp: 'leise', messa: 'an- und abschwellen' }[task.dyn]} · ${phaseText[sing.phase] || ''}`;
@@ -4041,12 +4087,14 @@
       }
     }
     // Knöpfe
-    $('[data-sing="start"]').hidden = !!task && sing.phase !== 'result';
-    $('[data-sing="start"]').textContent = task ? 'Nächste Aufgabe' : 'Start';
+    $('[data-sing="begin"]').hidden = !!task;
+    $('[data-sing="start"]').hidden = !task || sing.phase !== 'result';
     $('[data-sing="replay"]').hidden = !task || (task.mode === 'dictation' && (task.plays >= 3 || sing.phase === 'result'));
-    $('[data-sing="replay"]').textContent = task?.mode === 'dictation' ? `Noch einmal hören (${3 - task.plays} übrig)` : 'Vorgabe noch einmal';
+    $('.replay-label').textContent = task?.mode === 'dictation' ? `Nochmal (${3 - task.plays})` : 'Vorgabe';
+    $('[data-sing="replay"]').setAttribute('aria-label', task?.mode === 'dictation' ? `Noch einmal hören, ${3 - task.plays} übrig` : 'Vorgabe noch einmal');
+    $('[data-sing="target"]').hidden = !(task && sing.phase === 'result' && task.target != null);
     $('[data-sing="skip"]').hidden = !(task?.mode === 'sight' && sing.phase === 'sing');
-    $('[data-sing="stop"]').hidden = !task && !voice.analyser;
+    $('[data-sing="stop"]').hidden = !task;
     const st = sing.stats[sing.mode];
     $('.sing-score').textContent = st.total ? `${st.right}/${st.total} ${sing.mode === 'hold' ? 'ruhig gehalten' : 'getroffen'}` : '';
     renderSingLive();
@@ -4235,7 +4283,8 @@
     const singBtn = e.target.closest('[data-sing]');
     if (singBtn) {
       const action = singBtn.dataset.sing;
-      if (action === 'start') startSingTask();
+      if (action === 'start' || action === 'begin') startSingTask();
+      else if (action === 'target' && sing.task?.target != null && engine.ctx) engine.keys(sing.task.target, engine.ctx.currentTime + .05, 1.4, { velocity: .22, dest: singBus() });
       else if (action === 'replay' && sing.task) { if (sing.phase !== 'result') sing.judge = null; playSingCue(); }
       else if (action === 'skip') skipSightNote();
       else if (action === 'stop') { stopSing(); setSingFeedback('', ''); renderSing(); }
@@ -4766,6 +4815,19 @@
     if (unclear.result) errors.push('Treffer: unklare Rahmen (clarity < .85) gezählt');
     const longest = judgeRun((t) => (t < .5 ? 61.5 : t < .9 ? null : t < 2.5 ? 59.3 : null));
     if (!longest || longest.hit || Math.abs(longest.cents + 70) > 3) errors.push(`Treffer: längster Versuch nicht gemeldet (${JSON.stringify(longest)})`);
+    // Ton finden (strict): kurz durch den Zielbereich schwanken zählt nicht,
+    // 1,2 s ruhig halten zählt; das Ergebnis nennt den gesuchten Ton.
+    const strictRun = (pitchAt) => judgeRun(pitchAt, { holdSec: FIND_HOLD_SEC, timeoutSec: 4, strict: true, tolerance: 40 });
+    const wobble = strictRun((t) => 60 + 1.2 * Math.sin(2 * Math.PI * .8 * t));
+    if (wobble?.hit) errors.push('Ton finden: Hin- und Herschwanken gezählt');
+    const steadyHit = strictRun(() => 60.1);
+    if (!steadyHit?.hit) errors.push('Ton finden: ruhig gehaltener Ton nicht gezählt');
+    const quick = strictRun((t) => (t < .4 ? 60 : t < 5 ? 62 : null));
+    if (quick?.hit) errors.push('Ton finden: 0,4 s im Bereich reicht schon');
+    const ft = { mode: 'findTone', cue: 'tonic', key: 0, kmode: 'major', ask: 'third', target: 64 };
+    const txtHit = findToneResultText(ft, { hit: true, cents: 5, octaveOff: 0 });
+    const txtMiss = findToneResultText(ft, { hit: false, cents: -200, octaveOff: 0 });
+    if (!txtHit.includes(noteLabel(64)) || !txtHit.includes('Terz') || !txtMiss.includes(noteLabel(62)) || !txtMiss.includes('zu tief')) errors.push(`Ton finden: Ergebnistext ${txtHit} / ${txtMiss}`);
     // Alle Ziele aller Modi × 4 Stimmen im Übe-Umfang ± 2.
     for (const part of SATB_PARTS) {
       const range = singRange(part, null);
