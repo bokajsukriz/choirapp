@@ -527,6 +527,9 @@
     return null;
   })();
   // UI-Bereich → Fortschrittsbereich (Akkordfolgen heißen dort 'progression').
+  // Rhythmus: je Übungsart ein eigener Bereich (eigene Stufe, eigene
+  // Vorschläge); früher gab es nur 'rhythm' für alle.
+  const RHYTHM_AREA = { echo: 'rhythmEcho', along: 'rhythmAlong', read: 'rhythmRead', duo: 'rhythmDuo' };
   const PROGRESS_AREA = { chords: 'progression' };
   const areaOf = (key) => PROGRESS_AREA[key] || key;
   let lastReportAt = performance.now();
@@ -545,7 +548,7 @@
     try {
       Promise.resolve(progressApi.levelHint(areaOf(key))).then((h) => {
         levelHints[key] = h || null;
-        if (state.tab === 'rhythm' && key === 'rhythm') renderRhythm();
+        if (state.tab === 'rhythm' && key === RHYTHM_AREA[state.mode]) renderRhythm();
         else if (state.tab === 'ear' && key === ear.mode) renderEar();
         else if (state.tab === 'voice' && key === sing.mode) renderSing();
       }).catch(() => {});
@@ -1039,7 +1042,12 @@
     { n: 6, label: 'Sechzehntel · Triolen · 5/4 und 7/8 · vier Takte', meters: ['4/4', '3/4', '6/8', '5/4', '7/8'], elements: ['e', 'r', 'd', 'sy', 'tie', 's', 't'], bars: 4, pickup: true, bpm: 92 },
   ];
   const DUO_MIN_LEVEL = 3; // „Zweistimmig“ ab Stufe 3 (oder eigene Auswahl)
-  const duoAllowed = () => !state.rhythmLevel || state.rhythmLevel >= DUO_MIN_LEVEL;
+  /** Zweistimmig: frei, sobald eine Rhythmus-Übungsart Stufe 3 erreicht hat
+   *  (oder überall eigene Auswahl gilt). */
+  const duoAllowed = () => {
+    const all = Object.values(state.rhythmLevels);
+    return all.every((n) => !n) || Math.max(...all) >= DUO_MIN_LEVEL;
+  };
 
   const state = {
     // bpm im Tempo-Bezug der Taktart (tempoRef 'beat', seit v305 — vorher
@@ -1052,7 +1060,8 @@
     countIn: true, click: true, speedUp: false, showNotes: false,
     // Didaktik Paket 3
     bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0,
-    rhythmLevel: 0,      // 1–6 = Stufe, 0 = eigene Auswahl
+    rhythmLevel: 0,      // Stufe der aktuellen Übungsart: 1–6, 0 = eigene Auswahl
+    rhythmLevels: { echo: 0, along: 0, read: 0, duo: 0 }, // je Übungsart
     duoPart: 'lower',    // Zweistimmig: 'upper' | 'lower' — welche Stimme du klatschst
   };
   // Lauf auf einem absoluten Tick-Raster: Taktstriche bei Vielfachen von
@@ -1105,9 +1114,11 @@
   /** Stufe übernehmen: Bausteine, Takte, Auftakt, Tempo; die Taktart wird
    *  beim Start aus der Stufe gezogen (hier schon die erste). */
   function applyRhythmLevel(n) {
+    if (state.mode === 'duo') n = Math.max(n, DUO_MIN_LEVEL); // Zweistimmig gibt es erst ab Stufe 3
     const level = RHYTHM_LEVELS.find((l) => l.n === n);
     if (!level) return;
     state.rhythmLevel = n;
+    state.rhythmLevels[state.mode] = n;
     state.elements = ELEMENTS.map(([id]) => id).filter((id) => level.elements.includes(id));
     state.bars = level.bars;
     state.pickup = level.pickup;
@@ -1117,6 +1128,14 @@
     if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
   }
   const rhythmLevel = () => RHYTHM_LEVELS.find((l) => l.n === state.rhythmLevel) || null;
+  /** Einstellungen von Hand geändert: eigene Auswahl (nur diese Übungsart). */
+  function setRhythmCustom() { state.rhythmLevel = 0; state.rhythmLevels[state.mode] = 0; }
+  /** Übungsart wechseln: deren Stufe übernehmen (eigene Auswahl: Einstellungen bleiben). */
+  function selectRhythmMode(mode) {
+    state.mode = mode;
+    const n = state.rhythmLevels[mode] || 0;
+    if (n) applyRhythmLevel(n); else state.rhythmLevel = 0;
+  }
   /** Bausteine, die in der Taktart überhaupt vorkommen können. */
   const activeElements = (meter) => state.elements.filter((id) => !(id === 't' && METERS[meter].unit !== 12));
 
@@ -1429,7 +1448,7 @@
   }
   /** Fortschritt und „Heute üben“. */
   function onRhythmResult(round) {
-    report('rhythm', state.rhythmLevel, round.result.perfect, { value: round.result.count ? round.result.hits / round.result.count : 0 });
+    report(RHYTHM_AREA[round.mode] || RHYTHM_AREA.echo, state.rhythmLevel, round.result.perfect, { value: round.result.count ? round.result.hits / round.result.count : 0 });
     onToolStep('rhythm');
   }
 
@@ -1795,7 +1814,7 @@
 
   function renderRhythm() {
     $('[data-exview="rhythm"] .mode-title').textContent = modeName('rhythm', currentMode('rhythm'));
-    $('[data-levels="rhythm"]').innerHTML = levelControlHtml('rhythm', RHYTHM_LEVELS, state.rhythmLevel, levelHints.rhythm);
+    $('[data-levels="rhythm"]').innerHTML = levelControlHtml('rhythm', RHYTHM_LEVELS, state.rhythmLevel, levelHints[RHYTHM_AREA[state.mode]]);
     $('[data-duo-row]').hidden = state.mode !== 'duo';
     chips('duoPart', [['upper', 'obere Stimme'], ['lower', 'untere Stimme']], state.duoPart);
     renderGapChips();
@@ -1915,10 +1934,10 @@
   function modeLevelText(tab, id) {
     if (tab === 'voice' && id === 'tuner') return '';
     if (tab === 'rhythm' && id === 'duo' && !duoAllowed()) return `ab Stufe ${DUO_MIN_LEVEL}`;
-    const area = tab === 'rhythm' ? 'rhythm' : areaOf(id);
-    if (practicedAreas && !practicedAreas.has(area)) return 'neu';
+    const area = tab === 'rhythm' ? RHYTHM_AREA[id] : areaOf(id);
+    if (practicedAreas && !practicedAreas.has(area) && !(tab === 'rhythm' && practicedAreas.has('rhythm') && !Object.values(RHYTHM_AREA).some((a) => practicedAreas.has(a)))) return 'neu';
     let levels, n;
-    if (tab === 'rhythm') { levels = RHYTHM_LEVELS; n = state.rhythmLevel; }
+    if (tab === 'rhythm') { levels = RHYTHM_LEVELS; n = state.rhythmLevels[id]; }
     else if (tab === 'ear') [levels, n] = earLevelInfo(id);
     else { levels = SING_LEVEL_TABLE[id](); n = sing.levels[id]; }
     return levels.some((l) => l.n === n) ? `Stufe ${n}/${levels[levels.length - 1].n}` : 'eigene';
@@ -1971,7 +1990,7 @@
     duoLocked = false;
     if (tab === 'rhythm') {
       if (id === 'duo' && !duoAllowed()) duoLocked = true;
-      else state.mode = id;
+      else selectRhythmMode(id);
       run.shown = null; game.finished = false;
     } else if (tab === 'ear') { ear.mode = id; ear.streak = 0; }
     else { sing.mode = id; sing.task = null; sing.phase = 'idle'; sing.judge = null; }
@@ -4135,7 +4154,7 @@
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
         rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
-        rhythmLevel: state.rhythmLevel, duoPart: state.duoPart,
+        rhythmLevel: state.rhythmLevel, rhythmLevels: state.rhythmLevels, duoPart: state.duoPart,
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
@@ -4175,9 +4194,15 @@
     if (SYLLABLE_CHOICES.some(([id]) => id === r.syllables)) state.syllables = r.syllables;
     if (INPUT_CHOICES.some(([id]) => id === r.input)) state.input = r.input;
     if (Number.isFinite(r.micLatencyMs)) state.micLatencyMs = clamp(Math.round(r.micLatencyMs), 0, 400);
-    if (Number.isInteger(r.rhythmLevel) && r.rhythmLevel >= 0 && r.rhythmLevel <= RHYTHM_LEVELS.length) state.rhythmLevel = r.rhythmLevel;
+    const okLevel = (n) => Number.isInteger(n) && n >= 0 && n <= RHYTHM_LEVELS.length;
+    if (okLevel(r.rhythmLevel)) state.rhythmLevel = r.rhythmLevel;
+    // Stufe je Übungsart; alte Stände (nur rhythmLevel) gelten für alle.
+    const rl = r.rhythmLevels && typeof r.rhythmLevels === 'object' ? r.rhythmLevels : null;
+    for (const m of Object.keys(state.rhythmLevels)) state.rhythmLevels[m] = rl ? (okLevel(rl[m]) ? rl[m] : 0) : state.rhythmLevel;
+    if (!rl && state.rhythmLevels.duo && state.rhythmLevels.duo < DUO_MIN_LEVEL) state.rhythmLevels.duo = 0;
+    state.rhythmLevel = state.rhythmLevels[state.mode] ?? state.rhythmLevel;
     if (r.duoPart === 'upper' || r.duoPart === 'lower') state.duoPart = r.duoPart;
-    if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
+    if (state.mode === 'duo' && !duoAllowed()) { state.mode = 'echo'; state.rhythmLevel = state.rhythmLevels.echo; }
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
     if (EAR_MODES.some(([id]) => id === e.mode)) ear.mode = e.mode;
     const lv = e.levels && typeof e.levels === 'object' ? e.levels : {};
@@ -4250,8 +4275,9 @@
       return;
     }
     if (e.target.closest('[data-duo-unlock]')) {
+      state.mode = 'duo';
       applyRhythmLevel(DUO_MIN_LEVEL);
-      state.mode = 'duo'; duoLocked = false;
+      duoLocked = false;
       document.body.classList.remove('is-duo-locked');
       run.shown = null; game.finished = false;
       renderAll(); renderArea();
@@ -4266,8 +4292,8 @@
     const rset = e.target.closest('button[data-rset]');
     if (rset) {
       const key = rset.dataset.rset;
-      if (key === 'meter') { setMeter(rset.dataset.value); state.rhythmLevel = 0; }
-      else if (key === 'bars') { state.bars = Number(rset.dataset.value); state.rhythmLevel = 0; }
+      if (key === 'meter') { setMeter(rset.dataset.value); setRhythmCustom(); }
+      else if (key === 'bars') { state.bars = Number(rset.dataset.value); setRhythmCustom(); }
       else state[key] = key === 'rounds' ? Number(rset.dataset.value) : rset.dataset.value;
       renderSettings();
       return;
@@ -4454,10 +4480,10 @@
         const list = new Set(state.elements);
         if (t.checked) list.add(t.value); else list.delete(t.value);
         state.elements = ELEMENTS.map(([id]) => id).filter((id) => list.has(id));
-        state.rhythmLevel = 0;
+        setRhythmCustom();
       } else {
         state[key] = t.checked;
-        if (key === 'pickup') state.rhythmLevel = 0;
+        if (key === 'pickup') setRhythmCustom();
       }
       if (sheetKind === 'rhythm' && (key === 'elements' || key === 'pickup')) renderSettings();
     }
@@ -4656,23 +4682,41 @@
     // Speichern/Laden: neu → gleich, alt (fehlt) → Standard, kaputt → Standard.
     {
       const keys = ['bars', 'pickup', 'syllables', 'input', 'micLatencyMs', 'rhythmLevel', 'duoPart', 'mode'];
-      const saved = Object.fromEntries(keys.map((k) => [k, state[k]]));
+      const saved = JSON.parse(JSON.stringify(Object.fromEntries([...keys, 'rhythmLevels'].map((k) => [k, state[k]]))));
       const savedTab = state.tab;
       const defaults = { bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0, rhythmLevel: 0, duoPart: 'lower', mode: 'echo' };
+      const zero = () => ({ echo: 0, along: 0, read: 0, duo: 0 });
       try {
-        Object.assign(state, { bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' });
+        Object.assign(state, { bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo', rhythmLevels: { echo: 1, along: 2, read: 4, duo: 5 } });
         const snap = JSON.parse(JSON.stringify(snapshot()));
-        Object.assign(state, defaults);
+        Object.assign(state, defaults, { rhythmLevels: zero() });
         restore(snap);
+        if (JSON.stringify(state.rhythmLevels) !== JSON.stringify({ echo: 1, along: 2, read: 4, duo: 5 })) errors.push(`Rhythmus: Stufen je Übungsart nicht gespeichert (${JSON.stringify(state.rhythmLevels)})`);
         const got = Object.fromEntries(keys.map((k) => [k, state[k]]));
         if (JSON.stringify(got) !== JSON.stringify({ bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' })) errors.push(`Rhythmus Speichern/Laden: ${JSON.stringify(got)}`);
-        Object.assign(state, defaults);
+        Object.assign(state, defaults, { rhythmLevels: zero() });
         restore({ tab: savedTab, rhythm: { mode: 'echo' } });
         if (keys.some((k) => state[k] !== defaults[k])) errors.push('Rhythmus: alter Stand ohne neue Felder nicht auf Standard');
         restore({ tab: savedTab, rhythm: { bars: 3, pickup: 'ja', syllables: 'la', input: 'usb', micLatencyMs: 9999, rhythmLevel: 9, duoPart: 'mitte' } });
         if (state.bars !== 1 || state.pickup !== false || state.syllables !== 'off' || state.input !== 'tap' || state.micLatencyMs !== 400 || state.rhythmLevel !== 0 || state.duoPart !== 'lower') errors.push(`Rhythmus: kaputte Werte → ${JSON.stringify(Object.fromEntries(keys.map((k) => [k, state[k]])))}`);
         restore({ tab: savedTab, rhythm: { mode: 'duo', rhythmLevel: 2 } });
         if (state.mode === 'duo') errors.push('Zweistimmig in Stufe 2 nicht zurückgesetzt');
+        // Alter Stand (eine Stufe für alle) → gilt für jede Übungsart.
+        restore({ tab: savedTab, rhythm: { mode: 'read', rhythmLevel: 4 } });
+        if (JSON.stringify(state.rhythmLevels) !== JSON.stringify({ echo: 4, along: 4, read: 4, duo: 4 }) || state.rhythmLevel !== 4) errors.push(`Rhythmus: alter Stand → ${JSON.stringify(state.rhythmLevels)}`);
+        // Stufe je Übungsart: Wechsel ändert nur die eigene.
+        state.rhythmLevels = zero(); state.mode = 'echo';
+        applyRhythmLevel(2);
+        selectRhythmMode('read'); applyRhythmLevel(5);
+        selectRhythmMode('echo');
+        if (state.rhythmLevel !== 2 || state.rhythmLevels.read !== 5 || state.rhythmLevels.along !== 0) errors.push(`Rhythmus: Stufen hängen zusammen (${JSON.stringify(state.rhythmLevels)})`);
+        setRhythmCustom();
+        if (state.rhythmLevels.echo !== 0 || state.rhythmLevels.read !== 5) errors.push('Rhythmus: eigene Auswahl trifft andere Übungsarten');
+        if (!duoAllowed()) errors.push('Zweistimmig trotz Stufe 5 gesperrt');
+        state.rhythmLevels = { echo: 1, along: 2, read: 0, duo: 0 };
+        if (duoAllowed()) errors.push('Zweistimmig vor Stufe 3 frei');
+        state.mode = 'duo'; applyRhythmLevel(1);
+        if (state.rhythmLevels.duo !== DUO_MIN_LEVEL) errors.push('Zweistimmig unter Stufe 3 gesetzt');
       } finally { Object.assign(state, saved); state.tab = savedTab; }
     }
     return errors;
@@ -5066,7 +5110,7 @@
       if (parseAreaParam('?embedded=1&tab=ear') !== 'ear' || parseAreaParam('?tab=rhythm') !== 'rhythm' || parseAreaParam('?from=quick&tab=ear') !== null
         || parseAreaParam('?embedded=1') !== null || parseAreaParam('?tab=xyz') !== null) errors.push('Bereichs-Parameter falsch');
       if (areaOnly && (!$('.tab-bar').hidden || $('header h1').textContent !== AREA_NAMES[areaOnly])) errors.push('?tab= ohne from: Tab-Leiste sichtbar');
-      const saved = { run: quickRun, views: { ...views }, tab: state.tab, mode: ear.mode, rl: state.rhythmLevel, rmode: state.mode, q: ear.levels.quality, locked: duoLocked };
+      const saved = { run: quickRun, views: { ...views }, tab: state.tab, mode: ear.mode, rl: state.rhythmLevel, rls: { ...state.rhythmLevels }, rmode: state.mode, q: ear.levels.quality, locked: duoLocked };
       try {
         views.ear = 'list';
         applyQuickParams({ tab: 'ear' });
@@ -5107,11 +5151,13 @@
         if ($('[data-sing-only="task"] [data-chips="singPart"]') || $('.ear-extra [data-chips="earPart"]')) errors.push('Stimmauswahl noch außerhalb der Einstellungen');
         { const kind = sheetKind; sheetKind = 'sing'; renderSettings(); if ($$('.sheet-body [data-chip="singPart"]').length !== 4) errors.push('Singen: Stimme fehlt im Einstellungsblatt'); sheetKind = kind; }
         state.rhythmLevel = 1; duoLocked = false;
+        state.rhythmLevels = { echo: 1, along: 0, read: 0, duo: 0 };
         if (modeLevelText('rhythm', 'duo') !== 'ab Stufe 3') errors.push(`Zweistimmig vor Stufe 3: ${modeLevelText('rhythm', 'duo')}`);
         renderModeList('rhythm');
         if (!$('[data-open-mode="rhythm:duo"]') || !$('[data-open-mode="rhythm:duo"] .mode-lv').textContent.includes('ab Stufe 3')) errors.push('Zweistimmig fehlt in der Liste');
       } finally {
         quickRun = saved.run; Object.assign(views, saved.views); state.tab = saved.tab; ear.mode = saved.mode;
+        state.rhythmLevels = saved.rls;
         state.rhythmLevel = saved.rl; state.mode = saved.rmode; ear.levels.quality = saved.q; duoLocked = saved.locked;
         renderQuickBar(); renderAll(); renderArea();
       }
@@ -5263,7 +5309,7 @@
   applyProfile();
   loadMemory();
   const quickParams = parseQuickParams(location.search);
-  ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation'].forEach(refreshHint);
+  [...Object.values(RHYTHM_AREA), 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation'].forEach(refreshHint);
   /** ?tab=… ohne from=quick: nur dieser Bereich, Überschrift statt Tab-Leiste. */
   function applyAreaOnly() {
     if (!areaOnly) return;

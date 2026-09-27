@@ -18700,6 +18700,10 @@ function runSelfTests() {
     if (practiceTileState(sample, 'ear').level !== 4) failed.push(`Üben-Kachel Hören: Durchschnitt ${practiceTileState(sample, 'ear').level} statt 4 (gerundet, ohne Stufe 0)`);
     const half = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 2, right: true }, { area: 'sight', level: 3, right: true }], '2026-10-12');
     if (practiceTileState(half, 'sing').level !== 3) failed.push(`Üben-Kachel: 2,5 gerundet zu ${practiceTileState(half, 'sing').level} statt 3`);
+    // Rhythmus: Durchschnitt der Übungsarten; der alte Sammelbereich zählt
+    // dann nicht mehr mit.
+    const rh = applyProgressEntries(emptyProgress(), [{ area: 'rhythm', level: 6, right: true }, { area: 'rhythmEcho', level: 2, right: true }, { area: 'rhythmRead', level: 5, right: true }], '2026-10-12');
+    if (practiceTileState(rh, 'rhythm').level !== 4) failed.push(`Üben-Kachel Rhythmus: ${practiceTileState(rh, 'rhythm').level} statt 4 (2 und 5, ohne alten Sammelwert)`);
     const custom = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 0, right: true }], '2026-10-12');
     const cs = practiceTileState(custom, 'sing');
     if (cs.isNew || cs.level !== 0) failed.push('Üben-Kachel: nur eigene Auswahl nicht Stufe 0');
@@ -22360,12 +22364,14 @@ window.chorVoiceProfile = {
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
 const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'progression', 'parts', 'tuning',
-  'singInterval', 'findTone', 'hold', 'sight', 'dictation'];
+  'singInterval', 'findTone', 'hold', 'sight', 'dictation',
+  // Rhythmus je Übungsart (seit v332); 'rhythm' bleibt für ältere Einträge.
+  'rhythmEcho', 'rhythmAlong', 'rhythmRead', 'rhythmDuo'];
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
   ear: ['interval', 'quality', 'cadence', 'progression', 'parts', 'tuning'],
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation'],
-  rhythm: ['rhythm'],
+  rhythm: ['rhythm', 'rhythmEcho', 'rhythmAlong', 'rhythmRead', 'rhythmDuo'],
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
 const PROGRESS_MEMORY_KEYS = ['intervalLog', 'singLog', 'micDenied'];
@@ -22625,7 +22631,10 @@ function warmupMinutes(stored) {
  *  mit eigener Auswahl (Stufe 0) zählen nicht mit; haben alle Stufe 0 →
  *  level 0 (eigene Auswahl). Nie geübt → { isNew }. */
 function practiceTileState(data, group) {
-  const areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area]));
+  let areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area]));
+  // Rhythmus: der alte Sammelbereich zählt nur, solange es keine Stufen je
+  // Übungsart gibt (er stand früher für alle vier zugleich).
+  if (group === 'rhythm' && areas.some((a) => a !== 'rhythm')) areas = areas.filter((a) => a !== 'rhythm');
   if (!areas.length) return { isNew: true, level: 0 };
   const levels = areas.map((area) => data.levels[area]).filter((l) => l > 0);
   const level = levels.length ? Math.round(levels.reduce((sum, l) => sum + l, 0) / levels.length) : 0;
