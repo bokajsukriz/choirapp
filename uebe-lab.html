@@ -120,6 +120,17 @@
   .stage .hd-o.is-good, .stage .hd-o.is-near, .stage .hd-o.is-miss { fill: var(--surface); stroke-width: 2.2; }
   .stage .is-extra { fill: var(--bad); }
   .stage .ph { stroke: var(--accent); stroke-width: 2; opacity: .75; }
+  .stage .tie { fill: none; stroke: var(--text); stroke-width: 1.5; }
+  .stage .syl-t { font-weight: 700; font-size: 9.5px; fill: var(--text); }
+  .stage .syl-t.is-quiet { fill: var(--muted); font-style: italic; }
+  .stage .voice-l { font-weight: 800; font-size: 9px; fill: var(--muted); }
+  .stage .voice-l.is-own { fill: var(--accent); }
+  /* Einheitliches Stufen-Element */
+  .level-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .level-row .level-chip { min-width: 44px; min-height: 44px; }
+  .level-chip.has-dot { position: relative; }
+  .level-chip.has-dot::after { content: ""; position: absolute; top: 3px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .level-hint { margin: 4px 0 0; font-size: .72rem; font-weight: 800; color: var(--accent); }
 
   .tap-pad { width: 100%; height: 112px; margin-top: 10px; border-radius: 22px; border: 2px dashed var(--line); background: var(--surface); font-weight: 800; font-size: .95rem; color: var(--muted); touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-content: center; gap: 10px; }
   .tap-pad[data-phase="listen"], .tap-pad[data-phase="read"], .tap-pad[data-phase="rest"], .tap-pad[data-phase="count"] { border-style: solid; }
@@ -239,8 +250,11 @@
           </button>
         </div>
       </div>
+      <div data-levels="rhythm"></div>
+      <span class="sub-label">Übungsart</span>
       <div class="chip-row" data-chips="rmode"></div>
-      <p class="help-text" id="help-modes" hidden><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste. Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart und Rundenzahl stellt das Zahnrad ein.</p>
+      <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div class="label-row"><span class="sub-label">Leertakte</span>
@@ -402,25 +416,60 @@
   const METERS = {
     '4/4': { ticks: 48, beat: 12, ref: 12, unit: 12, top: '4', bottom: '4' },
     '3/4': { ticks: 36, beat: 12, ref: 12, unit: 12, top: '3', bottom: '4' },
-    '6/8': { ticks: 36, beat: 6, ref: 18, unit: 18, top: '6', bottom: '8' },
+    '6/8': { ticks: 36, beat: 6,  ref: 18, unit: 18, top: '6', bottom: '8' },
+    '2/4': { ticks: 24, beat: 12, ref: 12, unit: 12, top: '2', bottom: '4' },
+    '2/2': { ticks: 48, beat: 24, ref: 24, unit: 12, top: '2', bottom: '2' },          // Klick auf Halben
+    '5/4': { ticks: 60, beat: 12, ref: 12, unit: 12, top: '5', bottom: '4', groups: [3, 2] },
+    '7/8': { ticks: 42, beat: 6,  ref: 6,  unit: 0,  top: '7', bottom: '8', groups: [2, 2, 3] },
   };
-  const tempoSymbol = (meter) => ({ 6: '♪', 12: '♩', 18: '♩.' })[METERS[meter].ref];
+  // Reihenfolge in der Auswahl (gespeichert wird nur die ID).
+  const METER_ORDER = ['2/4', '3/4', '4/4', '2/2', '5/4', '6/8', '7/8'];
+  const tempoSymbol = (meter) => ({ 6: '♪', 12: '♩', 18: '♩.', 24: '𝅗𝅥' })[METERS[meter].ref];
   const BPM_MIN = 30;
   const BPM_MAX = 200;
   /** Tempo beim Taktartwechsel so umrechnen, dass die Achtel gleich schnell
    *  bleiben (`exact`: genaues Tempo in Achteln pro Minute). */
   function tempoForMeter(exact, meter) { return clamp(Math.round(exact / (METERS[meter].ref / 6)), BPM_MIN, BPM_MAX); }
 
-  // Wählbare Bausteine (Viertel und Halbe sind immer dabei).
+  /** Anfänge der Baustein-Einheiten im Takt (Ticks): Viertel bzw.
+   *  punktierte Viertel; in additiven Taktarten (unit 0) die Gruppen. */
+  function unitStarts(m) {
+    const out = [];
+    if (m.unit) { for (let t = 0; t < m.ticks; t += m.unit) out.push(t); return out; }
+    let t = 0;
+    for (const g of m.groups) { out.push(t); t += g * m.beat; }
+    return out;
+  }
+  /** Betonte Schläge (starker Klick): Gruppenanfänge (5/4, 7/8), sonst die Einheiten. */
+  function accentStarts(m) {
+    if (!m.groups) return unitStarts(m);
+    const out = [];
+    let t = 0;
+    for (const g of m.groups) { out.push(t); t += g * m.beat; }
+    return out;
+  }
+  /** Klickstärke eines Schlags im Takt: 2 Taktanfang, 1 betont, 0 sonst. */
+  const beatLevel = (m, t) => (t === 0 ? 2 : accentStarts(m).includes(t) ? 1 : 0);
+  /** Nummer der Einheit, in der Tick `t` (im Takt) liegt. */
+  function unitOf(m, t) {
+    const starts = unitStarts(m);
+    let k = 0;
+    while (k + 1 < starts.length && starts[k + 1] <= t) k++;
+    return k;
+  }
+
+  // Wählbare Bausteine (Viertel und Halbe sind immer dabei). „tie“ ist kein
+  // Baustein im engeren Sinn, sondern bindet Noten über Einheitsgrenzen.
   const ELEMENTS = [
     ['e', 'Achtel', ''],
     ['r', 'Pausen', ''],
     ['d', 'Punktierte Noten', 'z. B. ♩. ♪'],
     ['sy', 'Synkopen', 'z. B. ♪ ♩ ♪'],
+    ['tie', 'Bindebögen', 'über Schlag und Taktstrich'],
     ['s', 'Sechzehntel', ''],
-    ['t', 'Triolen', 'nicht in 6/8'],
+    ['t', 'Triolen', 'nicht in 6/8 und 7/8'],
   ];
-  const ELEMENT_SHORT = { e: 'Achtel', r: 'Pausen', d: 'Punktiert', sy: 'Synkopen', s: 'Sechzehntel', t: 'Triolen' };
+  const ELEMENT_SHORT = { e: 'Achtel', r: 'Pausen', d: 'Punktiert', sy: 'Synkopen', tie: 'Bindebögen', s: 'Sechzehntel', t: 'Triolen' };
 
   // Bausteine: Dauern in Ticks, negativ = Pause; span = Anzahl Einheiten.
   // Ein Baustein kommt nur vor, wenn alle seine tags ausgewählt sind; neu
@@ -442,45 +491,228 @@
       { v: [6, 12], tags: ['sy'] }, { v: [9, 3, 6], tags: ['d', 's'] },
       { v: [3, 3, 6, 6], tags: ['s'] }, { v: [6, 3, 3, 6], tags: ['s'] }, { v: [6, 6, 3, 3], tags: ['s'] },
     ],
+    // Additive Taktarten (7/8): je Gruppe aus 2 bzw. 3 Achteln.
+    additive: {
+      2: [{ v: [12] }, { v: [6, 6] }, { v: [-6, 6], tags: ['r'] }, { v: [3, 3, 6], tags: ['s'] }],
+      3: [{ v: [18] }, { v: [12, 6] }, { v: [6, 6, 6] }, { v: [6, 12], tags: ['sy'] }, { v: [-6, 6, 6], tags: ['r'] }],
+    },
   };
 
-  /** Ein Takt aus zufälligen Bausteinen. Mindestens (Einheiten − 1) Einsätze,
-   *  bei gewählten Bausteinen mindestens einer davon, nie zweimal derselbe
-   *  Takt hintereinander. */
-  function makePattern(meterId, chosen, previousKey) {
+  const pickWeighted = (list, weights, rnd) => {
+    let r = rnd() * weights.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < list.length; i++) { r -= weights[i]; if (r <= 0) return list[i]; }
+    return list[list.length - 1];
+  };
+  const cellOk = (c, chosen) => (c.tags || []).every((t) => chosen.includes(t));
+
+  /** Pausen von `from` bis `to` (Ticks im Takt), an Einheitsgrenzen geteilt. */
+  function restsBetween(m, from, to) {
+    const cuts = [...unitStarts(m).filter((t) => t > from && t < to), to];
+    const out = [];
+    let t = from;
+    for (const c of cuts) { if (c > t) { out.push(-(c - t)); t = c; } }
+    return out;
+  }
+
+  /** Ein Takt (oder, bei Auftakt, der verkürzte letzte Takt der Länge
+   *  `len`) aus zufälligen Bausteinen: ganze Einheiten, ein Rest am Ende
+   *  (nur bei verkürztem Takt) als Pause. Kein Baustein überschreitet eine
+   *  Gruppengrenze (5/4: 3+2). Liefert { cells: [[…Werte]], tagged }. */
+  function makeBar(m, chosen, len, rnd) {
+    const cells = [];
+    let tagged = false;
+    if (!m.unit) {
+      let t = 0;
+      for (const g of m.groups) {
+        const gl = g * m.beat;
+        if (t + gl > len) break;
+        const lib = CELLS.additive[g].filter((c) => cellOk(c, chosen));
+        const cell = pickWeighted(lib, lib.map((c) => c.w ?? (c.tags ? 3 : 1)), rnd);
+        cells.push(cell.v); if (cell.tags) tagged = true;
+        t += gl;
+      }
+      if (t < len) cells.push(restsBetween(m, t, len));
+      return { cells, tagged };
+    }
+    const lib = CELLS[m.unit === 18 ? 'compound' : 'simple'].filter((c) => cellOk(c, chosen));
+    const units = Math.floor(len / m.unit);
+    const allUnits = m.ticks / m.unit;
+    const bounds = accentStarts(m).map((t) => t / m.unit);
+    let u = 0;
+    while (u < units) {
+      const fits = lib.filter((c) => {
+        const s = c.span || 1;
+        if (u + s > units) return false;
+        if (m.groups && bounds.some((b) => b > u && b < u + s)) return false;
+        // Halbe Takte in 4/4 nur auf 1 oder 3 — außer Halbe und Synkope (♪ ♩ ♪ auf 2 ist üblich).
+        return s === 1 || (s === 2 ? (allUnits !== 4 || u % 2 === 0 || c.free) : u === 0);
+      });
+      const cell = pickWeighted(fits, fits.map((c) => c.w ?? (c.tags ? 3 : 1)), rnd);
+      cells.push(cell.v); if (cell.tags) tagged = true;
+      u += cell.span || 1;
+    }
+    if (units * m.unit < len) cells.push(restsBetween(m, units * m.unit, len));
+    return { cells, tagged };
+  }
+
+  /** Schlusstakt einer viertaktigen Phrase: langer Wert auf
+   *  der Eins (Halbe oder länger, 6/8 punktierte Viertel), Rest Pausen.
+   *  7/8: zwei gebundene Viertel (2+2), damit die Gruppen erhalten bleiben. */
+  function finalBar(m, chosen, len, rnd) {
+    if (!m.unit) return { cells: [[12], [12], restsBetween(m, 24, len)], tagged: false, tieAt: 12 };
+    let options = m.unit === 18 ? [18, 36] : !m.unit ? [24] : [24, 36, 48];
+    if (m.unit && m.unit !== 18 && !chosen.includes('d')) options = options.filter((d) => d !== 36);
+    const bounds = m.groups ? accentStarts(m).filter((t) => t > 0) : [];
+    options = options.filter((d) => d <= len && !bounds.some((b) => b < d));
+    if (!options.length) options = [Math.min(len, m.unit || 12)];
+    const d = options[Math.floor(rnd() * options.length)];
+    return { cells: [[d, ...restsBetween(m, d, len)]], tagged: false };
+  }
+
+  const PICKUPS = { simple: [[6], [6, 6], [12]], single: [[6]] };
+  const TIE_P = .35;
+
+  /**
+   * Eine Phrase aus `bars` Takten. Mit Auftakt (opts.pickup: true = in 40 %
+   * der Phrasen, oder feste Länge opts.pickupTicks) beginnt sie mit einer
+   * Achtel, zwei Achteln oder einer Viertel (6/8, 7/8: eine Achtel) vor dem
+   * ersten Taktstrich; der letzte Takt ist um genau diese Dauer kürzer
+   * (Volltakt-Regel), die Phrase ist also immer bars × ticks lang. Bei vier
+   * Takten endet sie mit einem langen Wert auf der Eins des letzten Takts.
+   * opts.ties: Bindebögen (Wahrscheinlichkeit TIE_P je Einheitsgrenze,
+   * höchstens einer je Takt). Nie zweimal dieselbe Phrase hintereinander.
+   * Noten: { t (Ticks ab Phrasenbeginn), d, rest, tie } — `tie`: an die
+   * vorige Note gebunden, kein eigener Einsatz.
+   */
+  function makePattern(meterId, chosen, previousKey, opts = {}) {
     const m = METERS[meterId];
-    const lib = CELLS[m.unit === 18 ? 'compound' : 'simple'].filter((c) => (c.tags || []).every((t) => chosen.includes(t)));
-    const units = m.ticks / m.unit;
-    const wantTagged = lib.some((c) => c.tags);
+    const rnd = opts.rnd || Math.random;
+    const bars = [1, 2, 4].includes(opts.bars) ? opts.bars : 1;
+    const withTies = !!opts.ties;
+    const unitsPerBar = unitStarts(m).length;
+    const wantTagged = (m.unit ? CELLS[m.unit === 18 ? 'compound' : 'simple'] : [...CELLS.additive[2], ...CELLS.additive[3]])
+      .some((c) => c.tags && cellOk(c, chosen));
     let best = null;
     for (let attempt = 0; attempt < 200; attempt++) {
-      const cells = [];
-      let u = 0;
-      while (u < units) {
-        const fits = lib.filter((c) => {
-          const s = c.span || 1;
-          if (u + s > units) return false;
-          // Halbe Takte in 4/4 nur auf 1 oder 3 — außer Halbe und Synkope (♪ ♩ ♪ auf 2 ist üblich).
-          return s === 1 || (s === 2 ? (units !== 4 || u % 2 === 0 || c.free) : u === 0);
-        });
-        const weights = fits.map((c) => c.w ?? (c.tags ? 3 : 1));
-        let r = Math.random() * weights.reduce((a, b) => a + b, 0);
-        let cell = fits[fits.length - 1];
-        for (let i = 0; i < fits.length; i++) { r -= weights[i]; if (r <= 0) { cell = fits[i]; break; } }
-        cells.push(cell);
-        u += cell.span || 1;
+      let p = 0;
+      let pickupVals = [];
+      if (Number.isInteger(opts.pickupTicks)) p = opts.pickupTicks;
+      else if (opts.pickup && rnd() < .4) p = -1;
+      if (p) {
+        const pool = (m.unit === 12 ? PICKUPS.simple : PICKUPS.single).filter((v) => v.every((d) => d >= 12 || chosen.includes('e')));
+        const fitting = p > 0 ? pool.filter((v) => v.reduce((a, b) => a + b, 0) === p) : pool;
+        pickupVals = fitting.length ? fitting[Math.floor(rnd() * fitting.length)] : [p > 0 ? p : 12];
+        p = pickupVals.reduce((a, b) => a + b, 0);
+      }
+      const barCells = [];
+      const forcedTies = [];
+      let tagged = false;
+      let enough = true;
+      for (let k = 0; k < bars; k++) {
+        const len = k === bars - 1 ? m.ticks - p : m.ticks;
+        const bar = bars === 4 && k === 3 ? finalBar(m, chosen, len, rnd) : makeBar(m, chosen, len, rnd);
+        tagged = tagged || bar.tagged;
+        if (bar.tieAt) forcedTies.push(p + k * m.ticks + bar.tieAt);
+        if (!(bars === 4 && k === 3)) {
+          const onsetsInBar = bar.cells.flat().filter((v) => v > 0).length;
+          if (onsetsInBar < Math.max(2, unitsPerBar - 1) - (len < m.ticks ? 1 : 0)) enough = false;
+        }
+        barCells.push(bar.cells);
       }
       const notes = [];
       let t = 0;
-      cells.forEach((c) => c.v.forEach((v) => { notes.push({ t, d: Math.abs(v), rest: v < 0 }); t += Math.abs(v); }));
-      const onsets = notes.filter((n) => !n.rest).map((n) => n.t);
-      const key = cells.map((c) => c.v.join(',')).join('|');
-      const pattern = { meter: meterId, notes, onsets, key };
-      const ok = onsets.length >= Math.max(2, units - 1) && key !== previousKey;
-      if (ok && (!wantTagged || cells.some((c) => c.tags) || attempt > 150)) return pattern;
+      pickupVals.forEach((v) => { notes.push({ t, d: v, rest: false }); t += v; });
+      barCells.forEach((cells) => cells.forEach((c) => c.forEach((v) => { notes.push({ t, d: Math.abs(v), rest: v < 0 }); t += Math.abs(v); })));
+      notes.forEach((n) => { if (forcedTies.includes(n.t)) n.tie = true; });
+      if (withTies) {
+        const tiedBars = new Set(forcedTies.map((t) => Math.floor((t - p) / m.ticks)));
+        for (let i = 1; i < notes.length; i++) {
+          const a = notes[i - 1], b = notes[i];
+          if (a.rest || b.rest || a.tie || b.t < p) continue;
+          const inBar = mod(b.t - p, m.ticks);
+          const bar = Math.floor((b.t - p) / m.ticks);
+          if (!unitStarts(m).includes(inBar) || tiedBars.has(bar)) continue;
+          if (rnd() < TIE_P) { b.tie = true; tiedBars.add(bar); }
+        }
+      }
+      const onsets = notes.filter((n) => !n.rest && !n.tie).map((n) => n.t);
+      const key = `${p}/${notes.map((n) => (n.rest ? -n.d : n.tie ? `~${n.d}` : n.d)).join(',')}`;
+      const pattern = { meter: meterId, notes, onsets, key, bars, pickup: p, total: bars * m.ticks };
+      const ok = enough && onsets.length >= 2 && key !== previousKey;
+      if (ok && (!wantTagged || tagged || attempt > 150)) return pattern;
       if (ok && !best) best = pattern;
     }
-    return best || { meter: meterId, notes: [{ t: 0, d: m.ticks / 2, rest: false }, { t: m.ticks / 2, d: m.ticks / 2, rest: false }], onsets: [0, m.ticks / 2], key: 'fallback' };
+    if (best) return best;
+    const half = m.ticks / 2;
+    const notes = [];
+    for (let k = 0; k < bars; k++) notes.push({ t: k * m.ticks, d: half, rest: false }, { t: k * m.ticks + half, d: half, rest: false });
+    return { meter: meterId, notes, onsets: notes.map((n) => n.t), key: 'fallback', bars, pickup: 0, total: bars * m.ticks };
+  }
+
+  /* ---- Rhythmussprache: Silben unter den Noten ----
+     'ta': ta, ti-ti, ta-a, ti-ri-ti-ri, tri-o-le; Pause „sch“.
+     'count': Zählzeiten — 1 + 2 +, Sechzehntel 1 e + e, 6/8 und 7/8 „in
+     Achteln“ (1 2 3 4 5 6), gehaltene Schläge und Pausen in Klammern. */
+  const TA_LONG = { 48: 'ta-a-a-a', 36: 'ta-a-a', 24: 'ta-a', 18: 'ta-i', 12: 'ta', 9: 'ti-i' };
+  function countBeatOf(m) { return m.unit === 12 ? m.beat : 6; }
+  function syllablesFor(pattern, style) {
+    const m = METERS[pattern.meter];
+    return pattern.notes.map((n) => {
+      const inBar = mod(n.t - pattern.pickup, m.ticks);
+      if (style === 'count') {
+        const c = countBeatOf(m);
+        const num = Math.floor(inBar / c) + 1;
+        const off = inBar % c;
+        let parts;
+        if (off === 0) {
+          parts = [String(num)];
+          for (let k = num + 1; (k - 1) * c < inBar + n.d && k <= m.ticks / c; k++) parts.push(String(k));
+        } else if (n.d === 4 || (off % 4 === 0 && off % 3 !== 0)) parts = [{ 4: 'o', 8: 'le' }[off % 12] || 'tri'];
+        else if (off * 2 === c) parts = ['+'];
+        else parts = ['e'];
+        // Gehaltene Schläge in Klammern; Pausen und gebundene Noten ganz.
+        return n.rest || n.tie ? parts.map((x) => `(${x})`).join(' ') : [parts[0], ...parts.slice(1).map((x) => `(${x})`)].join(' ');
+      }
+      if (n.rest) return 'sch';
+      if (n.tie) return '(–)';
+      if (TA_LONG[n.d]) return TA_LONG[n.d];
+      if (n.d === 6) return 'ti';
+      if (n.d === 4) return ['tri', 'o', 'le'][Math.floor((inBar % 12) / 4)];
+      if (n.d === 3) return inBar % 6 === 0 ? 'ti' : 'ri';
+      return 'ta';
+    });
+  }
+
+  /* ---- Zweistimmig: zwei Muster derselben Taktart und Länge ---- */
+
+  /** Erfüllt ein Paar die Bedingungen? Höchstens 60 % der Einsätze der
+   *  unteren Stimme fallen mit der oberen zusammen, und mindestens einer
+   *  liegt, wo die obere eine Pause oder einen langen Wert (ab Viertel,
+   *  auch gebunden) hat. */
+  function duoOk(upper, lower) {
+    const same = lower.onsets.filter((t) => upper.onsets.includes(t)).length;
+    if (same > .6 * lower.onsets.length) return false;
+    return lower.onsets.some((t) => {
+      const n = upper.notes.find((x) => x.t <= t && t < x.t + x.d);
+      if (!n) return false;
+      if (n.rest) return true;
+      if (n.t === t) return false;
+      // gebundene Folge zählt als ein langer Wert
+      let start = n;
+      let len = n.d;
+      for (let i = upper.notes.indexOf(n); i > 0 && upper.notes[i].tie; i--) { start = upper.notes[i - 1]; len += start.d; }
+      return len >= 12 || n.tie;
+    });
+  }
+  function makeDuo(meterId, chosen, previousKey, opts = {}) {
+    let last = null;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const upper = makePattern(meterId, chosen, previousKey, opts);
+      const lower = makePattern(meterId, chosen, upper.key, { ...opts, pickupTicks: upper.pickup });
+      last = { upper, lower };
+      if (lower.total === upper.total && lower.pickup === upper.pickup && duoOk(upper, lower)) return { ...last, key: `${upper.key}|${lower.key}`, ok: true };
+    }
+    return { ...last, key: 'duo-fallback', ok: false };
   }
 
   /* ------------------------------------------------------------------------
@@ -543,6 +775,22 @@
       [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: i === 2 ? .3 : .18 }, dest));
     },
 
+    /** Holzblock (Zweistimmig): hoch für die obere, tief für die untere Stimme. */
+    block(time, high, dest) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(high ? 1250 : 720, time);
+      osc.frequency.exponentialRampToValueAtTime(high ? 1150 : 660, time + .05);
+      gain.gain.setValueAtTime(.0001, time);
+      gain.gain.linearRampToValueAtTime(high ? .32 : .38, time + .002);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + (high ? .07 : .09));
+      osc.connect(gain).connect(dest || this.master);
+      osc.start(time); osc.stop(time + .12);
+      this.burst(time, { cutoff: high ? 3000 : 1800, q: 6, length: .015, volume: .08 }, dest);
+    },
+
     /** Eigene Wiedergabe-Schiene (Hör-Aufgabe bzw. Rhythmus-Lauf): ein
      *  Gain-Knoten, den man bei "Nochmal"/"Stopp" ausblendet, statt jede
      *  geplante Note einzeln abbrechen zu müssen. */
@@ -593,10 +841,30 @@
      ZUSTAND
      ------------------------------------------------------------------------ */
 
-  const MODES = [['echo', 'Nachklatschen'], ['along', 'Mitklatschen'], ['read', 'Vom Blatt']];
+  // Stufen-Vorschläge je Bereich (Paket 6, aus dem Fortschritt der App).
+  const levelHints = {};
+  const MODES = [['echo', 'Nachklatschen'], ['along', 'Mitklatschen'], ['read', 'Vom Blatt'], ['duo', 'Zweistimmig']];
   const ROUND_CHOICES = [[4, '4'], [8, '8'], [12, '12'], [0, 'endlos']];
+  const BAR_CHOICES = [[1, '1'], [2, '2'], [4, '4']];
+  const SYLLABLE_CHOICES = [['off', 'aus'], ['ta', 'ta ti-ti'], ['count', '1 + 2 +']];
+  const INPUT_CHOICES = [['tap', 'Tippen'], ['mic', 'Mikrofon']];
   const SPEED_STEP = 3;   // BPM mehr nach jeder fehlerfreien Runde
   const GOOD_SEC = .04;   // bis hier gilt ein Treffer als "genau"
+
+  /* Stufen 1–6 (Rhythmus): jede enthält die vorigen. Mehrere Taktarten:
+     je Durchgang (Play) eine zufällige, innerhalb des Durchgangs fest.
+     pickup: Auftakt möglich (in 40 % der Phrasen). bpm: Viertel-Tempo
+     (in 6/8 und 7/8 über gleich schnelle Achtel umgerechnet). */
+  const RHYTHM_LEVELS = [
+    { n: 1, label: 'Viertel und Halbe',             meters: ['4/4'],                                     elements: [],                                    bars: 1, pickup: false, bpm: 80 },
+    { n: 2, label: 'Achtel · 2/4 und 3/4',          meters: ['4/4', '2/4', '3/4'],                       elements: ['e'],                                 bars: 1, pickup: false, bpm: 80 },
+    { n: 3, label: 'Pausen · zwei Takte',           meters: ['4/4', '2/4', '3/4'],                       elements: ['e', 'r'],                            bars: 2, pickup: false, bpm: 84 },
+    { n: 4, label: 'Punktiert · Auftakt · alla breve', meters: ['4/4', '2/4', '3/4', '2/2'],             elements: ['e', 'r', 'd'],                       bars: 2, pickup: true,  bpm: 88 },
+    { n: 5, label: 'Synkopen · Bindebögen · 6/8',   meters: ['4/4', '3/4', '2/2', '6/8'],                elements: ['e', 'r', 'd', 'sy', 'tie'],          bars: 2, pickup: true,  bpm: 88 },
+    { n: 6, label: 'Sechzehntel · Triolen · 5/4 und 7/8 · vier Takte', meters: ['4/4', '3/4', '6/8', '5/4', '7/8'], elements: ['e', 'r', 'd', 'sy', 'tie', 's', 't'], bars: 4, pickup: true, bpm: 92 },
+  ];
+  const DUO_MIN_LEVEL = 3; // „Zweistimmig“ ab Stufe 3 (oder eigene Auswahl)
+  const duoAllowed = () => !state.rhythmLevel || state.rhythmLevel >= DUO_MIN_LEVEL;
 
   const state = {
     // bpm im Tempo-Bezug der Taktart (tempoRef 'beat', seit v305 — vorher
@@ -606,8 +874,19 @@
     tab: 'rhythm', bpm: 92, eighths: 184, latency: 0,
     mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 8,
     countIn: true, click: true, speedUp: false, showNotes: false,
+    // Didaktik Paket 3
+    bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0,
+    rhythmLevel: 0,      // 1–6 = Stufe, 0 = eigene Auswahl
+    duoPart: 'lower',    // Zweistimmig: 'upper' | 'lower' — welche Stimme du klatschst
   };
-  const run = { playing: false, bus: null, timer: 0, frame: 0, nextBar: 0, bars: [], round: null, barInRound: 0, ended: false, viewKey: '', stripKey: '', padKey: '', shown: null };
+  // Lauf auf einem absoluten Tick-Raster: Taktstriche bei Vielfachen von
+  // ticks, jede Phrase beginnt `pickup` Ticks vor einem Taktstrich. items:
+  // { kind, round, pos (Index in round.seq, −1 = Ausgleichspause), start, len }.
+  const run = {
+    playing: false, bus: null, timer: 0, frame: 0, bars: [], ended: false, endTime: null,
+    viewKey: '', stripKey: '', padKey: '', shown: null,
+    meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05,
+  };
   const game = { rounds: [], taps: [], streak: 0, best: 0, finished: false, stats: null };
   let tapTimes = [];
 
@@ -618,10 +897,11 @@
   game.stats = freshStats();
 
   /* ------------------------------------------------------------------------
-     SCHEDULER — taktweise: jede Runde ist eine Folge von Takten
-     (Vorbild/Lesen, Leertakte, dein Takt, Leertakte). Tempo, Taktart und
-     Ablauf werden je Runde beim Planen ihres ersten Takts festgelegt;
-     Änderungen während des Laufs gelten also ab der nächsten Runde.
+     SCHEDULER — eine Runde ist eine Folge von Abschnitten (Vorbild/Lesen,
+     Leertakte, dein Einsatz, Leertakte); Vorbild und Einsatz sind je eine
+     Phrase aus `bars` Takten. Tempo und Muster werden je Runde beim Planen
+     festgelegt; Änderungen während des Laufs gelten ab der nächsten Runde,
+     die Taktart für den ganzen Durchgang.
      ------------------------------------------------------------------------ */
 
   function roundSeq(mode, last) {
@@ -646,20 +926,46 @@
     state.eighths = state.bpm * METERS[state.meter].ref / 6;
   }
 
+  /** Stufe übernehmen: Bausteine, Takte, Auftakt, Tempo; die Taktart wird
+   *  beim Start aus der Stufe gezogen (hier schon die erste). */
+  function applyRhythmLevel(n) {
+    const level = RHYTHM_LEVELS.find((l) => l.n === n);
+    if (!level) return;
+    state.rhythmLevel = n;
+    state.elements = ELEMENTS.map(([id]) => id).filter((id) => level.elements.includes(id));
+    state.bars = level.bars;
+    state.pickup = level.pickup;
+    if (!level.meters.includes(state.meter)) state.meter = level.meters[0];
+    state.eighths = level.bpm * 2;
+    state.bpm = tempoForMeter(state.eighths, state.meter);
+    if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
+  }
+  const rhythmLevel = () => RHYTHM_LEVELS.find((l) => l.n === state.rhythmLevel) || null;
+  /** Bausteine, die in der Taktart überhaupt vorkommen können. */
+  const activeElements = (meter) => state.elements.filter((id) => !(id === 't' && METERS[meter].unit !== 12));
+
   function newRound() {
     const index = game.rounds.length;
     const previous = game.rounds[index - 1];
-    const m = METERS[state.meter];
+    const m = METERS[run.meter];
+    const opts = { bars: state.bars, pickup: state.pickup, ties: state.elements.includes('tie') };
+    const chosen = activeElements(run.meter);
+    let pattern;
+    let duo = null;
+    if (state.mode === 'duo') {
+      duo = makeDuo(run.meter, chosen, previous?.duo ? previous.duo.key : previous?.pattern.key, opts);
+      pattern = state.duoPart === 'upper' ? duo.upper : duo.lower;
+    } else pattern = makePattern(run.meter, chosen, previous?.pattern.key, opts);
     const round = {
-      index, mode: state.mode, meter: state.meter, bpm: state.bpm,
+      index, mode: state.mode, meter: run.meter, bpm: state.bpm,
       tickSec: 60 / state.bpm / m.ref,
-      pattern: makePattern(state.meter, state.elements, previous?.pattern.key),
+      pattern, duo, duoPart: state.duoPart,
       seq: roundSeq(state.mode, !!state.rounds && index === state.rounds - 1),
       showNotes: state.mode !== 'echo' || state.showNotes,
       youStart: null, result: null,
     };
     round.youPos = round.seq.indexOf(round.mode === 'along' ? 'along' : 'you');
-    round.barSec = m.ticks * round.tickSec;
+    round.barSec = pattern.total * round.tickSec;
     round.tol = tolerance(round);
     game.rounds.push(round);
     return round;
@@ -677,29 +983,76 @@
   }
   const toleranceFor = (gapSec) => Math.min(.13, Math.max(.035, gapSec * .45));
 
-  function scheduleBar() {
-    let round = run.round;
-    if (run.barInRound >= round.seq.length) {
-      if (state.rounds && game.rounds.length >= state.rounds) { run.ended = true; return; }
-      round = run.round = newRound();
-      run.barInRound = 0;
-    }
-    const kind = run.barInRound < 0 ? 'count' : round.seq[run.barInRound];
+  const timeAt = (tick) => run.anchorTime + (tick - run.anchorTick) * run.tickSec;
+  const tickAt = (time) => run.anchorTick + (time - run.anchorTime) / run.tickSec;
+
+  /** Nächste Runde auf das Raster legen. Ihre Phrase beginnt `pickup` vor
+   *  dem ersten Taktstrich, der nach dem bisherigen Ende noch Platz für den
+   *  Auftakt lässt — dazwischen läuft der Klick als Ausgleichspause weiter,
+   *  so bleibt das Metrum über Runden mit verschiedenem Auftakt erhalten. */
+  function layoutNext(first = false) {
+    if (state.rounds && game.rounds.length >= state.rounds) return false;
+    const round = newRound();
     const m = METERS[round.meter];
-    const time = run.nextBar;
-    if (state.click || kind === 'count') {
-      for (let t = 0; t < m.ticks; t += m.beat) engine.click(time + t * round.tickSec, t === 0 ? 2 : t % m.unit === 0 ? 1 : 0, run.bus);
+    const T = m.ticks;
+    const p = round.pattern.pickup;
+    // Neues Tempo gilt ab dem bisherigen Ende.
+    run.anchorTime = timeAt(run.layoutEnd);
+    run.anchorTick = run.layoutEnd;
+    run.tickSec = round.tickSec;
+    let start;
+    if (first) {
+      // Einzähler bis zum Auftakt („1 – 2 – 3 – und“), sonst sofort los.
+      start = T - p;
+      if (state.countIn) run.items.push({ kind: 'count', round, pos: -1, start: 0, len: start });
+      else { run.anchorTick = start; run.cursor = start; }
+    } else {
+      start = Math.ceil((run.layoutEnd + p) / T) * T - p;
+      if (start > run.layoutEnd) run.items.push({ kind: 'rest', round, pos: -1, start: run.layoutEnd, len: start - run.layoutEnd });
     }
-    if (kind === 'listen' || kind === 'along') round.pattern.onsets.forEach((t) => engine.clap(time + t * round.tickSec, run.bus));
-    if (kind === 'you' || kind === 'along') round.youStart = time;
-    run.bars.push({ time, dur: round.barSec, kind, round, pos: run.barInRound });
-    run.nextBar = time + round.barSec;
-    run.barInRound++;
+    round.seq.forEach((kind, pos) => {
+      const len = kind === 'rest' ? T : round.pattern.total;
+      run.items.push({ kind, round, pos, start, len });
+      start += len;
+    });
+    run.layoutEnd = start;
+    return true;
+  }
+
+  /** Ein Tick: Klick auf den Schlägen des Rasters, Klatscher der Vorbilder. */
+  function scheduleTick(tick, time, m) {
+    while (run.itemIdx < run.items.length - 1 && run.items[run.itemIdx + 1].start <= tick) run.itemIdx++;
+    const cand = run.items[run.itemIdx];
+    const item = cand && tick >= cand.start && tick < cand.start + cand.len ? cand : null;
+    if (item && tick === item.start) {
+      run.bars.push({ time, dur: item.len * run.tickSec, kind: item.kind, round: item.round, pos: item.pos, start: item.start, tickSec: run.tickSec });
+      if (item.kind === 'you' || item.kind === 'along') item.round.youStart = time;
+    }
+    if (mod(tick, m.beat) === 0 && (state.click || item?.kind === 'count')) engine.click(time, beatLevel(m, mod(tick, m.ticks)), run.bus);
+    if (!item) return;
+    const r = item.round;
+    const rel = tick - item.start;
+    if (r.duo) {
+      for (const part of ['upper', 'lower']) {
+        const play = item.kind === 'listen' || (item.kind === 'you' && part !== r.duoPart);
+        if (play && r.duo[part].onsets.includes(rel)) engine.block(time, part === 'upper', run.bus);
+      }
+      return;
+    }
+    if ((item.kind === 'listen' || item.kind === 'along') && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus);
   }
 
   function scheduleAhead() {
     if (!run.playing) return;
-    while (!run.ended && run.nextBar < engine.ctx.currentTime + .2) scheduleBar();
+    const horizon = engine.ctx.currentTime + .2;
+    const m = METERS[run.meter];
+    while (!run.ended) {
+      if (run.cursor >= run.layoutEnd && !layoutNext()) { run.ended = true; run.endTime = timeAt(run.layoutEnd); break; }
+      const time = timeAt(run.cursor);
+      if (time >= horizon) break;
+      scheduleTick(run.cursor, time, m);
+      run.cursor++;
+    }
     run.timer = setTimeout(scheduleAhead, 25);
   }
 
@@ -712,26 +1065,36 @@
       if (r.youStart !== null && !r.result && now > r.youStart + r.barSec + r.tol) evaluate(r);
     }
     updateView(now, bar);
-    if (run.ended && !bar && game.rounds.every((r) => r.result)) { finish(); return; }
+    if (run.ended && !bar && now > (run.endTime ?? 0) && game.rounds.every((r) => r.result || r.youStart === null)) { finish(); return; }
     run.frame = requestAnimationFrame(draw);
   }
 
   async function start() {
     try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
+    if (state.input === 'mic') {
+      setStatus('Mikrofon wird geöffnet …');
+      const ok = await micOn('rhythm');
+      if (!ok) { setStatus(voice.error || 'Das Mikrofon konnte nicht gestartet werden.'); return; }
+    }
+    // Taktart je Durchgang: bei einer Stufe mit mehreren zufällig.
+    const level = rhythmLevel();
+    if (level && level.meters.length > 1) setMeter(pick(level.meters));
+    run.meter = state.meter;
     run.playing = true;
     run.bus = engine.newBus({ reverb: false });
     run.bars = [];
-    run.ended = false;
+    run.items = []; run.itemIdx = 0; run.cursor = 0; run.layoutEnd = 0;
+    run.anchorTick = 0; run.anchorTime = engine.ctx.currentTime + .08;
+    run.ended = false; run.endTime = null;
     run.viewKey = ''; run.stripKey = ''; run.padKey = '';
     game.rounds = []; game.taps = []; game.streak = 0; game.best = 0; game.finished = false; game.last = null;
     run.shown = null;
     game.stats = freshStats();
-    run.round = newRound();
-    run.barInRound = state.countIn ? -1 : 0;
-    run.nextBar = engine.ctx.currentTime + .08;
+    layoutNext(true);
     renderTransport();
     renderScore();
-    setStatus('Läuft …');
+    renderRhythm();
+    setStatus(state.input === 'mic' ? 'Läuft — klatsch oder sprich ins Mikrofon.' : 'Läuft …');
     scheduleAhead();
     draw();
   }
@@ -744,6 +1107,7 @@
     engine.fadeBus(run.bus);
     run.bus = null;
     run.bars = [];
+    if (voice.consumer === 'rhythm' && !calib.active) micOff();
     renderTransport();
     renderStrip(null);
     renderPad(game.finished ? 'done' : 'idle');
@@ -764,8 +1128,14 @@
      vorbei ist, nicht schon beim Vorausplanen.
      ------------------------------------------------------------------------ */
 
+  function flashPad() {
+    const pad = $('.tap-pad');
+    pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+  }
+
   function tap() {
     if (state.tab !== 'rhythm') return;
+    if (state.input === 'mic' && (run.playing || calib.active)) return; // Eingabe kommt vom Mikrofon
     if (calib.active) { calibTap(); return; }
     if (!run.playing) return;
     const ctx = engine.ctx;
@@ -773,48 +1143,65 @@
     // gälten alle Tipps als zu spät; dazu die eingemessene eigene Latenz.
     game.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
     engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
-    const pad = $('.tap-pad');
-    pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+    flashPad();
   }
 
-  /* ---- Latenz ausgleichen: 4 Klicks vorweg, dann 8 Klicks mittippen; der
-     Median der Abweichung (ohne Ausreißer über 250 ms) wird gespeichert und
-     in tap() abgezogen — für Touch- und Bluetooth-Verzögerung. ---- */
+  /** Einsatz vom Mikrofon (Klatschen oder Sprechen): Zeit auf der Audio-Uhr
+   *  des Eingangs, abzüglich der eingemessenen Mikrofon-Latenz. */
+  function micOnset(time) {
+    if (calib.active) { calib.taps.push(time); flashPad(); return; }
+    if (!run.playing) return;
+    game.taps.push(time - state.micLatencyMs / 1000);
+    flashPad();
+  }
+
+  /* ---- Latenz ausgleichen: 4 Klicks vorweg, dann 8 Klicks mittippen bzw.
+     (Mikrofon) mitklatschen; der Median der Abweichung wird gespeichert und
+     abgezogen — für Touch-, Bluetooth- und Mikrofon-Verzögerung. ---- */
   const CALIB_BEAT = .6;
-  const calib = { active: false, clicks: [], taps: [], timer: 0 };
-  /** Median der Abweichung Tipper − nächster Klick (nur Tipper bis 250 ms). */
-  function latencyFrom(clicks, taps) {
+  const calib = { active: false, clicks: [], taps: [], timer: 0, mic: false };
+  /** Median der Abweichung Tipper − nächster Klick (nur bis `maxAbs` s). */
+  function latencyFrom(clicks, taps, maxAbs = .25) {
     const offs = taps.map((x) => {
       const near = clicks.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a));
       return x - near;
-    }).filter((d) => Math.abs(d) <= .25).sort((a, b) => a - b);
+    }).filter((d) => Math.abs(d) <= maxAbs).sort((a, b) => a - b);
     if (offs.length < 5) return null;
     return offs[offs.length >> 1];
   }
   async function startCalibration() {
     if (run.playing) stop();
     try { await engine.start(); } catch { return; }
+    calib.mic = state.input === 'mic';
+    if (calib.mic && !(await micOn('rhythm'))) { setStatus(voice.error || 'Das Mikrofon konnte nicht gestartet werden.'); return; }
     const ctx = engine.ctx;
     const t0 = ctx.currentTime + .3;
     calib.active = true; calib.taps = [];
     calib.clicks = Array.from({ length: 8 }, (_, i) => t0 + (i + 4) * CALIB_BEAT);
     for (let i = 0; i < 12; i++) engine.click(t0 + i * CALIB_BEAT, i % 4 === 0 ? 2 : 1, null);
-    setStatus('Latenz: vier Klicks zuhören, dann acht Klicks mittippen …');
+    setStatus(calib.mic ? 'Mikrofon-Latenz: vier Klicks zuhören, dann achtmal zum Klick klatschen …' : 'Latenz: vier Klicks zuhören, dann acht Klicks mittippen …');
     clearTimeout(calib.timer);
     calib.timer = setTimeout(finishCalibration, (12 * CALIB_BEAT + .8) * 1000);
   }
   function calibTap() {
     const ctx = engine.ctx;
     calib.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0));
-    const pad = $('.tap-pad');
-    pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+    flashPad();
   }
   function finishCalibration() {
     calib.active = false;
-    const lat = latencyFrom(calib.clicks, calib.taps);
-    if (lat === null) { setStatus('Latenz: zu wenige Tipper erkannt — bitte noch einmal.'); return; }
-    state.latency = clamp(Math.round(lat * 1000) / 1000, -.05, .3);
-    setStatus(`Latenz ausgeglichen: ${Math.round(state.latency * 1000)} ms werden abgezogen.`);
+    if (calib.mic) {
+      micOff();
+      const lat = latencyFrom(calib.clicks, calib.taps, .45);
+      if (lat === null) { setStatus('Mikrofon-Latenz: zu wenige Klatscher erkannt — bitte noch einmal, mit Kopfhörern.'); return; }
+      state.micLatencyMs = clamp(Math.round(lat * 1000), 0, 400);
+      setStatus(`Mikrofon-Latenz ausgeglichen: ${state.micLatencyMs} ms werden abgezogen.`);
+    } else {
+      const lat = latencyFrom(calib.clicks, calib.taps);
+      if (lat === null) { setStatus('Latenz: zu wenige Tipper erkannt — bitte noch einmal.'); return; }
+      state.latency = clamp(Math.round(lat * 1000) / 1000, -.05, .3);
+      setStatus(`Latenz ausgeglichen: ${Math.round(state.latency * 1000)} ms werden abgezogen.`);
+    }
     persist();
     if (sheetKind === 'rhythm' && !$('.sheet').hidden) renderSettings();
   }
@@ -855,15 +1242,17 @@
     if (perfect) { s.perfect++; game.streak++; game.best = Math.max(game.best, game.streak); } else game.streak = 0;
     game.last = round;
     if (perfect && state.speedUp && state.bpm < BPM_MAX) {
-      state.bpm = Math.min(BPM_MAX, state.bpm + SPEED_STEP);
-      state.eighths = state.bpm * METERS[state.meter].ref / 6;
+      setBpm(Math.min(BPM_MAX, state.bpm + SPEED_STEP));
       renderTransport();
       persist();
-      setStatus(`Fehlerfrei — nächste Runde mit ${state.bpm} BPM.`);
+      setStatus(`Fehlerfrei — nächste Runde mit ${tempoSymbol(state.meter)} = ${state.bpm}.`);
     }
     run.viewKey = '';
     renderScore();
+    onRhythmResult(round);
   }
+  /** Haken für Fortschritt und „Heute üben“ (Paket 6/7). */
+  function onRhythmResult() {}
 
   /* ------------------------------------------------------------------------
      ANZEIGE
@@ -907,15 +1296,18 @@
   function renderPad(phase, beat = -1, round = null) {
     const m = METERS[round ? round.meter : state.meter];
     const beats = phase === 'idle' || phase === 'done' ? 0 : m.ticks / m.beat;
-    const key = `${phase}|${beat}|${beats}`;
+    const key = `${phase}|${beat}|${beats}|${state.input}`;
     if (run.padKey === key) return;
     run.padKey = key;
     const pad = $('.tap-pad');
     pad.dataset.phase = phase;
-    $('.pad-label').textContent = PAD_LABELS[phase];
+    let label = PAD_LABELS[phase];
+    if (phase === 'idle' && state.input === 'mic') label = 'Starte mit Play — Eingabe übers Mikrofon';
+    if (phase === 'you' && round?.duo) label = `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
+    $('.pad-label').textContent = label;
     $('.pad-beats').replaceChildren(...Array.from({ length: beats }, (_, i) => {
       const dot = document.createElement('i');
-      if ((i * m.beat) % m.unit === 0) dot.className = 'is-strong';
+      if (beatLevel(m, i * m.beat) >= 1) dot.className = 'is-strong';
       if (i <= beat) dot.classList.add('is-on');
       return dot;
     }));
@@ -956,124 +1348,206 @@
     if (!bar) return;
     const r = bar.round;
     const m = METERS[r.meter];
-    const beat = Math.floor((now - bar.time) / (m.beat * r.tickSec));
-    renderPad(bar.kind, beat, r);
+    const tickNow = bar.start + (now - bar.time) / bar.tickSec;
+    const beat = Math.floor(mod(tickNow, m.ticks) / m.beat);
+    renderPad(bar.kind === 'count' ? 'count' : bar.kind, beat, r);
     renderStrip(bar);
     const disp = pickDisplay(bar);
     const liveTaps = disp.round.result ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
     const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}`;
     if (key !== run.viewKey) { run.viewKey = key; run.shown = disp; renderStage(disp.round, disp.reveal); }
-    // Wiedergabe-Marke: nur im Takt der gezeigten Runde, in dem etwas passiert.
-    const ph = $('.stage .ph');
-    if (ph) {
-      const active = bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
-      if (active) {
-        const x = xAt((now - bar.time) / r.tickSec, m.ticks);
-        ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1));
-      }
-      ph.style.visibility = active ? 'visible' : 'hidden';
-    }
+    // Wiedergabe-Marke: nur in der Phrase der gezeigten Runde, in der etwas passiert.
+    const active = bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
+    const t = (now - bar.time) / r.tickSec;
+    $$('.stage .ph').forEach((ph) => {
+      const line = stageLines[Number(ph.dataset.line)];
+      const on = active && line && t >= line.t0 && t < line.t1;
+      if (on) { const x = line.xOf(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
+      ph.style.visibility = on ? 'visible' : 'hidden';
+    });
   }
 
-  /* ---- Notenbild (SVG, proportional gesetzt: x ∝ Zeit im Takt) ---- */
+  /* ---- Notenbild (SVG, proportional gesetzt: x ∝ Zeit) ----
+     Eine Phrase läuft über eine oder mehrere Zeilen (je Zeile ein Takt bei
+     Sechzehnteln/Triolen oder in 5/4, sonst zwei); der Auftakt steht links
+     vom ersten Taktstrich. Zweistimmig: zwei Systeme übereinander. */
 
-  const ST = { W: 340, H: 104, X0: 48, X1: 324, LY: 44, STEM: 14, TY: 86 };
-  const xAt = (t, ticks) => ST.X0 + (t / ticks) * (ST.X1 - ST.X0);
+  const ST = { W: 340, H: 104, X0: 42, X1: 334, LY: 40, STEM: 10, TY: 84, SY: 64, PAD: 7 };
   const f1 = (n) => n.toFixed(1);
+  let stageLines = []; // Zeilen des zuletzt gezeichneten Systems (für die Wiedergabe-Marke)
 
-  function beamGroups(notes, unit) {
+  /** Zeilen einer Phrase: [{ t0, t1, segs: [{ t0, t1, x0, x1 }], xOf }]. */
+  function phraseLines(pattern) {
+    const m = METERS[pattern.meter];
+    const p = pattern.pickup;
+    const dense = pattern.notes.some((n) => n.d < 6) || m.ticks >= 60;
+    const perLine = dense ? 1 : Math.min(2, pattern.bars);
+    const barSegs = Array.from({ length: pattern.bars }, (_, k) => ({ t0: p + k * m.ticks, t1: Math.min(pattern.total, p + (k + 1) * m.ticks), bar: k }));
+    const lines = [];
+    for (let k = 0; k < barSegs.length; k += perLine) {
+      const segs = barSegs.slice(k, k + perLine).map((sg) => ({ ...sg }));
+      if (k === 0 && p) segs.unshift({ t0: 0, t1: p, bar: -1 });
+      lines.push({ segs, t0: segs[0].t0, t1: segs[segs.length - 1].t1 });
+    }
+    // Ein gemeinsamer Maßstab für alle Zeilen (volle Zeilen füllen die Breite).
+    const px = Math.min(...lines.map((l) => (ST.X1 - ST.X0 - ST.PAD * l.segs.length) / (l.t1 - l.t0)),
+      (ST.X1 - ST.X0 - ST.PAD * (perLine + (p ? 1 : 0))) / (perLine * m.ticks + p));
+    for (const l of lines) {
+      let x = ST.X0;
+      for (const sg of l.segs) { sg.x0 = x; sg.x1 = x + ST.PAD + (sg.t1 - sg.t0) * px; x = sg.x1; }
+      l.xOf = (t) => {
+        const sg = l.segs.find((s) => t >= s.t0 && t < s.t1) || (t < l.t0 ? l.segs[0] : l.segs[l.segs.length - 1]);
+        return sg.x0 + ST.PAD * .6 + (clamp(t, sg.t0, sg.t1) - sg.t0) * px;
+      };
+    }
+    return lines;
+  }
+
+  function beamGroups(pattern, lineNotes) {
+    const m = METERS[pattern.meter];
+    const keyOf = (n) => (n.t < pattern.pickup ? 'p' : `${Math.floor((n.t - pattern.pickup) / m.ticks)}:${unitOf(m, mod(n.t - pattern.pickup, m.ticks))}`);
     const groups = [];
     let cur = [];
     const flush = () => { if (cur.length) groups.push(cur); cur = []; };
-    notes.forEach((n, i) => {
-      if (n.rest || n.d >= 12) { flush(); return; }
-      if (cur.length && Math.floor(notes[cur[0]].t / unit) !== Math.floor(n.t / unit)) flush();
+    lineNotes.forEach((i) => {
+      const n = pattern.notes[i];
+      if (n.rest || n.d >= 12 || n.d === 9 && false) { flush(); return; }
+      if (cur.length && keyOf(pattern.notes[cur[0]]) !== keyOf(n)) flush();
       cur.push(i);
     });
     flush();
     return groups;
   }
 
-  function restSvg(n, x) {
-    const y = ST.LY;
+  function restSvg(n, x, y0) {
+    const y = y0 + ST.LY;
     if (n.d >= 24) return `<rect x="${f1(x - 6)}" y="${y - 5}" width="12" height="5"/>`;
     if (n.d >= 12) return `<path class="rest-s" d="M${f1(x - 3)} ${y - 14} l5.5 6.5 l-4.5 5 l5.5 6.5 c-4 -1.8 -7 .6 -3.2 5.8"/>`;
     return `<circle cx="${f1(x - 2)}" cy="${y - 6}" r="2.4"/><path class="rest-s" style="stroke-width:1.7" d="M${f1(x - 2.5)} ${y - 4.5} q3.5 1.2 6 -2.5 l-5 14"/>`;
   }
 
-  function notationSvg(pattern, statusOf) {
-    const m = METERS[pattern.meter];
+  /** Eine Zeile Noten. statusOf(t) → '' | good | near | miss. */
+  function lineSvg(pattern, line, y0, statusOf, syllables) {
     const out = [];
     const stemX = (x) => x + 5.2;
-    const xs = pattern.notes.map((n) => xAt(n.t, m.ticks));
-    pattern.notes.forEach((n, i) => {
+    const idx = pattern.notes.map((n, i) => i).filter((i) => pattern.notes[i].t >= line.t0 && pattern.notes[i].t < line.t1);
+    const xs = {};
+    idx.forEach((i) => { xs[i] = line.xOf(pattern.notes[i].t); });
+    const LY = y0 + ST.LY, STEM = y0 + ST.STEM;
+    idx.forEach((i) => {
+      const n = pattern.notes[i];
       const x = xs[i];
-      if (n.rest) { out.push(restSvg(n, x)); if (n.d === 18 || n.d === 9) out.push(`<circle cx="${f1(x + 8)}" cy="${ST.LY - 6}" r="1.9"/>`); return; }
-      const cls = statusOf(n.t);
-      out.push(`<ellipse class="${n.d >= 24 ? 'hd-o' : 'hd'}${cls ? ` is-${cls}` : ''}" cx="${f1(x)}" cy="${ST.LY}" rx="5.8" ry="4.3" transform="rotate(-20 ${f1(x)} ${ST.LY})"/>`);
-      if (n.d < 48) out.push(`<line class="ln" x1="${f1(stemX(x))}" y1="${ST.LY - 1.5}" x2="${f1(stemX(x))}" y2="${ST.STEM}"/>`);
-      if ([36, 18, 9].includes(n.d)) out.push(`<circle cx="${f1(x + 10.5)}" cy="${ST.LY - 2}" r="1.9"/>`);
+      if (n.rest) { out.push(restSvg(n, x, y0)); if (n.d === 18 || n.d === 9) out.push(`<circle cx="${f1(x + 8)}" cy="${LY - 6}" r="1.9"/>`); }
+      else {
+        const cls = n.tie ? '' : statusOf(n.t);
+        out.push(`<ellipse class="${n.d >= 24 ? 'hd-o' : 'hd'}${cls ? ` is-${cls}` : ''}" cx="${f1(x)}" cy="${LY}" rx="5.8" ry="4.3" transform="rotate(-20 ${f1(x)} ${LY})"/>`);
+        if (n.d < 48) out.push(`<line class="ln" x1="${f1(stemX(x))}" y1="${LY - 1.5}" x2="${f1(stemX(x))}" y2="${STEM}"/>`);
+        if ([36, 18, 9].includes(n.d)) out.push(`<circle cx="${f1(x + 10.5)}" cy="${LY - 2}" r="1.9"/>`);
+        // Bindebogen von der vorigen Note (auch über den Zeilenumbruch: dann ab Zeilenanfang)
+        if (n.tie) {
+          const px = xs[i - 1] ?? (line.segs[0].x0 - 4);
+          out.push(`<path class="tie" d="M${f1(px + 3)} ${LY + 6} Q${f1((px + x) / 2)} ${LY + 15} ${f1(x - 3)} ${LY + 6}"/>`);
+        }
+      }
+      if (syllables) out.push(`<text class="syl-t${n.rest || n.tie ? ' is-quiet' : ''}" x="${f1(x)}" y="${y0 + ST.SY}" text-anchor="middle">${syllables[i]}</text>`);
     });
-    beamGroups(pattern.notes, m.unit).forEach((group) => {
+    beamGroups(pattern, idx).forEach((group) => {
       if (group.length === 1) {
         const n = pattern.notes[group[0]];
         const sx = stemX(xs[group[0]]);
         const flags = n.d === 3 ? 2 : 1;
-        for (let f = 0; f < flags; f++) out.push(`<path class="flag" d="M${f1(sx)} ${ST.STEM + f * 6} c.5 5 8 7 6.5 15"/>`);
+        for (let f = 0; f < flags; f++) out.push(`<path class="flag" d="M${f1(sx)} ${STEM + f * 6} c.5 5 8 7 6.5 15"/>`);
         return;
       }
       const a = stemX(xs[group[0]]), b = stemX(xs[group[group.length - 1]]);
-      out.push(`<rect x="${f1(a - .9)}" y="${ST.STEM - .5}" width="${f1(b - a + 1.8)}" height="4.6"/>`);
-      // zweiter Balken für Sechzehntel, einzelne als kurzer Stummel
-      group.forEach((idx, k) => {
-        if (pattern.notes[idx].d !== 3) return;
+      out.push(`<rect x="${f1(a - .9)}" y="${STEM - .5}" width="${f1(b - a + 1.8)}" height="4.6"/>`);
+      group.forEach((i, k) => {
+        if (pattern.notes[i].d !== 3) return;
         const next = group[k + 1], prev = group[k - 1];
-        const x = stemX(xs[idx]);
-        if (next !== undefined && pattern.notes[next].d === 3) {
-          out.push(`<rect x="${f1(x - .9)}" y="${ST.STEM + 6.5}" width="${f1(stemX(xs[next]) - x + 1.8)}" height="4"/>`);
-        } else if (!(prev !== undefined && pattern.notes[prev].d === 3)) {
-          const toLeft = prev !== undefined;
-          out.push(`<rect x="${f1(toLeft ? x - 8 : x - .9)}" y="${ST.STEM + 6.5}" width="8.9" height="4"/>`);
-        }
+        const x = stemX(xs[i]);
+        if (next !== undefined && pattern.notes[next].d === 3) out.push(`<rect x="${f1(x - .9)}" y="${STEM + 6.5}" width="${f1(stemX(xs[next]) - x + 1.8)}" height="4"/>`);
+        else if (!(prev !== undefined && pattern.notes[prev].d === 3)) out.push(`<rect x="${f1(prev !== undefined ? x - 8 : x - .9)}" y="${STEM + 6.5}" width="8.9" height="4"/>`);
       });
-      const tri = group.filter((idx) => pattern.notes[idx].d === 4);
-      if (tri.length === 3) out.push(`<text class="tri" x="${f1((a + b) / 2)}" y="${ST.STEM - 4}" text-anchor="middle">3</text>`);
+      if (group.filter((i) => pattern.notes[i].d === 4).length === 3) out.push(`<text class="tri" x="${f1((a + b) / 2)}" y="${STEM - 4}" text-anchor="middle">3</text>`);
     });
     return out.join('');
   }
 
+  /** Ein System (eine Stimme) mit allen Zeilen: Linie, Taktstriche,
+   *  Noten, Zeitleiste mit Zählzeiten, Soll-Einsätzen und Tippern. */
+  function systemSvg({ pattern, meterId, lines, y0, label, reveal, statusOf, syllables, taps, round, own }) {
+    const m = METERS[meterId];
+    const parts = [];
+    lines.forEach((line, li) => {
+      const y = y0 + li * ST.H;
+      const LY = y + ST.LY, TY = y + ST.TY;
+      const xEnd = line.segs[line.segs.length - 1].x1;
+      parts.push(`<line class="staff" x1="8" y1="${LY}" x2="${f1(xEnd)}" y2="${LY}"/>`);
+      if (li === 0) {
+        parts.push(`<text class="sig" x="22" y="${LY - 3}" text-anchor="middle">${m.top}</text><text class="sig" x="22" y="${LY + 13}" text-anchor="middle">${m.bottom}</text>`);
+        if (label) parts.push(`<text class="voice-l${own ? ' is-own' : ''}" x="8" y="${y + 10}">${label}</text>`);
+      }
+      line.segs.forEach((sg, k) => {
+        const last = li === lines.length - 1 && k === line.segs.length - 1;
+        parts.push(`<line class="ln" x1="${f1(sg.x1)}" y1="${LY - 10}" x2="${f1(sg.x1)}" y2="${LY + 10}"/>`);
+        if (last && pattern) parts.push(`<line class="ln" style="stroke-width:3.5" x1="${f1(sg.x1 + 3)}" y1="${LY - 10}" x2="${f1(sg.x1 + 3)}" y2="${LY + 10}"/>`);
+      });
+      if (pattern && reveal) parts.push(lineSvg(pattern, line, y, statusOf, syllables));
+      // Zeitleiste: Zählzeiten (am Raster), Soll-Einsätze, Tipper
+      parts.push(`<line class="tl" x1="${f1(line.segs[0].x0)}" y1="${TY}" x2="${f1(xEnd)}" y2="${TY}"/>`);
+      const p = pattern ? pattern.pickup : 0;
+      for (let t = Math.ceil((line.t0 - p) / m.beat) * m.beat + p; t < line.t1; t += m.beat) {
+        const lvl = beatLevel(m, mod(t - p, m.ticks));
+        parts.push(`<line class="tl-beat${lvl ? ' is-strong' : ''}" x1="${f1(line.xOf(t))}" y1="${TY - 6}" x2="${f1(line.xOf(t))}" y2="${TY + 6}"/>`);
+      }
+      if (pattern && reveal) {
+        pattern.onsets.filter((t) => t >= line.t0 && t < line.t1).forEach((t) => {
+          const cls = statusOf(t);
+          parts.push(`<circle class="tg${cls ? ` is-${cls}` : ''}" cx="${f1(line.xOf(t))}" cy="${TY}" r="4.6"/>`);
+        });
+      }
+      (taps || []).forEach(({ t, cls }) => {
+        if (!((t >= line.t0 || li === 0) && (t < line.t1 || li === lines.length - 1))) return;
+        const x = clamp(line.xOf(t), line.segs[0].x0 - 10, xEnd + 10);
+        parts.push(`<rect class="tp${cls ? ` is-${cls}` : ''}" x="${f1(x - 1.5)}" y="${TY - 12}" width="3" height="24" rx="1.5"/>`);
+      });
+      if (own !== false) parts.push(`<line class="ph" data-line="${li}" x1="0" x2="0" y1="${y + 4}" y2="${y + ST.H - 4}" style="visibility:hidden"/>`);
+    });
+    return parts.join('');
+  }
+
   function renderStage(round, reveal) {
     const meterId = round ? round.meter : state.meter;
-    const m = METERS[meterId];
     const res = round?.result;
     const statusOf = (t) => res?.notes.find((n) => n.t === t)?.status || '';
-    const parts = [];
-    parts.push(`<line class="staff" x1="8" y1="${ST.LY}" x2="${ST.X1 + 10}" y2="${ST.LY}"/>`);
-    parts.push(`<line class="ln" x1="${ST.X1 + 10}" y1="${ST.LY - 10}" x2="${ST.X1 + 10}" y2="${ST.LY + 10}"/>`);
-    parts.push(`<text class="sig" x="24" y="${ST.LY - 3}" text-anchor="middle">${m.top}</text><text class="sig" x="24" y="${ST.LY + 13}" text-anchor="middle">${m.bottom}</text>`);
-    if (round && reveal) parts.push(notationSvg(round.pattern, statusOf));
-    else parts.push(`<text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">${round ? 'Rhythmus nach Gehör' : 'Hier erscheinen die Noten'}</text>`);
-    // Zeitleiste: Zählzeiten, Soll-Einsätze (wenn aufgedeckt), deine Tipper
-    parts.push(`<line class="tl" x1="${ST.X0 - 8}" y1="${ST.TY}" x2="${ST.X1 + 10}" y2="${ST.TY}"/>`);
-    for (let t = 0; t < m.ticks; t += m.beat) {
-      parts.push(`<line class="tl-beat${t % m.unit === 0 ? ' is-strong' : ''}" x1="${f1(xAt(t, m.ticks))}" y1="${ST.TY - 6}" x2="${f1(xAt(t, m.ticks))}" y2="${ST.TY + 6}"/>`);
+    const showSyl = state.syllables !== 'off' && !!round && reveal && (round.mode !== 'echo' || !!res);
+    const tapsOf = () => {
+      if (!round || round.youStart === null) return [];
+      const list = res ? res.taps : game.taps.filter((x) => x >= round.youStart - round.tol && x <= round.youStart + round.barSec + round.tol).map((at) => ({ at, cls: '' }));
+      return list.map(({ at, cls }) => ({ t: (at - round.youStart) / round.tickSec, cls }));
+    };
+    const systems = [];
+    if (round?.duo) {
+      for (const part of ['upper', 'lower']) {
+        const own = round.duoPart === part;
+        systems.push({ pattern: round.duo[part], own, label: `${part === 'upper' ? 'Stimme 1' : 'Stimme 2'}${own ? ' · du' : ''}`,
+          statusOf: own ? statusOf : () => '', taps: own ? tapsOf() : [] });
+      }
+    } else systems.push({ pattern: round ? round.pattern : null, own: true, label: '', statusOf, taps: tapsOf() });
+    const empty = { meter: meterId, notes: [], onsets: [], bars: 1, pickup: 0, total: METERS[meterId].ticks };
+    let y0 = 0;
+    const svg = [];
+    stageLines = [];
+    for (const sys of systems) {
+      const lines = phraseLines(sys.pattern || empty);
+      if (sys.own) stageLines = lines;
+      const syl = showSyl && sys.pattern ? syllablesFor(sys.pattern, state.syllables) : null;
+      svg.push(systemSvg({ ...sys, meterId, lines, y0, reveal: round && reveal, syllables: syl, round }));
+      y0 += lines.length * ST.H + (systems.length > 1 ? 6 : 0);
     }
-    if (round && reveal) {
-      round.pattern.onsets.forEach((t) => {
-        const cls = statusOf(t);
-        parts.push(`<circle class="tg${cls ? ` is-${cls}` : ''}" cx="${f1(xAt(t, m.ticks))}" cy="${ST.TY}" r="4.6"/>`);
-      });
-    }
-    if (round && round.youStart !== null) {
-      const taps = res ? res.taps : game.taps.filter((x) => x >= round.youStart - round.tol && x <= round.youStart + round.barSec + round.tol).map((at) => ({ at, cls: '' }));
-      taps.forEach(({ at, cls }) => {
-        const x = clamp(xAt((at - round.youStart) / round.tickSec, m.ticks), ST.X0 - 12, ST.X1 + 12);
-        parts.push(`<rect class="tp${cls ? ` is-${cls}` : ''}" x="${f1(x - 1.5)}" y="${ST.TY - 12}" width="3" height="24" rx="1.5"/>`);
-      });
-    }
-    parts.push(`<line class="ph" x1="0" x2="0" y1="4" y2="${ST.H - 4}" style="visibility:hidden"/>`);
-    const label = round && reveal ? `Rhythmus im ${meterId}-Takt${res ? `, ${res.hits} von ${res.count} getroffen` : ''}` : 'Notenfläche';
-    $('.stage').innerHTML = `<svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="${label}">${parts.join('')}</svg>`;
+    if (!(round && reveal)) svg.push(`<text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">${round ? 'Rhythmus nach Gehör' : 'Hier erscheinen die Noten'}</text>`);
+    const label = round && reveal ? `Rhythmus im ${meterId}-Takt${round.pattern.bars > 1 ? `, ${round.pattern.bars} Takte` : ''}${res ? `, ${res.hits} von ${res.count} getroffen` : ''}` : 'Notenfläche';
+    $('.stage').innerHTML = `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
   }
 
   function chips(name, entries, value, disabled = false) {
@@ -1082,20 +1556,45 @@
       b.type = 'button'; b.className = 'chip';
       b.dataset.chip = name; b.dataset.value = String(v);
       b.textContent = label;
-      b.disabled = disabled;
+      b.disabled = typeof disabled === 'function' ? disabled(v) : disabled;
       b.setAttribute('aria-pressed', String(String(v) === String(value)));
       return b;
     }));
   }
 
+  /* ---- Einheitliches Stufen-Element (alle Bereiche): Chips 1–6, Text,
+     ?-Knopf mit der Liste aller Stufen. 0 = eigene Auswahl. `hint` (Paket 6):
+     { level, hint: 'up' | 'down' | null } — nur Vorschlag, nie Wechsel. */
+  function levelControlHtml(area, levels, current, hint = null) {
+    const cur = levels.find((l) => l.n === current);
+    const next = hint?.hint === 'up' && current ? levels.find((l) => l.n === current + 1) : null;
+    const chipsHtml = levels.map((l) => `<button type="button" class="chip level-chip${next && next.n === l.n ? ' has-dot' : ''}" data-level-area="${area}" data-level-n="${l.n}" aria-pressed="${l.n === current}" aria-label="Stufe ${l.n}: ${l.label}">${l.n}</button>`).join('');
+    const hintText = next ? `Stufe ${current} sitzt – Stufe ${next.n} ausprobieren?` : hint?.hint === 'down' && current > 1 ? 'Eine Stufe zurück kann helfen.' : '';
+    return `<div class="level-row"><div class="chip-row" role="group" aria-label="Stufe">${chipsHtml}</div>
+      <button class="help-btn" type="button" data-help="lv-${area}" aria-expanded="false" aria-label="Alle Stufen">?</button></div>
+      <p class="level-note">${cur ? `Stufe ${cur.n}: ${cur.label}` : 'Eigene Auswahl'}</p>
+      ${hintText ? `<p class="level-hint" role="status">${hintText}</p>` : ''}
+      <p class="help-text" id="lv-${area}" hidden>${levels.map((l) => `<b>${l.n}</b> ${l.label}`).join('<br>')}<br>Jede Stufe enthält die vorigen. Änderst du danach etwas, gilt es als eigene Auswahl.</p>`;
+  }
+
   function renderRhythm() {
-    chips('rmode', MODES, state.mode);
+    $('[data-levels="rhythm"]').innerHTML = levelControlHtml('rhythm', RHYTHM_LEVELS, state.rhythmLevel, levelHints.rhythm);
+    chips('rmode', MODES, state.mode, (v) => v === 'duo' && !duoAllowed());
+    $('[data-duo-row]').hidden = state.mode !== 'duo';
+    chips('duoPart', [['upper', 'obere Stimme'], ['lower', 'untere Stimme']], state.duoPart);
     const gaps = [[0, '0'], [1, '1'], [2, '2']];
     chips('gapBefore', gaps, state.gapBefore, state.mode === 'along');
     chips('gapAfter', gaps, state.gapAfter);
-    const els = ELEMENTS.filter(([id]) => state.elements.includes(id) && !(id === 't' && state.meter === '6/8')).map(([id]) => ELEMENT_SHORT[id]);
+    const level = rhythmLevel();
+    const meters = level ? level.meters.join(', ') : state.meter;
+    const els = ELEMENTS.filter(([id]) => state.elements.includes(id) && !(id === 't' && level === null && METERS[state.meter].unit !== 12)).map(([id]) => ELEMENT_SHORT[id]);
+    const bits = [meters, els.length ? `Viertel, ${els.join(', ')}` : 'nur Viertel und Halbe',
+      state.bars === 1 ? '1 Takt' : `${state.bars} Takte`];
+    if (state.pickup) bits.push('Auftakt möglich');
+    bits.push(state.rounds ? `${state.rounds} Runden` : 'endlos');
+    if (state.input === 'mic') bits.push('Mikrofon');
     $('.rhythm-sum').innerHTML = '';
-    $('.rhythm-sum').append(`${state.meter} · ${els.length ? `Viertel, ${els.join(', ')}` : 'nur Viertel und Halbe'} · ${state.rounds ? `${state.rounds} Runden` : 'endlos'} `);
+    $('.rhythm-sum').append(`${bits.join(' · ')} `);
     const edit = document.createElement('button');
     edit.type = 'button'; edit.dataset.rhythm = 'settings'; edit.textContent = 'ändern';
     $('.rhythm-sum').append(edit);
@@ -1132,7 +1631,7 @@
     document.body.dataset.tab = tab;
     if (tab !== 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); }
     // Das Mikrofon läuft nie im Hintergrund weiter, wenn man den Reiter verlässt.
-    if (tab !== 'voice' && voice.analyser) micOff();
+    if (voice.analyser) micOff();
     renderAll();
   }
 
@@ -1603,25 +2102,41 @@
     const choice = (name, entries, value) => `<div class="chip-row">${entries.map(([v, label]) =>
       `<button class="chip" type="button" data-rset="${name}" data-value="${v}" aria-pressed="${String(v) === String(value)}">${label}</button>`).join('')}</div>`;
     const row = (key, label, note = '') => checkRow(key, 'on', label, state[key], note, 'rset');
+    const level = rhythmLevel();
+    const mic = state.input === 'mic';
     $('.sheet-body').innerHTML = `
-      <span class="sub-label" style="margin-top:0">Taktart</span>
-      ${choice('meter', Object.keys(METERS).map((id) => [id, id]), state.meter)}
+      <span class="sub-label" style="margin-top:0">Stufe</span>
+      ${levelControlHtml('rhythm-sheet', RHYTHM_LEVELS, state.rhythmLevel)}
+      <span class="sub-label">Taktart${level && level.meters.length > 1 ? ` · Stufe ${level.n} wählt je Durchgang aus ${level.meters.join(', ')}` : ''}</span>
+      ${choice('meter', METER_ORDER.map((id) => [id, id]), level && level.meters.length > 1 ? '' : state.meter)}
       <span class="sub-label">Bausteine · Viertel und Halbe sind immer dabei</span>
-      <div class="check-list">${ELEMENTS.map(([id, label, note]) => checkRow('elements', id, label, state.elements.includes(id),
-        id === 't' ? (state.meter === '6/8' ? 'nicht in 6/8' : '') : note, 'rset')).join('')}</div>
+      <div class="check-list">${ELEMENTS.map(([id, label, note]) => checkRow('elements', id, label, state.elements.includes(id), note, 'rset')).join('')}</div>
+      <span class="sub-label">Takte je Phrase</span>
+      ${choice('bars', BAR_CHOICES, state.bars)}
+      <div class="check-list" style="margin-top:6px">${row('pickup', 'Auftakt möglich', 'in etwa 40 % der Phrasen')}</div>
+      <span class="sub-label">Rhythmussprache</span>
+      ${choice('syllables', SYLLABLE_CHOICES, state.syllables)}
+      <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Beim Nachklatschen erscheinen sie erst nach der Runde.</p>
+      <span class="sub-label">Eingabe</span>
+      ${choice('input', INPUT_CHOICES, state.input)}
+      ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}
       <span class="sub-label">Runden</span>
       ${choice('rounds', ROUND_CHOICES, state.rounds)}
       <span class="sub-label">Ablauf</span>
       <div class="check-list">
-        ${row('countIn', 'Einzähler', 'ein Takt vorweg')}
+        ${row('countIn', 'Einzähler', 'ein Takt vorweg, bis zum Auftakt')}
         ${row('click', 'Klick auf den Zählzeiten')}
         ${row('speedUp', 'Tempo steigern', `+${SPEED_STEP} BPM je fehlerfreie Runde`)}
         ${row('showNotes', 'Noten beim Nachklatschen zeigen', 'sonst erst danach')}
       </div>
-      <span class="sub-label">Latenz ausgleichen</span>
-      <p class="foot-note" style="margin-top:0">Kommen deine Tipper immer etwas zu spät (Touchscreen, Bluetooth-Kopfhörer)? Einmal einmessen: vier Klicks zuhören, acht mittippen. Jetzt: ${Math.round(state.latency * 1000)} ms${lastMeanOff() !== null ? ` · letzte Runde im Mittel ${lastMeanOff() >= 0 ? '+' : '−'}${Math.abs(lastMeanOff())} ms` : ''}.</p>
-      <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`;
-    $$('.sheet [data-rset="elements"][value="t"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', state.meter === '6/8'));
+      <span class="sub-label">Latenz ausgleichen${mic ? ' (Mikrofon)' : ''}</span>
+      ${mic
+    ? `<p class="foot-note" style="margin-top:0">Einmal einmessen: vier Klicks zuhören, dann achtmal zum Klick klatschen. Jetzt: ${state.micLatencyMs} ms.</p>
+      <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.micLatencyMs ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}</div>`
+    : `<p class="foot-note" style="margin-top:0">Kommen deine Tipper immer etwas zu spät (Touchscreen, Bluetooth-Kopfhörer)? Einmal einmessen: vier Klicks zuhören, acht mittippen. Jetzt: ${Math.round(state.latency * 1000)} ms${lastMeanOff() !== null ? ` · letzte Runde im Mittel ${lastMeanOff() >= 0 ? '+' : '−'}${Math.abs(lastMeanOff())} ms` : ''}.</p>
+      <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}`;
+    const noTriplets = level ? level.meters.every((id) => METERS[id].unit !== 12) : METERS[state.meter].unit !== 12;
+    $$('.sheet [data-rset="elements"][value="t"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', noTriplets));
     $('.sheet-hint').textContent = '';
   }
 
@@ -1723,6 +2238,7 @@
     hold: [],            // [{ t, midi }] fürs "sicher gehalten"
     low: null, high: null,
     useTarget: false, target: 57, // A3
+    consumer: null, error: '', onsets: null, lastFrameTime: null,
   };
 
   function detectPitch(buf, sampleRate) {
@@ -1764,48 +2280,115 @@
 
   const median = (list) => { const s = [...list].sort((a, b) => a - b); return s[s.length >> 1]; };
 
-  async function micOn() {
+  // Wie RECORDING_CONSTRAINTS in app.js: ohne Echo-Unterdrückung, Rausch-
+  // filter und automatische Pegelanpassung.
+  const RECORDING_CONSTRAINTS = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+
+  /** Mikrofon öffnen — für genau einen Verbraucher: 'tuner' (Stimm-Tuner),
+   *  'rhythm' (Einsätze klatschen/sprechen) oder 'sing' (Singen mit
+   *  Mikrofon). Nur live ausgewertet, nie aufgezeichnet oder gespeichert.
+   *  Liefert true/false; die Fehlermeldung steht in voice.error. */
+  async function micOn(consumer = 'tuner') {
     const err = $('.mic-error');
     err.textContent = '';
+    voice.error = '';
+    if (voice.analyser) { if (voice.consumer === consumer) return true; micOff(); }
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      err.textContent = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).';
-      return;
+      voice.error = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).';
+      err.textContent = voice.error;
+      return false;
     }
     try {
       await engine.start();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-      });
+      const stream = await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS);
       voice.stream = stream;
+      voice.consumer = consumer;
       voice.source = engine.ctx.createMediaStreamSource(stream);
       voice.analyser = engine.ctx.createAnalyser();
       voice.analyser.fftSize = 2048;
       voice.buffer = new Float32Array(voice.analyser.fftSize);
       voice.source.connect(voice.analyser); // bewusst NICHT zum Ausgang — keine Rückkopplung
       voice.recent = []; voice.history = []; voice.hold = [];
+      voice.onsets = makeOnsetDetector();
+      voice.lastFrameTime = null;
       renderVoice();
       voiceLoop();
+      return true;
     } catch (e) {
-      err.textContent = e?.name === 'NotAllowedError' ? 'Der Zugriff aufs Mikrofon wurde nicht erlaubt.'
+      voice.error = e?.name === 'NotAllowedError' ? 'Der Zugriff aufs Mikrofon wurde nicht erlaubt.'
         : e?.name === 'NotFoundError' ? 'Es wurde kein Mikrofon gefunden.'
         : 'Das Mikrofon konnte nicht gestartet werden.';
+      err.textContent = voice.error;
+      if (e?.name === 'NotAllowedError') onMicDenied();
       micOff();
+      return false;
     }
   }
+  /** Singen mit Mikrofon (Paket 5). */
+  function singFrame() {}
+  /** Haken für den Fortschritt (Paket 7: micDenied). */
+  function onMicDenied() {}
 
   function micOff() {
     cancelAnimationFrame(voice.frame);
     voice.frame = 0;
     voice.stream?.getTracks().forEach((track) => track.stop());
     try { voice.source?.disconnect(); } catch { /* schon getrennt */ }
-    voice.stream = null; voice.source = null; voice.analyser = null;
+    voice.stream = null; voice.source = null; voice.analyser = null; voice.consumer = null;
     showPitch(null);
     renderVoice();
+  }
+
+  /* ---- Einsatzerkennung (Rhythmus übers Mikrofon): Rahmen 10 ms, Pegel in
+     dB; Einsatz, wenn der Pegel ≥ 12 dB über dem gleitenden Grundrauschen
+     (Median der letzten 500 ms) liegt und ≥ 6 dB über dem vorigen Rahmen;
+     Sperrzeit 90 ms. ---- */
+  const ONSET = { frameSec: .01, floorSec: .5, rise: 12, jump: 6, holdSec: .09 };
+  function makeOnsetDetector(cfg = ONSET) {
+    const hist = [];
+    let prev = -Infinity;
+    let last = -Infinity;
+    return {
+      push(t, db) {
+        while (hist.length && hist[0].t < t - cfg.floorSec) hist.shift();
+        const floor = hist.length ? median(hist.map((h) => h.db)) : db;
+        hist.push({ t, db });
+        let hit = null;
+        if (db >= floor + cfg.rise && db >= prev + cfg.jump && t - last >= cfg.holdSec) { hit = t; last = t; }
+        prev = db;
+        return hit;
+      },
+    };
+  }
+  const levelDb = (buf, from, to) => {
+    let e = 0;
+    for (let i = from; i < to; i++) e += buf[i] * buf[i];
+    return 10 * Math.log10(e / Math.max(1, to - from) + 1e-12);
+  };
+  /** Neue Abtastwerte seit dem letzten Bild in 10-ms-Rahmen zerlegen. */
+  function rhythmMicFrame(now) {
+    const sr = engine.ctx.sampleRate;
+    const buf = voice.buffer;
+    const frame = Math.round(sr * ONSET.frameSec);
+    const fresh = voice.lastFrameTime === null ? frame : Math.min(buf.length, Math.round((now - voice.lastFrameTime) * sr));
+    voice.lastFrameTime = now;
+    for (let i = Math.max(0, buf.length - fresh); i + frame <= buf.length; i += frame) {
+      const t = now - (buf.length - (i + frame)) / sr;
+      const hit = voice.onsets.push(t, levelDb(buf, i, i + frame));
+      if (hit !== null) micOnset(hit);
+    }
   }
 
   function voiceLoop() {
     if (!voice.analyser) return;
     const now = engine.ctx.currentTime;
+    if (voice.consumer === 'rhythm') {
+      voice.analyser.getFloatTimeDomainData(voice.buffer);
+      rhythmMicFrame(now);
+      voice.frame = requestAnimationFrame(voiceLoop);
+      return;
+    }
+    if (voice.consumer === 'sing') { singFrame(now); voice.frame = requestAnimationFrame(voiceLoop); return; }
     voice.analyser.getFloatTimeDomainData(voice.buffer);
     const result = detectPitch(voice.buffer, engine.ctx.sampleRate);
     const raw = result && result.clarity > .8 ? hzToMidi(result.freq) : null;
@@ -1987,6 +2570,8 @@
       rhythm: {
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
         rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
+        bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
+        rhythmLevel: state.rhythmLevel, duoPart: state.duoPart,
       },
       ear: { mode: ear.mode, settings: ear.settings },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
@@ -2020,7 +2605,14 @@
     if (Array.isArray(r.elements)) state.elements = ELEMENTS.map(([id]) => id).filter((id) => r.elements.includes(id));
     ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
     if (ROUND_CHOICES.some(([n]) => n === r.rounds)) state.rounds = r.rounds;
-    ['countIn', 'click', 'speedUp', 'showNotes'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
+    ['countIn', 'click', 'speedUp', 'showNotes', 'pickup'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
+    if (BAR_CHOICES.some(([n]) => n === r.bars)) state.bars = r.bars;
+    if (SYLLABLE_CHOICES.some(([id]) => id === r.syllables)) state.syllables = r.syllables;
+    if (INPUT_CHOICES.some(([id]) => id === r.input)) state.input = r.input;
+    if (Number.isFinite(r.micLatencyMs)) state.micLatencyMs = clamp(Math.round(r.micLatencyMs), 0, 400);
+    if (Number.isInteger(r.rhythmLevel) && r.rhythmLevel >= 0 && r.rhythmLevel <= RHYTHM_LEVELS.length) state.rhythmLevel = r.rhythmLevel;
+    if (r.duoPart === 'upper' || r.duoPart === 'lower') state.duoPart = r.duoPart;
+    if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
     if (e.mode === 'interval' || e.mode === 'chords') ear.mode = e.mode;
     const es = e.settings && typeof e.settings === 'object' ? e.settings : {};
@@ -2060,16 +2652,25 @@
     const rset = e.target.closest('button[data-rset]');
     if (rset) {
       const key = rset.dataset.rset;
-      if (key === 'meter') setMeter(rset.dataset.value);
+      if (key === 'meter') { setMeter(rset.dataset.value); state.rhythmLevel = 0; }
+      else if (key === 'bars') { state.bars = Number(rset.dataset.value); state.rhythmLevel = 0; }
       else state[key] = key === 'rounds' ? Number(rset.dataset.value) : rset.dataset.value;
       renderSettings();
+      return;
+    }
+    const levelBtn = e.target.closest('[data-level-area]');
+    if (levelBtn && levelBtn.dataset.levelArea.startsWith('rhythm')) {
+      applyRhythmLevel(Number(levelBtn.dataset.levelN));
+      if (!run.playing) { run.shown = null; game.finished = false; }
+      renderRhythm(); renderTransport();
+      if (!$('.sheet').hidden && sheetKind === 'rhythm') renderSettings();
       return;
     }
     const rcalib = e.target.closest('[data-rcalib]');
     if (rcalib) {
       const action = rcalib.dataset.rcalib;
       if (action === 'start') { closeSettings(); startCalibration(); return; }
-      if (action === 'reset') state.latency = 0;
+      if (action === 'reset') { if (state.input === 'mic') state.micLatencyMs = 0; else state.latency = 0; }
       if (action === 'suggest' && lastMeanOff() !== null) state.latency = clamp(Math.round(state.latency * 1000 + lastMeanOff()) / 1000, -.05, .3);
       renderSettings();
       return;
@@ -2079,7 +2680,7 @@
     const voiceBtn = e.target.closest('[data-voice]');
     if (voiceBtn) {
       const action = voiceBtn.dataset.voice;
-      if (action === 'mic') { if (voice.analyser) micOff(); else micOn(); }
+      if (action === 'mic') { if (voice.analyser) micOff(); else micOn('tuner'); }
       else if (action === 'target-up' || action === 'target-down') {
         voice.target = clamp(voice.target + (action === 'target-up' ? 1 : -1), 36, 84);
         renderVoice();
@@ -2130,7 +2731,8 @@
     if (chip) {
       // Modus und Leertakte gelten während des Laufs ab der nächsten Runde.
       const name = chip.dataset.chip;
-      if (name === 'rmode') state.mode = chip.dataset.value;
+      if (name === 'rmode') { if (chip.dataset.value !== 'duo' || duoAllowed()) state.mode = chip.dataset.value; }
+      else if (name === 'duoPart') state.duoPart = chip.dataset.value;
       else if (name === 'gapBefore' || name === 'gapAfter') state[name] = Number(chip.dataset.value);
       renderRhythm();
       return;
@@ -2159,7 +2761,12 @@
         const list = new Set(state.elements);
         if (t.checked) list.add(t.value); else list.delete(t.value);
         state.elements = ELEMENTS.map(([id]) => id).filter((id) => list.has(id));
-      } else state[key] = t.checked;
+        state.rhythmLevel = 0;
+      } else {
+        state[key] = t.checked;
+        if (key === 'pickup') state.rhythmLevel = 0;
+      }
+      if (sheetKind === 'rhythm' && (key === 'elements' || key === 'pickup')) renderSettings();
     }
     else if (t.dataset?.voiceswitch) { voice.useTarget = t.checked; drawHistory(engine.ctx?.currentTime || 0); }
     else if (t.hasAttribute?.('data-voice-a4')) { tuningA4 = A4_CHOICES.includes(Number(t.value)) ? Number(t.value) : 440; playTarget(); }
@@ -2229,6 +2836,133 @@
     } finally {
       Object.assign(state, saved);
       renderTransport();
+    }
+    return errors;
+  }
+
+  /** Didaktik Paket 3: Muster je Stufe, Bindebögen, 7/8, Silben,
+   *  Zweistimmig, Raster mit Auftakt, Einsatzerkennung, Speichern/Laden. */
+  function rhythmPackageCheck() {
+    const errors = [];
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    for (const level of RHYTHM_LEVELS) {
+      let prev = null;
+      const ties = level.elements.includes('tie');
+      for (let i = 0; i < 500; i++) {
+        const meterId = level.meters[i % level.meters.length];
+        const m = METERS[meterId];
+        const chosen = level.elements.filter((id) => !(id === 't' && m.unit !== 12));
+        const pat = makePattern(meterId, chosen, prev, { bars: level.bars, pickup: level.pickup, ties, rnd });
+        prev = pat.key;
+        const where = `Stufe ${level.n} ${meterId} ${pat.key}`;
+        const sum = pat.notes.reduce((a, n) => a + n.d, 0);
+        if (sum !== level.bars * m.ticks || pat.total !== level.bars * m.ticks) { errors.push(`${where}: ${sum} Ticks statt ${level.bars * m.ticks}`); continue; }
+        if (!level.pickup && pat.pickup) errors.push(`${where}: Auftakt ohne Auftakt-Stufe`);
+        const tiesPerBar = {};
+        pat.notes.forEach((n, k) => {
+          const inBar = mod(n.t - pat.pickup, m.ticks);
+          if (n.tie) {
+            const a = pat.notes[k - 1];
+            if (!unitStarts(m).includes(inBar) || !a || a.rest || a.t + a.d !== n.t) errors.push(`${where}: Bindung innerhalb einer Einheit`);
+            const bar = Math.floor((n.t - pat.pickup) / m.ticks);
+            tiesPerBar[bar] = (tiesPerBar[bar] || 0) + 1;
+          }
+          if (m.groups && n.t >= pat.pickup) {
+            const cuts = [...accentStarts(m), m.ticks];
+            if (cuts.some((c) => c > inBar && c < inBar + n.d)) errors.push(`${where}: Note überschreitet eine Gruppe (${n.t})`);
+          }
+        });
+        if (Object.values(tiesPerBar).some((c) => c > 1)) errors.push(`${where}: mehr als ein Bogen im Takt`);
+        if (!ties && pat.notes.some((n) => n.tie) && meterId !== '7/8') errors.push(`${where}: Bogen ohne Bausteine „Bindebögen“`);
+        if (level.bars === 4) {
+          const at = pat.pickup + 3 * m.ticks;
+          const k = pat.notes.findIndex((n) => n.t === at);
+          const n = pat.notes[k];
+          const long = n && !n.rest ? n.d + (pat.notes[k + 1]?.tie ? pat.notes[k + 1].d : 0) : 0;
+          if (long < (m.unit === 18 ? 18 : 24)) errors.push(`${where}: kein langer Schlusston`);
+        }
+        for (const style of ['ta', 'count']) {
+          const syl = syllablesFor(pat, style);
+          if (syl.length !== pat.notes.length || syl.some((x) => !x || /undefined|NaN/.test(x))) errors.push(`${where}: Silben ${style} unvollständig (${syl.join(' ')})`);
+        }
+      }
+    }
+    // Silbentabelle an Beispielen
+    const mk = (meter, notes, pickup = 0) => ({ meter, notes, pickup, bars: 1, total: METERS[meter].ticks });
+    const ex1 = mk('4/4', [{ t: 0, d: 12 }, { t: 12, d: 6 }, { t: 18, d: 6 }, { t: 24, d: 24 }]);
+    if (syllablesFor(ex1, 'ta').join(' ') !== 'ta ti ti ta-a' || syllablesFor(ex1, 'count').join(' ') !== '1 2 + 3 (4)') errors.push(`Silben 4/4: ${syllablesFor(ex1, 'ta')} / ${syllablesFor(ex1, 'count')}`);
+    const ex2 = mk('4/4', [{ t: 0, d: 3 }, { t: 3, d: 3 }, { t: 6, d: 3 }, { t: 9, d: 3 }, { t: 12, d: 4 }, { t: 16, d: 4 }, { t: 20, d: 4 }, { t: 24, d: 18 }, { t: 42, d: 6 }]);
+    if (syllablesFor(ex2, 'ta').join(' ') !== 'ti ri ti ri tri o le ta-i ti' || syllablesFor(ex2, 'count').join(' ') !== '1 e + e 2 o le 3 (4) +') errors.push(`Silben 16tel/Triole: ${syllablesFor(ex2, 'ta')} / ${syllablesFor(ex2, 'count')}`);
+    const ex3 = mk('6/8', [{ t: 0, d: 6 }, { t: 6, d: 6 }, { t: 12, d: 6 }, { t: 18, d: 12, rest: true }, { t: 30, d: 6 }]);
+    if (syllablesFor(ex3, 'count').join(' ') !== '1 2 3 (4) (5) 6' || syllablesFor(ex3, 'ta')[3] !== 'sch') errors.push(`Silben 6/8: ${syllablesFor(ex3, 'count')}`);
+    // Klick-Betonung
+    if (accentStarts(METERS['7/8']).join() !== '0,12,24' || accentStarts(METERS['5/4']).join() !== '0,36' || beatLevel(METERS['7/8'], 12) !== 1 || beatLevel(METERS['7/8'], 6) !== 0) errors.push('Betonung 5/4 bzw. 7/8 falsch');
+    if (tempoSymbol('2/2') !== '𝅗𝅥' || tempoSymbol('7/8') !== '♪') errors.push('Tempozeichen 2/2 bzw. 7/8');
+    // Zweistimmig: 100 Paare erfüllen die Bedingungen.
+    for (let i = 0; i < 100; i++) {
+      const level = RHYTHM_LEVELS[2 + (i % 4)];
+      const meterId = level.meters[i % level.meters.length];
+      const chosen = level.elements.filter((id) => !(id === 't' && METERS[meterId].unit !== 12));
+      const d = makeDuo(meterId, chosen, null, { bars: level.bars, pickup: level.pickup, ties: level.elements.includes('tie'), rnd });
+      if (!d.ok || !duoOk(d.upper, d.lower) || d.upper.total !== d.lower.total || d.upper.pickup !== d.lower.pickup) errors.push(`Zweistimmig ${meterId}: Bedingungen verletzt (${d.key})`);
+    }
+    // Raster: jede Phrase beginnt `pickup` vor einem Taktstrich, nichts überlappt.
+    const savedRun = { ...run }, savedGame = { ...game }, savedState = { ...state };
+    try {
+      Object.assign(state, { mode: 'echo', meter: '4/4', elements: ['e', 'r', 'd'], bars: 2, pickup: true, rounds: 12, gapBefore: 1, gapAfter: 0, countIn: true });
+      Object.assign(run, { meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05 });
+      game.rounds = [];
+      layoutNext(true);
+      while (layoutNext()) { /* alle Runden */ }
+      let end = 0;
+      for (const it of run.items) {
+        if (it.start < end) errors.push(`Raster: Abschnitt ${it.kind} beginnt vor dem Ende des vorigen`);
+        end = it.start + it.len;
+        if ((it.kind === 'listen' || it.kind === 'you') && mod(it.start + it.round.pattern.pickup, 48) !== 0) errors.push(`Raster: Phrase nicht auf dem Taktstrich (${it.start}+${it.round.pattern.pickup})`);
+      }
+      if (run.items[0].kind !== 'count' || run.items[0].len !== 48 - game.rounds[0].pattern.pickup) errors.push('Einzähler reicht nicht bis zum Auftakt');
+      if (!game.rounds.some((r) => r.pattern.pickup) || !game.rounds.some((r) => !r.pattern.pickup)) errors.push('Auftakt nicht in einem Teil der Phrasen');
+    } finally {
+      Object.assign(run, savedRun); game.rounds = savedGame.rounds; Object.assign(state, savedState);
+    }
+    // Einsatzerkennung: Rauschen −60 dB, Klatscher −20 dB alle 0,5 s.
+    {
+      const det = makeOnsetDetector();
+      const hits = [];
+      for (let t = 0; t < 4; t += .01) {
+        const inClap = [.5, 1, 1.5, 2, 2.5, 3, 3.5].some((c) => t >= c - 1e-9 && t < c + .03);
+        const h = det.push(t, inClap ? -20 : -60 + ((t * 1000) % 7) - 3);
+        if (h !== null) hits.push(h);
+      }
+      if (hits.length !== 7 || hits.some((h, i) => Math.abs(h - .5 * (i + 1)) > .011)) errors.push(`Einsatzerkennung: ${hits.map((h) => h.toFixed(2)).join(', ')}`);
+      const det2 = makeOnsetDetector();
+      let dbl = 0;
+      for (let t = 0; t < 1; t += .01) if (det2.push(t, t >= .5 && t < .56 ? (t < .52 ? -30 : -15) : -60) !== null) dbl++;
+      if (dbl !== 1) errors.push(`Einsatzerkennung: Sperrzeit wirkt nicht (${dbl})`);
+      if (latencyFrom([0, 1, 2, 3, 4, 5, 6, 7], [.3, 1.31, 2.29, 3.3, 4.32, 5.3, 6.28, 7.3], .45) === null) errors.push('Mikrofon-Latenz über 250 ms nicht messbar');
+    }
+    // Speichern/Laden: neu → gleich, alt (fehlt) → Standard, kaputt → Standard.
+    {
+      const keys = ['bars', 'pickup', 'syllables', 'input', 'micLatencyMs', 'rhythmLevel', 'duoPart', 'mode'];
+      const saved = Object.fromEntries(keys.map((k) => [k, state[k]]));
+      const savedTab = state.tab;
+      const defaults = { bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0, rhythmLevel: 0, duoPart: 'lower', mode: 'echo' };
+      try {
+        Object.assign(state, { bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' });
+        const snap = JSON.parse(JSON.stringify(snapshot()));
+        Object.assign(state, defaults);
+        restore(snap);
+        const got = Object.fromEntries(keys.map((k) => [k, state[k]]));
+        if (JSON.stringify(got) !== JSON.stringify({ bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' })) errors.push(`Rhythmus Speichern/Laden: ${JSON.stringify(got)}`);
+        Object.assign(state, defaults);
+        restore({ tab: savedTab, rhythm: { mode: 'echo' } });
+        if (keys.some((k) => state[k] !== defaults[k])) errors.push('Rhythmus: alter Stand ohne neue Felder nicht auf Standard');
+        restore({ tab: savedTab, rhythm: { bars: 3, pickup: 'ja', syllables: 'la', input: 'usb', micLatencyMs: 9999, rhythmLevel: 9, duoPart: 'mitte' } });
+        if (state.bars !== 1 || state.pickup !== false || state.syllables !== 'off' || state.input !== 'tap' || state.micLatencyMs !== 400 || state.rhythmLevel !== 0 || state.duoPart !== 'lower') errors.push(`Rhythmus: kaputte Werte → ${JSON.stringify(Object.fromEntries(keys.map((k) => [k, state[k]])))}`);
+        restore({ tab: savedTab, rhythm: { mode: 'duo', rhythmLevel: 2 } });
+        if (state.mode === 'duo') errors.push('Zweistimmig in Stufe 2 nicht zurückgesetzt');
+      } finally { Object.assign(state, saved); state.tab = savedTab; }
     }
     return errors;
   }
@@ -2356,6 +3090,7 @@
     if (counts[3] < counts[4] * 5) errors.push(`Gewichtung wirkt nicht (${counts[3]} : ${counts[4]})`);
     errors.push(...tunerCheck());
     errors.push(...rhythmCheck());
+    errors.push(...rhythmPackageCheck());
     // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
     {
       const saved = [voice.low, voice.high];
