@@ -19665,6 +19665,40 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (JSON.stringify(T.SATB_RANGES) !== JSON.stringify(want)) failed.push(`Groove Lab: Stimmumfänge ${JSON.stringify(T.SATB_RANGES)}`);
   }
 
+  // Paket 7: SATB-Satz — alle Folgen × 12 Tonarten × 4 Modi, jeder
+  // Akkordwechsel einschließlich Ende → Anfang.
+  {
+    const V = ['S', 'A', 'T', 'B'];
+    const fallbacksBefore = T.VOICING_STATS.fallbacks;
+    let changes = 0, parallels = 0, doubled = 0, range = 0, crossing = 0;
+    for (const p of T.PROGRESSIONS) {
+      for (const mode of T.MODES) {
+        for (let key = 0; key < 12; key++) {
+          const list = T.voiceProgressionSatb(key, mode, p);
+          const n = list.length;
+          list.forEach((cur, i) => {
+            if (n > 1) {
+              changes++;
+              if (T.voicePairs(list[(i - 1 + n) % n], cur)) parallels++;
+            }
+            const lead = T.leadingToneOf(key, mode.id, p, p.degrees[i]);
+            if (lead !== null && V.filter((v) => mod12(cur[v]) === lead).length > 1) doubled++;
+            for (const v of V) if (cur[v] < T.SATB_RANGES[v][0] || cur[v] > T.SATB_RANGES[v][1]) range++;
+            if (!(cur.B < cur.T && cur.T < cur.A && cur.A < cur.S)) crossing++;
+            const steps = T.chordSteps(mode.steps, mode.id, p, p.degrees[i]);
+            if (T.chordQuality(steps, p.degrees[i]) === 'dim' && mod12(cur.B) !== T.chordPitchClasses(key, steps, p.degrees[i], p.sevenths)[1]) failed.push(`Groove Lab: ${p.id} ${mode.id} ${key}: verminderter Akkord nicht als Sextakkord`);
+          });
+        }
+      }
+    }
+    const fallbacks = T.VOICING_STATS.fallbacks - fallbacksBefore;
+    if (changes !== 4320) failed.push(`Groove Lab: ${changes} statt 4320 Akkordwechsel geprüft`);
+    if (parallels) failed.push(`Groove Lab: ${parallels} Akkordwechsel mit Quint-/Oktavparallelen (${fallbacks} ohne regelkonforme Lösung)`);
+    if (doubled) failed.push(`Groove Lab: ${doubled}× Leitton verdoppelt`);
+    if (range) failed.push(`Groove Lab: ${range} Stimmen außerhalb des Umfangs`);
+    if (crossing) failed.push(`Groove Lab: ${crossing}× Stimmkreuzung`);
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);

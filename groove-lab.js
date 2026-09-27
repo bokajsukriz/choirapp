@@ -603,37 +603,128 @@
   const SATB_KEY = { S: 'lab.voiceS', A: 'lab.voiceA', T: 'lab.voiceT', B: 'lab.voiceB' };
 
   /**
-   * Ein Akkord als vierstimmiger Satz. Bass immer auf dem Grundton; für
-   * Sopran/Alt/Tenor werden alle Lagen im Umfang durchprobiert (wenige
-   * hundert Kombinationen) und die mit der kleinsten Bewegung gegenüber dem
-   * vorigen Akkord gewählt — das ist Stimmführung im Kleinen. Strafen für
-   * fehlende Terz, verdoppelte Terz, Stimmkreuzung und zu weite Abstände
-   * halten den Satz lehrbuchnah.
+   * Ein Akkord als vierstimmiger Satz. Bass auf dem Grundton (verminderte
+   * Akkorde als Sextakkord: Bass auf der Terz, `bassIndex`); für Bass
+   * (beide Oktavlagen), Tenor, Alt und Sopran werden alle Lagen im Umfang
+   * durchprobiert (wenige hundert Kombinationen) und die mit der kleinsten
+   * Bewegung gegenüber dem vorigen Akkord gewählt — Stimmführung im Kleinen.
+   *
+   * Harte Regeln (Kandidat verworfen): offene Quint- und Oktavparallelen
+   * zwischen beliebigen Stimmen (gleiches reines Intervall, beide Stimmen
+   * gleichgerichtet bewegt) und ein verdoppelter Leitton (`leading`: nur
+   * in Akkorden mit Dominantfunktion, siehe leadingToneOf).
+   * Weiche Regeln (Strafpunkte): fehlende Terz/Quinte/Septime, verdoppelte
+   * Terz, verdeckte Quint/Oktave der Außenstimmen mit Sprung im Sopran,
+   * Leitton im Sopran (`prevLeading`), der nicht zum Grundton hinaufgeht.
+   * Bleibt nach den harten Regeln nichts übrig, gilt wie bisher der beste
+   * Kandidat nach Strafpunkten (gezählt in VOICING_STATS.fallbacks).
+   * `next`: fester Folgeakkord (Übergang Ende → Anfang beim Loopen) — auch
+   * dorthin sollen die harten Regeln gelten; geht das nicht, zählt er nicht.
    */
-  function voiceChord(pcs, prev) {
+  const VOICING_STATS = { fallbacks: 0 };
+  function voicePairs(prev, next) {
+    let parallels = 0;
+    for (let i = 0; i < 4; i++) {
+      for (let j = i + 1; j < 4; j++) {
+        const [x, y] = [SATB[i], SATB[j]];
+        const mx = next[x] - prev[x];
+        const my = next[y] - prev[y];
+        if (!mx || !my || Math.sign(mx) !== Math.sign(my)) continue;
+        const before = mod(prev[x] - prev[y], 12);
+        const after = mod(next[x] - next[y], 12);
+        if (before === after && (after === 0 || after === 7)) parallels++;
+      }
+    }
+    return parallels;
+  }
+  function voiceChord(pcs, prev, { leading = null, prevLeading = null, bassIndex = 0, next: after = null } = {}) {
     const within = ([lo, hi], pred) => { const out = []; for (let m = lo; m <= hi; m++) if (pred(m)) out.push(m); return out; };
-    const nearest = (list, target) => list.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
-    const B = nearest(within(SATB_RANGES.B, (m) => mod(m, 12) === pcs[0]), prev.B);
+    const bassPc = pcs[bassIndex] ?? pcs[0];
     const isChordTone = (m) => pcs.includes(mod(m, 12));
     let best = null;
     let bestScore = Infinity;
-    for (const T of within(SATB_RANGES.T, isChordTone)) {
-      if (T <= B || T - B > 19) continue;
-      for (const A of within(SATB_RANGES.A, isChordTone)) {
-        if (A <= T || A - T > 12) continue;
-        for (const S of within(SATB_RANGES.S, isChordTone)) {
-          if (S <= A || S - A > 12) continue;
-          const voices = [B, T, A, S].map((m) => mod(m, 12));
-          let score = Math.abs(S - prev.S) + Math.abs(A - prev.A) + Math.abs(T - prev.T);
-          if (!voices.includes(pcs[1])) score += 20;
-          if (pcs[2] !== undefined && !voices.includes(pcs[2])) score += 4;
-          if (pcs[3] !== undefined && !voices.includes(pcs[3])) score += 6;
-          if (voices.filter((pc) => pc === pcs[1]).length > 1) score += 3;
-          if (score < bestScore) { bestScore = score; best = { S, A, T, B }; }
+    let fallback = null;
+    let fallbackScore = Infinity;
+    let closed = null;
+    let closedScore = Infinity;
+    for (const B of within(SATB_RANGES.B, (m) => mod(m, 12) === bassPc)) {
+      for (const T of within(SATB_RANGES.T, isChordTone)) {
+        if (T <= B || T - B > 19) continue;
+        for (const A of within(SATB_RANGES.A, isChordTone)) {
+          if (A <= T || A - T > 12) continue;
+          for (const S of within(SATB_RANGES.S, isChordTone)) {
+            if (S <= A || S - A > 12) continue;
+            const next = { S, A, T, B };
+            const voices = [B, T, A, S].map((m) => mod(m, 12));
+            let score = Math.abs(S - prev.S) + Math.abs(A - prev.A) + Math.abs(T - prev.T) + Math.abs(B - prev.B) * .5;
+            if (!voices.includes(pcs[1])) score += 20;
+            if (pcs[2] !== undefined && !voices.includes(pcs[2])) score += 4;
+            if (pcs[3] !== undefined && !voices.includes(pcs[3])) score += 6;
+            if (voices.filter((pc) => pc === pcs[1]).length > 1) score += 3;
+            // Verdeckte Quinte/Oktave: Außenstimmen gleichgerichtet in ein
+            // reines Intervall, Sopran springt.
+            const outer = mod(S - B, 12);
+            if ((outer === 0 || outer === 7) && Math.abs(S - prev.S) > 2 && Math.sign(S - prev.S) === Math.sign(B - prev.B) && S !== prev.S) score += 10;
+            if (prevLeading !== null && mod(prev.S, 12) === prevLeading && pcs.includes(mod(prevLeading + 1, 12)) && S !== prev.S + 1) score += 8;
+            if (score < fallbackScore) { fallbackScore = score; fallback = next; }
+            const hard = voicePairs(prev, next) > 0 || (leading !== null && voices.filter((pc) => pc === leading).length > 1);
+            if (!hard && score < bestScore) { bestScore = score; best = next; }
+            if (after && !hard && !voicePairs(next, after)) {
+              const both = score + Math.abs(after.S - S) + Math.abs(after.A - A) + Math.abs(after.T - T);
+              if (both < closedScore) { closedScore = both; closed = next; }
+            }
+          }
         }
       }
     }
-    return best || { S: prev.S, A: prev.A, T: prev.T, B };
+    if (!best && fallback) VOICING_STATS.fallbacks++;
+    return closed || best || fallback || { S: prev.S, A: prev.A, T: prev.T, B: prev.B };
+  }
+
+  /** Leitton (Tonhöhenklasse) des Akkords auf Stufe `deg`, sofern er
+   *  Dominantfunktion hat: Dur V/V7/vii° (7. Stufe), Moll mit Dur-Dominante
+   *  V/V7 (erhöhte 7. Stufe). Sonst — natürliches Moll, Dorisch,
+   *  Mixolydisch — null: dort gelten keine Leitton-Regeln. */
+  function leadingToneOf(keyRoot, modeId, prog, deg) {
+    const d = mod(deg, 7);
+    if (modeId === 'major' && (d === 4 || d === 6)) return mod(keyRoot + 11, 12);
+    if (modeId === 'minor' && prog?.dominant && d === 4) return mod(keyRoot + 11, 12);
+    return null;
+  }
+
+  /** Satz einer ganzen Folge. Mehrere Durchläufe, jeder ab dem letzten
+   *  Akkord des vorigen, bis sich nichts mehr ändert (höchstens 6) — erst
+   *  dann ist auch der Übergang Ende → Anfang beim Loopen genau der, gegen
+   *  den geprüft wurde. */
+  function voiceProgressionSatb(keyRoot, mode, prog) {
+    let prev = { S: 67, A: 62, T: 55, B: 48 };
+    let prevLeading = null;
+    let list = [];
+    for (let pass = 0; pass < 6; pass++) {
+      const before = JSON.stringify(list);
+      list = prog.degrees.map((deg) => {
+        const steps = chordSteps(mode.steps, mode.id, prog, deg);
+        const pcs = chordPitchClasses(keyRoot, steps, deg, prog.sevenths);
+        const leading = leadingToneOf(keyRoot, mode.id, prog, deg);
+        const bassIndex = chordQuality(steps, deg) === 'dim' ? 1 : 0;
+        prev = voiceChord(pcs, prev, { leading, prevLeading, bassIndex });
+        prevLeading = leading;
+        return prev;
+      });
+      if (pass > 0 && JSON.stringify(list) === before) break;
+    }
+    // Wandert der Satz von Durchlauf zu Durchlauf weiter (kein Fixpunkt),
+    // den letzten Akkord so setzen, dass er auch sauber in den ersten führt.
+    const n = list.length;
+    if (n > 1 && voicePairs(list[n - 1], list[0])) {
+      const deg = prog.degrees[n - 1];
+      const steps = chordSteps(mode.steps, mode.id, prog, deg);
+      list[n - 1] = voiceChord(chordPitchClasses(keyRoot, steps, deg, prog.sevenths), list[n - 2], {
+        leading: leadingToneOf(keyRoot, mode.id, prog, deg), prevLeading: leadingToneOf(keyRoot, mode.id, prog, prog.degrees[n - 2]),
+        bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0, next: list[0],
+      });
+    }
+    return list;
   }
 
   /* ------------------------------------------------------------------------
@@ -1956,14 +2047,7 @@
       const prog = this._progression();
       const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`;
       if (this._voicingCache?.key === key) return this._voicingCache.list;
-      let prev = { S: 67, A: 62, T: 55, B: 48 };
-      let list = [];
-      for (let pass = 0; pass < 2; pass++) {
-        list = prog.degrees.map((deg) => {
-          prev = voiceChord(chordPitchClasses(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths), prev);
-          return prev;
-        });
-      }
+      const list = voiceProgressionSatb(s.keyRoot, this._mode(), prog);
       this._voicingCache = { key, list };
       return list;
     }
@@ -3426,7 +3510,9 @@
       try { await this._ensureAudio(); } catch { return; }
       const s = this.state;
       const prog = this._progression();
-      const voicing = voiceChord(chordPitchClasses(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths), { S: 67, A: 62, T: 55, B: 48 });
+      const steps = this._stepsFor(deg, prog);
+      const voicing = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), { S: 67, A: 62, T: 55, B: 48 },
+        { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg), bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0 });
       const now = this.engine.ctx.currentTime + .01;
       for (const voice of SATB) {
         this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
@@ -5615,7 +5701,7 @@
   // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
-    voiceChord, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
+    voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
     melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState,
