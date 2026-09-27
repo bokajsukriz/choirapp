@@ -66,11 +66,18 @@ ein Dialog mit echter Wahl).
   `loadGrooveLab` in `app.js`) und per `<script src>` in `uebe-lab.html`,
   `einsingen.html` und `piano.html`. Prüfungen: `chorApp.selfTestMusic()`
   und `selfCheck()` in der Konsole der Tool-iframes.
-- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training, Hören: Intervalle und
-  Akkordfolgen, Stimm-Tuner per Mikrofon). Das Mikrofon wird nur live
-  ausgewertet, nichts wird aufgenommen oder gesendet.
-- `einsingen.html` — Einsingen (Einsing-Übungen nach Stimmlage, geführtes
-  Einsing-Programm).
+- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training mit Stufen, Phrasen,
+  Auftakt, Rhythmussprache, Zweistimmig, Eingabe per Tippen oder Mikrofon;
+  Hören: Intervalle, Klänge, Schlüsse, Akkordfolgen, Stimmen heraushören,
+  Intonation; Singen: Tuner, Intervalle singen, Ton finden, Ton halten,
+  Blattsingen, Diktat). Das Mikrofon wird nur live ausgewertet, nichts wird
+  aufgenommen oder gesendet, und es läuft nie im Hintergrund.
+- `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
+  Körperübungen, geführte und eigene Einsing-Programme).
+- Stimmprofil, Fortschritt und „Heute üben“ liegen in `app.js`
+  (`window.chorVoiceProfile`, `window.chorProgress`); die Tool-Seiten lesen
+  und melden über diese beiden Schnittstellen, schreiben aber nie selbst in
+  den Fortschritt. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.
 - `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
   Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
   Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem
