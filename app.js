@@ -18689,14 +18689,17 @@ function runSelfTests() {
       if (!st.isNew) failed.push(`Üben-Kachel ${group}: leerer Fortschritt nicht „Neu“`);
     }
     // Beispiel: Intervalle 4 und Klänge 2 → Hören (4+2)/2 = 3; dazu Stimmen 5
-    // → 11/3 = 3,67 → abgerundet 3; eigene Auswahl (0) zählt nicht mit.
+    // → 11/3 = 3,67 → gerundet 4; eigene Auswahl (0) zählt nicht mit;
+    // 2,5 wird zu 3 (ab ,5 aufrunden).
     const sample = applyProgressEntries(emptyProgress(), [{ area: 'interval', level: 4, right: true }], '2026-10-10');
     applyProgressEntries(sample, [{ area: 'quality', level: 2, right: true }, { area: 'rhythm', level: 3, right: false }], '2026-10-12');
     const ear = practiceTileState(sample, 'ear');
     if (ear.isNew || ear.level !== 3) failed.push(`Üben-Kachel Hören: ${JSON.stringify(ear)} statt Stufe 3`);
     if (practiceTileState(sample, 'rhythm').level !== 3 || !practiceTileState(sample, 'sing').isNew) failed.push('Üben-Kachel Rhythmus/Singen falsch');
     applyProgressEntries(sample, [{ area: 'parts', level: 5, right: true }, { area: 'progression', level: 0, right: true }], '2026-10-12');
-    if (practiceTileState(sample, 'ear').level !== 3) failed.push(`Üben-Kachel Hören: Durchschnitt ${practiceTileState(sample, 'ear').level} statt 3 (abgerundet, ohne Stufe 0)`);
+    if (practiceTileState(sample, 'ear').level !== 4) failed.push(`Üben-Kachel Hören: Durchschnitt ${practiceTileState(sample, 'ear').level} statt 4 (gerundet, ohne Stufe 0)`);
+    const half = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 2, right: true }, { area: 'sight', level: 3, right: true }], '2026-10-12');
+    if (practiceTileState(half, 'sing').level !== 3) failed.push(`Üben-Kachel: 2,5 gerundet zu ${practiceTileState(half, 'sing').level} statt 3`);
     const custom = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 0, right: true }], '2026-10-12');
     const cs = practiceTileState(custom, 'sing');
     if (cs.isNew || cs.level !== 0) failed.push('Üben-Kachel: nur eigene Auswahl nicht Stufe 0');
@@ -22617,14 +22620,15 @@ function warmupMinutes(stored) {
 }
 
 /** Stand einer Üben-Kachel (Gruppe aus PROGRESS_GROUPS): Durchschnitt der
- *  Stufen aller geübten Übungsarten des Bereichs, abgerundet. Übungsarten
+ *  Stufen aller geübten Übungsarten des Bereichs, kaufmännisch gerundet
+ *  (ab ,5 auf). Übungsarten
  *  mit eigener Auswahl (Stufe 0) zählen nicht mit; haben alle Stufe 0 →
  *  level 0 (eigene Auswahl). Nie geübt → { isNew }. */
 function practiceTileState(data, group) {
   const areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area]));
   if (!areas.length) return { isNew: true, level: 0 };
   const levels = areas.map((area) => data.levels[area]).filter((l) => l > 0);
-  const level = levels.length ? Math.floor(levels.reduce((sum, l) => sum + l, 0) / levels.length) : 0;
+  const level = levels.length ? Math.round(levels.reduce((sum, l) => sum + l, 0) / levels.length) : 0;
   return { isNew: false, level };
 }
 
