@@ -49,6 +49,16 @@
     '6/8': { steps: 12, beats: [0, 2, 4, 6, 8, 10], group: 6 },
   };
   const METER_IDS = Object.keys(METERS);
+  // Tempo-Bezug (gleich in Metronom und Rhythmus-Training): in 6/8 zählt
+  // die punktierte Viertel, sonst die Viertel. Beim Taktartwechsel bleibt
+  // die Achtel gleich schnell (siehe _convertTempo).
+  const TEMPO_EIGHTHS = { '6/8': 3 };
+  const eighthsPerBeat = (meter) => TEMPO_EIGHTHS[meter] ?? 2;
+  const tempoSymbol = (meter) => (eighthsPerBeat(meter) === 3 ? '♩.' : '♩');
+  /** Dauer einer Sechzehntel (Schritt) bei `bpm` im Tempo-Bezug der Taktart. */
+  const stepSecondsFor = (bpm, meter) => 60 / bpm / (eighthsPerBeat(meter) * 2);
+  const BPM_MIN = 30;
+  const BPM_MAX = 180;
 
   /* ------------------------------------------------------------------------
      INHALT — Drumloops.
@@ -65,6 +75,9 @@
      eine je Loop eigene Rhythmuszelle aus [Dauer in 16teln, Lautstärke].
      `cat`: Filter in der Auswahl (calm/dance/funky/breaks); `icon`: siehe
      PICTOGRAM — ein bekanntes Symbol je Loop, keins doppelt.
+     `swingUnit: 8`: Swing auf Achteln statt Sechzehnteln (siehe
+     _swingOffset); `swing`: Vorgabe für den Swing-Regler beim Wählen.
+     Reihenfolge nie ändern — gespeichert wird der Index (patternIndex).
      ------------------------------------------------------------------------ */
 
   const DRUM_PATTERNS = [
@@ -77,7 +90,8 @@
     { name: 'Disco Clap', icon: 'star', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: [6, 14],
       bass: [0, 3, 7, 10, 13, 15], bassNotes: [0, 0, 4, 0, 0, -1],
       roll: [[.5, .6], [.5, 1], [.5, .6], [.5, 1], [1, .9], [1, .6]] },
-    { name: 'Swing Soul', icon: 'note', meter: '4/4', cat: 'funky', kick: [0, 3, 7, 10, 13], snare: [4, 12], ghost: [6, 9, 15], hat: [1, 3, 5, 7, 9, 11, 13, 15],
+    { name: 'Swing Soul', icon: 'note', meter: '4/4', cat: 'funky', kick: [0, 3, 7, 10, 13], snare: [4, 12], ghost: [6, 9, 15], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      swingUnit: 8, swing: .6,
       bass: [1, 4, 8, 11, 14], bassNotes: [0, 3, 2, 4, 0],
       roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
     { name: 'Glass Funk', icon: 'diamond', meter: '4/4', cat: 'funky', kick: [0, 3, 6, 10, 13], snare: [4, 12], ghost: [2, 9, 14], hat: [0, 2, 4, 6, 8, 9, 11, 13, 15],
@@ -107,10 +121,10 @@
     { name: 'Minimal Click', icon: 'target', meter: '4/4', cat: 'calm', kick: [0, 8], snare: [12], ghost: [4], hat: [2, 6, 10, 14],
       bass: [2, 6, 10, 14], bassNotes: [0, 4, 2, 4],
       roll: [[2, 1], [2, .4]] },
-    { name: 'Triplet Roll', icon: 'repeat', meter: '4/4', cat: 'breaks', kick: [0, 7, 10], snare: [4, 12], hat: [0, 2, 3, 5, 6, 8, 10, 11, 13, 14],
+    { name: 'Shuffle Roll', icon: 'repeat', meter: '4/4', cat: 'breaks', kick: [0, 7, 10], snare: [4, 12], hat: [0, 2, 3, 5, 6, 8, 10, 11, 13, 14],
       bass: [1, 4, 6, 9, 12, 14], bassNotes: [0, 4, 0, 4, 0, 2],
       roll: [[1.33, 1], [1.33, .7], [1.34, .85]] },
-    { name: 'Deep House', icon: 'moon', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], clap: [4, 12], hat: [1, 3, 5, 7, 9, 11, 13, 15], open: [7, 15],
+    { name: 'Deep House', icon: 'moon', meter: '4/4', cat: 'dance', kick: [0, 4, 8, 12], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [2, 6, 10, 14],
       bass: [2, 6, 9, 13], bassNotes: [0, 0, 4, 0],
       roll: [[.5, .6], [1.5, 1], [.5, .6], [1.5, .9]] },
     { name: 'Broken Beat', icon: 'puzzle', meter: '4/4', cat: 'breaks', kick: [0, 5, 8, 11], snare: [3, 10, 14], ghost: [6, 13], hat: [0, 2, 4, 6, 8, 10, 12, 14],
@@ -118,7 +132,7 @@
       roll: [[.75, 1], [1.25, .6], [.5, .9], [1.5, .7]] },
     // --- 3/4 und 6/8 — für Walzer, Balladen und Volkslied-Repertoire ---
     { name: 'Waltz Step', icon: 'feather', meter: '3/4', cat: 'calm', kick: [0], ghost: [4, 8], hat: [0, 2, 4, 6, 8, 10],
-      bass: [0, 8], bassNotes: [0, 4],
+      bass: [0], bassNotes: [0],
       roll: [[4, 1], [4, .5], [4, .5]] },
     { name: 'Jazz Waltz', icon: 'glass', meter: '3/4', cat: 'funky', kick: [0, 7], snare: [8], ghost: [3, 10], hat: [0, 4, 7, 8], open: [11],
       bass: [0, 4, 8], bassNotes: [0, 2, 4],
@@ -170,6 +184,13 @@
      `motif` — so entstehen echte Frage-Antwort-Phrasen über zwei Takte.
      Bewusst sparsam: lieber Pausen und Synkopen als Dauerlauf, damit die
      Melodie Platz neben Beat und Stimmen lässt.
+
+     Optional viertes Element `alt` (−1/+1): Verschiebung in Halbtönen NACH
+     der Umrechnung der Stufe über dem aktuellen Akkordgrundton
+     (midi = base + degreeSemis(steps, deg + shift) + alt). Ausnahme (siehe
+     melodyOffset): Stufe 2 mit alt −1 über einem Akkord, dessen Terz schon
+     klein ist, bleibt die kleine Terz — sonst entstünde eine Sekunde.
+     Reihenfolge nie ändern — gespeichert wird der Index (melodyIndex).
      ------------------------------------------------------------------------ */
 
   const MELODIES = [
@@ -194,7 +215,7 @@
       vary: [{}, { rhythmShift: 1 }, { extendLast: 2 }] },
     { name: 'Night Window', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [4, 4, 1], [7, 6, 3], [12, 2, 1], [14, 0, 2]],
       vary: [{}, { rhythmShift: 1, extendLast: 1 }] },
-    { name: 'Blue Third', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 2, 1], [6, 2, 1], [9, 4, 1], [12, 6, 1], [14, 4, 1]],
+    { name: 'Blue Third', meter: '4/4', cat: 'funky', motif: [[0, 0, 2], [3, 2, 1, -1], [4, 2, 1], [6, 4, 1], [9, 6, 1], [12, 4, 2]],
       vary: [{}, {}, { rhythmShift: -1, extendLast: 2 }] },
     { name: 'Suspended Glow', meter: '4/4', cat: 'calm', motif: [[0, 0, 3], [5, 3, 2], [9, 4, 2], [13, 0, 3]],
       vary: [{}, {}, { rhythmShift: -2 }, { extendLast: 3 }] },
@@ -224,7 +245,7 @@
   MELODIES.forEach((melody) => {
     const steps = METERS[melody.meter].steps;
     melody.bars = melody.vary.map(({ rhythmShift = 0, extendLast = 0, shift = 0, motif = melody.motif }) => {
-      const bar = motif.map(([at, deg, len]) => [mod(at + rhythmShift, steps), deg + shift, len]);
+      const bar = motif.map(([at, deg, len, alt]) => (alt ? [mod(at + rhythmShift, steps), deg + shift, len, alt] : [mod(at + rhythmShift, steps), deg + shift, len]));
       if (extendLast && bar.length) bar[bar.length - 1][2] += extendLast;
       return bar.sort((a, b) => a[0] - b[0]);
     });
@@ -342,44 +363,63 @@
      HARMONIK — Tonarten, Akkordfolgen, SATB-Satz.
      ------------------------------------------------------------------------ */
 
-  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-  const MODES = [
-    { id: 'major', nameKey: 'lab.modeMajor', steps: MAJOR },
-    { id: 'minor', nameKey: 'lab.modeMinor', steps: [0, 2, 3, 5, 7, 8, 10] },
-    { id: 'dorian', nameKey: 'lab.modeDorian', steps: [0, 2, 3, 5, 7, 9, 10] },
-    { id: 'mixolydian', nameKey: 'lab.modeMixolydian', steps: [0, 2, 4, 5, 7, 9, 10] },
-  ];
+  // Modi, Akkordbau, Tonnamen, Stimmumfänge und Satz kommen aus
+  // harmony.js (window.ChorHarmony, von app.js vor dieser Datei geladen).
+  const H = global.ChorHarmony;
+  if (!H) throw new Error('Groove Lab: harmony.js ist nicht geladen.');
+  const {
+    MAJOR, degreeSemis, spell, noteLabel, SPELL_CASES, spellCheck,
+    chordQuality, chordPitchClasses, chordSteps, SATB, VOICE_RANGES: SATB_RANGES,
+    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb,
+  } = H;
+  const MODE_NAME_KEYS = { major: 'lab.modeMajor', minor: 'lab.modeMinor', dorian: 'lab.modeDorian', mixolydian: 'lab.modeMixolydian' };
+  const MODES = H.MODES.map((m) => ({ ...m, nameKey: MODE_NAME_KEYS[m.id] }));
 
   // Stufen (0 = I). Die Beschriftung (I–V–vi–IV …) wird je Modus berechnet,
   // weil dieselbe Stufenfolge in Moll anders klingt und heißt.
   /* Akkordfolgen: Stufen der gewählten Tonart (0 = I … 6 = VII), je
      Eintrag ein Akkord (ein oder zwei Takte, siehe chordBars). Name und
      Kurz-Erklärung stehen in strings.js (lab.progName…/lab.progInfo…).
-     Die alten Ids bleiben, damit gespeicherte Stände weiter passen. */
+     Die alten Ids bleiben, damit gespeicherte Stände weiter passen.
+     dominant: in Moll klingt die V. Stufe als Dur-Dominante (mit Leitton,
+     siehe chordSteps) — nur bei Folgen mit Kadenz-/Dominantfunktion; bei
+     pop, sad, fifties, pachelbel und epic ist das Moll-v idiomatisch.
+     dom7: alle Septakkorde sind Dominantseptakkorde (Blues: I7, IV7, V7),
+     unabhängig vom Modus — nicht über den globalen sevenths-Schalter, der
+     tonleitereigen Cmaj7/Fmaj7 ergäbe (siehe chordSteps).
+     modes: nur in diesen Modi sinnvoll (fehlt = alle). In Dur ergäben die
+     modalen Folgen vii° statt ♭VII; wer eine davon wählt, bekommt den Modus
+     modes[0] dazu (siehe modeForProg). */
   const PROGRESSIONS = [
     { id: 'pop', cat: 'pop', degrees: [0, 4, 5, 3] },
     { id: 'sad', cat: 'pop', degrees: [5, 3, 0, 4] },
     { id: 'fifties', cat: 'pop', degrees: [0, 5, 3, 4] },
     { id: 'royal', cat: 'pop', degrees: [3, 4, 2, 5] },
     { id: 'pendulum', cat: 'pop', degrees: [0, 3] },
-    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0] },
-    { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0] },
-    { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4] },
+    { id: 'blues', cat: 'pop', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 0], sevenths: true, dom7: true, dominant: true, modes: ['major', 'mixolydian'] },
+    { id: 'cadence', cat: 'classic', degrees: [0, 3, 4, 0], dominant: true },
+    { id: 'cadence3', cat: 'classic', degrees: [0, 3, 4], dominant: true },
     { id: 'amen', cat: 'classic', degrees: [0, 3, 0] },
     { id: 'plagal', cat: 'classic', degrees: [0, 3, 0, 3] },
     { id: 'pachelbel', cat: 'classic', degrees: [0, 4, 5, 2, 3, 0, 3, 4] },
-    { id: 'circle', cat: 'classic', degrees: [0, 3, 6, 2, 5, 1, 4, 0] },
-    { id: 'jazz', cat: 'jazz', degrees: [1, 4, 0, 0], sevenths: true },
-    { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true },
-    { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true },
-    { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true },
-    { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0] },
-    { id: 'rock3', cat: 'modal', degrees: [0, 6, 3] },
-    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4] },
-    { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6] },
+    { id: 'circle', cat: 'classic', degrees: [0, 3, 6, 2, 5, 1, 4, 0], dominant: true },
+    { id: 'jazz', cat: 'jazz', degrees: [1, 4, 0, 0], sevenths: true, dominant: true },
+    { id: 'twoFiveOne', cat: 'jazz', degrees: [1, 4, 0], sevenths: true, dominant: true },
+    { id: 'turnaround', cat: 'jazz', degrees: [0, 5, 1, 4], sevenths: true, dominant: true },
+    { id: 'chain', cat: 'jazz', degrees: [2, 5, 1, 4], sevenths: true, dominant: true },
+    { id: 'modal', cat: 'modal', degrees: [0, 6, 3, 0], modes: ['mixolydian', 'dorian', 'minor'] },
+    { id: 'rock3', cat: 'modal', degrees: [0, 6, 3], modes: ['mixolydian', 'dorian', 'minor'] },
+    { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4], dominant: true, modes: ['minor'] },
+    { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6], modes: ['minor'] },
     { id: 'drone', cat: 'modal', degrees: [0] },
   ];
   const PROG_CATS = ['pop', 'classic', 'jazz', 'modal'];
+  /** Passt die Folge zum Modus? Eigene Folgen (ohne `modes`) immer. */
+  const progFitsMode = (prog, modeId) => !prog?.modes || prog.modes.includes(modeId);
+  /** Modus, der beim Wählen einer Folge gilt: der bisherige, wenn er passt. */
+  const modeForProg = (prog, modeId) => (progFitsMode(prog, modeId) ? modeId : prog.modes[0]);
+  /** Folgen, die der Zufall zu einem Modus wählen darf. */
+  const progsForRandom = (modeId) => PROGRESSIONS.filter((p) => p.id !== 'drone' && progFitsMode(p, modeId));
   const PROG_MAX_CHORDS = 16;
   const PROG_MAX_OWN = 24;
   const progKey = (kind, id) => `lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`;
@@ -409,11 +449,33 @@
       if (!degrees) return null;
       seen.add(p.id);
       const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : 'Progression';
-      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true };
+      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true, dominant: p.dominant === true, dom7: p.dom7 === true };
     }).filter(Boolean);
   }
 
-  function degreeSemis(steps, deg) { return steps[mod(deg, 7)] + 12 * Math.floor(deg / 7); }
+  /**
+   * Halbtöne einer Melodiestufe `deg` über dem Akkordgrundton (Stufe
+   * `shift`), plus Alteration `alt` (−1/+1, siehe MELODIES). Blue-Note-
+   * Regel: Stufe 2 (Terz) mit alt −1 über einem Akkord mit schon kleiner
+   * Terz bleibt die kleine Terz (über a-Moll c, nie h).
+   */
+  function melodyOffset(steps, shift, deg, alt = 0) {
+    const semis = degreeSemis(steps, deg + shift);
+    if (alt === -1 && mod(deg, 7) === 2 && degreeSemis(steps, shift + 2) - degreeSemis(steps, shift) === 3) return semis;
+    return semis + alt;
+  }
+  /**
+   * MIDI-Ton einer Melodiestufe. ref 'chord' (Vorlagen, Editor, alte
+   * Aufnahmen): Stufe über dem Grundton des klingenden Akkords `h` — das
+   * Motiv wandert mit der Folge. ref 'key' (Aufnahmen ab v302): Stufe über
+   * der Tonika in der Tonleiter des Modus — klingt über jedem Akkord gleich,
+   * auch wenn die Aufnahme kürzer ist als die Folge.
+   */
+  function melodyMidi(deg, alt, h, ref, modeSteps, melodyOctave) {
+    const base = 12 * (melodyOctave + 1) + foldRoot(h.keyRoot);
+    if (ref === 'key') return base + degreeSemis(modeSteps, deg) + alt;
+    return base + melodyOffset(h.steps, foldDegree(h.deg), deg, alt);
+  }
   /** Stufe in den Bereich -3…3 falten — ein Motiv, das dem Akkord folgt,
    *  soll nicht mit jeder höheren Stufe weiter nach oben wandern. */
   function foldDegree(deg) { const d = mod(deg, 7); return d > 3 ? d - 7 : d; }
@@ -424,16 +486,8 @@
     const names = t('lab.noteNames').split(',');
     return names.length === 12 ? names : 'C,C♯,D,E♭,E,F,F♯,G,A♭,A,B♭,B'.split(',');
   }
-  const noteLabel = (midi) => `${noteNames()[mod(midi, 12)]}${Math.floor(midi / 12) - 1}`;
-
-  function chordQuality(steps, deg) {
-    const root = degreeSemis(steps, deg);
-    const third = degreeSemis(steps, deg + 2) - root;
-    const fifth = degreeSemis(steps, deg + 4) - root;
-    if (fifth === 6) return 'dim';
-    if (fifth === 8) return 'aug';
-    return third === 3 ? 'min' : 'maj';
-  }
+  // Sprache der Tonnamen (spell/noteLabel), gesetzt in ChorGrooveLab.open.
+  let labLang = 'de';
 
   function romanNumeral(steps, deg, sevenths) {
     const d = mod(deg, 7);
@@ -444,59 +498,18 @@
     return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '');
   }
 
-  function chordName(keyRoot, steps, deg, sevenths) {
+  function chordName(keyRoot, steps, deg, sevenths, modeId = 'major', lang = labLang) {
     const d = mod(deg, 7);
     const quality = chordQuality(steps, d);
-    const name = noteNames()[mod(keyRoot + steps[d], 12)];
+    const name = spell(keyRoot + steps[d], keyRoot, modeId, lang);
     if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°');
     const seventh = sevenths ? (degreeSemis(steps, d + 6) - steps[d] === 11 ? 'maj7' : '7') : '';
     return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh;
   }
 
-  function chordPitchClasses(keyRoot, steps, deg, sevenths) {
-    return (sevenths ? [0, 2, 4, 6] : [0, 2, 4]).map((o) => mod(keyRoot + degreeSemis(steps, deg + o), 12));
-  }
-
-  // Stimmumfänge (MIDI) für den vierstimmigen Satz — bewusst die bequeme
-  // Mittellage, nicht die Extreme: das ist eine Übe-Hilfe, kein Solo.
-  const SATB = ['S', 'A', 'T', 'B'];
-  const SATB_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 60] };
+  // Farbe und Name je Stimme (Umfänge: VOICE_RANGES in harmony.js).
   const SATB_COLOR = { S: '#4ECDC4', A: '#6BCB77', T: '#FFD93D', B: '#A78BFA' }; // wie VOICE_COLOR in app.js
   const SATB_KEY = { S: 'lab.voiceS', A: 'lab.voiceA', T: 'lab.voiceT', B: 'lab.voiceB' };
-
-  /**
-   * Ein Akkord als vierstimmiger Satz. Bass immer auf dem Grundton; für
-   * Sopran/Alt/Tenor werden alle Lagen im Umfang durchprobiert (wenige
-   * hundert Kombinationen) und die mit der kleinsten Bewegung gegenüber dem
-   * vorigen Akkord gewählt — das ist Stimmführung im Kleinen. Strafen für
-   * fehlende Terz, verdoppelte Terz, Stimmkreuzung und zu weite Abstände
-   * halten den Satz lehrbuchnah.
-   */
-  function voiceChord(pcs, prev) {
-    const within = ([lo, hi], pred) => { const out = []; for (let m = lo; m <= hi; m++) if (pred(m)) out.push(m); return out; };
-    const nearest = (list, target) => list.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
-    const B = nearest(within(SATB_RANGES.B, (m) => mod(m, 12) === pcs[0]), prev.B);
-    const isChordTone = (m) => pcs.includes(mod(m, 12));
-    let best = null;
-    let bestScore = Infinity;
-    for (const T of within(SATB_RANGES.T, isChordTone)) {
-      if (T <= B || T - B > 19) continue;
-      for (const A of within(SATB_RANGES.A, isChordTone)) {
-        if (A <= T || A - T > 12) continue;
-        for (const S of within(SATB_RANGES.S, isChordTone)) {
-          if (S <= A || S - A > 12) continue;
-          const voices = [B, T, A, S].map((m) => mod(m, 12));
-          let score = Math.abs(S - prev.S) + Math.abs(A - prev.A) + Math.abs(T - prev.T);
-          if (!voices.includes(pcs[1])) score += 20;
-          if (pcs[2] !== undefined && !voices.includes(pcs[2])) score += 4;
-          if (pcs[3] !== undefined && !voices.includes(pcs[3])) score += 6;
-          if (voices.filter((pc) => pc === pcs[1]).length > 1) score += 3;
-          if (score < bestScore) { bestScore = score; best = { S, A, T, B }; }
-        }
-      }
-    }
-    return best || { S: prev.S, A: prev.A, T: prev.T, B };
-  }
 
   /* ------------------------------------------------------------------------
      SONSTIGE AUSWAHLLISTEN
@@ -533,6 +546,39 @@
     ['shortLong', 'lab.rhythmShortLong', [.5, 1.5]],
     ['gallop', 'lab.rhythmGallop', [.5, .5, 1]],
   ];
+
+  /**
+   * Manueller Arp im Akkord: Taste auf den nächsten Akkordton runden (bei
+   * Gleichstand nach unten), dann die Muster-Abstände auf der Leiter der
+   * Akkordtöne: je 2 Stufen = nächster Akkordton, 7 = Oktave. E + Dreiklang
+   * über F-Dur ergibt f–a–c statt e–g–h. `h`: Harmonie wie _harmonyAt.
+   */
+  function chordArpNotes(midi, h, offsets) {
+    const rootPc = mod(h.keyRoot + h.steps[mod(h.deg, 7)], 12);
+    const rel = (j) => degreeSemis(h.steps, h.deg + j) - degreeSemis(h.steps, h.deg);
+    const ladder = (h.sevenths ? [0, 2, 4, 6] : [0, 2, 4]).map(rel);
+    let best = null;
+    for (let base = midi - 24; base <= midi + 12; base++) {
+      if (mod(base, 12) !== rootPc) continue;
+      ladder.forEach((semis, i) => {
+        const cand = base + semis;
+        const dist = Math.abs(cand - midi);
+        if (!best || dist < best.dist || (dist === best.dist && cand < best.midi)) best = { midi: cand, i, base, dist };
+      });
+    }
+    const n = ladder.length;
+    return offsets.map((o) => {
+      if (o === 7) return best.midi + 12;
+      const k = best.i + o / 2;
+      return best.base + ladder[mod(k, n)] + 12 * Math.floor(k / n);
+    });
+  }
+
+  /** Längen (in 16teln) einer Arp-Rhythmuszelle beim Tempo `division`. */
+  const arpRhythmLengths = (cells, division) => cells.map((c) => c * 2 * division);
+  // Manueller Arp: Muster in der Tonart (wie bisher) oder im Akkord — dann
+  // rundet jede Taste auf den nächsten Akkordton, und Terzen sind Akkordtöne.
+  const ARP_REFS = [['key', 'lab.arpRefKey'], ['chord', 'lab.arpRefChord']];
 
   // Filter-Kategorien; 'all' (kein Filter) hat keine eigene Bubble, sondern ein X.
   const BEAT_CATS = ['calm', 'dance', 'funky', 'breaks'];
@@ -581,21 +627,27 @@
 
   function defaultState() {
     return {
-      bpm: 106, swing: 0, pump: 0,
+      // bpm im Tempo-Bezug der Taktart (tempoRef 'beat' seit v305, vorher
+      // immer Viertel); eighths: genaues Tempo in Achteln pro Minute — bleibt
+      // beim Taktartwechsel gleich, damit nichts durch Runden wandert.
+      bpm: 106, tempoRef: 'beat', eighths: 212, swing: 0, pump: 0,
       patternIndex: 0, beat: beatFromPattern(DRUM_PATTERNS[0]), beatEdited: false,
       trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, bass: true },
       bassSoundId: 'pluck',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
-      progDegrees: null, progSevenths: false, progName: null, progOwnId: null,
+      progDegrees: null, progSevenths: false, progDominant: false, progDom7: false, progName: null, progOwnId: null,
       chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       droneOn: false, droneFifth: true,
       melodyIndex: 0, melodyOn: true, melodyOctave: 4,
       // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
       // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
       melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
+      // Bezug der Stufen in melodyBars: 'chord' (Grundton des klingenden
+      // Akkords, Vorlagen/Editor) oder 'key' (Tonika, Aufnahmen).
+      melodyRef: 'chord',
       arpOn: false, arpAuto: false, arpPattern: 'triad', arpAutoPattern: 'triad', arpMode: 'up',
-      arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1,
+      arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1, arpRef: 'key',
       keysLayout: 'piano',
       octave: 4,
       sound: soundFromPreset(presetIndexByName('Velvet Choir')),
@@ -614,6 +666,10 @@
   // Drei Oktaven: 1–7 höher, 1–7 (Mitte), 1–7 tiefer.
   const MEL_HIGH = 13;
   const MEL_LOW = -7;
+  // Tonartbezogene Aufnahmen (ref 'key') werden als Ganzes nur in Oktaven
+  // verschoben, nie Ton für Ton gefaltet — dafür dürfen sie weiter reichen.
+  const MEL_REC_HIGH = 20;
+  const MEL_REC_LOW = -14;
   const MEL_ROW_PX = 21;
   const MEL_LENGTHS = [[1, '1/16'], [2, '1/8'], [4, '1/4'], [6, '1/4 ·'], [8, '1/2']];
   const MEL_MAX_BARS = 4;
@@ -623,16 +679,18 @@
   /** Takte einer Melodie prüfen: [Schritt, Stufe, Länge, Vorzeichen?] —
    *  einstimmig, im Takt, Stufe im Editorbereich, Vorzeichen nur ±1.
    *  Liefert null, wenn nichts Brauchbares übrig bleibt. */
-  function sanitizeMelodyBars(raw, meter) {
+  /** `wide`: Stufenbereich tonartbezogener Aufnahmen (MEL_REC_…). */
+  function sanitizeMelodyBars(raw, meter, wide = false) {
     if (!hasOwn(METERS, meter) || !Array.isArray(raw) || !raw.length) return null;
     const steps = METERS[meter].steps;
+    const [low, high] = wide ? [MEL_REC_LOW, MEL_REC_HIGH] : [MEL_LOW, MEL_HIGH];
     return raw.slice(0, MEL_MAX_BARS).map((bar) => {
       if (!Array.isArray(bar)) return [];
       // Position und Länge dürfen gebrochen sein (eingespielt, ohne Raster).
       const r2 = (v) => Math.round(v * 100) / 100;
       const notes = bar
         .filter((n) => Array.isArray(n) && Number.isFinite(n[0]) && Number.isInteger(n[1]) && Number.isFinite(n[2])
-          && n[0] >= 0 && n[0] < steps && n[1] >= MEL_LOW && n[1] <= MEL_HIGH && n[2] >= .1)
+          && n[0] >= 0 && n[0] < steps && n[1] >= low && n[1] <= high && n[2] >= .1)
         .slice(0, 64)
         .map(([at, deg, len, alt]) => {
           // Ein Ton darf über den Taktstrich klingen (gehalten eingespielt),
@@ -648,6 +706,64 @@
     });
   }
 
+  /**
+   * Mitschrift einer Aufnahme → Takte aus [Schritt, Stufe, Länge, Vorzeichen?]
+   * in Aufnahme-Reihenfolge, Stufen relativ zur TONIKA (ref 'key'): so
+   * klingt eine Aufnahme, die kürzer ist als die Akkordfolge, beim Loopen
+   * über jedem Akkord mit denselben Tönen (Befund 16 — vorher akkordbezogen,
+   * also über fremden Akkorden transponiert). Töne außerhalb der Tonleiter
+   * als Stufe darunter mit ♯. Die ganze Aufnahme wird nur in Oktaven
+   * verschoben (erst in den Editorbereich, sonst in MEL_REC_…) — keine
+   * einzelnen Töne gefaltet, die Kontur bleibt.
+   * `notes`: [{ midi, t0, t1 }] in Sekunden der Audio-Uhr.
+   */
+  function recNotesToBars(notes, { startTime, stepSec, bars: barCount, barSteps, meter, keyRoot, modeSteps, melodyOctave }) {
+    const total = barCount * barSteps;
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const base = 12 * (melodyOctave + 1) + foldRoot(keyRoot);
+    const list = notes.map(({ midi, t0, t1 }) => {
+      let pos = (t0 - startTime) / stepSec;
+      // knapp vor dem Einsatz angeschlagen zählt als "auf Eins"
+      if (pos < 0 && pos > -.5) pos = 0;
+      const endPos = Math.min(total, (t1 - startTime) / stepSec);
+      if (pos < 0 || pos >= total) return null;
+      const target = midi - base;
+      let deg = null;
+      let alt = 0;
+      for (let d = -35; d <= 42 && deg === null; d++) if (degreeSemis(modeSteps, d) === target) deg = d;
+      for (let d = -35; d <= 42 && deg === null; d++) if (degreeSemis(modeSteps, d) === target - 1) { deg = d; alt = 1; }
+      if (deg === null) return null;
+      return { pos, len: Math.max(.25, endPos - pos), deg, alt };
+    }).filter(Boolean).sort((a, b) => a.pos - b.pos);
+    if (list.length) {
+      const hi = Math.max(...list.map((n) => n.deg));
+      const lo = Math.min(...list.map((n) => n.deg));
+      const fits = (low, high, m) => lo + m >= low && hi + m <= high;
+      let move = 0;
+      // Oktave suchen, in der alles im Editorbereich liegt, sonst im
+      // erweiterten Aufnahmebereich; am nächsten an der gespielten Lage.
+      const candidates = [0, -7, 7, -14, 14, -21, 21];
+      move = candidates.find((m) => fits(MEL_LOW, MEL_HIGH, m))
+        ?? candidates.find((m) => fits(MEL_REC_LOW, MEL_REC_HIGH, m)) ?? 0;
+      list.forEach((n) => { n.deg += move; });
+    }
+    const bars = Array.from({ length: barCount }, () => []);
+    list.forEach((n, i) => {
+      // erst runden, dann Takt bestimmen — sonst landet 15,999… als
+      // Schritt 16 im ersten Takt und fällt aus dem Raster.
+      const p = Math.min(total - .01, r2(n.pos));
+      const bar = Math.floor(p / barSteps);
+      const at = r2(p - bar * barSteps);
+      // Gehaltene Töne klingen über den Taktstrich weiter — nur bis zum
+      // nächsten Anschlag (einstimmig) und bis zum Ende der Aufnahme.
+      const next = list[i + 1];
+      const limit = Math.min(next ? next.pos - n.pos : Infinity, total - n.pos);
+      const len = r2(Math.max(.25, Math.min(n.len, limit)));
+      bars[bar].push(n.alt ? [at, n.deg, len, n.alt] : [at, n.deg, len]);
+    });
+    return sanitizeMelodyBars(bars, meter, true) || bars;
+  }
+
   /** Bibliothek eigener Melodien (liegt neben den Speicherplätzen, nicht im
    *  Stand — ein geladener Speicherplatz soll sie nicht überschreiben). */
   function sanitizeMelodyLibrary(raw) {
@@ -655,11 +771,14 @@
     const seen = new Set();
     return raw.slice(0, MEL_MAX_OWN).map((m) => {
       if (!m || typeof m !== 'object' || typeof m.id !== 'string' || seen.has(m.id)) return null;
-      const bars = sanitizeMelodyBars(m.bars, m.meter);
+      const key = m.ref === 'key';
+      const bars = sanitizeMelodyBars(m.bars, m.meter, key);
       if (!bars) return null;
       seen.add(m.id);
       const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 40) : 'Melody';
-      return { id: m.id.slice(0, 24), name, meter: m.meter, bars };
+      // ref 'key': Stufen relativ zur Tonika (Aufnahmen ab v302); fehlt es,
+      // sind sie wie bisher relativ zum Grundton des klingenden Akkords.
+      return key ? { id: m.id.slice(0, 24), name, meter: m.meter, bars, ref: 'key' } : { id: m.id.slice(0, 24), name, meter: m.meter, bars };
     }).filter(Boolean);
   }
 
@@ -694,11 +813,17 @@
     const oneOf = (v, list, fb) => (list.includes(v) ? v : fb);
     const obj = (v) => (v && typeof v === 'object' ? v : {});
 
-    s.bpm = Math.round(num(raw.bpm, 40, 180, s.bpm));
+
     s.swing = num(raw.swing, 0, 1, s.swing);
     s.pump = num(raw.pump, 0, 1, s.pump);
     s.patternIndex = int(raw.patternIndex, 0, DRUM_PATTERNS.length - 1, 0);
     const pattern = DRUM_PATTERNS[s.patternIndex];
+    // Alte Stände (ohne tempoRef) zählten immer in Vierteln.
+    const fromQuarter = raw.tempoRef !== 'beat';
+    const rawBpm = typeof raw.bpm === 'number' && fromQuarter ? raw.bpm * 2 / eighthsPerBeat(pattern.meter) : raw.bpm;
+    s.bpm = Math.round(num(rawBpm, BPM_MIN, BPM_MAX, s.bpm));
+    s.eighths = !fromQuarter && typeof raw.eighths === 'number' && Number.isFinite(raw.eighths)
+      && Math.round(raw.eighths / eighthsPerBeat(pattern.meter)) === s.bpm ? raw.eighths : s.bpm * eighthsPerBeat(pattern.meter);
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
@@ -711,6 +836,13 @@
       s.progSevenths = bool(raw.progSevenths, false);
       s.progName = typeof raw.progName === 'string' && raw.progName.trim() ? raw.progName.trim().slice(0, 40) : null;
       s.progOwnId = typeof raw.progOwnId === 'string' ? raw.progOwnId.slice(0, 24) : null;
+      // progDominant gibt es erst seit v296. Fehlt es, erbt eine bearbeitete
+      // Vorlage (ohne Namen) die Einstellung der Vorlage, alles Eigene bleibt
+      // beim bisherigen Moll-v.
+      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+      s.progDominant = bool(raw.progDominant, !s.progName && !!base.dominant);
+      // progDom7 (Dominantseptakkorde, Blues) ebenso, seit v298.
+      s.progDom7 = bool(raw.progDom7, !s.progName && !!base.dom7);
     }
     s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
     s.chordsOn = bool(raw.chordsOn, false);
@@ -728,6 +860,7 @@
     s.arpMode = oneOf(raw.arpMode, ARP_MODES.map(([id]) => id), 'up');
     s.arpDivision = oneOf(raw.arpDivision, ARP_DIVISIONS.map(([v]) => v), 2);
     s.arpOctaves = oneOf(raw.arpOctaves, [1, 2, 3], 1);
+    s.arpRef = oneOf(raw.arpRef, ARP_REFS.map(([id]) => id), 'key');
     s.octave = int(raw.octave, 2, 5, 4);
     // Ältere Stände hatten je Ebene einen eigenen Klang — dann gilt der der Melodie.
     s.sound = sanitizeSound(raw.sound || obj(raw.sounds).melody, s.sound);
@@ -752,8 +885,9 @@
       s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === pattern.meter));
     }
     if (raw.melodyMeter === pattern.meter) {
-      s.melodyBars = sanitizeMelodyBars(raw.melodyBars, pattern.meter);
+      s.melodyBars = sanitizeMelodyBars(raw.melodyBars, pattern.meter, raw.melodyRef === 'key');
       if (s.melodyBars) {
+        s.melodyRef = raw.melodyRef === 'key' ? 'key' : 'chord';
         s.melodyMeter = pattern.meter;
         s.melodyName = typeof raw.melodyName === 'string' && raw.melodyName.trim() ? raw.melodyName.trim().slice(0, 40) : null;
         s.melodyOwnId = typeof raw.melodyOwnId === 'string' ? raw.melodyOwnId.slice(0, 24) : null;
@@ -1699,7 +1833,7 @@
     _summary(state) {
       const pattern = DRUM_PATTERNS[state.patternIndex];
       const mode = MODES.find((m) => m.id === state.modeId);
-      return `${pattern.name} · ${noteNames()[state.keyRoot]} ${t(mode.nameKey)} · ${state.bpm} BPM`;
+      return `${pattern.name} · ${spell(state.keyRoot, state.keyRoot, state.modeId, labLang)} ${t(mode.nameKey)} · ${tempoSymbol(pattern.meter)} = ${state.bpm}`;
     }
 
     /* ---- Reiter ---- */
@@ -1716,34 +1850,50 @@
     _pattern() { return DRUM_PATTERNS[this.state.patternIndex]; }
     _meter() { return this._pattern().meter; }
     _barSteps() { return METERS[this._meter()].steps; }
-    _stepSeconds() { return 60 / this.state.bpm / 4; }
+    _stepSeconds() { return stepSecondsFor(this.state.bpm, this._meter()); }
+    /** Tempo setzen (im Tempo-Bezug der aktuellen Taktart). */
+    _setBpm(bpm) {
+      const s = this.state;
+      s.bpm = clamp(Math.round(bpm), BPM_MIN, BPM_MAX);
+      s.eighths = s.bpm * eighthsPerBeat(this._meter());
+    }
+    /** Nach einem Taktartwechsel: Achtel gleich schnell, Anzeige im neuen Bezug. */
+    _convertTempo() {
+      const s = this.state;
+      s.bpm = clamp(Math.round(s.eighths / eighthsPerBeat(this._meter())), BPM_MIN, BPM_MAX);
+    }
     _mode() { return MODES.find((m) => m.id === this.state.modeId) || MODES[0]; }
     /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
     _progression() {
       const s = this.state;
       const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
       if (!s.progDegrees) return base;
-      return { ...base, degrees: s.progDegrees, sevenths: s.progSevenths, custom: true };
+      // Eigene/neue Folgen (mit Namen) erben von der zuletzt gewählten
+      // Vorlage nur Id und Kategorie — keine Modus-Bindung.
+      const from = s.progName ? { id: base.id, cat: base.cat } : base;
+      return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, custom: true };
     }
+    /** Tonleiter für den Akkord auf Stufe `deg` (siehe chordSteps). */
+    _stepsFor(deg, prog = this._progression()) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg); }
     _progName() {
       const s = this.state;
       return s.progName || t(progKey('Name', (PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0]).id));
     }
     _clearProgEdit() {
       const s = this.state;
-      s.progDegrees = null; s.progSevenths = false; s.progName = null; s.progOwnId = null;
+      s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
       this.ui.progUndo = []; this.ui.progRedo = []; this.ui.progSel = 0;
     }
     /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
     _melody() {
       const s = this.state;
       const base = MELODIES[s.melodyIndex];
-      if (!s.melodyBars) return base;
-      return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars };
+      if (!s.melodyBars) return { ...base, ref: 'chord' };
+      return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars, ref: s.melodyRef };
     }
     _clearMelodyEdit() {
       const s = this.state;
-      s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null;
+      s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord';
       this.ui.melUndo = []; this.ui.melRedo = []; this.ui.melBar = 0;
     }
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
@@ -1755,8 +1905,9 @@
       const barSteps = this._barSteps();
       const bar = Math.floor(g / barSteps);
       const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
+      const deg = prog.degrees[index];
       return {
-        keyRoot: s.keyRoot, steps: this._mode().steps, deg: prog.degrees[index], sevenths: !!prog.sevenths,
+        keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog), deg, sevenths: !!prog.sevenths,
         index, chordStart: g % (barSteps * s.chordBars) === 0,
       };
     }
@@ -1769,19 +1920,22 @@
     _voicings() {
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}`;
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`;
       if (this._voicingCache?.key === key) return this._voicingCache.list;
-      const steps = this._mode().steps;
-      let prev = { S: 67, A: 62, T: 55, B: 48 };
-      let list = [];
-      for (let pass = 0; pass < 2; pass++) {
-        list = prog.degrees.map((deg) => {
-          prev = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), prev);
-          return prev;
-        });
-      }
+      const list = voiceProgressionSatb(s.keyRoot, this._mode(), prog);
       this._voicingCache = { key, list };
       return list;
+    }
+
+    /** Tonart, in der die Töne des Akkords `index` geschrieben werden:
+     *  sonst die gewählte, bei Dominantseptakkorden (Blues) die Mixolydisch-
+     *  Leiter des Akkordgrundtons (C7 in C: B, nicht Ais). */
+    _spellKeyAt(index) {
+      const s = this.state;
+      const prog = this._progression();
+      const deg = prog.degrees[index] ?? prog.degrees[0];
+      if (prog.dom7) return [s.keyRoot + this._mode().steps[mod(deg, 7)], 'mixolydian'];
+      return [s.keyRoot, s.modeId];
     }
 
     _bassMidi(h, bassDeg) {
@@ -1858,13 +2012,14 @@
         s.patternIndex = Math.floor(Math.random() * DRUM_PATTERNS.length);
         s.beat = beatFromPattern(this._pattern());
         s.beatEdited = false;
-        s.bpm = pick([78, 86, 94, 102, 108, 116, 124, 132]);
+        // Tempi als Viertel gedacht — in 6/8 in punktierte Viertel umgerechnet.
+        this._setBpm(pick([78, 86, 94, 102, 108, 116, 124, 132]) * 2 / eighthsPerBeat(this._meter()));
         s.swing = pick([0, 0, 0, .25, .45]);
       }
       if (!locks.harmony) {
         s.keyRoot = Math.floor(Math.random() * 12);
         s.modeId = pick(MODES).id;
-        s.progId = pick(PROGRESSIONS.filter((p) => p.id !== 'drone')).id;
+        s.progId = pick(progsForRandom(s.modeId)).id;
         this._clearProgEdit();
       }
       if (!locks.melody) {
@@ -1896,7 +2051,7 @@
       if (this.tapTimes.length < 2) return;
       const recent = this.tapTimes.slice(-5);
       const avg = (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
-      this.state.bpm = clamp(Math.round(60000 / avg), 40, 180);
+      this._setBpm(60000 / avg);
       this._onTempoChange();
     }
 
@@ -1929,14 +2084,32 @@
       this.schedulerTimer = global.setTimeout(() => this._scheduleAhead(), 25);
     }
 
+    /**
+     * Swing-Verzögerung eines Schritts. Standard: jede zweite Sechzehntel
+     * bis zu einer halben Sechzehntel später. Loops mit `swingUnit: 8`
+     * swingen Achtel: der Achtel-Offbeat (Schritt 2, 6, 10, 14) kommt bis
+     * zu einer Sechzehntel später (≈ .67 = Triolen-Feel), die Sechzehntel
+     * dazwischen werden anteilig mitverschoben — jeder Schlag wird gedehnt
+     * bzw. gestaucht, die Reihenfolge bleibt.
+     */
+    _swingOffset(step, stepSec) {
+      const swing = this.state.swing;
+      if (!swing) return 0;
+      if (this._pattern().swingUnit === 8) {
+        const d = swing * stepSec;
+        const p = step % 4;
+        return p === 0 ? 0 : p === 2 ? d : d / 2;
+      }
+      return step % 2 === 1 ? swing * .5 * stepSec : 0;
+    }
+
     _playStep(g, time, h) {
       const s = this.state;
       this._playAutomation(g, time);
       const stepSec = this._stepSeconds();
       const barSteps = this._barSteps();
       const step = g % barSteps;
-      // Swing: jede zweite Sechzehntel bis zu einer halben Sechzehntel später.
-      const swung = time + (step % 2 === 1 ? s.swing * .5 * stepSec : 0);
+      const swung = time + this._swingOffset(step, stepSec);
 
       const beat = s.beat;
       for (const track of DRUM_TRACKS) {
@@ -1954,7 +2127,7 @@
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
-        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars);
+        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key');
       } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
 
       if (s.arpOn) {
@@ -1967,16 +2140,17 @@
      * Fällt auf diesen Sechzehntel-Schritt ein Arp-Ton? Liefert dessen
      * laufende Nummer (für die Tonfolge) und Länge in Schritten, sonst null.
      * "Gerade" = alle arpDivision Schritte; die punktierten Rhythmen
-     * wiederholen eine Längen-Zelle (lang–kurz, kurz–lang, Galopp) auf Basis
-     * einer Achtel (bzw. Viertel bei langsamem Tempo) — Sechzehntel lassen
-     * sich im Schrittraster nicht weiter teilen.
+     * wiederholen eine Längen-Zelle (lang–kurz, kurz–lang, Galopp), die
+     * zwei Töne des gewählten Tempos umfasst: 1/16 + punktiert = 3+1
+     * Sechzehntel, 1/8 + punktiert = 6+2 (Befund 36 — vorher klangen 1/16,
+     * 1/8 und 1/8· gleich). Die Zellen sind Vielfache von ½, die Längen
+     * also immer ganze Schritte.
      */
     _arpTrigger(g) {
       const s = this.state;
       const cells = ARP_RHYTHMS.find(([id]) => id === s.arpRhythm)?.[2];
       if (!cells) return g % s.arpDivision === 0 ? { index: g / s.arpDivision, len: s.arpDivision } : null;
-      const unit = s.arpDivision >= 4 ? 4 : 2;
-      const lengths = cells.map((c) => c * unit);
+      const lengths = arpRhythmLengths(cells, s.arpDivision);
       const cycle = lengths.reduce((a, b) => a + b, 0);
       const pos = g % cycle;
       let at = 0;
@@ -2043,7 +2217,10 @@
         seq = offsets.map((o) => root + degreeSemis(h.steps, deg + o));
       } else {
         const offsets = ARP_PATTERNS.find(([id]) => id === s.arpPattern)[2];
-        seq = this._arpHeld().flatMap((midi) => offsets.map((o) => this._diatonicAbove(midi, o)));
+        const chord = s.arpRef === 'chord' ? (h || this._currentHarmony()) : null;
+        seq = this._arpHeld().flatMap((midi) => (chord
+          ? chordArpNotes(midi, chord, offsets)
+          : offsets.map((o) => this._diatonicAbove(midi, o))));
       }
       if (!seq.length) return [];
       const spread = [];
@@ -2108,18 +2285,21 @@
       }
     }
 
-    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars) {
+    /** Klingender Ton einer Melodiestufe über der Harmonie `h`. */
+    _melodyMidi(deg, alt, h, ref) {
+      return melodyMidi(deg, alt, h, ref, this._mode().steps, this.state.melodyOctave);
+    }
+
+    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref) {
       const s = this.state;
       const barSteps = this._barSteps();
       const notes = bars[Math.floor(g / barSteps) % bars.length];
       const step = g % barSteps;
-      const shift = foldDegree(h.deg);
-      const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
       for (const [at, deg, len, alt = 0] of notes) {
         // Eingespielte Töne liegen zwischen den Sechzehnteln: im Schritt, in
         // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
         if (Math.floor(at) !== step) continue;
-        const midi = base + degreeSemis(h.steps, deg + shift) + alt;
+        const midi = this._melodyMidi(deg, alt, h, ref);
         const barIndex = Math.floor(g / barSteps) % bars.length;
         const room = bars.length * barSteps - (barIndex * barSteps + at);
         this.engine.playTone(s.sound, midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
@@ -2404,11 +2584,12 @@
     _renderHarmony() {
       const s = this.state;
       const mode = this._mode();
-      const names = noteNames();
-      this._options(this.$('[data-field="keyRoot"]'), names.map((name, i) => [i, name]), s.keyRoot);
+      // Tonart-Namen je Modus geschrieben (a-Moll-Liste: Cis, Dis, Fis, Gis).
+      const keyNames = Array.from({ length: 12 }, (_, pc) => spell(pc, pc, s.modeId, labLang));
+      this._options(this.$('[data-field="keyRoot"]'), keyNames.map((name, i) => [i, name]), s.keyRoot);
       this._options(this.$('[data-field="modeId"]'), MODES.map((m) => [m.id, t(m.nameKey)]), s.modeId);
       this._renderPickerFor('prog');
-      this.$('.key-name').textContent = `${names[s.keyRoot]} ${t(mode.nameKey)}`;
+      this.$('.key-name').textContent = `${keyNames[s.keyRoot]} ${t(mode.nameKey)}`;
       this.$('[data-field="chordBars"]').value = String(s.chordBars);
       this._renderLock('harmony');
 
@@ -2423,7 +2604,6 @@
     _renderChordStrip() {
       const s = this.state;
       const prog = this._progression();
-      const mode = this._mode();
       const current = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : -1;
       const host = this.$('.chord-strip');
       const editing = this.ui.progEdit;
@@ -2439,9 +2619,9 @@
         }
         const roman = document.createElement('span');
         roman.className = 'chord-roman';
-        roman.textContent = romanNumeral(mode.steps, deg, prog.sevenths);
+        roman.textContent = romanNumeral(this._stepsFor(deg, prog), deg, prog.sevenths);
         const name = document.createElement('strong');
-        name.textContent = chordName(s.keyRoot, mode.steps, deg, prog.sevenths);
+        name.textContent = chordName(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths, s.modeId);
         box.append(roman, name);
         return box;
       }));
@@ -2463,7 +2643,7 @@
         name.textContent = t(SATB_KEY[voice]);
         const note = document.createElement('strong');
         note.className = 'satb-note';
-        note.textContent = noteLabel(voicing[voice]);
+        note.textContent = noteLabel(voicing[voice], ...this._spellKeyAt(index), labLang);
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'chip';
@@ -2633,12 +2813,13 @@
      *  eine Kopie der Vorlage an) — vorher den Stand fürs Rückgängig merken. */
     _melBegin() {
       const s = this.state;
-      this.ui.melUndo.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId]));
+      this.ui.melUndo.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId, s.melodyRef]));
       if (this.ui.melUndo.length > 60) this.ui.melUndo.shift();
       this.ui.melRedo = [];
       if (!s.melodyBars) {
         s.melodyBars = MELODIES[s.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
         s.melodyMeter = this._meter();
+        s.melodyRef = 'chord';
       }
       return s.melodyBars;
     }
@@ -2647,7 +2828,7 @@
      *  eigene Melodie in der Bibliothek nachziehen, neu zeichnen. */
     _melCommit({ persist = true } = {}) {
       const s = this.state;
-      if (s.melodyBars && !s.melodyName && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
+      if (s.melodyBars && !s.melodyName && s.melodyRef !== 'key' && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
         s.melodyBars = null; s.melodyMeter = null;
       }
       const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
@@ -2663,8 +2844,8 @@
       const snap = from.pop();
       if (!snap) return;
       const s = this.state;
-      to.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId]));
-      [s.melodyBars, s.melodyName, s.melodyOwnId] = JSON.parse(snap);
+      to.push(JSON.stringify([s.melodyBars, s.melodyName, s.melodyOwnId, s.melodyRef]));
+      [s.melodyBars, s.melodyName, s.melodyOwnId, s.melodyRef = 'chord'] = JSON.parse(snap);
       s.melodyMeter = s.melodyBars ? this._meter() : null;
       this._melCommit();
     }
@@ -2691,7 +2872,7 @@
       try { await this._ensureAudio(); } catch { return; }
       const s = this.state;
       const h = this._harmonyAt(barIndex * this._barSteps());
-      const midi = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot) + degreeSemis(h.steps, deg + foldDegree(h.deg)) + (alt || 0);
+      const midi = this._melodyMidi(deg, alt || 0, h, this._melody().ref);
       this.engine.playTone(s.sound, midi, this.engine.ctx.currentTime + .01, .22, this._stepSeconds() * 2.5,
         { layer: 'keys', stepSeconds: this._stepSeconds() });
     }
@@ -2758,11 +2939,13 @@
       while (lib.some((m) => m.name === tf('lab.myMelodyN', { n }))) n++;
       const name = s.melodyName && !s.melodyOwnId && s.melodyName !== t('lab.newMelody') ? s.melodyName : tf('lab.myMelodyN', { n });
       const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      lib.push({ id, name, meter: this._meter(), bars });
+      const ref = s.melodyBars ? s.melodyRef : 'chord';
+      lib.push(ref === 'key' ? { id, name, meter: this._meter(), bars, ref } : { id, name, meter: this._meter(), bars });
       s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
       s.melodyMeter = this._meter();
       s.melodyName = name;
       s.melodyOwnId = id;
+      s.melodyRef = ref;
       this._persist();
       this._renderMelody();
       this._setStatus(tf('lab.melSaved', { name }));
@@ -3063,6 +3246,9 @@
       this._options(this.$('[data-field="arpMode"]'), ARP_MODES.map(([id, key]) => [id, t(key)]), s.arpMode);
       this._options(this.$('[data-field="arpDivision"]'), ARP_DIVISIONS.map(([v, label]) => [v, label]), s.arpDivision);
       this._options(this.$('[data-field="arpRhythm"]'), ARP_RHYTHMS.map(([id, key]) => [id, t(key)]), s.arpRhythm);
+      this._options(this.$('[data-field="arpRef"]'), ARP_REFS.map(([id, key]) => [id, t(key)]), s.arpRef);
+      // Nur der manuelle Arp hat einen Musterbezug; automatisch gilt der Akkord.
+      this.$('.arp-ref').hidden = s.arpAuto;
       this.$('[data-action="arp-clear"]').hidden = !(this._latchActive() && this.latchedNotes.size);
       this.$('.arp-status').textContent = !s.arpOn ? '' : s.arpAuto ? t('lab.arpStatusAuto')
         : this._latchActive() ? t('lab.arpStatusLatch') : t('lab.arpStatusHold');
@@ -3085,7 +3271,7 @@
       btn.setAttribute('aria-label', t(this.playing ? 'lab.stopAria' : 'lab.startAria'));
       this._renderRecPlay();
       this.$all('.bpm-input').forEach((el) => { el.value = String(this.state.bpm); });
-      this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
+      this.$all('.bpm-out').forEach((el) => { el.textContent = `${tempoSymbol(this._meter())} = ${this.state.bpm}`; });
       this.$('[data-action="undo"]').disabled = !this.history.length;
     }
 
@@ -3105,7 +3291,7 @@
     _renderNow() {
       const label = this.$('.now-chord');
       const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
-      label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths);
+      label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId);
       if (!this.playing) this._renderBeatDots(-1);
       this._renderChordStrip();
       this._renderSatb();
@@ -3126,7 +3312,6 @@
       this.$('.prog-info').textContent = s.progOwnId || (s.progDegrees && s.progName) ? '' : t(progKey('Info', prog.id));
       if (!editing) return;
       this.ui.progSel = Math.min(this.ui.progSel, prog.degrees.length - 1);
-      const mode = this._mode();
       const sel = prog.degrees[this.ui.progSel];
       const degHost = this.$('.prog-degrees');
       degHost.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((d) => {
@@ -3137,8 +3322,8 @@
         btn.dataset.value = String(d);
         btn.setAttribute('aria-pressed', String(d === sel));
         btn.innerHTML = '<span></span><strong></strong>';
-        btn.querySelector('span').textContent = romanNumeral(mode.steps, d, prog.sevenths);
-        btn.querySelector('strong').textContent = chordName(s.keyRoot, mode.steps, d, prog.sevenths);
+        btn.querySelector('span').textContent = romanNumeral(this._stepsFor(d, prog), d, prog.sevenths);
+        btn.querySelector('strong').textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths, s.modeId);
         return btn;
       }));
       this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
@@ -3149,6 +3334,7 @@
       this.$('[data-action="prog-move"][data-value="-1"]').disabled = this.ui.progSel <= 0;
       this.$('[data-action="prog-move"][data-value="1"]').disabled = this.ui.progSel >= prog.degrees.length - 1;
       this._setSwitch('progSevenths', !!prog.sevenths);
+      this._setSwitch('progDominant', !!prog.dominant);
       const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
       this.$('.prog-name-row').hidden = !own;
       const nameInput = this.$('.prog-name');
@@ -3160,13 +3346,15 @@
 
     _progBegin() {
       const s = this.state;
-      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
+      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7]));
       if (this.ui.progUndo.length > 60) this.ui.progUndo.shift();
       this.ui.progRedo = [];
       if (!s.progDegrees) {
         const base = this._progression();
         s.progDegrees = [...base.degrees];
         s.progSevenths = !!base.sevenths;
+        s.progDominant = !!base.dominant;
+        s.progDom7 = !!base.dom7;
       }
       return s.progDegrees;
     }
@@ -3174,13 +3362,16 @@
     _progCommit() {
       const s = this.state;
       const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
-      if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths) {
-        s.progDegrees = null; s.progSevenths = false;
+      if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths
+        && !!s.progDominant === !!base.dominant && !!s.progDom7 === !!base.dom7) {
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false;
       }
       const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
       if (own && s.progDegrees) {
         own.degrees = [...s.progDegrees];
         own.sevenths = s.progSevenths;
+        own.dominant = !!s.progDominant;
+        own.dom7 = !!s.progDom7;
         own.name = s.progName || own.name;
         this._persist();
       }
@@ -3191,8 +3382,8 @@
       const snap = from.pop();
       if (!snap) return;
       const s = this.state;
-      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId]));
-      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId] = JSON.parse(snap);
+      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7]));
+      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant = false, s.progDom7 = false] = JSON.parse(snap);
       this._progCommit();
     }
 
@@ -3200,7 +3391,10 @@
     async _previewChord(deg) {
       try { await this._ensureAudio(); } catch { return; }
       const s = this.state;
-      const voicing = voiceChord(chordPitchClasses(s.keyRoot, this._mode().steps, deg, this._progression().sevenths), { S: 67, A: 62, T: 55, B: 48 });
+      const prog = this._progression();
+      const steps = this._stepsFor(deg, prog);
+      const voicing = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), { S: 67, A: 62, T: 55, B: 48 },
+        { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg), bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0 });
       const now = this.engine.ctx.currentTime + .01;
       for (const voice of SATB) {
         this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
@@ -3216,9 +3410,11 @@
       while (lib.some((p) => p.name === tf('lab.myProgN', { n }))) n++;
       const name = s.progName && !s.progOwnId && s.progName !== t('lab.newProg') ? s.progName : tf('lab.myProgN', { n });
       const id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths });
+      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths, dominant: !!prog.dominant, dom7: !!prog.dom7 });
       s.progDegrees = [...prog.degrees];
       s.progSevenths = !!prog.sevenths;
+      s.progDominant = !!prog.dominant;
+      s.progDom7 = !!prog.dom7;
       s.progName = name;
       s.progOwnId = id;
       this._persist();
@@ -3256,8 +3452,7 @@
         };
       }
       if (which === 'prog') {
-        const steps = this._mode().steps;
-        const romans = (degrees, sevenths) => degrees.map((d) => romanNumeral(steps, d, sevenths)).join('–');
+        const romans = (p) => p.degrees.map((d) => romanNumeral(this._stepsFor(d, p), d, p.sevenths)).join('–');
         const own = this._saved.progressions;
         return {
           title: 'lab.pickProg', action: 'pick-prog', catAction: 'prog-cat',
@@ -3266,9 +3461,10 @@
           fallback: s.progId, wide: true,
           items: [
             ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
-              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths), info: t(progKey('Info', p.id)) })),
+              inMeter: true, sub: romans(p), short: romans(p), info: t(progKey('Info', p.id)),
+              mismatch: !progFitsMode(p, s.modeId) })),
             ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
-              inMeter: true, sub: romans(p.degrees, p.sevenths), short: romans(p.degrees, p.sevenths) })),
+              inMeter: true, sub: romans(p), short: romans(p) })),
           ],
         };
       }
@@ -3311,9 +3507,9 @@
         } else if (which === 'prog') {
           const prog = this._progression();
           const s = this.state;
-          const steps = this._mode().steps;
           name = this._progName();
-          sub = prog.degrees.map((d) => romanNumeral(steps, d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '');
+          sub = prog.degrees.map((d) => romanNumeral(this._stepsFor(d, prog), d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '')
+            + (progFitsMode(prog, s.modeId) ? '' : ` · ${t('lab.progModeMismatch')}`);
           visual = progPreview(prog.degrees);
         } else if (which === 'melody') {
           const melody = this._melody();
@@ -3366,7 +3562,7 @@
       const cards = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat)).map((it) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = `pick-card${def.wide ? ' is-wide' : ''}`;
+        btn.className = `pick-card${def.wide ? ' is-wide' : ''}${it.mismatch ? ' is-mismatch' : ''}`;
         btn.dataset.action = def.action;
         btn.dataset.value = String(it.i);
         btn.setAttribute('aria-pressed', String(it.i === def.current));
@@ -3377,6 +3573,12 @@
           const info = document.createElement('em');
           info.textContent = it.info;
           btn.querySelector('.pick-text').append(info);
+        }
+        if (it.mismatch) {
+          const note = document.createElement('small');
+          note.className = 'pick-mismatch';
+          note.textContent = t('lab.progModeMismatch');
+          btn.querySelector('.pick-text').append(note);
         }
         return btn;
       });
@@ -3517,7 +3719,7 @@
       if (this._padsSignature === signature) return;
       this._padsSignature = signature;
       const steps = this._mode().steps;
-      const names = noteNames();
+      const padName = (d) => spell(s.keyRoot + steps[d % 7], s.keyRoot, s.modeId, labLang);
       const makePad = (d) => {
         const offset = foldRoot(s.keyRoot) + degreeSemis(steps, d);
         const pad = document.createElement('button');
@@ -3526,8 +3728,8 @@
         pad.className = `pad${d % 7 === 0 ? ' is-root' : ''}`;
         pad.dataset.offset = String(offset);
         pad.dataset.degree = String(d);
-        pad.textContent = names[mod(s.keyRoot + steps[d % 7], 12)];
-        pad.setAttribute('aria-label', names[mod(s.keyRoot + steps[d % 7], 12)]);
+        pad.textContent = padName(d);
+        pad.setAttribute('aria-label', padName(d));
         return pad;
       };
       // Obere Reihe = obere Oktave (Stufe 8–15), untere = Stufe 1–8. Der
@@ -3986,54 +4188,11 @@
      *  Aufnahme-Reihenfolge. `until`: noch gehaltene Töne bis hierhin. */
     _recToBars({ until = null } = {}) {
       const rec = this.rec;
-      const s = this.state;
-      const steps = rec.barSteps;
-      const total = rec.bars * steps;
-      const r2 = (v) => Math.round(v * 100) / 100;
       const all = until === null ? rec.notes : [...rec.notes, ...[...rec.open.values()].map((o) => ({ ...o, t1: until }))];
-      const notes = all.map(({ midi, t0, t1 }) => {
-        let pos = (t0 - rec.startTime) / rec.stepSec;
-        // knapp vor dem Einsatz angeschlagen zählt als "auf Eins"
-        if (pos < 0 && pos > -.5) pos = 0;
-        const endPos = Math.min(total, (t1 - rec.startTime) / rec.stepSec);
-        if (pos < 0 || pos >= total) return null;
-        const h = this._harmonyAt(rec.startStep + Math.floor(pos));
-        const base = 12 * (s.melodyOctave + 1) + foldRoot(h.keyRoot);
-        const shift = foldDegree(h.deg);
-        const target = midi - base;
-        // Stufe suchen, die genau passt — sonst die darunter mit ♯
-        let deg = null;
-        let alt = 0;
-        for (let d = -28; d <= 35 && deg === null; d++) if (degreeSemis(h.steps, d) === target) deg = d - shift;
-        for (let d = -28; d <= 35 && deg === null; d++) if (degreeSemis(h.steps, d) === target - 1) { deg = d - shift; alt = 1; }
-        if (deg === null) return null;
-        return { pos, len: Math.max(.25, endPos - pos), deg, alt };
-      }).filter(Boolean).sort((a, b) => a.pos - b.pos);
-      // Ganze Aufnahme in den Editorbereich schieben (in Oktaven), Rest falten.
-      if (notes.length) {
-        const hi = Math.max(...notes.map((n) => n.deg));
-        const lo = Math.min(...notes.map((n) => n.deg));
-        let move = 0;
-        while (hi + move > MEL_HIGH && lo + move - 7 >= MEL_LOW) move -= 7;
-        while (lo + move < MEL_LOW && hi + move + 7 <= MEL_HIGH) move += 7;
-        notes.forEach((n) => {
-          n.deg += move;
-          while (n.deg > MEL_HIGH) n.deg -= 7;
-          while (n.deg < MEL_LOW) n.deg += 7;
-        });
-      }
-      const bars = Array.from({ length: rec.bars }, () => []);
-      notes.forEach((n) => {
-        const bar = Math.floor(n.pos / steps);
-        const at = r2(n.pos - bar * steps);
-        // Gehaltene Töne klingen über den Taktstrich weiter — nur bis zum
-        // nächsten Anschlag (einstimmig) und bis zum Ende der Aufnahme.
-        const next = notes[notes.indexOf(n) + 1];
-        const limit = Math.min(next ? next.pos - n.pos : Infinity, total - n.pos);
-        const len = r2(Math.max(.25, Math.min(n.len, limit)));
-        bars[bar].push(n.alt ? [at, n.deg, len, n.alt] : [at, n.deg, len]);
+      return recNotesToBars(all, {
+        startTime: rec.startTime, stepSec: rec.stepSec, bars: rec.bars, barSteps: rec.barSteps, meter: this._meter(),
+        keyRoot: this.state.keyRoot, modeSteps: this._mode().steps, melodyOctave: this.state.melodyOctave,
       });
-      return sanitizeMelodyBars(bars, this._meter()) || bars;
     }
 
     /** Melodie-Takt k klingt später im Groove-Takt (k mod Anzahl). Die
@@ -4055,12 +4214,13 @@
       const name = tf('lab.recTakeN', { n });
       const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
       const bars = this._recRotated(rec.take);
-      lib.push({ id, name, meter: this._meter(), bars });
+      lib.push({ id, name, meter: this._meter(), bars, ref: 'key' });
       this._clearMelodyEdit();
       s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
       s.melodyMeter = this._meter();
       s.melodyName = name;
       s.melodyOwnId = id;
+      s.melodyRef = 'key';
       s.melodyOn = true;
       rec.phase = 'idle';
       rec.take = null;
@@ -4104,7 +4264,7 @@
         const el = event.target;
         const s = this.state;
         if (el.classList.contains('bpm-input')) {
-          s.bpm = Number(el.value);
+          this._setBpm(Number(el.value));
           this._onTempoChange();
         } else if (el.dataset.field === 'swing' || el.dataset.field === 'pump') {
           s[el.dataset.field] = Number(el.value);
@@ -4141,6 +4301,7 @@
         else if (field === 'arpMode') s.arpMode = el.value;
         else if (field === 'arpDivision') s.arpDivision = Number(el.value);
         else if (field === 'arpRhythm') s.arpRhythm = el.value;
+        else if (field === 'arpRef') s.arpRef = el.value;
         else if (field === 'arpPattern') s[s.arpAuto ? 'arpAutoPattern' : 'arpPattern'] = el.value;
         else if (field === 'arpOctaves') s.arpOctaves = Number(el.value);
         else if (field === 'echoDiv') { s.fx.echoDiv = Number(el.value); this.engine.setFx(s.fx, this._stepSeconds()); }
@@ -4187,6 +4348,7 @@
       }
       if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
+      if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -4212,6 +4374,8 @@
           s.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === value);
           s.beat = beatFromPattern(this._pattern());
           s.beatEdited = false;
+          this._convertTempo();
+          this._onTempoChange();
           this.ui.beatCat = 'all';
           this._ensureMelodyMeter();
           if (this.playing) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
@@ -4224,6 +4388,9 @@
           s.patternIndex = Number(value);
           s.beat = beatFromPattern(this._pattern());
           s.beatEdited = false;
+          if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); }
+          // Loops mit eigener Swing-Vorgabe (Swing Soul) bringen sie mit.
+          if (typeof this._pattern().swing === 'number') { s.swing = this._pattern().swing; }
           this._ensureMelodyMeter();
           if (this.playing && this._meter() !== meterBefore) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
           this._renderBeat(); this._renderMelody();
@@ -4245,10 +4412,20 @@
           if (own) {
             s.progDegrees = [...own.degrees];
             s.progSevenths = own.sevenths;
+            s.progDominant = !!own.dominant;
+            s.progDom7 = !!own.dom7;
             s.progName = own.name;
             s.progOwnId = own.id;
           } else if (PROGRESSIONS.some((p) => p.id === value)) {
             s.progId = value;
+            // Modale Folgen nur in passenden Modi (Befund 2): sonst den
+            // Modus mitnehmen und das sagen, statt still vii° zu spielen.
+            const prog = PROGRESSIONS.find((p) => p.id === value);
+            const modeId = modeForProg(prog, s.modeId);
+            if (modeId !== s.modeId) {
+              s.modeId = modeId;
+              this._setStatus(tf('lab.progModeSwitched', { name: t(progKey('Name', prog.id)), mode: t(MODES.find((m) => m.id === modeId).nameKey) }));
+            }
           }
           this._onHarmonyChange();
           break;
@@ -4299,6 +4476,8 @@
           this._progBegin();
           s.progDegrees = [0];
           s.progSevenths = false;
+          s.progDominant = false;
+          s.progDom7 = false;
           s.progName = t('lab.newProg');
           s.progOwnId = null;
           this.ui.progSel = 0;
@@ -4306,7 +4485,7 @@
           break;
         case 'prog-original':
           this._progBegin();
-          s.progDegrees = null; s.progSevenths = false;
+          s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false;
           this._progCommit();
           break;
         case 'prog-save': this._progSaveOwn(); break;
@@ -4323,6 +4502,7 @@
             s.melodyMeter = own.meter;
             s.melodyName = own.name;
             s.melodyOwnId = own.id;
+            s.melodyRef = own.ref === 'key' ? 'key' : 'chord';
           } else if (!String(value).startsWith('own:')) {
             s.melodyIndex = Number(value);
           }
@@ -4354,13 +4534,14 @@
           s.melodyMeter = this._meter();
           s.melodyName = t('lab.newMelody');
           s.melodyOwnId = null;
+          s.melodyRef = 'chord';
           s.melodyOn = true;
           this.ui.melBar = 0;
           this._melCommit();
           break;
         case 'mel-original':
           this._melBegin();
-          s.melodyBars = null; s.melodyMeter = null;
+          s.melodyBars = null; s.melodyMeter = null; s.melodyRef = 'chord';
           this._melCommit();
           break;
         case 'mel-len': this.ui.melLen = Number(value); this._renderMelEditor(); break;
@@ -4978,6 +5159,8 @@
   .pick-text span { font-size: .64rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pick-text em { font-style: normal; font-size: .6rem; line-height: 1.35; color: var(--muted); margin-top: 3px;
     display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .pick-mismatch { display: block; font-size: .7rem; font-weight: 700; color: var(--muted); }
+  .pick-card.is-mismatch .pick-ico { opacity: .5; }
   .pick-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset; }
   .pick-card[aria-pressed="true"] .pick-ico { background: var(--accent); color: #fff; }
   .picker-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line);
@@ -5078,7 +5261,7 @@
           <button class="chip" type="button" data-action="prog-add">+ ${t('lab.progAdd')}</button>
           <button class="chip" type="button" data-action="prog-remove">− ${t('lab.progRemove')}</button>
         </div>
-        <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}</div>
+        <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}${toggle('progDominant', 'lab.progDominant')}</div>
         <label class="prog-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name-input prog-name" type="text" maxlength="40" autocomplete="off"></label>
         <div class="mel-foot">
           <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
@@ -5254,6 +5437,7 @@
           <label class="select-field"><span>${t('lab.directionAria')}</span><select data-field="arpMode"></select></label>
           <label class="select-field"><span>${t('lab.speedAria')}</span><select data-field="arpDivision"></select></label>
           <label class="select-field"><span>${t('lab.arpRhythm')}</span><select data-field="arpRhythm"></select></label>
+          <label class="select-field arp-ref"><span>${t('lab.arpRef')}</span><select data-field="arpRef"></select></label>
           <label class="select-field"><span>${t('lab.octaveRangeAria')}</span>
             <select data-field="arpOctaves">
               <option value="1">${t('lab.octave1')}</option>
@@ -5310,7 +5494,7 @@
     <button class="transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
     <label class="tempo-field">
       <output class="bpm-out">106 BPM</output>
-      <input class="bpm-input" type="range" min="40" max="180" value="106" aria-label="${t('lab.tempoAria')}">
+      <input class="bpm-input" type="range" min="30" max="180" value="106" aria-label="${t('lab.tempoAria')}">
     </label>
     <button class="icon-btn tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
     <button class="icon-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}" title="${t('lab.randomAria')}">${UI_ICON.dice}</button>
@@ -5358,11 +5542,23 @@
 
   if (!customElements.get('chor-groove-lab')) customElements.define('chor-groove-lab', GrooveLabView);
 
+  // Für die Musik-Selbsttests in app.js (runMusicSelfTests) und die Konsole:
+  // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
+  const TEST_EXPORT = {
+    MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
+    voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor,
+    melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
+    spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
+    sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
+  };
+
   global.ChorGrooveLab = {
     open(options) {
       // app.js reicht seine t()-Funktion herein; diese Datei ist ein
       // klassisches Skript und kann STRINGS nicht selbst importieren.
       if (typeof options?.t === 'function') t = options.t;
+      labLang = ['de', 'en', 'pl'].includes(options?.lang) ? options.lang : labLang;
 
       let lab = document.querySelector('chor-groove-lab');
       // Die Vorlage wird einmal beim Aufbau der Komponente gerendert. Wurde
@@ -5382,5 +5578,6 @@
       lab.open(options);
       return lab;
     },
+    _test: TEST_EXPORT,
   };
 })(window);

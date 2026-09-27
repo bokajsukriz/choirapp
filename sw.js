@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v293';
+const SW_VERSION = 'v306';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -44,10 +44,12 @@ const SHELL_REQUIRED = [
 // es offline, scheitert nur dieses Nachladen mit einem Banner — kein Grund,
 // deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für die
 // Tool-Seiten uebe-lab.html (Ausbildung), einsingen.html und metronom.html (Einstellungen →
-// Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES).
+// Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES), und für
+// harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten).
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
+  './harmony.js',
   './groove-lab.js',
   './uebe-lab.html',
   './metronom.html',

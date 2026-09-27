@@ -53,6 +53,14 @@ ein Dialog mit echter Wahl).
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über Einstellungen →
   Tools oder das Easter Egg (7× auf den Songtitel im Player).
+- `harmony.js` — gemeinsame Harmonik der Musik-Tools (`window.ChorHarmony`,
+  klassisches Skript ohne DOM): Modi, Akkordbau (Dur-Dominante in Moll,
+  Dominantseptakkorde), Tonnamen tonartabhängig (`spell`/`noteLabel`,
+  deutsch Helmholtz, englisch C4), Stimmumfänge, vierstimmiger Satz ohne
+  Quint-/Oktavparallelen. Geladen vor `groove-lab.js` (siehe
+  `loadGrooveLab` in `app.js`) und per `<script src>` in `uebe-lab.html`,
+  `einsingen.html` und `piano.html`. Prüfungen: `chorApp.selfTestMusic()`
+  und `selfCheck()` in der Konsole der Tool-iframes.
 - `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training, Hören: Intervalle und
   Akkordfolgen, Stimm-Tuner per Mikrofon). Das Mikrofon wird nur live
   ausgewertet, nichts wird aufgenommen oder gesendet.
