@@ -19,7 +19,11 @@ Alles bleibt auf dem Gerät:
 
 - **IndexedDB (`chor-app`)** — Songs, Aufnahmen, Loops, Notizen, eigene
   Liedtexte, Setlisten und Einstellungen, jeweils in den Stores `files`
-  (Audio-/PDF-Bytes) und `meta` (alles Übrige).
+  (Audio-/PDF-Bytes) und `meta` (alles Übrige). Dazu im Store `meta`: das
+  Stimmprofil fürs Üben (`settings.voiceProfile`), die Stände der Tools
+  (Typ `toolState`) und der Übe-Fortschritt (Datensatz `progress`: nur
+  Tagesaggregate der letzten 180 Tage, die letzten Aufgaben je Bereich für
+  Stufenvorschläge, Gewichtungen der Intervall-Übungen).
 - **`localStorage`** — Fehlerprotokoll (`bvg-error-log`) und Diagnose-Log
   (`bvg-debug-log`), je bis zu einer festen Anzahl Einträge.
 - **Cache Storage** — die App-Shell (`index.html`, alle Skripte, `manifest.json`,
@@ -27,7 +31,8 @@ Alles bleibt auf dem Gerät:
   vom Service Worker.
 
 „Alle Daten löschen“ in den Einstellungen leert beide IndexedDB-Speicher vollständig
-sowie Fehler- und Diagnoseprotokoll. Dateien in einer verbundenen Dropbox
+sowie Fehler- und Diagnoseprotokoll — damit auch Stimmprofil, Tool-Stände
+und Übe-Fortschritt (`progress`). Dateien in einer verbundenen Dropbox
 bleiben davon unberührt — die App greift nie direkt auf Dropbox zu, sondern
 nur auf lokal heruntergeladene ZIP-Archive.
 
@@ -61,11 +66,19 @@ ein Dialog mit echter Wahl).
   `loadGrooveLab` in `app.js`) und per `<script src>` in `uebe-lab.html`,
   `einsingen.html` und `piano.html`. Prüfungen: `chorApp.selfTestMusic()`
   und `selfCheck()` in der Konsole der Tool-iframes.
-- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training, Hören: Intervalle und
-  Akkordfolgen, Stimm-Tuner per Mikrofon). Das Mikrofon wird nur live
-  ausgewertet, nichts wird aufgenommen oder gesendet.
-- `einsingen.html` — Einsingen (Einsing-Übungen nach Stimmlage, geführtes
-  Einsing-Programm).
+- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training mit Stufen, Phrasen,
+  Auftakt, Rhythmussprache, Zweistimmig, Eingabe per Tippen oder Mikrofon;
+  Hören: Intervalle, Klänge, Schlüsse, Akkordfolgen, Stimmen heraushören,
+  Intonation; Singen: Tuner, Intervalle singen, Ton finden, Ton halten,
+  Blattsingen, Diktat). Das Mikrofon wird nur live ausgewertet, nichts wird
+  aufgenommen oder gesendet, und es läuft nie im Hintergrund.
+- `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
+  Körperübungen, geführte und eigene Einsing-Programme).
+- Stimmprofil, Fortschritt und Schnellstart liegen in `app.js`
+  (`window.chorVoiceProfile`, `window.chorProgress`, `QUICK_STARTS`); die
+  Tool-Seiten lesen und melden über diese Schnittstellen, schreiben aber nie
+  selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.
+  Wischen vom linken Rand. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.
 - `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
   Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
   Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem

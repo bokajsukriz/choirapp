@@ -25,9 +25,15 @@
   requestAnimationFrame folgt den tatsächlich geplanten Zeiten.
 
   Tonräume: je Stimme eine bewusst vorsichtige Spanne für Laienchöre
-  (VOICES.floor/ceil); jede Übung legt fest, wo ihr tiefster Ton startet
-  (lowStart) und wie hoch ihr höchster Ton höchstens steigt (top), beides in
-  Halbtönen über floor. Kein Ton verlässt floor…ceil.
+  (PRACTICE_RANGES in harmony.js, bei gemessenem Umfang practiceRange());
+  jede Übung legt fest, wo ihr tiefster Ton startet (lowStart) und wie hoch
+  ihr höchster Ton höchstens steigt (top), beides in Halbtönen über floor.
+  Kein Ton verlässt floor…ceil.
+
+  Stimmlage und persönlichen Umfang liest das Tool aus dem gemeinsamen
+  Stimmprofil der App (window.parent.chorVoiceProfile, app.js); ein Tipp auf
+  einen Stimm-Chip schreibt die Wahl dorthin zurück, sie gilt dann in allen
+  Tools. Direkt geöffnet gilt die im Tool gespeicherte Stimme.
 
   Einstellungen merkt sich das Tool über window.parent.chorToolStorage
   (Tool-ID 'einsingen', IndexedDB in app.js) — nicht localStorage, der ist
@@ -88,6 +94,7 @@
   .switch input:checked + .switch-track::after { transform: translateX(16px); }
   .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
 
+
   /* ---- Bühne: aktuelle Übung ---- */
   .stage { border-radius: 20px; background: var(--surface); border: 1px solid var(--line); padding: 14px 14px 12px; margin-bottom: 12px; }
   .stage-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -99,6 +106,15 @@
   .contour.is-wordy .syl { font-size: .74rem; padding: 7px 2px; }
   .contour.is-flat .syl { max-width: 64px; }
   .syl.is-now { background: var(--accent); color: #fff; }
+  /* Körperübungen: Anweisung groß, darunter ein Countdown-Ring. */
+  .body-stage { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin: 14px 0 4px; }
+  .body-move { font-size: 1.05rem; font-weight: 800; line-height: 1.35; margin: 0; }
+  .body-ring { width: 58px; height: 58px; position: relative; }
+  .body-ring svg { width: 58px; height: 58px; transform: rotate(-90deg); }
+  .body-ring circle { fill: none; stroke-width: 6; }
+  .body-ring .ring-bg { stroke: var(--surface-2); }
+  .body-ring .ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+  .body-ring span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-variant-numeric: tabular-nums; }
   .contour.is-waiting .syl { opacity: .45; }
   .stage-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 8px; font-size: .74rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
   .stage-key { color: var(--text); font-weight: 800; }
@@ -114,6 +130,31 @@
   .prog-card span { display: block; font-size: .68rem; color: var(--muted); font-weight: 700; margin-top: 2px; }
   .prog-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
   .prog-card[aria-pressed="true"] strong { color: var(--accent); }
+  .prog-card-wrap { position: relative; }
+  .prog-card-wrap .prog-card { width: 100%; height: 100%; padding-right: 34px; }
+  .prog-menu { position: absolute; top: 2px; right: 2px; width: 34px; height: 34px; border-radius: 10px; color: var(--muted); font-weight: 800; font-size: 1rem; }
+  .prog-card.is-add { border-style: dashed; color: var(--accent); display: grid; place-items: center; min-height: 58px; }
+  .prog-card small { display: block; font-size: .64rem; color: var(--muted); font-weight: 700; margin-top: 2px; }
+  /* Editor eigener Programme */
+  .ed-name { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-weight: 700; }
+  .ed-meta { font-size: .74rem; font-weight: 700; color: var(--muted); margin: 8px 0 0; }
+  .ed-warn { font-size: .74rem; font-weight: 700; color: #b07e00; margin: 6px 0 0; }
+  .ed-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+  .ed-row { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+  .ed-row-head { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: .82rem; }
+  .ed-row-head span { flex: 1; min-width: 0; }
+  .ed-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; }
+  .ed-btn:disabled { opacity: .35; }
+  .ed-row .chip-row { margin-top: 6px; }
+  .ed-row .chip { padding: 5px 9px; font-size: .68rem; }
+  .ed-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+  .ed-actions button { padding: 11px 18px; border-radius: 999px; font-weight: 800; font-size: .82rem; border: 1px solid var(--line); background: var(--surface-2); }
+  .ed-actions .is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ed-actions .is-danger { color: #c0392b; }
+  .ed-actions button:disabled { opacity: .45; }
+  .ed-hint { color: #c0392b; font-size: .72rem; font-weight: 700; text-align: center; min-height: 1.2em; margin: 8px 0 0; }
+  .menu-list { display: grid; gap: 8px; }
+  .menu-list button { text-align: left; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-weight: 800; }
   .prog-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; counter-reset: item; }
   .prog-item { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .8rem; font-weight: 700; }
   .prog-item .num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: .66rem; font-weight: 800; color: var(--muted); }
@@ -124,7 +165,9 @@
   .prog-item.is-now .num { background: var(--accent); color: #fff; }
 
   footer { border-top: 1px solid var(--line); background: var(--surface); padding: 10px 16px max(10px, env(safe-area-inset-bottom)); }
-  .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+  .transport-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
+  .gear-btn { width: 42px; height: 42px; border-radius: 13px; background: var(--surface-2); }
+  .settings-sheet .sheet-card { background: var(--bg); }
   .play { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7); }
   .tempo { display: grid; gap: 2px; min-width: 0; }
   .bpm-out { font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -165,6 +208,10 @@
       <button class="help-btn is-lg" type="button" data-help="exercise" aria-label="So geht die Übung">?</button>
     </div>
     <div class="contour" aria-hidden="true"></div>
+    <div class="body-stage" hidden>
+      <p class="body-move" aria-live="polite"></p>
+      <div class="body-ring" aria-hidden="true"><svg viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="25"/><circle class="ring-fg" cx="29" cy="29" r="25" stroke-dasharray="157.1" stroke-dashoffset="0"/></svg><span></span></div>
+    </div>
     <div class="stage-meta"><span class="stage-key"></span><span class="stage-range"></span></div>
     <div class="stage-program">
       <div class="progress" aria-hidden="true"><i></i></div>
@@ -172,19 +219,6 @@
     </div>
   </section>
 
-  <section class="panel">
-    <span class="sub-label">Stimme <button class="help-btn" type="button" data-help="voice" aria-label="Welche Stimme wählen?">?</button></span>
-    <div class="chip-row" data-chips="voice"></div>
-    <span class="sub-label">Begleitung <button class="help-btn" type="button" data-help="options" aria-label="Was die Schalter tun">?</button></span>
-    <div class="switch-row">
-      <label class="switch"><input type="checkbox" role="switch" data-switch="guide"><span class="switch-track"></span>Melodie</label>
-      <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
-    </div>
-    <span class="sub-label">Einzähler</span>
-    <div class="chip-row" data-chips="countIn"></div>
-    <span class="sub-label">Einstimmung</span>
-    <div class="chip-row" data-chips="cue"></div>
-  </section>
   <section class="panel" data-panel="program">
     <div class="panel-head"><h2>Einsing-Programm</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
     <div class="prog-cards" data-programs></div>
@@ -201,7 +235,34 @@
   <p class="foot-note">Nie pressen: bei Kratzen, Druck oder Schmerz Pause machen. Hohe Runden darf man auslassen.</p>
 </main>
 
-<div class="sheet" hidden>
+<!-- Einstellungen (Zahnrad in der Knopfleiste): Stimme, Begleitung,
+     Belastung, Einzähler, Einstimmung, Länge der Programme. -->
+<div class="sheet settings-sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="panel-head"><h2 id="settings-title">Einstellungen</h2>
+      <button class="icon-btn" type="button" data-action="close-settings" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <span class="sub-label">Stimme <button class="help-btn" type="button" data-help="voice" aria-label="Welche Stimme wählen?">?</button></span>
+    <div class="chip-row" data-chips="voice"></div>
+    <span class="sub-label">Begleitung <button class="help-btn" type="button" data-help="options" aria-label="Was die Schalter tun">?</button></span>
+    <div class="switch-row">
+      <label class="switch"><input type="checkbox" role="switch" data-switch="guide"><span class="switch-track"></span>Melodie</label>
+      <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
+    </div>
+    <span class="sub-label">Belastung <button class="help-btn" type="button" data-help="load" aria-label="Was die Belastung ändert">?</button></span>
+    <div class="chip-row" data-chips="load"></div>
+    <span class="sub-label">Einzähler</span>
+    <div class="chip-row" data-chips="countIn"></div>
+    <span class="sub-label">Einstimmung</span>
+    <div class="chip-row" data-chips="cue"></div>
+    <span class="sub-label">Länge „Kurz“</span>
+    <div class="chip-row" data-chips="lenKurz"></div>
+    <span class="sub-label">Länge „Ausführlich“</span>
+    <div class="chip-row" data-chips="lenLang"></div>
+    <button class="sheet-close" type="button" data-action="close-settings">Fertig</button>
+  </div>
+</div>
+
+<div class="sheet help-sheet" hidden>
   <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="panel-head"><h2 id="sheet-title"></h2>
       <button class="icon-btn" type="button" data-action="close-help" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
@@ -215,6 +276,7 @@
     <button class="play" type="button" aria-label="Starten"></button>
     <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="40" max="160" value="92" aria-label="Tempo der Übung"></label>
     <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
+    <button class="icon-btn gear-btn" type="button" data-action="open-settings" aria-label="Einstellungen: Stimme, Begleitung, Belastung, Länge" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
   </div>
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
 </footer>
@@ -263,38 +325,72 @@
   const CUE = 8;
   const CUE_CADENCE = 16;
   const BREATH = 4; // Standard-Atemluft in 16teln; je Übung über `breath`
-  const PAUSE = 16; // ein Takt zwischen zwei Programm-Übungen
+  const PAUSE = 8; // ein halber Takt zwischen zwei Programm-Übungen
+  const ROUND_GRID = 8; // Runden enden auf halben Takten (Akkord auf 1 oder 3)
   const BREATH_IN = 4; // Atemübung: Schläge einatmen …
   const BREATH_EXHALES = [8, 10, 12, 14]; // … und ausatmen, je Runde
-  const MAX_STEPS = 7; // höchstens so viele Halbtöne über der Startlage
+  const BODY_BPM = 60; // Körperübungen: Tempo fest
+  // Belastung (gemeinsam mit dem Stimmprofil der App): Obergrenze der Übung
+  // verschieben, höchstens so viele Rückungen, Tempo-Faktor auf das pro
+  // Übung gemerkte Grundtempo. Die Grenzen der Stimmlage gelten immer.
+  const LOADS = {
+    leicht:   { name: 'leicht',   topShift: -3, maxSteps: 5, tempo: .9 },
+    normal:   { name: 'normal',   topShift: 0,  maxSteps: 7, tempo: 1 },
+    kraeftig: { name: 'kräftig',  topShift: 2,  maxSteps: 9, tempo: 1.1 },
+  };
+  const LOAD_IDS = Object.keys(LOADS);
+  const loadOf = () => LOADS[state.load] || LOADS.normal;
 
-  // Klingende MIDI-Töne. Vorsichtige Laienchor-Spannen: lieber ein, zwei
-  // Töne unter dem, was die Literatur verlangt — Einsingen soll die Stimme
-  // aufwärmen, nicht an die Grenze bringen.
-  const VOICES = [
-    { id: 'S', name: 'Sopran', floor: 57, ceil: 79 }, // a  – g″
-    { id: 'A', name: 'Alt', floor: 53, ceil: 74 },    // f  – d″
-    { id: 'T', name: 'Tenor', floor: 47, ceil: 67 },  // H  – g′
-    { id: 'B', name: 'Bass', floor: 41, ceil: 62 },   // F  – d′
-  ];
-  const voiceById = (id) => VOICES.find((v) => v.id === id) || VOICES[1];
+  // Klingende MIDI-Töne: die Übe-Umfänge aus harmony.js (PRACTICE_RANGES,
+  // vorsichtige Laienchor-Spannen — lieber ein, zwei Töne unter dem, was die
+  // Literatur verlangt). Mit gemessenem Umfang im Stimmprofil gilt dessen
+  // Innenbereich (practiceRange), je zwei Halbtöne innerhalb.
+  const VOICE_IDS = ['S', 'A', 'T', 'B'];
+  const { PRACTICE_RANGES, practiceRange } = H;
+
+  // Gemeinsames Stimmprofil der App (nur eingebettet, gleiche Herkunft).
+  const profileApi = (() => {
+    try { if (window.parent !== window && window.parent.chorVoiceProfile) return window.parent.chorVoiceProfile; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  let profile = null; // { part, low, high, measuredAt, load } oder null
+  // Fortschritt der App (Paket 6): Minuten und Programm melden.
+  const progressApi = (() => {
+    try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  function readProfile() {
+    try { profile = profileApi ? profileApi.get() : null; } catch { profile = null; }
+  }
+  /** Übe-Umfang einer Stimme: { id, name, floor, ceil, personal }. */
+  const voiceById = (id) => {
+    const part = VOICE_IDS.includes(id) ? id : 'A';
+    return { id: part, ...practiceRange({ part, low: profile?.low ?? null, high: profile?.high ?? null }) };
+  };
+  const voiceList = () => VOICE_IDS.map(voiceById);
 
   // Vierstimmiger Satz für die Übung „Akkord“ aus harmony.js (derselbe
   // wie im Groove Lab).
   const { SATB, voicePairs, voiceChord } = H;
 
   const GROUPS = [
+    ['koerper', 'Körper & Haltung'],
     ['lockern', 'Lockern & Atmen'],
     ['resonanz', 'Resonanz & Vokale'],
     ['beweglich', 'Beweglichkeit & Aussprache'],
-    ['hoehe', 'Höhe & Umfang'],
+    ['hoehe', 'Höhe, Tiefe & Register'],
   ];
 
   const rep = (s, n) => Array(n).fill(s);
   const legato5 = [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 4]];
 
   // notes: [Stufe in Dur (0 = Grundton, 7 = Oktave), Dauer in 16teln,
-  //         optional klingende Länge in 16teln (Staccato)].
+  //         optional klingende Länge in 16teln (Staccato, null = normal),
+  //         optional alt: Halbtöne Abweichung von der Tonleiterstufe].
+  // kind 'body': tonlos wie 'breath' — moves: [Anweisung, Dauer in
+  //        Schlägen], Tempo fest BODY_BPM, je Bewegung eine Runde.
+  // forceDrone: Liegeton klingt unabhängig vom Schalter.
+  // easyNotes/easySyllables/easyHint: Fassung bei Belastung „leicht“.
   // delay: 16tel Pause nach dem Akkord vor dem ersten Ton (Auftakt, damit
   //        die betonten Silben auf die Zählzeiten fallen).
   // breath: 16tel Luft nach dem letzten Ton (Standard BREATH); luftintensive
@@ -302,6 +398,38 @@
   // lowStart/top: Halbtöne über voice.floor — wo der tiefste Ton der ersten
   // Runde liegt, und wie hoch der höchste Ton der Übung höchstens steigt.
   const EXERCISES = [
+    { id: 'dehnen', group: 'koerper', name: 'Strecken & Lockern', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
+      moves: [
+        ['Arme über den Kopf strecken, Fingerspitzen zur Decke — ganz lang werden.', 8],
+        ['Arme fallen lassen, Hände und Arme ausschütteln.', 8],
+        ['Schultern langsam nach hinten kreisen.', 8],
+        ['Kopf zur rechten Schulter neigen, ruhig weiteratmen.', 6],
+        ['Kopf zur linken Schulter neigen.', 6],
+        ['Wirbel für Wirbel nach vorn abrollen, Knie locker — und langsam wieder aufrichten, der Kopf kommt zuletzt.', 12],
+      ],
+      help: ['Ohne Ton: den Körper wecken, bevor die Stimme arbeitet. Jede Bewegung langsam und ohne Schmerz.',
+        'Wer nicht stehen kann oder mag, macht die Arm- und Schulterbewegungen im Sitzen.'] },
+    { id: 'haltung', group: 'koerper', name: 'Sängerhaltung', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
+      moves: [
+        ['Füße hüftbreit, Knie locker — nicht durchgedrückt.', 6],
+        ['Gewicht gleichmäßig auf beiden Füßen, ganz leicht nach vorn.', 6],
+        ['Das Brustbein bleibt leicht oben, die Schultern sinken.', 6],
+        ['Der Kopf balanciert oben auf der Wirbelsäule, der Nacken ist lang.', 6],
+        ['So stehen bleiben: drei ruhige Atemzüge in Bauch und Flanken.', 12],
+      ],
+      help: ['Eine Haltung, in der nichts festgehalten wird: aufrecht, aber nicht steif.',
+        'Diese Haltung beim Singen immer wieder kurz prüfen — besonders die Knie und die Schultern.'] },
+    { id: 'kiefer', group: 'koerper', name: 'Kiefer & Gesicht', hint: 'ohne Ton', bpm: 60, kind: 'body', lowStart: 0, top: 0,
+      moves: [
+        ['Mit geschlossenem Mund genüsslich kauen.', 8],
+        ['Mit den Fingerspitzen die Kaumuskeln vor den Ohren kreisend massieren.', 10],
+        ['Kiefer locker hängen lassen und tonlos „ja-ja-ja“ sagen — die Zunge arbeitet, der Kiefer nicht.', 8],
+        ['Herzhaft gähnen und spüren, wie der Rachen weit wird.', 6],
+        ['Zunge weit herausstrecken, dann mit der Zungenspitze innen an den Zähnen entlang kreisen.', 8],
+      ],
+      help: ['Ein fester Kiefer und eine feste Zunge sind die häufigsten Ursachen für einen engen Klang.',
+        'Gut nach einem Arbeitstag am Bildschirm — und vor Stücken mit viel Text.'] },
+
     { id: 'atem', group: 'lockern', name: 'Atem', hint: 'sss', bpm: 60, kind: 'breath', lowStart: 0, top: 0,
       notes: [[0, 16], [0, 32]], syllables: ['ein', 'sss'],
       help: ['Ohne Ton: vier Schläge lang ruhig durch die Nase einatmen — Bauch und Flanken weiten sich, die Schultern bleiben unten.',
@@ -322,6 +450,14 @@
       notes: [[0, 2, .7], [2, 2, .7], [4, 2, .7], [2, 2, .7], [0, 2, .7]], syllables: rep('ha', 5),
       help: ['Kurze, lockere „ha“: Der Impuls kommt aus der Körpermitte, nicht aus dem Hals. Eine Hand auf den Bauch legen — er federt bei jedem Ton nach innen.',
         'Zwischen den Tönen lässt der Bauch los, die Luft strömt von selbst wieder ein. Nicht hauchen, nicht drücken.'] },
+    { id: 'strohhalm', group: 'lockern', name: 'Strohhalm', hint: 'u durch den Halm', bpm: 72, lowStart: 2, top: 17, breath: 6, glide: true,
+      notes: [[0, 4], [4, 8], [0, 8]], syllables: ['u', 'u', 'u'],
+      help: ['Einen normalen Trinkhalm locker zwischen die Lippen nehmen (nicht zwischen die Zähne) und hindurch auf „u“ summen — eine Quinte hinauf und wieder zurück gleiten.',
+        'Der Halm staut die Luft ein wenig zurück. Das entlastet die Stimmlippen, hoch und tief gehen ohne Druck ineinander über. Ohne Halm: die Lippen fast schließen und auf „w“ summen.'] },
+    { id: 'strohhalm5', group: 'lockern', name: 'Strohhalm-Fünfton', hint: 'Tonleiter im Halm', bpm: 84, lowStart: 3, top: 17, breath: 6,
+      notes: legato5, syllables: rep('u', 9),
+      help: ['Mit dem Halm fünf Töne hinauf und wieder hinunter, alles gebunden.',
+        'Die Luft strömt gleichmäßig, die Wangen blähen sich nicht auf. Danach einmal ohne Halm auf „u“ singen und hören, ob die Leichtigkeit bleibt.'] },
 
     { id: 'mimemamomu', group: 'resonanz', name: 'Mi-me-ma-mo-mu', hint: 'Fünftonraum', bpm: 92, lowStart: 3, top: 18,
       notes: legato5, syllables: ['mi', 'me', 'ma', 'mo', 'mu', 'mo', 'ma', 'me', 'mi'],
@@ -348,6 +484,14 @@
       notes: [], syllables: rep('no', 5),
       help: ['Intonation im Dreiklang: Das Klavier spielt Grundton und Quinte, du singst deinen Akkordton dazu — Sopran und Tenor die Terz, Alt die Quinte, Bass den Grundton — acht Schläge lang.',
         'Danach die Kadenz I–IV–V–I, je vier Schläge, mit dem Ton, der deine Stimme im vierstimmigen Satz singt. Hören, wie der eigene Ton im Akkord „einrastet“ — besonders die Terz.'] },
+    { id: 'umlaute', group: 'resonanz', name: 'Umlaute', hint: 'i–ü · e–ö', bpm: 84, lowStart: 6, top: 15,
+      notes: [[0, 4], [0, 4], [0, 4], [0, 4], [0, 4], [0, 8]], syllables: ['ni', 'nü', 'ne', 'nö', 'nä', 'na'],
+      help: ['Auf einem Ton: „ni – nü – ne – nö – nä – na“, ohne abzusetzen.',
+        'Von „i“ nach „ü“ und von „e“ nach „ö“ bleibt die Zunge, wo sie ist — nur die Lippen werden rund. So klingen ü und ö im Chor hell und einheitlich statt dumpf.'] },
+    { id: 'durMoll', group: 'resonanz', name: 'Dur und Moll', hint: 'no · große/kleine Terz', bpm: 72, lowStart: 4, top: 14, forceDrone: true,
+      notes: [[0, 4], [2, 4], [4, 4], [2, 4, null, -1], [0, 8]], syllables: rep('no', 5),
+      help: ['Grundton, große Terz, Quinte — dann die kleine Terz und zurück zum Grundton. Der Liegeton klingt die ganze Zeit mit.',
+        'Hören, wie viel kleiner der Schritt zur Mollterz ist. Die große Terz eher knapp, die kleine Terz eher weit genug singen — beide geraten im Chor gern zu tief.'] },
 
     { id: 'dreiklang', group: 'beweglich', name: 'Dreiklang', hint: 'ja ja ja', bpm: 92, lowStart: 2, top: 19,
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ja', 7),
@@ -365,12 +509,34 @@
     { id: 'koloratur', group: 'beweglich', name: 'Koloratur', hint: '9 Töne auf „a“', bpm: 80, lowStart: 2, top: 20, breath: 8,
       notes: [...[0, 1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 5, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], syllables: rep('a', 17),
       help: ['Die Tonleiter bis zur None (9 Töne) hinauf und hinunter, schnell und leicht auf „a“ (Anfänger: „da“ oder „la“).',
-        'In einem Bogen denken, nicht jeden Ton einzeln anstoßen. Erst langsam sauber, dann schneller.'] },
+        'In einem Bogen denken, nicht jeden Ton einzeln anstoßen. Erst langsam sauber, dann schneller.'],
+      easyNotes: [...[0, 1, 2, 3, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], easySyllables: rep('a', 9), easyHint: '5 Töne auf „a“' },
+    { id: 'staccatoLegato', group: 'beweglich', name: 'Staccato – Legato', hint: 'ha · dann ja', bpm: 88, lowStart: 2, top: 19,
+      notes: [[0, 2, .5], [2, 2, .5], [4, 2, .5], [7, 2, .5], [4, 2], [2, 2], [0, 4]], syllables: ['ha', 'ha', 'ha', 'ha', 'ja', 'a', 'a'],
+      help: ['Den Dreiklang hinauf kurz und federnd auf „ha“, hinunter gebunden auf „ja-a-a“.',
+        'Beim Staccato federt der Bauch, beim Legato strömt die Luft ohne Lücke weiter. Die Tonhöhe bleibt in beiden Hälften gleich sauber.'] },
 
     { id: 'oktave', group: 'hoehe', name: 'Oktavsprung', hint: 'ja-a …', bpm: 88, lowStart: 3, top: 22, breath: 8,
       notes: [[0, 4], [7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['ja', ...rep('a', 8)],
       help: ['Mit „ja“ eine Oktave hinauf springen und in einem Bogen die Tonleiter hinunter.',
-        'Beim Sprung nicht hochdrücken: den hohen Ton leicht ansetzen, als würde man ihn von oben abholen. Hohe Runden, die unangenehm sind, einfach auslassen.'] },
+        'Beim Sprung nicht hochdrücken: den hohen Ton leicht ansetzen, als würde man ihn von oben abholen. Hohe Runden, die unangenehm sind, einfach auslassen.'],
+      easyNotes: [[0, 4], [4, 4], [3, 2], [2, 2], [1, 2], [0, 6]], easySyllables: ['ja', ...rep('a', 5)], easyHint: 'Quintsprung' },
+    { id: 'eule', group: 'hoehe', name: 'Eulenruf', hint: 'hu-uh · von oben', bpm: 66, lowStart: 3, top: 20, glide: true,
+      notes: [[7, 6], [0, 10]], syllables: ['hu', 'uh'],
+      help: ['Mit einem leichten „hu“ hoch oben beginnen — so leicht wie ein Eulenruf — und auf „u“ eine Oktave hinuntergleiten.',
+        'Tiefe Stimmen beginnen in der Kopfstimme (Falsett) und lassen den Klang nach unten in die Bruststimme übergehen, ohne dass er lauter wird. Hohe Stimmen nehmen die leichte Höhe mit in die Mittellage.'] },
+    { id: 'kopfAbwaerts', group: 'hoehe', name: 'Von oben', hint: 'hu · Tonleiter abwärts', bpm: 84, lowStart: 3, top: 20,
+      notes: [[7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['hu', ...rep('u', 7)],
+      help: ['Die Tonleiter von oben eine Oktave hinunter, der erste Ton leicht und fast gehaucht.',
+        'Die Leichtigkeit des oberen Tons bleibt beim Hinuntergehen — nicht schwerer werden, nicht „umschalten“. Das gleicht die Register aus und bereitet den Oktavsprung vor.'] },
+    { id: 'tiefe', group: 'hoehe', name: 'Tiefe Lage', hint: 'mo · entspannt', bpm: 76, lowStart: 1, top: 12,
+      notes: [[4, 2], [3, 2], [2, 2], [1, 2], [0, 8]], syllables: ['mo', 'o', 'o', 'o', 'o'],
+      help: ['Fünf Töne auf „mo“ hinunter — Runde für Runde etwas tiefer (im Programm läuft die Übung abwärts).',
+        'In der Tiefe darf es leiser werden. Den Kehlkopf nicht hinunterdrücken und den Klang nicht künstlich dunkel machen. Ist ein Ton nur noch Knarren: Runde auslassen.'] },
+    { id: 'tiefeGleiten', group: 'hoehe', name: 'Tief gleiten', hint: 'u · Quinte abwärts', bpm: 66, lowStart: 1, top: 12, glide: true,
+      notes: [[4, 4], [0, 12]], syllables: ['u', 'u'],
+      help: ['Auf „u“ eine Quinte hinuntergleiten und unten den Ton ruhig halten.',
+        'Wie ein entspanntes Seufzen: Die Luft trägt den Ton nach unten, der Hals bleibt weit. Gut für Alt und Bass vor tiefen Stellen.'] },
   ];
   // Übung „Akkord“: je Stimme erst der eigene Akkordton (acht Schläge),
   // dann I–IV–V–I (je vier Schläge) mit dem Ton aus dem vierstimmigen
@@ -396,16 +562,20 @@
 
   // starts: Einsatz jedes Tons in 16teln ab dem Ende des Akkords (also
   // inklusive `delay`); die Position in der Runde ist cue + starts[i].
-  const roundSteps = (ex, cue) => Math.ceil((cue + ex.length + (ex.breath ?? BREATH)) / BAR) * BAR;
+  const roundSteps = (ex, cue) => Math.ceil((cue + ex.length + (ex.breath ?? BREATH)) / ROUND_GRID) * ROUND_GRID;
+  /** Tonlose Übung (Atem, Körper) — keine Töne, keine Rückungen. */
+  const toneless = (ex) => ex.kind === 'breath' || ex.kind === 'body';
   /** Töne der Übung für eine Stimme (nur „Akkord“ hat je Stimme eigene). */
   const notesOf = (ex, voiceId = state.voice) => ex.voiceNotes?.[voiceId] || ex.notes;
-  const semisOf = (ex, deg) => degreeSemis(deg, ex.mode);
+  /** Halbtöne eines Tons über dem Grundton: Stufe im Modus plus `alt`. */
+  const noteSemis = (ex, note) => degreeSemis(note[0], ex.mode) + (note[3] || 0);
   /** Tiefster und höchster Ton (Halbtöne über dem Grundton) für eine Stimme. */
   function spanOf(ex, voiceId) {
-    const semis = notesOf(ex, voiceId).map(([deg]) => semisOf(ex, deg));
+    if (toneless(ex)) return { min: 0, max: 0 };
+    const semis = notesOf(ex, voiceId).map((n) => noteSemis(ex, n));
     return { min: Math.min(...semis), max: Math.max(...semis) };
   }
-  EXERCISES.forEach((ex) => {
+  function prepareExercise(ex) {
     if (ex.chord) {
       const satb = chordExerciseSatb();
       ex.satb = satb;
@@ -415,29 +585,57 @@
       // (in C mit Grundton 48, beim Spielen transponiert).
       ex.accompany = [[0, [48, 55], 32], ...satb.map((c, k) => [32 + 16 * k, [c.B, c.T, c.A, c.S], 16])];
     }
+    if (ex.kind === 'body') { ex.notes = []; ex.syllables = []; }
     let at = ex.delay || 0;
     ex.starts = ex.notes.map(([, len]) => { const start = at; at += len; return start; });
     ex.length = at;
     ex.steps = roundSteps(ex, CUE);
-    if (ex.kind === 'breath') { ex.min = 0; ex.max = 0; return; }
     Object.assign(ex, spanOf(ex, 'A'));
+  }
+  EXERCISES.forEach(prepareExercise);
+  // Fassung für Belastung „leicht“: dieselbe Übung (gleiche ID, gleiches
+  // gemerktes Tempo) mit kürzerem Tonraum.
+  EXERCISES.forEach((ex) => {
+    if (!ex.easyNotes) return;
+    ex.easy = { ...ex, notes: ex.easyNotes, syllables: ex.easySyllables, hint: ex.easyHint, isEasy: true };
+    prepareExercise(ex.easy);
   });
   const exById = (id) => EXERCISES.find((x) => x.id === id);
+  /** Die Fassung einer Übung, die bei der aktuellen Belastung klingt. */
+  const variantOf = (ex) => (ex && state.load === 'leicht' && ex.easy ? ex.easy : ex);
 
   // Einsing-Programme: [Übung, Halbtöne hinauf, Richtung]. Aufbau wie in
   // einer Chorprobe: lockern → Resonanz → Beweglichkeit → Höhe → sanft
   // zurück (Summen abwärts als Ausklang).
+  // about: Untertitel der Karte.
   const PROGRAMS = [
-    { id: 'kurz', name: 'Kurz', items: [['lippen', 3], ['mimemamomu', 4], ['nja', 3], ['dreiklang', 4], ['oktave', 3], ['summen', 3, 'down']] },
-    { id: 'lang', name: 'Ausführlich', items: [['atem'], ['lippen', 4], ['sirene', 3], ['zwerchfell', 3], ['summen', 3], ['mimemamomu', 4], ['nja', 3],
+    { id: 'kurz', name: 'Kurz', about: 'Der Klassiker vor der Probe', items: [['lippen', 3], ['mimemamomu', 4], ['nja', 3], ['dreiklang', 4], ['oktave', 3], ['summen', 3, 'down']] },
+    { id: 'lang', name: 'Ausführlich', about: 'Alles einmal, in Ruhe', items: [['atem'], ['lippen', 4], ['sirene', 3], ['zwerchfell', 3], ['summen', 3], ['mimemamomu', 4], ['nja', 3],
       ['vokale', 2], ['moll5', 3], ['katze', 3], ['dreiklang', 4], ['koloratur', 3], ['oktave', 4], ['summen', 4, 'down']] },
+    { id: 'schnell', name: 'Schnell', about: 'Wenn wenig Zeit ist',
+      items: [['lippen', 2], ['sirene', 2], ['mimemamomu', 3], ['nja', 2], ['dreiklang', 3], ['summen', 2, 'down']] },
+    { id: 'morgens', name: 'Morgens', about: 'Sanft: erst Körper, dann von oben',
+      items: [['dehnen'], ['kiefer'], ['strohhalm', 3], ['summen', 3, 'down'], ['eule', 3], ['mimemamomu', 3], ['dreiklang', 3]] },
+    { id: 'intonation', name: 'Intonation', about: 'Vokale, Terzen und Akkord',
+      items: [['haltung'], ['strohhalm5', 3], ['summen', 2, 'down'], ['vokale', 2], ['umlaute', 2], ['moll5', 2], ['durMoll', 3], ['akkord', 1], ['messa', 2]] },
+    { id: 'hoehe', name: 'Höhe', about: 'Von oben nach unten, dann Sprünge',
+      items: [['dehnen'], ['strohhalm', 4], ['sirene', 4], ['eule', 4], ['kopfAbwaerts', 4], ['dreiklang', 5], ['oktave', 4], ['summen', 3, 'down']] },
+    { id: 'tiefe', name: 'Tiefe', about: 'Für tiefe Stimmen und tiefe Stellen',
+      items: [['haltung'], ['lippen', 3, 'down'], ['summen', 3, 'down'], ['tiefeGleiten', 3, 'down'], ['tiefe', 4, 'down'], ['vokale', 2], ['moll5', 2, 'down']] },
+    { id: 'auftritt', name: 'Vor dem Auftritt', about: 'Schonend und wach, nichts ausreizen',
+      items: [['haltung'], ['atem'], ['lippen', 3], ['summen', 2, 'down'], ['mimemamomu', 3], ['katze', 2], ['staccatoLegato', 2], ['vokale', 2]] },
   ];
   const DIRECTIONS = [['updown', 'auf und ab'], ['up', 'aufwärts'], ['down', 'abwärts']];
 
   const HELP = {
     program: ['Einsing-Programm', ['Das Programm spielt mehrere Übungen automatisch nacheinander — wie der Anfang einer Chorprobe: erst lockern und summen, dann Resonanz und Vokale, dann Beweglichkeit, zum Schluss die Höhe und ein ruhiger Ausklang.',
       'Jede Übung beginnt mit einem Akkord und steigt dann Runde für Runde einen Halbton, bevor sie wieder zurückgeht. Zwischen zwei Übungen ist ein Takt Pause.',
-      'Mit „Nächste Übung“ überspringst du etwas; ein Tipp auf eine Übung der Liste springt direkt dorthin.']],
+      'Mit „Nächste Übung“ überspringst du etwas; ein Tipp auf eine Übung der Liste springt direkt dorthin.',
+      'Morgens und Vor dem Auftritt sind bewusst kurz und bleiben in der Mittellage. Höhe und Tiefe ersetzen kein Einsingen — erst Schnell oder Kurz, dann eines davon.',
+      'Eigene Programme: „+ Eigenes Programm“ oder im Menü (⋯) einer Karte „Als Vorlage kopieren“.']],
+    load: ['Belastung', ['<b>Leicht:</b> tiefer, langsamer, weniger Rückungen — für müde Stimmen, morgens, nach Krankheit.',
+      '<b>Kräftig:</b> etwas höher und mehr Rückungen — für geübte Stimmen.',
+      'Die Grenzen deiner Stimmlage gelten immer. Die Wahl gilt auch für „Heute üben“ in der App.']],
     voice: ['Welche Stimme?', null],
     options: ['Begleitung', ['<b>Melodie:</b> Die Übung wird vorgesungen. Aus = nur der Akkord mit Anfangston, du singst allein.',
       '<b>Liegeton:</b> Ein leiser Grundton mit Quinte klingt die ganze Zeit mit — gut, um die Intonation zu prüfen.',
@@ -555,6 +753,25 @@
       oscs.forEach((o) => { o.start(time); o.stop(time + duration + .7); });
     },
 
+    /** Leiser Glockenton beim Wechsel einer Körperübung (Sinus mit zwei
+     *  unharmonischen Teiltönen, lange abklingend). */
+    bell(time) {
+      const ctx = this.ctx;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(.0001, time);
+      gain.gain.linearRampToValueAtTime(.09, time + .01);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + 2.2);
+      gain.connect(this.master);
+      gain.connect(this.reverb);
+      [[880, 1], [2210, .35], [3520, .12]].forEach(([hz, level]) => {
+        const osc = ctx.createOscillator();
+        osc.frequency.value = hz;
+        const g = ctx.createGain(); g.gain.value = level;
+        osc.connect(g).connect(gain);
+        osc.start(time); osc.stop(time + 2.3);
+      });
+    },
+
     /** Gehaltener Liegeton ohne Ende — gibt eine Steuerung zurück. */
     hold(midis) {
       const ctx = this.ctx;
@@ -594,7 +811,11 @@
   const state = {
     mode: 'program', program: 'kurz', exercise: 'mimemamomu', voice: 'A', direction: 'updown',
     guide: true, drone: false, countIn: 'off', cue: 'chord', bpm: {},
+    load: 'normal', // Belastung — gemeinsam mit dem Stimmprofil der App
+    ownPrograms: [], // [{ id: 'own-<base36>', name, items: [[exId, limit|null, dir]] }]
+    lengths: { kurz: 5, lang: 10 }, // gewünschte Dauer der Programme „Kurz“/„Ausführlich“ in Minuten
   };
+  const LENGTH_CHOICES = { kurz: [3, 5, 7], lang: [10, 15, 20] };
   const COUNT_INS = [['off', 'aus'], ['start', 'zu Beginn'], ['round', 'jede Runde']];
   const CUES = [['chord', 'Akkord'], ['cadence', 'Kadenz']];
   const run = { playing: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, wakeLock: null };
@@ -605,13 +826,50 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+  const OWN_MAX = 12;       // höchstens so viele eigene Programme
+  const OWN_ITEMS_MAX = 20; // je 1–20 Übungen
+  const OWN_NAME_MAX = 40;  // Name 1–40 Zeichen
+  /** Eigene Programme aus der Ablage: unbekannte Übungen raus, `limit`
+   *  ganzzahlig 1–9 oder null (so viele, wie der Umfang erlaubt), `dir`
+   *  gültig oder 'updown'; tonlose Übungen ohne limit/dir; leere Programme
+   *  verworfen; doppelte IDs verworfen. */
+  function sanitizeOwnPrograms(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    const ids = new Set();
+    for (const p of raw) {
+      if (out.length >= OWN_MAX) break;
+      if (!p || typeof p !== 'object') continue;
+      const id = typeof p.id === 'string' && /^own-[0-9a-z]{1,20}$/.test(p.id) && !ids.has(p.id) ? p.id : null;
+      if (!id) continue;
+      const name = (typeof p.name === 'string' ? p.name.trim() : '').slice(0, OWN_NAME_MAX) || 'Eigenes Programm';
+      const items = (Array.isArray(p.items) ? p.items : []).map((it) => {
+        const ex = Array.isArray(it) ? exById(it[0]) : null;
+        if (!ex) return null;
+        if (toneless(ex)) return [ex.id];
+        const limit = Number.isInteger(it[1]) && it[1] >= 1 && it[1] <= 9 ? it[1] : null;
+        const dir = DIRECTIONS.some(([d]) => d === it[2]) ? it[2] : 'updown';
+        return [ex.id, limit, dir];
+      }).filter(Boolean).slice(0, OWN_ITEMS_MAX);
+      if (!items.length) continue;
+      ids.add(id);
+      out.push({ id, name, items });
+    }
+    return out;
+  }
+
   function sanitize(raw) {
     if (!raw || typeof raw !== 'object') return;
     const pickFrom = (key, list) => { if (list.includes(raw[key])) state[key] = raw[key]; };
     pickFrom('mode', ['program', 'single']);
-    pickFrom('program', PROGRAMS.map((p) => p.id));
+    if ('ownPrograms' in raw) state.ownPrograms = sanitizeOwnPrograms(raw.ownPrograms);
+    pickFrom('program', allPrograms().map((p) => p.id));
+    pickFrom('load', LOAD_IDS);
+    if (raw.lengths && typeof raw.lengths === 'object') {
+      for (const id of ['kurz', 'lang']) if (LENGTH_CHOICES[id].includes(raw.lengths[id])) state.lengths[id] = raw.lengths[id];
+    }
     pickFrom('exercise', EXERCISES.map((x) => x.id));
-    pickFrom('voice', VOICES.map((v) => v.id));
+    pickFrom('voice', VOICE_IDS);
     pickFrom('direction', DIRECTIONS.map(([id]) => id));
     for (const key of ['guide', 'drone']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
     // countIn war bis v294 ein Schalter (true/false) — alte Stände umrechnen.
@@ -639,8 +897,46 @@
     saveTimer = setTimeout(() => { try { Promise.resolve(storage.save('einsingen', state)).catch(() => {}); } catch { /* Ablage weg */ } }, 400);
   }
 
+  /** Grundtempo einer Übung (pro Übung gemerkt, Tempo-Regler). */
   const bpmOf = (ex) => state.bpm[ex.id] ?? ex.bpm;
-  const program = () => PROGRAMS.find((p) => p.id === state.program) || PROGRAMS[0];
+  /** Tatsächlich gespieltes Tempo: Grundtempo × Belastung; tonlose Übungen
+   *  (Körper fest BODY_BPM, Atem) ohne Faktor. */
+  const playBpmOf = (ex) => (ex.kind === 'body' ? BODY_BPM : ex.kind === 'breath' ? bpmOf(ex) : Math.round(bpmOf(ex) * loadOf().tempo));
+  const allPrograms = () => [...PROGRAMS, ...state.ownPrograms].map(fitted);
+  const program = () => allPrograms().find((p) => p.id === state.program) || allPrograms()[0];
+
+  /* ---- Länge von „Kurz“ und „Ausführlich“ einstellbar: die Zahl der
+     Rückungen je Übung wird gemeinsam skaliert (Faktor f), bis die Dauer
+     der gewünschten am nächsten kommt; reicht das nicht, fallen Übungen aus
+     der Mitte weg (erste und letzte bleiben). Ergebnis je Stimme, Belastung
+     und Tempo zwischengespeichert. ---- */
+  let quickMinutes = null; // Schnellstart aus der App: Dauer für diesen Aufruf
+  const targetMinutes = (id) => (quickMinutes && id === (quickMinutes <= 5 ? 'kurz' : 'lang') ? quickMinutes : state.lengths[id]);
+  const fitCache = new Map();
+  function fitted(p) {
+    if (p.id !== 'kurz' && p.id !== 'lang') return p;
+    const minutes = targetMinutes(p.id);
+    const key = `${p.id}|${minutes}|${state.voice}|${state.load}|${JSON.stringify(state.bpm)}|${profile?.low}|${profile?.high}`;
+    if (!fitCache.has(key)) fitCache.set(key, { ...p, items: fitItems(p.items, minutes * 60) });
+    return fitCache.get(key);
+  }
+  function fitItems(items, target) {
+    const scale = (list, f) => list.map(([id, limit, dir]) => (limit == null ? [id] : [id, clamp(Math.round(limit * f), 1, 9), ...(dir ? [dir] : [])]));
+    const dur = (list) => secondsLeft(0, buildPlan({ id: 'fit', items: list }));
+    let list = items.slice();
+    let best = null;
+    for (let round = 0; round < items.length; round++) {
+      best = null;
+      for (let f = .2; f <= 3.001; f += .05) {
+        const cand = scale(list, f);
+        const d = Math.abs(dur(cand) - target);
+        if (!best || d < best.d) best = { cand, d };
+      }
+      if (best.d <= target * .15 || list.length <= 3 || dur(best.cand) < target) break;
+      list = [...list.slice(0, Math.floor(list.length / 2)), ...list.slice(Math.floor(list.length / 2) + 1)];
+    }
+    return best.cand;
+  }
 
   /* ------------------------------------------------------------------------
      PLAN — welche Runde in welcher Tonart auf welchem Schritt liegt.
@@ -649,10 +945,13 @@
   /** Startlage und Anzahl Halbtonschritte einer Übung für eine Stimme. */
   function exerciseRange(ex, voiceId) {
     const v = voiceById(voiceId);
-    const { min, max } = ex.kind === 'breath' ? { min: 0, max: 0 } : spanOf(ex, voiceId);
-    const start = v.floor + ex.lowStart - min;
-    const highestRoot = Math.min(v.floor + ex.top, v.ceil) - max;
-    return { start, steps: clamp(highestRoot - start, 0, MAX_STEPS) };
+    const L = loadOf();
+    const { min, max } = spanOf(ex, voiceId);
+    // Ein enger persönlicher Umfang kann die Startlage über die Obergrenze
+    // schieben — dann so weit hinunter, wie es der Umfang erlaubt.
+    const start = Math.max(v.floor - min, Math.min(v.floor + ex.lowStart - min, v.ceil - max));
+    const highestRoot = Math.min(v.floor + ex.top + L.topShift, v.ceil) - max;
+    return { start, steps: clamp(highestRoot - start, 0, L.maxSteps) };
   }
 
   /** Halbton-Versätze der Runden. `loop`: Einzelübung in Dauerschleife —
@@ -666,9 +965,19 @@
     return [...up, ...up.slice(loop ? 1 : 0, -1).reverse()];
   }
 
-  function buildPlan() {
+  /** Plan für die aktuelle Einstellung — oder, mit `prog`, für genau dieses
+   *  Programm (Kartendauer, Editor). */
+  function buildPlan(prog = null) {
     const segs = [];
     let at = 0;
+    // Körperübung: je Bewegung eine Runde, Länge in Schlägen.
+    const addBody = (ex, item) => {
+      ex.moves.forEach(([text, beats], i) => {
+        const steps = beats * 4;
+        segs.push({ kind: 'round', ex, item, root: null, start: at, steps, cue: 0, cadence: false, round: i, rounds: ex.moves.length, move: text, beats, trend: '' });
+        at += steps;
+      });
+    };
     // Atemübung: vier Runden ohne Ton, Ausatmen 8, 10, 12, 14 Schläge.
     const addBreath = (ex, item) => {
       BREATH_EXHALES.forEach((exhale, i) => {
@@ -677,8 +986,10 @@
         at += steps;
       });
     };
-    const addExercise = (ex, dir, limit, loop, item) => {
+    const addExercise = (base, dir, limit, loop, item) => {
+      const ex = variantOf(base);
       if (ex.kind === 'breath') { addBreath(ex, item); return; }
+      if (ex.kind === 'body') { addBody(ex, item); return; }
       const r = exerciseRange(ex, state.voice);
       const offs = offsets(limit == null ? r.steps : Math.min(r.steps, limit), dir, loop);
       offs.forEach((o, i) => {
@@ -692,18 +1003,20 @@
       });
     };
     let items;
-    if (state.mode === 'single') {
+    const single = !prog && state.mode === 'single';
+    if (single) {
       const ex = exById(state.exercise) || EXERCISES[0];
-      items = [ex];
+      items = [variantOf(ex)];
       addExercise(ex, state.direction, null, true, 0);
     } else {
-      items = program().items.map(([id]) => exById(id));
-      program().items.forEach(([id, limit, dir = 'updown'], k) => {
-        if (k > 0) { segs.push({ kind: 'pause', ex: exById(id), item: k, start: at, steps: PAUSE }); at += PAUSE; }
-        addExercise(exById(id), dir, limit, false, k);
+      const p = prog || program();
+      items = p.items.map(([id]) => variantOf(exById(id)));
+      p.items.forEach(([id, limit, dir = 'updown'], k) => {
+        if (k > 0) { segs.push({ kind: 'pause', ex: variantOf(exById(id)), item: k, start: at, steps: PAUSE }); at += PAUSE; }
+        addExercise(exById(id), dir || 'updown', limit, false, k);
       });
     }
-    return { segs, total: at, loop: state.mode === 'single', items };
+    return { segs, total: at, loop: single, items };
   }
 
   function segAt(g) {
@@ -715,16 +1028,16 @@
     return { seg: plan.segs[lo], pos: x - plan.segs[lo].start };
   }
 
-  const stepSecondsFor = (ex) => 60 / bpmOf(ex) / 4;
+  const stepSecondsFor = (ex) => 60 / playBpmOf(ex) / 4;
   function stepSecondsAt(g) {
     const hit = segAt(Math.max(0, g));
     return stepSecondsFor(hit ? hit.seg.ex : plan.segs[0].ex);
   }
 
   /** Geschätzte Dauer ab Schritt `from` in Sekunden (Programm-Anzeige). */
-  function secondsLeft(from) {
+  function secondsLeft(from, p = plan) {
     let sum = 0;
-    for (const s of plan.segs) {
+    for (const s of p.segs) {
       const rest = s.start + s.steps - Math.max(from, s.start);
       if (rest > 0) sum += Math.min(rest, s.steps) * stepSecondsFor(s.ex);
     }
@@ -735,8 +1048,8 @@
   function planNotes() {
     const out = [];
     for (const s of plan.segs) {
-      if (s.kind !== 'round' || s.ex.kind === 'breath') continue;
-      notesOf(s.ex).forEach(([deg], i) => out.push({ midi: s.root + semisOf(s.ex, deg), ex: s.ex.id, round: s.round, i }));
+      if (s.kind !== 'round' || toneless(s.ex)) continue;
+      notesOf(s.ex).forEach((n, i) => out.push({ midi: s.root + noteSemis(s.ex, n), ex: s.ex.id, round: s.round, i }));
     }
     return out;
   }
@@ -769,6 +1082,18 @@
     const { seg, pos } = hit;
     const ex = seg.ex;
     const sec = stepSecondsFor(ex);
+    // Liegeton: Schalter oder Übung mit forceDrone („Dur und Moll“) — je
+    // Runde entschieden, damit er mit der nächsten Übung wieder geht.
+    if (pos === 0) {
+      const want = state.drone || !!ex.forceDrone;
+      if (!want && droneVoice) stopDrone();
+      else if (want && !droneVoice && seg.root !== null) droneVoice = engine.hold(droneMidis(seg.root));
+    }
+    if (ex.kind === 'body') {
+      // Stille; nur beim Wechsel der Bewegung ein leiser Glockenton.
+      if (pos === 0) engine.bell(time);
+      return;
+    }
     if (ex.kind === 'breath') {
       // Nur Klicks: jeder Schlag, betont beim Ein- und beim Ausatmen.
       if (pos % 4 === 0) engine.click(time, pos === 0 || pos === BREATH_IN * 4);
@@ -782,7 +1107,7 @@
       chord.forEach((m) => engine.keys(m, time, chordLen, { velocity: .1 }));
       // Ohne vorgesungene Melodie: den Anfangston in der eigenen Lage zum
       // (letzten) Tonika-Akkord dazu.
-      if (!state.guide && k === parts.length - 1) engine.keys(seg.root + semisOf(ex, notes[0][0]), time, chordLen, { velocity: .2 });
+      if (!state.guide && k === parts.length - 1) engine.keys(seg.root + noteSemis(ex, notes[0]), time, chordLen, { velocity: .2 });
     });
     if (pos === 0 && droneVoice && seg.root !== null) droneVoice.retune(droneMidis(seg.root), time);
     // Einzähler „jede Runde“: zwei Klicks auf den letzten beiden Schlägen
@@ -797,10 +1122,10 @@
     if (!state.guide) return;
     const i = ex.starts.indexOf(pos - seg.cue);
     if (i === -1) return;
-    const [deg, len, gate] = notes[i];
-    const midi = seg.root + semisOf(ex, deg);
+    const [, len, gate] = notes[i];
+    const midi = seg.root + noteSemis(ex, notes[i]);
     const dur = (gate ?? len * (ex.glide ? 1 : .92)) * sec;
-    const from = i > 0 ? seg.root + semisOf(ex, notes[i - 1][0]) : null;
+    const from = i > 0 ? seg.root + noteSemis(ex, notes[i - 1]) : null;
     engine.tone(midi, time, dur, ex.glide ? { glide: dur * .75, from } : ex.dynamic === 'crescDecresc' ? { swell: true } : {});
   }
 
@@ -831,6 +1156,7 @@
     try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
     plan = buildPlan();
     run.playing = true;
+    run.startedAt = engine.ctx.currentTime;
     run.step = state.countIn !== 'off' && fromStep === 0 ? -BAR : fromStep;
     run.nextTime = engine.ctx.currentTime + .08;
     run.endTime = null;
@@ -844,7 +1170,17 @@
     draw();
   }
 
-  function stop(message) {
+  /** Gesungene Zeit melden (ab einer Viertelminute), mit Programm-ID. */
+  function reportMinutes(finished) {
+    if (!run.startedAt || !engine.ctx) return;
+    const minutes = (engine.ctx.currentTime - run.startedAt) / 60;
+    run.startedAt = null;
+    if (minutes < .25 || !progressApi) return;
+    try { progressApi.add({ area: 'warmup', minutes: Math.round(minutes * 10) / 10, program: state.mode === 'program' && finished ? state.program : null }); } catch { /* App weg */ }
+  }
+
+  function stop(message, finished = false) {
+    reportMinutes(finished);
     run.playing = false;
     clearTimeout(run.timer);
     cancelAnimationFrame(run.frame);
@@ -857,8 +1193,26 @@
     setStatus(message || 'Bereit — am besten mit Kopfhörern.');
   }
 
+  /* ---- Schnellstart aus der App: ?from=quick&minutes=5|10 — Programm
+     „Kurz“ bzw. „Ausführlich“ auf die gewünschte Dauer gebracht, mit der
+     zuletzt geübten Stimme (Stimmprofil); vorbereitet, Start mit Play. ---- */
+  function parseQuickParams(search) {
+    const q = new URLSearchParams(search);
+    if (q.get('from') !== 'quick') return null;
+    const minutes = Number(q.get('minutes'));
+    return { minutes: [5, 10].includes(minutes) ? minutes : null };
+  }
+  function applyQuickParams(p) {
+    if (!p?.minutes) return;
+    quickMinutes = p.minutes;
+    fitCache.clear();
+    state.mode = 'program';
+    state.program = p.minutes <= 5 ? 'kurz' : 'lang';
+    setStatus(`Einsingen ${p.minutes} Minuten — mit Play starten.`);
+  }
+
   function finish() {
-    stop('Fertig — gut eingesungen! Viel Spaß in der Probe.');
+    stop('Fertig — gut eingesungen! Viel Spaß in der Probe.', true);
     if (state.mode === 'program') {
       $$('.prog-item').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
       $('.progress i').style.width = '100%';
@@ -924,10 +1278,21 @@
     const active = seg.kind !== 'round' ? -1 : ex.kind === 'breath' ? (pos < BREATH_IN * 4 ? 0 : 1)
       : ex.starts.findIndex((s, i) => pos - seg.cue >= s && pos - seg.cue < s + ex.notes[i][1]);
     $$('.contour .syl').forEach((el, i) => el.classList.toggle('is-now', i === active));
+    if (ex.kind === 'body' && seg.kind === 'round') updateBodyRing(seg, pos);
     if (state.mode === 'program') {
       $('.progress i').style.width = `${(100 * g / plan.total).toFixed(1)}%`;
       $('.prog-text').textContent = `Übung ${seg.item + 1} von ${plan.items.length} · noch ${fmtTime(secondsLeft(g))}`;
     }
+  }
+
+  /** Countdown-Ring einer Körperübung: verbleibende Schläge der Bewegung. */
+  function updateBodyRing(seg, pos) {
+    const left = Math.max(0, Math.ceil((seg.steps - pos) / 4));
+    const frac = seg.steps ? pos / seg.steps : 0;
+    $('.body-ring .ring-fg').setAttribute('stroke-dashoffset', (157.1 * frac).toFixed(1));
+    $('.body-ring span').textContent = String(left);
+    const text = $('.body-move');
+    if (text.textContent !== seg.move) text.textContent = seg.move;
   }
 
   /** Bühne für ein Segment (beim Spielen) oder die Vorschau (gestoppt). */
@@ -942,10 +1307,18 @@
     $('[data-help="exercise"]').setAttribute('aria-label', `So geht: ${ex.name}`);
 
     const host = $('.contour');
-    if (host.dataset.ex !== `${ex.id}|${state.voice}`) {
-      host.dataset.ex = `${ex.id}|${state.voice}`;
-      const { min, max } = ex.kind === 'breath' ? { min: 0, max: 0 } : spanOf(ex, state.voice);
-      const semis = notesOf(ex).map(([deg]) => (ex.kind === 'breath' ? 0 : semisOf(ex, deg) - min));
+    const isBody = ex.kind === 'body';
+    host.hidden = isBody;
+    $('.body-stage').hidden = !isBody;
+    if (isBody) {
+      const r = cur.kind === 'round' ? cur : plan.segs.find((sg) => sg.kind === 'round' && sg.item === cur.item);
+      $('.body-move').textContent = r.move;
+      updateBodyRing(r, 0);
+    }
+    if (host.dataset.ex !== `${ex.id}|${state.voice}|${!!ex.isEasy}`) {
+      host.dataset.ex = `${ex.id}|${state.voice}|${!!ex.isEasy}`;
+      const { min, max } = spanOf(ex, state.voice);
+      const semis = notesOf(ex).map((n) => (toneless(ex) ? 0 : noteSemis(ex, n) - min));
       const span = Math.max(1, max - min);
       const px = Math.min(4, 44 / span);
       host.classList.toggle('is-dense', ex.notes.length > 11);
@@ -963,7 +1336,15 @@
 
     // Tonraum dieser Übung (bei Programmen: der aktuellen) für die Stimme.
     const rounds = plan.segs.filter((s) => s.kind === 'round' && s.item === cur.item);
-    if (ex.kind === 'breath') {
+    if (isBody) {
+      $('.stage-range').textContent = 'ohne Ton';
+      $('.stage-range').title = '';
+      const r = cur.kind === 'round' ? cur : rounds[0];
+      const totalBeats = rounds.reduce((a, sg) => a + sg.beats, 0);
+      $('.stage-key').textContent = seg && cur.kind === 'round'
+        ? `Bewegung ${r.round + 1}/${r.rounds} · ${r.beats} Schläge`
+        : `${rounds.length} Bewegungen · ${totalBeats} Schläge`;
+    } else if (ex.kind === 'breath') {
       $('.stage-range').textContent = 'ohne Ton';
       $('.stage-range').title = '';
       const r = cur.kind === 'round' ? cur : rounds[0];
@@ -1016,22 +1397,37 @@
   }
 
   function renderPrograms() {
-    const saved = { mode: state.mode, program: state.program };
-    const cards = PROGRAMS.map((p) => {
-      state.mode = 'program'; state.program = p.id;
-      plan = buildPlan();
+    const cards = allPrograms().map((p) => {
+      const own = p.id.startsWith('own-');
+      const wrap = document.createElement('div');
+      wrap.className = 'prog-card-wrap';
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-card';
       b.dataset.program = p.id;
-      b.setAttribute('aria-pressed', String(p.id === saved.program));
-      b.innerHTML = `<strong>${p.name}</strong><span>${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0))}</span>`;
-      return b;
+      b.setAttribute('aria-pressed', String(p.id === state.program));
+      b.innerHTML = '<strong></strong><small></small><span></span>';
+      b.children[0].textContent = p.name;
+      b.children[1].textContent = own ? 'Eigenes Programm' : p.about || '';
+      b.children[2].textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, buildPlan(p)))}`;
+      const menu = document.createElement('button');
+      menu.type = 'button'; menu.className = 'prog-menu';
+      menu.dataset.progMenu = p.id;
+      menu.textContent = '⋯';
+      menu.setAttribute('aria-label', `Menü: ${p.name}`);
+      wrap.append(b, menu);
+      return wrap;
     });
-    Object.assign(state, saved);
+    if (state.ownPrograms.length < OWN_MAX) {
+      const add = document.createElement('button');
+      add.type = 'button'; add.className = 'prog-card is-add';
+      add.dataset.action = 'own-new';
+      add.innerHTML = '<strong>+ Eigenes Programm</strong>';
+      cards.push(add);
+    }
     plan = buildPlan();
     $('[data-programs]').replaceChildren(...cards);
     $('.prog-list').replaceChildren(...program().items.map(([id], k) => {
-      const ex = exById(id);
+      const ex = variantOf(exById(id));
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-item'; b.dataset.item = String(k);
@@ -1076,8 +1472,11 @@
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
     const ex = tempoExercise();
     $('.bpm').value = String(bpmOf(ex));
+    $('.bpm').disabled = ex.kind === 'body'; // Körperübungen: Tempo fest
     $('.bpm-out').innerHTML = `${bpmOf(ex)} BPM <small></small>`;
-    $('.bpm-out small').textContent = `· ${ex.name}`;
+    // Belastung ändert das gespielte Tempo; der Regler bleibt das Grundtempo.
+    const played = playBpmOf(ex);
+    $('.bpm-out small').textContent = `· ${ex.name}${played !== bpmOf(ex) ? ` · ${loadOf().name}: ${played}` : ''}`;
   }
 
   function renderAll() {
@@ -1086,10 +1485,13 @@
     $$('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== state.mode; });
     renderPrograms();
     renderGroups();
-    chips('voice', VOICES.map((v) => [v.id, v.name]), state.voice);
+    chips('voice', voiceList().map((v) => [v.id, v.name]), state.voice);
     chips('direction', DIRECTIONS, state.direction);
     chips('countIn', COUNT_INS, state.countIn);
     chips('cue', CUES, state.cue);
+    chips('load', LOAD_IDS.map((id) => [id, LOADS[id].name]), state.load);
+    chips('lenKurz', LENGTH_CHOICES.kurz.map((m) => [String(m), `${m} Min`]), String(state.lengths.kurz));
+    chips('lenLang', LENGTH_CHOICES.lang.map((m) => [String(m), `${m} Min`]), String(state.lengths.lang));
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     renderStage(run.playing ? run.shownSeg : null);
     renderTransport();
@@ -1106,22 +1508,169 @@
     } else if (kind === 'voice') {
       title = HELP.voice[0];
       paras = ['Wähle deine Chorstimme. Die Übungen bleiben in einem bequemen Bereich, der mit jeder Runde nur ein paar Halbtöne steigt:',
-        `<ul>${VOICES.map((v) => `<li><b>${v.name}:</b> ${noteLabel(v.floor)} bis ${noteLabel(v.ceil)}</li>`).join('')}</ul>`,
-        'Mezzosopran oder Bariton? Im Zweifel die tiefere Stimme wählen (Alt bzw. Bass) — lieber bequem als an der Grenze. Männerstimmen singen eine Oktave tiefer als Frauenstimmen; die Vorgabe klingt in deiner Lage.'];
+        `<ul>${voiceList().map((v) => `<li><b>${v.name}:</b> ${noteLabel(v.floor)} bis ${noteLabel(v.ceil)}${v.personal ? ' (dein gemessener Umfang)' : ''}</li>`).join('')}</ul>`,
+        ...(profile?.low != null ? ['Mit gemessenem Umfang (Ausbildung → Stimme → Tonumfang heute) bleibt das Einsingen zwei Halbtöne innerhalb deiner Grenzen. Zurücksetzen kannst du ihn unter Tools.'] : []),
+        'Die Wahl gilt in allen Übe-Tools (Einsingen, Ausbildung, Groove Lab).',
+        'Mezzosopran oder Bariton? Im Zweifel die tiefere Stimme wählen (Alt bzw. Bass) — lieber bequem als an der Grenze. Tiefe Stimmen singen eine Oktave tiefer als hohe; die Vorgabe klingt in deiner Lage.'];
     } else {
       [title, paras] = HELP[kind];
     }
-    $('#sheet-title').textContent = title;
+    sheetMode = 'help';
+    openSheet(title);
     $('.sheet-body').innerHTML = paras.map((p) => (p.startsWith('<ul>') ? p : `<p>${p}</p>`)).join('');
-    helpReturn = document.activeElement;
-    $('.sheet').hidden = false;
-    $('.sheet-close').focus();
+    $('.help-sheet .sheet-close').focus();
   }
   function closeHelp() {
-    $('.sheet').hidden = true;
+    $('.help-sheet').hidden = true;
+    sheetMode = 'help';
+    draft = null;
+    $('.help-sheet .sheet-close').hidden = false;
     if (helpReturn && helpReturn.focus) helpReturn.focus();
   }
   function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  let settingsReturn = null;
+  function openSettings() {
+    settingsReturn = document.activeElement;
+    $('.settings-sheet').hidden = false;
+    $('.settings-sheet [data-action="close-settings"]').focus();
+  }
+  function closeSettings() {
+    $('.settings-sheet').hidden = true;
+    settingsReturn?.focus?.();
+  }
+
+  /** Blatt mit eigenem Inhalt (Menü, Editor) statt Hilfetext. */
+  function openSheet(title, { closeButton = true } = {}) {
+    $('#sheet-title').textContent = title;
+    $('.help-sheet .sheet-close').hidden = !closeButton;
+    if (!$('.help-sheet').hidden) return;
+    helpReturn = document.activeElement;
+    $('.help-sheet').hidden = false;
+  }
+
+  /* ---- Menü einer Programmkarte ---- */
+
+  function openProgramMenu(id) {
+    const p = allPrograms().find((x) => x.id === id);
+    if (!p) return;
+    const own = id.startsWith('own-');
+    sheetMode = 'menu';
+    openSheet(p.name);
+    $('.sheet-body').innerHTML = `<div class="menu-list">${own ? `<button type="button" data-menu="edit" data-id="${id}">Bearbeiten</button>` : ''}<button type="button" data-menu="copy" data-id="${id}">Als Vorlage kopieren</button></div>`;
+    $('.sheet-body button').focus();
+  }
+
+  /* ---- Editor eigener Programme ---- */
+
+  let sheetMode = 'help'; // 'help' | 'menu' | 'editor'
+  let draft = null;        // { id|null, name, items: [[exId, limit|null, dir]], picking, confirmDelete }
+
+  function openEditor(source, { copy = false } = {}) {
+    const items = (source?.items || []).map(([id, limit = null, dir = 'updown']) => [id, limit ?? null, dir || 'updown']);
+    draft = {
+      id: source && !copy ? source.id : null,
+      name: source ? (copy ? `${source.name} (Kopie)`.slice(0, OWN_NAME_MAX) : source.name) : '',
+      items, picking: !items.length, confirmDelete: false,
+    };
+    sheetMode = 'editor';
+    openSheet(draft.id ? 'Programm bearbeiten' : 'Eigenes Programm', { closeButton: false });
+    renderEditor();
+    $('.ed-name').focus();
+  }
+
+  /** Hinweis, wenn Höhe vor dem Lockern kommt (nicht blockierend). */
+  function draftWarning(items) {
+    const isHigh = (id) => { const ex = exById(id); return ex && ex.group === 'hoehe' && id !== 'tiefe' && id !== 'tiefeGleiten'; };
+    const isWarm = (id) => ['lockern', 'resonanz'].includes(exById(id)?.group);
+    const high = items.findIndex(([id]) => isHigh(id));
+    const warm = items.findIndex(([id]) => isWarm(id));
+    return high >= 0 && (warm < 0 || high < warm) ? 'Tipp: Höhe erst nach dem Lockern.' : '';
+  }
+  function draftProblem() {
+    const name = draft.name.trim();
+    if (!name) return 'Bitte einen Namen eingeben.';
+    if (!draft.items.length) return 'Bitte mindestens eine Übung hinzufügen.';
+    if (!draft.id && state.ownPrograms.length >= OWN_MAX) return `Höchstens ${OWN_MAX} eigene Programme.`;
+    return '';
+  }
+
+  function renderEditor() {
+    const body = $('.sheet-body');
+    const focusKey = document.activeElement?.dataset?.focusKey;
+    const dur = draft.items.length ? fmtMinutes(secondsLeft(0, buildPlan({ id: 'draft', items: draft.items }))) : '–';
+    const limits = [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7'], [null, 'alle']];
+    const rows = draft.items.map(([id, limit, dir], k) => {
+      const ex = exById(id);
+      const chipsHtml = toneless(ex) ? '' : `
+        <div class="chip-row" role="group" aria-label="Rückungen">${limits.map(([v, l]) => `<button type="button" class="chip" data-ed="limit" data-k="${k}" data-value="${v ?? ''}" aria-pressed="${v === limit}" data-focus-key="l${k}-${v}">${l}</button>`).join('')}</div>
+        <div class="chip-row" role="group" aria-label="Richtung">${DIRECTIONS.map(([v, l]) => `<button type="button" class="chip" data-ed="dir" data-k="${k}" data-value="${v}" aria-pressed="${v === dir}" data-focus-key="d${k}-${v}">${l}</button>`).join('')}</div>`;
+      return `<li class="ed-row"><div class="ed-row-head"><span>${k + 1}. ${escapeHtml(ex.name)}</span>
+        <button type="button" class="ed-btn" data-ed="up" data-k="${k}" aria-label="${escapeHtml(ex.name)} nach oben"${k === 0 ? ' disabled' : ''} data-focus-key="u${k}">↑</button>
+        <button type="button" class="ed-btn" data-ed="down" data-k="${k}" aria-label="${escapeHtml(ex.name)} nach unten"${k === draft.items.length - 1 ? ' disabled' : ''} data-focus-key="w${k}">↓</button>
+        <button type="button" class="ed-btn" data-ed="del" data-k="${k}" aria-label="${escapeHtml(ex.name)} entfernen" data-focus-key="x${k}">×</button></div>${chipsHtml}</li>`;
+    }).join('');
+    const picker = draft.picking ? GROUPS.map(([gid, gname]) => `<span class="sub-label">${gname}</span><div class="chip-row">${
+      EXERCISES.filter((x) => x.group === gid).map((x) => `<button type="button" class="chip" data-ed="pick" data-value="${x.id}">${escapeHtml(x.name)}</button>`).join('')}</div>`).join('') : '';
+    const full = draft.items.length >= OWN_ITEMS_MAX;
+    body.innerHTML = `
+      <label class="sub-label" for="ed-name" style="margin-top:0">Name</label>
+      <input class="ed-name" id="ed-name" type="text" maxlength="${OWN_NAME_MAX}" autocomplete="off">
+      <p class="ed-meta">${draft.items.length} von höchstens ${OWN_ITEMS_MAX} Übungen · Dauer ${dur} (${escapeHtml(voiceById(state.voice).name)}, ${loadOf().name})</p>
+      <p class="ed-warn" role="status">${draftWarning(draft.items)}</p>
+      <ol class="ed-list">${rows}</ol>
+      <div class="ed-actions" style="justify-content:flex-start"><button type="button" data-ed="add"${full ? ' disabled' : ''}>${draft.picking ? 'Übungsliste schließen' : '+ Übung hinzufügen'}</button></div>
+      ${full ? '' : picker}
+      <p class="ed-hint" role="status"></p>
+      <div class="ed-actions">
+        <button type="button" data-ed="cancel">Abbrechen</button>
+        ${draft.id ? `<button type="button" class="is-danger" data-ed="delete">${draft.confirmDelete ? 'Wirklich löschen?' : 'Löschen'}</button>` : ''}
+        <button type="button" class="is-primary" data-ed="save">Speichern</button>
+      </div>`;
+    const input = $('.ed-name');
+    input.value = draft.name;
+    if (focusKey) body.querySelector(`[data-focus-key="${focusKey}"]`)?.focus();
+  }
+
+  function onEditor(btn) {
+    const k = Number(btn.dataset.k);
+    const act = btn.dataset.ed;
+    const items = draft.items;
+    if (act !== 'delete') draft.confirmDelete = false;
+    if (act === 'up' && k > 0) [items[k - 1], items[k]] = [items[k], items[k - 1]];
+    else if (act === 'down' && k < items.length - 1) [items[k + 1], items[k]] = [items[k], items[k + 1]];
+    else if (act === 'del') items.splice(k, 1);
+    else if (act === 'limit') items[k][1] = btn.dataset.value === '' ? null : Number(btn.dataset.value);
+    else if (act === 'dir') items[k][2] = btn.dataset.value;
+    else if (act === 'add') draft.picking = !draft.picking;
+    else if (act === 'pick') {
+      if (items.length < OWN_ITEMS_MAX) items.push(toneless(exById(btn.dataset.value)) ? [btn.dataset.value, null, 'updown'] : [btn.dataset.value, null, 'updown']);
+      draft.picking = false;
+    } else if (act === 'cancel') { closeHelp(); return; }
+    else if (act === 'delete') {
+      if (!draft.confirmDelete) { draft.confirmDelete = true; renderEditor(); return; }
+      state.ownPrograms = state.ownPrograms.filter((p) => p.id !== draft.id);
+      if (state.program === draft.id) state.program = PROGRAMS[0].id;
+      closeHelp(); afterProgramsChanged(); return;
+    } else if (act === 'save') {
+      const problem = draftProblem();
+      if (problem) { $('.ed-hint').textContent = problem; return; }
+      const id = draft.id || `own-${Date.now().toString(36)}`;
+      const [clean] = sanitizeOwnPrograms([{ id, name: draft.name, items }]);
+      if (!clean) { $('.ed-hint').textContent = 'Das Programm enthält keine gültige Übung.'; return; }
+      const i = state.ownPrograms.findIndex((p) => p.id === id);
+      if (i >= 0) state.ownPrograms[i] = clean; else state.ownPrograms.push(clean);
+      state.program = id;
+      state.mode = 'program';
+      closeHelp(); afterProgramsChanged(); return;
+    }
+    renderEditor();
+  }
+
+  function afterProgramsChanged() {
+    if (run.playing) stop();
+    renderAll(); persist();
+  }
 
   /* ------------------------------------------------------------------------
      VERKABELUNG
@@ -1129,6 +1678,7 @@
 
   function setBpm(value) {
     const ex = tempoExercise();
+    if (ex.kind === 'body') return;
     state.bpm[ex.id] = clamp(Math.round(value), 40, 160);
     renderTransport();
     if (!run.playing && state.mode === 'program') renderStage();
@@ -1147,7 +1697,18 @@
 
   document.addEventListener('click', (e) => {
     const t = e.target;
-    if (t === $('.sheet') || t.closest('[data-action="close-help"]')) { closeHelp(); return; }
+    if (t === $('.help-sheet') || t.closest('[data-action="close-help"]')) { closeHelp(); return; }
+    const ed = t.closest('[data-ed]');
+    if (ed && draft) { onEditor(ed); return; }
+    const menuItem = t.closest('[data-menu]');
+    if (menuItem) {
+      const p = allPrograms().find((x) => x.id === menuItem.dataset.id);
+      if (p) openEditor(p, { copy: menuItem.dataset.menu === 'copy' });
+      return;
+    }
+    const progMenu = t.closest('[data-prog-menu]');
+    if (progMenu) { openProgramMenu(progMenu.dataset.progMenu); return; }
+    if (t.closest('[data-action="own-new"]')) { openEditor(null); return; }
     const help = t.closest('[data-help]');
     if (help) { openHelp(help.dataset.help); return; }
 
@@ -1177,11 +1738,25 @@
       return;
     }
 
+    if (t === $('.settings-sheet') || t.closest('[data-action="close-settings"]')) { closeSettings(); return; }
+    if (t.closest('[data-action="open-settings"]')) { openSettings(); return; }
+    const lenChip = t.closest('[data-chip="lenKurz"], [data-chip="lenLang"]');
+    if (lenChip) {
+      state.lengths[lenChip.dataset.chip === 'lenKurz' ? 'kurz' : 'lang'] = Number(lenChip.dataset.value);
+      replan(); renderAll(); persist();
+      return;
+    }
     const chip = t.closest('[data-chip]');
     if (chip) {
       const key = chip.dataset.chip;
       if (state[key] === chip.dataset.value) return;
       state[key] = chip.dataset.value;
+      // Die Stimmlage gilt in allen Tools — zurück ins gemeinsame Profil.
+      if ((key === 'voice' || key === 'load') && profileApi) {
+        const patch = key === 'voice' ? { part: state.voice } : { load: state.load };
+        try { Promise.resolve(profileApi.set(patch)).then((p) => { profile = p; }).catch(() => {}); } catch { /* App weg */ }
+        if (profile) profile = { ...profile, ...patch };
+      }
       replan();
       renderAll(); persist();
       return;
@@ -1199,13 +1774,17 @@
   });
 
   $('.bpm').addEventListener('input', (e) => setBpm(Number(e.target.value)));
+  document.addEventListener('input', (e) => {
+    if (draft && e.target.classList?.contains('ed-name')) { draft.name = e.target.value.slice(0, OWN_NAME_MAX); $('.ed-hint').textContent = ''; }
+  });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('.sheet').hidden) { closeHelp(); return; }
+    if (e.key === 'Escape' && !$('.help-sheet').hidden) { closeHelp(); return; }
+    if (e.key === 'Escape' && !$('.settings-sheet').hidden) { closeSettings(); return; }
     // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
     // (die App hört auf diese Nachricht, siehe initTools in app.js).
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
-    if (e.metaKey || e.ctrlKey || e.altKey || !$('.sheet').hidden) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || !$('.help-sheet').hidden || !$('.settings-sheet').hidden) return;
     const onControl = document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName);
     if (e.code === 'Space' && !onControl) { e.preventDefault(); if (run.playing) stop(); else start(); }
     else if ((e.key === 't' || e.key === 'T') && !e.repeat) tapTempo();
@@ -1217,7 +1796,9 @@
 
   // Für die Konsole und Selbstprüfungen: Plan und Töne ansehen, ohne zu spielen.
   window.einsingen = {
-    engine, state, EXERCISES, VOICES, PROGRAMS,
+    engine, state, EXERCISES, PRACTICE_RANGES, PROGRAMS,
+    get VOICES() { return voiceList(); },
+    voiceRange: voiceById,
     plan: () => (plan = buildPlan()),
     notes: () => { plan = buildPlan(); return planNotes(); },
     range: exerciseRange,
@@ -1235,6 +1816,8 @@
     const errors = [];
     const saved = JSON.parse(JSON.stringify(state));
     const savedPlan = plan;
+    const savedProfile = profile;
+    profile = null; // Standard-Umfänge prüfen, nicht den gemessenen
     try {
       // Katze: betonte Silben (Kat, tritt, Trep, krumm) auf Zählzeiten —
       // bei beiden Einstimmungen.
@@ -1247,13 +1830,20 @@
       }
       // Alle Übungen × Stimmen × Einstimmungen: Töne im Umfang, Runden in
       // ganzen Takten, der erste Ton nach der Einstimmung.
-      for (const cue of ['chord', 'cadence']) {
+      for (const [cue, load] of [['chord', 'normal'], ['cadence', 'normal'], ['chord', 'leicht'], ['chord', 'kraeftig']]) {
         for (const ex of EXERCISES) {
-          for (const v of VOICES) {
-            Object.assign(state, { mode: 'single', exercise: ex.id, voice: v.id, direction: 'updown', cue });
+          for (const v of voiceList()) {
+            Object.assign(state, { mode: 'single', exercise: ex.id, voice: v.id, direction: 'updown', cue, load });
             plan = buildPlan();
-            for (const n of planNotes()) {
-              if (n.midi < v.floor || n.midi > v.ceil) errors.push(`${ex.id}/${v.id}: Ton ${n.midi} außerhalb ${v.floor}–${v.ceil}`);
+            const notes = planNotes();
+            for (const n of notes) {
+              if (n.midi < v.floor || n.midi > v.ceil) errors.push(`${ex.id}/${v.id}/${load}: Ton ${n.midi} außerhalb ${v.floor}–${v.ceil}`);
+            }
+            if (toneless(ex) && notes.length) errors.push(`${ex.id}: tonlose Übung mit Tönen`);
+            if (ex.kind === 'body') {
+              if (plan.segs.length !== ex.moves.length || plan.segs.some((sg, i) => sg.steps !== ex.moves[i][1] * 4)) errors.push(`${ex.id}: Runden passen nicht zu den Bewegungen`);
+              if (playBpmOf(ex) !== BODY_BPM) errors.push(`${ex.id}: Tempo ${playBpmOf(ex)}`);
+              continue;
             }
             if (ex.kind === 'breath') {
               const ex2 = plan.segs.map((sg) => sg.exhale).join();
@@ -1261,9 +1851,9 @@
               continue;
             }
             for (const sg of plan.segs) {
-              if (sg.steps % BAR) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein ganzer Takt`);
-              const rest = sg.steps - sg.cue - ex.length;
-              if (rest < (ex.breath ?? BREATH)) errors.push(`${ex.id}/${v.id}: nur ${rest} 16tel Luft`);
+              if (sg.steps % ROUND_GRID) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein halber Takt`);
+              const rest = sg.steps - sg.cue - sg.ex.length;
+              if (rest < (sg.ex.breath ?? BREATH)) errors.push(`${ex.id}/${v.id}/${load}: nur ${rest} 16tel Luft`);
             }
             if (cue === 'cadence' && !(plan.segs[0].cadence && plan.segs[0].cue === CUE_CADENCE && plan.segs.slice(1).every((sg) => !sg.cadence && sg.cue === CUE))) {
               errors.push(`${ex.id}/${v.id}: Kadenz nicht nur in der ersten Runde`);
@@ -1276,7 +1866,7 @@
       if (exById('moll5').mode !== 'minor' || degreeSemis(2, 'minor') !== 3 || degreeSemis(2) !== 4) errors.push('Moll-Stufen falsch');
       if (cueChord(57, 'minor')[3] - cueChord(57, 'minor')[0] !== 15) errors.push('Moll-Einstimmung ohne kleine Terz');
       const akk = exById('akkord');
-      for (const v of VOICES) {
+      for (const v of voiceList()) {
         const first = akk.voiceNotes[v.id][0][0];
         if (first !== CHORD_HOME[v.id]) errors.push(`akkord/${v.id}: beginnt auf Stufe ${first}`);
         if (akk.voiceNotes[v.id].length !== 5) errors.push(`akkord/${v.id}: ${akk.voiceNotes[v.id].length} Töne`);
@@ -1309,18 +1899,136 @@
       state.countIn = 'off'; state.cue = 'chord';
       sanitize(round);
       if (state.countIn !== 'round' || state.cue !== 'cadence') errors.push('Speichern/Laden: countIn/cue nicht erhalten');
+      // Didaktik Paket 1: Umfänge aus harmony.js, gemessener Umfang.
+      const std = { S: [57, 79], A: [53, 74], T: [47, 67], B: [41, 62] };
+      for (const id of VOICE_IDS) {
+        const v = voiceById(id);
+        if (v.floor !== std[id][0] || v.ceil !== std[id][1] || v.personal) errors.push(`Umfang ${id} ohne Messung: ${v.floor}–${v.ceil}`);
+      }
+      const cases = [[{ part: 'A', low: 50, high: 75 }, 'A', 52, 73, true], [{ part: 'B', low: 29, high: 62 }, 'B', 37, 60, true], [{ part: 'T', low: 50, high: 60 }, 'T', 47, 67, false]];
+      for (const [prof, id, floor, ceil, personal] of cases) {
+        profile = prof;
+        const v = voiceById(id);
+        if (v.floor !== floor || v.ceil !== ceil || v.personal !== personal) errors.push(`Umfang ${JSON.stringify(prof)}: ${v.floor}–${v.ceil}`);
+        if (!personal) continue;
+        for (const ex of EXERCISES) {
+          Object.assign(state, { mode: 'single', exercise: ex.id, voice: id, direction: 'updown', cue: 'chord' });
+          plan = buildPlan();
+          for (const n of planNotes()) if (n.midi < floor || n.midi > ceil) errors.push(`${ex.id}/${id} gemessen: Ton ${n.midi} außerhalb ${floor}–${ceil}`);
+        }
+      }
+      profile = null;
+      // Didaktik Paket 2: Belastung, Programme, eigene Programme.
+      state.load = 'normal';
+      const reach = { strohhalm: 7, strohhalm5: 7, umlaute: 7, eule: 5, kopfAbwaerts: 5, tiefe: 4, tiefeGleiten: 4, durMoll: 3, staccatoLegato: 5 };
+      for (const [id, want] of Object.entries(reach)) {
+        for (const vid of VOICE_IDS) { const got = exerciseRange(exById(id), vid).steps; if (got !== want) errors.push(`${id}/${vid}: ${got} Rückungen statt ${want}`); }
+      }
+      for (const p of PROGRAMS) {
+        for (const [id, limit] of p.items) {
+          if (!exById(id)) { errors.push(`Programm ${p.id}: unbekannte Übung ${id}`); continue; }
+          if (limit == null) continue;
+          for (const vid of VOICE_IDS) { const got = exerciseRange(exById(id), vid).steps; if (got < limit) errors.push(`Programm ${p.id}/${vid}: ${id} nur ${got} statt ${limit} Rückungen`); }
+        }
+      }
+      const minutes = { schnell: [3.6, 3.6, 3.3], kurz: [4.7, 4.9, 4.5], tiefe: [3.4, 4.1, 3.7], morgens: [5.2, 5.7, 5.2], auftritt: [5.6, 5.8, 5.3], intonation: [5.8, 6.5, 6.0], hoehe: [7.5, 8.9, 8.0], lang: [11.7, 12.7, 11.6] };
+      const savedBpm = state.bpm; state.bpm = {};
+      for (const [id, want] of Object.entries(minutes)) {
+        // Geprüft wird laut Arbeitsanweisung nur „normal“ (leicht/kräftig
+        // liegen bis auf Intonation/leicht ebenfalls in der Spanne).
+        [['normal', 1]].forEach(([load, li]) => {
+          state.load = load;
+          for (const vid of VOICE_IDS) {
+            state.voice = vid;
+            const got = secondsLeft(0, buildPlan(PROGRAMS.find((p) => p.id === id))) / 60;
+            // Seit den strafferen Pausen (halber Takt) kürzer als die Tabelle.
+            if (got > want[li] * 1.15 || got < want[li] * .6) errors.push(`Programm ${id}/${load}/${vid}: ${got.toFixed(1)} min (Tabelle ${want[li]})`);
+          }
+        });
+      }
+      state.bpm = savedBpm; state.load = 'normal';
+      const dm = exById('durMoll');
+      if (noteSemis(dm, dm.notes[3]) !== 3 || noteSemis(dm, dm.notes[1]) !== 4) errors.push('durMoll: vierter Ton nicht die kleine Terz');
+      if (!dm.forceDrone) errors.push('durMoll ohne Liegeton');
+      state.load = 'leicht';
+      if (variantOf(exById('koloratur')).notes.length !== 9 || variantOf(exById('oktave')).hint !== 'Quintsprung') errors.push('leichte Fassung fehlt');
+      if (playBpmOf(exById('dreiklang')) !== Math.round(bpmOf(exById('dreiklang')) * .9)) errors.push('Tempo bei leicht nicht × 0,9');
+      state.load = 'normal';
+      if (variantOf(exById('koloratur')) !== exById('koloratur')) errors.push('normale Fassung verändert');
+      if (GROUPS[0][0] !== 'koerper' || GROUPS.find(([g]) => g === 'hoehe')[1] !== 'Höhe, Tiefe & Register') errors.push('Gruppen falsch');
+      // Roundtrip load: neu → gleich, alt (fehlt) → normal, kaputt → normal.
+      for (const [raw, want] of [['kraeftig', 'kraeftig'], [undefined, 'normal'], ['extrem', 'normal']]) {
+        state.load = 'normal'; sanitize(raw === undefined ? {} : { load: raw });
+        if (state.load !== want) errors.push(`load ${raw} → ${state.load}`);
+      }
+      // Roundtrip ownPrograms.
+      const good = [{ id: 'own-abc', name: ' Mein Programm ', items: [['dehnen', 3, 'up'], ['sirene', 4, 'down'], ['dreiklang', null, 'updown'], ['gibtsnicht', 2], ['oktave', 12, 'quer']] }];
+      state.ownPrograms = []; state.program = 'kurz';
+      sanitize(JSON.parse(JSON.stringify({ ownPrograms: good, program: 'own-abc' })));
+      const want = [{ id: 'own-abc', name: 'Mein Programm', items: [['dehnen'], ['sirene', 4, 'down'], ['dreiklang', null, 'updown'], ['oktave', null, 'updown']] }];
+      if (JSON.stringify(state.ownPrograms) !== JSON.stringify(want) || state.program !== 'own-abc') errors.push(`ownPrograms: ${JSON.stringify(state.ownPrograms)} / ${state.program}`);
+      sanitize(JSON.parse(JSON.stringify({ ownPrograms: state.ownPrograms, program: state.program })));
+      if (JSON.stringify(state.ownPrograms) !== JSON.stringify(want)) errors.push('ownPrograms: zweiter Roundtrip verändert');
+      state.ownPrograms = []; state.program = 'kurz';
+      sanitize({ program: 'kurz' });
+      if (state.ownPrograms.length) errors.push('ownPrograms ohne Feld nicht leer');
+      sanitize({ ownPrograms: 'kaputt', program: 'own-zzz' });
+      if (state.ownPrograms.length || state.program !== 'kurz') errors.push('ownPrograms kaputt nicht verworfen');
+      const many = Array.from({ length: 15 }, (_, i) => ({ id: `own-x${i}`, name: 'x'.repeat(60), items: Array(25).fill(['summen', 2, 'up']) }));
+      sanitize({ ownPrograms: [...many, { id: 'own-leer', name: 'leer', items: [['nix']] }] });
+      if (state.ownPrograms.length !== 12 || state.ownPrograms[0].name.length !== 40 || state.ownPrograms[0].items.length !== 20) errors.push('ownPrograms-Grenzen falsch');
+      if (draftWarning([['oktave'], ['lippen']]) === '' || draftWarning([['lippen'], ['oktave']]) !== '' || draftWarning([['tiefe'], ['lippen']]) !== '') errors.push('Höhe-Hinweis falsch');
+      state.ownPrograms = [];
+      if (parseQuickParams('?embedded&from=quick&minutes=10')?.minutes !== 10 || parseQuickParams('?from=quick&minutes=7').minutes !== null || parseQuickParams('?embedded=1') !== null) errors.push('Schnellstart-Parameter Einsingen falsch');
+      // Länge „Kurz“/„Ausführlich“: angepasste Programme liegen nahe am Ziel.
+      const savedLen = { ...state.lengths };
+      for (const [id, list] of Object.entries(LENGTH_CHOICES)) {
+        for (const minutes of list) {
+          state.lengths[id] = minutes; fitCache.clear();
+          for (const vid of VOICE_IDS) {
+            state.voice = vid; fitCache.clear();
+            const p = fitted(PROGRAMS.find((x) => x.id === id));
+            const got = secondsLeft(0, buildPlan(p)) / 60;
+            if (Math.abs(got - minutes) > minutes * .2) errors.push(`Länge ${id} ${minutes} Min/${vid}: ${got.toFixed(1)} Min`);
+            if (!p.items.every(([eid]) => exById(eid))) errors.push(`Länge ${id}: unbekannte Übung`);
+          }
+        }
+      }
+      state.lengths = savedLen; fitCache.clear();
+      for (const [raw, want] of [[{ kurz: 7, lang: 20 }, '7/20'], [{ kurz: 4, lang: 'x' }, '5/10'], [undefined, '5/10']]) {
+        state.lengths = { kurz: 5, lang: 10 }; sanitize(raw === undefined ? {} : { lengths: raw });
+        if (`${state.lengths.kurz}/${state.lengths.lang}` !== want) errors.push(`lengths ${JSON.stringify(raw)} → ${JSON.stringify(state.lengths)}`);
+      }
+      state.lengths = savedLen;
+      [['T', 'T'], ['X', 'A'], [3, 'A']].forEach(([raw, want]) => { state.voice = 'A'; sanitize({ voice: raw }); if (state.voice !== want) errors.push(`voice ${raw} → ${state.voice}`); });
     } finally {
       for (const k of Object.keys(state)) delete state[k];
       Object.assign(state, saved);
       plan = savedPlan;
+      profile = savedProfile;
     }
     return errors;
   }
 
+  /** Stimmlage aus dem gemeinsamen Profil übernehmen (sofern gesetzt). */
+  function applyProfile() {
+    readProfile();
+    if (profile?.part && VOICE_IDS.includes(profile.part)) state.voice = profile.part;
+    if (profile && LOAD_IDS.includes(profile.load)) state.load = profile.load;
+  }
+  applyProfile();
+  const quickParams = parseQuickParams(location.search);
+  if (!storage) applyQuickParams(quickParams);
   renderAll();
   if (storage) {
     try {
-      Promise.resolve(storage.load('einsingen')).then((data) => { if (data && !run.playing) { sanitize(data); renderAll(); } }).catch(() => {});
+      Promise.resolve(storage.load('einsingen')).then((data) => {
+        if (run.playing) return;
+        if (data) sanitize(data);
+        applyProfile();
+        applyQuickParams(quickParams);
+        renderAll();
+      }).catch(() => { applyQuickParams(quickParams); renderAll(); });
     } catch { /* Ablage weg */ }
   }
 })();

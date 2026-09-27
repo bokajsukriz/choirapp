@@ -4,7 +4,8 @@
    ohne Abhängigkeiten, kein DOM: registriert window.ChorHarmony.
 
    Enthält: Modi, Akkordbau (inkl. Dur-Dominante in Moll und Dominant-
-   septakkorden, chordSteps), Tonnamen (spell/noteLabel), Stimmumfänge,
+   septakkorden, chordSteps), Tonnamen (spell/noteLabel), Stimmumfänge
+   (Satz: VOICE_RANGES; Üben: PRACTICE_RANGES/practiceRange),
    vierstimmigen Satz (voiceChord/voiceProgressionSatb) und den engen
    Oberstimmen-Satz der Gehörbildung (voiceUpperClose).
 
@@ -16,6 +17,7 @@
   'use strict';
 
   const mod = (n, m) => ((n % m) + m) % m;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
   /* ---- Modi ---- */
 
@@ -153,6 +155,30 @@
 
   const SATB = ['S', 'A', 'T', 'B'];
   const VOICE_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
+
+  // Bequeme Übe-Umfänge (klingend, MIDI). Bewusst ein, zwei Töne innerhalb
+  // der Literaturangaben — Üben soll aufwärmen, nicht an die Grenze gehen.
+  // Gilt für Einsingen, Singen mit Mikrofon und die Chor-Aufgaben; die
+  // Satz-Tabelle VOICE_RANGES oben bleibt davon unberührt.
+  const PRACTICE_RANGES = {
+    // Werte wie bisher VOICES in einsingen.html — nur hierher verschoben.
+    S: { floor: 57, ceil: 79, name: 'Sopran' }, // a  – g″
+    A: { floor: 53, ceil: 74, name: 'Alt' },    // f  – d″
+    T: { floor: 47, ceil: 67, name: 'Tenor' },  // H  – g′
+    B: { floor: 41, ceil: 62, name: 'Bass' },   // F  – d′
+  };
+
+  /** Wirksamer Übe-Umfang: Standard der Stimmlage, bei gemessenem Umfang
+   *  dessen Innenbereich (je 2 Halbtöne Abstand), aber höchstens 4 Halbtöne
+   *  vom Standard entfernt (schützt vor Oktavfehlern der Messung).
+   *  profile: { part, low, high } wie settings.voiceProfile (app.js). */
+  function practiceRange(profile) {
+    const base = PRACTICE_RANGES[profile?.part] || PRACTICE_RANGES.A;
+    if (profile?.low == null || profile?.high == null || profile.high - profile.low < 14) return { ...base, personal: false };
+    const floor = clamp(profile.low + 2, base.floor - 4, base.floor + 4);
+    const ceil = clamp(profile.high - 2, base.ceil - 4, base.ceil + 4);
+    return ceil - floor >= 12 ? { ...base, floor, ceil, personal: true } : { ...base, personal: false };
+  }
 
   /* ---- Vierstimmiger Satz ---- */
 
@@ -334,7 +360,7 @@
     MAJOR, MINOR, MIXOLYDIAN, MODES, modeSteps, degreeSemis,
     spell, noteLabel, SPELL_CASES, spellCheck,
     chordQuality, chordPitchClasses, chordSteps, CHORD_SHAPES,
-    SATB, VOICE_RANGES,
+    SATB, VOICE_RANGES, PRACTICE_RANGES, practiceRange,
     VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb,
     parallelCount, voiceUpperClose,
   });

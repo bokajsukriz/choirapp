@@ -143,6 +143,20 @@
     { name: 'Folk Jig', icon: 'flag', meter: '6/8', cat: 'dance', kick: [0, 4, 6], snare: [6], ghost: [9], hat: [0, 2, 4, 6, 8, 10], open: [10],
       bass: [0, 4, 6, 10], bassNotes: [0, 4, 0, 2],
       roll: [[2, 1], [1, .5], [1, .7], [2, .9]] },
+    // Chor-Grooves (Didaktik Paket 8) — nur angehängt, nie umsortieren.
+    // `vocal`: Silben fürs Mundschlagzeug (nur Anzeige, Chor-Ansicht).
+    { name: 'Gospel Shuffle', icon: 'users', meter: '4/4', cat: 'calm', kick: [0, 6, 8], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], ghost: [14],
+      swingUnit: 8, swing: .67,
+      bass: [0, 6, 8, 14], bassNotes: [0, 2, 4, 5],
+      roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
+    { name: 'Swing Ride', icon: 'horn', meter: '4/4', cat: 'calm', kick: [0, 8], ghost: [4, 12], hat: [0, 4, 6, 8, 12, 14],
+      swingUnit: 8, swing: .67,
+      bass: [0, 4, 8, 12], bassNotes: [0, 2, 4, 5],
+      roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
+    { name: 'Vocal Perc Basic', icon: 'wind', meter: '4/4', cat: 'calm', kick: [0, 6, 8], snare: [4, 12], hat: [2, 6, 10], open: [14],
+      vocal: { kick: 'bm', snare: 'ka', hat: 'ts', open: 'tsch' },
+      bass: [0, 8], bassNotes: [0, 0],
+      roll: [[1, 1], [1, .6], [2, .85]] },
   ];
 
   const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'open', 'bass'];
@@ -610,6 +624,83 @@
   const SCALE_KEY_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote'];
   const SCALE_PAD_COUNT = 15; // zwei Oktaven Tonleiter plus Grundton oben
 
+  /* ------------------------------------------------------------------------
+     CHOR-AUFGABEN (Didaktik Paket 8). Eine Aufgabe setzt beim Wählen einen
+     Teil des Zustands (ein Undo-Schritt) und bestimmt die Anzeige „Jetzt“.
+     own: eigene Stimme auf focus/mute, übrige on; satb: feste Zuordnung;
+     groove: Name aus DRUM_PATTERNS (null = Drums und Bass stumm); melody:
+     Name aus MELODIES; display: siehe _choirNow. Texte: lab.task.<id>.*
+     ------------------------------------------------------------------------ */
+  const CHOIR_TASKS = [
+    { id: 'meineStimme', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'cadence', bpm: 72 }, own: 'focus', display: 'ownNote', groove: 'Minimal Click' },
+    { id: 'minusEins', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'cadence', bpm: 72 }, own: 'mute', display: 'ownNote', groove: 'Minimal Click' },
+    { id: 'bass', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'pop', bpm: 80 }, satb: { B: 'focus' }, display: 'root', groove: 'Backbeat Open' },
+    { id: 'terzen', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'pop', bpm: 76 }, display: 'third', groove: 'Backbeat Open' },
+    { id: 'liegeton', set: { chordsOn: false, droneOn: true, droneFifth: true, melodyOn: false, arpOn: false, progId: 'drone', bpm: 60 }, display: 'scale', groove: null },
+    { id: 'pentatonik', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'pop', modeId: 'major', bpm: 88 }, display: 'pentatonic', groove: 'Backbeat Open' },
+    { id: 'echo', set: { chordsOn: true, melodyOn: true, arpOn: false, progId: 'cadence', bpm: 84 }, melody: 'Call & Response', melodyAltBars: true, display: 'echo', groove: 'Minimal Click' },
+    { id: 'zweiVier', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'blues', bpm: 92 }, display: 'beats24', groove: 'Gospel Shuffle' },
+    { id: 'swing', set: { chordsOn: true, melodyOn: false, arpOn: false, progId: 'twoFiveOne', bpm: 120 }, display: 'swingSyllables', groove: 'Swing Ride' },
+    { id: 'beatbox', set: { chordsOn: false, melodyOn: false, arpOn: false, bpm: 84 }, display: 'vocalPerc', groove: 'Vocal Perc Basic', fadeDrums: true },
+  ];
+  const CHOIR_PARTS = ['S', 'A', 'T', 'B'];
+  const patternIndexByName = (name) => DRUM_PATTERNS.findIndex((p) => p.name === name);
+  const melodyIndexByName = (name) => MELODIES.findIndex((m) => m.name === name);
+
+  /** Neuer Zustand nach dem Wählen einer Aufgabe (reine Funktion; der
+   *  Liegeton startet erst in der View, er braucht eine Nutzergeste). */
+  function choirTaskState(state, task, part) {
+    const s = JSON.parse(JSON.stringify(state));
+    for (const [key, value] of Object.entries(task.set)) {
+      if (key === 'progId') {
+        s.progId = value;
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
+        const prog = PROGRESSIONS.find((p) => p.id === value);
+        if (!task.set.modeId) s.modeId = modeForProg(prog, s.modeId);
+      } else if (key === 'bpm') {
+        s.bpm = value;
+      } else s[key] = value;
+    }
+    if (task.groove) {
+      s.patternIndex = patternIndexByName(task.groove);
+      const pattern = DRUM_PATTERNS[s.patternIndex];
+      s.beat = beatFromPattern(pattern);
+      s.beatEdited = false;
+      s.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
+      s.mute.drums = false; s.mute.bass = false;
+    } else {
+      s.mute.drums = true; s.mute.bass = true;
+    }
+    s.eighths = s.bpm * eighthsPerBeat(DRUM_PATTERNS[s.patternIndex].meter);
+    if (task.melody) {
+      s.melodyIndex = melodyIndexByName(task.melody);
+      s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord';
+    }
+    s.melodyAltBars = !!task.melodyAltBars;
+    for (const v of CHOIR_PARTS) s.satb[v] = 'on';
+    if (task.own && CHOIR_PARTS.includes(part)) s.satb[part] = task.own;
+    if (task.satb) Object.assign(s.satb, task.satb);
+    s.choirTask = task.id;
+    return s;
+  }
+
+  /** Melodietöne, die im Schritt `g` beginnen. `altBars`: nur in
+   *  ungeraden Takten (1, 3, …), in geraden (2, 4, …) Stille — Echo. */
+  function melodyNotesAt(g, bars, barSteps, altBars = false) {
+    const barIndex = Math.floor(g / barSteps);
+    if (altBars && barIndex % 2 === 1) return [];
+    const notes = bars[barIndex % bars.length];
+    const step = g % barSteps;
+    return notes.filter(([at]) => Math.floor(at) === step);
+  }
+
+  /** Zielton-Tonhöhenklassen eines Akkords für die Anzeige „Jetzt“:
+   *  Grundton oder Terz (in Moll mit Dur-Dominante: Leitton). */
+  function choirTargetPc(keyRoot, steps, deg, which) {
+    const [root, third] = chordPitchClasses(keyRoot, steps, deg, false);
+    return which === 'third' ? third : root;
+  }
+
   const TABS = [
     { id: 'beat', labelKey: 'lab.tabBeat' },
     { id: 'harmony', labelKey: 'lab.tabHarmony' },
@@ -658,6 +749,9 @@
       // Sechzehntel, geloopt über `steps` Schritte ab `offset`.
       automation: null,
       locks: { beat: false, harmony: false, melody: false, sound: false },
+      // Didaktik Paket 8: Ansicht ('choir' | 'studio', null = je nach
+      // Einstieg), gewählte Chor-Aufgabe, Melodie nur jeden zweiten Takt.
+      view: null, choirTask: null, melodyAltBars: false,
     };
   }
 
@@ -878,6 +972,9 @@
     };
     s.automation = sanitizeAutomation(raw.automation);
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
+    s.view = oneOf(raw.view, ['choir', 'studio'], null);
+    s.choirTask = oneOf(raw.choirTask, CHOIR_TASKS.map((x) => x.id), null);
+    s.melodyAltBars = bool(raw.melodyAltBars, false);
     // Der Liegeton braucht eine Nutzergeste zum Starten — nie aus einem
     // gespeicherten Stand heraus von selbst loslaufen lassen.
     s.droneOn = false;
@@ -1726,8 +1823,12 @@
 
     /* ---- Öffentliche API ---- */
 
-    open({ accent, storage } = {}) {
+    open({ accent, storage, entry } = {}) {
       this._restoreFocusTo = document.activeElement;
+      // Einstieg: über Tools → „Chor“, Easter Egg → „Studio“ (solange keine
+      // Ansicht gespeichert ist).
+      this._entry = entry === 'tools' ? 'tools' : 'egg';
+      this._applyView(this.state.view);
       this.style.setProperty('--accent', accent || '#f868b0');
       const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent || '');
       this.style.setProperty('--accent-rgb', match
@@ -1787,6 +1888,7 @@
         if (data.last && !this.playing && !this.history.length) {
           this.state = sanitizeState(data.last);
           this._afterStateChange();
+          this._applyView(this.state.view);
         }
         this._renderSheet();
       }).catch((err) => console.warn('[groove-lab] Stand nicht geladen', err));
@@ -1816,8 +1918,10 @@
     _applyState(state, { history = true } = {}) {
       if (history) this._pushHistory();
       const droneWasOn = this.state.droneOn;
+      const view = this.state.view;
       this.state = state;
       this.state.droneOn = droneWasOn;
+      this.state.view = view; // die Ansicht ist keine Musik — Undo/Zufall lassen sie
       this._afterStateChange();
     }
 
@@ -1834,6 +1938,134 @@
       const pattern = DRUM_PATTERNS[state.patternIndex];
       const mode = MODES.find((m) => m.id === state.modeId);
       return `${pattern.name} · ${spell(state.keyRoot, state.keyRoot, state.modeId, labLang)} ${t(mode.nameKey)} · ${tempoSymbol(pattern.meter)} = ${state.bpm}`;
+    }
+
+    /* ---- Ansicht: Chor · Studio (Didaktik Paket 8) ---- */
+
+    _applyView(view) {
+      const v = view === 'choir' || view === 'studio' ? view : (this._entry === 'tools' ? 'choir' : 'studio');
+      this.state.view = v;
+      const choir = v === 'choir';
+      this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
+      this.$('.tab-bar').hidden = choir;
+      this.$('.choir-view').hidden = !choir;
+      if (choir) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
+      else this._setTab(this.ui.tab);
+      this._renderChoir();
+    }
+
+    /** Eigene Stimme: aus dem Stimmprofil der App, sonst hier gewählt. */
+    _choirPart() {
+      let part = null;
+      try { part = global.chorVoiceProfile?.get()?.part || null; } catch { /* ohne App */ }
+      return CHOIR_PARTS.includes(part) ? part : CHOIR_PARTS.includes(this.ui.choirPart) ? this.ui.choirPart : null;
+    }
+
+    /** Aufgabe wählen: ein Undo-Schritt, Zustand über choirTaskState. */
+    _applyChoirTask(id) {
+      const task = CHOIR_TASKS.find((x) => x.id === id);
+      if (!task) return;
+      const next = choirTaskState(this.state, task, this._choirPart());
+      const meterBefore = this._meter();
+      this._applyState(sanitizeState(next));
+      if (this._meter() !== meterBefore && this.playing) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+      this._fadeDrums(false);
+      // Liegeton braucht eine Nutzergeste — das Antippen der Aufgabe ist eine.
+      if (task.set.droneOn) this._setDrone(true);
+      this._renderChoir();
+    }
+
+    /** „Beat ausblenden“: Drums in vier Takten auf 0; „Beat zurück“. */
+    _fadeDrums(out) {
+      this.ui.drumsFaded = !!out;
+      const eng = this.engine;
+      if (eng.ready) {
+        const node = eng.layers?.drums?.level || eng.buses?.drums;
+        const now = eng.ctx.currentTime;
+        if (node) {
+          node.gain.cancelScheduledValues(now);
+          node.gain.setValueAtTime(node.gain.value, now);
+          const target = out || this.state.mute.drums ? 0 : this.state.mix.drums;
+          node.gain.linearRampToValueAtTime(target, now + (out ? 4 * this._barSteps() * this._stepSeconds() : .3));
+        }
+      }
+      this._renderChoir();
+    }
+
+    _renderChoir() {
+      const host = this.$('.choir-view');
+      if (!host || host.hidden) return;
+      const s = this.state;
+      const task = CHOIR_TASKS.find((x) => x.id === s.choirTask) || null;
+      const chips = (el, pairs, active, action) => this._chips(el, pairs.map(([value, label]) => ({ value, label })), active, action);
+      chips(this.$('.choir-task-chips'), CHOIR_TASKS.map((x) => [x.id, t(`lab.task.${x.id}.title`)]), s.choirTask, 'choir-task');
+      this.$('.task-title').textContent = task ? t(`lab.task.${task.id}.title`) : t('lab.choirPick');
+      this.$('.task-help').textContent = task ? `${t(`lab.task.${task.id}.help1`)} ${t(`lab.task.${task.id}.help2`)}` : t('lab.choirPickHint');
+      const part = this._choirPart();
+      this.$('.choir-part').hidden = !!part && !!this._profilePart();
+      chips(this.$('.choir-part-chips'), CHOIR_PARTS.map((v) => [v, t(SATB_KEY[v])]), part, 'choir-part');
+      const grooves = DRUM_PATTERNS.map((p, i) => [p, i]).filter(([p]) => p.cat === 'calm');
+      chips(this.$('.choir-grooves'), [['none', t('lab.choirNoBeat')], ...grooves.map(([p, i]) => [String(i), p.name])],
+        s.mute.drums ? 'none' : String(s.patternIndex), 'choir-groove');
+      const fade = this.$('[data-action="fade-drums"]');
+      fade.hidden = !task?.fadeDrums;
+      fade.textContent = t(this.ui.drumsFaded ? 'lab.choirBeatBack' : 'lab.choirBeatFade');
+      this._renderChoirNow(this.playing && this.shown ? this.shown.g : 0);
+    }
+    _profilePart() { try { return global.chorVoiceProfile?.get()?.part || null; } catch { return null; } }
+
+    /** Anzeige „Jetzt“: Akkord groß, darunter je Aufgabe der Zielton bzw.
+     *  Hilfe (Tonleiter, Pentatonik, Echo, 2 und 4, Swing, Mundschlagzeug). */
+    _renderChoirNow(g) {
+      const host = this.$('.choir-display');
+      if (!host || this.$('.choir-view').hidden) return;
+      const s = this.state;
+      const task = CHOIR_TASKS.find((x) => x.id === s.choirTask) || null;
+      const h = this._harmonyAt(Math.max(0, g));
+      const [spellRoot, spellMode] = this._spellKeyAt(h.index);
+      const name = (pc) => { const n = spell(pc, spellRoot, spellMode, labLang); return labLang === 'en' ? n : n.charAt(0).toLowerCase() + n.slice(1); };
+      this.$('.choir-now-chord').textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, s.modeId);
+      const barSteps = this._barSteps();
+      const step = mod(g, barSteps);
+      const bar = Math.floor(Math.max(0, g) / barSteps);
+      const meter = METERS[this._meter()];
+      let target = '';
+      let html = '';
+      const display = task?.display;
+      if (display === 'ownNote') {
+        const part = this._choirPart();
+        const v = this._voicings()[h.index];
+        target = part && v ? `${t(SATB_KEY[part])}: ${noteLabel(v[part], spellRoot, spellMode, labLang)}` : t('lab.choirPartAsk');
+      } else if (display === 'root' || display === 'third') {
+        target = `${t(display === 'root' ? 'lab.choirRoot' : 'lab.choirThird')}: ${name(choirTargetPc(h.keyRoot, h.steps, h.deg, display))}`;
+      } else if (display === 'scale') {
+        const steps = this._mode().steps;
+        const walk = [0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1];
+        const cur = walk[bar % walk.length];
+        html = `<div class="scale-row">${Array.from({ length: 8 }, (_, d) => `<span class="scale-note${d === cur ? ' is-now' : ''}"><b>${name(s.keyRoot + degreeSemis(steps, d))}</b><small>${['do', 're', 'mi', 'fa', 'so', 'la', 'ti', 'do′'][d]}</small></span>`).join('')}</div>`;
+        target = `${t('lab.choirSing')}: ${name(s.keyRoot + degreeSemis(steps, cur))}`;
+      } else if (display === 'pentatonic') {
+        const semis = s.modeId === 'minor' ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+        html = `<div class="scale-row">${semis.map((x) => `<span class="scale-note"><b>${name(s.keyRoot + x)}</b></span>`).join('')}</div>`;
+      } else if (display === 'echo') {
+        target = bar % 2 === 0 ? t('lab.choirListen') : t('lab.choirYouSing');
+      } else if (display === 'beats24') {
+        const beat = meter.beats.findIndex((b, i) => step >= b && (i === meter.beats.length - 1 || step < meter.beats[i + 1]));
+        html = `<div class="beat-fields">${meter.beats.map((_, i) => `<span class="beat-field${i % 2 ? ' is-clap' : ''}${this.playing && i === beat ? ' is-now' : ''}">${i + 1}</span>`).join('')}</div>`;
+        target = t('lab.choirClap24');
+      } else if (display === 'swingSyllables') {
+        const beat = meter.beats.findIndex((b, i) => step >= b && (i === meter.beats.length - 1 || step < meter.beats[i + 1]));
+        html = `<div class="beat-fields">${meter.beats.map((_, i) => `<span class="beat-field${this.playing && i === beat ? ' is-now' : ''}">du-ba</span>`).join('')}</div>`;
+      } else if (display === 'vocalPerc') {
+        const vocal = this._pattern().vocal || {};
+        const beatData = s.beat;
+        html = `<div class="vp-grid">${Object.entries(vocal).map(([track, syl]) => `<div class="vp-row"><span class="vp-name">${syl}</span>${Array.from({ length: barSteps }, (_, i) => `<span class="vp-cell${beatData[track]?.[i] !== undefined ? ' is-on' : ''}${this.playing && i === step ? ' is-now' : ''}">${beatData[track]?.[i] !== undefined ? syl : ''}</span>`).join('')}</div>`).join('')}</div>`;
+      }
+      const key = `${display}|${target}|${html}`;
+      if (this._choirNowKey === key) return;
+      this._choirNowKey = key;
+      this.$('.choir-now-target').textContent = target;
+      host.innerHTML = html;
     }
 
     /* ---- Reiter ---- */
@@ -1957,7 +2189,7 @@
       if (!this.engine.ready) return;
       const s = this.state;
       this.engine.setMaster(s.mix.master);
-      for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] ? 0 : s.mix[bus]);
+      for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, s.sound);
       this.engine.setLayerSound('chords', CHORD_SOUND);
       this.engine.setLayerSound('drone', DRONE_SOUND);
@@ -2293,12 +2525,11 @@
     _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref) {
       const s = this.state;
       const barSteps = this._barSteps();
-      const notes = bars[Math.floor(g / barSteps) % bars.length];
       const step = g % barSteps;
-      for (const [at, deg, len, alt = 0] of notes) {
+      // Echo (melodyAltBars): nur jeden zweiten Takt; Aufnahmen immer.
+      for (const [at, deg, len, alt = 0] of melodyNotesAt(g, bars, barSteps, s.melodyAltBars && ref !== 'key')) {
         // Eingespielte Töne liegen zwischen den Sechzehnteln: im Schritt, in
         // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
-        if (Math.floor(at) !== step) continue;
         const midi = this._melodyMidi(deg, alt, h, ref);
         const barIndex = Math.floor(g / barSteps) % bars.length;
         const room = bars.length * barSteps - (barIndex * barSteps + at);
@@ -2341,6 +2572,7 @@
       this._showMelodyStep(g);
       this._showRecLoopStep(g);
       if (chordChanged) this._renderNow();
+      if (this.state.view === 'choir') this._renderChoirNow(g);
     }
 
     _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
@@ -2428,6 +2660,7 @@
       this._renderRec();
       this._renderTransport();
       this._renderNow();
+      this._renderChoir();
     }
 
     /** Chip-Reihe: gleiche Optik und Bedienung für alle Einfach-Auswahlen. */
@@ -2458,8 +2691,7 @@
     }
 
     _setSwitch(key, on) {
-      const input = this.$(`[data-switch="${key}"]`);
-      if (input) input.checked = !!on;
+      this.$all(`[data-switch="${key}"]`).forEach((input) => { input.checked = !!on; });
     }
 
     _renderLock(which) {
@@ -2586,8 +2818,10 @@
       const mode = this._mode();
       // Tonart-Namen je Modus geschrieben (a-Moll-Liste: Cis, Dis, Fis, Gis).
       const keyNames = Array.from({ length: 12 }, (_, pc) => spell(pc, pc, s.modeId, labLang));
-      this._options(this.$('[data-field="keyRoot"]'), keyNames.map((name, i) => [i, name]), s.keyRoot);
-      this._options(this.$('[data-field="modeId"]'), MODES.map((m) => [m.id, t(m.nameKey)]), s.modeId);
+      this.$all('[data-field="keyRoot"]').forEach((el) => this._options(el, keyNames.map((name, i) => [i, name]), s.keyRoot));
+      this.$all('[data-field="modeId"]').forEach((el) => this._options(el, MODES.map((m) => [m.id, t(m.nameKey)]), s.modeId));
+      const progSel = this.$('[data-choir="prog"]');
+      if (progSel) this._options(progSel, PROGRESSIONS.map((p) => [p.id, t(progKey('Name', p.id))]), s.progDegrees ? '' : s.progId);
       this._renderPickerFor('prog');
       this.$('.key-name').textContent = `${keyNames[s.keyRoot]} ${t(mode.nameKey)}`;
       this.$('[data-field="chordBars"]').value = String(s.chordBars);
@@ -2631,8 +2865,8 @@
       const s = this.state;
       const index = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : 0;
       const voicing = this._voicings()[index] || this._voicings()[0];
-      const host = this.$('.satb-list');
-      host.replaceChildren(...SATB.map((voice) => {
+      const own = this._choirPart();
+      this.$all('.satb-list').forEach((host) => host.replaceChildren(...SATB.map((voice) => {
         const row = document.createElement('div');
         row.className = `satb-row is-${s.satb[voice]}`;
         row.style.setProperty('--voice', SATB_COLOR[voice]);
@@ -2652,9 +2886,10 @@
         btn.setAttribute('aria-pressed', String(s.satb[voice] !== 'on'));
         btn.textContent = t({ on: 'lab.satbOn', focus: 'lab.satbFocus', mute: 'lab.satbMute' }[s.satb[voice]]);
         btn.setAttribute('aria-label', `${t(SATB_KEY[voice])}: ${btn.textContent}`);
+        if (voice === own) { row.classList.add('is-own'); name.textContent += ` · ${t('lab.choirYou')}`; }
         row.append(dot, name, note, btn);
         return row;
-      }));
+      })));
     }
 
     /* ---- Melodie ---- */
@@ -2662,6 +2897,7 @@
     _renderMelody() {
       const s = this.state;
       this._setSwitch('melodyOn', s.melodyOn);
+      this._setSwitch('melodyAltBars', s.melodyAltBars);
       this._renderPickerFor('melody');
       this._chips(this.$('.melody-octaves'), [3, 4, 5].map((o) => ({ value: o, label: String(o) })), s.melodyOctave, 'melody-octave');
       this._renderLock('melody');
@@ -4308,6 +4544,7 @@
         else if (field === 'lfoSync') { s.sound.lfoSync = Number(el.value); this._onSoundEdit(); }
         else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
+        else if (el.dataset.choir === 'prog' && el.value) this._handleAction('pick-prog', el.value, el);
         else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
       });
@@ -4356,6 +4593,25 @@
       const s = this.state;
       switch (action) {
         case 'close': this.close(); break;
+        case 'view': this._applyView(value); break;
+        case 'choir-task': this._applyChoirTask(value); break;
+        case 'choir-part': {
+          this.ui.choirPart = value;
+          try { global.chorVoiceProfile?.set({ part: value }); } catch { /* ohne App */ }
+          const task = CHOIR_TASKS.find((x) => x.id === s.choirTask);
+          if (task?.own) this._applyChoirTask(task.id); else this._renderChoir();
+          break;
+        }
+        case 'choir-groove': {
+          this._pushHistory();
+          if (value === 'none') { s.mute.drums = true; s.mute.bass = true; this._syncEngine(); this._renderChoir(); this._renderMixer(); break; }
+          s.mute.drums = false; s.mute.bass = false;
+          this._handleAction('pick-pattern', value, target);
+          this._syncEngine();
+          this._renderChoir();
+          break;
+        }
+        case 'fade-drums': this._fadeDrums(!this.ui.drumsFaded); break;
         case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
         case 'randomize': this.randomize(); break;
         case 'undo': this.undo(); break;
@@ -4888,6 +5144,33 @@
   .prog-tools .chip { display: inline-flex; align-items: center; gap: 4px; }
 
   .satb-list { display: grid; gap: 6px; }
+  .satb-row.is-own .satb-name { font-weight: 800; }
+  .view-switch { display: flex; gap: 4px; margin-left: auto; }
+  .view-switch .chip { min-height: 36px; }
+  .choir-view .chip-row .chip { min-height: 40px; }
+  .task-card { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .task-card strong { display: block; font-size: .9rem; }
+  .task-card p { margin: 4px 0 0; font-size: .78rem; line-height: 1.45; }
+  .choir-part { margin-top: 8px; }
+  .choir-now { display: grid; justify-items: center; gap: 2px; text-align: center; }
+  .choir-now-label { font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .choir-now-chord { font-size: 2.6rem; line-height: 1.1; }
+  .choir-now-target { font-size: 1.15rem; font-weight: 800; color: var(--accent); min-height: 1.3em; }
+  .choir-display { margin-top: 10px; }
+  .scale-row, .beat-fields { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .scale-note { display: grid; justify-items: center; min-width: 36px; padding: 6px 4px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+  .scale-note small { font-size: .62rem; color: var(--muted); }
+  .scale-note.is-now { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 1.2rem; }
+  .scale-note.is-now small { color: #fff; }
+  .beat-field { min-width: 52px; min-height: 44px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; }
+  .beat-field.is-clap { border-color: var(--accent); color: var(--accent); }
+  .beat-field.is-now { background: var(--accent); color: #fff; }
+  .vp-grid { display: grid; gap: 4px; overflow-x: auto; }
+  .vp-row { display: grid; grid-template-columns: 40px repeat(16, minmax(14px, 1fr)); gap: 2px; align-items: center; }
+  .vp-name { font-weight: 800; font-size: .72rem; }
+  .vp-cell { height: 26px; border-radius: 5px; background: var(--surface); font-size: .55rem; font-weight: 800; display: grid; place-items: center; }
+  .vp-cell.is-on { background: rgba(var(--accent-rgb), .25); }
+  .vp-cell.is-now { outline: 2px solid var(--accent); }
   .satb-row { display: grid; grid-template-columns: 12px 1fr 52px 96px; gap: 10px; align-items: center; border-radius: 12px; background: var(--surface); padding: 7px 8px 7px 10px; border: 1px solid var(--line); }
   .voice-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--voice); }
   .satb-name { font-size: .74rem; font-weight: 700; }
@@ -5198,6 +5481,10 @@
   <div class="lab-head-title">
     <h1>Chor <span>Groove</span> Lab</h1>
   </div>
+  <div class="view-switch" role="group" aria-label="${t('lab.viewAria')}">
+    <button class="chip" type="button" data-action="view" data-value="choir" aria-pressed="false">${t('lab.viewChoir')}</button>
+    <button class="chip" type="button" data-action="view" data-value="studio" aria-pressed="true">${t('lab.viewStudio')}</button>
+  </div>
   <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
   <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
 </header>
@@ -5207,6 +5494,39 @@
 </nav>
 
 <div class="lab-body">
+  <section class="choir-view" hidden>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.choirTask')}</h2>${help('choirHelp')}</div>
+      ${helpText('choirHelp')}
+      <div class="chip-row choir-task-chips"></div>
+      <div class="task-card"><strong class="task-title"></strong><p class="task-help"></p></div>
+      <div class="choir-part"><span class="sub-label">${t('lab.choirPartAsk')}</span><div class="chip-row choir-part-chips"></div></div>
+    </section>
+    <section class="panel choir-now-panel">
+      <div class="choir-now" aria-live="polite"><span class="choir-now-label">${t('lab.choirNow')}</span><strong class="choir-now-chord"></strong><span class="choir-now-target"></span></div>
+      <div class="choir-display"></div>
+      <div class="pill-row"><button class="chip" type="button" data-action="fade-drums" hidden></button></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.drumloop')}</h2></div>
+      <div class="chip-row choir-grooves"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.key')}</h2></div>
+      <div class="select-grid">
+        <label class="select-field"><span>${t('lab.keyRoot')}</span><select data-field="keyRoot"></select></label>
+        <label class="select-field"><span>${t('lab.keyMode')}</span><select data-field="modeId"></select></label>
+      </div>
+      <label class="select-field" style="margin-top:8px"><span>${t('lab.choirProg')}</span><select data-choir="prog"></select></label>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t('lab.satbTitle')}</h2></div>
+      <div class="satb-list"></div>
+    </section>
+    <section class="panel">
+      <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
+    </section>
+  </section>
   <section class="tab-panel" data-tab-panel="beat">
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
@@ -5295,6 +5615,7 @@
       </div>
       ${helpText('melodyHint')}
       ${pickerTrigger('melody')}
+      <div class="switch-row" style="margin-top:8px">${toggle('melodyAltBars', 'lab.melodyAltBars')}</div>
       <div class="mel-card">
         <div class="mel-view">
           <div class="mel-mini" aria-hidden="true"></div>
@@ -5551,6 +5872,7 @@
     melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
+    CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
   };
 
   global.ChorGrooveLab = {
