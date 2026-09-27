@@ -297,7 +297,13 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 }
 .tool-tile:active { background: var(--surface-2); }
 /* Schnellstart und Statistik über den Kacheln */
-.quick-start, .quick-start h2, .tools-week h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.quick-start, .tools-week { margin-bottom: 12px; }
+.quick-start h2 { margin: 0 0 4px; font-size: 1.1rem; }
+/* Fortschritt: eingeklappt nur die gemittelte Stufe, Details beim Aufklappen. */
+.tools-week-summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--tap); font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; }
+.tools-week-summary::-webkit-details-marker { display: none; }
+.tools-week-summary::after { content: "›"; color: var(--muted); transform: rotate(90deg); transition: transform .15s; }
+.tools-week[open] .tools-week-summary::after { transform: rotate(-90deg); }
 .quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .quick-btn { min-height: 64px; display: grid; align-content: center; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
 .quick-btn strong { font-size: 1rem; }
@@ -4008,10 +4014,10 @@ input[type="checkbox"] {
       </div>
     </div>
     <!-- Statistik: nur lokal, keine Serien (siehe renderWeek in app.js). -->
-    <div class="card tools-week" id="tools-week">
-      <h2 data-i18n="tools.week.title">Dein Stand</h2>
+    <details class="card tools-week" id="tools-week">
+      <summary class="tools-week-summary"><span id="tools-week-summary">Fortschritt</span></summary>
       <div id="tools-week-body"></div>
-    </div>
+    </details>
     <div class="tools-grid">
       <button class="tool-tile" id="btn-open-metronome" type="button">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg></span>

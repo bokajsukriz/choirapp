@@ -18878,6 +18878,7 @@ async function runProgressSelfTests() {
   const sum = await store.summary(7);
   if (sum.practicedDays !== 1 || sum.areas.rhythm?.level !== 2 || sum.days.length !== 7) failed.push(`Fortschritt: Zusammenfassung falsch ${JSON.stringify(sum)}`);
   if ((await store.levelHint('rhythm')).level !== 2) failed.push('Fortschritt: levelHint kennt die zuletzt benutzte Stufe nicht');
+  if (progressMeanLevel([2, 3, 5]) !== 3.3 || progressMeanLevel([4]) !== 4 || progressMeanLevel([1, 2]) !== 1.5) failed.push('Fortschritt: mittlere Stufe falsch');
   return failed;
 }
 
@@ -22597,15 +22598,10 @@ function initQuickStart() {
   });
 }
 
-/** Montag der Woche von `date` (JJJJ-MM-TT) und die sieben Tage bis Sonntag. */
-function weekDates(date = progressDate()) {
-  const [y, m, d] = date.split('-').map(Number);
-  const day = new Date(y, m - 1, d);
-  const monday = d - ((day.getDay() + 6) % 7);
-  return Array.from({ length: 7 }, (_, i) => progressDate(new Date(y, m - 1, monday + i)));
-}
+/** Mittlere Stufe (auf eine Nachkommastelle) für die eingeklappte Anzeige. */
+const progressMeanLevel = (levels) => Math.round(10 * levels.reduce((a, b) => a + b, 0) / levels.length) / 10;
 
-/** Statistik „Dein Stand“: sieben Punkte Mo–So (keine Serien), Einsing-
+/** Statistik „Fortschritt“ (eingeklappt: mittlere Stufe): sieben Punkte Mo–So (keine Serien), Einsing-
  *  Minuten der Woche und je geübtem Bereich ein Strahl mit der Stufe. */
 async function renderWeek() {
   const body = $('#tools-week-body');
@@ -22636,6 +22632,11 @@ async function renderWeek() {
     : t('tools.week.none');
   frag.append(dots, line);
   const areas = PROGRESS_AREAS.filter((area) => area !== 'warmup' && area in data.levels);
+  // Eingeklappt: Mittel über alle Stufen (ohne eigene Auswahl = 0).
+  const levels = areas.map((area) => data.levels[area]).filter((l) => l > 0);
+  const mean = levels.length ? progressMeanLevel(levels) : null;
+  $('#tools-week-summary').textContent = mean === null ? t('tools.week.summaryNone')
+    : t('tools.week.summary').replace('{n}', mean.toLocaleString(settings.language || 'de', { maximumFractionDigits: 1 }));
   if (areas.length) {
     const list = document.createElement('ul');
     list.className = 'level-bars';
