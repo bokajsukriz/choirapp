@@ -304,6 +304,21 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .profile-chips .chip { min-width: 0; overflow-wrap: anywhere; }
 .profile-range { margin: 10px 0 0; }
 .profile-range .link-btn { margin-left: 4px; }
+/* Heute üben */
+.tools-today { margin-bottom: 12px; }
+.today-head { display: grid; gap: 8px; }
+.today-head h2 { margin: 0; font-size: 1.1rem; }
+.chip-grid.profile-chips--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.today-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.today-step { display: flex; align-items: center; gap: 8px; }
+.today-open { flex: 1 1 auto; min-width: 0; min-height: var(--tap); display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
+.today-check { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 800; color: var(--accent-ink); }
+.today-step.is-done .today-check { background: var(--accent); border-color: var(--accent); }
+.today-step.is-skipped .today-text { opacity: .55; text-decoration: line-through; }
+.today-text { display: grid; min-width: 0; }
+.today-text span { font-size: .85rem; color: var(--muted); }
+.today-skip { flex: 0 0 auto; font-size: .85rem; }
+.today-finished { margin: 10px 0 0; font-weight: 700; }
 /* Wochenansicht: sieben Punkte Mo–So, Minuten je Gruppe, Stufen, Intonation. */
 .tools-week { margin-bottom: 12px; }
 .tools-week-summary { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; min-height: var(--tap); list-style: none; }
@@ -4005,6 +4020,18 @@ input[type="checkbox"] {
        die Lichtshow (#lightshow). Alle werden erst beim Antippen geladen.
        Die breite Kachel darunter öffnet die Einstellungen. -->
   <section class="view" id="view-tools">
+    <!-- Heute üben: geführte Einheit aus Stimmprofil und Fortschritt (renderToday in app.js). -->
+    <div class="card tools-today" id="tools-today">
+      <div class="today-head">
+        <h2 id="today-title">Heute üben · ca. 12 Min.</h2>
+        <div class="chip-grid profile-chips profile-chips--2" id="today-plan-picker" role="group" aria-labelledby="today-title">
+          <button class="chip" type="button" data-value="full" data-i18n="tools.today.full">ca. 12 Min.</button>
+          <button class="chip" type="button" data-value="short" data-i18n="tools.today.short">ca. 6 Min.</button>
+        </div>
+      </div>
+      <ol class="today-steps" id="today-steps"></ol>
+      <p class="small today-finished" id="today-finished" role="status" hidden data-i18n="tools.today.finished">Für heute geschafft — schön, dass du geübt hast.</p>
+    </div>
     <!-- Stimmprofil fürs Üben: gilt für Einsingen, Ausbildung und Groove Lab
          (settings.voiceProfile, siehe renderToolsProfile in app.js). -->
     <div class="card tools-profile" id="tools-profile">

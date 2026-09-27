@@ -2103,7 +2103,7 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
-  tools:     { render: () => { renderToolsProfile(); renderWeek(); } },
+  tools:     { render: () => { renderToday(); renderToolsProfile(); renderWeek(); } },
   settings:  { render: renderSettings },
 };
 
@@ -18873,6 +18873,39 @@ async function runProgressSelfTests() {
   const sum = await store.summary(7);
   if (sum.practicedDays !== 1 || sum.areas.rhythm?.level !== 2 || sum.days.length !== 7) failed.push(`Fortschritt: Zusammenfassung falsch ${JSON.stringify(sum)}`);
   if ((await store.levelHint('rhythm')).level !== 2) failed.push('Fortschritt: levelHint kennt die zuletzt benutzte Stufe nicht');
+  // „Heute üben“ (Paket 7): Planfunktion mit festen Daten.
+  const ids = (plan) => plan.map((st) => `${st.id}:${st.params.program || st.params.mode}`).join(' ');
+  const empty = emptyProgress();
+  const dn = dayNumber(today);
+  const p1 = planToday({ date: today, hour: 18, data: empty });
+  if (ids(p1) !== `warmup:kurz ear:${TODAY_EAR_AREAS[dn % 5]} sing:${TODAY_SING_ROTATION[dn % 3]} rhythm:${TODAY_RHYTHM_ROTATION[dn % 3]}`) failed.push(`Heute üben leer: ${ids(p1)}`);
+  if (p1[1].params.tasks !== 10 || p1[2].params.tasks !== 8 || p1[3].params.rounds !== 6 || 'level' in p1[1].params) failed.push('Heute üben: Mengen/Stufe falsch');
+  const pShort = planToday({ date: today, hour: 18, data: empty, short: true });
+  if (ids(pShort) !== `warmup:schnell ear:${TODAY_EAR_AREAS[dn % 5]}` || pShort[1].params.tasks !== 6) failed.push(`Heute üben kurz: ${ids(pShort)}`);
+  const full = emptyProgress();
+  applyProgressEntries(full, [{ area: 'warmup', minutes: 5 }], '2026-10-10');
+  for (let i = 0; i < 12; i++) applyProgressEntries(full, [{ area: 'cadence', level: 2, right: i < 5 }, { area: 'interval', level: 4, right: true }], '2026-10-11');
+  applyProgressEntries(full, [{ area: 'rhythm', level: 5, right: true }, { area: 'sight', level: 3, right: true }], '2026-10-11');
+  const p2 = planToday({ date: today, hour: 8, data: full });
+  if (p2[0].params.program !== 'morgens' || p2[1].params.mode !== 'cadence' || p2[1].params.level !== 2 || p2[3].params.level !== 5) failed.push(`Heute üben voll/morgens: ${JSON.stringify(p2.map((x) => x.params))}`);
+  const p3 = planToday({ date: today, hour: 18, data: full });
+  if (p3[0].params.program !== TODAY_WARMUP_ROTATION[dn % 6]) failed.push(`Heute üben nach 10 Uhr: ${p3[0].params.program}`);
+  const tun = JSON.parse(JSON.stringify(full));
+  for (let i = 0; i < 12; i++) applyProgressEntries(tun, [{ area: 'tuning', level: 3, right: true, thresholdCents: 31 }], '2026-10-11');
+  if (planToday({ date: today, hour: 18, data: tun })[1].params.mode !== 'tuning') failed.push('Heute üben: Intonation über 25 Cent nicht als schwach erkannt');
+  const denied = JSON.parse(JSON.stringify(full)); denied.memory.micDenied = true;
+  if (planToday({ date: today, hour: 18, data: denied })[2].params.mode !== 'dictation') failed.push('Heute üben: Mikrofon verweigert → nicht Diktat');
+  if (JSON.stringify(planToday({ date: today, hour: 18, data: full })) !== JSON.stringify(p3)) failed.push('Heute üben: Plan nicht deterministisch');
+  const oldWarm = emptyProgress(); applyProgressEntries(oldWarm, [{ area: 'warmup', minutes: 5 }], '2026-10-01');
+  if (planToday({ date: today, hour: 8, data: oldWarm })[0].params.program !== 'kurz') failed.push('Heute üben: Einsingen > 6 Tage → nicht kurz');
+  if (todayQuery(p1[1]) !== `from=today&tab=ear&mode=${p1[1].params.mode}&tasks=10`) failed.push(`Heute üben: Adresse ${todayQuery(p1[1])}`);
+  // chor-tool-done nur vom offenen Tool-iframe und gleicher Herkunft.
+  const frameWin = {}, otherWin = {};
+  const ev = (over) => ({ origin: location.origin, source: frameWin, data: { type: 'chor-tool-done', step: 'ear' }, ...over });
+  if (toolDoneStep(ev({}), frameWin) !== 'ear') failed.push('chor-tool-done aus dem Tool nicht erkannt');
+  if (toolDoneStep(ev({ source: otherWin }), frameWin) !== null || toolDoneStep(ev({ origin: 'https://evil.example' }), frameWin) !== null
+    || toolDoneStep(ev({ data: { type: 'chor-tool-done', step: 'hack' } }), frameWin) !== null || toolDoneStep(ev({}), null) !== null) failed.push('chor-tool-done aus fremder Quelle nicht ignoriert');
+  if (todayState({ today: { date: '2026-10-11', plan: 'short', done: ['ear'] } }, today).done.length !== 0 || todayState({ today: { date: '2026-10-11', plan: 'short', done: [] } }, today).plan !== 'short') failed.push('Heute üben: neuer Tag nicht neu');
   return failed;
 }
 
@@ -22019,7 +22052,7 @@ function metronomeInBackground() {
   return !!frame && (frame.hidden || $('#tool-frame').hidden);
 }
 
-function openToolFrame(page, titleKey) {
+function openToolFrame(page, titleKey, query = '') {
   if (Audio.playing) audioPause();
   const host = $('#tool-frame');
   // Andere Tools gibt es immer nur einmal; das Metronom bleibt, falls es läuft.
@@ -22035,7 +22068,7 @@ function openToolFrame(page, titleKey) {
   } else {
     if (metro) metro.hidden = true;
     const frame = document.createElement('iframe');
-    frame.src = `./${page}?embedded=1`;
+    frame.src = `./${page}?embedded=1${query ? `&${query}` : ''}`;
     frame.title = t(titleKey);
     frame.allow = 'microphone; autoplay; screen-wake-lock';
     if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
@@ -22060,7 +22093,7 @@ function closeToolFrame() {
   host.hidden = true;
   document.body.style.overflow = '';
   updateMetronomeFab();
-  if (currentView === 'tools') { renderToolsProfile(); window.chorProgress.flush().then(renderWeek); }
+  if (currentView === 'tools') { renderToolsProfile(); window.chorProgress.flush().then(() => { renderToday(); renderWeek(); }); }
   const fab = $('#metronome-fab');
   // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
   // Ebene; dann auf den Schnellzugriff, falls da.
@@ -22314,6 +22347,7 @@ function sanitizeProgress(raw) {
       date: today.date,
       plan: today.plan === 'short' ? 'short' : 'full',
       done: Array.isArray(today.done) ? today.done.filter((x) => ['warmup', 'ear', 'sing', 'rhythm'].includes(x)) : [],
+      skipped: Array.isArray(today.skipped) ? today.skipped.filter((x) => ['warmup', 'ear', 'sing', 'rhythm'].includes(x)) : [],
     };
   }
   return out;
@@ -22470,6 +22504,176 @@ function makeProgressStore(store = {
 }
 window.chorProgress = makeProgressStore();
 
+/* ==========================================================================
+   HEUTE ÜBEN — eine geführte Einheit (ca. 12 bzw. 6 Minuten), deterministisch
+   aus Datum, Uhrzeit, Stimmprofil und Fortschritt (Didaktik Paket 7). Die
+   Karte öffnet die Tools mit Parametern; die melden „chor-tool-done“, die
+   App hakt den Schritt ab (progress.today). Am nächsten Tag neuer Plan.
+   ========================================================================== */
+const TODAY_STEPS = ['warmup', 'ear', 'sing', 'rhythm'];
+const TODAY_WARMUP_ROTATION = ['schnell', 'intonation', 'morgens', 'hoehe', 'tiefe', 'kurz'];
+const TODAY_EAR_AREAS = ['interval', 'quality', 'cadence', 'parts', 'tuning'];
+const TODAY_SING_ROTATION = ['singInterval', 'findTone', 'sight'];
+const TODAY_RHYTHM_ROTATION = ['echo', 'read', 'along'];
+/** Tagesnummer (Tage seit 1970) eines Datums JJJJ-MM-TT. */
+function dayNumber(date) { const [y, m, d] = date.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 864e5); }
+
+/** Plan für einen Tag. data: sanitisierter Fortschritt. Liefert
+ *  [{ id, page, params, count }] — voll vier, kurz zwei Schritte. */
+function planToday({ date, hour, data, short = false }) {
+  const n = dayNumber(date);
+  const lastWarm = Object.keys(data.days).filter((d) => data.days[d].warmup && d <= date).sort().pop();
+  const daysSince = lastWarm ? n - dayNumber(lastWarm) : Infinity;
+  const program = short ? 'schnell' : daysSince > 6 ? 'kurz' : hour < 10 ? 'morgens' : TODAY_WARMUP_ROTATION[n % TODAY_WARMUP_ROTATION.length];
+  const steps = [{ id: 'warmup', page: 'einsingen.html', params: { program }, count: 1 }];
+  // Hören: schwächster Bereich der letzten 14 Tage (mind. 10 Aufgaben),
+  // Intonation schwach bei Schwelle > 25 Cent; ohne Daten reihum.
+  const dates14 = Array.from({ length: 14 }, (_, i) => { const [y, m, d] = date.split('-').map(Number); return progressDate(new Date(y, m - 1, d - i)); });
+  let weakest = null;
+  for (const area of TODAY_EAR_AREAS) {
+    let total = 0, right = 0, threshold = null;
+    for (const d of dates14) {
+      const a = data.days[d]?.[area];
+      if (!a) continue;
+      for (const [lvl, st] of Object.entries(a)) {
+        if (lvl === 'sec') continue;
+        total += st.n; right += st.right;
+        if (threshold === null && typeof st.thresholdCents === 'number') threshold = st.thresholdCents;
+      }
+    }
+    if (total < 10) continue;
+    const rate = area === 'tuning' && threshold !== null && threshold > 25 ? 0 : right / total;
+    if (!weakest || rate < weakest.rate) weakest = { area, rate };
+  }
+  const earArea = weakest ? weakest.area : TODAY_EAR_AREAS[n % TODAY_EAR_AREAS.length];
+  const levelOf = (area) => (Number.isInteger(data.levels[area]) && data.levels[area] > 0 ? data.levels[area] : null);
+  const ear = { tab: 'ear', mode: earArea, tasks: short ? 6 : 10 };
+  if (levelOf(earArea)) ear.level = levelOf(earArea);
+  steps.push({ id: 'ear', page: 'uebe-lab.html', params: ear, count: ear.tasks });
+  if (!short) {
+    const singMode = data.memory.micDenied === true ? 'dictation' : TODAY_SING_ROTATION[n % TODAY_SING_ROTATION.length];
+    const sing = { tab: 'voice', mode: singMode, tasks: 8 };
+    if (levelOf(singMode)) sing.level = levelOf(singMode);
+    steps.push({ id: 'sing', page: 'uebe-lab.html', params: sing, count: 8 });
+    const rhythm = { tab: 'rhythm', mode: TODAY_RHYTHM_ROTATION[n % TODAY_RHYTHM_ROTATION.length], rounds: 6 };
+    if (levelOf('rhythm')) rhythm.level = levelOf('rhythm');
+    steps.push({ id: 'rhythm', page: 'uebe-lab.html', params: rhythm, count: 6 });
+  }
+  return steps;
+}
+/** Adresszusatz eines Schritts: from=today&… */
+const todayQuery = (step) => new URLSearchParams({ from: 'today', ...Object.fromEntries(Object.entries(step.params).map(([k, v]) => [k, String(v)])) }).toString();
+
+/** Nachricht aus einem Tool: nur gleiche Herkunft und nur vom offenen
+ *  Tool-iframe. Liefert den abgeschlossenen Schritt oder null. */
+function toolDoneStep(event, frameWindow, origin = location.origin) {
+  if (!event || event.origin !== origin || !frameWindow || event.source !== frameWindow) return null;
+  const data = event.data;
+  if (!data || data.type !== 'chor-tool-done' || !TODAY_STEPS.includes(data.step)) return null;
+  return data.step;
+}
+const openToolWindow = () => $('#tool-frame iframe:not([hidden])')?.contentWindow || null;
+
+/** Tagesstand: gehört er zu heute? Sonst neuer Plan (Modus bleibt). */
+function todayState(data, date = progressDate()) {
+  const t = data.today;
+  if (t && t.date === date) return t;
+  return { date, plan: t?.plan === 'short' ? 'short' : 'full', done: [], skipped: [] };
+}
+
+async function renderToday() {
+  const host = $('#tools-today');
+  if (!host) return;
+  let data;
+  try { data = await window.chorProgress.data(); } catch { return; }
+  const date = progressDate();
+  const ts = todayState(data, date);
+  const short = ts.plan === 'short';
+  const steps = planToday({ date, hour: new Date().getHours(), data, short });
+  $('#today-title').textContent = t(short ? 'tools.today.titleShort' : 'tools.today.title');
+  $$('#today-plan-picker .chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === ts.plan)));
+  const profile = window.chorVoiceProfile.get();
+  const list = $('#today-steps');
+  list.replaceChildren(...steps.map((step) => {
+    const done = ts.done.includes(step.id);
+    const skipped = (ts.skipped || []).includes(step.id);
+    const li = document.createElement('li');
+    li.className = `today-step${done ? ' is-done' : ''}${skipped ? ' is-skipped' : ''}`;
+    const open = document.createElement('button');
+    open.type = 'button'; open.className = 'today-open'; open.dataset.step = step.id;
+    const check = document.createElement('span');
+    check.className = 'today-check'; check.setAttribute('aria-hidden', 'true'); check.textContent = done ? '✓' : '';
+    const text = document.createElement('span');
+    text.className = 'today-text';
+    const title = document.createElement('strong');
+    const sub = document.createElement('span');
+    const p = step.params;
+    if (step.id === 'warmup') {
+      title.textContent = `${t('tools.today.step.warmup')}: ${t(`tools.today.program.${p.program}`)}`;
+      sub.textContent = t('tools.today.load').replace('{load}', t(`tools.profile.load.${profile.load}`));
+    } else if (step.id === 'rhythm') {
+      title.textContent = `${t('tools.today.step.rhythm')}: ${t(`tools.today.rhythmMode.${p.mode}`)}`;
+      sub.textContent = t('tools.today.rounds').replace('{n}', p.rounds) + (p.level ? ` · ${t('tools.week.level').replace('{n}', p.level)}` : '');
+    } else {
+      title.textContent = `${t(`tools.today.step.${step.id}`)}: ${t(`tools.area.${p.mode}`)}`;
+      sub.textContent = t('tools.today.tasks').replace('{n}', p.tasks) + (p.level ? ` · ${t('tools.week.level').replace('{n}', p.level)}` : '');
+    }
+    text.append(title, sub);
+    open.append(check, text);
+    open.setAttribute('aria-label', `${title.textContent}, ${sub.textContent}${done ? `, ${t('tools.today.doneAria')}` : ''}`);
+    const skip = document.createElement('button');
+    skip.type = 'button'; skip.className = 'today-skip link-btn'; skip.dataset.skip = step.id;
+    skip.textContent = skipped ? t('tools.today.unskip') : t('tools.today.skip');
+    skip.hidden = done;
+    li.append(open, skip);
+    return li;
+  }));
+  const finished = steps.every((s) => ts.done.includes(s.id) || (ts.skipped || []).includes(s.id));
+  $('#today-finished').hidden = !finished;
+}
+
+function initToday() {
+  $('#today-plan-picker').addEventListener('click', async (event) => {
+    const chip = event.target.closest('.chip[data-value]');
+    if (!chip) return;
+    const plan = chip.dataset.value === 'short' ? 'short' : 'full';
+    await window.chorProgress.setToday((cur) => ({ ...todayState({ today: cur }), plan }));
+    renderToday();
+  });
+  $('#today-steps').addEventListener('click', async (event) => {
+    const skip = event.target.closest('[data-skip]');
+    if (skip) {
+      const id = skip.dataset.skip;
+      await window.chorProgress.setToday((cur) => {
+        const s = todayState({ today: cur });
+        const list = new Set(s.skipped || []);
+        if (list.has(id)) list.delete(id); else list.add(id);
+        return { ...s, skipped: [...list] };
+      });
+      renderToday();
+      return;
+    }
+    const open = event.target.closest('[data-step]');
+    if (!open) return;
+    const data = await window.chorProgress.data();
+    const date = progressDate();
+    const steps = planToday({ date, hour: new Date().getHours(), data, short: todayState(data, date).plan === 'short' });
+    const step = steps.find((s) => s.id === open.dataset.step);
+    if (!step) return;
+    const titleKey = step.page === 'einsingen.html' ? 'settings.tools.warmup' : 'settings.tools.playground';
+    openToolFrame(step.page, titleKey, todayQuery(step));
+  });
+}
+
+/** Schritt abhaken (aus „chor-tool-done“). */
+async function markTodayDone(step) {
+  await window.chorProgress.setToday((cur) => {
+    const s = todayState({ today: cur });
+    return { ...s, done: [...new Set([...s.done, step])], skipped: (s.skipped || []).filter((x) => x !== step) };
+  });
+  if (currentView === 'tools') renderToday();
+}
+
 /** Montag der Woche von `date` (JJJJ-MM-TT) und die sieben Tage bis Sonntag. */
 function weekDates(date = progressDate()) {
   const [y, m, d] = date.split('-').map(Number);
@@ -22600,6 +22804,7 @@ function initGrooveLabEasterEgg() {
  *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
   initToolsProfile();
+  initToday();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
   $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
@@ -22618,6 +22823,7 @@ function initTools() {
     if (event.origin !== location.origin) return;
     const type = event.data?.type;
     if (type === 'chor-tool-close' && !$('#tool-frame').hidden) closeToolFrame();
+    else if (type === 'chor-tool-done') { const step = toolDoneStep(event, openToolWindow()); if (step) markTodayDone(step); }
     else if (type === 'chor-metronome' && event.source && event.source === metronomeFrame()?.contentWindow) onMetronomeMessage(event.data);
   });
 }

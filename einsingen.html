@@ -94,6 +94,9 @@
   .switch input:checked + .switch-track::after { transform: translateX(16px); }
   .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
 
+  .today-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 16px 10px; padding: 8px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .12); font-weight: 800; font-size: .8rem; }
+  .today-close { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; }
+
   /* ---- Bühne: aktuelle Übung ---- */
   .stage { border-radius: 20px; background: var(--surface); border: 1px solid var(--line); padding: 14px 14px 12px; margin-bottom: 12px; }
   .stage-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -189,6 +192,8 @@
 <header>
   <h1>Ein<span>singen</span></h1>
 </header>
+
+<div class="today-bar" hidden role="status" aria-live="polite"><span class="today-bar-text"></span><button class="today-close" type="button" data-action="today-close" hidden>Fertig ✓ – weiter mit Heute üben</button></div>
 
 <nav class="tab-bar" role="tablist" aria-label="Art">
   <button class="tab-btn" type="button" role="tab" data-mode="program" aria-selected="true">Programm</button>
@@ -1138,7 +1143,33 @@
     setStatus(message || 'Bereit — am besten mit Kopfhörern.');
   }
 
+  /* ---- „Heute üben“: ?from=today&program=<id> — vorbereitet, nicht spielend;
+     am Ende des Programms „chor-tool-done“ an die App. ---- */
+  function parseTodayParams(search) {
+    const q = new URLSearchParams(search);
+    if (q.get('from') !== 'today') return null;
+    const id = q.get('program');
+    return { program: allPrograms().some((p) => p.id === id) ? id : null };
+  }
+  let todayRun = null;
+  function applyTodayParams(p) {
+    if (!p) return;
+    if (p.program) { state.mode = 'program'; state.program = p.program; todayRun = { program: p.program, finished: false }; }
+    renderTodayBar();
+  }
+  function renderTodayBar() {
+    $('.today-bar').hidden = !todayRun;
+    if (!todayRun) return;
+    $('.today-bar-text').textContent = todayRun.finished ? 'Heute üben: Einsingen geschafft' : `Heute üben: Programm „${program().name}“ — mit Play starten`;
+    $('[data-action="today-close"]').hidden = !todayRun.finished;
+  }
+
   function finish() {
+    if (todayRun && state.mode === 'program' && state.program === todayRun.program && !todayRun.finished) {
+      todayRun.finished = true;
+      try { if (window.parent !== window) window.parent.postMessage({ type: 'chor-tool-done', step: 'warmup', stats: { program: state.program } }, location.origin); } catch { /* eigenständig */ }
+      renderTodayBar();
+    }
     stop('Fertig — gut eingesungen! Viel Spaß in der Probe.', true);
     if (state.mode === 'program') {
       $$('.prog-item').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
@@ -1667,6 +1698,7 @@
       renderAll(); persist();
       return;
     }
+    if (t.closest('[data-action="today-close"]')) { try { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); } catch { /* eigenständig */ } return; }
     if (t.closest('.play')) { if (run.playing) stop(); else start(); return; }
     if (t.closest('.tap-btn')) tapTempo();
   });
@@ -1883,6 +1915,7 @@
       if (state.ownPrograms.length !== 12 || state.ownPrograms[0].name.length !== 40 || state.ownPrograms[0].items.length !== 20) errors.push('ownPrograms-Grenzen falsch');
       if (draftWarning([['oktave'], ['lippen']]) === '' || draftWarning([['lippen'], ['oktave']]) !== '' || draftWarning([['tiefe'], ['lippen']]) !== '') errors.push('Höhe-Hinweis falsch');
       state.ownPrograms = [];
+      if (JSON.stringify(parseTodayParams('?embedded&from=today&program=morgens')) !== '{"program":"morgens"}' || parseTodayParams('?from=today&program=gibtsnicht').program !== null || parseTodayParams('?embedded=1') !== null) errors.push('Heute-Parameter Einsingen falsch');
       [['T', 'T'], ['X', 'A'], [3, 'A']].forEach(([raw, want]) => { state.voice = 'A'; sanitize({ voice: raw }); if (state.voice !== want) errors.push(`voice ${raw} → ${state.voice}`); });
     } finally {
       for (const k of Object.keys(state)) delete state[k];
@@ -1900,10 +1933,18 @@
     if (profile && LOAD_IDS.includes(profile.load)) state.load = profile.load;
   }
   applyProfile();
+  const todayParams = parseTodayParams(location.search);
+  if (!storage) applyTodayParams(todayParams);
   renderAll();
   if (storage) {
     try {
-      Promise.resolve(storage.load('einsingen')).then((data) => { if (data && !run.playing) { sanitize(data); applyProfile(); renderAll(); } }).catch(() => {});
+      Promise.resolve(storage.load('einsingen')).then((data) => {
+        if (run.playing) return;
+        if (data) sanitize(data);
+        applyProfile();
+        applyTodayParams(todayParams);
+        renderAll();
+      }).catch(() => { applyTodayParams(todayParams); renderAll(); });
     } catch { /* Ablage weg */ }
   }
 })();
