@@ -205,7 +205,15 @@
   .slot small { display: block; font-size: .62rem; color: var(--muted); font-weight: 700; }
   .answer-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 12px; }
   .answer-grid.is-chords { grid-template-columns: repeat(4, 1fr); }
-  .answer { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 11px 6px; font-weight: 800; font-size: .8rem; }
+  .answer { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 11px 6px; font-weight: 800; font-size: .8rem; min-height: 44px; }
+  .answer.is-picked { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+  .answer-grid.is-three { grid-template-columns: repeat(3, 1fr); }
+  .answer small { display: block; font-size: .62rem; font-weight: 700; color: var(--muted); }
+  .ear-extra { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+  .ear-extra:empty { display: none; }
+  .ear-extra .big-btn { min-height: 44px; }
+  .ear-extra .sub-label { width: 100%; text-align: center; margin: 4px 0 0; }
+  .tuning-threshold { font-size: .8rem; font-weight: 800; text-align: center; margin: 8px 0 0; }
   .answer.is-ok { background: #2f9e5b; border-color: #2f9e5b; color: #fff; }
   .answer.is-bad { background: var(--bad); border-color: var(--bad); color: #fff; }
   .answer.is-backspace { color: var(--muted); }
@@ -283,6 +291,7 @@
         </button>
       </div>
       <div class="chip-row" data-chips="earMode"></div>
+      <div data-levels="ear" style="margin-top:10px"></div>
       <div class="ear-stage">
         <p class="ear-prompt"></p>
         <p class="ear-sub"></p>
@@ -293,7 +302,8 @@
         </div>
       </div>
       <div class="answer-grid"></div>
-      <p class="ear-feedback" role="status"></p>
+      <div class="ear-extra"></div>
+      <p class="ear-feedback" role="status" aria-live="polite"></p>
       <p class="score ear-score"></p>
     </section>
   </section>
@@ -773,6 +783,24 @@
 
     clap(time, dest) {
       [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: i === 2 ? .3 : .18 }, dest));
+    },
+
+    /** Intonation: Sägezahn durch Tiefpass 2,5 kHz — die Obertöne machen
+     *  Schwebungen hörbar. `cents` verstimmt gegen den gleichstufigen Ton. */
+    saw(midi, cents, time, duration, dest) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = noteHz(midi) * Math.pow(2, cents / 1200);
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass'; filter.frequency.value = 2500;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(.0001, time);
+      gain.gain.linearRampToValueAtTime(.07, time + .05);
+      gain.gain.setValueAtTime(.07, time + duration - .08);
+      gain.gain.linearRampToValueAtTime(.0001, time + duration);
+      osc.connect(filter).connect(gain).connect(dest || this.master);
+      osc.start(time); osc.stop(time + duration + .02);
     },
 
     /** Holzblock (Zweistimmig): hoch für die obere, tief für die untere Stimme. */
@@ -1665,6 +1693,7 @@
     ['Sexten', [2, 3, 4, 5, 7, 8, 9, 12], 'level'],
     ['Septimen', [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12], 'level'],
     ['Alle', INTERVALS.map(([n]) => n), 'level'],
+    ['Alle Richtungen', INTERVALS.map(([n]) => n), 'level', { dirs: ['up', 'down', 'harmonic'] }],
     ['Terzen und Sexten', [3, 4, 8, 9], 'compare'],
     ['Sekunden und Septimen', [1, 2, 10, 11], 'compare'],
   ];
@@ -1741,7 +1770,8 @@
       intervals: [2, 4, 7, 12],
       dirs: ['up'],
       progs: ['pop', 'fifties', 'cadence', 'epic', 'mcadence'],
-      level: 0,            // 1–6 = Stufe, 0 = eigene Auswahl
+      level: 0,            // 1–6 = Stufe, 0 = eigene Auswahl (Akkordfolgen)
+      intervalLevel: 1,    // 1–6 = Stufe, 0 = eigene Auswahl (Intervalle)
       inversion: 'root',   // Bass: 'root' Grundton | 'style' stilgerechte Umkehrungen
       spread: 'close',     // Oberstimmen: 'close' enge | 'open' weite Lage
       tempo: 'mid',
@@ -1752,7 +1782,15 @@
     revealed: false,   // Antwort schon aufgelöst?
     bus: null,
     timers: [],
-    stats: { interval: { right: 0, total: 0 }, chords: { right: 0, total: 0, chordsRight: 0, chordsTotal: 0 }, intervalLog: {} },
+    stats: {
+      interval: { right: 0, total: 0 }, chords: { right: 0, total: 0, chordsRight: 0, chordsTotal: 0 }, intervalLog: {},
+      quality: { right: 0, total: 0 }, cadence: { right: 0, total: 0 }, parts: { right: 0, total: 0, help: 0 }, tuning: { right: 0, total: 0 },
+    },
+    // Stufen der neuen Modi (1–6); Intervalle: settings.intervalLevel, Akkordfolgen: settings.level.
+    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1 },
+    part: 'A',         // eigene Stimme für „Stimmen“ (aus dem Stimmprofil, sonst wählbar)
+    stairs: {},        // Intonation: Treppe je Stufe
+    pick: null,        // Stimmen: angetippter Kandidat
     streak: 0,
   };
 
@@ -1832,6 +1870,165 @@
 
   function enabledProgs() { return EAR_PROGRESSIONS.filter((p) => ear.settings.progs.includes(p.id)); }
 
+  /* ------------------------------------------------------------------------
+     HÖREN — weitere Modi (Didaktik Paket 4): Klänge, Schlüsse, Stimmen,
+     Intonation. Jeder Modus hat eigene Stufen (1–6, jede enthält die
+     vorigen) und eigene Zähler in ear.stats.
+     ------------------------------------------------------------------------ */
+
+  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Klänge'], ['cadence', 'Schlüsse'], ['chords', 'Akkordfolgen'], ['parts', 'Stimmen'], ['tuning', 'Intonation']];
+  const rndInt = (lo, hi, rnd = Math.random) => lo + Math.floor(rnd() * (hi - lo + 1));
+  const shuffle = (list, rnd = Math.random) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  /* ---- Klänge (Akkordqualität) ---- */
+  const CHORD_QUALITIES = {
+    maj:  { name: 'Dur',        semis: [0, 4, 7] },
+    min:  { name: 'Moll',       semis: [0, 3, 7] },
+    dim:  { name: 'vermindert', semis: [0, 3, 6] },
+    aug:  { name: 'übermäßig',  semis: [0, 4, 8] },
+    sus4: { name: 'Quartvorhalt (sus4)', semis: [0, 5, 7] },
+    dom7: { name: 'Dominantsept', semis: [0, 4, 7, 10] },
+  };
+  const QUALITY_LEVELS = [
+    { n: 1, label: 'Dur oder Moll, gebrochen',        set: ['maj', 'min'],                       play: 'broken',   inversion: 'root' },
+    { n: 2, label: 'Dur oder Moll, zusammen',         set: ['maj', 'min'],                       play: 'block',    inversion: 'root' },
+    { n: 3, label: 'dazu vermindert',                 set: ['maj', 'min', 'dim'],                play: 'block',    inversion: 'root' },
+    { n: 4, label: 'dazu Quartvorhalt',               set: ['maj', 'min', 'dim', 'sus4'],        play: 'block',    inversion: 'root' },
+    { n: 5, label: 'dazu übermäßig und Dominantsept', set: ['maj', 'min', 'dim', 'aug', 'sus4', 'dom7'], play: 'block', inversion: 'root' },
+    { n: 6, label: 'alle, in Umkehrungen',            set: ['maj', 'min', 'dim', 'aug', 'sus4', 'dom7'], play: 'block', inversion: 'any' },
+  ];
+  /** Töne eines Klangs in enger Lage über `root`, Umkehrung `inv` (die
+   *  untersten `inv` Töne eine Oktave höher). */
+  function qualityNotes(q, root, inv = 0) {
+    const notes = CHORD_QUALITIES[q].semis.map((x) => root + x);
+    for (let i = 0; i < inv; i++) notes[i] += 12;
+    return notes.sort((a, b) => a - b);
+  }
+
+  /* ---- Schlüsse (Schlussarten) ---- */
+  const CADENCE_TYPES = [['full', 'Ganzschluss'], ['half', 'Halbschluss'], ['deceptive', 'Trugschluss'], ['plagal', 'Plagalschluss']];
+  const CADENCE_PHRASES = {
+    full:      { major: [['I', 'IV', 'V', 'I'], ['I', 'ii', 'V', 'I'], ['I', 'vi', 'V7', 'I'], ['I', 'IV', 'I64', 'V', 'I']],
+                 minor: [['i', 'iv', 'V', 'i'], ['i', 'VI', 'V', 'i']] },
+    half:      { major: [['I', 'IV', 'V'], ['I', 'vi', 'ii', 'V'], ['I', 'ii', 'V']],
+                 minor: [['i', 'iv', 'V'], ['i', 'VI', 'iv', 'V'], ['i', 'iv6', 'V']] },
+    deceptive: { major: [['I', 'IV', 'V', 'vi'], ['I', 'ii', 'V7', 'vi']],
+                 minor: [['i', 'iv', 'V', 'VI']] },
+    plagal:    { major: [['I', 'IV', 'I'], ['I', 'vi', 'IV', 'I'], ['I', 'V', 'IV', 'I']],
+                 minor: [['i', 'iv', 'i']] },
+  };
+  const CADENCE_LEVELS = [
+    { n: 1, label: 'Ganz- oder Halbschluss',     types: ['full', 'half'],                         modes: ['major'], spread: 'close' },
+    { n: 2, label: 'dazu Trugschluss',           types: ['full', 'half', 'deceptive'],            modes: ['major'], spread: 'close' },
+    { n: 3, label: 'dazu Plagalschluss',         types: ['full', 'half', 'deceptive', 'plagal'],  modes: ['major'], spread: 'close' },
+    { n: 4, label: 'auch in Moll',               types: ['full', 'half', 'deceptive', 'plagal'],  modes: ['major', 'minor'], spread: 'close' },
+    { n: 5, label: 'weite Lage, Umkehrungen',    types: ['full', 'half', 'deceptive', 'plagal'],  modes: ['major', 'minor'], spread: 'open' },
+    { n: 6, label: 'dazu phrygischer Halbschluss', types: ['full', 'half', 'deceptive', 'plagal'], modes: ['major', 'minor'], spread: 'open', phrygian: true },
+  ];
+  const CADENCE_WHY = {
+    full: 'endet auf dem Grundakkord, nach der Dominante: fertig.',
+    half: 'bleibt auf der Dominante stehen — offen wie ein Komma.',
+    deceptive: 'die Dominante führt nicht nach Hause, sondern zur Mollfarbe der vi. Stufe.',
+    plagal: 'IV–I, der „Amen“-Schluss: weich, ohne Leitton.',
+  };
+  /** Phrasen eines Typs in einer Stufe (phrygischer Halbschluss nur mit `phrygian`). */
+  const cadencePhrases = (type, mode, level) => CADENCE_PHRASES[type][mode].filter((ph) => level.phrygian || ph.join() !== 'i,iv6,V');
+
+  /* ---- Stimmen (Stimme im Satz heraushören) ---- */
+  const PART_LEVELS = [
+    { n: 1, label: 'Zweiklang: oberer Ton',      task: 'dyad',  ask: 'upper' },
+    { n: 2, label: 'Zweiklang: unterer Ton',     task: 'dyad',  ask: 'lower' },
+    { n: 3, label: 'Dreiklang: mittlerer Ton',   task: 'triad', ask: 'middle' },
+    { n: 4, label: 'Akkord: meine Stimme',       task: 'satb',  ask: 'mine' },
+    { n: 5, label: 'Drei Akkorde: meine Linie',  task: 'line',  chords: 3, spread: 'close' },
+    { n: 6, label: 'Vier Akkorde, weite Lage',   task: 'line',  chords: 4, spread: 'open' },
+  ];
+  const PART_NAMES = { S: 'Sopran', A: 'Alt', T: 'Tenor', B: 'Bass' };
+  const DYAD_INTERVALS = [3, 4, 5, 7, 8, 9];
+  /** Drei Einzeltöne: der gesuchte und zwei Nachbarn im Abstand 1–2
+   *  Halbtöne (keine Akkordtöne), gemischt. */
+  function neighbourCandidates(target, avoid, rnd = Math.random) {
+    const opts = shuffle([-2, -1, 1, 2].map((d) => target + d).filter((m) => !avoid.includes(m)), rnd);
+    return shuffle([target, ...opts.slice(0, 2)], rnd);
+  }
+  /** Ein Akkordton `m` in die Lage `near` versetzt (nächste Oktave). */
+  const octaveNear = (m, near) => m + 12 * Math.round((near - m) / 12);
+  /** Vierstimmiger Satz einer Symbolfolge (harmony.js voiceChord). Weite
+   *  Lage: Tenor eine Oktave tiefer, wenn er dann noch über dem Bass liegt. */
+  function satbOf(key, symbols, spread = 'close') {
+    let prev = { S: 67, A: 62, T: 55, B: 48 };
+    return symbols.map((sym) => {
+      const pcs = chordPcs(key, sym).slice(0, 3);
+      const leading = /^V7?$/.test(sym) || sym === 'vii°' ? mod(key + 11, 12) : null;
+      prev = H.voiceChord(pcs, prev, { leading, bassIndex: CHORD_SYMBOLS[sym][1] === 'dim' ? 1 : 0 });
+      return prev;
+    }).map((c) => (spread === 'open' && c.T - 12 > c.B ? { ...c, T: c.T - 12 } : c));
+  }
+  /** Aufgabe „Linie“: drei verschiedene Linien in der Lage der eigenen Stimme —
+   *  die richtige, die einer anderen Stimme (oktaviert) und die richtige mit
+   *  einem Ton durch einen anderen Akkordton ersetzt. */
+  function makeLineTask(part, n, spread, rnd = Math.random) {
+    const pool = levelProgs(3).map((id) => EAR_PROGRESSIONS.find((p) => p.id === id)).filter((p) => p.mode === 'major');
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const prog = pool[Math.floor(rnd() * pool.length)];
+      const symbols = prog.chords.slice(0, n);
+      if (symbols.length < n) continue;
+      const key = rndInt(0, 11, rnd);
+      const satb = satbOf(key, symbols, spread);
+      const own = satb.map((c) => c[part]);
+      const mean = own.reduce((a, b) => a + b, 0) / own.length;
+      const other = shuffle(SATB_PARTS.filter((x) => x !== part), rnd)[0];
+      const shift = 12 * Math.round((mean - satb.reduce((a, c) => a + c[other], 0) / n) / 12);
+      const otherLine = satb.map((c) => c[other] + shift);
+      const k = rndInt(0, n - 1, rnd);
+      const alts = chordPcs(key, symbols[k]).slice(0, 3).map((pc) => octaveNear(pc, own[k])).filter((m) => mod(m, 12) !== mod(own[k], 12));
+      const wrong = own.slice(); wrong[k] = alts[Math.floor(rnd() * alts.length)];
+      const lines = [own, otherLine, wrong];
+      const keys = lines.map((l) => l.join());
+      if (new Set(keys).size < 3) continue;
+      return { key, symbols, satb, part, lines: shuffle(lines.map((l, i) => ({ notes: l, right: i === 0 })), rnd) };
+    }
+    return null;
+  }
+  const SATB_PARTS = ['S', 'A', 'T', 'B'];
+
+  /* ---- Intonation (zu hoch / zu tief) ---- */
+  const TUNING_LEVELS = [
+    { n: 1, label: 'Zwei Töne nacheinander',      kind: 'seq',    answers: ['tiefer', 'gleich', 'höher'] },
+    { n: 2, label: 'Zwei Töne zusammen',          kind: 'unison', answers: ['tiefer', 'gleich', 'höher'] },
+    { n: 3, label: 'Oktave',                      kind: 'octave', answers: ['zu eng', 'rein', 'zu weit'] },
+    { n: 4, label: 'Quinte',                      kind: 'fifth',  answers: ['zu eng', 'rein', 'zu weit'] },
+    { n: 5, label: 'Akkord: markierte Stimme',    kind: 'chordMarked', answers: ['zu tief', 'sauber', 'zu hoch'] },
+    { n: 6, label: 'Akkord: welche Stimme?',      kind: 'chordWhich',  answers: ['S', 'A', 'T', 'B'] },
+  ];
+  const TUNING_TONE_SEC = 1.4;
+  /** 2-runter-1-hoch-Treppe (konvergiert gegen ≈ 71 % richtig): nach zwei
+   *  richtigen in Folge Δ × 0,8, nach einem Fehler Δ × 1,25, Grenzen 3–60
+   *  Cent. Schwelle = geometrisches Mittel der letzten 6 Umkehrpunkte. */
+  function makeStaircase({ start = 40, min = 3, max = 60, down = .8, up = 1.25 } = {}, saved = null) {
+    let delta = saved?.delta ?? start, streak = saved?.streak ?? 0, dir = saved?.dir ?? 0;
+    const reversals = Array.isArray(saved?.reversals) ? saved.reversals.slice(-12) : [];
+    return {
+      get delta() { return delta; },
+      reversals,
+      answer(correct) {
+        let step = 0;
+        if (correct) { streak++; if (streak >= 2) { streak = 0; step = -1; } } else { streak = 0; step = 1; }
+        if (!step) return;
+        if (dir && step !== dir) reversals.push(delta);
+        dir = step;
+        delta = Math.min(max, Math.max(min, delta * (step < 0 ? down : up)));
+      },
+      threshold() {
+        if (reversals.length < 6) return null;
+        const last = reversals.slice(-6);
+        return Math.exp(last.reduce((a, x) => a + Math.log(x), 0) / 6);
+      },
+      toJSON() { return { delta, streak, dir, reversals: reversals.slice(-12) }; },
+    };
+  }
+  const stairFor = (n) => (ear.stairs[n] ||= makeStaircase({ start: n === 6 ? 30 : 40 }));
+
   function newTask() {
     ear.revealed = false;
     if (ear.mode === 'interval') {
@@ -1839,13 +2036,84 @@
       const dir = pick(ear.settings.dirs);
       const root = 52 + Math.floor(Math.random() * (dir === 'down' ? 16 : 12)) + (dir === 'down' ? semis : 0);
       ear.task = { kind: 'interval', semis, dir, root, answer: null };
-    } else {
+    } else if (ear.mode === 'chords') {
       const prog = pick(enabledProgs());
       const key = Math.floor(Math.random() * 12);
       // Klang einmal je Aufgabe festlegen — "Nochmal hören" klingt gleich.
       const voicings = voiceProgression(key, prog.chords, ear.settings);
       ear.task = { kind: 'chords', prog, key, input: [], voicings };
+    } else ear.task = makeEarTask(ear.mode, ear.levels[ear.mode]);
+    ear.pick = null;
+  }
+
+  /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
+  function makeEarTask(mode, n, rnd = Math.random) {
+    if (mode === 'quality') {
+      const level = QUALITY_LEVELS[n - 1];
+      const q = level.set[Math.floor(rnd() * level.set.length)];
+      const root = rndInt(48, 60, rnd);
+      const inv = level.inversion === 'any' ? rndInt(0, CHORD_QUALITIES[q].semis.length - 1, rnd) : 0;
+      return { kind: 'quality', level: n, q, root, inv, notes: qualityNotes(q, root, inv), play: level.play, answer: null };
     }
+    if (mode === 'cadence') {
+      const level = CADENCE_LEVELS[n - 1];
+      const type = level.types[Math.floor(rnd() * level.types.length)];
+      const cmode = level.modes[Math.floor(rnd() * level.modes.length)];
+      const list = cadencePhrases(type, cmode, level);
+      const symbols = list[Math.floor(rnd() * list.length)];
+      const key = rndInt(0, 11, rnd);
+      const voicings = voiceProgression(key, symbols, { inversion: level.spread === 'open' ? 'style' : 'root', spread: level.spread, rnd });
+      return { kind: 'cadence', level: n, type, mode: cmode, symbols, key, voicings, answer: null };
+    }
+    if (mode === 'parts') {
+      const level = PART_LEVELS[n - 1];
+      const part = ear.part;
+      if (level.task === 'dyad') {
+        const iv = DYAD_INTERVALS[Math.floor(rnd() * DYAD_INTERVALS.length)];
+        const lo = rndInt(55, 64, rnd);
+        const chord = [lo, lo + iv];
+        const target = level.ask === 'upper' ? chord[1] : chord[0];
+        return { kind: 'parts', level: n, sub: 'dyad', chord, target, candidates: neighbourCandidates(target, chord, rnd), answer: null };
+      }
+      if (level.task === 'triad') {
+        const root = rndInt(55, 64, rnd);
+        const chord = [root, root + (rnd() < .5 ? 4 : 3), root + 7];
+        return { kind: 'parts', level: n, sub: 'triad', chord, target: chord[1], candidates: neighbourCandidates(chord[1], chord, rnd), answer: null };
+      }
+      if (level.task === 'satb') {
+        const key = rndInt(0, 11, rnd);
+        const [c] = satbOf(key, ['I']);
+        const target = c[part];
+        const candidates = shuffle([...new Set(SATB_PARTS.map((x) => octaveNear(c[x], target)))], rnd);
+        return { kind: 'parts', level: n, sub: 'satb', key, satb: [c], part, target, candidates, answer: null, help: false };
+      }
+      const line = makeLineTask(part, level.chords, level.spread, rnd);
+      return { kind: 'parts', level: n, sub: 'line', ...line, answer: null, help: false };
+    }
+    // tuning
+    const level = TUNING_LEVELS[n - 1];
+    const stair = stairFor(n);
+    if (level.kind === 'chordWhich') {
+      const key = rndInt(0, 11, rnd);
+      const [c] = satbOf(key, ['I']);
+      const voice = SATB_PARTS[Math.floor(rnd() * 4)];
+      const sign = rnd() < .5 ? -1 : 1;
+      return { kind: 'tuning', level: n, sub: level.kind, satb: c, voice, cents: sign * stair.delta, stair: true, correct: voice, answer: null };
+    }
+    const catchTrial = rnd() < .25;
+    const sign = rnd() < .5 ? -1 : 1;
+    const cents = catchTrial ? 0 : sign * stair.delta;
+    const correct = cents === 0 ? 1 : cents < 0 ? 0 : 2;
+    const task = { kind: 'tuning', level: n, sub: level.kind, cents, stair: !catchTrial, correct, answer: null };
+    if (level.kind === 'seq' || level.kind === 'unison') task.base = rndInt(55, 67, rnd);
+    else if (level.kind === 'octave') task.base = rndInt(48, 57, rnd);
+    else if (level.kind === 'fifth') task.base = rndInt(48, 60, rnd);
+    else {
+      const key = rndInt(0, 11, rnd);
+      task.satb = satbOf(key, ['I'])[0];
+      task.voice = SATB_PARTS[Math.floor(rnd() * 4)];
+    }
+    return task;
   }
 
   /** Intervall ziehen, gewichtet mit 1 + Fehlern der letzten Antworten. */
@@ -1860,11 +2128,12 @@
 
   /** Spielt die aktuelle Aufgabe (oder, nach dem Auflösen, eine gewählte
    *  Vergleichs-Antwort) ab. */
-  async function playEar({ compareSemis } = {}) {
+  async function playEar({ compareSemis, compare } = {}) {
     try { await engine.start(); } catch { setEarFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); return; }
     engine.fadeBus(ear.bus);
     clearEarTimers();
-    ear.bus = engine.newBus();
+    // Intonation ohne Hall — der verwischt die Schwebungen.
+    ear.bus = engine.newBus({ reverb: ear.task?.kind !== 'tuning' });
     const bus = ear.bus;
     const t0 = engine.ctx.currentTime + .08;
     const task = ear.task;
@@ -1882,6 +2151,7 @@
       }
       return;
     }
+    if (task.kind !== 'chords') { playEarTask(task, t0, bus, { compare }); return; }
     const secs = CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
     const voicings = task.voicings || voiceProgression(task.key, task.prog.chords, ear.settings);
     let t = t0;
@@ -1908,6 +2178,108 @@
     const t = engine.ctx.currentTime + .03;
     [v.bass, ...v.upper].forEach((m) => engine.keys(m, t, .9, { velocity: .13, dest: ear.bus }));
   }
+
+  /** Wiedergabe der neuen Modi. compare: { q } (Klang zum Vergleich),
+   *  { note } (Kandidat), { line } (Linie), { loud } (Satz, eigene Stimme lauter). */
+  function playEarTask(task, t0, bus, { compare } = {}) {
+    const k = (m, t, dur, v = .18) => engine.keys(m, t, dur, { velocity: v, dest: bus });
+    if (task.kind === 'quality') {
+      const notes = compare?.q ? qualityNotes(compare.q, task.root, 0) : task.notes;
+      let t = t0;
+      if (task.play === 'broken' && !compare) { notes.forEach((m) => { k(m, t, .5, .2); t += .45; }); t += .1; }
+      notes.forEach((m) => k(m, t, 1.6, .15));
+      return;
+    }
+    if (task.kind === 'cadence') {
+      let t = t0;
+      task.voicings.forEach((v) => { [v.bass, ...v.upper].forEach((m) => k(m, t, 1.15, .13)); t += 1.25; });
+      return;
+    }
+    if (task.kind === 'parts') {
+      if (compare?.note != null) { k(compare.note, t0, 1.1, .22); return; }
+      if (compare?.line) { compare.line.forEach((m, i) => k(m, t0 + i * .7, .66, .22)); return; }
+      if (task.sub === 'dyad' || task.sub === 'triad') { task.chord.forEach((m) => k(m, t0, 2, .16)); return; }
+      const loud = !!compare?.loud;
+      (task.satb || []).forEach((c, i) => SATB_PARTS.forEach((x) => k(c[x], t0 + i * 1.3, 1.2, x === task.part && loud ? .26 : .13)));
+      return;
+    }
+    // Intonation: Sägezahn durch Tiefpass, 1,4 s je Ton, Referenz zuerst bzw. unten.
+    const saw = (m, cents, t, dur) => engine.saw(m, cents, t, dur, bus);
+    const d = TUNING_TONE_SEC;
+    if (task.sub === 'seq') { saw(task.base, 0, t0, d); saw(task.base, task.cents, t0 + d + .15, d); return; }
+    if (task.sub === 'unison') { saw(task.base, 0, t0, d + .5); saw(task.base, task.cents, t0 + .5, d); return; }
+    if (task.sub === 'octave') { saw(task.base, 0, t0, d + .5); saw(task.base + 12, task.cents, t0 + .5, d); return; }
+    if (task.sub === 'fifth') { saw(task.base, 0, t0, d + .5); saw(task.base + 7, 1.955 + task.cents, t0 + .5, d); return; }
+    let t = t0;
+    if (task.sub === 'chordMarked' && !compare?.skipSolo) { saw(task.satb[task.voice], task.cents, t, 1); t += 1.2; }
+    SATB_PARTS.forEach((x) => saw(task.satb[x], x === task.voice ? task.cents : 0, t, d));
+  }
+
+  /** Antwort in den neuen Modi. value: Qualitäts-ID, Schlusstyp, Index. */
+  function answerEar(value) {
+    const task = ear.task;
+    if (!task) return;
+    const st = ear.stats[task.kind];
+    if (task.kind === 'quality') {
+      if (ear.revealed) { playEar({ compare: { q: value } }); return; }
+      const ok = value === task.q;
+      task.answer = value;
+      finishEarAnswer(ok, ok ? `Richtig: ${CHORD_QUALITIES[task.q].name}!` : `Das war ${CHORD_QUALITIES[task.q].name} — tippe die Namen an, um zu vergleichen.`);
+      return;
+    }
+    if (task.kind === 'cadence') {
+      if (ear.revealed) { playEar(); return; }
+      const ok = value === task.type;
+      task.answer = value;
+      const name = CADENCE_TYPES.find(([id]) => id === task.type)[1];
+      finishEarAnswer(ok, `${ok ? 'Richtig: ' : 'Das war ein '}${name} (${task.symbols.map(symbolLabel).join(' – ')}) — ${CADENCE_WHY[task.type]}`);
+      return;
+    }
+    if (task.kind === 'parts') {
+      // Antippen spielt ab; „Antworten“ wählt.
+      const i = Number(value);
+      if (task.sub === 'line') playEar({ compare: { line: task.lines[i].notes } });
+      else playEar({ compare: { note: task.candidates[i] } });
+      if (!ear.revealed) { ear.pick = i; renderEar(); }
+      return;
+    }
+    // tuning
+    if (ear.revealed) { playEar(); return; }
+    const level = TUNING_LEVELS[task.level - 1];
+    const ok = task.sub === 'chordWhich' ? value === task.correct : Number(value) === task.correct;
+    task.answer = value;
+    if (task.stair) stairFor(task.level).answer(ok);
+    const size = Math.round(Math.abs(task.cents));
+    const truth = task.sub === 'chordWhich' ? `${PART_NAMES[task.voice]} war ${task.cents < 0 ? 'zu tief' : 'zu hoch'} (${size} Cent)`
+      : task.cents === 0 ? `${level.answers[1]} — keine Abweichung` : `${level.answers[task.correct]} (${size} Cent)`;
+    finishEarAnswer(ok, ok ? `Richtig: ${truth}.` : `Knapp daneben: ${truth}.`);
+  }
+
+  /** Bestätigen in „Stimmen“ (Knopf „Antworten“). */
+  function confirmPart() {
+    const task = ear.task;
+    if (!task || ear.revealed || ear.pick === null) return;
+    const i = ear.pick;
+    const ok = task.sub === 'line' ? task.lines[i].right : task.candidates[i] === task.target;
+    task.answer = i;
+    const what = task.sub === 'line' ? 'deine Linie' : task.sub === 'satb' ? `der Ton des ${PART_NAMES[task.part]}s` : 'der gesuchte Ton';
+    finishEarAnswer(ok, ok ? `Richtig — das war ${what}${task.help ? ' (mit Hilfe)' : ''}.` : `Noch nicht — ${what} ist grün markiert. Antippen zum Vergleichen.`);
+  }
+
+  function finishEarAnswer(ok, text) {
+    const task = ear.task;
+    ear.revealed = true;
+    const st = ear.stats[task.kind];
+    st.total++;
+    if (task.help) st.help = (st.help || 0) + 1;
+    if (ok) { st.right++; ear.streak++; } else ear.streak = 0;
+    setEarFeedback(text, ok ? 'ok' : 'bad');
+    onEarResult(task, ok);
+    renderEar();
+    if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
+  }
+  /** Haken für Fortschritt und „Heute üben“ (Paket 6/7). */
+  function onEarResult() {}
 
   function highlightSlot(index) {
     $$('.slot').forEach((el, i) => el.classList.toggle('is-playing', i === index));
@@ -1967,8 +2339,45 @@
     el.className = `ear-feedback${kind ? ` is-${kind}` : ''}`;
   }
 
+  /** Level-Tabelle und aktuelle Stufe je Hör-Modus. */
+  const INTERVAL_LEVELS = () => INTERVAL_PRESETS.filter((p) => p[2] === 'level').map(([name], i) => ({ n: i + 1, label: name }));
+  function earLevelInfo(mode) {
+    if (mode === 'interval') return [INTERVAL_LEVELS(), ear.settings.intervalLevel];
+    if (mode === 'chords') return [EAR_LEVELS, ear.settings.level];
+    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS }[mode];
+    return [table, ear.levels[mode]];
+  }
+  /** Stufe `n` im aktuellen Modus übernehmen. */
+  function applyEarLevelFor(mode, n) {
+    if (mode === 'interval') {
+      const preset = INTERVAL_PRESETS.filter((p) => p[2] === 'level')[n - 1];
+      if (!preset) return;
+      ear.settings.intervals = [...preset[1]];
+      ear.settings.dirs = preset[3]?.dirs ? [...preset[3].dirs] : ['up'];
+      ear.settings.intervalLevel = n;
+    } else if (mode === 'chords') applyEarLevel(n);
+    else if (n >= 1 && n <= 6) ear.levels[mode] = n;
+    ear.task = null; ear.pick = null;
+    clearEarTimers();
+    if (engine.ctx) engine.fadeBus(ear.bus);
+    setEarFeedback('', '');
+  }
+
+  function answerButton(value, label, { dataset = 'ans', sub = '', cls = '', disabled = false, aria = '' } = {}) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = `answer${cls ? ` ${cls}` : ''}`;
+    b.dataset[dataset] = String(value);
+    b.textContent = label;
+    if (sub) { const small = document.createElement('small'); small.textContent = sub; b.append(small); }
+    b.disabled = disabled;
+    b.setAttribute('aria-label', aria || label);
+    return b;
+  }
+
   function renderEar() {
-    chips('earMode', [['interval', 'Intervalle'], ['chords', 'Akkordfolgen']], ear.mode);
+    chips('earMode', EAR_MODES, ear.mode);
+    const [levels, current] = earLevelInfo(ear.mode);
+    $('[data-levels="ear"]').innerHTML = levelControlHtml(`ear-${ear.mode}`, levels, current, levelHints[ear.mode]);
     const task = ear.task;
     const playBtn = $('[data-ear="play"]');
     playBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>${task ? 'Nochmal hören' : 'Start'}`;
@@ -1977,28 +2386,27 @@
     const sub = $('.ear-sub');
     const slots = $('.slot-row');
     const grid = $('.answer-grid');
-    grid.classList.toggle('is-chords', ear.mode === 'chords');
+    const extra = $('.ear-extra');
+    extra.replaceChildren();
+    grid.className = 'answer-grid';
+    slots.hidden = true;
 
     if (ear.mode === 'interval') {
-      slots.hidden = true;
       prompt.textContent = task ? 'Welches Intervall war das?' : 'Zwei Töne — welcher Abstand?';
       sub.textContent = task
         ? { up: 'aufwärts gespielt', down: 'abwärts gespielt', harmonic: 'zusammen angeschlagen' }[task.dir] + (ear.revealed ? ' · Antworten antippen zum Vergleichen' : '')
         : `${ear.settings.intervals.length} Intervalle ausgewählt · Zahnrad zum Ändern`;
-      grid.replaceChildren(...ear.settings.intervals.map((semis) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'answer';
-        b.dataset.answer = String(semis);
-        b.textContent = intervalName(semis);
-        b.disabled = !task;
+      grid.replaceChildren(...ear.settings.intervals.map((semis, i) => {
+        const b = answerButton(semis, intervalName(semis), { dataset: 'answer', disabled: !task, aria: `${i + 1}: ${intervalName(semis)}` });
         if (task && ear.revealed) {
           if (semis === task.semis) b.classList.add('is-ok');
           else if (semis === task.answer) b.classList.add('is-bad');
         }
         return b;
       }));
-    } else {
+    } else if (ear.mode === 'chords') {
       slots.hidden = !task;
+      grid.classList.add('is-chords');
       prompt.textContent = task ? `Welche ${task.prog.chords.length} Akkorde waren das?` : 'Akkordfolge — welche Stufen?';
       sub.textContent = task
         ? `${task.prog.mode === 'major' ? 'Dur' : 'Moll'}${ear.settings.tonicCue ? ' · vorab erklingt der Grundakkord' : ''}${ear.revealed ? ' · Akkorde antippen zum Anhören' : ''}`
@@ -2024,27 +2432,99 @@
       const mode = task?.prog.mode || (enabledProgs()[0]?.mode ?? 'major');
       const used = new Set(enabledProgs().filter((p) => p.mode === mode).flatMap((p) => p.chords));
       const symbols = SYMBOL_ORDER.filter((sym) => used.has(sym));
-      const buttons = symbols.map((symbol) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'answer';
-        b.dataset.chord = symbol;
-        b.textContent = symbolLabel(symbol);
-        b.disabled = !task;
-        return b;
-      });
-      const back = document.createElement('button');
-      back.type = 'button'; back.className = 'answer is-backspace';
-      back.dataset.chord = 'back';
-      back.textContent = '⌫';
-      back.setAttribute('aria-label', 'Letzten Akkord löschen');
-      back.disabled = !task || ear.revealed || !task.input.length;
+      const buttons = symbols.map((symbol) => answerButton(symbol, symbolLabel(symbol), { dataset: 'chord', disabled: !task }));
+      const back = answerButton('back', '⌫', { dataset: 'chord', cls: 'is-backspace', aria: 'Letzten Akkord löschen', disabled: !task || ear.revealed || !task.input.length });
       grid.replaceChildren(...buttons, back);
+    } else if (ear.mode === 'quality') {
+      const level = QUALITY_LEVELS[ear.levels.quality - 1];
+      prompt.textContent = task ? 'Welcher Klang war das?' : 'Ein Akkord — wie klingt er?';
+      sub.textContent = task ? `${level.play === 'broken' ? 'erst gebrochen, dann zusammen' : 'zusammen angeschlagen'}${task.inv ? ' · in Umkehrung' : ''}${ear.revealed ? ' · Namen antippen zum Vergleichen' : ''}` : `Stufe ${level.n}: ${level.label}`;
+      grid.replaceChildren(...level.set.map((q, i) => {
+        const b = answerButton(q, CHORD_QUALITIES[q].name, { disabled: !task, aria: `${i + 1}: ${CHORD_QUALITIES[q].name}` });
+        if (task && ear.revealed) { if (q === task.q) b.classList.add('is-ok'); else if (q === task.answer) b.classList.add('is-bad'); }
+        return b;
+      }));
+      if (task && ear.revealed) {
+        for (const [q, label] of [['maj', 'Dur hören'], ['min', 'Moll hören']]) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'big-btn secondary'; b.dataset.compareQ = q; b.textContent = label;
+          extra.append(b);
+        }
+      }
+    } else if (ear.mode === 'cadence') {
+      const level = CADENCE_LEVELS[ear.levels.cadence - 1];
+      prompt.textContent = task ? 'Wie endet die Phrase?' : 'Eine kurze Phrase — welcher Schluss?';
+      sub.textContent = task ? `${task.mode === 'major' ? 'Dur' : 'Moll'} · ${task.symbols.length} Akkorde${ear.revealed ? ` · ${task.symbols.map(symbolLabel).join(' – ')}` : ''}` : `Stufe ${level.n}: ${level.label}`;
+      grid.replaceChildren(...CADENCE_TYPES.filter(([id]) => level.types.includes(id)).map(([id, name], i) => {
+        const b = answerButton(id, name, { disabled: !task, aria: `${i + 1}: ${name}` });
+        if (task && ear.revealed) { if (id === task.type) b.classList.add('is-ok'); else if (id === task.answer) b.classList.add('is-bad'); }
+        return b;
+      }));
+    } else if (ear.mode === 'parts') {
+      const level = PART_LEVELS[ear.levels.parts - 1];
+      const mine = level.task === 'satb' || level.task === 'line';
+      const q = { upper: 'Welcher war der obere Ton?', lower: 'Welcher war der untere Ton?', middle: 'Welcher war der mittlere Ton?', mine: `Welcher Ton ist deiner (${PART_NAMES[ear.part]})?` }[level.ask] || 'Welche Linie singst du?';
+      prompt.textContent = task ? q : level.task === 'line' ? 'Kurzer Satz — welche Linie singst du?' : 'Ein Klang — welchen Ton hörst du heraus?';
+      sub.textContent = task ? (ear.revealed ? 'Antippen zum Vergleichen' : 'Antippen spielt ab · „Antworten“ wählt') : `Stufe ${level.n}: ${level.label}`;
+      if (task) {
+        const list = task.sub === 'line' ? task.lines : task.candidates;
+        grid.classList.add('is-three');
+        grid.replaceChildren(...list.map((c, i) => {
+          const label = task.sub === 'line' ? `Linie ${'ABCD'[i]}` : `Ton ${i + 1}`;
+          const b = answerButton(i, label, { aria: `${i + 1}: ${label} anhören`, cls: ear.pick === i && !ear.revealed ? 'is-picked' : '' });
+          if (ear.revealed) {
+            const right = task.sub === 'line' ? c.right : c === task.target;
+            if (right) b.classList.add('is-ok'); else if (i === task.answer) b.classList.add('is-bad');
+          }
+          return b;
+        }));
+        if (!ear.revealed) {
+          const ok = document.createElement('button');
+          ok.type = 'button'; ok.className = 'big-btn'; ok.dataset.ear = 'confirm-part'; ok.textContent = 'Antworten';
+          ok.disabled = ear.pick === null;
+          extra.append(ok);
+        }
+        if (mine) {
+          const help = document.createElement('button');
+          help.type = 'button'; help.className = 'big-btn secondary'; help.dataset.ear = 'part-help';
+          help.textContent = 'Satz noch einmal – meine Stimme lauter';
+          extra.append(help);
+        }
+      } else grid.replaceChildren();
+      if (mine) {
+        const label = document.createElement('span');
+        label.className = 'sub-label'; label.textContent = 'Welche Stimme singst du?';
+        const row = document.createElement('div');
+        row.className = 'chip-row'; row.dataset.chips = 'earPart';
+        extra.append(label, row);
+        extra.style.flexDirection = 'column'; extra.style.alignItems = 'center';
+      } else { extra.style.flexDirection = ''; extra.style.alignItems = ''; }
+    } else if (ear.mode === 'tuning') {
+      const level = TUNING_LEVELS[ear.levels.tuning - 1];
+      const stair = stairFor(level.n);
+      const prompts = { seq: 'Ist der zweite Ton tiefer, gleich oder höher?', unison: 'Der zweite Ton kommt dazu — tiefer, gleich oder höher?', octave: 'Ist die Oktave zu eng, rein oder zu weit?', fifth: 'Ist die Quinte zu eng, rein oder zu weit?', chordMarked: 'Die markierte Stimme — zu tief, sauber oder zu hoch?', chordWhich: 'Welche Stimme ist verstimmt?' };
+      prompt.textContent = task ? prompts[level.kind] : 'Sauber oder nicht? Genau hinhören.';
+      sub.textContent = task ? (level.kind === 'chordMarked' ? `markiert: ${PART_NAMES[task.voice]} — erst allein, dann im Akkord` : level.kind === 'chordWhich' ? 'eine der vier Stimmen weicht ab' : 'Referenz zuerst bzw. unten') : `Stufe ${level.n}: ${level.label}`;
+      const answers = level.kind === 'chordWhich' ? SATB_PARTS.map((x) => [x, PART_NAMES[x]]) : level.answers.map((label, i) => [i, label]);
+      grid.classList.add(answers.length === 3 ? 'is-three' : 'is-chords');
+      grid.replaceChildren(...answers.map(([v, label], i) => {
+        const b = answerButton(v, label, { disabled: !task, aria: `${i + 1}: ${label}` });
+        if (task && ear.revealed) { if (String(v) === String(task.correct)) b.classList.add('is-ok'); else if (String(v) === String(task.answer)) b.classList.add('is-bad'); }
+        return b;
+      }));
+      const th = stair.threshold();
+      const p = document.createElement('p');
+      p.className = 'tuning-threshold';
+      p.textContent = th ? `Deine Schwelle heute: etwa ${Math.round(th)} Cent` : `Abweichung gerade: ${Math.round(stair.delta)} Cent · die Schwelle erscheint nach sechs Umkehrpunkten`;
+      extra.append(p);
     }
+    if (ear.mode === 'parts' && $('[data-chips="earPart"]')) chips('earPart', SATB_PARTS.map((x) => [x, PART_NAMES[x]]), ear.part);
 
     const st = ear.stats[ear.mode];
     const parts = [];
     if (st.total) parts.push(`${st.right}/${st.total} richtig`);
     if (ear.mode === 'chords' && st.chordsTotal) parts.push(`Akkorde ${st.chordsRight}/${st.chordsTotal}`);
+    if (st.help) parts.push(`${st.help} mit Hilfe`);
     if (ear.streak > 1) parts.push(`${ear.streak} in Folge`);
     $('.ear-score').textContent = parts.join(' · ');
   }
@@ -2076,6 +2556,8 @@
     }
     // Aufgabe verwerfen, wenn sie mit den neuen Einstellungen nicht mehr vorkäme.
     const task = ear.task;
+    const lvl = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level').findIndex((pr) => pr[1].join() === ear.settings.intervals.join() && (pr[3]?.dirs || ['up']).join() === ear.settings.dirs.join());
+    ear.settings.intervalLevel = lvl + 1;
     if (task && ((task.kind === 'interval' && (!ear.settings.intervals.includes(task.semis) || !ear.settings.dirs.includes(task.dir)))
       || (task.kind === 'chords' && !ear.settings.progs.includes(task.prog.id)))) {
       ear.task = null;
@@ -2090,7 +2572,7 @@
     if (ear.mode === 'interval') {
       if (s.intervals.length < 2) return 'Bitte mindestens zwei Intervalle auswählen.';
       if (!s.dirs.length) return 'Bitte mindestens eine Richtung auswählen.';
-    } else if (!s.progs.length) return 'Bitte mindestens eine Akkordfolge auswählen.';
+    } else if (ear.mode === 'chords' && !s.progs.length) return 'Bitte mindestens eine Akkordfolge auswählen.';
     return '';
   }
 
@@ -2159,6 +2641,13 @@
         <div class="check-grid">${INTERVALS.map(([n, name]) => checkRow('intervals', n, name, s.intervals.includes(n))).join('')}</div>
         <span class="sub-label">Richtung</span>
         <div class="check-grid">${INTERVAL_DIRS.map(([id, name]) => checkRow('dirs', id, name, s.dirs.includes(id))).join('')}</div>
+        <span class="sub-label">Ablauf</span>
+        <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
+    } else if (ear.mode !== 'chords') {
+      body.innerHTML = `
+        <span class="sub-label" style="margin-top:0">Stufe</span>
+        <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Chips 1–6).</p>
+        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
     } else {
@@ -2573,7 +3062,7 @@
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart,
       },
-      ear: { mode: ear.mode, settings: ear.settings },
+      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
     };
   }
@@ -2614,7 +3103,19 @@
     if (r.duoPart === 'upper' || r.duoPart === 'lower') state.duoPart = r.duoPart;
     if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
-    if (e.mode === 'interval' || e.mode === 'chords') ear.mode = e.mode;
+    if (EAR_MODES.some(([id]) => id === e.mode)) ear.mode = e.mode;
+    const lv = e.levels && typeof e.levels === 'object' ? e.levels : {};
+    for (const k of Object.keys(ear.levels)) if (Number.isInteger(lv[k]) && lv[k] >= 1 && lv[k] <= 6) ear.levels[k] = lv[k];
+    if (SATB_PARTS.includes(e.part)) ear.part = e.part;
+    if (e.stairs && typeof e.stairs === 'object') {
+      for (const [n, st] of Object.entries(e.stairs)) {
+        const k = Number(n);
+        if (!(k >= 1 && k <= 6) || !st || typeof st !== 'object') continue;
+        const delta = Number.isFinite(st.delta) ? clamp(st.delta, 3, 60) : undefined;
+        const reversals = Array.isArray(st.reversals) ? st.reversals.filter((x) => Number.isFinite(x) && x >= 3 && x <= 60) : [];
+        ear.stairs[k] = makeStaircase({ start: k === 6 ? 30 : 40 }, { delta, streak: [0, 1].includes(st.streak) ? st.streak : 0, dir: [-1, 0, 1].includes(st.dir) ? st.dir : 0, reversals });
+      }
+    }
     const es = e.settings && typeof e.settings === 'object' ? e.settings : {};
     const subset = (all, list) => (Array.isArray(list) ? all.filter((x) => list.includes(x)) : []);
     const intervals = subset(INTERVALS.map(([n]) => n), es.intervals);
@@ -2629,6 +3130,12 @@
     if (EAR_INVERSIONS.some(([id]) => id === inversion)) ear.settings.inversion = inversion;
     if (EAR_SPREADS.some(([id]) => id === es.spread)) ear.settings.spread = es.spread;
     if (Number.isInteger(es.level) && es.level >= 0 && es.level <= 6) ear.settings.level = es.level;
+    if (Number.isInteger(es.intervalLevel) && es.intervalLevel >= 0 && es.intervalLevel <= 6) ear.settings.intervalLevel = es.intervalLevel;
+    else if (Array.isArray(es.intervals)) {
+      // Ältere Stände ohne intervalLevel: Stufe aus der Auswahl ableiten.
+      const lvl = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level').findIndex((pr) => pr[1].join() === ear.settings.intervals.join() && (pr[3]?.dirs || ['up']).join() === ear.settings.dirs.join());
+      ear.settings.intervalLevel = lvl + 1;
+    }
     ['tonicCue', 'autoNext'].forEach((k) => { if (typeof es[k] === 'boolean') ear.settings[k] = es[k]; });
     const v = data.voice && typeof data.voice === 'object' ? data.voice : {};
     if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
@@ -2699,15 +3206,37 @@
       if (action === 'settings') openSettings('ear');
       else if (action === 'close-settings') closeSettings();
       else if (action === 'play') { if (!ear.task) { nextEar(); } else playEar(); }
+      else if (action === 'confirm-part') confirmPart();
+      else if (action === 'part-help' && ear.task) {
+        // Hilfe zählt als „mit Hilfe“ — kein Fehler, aber nicht für den Stufenvorschlag.
+        if (!ear.revealed) ear.task.help = true;
+        playEar({ compare: { loud: true } });
+      }
       else if (action === 'next') nextEar();
       return;
     }
     const answer = e.target.closest('[data-answer]');
     if (answer) { answerInterval(Number(answer.dataset.answer)); return; }
+    const ans = e.target.closest('[data-ans]');
+    if (ans) { answerEar(ans.dataset.ans); return; }
+    const cmpQ = e.target.closest('[data-compare-q]');
+    if (cmpQ) { playEar({ compare: { q: cmpQ.dataset.compareQ } }); return; }
+    const earLevel = e.target.closest('[data-level-area^="ear-"]');
+    if (earLevel) {
+      applyEarLevelFor(earLevel.dataset.levelArea.slice(4), Number(earLevel.dataset.levelN));
+      renderEar();
+      return;
+    }
     const chordBtn = e.target.closest('[data-chord]');
     if (chordBtn) { answerChord(chordBtn.dataset.chord); return; }
     const preset = e.target.closest('[data-preset]');
-    if (preset) { ear.settings.intervals = [...INTERVAL_PRESETS[Number(preset.dataset.preset)][1]]; renderSettings(); return; }
+    if (preset) {
+      const pr = INTERVAL_PRESETS[Number(preset.dataset.preset)];
+      ear.settings.intervals = [...pr[1]];
+      if (pr[2] === 'level') ear.settings.dirs = pr[3]?.dirs ? [...pr[3].dirs] : ['up'];
+      renderSettings();
+      return;
+    }
     const levelChip = e.target.closest('[data-level]');
     if (levelChip) { applyEarLevel(Number(levelChip.dataset.level)); renderSettings(); $('.sheet-hint').textContent = settingsProblem(); return; }
     const earSet = e.target.closest('[data-earset]');
@@ -2717,10 +3246,19 @@
     if (e.target === $('.sheet')) { closeSettings(); return; }
 
     const chip = e.target.closest('[data-chip]');
+    if (chip && chip.dataset.chip === 'earPart') {
+      if (ear.part !== chip.dataset.value) {
+        ear.part = chip.dataset.value;
+        if (ear.task?.kind === 'parts' && ['satb', 'line'].includes(ear.task.sub)) { ear.task = null; setEarFeedback('', ''); }
+        try { profileApi?.set({ part: ear.part }); } catch { /* App weg */ }
+        renderEar();
+      }
+      return;
+    }
     if (chip && chip.dataset.chip === 'earMode') {
       if (ear.mode !== chip.dataset.value) {
         ear.mode = chip.dataset.value;
-        ear.task = null; ear.streak = 0;
+        ear.task = null; ear.streak = 0; ear.pick = null;
         clearEarTimers();
         if (engine.ctx) engine.fadeBus(ear.bus);
         setEarFeedback('', '');
@@ -2786,6 +3324,15 @@
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     if (!$('.sheet').hidden) return;
     if (state.tab === 'voice') return;
+    if (state.tab === 'ear' && /^[1-9]$/.test(e.key)) {
+      // Ziffern 1–9 wählen die Antworten (Barrierefreiheit).
+      const btn = $$('.answer-grid .answer:not(.is-backspace)')[Number(e.key) - 1];
+      if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
+      return;
+    }
+    if (state.tab === 'ear' && e.key === 'Enter' && ear.mode === 'parts' && ear.pick !== null && !ear.revealed && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName))) {
+      e.preventDefault(); confirmPart(); return;
+    }
     if (state.tab === 'ear') {
       // Leertaste = nochmal hören (bzw. starten), sofern kein Knopf den Fokus hat.
       if (e.code === 'Space' && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName))) {
@@ -2967,6 +3514,129 @@
     return errors;
   }
 
+  /** Didaktik Paket 4: Klänge, Schlüsse, Stimmen, Intonation. */
+  function earPackageCheck() {
+    const errors = [];
+    let seed = 3;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    // Klänge: genau die Halbtonmenge (mod 12); Umkehrungen enthalten alle Töne.
+    for (const [q, def] of Object.entries(CHORD_QUALITIES)) {
+      for (let root = 48; root <= 60; root++) {
+        for (let inv = 0; inv < def.semis.length; inv++) {
+          const notes = qualityNotes(q, root, inv);
+          const set = [...new Set(notes.map((m) => mod(m - root, 12)))].sort((a, b) => a - b).join();
+          if (set !== [...def.semis].sort((a, b) => a - b).join() || notes.length !== def.semis.length) errors.push(`Klang ${q} auf ${root}, Umkehrung ${inv}: ${notes}`);
+        }
+      }
+    }
+    for (let i = 0; i < 300; i++) {
+      const t = makeEarTask('quality', 1 + (i % 6), rnd);
+      if (!QUALITY_LEVELS[t.level - 1].set.includes(t.q)) errors.push(`Klang ${t.q} nicht in Stufe ${t.level}`);
+      if (t.level < 6 && t.inv) errors.push('Umkehrung vor Stufe 6');
+    }
+    // Schlüsse: jede Phrase endet richtig; Satz ohne Parallelen.
+    const ends = {
+      full: (a, b) => /^[Ii]$/.test(b) && /^V7?$/.test(a),
+      half: (a, b) => b === 'V',
+      deceptive: (a, b) => /^(vi|VI)$/.test(b) && /^V7?$/.test(a),
+      plagal: (a, b) => /^[Ii]$/.test(b) && /^(IV|iv)$/.test(a),
+    };
+    let par = 0;
+    for (const [type, byMode] of Object.entries(CADENCE_PHRASES)) {
+      for (const list of Object.values(byMode)) {
+        for (const ph of list) {
+          if (!ends[type](ph[ph.length - 2], ph[ph.length - 1])) errors.push(`Schluss ${type}: ${ph.join('–')} endet falsch`);
+          ph.forEach((c) => { if (!CHORD_SYMBOLS[c]) errors.push(`Schluss: Symbol ${c} fehlt`); });
+          for (let key = 0; key < 12; key++) {
+            for (const [inversion, spread] of [['root', 'close'], ['style', 'open']]) {
+              const vs = voiceProgression(key, ph, { inversion, spread, rnd });
+              vs.forEach((v, i) => { if (i && parallelCount([vs[i - 1].bass, ...vs[i - 1].upper], [v.bass, ...v.upper])) par++; });
+            }
+          }
+        }
+      }
+    }
+    if (par) errors.push(`Schlüsse: ${par} Akkordwechsel mit Quint-/Oktavparallelen`);
+    for (let i = 0; i < 300; i++) {
+      const n = 1 + (i % 6);
+      const t = makeEarTask('cadence', n, rnd);
+      if (!CADENCE_LEVELS[n - 1].types.includes(t.type)) errors.push(`Schluss ${t.type} nicht in Stufe ${n}`);
+      if (t.symbols.join() === 'i,iv6,V' && n < 6) errors.push('phrygischer Halbschluss vor Stufe 6');
+      if (n < 4 && t.mode === 'minor') errors.push('Moll vor Stufe 4');
+    }
+    // Stimmen: 500 Linien-Aufgaben — drei verschiedene Linien, richtig = eigene Stimme.
+    const savedPart = ear.part;
+    try {
+      for (let i = 0; i < 500; i++) {
+        const part = SATB_PARTS[i % 4];
+        const lt = makeLineTask(part, i % 2 ? 4 : 3, i % 2 ? 'open' : 'close', rnd);
+        if (!lt) { errors.push(`Linie ${part}: keine Aufgabe`); continue; }
+        const keys = lt.lines.map((l) => l.notes.join());
+        if (new Set(keys).size !== 3) errors.push(`Linie ${part}: Linien nicht verschieden`);
+        const right = lt.lines.filter((l) => l.right);
+        if (right.length !== 1 || right[0].notes.join() !== lt.satb.map((c) => c[part]).join()) errors.push(`Linie ${part}: richtige Linie ist nicht die eigene Stimme`);
+      }
+      for (let i = 0; i < 200; i++) {
+        ear.part = SATB_PARTS[i % 4];
+        const n = 1 + (i % 4);
+        const t = makeEarTask('parts', n, rnd);
+        if (!t.candidates.includes(t.target)) errors.push(`Stimmen Stufe ${n}: Ziel fehlt unter den Kandidaten`);
+        if (n <= 3 && (t.candidates.length !== 3 || t.candidates.some((c) => Math.abs(c - t.target) > 2))) errors.push(`Stimmen Stufe ${n}: Kandidaten ${t.candidates}`);
+        if (n === 4 && t.target !== t.satb[0][ear.part]) errors.push('Stimmen Stufe 4: Ziel ist nicht die eigene Stimme');
+      }
+    } finally { ear.part = savedPart; }
+    // Treppe: simulierte Hörer:in mit Schwelle 12 Cent → Schätzung 8–18 Cent in ≥ 95 % von 200 Läufen.
+    let good = 0;
+    for (let r = 0; r < 200; r++) {
+      const st = makeStaircase();
+      for (let i = 0; i < 60; i++) {
+        const d = st.delta;
+        const p = 1 / 3 + (2 / 3) / (1 + Math.exp(-(d - 12) / 3));
+        st.answer(rnd() < p);
+      }
+      const th = st.threshold();
+      if (th !== null && th >= 8 && th <= 18) good++;
+    }
+    if (good < 190) errors.push(`Treppe: nur ${good} von 200 Läufen im Bereich 8–18 Cent`);
+    const st0 = makeStaircase();
+    [true, true, true, true, false].forEach((ok) => st0.answer(ok));
+    if (Math.abs(st0.delta - 40 * .8 * .8 * 1.25) > 1e-9 || st0.reversals.length !== 1) errors.push(`Treppe: Schritte falsch (${st0.delta})`);
+    for (let i = 0; i < 400; i++) {
+      const n = 1 + (i % 6);
+      const t = makeEarTask('tuning', n, rnd);
+      if (n === 6 && t.cents === 0) errors.push('Intonation Stufe 6 mit Δ = 0');
+      if (t.cents === 0 && (t.stair || t.correct !== 1)) errors.push('Kontrollaufgabe falsch');
+    }
+    const catchShare = Array.from({ length: 2000 }, () => makeEarTask('tuning', 1, rnd).cents === 0).filter(Boolean).length / 2000;
+    if (catchShare < .2 || catchShare > .3) errors.push(`Intonation: ${Math.round(catchShare * 100)} % ohne Abweichung statt 25 %`);
+    // Intervalle: Stufe 6 alle Richtungen, 1–5 aufwärts.
+    const lv = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level');
+    if (lv.length !== 6 || (lv[5][3]?.dirs || []).join() !== 'up,down,harmonic' || lv.slice(0, 5).some((pr) => pr[3])) errors.push('Intervall-Stufe 6 falsch');
+    // Speichern/Laden
+    const saved = JSON.parse(JSON.stringify({ levels: ear.levels, part: ear.part, mode: ear.mode, il: ear.settings.intervalLevel }));
+    const savedTab = state.tab;
+    const savedStairs = ear.stairs;
+    ear.stairs = {};
+    try {
+      Object.assign(ear.levels, { quality: 3, cadence: 6, parts: 5, tuning: 4 });
+      ear.part = 'T'; ear.mode = 'tuning'; ear.settings.intervalLevel = 6;
+      stairFor(4).answer(false);
+      const snap = JSON.parse(JSON.stringify(snapshot()));
+      Object.assign(ear.levels, { quality: 1, cadence: 1, parts: 1, tuning: 1 }); ear.part = 'A'; ear.mode = 'interval'; ear.settings.intervalLevel = 1; delete ear.stairs[4];
+      restore(snap);
+      if (JSON.stringify(ear.levels) !== JSON.stringify({ quality: 3, cadence: 6, parts: 5, tuning: 4 }) || ear.part !== 'T' || ear.mode !== 'tuning' || ear.settings.intervalLevel !== 6) errors.push('Hören: Speichern/Laden verliert Stufen/Stimme/Modus');
+      if (!ear.stairs[4] || Math.abs(ear.stairs[4].delta - 50) > 1e-9) errors.push('Hören: Treppe übersteht Speichern/Laden nicht');
+      restore({ tab: savedTab, ear: { mode: 'quatsch', levels: { quality: 9, tuning: 'x' }, part: 'X', stairs: { 2: { delta: 999, reversals: ['a'] } } } });
+      if (ear.mode !== 'tuning' || ear.levels.quality !== 3 || ear.part !== 'T' || ear.stairs[2].delta !== 60) errors.push('Hören: kaputte Werte nicht verworfen');
+      restore({ tab: savedTab, ear: { settings: { intervals: [2, 3, 4, 5, 7, 12], dirs: ['up'] } } });
+      if (ear.settings.intervalLevel !== 2) errors.push(`Hören: alte Intervallauswahl → Stufe ${ear.settings.intervalLevel}`);
+    } finally {
+      Object.assign(ear.levels, saved.levels); ear.part = saved.part; ear.mode = saved.mode; ear.settings.intervalLevel = saved.il; ear.stairs = savedStairs;
+      state.tab = savedTab;
+    }
+    return errors;
+  }
+
   /** Stimm-Tuner mit synthetischen Signalen durch detectPitch und die
    *  Glättung (Paket 11). Liefert Fehlermeldungen. */
   function tunerCheck() {
@@ -3091,6 +3761,7 @@
     errors.push(...tunerCheck());
     errors.push(...rhythmCheck());
     errors.push(...rhythmPackageCheck());
+    errors.push(...earPackageCheck());
     // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
     {
       const saved = [voice.low, voice.high];
@@ -3122,11 +3793,18 @@
     selfCheck,
   };
 
+  /** Eigene Stimme aus dem gemeinsamen Profil (gewinnt über den Tool-Stand). */
+  function applyProfile() {
+    const prof = readProfile();
+    if (prof?.part && SATB_PARTS.includes(prof.part)) ear.part = prof.part;
+  }
+  applyProfile();
   setTab(state.tab);
   if (storage) {
     Promise.resolve(storage.load(STORAGE_ID)).then((data) => {
       if (!data || run.playing || ear.task || voice.analyser) return;
       restore(data);
+      applyProfile();
       setTab(state.tab);
     }).catch(() => {});
   }
