@@ -334,7 +334,7 @@
 <footer>
   <div class="transport-row">
     <button class="play" type="button" aria-label="Starten"></button>
-    <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="40" max="200" value="92" aria-label="Tempo"></label>
+    <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="30" max="200" value="92" aria-label="Tempo"></label>
     <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
   </div>
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
@@ -443,16 +443,24 @@
      RHYTHMUS — INHALT
 
      Raster: 12 Ticks je Viertel (Sechzehntel 3, Triolen-Achtel 4, Achtel 6).
-     `beat` ist der Zählschlag, auf den sich das Tempo bezieht und auf dem
-     der Klick liegt (in 6/8 die Achtel — gezählt wird "in 6"); `unit` ist
-     die Balken- und Baustein-Einheit (Viertel bzw. punktierte Viertel).
+     `beat` ist der Zählschlag, auf dem der Klick liegt (in 6/8 die Achtel —
+     gezählt wird "in 6"); `ref` der Schlag, auf den sich das Tempo bezieht
+     (wie im Metronom und Groove Lab: in 6/8 die punktierte Viertel);
+     `unit` ist die Balken- und Baustein-Einheit (Viertel bzw. punktierte
+     Viertel).
      ------------------------------------------------------------------------ */
 
   const METERS = {
-    '4/4': { ticks: 48, beat: 12, unit: 12, top: '4', bottom: '4' },
-    '3/4': { ticks: 36, beat: 12, unit: 12, top: '3', bottom: '4' },
-    '6/8': { ticks: 36, beat: 6, unit: 18, top: '6', bottom: '8' },
+    '4/4': { ticks: 48, beat: 12, ref: 12, unit: 12, top: '4', bottom: '4' },
+    '3/4': { ticks: 36, beat: 12, ref: 12, unit: 12, top: '3', bottom: '4' },
+    '6/8': { ticks: 36, beat: 6, ref: 18, unit: 18, top: '6', bottom: '8' },
   };
+  const tempoSymbol = (meter) => ({ 6: '♪', 12: '♩', 18: '♩.' })[METERS[meter].ref];
+  const BPM_MIN = 30;
+  const BPM_MAX = 200;
+  /** Tempo beim Taktartwechsel so umrechnen, dass die Achtel gleich schnell
+   *  bleiben (`exact`: genaues Tempo in Achteln pro Minute). */
+  function tempoForMeter(exact, meter) { return clamp(Math.round(exact / (METERS[meter].ref / 6)), BPM_MIN, BPM_MAX); }
 
   // Wählbare Bausteine (Viertel und Halbe sind immer dabei).
   const ELEMENTS = [
@@ -642,7 +650,11 @@
   const GOOD_SEC = .04;   // bis hier gilt ein Treffer als "genau"
 
   const state = {
-    tab: 'rhythm', bpm: 92,
+    // bpm im Tempo-Bezug der Taktart (tempoRef 'beat', seit v305 — vorher
+    // in 6/8 die Achtel); eighths: genaues Tempo in Achteln pro Minute, bleibt
+    // beim Taktwechsel gleich (kein Wandern durch Runden). latency: eigene
+    // Verzögerung beim Tippen (Touch/Bluetooth), wird abgezogen.
+    tab: 'rhythm', bpm: 92, eighths: 184, latency: 0,
     mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 8,
     countIn: true, click: true, speedUp: false, showNotes: false,
   };
@@ -673,13 +685,25 @@
     return seq;
   }
 
+  /** Taktart wechseln; das Tempo bleibt in Achteln gleich schnell. */
+  function setMeter(meter) {
+    if (!METERS[meter]) return;
+    state.meter = meter;
+    state.bpm = tempoForMeter(state.eighths, meter);
+    renderTransport();
+  }
+  function setBpm(bpm) {
+    state.bpm = clamp(Math.round(bpm), BPM_MIN, BPM_MAX);
+    state.eighths = state.bpm * METERS[state.meter].ref / 6;
+  }
+
   function newRound() {
     const index = game.rounds.length;
     const previous = game.rounds[index - 1];
     const m = METERS[state.meter];
     const round = {
       index, mode: state.mode, meter: state.meter, bpm: state.bpm,
-      tickSec: 60 / state.bpm / m.beat,
+      tickSec: 60 / state.bpm / m.ref,
       pattern: makePattern(state.meter, state.elements, previous?.pattern.key),
       seq: roundSeq(state.mode, !!state.rounds && index === state.rounds - 1),
       showNotes: state.mode !== 'echo' || state.showNotes,
@@ -693,13 +717,16 @@
   }
 
   /** Trefferfenster: knapp unter der halben kürzesten Notenlänge (damit sich
-   *  die Fenster benachbarter Noten nie überlappen), aber 60–130 ms. */
+   *  die Fenster benachbarter Noten nie überlappen), höchstens 130 ms. Die
+   *  Untergrenze (35 ms) liegt unter der halben Sechzehntel auch bei
+   *  200 BPM (37,5 ms) — vorher 60 ms, dann überlappten die Fenster. */
   function tolerance(round) {
     const on = round.pattern.onsets;
     let minGap = METERS[round.meter].ticks;
     for (let i = 1; i < on.length; i++) minGap = Math.min(minGap, on[i] - on[i - 1]);
-    return clamp(minGap * round.tickSec * .45, .06, .13);
+    return toleranceFor(minGap * round.tickSec);
   }
+  const toleranceFor = (gapSec) => Math.min(.13, Math.max(.035, gapSec * .45));
 
   function scheduleBar() {
     let round = run.round;
@@ -789,14 +816,58 @@
      ------------------------------------------------------------------------ */
 
   function tap() {
-    if (state.tab !== 'rhythm' || !run.playing) return;
+    if (state.tab !== 'rhythm') return;
+    if (calib.active) { calibTap(); return; }
+    if (!run.playing) return;
     const ctx = engine.ctx;
     // Gehört wird der Klick erst nach der Ausgabelatenz — abziehen, sonst
-    // gälten alle Tipps als zu spät.
-    game.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0));
+    // gälten alle Tipps als zu spät; dazu die eingemessene eigene Latenz.
+    game.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
     engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
     const pad = $('.tap-pad');
     pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+  }
+
+  /* ---- Latenz ausgleichen: 4 Klicks vorweg, dann 8 Klicks mittippen; der
+     Median der Abweichung (ohne Ausreißer über 250 ms) wird gespeichert und
+     in tap() abgezogen — für Touch- und Bluetooth-Verzögerung. ---- */
+  const CALIB_BEAT = .6;
+  const calib = { active: false, clicks: [], taps: [], timer: 0 };
+  /** Median der Abweichung Tipper − nächster Klick (nur Tipper bis 250 ms). */
+  function latencyFrom(clicks, taps) {
+    const offs = taps.map((x) => {
+      const near = clicks.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a));
+      return x - near;
+    }).filter((d) => Math.abs(d) <= .25).sort((a, b) => a - b);
+    if (offs.length < 5) return null;
+    return offs[offs.length >> 1];
+  }
+  async function startCalibration() {
+    if (run.playing) stop();
+    try { await engine.start(); } catch { return; }
+    const ctx = engine.ctx;
+    const t0 = ctx.currentTime + .3;
+    calib.active = true; calib.taps = [];
+    calib.clicks = Array.from({ length: 8 }, (_, i) => t0 + (i + 4) * CALIB_BEAT);
+    for (let i = 0; i < 12; i++) engine.click(t0 + i * CALIB_BEAT, i % 4 === 0 ? 2 : 1, null);
+    setStatus('Latenz: vier Klicks zuhören, dann acht Klicks mittippen …');
+    clearTimeout(calib.timer);
+    calib.timer = setTimeout(finishCalibration, (12 * CALIB_BEAT + .8) * 1000);
+  }
+  function calibTap() {
+    const ctx = engine.ctx;
+    calib.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0));
+    const pad = $('.tap-pad');
+    pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+  }
+  function finishCalibration() {
+    calib.active = false;
+    const lat = latencyFrom(calib.clicks, calib.taps);
+    if (lat === null) { setStatus('Latenz: zu wenige Tipper erkannt — bitte noch einmal.'); return; }
+    state.latency = clamp(Math.round(lat * 1000) / 1000, -.05, .3);
+    setStatus(`Latenz ausgeglichen: ${Math.round(state.latency * 1000)} ms werden abgezogen.`);
+    persist();
+    if (sheetKind === 'rhythm' && !$('.sheet').hidden) renderSettings();
   }
 
   /** Jede Note bekommt den nächstgelegenen freien Tipper im Trefferfenster
@@ -834,8 +905,9 @@
     s.offSum += hitNotes.reduce((a, n) => a + n.off, 0);
     if (perfect) { s.perfect++; game.streak++; game.best = Math.max(game.best, game.streak); } else game.streak = 0;
     game.last = round;
-    if (perfect && state.speedUp && state.bpm < 200) {
-      state.bpm = Math.min(200, state.bpm + SPEED_STEP);
+    if (perfect && state.speedUp && state.bpm < BPM_MAX) {
+      state.bpm = Math.min(BPM_MAX, state.bpm + SPEED_STEP);
+      state.eighths = state.bpm * METERS[state.meter].ref / 6;
       renderTransport();
       persist();
       setStatus(`Fehlerfrei — nächste Runde mit ${state.bpm} BPM.`);
@@ -1093,7 +1165,7 @@
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
     $('.bpm').value = String(state.bpm);
-    $('.bpm-out').innerHTML = `${state.bpm} BPM${state.meter === '6/8' ? ' <small>(Achtel)</small>' : ''}`;
+    $('.bpm-out').textContent = `${tempoSymbol(state.meter)} = ${state.bpm}`;
   }
 
   function renderAll() {
@@ -1632,10 +1704,16 @@
         ${row('click', 'Klick auf den Zählzeiten')}
         ${row('speedUp', 'Tempo steigern', `+${SPEED_STEP} BPM je fehlerfreie Runde`)}
         ${row('showNotes', 'Noten beim Nachklatschen zeigen', 'sonst erst danach')}
-      </div>`;
+      </div>
+      <span class="sub-label">Latenz ausgleichen</span>
+      <p class="foot-note" style="margin-top:0">Kommen deine Tipper immer etwas zu spät (Touchscreen, Bluetooth-Kopfhörer)? Einmal einmessen: vier Klicks zuhören, acht mittippen. Jetzt: ${Math.round(state.latency * 1000)} ms${lastMeanOff() !== null ? ` · letzte Runde im Mittel ${lastMeanOff() >= 0 ? '+' : '−'}${Math.abs(lastMeanOff())} ms` : ''}.</p>
+      <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`;
     $$('.sheet [data-rset="elements"][value="t"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', state.meter === '6/8'));
     $('.sheet-hint').textContent = '';
   }
+
+  /** Mittlere Abweichung der letzten ausgewerteten Runde in ms (oder null). */
+  const lastMeanOff = () => (game.last?.result?.hits ? Math.round(game.last.result.meanOff * 1000) : null);
 
   function renderSettings() {
     if (sheetKind === 'rhythm') { renderRhythmSettings(); return; }
@@ -1974,7 +2052,7 @@
 
   function snapshot() {
     return {
-      tab: state.tab, bpm: state.bpm,
+      tab: state.tab, bpm: state.bpm, tempoRef: 'beat', eighths: state.eighths, latency: state.latency,
       rhythm: {
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
         rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
@@ -1995,10 +2073,19 @@
   function restore(data) {
     if (!data || typeof data !== 'object') return;
     state.tab = ['rhythm', 'ear', 'voice'].includes(data.tab) ? data.tab : 'rhythm';
-    if (Number.isFinite(data.bpm)) state.bpm = clamp(Math.round(data.bpm), 40, 200);
     const r = data.rhythm && typeof data.rhythm === 'object' ? data.rhythm : {};
     if (MODES.some(([id]) => id === r.mode)) state.mode = r.mode;
     if (METERS[r.meter]) state.meter = r.meter;
+    if (Number.isFinite(data.bpm)) {
+      // Bis v304 zählte 6/8 hier in Achteln (Anzeige „Achtel“), sonst in
+      // Vierteln — einmal auf den Tempo-Bezug umrechnen.
+      const old = data.tempoRef !== 'beat';
+      const bpm = old ? data.bpm * METERS[state.meter].beat / METERS[state.meter].ref : data.bpm;
+      setBpm(bpm);
+      const exact = data.eighths;
+      if (!old && Number.isFinite(exact) && tempoForMeter(exact, state.meter) === state.bpm) state.eighths = exact;
+    }
+    if (Number.isFinite(data.latency)) state.latency = clamp(data.latency, -.05, .3);
     if (Array.isArray(r.elements)) state.elements = ELEMENTS.map(([id]) => id).filter((id) => r.elements.includes(id));
     ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
     if (ROUND_CHOICES.some(([n]) => n === r.rounds)) state.rounds = r.rounds;
@@ -2042,7 +2129,17 @@
     const rset = e.target.closest('button[data-rset]');
     if (rset) {
       const key = rset.dataset.rset;
-      state[key] = key === 'rounds' ? Number(rset.dataset.value) : rset.dataset.value;
+      if (key === 'meter') setMeter(rset.dataset.value);
+      else state[key] = key === 'rounds' ? Number(rset.dataset.value) : rset.dataset.value;
+      renderSettings();
+      return;
+    }
+    const rcalib = e.target.closest('[data-rcalib]');
+    if (rcalib) {
+      const action = rcalib.dataset.rcalib;
+      if (action === 'start') { closeSettings(); startCalibration(); return; }
+      if (action === 'reset') state.latency = 0;
+      if (action === 'suggest' && lastMeanOff() !== null) state.latency = clamp(Math.round(state.latency * 1000 + lastMeanOff()) / 1000, -.05, .3);
       renderSettings();
       return;
     }
@@ -2113,7 +2210,7 @@
       tapTimes.push(now);
       if (tapTimes.length >= 2) {
         const recent = tapTimes.slice(-5);
-        state.bpm = clamp(Math.round(60000 / ((recent[recent.length - 1] - recent[0]) / (recent.length - 1))), 40, 200);
+        setBpm(60000 / ((recent[recent.length - 1] - recent[0]) / (recent.length - 1)));
         renderTransport();
       }
     }
@@ -2137,7 +2234,7 @@
     persist();
   });
 
-  $('.bpm').addEventListener('input', (e) => { state.bpm = Number(e.target.value); renderTransport(); persist(); });
+  $('.bpm').addEventListener('input', (e) => { setBpm(Number(e.target.value)); renderTransport(); persist(); });
   $('.tap-pad').addEventListener('pointerdown', (e) => { e.preventDefault(); tap(); });
   // Tastatur-"Klick" aufs Feld (Enter/Leertaste bei Fokus) nicht doppelt zählen.
   $('.tap-pad').addEventListener('click', (e) => e.preventDefault());
@@ -2158,12 +2255,51 @@
       }
       return;
     }
-    if ((e.code === 'Space' || e.code === 'Enter') && run.playing) { e.preventDefault(); tap(); return; }
+    if ((e.code === 'Space' || e.code === 'Enter') && (run.playing || calib.active)) { e.preventDefault(); tap(); return; }
     if (e.code === 'Space' && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName) && !document.activeElement.classList.contains('tap-pad'))) {
       e.preventDefault();
       start();
     }
   });
+
+  /** Rhythmus-Training: Tempo-Bezug, Trefferfenster, Latenz (Paket 12). */
+  function rhythmCheck() {
+    const errors = [];
+    const saved = { bpm: state.bpm, eighths: state.eighths, meter: state.meter, latency: state.latency, tab: state.tab };
+    const reload = () => restore(JSON.parse(JSON.stringify(snapshot())));
+    try {
+      setMeter('6/8'); setBpm(60);
+      const eighth = 60 / state.bpm / METERS['6/8'].ref * 6;
+      if (Math.abs(eighth - 1 / 3) > 1e-9) errors.push(`Rhythmus 6/8 ♩. = 60: Achtel ${eighth.toFixed(4)} s`);
+      setMeter('4/4'); setBpm(120);
+      setMeter('6/8'); reload();
+      if (state.bpm !== 80) errors.push(`Rhythmus 4/4 ♩ = 120 → 6/8 ${state.bpm} statt 80`);
+      setMeter('4/4'); reload();
+      if (state.bpm !== 120) errors.push(`Rhythmus 6/8 → 4/4 ${state.bpm} statt 120`);
+      setBpm(100);
+      for (const m of ['6/8', '3/4', '6/8', '4/4']) { setMeter(m); reload(); }
+      if (state.bpm !== 100) errors.push(`Rhythmus: Taktwechsel mit Speichern/Laden driftet (${state.bpm})`);
+      restore({ tab: saved.tab, bpm: 92, rhythm: { meter: '6/8' } });
+      if (state.bpm !== 31) errors.push(`Rhythmus: alter 6/8-Stand (Achtel 92) → ${state.bpm} statt ♩. = 31`);
+      // Trefferfenster: 200 BPM, Sechzehntel — die Fenster überlappen nicht.
+      const gap = 3 * 60 / 200 / 12;
+      if (2 * toleranceFor(gap) >= gap) errors.push(`Trefferfenster überlappen bei 200 BPM (${(toleranceFor(gap) * 1000).toFixed(1)} ms)`);
+      if (toleranceFor(1) !== .13) errors.push('Trefferfenster-Obergrenze falsch');
+      // Latenz: Median, Ausreißer verworfen, gespeichert.
+      const clicks = [0, .6, 1.2, 1.8, 2.4, 3, 3.6, 4.2];
+      const lat = latencyFrom(clicks, [.05, .66, 1.24, 1.86, 2.45, 3.05, 3.9, 4.26]);
+      if (lat === null || Math.abs(lat - .05) > .011) errors.push(`Latenz-Median ${lat}`);
+      if (latencyFrom(clicks, [.05, .1]) !== null) errors.push('Latenz aus zu wenigen Tippern');
+      state.latency = .042; reload();
+      if (state.latency !== .042) errors.push('Latenz übersteht Speichern/Laden nicht');
+      restore({ tab: saved.tab, latency: 5 });
+      if (state.latency !== .3) errors.push('Latenz nicht begrenzt');
+    } finally {
+      Object.assign(state, saved);
+      renderTransport();
+    }
+    return errors;
+  }
 
   /** Stimm-Tuner mit synthetischen Signalen durch detectPitch und die
    *  Glättung (Paket 11). Liefert Fehlermeldungen. */
@@ -2287,6 +2423,7 @@
     for (let i = 0; i < 2000; i++) counts[pickInterval([3, 4], { 3: Array(10).fill(false), 4: Array(10).fill(true) }, rnd)]++;
     if (counts[3] < counts[4] * 5) errors.push(`Gewichtung wirkt nicht (${counts[3]} : ${counts[4]})`);
     errors.push(...tunerCheck());
+    errors.push(...rhythmCheck());
     // Bass immer E–dis′ (40–51), in jeder Umkehrung und Lage.
     for (let i = 0; i < 500; i++) {
       const prog = EAR_PROGRESSIONS[i % EAR_PROGRESSIONS.length];

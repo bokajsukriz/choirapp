@@ -165,7 +165,7 @@
       <button class="round-btn" type="button" data-bpm="-1" aria-label="Langsamer">−</button>
       <div class="bpm-display">
         <output class="bpm-value" aria-live="off">100</output>
-        <div class="bpm-unit">BPM · <span class="tempo-name"></span></div>
+        <div class="bpm-unit"><span class="bpm-ref">♩ =</span> BPM · <span class="tempo-name"></span></div>
       </div>
       <button class="round-btn" type="button" data-bpm="1" aria-label="Schneller">+</button>
     </div>
@@ -180,6 +180,10 @@
     </div>
     <span class="sub-label">Taktart</span>
     <div class="chip-row" data-chips="meter"></div>
+    <div class="grouping-box" hidden>
+      <span class="sub-label">Gruppierung</span>
+      <div class="chip-row" data-chips="grouping"></div>
+    </div>
     <span class="sub-label">Unterteilung</span>
     <div class="chip-row" data-chips="subdivision"></div>
   </section>
@@ -299,6 +303,18 @@
 
   const TICKS_PER_QUARTER = 12;
 
+  // Tempo-Bezug (gleich in Metronom, Rhythmus-Training und Groove Lab):
+  // in 6/8 und 12/8 zählt die punktierte Viertel, in 7/8 die Achtel, sonst
+  // die Viertel. Beim Taktartwechsel bleibt die Achtel gleich schnell.
+  const TEMPO_EIGHTHS = { '6/8': 3, '12/8': 3, '7/8': 1 };
+  const eighthsPerBeat = (meterId) => TEMPO_EIGHTHS[meterId] ?? 2;
+  const tempoSymbol = (meterId) => ({ 1: '♪', 2: '♩', 3: '♩.' })[eighthsPerBeat(meterId)];
+  // Vorwahl der Gruppierung für ungerade Takte (setzt nur die Betonungen).
+  const GROUPINGS = {
+    '7/8': [['2+2+3', [3, 1, 2, 1, 2, 1, 1]], ['2+3+2', [3, 1, 2, 1, 1, 2, 1]], ['3+2+2', [3, 1, 1, 2, 1, 2, 1]]],
+    '5/4': [['3+2', [3, 1, 1, 2, 1]], ['2+3', [3, 1, 2, 1, 1]]],
+  };
+
   // Betonung: 3 = betont, 2 = mittel, 1 = normal, 0 = stumm. Die Vorgaben
   // bilden die übliche Gruppierung ab (6/8 = 3+3, 7/8 = 2+2+3 …).
   const METERS = [
@@ -368,7 +384,12 @@
      ------------------------------------------------------------------------ */
 
   const state = {
-    bpm: 100, meter: '4/4', subdivision: 'none', accents: {},
+    // bpm im Tempo-Bezug der Taktart (tempoRef 'beat', seit v305; vorher
+    // immer Viertel — alte Stände rechnet sanitize einmal um).
+    // eighths: genaues Tempo in Achteln pro Minute — bleibt beim
+    // Taktartwechsel unverändert, damit 4/4 → 6/8 → 4/4 nicht durch Runden
+    // wandert (auch über Speichern/Laden).
+    bpm: 100, tempoRef: 'beat', eighths: 200, meter: '4/4', subdivision: 'none', accents: {},
     sound: 'click', loop: 'pop', clickWithLoop: false,
     trainer: false, trainerTarget: 130, trainerStep: 2, trainerEvery: 4,
     gap: false, gapPlay: 2, gapMute: 2,
@@ -380,13 +401,16 @@
     if (!raw || typeof raw !== 'object') return;
     const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) ? clamp(Math.round(v), lo, hi) : null);
     const set = (key, value) => { if (value !== null && value !== undefined) state[key] = value; };
-    set('bpm', num(raw.bpm, 30, 250));
     set('meter', METERS.some((m) => m.id === raw.meter) ? raw.meter : null);
+    // Alte Stände (ohne tempoRef) zählten immer in Vierteln.
+    const fromQuarter = raw.tempoRef !== 'beat';
+    const inRef = (v) => (fromQuarter && typeof v === 'number' ? v * 2 / eighthsPerBeat(state.meter) : v);
+    set('bpm', num(inRef(raw.bpm), 30, 250));
     set('subdivision', SUBDIVISIONS.some((x) => x.id === raw.subdivision) ? raw.subdivision : null);
     set('sound', SOUNDS.some((x) => x.id === raw.sound) ? raw.sound : null);
     set('loop', LOOPS.some((x) => x.id === raw.loop) ? raw.loop : null);
     for (const key of ['clickWithLoop', 'trainer', 'gap', 'timer', 'vibrate', 'keepAwake', 'showFab']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
-    for (const [key, cfg] of Object.entries(STEPPERS)) set(key, num(raw[key], cfg.min, cfg.max));
+    for (const [key, cfg] of Object.entries(STEPPERS)) set(key, num(key === 'trainerTarget' ? inRef(raw[key]) : raw[key], cfg.min, cfg.max));
     set('timerMinutes', TIMER_CHOICES.includes(raw.timerMinutes) ? raw.timerMinutes : null);
     if (raw.accents && typeof raw.accents === 'object') {
       for (const m of METERS) {
@@ -395,6 +419,10 @@
       }
     }
     ensureLoopFitsMeter();
+    // Genaues Tempo mitgespeichert — passt es zur Anzeige, gilt es weiter.
+    const exact = raw.eighths;
+    state.eighths = !fromQuarter && typeof exact === 'number' && Number.isFinite(exact) && Math.round(exact / eighthsPerBeat(state.meter)) === state.bpm
+      ? exact : state.bpm * eighthsPerBeat(state.meter);
   }
 
   // Ablage über die App (siehe Kopfkommentar). Gleiche Herkunft — der
@@ -483,10 +511,10 @@
           this.noiseHit(time, { type: 'bandpass', freq: [760, 900, 1050, 1250][i] * 1.5, q: 6, gain: .25 * vol, decay: .02 });
           break;
         case 'beep':
-          this.tone(time, { freq: [660, 880, 880, 1320][i], type: 'square', gain: .16 * vol, decay: .07, attack: .002, filter: { type: 'lowpass', freq: 3200 } });
+          this.tone(time, { freq: [660, 880, 990, 1320][i], type: 'square', gain: .16 * vol, decay: .07, attack: .002, filter: { type: 'lowpass', freq: 3200 } });
           break;
         case 'cowbell': {
-          const k = i === 3 ? 1.12 : 1;
+          const k = i === 3 ? 1.12 : i === 2 ? 1.06 : 1;
           [540, 800].forEach((f) => this.tone(time, { freq: f * k, type: 'square', gain: .12 * vol, decay: .28, filter: { type: 'bandpass', freq: 900 * k, q: 1.2 } }));
           break;
         }
@@ -565,7 +593,8 @@
   });
   let tapTimes = [];
 
-  const tickSeconds = () => 60 / state.bpm / TICKS_PER_QUARTER;
+  // 6 Ticks je Achtel; ein Bezugsschlag hat eighthsPerBeat Achtel.
+  const tickSeconds = () => 60 / state.bpm / (eighthsPerBeat(state.meter) * TICKS_PER_QUARTER / 2);
   const barTicks = () => meter().beats * meter().unit;
 
   function isSilentBar(bar) {
@@ -579,12 +608,14 @@
     const pos = tick % bt;
     const bar = Math.floor(tick / bt);
 
-    // Tempo-Trainer: am Taktanfang, alle N Takte, bis zum Ziel.
-    if (pos === 0 && bar > 0 && state.trainer && bar % state.trainerEvery === 0) {
+    // Tempo-Trainer: am Taktanfang, alle N Takte, bis zum Ziel — nur an
+    // hörbaren Takten, sonst fiele der Tempowechsel in die Stille.
+    if (pos === 0 && bar > 0 && state.trainer && bar % state.trainerEvery === 0 && !isSilentBar(bar)) {
       const dir = Math.sign(state.trainerTarget - state.bpm);
       if (dir) {
         state.bpm = dir > 0 ? Math.min(state.trainerTarget, state.bpm + state.trainerStep)
                             : Math.max(state.trainerTarget, state.bpm - state.trainerStep);
+        state.eighths = state.bpm * eighthsPerBeat(state.meter);
         run.bpmChanged = true;
       }
     }
@@ -717,6 +748,7 @@
 
   function renderTempo() {
     $('.bpm-value').textContent = String(state.bpm);
+    $('.bpm-ref').textContent = `${tempoSymbol(state.meter)} =`;
     $('.tempo-name').textContent = tempoName(state.bpm);
     $('.tempo-slider').value = String(state.bpm);
     const target = state.trainerTarget;
@@ -798,6 +830,9 @@
     const m = meter();
     chips('meter', METERS.map((x) => [x.id, x.id]), state.meter);
     chips('subdivision', SUBDIVISIONS.map((x) => [x.id, x.label, x.quarterOnly && m.unit !== 12]), state.subdivision);
+    const groupings = GROUPINGS[state.meter];
+    $('.grouping-box').hidden = !groupings;
+    if (groupings) chips('grouping', groupings.map(([label]) => [label, label]), groupings.find(([, list]) => list.join() === accents().join())?.[0] ?? '');
     renderSounds();
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     $$('[data-body]').forEach((body) => { body.hidden = !state[body.dataset.body]; });
@@ -814,6 +849,7 @@
 
   function setBpm(value) {
     state.bpm = clamp(Math.round(value), 30, 250);
+    state.eighths = state.bpm * eighthsPerBeat(state.meter);
     renderTempo();
     persist();
     notifyParent();
@@ -834,7 +870,11 @@
   /** Wechsel der Taktart während des Spielens: am nächsten Taktanfang
    *  weiterzählen, statt mitten im Takt umzuspringen. */
   function changeMeter(id) {
+    // Tempo so umrechnen, dass die Achtel gleich schnell bleiben.
+    const before = eighthsPerBeat(state.meter);
     state.meter = id;
+    state.bpm = clamp(Math.round(state.eighths / eighthsPerBeat(id)), 30, 250);
+    state.trainerTarget = clamp(Math.round(state.trainerTarget * before / eighthsPerBeat(id)), STEPPERS.trainerTarget.min, STEPPERS.trainerTarget.max);
     const m = meter();
     if (m.unit !== 12 && SUBDIVISIONS.find((x) => x.id === state.subdivision)?.quarterOnly) state.subdivision = 'none';
     ensureLoopFitsMeter();
@@ -860,6 +900,11 @@
     if (chip) {
       const { chip: name, value } = chip.dataset;
       if (name === 'meter') { changeMeter(value); return; }
+      if (name === 'grouping') {
+        const found = GROUPINGS[state.meter]?.find(([label]) => label === value);
+        if (found) { state.accents[state.meter] = [...found[1]]; renderAll(); persist(); }
+        return;
+      }
       if (name === 'timerMinutes') state.timerMinutes = Number(value);
       else state[name] = value;
       if (name === 'loop' || name === 'sound') ensureLoopFitsMeter();
@@ -941,6 +986,52 @@
     // Vordergrund neu anfordern, solange das Metronom läuft.
     if (document.visibilityState === 'visible' && run.playing && state.keepAwake && !run.wakeLock) requestWakeLock();
   });
+
+  /** Selbstprüfung (Konsole des iframes: `metronom.selfCheck()`) — leer =
+   *  bestanden. Stellt den Zustand danach wieder her. */
+  function selfCheck() {
+    const errors = [];
+    const saved = JSON.parse(JSON.stringify(state));
+    const persistBefore = storage;
+    const roundtrip = () => { const copy = JSON.parse(JSON.stringify(state)); sanitize(copy); };
+    try {
+      state.meter = '6/8'; setBpm(60);
+      const eighth = tickSeconds() * TICKS_PER_QUARTER / 2;
+      if (Math.abs(eighth - 1 / 3) > 1e-9) errors.push(`6/8 ♩. = 60: Achtel ${eighth.toFixed(4)} s statt 0,333`);
+      if (tempoSymbol('6/8') !== '♩.' || tempoSymbol('7/8') !== '♪' || tempoSymbol('4/4') !== '♩') errors.push('Tempo-Zeichen falsch');
+      state.meter = '4/4'; setBpm(120);
+      changeMeter('6/8'); roundtrip();
+      if (state.bpm !== 80) errors.push(`4/4 ♩ = 120 → 6/8 zeigt ${state.bpm} statt ♩. = 80`);
+      changeMeter('4/4'); roundtrip();
+      if (state.bpm !== 120) errors.push(`6/8 → 4/4 zeigt ${state.bpm} statt 120`);
+      state.meter = '6/8'; setBpm(80); changeMeter('4/4');
+      if (state.bpm !== 120) errors.push(`6/8 ♩. = 80 → 4/4 zeigt ${state.bpm}`);
+      setBpm(100);
+      for (const id of ['7/8', '4/4', '6/8', '4/4', '12/8', '4/4']) { changeMeter(id); roundtrip(); }
+      if (state.bpm !== 100) errors.push(`Taktwechsel mit Speichern/Laden driftet: ${state.bpm} statt 100`);
+      state.meter = '4/4'; setBpm(120); changeMeter('7/8');
+      if (state.bpm !== 240) errors.push(`4/4 ♩ = 120 → 7/8 zeigt ${state.bpm} statt ♪ = 240`);
+      // Alter Stand (Viertel, ohne tempoRef): 6/8 mit 120 → ♩. = 80.
+      sanitize({ meter: '6/8', bpm: 120 });
+      if (state.bpm !== 80) errors.push(`alter Stand 6/8/120 → ${state.bpm} statt 80`);
+      sanitize({ meter: '4/4', bpm: 120 });
+      if (state.bpm !== 120) errors.push('alter Stand 4/4 verändert');
+      sanitize({ meter: '6/8', bpm: 80, tempoRef: 'beat' });
+      if (state.bpm !== 80) errors.push('neuer Stand doppelt umgerechnet');
+      // Gruppierungen passen zur Taktart.
+      for (const [id, list] of Object.entries(GROUPINGS)) {
+        const beats = METERS.find((m) => m.id === id).beats;
+        list.forEach(([label, acc]) => { if (acc.length !== beats || label.split('+').reduce((a, b) => a + Number(b), 0) !== (id === '7/8' ? 7 : 5)) errors.push(`Gruppierung ${id} ${label}`); });
+      }
+    } finally {
+      for (const k of Object.keys(state)) delete state[k];
+      Object.assign(state, saved);
+      void persistBefore;
+      renderAll();
+    }
+    return errors;
+  }
+  window.metronom = { state, METERS, LOOPS, GROUPINGS, eighthsPerBeat, tempoSymbol, tickSeconds, sanitize, selfCheck };
 
   renderAll();
   if (storage) {

@@ -211,7 +211,9 @@
   function persist() {
     if (!storage) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, { ...state })).catch(() => {}); }, 300);
+    // Nur Lage, Beschriftung und Lautstärke — das Pedal ist beim Öffnen
+    // immer aus (sonst klingt ungewollt alles nach).
+    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume })).catch(() => {}); }, 300);
   }
   async function restore() {
     if (!storage) return;
@@ -220,7 +222,6 @@
       if (!data || typeof data !== 'object') return;
       if (Number.isInteger(data.startC) && mod(data.startC, 12) === 0) state.startC = clamp(data.startC, LOWEST_C, 72);
       if (['none', 'names', 'solf'].includes(data.labels)) state.labels = data.labels;
-      if (typeof data.pedal === 'boolean') state.pedal = data.pedal;
       if (Number.isFinite(data.volume)) state.volume = clamp(data.volume, 0, 1);
     } catch { /* nichts gespeichert */ }
   }
@@ -367,7 +368,9 @@
     if (!state.pedal && midi < 89) damp(voice);
   }
 
+  let pedalTouched = false;
   function setPedal(on) {
+    pedalTouched = true;
     state.pedal = on;
     $('[data-act="pedal"]').setAttribute('aria-pressed', String(on));
     if (!on) audio.voices.forEach((v) => { if (!v.held && v.midi < 89) damp(v); });
@@ -578,6 +581,7 @@
   function selfCheck() {
     const errors = [...spellCheck()];
     if (SOLF.length !== 12 || SOLF[11] !== 'Si' || SOLF[10] !== 'Si♭' || SOLF[8] !== 'La♭' || SOLF[1] !== 'Do♯') errors.push(`Solmisation: ${SOLF.join(' ')}`);
+    if (state.pedal && !pedalTouched) errors.push('Pedal ist nach dem Öffnen an');
     [[60, 'c′'], [62, 'd'], [59, 'h'], [47, 'H'], [58, 'b'], [49, 'cis'], [37, 'Cis'], [36, 'C']].forEach(([midi, want]) => {
       if (keyLabel(midi) !== want) errors.push(`Tastenname ${midi} = ${keyLabel(midi)}, erwartet ${want}`);
     });

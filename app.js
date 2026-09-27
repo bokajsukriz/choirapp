@@ -19737,6 +19737,21 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (st({ melodyRef: 'key' }) !== 'key' || st({}) !== 'chord' || st({ melodyRef: 7 }) !== 'chord') failed.push('Groove Lab: melodyRef übersteht Laden nicht');
   }
 
+  // Paket 12: Tempo-Bezug in 6/8 (punktierte Viertel), alte Stände.
+  {
+    if (Math.abs(T.stepSecondsFor(60, '6/8') * 2 - 1 / 3) > 1e-9) failed.push('Groove Lab: 6/8 ♩. = 60 ergibt keine Achtel von 0,333 s');
+    if (Math.abs(T.stepSecondsFor(120, '4/4') - .125) > 1e-9) failed.push('Groove Lab: 4/4 ♩ = 120 falsch');
+    if (T.tempoSymbol('6/8') !== '♩.' || T.tempoSymbol('4/4') !== '♩') failed.push('Groove Lab: Tempo-Zeichen falsch');
+    const idx68 = T.DRUM_PATTERNS.findIndex((p) => p.meter === '6/8');
+    const old = T.sanitizeState({ patternIndex: idx68, bpm: 120 });
+    if (old.bpm !== 80 || old.eighths !== 240) failed.push(`Groove Lab: alter 6/8-Stand ♩ = 120 → ${old.bpm} statt ♩. = 80`);
+    const again = T.sanitizeState(JSON.parse(JSON.stringify(old)));
+    if (again.bpm !== 80) failed.push('Groove Lab: neuer 6/8-Stand beim Laden erneut umgerechnet');
+    const exact = T.sanitizeState({ patternIndex: idx68, bpm: 67, eighths: 200, tempoRef: 'beat' });
+    if (exact.eighths !== 200) failed.push('Groove Lab: genaues Tempo geht beim Laden verloren');
+    if (T.sanitizeState({ patternIndex: 0, bpm: 120 }).bpm !== 120) failed.push('Groove Lab: alter 4/4-Stand verändert');
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);

@@ -49,6 +49,16 @@
     '6/8': { steps: 12, beats: [0, 2, 4, 6, 8, 10], group: 6 },
   };
   const METER_IDS = Object.keys(METERS);
+  // Tempo-Bezug (gleich in Metronom und Rhythmus-Training): in 6/8 zählt
+  // die punktierte Viertel, sonst die Viertel. Beim Taktartwechsel bleibt
+  // die Achtel gleich schnell (siehe _convertTempo).
+  const TEMPO_EIGHTHS = { '6/8': 3 };
+  const eighthsPerBeat = (meter) => TEMPO_EIGHTHS[meter] ?? 2;
+  const tempoSymbol = (meter) => (eighthsPerBeat(meter) === 3 ? '♩.' : '♩');
+  /** Dauer einer Sechzehntel (Schritt) bei `bpm` im Tempo-Bezug der Taktart. */
+  const stepSecondsFor = (bpm, meter) => 60 / bpm / (eighthsPerBeat(meter) * 2);
+  const BPM_MIN = 30;
+  const BPM_MAX = 180;
 
   /* ------------------------------------------------------------------------
      INHALT — Drumloops.
@@ -855,7 +865,10 @@
 
   function defaultState() {
     return {
-      bpm: 106, swing: 0, pump: 0,
+      // bpm im Tempo-Bezug der Taktart (tempoRef 'beat' seit v305, vorher
+      // immer Viertel); eighths: genaues Tempo in Achteln pro Minute — bleibt
+      // beim Taktartwechsel gleich, damit nichts durch Runden wandert.
+      bpm: 106, tempoRef: 'beat', eighths: 212, swing: 0, pump: 0,
       patternIndex: 0, beat: beatFromPattern(DRUM_PATTERNS[0]), beatEdited: false,
       trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, bass: true },
       bassSoundId: 'pluck',
@@ -1038,11 +1051,17 @@
     const oneOf = (v, list, fb) => (list.includes(v) ? v : fb);
     const obj = (v) => (v && typeof v === 'object' ? v : {});
 
-    s.bpm = Math.round(num(raw.bpm, 40, 180, s.bpm));
+
     s.swing = num(raw.swing, 0, 1, s.swing);
     s.pump = num(raw.pump, 0, 1, s.pump);
     s.patternIndex = int(raw.patternIndex, 0, DRUM_PATTERNS.length - 1, 0);
     const pattern = DRUM_PATTERNS[s.patternIndex];
+    // Alte Stände (ohne tempoRef) zählten immer in Vierteln.
+    const fromQuarter = raw.tempoRef !== 'beat';
+    const rawBpm = typeof raw.bpm === 'number' && fromQuarter ? raw.bpm * 2 / eighthsPerBeat(pattern.meter) : raw.bpm;
+    s.bpm = Math.round(num(rawBpm, BPM_MIN, BPM_MAX, s.bpm));
+    s.eighths = !fromQuarter && typeof raw.eighths === 'number' && Number.isFinite(raw.eighths)
+      && Math.round(raw.eighths / eighthsPerBeat(pattern.meter)) === s.bpm ? raw.eighths : s.bpm * eighthsPerBeat(pattern.meter);
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
@@ -2052,7 +2071,7 @@
     _summary(state) {
       const pattern = DRUM_PATTERNS[state.patternIndex];
       const mode = MODES.find((m) => m.id === state.modeId);
-      return `${pattern.name} · ${spell(state.keyRoot, state.keyRoot, state.modeId, labLang)} ${t(mode.nameKey)} · ${state.bpm} BPM`;
+      return `${pattern.name} · ${spell(state.keyRoot, state.keyRoot, state.modeId, labLang)} ${t(mode.nameKey)} · ${tempoSymbol(pattern.meter)} = ${state.bpm}`;
     }
 
     /* ---- Reiter ---- */
@@ -2069,7 +2088,18 @@
     _pattern() { return DRUM_PATTERNS[this.state.patternIndex]; }
     _meter() { return this._pattern().meter; }
     _barSteps() { return METERS[this._meter()].steps; }
-    _stepSeconds() { return 60 / this.state.bpm / 4; }
+    _stepSeconds() { return stepSecondsFor(this.state.bpm, this._meter()); }
+    /** Tempo setzen (im Tempo-Bezug der aktuellen Taktart). */
+    _setBpm(bpm) {
+      const s = this.state;
+      s.bpm = clamp(Math.round(bpm), BPM_MIN, BPM_MAX);
+      s.eighths = s.bpm * eighthsPerBeat(this._meter());
+    }
+    /** Nach einem Taktartwechsel: Achtel gleich schnell, Anzeige im neuen Bezug. */
+    _convertTempo() {
+      const s = this.state;
+      s.bpm = clamp(Math.round(s.eighths / eighthsPerBeat(this._meter())), BPM_MIN, BPM_MAX);
+    }
     _mode() { return MODES.find((m) => m.id === this.state.modeId) || MODES[0]; }
     /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
     _progression() {
@@ -2220,7 +2250,8 @@
         s.patternIndex = Math.floor(Math.random() * DRUM_PATTERNS.length);
         s.beat = beatFromPattern(this._pattern());
         s.beatEdited = false;
-        s.bpm = pick([78, 86, 94, 102, 108, 116, 124, 132]);
+        // Tempi als Viertel gedacht — in 6/8 in punktierte Viertel umgerechnet.
+        this._setBpm(pick([78, 86, 94, 102, 108, 116, 124, 132]) * 2 / eighthsPerBeat(this._meter()));
         s.swing = pick([0, 0, 0, .25, .45]);
       }
       if (!locks.harmony) {
@@ -2258,7 +2289,7 @@
       if (this.tapTimes.length < 2) return;
       const recent = this.tapTimes.slice(-5);
       const avg = (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
-      this.state.bpm = clamp(Math.round(60000 / avg), 40, 180);
+      this._setBpm(60000 / avg);
       this._onTempoChange();
     }
 
@@ -3478,7 +3509,7 @@
       btn.setAttribute('aria-label', t(this.playing ? 'lab.stopAria' : 'lab.startAria'));
       this._renderRecPlay();
       this.$all('.bpm-input').forEach((el) => { el.value = String(this.state.bpm); });
-      this.$all('.bpm-out').forEach((el) => { el.textContent = `${this.state.bpm} BPM`; });
+      this.$all('.bpm-out').forEach((el) => { el.textContent = `${tempoSymbol(this._meter())} = ${this.state.bpm}`; });
       this.$('[data-action="undo"]').disabled = !this.history.length;
     }
 
@@ -4471,7 +4502,7 @@
         const el = event.target;
         const s = this.state;
         if (el.classList.contains('bpm-input')) {
-          s.bpm = Number(el.value);
+          this._setBpm(Number(el.value));
           this._onTempoChange();
         } else if (el.dataset.field === 'swing' || el.dataset.field === 'pump') {
           s[el.dataset.field] = Number(el.value);
@@ -4581,6 +4612,8 @@
           s.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === value);
           s.beat = beatFromPattern(this._pattern());
           s.beatEdited = false;
+          this._convertTempo();
+          this._onTempoChange();
           this.ui.beatCat = 'all';
           this._ensureMelodyMeter();
           if (this.playing) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
@@ -4593,6 +4626,7 @@
           s.patternIndex = Number(value);
           s.beat = beatFromPattern(this._pattern());
           s.beatEdited = false;
+          if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); }
           // Loops mit eigener Swing-Vorgabe (Swing Soul) bringen sie mit.
           if (typeof this._pattern().swing === 'number') { s.swing = this._pattern().swing; }
           this._ensureMelodyMeter();
@@ -5698,7 +5732,7 @@
     <button class="transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
     <label class="tempo-field">
       <output class="bpm-out">106 BPM</output>
-      <input class="bpm-input" type="range" min="40" max="180" value="106" aria-label="${t('lab.tempoAria')}">
+      <input class="bpm-input" type="range" min="30" max="180" value="106" aria-label="${t('lab.tempoAria')}">
     </label>
     <button class="icon-btn tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
     <button class="icon-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}" title="${t('lab.randomAria')}">${UI_ICON.dice}</button>
@@ -5751,6 +5785,7 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor,
     melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
