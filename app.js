@@ -19767,7 +19767,7 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (arpF.join() !== '65,69,72') failed.push(`Groove Lab: Arp im Akkord E über F = ${arpF}`);
     // Beats (Reihenfolge und Anzahl unverändert).
     const pat = (name) => T.DRUM_PATTERNS.find((p) => p.name === name);
-    if (T.DRUM_PATTERNS.length !== 20 || T.DRUM_PATTERNS[13].name !== 'Shuffle Roll') failed.push('Groove Lab: Loop-Liste verschoben oder Shuffle Roll fehlt');
+    if (T.DRUM_PATTERNS.length !== 23 || T.DRUM_PATTERNS[13].name !== 'Shuffle Roll' || T.DRUM_PATTERNS[19].name !== 'Folk Jig') failed.push('Groove Lab: Loop-Liste verschoben oder Shuffle Roll fehlt');
     if (T.MELODIES.length !== 22) failed.push('Groove Lab: Melodie-Liste verändert');
     const eighths = '0,2,4,6,8,10,12,14';
     if (pat('Swing Soul').hat.join() !== eighths || pat('Swing Soul').swingUnit !== 8) failed.push('Groove Lab: Swing Soul ohne Achtel-Hat/Achtel-Swing');
@@ -19907,6 +19907,64 @@ async function runMusicSelfTests({ log = true } = {}) {
     const exact = T.sanitizeState({ patternIndex: idx68, bpm: 67, eighths: 200, tempoRef: 'beat' });
     if (exact.eighths !== 200) failed.push('Groove Lab: genaues Tempo geht beim Laden verloren');
     if (T.sanitizeState({ patternIndex: 0, bpm: 120 }).bpm !== 120) failed.push('Groove Lab: alter 4/4-Stand verändert');
+  }
+
+  // Didaktik Paket 8: Chor-Ansicht, Aufgaben, neue Grooves.
+  {
+    // Loops: Schritte im Takt, Bassnoten-Länge = Bass-Länge, Icons eindeutig.
+    const icons = new Set();
+    for (const p of T.DRUM_PATTERNS) {
+      const steps = T.METERS[p.meter].steps;
+      for (const track of ['kick', 'snare', 'clap', 'hat', 'open', 'ghost', 'bass']) {
+        if ((p[track] || []).some((x) => !Number.isInteger(x) || x < 0 || x >= steps)) failed.push(`Loop ${p.name}: ${track} außerhalb des Takts`);
+      }
+      if ((p.bass || []).length !== (p.bassNotes || []).length) failed.push(`Loop ${p.name}: Bassnoten ≠ Bass`);
+      if (icons.has(p.icon)) failed.push(`Loop ${p.name}: Icon ${p.icon} doppelt`);
+      icons.add(p.icon);
+    }
+    const names = T.DRUM_PATTERNS.slice(20).map((p) => p.name).join();
+    if (names !== 'Gospel Shuffle,Swing Ride,Vocal Perc Basic' || T.DRUM_PATTERNS.slice(20).some((p) => p.cat !== 'calm')) failed.push(`Groove Lab: neue Grooves ${names}`);
+    // Jede Aufgabe setzt nur bestehende Felder mit gültigen Werten.
+    const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+    const base = T.defaultState();
+    for (const task of T.CHOIR_TASKS) {
+      for (const key of Object.keys(task.set)) if (!(key in base)) failed.push(`Aufgabe ${task.id}: Feld ${key} gibt es nicht`);
+      if (task.groove && T.patternIndexByName(task.groove) < 0) failed.push(`Aufgabe ${task.id}: Groove ${task.groove} fehlt`);
+      if (task.melody && !T.MELODIES.some((m) => m.name === task.melody)) failed.push(`Aufgabe ${task.id}: Melodie ${task.melody} fehlt`);
+      for (const part of ['S', 'A', 'T', 'B', null]) {
+        const st = T.choirTaskState(base, task, part);
+        // droneOn wird nie aus einem Stand übernommen (Nutzergeste nötig).
+        const a = { ...st, droneOn: false };
+        const b = T.sanitizeState(JSON.parse(JSON.stringify(st)));
+        if (JSON.stringify(canon(a)) !== JSON.stringify(canon(b))) failed.push(`Aufgabe ${task.id}/${part}: sanitizeState ändert den Stand`);
+        if (task.own && part && st.satb[part] !== task.own) failed.push(`Aufgabe ${task.id}: eigene Stimme nicht ${task.own}`);
+        if (!st.melodyAltBars !== !task.melodyAltBars) failed.push(`Aufgabe ${task.id}: melodyAltBars`);
+      }
+    }
+    // Anzeige „Terz“: pop in C → e, h, c, a; a-Moll cadence, V → gis.
+    const major = T.MODES.find((m) => m.id === 'major');
+    const minor = T.MODES.find((m) => m.id === 'minor');
+    const pop = T.PROGRESSIONS.find((p) => p.id === 'pop');
+    const thirds = pop.degrees.map((d) => T.spell(T.choirTargetPc(0, T.chordSteps(major.steps, 'major', pop, d), d, 'third'), 0, 'major', 'de').toLowerCase());
+    if (thirds.join() !== 'e,h,c,a') failed.push(`Groove Lab: Terzen pop in C = ${thirds}`);
+    const cad = T.PROGRESSIONS.find((p) => p.id === 'cadence');
+    const v = T.choirTargetPc(9, T.chordSteps(minor.steps, 'minor', cad, 4), 4, 'third');
+    if (T.spell(v, 9, 'minor', 'de') !== 'Gis') failed.push(`Groove Lab: a-Moll cadence V, Terz ${T.spell(v, 9, 'minor', 'de')}`);
+    const roots = pop.degrees.map((d) => T.choirTargetPc(0, T.chordSteps(major.steps, 'major', pop, d), d, 'root'));
+    if (roots.join() !== '0,7,9,5') failed.push(`Groove Lab: Grundtöne pop = ${roots}`);
+    // melodyAltBars: in Takt 2 und 4 keine Melodienote.
+    const bars = T.MELODIES.find((m) => m.name === 'Call & Response').bars;
+    const played = [0, 1, 2, 3].map((b) => Array.from({ length: 16 }, (_, i) => T.melodyNotesAt(b * 16 + i, bars, 16, true).length).reduce((x, y) => x + y, 0));
+    if (played[1] || played[3] || !played[0] || !played[2]) failed.push(`Groove Lab: Echo spielt je Takt ${played}`);
+    const normal = [0, 1].map((b) => Array.from({ length: 16 }, (_, i) => T.melodyNotesAt(b * 16 + i, bars, 16, false).length).reduce((x, y) => x + y, 0));
+    if (!normal[1]) failed.push('Groove Lab: ohne Echo schweigt Takt 2');
+    // Roundtrip view, melodyAltBars, gewählte Aufgabe.
+    const saved = T.sanitizeState(JSON.parse(JSON.stringify({ ...T.defaultState(), view: 'choir', melodyAltBars: true, choirTask: 'terzen' })));
+    if (saved.view !== 'choir' || !saved.melodyAltBars || saved.choirTask !== 'terzen') failed.push('Groove Lab: view/melodyAltBars/choirTask gehen verloren');
+    const oldState = T.sanitizeState({ patternIndex: 0 });
+    if (oldState.view !== null || oldState.melodyAltBars !== false || oldState.choirTask !== null) failed.push('Groove Lab: alter Stand ohne neue Felder nicht auf Standard');
+    const broken = T.sanitizeState({ view: 'kino', melodyAltBars: 'ja', choirTask: 'x' });
+    if (broken.view !== null || broken.melodyAltBars !== false || broken.choirTask !== null) failed.push('Groove Lab: kaputte view/choirTask übernommen');
   }
 
   if (log) {
@@ -21991,7 +22049,7 @@ function loadGrooveLab() {
 }
 
 /** Öffnet das Groove Lab — vom Easter Egg und von Einstellungen → Tools. */
-async function openGrooveLab() {
+async function openGrooveLab(entry = 'egg') {
   // Zwei Audioquellen sollen nie gegeneinander spielen. Die vorhandene
   // Aufnahme wird sauber pausiert, bevor das unabhängige Lab startet.
   if (Audio.playing) audioPause();
@@ -22004,6 +22062,8 @@ async function openGrooveLab() {
       // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
       t,
       lang: settings.language,
+      // Über Tools → Chor-Ansicht, Easter Egg → Studio (solange nichts gespeichert ist).
+      entry: entry === 'tools' ? 'tools' : 'egg',
       // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
       // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
       storage: {
@@ -22806,7 +22866,7 @@ function initTools() {
   initToolsProfile();
   initToday();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
-  $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
+  $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
   $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
   $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
   $('#btn-open-playground').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.playground'));
