@@ -608,7 +608,7 @@ export const STRINGS = {
     'lab.helpFilter': 'Der Filter nimmt Obertöne weg: Tiefpass macht dunkler, Hochpass dünner, Bandpass nasal. Cutoff ist die Grenzfrequenz, Resonanz betont sie, Env→Filter öffnet den Filter beim Anschlag, Drive zerrt leicht an.',
     'lab.helpLfo': 'Ein LFO ist eine sehr langsame Schwingung, die hier den Filter bewegt: von leichtem Wabern bis zum „Wobble“-Bass. „Im Takt“ koppelt die Geschwindigkeit an das Tempo.',
     'lab.helpCharacter': 'Detune und Breite machen den Klang voller: mehrere leicht verstimmte Stimmen, links und rechts verteilt. Sub-Level fügt eine Oktave tiefer hinzu, Pitch-Drop lässt jeden Ton von oben einrutschen.',
-    'lab.helpVibrato': 'Vibrato ist eine leichte, regelmäßige Tonhöhenschwankung wie bei Sängern. Rate ist die Geschwindigkeit, Tiefe die Stärke, Einsatz die Verzögerung, bis es beginnt.',
+    'lab.helpVibrato': 'Vibrato ist eine leichte, regelmäßige Tonhöhenschwankung wie bei Sänger:innen. Rate ist die Geschwindigkeit, Tiefe die Stärke, Einsatz die Verzögerung, bis es beginnt.',
     'lab.helpGlide': 'Glide lässt die Tonhöhe von einem Ton zum nächsten gleiten, statt zu springen. Mono spielt immer nur einen Ton gleichzeitig, typisch für Lead-Synths und Bässe.',
     'lab.tabMixer': 'Mixer',
     'lab.keyRoot': 'Grundton',

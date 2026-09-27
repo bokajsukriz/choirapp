@@ -105,7 +105,7 @@ Jedes Paket wurde vor dem Commit so geprüft:
 
 | Änderung | Umsetzung |
 |---|---|
-| Nicht gendern | Alle sichtbaren Texte ohne Doppelformen: „tiefe/hohe Stimmen“ statt „Männer-/Frauenstimmen“, „Laiensänger“, „Sängern“, polnisch „samodzielnie“ statt „sam(a)“; README ebenso. |
+| Stimmen nicht nach Geschlecht | „tiefe/hohe Stimmen“ statt „Männer-/Frauenstimmen“. Personenbezeichnungen bleiben gegendert („Sänger:innen“, „Laiensänger:innen“, „Nutzer:innen“); polnisch neutral „samodzielnie“ statt „sam(a)“. |
 | Tools per Wischgeste schließen | Beim Öffnen legt die App einen eigenen Verlaufseintrag an: die Zurück-Geste bzw. -Taste (Android) schließt nur das Tool. Zusätzlich Wischen vom linken Rand nach rechts in allen Tool-iframes und im Groove Lab (nicht auf Tastaturen, Reglern, Tipp-Flächen). X, Esc und Wischen hinterlassen keinen verwaisten Verlaufseintrag. |
 | Piano im Querformat auf Android | Ursache: das Manifest hält die installierte App im Hochformat, Android dreht dann nicht mit. Das Piano öffnet jetzt im Vollbild mit Querformat-Sperre, beim Schließen wieder frei. |
 | „Meine Stimme“/„Belastung“ aus dem Tools-Reiter entfernt | Die Karte ist weg; Stimme und Belastung stellt man im jeweiligen Tool ein, sie gelten weiter übergreifend (Stimmprofil). Den gemessenen Umfang setzt der Stimm-Tuner. |
