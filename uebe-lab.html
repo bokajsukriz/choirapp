@@ -127,15 +127,25 @@
   .stage .voice-l.is-own { fill: var(--accent); }
   /* Einheitliches Stufen-Element */
   .level-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  /* Stufen-Stepper: ‹  Stufe 3 · Text  › — ausgeblendete Pfeile lassen ihre
-     Spalte frei, damit die Mitte nicht springt. */
-  .level-stepper { display: grid; grid-template-columns: 44px 1fr 44px auto; align-items: center; gap: 6px; }
-  .level-stepper .lv-prev { grid-column: 1; }
-  .level-stepper .lv-mid { grid-column: 2; text-align: center; font-size: .8rem; font-weight: 800; line-height: 1.3; }
-  .level-stepper .lv-next { grid-column: 3; }
-  .level-stepper .help-btn { grid-column: 4; }
-  .lv-step { width: 44px; height: 44px; border-radius: 13px; border: 1px solid var(--line); background: var(--surface); font-size: 1.3rem; font-weight: 800; color: var(--text); line-height: 1; position: relative; }
-  .lv-step.has-dot::after { content: ""; position: absolute; top: 4px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  /* Stufe: ruhige Karte (Zahl, Sechs-Segment-Balken, Text); „ändern“ öffnet
+     die Auswahl als Blatt mit allen Stufen. */
+  .level-card { display: grid; gap: 6px; width: 100%; min-height: 64px; text-align: left; padding: 10px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+  .lv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .lv-num { font-size: 1rem; font-weight: 800; }
+  .lv-num small { font-size: .78rem; color: var(--muted); font-weight: 700; }
+  .lv-change { font-size: .76rem; font-weight: 800; color: var(--accent); white-space: nowrap; position: relative; }
+  .lv-change.has-dot::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+  .lv-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .lv-bar i { height: 6px; border-radius: 3px; background: var(--line); }
+  .lv-bar i.is-on { background: var(--accent); }
+  .lv-label { font-size: .78rem; font-weight: 700; color: #5f5577; line-height: 1.35; }
+  .level-hint-btn { margin-top: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px dashed var(--accent); background: rgba(var(--accent-rgb), .08); color: var(--text); font-size: .78rem; font-weight: 800; }
+  .level-options { display: grid; gap: 6px; }
+  .lv-opt { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; width: 100%; min-height: 52px; text-align: left; padding: 6px 12px 6px 8px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); font-size: .84rem; font-weight: 700; }
+  .lv-opt .lv-n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 800; }
+  .lv-opt[aria-current="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+  .lv-opt[aria-current="true"] .lv-n { background: var(--accent); color: #fff; }
+  .lv-opt em { font-style: normal; font-size: .68rem; font-weight: 800; color: var(--accent); }
   /* Liste der Übungsarten */
   .area-title { display: none; }
   .mode-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
@@ -362,9 +372,13 @@
     <div data-exview="voice" hidden>
     <div class="ex-head"><button class="back-btn" type="button" data-back="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Singen</button><h2 class="mode-title"></h2></div>
     <section class="panel" data-sing-only="task" hidden>
+      <div class="panel-head"><span></span>
+        <button class="icon-btn" type="button" data-sing-settings aria-label="Einstellungen: meine Stimme" title="Einstellungen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        </button>
+      </div>
       <div data-levels="sing"></div>
       <div class="sing-opts">
-        <div><span class="sub-label">Meine Stimme</span><div class="chip-row" data-chips="singPart"></div></div>
         <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
       </div>
       <div class="ear-stage sing-stage">
@@ -435,6 +449,17 @@
     <div class="sheet-body"></div>
     <p class="sheet-hint" role="status"></p>
     <div class="ear-controls"><button class="big-btn" type="button" data-ear="close-settings">Fertig</button></div>
+  </div>
+</div>
+
+<!-- Stufe wählen (levelControlHtml → „ändern“): alle Stufen mit Text. Die
+     Zeilen tragen data-level-area/-n — es greifen die Handler der Bereiche. -->
+<div class="sheet level-sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="level-sheet-title">
+    <div class="panel-head"><h2 id="level-sheet-title">Stufe wählen</h2>
+      <button class="icon-btn" type="button" data-level-close aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="level-options" role="list"></div>
+    <p class="foot-note" style="text-align:left">Jede Stufe enthält die vorigen. Änderst du danach etwas in den Einstellungen, gilt es als eigene Auswahl.</p>
   </div>
 </div>
 
@@ -1701,29 +1726,48 @@
     }));
   }
 
-  /* ---- Einheitliches Stufen-Element (alle Bereiche): Stepper
-     „‹  Stufe 3 · Text  ›“, ?-Knopf mit der Liste aller Stufen. 0 = eigene
-     Auswahl (‹ › springen dann zu Stufe 1 bzw. zur höchsten). Die Pfeile
-     tragen data-level-area/-n (Zielstufe) wie früher die Stufen-Chips —
-     die Klick-Handler der Bereiche bleiben unverändert. `hint` (Paket 6):
-     { level, hint: 'up' | 'down' | null } — nur Vorschlag, nie Wechsel. */
+  /* ---- Einheitliches Stufen-Element (alle Bereiche): eine ruhige Karte
+     „Stufe 3 /6 · Balken · Text“ mit „ändern“. Antippen öffnet die Auswahl
+     aller Stufen als Blatt (openLevelSheet). Deren Zeilen und der
+     Vorschlags-Knopf tragen data-level-area/-n (Zielstufe) wie früher die
+     Stufen-Chips — die Klick-Handler der Bereiche bleiben unverändert.
+     0 = eigene Auswahl. `hint` (Paket 6): { level, hint: 'up' | 'down' |
+     null } — nur Vorschlag, nie Wechsel. */
+  const levelSheetData = {}; // area → { levels, current, next }
   function levelControlHtml(area, levels, current, hint = null) {
     const cur = levels.find((l) => l.n === current);
     const max = levels[levels.length - 1].n;
     const fits = hint && hint.level === current;
     const next = fits && hint.hint === 'up' && current ? levels.find((l) => l.n === current + 1) : null;
-    const step = (cls, n, sym, hide, dot) => {
-      const l = levels.find((x) => x.n === n);
-      return `<button type="button" class="lv-step ${cls}${dot ? ' has-dot' : ''}" data-level-area="${area}" data-level-n="${n}" aria-label="Stufe ${n}${l ? `: ${l.label}` : ''}"${hide ? ' hidden' : ''}>${sym}</button>`;
-    };
-    const hintText = next ? `Stufe ${current} sitzt – Stufe ${next.n} ausprobieren?` : fits && hint.hint === 'down' && current > 1 ? 'Eine Stufe zurück kann helfen.' : '';
-    return `<div class="level-stepper" role="group" aria-label="Stufe">
-      ${step('lv-prev', cur ? cur.n - 1 : 1, '‹', !!cur && cur.n <= 1, false)}
-      <span class="lv-mid">${cur ? `Stufe ${cur.n} · ${cur.label}` : 'Eigene Auswahl'}</span>
-      ${step('lv-next', cur ? cur.n + 1 : max, '›', !!cur && cur.n >= max, !!next)}
-      <button class="help-btn" type="button" data-help="lv-${area}" aria-expanded="false" aria-label="Alle Stufen">?</button></div>
-      ${hintText ? `<p class="level-hint" role="status">${hintText}</p>` : ''}
-      <p class="help-text" id="lv-${area}" hidden>${levels.map((l) => `<b>${l.n}</b> ${l.label}`).join('<br>')}<br>Jede Stufe enthält die vorigen. Änderst du danach etwas, gilt es als eigene Auswahl.</p>`;
+    levelSheetData[area] = { levels, current, next: next ? next.n : null };
+    const bar = levels.map((l) => `<i${cur && l.n <= cur.n ? ' class="is-on"' : ''}></i>`).join('');
+    const title = cur ? `Stufe ${cur.n}<small> / ${max}</small>` : 'Eigene Auswahl';
+    const aria = cur ? `Stufe ${cur.n} von ${max}: ${cur.label}. Ändern` : 'Eigene Auswahl. Stufe wählen';
+    const down = fits && hint.hint === 'down' && current > 1;
+    return `<button type="button" class="level-card" data-level-open="${area}" aria-haspopup="dialog" aria-label="${aria}">
+      <span class="lv-top"><span class="lv-num">${title}</span><span class="lv-change${next ? ' has-dot' : ''}" aria-hidden="true">ändern ›</span></span>
+      <span class="lv-bar" aria-hidden="true">${bar}</span>
+      ${cur ? `<span class="lv-label" aria-hidden="true">${cur.label}</span>` : ''}</button>
+      ${next ? `<button type="button" class="level-hint-btn" data-level-area="${area}" data-level-n="${next.n}">Stufe ${current} sitzt – Stufe ${next.n} ausprobieren?</button>` : ''}
+      ${down ? '<p class="level-hint" role="status">Eine Stufe zurück kann helfen.</p>' : ''}`;
+  }
+
+  let levelSheetReturn = null;
+  function openLevelSheet(area) {
+    const d = levelSheetData[area];
+    if (!d) return;
+    $('.level-options').innerHTML = d.levels.map((l) => `<div role="listitem"><button type="button" class="lv-opt" data-level-area="${area}" data-level-n="${l.n}"${l.n === d.current ? ' aria-current="true"' : ''}>
+      <span class="lv-n">${l.n}</span><span>${l.label}</span>${l.n === d.next ? '<em>Vorschlag</em>' : ''}</button></div>`).join('');
+    levelSheetReturn = document.activeElement;
+    $('.level-sheet').hidden = false;
+    ($('.lv-opt[aria-current="true"]') || $('.lv-opt')).focus();
+  }
+  function closeLevelSheet() {
+    if ($('.level-sheet').hidden) return;
+    $('.level-sheet').hidden = true;
+    const area = levelSheetReturn?.dataset?.levelOpen;
+    const back = area ? $(`[data-level-open="${area}"]`) : null; // neu gerendert
+    (back || levelSheetReturn)?.focus?.();
   }
 
   /** Leertakte (im Einstellungsblatt) — nur, wenn es offen ist. */
@@ -2784,14 +2828,8 @@
           extra.append(help);
         }
       } else grid.replaceChildren();
-      if (mine) {
-        const label = document.createElement('span');
-        label.className = 'sub-label'; label.textContent = 'Welche Stimme singst du?';
-        const row = document.createElement('div');
-        row.className = 'chip-row'; row.dataset.chips = 'earPart';
-        extra.append(label, row);
-        extra.style.flexDirection = 'column'; extra.style.alignItems = 'center';
-      } else { extra.style.flexDirection = ''; extra.style.alignItems = ''; }
+      // Die eigene Stimme wählt man im Zahnrad (Einstellungen → Meine Stimme).
+      extra.style.flexDirection = mine ? 'column' : ''; extra.style.alignItems = mine ? 'center' : '';
     } else if (ear.mode === 'tuning') {
       const level = TUNING_LEVELS[ear.levels.tuning - 1];
       const stair = stairFor(level.n);
@@ -2811,7 +2849,6 @@
       p.textContent = th ? `Deine Schwelle heute: etwa ${Math.round(th)} Cent` : `Abweichung gerade: ${Math.round(stair.delta)} Cent · die Schwelle erscheint nach sechs Umkehrpunkten`;
       extra.append(p);
     }
-    if (ear.mode === 'parts' && $('[data-chips="earPart"]')) chips('earPart', SATB_PARTS.map((x) => [x, PART_NAMES[x]]), ear.part);
 
     const st = ear.stats[ear.mode];
     const parts = [];
@@ -2825,10 +2862,16 @@
   /* ---- Einstellungen (Zahnrad) — ein Blatt für Hören und Rhythmus ---- */
 
   let sheetKind = 'ear';
+  let lastSettingsBtn = null;
+  /** „Meine Stimme“ im Einstellungsblatt (Singen und Hören → Stimmen). */
+  const partChipsHtml = (name) => `<span class="sub-label" style="margin-top:0">Meine Stimme</span>
+    <div class="chip-row" data-chips="${name}">${SATB_PARTS.map((x) => `<button class="chip" type="button" data-chip="${name}" data-value="${x}" aria-pressed="${x === ear.part}">${PART_NAMES[x]}</button>`).join('')}</div>
+    <p class="foot-note" style="text-align:left">Gilt in allen Übe-Tools (Einsingen, Ausbildung, Groove Lab).</p>`;
 
   function openSettings(kind) {
     sheetKind = kind;
     $('#sheet-title').textContent = kind === 'rhythm' ? 'Rhythmus-Einstellungen' : 'Einstellungen';
+    lastSettingsBtn = document.activeElement;
     $('.sheet').hidden = false;
     renderSettings();
     $('.sheet [data-ear="close-settings"]').focus();
@@ -2838,6 +2881,7 @@
     const problem = settingsProblem();
     if (problem) { $('.sheet-hint').textContent = problem; return; }
     $('.sheet').hidden = true;
+    if (sheetKind === 'sing') { renderSing(); lastSettingsBtn?.focus?.(); return; }
     if (sheetKind === 'rhythm') {
       // Ruhend: alte Runde ausblenden, damit Taktart & Co. gleich sichtbar sind.
       // Läuft es, gelten die Änderungen ab der nächsten Runde.
@@ -2860,7 +2904,7 @@
   }
 
   function settingsProblem() {
-    if (sheetKind === 'rhythm') return '';
+    if (sheetKind === 'rhythm' || sheetKind === 'sing') return '';
     const s = ear.settings;
     if (ear.mode === 'interval') {
       if (s.intervals.length < 2) return 'Bitte mindestens zwei Intervalle auswählen.';
@@ -2926,10 +2970,12 @@
 
   function renderSettings() {
     if (sheetKind === 'rhythm') { renderRhythmSettings(); return; }
+    if (sheetKind === 'sing') { $('.sheet-body').innerHTML = partChipsHtml('singPart'); $('.sheet-hint').textContent = ''; return; }
     const s = ear.settings;
     const presetChips = (group) => INTERVAL_PRESETS.map(([name, list, g], i) => (g === group
       ? `<button class="chip" type="button" data-preset="${i}" aria-pressed="${list.join() === s.intervals.join()}">${group === 'level' ? `${INTERVAL_PRESETS.filter((p) => p[2] === 'level').indexOf(INTERVAL_PRESETS[i]) + 1} · ` : ''}${name}</button>` : '')).join('');
     const body = $('.sheet-body');
+    const voiceHtml = ear.mode === 'parts' ? partChipsHtml('earPart') : '';
     if (ear.mode === 'interval') {
       body.innerHTML = `
         <span class="sub-label" style="margin-top:0">Schnellauswahl: Stufen</span>
@@ -2943,9 +2989,9 @@
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
     } else if (ear.mode !== 'chords') {
-      body.innerHTML = `
-        <span class="sub-label" style="margin-top:0">Stufe</span>
-        <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Chips 1–6).</p>
+      body.innerHTML = `${voiceHtml}
+        <span class="sub-label"${voiceHtml ? '' : ' style="margin-top:0"'}>Stufe</span>
+        <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Feld „Stufe“).</p>
         ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
@@ -3937,7 +3983,6 @@
     if (tuner) return;
     const levels = SING_LEVEL_TABLE[sing.mode]();
     $('[data-levels="sing"]').innerHTML = levelControlHtml(`sing-${sing.mode}`, levels, sing.levels[sing.mode], levelHints[sing.mode]);
-    chips('singPart', SATB_PARTS.map((x) => [x, PART_NAMES[x]]), ear.part);
     chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
     $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval'].includes(sing.mode);
     const task = sing.task;
@@ -4124,6 +4169,10 @@
   function onClick(e) {
     const tabBtn = e.target.closest('.tab-btn');
     if (tabBtn) { setTab(tabBtn.dataset.tab); return; }
+    const lvOpen = e.target.closest('[data-level-open]');
+    if (lvOpen) { openLevelSheet(lvOpen.dataset.levelOpen); return; }
+    if (e.target === $('.level-sheet') || e.target.closest('[data-level-close]')) { closeLevelSheet(); return; }
+    if (e.target.closest('[data-sing-settings]')) { openSettings('sing'); return; }
     const openBtn = e.target.closest('[data-open-mode]');
     if (openBtn) { const [tab, id] = openBtn.dataset.openMode.split(':'); openMode(tab, id); return; }
     const backBtn = e.target.closest('[data-back]');
@@ -4213,6 +4262,7 @@
         ear.part = v;
         try { profileApi?.set({ part: v }); } catch { /* App weg */ }
         clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null;
+        if (!$('.sheet').hidden && sheetKind === 'sing') renderSettings();
       } else if (singChip.dataset.chip === 'solfa') sing.solfa = v;
       renderSing();
       return;
@@ -4287,6 +4337,7 @@
         if (ear.task?.kind === 'parts' && ['satb', 'line'].includes(ear.task.sub)) { ear.task = null; setEarFeedback('', ''); }
         try { profileApi?.set({ part: ear.part }); } catch { /* App weg */ }
         renderEar();
+        if (!$('.sheet').hidden && sheetKind === 'ear') renderSettings();
       }
       return;
     }
@@ -4323,7 +4374,12 @@
     }
   }
 
-  document.addEventListener('click', (e) => { onClick(e); persist(); });
+  document.addEventListener('click', (e) => {
+    const inLevelSheet = !!e.target.closest('.level-sheet');
+    onClick(e); persist();
+    // Stufe im Blatt gewählt (die Bereichs-Handler haben sie übernommen): zu.
+    if (inLevelSheet && e.target.closest('[data-level-n]')) closeLevelSheet();
+  });
 
   document.addEventListener('change', (e) => {
     const t = e.target;
@@ -4352,12 +4408,13 @@
   $('.tap-pad').addEventListener('click', (e) => e.preventDefault());
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('.sheet').hidden) { closeSettings(); return; }
+    if (e.key === 'Escape' && !$('.level-sheet').hidden) { closeLevelSheet(); return; }
+    if (e.key === 'Escape' && !$('.sheet:not(.level-sheet)').hidden) { closeSettings(); return; }
     // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
     // (die App hört auf diese Nachricht, siehe initTools in app.js).
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-    if (!$('.sheet').hidden) return;
+    if (!$('.sheet:not(.level-sheet)').hidden || !$('.level-sheet').hidden) return;
     // In der Liste gibt es nichts zu spielen oder zu beantworten.
     if (views[state.tab] !== 'exercise' || (state.tab === 'rhythm' && duoLocked)) return;
     if (state.tab === 'voice') {
@@ -4943,22 +5000,30 @@
           if (!!$(`[data-list="${tab}"] [data-mixed]`) !== !!QUICK_CHAINS[tab]) errors.push(`Liste ${tab}: „Gemischt üben“ falsch`);
         }
         if ($$('[data-list="voice"] [data-open-mode]').pop()?.dataset.openMode !== 'voice:tuner') errors.push('Tuner nicht letzte Zeile');
+        // Stufen-Karte: Zahl, Balken, „ändern“ öffnet das Blatt; dessen Zeilen
+        // und der Vorschlags-Knopf setzen die Stufe über die alten Handler.
         const box = document.createElement('div');
-        const stepper = (cur, hint = null) => { box.innerHTML = levelControlHtml('ear-quality', QUALITY_LEVELS, cur, hint); return { prev: box.querySelector('.lv-prev'), next: box.querySelector('.lv-next'), mid: box.querySelector('.lv-mid').textContent }; };
-        let st = stepper(1);
-        if (!st.prev.hidden || st.next.hidden || st.next.dataset.levelN !== '2' || !st.mid.startsWith('Stufe 1 · ')) errors.push('Stepper Stufe 1 falsch');
-        st = stepper(6);
-        if (st.prev.hidden || !st.next.hidden || st.prev.dataset.levelN !== '5') errors.push('Stepper Stufe 6 falsch');
-        st = stepper(0);
-        if (st.prev.hidden || st.next.hidden || st.prev.dataset.levelN !== '1' || st.next.dataset.levelN !== '6' || st.mid !== 'Eigene Auswahl') errors.push('Stepper eigene Auswahl falsch');
-        st = stepper(3, { level: 3, hint: 'up' });
-        if (!st.next.classList.contains('has-dot') || !box.querySelector('.level-hint')?.textContent.includes('Stufe 4 ausprobieren')) errors.push('Stepper: Hinweis/Punkt fehlt');
-        if (st.prev.disabled || st.next.disabled) errors.push('Stepper deaktiviert statt ausgeblendet');
+        const card = (cur, hint = null) => { box.innerHTML = levelControlHtml('ear-quality', QUALITY_LEVELS, cur, hint); return box.querySelector('.level-card'); };
+        let c = card(1);
+        if (!c.textContent.includes('Stufe 1') || box.querySelectorAll('.lv-bar i.is-on').length !== 1 || c.dataset.levelOpen !== 'ear-quality') errors.push('Stufen-Karte Stufe 1 falsch');
+        c = card(0);
+        if (!c.textContent.includes('Eigene Auswahl') || box.querySelectorAll('.lv-bar i.is-on').length) errors.push('Stufen-Karte eigene Auswahl falsch');
+        card(3, { level: 3, hint: 'up' });
+        const hintBtn = box.querySelector('.level-hint-btn');
+        if (!hintBtn || hintBtn.dataset.levelN !== '4' || !hintBtn.textContent.includes('Stufe 4 ausprobieren') || !box.querySelector('.lv-change.has-dot')) errors.push('Stufen-Karte: Vorschlag fehlt');
+        if (box.querySelector('.lv-step, .level-chip')) errors.push('Stufen-Karte: alte Pillen/Pfeile');
         if (!ear.task && !run.playing) {
           ear.mode = 'quality'; ear.levels.quality = 2; renderEar();
-          $('[data-levels="ear"] .lv-next').click();
-          if (ear.levels.quality !== 3) errors.push(`Klick auf › setzt Stufe ${ear.levels.quality} statt 3`);
+          $('[data-levels="ear"] .level-card').click();
+          const opts = $$('.level-sheet .lv-opt');
+          if ($('.level-sheet').hidden || opts.length !== QUALITY_LEVELS.length || opts.find((o) => o.getAttribute('aria-current') === 'true')?.dataset.levelN !== '2') errors.push('Stufen-Blatt falsch');
+          opts.find((o) => o.dataset.levelN === '3')?.click();
+          if (ear.levels.quality !== 3) errors.push(`Stufe im Blatt gewählt: ${ear.levels.quality} statt 3`);
+          if (!$('.level-sheet').hidden) errors.push('Stufen-Blatt schließt nach der Wahl nicht');
         }
+        // Stimmauswahl nur im Einstellungsblatt.
+        if ($('[data-sing-only="task"] [data-chips="singPart"]') || $('.ear-extra [data-chips="earPart"]')) errors.push('Stimmauswahl noch außerhalb der Einstellungen');
+        { const kind = sheetKind; sheetKind = 'sing'; renderSettings(); if ($$('.sheet-body [data-chip="singPart"]').length !== 4) errors.push('Singen: Stimme fehlt im Einstellungsblatt'); sheetKind = kind; }
         state.rhythmLevel = 1; duoLocked = false;
         if (modeLevelText('rhythm', 'duo') !== 'ab Stufe 3') errors.push(`Zweistimmig vor Stufe 3: ${modeLevelText('rhythm', 'duo')}`);
         renderModeList('rhythm');
