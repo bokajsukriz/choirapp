@@ -19699,6 +19699,44 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (crossing) failed.push(`Groove Lab: ${crossing}× Stimmkreuzung`);
   }
 
+  // Paket 9: Aufnahmen tonartbezogen.
+  {
+    const major = modeSteps('major');
+    const pop = prog('pop');
+    const opts = { startTime: 10, stepSec: .1, bars: 2, barSteps: 16, meter: '4/4', keyRoot: 0, modeSteps: major, melodyOctave: 4 };
+    // e′ auf 1 (Takt 1), g′ und cis″ in Takt 2.
+    const take = T.recNotesToBars([{ midi: 64, t0: 10, t1: 10.4 }, { midi: 67, t0: 11.6, t1: 12 }, { midi: 73, t0: 12.2, t1: 12.6 }], opts);
+    const harmony = (bar) => {
+      const deg = pop.degrees[bar % pop.degrees.length];
+      return { keyRoot: 0, steps: T.chordSteps(major, 'major', pop, deg), deg };
+    };
+    // Vier Groove-Takte (I V vi IV) über die 2-Takt-Aufnahme: Takt 3 und 4
+    // müssen dieselben Töne bringen wie Takt 1 und 2.
+    const played = [0, 1, 2, 3].map((bar) => take[bar % 2].map(([, deg, , alt = 0]) => T.melodyMidi(deg, alt, harmony(bar), 'key', major, 4)).join());
+    if (played[0] !== played[2] || played[1] !== played[3]) failed.push(`Groove Lab: Aufnahme klingt im 2. Durchlauf anders (${played.join(' | ')})`);
+    if (played[0] !== '64' || played[1] !== '67,73') failed.push(`Groove Lab: Aufnahme gibt andere Töne wieder (${played.join(' | ')})`);
+    // Kontur bleibt: zwei Töne gut zwei Oktaven auseinander nicht gefaltet.
+    const wide = T.recNotesToBars([{ midi: 48, t0: 10, t1: 10.2 }, { midi: 79, t0: 10.4, t1: 10.6 }], { ...opts, bars: 1 });
+    const degs = wide[0].map((n) => n[1]);
+    if (degs.length !== 2 || degs[1] - degs[0] !== 18) failed.push(`Groove Lab: Aufnahme-Kontur gefaltet (${degs})`);
+    // Alte Melodien (ohne ref) klingen wie vorher: Stufe über dem Akkordgrundton.
+    for (const [deg, bar] of [[0, 1], [2, 2], [4, 3], [-1, 0]]) {
+      const h = harmony(bar);
+      const before = 12 * 5 + T.degreeSemis(h.steps, deg + T.foldDegree(h.deg));
+      if (T.melodyMidi(deg, 0, h, 'chord', major, 4) !== before) failed.push(`Groove Lab: akkordbezogene Melodie klingt anders (Stufe ${deg}, Takt ${bar})`);
+    }
+    // Gespeicherte Stände: ref durchreichen, alt = akkordbezogen, kaputt = akkordbezogen.
+    const lib = T.sanitizeMelodyLibrary([
+      { id: 'a', name: 'A', meter: '4/4', bars: [[[0, 18, 2]]], ref: 'key' },
+      { id: 'b', name: 'B', meter: '4/4', bars: [[[0, 2, 2]]] },
+      { id: 'c', name: 'C', meter: '4/4', bars: [[[0, 2, 2]]], ref: 'quatsch' },
+    ]);
+    if (lib.map((m) => m.ref || '-').join() !== 'key,-,-') failed.push(`Groove Lab: Melodie-Bibliothek ref = ${lib.map((m) => m.ref)}`);
+    if (JSON.stringify(T.sanitizeMelodyLibrary(JSON.parse(JSON.stringify(lib)))) !== JSON.stringify(lib)) failed.push('Groove Lab: Melodie-Bibliothek übersteht Speichern/Laden nicht');
+    const st = (raw) => T.sanitizeState({ melodyMeter: '4/4', melodyBars: [[[0, 2, 2]]], ...raw }).melodyRef;
+    if (st({ melodyRef: 'key' }) !== 'key' || st({}) !== 'chord' || st({ melodyRef: 7 }) !== 'chord') failed.push('Groove Lab: melodyRef übersteht Laden nicht');
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);
