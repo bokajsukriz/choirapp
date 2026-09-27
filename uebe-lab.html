@@ -340,6 +340,7 @@
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
 </footer>
 
+<script src="./harmony.js"></script>
 <script>
 (function () {
   'use strict';
@@ -362,82 +363,16 @@
   // Kammerton a′ (einstellbar im Stimm-Reiter, 438–445 Hz): gilt für alle
   // Klänge des Tools und für die Tonerkennung, damit Referenz und Messung
   // übereinstimmen.
+  // Tonnamen, Akkordformen, Umfänge und Satz aus harmony.js (gemeinsam mit
+  // Groove Lab, Einsingen und Piano).
+  const H = window.ChorHarmony;
+  const { spell, noteLabel, spellCheck } = H;
   const A4_CHOICES = [438, 439, 440, 441, 442, 443, 444, 445];
   let tuningA4 = 440;
   const noteHz = (midi) => tuningA4 * Math.pow(2, (midi - 69) / 12);
   const hzToMidi = (hz) => 69 + 12 * Math.log2(hz / tuningA4);
 
-  /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
-     uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
-     ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
 
-     spell(pc, keyRoot, mode, lang): Name der Tonhöhenklasse pc in der
-     Tonart keyRoot/mode ('major' | 'minor' | 'dorian' | 'mixolydian').
-     ♭-Tonarten schreiben mit ♭, alle anderen mit ♯ — maßgeblich ist die
-     Dur-Paralleltonart: F, B, Es, As, Des, Ges (Moll also d, g, c, f, b;
-     dis-Moll statt es-Moll). In Moll steht der Leitton (erhöhte 7. Stufe)
-     immer mit ♯ (d-Moll: Cis). Ohne Tonart (keyRoot null) gilt die
-     neutrale Liste C, Cis, D, Es, E, F, Fis, G, As, A, B, H.
-     lang: 'en' englisch (B = H, B♭ = B), sonst deutsch (auch 'pl').
-
-     noteLabel(midi, keyRoot, mode, lang): mit Oktave — deutsch Helmholtz
-     (C₁, C, c, c′, c″ …; 60 = c′), englisch wissenschaftlich (60 = C4). */
-  const SPELL_SHARP = {
-    de: ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'],
-    en: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'],
-  };
-  const SPELL_FLAT = {
-    de: ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'],
-    en: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'],
-  };
-  const SPELL_NEUTRAL = {
-    de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
-    en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
-  };
-  const SPELL_FLAT_MAJORS = [5, 10, 3, 8, 1, 6];
-  const SPELL_RELATIVE_MAJOR = { major: 0, minor: 3, dorian: -2, mixolydian: -7 };
-  const spellPc = (n) => ((n % 12) + 12) % 12;
-  function spellUsesFlats(keyRoot, mode) {
-    const major = spellPc(keyRoot + (SPELL_RELATIVE_MAJOR[mode] ?? 0));
-    if (mode === 'minor' && major === 6) return false; // dis-Moll, nicht es-Moll
-    return SPELL_FLAT_MAJORS.includes(major);
-  }
-  function spell(pc, keyRoot = null, mode = 'major', lang = 'de') {
-    const l = lang === 'en' ? 'en' : 'de';
-    const p = spellPc(pc);
-    if (keyRoot === null || keyRoot === undefined) return SPELL_NEUTRAL[l][p];
-    const k = spellPc(keyRoot);
-    if (mode === 'minor' && p === spellPc(k + 11)) return SPELL_SHARP[l][p];
-    return (spellUsesFlats(k, mode) ? SPELL_FLAT : SPELL_SHARP)[l][p];
-  }
-  function noteLabel(midi, keyRoot = null, mode = 'major', lang = 'de') {
-    const name = spell(midi, keyRoot, mode, lang);
-    const octave = Math.floor(midi / 12) - 1;
-    if (lang === 'en') return `${name}${octave}`;
-    if (octave >= 3) return name.toLowerCase() + '′'.repeat(octave - 3).replace('′′′′', '⁗').replace('′′′', '‴').replace('′′', '″');
-    return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
-  }
-  // [Funktion, Argumente, erwartet] — dieselbe Liste in jedem Tool.
-  const SPELL_CASES = [
-    ['spell', [1, 8, 'major', 'de'], 'Des'], ['spell', [8, 4, 'major', 'de'], 'Gis'], ['spell', [8, 4, 'major', 'en'], 'G♯'],
-    ['spell', [10, 11, 'major', 'de'], 'Ais'], ['spell', [6, 6, 'major', 'de'], 'Ges'], ['spell', [3, 3, 'minor', 'de'], 'Dis'],
-    ['spell', [1, 2, 'minor', 'de'], 'Cis'], ['spell', [10, 2, 'minor', 'de'], 'B'], ['spell', [3, 0, 'minor', 'de'], 'Es'],
-    ['spell', [10, 0, 'mixolydian', 'de'], 'B'], ['spell', [10, 0, 'mixolydian', 'en'], 'B♭'], ['spell', [6, 2, 'dorian', 'de'], 'Fis'],
-    ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
-    ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
-    ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
-    ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
-    ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
-    ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
-  ];
-  /** Prüft SPELL_CASES; liefert die Liste der Abweichungen (leer = ok). */
-  function spellCheck() {
-    const fns = { spell, noteLabel };
-    return SPELL_CASES.map(([fn, args, want]) => {
-      const got = fns[fn](...args);
-      return got === want ? null : `${fn}(${args.join(', ')}) = ${got}, erwartet ${want}`;
-    }).filter(Boolean);
-  }
 
   /* ------------------------------------------------------------------------
      RHYTHMUS — INHALT
@@ -1312,7 +1247,7 @@
   // „Es-Dur“, „dis-Moll“ — Tonart groß in Dur, klein in Moll.
   const keyName = (pc, mode) => (mode === 'major' ? `${spell(pc, pc, 'major')}-Dur` : `${spell(pc, pc, 'minor').toLowerCase()}-Moll`);
 
-  const CHORD_SHAPES = { maj: [0, 4, 7], min: [0, 3, 7], dim: [0, 3, 6], dom7: [0, 4, 7, 10], add6: [0, 4, 7, 9] };
+  const CHORD_SHAPES = H.CHORD_SHAPES;
   function chordPcs(key, symbol) {
     const [root, quality] = CHORD_SYMBOLS[symbol];
     return CHORD_SHAPES[quality].map((x) => mod(key + root + x, 12));
@@ -1321,7 +1256,7 @@
   // Bass immer in der Oktave E–dis′ (MIDI 40–51): tiefste Lage im
   // Bassumfang (E–d′, wie Groove Lab und Einsingen), nie darunter.
   const BASS_LOW = 40;
-  const VOICE_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
+  const VOICE_RANGES = H.VOICE_RANGES;
 
   /** Welcher Akkordton im Bass liegt (0 Grundton, 1 Terz, 2 Quinte):
    *  - feste Umkehrungen aus dem Symbol (I64, iv6),
@@ -1340,23 +1275,7 @@
     return options[Math.floor(rnd() * options.length)];
   }
 
-  /** Offene Quint-/Oktavparallelen zwischen zwei vierstimmigen Klängen
-   *  ([Bass, …Oberstimmen]): gleiches reines Intervall, beide Stimmen in
-   *  dieselbe Richtung bewegt — wie im Groove Lab (voicePairs). */
-  function parallelCount(prev, next) {
-    let n = 0;
-    for (let i = 0; i < next.length; i++) {
-      for (let j = i + 1; j < next.length; j++) {
-        const mi = next[i] - prev[i];
-        const mj = next[j] - prev[j];
-        if (!mi || !mj || Math.sign(mi) !== Math.sign(mj)) continue;
-        const before = mod(prev[i] - prev[j], 12);
-        const after = mod(next[i] - next[j], 12);
-        if (before === after && (after === 0 || after === 7)) n++;
-      }
-    }
-    return n;
-  }
+  const parallelCount = H.parallelCount;
 
   /** Satz einer Folge: Bass nach bassIndex in der Oktave E–dis′, darüber
    *  drei Oberstimmen in enger Lage (bei Vierklängen die drei Töne außer dem
@@ -1372,27 +1291,7 @@
       const bassPc = pcs[bassIndex(symbol, symbols[i + 1], inversion, rnd)];
       const bass = BASS_LOW + mod(bassPc - BASS_LOW, 12);
       const upperPcs = pcs.length === 4 ? pcs.filter((pc) => pc !== bassPc) : pcs;
-      const prevUpper = prev ? prev.upper : [60, 64, 67];
-      let best = null, bestScore = Infinity, fallback = null, fallbackScore = Infinity;
-      for (let rot = 0; rot < 3; rot++) {
-        const order = [upperPcs[rot], upperPcs[(rot + 1) % 3], upperPcs[(rot + 2) % 3]];
-        for (let start = 55; start <= 66; start++) {
-          if (mod(start, 12) !== order[0]) continue;
-          let upper = [start];
-          for (const pc of order.slice(1)) { let n = upper[upper.length - 1] + 1; while (mod(n, 12) !== pc) n++; upper.push(n); }
-          if (spread === 'open') {
-            const [a, b, c] = upper;
-            upper = [a, c, b + 12].sort((x, y) => x - y);
-            if (upper[2] > 81) upper = upper.map((m) => m - 12);
-          }
-          if (upper[0] <= bass) continue;
-          const score = upper.reduce((sum, n, k) => sum + Math.abs(n - prevUpper[k]), 0);
-          if (score < fallbackScore) { fallbackScore = score; fallback = upper; }
-          const clean = !prev || !parallelCount([prev.bass, ...prev.upper], [bass, ...upper]);
-          if (clean && score < bestScore) { bestScore = score; best = upper; }
-        }
-      }
-      prev = { bass, upper: best || fallback };
+      prev = { bass, upper: H.voiceUpperClose(upperPcs, bass, prev, spread) };
       return prev;
     });
   }

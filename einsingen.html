@@ -219,6 +219,7 @@
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
 </footer>
 
+<script src="./harmony.js"></script>
 <script>
 (function () {
   'use strict';
@@ -238,81 +239,13 @@
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const mod = (n, m) => ((n % m) + m) % m;
   const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
-  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-  const MINOR = [0, 2, 3, 5, 7, 8, 10];
+  // Modi, Tonnamen und Satz aus harmony.js (gemeinsam mit Groove Lab,
+  // Ausbildung und Piano).
+  const H = window.ChorHarmony;
+  const { MAJOR, spell, noteLabel, spellCheck } = H;
   /** Halbtöne der Stufe `deg` über dem Grundton — in Dur oder (natürlichem) Moll. */
-  const degreeSemis = (deg, mode = 'major') => (mode === 'minor' ? MINOR : MAJOR)[mod(deg, 7)] + 12 * Math.floor(deg / 7);
-  /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
-     uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
-     ändern (Signaturen = spätere harmony.js-API, Testfälle SPELL_CASES).
+  const degreeSemis = (deg, mode = 'major') => H.degreeSemis(H.modeSteps(mode), deg);
 
-     spell(pc, keyRoot, mode, lang): Name der Tonhöhenklasse pc in der
-     Tonart keyRoot/mode ('major' | 'minor' | 'dorian' | 'mixolydian').
-     ♭-Tonarten schreiben mit ♭, alle anderen mit ♯ — maßgeblich ist die
-     Dur-Paralleltonart: F, B, Es, As, Des, Ges (Moll also d, g, c, f, b;
-     dis-Moll statt es-Moll). In Moll steht der Leitton (erhöhte 7. Stufe)
-     immer mit ♯ (d-Moll: Cis). Ohne Tonart (keyRoot null) gilt die
-     neutrale Liste C, Cis, D, Es, E, F, Fis, G, As, A, B, H.
-     lang: 'en' englisch (B = H, B♭ = B), sonst deutsch (auch 'pl').
-
-     noteLabel(midi, keyRoot, mode, lang): mit Oktave — deutsch Helmholtz
-     (C₁, C, c, c′, c″ …; 60 = c′), englisch wissenschaftlich (60 = C4). */
-  const SPELL_SHARP = {
-    de: ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'],
-    en: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'],
-  };
-  const SPELL_FLAT = {
-    de: ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'],
-    en: ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'],
-  };
-  const SPELL_NEUTRAL = {
-    de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
-    en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
-  };
-  const SPELL_FLAT_MAJORS = [5, 10, 3, 8, 1, 6];
-  const SPELL_RELATIVE_MAJOR = { major: 0, minor: 3, dorian: -2, mixolydian: -7 };
-  const spellPc = (n) => ((n % 12) + 12) % 12;
-  function spellUsesFlats(keyRoot, mode) {
-    const major = spellPc(keyRoot + (SPELL_RELATIVE_MAJOR[mode] ?? 0));
-    if (mode === 'minor' && major === 6) return false; // dis-Moll, nicht es-Moll
-    return SPELL_FLAT_MAJORS.includes(major);
-  }
-  function spell(pc, keyRoot = null, mode = 'major', lang = 'de') {
-    const l = lang === 'en' ? 'en' : 'de';
-    const p = spellPc(pc);
-    if (keyRoot === null || keyRoot === undefined) return SPELL_NEUTRAL[l][p];
-    const k = spellPc(keyRoot);
-    if (mode === 'minor' && p === spellPc(k + 11)) return SPELL_SHARP[l][p];
-    return (spellUsesFlats(k, mode) ? SPELL_FLAT : SPELL_SHARP)[l][p];
-  }
-  function noteLabel(midi, keyRoot = null, mode = 'major', lang = 'de') {
-    const name = spell(midi, keyRoot, mode, lang);
-    const octave = Math.floor(midi / 12) - 1;
-    if (lang === 'en') return `${name}${octave}`;
-    if (octave >= 3) return name.toLowerCase() + '′'.repeat(octave - 3).replace('′′′′', '⁗').replace('′′′', '‴').replace('′′', '″');
-    return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
-  }
-  // [Funktion, Argumente, erwartet] — dieselbe Liste in jedem Tool.
-  const SPELL_CASES = [
-    ['spell', [1, 8, 'major', 'de'], 'Des'], ['spell', [8, 4, 'major', 'de'], 'Gis'], ['spell', [8, 4, 'major', 'en'], 'G♯'],
-    ['spell', [10, 11, 'major', 'de'], 'Ais'], ['spell', [6, 6, 'major', 'de'], 'Ges'], ['spell', [3, 3, 'minor', 'de'], 'Dis'],
-    ['spell', [1, 2, 'minor', 'de'], 'Cis'], ['spell', [10, 2, 'minor', 'de'], 'B'], ['spell', [3, 0, 'minor', 'de'], 'Es'],
-    ['spell', [10, 0, 'mixolydian', 'de'], 'B'], ['spell', [10, 0, 'mixolydian', 'en'], 'B♭'], ['spell', [6, 2, 'dorian', 'de'], 'Fis'],
-    ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
-    ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
-    ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
-    ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
-    ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
-    ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
-  ];
-  /** Prüft SPELL_CASES; liefert die Liste der Abweichungen (leer = ok). */
-  function spellCheck() {
-    const fns = { spell, noteLabel };
-    return SPELL_CASES.map(([fn, args, want]) => {
-      const got = fns[fn](...args);
-      return got === want ? null : `${fn}(${args.join(', ')}) = ${got}, erwartet ${want}`;
-    }).filter(Boolean);
-  }
   // Deutsche Tonnamen: Tonart groß („Es-Dur“), Einzeltöne in Helmholtz-
   // Schreibweise (F, c, c′, c″), wie sie in Chorproben üblich ist.
   const keyLabel = (root, mode = 'major') => (mode === 'minor' ? `${spell(root, root, 'minor').toLowerCase()}-Moll` : `${spell(root, root, 'major')}-Dur`);
@@ -346,73 +279,9 @@
   ];
   const voiceById = (id) => VOICES.find((v) => v.id === id) || VOICES[1];
 
-  /* ---- Vierstimmiger Satz für die Übung „Akkord“ — Kopie aus
-     groove-lab.js (voicePairs/voiceChord, Paket 7), bis harmony.js ihn
-     gemeinsam bereitstellt. Einsingen ist ein eigenes iframe und kann
-     groove-lab.js nicht erreichen. Nicht hier ändern. */
-  const SATB = ['S', 'A', 'T', 'B'];
-  const SATB_RANGES = { S: [60, 79], A: [55, 74], T: [48, 67], B: [40, 62] };
-  const VOICING_STATS = { fallbacks: 0 };
-  function voicePairs(prev, next) {
-    let parallels = 0;
-    for (let i = 0; i < 4; i++) {
-      for (let j = i + 1; j < 4; j++) {
-        const [x, y] = [SATB[i], SATB[j]];
-        const mx = next[x] - prev[x];
-        const my = next[y] - prev[y];
-        if (!mx || !my || Math.sign(mx) !== Math.sign(my)) continue;
-        const before = mod(prev[x] - prev[y], 12);
-        const after = mod(next[x] - next[y], 12);
-        if (before === after && (after === 0 || after === 7)) parallels++;
-      }
-    }
-    return parallels;
-  }
-  function voiceChord(pcs, prev, { leading = null, prevLeading = null, bassIndex = 0, next: after = null } = {}) {
-    const within = ([lo, hi], pred) => { const out = []; for (let m = lo; m <= hi; m++) if (pred(m)) out.push(m); return out; };
-    const bassPc = pcs[bassIndex] ?? pcs[0];
-    const isChordTone = (m) => pcs.includes(mod(m, 12));
-    let best = null;
-    let bestScore = Infinity;
-    let fallback = null;
-    let fallbackScore = Infinity;
-    let closed = null;
-    let closedScore = Infinity;
-    for (const B of within(SATB_RANGES.B, (m) => mod(m, 12) === bassPc)) {
-      for (const T of within(SATB_RANGES.T, isChordTone)) {
-        if (T <= B || T - B > 19) continue;
-        for (const A of within(SATB_RANGES.A, isChordTone)) {
-          if (A <= T || A - T > 12) continue;
-          for (const S of within(SATB_RANGES.S, isChordTone)) {
-            if (S <= A || S - A > 12) continue;
-            const next = { S, A, T, B };
-            const voices = [B, T, A, S].map((m) => mod(m, 12));
-            let score = Math.abs(S - prev.S) + Math.abs(A - prev.A) + Math.abs(T - prev.T) + Math.abs(B - prev.B) * .5;
-            if (!voices.includes(pcs[1])) score += 20;
-            if (pcs[2] !== undefined && !voices.includes(pcs[2])) score += 4;
-            if (pcs[3] !== undefined && !voices.includes(pcs[3])) score += 6;
-            if (voices.filter((pc) => pc === pcs[1]).length > 1) score += 3;
-            // Verdeckte Quinte/Oktave: Außenstimmen gleichgerichtet in ein
-            // reines Intervall, Sopran springt.
-            const outer = mod(S - B, 12);
-            if ((outer === 0 || outer === 7) && Math.abs(S - prev.S) > 2 && Math.sign(S - prev.S) === Math.sign(B - prev.B) && S !== prev.S) score += 10;
-            if (prevLeading !== null && mod(prev.S, 12) === prevLeading && pcs.includes(mod(prevLeading + 1, 12)) && S !== prev.S + 1) score += 8;
-            if (score < fallbackScore) { fallbackScore = score; fallback = next; }
-            const hard = voicePairs(prev, next) > 0 || (leading !== null && voices.filter((pc) => pc === leading).length > 1);
-            if (!hard && score < bestScore) { bestScore = score; best = next; }
-            if (after && !hard && !voicePairs(next, after)) {
-              const both = score + Math.abs(after.S - S) + Math.abs(after.A - A) + Math.abs(after.T - T);
-              if (both < closedScore) { closedScore = both; closed = next; }
-            }
-          }
-        }
-      }
-    }
-    if (!best && fallback) VOICING_STATS.fallbacks++;
-    return closed || best || fallback || { S: prev.S, A: prev.A, T: prev.T, B: prev.B };
-  }
-
-
+  // Vierstimmiger Satz für die Übung „Akkord“ aus harmony.js (derselbe
+  // wie im Groove Lab).
+  const { SATB, voicePairs, voiceChord } = H;
 
   const GROUPS = [
     ['lockern', 'Lockern & Atmen'],

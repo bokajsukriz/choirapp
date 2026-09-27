@@ -19489,6 +19489,15 @@ async function runMusicSelfTests({ log = true } = {}) {
   const lab = await loadGrooveLab();
   const T = lab._test;
   if (!T) return ['Groove Lab: _test-Export fehlt'];
+  // Gemeinsame Harmonik (harmony.js, von loadGrooveLab mitgeladen): Satz,
+  // Tonnamen und Akkordbau werden direkt dort geprüft; das Groove Lab darf
+  // keine eigenen Kopien mehr haben.
+  const H = window.ChorHarmony;
+  if (!H) return ['harmony.js nicht geladen'];
+  for (const fn of ['voiceChord', 'voiceProgressionSatb', 'chordSteps', 'chordPitchClasses', 'spell', 'noteLabel', 'degreeSemis']) {
+    if (T[fn] !== H[fn]) failed.push(`Groove Lab: ${fn} ist nicht die Funktion aus harmony.js`);
+  }
+  if (T.SATB_RANGES !== H.VOICE_RANGES) failed.push('Groove Lab: Stimmumfänge nicht aus harmony.js');
   const mod12 = (n) => ((n % 12) + 12) % 12;
   const sameSet = (a, b) => a.length === b.length && [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
   const modeSteps = (id) => T.MODES.find((m) => m.id === id).steps;
@@ -19648,7 +19657,7 @@ async function runMusicSelfTests({ log = true } = {}) {
   // Paket 6: Tonnamen tonartabhängig, Stimmumfänge.
   {
     const major = modeSteps('major');
-    failed.push(...T.spellCheck().map((e) => `Groove Lab: ${e}`));
+    failed.push(...H.spellCheck().map((e) => `harmony.js: ${e}`));
     [[8, 3, 'de', 'Des'], [4, 2, 'de', 'Gism'], [4, 2, 'en', 'G♯m'], [11, 6, 'de', 'Ais°'], [11, 6, 'en', 'A♯°'], [5, 6, 'de', 'E°'], [5, 3, 'de', 'B']].forEach(([key, deg, lang, want]) => {
       const got = T.chordName(key, major, deg, false, 'major', lang);
       if (got !== want) failed.push(`Groove Lab: Akkordname Tonart ${key} Stufe ${deg} (${lang}) = ${got}, erwartet ${want}`);
@@ -19669,19 +19678,19 @@ async function runMusicSelfTests({ log = true } = {}) {
   // Akkordwechsel einschließlich Ende → Anfang.
   {
     const V = ['S', 'A', 'T', 'B'];
-    const fallbacksBefore = T.VOICING_STATS.fallbacks;
+    const fallbacksBefore = H.VOICING_STATS.fallbacks;
     let changes = 0, parallels = 0, doubled = 0, range = 0, crossing = 0;
     for (const p of T.PROGRESSIONS) {
       for (const mode of T.MODES) {
         for (let key = 0; key < 12; key++) {
-          const list = T.voiceProgressionSatb(key, mode, p);
+          const list = H.voiceProgressionSatb(key, mode, p);
           const n = list.length;
           list.forEach((cur, i) => {
             if (n > 1) {
               changes++;
-              if (T.voicePairs(list[(i - 1 + n) % n], cur)) parallels++;
+              if (H.voicePairs(list[(i - 1 + n) % n], cur)) parallels++;
             }
-            const lead = T.leadingToneOf(key, mode.id, p, p.degrees[i]);
+            const lead = H.leadingToneOf(key, mode.id, p, p.degrees[i]);
             if (lead !== null && V.filter((v) => mod12(cur[v]) === lead).length > 1) doubled++;
             for (const v of V) if (cur[v] < T.SATB_RANGES[v][0] || cur[v] > T.SATB_RANGES[v][1]) range++;
             if (!(cur.B < cur.T && cur.T < cur.A && cur.A < cur.S)) crossing++;
@@ -19691,7 +19700,7 @@ async function runMusicSelfTests({ log = true } = {}) {
         }
       }
     }
-    const fallbacks = T.VOICING_STATS.fallbacks - fallbacksBefore;
+    const fallbacks = H.VOICING_STATS.fallbacks - fallbacksBefore;
     if (changes !== 4320) failed.push(`Groove Lab: ${changes} statt 4320 Akkordwechsel geprüft`);
     if (parallels) failed.push(`Groove Lab: ${parallels} Akkordwechsel mit Quint-/Oktavparallelen (${fallbacks} ohne regelkonforme Lösung)`);
     if (doubled) failed.push(`Groove Lab: ${doubled}× Leitton verdoppelt`);
@@ -21810,17 +21819,24 @@ function loadGrooveLab() {
   if (window.ChorGrooveLab) return Promise.resolve(window.ChorGrooveLab);
   if (grooveLabLoadPromise) return grooveLabLoadPromise;
 
-  grooveLabLoadPromise = new Promise((resolve, reject) => {
+  // Erst harmony.js (gemeinsame Harmonik, window.ChorHarmony), dann das
+  // Groove Lab selbst — es liest ChorHarmony schon beim Laden.
+  const loadScript = (src, check, what) => new Promise((resolve, reject) => {
+    if (check()) { resolve(); return; }
     const script = document.createElement('script');
-    script.src = './groove-lab.js';
+    script.src = src;
     script.async = true;
-    script.onload = () => window.ChorGrooveLab ? resolve(window.ChorGrooveLab) : reject(new Error('Groove Lab wurde nicht registriert.'));
-    script.onerror = () => reject(new Error('Groove Lab konnte nicht geladen werden.'));
+    script.onload = () => (check() ? resolve() : reject(new Error(`${what} wurde nicht registriert.`)));
+    script.onerror = () => reject(new Error(`${what} konnte nicht geladen werden.`));
     document.head.append(script);
-  }).catch((err) => {
-    grooveLabLoadPromise = null;
-    throw err;
   });
+  grooveLabLoadPromise = loadScript('./harmony.js', () => !!window.ChorHarmony, 'Harmonik (harmony.js)')
+    .then(() => loadScript('./groove-lab.js', () => !!window.ChorGrooveLab, 'Groove Lab'))
+    .then(() => window.ChorGrooveLab)
+    .catch((err) => {
+      grooveLabLoadPromise = null;
+      throw err;
+    });
 
   return grooveLabLoadPromise;
 }
