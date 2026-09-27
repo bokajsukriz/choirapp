@@ -74,9 +74,8 @@
   h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   h1 span { color: var(--accent); }
 
-  .tab-bar { display: flex; gap: 4px; padding: 0 16px 12px; }
-  .tab-btn { flex: 1 1 0; padding: 9px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: .74rem; font-weight: 700; }
-  .tab-btn[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .header-tools .gear-btn { width: 44px; height: 44px; }
 
   main { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 18px; }
   .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
@@ -134,11 +133,23 @@
 
   /* ---- Programme ---- */
   .prog-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .prog-card { text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 12px; }
+  .prog-icons { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 8px; color: var(--muted); }
+  .prog-icons .ex-icon { color: var(--text); opacity: .75; }
+  .prog-icons em { font-style: normal; font-size: .66rem; font-weight: 800; margin-left: 2px; }
+  /* Einzelne Übungen: Zeilen mit Icon, Name, Kurzanleitung */
+  .ex-group { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
+  .ex-group:first-child { margin-top: 0; }
+  .ex-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .ex-row { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; width: 100%; min-height: 56px; text-align: left; padding: 6px 12px 6px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .ex-row .ex-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; }
+  .ex-row strong { display: block; font-size: .88rem; }
+  .ex-row span.ex-how { display: block; font-size: .78rem; color: #5f5577; font-weight: 600; margin-top: 1px; }
+  /* Übersicht ohne Spielmodus: keine Bühne und keine Knopfleiste — Antippen
+     einer Karte oder Zeile startet im Spielmodus. */
+  body:not(.is-player) .stage, body:not(.is-player) footer { display: none; }
+  .prog-card { text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-height: 44px; }
   .prog-card strong { display: block; font-size: .86rem; }
   .prog-card span { display: block; font-size: .68rem; color: var(--muted); font-weight: 700; margin-top: 2px; }
-  .prog-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
-  .prog-card[aria-pressed="true"] strong { color: var(--accent); }
   .prog-card-wrap { position: relative; }
   .prog-card-wrap .prog-card { width: 100%; height: 100%; padding-right: 34px; }
   .prog-menu { position: absolute; top: 2px; right: 2px; width: 34px; height: 34px; border-radius: 10px; color: var(--muted); font-weight: 800; font-size: 1rem; }
@@ -164,14 +175,6 @@
   .ed-hint { color: #c0392b; font-size: .72rem; font-weight: 700; text-align: center; min-height: 1.2em; margin: 8px 0 0; }
   .menu-list { display: grid; gap: 8px; }
   .menu-list button { text-align: left; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-weight: 800; }
-  .prog-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; counter-reset: item; }
-  .prog-item { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .8rem; font-weight: 700; }
-  .prog-item .num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: .66rem; font-weight: 800; color: var(--muted); }
-  .prog-item .syl-hint { font-size: .68rem; color: var(--muted); font-weight: 700; }
-  .prog-item.is-done { opacity: .55; }
-  .prog-item.is-done .num { background: var(--ok); color: #fff; }
-  .prog-item.is-now { border-color: var(--accent); background: rgba(var(--accent-rgb), .1); }
-  .prog-item.is-now .num { background: var(--accent); color: #fff; }
 
   footer { border-top: 1px solid var(--line); background: var(--surface); padding: 10px 16px max(10px, env(safe-area-inset-bottom)); }
   .transport-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
@@ -245,12 +248,10 @@
 <body>
 <header>
   <h1>Ein<span>singen</span></h1>
+  <!-- Das Zahnrad wohnt hier in der Übersicht; im Spielmodus wandert es in
+       die obere Leiste der Bühne (enterPlayer/exitPlayer). -->
+  <div class="header-tools"></div>
 </header>
-
-<nav class="tab-bar" role="tablist" aria-label="Art">
-  <button class="tab-btn" type="button" role="tab" data-mode="program" aria-selected="true">Programm</button>
-  <button class="tab-btn" type="button" role="tab" data-mode="single" aria-selected="false">Einzelne Übung</button>
-</nav>
 
 <main>
   <section class="stage" aria-label="Aktuelle Übung">
@@ -293,17 +294,16 @@
     <button class="tap-start" type="button" data-action="tap-start" hidden>Tippen zum Starten</button>
   </section>
 
+  <!-- Übersicht (ohne Spielmodus): Programme, dann alle Übungen nach
+       Gruppen. Antippen startet im Spielmodus. -->
   <section class="panel" data-panel="program">
-    <div class="panel-head"><h2>Einsing-Programm</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
+    <div class="panel-head"><h2>Programme</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
     <div class="prog-cards" data-programs></div>
-    <ol class="prog-list"></ol>
   </section>
 
-  <section class="panel" data-panel="single" hidden>
-    <div class="panel-head"><h2>Übung wählen</h2></div>
+  <section class="panel" data-panel="single">
+    <div class="panel-head"><h2>Einzelne Übungen</h2></div>
     <div data-groups></div>
-    <span class="sub-label">Richtung</span>
-    <div class="chip-row" data-chips="direction"></div>
   </section>
 
   <p class="foot-note">Nie pressen: bei Kratzen, Druck oder Schmerz Pause machen. Hohe Runden darf man auslassen.</p>
@@ -332,6 +332,8 @@
     <div class="chip-row" data-chips="lenKurz"></div>
     <span class="sub-label">Länge „Ausführlich“</span>
     <div class="chip-row" data-chips="lenLang"></div>
+    <span class="sub-label">Einzelne Übung: Richtung</span>
+    <div class="chip-row" data-chips="direction"></div>
     <button class="sheet-close" type="button" data-action="close-settings">Fertig</button>
   </div>
 </div>
@@ -746,7 +748,7 @@
   const HELP = {
     program: ['Einsing-Programm', ['Das Programm spielt mehrere Übungen automatisch nacheinander — wie der Anfang einer Chorprobe: erst lockern und summen, dann Resonanz und Vokale, dann Beweglichkeit, zum Schluss die Höhe und ein ruhiger Ausklang.',
       'Jede Übung beginnt mit einem Akkord und steigt dann Runde für Runde einen Halbton, bevor sie wieder zurückgeht. Zwischen zwei Übungen ist ein Takt Pause.',
-      'Mit „Nächste Übung“ überspringst du etwas; ein Tipp auf eine Übung der Liste springt direkt dorthin.',
+      'Ein Tipp auf eine Karte startet das Programm. Der Balken oben zeigt alle Übungen; mit „Überspringen“ geht es zur nächsten.',
       'Morgens und Vor dem Auftritt sind bewusst kurz und bleiben in der Mittellage. Höhe und Tiefe ersetzen kein Einsingen — erst Schnell oder Kurz, dann eines davon.',
       'Eigene Programme: „+ Eigenes Programm“ oder im Menü (⋯) einer Karte „Als Vorlage kopieren“.']],
     load: ['Belastung', ['<b>Leicht:</b> tiefer, langsamer, weniger Rückungen — für müde Stimmen, morgens, nach Krankheit.',
@@ -1345,6 +1347,9 @@
       return;
     }
     if (!p?.minutes) return;
+    // Alt (?minutes=): Programm vorbereitet im Spielmodus, Start mit Play
+    // (Übersicht hat keine Bühne mehr).
+    enterPlayer();
     quickMinutes = p.minutes;
     fitCache.clear();
     state.mode = 'program';
@@ -1356,7 +1361,6 @@
   function finish() {
     stop(DONE_TEXT, true);
     if (state.mode === 'program') {
-      $$('.prog-item').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
       $('.progress i').style.width = '100%';
     }
     if (isPlayer()) {
@@ -1531,10 +1535,6 @@
         $('.progress i').style.width = '0%';
         $('.prog-text').textContent = `${plan.items.length} Übungen · ${fmtMinutes(secondsLeft(0))}`;
       }
-      $$('.prog-item').forEach((el, k) => {
-        el.classList.toggle('is-done', !!seg && k < cur.item);
-        el.classList.toggle('is-now', !!seg && k === cur.item);
-      });
     }
     if (player) renderPlayer(seg, cur);
   }
@@ -1550,6 +1550,13 @@
     }));
   }
 
+  /** Kleine Icons der Übungen eines Programms (höchstens 8, sonst „+n“). */
+  function programIconsHtml(p) {
+    const ids = p.items.map(([id]) => id);
+    const shown = ids.length > 8 ? ids.slice(0, 7) : ids;
+    return shown.map((id) => iconSvg(id, 16)).join('') + (ids.length > shown.length ? `<em>+${ids.length - shown.length}</em>` : '');
+  }
+
   function renderPrograms() {
     const cards = allPrograms().map((p) => {
       const own = p.id.startsWith('own-');
@@ -1558,11 +1565,12 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-card';
       b.dataset.program = p.id;
-      b.setAttribute('aria-pressed', String(p.id === state.program));
-      b.innerHTML = '<strong></strong><small></small><span></span>';
+      b.innerHTML = '<strong></strong><small></small><span></span><span class="prog-icons" aria-hidden="true"></span>';
       b.children[0].textContent = p.name;
       b.children[1].textContent = own ? 'Eigenes Programm' : p.about || '';
       b.children[2].textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, buildPlan(p)))}`;
+      b.children[3].innerHTML = programIconsHtml(p);
+      b.setAttribute('aria-label', `${p.name} starten, ${b.children[2].textContent}`);
       const menu = document.createElement('button');
       menu.type = 'button'; menu.className = 'prog-menu';
       menu.dataset.progMenu = p.id;
@@ -1578,36 +1586,30 @@
       add.innerHTML = '<strong>+ Eigenes Programm</strong>';
       cards.push(add);
     }
-    plan = buildPlan();
     $('[data-programs]').replaceChildren(...cards);
-    $('.prog-list').replaceChildren(...program().items.map(([id], k) => {
-      const ex = variantOf(exById(id));
-      const li = document.createElement('li');
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'prog-item'; b.dataset.item = String(k);
-      b.innerHTML = `<span class="num">${k + 1}</span><span></span><span class="syl-hint"></span>`;
-      b.children[1].textContent = ex.name;
-      b.children[2].textContent = ex.hint;
-      li.append(b);
-      return li;
-    }));
   }
 
   function renderGroups() {
     $('[data-groups]').replaceChildren(...GROUPS.flatMap(([gid, gname]) => {
-      const label = document.createElement('span');
-      label.className = 'sub-label'; label.textContent = gname;
-      const row = document.createElement('div');
-      row.className = 'chip-row';
-      row.append(...EXERCISES.filter((x) => x.group === gid).map((x) => {
+      const label = document.createElement('h3');
+      label.className = 'ex-group'; label.textContent = gname;
+      label.style.color = groupColor(gid);
+      const list = document.createElement('ul');
+      list.className = 'ex-list';
+      list.append(...EXERCISES.filter((x) => x.group === gid).map((x) => {
+        const li = document.createElement('li');
         const b = document.createElement('button');
-        b.type = 'button'; b.className = 'chip';
-        b.dataset.chip = 'exercise'; b.dataset.value = x.id;
-        b.textContent = x.name;
-        b.setAttribute('aria-pressed', String(x.id === state.exercise));
-        return b;
+        b.type = 'button'; b.className = 'ex-row';
+        b.dataset.playExercise = x.id;
+        b.innerHTML = `<span class="ex-ico">${iconSvg(x.id, 26)}</span><span><strong></strong><span class="ex-how"></span></span>`;
+        b.firstChild.style.background = groupColor(gid, true);
+        b.firstChild.style.color = groupColor(gid);
+        b.querySelector('strong').textContent = x.name;
+        b.querySelector('.ex-how').textContent = x.how;
+        li.append(b);
+        return li;
       }));
-      return [label, row];
+      return [label, list];
     }));
   }
 
@@ -1635,8 +1637,6 @@
 
   function renderAll() {
     plan = buildPlan();
-    $$('[data-mode]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === state.mode)));
-    $$('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== state.mode; });
     renderPrograms();
     renderGroups();
     chips('voice', voiceList().map((v) => [v.id, v.name]), state.voice);
@@ -1668,7 +1668,7 @@
   function exitPlayer() {
     if (run.playing) stop();
     document.body.classList.remove('is-player');
-    $('.transport-row').append($('.gear-btn'));
+    $('.header-tools').append($('.gear-btn'));
     $('.player-done').hidden = true;
     $('.tap-start').hidden = true;
     renderAll();
@@ -2042,26 +2042,10 @@
       return;
     }
 
-    const modeBtn = t.closest('[data-mode]');
-    if (modeBtn) {
-      if (state.mode !== modeBtn.dataset.mode) {
-        if (run.playing) stop();
-        state.mode = modeBtn.dataset.mode;
-        renderAll(); persist();
-      }
-      return;
-    }
     const card = t.closest('[data-program]');
-    if (card) {
-      if (state.program !== card.dataset.program) {
-        if (run.playing) stop();
-        state.program = card.dataset.program;
-        renderAll(); persist();
-      }
-      return;
-    }
-    const item = t.closest('[data-item]');
-    if (item) { jumpTo(itemStart(Number(item.dataset.item))); return; }
+    if (card) { playInPlayer({ program: card.dataset.program }); return; }
+    const exRow = t.closest('[data-play-exercise]');
+    if (exRow) { playInPlayer({ exercise: exRow.dataset.playExercise }); return; }
     if (t.closest('[data-action="skip"]')) {
       const hit = segAt(Math.max(0, run.step - 1));
       if (hit && hit.seg.item < plan.items.length - 1) jumpTo(itemStart(hit.seg.item + 1));
@@ -2116,7 +2100,7 @@
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || !$('.help-sheet').hidden || !$('.settings-sheet').hidden) return;
     const onControl = document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName);
-    if (e.code === 'Space' && !onControl) { e.preventDefault(); if (run.playing) stop(); else kickStart(); }
+    if (e.code === 'Space' && !onControl && isPlayer()) { e.preventDefault(); if (run.playing) stop(); else kickStart(); }
     else if ((e.key === 't' || e.key === 'T') && !e.repeat) tapTempo();
   });
 
@@ -2372,6 +2356,29 @@
           }
         } finally { if (!wasPlayer) document.body.classList.remove('is-player'); }
       }
+      // Paket 3: Übersicht — jede Übung und jedes Programm genau einmal,
+      // Richtung überlebt Speichern/Laden.
+      state.ownPrograms = [{ id: 'own-test', name: 'Test', items: [['summen', 2, 'up']] }];
+      renderPrograms(); renderGroups();
+      for (const ex of EXERCISES) {
+        const n = $$('[data-play-exercise]').filter((b) => b.dataset.playExercise === ex.id).length;
+        if (n !== 1) errors.push(`Übersicht: ${ex.id} ${n}×`);
+      }
+      if ($$('[data-play-exercise]').length !== EXERCISES.length) errors.push('Übersicht: zusätzliche Übungszeilen');
+      for (const pr of allPrograms()) {
+        const n = $$('[data-program]').filter((b) => b.dataset.program === pr.id).length;
+        if (n !== 1) errors.push(`Übersicht: Programm ${pr.id} ${n}×`);
+      }
+      if ($$('[data-program]').length !== PROGRAMS.length + 1) errors.push('Übersicht: Programmzahl falsch');
+      state.ownPrograms = [];
+      for (const dir of ['up', 'down', 'updown']) {
+        const stored = JSON.parse(JSON.stringify({ ...state, direction: dir }));
+        state.direction = 'updown'; sanitize(stored);
+        if (state.direction !== dir) errors.push(`Richtung ${dir} → ${state.direction}`);
+      }
+      state.direction = 'updown'; sanitize({ direction: 'quer' });
+      if (state.direction !== 'updown') errors.push('Richtung kaputt nicht verworfen');
+      if (!$('.settings-sheet [data-chips="direction"]')) errors.push('Richtung nicht im Einstellungsblatt');
       for (const [id, dur] of [['moll5', 'mimemamomu'], ['mollDreiklang', 'dreiklang']]) {
         if (!ICONS[id].startsWith(ICONS[dur]) || ICONS[id] === ICONS[dur]) errors.push(`${id}: Icon nicht Dur-Schwester + Mondsichel`);
       }
@@ -2392,6 +2399,7 @@
     if (profile && LOAD_IDS.includes(profile.load)) state.load = profile.load;
   }
   applyProfile();
+  $('.header-tools').append($('.gear-btn'));
   const quickParams = parseQuickParams(location.search);
   // ?program=: Spielmodus sofort (auch vor dem Laden der Ablage), Start erst
   // danach — sonst liefe das Programm mit Standard-Längen los.
