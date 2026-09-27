@@ -18688,15 +18688,18 @@ function runSelfTests() {
       const st = practiceTileState(emptyProgress(), group);
       if (!st.isNew) failed.push(`Üben-Kachel ${group}: leerer Fortschritt nicht „Neu“`);
     }
-    // Beispiel: Intervalle (Stufe 4) vorgestern, Klänge (Stufe 2) heute →
-    // Hören zeigt 2; gleicher Tag bei zwei Modi → höchste Stufe; Singen neu.
+    // Beispiel: Intervalle 4 und Klänge 2 → Hören (4+2)/2 = 3; dazu Stimmen 5
+    // → 11/3 = 3,67 → abgerundet 3; eigene Auswahl (0) zählt nicht mit.
     const sample = applyProgressEntries(emptyProgress(), [{ area: 'interval', level: 4, right: true }], '2026-10-10');
     applyProgressEntries(sample, [{ area: 'quality', level: 2, right: true }, { area: 'rhythm', level: 3, right: false }], '2026-10-12');
     const ear = practiceTileState(sample, 'ear');
-    if (ear.isNew || ear.level !== 2) failed.push(`Üben-Kachel Hören: ${JSON.stringify(ear)} statt Stufe 2`);
+    if (ear.isNew || ear.level !== 3) failed.push(`Üben-Kachel Hören: ${JSON.stringify(ear)} statt Stufe 3`);
     if (practiceTileState(sample, 'rhythm').level !== 3 || !practiceTileState(sample, 'sing').isNew) failed.push('Üben-Kachel Rhythmus/Singen falsch');
-    applyProgressEntries(sample, [{ area: 'parts', level: 5, right: true }], '2026-10-12');
-    if (practiceTileState(sample, 'ear').level !== 5) failed.push('Üben-Kachel Hören: gleicher Tag nicht höchste Stufe');
+    applyProgressEntries(sample, [{ area: 'parts', level: 5, right: true }, { area: 'progression', level: 0, right: true }], '2026-10-12');
+    if (practiceTileState(sample, 'ear').level !== 3) failed.push(`Üben-Kachel Hören: Durchschnitt ${practiceTileState(sample, 'ear').level} statt 3 (abgerundet, ohne Stufe 0)`);
+    const custom = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 0, right: true }], '2026-10-12');
+    const cs = practiceTileState(custom, 'sing');
+    if (cs.isNew || cs.level !== 0) failed.push('Üben-Kachel: nur eigene Auswahl nicht Stufe 0');
   }
 
   const total = checks;
@@ -22613,23 +22616,15 @@ function warmupMinutes(stored) {
   return { kurz: pick('kurz'), lang: pick('lang') };
 }
 
-/** Stand einer Üben-Kachel (Gruppe aus PROGRESS_GROUPS): Stufe des zuletzt
- *  geübten Modus. Zuletzt geübt = jüngstes Datum in recent/days; ist das
- *  nicht eindeutig, die höchste Stufe im Bereich. Nie geübt → { isNew }.
- *  Stufe 0 = eigene Auswahl. */
+/** Stand einer Üben-Kachel (Gruppe aus PROGRESS_GROUPS): Durchschnitt der
+ *  Stufen aller geübten Übungsarten des Bereichs, abgerundet. Übungsarten
+ *  mit eigener Auswahl (Stufe 0) zählen nicht mit; haben alle Stufe 0 →
+ *  level 0 (eigene Auswahl). Nie geübt → { isNew }. */
 function practiceTileState(data, group) {
   const areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area]));
   if (!areas.length) return { isNew: true, level: 0 };
-  const lastDate = (area) => {
-    let last = '';
-    for (const r of data.recent?.[area] || []) if (r.d > last) last = r.d;
-    for (const [date, day] of Object.entries(data.days || {})) if (day?.[area] && date > last) last = date;
-    return last;
-  };
-  const dates = areas.map(lastDate);
-  const newest = dates.reduce((a, b) => (b > a ? b : a), '');
-  const latest = areas.filter((_, i) => newest && dates[i] === newest);
-  const level = latest.length === 1 ? data.levels[latest[0]] : Math.max(...areas.map((area) => data.levels[area]));
+  const levels = areas.map((area) => data.levels[area]).filter((l) => l > 0);
+  const level = levels.length ? Math.floor(levels.reduce((sum, l) => sum + l, 0) / levels.length) : 0;
   return { isNew: false, level };
 }
 
