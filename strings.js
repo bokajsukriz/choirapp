@@ -21,6 +21,8 @@ export const STRINGS = {
     'nav.playlists': 'Setlisten',
     'nav.player': 'Player',
     'nav.settings': 'Einstellungen',
+    'nav.tools': 'Tools',
+    'tools.settingsSub': 'Stimme, Aussehen, Audio, Daten & Hilfe',
 
     'tabs.loops': 'Loops',
     'tabs.rec': 'REC',
@@ -1366,6 +1368,8 @@ export const STRINGS = {
     'nav.playlists': 'Setlists',
     'nav.player': 'Player',
     'nav.settings': 'Settings',
+    'nav.tools': 'Tools',
+    'tools.settingsSub': 'Voice, appearance, audio, data & help',
 
     'tabs.loops': 'Loops',
     'tabs.rec': 'REC',
@@ -2711,6 +2715,8 @@ export const STRINGS = {
     'nav.playlists': 'Setlisty',
     'nav.player': 'Odtwarzacz',
     'nav.settings': 'Ustawienia',
+    'nav.tools': 'Narzędzia',
+    'tools.settingsSub': 'Głos, wygląd, dźwięk, dane i pomoc',
 
     'tabs.loops': 'Loopy',
     'tabs.rec': 'REC',

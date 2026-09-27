@@ -2102,13 +2102,22 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
+  tools:     { render: () => {} },
   settings:  { render: renderSettings },
 };
 
+/* Die Einstellungen sind eine Unterseite des Tools-Reiters und haben keinen
+   eigenen Knopf in der Reiterleiste — dort bleibt dann „Tools" markiert. */
+const NAV_PARENT = { settings: 'tools' };
+
 let currentView = 'songs';
+// Wurden die Einstellungen über die Kachel im Tools-Reiter geöffnet? Dann
+// führt #settings-back per history.back() zurück (siehe unten).
+let settingsFromTools = false;
 
 /**
- * Schaltet zwischen den vier Hauptreitern um. Der Player ist einer davon —
+ * Schaltet zwischen den Ansichten um (vier Hauptreiter plus die
+ * Einstellungen als Unterseite von Tools). Der Player ist einer davon —
  * kein Vollbild-Overlay mit Zurück-Knopf mehr, sondern nimmt einfach den
  * Platz von <main> ein, während die Reiterleiste sichtbar bleibt. Der
  * geladene Song und die Wiedergabe laufen beim Wechsel unbeeinflusst weiter,
@@ -2117,6 +2126,7 @@ let currentView = 'songs';
 function showTab(name) {
   if (!VIEWS[name]) name = 'songs';
   currentView = name;
+  if (name !== 'settings') settingsFromTools = false;
   const isPlayer = name === 'player';
 
   $('#main').hidden = isPlayer;
@@ -2127,8 +2137,9 @@ function showTab(name) {
     $('#main').scrollTop = 0;
   }
 
+  const navName = NAV_PARENT[name] || name;
   $$('.nav-btn').forEach((b) => {
-    if (b.dataset.view === name) b.setAttribute('aria-current', 'page');
+    if (b.dataset.view === navName) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
 
@@ -2214,6 +2225,18 @@ function applyRoute() {
 $('#nav').addEventListener('click', (e) => {
   const btn = e.target.closest('.nav-btn');
   if (btn) showView(btn.dataset.view);
+});
+
+// Tools → Einstellungen und zurück. Kam man über die Kachel, geht es per
+// history.back() zurück (kein doppelter #tools-Eintrag im Verlauf); bei
+// direktem Aufruf von #settings ersetzt der Knopf den Eintrag durch #tools.
+$('#btn-open-settings').addEventListener('click', () => {
+  settingsFromTools = true;
+  showView('settings');
+});
+$('#settings-back').addEventListener('click', () => {
+  if (settingsFromTools) history.back();
+  else navigate('#tools', { replace: true });
 });
 
 // Zurück-Taste auf Android springt zwischen den Reitern bzw. aus dem Player
@@ -22038,7 +22061,7 @@ function initGrooveLabEasterEgg() {
   });
 }
 
-/** Einstellungen → Tools: Metronom, Groove Lab, Einsingen und Ausbildung (die
+/** Tools-Reiter: Metronom, Groove Lab, Einsingen, Piano und Ausbildung (die
  *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));

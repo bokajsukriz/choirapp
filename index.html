@@ -11,7 +11,7 @@
      audioWorklet.addModule()), 'wasm-unsafe-eval' wegen der
      WASM-Instanziierung darin, media-src blob: für <audio> mit Blob-URLs,
      frame-src blob: für die PDF-Vorschau im iframe ('self' für den
-     Ausbildung uebe-lab.html, Einsingen einsingen.html unter Einstellungen → Tools), font-src data: für die
+     Ausbildung uebe-lab.html, Einsingen einsingen.html im Tools-Reiter), font-src data: für die
      eingebettete woff2-Schrift weiter unten, img-src data: blob: für Icons
      und (Vorsichtshalber) Blob-Vorschauen. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
@@ -268,6 +268,82 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 
 .nav-btn[aria-current="page"] { color: var(--accent-foreground); font-weight: 800; }
 .nav-btn:active { background: var(--surface-2); }
+
+/* ---------- Tools-Reiter ------------------------------------------------- */
+/* Der vierte Reiter heißt „Tools": oben die Werkzeuge als Kacheln (je zwei
+   nebeneinander), darunter eine breite Kachel, die die Einstellungen als
+   Unterseite öffnet (Zurück über #settings-back). Die Einstellungen selbst
+   haben keinen eigenen Reiter mehr — showTab() markiert dort „Tools". */
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.tool-tile {
+  min-height: 120px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  text-align: left;
+  min-width: 0;
+}
+.tool-tile:active { background: var(--surface-2); }
+.tool-tile-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: 16px;
+  background: rgba(var(--accent-rgb), .14);
+  color: var(--accent-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tool-tile-icon svg { width: 26px; height: 26px; display: block; }
+.tool-tile-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.tool-tile--wide {
+  width: 100%;
+  min-height: 76px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+}
+.tool-tile-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.tool-tile-sub { font-size: 0.85rem; color: var(--muted); }
+.tool-tile-arrow { flex: 0 0 auto; color: var(--muted); display: flex; }
+.tool-tile-arrow svg { width: 20px; height: 20px; }
+
+.subpage-back {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-foreground);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0 10px 0 0;
+  margin: -8px 0 8px;
+}
+.subpage-back svg { width: 22px; height: 22px; }
 
 /* ---------- Bausteine ---------------------------------------------------- */
 
@@ -3894,8 +3970,57 @@ input[type="checkbox"] {
     <div id="playlist-list-host"></div>
   </section>
 
+  <!-- ===== Tools ======================================================= -->
+  <!-- Werkzeuge als Kacheln: Metronom (metronom.html), Piano (piano.html),
+       Einsingen (einsingen.html), Ausbildung (uebe-lab.html) — alle als
+       Vollbild-iframe, siehe openToolFrame —, Groove Lab (groove-lab.js) und
+       die Lichtshow (#lightshow). Alle werden erst beim Antippen geladen.
+       Die breite Kachel darunter öffnet die Einstellungen. -->
+  <section class="view" id="view-tools">
+    <div class="tools-grid">
+      <button class="tool-tile" id="btn-open-metronome" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg></span>
+        <span class="tool-tile-label" data-i18n="settings.tools.metronome">Metronom</span>
+      </button>
+      <button class="tool-tile" id="btn-open-piano" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M13 5v14M18 5v14"/><path d="M6.5 5v7h3V5M16.5 5v7h3V5" fill="currentColor"/></svg></span>
+        <span class="tool-tile-label" data-i18n="settings.tools.piano">Piano</span>
+      </button>
+      <button class="tool-tile" id="btn-open-warmup" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-4 4-4 6 0s4 4 6 0 3-3 4-2"/><path d="M4 8c2-3 4-3 6 0"/><circle cx="18" cy="7" r="2"/></svg></span>
+        <span class="tool-tile-label" data-i18n="settings.tools.warmup">Einsingen</span>
+      </button>
+      <button class="tool-tile" id="btn-open-playground" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3ZM3 19a2 2 0 0 0 2 2h1v-6H3Z"/></svg></span>
+        <span class="tool-tile-label" data-i18n="settings.tools.playground">Ausbildung</span>
+      </button>
+      <button class="tool-tile" id="btn-open-groove-lab" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8v8M12 8v8M17 8v8"/><circle cx="7" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="10" r="1.6" fill="currentColor"/><circle cx="17" cy="14" r="1.6" fill="currentColor"/></svg></span>
+        <span class="tool-tile-label" data-i18n="settings.tools.grooveLab">Groove Lab</span>
+      </button>
+      <button class="tool-tile" id="btn-open-lightshow" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg></span>
+        <span class="tool-tile-label" data-i18n="settings.lightshow.title">Lichtshow</span>
+      </button>
+    </div>
+    <button class="tool-tile tool-tile--wide" id="btn-open-settings" type="button">
+      <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></span>
+      <span class="tool-tile-text">
+        <span class="tool-tile-label" data-i18n="nav.settings">Einstellungen</span>
+        <span class="tool-tile-sub" data-i18n="tools.settingsSub">Stimme, Aussehen, Audio, Daten &amp; Hilfe</span>
+      </span>
+      <span class="tool-tile-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+    </button>
+  </section>
+
   <!-- ===== Einstellungen =============================================== -->
   <section class="view" id="view-settings">
+
+    <!-- Die Einstellungen sind eine Unterseite des Tools-Reiters. -->
+    <button class="subpage-back" id="settings-back" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      <span data-i18n="nav.tools">Tools</span>
+    </button>
 
     <!-- Import läuft über den +-Knopf auf der Songs-Übersicht (siehe
          songs-fab-menu: „Aus der Dropbox" → #import-view, „Aus Recordings" →
@@ -4264,75 +4389,6 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <!-- Tools: eigenständige Zusatz-Ansichten. Groove Lab (groove-lab.js),
-         Metronom (metronom.html), Einsingen (einsingen.html) und Ausbildung
-         (uebe-lab.html; alle als Vollbild-iframe, siehe openToolFrame)
-         werden erst beim Antippen geladen. -->
-    <div class="settings-group">
-      <p class="settings-group-label" data-i18n="settings.group.tools">Tools</p>
-      <div class="settings-group-box">
-    <div class="card" data-no-accordion="1">
-      <h2>
-        <button class="card-row" id="btn-open-lightshow" type="button">
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg>
-          <span class="card-row-label" data-i18n="settings.lightshow.title">Lichtshow</span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-        </button>
-      </h2>
-    </div>
-
-    <div class="card" data-no-accordion="1">
-      <h2>
-        <button class="card-row" id="btn-open-metronome" type="button">
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg>
-          <span class="card-row-label" data-i18n="settings.tools.metronome">Metronom</span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-        </button>
-      </h2>
-    </div>
-
-    <div class="card" data-no-accordion="1">
-      <h2>
-        <button class="card-row" id="btn-open-groove-lab" type="button">
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8v8M12 8v8M17 8v8"/><circle cx="7" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="10" r="1.6" fill="currentColor"/><circle cx="17" cy="14" r="1.6" fill="currentColor"/></svg>
-          <span class="card-row-label" data-i18n="settings.tools.grooveLab">Groove Lab</span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-        </button>
-      </h2>
-    </div>
-
-    <div class="card" data-no-accordion="1">
-      <h2>
-        <button class="card-row" id="btn-open-warmup" type="button">
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-4 4-4 6 0s4 4 6 0 3-3 4-2"/><path d="M4 8c2-3 4-3 6 0"/><circle cx="18" cy="7" r="2"/></svg>
-          <span class="card-row-label" data-i18n="settings.tools.warmup">Einsingen</span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-        </button>
-      </h2>
-    </div>
-
-    <div class="card" data-no-accordion="1">
-      <h2>
-        <button class="card-row" id="btn-open-piano" type="button">
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M13 5v14M18 5v14"/><path d="M6.5 5v7h3V5M16.5 5v7h3V5" fill="currentColor"/></svg>
-          <span class="card-row-label" data-i18n="settings.tools.piano">Piano</span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-        </button>
-      </h2>
-    </div>
-
-    <div class="card" data-no-accordion="1">
-      <h2>
-        <button class="card-row" id="btn-open-playground" type="button">
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3ZM3 19a2 2 0 0 0 2 2h1v-6H3Z"/></svg>
-          <span class="card-row-label" data-i18n="settings.tools.playground">Ausbildung</span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-        </button>
-      </h2>
-    </div>
-      </div>
-    </div>
-
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.appData">App &amp; Daten</p>
       <div class="settings-group-box">
@@ -4653,11 +4709,11 @@ input[type="checkbox"] {
     </svg>
     <span data-i18n="nav.player">Player</span>
   </button>
-  <button class="nav-btn" type="button" data-view="settings">
+  <button class="nav-btn" type="button" data-view="tools">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><circle cx="17.25" cy="17.25" r="3.75"/>
     </svg>
-    <span data-i18n="nav.settings">Einstellungen</span>
+    <span data-i18n="nav.tools">Tools</span>
   </button>
 </nav>
 

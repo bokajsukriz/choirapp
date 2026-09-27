@@ -51,8 +51,8 @@ ein Dialog mit echter Wahl).
   (Netzwerkfehler, korrupter Cache) — sonst bliebe nur die leere, aber
   vollständige Oberfläche stehen.
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
-- `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über Einstellungen →
-  Tools oder das Easter Egg (7× auf den Songtitel im Player).
+- `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
+  Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
 - `harmony.js` — gemeinsame Harmonik der Musik-Tools (`window.ChorHarmony`,
   klassisches Skript ohne DOM): Modi, Akkordbau (Dur-Dominante in Moll,
   Dominantseptakkorde), Tonnamen tonartabhängig (`spell`/`noteLabel`,
@@ -76,8 +76,8 @@ ein Dialog mit echter Wahl).
   ein schwebender Knopf oben links (`#metronome-fab`, abschaltbar unter
   Extras) öffnet es wieder oder stoppt es. Nachrichten laufen per
   postMessage (`chor-metronome` / `chor-metronome-cmd`).
-- Die Tool-Seiten sind eigenständig, werden in der App über Einstellungen →
-  Tools als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache
+- Die Tool-Seiten sind eigenständig, werden in der App über den
+  Tools-Reiter als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache
   über `SHELL_OPTIONAL`) und merken sich Einstellungen über
   `window.parent.chorToolStorage` (IndexedDB, meta-Typ `toolState`).
 - `lame.min.js` — vendorierter MP3-Encoder (siehe [Third-Party](#third-party)).
@@ -170,7 +170,7 @@ werden beim Laden still herausgefiltert, nie als Fehler gemeldet.
 
 ## Lichtshow
 
-Unter Einstellungen → Tools → Lichtshow gibt es acht kleine Bühnen-Einlagen für den
+Im Tools-Reiter unter Lichtshow gibt es acht kleine Bühnen-Einlagen für den
 Auftritt: Vollbild-Lichtfarben, die jede Stimme als räumlichen Block behandeln.
 Von links nach rechts werden Sopran, Alt, Tenor und Bass inszeniert; die Farben
 sind dabei bewusst unabhängig von den sonst verwendeten Stimmfarben.
@@ -220,7 +220,7 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   woff2-Schrift.
 - `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
   bzw. die PDF-Vorschau im iframe; `frame-src 'self'` zusätzlich für die
-  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `piano.html`, `metronom.html`, Einstellungen → Tools). Die
+  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `piano.html`, `metronom.html`, Tools-Reiter). Die
   haben als eigene Seiten keine eigene CSP-Meta-Angabe; sie laden nichts von
   außen.
 - `connect-src` erlaubt neben der eigenen Herkunft ausschließlich
