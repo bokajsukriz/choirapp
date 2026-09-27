@@ -2103,7 +2103,7 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
-  tools:     { render: () => { renderQuickStart(); renderWeek(); renderPracticeTiles(); } },
+  tools:     { render: () => { renderQuickStart(); renderPracticeTiles(); } },
   settings:  { render: renderSettings },
 };
 
@@ -22236,7 +22236,7 @@ function closeToolFrame({ fromHistory = false } = {}) {
   host.hidden = true;
   document.body.style.overflow = '';
   updateMetronomeFab();
-  if (currentView === 'tools') { renderQuickStart(); window.chorProgress.flush().then(() => { renderWeek(); renderPracticeTiles(); }); }
+  if (currentView === 'tools') { renderQuickStart(); window.chorProgress.flush().then(renderPracticeTiles); }
   const fab = $('#metronome-fab');
   // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
   // Ebene; dann auf den Schnellzugriff, falls da.
@@ -22589,14 +22589,6 @@ function makeProgressStore(store = {
 }
 window.chorProgress = makeProgressStore();
 
-/** Montag der Woche von `date` (JJJJ-MM-TT) und die sieben Tage bis Sonntag. */
-function weekDates(date = progressDate()) {
-  const [y, m, d] = date.split('-').map(Number);
-  const day = new Date(y, m - 1, d);
-  const monday = d - ((day.getDay() + 6) % 7);
-  return Array.from({ length: 7 }, (_, i) => progressDate(new Date(y, m - 1, monday + i)));
-}
-
 /* ==========================================================================
    SCHNELLSTART — Tools-Reiter: Einsingen Kurz/Lang (Programm direkt im
    Spielmodus, Länge aus der Tool-Ablage von einsingen) und „Mehr“ (die
@@ -22642,10 +22634,12 @@ function practiceTileState(data, group) {
 }
 
 function renderQuickStart() {
-  const line = $('#quick-voice');
-  if (!line) return;
+  const pill = $('#quick-voice');
+  if (!pill) return;
   const part = window.chorVoiceProfile.get().part;
-  line.textContent = part ? t('tools.quick.voice').replace('{part}', t(`tools.area.part${part}`)) : t('tools.quick.noVoice');
+  pill.hidden = !part;
+  pill.textContent = part ? t(`tools.area.part${part}`) : '';
+  if (part) pill.setAttribute('aria-label', t('tools.warmup.voiceAria').replace('{part}', pill.textContent));
   const paint = (minutes) => {
     // Geschützte Leerzeichen: bricht der Knopf um, dann nach „·“, nie in „10 Min.“.
     const label = (key, n) => t(key).replace('{n}', n).replace(/ (?=\S*$)/, '\u00a0').replace(/(\d) /, '$1\u00a0');
@@ -22692,39 +22686,6 @@ function initQuickStart() {
     const def = btn && QUICK_STARTS[btn.dataset.quick];
     if (def) openToolFrame(...def);
   });
-}
-
-/** „Dein Stand“: sieben Punkte Mo–So (keine Serien), darunter die Tage und
- *  die Einsing-Minuten der Woche. Die Stufen stehen auf den Üben-Kacheln. */
-async function renderWeek() {
-  const body = $('#tools-week-body');
-  if (!body) return;
-  let data;
-  try { data = await window.chorProgress.data(); } catch { return; }
-  const today = progressDate();
-  const week = weekDates(today);
-  const names = t('tools.week.weekdays').split(',');
-  const practiced = week.filter((date) => data.days[date] && Object.keys(data.days[date]).length);
-  const frag = document.createDocumentFragment();
-  const dots = document.createElement('div');
-  dots.className = 'week-dots';
-  dots.setAttribute('role', 'img');
-  dots.setAttribute('aria-label', t('tools.week.days').replace('{n}', practiced.length));
-  week.forEach((date, i) => {
-    const el = document.createElement('span');
-    el.className = `week-dot${practiced.includes(date) ? ' is-done' : ''}${date === today ? ' is-today' : ''}`;
-    el.innerHTML = '<i></i><span></span>';
-    el.lastChild.textContent = names[i] || '';
-    dots.append(el);
-  });
-  const line = document.createElement('p');
-  line.className = 'small';
-  const warm = week.reduce((acc, date) => acc + (data.days[date]?.warmup?.minutes || 0), 0);
-  line.textContent = practiced.length
-    ? `${t('tools.week.days').replace('{n}', practiced.length)}${warm ? ` · ${t('tools.week.warmup').replace('{n}', Math.round(warm))}` : ''}`
-    : t('tools.week.none');
-  frag.append(dots, line);
-  body.replaceChildren(frag);
 }
 
 /* Ablage für die Tool-Seiten: Sie greifen als gleichherkünftige iframes

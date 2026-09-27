@@ -133,9 +133,6 @@
 
   /* ---- Programme ---- */
   .prog-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .prog-icons { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 8px; color: var(--muted); }
-  .prog-icons .ex-icon { color: var(--text); opacity: .75; }
-  .prog-icons em { font-style: normal; font-size: .66rem; font-weight: 800; margin-left: 2px; }
   /* Einzelne Übungen: Zeilen mit Icon, Name, Kurzanleitung */
   .ex-group { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
   .ex-group:first-child { margin-top: 0; }
@@ -749,7 +746,7 @@
     program: ['Einsing-Programm', ['Das Programm spielt mehrere Übungen automatisch nacheinander — wie der Anfang einer Chorprobe: erst lockern und summen, dann Resonanz und Vokale, dann Beweglichkeit, zum Schluss die Höhe und ein ruhiger Ausklang.',
       'Jede Übung beginnt mit einem Akkord und steigt dann Runde für Runde einen Halbton, bevor sie wieder zurückgeht. Zwischen zwei Übungen ist ein Takt Pause.',
       'Ein Tipp auf eine Karte startet das Programm. Der Balken oben zeigt alle Übungen; mit „Überspringen“ geht es zur nächsten.',
-      'Morgens und Vor dem Auftritt sind bewusst kurz und bleiben in der Mittellage. Höhe und Tiefe ersetzen kein Einsingen — erst Schnell oder Kurz, dann eines davon.',
+      'Höhe und Tiefe ersetzen kein Einsingen — erst Kurz, dann eines davon. Intonation übt Vokale, Terzen und den Akkord.',
       'Eigene Programme: „+ Eigenes Programm“ oder im Menü (⋯) einer Karte „Als Vorlage kopieren“.']],
     load: ['Belastung', ['<b>Leicht:</b> tiefer, langsamer, weniger Rückungen — für müde Stimmen, morgens, nach Krankheit.',
       '<b>Kräftig:</b> etwas höher und mehr Rückungen — für geübte Stimmen.',
@@ -1550,26 +1547,25 @@
     }));
   }
 
-  /** Kleine Icons der Übungen eines Programms (höchstens 8, sonst „+n“). */
-  function programIconsHtml(p) {
-    const ids = p.items.map(([id]) => id);
-    const shown = ids.length > 8 ? ids.slice(0, 7) : ids;
-    return shown.map((id) => iconSvg(id, 16)).join('') + (ids.length > shown.length ? `<em>+${ids.length - shown.length}</em>` : '');
-  }
+  // Übersicht: nur diese fertigen Programme (3 × 2 mit „+ Eigenes Programm“),
+  // danach die eigenen. Die übrigen (Schnell, Morgens, Vor dem Auftritt)
+  // bleiben gültig – gespeicherte Stände und Aufrufe per ?program= laufen
+  // weiter –, stehen aber nicht mehr als Karte da.
+  const OVERVIEW_PROGRAMS = ['kurz', 'lang', 'intonation', 'hoehe', 'tiefe'];
+  const overviewPrograms = () => allPrograms().filter((p) => OVERVIEW_PROGRAMS.includes(p.id) || p.id.startsWith('own-'));
 
   function renderPrograms() {
-    const cards = allPrograms().map((p) => {
+    const cards = overviewPrograms().map((p) => {
       const own = p.id.startsWith('own-');
       const wrap = document.createElement('div');
       wrap.className = 'prog-card-wrap';
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-card';
       b.dataset.program = p.id;
-      b.innerHTML = '<strong></strong><small></small><span></span><span class="prog-icons" aria-hidden="true"></span>';
+      b.innerHTML = '<strong></strong><small></small><span></span>';
       b.children[0].textContent = p.name;
       b.children[1].textContent = own ? 'Eigenes Programm' : p.about || '';
       b.children[2].textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, buildPlan(p)))}`;
-      b.children[3].innerHTML = programIconsHtml(p);
       b.setAttribute('aria-label', `${p.name} starten, ${b.children[2].textContent}`);
       const menu = document.createElement('button');
       menu.type = 'button'; menu.className = 'prog-menu';
@@ -2367,9 +2363,14 @@
       if ($$('[data-play-exercise]').length !== EXERCISES.length) errors.push('Übersicht: zusätzliche Übungszeilen');
       for (const pr of allPrograms()) {
         const n = $$('[data-program]').filter((b) => b.dataset.program === pr.id).length;
-        if (n !== 1) errors.push(`Übersicht: Programm ${pr.id} ${n}×`);
+        const want = OVERVIEW_PROGRAMS.includes(pr.id) || pr.id.startsWith('own-') ? 1 : 0;
+        if (n !== want) errors.push(`Übersicht: Programm ${pr.id} ${n}× statt ${want}×`);
       }
-      if ($$('[data-program]').length !== PROGRAMS.length + 1) errors.push('Übersicht: Programmzahl falsch');
+      if ($$('[data-program]').length !== OVERVIEW_PROGRAMS.length + 1) errors.push('Übersicht: Programmzahl falsch');
+      if ($$('.prog-card .ex-icon').length) errors.push('Übersicht: Programmkarten mit Icons');
+      state.ownPrograms = [];
+      renderPrograms();
+      if ($('[data-programs]').children.length !== 6) errors.push('Übersicht: fertige Programme nicht 3 × 2');
       state.ownPrograms = [];
       for (const dir of ['up', 'down', 'updown']) {
         const stored = JSON.parse(JSON.stringify({ ...state, direction: dir }));
