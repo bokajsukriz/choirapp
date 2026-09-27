@@ -166,6 +166,8 @@
   .tuner-msg.is-ok { color: #2f9e5b; } .tuner-msg.is-near { color: #b07e00; } .tuner-msg.is-off { color: var(--bad); }
   .pitch-history { display: block; width: 100%; height: 170px; margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
   .target-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .a4-row { display: flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 700; margin: 10px 0 4px; }
+  .a4-row select { font: inherit; padding: 4px 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: inherit; }
   .target-note { min-width: 64px; text-align: center; font-weight: 800; font-size: 1.1rem; }
   .step-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: 1.1rem; }
   .range-out { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -298,6 +300,7 @@
     <section class="panel">
       <div class="panel-head"><h2>Zielton</h2></div>
       <div class="switch-row"><label class="switch"><input type="checkbox" role="switch" data-voiceswitch="useTarget"><span class="switch-track"></span>Auf Zielton stimmen</label></div>
+      <label class="a4-row">Kammerton a′ = <select data-voice-a4 aria-label="Kammerton in Hertz"></select> Hz</label>
       <div class="target-row">
         <button class="step-btn" type="button" data-voice="target-down" aria-label="Zielton einen Halbton tiefer">−</button>
         <span class="target-note" aria-live="polite"></span>
@@ -356,7 +359,13 @@
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const mod = (n, m) => ((n % m) + m) % m;
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
-  const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+  // Kammerton a′ (einstellbar im Stimm-Reiter, 438–445 Hz): gilt für alle
+  // Klänge des Tools und für die Tonerkennung, damit Referenz und Messung
+  // übereinstimmen.
+  const A4_CHOICES = [438, 439, 440, 441, 442, 443, 444, 445];
+  let tuningA4 = 440;
+  const noteHz = (midi) => tuningA4 * Math.pow(2, (midi - 69) / 12);
+  const hzToMidi = (hz) => 69 + 12 * Math.log2(hz / tuningA4);
 
   /* ---- Tonnamen — bis harmony.js: wortgleiche Kopie in groove-lab.js,
      uebe-lab.html, einsingen.html und piano.html. Nicht toolspezifisch
@@ -1701,6 +1710,15 @@
      Einsätze (siehe RECORDING_CONSTRAINTS in app.js).
      ------------------------------------------------------------------------ */
 
+  // Anzeige (Nadel, Ton, Cent) als Mittel über SMOOTH_SECONDS: bei Vibrato
+  // (5–6 Hz) zeigt das die Mitte des Tons, wie ein Chorleiter sie hört,
+  // statt hin- und herzuspringen. Die Verlaufslinie zeigt die Rohwerte.
+  const SMOOTH_SECONDS = .35;
+  /** Mittelwert der Rohwerte der letzten `windowSec` Sekunden. */
+  function smoothPitch(recent, now, windowSec = SMOOTH_SECONDS) {
+    const list = recent.filter((p) => p.t >= now - windowSec);
+    return list.length ? list.reduce((sum, p) => sum + p.midi, 0) / list.length : null;
+  }
   const PITCH_MIN_HZ = 65;
   const PITCH_MAX_HZ = 1100;
   const HISTORY_SECONDS = 6;
@@ -1708,7 +1726,7 @@
   const voice = {
     stream: null, source: null, analyser: null, buffer: null, frame: 0,
     x: null, d: null,
-    recent: [],          // letzte erkannte MIDI-Werte (für den Median)
+    recent: [],          // [{ t, midi }] Rohwerte der letzten SMOOTH_SECONDS (Anzeige)
     lastVoiced: 0,
     history: [],         // [{ t, midi }] für die Verlaufslinie
     hold: [],            // [{ t, midi }] fürs "sicher gehalten"
@@ -1799,32 +1817,37 @@
     const now = engine.ctx.currentTime;
     voice.analyser.getFloatTimeDomainData(voice.buffer);
     const result = detectPitch(voice.buffer, engine.ctx.sampleRate);
-    let midi = null;
-    if (result && result.clarity > .8) {
-      const raw = 69 + 12 * Math.log2(result.freq / 440);
-      if (now - voice.lastVoiced > .15) voice.recent = [];
-      voice.lastVoiced = now;
-      voice.recent.push(raw);
-      if (voice.recent.length > 5) voice.recent.shift();
-      midi = median(voice.recent);
-    }
-    voice.history.push({ t: now, midi });
+    const raw = result && result.clarity > .8 ? hzToMidi(result.freq) : null;
+    const midi = pitchStep(now, raw);
+    voice.history.push({ t: now, midi: raw });
     while (voice.history.length && voice.history[0].t < now - HISTORY_SECONDS) voice.history.shift();
-    trackRange(now, midi);
-    showPitch(midi, result?.freq);
+    trackRange(now, raw);
+    showPitch(midi, midi === null ? null : noteHz(midi));
     drawHistory(now);
     voice.frame = requestAnimationFrame(voiceLoop);
   }
 
+  /** Ein Messwert (Rohwert in MIDI oder null) → geglättete Anzeige. Nach
+   *  einer Lücke über 0,15 s beginnt die Mittelung neu. */
+  function pitchStep(now, raw) {
+    if (raw === null) return null;
+    if (now - voice.lastVoiced > .15) voice.recent = [];
+    voice.lastVoiced = now;
+    voice.recent.push({ t: now, midi: raw });
+    while (voice.recent.length && voice.recent[0].t < now - SMOOTH_SECONDS) voice.recent.shift();
+    return smoothPitch(voice.recent, now);
+  }
+
   /** Tonumfang: ein Ton zählt, wenn er ~0,5 s ohne Aussetzer innerhalb
-   *  eines Halbtons gehalten wurde — Ausrutscher beim Einsatz zählen nicht. */
+   *  von zwei Halbtönen gehalten wurde (auch mit Vibrato bis ±100 Cent) —
+   *  Ausrutscher beim Einsatz zählen nicht. Gerundet über den Median. */
   function trackRange(now, midi) {
     if (midi === null) { voice.hold = []; return; }
     voice.hold.push({ t: now, midi });
     while (voice.hold.length && voice.hold[0].t < now - .5) voice.hold.shift();
     if (voice.hold[voice.hold.length - 1].t - voice.hold[0].t < .45) return;
     const values = voice.hold.map((h) => h.midi);
-    if (Math.max(...values) - Math.min(...values) > 1) return;
+    if (Math.max(...values) - Math.min(...values) > 2) return;
     const note = Math.round(median(values));
     let changed = false;
     if (voice.low === null || note < voice.low) { voice.low = note; changed = true; }
@@ -1923,6 +1946,9 @@
     btn.textContent = voice.analyser ? 'Mikrofon aus' : 'Mikrofon an';
     btn.classList.toggle('secondary', !!voice.analyser);
     $('.target-note').textContent = noteLabel(voice.target);
+    const a4 = $('[data-voice-a4]');
+    if (a4.options.length !== A4_CHOICES.length) a4.innerHTML = A4_CHOICES.map((hz) => `<option value="${hz}">${hz}</option>`).join('');
+    a4.value = String(tuningA4);
     $('[data-voiceswitch="useTarget"]').checked = voice.useTarget;
     renderRange();
     if (!voice.analyser) { showPitch(null); drawHistory(engine.ctx?.currentTime || 0); }
@@ -1954,7 +1980,7 @@
         rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
       },
       ear: { mode: ear.mode, settings: ear.settings },
-      voice: { target: voice.target, useTarget: voice.useTarget },
+      voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
     };
   }
 
@@ -1997,6 +2023,7 @@
     const v = data.voice && typeof data.voice === 'object' ? data.voice : {};
     if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
     if (typeof v.useTarget === 'boolean') voice.useTarget = v.useTarget;
+    if (A4_CHOICES.includes(v.a4)) tuningA4 = v.a4;
   }
 
   /* ------------------------------------------------------------------------
@@ -2106,6 +2133,7 @@
       } else state[key] = t.checked;
     }
     else if (t.dataset?.voiceswitch) { voice.useTarget = t.checked; drawHistory(engine.ctx?.currentTime || 0); }
+    else if (t.hasAttribute?.('data-voice-a4')) { tuningA4 = A4_CHOICES.includes(Number(t.value)) ? Number(t.value) : 440; playTarget(); }
     persist();
   });
 
@@ -2136,6 +2164,62 @@
       start();
     }
   });
+
+  /** Stimm-Tuner mit synthetischen Signalen durch detectPitch und die
+   *  Glättung (Paket 11). Liefert Fehlermeldungen. */
+  function tunerCheck() {
+    const errors = [];
+    const sr = 48000;
+    const saved = { recent: voice.recent, lastVoiced: voice.lastVoiced, a4: tuningA4 };
+    /** Signal (Frequenz als Funktion der Zeit) → angezeigte MIDI-Werte je Bildschirmbild. */
+    const run = (freqAt, seconds = 2.4) => {
+      const n = Math.round(seconds * sr);
+      const sig = new Float32Array(n);
+      let phase = 0;
+      for (let i = 0; i < n; i++) { phase += 2 * Math.PI * freqAt(i / sr) / sr; sig[i] = .4 * Math.sin(phase); }
+      voice.recent = []; voice.lastVoiced = -1;
+      const shown = [];
+      for (let t = 2048 / sr; t < seconds; t += 1 / 60) {
+        const end = Math.floor(t * sr);
+        const r = detectPitch(sig.subarray(end - 2048, end), sr);
+        const midi = pitchStep(t, r && r.clarity > .8 ? hzToMidi(r.freq) : null);
+        shown.push({ t, midi });
+      }
+      return shown.filter((p) => p.t > .5);
+    };
+    const cents = (list, ref) => list.map((p) => (p.midi === null ? NaN : (p.midi - ref) * 100));
+    const worst = (list) => Math.max(...list.map((c) => (Number.isNaN(c) ? Infinity : Math.abs(c))));
+    try {
+      tuningA4 = 440;
+      const flat = cents(run(() => 440), 69);
+      if (worst(flat) > 2) errors.push(`Tuner: 440 Hz zeigt bis ${worst(flat).toFixed(1)} Cent`);
+      const sharp = cents(run(() => 440 * 2 ** (20 / 1200)), 69);
+      if (sharp.some((c) => Number.isNaN(c) || c < 18 || c > 22)) errors.push(`Tuner: +20 Cent angezeigt als ${Math.min(...sharp).toFixed(1)}…${Math.max(...sharp).toFixed(1)}`);
+      const vib = cents(run((t) => 440 * 2 ** ((50 * Math.sin(2 * Math.PI * 5.5 * t)) / 1200)), 69);
+      if (worst(vib) > 10) errors.push(`Tuner: Vibrato ±50 Cent schwankt in der Anzeige bis ${worst(vib).toFixed(1)} Cent`);
+      for (const [hz, midi] of [[110, 45], [82.4, 40]]) {
+        const list = run(() => hz);
+        if (list.some((p) => p.midi === null || Math.round(p.midi) !== midi)) errors.push(`Tuner: ${hz} Hz nicht als ${noteLabel(midi)} erkannt`);
+        if (worst(cents(list, midi)) > 3) errors.push(`Tuner: ${hz} Hz weicht ${worst(cents(list, midi)).toFixed(1)} Cent ab`);
+      }
+      tuningA4 = 443;
+      const a443 = run(() => 443);
+      if (a443.some((p) => p.midi === null || noteLabel(Math.round(p.midi)) !== 'a′') || worst(cents(a443, 69)) > 2) errors.push('Tuner: Kammerton 443 → 443 Hz nicht „a′ ±0“');
+      if (Math.abs(noteHz(69) - 443) > 1e-9) errors.push('Tuner: Klänge folgen dem Kammerton nicht');
+    } finally {
+      voice.recent = saved.recent; voice.lastVoiced = saved.lastVoiced; tuningA4 = saved.a4;
+    }
+    // Speichern/Laden des Kammertons.
+    const savedTab = state.tab;
+    for (const [raw, want] of [[442, 442], [440, 440], [500, 440], ['443', 440]]) {
+      tuningA4 = 440;
+      restore({ tab: savedTab, voice: { a4: raw } });
+      if (tuningA4 !== want) errors.push(`Kammerton ${raw} → ${tuningA4}`);
+    }
+    tuningA4 = saved.a4;
+    state.tab = savedTab;
+    return errors;
+  }
 
   /** Selbstprüfung (Konsole des iframes: `uebeLab.selfCheck()`). Liefert
    *  die Liste der Fehler — leer = bestanden. Nur reine Funktionen, ändert
@@ -2202,6 +2286,7 @@
     const counts = { 3: 0, 4: 0 };
     for (let i = 0; i < 2000; i++) counts[pickInterval([3, 4], { 3: Array(10).fill(false), 4: Array(10).fill(true) }, rnd)]++;
     if (counts[3] < counts[4] * 5) errors.push(`Gewichtung wirkt nicht (${counts[3]} : ${counts[4]})`);
+    errors.push(...tunerCheck());
     // Bass immer E–dis′ (40–51), in jeder Umkehrung und Lage.
     for (let i = 0; i < 500; i++) {
       const prog = EAR_PROGRESSIONS[i % EAR_PROGRESSIONS.length];
