@@ -2103,7 +2103,7 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
-  tools:     { render: () => renderToolsProfile() },
+  tools:     { render: () => { renderToolsProfile(); renderWeek(); } },
   settings:  { render: renderSettings },
 };
 
@@ -18818,6 +18818,64 @@ function testZipFile(bytes) {
  * verspätet und in der Test-Sprache) — deshalb dort ausgelassen, beim
  * manuellen chorApp.selfTestAsync() aber dabei.
  */
+/** Fortschritt: Roundtrip, 180-Tage-Grenze, levelHint, Hilfe-Aufgaben,
+ *  gleichzeitige Meldungen. Liefert die Liste der Fehler. */
+async function runProgressSelfTests() {
+  const failed = [];
+  const today = '2026-10-12';
+  // Vergleich unabhängig von der Reihenfolge der Schlüssel.
+  const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object'
+    ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+  const same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+  // Roundtrip: neu → gleich, kaputt → leer, v fehlt → leer.
+  const data = applyProgressEntries(emptyProgress(), [
+    { area: 'interval', level: 3, right: true, seconds: 12 }, { area: 'interval', level: 3, right: false },
+    { area: 'tuning', level: 2, right: true, thresholdCents: 14.2 }, { area: 'warmup', minutes: 5.7, program: 'morgens' },
+    { area: 'parts', level: 4, right: true, help: true }, { area: 'nope', right: true }, { area: 'rhythm', level: 9, right: 'ja' },
+  ], today);
+  const back = sanitizeProgress(JSON.parse(JSON.stringify(data)));
+  if (!same(back, data)) failed.push('Fortschritt: Roundtrip verändert den Stand');
+  const day = back.days[today];
+  if (day?.interval?.[3]?.n !== 2 || day.interval[3].right !== 1 || day.interval.sec !== 12 || day.tuning?.[2]?.thresholdCents !== 14.2
+    || day.warmup?.minutes !== 5.7 || day.warmup.programs.morgens !== 1 || day.parts?.[4]?.help !== 1 || day.nope || day.rhythm) failed.push(`Fortschritt: Tagesaggregat falsch ${JSON.stringify(day)}`);
+  if (!same(sanitizeProgress('kaputt'), emptyProgress()) || !same(sanitizeProgress({ days: { [today]: { interval: { 1: { n: 1, right: 1 } } } } }), emptyProgress())) failed.push('Fortschritt: kaputter Stand bzw. ohne v nicht leer');
+  const odd = sanitizeProgress({ v: 1, days: { 'gestern': {}, [today]: { interval: { 7: { n: 1 }, 2: { n: 3, right: 9 } } } }, recent: { interval: [{ d: today, l: 2, r: 5 }] } });
+  if (odd.days.gestern || odd.days[today].interval[7] || odd.days[today].interval[2].right !== 3 || odd.recent.interval) failed.push('Fortschritt: ungültige Werte nicht bereinigt');
+  // 200 Tage → nur 180 bleiben.
+  const long = emptyProgress();
+  for (let i = 199; i >= 0; i--) {
+    const d = new Date(2026, 9, 12 - i);
+    applyProgressEntries(long, [{ area: 'rhythm', level: 1, right: true }], progressDate(d));
+  }
+  if (Object.keys(long.days).length !== 180) failed.push(`Fortschritt: ${Object.keys(long.days).length} Tage statt 180`);
+  // levelHint an konstruierten Folgen.
+  const seq = (list) => { const p = emptyProgress(); for (const [date, ok, help] of list) applyProgressEntries(p, [{ area: 'interval', level: 3, right: ok, help: !!help }], date); return p; };
+  const oneDay = seq(Array.from({ length: 20 }, (_, i) => [today, i >= 3]));
+  if (levelHintOf(oneDay, 'interval').hint !== null) failed.push('levelHint: 17/20 an einem Tag müsste null sein');
+  const twoDays = seq(Array.from({ length: 20 }, (_, i) => [i < 10 ? '2026-10-11' : today, i >= 3]));
+  if (levelHintOf(twoDays, 'interval').hint !== 'up') failed.push('levelHint: 17/20 an zwei Tagen müsste up sein');
+  const weak = seq(Array.from({ length: 12 }, (_, i) => [today, i < 5]));
+  if (levelHintOf(weak, 'interval').hint !== 'down') failed.push('levelHint: 5/12 müsste down sein');
+  const helped = seq([...Array.from({ length: 12 }, () => [today, false, true]), ...Array.from({ length: 20 }, (_, i) => [i < 10 ? '2026-10-11' : today, true])]);
+  if (levelHintOf(helped, 'interval').hint !== 'up') failed.push('levelHint: Hilfe-Aufgaben dürfen nicht zählen');
+  // Gleichzeitige Meldungen (zwei iframes) über die Warteschlange.
+  let stored = null;
+  const store = makeProgressStore({ load: async () => stored, save: async (d) => { stored = JSON.parse(JSON.stringify(d)); } }, { delayMs: 5, now: () => today });
+  const frameA = { add: (e) => store.add(e) }, frameB = { add: (e) => store.add(e) };
+  frameA.add({ area: 'rhythm', level: 2, right: true });
+  frameB.add({ area: 'hold', level: 1, right: false });
+  frameA.add({ area: 'rhythm', level: 2, right: false });
+  await store.memory('intervalLog', { 4: [true, false] });
+  await store.flush();
+  frameB.add({ area: 'hold', level: 1, right: true });
+  await store.flush();
+  if (stored?.days?.[today]?.rhythm?.[2]?.n !== 2 || stored.days[today].hold?.[1]?.n !== 2 || !same(stored.memory.intervalLog, { 4: [true, false] })) failed.push(`Fortschritt: gleichzeitige Meldungen verloren ${JSON.stringify(stored?.days)}`);
+  const sum = await store.summary(7);
+  if (sum.practicedDays !== 1 || sum.areas.rhythm?.level !== 2 || sum.days.length !== 7) failed.push(`Fortschritt: Zusammenfassung falsch ${JSON.stringify(sum)}`);
+  if ((await store.levelHint('rhythm')).level !== 2) failed.push('Fortschritt: levelHint kennt die zuletzt benutzte Stufe nicht');
+  return failed;
+}
+
 async function runAsyncSelfTests({ mutateSettings = true } = {}) {
   const failed = [];
 
@@ -19520,6 +19578,10 @@ async function runAsyncSelfTests({ mutateSettings = true } = {}) {
   } catch (err) {
     failed.push(`Musik-Selbsttest abgebrochen: ${err?.message || err}`);
   }
+
+  // Fortschritt (Didaktik Paket 6/7) — reine Funktionen und eine
+  // Test-Ablage im Speicher, der echte Datensatz bleibt unberührt.
+  failed.push(...await runProgressSelfTests());
 
   if (failed.length) {
     console.error(`[Selbsttest async] ${failed.length} Prüfung(en) fehlgeschlagen:`);
@@ -21575,6 +21637,7 @@ window.chorApp = {
   selfTest: runSelfTests,
   selfTestAsync: runAsyncSelfTests,
   selfTestMusic: runMusicSelfTests,
+  selfTestProgress: runProgressSelfTests,
   selfTestAudioPath: runAudioPathCharacterizationTests,
   selfTestNormalizationWorker: runNormalizationWorkerTests,
   lightshowFrame,
@@ -21997,7 +22060,7 @@ function closeToolFrame() {
   host.hidden = true;
   document.body.style.overflow = '';
   updateMetronomeFab();
-  if (currentView === 'tools') renderToolsProfile();
+  if (currentView === 'tools') { renderToolsProfile(); window.chorProgress.flush().then(renderWeek); }
   const fab = $('#metronome-fab');
   // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
   // Ebene; dann auf den Schnellzugriff, falls da.
@@ -22160,6 +22223,347 @@ function initToolsProfile() {
   pick('#profile-part-picker', 'part');
   pick('#profile-load-picker', 'load');
   $('#profile-range-reset').addEventListener('click', () => window.chorVoiceProfile.set({ low: null, high: null, measuredAt: null }));
+}
+
+/* ==========================================================================
+   FORTSCHRITT — nur lokal, Tagesaggregate, 180 Tage (Didaktik Paket 6).
+   Die Tool-iframes schreiben nicht selbst, sondern melden über
+   window.chorProgress an die App — es gibt genau eine schreibende Stelle,
+   gleichzeitige Meldungen aus mehreren iframes landen in derselben
+   Warteschlange. Stufen werden nur vorgeschlagen (levelHint), nie
+   automatisch gewechselt. Gespeichert als meta-Datensatz 'progress'.
+   ========================================================================== */
+const PROGRESS_KEY = 'progress';
+const PROGRESS_DAYS = 180;
+const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'progression', 'parts', 'tuning',
+  'singInterval', 'findTone', 'hold', 'sight', 'dictation'];
+const PROGRESS_GROUPS = {
+  warmup: ['warmup'],
+  ear: ['interval', 'quality', 'cadence', 'progression', 'parts', 'tuning'],
+  sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation'],
+  rhythm: ['rhythm'],
+};
+const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
+const PROGRESS_MEMORY_KEYS = ['intervalLog', 'singLog', 'micDenied'];
+
+/** Datum als JJJJ-MM-TT (lokale Zeit). */
+function progressDate(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const PROGRESS_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const finiteIn = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
+
+/** Leerer Fortschritt. */
+const emptyProgress = () => ({ v: 1, days: {}, recent: {}, memory: {}, levels: {}, today: null });
+
+/** Gespeicherter Stand → gültiger Stand; kaputt oder ohne v → leer.
+ *  Unbekannte Felder in Tagen werden verworfen, Werte begrenzt. */
+function sanitizeProgress(raw) {
+  if (!raw || typeof raw !== 'object' || raw.v !== 1) return emptyProgress();
+  const out = emptyProgress();
+  const days = raw.days && typeof raw.days === 'object' ? raw.days : {};
+  for (const [date, day] of Object.entries(days)) {
+    if (!PROGRESS_DATE_RE.test(date) || !day || typeof day !== 'object') continue;
+    const clean = {};
+    for (const area of PROGRESS_AREAS) {
+      const a = day[area];
+      if (!a || typeof a !== 'object') continue;
+      if (area === 'warmup') {
+        const minutes = finiteIn(a.minutes, 0, 1440);
+        const programs = {};
+        if (a.programs && typeof a.programs === 'object') {
+          for (const [id, n] of Object.entries(a.programs)) if (/^[\w-]{1,40}$/.test(id) && Number.isInteger(n) && n > 0) programs[id] = n;
+        }
+        if (minutes !== null) clean.warmup = { minutes, programs };
+        continue;
+      }
+      const areaOut = {};
+      for (const [lvl, st] of Object.entries(a)) {
+        if (lvl === 'sec') { const sec = finiteIn(st, 0, 86400); if (sec !== null) areaOut.sec = sec; continue; }
+        if (!/^[0-6]$/.test(lvl) || !st || typeof st !== 'object') continue;
+        const n = Number.isInteger(st.n) && st.n >= 0 ? st.n : 0;
+        const right = Number.isInteger(st.right) ? Math.min(Math.max(0, st.right), n) : 0;
+        const help = Number.isInteger(st.help) ? Math.min(Math.max(0, st.help), n) : 0;
+        const entry = { n, right, help };
+        const th = finiteIn(st.thresholdCents, 0, 1200);
+        if (th !== null) entry.thresholdCents = th;
+        const value = finiteIn(st.value, 0, 1e6);
+        if (value !== null) entry.value = value;
+        if (n) areaOut[lvl] = entry;
+      }
+      if (Object.keys(areaOut).length) clean[area] = areaOut;
+    }
+    if (Object.keys(clean).length) out.days[date] = clean;
+  }
+  const recent = raw.recent && typeof raw.recent === 'object' ? raw.recent : {};
+  for (const area of PROGRESS_AREAS) {
+    if (!Array.isArray(recent[area])) continue;
+    const list = recent[area].filter((r) => r && PROGRESS_DATE_RE.test(r.d) && Number.isInteger(r.l) && r.l >= 0 && r.l <= 6 && (r.r === 0 || r.r === 1))
+      .map((r) => ({ d: r.d, l: r.l, r: r.r, ...(r.h ? { h: 1 } : {}) })).slice(-PROGRESS_RECENT);
+    if (list.length) out.recent[area] = list;
+  }
+  const memory = raw.memory && typeof raw.memory === 'object' ? raw.memory : {};
+  for (const key of PROGRESS_MEMORY_KEYS) if (key in memory) {
+    try { out.memory[key] = JSON.parse(JSON.stringify(memory[key])); } catch { /* verworfen */ }
+  }
+  const levels = raw.levels && typeof raw.levels === 'object' ? raw.levels : {};
+  for (const area of PROGRESS_AREAS) if (Number.isInteger(levels[area]) && levels[area] >= 0 && levels[area] <= 6) out.levels[area] = levels[area];
+  const today = raw.today;
+  if (today && typeof today === 'object' && PROGRESS_DATE_RE.test(today.date)) {
+    out.today = {
+      date: today.date,
+      plan: today.plan === 'short' ? 'short' : 'full',
+      done: Array.isArray(today.done) ? today.done.filter((x) => ['warmup', 'ear', 'sing', 'rhythm'].includes(x)) : [],
+    };
+  }
+  return out;
+}
+
+/** Tage älter als PROGRESS_DAYS (relativ zu `today`) entfernen. */
+function pruneProgress(data, today = progressDate()) {
+  const [y, m, d] = today.split('-').map(Number);
+  const cutoff = progressDate(new Date(y, m - 1, d - (PROGRESS_DAYS - 1)));
+  for (const date of Object.keys(data.days)) if (date < cutoff) delete data.days[date];
+  for (const area of Object.keys(data.recent)) {
+    data.recent[area] = data.recent[area].filter((r) => r.d >= cutoff);
+    if (!data.recent[area].length) delete data.recent[area];
+  }
+  return data;
+}
+
+/** Eine Meldung prüfen: gültig → normalisierte Meldung, sonst null. */
+function sanitizeProgressEntry(e) {
+  if (!e || typeof e !== 'object' || !PROGRESS_AREAS.includes(e.area)) return null;
+  if (e.area === 'warmup') {
+    const minutes = finiteIn(e.minutes, 0, 600);
+    if (minutes === null) return null;
+    return { area: 'warmup', minutes, program: typeof e.program === 'string' && /^[\w-]{1,40}$/.test(e.program) ? e.program : null };
+  }
+  if (typeof e.right !== 'boolean') return null;
+  const level = Number.isInteger(e.level) && e.level >= 0 && e.level <= 6 ? e.level : 0;
+  return {
+    area: e.area, level, right: e.right, help: e.help === true,
+    value: finiteIn(e.value, 0, 1e6), thresholdCents: finiteIn(e.thresholdCents, 0, 1200), seconds: finiteIn(e.seconds, 0, 600),
+  };
+}
+
+/** Meldungen in den Stand einarbeiten (Tagesaggregate, letzte Aufgaben,
+ *  zuletzt benutzte Stufe). `today` für Tests. */
+function applyProgressEntries(data, entries, today = progressDate()) {
+  const day = (data.days[today] ||= {});
+  for (const raw of entries) {
+    const e = sanitizeProgressEntry(raw);
+    if (!e) continue;
+    if (e.area === 'warmup') {
+      const w = (day.warmup ||= { minutes: 0, programs: {} });
+      w.minutes = Math.round((w.minutes + e.minutes) * 10) / 10;
+      if (e.program) w.programs[e.program] = (w.programs[e.program] || 0) + 1;
+      continue;
+    }
+    const a = (day[e.area] ||= {});
+    const st = (a[e.level] ||= { n: 0, right: 0, help: 0 });
+    st.n++;
+    if (e.right) st.right++;
+    if (e.help) st.help++;
+    if (e.value !== null) st.value = e.value;
+    if (e.thresholdCents !== null) st.thresholdCents = Math.round(e.thresholdCents * 10) / 10;
+    if (e.seconds !== null) a.sec = Math.round((a.sec || 0) + e.seconds);
+    const list = (data.recent[e.area] ||= []);
+    list.push({ d: today, l: e.level, r: e.right ? 1 : 0, ...(e.help ? { h: 1 } : {}) });
+    if (list.length > PROGRESS_RECENT) list.splice(0, list.length - PROGRESS_RECENT);
+    data.levels[e.area] = e.level;
+  }
+  return pruneProgress(data, today);
+}
+
+/** Stufenvorschlag: die letzten 20 Aufgaben ohne Hilfe auf der aktuellen
+ *  Stufe. 'up', wenn ≥ 85 % richtig und von mindestens zwei Tagen;
+ *  'down', wenn von den letzten 12 weniger als 50 % richtig; sonst null. */
+function levelHintOf(data, area, level = data.levels?.[area] ?? 0) {
+  const list = (data.recent?.[area] || []).filter((r) => r.l === level && !r.h);
+  if (!level) return { level, hint: null };
+  const last20 = list.slice(-20);
+  const last12 = list.slice(-12);
+  if (last20.length >= 20 && last20.filter((r) => r.r).length / 20 >= .85 && new Set(last20.map((r) => r.d)).size >= 2 && level < 6) return { level, hint: 'up' };
+  if (last12.length >= 12 && last12.filter((r) => r.r).length / 12 < .5 && level > 1) return { level, hint: 'down' };
+  return { level, hint: null };
+}
+
+/** Zusammenfassung der letzten `days` Tage (Wochenansicht, „Heute üben“). */
+function summarizeProgress(data, days = 7, today = progressDate()) {
+  const [y, m, d] = today.split('-').map(Number);
+  const dates = Array.from({ length: days }, (_, i) => progressDate(new Date(y, m - 1, d - (days - 1 - i))));
+  const minutesOf = (day, group) => (group === 'warmup' ? day?.warmup?.minutes || 0
+    : PROGRESS_GROUPS[group].reduce((sum, area) => sum + (day?.[area]?.sec || 0) / 60, 0));
+  const perDay = dates.map((date) => {
+    const day = data.days[date];
+    return { date, practiced: !!day && Object.keys(day).length > 0, minutes: Object.fromEntries(Object.keys(PROGRESS_GROUPS).map((g) => [g, minutesOf(day, g)])) };
+  });
+  const areas = {};
+  for (const area of PROGRESS_AREAS) {
+    if (area === 'warmup') continue;
+    const used = dates.some((date) => data.days[date]?.[area]);
+    if (!used) continue;
+    const level = data.levels[area] ?? 0;
+    const list = (data.recent[area] || []).filter((r) => r.l === level && !r.h).slice(-20);
+    areas[area] = { level, n: list.length, rate: list.length ? list.filter((r) => r.r).length / list.length : null };
+  }
+  const tuning = [];
+  const dates30 = Array.from({ length: 30 }, (_, i) => progressDate(new Date(y, m - 1, d - (29 - i))));
+  for (const date of dates30) {
+    const t = data.days[date]?.tuning;
+    if (!t) continue;
+    const values = Object.values(t).map((st) => st.thresholdCents).filter((x) => typeof x === 'number');
+    if (values.length) tuning.push({ date, thresholdCents: Math.min(...values) });
+  }
+  return { days: perDay, practicedDays: perDay.filter((x) => x.practiced).length, areas, tuning, levels: { ...data.levels } };
+}
+
+/** Schreibende Stelle: Warteschlange, gebündelt nach 1 s. `store` für Tests. */
+function makeProgressStore(store = {
+  load: () => DB.metaGet(PROGRESS_KEY).then((r) => r?.data ?? null),
+  save: (data) => DB.metaPut({ key: PROGRESS_KEY, type: 'progress', data }),
+}, { delayMs = 1000, now = () => progressDate() } = {}) {
+  let queue = [];
+  let memoryPatch = {};
+  let todayPatch = null;
+  let timer = 0;
+  let chain = Promise.resolve();
+  let cache = null;
+  const read = async () => sanitizeProgress(await store.load().catch(() => null));
+  const flush = () => {
+    clearTimeout(timer);
+    timer = 0;
+    const entries = queue; const mem = memoryPatch; const tp = todayPatch;
+    queue = []; memoryPatch = {}; todayPatch = null;
+    chain = chain.then(async () => {
+      if (!entries.length && !Object.keys(mem).length && !tp) return;
+      const data = await read();
+      applyProgressEntries(data, entries, now());
+      Object.assign(data.memory, mem);
+      if (tp) data.today = tp(data.today);
+      await store.save(data);
+      cache = data;
+    }).catch((err) => console.warn('[progress] Speichern fehlgeschlagen', err));
+    return chain;
+  };
+  const schedule = () => { if (!timer) timer = setTimeout(flush, delayMs); };
+  const current = async () => { await chain; if (queue.length || Object.keys(memoryPatch).length || todayPatch) await flush(); return cache || (cache = await read()); };
+  return {
+    add(entry) { if (sanitizeProgressEntry(entry)) { queue.push(JSON.parse(JSON.stringify(entry))); schedule(); } },
+    async summary(days = 7) { return summarizeProgress(await current(), Math.max(1, Math.min(180, days | 0 || 7)), now()); },
+    async levelHint(area) { return levelHintOf(await current(), area); },
+    /** memory(key) liest, memory(key, value) schreibt (gebündelt). */
+    async memory(key, value) {
+      if (!PROGRESS_MEMORY_KEYS.includes(key)) return undefined;
+      if (value === undefined) return (await current()).memory[key];
+      memoryPatch[key] = JSON.parse(JSON.stringify(value));
+      schedule();
+      return value;
+    },
+    /** „Heute üben“ (Paket 7): Tagesplan und erledigte Schritte. */
+    async today() { return (await current()).today; },
+    setToday(fn) { const prev = todayPatch; todayPatch = prev ? (t) => fn(prev(t)) : fn; schedule(); return flush(); },
+    flush,
+    async data() { return current(); },
+  };
+}
+window.chorProgress = makeProgressStore();
+
+/** Montag der Woche von `date` (JJJJ-MM-TT) und die sieben Tage bis Sonntag. */
+function weekDates(date = progressDate()) {
+  const [y, m, d] = date.split('-').map(Number);
+  const day = new Date(y, m - 1, d);
+  const monday = d - ((day.getDay() + 6) % 7);
+  return Array.from({ length: 7 }, (_, i) => progressDate(new Date(y, m - 1, monday + i)));
+}
+
+/** Wochenansicht „Diese Woche“: sieben Punkte, Minuten je Gruppe, Stufen
+ *  der benutzten Bereiche, Intonations-Schwelle. Keine Serien. */
+async function renderWeek() {
+  const body = $('#tools-week-body');
+  if (!body) return;
+  let data;
+  try { data = await window.chorProgress.data(); } catch { return; }
+  const today = progressDate();
+  const week = weekDates(today);
+  const names = t('tools.week.weekdays').split(',');
+  const practiced = week.filter((date) => data.days[date] && Object.keys(data.days[date]).length);
+  $('#tools-week-short').textContent = practiced.length ? t('tools.week.days').replace('{n}', practiced.length) : '';
+  const frag = document.createDocumentFragment();
+  const dots = document.createElement('div');
+  dots.className = 'week-dots';
+  dots.setAttribute('role', 'img');
+  dots.setAttribute('aria-label', t('tools.week.days').replace('{n}', practiced.length));
+  week.forEach((date, i) => {
+    const el = document.createElement('span');
+    el.className = `week-dot${practiced.includes(date) ? ' is-done' : ''}${date === today ? ' is-today' : ''}`;
+    el.innerHTML = '<i></i><span></span>';
+    el.lastChild.textContent = names[i] || '';
+    dots.append(el);
+  });
+  const line = document.createElement('p');
+  line.className = 'small';
+  line.textContent = practiced.length ? t('tools.week.days').replace('{n}', practiced.length) : t('tools.week.none');
+  frag.append(dots, line);
+  const mins = document.createElement('div');
+  mins.className = 'week-mins';
+  for (const group of Object.keys(PROGRESS_GROUPS)) {
+    const sum = week.reduce((acc, date) => {
+      const day = data.days[date];
+      if (!day) return acc;
+      return acc + (group === 'warmup' ? day.warmup?.minutes || 0 : PROGRESS_GROUPS[group].reduce((a, area) => a + (day[area]?.sec || 0) / 60, 0));
+    }, 0);
+    const el = document.createElement('span');
+    el.innerHTML = '<span></span> <b></b>';
+    el.firstChild.textContent = `${t(`tools.week.group.${group}`)}:`;
+    el.lastChild.textContent = `${Math.round(sum)} ${t('tools.week.minutes').slice(0, 3)}.`;
+    mins.append(el);
+  }
+  frag.append(mins);
+  const used = PROGRESS_AREAS.filter((area) => area !== 'warmup' && week.some((date) => data.days[date]?.[area]));
+  if (used.length) {
+    const title = document.createElement('p');
+    title.className = 'section-title';
+    title.textContent = t('tools.week.areas');
+    const list = document.createElement('ul');
+    list.className = 'week-areas';
+    for (const area of used) {
+      const level = data.levels[area] ?? 0;
+      const recent = (data.recent[area] || []).filter((r) => r.l === level && !r.h).slice(-20);
+      const li = document.createElement('li');
+      li.innerHTML = '<span></span><span></span>';
+      li.firstChild.textContent = t(`tools.area.${area}`);
+      const rate = recent.length ? `${Math.round(100 * recent.filter((r) => r.r).length / recent.length)} % (${recent.length})` : '–';
+      li.lastChild.textContent = `${level ? t('tools.week.level').replace('{n}', level) : t('tools.week.custom')} · ${rate}`;
+      list.append(li);
+    }
+    frag.append(title, list);
+  }
+  const tuning = summarizeProgress(data, 7, today).tuning;
+  if (tuning.length) {
+    const box = document.createElement('div');
+    box.className = 'week-tuning';
+    const title = document.createElement('p');
+    title.className = 'section-title';
+    title.textContent = t('tools.week.tuning');
+    const max = Math.max(30, ...tuning.map((p) => p.thresholdCents));
+    const [y, m, d] = today.split('-').map(Number);
+    const start = new Date(y, m - 1, d - 29).getTime();
+    const pts = tuning.map((p) => {
+      const [py, pm, pd] = p.date.split('-').map(Number);
+      const x = 4 + ((new Date(py, pm - 1, pd).getTime() - start) / (29 * 864e5)) * 292;
+      return [x, 44 - (p.thresholdCents / max) * 40];
+    });
+    box.innerHTML = `<svg viewBox="0 0 300 48" aria-hidden="true"><polyline points="${pts.map(([x, yy]) => `${x.toFixed(1)},${yy.toFixed(1)}`).join(' ')}"/>${pts.map(([x, yy]) => `<circle cx="${x.toFixed(1)}" cy="${yy.toFixed(1)}" r="2.5"/>`).join('')}</svg>`;
+    const last = document.createElement('p');
+    last.className = 'small muted';
+    last.textContent = t('tools.week.tuningLast').replace('{c}', Math.round(tuning[tuning.length - 1].thresholdCents));
+    box.prepend(title);
+    box.append(last);
+    frag.append(box);
+  }
+  body.replaceChildren(frag);
 }
 
 /* Ablage für die Tool-Seiten: Sie greifen als gleichherkünftige iframes

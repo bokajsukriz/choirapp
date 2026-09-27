@@ -337,6 +337,11 @@
     return null;
   })();
   let profile = null; // { part, low, high, measuredAt, load } oder null
+  // Fortschritt der App (Paket 6): Minuten und Programm melden.
+  const progressApi = (() => {
+    try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
   function readProfile() {
     try { profile = profileApi ? profileApi.get() : null; } catch { profile = null; }
   }
@@ -1096,6 +1101,7 @@
     try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
     plan = buildPlan();
     run.playing = true;
+    run.startedAt = engine.ctx.currentTime;
     run.step = state.countIn !== 'off' && fromStep === 0 ? -BAR : fromStep;
     run.nextTime = engine.ctx.currentTime + .08;
     run.endTime = null;
@@ -1109,7 +1115,17 @@
     draw();
   }
 
-  function stop(message) {
+  /** Gesungene Zeit melden (ab einer Viertelminute), mit Programm-ID. */
+  function reportMinutes(finished) {
+    if (!run.startedAt || !engine.ctx) return;
+    const minutes = (engine.ctx.currentTime - run.startedAt) / 60;
+    run.startedAt = null;
+    if (minutes < .25 || !progressApi) return;
+    try { progressApi.add({ area: 'warmup', minutes: Math.round(minutes * 10) / 10, program: state.mode === 'program' && finished ? state.program : null }); } catch { /* App weg */ }
+  }
+
+  function stop(message, finished = false) {
+    reportMinutes(finished);
     run.playing = false;
     clearTimeout(run.timer);
     cancelAnimationFrame(run.frame);
@@ -1123,7 +1139,7 @@
   }
 
   function finish() {
-    stop('Fertig — gut eingesungen! Viel Spaß in der Probe.');
+    stop('Fertig — gut eingesungen! Viel Spaß in der Probe.', true);
     if (state.mode === 'program') {
       $$('.prog-item').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
       $('.progress i').style.width = '100%';

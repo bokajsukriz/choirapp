@@ -304,6 +304,26 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .profile-chips .chip { min-width: 0; overflow-wrap: anywhere; }
 .profile-range { margin: 10px 0 0; }
 .profile-range .link-btn { margin-left: 4px; }
+/* Wochenansicht: sieben Punkte Mo–So, Minuten je Gruppe, Stufen, Intonation. */
+.tools-week { margin-bottom: 12px; }
+.tools-week-summary { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; min-height: var(--tap); list-style: none; }
+.tools-week-summary::-webkit-details-marker { display: none; }
+.tools-week-summary::after { content: "›"; color: var(--muted); transform: rotate(90deg); transition: transform .15s; }
+.tools-week[open] .tools-week-summary::after { transform: rotate(-90deg); }
+.tools-week-short { margin-left: auto; font-family: inherit; font-weight: 600; font-size: .85rem; color: var(--muted); }
+.week-dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 6px 0 4px; text-align: center; }
+.week-dot { display: grid; justify-items: center; gap: 4px; font-size: .75rem; color: var(--muted); }
+.week-dot i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); display: block; }
+.week-dot.is-done i { background: var(--accent); border-color: var(--accent); }
+.week-dot.is-today span { font-weight: 800; color: var(--text); }
+.week-mins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin: 10px 0; font-size: .9rem; }
+.week-mins b { font-variant-numeric: tabular-nums; }
+.week-areas { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .9rem; }
+.week-areas li { display: flex; justify-content: space-between; gap: 8px; }
+.week-areas span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+.week-tuning svg { width: 100%; height: 48px; display: block; }
+.week-tuning polyline { fill: none; stroke: var(--accent); stroke-width: 2; }
+.week-tuning circle { fill: var(--accent); }
 .tool-tile-icon {
   width: 48px;
   height: 48px;
@@ -3997,6 +4017,11 @@ input[type="checkbox"] {
         <button class="link-btn" id="profile-range-reset" type="button" data-i18n="tools.profile.rangeReset">Auf Standard zurücksetzen</button>
       </p>
     </div>
+    <!-- Fortschritt der Übe-Tools: nur lokal, keine Serien (siehe renderWeek in app.js). -->
+    <details class="card tools-week" id="tools-week">
+      <summary class="tools-week-summary"><span data-i18n="tools.week.title">Diese Woche</span><span class="tools-week-short" id="tools-week-short"></span></summary>
+      <div id="tools-week-body"></div>
+    </details>
     <div class="tools-grid">
       <button class="tool-tile" id="btn-open-metronome" type="button">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg></span>

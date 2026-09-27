@@ -448,6 +448,36 @@
     return null;
   })();
   const readProfile = () => { try { return profileApi ? profileApi.get() : null; } catch { return null; } };
+  // Fortschritt der App (Paket 6): die Seite meldet nur, die App schreibt.
+  const progressApi = (() => {
+    try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  // UI-Bereich → Fortschrittsbereich (Akkordfolgen heißen dort 'progression').
+  const PROGRESS_AREA = { chords: 'progression' };
+  const areaOf = (key) => PROGRESS_AREA[key] || key;
+  let lastReportAt = performance.now();
+  /** Ergebnis melden; Sekunden seit der letzten Meldung (höchstens 2 min). */
+  function report(key, level, right, extra = {}) {
+    const now = performance.now();
+    const seconds = Math.min(120, (now - lastReportAt) / 1000);
+    lastReportAt = now;
+    if (!progressApi) return;
+    try { progressApi.add({ area: areaOf(key), level: level || 0, right: !!right, seconds, ...extra }); } catch { /* App weg */ }
+    refreshHint(key);
+  }
+  /** Stufenvorschlag holen (nur Vorschlag, nie Wechsel) und neu zeichnen. */
+  function refreshHint(key) {
+    if (!progressApi) return;
+    try {
+      Promise.resolve(progressApi.levelHint(areaOf(key))).then((h) => {
+        levelHints[key] = h || null;
+        if (state.tab === 'rhythm' && key === 'rhythm') renderRhythm();
+        else if (state.tab === 'ear' && key === ear.mode) renderEar();
+        else if (state.tab === 'voice' && key === sing.mode) renderSing();
+      }).catch(() => {});
+    } catch { /* App weg */ }
+  }
   /** Mindestspanne für „Als meinen Umfang speichern" (wie practiceRange). */
   const RANGE_SAVE_MIN = 14;
   const A4_CHOICES = [438, 439, 440, 441, 442, 443, 444, 445];
@@ -1324,8 +1354,11 @@
     renderScore();
     onRhythmResult(round);
   }
-  /** Haken für Fortschritt und „Heute üben“ (Paket 6/7). */
-  function onRhythmResult() {}
+  /** Fortschritt und „Heute üben“. */
+  function onRhythmResult(round) {
+    report('rhythm', state.rhythmLevel, round.result.perfect, { value: round.result.count ? round.result.hits / round.result.count : 0 });
+    onToolStep('rhythm');
+  }
 
   /* ------------------------------------------------------------------------
      ANZEIGE
@@ -1640,9 +1673,10 @@
      { level, hint: 'up' | 'down' | null } — nur Vorschlag, nie Wechsel. */
   function levelControlHtml(area, levels, current, hint = null) {
     const cur = levels.find((l) => l.n === current);
-    const next = hint?.hint === 'up' && current ? levels.find((l) => l.n === current + 1) : null;
+    const fits = hint && hint.level === current;
+    const next = fits && hint.hint === 'up' && current ? levels.find((l) => l.n === current + 1) : null;
     const chipsHtml = levels.map((l) => `<button type="button" class="chip level-chip${next && next.n === l.n ? ' has-dot' : ''}" data-level-area="${area}" data-level-n="${l.n}" aria-pressed="${l.n === current}" aria-label="Stufe ${l.n}: ${l.label}">${l.n}</button>`).join('');
-    const hintText = next ? `Stufe ${current} sitzt – Stufe ${next.n} ausprobieren?` : hint?.hint === 'down' && current > 1 ? 'Eine Stufe zurück kann helfen.' : '';
+    const hintText = next ? `Stufe ${current} sitzt – Stufe ${next.n} ausprobieren?` : fits && hint.hint === 'down' && current > 1 ? 'Eine Stufe zurück kann helfen.' : '';
     return `<div class="level-row"><div class="chip-row" role="group" aria-label="Stufe">${chipsHtml}</div>
       <button class="help-btn" type="button" data-help="lv-${area}" aria-expanded="false" aria-label="Alle Stufen">?</button></div>
       <p class="level-note">${cur ? `Stufe ${cur.n}: ${cur.label}` : 'Eigene Auswahl'}</p>
@@ -2332,8 +2366,16 @@
     renderEar();
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
   }
-  /** Haken für Fortschritt und „Heute üben“ (Paket 6/7). */
-  function onEarResult() {}
+  /** Fortschritt und „Heute üben“. */
+  function onEarResult(task, ok) {
+    const key = task.kind === 'chords' ? 'chords' : task.kind;
+    const [, level] = earLevelInfo(key);
+    const extra = { help: !!task.help };
+    if (task.kind === 'tuning') { const th = stairFor(task.level).threshold(); if (th !== null) extra.thresholdCents = th; }
+    report(key, level, ok, extra);
+    if (task.kind === 'interval') saveMemory('intervalLog', ear.stats.intervalLog);
+    onToolStep('ear');
+  }
 
   function highlightSlot(index) {
     $$('.slot').forEach((el, i) => el.classList.toggle('is-playing', i === index));
@@ -2352,7 +2394,8 @@
     log.push(ok);
     if (log.length > INTERVAL_MEMORY) log.shift();
     const dirLabel = { up: 'aufwärts', down: 'abwärts', harmonic: 'zusammen' }[task.dir];
-    setEarFeedback(ok ? `Richtig: ${intervalName(task.semis)}!` : `Leider nein, richtig ist: ${intervalName(task.semis)} (${dirLabel}).`, ok ? 'ok' : 'bad');
+    setEarFeedback(ok ? `Richtig: ${intervalName(task.semis)}!` : `Noch nicht — das war: ${intervalName(task.semis)} (${dirLabel}).`, ok ? 'ok' : 'bad');
+    onEarResult(task, ok);
     renderEar();
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1100));
   }
@@ -2375,6 +2418,7 @@
     setEarFeedback(ok
       ? `Richtig! ${task.prog.name} in ${keyName(task.key, task.prog.mode)}.`
       : `${right} von ${task.prog.chords.length} richtig — gespielt wurde ${task.prog.chords.map(symbolLabel).join(' – ')} (${task.prog.name}, ${keyName(task.key, task.prog.mode)}).`, ok ? 'ok' : 'bad');
+    onEarResult(task, ok);
     renderEar();
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
   }
@@ -2853,6 +2897,7 @@
       voice.source.connect(voice.analyser); // bewusst NICHT zum Ausgang — keine Rückkopplung
       voice.recent = []; voice.history = []; voice.hold = [];
       voice.onsets = makeOnsetDetector();
+      if (memoryCache.micDenied) { memoryCache.micDenied = false; saveMemory('micDenied', false); }
       voice.lastFrameTime = null;
       renderVoice();
       voiceLoop();
@@ -2869,8 +2914,8 @@
   }
   /** Singen mit Mikrofon (Paket 5) — wird unten gesetzt. */
   let singFrame = () => {};
-  /** Haken für den Fortschritt (Paket 7: micDenied). */
-  function onMicDenied() {}
+  /** Merkt sich im Fortschritt, dass das Mikrofon verweigert wurde („Heute üben“ nimmt dann das Diktat). */
+  function onMicDenied() { saveMemory('micDenied', true); }
 
   function micOff() {
     cancelAnimationFrame(voice.frame);
@@ -3633,8 +3678,12 @@
     onSingResult(task, ok, value);
     renderSing();
   }
-  /** Haken für Fortschritt und „Heute üben“ (Paket 6/7). */
-  function onSingResult() {}
+  /** Fortschritt und „Heute üben“. */
+  function onSingResult(task, ok, value) {
+    report(task.mode, task.level, ok, value === undefined || value === null || !Number.isFinite(value) ? {} : { value });
+    if (task.mode === 'singInterval') saveMemory('singLog', sing.log);
+    onToolStep('voice');
+  }
 
   function skipSightNote() {
     const task = sing.task;
@@ -4658,12 +4707,47 @@
     selfCheck,
   };
 
+  /* ---- Dauerhafte Gewichtungen über den Fortschritt der App ---- */
+  const memoryCache = {};
+  function saveMemory(key, value) {
+    memoryCache[key] = value;
+    if (!progressApi) return;
+    try { Promise.resolve(progressApi.memory(key, JSON.parse(JSON.stringify(value)))).catch(() => {}); } catch { /* App weg */ }
+  }
+  /** Gespeicherte Gewichtungen übernehmen (nur gültige Listen aus Booleans). */
+  function sanitizeLog(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [k, list] of Object.entries(raw)) {
+      const n = Number(k);
+      if (Number.isInteger(n) && n >= 1 && n <= 12 && Array.isArray(list)) out[n] = list.filter((x) => typeof x === 'boolean').slice(-INTERVAL_MEMORY);
+    }
+    return out;
+  }
+  function loadMemory() {
+    if (!progressApi) return;
+    for (const key of ['intervalLog', 'singLog', 'micDenied']) {
+      try {
+        Promise.resolve(progressApi.memory(key)).then((v) => {
+          if (v === undefined) return;
+          memoryCache[key] = v;
+          if (key === 'intervalLog') ear.stats.intervalLog = sanitizeLog(v);
+          if (key === 'singLog') sing.log = sanitizeLog(v);
+        }).catch(() => {});
+      } catch { /* App weg */ }
+    }
+  }
+  /** „Heute üben“ (Paket 7) — hier noch ohne Wirkung. */
+  function onToolStep() {}
+
   /** Eigene Stimme aus dem gemeinsamen Profil (gewinnt über den Tool-Stand). */
   function applyProfile() {
     const prof = readProfile();
     if (prof?.part && SATB_PARTS.includes(prof.part)) ear.part = prof.part;
   }
   applyProfile();
+  loadMemory();
+  ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation'].forEach(refreshHint);
   setTab(state.tab);
   if (storage) {
     Promise.resolve(storage.load(STORAGE_ID)).then((data) => {

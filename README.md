@@ -19,7 +19,11 @@ Alles bleibt auf dem Gerät:
 
 - **IndexedDB (`chor-app`)** — Songs, Aufnahmen, Loops, Notizen, eigene
   Liedtexte, Setlisten und Einstellungen, jeweils in den Stores `files`
-  (Audio-/PDF-Bytes) und `meta` (alles Übrige).
+  (Audio-/PDF-Bytes) und `meta` (alles Übrige). Dazu im Store `meta`: das
+  Stimmprofil fürs Üben (`settings.voiceProfile`), die Stände der Tools
+  (Typ `toolState`) und der Übe-Fortschritt (Datensatz `progress`: nur
+  Tagesaggregate der letzten 180 Tage, die letzten Aufgaben je Bereich für
+  Stufenvorschläge, Gewichtungen der Intervall-Übungen, „Heute üben“).
 - **`localStorage`** — Fehlerprotokoll (`bvg-error-log`) und Diagnose-Log
   (`bvg-debug-log`), je bis zu einer festen Anzahl Einträge.
 - **Cache Storage** — die App-Shell (`index.html`, alle Skripte, `manifest.json`,
@@ -27,7 +31,8 @@ Alles bleibt auf dem Gerät:
   vom Service Worker.
 
 „Alle Daten löschen“ in den Einstellungen leert beide IndexedDB-Speicher vollständig
-sowie Fehler- und Diagnoseprotokoll. Dateien in einer verbundenen Dropbox
+sowie Fehler- und Diagnoseprotokoll — damit auch Stimmprofil, Tool-Stände
+und Übe-Fortschritt (`progress`). Dateien in einer verbundenen Dropbox
 bleiben davon unberührt — die App greift nie direkt auf Dropbox zu, sondern
 nur auf lokal heruntergeladene ZIP-Archive.
 
