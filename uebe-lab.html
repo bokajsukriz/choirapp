@@ -230,8 +230,8 @@
   .stage .acc { font-size: 13px; font-weight: 700; }
   .stage .ledger { stroke: var(--text); stroke-width: 1.2; }
   .stage .is-now { fill: var(--accent); stroke: var(--accent); }
-  .today-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 16px 10px; padding: 8px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .12); font-weight: 800; font-size: .8rem; }
-  .today-bar .big-btn { min-height: 44px; }
+  .quick-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 16px 10px; padding: 8px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .12); font-weight: 800; font-size: .8rem; }
+  .quick-bar .big-btn { min-height: 44px; }
   .tuning-threshold { font-size: .8rem; font-weight: 800; text-align: center; margin: 8px 0 0; }
   .answer.is-ok { background: #2f9e5b; border-color: #2f9e5b; color: #fff; }
   .answer.is-bad { background: var(--bad); border-color: var(--bad); color: #fff; }
@@ -260,7 +260,7 @@
   <h1>Chor-<span>Ausbildung</span></h1>
 </header>
 
-<div class="today-bar" hidden role="status" aria-live="polite"><span class="today-bar-text"></span><button class="big-btn" type="button" data-today="close" hidden>Fertig ✓ – weiter mit Heute üben</button></div>
+<div class="quick-bar" hidden role="status" aria-live="polite"><span class="quick-bar-text"></span><button class="big-btn" type="button" data-quick="close" hidden>Fertig ✓ – zurück</button></div>
 
 <nav class="tab-bar" role="tablist">
   <button class="tab-btn" type="button" role="tab" data-tab="rhythm" aria-selected="true">Rhythmus</button>
@@ -285,14 +285,6 @@
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
       <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
-
-      <div class="label-row"><span class="sub-label">Leertakte</span>
-        <button class="help-btn" type="button" data-help="help-gaps" aria-expanded="false" aria-label="Erklärung der Leertakte">?</button></div>
-      <div class="seg-grid">
-        <div><small>vor dem Nachklatschen</small><div class="seg" data-chips="gapBefore"></div></div>
-        <div><small>nach jeder Runde</small><div class="seg" data-chips="gapAfter"></div></div>
-      </div>
-      <p class="help-text" id="help-gaps" hidden>In einem Leertakt läuft nur der Klick weiter (ohne Klick: Stille) — wie ein Pausentakt im Chorsatz. <b>Vor dem Nachklatschen:</b> Zwischen Vorbild und deinem Einsatz liegen 1–2 Takte; du musst den Rhythmus behalten und weiterzählen, um wieder richtig einzusetzen. <b>Nach jeder Runde:</b> Verschnaufpause, um das Ergebnis anzusehen, bevor die nächste Runde beginnt. Die Leiste unten zeigt den Ablauf einer Runde.</p>
 
       <div class="bar-strip" aria-hidden="true"></div>
       <div class="stage"></div>
@@ -355,7 +347,7 @@
       <div class="answer-grid sing-answers"></div>
       <p class="sing-feedback ear-feedback" role="status" aria-live="polite"></p>
       <p class="score sing-score"></p>
-      <p class="foot-note">Mit Kopfhörern üben, sonst hört das Mikrofon die Vorgabe mit. Männerstimmen dürfen eine Oktave tiefer singen — das zählt als Treffer.</p>
+      <p class="foot-note">Mit Kopfhörern üben, sonst hört das Mikrofon die Vorgabe mit. Tiefe Stimmen dürfen eine Oktave tiefer singen — das zählt als Treffer.</p>
     </section>
     <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Stimm-Tuner</h2>
@@ -380,7 +372,7 @@
         <button class="step-btn" type="button" data-voice="target-up" aria-label="Zielton einen Halbton höher">+</button>
         <button class="big-btn secondary" type="button" data-voice="target-play">Anspielen</button>
       </div>
-      <p class="foot-note">Die Oktave ist egal: Männer- und Frauenstimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
+      <p class="foot-note">Die Oktave ist egal: tiefe und hohe Stimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
     </section>
     <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Tonumfang heute</h2><button class="chip" type="button" data-voice="range-reset">Zurücksetzen</button></div>
@@ -951,7 +943,6 @@
   // Stufen-Vorschläge je Bereich (Paket 6, aus dem Fortschritt der App).
   const levelHints = {};
   const MODES = [['echo', 'Nachklatschen'], ['along', 'Mitklatschen'], ['read', 'Vom Blatt'], ['duo', 'Zweistimmig']];
-  const ROUND_CHOICES = [[4, '4'], [8, '8'], [12, '12'], [0, 'endlos']];
   const BAR_CHOICES = [[1, '1'], [2, '2'], [4, '4']];
   const SYLLABLE_CHOICES = [['off', 'aus'], ['ta', 'ta ti-ti'], ['count', '1 + 2 +']];
   const INPUT_CHOICES = [['tap', 'Tippen'], ['mic', 'Mikrofon']];
@@ -979,7 +970,8 @@
     // beim Taktwechsel gleich (kein Wandern durch Runden). latency: eigene
     // Verzögerung beim Tippen (Touch/Bluetooth), wird abgezogen.
     tab: 'rhythm', bpm: 92, eighths: 184, latency: 0,
-    mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 8,
+    // rounds: immer 0 = endlos (seit der Überarbeitung nicht mehr wählbar).
+    mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 0,
     countIn: true, click: true, speedUp: false, showNotes: false,
     // Didaktik Paket 3
     bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0,
@@ -1688,21 +1680,27 @@
       <p class="help-text" id="lv-${area}" hidden>${levels.map((l) => `<b>${l.n}</b> ${l.label}`).join('<br>')}<br>Jede Stufe enthält die vorigen. Änderst du danach etwas, gilt es als eigene Auswahl.</p>`;
   }
 
+  /** Leertakte (im Einstellungsblatt) — nur, wenn es offen ist. */
+  function renderGapChips() {
+    if (!$('[data-chips="gapBefore"]')) return;
+    const gaps = [[0, '0'], [1, '1'], [2, '2']];
+    chips('gapBefore', gaps, state.gapBefore, state.mode === 'along');
+    chips('gapAfter', gaps, state.gapAfter);
+  }
+
   function renderRhythm() {
     $('[data-levels="rhythm"]').innerHTML = levelControlHtml('rhythm', RHYTHM_LEVELS, state.rhythmLevel, levelHints.rhythm);
     chips('rmode', MODES, state.mode, (v) => v === 'duo' && !duoAllowed());
     $('[data-duo-row]').hidden = state.mode !== 'duo';
     chips('duoPart', [['upper', 'obere Stimme'], ['lower', 'untere Stimme']], state.duoPart);
-    const gaps = [[0, '0'], [1, '1'], [2, '2']];
-    chips('gapBefore', gaps, state.gapBefore, state.mode === 'along');
-    chips('gapAfter', gaps, state.gapAfter);
+    renderGapChips();
     const level = rhythmLevel();
     const meters = level ? level.meters.join(', ') : state.meter;
     const els = ELEMENTS.filter(([id]) => state.elements.includes(id) && !(id === 't' && level === null && METERS[state.meter].unit !== 12)).map(([id]) => ELEMENT_SHORT[id]);
     const bits = [meters, els.length ? `Viertel, ${els.join(', ')}` : 'nur Viertel und Halbe',
       state.bars === 1 ? '1 Takt' : `${state.bars} Takte`];
     if (state.pickup) bits.push('Auftakt möglich');
-    bits.push(state.rounds ? `${state.rounds} Runden` : 'endlos');
+    if (state.gapBefore || state.gapAfter) bits.push(`Leertakte ${state.gapBefore}/${state.gapAfter}`);
     if (state.input === 'mic') bits.push('Mikrofon');
     $('.rhythm-sum').innerHTML = '';
     $('.rhythm-sum').append(`${bits.join(' · ')} `);
@@ -2704,8 +2702,13 @@
       <span class="sub-label">Eingabe</span>
       ${choice('input', INPUT_CHOICES, state.input)}
       ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}
-      <span class="sub-label">Runden</span>
-      ${choice('rounds', ROUND_CHOICES, state.rounds)}
+      <div class="label-row"><span class="sub-label" style="margin:0">Leertakte</span>
+        <button class="help-btn" type="button" data-help="help-gaps" aria-expanded="false" aria-label="Erklärung der Leertakte">?</button></div>
+      <div class="seg-grid">
+        <div><small>vor dem Nachklatschen</small><div class="seg" data-chips="gapBefore"></div></div>
+        <div><small>nach jeder Runde</small><div class="seg" data-chips="gapAfter"></div></div>
+      </div>
+      <p class="help-text" id="help-gaps" hidden>In einem Leertakt läuft nur der Klick weiter (ohne Klick: Stille) — wie ein Pausentakt im Chorsatz. <b>Vor dem Nachklatschen:</b> Zwischen Vorbild und deinem Einsatz liegen 1–2 Takte; du musst den Rhythmus behalten und weiterzählen, um wieder richtig einzusetzen. <b>Nach jeder Runde:</b> Verschnaufpause, um das Ergebnis anzusehen, bevor die nächste Runde beginnt. Die Leiste unter den Einstellungen zeigt den Ablauf einer Runde.</p>
       <span class="sub-label">Ablauf</span>
       <div class="check-list">
         ${row('countIn', 'Einzähler', 'ein Takt vorweg, bis zum Auftakt')}
@@ -2719,6 +2722,7 @@
       <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.micLatencyMs ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}</div>`
     : `<p class="foot-note" style="margin-top:0">Kommen deine Tipper immer etwas zu spät (Touchscreen, Bluetooth-Kopfhörer)? Einmal einmessen: vier Klicks zuhören, acht mittippen. Jetzt: ${Math.round(state.latency * 1000)} ms${lastMeanOff() !== null ? ` · letzte Runde im Mittel ${lastMeanOff() >= 0 ? '+' : '−'}${Math.abs(lastMeanOff())} ms` : ''}.</p>
       <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}`;
+    renderGapChips();
     const noTriplets = level ? level.meters.every((id) => METERS[id].unit !== 12) : METERS[state.meter].unit !== 12;
     $$('.sheet [data-rset="elements"][value="t"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', noTriplets));
     $('.sheet-hint').textContent = '';
@@ -2749,7 +2753,7 @@
       body.innerHTML = `
         <span class="sub-label" style="margin-top:0">Stufe</span>
         <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Chips 1–6).</p>
-        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
+        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
     } else {
@@ -3864,7 +3868,7 @@
     if (Number.isFinite(data.latency)) state.latency = clamp(data.latency, -.05, .3);
     if (Array.isArray(r.elements)) state.elements = ELEMENTS.map(([id]) => id).filter((id) => r.elements.includes(id));
     ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
-    if (ROUND_CHOICES.some(([n]) => n === r.rounds)) state.rounds = r.rounds;
+    state.rounds = 0; // Rhythmus läuft immer endlos
     ['countIn', 'click', 'speedUp', 'showNotes', 'pickup'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
     if (BAR_CHOICES.some(([n]) => n === r.bars)) state.bars = r.bars;
     if (SYLLABLE_CHOICES.some(([id]) => id === r.syllables)) state.syllables = r.syllables;
@@ -3960,7 +3964,7 @@
       return;
     }
 
-    if (e.target.closest('[data-today="close"]')) {
+    if (e.target.closest('[data-quick="close"]')) {
       try { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); } catch { /* eigenständig */ }
       return;
     }
@@ -4088,7 +4092,7 @@
       const name = chip.dataset.chip;
       if (name === 'rmode') { if (chip.dataset.value !== 'duo' || duoAllowed()) state.mode = chip.dataset.value; }
       else if (name === 'duoPart') state.duoPart = chip.dataset.value;
-      else if (name === 'gapBefore' || name === 'gapAfter') state[name] = Number(chip.dataset.value);
+      else if (name === 'gapBefore' || name === 'gapAfter') { state[name] = Number(chip.dataset.value); renderGapChips(); }
       renderRhythm();
       return;
     }
@@ -4684,17 +4688,23 @@
     errors.push(...rhythmPackageCheck());
     errors.push(...earPackageCheck());
     errors.push(...singPackageCheck());
-    // Paket 7: Parameter von „Heute üben“; falsche Werte werden ignoriert.
+    // Schnellstart: Parameter, Ketten aus bekannten Modi, Weiterschalten.
     {
-      const ok = parseTodayParams('?embedded&from=today&tab=ear&mode=tuning&level=3&tasks=10');
-      if (JSON.stringify(ok) !== JSON.stringify({ tab: 'ear', step: 'ear', mode: 'tuning', level: 3, count: 10 })) errors.push(`Heute-Parameter: ${JSON.stringify(ok)}`);
-      const r = parseTodayParams('?from=today&tab=rhythm&mode=read&level=6&rounds=6');
-      if (!r || r.mode !== 'read' || r.count !== 6 || r.step !== 'rhythm') errors.push('Heute-Parameter Rhythmus falsch');
-      const v = parseTodayParams('?from=today&tab=voice&mode=sight&level=2&tasks=8');
-      if (!v || v.step !== 'sing' || v.mode !== 'sight') errors.push('Heute-Parameter Singen falsch');
-      if (parseTodayParams('?embedded=1') !== null || parseTodayParams('?from=today&tab=warmup') !== null || parseTodayParams('?from=gestern&tab=ear') !== null) errors.push('Heute-Parameter: fremde Aufrufe nicht ignoriert');
-      const bad = parseTodayParams('?from=today&tab=ear&mode=hack&level=9&tasks=-3');
-      if (!bad || bad.mode !== null || bad.level !== null || bad.count !== null) errors.push(`Heute-Parameter: falsche Werte übernommen ${JSON.stringify(bad)}`);
+      if (parseQuickParams('?embedded&from=quick&tab=ear')?.tab !== 'ear' || parseQuickParams('?from=quick&tab=voice')?.tab !== 'voice') errors.push('Schnellstart-Parameter falsch');
+      if (parseQuickParams('?embedded=1') !== null || parseQuickParams('?from=quick&tab=rhythm') !== null || parseQuickParams('?from=today&tab=ear') !== null) errors.push('Schnellstart: fremde Aufrufe nicht ignoriert');
+      QUICK_CHAINS.ear.forEach(([m, n]) => { if (!EAR_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Hören: ${m}`); });
+      QUICK_CHAINS.voice.forEach(([m, n]) => { if (!SING_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Singen: ${m}`); });
+      const saved = { run: quickRun, mode: ear.mode, tab: state.tab };
+      try {
+        quickRun = { tab: 'ear', steps: [['interval', 2], ['quality', 1]], idx: 0, done: 0, finished: false };
+        ear.mode = 'interval';
+        onToolStep('ear'); onToolStep('voice');
+        if (quickRun.done !== 1) errors.push('Schnellstart zählt falsch');
+        onToolStep('ear');
+        if (quickRun.idx !== 1 || quickRun.done !== 0) errors.push('Schnellstart schaltet nicht weiter');
+        ear.mode = 'quality'; onToolStep('ear');
+        if (!quickRun.finished) errors.push('Schnellstart endet nicht');
+      } finally { quickRun = saved.run; ear.mode = saved.mode; state.tab = saved.tab; renderQuickBar(); }
     }
     // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
     {
@@ -4757,62 +4767,81 @@
       } catch { /* App weg */ }
     }
   }
-  /* ---- „Heute üben“ (Paket 7): Start mit Parametern, vorbereitet (nicht
-     spielend); ist die Menge erreicht, meldet die Seite „chor-tool-done“. ---- */
-  const TODAY_MODES = {
-    ear: ['interval', 'quality', 'cadence', 'chords', 'parts', 'tuning'],
-    voice: ['singInterval', 'findTone', 'hold', 'sight', 'dictation'],
-    rhythm: ['echo', 'along', 'read', 'duo'],
+  /* ---- Schnellstart aus der App (?from=quick&tab=ear|voice): ein Programm,
+     das mehrere Übungen nacheinander packt — z. B. 10 Intervalle, dann 10
+     Klänge … Jede Übung auf ihrer zuletzt benutzten Stufe. Ist die Menge
+     einer Übung erreicht, geht es mit der nächsten weiter. ---- */
+  const QUICK_CHAINS = {
+    ear: [['interval', 10], ['quality', 10], ['chords', 6], ['cadence', 6], ['tuning', 10]],
+    voice: [['singInterval', 8], ['findTone', 8], ['hold', 4], ['sight', 4]],
   };
-  /** URL-Parameter → { tab, step, mode, level, count } oder null (dann
-   *  normales Verhalten). Unbekannte Werte werden einzeln ignoriert. */
-  function parseTodayParams(search) {
+  const QUICK_TITLE = { ear: 'Hören', voice: 'Singen' };
+  const quickName = (tab, mode) => (tab === 'ear' ? EAR_MODES : SING_MODES).find(([id]) => id === mode)?.[1] || mode;
+  /** URL-Parameter → { tab } oder null (dann normales Verhalten). */
+  function parseQuickParams(search) {
     const q = new URLSearchParams(search);
-    if (q.get('from') !== 'today') return null;
-    const tab = q.get('tab');
-    if (!TODAY_MODES[tab]) return null;
-    const mode = TODAY_MODES[tab].includes(q.get('mode')) ? q.get('mode') : null;
-    const lv = Number(q.get('level'));
-    const level = Number.isInteger(lv) && lv >= 1 && lv <= 6 ? lv : null;
-    const c = Number(q.get(tab === 'rhythm' ? 'rounds' : 'tasks'));
-    const count = Number.isInteger(c) && c >= 1 && c <= 50 ? c : null;
-    return { tab, step: tab === 'voice' ? 'sing' : tab, mode, level, count };
+    if (q.get('from') !== 'quick') return null;
+    return QUICK_CHAINS[q.get('tab')] ? { tab: q.get('tab') } : null;
   }
-  let todayRun = null; // { tab, step, count, done, finished }
-  function applyTodayParams(p) {
+  let quickRun = null; // { tab, steps: [[mode, count]], idx, done, finished }
+  function applyQuickParams(p) {
     if (!p) return;
+    // Mikrofon verweigert: statt der Mikrofon-Übungen das Diktat.
+    const steps = p.tab === 'voice' && memoryCache.micDenied === true ? [['dictation', 6]] : QUICK_CHAINS[p.tab];
+    quickRun = { tab: p.tab, steps, idx: 0, done: 0, finished: false };
     state.tab = p.tab;
-    if (p.tab === 'ear') {
-      if (p.mode) { ear.mode = p.mode; ear.task = null; }
-      if (p.level) applyEarLevelFor(ear.mode, p.level);
-    } else if (p.tab === 'voice') {
-      if (p.mode) sing.mode = p.mode;
-      if (p.level && sing.mode !== 'tuner') sing.levels[sing.mode] = p.level;
+    enterQuickStep();
+  }
+  function enterQuickStep() {
+    const [mode] = quickRun.steps[quickRun.idx];
+    if (quickRun.tab === 'ear') {
+      clearEarTimers();
+      ear.mode = mode; ear.task = null; ear.pick = null;
     } else {
-      if (p.level) applyRhythmLevel(p.level);
-      if (p.mode && (p.mode !== 'duo' || duoAllowed())) state.mode = p.mode;
+      clearSingTimers();
+      sing.mode = mode; sing.task = null; sing.phase = 'idle'; sing.judge = null;
+      if (mode === 'dictation' && voice.analyser) micOff();
     }
-    if (p.count) todayRun = { tab: p.tab, step: p.step, count: p.count, done: 0, finished: false };
-    renderTodayBar();
+    renderQuickBar();
   }
-  function renderTodayBar() {
-    const bar = $('.today-bar');
-    bar.hidden = !todayRun;
-    if (!todayRun) return;
-    const unit = todayRun.tab === 'rhythm' ? 'Runden' : 'Aufgaben';
-    $('.today-bar-text').textContent = todayRun.finished ? 'Heute üben: geschafft' : `Heute üben: ${todayRun.done} von ${todayRun.count} ${unit}`;
-    $('[data-today="close"]').hidden = !todayRun.finished;
+  function renderQuickBar() {
+    const bar = $('.quick-bar');
+    bar.hidden = !quickRun;
+    if (!quickRun) return;
+    const title = `${QUICK_TITLE[quickRun.tab]}-Programm`;
+    if (quickRun.finished) {
+      $('.quick-bar-text').textContent = `${title}: geschafft ✓`;
+    } else {
+      const [mode, count] = quickRun.steps[quickRun.idx];
+      const next = quickRun.steps[quickRun.idx + 1];
+      $('.quick-bar-text').textContent = `${title} ${quickRun.idx + 1}/${quickRun.steps.length}: ${quickName(quickRun.tab, mode)} ${quickRun.done}/${count}${next ? ` · danach ${quickName(quickRun.tab, next[0])}` : ''}`;
+    }
+    $('[data-quick="close"]').hidden = !quickRun.finished || window.parent === window;
   }
-  /** Eine Aufgabe/Runde im Bereich `group` erledigt. */
+  /** Eine Aufgabe im Bereich `group` erledigt ('ear' | 'voice' | 'rhythm'). */
   function onToolStep(group) {
-    if (!todayRun || todayRun.finished || todayRun.tab !== group) return;
-    todayRun.done++;
-    if (todayRun.done >= todayRun.count) {
-      todayRun.finished = true;
-      if (group === 'rhythm' && run.playing) stop('Geschafft — weiter mit Heute üben.');
-      try { if (window.parent !== window) window.parent.postMessage({ type: 'chor-tool-done', step: todayRun.step, stats: { count: todayRun.count } }, location.origin); } catch { /* eigenständig */ }
+    if (!quickRun || quickRun.finished || quickRun.tab !== group) return;
+    const [mode, count] = quickRun.steps[quickRun.idx];
+    if ((group === 'ear' ? ear.mode : sing.mode) !== mode) return;
+    quickRun.done++;
+    if (quickRun.done >= count) {
+      quickRun.idx++; quickRun.done = 0;
+      if (quickRun.idx >= quickRun.steps.length) {
+        quickRun.finished = true;
+        if (group === 'voice' && voice.analyser) micOff();
+      } else {
+        const next = quickRun.steps[quickRun.idx][0];
+        const msg = `Weiter mit ${quickName(group, next)}.`;
+        // Nach dem Anzeigen des Ergebnisses umschalten.
+        const runRef = quickRun;
+        setTimeout(() => {
+          if (quickRun !== runRef || runRef.finished) return;
+          enterQuickStep();
+          if (group === 'ear') { setEarFeedback(msg, ''); renderEar(); } else { setSingFeedback(`${msg} Mit „Start“ geht es los.`, ''); renderSing(); }
+        }, 1500);
+      }
     }
-    renderTodayBar();
+    renderQuickBar();
   }
 
   /** Eigene Stimme aus dem gemeinsamen Profil (gewinnt über den Tool-Stand). */
@@ -4822,18 +4851,18 @@
   }
   applyProfile();
   loadMemory();
-  const todayParams = parseTodayParams(location.search);
+  const quickParams = parseQuickParams(location.search);
   ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation'].forEach(refreshHint);
-  if (!storage) applyTodayParams(todayParams);
+  if (!storage) applyQuickParams(quickParams);
   setTab(state.tab);
   if (storage) {
     Promise.resolve(storage.load(STORAGE_ID)).then((data) => {
       if (run.playing || ear.task || voice.analyser) return;
       if (data) restore(data);
       applyProfile();
-      applyTodayParams(todayParams);
+      applyQuickParams(quickParams);
       setTab(state.tab);
-    }).catch(() => { applyTodayParams(todayParams); setTab(state.tab); });
+    }).catch(() => { applyQuickParams(quickParams); setTab(state.tab); });
   }
 })();
 </script>

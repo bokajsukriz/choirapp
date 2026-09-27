@@ -100,3 +100,18 @@ Jedes Paket wurde vor dem Commit so geprüft:
 - Hörtest: Holzblöcke im Zweistimmig-Modus, Glockenton der Körperübungen, Sägezahn-Intonation (Schwebungen hörbar?), Gospel Shuffle / Swing Ride / Vocal Perc Basic.
 - „Heute üben“ einmal komplett durchgehen: Haken nach Einsingen, Hören, Singen, Rhythmus; am nächsten Tag neuer Plan.
 - Mikrofon verweigern → am Folgetag erscheint im Plan das Diktat.
+
+## Nachträge nach Rückmeldung
+
+| Änderung | Umsetzung |
+|---|---|
+| Nicht gendern | Alle sichtbaren Texte ohne Doppelformen: „tiefe/hohe Stimmen“ statt „Männer-/Frauenstimmen“, „Laiensänger“, „Sängern“, polnisch „samodzielnie“ statt „sam(a)“; README ebenso. |
+| Tools per Wischgeste schließen | Beim Öffnen legt die App einen eigenen Verlaufseintrag an: die Zurück-Geste bzw. -Taste (Android) schließt nur das Tool. Zusätzlich Wischen vom linken Rand nach rechts in allen Tool-iframes und im Groove Lab (nicht auf Tastaturen, Reglern, Tipp-Flächen). X, Esc und Wischen hinterlassen keinen verwaisten Verlaufseintrag. |
+| Piano im Querformat auf Android | Ursache: das Manifest hält die installierte App im Hochformat, Android dreht dann nicht mit. Das Piano öffnet jetzt im Vollbild mit Querformat-Sperre, beim Schließen wieder frei. |
+| „Meine Stimme“/„Belastung“ aus dem Tools-Reiter entfernt | Die Karte ist weg; Stimme und Belastung stellt man im jeweiligen Tool ein, sie gelten weiter übergreifend (Stimmprofil). Den gemessenen Umfang setzt der Stimm-Tuner. |
+| Einsingen: Einstellungen hinter Zahnrad | Stimme, Begleitung, Belastung, Einzähler, Einstimmung und die Programmlängen liegen in einem Blatt hinter dem Zahnrad in der Knopfleiste. |
+| Einsingen: Pausen straffer | Zwischen zwei Übungen ein halber statt ein ganzer Takt; Runden enden auf halben Takten (Akkord auf 1 oder 3) statt auf ganzen. Programme dadurch rund 10–15 % kürzer (z. B. Morgens 5,7 → ca. 5 Min., Höhe 8,9 → ca. 8 Min.). |
+| Länge von „Kurz“/„Ausführlich“ | Einstellbar 3/5/7 bzw. 10/15/20 Minuten (Standard 5 und 10); die Rückungen je Übung werden gemeinsam skaliert, notfalls fallen Übungen aus der Mitte weg. Geprüft: alle Längen × 4 Stimmen innerhalb ±20 %. |
+| Rhythmus immer endlos, Leertakte im Einstellungsmenü | Rundenwahl entfällt (gespeicherte Werte werden ignoriert); Leertakte samt Erklärung im Zahnrad-Blatt, die Zusammenfassung nennt sie. |
+| Statistik übersichtlicher | Karte „Dein Stand“: Punkte Mo–So, Einsing-Minuten der Woche, je geübtem Bereich ein Strahl aus sechs Feldern mit der aktuellen Stufe. |
+| Vier Schnellstarts statt „Heute üben“ | Einsingen 5 Min („Kurz“ auf 5 Min gebracht) und 10 Min („Ausführlich“ auf 10 Min), jeweils mit der zuletzt geübten Stimme; Hören (10 Intervalle, 10 Klänge, 6 Akkordfolgen, 6 Schlüsse, 10 Intonation) und Singen (8 Intervalle singen, 8 Ton finden, 4 Ton halten, 4 Blattsingen; ohne Mikrofon-Erlaubnis Diktat) — jede Übung auf ihrer zuletzt benutzten Stufe, Weiterschalten automatisch, Leiste mit Fortschritt. „Heute üben“ (Planfunktion, Karte, `chor-tool-done`) ist entfernt. |

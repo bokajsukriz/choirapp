@@ -94,8 +94,6 @@
   .switch input:checked + .switch-track::after { transform: translateX(16px); }
   .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-  .today-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 16px 10px; padding: 8px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .12); font-weight: 800; font-size: .8rem; }
-  .today-close { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; }
 
   /* ---- Bühne: aktuelle Übung ---- */
   .stage { border-radius: 20px; background: var(--surface); border: 1px solid var(--line); padding: 14px 14px 12px; margin-bottom: 12px; }
@@ -167,7 +165,9 @@
   .prog-item.is-now .num { background: var(--accent); color: #fff; }
 
   footer { border-top: 1px solid var(--line); background: var(--surface); padding: 10px 16px max(10px, env(safe-area-inset-bottom)); }
-  .transport-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+  .transport-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
+  .gear-btn { width: 42px; height: 42px; border-radius: 13px; background: var(--surface-2); }
+  .settings-sheet .sheet-card { background: var(--bg); }
   .play { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7); }
   .tempo { display: grid; gap: 2px; min-width: 0; }
   .bpm-out { font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -192,8 +192,6 @@
 <header>
   <h1>Ein<span>singen</span></h1>
 </header>
-
-<div class="today-bar" hidden role="status" aria-live="polite"><span class="today-bar-text"></span><button class="today-close" type="button" data-action="today-close" hidden>Fertig ✓ – weiter mit Heute üben</button></div>
 
 <nav class="tab-bar" role="tablist" aria-label="Art">
   <button class="tab-btn" type="button" role="tab" data-mode="program" aria-selected="true">Programm</button>
@@ -221,21 +219,6 @@
     </div>
   </section>
 
-  <section class="panel">
-    <span class="sub-label">Stimme <button class="help-btn" type="button" data-help="voice" aria-label="Welche Stimme wählen?">?</button></span>
-    <div class="chip-row" data-chips="voice"></div>
-    <span class="sub-label">Begleitung <button class="help-btn" type="button" data-help="options" aria-label="Was die Schalter tun">?</button></span>
-    <div class="switch-row">
-      <label class="switch"><input type="checkbox" role="switch" data-switch="guide"><span class="switch-track"></span>Melodie</label>
-      <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
-    </div>
-    <span class="sub-label">Belastung <button class="help-btn" type="button" data-help="load" aria-label="Was die Belastung ändert">?</button></span>
-    <div class="chip-row" data-chips="load"></div>
-    <span class="sub-label">Einzähler</span>
-    <div class="chip-row" data-chips="countIn"></div>
-    <span class="sub-label">Einstimmung</span>
-    <div class="chip-row" data-chips="cue"></div>
-  </section>
   <section class="panel" data-panel="program">
     <div class="panel-head"><h2>Einsing-Programm</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
     <div class="prog-cards" data-programs></div>
@@ -252,7 +235,34 @@
   <p class="foot-note">Nie pressen: bei Kratzen, Druck oder Schmerz Pause machen. Hohe Runden darf man auslassen.</p>
 </main>
 
-<div class="sheet" hidden>
+<!-- Einstellungen (Zahnrad in der Knopfleiste): Stimme, Begleitung,
+     Belastung, Einzähler, Einstimmung, Länge der Programme. -->
+<div class="sheet settings-sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="panel-head"><h2 id="settings-title">Einstellungen</h2>
+      <button class="icon-btn" type="button" data-action="close-settings" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <span class="sub-label">Stimme <button class="help-btn" type="button" data-help="voice" aria-label="Welche Stimme wählen?">?</button></span>
+    <div class="chip-row" data-chips="voice"></div>
+    <span class="sub-label">Begleitung <button class="help-btn" type="button" data-help="options" aria-label="Was die Schalter tun">?</button></span>
+    <div class="switch-row">
+      <label class="switch"><input type="checkbox" role="switch" data-switch="guide"><span class="switch-track"></span>Melodie</label>
+      <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
+    </div>
+    <span class="sub-label">Belastung <button class="help-btn" type="button" data-help="load" aria-label="Was die Belastung ändert">?</button></span>
+    <div class="chip-row" data-chips="load"></div>
+    <span class="sub-label">Einzähler</span>
+    <div class="chip-row" data-chips="countIn"></div>
+    <span class="sub-label">Einstimmung</span>
+    <div class="chip-row" data-chips="cue"></div>
+    <span class="sub-label">Länge „Kurz“</span>
+    <div class="chip-row" data-chips="lenKurz"></div>
+    <span class="sub-label">Länge „Ausführlich“</span>
+    <div class="chip-row" data-chips="lenLang"></div>
+    <button class="sheet-close" type="button" data-action="close-settings">Fertig</button>
+  </div>
+</div>
+
+<div class="sheet help-sheet" hidden>
   <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="panel-head"><h2 id="sheet-title"></h2>
       <button class="icon-btn" type="button" data-action="close-help" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
@@ -266,6 +276,7 @@
     <button class="play" type="button" aria-label="Starten"></button>
     <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="40" max="160" value="92" aria-label="Tempo der Übung"></label>
     <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
+    <button class="icon-btn gear-btn" type="button" data-action="open-settings" aria-label="Einstellungen: Stimme, Begleitung, Belastung, Länge" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
   </div>
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
 </footer>
@@ -314,7 +325,8 @@
   const CUE = 8;
   const CUE_CADENCE = 16;
   const BREATH = 4; // Standard-Atemluft in 16teln; je Übung über `breath`
-  const PAUSE = 16; // ein Takt zwischen zwei Programm-Übungen
+  const PAUSE = 8; // ein halber Takt zwischen zwei Programm-Übungen
+  const ROUND_GRID = 8; // Runden enden auf halben Takten (Akkord auf 1 oder 3)
   const BREATH_IN = 4; // Atemübung: Schläge einatmen …
   const BREATH_EXHALES = [8, 10, 12, 14]; // … und ausatmen, je Runde
   const BODY_BPM = 60; // Körperübungen: Tempo fest
@@ -512,7 +524,7 @@
     { id: 'eule', group: 'hoehe', name: 'Eulenruf', hint: 'hu-uh · von oben', bpm: 66, lowStart: 3, top: 20, glide: true,
       notes: [[7, 6], [0, 10]], syllables: ['hu', 'uh'],
       help: ['Mit einem leichten „hu“ hoch oben beginnen — so leicht wie ein Eulenruf — und auf „u“ eine Oktave hinuntergleiten.',
-        'Männer beginnen in der Kopfstimme (Falsett) und lassen den Klang nach unten in die Bruststimme übergehen, ohne dass er lauter wird. Frauen nehmen die leichte Höhe mit in die Mittellage.'] },
+        'Tiefe Stimmen beginnen in der Kopfstimme (Falsett) und lassen den Klang nach unten in die Bruststimme übergehen, ohne dass er lauter wird. Hohe Stimmen nehmen die leichte Höhe mit in die Mittellage.'] },
     { id: 'kopfAbwaerts', group: 'hoehe', name: 'Von oben', hint: 'hu · Tonleiter abwärts', bpm: 84, lowStart: 3, top: 20,
       notes: [[7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['hu', ...rep('u', 7)],
       help: ['Die Tonleiter von oben eine Oktave hinunter, der erste Ton leicht und fast gehaucht.',
@@ -550,7 +562,7 @@
 
   // starts: Einsatz jedes Tons in 16teln ab dem Ende des Akkords (also
   // inklusive `delay`); die Position in der Runde ist cue + starts[i].
-  const roundSteps = (ex, cue) => Math.ceil((cue + ex.length + (ex.breath ?? BREATH)) / BAR) * BAR;
+  const roundSteps = (ex, cue) => Math.ceil((cue + ex.length + (ex.breath ?? BREATH)) / ROUND_GRID) * ROUND_GRID;
   /** Tonlose Übung (Atem, Körper) — keine Töne, keine Rückungen. */
   const toneless = (ex) => ex.kind === 'breath' || ex.kind === 'body';
   /** Töne der Übung für eine Stimme (nur „Akkord“ hat je Stimme eigene). */
@@ -801,7 +813,9 @@
     guide: true, drone: false, countIn: 'off', cue: 'chord', bpm: {},
     load: 'normal', // Belastung — gemeinsam mit dem Stimmprofil der App
     ownPrograms: [], // [{ id: 'own-<base36>', name, items: [[exId, limit|null, dir]] }]
+    lengths: { kurz: 5, lang: 10 }, // gewünschte Dauer der Programme „Kurz“/„Ausführlich“ in Minuten
   };
+  const LENGTH_CHOICES = { kurz: [3, 5, 7], lang: [10, 15, 20] };
   const COUNT_INS = [['off', 'aus'], ['start', 'zu Beginn'], ['round', 'jede Runde']];
   const CUES = [['chord', 'Akkord'], ['cadence', 'Kadenz']];
   const run = { playing: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, wakeLock: null };
@@ -851,6 +865,9 @@
     if ('ownPrograms' in raw) state.ownPrograms = sanitizeOwnPrograms(raw.ownPrograms);
     pickFrom('program', allPrograms().map((p) => p.id));
     pickFrom('load', LOAD_IDS);
+    if (raw.lengths && typeof raw.lengths === 'object') {
+      for (const id of ['kurz', 'lang']) if (LENGTH_CHOICES[id].includes(raw.lengths[id])) state.lengths[id] = raw.lengths[id];
+    }
     pickFrom('exercise', EXERCISES.map((x) => x.id));
     pickFrom('voice', VOICE_IDS);
     pickFrom('direction', DIRECTIONS.map(([id]) => id));
@@ -885,8 +902,41 @@
   /** Tatsächlich gespieltes Tempo: Grundtempo × Belastung; tonlose Übungen
    *  (Körper fest BODY_BPM, Atem) ohne Faktor. */
   const playBpmOf = (ex) => (ex.kind === 'body' ? BODY_BPM : ex.kind === 'breath' ? bpmOf(ex) : Math.round(bpmOf(ex) * loadOf().tempo));
-  const allPrograms = () => [...PROGRAMS, ...state.ownPrograms];
-  const program = () => allPrograms().find((p) => p.id === state.program) || PROGRAMS[0];
+  const allPrograms = () => [...PROGRAMS, ...state.ownPrograms].map(fitted);
+  const program = () => allPrograms().find((p) => p.id === state.program) || allPrograms()[0];
+
+  /* ---- Länge von „Kurz“ und „Ausführlich“ einstellbar: die Zahl der
+     Rückungen je Übung wird gemeinsam skaliert (Faktor f), bis die Dauer
+     der gewünschten am nächsten kommt; reicht das nicht, fallen Übungen aus
+     der Mitte weg (erste und letzte bleiben). Ergebnis je Stimme, Belastung
+     und Tempo zwischengespeichert. ---- */
+  let quickMinutes = null; // Schnellstart aus der App: Dauer für diesen Aufruf
+  const targetMinutes = (id) => (quickMinutes && id === (quickMinutes <= 5 ? 'kurz' : 'lang') ? quickMinutes : state.lengths[id]);
+  const fitCache = new Map();
+  function fitted(p) {
+    if (p.id !== 'kurz' && p.id !== 'lang') return p;
+    const minutes = targetMinutes(p.id);
+    const key = `${p.id}|${minutes}|${state.voice}|${state.load}|${JSON.stringify(state.bpm)}|${profile?.low}|${profile?.high}`;
+    if (!fitCache.has(key)) fitCache.set(key, { ...p, items: fitItems(p.items, minutes * 60) });
+    return fitCache.get(key);
+  }
+  function fitItems(items, target) {
+    const scale = (list, f) => list.map(([id, limit, dir]) => (limit == null ? [id] : [id, clamp(Math.round(limit * f), 1, 9), ...(dir ? [dir] : [])]));
+    const dur = (list) => secondsLeft(0, buildPlan({ id: 'fit', items: list }));
+    let list = items.slice();
+    let best = null;
+    for (let round = 0; round < items.length; round++) {
+      best = null;
+      for (let f = .2; f <= 3.001; f += .05) {
+        const cand = scale(list, f);
+        const d = Math.abs(dur(cand) - target);
+        if (!best || d < best.d) best = { cand, d };
+      }
+      if (best.d <= target * .15 || list.length <= 3 || dur(best.cand) < target) break;
+      list = [...list.slice(0, Math.floor(list.length / 2)), ...list.slice(Math.floor(list.length / 2) + 1)];
+    }
+    return best.cand;
+  }
 
   /* ------------------------------------------------------------------------
      PLAN — welche Runde in welcher Tonart auf welchem Schritt liegt.
@@ -1143,33 +1193,25 @@
     setStatus(message || 'Bereit — am besten mit Kopfhörern.');
   }
 
-  /* ---- „Heute üben“: ?from=today&program=<id> — vorbereitet, nicht spielend;
-     am Ende des Programms „chor-tool-done“ an die App. ---- */
-  function parseTodayParams(search) {
+  /* ---- Schnellstart aus der App: ?from=quick&minutes=5|10 — Programm
+     „Kurz“ bzw. „Ausführlich“ auf die gewünschte Dauer gebracht, mit der
+     zuletzt geübten Stimme (Stimmprofil); vorbereitet, Start mit Play. ---- */
+  function parseQuickParams(search) {
     const q = new URLSearchParams(search);
-    if (q.get('from') !== 'today') return null;
-    const id = q.get('program');
-    return { program: allPrograms().some((p) => p.id === id) ? id : null };
+    if (q.get('from') !== 'quick') return null;
+    const minutes = Number(q.get('minutes'));
+    return { minutes: [5, 10].includes(minutes) ? minutes : null };
   }
-  let todayRun = null;
-  function applyTodayParams(p) {
-    if (!p) return;
-    if (p.program) { state.mode = 'program'; state.program = p.program; todayRun = { program: p.program, finished: false }; }
-    renderTodayBar();
-  }
-  function renderTodayBar() {
-    $('.today-bar').hidden = !todayRun;
-    if (!todayRun) return;
-    $('.today-bar-text').textContent = todayRun.finished ? 'Heute üben: Einsingen geschafft' : `Heute üben: Programm „${program().name}“ — mit Play starten`;
-    $('[data-action="today-close"]').hidden = !todayRun.finished;
+  function applyQuickParams(p) {
+    if (!p?.minutes) return;
+    quickMinutes = p.minutes;
+    fitCache.clear();
+    state.mode = 'program';
+    state.program = p.minutes <= 5 ? 'kurz' : 'lang';
+    setStatus(`Einsingen ${p.minutes} Minuten — mit Play starten.`);
   }
 
   function finish() {
-    if (todayRun && state.mode === 'program' && state.program === todayRun.program && !todayRun.finished) {
-      todayRun.finished = true;
-      try { if (window.parent !== window) window.parent.postMessage({ type: 'chor-tool-done', step: 'warmup', stats: { program: state.program } }, location.origin); } catch { /* eigenständig */ }
-      renderTodayBar();
-    }
     stop('Fertig — gut eingesungen! Viel Spaß in der Probe.', true);
     if (state.mode === 'program') {
       $$('.prog-item').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
@@ -1448,6 +1490,8 @@
     chips('countIn', COUNT_INS, state.countIn);
     chips('cue', CUES, state.cue);
     chips('load', LOAD_IDS.map((id) => [id, LOADS[id].name]), state.load);
+    chips('lenKurz', LENGTH_CHOICES.kurz.map((m) => [String(m), `${m} Min`]), String(state.lengths.kurz));
+    chips('lenLang', LENGTH_CHOICES.lang.map((m) => [String(m), `${m} Min`]), String(state.lengths.lang));
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     renderStage(run.playing ? run.shownSeg : null);
     renderTransport();
@@ -1467,31 +1511,42 @@
         `<ul>${voiceList().map((v) => `<li><b>${v.name}:</b> ${noteLabel(v.floor)} bis ${noteLabel(v.ceil)}${v.personal ? ' (dein gemessener Umfang)' : ''}</li>`).join('')}</ul>`,
         ...(profile?.low != null ? ['Mit gemessenem Umfang (Ausbildung → Stimme → Tonumfang heute) bleibt das Einsingen zwei Halbtöne innerhalb deiner Grenzen. Zurücksetzen kannst du ihn unter Tools.'] : []),
         'Die Wahl gilt in allen Übe-Tools (Einsingen, Ausbildung, Groove Lab).',
-        'Mezzosopran oder Bariton? Im Zweifel die tiefere Stimme wählen (Alt bzw. Bass) — lieber bequem als an der Grenze. Männerstimmen singen eine Oktave tiefer als Frauenstimmen; die Vorgabe klingt in deiner Lage.'];
+        'Mezzosopran oder Bariton? Im Zweifel die tiefere Stimme wählen (Alt bzw. Bass) — lieber bequem als an der Grenze. Tiefe Stimmen singen eine Oktave tiefer als hohe; die Vorgabe klingt in deiner Lage.'];
     } else {
       [title, paras] = HELP[kind];
     }
     sheetMode = 'help';
     openSheet(title);
     $('.sheet-body').innerHTML = paras.map((p) => (p.startsWith('<ul>') ? p : `<p>${p}</p>`)).join('');
-    $('.sheet-close').focus();
+    $('.help-sheet .sheet-close').focus();
   }
   function closeHelp() {
-    $('.sheet').hidden = true;
+    $('.help-sheet').hidden = true;
     sheetMode = 'help';
     draft = null;
-    $('.sheet-close').hidden = false;
+    $('.help-sheet .sheet-close').hidden = false;
     if (helpReturn && helpReturn.focus) helpReturn.focus();
   }
   function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+  let settingsReturn = null;
+  function openSettings() {
+    settingsReturn = document.activeElement;
+    $('.settings-sheet').hidden = false;
+    $('.settings-sheet [data-action="close-settings"]').focus();
+  }
+  function closeSettings() {
+    $('.settings-sheet').hidden = true;
+    settingsReturn?.focus?.();
+  }
+
   /** Blatt mit eigenem Inhalt (Menü, Editor) statt Hilfetext. */
   function openSheet(title, { closeButton = true } = {}) {
     $('#sheet-title').textContent = title;
-    $('.sheet-close').hidden = !closeButton;
-    if (!$('.sheet').hidden) return;
+    $('.help-sheet .sheet-close').hidden = !closeButton;
+    if (!$('.help-sheet').hidden) return;
     helpReturn = document.activeElement;
-    $('.sheet').hidden = false;
+    $('.help-sheet').hidden = false;
   }
 
   /* ---- Menü einer Programmkarte ---- */
@@ -1642,7 +1697,7 @@
 
   document.addEventListener('click', (e) => {
     const t = e.target;
-    if (t === $('.sheet') || t.closest('[data-action="close-help"]')) { closeHelp(); return; }
+    if (t === $('.help-sheet') || t.closest('[data-action="close-help"]')) { closeHelp(); return; }
     const ed = t.closest('[data-ed]');
     if (ed && draft) { onEditor(ed); return; }
     const menuItem = t.closest('[data-menu]');
@@ -1683,6 +1738,14 @@
       return;
     }
 
+    if (t === $('.settings-sheet') || t.closest('[data-action="close-settings"]')) { closeSettings(); return; }
+    if (t.closest('[data-action="open-settings"]')) { openSettings(); return; }
+    const lenChip = t.closest('[data-chip="lenKurz"], [data-chip="lenLang"]');
+    if (lenChip) {
+      state.lengths[lenChip.dataset.chip === 'lenKurz' ? 'kurz' : 'lang'] = Number(lenChip.dataset.value);
+      replan(); renderAll(); persist();
+      return;
+    }
     const chip = t.closest('[data-chip]');
     if (chip) {
       const key = chip.dataset.chip;
@@ -1698,7 +1761,6 @@
       renderAll(); persist();
       return;
     }
-    if (t.closest('[data-action="today-close"]')) { try { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); } catch { /* eigenständig */ } return; }
     if (t.closest('.play')) { if (run.playing) stop(); else start(); return; }
     if (t.closest('.tap-btn')) tapTempo();
   });
@@ -1717,11 +1779,12 @@
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('.sheet').hidden) { closeHelp(); return; }
+    if (e.key === 'Escape' && !$('.help-sheet').hidden) { closeHelp(); return; }
+    if (e.key === 'Escape' && !$('.settings-sheet').hidden) { closeSettings(); return; }
     // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
     // (die App hört auf diese Nachricht, siehe initTools in app.js).
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
-    if (e.metaKey || e.ctrlKey || e.altKey || !$('.sheet').hidden) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || !$('.help-sheet').hidden || !$('.settings-sheet').hidden) return;
     const onControl = document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName);
     if (e.code === 'Space' && !onControl) { e.preventDefault(); if (run.playing) stop(); else start(); }
     else if ((e.key === 't' || e.key === 'T') && !e.repeat) tapTempo();
@@ -1788,7 +1851,7 @@
               continue;
             }
             for (const sg of plan.segs) {
-              if (sg.steps % BAR) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein ganzer Takt`);
+              if (sg.steps % ROUND_GRID) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein halber Takt`);
               const rest = sg.steps - sg.cue - sg.ex.length;
               if (rest < (sg.ex.breath ?? BREATH)) errors.push(`${ex.id}/${v.id}/${load}: nur ${rest} 16tel Luft`);
             }
@@ -1878,7 +1941,8 @@
           for (const vid of VOICE_IDS) {
             state.voice = vid;
             const got = secondsLeft(0, buildPlan(PROGRAMS.find((p) => p.id === id))) / 60;
-            if (Math.abs(got - want[li]) > want[li] * .15) errors.push(`Programm ${id}/${load}/${vid}: ${got.toFixed(1)} min statt ${want[li]}`);
+            // Seit den strafferen Pausen (halber Takt) kürzer als die Tabelle.
+            if (got > want[li] * 1.15 || got < want[li] * .6) errors.push(`Programm ${id}/${load}/${vid}: ${got.toFixed(1)} min (Tabelle ${want[li]})`);
           }
         });
       }
@@ -1915,7 +1979,27 @@
       if (state.ownPrograms.length !== 12 || state.ownPrograms[0].name.length !== 40 || state.ownPrograms[0].items.length !== 20) errors.push('ownPrograms-Grenzen falsch');
       if (draftWarning([['oktave'], ['lippen']]) === '' || draftWarning([['lippen'], ['oktave']]) !== '' || draftWarning([['tiefe'], ['lippen']]) !== '') errors.push('Höhe-Hinweis falsch');
       state.ownPrograms = [];
-      if (JSON.stringify(parseTodayParams('?embedded&from=today&program=morgens')) !== '{"program":"morgens"}' || parseTodayParams('?from=today&program=gibtsnicht').program !== null || parseTodayParams('?embedded=1') !== null) errors.push('Heute-Parameter Einsingen falsch');
+      if (parseQuickParams('?embedded&from=quick&minutes=10')?.minutes !== 10 || parseQuickParams('?from=quick&minutes=7').minutes !== null || parseQuickParams('?embedded=1') !== null) errors.push('Schnellstart-Parameter Einsingen falsch');
+      // Länge „Kurz“/„Ausführlich“: angepasste Programme liegen nahe am Ziel.
+      const savedLen = { ...state.lengths };
+      for (const [id, list] of Object.entries(LENGTH_CHOICES)) {
+        for (const minutes of list) {
+          state.lengths[id] = minutes; fitCache.clear();
+          for (const vid of VOICE_IDS) {
+            state.voice = vid; fitCache.clear();
+            const p = fitted(PROGRAMS.find((x) => x.id === id));
+            const got = secondsLeft(0, buildPlan(p)) / 60;
+            if (Math.abs(got - minutes) > minutes * .2) errors.push(`Länge ${id} ${minutes} Min/${vid}: ${got.toFixed(1)} Min`);
+            if (!p.items.every(([eid]) => exById(eid))) errors.push(`Länge ${id}: unbekannte Übung`);
+          }
+        }
+      }
+      state.lengths = savedLen; fitCache.clear();
+      for (const [raw, want] of [[{ kurz: 7, lang: 20 }, '7/20'], [{ kurz: 4, lang: 'x' }, '5/10'], [undefined, '5/10']]) {
+        state.lengths = { kurz: 5, lang: 10 }; sanitize(raw === undefined ? {} : { lengths: raw });
+        if (`${state.lengths.kurz}/${state.lengths.lang}` !== want) errors.push(`lengths ${JSON.stringify(raw)} → ${JSON.stringify(state.lengths)}`);
+      }
+      state.lengths = savedLen;
       [['T', 'T'], ['X', 'A'], [3, 'A']].forEach(([raw, want]) => { state.voice = 'A'; sanitize({ voice: raw }); if (state.voice !== want) errors.push(`voice ${raw} → ${state.voice}`); });
     } finally {
       for (const k of Object.keys(state)) delete state[k];
@@ -1933,8 +2017,8 @@
     if (profile && LOAD_IDS.includes(profile.load)) state.load = profile.load;
   }
   applyProfile();
-  const todayParams = parseTodayParams(location.search);
-  if (!storage) applyTodayParams(todayParams);
+  const quickParams = parseQuickParams(location.search);
+  if (!storage) applyQuickParams(quickParams);
   renderAll();
   if (storage) {
     try {
@@ -1942,9 +2026,9 @@
         if (run.playing) return;
         if (data) sanitize(data);
         applyProfile();
-        applyTodayParams(todayParams);
+        applyQuickParams(quickParams);
         renderAll();
-      }).catch(() => { applyTodayParams(todayParams); renderAll(); });
+      }).catch(() => { applyQuickParams(quickParams); renderAll(); });
     } catch { /* Ablage weg */ }
   }
 })();

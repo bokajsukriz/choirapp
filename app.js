@@ -2103,7 +2103,7 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
-  tools:     { render: () => { renderToday(); renderToolsProfile(); renderWeek(); } },
+  tools:     { render: () => { renderQuickStart(); renderWeek(); } },
   settings:  { render: renderSettings },
 };
 
@@ -2242,7 +2242,13 @@ $('#settings-back').addEventListener('click', () => {
 
 // Zurück-Taste auf Android springt zwischen den Reitern bzw. aus dem Player
 // zurück, statt die App zu verlassen.
-window.addEventListener('popstate', applyRoute);
+window.addEventListener('popstate', () => {
+  // Eigener Rücksprung beim Schließen eines Tools (siehe popToolHistory).
+  if (skipNextPop) { skipNextPop = false; return; }
+  // Zurück-Geste/-Taste bei offenem Tool: nur das Tool schließen.
+  if (closeToolOverlayFromHistory()) return;
+  applyRoute();
+});
 
 /* ---------- Bibliothek --------------------------------------------------- */
 
@@ -17814,7 +17820,6 @@ function runSelfTests() {
     const restored = sanitizeSettingsPatch({ voiceProfile: full });
     if (!same(restored.voiceProfile, full)) failed.push('sanitizeSettingsPatch: voiceProfile aus Sicherung nicht übernommen');
     if ('voiceProfile' in sanitizeSettingsPatch({ voiceProfile: 'kaputt' })) failed.push('sanitizeSettingsPatch: kaputtes voiceProfile übernommen');
-    if (profileNoteLabel(41, 'de') !== 'F' || profileNoteLabel(64, 'de') !== 'e′' || profileNoteLabel(60, 'en') !== 'C4') failed.push('profileNoteLabel falsch');
   }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
@@ -18873,39 +18878,6 @@ async function runProgressSelfTests() {
   const sum = await store.summary(7);
   if (sum.practicedDays !== 1 || sum.areas.rhythm?.level !== 2 || sum.days.length !== 7) failed.push(`Fortschritt: Zusammenfassung falsch ${JSON.stringify(sum)}`);
   if ((await store.levelHint('rhythm')).level !== 2) failed.push('Fortschritt: levelHint kennt die zuletzt benutzte Stufe nicht');
-  // „Heute üben“ (Paket 7): Planfunktion mit festen Daten.
-  const ids = (plan) => plan.map((st) => `${st.id}:${st.params.program || st.params.mode}`).join(' ');
-  const empty = emptyProgress();
-  const dn = dayNumber(today);
-  const p1 = planToday({ date: today, hour: 18, data: empty });
-  if (ids(p1) !== `warmup:kurz ear:${TODAY_EAR_AREAS[dn % 5]} sing:${TODAY_SING_ROTATION[dn % 3]} rhythm:${TODAY_RHYTHM_ROTATION[dn % 3]}`) failed.push(`Heute üben leer: ${ids(p1)}`);
-  if (p1[1].params.tasks !== 10 || p1[2].params.tasks !== 8 || p1[3].params.rounds !== 6 || 'level' in p1[1].params) failed.push('Heute üben: Mengen/Stufe falsch');
-  const pShort = planToday({ date: today, hour: 18, data: empty, short: true });
-  if (ids(pShort) !== `warmup:schnell ear:${TODAY_EAR_AREAS[dn % 5]}` || pShort[1].params.tasks !== 6) failed.push(`Heute üben kurz: ${ids(pShort)}`);
-  const full = emptyProgress();
-  applyProgressEntries(full, [{ area: 'warmup', minutes: 5 }], '2026-10-10');
-  for (let i = 0; i < 12; i++) applyProgressEntries(full, [{ area: 'cadence', level: 2, right: i < 5 }, { area: 'interval', level: 4, right: true }], '2026-10-11');
-  applyProgressEntries(full, [{ area: 'rhythm', level: 5, right: true }, { area: 'sight', level: 3, right: true }], '2026-10-11');
-  const p2 = planToday({ date: today, hour: 8, data: full });
-  if (p2[0].params.program !== 'morgens' || p2[1].params.mode !== 'cadence' || p2[1].params.level !== 2 || p2[3].params.level !== 5) failed.push(`Heute üben voll/morgens: ${JSON.stringify(p2.map((x) => x.params))}`);
-  const p3 = planToday({ date: today, hour: 18, data: full });
-  if (p3[0].params.program !== TODAY_WARMUP_ROTATION[dn % 6]) failed.push(`Heute üben nach 10 Uhr: ${p3[0].params.program}`);
-  const tun = JSON.parse(JSON.stringify(full));
-  for (let i = 0; i < 12; i++) applyProgressEntries(tun, [{ area: 'tuning', level: 3, right: true, thresholdCents: 31 }], '2026-10-11');
-  if (planToday({ date: today, hour: 18, data: tun })[1].params.mode !== 'tuning') failed.push('Heute üben: Intonation über 25 Cent nicht als schwach erkannt');
-  const denied = JSON.parse(JSON.stringify(full)); denied.memory.micDenied = true;
-  if (planToday({ date: today, hour: 18, data: denied })[2].params.mode !== 'dictation') failed.push('Heute üben: Mikrofon verweigert → nicht Diktat');
-  if (JSON.stringify(planToday({ date: today, hour: 18, data: full })) !== JSON.stringify(p3)) failed.push('Heute üben: Plan nicht deterministisch');
-  const oldWarm = emptyProgress(); applyProgressEntries(oldWarm, [{ area: 'warmup', minutes: 5 }], '2026-10-01');
-  if (planToday({ date: today, hour: 8, data: oldWarm })[0].params.program !== 'kurz') failed.push('Heute üben: Einsingen > 6 Tage → nicht kurz');
-  if (todayQuery(p1[1]) !== `from=today&tab=ear&mode=${p1[1].params.mode}&tasks=10`) failed.push(`Heute üben: Adresse ${todayQuery(p1[1])}`);
-  // chor-tool-done nur vom offenen Tool-iframe und gleicher Herkunft.
-  const frameWin = {}, otherWin = {};
-  const ev = (over) => ({ origin: location.origin, source: frameWin, data: { type: 'chor-tool-done', step: 'ear' }, ...over });
-  if (toolDoneStep(ev({}), frameWin) !== 'ear') failed.push('chor-tool-done aus dem Tool nicht erkannt');
-  if (toolDoneStep(ev({ source: otherWin }), frameWin) !== null || toolDoneStep(ev({ origin: 'https://evil.example' }), frameWin) !== null
-    || toolDoneStep(ev({ data: { type: 'chor-tool-done', step: 'hack' } }), frameWin) !== null || toolDoneStep(ev({}), null) !== null) failed.push('chor-tool-done aus fremder Quelle nicht ignoriert');
-  if (todayState({ today: { date: '2026-10-11', plan: 'short', done: ['ear'] } }, today).done.length !== 0 || todayState({ today: { date: '2026-10-11', plan: 'short', done: [] } }, today).plan !== 'short') failed.push('Heute üben: neuer Tag nicht neu');
   return failed;
 }
 
@@ -22071,6 +22043,18 @@ async function openGrooveLab(entry = 'egg') {
         save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data }),
       },
     });
+    // Schließen per Zurück-Geste und Wischen vom linken Rand (siehe
+    // pushToolHistory/attachEdgeSwipe); schließt das Lab selbst (X, Esc),
+    // wird der eigene Verlaufseintrag wieder entfernt.
+    const el = grooveLabEl();
+    if (el) {
+      pushToolHistory();
+      if (!el.dataset.swipeWired) {
+        el.dataset.swipeWired = '1';
+        attachEdgeSwipe(el, () => { if (!el.hidden) el.close(); });
+        new MutationObserver(() => { if (el.hidden) popToolHistory(); }).observe(el, { attributes: true, attributeFilter: ['hidden'] });
+      }
+    }
   } catch (err) {
     bannerError(t('msg.grooveLabFailed'), 'GROOVE-LAB', err);
   }
@@ -22091,6 +22075,69 @@ async function openGrooveLab(entry = 'egg') {
    (#metronome-fab, siehe updateMetronomeFab) holt es zurück oder stoppt es.
    Den Stand meldet die Seite per postMessage ({type:'chor-metronome', …}). */
 let toolFrameReturnFocus = null;
+
+/* ---- Tools per Wischgeste schließen ----------------------------------
+   1. Die Zurück-Geste des Systems (Android: vom Rand wischen) bzw. die
+      Zurück-Taste: Beim Öffnen eines Tools legt die App einen eigenen
+      Verlaufseintrag an ({ toolOverlay: true }, gleiche Adresse); „zurück“
+      schließt dann nur das Tool statt die App zu verlassen.
+   2. Eine eigene Geste vom linken Rand nach rechts (für iOS, wo die
+      Standalone-App keine Zurück-Geste hat) — in den Tool-iframes und im
+      Groove Lab; nicht auf Tastaturen, Reglern und Tipp-Flächen, damit
+      Glissandi und Schieberegler weiter funktionieren. */
+let skipNextPop = false;
+function pushToolHistory() {
+  if (history.state?.toolOverlay) return;
+  history.pushState({ ...(history.state || {}), toolOverlay: true }, '', location.href);
+}
+function popToolHistory() {
+  if (!history.state?.toolOverlay) return;
+  skipNextPop = true;
+  history.back();
+}
+const grooveLabEl = () => document.querySelector('chor-groove-lab');
+function closeToolOverlayFromHistory() {
+  if (!$('#tool-frame').hidden) { closeToolFrame({ fromHistory: true }); return true; }
+  const lab = grooveLabEl();
+  if (lab && !lab.hidden) { lab.close(); return true; }
+  return false;
+}
+const SWIPE_EDGE_PX = 28;
+const SWIPE_IGNORE = '.keyboard, .scale-pads, .knob, input[type="range"], .tap-pad, .mel-grid, .track-list, .picker-card';
+/** Wischen vom linken Rand nach rechts → close(). */
+function attachEdgeSwipe(target, close) {
+  let start = null;
+  target.addEventListener('touchstart', (e) => {
+    const p = e.touches[0];
+    const path = e.composedPath ? e.composedPath() : [];
+    start = e.touches.length === 1 && p.clientX <= SWIPE_EDGE_PX && !path.some((el) => el.matches?.(SWIPE_IGNORE))
+      ? { x: p.clientX, y: p.clientY, t: Date.now() } : null;
+  }, { passive: true });
+  target.addEventListener('touchmove', (e) => {
+    if (!start) return;
+    const p = e.touches[0];
+    const dx = p.clientX - start.x;
+    const dy = p.clientY - start.y;
+    if (Math.abs(dy) > 60 || Date.now() - start.t > 900) { start = null; return; }
+    if (dx > 90) { start = null; close(); }
+  }, { passive: true });
+  const reset = () => { start = null; };
+  target.addEventListener('touchend', reset, { passive: true });
+  target.addEventListener('touchcancel', reset, { passive: true });
+}
+
+/* Piano: Querformat. Das Manifest hält die installierte App im Hochformat
+   (Android dreht dann gar nicht mit) — fürs Piano deshalb Vollbild und
+   Querformat-Sperre, beim Schließen wieder frei. Wo es beides nicht gibt
+   (iOS), bleibt es beim Drehen des Geräts. */
+async function lockLandscapeFor(host) {
+  try { if (!document.fullscreenElement) await host.requestFullscreen?.({ navigationUI: 'hide' }); } catch { /* ohne Vollbild */ }
+  try { await screen.orientation?.lock?.('landscape'); } catch { /* nicht unterstützt */ }
+}
+async function releaseLandscape(host) {
+  try { screen.orientation?.unlock?.(); } catch { /* nichts zu entsperren */ }
+  if (document.fullscreenElement === host) { try { await document.exitFullscreen(); } catch { /* schon zu */ } }
+}
 const METRONOME_PAGE = 'metronom.html';
 /** Zuletzt gemeldeter Stand des Metronom-iframes (siehe onMetronomeMessage). */
 const metronomeBg = { running: false, bpm: null, showFab: true };
@@ -22132,6 +22179,10 @@ function openToolFrame(page, titleKey, query = '') {
     frame.title = t(titleKey);
     frame.allow = 'microphone; autoplay; screen-wake-lock';
     if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
+    // Wischgeste auch im iframe (gleiche Herkunft, Dokument erreichbar).
+    frame.addEventListener('load', () => {
+      try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
+    });
     host.append(frame);
   }
   host.setAttribute('aria-label', t(titleKey));
@@ -22140,10 +22191,14 @@ function openToolFrame(page, titleKey, query = '') {
   document.body.style.overflow = 'hidden';
   updateMetronomeFab();
   $('#tool-frame-close').focus();
+  pushToolHistory();
+  if (page === 'piano.html') lockLandscapeFor(host);
 }
 
-function closeToolFrame() {
+function closeToolFrame({ fromHistory = false } = {}) {
   const host = $('#tool-frame');
+  releaseLandscape(host);
+  if (!fromHistory) popToolHistory();
   for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
   const metro = metronomeFrame();
   if (metro) {
@@ -22153,7 +22208,7 @@ function closeToolFrame() {
   host.hidden = true;
   document.body.style.overflow = '';
   updateMetronomeFab();
-  if (currentView === 'tools') { renderToolsProfile(); window.chorProgress.flush().then(() => { renderToday(); renderWeek(); }); }
+  if (currentView === 'tools') { renderQuickStart(); window.chorProgress.flush().then(renderWeek); }
   const fab = $('#metronome-fab');
   // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
   // Ebene; dann auf den Schnellzugriff, falls da.
@@ -22256,67 +22311,9 @@ window.chorVoiceProfile = {
   set: async (patch) => {
     const voiceProfile = sanitizeVoiceProfile({ ...window.chorVoiceProfile.get(), ...(patch && typeof patch === 'object' ? patch : {}) }, settings.myVoices);
     await saveSettings({ voiceProfile }); // Patch-Signatur wie überall in app.js
-    if (currentView === 'tools') renderToolsProfile();
     return voiceProfile;
   },
 };
-
-// Tonname für die Umfangs-Zeile — dieselbe neutrale Schreibweise wie
-// noteLabel(midi) in harmony.js (das hier nicht geladen ist): deutsch
-// Helmholtz (F, c, c′), englisch wissenschaftlich (C4).
-const PROFILE_NOTE_NAMES = {
-  de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
-  en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
-};
-function profileNoteLabel(midi, lang = settings.language) {
-  const octave = Math.floor(midi / 12) - 1;
-  if (lang === 'en') return `${PROFILE_NOTE_NAMES.en[midi % 12]}${octave}`;
-  const name = PROFILE_NOTE_NAMES.de[midi % 12];
-  if (octave >= 3) return name.toLowerCase() + ['', '′', '″', '‴', '⁗'][Math.min(4, octave - 3)];
-  return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
-}
-
-/** Karte „Mein Stimmprofil" oben im Tools-Reiter. */
-function renderToolsProfile() {
-  const host = $('#tools-profile');
-  if (!host) return;
-  const profile = window.chorVoiceProfile.get();
-  const chipsInto = (el, values, current, labelKey) => {
-    el.replaceChildren(...values.map((value) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'chip';
-      b.dataset.value = value;
-      b.textContent = t(`${labelKey}.${value}`);
-      b.setAttribute('aria-pressed', String(value === current));
-      return b;
-    }));
-  };
-  chipsInto($('#profile-part-picker'), PROFILE_PARTS, profile.part, 'tools.profile.part');
-  chipsInto($('#profile-load-picker'), PROFILE_LOADS, profile.load, 'tools.profile.load');
-  const line = $('#profile-range-line');
-  line.hidden = profile.low == null;
-  if (profile.low != null) {
-    let when = '';
-    if (profile.measuredAt) {
-      const [y, m, d] = profile.measuredAt.split('-').map(Number);
-      when = new Date(y, m - 1, d).toLocaleDateString(settings.language || 'de', { day: 'numeric', month: 'numeric' });
-    }
-    $('#profile-range-text').textContent = (when ? t('tools.profile.rangeMeasured') : t('tools.profile.range'))
-      .replace('{low}', profileNoteLabel(profile.low)).replace('{high}', profileNoteLabel(profile.high)).replace('{date}', when);
-  }
-}
-
-function initToolsProfile() {
-  const pick = (sel, key) => $(sel).addEventListener('click', (event) => {
-    const chip = event.target.closest('.chip[data-value]');
-    if (!chip) return;
-    window.chorVoiceProfile.set({ [key]: chip.dataset.value });
-  });
-  pick('#profile-part-picker', 'part');
-  pick('#profile-load-picker', 'load');
-  $('#profile-range-reset').addEventListener('click', () => window.chorVoiceProfile.set({ low: null, high: null, measuredAt: null }));
-}
 
 /* ==========================================================================
    FORTSCHRITT — nur lokal, Tagesaggregate, 180 Tage (Didaktik Paket 6).
@@ -22564,174 +22561,40 @@ function makeProgressStore(store = {
 }
 window.chorProgress = makeProgressStore();
 
+/** Montag der Woche von `date` (JJJJ-MM-TT) und die sieben Tage bis Sonntag. */
+function weekDates(date = progressDate()) {
+  const [y, m, d] = date.split('-').map(Number);
+  const day = new Date(y, m - 1, d);
+  const monday = d - ((day.getDay() + 6) % 7);
+  return Array.from({ length: 7 }, (_, i) => progressDate(new Date(y, m - 1, monday + i)));
+}
+
 /* ==========================================================================
-   HEUTE ÜBEN — eine geführte Einheit (ca. 12 bzw. 6 Minuten), deterministisch
-   aus Datum, Uhrzeit, Stimmprofil und Fortschritt (Didaktik Paket 7). Die
-   Karte öffnet die Tools mit Parametern; die melden „chor-tool-done“, die
-   App hakt den Schritt ab (progress.today). Am nächsten Tag neuer Plan.
+   SCHNELLSTART — vier Knöpfe oben im Tools-Reiter: Einsingen 5 oder 10
+   Minuten (mit der zuletzt geübten Stimme aus dem Stimmprofil), Hören und
+   Singen (je ein Programm, das mehrere Übungen nacheinander packt — die
+   Ketten stehen in uebe-lab.html, QUICK_CHAINS).
    ========================================================================== */
-const TODAY_STEPS = ['warmup', 'ear', 'sing', 'rhythm'];
-const TODAY_WARMUP_ROTATION = ['schnell', 'intonation', 'morgens', 'hoehe', 'tiefe', 'kurz'];
-const TODAY_EAR_AREAS = ['interval', 'quality', 'cadence', 'parts', 'tuning'];
-const TODAY_SING_ROTATION = ['singInterval', 'findTone', 'sight'];
-const TODAY_RHYTHM_ROTATION = ['echo', 'read', 'along'];
-/** Tagesnummer (Tage seit 1970) eines Datums JJJJ-MM-TT. */
-function dayNumber(date) { const [y, m, d] = date.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 864e5); }
+const QUICK_STARTS = {
+  warmup5: ['einsingen.html', 'settings.tools.warmup', 'from=quick&minutes=5'],
+  warmup10: ['einsingen.html', 'settings.tools.warmup', 'from=quick&minutes=10'],
+  ear: ['uebe-lab.html', 'settings.tools.playground', 'from=quick&tab=ear'],
+  sing: ['uebe-lab.html', 'settings.tools.playground', 'from=quick&tab=voice'],
+};
 
-/** Plan für einen Tag. data: sanitisierter Fortschritt. Liefert
- *  [{ id, page, params, count }] — voll vier, kurz zwei Schritte. */
-function planToday({ date, hour, data, short = false }) {
-  const n = dayNumber(date);
-  const lastWarm = Object.keys(data.days).filter((d) => data.days[d].warmup && d <= date).sort().pop();
-  const daysSince = lastWarm ? n - dayNumber(lastWarm) : Infinity;
-  const program = short ? 'schnell' : daysSince > 6 ? 'kurz' : hour < 10 ? 'morgens' : TODAY_WARMUP_ROTATION[n % TODAY_WARMUP_ROTATION.length];
-  const steps = [{ id: 'warmup', page: 'einsingen.html', params: { program }, count: 1 }];
-  // Hören: schwächster Bereich der letzten 14 Tage (mind. 10 Aufgaben),
-  // Intonation schwach bei Schwelle > 25 Cent; ohne Daten reihum.
-  const dates14 = Array.from({ length: 14 }, (_, i) => { const [y, m, d] = date.split('-').map(Number); return progressDate(new Date(y, m - 1, d - i)); });
-  let weakest = null;
-  for (const area of TODAY_EAR_AREAS) {
-    let total = 0, right = 0, threshold = null;
-    for (const d of dates14) {
-      const a = data.days[d]?.[area];
-      if (!a) continue;
-      for (const [lvl, st] of Object.entries(a)) {
-        if (lvl === 'sec') continue;
-        total += st.n; right += st.right;
-        if (threshold === null && typeof st.thresholdCents === 'number') threshold = st.thresholdCents;
-      }
-    }
-    if (total < 10) continue;
-    const rate = area === 'tuning' && threshold !== null && threshold > 25 ? 0 : right / total;
-    if (!weakest || rate < weakest.rate) weakest = { area, rate };
-  }
-  const earArea = weakest ? weakest.area : TODAY_EAR_AREAS[n % TODAY_EAR_AREAS.length];
-  const levelOf = (area) => (Number.isInteger(data.levels[area]) && data.levels[area] > 0 ? data.levels[area] : null);
-  const ear = { tab: 'ear', mode: earArea, tasks: short ? 6 : 10 };
-  if (levelOf(earArea)) ear.level = levelOf(earArea);
-  steps.push({ id: 'ear', page: 'uebe-lab.html', params: ear, count: ear.tasks });
-  if (!short) {
-    const singMode = data.memory.micDenied === true ? 'dictation' : TODAY_SING_ROTATION[n % TODAY_SING_ROTATION.length];
-    const sing = { tab: 'voice', mode: singMode, tasks: 8 };
-    if (levelOf(singMode)) sing.level = levelOf(singMode);
-    steps.push({ id: 'sing', page: 'uebe-lab.html', params: sing, count: 8 });
-    const rhythm = { tab: 'rhythm', mode: TODAY_RHYTHM_ROTATION[n % TODAY_RHYTHM_ROTATION.length], rounds: 6 };
-    if (levelOf('rhythm')) rhythm.level = levelOf('rhythm');
-    steps.push({ id: 'rhythm', page: 'uebe-lab.html', params: rhythm, count: 6 });
-  }
-  return steps;
-}
-/** Adresszusatz eines Schritts: from=today&… */
-const todayQuery = (step) => new URLSearchParams({ from: 'today', ...Object.fromEntries(Object.entries(step.params).map(([k, v]) => [k, String(v)])) }).toString();
-
-/** Nachricht aus einem Tool: nur gleiche Herkunft und nur vom offenen
- *  Tool-iframe. Liefert den abgeschlossenen Schritt oder null. */
-function toolDoneStep(event, frameWindow, origin = location.origin) {
-  if (!event || event.origin !== origin || !frameWindow || event.source !== frameWindow) return null;
-  const data = event.data;
-  if (!data || data.type !== 'chor-tool-done' || !TODAY_STEPS.includes(data.step)) return null;
-  return data.step;
-}
-const openToolWindow = () => $('#tool-frame iframe:not([hidden])')?.contentWindow || null;
-
-/** Tagesstand: gehört er zu heute? Sonst neuer Plan (Modus bleibt). */
-function todayState(data, date = progressDate()) {
-  const t = data.today;
-  if (t && t.date === date) return t;
-  return { date, plan: t?.plan === 'short' ? 'short' : 'full', done: [], skipped: [] };
+function renderQuickStart() {
+  const line = $('#quick-voice');
+  if (!line) return;
+  const part = window.chorVoiceProfile.get().part;
+  line.textContent = part ? t('tools.quick.voice').replace('{part}', t(`tools.area.part${part}`)) : t('tools.quick.noVoice');
 }
 
-async function renderToday() {
-  const host = $('#tools-today');
-  if (!host) return;
-  let data;
-  try { data = await window.chorProgress.data(); } catch { return; }
-  const date = progressDate();
-  const ts = todayState(data, date);
-  const short = ts.plan === 'short';
-  const steps = planToday({ date, hour: new Date().getHours(), data, short });
-  $('#today-title').textContent = t(short ? 'tools.today.titleShort' : 'tools.today.title');
-  $$('#today-plan-picker .chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === ts.plan)));
-  const profile = window.chorVoiceProfile.get();
-  const list = $('#today-steps');
-  list.replaceChildren(...steps.map((step) => {
-    const done = ts.done.includes(step.id);
-    const skipped = (ts.skipped || []).includes(step.id);
-    const li = document.createElement('li');
-    li.className = `today-step${done ? ' is-done' : ''}${skipped ? ' is-skipped' : ''}`;
-    const open = document.createElement('button');
-    open.type = 'button'; open.className = 'today-open'; open.dataset.step = step.id;
-    const check = document.createElement('span');
-    check.className = 'today-check'; check.setAttribute('aria-hidden', 'true'); check.textContent = done ? '✓' : '';
-    const text = document.createElement('span');
-    text.className = 'today-text';
-    const title = document.createElement('strong');
-    const sub = document.createElement('span');
-    const p = step.params;
-    if (step.id === 'warmup') {
-      title.textContent = `${t('tools.today.step.warmup')}: ${t(`tools.today.program.${p.program}`)}`;
-      sub.textContent = t('tools.today.load').replace('{load}', t(`tools.profile.load.${profile.load}`));
-    } else if (step.id === 'rhythm') {
-      title.textContent = `${t('tools.today.step.rhythm')}: ${t(`tools.today.rhythmMode.${p.mode}`)}`;
-      sub.textContent = t('tools.today.rounds').replace('{n}', p.rounds) + (p.level ? ` · ${t('tools.week.level').replace('{n}', p.level)}` : '');
-    } else {
-      title.textContent = `${t(`tools.today.step.${step.id}`)}: ${t(`tools.area.${p.mode}`)}`;
-      sub.textContent = t('tools.today.tasks').replace('{n}', p.tasks) + (p.level ? ` · ${t('tools.week.level').replace('{n}', p.level)}` : '');
-    }
-    text.append(title, sub);
-    open.append(check, text);
-    open.setAttribute('aria-label', `${title.textContent}, ${sub.textContent}${done ? `, ${t('tools.today.doneAria')}` : ''}`);
-    const skip = document.createElement('button');
-    skip.type = 'button'; skip.className = 'today-skip link-btn'; skip.dataset.skip = step.id;
-    skip.textContent = skipped ? t('tools.today.unskip') : t('tools.today.skip');
-    skip.hidden = done;
-    li.append(open, skip);
-    return li;
-  }));
-  const finished = steps.every((s) => ts.done.includes(s.id) || (ts.skipped || []).includes(s.id));
-  $('#today-finished').hidden = !finished;
-}
-
-function initToday() {
-  $('#today-plan-picker').addEventListener('click', async (event) => {
-    const chip = event.target.closest('.chip[data-value]');
-    if (!chip) return;
-    const plan = chip.dataset.value === 'short' ? 'short' : 'full';
-    await window.chorProgress.setToday((cur) => ({ ...todayState({ today: cur }), plan }));
-    renderToday();
+function initQuickStart() {
+  $('#quick-start').addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-quick]');
+    const def = btn && QUICK_STARTS[btn.dataset.quick];
+    if (def) openToolFrame(...def);
   });
-  $('#today-steps').addEventListener('click', async (event) => {
-    const skip = event.target.closest('[data-skip]');
-    if (skip) {
-      const id = skip.dataset.skip;
-      await window.chorProgress.setToday((cur) => {
-        const s = todayState({ today: cur });
-        const list = new Set(s.skipped || []);
-        if (list.has(id)) list.delete(id); else list.add(id);
-        return { ...s, skipped: [...list] };
-      });
-      renderToday();
-      return;
-    }
-    const open = event.target.closest('[data-step]');
-    if (!open) return;
-    const data = await window.chorProgress.data();
-    const date = progressDate();
-    const steps = planToday({ date, hour: new Date().getHours(), data, short: todayState(data, date).plan === 'short' });
-    const step = steps.find((s) => s.id === open.dataset.step);
-    if (!step) return;
-    const titleKey = step.page === 'einsingen.html' ? 'settings.tools.warmup' : 'settings.tools.playground';
-    openToolFrame(step.page, titleKey, todayQuery(step));
-  });
-}
-
-/** Schritt abhaken (aus „chor-tool-done“). */
-async function markTodayDone(step) {
-  await window.chorProgress.setToday((cur) => {
-    const s = todayState({ today: cur });
-    return { ...s, done: [...new Set([...s.done, step])], skipped: (s.skipped || []).filter((x) => x !== step) };
-  });
-  if (currentView === 'tools') renderToday();
 }
 
 /** Montag der Woche von `date` (JJJJ-MM-TT) und die sieben Tage bis Sonntag. */
@@ -22742,8 +22605,8 @@ function weekDates(date = progressDate()) {
   return Array.from({ length: 7 }, (_, i) => progressDate(new Date(y, m - 1, monday + i)));
 }
 
-/** Wochenansicht „Diese Woche“: sieben Punkte, Minuten je Gruppe, Stufen
- *  der benutzten Bereiche, Intonations-Schwelle. Keine Serien. */
+/** Statistik „Dein Stand“: sieben Punkte Mo–So (keine Serien), Einsing-
+ *  Minuten der Woche und je geübtem Bereich ein Strahl mit der Stufe. */
 async function renderWeek() {
   const body = $('#tools-week-body');
   if (!body) return;
@@ -22753,7 +22616,6 @@ async function renderWeek() {
   const week = weekDates(today);
   const names = t('tools.week.weekdays').split(',');
   const practiced = week.filter((date) => data.days[date] && Object.keys(data.days[date]).length);
-  $('#tools-week-short').textContent = practiced.length ? t('tools.week.days').replace('{n}', practiced.length) : '';
   const frag = document.createDocumentFragment();
   const dots = document.createElement('div');
   dots.className = 'week-dots';
@@ -22768,64 +22630,38 @@ async function renderWeek() {
   });
   const line = document.createElement('p');
   line.className = 'small';
-  line.textContent = practiced.length ? t('tools.week.days').replace('{n}', practiced.length) : t('tools.week.none');
+  const warm = week.reduce((acc, date) => acc + (data.days[date]?.warmup?.minutes || 0), 0);
+  line.textContent = practiced.length
+    ? `${t('tools.week.days').replace('{n}', practiced.length)}${warm ? ` · ${t('tools.week.warmup').replace('{n}', Math.round(warm))}` : ''}`
+    : t('tools.week.none');
   frag.append(dots, line);
-  const mins = document.createElement('div');
-  mins.className = 'week-mins';
-  for (const group of Object.keys(PROGRESS_GROUPS)) {
-    const sum = week.reduce((acc, date) => {
-      const day = data.days[date];
-      if (!day) return acc;
-      return acc + (group === 'warmup' ? day.warmup?.minutes || 0 : PROGRESS_GROUPS[group].reduce((a, area) => a + (day[area]?.sec || 0) / 60, 0));
-    }, 0);
-    const el = document.createElement('span');
-    el.innerHTML = '<span></span> <b></b>';
-    el.firstChild.textContent = `${t(`tools.week.group.${group}`)}:`;
-    el.lastChild.textContent = `${Math.round(sum)} ${t('tools.week.minutes').slice(0, 3)}.`;
-    mins.append(el);
-  }
-  frag.append(mins);
-  const used = PROGRESS_AREAS.filter((area) => area !== 'warmup' && week.some((date) => data.days[date]?.[area]));
-  if (used.length) {
-    const title = document.createElement('p');
-    title.className = 'section-title';
-    title.textContent = t('tools.week.areas');
+  const areas = PROGRESS_AREAS.filter((area) => area !== 'warmup' && area in data.levels);
+  if (areas.length) {
     const list = document.createElement('ul');
-    list.className = 'week-areas';
-    for (const area of used) {
-      const level = data.levels[area] ?? 0;
-      const recent = (data.recent[area] || []).filter((r) => r.l === level && !r.h).slice(-20);
+    list.className = 'level-bars';
+    for (const area of areas) {
+      const level = data.levels[area];
       const li = document.createElement('li');
-      li.innerHTML = '<span></span><span></span>';
-      li.firstChild.textContent = t(`tools.area.${area}`);
-      const rate = recent.length ? `${Math.round(100 * recent.filter((r) => r.r).length / recent.length)} % (${recent.length})` : '–';
-      li.lastChild.textContent = `${level ? t('tools.week.level').replace('{n}', level) : t('tools.week.custom')} · ${rate}`;
+      const label = document.createElement('span');
+      label.className = 'level-bar-name';
+      label.textContent = t(`tools.area.${area}`);
+      const bar = document.createElement('span');
+      bar.className = 'level-bar';
+      bar.setAttribute('role', 'img');
+      const text = level ? t('tools.week.level').replace('{n}', level) : t('tools.week.custom');
+      bar.setAttribute('aria-label', `${label.textContent}: ${text}`);
+      for (let i = 1; i <= 6; i++) {
+        const seg = document.createElement('i');
+        if (i <= level) seg.className = 'is-on';
+        bar.append(seg);
+      }
+      const value = document.createElement('span');
+      value.className = 'level-bar-value';
+      value.textContent = level ? `${level}/6` : '–';
+      li.append(label, bar, value);
       list.append(li);
     }
-    frag.append(title, list);
-  }
-  const tuning = summarizeProgress(data, 7, today).tuning;
-  if (tuning.length) {
-    const box = document.createElement('div');
-    box.className = 'week-tuning';
-    const title = document.createElement('p');
-    title.className = 'section-title';
-    title.textContent = t('tools.week.tuning');
-    const max = Math.max(30, ...tuning.map((p) => p.thresholdCents));
-    const [y, m, d] = today.split('-').map(Number);
-    const start = new Date(y, m - 1, d - 29).getTime();
-    const pts = tuning.map((p) => {
-      const [py, pm, pd] = p.date.split('-').map(Number);
-      const x = 4 + ((new Date(py, pm - 1, pd).getTime() - start) / (29 * 864e5)) * 292;
-      return [x, 44 - (p.thresholdCents / max) * 40];
-    });
-    box.innerHTML = `<svg viewBox="0 0 300 48" aria-hidden="true"><polyline points="${pts.map(([x, yy]) => `${x.toFixed(1)},${yy.toFixed(1)}`).join(' ')}"/>${pts.map(([x, yy]) => `<circle cx="${x.toFixed(1)}" cy="${yy.toFixed(1)}" r="2.5"/>`).join('')}</svg>`;
-    const last = document.createElement('p');
-    last.className = 'small muted';
-    last.textContent = t('tools.week.tuningLast').replace('{c}', Math.round(tuning[tuning.length - 1].thresholdCents));
-    box.prepend(title);
-    box.append(last);
-    frag.append(box);
+    frag.append(list);
   }
   body.replaceChildren(frag);
 }
@@ -22863,8 +22699,7 @@ function initGrooveLabEasterEgg() {
 /** Tools-Reiter: Metronom, Groove Lab, Einsingen, Piano und Ausbildung (die
  *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
-  initToolsProfile();
-  initToday();
+  initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
   $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));
@@ -22883,7 +22718,6 @@ function initTools() {
     if (event.origin !== location.origin) return;
     const type = event.data?.type;
     if (type === 'chor-tool-close' && !$('#tool-frame').hidden) closeToolFrame();
-    else if (type === 'chor-tool-done') { const step = toolDoneStep(event, openToolWindow()); if (step) markTodayDone(step); }
     else if (type === 'chor-metronome' && event.source && event.source === metronomeFrame()?.contentWindow) onMetronomeMessage(event.data);
   });
 }

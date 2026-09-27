@@ -296,49 +296,25 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   min-width: 0;
 }
 .tool-tile:active { background: var(--surface-2); }
-/* Stimmprofil-Karte über den Kacheln: Chips in festen Spalten, damit
-   S A T B bzw. die drei Belastungen immer in einer Reihe stehen. */
-.tools-profile { margin-bottom: 12px; }
-.chip-grid.profile-chips--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.chip-grid.profile-chips--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.profile-chips .chip { min-width: 0; overflow-wrap: anywhere; }
-.profile-range { margin: 10px 0 0; }
-.profile-range .link-btn { margin-left: 4px; }
-/* Heute üben */
-.tools-today { margin-bottom: 12px; }
-.today-head { display: grid; gap: 8px; }
-.today-head h2 { margin: 0; font-size: 1.1rem; }
-.chip-grid.profile-chips--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.today-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
-.today-step { display: flex; align-items: center; gap: 8px; }
-.today-open { flex: 1 1 auto; min-width: 0; min-height: var(--tap); display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
-.today-check { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 800; color: var(--accent-ink); }
-.today-step.is-done .today-check { background: var(--accent); border-color: var(--accent); }
-.today-step.is-skipped .today-text { opacity: .55; text-decoration: line-through; }
-.today-text { display: grid; min-width: 0; }
-.today-text span { font-size: .85rem; color: var(--muted); }
-.today-skip { flex: 0 0 auto; font-size: .85rem; }
-.today-finished { margin: 10px 0 0; font-weight: 700; }
-/* Wochenansicht: sieben Punkte Mo–So, Minuten je Gruppe, Stufen, Intonation. */
-.tools-week { margin-bottom: 12px; }
-.tools-week-summary { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; min-height: var(--tap); list-style: none; }
-.tools-week-summary::-webkit-details-marker { display: none; }
-.tools-week-summary::after { content: "›"; color: var(--muted); transform: rotate(90deg); transition: transform .15s; }
-.tools-week[open] .tools-week-summary::after { transform: rotate(-90deg); }
-.tools-week-short { margin-left: auto; font-family: inherit; font-weight: 600; font-size: .85rem; color: var(--muted); }
+/* Schnellstart und Statistik über den Kacheln */
+.quick-start, .quick-start h2, .tools-week h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.quick-btn { min-height: 64px; display: grid; align-content: center; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
+.quick-btn strong { font-size: 1rem; }
+.quick-btn span { font-size: .8rem; color: var(--muted); }
+.quick-btn:active { background: rgba(var(--accent-rgb), .14); }
+.level-bars { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.level-bars li { display: grid; grid-template-columns: minmax(0, 9.5em) 1fr auto; align-items: center; gap: 10px; font-size: .9rem; }
+.level-bar-name { overflow-wrap: anywhere; }
+.level-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
+.level-bar i { height: 10px; border-radius: 3px; background: var(--line); }
+.level-bar i.is-on { background: var(--accent); }
+.level-bar-value { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.5em; text-align: right; }
 .week-dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 6px 0 4px; text-align: center; }
 .week-dot { display: grid; justify-items: center; gap: 4px; font-size: .75rem; color: var(--muted); }
 .week-dot i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); display: block; }
 .week-dot.is-done i { background: var(--accent); border-color: var(--accent); }
 .week-dot.is-today span { font-weight: 800; color: var(--text); }
-.week-mins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin: 10px 0; font-size: .9rem; }
-.week-mins b { font-variant-numeric: tabular-nums; }
-.week-areas { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .9rem; }
-.week-areas li { display: flex; justify-content: space-between; gap: 8px; }
-.week-areas span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
-.week-tuning svg { width: 100%; height: 48px; display: block; }
-.week-tuning polyline { fill: none; stroke: var(--accent); stroke-width: 2; }
-.week-tuning circle { fill: var(--accent); }
 .tool-tile-icon {
   width: 48px;
   height: 48px;
@@ -4020,35 +3996,22 @@ input[type="checkbox"] {
        die Lichtshow (#lightshow). Alle werden erst beim Antippen geladen.
        Die breite Kachel darunter öffnet die Einstellungen. -->
   <section class="view" id="view-tools">
-    <!-- Heute üben: geführte Einheit aus Stimmprofil und Fortschritt (renderToday in app.js). -->
-    <div class="card tools-today" id="tools-today">
-      <div class="today-head">
-        <h2 id="today-title">Heute üben · ca. 12 Min.</h2>
-        <div class="chip-grid profile-chips profile-chips--2" id="today-plan-picker" role="group" aria-labelledby="today-title">
-          <button class="chip" type="button" data-value="full" data-i18n="tools.today.full">ca. 12 Min.</button>
-          <button class="chip" type="button" data-value="short" data-i18n="tools.today.short">ca. 6 Min.</button>
-        </div>
+    <!-- Schnellstart: Einsingen 5/10 Min, Hören, Singen (siehe QUICK_STARTS in app.js). -->
+    <div class="card quick-start" id="quick-start">
+      <h2 data-i18n="tools.quick.title">Schnell üben</h2>
+      <p class="small muted" id="quick-voice"></p>
+      <div class="quick-grid">
+        <button class="quick-btn" type="button" data-quick="warmup5"><strong data-i18n="tools.quick.warmup">Einsingen</strong><span data-i18n="tools.quick.min5">5 Min.</span></button>
+        <button class="quick-btn" type="button" data-quick="warmup10"><strong data-i18n="tools.quick.warmup">Einsingen</strong><span data-i18n="tools.quick.min10">10 Min.</span></button>
+        <button class="quick-btn" type="button" data-quick="ear"><strong data-i18n="tools.quick.ear">Hören</strong><span data-i18n="tools.quick.earSub">Intervalle, Klänge, Akkorde …</span></button>
+        <button class="quick-btn" type="button" data-quick="sing"><strong data-i18n="tools.quick.sing">Singen</strong><span data-i18n="tools.quick.singSub">Intervalle, Ton finden, vom Blatt …</span></button>
       </div>
-      <ol class="today-steps" id="today-steps"></ol>
-      <p class="small today-finished" id="today-finished" role="status" hidden data-i18n="tools.today.finished">Für heute geschafft — schön, dass du geübt hast.</p>
     </div>
-    <!-- Stimmprofil fürs Üben: gilt für Einsingen, Ausbildung und Groove Lab
-         (settings.voiceProfile, siehe renderToolsProfile in app.js). -->
-    <div class="card tools-profile" id="tools-profile">
-      <p class="section-title" id="profile-part-label" style="margin-top:0" data-i18n="tools.profile.partTitle">Meine Stimmlage fürs Üben</p>
-      <div class="chip-grid profile-chips profile-chips--4" id="profile-part-picker" role="group" aria-labelledby="profile-part-label"></div>
-      <p class="section-title" id="profile-load-label" data-i18n="tools.profile.loadTitle">Belastung beim Einsingen</p>
-      <div class="chip-grid profile-chips profile-chips--3" id="profile-load-picker" role="group" aria-labelledby="profile-load-label"></div>
-      <p class="small muted profile-range" id="profile-range-line" hidden>
-        <span id="profile-range-text"></span>
-        <button class="link-btn" id="profile-range-reset" type="button" data-i18n="tools.profile.rangeReset">Auf Standard zurücksetzen</button>
-      </p>
-    </div>
-    <!-- Fortschritt der Übe-Tools: nur lokal, keine Serien (siehe renderWeek in app.js). -->
-    <details class="card tools-week" id="tools-week">
-      <summary class="tools-week-summary"><span data-i18n="tools.week.title">Diese Woche</span><span class="tools-week-short" id="tools-week-short"></span></summary>
+    <!-- Statistik: nur lokal, keine Serien (siehe renderWeek in app.js). -->
+    <div class="card tools-week" id="tools-week">
+      <h2 data-i18n="tools.week.title">Dein Stand</h2>
       <div id="tools-week-body"></div>
-    </details>
+    </div>
     <div class="tools-grid">
       <button class="tool-tile" id="btn-open-metronome" type="button">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg></span>
