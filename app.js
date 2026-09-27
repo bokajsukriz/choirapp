@@ -1262,6 +1262,7 @@ const DEFAULT_SETTINGS = {
   key: SETTINGS_KEY,
   type: 'settings',
   myVoices: [],             // z.B. ['ALT', 'BASS'] — [] = noch keine gewählt
+  voiceProfile: null,       // { part, low, high, measuredAt, load } fürs Üben in den Tools — siehe sanitizeVoiceProfile
   defaultImportScope: 'mine', // 'mine' | 'full' | 'all' (siehe Auswahlmaske, M1)
   lyricsFontSize: 17,
   lastBackupAt: null,
@@ -2102,7 +2103,7 @@ const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
   player:    { render: () => {} },
-  tools:     { render: () => {} },
+  tools:     { render: () => renderToolsProfile() },
   settings:  { render: renderSettings },
 };
 
@@ -16468,6 +16469,7 @@ async function buildBackupParts(opts, onProgress) {
       defaultPlayerTab: settings.defaultPlayerTab, accentColor: settings.accentColor, language: settings.language,
       lightshowOffsetMs: settings.lightshowOffsetMs, lightshowVoice: settings.lightshowVoice,
       lightshowShow: settings.lightshowShow, lightshowSeed: settings.lightshowSeed,
+      voiceProfile: settings.voiceProfile,
     })}`);
   }
   if (opts.loops) {
@@ -16957,6 +16959,13 @@ function sanitizeSettingsPatch(raw) {
   }
   if (typeof raw.lightshowSeed === 'number' && Number.isFinite(raw.lightshowSeed)) {
     patch.lightshowSeed = raw.lightshowSeed;
+  }
+  if (raw.voiceProfile && typeof raw.voiceProfile === 'object') {
+    // Stimmprofil fürs Üben: nur Gültiges; „Meine Stimmen" aus derselben
+    // Sicherung zählen für die Vorbelegung nicht — die Stimmlage bleibt
+    // dann offen (null) und folgt später den eigenen Stimmen.
+    const vp = sanitizeVoiceProfile(raw.voiceProfile, []);
+    if (vp.part || vp.low != null || vp.load !== 'normal') patch.voiceProfile = vp;
   }
   return patch;
 }
@@ -17785,6 +17794,27 @@ function runSelfTests() {
         || clean.lightshowSeed !== 12345 || clean.myVoices.length !== 2) {
       failed.push('sanitizeSettingsPatch müsste gültige Werte unverändert übernehmen');
     }
+  }
+  checks++;
+  {
+    // Stimmprofil (Didaktik Paket 1): neu → gleich, alt/fehlend → Standard
+    // aus „Meine Stimmen", kaputt → Standard; Roundtrip über JSON.
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const full = { part: 'T', low: 45, high: 67, measuredAt: '2026-10-12', load: 'kraeftig' };
+    if (!same(sanitizeVoiceProfile(JSON.parse(JSON.stringify(full)), ['ALT']), full)) failed.push('sanitizeVoiceProfile: gültiges Profil nicht erhalten');
+    const none = sanitizeVoiceProfile(undefined, ['BASS', 'ALT']);
+    if (!same(none, { part: 'A', low: null, high: null, measuredAt: null, load: 'normal' })) failed.push(`sanitizeVoiceProfile: altes Profil (fehlt) → ${JSON.stringify(none)}`);
+    if (sanitizeVoiceProfile(null, ['BAR']).part !== 'B') failed.push('sanitizeVoiceProfile: Bariton zählt nicht als Bass');
+    if (sanitizeVoiceProfile(null, ['LEAD']).part !== null || sanitizeVoiceProfile(null, []).part !== null) failed.push('sanitizeVoiceProfile: ohne passende Stimme nicht null');
+    const broken = sanitizeVoiceProfile({ part: 'X', low: 50.5, high: 'hoch', measuredAt: 'gestern', load: 'extrem' }, ['SOP']);
+    if (!same(broken, { part: 'S', low: null, high: null, measuredAt: null, load: 'normal' })) failed.push(`sanitizeVoiceProfile: kaputtes Profil → ${JSON.stringify(broken)}`);
+    const narrow = sanitizeVoiceProfile({ part: 'A', low: 60, high: 64, measuredAt: '2026-01-01' }, []);
+    if (narrow.low !== null || narrow.measuredAt !== null) failed.push('sanitizeVoiceProfile: Umfang unter einer Quinte nicht verworfen');
+    if (sanitizeVoiceProfile({ low: 20, high: 70 }, []).low !== null) failed.push('sanitizeVoiceProfile: Umfang außerhalb 28–96 nicht verworfen');
+    const restored = sanitizeSettingsPatch({ voiceProfile: full });
+    if (!same(restored.voiceProfile, full)) failed.push('sanitizeSettingsPatch: voiceProfile aus Sicherung nicht übernommen');
+    if ('voiceProfile' in sanitizeSettingsPatch({ voiceProfile: 'kaputt' })) failed.push('sanitizeSettingsPatch: kaputtes voiceProfile übernommen');
+    if (profileNoteLabel(41, 'de') !== 'F' || profileNoteLabel(64, 'de') !== 'e′' || profileNoteLabel(60, 'en') !== 'C4') failed.push('profileNoteLabel falsch');
   }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
@@ -21967,6 +21997,7 @@ function closeToolFrame() {
   host.hidden = true;
   document.body.style.overflow = '';
   updateMetronomeFab();
+  if (currentView === 'tools') renderToolsProfile();
   const fab = $('#metronome-fab');
   // Fokus zurück an den Auslöser — außer der sitzt jetzt unsichtbar in der
   // Ebene; dann auf den Schnellzugriff, falls da.
@@ -22031,6 +22062,106 @@ function onMetronomeMessage(data) {
   if ('beat' in data) pulseMetronomeFab(data.level);
 }
 
+/* ==========================================================================
+   STIMMPROFIL — eine Stimmlage fürs Üben für alle Tools (Einsingen,
+   Ausbildung, Groove Lab), dazu optional der im Stimm-Tuner gemessene
+   persönliche Umfang und die Belastung beim Einsingen. Liegt in
+   settings.voiceProfile (optionales Feld, fehlend = Standard — daher ohne
+   DATA_VERSION-Erhöhung). Die Tool-iframes lesen und schreiben es über
+   window.chorVoiceProfile (gleiche Herkunft, wie chorToolStorage).
+   ========================================================================== */
+const PROFILE_PARTS = ['S', 'A', 'T', 'B'];
+const PROFILE_LOADS = ['leicht', 'normal', 'kraeftig'];
+// BAR gibt es in VOICE_ORDER als Spurtyp; fürs Üben zählt er als Bass.
+const MY_VOICE_TO_PART = { SOP: 'S', ALT: 'A', TEN: 'T', BAR: 'B', BASS: 'B' };
+
+/** Gespeichertes (oder gar kein) Profil → gültiges Profil. Ohne gewählte
+ *  Übe-Stimme gilt die erste passende aus „Meine Stimmen" (Reihenfolge
+ *  VOICE_ORDER), sonst null. Ein Umfang zählt nur mit beiden Grenzen und
+ *  mindestens einer Quinte Abstand; measuredAt nur zusammen mit ihm. */
+function sanitizeVoiceProfile(raw, myVoices = []) {
+  const o = raw && typeof raw === 'object' ? raw : {};
+  const mine = Array.isArray(myVoices) ? myVoices : [];
+  const fromMine = VOICE_ORDER.map((v) => MY_VOICE_TO_PART[v]).find((p, i) => p && mine.includes(VOICE_ORDER[i])) || null;
+  const midi = (v) => (Number.isInteger(v) && v >= 28 && v <= 96 ? v : null);
+  let low = midi(o.low), high = midi(o.high);
+  if (low == null || high == null || high - low < 7) { low = null; high = null; }
+  return {
+    part: PROFILE_PARTS.includes(o.part) ? o.part : fromMine,
+    low, high,
+    measuredAt: low != null && typeof o.measuredAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.measuredAt) ? o.measuredAt : null,
+    load: PROFILE_LOADS.includes(o.load) ? o.load : 'normal',
+  };
+}
+
+// Für die Tool-iframes (gleiche Herkunft), neben window.chorToolStorage.
+window.chorVoiceProfile = {
+  get: () => sanitizeVoiceProfile(settings.voiceProfile, settings.myVoices),
+  set: async (patch) => {
+    const voiceProfile = sanitizeVoiceProfile({ ...window.chorVoiceProfile.get(), ...(patch && typeof patch === 'object' ? patch : {}) }, settings.myVoices);
+    await saveSettings({ voiceProfile }); // Patch-Signatur wie überall in app.js
+    if (currentView === 'tools') renderToolsProfile();
+    return voiceProfile;
+  },
+};
+
+// Tonname für die Umfangs-Zeile — dieselbe neutrale Schreibweise wie
+// noteLabel(midi) in harmony.js (das hier nicht geladen ist): deutsch
+// Helmholtz (F, c, c′), englisch wissenschaftlich (C4).
+const PROFILE_NOTE_NAMES = {
+  de: ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'],
+  en: ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'],
+};
+function profileNoteLabel(midi, lang = settings.language) {
+  const octave = Math.floor(midi / 12) - 1;
+  if (lang === 'en') return `${PROFILE_NOTE_NAMES.en[midi % 12]}${octave}`;
+  const name = PROFILE_NOTE_NAMES.de[midi % 12];
+  if (octave >= 3) return name.toLowerCase() + ['', '′', '″', '‴', '⁗'][Math.min(4, octave - 3)];
+  return name + ['', '₁', '₂', '₃', '₄'][Math.min(4, 2 - octave)];
+}
+
+/** Karte „Mein Stimmprofil" oben im Tools-Reiter. */
+function renderToolsProfile() {
+  const host = $('#tools-profile');
+  if (!host) return;
+  const profile = window.chorVoiceProfile.get();
+  const chipsInto = (el, values, current, labelKey) => {
+    el.replaceChildren(...values.map((value) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.dataset.value = value;
+      b.textContent = t(`${labelKey}.${value}`);
+      b.setAttribute('aria-pressed', String(value === current));
+      return b;
+    }));
+  };
+  chipsInto($('#profile-part-picker'), PROFILE_PARTS, profile.part, 'tools.profile.part');
+  chipsInto($('#profile-load-picker'), PROFILE_LOADS, profile.load, 'tools.profile.load');
+  const line = $('#profile-range-line');
+  line.hidden = profile.low == null;
+  if (profile.low != null) {
+    let when = '';
+    if (profile.measuredAt) {
+      const [y, m, d] = profile.measuredAt.split('-').map(Number);
+      when = new Date(y, m - 1, d).toLocaleDateString(settings.language || 'de', { day: 'numeric', month: 'numeric' });
+    }
+    $('#profile-range-text').textContent = (when ? t('tools.profile.rangeMeasured') : t('tools.profile.range'))
+      .replace('{low}', profileNoteLabel(profile.low)).replace('{high}', profileNoteLabel(profile.high)).replace('{date}', when);
+  }
+}
+
+function initToolsProfile() {
+  const pick = (sel, key) => $(sel).addEventListener('click', (event) => {
+    const chip = event.target.closest('.chip[data-value]');
+    if (!chip) return;
+    window.chorVoiceProfile.set({ [key]: chip.dataset.value });
+  });
+  pick('#profile-part-picker', 'part');
+  pick('#profile-load-picker', 'load');
+  $('#profile-range-reset').addEventListener('click', () => window.chorVoiceProfile.set({ low: null, high: null, measuredAt: null }));
+}
+
 /* Ablage für die Tool-Seiten: Sie greifen als gleichherkünftige iframes
    über window.parent.chorToolStorage darauf zu und merken sich so ihre
    Einstellungen in IndexedDB (meta-Typ `toolState`, je Tool ein Datensatz)
@@ -22064,6 +22195,7 @@ function initGrooveLabEasterEgg() {
 /** Tools-Reiter: Metronom, Groove Lab, Einsingen, Piano und Ausbildung (die
  *  Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
+  initToolsProfile();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', openGrooveLab);
   $('#btn-open-warmup').addEventListener('click', () => openToolFrame('einsingen.html', 'settings.tools.warmup'));

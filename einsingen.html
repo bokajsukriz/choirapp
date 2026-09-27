@@ -25,9 +25,15 @@
   requestAnimationFrame folgt den tatsächlich geplanten Zeiten.
 
   Tonräume: je Stimme eine bewusst vorsichtige Spanne für Laienchöre
-  (VOICES.floor/ceil); jede Übung legt fest, wo ihr tiefster Ton startet
-  (lowStart) und wie hoch ihr höchster Ton höchstens steigt (top), beides in
-  Halbtönen über floor. Kein Ton verlässt floor…ceil.
+  (PRACTICE_RANGES in harmony.js, bei gemessenem Umfang practiceRange());
+  jede Übung legt fest, wo ihr tiefster Ton startet (lowStart) und wie hoch
+  ihr höchster Ton höchstens steigt (top), beides in Halbtönen über floor.
+  Kein Ton verlässt floor…ceil.
+
+  Stimmlage und persönlichen Umfang liest das Tool aus dem gemeinsamen
+  Stimmprofil der App (window.parent.chorVoiceProfile, app.js); ein Tipp auf
+  einen Stimm-Chip schreibt die Wahl dorthin zurück, sie gilt dann in allen
+  Tools. Direkt geöffnet gilt die im Tool gespeicherte Stimme.
 
   Einstellungen merkt sich das Tool über window.parent.chorToolStorage
   (Tool-ID 'einsingen', IndexedDB in app.js) — nicht localStorage, der ist
@@ -268,16 +274,28 @@
   const BREATH_EXHALES = [8, 10, 12, 14]; // … und ausatmen, je Runde
   const MAX_STEPS = 7; // höchstens so viele Halbtöne über der Startlage
 
-  // Klingende MIDI-Töne. Vorsichtige Laienchor-Spannen: lieber ein, zwei
-  // Töne unter dem, was die Literatur verlangt — Einsingen soll die Stimme
-  // aufwärmen, nicht an die Grenze bringen.
-  const VOICES = [
-    { id: 'S', name: 'Sopran', floor: 57, ceil: 79 }, // a  – g″
-    { id: 'A', name: 'Alt', floor: 53, ceil: 74 },    // f  – d″
-    { id: 'T', name: 'Tenor', floor: 47, ceil: 67 },  // H  – g′
-    { id: 'B', name: 'Bass', floor: 41, ceil: 62 },   // F  – d′
-  ];
-  const voiceById = (id) => VOICES.find((v) => v.id === id) || VOICES[1];
+  // Klingende MIDI-Töne: die Übe-Umfänge aus harmony.js (PRACTICE_RANGES,
+  // vorsichtige Laienchor-Spannen — lieber ein, zwei Töne unter dem, was die
+  // Literatur verlangt). Mit gemessenem Umfang im Stimmprofil gilt dessen
+  // Innenbereich (practiceRange), je zwei Halbtöne innerhalb.
+  const VOICE_IDS = ['S', 'A', 'T', 'B'];
+  const { PRACTICE_RANGES, practiceRange } = H;
+
+  // Gemeinsames Stimmprofil der App (nur eingebettet, gleiche Herkunft).
+  const profileApi = (() => {
+    try { if (window.parent !== window && window.parent.chorVoiceProfile) return window.parent.chorVoiceProfile; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  let profile = null; // { part, low, high, measuredAt, load } oder null
+  function readProfile() {
+    try { profile = profileApi ? profileApi.get() : null; } catch { profile = null; }
+  }
+  /** Übe-Umfang einer Stimme: { id, name, floor, ceil, personal }. */
+  const voiceById = (id) => {
+    const part = VOICE_IDS.includes(id) ? id : 'A';
+    return { id: part, ...practiceRange({ part, low: profile?.low ?? null, high: profile?.high ?? null }) };
+  };
+  const voiceList = () => VOICE_IDS.map(voiceById);
 
   // Vierstimmiger Satz für die Übung „Akkord“ aus harmony.js (derselbe
   // wie im Groove Lab).
@@ -611,7 +629,7 @@
     pickFrom('mode', ['program', 'single']);
     pickFrom('program', PROGRAMS.map((p) => p.id));
     pickFrom('exercise', EXERCISES.map((x) => x.id));
-    pickFrom('voice', VOICES.map((v) => v.id));
+    pickFrom('voice', VOICE_IDS);
     pickFrom('direction', DIRECTIONS.map(([id]) => id));
     for (const key of ['guide', 'drone']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
     // countIn war bis v294 ein Schalter (true/false) — alte Stände umrechnen.
@@ -650,7 +668,9 @@
   function exerciseRange(ex, voiceId) {
     const v = voiceById(voiceId);
     const { min, max } = ex.kind === 'breath' ? { min: 0, max: 0 } : spanOf(ex, voiceId);
-    const start = v.floor + ex.lowStart - min;
+    // Ein enger persönlicher Umfang kann die Startlage über die Obergrenze
+    // schieben — dann so weit hinunter, wie es der Umfang erlaubt.
+    const start = Math.max(v.floor - min, Math.min(v.floor + ex.lowStart - min, v.ceil - max));
     const highestRoot = Math.min(v.floor + ex.top, v.ceil) - max;
     return { start, steps: clamp(highestRoot - start, 0, MAX_STEPS) };
   }
@@ -1086,7 +1106,7 @@
     $$('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== state.mode; });
     renderPrograms();
     renderGroups();
-    chips('voice', VOICES.map((v) => [v.id, v.name]), state.voice);
+    chips('voice', voiceList().map((v) => [v.id, v.name]), state.voice);
     chips('direction', DIRECTIONS, state.direction);
     chips('countIn', COUNT_INS, state.countIn);
     chips('cue', CUES, state.cue);
@@ -1106,7 +1126,9 @@
     } else if (kind === 'voice') {
       title = HELP.voice[0];
       paras = ['Wähle deine Chorstimme. Die Übungen bleiben in einem bequemen Bereich, der mit jeder Runde nur ein paar Halbtöne steigt:',
-        `<ul>${VOICES.map((v) => `<li><b>${v.name}:</b> ${noteLabel(v.floor)} bis ${noteLabel(v.ceil)}</li>`).join('')}</ul>`,
+        `<ul>${voiceList().map((v) => `<li><b>${v.name}:</b> ${noteLabel(v.floor)} bis ${noteLabel(v.ceil)}${v.personal ? ' (dein gemessener Umfang)' : ''}</li>`).join('')}</ul>`,
+        ...(profile?.low != null ? ['Mit gemessenem Umfang (Ausbildung → Stimme → Tonumfang heute) bleibt das Einsingen zwei Halbtöne innerhalb deiner Grenzen. Zurücksetzen kannst du ihn unter Tools.'] : []),
+        'Die Wahl gilt in allen Übe-Tools (Einsingen, Ausbildung, Groove Lab).',
         'Mezzosopran oder Bariton? Im Zweifel die tiefere Stimme wählen (Alt bzw. Bass) — lieber bequem als an der Grenze. Männerstimmen singen eine Oktave tiefer als Frauenstimmen; die Vorgabe klingt in deiner Lage.'];
     } else {
       [title, paras] = HELP[kind];
@@ -1182,6 +1204,11 @@
       const key = chip.dataset.chip;
       if (state[key] === chip.dataset.value) return;
       state[key] = chip.dataset.value;
+      // Die Stimmlage gilt in allen Tools — zurück ins gemeinsame Profil.
+      if (key === 'voice' && profileApi) {
+        try { Promise.resolve(profileApi.set({ part: state.voice })).then((p) => { profile = p; }).catch(() => {}); } catch { /* App weg */ }
+        if (profile) profile = { ...profile, part: state.voice };
+      }
       replan();
       renderAll(); persist();
       return;
@@ -1217,7 +1244,9 @@
 
   // Für die Konsole und Selbstprüfungen: Plan und Töne ansehen, ohne zu spielen.
   window.einsingen = {
-    engine, state, EXERCISES, VOICES, PROGRAMS,
+    engine, state, EXERCISES, PRACTICE_RANGES, PROGRAMS,
+    get VOICES() { return voiceList(); },
+    voiceRange: voiceById,
     plan: () => (plan = buildPlan()),
     notes: () => { plan = buildPlan(); return planNotes(); },
     range: exerciseRange,
@@ -1235,6 +1264,8 @@
     const errors = [];
     const saved = JSON.parse(JSON.stringify(state));
     const savedPlan = plan;
+    const savedProfile = profile;
+    profile = null; // Standard-Umfänge prüfen, nicht den gemessenen
     try {
       // Katze: betonte Silben (Kat, tritt, Trep, krumm) auf Zählzeiten —
       // bei beiden Einstimmungen.
@@ -1249,7 +1280,7 @@
       // ganzen Takten, der erste Ton nach der Einstimmung.
       for (const cue of ['chord', 'cadence']) {
         for (const ex of EXERCISES) {
-          for (const v of VOICES) {
+          for (const v of voiceList()) {
             Object.assign(state, { mode: 'single', exercise: ex.id, voice: v.id, direction: 'updown', cue });
             plan = buildPlan();
             for (const n of planNotes()) {
@@ -1276,7 +1307,7 @@
       if (exById('moll5').mode !== 'minor' || degreeSemis(2, 'minor') !== 3 || degreeSemis(2) !== 4) errors.push('Moll-Stufen falsch');
       if (cueChord(57, 'minor')[3] - cueChord(57, 'minor')[0] !== 15) errors.push('Moll-Einstimmung ohne kleine Terz');
       const akk = exById('akkord');
-      for (const v of VOICES) {
+      for (const v of voiceList()) {
         const first = akk.voiceNotes[v.id][0][0];
         if (first !== CHORD_HOME[v.id]) errors.push(`akkord/${v.id}: beginnt auf Stufe ${first}`);
         if (akk.voiceNotes[v.id].length !== 5) errors.push(`akkord/${v.id}: ${akk.voiceNotes[v.id].length} Töne`);
@@ -1309,18 +1340,45 @@
       state.countIn = 'off'; state.cue = 'chord';
       sanitize(round);
       if (state.countIn !== 'round' || state.cue !== 'cadence') errors.push('Speichern/Laden: countIn/cue nicht erhalten');
+      // Didaktik Paket 1: Umfänge aus harmony.js, gemessener Umfang.
+      const std = { S: [57, 79], A: [53, 74], T: [47, 67], B: [41, 62] };
+      for (const id of VOICE_IDS) {
+        const v = voiceById(id);
+        if (v.floor !== std[id][0] || v.ceil !== std[id][1] || v.personal) errors.push(`Umfang ${id} ohne Messung: ${v.floor}–${v.ceil}`);
+      }
+      const cases = [[{ part: 'A', low: 50, high: 75 }, 'A', 52, 73, true], [{ part: 'B', low: 29, high: 62 }, 'B', 37, 60, true], [{ part: 'T', low: 50, high: 60 }, 'T', 47, 67, false]];
+      for (const [prof, id, floor, ceil, personal] of cases) {
+        profile = prof;
+        const v = voiceById(id);
+        if (v.floor !== floor || v.ceil !== ceil || v.personal !== personal) errors.push(`Umfang ${JSON.stringify(prof)}: ${v.floor}–${v.ceil}`);
+        if (!personal) continue;
+        for (const ex of EXERCISES) {
+          Object.assign(state, { mode: 'single', exercise: ex.id, voice: id, direction: 'updown', cue: 'chord' });
+          plan = buildPlan();
+          for (const n of planNotes()) if (n.midi < floor || n.midi > ceil) errors.push(`${ex.id}/${id} gemessen: Ton ${n.midi} außerhalb ${floor}–${ceil}`);
+        }
+      }
+      profile = null;
+      [['T', 'T'], ['X', 'A'], [3, 'A']].forEach(([raw, want]) => { state.voice = 'A'; sanitize({ voice: raw }); if (state.voice !== want) errors.push(`voice ${raw} → ${state.voice}`); });
     } finally {
       for (const k of Object.keys(state)) delete state[k];
       Object.assign(state, saved);
       plan = savedPlan;
+      profile = savedProfile;
     }
     return errors;
   }
 
+  /** Stimmlage aus dem gemeinsamen Profil übernehmen (sofern gesetzt). */
+  function applyProfile() {
+    readProfile();
+    if (profile?.part && VOICE_IDS.includes(profile.part)) state.voice = profile.part;
+  }
+  applyProfile();
   renderAll();
   if (storage) {
     try {
-      Promise.resolve(storage.load('einsingen')).then((data) => { if (data && !run.playing) { sanitize(data); renderAll(); } }).catch(() => {});
+      Promise.resolve(storage.load('einsingen')).then((data) => { if (data && !run.playing) { sanitize(data); applyProfile(); renderAll(); } }).catch(() => {});
     } catch { /* Ablage weg */ }
   }
 })();

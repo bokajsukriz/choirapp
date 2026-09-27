@@ -316,6 +316,11 @@
         <div class="range-box"><span>Höchster Ton</span><strong class="range-high">–</strong></div>
       </div>
       <p class="foot-note">Zählt nur Töne, die etwa eine halbe Sekunde sicher gehalten werden. Nie pressen — bei Kratzen oder Schmerz aufhören.</p>
+      <div class="ear-controls" data-range-save-row hidden>
+        <button class="big-btn secondary" type="button" data-voice="range-save" disabled>Als meinen Umfang speichern</button>
+      </div>
+      <p class="foot-note" data-range-save-note hidden>Das Einsingen bleibt zwei Halbtöne innerhalb dieser Grenzen.</p>
+      <p class="foot-note" data-range-save-status role="status" aria-live="polite"></p>
     </section>
     <p class="foot-note">Das Mikrofon wird nur live ausgewertet, nichts wird aufgenommen, gespeichert oder gesendet.</p>
   </section>
@@ -367,6 +372,15 @@
   // Groove Lab, Einsingen und Piano).
   const H = window.ChorHarmony;
   const { spell, noteLabel, spellCheck } = H;
+  // Gemeinsames Stimmprofil der App (nur eingebettet, gleiche Herkunft):
+  // Stimmlage und gemessener Umfang für alle Übe-Tools, siehe app.js.
+  const profileApi = (() => {
+    try { if (window.parent !== window && window.parent.chorVoiceProfile) return window.parent.chorVoiceProfile; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  const readProfile = () => { try { return profileApi ? profileApi.get() : null; } catch { return null; } };
+  /** Mindestspanne für „Als meinen Umfang speichern" (wie practiceRange). */
+  const RANGE_SAVE_MIN = 14;
   const A4_CHOICES = [438, 439, 440, 441, 442, 443, 444, 445];
   let tuningA4 = 440;
   const noteHz = (midi) => tuningA4 * Math.pow(2, (midi - 69) / 12);
@@ -1916,6 +1930,24 @@
   function renderRange() {
     $('.range-low').textContent = voice.low === null ? '–' : noteLabel(voice.low);
     $('.range-high').textContent = voice.high === null ? '–' : noteLabel(voice.high);
+    // Übernehmen ins Stimmprofil: nur eingebettet, mit beiden Grenzen und
+    // mindestens RANGE_SAVE_MIN Halbtönen Spanne.
+    $('[data-range-save-row]').hidden = !profileApi;
+    $('[data-range-save-note]').hidden = !profileApi;
+    $('[data-voice="range-save"]').disabled = !canSaveRange();
+  }
+  const canSaveRange = () => voice.low !== null && voice.high !== null && voice.high - voice.low >= RANGE_SAVE_MIN;
+  /** Heutiges Datum (lokal) als JJJJ-MM-TT. */
+  const todayIso = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  async function saveRange() {
+    const out = $('[data-range-save-status]');
+    if (!profileApi || !canSaveRange()) return;
+    try {
+      await profileApi.set({ low: voice.low, high: voice.high, measuredAt: todayIso() });
+      out.textContent = `Gespeichert: ${noteLabel(voice.low)} – ${noteLabel(voice.high)}. Gilt jetzt in allen Übe-Tools.`;
+    } catch {
+      out.textContent = 'Konnte nicht gespeichert werden.';
+    }
   }
 
   function renderVoice() {
@@ -2054,7 +2086,8 @@
         playTarget();
       }
       else if (action === 'target-play') playTarget();
-      else if (action === 'range-reset') { voice.low = null; voice.high = null; renderRange(); }
+      else if (action === 'range-reset') { voice.low = null; voice.high = null; $('[data-range-save-status]').textContent = ''; renderRange(); }
+      else if (action === 'range-save') saveRange();
       return;
     }
 
@@ -2323,6 +2356,16 @@
     if (counts[3] < counts[4] * 5) errors.push(`Gewichtung wirkt nicht (${counts[3]} : ${counts[4]})`);
     errors.push(...tunerCheck());
     errors.push(...rhythmCheck());
+    // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
+    {
+      const saved = [voice.low, voice.high];
+      for (const [low, high, want] of [[50, 63, false], [50, 64, true], [null, 70, false], [48, null, false]]) {
+        voice.low = low; voice.high = high;
+        if (canSaveRange() !== want) errors.push(`Umfang speichern bei ${low}–${high}: ${canSaveRange()}`);
+      }
+      [voice.low, voice.high] = saved;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(todayIso()) || todayIso(new Date(2026, 9, 2)) !== '2026-10-02') errors.push(`todayIso: ${todayIso()}`);
+    }
     // Bass immer E–dis′ (40–51), in jeder Umkehrung und Lage.
     for (let i = 0; i < 500; i++) {
       const prog = EAR_PROGRESSIONS[i % EAR_PROGRESSIONS.length];

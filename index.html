@@ -296,6 +296,14 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
   min-width: 0;
 }
 .tool-tile:active { background: var(--surface-2); }
+/* Stimmprofil-Karte über den Kacheln: Chips in festen Spalten, damit
+   S A T B bzw. die drei Belastungen immer in einer Reihe stehen. */
+.tools-profile { margin-bottom: 12px; }
+.chip-grid.profile-chips--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.chip-grid.profile-chips--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.profile-chips .chip { min-width: 0; overflow-wrap: anywhere; }
+.profile-range { margin: 10px 0 0; }
+.profile-range .link-btn { margin-left: 4px; }
 .tool-tile-icon {
   width: 48px;
   height: 48px;
@@ -3977,6 +3985,18 @@ input[type="checkbox"] {
        die Lichtshow (#lightshow). Alle werden erst beim Antippen geladen.
        Die breite Kachel darunter öffnet die Einstellungen. -->
   <section class="view" id="view-tools">
+    <!-- Stimmprofil fürs Üben: gilt für Einsingen, Ausbildung und Groove Lab
+         (settings.voiceProfile, siehe renderToolsProfile in app.js). -->
+    <div class="card tools-profile" id="tools-profile">
+      <p class="section-title" id="profile-part-label" style="margin-top:0" data-i18n="tools.profile.partTitle">Meine Stimmlage fürs Üben</p>
+      <div class="chip-grid profile-chips profile-chips--4" id="profile-part-picker" role="group" aria-labelledby="profile-part-label"></div>
+      <p class="section-title" id="profile-load-label" data-i18n="tools.profile.loadTitle">Belastung beim Einsingen</p>
+      <div class="chip-grid profile-chips profile-chips--3" id="profile-load-picker" role="group" aria-labelledby="profile-load-label"></div>
+      <p class="small muted profile-range" id="profile-range-line" hidden>
+        <span id="profile-range-text"></span>
+        <button class="link-btn" id="profile-range-reset" type="button" data-i18n="tools.profile.rangeReset">Auf Standard zurücksetzen</button>
+      </p>
+    </div>
     <div class="tools-grid">
       <button class="tool-tile" id="btn-open-metronome" type="button">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg></span>
