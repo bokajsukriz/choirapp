@@ -105,6 +105,7 @@
   .stage .flag { fill: none; stroke: var(--text); stroke-width: 1.9; stroke-linecap: round; }
   .stage .sig { font-weight: 800; font-size: 15px; font-family: Georgia, "Times New Roman", serif; }
   .stage .tri { font-weight: 800; font-size: 10px; font-style: italic; fill: var(--muted); }
+  .stage .shuf { font-weight: 800; font-size: 10px; fill: var(--text); }
   .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted); }
   .stage .hint-big { font-weight: 800; font-size: 26px; fill: var(--line); }
   .stage .tl { stroke: var(--line); stroke-width: 2; }
@@ -613,9 +614,10 @@
     '2/2': { ticks: 48, beat: 24, ref: 24, unit: 12, top: '2', bottom: '2' },          // Klick auf Halben
     '5/4': { ticks: 60, beat: 12, ref: 12, unit: 12, top: '5', bottom: '4', groups: [3, 2] },
     '7/8': { ticks: 42, beat: 6,  ref: 6,  unit: 0,  top: '7', bottom: '8', groups: [2, 2, 3] },
+    '12/8': { ticks: 72, beat: 6, ref: 18, unit: 18, top: '12', bottom: '8' },          // wie 6/8, vier Gruppen
   };
   // Reihenfolge in der Auswahl (gespeichert wird nur die ID).
-  const METER_ORDER = ['2/4', '3/4', '4/4', '2/2', '5/4', '6/8', '7/8'];
+  const METER_ORDER = ['2/4', '3/4', '4/4', '2/2', '5/4', '6/8', '12/8', '7/8'];
   const tempoSymbol = (meter) => ({ 6: '♪', 12: '♩', 18: '♩.', 24: '𝅗𝅥' })[METERS[meter].ref];
   const BPM_MIN = 30;
   const BPM_MAX = 200;
@@ -659,9 +661,14 @@
     ['sy', 'Synkopen', 'z. B. ♪ ♩ ♪'],
     ['tie', 'Bindebögen', 'über Schlag und Taktstrich'],
     ['s', 'Sechzehntel', ''],
-    ['t', 'Triolen', 'nicht in 6/8 und 7/8'],
+    ['off', 'Einsatz auf e/a', 'Sechzehntel nach dem Schlag'],
+    ['sh', 'Shuffle', '♫ gespielt als ♩ ♪ (Triole)'],
+    ['t', 'Triolen', 'nicht in 6/8, 12/8 und 7/8'],
   ];
-  const ELEMENT_SHORT = { e: 'Achtel', r: 'Pausen', d: 'Punktiert', sy: 'Synkopen', tie: 'Bindebögen', s: 'Sechzehntel', t: 'Triolen' };
+  const ELEMENT_SHORT = { e: 'Achtel', r: 'Pausen', d: 'Punktiert', sy: 'Synkopen', tie: 'Bindebögen', s: 'Sechzehntel', off: 'Einsätze auf e/a', sh: 'Shuffle', t: 'Triolen' };
+  /** Bausteine nur für einfache Taktarten (Viertel-Einheit): Triolen, Shuffle. */
+  const SIMPLE_ONLY = ['t', 'sh'];
+  const elementFits = (id, m) => !(SIMPLE_ONLY.includes(id) && m.unit !== 12);
 
   // Bausteine: Dauern in Ticks, negativ = Pause; span = Anzahl Einheiten.
   // Ein Baustein kommt nur vor, wenn alle seine tags ausgewählt sind; neu
@@ -676,6 +683,10 @@
       { v: [3, 3, 3, 3], tags: ['s'] }, { v: [6, 3, 3], tags: ['s'] }, { v: [3, 3, 6], tags: ['s'] },
       { v: [3, 6, 3], tags: ['s', 'sy'] }, { v: [9, 3], tags: ['d', 's'] },
       { v: [4, 4, 4], tags: ['t'] },
+      // Einsätze nach dem Schlag (Pop): auf „e“, auf „a“, „e“ synkopiert
+      { v: [-3, 3, 6], tags: ['s', 'off'] }, { v: [-9, 3], tags: ['s', 'off', 'r'] }, { v: [-3, 6, 3], tags: ['s', 'off', 'sy'] },
+      // Shuffle: Achtelpaar als Triolen-Viertel + Triolen-Achtel (notiert als ♫)
+      { v: [8, 4], tags: ['sh'] }, { v: [-8, 4], tags: ['sh', 'r'] }, { v: [8, 4, 8, 4], span: 2, tags: ['sh'] },
     ],
     compound: [
       { v: [18] }, { v: [12, 6] }, { v: [6, 6, 6] }, { v: [36], span: 2, w: .5 },
@@ -710,7 +721,7 @@
    *  `len`) aus zufälligen Bausteinen: ganze Einheiten, ein Rest am Ende
    *  (nur bei verkürztem Takt) als Pause. Kein Baustein überschreitet eine
    *  Gruppengrenze (5/4: 3+2). Liefert { cells: [[…Werte]], tagged }. */
-  function makeBar(m, chosen, len, rnd) {
+  function makeBar(m, chosen, len, rnd, shuffle = false) {
     const cells = [];
     let tagged = false;
     if (!m.unit) {
@@ -726,7 +737,10 @@
       if (t < len) cells.push(restsBetween(m, t, len));
       return { cells, tagged };
     }
-    const lib = CELLS[m.unit === 18 ? 'compound' : 'simple'].filter((c) => cellOk(c, chosen));
+    // Shuffle-Phrase: nur Viertel-Werte und Shuffle-Zellen — alle Achtel
+    // swingen, sonst stimmte die Angabe „Shuffle ♫ = ♩ ♪³“ nicht.
+    const lib = CELLS[m.unit === 18 ? 'compound' : 'simple'].filter((c) => cellOk(c, chosen)
+      && (shuffle ? c.tags?.includes('sh') || c.v.every((v) => v % 12 === 0) : !c.tags?.includes('sh')));
     const units = Math.floor(len / m.unit);
     const allUnits = m.ticks / m.unit;
     const bounds = accentStarts(m).map((t) => t / m.unit);
@@ -771,6 +785,11 @@
    * ersten Taktstrich; der letzte Takt ist um genau diese Dauer kürzer
    * (Volltakt-Regel), die Phrase ist also immer bars × ticks lang. Bei vier
    * Takten endet sie mit einem langen Wert auf der Eins des letzten Takts.
+   * opts.pickupLens: erlaubte Auftaktlängen in Ticks (Stufe, z. B. [6] =
+   * nur „4-und“); ohne gilt die Volltakt-Regel mit allen Längen.
+   * Shuffle (Baustein 'sh', einfache Taktarten): etwa jede zweite Phrase
+   * swingt ganz (opts.shuffle erzwingt es an/aus); ihre Achtel sind 8+4
+   * Ticks, notiert als gerade Achtel (Note `sh`), Auftakt nur als Viertel.
    * opts.ties: Bindebögen (Wahrscheinlichkeit TIE_P je Einheitsgrenze,
    * höchstens einer je Takt). Nie zweimal dieselbe Phrase hintereinander.
    * Noten: { t (Ticks ab Phrasenbeginn), d, rest, tie } — `tie`: an die
@@ -785,13 +804,16 @@
     const wantTagged = (m.unit ? CELLS[m.unit === 18 ? 'compound' : 'simple'] : [...CELLS.additive[2], ...CELLS.additive[3]])
       .some((c) => c.tags && cellOk(c, chosen));
     let best = null;
+    const canShuffle = m.unit === 12 && chosen.includes('sh');
     for (let attempt = 0; attempt < 200; attempt++) {
+      const shuffle = canShuffle && (typeof opts.shuffle === 'boolean' ? opts.shuffle : rnd() < .5);
       let p = 0;
       let pickupVals = [];
       if (Number.isInteger(opts.pickupTicks)) p = opts.pickupTicks;
       else if (opts.pickup && rnd() < .4) p = -1;
       if (p) {
-        const pool = (m.unit === 12 ? PICKUPS.simple : PICKUPS.single).filter((v) => v.every((d) => d >= 12 || chosen.includes('e')));
+        const pool = (shuffle ? [[12]] : m.unit === 12 ? PICKUPS.simple : PICKUPS.single).filter((v) => v.every((d) => d >= 12 || chosen.includes('e')))
+          .filter((v) => p > 0 || !Array.isArray(opts.pickupLens) || opts.pickupLens.includes(v.reduce((a, b) => a + b, 0)));
         const fitting = p > 0 ? pool.filter((v) => v.reduce((a, b) => a + b, 0) === p) : pool;
         pickupVals = fitting.length ? fitting[Math.floor(rnd() * fitting.length)] : [p > 0 ? p : 12];
         p = pickupVals.reduce((a, b) => a + b, 0);
@@ -802,7 +824,7 @@
       let enough = true;
       for (let k = 0; k < bars; k++) {
         const len = k === bars - 1 ? m.ticks - p : m.ticks;
-        const bar = bars === 4 && k === 3 ? finalBar(m, chosen, len, rnd) : makeBar(m, chosen, len, rnd);
+        const bar = bars === 4 && k === 3 ? finalBar(m, chosen, len, rnd) : makeBar(m, chosen, len, rnd, shuffle);
         tagged = tagged || bar.tagged;
         if (bar.tieAt) forcedTies.push(p + k * m.ticks + bar.tieAt);
         if (!(bars === 4 && k === 3)) {
@@ -816,6 +838,7 @@
       pickupVals.forEach((v) => { notes.push({ t, d: v, rest: false }); t += v; });
       barCells.forEach((cells) => cells.forEach((c) => c.forEach((v) => { notes.push({ t, d: Math.abs(v), rest: v < 0 }); t += Math.abs(v); })));
       notes.forEach((n) => { if (forcedTies.includes(n.t)) n.tie = true; });
+      if (shuffle) notes.forEach((n) => { if (n.d === 8 || n.d === 4) n.sh = true; });
       if (withTies) {
         const tiedBars = new Set(forcedTies.map((t) => Math.floor((t - p) / m.ticks)));
         for (let i = 1; i < notes.length; i++) {
@@ -829,7 +852,7 @@
       }
       const onsets = notes.filter((n) => !n.rest && !n.tie).map((n) => n.t);
       const key = `${p}/${notes.map((n) => (n.rest ? -n.d : n.tie ? `~${n.d}` : n.d)).join(',')}`;
-      const pattern = { meter: meterId, notes, onsets, key, bars, pickup: p, total: bars * m.ticks };
+      const pattern = { meter: meterId, notes, onsets, key, bars, pickup: p, total: bars * m.ticks, ...(shuffle ? { shuffle: true } : {}) };
       const ok = enough && onsets.length >= 2 && key !== previousKey;
       if (ok && (!wantTagged || tagged || attempt > 150)) return pattern;
       if (ok && !best) best = pattern;
@@ -859,7 +882,8 @@
         if (off === 0) {
           parts = [String(num)];
           for (let k = num + 1; (k - 1) * c < inBar + n.d && k <= m.ticks / c; k++) parts.push(String(k));
-        } else if (n.d === 4 || (off % 4 === 0 && off % 3 !== 0)) parts = [{ 4: 'o', 8: 'le' }[off % 12] || 'tri'];
+        } else if (n.sh || (pattern.shuffle && off === 8)) parts = ['+']; // Shuffle zählt wie Achtel
+        else if (n.d === 4 || (off % 4 === 0 && off % 3 !== 0)) parts = [{ 4: 'o', 8: 'le' }[off % 12] || 'tri'];
         else if (off * 2 === c) parts = ['+'];
         else parts = ['e'];
         // Gehaltene Schläge in Klammern; Pausen und gebundene Noten ganz.
@@ -867,6 +891,7 @@
       }
       if (n.rest) return 'sch';
       if (n.tie) return '(–)';
+      if (n.sh) return 'ti'; // Shuffle: wie Achtel („ti-ti“)
       if (TA_LONG[n.d]) return TA_LONG[n.d];
       if (n.d === 6) return 'ti';
       if (n.d === 4) return ['tri', 'o', 'le'][Math.floor((inBar % 12) / 4)];
@@ -900,7 +925,7 @@
     let last = null;
     for (let attempt = 0; attempt < 200; attempt++) {
       const upper = makePattern(meterId, chosen, previousKey, opts);
-      const lower = makePattern(meterId, chosen, upper.key, { ...opts, pickupTicks: upper.pickup });
+      const lower = makePattern(meterId, chosen, upper.key, { ...opts, pickupTicks: upper.pickup, shuffle: !!upper.shuffle });
       last = { upper, lower };
       if (lower.total === upper.total && lower.pickup === upper.pickup && duoOk(upper, lower)) return { ...last, key: `${upper.key}|${lower.key}`, ok: true };
     }
@@ -1177,13 +1202,17 @@
      je Durchgang (Play) eine zufällige, innerhalb des Durchgangs fest.
      pickup: Auftakt möglich (in 40 % der Phrasen). bpm: Viertel-Tempo
      (in 6/8 und 7/8 über gleich schnelle Achtel umgerechnet). */
+  // Pop-Didaktik: Achtel ab Stufe 1, früh Synkopen und Vorziehen über den
+  // Taktstrich, dann Sechzehntel, Einsätze auf e/a und Shuffle. Andere
+  // Taktarten (2/4, 3/4, 2/2, 5/4, 7/8) nur über „Eigene Auswahl“.
+  // pickupTicks: erlaubte Auftaktlängen (6 = „4-und“, 12 = ab „4“).
   const RHYTHM_LEVELS = [
-    { n: 1, label: 'Viertel und Halbe',             meters: ['4/4'],                                     elements: [],                                    bars: 1, pickup: false, bpm: 80 },
-    { n: 2, label: 'Achtel · 2/4 und 3/4',          meters: ['4/4', '2/4', '3/4'],                       elements: ['e'],                                 bars: 1, pickup: false, bpm: 80 },
-    { n: 3, label: 'Pausen · zwei Takte',           meters: ['4/4', '2/4', '3/4'],                       elements: ['e', 'r'],                            bars: 2, pickup: false, bpm: 84 },
-    { n: 4, label: 'Punktiert · Auftakt · alla breve', meters: ['4/4', '2/4', '3/4', '2/2'],             elements: ['e', 'r', 'd'],                       bars: 2, pickup: true,  bpm: 88 },
-    { n: 5, label: 'Synkopen · Bindebögen · 6/8',   meters: ['4/4', '3/4', '2/2', '6/8'],                elements: ['e', 'r', 'd', 'sy', 'tie'],          bars: 2, pickup: true,  bpm: 88 },
-    { n: 6, label: 'Sechzehntel · Triolen · 5/4 und 7/8 · vier Takte', meters: ['4/4', '3/4', '6/8', '5/4', '7/8'], elements: ['e', 'r', 'd', 'sy', 'tie', 's', 't'], bars: 4, pickup: true, bpm: 92 },
+    { n: 1, label: 'Viertel, Achtel und Halbe',                 meters: ['4/4'],                elements: ['e'],                                               bars: 1, pickup: false,                      bpm: 84 },
+    { n: 2, label: 'Pausen · Auftakt auf „4-und“',              meters: ['4/4'],                elements: ['e', 'r'],                                          bars: 2, pickup: true,  pickupTicks: [6],     bpm: 88 },
+    { n: 3, label: 'Synkopen · vorgezogen über den Taktstrich', meters: ['4/4'],                elements: ['e', 'r', 'sy', 'tie'],                             bars: 2, pickup: true,  pickupTicks: [6, 12], bpm: 88 },
+    { n: 4, label: 'Sechzehntel · punktiert',                   meters: ['4/4'],                elements: ['e', 'r', 'sy', 'tie', 'd', 's'],                   bars: 2, pickup: true,                       bpm: 80 },
+    { n: 5, label: 'Einsätze auf e/a · 6/8',                    meters: ['4/4', '6/8'],         elements: ['e', 'r', 'sy', 'tie', 'd', 's', 'off'],            bars: 2, pickup: true,                       bpm: 80 },
+    { n: 6, label: 'Shuffle · Triolen · 12/8 · vier Takte',     meters: ['4/4', '6/8', '12/8'], elements: ['e', 'r', 'sy', 'tie', 'd', 's', 'off', 'sh', 't'], bars: 4, pickup: true,                       bpm: 84 },
   ];
   const DUO_MIN_LEVEL = 3; // „Zweistimmig“ ab Stufe 3 (oder eigene Auswahl)
   const duoAllowed = () => !state.rhythmLevel || state.rhythmLevel >= DUO_MIN_LEVEL;
@@ -1262,14 +1291,24 @@
     if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
   }
   const rhythmLevel = () => RHYTHM_LEVELS.find((l) => l.n === state.rhythmLevel) || null;
+  /** Bausteine, Takte, Auftakt und Taktart an die gewählte Stufe angleichen
+   *  (ohne Tempo) — nach dem Laden eines gespeicherten Stands. */
+  function syncRhythmLevelContent() {
+    const level = rhythmLevel();
+    if (!level) return;
+    state.elements = ELEMENTS.map(([id]) => id).filter((id) => level.elements.includes(id));
+    state.bars = level.bars;
+    state.pickup = level.pickup;
+    if (!level.meters.includes(state.meter)) setMeter(level.meters[0]);
+  }
   /** Bausteine, die in der Taktart überhaupt vorkommen können. */
-  const activeElements = (meter) => state.elements.filter((id) => !(id === 't' && METERS[meter].unit !== 12));
+  const activeElements = (meter) => state.elements.filter((id) => elementFits(id, METERS[meter]));
 
   function newRound() {
     const index = game.rounds.length;
     const previous = game.rounds[index - 1];
     const m = METERS[run.meter];
-    const opts = { bars: state.bars, pickup: state.pickup, ties: state.elements.includes('tie') };
+    const opts = { bars: state.bars, pickup: state.pickup, ties: state.elements.includes('tie'), pickupLens: rhythmLevel()?.pickupTicks };
     const chosen = activeElements(run.meter);
     let pattern;
     let duo = null;
@@ -1747,7 +1786,10 @@
     const y = y0 + ST.LY;
     if (n.d >= 24) return `<rect x="${f1(x - 6)}" y="${y - 5}" width="12" height="5"/>`;
     if (n.d >= 12) return `<path class="rest-s" d="M${f1(x - 3)} ${y - 14} l5.5 6.5 l-4.5 5 l5.5 6.5 c-4 -1.8 -7 .6 -3.2 5.8"/>`;
-    return `<circle cx="${f1(x - 2)}" cy="${y - 6}" r="2.4"/><path class="rest-s" style="stroke-width:1.7" d="M${f1(x - 2.5)} ${y - 4.5} q3.5 1.2 6 -2.5 l-5 14"/>`;
+    const eighth = `<circle cx="${f1(x - 2)}" cy="${y - 6}" r="2.4"/><path class="rest-s" style="stroke-width:1.7" d="M${f1(x - 2.5)} ${y - 4.5} q3.5 1.2 6 -2.5 l-5 14"/>`;
+    // Sechzehntelpause: zweite Fahne (punktierte Achtelpause = 9 bleibt bei einer)
+    if (n.d === 3) return `${eighth}<circle cx="${f1(x - 3.6)}" cy="${y + .5}" r="2.4"/><path class="rest-s" style="stroke-width:1.7" d="M${f1(x - 4.1)} ${y + 2} q3.5 1.2 5.4 -2.2"/>`;
+    return eighth;
   }
 
   /** Eine Zeile Noten. statusOf(t) → '' | good | near | miss. */
@@ -1817,6 +1859,8 @@
         if (last && pattern) parts.push(`<line class="ln" style="stroke-width:3.5" x1="${f1(sg.x1 + 3)}" y1="${LY - 10}" x2="${f1(sg.x1 + 3)}" y2="${LY + 10}"/>`);
       });
       if (pattern && reveal) parts.push(lineSvg(pattern, line, y, statusOf, syllables));
+      // Shuffle: einmal je Zeile die Spielanweisung über dem System.
+      if (pattern?.shuffle && reveal) parts.push(`<text class="shuf" x="${f1(xEnd)}" y="${y + 12}" text-anchor="end">Shuffle ♫ = ♩ ♪³</text>`);
       // Zeitleiste: Zählzeiten (am Raster), Soll-Einsätze, Tipper
       parts.push(`<line class="tl" x1="${f1(line.segs[0].x0)}" y1="${TY}" x2="${f1(xEnd)}" y2="${TY}"/>`);
       const p = pattern ? pattern.pickup : 0;
@@ -1946,7 +1990,7 @@
     renderGapChips();
     const level = rhythmLevel();
     const meters = level ? level.meters.join(', ') : state.meter;
-    const els = ELEMENTS.filter(([id]) => state.elements.includes(id) && !(id === 't' && level === null && METERS[state.meter].unit !== 12)).map(([id]) => ELEMENT_SHORT[id]);
+    const els = ELEMENTS.filter(([id]) => state.elements.includes(id) && !(level === null && !elementFits(id, METERS[state.meter]))).map(([id]) => ELEMENT_SHORT[id]);
     const bits = [meters, els.length ? `Viertel, ${els.join(', ')}` : 'nur Viertel und Halbe',
       state.bars === 1 ? '1 Takt' : `${state.bars} Takte`];
     if (state.pickup) bits.push('Auftakt möglich');
@@ -3086,7 +3130,9 @@
     const level = rhythmLevel();
     const mic = state.input === 'mic';
     $('.sheet-body').innerHTML = `
-      <span class="sub-label" style="margin-top:0">Stufe</span>
+      <div class="label-row"><span class="sub-label" style="margin:0">Stufe</span>
+        <button class="help-btn" type="button" data-help="help-rlevels" aria-expanded="false" aria-label="Erklärung der Stufen">?</button></div>
+      <p class="help-text" id="help-rlevels" hidden>Die Stufen folgen der Popmusik: Achtel von Anfang an, früh Synkopen und Vorziehen über den Taktstrich, dann Sechzehntel und Shuffle. Andere Taktarten gibt es unter „Eigene Auswahl“.</p>
       ${levelControlHtml('rhythm-sheet', RHYTHM_LEVELS, state.rhythmLevel)}
       <span class="sub-label">Taktart${level && level.meters.length > 1 ? ` · Stufe ${level.n} wählt je Durchgang aus ${level.meters.join(', ')}` : ''}</span>
       ${choice('meter', METER_ORDER.map((id) => [id, id]), level && level.meters.length > 1 ? '' : state.meter)}
@@ -3123,7 +3169,7 @@
       <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}`;
     renderGapChips();
     const noTriplets = level ? level.meters.every((id) => METERS[id].unit !== 12) : METERS[state.meter].unit !== 12;
-    $$('.sheet [data-rset="elements"][value="t"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', noTriplets));
+    $$('.sheet [data-rset="elements"][value="t"], .sheet [data-rset="elements"][value="sh"]').forEach((el) => el.closest('.check-row').classList.toggle('is-off', noTriplets));
     $('.sheet-hint').textContent = '';
   }
 
@@ -5342,6 +5388,9 @@
     if (INPUT_CHOICES.some(([id]) => id === r.input)) state.input = r.input;
     if (Number.isFinite(r.micLatencyMs)) state.micLatencyMs = clamp(Math.round(r.micLatencyMs), 0, 400);
     if (Number.isInteger(r.rhythmLevel) && r.rhythmLevel >= 0 && r.rhythmLevel <= RHYTHM_LEVELS.length) state.rhythmLevel = r.rhythmLevel;
+    // Gespeicherte Stufe: Nummer bleibt, Inhalt nach der heutigen Stufe
+    // (die Stufen wurden für die Pop-Didaktik neu gefasst); Tempo bleibt.
+    syncRhythmLevelContent();
     if (r.duoPart === 'upper' || r.duoPart === 'lower') state.duoPart = r.duoPart;
     if (state.mode === 'duo' && !duoAllowed()) state.mode = 'echo';
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
@@ -5753,6 +5802,134 @@
     return errors;
   }
 
+  /** Pop-Didaktik Paket 4: Stufen pop-gerecht, Einsätze auf e/a, Shuffle,
+   *  12/8, Auftaktlängen je Stufe, gespeicherte Stände. */
+  function popRhythmCheck() {
+    const errors = [];
+    let seed = 23;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    // Welche Bausteine braucht ein Muster? (einfache Taktarten)
+    const needs = (pat) => {
+      const m = METERS[pat.meter];
+      const out = new Set();
+      pat.notes.forEach((n, k) => {
+        if (n.t < pat.pickup) { if (n.d === 6) out.add('e'); return; }
+        const inBar = mod(n.t - pat.pickup, m.ticks);
+        const inUnit = m.unit ? inBar % m.unit : 0;
+        if (n.rest) out.add('r');
+        if (n.sh) { out.add('sh'); return; }
+        if (n.tie) out.add('tie');
+        if (m.unit === 12) {
+          if (n.d === 6 && !n.rest) out.add('e');
+          if (n.d === 3) out.add('s');
+          if (n.d === 4) out.add('t');
+          if ([18, 9].includes(n.d) && !n.rest) out.add('d');
+          if (n.d === 12 && inUnit === 6) out.add('sy');
+          if (n.rest && inUnit === 0 && (n.d === 3 || n.d === 9)) out.add('off');
+        }
+      });
+      return out;
+    };
+    const pickups = {};
+    let shuffles = 0, straight6 = 0, offs = 0;
+    for (const level of RHYTHM_LEVELS) {
+      if (level.n <= 4 && level.meters.join() !== '4/4') errors.push(`Stufe ${level.n}: Taktarten ${level.meters}`);
+      const prevLevel = RHYTHM_LEVELS[level.n - 2];
+      if (prevLevel && !prevLevel.elements.every((id) => level.elements.includes(id))) errors.push(`Stufe ${level.n} enthält Stufe ${level.n - 1} nicht`);
+      let prev = null;
+      pickups[level.n] = new Set();
+      for (let i = 0; i < 500; i++) {
+        const meterId = level.meters[i % level.meters.length];
+        const m = METERS[meterId];
+        const chosen = level.elements.filter((id) => elementFits(id, m));
+        const pat = makePattern(meterId, chosen, prev, { bars: level.bars, pickup: level.pickup, ties: chosen.includes('tie'), rnd, pickupLens: level.pickupTicks });
+        prev = pat.key;
+        const where = `Pop Stufe ${level.n} ${meterId} ${pat.key}`;
+        for (let b = 0; b < level.bars; b++) {
+          const t0 = b === 0 ? 0 : pat.pickup + b * m.ticks;
+          const t1 = Math.min(pat.total, pat.pickup + (b + 1) * m.ticks); // Volltakt-Regel: letzter Takt kürzer
+          const len = pat.notes.filter((n) => n.t >= t0 && n.t < t1).reduce((a, n) => a + n.d, 0);
+          if (len !== t1 - t0) { errors.push(`${where}: Takt ${b + 1} hat ${len} Ticks`); break; }
+        }
+        const extra = [...needs(pat)].filter((id) => !chosen.includes(id));
+        if (extra.length) errors.push(`${where}: nicht erlaubte Bausteine ${extra.join()}`);
+        if (pat.notes.some((n) => n.sh) && meterId !== '4/4') errors.push(`${where}: Shuffle außerhalb von 4/4`);
+        if (pat.shuffle && pat.notes.some((n) => !n.rest && !n.sh && n.d % 12)) errors.push(`${where}: gerade Achtel im Shuffle`);
+        if (pat.shuffle) shuffles++;
+        else if (level.n === 6 && meterId === '4/4' && pat.notes.some((n) => n.d === 6)) straight6++;
+        if (needs(pat).has('off')) offs++;
+        pickups[level.n].add(pat.pickup);
+      }
+    }
+    if ([...pickups[1]].join() !== '0') errors.push(`Stufe 1 Auftakt: ${[...pickups[1]]}`);
+    if ([...pickups[2]].sort().join() !== '0,6') errors.push(`Stufe 2 Auftakt: ${[...pickups[2]]}`);
+    if ([...pickups[3]].sort((a, b) => a - b).join() !== '0,6,12') errors.push(`Stufe 3 Auftakt: ${[...pickups[3]]}`);
+    if (!shuffles || !straight6) errors.push(`Stufe 6: Shuffle ${shuffles}, gerade ${straight6} — beides soll vorkommen`);
+    if (!offs) errors.push('Stufe 5/6: keine Einsätze auf e/a');
+    // 12/8: Gruppen aus drei Achteln exakt, langer Schlusston bei vier Takten.
+    {
+      const m = METERS['12/8'];
+      const level = RHYTHM_LEVELS[5];
+      const chosen = level.elements.filter((id) => elementFits(id, m));
+      let prev = null;
+      for (let i = 0; i < 500; i++) {
+        const pat = makePattern('12/8', chosen, prev, { bars: 4, pickup: true, ties: true, rnd });
+        prev = pat.key;
+        const where = `12/8 ${pat.key}`;
+        if (pat.notes.reduce((a, n) => a + n.d, 0) !== 4 * 72) errors.push(`${where}: Länge`);
+        for (const n of pat.notes) {
+          if (n.t < pat.pickup) continue;
+          const inBar = mod(n.t - pat.pickup, 72);
+          const unitEnd = (Math.floor(inBar / 18) + 1) * 18;
+          if (inBar % 18 && inBar + n.d > unitEnd) errors.push(`${where}: Note bei ${n.t} überschreitet eine Dreiergruppe`);
+        }
+        const at = pat.pickup + 3 * 72;
+        const k = pat.notes.findIndex((n) => n.t === at);
+        if (k < 0 || pat.notes[k].rest || pat.notes[k].d < 18) errors.push(`${where}: kein langer Schlusston`);
+      }
+      if (tempoSymbol('12/8') !== '♩.' || !METER_ORDER.includes('12/8')) errors.push('12/8: Tempozeichen/Auswahl');
+    }
+    // Shuffle: Notation und Rhythmussprache wie gerade Achtel.
+    {
+      const pat = { meter: '4/4', pickup: 0, bars: 1, total: 48, shuffle: true,
+        notes: [{ t: 0, d: 8, sh: true }, { t: 8, d: 4, sh: true }, { t: 12, d: 12 }, { t: 24, d: 8, sh: true }, { t: 32, d: 4, sh: true }, { t: 36, d: 12 }] };
+      pat.onsets = pat.notes.map((n) => n.t);
+      if (syllablesFor(pat, 'ta').join(' ') !== 'ti ti ta ti ti ta' || syllablesFor(pat, 'count').join(' ') !== '1 + 2 3 + 4') errors.push(`Shuffle-Silben: ${syllablesFor(pat, 'ta')} / ${syllablesFor(pat, 'count')}`);
+      const box = document.createElement('div');
+      box.innerHTML = systemSvg({ pattern: pat, meterId: '4/4', lines: phraseLines(pat), y0: 0, reveal: true, statusOf: () => '', syllables: null, taps: [] });
+      if (box.querySelectorAll('.shuf').length !== 1 || !box.querySelector('.shuf').textContent.startsWith('Shuffle ♫ = ♩ ♪')) errors.push('Shuffle-Angabe über der Zeile fehlt');
+      if (box.querySelector('.tri')) errors.push('Shuffle als Triole notiert');
+      const off = { meter: '4/4', pickup: 0, bars: 1, total: 48, notes: [{ t: 0, d: 3, rest: true }, { t: 3, d: 3 }, { t: 6, d: 6 }, { t: 12, d: 9, rest: true }, { t: 21, d: 3 }, { t: 24, d: 24 }] };
+      off.onsets = [3, 6, 21, 24];
+      if (syllablesFor(off, 'ta').join(' ') !== 'sch ri ti sch ri ta-a' || syllablesFor(off, 'count').join(' ') !== '(1) e + (2) e 3 (4)') errors.push(`Silben e/a: ${syllablesFor(off, 'ta')} / ${syllablesFor(off, 'count')}`);
+      for (const [id] of ELEMENTS) if (!ELEMENT_SHORT[id]) errors.push(`ELEMENT_SHORT ${id} fehlt`);
+    }
+    // Zweistimmig in Stufe 6: beide Stimmen swingen gleich.
+    for (let i = 0; i < 60; i++) {
+      const level = RHYTHM_LEVELS[5];
+      const chosen = level.elements.filter((id) => elementFits(id, METERS['4/4']));
+      const d = makeDuo('4/4', chosen, null, { bars: 4, pickup: true, ties: true, rnd });
+      if (!!d.upper.shuffle !== !!d.lower.shuffle) errors.push('Zweistimmig: eine Stimme swingt, die andere nicht');
+    }
+    // Gespeicherte Stände: Stufe 1–6 bleibt (Inhalt neu), eigene Auswahl mit 5/4 und 7/8 bleibt.
+    const saved = JSON.parse(JSON.stringify(state));
+    try {
+      for (let n = 1; n <= 6; n++) {
+        restore({ tab: saved.tab, rhythm: { rhythmLevel: n, meter: '3/4', elements: ['e'], bars: 1, pickup: false } });
+        const level = RHYTHM_LEVELS[n - 1];
+        if (state.rhythmLevel !== n || state.elements.join() !== ELEMENTS.map(([id]) => id).filter((id) => level.elements.includes(id)).join() || state.bars !== level.bars || state.pickup !== level.pickup || !level.meters.includes(state.meter)) errors.push(`Stufe ${n} nach dem Laden: ${JSON.stringify({ l: state.rhythmLevel, e: state.elements, b: state.bars, m: state.meter })}`);
+      }
+      for (const meter of ['5/4', '7/8', '12/8', '2/2']) {
+        restore({ tab: saved.tab, rhythm: { rhythmLevel: 0, meter, elements: ['e', 'r', 'off', 'sh', 'quatsch'] } });
+        if (state.rhythmLevel !== 0 || state.meter !== meter || state.elements.join() !== 'e,r,off,sh') errors.push(`Eigene Auswahl ${meter}: ${state.meter} / ${state.elements}`);
+      }
+    } finally {
+      for (const k of Object.keys(state)) delete state[k];
+      Object.assign(state, saved);
+    }
+    return errors;
+  }
+
   /** Didaktik Paket 3: Muster je Stufe, Bindebögen, 7/8, Silben,
    *  Zweistimmig, Raster mit Auftakt, Einsatzerkennung, Speichern/Laden. */
   function rhythmPackageCheck() {
@@ -5765,8 +5942,8 @@
       for (let i = 0; i < 500; i++) {
         const meterId = level.meters[i % level.meters.length];
         const m = METERS[meterId];
-        const chosen = level.elements.filter((id) => !(id === 't' && m.unit !== 12));
-        const pat = makePattern(meterId, chosen, prev, { bars: level.bars, pickup: level.pickup, ties, rnd });
+        const chosen = level.elements.filter((id) => elementFits(id, m));
+        const pat = makePattern(meterId, chosen, prev, { bars: level.bars, pickup: level.pickup, ties, rnd, pickupLens: level.pickupTicks });
         prev = pat.key;
         const where = `Stufe ${level.n} ${meterId} ${pat.key}`;
         const sum = pat.notes.reduce((a, n) => a + n.d, 0);
@@ -5816,8 +5993,8 @@
     for (let i = 0; i < 100; i++) {
       const level = RHYTHM_LEVELS[2 + (i % 4)];
       const meterId = level.meters[i % level.meters.length];
-      const chosen = level.elements.filter((id) => !(id === 't' && METERS[meterId].unit !== 12));
-      const d = makeDuo(meterId, chosen, null, { bars: level.bars, pickup: level.pickup, ties: level.elements.includes('tie'), rnd });
+      const chosen = level.elements.filter((id) => elementFits(id, METERS[meterId]));
+      const d = makeDuo(meterId, chosen, null, { bars: level.bars, pickup: level.pickup, ties: level.elements.includes('tie'), rnd, pickupLens: level.pickupTicks });
       if (!d.ok || !duoOk(d.upper, d.lower) || d.upper.total !== d.lower.total || d.upper.pickup !== d.lower.pickup) errors.push(`Zweistimmig ${meterId}: Bedingungen verletzt (${d.key})`);
     }
     // Raster: jede Phrase beginnt `pickup` vor einem Taktstrich, nichts überlappt.
@@ -5862,12 +6039,13 @@
       const savedTab = state.tab;
       const defaults = { bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0, rhythmLevel: 0, duoPart: 'lower', mode: 'echo' };
       try {
-        Object.assign(state, { bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' });
+        // (Stufe 5 hat 2 Takte mit Auftakt — seit der Pop-Didaktik gleicht das Laden den Stufen-Inhalt an.)
+        Object.assign(state, { bars: 2, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' });
         const snap = JSON.parse(JSON.stringify(snapshot()));
         Object.assign(state, defaults);
         restore(snap);
         const got = Object.fromEntries(keys.map((k) => [k, state[k]]));
-        if (JSON.stringify(got) !== JSON.stringify({ bars: 4, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' })) errors.push(`Rhythmus Speichern/Laden: ${JSON.stringify(got)}`);
+        if (JSON.stringify(got) !== JSON.stringify({ bars: 2, pickup: true, syllables: 'count', input: 'mic', micLatencyMs: 123, rhythmLevel: 5, duoPart: 'upper', mode: 'duo' })) errors.push(`Rhythmus Speichern/Laden: ${JSON.stringify(got)}`);
         Object.assign(state, defaults);
         restore({ tab: savedTab, rhythm: { mode: 'echo' } });
         if (keys.some((k) => state[k] !== defaults[k])) errors.push('Rhythmus: alter Stand ohne neue Felder nicht auf Standard');
@@ -6683,6 +6861,7 @@
     errors.push(...tunerCheck());
     errors.push(...rhythmCheck());
     errors.push(...rhythmPackageCheck());
+    errors.push(...popRhythmCheck());
     errors.push(...earPackageCheck());
     errors.push(...singPackageCheck());
     errors.push(...echoSimCheck());
@@ -6846,6 +7025,9 @@
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
     selfCheck, selfCheckAudio,
+    // Pop-Didaktik: Rhythmus
+    RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
+    rhythmSvg: (pattern, syllables = null) => systemSvg({ pattern, meterId: pattern.meter, lines: phraseLines(pattern), y0: 0, reveal: true, statusOf: () => '', syllables, taps: [] }),
   };
 
   /* ---- Dauerhafte Gewichtungen über den Fortschritt der App ---- */
