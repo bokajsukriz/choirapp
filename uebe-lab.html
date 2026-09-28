@@ -290,6 +290,9 @@
   .answer { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 11px 6px; font-weight: 800; font-size: .8rem; min-height: 44px; }
   .answer.is-picked { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
   .answer-grid.is-three { grid-template-columns: repeat(3, 1fr); }
+  /* Töne/Akkorde in der Tonart: alle Knöpfe in einer Reihe — schmal, dafür höher (Tippfläche ≥ 44 px). */
+  .answer-grid.is-row { grid-template-columns: repeat(var(--cols, 7), minmax(0, 1fr)); gap: 4px; margin-inline: -6px; }
+  .answer-grid.is-row .answer { padding: 0 1px; min-height: 52px; font-size: .78rem; border-radius: 10px; overflow: hidden; }
   .answer small { display: block; font-size: .62rem; font-weight: 700; color: var(--muted); }
   .ear-extra { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
   .ear-extra:empty { display: none; }
@@ -3948,6 +3951,7 @@
     const extra = $('.ear-extra');
     extra.replaceChildren();
     grid.className = 'answer-grid';
+    grid.style.removeProperty('--cols');
     slots.hidden = true;
 
     if (ear.mode === 'interval') {
@@ -3973,8 +3977,9 @@
         : `Stufe ${level.n}: ${level.label}`;
       const kmode = task ? task.kmode : level.kmodes[0];
       const tested = noteInKeyAnswers(level, kmode);
-      grid.classList.add('is-chords');
-      grid.replaceChildren(...noteInKeyShown(level, kmode).map((semis, i) => {
+      const shownNotes = noteInKeyShown(level, kmode);
+      grid.classList.add('is-row'); grid.style.setProperty('--cols', shownNotes.length);
+      grid.replaceChildren(...shownNotes.map((semis, i) => {
         const label = noteInKeyLabel(kmode, semis);
         return inKeyButton(task, semis, label, numbers ? `Stufe ${label}` : `${i + 1}: ${label}`, tested.includes(semis));
       }));
@@ -3987,8 +3992,9 @@
         : `Stufe ${level.n}: ${level.label}`;
       const kmode = task ? task.kmode : (level.major.length ? 'major' : 'minor');
       const tested = chordInKeySymbols(level, kmode);
-      grid.classList.add('is-chords');
-      grid.replaceChildren(...chordInKeyShown(kmode).map((symbol, i) => inKeyButton(task, symbol, symbolLabel(symbol), `${i + 1}: ${symbolLabel(symbol)}`, tested.includes(symbol))));
+      const shownChords = chordInKeyShown(kmode);
+      grid.classList.add('is-row'); grid.style.setProperty('--cols', shownChords.length);
+      grid.replaceChildren(...shownChords.map((symbol, i) => inKeyButton(task, symbol, symbolLabel(symbol), `${i + 1}: ${symbolLabel(symbol)}`, tested.includes(symbol))));
       if (task) extra.append(inKeyExtraButton(task));
     } else if (ear.mode === 'chords' && task?.kind === 'modulation') {
       prompt.textContent = 'Gleich oder höher?';
@@ -8239,6 +8245,7 @@
       ear.task = null; ear.revealed = false; ear.playing = null;
       renderEar();
       if ($$('.answer-grid .answer').length !== 7 || $$('.answer-grid .answer:disabled').length !== 7) errors.push('Töne: Knöpfe vor dem Start');
+      if (!$('.answer-grid').classList.contains('is-row') || $('.answer-grid').style.getPropertyValue('--cols') !== '7') errors.push('Töne: Knöpfe nicht in einer Reihe');
       const task = makeEarTask('noteInKey', 3, rnd);
       ear.task = task; ear.revealed = false;
       renderEar();
@@ -8439,6 +8446,7 @@
       renderEar();
       const btns = () => $$('.answer-grid .answer');
       if (btns().length !== 8 || btns().some((b) => !b.disabled)) errors.push('Akkorde: Knöpfe vor dem Start');
+      if (!$('.answer-grid').classList.contains('is-row') || $('.answer-grid').style.getPropertyValue('--cols') !== '8') errors.push('Akkorde: Knöpfe nicht in einer Reihe');
       const task = makeEarTask('chordInKey', 4, rnd);
       ear.task = task; ear.revealed = false;
       renderEar();
