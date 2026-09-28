@@ -1674,7 +1674,7 @@ function settingsRecovered() {
   closeSettingsLoadBanner = null;
   applyAccentColor(settings.accentColor);
   applyTranslations();
-  if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
+  if (!playerSong) { $('#player-title').textContent = t('player.emptyTitle'); renderPlayerEmpty(); }
   renderVoicePicker();
   if (currentView === 'settings') renderSettings();
   if (!wasShowingBanner) return;
@@ -2102,7 +2102,7 @@ function groupDuplicates(songFolders) {
 const VIEWS = {
   songs:     { render: renderSongs },
   playlists: { render: renderPlaylists },
-  player:    { render: () => {} },
+  player:    { render: () => { renderPlayerEmpty(); } },
   tools:     { render: () => { renderQuickStart(); renderPracticeTiles(); } },
   settings:  { render: renderSettings },
 };
@@ -2151,6 +2151,42 @@ function showTab(name) {
   document.title = `${viewName} – BVG`;
 
   VIEWS[name].render?.();
+}
+
+/**
+ * Player-Reiter ohne Song: statt „Kein Song ausgewählt“ die Songliste zum
+ * Antippen (Tippen lädt den Song wie in der Bibliothek). Nur ohne
+ * gespeicherte Songs bleibt der Hinweis stehen. Ist ein Song geladen,
+ * passiert nichts.
+ */
+let playerEmptyRun = 0;
+async function renderPlayerEmpty() {
+  if (playerSong) return;
+  const run = ++playerEmptyRun;
+  const listEl = $('#player-empty-list');
+  let songs = [];
+  try { songs = await DB.songsForDisplay(); } catch { songs = []; }
+  if (run !== playerEmptyRun || playerSong) return;
+  songs = [...songs].sort((a, b) => collator.compare(a.title || '', b.title || ''));
+  listEl.textContent = '';
+  listEl.hidden = !songs.length;
+  $('#player-empty-msg').hidden = songs.length > 0;
+  // Über der Liste steht „Songs“ statt „Kein Song ausgewählt“.
+  $('#player-title').textContent = t(songs.length ? 'nav.songs' : 'player.emptyTitle');
+  for (const song of songs) {
+    listEl.append(el('li', {},
+      el('button', {
+        class: 'list-item',
+        type: 'button',
+        onclick: () => { playQueue = null; navigate(`#song/${song.id}`); },
+      },
+        el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
+          el('strong', { text: songLabel(song) || t('songs.untitled') }),
+          song.tracks.length
+            ? renderVoicePills(song.tracks)
+            : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
+        ))));
+  }
 }
 
 /**
@@ -10305,6 +10341,7 @@ function closePlayer() {
   $('#btn-song-search').hidden = true;
   $('#btn-song-search').disabled = true;
   $('#player-empty').hidden = false;
+  renderPlayerEmpty();
   $('#player-loaded').hidden = true;
   $('#player-foot').hidden = true;
   setPlayerFootUnavailable(false);
@@ -22975,7 +23012,7 @@ async function boot() {
   // Der Kopftitel des Players trägt ab dem ersten geöffneten Lied dessen
   // Namen und kann deshalb kein data-i18n tragen (das überschriebe ihn beim
   // Sprachwechsel) — der Leerzustand wird darum hier einmal gesetzt.
-  if (!playerSong) $('#player-title').textContent = t('player.emptyTitle');
+  if (!playerSong) { $('#player-title').textContent = t('player.emptyTitle'); renderPlayerEmpty(); }
   initGrooveLabEasterEgg();
   initTools();
   setupFolderImport();

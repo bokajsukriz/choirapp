@@ -3322,12 +3322,17 @@ input[type="checkbox"] {
     <!-- Leerzustand: sichtbar, solange kein Song geladen ist — der Player
          ist jetzt ein dauerhafter Reiter und muss auch ohne Auswahl etwas
          Sinnvolles zeigen (siehe openPlayer()/closePlayer()). -->
-    <div class="empty" id="player-empty">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
-      </svg>
-      <h2 data-i18n="player.emptyTitle">Kein Song ausgewählt</h2>
-      <p class="small" data-i18n="player.emptyText">Wähle einen Song aus der Liste, um ihn hier abzuspielen.</p>
+    <div id="player-empty">
+      <!-- Ohne Song zeigt der Player-Reiter die Songliste zum Antippen
+           (renderPlayerEmpty); nur ohne gespeicherte Songs bleibt der Hinweis. -->
+      <ul class="list" id="player-empty-list" hidden></ul>
+      <div class="empty" id="player-empty-msg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>
+        </svg>
+        <h2 data-i18n="player.emptyTitle">Kein Song ausgewählt</h2>
+        <p class="small" data-i18n="player.emptyText">Wähle einen Song aus der Liste, um ihn hier abzuspielen.</p>
+      </div>
     </div>
 
     <div id="player-loaded" hidden>
