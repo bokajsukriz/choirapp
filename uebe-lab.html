@@ -270,6 +270,17 @@
   .sing-syl.is-ok { background: #2f9e5b; color: #fff; }
   .sing-syl.is-bad { background: rgba(224,68,90,.14); color: var(--bad); }
   .sing-staff { margin-top: 10px; }
+  .echo-dots { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 14px 0 4px; min-height: 14px; }
+  .echo-dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); transition: transform .1s; }
+  .echo-dots i.is-past { background: rgba(var(--accent-rgb), .45); }
+  .echo-dots i.is-now { background: var(--accent); transform: scale(1.35); }
+  .echo-graph { margin-top: 10px; }
+  .stage .eb-grid { stroke: var(--line); stroke-width: 1; }
+  .stage .eb-ok { fill: var(--good); }
+  .stage .eb-off { fill: #e8772e; }
+  .stage .eb-miss { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .stage .eb-cents { font-size: 10px; font-weight: 800; fill: #c25e1c; }
+  .stage .eb-line { fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
   .stage .clef { font-size: 34px; font-family: "Noto Music", "Bravura", serif; }
   .stage .clef8 { font-size: 9px; font-weight: 800; }
   .stage .acc { font-size: 13px; font-weight: 700; }
@@ -404,6 +415,9 @@
           <span class="sing-ctl-gap"></span>
           <button class="sing-ctl" type="button" data-sing="replay" aria-label="Vorgabe noch einmal" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg><span class="replay-label">Vorgabe</span></button>
           <button class="sing-ctl" type="button" data-sing="target" aria-label="Zielton anhören" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="17" r="3"/><path d="M11 17V4l7 3"/></svg><span>Zielton</span></button>
+          <button class="sing-ctl" type="button" data-sing="slow" aria-label="Langsamer vorspielen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l-2.5 2.5M10 3h4"/></svg><span>Langsamer</span></button>
+          <button class="sing-ctl" type="button" data-sing="half" aria-label="Nur die erste Hälfte" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M12 7v10"/><path d="M3.5 12H12" stroke-width="6" stroke-opacity=".35"/></svg><span>1. Hälfte</span></button>
+          <button class="sing-ctl" type="button" data-sing="again" aria-label="Nochmal, gleiche Melodie" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6L20 8.7"/><path d="M20 4v4.7h-4.7"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg><span>Nochmal</span></button>
           <button class="sing-ctl" type="button" data-sing="skip" aria-label="Ton überspringen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 9 7-9 7z"/><path d="M18 5v14"/></svg><span>Überspringen</span></button>
           <button class="sing-ctl is-primary" type="button" data-sing="start" aria-label="Weiter" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg><span>Weiter</span></button>
           <button class="big-btn" type="button" data-sing="begin">Start</button>
@@ -526,12 +540,16 @@
     try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
     return null;
   })();
-  // UI-Bereich → Fortschrittsbereich (Akkordfolgen heißen dort 'progression').
-  const PROGRESS_AREA = { chords: 'progression' };
+  // UI-Bereich → Fortschrittsbereich (Akkordfolgen heißen dort 'progression',
+  // Nachsingen 'echo' — die UI-ID 'echo' gehört dem Nachklatschen).
+  const PROGRESS_AREA = { chords: 'progression', singEcho: 'echo' };
   const areaOf = (key) => PROGRESS_AREA[key] || key;
   let lastReportAt = performance.now();
+  // Selbstprüfungen, die Abläufe durchspielen: nichts melden, nichts spielen.
+  let selfTesting = false;
   /** Ergebnis melden; Sekunden seit der letzten Meldung (höchstens 2 min). */
   function report(key, level, right, extra = {}) {
+    if (selfTesting) return;
     const now = performance.now();
     const seconds = Math.min(120, (now - lastReportAt) / 1000);
     lastReportAt = now;
@@ -1882,6 +1900,8 @@
     hold: '<path d="M3 9v6"/><path d="M3 12h14"/><circle cx="19.5" cy="12" r="2.3" fill="currentColor"/>',
     sight: '<path d="M3 4.5h18M3 8.5h18"/><path d="M2.5 16.5s3.5-4.5 9.5-4.5 9.5 4.5 9.5 4.5-3.5 4.5-9.5 4.5-9.5-4.5-9.5-4.5Z"/><circle cx="12" cy="16.5" r="2"/>',
     dictation: '<path d="M3 5h12M3 9h12M3 13h8"/><path d="m13 21 .8-3.2 5.7-5.7 2.4 2.4-5.7 5.7Z"/>',
+    singEcho: '<path d="M4 9a5 5 0 0 1 10 0c0 3-3 3.5-3 6.5a2.8 2.8 0 0 1-5 1.7"/><path d="M7 9a2 2 0 0 1 4 0"/><circle cx="17.5" cy="17" r="2" fill="currentColor"/><path d="M19.5 17V7l2.5 1"/>',
+    inTime: '<circle cx="7" cy="17" r="2.6" fill="currentColor"/><path d="M9.6 17V4.5l4.4 2"/><path d="M16 20 19 4l3 16"/><path d="M17 14h4"/>',
     tuner: '<path d="M9 3v7a3 3 0 0 0 6 0V3"/><path d="M12 13v7"/><path d="M9.5 21h5"/>',
     mixed: '<path d="M3 7h3.5c4.5 0 6.5 10 11 10H21"/><path d="M3 17h3.5c1.6 0 2.8-1.3 3.8-3M13.7 10C14.8 8.2 16 7 17.5 7H21"/><path d="m18 4 3 3-3 3M18 14l3 3-3 3"/>',
   };
@@ -1895,7 +1915,8 @@
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
     tuning: 'Sauber, zu hoch oder zu tief?', singInterval: 'Ein Grundton – du singst das Intervall',
     findTone: 'Akkord oder a′ – du findest deinen Ton', hold: 'Einen Ton ruhig halten', sight: 'Kurze Melodie vom Blatt singen',
-    dictation: 'Kurze Melodie hören und aufschreiben', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
+    dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
+    inTime: 'Ton und Rhythmus zum Klick – nachsingen oder vom Blatt', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
   };
   const areaModes = (tab) => (tab === 'rhythm' ? MODES : tab === 'ear' ? EAR_MODES
     : [...SING_MODES.filter(([id]) => id !== 'tuner'), ['tuner', 'Tuner und Tonumfang']]);
@@ -3963,18 +3984,18 @@
   /** Soll-Einsätze und -Längen in Sekunden (Ticks × tickSec, ab `offset`). */
   const melodyTarget = (mel, tickSec, offset = 0) => mel.tones.map((x) => ({ midi: x.midi, start: offset + x.t * tickSec, dur: x.d * tickSec }));
 
-  const SING_MODES = [['tuner', 'Tuner'], ['singInterval', 'Intervalle singen'], ['findTone', 'Ton finden'], ['hold', 'Ton halten'], ['sight', 'Blattsingen'], ['dictation', 'Diktat']];
+  const SING_MODES = [['tuner', 'Tuner'], ['hold', 'Ton halten'], ['singInterval', 'Intervalle singen'], ['findTone', 'Ton finden'], ['singEcho', 'Nachsingen'], ['sight', 'Blattsingen'], ['dictation', 'Diktat']];
   const sing = {
     mode: 'tuner',
-    levels: { singInterval: 1, findTone: 1, hold: 1, sight: 1, dictation: 1 },
+    levels: { singInterval: 1, findTone: 1, hold: 1, sight: 1, dictation: 1, singEcho: 1, inTime: 1 },
     solfa: 'syllables',   // 'syllables' (do re mi) | 'numbers' (1 2 3)
     showSolfa: true,      // Intervalle singen: Hilfe „do → mi“ zeigen
     task: null, phase: 'idle', judge: null, timers: [], bus: null, lastKey: null,
-    stats: { singInterval: { right: 0, total: 0 }, findTone: { right: 0, total: 0 }, hold: { right: 0, total: 0 }, sight: { right: 0, total: 0 }, dictation: { right: 0, total: 0 } },
+    stats: { singInterval: { right: 0, total: 0 }, findTone: { right: 0, total: 0 }, hold: { right: 0, total: 0 }, sight: { right: 0, total: 0 }, dictation: { right: 0, total: 0 }, singEcho: { right: 0, total: 0 }, inTime: { right: 0, total: 0 } },
     log: {},              // Intervalle singen: Gewichtung wie beim Hören (eigener Speicher singLog)
     live: null,           // { midi, cents } der letzten Messung (Anzeige)
   };
-  const SING_LEVEL_TABLE = { singInterval: () => INTERVAL_LEVELS(), findTone: () => FIND_LEVELS, hold: () => HOLD_LEVELS, sight: () => SIGHT_LEVELS, dictation: () => SIGHT_LEVELS };
+  const SING_LEVEL_TABLE = { singInterval: () => INTERVAL_LEVELS(), findTone: () => FIND_LEVELS, hold: () => HOLD_LEVELS, sight: () => SIGHT_LEVELS, dictation: () => SIGHT_LEVELS, singEcho: () => ECHO_LEVELS, inTime: () => IN_TIME_LEVELS };
   const PART_CLEF = { S: 'treble', A: 'treble', T: 'treble8', B: 'bass' };
 
   /** Innenbereich des Übe-Umfangs (je 2 Halbtöne innerhalb). */
@@ -4044,6 +4065,13 @@
       const level = HOLD_LEVELS[n - 1];
       const target = clamp(Math.round((lo + hi) / 2) + rndInt(-4, 4, rnd), lo, hi);
       return { mode, level: n, target, sec: level.sec, dyn: level.dyn };
+    }
+    if (mode === 'singEcho' || mode === 'inTime') {
+      const inTime = mode === 'inTime';
+      const mel = makeRhythmMelody(melodySpec(inTime ? 'inTime' : 'echo', n), range, { previousKey, rnd });
+      const level = (inTime ? IN_TIME_LEVELS : ECHO_LEVELS)[n - 1];
+      return { mode, level: n, mel, key: mel.key, minor: mel.minor, doMidi: mel.doMidi, tolerance: level.tol,
+        bpm: inTime ? level.bpm : n === 6 ? 84 : 76, help: false, listens: 0, slow: false, half: false };
     }
     // Blattsingen / Diktat
     const mel = makeMelody(n, previousKey, rnd);
@@ -4137,6 +4165,7 @@
   function playSingCue() {
     const task = sing.task;
     if (!task) return;
+    if (task.mode === 'singEcho') { playEchoCue(task); return; }
     clearSingTimers();
     const bus = singBus();
     const t0 = engine.ctx.currentTime + .08;
@@ -4179,6 +4208,191 @@
     }, wait));
   }
 
+  /* ---- Nachsingen (Paket 3): Tonika-Akkord, Melodie, dann singst du nach.
+     Tempo frei; gezählt werden Reihenfolge und Tonhöhe (scoreEcho ohne
+     timing). Das Mikrofon liefert nur Zahlen-Rahmen, die nach der
+     Auswertung verworfen werden. ---- */
+  const ECHO_SLOW = .75;          // „Langsamer“: Vorspiel-Tempo × 0,75
+  const ECHO_END_SILENCE = 1.2;   // Singphase endet so lange nach dem letzten stimmhaften Rahmen
+  const ECHO_MAX_LISTENS = 2;     // „Noch einmal hören“ vor dem Singen
+  /** Ende von „Nur die erste Hälfte“ (Stufen 4–6: Takt 1, 2 bzw. 4) in Ticks. */
+  function echoHalfTick(mel) {
+    const bars = { 4: 1, 5: 2, 6: 4 }[mel.level];
+    return bars ? mel.pickup + bars * METERS[mel.meter].ticks : null;
+  }
+  const echoTones = (task) => (task.half ? task.mel.tones.filter((x) => x.t < echoHalfTick(task.mel)) : task.mel.tones);
+  const echoTickSec = (task) => 60 / (task.bpm * (task.slow ? ECHO_SLOW : 1)) / 12;
+
+  function playTonicChord(task, t0, dur, bus) {
+    const tonicMidi = task.minor ? task.doMidi - 3 : task.doMidi;
+    const [c] = satbOf(mod(tonicMidi, 12), [task.minor ? 'i' : 'I']);
+    SATB_PARTS.forEach((x) => engine.keys(c[x], t0, dur, { velocity: .12, dest: bus }));
+  }
+
+  /** Vorspiel: Tonika-Akkord (ein Takt), dann die Melodie allein (ohne
+   *  Begleitung); die Punktreihe wandert mit. Danach die Singphase —
+   *  außer bei „Melodie anhören“ nach dem Ergebnis (melodyOnly). */
+  function playEchoCue(task, { melodyOnly = false } = {}) {
+    clearSingTimers();
+    task.playIdx = -1;
+    if (!engine.ctx || selfTesting) return; // Selbstprüfung ohne Ton
+    const bus = singBus();
+    const tick = echoTickSec(task);
+    let t = engine.ctx.currentTime + .08;
+    if (!melodyOnly) { const barSec = METERS[task.mel.meter].ticks * tick; playTonicChord(task, t, barSec * .95, bus); t += barSec; }
+    const tones = echoTones(task);
+    const at = (sec) => Math.max(0, (sec - engine.ctx.currentTime) * 1000);
+    tones.forEach((x, i) => {
+      engine.keys(x.midi, t + x.t * tick, x.d * tick * .92, { velocity: .22, dest: bus });
+      sing.timers.push(setTimeout(() => { if (sing.task === task) { task.playIdx = i; renderEchoDots(); } }, at(t + x.t * tick)));
+    });
+    const last = tones[tones.length - 1];
+    const end = t + (last.t + last.d) * tick;
+    task.melodySec = (last.t + last.d - tones[0].t) * tick;
+    // Kurz warten, bis der letzte Ton verklungen ist — sonst hört das Mikrofon ihn noch.
+    sing.timers.push(setTimeout(() => {
+      if (sing.task !== task) return;
+      task.playIdx = -1; renderEchoDots();
+      if (!melodyOnly && sing.phase === 'cue') beginEchoSinging(task);
+    }, at(end) + 350));
+  }
+
+  function beginEchoSinging(task) {
+    sing.phase = 'sing';
+    task.frames = [];
+    task.singStart = engine.ctx ? engine.ctx.currentTime : 0;
+    task.voicedSec = 0; task.lastVoiced = null;
+    task.maxSec = task.melodySec * 2 + 3;
+    renderSing();
+  }
+
+  /** Ein Rahmen der Singphase (Zeit ab Beginn der Singphase). Liefert true,
+   *  wenn die Phase zu Ende ist. */
+  function echoPushFrame(task, f) {
+    task.frames.push(f);
+    if (f.midi !== null) {
+      if (task.lastVoiced !== null && f.t - task.lastVoiced < .1) task.voicedSec += f.t - task.lastVoiced;
+      task.lastVoiced = f.t;
+    }
+    return (task.voicedSec >= .15 && f.t - task.lastVoiced > ECHO_END_SILENCE) || f.t > task.maxSec;
+  }
+
+  /** Gesungene Linie fürs Tonhöhenbild: nur stimmhafte Punkte (Oktavlage
+   *  herausgerechnet), gleitender Median über 7 Rahmen gegen einzelne
+   *  Oktavfehler der Tonerkennung (nur Anzeige), höchstens ~240 Punkte,
+   *  mit Lücken. */
+  function echoLine(frames, octave) {
+    const voiced = frames.filter((f) => f.midi !== null);
+    const step = Math.max(1, Math.ceil(voiced.length / 240));
+    const out = [];
+    for (let i = 0; i < voiced.length; i += step) {
+      const win = voiced.slice(Math.max(0, i - 3), i + 4).filter((f) => Math.abs(f.t - voiced[i].t) < .1).map((f) => f.midi);
+      out.push({ t: voiced[i].t, midi: echoMedian(win) - 12 * octave, gap: i > 0 && voiced[i].t - voiced[i - step].t > .15 * step });
+    }
+    return out;
+  }
+
+  function finishEcho() {
+    const task = sing.task;
+    if (!task || task.mode !== 'singEcho' || sing.phase !== 'sing') return;
+    const res = scoreEcho(echoTones(task).map((x) => ({ midi: x.midi })), task.frames || [], { tolCents: task.tolerance });
+    task.result = res;
+    task.line = echoLine(task.frames || [], res.octave);
+    task.frames = null; // Rahmen verwerfen
+    const ok = res.notes.every((x) => x.pitchOk) && res.extra <= 1;
+    finishSing(ok, echoFeedback(res), { value: res.total ? res.hits / res.total : 0 });
+  }
+
+  const ORDINALS = ['erste', 'zweite', 'dritte', 'vierte', 'fünfte', 'sechste', 'siebte', 'achte', 'neunte', 'zehnte',
+    'elfte', 'zwölfte', 'dreizehnte', 'vierzehnte', 'fünfzehnte', 'sechzehnte', 'siebzehnte', 'achtzehnte', 'neunzehnte', 'zwanzigste'];
+  const ordinal = (i) => ORDINALS[i] || `${i + 1}.`;
+  const shiftName = (semis) => (Math.abs(semis) === 1 ? 'einen Halbton' : Math.abs(semis) === 2 ? 'einen Ganzton' : `${Math.abs(semis)} Halbtöne`);
+  /** Rückmeldung in wenigen Sätzen (Nachsingen und Im Takt). */
+  function echoFeedback(res) {
+    const parts = [`${res.hits} von ${res.total} Tönen.`];
+    const missing = res.notes.filter((x) => x.missing).length;
+    const oct = Math.abs(res.octave);
+    const octText = `${oct === 1 ? 'Eine Oktave' : `${oct} Oktaven`} ${res.octave < 0 ? 'tiefer' : 'höher'} gesungen`;
+    if (missing === res.total) return `${parts[0]} Kein Ton erkannt – noch einmal, etwas lauter oder näher am Mikrofon.`;
+    if (res.transposed != null) {
+      const semis = Math.round(res.transposed / 100);
+      parts.push(`Die Melodie stimmt, du bist ${shiftName(semis)} ${semis > 0 ? 'höher' : 'tiefer'} eingestiegen.`);
+      if (oct) parts.push(`${octText} – das zählt nicht.`);
+    } else {
+      if (oct) parts.push(res.hits === res.total ? `${octText} – die Melodie stimmt.` : `${octText} – das zählt als richtig.`);
+      const wrong = res.notes.map((x, i) => [x, i]).filter(([x]) => !x.missing && !x.pitchOk);
+      wrong.slice(0, 2).forEach(([x, i]) => parts.push(`Der ${ordinal(i)} Ton war ${Math.abs(x.cents) < 100 ? 'etwas ' : ''}zu ${x.cents < 0 ? 'tief' : 'hoch'}.`));
+      if (wrong.length > 2) parts.push(wrong.length === 3 ? 'Dazu ein weiterer Ton daneben.' : `Dazu ${wrong.length - 2} weitere Töne daneben.`);
+      if (res.hits === res.total && !oct) parts.push('Alles getroffen!');
+    }
+    if (missing) parts.push(missing === 1 ? 'Ein Ton fehlt.' : `${missing} Töne fehlen.`);
+    if (res.extra > 1) parts.push(`${res.extra} Töne zu viel.`);
+    return parts.join(' ');
+  }
+
+  /** Hilfe vor dem Singen: noch einmal hören, langsamer, erste Hälfte.
+   *  Zählt als „mit Hilfe“ (kein Fehler, nicht für den Stufenvorschlag). */
+  function echoHelp(kind) {
+    const task = sing.task;
+    if (!task || task.mode !== 'singEcho' || !['cue', 'sing'].includes(sing.phase)) return;
+    if (kind === 'listen') { if (task.listens >= ECHO_MAX_LISTENS) return; task.listens++; }
+    else if (kind === 'slow') task.slow = true;
+    else if (kind === 'half') { if (!echoHalfTick(task.mel)) return; task.half = true; }
+    else return;
+    task.help = true;
+    task.frames = null;
+    sing.phase = 'cue';
+    renderSing();
+    playEchoCue(task);
+  }
+  /** „Nochmal“: dieselbe Melodie, neuer Versuch ohne Hilfen. */
+  function echoAgain() {
+    const task = sing.task;
+    if (!task || task.mode !== 'singEcho' || sing.phase !== 'result') return;
+    Object.assign(task, { help: false, listens: 0, slow: false, half: false, result: null, line: null, frames: null, ok: undefined });
+    sing.phase = 'cue';
+    setSingFeedback('', '');
+    renderSing();
+    playEchoCue(task);
+  }
+
+  function renderEchoDots() {
+    const task = sing.task;
+    $$('.echo-dots i').forEach((el, i) => {
+      el.classList.toggle('is-now', !!task && i === task.playIdx);
+      el.classList.toggle('is-past', !!task && task.playIdx >= 0 && i < task.playIdx);
+    });
+  }
+
+  /** Tonhöhenbild: waagrechte Balken für die Zieltöne, darüber die
+   *  gesungene Linie (auf den Zeitraum der Zieltöne gestreckt). Getroffen
+   *  grün, daneben orange mit Cent, fehlend grau gestrichelt. */
+  function echoPitchSvg(tones, res, line) {
+    const W = 340, H = 150, X0 = 10, X1 = 330, Y0 = 16, Y1 = 138;
+    const start = tones[0].t, end = tones[tones.length - 1].t + tones[tones.length - 1].d;
+    const xOf = (tick) => X0 + ((tick - start) / (end - start)) * (X1 - X0);
+    const mids = tones.map((x) => x.midi);
+    let lo = Math.min(...mids) - 2, hi = Math.max(...mids) + 2;
+    const sung = (line || []).map((p) => p.midi);
+    if (sung.length) { lo = Math.max(lo - 4, Math.min(lo, Math.floor(Math.min(...sung)))); hi = Math.min(hi + 4, Math.max(hi, Math.ceil(Math.max(...sung)))); }
+    const yOf = (m) => Y1 - ((clamp(m, lo, hi) - lo) / (hi - lo)) * (Y1 - Y0);
+    const out = [];
+    for (let m = Math.ceil(lo); m <= hi; m++) out.push(`<line class="eb-grid" x1="${X0}" x2="${X1}" y1="${f1(yOf(m))}" y2="${f1(yOf(m))}"/>`);
+    tones.forEach((x, i) => {
+      const n = res.notes[i] || { missing: true };
+      const cls = n.missing ? 'eb-miss' : n.pitchOk ? 'eb-ok' : 'eb-off';
+      const x0 = xOf(x.t) + 1.5, w = Math.max(3, xOf(x.t + x.d) - xOf(x.t) - 3), y = yOf(x.midi);
+      out.push(`<rect class="${cls}" x="${f1(x0)}" y="${f1(y - 4.5)}" width="${f1(w)}" height="9" rx="4.5"/>`);
+      if (!n.missing && !n.pitchOk) out.push(`<text class="eb-cents" x="${f1(x0 + w / 2)}" y="${f1(n.cents > 0 ? y + 17 : y - 9)}" text-anchor="middle">${n.cents > 0 ? '+' : '−'}${Math.abs(n.cents)}</text>`);
+    });
+    if (line && line.length > 1) {
+      const a = line[0].t, b = line[line.length - 1].t;
+      const d = line.map((p, i) => `${i && !p.gap ? 'L' : 'M'}${f1(xOf(start + ((p.t - a) / Math.max(.01, b - a)) * (end - start)))} ${f1(yOf(p.midi))}`).join(' ');
+      out.push(`<path class="eb-line" d="${d}"/>`);
+    }
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tonhöhenbild: ${res.hits} von ${res.total} Tönen getroffen">${out.join('')}</svg>`;
+  }
+
   /** Blattsingen: je Ton ruhig halten (strict), kein Zeitlimit. */
   const sightJudge = (task) => makePitchJudge({ target: task.notes[task.idx], tolerance: task.tolerance, holdSec: SIGHT_HOLD_SEC, timeoutSec: Infinity, strict: true });
 
@@ -4205,6 +4419,14 @@
     sing.live = shown === null || target == null ? null : { midi: shown, cents: (mod(shown - target + 6, 12) - 6) * 100 };
     renderSingLive();
     if (!task) return;
+    if (task.mode === 'singEcho') {
+      if (sing.phase === 'sing' && task.frames) {
+        const f = pitchFrameOf(now, r, voice.buffer, engine.ctx.sampleRate);
+        f.t -= task.singStart;
+        if (echoPushFrame(task, f)) finishEcho();
+      }
+      return;
+    }
     if (sing.phase === 'sing' && sing.judge) {
       const res = sing.judge.push(now, raw, clarity);
       if (res) onSingJudged(res);
@@ -4305,13 +4527,18 @@
     task.ok = ok;
     const st = sing.stats[task.mode];
     st.total++; if (ok) st.right++;
-    setSingFeedback(text, ok ? 'ok' : 'bad');
+    // Nachsingen/Im Takt: Teiltreffer neutral statt rot (ermutigend).
+    const partial = ['singEcho', 'inTime'].includes(task.mode) && Number.isFinite(value) && value > 0;
+    setSingFeedback(text, ok ? 'ok' : partial ? '' : 'bad');
     onSingResult(task, ok, value);
     renderSing();
   }
   /** Fortschritt und „Heute üben“. */
   function onSingResult(task, ok, value) {
-    report(task.mode, task.level, ok, value === undefined || value === null || !Number.isFinite(value) ? {} : { value });
+    const extra = value === undefined || value === null || !Number.isFinite(value) ? {} : { value };
+    if (task.help) extra.help = true; // mit Hilfe: kein Fehler, zählt nicht für den Stufenvorschlag
+    task.reported = { level: task.level, right: ok, ...extra };
+    report(task.mode, task.level, ok, extra);
     if (task.mode === 'singInterval') saveMemory('singLog', sing.log);
     onToolStep('voice');
   }
@@ -4360,7 +4587,7 @@
     // Auswertung kommt danach (alle Sing-Übungen).
     const task = sing.task;
     if (task && ['sing', 'hold', 'holdWait'].includes(sing.phase)) {
-      out.textContent = { sing: task.mode === 'sight' ? 'Sing Ton für Ton, jeden ruhig halten …' : 'Sing und halte den Ton ruhig …', holdWait: 'Setz ein, wenn du bereit bist …', hold: 'Halten …' }[sing.phase];
+      out.textContent = { sing: task.mode === 'sight' ? 'Sing Ton für Ton, jeden ruhig halten …' : task.mode === 'singEcho' ? 'Sing die Melodie nach …' : 'Sing und halte den Ton ruhig …', holdWait: 'Setz ein, wenn du bereit bist …', hold: 'Halten …' }[sing.phase];
       return;
     }
     if (task && sing.phase === 'result' && task.target != null && task.mode !== 'hold') { out.textContent = `Gesucht: ${noteLabel(task.target)}`; return; }
@@ -4394,6 +4621,7 @@
         hold: 'Einen Ton ruhig halten — Lage, Ruhe und Trend.',
         sight: 'Eine kurze Melodie vom Blatt singen, Ton für Ton.',
         dictation: 'Eine kurze Melodie hören und aufschreiben.',
+        singEcho: 'Eine Melodie hören und nachsingen – Silbe frei, z. B. „no“. Das Tempo ist frei.',
       }[sing.mode];
       prompt.textContent = intro;
       sub.textContent = `${PART_NAMES[ear.part]} · Töne zwischen ${noteLabel(r.lo)} und ${noteLabel(r.hi)}${sing.mode === 'dictation' ? '' : ' · mit Kopfhörern'}`;
@@ -4405,6 +4633,13 @@
       prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
       const findPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
       sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${task.cue === 'cadence' ? ' · nach der Kadenz' : ''}`}${findPhase ? ` · ${findPhase}` : ''}`;
+    } else if (task.mode === 'singEcho') {
+      prompt.textContent = { cue: 'Hör zu', sing: 'Jetzt du' }[sing.phase] || 'Nachsingen';
+      sub.textContent = [task.minor ? 'Moll' : 'Dur', `${echoTones(task).length} Töne`, task.half ? 'erste Hälfte' : '', task.slow ? 'langsamer' : '',
+        sing.phase === 'sing' ? 'Silbe frei, z. B. „no“' : ''].filter(Boolean).join(' · ');
+      if (sing.phase === 'result' && task.result) view.innerHTML = `<div class="stage echo-graph">${echoPitchSvg(echoTones(task), task.result, task.line)}</div>`;
+      else view.innerHTML = `<div class="echo-dots" aria-hidden="true">${echoTones(task).map(() => '<i></i>').join('')}</div>`;
+      renderEchoDots();
     } else if (task.mode === 'hold') {
       prompt.textContent = `${noteLabel(task.target)} halten — ${task.sec} Sekunden`;
       sub.textContent = `${{ mf: 'mittlere Lautstärke', cresc: 'dabei lauter werden', pp: 'leise', messa: 'an- und abschwellen' }[task.dyn]} · ${phaseText[sing.phase] || ''}`;
@@ -4445,6 +4680,16 @@
     $('[data-sing="target"]').hidden = !(task && sing.phase === 'result' && task.target != null);
     $('[data-sing="skip"]').hidden = !(task?.mode === 'sight' && sing.phase === 'sing');
     $('[data-sing="stop"]').hidden = !task;
+    const echo = task?.mode === 'singEcho';
+    const before = echo && ['cue', 'sing'].includes(sing.phase);
+    $('[data-sing="again"]').hidden = !(echo && sing.phase === 'result');
+    $('[data-sing="slow"]').hidden = !before || task.slow;
+    $('[data-sing="half"]').hidden = !before || task.half || !echoHalfTick(task.mel);
+    if (echo) {
+      $('[data-sing="replay"]').hidden = before && task.listens >= ECHO_MAX_LISTENS;
+      $('.replay-label').textContent = before ? `Noch einmal (${ECHO_MAX_LISTENS - task.listens})` : 'Anhören';
+      $('[data-sing="replay"]').setAttribute('aria-label', before ? `Noch einmal hören, ${ECHO_MAX_LISTENS - task.listens} übrig` : 'Melodie anhören');
+    }
     const st = sing.stats[sing.mode];
     $('.sing-score').textContent = st.total ? `${st.right}/${st.total} ${sing.mode === 'hold' ? 'ruhig gehalten' : 'getroffen'}` : '';
     renderSingLive();
@@ -4633,7 +4878,11 @@
     const singBtn = e.target.closest('[data-sing]');
     if (singBtn) {
       const action = singBtn.dataset.sing;
-      if (action === 'start' || action === 'begin') startSingTask();
+      if (sing.task?.mode === 'singEcho' && ['replay', 'slow', 'half', 'again'].includes(action)) {
+        if (action === 'again') echoAgain();
+        else if (action === 'replay' && sing.phase === 'result') playEchoCue(sing.task, { melodyOnly: true });
+        else echoHelp(action === 'replay' ? 'listen' : action);
+      } else if (action === 'start' || action === 'begin') startSingTask();
       else if (action === 'target' && sing.task?.target != null && engine.ctx) engine.keys(sing.task.target, engine.ctx.currentTime + .05, 1.4, { velocity: .22, dest: singBus() });
       else if (action === 'replay' && sing.task) { if (sing.phase !== 'result') sing.judge = null; playSingCue(); }
       else if (action === 'skip') skipSightNote();
@@ -5425,6 +5674,82 @@
     return errors;
   }
 
+  /** Nachsingen Paket 3: Ablauf mit eingespeisten synthetischen Rahmen
+   *  (Anhang B) statt Mikrofon — Satzbausteine, „Nochmal“, Hilfen. */
+  function echoFlowCheck() {
+    const errors = [];
+    const saved = { mode: sing.mode, task: sing.task, phase: sing.phase, stats: JSON.parse(JSON.stringify(sing.stats)), quick: quickRun, tab: state.tab };
+    const sim = makeEchoSim(3);
+    selfTesting = true; quickRun = null;
+    const feedback = () => $('.sing-feedback').textContent;
+    /** Eine Aufgabe von Anfang bis Ergebnis; `prep` darf vor dem Singen Hilfen nehmen. */
+    const runTask = (opts, level = 5, prep = null) => {
+      sing.mode = 'singEcho';
+      const task = makeSingTask('singEcho', level, singRange('A', null), { rnd: sim.rnd });
+      sing.task = task; sing.phase = 'cue';
+      if (prep) prep(task);
+      const tick = 60 / task.bpm / 12;
+      const target = melodyTarget({ tones: echoTones(task) }, tick);
+      task.melodySec = target[target.length - 1].start + target[target.length - 1].dur;
+      beginEchoSinging(task);
+      const frames = opts === null ? Array.from({ length: 200 }, (_, i) => ({ t: i / 60, midi: null, rms: .002 })) : sim.sing(target, opts).frames;
+      for (const f of frames) if (echoPushFrame(task, f)) break;
+      finishEcho();
+      return task;
+    };
+    try {
+      const want = [
+        [{}, /Alles getroffen!/],
+        [{ shift: -12 }, /Eine Oktave tiefer gesungen – die Melodie stimmt\./],
+        [{ shift: 12 }, /Eine Oktave höher gesungen/],
+        [{ shift: 2 }, /Die Melodie stimmt, du bist einen Ganzton höher eingestiegen\./],
+        [{ shift: -1 }, /du bist einen Halbton tiefer eingestiegen/],
+        [{ drop: 2 }, /Ein Ton fehlt\./],
+        [{ wrong: 3 }, /Der vierte Ton war (etwas )?zu hoch\./],
+        [null, /Kein Ton erkannt/],
+      ];
+      for (const [opts, re] of want) {
+        const task = runTask(opts);
+        if (!re.test(feedback())) errors.push(`Nachsingen-Ablauf ${JSON.stringify(opts)}: „${feedback()}“`);
+        if (sing.phase !== 'result' || task.frames !== null) errors.push('Nachsingen: Rahmen nach der Auswertung nicht verworfen');
+        if (opts && !Object.keys(opts).length && (!task.ok || task.reported?.right !== true || task.reported.help || Math.abs(task.reported.value - 1) > 1e-9)) errors.push(`Nachsingen: sauber nicht als richtig gemeldet (${JSON.stringify(task.reported)})`);
+        if (opts?.shift === -12 && !task.ok) errors.push('Nachsingen: Oktave tiefer nicht richtig');
+        if (opts?.shift === 2 && (task.ok || task.result.hits !== 0)) errors.push('Nachsingen: verschoben als richtig gezählt');
+        if (opts?.drop === 2 && (task.ok || Math.abs(task.reported.value - (task.result.total - 1) / task.result.total) > 1e-9)) errors.push('Nachsingen: ausgelassener Ton falsch gezählt');
+        if (!$('.echo-graph svg') && opts !== null) errors.push('Nachsingen: Tonhöhenbild fehlt');
+      }
+      const tief = echoFeedback({ notes: [{ pitchOk: true, cents: 5 }, { pitchOk: false, cents: -60 }, { missing: true }], hits: 1, total: 3, extra: 0, octave: 0, transposed: null });
+      if (!/Der zweite Ton war etwas zu tief\./.test(tief) || !/Ein Ton fehlt/.test(tief) || !tief.startsWith('1 von 3 Tönen')) errors.push(`Satz „zu tief“: ${tief}`);
+      if (!/3 Halbtöne höher/.test(echoFeedback({ notes: [{ pitchOk: false, cents: 300 }, { pitchOk: false, cents: 300 }, { pitchOk: false, cents: 300 }], hits: 0, total: 3, extra: 0, octave: 0, transposed: 300 }))) errors.push('Satz: Transposition in Halbtönen');
+      // Grafik: Balken je Ton mit den richtigen Klassen, Cent-Beschriftung.
+      const svg = echoPitchSvg([{ t: 0, d: 12, midi: 60 }, { t: 12, d: 12, midi: 62 }, { t: 24, d: 24, midi: 64 }],
+        { notes: [{ pitchOk: true, cents: 3 }, { pitchOk: false, cents: 40 }, { missing: true }], hits: 1, total: 3 }, [{ t: 0, midi: 60 }, { t: 1, midi: 62.4 }]);
+      if (!svg.includes('eb-ok') || !svg.includes('eb-off') || !svg.includes('eb-miss') || !svg.includes('>+40<') || !svg.includes('eb-line')) errors.push('Tonhöhenbild: Klassen/Beschriftung fehlen');
+      // „Nochmal“ behält die Melodie; Hilfen setzen help: true.
+      const t1 = runTask({});
+      const key = t1.mel.key;
+      echoAgain();
+      if (sing.task !== t1 || t1.mel.key !== key || sing.phase !== 'cue' || t1.help || t1.result) errors.push('Nochmal: Melodie/Zustand falsch');
+      const t2 = runTask({}, 5, () => { echoHelp('listen'); echoHelp('listen'); echoHelp('listen'); });
+      if (t2.listens !== 2 || !t2.reported?.help) errors.push(`Hilfe „noch einmal hören“: ${t2.listens}× / help ${t2.reported?.help}`);
+      const t3 = runTask({}, 5, () => echoHelp('slow'));
+      if (!t3.slow || !t3.reported?.help) errors.push('Hilfe „langsamer“ setzt help nicht');
+      const t4 = runTask({}, 5, (task) => { echoHelp('half'); if (echoTones(task).length >= task.mel.tones.length) errors.push('Erste Hälfte: nicht kürzer'); });
+      if (!t4.half || !t4.reported?.help || t4.result.total !== echoTones(t4).length) errors.push('Hilfe „erste Hälfte“ falsch');
+      const t5 = runTask({}, 3, () => echoHelp('half'));
+      if (t5.half || t5.reported?.help) errors.push('Erste Hälfte in Stufe 3 möglich');
+      if (echoHalfTick({ level: 6, pickup: 0, meter: '3/4' }) !== 144 || echoHalfTick({ level: 4, pickup: 0, meter: '4/4' }) !== 48) errors.push('Erste Hälfte: Taktgrenze falsch');
+    } finally {
+      selfTesting = false; quickRun = saved.quick; state.tab = saved.tab;
+      clearSingTimers();
+      Object.assign(sing, { mode: saved.mode, task: saved.task, phase: saved.phase, judge: null });
+      Object.assign(sing.stats, saved.stats);
+      setSingFeedback('', '');
+      renderSing();
+    }
+    return errors;
+  }
+
   /** Stimm-Tuner mit synthetischen Signalen durch detectPitch und die
    *  Glättung (Paket 11). Liefert Fehlermeldungen. */
   function tunerCheck() {
@@ -5553,6 +5878,7 @@
     errors.push(...singPackageCheck());
     errors.push(...echoSimCheck());
     errors.push(...rhythmMelodyCheck());
+    errors.push(...echoFlowCheck());
     // Schnellstart: Parameter, Ketten aus bekannten Modi, Weiterschalten.
     {
       if (parseQuickParams('?embedded&from=quick&tab=ear')?.tab !== 'ear' || parseQuickParams('?from=quick&tab=voice')?.tab !== 'voice') errors.push('Schnellstart-Parameter falsch');
@@ -5774,7 +6100,7 @@
   applyProfile();
   loadMemory();
   const quickParams = parseQuickParams(location.search);
-  ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation'].forEach(refreshHint);
+  ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'singEcho', 'inTime'].forEach(refreshHint);
   /** ?tab=… ohne from=quick: nur dieser Bereich, Überschrift statt Tab-Leiste. */
   function applyAreaOnly() {
     if (!areaOnly) return;
