@@ -60,8 +60,8 @@ Jedes Paket wurde vor dem Commit so geprüft:
   - Während „Vorher“ sind neben den Karten-Knöpfen auch die gezeigten Panels `inert`,
     sonst gingen Änderungen am Ausgangszustand beim Zurückschalten verloren. „Undo“
     und „Zufall“ schalten vorher auf „Nachher“ zurück.
-  - Die Ansichts-Knöpfe im Kopf sind jetzt ≥ 44 px und stehen auf schmalen
-    Bildschirmen (≤ 560 px) in einer eigenen Zeile — bei 390 px überlappten sie sonst
+  - Die Ansichts-Knöpfe im Kopf sind jetzt ≥ 44 px; auf schmalen Bildschirmen
+    ersetzt sie eine Auswahlliste (siehe Nachträge) — bei 390 px überlappten sie sonst
     den Titel.
   - Einheiten mit Fokus `progEditor`/`progSevenths`/`melEditor` öffnen den jeweiligen
     Editor beim Wählen; aufgeklappte Experten-Bereiche („Mehr Einstellungen“,
@@ -172,6 +172,7 @@ Jedes Paket wurde vor dem Commit so geprüft:
 | Änderung | Umsetzung |
 |---|---|
 | „Modus“ statt „Tongeschlecht“ | Die Auswahl im Groove Lab (Studio → Harmonie, Chor-Ansicht) und der Hilfetext zur Tonart heißen jetzt „Modus“, passend zu den Workshop-Texten (EN „Mode“, PL „Tryb“ unverändert). |
+| Kopfzeile | Titel „Groove Lab“ (ohne „Chor“). Auf schmalen Bildschirmen (≤ 560 px) wählt eine Auswahlliste in der Kopfzeile die Ansicht (Chor · Studio · Workshop) statt einer eigenen Knopfzeile; breit bleiben die Knöpfe. |
 
 ## Nicht umgesetzt
 

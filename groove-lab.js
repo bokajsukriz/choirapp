@@ -2469,6 +2469,7 @@
       const choir = v === 'choir';
       const workshop = v === 'workshop';
       this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
+      this.$('.view-select').value = v;
       this.$('.tab-bar').hidden = choir || workshop;
       this.$('.choir-view').hidden = !choir;
       this.$('.workshop-view').hidden = !workshop;
@@ -5604,6 +5605,7 @@
         else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
         else if (el.dataset.choir === 'prog' && el.value) this._handleAction('pick-prog', el.value, el);
+        else if (el.classList.contains('view-select')) this._applyView(el.value);
         else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
         else if (el.dataset.kit) { if (!this.playing) this._preview('kick', 1); }
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
@@ -6224,11 +6226,12 @@
   .satb-row.is-own .satb-name { font-weight: 800; }
   .view-switch { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
   .view-switch .chip { min-height: 44px; }
-  /* Drei Ansichten passen auf schmalen Bildschirmen nicht neben den Titel. */
+  /* Drei Ansichten passen auf schmalen Bildschirmen nicht neben den Titel —
+     dort steht statt der Knöpfe eine Auswahlliste in der Kopfzeile. */
+  .view-select { display: none; min-height: 44px; margin-left: auto; font-size: .8rem; font-weight: 800; color: var(--accent); padding: 8px 10px; }
   @media (max-width: 560px) {
-    .lab-head { flex-wrap: wrap; }
-    .view-switch { order: 5; flex: 1 0 100%; margin-left: 0; justify-content: flex-start; }
-    .view-switch .chip { flex: 1; }
+    .view-switch { display: none; }
+    .view-select { display: block; }
   }
   .kit-box { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
   .kit-box summary { min-height: 44px; display: flex; align-items: center; font-size: .72rem; font-weight: 800; color: var(--muted); cursor: pointer; }
@@ -6611,13 +6614,18 @@
 
 <header class="lab-head">
   <div class="lab-head-title">
-    <h1>Chor <span>Groove</span> Lab</h1>
+    <h1><span>Groove</span> Lab</h1>
   </div>
   <div class="view-switch" role="group" aria-label="${t('lab.viewAria')}">
     <button class="chip" type="button" data-action="view" data-value="choir" aria-pressed="false">${t('lab.viewChoir')}</button>
     <button class="chip" type="button" data-action="view" data-value="studio" aria-pressed="true">${t('lab.viewStudio')}</button>
     <button class="chip" type="button" data-action="view" data-value="workshop" aria-pressed="false">${t('lab.viewWorkshop')}</button>
   </div>
+  <select class="view-select" aria-label="${t('lab.viewAria')}">
+    <option value="choir">${t('lab.viewChoir')}</option>
+    <option value="studio">${t('lab.viewStudio')}</option>
+    <option value="workshop">${t('lab.viewWorkshop')}</option>
+  </select>
   <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
   <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
 </header>
