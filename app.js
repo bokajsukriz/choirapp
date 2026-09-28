@@ -18700,6 +18700,11 @@ function runSelfTests() {
     if (practiceTileState(sample, 'ear').level !== 4) failed.push(`Üben-Kachel Hören: Durchschnitt ${practiceTileState(sample, 'ear').level} statt 4 (gerundet, ohne Stufe 0)`);
     const half = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 2, right: true }, { area: 'sight', level: 3, right: true }], '2026-10-12');
     if (practiceTileState(half, 'sing').level !== 3) failed.push(`Üben-Kachel: 2,5 gerundet zu ${practiceTileState(half, 'sing').level} statt 3`);
+    // Nachsingen ('echo') und Im Takt ('inTime') zählen unter „Singen“, nicht unter Rhythmus.
+    const echoIn = applyProgressEntries(emptyProgress(), [{ area: 'echo', level: 4, right: true, seconds: 60 }, { area: 'inTime', level: 2, right: false, help: true, seconds: 60 }], '2026-10-12');
+    const echoSum = summarizeProgress(echoIn, 7, '2026-10-12');
+    if (practiceTileState(echoIn, 'sing').level !== 3 || !practiceTileState(echoIn, 'rhythm').isNew || echoSum.days[6].minutes.sing !== 2 || echoSum.days[6].minutes.rhythm !== 0
+      || !echoSum.areas.echo || !echoSum.areas.inTime || echoIn.recent.inTime[0].h !== 1) failed.push('Nachsingen/Im Takt: Einträge im falschen Bereich');
     const custom = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 0, right: true }], '2026-10-12');
     const cs = practiceTileState(custom, 'sing');
     if (cs.isNew || cs.level !== 0) failed.push('Üben-Kachel: nur eigene Auswahl nicht Stufe 0');
@@ -22360,11 +22365,11 @@ window.chorVoiceProfile = {
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
 const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'progression', 'parts', 'tuning',
-  'singInterval', 'findTone', 'hold', 'sight', 'dictation'];
+  'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'];
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
   ear: ['interval', 'quality', 'cadence', 'progression', 'parts', 'tuning'],
-  sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation'],
+  sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
   rhythm: ['rhythm'],
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
