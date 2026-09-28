@@ -290,7 +290,6 @@
   .answer { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 11px 6px; font-weight: 800; font-size: .8rem; min-height: 44px; }
   .answer.is-picked { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
   .answer-grid.is-three { grid-template-columns: repeat(3, 1fr); }
-  .answer-grid.is-five { grid-template-columns: repeat(5, 1fr); }
   .answer small { display: block; font-size: .62rem; font-weight: 700; color: var(--muted); }
   .ear-extra { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
   .ear-extra:empty { display: none; }
@@ -348,6 +347,9 @@
   /* Auflösung: der Knopf, dessen Ton/Akkord gerade klingt (Rahmen + Aufhellung, nicht nur Farbe). */
   .answer.is-playing, .answer.is-ok.is-playing, .answer.is-bad.is-playing { background: #c9efd8; border-color: var(--good); color: #14532d; box-shadow: 0 0 0 3px var(--good); transition: background .08s, box-shadow .08s; }
   .answer.is-playing small { color: #14532d; }
+  /* Nicht geprüft in dieser Stufe: ausgegraut, leuchtet aber trotzdem in der Auflösung. */
+  .answer.is-off { opacity: .4; }
+  .answer.is-off.is-playing { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .answer.is-playing { transition: none; } }
   .ear-feedback { text-align: center; font-weight: 800; font-size: .86rem; margin: 12px 0 0; min-height: 1.2em; }
   .ear-feedback.is-ok { color: #2f9e5b; }
@@ -3515,6 +3517,10 @@
    *  in Tonleiter-Reihenfolge; der Leitton ♯7 (11) steht in Moll ganz am Ende. */
   const noteInKeyAnswers = (level, kmode) => [...level.degrees.map((d) => IN_KEY_SEMIS[kmode][d]), ...(level.leading && kmode === 'minor' ? [11] : [])];
 
+  /** Knöpfe der Töne: immer die ganze Tonleiter (in Moll mit ♯7 erst ab der Stufe, die ihn
+   *  abfragt) — was die Stufe nicht abfragt, ist ausgegraut, leuchtet aber in der Auflösung. */
+  const noteInKeyShown = (level, kmode) => [...IN_KEY_SEMIS[kmode], ...(level.leading && kmode === 'minor' ? [11] : [])];
+
   /** Wie oft der Fehler der letzten Antworten zählt: 10 je Ton/Akkord, nur diese Sitzung. */
   function logInKey(task, ok) {
     const list = (ear.inKey.log[`${task.kmode}:${inKeyTarget(task)}`] ||= []);
@@ -3545,18 +3551,16 @@
     return list.find((v) => id(v) === picked);
   }
   /** Auflösung eines Tons (Anhang A): 1–4 stufenweise abwärts zur Tonika, 5–7 und
-   *  der Leitton ♯7 aufwärts in die Oktave. `note` ist der Aufgabenton.
-   *  Fehlen in der Stufe die Knöpfe für den Aufwärtsweg (Stufe 2 „do bis so“ hat
-   *  kein la und ti), läuft der Ton stattdessen abwärts (so – fa – mi – re – do):
-   *  jeder Schritt muss einen Antwortknopf haben, der aufleuchten kann. */
-  function noteInKeyResolution(kmode, semis, note, answers = null) {
+   *  der Leitton ♯7 aufwärts in die Oktave. `note` ist der Aufgabenton. Es sind
+   *  immer alle Stufen als Knöpfe da (die nicht geprüften ausgegraut), also kann
+   *  jeder Schritt aufleuchten. */
+  function noteInKeyResolution(kmode, semis, note) {
     const scale = IN_KEY_SEMIS[kmode];
     const deg = scale.indexOf(semis);
     let path;
     if (deg < 0) path = [semis, 12];
     else if (deg <= 3) path = scale.slice(0, deg + 1).reverse();
     else path = [...scale.slice(deg), 12];
-    if (answers && !path.every((x) => answers.includes(x % 12)) && deg >= 0) path = scale.slice(0, deg + 1).reverse();
     const tonic = note - semis;
     return path.map((x) => ({ value: x % 12, midi: tonic + x }));
   }
@@ -3577,7 +3581,7 @@
     const deg = IN_KEY_SEMIS[kmode].indexOf(semis);
     return {
       kind: 'noteInKey', level: n, kmode, key, deg: deg < 0 ? 6 : deg, semis, note,
-      resolution: noteInKeyResolution(kmode, semis, note, noteInKeyAnswers(level, kmode)),
+      resolution: noteInKeyResolution(kmode, semis, note),
       cadence: !(ear.settings.inKeyHold && ear.settings.inKeyCadence === 'newKey') || newKey,
       answer: null, tries: [],
     };
@@ -3585,8 +3589,10 @@
 
   /** Antwortknopf der Modi in der Tonart: rot nach falschem Tipp (bleibt bis zur
    *  nächsten Aufgabe), grün beim Ziel, leuchtend, solange sein Ton/Akkord klingt. */
-  function inKeyButton(task, value, label, aria) {
-    const b = answerButton(value, label, { disabled: !task, aria });
+  function inKeyButton(task, value, label, aria, tested = true) {
+    // Nicht geprüfte Knöpfe: ausgegraut und gesperrt; nach dem Auflösen tippbar zum Vergleichen.
+    const b = answerButton(value, label, { disabled: !task || (!tested && !ear.revealed), aria });
+    if (!tested) b.classList.add('is-off');
     if (task) {
       if (task.tries.includes(value)) b.classList.add('is-bad');
       if (ear.revealed && value === inKeyTarget(task)) b.classList.add('is-ok');
@@ -3614,6 +3620,8 @@
   ];
   /** Akkorde einer Stufe im Tongeschlecht, in der Reihenfolge der Knöpfe (SYMBOL_ORDER). */
   const chordInKeySymbols = (level, kmode) => SYMBOL_ORDER.filter((sym) => level[kmode].includes(sym));
+  /** Knöpfe der Akkorde: alle Akkorde des Tongeschlechts, die nicht geprüften ausgegraut. */
+  const chordInKeyShown = (kmode) => chordInKeySymbols(CHORD_IN_KEY_LEVELS[5], kmode);
   /** Auflösung eines Akkords (Anhang A): über die Dominante nach Hause. */
   const CHORD_RESOLUTIONS = {
     major: { I: [], ii: ['V', 'I'], iii: ['IV', 'V', 'I'], IV: ['V', 'I'], V: ['I'], V7: ['I'], vi: ['V', 'I'], 'vii°': ['I'] },
@@ -3964,11 +3972,11 @@
         ? `${where(task.kmode)} · ${task.cadence ? 'nach der Kadenz' : 'Tonart wie eben'}${ear.revealed ? ' · Antippen zum Vergleichen' : ''}`
         : `Stufe ${level.n}: ${level.label}`;
       const kmode = task ? task.kmode : level.kmodes[0];
-      const answers = noteInKeyAnswers(level, kmode);
-      grid.classList.add(answers.length === 3 ? 'is-three' : answers.length === 5 ? 'is-five' : 'is-chords');
-      grid.replaceChildren(...answers.map((semis, i) => {
+      const tested = noteInKeyAnswers(level, kmode);
+      grid.classList.add('is-chords');
+      grid.replaceChildren(...noteInKeyShown(level, kmode).map((semis, i) => {
         const label = noteInKeyLabel(kmode, semis);
-        return inKeyButton(task, semis, label, numbers ? `Stufe ${label}` : `${i + 1}: ${label}`);
+        return inKeyButton(task, semis, label, numbers ? `Stufe ${label}` : `${i + 1}: ${label}`, tested.includes(semis));
       }));
       if (task) extra.append(inKeyExtraButton(task));
     } else if (ear.mode === 'chordInKey') {
@@ -3977,9 +3985,10 @@
       sub.textContent = task
         ? `${task.kmode === 'major' ? 'Dur' : 'Moll'} · ${task.cadence ? 'nach der Kadenz' : 'Tonart wie eben'}${ear.revealed ? ' · Antippen zum Vergleichen' : ''}`
         : `Stufe ${level.n}: ${level.label}`;
-      const symbols = chordInKeySymbols(level, task ? task.kmode : (level.major.length ? 'major' : 'minor'));
-      grid.classList.add(symbols.length === 3 || symbols.length === 6 ? 'is-three' : symbols.length === 5 ? 'is-five' : 'is-chords');
-      grid.replaceChildren(...symbols.map((symbol, i) => inKeyButton(task, symbol, symbolLabel(symbol), `${i + 1}: ${symbolLabel(symbol)}`)));
+      const kmode = task ? task.kmode : (level.major.length ? 'major' : 'minor');
+      const tested = chordInKeySymbols(level, kmode);
+      grid.classList.add('is-chords');
+      grid.replaceChildren(...chordInKeyShown(kmode).map((symbol, i) => inKeyButton(task, symbol, symbolLabel(symbol), `${i + 1}: ${symbolLabel(symbol)}`, tested.includes(symbol))));
       if (task) extra.append(inKeyExtraButton(task));
     } else if (ear.mode === 'chords' && task?.kind === 'modulation') {
       prompt.textContent = 'Gleich oder höher?';
@@ -8179,12 +8188,11 @@
           if (mod(res[res.length - 1].midi - t.key, 12) !== 0 || res[res.length - 1].value !== 0) errors.push(`Töne: Auflösung endet nicht auf der Tonika (${t.kmode}/${t.semis})`);
           res.forEach((r, k) => {
             if (k && Math.abs(r.midi - res[k - 1].midi) > 2) errors.push(`Töne: Schritt über ${Math.abs(r.midi - res[k - 1].midi)} Halbtöne (${t.kmode}/${t.semis})`);
-            if (!answers.includes(r.value)) errors.push(`Töne Stufe ${n}: Auflösungswert ${r.value} ohne Knopf (${t.kmode}/${t.semis})`);
+            if (!noteInKeyShown(level, t.kmode).includes(r.value)) errors.push(`Töne Stufe ${n}: Auflösungswert ${r.value} ohne Knopf (${t.kmode}/${t.semis})`);
             if (mod(r.midi - t.key, 12) !== r.value) errors.push('Töne: Auflösungston passt nicht zum Wert');
           });
           const name = syl(t.kmode, t.semis);
-          // Stufe 2 hat kein la/ti: „so“ läuft dort abwärts (siehe noteInKeyResolution).
-          const wantRes = n === 2 && name === 'so' ? 'so fa mi re do' : table[t.kmode][name];
+          const wantRes = table[t.kmode][name];
           if (res.map((r) => syl(t.kmode, r.value)).join(' ') !== wantRes) errors.push(`Töne: Auflösung ${t.kmode}/${name}: ${res.map((r) => syl(t.kmode, r.value)).join(' ')}`);
         }
         if (n === 6 && kmodes.size !== 2) errors.push('Töne Stufe 6: nicht beide Tongeschlechter');
@@ -8275,6 +8283,14 @@
       } finally {
         selfTesting = savedSelf; onEarResult = savedResult; Object.assign(ear.stats.noteInKey, stats0); clearEarTimers();
       }
+      // Stufe 1: alle sieben Stufen zu sehen, nur do re mi geprüft — der Rest ausgegraut (nach dem Auflösen zum Vergleichen tippbar).
+      ear.levels.noteInKey = 1; sing.solfa = 'syllables'; ear.revealed = false; ear.playing = null;
+      ear.task = makeEarTask('noteInKey', 1, rnd);
+      renderEar();
+      if (btns().length !== 7 || btns().filter((b) => !b.disabled).map((b) => b.textContent).join() !== 'do,re,mi' || btns().filter((b) => b.classList.contains('is-off')).length !== 4 || btns().filter((b) => b.disabled).length !== 4) errors.push(`Töne Stufe 1: ausgegraute Knöpfe ${btns().map((b) => `${b.textContent}${b.disabled ? '×' : ''}`)}`);
+      { const t1 = ear.task; ear.revealed = true; renderEar();
+        if (btns().some((b) => b.disabled) || btns().filter((b) => b.classList.contains('is-off')).length !== 4) errors.push('Töne Stufe 1: nach dem Auflösen nicht tippbar/grau');
+        ear.revealed = false; ear.task = t1; }
       // Zahlen und Moll: Leitton ♯7, acht Knöpfe.
       sing.solfa = 'numbers';
       let mt = null;
@@ -8355,7 +8371,7 @@
           const res = t.resolution.map((r) => r.value);
           if (res.join(' ') !== `${t.symbol} ${CHORD_RESOLUTIONS[t.kmode][t.symbol].join(' ')}`.trim() || res.join(' ') !== table[t.kmode][t.symbol]) errors.push(`Akkorde: Auflösung ${t.kmode}/${t.symbol}: ${res.join(' ')}`);
           if (res[res.length - 1] !== (t.kmode === 'minor' ? 'i' : 'I')) errors.push(`Akkorde: Auflösung endet auf ${res[res.length - 1]}`);
-          res.forEach((sym) => { if (!buttons.includes(sym)) errors.push(`Akkorde Stufe ${n}: Auflösungsakkord ${sym} ohne Knopf (${t.kmode}/${t.symbol})`); allSymbols.add(sym); });
+          res.forEach((sym) => { if (!chordInKeyShown(t.kmode).includes(sym)) errors.push(`Akkorde Stufe ${n}: Auflösungsakkord ${sym} ohne Knopf (${t.kmode}/${t.symbol})`); allSymbols.add(sym); });
           if (t.voicings.length !== res.length) errors.push('Akkorde: Sätze und Auflösung verschieden lang');
           t.voicings.forEach((v, k) => {
             const pcs = chordPcs(t.key, res[k], t.kmode);
@@ -8458,6 +8474,11 @@
       } finally {
         selfTesting = savedSelf; onEarResult = savedResult; Object.assign(ear.stats.chordInKey, stats0); clearEarTimers();
       }
+      // Stufe 1: alle acht Akkorde zu sehen, nur I IV V geprüft.
+      ear.levels.chordInKey = 1; ear.revealed = false; ear.playing = null;
+      ear.task = makeEarTask('chordInKey', 1, rnd);
+      renderEar();
+      if (btns().length !== 8 || btns().filter((b) => !b.disabled).map((b) => b.dataset.ans).join() !== 'I,IV,V' || btns().filter((b) => b.classList.contains('is-off')).length !== 5) errors.push(`Akkorde Stufe 1: ausgegraute Knöpfe ${btns().map((b) => `${b.dataset.ans}${b.disabled ? '×' : ''}`)}`);
       // Moll, Stufe 6: acht Knöpfe mit ii° und v.
       let mt = null;
       for (let i = 0; i < 200 && !(mt && mt.kmode === 'minor'); i++) mt = makeEarTask('chordInKey', 6, rnd);

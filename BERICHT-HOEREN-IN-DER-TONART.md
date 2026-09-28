@@ -3,7 +3,8 @@
 Grundlage: `ARBEITSANWEISUNG-HOEREN-IN-DER-TONART.md` (im ersten Commit
 eingecheckt). Ausgangsstand `c60a7ac` (= `origin/main` beim Start,
 `SW_VERSION` `v360`). Alle fünf Pakete sind umgesetzt, keins wurde
-zurückgesetzt. Enthalten sind:
+zurückgesetzt. Danach: `main` eingemerged (`SW_VERSION` v366) und alle Stufen
+sichtbar/nicht geprüfte ausgegraut (v367). Enthalten sind:
 
 - **Töne in der Tonart** (`noteInKey`) und **Akkorde in der Tonart**
   (`chordInKey`) mit Kadenz, Einzelton bzw. Einzelakkord, Antwort und
@@ -26,7 +27,7 @@ Stufenzuordnung ab (siehe „Abweichungen“).
 |---|---|---|---|---|---|
 | 1 | Akkordfolgen: nur gängige Folgen | umgesetzt | `fae8a2d` | v361 | 8 neue Folgen × 12 Tonarten × 4 Sätze (eng/weit, Grundstellung/stilgerecht): **0** Parallelen; 200 „Stimmen“-Linien mit 3 bzw. 4 Akkorden (auch Pachelbel-Folge) ohne Ausfall; `restore` `['rising','pop']` → `['pop']`, `['mnatural']` → Standard erhalten |
 | 2 | Kadenz, Antwortlogik, Auflösung | umgesetzt | `fdf35d2` | v362 | Kadenz in 24 Fällen (12 Tonarten × Dur/Moll): Bässe I–IV–V–I, **0** Parallelen; Ablauf falsch → richtig: 1 Meldung `ok = false`, `total + 1`, `right + 0`; zweimal falsch deckt auf; richtig zuerst `ok = true`; Tipp nach dem Aufdecken ändert nichts; Leucht-Timer = Länge der Auflösung + 1 |
-| 3 | Töne in der Tonart | umgesetzt | `3173a30` | v363 | 6 Stufen × 500 = **3000** Aufgaben (alle vier Stimmen S/A/T/B): Antwort in der Stufe, Moll erst ab 5, ♯7 erst in 6, Ton im Bereich, Auflösung beginnt beim Ton, endet auf der Tonika, alle Schritte ≤ 2 Halbtöne, ≤ 5 Schritte, **jeder Wert hat einen Knopf**, Auflösung = Anhang A (Silben); Gewichtung: „fa“ nach 5 Fehlern in 2000 Ziehungen am häufigsten; nie 3× in Folge (2000 Ziehungen, stark bevorzugter Ton); Tonart halten: 12 Aufgaben, Kadenz nur bei 1, 6, 11 |
+| 3 | Töne in der Tonart | umgesetzt | `3173a30` (Ausgrauen: siehe unten) | v363 | 6 Stufen × 500 = **3000** Aufgaben (alle vier Stimmen S/A/T/B): Antwort in der Stufe, Moll erst ab 5, ♯7 erst in 6, Ton im Bereich, Auflösung beginnt beim Ton, endet auf der Tonika, alle Schritte ≤ 2 Halbtöne, ≤ 5 Schritte, **jeder Wert hat einen Knopf** (immer die ganze Tonleiter sichtbar), Auflösung = Anhang A (Silben); Gewichtung: „fa“ nach 5 Fehlern in 2000 Ziehungen am häufigsten; nie 3× in Folge (2000 Ziehungen, stark bevorzugter Ton); Tonart halten: 12 Aufgaben, Kadenz nur bei 1, 6, 11 |
 | 4 | Akkorde in der Tonart | umgesetzt | `6269c3d` | v364 | 6 Stufen × 500 = **3000** Aufgaben: Symbol in der Stufe, Moll erst ab 5, Umkehrung/weite Lage nur in Stufe 6 (dort auch beobachtet), Auflösung = Anhang A, endet auf I/i, jedes Symbol hat einen Knopf, Bass 40–51, keine Parallelen in den Aufgaben; **3456** Auflösungen (16 Akkorde × 12 Tonarten × 18 Sätze): **0** Parallelen |
 | 5 | Liste, Symbole, Speichern, Fortschritt, Schnellstart | umgesetzt | `d603c5d` | v365 | Reihenfolge der Liste, Kurztexte, Symbole (≤ 6 Formen); Roundtrip der Stufen, des Modus und der drei Einstellungen; Unsinn → Standard; alter Stand ohne die Felder → Standard; `app.js`: `sanitizeProgress` behält Einträge, letzte Aufgaben und Stufen der neuen Bereiche, Gruppe „Hören“ mit den neuen Bereichen vor `progression`; Schnellstart-Kette und Umschalten erst nach der Auflösung |
 
@@ -121,12 +122,16 @@ auch einzeln über `uebeLab.inKeyCheck()` aufrufbar (~0,2 s).
    `aeolian`, `mvamp` (Moll) → 3. Die Stufen-Beschriftungen der Anweisung
    (Punkt 3) passen nicht mehr auf die heutigen Stufen und wurden deshalb nicht
    übernommen; sie stimmen auch so (iii kommt in Stufe 2 jetzt aus `pachelbel`).
-3. **Paket 3, Stufe 2 („do bis so“): „so“ löst abwärts auf** (so – fa – mi –
-   re – do, 5 Schritte). Anhang A lässt „so“ über la – ti – do′ aufsteigen; in
-   Stufe 2 gibt es aber keine Knöpfe für la und ti, es könnte also nichts
-   aufleuchten. Die Anweisung verlangt beides („jeder Wert der Auflösung hat
-   einen Knopf“ und „Länge ≤ 5“, was zu 5 Schritten passt). Der Test fand das
-   sofort. Ab Stufe 3 gilt Anhang A unverändert.
+3. **Alle Stufen bzw. Akkorde immer sichtbar, nicht geprüfte ausgegraut**
+   (Wunsch nach der ersten Abgabe). In beiden neuen Modi zeigt das Raster
+   immer die ganze Tonleiter (in Moll auf Stufe 6 mit ♯7) bzw. alle
+   Akkorde des Tongeschlechts. Was die Stufe nicht abfragt, ist ausgegraut
+   und gesperrt; nach dem Auflösen ist es zum Vergleichen tippbar, und es
+   leuchtet in der Auflösung trotzdem auf. Dadurch entfällt die Ausnahme, die
+   zunächst nötig war (in Stufe 2 „do bis so“ lief „so“ abwärts, weil la und ti
+   keine Knöpfe hatten): „so“ löst jetzt überall nach oben auf (so – la – ti –
+   do′), Anhang A gilt ohne Abweichung. Die Anweisung nennt für die Akkorde nur
+   „Knöpfe der Stufe“; die Ausgrau-Regel gilt dort analog.
 4. **Paket 3/4 verdrahten ihren Modus selbst** (`EAR_MODES`-Eintrag,
    `MODE_TEXT`, `ear.levels`, `earLevelInfo`), Paket 5 macht den Rest. Ohne das
    wären Anzeige und Tests der Pakete nicht ausführbar gewesen; die Endstände
@@ -184,8 +189,8 @@ auch einzeln über `uebeLab.inKeyCheck()` aufrufbar (~0,2 s).
   nach der Kadenz lang genug, um den Ton als Neubeginn zu hören?
 - Auf dem Handy: Screenreader — kommt der Satz mit der Auflösung einmal an, und
   wird der Wechsel der Knöpfe nicht zusätzlich angesagt?
-- Die Auflösung „so – fa – mi – re – do“ in Stufe 2 (siehe Abweichung 3): fühlt
-  sich der abwärts laufende Weg vertraut an?
+- Ausgegraute Knöpfe (Abweichung 3): Sind sie in der Sonne/bei wenig Kontrast
+  noch als „gesperrt“ erkennbar, und stört die längere Knopfreihe (7–8 statt 3–5)?
 
 ## Zu entscheiden
 
@@ -194,8 +199,6 @@ auch einzeln über `uebeLab.inKeyCheck()` aufrufbar (~0,2 s).
 - **Mehrere „Segmente“:** Aufgaben mit zwei bis drei Tönen/Akkorden nacheinander
   (dann ohne Auflösung)?
 - **Gesungener Einzelton** statt Klavier, wahlweise wie `sing.demo`?
-- **Stufe 2 der Töne:** „so“ abwärts auflösen (wie jetzt) oder la und ti als
-  Knöpfe schon in Stufe 2 anbieten, damit Anhang A wörtlich gilt?
 - **Stufen-Beschriftungen der Akkordfolgen:** Sollen die Stufen an die neuen
   Folgen angepasst werden (etwa Stufe 1 „die vier Pop-Akkorde, auch ab der IV“)?
 - **Beschriftung der Töne:** Soll der Standard von „Singen“ (`numbers`) für die
