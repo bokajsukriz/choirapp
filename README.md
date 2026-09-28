@@ -69,8 +69,11 @@ ein Dialog mit echter Wahl).
 - `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Zweistimmig, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Akkordfolgen, Stimmen heraushören,
-  Intonation; Singen: Tuner, Intervalle singen, Ton finden, Ton halten,
-  Blattsingen, Diktat). Das Mikrofon wird nur live ausgewertet, nichts wird
+  Intonation; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
+  Nachsingen, Im Takt, Blattsingen, Diktat). Nachsingen und Im Takt werten
+  eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
+  Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
+  durch Singen kalibrierten Latenz. Das Mikrofon wird nur live ausgewertet, nichts wird
   aufgenommen oder gesendet, und es läuft nie im Hintergrund.
 - `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
   Körperübungen, geführte und eigene Einsing-Programme).

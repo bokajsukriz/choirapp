@@ -6471,6 +6471,23 @@
       if (parseQuickParams('?embedded=1') !== null || parseQuickParams('?from=quick&tab=rhythm') !== null || parseQuickParams('?from=today&tab=ear') !== null) errors.push('Schnellstart: fremde Aufrufe nicht ignoriert');
       QUICK_CHAINS.ear.forEach(([m, n]) => { if (!EAR_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Hören: ${m}`); });
       QUICK_CHAINS.voice.forEach(([m, n]) => { if (!SING_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Singen: ${m}`); });
+      // Nachsingen Paket 5: Reihenfolge Nachsingen, Intervalle singen, Im Takt, Ton finden, Blattsingen; 6 statt 8.
+      if (QUICK_CHAINS.voice.map(([m]) => m).join() !== 'singEcho,singInterval,inTime,findTone,sight' || QUICK_CHAINS.voice[0][1] !== 6 || QUICK_CHAINS.voice[2][1] !== 6) errors.push(`Schnellstart Singen: Reihenfolge ${QUICK_CHAINS.voice.map(([m, n]) => `${m}×${n}`)}`);
+      if (areaOf('singEcho') !== 'echo' || areaOf('inTime') !== 'inTime') errors.push('Nachsingen/Im Takt: falscher Fortschrittsbereich');
+      if (SING_MODES.map(([id]) => id).join() !== 'tuner,hold,singInterval,findTone,singEcho,inTime,sight,dictation') errors.push('Reihenfolge der Sing-Modi falsch');
+      const mp = (q) => JSON.stringify(parseModeParam(q));
+      if (mp('?tab=voice&mode=echo') !== '{"mode":"singEcho","variant":null}' || mp('?embedded=1&tab=voice&mode=inTime&variant=sheet') !== '{"mode":"inTime","variant":"sheet"}'
+        || mp('?tab=voice&mode=inTime&variant=x') !== '{"mode":"inTime","variant":null}') errors.push('Deep-Link mode/variant falsch');
+      if (parseModeParam('?tab=voice&mode=sight') || parseModeParam('?tab=voice&mode=toString') || parseModeParam('?tab=ear&mode=echo') || parseModeParam('?tab=voice') || parseModeParam('?mode=echo')) errors.push('Deep-Link: falsche Werte nicht ignoriert');
+      {
+        const sv = { tab: state.tab, view: views.voice, mode: sing.mode, variant: sing.inTime.variant, q: quickRun };
+        try {
+          quickRun = null;
+          applyModeParam({ mode: 'inTime', variant: 'sheet' });
+          if (state.tab !== 'voice' || views.voice !== 'exercise' || sing.mode !== 'inTime' || sing.inTime.variant !== 'sheet') errors.push('Deep-Link öffnet Im Takt nicht');
+          applyModeParam(null);
+        } finally { state.tab = sv.tab; views.voice = sv.view; sing.mode = sv.mode; sing.inTime.variant = sv.variant; quickRun = sv.q; }
+      }
       const saved = { run: quickRun, mode: ear.mode, tab: state.tab };
       try {
         quickRun = { tab: 'ear', steps: [['interval', 2], ['quality', 1]], idx: 0, done: 0, finished: false };
@@ -6606,7 +6623,8 @@
      einer Übung erreicht, geht es mit der nächsten weiter. ---- */
   const QUICK_CHAINS = {
     ear: [['interval', 10], ['quality', 10], ['chords', 6], ['cadence', 6], ['tuning', 10]],
-    voice: [['singInterval', 8], ['findTone', 8], ['hold', 4], ['sight', 4]],
+    // Nachsingen und Im Takt mit 6 statt 8 Aufgaben (sie dauern länger).
+    voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['sight', 4]],
   };
   const QUICK_TITLE = { ear: 'Hören', voice: 'Singen' };
   const quickName = (tab, mode) => (tab === 'ear' ? EAR_MODES : SING_MODES).find(([id]) => id === mode)?.[1] || mode;
@@ -6617,6 +6635,23 @@
     return QUICK_CHAINS[q.get('tab')] ? { tab: q.get('tab') } : null;
   }
   let quickRun = null; // { tab, steps: [[mode, count]], idx, done, finished }
+  /** Deep-Link in eine Sing-Übung: ?tab=voice&mode=echo|inTime (bei Im Takt
+   *  zusätzlich &variant=echo|sheet). Falsche Werte werden ignoriert. */
+  const MODE_PARAM = { echo: 'singEcho', inTime: 'inTime' };
+  function parseModeParam(search) {
+    const q = new URLSearchParams(search);
+    const mode = MODE_PARAM[q.get('mode')];
+    if (q.get('tab') !== 'voice' || !mode || !Object.hasOwn(MODE_PARAM, q.get('mode'))) return null;
+    const variant = mode === 'inTime' && IN_TIME_VARIANTS.some(([id]) => id === q.get('variant')) ? q.get('variant') : null;
+    return { mode, variant };
+  }
+  function applyModeParam(p) {
+    if (!p || quickRun) return;
+    state.tab = 'voice';
+    views.voice = 'exercise';
+    sing.mode = p.mode; sing.task = null; sing.phase = 'idle'; sing.judge = null;
+    if (p.variant) sing.inTime.variant = p.variant;
+  }
   function applyQuickParams(p) {
     if (!p) return;
     // Mikrofon verweigert: statt der Mikrofon-Übungen das Diktat.
@@ -6686,6 +6721,7 @@
   applyProfile();
   loadMemory();
   const quickParams = parseQuickParams(location.search);
+  const modeParams = parseModeParam(location.search);
   ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'singEcho', 'inTime'].forEach(refreshHint);
   /** ?tab=… ohne from=quick: nur dieser Bereich, Überschrift statt Tab-Leiste. */
   function applyAreaOnly() {
@@ -6697,7 +6733,7 @@
   }
   loadPracticed();
   applyAreaOnly();
-  if (!storage) applyQuickParams(quickParams);
+  if (!storage) { applyQuickParams(quickParams); applyModeParam(modeParams); }
   setTab(state.tab);
   if (storage) {
     Promise.resolve(storage.load(STORAGE_ID)).then((data) => {
@@ -6706,8 +6742,9 @@
       applyProfile();
       applyAreaOnly();
       applyQuickParams(quickParams);
+      applyModeParam(modeParams);
       setTab(state.tab);
-    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); setTab(state.tab); });
+    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); setTab(state.tab); });
   }
 })();
 </script>
