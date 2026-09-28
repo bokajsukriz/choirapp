@@ -28,7 +28,7 @@ siehe Paket 5. Alle anderen Voraussetzungen (Stimmprofil/`practiceRange`,
 | 4 | Modus „Im Takt“ | umgesetzt | `ef9a1d9` | v334 | Zeitplan 6 Stufen × 60 Melodien × 2 Varianten (Bögen, Pausen, Auftakt vorhanden): Sollzeiten, Einzähler, Taktraster, Klick-Lautstärke exakt; Versatz 200 ms bei `singLatencyMs` 200 → 100 % gut; +100 ms → überwiegend knapp, Satz „spät“ (−100 ms → „früh“); realistische Sänger:in ≥ 92 % gut (große Stichprobe s. u.); Kalibrierung 180 ± 20 ms → 170–190 (5×); Roundtrip Latenz, Tempo-Faktor, Variante, Rhythmussprache, `null` |
 | 5 | Einbindung: Stufen, Fortschritt, Schnellstart | umgesetzt | `b2f5582` | v335 | App: Einträge `echo`/`inTime` landen unter „Singen“ (Minuten, Kachel-Stufe (4+2)/2 = 3, Hilfe-Markierung), nicht unter Rhythmus; Kette in der festgelegten Reihenfolge mit 6/8/6/8/4; Deep-Links richtig, 5 falsche Varianten ignoriert |
 | — | Nachbesserung + Bericht | — | `8ab8bd1` | v336 | Stufenwechsel während Kalibrierung/Durchgang: Kalibrierung verworfen, geplante Klicks ausgeblendet |
-| — | Nachträge nach Rückmeldung | — | (dieser Commit) | v337 | „zu kurz“ zählt: Richtig/`value` und Satz geprüft; Kette mit Ton halten in fester Reihenfolge; „ca. 15 Min.“ in der Liste; Stufe 6 bei ♩ = 72 |
+| — | Nachträge nach Rückmeldung | — | `f9b312c` | v337 | „zu kurz“ zählt: Richtig/`value` und Satz geprüft; Kette mit Ton halten in fester Reihenfolge; „ca. 15 Min.“ in der Liste; Stufe 6 bei ♩ = 72 |
 
 Jedes Paket wurde vor dem Commit so geprüft:
 - Headless-Chromium (Playwright vorinstalliert, nichts nachinstalliert):
@@ -177,6 +177,9 @@ Jedes Paket wurde vor dem Commit so geprüft:
 - Lesbarkeit der Notenzeile mit Zeichen je Note auf 320 px, besonders bei
   vielen Achteln (Details werden abwechselnd versetzt).
 - Anzeige der Schlüssel 𝄞/𝄢 in den System-Schriften.
+- Singstimme über Handy-Lautsprecher und Kopfhörer: verständlich als „no“/„da“,
+  angenehme Lautstärke neben dem Klick, hört das Mikrofon ohne Kopfhörer
+  das Vorspiel mit?
 
 ## Nachträge nach Rückmeldung
 
@@ -185,13 +188,15 @@ Jedes Paket wurde vor dem Commit so geprüft:
 | „Zu kurz“ wird mitbewertet | Im Takt: eine Aufgabe ist nur richtig, wenn zusätzlich kein Ton zu kurz ist (kürzer als 60 % des Notenwerts − 50 ms, wie `longEnough` in Anhang A; der Schlusston zählt nicht). `value` zählt nur Töne, die getroffen, rechtzeitig und lang genug sind. Zusammenfassung „… · 1 zu kurz“ und Satz „Ein Ton war zu kurz – halte jeden Ton bis kurz vor den nächsten Einsatz.“ Die Sänger:in aus Anhang B löst das in Stufe 6 bei 0,2 % der Töne aus. |
 | Ton halten wieder in der Kette | Singen-Schnellstart: Nachsingen 6 · Intervalle singen 8 · Im Takt 6 · Ton finden 8 · Ton halten 4 · Blattsingen 4. |
 | Dauer der Kette | „Gemischt üben“ zeigt je Bereich die eigene Dauer: Hören ca. 10 Min., Singen ca. 15 Min. (Schätzung: je Aufgabe ≈ 25 s Nachsingen/Im Takt, ≈ 20 s Intervalle/Ton finden, ≈ 15 s Ton halten, ≈ 40 s Blattsingen, dazu einmal die Kalibrierung). |
+| Vorspiel mit Singstimme | Nachsingen und Im Takt: Umschalter „Vorspiel: Klavier / Stimme“ (Standard Klavier, gespeichert als `demo`, optional). Künstliche Stimme ohne Dateien und Abhängigkeiten (`singVoice`): Sägezahn durch drei Formantfilter (Vokal o bzw. a, Lage hoch für S/A, tief für T/B), Anschleifen −60 Cent in 70 ms, Vibrato 5,5 Hz ±28 Cent ab 0,25 s, etwas Atem; „no“ mit gedämpftem n vor dem Vokal, „da“ mit kurzem Konsonanten vor dem Schlag, Vokal genau auf dem Schlag. Bei hohen Tönen folgt der erste Formant dem Grundton (wie bei Sopranen), der Pegel wird je Ton aus dem Frequenzgang normiert. Tonika-Akkord bleibt Klavier. Prüfung `await uebeLab.selfCheckAudio()` (OfflineAudioContext → eigene Tonerkennung) für A, e, e′, a′, e″: Tonhöhe +2 bis +3 Cent, „da“-Vokal 5–21 ms nach dem Schlag, Pegel 0,99–1,05 × Klavier. |
 | Stufe 6 langsamer | Im Takt Stufe 6: ♩ = 72 statt 84. Messung (100 Melodien je Tempo, Sänger:in aus Anhang B), Töne erkannt: ♩ 84 → 90,0 %, 80 → 92,6 %, 76 → 93,7 %, **72 → 95,6 %**, 66 → 97,7 %; Einsätze „gut“ bleiben bei 93–95 %. |
 
 ## Zu entscheiden
 
-- Sollen Nachsingen-Melodien später wahlweise gesungen statt vom Klavier
-  vorgespielt werden (Vokal-Klang)? Möglichkeiten sind beschrieben, noch nicht
-  umgesetzt.
+- Singstimme: klingt erkennbar künstlich — reicht das, oder später echte
+  Aufnahmen (Einzeltöne je Stimme, verschoben mit `signalsmith-stretch.js`)?
+- Soll die Singstimme auch beim Blattsingen („Melodie anhören“) und im Diktat
+  wählbar sein?
 - Im Takt Stufe 1 (ein Takt): Schlusston auf Zz. 3 wie jetzt, oder die Stufe
   auf zwei Takte erweitern?
 - Im Takt Stufe 6 immer Moll (wie Blattsingen 6) oder wie Nachsingen 6 nur zu

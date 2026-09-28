@@ -73,7 +73,8 @@ ein Dialog mit echter Wahl).
   Nachsingen, Im Takt, Blattsingen, Diktat). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
-  durch Singen kalibrierten Latenz. Das Mikrofon wird nur live ausgewertet, nichts wird
+  durch Singen kalibrierten Latenz. Das Vorspiel ist wahlweise Klavier oder eine
+  künstliche Singstimme (Formant-Synthese, `singVoice`). Das Mikrofon wird nur live ausgewertet, nichts wird
   aufgenommen oder gesendet, und es läuft nie im Hintergrund.
 - `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
   Körperübungen, geführte und eigene Einsing-Programme).

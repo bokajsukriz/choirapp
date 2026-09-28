@@ -416,6 +416,7 @@
       <div data-levels="sing"></div>
       <div class="sing-opts">
         <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
+        <div data-demo-row hidden><span class="sub-label">Vorspiel</span><div class="chip-row" data-chips="demo"></div></div>
         <div data-intime-row hidden><span class="sub-label">Variante</span><div class="chip-row" data-chips="inTimeVariant"></div></div>
         <div class="intime-opts" data-intime-row hidden>
           <label class="intime-tempo"><span class="sub-label">Tempo <output class="intime-tempo-out"></output></span><input type="range" min="80" max="120" step="5" value="100" data-intime-tempo aria-label="Tempo in Prozent"></label>
@@ -916,8 +917,121 @@
      ENGINE — Klick, Clap und ein klavierähnlicher Ton für die Hör-Aufgaben.
      ------------------------------------------------------------------------ */
 
+  /* ---- Künstliche Singstimme fürs Vorspiel (Nachsingen, Im Takt): ein
+     obertonreicher Grundton (Sägezahn) durch drei Formantfilter für den
+     Vokal, Anschleifen am Einsatz, Vibrato erst nach dem Einsatz, etwas
+     Atem. „no“: kurzes gedämpftes n vor dem Vokal; „da“: kurzer
+     Konsonant-Knack vor dem Schlag, der Vokal genau auf `time` („Konsonant
+     vor dem Schlag, Vokal auf den Schlag“). register: 'high' (S/A) oder
+     'low' (T/B) — die Melodie liegt schon in der Lage der eigenen Stimme. */
+  const VOICE_FORMANTS = {
+    // [Frequenz, Bandbreite] in Hz, grob nach Messungen an Singstimmen
+    low:  { o: [[400, 80], [750, 90], [2400, 130]], a: [[650, 90], [1080, 100], [2500, 130]] },
+    high: { o: [[450, 90], [850, 100], [2800, 150]], a: [[800, 100], [1250, 110], [2800, 150]] },
+  };
+  const FORMANT_GAIN = [1, .5, .16];
+  const VOICE_MAKEUP = 1; // Zielpegel (vor der Hüllkurve), etwa wie der Klavierklang (siehe selfCheckAudio)
+  const voiceNoiseBuffers = new WeakMap();
+  function voiceNoise(ctx) {
+    if (!voiceNoiseBuffers.has(ctx)) {
+      const buf = ctx.createBuffer(1, Math.round(ctx.sampleRate * .3), ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      voiceNoiseBuffers.set(ctx, buf);
+    }
+    return voiceNoiseBuffers.get(ctx);
+  }
+  const voiceRegister = (part) => (part === 'T' || part === 'B' ? 'low' : 'high');
+  function singVoice(ctx, dest, midi, time, dur, { syllable = 'no', register = 'high', velocity = .22 } = {}) {
+    const vowel = syllable === 'da' ? 'a' : 'o';
+    const start = time - (syllable === 'da' ? .035 : .07);
+    const end = time + dur;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = noteHz(midi);
+    // Anschleifen: von −60 Cent in 70 ms auf den Ton
+    osc.detune.setValueAtTime(-60, start);
+    osc.detune.setValueAtTime(-60, time);
+    osc.detune.linearRampToValueAtTime(0, time + .07);
+    const nodes = [osc];
+    if (dur > .35) {
+      // Vibrato 5,5 Hz, ±28 Cent, ab 0,25 s eingeblendet
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 5.5;
+      const depth = ctx.createGain();
+      depth.gain.setValueAtTime(0, start);
+      depth.gain.setValueAtTime(0, time + .25);
+      depth.gain.linearRampToValueAtTime(28, Math.min(end, time + .6));
+      lfo.connect(depth).connect(osc.detune);
+      nodes.push(lfo);
+    }
+    const pre = ctx.createBiquadFilter();
+    pre.type = 'lowpass'; pre.Q.value = .5;
+    const sum = ctx.createGain();
+    const f0 = noteHz(midi);
+    // Hohe Töne: der erste Formant folgt dem Grundton (wie bei Sopranen), sonst wird es dünn.
+    const formants = VOICE_FORMANTS[register][vowel].map(([f, bw], k) => {
+      const fc = k === 0 ? Math.max(f, f0 * 1.05) : f;
+      return { fc, q: fc / Math.max(bw, k === 0 ? f0 * .25 : bw), g: FORMANT_GAIN[k] };
+    });
+    // Pegel je Ton ausgleichen: Frequenzgang der Filter über die Obertöne des Sägezahns (Amplitude 1/h).
+    let energy = 0;
+    for (let h = 1; h * f0 < 6000; h++) {
+      const f = h * f0;
+      const a = formants.reduce((acc, { fc, q, g }) => acc + g / Math.sqrt(1 + q * q * (f / fc - fc / f) ** 2), 0) / h;
+      energy += a * a / 2;
+    }
+    const level = VOICE_MAKEUP / Math.max(.05, Math.sqrt(energy));
+    formants.forEach(({ fc, q, g: fg }) => {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = fg * level;
+      pre.connect(bp).connect(g).connect(sum);
+    });
+    osc.connect(pre);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(.0001, start);
+    if (syllable === 'da') {
+      pre.frequency.setValueAtTime(6000, start);
+      env.gain.setValueAtTime(.0001, time - .006);
+      env.gain.linearRampToValueAtTime(velocity, time + .025);
+      // „d“: kurzer, heller Knack vor dem Vokal
+      const src = ctx.createBufferSource();
+      src.buffer = voiceNoise(ctx);
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3500; bp.Q.value = 1.4;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(velocity * .35, start);
+      ng.gain.exponentialRampToValueAtTime(.0001, start + .025);
+      src.connect(bp).connect(ng).connect(dest);
+      src.start(start); src.stop(start + .04);
+    } else {
+      // „n“: gedämpftes Summen, dann öffnet der Vokal
+      pre.frequency.setValueAtTime(350, start);
+      pre.frequency.setValueAtTime(350, time - .01);
+      pre.frequency.exponentialRampToValueAtTime(6000, time + .04);
+      env.gain.linearRampToValueAtTime(velocity * .45, time - .01);
+      env.gain.linearRampToValueAtTime(velocity, time + .05);
+    }
+    env.gain.setValueAtTime(velocity, Math.max(time + .06, end - .12));
+    env.gain.linearRampToValueAtTime(velocity * .85, Math.max(time + .07, end - .02));
+    env.gain.setTargetAtTime(.0001, end, .035);
+    // etwas Atem, dem Vokal folgend
+    const breath = ctx.createBufferSource();
+    breath.buffer = voiceNoise(ctx); breath.loop = true;
+    const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = VOICE_FORMANTS[register][vowel][1][0]; bf.Q.value = 2;
+    const bg = ctx.createGain(); bg.gain.value = .02;
+    breath.connect(bf).connect(bg).connect(env);
+    nodes.push(breath);
+    sum.connect(env).connect(dest);
+    nodes.forEach((n) => { n.start(start); n.stop(end + .35); });
+  }
+
   const engine = {
     ctx: null, master: null, noise: null,
+
+    /** Singstimme fürs Vorspiel (siehe singVoice). */
+    voice(midi, time, duration, { dest, ...opts } = {}) { singVoice(this.ctx, dest || this.master, midi, time, duration, opts); },
 
     async start() {
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
@@ -4018,6 +4132,7 @@
     // Im Takt: Variante, Tempo-Faktor, Rhythmussprache, eigene Sing-Latenz (null = nicht kalibriert)
     inTime: { variant: 'echo', tempo: 1, rhythmSyl: false, latencyMs: null },
     calib: null,          // laufende Sing-Kalibrierung { clicks, frames, end, result }
+    demo: 'piano',        // Vorspiel bei Nachsingen/Im Takt: 'piano' | 'voice' (Singstimme)
     clickBus: null,
   };
   const SING_LEVEL_TABLE = { singInterval: () => INTERVAL_LEVELS(), findTone: () => FIND_LEVELS, hold: () => HOLD_LEVELS, sight: () => SIGHT_LEVELS, dictation: () => SIGHT_LEVELS, singEcho: () => ECHO_LEVELS, inTime: () => IN_TIME_LEVELS };
@@ -4394,6 +4509,12 @@
   const echoTones = (task) => (task.half ? task.mel.tones.filter((x) => x.t < echoHalfTick(task.mel)) : task.mel.tones);
   const echoTickSec = (task) => 60 / (task.bpm * (task.slow ? ECHO_SLOW : 1)) / 12;
 
+  /** Ein Ton des Vorspiels: Klavier oder Singstimme (Einstellung „Vorspiel“). */
+  function playDemoNote(midi, time, dur, bus, syllable) {
+    if (sing.demo === 'voice') engine.voice(midi, time, dur * .96, { syllable, register: voiceRegister(ear.part), dest: bus });
+    else engine.keys(midi, time, dur * .92, { velocity: .22, dest: bus });
+  }
+
   function playTonicChord(task, t0, dur, bus) {
     const tonicMidi = task.minor ? task.doMidi - 3 : task.doMidi;
     const [c] = satbOf(mod(tonicMidi, 12), [task.minor ? 'i' : 'I']);
@@ -4414,7 +4535,7 @@
     const tones = echoTones(task);
     const at = (sec) => Math.max(0, (sec - engine.ctx.currentTime) * 1000);
     tones.forEach((x, i) => {
-      engine.keys(x.midi, t + x.t * tick, x.d * tick * .92, { velocity: .22, dest: bus });
+      playDemoNote(x.midi, t + x.t * tick, x.d * tick, bus, 'no');
       sing.timers.push(setTimeout(() => { if (sing.task === task) { task.playIdx = i; renderEchoDots(); } }, at(t + x.t * tick)));
     });
     const last = tones[tones.length - 1];
@@ -4614,7 +4735,7 @@
     half.connect(clickBus);
     if (chord) playTonicChord(chord, plan.t0, plan.barSec * .9, bus);
     plan.clicks.forEach((c) => engine.click(c.time, c.level, c.gain < 1 ? half : clickBus));
-    if (notes) plan.notes.forEach((n) => engine.keys(n.midi, n.time, n.dur * .92, { velocity: .22, dest: bus }));
+    if (notes) plan.notes.forEach((n) => playDemoNote(n.midi, n.time, n.dur, bus, 'da'));
   }
 
   function playInTimeRun(task) {
@@ -5001,6 +5122,8 @@
     chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
     $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval', 'inTime'].includes(sing.mode);
     $$('[data-intime-row]').forEach((el) => { el.hidden = sing.mode !== 'inTime'; });
+    $('[data-demo-row]').hidden = !['singEcho', 'inTime'].includes(sing.mode);
+    chips('demo', [['piano', 'Klavier'], ['voice', 'Stimme']], sing.demo);
     if (sing.mode === 'inTime') renderInTimeOpts();
     const task = sing.task;
     const prompt = $('.sing-prompt');
@@ -5144,7 +5267,7 @@
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa,
-        inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs },
+        inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
     };
   }
 
@@ -5228,6 +5351,7 @@
     for (const k of Object.keys(sing.levels)) if (Number.isInteger(sl[k]) && sl[k] >= 1 && sl[k] <= 6) sing.levels[k] = sl[k];
     if (sg.solfa === 'syllables' || sg.solfa === 'numbers') sing.solfa = sg.solfa;
     if (typeof sg.showSolfa === 'boolean') sing.showSolfa = sg.showSolfa;
+    if (sg.demo === 'piano' || sg.demo === 'voice') sing.demo = sg.demo;
     // Im Takt (Nachsingen Paket 4): optional, sonst Standard.
     if (IN_TIME_VARIANTS.some(([id]) => id === sg.inTimeVariant)) sing.inTime.variant = sg.inTimeVariant;
     if (Number.isFinite(sg.inTimeTempo) && sg.inTimeTempo >= IN_TIME_TEMPO[0] - 1e-9 && sg.inTimeTempo <= IN_TIME_TEMPO[1] + 1e-9) sing.inTime.tempo = Math.round(sg.inTimeTempo * 20) / 20;
@@ -5335,6 +5459,8 @@
       renderSing();
       return;
     }
+    const demoChip = e.target.closest('[data-chip="demo"]');
+    if (demoChip) { sing.demo = demoChip.dataset.value === 'voice' ? 'voice' : 'piano'; renderSing(); return; }
     const itChip = e.target.closest('[data-chip="inTimeVariant"]');
     if (itChip) {
       if (itChip.dataset.value !== sing.inTime.variant) {
@@ -6335,7 +6461,15 @@
     // Speichern/Laden: singLatencyMs, Tempo-Faktor, Variante, Rhythmussprache.
     const saved = { ...sing.inTime };
     const savedTab = state.tab;
+    const savedDemo = sing.demo;
     try {
+      sing.demo = 'voice';
+      const snapD = JSON.parse(JSON.stringify(snapshot()));
+      sing.demo = 'piano'; restore(snapD);
+      if (sing.demo !== 'voice') errors.push('Vorspiel „Stimme“ nicht gespeichert');
+      restore({ tab: savedTab, sing: { demo: 'orgel' } });
+      if (sing.demo !== 'voice') errors.push('Vorspiel: kaputter Wert übernommen');
+      if (voiceRegister('B') !== 'low' || voiceRegister('T') !== 'low' || voiceRegister('A') !== 'high' || voiceRegister('S') !== 'high') errors.push('Singstimme: Lage je Stimme falsch');
       Object.assign(sing.inTime, { variant: 'sheet', tempo: 1.15, rhythmSyl: true, latencyMs: 183 });
       const snap = JSON.parse(JSON.stringify(snapshot()));
       Object.assign(sing.inTime, { variant: 'echo', tempo: 1, rhythmSyl: false, latencyMs: null });
@@ -6347,7 +6481,7 @@
       if (sing.inTime.latencyMs !== 183) errors.push('Im Takt: fehlendes Feld setzt Latenz zurück');
       restore({ tab: savedTab, sing: { singLatencyMs: null } });
       if (sing.inTime.latencyMs !== null) errors.push('Im Takt: gespeichertes „nicht kalibriert“ verloren');
-    } finally { Object.assign(sing.inTime, saved); state.tab = savedTab; }
+    } finally { Object.assign(sing.inTime, saved); state.tab = savedTab; sing.demo = savedDemo; }
     return errors;
   }
 
@@ -6596,12 +6730,48 @@
     return errors;
   }
 
+  /** Singstimme mit gerendertem Audio (OfflineAudioContext) durch die
+   *  eigene Tonerkennung: richtige Tonhöhe, Vokal auf `time`, Pegel etwa
+   *  wie das Klavier. Asynchron: `await uebeLab.selfCheckAudio()`. */
+  async function selfCheckAudio() {
+    const errors = [];
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Offline) return ['OfflineAudioContext fehlt'];
+    const sr = 48000;
+    const render = async (fn) => { const ctx = new Offline(1, sr * 2, sr); fn(ctx); return (await ctx.startRendering()).getChannelData(0); };
+    const rmsOf = (x, a, b) => { let e = 0; for (let i = a; i < b; i++) e += x[i] * x[i]; return Math.sqrt(e / (b - a)); };
+    const saved = { x: voice.x, d: voice.d };
+    for (const [midi, syllable, register] of [[45, 'da', 'low'], [52, 'no', 'low'], [64, 'da', 'high'], [69, 'no', 'high'], [76, 'no', 'high']]) {
+      const at = .3, dur = 1.2;
+      const x = await render((ctx) => singVoice(ctx, ctx.destination, midi, at, dur, { syllable, register }));
+      const pitches = [];
+      let firstVoiced = null;
+      for (let end = 2048; end < x.length; end += 800) {
+        const t = end / sr - 1024 / sr; // Fenstermitte, wie pitchFrameOf
+        const r = detectPitch(x.subarray(end - 2048, end), sr);
+        if (!r || r.clarity < .85) continue;
+        if (firstVoiced === null) firstVoiced = t;
+        if (t > at + .3 && t < at + dur - .1) pitches.push(hzToMidi(r.freq));
+      }
+      const name = `Singstimme ${noteLabel(midi)} „${syllable}“`;
+      const cents = pitches.length ? (echoMedian(pitches) - midi) * 100 : NaN;
+      if (!(Math.abs(cents) <= 15)) errors.push(`${name}: Tonhöhe ${Number.isNaN(cents) ? 'nicht erkannt' : `${Math.round(cents)} Cent daneben`}`);
+      if (pitches.length < 45) errors.push(`${name}: nur ${pitches.length} klare Messungen`);
+      if (firstVoiced === null || firstVoiced < at - .09 || firstVoiced > at + .07) errors.push(`${name}: Vokal-Einsatz bei ${firstVoiced?.toFixed(3)} s statt ${at} s`);
+      const piano = await render((ctx) => { const saveCtx = engine.ctx; engine.ctx = ctx; try { engine.keys(midi, at, dur, { velocity: .22, dest: ctx.destination }); } finally { engine.ctx = saveCtx; } });
+      const ratio = rmsOf(x, (at + .1) * sr, (at + dur) * sr) / rmsOf(piano, (at + .1) * sr, (at + dur) * sr);
+      if (!(ratio > .5 && ratio < 2.5)) errors.push(`${name}: Pegel ${ratio.toFixed(2)} × Klavier`);
+    }
+    voice.x = saved.x; voice.d = saved.d;
+    return errors;
+  }
+
   // Für die Konsole und Selbstprüfungen: Daten und reine Funktionen.
   window.uebeLab = {
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck,
+    selfCheck, selfCheckAudio,
   };
 
   /* ---- Dauerhafte Gewichtungen über den Fortschritt der App ---- */
