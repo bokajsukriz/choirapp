@@ -266,6 +266,7 @@
   .answer { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 11px 6px; font-weight: 800; font-size: .8rem; min-height: 44px; }
   .answer.is-picked { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
   .answer-grid.is-three { grid-template-columns: repeat(3, 1fr); }
+  .answer-grid.is-five { grid-template-columns: repeat(5, 1fr); }
   .answer small { display: block; font-size: .62rem; font-weight: 700; color: var(--muted); }
   .ear-extra { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
   .ear-extra:empty { display: none; }
@@ -2087,6 +2088,7 @@
     read: 'Nur Klick hören, Rhythmus selbst klatschen', duo: 'Die App klatscht eine Stimme, du die andere',
     interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
+    noteInKey: 'Nach der Kadenz ein Ton – welche Silbe?',
     tuning: 'Sauber, zu hoch oder zu tief?', singInterval: 'Ein Grundton – du singst das Intervall',
     findTone: 'Akkord oder Intro – du findest deinen Ton', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
     dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
@@ -2353,6 +2355,7 @@
     },
     task: null,        // aktuelle Aufgabe
     revealed: false,   // Antwort schon aufgelöst?
+    inKey: { kind: null, key: null, kmode: null, level: 0, left: 0, recent: [], log: {} }, // Tonart-Halten, letzte Antworten, Fehler je Ton/Akkord (nur Sitzung)
     resolving: false,  // Töne/Akkorde in der Tonart: Auflösung läuft gerade
     playing: null,     // ... und welcher Antwortknopf (data-ans) gerade leuchtet
     bus: null,
@@ -2363,7 +2366,7 @@
       noteInKey: { right: 0, total: 0 }, chordInKey: { right: 0, total: 0 },
     },
     // Stufen der neuen Modi (1–6); Intervalle: settings.intervalLevel, Akkordfolgen: settings.level.
-    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1 },
+    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1, noteInKey: 1 },
     part: 'A',         // eigene Stimme für „Stimmen“ (aus dem Stimmprofil, sonst wählbar)
     stairs: {},        // Intonation: Treppe je Stufe
     pick: null,        // Stimmen: angetippter Kandidat
@@ -2490,7 +2493,7 @@
      vorigen) und eigene Zähler in ear.stats.
      ------------------------------------------------------------------------ */
 
-  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Klänge'], ['cadence', 'Schlüsse'], ['chords', 'Akkordfolgen'], ['parts', 'Stimmen'], ['tuning', 'Intonation']];
+  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Klänge'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimmen'], ['tuning', 'Intonation']];
   const rndInt = (lo, hi, rnd = Math.random) => lo + Math.floor(rnd() * (hi - lo + 1));
   const shuffle = (list, rnd = Math.random) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -2707,6 +2710,7 @@
 
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
   function makeEarTask(mode, n, rnd = Math.random) {
+    if (mode === 'noteInKey') return makeNoteInKeyTask(n, rnd);
     if (mode === 'quality') {
       const level = QUALITY_LEVELS[n - 1];
       const q = level.set[Math.floor(rnd() * level.set.length)];
@@ -2950,12 +2954,115 @@
       const st = ear.stats[task.kind];
       st.total++;
       if (ok) { st.right++; ear.streak++; } else ear.streak = 0;
+      logInKey(task, ok);
       onEarResult(task, ok);
     }
     if (!ok) task.tries.push(value);
     if (ok || task.tries.length >= 2) { revealInKey(task); return; }
     setEarFeedback('Noch nicht — hör noch einmal hin und probier es weiter.', 'bad');
     renderEar();
+  }
+
+  /* ---- Töne in der Tonart: Stufen, Aufgabe ---- */
+  const ALL_DEGREES = [0, 1, 2, 3, 4, 5, 6];
+  const NOTE_IN_KEY_LEVELS = [
+    { n: 1, label: 'do re mi', kmodes: ['major'], degrees: [0, 1, 2], wide: false },
+    { n: 2, label: 'do bis so', kmodes: ['major'], degrees: [0, 1, 2, 3, 4], wide: false },
+    { n: 3, label: 'ganze Dur-Tonleiter', kmodes: ['major'], degrees: ALL_DEGREES, wide: false },
+    { n: 4, label: 'ganze Tonleiter, weite Lage', kmodes: ['major'], degrees: ALL_DEGREES, wide: true },
+    { n: 5, label: 'Moll: la bis so', kmodes: ['minor'], degrees: ALL_DEGREES, wide: true },
+    { n: 6, label: 'Dur oder Moll, dazu si', kmodes: ['major', 'minor'], degrees: ALL_DEGREES, leading: true, wide: true },
+  ];
+  /** Antworten (Halbtöne über der Tonika) einer Stufe in einem Tongeschlecht,
+   *  in Tonleiter-Reihenfolge; der Leitton ♯7 (11) steht in Moll ganz am Ende. */
+  const noteInKeyAnswers = (level, kmode) => [...level.degrees.map((d) => IN_KEY_SEMIS[kmode][d]), ...(level.leading && kmode === 'minor' ? [11] : [])];
+
+  /** Wie oft der Fehler der letzten Antworten zählt: 10 je Ton/Akkord, nur diese Sitzung. */
+  function logInKey(task, ok) {
+    const list = (ear.inKey.log[`${task.kmode}:${inKeyTarget(task)}`] ||= []);
+    list.push(ok);
+    if (list.length > INTERVAL_MEMORY) list.shift();
+  }
+  /** Tonart der nächsten Aufgabe: neu, oder (Einstellung) für 5 Aufgaben gehalten. */
+  function inKeyContext(kind, n, kmodes, rnd) {
+    const ik = ear.inKey;
+    if (ear.settings.inKeyHold && ik.left > 0 && ik.kind === kind && ik.level === n && kmodes.includes(ik.kmode)) {
+      ik.left--;
+      return { key: ik.key, kmode: ik.kmode, newKey: false };
+    }
+    const kmode = kmodes[Math.floor(rnd() * kmodes.length)];
+    const key = rndInt(0, 11, rnd);
+    Object.assign(ik, { kind, key, kmode, level: n, left: ear.settings.inKeyHold ? IN_KEY_HOLD_TASKS - 1 : 0 });
+    return { key, kmode, newKey: true };
+  }
+  /** Antwort ziehen: gewichtet wie pickInterval (1 + Fehler der letzten 10),
+   *  nie dreimal hintereinander dieselbe. */
+  function pickInKeyAnswer(kmode, values, rnd) {
+    const ik = ear.inKey;
+    const id = (v) => `${kmode}:${v}`;
+    const [a, b] = ik.recent.slice(-2);
+    const list = values.length > 1 && a !== undefined && a === b ? values.filter((v) => id(v) !== a) : values;
+    const picked = pickInterval(list.map(id), ik.log, rnd);
+    ik.recent = [...ik.recent, picked].slice(-2);
+    return list.find((v) => id(v) === picked);
+  }
+  /** Auflösung eines Tons (Anhang A): 1–4 stufenweise abwärts zur Tonika, 5–7 und
+   *  der Leitton ♯7 aufwärts in die Oktave. `note` ist der Aufgabenton.
+   *  Fehlen in der Stufe die Knöpfe für den Aufwärtsweg (Stufe 2 „do bis so“ hat
+   *  kein la und ti), läuft der Ton stattdessen abwärts (so – fa – mi – re – do):
+   *  jeder Schritt muss einen Antwortknopf haben, der aufleuchten kann. */
+  function noteInKeyResolution(kmode, semis, note, answers = null) {
+    const scale = IN_KEY_SEMIS[kmode];
+    const deg = scale.indexOf(semis);
+    let path;
+    if (deg < 0) path = [semis, 12];
+    else if (deg <= 3) path = scale.slice(0, deg + 1).reverse();
+    else path = [...scale.slice(deg), 12];
+    if (answers && !path.every((x) => answers.includes(x % 12)) && deg >= 0) path = scale.slice(0, deg + 1).reverse();
+    const tonic = note - semis;
+    return path.map((x) => ({ value: x % 12, midi: tonic + x }));
+  }
+  function makeNoteInKeyTask(n, rnd = Math.random) {
+    const level = NOTE_IN_KEY_LEVELS[n - 1];
+    const { key, kmode, newKey } = inKeyContext('noteInKey', n, level.kmodes, rnd);
+    const semis = pickInKeyAnswer(kmode, noteInKeyAnswers(level, kmode), rnd);
+    // Lage der eigenen Stimme; ein sehr enger gemessener Umfang wird bis zur Oktave geweitet.
+    const { lo, hi } = singRange(ear.part);
+    const top = Math.max(hi, lo + 11);
+    const pc = mod(key + semis, 12);
+    let note;
+    if (level.wide) {
+      const options = [];
+      for (let m = lo; m <= top; m++) if (mod(m, 12) === pc) options.push(m);
+      note = options[Math.floor(rnd() * options.length)];
+    } else note = placeNear(pc, Math.round((lo + hi) / 2), lo, top);
+    const deg = IN_KEY_SEMIS[kmode].indexOf(semis);
+    return {
+      kind: 'noteInKey', level: n, kmode, key, deg: deg < 0 ? 6 : deg, semis, note,
+      resolution: noteInKeyResolution(kmode, semis, note, noteInKeyAnswers(level, kmode)),
+      cadence: !(ear.settings.inKeyHold && ear.settings.inKeyCadence === 'newKey') || newKey,
+      answer: null, tries: [],
+    };
+  }
+
+  /** Antwortknopf der Modi in der Tonart: rot nach falschem Tipp (bleibt bis zur
+   *  nächsten Aufgabe), grün beim Ziel, leuchtend, solange sein Ton/Akkord klingt. */
+  function inKeyButton(task, value, label, aria) {
+    const b = answerButton(value, label, { disabled: !task, aria });
+    if (task) {
+      if (task.tries.includes(value)) b.classList.add('is-bad');
+      if (ear.revealed && value === inKeyTarget(task)) b.classList.add('is-ok');
+    }
+    if (ear.playing !== null && String(value) === ear.playing) b.classList.add('is-playing');
+    return b;
+  }
+  /** Zusatzknopf: vor dem Auflösen „Nur den Ton/Akkord“, danach „Auflösung nochmal“. */
+  function inKeyExtraButton(task) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'big-btn secondary';
+    b.dataset.ear = ear.revealed ? 'inkey-resolve' : 'inkey-target';
+    b.textContent = ear.revealed ? 'Auflösung nochmal' : task.kind === 'noteInKey' ? 'Nur den Ton' : 'Nur den Akkord';
+    return b;
   }
 
   function clearEarTimers() {
@@ -3216,7 +3323,7 @@
   function earLevelInfo(mode) {
     if (mode === 'interval') return [INTERVAL_LEVELS(), ear.settings.intervalLevel];
     if (mode === 'chords') return [EAR_LEVELS, ear.settings.level];
-    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS }[mode];
+    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS, noteInKey: NOTE_IN_KEY_LEVELS }[mode];
     return [table, ear.levels[mode]];
   }
   /** Stufe `n` im aktuellen Modus übernehmen. */
@@ -3276,6 +3383,22 @@
         }
         return b;
       }));
+    } else if (ear.mode === 'noteInKey') {
+      const level = NOTE_IN_KEY_LEVELS[(task ? task.level : ear.levels.noteInKey) - 1];
+      const numbers = sing.solfa === 'numbers';
+      prompt.textContent = task ? 'Welcher Ton war das?' : `Ein Ton in der Tonart — welche ${numbers ? 'Stufe' : 'Silbe'}?`;
+      const where = (m) => (m === 'major' ? 'Dur' : `Moll (${numbers ? 'la = 1' : 'la'})`);
+      sub.textContent = task
+        ? `${where(task.kmode)} · ${task.cadence ? 'nach der Kadenz' : 'Tonart wie eben'}${ear.revealed ? ' · Antippen zum Vergleichen' : ''}`
+        : `Stufe ${level.n}: ${level.label}`;
+      const kmode = task ? task.kmode : level.kmodes[0];
+      const answers = noteInKeyAnswers(level, kmode);
+      grid.classList.add(answers.length === 3 ? 'is-three' : answers.length === 5 ? 'is-five' : 'is-chords');
+      grid.replaceChildren(...answers.map((semis, i) => {
+        const label = noteInKeyLabel(kmode, semis);
+        return inKeyButton(task, semis, label, numbers ? `Stufe ${label}` : `${i + 1}: ${label}`);
+      }));
+      if (task) extra.append(inKeyExtraButton(task));
     } else if (ear.mode === 'chords' && task?.kind === 'modulation') {
       prompt.textContent = 'Gleich oder höher?';
       sub.textContent = `Eine Folge zweimal — klingt die Wiederholung gleich oder höher?${ear.revealed ? ' · Nochmal hören zum Vergleichen' : ''}`;
@@ -3548,9 +3671,10 @@
         <span class="sub-label"${voiceHtml ? '' : ' style="margin-top:0"'}>Stufe</span>
         <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Feld „Stufe“).</p>
         ${ear.mode === 'cadence' ? `<span class="sub-label">Klassik</span><div class="check-list">${checkRow('phrygian', 'on', 'Phrygischer Halbschluss (iv⁶–V in Moll)', !!s.phrygian, 'ab Stufe 4, wenn Moll dabei ist')}</div>` : ''}
+        ${isInKeyMode(ear.mode) ? inKeySettingsHtml(ear.mode) : ''}
         ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
-        <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
+        <div class="check-list">${isInKeyMode(ear.mode) ? checkRow('inKeyResolve', 'on', 'Nach der Antwort auflösen (Ton läuft zur Tonika)', s.inKeyResolve !== false) : ''}${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext, isInKeyMode(ear.mode) ? 'erst nach der Auflösung' : '')}</div>`;
     } else {
       const group = (filter, title) => `<span class="sub-label">${title}</span><div class="check-list">${
         EAR_PROGRESSIONS.filter(filter).map((p) => checkRow('progs', p.id, p.name, s.progs.includes(p.id), p.chords.map(symbolLabel).join(' – '))).join('')}</div>`;
@@ -3581,10 +3705,34 @@
     $('.sheet-hint').textContent = '';
   }
 
+  /** Einstellungen der Modi in der Tonart (Zahnrad): Beschriftung, Tonart, Kadenz. */
+  const isInKeyMode = (mode) => mode === 'noteInKey' || mode === 'chordInKey';
+  function inKeySettingsHtml(mode) {
+    const s = ear.settings;
+    const choice = (name, entries, value) => `<div class="chip-row">${entries.map(([v, label]) =>
+      `<button class="chip" type="button" data-inkey="${name}" data-value="${v}" aria-pressed="${String(v) === String(value)}">${label}</button>`).join('')}</div>`;
+    return `${mode === 'noteInKey' ? `<span class="sub-label">Beschriftung</span>
+        ${choice('solfa', [['syllables', 'Silben (do re mi)'], ['numbers', 'Zahlen (1 2 3)']], sing.solfa)}
+        <p class="foot-note" style="text-align:left;margin-top:4px">Gilt auch beim Singen. Moll zählt ab la (la = 1), der Leitton heißt si bzw. ♯7.</p>` : ''}
+        <span class="sub-label">Tonart</span>
+        ${choice('hold', [[false, 'jede Aufgabe neu'], [true, 'gleiche für 5 Aufgaben']], !!s.inKeyHold)}
+        <span class="sub-label">Kadenz</span>
+        ${choice('cadence', [['always', 'vor jeder Aufgabe'], ['newKey', 'nur bei neuer Tonart']], s.inKeyCadence)}
+        <p class="foot-note" style="text-align:left;margin-top:4px">„Nur bei neuer Tonart“ wirkt nur, wenn die Tonart für 5 Aufgaben gehalten wird. „Nochmal hören“ spielt immer mit Kadenz.</p>`;
+  }
+  function setInKeyOption(name, value) {
+    const s = ear.settings;
+    if (name === 'solfa' && (value === 'syllables' || value === 'numbers')) sing.solfa = value;
+    else if (name === 'hold') { s.inKeyHold = value === 'true'; ear.inKey.left = 0; }
+    else if (name === 'cadence' && (value === 'always' || value === 'newKey')) s.inKeyCadence = value;
+    renderSettings();
+    renderEar();
+  }
+
   function onSettingChange(input) {
     const s = ear.settings;
     const group = input.dataset.set;
-    if (group === 'tonicCue' || group === 'autoNext' || group === 'phrygian') { s[group] = input.checked; if (group === 'phrygian') { ear.task = null; renderEar(); } return; }
+    if (group === 'tonicCue' || group === 'autoNext' || group === 'phrygian' || group === 'inKeyResolve') { s[group] = input.checked; if (group === 'phrygian') { ear.task = null; renderEar(); } return; }
     if (group === 'progs') { s.level = 0; const note = $('.level-note'); if (note) note.textContent = 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'; $$('.level-chip').forEach((c) => c.setAttribute('aria-pressed', 'false')); }
     const value = group === 'intervals' ? Number(input.value) : input.value;
     const list = new Set(s[group]);
@@ -6263,6 +6411,8 @@
     }
     const levelChip = e.target.closest('[data-level]');
     if (levelChip) { applyEarLevel(Number(levelChip.dataset.level)); renderSettings(); $('.sheet-hint').textContent = settingsProblem(); return; }
+    const inKeySet = e.target.closest('[data-inkey]');
+    if (inKeySet) { setInKeyOption(inKeySet.dataset.inkey, inKeySet.dataset.value); return; }
     const earSet = e.target.closest('[data-earset]');
     if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
     const tempo = e.target.closest('[data-tempo]');
@@ -6802,7 +6952,7 @@
       const snap = JSON.parse(JSON.stringify(snapshot()));
       Object.assign(ear.levels, { quality: 1, cadence: 1, parts: 1, tuning: 1 }); ear.part = 'A'; ear.mode = 'interval'; ear.settings.intervalLevel = 1; delete ear.stairs[4];
       restore(snap);
-      if (JSON.stringify(ear.levels) !== JSON.stringify({ quality: 3, cadence: 6, parts: 5, tuning: 4 }) || ear.part !== 'T' || ear.mode !== 'tuning' || ear.settings.intervalLevel !== 6) errors.push('Hören: Speichern/Laden verliert Stufen/Stimme/Modus');
+      if (['quality', 'cadence', 'parts', 'tuning'].map((k) => ear.levels[k]).join() !== '3,6,5,4' || ear.part !== 'T' || ear.mode !== 'tuning' || ear.settings.intervalLevel !== 6) errors.push('Hören: Speichern/Laden verliert Stufen/Stimme/Modus');
       if (!ear.stairs[4] || Math.abs(ear.stairs[4].delta - 50) > 1e-9) errors.push('Hören: Treppe übersteht Speichern/Laden nicht');
       restore({ tab: savedTab, ear: { mode: 'quatsch', levels: { quality: 9, tuning: 'x' }, part: 'X', stairs: { 2: { delta: 999, reversals: ['a'] } } } });
       if (ear.mode !== 'tuning' || ear.levels.quality !== 3 || ear.part !== 'T' || ear.stairs[2].delta !== 60) errors.push('Hören: kaputte Werte nicht verworfen');
@@ -6993,6 +7143,7 @@
       restore({ tab: saved.tab, ear: { settings: { progs: ['mnatural'] } } });
       if (ear.settings.progs.join() !== 'pop,fifties,cadence,epic,mcadence') errors.push(`restore progs [mnatural] → ${ear.settings.progs}`);
       errors.push(...inKeyBuildingBlocksCheck());
+      errors.push(...noteInKeyCheck());
     } finally {
       Object.assign(ear.settings, saved.settings); state.tab = saved.tab;
     }
@@ -7118,6 +7269,192 @@
       ear.task = savedFlow.task; ear.revealed = savedFlow.revealed; ear.streak = savedFlow.streak;
       ear.settings.autoNext = savedFlow.autoNext; ear.settings.inKeyResolve = savedFlow.resolve; ear.mode = savedFlow.mode; sing.solfa = savedFlow.solfa;
       setEarFeedback('', '');
+      renderEar();
+    }
+    return errors;
+  }
+
+  /** Paket 3 — Töne in der Tonart: Stufen, Aufgaben (500 je Stufe), Auflösung,
+   *  Gewichtung, Tonart halten, Anzeige, Einstellungen. */
+  function noteInKeyCheck() {
+    const errors = [];
+    let seed = 131;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const saved = { ik: ear.inKey, part: ear.part, hold: ear.settings.inKeyHold, cad: ear.settings.inKeyCadence, mode: ear.mode, task: ear.task, revealed: ear.revealed, level: ear.levels.noteInKey, solfa: sing.solfa, tab: state.tab, playing: ear.playing };
+    const fresh = () => { ear.inKey = { kind: null, key: null, kmode: null, level: 0, left: 0, recent: [], log: {} }; };
+    const syl = (kmode, v) => noteInKeyLabel(kmode, v, 'syllables');
+    // Anhang A: gefragt → Auflösung (Silben).
+    const table = {
+      major: { do: 'do', re: 're do', mi: 'mi re do', fa: 'fa mi re do', so: 'so la ti do', la: 'la ti do', ti: 'ti do' },
+      minor: { la: 'la', ti: 'ti la', do: 'do ti la', re: 're do ti la', mi: 'mi fa so la', fa: 'fa so la', so: 'so la', si: 'si la' },
+    };
+    try {
+      ear.settings.inKeyHold = false; ear.settings.inKeyCadence = 'always';
+      fresh();
+      if (NOTE_IN_KEY_LEVELS.length !== 6) errors.push('Töne in der Tonart: nicht sechs Stufen');
+      for (let n = 2; n <= 6; n++) {
+        for (const kmode of ['major', 'minor']) {
+          const prev = noteInKeyAnswers(NOTE_IN_KEY_LEVELS[n - 2], kmode), cur = noteInKeyAnswers(NOTE_IN_KEY_LEVELS[n - 1], kmode);
+          if (NOTE_IN_KEY_LEVELS[n - 2].kmodes.includes(kmode) && NOTE_IN_KEY_LEVELS[n - 1].kmodes.includes(kmode) && !prev.every((x) => cur.includes(x))) errors.push(`Töne: Stufe ${n} enthält Stufe ${n - 1} nicht (${kmode})`);
+        }
+        if (!NOTE_IN_KEY_LEVELS[n - 2].kmodes.every((m) => NOTE_IN_KEY_LEVELS[n - 1].kmodes.includes(m)) && n !== 5) errors.push(`Töne: Tongeschlechter in Stufe ${n}`);
+      }
+      const want = [3, 5, 7, 7, 7, 7];
+      NOTE_IN_KEY_LEVELS.forEach((l, i) => { if (noteInKeyAnswers(l, l.kmodes[0]).length !== want[i]) errors.push(`Töne Stufe ${i + 1}: ${noteInKeyAnswers(l, l.kmodes[0]).length} Antworten`); });
+      if (noteInKeyAnswers(NOTE_IN_KEY_LEVELS[5], 'minor').join() !== '0,2,3,5,7,8,10,11' || noteInKeyAnswers(NOTE_IN_KEY_LEVELS[5], 'major').join() !== '0,2,4,5,7,9,11') errors.push('Töne Stufe 6: Antworten');
+      for (let n = 1; n <= 6; n++) {
+        const level = NOTE_IN_KEY_LEVELS[n - 1];
+        const kmodes = new Set(), octaves = new Set(), seenSemis = new Set();
+        for (let i = 0; i < 500; i++) {
+          const part = SATB_PARTS[i % 4];
+          ear.part = part;
+          const { lo, hi } = singRange(part);
+          const t = makeEarTask('noteInKey', n, rnd);
+          const answers = noteInKeyAnswers(level, t.kmode);
+          kmodes.add(t.kmode); seenSemis.add(`${t.kmode}${t.semis}`);
+          if (!answers.includes(t.semis)) errors.push(`Töne Stufe ${n}: Antwort ${t.kmode}/${t.semis} nicht in der Stufe`);
+          if (t.kmode === 'minor' && n < 5) errors.push(`Töne Stufe ${n}: Moll`);
+          if (t.kmode === 'minor' && t.semis === 11 && n < 6) errors.push(`Töne Stufe ${n}: ♯7 zu früh`);
+          if (t.note < lo || t.note > Math.max(hi, lo + 11)) errors.push(`Töne Stufe ${n} ${part}: ${t.note} außerhalb ${lo}–${hi}`);
+          if (mod(t.note - t.key, 12) !== t.semis) errors.push(`Töne Stufe ${n}: Ton ${t.note} passt nicht zu Tonart ${t.key} + ${t.semis}`);
+          if (!level.wide && Math.abs(t.note - Math.round((lo + hi) / 2)) > 6) errors.push(`Töne Stufe ${n}: nicht nah an der Mitte`);
+          octaves.add(`${part}${Math.floor(t.note / 12)}`);
+          if (t.cadence !== true || t.tries.length || t.answer !== null || t.kind !== 'noteInKey' || t.level !== n) errors.push('Töne: Aufgabenfelder');
+          // Auflösung
+          const res = t.resolution;
+          if (res[0].value !== t.semis || res[0].midi !== t.note) errors.push(`Töne Stufe ${n}: Auflösung beginnt nicht beim Ton (${t.kmode}/${t.semis})`);
+          if (res.length > 5 || res.length < 1) errors.push(`Töne: Auflösung mit ${res.length} Schritten`);
+          if (mod(res[res.length - 1].midi - t.key, 12) !== 0 || res[res.length - 1].value !== 0) errors.push(`Töne: Auflösung endet nicht auf der Tonika (${t.kmode}/${t.semis})`);
+          res.forEach((r, k) => {
+            if (k && Math.abs(r.midi - res[k - 1].midi) > 2) errors.push(`Töne: Schritt über ${Math.abs(r.midi - res[k - 1].midi)} Halbtöne (${t.kmode}/${t.semis})`);
+            if (!answers.includes(r.value)) errors.push(`Töne Stufe ${n}: Auflösungswert ${r.value} ohne Knopf (${t.kmode}/${t.semis})`);
+            if (mod(r.midi - t.key, 12) !== r.value) errors.push('Töne: Auflösungston passt nicht zum Wert');
+          });
+          const name = syl(t.kmode, t.semis);
+          // Stufe 2 hat kein la/ti: „so“ läuft dort abwärts (siehe noteInKeyResolution).
+          const wantRes = n === 2 && name === 'so' ? 'so fa mi re do' : table[t.kmode][name];
+          if (res.map((r) => syl(t.kmode, r.value)).join(' ') !== wantRes) errors.push(`Töne: Auflösung ${t.kmode}/${name}: ${res.map((r) => syl(t.kmode, r.value)).join(' ')}`);
+        }
+        if (n === 6 && kmodes.size !== 2) errors.push('Töne Stufe 6: nicht beide Tongeschlechter');
+        if (n === 5 && [...kmodes].join() !== 'minor') errors.push('Töne Stufe 5: nicht nur Moll');
+        if (n === 6 && !seenSemis.has('minor11')) errors.push('Töne Stufe 6: ♯7 kommt nie');
+        if (seenSemis.size < (level.kmodes.length === 2 ? 15 : noteInKeyAnswers(level, level.kmodes[0]).length)) errors.push(`Töne Stufe ${n}: nur ${seenSemis.size} verschiedene Töne`);
+        if (level.wide && octaves.size < 8) errors.push(`Töne Stufe ${n}: zu wenig Oktavlagen (${octaves.size})`);
+      }
+      // Gewichtung: nach 5 Fehlern bei „fa“ kommt „fa“ am häufigsten.
+      ear.part = 'A'; fresh();
+      ear.inKey.log['major:5'] = Array(5).fill(false);
+      const counts = {};
+      for (let i = 0; i < 2000; i++) { const t = makeEarTask('noteInKey', 3, rnd); counts[t.semis] = (counts[t.semis] || 0) + 1; }
+      const others = Object.entries(counts).filter(([k]) => k !== '5').map(([, c]) => c);
+      if (!(counts[5] > Math.max(...others))) errors.push(`Gewichtung Töne: fa ${counts[5]} gegen ${Math.max(...others)}`);
+      // Nie dreimal in Folge dieselbe Antwort (auch mit stark bevorzugtem Ton).
+      fresh();
+      ear.inKey.log['major:0'] = Array(10).fill(false);
+      let run = 1, worst = 1, lastId = '';
+      for (let i = 0; i < 2000; i++) {
+        const t = makeEarTask('noteInKey', 1, rnd);
+        const id = `${t.kmode}:${t.semis}`;
+        run = id === lastId ? run + 1 : 1; lastId = id; worst = Math.max(worst, run);
+      }
+      if (worst > 2) errors.push(`Töne: ${worst}× dieselbe Antwort in Folge`);
+      // Tonart halten: 5 Aufgaben, Kadenz nur bei neuer Tonart.
+      fresh(); ear.settings.inKeyHold = true; ear.settings.inKeyCadence = 'newKey';
+      const seq = Array.from({ length: 12 }, () => makeEarTask('noteInKey', 6, rnd));
+      seq.forEach((t, i) => {
+        const first = i % 5 === 0;
+        if (t.cadence !== first) errors.push(`Tonart halten: Aufgabe ${i + 1} Kadenz ${t.cadence}`);
+        if (!first && (t.key !== seq[i - 1].key || t.kmode !== seq[i - 1].kmode)) errors.push(`Tonart halten: Aufgabe ${i + 1} wechselt die Tonart`);
+      });
+      fresh(); ear.settings.inKeyCadence = 'always';
+      if (Array.from({ length: 10 }, () => makeEarTask('noteInKey', 3, rnd)).some((t) => !t.cadence)) errors.push('Kadenz „immer“ fehlt bei gehaltener Tonart');
+      fresh(); ear.settings.inKeyHold = false; ear.settings.inKeyCadence = 'newKey';
+      if (Array.from({ length: 10 }, () => makeEarTask('noteInKey', 3, rnd)).some((t) => !t.cadence)) errors.push('Kadenz „nur bei neuer Tonart“ ohne Halten: keine Kadenz');
+      ear.settings.inKeyCadence = 'always';
+
+      // Anzeige.
+      fresh();
+      state.tab = 'ear';
+      ear.mode = 'noteInKey'; ear.levels.noteInKey = 3; sing.solfa = 'syllables';
+      ear.task = null; ear.revealed = false; ear.playing = null;
+      renderEar();
+      if ($$('.answer-grid .answer').length !== 7 || $$('.answer-grid .answer:disabled').length !== 7) errors.push('Töne: Knöpfe vor dem Start');
+      const task = makeEarTask('noteInKey', 3, rnd);
+      ear.task = task; ear.revealed = false;
+      renderEar();
+      const btns = () => $$('.answer-grid .answer');
+      if (btns().map((b) => b.textContent).join() !== 'do,re,mi,fa,so,la,ti' || btns()[2].getAttribute('aria-label') !== '3: mi') errors.push(`Töne: Beschriftung ${btns().map((b) => b.textContent)} / ${btns()[2]?.getAttribute('aria-label')}`);
+      if (btns().some((b) => b.disabled || b.offsetHeight < 44 && b.offsetParent !== null)) errors.push('Töne: Knopf gesperrt oder unter 44 px');
+      if ($('.ear-prompt').textContent !== 'Welcher Ton war das?' || !/^Dur · nach der Kadenz/.test($('.ear-sub').textContent)) errors.push(`Töne: Frage/Zeile „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
+      if ($$('.ear-extra button').map((b) => b.textContent).join() !== 'Nur den Ton') errors.push('Töne: Zusatzknopf vor dem Auflösen');
+      const wrongSemis = IN_KEY_SEMIS.major.find((x) => x !== task.semis);
+      const savedSelf = selfTesting, savedResult = onEarResult;
+      selfTesting = true; onEarResult = () => {};
+      const stats0 = { ...ear.stats.noteInKey };
+      try {
+        answerEar(String(wrongSemis));
+        const bad = btns().filter((b) => b.classList.contains('is-bad')).map((b) => b.dataset.ans);
+        if (bad.join() !== String(wrongSemis) || ear.revealed || btns().some((b) => b.classList.contains('is-ok'))) errors.push(`Töne: falscher Tipp → rot ${bad}`);
+        answerEar(String(task.semis));
+        if (!ear.revealed || btns().filter((b) => b.classList.contains('is-ok')).map((b) => b.dataset.ans).join() !== String(task.semis) || !btns().find((b) => b.dataset.ans === String(wrongSemis)).classList.contains('is-bad')) errors.push('Töne: nach der Antwort nicht grün/rot');
+        if ($$('.ear-extra button').map((b) => b.textContent).join() !== 'Auflösung nochmal' || !/Antippen zum Vergleichen/.test($('.ear-sub').textContent)) errors.push('Töne: Anzeige nach dem Auflösen');
+        // Leuchten im Takt der Auflösung: Timer nacheinander auslösen.
+        const realSetTimeout = window.setTimeout;
+        const queue = [];
+        window.setTimeout = (fn, ms) => { queue.push({ fn, ms }); return queue.length; };
+        try {
+          clearEarTimers();
+          const total = playResolution(task);
+          const steps = resolutionSteps(task);
+          const lit = [];
+          if (queue.length !== steps.length + 1) errors.push(`Töne: ${queue.length} Timer für ${steps.length} Schritte`);
+          let at = 0;
+          steps.forEach((step, i) => {
+            if (queue[i].ms !== at) errors.push(`Töne: Schritt ${i + 1} bei ${queue[i].ms} ms statt ${at}`);
+            queue[i].fn();
+            lit.push($$('.answer-grid .answer.is-playing').map((b) => b.dataset.ans).join('+'));
+            at += step.sec * 1000;
+          });
+          if (lit.join() !== steps.map((x) => String(x.value)).join()) errors.push(`Töne: geleuchtet ${lit} statt ${steps.map((x) => x.value)}`);
+          if (queue[steps.length].ms !== at || total !== at) errors.push(`Töne: Ende bei ${queue[steps.length].ms}/${total} ms statt ${at}`);
+          queue[steps.length].fn();
+          if ($$('.answer-grid .answer.is-playing').length || ear.resolving) errors.push('Töne: Leuchten nach dem Ende nicht aus');
+        } finally { window.setTimeout = realSetTimeout; queue.length = 0; }
+      } finally {
+        selfTesting = savedSelf; onEarResult = savedResult; Object.assign(ear.stats.noteInKey, stats0); clearEarTimers();
+      }
+      // Zahlen und Moll: Leitton ♯7, acht Knöpfe.
+      sing.solfa = 'numbers';
+      let mt = null;
+      for (let i = 0; i < 200 && !(mt && mt.kmode === 'minor'); i++) mt = makeEarTask('noteInKey', 6, rnd);
+      ear.levels.noteInKey = 6; ear.task = mt; ear.revealed = false; ear.playing = null;
+      renderEar();
+      if (btns().map((b) => b.textContent).join() !== '1,2,3,4,5,6,7,♯7' || btns()[7].getAttribute('aria-label') !== 'Stufe ♯7' || !/^Moll \(la = 1\)/.test($('.ear-sub').textContent)) errors.push(`Töne Moll/Zahlen: ${btns().map((b) => b.textContent)} / ${$('.ear-sub').textContent}`);
+      sing.solfa = 'syllables';
+      renderEar();
+      if (btns().map((b) => b.textContent).join() !== 'la,ti,do,re,mi,fa,so,si' || !/^Moll \(la\)/.test($('.ear-sub').textContent)) errors.push(`Töne Moll/Silben: ${btns().map((b) => b.textContent)}`);
+      // Rückmeldungen laut Anweisung (D-Dur, mi).
+      const dTask = { kind: 'noteInKey', kmode: 'major', key: 2, semis: 4, resolution: noteInKeyResolution('major', 4, 66) };
+      if (inKeyMessage(dTask, true) !== 'Richtig: mi – die 3. Stufe in D-Dur.' || inKeyMessage(dTask, false) !== 'Das war mi (3. Stufe) – hör, wie es nach do läuft.') errors.push(`Töne: Rückmeldung „${inKeyMessage(dTask, true)}“ / „${inKeyMessage(dTask, false)}“`);
+      // Stufen, Einstellungsblatt.
+      if (earLevelInfo('noteInKey')[0] !== NOTE_IN_KEY_LEVELS) errors.push('earLevelInfo: Töne in der Tonart');
+      applyEarLevelFor('noteInKey', 4);
+      if (ear.levels.noteInKey !== 4 || ear.task !== null) errors.push('applyEarLevelFor: Töne in der Tonart');
+      { const kind = sheetKind; sheetKind = 'ear'; renderSettings();
+        const labels = $$('.sheet-body .sub-label').map((x) => x.textContent);
+        for (const l of ['Beschriftung', 'Tonart', 'Kadenz', 'Ablauf']) if (!labels.includes(l)) errors.push(`Einstellungen Töne: „${l}“ fehlt`);
+        if (!$('.sheet-body [data-set="inKeyResolve"]') || !$('.sheet-body [data-set="autoNext"]')) errors.push('Einstellungen Töne: Auflösung/automatisch weiter fehlen');
+        setInKeyOption('solfa', 'numbers'); setInKeyOption('hold', 'true'); setInKeyOption('cadence', 'newKey');
+        if (sing.solfa !== 'numbers' || ear.settings.inKeyHold !== true || ear.settings.inKeyCadence !== 'newKey') errors.push('Einstellungen Töne: Chips schreiben nicht');
+        setInKeyOption('solfa', 'x'); setInKeyOption('cadence', 'x');
+        if (sing.solfa !== 'numbers' || ear.settings.inKeyCadence !== 'newKey') errors.push('Einstellungen Töne: Unsinn übernommen');
+        ear.mode = 'quality'; renderSettings();
+        if ($('.sheet-body [data-inkey]') || $('.sheet-body [data-set="inKeyResolve"]')) errors.push('Einstellungen Töne: auch in anderen Modi sichtbar');
+        sheetKind = kind; }
+    } finally {
+      ear.inKey = saved.ik; ear.part = saved.part; ear.settings.inKeyHold = saved.hold; ear.settings.inKeyCadence = saved.cad;
+      ear.mode = saved.mode; ear.task = saved.task; ear.revealed = saved.revealed; ear.levels.noteInKey = saved.level; sing.solfa = saved.solfa;
+      state.tab = saved.tab; ear.playing = saved.playing;
       renderEar();
     }
     return errors;
