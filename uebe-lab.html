@@ -7,7 +7,7 @@
 <title>Ausbildung</title>
 <!--
   AUSBILDUNG (Datei: uebe-lab.html, früher „Spielplatz“) — Übe-Seite mit
-  Rhythmus-Training (nachklatschen, mitklatschen, vom Blatt), Gehörbildung
+  Rhythmus-Training (nachklatschen, vom Blatt), Gehörbildung
   (Intervalle und Akkordfolgen) und Stimm-Tuner mit Tonhöhenerkennung übers
   Mikrofon. Das Einsingen ist ein eigenes Tool (einsingen.html), ebenso das
   Metronom (metronom.html). In die App eingebettet: Einstellungen → Tools →
@@ -92,7 +92,7 @@
   .seg .chip:disabled { opacity: .45; cursor: default; }
   .bar-strip { display: flex; gap: 4px; margin-top: 14px; }
   .bar-pill { flex: 1 1 0; min-width: 0; text-align: center; font-size: .6rem; font-weight: 800; padding: 5px 0; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; overflow: hidden; }
-  .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); }
+  .bar-pill[data-kind="you"] { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); }
   .bar-pill[data-kind="rest"] { border-style: dashed; }
   .bar-pill.is-now { background: var(--accent); border-color: var(--accent); color: #fff; }
   .bar-pill[data-kind="rest"].is-now, .bar-pill[data-kind="count"].is-now { background: var(--text); border-color: var(--text); }
@@ -182,7 +182,7 @@
   .tap-pad { width: 100%; height: 112px; margin-top: 10px; border-radius: 22px; border: 2px dashed var(--line); background: var(--surface); font-weight: 800; font-size: .95rem; color: var(--muted); touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-content: center; gap: 10px; }
   .tap-pad[data-phase="listen"], .tap-pad[data-phase="read"], .tap-pad[data-phase="rest"], .tap-pad[data-phase="count"] { border-style: solid; }
   .tap-pad[data-phase="rest"] { color: var(--text); }
-  .tap-pad[data-phase="you"], .tap-pad[data-phase="along"] { border-style: solid; border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+  .tap-pad[data-phase="you"] { border-style: solid; border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), .1); }
   .tap-pad[data-phase="done"] { border-style: solid; border-color: var(--good); color: var(--good); }
   .tap-pad.is-tapped { animation: tap .16s ease-out; }
   @keyframes tap { from { transform: scale(.97); background: rgba(var(--accent-rgb), .3); } to { transform: none; } }
@@ -364,7 +364,7 @@
     <section class="panel" data-rhythm-panel>
       <div data-levels="rhythm"></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
-      <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Erst liest du die neuen Noten, nur der Klick läuft („Lesen“). Danach klatscht das Vorbild den Rhythmus, und du klatschst gleichzeitig mit („Mit“).<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div class="bar-strip" aria-hidden="true"></div>
@@ -1166,7 +1166,7 @@
 
   // Stufen-Vorschläge je Bereich (Paket 6, aus dem Fortschritt der App).
   const levelHints = {};
-  const MODES = [['echo', 'Nachklatschen'], ['along', 'Mitklatschen'], ['read', 'Vom Blatt'], ['duo', 'Zweistimmig']];
+  const MODES = [['echo', 'Nachklatschen'], ['read', 'Vom Blatt'], ['duo', 'Zweistimmig']];
   const BAR_CHOICES = [[1, '1'], [2, '2'], [4, '4']];
   const SYLLABLE_CHOICES = [['off', 'aus'], ['ta', 'ta ti-ti'], ['count', '1 + 2 +']];
   const INPUT_CHOICES = [['tap', 'Tippen'], ['mic', 'Mikrofon']];
@@ -1229,12 +1229,7 @@
 
   function roundSeq(mode, last) {
     const rests = (n) => Array(n).fill('rest');
-    // Mitklatschen: erst die neuen Noten lesen (nur Klick), dann gleichzeitig
-    // mit dem Vorbild klatschen — sonst schalten die Noten genau in dem
-    // Moment um, in dem man schon mitklatschen soll.
-    const seq = mode === 'along'
-      ? ['read', 'along', ...rests(state.gapAfter)]
-      : [mode === 'read' ? 'read' : 'listen', ...rests(state.gapBefore), 'you', ...rests(state.gapAfter)];
+    const seq = [mode === 'read' ? 'read' : 'listen', ...rests(state.gapBefore), 'you', ...rests(state.gapAfter)];
     // In der letzten Runde braucht es keine Leertakte mehr hinterher.
     if (last) while (seq[seq.length - 1] === 'rest') seq.pop();
     return seq;
@@ -1290,7 +1285,7 @@
       showNotes: state.mode !== 'echo' || state.showNotes,
       youStart: null, result: null,
     };
-    round.youPos = round.seq.indexOf(round.mode === 'along' ? 'along' : 'you');
+    round.youPos = round.seq.indexOf('you');
     round.barSec = pattern.total * round.tickSec;
     round.tol = tolerance(round);
     game.rounds.push(round);
@@ -1352,7 +1347,7 @@
     const item = cand && tick >= cand.start && tick < cand.start + cand.len ? cand : null;
     if (item && tick === item.start) {
       run.bars.push({ time, dur: item.len * run.tickSec, kind: item.kind, round: item.round, pos: item.pos, start: item.start, tickSec: run.tickSec });
-      if (item.kind === 'you' || item.kind === 'along') item.round.youStart = time;
+      if (item.kind === 'you') item.round.youStart = time;
     }
     if (mod(tick, m.beat) === 0 && (state.click || item?.kind === 'count')) engine.click(time, beatLevel(m, mod(tick, m.ticks)), run.bus);
     if (!item) return;
@@ -1365,7 +1360,7 @@
       }
       return;
     }
-    if ((item.kind === 'listen' || item.kind === 'along') && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus);
+    if (item.kind === 'listen' && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus);
   }
 
   function scheduleAhead() {
@@ -1619,7 +1614,7 @@
 
   const PAD_LABELS = {
     idle: 'Starte mit Play', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
-    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft! Nochmal mit Play',
+    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', done: 'Geschafft! Nochmal mit Play',
   };
 
   function renderPad(phase, beat = -1, round = null) {
@@ -1632,7 +1627,6 @@
     pad.dataset.phase = phase;
     let label = PAD_LABELS[phase];
     if (phase === 'idle' && state.input === 'mic') label = 'Starte mit Play — Eingabe übers Mikrofon';
-    if (phase === 'read' && round?.mode === 'along') label = 'Lies vor — gleich klatschst du mit';
     if (phase === 'you' && round?.duo) label = `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
     $('.pad-label').textContent = label;
     $('.pad-beats').replaceChildren(...Array.from({ length: beats }, (_, i) => {
@@ -1643,7 +1637,7 @@
     }));
   }
 
-  const STRIP_LABELS = { count: 'Einz.', listen: 'Hören', read: 'Lesen', rest: 'Pause', you: 'Du', along: 'Mit' };
+  const STRIP_LABELS = { count: 'Einz.', listen: 'Hören', read: 'Lesen', rest: 'Pause', you: 'Du' };
 
   /** Ablauf einer Runde als Leiste — zeigt vor dem Start, was die Leertakte
    *  bewirken, und beim Üben, wo man gerade ist. */
@@ -1687,7 +1681,7 @@
     const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}`;
     if (key !== run.viewKey) { run.viewKey = key; run.shown = disp; renderStage(disp.round, disp.reveal); }
     // Wiedergabe-Marke: nur in der Phrase der gezeigten Runde, in der etwas passiert.
-    const active = bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
+    const active = bar.round === disp.round && ['listen', 'read', 'you'].includes(bar.kind);
     const t = (now - bar.time) / r.tickSec;
     $$('.stage .ph').forEach((ph) => {
       const line = stageLines[Number(ph.dataset.line)];
@@ -1940,7 +1934,7 @@
   function renderGapChips() {
     if (!$('[data-chips="gapBefore"]')) return;
     const gaps = [[0, '0'], [1, '1'], [2, '2']];
-    chips('gapBefore', gaps, state.gapBefore, state.mode === 'along');
+    chips('gapBefore', gaps, state.gapBefore);
     chips('gapAfter', gaps, state.gapAfter);
   }
 
@@ -2019,7 +2013,6 @@
   const AREA_NAMES = { rhythm: 'Rhythmus', ear: 'Hören', voice: 'Singen' };
   const MODE_ICONS = {
     echo: '<path d="M4 9a5 5 0 0 1 10 0c0 3-3 3.5-3 6.5a2.8 2.8 0 0 1-5 1.7"/><path d="M7 9a2 2 0 0 1 4 0"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
-    along: '<circle cx="7" cy="17" r="2.6"/><path d="M9.6 17V4.5l4.4 2"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
     read: '<rect x="3.5" y="3" width="12" height="18" rx="2"/><path d="M6.5 8h6M6.5 12h6M6.5 16h3.5"/><path d="M20 7v10"/>',
     duo: '<path d="M3 5h18M3 9h18"/><path d="M3 15h18M3 19h18"/><circle cx="8" cy="7" r="1.6" fill="currentColor"/><circle cx="16" cy="17" r="1.6" fill="currentColor"/>',
     interval: '<circle cx="6.5" cy="5.5" r="2" fill="currentColor"/><circle cx="6.5" cy="18.5" r="2" fill="currentColor"/><path d="M15 4v16"/><path d="m12 7 3-3 3 3M12 17l3 3 3-3"/>',
@@ -2042,7 +2035,7 @@
   // [Modus-ID, Name, Satz] je Bereich — Reihenfolge der Liste. Singen: der
   // Tuner (Tuner, Zielton, Tonumfang) als letzte Zeile.
   const MODE_TEXT = {
-    echo: 'Hören, dann nachklatschen – ohne Noten', along: 'Erst Noten lesen, dann mit dem Vorbild klatschen',
+    echo: 'Hören, dann nachklatschen – ohne Noten',
     read: 'Nur Klick hören, Rhythmus selbst klatschen', duo: 'Die App klatscht eine Stimme, du die andere',
     interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
