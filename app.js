@@ -18699,7 +18699,13 @@ function runSelfTests() {
     applyProgressEntries(sample, [{ area: 'parts', level: 5, right: true }, { area: 'progression', level: 0, right: true }], '2026-10-12');
     if (practiceTileState(sample, 'ear').level !== 4) failed.push(`Üben-Kachel Hören: Durchschnitt ${practiceTileState(sample, 'ear').level} statt 4 (gerundet, ohne Stufe 0)`);
     const half = applyProgressEntries(emptyProgress(), [{ area: 'hold', level: 2, right: true }, { area: 'sight', level: 3, right: true }], '2026-10-12');
+    half.memory.sightShown = true;
     if (practiceTileState(half, 'sing').level !== 3) failed.push(`Üben-Kachel: 2,5 gerundet zu ${practiceTileState(half, 'sing').level} statt 3`);
+    // Blattsingen ausgeblendet (Standard): zählt nicht im Mittel.
+    delete half.memory.sightShown;
+    if (practiceTileState(half, 'sing').level !== 2) failed.push(`Üben-Kachel: ausgeblendetes Blattsingen zählt mit (${practiceTileState(half, 'sing').level})`);
+    half.memory.sightShown = false;
+    if (practiceTileState(half, 'sing').level !== 2) failed.push('Üben-Kachel: sightShown false zählt Blattsingen');
     // Nachsingen ('echo') und Im Takt ('inTime') zählen unter „Singen“, nicht unter Rhythmus.
     const echoIn = applyProgressEntries(emptyProgress(), [{ area: 'echo', level: 4, right: true, seconds: 60 }, { area: 'inTime', level: 2, right: false, help: true, seconds: 60 }], '2026-10-12');
     const echoSum = summarizeProgress(echoIn, 7, '2026-10-12');
@@ -22518,7 +22524,9 @@ const PROGRESS_GROUPS = {
   rhythm: ['rhythm'],
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
-const PROGRESS_MEMORY_KEYS = ['intervalLog', 'singLog', 'micDenied'];
+// sightShown: Blattsingen ist in der Ausbildung eingeblendet (Pop-Didaktik:
+// standardmäßig aus) — nur dann zählt es im Mittel der Kachel „Singen“.
+const PROGRESS_MEMORY_KEYS = ['intervalLog', 'singLog', 'micDenied', 'sightShown'];
 
 /** Datum als JJJJ-MM-TT (lokale Zeit). */
 function progressDate(d = new Date()) {
@@ -22773,9 +22781,11 @@ function warmupMinutes(stored) {
  *  Stufen aller geübten Übungsarten des Bereichs, kaufmännisch gerundet
  *  (ab ,5 auf). Übungsarten
  *  mit eigener Auswahl (Stufe 0) zählen nicht mit; haben alle Stufe 0 →
- *  level 0 (eigene Auswahl). Nie geübt → { isNew }. */
+ *  level 0 (eigene Auswahl). Nie geübt → { isNew }. Blattsingen zählt nur,
+ *  wenn es in der Ausbildung eingeblendet ist (memory.sightShown). */
 function practiceTileState(data, group) {
-  const areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area]));
+  const areas = (PROGRESS_GROUPS[group] || []).filter((area) => Number.isInteger(data?.levels?.[area])
+    && (area !== 'sight' || data?.memory?.sightShown === true));
   if (!areas.length) return { isNew: true, level: 0 };
   const levels = areas.map((area) => data.levels[area]).filter((l) => l > 0);
   const level = levels.length ? Math.round(levels.reduce((sum, l) => sum + l, 0) / levels.length) : 0;
