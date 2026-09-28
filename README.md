@@ -74,14 +74,28 @@ ein Dialog mit echter Wahl).
   – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
-  Hören: Intervalle, Klänge, Schlüsse, Akkordfolgen, Stimmen heraushören,
-  Intonation; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
+  Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
+  Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
   Nachsingen, Im Takt, Blattsingen, Diktat). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
   durch Singen kalibrierten Latenz. Das Vorspiel ist wahlweise Klavier oder eine
   künstliche Singstimme (Formant-Synthese, `singVoice`). Das Mikrofon wird nur live ausgewertet, nichts wird
   aufgenommen oder gesendet, und es läuft nie im Hintergrund.
+  „Töne in der Tonart“ und „Akkorde in der Tonart“ üben das Erkennen
+  einzelner Töne (do re mi … bzw. 1–7, in Moll la-basiert) und Akkorde
+  (I IV V vi …) innerhalb einer Tonart. Ablauf einer Aufgabe: eine Kadenz
+  (I–IV–V–I bzw. i–iv–V–i) legt die Tonart fest, dann erklingt ein einzelner
+  Ton bzw. Akkord, man tippt die Antwort (gewertet wird nur der erste Tipp;
+  ein falscher Knopf wird rot, nach dem zweiten Fehlversuch zeigt die App die
+  Lösung). Danach folgt die **Auflösung**: der Ton bzw. Akkord läuft hörbar zur
+  Tonika (Töne stufenweise, Akkorde über die Dominante), und bei jedem
+  erklingenden Ton leuchtet der passende Antwortknopf auf — so hört man, dass
+  „re“ nach „do“ will. Im Zahnrad lassen sich Silben/Zahlen (gemeinsam mit
+  „Singen“), die Tonart für 5 Aufgaben halten, die Kadenz nur bei neuer Tonart
+  und die Auflösung ein- oder ausschalten. Logik und Auflösungstabellen:
+  `ARBEITSANWEISUNG-HOEREN-IN-DER-TONART.md`, Bericht:
+  `BERICHT-HOEREN-IN-DER-TONART.md`.
 - `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
   Körperübungen, geführte und eigene Einsing-Programme).
 - Stimmprofil, Fortschritt und Schnellstart liegen in `app.js`

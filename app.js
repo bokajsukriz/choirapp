@@ -18891,6 +18891,18 @@ async function runProgressSelfTests() {
   if (!same(sanitizeProgress('kaputt'), emptyProgress()) || !same(sanitizeProgress({ days: { [today]: { interval: { 1: { n: 1, right: 1 } } } } }), emptyProgress())) failed.push('Fortschritt: kaputter Stand bzw. ohne v nicht leer');
   const odd = sanitizeProgress({ v: 1, days: { 'gestern': {}, [today]: { interval: { 7: { n: 1 }, 2: { n: 3, right: 9 } } } }, recent: { interval: [{ d: today, l: 2, r: 5 }] } });
   if (odd.days.gestern || odd.days[today].interval[7] || odd.days[today].interval[2].right !== 3 || odd.recent.interval) failed.push('Fortschritt: ungültige Werte nicht bereinigt');
+  // Hören in der Tonart: die neuen Bereiche bleiben erhalten, stehen in der Gruppe „Hören“ vor den Akkordfolgen.
+  {
+    const inKey = applyProgressEntries(emptyProgress(), [
+      { area: 'noteInKey', level: 3, right: true, seconds: 20 }, { area: 'noteInKey', level: 3, right: false }, { area: 'chordInKey', level: 2, right: true },
+    ], today);
+    const kept = sanitizeProgress(JSON.parse(JSON.stringify(inKey)));
+    const d = kept.days[today];
+    if (!same(kept, inKey) || d?.noteInKey?.[3]?.n !== 2 || d.noteInKey[3].right !== 1 || d.noteInKey.sec !== 20 || d.chordInKey?.[2]?.n !== 1) failed.push(`Fortschritt: Bereiche der Tonart-Modi gehen verloren ${JSON.stringify(d)}`);
+    if (!sanitizeProgress({ v: 1, recent: { noteInKey: [{ d: today, l: 2, r: 1 }] }, levels: { chordInKey: 4 } }).recent.noteInKey || sanitizeProgress({ v: 1, levels: { chordInKey: 4 } }).levels.chordInKey !== 4) failed.push('Fortschritt: letzte Aufgaben/Stufe der Tonart-Modi gehen verloren');
+    const ear = PROGRESS_GROUPS.ear;
+    if (!ear.includes('noteInKey') || !ear.includes('chordInKey') || ear.indexOf('noteInKey') > ear.indexOf('chordInKey') || ear.indexOf('chordInKey') > ear.indexOf('progression')) failed.push(`Fortschritt: Gruppe „Hören“ ${ear}`);
+  }
   // 200 Tage → nur 180 bleiben.
   const long = emptyProgress();
   for (let i = 199; i >= 0; i--) {
@@ -22520,11 +22532,11 @@ window.chorVoiceProfile = {
    ========================================================================== */
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
-const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'progression', 'parts', 'tuning',
+const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning',
   'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'];
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
-  ear: ['interval', 'quality', 'cadence', 'progression', 'parts', 'tuning'],
+  ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
   rhythm: ['rhythm'],
 };
