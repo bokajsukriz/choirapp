@@ -19978,6 +19978,151 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (broken.view !== null || broken.melodyAltBars !== false || broken.choirTask !== null) failed.push('Groove Lab: kaputte view/choirTask übernommen');
   }
 
+  // Workshop (ARBEITSANWEISUNG-WORKSHOP.md, Abschnitt 3): allgemeine
+  // Prüfungen je Einheit, Roundtrip view/lessonId/Fortschritt.
+  {
+    const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+    const same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+    const clone = (v) => JSON.parse(JSON.stringify(v));
+    const langs = ['de', 'en', 'pl'];
+    const ids = new Set();
+    for (const lesson of T.WORKSHOP_LESSONS) {
+      const tag = `Workshop ${lesson.id}`;
+      if (ids.has(lesson.id)) failed.push(`${tag}: ID doppelt`);
+      ids.add(lesson.id);
+      if (!T.LESSON_TIERS.includes(lesson.tier) || !T.LESSON_AREAS.includes(lesson.area)) failed.push(`${tag}: tier/area unbekannt`);
+      if (!['beat', 'harmony', 'melody', 'sound', 'mixer', 'keys'].includes(lesson.tab)) failed.push(`${tag}: tab ${lesson.tab}`);
+      // 2. Namen und Fokus-Schlüssel
+      if (lesson.groove && T.patternIndexByName(lesson.groove) < 0) failed.push(`${tag}: Groove ${lesson.groove} fehlt`);
+      if (lesson.melody && T.melodyIndexByName(lesson.melody) < 0) failed.push(`${tag}: Melodie ${lesson.melody} fehlt`);
+      if (lesson.preset && !T.SYNTH_PRESETS.some((p) => p.name === lesson.preset)) failed.push(`${tag}: Preset ${lesson.preset} fehlt`);
+      for (const key of lesson.focus) if (!T.focusKeyKnown(key)) failed.push(`${tag}: Fokus ${key} unbekannt`);
+      const base = T.defaultState();
+      for (const key of Object.keys(lesson.set || {})) if (!(key in base)) failed.push(`${tag}: Feld ${key} gibt es nicht`);
+      // 1. sanitizeState ändert den Ausgangszustand nicht (außer droneOn)
+      const start = T.lessonState(T.defaultState(), lesson);
+      const startSan = T.sanitizeState(clone(start));
+      if (!same({ ...start, droneOn: false }, startSan)) failed.push(`${tag}: sanitizeState ändert den Ausgangszustand`);
+      // 3. Ausgangszustand erfüllt checks[0] noch nicht
+      const ctx = { played: [], start: clone(startSan) };
+      let first = false;
+      try { first = !!lesson.checks[0](clone(startSan), ctx); } catch (e) { failed.push(`${tag}: checks[0] wirft ${e.message}`); }
+      if (first) failed.push(`${tag}: Teilziel 1 ist schon im Ausgangszustand erfüllt`);
+      // 4. solution der Reihe nach → checks[i]; Ergebnis besteht sanitizeState
+      if (lesson.solution.length !== lesson.checks.length) failed.push(`${tag}: solution ≠ checks`);
+      const s = clone(startSan);
+      lesson.solution.forEach((solve, i) => {
+        try {
+          solve(s, ctx);
+          if (!lesson.checks[i](s, ctx)) failed.push(`${tag}: Teilziel ${i + 1} nach Lösung nicht erfüllt`);
+        } catch (e) { failed.push(`${tag}: Lösung ${i + 1} wirft ${e.message}`); }
+      });
+      if (!same({ ...s, droneOn: false }, T.sanitizeState(clone(s)))) failed.push(`${tag}: Lösung besteht sanitizeState nicht`);
+      // 5. Texte in DE, EN, PL
+      const keys = ['title', 'do', 'aha', 'why', ...lesson.checks.map((_, i) => `check${i + 1}`)].map((k) => `lab.lesson.${lesson.id}.${k}`);
+      for (const lang of langs) for (const key of keys) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`${tag}: Text ${key} fehlt (${lang})`);
+    }
+    for (const lang of langs) {
+      for (const key of ['lab.viewWorkshop', 'lab.ws.tierTour', 'lab.ws.tierDeep', 'lab.ws.tierChallenge', 'lab.ws.progress', 'lab.ws.why',
+        'lab.ws.restart', 'lab.ws.before', 'lab.ws.after', 'lab.ws.abHint', 'lab.ws.next', 'lab.ws.done', 'lab.ws.doneAria',
+        'lab.ws.reached', 'lab.ws.tourDone', 'lab.ws.toStudio', ...['Rhythm', 'Harmony', 'Melody', 'Sound', 'Mix'].map((a) => `lab.ws.area${a}`)]) {
+        if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`Workshop: Text ${key} fehlt (${lang})`);
+      }
+    }
+    // Einzelprüfungen, damit die Texte nicht lügen.
+    const lessonById = (id) => T.WORKSHOP_LESSONS.find((l) => l.id === id);
+    const solved = (id) => {
+      const lesson = lessonById(id);
+      const s = T.sanitizeState(clone(T.lessonState(T.defaultState(), lesson)));
+      const ctx = { played: [], start: clone(s) };
+      lesson.solution.forEach((f) => f(s, ctx));
+      return s;
+    };
+    if (lessonById('tresillo')) {
+      const latin = T.DRUM_PATTERNS[T.patternIndexByName('Latin Skip')].kick;
+      if (T.stepsOn(solved('tresillo'), 'kick').join() !== [...latin].sort((a, b) => a - b).join()) failed.push('Workshop tresillo: Ziel ≠ Kick von Latin Skip');
+    }
+    // durMoll/dreiklang: der Akkord ist wirklich Grundton, Terz, Quinte —
+    // vorher Dur {0, 4, 7}, in durMoll danach Moll {0, 3, 7} (Tonart C).
+    const tonic = (s) => {
+      const mode = T.MODES.find((m) => m.id === s.modeId);
+      const prog = T.PROGRESSIONS.find((p) => p.id === s.progId);
+      return T.chordPitchClasses(s.keyRoot, T.chordSteps(mode.steps, s.modeId, prog, 0), 0, false).join();
+    };
+    const startOf = (id) => T.sanitizeState(clone(T.lessonState(T.defaultState(), lessonById(id))));
+    for (const [id, when, want] of [['durMoll', startOf, '0,4,7'], ['durMoll', solved, '0,3,7'], ['dreiklang', startOf, '0,4,7']]) {
+      if (lessonById(id) && tonic(when(id)) !== want) failed.push(`Workshop ${id}: Akkord ${tonic(when(id))} statt ${want}`);
+    }
+    if (lessonById('modi')) {
+      const prog = T.PROGRESSIONS.find((p) => p.id === lessonById('modi').set.progId);
+      for (const m of ['dorian', 'mixolydian']) if (!T.progFitsMode(prog, m)) failed.push(`Workshop modi: Folge passt nicht zu ${m}`);
+    }
+    // reibung/antizipation beschreiben Takt 1 von „Long Tones“: so auf 1, mi auf 3.
+    if (lessonById('reibung')) {
+      const bar = T.MELODIES[T.melodyIndexByName('Long Tones')].bars[0];
+      if (JSON.stringify(bar) !== '[[0,4,8],[8,2,8]]') failed.push(`Workshop reibung/antizipation: Long Tones Takt 1 ist ${JSON.stringify(bar)}`);
+    }
+    // Kick-Klang (Paket 6): Roundtrip neu, fehlend (alter Stand), Müll.
+    {
+      const kit = { kickStart: 200, kickEnd: 60, kickDecay: .5 };
+      if (!same(T.sanitizeState(clone({ ...T.defaultState(), kit })).kit, kit)) failed.push('Workshop: kit-Roundtrip');
+      if (!same(T.sanitizeState({ patternIndex: 0 }).kit, T.KIT_DEFAULTS)) failed.push('Workshop: alter Stand ohne kit nicht auf Standard');
+      const junk = T.sanitizeState({ kit: { kickStart: 'laut', kickEnd: 9999, kickDecay: -1 } }).kit;
+      if (!same(junk, { kickStart: 150, kickEnd: 200, kickDecay: .08 })) failed.push(`Workshop: kaputtes kit → ${JSON.stringify(junk)}`);
+      if (!same(T.sanitizeState({ kit: 'x' }).kit, T.KIT_DEFAULTS)) failed.push('Workshop: kit „x“ nicht auf Standard');
+    }
+    // Challenges (Paket 8) mit fester Zufallsfunktion.
+    if (T.detectiveVariant) {
+      let seed = 12345;
+      const rng = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+      const cells = (b) => new Set(['kick', 'snare', 'clap', 'hat', 'open', 'bass'].flatMap((tr) => Object.keys(b[tr] || {}).map((st) => `${tr}:${st}`)));
+      for (let i = 0; i < 200; i++) {
+        const pattern = T.DRUM_PATTERNS[T.pickChallengePattern(rng)];
+        if (pattern.meter !== '4/4' || pattern.vocal) { failed.push(`Detektiv: Loop ${pattern.name} ungeeignet`); break; }
+        const beat = T.beatFromPattern(pattern);
+        const v = T.detectiveVariant(beat, rng);
+        const a = cells(beat), b = cells(v.beat);
+        const diff = [...a].filter((k) => !b.has(k)).concat([...b].filter((k) => !a.has(k)));
+        if (diff.length !== 1 || diff[0] !== `${v.track}:${v.step}`) { failed.push(`Detektiv: Variante weicht in ${diff.length} Zellen ab`); break; }
+        if (v.track === 'kick' && v.step === 0) { failed.push('Detektiv: Kick Feld 1 verändert'); break; }
+      }
+      const model = { kick: { 0: 1, 8: 1 }, snare: { 4: 1, 12: .45 }, hat: {} };
+      for (const [mine, want] of [
+        [{ kick: {}, snare: {}, hat: {} }, '0/0/4/0/false'],
+        [{ kick: { 0: 1 }, snare: { 12: 1 }, hat: {} }, '2/0/4/2/false'],
+        [{ kick: { 0: 1, 3: 1, 5: 1, 7: 1 }, snare: {}, hat: {} }, '1/3/4/0/false'],
+        [{ kick: { 0: 1, 8: 1 }, snare: { 4: 1, 12: 1 }, hat: {} }, '4/0/4/4/true'],
+      ]) {
+        const r = T.rebuildScore(model, mine);
+        if ([r.hits, r.extras, r.total, r.shown, r.done].join('/') !== want) failed.push(`Nachbauen: ${JSON.stringify(mine)} → ${JSON.stringify(r)}`);
+      }
+      const target = { wave: 'sawtooth', cutoff: 1000, attack: .2, release: .01 };
+      const fit = (mine) => T.soundMatch(target, { ...target, ...mine });
+      const checks = [
+        [{ cutoff: 1350 }, 'cutoff', true], [{ cutoff: 1000 / 1.35 }, 'cutoff', true], [{ cutoff: 1360 }, 'cutoff', false],
+        [{ attack: .28 }, 'attack', true], [{ attack: .12 }, 'attack', true], [{ attack: .281 }, 'attack', false],
+        [{ release: .06 }, 'release', true], [{ release: .061 }, 'release', false], [{ wave: 'square' }, 'wave', false],
+      ];
+      for (const [mine, key, want] of checks) if (fit(mine)[key] !== want) failed.push(`Klang-Rätsel: ${JSON.stringify(mine)} ${key} ≠ ${want}`);
+      for (let i = 0; i < 30; i++) {
+        const tgt = T.soundMatchTarget(rng);
+        if (Object.values(T.soundMatch(tgt.sound, T.SOUND_MATCH_START)).every(Boolean)) failed.push(`Klang-Rätsel: Ziel ${tgt.name} ist schon getroffen`);
+      }
+    }
+    // Roundtrip view/lessonId
+    const lessonId = T.WORKSHOP_LESSONS[0]?.id;
+    const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
+    if (saved.view !== 'workshop' || saved.lessonId !== lessonId) failed.push('Workshop: view/lessonId gehen verloren');
+    if (T.sanitizeState({ patternIndex: 0 }).lessonId !== null) failed.push('Workshop: alter Stand ohne lessonId nicht auf Standard');
+    if (T.sanitizeState({ view: 'kino', lessonId: 'gibtsNicht' }).lessonId !== null) failed.push('Workshop: kaputte lessonId übernommen');
+    // Fortschritt: neu → gleich; alt/fehlend → Standard; Müll → Standard
+    const progress = { done: { [lessonId]: '2026-09-28' }, last: lessonId };
+    if (!same(T.sanitizeWorkshopProgress(clone(progress)), progress)) failed.push('Workshop: Fortschritt-Roundtrip');
+    for (const junk of [undefined, null, 'x', [], { done: [1], last: 7 }, { done: { gibtsNicht: '2026-01-01', [lessonId]: '28.9.2026' }, last: 'gibtsNicht' }]) {
+      if (!same(T.sanitizeWorkshopProgress(junk), { done: {}, last: null })) failed.push(`Workshop: Fortschritt aus ${JSON.stringify(junk)} nicht Standard`);
+    }
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);

@@ -200,9 +200,11 @@
   body.is-player .stage-top, body.is-player .stage-meta, body.is-player .stage-program { display: none !important; }
   body.is-player main { display: flex; flex-direction: column; padding: max(12px, env(safe-area-inset-top)) 12px 10px; }
   body.is-player .stage { flex: 1 1 auto; min-height: 0; height: 100%; display: flex; flex-direction: column; margin: 0; padding: 12px 16px 14px; position: relative; overflow-y: auto; }
-  body.is-player .player-top { display: flex; align-items: center; gap: 10px; }
-  html.is-embedded body.is-player .player-top { padding-right: 38px; } /* Platz für den Schließen-Knopf der App */
-  .player-top .icon-btn { width: 44px; height: 44px; flex: none; }
+  body.is-player .player-top { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0 0 10px; }
+  html.is-embedded body.is-player .player-top { padding-right: 52px; } /* Platz für den Schließen-Knopf der App */
+  .player-top .icon-btn { width: 40px; height: 40px; flex: none; }
+  .player-back { display: inline-flex; align-items: center; gap: 2px; height: 40px; flex: none; padding: 0 12px 0 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); font-size: .8rem; font-weight: 800; }
+  .player-back svg { width: 20px; height: 20px; }
   .segbar { flex: 1 1 auto; display: flex; gap: 3px; height: 8px; }
   .segbar i { flex: 1 1 0; position: relative; border-radius: 999px; background: var(--line); overflow: hidden; }
   .segbar i::before { content: ""; position: absolute; inset: 0; background: var(--c); opacity: 0; }
@@ -237,7 +239,7 @@
   .done-actions { display: flex; gap: 8px; justify-content: center; }
   .done-actions button { min-height: 44px; padding: 0 20px; border-radius: 999px; font-weight: 800; border: 1px solid var(--line); background: var(--surface-2); }
   .done-actions .is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  body.is-player .tap-start:not([hidden]) { display: grid; place-items: center; position: absolute; inset: 64px 12px 12px; border-radius: 18px; background: rgba(255,255,255,.92); font-size: 1.3rem; font-weight: 800; color: var(--text); z-index: 2; }
+  body.is-player .tap-start:not([hidden]) { display: grid; place-items: center; position: absolute; inset: 12px; border-radius: 18px; background: rgba(255,255,255,.92); font-size: 1.3rem; font-weight: 800; color: var(--text); z-index: 2; }
 
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -251,13 +253,15 @@
 </header>
 
 <main>
+  <!-- Spielmodus (body.is-player): Kopfzeile über der Bühne — „‹ Übersicht“,
+       Segmentbalken, Zahnrad (das bestehende, wird beim Betreten hierher
+       umgehängt). Rechts daneben sitzt eingebettet das ✕ der App; beide
+       Ausgänge sehen so verschieden aus und tun Verschiedenes. -->
+  <div class="player-top">
+    <button class="player-back" type="button" data-action="player-close" aria-label="Übung beenden, zur Übersicht"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg><span>Übersicht</span></button>
+    <div class="segbar" role="img" aria-label="Fortschritt"></div>
+  </div>
   <section class="stage" aria-label="Aktuelle Übung">
-    <!-- Spielmodus (body.is-player): X, Segmentbalken, Zahnrad (das
-         bestehende, wird beim Betreten hierher umgehängt). -->
-    <div class="player-top">
-      <button class="icon-btn player-x" type="button" data-action="player-close" aria-label="Spielmodus schließen, zur Übersicht"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
-      <div class="segbar" role="img" aria-label="Fortschritt"></div>
-    </div>
     <div class="player-hero">
       <span class="hero-icon" aria-hidden="true"></span>
       <div class="hero-group"></div>

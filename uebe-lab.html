@@ -7,7 +7,7 @@
 <title>Ausbildung</title>
 <!--
   AUSBILDUNG (Datei: uebe-lab.html, früher „Spielplatz“) — Übe-Seite mit
-  Rhythmus-Training (nachklatschen, mitklatschen, vom Blatt), Gehörbildung
+  Rhythmus-Training (nachklatschen, vom Blatt), Gehörbildung
   (Intervalle und Akkordfolgen) und Stimm-Tuner mit Tonhöhenerkennung übers
   Mikrofon. Das Einsingen ist ein eigenes Tool (einsingen.html), ebenso das
   Metronom (metronom.html). In die App eingebettet: Einstellungen → Tools →
@@ -184,10 +184,21 @@
   .mode-row.is-last { border-color: rgba(var(--accent-rgb), .55); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .25) inset; }
   .mode-row.is-mixed { background: rgba(var(--accent-rgb), .1); border-color: var(--accent); }
   .mode-row.is-mixed .mode-ico { background: var(--accent); color: #fff; }
-  .ex-head { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0 0 10px; }
-  .back-btn { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 0; font-size: .82rem; font-weight: 800; color: var(--muted); }
+  /* Kopf der Übungsansicht, eine Zeile: Zurück · Bereich/Übung · ? und Zahnrad.
+     Im Nur-ein-Bereich-Aufruf (?tab=…) ersetzt er die Seitenüberschrift. */
+  .ex-head { display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 0 0 12px; }
+  html.is-embedded .ex-head { padding-right: 52px; }
+  .back-btn { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: var(--muted); }
   .back-btn svg { width: 20px; height: 20px; }
-  .mode-title { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+  .ex-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ex-area { font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; line-height: 1.2; }
+  .mode-title { font-size: 1.12rem; font-weight: 800; margin: 0; letter-spacing: -.01em; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.is-area-only[data-view="exercise"] header { display: none; }
+  body.is-area-only[data-view="exercise"] main { padding-top: max(12px, env(safe-area-inset-top)); }
+  /* Läuft ein Programm, steht dessen Leiste ganz oben neben dem Schließen-Knopf. */
+  body.is-area-only[data-view="exercise"] .quick-bar { margin-top: max(12px, env(safe-area-inset-top)); }
+  html.is-embedded body.is-area-only[data-view="exercise"] .quick-bar { margin-right: 68px; }
+  body.is-area-only[data-view="exercise"] .quick-bar:not([hidden]) ~ main { padding-top: 2px; }
   body[data-view="list"] footer { display: none; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .level-hint { margin: 4px 0 0; font-size: .72rem; font-weight: 800; color: var(--accent); }
@@ -369,20 +380,12 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="rhythm"></div>
     <div data-exview="rhythm" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="rhythm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Rhythmus</button><h2 class="mode-title"></h2></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="rhythm" aria-label="Zurück zu Rhythmus" title="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Rhythmus</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="help-btn" type="button" data-help="help-modes" data-modes-help aria-expanded="false" aria-label="Erklärung der Übungsarten">?</button><button class="icon-btn" type="button" data-rhythm="settings" aria-label="Einstellungen: Taktart, Bausteine, Ablauf" title="Einstellungen">  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel" data-rhythm-panel>
-      <div class="panel-head"><span></span>
-        <div class="head-tools">
-          <button class="help-btn" type="button" data-help="help-modes" data-modes-help aria-expanded="false" aria-label="Erklärung der Übungsarten">?</button>
-          <button class="icon-btn" type="button" data-rhythm="settings" aria-label="Einstellungen: Taktart, Bausteine, Ablauf" title="Einstellungen">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
-          </button>
-        </div>
-      </div>
       <div data-levels="rhythm"></div>
       <div class="course-card" data-course-card hidden></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
-      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div class="bar-strip" aria-hidden="true"></div>
@@ -400,13 +403,8 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="ear"></div>
     <div data-exview="ear" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="ear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Hören</button><h2 class="mode-title"></h2></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel">
-      <div class="panel-head"><span></span>
-        <button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
-        </button>
-      </div>
       <div data-levels="ear"></div>
       <div class="ear-stage">
         <p class="ear-prompt"></p>
@@ -428,13 +426,8 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="voice"></div>
     <div data-exview="voice" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Singen</button><h2 class="mode-title"></h2></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="voice" aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-sing-settings data-sing-only="task" aria-label="Einstellungen: meine Stimme" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel" data-sing-only="task" hidden>
-      <div class="panel-head"><span></span>
-        <button class="icon-btn" type="button" data-sing-settings aria-label="Einstellungen: meine Stimme" title="Einstellungen">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
-        </button>
-      </div>
       <div data-levels="sing"></div>
       <div class="sing-opts">
         <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
@@ -1417,7 +1410,7 @@
 
   // Stufen-Vorschläge je Bereich (Paket 6, aus dem Fortschritt der App).
   const levelHints = {};
-  const MODES = [['course', 'Rhythmus-Kurs'], ['echo', 'Nachklatschen'], ['along', 'Mitklatschen'], ['read', 'Vom Blatt'], ['duo', 'Zweistimmig']];
+  const MODES = [['course', 'Rhythmus-Kurs'], ['echo', 'Nachklatschen'], ['read', 'Vom Blatt'], ['duo', 'Zweistimmig']];
   const BAR_CHOICES = [[1, '1'], [2, '2'], [4, '4']];
   const SYLLABLE_CHOICES = [['off', 'aus'], ['ta', 'ta ti-ti'], ['count', '1 + 2 +']];
   const INPUT_CHOICES = [['tap', 'Tippen'], ['mic', 'Mikrofon']];
@@ -1500,9 +1493,7 @@
 
   function roundSeq(mode, last) {
     const rests = (n) => Array(n).fill('rest');
-    const seq = mode === 'along'
-      ? ['along', ...rests(state.gapAfter)]
-      : [mode === 'read' ? 'read' : 'listen', ...rests(state.gapBefore), 'you', ...rests(state.gapAfter)];
+    const seq = [mode === 'read' ? 'read' : 'listen', ...rests(state.gapBefore), 'you', ...rests(state.gapAfter)];
     // In der letzten Runde braucht es keine Leertakte mehr hinterher.
     if (last) while (seq[seq.length - 1] === 'rest') seq.pop();
     return seq;
@@ -1619,6 +1610,7 @@
       showNotes: mode !== 'echo' || (state.showNotes && !courseInfo),
       youStart: null, result: null, course: courseInfo,
     };
+    // Mitklatschen gibt es nur noch als ersten Schritt im Rhythmus-Kurs.
     round.youPos = round.seq.indexOf(round.mode === 'along' ? 'along' : 'you');
     round.barSec = pattern.total * round.tickSec;
     round.tol = tolerance(round);
@@ -2328,7 +2320,7 @@
   function renderGapChips() {
     if (!$('[data-chips="gapBefore"]')) return;
     const gaps = [[0, '0'], [1, '1'], [2, '2']];
-    chips('gapBefore', gaps, state.gapBefore, state.mode === 'along');
+    chips('gapBefore', gaps, state.gapBefore);
     chips('gapAfter', gaps, state.gapAfter);
   }
 
@@ -2539,7 +2531,6 @@
   const MODE_ICONS = {
     course: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5Z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5Z"/><circle cx="7" cy="15" r="1.3" fill="currentColor"/><path d="M8.3 15V8.5"/><circle cx="16" cy="13.5" r="1.3" fill="currentColor"/><path d="M17.3 13.5V7l-2 .8"/>',
     echo: '<path d="M4 9a5 5 0 0 1 10 0c0 3-3 3.5-3 6.5a2.8 2.8 0 0 1-5 1.7"/><path d="M7 9a2 2 0 0 1 4 0"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
-    along: '<circle cx="7" cy="17" r="2.6"/><path d="M9.6 17V4.5l4.4 2"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
     read: '<rect x="3.5" y="3" width="12" height="18" rx="2"/><path d="M6.5 8h6M6.5 12h6M6.5 16h3.5"/><path d="M20 7v10"/>',
     duo: '<path d="M3 5h18M3 9h18"/><path d="M3 15h18M3 19h18"/><circle cx="8" cy="7" r="1.6" fill="currentColor"/><circle cx="16" cy="17" r="1.6" fill="currentColor"/>',
     interval: '<circle cx="6.5" cy="5.5" r="2" fill="currentColor"/><circle cx="6.5" cy="18.5" r="2" fill="currentColor"/><path d="M15 4v16"/><path d="m12 7 3-3 3 3M12 17l3 3 3-3"/>',
@@ -2563,7 +2554,7 @@
   // Tuner (Tuner, Zielton, Tonumfang) als letzte Zeile.
   const MODE_TEXT = {
     course: 'Typische Klatschrhythmen – vom Puls bis zur Clave, Schritt für Schritt',
-    echo: 'Hören, dann nachklatschen – ohne Noten', along: 'Noten lesen und gleichzeitig mitklatschen',
+    echo: 'Hören, dann nachklatschen – ohne Noten',
     read: 'Nur Klick hören, Rhythmus selbst klatschen', duo: 'Gelernte Rhythmen gegen eine zweite Stimme halten',
     interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
@@ -4968,10 +4959,10 @@
   /* ---- Ablauf ---- */
 
   function clearSingTimers() { sing.timers.forEach(clearTimeout); sing.timers = []; }
-  function singBus() {
+  function singBus({ reverb = true } = {}) {
     engine.fadeBus(sing.bus);
     engine.fadeBus(sing.clickBus);
-    sing.bus = engine.newBus();
+    sing.bus = engine.newBus({ reverb });
     sing.clickBus = engine.newBus({ reverb: false });
     return sing.bus;
   }
@@ -5008,7 +4999,9 @@
     if (task.mode === 'singEcho') { playEchoCue(task); return; }
     if (task.mode === 'inTime') { playInTimeRun(task); return; }
     clearSingTimers();
-    const bus = singBus();
+    // Ton halten: Vorgabeton ohne Hall — sein Nachhall läge genau auf dem
+    // Zielton und würde übers Mikrofon als eigener Einsatz erkannt.
+    const bus = singBus({ reverb: task.mode !== 'hold' });
     const t0 = engine.ctx.currentTime + .08;
     const k = (m, t, dur, v = .18) => engine.keys(m, t, dur, { velocity: v, dest: bus });
     let end = t0;
@@ -5041,7 +5034,8 @@
         task.plays++;
       }
     }
-    const wait = Math.max(0, (end - engine.ctx.currentTime) * 1000 + 200);
+    const tail = task.mode === 'hold' ? HOLD_CUE_TAIL_SEC + outputLatencySec() : .2;
+    const wait = Math.max(0, (end - engine.ctx.currentTime + tail) * 1000);
     sing.timers.push(setTimeout(() => {
       if (sing.task !== task) return;
       if (task.mode === 'dictation') { sing.phase = 'answer'; renderSing(); return; }
@@ -5425,6 +5419,45 @@
     renderSing();
   }
 
+  /* ---- Ton halten: der Balken läuft erst, wenn wirklich gesungen wird, und
+     bricht ab, sobald der Ton aufhört. ---- */
+  const HOLD_ONSET_SEC = .25;   // so lange durchgehend Ton, bis der Balken startet (Knackser, Räuspern zählen nicht)
+  const HOLD_ONSET_GAP = .1;    // kürzere Aussetzer beim Einsetzen überbrückt
+  const HOLD_GAP_SEC = .35;     // so lange Stille beim Halten = Ton abgesetzt, Abbruch
+  const HOLD_SETTLE_SEC = .4;   // Einschwingen nach dem Einsatz, zählt nicht mit
+  // Nach dem Vorgabeton so lange taub bleiben: Ausklang von engine.keys
+  // (Oszillatoren laufen 0,7 s nach) + Puffer für Mikrofon-Latenz. Ohne
+  // Kopfhörer hört das Handy sonst seinen eigenen Lautsprecher.
+  const HOLD_CUE_TAIL_SEC = 1;
+  /** Ausgabelatenz (Bluetooth-Lautsprecher u. ä.), gedeckelt. */
+  const outputLatencySec = () => Math.min(.5, (engine.ctx?.outputLatency || 0) + (engine.ctx?.baseLatency || 0));
+
+  /** Ton halten, ein Mikrofon-Bild (midi = geglättete Tonhöhe oder null).
+   *  Liefert 'start' (Balken beginnt), 'abort' (Ton abgesetzt), 'done' oder null. */
+  function holdStep(task, phase, now, midi, rms) {
+    const voiced = midi !== null;
+    if (phase === 'holdWait') {
+      if (!voiced) {
+        if (task.runStart !== null && now - task.lastVoiced > HOLD_ONSET_GAP) task.runStart = null;
+        return null;
+      }
+      if (task.runStart === null) task.runStart = now;
+      task.lastVoiced = now;
+      if (now - task.runStart < HOLD_ONSET_SEC) return null;
+      task.onset = task.runStart;
+      task.samples = [];
+      return 'start';
+    }
+    if (voiced) task.lastVoiced = now;
+    else if (now - task.lastVoiced > HOLD_GAP_SEC) return 'abort';
+    const from = task.onset + HOLD_SETTLE_SEC;
+    if (voiced && now >= from) task.samples.push({ t: now - from, cents: (midi - task.target) * 100, rms });
+    return now >= from + task.sec ? 'done' : null;
+  }
+  function resetHold(task) {
+    task.onset = null; task.runStart = null; task.lastVoiced = null; task.samples = [];
+  }
+
   /** Blattsingen: je Ton ruhig halten (strict), kein Zeitlimit. */
   const sightJudge = (task) => makePitchJudge({ target: task.notes[task.idx], tolerance: task.tolerance, holdSec: SIGHT_HOLD_SEC, timeoutSec: Infinity, strict: true });
 
@@ -5434,8 +5467,7 @@
     if (task.mode === 'sight') sing.judge = sightJudge(task);
     else if (task.mode === 'findTone' || task.mode === 'singInterval') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: FIND_HOLD_SEC, timeoutSec: 12, strict: true });
     else if (task.mode !== 'hold') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: .5, timeoutSec: 8 });
-    task.samples = [];
-    task.onset = null;
+    resetHold(task);
     renderSing();
   }
 
@@ -5494,14 +5526,17 @@
     if (sing.phase === 'sing' && sing.judge) {
       const res = sing.judge.push(now, raw, clarity);
       if (res) onSingJudged(res);
-    } else if (sing.phase === 'holdWait' && raw !== null) {
-      task.onset = now; sing.phase = 'hold'; renderSing();
-    } else if (sing.phase === 'hold') {
-      const from = task.onset + .4;
-      const to = from + task.sec;
-      if (now >= from && shown !== null) task.samples.push({ t: now - from, cents: (shown - task.target) * 100, rms: r ? r.rms : 0 });
-      $('.sing-progress i').style.width = `${clamp((now - task.onset) / (task.sec + .4), 0, 1) * 100}%`;
-      if (now >= to) finishHold();
+    } else if (task.mode === 'hold' && (sing.phase === 'holdWait' || sing.phase === 'hold')) {
+      const ev = holdStep(task, sing.phase, now, shown, r ? r.rms : 0);
+      if (ev === 'start') { sing.phase = 'hold'; setSingFeedback('', ''); renderSing(); }
+      else if (ev === 'abort') {
+        const held = Math.max(0, task.lastVoiced - task.onset).toFixed(1).replace('.', ',');
+        resetHold(task);
+        sing.phase = 'holdWait';
+        setSingFeedback(`Nach ${held} s abgesetzt — der Ton muss klingen, bis der Balken voll ist. Setz neu ein, wenn du bereit bist.`, 'bad');
+        renderSing();
+      } else if (ev === 'done') { $('.sing-progress i').style.width = '100%'; finishHold(); return; }
+      if (sing.phase === 'hold') $('.sing-progress i').style.width = `${clamp((now - task.onset) / (task.sec + HOLD_SETTLE_SEC), 0, 1) * 100}%`;
     }
   };
 
@@ -5690,6 +5725,7 @@
     answers.replaceChildren();
     view.innerHTML = '';
     $('.sing-progress').hidden = sing.mode !== 'hold' || !task;
+    if (task?.mode === 'hold' && sing.phase !== 'hold' && sing.phase !== 'result') $('.sing-progress i').style.width = '0%';
     const phaseText = { cue: 'Hör zu …', sing: 'Jetzt singen', holdWait: 'Setz ein, wenn du bereit bist', hold: 'Halten …', answer: 'Welche Silben?', result: '' };
     const r = singRange();
     if (sing.calib) {
@@ -6040,7 +6076,12 @@
         else echoHelp(action === 'replay' ? 'listen' : action);
       } else if (action === 'start' || action === 'begin') startSingTask();
       else if (action === 'target' && sing.task?.target != null && engine.ctx) engine.keys(sing.task.target, engine.ctx.currentTime + .05, 1.4, { velocity: .22, dest: singBus() });
-      else if (action === 'replay' && sing.task) { if (sing.phase !== 'result') sing.judge = null; playSingCue(); }
+      else if (action === 'replay' && sing.task) {
+        if (sing.phase !== 'result') sing.judge = null;
+        // Ton halten: während die Vorgabe erneut klingt, nicht zuhören — sonst startet sie selbst den Balken.
+        if (sing.task.mode === 'hold' && sing.phase !== 'result') { resetHold(sing.task); sing.phase = 'cue'; setSingFeedback('', ''); renderSing(); }
+        playSingCue();
+      }
       else if (action === 'skip') skipSightNote();
       else if (action === 'stop') { stopSing(); setSingFeedback('', ''); renderSing(); }
       return;
@@ -6812,6 +6853,30 @@
           }
         }
       }
+    }
+    // Ton halten: Balken erst nach 0,25 s durchgehendem Ton, Abbruch nach 0,35 s Stille.
+    {
+      const task = { sec: 3, target: 60 };
+      resetHold(task);
+      let phase = 'holdWait', started = null, ended = null;
+      const feed = (from, to, midi) => {
+        for (let i = Math.round(from * 60); i < Math.round(to * 60); i++) {
+          const ev = holdStep(task, phase, i / 60, midi, .1);
+          if (ev === 'start') { phase = 'hold'; started = i / 60; }
+          if (ev === 'abort' || ev === 'done') { ended = { ev, t: i / 60 }; return; }
+        }
+      };
+      feed(0, .15, 60); feed(.15, .6, null);
+      if (phase !== 'holdWait') errors.push('Ton halten: kurzer Knacks startet den Balken');
+      feed(.6, 1.2, 60);
+      if (started === null || Math.abs(started - .85) > .03 || task.onset !== .6) errors.push(`Ton halten: Balkenstart ${started}, Einsatz ${task.onset}`);
+      feed(1.2, 1.4, null); feed(1.4, 2, 60);
+      if (ended) errors.push('Ton halten: kurzer Atemaussetzer bricht ab');
+      feed(2, 3, null);
+      if (ended?.ev !== 'abort' || Math.abs(ended.t - 2.35) > .03) errors.push(`Ton halten: Abbruch bei Stille ${JSON.stringify(ended)}`);
+      resetHold(task); phase = 'holdWait'; ended = null;
+      feed(5, 10, 60.1);
+      if (ended?.ev !== 'done' || Math.abs(ended.t - (5 + HOLD_SETTLE_SEC + 3)) > .03 || !holdHit(holdStats(task.samples))) errors.push(`Ton halten: Durchlauf ${JSON.stringify(ended)}`);
     }
     // Ton halten: synthetische Linie mit Trend −5 Cent/s → −5 ± 0,5.
     const line = Array.from({ length: 400 }, (_, i) => ({ t: i / 50, cents: 8 - 5 * (i / 50) + Math.sin(i * 1.7) * 2, rms: .1 }));
@@ -7706,6 +7771,7 @@
     if (!areaOnly) return;
     state.tab = areaOnly;
     $('.tab-bar').hidden = true;
+    document.body.classList.add('is-area-only');
     $('header h1').textContent = AREA_NAMES[areaOnly];
     document.title = AREA_NAMES[areaOnly];
   }

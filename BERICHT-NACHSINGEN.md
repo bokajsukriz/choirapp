@@ -189,12 +189,11 @@ Jedes Paket wurde vor dem Commit so geprüft:
 | Ton halten wieder in der Kette | Singen-Schnellstart: Nachsingen 6 · Intervalle singen 8 · Im Takt 6 · Ton finden 8 · Ton halten 4 · Blattsingen 4. |
 | Dauer der Kette | „Gemischt üben“ zeigt je Bereich die eigene Dauer: Hören ca. 10 Min., Singen ca. 15 Min. (Schätzung: je Aufgabe ≈ 25 s Nachsingen/Im Takt, ≈ 20 s Intervalle/Ton finden, ≈ 15 s Ton halten, ≈ 40 s Blattsingen, dazu einmal die Kalibrierung). |
 | Vorspiel mit Singstimme | Nachsingen, Im Takt, Blattsingen („Melodie anhören“ nach dem Ergebnis) und Diktat (beide Durchgänge): Umschalter „Vorspiel: Klavier / Stimme“ (Standard Klavier, gespeichert als `demo`, optional). Künstliche Stimme ohne Dateien und Abhängigkeiten (`singVoice`): Sägezahn durch drei Formantfilter (Vokal o bzw. a, Lage hoch für S/A, tief für T/B), Anschleifen −60 Cent in 70 ms, Vibrato 5,5 Hz ±28 Cent ab 0,25 s, etwas Atem; „no“ mit gedämpftem n vor dem Vokal, „da“ mit kurzem Konsonanten vor dem Schlag, Vokal genau auf dem Schlag. Bei hohen Tönen folgt der erste Formant dem Grundton (wie bei Sopranen), der Pegel wird je Ton aus dem Frequenzgang normiert. Tonika-Akkord und Bezugston bleiben Klavier. Prüfung `await uebeLab.selfCheckAudio()` (OfflineAudioContext → eigene Tonerkennung) für A, e, e′, a′, e″: Tonhöhe +2 bis +3 Cent, „da“-Vokal 5–21 ms nach dem Schlag, Pegel 0,99–1,05 × Klavier. |
+| Singstimme: künstlich reicht vorerst | Keine echten Aufnahmen. Falls später doch: Einzeltöne je Stimme und Silbe, verschoben mit `signalsmith-stretch.js`. |
 | Stufe 6 langsamer | Im Takt Stufe 6: ♩ = 72 statt 84. Messung (100 Melodien je Tempo, Sänger:in aus Anhang B), Töne erkannt: ♩ 84 → 90,0 %, 80 → 92,6 %, 76 → 93,7 %, **72 → 95,6 %**, 66 → 97,7 %; Einsätze „gut“ bleiben bei 93–95 %. |
 
 ## Zu entscheiden
 
-- Singstimme: klingt erkennbar künstlich — reicht das, oder später echte
-  Aufnahmen (Einzeltöne je Stimme, verschoben mit `signalsmith-stretch.js`)?
 - Im Takt Stufe 1 (ein Takt): Schlusston auf Zz. 3 wie jetzt, oder die Stufe
   auf zwei Takte erweitern?
 - Im Takt Stufe 6 immer Moll (wie Blattsingen 6) oder wie Nachsingen 6 nur zu
