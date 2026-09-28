@@ -2067,6 +2067,8 @@
     interval: '<circle cx="6.5" cy="5.5" r="2" fill="currentColor"/><circle cx="6.5" cy="18.5" r="2" fill="currentColor"/><path d="M15 4v16"/><path d="m12 7 3-3 3 3M12 17l3 3 3-3"/>',
     quality: '<rect x="5" y="3.5" width="14" height="4" rx="1.5"/><rect x="5" y="10" width="14" height="4" rx="1.5"/><rect x="5" y="16.5" width="14" height="4" rx="1.5"/>',
     cadence: '<path d="M3 19h11"/><path d="M14 19V5"/><path d="M14 5h6.5l-2 3 2 3H14"/>',
+    noteInKey: '<circle cx="8" cy="5.5" r="2.3" fill="currentColor"/><path d="M8 9.5v6.5"/><path d="m5 13 3 3 3-3"/><path d="M3.5 20.5h17"/><path d="M15 8h6M15 12h6"/>',
+    chordInKey: '<rect x="3.5" y="3.5" width="11" height="4" rx="1.5"/><rect x="3.5" y="10" width="11" height="4" rx="1.5"/><rect x="3.5" y="16.5" width="11" height="4" rx="1.5"/><path d="M19 5v12"/><path d="m16 14 3 3 3-3"/>',
     chords: '<rect x="3" y="12" width="3.2" height="8" rx="1"/><rect x="8.3" y="5" width="3.2" height="15" rx="1"/><rect x="13.6" y="9" width="3.2" height="11" rx="1"/><rect x="18.9" y="14" width="3.2" height="6" rx="1"/>',
     parts: '<path d="M4 5.5h16M4 10h16M4 19h16"/><path d="M4 14.5h16" stroke-width="3.6"/>',
     tuning: '<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 8.5V10M6 11l1 1M18 11l-1 1"/><path d="m12 17 4.5-6"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/>',
@@ -6233,6 +6235,10 @@
       ear.settings.intervalLevel = lvl + 1;
     }
     ['tonicCue', 'autoNext', 'phrygian'].forEach((k) => { if (typeof es[k] === 'boolean') ear.settings[k] = es[k]; });
+    // Hören in der Tonart: nur gültige Werte, sonst Standard (fehlt in alten Ständen).
+    ear.settings.inKeyHold = typeof es.inKeyHold === 'boolean' ? es.inKeyHold : false;
+    ear.settings.inKeyCadence = es.inKeyCadence === 'newKey' ? 'newKey' : 'always';
+    ear.settings.inKeyResolve = typeof es.inKeyResolve === 'boolean' ? es.inKeyResolve : true;
     // Gespeicherte Stufe 1–6: Nummer bleibt, Inhalt nach der heutigen Stufe
     // (Pop-Didaktik) — Intervalle mit Richtungen, Akkordfolgen mit Satz.
     if (ear.settings.intervalLevel >= 1) {
@@ -7190,6 +7196,7 @@
       errors.push(...inKeyBuildingBlocksCheck());
       errors.push(...noteInKeyCheck());
       errors.push(...chordInKeyCheck());
+      errors.push(...inKeyIntegrationCheck());
     } finally {
       Object.assign(ear.settings, saved.settings); state.tab = saved.tab;
     }
@@ -7678,6 +7685,79 @@
       ear.mode = saved.mode; ear.task = saved.task; ear.revealed = saved.revealed; ear.levels.chordInKey = saved.level;
       state.tab = saved.tab; ear.playing = saved.playing;
       renderEar();
+    }
+    return errors;
+  }
+
+  /** Paket 5 — Einbindung: Liste, Symbole, Speichern/Laden, Schnellstart. */
+  function inKeyIntegrationCheck() {
+    const errors = [];
+    // Liste: beide Zeilen direkt vor „Akkordfolgen“, mit Kurztext und Symbol.
+    const saved = { views: { ...views }, tab: state.tab, mode: ear.mode, run: quickRun };
+    try {
+      renderModeList('ear');
+      const rows = $$('[data-list="ear"] [data-open-mode]').map((b) => b.dataset.openMode.split(':')[1]);
+      if (rows.join() !== 'interval,quality,cadence,noteInKey,chordInKey,chords,parts,tuning') errors.push(`Liste Hören: Reihenfolge ${rows}`);
+      const text = (id) => $(`[data-open-mode="ear:${id}"] .mode-how`)?.textContent;
+      if (text('noteInKey') !== 'Nach der Kadenz ein Ton – welche Silbe?' || text('chordInKey') !== 'Nach der Kadenz ein Akkord – welche Stufe?') errors.push(`Liste Hören: Kurztexte „${text('noteInKey')}“ / „${text('chordInKey')}“`);
+      if ($('[data-open-mode="ear:noteInKey"] strong')?.textContent !== 'Töne in der Tonart' || $('[data-open-mode="ear:chordInKey"] strong')?.textContent !== 'Akkorde in der Tonart') errors.push('Liste Hören: Namen');
+      for (const id of ['noteInKey', 'chordInKey']) {
+        const paths = (MODE_ICONS[id].match(/<(path|circle|rect)\b/g) || []).length;
+        if (!paths || paths > 6 || !$(`[data-open-mode="ear:${id}"] svg`)?.innerHTML.trim()) errors.push(`Symbol ${id}: ${paths} Formen`);
+        if (!/^Stufe \d\/6$|^neu$/.test($(`[data-open-mode="ear:${id}"] .mode-lv`)?.textContent || '')) errors.push(`Liste Hören: Stufe von ${id} „${$(`[data-open-mode="ear:${id}"] .mode-lv`)?.textContent}“`);
+      }
+    } finally { Object.assign(views, saved.views); state.tab = saved.tab; }
+    // Speichern/Laden: Stufen, Modus, Einstellungen (Roundtrip); Unsinn → Standard.
+    const before = JSON.parse(JSON.stringify({ levels: ear.levels, settings: ear.settings, mode: ear.mode, solfa: sing.solfa }));
+    const savedTab = state.tab;
+    try {
+      Object.assign(ear.levels, { noteInKey: 4, chordInKey: 5 });
+      Object.assign(ear.settings, { inKeyHold: true, inKeyCadence: 'newKey', inKeyResolve: false });
+      ear.mode = 'chordInKey'; sing.solfa = 'syllables';
+      const snap = JSON.parse(JSON.stringify(snapshot()));
+      Object.assign(ear.levels, { noteInKey: 1, chordInKey: 1 });
+      Object.assign(ear.settings, { inKeyHold: false, inKeyCadence: 'always', inKeyResolve: true });
+      ear.mode = 'interval'; sing.solfa = 'numbers';
+      restore(snap);
+      if (ear.levels.noteInKey !== 4 || ear.levels.chordInKey !== 5 || ear.mode !== 'chordInKey') errors.push(`Laden: Stufen/Modus ${JSON.stringify(ear.levels)} ${ear.mode}`);
+      if (ear.settings.inKeyHold !== true || ear.settings.inKeyCadence !== 'newKey' || ear.settings.inKeyResolve !== false || sing.solfa !== 'syllables') errors.push(`Laden: Einstellungen ${JSON.stringify([ear.settings.inKeyHold, ear.settings.inKeyCadence, ear.settings.inKeyResolve, sing.solfa])}`);
+      restore({ tab: savedTab, ear: { mode: 'noteInKey', levels: { noteInKey: 9, chordInKey: 'x' }, settings: { inKeyHold: 'ja', inKeyCadence: 'x', inKeyResolve: 1 } } });
+      if (ear.settings.inKeyHold !== false || ear.settings.inKeyCadence !== 'always' || ear.settings.inKeyResolve !== true) errors.push(`Laden: Unsinn nicht auf Standard ${JSON.stringify([ear.settings.inKeyHold, ear.settings.inKeyCadence, ear.settings.inKeyResolve])}`);
+      if (ear.levels.noteInKey !== 4 || ear.levels.chordInKey !== 5 || ear.mode !== 'noteInKey') errors.push('Laden: ungültige Stufen nicht verworfen');
+      // Alter Stand ohne die neuen Felder: Standard, alles andere bleibt.
+      restore({ tab: savedTab, ear: { mode: 'quality', levels: { quality: 2 }, settings: { autoNext: false } } });
+      if (ear.mode !== 'quality' || ear.levels.quality !== 2 || ear.settings.inKeyHold !== false || ear.settings.inKeyCadence !== 'always' || ear.settings.inKeyResolve !== true || ear.settings.autoNext !== false) errors.push('Laden: alter Stand ohne Tonart-Felder');
+      restore({ tab: savedTab, ear: { mode: 'quatsch' } });
+      if (ear.mode !== 'quality') errors.push('Laden: unbekannter Modus übernommen');
+    } finally {
+      Object.assign(ear.levels, before.levels); Object.assign(ear.settings, before.settings); ear.mode = before.mode; sing.solfa = before.solfa; state.tab = savedTab;
+    }
+    // Schnellstart: Kette mit den neuen Modi direkt vor den Akkordfolgen; nicht mitten in eine Auflösung schalten.
+    if (QUICK_CHAINS.ear.map(([m, n]) => `${m}×${n}`).join() !== 'interval×10,quality×10,noteInKey×8,chordInKey×6,chords×6,cadence×6,tuning×10' || QUICK_MINUTES.ear !== 13) errors.push(`Schnellstart Hören: ${QUICK_CHAINS.ear.map(([m, n]) => `${m}×${n}`)} / ${QUICK_MINUTES.ear} Min.`);
+    const sv = { run: quickRun, mode: ear.mode, task: ear.task, revealed: ear.revealed, resolving: ear.resolving, tab: state.tab, selfTesting };
+    const realSetTimeout = window.setTimeout;
+    const queue = [];
+    try {
+      window.setTimeout = (fn, ms) => { queue.push({ fn, ms }); return queue.length; };
+      selfTesting = true;
+      quickRun = { tab: 'ear', steps: [['noteInKey', 1], ['chordInKey', 1]], idx: 0, done: 0, finished: false };
+      ear.mode = 'noteInKey'; ear.task = { kind: 'noteInKey', tries: [], resolution: [] }; ear.revealed = false; ear.resolving = false;
+      onToolStep('ear');
+      if (quickRun.idx !== 1 || !queue.length) { errors.push('Schnellstart: Kette schaltet nicht weiter'); }
+      else {
+        queue[0].fn();
+        if (ear.mode !== 'noteInKey' || queue.length < 2) errors.push('Schnellstart: schaltet um, obwohl noch geraten wird');
+        ear.revealed = true; ear.resolving = true;
+        queue[queue.length - 1].fn();
+        if (ear.mode !== 'noteInKey') errors.push('Schnellstart: schaltet mitten in die Auflösung');
+        ear.resolving = false;
+        queue[queue.length - 1].fn();
+        if (ear.mode !== 'chordInKey' || ear.task !== null) errors.push(`Schnellstart: nach der Auflösung nicht weiter (${ear.mode})`);
+      }
+    } finally {
+      window.setTimeout = realSetTimeout; selfTesting = sv.selfTesting;
+      quickRun = sv.run; ear.mode = sv.mode; ear.task = sv.task; ear.revealed = sv.revealed; ear.resolving = sv.resolving; state.tab = sv.tab;
+      setEarFeedback('', ''); renderQuickBar(); renderEar();
     }
     return errors;
   }
@@ -8718,7 +8798,8 @@
      Klänge … Jede Übung auf ihrer zuletzt benutzten Stufe. Ist die Menge
      einer Übung erreicht, geht es mit der nächsten weiter. ---- */
   const QUICK_CHAINS = {
-    ear: [['interval', 10], ['quality', 10], ['chords', 6], ['cadence', 6], ['tuning', 10]],
+    // Töne/Akkorde in der Tonart vor den Akkordfolgen: erst einzeln in der Tonart hören, dann Folgen.
+    ear: [['interval', 10], ['quality', 10], ['noteInKey', 8], ['chordInKey', 6], ['chords', 6], ['cadence', 6], ['tuning', 10]],
     // Nachsingen und Im Takt mit 6 statt 8 Aufgaben (sie dauern länger).
     // Pop-Didaktik: Diktat statt Blattsingen (nach Gehör).
     voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['hold', 4], ['dictation', 4]],
@@ -8726,7 +8807,8 @@
   // Ungefähre Dauer der Ketten (Singen: je Aufgabe ~25 s Nachsingen/Im Takt,
   // ~20 s Intervalle/Ton finden, ~15 s Ton halten, ~30 s Diktat:
   // 150 + 160 + 150 + 160 + 60 + 120 s ≈ 13 Min.).
-  const QUICK_MINUTES = { ear: 10, voice: 13 };
+  // Hören: 100 + 80 + 160 (Töne) + 130 (Akkorde) + 150 + 90 + 120 s ≈ 13 Min.
+  const QUICK_MINUTES = { ear: 13, voice: 13 };
   const QUICK_TITLE = { ear: 'Hören', voice: 'Singen' };
   const quickName = (tab, mode) => (tab === 'ear' ? EAR_MODES : SING_MODES).find(([id]) => id === mode)?.[1] || mode;
   /** URL-Parameter → { tab } oder null (dann normales Verhalten). */
