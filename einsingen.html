@@ -49,9 +49,12 @@
        Fläche mindestens 4.5:1). Resonanz: die Akzentfarbe, abgedunkelt,
        weil #F868B0 auf hellem Grund als Schrift zu schwach wäre. */
     --g-koerper: #6b5a8a; --g-koerper-bg: #efebf5;
+    --g-atem: #3d6b1f; --g-atem-bg: #e5f1db;
     --g-lockern: #17736d; --g-lockern-bg: #dcf1ee;
     --g-resonanz: #b02c72; --g-resonanz-bg: #fde6f1;
+    --g-pop: #8a35b0; --g-pop-bg: #f3e5fa;
     --g-beweglich: #a14f0c; --g-beweglich-bg: #fcebd9;
+    --g-aussprache: #9c3a22; --g-aussprache-bg: #fbe6df;
     --g-hoehe: #2c5c9e; --g-hoehe-bg: #e2ecf8;
   }
   svg.ex-icon { flex: none; }
@@ -128,11 +131,12 @@
      „gerade“/„Vibrato erlaubt“ — Platz bleibt reserviert, damit nichts springt. */
   .cue-line { min-height: 1.4em; margin: 10px 0 0; text-align: center; font-weight: 800; font-size: .95rem; color: var(--gc, var(--accent)); }
   body.is-player .cue-line { margin-top: auto; font-size: 1.15rem; }
-  body.is-player .cue-line + .contour { margin-top: 4px; }
+  body.is-player .cue-line ~ .contour { margin-top: 4px; }
   .body-stage.is-rhythm { grid-template-columns: 1fr; text-align: center; }
   .body-stage.is-rhythm .body-ring { display: none; }
   .body-stage.is-rhythm .body-move { font-size: 2rem; letter-spacing: .02em; }
-  body.is-player .body-stage.is-rhythm { margin: 8px 0 8px; }
+  body.is-player .body-stage.is-rhythm { margin: auto 0 4px; }
+  body.is-player .body-stage.is-rhythm + .contour { margin-top: 0; }
   .stage-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 8px; font-size: .74rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
   .stage-key { color: var(--text); font-weight: 800; }
   .progress { height: 6px; border-radius: 999px; background: var(--surface-2); margin-top: 10px; overflow: hidden; }
@@ -145,6 +149,7 @@
   /* Einzelne Übungen: Zeilen mit Icon, Name, Kurzanleitung */
   .ex-group { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
   .ex-group:first-child { margin-top: 0; }
+  .group-hint { font-size: .76rem; line-height: 1.4; color: #5f5577; font-weight: 600; margin: -2px 0 8px; }
   .ex-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .ex-row { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; width: 100%; min-height: 56px; text-align: left; padding: 6px 12px 6px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
   .ex-row .ex-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; }
@@ -285,11 +290,11 @@
       <button class="help-btn is-lg" type="button" data-help="exercise" aria-label="So geht die Übung">?</button>
     </div>
     <p class="cue-line" aria-hidden="true"></p>
-    <div class="contour" aria-hidden="true"></div>
     <div class="body-stage" hidden>
       <p class="body-move" aria-live="polite"></p>
       <div class="body-ring" aria-hidden="true"><svg viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="25"/><circle class="ring-fg" cx="29" cy="29" r="25" stroke-dasharray="157.1" stroke-dashoffset="0"/></svg><span></span></div>
     </div>
+    <div class="contour" aria-hidden="true"></div>
     <div class="glide" hidden><svg viewBox="0 0 300 120" aria-hidden="true"><path class="glide-path"/><circle class="glide-dot" r="7"/></svg></div>
     <div class="stage-meta"><span class="stage-key"></span><span class="stage-range"></span></div>
     <div class="stage-program">
@@ -465,11 +470,18 @@
 
   const GROUPS = [
     ['koerper', 'Körper & Haltung'],
-    ['lockern', 'Lockern & Atmen'],
+    ['atem', 'Atem & Stütze'],
+    ['lockern', 'Lockern'],
     ['resonanz', 'Resonanz & Vokale'],
-    ['beweglich', 'Beweglichkeit & Aussprache'],
+    ['pop', 'Pop-Klang'],
+    ['beweglich', 'Beweglichkeit'],
+    ['aussprache', 'Aussprache & Groove'],
     ['hoehe', 'Höhe, Tiefe & Register'],
   ];
+  // Kurzer Hinweis über einer Gruppe in der Übungsliste.
+  const GROUP_HINTS = {
+    pop: 'Pop-Klang ist sprechnah, hell und gerade – nichts davon heißt laut. Kratzt oder drückt es: leiser werden oder die Runde auslassen.',
+  };
   /** Farbe einer Gruppe als CSS-Variable (`--g-<id>`, Fläche `--g-<id>-bg`). */
   const groupColor = (gid, bg = false) => `var(--g-${gid}${bg ? '-bg' : ''})`;
 
@@ -509,6 +521,23 @@
     kopfAbwaerts: '<path d="M2 6h4v4h4v4h4v4h4"/><path d="M9 3l11 11m0-5.5V14h-5.5"/>',
     tiefe: '<path d="M12 3v14"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/>',
     tiefeGleiten: '<path d="M3 4c3 0 5 3 6 7s3 7 7 7h5"/><path d="M3 21h18"/>',
+    // Pop-Didaktik: Atem & Stütze
+    atemImpulse: '<path d="M3 6.5h2.5M8 6.5h2.5M13 6.5h8"/><path d="M3 12h2.5M8 12h2.5M13 12h8"/><path d="M3 17.5h1.8M6.4 17.5h1.8M9.8 17.5h1.8M13.2 17.5h7.8"/>',
+    abspannen: '<path d="M3 4h4v3h4v3h4v3h4"/><path d="M4 19.5c2.3-2.2 4.7-2.2 7 0s4.7 2.2 7 0"/>',
+    zwischenatmung: '<path d="M2 17c2-7 6-7 8 0"/><path d="M14 17c2-7 6-7 8 0"/>' + DOT(12, 6, 1.4) + '<path d="M12.9 6.4c.2 1.4-.4 2.5-1.5 3.1"/>',
+    // Pop-Klang
+    sprechSingen: '<path d="M2.5 6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H8.5L5 15.5v-3h-.5a2 2 0 0 1-2-2Z"/><path d="M20 20v-9l2.5-.8"/>' + DOT(18.2, 20.2, 1.9),
+    twang: '<path d="M3 13c3.5-2.4 14.5-2.4 18 0-3.5 2.4-14.5 2.4-18 0Z"/><path d="M12 3v4M6 4.8l1.6 2.6M18 4.8l-1.6 2.6"/>',
+    ruf: '<path d="M3 10v4h3l6 4V6l-6 4Z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6.5a7.5 7.5 0 0 1 0 11"/>',
+    geraderTon: '<path d="M2 12h12c1.2-3 2.3-3 3.5 0s2.3 3 3.5 0"/>',
+    anschleifen: '<path d="M2.5 18c2 0 3-8 6-8h6c2.2 0 3.4 3.5 4.5 8"/><path d="m17.3 16.2 1.7 1.8 1.9-1.6"/>',
+    riff: DOT(3.5, 5) + DOT(7.5, 8) + DOT(11, 11) + DOT(14.5, 14) + DOT(19, 18.5, 2.2) + '<path d="M3.5 2.5c6 .5 12 6 15.5 12.5"/>',
+    // Aussprache & Groove
+    pataka: '<path d="M6.3 17.5V5.5h12v12M6.3 9h12"/>' + DOT(4.3, 17.8, 2) + DOT(16.3, 17.8, 2),
+    vokalAufSchlag: '<path d="M15 3v18"/><path d="M4 12h6"/><path d="m8 9.5 2.5 2.5L8 14.5"/>' + DOT(15, 12, 2.8),
+    schlussKons: '<path d="M8 4v12a3 3 0 0 0 3 3h2"/><path d="M4.5 8h8"/><path d="M17.5 6l3-2M18 11h3.5M17.5 16l3 2"/>',
+    diphthonge: '<ellipse cx="6" cy="12" rx="3.5" ry="4.5"/><path d="M9.5 12H17"/><circle cx="19.5" cy="12" r="2"/>',
+    backingSilben: DOT(3.5, 15) + DOT(7, 15) + DOT(10.2, 10.5, 1.3) + DOT(12.8, 10.5, 1.3) + '<path d="M15.5 9h6.5"/><path d="M15.5 15c2 1.6 4.5 1.6 6.5 0"/>',
   };
   /** Vollständiges Icon (dekorativ, der Text daneben trägt die Bedeutung). */
   const iconSvg = (id, size = 24) => `<svg class="ex-icon" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:${size}px;height:${size}px" aria-hidden="true" focusable="false">${ICONS[id] || ''}</svg>`;
@@ -573,10 +602,24 @@
       help: ['Ein fester Kiefer und eine feste Zunge sind die häufigsten Ursachen für einen engen Klang.',
         'Gut nach einem Arbeitstag am Bildschirm — und vor Stücken mit viel Text.'] },
 
-    { id: 'atem', group: 'lockern', name: 'Atem', how: 'Einatmen, dann lang auf „sss“ ausatmen', icon: 'atem', hint: 'sss', bpm: 60, kind: 'breath', lowStart: 0, top: 0,
+    { id: 'atem', group: 'atem', name: 'Atem', how: 'Einatmen, dann lang auf „sss“ ausatmen', icon: 'atem', hint: 'sss', bpm: 60, kind: 'breath', lowStart: 0, top: 0,
       notes: [[0, 16], [0, 32]], syllables: ['ein', 'sss'],
       help: ['Ohne Ton: vier Schläge lang ruhig durch die Nase einatmen — Bauch und Flanken weiten sich, die Schultern bleiben unten.',
         'Dann auf „sss“ gleichmäßig ausatmen, erst 8 Schläge, jede Runde 2 länger (bis 14). Die Luft nicht herauspressen: der Brustkorb bleibt weit, der Bauch gibt langsam nach.'] },
+    { id: 'atemImpulse', group: 'atem', name: 'Atem-Impulse', how: 'f · s · sch im Groove, der Impuls kommt aus der Mitte', icon: 'atemImpulse', hint: 'f f fff', bpm: 96, kind: 'breathRhythm', lowStart: 0, top: 0,
+      pattern: [['f', 2], ['f', 2], ['fff', 8], ['', 4],
+        ['s', 2], ['s', 2], ['sss', 8], ['', 4],
+        ['sch', 2], ['sch', 2], ['sch', 2], ['sch', 2], ['schhh', 8]],
+      help: ['Jeder Konsonant bekommt einen kleinen Impuls aus der Körpermitte – eine Hand auf dem Bauch spürt ihn. Schultern und Brustkorb bleiben still.',
+        'Nach jedem Impuls lässt der Bauch los, die Luft kommt von selbst zurück. Nicht nachatmen, nicht pressen. So entsteht die Luft für kurze, rhythmische Stellen im Song.'] },
+    { id: 'abspannen', group: 'atem', name: 'Abspannen', how: 'Phrase auf „fu“, danach loslassen – die Luft kommt von selbst', icon: 'abspannen', hint: 'fu · loslassen', bpm: 84, lowStart: 3, top: 14,
+      notes: [[4, 2], [3, 2], [2, 2], [1, 2], [0, 4]], syllables: rep('fu', 5),
+      help: ['Fünf Töne auf „fu“ hinunter. Am Ende der Phrase den Bauch einfach loslassen: In der kurzen Pause strömt die Luft von allein ein, du musst nicht aktiv einatmen.',
+        'So atmet man im Song zwischen zwei Zeilen – schnell, lautlos, ohne Schnappen und ohne die Schultern hochzuziehen.'] },
+    { id: 'zwischenatmung', group: 'atem', name: 'Atmen im Groove', how: 'Eine Takt-Phrase, auf „4-und“ kurz atmen, weiter', icon: 'zwischenatmung', hint: 'no · atmen auf 4-und', bpm: 92, lowStart: 3, top: 16, breath: 2, chain: true,
+      notes: [[0, 2], [2, 2], [4, 2], [2, 2], [0, 6]], syllables: rep('no', 5),
+      help: ['Eine kurze Phrase, dann nur eine Achtel Zeit zum Atmen – auf „4-und“, direkt vor dem nächsten Einsatz. Jede Runde liegt einen Halbton höher und schließt ohne Pause an.',
+        'Klein und leise atmen, nicht hochziehen: Die Luft fällt in den Bauch, weil er am Phrasenende loslässt. Genau diese Stelle geht im Popsong oft verloren.'] },
     { id: 'lippen', group: 'lockern', name: 'Lippenflattern', how: 'Lippen flattern lassen und dabei summen', icon: 'lippen', hint: 'brrr', bpm: 88, lowStart: 3, top: 16, breath: 8,
       notes: legato5, syllables: rep('brrr', 9),
       help: ['Lippen locker aufeinander, Luft strömen lassen, bis sie flattern — und dabei auf den Tönen summen. Das lockert Lippen und Gesicht und bringt den Atem ohne Druck in Gang.',
@@ -605,17 +648,17 @@
     { id: 'mimemamomu', group: 'resonanz', name: 'Mi-me-ma-mo-mu', how: 'Fünf Töne hinauf und zurück, Klang bleibt vorn', icon: 'mimemamomu', hint: 'Fünftonraum', bpm: 92, lowStart: 3, top: 18,
       notes: legato5, syllables: ['mi', 'me', 'ma', 'mo', 'mu', 'mo', 'ma', 'me', 'mi'],
       help: ['Vom Grundton fünf Töne hinauf und wieder hinunter, ein Ton pro Silbe, alles gebunden.',
-        'Das „m“ bringt den Klang nach vorn, die Vokale sollen dort bleiben: Von „i“ nach „u“ wird nur der Mund runder, der Klang nicht dunkler oder hinten.'] },
+        'Das „m“ bringt den Klang nach vorn, die Vokale sollen dort bleiben: Von „i“ nach „u“ wird nur der Mund runder, der Klang nicht dunkler oder hinten. Sprechnah bleiben, nicht künstlich abdunkeln – so klingt es auch im Popsong.'] },
     { id: 'nja', group: 'resonanz', name: 'Nja-nja-nja', how: 'Frech und hell, der Kiefer fällt locker', icon: 'nja', hint: 'frech & vorne', bpm: 96, lowStart: 4, top: 18,
       notes: [[4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: rep('nja', 5),
-      help: ['Frech, hell und ein bisschen „quäkig“ singen — das holt den Klang nach vorn und macht ihn tragfähig.',
+      help: ['Frech, hell und ein bisschen „quäkig“ singen — das holt den Klang nach vorn und macht ihn tragfähig. Die Vorstufe zum Twang.',
         'Der Kiefer fällt bei jedem „a“ locker nach unten, die Zunge macht das „nj“ allein. Wer mag, schüttelt dabei leicht den Kopf.'] },
     { id: 'vokale', group: 'resonanz', name: 'Vokalreihe', how: 'Alle Vokale auf einem Ton, Klang bleibt gleich', icon: 'vokale', hint: 'auf einem Ton', bpm: 84, lowStart: 6, top: 15,
       notes: [[0, 4], [0, 4], [0, 4], [0, 4], [0, 8]], syllables: ['nu', 'no', 'na', 'ne', 'ni'],
       help: ['Alle Vokale auf einem Ton, ohne abzusetzen. Klang, Lautstärke und Tonhöhe bleiben gleich — nur die Mundform ändert sich.',
-        'Ziel ist ein ausgeglichener Chorklang: Das „i“ nicht spitz, das „a“ nicht breit werden lassen.'] },
+        'Ziel ist ein ausgeglichener Chorklang: Das „i“ nicht spitz, das „a“ nicht breit werden lassen. Im Pop bleiben die Vokale sprechnah – so, wie man das Wort sagen würde, nur länger.'] },
 
-    { id: 'moll5', group: 'resonanz', name: 'Moll-Fünfton', how: 'Fünf Töne auf „no“, die Terz etwas tiefer', icon: 'moll5', hint: 'no · Moll', bpm: 92, lowStart: 3, top: 18, mode: 'minor',
+    { id: 'moll5', group: 'resonanz', name: 'Moll-Fünfton', how: 'Fünf Töne auf „no“, in Moll', icon: 'moll5', hint: 'no · Moll', bpm: 92, lowStart: 3, top: 18, mode: 'minor',
       notes: legato5, syllables: rep('no', 9),
       help: ['Derselbe Fünftonraum wie bei „Mi-me-ma-mo-mu“, aber in Moll: die Terz liegt einen Halbton tiefer.',
         'Auf „no“ ruhig und rund singen und auf die kleine Terz hören — sie wird gern zu tief. Der Klang bleibt vorne, auch wenn Moll dunkler klingt.'] },
@@ -636,6 +679,36 @@
       help: ['Grundton, große Terz, Quinte — dann die kleine Terz und zurück zum Grundton. Der Liegeton klingt die ganze Zeit mit.',
         'Hören, wie viel kleiner der Schritt zur Mollterz ist. Die große Terz eher knapp, die kleine Terz eher weit genug singen — beide geraten im Chor gern zu tief.'] },
 
+    // Pop-Klang: jede Übung sagt, was bei Kratzen oder Druck zu tun ist.
+    { id: 'sprechSingen', group: 'pop', name: 'Sprechen → Singen', how: 'Erst sprechen, dann genauso singen', icon: 'sprechSingen', hint: 'Hey, na, wie geht’s?', bpm: 88, lowStart: 2, top: 11,
+      spoken: 16, spokenText: '„Hey, na, wie geht’s?“',
+      notes: [[4, 4], [2, 2], [1, 2], [0, 8]], syllables: ['Hey', 'na', 'wie', 'geht’s'],
+      help: ['Im ersten Takt die Frage ganz normal sprechen, im zweiten mit genau demselben Gefühl singen – gleiche Stelle, gleiche Leichtigkeit, nur mit Tonhöhe.',
+        'Nicht abdunkeln, kein „Opernmund“: Der Klang bleibt so nah an deiner Sprechstimme wie möglich. Das ist die Grundlage für fast jeden Popsong. Drückt es: leiser sprechen und leiser singen.'] },
+    { id: 'twang', group: 'pop', name: 'Twang', how: 'Hell und schmal auf „nä“, dann denselben Klang auf „ja“', icon: 'twang', hint: 'nä · hell & schmal', bpm: 100, lowStart: 3, top: 16,
+      notes: [[0, 2, .6], [2, 2, .6], [4, 2, .6], [2, 2, .6], [0, 8], [0, 2], [2, 2], [4, 2], [2, 2], [0, 8]],
+      syllables: ['nä', 'nä', 'nä', 'nä', 'nä', 'ja', 'a', 'a', 'a', 'a'],
+      help: ['Schmal, hell und ein bisschen frech – wie eine quäkende Ente oder ein nörgelndes Kind. Der Klang wird dadurch tragfähig, ohne dass du lauter wirst.',
+        'Im zweiten Takt dieselbe Helligkeit auf „ja“ mitnehmen. Nur der Klang ist schmal – Hals und Kiefer bleiben locker. Drückt es: kleiner und leiser werden.'] },
+    { id: 'ruf', group: 'pop', name: 'Ruf', how: '„Hey!“ rufen wie über die Straße – nicht schreien', icon: 'ruf', hint: 'Hey · leichter Belt', bpm: 84, lowStart: 4, top: 13, avoidLight: true,
+      notes: [[4, 6], [2, 2], [0, 8]], syllables: ['Hey', 'ja', 'ja'],
+      easyNotes: [[2, 6], [1, 2], [0, 8]], easySyllables: ['Hey', 'ja', 'ja'], easyHint: 'Terz statt Quinte',
+      help: ['Rufen wie über die Straße zu jemandem, den du magst: sprechnah, hell, mit dem Twang von vorher – nicht schreien und nicht drücken.',
+        'Nur nach dem Einsingen, nie mit kalter Stimme. Wird es eng oder kratzt es: sofort leiser, oder die Runde auslassen.'] },
+    { id: 'geraderTon', group: 'pop', name: 'Gerader Ton', how: 'Backing-„uuh“: gerade halten, Vibrato erst am Ende', icon: 'geraderTon', hint: 'uuh · gerade', bpm: 72, lowStart: 5, top: 12, vibratoFrom: 12,
+      notes: [[0, 16]], syllables: ['uuh'],
+      help: ['Ein Ton auf „uuh“, vier Schläge: drei Schläge ganz gerade, ohne Vibrato – erst auf dem vierten darf es schwingen.',
+        'Im Popchor klingen Backings gerade, sonst verschwimmen die Akkorde. Vibrato ist ein Stilmittel am Phrasenende, kein Dauerzustand. Gerade heißt nicht fest: Drückt es, leiser werden.'] },
+    { id: 'anschleifen', group: 'pop', name: 'Anschleifen & Abfallen', how: 'Von unten in den Ton, am Ende abfallen lassen', icon: 'anschleifen', hint: 'yeah · Slide', bpm: 76, lowStart: 3, top: 14,
+      notes: [[4, 8], [2, 4], [0, 8]], syllables: ['yeah', 'oh', 'oh'], scoop: [0], falloff: [2],
+      help: ['„yeah“ von knapp darunter in den Ton schleifen, halten, über „oh“ zum Grundton – und dort am Ende locker abfallen lassen.',
+        'Schleifer und Fall-off funktionieren nur, wenn der Zielton sitzt: erst die Runde ohne Stilmittel singen, dann mit. Nicht bei jedem Ton – sonst wird es Kaugummi. Kratzt es beim Abfallen: leiser und kürzer.'] },
+    { id: 'riff', group: 'pop', name: 'Riff', how: 'Pentatonik-Lauf abwärts auf „yeah“', icon: 'riff', hint: 'ye-e-e-e-eah', bpm: 72, lowStart: 1, top: 19, breath: 8,
+      notes: [[7, 2], [5, 1], [4, 1], [2, 1], [1, 1], [0, 6]], syllables: ['ye', 'e', 'e', 'e', 'e', 'ah'],
+      easyNotes: [[4, 2], [2, 1], [1, 1], [0, 6]], easySyllables: ['ye', 'e', 'e', 'ah'], easyHint: 'vier Töne',
+      help: ['Ein kurzer Lauf abwärts nur aus den Tönen der Pentatonik – wie ein kleines Soul-Riff. Leicht, fast gesprochen, nicht jeden Ton einzeln anstoßen.',
+        'Erst langsam und sauber, dann mit dem Tempo-Regler schneller. Die Töne bleiben klar zu hören, auch wenn es schnell wird. Drückt es oben: leiser ansetzen oder die Runde auslassen.'] },
+
     { id: 'dreiklang', group: 'beweglich', name: 'Dreiklang', how: 'Dreiklang hinauf und hinab, federnd', icon: 'dreiklang', hint: 'ja ja ja', bpm: 92, lowStart: 2, top: 19,
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ja', 7),
       help: ['Der Dreiklang bis zur Oktave hinauf und wieder hinab, locker und federnd.',
@@ -644,20 +717,42 @@
       notes: [[0, 2], [2, 2], [4, 2], [7, 4], [4, 2], [2, 2], [0, 4]], syllables: rep('ma', 7),
       help: ['Der Dreiklang bis zur Oktave und zurück — in Moll. Die kleine Terz bewusst hoch genug singen.',
         'Leicht und federnd, der obere Ton wird nicht lauter als die anderen.'] },
-    { id: 'katze', group: 'beweglich', name: 'Die Katze tritt …', how: 'Konsonanten knackig, Vokale singen', icon: 'katze', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16, delay: 2,
-      notes: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [1, 2], [0, 6]],
-      syllables: ['Die', 'Kat', 'ze', 'tritt', 'die', 'Trep', 'pe', 'krumm'],
-      help: ['„Die Katze tritt die Treppe krumm“: Konsonanten knackig und deutlich, Vokale trotzdem gesungen, nicht gesprochen.',
-        'Wenn es sitzt, mit dem Tempo-Regler schneller werden. Die Lippen und die Zungenspitze arbeiten, der Kiefer bleibt locker.'] },
     { id: 'koloratur', group: 'beweglich', name: 'Koloratur', how: 'Neun Töne schnell und leicht auf „a“', icon: 'koloratur', hint: '9 Töne auf „a“', bpm: 80, lowStart: 2, top: 20, breath: 8,
       notes: [...[0, 1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 5, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], syllables: rep('a', 17),
-      help: ['Die Tonleiter bis zur None (9 Töne) hinauf und hinunter, schnell und leicht auf „a“ (Anfänger: „da“ oder „la“).',
+      help: ['Die Tonleiter bis zur None (9 Töne) hinauf und hinunter, schnell und leicht auf „a“ (Anfänger: „da“; im Pop-Stil auch „yeah“).',
         'In einem Bogen denken, nicht jeden Ton einzeln anstoßen. Erst langsam sauber, dann schneller.'],
       easyNotes: [...[0, 1, 2, 3, 4, 3, 2, 1].map((d) => [d, 1]), [0, 4]], easySyllables: rep('a', 9), easyHint: '5 Töne auf „a“' },
     { id: 'staccatoLegato', group: 'beweglich', name: 'Staccato – Legato', how: 'Hinauf kurz auf „ha“, hinunter gebunden', icon: 'staccatoLegato', hint: 'ha · dann ja', bpm: 88, lowStart: 2, top: 19,
       notes: [[0, 2, .5], [2, 2, .5], [4, 2, .5], [7, 2, .5], [4, 2], [2, 2], [0, 4]], syllables: ['ha', 'ha', 'ha', 'ha', 'ja', 'a', 'a'],
       help: ['Den Dreiklang hinauf kurz und federnd auf „ha“, hinunter gebunden auf „ja-a-a“.',
         'Beim Staccato federt der Bauch, beim Legato strömt die Luft ohne Lücke weiter. Die Tonhöhe bleibt in beiden Hälften gleich sauber.'] },
+
+    { id: 'katze', group: 'aussprache', name: 'Die Katze tritt …', how: 'Konsonanten knackig, Vokale singen', icon: 'katze', hint: 'Zungenbrecher', bpm: 96, lowStart: 3, top: 16, delay: 2,
+      notes: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [3, 2], [1, 2], [0, 6]],
+      syllables: ['Die', 'Kat', 'ze', 'tritt', 'die', 'Trep', 'pe', 'krumm'],
+      help: ['„Die Katze tritt die Treppe krumm“: Konsonanten knackig und deutlich, Vokale trotzdem gesungen, nicht gesprochen.',
+        'Wenn es sitzt, mit dem Tempo-Regler schneller werden. Die Lippen und die Zungenspitze arbeiten, der Kiefer bleibt locker. Für englische Texte gilt dasselbe: Der Groove hängt an kurzen, präzisen Konsonanten.'] },
+    { id: 'pataka', group: 'aussprache', name: 'pa-ta-ka', how: 'Sechzehntel auf einem Ton: Lippen, Zunge, Gaumen', icon: 'pataka', hint: 'pa-ta-ka-ta', bpm: 84, lowStart: 5, top: 12,
+      notes: [...Array(12).fill([0, 1]), [0, 4]],
+      syllables: ['pa', 'ta', 'ka', 'ta', 'pa', 'ta', 'ka', 'ta', 'pa', 'ta', 'ka', 'ta', 'pa'],
+      help: ['Sechzehntel auf einem Ton: „p“ mit den Lippen, „t“ mit der Zungenspitze, „k“ hinten am Gaumen. Der Kiefer macht nicht mit, er hängt locker.',
+        'Wenn es sitzt: mit dem Regler schneller. Die Konsonanten werden kürzer, nicht lauter.'] },
+    { id: 'vokalAufSchlag', group: 'aussprache', name: 'Vokal auf den Schlag', how: 'Konsonant vor dem Schlag, Vokal genau drauf', icon: 'vokalAufSchlag', hint: 'Sprung · Schrank …', bpm: 88, lowStart: 4, top: 12,
+      notes: [[0, 4], [0, 4], [0, 4], [0, 4]], syllables: ['Sprung', 'Schrank', 'Strand', 'Pflicht'],
+      help: ['Die Konsonanten kommen kurz vor dem Schlag, der Vokal liegt genau darauf: „Schp-RUNG“, nicht „Schprung“ mit dem „u“ zu spät.',
+        'Wer auf den Konsonanten wartet, ist im Chor immer zu spät. Das ist das Geheimnis, warum ein Chor „zusammen“ klingt.'] },
+    { id: 'schlussKons', group: 'aussprache', name: 'Schlusskonsonant', how: '„to-night“ – das t genau auf Schlag 4', icon: 'schlussKons', hint: 't auf 4', bpm: 80, lowStart: 4, top: 13, cutoffAt: [12], cutoffLabel: 't',
+      notes: [[2, 4], [0, 8]], syllables: ['to', 'night'],
+      help: ['„night“ ruhig halten und das „t“ genau auf Schlag 4 setzen – dort klickt es. Bis dahin bleibt der Vokal voll, kein Abschwellen vorher.',
+        'Alle setzen den Schlusskonsonanten gemeinsam: zu früh klingt abgehackt, zu spät wie ein Nachzügler. Das „t“ ist kurz und klar, kein Spucken.'] },
+    { id: 'diphthonge', group: 'aussprache', name: 'Englische Diphthonge', how: 'my · way · go · night: erster Vokal lang, zweiter spät', icon: 'diphthonge', hint: 'maa…i · wee…i', bpm: 76, lowStart: 4, top: 12,
+      notes: [[0, 8], [0, 8], [0, 8], [0, 8]], syllables: ['my', 'way', 'go', 'night'],
+      help: ['Den ersten Vokal lang halten, den zweiten erst ganz am Ende: „maa…i“, „wee…i“, „goo…u“, „naa…it“.',
+        'Kommt der zweite Vokal zu früh, singt ihn jede:r an einer anderen Stelle – und der Akkord klingt unsauber. Gemeinsam spät, gemeinsam kurz.'] },
+    { id: 'backingSilben', group: 'aussprache', name: 'Backing-Silben', how: 'bap · ba · dn-dn · daa · mm – kurz ist kurz', icon: 'backingSilben', hint: 'bap ba dn-dn daa', bpm: 92, lowStart: 3, top: 14,
+      notes: [[0, 2, .5], [0, 2], [2, 1], [2, 1], [4, 6], [2, 4]], syllables: ['bap', 'ba', 'dn', 'dn', 'daa', 'mm'],
+      help: ['Die typischen Silben aus Pop-Arrangements: „bap“ wirklich kurz, „dn-dn“ leicht und schnell, „daa“ voll bis zum Ende, „mm“ ohne Luftloch summen.',
+        'Die Konsonanten machen den Groove – sie kommen knapp und präzise, der Klang dazwischen bleibt weich.'] },
 
     { id: 'oktave', group: 'hoehe', name: 'Oktavsprung', how: 'Mit „ja“ hinaufspringen, Tonleiter herab', icon: 'oktave', hint: 'ja-a …', bpm: 88, lowStart: 3, top: 22, breath: 8,
       notes: [[0, 4], [7, 4], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [1, 2], [0, 6]], syllables: ['ja', ...rep('a', 8)],
@@ -782,11 +877,11 @@
   const DIRECTIONS = [['updown', 'auf und ab'], ['up', 'aufwärts'], ['down', 'abwärts']];
 
   const HELP = {
-    program: ['Einsing-Programm', ['Das Programm spielt mehrere Übungen automatisch nacheinander — wie der Anfang einer Chorprobe: erst lockern und summen, dann Resonanz und Vokale, dann Beweglichkeit, zum Schluss die Höhe und ein ruhiger Ausklang.',
-      'Jede Übung beginnt mit einem Akkord und steigt dann Runde für Runde einen Halbton, bevor sie wieder zurückgeht. Zwischen zwei Übungen ist ein Takt Pause.',
-      'Ein Tipp auf eine Karte startet das Programm. Der Balken oben zeigt alle Übungen; mit „Überspringen“ geht es zur nächsten.',
-      'Höhe und Tiefe ersetzen kein Einsingen — erst Kurz, dann eines davon. Intonation übt Vokale, Terzen und den Akkord.',
-      'Eigene Programme: „+ Eigenes Programm“ oder im Menü (⋯) einer Karte „Als Vorlage kopieren“.']],
+    program: ['Einsing-Programm', ['Das Programm spielt mehrere Übungen automatisch nacheinander – wie der Anfang einer Probe: lockern, Klang nach vorn, Pop-Klang und Aussprache, dann Beweglichkeit und Höhe, zum Schluss ein ruhiger Ausklang.',
+      'Jeder Platz im Programm hat eine Aufgabe, für die es mehrere ähnliche Übungen gibt. Bei jedem Start kommt die an die Reihe, die du am längsten nicht gesungen hast – so wird es nicht langweilig, und trotzdem ist alles drin. Mit ⇄ tauschst du eine Übung vor dem Start gegen eine andere derselben Aufgabe.',
+      'Jede Übung beginnt mit einem Akkord und steigt dann Runde für Runde einen Halbton, bevor sie wieder zurückgeht. Zwischen zwei Übungen ist ein halber Takt Pause.',
+      'Höhe und Tiefe ersetzen kein Einsingen – erst Kurz, dann eines davon.',
+      'Eigene Programme: „+ Eigenes Programm“ oder im Menü (⋯) einer Karte „Als Vorlage kopieren“. Eigene Programme bleiben immer gleich.']],
     load: ['Belastung', ['<b>Leicht:</b> tiefer, langsamer, weniger Rückungen — für müde Stimmen, morgens, nach Krankheit.',
       '<b>Kräftig:</b> etwas höher und mehr Rückungen — für geübte Stimmen.',
       'Die Grenzen deiner Stimmlage gelten immer. Die Wahl gilt auch für „Heute üben“ in der App.']],
@@ -1575,6 +1670,9 @@
     $('.glide').hidden = !glide;
     $('.body-stage').hidden = !isBody && !isRhythm;
     $('.body-stage').classList.toggle('is-rhythm', isRhythm);
+    // Silben wechseln im Sechzehntel-Takt — nicht jede einzelne vorlesen.
+    $('.body-move').setAttribute('aria-live', isRhythm ? 'off' : 'polite');
+    $('.cue-line').hidden = toneless(ex);
     if (!seg) $('.cue-line').textContent = '';
     if (isRhythm && !seg) $('.body-move').textContent = ex.pattern[0][0];
     if (isBody) {
@@ -1710,6 +1808,7 @@
       const label = document.createElement('h3');
       label.className = 'ex-group'; label.textContent = gname;
       label.style.color = groupColor(gid);
+      const hint = GROUP_HINTS[gid] ? Object.assign(document.createElement('p'), { className: 'group-hint', textContent: GROUP_HINTS[gid] }) : null;
       const list = document.createElement('ul');
       list.className = 'ex-list';
       list.append(...EXERCISES.filter((x) => x.group === gid).map((x) => {
@@ -1725,7 +1824,7 @@
         li.append(b);
         return li;
       }));
-      return [label, list];
+      return hint ? [label, hint, list] : [label, list];
     }));
   }
 
@@ -2283,12 +2382,16 @@
               if (ex2 !== BREATH_EXHALES.join()) errors.push(`atem/${v.id}: Ausatmen ${ex2}`);
               continue;
             }
+            if (ex.kind === 'breathRhythm') {
+              if (plan.segs.length !== BREATH_RHYTHM_REPEATS[load] || plan.segs.some((sg) => sg.steps % ROUND_GRID || sg.steps < ex.length || sg.root !== null)) errors.push(`${ex.id}/${v.id}/${load}: Runden ${plan.segs.map((sg) => sg.steps).join(',')}`);
+              continue;
+            }
             for (const sg of plan.segs) {
               if (sg.steps % ROUND_GRID) errors.push(`${ex.id}/${v.id}: Runde ${sg.steps} 16tel, kein halber Takt`);
               const rest = sg.steps - sg.cue - sg.ex.length;
               if (rest < (sg.ex.breath ?? BREATH)) errors.push(`${ex.id}/${v.id}/${load}: nur ${rest} 16tel Luft`);
             }
-            if (cue === 'cadence' && !(plan.segs[0].cadence && plan.segs[0].cue === CUE_CADENCE && plan.segs.slice(1).every((sg) => !sg.cadence && sg.cue === CUE))) {
+            if (cue === 'cadence' && !(plan.segs[0].cadence && plan.segs[0].cue === CUE_CADENCE && plan.segs.slice(1).every((sg) => !sg.cadence && sg.cue === (ex.chain ? 0 : CUE)))) {
               errors.push(`${ex.id}/${v.id}: Kadenz nicht nur in der ersten Runde`);
             }
           }
@@ -2435,9 +2538,10 @@
       state.lengths = savedLen;
       [['T', 'T'], ['X', 'A'], [3, 'A']].forEach(([raw, want]) => { state.voice = 'A'; sanitize({ voice: raw }); if (state.voice !== want) errors.push(`voice ${raw} → ${state.voice}`); });
       // Umbau Tools Paket 1: Kurzanleitung, Icon, Gruppenfarbe.
-      if (EXERCISES.length !== 28) errors.push(`${EXERCISES.length} Übungen statt 28`);
+      // (Pop-Didaktik Paket 2: 14 neue Übungen; „Abspannen“ hat 61 Zeichen.)
+      if (EXERCISES.length !== 42) errors.push(`${EXERCISES.length} Übungen statt 42`);
       for (const ex of EXERCISES) {
-        if (typeof ex.how !== 'string' || ex.how.length < 1 || ex.how.length > 55 || /\.$/.test(ex.how)) errors.push(`${ex.id}: how „${ex.how}“`);
+        if (typeof ex.how !== 'string' || ex.how.length < 1 || ex.how.length > 65 || /\.$/.test(ex.how)) errors.push(`${ex.id}: how „${ex.how}“`);
         if (!ICONS[ex.icon] || ex.icon !== ex.id) errors.push(`${ex.id}: Icon fehlt`);
       }
       const rootStyle = getComputedStyle(document.documentElement);
@@ -2505,6 +2609,7 @@
         if (!ICONS[id].startsWith(ICONS[dur]) || ICONS[id] === ICONS[dur]) errors.push(`${id}: Icon nicht Dur-Schwester + Mondsichel`);
       }
       errors.push(...checkPopEngine());
+      errors.push(...checkPopExercises());
     } finally {
       for (const k of Object.keys(state)) delete state[k];
       Object.assign(state, saved);
@@ -2611,7 +2716,7 @@
       if (cueTextAt(cut, 12) !== 't' || cueTextAt(cut, 1) !== 'gerade' || cueTextAt(cut, 8) !== 'Vibrato erlaubt') errors.push(`Anzeige: ${cueTextAt(cut, 12)}/${cueTextAt(cut, 1)}/${cueTextAt(cut, 8)}`);
       // Bestehende Übungen: keine Hinweise, keine Abschluss-Klicks.
       for (const ex of EXERCISES) {
-        if (ex.id.startsWith('_t')) continue;
+        if (ex.id.startsWith('_t') || POP_NEW.includes(ex.id)) continue;
         if (cueTextAt(ex, 0) || ex.chain) errors.push(`${ex.id}: unerwartete Pop-Erweiterung`);
       }
       // Roundtrip: keine neuen gespeicherten Felder.
@@ -2620,6 +2725,59 @@
     } finally {
       EXERCISES.splice(EXERCISES.length - tests.length, tests.length);
     }
+    return errors;
+  }
+
+  /** Pop-Didaktik Paket 2: neue Übungen, Gruppen, Texte. */
+  const POP_NEW = ['atemImpulse', 'abspannen', 'zwischenatmung', 'sprechSingen', 'twang', 'ruf', 'geraderTon', 'anschleifen', 'riff',
+    'pataka', 'vokalAufSchlag', 'schlussKons', 'diphthonge', 'backingSilben'];
+  function checkPopExercises() {
+    const errors = [];
+    for (const id of POP_NEW) {
+      const ex = exById(id);
+      if (!ex) { errors.push(`${id} fehlt`); continue; }
+      if (!toneless(ex) && ex.syllables.length !== ex.notes.length) errors.push(`${id}: ${ex.syllables.length} Silben, ${ex.notes.length} Töne`);
+      if (ex.easy && ex.easy.syllables.length !== ex.easy.notes.length) errors.push(`${id}: leichte Fassung Silben/Töne`);
+      for (const load of LOAD_IDS) {
+        for (const vid of VOICE_IDS) {
+          Object.assign(state, { mode: 'single', exercise: id, voice: vid, direction: 'updown', cue: 'chord', load });
+          plan = buildPlan();
+          const v = voiceById(vid);
+          for (const n of planNotes()) if (n.midi < v.floor || n.midi > v.ceil) errors.push(`${id}/${vid}/${load}: Ton ${n.midi} außerhalb`);
+          if (plan.segs.some((sg) => sg.steps % ROUND_GRID)) errors.push(`${id}/${vid}/${load}: Runde nicht im Raster`);
+        }
+      }
+    }
+    const ai = exById('atemImpulse');
+    if (ai.length !== 48) errors.push(`atemImpulse: Muster ${ai.length}`);
+    for (const [load, n] of [['leicht', 2], ['normal', 3], ['kraeftig', 4]]) {
+      Object.assign(state, { mode: 'single', exercise: 'atemImpulse', load });
+      if (buildPlan().segs.length !== n) errors.push(`atemImpulse/${load}: nicht ${n} Runden`);
+    }
+    for (const vid of VOICE_IDS) {
+      Object.assign(state, { mode: 'single', exercise: 'zwischenatmung', voice: vid, load: 'normal', cue: 'chord' });
+      const segs = buildPlan().segs;
+      if (segs.some((s, i) => i && (s.start !== segs[i - 1].start + segs[i - 1].steps || s.steps !== 16 || s.cue !== 0))) errors.push(`zwischenatmung/${vid}: ${segs.map((s) => `${s.cue}+${s.steps}`).join(',')}`);
+    }
+    state.load = 'leicht';
+    const ruf = variantOf(exById('ruf'));
+    if (!ruf.isEasy || ruf.max !== 4 || ruf.easy) errors.push('ruf: bei „leicht“ nicht die Terz-Fassung');
+    Object.assign(state, { mode: 'single', exercise: 'ruf', voice: 'A' });
+    plan = buildPlan();
+    if (Math.max(...planNotes().map((n) => n.midi - plan.segs.find((s) => s.round === n.round).root)) !== 4) errors.push('ruf/leicht: Plan nicht mit der Terz');
+    state.load = 'normal';
+    for (const [gid] of GROUPS) if (!EXERCISES.some((x) => x.group === gid)) errors.push(`Gruppe ${gid} ohne Übung`);
+    for (const ex of EXERCISES) if (!GROUPS.some(([g]) => g === ex.group) || !ICONS[ex.id]) errors.push(`${ex.id}: Gruppe/Icon`);
+    if (exById('atem').group !== 'atem' || exById('katze').group !== 'aussprache') errors.push('Umzug atem/katze fehlt');
+    const order = (gid) => EXERCISES.filter((x) => x.group === gid).map((x) => x.id).join();
+    if (order('atem') !== 'atem,atemImpulse,abspannen,zwischenatmung' || order('pop') !== 'sprechSingen,twang,ruf,geraderTon,anschleifen,riff'
+      || order('aussprache') !== 'katze,pataka,vokalAufSchlag,schlussKons,diphthonge,backingSilben') errors.push('Reihenfolge in den Gruppen');
+    for (const ex of EXERCISES.filter((x) => x.group === 'pop')) if (!/kratz|drück/i.test(ex.help.join(' '))) errors.push(`${ex.id}: kein Hinweis zu Kratzen/Druck`);
+    renderGroups();
+    const hint = $$('.group-hint');
+    if (hint.length !== 1 || !hint[0].textContent.startsWith('Pop-Klang ist sprechnah')) errors.push('Gruppenhinweis Pop fehlt');
+    if (HELP.program[1].length !== 5 || !HELP.program[1][1].includes('⇄')) errors.push('HELP.program nicht erneuert');
+    if (exById('moll5').how !== 'Fünf Töne auf „no“, in Moll' || !exById('koloratur').help[0].includes('„yeah“') || !exById('nja').help[0].endsWith('Die Vorstufe zum Twang.')) errors.push('Textanpassungen fehlen');
     return errors;
   }
 
