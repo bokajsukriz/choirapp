@@ -1033,6 +1033,34 @@
       focus: ['sound:glide'],
       checks: [(s) => s.sound.glide >= .25],
       solution: [(s) => { s.sound.glide = .3; }] },
+
+    // --- Vertiefung Mix ---
+    { id: 'pump', tier: 'deep', area: 'mix', tab: 'beat', groove: 'Deep House', melody: 'Long Tones',
+      set: { bpm: 122, progId: 'pop', chordsOn: true, pump: 0 },
+      focus: ['pump'],
+      checks: [(s) => s.pump >= .5],
+      solution: [(s) => { s.pump = .6; }] },
+
+    { id: 'raum', tier: 'deep', area: 'mix', tab: 'mixer', groove: 'Minimal Click', melody: 'Hook Line',
+      preset: 'Neon Pluck', sound: { echoWet: 0 }, fx: { echoOn: false, echoDiv: 2 },
+      set: { bpm: 100, progId: 'pop' },
+      focus: ['fx:echo', 'sound:echoWet'],
+      checks: [(s) => s.fx.echoOn && s.fx.echoDiv === 3, (s) => s.sound.echoWet >= .3],
+      solution: [(s) => { s.fx.echoOn = true; s.fx.echoDiv = 3; }, (s) => { s.sound.echoWet = .35; }] },
+
+    // Lösung in der Form von _autoFinish/sanitizeAutomation: eine Spur je
+    // Parameter mit genau `steps` Werten (hier vier Takte, 64 Sechzehntel).
+    { id: 'buildup', tier: 'deep', area: 'mix', tab: 'sound', groove: 'House Bounce', melody: 'Hook Line',
+      preset: 'Bright Saw', set: { bpm: 124, progId: 'pop', chordsOn: true },
+      focus: ['sound:cutoff', 'automation'],
+      checks: [(s) => { const lane = s.automation?.lanes?.cutoff; return Array.isArray(lane) && Math.max(...lane) - Math.min(...lane) >= 3000; }],
+      solution: [(s) => { s.automation = { on: true, steps: 64, lanes: { cutoff: Array.from({ length: 64 }, (_, i) => 300 + i * 100) }, bars: 4, offset: 0 }; }] },
+
+    { id: 'arrangement', tier: 'deep', area: 'mix', tab: 'mixer', groove: 'House Bounce', melody: 'Hook Line',
+      set: { bpm: 124, progId: 'pop', chordsOn: true },
+      focus: ['mute:drums', 'mute:bass'],
+      checks: [(s) => s.mute.drums && s.mute.bass, (s) => !s.mute.drums && !s.mute.bass],
+      solution: [(s) => { s.mute.drums = true; s.mute.bass = true; }, (s) => { s.mute.drums = false; s.mute.bass = false; }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */
