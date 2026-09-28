@@ -375,6 +375,11 @@
     { id: 'round', name: 'Round Finger', wave: 'triangle', cutoff: 900, q: 1, decay: .26, level: .36, envAmount: 300 },
   ];
 
+  // Kick-Parameter (Workshop Paket 6): Start-/Endtonhöhe in Hz, Länge in s.
+  // Die Standardwerte ergeben genau die bisherige Kick.
+  const KIT_DEFAULTS = { kickStart: 150, kickEnd: 42, kickDecay: .19 };
+  const KIT_RANGES = { kickStart: [60, 300], kickEnd: [25, 200], kickDecay: [.08, 1.2] };
+
   /* ------------------------------------------------------------------------
      HARMONIK — Tonarten, Akkordfolgen, SATB-Satz.
      ------------------------------------------------------------------------ */
@@ -964,6 +969,70 @@
       focus: ['arp'],
       checks: [(s) => s.arpOn && s.arpAuto, (s) => s.arpDivision === 1, (s) => s.arpMode === 'down'],
       solution: [(s) => { s.arpOn = true; s.arpAuto = true; }, (s) => { s.arpDivision = 1; }, (s) => { s.arpMode = 'down'; }] },
+
+    // --- Vertiefung Klang ---
+    { id: 'wellen', tier: 'deep', area: 'sound', tab: 'sound', groove: null, melody: 'Long Tones',
+      preset: 'Tape Keys', sound: { wave: 'sine', cutoff: 12000, filterEnvAmount: 0 },
+      set: { bpm: 80, progId: 'drone' },
+      focus: ['wave'],
+      checks: [(s) => s.sound.wave === 'triangle', (s) => s.sound.wave === 'square', (s) => s.sound.wave === 'sawtooth'],
+      solution: [(s) => { s.sound.wave = 'triangle'; }, (s) => { s.sound.wave = 'square'; }, (s) => { s.sound.wave = 'sawtooth'; }] },
+
+    { id: 'filter', tier: 'deep', area: 'sound', tab: 'sound', groove: 'Minimal Click', melody: 'Long Tones',
+      preset: 'Bright Saw', sound: { cutoff: 12000, filterEnvAmount: 0 },
+      set: { bpm: 84, progId: 'pop' },
+      focus: ['sound:cutoff'],
+      checks: [(s) => s.sound.cutoff <= 600],
+      solution: [(s) => { s.sound.cutoff = 500; }] },
+
+    { id: 'resonanz', tier: 'deep', area: 'sound', tab: 'sound', groove: 'Minimal Click', melody: 'Long Tones',
+      preset: 'Bright Saw', sound: { cutoff: 800, resonance: 1, filterEnvAmount: 0 },
+      set: { bpm: 84, progId: 'drone' },
+      focus: ['sound:resonance', 'sound:cutoff'],
+      checks: [(s) => s.sound.resonance >= 12, (s) => s.sound.cutoff >= 3000],
+      solution: [(s) => { s.sound.resonance = 14; }, (s) => { s.sound.cutoff = 3500; }] },
+
+    { id: 'huellkurve', tier: 'deep', area: 'sound', tab: 'sound', groove: 'Minimal Click', melody: 'Long Tones',
+      preset: 'Neon Pluck', set: { bpm: 80, progId: 'pop' },
+      focus: ['sound:attack', 'sound:sustain', 'sound:release'],
+      checks: [(s) => s.sound.attack >= .3, (s) => s.sound.sustain >= .6, (s) => s.sound.release >= 1],
+      solution: [(s) => { s.sound.attack = .4; }, (s) => { s.sound.sustain = .7; }, (s) => { s.sound.release = 1.2; }] },
+
+    { id: 'detune', tier: 'deep', area: 'sound', tab: 'sound', groove: null, melody: 'Long Tones',
+      preset: 'Tape Keys', sound: { detune: 0, width: 0 },
+      set: { bpm: 72, progId: 'drone' },
+      focus: ['sound:detune', 'sound:width'],
+      checks: [(s) => s.sound.detune >= 8 && s.sound.detune <= 14,
+               (s) => s.sound.detune >= 25,
+               (s) => s.sound.detune >= 6 && s.sound.detune <= 15 && s.sound.width >= .5],
+      solution: [(s) => { s.sound.detune = 10; }, (s) => { s.sound.detune = 28; }, (s) => { s.sound.detune = 10; s.sound.width = .6; }] },
+
+    { id: 'lfo', tier: 'deep', area: 'sound', tab: 'sound', groove: 'Half-Time Drop', melody: 'Long Tones',
+      preset: 'Wobble', sound: { lfoDepth: 0, lfoSync: 0, lfoRate: 0 },
+      set: { bpm: 140, progId: 'drone', modeId: 'minor' },
+      focus: ['sound:lfoDepth', 'sound:lfoSync'],
+      checks: [(s) => s.sound.lfoDepth >= 1000, (s) => s.sound.lfoSync === 2, (s) => s.sound.lfoSync === 1],
+      solution: [(s) => { s.sound.lfoDepth = 1500; }, (s) => { s.sound.lfoSync = 2; }, (s) => { s.sound.lfoSync = 1; }] },
+
+    { id: 'vibrato', tier: 'deep', area: 'sound', tab: 'sound', groove: null, melody: 'Long Tones',
+      preset: 'Soft Brass', sound: { vibratoDepth: 0, vibratoDelay: 0 },
+      set: { bpm: 66, progId: 'drone' },
+      focus: ['sound:vibratoDepth', 'sound:vibratoDelay'],
+      checks: [(s) => s.sound.vibratoDepth >= 10, (s) => s.sound.vibratoDelay >= .4],
+      solution: [(s) => { s.sound.vibratoDepth = 12; }, (s) => { s.sound.vibratoDelay = .5; }] },
+
+    { id: 'kick', tier: 'deep', area: 'sound', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 90 }, trackOn: { snare: false, clap: false, hat: false, open: false, bass: false },
+      focus: ['kit'],
+      checks: [(s) => s.kit.kickEnd >= 140, (s) => s.kit.kickEnd <= 50 && s.kit.kickDecay >= .6],
+      solution: [(s) => { s.kit.kickEnd = 150; }, (s) => { s.kit.kickEnd = 40; s.kit.kickDecay = .8; }] },
+
+    { id: 'glide', tier: 'deep', area: 'sound', tab: 'sound', groove: 'Minimal Click', melody: 'Long Tones',
+      preset: 'Analog Lead', sound: { glide: 0 },
+      set: { bpm: 80, progId: 'pop' },
+      focus: ['sound:glide'],
+      checks: [(s) => s.sound.glide >= .25],
+      solution: [(s) => { s.sound.glide = .3; }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */
@@ -1080,6 +1149,8 @@
       view: null, choirTask: null, melodyAltBars: false,
       // Workshop: zuletzt gewählte Einheit (Ansicht 'workshop').
       lessonId: null,
+      // Kick-Klang (Workshop Paket 6), siehe KIT_DEFAULTS.
+      kit: { ...KIT_DEFAULTS },
     };
   }
 
@@ -1303,6 +1374,7 @@
     s.view = oneOf(raw.view, ['choir', 'studio', 'workshop'], null);
     s.choirTask = oneOf(raw.choirTask, CHOIR_TASKS.map((x) => x.id), null);
     s.lessonId = oneOf(raw.lessonId, WORKSHOP_LESSONS.map((l) => l.id), null);
+    for (const [key, [lo, hi]] of Object.entries(KIT_RANGES)) s.kit[key] = num(obj(raw.kit)[key], lo, hi, KIT_DEFAULTS[key]);
     s.melodyAltBars = bool(raw.melodyAltBars, false);
     // Der Liegeton braucht eine Nutzergeste zum Starten — nie aus einem
     // gespeicherten Stand heraus von selbst loslaufen lassen.
@@ -1696,16 +1768,19 @@
 
     /* ---- Schlagzeug, Bass, Klick ---- */
 
-    playKick(time, velocity = 1) {
+    /** Kick: Sinus, der schnell von kickStart auf kickEnd fällt (Workshop
+     *  Paket 6: einstellbar über state.kit). Mit KIT_DEFAULTS exakt der
+     *  bisherige Klang: Fall in .11 s, Ausklang .19 s, Stopp nach .2 s. */
+    playKick(time, velocity = 1, kit = KIT_DEFAULTS) {
       const ctx = this.ctx;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.frequency.setValueAtTime(150, time);
-      osc.frequency.exponentialRampToValueAtTime(42, time + .11);
+      osc.frequency.setValueAtTime(kit.kickStart, time);
+      osc.frequency.exponentialRampToValueAtTime(kit.kickEnd, time + Math.min(.11, kit.kickDecay * .6));
       gain.gain.setValueAtTime(.7 * velocity, time);
-      gain.gain.exponentialRampToValueAtTime(.0001, time + .19);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + kit.kickDecay);
       osc.connect(gain).connect(this.buses.drums);
-      osc.start(time); osc.stop(time + .2);
+      osc.start(time); osc.stop(time + (kit.kickDecay + .01));
     }
 
     playNoise(time, { cutoff, length, volume, type = 'highpass', q = .7 }) {
@@ -1759,8 +1834,8 @@
       else this.playNoise(time, { cutoff: 6500, length: .045, volume: .055 * velocity, type: 'highpass', q: .7 });
     }
 
-    hitTrack(track, time, velocity = 1) {
-      if (track === 'kick') this.playKick(time, velocity);
+    hitTrack(track, time, velocity = 1, kit = KIT_DEFAULTS) {
+      if (track === 'kick') this.playKick(time, velocity, kit);
       else if (track === 'snare') this.playSnare(time, velocity);
       else if (track === 'clap') this.playClap(time, velocity);
       else this.playHat(time, velocity, track === 'open');
@@ -2996,7 +3071,7 @@
       for (const track of DRUM_TRACKS) {
         const value = beat[track]?.[step];
         if (value === undefined || !s.trackOn[track]) continue;
-        this.engine.hitTrack(track, swung, value);
+        this.engine.hitTrack(track, swung, value, this.state.kit);
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
       if (s.trackOn.bass && beat.bass?.[step] !== undefined) {
@@ -3245,7 +3320,7 @@
           this.engine.playBass(now, this._bassMidi(this._currentHarmony(), notes[bassIndex % notes.length]), velocity, this._bassSound());
           bassIndex++;
         } else {
-          this.engine.hitTrack(track, now, velocity);
+          this.engine.hitTrack(track, now, velocity, this.state.kit);
         }
         cellIndex++;
         this.rollTimers[track] = global.setTimeout(tick, Math.max(30, duration * this._stepSeconds() * 1000));
@@ -3367,6 +3442,20 @@
       this.$('[data-field="pump"]').value = String(s.pump);
       this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
+      this._renderKit();
+    }
+
+    /** Kick-Klang: Regler, Anzeige und „geändert“ im eingeklappten Kopf —
+     *  eine im Workshop veränderte Kick klingt im Studio nie unsichtbar anders. */
+    _renderKit() {
+      const kit = this.state.kit;
+      const changed = Object.keys(KIT_DEFAULTS).some((key) => kit[key] !== KIT_DEFAULTS[key]);
+      for (const key of Object.keys(KIT_DEFAULTS)) {
+        this.$(`[data-kit="${key}"]`).value = String(kit[key]);
+        this.$(`[data-kit-out="${key}"]`).textContent = key === 'kickDecay' ? `${kit[key].toFixed(2)} s` : `${Math.round(kit[key])} Hz`;
+      }
+      this.$('.kit-sum').textContent = t('lab.kitTitle') + (changed ? ` · ${t('lab.edited')}` : '');
+      this.$('[data-action="kit-reset"]').disabled = !changed;
     }
 
     _renderTracks() {
@@ -3462,7 +3551,7 @@
       try { await this._ensureAudio(); } catch { return; }
       const now = this.engine.ctx.currentTime;
       if (track === 'bass') this.engine.playBass(now, this._bassMidi(this._currentHarmony(), value), 1, this._bassSound());
-      else this.engine.hitTrack(track, now, value);
+      else this.engine.hitTrack(track, now, value, this.state.kit);
     }
 
     /* ---- Harmonie ---- */
@@ -5164,6 +5253,9 @@
         } else if (el.dataset.field === 'swing' || el.dataset.field === 'pump') {
           s[el.dataset.field] = Number(el.value);
           this.$(`[data-out="${el.dataset.field}"]`).textContent = `${Math.round(Number(el.value) * 100)} %`;
+        } else if (el.dataset.kit) {
+          s.kit[el.dataset.kit] = Number(el.value);
+          this._renderKit();
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
           this._paintLevel(el);
@@ -5205,6 +5297,7 @@
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
         else if (el.dataset.choir === 'prog' && el.value) this._handleAction('pick-prog', el.value, el);
         else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
+        else if (el.dataset.kit) { if (!this.playing) this._preview('kick', 1); }
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
       });
       // Workshop: nach jeder Eingabe (nach den Handlern oben) die Teilziele
@@ -5328,6 +5421,7 @@
           this._pushHistory();
           s.beat = beatFromPattern(this._pattern()); s.beatEdited = false; this._renderBeat();
           break;
+        case 'kit-reset': this._pushHistory(); s.kit = { ...KIT_DEFAULTS }; this._renderKit(); if (!this.playing) this._preview('kick', 1); break;
         case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
         // Harmonie
@@ -5823,6 +5917,10 @@
     .view-switch { order: 5; flex: 1 0 100%; margin-left: 0; justify-content: flex-start; }
     .view-switch .chip { flex: 1; }
   }
+  .kit-box { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .kit-box summary { min-height: 44px; display: flex; align-items: center; font-size: .72rem; font-weight: 800; color: var(--muted); cursor: pointer; }
+  .kit-box .slider-line { grid-template-columns: 96px 1fr 56px; }
+  .kit-box .chip { min-height: 44px; }
   /* Workshop */
   .workshop-view .chip { min-height: 44px; }
   .ws-progress { margin: 8px 2px; font-size: .72rem; font-weight: 800; color: var(--muted); }
@@ -6270,6 +6368,14 @@
       <div class="panel-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
       ${helpText('editHint')}
       <div class="track-list"></div>
+      <details class="kit-box">
+        <summary><span class="kit-sum">${t('lab.kitTitle')}</span></summary>
+        <div class="kit-sliders">
+          ${[['kickStart', 'lab.kitStart', 60, 300, 1], ['kickEnd', 'lab.kitEnd', 25, 200, 1], ['kickDecay', 'lab.kitDecay', .08, 1.2, .01]].map(([key, label, min, max, step]) =>
+            `<label class="slider-line"><span>${t(label)}</span><input type="range" data-kit="${key}" min="${min}" max="${max}" step="${step}"><output data-kit-out="${key}"></output></label>`).join('')}
+        </div>
+        <div class="pill-row"><button class="chip" type="button" data-action="kit-reset">${t('lab.kitReset')}</button></div>
+      </details>
     </section>
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
@@ -6611,6 +6717,7 @@
     LESSON_TIERS, LESSON_AREAS, WORKSHOP_LESSONS, lessonState, applyTaskSet, sanitizeWorkshopProgress, focusKeyKnown,
     stepsOn, sameSteps, hitAt, progOf, progDegreesOf, progSeventhsOf, melodyBarsOf, lastPlayed, hasRun,
     melodyIndexByName, presetIndexByName, soundFromPreset, SYNTH_PRESETS, SOUND_DEFAULTS, SOUND_RANGES, CHOIR_PARTS,
+    KIT_DEFAULTS, KIT_RANGES,
   };
 
   global.ChorGrooveLab = {

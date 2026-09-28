@@ -20062,6 +20062,15 @@ async function runMusicSelfTests({ log = true } = {}) {
       const bar = T.MELODIES[T.melodyIndexByName('Long Tones')].bars[0];
       if (JSON.stringify(bar) !== '[[0,4,8],[8,2,8]]') failed.push(`Workshop reibung/antizipation: Long Tones Takt 1 ist ${JSON.stringify(bar)}`);
     }
+    // Kick-Klang (Paket 6): Roundtrip neu, fehlend (alter Stand), Müll.
+    {
+      const kit = { kickStart: 200, kickEnd: 60, kickDecay: .5 };
+      if (!same(T.sanitizeState(clone({ ...T.defaultState(), kit })).kit, kit)) failed.push('Workshop: kit-Roundtrip');
+      if (!same(T.sanitizeState({ patternIndex: 0 }).kit, T.KIT_DEFAULTS)) failed.push('Workshop: alter Stand ohne kit nicht auf Standard');
+      const junk = T.sanitizeState({ kit: { kickStart: 'laut', kickEnd: 9999, kickDecay: -1 } }).kit;
+      if (!same(junk, { kickStart: 150, kickEnd: 200, kickDecay: .08 })) failed.push(`Workshop: kaputtes kit → ${JSON.stringify(junk)}`);
+      if (!same(T.sanitizeState({ kit: 'x' }).kit, T.KIT_DEFAULTS)) failed.push('Workshop: kit „x“ nicht auf Standard');
+    }
     // Roundtrip view/lessonId
     const lessonId = T.WORKSHOP_LESSONS[0]?.id;
     const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
