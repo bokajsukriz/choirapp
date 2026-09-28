@@ -132,6 +132,21 @@
   .cue-line { min-height: 1.4em; margin: 10px 0 0; text-align: center; font-weight: 800; font-size: .95rem; color: var(--gc, var(--accent)); }
   body.is-player .cue-line { margin-top: auto; font-size: 1.15rem; }
   body.is-player .cue-line ~ .contour { margin-top: 4px; }
+  /* Programm vor dem Start: Liste der Plätze mit ⇄ */
+  .prog-plan { display: none; }
+  body.is-player.is-prestart .prog-plan { display: block; margin: 4px 0 auto; }
+  body.is-player.is-prestart .player-hero, body.is-player.is-prestart .cue-line, body.is-player.is-prestart .contour,
+  body.is-player.is-prestart .body-stage, body.is-player.is-prestart .glide, body.is-player.is-prestart .player-meta,
+  body.is-player.is-prestart .player-next { display: none !important; }
+  .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pp-title { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+  .pp-sub { font-size: .8rem; font-weight: 700; color: var(--muted); margin: 2px 0 10px; }
+  .pp-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  .pp-row { display: grid; grid-template-columns: 40px 1fr 44px; align-items: center; gap: 10px; min-height: 52px; padding: 4px 4px 4px 6px; border-radius: 14px; background: var(--surface-2); }
+  .pp-row .ex-ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; }
+  .pp-row strong { display: block; font-size: .88rem; }
+  .pp-row small { display: block; font-size: .72rem; color: #5f5577; font-weight: 700; margin-top: 1px; }
+  .pp-swap { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: 1.1rem; color: var(--text); }
   .body-stage.is-rhythm { grid-template-columns: 1fr; text-align: center; }
   .body-stage.is-rhythm .body-ring { display: none; }
   .body-stage.is-rhythm .body-move { font-size: 2rem; letter-spacing: .02em; }
@@ -288,6 +303,14 @@
         <h2 class="stage-title"></h2>
       </div>
       <button class="help-btn is-lg" type="button" data-help="exercise" aria-label="So geht die Übung">?</button>
+    </div>
+    <!-- Vor dem Start eines Programms (body.is-prestart): alle Plätze mit
+         Funktion; Pool-Plätze tauscht ⇄ gegen eine andere Übung derselben
+         Aufgabe. Start mit ▶ unten. -->
+    <div class="prog-plan">
+      <div class="pp-head"><p class="pp-title"></p><button class="help-btn is-lg" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
+      <p class="pp-sub"></p>
+      <ol class="pp-list"></ol>
     </div>
     <p class="cue-line" aria-hidden="true"></p>
     <div class="body-stage" hidden>
@@ -853,27 +876,109 @@
   /** Die Fassung einer Übung, die bei der aktuellen Belastung klingt. */
   const variantOf = (ex) => (ex && state.load === 'leicht' && ex.easy ? ex.easy : ex);
 
-  // Einsing-Programme: [Übung, Halbtöne hinauf, Richtung]. Aufbau wie in
-  // einer Chorprobe: lockern → Resonanz → Beweglichkeit → Höhe → sanft
-  // zurück (Summen abwärts als Ausklang).
+  // Einsing-Programme: Plätze [Übung oder '@Pool', Halbtöne hinauf,
+  // Richtung]. Ein Platz ist entweder eine feste Übung ('summen') oder eine
+  // Funktion ('@vorn'): Beim Start wird jeder Pool zu der Übung aufgelöst,
+  // die am längsten nicht gesungen wurde (resolveProgram, Rotation im
+  // Tool-Stand). Aufbau wie in einer Probe: lockern → Klang nach vorn →
+  // Pop-Klang und Aussprache → Beweglichkeit → Höhe → sanft zurück.
   // about: Untertitel der Karte.
+  // Funktion → ähnliche Übungen. Reihenfolge = Vorrang bei Gleichstand.
+  const POOLS = {
+    koerper:    ['dehnen', 'kiefer', 'haltung'],
+    atem:       ['atem', 'atemImpulse', 'abspannen', 'zwischenatmung'],
+    lockern:    ['lippen', 'strohhalm5', 'strohhalm'],
+    gleiten:    ['sirene', 'strohhalm', 'eule'],
+    vorn:       ['twang', 'nja', 'mimemamomu'],
+    popklang:   ['sprechSingen', 'geraderTon', 'ruf'],
+    vokale:     ['vokale', 'umlaute', 'diphthonge'],
+    aussprache: ['vokalAufSchlag', 'schlussKons', 'backingSilben', 'katze', 'pataka'],
+    beweglich:  ['dreiklang', 'riff', 'staccatoLegato', 'koloratur'],
+    stil:       ['anschleifen', 'riff'],
+    vonOben:    ['eule', 'kopfAbwaerts'],
+    hoehe:      ['oktave', 'kopfAbwaerts', 'eule'],
+    tiefe:      ['tiefe', 'tiefeGleiten'],
+    intonation: ['durMoll', 'moll5', 'mollDreiklang', 'akkord'],
+    ausklang:   ['summen', 'strohhalm'],
+  };
+  // Anzeigenamen der Funktionen (⇄-Knopf und Zeile unter der Übung).
+  const POOL_NAMES = {
+    koerper: 'Körper', atem: 'Atem', lockern: 'Lockern', gleiten: 'Gleiten', vorn: 'Klang nach vorn', popklang: 'Pop-Klang',
+    vokale: 'Vokale', aussprache: 'Aussprache', beweglich: 'Beweglichkeit', stil: 'Stilmittel', vonOben: 'Von oben', hoehe: 'Höhe',
+    tiefe: 'Tiefe', intonation: 'Intonation', ausklang: 'Ausklang',
+  };
   const PROGRAMS = [
-    { id: 'kurz', name: 'Kurz', about: 'Der Klassiker vor der Probe', items: [['lippen', 3], ['mimemamomu', 4], ['nja', 3], ['dreiklang', 4], ['oktave', 3], ['summen', 3, 'down']] },
-    { id: 'lang', name: 'Ausführlich', about: 'Alles einmal, in Ruhe', items: [['atem'], ['lippen', 4], ['sirene', 3], ['zwerchfell', 3], ['summen', 3], ['mimemamomu', 4], ['nja', 3],
-      ['vokale', 2], ['moll5', 3], ['katze', 3], ['dreiklang', 4], ['koloratur', 3], ['oktave', 4], ['summen', 4, 'down']] },
+    { id: 'kurz', name: 'Kurz', about: 'Vor der Probe – jedes Mal etwas anders',
+      items: [['@lockern', 3], ['@vorn', 3], ['@popklang', 2], ['@beweglich', 3], ['@hoehe', 3], ['@ausklang', 3, 'down']] },
+    { id: 'lang', name: 'Ausführlich', about: 'Alles einmal, in Ruhe',
+      items: [['@atem'], ['@lockern', 4], ['@gleiten', 3], ['zwerchfell', 3], ['@vorn', 3], ['@vorn', 3], ['@popklang', 3],
+        ['@vokale', 2], ['@aussprache', 2], ['@aussprache', 2], ['@beweglich', 4], ['@stil', 3], ['@hoehe', 4], ['@ausklang', 4, 'down']] },
     { id: 'schnell', name: 'Schnell', about: 'Wenn wenig Zeit ist',
-      items: [['lippen', 2], ['sirene', 2], ['mimemamomu', 3], ['nja', 2], ['dreiklang', 3], ['summen', 2, 'down']] },
+      items: [['@lockern', 2], ['@gleiten', 2], ['@vorn', 3], ['@popklang', 2], ['@beweglich', 3], ['@ausklang', 2, 'down']] },
     { id: 'morgens', name: 'Morgens', about: 'Sanft: erst Körper, dann von oben',
-      items: [['dehnen'], ['kiefer'], ['strohhalm', 3], ['summen', 3, 'down'], ['eule', 3], ['mimemamomu', 3], ['dreiklang', 3]] },
-    { id: 'intonation', name: 'Intonation', about: 'Vokale, Terzen und Akkord',
-      items: [['haltung'], ['strohhalm5', 3], ['summen', 2, 'down'], ['vokale', 2], ['umlaute', 2], ['moll5', 2], ['durMoll', 3], ['akkord', 1], ['messa', 2]] },
-    { id: 'hoehe', name: 'Höhe', about: 'Von oben nach unten, dann Sprünge',
-      items: [['dehnen'], ['strohhalm', 4], ['sirene', 4], ['eule', 4], ['kopfAbwaerts', 4], ['dreiklang', 5], ['oktave', 4], ['summen', 3, 'down']] },
+      items: [['dehnen'], ['kiefer'], ['@lockern', 3], ['summen', 3, 'down'], ['@vonOben', 3], ['sprechSingen', 3], ['@vorn', 3], ['dreiklang', 3]] },
+    { id: 'intonation', name: 'Intonation', about: 'Gerade Töne, Vokale, Terzen und Akkord',
+      items: [['haltung'], ['@lockern', 3], ['summen', 2, 'down'], ['@vokale', 2], ['geraderTon', 2], ['@vokale', 2], ['@intonation', 3], ['akkord', 1], ['messa', 2]] },
+    { id: 'hoehe', name: 'Höhe', about: 'Von oben, mit Twang, dann Sprünge',
+      items: [['dehnen'], ['@lockern', 4], ['sirene', 4], ['@vonOben', 4], ['twang', 3], ['dreiklang', 5], ['ruf', 3], ['oktave', 4], ['summen', 3, 'down']] },
     { id: 'tiefe', name: 'Tiefe', about: 'Für tiefe Stimmen und tiefe Stellen',
-      items: [['haltung'], ['lippen', 3, 'down'], ['summen', 3, 'down'], ['tiefeGleiten', 3, 'down'], ['tiefe', 4, 'down'], ['vokale', 2], ['moll5', 2, 'down']] },
+      items: [['haltung'], ['lippen', 3, 'down'], ['sprechSingen', 3, 'down'], ['summen', 3, 'down'], ['@tiefe', 3, 'down'], ['@tiefe', 4, 'down'], ['@vokale', 2], ['moll5', 2, 'down']] },
     { id: 'auftritt', name: 'Vor dem Auftritt', about: 'Schonend und wach, nichts ausreizen',
-      items: [['haltung'], ['atem'], ['lippen', 3], ['summen', 2, 'down'], ['mimemamomu', 3], ['katze', 2], ['staccatoLegato', 2], ['vokale', 2]] },
+      items: [['haltung'], ['@atem'], ['@lockern', 3], ['summen', 2, 'down'], ['@vorn', 3], ['@aussprache', 2], ['geraderTon', 2], ['@vokale', 2]] },
   ];
+  const poolOf = (slotId) => (typeof slotId === 'string' && slotId.startsWith('@') ? slotId.slice(1) : null);
+  /** Darf die Übung bei dieser Belastung aus einem Pool gewählt werden? */
+  const poolAllowed = (id, load) => !(load === 'leicht' && exById(id)?.avoidLight);
+
+  /** Programm mit aufgelösten Pools (reine Funktion):
+   *  resolveProgram(p, rotation, load[, picks]) → { ...p, items: [[id, limit, dir, pool|null, slot], …] }.
+   *  1. Feste Plätze zuerst (ihre IDs gelten als belegt), 2. ⇄-Wahlen
+   *  (`picks[slot]`, sofern zulässig und frei), 3. übrige Pool-Plätze in
+   *  Programmreihenfolge: die zulässige freie Übung mit dem kleinsten
+   *  `rotation.used[id]` (fehlend = −1), bei Gleichstand die frühere im Pool.
+   *  Ohne Kandidat entfällt der Platz. */
+  function resolveProgram(p, rotation, load, picks = null) {
+    const used = rotation?.used || {};
+    const taken = new Set(p.items.filter(([id]) => !poolOf(id)).map(([id]) => id));
+    const chosen = p.items.map(([id]) => (poolOf(id) ? null : id));
+    const candidates = (pool) => POOLS[pool].filter((id) => !taken.has(id) && poolAllowed(id, load) && exById(id));
+    p.items.forEach(([id], k) => {
+      const pool = poolOf(id);
+      const pick = picks?.[k];
+      if (pool && pick && candidates(pool).includes(pick)) { chosen[k] = pick; taken.add(pick); }
+    });
+    p.items.forEach(([id], k) => {
+      const pool = poolOf(id);
+      if (!pool || chosen[k]) return;
+      let best = null;
+      for (const c of candidates(pool)) if (best === null || (used[c] ?? -1) < (used[best] ?? -1)) best = c;
+      if (best) { chosen[k] = best; taken.add(best); }
+    });
+    const items = [];
+    p.items.forEach(([id, limit, dir], k) => { if (chosen[k]) items.push([chosen[k], limit ?? null, dir ?? null, poolOf(id), k]); });
+    return { ...p, items };
+  }
+  /** ⇄: nächste zulässige Übung desselben Pools (zyklisch in Pool-
+   *  Reihenfolge), nie eine, die ein anderer Platz schon belegt. Liefert
+   *  die neue Wahl für alle Plätze (Index = Platz) oder null. */
+  function swapPicks(p, resolved, slot, load) {
+    const item = resolved.items.find((it) => it[4] === slot);
+    if (!item || !item[3]) return null;
+    const others = new Set(resolved.items.filter((it) => it[4] !== slot).map((it) => it[0]));
+    const cands = POOLS[item[3]].filter((id) => id === item[0] || (!others.has(id) && poolAllowed(id, load) && exById(id)));
+    if (cands.length < 2) return null;
+    const picks = p.items.map(() => null);
+    resolved.items.forEach((it) => { picks[it[4]] = it[0]; });
+    picks[slot] = cands[(cands.indexOf(item[0]) + 1) % cands.length];
+    return picks;
+  }
+  /** Anzahl der ⇄-Alternativen eines Platzes (0 = kein ⇄). */
+  const swapCount = (resolved, slot, load) => {
+    const item = resolved.items.find((it) => it[4] === slot);
+    if (!item || !item[3]) return 0;
+    const others = new Set(resolved.items.filter((it) => it[4] !== slot).map((it) => it[0]));
+    return POOLS[item[3]].filter((id) => id !== item[0] && !others.has(id) && poolAllowed(id, load) && exById(id)).length;
+  };
   const DIRECTIONS = [['updown', 'auf und ab'], ['up', 'aufwärts'], ['down', 'abwärts']];
 
   const HELP = {
@@ -1085,7 +1190,13 @@
     load: 'normal', // Belastung — gemeinsam mit dem Stimmprofil der App
     ownPrograms: [], // [{ id: 'own-<base36>', name, items: [[exId, limit|null, dir]] }]
     lengths: { kurz: 5, lang: 10 }, // gewünschte Dauer der Programme „Kurz“/„Ausführlich“ in Minuten
+    // Programm-Rotation: n zählt jeden gesungenen Programmplatz hoch,
+    // used[Übung] = Zählerstand, als sie zuletzt dran war.
+    rotation: { n: 0, used: {} },
   };
+  // ⇄-Wahl vor dem Start (gilt nur für diesen Start, nicht gespeichert):
+  // { program, picks: [Übung je Platz] } oder null.
+  let swaps = null;
   const LENGTH_CHOICES = { kurz: [3, 5, 7], lang: [10, 15, 20] };
   const COUNT_INS = [['off', 'aus'], ['start', 'zu Beginn'], ['round', 'jede Runde']];
   const CUES = [['chord', 'Akkord'], ['cadence', 'Kadenz']];
@@ -1129,6 +1240,21 @@
     return out;
   }
 
+  /** Rotation aus der Ablage: n ganze Zahl 0…1e9 (sonst 0), used nur
+   *  bekannte Übungen mit ganzen Zahlen 0…n. */
+  function sanitizeRotation(raw) {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const n = Number.isInteger(r.n) && r.n >= 0 && r.n <= 1e9 ? r.n : 0;
+    const used = {};
+    if (r.used && typeof r.used === 'object') {
+      for (const ex of EXERCISES) {
+        const v = r.used[ex.id];
+        if (Number.isInteger(v) && v >= 0 && v <= n) used[ex.id] = v;
+      }
+    }
+    return { n, used };
+  }
+
   function sanitize(raw) {
     if (!raw || typeof raw !== 'object') return;
     const pickFrom = (key, list) => { if (list.includes(raw[key])) state[key] = raw[key]; };
@@ -1140,6 +1266,7 @@
       for (const id of ['kurz', 'lang']) if (LENGTH_CHOICES[id].includes(raw.lengths[id])) state.lengths[id] = raw.lengths[id];
     }
     pickFrom('exercise', EXERCISES.map((x) => x.id));
+    if ('rotation' in raw) state.rotation = sanitizeRotation(raw.rotation);
     pickFrom('voice', VOICE_IDS);
     pickFrom('direction', DIRECTIONS.map(([id]) => id));
     for (const key of ['guide', 'drone']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
@@ -1173,7 +1300,21 @@
   /** Tatsächlich gespieltes Tempo: Grundtempo × Belastung; tonlose Übungen
    *  (Körper fest BODY_BPM, Atem) ohne Faktor. */
   const playBpmOf = (ex) => (ex.kind === 'body' ? BODY_BPM : ex.kind === 'breath' || ex.kind === 'breathRhythm' ? bpmOf(ex) : Math.round(bpmOf(ex) * loadOf().tempo));
-  const allPrograms = () => [...PROGRAMS, ...state.ownPrograms].map(fitted);
+  /** Eingebautes Programm in der aktuell aufgelösten Fassung (mit ⇄-Wahl). */
+  const resolved = (p) => resolveProgram(p, state.rotation, state.load, swaps?.program === p.id ? swaps.picks : null);
+  const allPrograms = () => [...PROGRAMS.map(resolved), ...state.ownPrograms].map(fitted);
+  /** Beim Start eines eingebauten Programms: jeden aufgelösten Platz in
+   *  Programmreihenfolge als gesungen vermerken, ⇄-Wahl verwerfen. */
+  function markRotation(p) {
+    const r = state.rotation;
+    for (const [id] of p.items) r.used[id] = ++r.n;
+    // Die Auflösung dieses Starts festhalten, solange er läuft — sonst
+    // wählte ein Umplanen (Stimme, Belastung) mitten im Lauf neu.
+    const picks = PROGRAMS.find((x) => x.id === p.id).items.map(() => null);
+    for (const it of p.items) picks[it[4]] = it[0];
+    swaps = { program: p.id, picks, running: true };
+    persist();
+  }
   const program = () => allPrograms().find((p) => p.id === state.program) || allPrograms()[0];
 
   /* ---- Länge von „Kurz“ und „Ausführlich“ einstellbar: die Zahl der
@@ -1188,12 +1329,14 @@
   function fitted(p) {
     if (p.id !== 'kurz' && p.id !== 'lang') return p;
     const minutes = targetMinutes(p.id);
-    const key = `${p.id}|${minutes}|${state.voice}|${state.load}|${JSON.stringify(state.bpm)}|${profile?.low}|${profile?.high}`;
+    const key = `${p.id}|${minutes}|${state.voice}|${state.load}|${JSON.stringify(state.bpm)}|${profile?.low}|${profile?.high}|${p.items.map(([id]) => id).join()}`;
     if (!fitCache.has(key)) fitCache.set(key, { ...p, items: fitItems(p.items, minutes * 60) });
     return fitCache.get(key);
   }
   function fitItems(items, target) {
-    const scale = (list, f) => list.map(([id, limit, dir]) => (limit == null ? [id] : [id, clamp(Math.round(limit * f), 1, 9), ...(dir ? [dir] : [])]));
+    // Pool und Platz (4./5. Feld aus resolveProgram) bleiben erhalten.
+    const scale = (list, f) => list.map(([id, limit, dir, ...rest]) => (limit == null ? (rest.length ? [id, null, dir ?? null, ...rest] : [id])
+      : [id, clamp(Math.round(limit * f), 1, 9), ...(dir || rest.length ? [dir ?? null] : []), ...rest]));
     const dur = (list) => secondsLeft(0, buildPlan({ id: 'fit', items: list }));
     let list = items.slice();
     let best = null;
@@ -1478,7 +1621,9 @@
     run.starting = false;
     if (run.playing) return;
     plan = buildPlan();
+    noteProgramStart(fromStep);
     run.playing = true;
+    updatePrestart();
     run.startedAt = engine.ctx.currentTime;
     run.step = state.countIn !== 'off' && fromStep === 0 ? -BAR : fromStep;
     run.nextTime = engine.ctx.currentTime + .08;
@@ -1494,6 +1639,13 @@
     draw();
   }
 
+  /** Eingebautes Programm von vorn: Rotation fortschreiben (auch Autostart
+   *  per ?program=). Einzelübungen und eigene Programme zählen nicht. */
+  function noteProgramStart(fromStep) {
+    const base = state.mode === 'program' && fromStep === 0 ? PROGRAMS.find((x) => x.id === state.program) : null;
+    if (base) markRotation(resolved(base));
+  }
+
   /** Gesungene Zeit melden (ab einer Viertelminute), mit Programm-ID. */
   function reportMinutes(finished) {
     if (!run.startedAt || !engine.ctx) return;
@@ -1506,6 +1658,7 @@
   function stop(message, finished = false) {
     reportMinutes(finished);
     run.playing = false;
+    if (swaps?.running) { swaps = null; plan = null; } // nächster Start: neu auflösen
     clearTimeout(run.timer);
     cancelAnimationFrame(run.frame);
     run.queue = [];
@@ -1561,6 +1714,7 @@
       $('.done-text').textContent = DONE_TEXT;
       $('.player-done').hidden = false;
       $('.player-next').hidden = true;
+      updatePrestart();
       $('.player-done [data-action="again"]').focus();
     }
   }
@@ -1873,6 +2027,49 @@
      ------------------------------------------------------------------------ */
 
   const isPlayer = () => document.body.classList.contains('is-player');
+  const PRESTART_TEXT = 'Mit ▶ starten — ⇄ tauscht eine Übung.';
+  /** Programm im Spielmodus, das (noch) nicht läuft: Liste mit ⇄ statt Bühne. */
+  const isPrestart = () => isPlayer() && state.mode === 'program' && !run.playing && !run.starting && $('.player-done').hidden;
+  function updatePrestart() { document.body.classList.toggle('is-prestart', isPrestart()); }
+
+  /** Liste der Plätze vor dem Start (fertige Länge, aufgelöste Pools). */
+  function renderPrestart() {
+    const p = program();
+    const base = PROGRAMS.find((x) => x.id === p.id);
+    const res = base ? resolved(base) : null;
+    $('.pp-title').textContent = p.name;
+    $('.pp-sub').textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, plan))}`;
+    const focusSlot = document.activeElement?.dataset?.swap;
+    $('.pp-list').replaceChildren(...p.items.map(([id, , , pool, slot]) => {
+      const ex = exById(id);
+      const li = document.createElement('li');
+      li.className = 'pp-row';
+      li.innerHTML = `<span class="ex-ico">${iconSvg(id, 24)}</span><span><strong></strong><small></small></span>`;
+      li.firstChild.style.background = groupColor(ex.group, true);
+      li.firstChild.style.color = groupColor(ex.group);
+      li.querySelector('strong').textContent = ex.name;
+      li.querySelector('small').textContent = pool ? POOL_NAMES[pool] : GROUPS.find(([g]) => g === ex.group)[1];
+      if (res && pool && swapCount(res, slot, state.load) > 0) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'pp-swap';
+        b.dataset.swap = String(slot);
+        b.textContent = '⇄';
+        b.setAttribute('aria-label', `Andere Übung für ${POOL_NAMES[pool]}`);
+        li.append(b);
+      }
+      return li;
+    }));
+    if (focusSlot != null) $(`[data-swap="${focusSlot}"]`)?.focus();
+  }
+  /** ⇄ auf Platz `slot`: nächste zulässige Übung, gilt für diesen Start. */
+  function swapSlot(slot) {
+    const base = PROGRAMS.find((x) => x.id === state.program);
+    if (!base || run.playing) return;
+    const picks = swapPicks(base, resolved(base), slot, state.load);
+    if (!picks) return;
+    swaps = { program: base.id, picks };
+    renderAll();
+  }
   let autostartDone = false;
 
   function enterPlayer() {
@@ -1882,7 +2079,8 @@
   }
   function exitPlayer() {
     if (run.playing) stop();
-    document.body.classList.remove('is-player');
+    swaps = null;
+    document.body.classList.remove('is-player', 'is-prestart');
     $('.header-tools').append($('.gear-btn'));
     $('.player-done').hidden = true;
     $('.tap-start').hidden = true;
@@ -1916,7 +2114,8 @@
     persist();
     enterPlayer();
     renderAll();
-    start(0);
+    // Programme: erst die Liste mit ⇄, Start mit ▶. Einzelübungen sofort.
+    if (pid) setStatus(PRESTART_TEXT); else start(0);
   }
 
   /** Grenzen (Schritte) jeder Übung im Plan, ohne die Pausen dazwischen. */
@@ -1972,6 +2171,8 @@
 
   /** Spielmodus-Teil der Bühne (aus renderStage, je Segmentwechsel). */
   function renderPlayer(seg, cur) {
+    updatePrestart();
+    if (isPrestart()) renderPrestart();
     const ex = cur.ex;
     const stage = $('.stage');
     stage.style.setProperty('--gc', groupColor(ex.group));
@@ -2249,6 +2450,8 @@
     const help = t.closest('[data-help]');
     if (help) { openHelp(help.dataset.help); return; }
     if (t.closest('[data-action="player-close"]')) { exitPlayer(); return; }
+    const swapBtn = t.closest('[data-swap]');
+    if (swapBtn) { swapSlot(Number(swapBtn.dataset.swap)); return; }
     if (t.closest('[data-action="tap-start"]')) { kickStart(); return; }
     if (t.closest('[data-action="again"]')) { start(0); return; }
     if (t.closest('[data-action="done-close"]')) {
@@ -2339,6 +2542,11 @@
     ICONS,
     iconSvg,
     selfCheck,
+    // Pop-Didaktik: Pools, Auflösung, ⇄, Hinweise
+    POOLS, POOL_NAMES, GROUPS, resolveProgram, swapPicks, cueTextAt, recordPlan,
+    resolved: (id) => resolved(PROGRAMS.find((p) => p.id === id)),
+    fitted, minutesOf: (p) => secondsLeft(0, buildPlan(p)) / 60,
+    get popNotes() { return popNotes.slice(); },
   };
 
   /** Selbstprüfung (Konsole des iframes: `einsingen.selfCheck()`).
@@ -2408,9 +2616,7 @@
         if (akk.voiceNotes[v.id].length !== 5) errors.push(`akkord/${v.id}: ${akk.voiceNotes[v.id].length} Töne`);
       }
       akk.satb.forEach((c, i) => { if (i && voicePairs(akk.satb[i - 1], c)) errors.push(`akkord: Parallelen im Satz (Akkord ${i + 1})`); });
-      const lang = PROGRAMS.find((pr) => pr.id === 'lang').items.map(([id]) => id);
-      if (lang[0] !== 'atem' || lang[lang.indexOf('vokale') + 1] !== 'moll5') errors.push(`Programm Ausführlich: ${lang.join(', ')}`);
-      if (PROGRAMS.find((pr) => pr.id === 'kurz').items.map(([id]) => id).join() !== 'lippen,mimemamomu,nja,dreiklang,oktave,summen') errors.push('Programm Kurz verändert');
+      // (Programme sind seit Pop-Didaktik Paket 3 dynamisch — Prüfungen in checkPopPrograms.)
       for (const [id, len] of [['lippen', 8], ['koloratur', 8], ['oktave', 8], ['mimemamomu', 4]]) {
         if ((exById(id).breath ?? BREATH) !== len) errors.push(`${id}: Atemluft ${exById(id).breath ?? BREATH} statt ${len}`);
       }
@@ -2460,29 +2666,21 @@
       for (const [id, want] of Object.entries(reach)) {
         for (const vid of VOICE_IDS) { const got = exerciseRange(exById(id), vid).steps; if (got !== want) errors.push(`${id}/${vid}: ${got} Rückungen statt ${want}`); }
       }
+      // Jede Übung eines Programmplatzes (fest oder aus dem Pool) erreicht
+      // die verlangten Rückungen — außer den Pop-Übungen mit bewusst engem
+      // Tonraum (Sprechen → Singen, Ruf: je 2), dort gilt ihr Maximum.
+      const NARROW = { sprechSingen: 2, ruf: 2 };
       for (const p of PROGRAMS) {
-        for (const [id, limit] of p.items) {
-          if (!exById(id)) { errors.push(`Programm ${p.id}: unbekannte Übung ${id}`); continue; }
-          if (limit == null) continue;
-          for (const vid of VOICE_IDS) { const got = exerciseRange(exById(id), vid).steps; if (got < limit) errors.push(`Programm ${p.id}/${vid}: ${id} nur ${got} statt ${limit} Rückungen`); }
+        for (const [slotId, limit] of p.items) {
+          const ids = poolOf(slotId) ? POOLS[poolOf(slotId)] : [slotId];
+          for (const id of ids) {
+            if (!exById(id)) { errors.push(`Programm ${p.id}: unbekannte Übung ${id}`); continue; }
+            if (limit == null || toneless(exById(id))) continue;
+            for (const vid of VOICE_IDS) { const got = exerciseRange(exById(id), vid).steps; if (got < Math.min(limit, NARROW[id] ?? 9)) errors.push(`Programm ${p.id}/${vid}: ${id} nur ${got} statt ${limit} Rückungen`); }
+          }
         }
       }
-      const minutes = { schnell: [3.6, 3.6, 3.3], kurz: [4.7, 4.9, 4.5], tiefe: [3.4, 4.1, 3.7], morgens: [5.2, 5.7, 5.2], auftritt: [5.6, 5.8, 5.3], intonation: [5.8, 6.5, 6.0], hoehe: [7.5, 8.9, 8.0], lang: [11.7, 12.7, 11.6] };
-      const savedBpm = state.bpm; state.bpm = {};
-      for (const [id, want] of Object.entries(minutes)) {
-        // Geprüft wird laut Arbeitsanweisung nur „normal“ (leicht/kräftig
-        // liegen bis auf Intonation/leicht ebenfalls in der Spanne).
-        [['normal', 1]].forEach(([load, li]) => {
-          state.load = load;
-          for (const vid of VOICE_IDS) {
-            state.voice = vid;
-            const got = secondsLeft(0, buildPlan(PROGRAMS.find((p) => p.id === id))) / 60;
-            // Seit den strafferen Pausen (halber Takt) kürzer als die Tabelle.
-            if (got > want[li] * 1.15 || got < want[li] * .6) errors.push(`Programm ${id}/${load}/${vid}: ${got.toFixed(1)} min (Tabelle ${want[li]})`);
-          }
-        });
-      }
-      state.bpm = savedBpm; state.load = 'normal';
+      state.load = 'normal';
       const dm = exById('durMoll');
       if (noteSemis(dm, dm.notes[3]) !== 3 || noteSemis(dm, dm.notes[1]) !== 4) errors.push('durMoll: vierter Ton nicht die kleine Terz');
       if (!dm.forceDrone) errors.push('durMoll ohne Liegeton');
@@ -2523,7 +2721,7 @@
           state.lengths[id] = minutes; fitCache.clear();
           for (const vid of VOICE_IDS) {
             state.voice = vid; fitCache.clear();
-            const p = fitted(PROGRAMS.find((x) => x.id === id));
+            const p = fitted(resolved(PROGRAMS.find((x) => x.id === id)));
             const got = secondsLeft(0, buildPlan(p)) / 60;
             if (Math.abs(got - minutes) > minutes * .2) errors.push(`Länge ${id} ${minutes} Min/${vid}: ${got.toFixed(1)} Min`);
             if (!p.items.every(([eid]) => exById(eid))) errors.push(`Länge ${id}: unbekannte Übung`);
@@ -2567,7 +2765,7 @@
         try {
           Object.assign(state, { mode: 'program', program: 'kurz', voice: 'A', load: 'normal' });
           plan = buildPlan(); renderStage();
-          const want = fitted(PROGRAMS.find((x) => x.id === 'kurz')).items.length;
+          const want = program().items.length;
           if ($$('.segbar i').length !== want) errors.push(`Segmentbalken: ${$$('.segbar i').length} statt ${want}`);
           for (const ex of EXERCISES) {
             Object.assign(state, { mode: 'single', exercise: ex.id });
@@ -2610,6 +2808,7 @@
       }
       errors.push(...checkPopEngine());
       errors.push(...checkPopExercises());
+      errors.push(...checkPopPrograms());
     } finally {
       for (const k of Object.keys(state)) delete state[k];
       Object.assign(state, saved);
@@ -2721,7 +2920,8 @@
       }
       // Roundtrip: keine neuen gespeicherten Felder.
       const keys = Object.keys(JSON.parse(JSON.stringify(state))).sort().join();
-      if (keys !== 'bpm,countIn,cue,direction,drone,exercise,guide,lengths,load,mode,ownPrograms,program,voice') errors.push(`gespeicherte Felder: ${keys}`);
+      // (rotation: seit Paket 3.)
+      if (keys !== 'bpm,countIn,cue,direction,drone,exercise,guide,lengths,load,mode,ownPrograms,program,rotation,voice') errors.push(`gespeicherte Felder: ${keys}`);
     } finally {
       EXERCISES.splice(EXERCISES.length - tests.length, tests.length);
     }
@@ -2778,6 +2978,182 @@
     if (hint.length !== 1 || !hint[0].textContent.startsWith('Pop-Klang ist sprechnah')) errors.push('Gruppenhinweis Pop fehlt');
     if (HELP.program[1].length !== 5 || !HELP.program[1][1].includes('⇄')) errors.push('HELP.program nicht erneuert');
     if (exById('moll5').how !== 'Fünf Töne auf „no“, in Moll' || !exById('koloratur').help[0].includes('„yeah“') || !exById('nja').help[0].endsWith('Die Vorstufe zum Twang.')) errors.push('Textanpassungen fehlen');
+    return errors;
+  }
+
+  /** Pop-Didaktik Paket 3: Pools, Rotation, ⇄, Dauer. */
+  const popNotes = []; // Beobachtungen ohne Fehler (für den Bericht)
+  function checkPopPrograms() {
+    const errors = [];
+    popNotes.length = 0;
+    const STARTS = 12;
+    const ids = (r) => r.items.map(([id]) => id);
+    // Ein simulierter Start: jeden aufgelösten Platz vermerken (wie markRotation).
+    const sim = (r, rot) => { for (const [id] of r.items) rot.used[id] = ++rot.n; };
+    swaps = null;
+    state.bpm = {};
+    // Auflösung: keine Doppel, kein Platz entfällt, bei „leicht“ nie ruf aus einem Pool.
+    for (const p of PROGRAMS) {
+      for (const load of LOAD_IDS) {
+        const rot = { n: 0, used: {} };
+        for (let k = 0; k < STARTS; k++) {
+          const r = resolveProgram(p, rot, load);
+          if (new Set(ids(r)).size !== r.items.length) errors.push(`${p.id}/${load}/Start ${k + 1}: doppelte Übung ${ids(r).join()}`);
+          if (r.items.length !== p.items.length) errors.push(`${p.id}/${load}/Start ${k + 1}: Platz entfällt`);
+          if (load === 'leicht' && r.items.some(([id, , , pool]) => pool && exById(id).avoidLight)) errors.push(`${p.id}/leicht: ruf aus einem Pool`);
+          if (JSON.stringify(resolveProgram(p, JSON.parse(JSON.stringify(rot)), load)) !== JSON.stringify(r)) errors.push(`${p.id}: nicht deterministisch`);
+          sim(r, rot);
+        }
+      }
+    }
+    // Wechsel in „Kurz“: aufeinanderfolgende Starts unterschiedlich, nach
+    // (größter Pool) Starts kam jede Pool-Übung mindestens einmal vor.
+    const kurz = PROGRAMS.find((x) => x.id === 'kurz');
+    for (const load of LOAD_IDS) {
+      const rot = { n: 0, used: {} };
+      const runs = [];
+      for (let k = 0; k < STARTS; k++) { const r = resolveProgram(kurz, rot, load); runs.push(r); sim(r, rot); }
+      const biggest = Math.max(...kurz.items.map(([sid]) => POOLS[poolOf(sid)].filter((id) => poolAllowed(id, load)).length));
+      kurz.items.forEach(([sid], slot) => {
+        const pool = poolOf(sid);
+        const allowed = POOLS[pool].filter((id) => poolAllowed(id, load));
+        const seq = runs.map((r) => r.items.find((it) => it[4] === slot)[0]);
+        if (allowed.length >= 2 && seq.some((id, k) => k && id === seq[k - 1])) errors.push(`kurz/${load}/${pool}: zweimal hintereinander (${seq.join()})`);
+      });
+      // Jede Pool-Übung kam nach (größter Pool) Starts irgendwo im Programm
+      // vor (ein anderer Pool kann sie singen, z. B. Strohhalm im Ausklang).
+      const seen = new Set(runs.slice(0, biggest).flatMap(ids));
+      const missing = [...new Set(kurz.items.flatMap(([sid]) => POOLS[poolOf(sid)]))].filter((id) => poolAllowed(id, load) && !seen.has(id));
+      if (missing.length) errors.push(`kurz/${load}: nach ${biggest} Starts fehlt ${missing.join()}`);
+    }
+    // Dauer: Kurz/Ausführlich je Länge × Stimme × 12 Starts ±20 %; übrige je
+    // Start höchstens ±25 % vom Mittel ihrer 12 Starts.
+    const savedLen = { ...state.lengths };
+    for (const vid of VOICE_IDS) {
+      state.voice = vid;
+      for (const [pid, list] of Object.entries(LENGTH_CHOICES)) {
+        for (const minutes of list) {
+          state.lengths[pid] = minutes;
+          state.rotation = { n: 0, used: {} };
+          for (let k = 0; k < STARTS; k++) {
+            const r = resolved(PROGRAMS.find((x) => x.id === pid));
+            const got = secondsLeft(0, buildPlan(fitted(r))) / 60;
+            // Zu kurz, obwohl jede Übung schon alle Rückungen singt, ist kein
+            // Fehler von fitItems, sondern die Obergrenze dieser Auflösung.
+            // (fitItems skaliert die Rückungen höchstens mit dem Faktor 3.)
+            const most = secondsLeft(0, buildPlan({ ...r, items: r.items.map(([id, limit, ...rest]) => [id, limit == null ? null : clamp(Math.round(limit * 3), 1, 9), ...rest]) })) / 60;
+            if (got < minutes * .8 && got >= most - .05) popNotes.push(`Dauer ${pid} ${minutes} Min/${vid}/Start ${k + 1}: ${got.toFixed(1)} Min = Maximum dieser Auflösung`);
+            else if (Math.abs(got - minutes) > minutes * .2) errors.push(`Dauer ${pid} ${minutes} Min/${vid}/Start ${k + 1}: ${got.toFixed(1)} Min`);
+            sim(r, state.rotation);
+          }
+        }
+      }
+      for (const load of LOAD_IDS) {
+        state.load = load;
+        for (const p of PROGRAMS.filter((x) => !LENGTH_CHOICES[x.id])) {
+          state.rotation = { n: 0, used: {} };
+          const durs = [];
+          for (let k = 0; k < STARTS; k++) { const r = resolved(p); durs.push(secondsLeft(0, buildPlan(r))); sim(r, state.rotation); }
+          const mean = durs.reduce((a, b) => a + b, 0) / durs.length;
+          const worst = Math.max(...durs.map((d) => Math.abs(d - mean) / mean));
+          if (worst > .25) errors.push(`Dauer ${p.id}/${vid}/${load}: ±${Math.round(worst * 100)} % (${durs.map((d) => (d / 60).toFixed(1)).join(', ')} Min)`);
+        }
+      }
+    }
+    state.lengths = savedLen; state.load = 'normal'; state.voice = 'A';
+    // ⇄: zyklisch über alle zulässigen Kandidaten, nie eine belegte ID,
+    // Rotation unverändert.
+    for (const p of PROGRAMS) {
+      for (const load of ['normal', 'leicht']) {
+        const rot = { n: 7, used: { lippen: 3, twang: 5, dreiklang: 7 } };
+        const start = resolveProgram(p, rot, load);
+        for (const [slot0, [sid]] of p.items.entries()) {
+          const pool = poolOf(sid);
+          if (!pool) continue;
+          let r = start;
+          const others = new Set(start.items.filter((it) => it[4] !== slot0).map((it) => it[0]));
+          const want = POOLS[pool].filter((id) => id === start.items.find((it) => it[4] === slot0)[0] || (!others.has(id) && poolAllowed(id, load)));
+          const seen = [];
+          for (let k = 0; k < want.length; k++) {
+            const picks = swapPicks(p, r, slot0, load);
+            if (want.length < 2) { if (picks) errors.push(`⇄ ${p.id}/${pool}: Tausch ohne Alternative`); break; }
+            r = resolveProgram(p, rot, load, picks);
+            if (new Set(ids(r)).size !== r.items.length) errors.push(`⇄ ${p.id}/${pool}: doppelte Übung`);
+            if (r.items.some((it) => it[4] !== slot0 && it[0] !== start.items.find((x) => x[4] === it[4])[0])) errors.push(`⇄ ${p.id}/${pool}: anderer Platz geändert`);
+            seen.push(r.items.find((it) => it[4] === slot0)[0]);
+          }
+          if (want.length >= 2 && (seen[seen.length - 1] !== want.find((id) => id === start.items.find((it) => it[4] === slot0)[0]) || new Set(seen).size !== want.length)) errors.push(`⇄ ${p.id}/${load}/${pool}: nicht zyklisch (${seen.join()} / ${want.join()})`);
+          if (JSON.stringify(rot) !== '{"n":7,"used":{"lippen":3,"twang":5,"dreiklang":7}}') errors.push('⇄ verändert die Rotation');
+        }
+      }
+    }
+    // ⇄ über die Oberfläche: gilt nur für diesen Start, Rotation bleibt.
+    state.rotation = { n: 0, used: {} };
+    Object.assign(state, { mode: 'program', program: 'kurz', load: 'normal', voice: 'A' });
+    const before = ids(program());
+    swapSlot(1);
+    const after = ids(program());
+    if (after[1] === before[1] || after.filter((id, k) => k !== 1).join() !== before.filter((id, k) => k !== 1).join()) errors.push(`⇄ (Oberfläche): ${before.join()} → ${after.join()}`);
+    if (state.rotation.n !== 0) errors.push('⇄ (Oberfläche) zählt als Start');
+    // Als Vorlage kopieren übernimmt die aufgelösten IDs (inkl. ⇄).
+    openEditor(allPrograms().find((x) => x.id === 'kurz'), { copy: true });
+    if (draft.items.map(([id]) => id).join() !== after.join() || draft.items.some((it) => it.length !== 3)) errors.push(`Vorlage: ${draft.items.map(([id]) => id).join()}`);
+    closeHelp();
+    // Start: Rotation fortgeschrieben, ⇄-Wahl gilt für diesen Start.
+    plan = buildPlan();
+    noteProgramStart(0);
+    if (state.rotation.n !== after.length || after.some((id, k) => state.rotation.used[id] !== k + 1)) errors.push(`Rotation nach Start: ${JSON.stringify(state.rotation)}`);
+    if (plan.items.map((x) => x.id).join() !== after.join()) errors.push('Start spielt nicht die aufgelöste Fassung');
+    if (ids(program()).join() !== after.join()) errors.push('Auflösung ändert sich während des Laufs');
+    swaps = null;
+    if (ids(program()).join() === after.join()) errors.push('Nach dem Start keine neue Auflösung');
+    noteProgramStart(3);
+    Object.assign(state, { mode: 'single', exercise: 'twang' }); noteProgramStart(0);
+    state.ownPrograms = [{ id: 'own-x', name: 'x', items: [['lippen', 2, 'up']] }];
+    Object.assign(state, { mode: 'program', program: 'own-x' }); noteProgramStart(0);
+    if (state.rotation.n !== after.length) errors.push('Einzelübung/eigenes Programm/Sprung ändert die Rotation');
+    state.ownPrograms = []; swaps = null;
+    // Schnellstart ?program=kurz: aufgelöste Fassung, Rotation fortgeschrieben.
+    state.rotation = { n: 0, used: {} };
+    applyQuickParams(parseQuickParams('?from=quick&program=kurz'));
+    pendingAutostart = false;
+    const quick = ids(program());
+    plan = buildPlan(); noteProgramStart(0);
+    if (state.program !== 'kurz' || plan.items.map((x) => x.id).join() !== quick.join() || state.rotation.n !== quick.length) errors.push('Schnellstart: Rotation/Auflösung');
+    swaps = null;
+    // Roundtrip rotation: neu → gleich; kaputt → Standard bzw. gültige Einträge; fehlend → Standard.
+    const good = { n: 12, used: { lippen: 3, twang: 12, riff: 0 } };
+    state.rotation = { n: 0, used: {} };
+    sanitize(JSON.parse(JSON.stringify({ rotation: good })));
+    if (JSON.stringify(state.rotation) !== JSON.stringify(good)) errors.push(`rotation neu: ${JSON.stringify(state.rotation)}`);
+    sanitize(JSON.parse(JSON.stringify({ rotation: state.rotation })));
+    if (JSON.stringify(state.rotation) !== JSON.stringify(good)) errors.push('rotation: zweiter Roundtrip verändert');
+    for (const [raw, want] of [[{ n: 'x', used: { gibtsnicht: 3, lippen: -1 } }, '{"n":0,"used":{}}'], [{ n: 5, used: { lippen: 3, sirene: 9, gibtsnicht: 1, twang: 2.5 } }, '{"n":5,"used":{"lippen":3}}'],
+      ['kaputt', '{"n":0,"used":{}}'], [{ n: 2e9, used: { lippen: 1 } }, '{"n":0,"used":{}}']]) {
+      sanitize({ rotation: raw });
+      if (JSON.stringify(state.rotation) !== want) errors.push(`rotation ${JSON.stringify(raw)} → ${JSON.stringify(state.rotation)}`);
+    }
+    state.rotation = { n: 0, used: {} }; sanitize({});
+    if (JSON.stringify(state.rotation) !== '{"n":0,"used":{}}') errors.push('rotation fehlend ≠ Standard');
+    // Ansicht vor dem Start: jede Zeile, ⇄ nur an Pool-Plätzen mit Alternative.
+    if (!run.playing) {
+      const wasPlayer = isPlayer();
+      document.body.classList.add('is-player');
+      try {
+        Object.assign(state, { mode: 'program', program: 'lang', load: 'normal', voice: 'A' });
+        renderAll();
+        const p = program();
+        const res = resolved(PROGRAMS.find((x) => x.id === 'lang'));
+        if (!document.body.classList.contains('is-prestart') || $$('.pp-row').length !== p.items.length) errors.push(`Liste vor dem Start: ${$$('.pp-row').length} Zeilen statt ${p.items.length}`);
+        const wantSwaps = p.items.filter((it) => it[3] && swapCount(res, it[4], 'normal') > 0).length;
+        if ($$('.pp-swap').length !== wantSwaps || $$('.pp-swap').some((b) => !/^Andere Übung für /.test(b.getAttribute('aria-label')))) errors.push(`⇄-Knöpfe: ${$$('.pp-swap').length} statt ${wantSwaps}`);
+        const btn = $('.pp-swap');
+        if (btn && (btn.offsetWidth < 44 || btn.offsetHeight < 44)) errors.push(`⇄ zu klein: ${btn.offsetWidth}×${btn.offsetHeight}`);
+      } finally {
+        if (!wasPlayer) document.body.classList.remove('is-player');
+        document.body.classList.remove('is-prestart');
+      }
+    }
     return errors;
   }
 
