@@ -686,7 +686,7 @@ export const STRINGS = {
     'lab.task.beatbox.help1': 'Mach den Beat mit dem Mund mit: „bm“ für die Bassdrum, „ka“ für die Snare, „ts“ für die Hi-Hat.',
     'lab.task.beatbox.help2': 'Wenn es sitzt: „Beat ausblenden“ — dann trägst du den Groove allein.',
     // Groove Lab: Workshop (ARBEITSANWEISUNG-WORKSHOP.md)
-    'lab.viewWorkshop': 'Workshop',
+    'lab.viewWorkshop': 'Kurs',
     'lab.ws.tierTour': 'Rundgang',
     'lab.ws.tierDeep': 'Vertiefung',
     'lab.ws.tierChallenge': 'Challenges',
@@ -2408,7 +2408,7 @@ export const STRINGS = {
     'lab.task.beatbox.help1': 'Do the beat with your mouth: “bm” for the kick, “ka” for the snare, “ts” for the hi-hat.',
     'lab.task.beatbox.help2': 'Once it sits: “Fade out beat” — then you carry the groove yourself.',
     // Groove Lab: Workshop
-    'lab.viewWorkshop': 'Workshop',
+    'lab.viewWorkshop': 'Course',
     'lab.ws.tierTour': 'Tour',
     'lab.ws.tierDeep': 'Deep dive',
     'lab.ws.tierChallenge': 'Challenges',
@@ -4130,7 +4130,7 @@ export const STRINGS = {
     'lab.task.beatbox.help1': 'Rób rytm ustami: „bm” to stopa, „ka” to werbel, „ts” to hi-hat.',
     'lab.task.beatbox.help2': 'Gdy już siedzi: „Wycisz rytm” — wtedy samodzielnie niesiesz groove.',
     // Groove Lab: warsztat
-    'lab.viewWorkshop': 'Warsztat',
+    'lab.viewWorkshop': 'Kurs',
     'lab.ws.tierTour': 'Wycieczka',
     'lab.ws.tierDeep': 'Pogłębienie',
     'lab.ws.tierChallenge': 'Wyzwania',

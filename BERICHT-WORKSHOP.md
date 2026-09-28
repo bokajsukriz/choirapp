@@ -173,6 +173,7 @@ Jedes Paket wurde vor dem Commit so geprüft:
 |---|---|
 | „Modus“ statt „Tongeschlecht“ | Die Auswahl im Groove Lab (Studio → Harmonie, Chor-Ansicht) und der Hilfetext zur Tonart heißen jetzt „Modus“, passend zu den Workshop-Texten (EN „Mode“, PL „Tryb“ unverändert). |
 | Kopfzeile | Titel „Groove Lab“ (ohne „Chor“). Auf schmalen Bildschirmen (≤ 560 px) wählt eine Auswahlliste in der Kopfzeile die Ansicht (Chor · Studio · Workshop) statt einer eigenen Knopfzeile; breit bleiben die Knöpfe. |
+| „Kurs“ statt „Workshop“ | Die dritte Ansicht heißt in der Oberfläche „Kurs“ (EN „Course“, PL „Kurs“). Interne Namen (`view: 'workshop'`, `WORKSHOP_LESSONS`, gespeicherter Fortschritt `workshop`) bleiben, damit gespeicherte Stände weiter passen. |
 
 ## Nicht umgesetzt
 
