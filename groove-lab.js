@@ -1061,6 +1061,26 @@
       focus: ['mute:drums', 'mute:bass'],
       checks: [(s) => s.mute.drums && s.mute.bass, (s) => !s.mute.drums && !s.mute.bass],
       solution: [(s) => { s.mute.drums = true; s.mute.bass = true; }, (s) => { s.mute.drums = false; s.mute.bass = false; }] },
+
+    // --- Challenges: Start mit „Los“, Runden siehe _wsCh… (kind) ---
+    { id: 'hoerDetektiv', tier: 'challenge', area: 'rhythm', tab: 'beat', kind: 'detective', rounds: 5,
+      focus: ['track:kick', 'track:snare', 'track:hat'], checks: [(s, ctx) => ctx.round >= 5], solution: [(s, ctx) => { ctx.round = 5; }] },
+    { id: 'nachbauen', tier: 'challenge', area: 'rhythm', tab: 'beat', kind: 'rebuild', rounds: 3,
+      focus: ['track:kick', 'track:snare', 'track:hat'], checks: [(s, ctx) => ctx.round >= 3], solution: [(s, ctx) => { ctx.round = 3; }] },
+    // Zum Hören braucht das Rätsel eine Melodie (sonst klingt der Synth nicht).
+    { id: 'klangRaetsel', tier: 'challenge', area: 'sound', tab: 'sound', kind: 'soundMatch', rounds: 3,
+      groove: 'Minimal Click', melody: 'Hook Line', set: { bpm: 96, progId: 'pop' },
+      focus: ['wave', 'sound:cutoff', 'sound:attack', 'sound:release'], checks: [(s, ctx) => ctx.round >= 3], solution: [(s, ctx) => { ctx.round = 3; }] },
+    // Pulse Basic swingt keine Achtel (swingUnit fehlt) — geprüft wird der
+    // Regler; der Text verweist für echten Shuffle auf „Gospel Shuffle“.
+    { id: 'gospelRemix', tier: 'challenge', area: 'mix', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 120 }, focus: ['bpm', 'swing', 'track:clap', 'picker:prog'],
+      checks: [(s) => s.bpm >= 80 && s.bpm <= 100,
+               (s) => sameSteps(stepsOn(s, 'clap'), [4, 12]),
+               (s) => s.swing >= .5,
+               (s) => s.chordsOn && s.progId === 'blues'],
+      solution: [(s) => { s.bpm = 90; s.eighths = 180; }, (s) => { s.beat.clap = { 4: 1, 12: 1 }; },
+                 (s) => { s.swing = .6; }, (s) => { s.chordsOn = true; s.progId = 'blues'; s.modeId = 'major'; }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */
@@ -1122,6 +1142,68 @@
     }
     out.last = ids.includes(raw.last) ? raw.last : null;
     return out;
+  }
+
+  /* Challenges (Paket 8). Zufall über eine injizierbare Funktion `rng`
+     (Standard Math.random), damit die Tests feste Folgen nutzen können. */
+  const CHALLENGE_TRACKS = ['kick', 'snare', 'hat'];
+  const SOUND_MATCH_PRESETS = ['Tape Keys', 'Neon Pluck', 'Soft Brass', 'Moon Pad', 'Bright Saw', 'Warm Sub'];
+  const SOUND_MATCH_START = { ...SOUND_DEFAULTS, presetIndex: 0, custom: true };
+  const MATCH_EPS = 1e-9; // genau auf der Grenze = Treffer
+
+  /** Zufälliger 4/4-Loop ohne Mundschlagzeug-Silben (Index), möglichst nicht `not`. */
+  function pickChallengePattern(rng, not = -1) {
+    const all = DRUM_PATTERNS.map((p, i) => [p, i]).filter(([p]) => p.meter === '4/4' && !p.vocal).map(([, i]) => i);
+    const list = all.length > 1 ? all.filter((i) => i !== not) : all;
+    return list[Math.floor(rng() * list.length)];
+  }
+
+  /** Hör-Detektiv: genau eine Zelle von Kick, Snare oder Hat umschalten
+   *  (hinzufügen oder entfernen), nie Feld 1 der Kick. */
+  function detectiveVariant(beat, rng, steps = 16) {
+    const options = [];
+    for (const track of CHALLENGE_TRACKS) for (let step = 0; step < steps; step++) if (track !== 'kick' || step !== 0) options.push([track, step]);
+    const [track, step] = options[Math.floor(rng() * options.length)];
+    const variant = JSON.parse(JSON.stringify(beat));
+    if (variant[track][step] !== undefined) delete variant[track][step];
+    else variant[track][step] = 1;
+    return { track, step, beat: variant };
+  }
+
+  /** Nachbauen: Treffer und zusätzliche Schläge in Kick, Snare, Hat (nur
+   *  ob ein Schlag da ist, nicht wie laut). Angezeigt wird Treffer minus
+   *  Extras, nie negativ; geschafft bei genauer Übereinstimmung. */
+  function rebuildScore(model, mine) {
+    const keys = (b) => new Set(CHALLENGE_TRACKS.flatMap((track) => Object.keys(b?.[track] || {}).map((st) => `${track}:${Number(st)}`)));
+    const m = keys(model);
+    const y = keys(mine);
+    const hits = [...y].filter((k) => m.has(k)).length;
+    const extras = y.size - hits;
+    return { hits, extras, total: m.size, shown: Math.max(0, hits - extras), done: hits === m.size && extras === 0 };
+  }
+
+  /** Klang-Rätsel: welche der vier Größen passen? Wellenform gleich,
+   *  Cutoff innerhalb Faktor 1,35, Attack/Release je ±40 % oder ±0,05 s. */
+  function soundMatch(target, mine) {
+    const near = (a, b) => Math.abs(a - b) <= Math.max(.4 * b, .05) + MATCH_EPS;
+    return {
+      wave: mine.wave === target.wave,
+      cutoff: Math.abs(Math.log(mine.cutoff / target.cutoff)) <= Math.log(1.35) + MATCH_EPS,
+      attack: near(mine.attack, target.attack),
+      release: near(mine.release, target.release),
+    };
+  }
+  const soundMatched = (target, mine) => Object.values(soundMatch(target, mine)).every(Boolean);
+
+  /** Zielklang: Preset auf Wellenform, Cutoff, Attack, Release reduziert.
+   *  Ziele, die der Startklang schon trifft (Tape Keys), fallen weg. */
+  function soundMatchTarget(rng, not = null) {
+    const targets = SOUND_MATCH_PRESETS.map((name) => {
+      const p = soundFromPreset(presetIndexByName(name));
+      return { name, sound: { ...SOUND_DEFAULTS, wave: p.wave, cutoff: p.cutoff, attack: p.attack, release: p.release, presetIndex: p.presetIndex, custom: true } };
+    }).filter((x) => !soundMatched(x.sound, SOUND_MATCH_START));
+    const list = targets.length > 1 ? targets.filter((x) => x.name !== not) : targets;
+    return list[Math.floor(rng() * list.length)];
   }
 
   const TABS = [
@@ -2395,6 +2477,7 @@
       if (workshop) this._wsEnter();
       this._renderChoir();
       this._wsDecorate();
+      this._applySound(); // Klang-Rätsel: außerhalb des Workshops immer der eigene Klang
     }
 
     /* ---- Ansicht: Workshop ----
@@ -2423,7 +2506,8 @@
     }
 
     _wsInit(lesson, start) {
-      this.ui.ws = { lesson, reached: 0, played: [], start: JSON.parse(JSON.stringify(start)), ab: null };
+      this.ui.ws = { lesson, reached: 0, played: [], start: JSON.parse(JSON.stringify(start)), ab: null,
+        ch: lesson.kind ? { kind: lesson.kind, phase: 'ready', round: 0, hits: 0 } : null };
       this.ui.wsTier = lesson.tier;
       if (lesson.tier === 'deep') this.ui.wsArea = lesson.area;
       if (lesson.focus.includes('progEditor') || lesson.focus.includes('progSevenths')) this.ui.progEdit = true;
@@ -2437,6 +2521,7 @@
       const lesson = WORKSHOP_LESSONS.find((l) => l.id === id);
       if (!lesson) return;
       this._wsAbReset();
+      if (this.ui.ws) this.ui.ws.ch = null; // laufende Challenge endet, Klang/Beat wieder der eigene
       const meterBefore = this._meter();
       const next = sanitizeState(lessonState(this.state, lesson));
       this._applyState(JSON.parse(JSON.stringify(next)));
@@ -2452,7 +2537,195 @@
       this._setTab(lesson.tab);
       this._renderWorkshop();
       this._wsDecorate();
-      if (play && !this.playing && lesson.tier !== 'challenge') this.start();
+      // Challenges mit eigenem Ablauf starten erst mit „Los“.
+      if (play && !this.playing && !lesson.kind) this.start();
+    }
+
+    /* ---- Challenges (Paket 8): Hör-Detektiv, Nachbauen, Klang-Rätsel ----
+       ui.ws.ch = { kind, phase: 'ready' | 'running' | 'result', round,
+       hits, … }. Keine Zeitlimits, keine Wertung: „x von y“ zählt beim
+       Detektiv die Runden, die im ersten Versuch sitzen. */
+
+    /** Laufende Challenge (nur in der Workshop-Ansicht wirksam). */
+    _wsCh() {
+      return this.state.view === 'workshop' ? this.ui?.ws?.ch || null : null;
+    }
+
+    /** Beat, der an Schritt g klingt: beim Detektiv abwechselnd zwei Takte
+     *  Original (A) und zwei Takte Variante (B), beim Nachbauen auf Wunsch
+     *  das Vorbild. Sonst der Stand. */
+    _beatAt(g) {
+      const ch = this._wsCh();
+      if (ch?.phase === 'running') {
+        if (ch.kind === 'detective' && ch.variant && this._wsChSide(g) === 'B') return ch.variant.beat;
+        if (ch.kind === 'rebuild' && ch.listen === 'model') return ch.model;
+      }
+      return this.state.beat;
+    }
+
+    _wsChSide(g) {
+      const bar = Math.floor((g - (this.ui.ws.ch.baseStep || 0)) / this._barSteps());
+      return bar >= 0 && Math.floor(bar / 2) % 2 === 1 ? 'B' : 'A';
+    }
+
+    /** Synth-Klang, der zu hören ist: beim Klang-Rätsel auf Wunsch der Zielklang. */
+    _heardSound() {
+      const ch = this._wsCh();
+      return ch?.phase === 'running' && ch.kind === 'soundMatch' && ch.listen === 'model' ? ch.target.sound : this.state.sound;
+    }
+
+    /** „Los“ bzw. „Noch eine Runde“. Startet die Wiedergabe. */
+    _wsChGo() {
+      const ws = this.ui.ws;
+      if (!ws?.ch) return;
+      ws.ch = { kind: ws.lesson.kind, phase: 'running', round: 0, hits: 0, rng: this._wsRng || Math.random, prevPattern: -1, prevTarget: null };
+      this._wsChRound();
+      if (!this.playing) this.start();
+    }
+
+    /** Neue Aufgabe innerhalb der Runde (Zustand ohne Undo-Eintrag). */
+    _wsChRound() {
+      const ch = this.ui.ws.ch;
+      const s = this._snapshot();
+      ch.tries = 0; ch.hint = false; ch.msg = ''; ch.score = null; ch.match = null;
+      if (ch.kind === 'detective' || ch.kind === 'rebuild') {
+        const index = pickChallengePattern(ch.rng, ch.prevPattern);
+        ch.prevPattern = index;
+        const pattern = DRUM_PATTERNS[index];
+        s.patternIndex = index;
+        s.beat = beatFromPattern(pattern);
+        s.beatEdited = false;
+        s.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
+        Object.assign(s.trackOn, { kick: true, snare: true, hat: true, clap: false, open: false, bass: false });
+        if (ch.kind === 'detective') {
+          ch.variant = detectiveVariant(s.beat, ch.rng, METERS[pattern.meter].steps);
+        } else {
+          ch.model = beatFromPattern(pattern);
+          for (const track of CHALLENGE_TRACKS) s.beat[track] = {};
+          ch.listen = 'model';
+        }
+      } else if (ch.kind === 'soundMatch') {
+        ch.target = soundMatchTarget(ch.rng, ch.prevTarget);
+        ch.prevTarget = ch.target.name;
+        s.sound = { ...SOUND_MATCH_START };
+        ch.listen = 'model';
+      }
+      // Wechsel mitten im Spiel: A/B zählen ab dem nächsten Taktanfang.
+      ch.baseStep = this.playing ? Math.ceil(this.globalStep / this._barSteps()) * this._barSteps() : 0;
+      this._applyState(s, { history: false });
+      this._renderWorkshop();
+    }
+
+    /** Hör-Detektiv: getippte Zelle ist die, die in B anders ist? */
+    _wsChGuess(track, step) {
+      const ch = this._wsCh();
+      if (!ch || ch.phase !== 'running' || !ch.variant) return;
+      if (track === ch.variant.track && step === ch.variant.step) { this._wsChSuccess(ch.tries === 0); return; }
+      ch.tries++;
+      ch.hint = ch.tries >= 3;
+      ch.msg = t(ch.hint ? 'lab.ws.hint' : 'lab.ws.notYet');
+      this._wsAnnounce(ch.msg);
+      this._renderWorkshop();
+      this._wsDecorate();
+    }
+
+    /** Nachbauen und Klang-Rätsel: nach jeder Eingabe vergleichen. */
+    _wsChEval() {
+      const ch = this._wsCh();
+      if (!ch || ch.phase !== 'running') return;
+      if (ch.kind === 'rebuild') {
+        ch.score = rebuildScore(ch.model, this.state.beat);
+        if (ch.score.done) { this._wsChSuccess(true); return; }
+      } else if (ch.kind === 'soundMatch') {
+        ch.match = soundMatch(ch.target.sound, this.state.sound);
+        if (Object.values(ch.match).every(Boolean)) { this._wsChSuccess(true); return; }
+      }
+      this._renderWorkshop();
+    }
+
+    /** Wer selbst baut, will sich hören: Eingabe schaltet auf „Deins“. */
+    _wsChTouched() {
+      const ch = this._wsCh();
+      if (ch?.phase === 'running' && ch.listen === 'model') this._wsChListen('mine');
+    }
+
+    _wsChListen(value) {
+      const ch = this._wsCh();
+      if (!ch || ch.phase !== 'running') return;
+      ch.listen = value === 'model' ? 'model' : 'mine';
+      this._applySound();
+      this._renderWorkshop();
+    }
+
+    _wsChSuccess(firstTry) {
+      const ch = this.ui.ws.ch;
+      const lesson = this.ui.ws.lesson;
+      ch.round++;
+      if (firstTry) ch.hits++;
+      this._wsAnnounce(`✓ ${tf('lab.ws.roundOf', { n: ch.round, total: lesson.rounds })}`);
+      if (ch.round >= lesson.rounds) {
+        ch.phase = 'result';
+        ch.listen = 'mine';
+        ch.hint = false;
+        this._applySound();
+      } else {
+        this._wsChRound();
+      }
+      this._wsCheck();
+      this._renderWorkshop();
+      this._wsDecorate();
+    }
+
+    /** Anzeige „A“/„B“ im Takt dessen, was gerade klingt. */
+    _wsChShow(g) {
+      const ch = this._wsCh();
+      if (ch?.kind !== 'detective') return;
+      const side = ch.phase === 'running' ? this._wsChSide(g) : '';
+      if (this._wsSide === side) return;
+      this._wsSide = side;
+      const badge = this.$('.ws-ch-badge');
+      badge.textContent = side;
+      badge.classList.toggle('is-b', side === 'B');
+    }
+
+    _renderWsChallenge() {
+      const ws = this.ui.ws;
+      const ch = ws?.ch;
+      const host = this.$('.ws-ch');
+      host.hidden = !ch;
+      if (!ch) return;
+      const lesson = ws.lesson;
+      const running = ch.phase === 'running';
+      this.$('.ws-ch-round').textContent = running ? tf('lab.ws.roundOf', { n: Math.min(ch.round + 1, lesson.rounds), total: lesson.rounds }) : '';
+      const badge = this.$('.ws-ch-badge');
+      badge.hidden = !(running && ch.kind === 'detective');
+      if (badge.hidden) this._wsSide = null;
+      const listen = this.$('.ws-listen');
+      listen.hidden = !(running && ch.kind !== 'detective');
+      this._chips(listen, [{ value: 'model', label: t('lab.ws.model') }, { value: 'mine', label: t('lab.ws.mine') }], ch.listen, 'ws-listen');
+      const score = this.$('.ws-ch-score');
+      score.hidden = !(running && ch.kind === 'rebuild' && ch.score);
+      if (!score.hidden) score.textContent = tf('lab.ws.beatsMatch', { hits: ch.score.shown, total: ch.score.total });
+      const params = this.$('.ws-ch-params');
+      params.hidden = !(running && ch.kind === 'soundMatch');
+      if (!params.hidden) {
+        const match = ch.match || soundMatch(ch.target.sound, this.state.sound);
+        params.replaceChildren(...[['wave', 'lab.waveformAria'], ['cutoff', 'lab.knobCutoff'], ['attack', 'lab.envAttack'], ['release', 'lab.envRelease']].map(([key, label]) => {
+          const li = document.createElement('li');
+          li.className = `ws-check${match[key] ? ' is-fit' : ''}`;
+          li.innerHTML = `<span class="ws-box" aria-hidden="true">${match[key] ? '✓' : ''}</span><span></span>`;
+          li.lastChild.textContent = `${t(label)}: ${t(match[key] ? 'lab.ws.fits' : 'lab.ws.fitsNot')}`;
+          return li;
+        }));
+      }
+      const msg = this.$('.ws-ch-msg');
+      msg.textContent = running ? ch.msg || '' : '';
+      const result = this.$('.ws-ch-result');
+      result.hidden = ch.phase !== 'result';
+      result.textContent = tf('lab.ws.result', { hits: ch.kind === 'detective' ? ch.hits : ch.round, total: lesson.rounds });
+      const go = this.$('[data-action="ws-go"]');
+      go.hidden = running;
+      go.textContent = t(ch.phase === 'result' ? 'lab.ws.again' : 'lab.ws.goChallenge');
     }
 
     _wsDone() {
@@ -2465,6 +2738,7 @@
       if (this._wsFrame || this.state.view !== 'workshop') return;
       this._wsFrame = global.requestAnimationFrame(() => {
         this._wsFrame = 0;
+        this._wsChEval();
         this._wsCheck();
         this._wsDecorate();
       });
@@ -2498,7 +2772,7 @@
 
     _wsCtx() {
       const ws = this.ui.ws;
-      return { played: ws.played, start: ws.start };
+      return { played: ws.played, start: ws.start, round: ws.ch?.round || 0 };
     }
 
     _wsAnnounce(text) {
@@ -2599,7 +2873,7 @@
      *  wiederverwendet: das Panel der Einheit (lesson.tab), dazu aus anderen
      *  Reitern nur die Abschnitte, in denen ein Fokus-Element steht. */
     _wsDecorate() {
-      this.$all('.ws-dim, .ws-focus, .ws-from, .ws-to, .ws-hide').forEach((el) => el.classList.remove('ws-dim', 'ws-focus', 'ws-from', 'ws-to', 'ws-hide'));
+      this.$all('.ws-dim, .ws-focus, .ws-from, .ws-to, .ws-hide, .ws-hint').forEach((el) => el.classList.remove('ws-dim', 'ws-focus', 'ws-from', 'ws-to', 'ws-hide', 'ws-hint'));
       this.$all('.tab-panel[inert], .ws-card [inert]').forEach((el) => { el.inert = false; });
       const ws = this.ui.ws;
       if (this.state.view !== 'workshop' || !ws) return;
@@ -2632,6 +2906,8 @@
           }
         }
       }
+      const ch = ws.ch;
+      if (ch?.phase === 'running' && ch.hint && ch.variant) this.$(`.track-list .track-row[data-track="${ch.variant.track}"]`)?.classList.add('ws-hint');
       // „Vorher“: nur der Umschalter bleibt bedienbar (sonst gingen
       // Änderungen am Ausgangszustand beim Zurückschalten verloren).
       if (ws.ab?.showing === 'before') {
@@ -2692,7 +2968,7 @@
       aha.querySelector('span').textContent = t(key('aha'));
       this.$('.ws-tour-done').hidden = !(lesson.tier === 'tour' && tourDone === tour.length);
       const ab = this.$('[data-action="ws-ab"]');
-      ab.hidden = !done;
+      ab.hidden = !done || !!lesson.kind;
       const before = ws.ab?.showing === 'before';
       ab.setAttribute('aria-pressed', String(before));
       const which = t(before ? 'lab.ws.before' : 'lab.ws.after');
@@ -2700,9 +2976,10 @@
       ab.querySelector('.ws-ab-before').classList.toggle('is-on', before);
       ab.querySelector('.ws-ab-after').classList.toggle('is-on', !before);
       const hint = this.$('.ws-ab-hint');
-      hint.hidden = !done;
+      hint.hidden = !done || !!lesson.kind;
       hint.textContent = tf('lab.ws.abHint', { which });
       this.$('[data-action="ws-next"]').hidden = !this._wsNext();
+      this._renderWsChallenge();
     }
 
     /** Eigene Stimme: aus dem Stimmprofil der App, sonst hier gewählt. */
@@ -2941,7 +3218,7 @@
       const s = this.state;
       this.engine.setMaster(s.mix.master);
       for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
-      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, s.sound);
+      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
       this.engine.setLayerSound('chords', CHORD_SOUND);
       this.engine.setLayerSound('drone', DRONE_SOUND);
       this.engine.setFx(s.fx, this._stepSeconds());
@@ -3095,7 +3372,7 @@
       const step = g % barSteps;
       const swung = time + this._swingOffset(step, stepSec);
 
-      const beat = s.beat;
+      const beat = this._beatAt(g);
       for (const track of DRUM_TRACKS) {
         const value = beat[track]?.[step];
         if (value === undefined || !s.trackOn[track]) continue;
@@ -3285,7 +3562,7 @@
         const midi = this._melodyMidi(deg, alt, h, ref);
         const barIndex = Math.floor(g / barSteps) % bars.length;
         const room = bars.length * barSteps - (barIndex * barSteps + at);
-        this.engine.playTone(s.sound, midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
+        this.engine.playTone(this._heardSound(), midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
       }
     }
 
@@ -3325,6 +3602,7 @@
       this._showRecLoopStep(g);
       if (chordChanged) this._renderNow();
       if (this.state.view === 'choir') this._renderChoirNow(g);
+      else if (this.state.view === 'workshop') this._wsChShow(g);
     }
 
     _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
@@ -3562,6 +3840,7 @@
     }
 
     _toggleCell(track, step) {
+      this._wsChTouched();
       const s = this.state;
       const cycle = CELL_CYCLE[track];
       const current = s.beat[track][step];
@@ -4067,6 +4346,7 @@
     }
 
     _onSoundEdit({ refreshKnobs = false } = {}) {
+      this._wsChTouched();
       const sound = this.state.sound;
       this._autoCapture();
       if (!sound.custom) {
@@ -4080,7 +4360,7 @@
 
     /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten. */
     _applySound() {
-      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this.state.sound);
+      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
     }
 
     _refreshSoundControls() {
@@ -5443,7 +5723,12 @@
           this._renderBeat(); this._renderMelody();
           break;
         }
-        case 'cell': this._toggleCell(target.dataset.track, Number(target.dataset.step)); break;
+        case 'cell':
+          if (this._wsCh()?.kind === 'detective') this._wsChGuess(target.dataset.track, Number(target.dataset.step));
+          else this._toggleCell(target.dataset.track, Number(target.dataset.step));
+          break;
+        case 'ws-go': this._wsChGo(); break;
+        case 'ws-listen': this._wsChListen(value); break;
         case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); break;
         case 'reset-beat':
           this._pushHistory();
@@ -5976,6 +6261,18 @@
   .ws-ab-hint, .ws-to-studio { margin: 8px 0 0; font-size: .7rem; color: var(--muted); }
   .ws-ab-hint { font-weight: 800; color: var(--text); }
   .ws-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+  .ws-ch { margin: 10px 0; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line); }
+  .ws-ch-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .78rem; font-weight: 800; }
+  .ws-ch-badge { min-width: 64px; min-height: 64px; border-radius: 16px; display: grid; place-items: center; font-size: 2.2rem; border: 3px solid var(--text); }
+  .ws-ch-badge.is-b { background: var(--text); color: var(--surface); }
+  .ws-listen { margin: 8px 0; }
+  .ws-ch-score, .ws-ch-result { margin: 8px 0; font-size: .9rem; font-weight: 800; }
+  .ws-ch-msg { margin: 6px 0; font-size: .8rem; font-weight: 700; min-height: 1.2em; }
+  .ws-ch-params { margin-top: 8px; }
+  .ws-ch-params .is-fit .ws-box { border-color: var(--accent); color: var(--accent); }
+  .ws-go { font-size: .86rem; padding: 8px 22px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  .track-row.ws-hint { outline: 3px dashed var(--text); outline-offset: 2px; border-radius: 8px; animation: ws-blink 1s steps(2, start) infinite; }
+  @keyframes ws-blink { 50% { outline-color: transparent; } }
   .ws-dim { opacity: .35; }
   .ws-hide { display: none !important; }
   .ws-focus { outline: 2px dashed rgba(var(--accent-rgb), .8); outline-offset: 3px; border-radius: 10px; }
@@ -6376,6 +6673,15 @@
         <details class="ws-why"><summary>${t('lab.ws.why')}</summary><p class="ws-why-text"></p></details>
         <p class="ws-aha" hidden><strong></strong> <span></span></p>
         <p class="ws-tour-done" hidden>${t('lab.ws.tourDone')}</p>
+        <div class="ws-ch" hidden>
+          <div class="ws-ch-top"><span class="ws-ch-round"></span><strong class="ws-ch-badge" aria-hidden="true" hidden></strong></div>
+          <div class="chip-row ws-listen" role="group" aria-label="${t('lab.ws.model')} / ${t('lab.ws.mine')}" hidden></div>
+          <p class="ws-ch-score" hidden></p>
+          <ul class="ws-checks ws-ch-params" hidden></ul>
+          <p class="ws-ch-msg" role="status"></p>
+          <p class="ws-ch-result" hidden></p>
+          <button class="chip ws-go" type="button" data-action="ws-go"></button>
+        </div>
         <div class="ws-actions">
           <button class="chip" type="button" data-action="ws-restart">${t('lab.ws.restart')}</button>
           <button class="chip ws-ab" type="button" data-action="ws-ab" aria-pressed="false" hidden><span class="ws-ab-before">${t('lab.ws.before')}</span><span class="ws-ab-after is-on">${t('lab.ws.after')}</span></button>
@@ -6746,6 +7052,7 @@
     stepsOn, sameSteps, hitAt, progOf, progDegreesOf, progSeventhsOf, melodyBarsOf, lastPlayed, hasRun,
     melodyIndexByName, presetIndexByName, soundFromPreset, SYNTH_PRESETS, SOUND_DEFAULTS, SOUND_RANGES, CHOIR_PARTS,
     KIT_DEFAULTS, KIT_RANGES,
+    pickChallengePattern, detectiveVariant, rebuildScore, soundMatch, soundMatchTarget, SOUND_MATCH_START, CHALLENGE_TRACKS,
   };
 
   global.ChorGrooveLab = {

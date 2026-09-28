@@ -20071,6 +20071,44 @@ async function runMusicSelfTests({ log = true } = {}) {
       if (!same(junk, { kickStart: 150, kickEnd: 200, kickDecay: .08 })) failed.push(`Workshop: kaputtes kit → ${JSON.stringify(junk)}`);
       if (!same(T.sanitizeState({ kit: 'x' }).kit, T.KIT_DEFAULTS)) failed.push('Workshop: kit „x“ nicht auf Standard');
     }
+    // Challenges (Paket 8) mit fester Zufallsfunktion.
+    if (T.detectiveVariant) {
+      let seed = 12345;
+      const rng = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+      const cells = (b) => new Set(['kick', 'snare', 'clap', 'hat', 'open', 'bass'].flatMap((tr) => Object.keys(b[tr] || {}).map((st) => `${tr}:${st}`)));
+      for (let i = 0; i < 200; i++) {
+        const pattern = T.DRUM_PATTERNS[T.pickChallengePattern(rng)];
+        if (pattern.meter !== '4/4' || pattern.vocal) { failed.push(`Detektiv: Loop ${pattern.name} ungeeignet`); break; }
+        const beat = T.beatFromPattern(pattern);
+        const v = T.detectiveVariant(beat, rng);
+        const a = cells(beat), b = cells(v.beat);
+        const diff = [...a].filter((k) => !b.has(k)).concat([...b].filter((k) => !a.has(k)));
+        if (diff.length !== 1 || diff[0] !== `${v.track}:${v.step}`) { failed.push(`Detektiv: Variante weicht in ${diff.length} Zellen ab`); break; }
+        if (v.track === 'kick' && v.step === 0) { failed.push('Detektiv: Kick Feld 1 verändert'); break; }
+      }
+      const model = { kick: { 0: 1, 8: 1 }, snare: { 4: 1, 12: .45 }, hat: {} };
+      for (const [mine, want] of [
+        [{ kick: {}, snare: {}, hat: {} }, '0/0/4/0/false'],
+        [{ kick: { 0: 1 }, snare: { 12: 1 }, hat: {} }, '2/0/4/2/false'],
+        [{ kick: { 0: 1, 3: 1, 5: 1, 7: 1 }, snare: {}, hat: {} }, '1/3/4/0/false'],
+        [{ kick: { 0: 1, 8: 1 }, snare: { 4: 1, 12: 1 }, hat: {} }, '4/0/4/4/true'],
+      ]) {
+        const r = T.rebuildScore(model, mine);
+        if ([r.hits, r.extras, r.total, r.shown, r.done].join('/') !== want) failed.push(`Nachbauen: ${JSON.stringify(mine)} → ${JSON.stringify(r)}`);
+      }
+      const target = { wave: 'sawtooth', cutoff: 1000, attack: .2, release: .01 };
+      const fit = (mine) => T.soundMatch(target, { ...target, ...mine });
+      const checks = [
+        [{ cutoff: 1350 }, 'cutoff', true], [{ cutoff: 1000 / 1.35 }, 'cutoff', true], [{ cutoff: 1360 }, 'cutoff', false],
+        [{ attack: .28 }, 'attack', true], [{ attack: .12 }, 'attack', true], [{ attack: .281 }, 'attack', false],
+        [{ release: .06 }, 'release', true], [{ release: .061 }, 'release', false], [{ wave: 'square' }, 'wave', false],
+      ];
+      for (const [mine, key, want] of checks) if (fit(mine)[key] !== want) failed.push(`Klang-Rätsel: ${JSON.stringify(mine)} ${key} ≠ ${want}`);
+      for (let i = 0; i < 30; i++) {
+        const tgt = T.soundMatchTarget(rng);
+        if (Object.values(T.soundMatch(tgt.sound, T.SOUND_MATCH_START)).every(Boolean)) failed.push(`Klang-Rätsel: Ziel ${tgt.name} ist schon getroffen`);
+      }
+    }
     // Roundtrip view/lessonId
     const lessonId = T.WORKSHOP_LESSONS[0]?.id;
     const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
