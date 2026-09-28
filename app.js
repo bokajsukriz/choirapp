@@ -18935,6 +18935,11 @@ async function runProgressSelfTests() {
   const sum = await store.summary(7);
   if (sum.practicedDays !== 1 || sum.areas.rhythm?.level !== 2 || sum.days.length !== 7) failed.push(`Fortschritt: Zusammenfassung falsch ${JSON.stringify(sum)}`);
   if ((await store.levelHint('rhythm')).level !== 2) failed.push('Fortschritt: levelHint kennt die zuletzt benutzte Stufe nicht');
+  // Stufe nur gewählt (nicht geübt): zählt für die Übersicht.
+  store.setLevel('quality', 5); store.setLevel('nope', 3); store.setLevel('hold', 9);
+  await store.flush();
+  if (stored?.levels?.quality !== 5 || 'nope' in (stored?.levels || {}) || stored?.levels?.hold === 9) failed.push(`Fortschritt: setLevel ${JSON.stringify(stored?.levels)}`);
+  if (practiceTileState(await store.data(), 'ear').level !== 5) failed.push('Fortschritt: gewählte Stufe fehlt in der Übersicht');
   return failed;
 }
 
@@ -22721,6 +22726,7 @@ function makeProgressStore(store = {
 }, { delayMs = 1000, now = () => progressDate() } = {}) {
   let queue = [];
   let memoryPatch = {};
+  let levelPatch = {}; // in einem Tool gewählte Stufen (ohne geübt zu haben)
   let todayPatch = null;
   let timer = 0;
   let chain = Promise.resolve();
@@ -22729,12 +22735,13 @@ function makeProgressStore(store = {
   const flush = () => {
     clearTimeout(timer);
     timer = 0;
-    const entries = queue; const mem = memoryPatch; const tp = todayPatch;
-    queue = []; memoryPatch = {}; todayPatch = null;
+    const entries = queue; const mem = memoryPatch; const tp = todayPatch; const lv = levelPatch;
+    queue = []; memoryPatch = {}; todayPatch = null; levelPatch = {};
     chain = chain.then(async () => {
-      if (!entries.length && !Object.keys(mem).length && !tp) return;
+      if (!entries.length && !Object.keys(mem).length && !tp && !Object.keys(lv).length) return;
       const data = await read();
       applyProgressEntries(data, entries, now());
+      Object.assign(data.levels, lv);
       Object.assign(data.memory, mem);
       if (tp) data.today = tp(data.today);
       await store.save(data);
@@ -22743,7 +22750,7 @@ function makeProgressStore(store = {
     return chain;
   };
   const schedule = () => { if (!timer) timer = setTimeout(flush, delayMs); };
-  const current = async () => { await chain; if (queue.length || Object.keys(memoryPatch).length || todayPatch) await flush(); return cache || (cache = await read()); };
+  const current = async () => { await chain; if (queue.length || Object.keys(memoryPatch).length || Object.keys(levelPatch).length || todayPatch) await flush(); return cache || (cache = await read()); };
   return {
     add(entry) { if (sanitizeProgressEntry(entry)) { queue.push(JSON.parse(JSON.stringify(entry))); schedule(); } },
     async summary(days = 7) { return summarizeProgress(await current(), Math.max(1, Math.min(180, days | 0 || 7)), now()); },
@@ -22755,6 +22762,13 @@ function makeProgressStore(store = {
       memoryPatch[key] = JSON.parse(JSON.stringify(value));
       schedule();
       return value;
+    },
+    /** Stufe gewählt (ohne Aufgabe): zählt sofort für Übersicht und
+     *  Stufenvorschläge. 0 = eigene Auswahl. */
+    setLevel(area, level) {
+      if (!PROGRESS_AREAS.includes(area) || area === 'warmup' || !Number.isInteger(level) || level < 0 || level > 6) return;
+      levelPatch[area] = level;
+      schedule();
     },
     /** „Heute üben“ (Paket 7): Tagesplan und erledigte Schritte. */
     async today() { return (await current()).today; },

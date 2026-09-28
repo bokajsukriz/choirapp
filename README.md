@@ -66,8 +66,14 @@ ein Dialog mit echter Wahl).
   `loadGrooveLab` in `app.js`) und per `<script src>` in `uebe-lab.html`,
   `einsingen.html` und `piano.html`. Prüfungen: `chorApp.selfTestMusic()`
   und `selfCheck()` in der Konsole der Tool-iframes.
-- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Training mit Stufen, Phrasen,
-  Auftakt, Rhythmussprache, Zweistimmig, Eingabe per Tippen oder Mikrofon;
+- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Kurs: 25 typische Klatschrhythmen
+  vom Grundschlag bis zur Son-Clave in sechs Kapiteln, je mit kurzer
+  Vorstellung und optionalem „?“, vier Schritte Mitklatschen → Vom Blatt →
+  Nachklatschen → Im Zusammenhang/Behalten, Fortschritt gespeichert;
+  Zweistimmig: gelernte Rhythmen vier Takte gegen eine zweite Stimme halten
+  – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei;
+  Rhythmus-Training mit Stufen, Phrasen,
+  Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
   Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
   Nachsingen, Im Takt, Blattsingen, Diktat). Nachsingen und Im Takt werten
