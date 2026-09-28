@@ -860,6 +860,60 @@
         s.bpm = clamp(Math.round(s.eighths / eighthsPerBeat('6/8')), BPM_MIN, BPM_MAX);
         s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === '6/8'));
       }] },
+
+    // --- Vertiefung Harmonie ---
+    { id: 'leitton', tier: 'deep', area: 'harmony', tab: 'keys', groove: null,
+      set: { bpm: 60, progId: 'drone', modeId: 'major', droneOn: true, droneFifth: true, keysLayout: 'scale' },
+      focus: ['pads'],
+      checks: [(s, ctx) => hasRun(lastPlayed(ctx, 8), [6, 0])],
+      solution: [(s, ctx) => { ctx.played.push({ deg: 6 }, { deg: 0 }); }] },
+
+    { id: 'dreiklang', tier: 'deep', area: 'harmony', tab: 'harmony', groove: null,
+      set: { bpm: 60, progId: 'drone', modeId: 'major', chordsOn: true },
+      focus: ['satb'],
+      checks: [(s) => CHOIR_PARTS.filter((v) => s.satb[v] === 'mute').length === 2],
+      solution: [(s) => { s.satb.A = 'mute'; s.satb.T = 'mute'; }] },
+
+    // Lösung wie der Editor: _progBegin übernimmt die Vorlage (cadence ist
+    // dominant), prog-deg tauscht den letzten Akkord.
+    { id: 'halbschluss', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
+      set: { bpm: 84, progId: 'cadence', modeId: 'major', chordsOn: true },
+      focus: ['progEditor'],
+      checks: [(s) => progDegreesOf(s).at(-1) === 4],
+      solution: [(s) => { s.progDegrees = [0, 3, 4, 4]; s.progSevenths = false; s.progDominant = true; s.progDom7 = false; }] },
+
+    { id: 'popSad', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
+      set: { bpm: 90, progId: 'pop', modeId: 'major', chordsOn: true },
+      focus: ['picker:prog'],
+      checks: [(s) => s.progId === 'sad' && !s.progDegrees],
+      solution: [(s) => { s.progId = 'sad'; }] },
+
+    { id: 'harmRhythmus', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
+      set: { bpm: 100, progId: 'pop', chordsOn: true },
+      focus: ['chordBars'],
+      checks: [(s) => s.chordBars === 2],
+      solution: [(s) => { s.chordBars = 2; }] },
+
+    // Lösung wie der Septimen-Schalter: aus → bearbeitete Kopie der Vorlage
+    // ohne Septimen; wieder an → gleich der Vorlage, _progCommit räumt auf.
+    { id: 'bluesSept', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Gospel Shuffle',
+      set: { bpm: 92, progId: 'blues', chordsOn: true },
+      focus: ['progSevenths'],
+      checks: [(s) => !progSeventhsOf(s), (s) => progSeventhsOf(s)],
+      solution: [(s) => { s.progDegrees = [...progOf(s).degrees]; s.progSevenths = false; s.progDominant = true; s.progDom7 = true; },
+                 (s) => { s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; }] },
+
+    { id: 'modi', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
+      set: { bpm: 96, progId: 'modal', modeId: 'minor', chordsOn: true },
+      focus: ['mode'],
+      checks: [(s) => s.modeId === 'dorian', (s) => s.modeId === 'mixolydian'],
+      solution: [(s) => { s.modeId = 'dorian'; }, (s) => { s.modeId = 'mixolydian'; }] },
+
+    { id: 'stimmfuehrung', tier: 'deep', area: 'harmony', tab: 'harmony', groove: null,
+      set: { bpm: 66, progId: 'cadence', modeId: 'major', chordsOn: true, chordBars: 2 },
+      focus: ['satb'],
+      checks: [(s) => CHOIR_PARTS.some((v) => s.satb[v] === 'focus')],
+      solution: [(s) => { s.satb.A = 'focus'; }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */

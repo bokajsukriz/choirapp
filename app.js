@@ -20042,6 +20042,21 @@ async function runMusicSelfTests({ log = true } = {}) {
       const latin = T.DRUM_PATTERNS[T.patternIndexByName('Latin Skip')].kick;
       if (T.stepsOn(solved('tresillo'), 'kick').join() !== [...latin].sort((a, b) => a - b).join()) failed.push('Workshop tresillo: Ziel ≠ Kick von Latin Skip');
     }
+    // durMoll/dreiklang: der Akkord ist wirklich Grundton, Terz, Quinte —
+    // vorher Dur {0, 4, 7}, in durMoll danach Moll {0, 3, 7} (Tonart C).
+    const tonic = (s) => {
+      const mode = T.MODES.find((m) => m.id === s.modeId);
+      const prog = T.PROGRESSIONS.find((p) => p.id === s.progId);
+      return T.chordPitchClasses(s.keyRoot, T.chordSteps(mode.steps, s.modeId, prog, 0), 0, false).join();
+    };
+    const startOf = (id) => T.sanitizeState(clone(T.lessonState(T.defaultState(), lessonById(id))));
+    for (const [id, when, want] of [['durMoll', startOf, '0,4,7'], ['durMoll', solved, '0,3,7'], ['dreiklang', startOf, '0,4,7']]) {
+      if (lessonById(id) && tonic(when(id)) !== want) failed.push(`Workshop ${id}: Akkord ${tonic(when(id))} statt ${want}`);
+    }
+    if (lessonById('modi')) {
+      const prog = T.PROGRESSIONS.find((p) => p.id === lessonById('modi').set.progId);
+      for (const m of ['dorian', 'mixolydian']) if (!T.progFitsMode(prog, m)) failed.push(`Workshop modi: Folge passt nicht zu ${m}`);
+    }
     // Roundtrip view/lessonId
     const lessonId = T.WORKSHOP_LESSONS[0]?.id;
     const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
