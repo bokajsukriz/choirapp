@@ -914,6 +914,56 @@
       focus: ['satb'],
       checks: [(s) => CHOIR_PARTS.some((v) => s.satb[v] === 'focus')],
       solution: [(s) => { s.satb.A = 'focus'; }] },
+
+    // --- Vertiefung Melodie ---
+    { id: 'stufen', tier: 'deep', area: 'melody', tab: 'keys', groove: 'Minimal Click',
+      set: { bpm: 80, progId: 'drone', modeId: 'major', chordsOn: true, keysLayout: 'scale' },
+      focus: ['pads'],
+      checks: [(s, ctx) => hasRun(lastPlayed(ctx, 10), [0, 1, 2, 3, 4])],
+      solution: [(s, ctx) => { [0, 1, 2, 3, 4].forEach((deg) => ctx.played.push({ deg })); }] },
+
+    // Lösungen wie der Editor (_melBegin kopiert die Vorlage, _melPlace setzt
+    // einstimmig: kürzt den vorigen Ton, verdrängt, was im neuen Ton beginnt).
+    // Long Tones, Takt 1: [[0, 4, 8], [8, 2, 8]] (so auf 1, mi auf 3).
+    { id: 'reibung', tier: 'deep', area: 'melody', tab: 'melody', groove: 'Minimal Click', melody: 'Long Tones',
+      set: { bpm: 76, progId: 'drone', modeId: 'major', chordsOn: true },
+      focus: ['melEditor'],
+      checks: [(s) => melodyBarsOf(s)[0].some(([at, deg]) => at === 0 && deg === 3)],
+      solution: [(s) => {
+        s.melodyBars = melodyBarsOf(s).map((bar) => bar.map((n) => [...n]));
+        s.melodyBars[0] = [[0, 3, 8], [8, 2, 8]];
+        s.melodyMeter = '4/4'; s.melodyRef = 'chord';
+      }] },
+
+    { id: 'pentatonik', tier: 'deep', area: 'melody', tab: 'keys', groove: 'Backbeat Open',
+      set: { bpm: 92, progId: 'pop', modeId: 'major', chordsOn: true, keysLayout: 'scale' },
+      focus: ['pads'],
+      checks: [(s, ctx) => ctx.played.length >= 8 && lastPlayed(ctx, 8).every((d) => [0, 1, 2, 4, 5].includes(d))],
+      solution: [(s, ctx) => { [0, 2, 4, 5, 4, 2, 1, 0].forEach((deg) => ctx.played.push({ deg })); }] },
+
+    // Ton auf Feld 7 setzen und lang ziehen: der Ton auf Feld 9 wird
+    // verdrängt, der erste auf sechs Sechzehntel gekürzt.
+    { id: 'antizipation', tier: 'deep', area: 'melody', tab: 'melody', groove: 'Backbeat Open', melody: 'Long Tones',
+      set: { bpm: 88, progId: 'drone', modeId: 'major', chordsOn: true },
+      focus: ['melEditor'],
+      checks: [(s) => { const bar = melodyBarsOf(s)[0]; return bar.some(([at, deg]) => at === 6 && deg === 2) && !bar.some(([at]) => at === 8); }],
+      solution: [(s) => {
+        s.melodyBars = melodyBarsOf(s).map((bar) => bar.map((n) => [...n]));
+        s.melodyBars[0] = [[0, 4, 6], [6, 2, 8]];
+        s.melodyMeter = '4/4'; s.melodyRef = 'chord';
+      }] },
+
+    { id: 'echo', tier: 'deep', area: 'melody', tab: 'melody', groove: 'Minimal Click', melody: 'Call & Response',
+      set: { bpm: 84, progId: 'cadence', chordsOn: true },
+      focus: ['melodyAltBars'],
+      checks: [(s) => s.melodyAltBars],
+      solution: [(s) => { s.melodyAltBars = true; }] },
+
+    { id: 'arpeggio', tier: 'deep', area: 'melody', tab: 'keys', groove: 'Pulse Basic',
+      set: { bpm: 110, progId: 'pop', chordsOn: false },
+      focus: ['arp'],
+      checks: [(s) => s.arpOn && s.arpAuto, (s) => s.arpDivision === 1, (s) => s.arpMode === 'down'],
+      solution: [(s) => { s.arpOn = true; s.arpAuto = true; }, (s) => { s.arpDivision = 1; }, (s) => { s.arpMode = 'down'; }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */

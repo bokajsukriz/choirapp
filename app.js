@@ -20057,6 +20057,11 @@ async function runMusicSelfTests({ log = true } = {}) {
       const prog = T.PROGRESSIONS.find((p) => p.id === lessonById('modi').set.progId);
       for (const m of ['dorian', 'mixolydian']) if (!T.progFitsMode(prog, m)) failed.push(`Workshop modi: Folge passt nicht zu ${m}`);
     }
+    // reibung/antizipation beschreiben Takt 1 von „Long Tones“: so auf 1, mi auf 3.
+    if (lessonById('reibung')) {
+      const bar = T.MELODIES[T.melodyIndexByName('Long Tones')].bars[0];
+      if (JSON.stringify(bar) !== '[[0,4,8],[8,2,8]]') failed.push(`Workshop reibung/antizipation: Long Tones Takt 1 ist ${JSON.stringify(bar)}`);
+    }
     // Roundtrip view/lessonId
     const lessonId = T.WORKSHOP_LESSONS[0]?.id;
     const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
