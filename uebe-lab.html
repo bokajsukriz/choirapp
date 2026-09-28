@@ -553,7 +553,7 @@
   })();
   const readProfile = () => { try { return profileApi ? profileApi.get() : null; } catch { return null; } };
   // Fortschritt der App (Paket 6): die Seite meldet nur, die App schreibt.
-  const progressApi = (() => {
+  let progressApi = (() => { // let: die Selbstprüfung setzt kurz einen Ersatz ein
     try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
     return null;
   })();
@@ -573,6 +573,28 @@
     if (!progressApi) return;
     try { progressApi.add({ area: areaOf(key), level: level || 0, right: !!right, seconds, ...extra }); } catch { /* App weg */ }
     refreshHint(key);
+  }
+  /* ---- Gewählte Stufen an die Übersicht der App melden: nach jedem Klick
+     bzw. jeder Einstellungsänderung die Stufen aller Übungsarten mit dem
+     letzten Stand vergleichen und nur Änderungen melden (Grundstand nach
+     dem Laden, damit bloßes Öffnen nichts meldet). So folgt die Kachel im
+     Tools-Reiter der Wahl sofort, nicht erst nach der nächsten Aufgabe. ---- */
+  let syncedLevels = null;
+  function currentLevels() {
+    const out = { rhythm: state.rhythmLevel || 0 };
+    for (const [m] of EAR_MODES) out[areaOf(m)] = earLevelInfo(m)[1] || 0;
+    for (const m of Object.keys(sing.levels)) out[areaOf(m)] = sing.levels[m] || 0;
+    return out;
+  }
+  function baselineLevels() { syncedLevels = currentLevels(); }
+  function syncLevels() {
+    if (!syncedLevels || selfTesting) return;
+    const now = currentLevels();
+    for (const [area, n] of Object.entries(now)) {
+      if (syncedLevels[area] === n) continue;
+      try { progressApi?.setLevel?.(area, n); } catch { /* App weg */ }
+    }
+    syncedLevels = now;
   }
   /** Stufenvorschlag holen (nur Vorschlag, nie Wechsel) und neu zeichnen. */
   function refreshHint(key) {
@@ -6113,7 +6135,7 @@
 
   document.addEventListener('click', (e) => {
     const inLevelSheet = !!e.target.closest('.level-sheet');
-    onClick(e); persist();
+    onClick(e); persist(); syncLevels();
     // Stufe im Blatt gewählt (die Bereichs-Handler haben sie übernommen): zu.
     if (inLevelSheet && e.target.closest('[data-level-n]')) closeLevelSheet();
   });
@@ -6138,7 +6160,7 @@
     else if (t.hasAttribute?.('data-intime-syl')) { sing.inTime.rhythmSyl = t.checked; if (sing.phase !== 'sing') renderSing(); }
     else if (t.dataset?.voiceswitch) { voice.useTarget = t.checked; drawHistory(engine.ctx?.currentTime || 0); }
     else if (t.hasAttribute?.('data-voice-a4')) { tuningA4 = A4_CHOICES.includes(Number(t.value)) ? Number(t.value) : 440; playTarget(); }
-    persist();
+    persist(); syncLevels();
   });
 
   $('[data-intime-tempo]').addEventListener('input', (e) => { sing.inTime.tempo = clamp(Math.round(Number(e.target.value) / 5) / 20, IN_TIME_TEMPO[0], IN_TIME_TEMPO[1]); renderInTimeOpts(); persist(); });
@@ -7668,6 +7690,22 @@
         renderQuickBar(); renderAll(); renderArea();
       }
     }
+    // Gewählte Stufen: nur Änderungen gegenüber dem Grundstand werden gemeldet.
+    {
+      const calls = [];
+      const savedSynced = syncedLevels, savedQ = ear.levels.quality, savedApi = progressApi, savedTesting = selfTesting;
+      try {
+        progressApi = { setLevel: (a, n) => calls.push([a, n]) };
+        selfTesting = false;
+        baselineLevels();
+        syncLevels();
+        ear.levels.quality = savedQ === 4 ? 5 : 4;
+        syncLevels();
+        if (calls.length !== 1 || calls[0][0] !== 'quality' || calls[0][1] !== ear.levels.quality) errors.push(`Stufen melden: ${JSON.stringify(calls)}`);
+        const now = currentLevels();
+        if (!('rhythm' in now) || !('progression' in now) || !('hold' in now) || !('echo' in now)) errors.push(`Stufen melden: Bereiche fehlen (${Object.keys(now)})`);
+      } finally { ear.levels.quality = savedQ; syncedLevels = savedSynced; progressApi = savedApi; selfTesting = savedTesting; }
+    }
     // Didaktik Paket 1: „Als meinen Umfang speichern" erst ab 14 Halbtönen.
     {
       const saved = [voice.low, voice.high];
@@ -7899,16 +7937,18 @@
   applyAreaOnly();
   if (!storage) { applyQuickParams(quickParams); applyModeParam(modeParams); }
   setTab(state.tab);
+  if (!storage) baselineLevels();
   if (storage) {
     Promise.resolve(storage.load(STORAGE_ID)).then((data) => {
-      if (run.playing || ear.task || voice.analyser) return;
+      if (run.playing || ear.task || voice.analyser) { baselineLevels(); return; }
       if (data) restore(data);
       applyProfile();
       applyAreaOnly();
       applyQuickParams(quickParams);
       applyModeParam(modeParams);
       setTab(state.tab);
-    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); setTab(state.tab); });
+      baselineLevels();
+    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); setTab(state.tab); baselineLevels(); });
   }
 })();
 </script>

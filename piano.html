@@ -86,10 +86,10 @@
     <span class="range" aria-live="polite"></span>
     <button type="button" data-act="up" aria-label="Eine Oktave höher"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
   </div>
-  <div class="group" role="group" aria-label="Tastenbreite">
-    <button type="button" data-act="narrower" aria-label="Schmalere Tasten (mehr Tasten)">−</button>
-    <span class="range size-out" aria-live="polite" style="min-width:44px">Tasten</span>
-    <button type="button" data-act="wider" aria-label="Breitere Tasten">+</button>
+  <!-- Zoom: + macht die Tasten größer, − kleiner (die Anzahl ergibt sich). -->
+  <div class="group" role="group" aria-label="Zoom">
+    <button type="button" data-act="narrower" aria-label="Herauszoomen: Tasten kleiner" title="Tasten kleiner"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M7.5 10.5h6"/></svg></button>
+    <button type="button" data-act="wider" aria-label="Hineinzoomen: Tasten größer" title="Tasten größer"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.8-4.8M7.5 10.5h6M10.5 7.5v6"/></svg></button>
   </div>
   <div class="group" role="group" aria-label="Beschriftung">
     <button type="button" data-labels="none">–</button>
@@ -367,7 +367,6 @@
     $('[data-act="down"]').disabled = state.startC <= LOWEST_C;
     $('[data-act="narrower"]').disabled = state.keySize <= 0;
     $('[data-act="wider"]').disabled = state.keySize >= KEY_SIZES.length - 1;
-    $('.size-out').textContent = `${whites.length} Tasten`;
     $('[data-act="up"]').disabled = whites[whites.length - 1] + 12 > HIGHEST;
     paintDown();
   }
