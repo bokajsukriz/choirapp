@@ -3761,6 +3761,208 @@
     return pool[Math.floor(rnd() * pool.length)];
   }
 
+  /* ---- Nachsingen / Im Takt: Melodien mit Rhythmus (Paket 2). Erst der
+     Rhythmus (makePattern, ohne Triolen, 5/4, 7/8), dann die Töne nach den
+     Regeln der Blattsingen-Stufe `sight`. Der letzte Ton ist der längste
+     der letzten beiden Takte und steht auf der Eins des (bei Auftakt
+     gekürzten) Schlusstakts; bei nur einem Takt auf der Takthälfte. ---- */
+  const ECHO_LEVELS = [
+    { n: 1, label: '3 Töne, Schritte',            sight: 1, len: [3, 3],   rhythm: null,                                  tol: 50 },
+    { n: 2, label: '4 Töne, dazu so',             sight: 2, len: [4, 4],   rhythm: null,                                  tol: 50 },
+    { n: 3, label: '5 Töne, Pentatonik',          sight: 3, len: [5, 5],   rhythm: null,                                  tol: 45 },
+    { n: 4, label: 'Zwei Takte, dazu fa',         sight: 4, len: [6, 8],   rhythm: { meter: '4/4', bars: 2, elements: ['e'] },          tol: 40 },
+    { n: 5, label: 'Vier Takte, ganze Tonleiter', sight: 5, len: [10, 14], rhythm: { meter: '4/4', bars: 4, elements: ['e', 'd'] },  tol: 40 },
+    { n: 6, label: 'Zwei Phrasen, auch Moll',     sight: 6, len: [14, 20], rhythm: { meter: ['4/4', '3/4'], bars: 8, elements: ['e', 'd'], phrases: 2 }, tol: 35 },
+  ];
+  const IN_TIME_LEVELS = [
+    { n: 1, label: '1 Takt, Viertel und Halbe',   sight: 1, meters: ['4/4'],               bars: 1, elements: [],                        pickup: false, bpm: 72, tol: 50, win: [.10, .18] },
+    { n: 2, label: '2 Takte, Achtel, dazu so',    sight: 2, meters: ['4/4', '2/4', '3/4'], bars: 2, elements: ['e'],                     pickup: false, bpm: 72, tol: 50, win: [.10, .18] },
+    { n: 3, label: 'Pausen, Pentatonik',          sight: 3, meters: ['4/4', '3/4'],        bars: 2, elements: ['e', 'r'],                pickup: false, bpm: 76, tol: 45, win: [.08, .15] },
+    { n: 4, label: 'Punktiert, Auftakt, dazu fa', sight: 4, meters: ['4/4', '3/4'],        bars: 2, elements: ['e', 'r', 'd'],           pickup: true,  bpm: 76, tol: 40, win: [.08, .15] },
+    { n: 5, label: 'Vier Takte, Synkopen, 6/8',   sight: 5, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie'], pickup: true, bpm: 80, tol: 40, win: [.08, .15] },
+    { n: 6, label: 'Moll, Sechzehntel',           sight: 6, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie', 's'], pickup: true, bpm: 84, tol: 35, win: [.08, .15] },
+  ];
+  const MELODY_METERS = ['2/4', '3/4', '4/4', '6/8'];
+  // Halbschluss am Ende der ersten Phrase: so oder re (Moll: mi oder ti,).
+  const HALF_CADENCE = { major: [4, 1], minor: [2, -1] };
+
+  /** Stufe eines Modus → einheitliche Beschreibung für den Generator. */
+  function melodySpec(mode, n) {
+    if (mode === 'inTime') {
+      const l = IN_TIME_LEVELS[n - 1];
+      return { mode, n, sight: l.sight, len: null, meters: l.meters, bars: l.bars, elements: l.elements, pickup: l.pickup, phrases: 1, plain: false };
+    }
+    const l = ECHO_LEVELS[n - 1];
+    const r = l.rhythm;
+    if (!r) return { mode, n, sight: l.sight, len: l.len, meters: ['4/4'], bars: 0, elements: [], pickup: false, phrases: 1, plain: true };
+    const phrases = r.phrases || 1;
+    return { mode, n, sight: l.sight, len: l.len, meters: [].concat(r.meter), bars: r.bars / phrases, elements: r.elements, pickup: false, phrases, plain: false };
+  }
+
+  /** Töne einer Ereignisfolge: gebundene Noten zusammengezählt, Pausen weg. */
+  function tonesOf(events) {
+    const tones = [];
+    events.forEach((e, i) => {
+      if (e.rest) return;
+      if (e.tie && tones.length) { tones[tones.length - 1].d += e.d; tones[tones.length - 1].ev.push(i); return; }
+      tones.push({ t: e.t, d: e.d, ev: [i] });
+    });
+    return tones;
+  }
+
+  /** Rhythmus einer Phrase mit Schlusston. Liefert { events, total, pickup }
+   *  oder null, wenn der Schluss nicht passt (dann neu ziehen). */
+  function phraseRhythm(meterId, bars, elements, pickup, rnd) {
+    const m = METERS[meterId];
+    const chosen = elements.filter((e) => e !== 't');
+    const pat = makePattern(meterId, chosen, null, { bars, pickup, ties: chosen.includes('tie'), rnd });
+    const p = pat.pickup;
+    const cut = bars >= 2 ? p + (bars - 1) * m.ticks : p + m.ticks / 2;
+    const before = pat.notes.filter((n) => n.t < cut).map((n) => ({ t: n.t, d: n.d, rest: n.rest, ...(n.tie ? { tie: true } : {}) }));
+    const lastEv = before[before.length - 1];
+    if (!lastEv || lastEv.t + lastEv.d !== cut) return null;
+    const len = pat.total - cut;
+    let options = bars === 1 ? [m.ticks / 2] : m.unit === 18 ? [18, 36] : [24, 36, 48];
+    if (m.unit === 12 && bars > 1 && !chosen.includes('d')) options = options.filter((d) => d !== 36);
+    options = options.filter((d) => d <= len);
+    if (!options.length) return null;
+    const d = options[Math.floor(rnd() * options.length)];
+    const inBar = mod(cut - p, m.ticks);
+    const events = [...before, { t: cut, d, rest: false }, ...restsBetween(m, inBar + d, inBar + len).map((v, k, all) => ({ t: cut + d + all.slice(0, k).reduce((a, b) => a - b, 0), d: -v, rest: true }))];
+    // Der Schlusston ist der längste der letzten beiden Takte.
+    const from = bars >= 2 ? cut - m.ticks : 0;
+    const tones = tonesOf(events);
+    const final = tones[tones.length - 1];
+    if (tones.some((x) => x !== final && x.t + x.d > from && x.d > final.d)) return null;
+    if (tones.length < 2) return null;
+    return { events, total: pat.total, pickup: p };
+  }
+
+  /** Tonstufen für `count` Töne (eine Phrase): Tonvorrat, größter Sprung,
+   *  Sprungregel, Start/Schluss; Tonwiederholungen ab Stufe 3, höchstens zwei
+   *  gleiche Töne hintereinander. `prefix`: fest vorgegebene erste Töne. */
+  function phraseDegrees(rules, count, { repeats, end, prefix = [] }, rnd) {
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const degs = prefix.length ? [...prefix] : [rules.start[Math.floor(rnd() * rules.start.length)]];
+      let ok = true;
+      for (let i = degs.length; i < count && ok; i++) {
+        const prev = degs[i - 1];
+        let opts = rules.pool.filter((d) => Math.abs(d - prev) <= rules.maxLeap && (d !== prev || (repeats && degs[i - 2] !== prev)));
+        if (i === count - 1) opts = opts.filter((d) => end.includes(d) && (Math.abs(d - prev) <= 1 || (i >= 2 && isTriadRun(degs[i - 2], prev, d))));
+        const lastStep = i >= 2 ? prev - degs[i - 2] : 0;
+        if (Math.abs(lastStep) > 1) {
+          const back = opts.filter((d) => d - prev === -Math.sign(lastStep) || isTriadRun(degs[i - 2], prev, d));
+          opts = back;
+        }
+        if (!opts.length) { ok = false; break; }
+        const w = opts.map((d) => (d === prev ? .5 : Math.abs(d - prev) <= 1 ? 3 : Math.abs(d - prev) === 7 ? .4 : 1));
+        degs.push(pickWeighted(opts, w, rnd));
+      }
+      if (ok && degs.length === count && leapRuleOk(degs)) return degs;
+    }
+    return null;
+  }
+
+  /** Regeln einer Melodie prüfen (Generator und Test). */
+  function rhythmMelodyOk(spec, mel) {
+    const rules = mel.rules;
+    const degs = mel.tones.map((x) => x.deg);
+    if (!degs.every((d) => rules.pool.includes(d))) return 'Tonvorrat';
+    for (let i = 1; i < degs.length; i++) {
+      if (mel.phraseStarts.includes(i)) continue;
+      if (Math.abs(degs[i] - degs[i - 1]) > rules.maxLeap) return 'größter Sprung';
+      if (degs[i] === degs[i - 1] && (spec.n < 3 || degs[i - 2] === degs[i])) return 'Tonwiederholung';
+    }
+    const octaves = degs.filter((d, i) => i && !mel.phraseStarts.includes(i) && Math.abs(d - degs[i - 1]) === 7);
+    if (mel.minor && (octaves.length > 1 || degs.some((d, i) => i && !mel.phraseStarts.includes(i) && Math.abs(d - degs[i - 1]) === 7 && Math.min(d, degs[i - 1]) !== -2))) return 'Oktavsprung';
+    const bounds = [...mel.phraseStarts, degs.length];
+    for (let k = 0; k < mel.phraseStarts.length; k++) {
+      const ph = degs.slice(bounds[k], bounds[k + 1]);
+      if (!leapRuleOk(ph)) return 'Sprungregel';
+    }
+    if (!rules.start.includes(degs[0])) return 'Startton';
+    if (!rules.end.includes(degs[degs.length - 1])) return 'Schlusston';
+    if (spec.len && (degs.length < spec.len[0] || degs.length > spec.len[1])) return 'Tonzahl';
+    return '';
+  }
+
+  /** Eine Melodie für Nachsingen/Im Takt. range: { lo, hi } (Innenbereich).
+   *  Ergebnis: { meter, pickup, total (Ticks), events [{ t, d, rest, tie,
+   *  tone }], tones [{ t, d, deg, midi }], minor, doMidi, key, phraseStarts,
+   *  phraseTicks }. Nie dieselbe wie `previousKey`. */
+  function makeRhythmMelody(spec, range, { previousKey = null, rnd = Math.random } = {}) {
+    const minor = spec.sight === 6 && (spec.mode === 'inTime' || rnd() < .5);
+    const rules = minor ? SIGHT_LEVELS[5] : SIGHT_LEVELS[Math.min(spec.sight, 5) - 1];
+    const repeats = spec.n >= 3;
+    for (let attempt = 0; attempt < 400; attempt++) {
+      // 1) Rhythmus
+      let events = [], total = 0, pickup = 0, meter = spec.meters[Math.floor(rnd() * spec.meters.length)];
+      const phraseStarts = [0], phraseTicks = [];
+      if (spec.plain) {
+        const count = rndInt(spec.len[0], spec.len[1], rnd);
+        events = Array.from({ length: count }, (_, i) => ({ t: i * 12, d: 12, rest: false }));
+        total = count * 12;
+        phraseTicks.push(total);
+      } else {
+        let fail = false;
+        for (let ph = 0; ph < spec.phrases && !fail; ph++) {
+          // Tonzahl je Phrase im Anteil von `len` (höchstens 200 Versuche, sonst die nächstliegende).
+          const want = spec.len ? [Math.ceil(spec.len[0] / spec.phrases), Math.floor(spec.len[1] / spec.phrases)] : null;
+          let r = null, rDist = Infinity;
+          for (let k = 0; k < 200 && rDist > 0; k++) {
+            const c = phraseRhythm(meter, spec.bars, spec.elements, ph === 0 && spec.pickup, rnd);
+            if (!c) continue;
+            const n = tonesOf(c.events).length;
+            const dist = want ? Math.max(0, want[0] - n, n - want[1]) : 0;
+            if (dist < rDist) { r = c; rDist = dist; }
+          }
+          if (!r) { fail = true; break; }
+          if (ph === 0) pickup = r.pickup;
+          else phraseStarts.push(tonesOf(events).length);
+          events.push(...r.events.map((e) => ({ ...e, t: e.t + total })));
+          total += r.total;
+          phraseTicks.push(total);
+        }
+        if (fail) continue;
+      }
+      const tones = tonesOf(events);
+      // 2) Töne
+      const bounds = [...phraseStarts, tones.length];
+      const degs = [];
+      let ok = true;
+      for (let k = 0; k < phraseStarts.length && ok; k++) {
+        const count = bounds[k + 1] - bounds[k];
+        const last = k === phraseStarts.length - 1;
+        const end = last ? rules.end : HALF_CADENCE[minor ? 'minor' : 'major'].filter((d) => rules.pool.includes(d));
+        const prefix = k > 0 ? degs.slice(0, Math.min(count - 2, 2 + Math.floor(rnd() * 2))) : [];
+        const ph = phraseDegrees(rules, count, { repeats, end, prefix }, rnd);
+        if (!ph) { ok = false; break; }
+        degs.push(...ph);
+      }
+      if (!ok) continue;
+      // 3) Lage: alle Töne im Innenbereich, Mitte möglichst mittig; ohne Ges-Dur.
+      const semis = degs.map(degSemis);
+      const minS = Math.min(...semis), maxS = Math.max(...semis);
+      const mid = (range.lo + range.hi) / 2 - (minS + maxS) / 2;
+      const options = [];
+      for (let d = range.lo - minS; d + maxS <= range.hi; d++) if (mod(d, 12) !== 6) options.push(d);
+      if (!options.length) continue;
+      const bestDist = Math.min(...options.map((d) => Math.abs(d - mid)));
+      const best = options.filter((d) => Math.abs(d - mid) === bestDist);
+      const doMidi = best[Math.floor(rnd() * best.length)];
+      tones.forEach((x, i) => { x.deg = degs[i]; x.midi = doMidi + semis[i]; x.ev.forEach((e) => { events[e].tone = i; }); });
+      const key = `${meter}|${pickup}|${events.map((e) => (e.rest ? -e.d : e.tie ? `~${e.d}` : e.d)).join(',')}|${degs.join(',')}`;
+      if (key === previousKey) continue;
+      const mel = { level: spec.n, mode: spec.mode, meter, pickup, total, events, tones, minor, doMidi, key, phraseStarts, phraseTicks, rules, degs };
+      // Nach 200 Versuchen gilt auch die nächstliegende Tonzahl.
+      if (rhythmMelodyOk(attempt < 200 ? spec : { ...spec, len: null }, mel)) continue;
+      return mel;
+    }
+    return null;
+  }
+  /** Soll-Einsätze und -Längen in Sekunden (Ticks × tickSec, ab `offset`). */
+  const melodyTarget = (mel, tickSec, offset = 0) => mel.tones.map((x) => ({ midi: x.midi, start: offset + x.t * tickSec, dur: x.d * tickSec }));
+
   const SING_MODES = [['tuner', 'Tuner'], ['singInterval', 'Intervalle singen'], ['findTone', 'Ton finden'], ['hold', 'Ton halten'], ['sight', 'Blattsingen'], ['dictation', 'Diktat']];
   const sing = {
     mode: 'tuner',
@@ -5156,6 +5358,73 @@
     return errors;
   }
 
+  /** Nachsingen Paket 2: 1000 Melodien je Stufe beider Modi. */
+  function rhythmMelodyCheck(count = 1000) {
+    const errors = [];
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const add = (msg) => { if (errors.length < 40) errors.push(msg); };
+    for (const mode of ['singEcho', 'inTime']) {
+      const levels = mode === 'inTime' ? IN_TIME_LEVELS : ECHO_LEVELS;
+      for (const level of levels) {
+        const spec = melodySpec(mode === 'inTime' ? 'inTime' : 'echo', level.n);
+        const name = `${mode === 'inTime' ? 'Im Takt' : 'Nachsingen'} Stufe ${level.n}`;
+        let prev = null, minors = 0;
+        for (let i = 0; i < count; i++) {
+          const part = SATB_PARTS[i % 4];
+          const range = singRange(part, null);
+          const mel = makeRhythmMelody(spec, range, { previousKey: prev, rnd });
+          if (!mel) { add(`${name}: keine Melodie`); break; }
+          if (mel.key === prev) add(`${name}: zweimal dieselbe`);
+          prev = mel.key;
+          const why = rhythmMelodyOk(spec, mel);
+          if (why) add(`${name}: ${why} (${mel.degs})`);
+          if (mel.minor) minors++;
+          const m = METERS[mel.meter];
+          if (!MELODY_METERS.includes(mel.meter) || !spec.meters.includes(mel.meter)) add(`${name}: Taktart ${mel.meter}`);
+          if (mel.events.some((e) => e.d === 4 || e.d <= 0)) add(`${name}: Triole/leere Note`);
+          let t = 0;
+          for (const e of mel.events) { if (e.t !== t) { add(`${name}: Lücke bei ${e.t}`); break; } t += e.d; }
+          const wantTotal = spec.plain ? mel.tones.length * 12 : spec.phrases * spec.bars * m.ticks;
+          if (t !== mel.total || mel.total !== wantTotal) add(`${name}: Tickzahl ${t}/${mel.total} statt ${wantTotal}`);
+          if (mel.tones.some((x) => x.midi < range.lo || x.midi > range.hi)) add(`${name} ${part}: Ton außerhalb ${range.lo}–${range.hi}`);
+          if (mel.events.some((e) => e.tie && mel.events[mel.events.indexOf(e) - 1]?.rest)) add(`${name}: Bogen nach Pause`);
+          if (!spec.plain) {
+            // Schluss je Phrase: Eins des letzten Takts (bei einem Takt die Hälfte), längster Ton der letzten beiden Takte.
+            mel.phraseTicks.forEach((end, k) => {
+              const startTick = k ? mel.phraseTicks[k - 1] : 0;
+              const lastIdx = (k + 1 < mel.phraseStarts.length ? mel.phraseStarts[k + 1] : mel.tones.length) - 1;
+              const fin = mel.tones[lastIdx];
+              const inPhrase = fin.t - startTick - (k ? 0 : mel.pickup);
+              const want = spec.bars === 1 ? m.ticks / 2 : (spec.bars - 1) * m.ticks;
+              if (inPhrase !== want) add(`${name}: Schlusston auf Tick ${inPhrase} statt ${want}`);
+              const from = spec.bars === 1 ? startTick : fin.t - m.ticks;
+              if (mel.tones.some((x, j) => j !== lastIdx && j <= lastIdx && x.t + x.d > from && x.d > fin.d)) add(`${name}: Schlusston nicht der längste (${mel.key})`);
+            });
+          }
+          const fin = mel.tones[mel.tones.length - 1];
+          if (!(mel.minor ? [-2] : [0]).includes(fin.deg)) add(`${name}: Schluss auf ${fin.deg}`);
+          if (spec.phrases === 2) {
+            const p2 = mel.phraseStarts[1];
+            if (!p2) add(`${name}: keine zweite Phrase`);
+            else {
+              if (!HALF_CADENCE[mel.minor ? 'minor' : 'major'].includes(mel.degs[p2 - 1])) add(`${name}: Phrase 1 endet auf ${mel.degs[p2 - 1]}`);
+              if (mel.degs[p2] !== mel.degs[0] || mel.degs[p2 + 1] !== mel.degs[1]) add(`${name}: Phrase 2 beginnt nicht wie Phrase 1`);
+            }
+          }
+        }
+        if (mode === 'inTime' && level.n === 6 && minors !== count) add(`${name}: nicht immer Moll`);
+        if (mode === 'singEcho' && level.n === 6 && (minors < count * .4 || minors > count * .6)) add(`${name}: Moll ${minors}/${count}`);
+        if (level.n < 6 && minors) add(`${name}: Moll vor Stufe 6`);
+      }
+    }
+    // Soll-Zeiten: gebundene Noten zusammengezählt, Pausen keine Zieltöne.
+    const mel = { tones: tonesOf([{ t: 0, d: 6, rest: false }, { t: 6, d: 6, rest: true }, { t: 12, d: 12, rest: false }, { t: 24, d: 12, rest: false, tie: true }, { t: 36, d: 12, rest: false }]).map((x, i) => ({ ...x, midi: 60 + i })) };
+    const tg = melodyTarget(mel, .05, 1);
+    if (tg.length !== 3 || tg[1].start !== 1.6 || Math.abs(tg[1].dur - 1.2) > 1e-9 || tg[2].start !== 2.8) add(`Soll-Zeiten falsch: ${JSON.stringify(tg)}`);
+    return errors;
+  }
+
   /** Stimm-Tuner mit synthetischen Signalen durch detectPitch und die
    *  Glättung (Paket 11). Liefert Fehlermeldungen. */
   function tunerCheck() {
@@ -5283,6 +5552,7 @@
     errors.push(...earPackageCheck());
     errors.push(...singPackageCheck());
     errors.push(...echoSimCheck());
+    errors.push(...rhythmMelodyCheck());
     // Schnellstart: Parameter, Ketten aus bekannten Modi, Weiterschalten.
     {
       if (parseQuickParams('?embedded&from=quick&tab=ear')?.tab !== 'ear' || parseQuickParams('?from=quick&tab=voice')?.tab !== 'voice') errors.push('Schnellstart-Parameter falsch');
@@ -5384,7 +5654,7 @@
   window.uebeLab = {
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
-    segmentNotes, globalOffset, align, scoreEcho,
+    segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
     selfCheck,
   };
 
