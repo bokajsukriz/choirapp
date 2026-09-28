@@ -2270,13 +2270,11 @@
     { id: 'cadence', mode: 'major', chords: ['I', 'IV', 'V', 'I'], name: 'Grundkadenz' },
     { id: 'plagal', mode: 'major', chords: ['I', 'IV', 'I', 'V'], name: 'Pendel mit Halbschluss' },
     { id: 'jazz', mode: 'major', chords: ['ii', 'V', 'I', 'I'], name: 'II–V–I' },
-    { id: 'rising', mode: 'major', chords: ['I', 'iii', 'IV', 'V'], name: 'Aufsteigend' },
     { id: 'hymn', mode: 'major', chords: ['I', 'ii', 'V', 'I'], name: 'Choral-Schluss' },
     { id: 'epic', mode: 'minor', chords: ['i', 'VI', 'III', 'VII'], name: 'Epische Moll-Folge' },
     { id: 'mcadence', mode: 'minor', chords: ['i', 'iv', 'V', 'i'], name: 'Moll-Kadenz' },
     { id: 'andalusian', mode: 'minor', chords: ['i', 'VII', 'VI', 'V'], name: 'Andalusische Kadenz' },
     { id: 'mpop', mode: 'minor', chords: ['i', 'iv', 'VII', 'III'], name: 'Moll-Pop' },
-    { id: 'mnatural', mode: 'minor', chords: ['i', 'VI', 'iv', 'v'], name: 'Natürliches Moll' },
     // Kurze und lange Folgen (drei bis acht Akkorde)
     { id: 'tsd', mode: 'major', chords: ['I', 'IV', 'V'], name: 'Halbschluss-Runde' },
     { id: 'amen', mode: 'major', chords: ['I', 'IV', 'I'], name: 'Amen-Schluss (plagal)' },
@@ -2298,6 +2296,15 @@
     { id: 'majorIII', mode: 'major', chords: ['I', 'III', 'IV', 'iv'], name: 'Dur-III und Moll-iv' },
     { id: 'secdom', mode: 'major', chords: ['I', 'II7', 'V', 'I'], name: 'Zwischendominante' },
     { id: 'bassDown', mode: 'major', chords: ['I', 'V6', 'vi', 'IV'], name: 'Absteigende Basslinie' },
+    // Gängige Pop-Standards (Paket „Hören in der Tonart“)
+    { id: 'rock', mode: 'major', chords: ['I', 'IV', 'V', 'IV'], name: 'Drei-Akkord-Runde' },
+    { id: 'rockback', mode: 'major', chords: ['I', 'V', 'IV', 'I'], name: 'Rock-Schluss' },
+    { id: 'pop4', mode: 'major', chords: ['I', 'IV', 'vi', 'V'], name: 'Pop mit vi vor V' },
+    { id: 'axis4', mode: 'major', chords: ['IV', 'I', 'V', 'vi'], name: 'Pop ab der IV' },
+    { id: 'hopscotch', mode: 'major', chords: ['IV', 'V', 'vi', 'I'], name: 'Pop aufwärts' },
+    { id: 'pachelbel', mode: 'major', chords: ['I', 'V', 'vi', 'iii', 'IV', 'I', 'IV', 'V'], name: 'Pachelbel-Folge' },
+    { id: 'aeolian', mode: 'minor', chords: ['i', 'VII', 'VI', 'VII'], name: 'Moll-Pendel' },
+    { id: 'mvamp', mode: 'minor', chords: ['i', 'VI', 'VII', 'i'], name: 'Moll-Aufstieg' },
   ];
   // Klassische Wendungen: in keiner Stufe, in der eigenen Auswahl unter „Klassik“.
   const CLASSIC_PROGS = ['hymn', 'k64', 'phryg', 'ajoutee'];
@@ -2310,9 +2317,9 @@
      Leihakkorde (♭VII, iv), Zwischendominanten; Stufe 6 mit Rückung
      (`modulation`: jede vierte Aufgabe fragt nach der Rückung). */
   const EAR_LEVELS = [
-    { n: 1, label: 'Die vier Pop-Akkorde', add: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'sad'], inversion: 'root', spread: 'close' },
-    { n: 2, label: 'dazu ii und iii', add: ['plagal', 'deceptive', 'jazz', 'quintfall', 'turnaround', 'rising'], inversion: 'root', spread: 'close' },
-    { n: 3, label: 'Moll-Tonarten', add: ['epic', 'mpop', 'mnatural', 'mcadence', 'm3', 'mdeceptive'], inversion: 'root', spread: 'close' },
+    { n: 1, label: 'Die vier Pop-Akkorde', add: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'sad', 'rock', 'rockback', 'pop4', 'axis4', 'hopscotch'], inversion: 'root', spread: 'close' },
+    { n: 2, label: 'dazu ii und iii', add: ['plagal', 'deceptive', 'jazz', 'quintfall', 'turnaround', 'pachelbel'], inversion: 'root', spread: 'close' },
+    { n: 3, label: 'Moll-Tonarten', add: ['epic', 'mpop', 'mcadence', 'm3', 'mdeceptive', 'aeolian', 'mvamp'], inversion: 'root', spread: 'close' },
     { n: 4, label: 'Leihakkorde: ♭VII und iv', add: ['mixo', 'mixo2', 'minorIV', 'andalusian'], inversion: 'root', spread: 'close' },
     { n: 5, label: 'V7, Zwischendominanten, Bass', add: ['v7', 'secdom', 'majorIII', 'bassDown', 'circle'], inversion: 'style', spread: 'close' },
     { n: 6, label: 'weite Lage und Rückung', add: [], inversion: 'style', spread: 'open', modulation: true },
@@ -6745,6 +6752,57 @@
     return errors;
   }
 
+  /** Hören in der Tonart: Akkordfolgen-Katalog, Töne und Akkorde in der
+   *  Tonart (Kadenz, Antwortlogik, Auflösung), Einbindung. */
+  function inKeyCheck() {
+    const errors = [];
+    const saved = JSON.parse(JSON.stringify({ settings: ear.settings, tab: state.tab }));
+    try {
+      // Paket 1 — Katalog: selten gebrauchte Folgen raus, gängige rein.
+      const ids = EAR_PROGRESSIONS.map((p) => p.id);
+      for (const gone of ['rising', 'mnatural']) if (ids.includes(gone) || levelProgs(6).includes(gone)) errors.push(`Folge ${gone} noch im Katalog`);
+      const want = { rock: 'I,IV,V,IV', rockback: 'I,V,IV,I', pop4: 'I,IV,vi,V', axis4: 'IV,I,V,vi', hopscotch: 'IV,V,vi,I', pachelbel: 'I,V,vi,iii,IV,I,IV,V', aeolian: 'i,VII,VI,VII', mvamp: 'i,VI,VII,i' };
+      for (const [id, chords] of Object.entries(want)) {
+        const p = EAR_PROGRESSIONS.find((x) => x.id === id);
+        if (!p || p.chords.join() !== chords) errors.push(`Folge ${id} fehlt oder falsch`);
+        else if (!levelProgs(6).includes(id)) errors.push(`Folge ${id} in keiner Stufe`);
+        else if (p.chords.some((c) => !CHORD_SYMBOLS[c])) errors.push(`Folge ${id}: Symbol fehlt`);
+      }
+      if (new Set(ids).size !== ids.length) errors.push('doppelte Folgen-IDs');
+      // Quint-/Oktavparallelen der neuen Folgen: alle Tonarten, alle Sätze.
+      const rnd0 = (() => { let seed = 97; return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; })();
+      let par = 0;
+      for (const id of Object.keys(want)) {
+        const p = EAR_PROGRESSIONS.find((x) => x.id === id);
+        for (let key = 0; key < 12; key++) {
+          for (const [inversion, spread] of [['root', 'close'], ['root', 'open'], ['style', 'close'], ['style', 'open']]) {
+            const vs = voiceProgression(key, p.chords, { inversion, spread, rnd: rnd0, mode: p.mode });
+            vs.forEach((v, i) => { if (i && parallelCount([vs[i - 1].bass, ...vs[i - 1].upper], [v.bass, ...v.upper])) par++; });
+          }
+        }
+      }
+      if (par) errors.push(`Neue Folgen: ${par} Wechsel mit Parallelen`);
+      // „Stimmen“ zieht aus levelProgs(3): auch die achtteilige Pachelbel-Folge liefert Linien.
+      for (let n = 3; n <= 4; n++) {
+        for (const spread of ['close', 'open']) {
+          for (let i = 0; i < 50; i++) {
+            const lt = makeLineTask('A', n, spread, rnd0);
+            if (!lt || lt.symbols.length !== n) errors.push(`Linie mit ${n} Akkorden: ${lt ? lt.symbols.length : 'keine Aufgabe'}`);
+          }
+        }
+      }
+      // Gespeicherte Stände: entfernte Folgen fallen heraus, nie eine leere Auswahl.
+      restore({ tab: saved.tab, ear: { settings: { progs: ['rising', 'pop'] } } });
+      if (ear.settings.progs.join() !== 'pop') errors.push(`restore progs [rising, pop] → ${ear.settings.progs}`);
+      ear.settings.progs = ['pop', 'fifties', 'cadence', 'epic', 'mcadence'];
+      restore({ tab: saved.tab, ear: { settings: { progs: ['mnatural'] } } });
+      if (ear.settings.progs.join() !== 'pop,fifties,cadence,epic,mcadence') errors.push(`restore progs [mnatural] → ${ear.settings.progs}`);
+    } finally {
+      Object.assign(ear.settings, saved.settings); state.tab = saved.tab;
+    }
+    return errors;
+  }
+
   /** Pop-Didaktik Paket 6: Singen nach Gehör — Reihenfolge, Blattsingen
    *  ausblenden, Stufenzahlen, gerader Ton, Ton finden (Intro, Satz),
    *  Nachsingen/Im Takt/Diktat mit eigenen Tonvorräten und Chromatik.
@@ -7570,6 +7628,7 @@
     errors.push(...popRhythmCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
+    errors.push(...inKeyCheck());
     errors.push(...singPackageCheck());
     errors.push(...popSingCheck());
     errors.push(...echoSimCheck());
@@ -7733,7 +7792,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio,
+    selfCheck, selfCheckAudio, inKeyCheck,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
