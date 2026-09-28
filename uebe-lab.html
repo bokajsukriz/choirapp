@@ -4479,7 +4479,7 @@
         const beat = 60 / 72;
         let t = end + .4;
         for (let rep = 0; rep < 2; rep++) {
-          task.notes.forEach((m, i) => { k(m, t, task.durs[i] * beat * .92, .22); t += task.durs[i] * beat; });
+          task.notes.forEach((m, i) => { playDemoNote(m, t, task.durs[i] * beat, bus, 'no'); t += task.durs[i] * beat; });
           t += 4 * beat * .5;
         }
         end = t;
@@ -4509,6 +4509,8 @@
   const echoTones = (task) => (task.half ? task.mel.tones.filter((x) => x.t < echoHalfTick(task.mel)) : task.mel.tones);
   const echoTickSec = (task) => 60 / (task.bpm * (task.slow ? ECHO_SLOW : 1)) / 12;
 
+  // Modi mit wählbarem Vorspiel (Klavier oder Singstimme).
+  const DEMO_MODES = ['singEcho', 'inTime', 'sight', 'dictation'];
   /** Ein Ton des Vorspiels: Klavier oder Singstimme (Einstellung „Vorspiel“). */
   function playDemoNote(midi, time, dur, bus, syllable) {
     if (sing.demo === 'voice') engine.voice(midi, time, dur * .96, { syllable, register: voiceRegister(ear.part), dest: bus });
@@ -5025,7 +5027,7 @@
     const bus = singBus();
     const beat = 60 / 72;
     let t = engine.ctx.currentTime + .2;
-    task.notes.forEach((m, i) => { engine.keys(m, t, task.durs[i] * beat * .92, { velocity: .22, dest: bus }); t += task.durs[i] * beat; });
+    task.notes.forEach((m, i) => { playDemoNote(m, t, task.durs[i] * beat, bus, 'no'); t += task.durs[i] * beat; });
   }
 
   function finishSing(ok, text, { value } = {}) {
@@ -5122,7 +5124,7 @@
     chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
     $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval', 'inTime'].includes(sing.mode);
     $$('[data-intime-row]').forEach((el) => { el.hidden = sing.mode !== 'inTime'; });
-    $('[data-demo-row]').hidden = !['singEcho', 'inTime'].includes(sing.mode);
+    $('[data-demo-row]').hidden = !DEMO_MODES.includes(sing.mode);
     chips('demo', [['piano', 'Klavier'], ['voice', 'Stimme']], sing.demo);
     if (sing.mode === 'inTime') renderInTimeOpts();
     const task = sing.task;
@@ -6469,6 +6471,13 @@
       if (sing.demo !== 'voice') errors.push('Vorspiel „Stimme“ nicht gespeichert');
       restore({ tab: savedTab, sing: { demo: 'orgel' } });
       if (sing.demo !== 'voice') errors.push('Vorspiel: kaputter Wert übernommen');
+      for (const [mode] of SING_MODES) {
+        if (mode === 'tuner') continue;
+        const m0 = sing.mode; sing.mode = mode; renderSing();
+        if ($('[data-demo-row]').hidden === DEMO_MODES.includes(mode)) errors.push(`Vorspiel-Wahl bei ${mode} ${DEMO_MODES.includes(mode) ? 'fehlt' : 'zu viel'}`);
+        sing.mode = m0;
+      }
+      renderSing();
       if (voiceRegister('B') !== 'low' || voiceRegister('T') !== 'low' || voiceRegister('A') !== 'high' || voiceRegister('S') !== 'high') errors.push('Singstimme: Lage je Stimme falsch');
       Object.assign(sing.inTime, { variant: 'sheet', tempo: 1.15, rhythmSyl: true, latencyMs: 183 });
       const snap = JSON.parse(JSON.stringify(snapshot()));
