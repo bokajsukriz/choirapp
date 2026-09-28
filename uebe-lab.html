@@ -364,7 +364,7 @@
     <section class="panel" data-rhythm-panel>
       <div data-levels="rhythm"></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
-      <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Du siehst die Noten und klatschst gleichzeitig mit dem Vorbild.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig</b> (ab Stufe 3): Zwei Zeilen, die App spielt die eine Stimme (Holzblock), du klatschst die andere dazu — erst hören beide, dann bist du dran.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Mitklatschen:</b> Erst liest du die neuen Noten, nur der Klick läuft („Lesen“). Danach klatscht das Vorbild den Rhythmus, und du klatschst gleichzeitig mit („Mit“).<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div class="bar-strip" aria-hidden="true"></div>
@@ -1229,8 +1229,11 @@
 
   function roundSeq(mode, last) {
     const rests = (n) => Array(n).fill('rest');
+    // Mitklatschen: erst die neuen Noten lesen (nur Klick), dann gleichzeitig
+    // mit dem Vorbild klatschen — sonst schalten die Noten genau in dem
+    // Moment um, in dem man schon mitklatschen soll.
     const seq = mode === 'along'
-      ? ['along', ...rests(state.gapAfter)]
+      ? ['read', 'along', ...rests(state.gapAfter)]
       : [mode === 'read' ? 'read' : 'listen', ...rests(state.gapBefore), 'you', ...rests(state.gapAfter)];
     // In der letzten Runde braucht es keine Leertakte mehr hinterher.
     if (last) while (seq[seq.length - 1] === 'rest') seq.pop();
@@ -1629,6 +1632,7 @@
     pad.dataset.phase = phase;
     let label = PAD_LABELS[phase];
     if (phase === 'idle' && state.input === 'mic') label = 'Starte mit Play — Eingabe übers Mikrofon';
+    if (phase === 'read' && round?.mode === 'along') label = 'Lies vor — gleich klatschst du mit';
     if (phase === 'you' && round?.duo) label = `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
     $('.pad-label').textContent = label;
     $('.pad-beats').replaceChildren(...Array.from({ length: beats }, (_, i) => {
@@ -2038,7 +2042,7 @@
   // [Modus-ID, Name, Satz] je Bereich — Reihenfolge der Liste. Singen: der
   // Tuner (Tuner, Zielton, Tonumfang) als letzte Zeile.
   const MODE_TEXT = {
-    echo: 'Hören, dann nachklatschen – ohne Noten', along: 'Noten lesen und gleichzeitig mitklatschen',
+    echo: 'Hören, dann nachklatschen – ohne Noten', along: 'Erst Noten lesen, dann mit dem Vorbild klatschen',
     read: 'Nur Klick hören, Rhythmus selbst klatschen', duo: 'Die App klatscht eine Stimme, du die andere',
     interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
