@@ -734,12 +734,71 @@
   const hasRun = (list, run) => list.some((_, i) => run.every((d, k) => list[i + k] === d));
 
   const WORKSHOP_LESSONS = [
-    // --- Rundgang (Paket 2 ergänzt die übrigen acht Einheiten) ---
+    // --- Rundgang: alles einmal, je Einheit 2–3 Minuten ---
+    { id: 'puls', tier: 'tour', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 90 }, trackOn: { snare: false, clap: false, hat: false, open: false, bass: false },
+      focus: ['bpm'],
+      checks: [(s) => s.bpm >= 58 && s.bpm <= 62, (s) => s.bpm >= 118 && s.bpm <= 122],
+      solution: [(s) => { s.bpm = 60; s.eighths = 120; }, (s) => { s.bpm = 120; s.eighths = 240; }] },
+
+    { id: 'backbeat', tier: 'tour', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 100 }, beat: { snare: [] }, trackOn: { hat: false, open: false, clap: false, bass: false },
+      focus: ['track:snare'], mark: { snare: { to: [4, 12] } },
+      checks: [(s) => sameSteps(stepsOn(s, 'snare'), [4, 12]) && s.beat.snare[4] === 1 && s.beat.snare[12] === 1],
+      solution: [(s) => { s.beat.snare = { 4: 1, 12: 1 }; }] },
+
+    { id: 'offbeat', tier: 'tour', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 120 }, trackOn: { bass: false },
+      focus: ['track:hat'], mark: { hat: { from: [0, 4, 8, 12] } },
+      checks: [(s) => sameSteps(stepsOn(s, 'hat'), [2, 6, 10, 14])],
+      solution: [(s) => { s.beat.hat = { 2: 1, 6: 1, 10: 1, 14: 1 }; }] },
+
     { id: 'synkope', tier: 'tour', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
       set: { bpm: 100 }, trackOn: { bass: false },
       focus: ['track:kick'], mark: { kick: { from: [8], to: [10] } },
       checks: [(s) => sameSteps(stepsOn(s, 'kick'), [0, 4, 10, 12])],
       solution: [(s) => { delete s.beat.kick[8]; s.beat.kick[10] = 1; }] },
+
+    { id: 'bass', tier: 'tour', area: 'harmony', tab: 'beat', groove: 'Backbeat Open',
+      set: { bpm: 96, progId: 'pop', chordsOn: false },
+      focus: ['chordsOn', 'track:bass'],
+      checks: [(s) => s.chordsOn, (s) => !s.trackOn.bass, (s) => s.trackOn.bass],
+      solution: [(s) => { s.chordsOn = true; }, (s) => { s.trackOn.bass = false; }, (s) => { s.trackOn.bass = true; }] },
+
+    // Bewusst progId 'drone' (nur der Tonika-Akkord): bei einer ganzen Folge
+    // änderten sich beim Moduswechsel mehr Töne als die Terz.
+    { id: 'durMoll', tier: 'tour', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
+      set: { bpm: 84, progId: 'drone', modeId: 'major', chordsOn: true }, trackOn: { bass: false },
+      focus: ['mode'],
+      checks: [(s) => s.modeId === 'minor'],
+      solution: [(s) => { s.modeId = 'minor'; }] },
+
+    // keysLayout wird in lessonState eigentlich behalten — hier bewusst
+    // gesetzt und nach der Einheit nicht zurückgestellt.
+    { id: 'melodie', tier: 'tour', area: 'melody', tab: 'keys', groove: 'Backbeat Open',
+      set: { bpm: 88, progId: 'drone', modeId: 'major', chordsOn: true, keysLayout: 'scale' },
+      focus: ['pads'],
+      checks: [(s, ctx) => [0, 2, 4].every((d) => lastPlayed(ctx, 6).includes(d)),
+               (s, ctx) => lastPlayed(ctx, 1).some((d) => d === 1 || d === 3 || d === 5)],
+      solution: [(s, ctx) => { ctx.played.push({ deg: 0 }, { deg: 2 }, { deg: 4 }); },
+                 (s, ctx) => { ctx.played.push({ deg: 3 }); }] },
+
+    { id: 'klang', tier: 'tour', area: 'sound', tab: 'sound', groove: 'Minimal Click', melody: 'Long Tones',
+      preset: 'Tape Keys', sound: { wave: 'sine', cutoff: 12000, filterEnvAmount: 0 },
+      set: { bpm: 90 },
+      focus: ['wave', 'sound:cutoff'],
+      checks: [(s) => s.sound.wave === 'sawtooth', (s) => s.sound.cutoff <= 800],
+      solution: [(s) => { s.sound.wave = 'sawtooth'; }, (s) => { s.sound.cutoff = 700; }] },
+
+    { id: 'ersterTrack', tier: 'tour', area: 'mix', tab: 'beat', groove: 'House Bounce', melody: 'Hook Line',
+      set: { bpm: 122, progId: 'pop', chordsOn: true },
+      focus: ['track:kick', 'track:hat', 'picker:prog', 'picker:preset'],
+      checks: [(s) => s.beatEdited,
+               (s, ctx) => s.progId !== ctx.start.progId || !!s.progDegrees || s.modeId !== ctx.start.modeId || s.keyRoot !== ctx.start.keyRoot,
+               (s) => s.sound.custom || s.sound.presetIndex !== presetIndexByName('Velvet Choir')],
+      solution: [(s) => { s.beat.hat[0] = 1; s.beatEdited = true; },
+                 (s) => { s.progId = 'sad'; },
+                 (s) => { s.sound = soundFromPreset(presetIndexByName('Neon Pluck')); }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */
