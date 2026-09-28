@@ -150,8 +150,6 @@ Jedes Paket wurde vor dem Commit so geprüft:
   geschafft sind — nur auf der letzten zeigen?
 - Zählweise: DE „1 e + e“ (wie in der Übe-App), EN „1 e & a“, PL „1 e i e“. Die
   polnische Zählung ist ungebräuchlich — besser „1 e + e“ übernehmen?
-- `durMoll` und `modi` sagen „Modus“, die Auswahl heißt im Studio „Tongeschlecht“
-  (EN „Mode“, PL „Tryb“). Text oder Beschriftung angleichen?
 - Das Ergebnis „x von y“ bei Nachbauen/Klang-Rätsel ist immer voll (siehe oben).
   Soll es dort ein „Überspringen“ geben, damit die Zahl etwas aussagt?
 - In `reibung` legt bloßes Antippen fa mit der eingestellten Länge (1/8) an, danach
@@ -168,6 +166,12 @@ Jedes Paket wurde vor dem Commit so geprüft:
   - Gegenderte Formen „muzycy i muzyczki“, „kompozytorzy i kompozytorki“, „śpiewaków
     i śpiewaczek“ — „muzyczki“ ist ungewöhnlich.
   - „Jak powstaje stopa?“ („Stopa“ wie `lab.trackKick`).
+
+## Nachträge nach Rückmeldung
+
+| Änderung | Umsetzung |
+|---|---|
+| „Modus“ statt „Tongeschlecht“ | Die Auswahl im Groove Lab (Studio → Harmonie, Chor-Ansicht) und der Hilfetext zur Tonart heißen jetzt „Modus“, passend zu den Workshop-Texten (EN „Mode“, PL „Tryb“ unverändert). |
 
 ## Nicht umgesetzt
 
