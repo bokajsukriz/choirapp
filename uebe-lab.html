@@ -5321,7 +5321,9 @@
     const singLevelBtn = e.target.closest('[data-level-area^="sing-"]');
     if (singLevelBtn) {
       sing.levels[singLevelBtn.dataset.levelArea.slice(5)] = Number(singLevelBtn.dataset.levelN);
-      clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null; setSingFeedback('', '');
+      clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null; sing.calib = null; setSingFeedback('', '');
+      // Schon geplante Klicks/Töne (Im Takt: ganzer Durchgang) ausblenden.
+      if (engine.ctx) { engine.fadeBus(sing.bus); engine.fadeBus(sing.clickBus); sing.bus = null; sing.clickBus = null; }
       renderSing();
       return;
     }
