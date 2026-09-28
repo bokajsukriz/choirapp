@@ -2825,11 +2825,23 @@
     }
 
     /** Nächste Einheit derselben Stufe (bei Vertiefung: desselben Bereichs). */
+    /** Einheiten derselben Reihe (Rundgang, Vertiefungs-Bereich, Challenges). */
+    _wsSiblings(lesson) {
+      return WORKSHOP_LESSONS.filter((l) => l.tier === lesson.tier && (lesson.tier !== 'deep' || l.area === lesson.area));
+    }
+
     _wsNext() {
       const lesson = this.ui.ws?.lesson;
       if (!lesson) return null;
-      const list = WORKSHOP_LESSONS.filter((l) => l.tier === lesson.tier && (lesson.tier !== 'deep' || l.area === lesson.area));
+      const list = this._wsSiblings(lesson);
       return list[list.indexOf(lesson) + 1] || null;
+    }
+
+    _wsPrev() {
+      const lesson = this.ui.ws?.lesson;
+      if (!lesson) return null;
+      const list = this._wsSiblings(lesson);
+      return list[list.indexOf(lesson) - 1] || null;
     }
 
     /** Elemente zu einem Fokus-Schlüssel (leer, wenn unbekannt/nicht da). */
@@ -2875,7 +2887,7 @@
      *  Reitern nur die Abschnitte, in denen ein Fokus-Element steht. */
     _wsDecorate() {
       this.$all('.ws-dim, .ws-focus, .ws-from, .ws-to, .ws-hide, .ws-hint').forEach((el) => el.classList.remove('ws-dim', 'ws-focus', 'ws-from', 'ws-to', 'ws-hide', 'ws-hint'));
-      this.$all('.tab-panel[inert], .ws-card [inert]').forEach((el) => { el.inert = false; });
+      this.$all('.tab-panel[inert], .ws-panel [inert]').forEach((el) => { el.inert = false; });
       const ws = this.ui.ws;
       if (this.state.view !== 'workshop' || !ws) return;
       const { lesson } = ws;
@@ -2913,7 +2925,7 @@
       // Änderungen am Ausgangszustand beim Zurückschalten verloren).
       if (ws.ab?.showing === 'before') {
         panels.forEach((p) => { p.inert = true; });
-        this.$all('.ws-card .ws-tiers, .ws-card .ws-areas, .ws-card .ws-lessons, .ws-card [data-action="ws-restart"], .ws-card [data-action="ws-next"]').forEach((el) => { el.inert = true; });
+        this.$all('.ws-panel .ws-head, .ws-panel .ws-picker, .ws-card [data-action="ws-restart"], .ws-card [data-action="ws-prev"], .ws-card [data-action="ws-next"]').forEach((el) => { el.inert = true; });
       }
     }
 
@@ -2933,6 +2945,20 @@
       areas.hidden = tier !== 'deep';
       this._chips(areas, LESSON_AREAS.map((id) => ({ value: id, label: t(AREA_KEY[id]) })), area, 'ws-area');
       const list = WORKSHOP_LESSONS.filter((l) => l.tier === tier && (tier !== 'deep' || l.area === area));
+      // Kopf: wo man steht, Punkte für die Einheiten dieser Reihe.
+      const siblings = lesson ? this._wsSiblings(lesson) : [];
+      const where = lesson ? [t(TIER_KEY[lesson.tier]), lesson.tier === 'deep' ? t(AREA_KEY[lesson.area]) : null,
+        tf('lab.ws.stepOf', { n: siblings.indexOf(lesson) + 1, total: siblings.length })].filter(Boolean).join(' · ') : t('lab.viewWorkshop');
+      this.$('.ws-where').textContent = where;
+      this.$('.ws-dots').replaceChildren(...siblings.map((l) => {
+        const dot = document.createElement('i');
+        if (l === lesson) dot.className = 'is-now';
+        else if (progress.done[l.id]) dot.className = 'is-done';
+        return dot;
+      }));
+      const pickerOpen = !lesson || !!this.ui.wsPicker;
+      this.$('.ws-picker').hidden = !pickerOpen;
+      this.$('.ws-all-btn').setAttribute('aria-expanded', String(pickerOpen));
       this.$('.ws-lessons').replaceChildren(...list.map((l) => {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -2980,6 +3006,7 @@
       hint.hidden = !done || !!lesson.kind;
       hint.textContent = tf('lab.ws.abHint', { which });
       this.$('[data-action="ws-next"]').hidden = !this._wsNext();
+      this.$('[data-action="ws-prev"]').hidden = !this._wsPrev();
       this._renderWsChallenge();
     }
 
@@ -5681,7 +5708,9 @@
         case 'fade-drums': this._fadeDrums(!this.ui.drumsFaded); break;
         case 'ws-tier': this.ui.wsTier = value; this._renderWorkshop(); break;
         case 'ws-area': this.ui.wsArea = value; this._renderWorkshop(); break;
-        case 'ws-lesson': this._wsSelect(value); break;
+        case 'ws-lesson': this.ui.wsPicker = false; this._wsSelect(value); break;
+        case 'ws-all': this.ui.wsPicker = !this.ui.wsPicker; this._renderWorkshop(); break;
+        case 'ws-prev': { const prev = this._wsPrev(); if (prev) this._wsSelect(prev.id); break; }
         case 'ws-restart': if (this.ui.ws) this._wsSelect(this.ui.ws.lesson.id); break;
         case 'ws-next': { const next = this._wsNext(); if (next) this._wsSelect(next.id); break; }
         case 'ws-ab': this._wsToggleAb(); break;
@@ -6240,6 +6269,16 @@
   /* Workshop */
   .workshop-view .chip { min-height: 44px; }
   .ws-progress { margin: 8px 2px; font-size: .72rem; font-weight: 800; color: var(--muted); }
+  .ws-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ws-where { min-width: 0; font-size: .7rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .ws-all-btn { flex: none; min-height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 2px 0 8px; font-size: .78rem; font-weight: 800; color: var(--accent); }
+  .ws-all-btn[aria-expanded="true"] .ws-caret { transform: rotate(180deg); }
+  .ws-dots { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0 2px 4px; }
+  .ws-dots i { width: 9px; height: 9px; border-radius: 999px; background: var(--line); }
+  .ws-dots i.is-done { background: var(--accent); opacity: .45; }
+  .ws-dots i.is-now { width: 24px; background: var(--accent); }
+  .ws-picker { margin: 6px 0 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .ws-actions .ws-next { margin-left: auto; background: var(--accent); border-color: var(--accent); color: #fff; }
   .ws-areas { margin-bottom: 8px; }
   .ws-lessons { margin-top: 4px; }
   .ws-lesson { display: inline-flex; align-items: center; gap: 5px; }
@@ -6670,10 +6709,20 @@
   </section>
   <section class="workshop-view" hidden>
     <section class="panel ws-panel">
-      <div class="chip-row ws-tiers" role="group" aria-label="${t('lab.viewWorkshop')}"></div>
-      <p class="ws-progress"></p>
-      <div class="chip-row ws-areas" role="group" aria-label="${t('lab.ws.tierDeep')}" hidden></div>
-      <div class="chip-row ws-lessons" role="group" aria-label="${t('lab.viewWorkshop')}"></div>
+      <!-- Schritt für Schritt: oben wo man steht („Einheit 3 von 9“, Punkte),
+           die volle Auswahl (Rundgang/Vertiefung/Challenges, alle Einheiten)
+           klappt erst unter „Alle Einheiten“ auf. -->
+      <div class="ws-head">
+        <span class="ws-where"></span>
+        <button class="ws-all-btn" type="button" data-action="ws-all" aria-expanded="false">${t('lab.ws.all')}<span class="ws-caret" aria-hidden="true">▾</span></button>
+      </div>
+      <div class="ws-dots" aria-hidden="true"></div>
+      <div class="ws-picker" hidden>
+        <div class="chip-row ws-tiers" role="group" aria-label="${t('lab.viewWorkshop')}"></div>
+        <p class="ws-progress"></p>
+        <div class="chip-row ws-areas" role="group" aria-label="${t('lab.ws.tierDeep')}" hidden></div>
+        <div class="chip-row ws-lessons" role="group" aria-label="${t('lab.viewWorkshop')}"></div>
+      </div>
       <div class="ws-card" hidden>
         <strong class="ws-title"></strong>
         <p class="ws-do"></p>
@@ -6691,9 +6740,10 @@
           <button class="chip ws-go" type="button" data-action="ws-go"></button>
         </div>
         <div class="ws-actions">
+          <button class="chip ws-prev" type="button" data-action="ws-prev">‹ ${t('lab.ws.prev')}</button>
           <button class="chip" type="button" data-action="ws-restart">${t('lab.ws.restart')}</button>
           <button class="chip ws-ab" type="button" data-action="ws-ab" aria-pressed="false" hidden><span class="ws-ab-before">${t('lab.ws.before')}</span><span class="ws-ab-after is-on">${t('lab.ws.after')}</span></button>
-          <button class="chip ws-next" type="button" data-action="ws-next">${t('lab.ws.next')} →</button>
+          <button class="chip ws-next" type="button" data-action="ws-next">${t('lab.ws.next')} ›</button>
         </div>
         <p class="ws-ab-hint" hidden></p>
         <p class="ws-to-studio">${t('lab.ws.toStudio')}</p>
