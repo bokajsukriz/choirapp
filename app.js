@@ -20029,6 +20029,19 @@ async function runMusicSelfTests({ log = true } = {}) {
         if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`Workshop: Text ${key} fehlt (${lang})`);
       }
     }
+    // Einzelprüfungen, damit die Texte nicht lügen.
+    const lessonById = (id) => T.WORKSHOP_LESSONS.find((l) => l.id === id);
+    const solved = (id) => {
+      const lesson = lessonById(id);
+      const s = T.sanitizeState(clone(T.lessonState(T.defaultState(), lesson)));
+      const ctx = { played: [], start: clone(s) };
+      lesson.solution.forEach((f) => f(s, ctx));
+      return s;
+    };
+    if (lessonById('tresillo')) {
+      const latin = T.DRUM_PATTERNS[T.patternIndexByName('Latin Skip')].kick;
+      if (T.stepsOn(solved('tresillo'), 'kick').join() !== [...latin].sort((a, b) => a - b).join()) failed.push('Workshop tresillo: Ziel ≠ Kick von Latin Skip');
+    }
     // Roundtrip view/lessonId
     const lessonId = T.WORKSHOP_LESSONS[0]?.id;
     const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));

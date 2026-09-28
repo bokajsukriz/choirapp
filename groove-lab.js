@@ -799,6 +799,67 @@
       solution: [(s) => { s.beat.hat[0] = 1; s.beatEdited = true; },
                  (s) => { s.progId = 'sad'; },
                  (s) => { s.sound = soundFromPreset(presetIndexByName('Neon Pluck')); }] },
+
+    // --- Vertiefung Rhythmus ---
+    { id: 'raster', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 90 }, beat: { clap: [] }, trackOn: { snare: false, bass: false },
+      focus: ['track:clap'], mark: { clap: { to: [14, 5] } },
+      checks: [(s) => hitAt(s, 'clap', 14), (s) => hitAt(s, 'clap', 5)],
+      solution: [(s) => { s.beat.clap[14] = 1; }, (s) => { s.beat.clap[5] = 1; }] },
+
+    { id: 'halftime', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 140 }, trackOn: { bass: false },
+      focus: ['track:kick', 'track:snare'], mark: { snare: { from: [4, 12], to: [8] }, kick: { from: [8] } },
+      checks: [(s) => sameSteps(stepsOn(s, 'snare'), [8]) && !hitAt(s, 'kick', 8)],
+      solution: [(s) => { s.beat.snare = { 8: 1 }; delete s.beat.kick[8]; }] },
+
+    // Nur Loops mit swingUnit 8 swingen die Achtel — deshalb Swing Soul.
+    { id: 'swing', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'Swing Soul',
+      set: { bpm: 96, swing: 0 },
+      focus: ['swing'],
+      checks: [(s) => s.swing >= .6],
+      solution: [(s) => { s.swing = .67; }] },
+
+    { id: 'houseHipHop', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'House Bounce',
+      set: { bpm: 124 }, trackOn: { bass: false },
+      focus: ['bpm', 'track:kick', 'track:hat', 'track:open'],
+      checks: [(s) => s.bpm >= 85 && s.bpm <= 95,
+               (s) => sameSteps(stepsOn(s, 'kick'), [0, 10]),
+               (s) => sameSteps(stepsOn(s, 'hat'), [0, 2, 4, 6, 8, 10, 12, 14]),
+               (s) => stepsOn(s, 'open').length === 0],
+      solution: [(s) => { s.bpm = 90; s.eighths = 180; },
+                 (s) => { s.beat.kick = { 0: 1, 10: 1 }; },
+                 (s) => { s.beat.hat = { 0: 1, 2: 1, 4: 1, 6: 1, 8: 1, 10: 1, 12: 1, 14: 1 }; },
+                 (s) => { s.beat.open = {}; }] },
+
+    { id: 'tresillo', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 100 }, beat: { kick: [], snare: [] }, trackOn: { bass: false },
+      focus: ['track:kick'], mark: { kick: { to: [0, 3, 6, 8, 11, 14] } },
+      checks: [(s) => sameSteps(stepsOn(s, 'kick').filter((x) => x < 8), [0, 3, 6]),
+               (s) => sameSteps(stepsOn(s, 'kick'), [0, 3, 6, 8, 11, 14])],
+      solution: [(s) => { s.beat.kick = { 0: 1, 3: 1, 6: 1 }; },
+                 (s) => { Object.assign(s.beat.kick, { 8: 1, 11: 1, 14: 1 }); }] },
+
+    { id: 'ghost', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'Backbeat Open',
+      set: { bpm: 92 }, trackOn: { bass: false },
+      focus: ['track:snare'], mark: { snare: { to: [7, 14] } },
+      checks: [(s) => s.beat.snare[7] !== undefined && s.beat.snare[7] < .6,
+               (s) => s.beat.snare[14] !== undefined && s.beat.snare[14] < .6],
+      solution: [(s) => { s.beat.snare[7] = .45; }, (s) => { s.beat.snare[14] = .45; }] },
+
+    // Lösung wie der Loop-Wechsel im Picker: Achtel bleiben gleich schnell
+    // (_convertTempo: 120 Achtel → ♩. = 40), Melodie in passender Taktart.
+    { id: 'dreiSechs', tier: 'deep', area: 'rhythm', tab: 'beat', groove: 'Waltz Step',
+      set: { bpm: 60 },
+      focus: ['picker:beat'],
+      checks: [(s) => DRUM_PATTERNS[s.patternIndex].meter === '6/8'],
+      solution: [(s) => {
+        s.patternIndex = patternIndexByName('6/8 Ballad');
+        s.beat = beatFromPattern(DRUM_PATTERNS[s.patternIndex]);
+        s.beatEdited = false;
+        s.bpm = clamp(Math.round(s.eighths / eighthsPerBeat('6/8')), BPM_MIN, BPM_MAX);
+        s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === '6/8'));
+      }] },
   ];
 
   /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */
