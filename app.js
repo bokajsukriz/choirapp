@@ -19978,6 +19978,71 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (broken.view !== null || broken.melodyAltBars !== false || broken.choirTask !== null) failed.push('Groove Lab: kaputte view/choirTask übernommen');
   }
 
+  // Workshop (ARBEITSANWEISUNG-WORKSHOP.md, Abschnitt 3): allgemeine
+  // Prüfungen je Einheit, Roundtrip view/lessonId/Fortschritt.
+  {
+    const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+    const same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+    const clone = (v) => JSON.parse(JSON.stringify(v));
+    const langs = ['de', 'en', 'pl'];
+    const ids = new Set();
+    for (const lesson of T.WORKSHOP_LESSONS) {
+      const tag = `Workshop ${lesson.id}`;
+      if (ids.has(lesson.id)) failed.push(`${tag}: ID doppelt`);
+      ids.add(lesson.id);
+      if (!T.LESSON_TIERS.includes(lesson.tier) || !T.LESSON_AREAS.includes(lesson.area)) failed.push(`${tag}: tier/area unbekannt`);
+      if (!['beat', 'harmony', 'melody', 'sound', 'mixer', 'keys'].includes(lesson.tab)) failed.push(`${tag}: tab ${lesson.tab}`);
+      // 2. Namen und Fokus-Schlüssel
+      if (lesson.groove && T.patternIndexByName(lesson.groove) < 0) failed.push(`${tag}: Groove ${lesson.groove} fehlt`);
+      if (lesson.melody && T.melodyIndexByName(lesson.melody) < 0) failed.push(`${tag}: Melodie ${lesson.melody} fehlt`);
+      if (lesson.preset && !T.SYNTH_PRESETS.some((p) => p.name === lesson.preset)) failed.push(`${tag}: Preset ${lesson.preset} fehlt`);
+      for (const key of lesson.focus) if (!T.focusKeyKnown(key)) failed.push(`${tag}: Fokus ${key} unbekannt`);
+      const base = T.defaultState();
+      for (const key of Object.keys(lesson.set || {})) if (!(key in base)) failed.push(`${tag}: Feld ${key} gibt es nicht`);
+      // 1. sanitizeState ändert den Ausgangszustand nicht (außer droneOn)
+      const start = T.lessonState(T.defaultState(), lesson);
+      const startSan = T.sanitizeState(clone(start));
+      if (!same({ ...start, droneOn: false }, startSan)) failed.push(`${tag}: sanitizeState ändert den Ausgangszustand`);
+      // 3. Ausgangszustand erfüllt checks[0] noch nicht
+      const ctx = { played: [], start: clone(startSan) };
+      let first = false;
+      try { first = !!lesson.checks[0](clone(startSan), ctx); } catch (e) { failed.push(`${tag}: checks[0] wirft ${e.message}`); }
+      if (first) failed.push(`${tag}: Teilziel 1 ist schon im Ausgangszustand erfüllt`);
+      // 4. solution der Reihe nach → checks[i]; Ergebnis besteht sanitizeState
+      if (lesson.solution.length !== lesson.checks.length) failed.push(`${tag}: solution ≠ checks`);
+      const s = clone(startSan);
+      lesson.solution.forEach((solve, i) => {
+        try {
+          solve(s, ctx);
+          if (!lesson.checks[i](s, ctx)) failed.push(`${tag}: Teilziel ${i + 1} nach Lösung nicht erfüllt`);
+        } catch (e) { failed.push(`${tag}: Lösung ${i + 1} wirft ${e.message}`); }
+      });
+      if (!same({ ...s, droneOn: false }, T.sanitizeState(clone(s)))) failed.push(`${tag}: Lösung besteht sanitizeState nicht`);
+      // 5. Texte in DE, EN, PL
+      const keys = ['title', 'do', 'aha', 'why', ...lesson.checks.map((_, i) => `check${i + 1}`)].map((k) => `lab.lesson.${lesson.id}.${k}`);
+      for (const lang of langs) for (const key of keys) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`${tag}: Text ${key} fehlt (${lang})`);
+    }
+    for (const lang of langs) {
+      for (const key of ['lab.viewWorkshop', 'lab.ws.tierTour', 'lab.ws.tierDeep', 'lab.ws.tierChallenge', 'lab.ws.progress', 'lab.ws.why',
+        'lab.ws.restart', 'lab.ws.before', 'lab.ws.after', 'lab.ws.abHint', 'lab.ws.next', 'lab.ws.done', 'lab.ws.doneAria',
+        'lab.ws.reached', 'lab.ws.tourDone', 'lab.ws.toStudio', ...['Rhythm', 'Harmony', 'Melody', 'Sound', 'Mix'].map((a) => `lab.ws.area${a}`)]) {
+        if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`Workshop: Text ${key} fehlt (${lang})`);
+      }
+    }
+    // Roundtrip view/lessonId
+    const lessonId = T.WORKSHOP_LESSONS[0]?.id;
+    const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
+    if (saved.view !== 'workshop' || saved.lessonId !== lessonId) failed.push('Workshop: view/lessonId gehen verloren');
+    if (T.sanitizeState({ patternIndex: 0 }).lessonId !== null) failed.push('Workshop: alter Stand ohne lessonId nicht auf Standard');
+    if (T.sanitizeState({ view: 'kino', lessonId: 'gibtsNicht' }).lessonId !== null) failed.push('Workshop: kaputte lessonId übernommen');
+    // Fortschritt: neu → gleich; alt/fehlend → Standard; Müll → Standard
+    const progress = { done: { [lessonId]: '2026-09-28' }, last: lessonId };
+    if (!same(T.sanitizeWorkshopProgress(clone(progress)), progress)) failed.push('Workshop: Fortschritt-Roundtrip');
+    for (const junk of [undefined, null, 'x', [], { done: [1], last: 7 }, { done: { gibtsNicht: '2026-01-01', [lessonId]: '28.9.2026' }, last: 'gibtsNicht' }]) {
+      if (!same(T.sanitizeWorkshopProgress(junk), { done: {}, last: null })) failed.push(`Workshop: Fortschritt aus ${JSON.stringify(junk)} nicht Standard`);
+    }
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);

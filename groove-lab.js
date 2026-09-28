@@ -36,6 +36,8 @@
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const mod = (n, m) => ((n % m) + m) % m;
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  /** Heutiges Datum (lokal) als 'YYYY-MM-DD'. */
+  const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   /* ------------------------------------------------------------------------
      TAKTARTEN — ein Schritt ist immer eine Sechzehntel. 6/8 hat deshalb 12
@@ -647,20 +649,27 @@
   const patternIndexByName = (name) => DRUM_PATTERNS.findIndex((p) => p.name === name);
   const melodyIndexByName = (name) => MELODIES.findIndex((m) => m.name === name);
 
-  /** Neuer Zustand nach dem Wählen einer Aufgabe (reine Funktion; der
-   *  Liegeton startet erst in der View, er braucht eine Nutzergeste). */
-  function choirTaskState(state, task, part) {
-    const s = JSON.parse(JSON.stringify(state));
-    for (const [key, value] of Object.entries(task.set)) {
+  /** Zustandsfelder einer Aufgabe/Einheit übernehmen. progId setzt eine
+   *  bearbeitete Folge zurück und nimmt ggf. den passenden Modus mit
+   *  (außer `set` nennt selbst einen Modus). */
+  function applyTaskSet(s, set) {
+    for (const [key, value] of Object.entries(set)) {
       if (key === 'progId') {
         s.progId = value;
         s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
         const prog = PROGRESSIONS.find((p) => p.id === value);
-        if (!task.set.modeId) s.modeId = modeForProg(prog, s.modeId);
+        if (!set.modeId) s.modeId = modeForProg(prog, s.modeId);
       } else if (key === 'bpm') {
         s.bpm = value;
       } else s[key] = value;
     }
+  }
+
+  /** Neuer Zustand nach dem Wählen einer Aufgabe (reine Funktion; der
+   *  Liegeton startet erst in der View, er braucht eine Nutzergeste). */
+  function choirTaskState(state, task, part) {
+    const s = JSON.parse(JSON.stringify(state));
+    applyTaskSet(s, task.set);
     if (task.groove) {
       s.patternIndex = patternIndexByName(task.groove);
       const pattern = DRUM_PATTERNS[s.patternIndex];
@@ -699,6 +708,99 @@
   function choirTargetPc(keyRoot, steps, deg, which) {
     const [root, third] = chordPitchClasses(keyRoot, steps, deg, false);
     return which === 'third' ? third : root;
+  }
+
+  /* ------------------------------------------------------------------------
+     WORKSHOP (siehe ARBEITSANWEISUNG-WORKSHOP.md). Eine Einheit setzt beim
+     Wählen einen reproduzierbaren Ausgangszustand (lessonState) und prüft
+     danach ihre Teilziele der Reihe nach. Texte: lab.lesson.<id>.*
+     IDs nie ändern — gespeichert wird der Fortschritt je ID.
+     ------------------------------------------------------------------------ */
+  const LESSON_TIERS = ['tour', 'deep', 'challenge'];
+  const LESSON_AREAS = ['rhythm', 'harmony', 'melody', 'sound', 'mix'];
+  const TIER_KEY = { tour: 'lab.ws.tierTour', deep: 'lab.ws.tierDeep', challenge: 'lab.ws.tierChallenge' };
+  const AREA_KEY = { rhythm: 'lab.ws.areaRhythm', harmony: 'lab.ws.areaHarmony', melody: 'lab.ws.areaMelody',
+                     sound: 'lab.ws.areaSound', mix: 'lab.ws.areaMix' };
+
+  // Kleine Helfer für die Zielprüfungen (rein, exportieren).
+  const stepsOn = (s, track) => Object.keys(s.beat[track] || {}).map(Number).sort((a, b) => a - b);
+  const sameSteps = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const hitAt = (s, track, step) => s.beat[track]?.[step] !== undefined;
+  const progOf = (s) => PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+  const progDegreesOf = (s) => s.progDegrees || progOf(s).degrees;
+  const progSeventhsOf = (s) => (s.progDegrees ? !!s.progSevenths : !!progOf(s).sevenths);
+  const melodyBarsOf = (s) => s.melodyBars || MELODIES[s.melodyIndex].bars;
+  const lastPlayed = (ctx, n) => ctx.played.slice(-n).map((p) => p.deg);
+  const hasRun = (list, run) => list.some((_, i) => run.every((d, k) => list[i + k] === d));
+
+  const WORKSHOP_LESSONS = [
+    // --- Rundgang (Paket 2 ergänzt die übrigen acht Einheiten) ---
+    { id: 'synkope', tier: 'tour', area: 'rhythm', tab: 'beat', groove: 'Pulse Basic',
+      set: { bpm: 100 }, trackOn: { bass: false },
+      focus: ['track:kick'], mark: { kick: { from: [8], to: [10] } },
+      checks: [(s) => sameSteps(stepsOn(s, 'kick'), [0, 4, 10, 12])],
+      solution: [(s) => { delete s.beat.kick[8]; s.beat.kick[10] = 1; }] },
+  ];
+
+  /** Fokus-Schlüssel, die die Ansicht kennt (siehe _wsFocusEls). */
+  const WS_FOCUS_SIMPLE = ['bpm', 'swing', 'pump', 'picker:beat', 'picker:prog', 'picker:melody', 'picker:preset',
+    'mode', 'key', 'chordsOn', 'chordBars', 'satb', 'drone', 'progEditor', 'progSevenths', 'melEditor', 'melodyAltBars',
+    'pads', 'arp', 'wave', 'filterType', 'fx:echo', 'automation', 'kit'];
+  function focusKeyKnown(key) {
+    if (WS_FOCUS_SIMPLE.includes(key)) return true;
+    const [kind, arg] = String(key).split(':');
+    if (kind === 'track') return TRACK_IDS.includes(arg);
+    if (kind === 'sound') return hasOwn(SOUND_RANGES, arg);
+    if (kind === 'mute' || kind === 'mix') return BUSES.includes(arg);
+    return false;
+  }
+
+  /** Ausgangszustand einer Einheit — immer aus defaultState(), damit jede
+   *  Einheit gleich beginnt. Behält nur Ansicht, Tastenlayout, Oktave und
+   *  Master-Pegel des aktuellen Stands. */
+  function lessonState(current, lesson) {
+    const s = defaultState();
+    s.view = current.view; s.keysLayout = current.keysLayout; s.octave = current.octave;
+    s.mix.master = current.mix.master;
+    s.chordsOn = false; s.melodyOn = false; s.arpOn = false;
+    if (lesson.groove === null) { s.mute.drums = true; s.mute.bass = true; }
+    else if (lesson.groove) {
+      s.patternIndex = patternIndexByName(lesson.groove);
+      const pattern = DRUM_PATTERNS[s.patternIndex];
+      s.beat = beatFromPattern(pattern);
+      s.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
+    }
+    if (lesson.melody) { s.melodyIndex = melodyIndexByName(lesson.melody); s.melodyOn = true; }
+    // Melodie und Loop brauchen dieselbe Taktart (wie _ensureMelodyMeter).
+    const meter = DRUM_PATTERNS[s.patternIndex].meter;
+    if (MELODIES[s.melodyIndex].meter !== meter) s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === meter));
+    if (lesson.preset) s.sound = soundFromPreset(presetIndexByName(lesson.preset));
+    applyTaskSet(s, lesson.set || {});
+    if (lesson.sound) Object.assign(s.sound, lesson.sound, { custom: true });
+    for (const key of ['trackOn', 'mute', 'fx', 'kit']) if (lesson[key] && s[key]) Object.assign(s[key], lesson[key]);
+    if (lesson.beat) {
+      for (const [track, list] of Object.entries(lesson.beat)) s.beat[track] = Object.fromEntries(list.map((x) => [x, 1]));
+      s.beatEdited = true;
+    }
+    s.eighths = s.bpm * eighthsPerBeat(meter);
+    s.choirTask = null;
+    s.lessonId = lesson.id;
+    return s;
+  }
+
+  /** Gespeicherter Workshop-Fortschritt: { done: { id: 'YYYY-MM-DD' }, last }.
+   *  Unbekannte IDs und kaputte Daten fallen weg. */
+  function sanitizeWorkshopProgress(raw) {
+    const ids = WORKSHOP_LESSONS.map((l) => l.id);
+    const out = { done: {}, last: null };
+    if (!raw || typeof raw !== 'object') return out;
+    if (raw.done && typeof raw.done === 'object' && !Array.isArray(raw.done)) {
+      for (const [id, date] of Object.entries(raw.done)) {
+        if (ids.includes(id) && typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) out.done[id] = date;
+      }
+    }
+    out.last = ids.includes(raw.last) ? raw.last : null;
+    return out;
   }
 
   const TABS = [
@@ -752,6 +854,8 @@
       // Didaktik Paket 8: Ansicht ('choir' | 'studio', null = je nach
       // Einstieg), gewählte Chor-Aufgabe, Melodie nur jeden zweiten Takt.
       view: null, choirTask: null, melodyAltBars: false,
+      // Workshop: zuletzt gewählte Einheit (Ansicht 'workshop').
+      lessonId: null,
     };
   }
 
@@ -972,8 +1076,9 @@
     };
     s.automation = sanitizeAutomation(raw.automation);
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
-    s.view = oneOf(raw.view, ['choir', 'studio'], null);
+    s.view = oneOf(raw.view, ['choir', 'studio', 'workshop'], null);
     s.choirTask = oneOf(raw.choirTask, CHOIR_TASKS.map((x) => x.id), null);
+    s.lessonId = oneOf(raw.lessonId, WORKSHOP_LESSONS.map((l) => l.id), null);
     s.melodyAltBars = bool(raw.melodyAltBars, false);
     // Der Liegeton braucht eine Nutzergeste zum Starten — nie aus einem
     // gespeicherten Stand heraus von selbst loslaufen lassen.
@@ -1803,7 +1908,7 @@
       this._soundKnobs = {};
 
       this._storage = null;
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [] };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null) };
       this._storageRequested = false;
       this._restoreFocusTo = null;
       this._bodyOverflow = '';
@@ -1853,6 +1958,7 @@
       this.state.droneOn = false;
       this._closeSheet();
       this._closePicker({ focus: false });
+      this._wsAbReset(); // nie im „Vorher“ speichern
       this._saved.last = this._snapshot();
       this._persist();
       this.hidden = true;
@@ -1881,6 +1987,7 @@
         this._saved.slots = [0, 1, 2, 3].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
         this._saved.melodies = sanitizeMelodyLibrary(data.melodies);
         this._saved.progressions = sanitizeProgLibrary(data.progressions);
+        this._saved.workshop = sanitizeWorkshopProgress(data.workshop);
         this._renderMelody();
         this._renderHarmony();
         // Den letzten Stand nur übernehmen, solange noch nichts gespielt oder
@@ -1890,6 +1997,7 @@
           this._afterStateChange();
           this._applyView(this.state.view);
         }
+        this._renderWorkshop();
         this._renderSheet();
       }).catch((err) => console.warn('[groove-lab] Stand nicht geladen', err));
     }
@@ -1910,6 +2018,7 @@
     }
 
     undo() {
+      this._wsAbReset();
       const prev = this.history.pop();
       if (!prev) return;
       this._applyState(sanitizeState(JSON.parse(prev)), { history: false });
@@ -1932,6 +2041,7 @@
       this._syncEngine();
       this._retuneDrone();
       this._renderAll();
+      this._wsSchedule();
     }
 
     _summary(state) {
@@ -1943,15 +2053,329 @@
     /* ---- Ansicht: Chor · Studio (Didaktik Paket 8) ---- */
 
     _applyView(view) {
-      const v = view === 'choir' || view === 'studio' ? view : (this._entry === 'tools' ? 'choir' : 'studio');
+      const v = ['choir', 'studio', 'workshop'].includes(view) ? view : (this._entry === 'tools' ? 'choir' : 'studio');
+      // Beim Verlassen des Workshops immer auf „Nachher“ zurück.
+      if (v !== 'workshop') this._wsAbReset();
       this.state.view = v;
       const choir = v === 'choir';
+      const workshop = v === 'workshop';
       this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
-      this.$('.tab-bar').hidden = choir;
+      this.$('.tab-bar').hidden = choir || workshop;
       this.$('.choir-view').hidden = !choir;
+      this.$('.workshop-view').hidden = !workshop;
       if (choir) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
       else this._setTab(this.ui.tab);
+      if (workshop) this._wsEnter();
       this._renderChoir();
+      this._wsDecorate();
+    }
+
+    /* ---- Ansicht: Workshop ----
+       ui.ws = { lesson, reached, played, start, ab }: gewählte Einheit,
+       erreichte Teilziele (Anzahl, der Reihe nach), zuletzt gespielte Töne,
+       Ausgangszustand und Vorher/Nachher. Der Stand selbst liegt ganz
+       normal in this.state — Wechsel ins Studio nimmt ihn mit. */
+
+    /** Workshop öffnen: die Einheit des Stands weiterführen, sonst die
+     *  zuletzt gewählte bzw. die erste nicht geschaffte des Rundgangs. */
+    _wsEnter() {
+      const id = this.state.lessonId;
+      const lesson = WORKSHOP_LESSONS.find((l) => l.id === id);
+      if (lesson) {
+        if (this.ui.ws?.lesson !== lesson) this._wsInit(lesson, sanitizeState(lessonState(this.state, lesson)));
+        this._setTab(lesson.tab);
+        this._renderWorkshop();
+        this._wsSchedule();
+        return;
+      }
+      const progress = this._saved.workshop;
+      const first = WORKSHOP_LESSONS.find((l) => l.id === progress.last)
+        || WORKSHOP_LESSONS.find((l) => l.tier === 'tour' && !progress.done[l.id])
+        || WORKSHOP_LESSONS[0];
+      this._wsSelect(first.id, { play: false });
+    }
+
+    _wsInit(lesson, start) {
+      this.ui.ws = { lesson, reached: 0, played: [], start: JSON.parse(JSON.stringify(start)), ab: null };
+      this.ui.wsTier = lesson.tier;
+      if (lesson.tier === 'deep') this.ui.wsArea = lesson.area;
+      if (lesson.focus.includes('progEditor') || lesson.focus.includes('progSevenths')) this.ui.progEdit = true;
+      if (lesson.focus.includes('melEditor')) this.ui.melEdit = true;
+    }
+
+    /** Einheit wählen: ein Undo-Schritt, Zustand über lessonState. Das
+     *  Antippen ist die Geste für den AudioContext — die Wiedergabe startet
+     *  (außer bei Challenges, die starten mit „Los“). */
+    _wsSelect(id, { play = true } = {}) {
+      const lesson = WORKSHOP_LESSONS.find((l) => l.id === id);
+      if (!lesson) return;
+      this._wsAbReset();
+      const meterBefore = this._meter();
+      const next = sanitizeState(lessonState(this.state, lesson));
+      this._applyState(JSON.parse(JSON.stringify(next)));
+      if (this._meter() !== meterBefore && this.playing) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+      this._fadeDrums(false);
+      this._wsInit(lesson, next);
+      this._saved.workshop.last = lesson.id;
+      this._persist();
+      // Liegeton wie bei den Chor-Aufgaben erst hier (Nutzergeste).
+      if (lesson.set?.droneOn) this._setDrone(true);
+      else if (this.state.droneOn) this._setDrone(false);
+      this._afterStateChange();
+      this._setTab(lesson.tab);
+      this._renderWorkshop();
+      this._wsDecorate();
+      if (play && !this.playing && lesson.tier !== 'challenge') this.start();
+    }
+
+    _wsDone() {
+      const ws = this.ui.ws;
+      return !!ws && ws.reached >= ws.lesson.checks.length;
+    }
+
+    /** Höchstens einmal pro Frame prüfen und Markierungen nachziehen. */
+    _wsSchedule() {
+      if (this._wsFrame || this.state.view !== 'workshop') return;
+      this._wsFrame = global.requestAnimationFrame(() => {
+        this._wsFrame = 0;
+        this._wsCheck();
+        this._wsDecorate();
+      });
+    }
+
+    /** Teilziele der Reihe nach prüfen; mehrere können in einem Durchgang
+     *  fallen. Erreicht bleibt erreicht. */
+    _wsCheck() {
+      const ws = this.ui.ws;
+      if (!ws || this.state.view !== 'workshop' || ws.ab?.showing === 'before') return;
+      const { lesson } = ws;
+      const ctx = this._wsCtx();
+      const reachedBefore = ws.reached;
+      while (ws.reached < lesson.checks.length) {
+        let ok = false;
+        try { ok = !!lesson.checks[ws.reached](this.state, ctx); } catch { ok = false; }
+        if (!ok) break;
+        ws.reached++;
+        this._wsAnnounce(tf('lab.ws.reached', { check: t(`lab.lesson.${lesson.id}.check${ws.reached}`) }));
+      }
+      if (ws.reached === reachedBefore) return;
+      if (this._wsDone()) {
+        const progress = this._saved.workshop;
+        if (!progress.done[lesson.id]) progress.done[lesson.id] = localDate();
+        progress.last = lesson.id;
+        this._persist();
+        this._wsAnnounce(`${t('lab.ws.done')} ${t(`lab.lesson.${lesson.id}.aha`)}`);
+      }
+      this._renderWorkshop();
+    }
+
+    _wsCtx() {
+      const ws = this.ui.ws;
+      return { played: ws.played, start: ws.start };
+    }
+
+    _wsAnnounce(text) {
+      const live = this.$('.ws-live');
+      if (live) live.textContent = text;
+    }
+
+    /** Aus _enterKey: gespielten Ton als Tonleiterstufe der Tonart merken. */
+    _wsNote(midi) {
+      const ws = this.ui.ws;
+      if (!ws || this.state.view !== 'workshop') return;
+      const pc = mod(midi - this.state.keyRoot, 12);
+      const steps = this._mode().steps;
+      let deg = null;
+      for (let d = 0; d < 7 && deg === null; d++) if (mod(degreeSemis(steps, d), 12) === pc) deg = d;
+      ws.played.push({ pc, deg, t: performance.now() });
+      if (ws.played.length > 32) ws.played.splice(0, ws.played.length - 32);
+      this._wsSchedule();
+    }
+
+    /** Vorher/Nachher: tauscht den Zustand ohne Undo-Eintrag. */
+    _wsToggleAb() {
+      const ws = this.ui.ws;
+      if (!ws || !this._wsDone()) return;
+      if (ws.ab?.showing === 'before') { this._wsAbReset(); }
+      else {
+        ws.ab = { mine: this._snapshot(), showing: 'before' };
+        this._wsSwap(ws.start);
+      }
+      this._renderWorkshop();
+      this._wsDecorate();
+    }
+
+    /** Immer zurück auf „Nachher“ (eigener Stand). */
+    _wsAbReset() {
+      const ws = this.ui?.ws;
+      if (!ws?.ab) return;
+      const { mine, showing } = ws.ab;
+      ws.ab = null;
+      if (showing === 'before' && mine) this._wsSwap(mine);
+      this._renderWorkshop();
+    }
+
+    _wsSwap(state) {
+      const meterBefore = this._meter();
+      this._applyState(JSON.parse(JSON.stringify(state)), { history: false });
+      // Taktgenau weiter, wie beim Wechsel der Chor-Aufgabe.
+      if (this._meter() !== meterBefore && this.playing) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+    }
+
+    /** Nächste Einheit derselben Stufe (bei Vertiefung: desselben Bereichs). */
+    _wsNext() {
+      const lesson = this.ui.ws?.lesson;
+      if (!lesson) return null;
+      const list = WORKSHOP_LESSONS.filter((l) => l.tier === lesson.tier && (lesson.tier !== 'deep' || l.area === lesson.area));
+      return list[list.indexOf(lesson) + 1] || null;
+    }
+
+    /** Elemente zu einem Fokus-Schlüssel (leer, wenn unbekannt/nicht da). */
+    _wsFocusEls(key) {
+      const inPanels = (sel) => this.$all(`.tab-panel ${sel}`);
+      const up = (list, sel) => list.map((el) => el.closest(sel) || el);
+      const [kind, arg] = key.split(':');
+      switch (kind) {
+        case 'bpm': return this.$all('.transport-bar .tempo-field');
+        case 'swing': case 'pump': return up(inPanels(`[data-field="${kind}"]`), '.slider-line');
+        case 'track': return inPanels(`.track-list .track-row[data-track="${arg}"]`);
+        case 'picker': return inPanels(`.picker-trigger[data-picker="${arg === 'preset' ? 'sound' : arg}"]`);
+        case 'mode': return up(inPanels('[data-field="modeId"]'), '.select-field');
+        case 'key': return up(inPanels('[data-field="keyRoot"]'), '.select-field');
+        case 'chordsOn': return up(inPanels('[data-switch="chordsOn"]'), '.switch');
+        case 'chordBars': return up(inPanels('[data-field="chordBars"]'), '.select-line');
+        case 'satb': return inPanels('.satb-list');
+        case 'drone': return up(inPanels('[data-switch="droneOn"]'), '.switch-row');
+        case 'progEditor': return inPanels('.chord-strip, [data-action="prog-edit"], .prog-editor');
+        case 'progSevenths': return [...up(inPanels('[data-switch="progSevenths"]'), '.switch'), ...inPanels('[data-action="prog-edit"]')];
+        case 'melEditor': return inPanels('.mel-card');
+        case 'melodyAltBars': return up(inPanels('[data-switch="melodyAltBars"]'), '.switch');
+        case 'pads': return inPanels('.scale-pads');
+        case 'arp': return up(inPanels('[data-switch="arpOn"]'), '.panel');
+        case 'wave': return inPanels('.wave-row');
+        case 'filterType': return inPanels('.filter-type-chips');
+        case 'sound': {
+          const knob = this._soundKnobs[arg]?.el;
+          if (knob?.isConnected) return [knob];
+          return [...up(inPanels(`[data-sound="${arg}"]`), '.slider-field'), ...up(inPanels(`[data-field="${arg}"]`), '.select-line')];
+        }
+        case 'mute': return inPanels(`.mixer-list [data-action="mute"][data-value="${arg}"]`);
+        case 'mix': return up(inPanels(`.mixer-list [data-mix="${arg}"]`), '.mixer-row');
+        case 'fx': return arg === 'echo' ? up(inPanels('.fx-echo'), '.fx-group') : [];
+        case 'automation': return inPanels('.auto-box');
+        case 'kit': return inPanels('.kit-box');
+        default: return [];
+      }
+    }
+
+    /** Fokus, Dimmen und Markierungen im Raster. Studio-Panels werden
+     *  wiederverwendet: das Panel der Einheit (lesson.tab), dazu aus anderen
+     *  Reitern nur die Abschnitte, in denen ein Fokus-Element steht. */
+    _wsDecorate() {
+      this.$all('.ws-dim, .ws-focus, .ws-from, .ws-to, .ws-hide').forEach((el) => el.classList.remove('ws-dim', 'ws-focus', 'ws-from', 'ws-to', 'ws-hide'));
+      this.$all('.tab-panel[inert], .ws-card [inert]').forEach((el) => { el.inert = false; });
+      const ws = this.ui.ws;
+      if (this.state.view !== 'workshop' || !ws) return;
+      const { lesson } = ws;
+      const focusEls = lesson.focus.flatMap((key) => this._wsFocusEls(key));
+      const home = this.$(`.tab-panel[data-tab-panel="${lesson.tab}"]`);
+      const panels = new Set([home]);
+      for (const el of focusEls) { const p = el.closest('.tab-panel'); if (p) panels.add(p); }
+      this.$all('.tab-panel').forEach((p) => { p.hidden = !panels.has(p); });
+      const dimAround = (node) => {
+        for (const child of node.children) {
+          if (focusEls.includes(child)) continue;
+          if (focusEls.some((el) => child.contains(el))) dimAround(child);
+          else child.classList.add('ws-dim');
+        }
+      };
+      for (const p of panels) {
+        if (p !== home) p.querySelectorAll(':scope > .panel').forEach((sec) => { if (!focusEls.some((el) => sec.contains(el))) sec.classList.add('ws-hide'); });
+        dimAround(p);
+      }
+      focusEls.forEach((el) => {
+        el.classList.add('ws-focus');
+        const details = el.closest('details');
+        if (details && !details.open) details.open = true;
+      });
+      if (lesson.mark && !this._wsDone()) {
+        for (const [track, { from = [], to = [] }] of Object.entries(lesson.mark)) {
+          for (const [list, cls] of [[from, 'ws-from'], [to, 'ws-to']]) {
+            list.forEach((step) => this.$(`.track-list .step-cell[data-track="${track}"][data-step="${step}"]`)?.classList.add(cls));
+          }
+        }
+      }
+      // „Vorher“: nur der Umschalter bleibt bedienbar (sonst gingen
+      // Änderungen am Ausgangszustand beim Zurückschalten verloren).
+      if (ws.ab?.showing === 'before') {
+        panels.forEach((p) => { p.inert = true; });
+        this.$all('.ws-card .ws-tiers, .ws-card .ws-areas, .ws-card .ws-lessons, .ws-card [data-action="ws-restart"], .ws-card [data-action="ws-next"]').forEach((el) => { el.inert = true; });
+      }
+    }
+
+    _renderWorkshop() {
+      const host = this.$('.workshop-view');
+      if (!host || host.hidden) return;
+      const ws = this.ui.ws;
+      const lesson = ws?.lesson || null;
+      const progress = this._saved.workshop;
+      const tier = this.ui.wsTier || lesson?.tier || 'tour';
+      const area = this.ui.wsArea || (lesson?.tier === 'deep' ? lesson.area : LESSON_AREAS[0]);
+      this._chips(this.$('.ws-tiers'), LESSON_TIERS.map((id) => ({ value: id, label: t(TIER_KEY[id]) })), tier, 'ws-tier');
+      const tour = WORKSHOP_LESSONS.filter((l) => l.tier === 'tour');
+      const tourDone = tour.filter((l) => progress.done[l.id]).length;
+      this.$('.ws-progress').textContent = tf('lab.ws.progress', { done: tourDone, total: tour.length });
+      const areas = this.$('.ws-areas');
+      areas.hidden = tier !== 'deep';
+      this._chips(areas, LESSON_AREAS.map((id) => ({ value: id, label: t(AREA_KEY[id]) })), area, 'ws-area');
+      const list = WORKSHOP_LESSONS.filter((l) => l.tier === tier && (tier !== 'deep' || l.area === area));
+      this.$('.ws-lessons').replaceChildren(...list.map((l) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chip ws-lesson';
+        btn.dataset.action = 'ws-lesson';
+        btn.dataset.value = l.id;
+        btn.setAttribute('aria-pressed', String(l === lesson));
+        const title = t(`lab.lesson.${l.id}.title`);
+        const done = !!progress.done[l.id];
+        btn.innerHTML = done ? '<span class="ws-tick" aria-hidden="true">✓</span>' : '';
+        btn.append(title);
+        if (done) btn.setAttribute('aria-label', `${title}, ${t('lab.ws.doneAria')}`);
+        return btn;
+      }));
+      const card = this.$('.ws-card');
+      card.hidden = !lesson;
+      if (!lesson) return;
+      const key = (name) => `lab.lesson.${lesson.id}.${name}`;
+      const done = this._wsDone();
+      this.$('.ws-title').textContent = t(key('title'));
+      this.$('.ws-do').textContent = t(key('do'));
+      this.$('.ws-checks').replaceChildren(...lesson.checks.map((_, i) => {
+        const li = document.createElement('li');
+        li.className = `ws-check${i < ws.reached ? ' is-reached' : ''}`;
+        li.innerHTML = `<span class="ws-box" aria-hidden="true">${i < ws.reached ? '✓' : ''}</span><span class="ws-check-text"></span>`;
+        li.querySelector('.ws-check-text').textContent = t(key(`check${i + 1}`));
+        if (i < ws.reached) li.setAttribute('aria-label', `${t(key(`check${i + 1}`))}, ${t('lab.ws.doneAria')}`);
+        return li;
+      }));
+      this.$('.ws-why-text').textContent = t(key('why'));
+      const aha = this.$('.ws-aha');
+      aha.hidden = !done;
+      aha.querySelector('strong').textContent = t('lab.ws.done');
+      aha.querySelector('span').textContent = t(key('aha'));
+      this.$('.ws-tour-done').hidden = !(lesson.tier === 'tour' && tourDone === tour.length);
+      const ab = this.$('[data-action="ws-ab"]');
+      ab.hidden = !done;
+      const before = ws.ab?.showing === 'before';
+      ab.setAttribute('aria-pressed', String(before));
+      const which = t(before ? 'lab.ws.before' : 'lab.ws.after');
+      ab.setAttribute('aria-label', tf('lab.ws.abHint', { which }));
+      ab.querySelector('.ws-ab-before').classList.toggle('is-on', before);
+      ab.querySelector('.ws-ab-after').classList.toggle('is-on', !before);
+      const hint = this.$('.ws-ab-hint');
+      hint.hidden = !done;
+      hint.textContent = tf('lab.ws.abHint', { which });
+      this.$('[data-action="ws-next"]').hidden = !this._wsNext();
     }
 
     /** Eigene Stimme: aus dem Stimmprofil der App, sonst hier gewählt. */
@@ -2237,6 +2661,7 @@
     }
 
     randomize() {
+      this._wsAbReset();
       this._pushHistory();
       const s = this.state;
       const locks = s.locks;
@@ -2661,6 +3086,8 @@
       this._renderTransport();
       this._renderNow();
       this._renderChoir();
+      this._renderWorkshop();
+      this._wsDecorate();
     }
 
     /** Chip-Reihe: gleiche Optik und Bedienung für alle Einfach-Auswahlen. */
@@ -2726,6 +3153,7 @@
         const on = s.trackOn[track];
         const row = document.createElement('div');
         row.className = `track-row${on ? '' : ' is-off'}`;
+        row.dataset.track = track;
 
         const roll = document.createElement('button');
         roll.type = 'button';
@@ -2789,6 +3217,7 @@
         row.append(roll, label, cells, toggle);
         return row;
       }));
+      if (this.state.view === 'workshop') this._wsDecorate();
     }
 
     _toggleCell(track, step) {
@@ -2800,6 +3229,7 @@
       else s.beat[track][step] = cycle[index + 1];
       s.beatEdited = true;
       this._renderBeat();
+      this._wsSchedule();
       // Vorhören, damit man beim Bauen nicht erst Play drücken muss.
       if (!this.playing && s.beat[track][step] !== undefined) this._preview(track, s.beat[track][step]);
     }
@@ -3074,6 +3504,7 @@
         if (persist) this._persist();
       }
       this._renderMelody();
+      this._wsSchedule();
     }
 
     _melRestore(from, to) {
@@ -3303,6 +3734,7 @@
       this._renderSoundName();
       this._applySound();
       if (refreshKnobs) this._refreshSoundControls();
+      this._wsSchedule();
     }
 
     /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten. */
@@ -3612,6 +4044,7 @@
         this._persist();
       }
       this._onHarmonyChange();
+      this._wsSchedule();
     }
 
     _progRestore(from, to) {
@@ -4042,9 +4475,10 @@
      * speist den Arp. (Mit "Halten" läuft das über _toggleLatched.)
      */
     _enterKey(id, keyEl, midi) {
-      if (this._latchActive()) { this._toggleLatched(midi); return; }
+      if (this._latchActive()) { this._toggleLatched(midi); this._wsNote(midi); return; }
       const prev = this.keyVoices.get(id);
       if (prev && prev.midi === midi) return;
+      this._wsNote(midi);
       const arp = this._arpManual();
       if (prev) {
         this.keyVoices.delete(id);
@@ -4212,6 +4646,7 @@
       a.phase = 'idle';
       a.events = [];
       this._renderAutomation();
+      this._wsSchedule();
     }
 
     /** Aus dem Scheduler: Spurwerte dieses Schritts setzen (zur Audio-Zeit). */
@@ -4548,6 +4983,11 @@
         else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
       });
+      // Workshop: nach jeder Eingabe (nach den Handlern oben) die Teilziele
+      // prüfen — höchstens einmal pro Frame.
+      for (const type of ['click', 'input', 'change', 'pointerup', 'keyup']) {
+        this.shadowRoot.addEventListener(type, () => this._wsSchedule());
+      }
       this._wireMelGrid();
     }
 
@@ -4612,6 +5052,12 @@
           break;
         }
         case 'fade-drums': this._fadeDrums(!this.ui.drumsFaded); break;
+        case 'ws-tier': this.ui.wsTier = value; this._renderWorkshop(); break;
+        case 'ws-area': this.ui.wsArea = value; this._renderWorkshop(); break;
+        case 'ws-lesson': this._wsSelect(value); break;
+        case 'ws-restart': if (this.ui.ws) this._wsSelect(this.ui.ws.lesson.id); break;
+        case 'ws-next': { const next = this._wsNext(); if (next) this._wsSelect(next.id); break; }
+        case 'ws-ab': this._wsToggleAb(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
         case 'randomize': this.randomize(); break;
         case 'undo': this.undo(); break;
@@ -5145,8 +5591,47 @@
 
   .satb-list { display: grid; gap: 6px; }
   .satb-row.is-own .satb-name { font-weight: 800; }
-  .view-switch { display: flex; gap: 4px; margin-left: auto; }
-  .view-switch .chip { min-height: 36px; }
+  .view-switch { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .view-switch .chip { min-height: 44px; }
+  /* Drei Ansichten passen auf schmalen Bildschirmen nicht neben den Titel. */
+  @media (max-width: 560px) {
+    .lab-head { flex-wrap: wrap; }
+    .view-switch { order: 5; flex: 1 0 100%; margin-left: 0; justify-content: flex-start; }
+    .view-switch .chip { flex: 1; }
+  }
+  /* Workshop */
+  .workshop-view .chip { min-height: 44px; }
+  .ws-progress { margin: 8px 2px; font-size: .72rem; font-weight: 800; color: var(--muted); }
+  .ws-areas { margin-bottom: 8px; }
+  .ws-lessons { margin-top: 4px; }
+  .ws-lesson { display: inline-flex; align-items: center; gap: 5px; }
+  .ws-tick { font-weight: 900; color: var(--accent); }
+  .ws-card { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .ws-title { display: block; font-size: 1rem; }
+  .ws-do { margin: 6px 0 8px; font-size: .82rem; line-height: 1.45; }
+  .ws-checks { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+  .ws-check { display: flex; align-items: center; gap: 8px; font-size: .8rem; font-weight: 700; }
+  .ws-box { width: 22px; height: 22px; flex: 0 0 auto; border: 2px solid var(--muted); border-radius: 6px; display: grid; place-items: center; font-size: .8rem; font-weight: 900; }
+  .ws-check.is-reached .ws-box { border-color: var(--accent); background: rgba(var(--accent-rgb), .16); color: var(--accent); }
+  .ws-check.is-reached .ws-check-text { text-decoration: line-through; color: var(--muted); }
+  .ws-why summary { font-size: .76rem; font-weight: 800; color: var(--muted); cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+  .ws-why p { margin: 0 0 8px; font-size: .76rem; line-height: 1.45; }
+  .ws-aha { margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: rgba(var(--accent-rgb), .14); border: 2px solid var(--accent); font-size: .82rem; line-height: 1.45; }
+  .ws-aha strong { color: var(--accent); }
+  .ws-tour-done { margin: 8px 0; font-size: .8rem; font-weight: 700; line-height: 1.45; }
+  .ws-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .ws-ab { display: inline-flex; padding: 0; overflow: hidden; }
+  .ws-ab span { padding: 0 12px; display: grid; place-items: center; }
+  .ws-ab span.is-on { background: var(--accent); color: #fff; }
+  .ws-ab-hint, .ws-to-studio { margin: 8px 0 0; font-size: .7rem; color: var(--muted); }
+  .ws-ab-hint { font-weight: 800; color: var(--text); }
+  .ws-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+  .ws-dim { opacity: .35; }
+  .ws-hide { display: none !important; }
+  .ws-focus { outline: 2px dashed rgba(var(--accent-rgb), .8); outline-offset: 3px; border-radius: 10px; }
+  .step-cell.ws-from { border: 2px dashed var(--text); }
+  .step-cell.ws-to { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); animation: ws-pulse 1.1s ease-in-out infinite; }
+  @keyframes ws-pulse { 50% { box-shadow: 0 0 0 2px var(--surface), 0 0 0 6px rgba(var(--accent-rgb), .6); } }
   .choir-view .chip-row .chip { min-height: 40px; }
   .task-card { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
   .task-card strong { display: block; font-size: .9rem; }
@@ -5484,6 +5969,7 @@
   <div class="view-switch" role="group" aria-label="${t('lab.viewAria')}">
     <button class="chip" type="button" data-action="view" data-value="choir" aria-pressed="false">${t('lab.viewChoir')}</button>
     <button class="chip" type="button" data-action="view" data-value="studio" aria-pressed="true">${t('lab.viewStudio')}</button>
+    <button class="chip" type="button" data-action="view" data-value="workshop" aria-pressed="false">${t('lab.viewWorkshop')}</button>
   </div>
   <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
   <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
@@ -5525,6 +6011,30 @@
     </section>
     <section class="panel">
       <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
+    </section>
+  </section>
+  <section class="workshop-view" hidden>
+    <section class="panel ws-panel">
+      <div class="chip-row ws-tiers" role="group" aria-label="${t('lab.viewWorkshop')}"></div>
+      <p class="ws-progress"></p>
+      <div class="chip-row ws-areas" role="group" aria-label="${t('lab.ws.tierDeep')}" hidden></div>
+      <div class="chip-row ws-lessons" role="group" aria-label="${t('lab.viewWorkshop')}"></div>
+      <div class="ws-card" hidden>
+        <strong class="ws-title"></strong>
+        <p class="ws-do"></p>
+        <ul class="ws-checks"></ul>
+        <details class="ws-why"><summary>${t('lab.ws.why')}</summary><p class="ws-why-text"></p></details>
+        <p class="ws-aha" hidden><strong></strong> <span></span></p>
+        <p class="ws-tour-done" hidden>${t('lab.ws.tourDone')}</p>
+        <div class="ws-actions">
+          <button class="chip" type="button" data-action="ws-restart">${t('lab.ws.restart')}</button>
+          <button class="chip ws-ab" type="button" data-action="ws-ab" aria-pressed="false" hidden><span class="ws-ab-before">${t('lab.ws.before')}</span><span class="ws-ab-after is-on">${t('lab.ws.after')}</span></button>
+          <button class="chip ws-next" type="button" data-action="ws-next">${t('lab.ws.next')} →</button>
+        </div>
+        <p class="ws-ab-hint" hidden></p>
+        <p class="ws-to-studio">${t('lab.ws.toStudio')}</p>
+      </div>
+      <p class="ws-live" aria-live="polite"></p>
     </section>
   </section>
   <section class="tab-panel" data-tab-panel="beat">
@@ -5873,6 +6383,10 @@
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
     CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
+    // Workshop
+    LESSON_TIERS, LESSON_AREAS, WORKSHOP_LESSONS, lessonState, applyTaskSet, sanitizeWorkshopProgress, focusKeyKnown,
+    stepsOn, sameSteps, hitAt, progOf, progDegreesOf, progSeventhsOf, melodyBarsOf, lastPlayed, hasRun,
+    melodyIndexByName, presetIndexByName, soundFromPreset, SYNTH_PRESETS, SOUND_DEFAULTS, SOUND_RANGES, CHOIR_PARTS,
   };
 
   global.ChorGrooveLab = {
