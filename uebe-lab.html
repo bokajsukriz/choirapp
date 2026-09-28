@@ -2217,16 +2217,19 @@
     [5, 'reine Quarte'], [6, 'Tritonus'], [7, 'reine Quinte'], [8, 'kleine Sexte'],
     [9, 'große Sexte'], [10, 'kleine Septime'], [11, 'große Septime'], [12, 'Oktave'],
   ];
-  // Schnellauswahl: fünf aufbauende Stufen (jede enthält die vorige, die
+  // Schnellauswahl: sechs aufbauende Stufen (jede enthält die vorige, die
   // große Sekunde als häufigstes Melodie-Intervall gleich zu Beginn, der
   // Tritonus zuletzt) und eine zweite Reihe zum gezielten Vergleichen.
+  // Pop-Didaktik: auf- und abwärts ab Stufe 1 (Melodien laufen in beide
+  // Richtungen), zusammenklingend erst in Stufe 6; Halbton und kleine Terz
+  // (Blues, Moll) früh, kleine Septime (♭7) vor der großen.
   const INTERVAL_PRESETS = [
-    ['Einstieg', [2, 4, 7, 12], 'level'],
-    ['Terzen', [2, 3, 4, 5, 7, 12], 'level'],
-    ['Sexten', [2, 3, 4, 5, 7, 8, 9, 12], 'level'],
-    ['Septimen', [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12], 'level'],
-    ['Alle', INTERVALS.map(([n]) => n), 'level'],
-    ['Alle Richtungen', INTERVALS.map(([n]) => n), 'level', { dirs: ['up', 'down', 'harmonic'] }],
+    ['Einstieg', [2, 4, 7, 12], 'level', { dirs: ['up', 'down'] }],
+    ['Halbton, kleine Terz, Quarte', [1, 2, 3, 4, 5, 7, 12], 'level', { dirs: ['up', 'down'] }],
+    ['Sexten', [1, 2, 3, 4, 5, 7, 8, 9, 12], 'level', { dirs: ['up', 'down'] }],
+    ['Kleine Septime', [1, 2, 3, 4, 5, 7, 8, 9, 10, 12], 'level', { dirs: ['up', 'down'] }],
+    ['Alle', INTERVALS.map(([n]) => n), 'level', { dirs: ['up', 'down'] }],
+    ['Alle, auch zusammen', INTERVALS.map(([n]) => n), 'level', { dirs: ['up', 'down', 'harmonic'] }],
     ['Terzen und Sexten', [3, 4, 8, 9], 'compare'],
     ['Sekunden und Septimen', [1, 2, 10, 11], 'compare'],
   ];
@@ -2245,10 +2248,19 @@
     I: [0, 'maj'], ii: [2, 'min'], iii: [4, 'min'], IV: [5, 'maj'], V: [7, 'maj'], vi: [9, 'min'], 'vii°': [11, 'dim'],
     i: [0, 'min'], 'ii°': [2, 'dim'], III: [3, 'maj'], iv: [5, 'min'], v: [7, 'min'], VI: [8, 'maj'], VII: [10, 'maj'],
     V7: [7, 'dom7'], I64: [0, 'maj', 'fifthBass'], iv6: [5, 'min', 'thirdBass'], IV65: [5, 'add6'],
+    // Pop-Didaktik: Leihakkorde und Zwischendominante. „iv“ steht oben
+    // (in Dur die Moll-Subdominante), „III“ ist in Dur die Dur-III (siehe
+    // CHORD_SYMBOLS_MAJOR). V6 = Dominante als Sextakkord (Basslinie).
+    bVII: [10, 'maj'], II7: [2, 'dom7'], V6: [7, 'maj', 'thirdBass'],
   };
-  const SYMBOL_ORDER = ['I', 'I64', 'i', 'ii', 'ii°', 'III', 'iii', 'IV', 'IV65', 'iv', 'iv6', 'V', 'V7', 'v', 'VI', 'vi', 'VII', 'vii°'];
+  // Symbole, die in Dur etwas anderes bedeuten als in Moll: „III“ ist in
+  // Moll der Dur-Akkord auf der kleinen Terz (Es in c), in Dur der Dur-
+  // Akkord auf der großen Terz (E-Gis-H in C, Zwischendominante zu vi).
+  const CHORD_SYMBOLS_MAJOR = { III: [4, 'maj'] };
+  const symbolInfo = (symbol, mode) => (mode === 'major' && CHORD_SYMBOLS_MAJOR[symbol]) || CHORD_SYMBOLS[symbol];
+  const SYMBOL_ORDER = ['I', 'I64', 'i', 'ii', 'II7', 'ii°', 'III', 'iii', 'IV', 'IV65', 'iv', 'iv6', 'V', 'V6', 'V7', 'v', 'VI', 'vi', 'VII', 'bVII', 'vii°'];
   // Anzeige mit Generalbass-Ziffern; gespeichert/verglichen wird das Symbol.
-  const SYMBOL_LABEL = { I64: 'I⁶₄', iv6: 'iv⁶', IV65: 'IV⁶₅', V7: 'V⁷' };
+  const SYMBOL_LABEL = { I64: 'I⁶₄', iv6: 'iv⁶', IV65: 'IV⁶₅', V7: 'V⁷', bVII: '♭VII', II7: 'II⁷', V6: 'V⁶' };
   const symbolLabel = (symbol) => SYMBOL_LABEL[symbol] || symbol;
   const EAR_PROGRESSIONS = [
     { id: 'pop', mode: 'major', chords: ['I', 'V', 'vi', 'IV'], name: 'Pop-Klassiker' },
@@ -2278,19 +2290,31 @@
     { id: 'k64', mode: 'major', chords: ['I', 'IV', 'I64', 'V', 'I'], name: 'Kadenz mit Quartsextvorhalt' },
     { id: 'phryg', mode: 'minor', chords: ['i', 'iv6', 'V'], name: 'Phrygischer Halbschluss' },
     { id: 'ajoutee', mode: 'major', chords: ['I', 'IV65', 'V', 'I'], name: 'Choralschluss (sixte ajoutée)' },
+    // Pop-Didaktik: Leihakkorde, Zwischendominanten, Basslinie
+    { id: 'mixo', mode: 'major', chords: ['I', 'bVII', 'IV', 'I'], name: 'Rock-Pendel (♭VII)' },
+    { id: 'mixo2', mode: 'major', chords: ['I', 'V', 'bVII', 'IV'], name: 'Pop mit ♭VII' },
+    { id: 'minorIV', mode: 'major', chords: ['I', 'IV', 'iv', 'I'], name: 'Moll-Subdominante' },
+    { id: 'majorIII', mode: 'major', chords: ['I', 'III', 'IV', 'iv'], name: 'Dur-III und Moll-iv' },
+    { id: 'secdom', mode: 'major', chords: ['I', 'II7', 'V', 'I'], name: 'Zwischendominante' },
+    { id: 'bassDown', mode: 'major', chords: ['I', 'V6', 'vi', 'IV'], name: 'Absteigende Basslinie' },
   ];
+  // Klassische Wendungen: in keiner Stufe, in der eigenen Auswahl unter „Klassik“.
+  const CLASSIC_PROGS = ['hymn', 'k64', 'phryg', 'ajoutee'];
 
   /* Stufen 1–6: jede Stufe bringt genau eine neue Schwierigkeit und enthält
      alle vorigen (`add` = was dazukommt; die Folgen einer Stufe sind die
      Summe bis dahin, siehe levelProgs). Dazu der Klang: Bass in
-     Grundstellung oder stilgerechten Umkehrungen, enge oder weite Lage. */
+     Grundstellung oder stilgerechten Umkehrungen, enge oder weite Lage.
+     Pop-Didaktik: die vier Pop-Akkorde zuerst, dann ii/iii, Moll,
+     Leihakkorde (♭VII, iv), Zwischendominanten; Stufe 6 mit Rückung
+     (`modulation`: jede vierte Aufgabe fragt nach der Rückung). */
   const EAR_LEVELS = [
-    { n: 1, label: 'I–IV–V in Dur', add: ['cadence', 'tsd', 'amen', 'plagal'], inversion: 'root', spread: 'close' },
-    { n: 2, label: 'dazu die vi. Stufe', add: ['pop', 'fifties', 'sad', 'deceptive'], inversion: 'root', spread: 'close' },
-    { n: 3, label: 'dazu ii, iii und V⁷', add: ['jazz', 'hymn', 'quintfall', 'turnaround', 'rising', 'v7'], inversion: 'root', spread: 'close' },
-    { n: 4, label: 'Moll und Chorschlüsse', add: ['mcadence', 'm3', 'mdeceptive', 'epic', 'mpop', 'andalusian', 'k64', 'ajoutee'], inversion: 'root', spread: 'close' },
-    { n: 5, label: 'alle Folgen, weite Lage', add: ['circle', 'mnatural', 'phryg'], inversion: 'root', spread: 'open' },
-    { n: 6, label: 'Umkehrungen, weite Lage', add: [], inversion: 'style', spread: 'open' },
+    { n: 1, label: 'Die vier Pop-Akkorde', add: ['cadence', 'tsd', 'amen', 'pop', 'fifties', 'sad'], inversion: 'root', spread: 'close' },
+    { n: 2, label: 'dazu ii und iii', add: ['plagal', 'deceptive', 'jazz', 'quintfall', 'turnaround', 'rising'], inversion: 'root', spread: 'close' },
+    { n: 3, label: 'Moll-Tonarten', add: ['epic', 'mpop', 'mnatural', 'mcadence', 'm3', 'mdeceptive'], inversion: 'root', spread: 'close' },
+    { n: 4, label: 'Leihakkorde: ♭VII und iv', add: ['mixo', 'mixo2', 'minorIV', 'andalusian'], inversion: 'root', spread: 'close' },
+    { n: 5, label: 'V7, Zwischendominanten, Bass', add: ['v7', 'secdom', 'majorIII', 'bassDown', 'circle'], inversion: 'style', spread: 'close' },
+    { n: 6, label: 'weite Lage und Rückung', add: [], inversion: 'style', spread: 'open', modulation: true },
   ];
   const levelProgs = (n) => EAR_LEVELS.slice(0, n).flatMap((l) => l.add);
   const EAR_INVERSIONS = [['root', 'Grundstellung'], ['style', 'Umkehrungen (stilgerecht)']];
@@ -2310,6 +2334,7 @@
       tempo: 'mid',
       tonicCue: true,
       autoNext: true,
+      phrygian: false,     // Schlüsse: phrygischer Halbschluss (Klassik) zulassen
     },
     task: null,        // aktuelle Aufgabe
     revealed: false,   // Antwort schon aufgelöst?
@@ -2332,9 +2357,47 @@
   const keyName = (pc, mode) => (mode === 'major' ? `${spell(pc, pc, 'major')}-Dur` : `${spell(pc, pc, 'minor').toLowerCase()}-Moll`);
 
   const CHORD_SHAPES = H.CHORD_SHAPES;
-  function chordPcs(key, symbol) {
-    const [root, quality] = CHORD_SYMBOLS[symbol];
+  function chordPcs(key, symbol, mode = null) {
+    const [root, quality] = symbolInfo(symbol, mode);
     return CHORD_SHAPES[quality].map((x) => mod(key + root + x, 12));
+  }
+
+  /* ---- Akkordtöne mit Buchstaben der Stufe schreiben: ♭VII in C = B-D-F
+     (nicht Ais), iv in C = F-As-C, III in C = E-Gis-H, II⁷ = D-Fis-A-C.
+     Der Grundton bekommt den Buchstaben seiner Stufe (vom Tonika-Buchstaben
+     aus gezählt), Terz/Quinte/Septime/Sexte die Buchstaben in Terzen
+     darüber; das Vorzeichen folgt aus der Tonhöhe. Das gemeinsame spell()
+     aus harmony.js wählt nur ♯ oder ♭ je Tonart — für Leihakkorde reicht
+     das nicht, deshalb hier getrennt. ---- */
+  const CHORD_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'H'];
+  const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+  const ROMAN_DEGREE = { I: 0, II: 1, III: 2, IV: 3, V: 4, VI: 5, VII: 6 };
+  /** Deutscher Tonname aus Buchstabe (0–6) und Vorzeichen (−2…2). */
+  function germanName(letter, acc) {
+    const L = CHORD_LETTERS[letter];
+    if (L === 'H' && acc < 0) return acc === -1 ? 'B' : 'Heses';
+    if (acc < 0) return (L === 'E' || L === 'A' ? L : `${L}e`) + 's'.repeat(1) + 'es'.repeat(-acc - 1);
+    return L + 'is'.repeat(acc);
+  }
+  /** Akkordnamen einer Folge, z. B. „C · B · F · C“ (Moll mit m, Septakkord mit 7). */
+  const chordNames = (key, symbols, mode) => symbols.map((s) => {
+    const [root] = chordToneNames(key, s, mode);
+    const q = symbolInfo(s, mode)[1];
+    return root.name + ({ min: 'm', dim: '°', dom7: '7', add6: '6' }[q] || '');
+  }).join(' · ');
+  /** Töne eines Akkordsymbols in der Tonart: [{ name, acc }] (Grundton zuerst). */
+  function chordToneNames(key, symbol, mode) {
+    const tonic = spell(key, key, mode);
+    const tonicLetter = tonic[0] === 'B' ? 6 : CHORD_LETTERS.indexOf(tonic[0]); // deutsches B = H mit ♭
+    const degree = ROMAN_DEGREE[symbol.replace(/^b/, '').replace(/[^IViv]/g, '').toUpperCase()];
+    const [root, quality] = symbolInfo(symbol, mode);
+    const steps = { maj: [0, 2, 4], min: [0, 2, 4], dim: [0, 2, 4], dom7: [0, 2, 4, 6], add6: [0, 2, 4, 5] }[quality];
+    return CHORD_SHAPES[quality].map((x, i) => {
+      const letter = (tonicLetter + degree + steps[i]) % 7;
+      const pc = mod(key + root + x, 12);
+      const acc = mod(pc - LETTER_PC[letter] + 6, 12) - 6;
+      return { name: germanName(letter, acc), acc };
+    });
   }
 
   // Bass immer in der Oktave E–dis′ (MIDI 40–51): tiefste Lage im
@@ -2368,10 +2431,10 @@
    *  vorigen Akkord, ohne offene Quint-/Oktavparallelen (Rückfall: kleinste
    *  Bewegung, falls keine parallelenfreie Lage existiert). `rnd` für
    *  reproduzierbare Tests. */
-  function voiceProgression(key, symbols, { inversion = 'root', spread = 'close', rnd = Math.random } = {}) {
+  function voiceProgression(key, symbols, { inversion = 'root', spread = 'close', rnd = Math.random, mode = null } = {}) {
     let prev = null;
     return symbols.map((symbol, i) => {
-      const pcs = chordPcs(key, symbol);
+      const pcs = chordPcs(key, symbol, mode);
       const bassPc = pcs[bassIndex(symbol, symbols[i + 1], inversion, rnd)];
       const bass = BASS_LOW + mod(bassPc - BASS_LOW, 12);
       const upperPcs = pcs.length === 4 ? pcs.filter((pc) => pc !== bassPc) : pcs;
@@ -2419,27 +2482,39 @@
     min:  { name: 'Moll',       semis: [0, 3, 7] },
     dim:  { name: 'vermindert', semis: [0, 3, 6] },
     aug:  { name: 'übermäßig',  semis: [0, 4, 8] },
-    sus4: { name: 'Quartvorhalt (sus4)', semis: [0, 5, 7] },
-    dom7: { name: 'Dominantsept', semis: [0, 4, 7, 10] },
+    sus4: { name: 'sus4', semis: [0, 5, 7] },
+    dom7: { name: '7 (Dominantsept)', semis: [0, 4, 7, 10] },
+    // Pop-Klänge
+    sus2: { name: 'sus2', semis: [0, 2, 7] },
+    m7:   { name: 'Moll 7 (m7)', semis: [0, 3, 7, 10] },
+    maj7: { name: 'Major 7 (maj7)', semis: [0, 4, 7, 11] },
+    add9: { name: 'add9', semis: [0, 4, 7, 14] },
   };
   const QUALITY_LEVELS = [
-    { n: 1, label: 'Dur oder Moll, gebrochen',        set: ['maj', 'min'],                       play: 'broken',   inversion: 'root' },
-    { n: 2, label: 'Dur oder Moll, zusammen',         set: ['maj', 'min'],                       play: 'block',    inversion: 'root' },
-    { n: 3, label: 'dazu vermindert',                 set: ['maj', 'min', 'dim'],                play: 'block',    inversion: 'root' },
-    { n: 4, label: 'dazu Quartvorhalt',               set: ['maj', 'min', 'dim', 'sus4'],        play: 'block',    inversion: 'root' },
-    { n: 5, label: 'dazu übermäßig und Dominantsept', set: ['maj', 'min', 'dim', 'aug', 'sus4', 'dom7'], play: 'block', inversion: 'root' },
-    { n: 6, label: 'alle, in Umkehrungen',            set: ['maj', 'min', 'dim', 'aug', 'sus4', 'dom7'], play: 'block', inversion: 'any' },
+    { n: 1, label: 'Dur oder Moll, gebrochen', set: ['maj', 'min'],                                                  play: 'broken', inversion: 'root' },
+    { n: 2, label: 'Dur oder Moll, zusammen',  set: ['maj', 'min'],                                                  play: 'block',  inversion: 'root' },
+    { n: 3, label: 'dazu sus4 und sus2',       set: ['maj', 'min', 'sus4', 'sus2'],                                  play: 'block',  inversion: 'root' },
+    { n: 4, label: 'dazu 7 und m7',            set: ['maj', 'min', 'sus4', 'sus2', 'dom7', 'm7'],                    play: 'block',  inversion: 'root' },
+    { n: 5, label: 'dazu maj7 und add9',       set: ['maj', 'min', 'sus4', 'sus2', 'dom7', 'm7', 'maj7', 'add9'],    play: 'block',  inversion: 'root' },
+    { n: 6, label: 'alle, in Umkehrungen',     set: ['maj', 'min', 'sus4', 'sus2', 'dom7', 'm7', 'maj7', 'add9', 'dim', 'aug'], play: 'block', inversion: 'any' },
   ];
+  /** Umkehrungen eines Klangs: add9 nur mit Grundton, Terz oder Quinte im
+   *  Bass (die None ist Farbe, kein Basston). */
+  const qualityInversions = (q) => (q === 'add9' ? 3 : CHORD_QUALITIES[q].semis.length);
   /** Töne eines Klangs in enger Lage über `root`, Umkehrung `inv` (die
-   *  untersten `inv` Töne eine Oktave höher). */
+   *  untersten `inv` Töne eine Oktave höher). add9: die None bleibt über
+   *  Grundton und Terz — nie als Sekunde unter der Terz. */
   function qualityNotes(q, root, inv = 0) {
     const notes = CHORD_QUALITIES[q].semis.map((x) => root + x);
     for (let i = 0; i < inv; i++) notes[i] += 12;
+    if (q === 'add9') while (notes[3] < Math.max(notes[0], notes[1])) notes[3] += 12;
     return notes.sort((a, b) => a - b);
   }
 
   /* ---- Schlüsse (Schlussarten) ---- */
-  const CADENCE_TYPES = [['full', 'Ganzschluss'], ['half', 'Halbschluss'], ['deceptive', 'Trugschluss'], ['plagal', 'Plagalschluss']];
+  // Antworttasten pop-verständlich: Klartext, Fachbegriff in Klammern.
+  const CADENCE_TYPES = [['full', 'fertig (Ganzschluss)'], ['half', 'offen (Halbschluss)'], ['deceptive', 'Überraschung (Trugschluss)'],
+    ['plagal', 'Amen (IV–I)'], ['rock', 'Rock (♭VII–I)'], ['minorPlagal', 'sehnsüchtig (iv–I)']];
   const CADENCE_PHRASES = {
     full:      { major: [['I', 'IV', 'V', 'I'], ['I', 'ii', 'V', 'I'], ['I', 'vi', 'V7', 'I'], ['I', 'IV', 'I64', 'V', 'I']],
                  minor: [['i', 'iv', 'V', 'i'], ['i', 'VI', 'V', 'i']] },
@@ -2449,23 +2524,30 @@
                  minor: [['i', 'iv', 'V', 'VI']] },
     plagal:    { major: [['I', 'IV', 'I'], ['I', 'vi', 'IV', 'I'], ['I', 'V', 'IV', 'I']],
                  minor: [['i', 'iv', 'i']] },
+    // Pop-Schlüsse, nur in Dur
+    rock:        { major: [['I', 'IV', 'bVII', 'I']] },
+    minorPlagal: { major: [['I', 'IV', 'iv', 'I']] },
   };
+  // Der phrygische Halbschluss ist in keiner Stufe mehr, nur über den
+  // Schalter „Klassik“ in den Einstellungen (ear.settings.phrygian).
   const CADENCE_LEVELS = [
-    { n: 1, label: 'Ganz- oder Halbschluss',     types: ['full', 'half'],                         modes: ['major'], spread: 'close' },
-    { n: 2, label: 'dazu Trugschluss',           types: ['full', 'half', 'deceptive'],            modes: ['major'], spread: 'close' },
-    { n: 3, label: 'dazu Plagalschluss',         types: ['full', 'half', 'deceptive', 'plagal'],  modes: ['major'], spread: 'close' },
-    { n: 4, label: 'auch in Moll',               types: ['full', 'half', 'deceptive', 'plagal'],  modes: ['major', 'minor'], spread: 'close' },
-    { n: 5, label: 'weite Lage, Umkehrungen',    types: ['full', 'half', 'deceptive', 'plagal'],  modes: ['major', 'minor'], spread: 'open' },
-    { n: 6, label: 'dazu phrygischer Halbschluss', types: ['full', 'half', 'deceptive', 'plagal'], modes: ['major', 'minor'], spread: 'open', phrygian: true },
+    { n: 1, label: 'fertig oder offen',     types: ['full', 'half'],                                               modes: ['major'],          spread: 'close' },
+    { n: 2, label: 'dazu Überraschung',     types: ['full', 'half', 'deceptive'],                                  modes: ['major'],          spread: 'close' },
+    { n: 3, label: 'dazu Amen',             types: ['full', 'half', 'deceptive', 'plagal'],                        modes: ['major'],          spread: 'close' },
+    { n: 4, label: 'auch in Moll',          types: ['full', 'half', 'deceptive', 'plagal'],                        modes: ['major', 'minor'], spread: 'close' },
+    { n: 5, label: 'dazu Rock-Schluss',     types: ['full', 'half', 'deceptive', 'plagal', 'rock'],                modes: ['major', 'minor'], spread: 'close' },
+    { n: 6, label: 'dazu iv–I, weite Lage', types: ['full', 'half', 'deceptive', 'plagal', 'rock', 'minorPlagal'], modes: ['major', 'minor'], spread: 'open' },
   ];
   const CADENCE_WHY = {
     full: 'endet auf dem Grundakkord, nach der Dominante: fertig.',
     half: 'bleibt auf der Dominante stehen — offen wie ein Komma.',
     deceptive: 'die Dominante führt nicht nach Hause, sondern zur Mollfarbe der vi. Stufe.',
     plagal: 'IV–I, der „Amen“-Schluss: weich, ohne Leitton.',
+    rock: 'Der Akkord einen Ganzton unter dem Grundton führt ohne Leitton nach Hause – klingt kraftvoll und offen zugleich, typisch für Rock und Pop.',
+    minorPlagal: 'Die Subdominante wird kurz Moll – dadurch der wehmütige, sehnsüchtige Beigeschmack vor dem Schluss.',
   };
   /** Phrasen eines Typs in einer Stufe (phrygischer Halbschluss nur mit `phrygian`). */
-  const cadencePhrases = (type, mode, level) => CADENCE_PHRASES[type][mode].filter((ph) => level.phrygian || ph.join() !== 'i,iv6,V');
+  const cadencePhrases = (type, mode, level) => (CADENCE_PHRASES[type][mode] || []).filter((ph) => level.phrygian || ph.join() !== 'i,iv6,V');
 
   /* ---- Stimmen (Stimme im Satz heraushören) ---- */
   const PART_LEVELS = [
@@ -2488,10 +2570,10 @@
   const octaveNear = (m, near) => m + 12 * Math.round((near - m) / 12);
   /** Vierstimmiger Satz einer Symbolfolge (harmony.js voiceChord). Weite
    *  Lage: Tenor eine Oktave tiefer, wenn er dann noch über dem Bass liegt. */
-  function satbOf(key, symbols, spread = 'close') {
+  function satbOf(key, symbols, spread = 'close', mode = 'major') {
     let prev = { S: 67, A: 62, T: 55, B: 48 };
     return symbols.map((sym) => {
-      const pcs = chordPcs(key, sym).slice(0, 3);
+      const pcs = chordPcs(key, sym, mode).slice(0, 3);
       const leading = /^V7?$/.test(sym) || sym === 'vii°' ? mod(key + 11, 12) : null;
       prev = H.voiceChord(pcs, prev, { leading, bassIndex: CHORD_SYMBOLS[sym][1] === 'dim' ? 1 : 0 });
       return prev;
@@ -2570,13 +2652,39 @@
       const root = 52 + Math.floor(Math.random() * (dir === 'down' ? 16 : 12)) + (dir === 'down' ? semis : 0);
       ear.task = { kind: 'interval', semis, dir, root, answer: null };
     } else if (ear.mode === 'chords') {
+      // Stufe mit Rückung: jede vierte Aufgabe fragt, ob die Wiederholung höher klingt.
+      ear.chordCount = (ear.chordCount || 0) + 1;
+      const level = EAR_LEVELS.find((l) => l.n === ear.settings.level);
+      const mt = level?.modulation && ear.chordCount % 4 === 0 ? makeModulationTask(ear.settings.spread) : null;
+      if (mt) { ear.task = mt; ear.pick = null; return; }
       const prog = pick(enabledProgs());
       const key = Math.floor(Math.random() * 12);
       // Klang einmal je Aufgabe festlegen — "Nochmal hören" klingt gleich.
-      const voicings = voiceProgression(key, prog.chords, ear.settings);
+      const voicings = voiceProgression(key, prog.chords, { ...ear.settings, mode: prog.mode });
       ear.task = { kind: 'chords', prog, key, input: [], voicings };
     } else ear.task = makeEarTask(ear.mode, ear.levels[ear.mode]);
     ear.pick = null;
+  }
+
+  /** Rückung: eine Pop-Folge aus Stufe 1 zweimal, beim zweiten Mal um 0, 1
+   *  oder 2 Halbtöne höher (genau transponiert, gleicher Satz). Die Tonart
+   *  wird so gewählt, dass beide Hälften im Umfang bleiben (Bass E–dis′,
+   *  Oberstimmen bis g″). */
+  const MODULATION_ANSWERS = ['gleich', 'Halbton höher', 'Ganzton höher'];
+  function makeModulationTask(spread = 'close', rnd = Math.random) {
+    const pool = levelProgs(1).map((id) => EAR_PROGRESSIONS.find((p) => p.id === id));
+    const shift = rndInt(0, 2, rnd);
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const prog = pool[Math.floor(rnd() * pool.length)];
+      const key = rndInt(0, 11, rnd);
+      const voicings = voiceProgression(key, prog.chords, { inversion: 'root', spread, rnd, mode: prog.mode });
+      const all = voicings.flatMap((v) => [v.bass, ...v.upper]);
+      const basses = voicings.map((v) => v.bass);
+      if (Math.max(...basses) + shift > 51 || Math.min(...basses) < 40 || Math.max(...all) + shift > VOICE_RANGES.S[1]) continue;
+      const second = voicings.map((v) => ({ bass: v.bass + shift, upper: v.upper.map((m) => m + shift) }));
+      return { kind: 'modulation', prog, key, shift, voicings, second, answer: null };
+    }
+    return null;
   }
 
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
@@ -2585,17 +2693,19 @@
       const level = QUALITY_LEVELS[n - 1];
       const q = level.set[Math.floor(rnd() * level.set.length)];
       const root = rndInt(48, 60, rnd);
-      const inv = level.inversion === 'any' ? rndInt(0, CHORD_QUALITIES[q].semis.length - 1, rnd) : 0;
+      const inv = level.inversion === 'any' ? rndInt(0, qualityInversions(q) - 1, rnd) : 0;
       return { kind: 'quality', level: n, q, root, inv, notes: qualityNotes(q, root, inv), play: level.play, answer: null };
     }
     if (mode === 'cadence') {
-      const level = CADENCE_LEVELS[n - 1];
+      const level = { ...CADENCE_LEVELS[n - 1], phrygian: !!ear.settings.phrygian };
       const type = level.types[Math.floor(rnd() * level.types.length)];
-      const cmode = level.modes[Math.floor(rnd() * level.modes.length)];
+      // Rock- und Moll-iv-Schluss gibt es nur in Dur.
+      const modes = level.modes.filter((m) => CADENCE_PHRASES[type][m]);
+      const cmode = modes[Math.floor(rnd() * modes.length)];
       const list = cadencePhrases(type, cmode, level);
       const symbols = list[Math.floor(rnd() * list.length)];
       const key = rndInt(0, 11, rnd);
-      const voicings = voiceProgression(key, symbols, { inversion: level.spread === 'open' ? 'style' : 'root', spread: level.spread, rnd });
+      const voicings = voiceProgression(key, symbols, { inversion: level.spread === 'open' ? 'style' : 'root', spread: level.spread, rnd, mode: cmode });
       return { kind: 'cadence', level: n, type, mode: cmode, symbols, key, voicings, answer: null };
     }
     if (mode === 'parts') {
@@ -2684,9 +2794,19 @@
       }
       return;
     }
+    if (task.kind === 'modulation') {
+      // Die Folge zweimal, dazwischen ein Schlag Pause; die zweite ggf. höher.
+      const secs = CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
+      let t = t0;
+      for (const list of [task.voicings, task.second]) {
+        list.forEach((v) => { [v.bass, ...v.upper].forEach((m) => engine.keys(m, t, secs * .92, { velocity: .13, dest: bus })); t += secs; });
+        t += secs;
+      }
+      return;
+    }
     if (task.kind !== 'chords') { playEarTask(task, t0, bus, { compare }); return; }
     const secs = CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
-    const voicings = task.voicings || voiceProgression(task.key, task.prog.chords, ear.settings);
+    const voicings = task.voicings || voiceProgression(task.key, task.prog.chords, { ...ear.settings, mode: task.prog.mode });
     let t = t0;
     if (ear.settings.tonicCue) {
       // Grundakkord als Orientierung, dann eine kurze Pause.
@@ -2707,7 +2827,7 @@
     if (!engine.ctx || !ear.task) return;
     engine.fadeBus(ear.bus);
     ear.bus = engine.newBus();
-    const [v] = voiceProgression(ear.task.key, [symbol], { spread: ear.settings.spread });
+    const [v] = voiceProgression(ear.task.key, [symbol], { spread: ear.settings.spread, mode: ear.task.prog?.mode });
     const t = engine.ctx.currentTime + .03;
     [v.bass, ...v.upper].forEach((m) => engine.keys(m, t, .9, { velocity: .13, dest: ear.bus }));
   }
@@ -2752,7 +2872,14 @@
   function answerEar(value) {
     const task = ear.task;
     if (!task) return;
-    const st = ear.stats[task.kind];
+    if (task.kind === 'modulation') {
+      if (ear.revealed) { playEar(); return; }
+      const ok = Number(value) === task.shift;
+      task.answer = Number(value);
+      const truth = ['gleich geblieben', 'einen Halbton höher', 'einen Ganzton höher'][task.shift];
+      finishEarAnswer(ok, `${ok ? 'Richtig' : 'Noch nicht'}: Die Wiederholung war ${truth}. Im letzten Refrain rückt ein Popsong oft höher – wer das nicht hört, singt auf dem alten Ton weiter.`);
+      return;
+    }
     if (task.kind === 'quality') {
       if (ear.revealed) { playEar({ compare: { q: value } }); return; }
       const ok = value === task.q;
@@ -2765,7 +2892,7 @@
       const ok = value === task.type;
       task.answer = value;
       const name = CADENCE_TYPES.find(([id]) => id === task.type)[1];
-      finishEarAnswer(ok, `${ok ? 'Richtig: ' : 'Das war ein '}${name} (${task.symbols.map(symbolLabel).join(' – ')}) — ${CADENCE_WHY[task.type]}`);
+      finishEarAnswer(ok, `${ok ? 'Richtig: ' : 'Das war: '}${name}, ${task.symbols.map(symbolLabel).join(' – ')} — ${CADENCE_WHY[task.type]}`);
       return;
     }
     if (task.kind === 'parts') {
@@ -2802,7 +2929,7 @@
   function finishEarAnswer(ok, text) {
     const task = ear.task;
     ear.revealed = true;
-    const st = ear.stats[task.kind];
+    const st = ear.stats[task.kind === 'modulation' ? 'chords' : task.kind];
     st.total++;
     if (task.help) st.help = (st.help || 0) + 1;
     if (ok) { st.right++; ear.streak++; } else ear.streak = 0;
@@ -2813,7 +2940,7 @@
   }
   /** Fortschritt und „Heute üben“. */
   function onEarResult(task, ok) {
-    const key = task.kind === 'chords' ? 'chords' : task.kind;
+    const key = task.kind === 'modulation' ? 'chords' : task.kind;
     const [, level] = earLevelInfo(key);
     const extra = { help: !!task.help };
     if (task.kind === 'tuning') { const th = stairFor(task.level).threshold(); if (th !== null) extra.thresholdCents = th; }
@@ -2860,9 +2987,10 @@
     const st = ear.stats.chords;
     st.total++; st.chordsTotal += task.prog.chords.length; st.chordsRight += right;
     if (ok) { st.right++; ear.streak++; } else ear.streak = 0;
+    const names = chordNames(task.key, task.prog.chords, task.prog.mode);
     setEarFeedback(ok
-      ? `Richtig! ${task.prog.name} in ${keyName(task.key, task.prog.mode)}.`
-      : `${right} von ${task.prog.chords.length} richtig — gespielt wurde ${task.prog.chords.map(symbolLabel).join(' – ')} (${task.prog.name}, ${keyName(task.key, task.prog.mode)}).`, ok ? 'ok' : 'bad');
+      ? `Richtig! ${task.prog.name} in ${keyName(task.key, task.prog.mode)}: ${names}.`
+      : `${right} von ${task.prog.chords.length} richtig — gespielt wurde ${task.prog.chords.map(symbolLabel).join(' – ')} (${task.prog.name}, ${keyName(task.key, task.prog.mode)}: ${names}).`, ok ? 'ok' : 'bad');
     onEarResult(task, ok);
     renderEar();
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
@@ -2947,6 +3075,15 @@
         }
         return b;
       }));
+    } else if (ear.mode === 'chords' && task?.kind === 'modulation') {
+      prompt.textContent = 'Gleich oder höher?';
+      sub.textContent = `Eine Folge zweimal — klingt die Wiederholung gleich oder höher?${ear.revealed ? ' · Nochmal hören zum Vergleichen' : ''}`;
+      grid.classList.add('is-three');
+      grid.replaceChildren(...MODULATION_ANSWERS.map((label, i) => {
+        const b = answerButton(i, label, { aria: `${i + 1}: ${label}` });
+        if (ear.revealed) { if (i === task.shift) b.classList.add('is-ok'); else if (i === task.answer) b.classList.add('is-bad'); }
+        return b;
+      }));
     } else if (ear.mode === 'chords') {
       slots.hidden = !task;
       grid.classList.add('is-chords');
@@ -2996,7 +3133,7 @@
       }
     } else if (ear.mode === 'cadence') {
       const level = CADENCE_LEVELS[ear.levels.cadence - 1];
-      prompt.textContent = task ? 'Wie endet die Phrase?' : 'Eine kurze Phrase — welcher Schluss?';
+      prompt.textContent = task ? 'Wie endet die Zeile?' : 'Eine kurze Zeile — wie endet sie?';
       sub.textContent = task ? `${task.mode === 'major' ? 'Dur' : 'Moll'} · ${task.symbols.length} Akkorde${ear.revealed ? ` · ${task.symbols.map(symbolLabel).join(' – ')}` : ''}` : `Stufe ${level.n}: ${level.label}`;
       grid.replaceChildren(...CADENCE_TYPES.filter(([id]) => level.types.includes(id)).map(([id, name], i) => {
         const b = answerButton(id, name, { disabled: !task, aria: `${i + 1}: ${name}` });
@@ -3200,12 +3337,13 @@
       body.innerHTML = `${voiceHtml}
         <span class="sub-label"${voiceHtml ? '' : ' style="margin-top:0"'}>Stufe</span>
         <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Feld „Stufe“).</p>
+        ${ear.mode === 'cadence' ? `<span class="sub-label">Klassik</span><div class="check-list">${checkRow('phrygian', 'on', 'Phrygischer Halbschluss (iv⁶–V in Moll)', !!s.phrygian, 'ab Stufe 4, wenn Moll dabei ist')}</div>` : ''}
         ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext)}</div>`;
     } else {
-      const group = (mode, title) => `<span class="sub-label">${title}</span><div class="check-list">${
-        EAR_PROGRESSIONS.filter((p) => p.mode === mode).map((p) => checkRow('progs', p.id, p.name, s.progs.includes(p.id), p.chords.map(symbolLabel).join(' – '))).join('')}</div>`;
+      const group = (filter, title) => `<span class="sub-label">${title}</span><div class="check-list">${
+        EAR_PROGRESSIONS.filter(filter).map((p) => checkRow('progs', p.id, p.name, s.progs.includes(p.id), p.chords.map(symbolLabel).join(' – '))).join('')}</div>`;
       const level = EAR_LEVELS.find((l) => l.n === s.level);
       const choice = (name, entries, value) => `<div class="chip-row">${entries.map(([v, label]) =>
         `<button class="chip" type="button" data-earset="${name}" data-value="${v}" aria-pressed="${v === value}">${label}</button>`).join('')}</div>`;
@@ -3214,13 +3352,14 @@
           <button class="help-btn" type="button" data-help="help-levels" aria-expanded="false" aria-label="Erklärung der Stufen">?</button></div>
         <div class="chip-row">${EAR_LEVELS.map((l) => `<button class="chip level-chip" type="button" data-level="${l.n}" aria-pressed="${l.n === s.level}">${l.n}</button>`).join('')}</div>
         <p class="level-note">${level ? `Stufe ${level.n}: ${level.label}` : 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'}</p>
-        <p class="help-text" id="help-levels" hidden>Jede Stufe enthält alle vorigen und bringt genau eine neue Schwierigkeit: <b>1</b> I–IV–V in Dur · <b>2</b> dazu die vi. Stufe · <b>3</b> dazu ii, iii und V⁷ · <b>4</b> Moll, Quartsextvorhalt und sixte ajoutée · <b>5</b> alle Folgen (auch Moll-v gegen Dur-V) in weiter Lage · <b>6</b> stilgerechte Umkehrungen. Änderst du danach etwas, gilt es als eigene Auswahl.<br><b>Umkehrungen (stilgerecht):</b> Der Bass liegt auf Grundton oder Terz (Sextakkord); den Quartsextakkord gibt es nur als Vorhalt vor der Dominante (I⁶₄–V), verminderte Akkorde stehen immer als Sextakkord. <b>Weite Lage:</b> Die Oberstimmen liegen weiter auseinander (über eine Oktave), wie oft im Chorsatz.</p>
+        <p class="help-text" id="help-levels" hidden>Jede Stufe enthält alle vorigen und bringt genau eine neue Schwierigkeit: <b>1</b> die vier Pop-Akkorde I, IV, V, vi · <b>2</b> dazu ii und iii · <b>3</b> Moll-Tonarten · <b>4</b> Leihakkorde ♭VII und Moll-iv · <b>5</b> V⁷, Zwischendominanten und eine Basslinie, mit Umkehrungen · <b>6</b> weite Lage, dazu jede vierte Aufgabe eine Rückung (klingt die Wiederholung höher?). Klassische Wendungen stehen unter „Klassik“. Änderst du danach etwas, gilt es als eigene Auswahl.<br><b>Umkehrungen (stilgerecht):</b> Der Bass liegt auf Grundton oder Terz (Sextakkord); den Quartsextakkord gibt es nur als Vorhalt vor der Dominante (I⁶₄–V), verminderte Akkorde stehen immer als Sextakkord. <b>Weite Lage:</b> Die Oberstimmen liegen weiter auseinander (über eine Oktave), wie oft im Chorsatz.</p>
         <span class="sub-label">Bass</span>
         ${choice('inversion', EAR_INVERSIONS, s.inversion)}
         <span class="sub-label">Lage</span>
         ${choice('spread', EAR_SPREADS, s.spread)}
-        ${group('major', 'Folgen in Dur')}
-        ${group('minor', 'Folgen in Moll')}
+        ${group((p) => p.mode === 'major' && !CLASSIC_PROGS.includes(p.id), 'Folgen in Dur')}
+        ${group((p) => p.mode === 'minor' && !CLASSIC_PROGS.includes(p.id), 'Folgen in Moll')}
+        ${group((p) => CLASSIC_PROGS.includes(p.id), 'Klassik')}
         <span class="sub-label">Tempo</span>
         <div class="chip-row">${CHORD_TEMPI.map(([id, name]) => `<button class="chip" type="button" data-tempo="${id}" aria-pressed="${id === s.tempo}">${name}</button>`).join('')}</div>
         <span class="sub-label">Ablauf</span>
@@ -3235,7 +3374,7 @@
   function onSettingChange(input) {
     const s = ear.settings;
     const group = input.dataset.set;
-    if (group === 'tonicCue' || group === 'autoNext') { s[group] = input.checked; return; }
+    if (group === 'tonicCue' || group === 'autoNext' || group === 'phrygian') { s[group] = input.checked; if (group === 'phrygian') { ear.task = null; renderEar(); } return; }
     if (group === 'progs') { s.level = 0; const note = $('.level-note'); if (note) note.textContent = 'Eigene Auswahl — tippe eine Stufe, um sie zu übernehmen.'; $$('.level-chip').forEach((c) => c.setAttribute('aria-pressed', 'false')); }
     const value = group === 'intervals' ? Number(input.value) : input.value;
     const list = new Set(s[group]);
@@ -4196,7 +4335,7 @@
     const { lo, hi } = range;
     if (mode === 'singInterval') {
       const preset = INTERVAL_PRESETS.filter((p) => p[2] === 'level')[n - 1];
-      const dirs = n === 6 ? ['up', 'down'] : ['up'];
+      const dirs = ['up', 'down']; // Pop-Didaktik: in allen Stufen auf- und abwärts
       const list = preset[1].filter((x) => x <= hi - lo);
       const semis = pickInterval(list, log, rnd);
       const dir = dirs[Math.floor(rnd() * dirs.length)];
@@ -5427,7 +5566,15 @@
       const lvl = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level').findIndex((pr) => pr[1].join() === ear.settings.intervals.join() && (pr[3]?.dirs || ['up']).join() === ear.settings.dirs.join());
       ear.settings.intervalLevel = lvl + 1;
     }
-    ['tonicCue', 'autoNext'].forEach((k) => { if (typeof es[k] === 'boolean') ear.settings[k] = es[k]; });
+    ['tonicCue', 'autoNext', 'phrygian'].forEach((k) => { if (typeof es[k] === 'boolean') ear.settings[k] = es[k]; });
+    // Gespeicherte Stufe 1–6: Nummer bleibt, Inhalt nach der heutigen Stufe
+    // (Pop-Didaktik) — Intervalle mit Richtungen, Akkordfolgen mit Satz.
+    if (ear.settings.intervalLevel >= 1) {
+      const preset = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level')[ear.settings.intervalLevel - 1];
+      ear.settings.intervals = [...preset[1]];
+      ear.settings.dirs = preset[3]?.dirs ? [...preset[3].dirs] : ['up'];
+    }
+    if (ear.settings.level >= 1) applyEarLevel(ear.settings.level);
     const v = data.voice && typeof data.voice === 'object' ? data.voice : {};
     if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
     if (typeof v.useTarget === 'boolean') voice.useTarget = v.useTarget;
@@ -6069,7 +6216,7 @@
         for (let inv = 0; inv < def.semis.length; inv++) {
           const notes = qualityNotes(q, root, inv);
           const set = [...new Set(notes.map((m) => mod(m - root, 12)))].sort((a, b) => a - b).join();
-          if (set !== [...def.semis].sort((a, b) => a - b).join() || notes.length !== def.semis.length) errors.push(`Klang ${q} auf ${root}, Umkehrung ${inv}: ${notes}`);
+          if (set !== [...new Set(def.semis.map((x) => mod(x, 12)))].sort((a, b) => a - b).join() || notes.length !== def.semis.length) errors.push(`Klang ${q} auf ${root}, Umkehrung ${inv}: ${notes}`);
         }
       }
     }
@@ -6084,16 +6231,18 @@
       half: (a, b) => b === 'V',
       deceptive: (a, b) => /^(vi|VI)$/.test(b) && /^V7?$/.test(a),
       plagal: (a, b) => /^[Ii]$/.test(b) && /^(IV|iv)$/.test(a),
+      rock: (a, b) => b === 'I' && a === 'bVII',
+      minorPlagal: (a, b) => b === 'I' && a === 'iv',
     };
     let par = 0;
     for (const [type, byMode] of Object.entries(CADENCE_PHRASES)) {
-      for (const list of Object.values(byMode)) {
+      for (const [cmode, list] of Object.entries(byMode)) {
         for (const ph of list) {
           if (!ends[type](ph[ph.length - 2], ph[ph.length - 1])) errors.push(`Schluss ${type}: ${ph.join('–')} endet falsch`);
           ph.forEach((c) => { if (!CHORD_SYMBOLS[c]) errors.push(`Schluss: Symbol ${c} fehlt`); });
           for (let key = 0; key < 12; key++) {
             for (const [inversion, spread] of [['root', 'close'], ['style', 'open']]) {
-              const vs = voiceProgression(key, ph, { inversion, spread, rnd });
+              const vs = voiceProgression(key, ph, { inversion, spread, rnd, mode: cmode });
               vs.forEach((v, i) => { if (i && parallelCount([vs[i - 1].bass, ...vs[i - 1].upper], [v.bass, ...v.upper])) par++; });
             }
           }
@@ -6105,7 +6254,8 @@
       const n = 1 + (i % 6);
       const t = makeEarTask('cadence', n, rnd);
       if (!CADENCE_LEVELS[n - 1].types.includes(t.type)) errors.push(`Schluss ${t.type} nicht in Stufe ${n}`);
-      if (t.symbols.join() === 'i,iv6,V' && n < 6) errors.push('phrygischer Halbschluss vor Stufe 6');
+      if (t.symbols.join() === 'i,iv6,V' && !ear.settings.phrygian) errors.push('phrygischer Halbschluss ohne Schalter „Klassik“');
+      if ((t.type === 'rock' || t.type === 'minorPlagal') && t.mode !== 'major') errors.push(`${t.type} in Moll`);
       if (n < 4 && t.mode === 'minor') errors.push('Moll vor Stufe 4');
     }
     // Stimmen: 500 Linien-Aufgaben — drei verschiedene Linien, richtig = eigene Stimme.
@@ -6155,7 +6305,8 @@
     if (catchShare < .2 || catchShare > .3) errors.push(`Intonation: ${Math.round(catchShare * 100)} % ohne Abweichung statt 25 %`);
     // Intervalle: Stufe 6 alle Richtungen, 1–5 aufwärts.
     const lv = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level');
-    if (lv.length !== 6 || (lv[5][3]?.dirs || []).join() !== 'up,down,harmonic' || lv.slice(0, 5).some((pr) => pr[3])) errors.push('Intervall-Stufe 6 falsch');
+    // (Pop-Didaktik: Stufen 1–5 auf- und abwärts, Stufe 6 auch zusammen.)
+    if (lv.length !== 6 || (lv[5][3]?.dirs || []).join() !== 'up,down,harmonic' || lv.slice(0, 5).some((pr) => (pr[3]?.dirs || []).join() !== 'up,down')) errors.push('Intervall-Stufen: Richtungen falsch');
     // Speichern/Laden
     const saved = JSON.parse(JSON.stringify({ levels: ear.levels, part: ear.part, mode: ear.mode, il: ear.settings.intervalLevel }));
     const savedTab = state.tab;
@@ -6172,11 +6323,143 @@
       if (!ear.stairs[4] || Math.abs(ear.stairs[4].delta - 50) > 1e-9) errors.push('Hören: Treppe übersteht Speichern/Laden nicht');
       restore({ tab: savedTab, ear: { mode: 'quatsch', levels: { quality: 9, tuning: 'x' }, part: 'X', stairs: { 2: { delta: 999, reversals: ['a'] } } } });
       if (ear.mode !== 'tuning' || ear.levels.quality !== 3 || ear.part !== 'T' || ear.stairs[2].delta !== 60) errors.push('Hören: kaputte Werte nicht verworfen');
-      restore({ tab: savedTab, ear: { settings: { intervals: [2, 3, 4, 5, 7, 12], dirs: ['up'] } } });
+      restore({ tab: savedTab, ear: { settings: { intervals: [1, 2, 3, 4, 5, 7, 12], dirs: ['up', 'down'] } } });
       if (ear.settings.intervalLevel !== 2) errors.push(`Hören: alte Intervallauswahl → Stufe ${ear.settings.intervalLevel}`);
     } finally {
       Object.assign(ear.levels, saved.levels); ear.part = saved.part; ear.mode = saved.mode; ear.settings.intervalLevel = saved.il; ear.stairs = savedStairs;
       state.tab = savedTab;
+    }
+    return errors;
+  }
+
+  /** Pop-Didaktik Paket 5: Intervalle, Klänge, Schlüsse, Akkordfolgen,
+   *  Rückung. Doppelvorzeichen in Akkordnamen stehen in popEarNotes. */
+  const popEarNotes = [];
+  function popEarCheck() {
+    const errors = [];
+    popEarNotes.length = 0;
+    let seed = 41;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const saved = JSON.parse(JSON.stringify({ settings: ear.settings, mode: ear.mode, levels: ear.levels, tab: state.tab, count: ear.chordCount || 0 }));
+    const savedTask = ear.task, savedRevealed = ear.revealed;
+    try {
+      // Intervalle: jede Stufe liefert nur ihre Intervalle und Richtungen.
+      const presets = INTERVAL_PRESETS.filter((p) => p[2] === 'level');
+      ear.mode = 'interval';
+      presets.forEach((pr, i) => {
+        applyEarLevelFor('interval', i + 1);
+        const seenDirs = new Set();
+        for (let k = 0; k < 1000; k++) {
+          newTask();
+          if (!pr[1].includes(ear.task.semis) || !pr[3].dirs.includes(ear.task.dir)) { errors.push(`Intervall-Stufe ${i + 1}: ${ear.task.semis}/${ear.task.dir}`); break; }
+          seenDirs.add(ear.task.dir);
+        }
+        if (seenDirs.size !== pr[3].dirs.length) errors.push(`Intervall-Stufe ${i + 1}: Richtungen ${[...seenDirs]}`);
+        const st = makeSingTask('singInterval', i + 1, { lo: 53, hi: 74 }, { rnd });
+        if (!['up', 'down'].includes(st.dir)) errors.push('Intervalle singen: Richtung');
+      });
+      const singDirs = new Set(Array.from({ length: 200 }, () => makeSingTask('singInterval', 1, { lo: 53, hi: 74 }, { rnd }).dir));
+      if (singDirs.size !== 2) errors.push('Intervalle singen Stufe 1: nicht auf- und abwärts');
+      // Gespeicherte Stufe → neues Preset; eigene Auswahl bleibt.
+      restore({ tab: saved.tab, ear: { settings: { intervalLevel: 3, intervals: [2, 4], dirs: ['up'] } } });
+      if (ear.settings.intervals.join() !== presets[2][1].join() || ear.settings.dirs.join() !== 'up,down') errors.push(`gespeicherte Intervall-Stufe 3 → ${ear.settings.intervals} / ${ear.settings.dirs}`);
+      restore({ tab: saved.tab, ear: { settings: { intervalLevel: 0, intervals: [1, 6, 11], dirs: ['harmonic'] } } });
+      if (ear.settings.intervals.join() !== '1,6,11' || ear.settings.dirs.join() !== 'harmonic' || ear.settings.intervalLevel !== 0) errors.push('eigene Intervall-Auswahl nicht erhalten');
+      // Klänge: 10 Qualitäten, add9 mit None über Grundton und Terz.
+      if (Object.keys(CHORD_QUALITIES).length !== 10) errors.push(`${Object.keys(CHORD_QUALITIES).length} Klänge statt 10`);
+      for (let root = 48; root <= 60; root++) {
+        for (let inv = 0; inv < qualityInversions('add9'); inv++) {
+          const notes = qualityNotes('add9', root, inv);
+          const ninth = notes.find((m) => mod(m - root, 12) === 2);
+          const third = notes.find((m) => mod(m - root, 12) === 4);
+          const rootNote = notes.find((m) => mod(m - root, 12) === 0);
+          if (!(ninth > third && ninth > rootNote)) errors.push(`add9 auf ${root}, Umkehrung ${inv}: None nicht über Grundton und Terz (${notes})`);
+        }
+      }
+      for (let i = 0; i < 600; i++) {
+        const n = 1 + (i % 6);
+        const t = makeEarTask('quality', n, rnd);
+        if (t.q === 'add9' && t.inv > 2) errors.push('add9 mit der None im Bass');
+      }
+      if (QUALITY_LEVELS[5].set.length !== 10 || CHORD_QUALITIES.sus4.name !== 'sus4' || CHORD_QUALITIES.dom7.name !== '7 (Dominantsept)') errors.push('Klang-Stufen/Namen');
+      // Schlüsse: Tasten, Moll nur für die klassischen Typen.
+      if (CADENCE_TYPES.map(([, l]) => l).join('|') !== 'fertig (Ganzschluss)|offen (Halbschluss)|Überraschung (Trugschluss)|Amen (IV–I)|Rock (♭VII–I)|sehnsüchtig (iv–I)') errors.push('Schluss-Tasten');
+      const types = new Set();
+      for (let i = 0; i < 1200; i++) {
+        const n = 1 + (i % 6);
+        const t = makeEarTask('cadence', n, rnd);
+        types.add(t.type);
+        if (!CADENCE_LEVELS[n - 1].types.includes(t.type)) errors.push(`Schluss ${t.type} in Stufe ${n}`);
+      }
+      if (types.size !== 6) errors.push(`Schlüsse: nur ${[...types]}`);
+      ear.settings.phrygian = true;
+      if (!Array.from({ length: 800 }, () => makeEarTask('cadence', 4, rnd)).some((t) => t.symbols.join() === 'i,iv6,V')) errors.push('Schalter „Klassik“: phrygischer Halbschluss kommt nicht');
+      ear.settings.phrygian = false;
+      // Akkordfolgen: Tonhöhen der neuen Symbole in allen Tonarten, Schreibweise.
+      const want = { bVII: [10, 2, 5], iv: [5, 8, 0], II7: [2, 6, 9, 0], V6: [7, 11, 2] };
+      for (let key = 0; key < 12; key++) {
+        for (const [sym, pcs] of Object.entries(want)) if (chordPcs(key, sym, 'major').join() !== pcs.map((x) => mod(x + key, 12)).join()) errors.push(`${sym} in ${key}: ${chordPcs(key, sym, 'major')}`);
+        if (chordPcs(key, 'III', 'major').join() !== [4, 8, 11].map((x) => mod(x + key, 12)).join() || chordPcs(key, 'III', 'minor').join() !== [3, 7, 10].map((x) => mod(x + key, 12)).join()) errors.push(`III in ${key} falsch`);
+      }
+      const nm = (sym) => chordToneNames(0, sym, 'major').map((x) => x.name).join('-');
+      if (nm('bVII') !== 'B-D-F' || nm('iv') !== 'F-As-C' || nm('III') !== 'E-Gis-H' || nm('II7') !== 'D-Fis-A-C') errors.push(`Schreibweise in C: ${nm('bVII')} ${nm('iv')} ${nm('III')} ${nm('II7')}`);
+      if (chordToneNames(10, 'bVII', 'major').map((x) => x.name).join('-') !== 'As-C-Es') errors.push('♭VII in B-Dur');
+      const NEW = ['mixo', 'mixo2', 'minorIV', 'majorIII', 'secdom', 'bassDown'];
+      let par = 0;
+      for (const id of NEW) {
+        const p = EAR_PROGRESSIONS.find((x) => x.id === id);
+        if (!p) { errors.push(`Folge ${id} fehlt`); continue; }
+        for (let key = 0; key < 12; key++) {
+          const doubles = [...new Set(p.chords)].flatMap((s) => chordToneNames(key, s, p.mode).filter((x) => Math.abs(x.acc) > 1).map((x) => `${symbolLabel(s)}: ${x.name}`));
+          if (doubles.length) popEarNotes.push(`${keyName(key, 'major')}, ${p.name}: ${doubles.join(', ')}`);
+          for (const [inversion, spread] of [['root', 'close'], ['style', 'open'], ['style', 'close'], ['root', 'open']]) {
+            const vs = voiceProgression(key, p.chords, { inversion, spread, rnd, mode: p.mode });
+            vs.forEach((v, i) => { if (i && parallelCount([vs[i - 1].bass, ...vs[i - 1].upper], [v.bass, ...v.upper])) par++; });
+            vs.forEach((v, i) => { if ([v.bass, ...v.upper].some((m) => !chordPcs(key, p.chords[i], p.mode).includes(mod(m, 12)))) errors.push(`${id} ${key}: fremder Ton in ${p.chords[i]}`); });
+          }
+        }
+      }
+      if (par) errors.push(`Neue Folgen: ${par} Wechsel mit Parallelen`);
+      // Antworttasten einer Stufe = genau die Symbole ihrer Folgen (Dur).
+      const savedMode = ear.mode;
+      ear.mode = 'chords'; ear.task = null;
+      for (let n = 1; n <= 6; n++) {
+        applyEarLevel(n);
+        renderEar();
+        const shown = $$('.answer-grid [data-chord]').map((b) => b.dataset.chord).filter((x) => x !== 'back');
+        const used = SYMBOL_ORDER.filter((s) => enabledProgs().filter((p) => p.mode === 'major').some((p) => p.chords.includes(s)));
+        if (shown.join() !== used.join()) errors.push(`Stufe ${n}: Tasten ${shown} statt ${used}`);
+      }
+      if (!$$('.answer-grid [data-chord]').some((b) => b.textContent === '♭VII')) errors.push('♭VII-Taste fehlt');
+      ear.mode = savedMode;
+      // Rückung: 500 Aufgaben, 0/1/2 Halbtöne je 33 % ± 5 %, beide Hälften im Umfang.
+      const counts = [0, 0, 0];
+      for (let i = 0; i < 500; i++) {
+        const t = makeModulationTask(i % 2 ? 'open' : 'close', rnd);
+        if (!t) { errors.push('Rückung: keine Aufgabe'); break; }
+        counts[t.shift]++;
+        for (const half of [t.voicings, t.second]) {
+          if (half.some((v) => v.bass < 40 || v.bass > 51 || v.upper.some((m) => m > VOICE_RANGES.S[1] || m <= v.bass))) { errors.push(`Rückung ${t.prog.id} ${t.key}+${t.shift}: außerhalb des Umfangs`); break; }
+        }
+        if (t.second.some((v, k) => v.bass - t.voicings[k].bass !== t.shift)) errors.push('Rückung: nicht genau transponiert');
+        if (!levelProgs(1).includes(t.prog.id)) errors.push(`Rückung mit Folge ${t.prog.id} (nicht Stufe 1)`);
+      }
+      if (counts.some((c) => Math.abs(c / 500 - 1 / 3) > .05)) errors.push(`Rückung: Verteilung ${counts}`);
+      // Jede vierte Aufgabe in Stufe 6 ist eine Rückung.
+      ear.mode = 'chords'; applyEarLevel(6); ear.chordCount = 0;
+      const kinds = Array.from({ length: 8 }, () => { newTask(); return ear.task.kind; });
+      if (kinds.join() !== 'chords,chords,chords,modulation,chords,chords,chords,modulation') errors.push(`Stufe 6: ${kinds}`);
+      applyEarLevel(5); ear.chordCount = 0;
+      if (Array.from({ length: 8 }, () => { newTask(); return ear.task.kind; }).includes('modulation')) errors.push('Rückung vor Stufe 6');
+      // Einstellungsblatt: Gruppe „Klassik“.
+      applyEarLevel(1);
+      const kind = sheetKind; sheetKind = 'ear'; renderSettings();
+      const labels = $$('.sheet-body .sub-label').map((x) => x.textContent);
+      if (!labels.includes('Klassik')) errors.push('Einstellungen: Gruppe „Klassik“ fehlt');
+      sheetKind = kind;
+    } finally {
+      Object.assign(ear.settings, saved.settings); ear.mode = saved.mode; Object.assign(ear.levels, saved.levels); state.tab = saved.tab;
+      ear.chordCount = saved.count; ear.task = savedTask; ear.revealed = savedRevealed;
     }
     return errors;
   }
@@ -6250,7 +6533,8 @@
             }
             if ((mode === 'sight' || mode === 'dictation') && mod(task.doMidi, 12) === 6) errors.push('Blattsingen in Ges-Dur');
             if (mode === 'singInterval' && Math.abs(task.target - task.base) !== task.semis) errors.push('Intervall singen: Ziel ≠ Grundton ± Intervall');
-            if (mode === 'singInterval' && n < 6 && task.dir !== 'up') errors.push('Intervall singen: abwärts vor Stufe 6');
+            // (Pop-Didaktik: in allen Stufen auf- und abwärts.)
+            if (mode === 'singInterval' && !['up', 'down'].includes(task.dir)) errors.push(`Intervall singen: Richtung ${task.dir}`);
           }
         }
       }
@@ -6812,8 +7096,9 @@
       if (!before.every((id) => cur.includes(id))) errors.push(`Stufe ${n} enthält nicht alle Folgen von Stufe ${n - 1}`);
       cur.forEach((id) => { if (!ids.has(id)) errors.push(`Stufe ${n}: unbekannte Folge ${id}`); });
     }
-    if (levelProgs(EAR_LEVELS.length).length !== EAR_PROGRESSIONS.length) errors.push('Stufe 6 enthält nicht alle Folgen');
-    [['v7', 3], ['k64', 4], ['ajoutee', 4], ['phryg', 5]].forEach(([id, n]) => {
+    // Pop-Didaktik: Stufe 6 enthält alle Folgen außer den klassischen (eigene Auswahl → „Klassik“).
+    if (levelProgs(EAR_LEVELS.length).length !== EAR_PROGRESSIONS.length - CLASSIC_PROGS.length || CLASSIC_PROGS.some((id) => levelProgs(6).includes(id))) errors.push('Stufe 6 enthält nicht alle Pop-Folgen bzw. Klassik');
+    [['pop', 1], ['jazz', 2], ['epic', 3], ['mixo', 4], ['minorIV', 4], ['v7', 5], ['secdom', 5], ['bassDown', 5]].forEach(([id, n]) => {
       if (!EAR_LEVELS[n - 1].add.includes(id)) errors.push(`${id} nicht in Stufe ${n}`);
     });
     for (const p of EAR_PROGRESSIONS) p.chords.forEach((c) => { if (!CHORD_SYMBOLS[c] || !SYMBOL_ORDER.includes(c)) errors.push(`${p.id}: Symbol ${c} fehlt`); });
@@ -6825,9 +7110,9 @@
         for (const inversion of ['root', 'style']) {
           for (const spread of ['close', 'open']) {
             for (let rep = 0; rep < (inversion === 'style' ? 4 : 1); rep++) {
-              const vs = voiceProgression(key, p.chords, { inversion, spread, rnd });
+              const vs = voiceProgression(key, p.chords, { inversion, spread, rnd, mode: p.mode });
               vs.forEach((v, i) => {
-                const pcs = chordPcs(key, p.chords[i]);
+                const pcs = chordPcs(key, p.chords[i], p.mode);
                 const bi = pcs.indexOf(mod(v.bass, 12));
                 const [, quality, hint] = CHORD_SYMBOLS[p.chords[i]];
                 if (bi === 2 && pcs.length === 3 && !(hint === 'fifthBass' || (/^[Ii]$/.test(p.chords[i]) && /^V7?$/.test(p.chords[i + 1] || ''))))
@@ -6863,6 +7148,7 @@
     errors.push(...rhythmPackageCheck());
     errors.push(...popRhythmCheck());
     errors.push(...earPackageCheck());
+    errors.push(...popEarCheck());
     errors.push(...singPackageCheck());
     errors.push(...echoSimCheck());
     errors.push(...rhythmMelodyCheck());
@@ -7027,6 +7313,9 @@
     selfCheck, selfCheckAudio,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
+    // Pop-Didaktik: Hören
+    EAR_LEVELS, QUALITY_LEVELS, CADENCE_LEVELS, INTERVAL_PRESETS, chordToneNames, chordNames, makeModulationTask, makeEarTask,
+    get popEarNotes() { return popEarNotes.slice(); },
     rhythmSvg: (pattern, syllables = null) => systemSvg({ pattern, meterId: pattern.meter, lines: phraseLines(pattern), y0: 0, reveal: true, statusOf: () => '', syllables, taps: [] }),
   };
 
