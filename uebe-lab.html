@@ -2084,12 +2084,13 @@
     interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
     tuning: 'Sauber, zu hoch oder zu tief?', singInterval: 'Ein Grundton – du singst das Intervall',
-    findTone: 'Akkord oder a′ – du findest deinen Ton', hold: 'Einen Ton ruhig halten', sight: 'Kurze Melodie vom Blatt singen',
+    findTone: 'Akkord oder Intro – du findest deinen Ton', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
     dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
     inTime: 'Ton und Rhythmus zum Klick – nachsingen oder vom Blatt', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
   };
+  // Blattsingen nur, wenn es eingeblendet ist (Einstellung „Blattsingen anzeigen“).
   const areaModes = (tab) => (tab === 'rhythm' ? MODES : tab === 'ear' ? EAR_MODES
-    : [...SING_MODES.filter(([id]) => id !== 'tuner'), ['tuner', 'Tuner und Tonumfang']]);
+    : [...visibleSingModes().filter(([id]) => id !== 'tuner'), ['tuner', 'Tuner und Tonumfang']]);
   const modeName = (tab, id) => areaModes(tab).find(([m]) => m === id)?.[1] || id;
   const currentMode = (tab) => (tab === 'rhythm' ? (duoLocked ? 'duo' : state.mode) : tab === 'ear' ? ear.mode : sing.mode);
   /** Direkt geöffneter Bereich (?tab=… ohne from=quick) — dann ohne Tab-Leiste. */
@@ -3315,7 +3316,16 @@
 
   function renderSettings() {
     if (sheetKind === 'rhythm') { renderRhythmSettings(); return; }
-    if (sheetKind === 'sing') { $('.sheet-body').innerHTML = partChipsHtml('singPart'); $('.sheet-hint').textContent = ''; return; }
+    if (sheetKind === 'sing') {
+      $('.sheet-body').innerHTML = `${partChipsHtml('singPart')}
+        <span class="sub-label">Übungen</span>
+        <div class="check-list">
+          ${checkRow('showSight', 'on', 'Blattsingen anzeigen (mit Noten)', sing.showSight, 'Der Chor übt nach Gehör – Blattsingen ist deshalb ausgeblendet.', 'singset')}
+          ${checkRow('findA4', 'on', 'Ton finden: nur das a′ (Stimmgabel)', sing.findA4, 'eigene Auswahl statt der Stufe', 'singset')}
+        </div>`;
+      $('.sheet-hint').textContent = '';
+      return;
+    }
     const s = ear.settings;
     const presetChips = (group) => INTERVAL_PRESETS.map(([name, list, g], i) => (g === group
       ? `<button class="chip" type="button" data-preset="${i}" aria-pressed="${list.join() === s.intervals.join()}">${group === 'level' ? `${INTERVAL_PRESETS.filter((p) => p[2] === 'level').indexOf(INTERVAL_PRESETS[i]) + 1} · ` : ''}${name}</button>` : '')).join('');
@@ -3949,22 +3959,59 @@
     };
   }
 
+  // Pop-Didaktik: Stufe 5 „gerader Ton“ — die Modulationstiefe (Vibrato)
+  // darf höchstens maxWobble Cent betragen (wobbleCents).
   const HOLD_LEVELS = [
-    { n: 1, label: '3 Sekunden',                  sec: 3, dyn: 'mf' },
-    { n: 2, label: '5 Sekunden',                  sec: 5, dyn: 'mf' },
-    { n: 3, label: '8 Sekunden',                  sec: 8, dyn: 'mf' },
-    { n: 4, label: '5 Sekunden, lauter werden',   sec: 5, dyn: 'cresc' },
-    { n: 5, label: '8 Sekunden, leise',           sec: 8, dyn: 'pp' },
-    { n: 6, label: 'An- und Abschwellen, 8 s',    sec: 8, dyn: 'messa' },
+    { n: 1, label: '3 Sekunden',                sec: 3, dyn: 'mf' },
+    { n: 2, label: '6 Sekunden',                sec: 6, dyn: 'mf' },
+    { n: 3, label: '6 Sekunden, leise',         sec: 6, dyn: 'pp' },
+    { n: 4, label: '6 Sekunden, lauter werden', sec: 6, dyn: 'cresc' },
+    { n: 5, label: '8 Sekunden, gerader Ton',   sec: 8, dyn: 'mf', straight: true, maxWobble: 15 },
+    { n: 6, label: 'An- und Abschwellen, 8 s',  sec: 8, dyn: 'messa' },
   ];
+  /** Modulationstiefe eines gehaltenen Tons in Cent: Tonhöhe über 80 ms
+   *  geglättet, in gleitenden 400-ms-Fenstern die halbe Spannweite, davon
+   *  der Median. Langsame Drift zählt kaum, Vibrato voll (etwas gedämpft
+   *  durch die Glättung). samples: [{ t (s), cents }]. */
+  function wobbleCents(samples) {
+    if (samples.length < 10) return null;
+    const smooth = samples.map((p, i) => {
+      let sum = 0, n = 0;
+      for (let j = i; j >= 0 && samples[j].t > p.t - .04; j--) { sum += samples[j].cents; n++; }
+      for (let j = i + 1; j < samples.length && samples[j].t < p.t + .04; j++) { sum += samples[j].cents; n++; }
+      return { t: p.t, c: sum / n };
+    });
+    const spans = [];
+    const t0 = smooth[0].t, tEnd = smooth[smooth.length - 1].t;
+    for (let a = t0; a + .4 <= tEnd + 1e-9; a += .1) {
+      const win = smooth.filter((p) => p.t >= a && p.t < a + .4).map((p) => p.c);
+      if (win.length >= 5) spans.push((Math.max(...win) - Math.min(...win)) / 2);
+    }
+    return spans.length ? median(spans) : null;
+  }
+  /** Ton halten erreicht? Gerader Ton (Stufe 5): Lage, Ruhe und Vibrato
+   *  statt Trend — eine langsame Drift ist dort kein Fehler. */
+  function holdVerdict(level, st, samples) {
+    if (!level?.straight) return { hit: holdHit(st), wobble: null };
+    const wobble = wobbleCents(samples);
+    const hit = !!st && Math.abs(st.mean) <= 20 && st.sd <= 12 && wobble !== null && wobble <= level.maxWobble;
+    return { hit, wobble };
+  }
+  // Pop-Didaktik: Stufe 5 nach einem Pop-Intro statt der Kadenz, Stufe 6 der
+  // eigene Ton im vierstimmigen Akkord. „Nur das a′“ ist keine Stufe mehr,
+  // sondern der Schalter sing.findA4 (eigene Auswahl, FIND_A4).
   const FIND_LEVELS = [
-    { n: 1, label: 'Grundton aus dem Akkord',      cue: 'tonic',   ask: ['root'],                  modes: ['major'] },
-    { n: 2, label: 'Grundton oder Quinte',         cue: 'tonic',   ask: ['root', 'fifth'],         modes: ['major'] },
-    { n: 3, label: 'Grundton, Terz oder Quinte',   cue: 'tonic',   ask: ['root', 'third', 'fifth'], modes: ['major'] },
-    { n: 4, label: 'auch in Moll',                 cue: 'tonic',   ask: ['root', 'third', 'fifth'], modes: ['major', 'minor'] },
-    { n: 5, label: 'nach der Kadenz: Stufe 1–7',   cue: 'cadence', ask: ['degree'],                 modes: ['major', 'minor'] },
-    { n: 6, label: 'Nur das a′ (Stimmgabel)',      cue: 'a4',      ask: ['fromA'] },
+    { n: 1, label: 'Grundton aus dem Akkord',          cue: 'tonic',    ask: ['root'],                   modes: ['major'] },
+    { n: 2, label: 'Grundton oder Quinte',             cue: 'tonic',    ask: ['root', 'fifth'],          modes: ['major'] },
+    { n: 3, label: 'Grundton, Terz oder Quinte',       cue: 'tonic',    ask: ['root', 'third', 'fifth'], modes: ['major'] },
+    { n: 4, label: 'auch in Moll',                     cue: 'tonic',    ask: ['root', 'third', 'fifth'], modes: ['major', 'minor'] },
+    { n: 5, label: 'nach einem Intro: Stufe 1–7',      cue: 'popIntro', ask: ['degree'],                 modes: ['major', 'minor'] },
+    { n: 6, label: 'Dein Ton im vierstimmigen Akkord', cue: 'satb',     ask: ['mine'],                   modes: ['major', 'minor'] },
   ];
+  const FIND_A4 = { n: 0, label: 'Nur das a′ (Stimmgabel)', cue: 'a4', ask: ['fromA'] };
+  // Pop-Intro vor der Aufgabe (je Akkord zwei Schläge): Dur I–V–vi–IV, Moll i–VI–III–VII.
+  const POP_INTRO = { major: ['I', 'V', 'vi', 'IV'], minor: ['i', 'VI', 'III', 'VII'] };
+  const SATB_FIND_SEC = 1.5; // Satz einmal voll, danach nur die drei anderen Stimmen
   const FIND_TOLERANCE = [50, 50, 40, 40, 35, 40];
   const FIND_HOLD_SEC = 1.2; // Ton finden / Intervalle singen: so lange ruhig im Zielbereich halten
   const SIGHT_HOLD_SEC = .6; // Blattsingen: je Ton so lange ruhig halten
@@ -4046,8 +4093,8 @@
   }
   /** Zufallsmelodie einer Stufe; nie dieselbe zweimal in Folge. Dauern in
    *  Vierteln (ab Stufe 5 Viertel und Halbe, letzter Ton Halbe). */
-  function makeMelody(n, previousKey = null, rnd = Math.random) {
-    const level = SIGHT_LEVELS[n - 1];
+  function makeMelody(n, previousKey = null, rnd = Math.random, override = null) {
+    const level = override || SIGHT_LEVELS[n - 1];
     for (let attempt = 0; attempt < 5000; attempt++) {
       const len = rndInt(level.len[0], level.len[1], rnd);
       const degs = [level.start[Math.floor(rnd() * level.start.length)]];
@@ -4072,7 +4119,34 @@
       if (!melodyOk(level, degs, durs)) continue;
       const key = `${degs.join(',')}|${durs.join(',')}`;
       if (key === previousKey) continue;
-      return { level: n, degs, durs, key, minor: level.n === 6 };
+      return { level: n, degs, durs, key, minor: override ? !!override.minor : level.n === 6 };
+    }
+    return null;
+  }
+  /** Diktat (Pop-Didaktik): Tonvorrat, Start/Schluss und größter Sprung wie
+   *  ECHO_LEVELS[n], Länge wie bisher (Blattsing-Stufe), ohne Rhythmus;
+   *  Stufe 6 mit chromatischen Wendungen (Anteil CHROMA_SHARE). */
+  function makeDictationMelody(n, previousKey = null, rnd = Math.random) {
+    const echo = ECHO_LEVELS[n - 1];
+    const modes = echoModes(echo);
+    const minor = modes.length > 1 ? rnd() < .5 : modes[0] === 'minor';
+    const rules = echoRules(echo, minor);
+    // melodyOk-Regeln: Tonwiederholung erst ab Stufe 4, Oktavsprung nur in Moll (wie Blattsingen 6).
+    const override = { n: minor && n === 6 ? 6 : Math.min(n, 5), len: SIGHT_LEVELS[n - 1].len, rhythm: false, ...rules };
+    const withChroma = !!echo.chroma && rnd() < CHROMA_SHARE;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const mel = makeMelody(n, previousKey, rnd, override);
+      if (!mel) return null;
+      let { degs } = mel;
+      let alts = degs.map(() => 0);
+      if (withChroma) {
+        const c = embedChroma(degs, [0], rules, [rules.end], rnd);
+        if (!c) continue;
+        ({ degs, alts } = c);
+      }
+      const key = `${degs.map((d, i) => toneId(d, alts[i])).join(',')}|${mel.durs.join(',')}`;
+      if (key === previousKey) continue;
+      return { ...mel, degs, alts, key, minor, rules };
     }
     return null;
   }
@@ -4080,11 +4154,11 @@
   const degSemis = (deg) => H.degreeSemis(MAJOR_STEPS, deg);
   /** do (MIDI) so, dass alle Töne im Innenbereich liegen — mittig. Ohne
    *  Ges-Dur: spell() schreibt dort „H“ statt „Ces“, die Notenzeile wäre falsch. */
-  function chooseDo(degs, lo, hi, rnd = Math.random) {
-    const semis = degs.map(degSemis);
+  function chooseDo(degs, lo, hi, rnd = Math.random, alts = null) {
+    const semis = degs.map((d, i) => degSemis(d) + (alts ? alts[i] : 0));
     const minS = Math.min(...semis), maxS = Math.max(...semis);
     const options = [];
-    for (let d = lo - minS; d + maxS <= hi; d++) if (mod(d, 12) !== 6) options.push(d);
+    for (let d = lo - minS; d + maxS <= hi; d++) if (mod(d, 12) !== 6 && (!alts || chromaSpellOk(mod(d, 12), degs, alts))) options.push(d);
     if (!options.length) return Math.round((lo + hi - minS - maxS) / 2);
     // bevorzugt die mittleren Lagen
     const mid = (lo + hi - minS - maxS) / 2;
@@ -4098,37 +4172,136 @@
      Regeln der Blattsingen-Stufe `sight`. Der letzte Ton ist der längste
      der letzten beiden Takte und steht auf der Eins des (bei Auftakt
      gekürzten) Schlusstakts; bei nur einem Takt auf der Takthälfte. ---- */
+  /* Pop-Didaktik: Nachsingen hat eigene Stufen (nicht mehr über die
+     Blattsing-Stufen): Tonvorrat pool (Stufen relativ zu do, Moll la-
+     basiert) oder 'scale' = ganze Tonleiter wie Blattsingen Stufe 5 (Dur)
+     bzw. 6 (Moll) mit deren Start-/Schlusstönen; Rhythmus von Anfang an;
+     chroma: Blue Notes und Leittöne in festen Wendungen (CHROMA_TURNS). */
   const ECHO_LEVELS = [
-    { n: 1, label: '3 Töne, Schritte',            sight: 1, len: [3, 3],   rhythm: null,                                  tol: 50 },
-    { n: 2, label: '4 Töne, dazu so',             sight: 2, len: [4, 4],   rhythm: null,                                  tol: 50 },
-    { n: 3, label: '5 Töne, Pentatonik',          sight: 3, len: [5, 5],   rhythm: null,                                  tol: 45 },
-    { n: 4, label: 'Zwei Takte, dazu fa',         sight: 4, len: [6, 8],   rhythm: { meter: '4/4', bars: 2, elements: ['e'] },          tol: 40 },
-    { n: 5, label: 'Vier Takte, ganze Tonleiter', sight: 5, len: [10, 14], rhythm: { meter: '4/4', bars: 4, elements: ['e', 'd'] },  tol: 40 },
-    { n: 6, label: 'Zwei Phrasen, auch Moll',     sight: 6, len: [14, 20], rhythm: { meter: ['4/4', '3/4'], bars: 8, elements: ['e', 'd'], phrases: 2 }, tol: 35 },
+    { n: 1, label: '3–4 Töne, Schritte',              pool: [0, 1, 2],        len: [3, 4],   maxLeap: 1, start: [0, 2],     end: [0],  rhythm: { meter: '4/4', bars: 1, elements: ['e'] }, tol: 50 },
+    { n: 2, label: 'Dur-Pentatonik',                  pool: [0, 1, 2, 4, 5],  len: [4, 5],   maxLeap: 4, start: [0, 2, 4],  end: [0],  rhythm: { meter: '4/4', bars: 1, elements: ['e'] }, tol: 50 },
+    { n: 3, label: 'Moll-Pentatonik, zwei Takte',     pool: [-2, 0, 1, 2, 4], len: [5, 6],   maxLeap: 4, start: [-2, 0, 2], end: [-2], minor: true, rhythm: { meter: '4/4', bars: 2, elements: ['e', 'r'] }, tol: 45 },
+    { n: 4, label: 'Ganze Tonleiter, Synkopen',       pool: 'scale',          len: [6, 8],   maxLeap: 4, modes: ['major', 'minor'], rhythm: { meter: '4/4', bars: 2, elements: ['e', 'r', 'sy'] }, tol: 40 },
+    { n: 5, label: 'Vier Takte, Auftakt, vorgezogen', pool: 'scale',          len: [10, 14], maxLeap: 5, modes: ['major', 'minor'], rhythm: { meter: '4/4', bars: 4, elements: ['e', 'r', 'sy', 'tie', 'd'], pickup: true }, tol: 40 },
+    { n: 6, label: 'Zwei Phrasen mit Blue Notes',     pool: 'scale',          len: [14, 20], maxLeap: 7, modes: ['major', 'minor'], chroma: true, rhythm: { meter: ['4/4', '6/8'], bars: 8, elements: ['e', 'r', 'sy', 'tie', 'd'], phrases: 2, pickup: true }, tol: 35 },
   ];
+  /** Tonvorrat-Regeln einer Nachsing-Stufe für Dur oder Moll. */
+  function echoRules(level, minor) {
+    if (level.pool === 'scale') {
+      const base = SIGHT_LEVELS[minor ? 5 : 4];
+      return { pool: base.pool, start: base.start, end: base.end, maxLeap: level.maxLeap, minor };
+    }
+    return { pool: level.pool, start: level.start, end: level.end, maxLeap: level.maxLeap, minor: !!level.minor };
+  }
+  const echoModes = (level) => (level.pool === 'scale' ? level.modes : [level.minor ? 'minor' : 'major']);
+  // Im Takt: Tonvorrat wie ECHO_LEVELS[n], Rhythmusbausteine wie
+  // RHYTHM_LEVELS[n] (nur 4/4 und 6/8, höchstens vier Takte, ohne Triolen
+  // und Shuffle); Tempo, Toleranz und Trefferfenster wie bisher je Stufe.
   const IN_TIME_LEVELS = [
-    { n: 1, label: '1 Takt, Viertel und Halbe',   sight: 1, meters: ['4/4'],               bars: 1, elements: [],                        pickup: false, bpm: 72, tol: 50, win: [.10, .18] },
-    { n: 2, label: '2 Takte, Achtel, dazu so',    sight: 2, meters: ['4/4', '2/4', '3/4'], bars: 2, elements: ['e'],                     pickup: false, bpm: 72, tol: 50, win: [.10, .18] },
-    { n: 3, label: 'Pausen, Pentatonik',          sight: 3, meters: ['4/4', '3/4'],        bars: 2, elements: ['e', 'r'],                pickup: false, bpm: 76, tol: 45, win: [.08, .15] },
-    { n: 4, label: 'Punktiert, Auftakt, dazu fa', sight: 4, meters: ['4/4', '3/4'],        bars: 2, elements: ['e', 'r', 'd'],           pickup: true,  bpm: 76, tol: 40, win: [.08, .15] },
-    { n: 5, label: 'Vier Takte, Synkopen, 6/8',   sight: 5, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie'], pickup: true, bpm: 80, tol: 40, win: [.08, .15] },
-    { n: 6, label: 'Moll, Sechzehntel',           sight: 6, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie', 's'], pickup: true, bpm: 72, tol: 35, win: [.08, .15] }, // ♩ = 72: Sechzehntel 208 ms (bei 84 nur ~90 % erkannt)
-  ];
+    { n: 1, label: '3–4 Töne, Achtel',              bpm: 72, tol: 50, win: [.10, .18] },
+    { n: 2, label: 'Pentatonik, Auftakt',           bpm: 72, tol: 50, win: [.10, .18] },
+    { n: 3, label: 'Moll-Pentatonik, Synkopen',     bpm: 76, tol: 45, win: [.08, .15] },
+    { n: 4, label: 'Tonleiter, Sechzehntel',        bpm: 76, tol: 40, win: [.08, .15] },
+    { n: 5, label: 'Einsätze auf e/a, 6/8',         bpm: 80, tol: 40, win: [.08, .15] },
+    { n: 6, label: 'Blue Notes, vier Takte',        bpm: 72, tol: 35, win: [.08, .15] }, // ♩ = 72: Sechzehntel 208 ms (bei 84 nur ~90 % erkannt)
+  ].map((l) => {
+    const r = RHYTHM_LEVELS[l.n - 1];
+    return { ...l, meters: r.meters.filter((m) => m === '4/4' || m === '6/8'), bars: Math.min(4, r.bars),
+      elements: r.elements.filter((e) => e !== 't' && e !== 'sh'), pickup: r.pickup, pickupTicks: r.pickupTicks };
+  });
   const MELODY_METERS = ['2/4', '3/4', '4/4', '6/8'];
+
+  /* ---- Chromatik (nur wo chroma: true): höchstens ein chromatischer Ton je
+     Phrase, nur in diesen Wendungen [vorher, [Stufe, Vorzeichen], nachher]
+     (Stufen relativ zu do; Moll la-basiert, la = −2):
+     Dur  ♭3 (Blue Note): 4–♭3–1, 2–♭3–1 · ♭7 (Blue Note): 5–♭7–5, 1′–♭7–5
+          ♯4 (Leitton zur 5): 4–♯4–5, 5–♯4–5
+     Moll ♯7 (Leitton): la–si–la, ti–si–la (auch oben: mi–si–la′, la′–si–la′)
+          ♯6 (dorisch): mi–fi–mi
+     Die Wendung 5–♯6–♯7–1 hätte zwei chromatische Töne in einer Phrase und
+     entfällt deshalb. ---- */
+  const CHROMA_TURNS = {
+    major: [[3, [2, -1], 0], [1, [2, -1], 0], [4, [6, -1], 4], [7, [6, -1], 4], [3, [3, 1], 4], [4, [3, 1], 4]],
+    minor: [[-2, [-3, 1], -2], [-1, [-3, 1], -2], [2, [4, 1], 5], [5, [4, 1], 5], [2, [3, 1], 2]],
+  };
+  const CHROMA_SHARE = .5; // Anteil der Aufgaben mit Chromatik (Ziel 30–70 %)
+  /** Silbe bzw. Stufenzahl eines Tons, auch chromatisch (me, te, fi, si; ♭3, ♯4 …). */
+  const SOLFA_FLAT = { mi: 'me', ti: 'te', la: 'le', re: 'ra', so: 'se' };
+  const SOLFA_SHARP = { fa: 'fi', so: 'si', do: 'di', re: 'ri', la: 'li' };
+  function toneLabel(deg, alt, style = 'syllables', minor = false) {
+    const plain = solfaOf(deg, style, minor);
+    if (!alt) return plain;
+    if (style === 'numbers') return `${alt < 0 ? '♭' : '♯'}${plain}`;
+    const base = SOLFA[mod(deg, 7)];
+    return (alt < 0 ? SOLFA_FLAT : SOLFA_SHARP)[base] + plain.slice(base.length);
+  }
+  /** Kennung eines Tons für Diktat-Tasten: „2“, „2b“ (♭), „3#“ (♯). */
+  const toneId = (deg, alt = 0) => `${deg}${alt < 0 ? 'b' : alt > 0 ? '#' : ''}`;
+  const parseToneId = (id) => ({ deg: parseInt(id, 10), alt: /b$/.test(id) ? -1 : /#$/.test(id) ? 1 : 0 });
+  /** Chromatische Diktat-Tasten einer Tonart (Dur oder Moll). */
+  const chromaKeys = (minor) => [...new Set(CHROMA_TURNS[minor ? 'minor' : 'major'].map(([, [d, a]]) => toneId(d, a)))];
+  /** Ist Ton i eine erlaubte chromatische Wendung (Nachbarn in derselben Phrase)? */
+  function chromaTurnOk(degs, alts, i, minor, phraseStart, phraseEnd) {
+    if (i - 1 < phraseStart || i + 1 >= phraseEnd || alts[i - 1] || alts[i + 1]) return false;
+    return CHROMA_TURNS[minor ? 'minor' : 'major'].some(([a, [d, al], b]) => degs[i - 1] === a && degs[i] === d && alts[i] === al && degs[i + 1] === b);
+  }
+  /** Eine chromatische Wendung in eine Phrase einbauen: die drei Töne um
+   *  Position i werden durch die Wendung ersetzt, wenn die Phrase danach
+   *  alle Regeln erfüllt (Tonvorrat der Nachbartöne, größter Sprung,
+   *  Sprungregel, Start/Schluss, nicht im übernommenen Anfang von Phrase 2).
+   *  Liefert { degs, alts } oder null. */
+  function embedChroma(degs, phraseStarts, rules, ends, rnd) {
+    const minor = rules.minor;
+    const bounds = [...phraseStarts, degs.length];
+    const order = shuffle(phraseStarts.map((_, k) => k), rnd);
+    for (const k of order) {
+      const s = bounds[k], e = bounds[k + 1];
+      const tries = [];
+      // Die ersten drei Töne jeder Phrase bleiben (Start, übernommener Anfang).
+      for (let i = s + 4; i <= e - 2; i++) for (const turn of CHROMA_TURNS[minor ? 'minor' : 'major']) tries.push([i, turn]);
+      for (const [i, [a, [d, al], b]] of shuffle(tries, rnd)) {
+        if (!rules.pool.includes(a) || !rules.pool.includes(b)) continue;
+        if (i + 1 === e - 1 && !ends[k].includes(b)) continue;
+        const next = degs.slice();
+        next[i - 1] = a; next[i] = d; next[i + 1] = b;
+        const ph = next.slice(s, e);
+        let ok = leapRuleOk(ph);
+        for (let j = 1; ok && j < ph.length; j++) {
+          if (Math.abs(ph[j] - ph[j - 1]) > rules.maxLeap) ok = false;
+          if (j >= 2 && ph[j] === ph[j - 1] && ph[j] === ph[j - 2]) ok = false;
+        }
+        if (!ok) continue;
+        const alts = degs.map(() => 0);
+        alts[i] = al;
+        return { degs: next, alts };
+      }
+    }
+    return null;
+  }
+  /** Schreibt spell() die chromatischen Töne in dieser Tonart (do = doPc)
+   *  mit dem Buchstaben ihrer Stufe? (Sonst die Tonart meiden.) */
+  function chromaSpellOk(doPc, degs, alts) {
+    const doName = spell(doPc, doPc, 'major');
+    const doLetter = 'CDEFGAH'.indexOf(doName[0] === 'B' ? 'H' : doName[0]);
+    return degs.every((d, i) => {
+      if (!alts[i]) return true;
+      const name = spell(doPc + degSemis(d) + alts[i], doPc, 'major');
+      return 'CDEFGAH'.indexOf(name[0] === 'B' ? 'H' : name[0]) === mod(doLetter + d, 7);
+    });
+  }
   // Halbschluss am Ende der ersten Phrase: so oder re (Moll: mi oder ti,).
   const HALF_CADENCE = { major: [4, 1], minor: [2, -1] };
 
   /** Stufe eines Modus → einheitliche Beschreibung für den Generator. */
   function melodySpec(mode, n) {
+    const echo = ECHO_LEVELS[n - 1];
     if (mode === 'inTime') {
       const l = IN_TIME_LEVELS[n - 1];
-      return { mode, n, sight: l.sight, len: null, meters: l.meters, bars: l.bars, elements: l.elements, pickup: l.pickup, phrases: 1, plain: false };
+      return { mode, n, echo, len: null, meters: l.meters, bars: l.bars, elements: l.elements, pickup: l.pickup, pickupTicks: l.pickupTicks, phrases: 1, plain: false, chroma: !!echo.chroma };
     }
-    const l = ECHO_LEVELS[n - 1];
-    const r = l.rhythm;
-    if (!r) return { mode, n, sight: l.sight, len: l.len, meters: ['4/4'], bars: 0, elements: [], pickup: false, phrases: 1, plain: true };
+    const r = echo.rhythm;
     const phrases = r.phrases || 1;
-    return { mode, n, sight: l.sight, len: l.len, meters: [].concat(r.meter), bars: r.bars / phrases, elements: r.elements, pickup: false, phrases, plain: false };
+    return { mode, n, echo, len: echo.len, meters: [].concat(r.meter), bars: r.bars / phrases, elements: r.elements, pickup: !!r.pickup, pickupTicks: null, phrases, plain: false, chroma: !!echo.chroma };
   }
 
   /** Töne einer Ereignisfolge: gebundene Noten zusammengezählt, Pausen weg. */
@@ -4144,10 +4317,11 @@
 
   /** Rhythmus einer Phrase mit Schlusston. Liefert { events, total, pickup }
    *  oder null, wenn der Schluss nicht passt (dann neu ziehen). */
-  function phraseRhythm(meterId, bars, elements, pickup, rnd) {
+  function phraseRhythm(meterId, bars, elements, pickup, rnd, pickupLens = null) {
     const m = METERS[meterId];
-    const chosen = elements.filter((e) => e !== 't');
-    const pat = makePattern(meterId, chosen, null, { bars, pickup, ties: chosen.includes('tie'), rnd });
+    // Ohne Triolen und Shuffle (Triolen-Werte); nur Bausteine, die in die Taktart passen.
+    const chosen = elements.filter((e) => e !== 't' && e !== 'sh' && elementFits(e, m));
+    const pat = makePattern(meterId, chosen, null, { bars, pickup, ties: chosen.includes('tie'), rnd, pickupLens });
     const p = pat.pickup;
     const cut = bars >= 2 ? p + (bars - 1) * m.ticks : p + m.ticks / 2;
     const before = pat.notes.filter((n) => n.t < cut).map((n) => ({ t: n.t, d: n.d, rest: n.rest, ...(n.tie ? { tie: true } : {}) }));
@@ -4199,7 +4373,16 @@
   function rhythmMelodyOk(spec, mel) {
     const rules = mel.rules;
     const degs = mel.tones.map((x) => x.deg);
-    if (!degs.every((d) => rules.pool.includes(d))) return 'Tonvorrat';
+    const alts = mel.tones.map((x) => x.alt || 0);
+    // Chromatik: nur mit chroma, höchstens ein Ton je Phrase, nur in den Wendungen.
+    const bounds0 = [...mel.phraseStarts, degs.length];
+    for (let k = 0; k < mel.phraseStarts.length; k++) {
+      const idx = alts.map((a, i) => (a && i >= bounds0[k] && i < bounds0[k + 1] ? i : -1)).filter((i) => i >= 0);
+      if (idx.length && !spec.chroma) return 'Chromatik ohne Stufe 6';
+      if (idx.length > 1) return 'mehr als ein chromatischer Ton je Phrase';
+      if (idx.length && !chromaTurnOk(degs, alts, idx[0], mel.minor, bounds0[k], bounds0[k + 1])) return 'chromatische Wendung';
+    }
+    if (!degs.every((d, i) => alts[i] || rules.pool.includes(d))) return 'Tonvorrat';
     for (let i = 1; i < degs.length; i++) {
       if (mel.phraseStarts.includes(i)) continue;
       if (Math.abs(degs[i] - degs[i - 1]) > rules.maxLeap) return 'größter Sprung';
@@ -4223,9 +4406,12 @@
    *  tone }], tones [{ t, d, deg, midi }], minor, doMidi, key, phraseStarts,
    *  phraseTicks }. Nie dieselbe wie `previousKey`. */
   function makeRhythmMelody(spec, range, { previousKey = null, rnd = Math.random } = {}) {
-    const minor = spec.sight === 6 && (spec.mode === 'inTime' || rnd() < .5);
-    const rules = minor ? SIGHT_LEVELS[5] : SIGHT_LEVELS[Math.min(spec.sight, 5) - 1];
+    const modes = echoModes(spec.echo);
+    const minor = modes.length > 1 ? rnd() < .5 : modes[0] === 'minor';
+    const rules = echoRules(spec.echo, minor);
     const repeats = spec.n >= 3;
+    // Stufe 6: etwa jede zweite Aufgabe mit einer chromatischen Wendung.
+    const withChroma = spec.chroma && rnd() < CHROMA_SHARE;
     for (let attempt = 0; attempt < 400; attempt++) {
       // 1) Rhythmus
       let events = [], total = 0, pickup = 0, meter = spec.meters[Math.floor(rnd() * spec.meters.length)];
@@ -4242,7 +4428,7 @@
           const want = spec.len ? [Math.ceil(spec.len[0] / spec.phrases), Math.floor(spec.len[1] / spec.phrases)] : null;
           let r = null, rDist = Infinity;
           for (let k = 0; k < 200 && rDist > 0; k++) {
-            const c = phraseRhythm(meter, spec.bars, spec.elements, ph === 0 && spec.pickup, rnd);
+            const c = phraseRhythm(meter, spec.bars, spec.elements, ph === 0 && spec.pickup, rnd, spec.pickupTicks);
             if (!c) continue;
             const n = tonesOf(c.events).length;
             const dist = want ? Math.max(0, want[0] - n, n - want[1]) : 0;
@@ -4260,32 +4446,41 @@
       const tones = tonesOf(events);
       // 2) Töne
       const bounds = [...phraseStarts, tones.length];
-      const degs = [];
+      let degs = [];
       let ok = true;
+      const ends = [];
       for (let k = 0; k < phraseStarts.length && ok; k++) {
         const count = bounds[k + 1] - bounds[k];
         const last = k === phraseStarts.length - 1;
         const end = last ? rules.end : HALF_CADENCE[minor ? 'minor' : 'major'].filter((d) => rules.pool.includes(d));
+        ends.push(end);
         const prefix = k > 0 ? degs.slice(0, Math.min(count - 2, 2 + Math.floor(rnd() * 2))) : [];
         const ph = phraseDegrees(rules, count, { repeats, end, prefix }, rnd);
         if (!ph) { ok = false; break; }
         degs.push(...ph);
       }
       if (!ok) continue;
-      // 3) Lage: alle Töne im Innenbereich, Mitte möglichst mittig; ohne Ges-Dur.
-      const semis = degs.map(degSemis);
+      let alts = degs.map(() => 0);
+      if (withChroma) {
+        const c = embedChroma(degs, phraseStarts, rules, ends, rnd);
+        if (!c) continue;
+        ({ degs, alts } = c);
+      }
+      // 3) Lage: alle Töne im Innenbereich, Mitte möglichst mittig; ohne Ges-Dur
+      //    und ohne Tonarten, in denen spell() einen chromatischen Ton falsch schriebe.
+      const semis = degs.map((d, i) => degSemis(d) + alts[i]);
       const minS = Math.min(...semis), maxS = Math.max(...semis);
       const mid = (range.lo + range.hi) / 2 - (minS + maxS) / 2;
       const options = [];
-      for (let d = range.lo - minS; d + maxS <= range.hi; d++) if (mod(d, 12) !== 6) options.push(d);
+      for (let d = range.lo - minS; d + maxS <= range.hi; d++) if (mod(d, 12) !== 6 && chromaSpellOk(mod(d, 12), degs, alts)) options.push(d);
       if (!options.length) continue;
       const bestDist = Math.min(...options.map((d) => Math.abs(d - mid)));
       const best = options.filter((d) => Math.abs(d - mid) === bestDist);
       const doMidi = best[Math.floor(rnd() * best.length)];
-      tones.forEach((x, i) => { x.deg = degs[i]; x.midi = doMidi + semis[i]; x.ev.forEach((e) => { events[e].tone = i; }); });
-      const key = `${meter}|${pickup}|${events.map((e) => (e.rest ? -e.d : e.tie ? `~${e.d}` : e.d)).join(',')}|${degs.join(',')}`;
+      tones.forEach((x, i) => { x.deg = degs[i]; x.alt = alts[i]; x.midi = doMidi + semis[i]; x.ev.forEach((e) => { events[e].tone = i; }); });
+      const key = `${meter}|${pickup}|${events.map((e) => (e.rest ? -e.d : e.tie ? `~${e.d}` : e.d)).join(',')}|${degs.map((d, i) => toneId(d, alts[i])).join(',')}`;
       if (key === previousKey) continue;
-      const mel = { level: spec.n, mode: spec.mode, meter, pickup, total, events, tones, minor, doMidi, key, phraseStarts, phraseTicks, rules, degs };
+      const mel = { level: spec.n, mode: spec.mode, meter, pickup, total, events, tones, minor, doMidi, key, phraseStarts, phraseTicks, rules, degs, alts };
       // Nach 200 Versuchen gilt auch die nächstliegende Tonzahl.
       if (rhythmMelodyOk(attempt < 200 ? spec : { ...spec, len: null }, mel)) continue;
       return mel;
@@ -4295,11 +4490,16 @@
   /** Soll-Einsätze und -Längen in Sekunden (Ticks × tickSec, ab `offset`). */
   const melodyTarget = (mel, tickSec, offset = 0) => mel.tones.map((x) => ({ midi: x.midi, start: offset + x.t * tickSec, dur: x.d * tickSec }));
 
-  const SING_MODES = [['tuner', 'Tuner'], ['hold', 'Ton halten'], ['singInterval', 'Intervalle singen'], ['findTone', 'Ton finden'], ['singEcho', 'Nachsingen'], ['inTime', 'Im Takt'], ['sight', 'Blattsingen'], ['dictation', 'Diktat']];
+  // Stufenzahlen statt Tonika-Do als Standard (gilt nur, wenn nichts gespeichert ist).
+  const SOLFA_DEFAULT = 'numbers';
+  // Pop-Didaktik: nach Gehör zuerst, Blattsingen zuletzt (und standardmäßig ausgeblendet).
+  const SING_MODES = [['tuner', 'Tuner'], ['hold', 'Ton halten'], ['findTone', 'Ton finden'], ['singEcho', 'Nachsingen'], ['inTime', 'Im Takt'], ['singInterval', 'Intervalle singen'], ['dictation', 'Diktat'], ['sight', 'Blattsingen']];
   const sing = {
     mode: 'tuner',
     levels: { singInterval: 1, findTone: 1, hold: 1, sight: 1, dictation: 1, singEcho: 1, inTime: 1 },
-    solfa: 'syllables',   // 'syllables' (do re mi) | 'numbers' (1 2 3)
+    solfa: SOLFA_DEFAULT, // 'numbers' (1 2 3, Standard) | 'syllables' (do re mi)
+    showSight: false,     // Blattsingen anzeigen (mit Noten) — Einstellungsblatt „Singen“
+    findA4: false,        // Ton finden: „Nur das a′“ (Stimmgabel) statt der Stufe — eigene Auswahl
     showSolfa: true,      // Intervalle singen: Hilfe „do → mi“ zeigen
     task: null, phase: 'idle', judge: null, timers: [], bus: null, lastKey: null,
     stats: { singInterval: { right: 0, total: 0 }, findTone: { right: 0, total: 0 }, hold: { right: 0, total: 0 }, sight: { right: 0, total: 0 }, dictation: { right: 0, total: 0 }, singEcho: { right: 0, total: 0 }, inTime: { right: 0, total: 0 } },
@@ -4311,7 +4511,27 @@
     demo: 'piano',        // Vorspiel bei Nachsingen/Im Takt: 'piano' | 'voice' (Singstimme)
     clickBus: null,
   };
-  const SING_LEVEL_TABLE = { singInterval: () => INTERVAL_LEVELS(), findTone: () => FIND_LEVELS, hold: () => HOLD_LEVELS, sight: () => SIGHT_LEVELS, dictation: () => SIGHT_LEVELS, singEcho: () => ECHO_LEVELS, inTime: () => IN_TIME_LEVELS };
+  // Diktat: Tonvorrat wie Nachsingen, ohne Rhythmus — eigene Beschriftung.
+  const DICTATION_LEVELS = ['3–4 Töne, Schritte', 'Dur-Pentatonik', 'Moll-Pentatonik', 'Ganze Tonleiter', 'Tonleiter, größere Sprünge', 'Mit Blue Notes']
+    .map((label, i) => ({ n: i + 1, label }));
+  const SING_LEVEL_TABLE = { singInterval: () => INTERVAL_LEVELS(), findTone: () => FIND_LEVELS, hold: () => HOLD_LEVELS, sight: () => SIGHT_LEVELS, dictation: () => DICTATION_LEVELS, singEcho: () => ECHO_LEVELS, inTime: () => IN_TIME_LEVELS };
+  const CHROMA_HELP = 'Hier kommen Töne dazu, die nicht zur Tonleiter gehören – wie die ‚Blue Notes‘ im Soul oder der Leitton in Moll. Das Ohr will sie gern zurück in die Tonleiter ziehen: genau hinhören und sie so singen, wie sie klingen.';
+  /** Sing-Modi, die gezeigt werden (ohne Blattsingen, solange es ausgeblendet ist). */
+  const visibleSingModes = () => SING_MODES.filter(([id]) => id !== 'sight' || sing.showSight);
+  /** Schalter im Einstellungsblatt „Singen“. Blattsingen aus: Liste, Kette
+   *  und Fortschritts-Mittel ohne Blattsingen (App: memory sightShown);
+   *  der gespeicherte Blattsing-Fortschritt bleibt. */
+  function setSingOption(key, on) {
+    if (key === 'showSight') {
+      sing.showSight = on;
+      saveMemory('sightShown', on);
+      if (!on && sing.mode === 'sight') { stopSing(); sing.mode = 'dictation'; }
+      if (state.tab === 'voice') renderArea();
+    } else if (key === 'findA4') {
+      sing.findA4 = on;
+      if (sing.mode === 'findTone') { stopSing(); renderSing(); }
+    }
+  }
   const PART_CLEF = { S: 'treble', A: 'treble', T: 'treble8', B: 'bass' };
 
   /** Innenbereich des Übe-Umfangs (je 2 Halbtöne innerhalb). */
@@ -4331,7 +4551,37 @@
   const A_RELATIONS = [[0, 'Einklang'], [5, 'Quarte'], [7, 'Quinte'], [4, 'große Terz'], [3, 'kleine Terz'], [9, 'große Sexte'], [8, 'kleine Sexte']];
 
   /** Aufgabe eines Sing-Modus (reine Funktion bis auf den Zufall). */
-  function makeSingTask(mode, n, range, { rnd = Math.random, log = {}, previousKey = null, solfa = 'syllables' } = {}) {
+  /** Ton finden, Stufe 6: ein Akkord aus einer Pop-Folge (Stufe 1 der
+   *  Akkordfolgen) vierstimmig über harmony.js, deine Stimme `part` ist das
+   *  Ziel. Die drei anderen Stimmen klingen weiter und enthalten den Zielton
+   *  nicht (eine Oktavverdopplung ist erlaubt). Die Tonart wird so gewählt,
+   *  dass der Zielton im Übe-Umfang liegt. */
+  function makeSatbFindTask(n, range, part, rnd = Math.random) {
+    const progs = levelProgs(1).map((id) => EAR_PROGRESSIONS.find((p) => p.id === id));
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const prog = progs[Math.floor(rnd() * progs.length)];
+      const symbol = prog.chords[Math.floor(rnd() * prog.chords.length)];
+      const key = rndInt(0, 11, rnd);
+      const [c] = satbOf(key, [symbol], 'close', prog.mode);
+      const target = c[part];
+      if (target < range.lo || target > range.hi) continue;
+      const others = SATB_PARTS.filter((x) => x !== part).map((x) => c[x]);
+      if (others.includes(target)) continue;
+      const [root] = chordToneNames(key, symbol, prog.mode);
+      return { mode: 'findTone', level: n, cue: 'satb', kmode: prog.mode, key, ask: 'mine', part, symbol, satb: c, target,
+        text: `Singe deinen Ton (${PART_NAMES[part]})`, chordName: chordNames(key, [symbol], prog.mode), rootName: root.name, tolerance: FIND_TOLERANCE[n - 1] };
+    }
+    return null;
+  }
+  /** Akkorde der Einstimmung von „Ton finden“: [[Symbol …], Dauer je Akkord in Schlägen]. */
+  function findCueSymbols(task) {
+    const tonic = task.kmode === 'minor' ? 'i' : 'I';
+    if (task.cue === 'popIntro') return [POP_INTRO[task.kmode === 'minor' ? 'minor' : 'major'], 2];
+    if (task.cue === 'cadence') return [task.kmode === 'minor' ? ['i', 'iv', 'V', 'i'] : ['I', 'IV', 'V', 'I'], 1];
+    return [[tonic], 2];
+  }
+
+  function makeSingTask(mode, n, range, { rnd = Math.random, log = {}, previousKey = null, solfa = 'syllables', findA4 = false, part = ear.part } = {}) {
     const { lo, hi } = range;
     if (mode === 'singInterval') {
       const preset = INTERVAL_PRESETS.filter((p) => p[2] === 'level')[n - 1];
@@ -4344,7 +4594,8 @@
       return { mode, level: n, semis, dir, base, target, tolerance: SING_INTERVAL_TOLERANCE[n - 1] };
     }
     if (mode === 'findTone') {
-      const level = FIND_LEVELS[n - 1];
+      const level = findA4 ? FIND_A4 : FIND_LEVELS[n - 1];
+      if (level.cue === 'satb') return makeSatbFindTask(n, range, part, rnd) || makeSingTask(mode, 5, range, { rnd, log, previousKey, solfa, part });
       if (level.cue === 'a4') {
         const [semis, rel] = A_RELATIONS[Math.floor(rnd() * A_RELATIONS.length)];
         const dir = semis === 0 ? 'same' : rnd() < .5 ? 'down' : 'up';
@@ -4380,7 +4631,7 @@
     if (mode === 'hold') {
       const level = HOLD_LEVELS[n - 1];
       const target = clamp(Math.round((lo + hi) / 2) + rndInt(-4, 4, rnd), lo, hi);
-      return { mode, level: n, target, sec: level.sec, dyn: level.dyn };
+      return { mode, level: n, target, sec: level.sec, dyn: level.dyn, straight: !!level.straight };
     }
     if (mode === 'singEcho' || mode === 'inTime') {
       const inTime = mode === 'inTime';
@@ -4389,11 +4640,13 @@
       return { mode, level: n, mel, key: mel.key, minor: mel.minor, doMidi: mel.doMidi, tolerance: level.tol,
         bpm: inTime ? level.bpm : n === 6 ? 84 : 76, help: false, listens: 0, slow: false, half: false };
     }
-    // Blattsingen / Diktat
-    const mel = makeMelody(n, previousKey, rnd);
-    const doMidi = chooseDo(mel.degs, lo, hi, rnd);
-    const notes = mel.degs.map((d) => doMidi + degSemis(d));
-    return { mode, level: n, ...mel, doMidi, notes, tolerance: SIGHT_TOLERANCE[n - 1], labels: mel.degs.map((d) => solfaOf(d, solfa, mel.minor)) };
+    // Blattsingen / Diktat (Diktat mit dem Tonvorrat der Nachsing-Stufen, Pop-Didaktik)
+    const mel = mode === 'dictation' ? makeDictationMelody(n, previousKey, rnd) : { ...makeMelody(n, previousKey, rnd) };
+    if (!mel.alts) mel.alts = mel.degs.map(() => 0);
+    const doMidi = chooseDo(mel.degs, lo, hi, rnd, mel.alts);
+    const notes = mel.degs.map((d, i) => doMidi + degSemis(d) + mel.alts[i]);
+    return { mode, level: n, ...mel, doMidi, notes, tolerance: SIGHT_TOLERANCE[n - 1], ids: mel.degs.map((d, i) => toneId(d, mel.alts[i])),
+      labels: mel.degs.map((d, i) => toneLabel(d, mel.alts[i], solfa, mel.minor)) };
   }
 
   /* ---- Notenzeile fürs Blattsingen: Violinschlüssel (S/A), oktavierter
@@ -4610,11 +4863,11 @@
     // Im Takt ohne eigene Sing-Latenz: erst kalibrieren (zählt nicht als Aufgabe).
     if (sing.mode === 'inTime' && sing.inTime.latencyMs === null) { startSingCalibration(); return; }
     sing.calib = null;
-    sing.task = makeSingTask(sing.mode, singLevel(), singRange(), { log: sing.log, previousKey: sing.lastKey, solfa: sing.solfa });
+    sing.task = makeSingTask(sing.mode, singLevel(), singRange(), { log: sing.log, previousKey: sing.lastKey, solfa: sing.solfa, findA4: sing.findA4, part: ear.part });
     sing.lastKey = sing.task.key || null;
     sing.task.marks = [];
     sing.task.idx = 0;
-    sing.task.input = sing.mode === 'dictation' ? [sing.task.degs[0]] : null;
+    sing.task.input = sing.mode === 'dictation' ? [sing.task.ids[0]] : null;
     sing.task.plays = 0;
     setSingFeedback('', '');
     sing.phase = 'cue';
@@ -4638,13 +4891,19 @@
     if (task.mode === 'singInterval' || task.mode === 'hold') { k(task.mode === 'hold' ? task.target : task.base, t0, 1.5, .22); end = t0 + 1.5; }
     else if (task.mode === 'findTone') {
       if (task.cue === 'a4') { k(69, t0, 2, .22); end = t0 + 2; }
-      else {
-        const tonic = task.kmode === 'minor' ? 'i' : 'I';
-        const symbols = task.cue === 'cadence' ? (task.kmode === 'minor' ? ['i', 'iv', 'V', 'i'] : ['I', 'IV', 'V', 'I']) : [tonic];
-        const satb = satbOf(task.key, symbols);
-        const dur = task.cue === 'cadence' ? 1 : 2;
+      else if (task.cue === 'satb') {
+        // Der Satz einmal voll, dann klingen nur die drei anderen Stimmen weiter
+        // (bis zum Ende der Aufgabe) — du singst deine Stimme in die Lücke.
+        SATB_PARTS.forEach((x) => k(task.satb[x], t0, SATB_FIND_SEC * .95, .13));
+        SATB_PARTS.filter((x) => x !== task.part).forEach((x) => k(task.satb[x], t0 + SATB_FIND_SEC, 8, .1));
+        end = t0 + SATB_FIND_SEC + .3;
+      } else {
+        // Grundakkord, Kadenz oder Pop-Intro (je Akkord zwei Schläge bei ♩ = 90), dann Stille.
+        const [symbols, beats] = findCueSymbols(task);
+        const satb = satbOf(task.key, symbols, 'close', task.kmode);
+        const dur = task.cue === 'popIntro' ? beats * 60 / 90 : beats === 1 ? 1 : 2;
         satb.forEach((c, i) => SATB_PARTS.forEach((x) => k(c[x], t0 + i * dur, dur * .95, .13)));
-        end = t0 + satb.length * dur;
+        end = t0 + satb.length * dur + (task.cue === 'popIntro' ? .6 : 0);
       }
     } else {
       // Blattsingen/Diktat: Tonika-Akkord und Grundton (in Moll auf la)
@@ -5200,6 +5459,7 @@
   function findToneTarget(task) {
     if (task.mode === 'singInterval') return `${noteLabel(task.target)} – ${intervalName(task.semis)} ${task.dir === 'down' ? 'unter' : 'über'} ${noteLabel(task.base)}`;
     if (task.cue === 'a4') return task.text;
+    if (task.cue === 'satb') return `${noteLabel(task.target)} – ${PART_NAMES[task.part]} im Akkord ${task.chordName}`;
     const key = keyName(task.key, task.kmode);
     const role = task.ask === 'degree' ? `Stufe ${task.deg + 1} (${task.syl}) in ${key}`
       : task.ask === 'root' ? `der Grundton von ${key}` : `die ${FIND_ASK[task.ask][0]} von ${key}`;
@@ -5230,7 +5490,14 @@
       const drift = loudnessDrift(task.samples);
       if (Math.abs(drift) >= 8) text += `. Beim Lauterwerden ${Math.round(Math.abs(drift))} Cent ${drift > 0 ? 'gestiegen' : 'gesunken'} – die Tonhöhe beim Lauterwerden bewusst halten.`;
     }
-    finishSing(holdHit(st), text, { value: Math.abs(st.mean) });
+    const level = HOLD_LEVELS[task.level - 1];
+    const verdict = holdVerdict(level, st, task.samples);
+    if (level?.straight && verdict.wobble !== null) {
+      text += verdict.wobble > level.maxWobble
+        ? `. Noch etwas Vibrato (± ${Math.round(verdict.wobble)} Cent) – versuch, den Ton ganz ruhig zu halten.`
+        : `. Schön gerade (± ${Math.round(verdict.wobble)} Cent).`;
+    }
+    finishSing(verdict.hit, text, { value: Math.abs(st.mean) });
   }
 
   function finishSight() {
@@ -5285,11 +5552,11 @@
     const task = sing.task;
     if (!task || sing.phase !== 'answer') return;
     if (value === 'back') { if (task.input.length > 1) task.input.pop(); renderSing(); return; }
-    task.input.push(Number(value));
+    task.input.push(String(value));
     if (task.input.length < task.degs.length) { renderSing(); return; }
-    const right = task.input.filter((d, i) => d === task.degs[i]).length;
+    const right = task.input.filter((id, i) => id === task.ids[i]).length;
     const ok = right === task.degs.length;
-    task.marks = task.degs.map((d, i) => (task.input[i] === d ? 'hit' : 'miss'));
+    task.marks = task.ids.map((id, i) => (task.input[i] === id ? 'hit' : 'miss'));
     finishSing(ok, ok ? 'Alles richtig!' : `${right} von ${task.degs.length} Tönen richtig — die richtigen Silben stehen darunter.`, { value: right / task.degs.length });
   }
 
@@ -5365,14 +5632,16 @@
     } else if (!task) {
       const intro = {
         singInterval: 'Ein Grundton — du singst das Intervall.',
-        findTone: 'Akkord oder a′ — du findest deinen Ton.',
-        hold: 'Einen Ton ruhig halten — Lage, Ruhe und Trend.',
+        findTone: sing.findA4 ? 'Nur das a′ als Bezug — du findest deinen Ton.' : 'Akkord oder Intro — du findest deinen Ton.',
+        hold: 'Einen Ton ruhig halten — Lage, Ruhe und Trend. Gerade Töne sind im Popchor die Regel – Vibrato kommt, wenn überhaupt, erst am Ende.',
         sight: 'Eine kurze Melodie vom Blatt singen, Ton für Ton.',
         dictation: 'Eine kurze Melodie hören und aufschreiben.',
         singEcho: 'Eine Melodie hören und nachsingen – Silbe frei, z. B. „no“. Das Tempo ist frei.',
         inTime: 'Ton und Rhythmus zum Klick, auf „da“. Echo: hören, dann ohne Pause nachsingen. Vom Blatt: lesen und singen.',
       }[sing.mode];
-      prompt.textContent = intro;
+      // Stufe 6 mit Chromatik: Hinweis auf die Blue Notes (Nachsingen, Im Takt, Diktat).
+      const chroma = ['singEcho', 'inTime', 'dictation'].includes(sing.mode) && sing.levels[sing.mode] === 6;
+      prompt.textContent = chroma ? `${intro} ${CHROMA_HELP}` : intro;
       sub.textContent = `${PART_NAMES[ear.part]} · Töne zwischen ${noteLabel(r.lo)} und ${noteLabel(r.hi)}${sing.mode === 'dictation' ? '' : ' · mit Kopfhörern'}`;
     } else if (task.mode === 'singInterval') {
       prompt.textContent = `${intervalName(task.semis)} ${task.dir === 'down' ? 'abwärts' : 'aufwärts'}`;
@@ -5381,7 +5650,8 @@
     } else if (task.mode === 'findTone') {
       prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
       const findPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
-      sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${task.cue === 'cadence' ? ' · nach der Kadenz' : ''}`}${findPhase ? ` · ${findPhase}` : ''}`;
+      const cueText = { cadence: ' · nach der Kadenz', popIntro: ' · nach dem Intro', satb: ' · der Akkord erklingt, dann fehlt deine Stimme' }[task.cue] || '';
+      sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${cueText}`}${findPhase ? ` · ${findPhase}` : ''}`;
     } else if (task.mode === 'inTime') {
       const running = ['cue', 'sing'].includes(sing.phase);
       prompt.textContent = sing.phase === 'sing' ? 'Jetzt du – auf „da“' : running ? (task.variant === 'echo' ? 'Hör zu' : 'Lies mit – gleich bist du dran') : 'Im Takt';
@@ -5389,7 +5659,7 @@
       sub.textContent = [task.minor ? 'Moll' : 'Dur', `${task.mel.meter}-Takt`, `${tempoSymbol(task.mel.meter)} = ${Math.round(bpm * 12 / METERS[task.mel.meter].ref)}`, task.variant === 'sheet' ? 'Vom Blatt' : 'Echo'].join(' · ');
       let html = running ? '<p class="intime-pos" aria-live="off"></p>' : '';
       if (sing.phase === 'result' || task.variant === 'sheet') {
-        const labels = task.mel.tones.map((x) => solfaOf(x.deg, sing.solfa, task.minor));
+        const labels = task.mel.tones.map((x) => toneLabel(x.deg, x.alt, sing.solfa, task.minor));
         const rs = sing.inTime.rhythmSyl ? syllablesFor({ meter: task.mel.meter, pickup: task.mel.pickup, notes: task.mel.events }, 'ta') : null;
         const st = rhythmStaffSvg(task.mel, PART_CLEF[ear.part], { labels, rhythmSyl: rs, marks: sing.phase === 'result' && task.result ? inTimeMarks(task.result) : null });
         task.staffLines = st.lines;
@@ -5405,20 +5675,21 @@
       renderEchoDots();
     } else if (task.mode === 'hold') {
       prompt.textContent = `${noteLabel(task.target)} halten — ${task.sec} Sekunden`;
-      sub.textContent = `${{ mf: 'mittlere Lautstärke', cresc: 'dabei lauter werden', pp: 'leise', messa: 'an- und abschwellen' }[task.dyn]} · ${phaseText[sing.phase] || ''}`;
+      sub.textContent = `${{ mf: 'mittlere Lautstärke', cresc: 'dabei lauter werden', pp: 'leise', messa: 'an- und abschwellen' }[task.dyn]}${task.straight ? ' · gerade, ohne Vibrato' : ''} · ${phaseText[sing.phase] || ''}`;
     } else {
       const minor = task.minor;
       prompt.textContent = task.mode === 'sight' ? 'Sing die Melodie' : 'Schreib die Melodie auf';
       sub.textContent = [minor ? 'Moll (la)' : 'Dur (do)', phaseText[sing.phase], task.mode === 'dictation' ? `gehört ${task.plays}×` : ''].filter(Boolean).join(' · ');
-      const labels = task.degs.map((d) => solfaOf(d, sing.solfa, minor));
+      const labelOf = (id) => { const { deg, alt } = parseToneId(id); return toneLabel(deg, alt, sing.solfa, minor); };
+      const labels = task.ids.map(labelOf);
       const row = document.createElement('div');
       row.className = 'sing-syls';
-      const shownDegs = task.mode === 'dictation' ? task.input : task.degs;
+      const shown = task.mode === 'dictation' ? task.input : task.ids;
       task.degs.forEach((d, i) => {
         const span = document.createElement('span');
         span.className = 'sing-syl';
-        const given = shownDegs[i];
-        span.textContent = given === undefined ? '?' : solfaOf(given, sing.solfa, minor);
+        const given = shown[i];
+        span.textContent = given === undefined ? '?' : labelOf(given);
         const showMarks = task.mode !== 'sight' || sing.phase === 'result';
         if (task.marks[i] && showMarks) span.classList.add(task.marks[i] === 'hit' ? 'is-ok' : 'is-bad');
         else if (task.mode === 'sight' && i === task.idx && sing.phase === 'sing') span.classList.add('is-now');
@@ -5429,8 +5700,10 @@
       view.append(row);
       if (task.mode === 'sight') view.insertAdjacentHTML('beforeend', `<div class="stage sing-staff">${melodyStaffSvg(task, PART_CLEF[ear.part], sing.phase === 'sing' ? task.idx : -1, sing.phase === 'result' ? task.marks : [])}</div>`);
       if (task.mode === 'dictation' && sing.phase === 'answer') {
-        const pool = SIGHT_LEVELS[task.level - 1].pool;
-        answers.replaceChildren(...pool.map((d, i) => answerButton(d, solfaOf(d, sing.solfa, minor), { dataset: 'dict', aria: `${i + 1}: ${solfaOf(d, sing.solfa, minor)}` })),
+        // Tonvorrat der Stufe; ab Stufe 6 zusätzlich die chromatischen Töne (sortiert nach Tonhöhe).
+        const ids = [...task.rules.pool.map((d) => toneId(d)), ...(ECHO_LEVELS[task.level - 1].chroma ? chromaKeys(minor) : [])]
+          .sort((a, b) => { const x = parseToneId(a), y = parseToneId(b); return degSemis(x.deg) + x.alt - degSemis(y.deg) - y.alt; });
+        answers.replaceChildren(...ids.map((id, i) => answerButton(id, labelOf(id), { dataset: 'dict', aria: `${i + 1}: ${labelOf(id)}` })),
           answerButton('back', '⌫', { dataset: 'dict', cls: 'is-backspace', aria: 'Letzte Silbe löschen', disabled: task.input.length <= 1 }));
       }
     }
@@ -5489,7 +5762,7 @@
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
-      sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa,
+      sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
         inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
     };
   }
@@ -5585,6 +5858,10 @@
     for (const k of Object.keys(sing.levels)) if (Number.isInteger(sl[k]) && sl[k] >= 1 && sl[k] <= 6) sing.levels[k] = sl[k];
     if (sg.solfa === 'syllables' || sg.solfa === 'numbers') sing.solfa = sg.solfa;
     if (typeof sg.showSolfa === 'boolean') sing.showSolfa = sg.showSolfa;
+    // Blattsingen: gespeichert → übernehmen; fehlt/kaputt → aus (Pop-Didaktik).
+    if (typeof sg.showSight === 'boolean') sing.showSight = sg.showSight;
+    if (typeof sg.findA4 === 'boolean') sing.findA4 = sg.findA4;
+    if (!sing.showSight && sing.mode === 'sight') sing.mode = 'dictation';
     if (sg.demo === 'piano' || sg.demo === 'voice') sing.demo = sg.demo;
     // Im Takt (Nachsingen Paket 4): optional, sonst Standard.
     if (IN_TIME_VARIANTS.some(([id]) => id === sg.inTimeVariant)) sing.inTime.variant = sg.inTimeVariant;
@@ -5857,6 +6134,7 @@
       }
       if (sheetKind === 'rhythm' && (key === 'elements' || key === 'pickup')) renderSettings();
     }
+    else if (t.dataset?.singset) setSingOption(t.dataset.singset, t.checked);
     else if (t.hasAttribute?.('data-intime-syl')) { sing.inTime.rhythmSyl = t.checked; if (sing.phase !== 'sing') renderSing(); }
     else if (t.dataset?.voiceswitch) { voice.useTarget = t.checked; drawHistory(engine.ctx?.currentTime || 0); }
     else if (t.hasAttribute?.('data-voice-a4')) { tuningA4 = A4_CHOICES.includes(Number(t.value)) ? Number(t.value) : 440; playTarget(); }
@@ -5949,34 +6227,37 @@
     return errors;
   }
 
+  /** Welche Bausteine braucht ein Muster { meter, pickup, notes }?
+   *  (Einfache Taktarten genau, zusammengesetzte nur Pausen/Bögen.) */
+  function rhythmNeeds(pat) {
+    const m = METERS[pat.meter];
+    const out = new Set();
+    pat.notes.forEach((n) => {
+      if (n.t < pat.pickup) { if (n.d === 6) out.add('e'); return; }
+      const inBar = mod(n.t - pat.pickup, m.ticks);
+      const inUnit = m.unit ? inBar % m.unit : 0;
+      if (n.rest) out.add('r');
+      if (n.sh) { out.add('sh'); return; }
+      if (n.tie) out.add('tie');
+      if (m.unit === 12) {
+        if (n.d === 6 && !n.rest) out.add('e');
+        if (n.d === 3) out.add('s');
+        if (n.d === 4) out.add('t');
+        if ([18, 9].includes(n.d) && !n.rest) out.add('d');
+        if (n.d === 12 && inUnit === 6) out.add('sy');
+        if (n.rest && inUnit === 0 && (n.d === 3 || n.d === 9)) out.add('off');
+      }
+    });
+    return out;
+  }
+
   /** Pop-Didaktik Paket 4: Stufen pop-gerecht, Einsätze auf e/a, Shuffle,
    *  12/8, Auftaktlängen je Stufe, gespeicherte Stände. */
   function popRhythmCheck() {
     const errors = [];
     let seed = 23;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-    // Welche Bausteine braucht ein Muster? (einfache Taktarten)
-    const needs = (pat) => {
-      const m = METERS[pat.meter];
-      const out = new Set();
-      pat.notes.forEach((n, k) => {
-        if (n.t < pat.pickup) { if (n.d === 6) out.add('e'); return; }
-        const inBar = mod(n.t - pat.pickup, m.ticks);
-        const inUnit = m.unit ? inBar % m.unit : 0;
-        if (n.rest) out.add('r');
-        if (n.sh) { out.add('sh'); return; }
-        if (n.tie) out.add('tie');
-        if (m.unit === 12) {
-          if (n.d === 6 && !n.rest) out.add('e');
-          if (n.d === 3) out.add('s');
-          if (n.d === 4) out.add('t');
-          if ([18, 9].includes(n.d) && !n.rest) out.add('d');
-          if (n.d === 12 && inUnit === 6) out.add('sy');
-          if (n.rest && inUnit === 0 && (n.d === 3 || n.d === 9)) out.add('off');
-        }
-      });
-      return out;
-    };
+    const needs = rhythmNeeds;
     const pickups = {};
     let shuffles = 0, straight6 = 0, offs = 0;
     for (const level of RHYTHM_LEVELS) {
@@ -6464,6 +6745,141 @@
     return errors;
   }
 
+  /** Pop-Didaktik Paket 6: Singen nach Gehör — Reihenfolge, Blattsingen
+   *  ausblenden, Stufenzahlen, gerader Ton, Ton finden (Intro, Satz),
+   *  Nachsingen/Im Takt/Diktat mit eigenen Tonvorräten und Chromatik.
+   *  count: Melodien je Stufe und Stimme (Anweisung: 1000). */
+  const popSingNotes = [];
+  function popSingCheck(count = 1000) {
+    const errors = [];
+    popSingNotes.length = 0;
+    const add = (msg) => { if (errors.length < 60) errors.push(msg); };
+    let seed = 61;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const saved = JSON.parse(JSON.stringify({ showSight: sing.showSight, solfa: sing.solfa, mode: sing.mode, findA4: sing.findA4, tab: state.tab }));
+    try {
+      // 6a Reihenfolge, Blattsingen ausblenden, Stufenzahlen.
+      sing.showSight = false;
+      if (visibleSingModes().some(([id]) => id === 'sight') || areaModes('voice').some(([id]) => id === 'sight')) add('Blattsingen trotz „aus“ in der Liste');
+      if (QUICK_CHAINS.voice.some(([m]) => m === 'sight') || !QUICK_CHAINS.voice.some(([m]) => m === 'dictation')) add('Schnellstart Singen: Blattsingen statt Diktat');
+      sing.showSight = true;
+      if (!areaModes('voice').some(([id]) => id === 'sight')) add('Blattsingen „an“ fehlt in der Liste');
+      for (const [raw, want] of [[true, true], [false, false], [undefined, false], ['x', false]]) {
+        sing.showSight = false;
+        restore({ tab: saved.tab, sing: raw === undefined ? {} : { showSight: raw } });
+        if (sing.showSight !== want) add(`showSight ${JSON.stringify(raw)} → ${sing.showSight}`);
+      }
+      sing.showSight = true; sing.mode = 'sight';
+      const snap = JSON.parse(JSON.stringify(snapshot()));
+      sing.showSight = false;
+      restore(snap);
+      if (!sing.showSight || sing.mode !== 'sight') add('showSight übersteht Speichern/Laden nicht');
+      restore({ tab: saved.tab, sing: { showSight: false, mode: 'sight' } });
+      if (sing.mode === 'sight') add('Blattsingen ausgeblendet, aber als Modus geladen');
+      if (SOLFA_DEFAULT !== 'numbers') add('Stufenzahlen sind nicht Standard');
+      sing.solfa = SOLFA_DEFAULT; restore({ tab: saved.tab, sing: {} });
+      if (sing.solfa !== 'numbers') add('solfa fehlend ≠ numbers');
+      restore({ tab: saved.tab, sing: { solfa: 'syllables' } });
+      if (sing.solfa !== 'syllables') add('gespeichertes solfa „syllables“ nicht übernommen');
+      // 6b Ton halten Stufe 5: gerader Ton.
+      const lvl5 = HOLD_LEVELS[4];
+      const run = (f) => { const s = Array.from({ length: 400 }, (_, i) => ({ t: i / 50, cents: f(i / 50), rms: .1 })); return holdVerdict(lvl5, holdStats(s), s); };
+      const v10 = run((t) => 10 * Math.sin(2 * Math.PI * 5.5 * t));
+      const v30 = run((t) => 30 * Math.sin(2 * Math.PI * 5.5 * t));
+      const drift = run((t) => -20 + 5 * t);
+      if (!v10.hit) add(`gerader Ton: Vibrato ±10 nicht erreicht (± ${v10.wobble?.toFixed(1)})`);
+      if (v30.hit) add(`gerader Ton: Vibrato ±30 erreicht (± ${v30.wobble?.toFixed(1)})`);
+      if (!drift.hit) add(`gerader Ton: Drift 5 Cent/s nicht erreicht (± ${drift.wobble?.toFixed(1)})`);
+      popSingNotes.push(`Modulationstiefe: Vibrato ±10 → ±${v10.wobble.toFixed(1)}, ±30 → ±${v30.wobble.toFixed(1)}, Drift 5 Cent/s → ±${drift.wobble.toFixed(1)} Cent`);
+      if (HOLD_LEVELS.map((l) => `${l.sec}${l.dyn}`).join() !== '3mf,6mf,6pp,6cresc,8mf,8messa' || !lvl5.straight || lvl5.maxWobble !== 15) add('Ton halten: Stufen falsch');
+      // 6c Ton finden: Pop-Intro, Satz.
+      for (const kmode of ['major', 'minor']) {
+        const [syms, beats] = findCueSymbols({ cue: 'popIntro', kmode });
+        if (syms.join() !== (kmode === 'major' ? 'I,V,vi,IV' : 'i,VI,III,VII') || beats !== 2) add(`Pop-Intro ${kmode}: ${syms}`);
+        for (let key = 0; key < 12; key++) {
+          satbOf(key, syms, 'close', kmode).forEach((c, i) => {
+            const pcs = new Set(chordPcs(key, syms[i], kmode));
+            if (SATB_PARTS.some((x) => !pcs.has(mod(c[x], 12)))) add(`Pop-Intro ${kmode} ${key}: ${syms[i]} falsch`);
+          });
+        }
+      }
+      if (FIND_LEVELS.some((l) => l.cue === 'a4') || FIND_A4.cue !== 'a4') add('„Nur das a′“ noch als Stufe');
+      for (const part of SATB_PARTS) {
+        const range = singRange(part, null);
+        for (let i = 0; i < 200; i++) {
+          const t = makeSingTask('findTone', 6, range, { rnd, part });
+          if (t.cue !== 'satb') { add(`Satz ${part}: keine Satz-Aufgabe`); break; }
+          if (t.target !== t.satb[part] || t.target < range.lo || t.target > range.hi) add(`Satz ${part}: Ziel ${t.target}`);
+          if (SATB_PARTS.filter((x) => x !== part).some((x) => t.satb[x] === t.target)) add(`Satz ${part}: Zielton klingt mit`);
+          if (!chordPcs(t.key, t.symbol, t.kmode).includes(mod(t.target, 12))) add(`Satz ${part}: Ziel nicht im Akkord`);
+        }
+        const a4 = makeSingTask('findTone', 3, range, { rnd, part, findA4: true });
+        if (a4.cue !== 'a4') add('Schalter „Nur das a′“ wirkt nicht');
+      }
+      // 6d/6e Melodien: je Stufe und Stimme `count` Melodien.
+      for (const mode of ['singEcho', 'inTime', 'dictation']) {
+        for (let n = 1; n <= 6; n++) {
+          const echo = ECHO_LEVELS[n - 1];
+          let withChroma = 0, total = 0;
+          for (const part of SATB_PARTS) {
+            const range = singRange(part, null);
+            let prev = null;
+            for (let i = 0; i < count; i++) {
+              const name = `${mode} Stufe ${n} ${part}`;
+              let degs, alts, minor, phraseStarts = [0], rules, midis;
+              if (mode === 'dictation') {
+                const t = makeSingTask('dictation', n, range, { rnd, previousKey: prev });
+                prev = t.key; ({ degs, alts, minor, rules } = t); midis = t.notes;
+                if (degs.length < SIGHT_LEVELS[n - 1].len[0] || degs.length > SIGHT_LEVELS[n - 1].len[1]) add(`${name}: Länge ${degs.length}`);
+                if (!leapRuleOk(degs)) add(`${name}: Sprungregel ${degs}`);
+                if (degs.some((d, j) => j && Math.abs(d - degs[j - 1]) > rules.maxLeap)) add(`${name}: größter Sprung ${degs}`);
+                if (!rules.start.includes(degs[0]) || !rules.end.includes(degs[degs.length - 1])) add(`${name}: Start/Schluss ${degs}`);
+                if (degs.some((d, j) => !alts[j] && !rules.pool.includes(d))) add(`${name}: Tonvorrat ${degs}`);
+                if (alts.filter(Boolean).length > 1) add(`${name}: zwei chromatische Töne`);
+                const ci = alts.findIndex(Boolean);
+                if (ci >= 0 && !chromaTurnOk(degs, alts, ci, minor, 0, degs.length)) add(`${name}: Wendung ${degs.map((d, j) => toneId(d, alts[j]))}`);
+              } else {
+                const spec = melodySpec(mode === 'inTime' ? 'inTime' : 'echo', n);
+                const mel = makeRhythmMelody(spec, range, { previousKey: prev, rnd });
+                if (!mel) { add(`${name}: keine Melodie`); break; }
+                prev = mel.key; ({ degs, alts, minor, phraseStarts, rules } = mel); midis = mel.tones.map((x) => x.midi);
+                const why = rhythmMelodyOk(spec, mel);
+                if (why) add(`${name}: ${why} (${mel.degs})`);
+                if (!spec.meters.includes(mel.meter) || (mode === 'inTime' && !['4/4', '6/8'].includes(mel.meter))) add(`${name}: Taktart ${mel.meter}`);
+                if (mode === 'inTime' && mel.total > 4 * METERS[mel.meter].ticks) add(`${name}: mehr als vier Takte`);
+                // Rhythmus: nur erlaubte Bausteine (je Phrase auf ihrem Taktraster).
+                const bounds = [0, ...mel.phraseTicks];
+                for (let k = 0; k + 1 < bounds.length; k++) {
+                  const notes = mel.events.filter((e) => e.t >= bounds[k] && e.t < bounds[k + 1]).map((e) => ({ ...e, t: e.t - bounds[k] }));
+                  const extra = [...rhythmNeeds({ meter: mel.meter, pickup: k ? 0 : mel.pickup, notes })].filter((x) => !spec.elements.includes(x));
+                  if (extra.length) add(`${name}: Bausteine ${extra} (${mel.key})`);
+                }
+              }
+              const ex = echoModes(echo);
+              if (!ex.includes(minor ? 'minor' : 'major')) add(`${name}: ${minor ? 'Moll' : 'Dur'}`);
+              if (midis.some((m) => m < range.lo || m > range.hi)) add(`${name}: Ton außerhalb ${range.lo}–${range.hi}`);
+              if (alts.some(Boolean) && !echo.chroma) add(`${name}: Chromatik vor Stufe 6`);
+              if (alts.some(Boolean)) withChroma++;
+              total++;
+            }
+          }
+          if (echo.chroma) {
+            const share = withChroma / total;
+            popSingNotes.push(`${mode} Stufe 6: ${Math.round(share * 100)} % mit Chromatik (${withChroma}/${total})`);
+            if (share < .3 || share > .7) add(`${mode} Stufe 6: Anteil Chromatik ${Math.round(share * 100)} %`);
+          }
+        }
+      }
+      // Silben und Stufenzahlen der chromatischen Töne (6e).
+      const lab = [[2, -1, false, 'me', '♭3'], [6, -1, false, 'te', '♭7'], [3, 1, false, 'fi', '♯4'], [4, 1, true, 'si', '♯7'], [3, 1, true, 'fi', '♯6']];
+      for (const [d, a, minor, syl, num] of lab) if (toneLabel(d, a, 'syllables', minor) !== syl || toneLabel(d, a, 'numbers', minor) !== num) add(`Chromatik-Silbe ${d}/${a}: ${toneLabel(d, a, 'syllables', minor)} / ${toneLabel(d, a, 'numbers', minor)}`);
+      if (ECHO_LEVELS.map((l) => l.tol).join() !== '50,50,45,40,40,35' || IN_TIME_LEVELS.some((l, i) => l.elements.join() !== RHYTHM_LEVELS[i].elements.filter((e) => e !== 't' && e !== 'sh').join())) add('Stufen Nachsingen/Im Takt falsch');
+    } finally {
+      Object.assign(sing, { showSight: saved.showSight, solfa: saved.solfa, mode: saved.mode, findA4: saved.findA4 }); state.tab = saved.tab;
+    }
+    return errors;
+  }
+
   /** Didaktik Paket 5: Treffer-Logik, Ziele im Umfang, a′-Aufgaben,
    *  Ton halten, Melodien. */
   function singPackageCheck() {
@@ -6520,11 +6936,14 @@
         for (let n = 1; n <= 6; n++) {
           let prev = null;
           for (let i = 0; i < 40; i++) {
-            const task = makeSingTask(mode, n, range, { rnd, previousKey: prev });
+            // (Pop-Didaktik: „Nur das a′“ ist der Schalter findA4 — hier in Stufe 6 geprüft.)
+            const a4 = mode === 'findTone' && n === 6 && i % 2 === 0;
+            const task = makeSingTask(mode, n, range, { rnd, previousKey: prev, part, findA4: a4 });
             prev = task.key || null;
             const targets = task.notes || [task.target, ...(task.base !== undefined ? [task.base] : [])];
             if (targets.some((m) => m < range.lo || m > range.hi)) errors.push(`${mode} Stufe ${n} ${part}: Ton außerhalb ${range.lo}–${range.hi} (${targets})`);
-            if (mode === 'findTone' && n === 6) {
+            if (mode === 'findTone' && n === 6 && !a4 && (task.cue !== 'satb' || task.target !== task.satb[part])) errors.push(`Ton finden Stufe 6 ${part}: nicht der eigene Akkordton`);
+            if (a4) {
               if (task.name !== noteLabel(task.target) || mod(task.name.toLowerCase().replace(/[′″,]/g, '') === '' ? 0 : 0, 1)) errors.push('a′-Aufgabe: Name passt nicht');
               const dist = task.dir === 'down' ? task.aRef - task.target : task.dir === 'up' ? task.target - task.aRef : 0;
               if (dist !== task.semis || mod(task.aRef, 12) !== 9) errors.push(`a′-Aufgabe: ${task.text} (${task.target})`);
@@ -6591,17 +7010,18 @@
     if (intervalSolfa(4, 'up') !== 'do → mi' || intervalSolfa(3, 'down') !== 'do → la,') errors.push(`Intervall-Silben: ${intervalSolfa(4, 'up')} / ${intervalSolfa(3, 'down')}`);
     if (diatonicOf(60, 0) !== 28 || diatonicOf(61, 1) !== 29 || diatonicOf(71, 11) !== 34 || diatonicOf(64, 0) !== 30) errors.push('Notenzeile: Tonstufen falsch');
     // Speichern/Laden
-    const saved = JSON.parse(JSON.stringify({ mode: sing.mode, levels: sing.levels, solfa: sing.solfa }));
+    const saved = JSON.parse(JSON.stringify({ mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSight: sing.showSight }));
     const savedTab = state.tab;
     try {
-      Object.assign(sing, { mode: 'sight', solfa: 'numbers' }); Object.assign(sing.levels, { sight: 4, hold: 6 });
+      // (Blattsingen ist seit der Pop-Didaktik nur eingeblendet wählbar.)
+      Object.assign(sing, { mode: 'sight', solfa: 'numbers', showSight: true }); Object.assign(sing.levels, { sight: 4, hold: 6 });
       const snap = JSON.parse(JSON.stringify(snapshot()));
       Object.assign(sing, { mode: 'tuner', solfa: 'syllables' }); Object.assign(sing.levels, { sight: 1, hold: 1 });
       restore(snap);
       if (sing.mode !== 'sight' || sing.solfa !== 'numbers' || sing.levels.sight !== 4 || sing.levels.hold !== 6) errors.push('Singen: Speichern/Laden verliert Werte');
       restore({ tab: savedTab, sing: { mode: 'x', levels: { sight: 0 }, solfa: 'abc' } });
       if (sing.mode !== 'sight' || sing.levels.sight !== 4 || sing.solfa !== 'numbers') errors.push('Singen: kaputte Werte übernommen');
-    } finally { Object.assign(sing, { mode: saved.mode, solfa: saved.solfa }); Object.assign(sing.levels, saved.levels); state.tab = savedTab; }
+    } finally { Object.assign(sing, { mode: saved.mode, solfa: saved.solfa, showSight: saved.showSight }); Object.assign(sing.levels, saved.levels); state.tab = savedTab; }
     return errors;
   }
 
@@ -6766,9 +7186,10 @@
             }
           }
         }
-        if (mode === 'inTime' && level.n === 6 && minors !== count) add(`${name}: nicht immer Moll`);
-        if (mode === 'singEcho' && level.n === 6 && (minors < count * .4 || minors > count * .6)) add(`${name}: Moll ${minors}/${count}`);
-        if (level.n < 6 && minors) add(`${name}: Moll vor Stufe 6`);
+        // Pop-Didaktik: Stufe 1–2 Dur, Stufe 3 Moll-Pentatonik, ab Stufe 4 Dur oder Moll (je etwa die Hälfte).
+        if (level.n <= 2 && minors) add(`${name}: Moll in Stufe ${level.n}`);
+        if (level.n === 3 && minors !== count) add(`${name}: nicht immer Moll`);
+        if (level.n >= 4 && (minors < count * .4 || minors > count * .6)) add(`${name}: Moll ${minors}/${count}`);
       }
     }
     // Soll-Zeiten: gebundene Noten zusammengezählt, Pausen keine Zieltöne.
@@ -7150,6 +7571,7 @@
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...singPackageCheck());
+    errors.push(...popSingCheck());
     errors.push(...echoSimCheck());
     errors.push(...rhythmMelodyCheck());
     errors.push(...echoFlowCheck());
@@ -7161,9 +7583,10 @@
       QUICK_CHAINS.ear.forEach(([m, n]) => { if (!EAR_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Hören: ${m}`); });
       QUICK_CHAINS.voice.forEach(([m, n]) => { if (!SING_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Singen: ${m}`); });
       // Nachsingen Paket 5: Reihenfolge Nachsingen, Intervalle singen, Im Takt, Ton finden, Blattsingen; 6 statt 8.
-      if (QUICK_CHAINS.voice.map(([m]) => m).join() !== 'singEcho,singInterval,inTime,findTone,hold,sight' || QUICK_CHAINS.voice[0][1] !== 6 || QUICK_CHAINS.voice[2][1] !== 6) errors.push(`Schnellstart Singen: Reihenfolge ${QUICK_CHAINS.voice.map(([m, n]) => `${m}×${n}`)}`);
+      // (Pop-Didaktik: Diktat statt Blattsingen in der Kette; Reihenfolge nach Gehör zuerst.)
+      if (QUICK_CHAINS.voice.map(([m]) => m).join() !== 'singEcho,singInterval,inTime,findTone,hold,dictation' || QUICK_CHAINS.voice[0][1] !== 6 || QUICK_CHAINS.voice[2][1] !== 6) errors.push(`Schnellstart Singen: Reihenfolge ${QUICK_CHAINS.voice.map(([m, n]) => `${m}×${n}`)}`);
       if (areaOf('singEcho') !== 'echo' || areaOf('inTime') !== 'inTime') errors.push('Nachsingen/Im Takt: falscher Fortschrittsbereich');
-      if (SING_MODES.map(([id]) => id).join() !== 'tuner,hold,singInterval,findTone,singEcho,inTime,sight,dictation') errors.push('Reihenfolge der Sing-Modi falsch');
+      if (SING_MODES.map(([id]) => id).join() !== 'tuner,hold,findTone,singEcho,inTime,singInterval,dictation,sight') errors.push('Reihenfolge der Sing-Modi falsch');
       const mp = (q) => JSON.stringify(parseModeParam(q));
       if (mp('?tab=voice&mode=echo') !== '{"mode":"singEcho","variant":null}' || mp('?embedded=1&tab=voice&mode=inTime&variant=sheet') !== '{"mode":"inTime","variant":"sheet"}'
         || mp('?tab=voice&mode=inTime&variant=x') !== '{"mode":"inTime","variant":null}') errors.push('Deep-Link mode/variant falsch');
@@ -7200,7 +7623,7 @@
         applyQuickParams({ tab: 'ear' });
         if (views.ear !== 'exercise' || state.tab !== 'ear' || ear.mode !== QUICK_CHAINS.ear[0][0] || !quickRun || quickRun.steps !== QUICK_CHAINS.ear) errors.push('from=quick&tab=ear startet die Kette nicht wie bisher');
         quickRun = saved.run;
-        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES], ['voice', SING_MODES]]) {
+        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES], ['voice', visibleSingModes()]]) {
           renderModeList(tab);
           for (const [id] of list) {
             const n = $$(`[data-list="${tab}"] [data-open-mode="${tab}:${id}"]`).length;
@@ -7316,6 +7739,9 @@
     // Pop-Didaktik: Hören
     EAR_LEVELS, QUALITY_LEVELS, CADENCE_LEVELS, INTERVAL_PRESETS, chordToneNames, chordNames, makeModulationTask, makeEarTask,
     get popEarNotes() { return popEarNotes.slice(); },
+    // Pop-Didaktik: Singen
+    ECHO_LEVELS, HOLD_LEVELS, FIND_LEVELS, CHROMA_TURNS, makeSingTask, melodySpec, wobbleCents, toneLabel, popSingCheck,
+    get popSingNotes() { return popSingNotes.slice(); },
     rhythmSvg: (pattern, syllables = null) => systemSvg({ pattern, meterId: pattern.meter, lines: phraseLines(pattern), y0: 0, reveal: true, statusOf: () => '', syllables, taps: [] }),
   };
 
@@ -7356,11 +7782,13 @@
   const QUICK_CHAINS = {
     ear: [['interval', 10], ['quality', 10], ['chords', 6], ['cadence', 6], ['tuning', 10]],
     // Nachsingen und Im Takt mit 6 statt 8 Aufgaben (sie dauern länger).
-    voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['hold', 4], ['sight', 4]],
+    // Pop-Didaktik: Diktat statt Blattsingen (nach Gehör).
+    voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['hold', 4], ['dictation', 4]],
   };
   // Ungefähre Dauer der Ketten (Singen: je Aufgabe ~25 s Nachsingen/Im Takt,
-  // ~20 s Intervalle/Ton finden, ~15 s Ton halten, ~40 s Blattsingen).
-  const QUICK_MINUTES = { ear: 10, voice: 15 };
+  // ~20 s Intervalle/Ton finden, ~15 s Ton halten, ~30 s Diktat:
+  // 150 + 160 + 150 + 160 + 60 + 120 s ≈ 13 Min.).
+  const QUICK_MINUTES = { ear: 10, voice: 13 };
   const QUICK_TITLE = { ear: 'Hören', voice: 'Singen' };
   const quickName = (tab, mode) => (tab === 'ear' ? EAR_MODES : SING_MODES).find(([id]) => id === mode)?.[1] || mode;
   /** URL-Parameter → { tab } oder null (dann normales Verhalten). */
