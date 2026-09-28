@@ -27,7 +27,8 @@ siehe Paket 5. Alle anderen Voraussetzungen (Stimmprofil/`practiceRange`,
 | 3 | Modus „Nachsingen“ | umgesetzt | `da22f65` | v333 | Ablauf mit eingespeisten Rahmen: 8 Befunde (sauber, Oktave tiefer/höher, +2 und −1 Halbton verschoben, Ton fehlt, Ton zu hoch, nichts erkannt) mit richtigem Satz, Rahmen danach verworfen; „zu tief“, Transposition „3 Halbtöne“; Grafik-Klassen; „Nochmal“ behält die Melodie; drei Hilfen setzen `help: true`, „Noch einmal hören“ höchstens 2×, erste Hälfte erst ab Stufe 4 |
 | 4 | Modus „Im Takt“ | umgesetzt | `ef9a1d9` | v334 | Zeitplan 6 Stufen × 60 Melodien × 2 Varianten (Bögen, Pausen, Auftakt vorhanden): Sollzeiten, Einzähler, Taktraster, Klick-Lautstärke exakt; Versatz 200 ms bei `singLatencyMs` 200 → 100 % gut; +100 ms → überwiegend knapp, Satz „spät“ (−100 ms → „früh“); realistische Sänger:in ≥ 92 % gut (große Stichprobe s. u.); Kalibrierung 180 ± 20 ms → 170–190 (5×); Roundtrip Latenz, Tempo-Faktor, Variante, Rhythmussprache, `null` |
 | 5 | Einbindung: Stufen, Fortschritt, Schnellstart | umgesetzt | `b2f5582` | v335 | App: Einträge `echo`/`inTime` landen unter „Singen“ (Minuten, Kachel-Stufe (4+2)/2 = 3, Hilfe-Markierung), nicht unter Rhythmus; Kette in der festgelegten Reihenfolge mit 6/8/6/8/4; Deep-Links richtig, 5 falsche Varianten ignoriert |
-| — | Nachbesserung + Bericht | — | (dieser Commit) | v336 | Stufenwechsel während Kalibrierung/Durchgang: Kalibrierung verworfen, geplante Klicks ausgeblendet |
+| — | Nachbesserung + Bericht | — | `8ab8bd1` | v336 | Stufenwechsel während Kalibrierung/Durchgang: Kalibrierung verworfen, geplante Klicks ausgeblendet |
+| — | Nachträge nach Rückmeldung | — | (dieser Commit) | v337 | „zu kurz“ zählt: Richtig/`value` und Satz geprüft; Kette mit Ton halten in fester Reihenfolge; „ca. 15 Min.“ in der Liste; Stufe 6 bei ♩ = 72 |
 
 Jedes Paket wurde vor dem Commit so geprüft:
 - Headless-Chromium (Playwright vorinstalliert, nichts nachinstalliert):
@@ -131,8 +132,8 @@ Jedes Paket wurde vor dem Commit so geprüft:
     unverändert; die realistische Sänger:in läuft zusätzlich mit ≥ 92 % mit.
   - Große Stichprobe (100 Melodien je Stufe, realistische Sänger:in,
     Latenz 200 ms): „gut“ 99,3 / 99,1 / 96,7 / 94,1 / 94,7 / 95,1 % in den
-    Stufen 1–6. In Stufe 6 (Sechzehntel bei ♩ = 84, 179 ms) wurden 177 von
-    ≈ 1850 Tönen nicht erkannt (≈ 10 %) — siehe „Zu entscheiden“.
+    Stufen 1–6. In Stufe 6 wurden bei ♩ = 84 (Sechzehntel 179 ms) ≈ 10 % der
+    Töne nicht erkannt; seit den Nachträgen läuft Stufe 6 bei ♩ = 72 (s. u.).
   - Kalibrierung: echter Median (bei gerader Zahl Mittel der beiden mittleren
     Werte). Die 60-Hz-Bildrate verschiebt jeden erkannten Einsatz um im Mittel
     ein halbes Bild (≈ 8 ms) — in Kalibrierung und Auswertung gleich, es hebt
@@ -177,19 +178,24 @@ Jedes Paket wurde vor dem Commit so geprüft:
   vielen Achteln (Details werden abwechselnd versetzt).
 - Anzeige der Schlüssel 𝄞/𝄢 in den System-Schriften.
 
+## Nachträge nach Rückmeldung
+
+| Änderung | Umsetzung |
+|---|---|
+| „Zu kurz“ wird mitbewertet | Im Takt: eine Aufgabe ist nur richtig, wenn zusätzlich kein Ton zu kurz ist (kürzer als 60 % des Notenwerts − 50 ms, wie `longEnough` in Anhang A; der Schlusston zählt nicht). `value` zählt nur Töne, die getroffen, rechtzeitig und lang genug sind. Zusammenfassung „… · 1 zu kurz“ und Satz „Ein Ton war zu kurz – halte jeden Ton bis kurz vor den nächsten Einsatz.“ Die Sänger:in aus Anhang B löst das in Stufe 6 bei 0,2 % der Töne aus. |
+| Ton halten wieder in der Kette | Singen-Schnellstart: Nachsingen 6 · Intervalle singen 8 · Im Takt 6 · Ton finden 8 · Ton halten 4 · Blattsingen 4. |
+| Dauer der Kette | „Gemischt üben“ zeigt je Bereich die eigene Dauer: Hören ca. 10 Min., Singen ca. 15 Min. (Schätzung: je Aufgabe ≈ 25 s Nachsingen/Im Takt, ≈ 20 s Intervalle/Ton finden, ≈ 15 s Ton halten, ≈ 40 s Blattsingen, dazu einmal die Kalibrierung). |
+| Stufe 6 langsamer | Im Takt Stufe 6: ♩ = 72 statt 84. Messung (100 Melodien je Tempo, Sänger:in aus Anhang B), Töne erkannt: ♩ 84 → 90,0 %, 80 → 92,6 %, 76 → 93,7 %, **72 → 95,6 %**, 66 → 97,7 %; Einsätze „gut“ bleiben bei 93–95 %. |
+
 ## Zu entscheiden
 
-- Soll „Im Takt“ die Tonlänge (zu kurz) später mitbewerten? (Heute nur
-  Hinweis „kurz“ an der Note und ein Satz ohne Wertung.)
 - Sollen Nachsingen-Melodien später wahlweise gesungen statt vom Klavier
-  vorgespielt werden (Vokal-Klang)?
-- „Ton halten“ ist aus dem Singen-Schnellstart gefallen; die Kette dauert mit
-  Nachsingen und Im Takt deutlich länger als die angezeigten „ca. 10 Min.“ —
-  Ton halten wieder aufnehmen, Mengen kürzen oder den Text ändern?
-- Im Takt Stufe 6: Sechzehntel bei ♩ = 84 werden zu ≈ 10 % nicht erkannt —
-  Tempo der Stufe senken oder Sechzehntel dort seltener machen?
+  vorgespielt werden (Vokal-Klang)? Möglichkeiten sind beschrieben, noch nicht
+  umgesetzt.
 - Im Takt Stufe 1 (ein Takt): Schlusston auf Zz. 3 wie jetzt, oder die Stufe
   auf zwei Takte erweitern?
 - Im Takt Stufe 6 immer Moll (wie Blattsingen 6) oder wie Nachsingen 6 nur zu
   50 %?
 - Soll „Nur die erste Hälfte“ ganz ungezählt bleiben statt „mit Hilfe“?
+- Stufe 6 (♩ = 72) ist jetzt langsamer als Stufe 5 (♩ = 80) — so lassen
+  oder Stufe 5 ebenfalls anpassen?

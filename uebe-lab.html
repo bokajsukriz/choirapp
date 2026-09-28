@@ -1972,7 +1972,7 @@
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
       <span class="mode-ico">${modeIcon(icon)}</span><span><strong>${name}</strong><span class="mode-how">${text}</span></span><span class="mode-lv">${right}</span></button></li>`;
     const rows = [];
-    if (QUICK_CHAINS[tab]) rows.push(row(`data-mixed="${tab}"`, 'mixed', 'Gemischt üben', 'Alle Übungsarten, ca. 10 Min.', '', ' is-mixed'));
+    if (QUICK_CHAINS[tab]) rows.push(row(`data-mixed="${tab}"`, 'mixed', 'Gemischt üben', `Alle Übungsarten, ca. ${QUICK_MINUTES[tab]} Min.`, '', ' is-mixed'));
     for (const [id, name] of areaModes(tab)) {
       const isLast = id === last;
       rows.push(row(`data-open-mode="${tab}:${id}"`, id, name + (isLast ? '<span class="visually-hidden"> (zuletzt geöffnet)</span>' : ''), MODE_TEXT[id], modeLevelText(tab, id), isLast ? ' is-last' : ''));
@@ -3822,7 +3822,7 @@
     { n: 3, label: 'Pausen, Pentatonik',          sight: 3, meters: ['4/4', '3/4'],        bars: 2, elements: ['e', 'r'],                pickup: false, bpm: 76, tol: 45, win: [.08, .15] },
     { n: 4, label: 'Punktiert, Auftakt, dazu fa', sight: 4, meters: ['4/4', '3/4'],        bars: 2, elements: ['e', 'r', 'd'],           pickup: true,  bpm: 76, tol: 40, win: [.08, .15] },
     { n: 5, label: 'Vier Takte, Synkopen, 6/8',   sight: 5, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie'], pickup: true, bpm: 80, tol: 40, win: [.08, .15] },
-    { n: 6, label: 'Moll, Sechzehntel',           sight: 6, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie', 's'], pickup: true, bpm: 84, tol: 35, win: [.08, .15] },
+    { n: 6, label: 'Moll, Sechzehntel',           sight: 6, meters: ['4/4', '3/4', '6/8'], bars: 4, elements: ['e', 'r', 'd', 'sy', 'tie', 's'], pickup: true, bpm: 72, tol: 35, win: [.08, .15] }, // ♩ = 72: Sechzehntel 208 ms (bei 84 nur ~90 % erkannt)
   ];
   const MELODY_METERS = ['2/4', '3/4', '4/4', '6/8'];
   // Halbschluss am Ende der ersten Phrase: so oder re (Moll: mi oder ti,).
@@ -4666,9 +4666,16 @@
     const res = scoreEcho(task.plan.target, task.frames || [], { tolCents: task.tolerance, timing: true, latency: (sing.inTime.latencyMs || 0) / 1000, good: level.win[0], ok: level.win[1] });
     task.result = res;
     task.frames = null; // Rahmen verwerfen
-    const ok = res.notes.every((x) => x.pitchOk) && !res.notes.some((x) => x.timing === 'daneben') && res.extra <= 1;
-    const value = res.total ? res.notes.filter((x) => x.pitchOk && (x.timing === 'gut' || x.timing === 'knapp')).length / res.total : 0;
+    const { ok, value } = inTimeVerdict(res);
     finishSing(ok, inTimeFeedback(res), { value });
+  }
+  /** Richtig: alle Töne getroffen, kein Einsatz daneben, kein Ton zu kurz
+   *  (kürzer als 60 % des Notenwerts; der Schlusston zählt nicht), höchstens
+   *  ein Ton zu viel. value: Anteil der Töne, die das alles erfüllen. */
+  function inTimeVerdict(res) {
+    const good = (x) => x.pitchOk && (x.timing === 'gut' || x.timing === 'knapp') && x.longEnough !== false;
+    const ok = res.notes.every((x) => x.pitchOk && x.longEnough !== false) && !res.notes.some((x) => x.timing === 'daneben') && res.extra <= 1;
+    return { ok, value: res.total ? res.notes.filter(good).length / res.total : 0 };
   }
 
   /** Zusammenfassung „7 von 8 Tönen · Einsätze: 6 gut, 2 knapp“, Hinweise
@@ -4677,13 +4684,14 @@
     const matched = res.notes.filter((x) => !x.missing);
     if (!matched.length) return `0 von ${res.total} Tönen. Kein Ton erkannt – noch einmal, etwas lauter oder näher am Mikrofon.`;
     const n = (k) => matched.filter((x) => x.timing === k).length;
-    const parts = [`${res.hits} von ${res.total} Tönen · Einsätze: ${n('gut')} gut, ${n('knapp')} knapp${n('daneben') ? `, ${n('daneben')} daneben` : ''}.`];
+    const short = matched.filter((x) => x.longEnough === false).length;
+    const parts = [`${res.hits} von ${res.total} Tönen · Einsätze: ${n('gut')} gut, ${n('knapp')} knapp${n('daneben') ? `, ${n('daneben')} daneben` : ''}${short ? ` · ${short} zu kurz` : ''}.`];
     parts.push(...echoHints(res, false));
     const hit = res.notes.filter((x) => x.pitchOk && Number.isFinite(x.dtMs));
     const mean = hit.length ? hit.reduce((a, x) => a + x.dtMs, 0) / hit.length : 0;
     if (mean > 50) parts.push('Du kommst im Schnitt etwas spät – den Konsonanten vor den Schlag, den Vokal genau auf den Schlag.');
     else if (mean < -50) parts.push('Du bist im Schnitt etwas früh – ruhig auf den Schlag warten.');
-    if (res.notes.some((x) => x.longEnough === false)) parts.push('Einige Töne waren kürzer als notiert (ohne Wertung).');
+    if (short) parts.push(`${short === 1 ? 'Ein Ton war' : `${short} Töne waren`} zu kurz – halte jeden Ton bis kurz vor den nächsten Einsatz.`);
     return parts.join(' ');
   }
   const inTimeMarks = (res) => res.notes.map((x) => ({
@@ -6283,6 +6291,12 @@
     if (!/im Schnitt etwas früh/.test(earlyText)) errors.push(`Im Takt: Tendenz früh fehlt („${earlyText}“)`);
     const sumText = inTimeFeedback({ notes: [{ pitchOk: true, cents: 0, timing: 'gut', dtMs: 10 }, { pitchOk: true, cents: 0, timing: 'knapp', dtMs: 20 }, { missing: true }], hits: 2, total: 3, extra: 0, octave: 0, transposed: null });
     if (!sumText.startsWith('2 von 3 Tönen · Einsätze: 1 gut, 1 knapp.') || /spät|früh/.test(sumText) || !/Ein Ton fehlt/.test(sumText)) errors.push(`Im Takt: Zusammenfassung „${sumText}“`);
+    // „Zu kurz“ zählt mit (Richtig und value), der Schlusston nicht.
+    const vShort = inTimeVerdict({ notes: [{ pitchOk: true, timing: 'gut', longEnough: false }, { pitchOk: true, timing: 'gut' }], total: 2, extra: 0 });
+    const vOk = inTimeVerdict({ notes: [{ pitchOk: true, timing: 'knapp', longEnough: true }, { pitchOk: true, timing: 'gut' }], total: 2, extra: 0 });
+    if (vShort.ok || vShort.value !== .5 || !vOk.ok || vOk.value !== 1) errors.push(`Im Takt: „zu kurz“ nicht mitbewertet (${JSON.stringify([vShort, vOk])})`);
+    const shortText = inTimeFeedback({ notes: [{ pitchOk: true, cents: 0, timing: 'gut', dtMs: 0, longEnough: false }, { pitchOk: true, cents: 0, timing: 'gut', dtMs: 0 }], hits: 2, total: 2, extra: 0, octave: 0, transposed: null });
+    if (!shortText.startsWith('2 von 2 Tönen · Einsätze: 2 gut, 0 knapp · 1 zu kurz.') || !/Ein Ton war zu kurz/.test(shortText)) errors.push(`Im Takt: Satz „zu kurz“: ${shortText}`);
     const mk = inTimeMarks({ notes: [{ pitchOk: false, cents: 60, timing: 'daneben', dtMs: -190, longEnough: false }, { missing: true }] });
     if (mk[0].pitch !== 'off' || mk[0].timing !== 'daneben' || !mk[0].short || mk[1].pitch !== 'miss' || mk[1].timing !== null) errors.push('Im Takt: Zeichen je Note falsch');
     // Notenzeile: Noten, Bögen, Pausen, Bewertung.
@@ -6474,7 +6488,7 @@
       QUICK_CHAINS.ear.forEach(([m, n]) => { if (!EAR_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Hören: ${m}`); });
       QUICK_CHAINS.voice.forEach(([m, n]) => { if (!SING_MODES.some(([id]) => id === m) || !(n > 0)) errors.push(`Schnellstart Singen: ${m}`); });
       // Nachsingen Paket 5: Reihenfolge Nachsingen, Intervalle singen, Im Takt, Ton finden, Blattsingen; 6 statt 8.
-      if (QUICK_CHAINS.voice.map(([m]) => m).join() !== 'singEcho,singInterval,inTime,findTone,sight' || QUICK_CHAINS.voice[0][1] !== 6 || QUICK_CHAINS.voice[2][1] !== 6) errors.push(`Schnellstart Singen: Reihenfolge ${QUICK_CHAINS.voice.map(([m, n]) => `${m}×${n}`)}`);
+      if (QUICK_CHAINS.voice.map(([m]) => m).join() !== 'singEcho,singInterval,inTime,findTone,hold,sight' || QUICK_CHAINS.voice[0][1] !== 6 || QUICK_CHAINS.voice[2][1] !== 6) errors.push(`Schnellstart Singen: Reihenfolge ${QUICK_CHAINS.voice.map(([m, n]) => `${m}×${n}`)}`);
       if (areaOf('singEcho') !== 'echo' || areaOf('inTime') !== 'inTime') errors.push('Nachsingen/Im Takt: falscher Fortschrittsbereich');
       if (SING_MODES.map(([id]) => id).join() !== 'tuner,hold,singInterval,findTone,singEcho,inTime,sight,dictation') errors.push('Reihenfolge der Sing-Modi falsch');
       const mp = (q) => JSON.stringify(parseModeParam(q));
@@ -6521,6 +6535,7 @@
           }
           if ($$(`[data-list="${tab}"] [data-open-mode]`).length !== list.length) errors.push(`Liste ${tab}: zusätzliche Zeilen`);
           if (!!$(`[data-list="${tab}"] [data-mixed]`) !== !!QUICK_CHAINS[tab]) errors.push(`Liste ${tab}: „Gemischt üben“ falsch`);
+          if (QUICK_CHAINS[tab] && !$(`[data-list="${tab}"] [data-mixed]`).textContent.includes(`ca. ${QUICK_MINUTES[tab]} Min.`)) errors.push(`Liste ${tab}: Dauer fehlt`);
         }
         if ($$('[data-list="voice"] [data-open-mode]').pop()?.dataset.openMode !== 'voice:tuner') errors.push('Tuner nicht letzte Zeile');
         // Stufen-Karte: Zahl, Balken, „ändern“ öffnet das Blatt; dessen Zeilen
@@ -6626,8 +6641,11 @@
   const QUICK_CHAINS = {
     ear: [['interval', 10], ['quality', 10], ['chords', 6], ['cadence', 6], ['tuning', 10]],
     // Nachsingen und Im Takt mit 6 statt 8 Aufgaben (sie dauern länger).
-    voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['sight', 4]],
+    voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['hold', 4], ['sight', 4]],
   };
+  // Ungefähre Dauer der Ketten (Singen: je Aufgabe ~25 s Nachsingen/Im Takt,
+  // ~20 s Intervalle/Ton finden, ~15 s Ton halten, ~40 s Blattsingen).
+  const QUICK_MINUTES = { ear: 10, voice: 15 };
   const QUICK_TITLE = { ear: 'Hören', voice: 'Singen' };
   const quickName = (tab, mode) => (tab === 'ear' ? EAR_MODES : SING_MODES).find(([id]) => id === mode)?.[1] || mode;
   /** URL-Parameter → { tab } oder null (dann normales Verhalten). */
