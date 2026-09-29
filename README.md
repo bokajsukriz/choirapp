@@ -66,11 +66,20 @@ ein Dialog mit echter Wahl).
   `loadGrooveLab` in `app.js`) und per `<script src>` in `uebe-lab.html`,
   `einsingen.html` und `piano.html`. Prüfungen: `chorApp.selfTestMusic()`
   und `selfCheck()` in der Konsole der Tool-iframes.
-- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Kurs: 25 typische Klatschrhythmen
-  vom Grundschlag bis zur Son-Clave in sechs Kapiteln, je mit kurzer
-  Vorstellung und optionalem „?“, vier Schritte Mitklatschen → Vom Blatt →
-  Nachklatschen → Im Zusammenhang/Behalten, Fortschritt gespeichert;
-  Zweistimmig: gelernte Rhythmen vier Takte gegen eine zweite Stimme halten
+- `uebe-lab.html` — „Ausbildung“ (Rhythmus-Kurs: 26 Lektionen in sechs
+  Kapiteln nach ihrer Funktion im Popsong — Puls und Backbeat, Achtel und
+  Offbeat, Synkopen und Vorziehen, Sechzehntel-Grooves, Shuffle und
+  Zwölfachtel, Rhythmen aus Afrika und Lateinamerika — plus ein freiwilliges
+  Zusatzkapitel (Walzer, Barock, Klassik), das nicht zum Fortschritt zählt.
+  Jede Lektion läuft nach Gehör: Nachklatschen → Behalten → im Zusammenhang
+  bzw. nur mit Snare → zuletzt „So sieht es aus“ (Mitklatschen mit Noten,
+  abschaltbar). Ab Kapitel 2 spielt ein neutraler Schlagzeug-Groove mit, der
+  sich je Schritt ausdünnt (`accompFor`, `ACCOMP`); in den freien Übungen ist
+  die Begleitung wählbar (Standard Klick). Hören statt Sehen: Beim
+  Nachklatschen zeigt die Notenfläche einen neutralen Platzhalter, die
+  Wiedergabe-Marke läuft nur beim Mitlesen (`visibleAids`) und stetig über den
+  Taktstrich (`markX`). Fortschritt gespeichert;
+  Zweistimmig: gelernte Rhythmen vier Takte lang gegen eine zweite Stimme halten
   – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;

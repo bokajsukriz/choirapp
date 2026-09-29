@@ -1246,6 +1246,75 @@
   }
 
   /* ------------------------------------------------------------------------
+     BEGLEITUNG — Groove statt Klick. Im Pop entsteht Rhythmus gegen den
+     Groove, nicht gegen einen gleichförmigen Klick. Der Groove ist „neutral“:
+     Bassdrum und Snare bzw. Rim nur auf Hauptschlägen, die Hi-Hat als
+     gleichmäßiges Raster ohne Akzente — er spielt nie den Zielrhythmus vor.
+     Innerhalb einer Lektion wird er ausgedünnt (Stufen), bis nur noch die
+     Snare auf 2 und 4 übrig ist. Ticks je Takt, 12 = Viertel.
+     ------------------------------------------------------------------------ */
+  const ACCOMP = {
+    '4/4':  { kick: [0, 24], snare: [12, 36] },
+    '6/8':  { kick: [0], rim: [18] },
+    '12/8': { kick: [0, 36], snare: [18, 54] },
+  };
+  const ACCOMP_LEVELS = {
+    full: ['kick', 'snare', 'rim', 'hat'],
+    backbeat: ['kick', 'snare', 'rim'],
+    snare: ['snare', 'rim'],
+    kick: ['kick'],
+  };
+  // Pegel: Die Vorbild-Klatscher (Rauschstöße um 1,5 kHz) sind leise — deutlich
+  // leiser als das Schlagzeug des Metronom-Tools. Deshalb das Schlagzeug
+  // −10,5 dB (Bassdrum zusätzlich abgesenkt, sie trägt die meiste Energie) und
+  // die Klatscher in Runden mit Groove um +9,5 dB angehoben (ohne Groove
+  // unverändert). Gemessen: selfCheckAudio.
+  const ACCOMP_GAIN = .3;
+  const CLAP_WITH_ACCOMP = 3;
+  /** Hi-Hat-Raster (nur Stufe 'full'): Ticks `at` innerhalb jeder Periode. */
+  function hatGridFor({ shuffle = false, triplets = false, sixteenths = false }) {
+    if (shuffle) return { period: 12, at: [0, 8] };
+    if (triplets) return { period: 4, at: [0] };
+    if (sixteenths) return { period: 3, at: [0] };
+    return { period: 6, at: [0] };
+  }
+  /** Raster passend zu den Noten einer Lektion (Shuffle, Triolen, Sechzehntel). */
+  function lessonHatGrid(l) {
+    const notes = lessonPattern(l).notes;
+    return hatGridFor({
+      shuffle: !!l.shuffle,
+      triplets: notes.some((n) => n.d === 4 && !n.sh),
+      sixteenths: notes.some((n) => n.d % 6 !== 0 && n.d !== 4 && !n.sh),
+    });
+  }
+  /** Begleitung einer Kurs-Runde: { level, hatGrid } oder null (Klick).
+   *  Klick in Kapitel 1 (außer Lektionen mit eigener `accomp`), im Zusatzkapitel
+   *  und in Taktarten ohne Groove; ebenso bei `settings.accomp === 'click'`.
+   *  `lesson.accomp` überschreibt die Stufe des Schritts. */
+  function accompFor(lesson, step, settings = {}) {
+    if ((settings.accomp || 'groove') === 'click') return null;
+    if (!ACCOMP[lesson.meter] || lesson.ch >= COURSE_EXTRA_CH || (lesson.ch === 1 && !lesson.accomp)) return null;
+    const level = lesson.accomp || step?.accomp;
+    if (!ACCOMP_LEVELS[level]) return null;
+    return { level, hatGrid: lesson.bars ? lessonHatGrid(lesson) : hatGridFor({}) };
+  }
+  /** Begleitung einer freien Übung (Nachklatschen, Vom Blatt): Stufe aus der
+   *  Einstellung, Raster aus den Bausteinen (Sechzehntel bei `s`/`off`, Shuffle
+   *  bei Shuffle-Phrasen). Taktarten ohne Groove: Klick. */
+  function freeAccomp(level, meterId, elements, shuffle) {
+    if (!ACCOMP_LEVELS[level] || !ACCOMP[meterId]) return null;
+    return { level, hatGrid: hatGridFor({ shuffle: !!shuffle, sixteenths: elements.includes('s') || elements.includes('off') }) };
+  }
+  /** Schläge der Begleitung auf Tick `pos` im Takt. */
+  function accompHits(pos, acc, meterId) {
+    const groove = ACCOMP[meterId], allowed = ACCOMP_LEVELS[acc.level];
+    if (!groove || !allowed) return [];
+    const out = ['kick', 'snare', 'rim'].filter((k) => allowed.includes(k) && groove[k]?.includes(pos));
+    if (allowed.includes('hat') && acc.hatGrid.at.includes(pos % acc.hatGrid.period)) out.push('hat');
+    return out;
+  }
+
+  /* ------------------------------------------------------------------------
      ENGINE — Klick, Clap und ein klavierähnlicher Ton für die Hör-Aufgaben.
      ------------------------------------------------------------------------ */
 
@@ -1401,6 +1470,74 @@
       osc.start(time); osc.stop(time + .06);
     },
 
+    /* ---- Schlagzeug der Begleitung: Kopie aus metronom.html (drum, tone,
+       noiseHit; Stand e08b9d5), Ausgang über `dest` (Bus des Laufs, wird beim
+       Stoppen ausgeblendet). Abweichungen von der Vorlage: alle Pegel ×
+       ACCOMP_GAIN (−8 dB gegenüber dem Metronom-Tool, damit die Klatscher des
+       Vorbilds deutlich darüber liegen) und eine dunklere, kürzere Snare
+       (Körper 165 Hz, Rauschen um 1,2 kHz, 0,11 s), damit sie sich vom
+       Klatscher (1,5 kHz) unterscheidet. Bei Änderungen an der Vorlage nur
+       nachziehen, was den Klang betrifft. ---- */
+    drumTone(time, { freq, type = 'sine', gain, decay, attack = .001, filter }, dest) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, time);
+      g.gain.setValueAtTime(.0001, time);
+      g.gain.linearRampToValueAtTime(gain, time + attack);
+      g.gain.exponentialRampToValueAtTime(.0001, time + attack + decay);
+      let node = osc.connect(g);
+      if (filter) {
+        const f = ctx.createBiquadFilter();
+        f.type = filter.type; f.frequency.value = filter.freq; f.Q.value = filter.q ?? .7;
+        node = node.connect(f);
+      }
+      node.connect(dest || this.master);
+      osc.start(time); osc.stop(time + attack + decay + .02);
+    },
+    drumNoise(time, { type = 'highpass', freq, q = .7, gain, decay }, dest) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource();
+      const f = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      src.buffer = this.noise;
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      g.gain.setValueAtTime(gain, time);
+      g.gain.exponentialRampToValueAtTime(.0001, time + decay);
+      src.connect(f).connect(g).connect(dest || this.master);
+      src.start(time); src.stop(time + decay + .02);
+    },
+    /** kind: 'kick' | 'snare' | 'rim' | 'hat'. */
+    drum(kind, time, vel = 1, dest) {
+      const v = vel * ACCOMP_GAIN;
+      switch (kind) {
+        case 'kick': {
+          const ctx = this.ctx;
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.frequency.setValueAtTime(150, time);
+          osc.frequency.exponentialRampToValueAtTime(45, time + .11);
+          g.gain.setValueAtTime(.45 * v, time); // Vorlage .8
+          g.gain.exponentialRampToValueAtTime(.0001, time + .22);
+          osc.connect(g).connect(dest || this.master);
+          osc.start(time); osc.stop(time + .24);
+          break;
+        }
+        case 'snare':
+          this.drumTone(time, { freq: 165, type: 'triangle', gain: .28 * v, decay: .08 }, dest);
+          this.drumNoise(time, { type: 'bandpass', freq: 1200, q: .9, gain: .3 * v, decay: .11 }, dest);
+          break;
+        case 'rim':
+          this.drumTone(time, { freq: 1700, type: 'square', gain: .12 * v, decay: .025, filter: { type: 'bandpass', freq: 2000, q: 3 } }, dest);
+          break;
+        case 'hat':
+          this.drumNoise(time, { freq: 7000, gain: .07 * v, decay: .045 }, dest);
+          break;
+        default: break;
+      }
+    },
+
     burst(time, { cutoff, q, length, volume }, dest) {
       const ctx = this.ctx;
       const src = ctx.createBufferSource();
@@ -1414,8 +1551,8 @@
       src.start(time); src.stop(time + length + .02);
     },
 
-    clap(time, dest) {
-      [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: i === 2 ? .3 : .18 }, dest));
+    clap(time, dest, gain = 1) {
+      [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: (i === 2 ? .3 : .18) * gain }, dest));
     },
 
     /** Intonation: Sägezahn durch Tiefpass 2,5 kHz — die Obertöne machen
@@ -1546,6 +1683,7 @@
     mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 0,
     countIn: true, click: true, speedUp: false, showNotes: false,
     markSelf: false,     // Marke beim eigenen Klatschen (Vom Blatt, Nachklatschen mit Noten)
+    accomp: 'click',     // Begleitung der freien Übungen: 'click' | 'full' | 'backbeat' | 'snare'
     // Didaktik Paket 3
     bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0,
     rhythmLevel: 0,      // 1–6 = Stufe, 0 = eigene Auswahl
@@ -1567,7 +1705,7 @@
      (gespeichert), Silben der Kurs-Anzeige (eigene Einstellung, Standard
      „ta ti-ti“). review: gelernte Rhythmen gemischt wiederholen. saved:
      Taktart/Tempo der anderen Übungen, solange der Kurs offen ist. */
-  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'count', notes: 'last', moreOpen: false, saved: null };
+  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'count', notes: 'last', accomp: 'groove', moreOpen: false, saved: null };
   const courseLesson = () => COURSE.find((l) => l.id === course.lesson) || COURSE[0];
   const reviewPool = () => COURSE.filter((l) => course.done.includes(l.id));
   /** Kursfortschritt zählt nur die Kapitel 1–6; das Zusatzkapitel ist freiwillig
@@ -1709,11 +1847,15 @@
     let seq = null;
     let courseInfo = null;
     let duoPart = state.duoPart;
+    let accomp = null; // Klick, außer Kurs/freie Übung mit Groove (Zweistimmig: immer Klick)
     if (state.mode === 'course') {
       const cs = courseRoundSpec();
       ({ mode, pattern } = cs);
       seq = courseSeq(cs.mode, cs.gap);
       courseInfo = cs.course;
+      // Wiederholung mischt Kapitel: immer Bassdrum + Snare, wo die Taktart einen Groove hat.
+      accomp = cs.course.review ? accompFor({ meter: run.meter, ch: 2 }, { accomp: 'backbeat' }, course)
+        : accompFor(courseLesson(), { accomp: cs.accomp }, course);
     } else if (state.mode === 'duo' && state.duoStage < 5) {
       // Halten: gleich los (du kennst deinen Rhythmus), danach ein Leertakt
       // zum Ansehen — die nächste Runde bringt eine neue Gegenstimme.
@@ -1726,11 +1868,14 @@
       const freeChosen = free.elements.filter((id) => !(id === 't' && METERS[run.meter].unit !== 12));
       duo = makeDuo(run.meter, freeChosen, previous?.duo ? previous.duo.key : previous?.pattern.key, { bars: free.bars, pickup: free.pickup, ties: free.elements.includes('tie') });
       pattern = state.duoPart === 'upper' ? duo.upper : duo.lower;
-    } else pattern = makePattern(run.meter, chosen, previous?.pattern.key, opts);
+    } else {
+      pattern = makePattern(run.meter, chosen, previous?.pattern.key, opts);
+      accomp = freeAccomp(state.accomp, run.meter, chosen, pattern.shuffle);
+    }
     const round = {
       index, mode, meter: run.meter, bpm: state.bpm,
       tickSec: 60 / state.bpm / m.ref,
-      pattern, duo, duoPart,
+      pattern, duo, duoPart, accomp,
       seq: seq || roundSeq(state.mode, !!state.rounds && index === state.rounds - 1),
       showNotes: mode !== 'echo' || (state.showNotes && !courseInfo),
       youStart: null, result: null, course: courseInfo,
@@ -1801,7 +1946,10 @@
       run.bars.push({ time, dur: item.len * run.tickSec, kind: item.kind, round: item.round, pos: item.pos, start: item.start, tickSec: run.tickSec });
       if (item.kind === 'you' || item.kind === 'along') item.round.youStart = time;
     }
-    if (mod(tick, m.beat) === 0 && (state.click || item?.kind === 'count')) engine.click(time, beatLevel(m, mod(tick, m.ticks)), run.bus);
+    // Mit Begleitung entfällt der Zählzeit-Klick; der Einzähler bleibt Klick.
+    const acc = item && item.kind !== 'count' ? item.round.accomp : null;
+    if (mod(tick, m.beat) === 0 && (item?.kind === 'count' || (state.click && !acc))) engine.click(time, beatLevel(m, mod(tick, m.ticks)), run.bus);
+    if (acc) for (const kind of accompHits(mod(tick, m.ticks), acc, run.meter)) engine.drum(kind, time, 1, run.bus);
     if (!item) return;
     const r = item.round;
     const rel = tick - item.start;
@@ -1812,7 +1960,7 @@
       }
       return;
     }
-    if ((item.kind === 'listen' || item.kind === 'along') && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus);
+    if ((item.kind === 'listen' || item.kind === 'along') && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus, r.accomp ? CLAP_WITH_ACCOMP : 1);
   }
 
   function scheduleAhead() {
@@ -4323,7 +4471,7 @@
       <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}`;
     const inputHtml = `<span class="sub-label">Eingabe</span>
       ${choice('input', INPUT_CHOICES, state.input)}
-      ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}`;
+      ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick bzw. das Schlagzeug. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}`;
     const duoHead = state.mode === 'duo' ? `<span class="sub-label" style="margin-top:0">Stufe Zweistimmig</span>
       ${levelControlHtml('duo-sheet', DUO_LEVELS, state.duoStage)}` : '';
     if (state.mode === 'duo' && state.duoStage < 5) {
@@ -4351,6 +4499,9 @@
         <span class="sub-label" style="margin-top:0">Rhythmussprache</span>
         ${choice('courseSyl', SYLLABLE_CHOICES, course.syl)}
         <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Sie erscheinen im letzten Schritt, wo die Noten stehen.</p>
+        <span class="sub-label">Begleitung im Kurs</span>
+        ${choice('courseAccomp', [['groove', 'Groove (wird je Schritt leiser)'], ['click', 'Klick']], course.accomp)}
+        <p class="foot-note" style="margin-top:4px">Ab Kapitel 2 läuft ein Schlagzeug mit, das sich innerhalb jeder Lektion ausdünnt – am Ende bleibt nur die Snare auf 2 und 4. Der Groove spielt den Rhythmus nie vor. Kapitel 1, das Zusatzkapitel und Taktarten ohne Groove (Walzer, Habanera) laufen mit Klick.</p>
         <span class="sub-label">Notenbild im Kurs</span>
         ${choice('courseNotes', [['last', 'als letzter Schritt'], ['off', 'aus']], course.notes)}
         <p class="foot-note" style="margin-top:4px">Die Schritte davor laufen nach Gehör, ohne Noten. Wer das Notenbild abschaltet, übt ausschließlich mit den Ohren.</p>
@@ -4358,7 +4509,7 @@
         <span class="sub-label">Ablauf</span>
         <div class="check-list">
           ${row('countIn', 'Einzähler', 'ein Takt vorweg, bis zum Auftakt')}
-          ${row('click', 'Klick auf den Zählzeiten')}
+          ${row('click', 'Klick auf den Zählzeiten', 'entfällt, solange ein Groove läuft')}
         </div>
         <p class="foot-note" style="text-align:left">Taktart, Takte und Ablauf gibt die Lektion vor. Nach drei Fehlversuchen im selben Schritt wird es von selbst etwas langsamer; das Tempo kannst du unten jederzeit ändern.</p>
         ${latencyHtml()}`;
@@ -4380,6 +4531,9 @@
       <span class="sub-label">Rhythmussprache</span>
       ${choice('syllables', SYLLABLE_CHOICES, state.syllables)}
       <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Beim Nachklatschen erscheinen sie erst nach der Runde.</p>
+      ${state.mode === 'duo' ? '' : `<span class="sub-label">Begleitung</span>
+      ${choice('accomp', [['click', 'Klick'], ['full', 'Groove'], ['backbeat', 'Bassdrum und Snare'], ['snare', 'nur Snare auf 2 und 4']], state.accomp)}
+      <p class="foot-note" style="margin-top:4px">Der Groove spielt den Rhythmus nie vor: Bassdrum und Snare nur auf den Hauptschlägen, dazu ein gleichmäßiges Hi-Hat. In 2/4, 3/4, 2/2, 5/4 und 7/8 läuft weiter der Klick.</p>`}
       ${inputHtml}
       <div class="label-row"><span class="sub-label" style="margin:0">Leertakte</span>
         <button class="help-btn" type="button" data-help="help-gaps" aria-expanded="false" aria-label="Erklärung der Leertakte">?</button></div>
@@ -4391,7 +4545,7 @@
       <span class="sub-label">Ablauf</span>
       <div class="check-list">
         ${row('countIn', 'Einzähler', 'ein Takt vorweg, bis zum Auftakt')}
-        ${row('click', 'Klick auf den Zählzeiten')}
+        ${row('click', 'Klick auf den Zählzeiten', 'entfällt, solange ein Groove läuft')}
         ${row('speedUp', 'Tempo steigern', `+${SPEED_STEP} BPM je fehlerfreie Runde`)}
         ${row('showNotes', 'Noten beim Nachklatschen zeigen', 'sonst erst danach')}
         ${row('markSelf', 'Mitlaufende Marke beim eigenen Klatschen', 'Die Marke hilft beim Mitlesen. Beim eigenen Klatschen verführt sie dazu, der Linie zu folgen statt dem Puls – deshalb ist sie dort aus.')}
@@ -6874,10 +7028,10 @@
       tab: state.tab, bpm: state.bpm, tempoRef: 'beat', eighths: state.eighths, latency: state.latency,
       rhythm: {
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
-        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes, markSelf: state.markSelf,
+        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes, markSelf: state.markSelf, accomp: state.accomp,
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart, duoStage: state.duoStage, duoOstinato: state.duoOstinato,
-        course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes },
+        course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes, accomp: course.accomp },
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
@@ -6915,6 +7069,7 @@
     state.rounds = 0; // Rhythmus läuft immer endlos
     ['countIn', 'click', 'speedUp', 'showNotes', 'pickup'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
     state.markSelf = typeof r.markSelf === 'boolean' ? r.markSelf : false; // fehlt/kaputt → aus
+    state.accomp = ['click', 'full', 'backbeat', 'snare'].includes(r.accomp) ? r.accomp : 'click';
     if (BAR_CHOICES.some(([n]) => n === r.bars)) state.bars = r.bars;
     if (SYLLABLE_CHOICES.some(([id]) => id === r.syllables)) state.syllables = r.syllables;
     if (INPUT_CHOICES.some(([id]) => id === r.input)) state.input = r.input;
@@ -6930,6 +7085,7 @@
     // Rhythmussprache im Kurs: Standard „1 + 2 +“, solange nichts Gültiges gespeichert ist.
     course.syl = SYLLABLE_CHOICES.some(([id]) => id === rc.syl) ? rc.syl : 'count';
     course.notes = rc.notes === 'off' ? 'off' : 'last';
+    course.accomp = rc.accomp === 'click' ? 'click' : 'groove';
     if (Number.isInteger(r.duoStage) && r.duoStage >= 1 && r.duoStage <= DUO_LEVELS.length) state.duoStage = r.duoStage;
     if (r.duoOstinato === 'auto' || COURSE.some((l) => l.id === r.duoOstinato && holdable(l))) state.duoOstinato = r.duoOstinato;
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
@@ -7065,6 +7221,7 @@
       if (key === 'meter') { setMeter(rset.dataset.value); state.rhythmLevel = 0; }
       else if (key === 'bars') { state.bars = Number(rset.dataset.value); state.rhythmLevel = 0; }
       else if (key === 'courseSyl') course.syl = rset.dataset.value;
+      else if (key === 'courseAccomp') course.accomp = rset.dataset.value === 'click' ? 'click' : 'groove';
       else if (key === 'courseNotes') {
         // Die Schrittfolge ändert sich: die Lektion beginnt beim nächsten Play von vorn.
         course.notes = rset.dataset.value === 'off' ? 'off' : 'last';
@@ -7587,6 +7744,112 @@
       Object.assign(course, saved.course); Object.assign(state, saved.state); Object.assign(run, saved.run);
       game.rounds = saved.rounds; selfTesting = saved.testing;
     }
+    return errors;
+  }
+
+  /** Begleitung (Paket 5): Zuordnung je Lektion und Schritt, Groove verrät
+   *  nichts, lückenloses Raster über viele Runden, Speichern/Laden. */
+  function accompCheck() {
+    const errors = [];
+    const lesson = (id) => COURSE.find((l) => l.id === id);
+    const step = (id, k, notes = 'last') => { const saveNotes = course.notes; course.notes = notes; try { return courseSteps(lesson(id))[k]; } finally { course.notes = saveNotes; } };
+    const A = (id, k, settings) => accompFor(lesson(id), step(id, k), settings);
+    const grid = (a) => (a ? `${a.hatGrid.period}:${a.hatGrid.at.join('/')}` : 'null');
+    // Zuordnung
+    if (A('puls', 0) !== null || A('halbe', 2) !== null || A('pause', 0) !== null) errors.push('Begleitung: Kapitel 1 soll Klick sein');
+    if (A('backbeat', 0)?.level !== 'kick' || A('backbeat', 3)?.level !== 'kick') errors.push('Begleitung: „Der Backbeat“ nur mit Bassdrum');
+    if (A('backbeat', 0, { accomp: 'click' }) !== null) errors.push('Begleitung: Backbeat trotz „Klick“');
+    if (A('sechzehntel', 0)?.level !== 'full' || grid(A('sechzehntel', 0)) !== '3:0') errors.push(`Begleitung: Sechzehntel Schritt 1 (${grid(A('sechzehntel', 0))})`);
+    if (A('sechzehntel', 1)?.level !== 'backbeat' || A('sechzehntel', 2)?.level !== 'snare' || A('sechzehntel', 3)?.level !== 'full') errors.push('Begleitung: Ausdünnen der Schritte 1–4');
+    if (grid(A('shuffle', 0)) !== '12:0/8') errors.push(`Begleitung: Shuffle-Raster ${grid(A('shuffle', 0))}`);
+    if (grid(A('triole', 0)) !== '4:0') errors.push(`Begleitung: Triolen-Raster ${grid(A('triole', 0))}`);
+    if (grid(A('achtel', 0)) !== '6:0' || grid(A('zwoelfachtel', 0)) !== '6:0' || grid(A('sechsachtel', 0)) !== '6:0') errors.push('Begleitung: Achtel-Raster');
+    if (grid(A('aufA', 0)) !== '3:0' || grid(A('synkope16', 0)) !== '3:0') errors.push('Begleitung: Einsatz auf e/a braucht Sechzehntel-Raster');
+    for (const id of ['walzer', 'sarabande', 'wiegen', 'hemiole', 'punktachtel', 'geburtstag', 'habanera']) if (A(id, 0) !== null) errors.push(`Begleitung: Zusatzkapitel ${id} soll Klick sein`);
+    for (const id of ['achtel', 'sechsachtel', 'zwoelfachtel', 'tresillo']) if (!A(id, 0)) errors.push(`Begleitung: ${id} ohne Groove`);
+    for (const l of COURSE) for (let k = 0; k < 4; k++) if (accompFor(l, courseSteps(l)[k], { accomp: 'click' }) !== null) errors.push(`Begleitung: ${l.id} Schritt ${k + 1} trotz „Klick“`);
+    if (accompFor({ meter: '3/4', ch: 2 }, { accomp: 'full' }, {}) !== null || accompFor({ meter: '2/4', ch: 2 }, { accomp: 'full' }, {}) !== null) errors.push('Begleitung: 3/4 und 2/4 sollen Klick bleiben');
+    if (freeAccomp('full', '7/8', ['e'], false) !== null || freeAccomp('click', '4/4', ['e'], false) !== null) errors.push('Begleitung: freie Übung ohne Groove');
+    if (grid(freeAccomp('full', '4/4', ['e', 's'], false)) !== '3:0' || grid(freeAccomp('full', '4/4', ['e', 'off'], false)) !== '3:0' || grid(freeAccomp('full', '4/4', ['e'], true)) !== '12:0/8' || grid(freeAccomp('full', '6/8', ['e'], false)) !== '6:0') errors.push('Begleitung: Raster der freien Übung');
+    // Der Groove verrät nichts: Bassdrum, Snare und Rim nur auf Hauptschlägen, Hi-Hat gleichmäßig.
+    for (const l of COURSE) {
+      const acc0 = accompFor({ ...l, ch: 2, accomp: undefined }, { accomp: 'full' }, {});
+      if (!acc0) continue;
+      const m = METERS[l.meter], main = m.unit === 12 ? 12 : 18;
+      const pat = lessonPattern(l);
+      for (const level of Object.keys(ACCOMP_LEVELS)) {
+        const acc = { ...acc0, level };
+        const hatPos = [];
+        for (let pos = 0; pos < m.ticks; pos++) {
+          const hits = accompHits(pos, acc, l.meter);
+          const drums = hits.filter((h) => h !== 'hat');
+          if (drums.length && pos % main !== 0) errors.push(`Begleitung ${l.id}/${level}: ${drums} bei ${pos} nicht auf einem Hauptschlag`);
+          if (drums.length && pat.onsets.some((t) => mod(t - pat.pickup, m.ticks) === pos && pos % main !== 0)) errors.push(`Begleitung ${l.id}/${level}: Groove spielt Offbeat mit`);
+          if (hits.includes('hat')) hatPos.push(pos);
+        }
+        if (level !== 'full' && hatPos.length) errors.push(`Begleitung ${l.id}/${level}: Hi-Hat in ausgedünnter Stufe`);
+        if (level === 'full') {
+          const gaps = new Set(hatPos.slice(1).map((p, i) => p - hatPos[i]));
+          if (m.ticks % acc.hatGrid.period || (!l.shuffle && (gaps.size !== 1 || hatPos[0] !== 0))) errors.push(`Begleitung ${l.id}: Hi-Hat-Raster ungleichmäßig`);
+        }
+      }
+      if (accompHits(0, { ...acc0, level: 'snare' }, l.meter).length) errors.push(`Begleitung ${l.id}: Stufe „snare“ spielt auf der Eins`);
+    }
+    // Lückenloses Raster über 12 Runden mit wechselndem Auftakt; im Einzähler kein Schlagzeug.
+    const saved = { state: { ...state }, run: { ...run }, rounds: game.rounds, testing: selfTesting, engine: {} };
+    const events = [];
+    for (const k of ['click', 'clap', 'block', 'drum']) { saved.engine[k] = engine[k]; engine[k] = (...args) => events.push([k, ...args]); }
+    selfTesting = true;
+    try {
+      const simulate = (accompSetting) => {
+        Object.assign(state, { mode: 'echo', accomp: accompSetting, countIn: true, click: true, rounds: 0 });
+        applyRhythmLevel(4);
+        Object.assign(run, { meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05, bars: [] });
+        game.rounds = []; events.length = 0;
+        layoutNext(true);
+        for (let i = 0; i < 11; i++) layoutNext();
+        const m = METERS['4/4'];
+        const pickups = new Set(game.rounds.map((r) => r.pattern.pickup));
+        for (let tick = 0; tick < run.layoutEnd; tick++) scheduleTick(tick, tick * .05, m);
+        return { m, pickups };
+      };
+      // Groove: pro Tick genau die erwarteten Schläge, im Einzähler nur Klick.
+      let { m, pickups } = simulate('full');
+      if (pickups.size < 2) errors.push('Begleitung: Test ohne wechselnden Auftakt');
+      const count = run.items.find((it) => it.kind === 'count');
+      const drumsAt = new Map();
+      for (const [k, kind, time] of events) if (k === 'drum') { const key = `${Math.round(time / .05)}|${kind}`; drumsAt.set(key, (drumsAt.get(key) || 0) + 1); }
+      if ([...drumsAt.values()].some((n) => n !== 1)) errors.push('Begleitung: doppelter Schlag im Raster');
+      for (let tick = 0; tick < run.layoutEnd; tick++) {
+        const item = run.items.filter((it) => it.start <= tick && tick < it.start + it.len).pop();
+        const want = item && item.kind !== 'count' ? accompHits(mod(tick, m.ticks), item.round.accomp, '4/4') : [];
+        const got = ['kick', 'snare', 'rim', 'hat'].filter((kind) => drumsAt.has(`${tick}|${kind}`));
+        if (want.slice().sort().join() !== got.sort().join()) { errors.push(`Begleitung: Tick ${tick} spielt ${got} statt ${want}`); break; }
+      }
+      if (!count || [...drumsAt.keys()].some((key) => Number(key.split('|')[0]) < count.len)) errors.push('Begleitung: Schlagzeug im Einzähler');
+      const clicks = events.filter((e) => e[0] === 'click').map((e) => Math.round(e[1] / .05));
+      if (clicks.some((t) => t >= count.len) || clicks.length !== count.len / m.beat) errors.push(`Begleitung: Klick außerhalb des Einzählers (${clicks.length})`);
+      // Standard „Klick“: wie bisher ein Klick auf jeder Zählzeit, kein Schlagzeug.
+      ({ m } = simulate('click'));
+      const beats = events.filter((e) => e[0] === 'click').map((e) => Math.round(e[1] / .05));
+      const wantBeats = Array.from({ length: Math.ceil(run.layoutEnd / m.beat) }, (_, i) => i * m.beat).filter((t) => t < run.layoutEnd);
+      if (events.some((e) => e[0] === 'drum') || beats.join() !== wantBeats.join()) errors.push('Begleitung: Standard „Klick“ verändert');
+    } finally {
+      for (const k of Object.keys(saved.engine)) engine[k] = saved.engine[k];
+      for (const k of Object.keys(state)) delete state[k];
+      Object.assign(state, saved.state); Object.assign(run, saved.run); game.rounds = saved.rounds; selfTesting = saved.testing;
+    }
+    // Speichern/Laden von accomp: neu / alt ohne Feld / kaputt.
+    const keep = { a: state.accomp, c: course.accomp, tab: state.tab };
+    try {
+      state.accomp = 'snare'; course.accomp = 'click';
+      restore(JSON.parse(JSON.stringify(snapshot())));
+      if (state.accomp !== 'snare' || course.accomp !== 'click') errors.push(`Begleitung: Roundtrip ${state.accomp}/${course.accomp}`);
+      restore({ tab: keep.tab, rhythm: { course: {} } });
+      if (state.accomp !== 'click' || course.accomp !== 'groove') errors.push(`Begleitung: alter Stand ${state.accomp}/${course.accomp}`);
+      restore({ tab: keep.tab, rhythm: { accomp: 'laut', course: { accomp: 7 } } });
+      if (state.accomp !== 'click' || course.accomp !== 'groove') errors.push(`Begleitung: kaputter Stand ${state.accomp}/${course.accomp}`);
+    } finally { state.accomp = keep.a; course.accomp = keep.c; }
     return errors;
   }
 
@@ -9757,6 +10020,7 @@
     errors.push(...popRhythmCheck());
     errors.push(...markCheck());
     errors.push(...aidsCheck());
+    errors.push(...accompCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
@@ -9931,6 +10195,29 @@
       if (!(ratio > .5 && ratio < 2.5)) errors.push(`${name}: Pegel ${ratio.toFixed(2)} × Klavier`);
     }
     voice.x = saved.x; voice.d = saved.d;
+    // Begleitung: Vorbild-Klatscher (mit Groove angehoben) deutlich über dem Schlagzeug.
+    // Vergleich ab 300 Hz (Ohr und Handylautsprecher hören Tiefes kaum): Effektivwert nach Hochpass.
+    const hpRms = (x, fc = 300) => {
+      const rc = 1 / (2 * Math.PI * fc), a = rc / (rc + 1 / sr);
+      let y = 0, e = 0;
+      for (let i = 1; i < x.length; i++) { y = a * (y + x[i] - x[i - 1]); e += y * y; }
+      return Math.sqrt(e / x.length);
+    };
+    const withEngine = async (fn) => render((ctx) => {
+      const save = { ctx: engine.ctx, master: engine.master, noise: engine.noise };
+      engine.ctx = ctx; engine.master = ctx.destination;
+      engine.noise = ctx.createBuffer(1, Math.round(sr * .3), sr);
+      const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      try { fn(); } finally { Object.assign(engine, save); }
+    });
+    const clapLevel = hpRms(await withEngine(() => engine.clap(.1, null, CLAP_WITH_ACCOMP)));
+    for (const kind of ['kick', 'snare', 'rim', 'hat']) {
+      const x = await withEngine(() => engine.drum(kind, .1, 1, null));
+      const level = hpRms(x);
+      if (!(x.reduce((a, b) => Math.max(a, Math.abs(b)), 0) > .01)) errors.push(`Begleitung ${kind}: kein Ton`);
+      // Bassdrum: nur „nicht lauter“; Snare, Rim, Hi-Hat: deutlich leiser als der Klatscher.
+      if (!(clapLevel > (kind === 'kick' ? 1 : 1.5) * level)) errors.push(`Begleitung ${kind}: Pegel ${(level * 1000).toFixed(2)} gegen Klatscher ${(clapLevel * 1000).toFixed(2)}`);
+    }
     return errors;
   }
 
@@ -9939,7 +10226,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml,
+    selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
