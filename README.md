@@ -79,6 +79,10 @@ ein Dialog mit echter Wahl).
   Nachklatschen zeigt die Notenfläche einen neutralen Platzhalter, die
   Wiedergabe-Marke läuft nur beim Mitlesen (`visibleAids`) und stetig über den
   Taktstrich (`markX`). Fortschritt gespeichert;
+  Klatsch-Grooves (Licks & Grooves, `?tab=rhythm&grooves=1`): geschaffte Kurs-
+  Lektionen hören, auffrischen und über 4 bis 16 Takte durchhalten (zuletzt mit
+  stillen Takten), Status und Wiederholen mit Abstand (Ablage `rhythm.grooves`);
+  Auswertung `judgeHold` wortgleich zu `licks.html`;
   Zweistimmig: gelernte Rhythmen vier Takte lang gegen eine zweite Stimme halten
   – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei;
   Rhythmus-Training mit Stufen, Phrasen,
