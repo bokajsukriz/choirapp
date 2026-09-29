@@ -1140,19 +1140,22 @@
   const comboPartners = (l) => COURSE.slice(0, COURSE.indexOf(l)).filter((x) => x.meter === l.meter && combinable(x) && !x.shuffle && (!l.shuffle || quarterOnly(x)));
   /** Ersatz-Partner, wenn es noch keinen bekannten gibt: zwei lange Noten je Takt. */
   const fallbackBar = (m) => (m.ticks === 72 ? '36 36' : m.ticks === 48 ? '24 24' : String(m.ticks === 24 ? 24 : 36));
-  /** Die vier Schritte einer Lektion; jeder braucht eine fehlerfreie Runde.
-   *  Ein-Takt-Rhythmen enden „im Zusammenhang“ (zwei Takte mit einem
-   *  bekannten Rhythmus, vom Blatt), längere mit „Behalten“ (Nachklatschen
-   *  nach einem Leertakt). */
+  /** Die Schritte einer Lektion; jeder braucht eine fehlerfreie Runde. Erst
+   *  hören, zuletzt lesen (Pop-Chor: nach Gehör): Nachklatschen → Behalten
+   *  (ein Takt still weiterzählen) → im Zusammenhang (zwei Takte, der neue
+   *  und ein bekannter Rhythmus) bzw. nur mit der Snare → „So sieht es aus“
+   *  (Mitklatschen mit Noten, entfällt bei `course.notes === 'off'`).
+   *  `accomp`: Begleitung der Runde (siehe ACCOMP_LEVELS). */
   function courseSteps(l) {
-    return [
-      { mode: 'along', name: 'Mitklatschen', how: 'Noten lesen und mit dem Vorbild klatschen.' },
-      { mode: 'read', name: 'Vom Blatt', how: 'Nur der Klick – du klatschst den Rhythmus allein.' },
-      { mode: 'echo', name: 'Nachklatschen', how: 'Erst hören, dann ohne Noten nachklatschen.' },
+    const steps = [
+      { mode: 'echo', name: 'Nachklatschen', how: 'Hören, dann ohne Noten nachklatschen.', accomp: 'full' },
+      { mode: 'echo', gap: 1, name: 'Behalten', how: 'Hören, einen Takt still weiterzählen, dann nachklatschen.', accomp: 'backbeat' },
       combinable(l)
-        ? { mode: 'read', combo: true, name: 'Im Zusammenhang', how: 'Zwei Takte vom Blatt: der neue Rhythmus und ein bekannter.' }
-        : { mode: 'echo', gap: 1, name: 'Behalten', how: 'Hören, einen Takt still weiterzählen, dann nachklatschen.' },
+        ? { mode: 'echo', combo: true, name: 'Im Zusammenhang', how: 'Zwei Takte nach Gehör: der neue Rhythmus und ein bekannter.', accomp: 'snare' }
+        : { mode: 'echo', name: 'Nur mit Snare', how: 'Nachklatschen, nur die Snare auf 2 und 4 hält dich.', accomp: 'snare' },
     ];
+    if (course.notes !== 'off') steps.push({ mode: 'along', name: 'So sieht es aus', how: 'Mitklatschen und dabei die Noten lesen – der Rhythmus, den du schon kannst, als Notenbild.', accomp: 'full' });
+    return steps;
   }
 
   /* ---- Zweistimmig: Rhythmus halten ----
@@ -1564,7 +1567,7 @@
      (gespeichert), Silben der Kurs-Anzeige (eigene Einstellung, Standard
      „ta ti-ti“). review: gelernte Rhythmen gemischt wiederholen. saved:
      Taktart/Tempo der anderen Übungen, solange der Kurs offen ist. */
-  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'ta', moreOpen: false, saved: null };
+  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'count', notes: 'last', moreOpen: false, saved: null };
   const courseLesson = () => COURSE.find((l) => l.id === course.lesson) || COURSE[0];
   const reviewPool = () => COURSE.filter((l) => course.done.includes(l.id));
   /** Kursfortschritt zählt nur die Kapitel 1–6; das Zusatzkapitel ist freiwillig
@@ -1620,7 +1623,7 @@
   }
   /** Aktueller Kurs-Schritt (bzw. Wiederholung). */
   function courseStep() {
-    if (course.review) return { mode: 'echo', name: 'Wiederholung' };
+    if (course.review) return { mode: 'echo', name: 'Wiederholung', accomp: 'backbeat' };
     const steps = courseSteps(courseLesson());
     return steps[Math.min(course.step, steps.length - 1)];
   }
@@ -1640,8 +1643,8 @@
         const b = pickR(others);
         pattern = coursePattern(a.meter, '', [a.bars[0], b.bars[0]], `${a.id}+${b.id}`, !!a.shuffle);
       }
-      const mode = rnd() < .5 ? 'echo' : 'read';
-      return { mode, gap: 0, pattern, course: { review: true, lesson: a.id } };
+      // Wiederholung nur nach Gehör: kein Vom Blatt mehr.
+      return { mode: 'echo', gap: 0, pattern, course: { review: true, lesson: a.id }, accomp: 'backbeat' };
     }
     const lesson = courseLesson();
     const st = courseStep();
@@ -1652,7 +1655,7 @@
       const bars = rnd() < .5 ? [lesson.bars[0], other] : [other, lesson.bars[0]];
       pattern = coursePattern(lesson.meter, '', bars, `${lesson.id}:${bars.join('|')}`, !!lesson.shuffle);
     }
-    return { mode: st.mode, gap: st.gap || 0, pattern, course: { lesson: lesson.id, step: course.step } };
+    return { mode: st.mode, gap: st.gap || 0, pattern, course: { lesson: lesson.id, step: course.step }, accomp: lesson.accomp || st.accomp };
   }
 
   /** Taktart wechseln; das Tempo bleibt in Achteln gleich schnell. */
@@ -1732,7 +1735,7 @@
       showNotes: mode !== 'echo' || (state.showNotes && !courseInfo),
       youStart: null, result: null, course: courseInfo,
     };
-    // Mitklatschen gibt es nur noch als ersten Schritt im Rhythmus-Kurs.
+    // Mitklatschen (mit Noten) gibt es nur noch als letzten Schritt im Rhythmus-Kurs.
     round.youPos = round.seq.indexOf(round.mode === 'along' ? 'along' : 'you');
     round.barSec = pattern.total * round.tickSec;
     round.tol = tolerance(round);
@@ -2609,7 +2612,7 @@
     if (course.review) {
       box.innerHTML = `${top}
         <div class="course-title"><h3>Gelerntes gemischt</h3></div>
-        <p class="course-intro">Die App mischt deine geschafften Rhythmen zu neuen Phrasen – mal nachklatschen, mal vom Blatt. Die Taktart wird je Durchgang gewählt.</p>
+        <p class="course-intro">Die App mischt deine geschafften Rhythmen zu neuen Phrasen – du hörst zu und klatschst nach, ohne Noten. Die Taktart wird je Durchgang gewählt.</p>
         <div class="course-nav"><button type="button" class="nav-btn" data-course="leave-review">‹ Zurück zur Lektion</button></div>`;
       return;
     }
@@ -2647,7 +2650,7 @@
     setBpm(l.bpm);
     run.shown = null; game.finished = false; game.last = null; game.stats = freshStats();
     renderRhythm(); renderTransport();
-    setStatus(`Lektion ${COURSE.indexOf(l) + 1}: ${l.name} — Play startet mit dem Mitklatschen.`);
+    setStatus(`Lektion ${COURSE.indexOf(l) + 1}: ${l.name} — Play startet mit dem Nachklatschen.`);
   }
   /** Kurs betreten/verlassen: Taktart und Tempo der übrigen Übungen merken
    *  bzw. zurückholen, damit der Kurs sie nicht überschreibt. */
@@ -4347,7 +4350,10 @@
       $('.sheet-body').innerHTML = `
         <span class="sub-label" style="margin-top:0">Rhythmussprache</span>
         ${choice('courseSyl', SYLLABLE_CHOICES, course.syl)}
-        <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Beim Nachklatschen erscheinen sie erst nach der Runde.</p>
+        <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Sie erscheinen im letzten Schritt, wo die Noten stehen.</p>
+        <span class="sub-label">Notenbild im Kurs</span>
+        ${choice('courseNotes', [['last', 'als letzter Schritt'], ['off', 'aus']], course.notes)}
+        <p class="foot-note" style="margin-top:4px">Die Schritte davor laufen nach Gehör, ohne Noten. Wer das Notenbild abschaltet, übt ausschließlich mit den Ohren.</p>
         ${inputHtml}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">
@@ -6871,7 +6877,7 @@
         rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes, markSelf: state.markSelf,
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart, duoStage: state.duoStage, duoOstinato: state.duoOstinato,
-        course: { lesson: course.lesson, done: course.done, syl: course.syl },
+        course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes },
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
@@ -6921,7 +6927,9 @@
     const rc = r.course && typeof r.course === 'object' ? r.course : {};
     if (COURSE.some((l) => l.id === rc.lesson)) course.lesson = rc.lesson;
     if (Array.isArray(rc.done)) course.done = COURSE.map((l) => l.id).filter((id) => rc.done.includes(id));
-    if (SYLLABLE_CHOICES.some(([id]) => id === rc.syl)) course.syl = rc.syl;
+    // Rhythmussprache im Kurs: Standard „1 + 2 +“, solange nichts Gültiges gespeichert ist.
+    course.syl = SYLLABLE_CHOICES.some(([id]) => id === rc.syl) ? rc.syl : 'count';
+    course.notes = rc.notes === 'off' ? 'off' : 'last';
     if (Number.isInteger(r.duoStage) && r.duoStage >= 1 && r.duoStage <= DUO_LEVELS.length) state.duoStage = r.duoStage;
     if (r.duoOstinato === 'auto' || COURSE.some((l) => l.id === r.duoOstinato && holdable(l))) state.duoOstinato = r.duoOstinato;
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
@@ -7057,6 +7065,13 @@
       if (key === 'meter') { setMeter(rset.dataset.value); state.rhythmLevel = 0; }
       else if (key === 'bars') { state.bars = Number(rset.dataset.value); state.rhythmLevel = 0; }
       else if (key === 'courseSyl') course.syl = rset.dataset.value;
+      else if (key === 'courseNotes') {
+        // Die Schrittfolge ändert sich: die Lektion beginnt beim nächsten Play von vorn.
+        course.notes = rset.dataset.value === 'off' ? 'off' : 'last';
+        Object.assign(course, { step: 0, misses: 0, complete: false });
+        if (run.playing) stop();
+        run.shown = null;
+      }
       else if (key === 'duoOstinato') {
         state.duoOstinato = rset.dataset.value;
         const l = holdPool().find((x) => x.id === state.duoOstinato);
@@ -7440,8 +7455,19 @@
         const syl = syllablesFor(pat, style);
         if (syl.length !== pat.notes.length || syl.some((x) => !x || /undefined|NaN/.test(x))) errors.push(`${where}: Silben ${style} (${syl.join(' ')})`);
       }
-      const steps = courseSteps(l);
-      if (steps.length !== 4 || steps[0].mode !== 'along' || !steps.every((st) => ['along', 'read', 'echo'].includes(st.mode) && st.name && st.how)) errors.push(`${where}: Schritte`);
+      // Schritte: erst hören, zuletzt lesen; mit „Notenbild aus“ nie lesen.
+      for (const notes of ['last', 'off']) {
+        const saveNotes = course.notes;
+        course.notes = notes;
+        const steps = courseSteps(l);
+        course.notes = saveNotes;
+        const want = notes === 'last' ? 4 : 3;
+        const modes = steps.map((st) => st.mode).join();
+        if (steps.length !== want || modes !== (notes === 'last' ? 'echo,echo,echo,along' : 'echo,echo,echo') || !steps.every((st) => st.name && st.how && ['full', 'backbeat', 'snare'].includes(st.accomp))) errors.push(`${where}: Schritte (${notes}): ${modes}`);
+        if (steps[1].gap !== 1 || steps[0].accomp !== 'full' || steps[1].accomp !== 'backbeat' || steps[2].accomp !== 'snare') errors.push(`${where}: Begleitung der Schritte (${notes})`);
+        if (!!steps[2].combo !== combinable(l) || (steps[2].name === 'Nur mit Snare') === combinable(l)) errors.push(`${where}: Schritt 3 (${notes})`);
+        if (steps.some((st) => st.mode === 'read')) errors.push(`${where}: Kurs-Schritt „Vom Blatt“ (${notes})`);
+      }
     }
     if (COURSE.length < 20) errors.push(`Kurs: nur ${COURSE.length} Lektionen`);
     // Silben an Beispielen
@@ -7464,6 +7490,7 @@
         const steps = courseSteps(l);
         for (let k = 0; k < steps.length; k++) {
           const cs = courseRoundSpec(rnd);
+          if (cs.accomp !== (l.accomp || steps[k].accomp)) errors.push(`Kurs ${l.id}: Schritt ${k + 1} Begleitung ${cs.accomp}`);
           const m = METERS[l.meter];
           if (cs.mode !== steps[k].mode || cs.course.step !== k) errors.push(`Kurs ${l.id}: Schritt ${k + 1} liefert ${cs.mode}`);
           if (cs.pattern.notes.reduce((a, n) => a + n.d, 0) !== cs.pattern.total || cs.pattern.total !== cs.pattern.bars * m.ticks) errors.push(`Kurs ${l.id}: Schritt ${k + 1} Phrase unvollständig`);
@@ -7487,13 +7514,14 @@
       setBpm(COURSE_MIN_BPM);
       for (let k = 0; k < 3; k++) courseResult({ course: { lesson: 'puls', step: 1 }, result: { perfect: false } });
       if (state.bpm !== COURSE_MIN_BPM) errors.push('Kurs: Tempo unter die Grenze gesenkt');
-      // Wiederholung: nur gelernte Rhythmen der laufenden Taktart.
+      // Wiederholung: nur gelernte Rhythmen der laufenden Taktart, nur nach Gehör.
       Object.assign(course, { review: true, done: ['puls', 'achtel', 'walzer', 'synkope'] });
       run.meter = '4/4';
-      for (let k = 0; k < 40; k++) {
+      for (let k = 0; k < 200; k++) {
         const cs = courseRoundSpec(rnd);
         const used = cs.pattern.key.split('+');
         if (!cs.course.review || used.some((id) => !['puls', 'achtel', 'synkope'].includes(id)) || cs.pattern.meter !== '4/4') errors.push(`Kurs Wiederholung: ${cs.pattern.key}`);
+        if (cs.mode !== 'echo' || cs.accomp !== 'backbeat') errors.push(`Kurs Wiederholung: ${cs.mode} / ${cs.accomp}`);
       }
       // Raster: jede Runde mit Leertakt danach, nach „geschafft“ keine weitere.
       Object.assign(course, { lesson: 'auftakt', step: 0, misses: 0, complete: false, review: false });
@@ -7502,7 +7530,7 @@
       state.rounds = 0; state.countIn = true;
       layoutNext(true);
       const r0 = game.rounds[0];
-      if (r0.mode !== 'along' || r0.seq.join() !== 'along,rest' || run.items[0].kind !== 'count' || run.items[0].len !== 48 - 12) errors.push(`Kurs Raster: ${r0.mode} ${r0.seq} Einzähler ${run.items[0].len}`);
+      if (r0.mode !== 'echo' || r0.seq.join() !== 'listen,you,rest' || run.items[0].kind !== 'count' || run.items[0].len !== 48 - 12) errors.push(`Kurs Raster: ${r0.mode} ${r0.seq} Einzähler ${run.items[0].len}`);
       course.complete = true;
       if (layoutNext()) errors.push('Kurs: nach geschaffter Lektion geht es weiter');
       // Speichern/Laden: unbekannte Lektionen verworfen, Reihenfolge des Kurses.
@@ -7511,6 +7539,15 @@
       if (course.lesson !== 'clave' || course.done.join() !== 'puls,clave' || course.syl !== 'count') errors.push(`Kurs speichern/laden: ${course.lesson} ${course.done} ${course.syl}`);
       restore({ tab, rhythm: { course: { lesson: 'toString', done: 'x', syl: 'y' } } });
       if (course.lesson !== 'clave' || course.done.join() !== 'puls,clave') errors.push('Kurs: ungültiger Stand übernommen');
+      // Silben und Notenbild im Kurs: neu / gespeichert / alt ohne Feld / kaputt.
+      restore({ tab, rhythm: { course: { lesson: 'puls', syl: 'ta', notes: 'off' } } });
+      if (course.syl !== 'ta' || course.notes !== 'off') errors.push(`Kurs syl/notes: gespeichert ${course.syl}/${course.notes}`);
+      restore(JSON.parse(JSON.stringify(snapshot())));
+      if (course.syl !== 'ta' || course.notes !== 'off') errors.push(`Kurs syl/notes: Roundtrip ${course.syl}/${course.notes}`);
+      restore({ tab, rhythm: { course: { lesson: 'puls' } } });
+      if (course.syl !== 'count' || course.notes !== 'last') errors.push(`Kurs syl/notes: alter Stand ${course.syl}/${course.notes} statt count/last`);
+      restore({ tab, rhythm: { course: { lesson: 'puls', syl: 5, notes: 'quatsch' } } });
+      if (course.syl !== 'count' || course.notes !== 'last') errors.push(`Kurs syl/notes: kaputt ${course.syl}/${course.notes}`);
       // Paket 3: alte Stände (alle alten IDs) bleiben gültig; Zusatzkapitel zählt nicht zum Kursfortschritt.
       restore({ tab, rhythm: { course: { lesson: 'walzer', done: OLD_IDS, syl: 'ta' } } });
       if (course.lesson !== 'walzer' || course.done.length !== OLD_IDS.length || OLD_IDS.some((id) => !course.done.includes(id))) errors.push(`Kurs: alter Stand mit allen alten IDs → ${course.lesson} / ${course.done.length}`);
