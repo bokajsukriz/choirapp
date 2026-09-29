@@ -2141,7 +2141,7 @@
     $$('.stage .ph').forEach((ph) => {
       const line = stageLines[Number(ph.dataset.line)];
       const on = active && line && t >= line.t0 && t < line.t1;
-      if (on) { const x = line.xOf(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
+      if (on) { const x = line.markX(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
       ph.style.visibility = on ? 'visible' : 'hidden';
     });
   }
@@ -2178,8 +2178,34 @@
         const sg = l.segs.find((s) => t >= s.t0 && t < s.t1) || (t < l.t0 ? l.segs[0] : l.segs[l.segs.length - 1]);
         return sg.x0 + ST.PAD * .8 + (clamp(t, sg.t0, sg.t1) - sg.t0) * px; // Kopf frei vom Taktstrich
       };
+      l.px = px;
+      l.markX = markX(l, pattern);
     }
     return lines;
+  }
+
+  /** Stetige Abbildung Zeit → x für die Wiedergabe-Marke einer Zeile. Das
+   *  Notenlayout lässt hinter jedem Taktstrich Platz (ST.PAD), `xOf` springt
+   *  dort — die Marke darf das nicht. Stützstellen sind die Anfänge aller
+   *  Noten und Pausen (Noten füllen die Zeit lückenlos, auf jedem Taktstrich
+   *  liegt also eine) sowie das Zeilenende am rechten Rand; dazwischen wird
+   *  linear interpoliert. Innerhalb eines Takts ist das `xOf`, über den
+   *  Taktstrich verteilt sich der Zusatzweg auf die letzte Note davor.
+   *  Ganztaktpausen zählen am zeitlichen Anfang, nicht an der gezeichneten Mitte. */
+  function markX(line, pattern) {
+    const pts = pattern.notes.filter((n) => n.t >= line.t0 && n.t < line.t1).map((n) => [n.t, line.xOf(n.t)]);
+    if (!pts.length || pts[0][0] > line.t0) pts.unshift([line.t0, line.xOf(line.t0)]);
+    pts.push([line.t1, line.segs[line.segs.length - 1].x1]);
+    return (t) => {
+      if (t <= pts[0][0]) return pts[0][1];
+      for (let i = 1; i < pts.length; i++) {
+        if (t <= pts[i][0]) {
+          const [t0, x0] = pts[i - 1], [t1, x1] = pts[i];
+          return t1 > t0 ? x0 + (x1 - x0) * (t - t0) / (t1 - t0) : x1;
+        }
+      }
+      return pts[pts.length - 1][1];
+    };
   }
 
   function beamGroups(pattern, lineNotes) {
@@ -7382,6 +7408,71 @@
     return errors;
   }
 
+  /** Wiedergabe-Marke (Paket 1): stetig über jeden Taktstrich, an Notenanfängen
+   *  gleich `xOf`, innerhalb eines Takts (bis zu dessen letzter Note) identisch
+   *  mit `xOf`. `n` Muster je Stufe bzw. Zweistimmig-Paare. */
+  function markCheck(n = 60) {
+    const errors = [];
+    let seed = 41;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const STEP = .05;
+    const check = (pattern, where) => {
+      const m = METERS[pattern.meter];
+      for (const [li, line] of phraseLines(pattern).entries()) {
+        const tag = `${where} Zeile ${li + 1}`;
+        let prev = line.markX(line.t0);
+        for (let t = line.t0 + STEP; t <= line.t1 + 1e-9; t += STEP) {
+          const x = line.markX(t);
+          if (x < prev - 1e-9) { errors.push(`${tag}: Marke läuft rückwärts bei ${t.toFixed(2)}`); break; }
+          if (x - prev > 2 * line.px * STEP + .01) { errors.push(`${tag}: Sprung ${(x - prev).toFixed(2)} bei ${t.toFixed(2)}`); break; }
+          prev = x;
+        }
+        for (const nt of pattern.notes) {
+          if (nt.t < line.t0 || nt.t >= line.t1) continue;
+          if (Math.abs(line.markX(nt.t) - line.xOf(nt.t)) >= .01) { errors.push(`${tag}: Marke ≠ Note bei ${nt.t}`); break; }
+        }
+        for (const sg of line.segs) {
+          const inSeg = pattern.notes.filter((nt) => nt.t >= sg.t0 && nt.t < sg.t1);
+          if (!inSeg.length) continue;
+          const lastStart = inSeg[inSeg.length - 1].t;
+          let bad = false;
+          for (let t = sg.t0; t <= lastStart && !bad; t += STEP) bad = Math.abs(line.markX(t) - line.xOf(t)) >= .01;
+          if (bad) errors.push(`${tag}: Marke ≠ xOf innerhalb des Takts`);
+        }
+        if (Math.abs(line.markX(line.t1) - line.segs[line.segs.length - 1].x1) > .01) errors.push(`${tag}: Zeilenende`);
+      }
+      void m;
+    };
+    for (const l of COURSE) check(lessonPattern(l), `Marke ${l.id}`);
+    for (const level of RHYTHM_LEVELS) {
+      let prev = null;
+      for (let i = 0; i < n; i++) {
+        const meterId = level.meters[i % level.meters.length];
+        const chosen = level.elements.filter((id) => elementFits(id, METERS[meterId]));
+        const pat = makePattern(meterId, chosen, prev, { bars: level.bars, pickup: level.pickup, ties: chosen.includes('tie'), rnd, pickupLens: level.pickupTicks });
+        prev = pat.key;
+        check(pat, `Marke Stufe ${level.n} ${pat.key}`);
+      }
+    }
+    {
+      const chosen = RHYTHM_LEVELS[5].elements.filter((id) => elementFits(id, METERS['12/8']));
+      let prev = null;
+      for (let i = 0; i < n; i++) {
+        const pat = makePattern('12/8', chosen, prev, { bars: 4, pickup: true, ties: true, rnd });
+        prev = pat.key;
+        check(pat, `Marke 12/8 ${pat.key}`);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const level = RHYTHM_LEVELS[2 + (i % 4)];
+      const chosen = level.elements.filter((id) => elementFits(id, METERS['4/4']));
+      const d = makeDuo('4/4', chosen, null, { bars: level.bars, pickup: level.pickup, ties: chosen.includes('tie'), rnd });
+      check(d.upper, `Marke Duo oben ${d.upper.key}`);
+      check(d.lower, `Marke Duo unten ${d.lower.key}`);
+    }
+    return errors;
+  }
+
   /** Welche Bausteine braucht ein Muster { meter, pickup, notes }?
    *  (Einfache Taktarten genau, zusammengesetzte nur Pausen/Bögen.) */
   function rhythmNeeds(pat) {
@@ -9415,6 +9506,7 @@
     errors.push(...courseCheck());
     errors.push(...holdCheck());
     errors.push(...popRhythmCheck());
+    errors.push(...markCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
@@ -9597,7 +9689,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, inKeyCheck,
+    selfCheck, selfCheckAudio, inKeyCheck, markCheck,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
@@ -9606,6 +9698,8 @@
     // Pop-Didaktik: Singen
     ECHO_LEVELS, HOLD_LEVELS, FIND_LEVELS, CHROMA_TURNS, makeSingTask, melodySpec, wobbleCents, toneLabel, popSingCheck,
     get popSingNotes() { return popSingNotes.slice(); },
+    // Rhythmus-Kurs
+    COURSE, COURSE_CHAPTERS, lessonPattern, coursePattern, courseSteps, phraseLines, markX,
     rhythmSvg: (pattern, syllables = null) => systemSvg({ pattern, meterId: pattern.meter, lines: phraseLines(pattern), y0: 0, reveal: true, statusOf: () => '', syllables, taps: [] }),
   };
 
