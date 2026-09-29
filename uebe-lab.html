@@ -2141,7 +2141,7 @@
     $$('.stage .ph').forEach((ph) => {
       const line = stageLines[Number(ph.dataset.line)];
       const on = active && line && t >= line.t0 && t < line.t1;
-      if (on) { const x = line.xOf(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
+      if (on) { const x = line.markX(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
       ph.style.visibility = on ? 'visible' : 'hidden';
     });
   }
@@ -2180,6 +2180,27 @@
       };
     }
     return lines;
+  }
+
+  /** Wiedergabe-Marke einer Zeile: (t) → x, stetig. Das Notenlayout lässt
+   *  hinter jedem Taktstrich ST.PAD Platz (`xOf` springt dort in null Zeit).
+   *  Die Marke bekommt deshalb eigene Stützstellen — Anfang jeder Note und
+   *  Pause der Zeile, dazu Zeilenanfang und rechter Rand — und wird dazwischen
+   *  linear interpoliert: Innerhalb eines Takts ist das `xOf`, über den
+   *  Taktstrich verteilt sich der Zusatzweg auf die Dauer der letzten Note. */
+  function markX(line, pattern) {
+    const pts = [];
+    const push = (t, x) => { if (!pts.length || t > pts[pts.length - 1][0]) pts.push([t, x]); };
+    for (const n of pattern.notes) if (n.t >= line.t0 && n.t < line.t1) push(n.t, line.xOf(n.t));
+    if (!pts.length || pts[0][0] > line.t0) pts.unshift([line.t0, line.xOf(line.t0)]);
+    push(line.t1, line.segs[line.segs.length - 1].x1);
+    return (t) => {
+      if (t <= pts[0][0]) return pts[0][1];
+      for (let i = 1; i < pts.length; i++) {
+        if (t <= pts[i][0]) { const [t0, x0] = pts[i - 1], [t1, x1] = pts[i]; return x0 + (x1 - x0) * (t - t0) / (t1 - t0); }
+      }
+      return pts[pts.length - 1][1];
+    };
   }
 
   function beamGroups(pattern, lineNotes) {
@@ -2326,7 +2347,7 @@
     stageLines = [];
     for (const sys of systems) {
       const lines = phraseLines(sys.pattern || empty);
-      if (sys.own) stageLines = lines;
+      if (sys.own) { stageLines = lines; lines.forEach((l) => { l.markX = markX(l, sys.pattern || empty); }); }
       const syl = showSyl && sys.pattern ? syllablesFor(sys.pattern, sylStyle) : null;
       svg.push(systemSvg({ ...sys, meterId, lines, y0, reveal: round && reveal, syllables: syl, round }));
       y0 += lines.length * ST.H + (systems.length > 1 ? 6 : 0);
@@ -7406,6 +7427,69 @@
     return out;
   }
 
+  /** Wiedergabe-Marke (markX): stetig über Taktstriche, an Notenanfängen
+   *  gleich xOf, innerhalb eines Takts (ohne dessen letzte Note) identisch mit
+   *  xOf. Geprüft an allen Kurs-Lektionen, je 500 Mustern jeder Stufe, 500
+   *  Zweistimmig-Paaren und 12/8 mit vier Takten und Auftakt. */
+  function markCheck() {
+    const errors = [];
+    let seed = 41;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    let lines = 0, samples = 0;
+    const check = (pat, where) => {
+      for (const line of phraseLines(pat)) {
+        lines++;
+        const mx = markX(line, pat);
+        const sg0 = line.segs.find((s) => s.t1 > s.t0);
+        const px = (sg0.x1 - sg0.x0 - ST.PAD) / (sg0.t1 - sg0.t0);
+        const dt = .05;
+        let prev = mx(line.t0);
+        for (let t = line.t0 + dt; t < line.t1 + 1e-9; t += dt) {
+          const x = mx(Math.min(t, line.t1));
+          samples++;
+          if (x < prev - 1e-9) { errors.push(`${where}: Marke läuft rückwärts bei t=${t.toFixed(2)}`); break; }
+          if (x - prev > 2 * px * dt + .01) { errors.push(`${where}: Marke springt bei t=${t.toFixed(2)} (${(x - prev).toFixed(2)} statt ≤ ${(2 * px * dt + .01).toFixed(2)})`); break; }
+          prev = x;
+        }
+        const inLine = pat.notes.filter((n) => n.t >= line.t0 && n.t < line.t1);
+        for (const n of inLine) {
+          if (Math.abs(mx(n.t) - line.xOf(n.t)) >= .01) { errors.push(`${where}: Marke weicht am Notenanfang t=${n.t} ab`); break; }
+        }
+        for (const sg of line.segs) {
+          const inSeg = inLine.filter((n) => n.t >= sg.t0 && n.t < sg.t1);
+          const lastT = inSeg.length ? inSeg[inSeg.length - 1].t : sg.t0;
+          for (let t = sg.t0; t <= lastT; t += .25) {
+            if (Math.abs(mx(t) - line.xOf(t)) >= .01) { errors.push(`${where}: Marke ≠ xOf im Takt bei t=${t}`); break; }
+          }
+        }
+      }
+    };
+    for (const l of COURSE) check(lessonPattern(l), `Marke ${l.id}`);
+    for (const level of RHYTHM_LEVELS) {
+      let prev = null;
+      for (let i = 0; i < 500; i++) {
+        const meter = level.meters[i % level.meters.length];
+        const chosen = level.elements.filter((id) => elementFits(id, METERS[meter]));
+        const pat = makePattern(meter, chosen, prev, { bars: level.bars, pickup: level.pickup, ties: level.elements.includes('tie'), pickupLens: level.pickupTicks, rnd });
+        prev = pat.key;
+        check(pat, `Marke Stufe ${level.n} ${pat.key}`);
+      }
+    }
+    {
+      const level = RHYTHM_LEVELS[3];
+      const chosen = level.elements;
+      let prev = null;
+      for (let i = 0; i < 500; i++) {
+        const duo = makeDuo('4/4', chosen, prev, { bars: 2, pickup: true, ties: true, rnd });
+        prev = duo.key;
+        check(duo.upper, `Marke Duo oben ${duo.key}`);
+        check(duo.lower, `Marke Duo unten ${duo.key}`);
+      }
+    }
+    if (!lines || !samples) errors.push('Marke: nichts geprüft');
+    return errors.slice(0, 20);
+  }
+
   /** Pop-Didaktik Paket 4: Stufen pop-gerecht, Einsätze auf e/a, Shuffle,
    *  12/8, Auftaktlängen je Stufe, gespeicherte Stände. */
   function popRhythmCheck() {
@@ -9415,6 +9499,7 @@
     errors.push(...courseCheck());
     errors.push(...holdCheck());
     errors.push(...popRhythmCheck());
+    errors.push(...markCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
@@ -9597,7 +9682,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, inKeyCheck,
+    selfCheck, selfCheckAudio, inKeyCheck, markCheck,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
@@ -9606,6 +9691,7 @@
     // Pop-Didaktik: Singen
     ECHO_LEVELS, HOLD_LEVELS, FIND_LEVELS, CHROMA_TURNS, makeSingTask, melodySpec, wobbleCents, toneLabel, popSingCheck,
     get popSingNotes() { return popSingNotes.slice(); },
+    COURSE, lessonPattern, coursePattern, phraseLines, markX, systemSvg,
     rhythmSvg: (pattern, syllables = null) => systemSvg({ pattern, meterId: pattern.meter, lines: phraseLines(pattern), y0: 0, reveal: true, statusOf: () => '', syllables, taps: [] }),
   };
 
