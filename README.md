@@ -116,6 +116,17 @@ ein Dialog mit echter Wahl).
   Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
   Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem
   Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch, Hall).
+- `licks.html` — „Licks & Grooves“, Synth-Licks: kurze Synthesizer-Linien nach
+  Gehör lernen (hören → mitsingen → Startton finden → stückweise → ganz →
+  durchhalten über 4 bis 16 Takte, zuletzt mit stillen Takten ohne Schlagzeug →
+  Notenbild/Piano-Roll, abschaltbar), Bildschirmtasten mit Mehrfach-Touch, fünf
+  Synth-Klänge (Kopie aus `groove-lab.js`, ohne Hall) und Groove-Begleitung
+  (Kopie aus `metronom.html`). Während des eigenen Spielens keine Marke, kein
+  Raster, keine leuchtenden Tasten, kein Taktzähler. Status (Neu → Lerne →
+  Sitzt) und Wiederholen mit Abstand; die Karte „Heute wiederholen“ auf der
+  Tools-Seite (`licksDue` in `app.js`) zählt die fälligen Bausteine. Ablage
+  `licks` (`window.parent.chorToolStorage`), Fortschrittsbereich `licks`.
+  Prüfung: `licks.selfCheck()` in der Konsole des iframes.
 - `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
   Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer). Läuft beim
   Schließen weiter, solange es spielt (das iframe wird nur ausgeblendet);
@@ -239,7 +250,8 @@ neu, weil dabei eine echte Netzwerkanfrage ausgelöst wird.
 Bei jeder Änderung an einer der in `SHELL_REQUIRED`/`SHELL_OPTIONAL` in
 `sw.js` gelisteten Dateien — aktuell `index.html`, `app.js`, `lightshow.js`,
 `strings.js`, `zip-reader.js`, `groove-lab.js`, `signalsmith-stretch.js`,
-`boot-guard.js`, `lame.min.js`, `manifest.json`, den Icons und `sw.js`
+`boot-guard.js`, `lame.min.js`, `manifest.json`, den Icons, den Tool-Seiten (`uebe-lab.html`, `einsingen.html`,
+`piano.html`, `licks.html`, `metronom.html`) und `sw.js`
 selbst — muss `SW_VERSION` in `sw.js` erhöht werden. Ohne das bekommt
 niemand das Update, weil der Shell-Cache unter dem alten Namen bestehen
 bleibt.
@@ -266,7 +278,7 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   woff2-Schrift.
 - `media-src`/`frame-src`: `blob:` für `<audio>`-Wiedergabe aus Blob-URLs
   bzw. die PDF-Vorschau im iframe; `frame-src 'self'` zusätzlich für die
-  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `piano.html`, `metronom.html`, Tools-Reiter). Die
+  Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `piano.html`, `licks.html`, `metronom.html`, Tools-Reiter). Die
   haben als eigene Seiten keine eigene CSP-Meta-Angabe; sie laden nichts von
   außen.
 - `connect-src` erlaubt neben der eigenen Herkunft ausschließlich

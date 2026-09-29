@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v374';
+const SW_VERSION = 'v375';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -43,7 +43,7 @@ const SHELL_REQUIRED = [
 // <script src> nachgeladen (siehe app.js), nie beim Boot importiert. Fehlt
 // es offline, scheitert nur dieses Nachladen mit einem Banner — kein Grund,
 // deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für die
-// Tool-Seiten uebe-lab.html (Ausbildung), einsingen.html und metronom.html (Einstellungen →
+// Tool-Seiten uebe-lab.html (Ausbildung), licks.html (Licks & Grooves), einsingen.html und metronom.html (Einstellungen →
 // Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES), und für
 // harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten).
 const SHELL_OPTIONAL = [
@@ -55,13 +55,14 @@ const SHELL_OPTIONAL = [
   './metronom.html',
   './einsingen.html',
   './piano.html',
+  './licks.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
 ];
 const SHELL = [...SHELL_REQUIRED, ...SHELL_OPTIONAL];
 // Eigene Seiten, die die App als iframe öffnet — siehe fetch-Handler.
-const TOOL_PAGES = ['./uebe-lab.html', './metronom.html', './einsingen.html', './piano.html'];
+const TOOL_PAGES = ['./uebe-lab.html', './metronom.html', './einsingen.html', './piano.html', './licks.html'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
