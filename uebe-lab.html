@@ -396,7 +396,7 @@
       <div data-levels="rhythm"></div>
       <div class="course-card" data-course-card hidden></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
-      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen. Beim Nachklatschen gibt es bewusst nichts zu sehen – dein Ohr und dein innerer Puls sind das Werkzeug.<br><b>Vom Blatt:</b> Du siehst die Noten und eine mitlaufende Marke, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div class="bar-strip" aria-hidden="true"></div>
@@ -1508,6 +1508,7 @@
     // rounds: immer 0 = endlos (seit der Überarbeitung nicht mehr wählbar).
     mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 0,
     countIn: true, click: true, speedUp: false, showNotes: false,
+    markSelf: false,     // Vom Blatt: Marke auch beim eigenen Klatschen (sonst nur beim Lesen)
     // Didaktik Paket 3
     bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0,
     rhythmLevel: 0,      // 1–6 = Stufe, 0 = eigene Auswahl
@@ -1852,7 +1853,7 @@
     renderStrip(null);
     renderPad(game.finished ? 'done' : 'idle');
     // Letzte Runde mit Ergebnis stehen lassen, Wiedergabe-Marke weg.
-    if (run.shown) renderStage(run.shown.round, run.shown.reveal || !!run.shown.round.result);
+    if (run.shown) renderStage(run.shown.round, run.shown.reveal || !!run.shown.round.result, run.shown.aids);
     setStatus(message);
   }
 
@@ -2071,9 +2072,36 @@
     rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft! Nochmal mit Play',
   };
 
-  function renderPad(phase, beat = -1, round = null) {
+  /** Was ist während des Laufs sichtbar? Hören statt Sehen: Wo der innere
+   *  Puls und das Ohr trainiert werden (Nachklatschen ohne Noten, Kurs
+   *  Schritt 1–3), gibt es weder Marke noch Raster noch Tipper live — sonst
+   *  folgt man der Linie statt dem Puls. Wo gelesen wird (Vom Blatt, Kurs
+   *  „So sieht es aus“), verknüpft die Marke Klang und Notenbild.
+   *  mode: Runden-Modus ('echo' | 'read' | 'along' | 'duo'), phase: Abschnitt
+   *  ('count' | 'listen' | 'read' | 'rest' | 'you' | 'along'), course: Runde
+   *  des Kurses (dort zeigt Nachklatschen nie Noten), showNotes: Noten
+   *  beim Nachklatschen. Rückgabe: mark (Wiedergabe-Marke), timeline
+   *  (Zeitleiste mit Zählzeiten), liveTaps (eigene Tipper sofort),
+   *  padBeats (Zählzeiten im Tippfeld), realLayout (echtes Notenlayout
+   *  statt neutralem Platzhalter). Zweistimmig bleibt unverändert. */
+  function visibleAids({ mode, phase, course = false, showNotes = false, markSelf = false }) {
+    const playing = ['listen', 'read', 'you', 'along'].includes(phase);
+    if (mode === 'duo') return { mark: playing, timeline: true, liveTaps: true, padBeats: true, realLayout: true };
+    const kind = mode === 'along' ? 'along' : mode === 'read' || (mode === 'echo' && showNotes && !course) ? 'read' : 'hidden';
+    if (kind === 'hidden') return { mark: false, timeline: false, liveTaps: false, padBeats: phase === 'count', realLayout: false };
+    if (kind === 'along') return { mark: playing, timeline: true, liveTaps: true, padBeats: true, realLayout: true };
+    // Vom Blatt (auch Nachklatschen mit Noten): lesen mit Marke und Zählzeiten,
+    // beim eigenen Klatschen (und in Leertakten) nur das Raster.
+    const own = phase === 'you' || phase === 'rest';
+    return { mark: own ? phase === 'you' && !!markSelf : playing, timeline: true, liveTaps: false, padBeats: own ? false : true, realLayout: true };
+  }
+  /** Nach der Runde: Auswertung mit Raster, Soll-Punkten und Tippern. */
+  const RESULT_AIDS = { mark: false, timeline: true, liveTaps: true, padBeats: false, realLayout: true };
+  const HIDDEN_AIDS = { mark: false, timeline: false, liveTaps: false, padBeats: false, realLayout: false };
+
+  function renderPad(phase, beat = -1, round = null, dots = true) {
     const m = METERS[round ? round.meter : state.meter];
-    const beats = phase === 'idle' || phase === 'done' ? 0 : m.ticks / m.beat;
+    const beats = phase === 'idle' || phase === 'done' || !dots ? 0 : m.ticks / m.beat;
     const key = `${phase}|${beat}|${beats}|${state.input}`;
     if (run.padKey === key) return;
     run.padKey = key;
@@ -2129,14 +2157,17 @@
     const m = METERS[r.meter];
     const tickNow = bar.start + (now - bar.time) / bar.tickSec;
     const beat = Math.floor(mod(tickNow, m.ticks) / m.beat);
-    renderPad(bar.kind === 'count' ? 'count' : bar.kind, beat, r);
+    const aids = visibleAids({ mode: r.mode, phase: bar.kind, course: !!r.course, showNotes: r.showNotes, markSelf: state.markSelf });
+    renderPad(bar.kind === 'count' ? 'count' : bar.kind, beat, r, aids.padBeats);
     renderStrip(bar);
     const disp = pickDisplay(bar);
-    const liveTaps = disp.round.result ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
-    const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}`;
-    if (key !== run.viewKey) { run.viewKey = key; run.shown = disp; renderStage(disp.round, disp.reveal); }
-    // Wiedergabe-Marke: nur in der Phrase der gezeigten Runde, in der etwas passiert.
-    const active = bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
+    const shownAids = disp.round.result ? RESULT_AIDS : disp.round === r ? aids : HIDDEN_AIDS;
+    const liveTaps = disp.round.result || !shownAids.liveTaps ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
+    const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}|${shownAids.realLayout}|${shownAids.timeline}`;
+    if (key !== run.viewKey) { run.viewKey = key; run.shown = { ...disp, aids: shownAids }; renderStage(disp.round, disp.reveal, shownAids); }
+    // Wiedergabe-Marke: nur in der Phrase der gezeigten Runde, in der etwas passiert
+    // (und nur, wo gelesen wird — siehe visibleAids).
+    const active = aids.mark && bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
     const t = (now - bar.time) / r.tickSec;
     $$('.stage .ph').forEach((ph) => {
       const line = stageLines[Number(ph.dataset.line)];
@@ -2279,7 +2310,7 @@
 
   /** Ein System (eine Stimme) mit allen Zeilen: Linie, Taktstriche,
    *  Noten, Zeitleiste mit Zählzeiten, Soll-Einsätzen und Tippern. */
-  function systemSvg({ pattern, meterId, lines, y0, label, reveal, statusOf, syllables, taps, round, own }) {
+  function systemSvg({ pattern, meterId, lines, y0, label, reveal, heads = reveal, timeline = true, statusOf, syllables, taps, round, own }) {
     const m = METERS[meterId];
     const parts = [];
     lines.forEach((line, li) => {
@@ -2296,10 +2327,14 @@
         parts.push(`<line class="ln" x1="${f1(sg.x1)}" y1="${LY - 10}" x2="${f1(sg.x1)}" y2="${LY + 10}"/>`);
         if (last && pattern) parts.push(`<line class="ln" style="stroke-width:3.5" x1="${f1(sg.x1 + 3)}" y1="${LY - 10}" x2="${f1(sg.x1 + 3)}" y2="${LY + 10}"/>`);
       });
-      if (pattern && reveal) parts.push(lineSvg(pattern, line, y, statusOf, syllables));
+      if (pattern && heads) parts.push(lineSvg(pattern, line, y, statusOf, syllables));
       // Shuffle: einmal je Zeile die Spielanweisung über dem System.
-      if (pattern?.shuffle && reveal) parts.push(`<text class="shuf" x="${f1(xEnd)}" y="${y + 12}" text-anchor="end">Shuffle ♫ = ♩ ♪³</text>`);
+      if (pattern?.shuffle && heads) parts.push(`<text class="shuf" x="${f1(xEnd)}" y="${y + 12}" text-anchor="end">Shuffle ♫ = ♩ ♪³</text>`);
       // Zeitleiste: Zählzeiten (am Raster), Soll-Einsätze, Tipper
+      if (!timeline) {
+        if (own !== false) parts.push(`<line class="ph" data-line="${li}" x1="0" x2="0" y1="${y + 4}" y2="${y + ST.H - 4}" style="visibility:hidden"/>`);
+        return;
+      }
       parts.push(`<line class="tl" x1="${f1(line.segs[0].x0)}" y1="${TY}" x2="${f1(xEnd)}" y2="${TY}"/>`);
       const p = pattern ? pattern.pickup : 0;
       for (let t = Math.ceil((line.t0 - p) / m.beat) * m.beat + p; t < line.t1; t += m.beat) {
@@ -2322,14 +2357,27 @@
     return parts.join('');
   }
 
-  function renderStage(round, reveal) {
+  /** Neutraler Platzhalter beim Hören: eine leere Zeile, ohne Taktstriche
+   *  und Taktangabe — er hängt von nichts in der verborgenen Phrase ab. */
+  function placeholderSvg() {
+    return `<svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="Notenfläche"><line class="staff" x1="8" y1="${ST.LY}" x2="${ST.X1}" y2="${ST.LY}"/><text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">Rhythmus nach Gehör</text></svg>`;
+  }
+
+  /** Notenfläche als SVG-Text. aids (siehe visibleAids): echtes Layout oder
+   *  Platzhalter, Zeitleiste, Tipper live. Im Kurs zeigt Nachklatschen nie
+   *  Notenköpfe, auch nicht nach der Runde — dann nur Zeitleiste mit
+   *  Soll-Punkten und Tippern. Setzt `stageLines` (Zeilen der eigenen Stimme). */
+  function stageSvg(round, reveal, aids = { realLayout: true, timeline: true, liveTaps: true }) {
     const meterId = round ? round.meter : state.meter;
     const res = round?.result;
+    stageLines = [];
+    if (!aids.realLayout && !res) return placeholderSvg();
     const statusOf = (t) => res?.notes.find((n) => n.t === t)?.status || '';
     const sylStyle = state.mode === 'course' ? course.syl : state.syllables;
-    const showSyl = sylStyle !== 'off' && !!round && reveal && (round.mode !== 'echo' || !!res);
+    const heads = !!round && reveal && !(round.course && round.mode === 'echo');
+    const showSyl = sylStyle !== 'off' && heads && (round.mode !== 'echo' || !!res);
     const tapsOf = () => {
-      if (!round || round.youStart === null) return [];
+      if (!round || round.youStart === null || (!res && !aids.liveTaps)) return [];
       const list = res ? res.taps : game.taps.filter((x) => x >= round.youStart - round.tol && x <= round.youStart + round.barSec + round.tol).map((at) => ({ at, cls: '' }));
       return list.map(({ at, cls }) => ({ t: (at - round.youStart) / round.tickSec, cls }));
     };
@@ -2344,18 +2392,18 @@
     const empty = { meter: meterId, notes: [], onsets: [], bars: 1, pickup: 0, total: METERS[meterId].ticks };
     let y0 = 0;
     const svg = [];
-    stageLines = [];
     for (const sys of systems) {
       const lines = phraseLines(sys.pattern || empty);
       if (sys.own) { stageLines = lines; lines.forEach((l) => { l.markX = markX(l, sys.pattern || empty); }); }
       const syl = showSyl && sys.pattern ? syllablesFor(sys.pattern, sylStyle) : null;
-      svg.push(systemSvg({ ...sys, meterId, lines, y0, reveal: round && reveal, syllables: syl, round }));
+      svg.push(systemSvg({ ...sys, meterId, lines, y0, reveal: round && reveal, heads, timeline: aids.timeline, syllables: syl, round }));
       y0 += lines.length * ST.H + (systems.length > 1 ? 6 : 0);
     }
     if (!(round && reveal)) svg.push(`<text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">${round ? 'Rhythmus nach Gehör' : 'Hier erscheinen die Noten'}</text>`);
     const label = round && reveal ? `Rhythmus im ${meterId}-Takt${round.pattern.bars > 1 ? `, ${round.pattern.bars} Takte` : ''}${res ? `, ${res.hits} von ${res.count} getroffen` : ''}` : 'Notenfläche';
-    $('.stage').innerHTML = `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
+    return `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
   }
+  function renderStage(round, reveal, aids) { $('.stage').innerHTML = stageSvg(round, reveal, aids); }
 
   function chips(name, entries, value, disabled = false) {
     $(`[data-chips="${name}"]`).replaceChildren(...entries.map(([v, label]) => {
@@ -2464,7 +2512,11 @@
     if (!run.playing) {
       renderStrip(null);
       renderPad(game.finished ? 'done' : 'idle');
-      if (!run.shown) renderStage(inCourse ? coursePreview() : holding ? duoPreview() : null, inCourse || holding);
+      if (!run.shown) {
+        // Kurs-Schritt zum Hören: noch nichts vom Notenbild verraten.
+        const quiet = inCourse && (course.review || courseStep().mode === 'echo');
+        renderStage(quiet ? null : inCourse ? coursePreview() : holding ? duoPreview() : null, inCourse && !quiet || holding, quiet ? HIDDEN_AIDS : undefined);
+      }
     }
     renderScore();
   }
@@ -4285,7 +4337,9 @@
         ${row('click', 'Klick auf den Zählzeiten')}
         ${row('speedUp', 'Tempo steigern', `+${SPEED_STEP} BPM je fehlerfreie Runde`)}
         ${row('showNotes', 'Noten beim Nachklatschen zeigen', 'sonst erst danach')}
+        ${row('markSelf', 'Mitlaufende Marke beim eigenen Klatschen', 'beim Lesen läuft sie immer mit')}
       </div>
+      <p class="foot-note" style="text-align:left">Die Marke hilft beim Mitlesen. Beim eigenen Klatschen verführt sie dazu, der Linie zu folgen statt dem Puls – deshalb ist sie dort aus.</p>
       ${latencyHtml()}`;
     renderGapChips();
     const noTriplets = level ? level.meters.every((id) => METERS[id].unit !== 12) : METERS[state.meter].unit !== 12;
@@ -6764,7 +6818,7 @@
       tab: state.tab, bpm: state.bpm, tempoRef: 'beat', eighths: state.eighths, latency: state.latency,
       rhythm: {
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
-        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
+        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes, markSelf: state.markSelf,
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart, duoStage: state.duoStage, duoOstinato: state.duoOstinato,
         course: { lesson: course.lesson, done: course.done, syl: course.syl },
@@ -6803,7 +6857,8 @@
     if (Array.isArray(r.elements)) state.elements = ELEMENTS.map(([id]) => id).filter((id) => r.elements.includes(id));
     ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
     state.rounds = 0; // Rhythmus läuft immer endlos
-    ['countIn', 'click', 'speedUp', 'showNotes', 'pickup'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
+    ['countIn', 'click', 'speedUp', 'showNotes', 'pickup', 'markSelf'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
+    if (typeof r.markSelf !== 'boolean') state.markSelf = false;
     if (BAR_CHOICES.some(([n]) => n === r.bars)) state.bars = r.bars;
     if (SYLLABLE_CHOICES.some(([id]) => id === r.syllables)) state.syllables = r.syllables;
     if (INPUT_CHOICES.some(([id]) => id === r.input)) state.input = r.input;
@@ -7488,6 +7543,81 @@
     }
     if (!lines || !samples) errors.push('Marke: nichts geprüft');
     return errors.slice(0, 20);
+  }
+
+  /** Hilfen nach Übungsart (visibleAids): jede Zeile der Tabelle, neutraler
+   *  Platzhalter, Auswertung ohne Notenköpfe im Kurs, `markSelf` speichern. */
+  function aidsCheck() {
+    const errors = [];
+    const A = visibleAids;
+    const want = (name, got, exp) => { for (const k of Object.keys(exp)) if (got[k] !== exp[k]) errors.push(`Hilfen ${name}: ${k} = ${got[k]}, erwartet ${exp[k]}`); };
+    const hidden = (phase) => ({ mark: false, timeline: false, liveTaps: false, padBeats: phase === 'count', realLayout: false });
+    for (const phase of ['count', 'listen', 'rest', 'you']) {
+      want(`Kurs Nachklatschen ${phase}`, A({ mode: 'echo', phase, course: true, showNotes: false }), hidden(phase));
+      want(`Kurs Nachklatschen ${phase} (Einstellung „Noten zeigen“ gilt dort nicht)`, A({ mode: 'echo', phase, course: true, showNotes: true }), hidden(phase));
+      want(`Nachklatschen ${phase}`, A({ mode: 'echo', phase, showNotes: false }), hidden(phase));
+      for (const markSelf of [false, true]) {
+        const a = JSON.stringify(A({ mode: 'echo', phase, showNotes: true, markSelf }));
+        const b = JSON.stringify(A({ mode: 'read', phase, markSelf }));
+        if (a !== b) errors.push(`Hilfen: Nachklatschen mit Noten ≠ Vom Blatt in ${phase} (${a} / ${b})`);
+      }
+    }
+    want('Vom Blatt Einzähler', A({ mode: 'read', phase: 'count' }), { mark: false, timeline: true, liveTaps: false, padBeats: true, realLayout: true });
+    want('Vom Blatt Lesephase', A({ mode: 'read', phase: 'read' }), { mark: true, timeline: true, liveTaps: false, padBeats: true, realLayout: true });
+    want('Vom Blatt Hörphase (Nachklatschen mit Noten)', A({ mode: 'echo', phase: 'listen', showNotes: true }), { mark: true, timeline: true, liveTaps: false, padBeats: true, realLayout: true });
+    want('Vom Blatt eigene Phase', A({ mode: 'read', phase: 'you' }), { mark: false, timeline: true, liveTaps: false, padBeats: false, realLayout: true });
+    want('Vom Blatt eigene Phase, Marke gewählt', A({ mode: 'read', phase: 'you', markSelf: true }), { mark: true, timeline: true, liveTaps: false, padBeats: false, realLayout: true });
+    want('Vom Blatt Leertakt', A({ mode: 'read', phase: 'rest', markSelf: true }), { mark: false, timeline: true, liveTaps: false, padBeats: false, realLayout: true });
+    for (const phase of ['count', 'along']) want(`Kurs Mitklatschen ${phase}`, A({ mode: 'along', phase, course: true }), { mark: phase === 'along', timeline: true, liveTaps: true, padBeats: true, realLayout: true });
+    for (const phase of ['count', 'listen', 'rest', 'you']) want(`Zweistimmig ${phase}`, A({ mode: 'duo', phase, markSelf: false }), { mark: phase !== 'count' && phase !== 'rest', timeline: true, liveTaps: true, padBeats: true, realLayout: true });
+
+    // Neutraler Platzhalter: gleich für jede verborgene Phrase (auch ohne Runde).
+    const savedLines = stageLines;
+    const savedMeter = state.meter;
+    try {
+      const round = (pat, extra = {}) => ({ index: 0, mode: 'echo', meter: pat.meter, pattern: pat, duo: null, result: null, youStart: null, tickSec: .05, tol: .04, barSec: pat.total * .05, showNotes: false, course: null, ...extra });
+      let seed = 3;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+      const one = coursePattern('4/4', '', ['12 12 12 12'], 'a');
+      const many = makePattern('4/4', ['e', 'r', 'sy', 'tie', 'd', 's'], null, { bars: 4, pickup: true, ties: true, rnd });
+      const comp = makePattern('12/8', ['e', 'r'], null, { bars: 4, pickup: true, rnd });
+      const ph = [one, many, comp].map((pat) => stageSvg(round(pat), false, HIDDEN_AIDS));
+      state.meter = '6/8';
+      ph.push(stageSvg(null, false, HIDDEN_AIDS));
+      if (new Set(ph).size !== 1) errors.push('Platzhalter hängt von der verborgenen Phrase ab');
+      if (/ellipse|class="ln"|class="sig"|class="tl|class="ph"/.test(ph[0]) || !ph[0].includes('Rhythmus nach Gehör')) errors.push(`Platzhalter zeigt Taktangabe, Striche oder Raster: ${ph[0]}`);
+      // Auswertung: im Kurs ohne Notenköpfe, aber mit Soll-Punkten und Tippern; frei mit Notenköpfen.
+      const pat = coursePattern('4/4', '', ['12 6 6 12 12', '24 -12 12'], 'r');
+      const result = { notes: pat.onsets.map((t) => ({ t, status: 'good' })), hits: pat.onsets.length, count: pat.onsets.length, taps: pat.onsets.map((t) => ({ at: t * .05, cls: 'good' })) };
+      const count = (svg, re) => (svg.match(re) || []).length;
+      const courseSvg = stageSvg(round(pat, { result, youStart: 0, course: { lesson: 'x', step: 0 } }), true, RESULT_AIDS);
+      if (count(courseSvg, /<ellipse/g) || count(courseSvg, /class="syl-t/g) || count(courseSvg, /class="tg/g) !== pat.onsets.length || count(courseSvg, /class="tp/g) !== pat.onsets.length) errors.push('Kurs-Auswertung: Notenköpfe sichtbar oder Soll-Punkte/Tipper fehlen');
+      const freeSvg = stageSvg(round(pat, { result, youStart: 0 }), true, RESULT_AIDS);
+      if (count(freeSvg, /<ellipse/g) !== pat.onsets.length || count(freeSvg, /class="tg/g) !== pat.onsets.length) errors.push('Nachklatschen-Auswertung: Notenköpfe oder Soll-Punkte fehlen');
+      // Vom Blatt, eigene Phase: echtes Layout, Raster, aber keine Tipper live.
+      state.mode = 'read';
+      game.taps = [0.1, 0.5];
+      const own = stageSvg(round(pat, { mode: 'read', showNotes: true, youStart: 0 }), true, A({ mode: 'read', phase: 'you' }));
+      game.taps = [];
+      if (count(own, /class="tl-beat/g) === 0 || count(own, /class="tp/g) !== 0 || !count(own, /<ellipse/g)) errors.push('Vom Blatt eigene Phase: Raster fehlt oder Tipper live sichtbar');
+      // Marke folgt dem eigenen System und ist eine Linie je Zeile.
+      if (count(own, /class="ph"/g) !== phraseLines(pat).length) errors.push('Wiedergabe-Marke fehlt in der Notenfläche');
+    } finally { stageLines = savedLines; state.meter = savedMeter; }
+
+    // Speichern/Laden: markSelf neu, alt (ohne Feld), kaputt.
+    const saved = { ...state };
+    try {
+      restore({ tab: 'rhythm', rhythm: { markSelf: true } });
+      if (state.markSelf !== true || snapshot().rhythm.markSelf !== true) errors.push('markSelf: true geht beim Speichern/Laden verloren');
+      restore(JSON.parse(JSON.stringify({ tab: 'rhythm', rhythm: snapshot().rhythm })));
+      if (state.markSelf !== true) errors.push('markSelf: Roundtrip über snapshot()');
+      restore({ tab: 'rhythm', rhythm: { mode: 'echo' } });
+      if (state.markSelf !== false) errors.push('markSelf: alter Stand ohne Feld ist nicht aus');
+      restore({ tab: 'rhythm', rhythm: { markSelf: true } });
+      restore({ tab: 'rhythm', rhythm: { markSelf: 'ja' } });
+      if (state.markSelf !== false) errors.push('markSelf: kaputter Wert ist nicht aus');
+    } finally { Object.assign(state, saved); }
+    return errors;
   }
 
   /** Pop-Didaktik Paket 4: Stufen pop-gerecht, Einsätze auf e/a, Shuffle,
@@ -9500,6 +9630,7 @@
     errors.push(...holdCheck());
     errors.push(...popRhythmCheck());
     errors.push(...markCheck());
+    errors.push(...aidsCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
@@ -9682,7 +9813,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, inKeyCheck, markCheck,
+    selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvg,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
