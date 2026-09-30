@@ -153,6 +153,8 @@
   .black.is-down { background: linear-gradient(#2a2340, rgb(var(--accent-rgb))); }
   .white.is-lit { background: linear-gradient(#ffe0f0, rgba(var(--accent-rgb), .55)); }
   .black.is-lit { background: linear-gradient(#5a2a52, rgb(var(--accent-rgb))); }
+  .white.is-picked, .black.is-picked { box-shadow: inset 0 0 0 3px var(--accent); }
+  .key-mark.is-pick { background: var(--surface); color: var(--accent); border: 2px solid var(--accent); }
   .key-mark { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--accent); color: #fff; font-size: .68rem; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
   .black .key-mark { bottom: 6px; }
 
@@ -992,7 +994,7 @@
      ------------------------------------------------------------------------ */
   const ui = {
     view: 'list', cat: 'all', step: 1, part: 0, holdStage: 1, running: '', feedback: '', feedbackKind: '', result: null,
-    foundKey: null, startFails: 0, drone: null, review: null, visitRated: false, lastRunAt: {}, rollTick: -1,
+    foundKey: null, pickedKey: null, startFails: 0, drone: null, review: null, visitRated: false, lastRunAt: {}, rollTick: -1,
   };
   const currentLick = () => (ui.view === 'lick' ? lickById(state.lick) : null);
   const SVG_W = 340;
@@ -1047,7 +1049,7 @@
     stopRun(false); releaseDrone();
     state.lick = id;
     ui.view = 'lick';
-    Object.assign(ui, { step: step || firstOpenStep(lick), part: 0, foundKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
+    Object.assign(ui, { step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
     ui.part = clamp(state.items[id]?.parts || 0, 0, lick.parts.length - 1);
     ui.holdStage = clamp((state.items[id]?.hold || 0) + 1, 1, 4);
     setFeedback('');
@@ -1099,8 +1101,9 @@
         <button class="btn" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
     } else if (k === 3) {
       const found = ui.foundKey !== null;
-      html = `<p>Welcher Ton ist der erste? Hör den Lick, dann liegen Grundton und Quinte leise – tipp auf die Tasten, bis du ihn gefunden hast.</p>${placeholderHtml()}
+      html = `<p>Welcher Ton ist der erste? Hör den Lick, dann liegen Grundton und Quinte leise. Probier die Tasten aus – wenn du meinst, den Ton gefunden zu haben, logg ihn ein.</p>${placeholderHtml()}
         <div class="actions"><button class="btn primary" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>▶ Lick und Grundton hören</button>${stopBtn('startton')}
+        ${found ? '' : `<button class="btn" type="button" data-act="lock-start"${ui.pickedKey === null || ui.running ? ' disabled' : ''}>✓ Ton einloggen</button>`}
         ${ui.startFails >= 3 && !found ? '<button class="btn" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
         ${ui.startFails >= 6 && !found ? '<button class="btn" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
         <button class="btn" type="button" data-act="next-step"${found || stepDone(lick, 3) ? '' : ' disabled'}>Weiter</button></div>
@@ -1234,9 +1237,16 @@
 
   /* ---- Tastatur ---- */
   const keyEls = new Map();
+  // Die Tastatur wird nur neu gebaut, wenn sich die Lage ändert (anderer Lick, andere Oktave) —
+  // sonst würde ein Neuzeichnen mitten im Tastendruck die gedrückte Taste austauschen, ihr
+  // pointerup ginge verloren und der Ton bliebe hängen.
+  let kbSig = '';
   function buildKeyboard() {
     const lick = currentLick();
     const kb = $('#keyboard');
+    const sig = lick ? `${lick.id}|${octaveOf(lick)}` : '';
+    if (sig && sig === kbSig && keyEls.size) { paintKeys(); return; }
+    kbSig = sig;
     kb.replaceChildren();
     keyEls.clear();
     if (!lick) return;
@@ -1268,8 +1278,16 @@
     const down = new Set(keysDown.values());
     keyEls.forEach((el, midi) => {
       el.classList.toggle('is-down', down.has(midi));
+      el.classList.toggle('is-picked', ui.foundKey === null && ui.pickedKey === midi);
       el.querySelector('.key-mark')?.remove();
     });
+    // Ausgewählte, noch nicht eingeloggte Taste: neutral markiert, verrät nichts über richtig oder falsch.
+    if (ui.foundKey === null && ui.pickedKey !== null && keyEls.has(ui.pickedKey)) {
+      const pick = document.createElement('span');
+      pick.className = 'key-mark is-pick';
+      pick.textContent = '?';
+      keyEls.get(ui.pickedKey).append(pick);
+    }
     // Die gefundene Starttaste bleibt als kleine Stufenmarke stehen — sie verrät nur den Ausgangston.
     const lick = currentLick();
     if (lick && ui.foundKey !== null && keyEls.has(ui.foundKey)) {
@@ -1291,6 +1309,7 @@
     e.preventDefault();
     const midi = keyAt(e.clientX, e.clientY);
     if (midi === null) return;
+    try { kbEl.setPointerCapture(e.pointerId); } catch { /* nicht überall verfügbar */ }
     keysDown.set(e.pointerId, midi);
     ownNoteOn(midi);
     onOwnKey(midi);
@@ -1304,7 +1323,7 @@
     if (![...keysDown.values()].includes(midi)) ownNoteOff(midi);
     paintKeys();
   };
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => kbEl.addEventListener(type, upKey));
+  ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture'].forEach((type) => kbEl.addEventListener(type, upKey));
   kbEl.addEventListener('contextmenu', (e) => e.preventDefault());
 
   /* ------------------------------------------------------------------------
@@ -1384,33 +1403,45 @@
       setFeedback('Grundton und Quinte liegen. Welcher Ton beginnt den Lick?');
     });
   }
-  /** Eine Taste gedrückt (Schritt 3: Startton finden). */
+  /** Eine Taste gedrückt (Schritt 3: Startton finden): nur ausprobieren und auswählen —
+   *  erst „Ton einloggen“ prüft, sonst führte schon der erste Tipp zur Lösung. */
   function onOwnKey(midi) {
     const lick = currentLick();
     if (!lick || ui.step !== 3 || ui.running || ui.foundKey !== null || ui.review) return;
-    if (!ui.drone && ui.startFails === 0 && !ui.result) { /* auch ohne vorheriges Hören probieren */ }
+    ui.pickedKey = midi;
+    setFeedback('Ton ausgewählt. Passt er zum Anfang des Licks? Dann logg ihn ein.', '');
+    renderPanel(lick, itemOf(lick.id));
+  }
+  /** „Ton einloggen“: die ausgewählte Taste gegen den ersten Ton prüfen. */
+  function lockStart() {
+    const lick = currentLick();
+    if (!lick || ui.step !== 3 || ui.pickedKey === null || ui.foundKey !== null) return;
     const first = lick.root + lick.notes[0][2];
+    const midi = ui.pickedKey;
     if (mod(midi, 12) === mod(first, 12)) {
-      ui.foundKey = midi;
+      ui.foundKey = midi; ui.pickedKey = null;
       releaseDrone();
       const it = itemOf(lick.id);
       it.step = Math.max(it.step, 3);
       setFeedback(`Gefunden – das ist die ${degreeLabel(lick.notes[0][2])}.`, 'good');
       persist();
-      renderLick();
     } else {
-      ui.startFails++;
-      setFeedback(ui.startFails >= 3 ? 'Noch nicht. Hör den Lick nochmal an – wie beginnt er?' : 'Noch nicht – probier eine andere Taste.', '');
-      const el = $('.feedback');
-      if (ui.startFails === 3 || ui.startFails === 6) renderPanel(lick, itemOf(lick.id));
-      else if (el) el.textContent = ui.feedback;
+      ui.startFails++; ui.pickedKey = null;
+      setFeedback(ui.startFails >= 3 ? 'Noch nicht. Hör den Lick nochmal an – wie beginnt er?' : 'Das ist es noch nicht – probier eine andere Taste.', '');
     }
+    renderPanel(lick, itemOf(lick.id));
+    paintKeys();
+  }
+  /** Schritt 3 verlassen: gefundene und ausgewählte Taste, Fehlversuche und Grundton weg. */
+  function resetStartton() {
+    ui.foundKey = null; ui.pickedKey = null; ui.startFails = 0;
+    releaseDrone();
   }
   function showMe() {
     const lick = currentLick();
     const first = lick.root + lick.notes[0][2] + 12 * octaveOf(lick);
     const cand = [...keyEls.keys()].filter((m) => mod(m, 12) === mod(first, 12)).sort((a, b) => Math.abs(a - first) - Math.abs(b - first))[0];
-    ui.foundKey = cand ?? first;
+    ui.foundKey = cand ?? first; ui.pickedKey = null;
     releaseDrone();
     const it = itemOf(lick.id);
     it.step = Math.max(it.step, 3);
@@ -1661,7 +1692,7 @@
     if (!t) return;
     if (t.dataset.cat) { ui.cat = t.dataset.cat; renderList(); return; }
     if (t.dataset.notesChoice) { state.notes = t.dataset.notesChoice === 'off' ? 'off' : 'last'; if (state.notes === 'off' && ui.step === 7) ui.step = 5; renderSheet(); persist(); return; }
-    if (t.dataset.step) { const k = Number(t.dataset.step); const lick = currentLick(); if (lick && stepUnlocked(lick, k)) { stopRun(true); releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick(); } return; }
+    if (t.dataset.step) { const k = Number(t.dataset.step); const lick = currentLick(); if (lick && stepUnlocked(lick, k)) { stopRun(true); if (ui.step === 3 && k !== 3) resetStartton(); releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick(); } return; }
     if (t.dataset.stage) { ui.holdStage = Number(t.dataset.stage); ui.result = null; setFeedback(''); rerender(); return; }
     if (t.dataset.rate) {
       const lick = currentLick();
@@ -1680,17 +1711,18 @@
       case 'preview': previewLick(t.dataset.id); break;
       case 'open': openLick(t.dataset.id); break;
       case 'back':
-        stopRun(false); releaseDrone();
+        stopRun(false); resetStartton();
         if (lick && !ui.review && !ui.visitRated && itemOf(lick.id).whole >= 3 && ui.view === 'lick' && !ui.askedLeave) { ui.askedLeave = true; ui.step = 6; renderLick(); setFeedback('Wie fühlt es sich an? Wähle unten – oder geh einfach zurück.'); break; }
         ui.askedLeave = false; ui.review = null; show('list'); renderList(); break;
       case 'settings': renderSheet(); $('#sheet').hidden = false; break;
       case 'settings-close': $('#sheet').hidden = true; if (lick) renderLick(); break;
       case 'stop': stopRun(true); releaseDrone(); rerender(); break;
-      case 'next-step': { const it = itemOf(lick.id); if (ui.step <= 3) it.step = Math.max(it.step, ui.step); ui.step = Math.min(ui.step + 1, stepsShown().length); ui.result = null; setFeedback(''); persist(); renderLick(); break; }
+      case 'next-step': { const it = itemOf(lick.id); if (ui.step <= 3) it.step = Math.max(it.step, ui.step); if (ui.step === 3) resetStartton(); ui.step = Math.min(ui.step + 1, stepsShown().length); ui.result = null; setFeedback(''); persist(); renderLick(); break; }
       case 'hear': stepHear(); break;
       case 'sing': stepSing(); break;
       case 'startton': stepStartton(); break;
       case 'show-me': showMe(); break;
+      case 'lock-start': lockStart(); break;
       case 'part-run': stepPart(); break;
       case 'part-next': partNext(); break;
       case 'part-prev': ui.part = Math.max(0, ui.part - 1); ui.result = null; setFeedback(''); renderLick(); break;
@@ -1917,7 +1949,7 @@
   function flowCheck() {
     const errors = [];
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    const saved = { view: ui.view, step: ui.step, running: ui.running, result: ui.result, feedback: ui.feedback, lick: state.lick, notes: state.notes, items: state.items, html: $('#panel').innerHTML, holdStage: ui.holdStage, review: ui.review };
+    const saved = { view: ui.view, step: ui.step, running: ui.running, result: ui.result, feedback: ui.feedback, lick: state.lick, notes: state.notes, items: state.items, html: $('#panel').innerHTML, holdStage: ui.holdStage, review: ui.review, foundKey: ui.foundKey, pickedKey: ui.pickedKey, startFails: ui.startFails };
     selfTesting = true;
     try {
       // Zeitleiste Durchhalten: Snare nur in Snare-Takten, in stillen Takten weder Schlagzeug noch Klick, Schlussschlag.
@@ -1996,6 +2028,37 @@
       ui.holdStage = 3; state.items.hookPenta.hold = 2;
       renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
       if ($('#panel').querySelectorAll('.strip .is-silent').length !== 4) errors.push(`Taktstreifen: ${$('#panel').querySelectorAll('.strip .is-silent').length} schraffierte Takte statt 4`);
+      // Startton: Tippen wählt nur aus, erst „Ton einloggen“ prüft; die Tastatur wird dabei nicht neu gebaut
+      {
+        state.lick = 'hookPenta'; state.items = {};
+        Object.assign(ui, { view: 'lick', step: 3, running: '', result: null, review: null, foundKey: null, pickedKey: null, startFails: 0, feedback: '' });
+        buildKeyboard();
+        const lick = lickById('hookPenta'), firstMidi = lick.root + lick.notes[0][2];
+        const keyNode = keyEls.get(firstMidi);
+        if (!keyNode) errors.push('Startton: Taste des ersten Tons fehlt');
+        onOwnKey(firstMidi);
+        if (ui.foundKey !== null || ui.pickedKey !== firstMidi || /Gefunden/.test(ui.feedback)) errors.push('Startton: der erste Tipp führt schon zur Lösung');
+        if (!$('#panel [data-act="lock-start"]') || $('#panel [data-act="lock-start"]').disabled) errors.push('Startton: „Ton einloggen“ nach der Auswahl nicht wählbar');
+        if (!keyNode.classList.contains('is-picked') && (paintKeys(), !keyNode.classList.contains('is-picked'))) errors.push('Startton: ausgewählte Taste nicht markiert');
+        if (keyNode.querySelector('.key-mark')?.textContent === '1') errors.push('Startton: Auswahl verrät die Stufe');
+        lockStart();
+        if (ui.foundKey !== firstMidi || !/^Gefunden – das ist die 1\./.test(ui.feedback) || !stepDone(lick, 3)) errors.push(`Startton: Einloggen der richtigen Taste (${ui.foundKey}, „${ui.feedback}“)`);
+        if (keyEls.get(firstMidi) !== keyNode) errors.push('Startton: Tastatur wurde nach dem Fund neu gebaut (hängender Ton)');
+        if (keyNode.querySelector('.key-mark')?.textContent !== '1') errors.push('Startton: Stufenmarke fehlt nach dem Fund');
+        resetStartton(); paintKeys();
+        if (ui.foundKey !== null || keyNode.querySelector('.key-mark')) errors.push('Startton: Marke bleibt nach dem Verlassen hängen');
+        for (let i = 1; i <= 6; i++) {
+          onOwnKey(firstMidi + 2);
+          if (ui.foundKey !== null) errors.push('Startton: falsche Taste gilt als gefunden');
+          lockStart();
+          if (ui.startFails !== i || ui.pickedKey !== null) errors.push(`Startton: Fehlversuch ${i} → ${ui.startFails}/${ui.pickedKey}`);
+          const p = $('#panel').innerHTML;
+          if (/data-act="startton">Lick nochmal/.test(p) !== (i >= 3) || /data-act="show-me"/.test(p) !== (i >= 6)) errors.push(`Startton: Knöpfe nach ${i} Fehlversuchen`);
+        }
+        lockStart(); // ohne Auswahl passiert nichts
+        if (ui.startFails !== 6 || ui.foundKey !== null) errors.push('Startton: Einloggen ohne Auswahl');
+        resetStartton();
+      }
       // Notenbild-Zeilen: Töne, Zählzeilen
       const roll = rollHtml(lickById('arpMoll'));
       if ((roll.match(/class="roll-note"/g) || []).length !== 16 || !roll.includes('>e<') || !roll.includes('>a<')) errors.push('Notenbild arpMoll: Töne oder Zählzeilen');
@@ -2003,7 +2066,7 @@
       void eq;
     } finally {
       selfTesting = false;
-      Object.assign(ui, { view: saved.view, step: saved.step, running: saved.running, result: saved.result, feedback: saved.feedback, holdStage: saved.holdStage, review: saved.review });
+      Object.assign(ui, { view: saved.view, step: saved.step, running: saved.running, result: saved.result, feedback: saved.feedback, holdStage: saved.holdStage, review: saved.review, foundKey: saved.foundKey, pickedKey: saved.pickedKey, startFails: saved.startFails });
       state.lick = saved.lick; state.notes = saved.notes; state.items = saved.items;
       $('#panel').innerHTML = saved.html;
     }
