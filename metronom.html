@@ -456,9 +456,7 @@
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
-      // 'balanced' statt 'interactive': der kleinste Puffer knackt mit Bluetooth-Kopfhörern;
-      // die Ausgabelatenz wird über outputLatency/Kalibrierung ohnehin herausgerechnet.
-      const ctx = new Ctx({ latencyHint: 'balanced' });
+      const ctx = new Ctx({ latencyHint: 'interactive' });
       this.ctx = ctx;
       this.out = ctx.createGain();
       this.out.gain.value = .8;

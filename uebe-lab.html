@@ -1460,19 +1460,25 @@
   }
 
   const engine = {
-    ctx: null, master: null, noise: null,
+    ctx: null, hint: null, master: null, noise: null,
 
     /** Singstimme fürs Vorspiel (siehe singVoice). */
     voice(midi, time, duration, { dest, ...opts } = {}) { singVoice(this.ctx, dest || this.master, midi, time, duration, opts); },
 
     async start() {
+      // Pufferwahl je Bereich: Rhythmus und Singen brauchen Echtzeit (Klatschen,
+      // Tippen, Mikrofon), Hören spielt nur Töne und Akkorde vor — dort ist ein
+      // größerer Puffer knackfrei mit Bluetooth-Kopfhörern. Die Latenz lässt sich
+      // nach dem Anlegen nicht mehr ändern; beim Bereichswechsel (setTab hat alles
+      // gestoppt) wird der Kontext deshalb beim nächsten Start neu angelegt.
+      const hint = state.tab === 'ear' ? 'balanced' : 'interactive';
+      if (this.ctx && this.hint !== hint) { const old = this.ctx; this.ctx = null; old.close().catch(() => {}); }
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
-      // 'balanced' statt 'interactive': der kleinste Puffer knackt mit Bluetooth-Kopfhörern;
-      // die Ausgabelatenz wird über outputLatency/Kalibrierung ohnehin herausgerechnet.
-      const ctx = new Ctx({ latencyHint: 'balanced' });
+      const ctx = new Ctx({ latencyHint: hint });
       this.ctx = ctx;
+      this.hint = hint;
       this.master = ctx.createGain();
       this.master.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
