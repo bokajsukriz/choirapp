@@ -1700,9 +1700,7 @@
       }
       const AudioContextClass = global.AudioContext || global.webkitAudioContext;
       if (!AudioContextClass) throw new Error('Web Audio API nicht verfügbar');
-      // 'balanced' statt 'interactive': der kleinste Puffer knackt mit Bluetooth-Kopfhörern;
-      // die Ausgabelatenz wird über outputLatency/Kalibrierung ohnehin herausgerechnet.
-      const ctx = new AudioContextClass({ latencyHint: 'balanced' });
+      const ctx = new AudioContextClass({ latencyHint: 'interactive' });
       this.ctx = ctx;
       const gain = (value, to) => { const g = ctx.createGain(); g.gain.value = value; if (to) g.connect(to); return g; };
 

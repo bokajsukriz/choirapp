@@ -1460,19 +1460,25 @@
   }
 
   const engine = {
-    ctx: null, master: null, noise: null,
+    ctx: null, hint: null, master: null, noise: null,
 
     /** Singstimme fürs Vorspiel (siehe singVoice). */
     voice(midi, time, duration, { dest, ...opts } = {}) { singVoice(this.ctx, dest || this.master, midi, time, duration, opts); },
 
     async start() {
+      // Pufferwahl je Bereich: Rhythmus und Singen brauchen Echtzeit (Klatschen,
+      // Tippen, Mikrofon), Hören spielt nur Töne und Akkorde vor — dort ist ein
+      // größerer Puffer knackfrei mit Bluetooth-Kopfhörern. Die Latenz lässt sich
+      // nach dem Anlegen nicht mehr ändern; beim Bereichswechsel (setTab hat alles
+      // gestoppt) wird der Kontext deshalb beim nächsten Start neu angelegt.
+      const hint = state.tab === 'ear' ? 'balanced' : 'interactive';
+      if (this.ctx && this.hint !== hint) { const old = this.ctx; this.ctx = null; old.close().catch(() => {}); }
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
-      // 'balanced' statt 'interactive': der kleinste Puffer knackt mit Bluetooth-Kopfhörern;
-      // die Ausgabelatenz wird über outputLatency/Kalibrierung ohnehin herausgerechnet.
-      const ctx = new Ctx({ latencyHint: 'balanced' });
+      const ctx = new Ctx({ latencyHint: hint });
       this.ctx = ctx;
+      this.hint = hint;
       this.master = ctx.createGain();
       this.master.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
@@ -4929,6 +4935,38 @@
   // filter und automatische Pegelanpassung.
   const RECORDING_CONSTRAINTS = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
 
+  /* ---- Bluetooth-Ausweichen (Kopie aus app.js: REC_HEADSET_LABEL_RE,
+     REC_BUILTIN_LABEL_RE, recInputQuality, pickBuiltInMicId, preferWideBandMic).
+     Öffnet der Browser das Mikrofon eines Bluetooth-Kopfhörers, schaltet der
+     ins Freisprechprofil: Telefonbandbreite, und die Elektronik des Headsets
+     dämpft gleichbleibende Töne wie einen gehaltenen Ton als Rauschen weg.
+     Gibt es ein eingebautes Mikrofon, wird das genommen; der Kopfhörer bleibt
+     dann im Musikprofil. ---- */
+  const HEADSET_LABEL_RE = /bluetooth|airpods|air pods|beats|buds|headset|hands[\s-]?free|freisprech|\bhfp\b|\bbt\b/i;
+  const BUILTIN_LABEL_RE = /built[\s-]?in|internal|eingebaut|integriert|microphone array|mikrofonarray|wbudowan/i;
+  function streamIsHeadset(stream) {
+    const track = stream?.getAudioTracks?.()[0];
+    const rate = track?.getSettings?.().sampleRate || 0;
+    return (rate > 0 && rate <= 24000) || HEADSET_LABEL_RE.test(track?.label || '');
+  }
+  async function preferBuiltInMic(stream) {
+    if (!streamIsHeadset(stream) || !navigator.mediaDevices?.enumerateDevices) return stream;
+    let ids;
+    try {
+      ids = (await navigator.mediaDevices.enumerateDevices())
+        .filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications' && BUILTIN_LABEL_RE.test(d.label || ''))
+        .map((d) => d.deviceId);
+    } catch { return stream; }
+    if (new Set(ids).size !== 1) return stream;
+    // Den Headset-Stream zuerst freigeben — erst das lässt den Kopfhörer zurück ins Musikprofil schalten.
+    stream.getTracks().forEach((track) => track.stop());
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { ...RECORDING_CONSTRAINTS.audio, deviceId: { exact: ids[0] } } });
+    } catch {
+      return navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS); // lieber das Headset als gar kein Mikrofon
+    }
+  }
+
   /** Mikrofon öffnen — für genau einen Verbraucher: 'tuner' (Stimm-Tuner),
    *  'rhythm' (Einsätze klatschen/sprechen) oder 'sing' (Singen mit
    *  Mikrofon). Nur live ausgewertet, nie aufgezeichnet oder gespeichert.
@@ -4945,7 +4983,7 @@
     }
     try {
       await engine.start();
-      const stream = await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS);
+      const stream = await preferBuiltInMic(await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS));
       voice.stream = stream;
       voice.consumer = consumer;
       voice.source = engine.ctx.createMediaStreamSource(stream);

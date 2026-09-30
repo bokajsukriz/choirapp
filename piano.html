@@ -177,9 +177,7 @@
     }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
-    // 'balanced' statt 'interactive': der kleinste Puffer knackt mit Bluetooth-Kopfhörern;
-    // die Ausgabelatenz wird über outputLatency/Kalibrierung ohnehin herausgerechnet.
-    const ctx = new AC({ latencyHint: 'balanced' });
+    const ctx = new AC({ latencyHint: 'interactive' });
     audio.ctx = ctx;
     const master = ctx.createGain();
     master.gain.value = state.volume;
