@@ -133,8 +133,8 @@ ein Dialog mit echter Wahl).
   Synth-Klänge (Kopie aus `groove-lab.js`, ohne Hall) und Groove-Begleitung
   (Kopie aus `metronom.html`). Während des eigenen Spielens keine Marke, kein
   Raster, keine leuchtenden Tasten, kein Taktzähler. Status (Neu → Lerne →
-  Sitzt) und Wiederholen mit Abstand; die Karte „Heute wiederholen“ auf der
-  Tools-Seite (`licksDue` in `app.js`) zählt die fälligen Bausteine. Ablage
+  Sitzt) und Wiederholen mit Abstand („Heute wiederholen“ erscheint im Tool
+  selbst, nicht auf der Tools-Seite). Ablage
   `licks` (`window.parent.chorToolStorage`), Fortschrittsbereich `licks`.
   Prüfung: `licks.selfCheck()` in der Konsole des iframes.
 - `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
