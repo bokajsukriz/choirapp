@@ -270,93 +270,86 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .nav-btn:active { background: var(--surface-2); }
 
 /* ---------- Tools-Reiter ------------------------------------------------- */
-/* Der vierte Reiter heißt „Tools": oben die Werkzeuge als Kacheln (je zwei
-   nebeneinander), darunter eine breite Kachel, die die Einstellungen als
-   Unterseite öffnet (Zurück über #settings-back). Die Einstellungen selbst
-   haben keinen eigenen Reiter mehr — showTab() markiert dort „Tools". */
-.tools-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
+/* Vier Blöcke ohne sichtbare Überschriften (die Überschriften bleiben als
+   .visually-hidden im DOM): Einsingen (getönte Karte), Üben (drei Ringe),
+   Licks & Grooves (Name + Fortschrittsbalken), Werkzeuge (2×2). Die
+   Einstellungen sitzen als .tools-dock am unteren Rand, direkt über der
+   Navigation, und bleiben immer sichtbar (position: sticky im Scrollbereich
+   .app-main). Ist der Inhalt zu lang, scrollt er unter der Leiste weg. Die
+   Einstellungen öffnen als Unterseite (Zurück über #settings-back); showTab()
+   markiert dort weiterhin „Tools". Farben folgen der Akzentfarbe. */
+#view-tools {
+  --tint: color-mix(in srgb, var(--accent) 16%, white);
+  --tint-line: color-mix(in srgb, var(--accent) 28%, white);
 }
-.tool-tile {
-  min-height: 120px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px;
-  text-align: left;
-  min-width: 0;
-}
+/* Nur solange der Tools-Reiter aktiv ist: der Scrollbereich füllt die Höhe,
+   damit das Dock auch bei kurzem Inhalt unten klebt. Das untere Polster
+   (sonst 40px) übernimmt das Dock selbst. */
+.app-main:has(#view-tools.is-active) { display: flex; flex-direction: column; padding-bottom: 0; }
+#view-tools.is-active { flex: 1 0 auto; display: flex; flex-direction: column; }
+.tools-blocks { display: flex; flex-direction: column; gap: 24px; padding-bottom: 12px; }
+
+/* Einsingen */
+.warmup-card { background: var(--tint); border: 1px solid var(--tint-line); border-radius: 22px; padding: 12px; }
+.warmup-head { display: flex; align-items: center; gap: 10px; }
+.warmup-head .tool-tile-icon { width: 36px; height: 36px; background: var(--surface); }
+.warmup-head .tool-tile-icon svg { width: 22px; height: 22px; }
+.warmup-title { flex: 1 1 auto; min-width: 0; font-size: 1.25rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; hyphens: auto; }
+/* Stimme als Pille (aus dem Stimmprofil; ohne Stimme ausgeblendet). */
+.voice-pill { flex: 0 0 auto; padding: 3px 12px; border-radius: 999px; background: var(--surface); color: var(--text); font-size: .85rem; font-weight: 700; }
+.warmup-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
+.warmup-btn { min-height: 44px; padding: 6px 8px; border-radius: 999px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); font-weight: 700; font-size: .9rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+.warmup-btn:active { background: var(--surface-2); }
+/* „Mehr“: nur Text, damit Kurz/Lang klar im Vordergrund stehen. Etwas
+   dunkler als --muted, weil der Grund hier getönt ist (Kontrast ≥ 4,5:1). */
+.warmup-btn--more { padding: 6px 16px; border-color: transparent; background: transparent; color: color-mix(in srgb, var(--muted) 75%, var(--text)); }
+.warmup-btn--more:active { background: transparent; opacity: .7; }
+
+/* Üben: drei Ringe (Füllung = Stufe/6, gesetzt von renderPracticeTiles) */
+.practice-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 8px 12px; }
+.practice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.practice-tile { min-width: 0; padding: 4px 0; border: 0; border-radius: 14px; background: transparent; color: var(--text); display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.practice-tile:active { background: var(--surface-2); }
+.practice-ring { position: relative; width: 56px; height: 56px; display: block; }
+.practice-ring .ring { position: absolute; inset: 0; width: 56px; height: 56px; transform: rotate(-90deg); }
+.practice-ring circle { fill: none; stroke-width: 5; }
+.practice-ring .ring-bg { stroke: var(--line); }
+.practice-ring .ring-fg { stroke: var(--accent-foreground); stroke-linecap: round; stroke-dasharray: calc(var(--level, 0) * 150.8px) 150.8px; }
+/* Stufe 0: kein Bogen (ein Null-Strich mit runder Kappe würde als Punkt erscheinen). */
+.practice-tile[data-level="0"] .ring-fg { stroke-opacity: 0; }
+.ring-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--accent-foreground); }
+.ring-icon svg { width: 22px; height: 22px; display: block; }
+.practice-name { font-family: var(--font-display); font-weight: 700; font-size: .94rem; line-height: 1.1; overflow-wrap: anywhere; }
+.practice-level { font-size: .72rem; font-weight: 600; line-height: 1.1; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Weiße Kacheln: Licks & Grooves (Name + Balken) und Werkzeuge (Name) */
+.licks-grid, .tools-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tool-tile { min-width: 0; min-height: 50px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); display: flex; align-items: center; gap: 10px; text-align: left; }
 .tool-tile:active { background: var(--surface-2); }
-/* Einsingen (breit), Zonen „Üben“ und „Werkzeuge“, „Dein Stand“ */
-.warmup-card { margin-bottom: 12px; }
-.warmup-head { display: flex; align-items: center; gap: 14px; }
-.warmup-head .tool-tile-label { flex: 1 1 auto; min-width: 0; }
-/* Stimme als Pill oben rechts (aus dem Stimmprofil; ohne Stimme ausgeblendet). */
-.voice-pill { flex: 0 0 auto; align-self: flex-start; padding: 4px 12px; border-radius: 999px; background: rgba(var(--accent-rgb), .14); color: var(--text); font-size: .85rem; font-weight: 700; }
-.warmup-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 14px; }
-.warmup-btn { min-height: 48px; padding: 6px 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-weight: 700; font-size: .9rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
-.warmup-btn:active { background: rgba(var(--accent-rgb), .14); }
-.warmup-btn--more { color: var(--muted); }
-.tools-section-title { margin: 18px 4px 8px; font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--muted); }
-.practice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 4px; }
-.practice-tile { min-height: 132px; padding: 14px 10px; gap: 8px; justify-content: flex-start; }
-.practice-tile .tool-tile-label { font-size: min(1rem, 4.3vw); overflow-wrap: normal; }
-.practice-level { display: grid; gap: 5px; width: 100%; margin-top: auto; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-/* Licks & Grooves: zwei Kacheln (Klatsch-Grooves, Synth-Licks). */
-.licks-grid .tool-tile:disabled { opacity: .55; }
-.tools-grid--small .tool-tile { min-height: 92px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; padding: 12px 14px; }
-.tools-grid--small .tool-tile-icon { width: 40px; height: 40px; border-radius: 13px; }
-.tools-grid--small .tool-tile-icon svg { width: 22px; height: 22px; }
-.tools-grid--small .tool-tile-label { font-size: 1rem; overflow-wrap: normal; }
-/* Schmale Geräte: Icon über dem Namen, damit kein Wort mitten drin bricht. */
-@media (max-width: 379px) {
-  .tools-grid--small .tool-tile { flex-direction: column; align-items: flex-start; justify-content: space-between; }
-}
-.level-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
-.level-bar i { height: 8px; border-radius: 3px; background: var(--line); }
-.level-bar i.is-on { background: var(--accent); }
-.tool-tile-icon {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 auto;
-  border-radius: 16px;
-  background: rgba(var(--accent-rgb), .14);
-  color: var(--accent-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.tool-tile-icon svg { width: 26px; height: 26px; display: block; }
-.tool-tile-label {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.1rem;
-  line-height: 1.2;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-}
-.tool-tile--wide {
-  width: 100%;
-  min-height: 76px;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 14px;
-}
-.tool-tile-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.tool-tile-sub { font-size: 0.85rem; color: var(--muted); }
+.tool-tile:disabled { opacity: .55; }
+.tool-tile-icon { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 50%; background: rgba(var(--accent-rgb), .14); color: var(--accent-foreground); display: flex; align-items: center; justify-content: center; }
+.tool-tile-icon svg { width: 18px; height: 18px; display: block; }
+.tool-tile-label { font-family: var(--font-display); font-weight: 700; font-size: .94rem; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; hyphens: auto; }
+.tool-tile-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Fortschrittsbalken: Anteil „sitzender“ Bausteine, --pct setzt renderLicksCard. */
+.tool-tile-progress { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.tool-tile-progress > i { display: block; height: 100%; width: var(--pct, 0%); border-radius: 3px; background: var(--accent-foreground); }
 .tool-tile-arrow { flex: 0 0 auto; color: var(--muted); display: flex; }
-.tool-tile-arrow svg { width: 20px; height: 20px; }
+.tool-tile-arrow svg { width: 18px; height: 18px; }
+@media (max-width: 359px) {
+  .tool-tile { padding: 8px 10px; gap: 8px; }
+  .tool-tile-label { font-size: .88rem; }
+}
+
+/* Einstellungen: unten angedockt. Der Rahmen lässt Tipps durch, nur die
+   Leiste selbst reagiert — daneben bleiben die Kacheln darunter bedienbar.
+   Bewusst ohne eigenen Hintergrund (sonst würden die Konfetti-Kreise
+   abgeschnitten); die Leiste ist deckend, Inhalt verschwindet dahinter. */
+.tools-dock { position: sticky; bottom: 0; z-index: 2; margin-top: auto; padding: 8px 0; pointer-events: none; }
+.tools-settings { pointer-events: auto; width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint); color: var(--text); display: flex; align-items: center; gap: 10px; text-align: left; }
+.tools-settings:active { filter: brightness(.97); }
+.tools-settings .tool-tile-icon { background: var(--surface); }
+.tools-settings .tool-tile-label { flex: 1 1 auto; font-size: 1rem; }
 
 .subpage-back {
   min-height: var(--tap);
@@ -4010,54 +4003,78 @@ input[type="checkbox"] {
        die Lichtshow (#lightshow). Alle werden erst beim Antippen geladen.
        Die breite Kachel darunter öffnet die Einstellungen. -->
   <section class="view" id="view-tools">
-    <!-- Drei Zonen (siehe QUICK_STARTS, renderQuickStart, renderPracticeTiles
-         in app.js): Einsingen (Kurz/Lang starten das Programm direkt im
-         Spielmodus, „Mehr“ öffnet die Übersicht), Üben (Rhythmus/Hören/
-         Singen öffnen uebe-lab.html direkt im Bereich, darunter die Stufe),
-         Werkzeuge. Darunter die Einstellungen. -->
-    <div class="card warmup-card" id="quick-start">
+    <!-- Vier Blöcke ohne sichtbare Überschriften (siehe QUICK_STARTS,
+         renderQuickStart, renderPracticeTiles, renderLicksCard in app.js):
+         Einsingen (Kurz/Lang starten das Programm direkt im Spielmodus,
+         „Mehr“ öffnet die Übersicht), Üben (Rhythmus/Hören/Singen öffnen
+         uebe-lab.html direkt im Bereich; Ring = Stufe), Licks & Grooves
+         (Name + Fortschrittsbalken), Werkzeuge. Die Überschriften bleiben als
+         .visually-hidden für die Überschriftennavigation. Darunter, am
+         unteren Rand angedockt, die Einstellungen (.tools-dock). -->
+    <div class="tools-blocks">
+    <div class="warmup-card" id="quick-start">
       <div class="warmup-head">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-4 4-4 6 0s4 4 6 0 3-3 4-2"/><path d="M4 8c2-3 4-3 6 0"/><circle cx="18" cy="7" r="2"/></svg></span>
-        <span class="tool-tile-label" data-i18n="settings.tools.warmup">Einsingen</span>
+        <h2 class="warmup-title" data-i18n="settings.tools.warmup">Einsingen</h2>
         <span class="voice-pill" id="quick-voice" hidden></span>
       </div>
       <div class="warmup-actions">
-        <button class="warmup-btn" type="button" data-quick="short" id="warmup-short">Kurz · 5 Min.</button>
-        <button class="warmup-btn" type="button" data-quick="long" id="warmup-long">Lang · 10 Min.</button>
+        <button class="warmup-btn" type="button" data-quick="short" id="warmup-short">5 Min.</button>
+        <button class="warmup-btn" type="button" data-quick="long" id="warmup-long">10 Min.</button>
         <button class="warmup-btn warmup-btn--more" type="button" data-quick="more" aria-label="Mehr: alle Einsing-Programme und Übungen" data-i18n-aria="tools.warmup.moreAria"><span data-i18n="tools.warmup.more">Mehr</span><span aria-hidden="true"> ›</span></button>
       </div>
     </div>
-    <h2 class="tools-section-title" data-i18n="tools.practice.title">Üben</h2>
-    <div class="practice-grid" id="practice-tiles">
-      <button class="tool-tile practice-tile" type="button" data-quick="rhythm" data-practice="rhythm">
-        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.3l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg></span>
-        <span class="tool-tile-label" data-i18n="tools.practice.rhythm">Rhythmus</span>
+    <div class="practice-card" role="group" aria-labelledby="practice-title">
+      <h2 class="visually-hidden" id="practice-title" data-i18n="tools.practice.title">Üben</h2>
+      <div class="practice-grid" id="practice-tiles">
+      <button class="practice-tile" type="button" data-quick="rhythm" data-practice="rhythm" data-level="0">
+        <span class="practice-ring" aria-hidden="true">
+          <svg class="ring" viewBox="0 0 56 56"><circle class="ring-bg" cx="28" cy="28" r="24"/><circle class="ring-fg" cx="28" cy="28" r="24"/></svg>
+          <span class="ring-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.3l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg></span>
+        </span>
+        <span class="practice-name" data-i18n="tools.practice.rhythm">Rhythmus</span>
         <span class="practice-level" data-practice-level></span>
       </button>
-      <button class="tool-tile practice-tile" type="button" data-quick="ear" data-practice="ear">
-        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/><path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/></svg></span>
-        <span class="tool-tile-label" data-i18n="tools.practice.ear">Hören</span>
+      <button class="practice-tile" type="button" data-quick="ear" data-practice="ear" data-level="0">
+        <span class="practice-ring" aria-hidden="true">
+          <svg class="ring" viewBox="0 0 56 56"><circle class="ring-bg" cx="28" cy="28" r="24"/><circle class="ring-fg" cx="28" cy="28" r="24"/></svg>
+          <span class="ring-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/><path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/></svg></span>
+        </span>
+        <span class="practice-name" data-i18n="tools.practice.ear">Hören</span>
         <span class="practice-level" data-practice-level></span>
       </button>
-      <button class="tool-tile practice-tile" type="button" data-quick="sing" data-practice="sing">
-        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></span>
-        <span class="tool-tile-label" data-i18n="tools.practice.sing">Singen</span>
+      <button class="practice-tile" type="button" data-quick="sing" data-practice="sing" data-level="0">
+        <span class="practice-ring" aria-hidden="true">
+          <svg class="ring" viewBox="0 0 56 56"><circle class="ring-bg" cx="28" cy="28" r="24"/><circle class="ring-fg" cx="28" cy="28" r="24"/></svg>
+          <span class="ring-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></span>
+        </span>
+        <span class="practice-name" data-i18n="tools.practice.sing">Singen</span>
         <span class="practice-level" data-practice-level></span>
       </button>
+      </div>
     </div>
-    <h2 class="tools-section-title" data-i18n="tools.licks.title">Licks &amp; Grooves</h2>
-    <div class="tools-grid tools-grid--small licks-grid">
+    <div role="group" aria-labelledby="licks-title">
+      <h2 class="visually-hidden" id="licks-title" data-i18n="tools.licks.title">Licks &amp; Grooves</h2>
+      <div class="licks-grid">
       <button class="tool-tile" type="button" data-quick="grooves" id="tile-grooves" disabled>
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.3l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg></span>
-        <span class="tool-tile-text"><span class="tool-tile-label" data-i18n="tools.licks.grooves">Klatsch-Grooves</span><span class="tool-tile-sub" id="tile-grooves-sub"></span></span>
+        <span class="tool-tile-text">
+          <span class="tool-tile-label" data-i18n="tools.licks.grooves">Grooves</span>
+          <span class="tool-tile-progress" id="tile-grooves-bar" aria-hidden="true"><i></i></span>
+        </span>
       </button>
       <button class="tool-tile" type="button" data-quick="licks" id="tile-licks">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17c2 0 2-8 4.5-8S10 15 12 15s2-8 4.5-8S19 12 21 12"/><circle cx="7.5" cy="9" r="1.2" fill="currentColor"/><circle cx="16.5" cy="7" r="1.2" fill="currentColor"/></svg></span>
-        <span class="tool-tile-text"><span class="tool-tile-label" data-i18n="tools.licks.synth">Synth-Licks</span><span class="tool-tile-sub" id="tile-licks-sub"></span></span>
+        <span class="tool-tile-text">
+          <span class="tool-tile-label" data-i18n="tools.licks.synth">Licks</span>
+          <span class="tool-tile-progress" id="tile-licks-bar" aria-hidden="true"><i></i></span>
+        </span>
       </button>
+      </div>
     </div>
-    <h2 class="tools-section-title" data-i18n="tools.tools.title">Werkzeuge</h2>
-    <div class="tools-grid tools-grid--small">
+    <div role="group" aria-labelledby="tools-title">
+      <h2 class="visually-hidden" id="tools-title" data-i18n="tools.tools.title">Werkzeuge</h2>
+      <div class="tools-grid">
       <button class="tool-tile" id="btn-open-metronome" type="button">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6l4 18H5Z"/><path d="M12 17 16 6"/><path d="M7.5 14h9"/></svg></span>
         <span class="tool-tile-label" data-i18n="settings.tools.metronome">Metronom</span>
@@ -4074,15 +4091,16 @@ input[type="checkbox"] {
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.4c.6.6 1 1.4 1 2.3V16h6v-1.3c0-.9.4-1.7 1-2.3A6 6 0 0 0 12 2Z"/></svg></span>
         <span class="tool-tile-label" data-i18n="settings.lightshow.title">Lichtshow</span>
       </button>
+      </div>
     </div>
-    <button class="tool-tile tool-tile--wide" id="btn-open-settings" type="button">
-      <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></span>
-      <span class="tool-tile-text">
+    </div>
+    <div class="tools-dock">
+      <button class="tools-settings" id="btn-open-settings" type="button">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></span>
         <span class="tool-tile-label" data-i18n="nav.settings">Einstellungen</span>
-        <span class="tool-tile-sub" data-i18n="tools.settingsSub">Stimme, Aussehen, Audio, Daten &amp; Hilfe</span>
-      </span>
-      <span class="tool-tile-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-    </button>
+        <span class="tool-tile-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+      </button>
+    </div>
   </section>
 
   <!-- ===== Einstellungen =============================================== -->

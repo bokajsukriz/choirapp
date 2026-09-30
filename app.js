@@ -22893,13 +22893,20 @@ function groovesOf(playground) {
   const grooves = r.grooves && typeof r.grooves === 'object' && !Array.isArray(r.grooves) ? r.grooves : {};
   return { done, entries: done.map((id) => grooves[id]).filter((g) => g && typeof g === 'object') };
 }
-/** Angefangene und „sitzende“ Bausteine eines Stands (Unterzeile der Kachel). */
+/** Angefangene und „sitzende“ Bausteine eines Stands (Fortschrittsbalken der Kachel). */
 function licksCounts(items) {
   const list = items && typeof items === 'object' ? Object.values(items).filter((it) => it && typeof it === 'object') : [];
   return { n: list.length, solid: list.filter((it) => it.rating === 'solid').length };
 }
 const fillN = (key, vars) => Object.entries(vars).reduce((text, [k, v]) => text.replace(`{${k}}`, v), t(key));
-/** Kacheln „Synth-Licks“ und „Klatsch-Grooves“ nach dem Stand der Ablage füllen. */
+/** Fortschrittsbalken einer Kachel: Anteil „sitzender“ Bausteine (leer ohne
+ *  Bausteine). Die Kachel trägt keinen sichtbaren Text mehr außer dem Namen —
+ *  der Stand steht deshalb im aria-label. */
+function paintTileProgress(tile, bar, name, n, solid) {
+  if (bar) bar.style.setProperty('--pct', `${n ? Math.round((solid / n) * 100) : 0}%`);
+  tile.setAttribute('aria-label', n ? `${name}, ${fillN('tools.licks.sub', { n, solid })}` : name);
+}
+/** Kacheln „Licks“ und „Grooves“ nach dem Stand der Ablage füllen. */
 async function renderLicksCard() {
   if (!$('#tile-licks')) return;
   let licksState = null;
@@ -22907,12 +22914,15 @@ async function renderLicksCard() {
   const playground = await loadPlaygroundState();
   const gs = groovesOf(playground);
   const c = licksCounts(licksState?.v === 1 ? licksState.items : null);
-  const sub = $('#tile-licks-sub');
-  if (sub) sub.textContent = c.n ? fillN('tools.licks.sub', { n: c.n, solid: c.solid }) : '';
-  // Kachel „Klatsch-Grooves“: erst nach der ersten geschafften Kurs-Lektion.
-  const gTile = $('#tile-grooves'), gSub = $('#tile-grooves-sub');
-  if (gTile) gTile.disabled = !gs.done.length;
-  if (gSub) gSub.textContent = gs.done.length ? fillN('tools.licks.sub', { n: gs.done.length, solid: gs.entries.filter((g) => g.rating === 'solid').length }) : t('tools.licks.groovesEmpty');
+  paintTileProgress($('#tile-licks'), $('#tile-licks-bar'), t('tools.licks.synth'), c.n, c.solid);
+  // Kachel „Grooves“: erst nach der ersten geschafften Kurs-Lektion.
+  const gTile = $('#tile-grooves');
+  if (gTile) {
+    gTile.disabled = !gs.done.length;
+    paintTileProgress(gTile, $('#tile-grooves-bar'), t('tools.licks.grooves'), gs.done.length, gs.entries.filter((g) => g.rating === 'solid').length);
+    // Ohne Text auf der Kachel erklärt nur das aria-label, warum sie noch gesperrt ist.
+    if (!gs.done.length) gTile.setAttribute('aria-label', `${t('tools.licks.grooves')}, ${t('tools.licks.groovesEmpty')}`);
+  }
 }
 /** Stand von uebe-lab.html („playground“) — nur lesen (Klatsch-Grooves). */
 async function loadPlaygroundState() {
@@ -22931,13 +22941,16 @@ function renderQuickStart() {
     const label = (key, n) => t(key).replace('{n}', n).replace(/ (?=\S*$)/, '\u00a0').replace(/(\d) /, '$1\u00a0');
     $('#warmup-short').textContent = label('tools.warmup.short', minutes.kurz);
     $('#warmup-long').textContent = label('tools.warmup.long', minutes.lang);
+    // Sichtbar steht nur die Dauer — „Kurz“/„Lang“ bleiben für Screenreader erhalten.
+    $('#warmup-short').setAttribute('aria-label', fillN('tools.warmup.shortAria', { n: minutes.kurz }));
+    $('#warmup-long').setAttribute('aria-label', fillN('tools.warmup.longAria', { n: minutes.lang }));
   };
   paint(WARMUP_DEFAULT_MINUTES);
   window.chorToolStorage.load('einsingen').then((stored) => paint(warmupMinutes(stored))).catch(() => {});
   renderLicksCard();
 }
 
-/** Üben-Kacheln: Stufe (Text + Sechs-Segment-Strahl) bzw. „Neu“. */
+/** Üben-Kacheln: Stufe als Text + Ring (Füllung = Stufe/6) bzw. „Neu“. */
 async function renderPracticeTiles() {
   const tiles = $$('#practice-tiles [data-practice]');
   if (!tiles.length) return;
@@ -22948,21 +22961,11 @@ async function renderPracticeTiles() {
     const st = practiceTileState(data, key);
     const host = tile.querySelector('[data-practice-level]');
     const text = st.isNew ? t('tools.area.new') : st.level ? t('tools.week.level').replace('{n}', st.level) : t('tools.week.custom');
-    const label = document.createElement('span');
-    label.textContent = text;
-    const nodes = [label];
-    if (!st.isNew) {
-      const bar = document.createElement('span');
-      bar.className = 'level-bar';
-      bar.setAttribute('aria-hidden', 'true');
-      for (let i = 1; i <= 6; i++) {
-        const seg = document.createElement('i');
-        if (i <= st.level) seg.className = 'is-on';
-        bar.append(seg);
-      }
-      nodes.push(bar);
-    }
-    host.replaceChildren(...nodes);
+    // Ring: CSS liest --level (0…1); bei Stufe 0/„Neu“ bleibt er leer (data-level="0").
+    const level = st.isNew ? 0 : Math.max(0, Math.min(6, Math.round(st.level) || 0));
+    tile.dataset.level = String(level);
+    tile.style.setProperty('--level', String(level / 6));
+    host.textContent = text;
     tile.setAttribute('aria-label', `${t(`tools.practice.${key}`)}, ${text}`);
   }
 }
