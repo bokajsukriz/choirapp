@@ -2673,6 +2673,8 @@ input[type="checkbox"] {
   border: 1px solid #f1ddd0; border-radius: 13px; background: #fff1e2; color: #8c81a6;
 }
 .tool-frame-close svg { width: 20px; height: 20px; }
+/* Seite mit eigenem Zurück-Knopf (data-own-back, siehe syncToolFrameBack). */
+.tool-frame.has-own-back .tool-frame-close { display: none; }
 
 /* Schnellzugriff aufs Metronom, solange es im Hintergrund läuft (siehe
    updateMetronomeFab). Oben links auf Höhe der Kopfzeile: im Player sitzt

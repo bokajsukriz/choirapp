@@ -9,7 +9,7 @@ dort unter „Dateiübersicht".
 **Vor jedem Commit prüfen:** wurde eine der folgenden Dateien geändert?
 
 `index.html`, `app.js`, `lightshow.js`, `strings.js`, `zip-reader.js`,
-`groove-lab.js`, `harmony.js`, `signalsmith-stretch.js`, `boot-guard.js`, `lame.min.js`,
+`groove-lab.js`, `harmony.js`, `ueben.css`, `signalsmith-stretch.js`, `boot-guard.js`, `lame.min.js`,
 `uebe-lab.html`, `einsingen.html`, `piano.html`, `licks.html`, `metronom.html`, `manifest.json`, `icon-192.png`, `icon-512.png`, `sw.js` selbst
 
 (maßgeblich ist immer `SHELL_REQUIRED`/`SHELL_OPTIONAL` in `sw.js` — dort

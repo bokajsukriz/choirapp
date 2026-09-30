@@ -22455,10 +22455,15 @@ function openToolFrame(page, titleKey, query = '') {
     // Wischgeste auch im iframe (gleiche Herkunft, Dokument erreichbar).
     frame.addEventListener('load', () => {
       try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
+      syncToolFrameBack(frame);
     });
     host.append(frame);
   }
   host.setAttribute('aria-label', t(titleKey));
+  // Bis die Seite geladen ist (bzw. für das wieder gezeigte Metronom sofort):
+  // eigener Zurück-Knopf der Seite oder der Schließen-Knopf der App.
+  host.classList.remove('has-own-back');
+  if (page === METRONOME_PAGE && metro && !metro.hidden) syncToolFrameBack(metro);
   toolFrameReturnFocus = document.activeElement;
   host.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -22466,6 +22471,24 @@ function openToolFrame(page, titleKey, query = '') {
   $('#tool-frame-close').focus();
   pushToolHistory();
   if (page === 'piano.html') lockLandscapeFor(host);
+}
+
+/**
+ * Übungsseiten im Stil „Konfetti B2“ (ueben.css) haben oben links einen
+ * eigenen runden Zurück-Knopf und markieren das mit `data-own-back` am
+ * <html>. Dann blendet die Ebene den Schließen-Knopf der App aus (er läge
+ * sonst über „?“ und Zahnrad der Seite) und der Fokus wandert auf den
+ * Zurück-Knopf der Seite. Esc und die Wischgeste schließen weiterhin.
+ */
+function syncToolFrameBack(frame) {
+  const host = $('#tool-frame');
+  let own = false;
+  try { own = !!frame.contentDocument?.documentElement.hasAttribute('data-own-back'); } catch { /* fremde Herkunft */ }
+  if (frame.hidden || host.hidden) return;
+  host.classList.toggle('has-own-back', own);
+  if (own && document.activeElement === $('#tool-frame-close')) {
+    try { frame.contentDocument.querySelector('[data-own-back-btn]')?.focus(); } catch { /* fremde Herkunft */ }
+  }
 }
 
 function closeToolFrame({ fromHistory = false } = {}) {

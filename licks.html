@@ -165,6 +165,9 @@
   .sheet-card h3 { margin: 0 0 8px; font-size: 1rem; }
   .sub-label { display: block; margin: 12px 0 4px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 </style>
+<!-- Gemeinsame Designsprache „Konfetti B2“ (Tokens, Schrift, Bausteine); nach dem
+     eigenen <style>, damit ihre Tokens gewinnen. -->
+<link rel="stylesheet" href="./ueben.css">
 </head>
 <body>
 <div class="bar">
@@ -225,6 +228,9 @@
       const rgb = appStyle.getPropertyValue('--accent-rgb').trim();
       if (/^#[0-9a-f]{6}$/i.test(accent)) document.documentElement.style.setProperty('--accent', accent);
       if (/^\d+,\s*\d+,\s*\d+$/.test(rgb)) document.documentElement.style.setProperty('--accent-rgb', rgb);
+      // Dunkle Textvariante der Akzentfarbe (≥ 4,5:1, deriveAccentForeground in app.js).
+      const fg = appStyle.getPropertyValue('--accent-foreground').trim();
+      if (/^#[0-9a-f]{6}$/i.test(fg)) document.documentElement.style.setProperty('--accent-foreground', fg);
     }
   } catch { /* eigenständig geöffnet oder fremde Herkunft: Standardfarbe */ }
 
