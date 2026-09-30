@@ -396,7 +396,7 @@
       <div data-levels="rhythm"></div>
       <div class="course-card" data-course-card hidden></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
-      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen. Beim Nachklatschen gibt es bewusst nichts zu sehen – dein Ohr und dein innerer Puls sind das Werkzeug.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div class="bar-strip" aria-hidden="true"></div>
@@ -996,13 +996,18 @@
      dessen Länge kürzer (Volltakt-Regel) — geprüft in courseCheck().
      ------------------------------------------------------------------------ */
   const COURSE_CHAPTERS = {
-    1: 'Puls und lange Noten', 2: 'Achtel', 3: 'Punktierungen und Synkopen',
-    4: 'Dreiertakt und Sechsachtel', 5: 'Sechzehntel und Triolen', 6: 'Rhythmen aus Lateinamerika',
+    1: 'Puls und Backbeat', 2: 'Achtel und Offbeat', 3: 'Synkopen und Vorziehen',
+    4: 'Sechzehntel-Grooves', 5: 'Shuffle und Zwölfachtel',
+    6: 'Rhythmen aus Afrika und Lateinamerika', 7: 'Zusatz: Walzer, Barock und Klassik',
   };
+  const COURSE_EXTRA_CH = 7; // freiwillig, zählt nicht zum Kursfortschritt
   const COURSE = [
     { id: 'puls', ch: 1, meter: '4/4', bpm: 80, name: 'Der Grundschlag', bars: ['12 12 12 12'],
       intro: 'Vier Viertel – jeder Klatscher fällt genau auf einen Schlag. Das ist der Puls, auf dem alle weiteren Rhythmen aufbauen; sprich „ta ta ta ta“ oder zähl „1 2 3 4“ mit.',
       more: 'Fast alle Rhythmusfehler im Chor sind eigentlich Pulsfehler: Wer den Grundschlag innerlich weiterlaufen lässt, trifft auch die schweren Stellen. Im 4/4-Takt ist die Eins am stärksten betont, die Drei etwas weniger.' },
+    { id: 'backbeat', ch: 1, meter: '4/4', bpm: 88, name: 'Der Backbeat', bars: ['-12 12 -12 12'], accomp: 'kick',
+      intro: 'Klatsch nur auf 2 und 4. Die Eins und die Drei zählst du still mit – dort spielt die Bassdrum, du bist die Snare.',
+      more: 'Der Backbeat ist das Fundament von Pop, Rock, Soul und Gospel. Wer im Konzert auf 1 und 3 klatscht, klatscht gegen die Band. Übe ihn überall: beim Gehen, zu jedem Song im Radio.' },
     { id: 'halbe', ch: 1, meter: '4/4', bpm: 80, name: 'Halbe und Ganze', bars: ['12 12 24', '48'],
       intro: 'Eine Halbe dauert zwei Schläge, eine Ganze vier. Du klatschst nur einmal am Anfang und zählst den Rest innerlich weiter („ta-a“, „ta-a-a-a“).',
       more: 'Beim Klatschen hört man von einer langen Note nur den Anfang. Lass die Hände danach im Takt weiterwippen oder summe den Ton leise – genau an dieser Stelle reißen im Chor lange Töne gern zu früh ab.' },
@@ -1015,69 +1020,90 @@
     { id: 'stomp', ch: 2, meter: '4/4', bpm: 80, name: 'Stampf, stampf, klatsch', bars: ['6 6 12 6 6 12'],
       intro: 'Zwei Achtel und eine Viertel, zweimal hintereinander – eines der bekanntesten Body-Percussion-Muster. Hier klatschst du alle Schläge; später kannst du die Achtel stampfen.',
       more: 'So beginnt „We Will Rock You“ von Queen (1977): zweimal stampfen, einmal klatschen. Im Studio wurde das Muster aus vielen übereinandergeschichteten Stampf- und Klatschaufnahmen gebaut.' },
+    { id: 'offbeat', ch: 2, meter: '4/4', bpm: 76, name: 'Der Offbeat', bars: ['-6 6 -6 6 -6 6 -6 6'],
+      intro: 'Jetzt klatschst du nur auf die „und“ zwischen den Schlägen. Zähl „1 und 2 und …“ laut mit und klatsche ausschließlich beim „und“.',
+      more: 'Das ist das Markenzeichen von Ska und Reggae: Dort spielt die Gitarre fast nur auf dem „und“. Im Popsong liegt der Offbeat oft in Hi-Hat oder Keyboard – er treibt, der Backbeat trägt.' },
     { id: 'auftakt', ch: 2, meter: '4/4', bpm: 80, name: 'Der Auftakt', pickup: '12', bars: ['12 6 6 12 12', '24 -12'],
       intro: 'Der Rhythmus beginnt vor der Eins: Der Einzähler zählt „1 2 3“, und auf der Vier bist du schon dran. Die Eins danach bleibt die schwere Zeit.',
       more: 'Nach alter Regel ist der letzte Takt dann genau um den Auftakt kürzer – Auftakt und Schlusstakt ergeben zusammen einen vollen Takt. Deshalb hat der zweite Takt hier nur drei Schläge.' },
-    { id: 'offbeat', ch: 2, meter: '4/4', bpm: 76, name: 'Der Offbeat', bars: ['-6 6 -6 6 -6 6 -6 6'],
-      intro: 'Jetzt klatschst du nur auf die „und“ zwischen den Schlägen. Zähl „1 und 2 und …“ laut mit und klatsche ausschließlich beim „und“.',
-      more: 'Das ist das Markenzeichen von Ska und Reggae: Dort spielt die Gitarre fast nur auf dem „und“. Verwandt ist der Backbeat in Pop und Gospel – dort klatscht man auf 2 und 4, nie auf 1 und 3.' },
+    { id: 'auftaktUnd', ch: 2, meter: '4/4', bpm: 84, name: 'Einsatz auf 4-und', pickup: '6', bars: ['12 6 6 12 12', '36 -6'],
+      intro: 'Die Phrase beginnt ein Achtel vor der Eins, auf dem „und“ der Vier. Zähl innerlich „3 4 und“ – auf „und“ klatschst du, die Eins danach bleibt schwer.',
+      more: 'So beginnen unzählige Popmelodien: Die erste Silbe ist unbetont und rutscht vor die Eins. Wer erst auf der Eins einsetzt, ist sofort ein Achtel zu spät.' },
 
-    { id: 'punktiert', ch: 3, meter: '4/4', bpm: 76, name: 'Die punktierte Viertel', bars: ['18 6 12 12'],
-      intro: 'Ein Punkt verlängert eine Note um die Hälfte: Die punktierte Viertel dauert anderthalb Schläge, das Achtel danach fällt auf das „und“ der Zwei („ta-i ti“).',
-      more: 'Zähl die Zwei innerlich mit, obwohl dort kein Klatscher ist. Sonst rutscht das Achtel auf die Zwei, und aus der Punktierung werden zwei gewöhnliche Viertel – der häufigste Punktierungsfehler im Chor.' },
     { id: 'synkope', ch: 3, meter: '4/4', bpm: 76, name: 'Die Synkope', bars: ['6 12 6 12 12'],
       intro: 'Achtel, Viertel, Achtel („ti-ta-ti“): Die Viertel beginnt auf dem „und“ und überbrückt den zweiten Schlag. So wird eine unbetonte Zeit betont – das ist eine Synkope.',
       more: 'Synkopen sind der Motor von Ragtime, Jazz, Pop und Gospel. Auf dem überbrückten Schlag passiert nichts – nicht klatschen, aber mitzählen.' },
+    { id: 'punktiert', ch: 3, meter: '4/4', bpm: 76, name: 'Die punktierte Viertel', bars: ['18 6 12 12'],
+      intro: 'Ein Punkt verlängert eine Note um die Hälfte: Die punktierte Viertel dauert anderthalb Schläge, das Achtel danach fällt auf das „und“ der Zwei („ta-i ti“).',
+      more: 'Zähl die Zwei innerlich mit, obwohl dort kein Klatscher ist. Sonst rutscht das Achtel auf die Zwei, und aus der Punktierung werden zwei gewöhnliche Viertel – der häufigste Punktierungsfehler im Chor.' },
     { id: 'charleston', ch: 3, meter: '4/4', bpm: 84, name: 'Der Charleston', bars: ['18 6 -12 -12'],
       intro: 'Punktierte Viertel, Achtel, Pause: Du klatschst auf die Eins und auf das „und“ der Zwei, danach bleibt der Takt still. Kurz und federnd.',
       more: 'Benannt nach dem Tanz und dem Stück „The Charleston“ von James P. Johnson (1923). Die halbe Taktpause ist die eigentliche Übung: Den Puls durch die Stille tragen.' },
     { id: 'antizipation', ch: 3, meter: '4/4', bpm: 76, name: 'Die vorgezogene Eins', bars: ['12 12 12 6 6', '~24 24'],
       intro: 'Das letzte Achtel wird über den Taktstrich gebunden: Der Klang kommt ein Achtel vor der Eins, auf der Eins selbst klatschst du nicht. Das nennt man Antizipation.',
       more: 'In Pop-, Jazz- und Gospelarrangements steht das ständig: Eine Silbe, die eigentlich auf die Eins gehört, wird vorgezogen. Das klingt lässig, klappt im Chor aber nur, wenn alle die Eins innerlich mitzählen.' },
+    { id: 'vorDrei', ch: 3, meter: '4/4', bpm: 80, name: 'Die vorgezogene Drei', bars: ['12 6 6 ~12 12'],
+      intro: 'Das Achtel auf „2 und“ wird über die Drei gebunden: Du klatschst es, auf der Drei selbst nicht. Die Drei zählst du trotzdem mit.',
+      more: 'Betonte Silben kommen im Pop ständig ein Achtel zu früh – auf die Eins wie auf die Drei. Man nennt das auch „Push“. Im Chor sitzt er nur, wenn alle den Schlag danach innerlich spüren.' },
 
-    { id: 'walzer', ch: 4, meter: '3/4', bpm: 92, name: 'Der Walzer', bars: ['24 12', '12 12 12'],
-      intro: 'Im 3/4-Takt gibt es drei Schläge, der erste ist schwer: „EINS zwei drei“. Halbe plus Viertel füllt genau einen Takt.',
-      more: 'In der Begleitung des Wiener Walzers kommt die Zwei einen Hauch zu früh – das gibt ihm sein typisches Schweben. Beim Klatschen bleiben wir trotzdem genau im Takt.' },
-    { id: 'sarabande', ch: 4, meter: '3/4', bpm: 72, name: 'Gewicht auf der Zwei', bars: ['12 24', '12 18 6'],
-      intro: 'Viertel und Halbe: Die lange Note beginnt auf der Zwei und gibt diesem Schlag Gewicht. Im zweiten Takt macht die punktierte Viertel dasselbe.',
-      more: 'Diese Betonung der Zwei ist das Kennzeichen der Sarabande, eines langsamen Barocktanzes. Ein berühmtes Beispiel ist Händels Arie „Lascia ch’io pianga“.' },
-    { id: 'sechsachtel', ch: 4, meter: '6/8', bpm: 56, name: 'Zwei große Schläge', bars: ['18 18', '6 6 6 18'],
-      intro: 'Im 6/8-Takt zählt man sechs Achtel, fühlt aber zwei große Schläge: „EINS zwei drei VIER fünf sechs“. Eine punktierte Viertel füllt genau einen davon.',
-      more: 'Deshalb bezieht sich das Tempo im 6/8-Takt meist auf die punktierte Viertel. 6/8 und 3/4 haben beide sechs Achtel – der Unterschied liegt nur in der Betonung: 2 × 3 gegen 3 × 2.' },
-    { id: 'wiegen', ch: 4, meter: '6/8', bpm: 56, name: 'Das Wiegen', bars: ['12 6 12 6', '18 18'],
-      intro: 'Viertel plus Achtel („ta ti“) füllt einen großen Schlag im 6/8-Takt: lang-kurz, lang-kurz. Das schaukelt wie eine Wiege.',
-      more: 'Viele Wiegenlieder und Barkarolen (Gondellieder) schaukeln in diesem Rhythmus, etwa die Barcarole aus Offenbachs „Hoffmanns Erzählungen“.' },
-    { id: 'hemiole', ch: 4, meter: '6/8', bpm: 56, name: 'Die Hemiole', bars: ['18 18', '12 12 12'],
-      intro: 'Im zweiten Takt klatschst du drei Viertel statt zwei punktierter Viertel – für einen Takt fühlt sich der 6/8 wie ein 3/4-Takt an. Das ist eine Hemiole.',
-      more: 'Im Barock steht die Hemiole oft kurz vor einem Schluss. Sehr bekannt ist sie aus „America“ in Bernsteins „West Side Story“, wo 6/8 und 3/4 ständig wechseln.' },
-
-    { id: 'sechzehntel', ch: 5, meter: '4/4', bpm: 66, name: 'Vier Sechzehntel', bars: ['12 3 3 3 3 12 6 6'],
+    { id: 'sechzehntel', ch: 4, meter: '4/4', bpm: 66, name: 'Vier Sechzehntel', bars: ['12 3 3 3 3 12 6 6'],
       intro: 'Vier Sechzehntel teilen einen Schlag in vier gleiche Teile: „ti-ri-ti-ri“ oder „1 e + e“. Gleichmäßig bleiben und zum Schlagende hin nicht eilen.',
       more: 'Bei schnellen Tempi hilft es, die Sechzehntel mit abwechselnden Händen auf die Oberschenkel zu patschen statt zu klatschen – so machen es auch Schlagzeuger.' },
-    { id: 'achtel16', ch: 5, meter: '4/4', bpm: 66, name: 'Achtel und zwei Sechzehntel', bars: ['6 3 3 6 3 3 12 12'],
+    { id: 'achtel16', ch: 4, meter: '4/4', bpm: 66, name: 'Achtel und zwei Sechzehntel', bars: ['6 3 3 6 3 3 12 12'],
       intro: 'Erst ein Achtel, dann zwei Sechzehntel („ti ti-ri“): lang, kurz-kurz. Das Achtel ist genau doppelt so lang wie jedes Sechzehntel.' },
-    { id: '16achtel', ch: 5, meter: '4/4', bpm: 66, name: 'Zwei Sechzehntel und Achtel', bars: ['3 3 6 3 3 6 12 12'],
+    { id: '16achtel', ch: 4, meter: '4/4', bpm: 66, name: 'Zwei Sechzehntel und Achtel', bars: ['3 3 6 3 3 6 12 12'],
       intro: 'Umgekehrt: zwei Sechzehntel, dann ein Achtel („ti-ri ti“) – kurz-kurz, lang. Die beiden Sechzehntel sitzen dicht auf dem Schlag.',
-      more: 'Das ist der Rhythmus des berühmten Galopps am Ende von Rossinis „Wilhelm Tell“-Ouvertüre: ti-ri ti, ti-ri ti, ti-ri ti ta ta.' },
-    { id: 'punktachtel', ch: 5, meter: '4/4', bpm: 66, name: 'Die punktierte Achtel', bars: ['9 3 9 3 12 12'],
-      intro: 'Punktiertes Achtel plus Sechzehntel: lang-kurz, der kurze Ton direkt vor dem nächsten Schlag. Das federt wie ein Marsch – nicht mit zwei Achteln oder einer Triole verwechseln.',
-      more: 'Dreht man das Paar um (erst Sechzehntel, dann punktiertes Achtel), entsteht der „lombardische Rhythmus“, auch Scotch Snap genannt – typisch für schottische Volksmusik und manche Barockmusik.' },
-    { id: 'geburtstag', ch: 5, meter: '3/4', bpm: 84, name: 'Der punktierte Auftakt', pickup: '9 3', bars: ['12 12 12', '24'],
-      intro: 'Punktiertes Achtel und Sechzehntel als Auftakt, dann ein Takt Viertel im 3/4-Takt. Der Auftakt ist kurz und leicht, die Eins danach schwer.',
-      more: 'So beginnt „Happy Birthday“ – und genau hier wird es beim Geburtstagssingen oft unsauber, weil beide Auftaktsilben gleich lang gesungen werden.' },
+      more: 'Kurz-kurz-lang treibt nach vorn. Das Achtel am Ende nicht verkürzen – sonst rutschen die nächsten Sechzehntel zu früh.' },
+    { id: 'aufE', ch: 4, meter: '4/4', bpm: 66, name: 'Einsatz auf dem „e“', bars: ['12 -3 3 6 12 12'],
+      intro: 'Auf der Zwei eine Sechzehntelpause, dann setzt du auf dem „e“ ein: „1 (2) e + 3 4“. Der Einsatz kommt knapp nach dem Schlag, nicht auf ihm.' },
+    { id: 'aufA', ch: 4, meter: '4/4', bpm: 66, name: 'Einsatz auf dem „a“', bars: ['12 -9 3 12 12'],
+      intro: 'Auf der Zwei eine punktierte Achtelpause, dann ein Sechzehntel auf dem „a“, direkt vor der Drei: „1 (2 e +) a 3 4“. Kurz und leicht in die Drei hinein.',
+      more: 'Viele Popphrasen beginnen so: eine kurze Silbe ein Sechzehntel vor dem Schlag. Zu früh klingt gehetzt, zu spät wird daraus eine Silbe auf dem Schlag.' },
+    { id: 'synkope16', ch: 4, meter: '4/4', bpm: 66, name: 'Die Sechzehntel-Synkope', bars: ['3 6 3 12 3 6 3 12'],
+      intro: 'Sechzehntel, Achtel, Sechzehntel – Klatscher auf 1, „e“ und „a“: die Synkope im Kleinen. Das Achtel beginnt auf dem „e“ und überbrückt das „und“.',
+      more: 'Diese Figur ist typisch für R&B, Funk und viele Rap-Phrasierungen. Nicht mit der Triole verwechseln: Die Abstände sind kurz – lang – kurz, nicht gleich.' },
+
     { id: 'triole', ch: 5, meter: '4/4', bpm: 69, name: 'Die Triole', bars: ['12 4 4 4 12 12'],
       intro: 'Drei gleich lange Noten in der Zeit von zwei Achteln: „tri-o-le“. Der Schlag wird in drei statt zwei Teile geteilt – rund und gleichmäßig.',
       more: 'Klatscht man von der Triole nur den ersten und den dritten Ton, entsteht der Shuffle, die Grundlage von Swing und Blues. Deshalb stehen über Jazznoten oft gerade Achtel mit dem Hinweis, sie triolisch zu spielen.' },
+    { id: 'shuffle', ch: 5, meter: '4/4', bpm: 88, name: 'Der Shuffle', shuffle: true, bars: ['8 4 8 4 12 12'],
+      intro: 'Zwei Achtel, aber ungleich: das erste lang, das zweite kurz, wie Anfang und Ende einer Triole. Geschrieben wird gerade, darüber steht „Shuffle“.',
+      more: 'Shuffle und Swing sind die Grundlage von Blues, Boogie, Swing und vielen Soulsongs. Wie stark geswingt wird, ist Stilfrage – hier genau triolisch.' },
+    { id: 'sechsachtel', ch: 5, meter: '6/8', bpm: 56, name: 'Zwei große Schläge', bars: ['18 18', '6 6 6 18'],
+      intro: 'Im 6/8-Takt zählt man sechs Achtel, fühlt aber zwei große Schläge: „EINS zwei drei VIER fünf sechs“. Eine punktierte Viertel füllt genau einen davon.',
+      more: 'Deshalb bezieht sich das Tempo im 6/8-Takt meist auf die punktierte Viertel. 6/8 und 3/4 haben beide sechs Achtel – der Unterschied liegt nur in der Betonung: 2 × 3 gegen 3 × 2.' },
+    { id: 'zwoelfachtel', ch: 5, meter: '12/8', bpm: 56, name: 'Die Soul-Ballade (12/8)', bars: ['12 6 12 6 18 18'],
+      intro: 'Zwölf Achtel, gefühlt vier große Schläge zu je drei Achteln. Die ersten beiden schaukeln lang-kurz, auf die letzten zwei klatschst du einmal pro großem Schlag.',
+      more: 'Der 12/8-Takt trägt viele Soul- und Gospelballaden und den langsamen Blues. Die Snare liegt auf dem zweiten und vierten großen Schlag – ein Backbeat in Dreiergruppen.' },
 
-    { id: 'habanera', ch: 6, meter: '2/4', bpm: 66, name: 'Die Habanera', bars: ['9 3 6 6', '9 3 6 6'],
-      intro: 'Punktiertes Achtel, Sechzehntel, zwei Achtel – im 2/4-Takt immer wieder. Ruhig und schwer, mit einem kleinen Anlauf in die Zwei.',
-      more: 'Der Tanz stammt aus Kuba; weltberühmt wurde der Rhythmus durch die „Habanera“ aus Bizets Oper „Carmen“ (1875). Er gilt als ein Vorfahr des Tangos.' },
     { id: 'tresillo', ch: 6, meter: '4/4', bpm: 84, name: 'Der Tresillo', bars: ['18 18 12'],
       intro: 'Drei Klatscher im Abstand 3 + 3 + 2 Achtel: auf die Eins, auf das „und“ der Zwei und auf die Vier. Zähl die Achtel mit: „1 2 3 1 2 3 1 2“.',
       more: 'Der Tresillo kommt aus der afrokubanischen Musik und steckt heute in unzähligen Pop-, Reggaeton- und Dancehall-Songs – oft im Bass oder im Schlagzeug.' },
     { id: 'clave', ch: 6, meter: '4/4', bpm: 84, name: 'Die Son-Clave (3-2)', bars: ['18 18 12', '-12 12 12 -12'],
       intro: 'Zwei Takte, fünf Schläge: im ersten Takt der Tresillo, im zweiten zwei Klatscher auf der Zwei und der Drei. Diese Figur ist das Rückgrat vieler kubanischer Stile.',
       more: '„Clave“ heißt Schlüssel – so heißen auch die beiden Hölzer, mit denen man den Rhythmus spielt. Im Rock ’n’ Roll wurde er als „Bo-Diddley-Beat“ berühmt.' },
+
+    { id: 'walzer', ch: 7, meter: '3/4', bpm: 92, name: 'Der Walzer', bars: ['24 12', '12 12 12'],
+      intro: 'Im 3/4-Takt gibt es drei Schläge, der erste ist schwer: „EINS zwei drei“. Halbe plus Viertel füllt genau einen Takt.',
+      more: 'In der Begleitung des Wiener Walzers kommt die Zwei einen Hauch zu früh – das gibt ihm sein typisches Schweben. Beim Klatschen bleiben wir trotzdem genau im Takt.' },
+    { id: 'sarabande', ch: 7, meter: '3/4', bpm: 72, name: 'Gewicht auf der Zwei', bars: ['12 24', '12 18 6'],
+      intro: 'Viertel und Halbe: Die lange Note beginnt auf der Zwei und gibt diesem Schlag Gewicht. Im zweiten Takt macht die punktierte Viertel dasselbe.',
+      more: 'Diese Betonung der Zwei ist das Kennzeichen der Sarabande, eines langsamen Barocktanzes. Ein berühmtes Beispiel ist Händels Arie „Lascia ch’io pianga“.' },
+    { id: 'wiegen', ch: 7, meter: '6/8', bpm: 56, name: 'Das Wiegen', bars: ['12 6 12 6', '18 18'],
+      intro: 'Viertel plus Achtel („ta ti“) füllt einen großen Schlag im 6/8-Takt: lang-kurz, lang-kurz. Das schaukelt wie eine Wiege.',
+      more: 'Viele Wiegenlieder und Barkarolen (Gondellieder) schaukeln in diesem Rhythmus, etwa die Barcarole aus Offenbachs „Hoffmanns Erzählungen“.' },
+    { id: 'hemiole', ch: 7, meter: '6/8', bpm: 56, name: 'Die Hemiole', bars: ['18 18', '12 12 12'],
+      intro: 'Im zweiten Takt klatschst du drei Viertel statt zwei punktierter Viertel – für einen Takt fühlt sich der 6/8 wie ein 3/4-Takt an. Das ist eine Hemiole.',
+      more: 'Im Barock steht die Hemiole oft kurz vor einem Schluss. Sehr bekannt ist sie aus „America“ in Bernsteins „West Side Story“, wo 6/8 und 3/4 ständig wechseln.' },
+    { id: 'punktachtel', ch: 7, meter: '4/4', bpm: 66, name: 'Die punktierte Achtel', bars: ['9 3 9 3 12 12'],
+      intro: 'Punktiertes Achtel plus Sechzehntel: lang-kurz, der kurze Ton direkt vor dem nächsten Schlag. Das federt wie ein Marsch – nicht mit zwei Achteln oder einer Triole verwechseln.',
+      more: 'Dreht man das Paar um (erst Sechzehntel, dann punktiertes Achtel), entsteht der „lombardische Rhythmus“, auch Scotch Snap genannt – typisch für schottische Volksmusik und manche Barockmusik.' },
+    { id: 'geburtstag', ch: 7, meter: '3/4', bpm: 84, name: 'Der punktierte Auftakt', pickup: '9 3', bars: ['12 12 12', '24'],
+      intro: 'Punktiertes Achtel und Sechzehntel als Auftakt, dann ein Takt Viertel im 3/4-Takt. Der Auftakt ist kurz und leicht, die Eins danach schwer.',
+      more: 'So beginnt „Happy Birthday“ – und genau hier wird es beim Geburtstagssingen oft unsauber, weil beide Auftaktsilben gleich lang gesungen werden.' },
+    { id: 'habanera', ch: 7, meter: '2/4', bpm: 66, name: 'Die Habanera', bars: ['9 3 6 6', '9 3 6 6'],
+      intro: 'Punktiertes Achtel, Sechzehntel, zwei Achtel – im 2/4-Takt immer wieder. Ruhig und schwer, mit einem kleinen Anlauf in die Zwei.',
+      more: 'Der Tanz stammt aus Kuba; weltberühmt wurde der Rhythmus durch die „Habanera“ aus Bizets Oper „Carmen“ (1875). Er gilt als ein Vorfahr des Tangos.' },
   ];
 
   /** Ticks-Text → Noten ab `t0`: „12“ Note, „-12“ Pause, „~12“ gebunden. */
@@ -1092,34 +1118,44 @@
     }
     return notes;
   }
-  /** Feste Phrase (Form wie makePattern): Auftakt + Takte. */
-  function coursePattern(meterId, pickup, bars, key) {
+  /** Feste Phrase (Form wie makePattern): Auftakt + Takte. `shuffle`: Noten
+   *  mit 8 und 4 Ticks gelten als Shuffle-Achtel (`sh`), wie bei makePattern. */
+  function coursePattern(meterId, pickup, bars, key, shuffle = false) {
     const m = METERS[meterId];
     const notes = courseNotes(pickup);
     const p = notes.reduce((a, n) => a + n.d, 0);
     let t = p;
     for (const bar of bars) { const ns = courseNotes(bar, t); notes.push(...ns); t = ns.length ? ns[ns.length - 1].t + ns[ns.length - 1].d : t; }
     notes.forEach((n) => { if (n.rest && n.d === m.ticks) n.whole = true; }); // ganztaktige Pause
-    return { meter: meterId, notes, onsets: notes.filter((n) => !n.rest && !n.tie).map((n) => n.t), key, bars: bars.length, pickup: p, total: bars.length * m.ticks };
+    if (shuffle) notes.forEach((n) => { if (n.d === 8 || n.d === 4) n.sh = true; });
+    return { meter: meterId, notes, onsets: notes.filter((n) => !n.rest && !n.tie).map((n) => n.t), key, bars: bars.length, pickup: p, total: bars.length * m.ticks, ...(shuffle ? { shuffle: true } : {}) };
   }
-  const lessonPattern = (l) => coursePattern(l.meter, l.pickup || '', l.bars, l.id);
+  const lessonPattern = (l) => coursePattern(l.meter, l.pickup || '', l.bars, l.id, !!l.shuffle);
   /** Ein Takt ohne Auftakt: lässt sich mit anderen Takten verbinden. */
   const combinable = (l) => l.bars.length === 1 && !l.pickup;
-  /** Bekannte Partner für „Im Zusammenhang“: frühere Ein-Takt-Lektionen derselben Taktart. */
-  const comboPartners = (l) => COURSE.slice(0, COURSE.indexOf(l)).filter((x) => x.meter === l.meter && combinable(x));
-  /** Die vier Schritte einer Lektion; jeder braucht eine fehlerfreie Runde.
-   *  Ein-Takt-Rhythmen enden „im Zusammenhang“ (zwei Takte mit einem
-   *  bekannten Rhythmus, vom Blatt), längere mit „Behalten“ (Nachklatschen
-   *  nach einem Leertakt). */
+  /** Bekannte Partner für „Im Zusammenhang“: frühere Ein-Takt-Lektionen derselben Taktart.
+   *  Shuffle mischt sich nur mit reinen Viertel-Takten (alle Achtel swingen),
+   *  gerade Lektionen nie mit einem Shuffle-Takt. */
+  const quarterOnly = (x) => x.bars.every((b) => courseNotes(b).every((n) => n.d % 12 === 0));
+  const comboPartners = (l) => COURSE.slice(0, COURSE.indexOf(l)).filter((x) => x.meter === l.meter && combinable(x) && !x.shuffle && (!l.shuffle || quarterOnly(x)));
+  /** Ersatz-Partner, wenn es noch keinen bekannten gibt: zwei lange Noten je Takt. */
+  const fallbackBar = (m) => (m.ticks === 72 ? '36 36' : m.ticks === 48 ? '24 24' : String(m.ticks === 24 ? 24 : 36));
+  /** Die Schritte einer Lektion; jeder braucht eine fehlerfreie Runde. Erst
+   *  hören, zuletzt lesen (Pop-Chor: nach Gehör): Nachklatschen → Behalten
+   *  (ein Takt still weiterzählen) → im Zusammenhang (zwei Takte, der neue
+   *  und ein bekannter Rhythmus) bzw. nur mit der Snare → „So sieht es aus“
+   *  (Mitklatschen mit Noten, entfällt bei `course.notes === 'off'`).
+   *  `accomp`: Begleitung der Runde (siehe ACCOMP_LEVELS). */
   function courseSteps(l) {
-    return [
-      { mode: 'along', name: 'Mitklatschen', how: 'Noten lesen und mit dem Vorbild klatschen.' },
-      { mode: 'read', name: 'Vom Blatt', how: 'Nur der Klick – du klatschst den Rhythmus allein.' },
-      { mode: 'echo', name: 'Nachklatschen', how: 'Erst hören, dann ohne Noten nachklatschen.' },
+    const steps = [
+      { mode: 'echo', name: 'Nachklatschen', how: 'Hören, dann ohne Noten nachklatschen.', accomp: 'full' },
+      { mode: 'echo', gap: 1, name: 'Behalten', how: 'Hören, einen Takt still weiterzählen, dann nachklatschen.', accomp: 'backbeat' },
       combinable(l)
-        ? { mode: 'read', combo: true, name: 'Im Zusammenhang', how: 'Zwei Takte vom Blatt: der neue Rhythmus und ein bekannter.' }
-        : { mode: 'echo', gap: 1, name: 'Behalten', how: 'Hören, einen Takt still weiterzählen, dann nachklatschen.' },
+        ? { mode: 'echo', combo: true, name: 'Im Zusammenhang', how: 'Zwei Takte nach Gehör: der neue Rhythmus und ein bekannter.', accomp: 'snare' }
+        : { mode: 'echo', name: 'Nur mit Snare', how: 'Nachklatschen, nur die Snare auf 2 und 4 hält dich.', accomp: 'snare' },
     ];
+    if (course.notes !== 'off') steps.push({ mode: 'along', name: 'So sieht es aus', how: 'Mitklatschen und dabei die Noten lesen – der Rhythmus, den du schon kannst, als Notenbild.', accomp: 'full' });
+    return steps;
   }
 
   /* ---- Zweistimmig: Rhythmus halten ----
@@ -1142,7 +1178,7 @@
   const barsOf4 = (l) => Array.from({ length: HOLD_BARS }, (_, k) => l.bars[k % l.bars.length]);
   const cellsText = (cells) => cells.flat().join(' ');
   const pulseBar = (m) => Array(m.ticks / m.unit).fill(m.unit).join(' ');
-  const longBar = (m) => (m.ticks === 48 ? '24 24' : String(m.ticks === 24 ? 24 : 36));
+  const longBar = (m) => fallbackBar(m);
   const onsetCount = (text) => courseNotes(text).filter((n) => !n.rest && !n.tie).length;
   /** Wie unabhängig sind die Stimmen in den Takten 2–4? fill: Einsätze
    *  der Gegenstimme, wo du nicht klatschst (die „Verführung“); alone:
@@ -1156,11 +1192,12 @@
   const holdIndependent = (c) => c.fill >= 2 && c.alone >= 1;
   /** Drei Takte, die dichter werden: ruhig → Achtel und Pausen → alles,
    *  was im gehaltenen Rhythmus vorkommt (Sechzehntel/Triolen nur dann). */
-  function developingBars(m, own, rnd) {
+  function developingBars(m, own, rnd, shuffle = false) {
     const hasS = own.notes.some((n) => !n.rest && (n.d === 3 || n.d === 9));
     const hasT = own.notes.some((n) => n.d === 4);
     const top = ['e', 'r', 'd', 'sy', ...(hasS ? ['s'] : []), ...(hasT && m.unit === 12 ? ['t'] : [])];
-    return [[], ['e', 'r'], top].map((ch) => cellsText(makeBar(m, ch, m.ticks, rnd).cells));
+    const sw = shuffle ? ['sh'] : []; // Shuffle-Gegenstimme: alle Achtel swingen
+    return [[], ['e', 'r', ...sw], [...top, ...sw]].map((ch) => cellsText(makeBar(m, ch, m.ticks, rnd, shuffle).cells));
   }
   /** Eine Runde „Halten“: { upper (App), lower (du), labels, youLabel, key }. */
   function holdRound(l, stage, rnd = Math.random) {
@@ -1168,10 +1205,10 @@
     const pickR = (list) => list[Math.floor(rnd() * list.length)];
     const rest = `-${m.ticks}`;
     const ostinato = barsOf4(l);
-    const pat = (bars, key) => coursePattern(l.meter, '', bars, key);
+    const pat = (bars, key) => coursePattern(l.meter, '', bars, key, !!l.shuffle);
     const holdPat = pat(ostinato, `hold:${l.id}`);
     let best = null;
-    const cands = COURSE.filter((x) => x.meter === l.meter && x.id !== l.id && holdable(x) && x.bars.join() !== l.bars.join());
+    const cands = COURSE.filter((x) => x.meter === l.meter && x.id !== l.id && holdable(x) && !x.shuffle && (!l.shuffle || quarterOnly(x)) && x.bars.join() !== l.bars.join());
     for (let attempt = 0; attempt < 150; attempt++) {
       let counter;
       let name;
@@ -1184,9 +1221,9 @@
         // ein fester, gebauter Gegenrhythmus — drei Takte gleich.
         const c = cands.length && attempt < 60 ? pickR(cands) : null;
         if (c) { counter = [rest, ...barsOf4(c).slice(0, 3)]; name = c.name; }
-        else { const b = cellsText(makeBar(m, ['e', 'r', 'sy', 'd'], m.ticks, rnd).cells); counter = [rest, b, b, b]; name = 'Gegenrhythmus'; }
+        else { const b = cellsText(makeBar(m, ['e', 'r', 'sy', 'd', ...(l.shuffle ? ['sh'] : [])], m.ticks, rnd, !!l.shuffle).cells); counter = [rest, b, b, b]; name = 'Gegenrhythmus'; }
       } else {
-        const dev = developingBars(m, holdPat, rnd);
+        const dev = developingBars(m, holdPat, rnd, !!l.shuffle);
         counter = [rest, ...dev];
         name = 'wechselnde Stimme';
         // wirklich „entwickelnd“: dichter werdend, am Ende nicht dein Rhythmus
@@ -1206,6 +1243,75 @@
       if (!best || out.score > best.score) best = out;
     }
     return best;
+  }
+
+  /* ------------------------------------------------------------------------
+     BEGLEITUNG — Groove statt Klick. Im Pop entsteht Rhythmus gegen den
+     Groove, nicht gegen einen gleichförmigen Klick. Der Groove ist „neutral“:
+     Bassdrum und Snare bzw. Rim nur auf Hauptschlägen, die Hi-Hat als
+     gleichmäßiges Raster ohne Akzente — er spielt nie den Zielrhythmus vor.
+     Innerhalb einer Lektion wird er ausgedünnt (Stufen), bis nur noch die
+     Snare auf 2 und 4 übrig ist. Ticks je Takt, 12 = Viertel.
+     ------------------------------------------------------------------------ */
+  const ACCOMP = {
+    '4/4':  { kick: [0, 24], snare: [12, 36] },
+    '6/8':  { kick: [0], rim: [18] },
+    '12/8': { kick: [0, 36], snare: [18, 54] },
+  };
+  const ACCOMP_LEVELS = {
+    full: ['kick', 'snare', 'rim', 'hat'],
+    backbeat: ['kick', 'snare', 'rim'],
+    snare: ['snare', 'rim'],
+    kick: ['kick'],
+  };
+  // Pegel: Die Vorbild-Klatscher (Rauschstöße um 1,5 kHz) sind leise — deutlich
+  // leiser als das Schlagzeug des Metronom-Tools. Deshalb das Schlagzeug
+  // −10,5 dB (Bassdrum zusätzlich abgesenkt, sie trägt die meiste Energie) und
+  // die Klatscher in Runden mit Groove um +9,5 dB angehoben (ohne Groove
+  // unverändert). Gemessen: selfCheckAudio.
+  const ACCOMP_GAIN = .3;
+  const CLAP_WITH_ACCOMP = 3;
+  /** Hi-Hat-Raster (nur Stufe 'full'): Ticks `at` innerhalb jeder Periode. */
+  function hatGridFor({ shuffle = false, triplets = false, sixteenths = false }) {
+    if (shuffle) return { period: 12, at: [0, 8] };
+    if (triplets) return { period: 4, at: [0] };
+    if (sixteenths) return { period: 3, at: [0] };
+    return { period: 6, at: [0] };
+  }
+  /** Raster passend zu den Noten einer Lektion (Shuffle, Triolen, Sechzehntel). */
+  function lessonHatGrid(l) {
+    const notes = lessonPattern(l).notes;
+    return hatGridFor({
+      shuffle: !!l.shuffle,
+      triplets: notes.some((n) => n.d === 4 && !n.sh),
+      sixteenths: notes.some((n) => n.d % 6 !== 0 && n.d !== 4 && !n.sh),
+    });
+  }
+  /** Begleitung einer Kurs-Runde: { level, hatGrid } oder null (Klick).
+   *  Klick in Kapitel 1 (außer Lektionen mit eigener `accomp`), im Zusatzkapitel
+   *  und in Taktarten ohne Groove; ebenso bei `settings.accomp === 'click'`.
+   *  `lesson.accomp` überschreibt die Stufe des Schritts. */
+  function accompFor(lesson, step, settings = {}) {
+    if ((settings.accomp || 'groove') === 'click') return null;
+    if (!ACCOMP[lesson.meter] || lesson.ch >= COURSE_EXTRA_CH || (lesson.ch === 1 && !lesson.accomp)) return null;
+    const level = lesson.accomp || step?.accomp;
+    if (!ACCOMP_LEVELS[level]) return null;
+    return { level, hatGrid: lesson.bars ? lessonHatGrid(lesson) : hatGridFor({}) };
+  }
+  /** Begleitung einer freien Übung (Nachklatschen, Vom Blatt): Stufe aus der
+   *  Einstellung, Raster aus den Bausteinen (Sechzehntel bei `s`/`off`, Shuffle
+   *  bei Shuffle-Phrasen). Taktarten ohne Groove: Klick. */
+  function freeAccomp(level, meterId, elements, shuffle) {
+    if (!ACCOMP_LEVELS[level] || !ACCOMP[meterId]) return null;
+    return { level, hatGrid: hatGridFor({ shuffle: !!shuffle, sixteenths: elements.includes('s') || elements.includes('off') }) };
+  }
+  /** Schläge der Begleitung auf Tick `pos` im Takt. */
+  function accompHits(pos, acc, meterId) {
+    const groove = ACCOMP[meterId], allowed = ACCOMP_LEVELS[acc.level];
+    if (!groove || !allowed) return [];
+    const out = ['kick', 'snare', 'rim'].filter((k) => allowed.includes(k) && groove[k]?.includes(pos));
+    if (allowed.includes('hat') && acc.hatGrid.at.includes(pos % acc.hatGrid.period)) out.push('hat');
+    return out;
   }
 
   /* ------------------------------------------------------------------------
@@ -1364,6 +1470,74 @@
       osc.start(time); osc.stop(time + .06);
     },
 
+    /* ---- Schlagzeug der Begleitung: Kopie aus metronom.html (drum, tone,
+       noiseHit; Stand e08b9d5), Ausgang über `dest` (Bus des Laufs, wird beim
+       Stoppen ausgeblendet). Abweichungen von der Vorlage: alle Pegel ×
+       ACCOMP_GAIN (−8 dB gegenüber dem Metronom-Tool, damit die Klatscher des
+       Vorbilds deutlich darüber liegen) und eine dunklere, kürzere Snare
+       (Körper 165 Hz, Rauschen um 1,2 kHz, 0,11 s), damit sie sich vom
+       Klatscher (1,5 kHz) unterscheidet. Bei Änderungen an der Vorlage nur
+       nachziehen, was den Klang betrifft. ---- */
+    drumTone(time, { freq, type = 'sine', gain, decay, attack = .001, filter }, dest) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, time);
+      g.gain.setValueAtTime(.0001, time);
+      g.gain.linearRampToValueAtTime(gain, time + attack);
+      g.gain.exponentialRampToValueAtTime(.0001, time + attack + decay);
+      let node = osc.connect(g);
+      if (filter) {
+        const f = ctx.createBiquadFilter();
+        f.type = filter.type; f.frequency.value = filter.freq; f.Q.value = filter.q ?? .7;
+        node = node.connect(f);
+      }
+      node.connect(dest || this.master);
+      osc.start(time); osc.stop(time + attack + decay + .02);
+    },
+    drumNoise(time, { type = 'highpass', freq, q = .7, gain, decay }, dest) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource();
+      const f = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      src.buffer = this.noise;
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      g.gain.setValueAtTime(gain, time);
+      g.gain.exponentialRampToValueAtTime(.0001, time + decay);
+      src.connect(f).connect(g).connect(dest || this.master);
+      src.start(time); src.stop(time + decay + .02);
+    },
+    /** kind: 'kick' | 'snare' | 'rim' | 'hat'. */
+    drum(kind, time, vel = 1, dest) {
+      const v = vel * ACCOMP_GAIN;
+      switch (kind) {
+        case 'kick': {
+          const ctx = this.ctx;
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.frequency.setValueAtTime(150, time);
+          osc.frequency.exponentialRampToValueAtTime(45, time + .11);
+          g.gain.setValueAtTime(.45 * v, time); // Vorlage .8
+          g.gain.exponentialRampToValueAtTime(.0001, time + .22);
+          osc.connect(g).connect(dest || this.master);
+          osc.start(time); osc.stop(time + .24);
+          break;
+        }
+        case 'snare':
+          this.drumTone(time, { freq: 165, type: 'triangle', gain: .28 * v, decay: .08 }, dest);
+          this.drumNoise(time, { type: 'bandpass', freq: 1200, q: .9, gain: .3 * v, decay: .11 }, dest);
+          break;
+        case 'rim':
+          this.drumTone(time, { freq: 1700, type: 'square', gain: .12 * v, decay: .025, filter: { type: 'bandpass', freq: 2000, q: 3 } }, dest);
+          break;
+        case 'hat':
+          this.drumNoise(time, { freq: 7000, gain: .07 * v, decay: .045 }, dest);
+          break;
+        default: break;
+      }
+    },
+
     burst(time, { cutoff, q, length, volume }, dest) {
       const ctx = this.ctx;
       const src = ctx.createBufferSource();
@@ -1377,8 +1551,8 @@
       src.start(time); src.stop(time + length + .02);
     },
 
-    clap(time, dest) {
-      [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: i === 2 ? .3 : .18 }, dest));
+    clap(time, dest, gain = 1) {
+      [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: (i === 2 ? .3 : .18) * gain }, dest));
     },
 
     /** Intonation: Sägezahn durch Tiefpass 2,5 kHz — die Obertöne machen
@@ -1508,6 +1682,8 @@
     // rounds: immer 0 = endlos (seit der Überarbeitung nicht mehr wählbar).
     mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 0,
     countIn: true, click: true, speedUp: false, showNotes: false,
+    markSelf: false,     // Marke beim eigenen Klatschen (Vom Blatt, Nachklatschen mit Noten)
+    accomp: 'click',     // Begleitung der freien Übungen: 'click' | 'full' | 'backbeat' | 'snare'
     // Didaktik Paket 3
     bars: 1, pickup: false, syllables: 'off', input: 'tap', micLatencyMs: 0,
     rhythmLevel: 0,      // 1–6 = Stufe, 0 = eigene Auswahl
@@ -1529,9 +1705,25 @@
      (gespeichert), Silben der Kurs-Anzeige (eigene Einstellung, Standard
      „ta ti-ti“). review: gelernte Rhythmen gemischt wiederholen. saved:
      Taktart/Tempo der anderen Übungen, solange der Kurs offen ist. */
-  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'ta', moreOpen: false, saved: null };
+  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'count', notes: 'last', accomp: 'groove', moreOpen: false, saved: null };
   const courseLesson = () => COURSE.find((l) => l.id === course.lesson) || COURSE[0];
   const reviewPool = () => COURSE.filter((l) => course.done.includes(l.id));
+  /** Kursfortschritt zählt nur die Kapitel 1–6; das Zusatzkapitel ist freiwillig
+   *  und hat einen eigenen Zähler. */
+  const isExtra = (l) => l.ch >= COURSE_EXTRA_CH;
+  function courseCounts() {
+    const main = COURSE.filter((l) => !isExtra(l)), extra = COURSE.filter(isExtra);
+    const done = (list) => list.filter((l) => course.done.includes(l.id)).length;
+    return { done: done(main), total: main.length, extraDone: done(extra), extraTotal: extra.length };
+  }
+  /** Nächste Lektion zum Weitergehen: nach der letzten Kurslektion (Kapitel 6)
+   *  führt nichts automatisch ins Zusatzkapitel. */
+  function nextLesson(l) {
+    const n = COURSE[COURSE.indexOf(l) + 1];
+    return n && isExtra(n) && !isExtra(l) ? null : n || null;
+  }
+  const chapterLabel = (ch) => (ch >= COURSE_EXTRA_CH ? COURSE_CHAPTERS[ch] : `Kapitel ${ch} · ${COURSE_CHAPTERS[ch]}`);
+  const COURSE_FINISHED = 'Kurs geschafft! Im Zusatzkapitel warten Walzer, Barock und Klassik – oder übe gemischt weiter.';
   const REVIEW_MIN = 2; // ab so vielen erledigten Lektionen: „Gemischt wiederholen“
   /** Zum Halten: Grundschlag und geschaffte Lektionen ohne Auftakt. */
   const holdPool = () => COURSE.filter((l) => holdable(l) && (l.id === 'puls' || course.done.includes(l.id)));
@@ -1569,7 +1761,7 @@
   }
   /** Aktueller Kurs-Schritt (bzw. Wiederholung). */
   function courseStep() {
-    if (course.review) return { mode: 'echo', name: 'Wiederholung' };
+    if (course.review) return { mode: 'echo', name: 'Wiederholung', accomp: 'backbeat' };
     const steps = courseSteps(courseLesson());
     return steps[Math.min(course.step, steps.length - 1)];
   }
@@ -1584,24 +1776,24 @@
       const pool = reviewPool().filter((l) => l.meter === run.meter);
       const a = pickR(pool.length ? pool : [courseLesson()]);
       let pattern = lessonPattern(a);
-      const others = pool.filter(combinable);
+      const others = pool.filter((x) => combinable(x) && !x.shuffle && (!a.shuffle || quarterOnly(x)));
       if (combinable(a) && others.length) {
         const b = pickR(others);
-        pattern = coursePattern(a.meter, '', [a.bars[0], b.bars[0]], `${a.id}+${b.id}`);
+        pattern = coursePattern(a.meter, '', [a.bars[0], b.bars[0]], `${a.id}+${b.id}`, !!a.shuffle);
       }
-      const mode = rnd() < .5 ? 'echo' : 'read';
-      return { mode, gap: 0, pattern, course: { review: true, lesson: a.id } };
+      // Wiederholung nur nach Gehör: kein Vom Blatt mehr.
+      return { mode: 'echo', gap: 0, pattern, course: { review: true, lesson: a.id }, accomp: 'backbeat' };
     }
     const lesson = courseLesson();
     const st = courseStep();
     let pattern = lessonPattern(lesson);
     if (st.combo) {
       const partners = comboPartners(lesson);
-      const other = partners.length ? pickR(partners).bars[0] : '24 24';
+      const other = partners.length ? pickR(partners).bars[0] : fallbackBar(METERS[lesson.meter]);
       const bars = rnd() < .5 ? [lesson.bars[0], other] : [other, lesson.bars[0]];
-      pattern = coursePattern(lesson.meter, '', bars, `${lesson.id}:${bars.join('|')}`);
+      pattern = coursePattern(lesson.meter, '', bars, `${lesson.id}:${bars.join('|')}`, !!lesson.shuffle);
     }
-    return { mode: st.mode, gap: st.gap || 0, pattern, course: { lesson: lesson.id, step: course.step } };
+    return { mode: st.mode, gap: st.gap || 0, pattern, course: { lesson: lesson.id, step: course.step }, accomp: lesson.accomp || st.accomp };
   }
 
   /** Taktart wechseln; das Tempo bleibt in Achteln gleich schnell. */
@@ -1655,11 +1847,15 @@
     let seq = null;
     let courseInfo = null;
     let duoPart = state.duoPart;
+    let accomp = null; // Klick, außer Kurs/freie Übung mit Groove (Zweistimmig: immer Klick)
     if (state.mode === 'course') {
       const cs = courseRoundSpec();
       ({ mode, pattern } = cs);
       seq = courseSeq(cs.mode, cs.gap);
       courseInfo = cs.course;
+      // Wiederholung mischt Kapitel: immer Bassdrum + Snare, wo die Taktart einen Groove hat.
+      accomp = cs.course.review ? accompFor({ meter: run.meter, ch: 2 }, { accomp: 'backbeat' }, course)
+        : accompFor(courseLesson(), { accomp: cs.accomp }, course);
     } else if (state.mode === 'duo' && state.duoStage < 5) {
       // Halten: gleich los (du kennst deinen Rhythmus), danach ein Leertakt
       // zum Ansehen — die nächste Runde bringt eine neue Gegenstimme.
@@ -1672,16 +1868,19 @@
       const freeChosen = free.elements.filter((id) => !(id === 't' && METERS[run.meter].unit !== 12));
       duo = makeDuo(run.meter, freeChosen, previous?.duo ? previous.duo.key : previous?.pattern.key, { bars: free.bars, pickup: free.pickup, ties: free.elements.includes('tie') });
       pattern = state.duoPart === 'upper' ? duo.upper : duo.lower;
-    } else pattern = makePattern(run.meter, chosen, previous?.pattern.key, opts);
+    } else {
+      pattern = makePattern(run.meter, chosen, previous?.pattern.key, opts);
+      accomp = freeAccomp(state.accomp, run.meter, chosen, pattern.shuffle);
+    }
     const round = {
       index, mode, meter: run.meter, bpm: state.bpm,
       tickSec: 60 / state.bpm / m.ref,
-      pattern, duo, duoPart,
+      pattern, duo, duoPart, accomp,
       seq: seq || roundSeq(state.mode, !!state.rounds && index === state.rounds - 1),
       showNotes: mode !== 'echo' || (state.showNotes && !courseInfo),
       youStart: null, result: null, course: courseInfo,
     };
-    // Mitklatschen gibt es nur noch als ersten Schritt im Rhythmus-Kurs.
+    // Mitklatschen (mit Noten) gibt es nur noch als letzten Schritt im Rhythmus-Kurs.
     round.youPos = round.seq.indexOf(round.mode === 'along' ? 'along' : 'you');
     round.barSec = pattern.total * round.tickSec;
     round.tol = tolerance(round);
@@ -1747,7 +1946,10 @@
       run.bars.push({ time, dur: item.len * run.tickSec, kind: item.kind, round: item.round, pos: item.pos, start: item.start, tickSec: run.tickSec });
       if (item.kind === 'you' || item.kind === 'along') item.round.youStart = time;
     }
-    if (mod(tick, m.beat) === 0 && (state.click || item?.kind === 'count')) engine.click(time, beatLevel(m, mod(tick, m.ticks)), run.bus);
+    // Mit Begleitung entfällt der Zählzeit-Klick; der Einzähler bleibt Klick.
+    const acc = item && item.kind !== 'count' ? item.round.accomp : null;
+    if (mod(tick, m.beat) === 0 && (item?.kind === 'count' || (state.click && !acc))) engine.click(time, beatLevel(m, mod(tick, m.ticks)), run.bus);
+    if (acc) for (const kind of accompHits(mod(tick, m.ticks), acc, run.meter)) engine.drum(kind, time, 1, run.bus);
     if (!item) return;
     const r = item.round;
     const rel = tick - item.start;
@@ -1758,7 +1960,7 @@
       }
       return;
     }
-    if ((item.kind === 'listen' || item.kind === 'along') && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus);
+    if ((item.kind === 'listen' || item.kind === 'along') && r.pattern.onsets.includes(rel)) engine.clap(time, run.bus, r.accomp ? CLAP_WITH_ACCOMP : 1);
   }
 
   function scheduleAhead() {
@@ -1852,7 +2054,7 @@
     renderStrip(null);
     renderPad(game.finished ? 'done' : 'idle');
     // Letzte Runde mit Ergebnis stehen lassen, Wiedergabe-Marke weg.
-    if (run.shown) renderStage(run.shown.round, run.shown.reveal || !!run.shown.round.result);
+    if (run.shown) renderStage(run.shown.round, run.shown.reveal || !!run.shown.round.result, 'rest');
     setStatus(message);
   }
 
@@ -1860,8 +2062,10 @@
     game.finished = true;
     const s = game.stats;
     if (state.mode === 'course' && course.complete) {
-      const next = COURSE[COURSE.indexOf(courseLesson()) + 1];
-      stop(`Lektion geschafft ✓${next ? ` — weiter mit „${next.name}“` : ' — das war die letzte Lektion!'}`);
+      const cur = courseLesson();
+      const next = nextLesson(cur);
+      stop(next ? `Lektion geschafft ✓ — weiter mit „${next.name}“`
+        : COURSE[COURSE.indexOf(cur) + 1] ? COURSE_FINISHED : 'Lektion geschafft ✓ — das war die letzte Lektion!');
       renderRhythm();
     } else stop(`Geschafft: ${s.perfect} von ${s.rounds} Runden fehlerfrei.`);
     renderScore();
@@ -2073,7 +2277,8 @@
 
   function renderPad(phase, beat = -1, round = null) {
     const m = METERS[round ? round.meter : state.meter];
-    const beats = phase === 'idle' || phase === 'done' ? 0 : m.ticks / m.beat;
+    const aids = round && phase !== 'idle' && phase !== 'done' ? roundAids(round, phase) : null;
+    const beats = phase === 'idle' || phase === 'done' || (aids && !aids.padBeats) ? 0 : m.ticks / m.beat;
     const key = `${phase}|${beat}|${beats}|${state.input}`;
     if (run.padKey === key) return;
     run.padKey = key;
@@ -2111,6 +2316,34 @@
     }));
   }
 
+  /** Welche Hilfen sind während des Laufs sichtbar? Menschen synchronisieren
+   *  sich mit bewegten Bildern deutlich genauer als mit stehenden — eine
+   *  laufende Marke oder ein Raster macht aus „Puls halten“ ein „der Linie
+   *  folgen“. Beim Hören-und-Nachklatschen gibt es deshalb bewusst nichts zu
+   *  sehen; nur beim Mitlesen (Vom Blatt, Lesephase; Kurs „So sieht es aus“)
+   *  verknüpft die Marke Klang und Notenbild.
+   *  mode: 'echo' | 'read' | 'along' | 'duo'; phase: 'count' | 'listen' |
+   *  'read' | 'rest' | 'you' | 'along'. → { mark, timeline, liveTaps,
+   *  padBeats (Zählzeiten im Tippfeld), realLayout (echtes Notenlayout statt
+   *  neutralem Platzhalter) }. */
+  function visibleAids({ mode, phase, course = false, showNotes = false, markSelf = false }) {
+    const all = { mark: true, timeline: true, liveTaps: true, padBeats: true, realLayout: true };
+    if (mode === 'duo') return all;
+    const reading = mode === 'read' || mode === 'along' || (mode === 'echo' && showNotes && !course);
+    if (!reading) return { mark: false, timeline: false, liveTaps: false, padBeats: phase === 'count', realLayout: false };
+    if (mode === 'along' && course) return all;
+    const own = phase === 'you';
+    return { mark: own ? !!markSelf : true, timeline: true, liveTaps: false, padBeats: !own, realLayout: true };
+  }
+  /** Hilfen für eine Runde in einer Phase; mit Ergebnis (nach der Runde)
+   *  bleibt die Auswertung sichtbar — ohne Marke. */
+  function roundAids(round, phase) {
+    if (round.result) return { mark: false, timeline: true, liveTaps: true, padBeats: true, realLayout: true };
+    return visibleAids({ mode: round.mode, phase, course: !!round.course, showNotes: !!round.showNotes, markSelf: state.markSelf });
+  }
+  /** Kurs-Schritt 1–3 und Wiederholung: nie Notenköpfe, auch nicht nach der Runde. */
+  const showsHeads = (round) => !(round.course && round.mode === 'echo');
+
   /** Welche Runde zeigt die Notenfläche? Beim Nachklatschen ohne Noten bleibt
    *  das Ergebnis der vorigen Runde stehen, bis du wieder dran bist. */
   function pickDisplay(bar) {
@@ -2132,16 +2365,18 @@
     renderPad(bar.kind === 'count' ? 'count' : bar.kind, beat, r);
     renderStrip(bar);
     const disp = pickDisplay(bar);
-    const liveTaps = disp.round.result ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
-    const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}`;
-    if (key !== run.viewKey) { run.viewKey = key; run.shown = disp; renderStage(disp.round, disp.reveal); }
-    // Wiedergabe-Marke: nur in der Phrase der gezeigten Runde, in der etwas passiert.
-    const active = bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
+    const aids = roundAids(disp.round, bar.round === disp.round ? bar.kind : 'rest');
+    const liveTaps = disp.round.result || !aids.liveTaps ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
+    const key = `${disp.round.index}|${disp.reveal}|${!!disp.round.result}|${liveTaps}|${bar.round === disp.round ? bar.kind : ''}`;
+    if (key !== run.viewKey) { run.viewKey = key; run.shown = disp; renderStage(disp.round, disp.reveal, bar.round === disp.round ? bar.kind : 'rest'); }
+    // Wiedergabe-Marke: nur in der Phrase der gezeigten Runde, in der etwas passiert
+    // — und nur, wo gelesen wird (visibleAids).
+    const active = aids.mark && bar.round === disp.round && ['listen', 'read', 'you', 'along'].includes(bar.kind);
     const t = (now - bar.time) / r.tickSec;
     $$('.stage .ph').forEach((ph) => {
       const line = stageLines[Number(ph.dataset.line)];
       const on = active && line && t >= line.t0 && t < line.t1;
-      if (on) { const x = line.xOf(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
+      if (on) { const x = line.markX(t); ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); }
       ph.style.visibility = on ? 'visible' : 'hidden';
     });
   }
@@ -2178,8 +2413,34 @@
         const sg = l.segs.find((s) => t >= s.t0 && t < s.t1) || (t < l.t0 ? l.segs[0] : l.segs[l.segs.length - 1]);
         return sg.x0 + ST.PAD * .8 + (clamp(t, sg.t0, sg.t1) - sg.t0) * px; // Kopf frei vom Taktstrich
       };
+      l.px = px;
+      l.markX = markX(l, pattern);
     }
     return lines;
+  }
+
+  /** Stetige Abbildung Zeit → x für die Wiedergabe-Marke einer Zeile. Das
+   *  Notenlayout lässt hinter jedem Taktstrich Platz (ST.PAD), `xOf` springt
+   *  dort — die Marke darf das nicht. Stützstellen sind die Anfänge aller
+   *  Noten und Pausen (Noten füllen die Zeit lückenlos, auf jedem Taktstrich
+   *  liegt also eine) sowie das Zeilenende am rechten Rand; dazwischen wird
+   *  linear interpoliert. Innerhalb eines Takts ist das `xOf`, über den
+   *  Taktstrich verteilt sich der Zusatzweg auf die letzte Note davor.
+   *  Ganztaktpausen zählen am zeitlichen Anfang, nicht an der gezeichneten Mitte. */
+  function markX(line, pattern) {
+    const pts = pattern.notes.filter((n) => n.t >= line.t0 && n.t < line.t1).map((n) => [n.t, line.xOf(n.t)]);
+    if (!pts.length || pts[0][0] > line.t0) pts.unshift([line.t0, line.xOf(line.t0)]);
+    pts.push([line.t1, line.segs[line.segs.length - 1].x1]);
+    return (t) => {
+      if (t <= pts[0][0]) return pts[0][1];
+      for (let i = 1; i < pts.length; i++) {
+        if (t <= pts[i][0]) {
+          const [t0, x0] = pts[i - 1], [t1, x1] = pts[i];
+          return t1 > t0 ? x0 + (x1 - x0) * (t - t0) / (t1 - t0) : x1;
+        }
+      }
+      return pts[pts.length - 1][1];
+    };
   }
 
   function beamGroups(pattern, lineNotes) {
@@ -2258,7 +2519,7 @@
 
   /** Ein System (eine Stimme) mit allen Zeilen: Linie, Taktstriche,
    *  Noten, Zeitleiste mit Zählzeiten, Soll-Einsätzen und Tippern. */
-  function systemSvg({ pattern, meterId, lines, y0, label, reveal, statusOf, syllables, taps, round, own }) {
+  function systemSvg({ pattern, meterId, lines, y0, label, reveal, statusOf, syllables, taps, round, own, heads = true, timeline = true }) {
     const m = METERS[meterId];
     const parts = [];
     lines.forEach((line, li) => {
@@ -2275,23 +2536,23 @@
         parts.push(`<line class="ln" x1="${f1(sg.x1)}" y1="${LY - 10}" x2="${f1(sg.x1)}" y2="${LY + 10}"/>`);
         if (last && pattern) parts.push(`<line class="ln" style="stroke-width:3.5" x1="${f1(sg.x1 + 3)}" y1="${LY - 10}" x2="${f1(sg.x1 + 3)}" y2="${LY + 10}"/>`);
       });
-      if (pattern && reveal) parts.push(lineSvg(pattern, line, y, statusOf, syllables));
+      if (pattern && reveal && heads) parts.push(lineSvg(pattern, line, y, statusOf, syllables));
       // Shuffle: einmal je Zeile die Spielanweisung über dem System.
-      if (pattern?.shuffle && reveal) parts.push(`<text class="shuf" x="${f1(xEnd)}" y="${y + 12}" text-anchor="end">Shuffle ♫ = ♩ ♪³</text>`);
+      if (pattern?.shuffle && reveal) parts.push(`<text class="shuf" x="${f1(xEnd)}" y="${y + 7.5}" text-anchor="end">Shuffle ♫ = ♩ ♪³</text>`);
       // Zeitleiste: Zählzeiten (am Raster), Soll-Einsätze, Tipper
-      parts.push(`<line class="tl" x1="${f1(line.segs[0].x0)}" y1="${TY}" x2="${f1(xEnd)}" y2="${TY}"/>`);
+      if (timeline) parts.push(`<line class="tl" x1="${f1(line.segs[0].x0)}" y1="${TY}" x2="${f1(xEnd)}" y2="${TY}"/>`);
       const p = pattern ? pattern.pickup : 0;
-      for (let t = Math.ceil((line.t0 - p) / m.beat) * m.beat + p; t < line.t1; t += m.beat) {
+      for (let t = Math.ceil((line.t0 - p) / m.beat) * m.beat + p; timeline && t < line.t1; t += m.beat) {
         const lvl = beatLevel(m, mod(t - p, m.ticks));
         parts.push(`<line class="tl-beat${lvl ? ' is-strong' : ''}" x1="${f1(line.xOf(t))}" y1="${TY - 6}" x2="${f1(line.xOf(t))}" y2="${TY + 6}"/>`);
       }
-      if (pattern && reveal) {
+      if (pattern && reveal && timeline) {
         pattern.onsets.filter((t) => t >= line.t0 && t < line.t1).forEach((t) => {
           const cls = statusOf(t);
           parts.push(`<circle class="tg${cls ? ` is-${cls}` : ''}" cx="${f1(line.xOf(t))}" cy="${TY}" r="4.6"/>`);
         });
       }
-      (taps || []).forEach(({ t, cls }) => {
+      (timeline ? taps || [] : []).forEach(({ t, cls }) => {
         if (!((t >= line.t0 || li === 0) && (t < line.t1 || li === lines.length - 1))) return;
         const x = clamp(line.xOf(t), line.segs[0].x0 - 10, xEnd + 10);
         parts.push(`<rect class="tp${cls ? ` is-${cls}` : ''}" x="${f1(x - 1.5)}" y="${TY - 12}" width="3" height="24" rx="1.5"/>`);
@@ -2301,14 +2562,23 @@
     return parts.join('');
   }
 
-  function renderStage(round, reveal) {
+  /** Neutraler Platzhalter statt Notenbild (Hören statt Sehen): eine leere
+   *  Zeile, ohne Taktstriche, Taktangabe und Zeitleiste. Hängt von nichts ab,
+   *  was die verborgene Phrase verrät (Taktzahl, Auftakt, Notenwerte). */
+  const neutralStageSvg = () => `<svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="Notenfläche"><line class="staff" x1="8" y1="${ST.LY}" x2="${ST.X1}" y2="${ST.LY}"/><text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">Rhythmus nach Gehör</text></svg>`;
+
+  /** SVG der Notenfläche für eine Runde in einer Phase (setzt `stageLines`). */
+  function stageSvgHtml(round, reveal, phase = 'rest') {
     const meterId = round ? round.meter : state.meter;
+    const aids = round ? roundAids(round, phase) : null;
+    if (round && !aids.realLayout) { stageLines = []; return neutralStageSvg(); }
+    const heads = !round || showsHeads(round);
     const res = round?.result;
     const statusOf = (t) => res?.notes.find((n) => n.t === t)?.status || '';
     const sylStyle = state.mode === 'course' ? course.syl : state.syllables;
-    const showSyl = sylStyle !== 'off' && !!round && reveal && (round.mode !== 'echo' || !!res);
+    const showSyl = sylStyle !== 'off' && !!round && reveal && heads && (round.mode !== 'echo' || !!res);
     const tapsOf = () => {
-      if (!round || round.youStart === null) return [];
+      if (!round || round.youStart === null || (!res && !aids.liveTaps)) return [];
       const list = res ? res.taps : game.taps.filter((x) => x >= round.youStart - round.tol && x <= round.youStart + round.barSec + round.tol).map((at) => ({ at, cls: '' }));
       return list.map(({ at, cls }) => ({ t: (at - round.youStart) / round.tickSec, cls }));
     };
@@ -2328,13 +2598,14 @@
       const lines = phraseLines(sys.pattern || empty);
       if (sys.own) stageLines = lines;
       const syl = showSyl && sys.pattern ? syllablesFor(sys.pattern, sylStyle) : null;
-      svg.push(systemSvg({ ...sys, meterId, lines, y0, reveal: round && reveal, syllables: syl, round }));
+      svg.push(systemSvg({ ...sys, meterId, lines, y0, reveal: round && reveal, syllables: syl, round, heads, timeline: !round || aids.timeline }));
       y0 += lines.length * ST.H + (systems.length > 1 ? 6 : 0);
     }
     if (!(round && reveal)) svg.push(`<text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">${round ? 'Rhythmus nach Gehör' : 'Hier erscheinen die Noten'}</text>`);
     const label = round && reveal ? `Rhythmus im ${meterId}-Takt${round.pattern.bars > 1 ? `, ${round.pattern.bars} Takte` : ''}${res ? `, ${res.hits} von ${res.count} getroffen` : ''}` : 'Notenfläche';
-    $('.stage').innerHTML = `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
+    return `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
   }
+  function renderStage(round, reveal, phase = 'rest') { $('.stage').innerHTML = stageSvgHtml(round, reveal, phase); }
 
   function chips(name, entries, value, disabled = false) {
     $(`[data-chips="${name}"]`).replaceChildren(...entries.map(([v, label]) => {
@@ -2467,7 +2738,9 @@
   function coursePreview() {
     const l = courseLesson();
     if (course.review) return null;
-    return { index: -1, mode: 'along', meter: l.meter, pattern: lessonPattern(l), duo: null, result: null, youStart: null };
+    // Vorschau nur, wo gelesen wird (Schritt „So sieht es aus“); sonst Platzhalter.
+    const along = courseStep().mode === 'along';
+    return { index: -1, mode: along ? 'along' : 'echo', meter: l.meter, pattern: lessonPattern(l), duo: null, result: null, youStart: null, showNotes: along, course: { lesson: l.id, step: course.step } };
   }
 
   /** Lektionskarte: Kapitel, Name, Vorstellung, „?“, Schritte, Blättern. */
@@ -2480,14 +2753,14 @@
     box.classList.toggle('is-playing', run.playing);
     const l = courseLesson();
     const i = COURSE.indexOf(l);
-    const prev = COURSE[i - 1], next = COURSE[i + 1];
-    const doneN = course.done.length;
-    const top = `<div class="course-top"><span>${course.review ? `Wiederholung · ${reviewPool().length} Lektionen` : `Kapitel ${l.ch} · ${COURSE_CHAPTERS[l.ch]}`}</span>
-      <button type="button" class="link-btn" data-course="list" aria-haspopup="dialog" aria-label="Alle Lektionen, ${doneN} von ${COURSE.length} geschafft">Alle Lektionen ›</button></div>`;
+    const prev = COURSE[i - 1], next = nextLesson(l);
+    const cc = courseCounts();
+    const top = `<div class="course-top"><span>${course.review ? `Wiederholung · ${reviewPool().length} Lektionen` : chapterLabel(l.ch)}</span>
+      <button type="button" class="link-btn" data-course="list" aria-haspopup="dialog" aria-label="Alle Lektionen, ${cc.done} von ${cc.total} geschafft">Alle Lektionen ›</button></div>`;
     if (course.review) {
       box.innerHTML = `${top}
         <div class="course-title"><h3>Gelerntes gemischt</h3></div>
-        <p class="course-intro">Die App mischt deine geschafften Rhythmen zu neuen Phrasen – mal nachklatschen, mal vom Blatt. Die Taktart wird je Durchgang gewählt.</p>
+        <p class="course-intro">Die App mischt deine geschafften Rhythmen zu neuen Phrasen – du hörst zu und klatschst nach, ohne Noten. Die Taktart wird je Durchgang gewählt.</p>
         <div class="course-nav"><button type="button" class="nav-btn" data-course="leave-review">‹ Zurück zur Lektion</button></div>`;
       return;
     }
@@ -2505,7 +2778,7 @@
       ${l.more ? `<p class="help-text" id="course-more"${course.moreOpen ? '' : ' hidden'}>${l.more}</p>` : ''}
       <ol class="course-steps" aria-label="Schritte der Lektion">${stepHtml}</ol>
       ${course.complete
-    ? `<p class="course-done" role="status">Geschafft ✓ ${next ? 'Weiter zur nächsten Lektion – oder mit Play noch einmal üben.' : 'Du hast alle Lektionen durch. Glückwunsch!'}</p>`
+    ? `<p class="course-done" role="status">${next ? 'Geschafft ✓ Weiter zur nächsten Lektion – oder mit Play noch einmal üben.' : COURSE[i + 1] ? COURSE_FINISHED : 'Geschafft ✓ Du hast alle Lektionen durch. Glückwunsch!'}</p>`
     : `<p class="course-how">Schritt ${course.step + 1}/${steps.length}: ${cur.how} Jeder Schritt braucht eine fehlerfreie Runde.</p>`}
       <div class="course-nav">
         <button type="button" class="nav-btn" data-course="prev"${prev ? '' : ' disabled'} aria-label="Vorige Lektion${prev ? `: ${prev.name}` : ''}">‹</button>
@@ -2525,7 +2798,7 @@
     setBpm(l.bpm);
     run.shown = null; game.finished = false; game.last = null; game.stats = freshStats();
     renderRhythm(); renderTransport();
-    setStatus(`Lektion ${COURSE.indexOf(l) + 1}: ${l.name} — Play startet mit dem Mitklatschen.`);
+    setStatus(`Lektion ${COURSE.indexOf(l) + 1}: ${l.name} — Play startet mit dem Nachklatschen.`);
   }
   /** Kurs betreten/verlassen: Taktart und Tempo der übrigen Übungen merken
    *  bzw. zurückholen, damit der Kurs sie nicht überschreibt. */
@@ -2552,9 +2825,11 @@
         return `<div role="listitem"><button type="button" class="lv-opt${done ? ' is-done' : ''}" data-course-pick="${l.id}"${now ? ' aria-current="true"' : ''}>
           <span class="lv-n" aria-hidden="true">${done ? '✓' : n}</span><span><span class="visually-hidden">${n}. </span>${l.name}<small>${l.meter}${done ? ' · geschafft' : ''}</small></span>${now ? '<em>aktuell</em>' : ''}</button></div>`;
       }).join('');
-      return `<span class="sub-label"${ch === '1' ? ' style="margin-top:0"' : ''}>Kapitel ${ch} · ${title}</span><div class="level-options" role="list">${rows}</div>`;
+      const extra = Number(ch) >= COURSE_EXTRA_CH;
+      const head = extra ? `Zusatz (freiwillig) · ${title.replace(/^Zusatz: /, '')} · ${courseCounts().extraDone}/${courseCounts().extraTotal}` : `Kapitel ${ch} · ${title}`;
+      return `<span class="sub-label"${ch === '1' ? ' style="margin-top:0"' : ''}>${head}</span><div class="level-options" role="list">${rows}</div>`;
     }).join('');
-    $('.sheet-body').innerHTML = `${html}<p class="foot-note" style="text-align:left">Die Lektionen bauen aufeinander auf, du kannst aber frei springen. Geschafft ist eine Lektion, wenn alle vier Schritte je einmal fehlerfrei geklappt haben.</p>`;
+    $('.sheet-body').innerHTML = `${html}<p class="foot-note" style="text-align:left">Die Lektionen bauen aufeinander auf, du kannst aber frei springen. Geschafft ist eine Lektion, wenn alle Schritte je einmal fehlerfrei geklappt haben. Das Zusatzkapitel ist freiwillig und zählt nicht zum Kursfortschritt.</p>`;
     $('.sheet-hint').textContent = '';
   }
 
@@ -2660,7 +2935,7 @@
   function modeLevelText(tab, id) {
     if (tab === 'voice' && id === 'tuner') return '';
     if (tab === 'rhythm' && id === 'duo') return `Stufe ${state.duoStage}/${DUO_LEVELS.length}`;
-    if (tab === 'rhythm' && id === 'course') return course.done.length ? `${course.done.length}/${COURSE.length} ✓` : 'neu';
+    if (tab === 'rhythm' && id === 'course') { const cc = courseCounts(); return course.done.length ? `${cc.done}/${cc.total} ✓` : 'neu'; }
     const area = tab === 'rhythm' ? 'rhythm' : areaOf(id);
     if (practicedAreas && !practicedAreas.has(area)) return 'neu';
     let levels, n;
@@ -4134,7 +4409,7 @@
 
   function openSettings(kind) {
     sheetKind = kind;
-    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${course.done.length}/${COURSE.length} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : 'Einstellungen';
+    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : 'Einstellungen';
     lastSettingsBtn = document.activeElement;
     $('.sheet').hidden = false;
     renderSettings();
@@ -4196,7 +4471,7 @@
       <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}`;
     const inputHtml = `<span class="sub-label">Eingabe</span>
       ${choice('input', INPUT_CHOICES, state.input)}
-      ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}`;
+      ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick bzw. das Schlagzeug. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}`;
     const duoHead = state.mode === 'duo' ? `<span class="sub-label" style="margin-top:0">Stufe Zweistimmig</span>
       ${levelControlHtml('duo-sheet', DUO_LEVELS, state.duoStage)}` : '';
     if (state.mode === 'duo' && state.duoStage < 5) {
@@ -4223,12 +4498,18 @@
       $('.sheet-body').innerHTML = `
         <span class="sub-label" style="margin-top:0">Rhythmussprache</span>
         ${choice('courseSyl', SYLLABLE_CHOICES, course.syl)}
-        <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Beim Nachklatschen erscheinen sie erst nach der Runde.</p>
+        <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Sie erscheinen im letzten Schritt, wo die Noten stehen.</p>
+        <span class="sub-label">Begleitung im Kurs</span>
+        ${choice('courseAccomp', [['groove', 'Groove (wird je Schritt leiser)'], ['click', 'Klick']], course.accomp)}
+        <p class="foot-note" style="margin-top:4px">Ab Kapitel 2 läuft ein Schlagzeug mit, das sich innerhalb jeder Lektion ausdünnt – am Ende bleibt nur die Snare auf 2 und 4. Der Groove spielt den Rhythmus nie vor. Kapitel 1, das Zusatzkapitel und Taktarten ohne Groove (Walzer, Habanera) laufen mit Klick.</p>
+        <span class="sub-label">Notenbild im Kurs</span>
+        ${choice('courseNotes', [['last', 'als letzter Schritt'], ['off', 'aus']], course.notes)}
+        <p class="foot-note" style="margin-top:4px">Die Schritte davor laufen nach Gehör, ohne Noten. Wer das Notenbild abschaltet, übt ausschließlich mit den Ohren.</p>
         ${inputHtml}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">
           ${row('countIn', 'Einzähler', 'ein Takt vorweg, bis zum Auftakt')}
-          ${row('click', 'Klick auf den Zählzeiten')}
+          ${row('click', 'Klick auf den Zählzeiten', 'entfällt, solange ein Groove läuft')}
         </div>
         <p class="foot-note" style="text-align:left">Taktart, Takte und Ablauf gibt die Lektion vor. Nach drei Fehlversuchen im selben Schritt wird es von selbst etwas langsamer; das Tempo kannst du unten jederzeit ändern.</p>
         ${latencyHtml()}`;
@@ -4250,6 +4531,9 @@
       <span class="sub-label">Rhythmussprache</span>
       ${choice('syllables', SYLLABLE_CHOICES, state.syllables)}
       <p class="foot-note" style="margin-top:4px">Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen. Beim Nachklatschen erscheinen sie erst nach der Runde.</p>
+      ${state.mode === 'duo' ? '' : `<span class="sub-label">Begleitung</span>
+      ${choice('accomp', [['click', 'Klick'], ['full', 'Groove'], ['backbeat', 'Bassdrum und Snare'], ['snare', 'nur Snare auf 2 und 4']], state.accomp)}
+      <p class="foot-note" style="margin-top:4px">Der Groove spielt den Rhythmus nie vor: Bassdrum und Snare nur auf den Hauptschlägen, dazu ein gleichmäßiges Hi-Hat. In 2/4, 3/4, 2/2, 5/4 und 7/8 läuft weiter der Klick.</p>`}
       ${inputHtml}
       <div class="label-row"><span class="sub-label" style="margin:0">Leertakte</span>
         <button class="help-btn" type="button" data-help="help-gaps" aria-expanded="false" aria-label="Erklärung der Leertakte">?</button></div>
@@ -4261,9 +4545,10 @@
       <span class="sub-label">Ablauf</span>
       <div class="check-list">
         ${row('countIn', 'Einzähler', 'ein Takt vorweg, bis zum Auftakt')}
-        ${row('click', 'Klick auf den Zählzeiten')}
+        ${row('click', 'Klick auf den Zählzeiten', 'entfällt, solange ein Groove läuft')}
         ${row('speedUp', 'Tempo steigern', `+${SPEED_STEP} BPM je fehlerfreie Runde`)}
         ${row('showNotes', 'Noten beim Nachklatschen zeigen', 'sonst erst danach')}
+        ${row('markSelf', 'Mitlaufende Marke beim eigenen Klatschen', 'Die Marke hilft beim Mitlesen. Beim eigenen Klatschen verführt sie dazu, der Linie zu folgen statt dem Puls – deshalb ist sie dort aus.')}
       </div>
       ${latencyHtml()}`;
     renderGapChips();
@@ -6743,10 +7028,10 @@
       tab: state.tab, bpm: state.bpm, tempoRef: 'beat', eighths: state.eighths, latency: state.latency,
       rhythm: {
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
-        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes,
+        rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes, markSelf: state.markSelf, accomp: state.accomp,
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart, duoStage: state.duoStage, duoOstinato: state.duoOstinato,
-        course: { lesson: course.lesson, done: course.done, syl: course.syl },
+        course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes, accomp: course.accomp },
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
@@ -6783,6 +7068,8 @@
     ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
     state.rounds = 0; // Rhythmus läuft immer endlos
     ['countIn', 'click', 'speedUp', 'showNotes', 'pickup'].forEach((k) => { if (typeof r[k] === 'boolean') state[k] = r[k]; });
+    state.markSelf = typeof r.markSelf === 'boolean' ? r.markSelf : false; // fehlt/kaputt → aus
+    state.accomp = ['click', 'full', 'backbeat', 'snare'].includes(r.accomp) ? r.accomp : 'click';
     if (BAR_CHOICES.some(([n]) => n === r.bars)) state.bars = r.bars;
     if (SYLLABLE_CHOICES.some(([id]) => id === r.syllables)) state.syllables = r.syllables;
     if (INPUT_CHOICES.some(([id]) => id === r.input)) state.input = r.input;
@@ -6795,7 +7082,10 @@
     const rc = r.course && typeof r.course === 'object' ? r.course : {};
     if (COURSE.some((l) => l.id === rc.lesson)) course.lesson = rc.lesson;
     if (Array.isArray(rc.done)) course.done = COURSE.map((l) => l.id).filter((id) => rc.done.includes(id));
-    if (SYLLABLE_CHOICES.some(([id]) => id === rc.syl)) course.syl = rc.syl;
+    // Rhythmussprache im Kurs: Standard „1 + 2 +“, solange nichts Gültiges gespeichert ist.
+    course.syl = SYLLABLE_CHOICES.some(([id]) => id === rc.syl) ? rc.syl : 'count';
+    course.notes = rc.notes === 'off' ? 'off' : 'last';
+    course.accomp = rc.accomp === 'click' ? 'click' : 'groove';
     if (Number.isInteger(r.duoStage) && r.duoStage >= 1 && r.duoStage <= DUO_LEVELS.length) state.duoStage = r.duoStage;
     if (r.duoOstinato === 'auto' || COURSE.some((l) => l.id === r.duoOstinato && holdable(l))) state.duoOstinato = r.duoOstinato;
     const e = data.ear && typeof data.ear === 'object' ? data.ear : {};
@@ -6904,7 +7194,7 @@
       if (action === 'list') { openSettings('course'); return; }
       if (action === 'more') { course.moreOpen = !course.moreOpen; renderCourse(); $('[data-course="more"]')?.focus(); return; }
       if (action === 'prev' && COURSE[i - 1]) loadLesson(COURSE[i - 1].id);
-      if (action === 'next' && COURSE[i + 1]) loadLesson(COURSE[i + 1].id);
+      if (action === 'next' && nextLesson(COURSE[i])) loadLesson(nextLesson(COURSE[i]).id);
       if (action === 'review') { if (run.playing) stop(); course.review = true; run.shown = null; game.finished = false; renderRhythm(); setStatus('Wiederholung — Play startet.'); }
       if (action === 'leave-review') loadLesson(course.lesson);
       if (action === 'hold') {
@@ -6931,6 +7221,14 @@
       if (key === 'meter') { setMeter(rset.dataset.value); state.rhythmLevel = 0; }
       else if (key === 'bars') { state.bars = Number(rset.dataset.value); state.rhythmLevel = 0; }
       else if (key === 'courseSyl') course.syl = rset.dataset.value;
+      else if (key === 'courseAccomp') course.accomp = rset.dataset.value === 'click' ? 'click' : 'groove';
+      else if (key === 'courseNotes') {
+        // Die Schrittfolge ändert sich: die Lektion beginnt beim nächsten Play von vorn.
+        course.notes = rset.dataset.value === 'off' ? 'off' : 'last';
+        Object.assign(course, { step: 0, misses: 0, complete: false });
+        if (run.playing) stop();
+        run.shown = null;
+      }
       else if (key === 'duoOstinato') {
         state.duoOstinato = rset.dataset.value;
         const l = holdPool().find((x) => x.id === state.duoOstinato);
@@ -7271,6 +7569,10 @@
     const errors = [];
     const DRAWABLE = [3, 4, 6, 9, 12, 18, 24, 36, 48];
     const ids = new Set();
+    // Alle Lektions-IDs bis Paket 3 (gespeicherte Stände verweisen darauf) und die neuen.
+    const OLD_IDS = ['puls', 'halbe', 'pause', 'achtel', 'stomp', 'auftakt', 'offbeat', 'punktiert', 'synkope', 'charleston', 'antizipation', 'walzer', 'sarabande', 'sechsachtel', 'wiegen', 'hemiole', 'sechzehntel', 'achtel16', '16achtel', 'punktachtel', 'geburtstag', 'triole', 'habanera', 'tresillo', 'clave'];
+    const NEW_LESSONS = ['backbeat', 'auftaktUnd', 'vorDrei', 'aufE', 'aufA', 'synkope16', 'shuffle', 'zwoelfachtel'];
+    for (const id of [...OLD_IDS, ...NEW_LESSONS]) if (!COURSE.some((l) => l.id === id)) errors.push(`Kurs: Lektion ${id} fehlt`);
     let lastCh = 0;
     for (const l of COURSE) {
       const where = `Kurs ${l.id}`;
@@ -7279,6 +7581,8 @@
       const m = METERS[l.meter];
       if (!m || !m.unit) { errors.push(`${where}: Taktart ${l.meter}`); continue; }
       if (!COURSE_CHAPTERS[l.ch] || l.ch < lastCh) errors.push(`${where}: Kapitel ${l.ch} fehlt oder außer der Reihe`);
+      if (NEW_LESSONS.includes(l.id) && (l.intro.length > 160 || (l.more || '').length > 185)) errors.push(`${where}: neuer Text zu lang (${l.intro.length}/${(l.more || '').length})`);
+      if (l.accomp !== undefined && !['full', 'backbeat', 'snare', 'kick'].includes(l.accomp)) errors.push(`${where}: accomp ${l.accomp}`);
       lastCh = l.ch;
       if (!l.name || !l.intro || l.intro.length > 260) errors.push(`${where}: Vorstellung fehlt oder zu lang`);
       if ('more' in l && (!l.more || l.more.length > 320)) errors.push(`${where}: „?“-Text leer oder zu lang`);
@@ -7293,18 +7597,34 @@
       const pat = lessonPattern(l);
       if (pat.notes.reduce((a, n) => a + n.d, 0) !== pat.total || pat.pickup !== p) errors.push(`${where}: Phrase ${pat.total} Ticks, Auftakt ${pat.pickup}`);
       if (pat.onsets.length < 2) errors.push(`${where}: zu wenige Einsätze`);
+      if (!!pat.shuffle !== !!l.shuffle) errors.push(`${where}: Shuffle-Kennzeichen`);
       pat.notes.forEach((n, k) => {
-        if (!DRAWABLE.includes(n.d) || Number.isNaN(n.d)) errors.push(`${where}: Notenwert ${n.d} nicht darstellbar`);
+        if (l.shuffle && n.d === 8) {
+          const nx = pat.notes[k + 1];
+          if (!n.sh || !nx || nx.d !== 4 || !nx.sh || mod(n.t - pat.pickup, 12) !== 0) errors.push(`${where}: Shuffle-Achtel bei ${n.t} ohne folgendes Kurz-Achtel in derselben Viertel`);
+        } else if (!DRAWABLE.includes(n.d) || Number.isNaN(n.d)) errors.push(`${where}: Notenwert ${n.d} nicht darstellbar`);
+        if (n.sh) return;
         if (n.tie) { const a = pat.notes[k - 1]; if (!a || a.rest || a.t + a.d !== n.t) errors.push(`${where}: Bogen ohne klingende Note davor`); }
         if (n.d === 4) { const inBar = mod(n.t - pat.pickup, m.ticks); const grp = pat.notes.filter((x) => x.d === 4 && Math.floor(mod(x.t - pat.pickup, m.ticks) / 12) === Math.floor(inBar / 12)); if (grp.length !== 3) errors.push(`${where}: unvollständige Triole`); }
       });
-      if (pat.notes.some((n) => n.d === 4) && m.unit !== 12) errors.push(`${where}: Triole in zusammengesetzter Taktart`);
+      if (pat.notes.some((n) => n.d === 4 && !n.sh) && m.unit !== 12) errors.push(`${where}: Triole in zusammengesetzter Taktart`);
       for (const style of ['ta', 'count']) {
         const syl = syllablesFor(pat, style);
         if (syl.length !== pat.notes.length || syl.some((x) => !x || /undefined|NaN/.test(x))) errors.push(`${where}: Silben ${style} (${syl.join(' ')})`);
       }
-      const steps = courseSteps(l);
-      if (steps.length !== 4 || steps[0].mode !== 'along' || !steps.every((st) => ['along', 'read', 'echo'].includes(st.mode) && st.name && st.how)) errors.push(`${where}: Schritte`);
+      // Schritte: erst hören, zuletzt lesen; mit „Notenbild aus“ nie lesen.
+      for (const notes of ['last', 'off']) {
+        const saveNotes = course.notes;
+        course.notes = notes;
+        const steps = courseSteps(l);
+        course.notes = saveNotes;
+        const want = notes === 'last' ? 4 : 3;
+        const modes = steps.map((st) => st.mode).join();
+        if (steps.length !== want || modes !== (notes === 'last' ? 'echo,echo,echo,along' : 'echo,echo,echo') || !steps.every((st) => st.name && st.how && ['full', 'backbeat', 'snare'].includes(st.accomp))) errors.push(`${where}: Schritte (${notes}): ${modes}`);
+        if (steps[1].gap !== 1 || steps[0].accomp !== 'full' || steps[1].accomp !== 'backbeat' || steps[2].accomp !== 'snare') errors.push(`${where}: Begleitung der Schritte (${notes})`);
+        if (!!steps[2].combo !== combinable(l) || (steps[2].name === 'Nur mit Snare') === combinable(l)) errors.push(`${where}: Schritt 3 (${notes})`);
+        if (steps.some((st) => st.mode === 'read')) errors.push(`${where}: Kurs-Schritt „Vom Blatt“ (${notes})`);
+      }
     }
     if (COURSE.length < 20) errors.push(`Kurs: nur ${COURSE.length} Lektionen`);
     // Silben an Beispielen
@@ -7327,11 +7647,12 @@
         const steps = courseSteps(l);
         for (let k = 0; k < steps.length; k++) {
           const cs = courseRoundSpec(rnd);
+          if (cs.accomp !== (l.accomp || steps[k].accomp)) errors.push(`Kurs ${l.id}: Schritt ${k + 1} Begleitung ${cs.accomp}`);
           const m = METERS[l.meter];
           if (cs.mode !== steps[k].mode || cs.course.step !== k) errors.push(`Kurs ${l.id}: Schritt ${k + 1} liefert ${cs.mode}`);
           if (cs.pattern.notes.reduce((a, n) => a + n.d, 0) !== cs.pattern.total || cs.pattern.total !== cs.pattern.bars * m.ticks) errors.push(`Kurs ${l.id}: Schritt ${k + 1} Phrase unvollständig`);
           if (steps[k].combo) {
-            const bars = [0, 1].map((b) => cs.pattern.notes.filter((n) => n.t >= b * m.ticks && n.t < (b + 1) * m.ticks).map((n) => (n.rest ? -n.d : n.d)).join(' '));
+            const bars = [0, 1].map((b) => cs.pattern.notes.filter((n) => n.t >= b * m.ticks && n.t < (b + 1) * m.ticks).map((n) => (n.rest ? -n.d : n.tie ? `~${n.d}` : n.d)).join(' '));
             if (cs.pattern.bars !== 2 || !bars.includes(l.bars[0])) errors.push(`Kurs ${l.id}: Zusammenhang ohne den neuen Takt (${bars.join(' | ')})`);
           }
           // erst ein Fehlversuch, dann fehlerfrei
@@ -7350,13 +7671,14 @@
       setBpm(COURSE_MIN_BPM);
       for (let k = 0; k < 3; k++) courseResult({ course: { lesson: 'puls', step: 1 }, result: { perfect: false } });
       if (state.bpm !== COURSE_MIN_BPM) errors.push('Kurs: Tempo unter die Grenze gesenkt');
-      // Wiederholung: nur gelernte Rhythmen der laufenden Taktart.
+      // Wiederholung: nur gelernte Rhythmen der laufenden Taktart, nur nach Gehör.
       Object.assign(course, { review: true, done: ['puls', 'achtel', 'walzer', 'synkope'] });
       run.meter = '4/4';
-      for (let k = 0; k < 40; k++) {
+      for (let k = 0; k < 200; k++) {
         const cs = courseRoundSpec(rnd);
         const used = cs.pattern.key.split('+');
         if (!cs.course.review || used.some((id) => !['puls', 'achtel', 'synkope'].includes(id)) || cs.pattern.meter !== '4/4') errors.push(`Kurs Wiederholung: ${cs.pattern.key}`);
+        if (cs.mode !== 'echo' || cs.accomp !== 'backbeat') errors.push(`Kurs Wiederholung: ${cs.mode} / ${cs.accomp}`);
       }
       // Raster: jede Runde mit Leertakt danach, nach „geschafft“ keine weitere.
       Object.assign(course, { lesson: 'auftakt', step: 0, misses: 0, complete: false, review: false });
@@ -7365,7 +7687,7 @@
       state.rounds = 0; state.countIn = true;
       layoutNext(true);
       const r0 = game.rounds[0];
-      if (r0.mode !== 'along' || r0.seq.join() !== 'along,rest' || run.items[0].kind !== 'count' || run.items[0].len !== 48 - 12) errors.push(`Kurs Raster: ${r0.mode} ${r0.seq} Einzähler ${run.items[0].len}`);
+      if (r0.mode !== 'echo' || r0.seq.join() !== 'listen,you,rest' || run.items[0].kind !== 'count' || run.items[0].len !== 48 - 12) errors.push(`Kurs Raster: ${r0.mode} ${r0.seq} Einzähler ${run.items[0].len}`);
       course.complete = true;
       if (layoutNext()) errors.push('Kurs: nach geschaffter Lektion geht es weiter');
       // Speichern/Laden: unbekannte Lektionen verworfen, Reihenfolge des Kurses.
@@ -7374,10 +7696,291 @@
       if (course.lesson !== 'clave' || course.done.join() !== 'puls,clave' || course.syl !== 'count') errors.push(`Kurs speichern/laden: ${course.lesson} ${course.done} ${course.syl}`);
       restore({ tab, rhythm: { course: { lesson: 'toString', done: 'x', syl: 'y' } } });
       if (course.lesson !== 'clave' || course.done.join() !== 'puls,clave') errors.push('Kurs: ungültiger Stand übernommen');
+      // Silben und Notenbild im Kurs: neu / gespeichert / alt ohne Feld / kaputt.
+      restore({ tab, rhythm: { course: { lesson: 'puls', syl: 'ta', notes: 'off' } } });
+      if (course.syl !== 'ta' || course.notes !== 'off') errors.push(`Kurs syl/notes: gespeichert ${course.syl}/${course.notes}`);
+      restore(JSON.parse(JSON.stringify(snapshot())));
+      if (course.syl !== 'ta' || course.notes !== 'off') errors.push(`Kurs syl/notes: Roundtrip ${course.syl}/${course.notes}`);
+      restore({ tab, rhythm: { course: { lesson: 'puls' } } });
+      if (course.syl !== 'count' || course.notes !== 'last') errors.push(`Kurs syl/notes: alter Stand ${course.syl}/${course.notes} statt count/last`);
+      restore({ tab, rhythm: { course: { lesson: 'puls', syl: 5, notes: 'quatsch' } } });
+      if (course.syl !== 'count' || course.notes !== 'last') errors.push(`Kurs syl/notes: kaputt ${course.syl}/${course.notes}`);
+      // Paket 3: alte Stände (alle alten IDs) bleiben gültig; Zusatzkapitel zählt nicht zum Kursfortschritt.
+      restore({ tab, rhythm: { course: { lesson: 'walzer', done: OLD_IDS, syl: 'ta' } } });
+      if (course.lesson !== 'walzer' || course.done.length !== OLD_IDS.length || OLD_IDS.some((id) => !course.done.includes(id))) errors.push(`Kurs: alter Stand mit allen alten IDs → ${course.lesson} / ${course.done.length}`);
+      for (const id of OLD_IDS) {
+        const l = COURSE.find((x) => x.id === id);
+        restore({ tab, rhythm: { duoOstinato: id } });
+        if (holdable(l) && state.duoOstinato !== id) errors.push(`Zweistimmig: gespeicherter Rhythmus ${id} nicht mehr gültig`);
+      }
+      Object.assign(course, { done: ['puls', 'walzer'] });
+      const cc = courseCounts();
+      if (cc.done !== 1 || cc.total !== 26 || cc.extraDone !== 1 || cc.extraTotal !== 7) errors.push(`Kurs: Zähler ${JSON.stringify(cc)} statt 1/26 und 1/7`);
+      const lastMain = COURSE.filter((l) => !isExtra(l)).pop();
+      if (lastMain.id !== 'clave' || nextLesson(lastMain) !== null || nextLesson(COURSE[0]) !== COURSE[1]) errors.push('Kurs: „Weiter“ nach der letzten Kurslektion führt ins Zusatzkapitel');
+      // Shuffle: Vorbild triolisch (Onsets bei 0, 8), Kombination nur mit Viertel-Takten; 12/8: Einzähler über einen Takt.
+      {
+        const sh = COURSE.find((l) => l.id === 'shuffle');
+        const pat = lessonPattern(sh);
+        if (!pat.shuffle || pat.onsets.join() !== '0,8,12,20,24,36') errors.push(`Kurs Shuffle: Einsätze ${pat.onsets}`);
+        for (let k = 0; k < 40; k++) {
+          const comboPat = (() => { Object.assign(course, { lesson: 'shuffle', step: courseSteps(sh).findIndex((st) => st.combo), review: false, done: [] }); run.meter = '4/4'; return courseRoundSpec(rnd).pattern; })();
+          if (!comboPat.shuffle || comboPat.notes.some((n) => !n.rest && !n.sh && n.d % 12)) errors.push(`Kurs Shuffle: Zusammenhang enthält gerade Achtel (${comboPat.key})`);
+        }
+        const l12 = COURSE.find((l) => l.id === 'zwoelfachtel');
+        Object.assign(course, { lesson: 'zwoelfachtel', step: courseSteps(l12).findIndex((st) => st.combo), review: false, done: [] });
+        const cs = courseRoundSpec(rnd);
+        if (cs.pattern.total !== 2 * 72 || cs.pattern.notes.reduce((a, n) => a + n.d, 0) !== 144) errors.push('Kurs 12/8: Zusammenhang unvollständig');
+        setMeter('12/8'); setBpm(l12.bpm);
+        Object.assign(course, { lesson: 'zwoelfachtel', step: 0, complete: false });
+        Object.assign(run, { meter: '12/8', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05 });
+        game.rounds = [];
+        layoutNext(true);
+        if (run.items[0].kind !== 'count' || run.items[0].len !== 72 || Math.abs(game.rounds[0].tickSec - 60 / 56 / 18) > 1e-9) errors.push(`Kurs 12/8: Einzähler ${run.items[0].len} Ticks, Tick ${game.rounds[0].tickSec}`);
+        if (tempoSymbol('12/8') !== '♩.') errors.push('Kurs 12/8: Tempo-Bezug');
+      }
       if (!MODES.some(([id]) => id === 'course') || !MODE_TEXT.course || !MODE_ICONS.course) errors.push('Kurs fehlt in der Liste der Übungsarten');
     } finally {
       Object.assign(course, saved.course); Object.assign(state, saved.state); Object.assign(run, saved.run);
       game.rounds = saved.rounds; selfTesting = saved.testing;
+    }
+    return errors;
+  }
+
+  /** Begleitung (Paket 5): Zuordnung je Lektion und Schritt, Groove verrät
+   *  nichts, lückenloses Raster über viele Runden, Speichern/Laden. */
+  function accompCheck() {
+    const errors = [];
+    const lesson = (id) => COURSE.find((l) => l.id === id);
+    const step = (id, k, notes = 'last') => { const saveNotes = course.notes; course.notes = notes; try { return courseSteps(lesson(id))[k]; } finally { course.notes = saveNotes; } };
+    const A = (id, k, settings) => accompFor(lesson(id), step(id, k), settings);
+    const grid = (a) => (a ? `${a.hatGrid.period}:${a.hatGrid.at.join('/')}` : 'null');
+    // Zuordnung
+    if (A('puls', 0) !== null || A('halbe', 2) !== null || A('pause', 0) !== null) errors.push('Begleitung: Kapitel 1 soll Klick sein');
+    if (A('backbeat', 0)?.level !== 'kick' || A('backbeat', 3)?.level !== 'kick') errors.push('Begleitung: „Der Backbeat“ nur mit Bassdrum');
+    if (A('backbeat', 0, { accomp: 'click' }) !== null) errors.push('Begleitung: Backbeat trotz „Klick“');
+    if (A('sechzehntel', 0)?.level !== 'full' || grid(A('sechzehntel', 0)) !== '3:0') errors.push(`Begleitung: Sechzehntel Schritt 1 (${grid(A('sechzehntel', 0))})`);
+    if (A('sechzehntel', 1)?.level !== 'backbeat' || A('sechzehntel', 2)?.level !== 'snare' || A('sechzehntel', 3)?.level !== 'full') errors.push('Begleitung: Ausdünnen der Schritte 1–4');
+    if (grid(A('shuffle', 0)) !== '12:0/8') errors.push(`Begleitung: Shuffle-Raster ${grid(A('shuffle', 0))}`);
+    if (grid(A('triole', 0)) !== '4:0') errors.push(`Begleitung: Triolen-Raster ${grid(A('triole', 0))}`);
+    if (grid(A('achtel', 0)) !== '6:0' || grid(A('zwoelfachtel', 0)) !== '6:0' || grid(A('sechsachtel', 0)) !== '6:0') errors.push('Begleitung: Achtel-Raster');
+    if (grid(A('aufA', 0)) !== '3:0' || grid(A('synkope16', 0)) !== '3:0') errors.push('Begleitung: Einsatz auf e/a braucht Sechzehntel-Raster');
+    for (const id of ['walzer', 'sarabande', 'wiegen', 'hemiole', 'punktachtel', 'geburtstag', 'habanera']) if (A(id, 0) !== null) errors.push(`Begleitung: Zusatzkapitel ${id} soll Klick sein`);
+    for (const id of ['achtel', 'sechsachtel', 'zwoelfachtel', 'tresillo']) if (!A(id, 0)) errors.push(`Begleitung: ${id} ohne Groove`);
+    for (const l of COURSE) for (let k = 0; k < 4; k++) if (accompFor(l, courseSteps(l)[k], { accomp: 'click' }) !== null) errors.push(`Begleitung: ${l.id} Schritt ${k + 1} trotz „Klick“`);
+    if (accompFor({ meter: '3/4', ch: 2 }, { accomp: 'full' }, {}) !== null || accompFor({ meter: '2/4', ch: 2 }, { accomp: 'full' }, {}) !== null) errors.push('Begleitung: 3/4 und 2/4 sollen Klick bleiben');
+    if (freeAccomp('full', '7/8', ['e'], false) !== null || freeAccomp('click', '4/4', ['e'], false) !== null) errors.push('Begleitung: freie Übung ohne Groove');
+    if (grid(freeAccomp('full', '4/4', ['e', 's'], false)) !== '3:0' || grid(freeAccomp('full', '4/4', ['e', 'off'], false)) !== '3:0' || grid(freeAccomp('full', '4/4', ['e'], true)) !== '12:0/8' || grid(freeAccomp('full', '6/8', ['e'], false)) !== '6:0') errors.push('Begleitung: Raster der freien Übung');
+    // Der Groove verrät nichts: Bassdrum, Snare und Rim nur auf Hauptschlägen, Hi-Hat gleichmäßig.
+    for (const l of COURSE) {
+      const acc0 = accompFor({ ...l, ch: 2, accomp: undefined }, { accomp: 'full' }, {});
+      if (!acc0) continue;
+      const m = METERS[l.meter], main = m.unit === 12 ? 12 : 18;
+      const pat = lessonPattern(l);
+      for (const level of Object.keys(ACCOMP_LEVELS)) {
+        const acc = { ...acc0, level };
+        const hatPos = [];
+        for (let pos = 0; pos < m.ticks; pos++) {
+          const hits = accompHits(pos, acc, l.meter);
+          const drums = hits.filter((h) => h !== 'hat');
+          if (drums.length && pos % main !== 0) errors.push(`Begleitung ${l.id}/${level}: ${drums} bei ${pos} nicht auf einem Hauptschlag`);
+          if (drums.length && pat.onsets.some((t) => mod(t - pat.pickup, m.ticks) === pos && pos % main !== 0)) errors.push(`Begleitung ${l.id}/${level}: Groove spielt Offbeat mit`);
+          if (hits.includes('hat')) hatPos.push(pos);
+        }
+        if (level !== 'full' && hatPos.length) errors.push(`Begleitung ${l.id}/${level}: Hi-Hat in ausgedünnter Stufe`);
+        if (level === 'full') {
+          const gaps = new Set(hatPos.slice(1).map((p, i) => p - hatPos[i]));
+          if (m.ticks % acc.hatGrid.period || (!l.shuffle && (gaps.size !== 1 || hatPos[0] !== 0))) errors.push(`Begleitung ${l.id}: Hi-Hat-Raster ungleichmäßig`);
+        }
+      }
+      if (accompHits(0, { ...acc0, level: 'snare' }, l.meter).length) errors.push(`Begleitung ${l.id}: Stufe „snare“ spielt auf der Eins`);
+    }
+    // Lückenloses Raster über 12 Runden mit wechselndem Auftakt; im Einzähler kein Schlagzeug.
+    const saved = { state: { ...state }, run: { ...run }, rounds: game.rounds, testing: selfTesting, engine: {} };
+    const events = [];
+    for (const k of ['click', 'clap', 'block', 'drum']) { saved.engine[k] = engine[k]; engine[k] = (...args) => events.push([k, ...args]); }
+    selfTesting = true;
+    try {
+      const simulate = (accompSetting) => {
+        Object.assign(state, { mode: 'echo', accomp: accompSetting, countIn: true, click: true, rounds: 0 });
+        applyRhythmLevel(4);
+        Object.assign(run, { meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05, bars: [] });
+        game.rounds = []; events.length = 0;
+        layoutNext(true);
+        for (let i = 0; i < 11; i++) layoutNext();
+        const m = METERS['4/4'];
+        const pickups = new Set(game.rounds.map((r) => r.pattern.pickup));
+        for (let tick = 0; tick < run.layoutEnd; tick++) scheduleTick(tick, tick * .05, m);
+        return { m, pickups };
+      };
+      // Groove: pro Tick genau die erwarteten Schläge, im Einzähler nur Klick.
+      let { m, pickups } = simulate('full');
+      if (pickups.size < 2) errors.push('Begleitung: Test ohne wechselnden Auftakt');
+      const count = run.items.find((it) => it.kind === 'count');
+      const drumsAt = new Map();
+      for (const [k, kind, time] of events) if (k === 'drum') { const key = `${Math.round(time / .05)}|${kind}`; drumsAt.set(key, (drumsAt.get(key) || 0) + 1); }
+      if ([...drumsAt.values()].some((n) => n !== 1)) errors.push('Begleitung: doppelter Schlag im Raster');
+      for (let tick = 0; tick < run.layoutEnd; tick++) {
+        const item = run.items.filter((it) => it.start <= tick && tick < it.start + it.len).pop();
+        const want = item && item.kind !== 'count' ? accompHits(mod(tick, m.ticks), item.round.accomp, '4/4') : [];
+        const got = ['kick', 'snare', 'rim', 'hat'].filter((kind) => drumsAt.has(`${tick}|${kind}`));
+        if (want.slice().sort().join() !== got.sort().join()) { errors.push(`Begleitung: Tick ${tick} spielt ${got} statt ${want}`); break; }
+      }
+      if (!count || [...drumsAt.keys()].some((key) => Number(key.split('|')[0]) < count.len)) errors.push('Begleitung: Schlagzeug im Einzähler');
+      const clicks = events.filter((e) => e[0] === 'click').map((e) => Math.round(e[1] / .05));
+      if (clicks.some((t) => t >= count.len) || clicks.length !== count.len / m.beat) errors.push(`Begleitung: Klick außerhalb des Einzählers (${clicks.length})`);
+      // Standard „Klick“: wie bisher ein Klick auf jeder Zählzeit, kein Schlagzeug.
+      ({ m } = simulate('click'));
+      const beats = events.filter((e) => e[0] === 'click').map((e) => Math.round(e[1] / .05));
+      const wantBeats = Array.from({ length: Math.ceil(run.layoutEnd / m.beat) }, (_, i) => i * m.beat).filter((t) => t < run.layoutEnd);
+      if (events.some((e) => e[0] === 'drum') || beats.join() !== wantBeats.join()) errors.push('Begleitung: Standard „Klick“ verändert');
+    } finally {
+      for (const k of Object.keys(saved.engine)) engine[k] = saved.engine[k];
+      for (const k of Object.keys(state)) delete state[k];
+      Object.assign(state, saved.state); Object.assign(run, saved.run); game.rounds = saved.rounds; selfTesting = saved.testing;
+    }
+    // Speichern/Laden von accomp: neu / alt ohne Feld / kaputt.
+    const keep = { a: state.accomp, c: course.accomp, tab: state.tab };
+    try {
+      state.accomp = 'snare'; course.accomp = 'click';
+      restore(JSON.parse(JSON.stringify(snapshot())));
+      if (state.accomp !== 'snare' || course.accomp !== 'click') errors.push(`Begleitung: Roundtrip ${state.accomp}/${course.accomp}`);
+      restore({ tab: keep.tab, rhythm: { course: {} } });
+      if (state.accomp !== 'click' || course.accomp !== 'groove') errors.push(`Begleitung: alter Stand ${state.accomp}/${course.accomp}`);
+      restore({ tab: keep.tab, rhythm: { accomp: 'laut', course: { accomp: 7 } } });
+      if (state.accomp !== 'click' || course.accomp !== 'groove') errors.push(`Begleitung: kaputter Stand ${state.accomp}/${course.accomp}`);
+    } finally { state.accomp = keep.a; course.accomp = keep.c; }
+    return errors;
+  }
+
+  /** Sichtbare Hilfen (Paket 2): Tabelle je Situation, neutraler Platzhalter,
+   *  Speichern/Laden von `markSelf`. */
+  function aidsCheck() {
+    const errors = [];
+    const A = (mode, phase, o = {}) => visibleAids({ mode, phase, ...o });
+    const want = (label, got, exp) => {
+      for (const k of Object.keys(exp)) if (got[k] !== exp[k]) errors.push(`Hilfen ${label}: ${k} ist ${got[k]} statt ${exp[k]}`);
+    };
+    const hidden = { mark: false, timeline: false, liveTaps: false, realLayout: false };
+    for (const phase of ['count', 'listen', 'rest', 'you']) {
+      want(`Kurs echo ${phase}`, A('echo', phase, { course: true }), { ...hidden, padBeats: phase === 'count' });
+      want(`Nachklatschen ${phase}`, A('echo', phase), { ...hidden, padBeats: phase === 'count' });
+      want(`Nachklatschen ${phase} (markSelf ändert nichts)`, A('echo', phase, { markSelf: true }), { ...hidden, padBeats: phase === 'count' });
+    }
+    // Nachklatschen mit Noten wie Vom Blatt
+    for (const phase of ['count', 'listen', 'you']) {
+      const a = A('echo', phase, { showNotes: true });
+      const b = A('read', phase === 'listen' ? 'read' : phase);
+      for (const k of Object.keys(a)) if (a[k] !== b[k]) errors.push(`Hilfen Nachklatschen mit Noten ${phase}: ${k} weicht von Vom Blatt ab`);
+    }
+    want('Vom Blatt Lesephase', A('read', 'read'), { mark: true, timeline: true, liveTaps: false, padBeats: true, realLayout: true });
+    want('Vom Blatt Lesephase (markSelf)', A('read', 'read', { markSelf: true }), { mark: true, padBeats: true });
+    want('Vom Blatt eigene Phase', A('read', 'you'), { mark: false, timeline: true, liveTaps: false, padBeats: false, realLayout: true });
+    want('Vom Blatt eigene Phase mit Marke', A('read', 'you', { markSelf: true }), { mark: true, timeline: true, liveTaps: false, padBeats: false, realLayout: true });
+    want('Vom Blatt Einzähler', A('read', 'count'), { padBeats: true });
+    want('Kurs So sieht es aus', A('along', 'along', { course: true }), { mark: true, timeline: true, liveTaps: true, padBeats: true, realLayout: true });
+    for (const phase of ['count', 'listen', 'you', 'rest']) want(`Zweistimmig ${phase}`, A('duo', phase), { mark: true, timeline: true, liveTaps: true, padBeats: true, realLayout: true });
+
+    // Platzhalter: identisch für ganz verschiedene verborgene Phrasen.
+    const savedShown = stageLines;
+    try {
+      const mk = (pattern, course) => ({ index: 0, mode: 'echo', meter: pattern.meter, pattern, duo: null, result: null, youStart: null, showNotes: false, course });
+      const one = coursePattern('4/4', '', ['12 12 12 12'], 'a');
+      const many = makePattern('4/4', ['e', 'r', 'sy', 'tie', 'd', 's'], null, { bars: 4, pickup: true, pickupTicks: 6, ties: true, rnd: (() => { let sd = 3; return () => { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; }; })() });
+      const six = coursePattern('6/8', '6', ['12 6 12 6', '18 12'], 'c');
+      const a = stageSvgHtml(mk(one, { lesson: 'puls', step: 0 }), false, 'you');
+      const b = stageSvgHtml(mk(many, { lesson: 'x', step: 1 }), false, 'you');
+      const c = stageSvgHtml(mk(six, { lesson: 'y', step: 2 }), false, 'listen');
+      const d = stageSvgHtml({ ...mk(many, null), pattern: many }, false, 'listen'); // freies Nachklatschen
+      if (a !== b || a !== c || a !== d) errors.push('Hilfen: Platzhalter hängt von der verborgenen Phrase ab');
+      if (!a.includes('Rhythmus nach Gehör') || /class="ln"|class="sig"|class="tl/.test(a)) errors.push('Hilfen: Platzhalter enthält Taktstriche, Taktangabe oder Zeitleiste');
+      // Nach der Runde: Auswertung mit Zeitleiste, im Kurs ohne Notenköpfe.
+      const res = { notes: one.onsets.map((t) => ({ t, status: 'good', off: 0, tap: t })), perfect: true, meanOff: 0, hits: 4, count: 4, extras: 0, taps: one.onsets.map((t) => ({ at: t * .05, cls: 'good' })) };
+      const done = { ...mk(one, { lesson: 'puls', step: 0 }), result: res, youStart: 0, tickSec: .05, barSec: 2.4, tol: .05 };
+      const html = stageSvgHtml(done, true, 'rest');
+      if (/class="hd/.test(html) || !/class="tg/.test(html) || !/class="tp/.test(html) || !/class="tl"/.test(html)) errors.push('Hilfen: Ergebnis im Kurs (Schritt 1–3) zeigt Notenköpfe oder keine Zeitleiste/Tipper');
+      const free = stageSvgHtml({ ...done, course: null }, true, 'rest');
+      if (!/class="hd/.test(free)) errors.push('Hilfen: Ergebnis beim freien Nachklatschen ohne Noten');
+      const along = stageSvgHtml({ ...done, mode: 'along', showNotes: true, result: null }, true, 'along');
+      if (!/class="hd/.test(along) || !/class="ph"/.test(along)) errors.push('Hilfen: Schritt „So sieht es aus“ ohne Noten oder Marke');
+    } finally { stageLines = savedShown; }
+
+    // Speichern/Laden von markSelf: neu / alt ohne Feld / kaputt.
+    const saved = { markSelf: state.markSelf, tab: state.tab };
+    try {
+      state.markSelf = true;
+      restore(JSON.parse(JSON.stringify(snapshot())));
+      if (state.markSelf !== true) errors.push('markSelf übersteht Speichern/Laden nicht');
+      restore({ tab: saved.tab, rhythm: {} });
+      if (state.markSelf !== false) errors.push('markSelf: alter Stand ohne Feld → nicht aus');
+      state.markSelf = true;
+      restore({ tab: saved.tab, rhythm: { markSelf: 'ja' } });
+      if (state.markSelf !== false) errors.push('markSelf: kaputter Wert → nicht aus');
+    } finally { state.markSelf = saved.markSelf; }
+    return errors;
+  }
+
+  /** Wiedergabe-Marke (Paket 1): stetig über jeden Taktstrich, an Notenanfängen
+   *  gleich `xOf`, innerhalb eines Takts (bis zu dessen letzter Note) identisch
+   *  mit `xOf`. `n` Muster je Stufe bzw. Zweistimmig-Paare. */
+  function markCheck(n = 60) {
+    const errors = [];
+    let seed = 41;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const STEP = .05;
+    const check = (pattern, where) => {
+      const m = METERS[pattern.meter];
+      for (const [li, line] of phraseLines(pattern).entries()) {
+        const tag = `${where} Zeile ${li + 1}`;
+        let prev = line.markX(line.t0);
+        for (let t = line.t0 + STEP; t <= line.t1 + 1e-9; t += STEP) {
+          const x = line.markX(t);
+          if (x < prev - 1e-9) { errors.push(`${tag}: Marke läuft rückwärts bei ${t.toFixed(2)}`); break; }
+          if (x - prev > 2 * line.px * STEP + .01) { errors.push(`${tag}: Sprung ${(x - prev).toFixed(2)} bei ${t.toFixed(2)}`); break; }
+          prev = x;
+        }
+        for (const nt of pattern.notes) {
+          if (nt.t < line.t0 || nt.t >= line.t1) continue;
+          if (Math.abs(line.markX(nt.t) - line.xOf(nt.t)) >= .01) { errors.push(`${tag}: Marke ≠ Note bei ${nt.t}`); break; }
+        }
+        for (const sg of line.segs) {
+          const inSeg = pattern.notes.filter((nt) => nt.t >= sg.t0 && nt.t < sg.t1);
+          if (!inSeg.length) continue;
+          const lastStart = inSeg[inSeg.length - 1].t;
+          let bad = false;
+          for (let t = sg.t0; t <= lastStart && !bad; t += STEP) bad = Math.abs(line.markX(t) - line.xOf(t)) >= .01;
+          if (bad) errors.push(`${tag}: Marke ≠ xOf innerhalb des Takts`);
+        }
+        if (Math.abs(line.markX(line.t1) - line.segs[line.segs.length - 1].x1) > .01) errors.push(`${tag}: Zeilenende`);
+      }
+      void m;
+    };
+    for (const l of COURSE) check(lessonPattern(l), `Marke ${l.id}`);
+    for (const level of RHYTHM_LEVELS) {
+      let prev = null;
+      for (let i = 0; i < n; i++) {
+        const meterId = level.meters[i % level.meters.length];
+        const chosen = level.elements.filter((id) => elementFits(id, METERS[meterId]));
+        const pat = makePattern(meterId, chosen, prev, { bars: level.bars, pickup: level.pickup, ties: chosen.includes('tie'), rnd, pickupLens: level.pickupTicks });
+        prev = pat.key;
+        check(pat, `Marke Stufe ${level.n} ${pat.key}`);
+      }
+    }
+    {
+      const chosen = RHYTHM_LEVELS[5].elements.filter((id) => elementFits(id, METERS['12/8']));
+      let prev = null;
+      for (let i = 0; i < n; i++) {
+        const pat = makePattern('12/8', chosen, prev, { bars: 4, pickup: true, ties: true, rnd });
+        prev = pat.key;
+        check(pat, `Marke 12/8 ${pat.key}`);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const level = RHYTHM_LEVELS[2 + (i % 4)];
+      const chosen = level.elements.filter((id) => elementFits(id, METERS['4/4']));
+      const d = makeDuo('4/4', chosen, null, { bars: level.bars, pickup: level.pickup, ties: chosen.includes('tie'), rnd });
+      check(d.upper, `Marke Duo oben ${d.upper.key}`);
+      check(d.lower, `Marke Duo unten ${d.lower.key}`);
     }
     return errors;
   }
@@ -7518,7 +8121,7 @@
    *  wird dichter, Notenwerte darstellbar, Raster ohne Vorspiel. */
   function holdCheck() {
     const errors = [];
-    const DRAWABLE = [3, 4, 6, 9, 12, 18, 24, 36, 48];
+    const DRAWABLE = [3, 4, 6, 8, 9, 12, 18, 24, 36, 48, 72]; // 8: Shuffle-Achtel, 72: Ganztaktpause in 12/8
     let seed = 9;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
     let weak = 0, total = 0;
@@ -9415,6 +10018,9 @@
     errors.push(...courseCheck());
     errors.push(...holdCheck());
     errors.push(...popRhythmCheck());
+    errors.push(...markCheck());
+    errors.push(...aidsCheck());
+    errors.push(...accompCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
@@ -9589,6 +10195,29 @@
       if (!(ratio > .5 && ratio < 2.5)) errors.push(`${name}: Pegel ${ratio.toFixed(2)} × Klavier`);
     }
     voice.x = saved.x; voice.d = saved.d;
+    // Begleitung: Vorbild-Klatscher (mit Groove angehoben) deutlich über dem Schlagzeug.
+    // Vergleich ab 300 Hz (Ohr und Handylautsprecher hören Tiefes kaum): Effektivwert nach Hochpass.
+    const hpRms = (x, fc = 300) => {
+      const rc = 1 / (2 * Math.PI * fc), a = rc / (rc + 1 / sr);
+      let y = 0, e = 0;
+      for (let i = 1; i < x.length; i++) { y = a * (y + x[i] - x[i - 1]); e += y * y; }
+      return Math.sqrt(e / x.length);
+    };
+    const withEngine = async (fn) => render((ctx) => {
+      const save = { ctx: engine.ctx, master: engine.master, noise: engine.noise };
+      engine.ctx = ctx; engine.master = ctx.destination;
+      engine.noise = ctx.createBuffer(1, Math.round(sr * .3), sr);
+      const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      try { fn(); } finally { Object.assign(engine, save); }
+    });
+    const clapLevel = hpRms(await withEngine(() => engine.clap(.1, null, CLAP_WITH_ACCOMP)));
+    for (const kind of ['kick', 'snare', 'rim', 'hat']) {
+      const x = await withEngine(() => engine.drum(kind, .1, 1, null));
+      const level = hpRms(x);
+      if (!(x.reduce((a, b) => Math.max(a, Math.abs(b)), 0) > .01)) errors.push(`Begleitung ${kind}: kein Ton`);
+      // Bassdrum: nur „nicht lauter“; Snare, Rim, Hi-Hat: deutlich leiser als der Klatscher.
+      if (!(clapLevel > (kind === 'kick' ? 1 : 1.5) * level)) errors.push(`Begleitung ${kind}: Pegel ${(level * 1000).toFixed(2)} gegen Klatscher ${(clapLevel * 1000).toFixed(2)}`);
+    }
     return errors;
   }
 
@@ -9597,7 +10226,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, inKeyCheck,
+    selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
@@ -9606,6 +10235,8 @@
     // Pop-Didaktik: Singen
     ECHO_LEVELS, HOLD_LEVELS, FIND_LEVELS, CHROMA_TURNS, makeSingTask, melodySpec, wobbleCents, toneLabel, popSingCheck,
     get popSingNotes() { return popSingNotes.slice(); },
+    // Rhythmus-Kurs
+    COURSE, COURSE_CHAPTERS, lessonPattern, coursePattern, courseSteps, phraseLines, markX,
     rhythmSvg: (pattern, syllables = null) => systemSvg({ pattern, meterId: pattern.meter, lines: phraseLines(pattern), y0: 0, reveal: true, statusOf: () => '', syllables, taps: [] }),
   };
 
