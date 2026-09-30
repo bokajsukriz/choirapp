@@ -123,7 +123,8 @@ ein Dialog mit echter Wahl).
   Üben“ (`openToolPrefs`): Stimme und Belastung (beide im Stimmprofil) sowie
   die Tonbeschriftung do re mi / 1 2 3 (`settings.toolSolfa`, per
   `window.chorToolPrefs`; null = noch nicht global gewählt, dann gilt der im
-  Tool gemerkte Stand). `piano.html` (feste Silben bzw. C D E) ist davon
+  Tool gemerkte Stand; wirkt in `uebe-lab.html` und bei den Stufenangaben in
+  `licks.html`). `piano.html` (feste Silben bzw. C D E) ist davon
   unabhängig. Die
   Tool-Seiten lesen und melden über diese Schnittstellen, schreiben aber nie
   selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.

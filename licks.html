@@ -522,6 +522,19 @@
   /** Stufenbezeichnung eines Tons (Halbtöne über root, mod 12). */
   const DEGREES = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
   const degreeLabel = (semis) => DEGREES[mod(semis, 12)];
+  // Globale Tonbeschriftung der App (window.chorToolPrefs): Stufenzahlen oder
+  // Silben (do ra re me mi fa fi so le la te ti). Ohne App oder ohne Wahl: Zahlen.
+  const SOLFA_SEMIS = ['do', 'ra', 're', 'me', 'mi', 'fa', 'fi', 'so', 'le', 'la', 'te', 'ti'];
+  const prefsApi = (() => {
+    try { if (window.parent !== window && window.parent.chorToolPrefs) return window.parent.chorToolPrefs; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  let forceNumbers = false; // Selbstprüfung: erwartet Stufenzahlen, unabhängig von der Wahl der App
+  const syllables = () => { try { return !forceNumbers && prefsApi?.get().solfa === 'syllables'; } catch { return false; } };
+  /** Name eines Tons für die Anzeige: „5“ bzw. „so“. */
+  const toneName = (semis) => (syllables() ? SOLFA_SEMIS[mod(semis, 12)] : degreeLabel(semis));
+  /** Im Satz: „die 5“ bzw. „„so““. */
+  const toneRef = (semis) => (syllables() ? `„${SOLFA_SEMIS[mod(semis, 12)]}“` : `die ${degreeLabel(semis)}`);
 
   /** Rückmeldung zu „Stückweise“. want/got: [{ midi, t }] (t in Sekunden,
    *  relativ zum eigenen ersten Ton), tol: Trefferfenster. → { ok, text }. */
@@ -1347,7 +1360,7 @@
       p.push(`<text class="lbl" x="${X(t) + 1}" y="14">${txt}</text>`);
     }
     for (let b = 0; b <= lick.bars; b++) p.push(`<line class="bar-l" x1="${X(b * TICKS_BAR)}" y1="${top}" x2="${X(b * TICKS_BAR)}" y2="${top + midis.length * rowH}"/>`);
-    midis.forEach((m) => p.push(`<text class="row-l" x="6" y="${Y(m) + 14}">${esc(noteLabel(m))} · ${degreeLabel(m - lick.root)}</text>`));
+    midis.forEach((m) => p.push(`<text class="row-l" x="6" y="${Y(m) + 14}">${esc(noteLabel(m))} · ${esc(toneName(m - lick.root))}</text>`));
     lick.notes.forEach((n, i) => {
       const m = lick.root + n[2];
       const w = Math.max(3, X(n[0] + n[1]) - X(n[0]) - 1.5);
@@ -1419,7 +1432,7 @@
     if (lick && ui.foundKey !== null && keyEls.has(ui.foundKey)) {
       const mark = document.createElement('span');
       mark.className = 'key-mark';
-      mark.textContent = degreeLabel(lick.notes[0][2]);
+      mark.textContent = toneName(lick.notes[0][2]);
       keyEls.get(ui.foundKey).append(mark);
     }
   }
@@ -1549,7 +1562,7 @@
       releaseDrone();
       const it = itemOf(lick.id);
       it.step = Math.max(it.step, 3);
-      setFeedback(`Gefunden – das ist die ${degreeLabel(lick.notes[0][2])}.`, 'good');
+      setFeedback(`Gefunden – das ist ${toneRef(lick.notes[0][2])}.`, 'good');
       persist();
     } else {
       ui.startFails++; ui.pickedKey = null;
@@ -1571,7 +1584,7 @@
     releaseDrone();
     const it = itemOf(lick.id);
     it.step = Math.max(it.step, 3);
-    setFeedback(`Das ist die ${degreeLabel(lick.notes[0][2])} – der erste Ton.`, 'good');
+    setFeedback(`Das ist ${toneRef(lick.notes[0][2])} – der erste Ton.`, 'good');
     persist();
     renderLick();
   }
@@ -1941,6 +1954,7 @@
 
   function selfCheck() {
     const errors = [];
+    forceNumbers = true;
     // --- Inhalt
     const ids = new Set();
     let lastCat = null;
@@ -2242,6 +2256,7 @@
     } finally {
       selfTesting = false;
       calib.tapMs = saved.tap; calib.micMs = saved.mic; reset(); Object.assign(delayHint, JSON.parse(saved.hint)); ui.running = saved.running;
+      forceNumbers = false;
     }
     return errors;
   }
