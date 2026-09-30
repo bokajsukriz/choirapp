@@ -92,6 +92,8 @@
   .panel p { margin: 0 0 10px; font-size: .88rem; line-height: 1.4; }
   .panel .more { font-size: .78rem; color: var(--muted); }
   .panel .note { margin-top: 10px; }
+  .delay-hint { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .1); border: 1px solid rgba(var(--accent-rgb), .45); }
+  .delay-hint p { margin: 0 0 8px; font-size: .82rem; line-height: 1.35; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .btn { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .86rem; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -200,6 +202,9 @@
     <span class="sub-label" style="margin-top:0">Notenbild bei Licks</span>
     <div class="chips" id="notes-chips"></div>
     <p class="note">Das Notenbild (Piano-Roll) kommt als letzter Schritt. Wer es abschaltet, übt ausschließlich mit den Ohren.</p>
+    <span class="sub-label">Verzögerung beim Tippen</span>
+    <p class="note" id="delay-note"></p>
+    <div class="actions" style="margin-top:0"><button class="btn" type="button" data-act="delay-reset" id="delay-reset">Zurücksetzen</button></div>
     <div class="actions"><button class="btn primary" type="button" data-act="settings-close">Fertig</button></div>
   </div>
 </div>
@@ -375,6 +380,127 @@
     const lastTwo = bars.slice(-2).filter((b) => b.expected > 0);
     const held = bars.every((_, b) => okBar(b)) && lastTwo.every((b) => Math.abs(b.meanOffset) <= tol);
     return { bars, held, tendency, lostAt, reentry };
+  }
+
+  /* ---- Verzögerung erkennen (übungsübergreifende Kalibration). Kommen alle
+     Anschläge ungefähr gleich viel zu spät (Touchscreen, Bluetooth-Kopfhörer),
+     verfehlt man bei mehr als etwa 130 ms jede Note — die Auswertung sieht dann
+     nur „daneben“, nicht „alles 200 ms verschoben“. Deshalb wird hier über die
+     ganze Phrase nach einer gemeinsamen Verschiebung gesucht.
+     Diese Funktionen stehen wortgleich in uebe-lab.html und licks.html (gleiche
+     Testvektoren, delayVectors). ---- */
+  const DELAY_MIN_MS = 80, DELAY_MAX_MS = 350;
+  /** Verschiebung eines Laufs in ms (Anschlag − Soll, positiv = zu spät) oder null.
+   *  expected/taps in Sekunden. Gesucht wird die Verschiebung, bei der die meisten
+   *  Anschläge auf Soll-Punkte fallen (±50 ms); bei mehreren gleichwertigen die kleinste
+   *  (regelmäßige Muster passen auch um einen Notenabstand verschoben). Gilt nur, wenn
+   *  fast alle Soll-Punkte getroffen werden, ohne Verschiebung aber kaum einer. */
+  function estimateRunDelay(expected, taps) {
+    const n = expected.length;
+    if (n < 3 || taps.length < 3 || taps.length > n * 1.5) return null;
+    const hitsAt = (s) => expected.filter((e) => taps.some((t) => Math.abs(t - (e + s)) <= .05)).length;
+    const s0 = hitsAt(0);
+    let best = 0, bestHits = s0;
+    for (let ms = 20; ms <= 400; ms += 10) { const h = hitsAt(ms / 1000); if (h > bestHits) { bestHits = h; best = ms; } }
+    if (best < DELAY_MIN_MS || bestHits < .7 * n || s0 > .35 * n || bestHits - s0 < .3 * n) return null;
+    const offs = [];
+    for (const e of expected) {
+      const t = taps.find((x) => Math.abs(x - (e + best / 1000)) <= .05);
+      if (t !== undefined) offs.push(t - e);
+    }
+    offs.sort((a, b) => a - b);
+    return Math.round(offs[offs.length >> 1] * 1000);
+  }
+  /** Aus den Verschiebungen der letzten Läufe (ms) einen Vorschlag machen oder null: mindestens
+   *  drei der letzten fünf Läufe (Läufe ohne Befund zählen mit) liegen innerhalb von ±45 ms um den Median, und der liegt
+   *  zwischen 80 und 350 ms. Rückgabe { ms } auf 5 ms gerundet. */
+  function detectDelay(estimates) {
+    const recent = estimates.slice(-5).filter((x) => Number.isFinite(x)); // Läufe ohne Befund zählen als Platz ohne Wert
+    if (recent.length < 3) return null;
+    const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+    const m = median(recent);
+    const close = recent.filter((x) => Math.abs(x - m) <= 45);
+    if (close.length < 3 || close.length < .6 * recent.length) return null;
+    const ms = Math.round(median(close) / 5) * 5;
+    return ms >= DELAY_MIN_MS && ms <= DELAY_MAX_MS ? { ms } : null;
+  }
+  /** Gemeinsame Testvektoren (wortgleich in uebe-lab.html und licks.html). */
+  function delayVectors() {
+    const errors = [];
+    let seed = 11;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const jitter = (ms) => (rnd() * 2 - 1) * ms / 1000;
+    // unregelmäßiges Muster (Abstände .25 / .5 / .75 s), 16 Soll-Punkte
+    const gaps = [.5, .25, .25, .75, .5, .25, .5, .25, .75, .25, .5, .5, .25, .25, .75];
+    const expected = [2]; gaps.forEach((g) => expected.push(expected[expected.length - 1] + g));
+    const shifted = (ms, j = 20) => expected.map((e) => e + ms / 1000 + jitter(j));
+    let r = estimateRunDelay(expected, shifted(200));
+    if (r === null || Math.abs(r - 200) > 15) errors.push(`Verzögerung: 200 ms → ${r}`);
+    r = estimateRunDelay(expected, shifted(130));
+    if (r === null || Math.abs(r - 130) > 15) errors.push(`Verzögerung: 130 ms → ${r}`);
+    for (const ms of [0, 40, 60, 500]) if (estimateRunDelay(expected, shifted(ms)) !== null) errors.push(`Verzögerung: ${ms} ms sollte keinen Vorschlag geben`);
+    if (estimateRunDelay(expected, shifted(-150)) !== null) errors.push('Verzögerung: zu früh sollte keinen Vorschlag geben');
+    if (estimateRunDelay(expected, shifted(200).filter((_, i) => i % 2)) !== null) errors.push('Verzögerung: nur halbe Anschläge sollten keinen Vorschlag geben');
+    const mash = Array.from({ length: 40 }, () => 2 + rnd() * 7);
+    if (estimateRunDelay(expected, mash) !== null) errors.push('Verzögerung: wildes Tippen sollte keinen Vorschlag geben');
+    if (estimateRunDelay(expected.slice(0, 2), shifted(200).slice(0, 2)) !== null) errors.push('Verzögerung: zu wenige Soll-Punkte');
+    r = estimateRunDelay(expected.slice(0, 3), shifted(200, 10).slice(0, 3));
+    if (r === null || Math.abs(r - 200) > 15) errors.push(`Verzögerung: drei Soll-Punkte → ${r}`);
+    // Nur jede zweite Note gespielt, aber gleichmäßig 200 ms zu spät, ist kein Beleg (zu wenige Treffer) — s. o.
+    // regelmäßiges Muster (Achtel, .3 s): 200 ms zu spät wird nicht als „100 ms zu früh“ gedeutet
+    const even = Array.from({ length: 16 }, (_, i) => 2 + i * .3);
+    r = estimateRunDelay(even, even.map((e) => e + .2 + jitter(15)));
+    if (r === null || Math.abs(r - 200) > 15) errors.push(`Verzögerung: regelmäßiges Muster → ${r}`);
+    // Vorschlag aus mehreren Läufen
+    const D = (x) => JSON.stringify(detectDelay(x));
+    if (D([200, 195, 210]) !== '{"ms":200}') errors.push(`detectDelay 3 gleiche: ${D([200, 195, 210])}`);
+    if (D([205, 190, 210, 90, 200]) !== '{"ms":205}') errors.push(`detectDelay mit Ausreißer: ${D([205, 190, 210, 90, 200])}`);
+    if (D([200, 205]) !== 'null') errors.push('detectDelay: zwei Läufe reichen nicht');
+    if (D([200, 100, 300, 50, 250]) !== 'null') errors.push('detectDelay: streuende Werte');
+    if (D([60, 65, 60]) !== 'null' || D([400, 410, 405]) !== 'null') errors.push('detectDelay: außerhalb 80–350 ms');
+    if (D([null, NaN, 200, 200, 205]) !== '{"ms":200}') errors.push('detectDelay: ungültige Werte');
+    if (D([]) !== 'null') errors.push('detectDelay: leer');
+    if (D([200, 200, null, null, null]) !== 'null' || D([200, 205, null, 195, null]) !== '{"ms":200}') errors.push('detectDelay: Läufe ohne Befund zählen mit');
+    if (D([90, 40, 300, 200, 200, 205, 195]) !== '{"ms":200}') errors.push('detectDelay: nur die letzten fünf zählen');
+    return errors;
+  }
+
+  /* ---- Verzögerungs-Vorschlag: erkennt die Seite, dass alles etwa gleich viel zu spät
+     kommt (Touchscreen, Bluetooth), bietet sie eine Kalibration für alle Übungen an. Die
+     gemeinsame Ablage `calibration` (tapMs, micMs) gilt auch in uebe-lab.html. ---- */
+  const CALIBRATION_ID = 'calibration';
+  const calib = { tapMs: 0, micMs: 0 };
+  const delayHint = { list: [], dismissed: false, open: null };
+  function saveCalibration() {
+    if (!storage || selfTesting) return;
+    Promise.resolve(storage.save(CALIBRATION_ID, { v: 1, tapMs: calib.tapMs, micMs: calib.micMs })).catch(() => {});
+  }
+  function applyCalibration(cal) {
+    if (!cal || typeof cal !== 'object' || cal.v !== 1) return;
+    if (Number.isFinite(cal.tapMs)) calib.tapMs = clamp(Math.round(cal.tapMs), -50, 300);
+    if (Number.isFinite(cal.micMs)) calib.micMs = clamp(Math.round(cal.micMs), 0, 400);
+  }
+  function noteDelayEstimate(ms) {
+    delayHint.list.push(ms);
+    if (delayHint.list.length > 8) delayHint.list.shift();
+    const sug = detectDelay(delayHint.list);
+    delayHint.open = sug && !delayHint.dismissed ? { ms: sug.ms } : null;
+  }
+  /** Ein Lauf: Soll-Zeitpunkte und Anschläge (Sekunden, absolut auf der Audio-Uhr). */
+  function noteRunDelay(expected, taps) { if (!selfTesting) noteDelayEstimate(estimateRunDelay(expected, taps)); }
+  function applyDelaySuggestion() {
+    const h = delayHint.open;
+    if (!h) return;
+    calib.tapMs = clamp(calib.tapMs + h.ms, -50, 300);
+    delayHint.list.length = 0; delayHint.open = null;
+    saveCalibration();
+  }
+  /** Karte mit dem Vorschlag (nur außerhalb eines Laufs). */
+  function delayCardHtml() {
+    const h = delayHint.open;
+    if (!h || ui.running) return '';
+    return `<div class="delay-hint" role="status"><p><b>Deine Töne kommen im Schnitt etwa ${h.ms} ms zu spät.</b> Das liegt oft am Gerät (Touchscreen, Bluetooth-Kopfhörer), nicht an dir. Soll die Verzögerung in allen Übungen ausgeglichen werden?</p>
+      <div class="actions" style="margin-top:0"><button class="btn primary" type="button" data-delay="apply">${h.ms} ms ausgleichen</button><button class="btn" type="button" data-delay="later">Später</button></div></div>`;
   }
 
   /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
@@ -978,7 +1104,7 @@
     const glide = state.glide ? (sound.glide || VORBILD_GLIDE_DEFAULT) : 0;
     const voice = engine.playTone(sound, midi, now + .005, OWN_VELOCITY, undefined, { layer: 'own', glide, dest: engine.master });
     own.voices.set(midi, voice);
-    if (run.playing) run.taps.push({ t: now - Math.min(LATENCY_CAP, engine.ctx.outputLatency || engine.ctx.baseLatency || 0), pc: mod(midi, 12), midi });
+    if (run.playing) run.taps.push({ t: now - Math.min(LATENCY_CAP, engine.ctx.outputLatency || engine.ctx.baseLatency || 0) - calib.tapMs / 1000, pc: mod(midi, 12), midi });
     return voice;
   }
   function ownNoteOff(midi) {
@@ -1120,7 +1246,7 @@
       const label = ['mit vollem Groove', 'mit Bassdrum und Snare', 'nur mit der Snare'][r];
       html = `<p><b>Runde ${Math.min(it.whole + 1, 3)} von 3</b> · ${label}. Du hörst den Lick einmal, dann spielst du ihn im selben Takt selbst.${it.whole >= 3 ? ' Alle drei Runden sind geschafft – du kannst weiter üben.' : ''}</p>
         ${ui.result && ui.result.kind === 'whole' ? resultTimelineHtml(ui.result) : placeholderHtml()}
-        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
         <div class="actions"><button class="btn primary" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
         ${it.whole >= 3 ? '<button class="btn" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
     } else if (k === 6) {
@@ -1160,7 +1286,7 @@
     return `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
       <p>${before}</p>
       ${result ? stripHtml(result) : placeholderHtml()}
-      <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+      <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
       <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
       ${nextStage ? `<button class="btn" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
       ${result && result.held && stageNo === 4 ? '<span class="note" style="align-self:center">Alle Stufen geschafft.</span>' : ''}</div>
@@ -1492,6 +1618,7 @@
       const tol = toleranceFor(minGapSec(exp));
       const start = info.t0 + you * tl.barSec;
       const window = timeIn(info.taps, start - tol - .1, start + lick.bars * tl.barSec + tol);
+      noteRunDelay(exp.map((e) => e.t + info.t0), info.taps.filter((x) => x.t >= start - .1 && x.t <= start + lick.bars * tl.barSec + .45).map((x) => x.t));
       const abs = assign(exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), window, tol);
       const success = abs.hits === exp.length;
       let text;
@@ -1546,6 +1673,7 @@
       const exp = tl.expected;
       const tol = toleranceFor(minGapSec(exp));
       const taps = timeIn(info.taps, info.t0 + start * tl.barSec - tol - .1, info.t0 + (start + st.bars) * tl.barSec + tol).map((x) => ({ t: x.t, pc: x.pc }));
+      noteRunDelay(exp.map((e) => e.t + info.t0), info.taps.filter((x) => x.t >= info.t0 + start * tl.barSec - .1 && x.t <= info.t0 + (start + st.bars) * tl.barSec + .45).map((x) => x.t));
       const result = judgeHold({ expected: exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), taps, barStart: info.t0 + start * tl.barSec, barSec: tl.barSec, tol, plan });
       ui.result = { kind: 'hold', stage: stageNo, ...result };
       setFeedback(holdMessage(result, stageNo), result.held ? 'good' : '');
@@ -1628,7 +1756,7 @@
       const st = HOLD_STAGES[ui.holdStage - 1];
       const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
       return `${head}<p><b>${st.name}</b> – ${holdBefore(st)}</p>${result ? stripHtml(result) : placeholderHtml()}
-        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
         <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
         <button class="btn" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
     }
@@ -1659,6 +1787,11 @@
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
+    if (t.dataset.delay) {
+      if (t.dataset.delay === 'apply') { applyDelaySuggestion(); setFeedback(`Verzögerung ausgeglichen: ${calib.tapMs} ms werden künftig abgezogen – in allen Übungen.`, 'good'); }
+      else { delayHint.dismissed = true; delayHint.open = null; }
+      rerender(); return;
+    }
     if (t.dataset.cat) { ui.cat = t.dataset.cat; renderList(); return; }
     if (t.dataset.notesChoice) { state.notes = t.dataset.notesChoice === 'off' ? 'off' : 'last'; if (state.notes === 'off' && ui.step === 7) ui.step = 5; renderSheet(); persist(); return; }
     if (t.dataset.step) { const k = Number(t.dataset.step); const lick = currentLick(); if (lick && stepUnlocked(lick, k)) { stopRun(true); releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick(); } return; }
@@ -1684,6 +1817,7 @@
         if (lick && !ui.review && !ui.visitRated && itemOf(lick.id).whole >= 3 && ui.view === 'lick' && !ui.askedLeave) { ui.askedLeave = true; ui.step = 6; renderLick(); setFeedback('Wie fühlt es sich an? Wähle unten – oder geh einfach zurück.'); break; }
         ui.askedLeave = false; ui.review = null; show('list'); renderList(); break;
       case 'settings': renderSheet(); $('#sheet').hidden = false; break;
+      case 'delay-reset': calib.tapMs = 0; delayHint.list.length = 0; delayHint.open = null; delayHint.dismissed = false; saveCalibration(); renderSheet(); break;
       case 'settings-close': $('#sheet').hidden = true; if (lick) renderLick(); break;
       case 'stop': stopRun(true); releaseDrone(); rerender(); break;
       case 'next-step': { const it = itemOf(lick.id); if (ui.step <= 3) it.step = Math.max(it.step, ui.step); ui.step = Math.min(ui.step + 1, stepsShown().length); ui.result = null; setFeedback(''); persist(); renderLick(); break; }
@@ -1719,6 +1853,8 @@
     persist();
   });
   function renderSheet() {
+    $('#delay-note').textContent = calib.tapMs ? `Es werden ${calib.tapMs} ms abgezogen – in allen Übungen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.` : 'Nichts wird abgezogen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.';
+    $('#delay-reset').hidden = !calib.tapMs;
     $('#notes-chips').innerHTML = [['last', 'als letzter Schritt'], ['off', 'aus']].map(([v, l]) => `<button class="chip" type="button" data-notes-choice="${v}" aria-pressed="${state.notes === v}">${l}</button>`).join('');
   }
 
@@ -1891,6 +2027,7 @@
     errors.push(...stateCheck());
     // --- Ablauf und Sichtbarkeit
     errors.push(...flowCheck());
+    errors.push(...delayCheck());
     return errors;
   }
 
@@ -2010,6 +2147,42 @@
     return errors;
   }
 
+  /** Verzögerung erkennen: gemeinsame Vektoren, Vorschlag, Übernehmen, gemeinsame Ablage. */
+  function delayCheck() {
+    const errors = [...delayVectors()];
+    const saved = { tap: calib.tapMs, mic: calib.micMs, hint: JSON.stringify(delayHint), running: ui.running };
+    selfTesting = true;
+    const reset = () => { delayHint.list.length = 0; delayHint.dismissed = false; delayHint.open = null; };
+    try {
+      calib.tapMs = 20; reset(); ui.running = '';
+      noteDelayEstimate(200); noteDelayEstimate(195);
+      if (delayHint.open) errors.push('Verzögerung: Vorschlag schon nach zwei Läufen');
+      noteDelayEstimate(205);
+      if (!delayHint.open || delayHint.open.ms !== 200) errors.push('Verzögerung: kein Vorschlag nach drei Läufen');
+      if (!/data-delay="apply"/.test(delayCardHtml()) || !/data-delay="later"/.test(delayCardHtml())) errors.push('Verzögerung: Karte unvollständig');
+      ui.running = 'hold';
+      if (delayCardHtml() !== '') errors.push('Verzögerung: Karte während eines Laufs sichtbar');
+      ui.running = '';
+      applyDelaySuggestion();
+      if (calib.tapMs !== 220 || delayHint.open || delayHint.list.length) errors.push(`Verzögerung: Übernehmen ergibt ${calib.tapMs}`);
+      calib.tapMs = 290; reset(); [200, 200, 200].forEach(noteDelayEstimate); applyDelaySuggestion();
+      if (calib.tapMs !== 300) errors.push(`Verzögerung: nicht begrenzt (${calib.tapMs})`);
+      reset(); [180, 185, 180].forEach(noteDelayEstimate); delayHint.dismissed = true; delayHint.open = null;
+      [180, 185, 180].forEach(noteDelayEstimate);
+      if (delayHint.open) errors.push('Verzögerung: Vorschlag trotz „Später“');
+      reset(); [200, null, 200, null, null].forEach(noteDelayEstimate);
+      if (delayHint.open) errors.push('Verzögerung: Vorschlag trotz Läufen ohne Befund');
+      applyCalibration({ v: 1, tapMs: 180.4, micMs: 90 });
+      if (calib.tapMs !== 180 || calib.micMs !== 90) errors.push(`Verzögerung: Kalibration laden (${calib.tapMs}/${calib.micMs})`);
+      applyCalibration({ v: 2, tapMs: 999 }); applyCalibration(null); applyCalibration({ v: 1, tapMs: 'x', micMs: 99999 });
+      if (calib.tapMs !== 180 || calib.micMs !== 400) errors.push('Verzögerung: kaputte Kalibration');
+    } finally {
+      selfTesting = false;
+      calib.tapMs = saved.tap; calib.micMs = saved.mic; reset(); Object.assign(delayHint, JSON.parse(saved.hint)); ui.running = saved.running;
+    }
+    return errors;
+  }
+
   /** Tonerzeugung prüfen (asynchron): `await licks.selfCheckAudio()` — Pegel Lick gegen Schlagzeug. */
   async function selfCheckAudio() {
     const errors = [];
@@ -2045,7 +2218,7 @@
     LICKS, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
     sanitizeLicksState, selfCheck, selfCheckAudio,
     // für Konsole und Prüfungen
-    dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
+    estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
   };
 
   /* ------------------------------------------------------------------------
@@ -2058,10 +2231,11 @@
     if (new URLSearchParams(location.search).get('review') === '1') startReview();
   }
   if (storage) {
-    Promise.resolve(storage.load(STORAGE_ID)).then((raw) => {
+    Promise.all([Promise.resolve(storage.load(STORAGE_ID)), Promise.resolve(storage.load(CALIBRATION_ID)).catch(() => null)]).then(([raw, cal]) => {
       const s = sanitizeLicksState(raw);
       for (const k of Object.keys(state)) delete state[k];
       Object.assign(state, s);
+      applyCalibration(cal);
     }).catch(() => { /* nichts gespeichert */ }).then(init);
   } else init();
 })();
