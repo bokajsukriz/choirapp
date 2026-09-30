@@ -213,3 +213,14 @@ Nichts aus dem Auftrag. (Teil B wurde umgesetzt, siehe Weiche.)
 - Aufgefallen, nicht Teil des Auftrags: Der Modus „Im Takt“ (Singen) benutzt weiter `line.xOf(t)` für die
   laufende Marke und springt an Taktstrichen (siehe `BERICHT-POP-RHYTHMUSKURS.md`); `markX` ließe sich dort
   übernehmen.
+
+## Nachtrag: Startton (Fehlerbehebung)
+
+- **Fehler:** Beim Fund der richtigen Taste wurde die Tastatur neu gebaut, während der Finger noch drauf lag.
+  Auf dem Touchscreen ging das `pointerup` der ausgetauschten Taste verloren — der Ton hing und die Taste blieb gedrückt.
+  Jetzt baut sich die Tastatur nur noch bei geänderter Lage (anderer Lick, andere Oktave) neu, die Finger sind per
+  Pointer-Capture an die Tastatur gebunden, und `lostpointercapture` gibt den Ton frei.
+- **Ablauf:** Tippen auf eine Taste spielt sie und wählt sie nur aus (neutrale Markierung „?“). Erst „✓ Ton einloggen“
+  prüft; „Lick nochmal hören“ (nach 3) und „Zeig ihn mir“ (nach 6) zählen jetzt Einlog-Versuche, nicht mehr jeden Tipp.
+- **Stufenmarke:** Die gefundene Taste behält ihre Stufenmarke nur, solange man im Schritt „Startton“ ist; beim
+  Verlassen des Schritts oder des Licks verschwindet sie (vorher blieb sie bis zum Verlassen des Licks).
