@@ -118,7 +118,14 @@ ein Dialog mit echter Wahl).
 - `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
   Körperübungen, geführte und eigene Einsing-Programme).
 - Stimmprofil, Fortschritt und Schnellstart liegen in `app.js`
-  (`window.chorVoiceProfile`, `window.chorProgress`, `QUICK_STARTS`); die
+  (`window.chorVoiceProfile`, `window.chorProgress`, `QUICK_STARTS`). Die
+  Stimm-Pille auf der Tools-Seite öffnet das Popup „Einstellungen fürs
+  Üben“ (`openToolPrefs`): Stimme und Belastung (beide im Stimmprofil) sowie
+  die Tonbeschriftung do re mi / 1 2 3 (`settings.toolSolfa`, per
+  `window.chorToolPrefs`; null = noch nicht global gewählt, dann gilt der im
+  Tool gemerkte Stand; wirkt in `uebe-lab.html` und bei den Stufenangaben in
+  `licks.html`). `piano.html` (feste Silben bzw. C D E) ist davon
+  unabhängig. Die
   Tool-Seiten lesen und melden über diese Schnittstellen, schreiben aber nie
   selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.
   Wischen vom linken Rand. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.

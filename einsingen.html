@@ -127,6 +127,22 @@
   .body-ring .ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
   .body-ring span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-variant-numeric: tabular-nums; }
   .contour.is-waiting .syl { opacity: .45; }
+  /* Atemübung: Balken Einatmen | Ausatmen. Seine Breite wächst mit der Runde
+     (Ausatmen 8 → 14 Schläge), die Füllung läuft mit der Audio-Uhr. */
+  .breath-stage { margin: 14px 0 4px; }
+  .breath-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 800; }
+  .breath-phase { font-size: 1.05rem; }
+  .breath-left { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .breath-lane { margin-top: 10px; border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+  .breath-track { display: flex; gap: 4px; width: 100%; transition: width .3s; }
+  .breath-seg { position: relative; height: 30px; border-radius: 10px; background: var(--surface-2); overflow: hidden; min-width: 0; }
+  .breath-seg i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--accent); }
+  .breath-seg--in i { background: color-mix(in srgb, var(--accent) 50%, white); }
+  /* Je Schlag ein feiner Strich — so lässt sich mitzählen. */
+  .breath-seg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--surface) 2px, transparent 2px) 0 0 / calc(100% / var(--n, 1)) 100%; }
+  body.is-player .breath-stage { margin: auto 0 8px; }
+  body.is-player .breath-phase { font-size: 1.3rem; }
+  body.is-player .breath-seg { height: 48px; }
   /* Hinweiszeile über der Kontur: „Sprich: …“, Abschluss-Konsonant,
      „gerade“/„Vibrato erlaubt“ — Platz bleibt reserviert, damit nichts springt. */
   .cue-line { min-height: 1.4em; margin: 10px 0 0; text-align: center; font-weight: 800; font-size: .95rem; color: var(--gc, var(--accent)); }
@@ -136,7 +152,7 @@
   .prog-plan { display: none; }
   body.is-player.is-prestart .prog-plan { display: block; margin: 4px 0 auto; }
   body.is-player.is-prestart .player-hero, body.is-player.is-prestart .cue-line, body.is-player.is-prestart .contour,
-  body.is-player.is-prestart .body-stage, body.is-player.is-prestart .glide, body.is-player.is-prestart .player-meta,
+  body.is-player.is-prestart .body-stage, body.is-player.is-prestart .breath-stage, body.is-player.is-prestart .glide, body.is-player.is-prestart .player-meta,
   body.is-player.is-prestart .player-next { display: none !important; }
   .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .pp-title { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
@@ -318,6 +334,12 @@
       <div class="body-ring" aria-hidden="true"><svg viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="25"/><circle class="ring-fg" cx="29" cy="29" r="25" stroke-dasharray="157.1" stroke-dashoffset="0"/></svg><span></span></div>
     </div>
     <div class="contour" aria-hidden="true"></div>
+    <div class="breath-stage" hidden>
+      <div class="breath-head"><span class="breath-phase"></span><span class="breath-left"></span></div>
+      <div class="breath-lane" aria-hidden="true"><div class="breath-track">
+        <span class="breath-seg breath-seg--in"><i></i></span><span class="breath-seg breath-seg--out"><i></i></span>
+      </div></div>
+    </div>
     <div class="glide" hidden><svg viewBox="0 0 300 120" aria-hidden="true"><path class="glide-path"/><circle class="glide-dot" r="7"/></svg></div>
     <div class="stage-meta"><span class="stage-key"></span><span class="stage-range"></span></div>
     <div class="stage-program">
@@ -1202,7 +1224,7 @@
   const LENGTH_CHOICES = { kurz: [3, 5, 7], lang: [10, 15, 20] };
   const COUNT_INS = [['off', 'aus'], ['start', 'zu Beginn'], ['round', 'jede Runde']];
   const CUES = [['chord', 'Akkord'], ['cadence', 'Kadenz']];
-  const run = { playing: false, starting: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, wakeLock: null };
+  const run = { playing: false, starting: false, step: 0, nextTime: 0, endTime: null, timer: 0, frame: 0, queue: [], shownSeg: null, breathKey: '', wakeLock: null };
   let plan = null;
   let droneVoice = null;
   let tapTimes = [];
@@ -1607,7 +1629,11 @@
     if (latest) { show(latest.g); run.lastDrawn = latest; }
     // Spielmodus: Füllstand und Gleit-Punkt laufen mit der Audio-Uhr mit.
     const L = run.lastDrawn;
-    if (L && L.g >= 0 && isPlayer()) updatePlayerFrame(L.g + clamp((now - L.time) / stepSecondsAt(L.g), 0, .999));
+    if (L && L.g >= 0) {
+      const gf = L.g + clamp((now - L.time) / stepSecondsAt(L.g), 0, .999);
+      if (isPlayer()) updatePlayerFrame(gf);
+      updateBreathBar(gf);
+    }
     if (run.endTime !== null && now > run.endTime + .8) { finish(); return; }
     run.frame = requestAnimationFrame(draw);
   }
@@ -1822,7 +1848,22 @@
     const isRhythm = ex.kind === 'breathRhythm';
     const player = isPlayer();
     const glide = player && !!ex.glide;
-    host.hidden = isBody || glide;
+    const isBreath = ex.kind === 'breath';
+    host.hidden = isBody || glide || isBreath;
+    $('.breath-stage').hidden = !isBreath;
+    if (isBreath) {
+      // Form der Runde (bei Pause/Vorschau: die erste Runde dieser Übung), Füllung leer.
+      const r = cur.kind === 'round' ? cur : plan.segs.find((sg) => sg.kind === 'round' && sg.item === cur.item);
+      const maxBeats = BREATH_IN + BREATH_EXHALES[BREATH_EXHALES.length - 1];
+      $('.breath-track').style.width = `${(100 * (BREATH_IN + r.exhale) / maxBeats).toFixed(1)}%`;
+      const segIn = $('.breath-seg--in'), segOut = $('.breath-seg--out');
+      segIn.style.flex = `${BREATH_IN} 1 0`; segIn.style.setProperty('--n', BREATH_IN);
+      segOut.style.flex = `${r.exhale} 1 0`; segOut.style.setProperty('--n', r.exhale);
+      $$('.breath-seg i').forEach((i) => { i.style.width = '0'; });
+      $('.breath-phase').textContent = 'Einatmen';
+      $('.breath-left').textContent = `${BREATH_IN} Schläge`;
+      run.breathKey = '';
+    }
     $('.glide').hidden = !glide;
     $('.body-stage').hidden = !isBody && !isRhythm;
     $('.body-stage').classList.toggle('is-rhythm', isRhythm);
@@ -2223,6 +2264,27 @@
   }
 
   /** Je Bild: Füllstand des aktuellen Segments, Punkt auf der Gleitkurve. */
+  /** Atembalken: Füllstand und Text zur Position `gf` (Sechzehntel, mit Nachkomma). */
+  function updateBreathBar(gf) {
+    if ($('.breath-stage').hidden) return;
+    const x = plan.loop ? mod(gf, plan.total) : gf;
+    const hit = segAt(Math.floor(x));
+    if (!hit || hit.seg.kind !== 'round' || hit.seg.ex.kind !== 'breath') return;
+    const { seg } = hit;
+    const pos = x - seg.start, inSteps = BREATH_IN * 4, outSteps = seg.exhale * 4;
+    const fillIn = clamp(pos / inSteps, 0, 1), fillOut = clamp((pos - inSteps) / outSteps, 0, 1);
+    $('.breath-seg--in i').style.width = `${(100 * fillIn).toFixed(1)}%`;
+    $('.breath-seg--out i').style.width = `${(100 * fillOut).toFixed(1)}%`;
+    const inhale = pos < inSteps;
+    const left = Math.max(1, Math.ceil(((inhale ? inSteps : inSteps + outSteps) - pos) / 4));
+    const key = `${inhale}|${left}`;
+    if (run.breathKey !== key) {
+      run.breathKey = key;
+      $('.breath-phase').textContent = inhale ? 'Einatmen' : 'Ausatmen auf „sss“';
+      $('.breath-left').textContent = `noch ${left} ${left === 1 ? 'Schlag' : 'Schläge'}`;
+    }
+  }
+
   function updatePlayerFrame(gf) {
     const x = plan.loop ? mod(gf, plan.total) : gf;
     const hit = segAt(Math.floor(x));

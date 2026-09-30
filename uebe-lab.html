@@ -614,6 +614,14 @@
     return null;
   })();
   const readProfile = () => { try { return profileApi ? profileApi.get() : null; } catch { return null; } };
+  // Globale Tonbeschriftung (do re mi / 1 2 3) der App: gilt in allen Übe-Tools,
+  // eine Wahl hier schreibt sie zurück (window.chorToolPrefs, app.js).
+  const prefsApi = (() => {
+    try { if (window.parent !== window && window.parent.chorToolPrefs) return window.parent.chorToolPrefs; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  const globalSolfa = () => { try { const v = prefsApi?.get().solfa; return v === 'syllables' || v === 'numbers' ? v : null; } catch { return null; } };
+  const setGlobalSolfa = (v) => { try { prefsApi?.set({ solfa: v }); } catch { /* App weg */ } };
   // Fortschritt der App (Paket 6): die Seite meldet nur, die App schreibt.
   let progressApi = (() => { // let: die Selbstprüfung setzt kurz einen Ersatz ein
     try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
@@ -8172,7 +8180,7 @@
         try { profileApi?.set({ part: v }); } catch { /* App weg */ }
         clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null;
         if (!$('.sheet').hidden && sheetKind === 'sing') renderSettings();
-      } else if (singChip.dataset.chip === 'solfa') sing.solfa = v;
+      } else if (singChip.dataset.chip === 'solfa') { sing.solfa = v; setGlobalSolfa(v); }
       renderSing();
       return;
     }
@@ -8236,7 +8244,11 @@
     const levelChip = e.target.closest('[data-level]');
     if (levelChip) { applyEarLevel(Number(levelChip.dataset.level)); renderSettings(); $('.sheet-hint').textContent = settingsProblem(); return; }
     const inKeySet = e.target.closest('[data-inkey]');
-    if (inKeySet) { setInKeyOption(inKeySet.dataset.inkey, inKeySet.dataset.value); return; }
+    if (inKeySet) {
+      setInKeyOption(inKeySet.dataset.inkey, inKeySet.dataset.value);
+      if (inKeySet.dataset.inkey === 'solfa') setGlobalSolfa(sing.solfa);
+      return;
+    }
     const earSet = e.target.closest('[data-earset]');
     if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
     const tempo = e.target.closest('[data-tempo]');
@@ -11492,6 +11504,7 @@
       if (data) restore(data);
       applyCalibration(cal); // gemeinsame Kalibration gewinnt
       applyProfile();
+      if (globalSolfa()) sing.solfa = globalSolfa(); // die globale Wahl der App geht dem gemerkten Stand vor
       applyAreaOnly();
       applyQuickParams(quickParams);
       applyModeParam(modeParams);
