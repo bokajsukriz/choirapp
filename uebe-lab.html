@@ -30,6 +30,7 @@
     --accent: #F868B0; --accent-rgb: 248,104,176;
     --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
     --text: #241b3d; --muted: #8c81a6; --bad: #e0445a; --good: #2f9e5b; --near: #d99a00;
+    --ok-bg: #b8e3c6; --wobble-bg: #f6d78a; --lost-bg: #f0a6b0;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -204,6 +205,30 @@
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .level-hint { margin: 4px 0 0; font-size: .72rem; font-weight: 800; color: var(--accent); }
 
+  /* Klatsch-Grooves (Licks & Grooves) */
+  body[data-view="grooves"] footer { display: none; }
+  body.is-area-only[data-view="grooves"] header { display: none; }
+  body.is-area-only[data-view="grooves"] main { padding-top: max(12px, env(safe-area-inset-top)); }
+  .g-row { display: flex; align-items: center; gap: 8px; }
+  .g-row .mode-row { flex: 1; min-width: 0; }
+  .g-play { width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--accent); color: #fff; font-size: .95rem; font-weight: 800; }
+  .g-review { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+  .g-review b { flex: 1; font-size: .9rem; }
+  .g-ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+  .g-stage { min-height: 52px; padding: 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .7rem; line-height: 1.2; }
+  .g-stage.is-done { border-color: rgba(47,158,91,.6); color: var(--good); }
+  .g-stage.is-next { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .g-stage[aria-pressed="true"] { outline: 3px solid rgba(var(--accent-rgb), .45); }
+  .g-stage:disabled { opacity: .45; }
+  .g-strip { display: flex; gap: 3px; margin: 8px 0 4px; }
+  .g-cell { flex: 1 1 0; min-width: 0; height: 30px; border-radius: 6px; font-size: .62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; color: #1b1330; }
+  .g-cell.is-sure { background: var(--ok-bg); }
+  .g-cell.is-wobbly { background: var(--wobble-bg); }
+  .g-cell.is-lost { background: var(--lost-bg); }
+  .g-cell.is-silent { background-image: repeating-linear-gradient(135deg, rgba(36,27,61,.32) 0 2px, transparent 2px 6px); }
+  .g-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .68rem; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+  .g-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(36,27,61,.2); }
+  .g-rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .tap-pad { width: 100%; height: 112px; margin-top: 10px; border-radius: 22px; border: 2px dashed var(--line); background: var(--surface); font-weight: 800; font-size: .95rem; color: var(--muted); touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-content: center; gap: 10px; }
   .tap-pad[data-phase="listen"], .tap-pad[data-phase="read"], .tap-pad[data-phase="rest"], .tap-pad[data-phase="count"] { border-style: solid; }
   .tap-pad[data-phase="rest"] { color: var(--text); }
@@ -409,6 +434,8 @@
       <p class="help-text" id="help-timing" hidden>Unter den Noten markieren Striche deine Tipper: <b style="color:var(--good)">grün</b> = genau (bis 40 ms daneben), <b style="color:var(--near)">gelb</b> = knapp, <b style="color:var(--bad)">rot</b> = verpasst oder zu viel. „Ø 25 ms zu spät“ ist die mittlere Abweichung deiner Treffer. Eine Runde ist fehlerfrei, wenn alle Noten getroffen sind und kein Tipper zu viel ist. Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>
     </section>
     </div>
+    <!-- Klatsch-Grooves (Licks & Grooves): geschaffte Kurs-Lektionen behalten und durchhalten, siehe renderGrooves. -->
+    <div data-grooves hidden></div>
   </section>
   <section data-panel="ear" hidden>
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
@@ -1534,6 +1561,9 @@
         case 'hat':
           this.drumNoise(time, { freq: 7000, gain: .07 * v, decay: .045 }, dest);
           break;
+        case 'open': // offener Hi-Hat (Schlussschlag beim Durchhalten)
+          this.drumNoise(time, { freq: 7200, q: .9, gain: .06 * v, decay: .3 }, dest);
+          break;
         default: break;
       }
     },
@@ -2098,6 +2128,7 @@
    *  des Eingangs, abzüglich der eingemessenen Mikrofon-Latenz. */
   function micOnset(time) {
     if (calib.active) { calib.taps.push(time); flashPad(); return; }
+    if (gr.run && gr.run.playing) { gr.run.taps.push(time - state.micLatencyMs / 1000); flashGroovePad(); return; }
     if (!run.playing) return;
     game.taps.push(time - state.micLatencyMs / 1000);
     flashPad();
@@ -2860,6 +2891,7 @@
 
   function setTab(tab) {
     if (run.playing) stop();
+    if (gr.run) groovesStop(true);
     state.tab = tab;
     $$('.tab-btn').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
     $$('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
@@ -2966,8 +2998,10 @@
     for (const t of Object.keys(AREA_NAMES)) {
       const list = views[t] === 'list';
       $(`[data-list="${t}"]`).hidden = !list;
-      $(`[data-exview="${t}"]`).hidden = list;
+      $(`[data-exview="${t}"]`).hidden = list || views[t] === 'grooves'; // 'grooves': eigene Ansicht (Licks & Grooves)
     }
+    renderGrooves();
+    if (views[tab] === 'grooves') return;
     if (views[tab] === 'list') renderModeList(tab);
     else {
       $(`[data-exview="${tab}"] .mode-title`).textContent = modeName(tab, currentMode(tab));
@@ -7010,6 +7044,610 @@
     renderSingLive();
   }
 
+
+  /* ------------------------------------------------------------------------
+     KLATSCH-GROOVES (Licks & Grooves) — geschaffte Kurs-Lektionen behalten,
+     auffrischen und durchhalten; als eigene Ansicht statt eines zweiten Kurses.
+     Aufruf: uebe-lab.html?tab=rhythm&grooves=1 (Liste) bzw. &grooves=review
+     (fällige Grooves nacheinander, Tools-Seite → „Heute wiederholen“).
+
+     Ablauf je Groove: Hören (Vorbild zweimal) → Auffrischen (eine Nachklatsch-
+     Runde wie die Kurs-Wiederholung) → Durchhalten (nur Lektionen ohne
+     Auftakt; das Muster wird über 4 bis 16 Takte gehalten, mit Snare bzw.
+     zuletzt mit stillen Takten) → Einschätzung. Die Kurs-Schritte werden nicht
+     wiederholt. Hören statt Sehen: keine Marke, kein Raster, kein Taktzähler —
+     nur der neutrale Platzhalter „Nach Gehör“; das Ergebnis erscheint erst nach
+     dem Lauf.
+
+     Die folgenden fünf Blöcke (HOLD_STAGES … nextDue) stehen wortgleich in
+     licks.html — Änderungen immer in beiden Dateien, gleiche Testvektoren
+     (holdVectors, groovesCheck).
+     ------------------------------------------------------------------------ */
+
+  const HOLD_STAGES = [
+    { bars: 4,  on: 0, off: 0, name: '4 Takte' },                // Snare durchgehend
+    { bars: 8,  on: 0, off: 0, name: '8 Takte' },                // Snare durchgehend
+    { bars: 8,  on: 2, off: 2, name: '8 Takte mit Lücken' },     // 2 Takte Snare, 2 Takte still, …
+    { bars: 16, on: 2, off: 4, name: '16 Takte mit Lücken' },    // 2 Takte Snare, 4 Takte still, …
+  ];
+  const stageOf = (stage) => (typeof stage === 'number' ? HOLD_STAGES[clamp(stage, 1, 4) - 1] : stage);
+  const stageHasGaps = (stage) => stageOf(stage).on > 0;
+
+  /** Plan der Begleitung je Takt: true = Snare, false = still. Stufe 1–4
+   *  oder ein Eintrag aus HOLD_STAGES. */
+  function holdPlan(stage) {
+    const st = stageOf(stage);
+    if (!st.on) return Array(st.bars).fill(true);
+    const period = st.on + st.off;
+    return Array.from({ length: st.bars }, (_, b) => b % period < st.on);
+  }
+
+  /**
+   * Auswertung eines Durchhalten-Laufs (Kopie in uebe-lab.html — beide
+   * Fassungen müssen identisch bleiben, gleiche Testvektoren).
+   *   expected: Soll-Zeitpunkte im ABSOLUTEN Raster (Sekunden), nie am ersten
+   *             Anschlag neu ausgerichtet; Zahlen oder { t, pc } (Tonklasse).
+   *   taps:     Anschläge (Sekunden) — Zahlen oder { t, pc }.
+   *   barStart / barSec: Anfang des ersten Takts und Taktdauer.
+   *   tol:      Trefferfenster (s). plan: je Takt true (Snare) / false (still).
+   * → { bars: [{ expected, hit, meanOffset, extra, silent }], held, tendency,
+   *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null) }
+   */
+  function judgeHold({ expected, taps, barStart, barSec, tol, plan }) {
+    const nBars = plan.length;
+    const timeOf = (x) => (typeof x === 'number' ? x : x.t);
+    const exp = expected.map((e) => ({ t: timeOf(e), pc: typeof e === 'number' ? null : e.pc })).sort((a, b) => a.t - b.t);
+    const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
+    const barOf = (t) => Math.floor((t - barStart) / barSec + 1e-9);
+    const bars = Array.from({ length: nBars }, (_, b) => ({ expected: 0, hit: 0, meanOffset: 0, extra: 0, silent: plan[b] === false, sum: 0 }));
+    const hits = [];
+    for (const e of exp) {
+      const b = barOf(e.t);
+      if (b < 0 || b >= nBars) continue;
+      bars[b].expected++;
+      let best = null;
+      for (const x of tp) {
+        if (x.used || Math.abs(x.t - e.t) > tol) continue;
+        if (e.pc !== null && x.pc !== null && e.pc !== x.pc) continue;
+        if (!best || Math.abs(x.t - e.t) < Math.abs(best.t - e.t)) best = x;
+      }
+      if (!best) continue;
+      best.used = true;
+      bars[b].hit++; bars[b].sum += best.t - e.t;
+      hits.push({ t: e.t, off: best.t - e.t });
+    }
+    for (const x of tp) {
+      if (x.used) continue;
+      const b = barOf(x.t);
+      if (b >= 0 && b < nBars) bars[b].extra++;
+    }
+    for (const b of bars) { b.meanOffset = b.hit ? b.sum / b.hit : 0; delete b.sum; }
+    // Tendenz: lineare Regression der Abweichungen über der Zeit; Unterschied
+    // Anfang → Ende des Laufs (über die Spanne der Soll-Punkte).
+    let tendency = 'steady';
+    if (hits.length >= 6) {
+      const n = hits.length;
+      const mt = hits.reduce((a, h) => a + h.t, 0) / n, mo = hits.reduce((a, h) => a + h.off, 0) / n;
+      let num = 0, den = 0;
+      for (const h of hits) { num += (h.t - mt) * (h.off - mo); den += (h.t - mt) ** 2; }
+      const slope = den ? num / den : 0;
+      const span = exp.length ? exp[exp.length - 1].t - exp[0].t : 0;
+      const change = slope * span;
+      tendency = change < -tol / 2 ? 'faster' : change > tol / 2 ? 'slower' : 'steady';
+    }
+    // Faden gerissen: zwei aufeinanderfolgende Takte mit weniger als der Hälfte der Soll-Punkte.
+    const weak = (b) => bars[b].expected > 0 && bars[b].hit < bars[b].expected / 2;
+    let lostAt = null;
+    for (let b = 0; b + 1 < nBars; b++) if (weak(b) && weak(b + 1)) { lostAt = b + 1; break; }
+    // Wiedereinstieg nach Lücken: jeweils der erste Snare-Takt nach einer Lücke.
+    let reentry = null;
+    if (plan.includes(false)) {
+      const firsts = bars.map((_, b) => b).filter((b) => plan[b] && b > 0 && plan[b - 1] === false && bars[b].expected > 0);
+      if (firsts.length) reentry = firsts.reduce((a, b) => a + bars[b].hit / bars[b].expected, 0) / firsts.length >= .75 ? 'good' : 'late';
+    }
+    const okBar = (b) => !bars[b].expected || bars[b].hit >= .75 * bars[b].expected;
+    const lastTwo = bars.slice(-2).filter((b) => b.expected > 0);
+    const held = bars.every((_, b) => okBar(b)) && lastTwo.every((b) => Math.abs(b.meanOffset) <= tol);
+    return { bars, held, tendency, lostAt, reentry };
+  }
+
+  /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
+  function holdMessage(result, stage) {
+    const st = stageOf(stage);
+    const gaps = stageHasGaps(st);
+    if (result.held && result.tendency === 'steady') return `Durchgehalten – ${st.bars} Takte, ruhig und gleichmäßig.`;
+    if (result.held && result.tendency === 'faster') return 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.';
+    if (result.held && result.tendency === 'slower') return 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.';
+    if (result.lostAt && gaps && result.reentry === 'late') return `Bis Takt ${result.lostAt - 1} lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.`;
+    if (result.lostAt) return `Bis Takt ${result.lostAt - 1} lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.`;
+    if (result.tendency === 'faster') return 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.';
+    if (result.tendency === 'slower') return 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.';
+    return 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.';
+  }
+
+
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** Datum + n Tage (lokale Zeit, wie progressDate in der App). */
+  function addDays(date, n) {
+    const [y, m, d] = date.split('-').map(Number);
+    return localDate(new Date(y, m - 1, d + n));
+  }
+  /** Nächste Fälligkeit: noch wackelig → morgen; geht schon → 3 Tage; sitzt →
+   *  7, beim nächsten Mal 21, danach 60 Tage (streak 0/1/2+); jede andere
+   *  Einschätzung setzt streak auf 0. */
+  function nextDue(rating, streak, today) {
+    if (rating === 'shaky') return { due: addDays(today, 1), streak: 0 };
+    if (rating === 'ok') return { due: addDays(today, 3), streak: 0 };
+    if (rating === 'solid') {
+      const s = Number.isInteger(streak) && streak > 0 ? Math.min(streak, 2) : 0;
+      return { due: addDays(today, [7, 21, 60][s]), streak: Math.min(2, s + 1) };
+    }
+    return { due: null, streak: 0 };
+  }
+
+  /** Gemeinsame Testvektoren für judgeHold (4/4, 90 BPM, Backbeat: Soll auf 2 und 4 je Takt, tol 0,1 s). */
+  function holdVectors() {
+    const errors = [];
+    const barSec = 4 * 60 / 90, tol = .1;
+    const expectedFor = (bars) => Array.from({ length: bars }, (_, b) => [b * barSec + barSec / 4, b * barSec + 3 * barSec / 4]).flat();
+    const judge = (bars, taps, stageNo, expected = expectedFor(bars)) => judgeHold({ expected, taps, barStart: 0, barSec, tol, plan: holdPlan(stageNo) });
+    // 1. alle Anschläge exakt
+    let r = judge(16, expectedFor(16), 4);
+    if (!r.held || r.tendency !== 'steady' || r.lostAt !== null) errors.push(`Vektor 1: ${r.held}/${r.tendency}/${r.lostAt}`);
+    // 2. jeder Anschlag 8 ms früher als der vorige (16 Takte)
+    r = judge(16, expectedFor(16).map((t, i) => t - .008 * i), 4);
+    if (r.tendency !== 'faster') errors.push(`Vektor 2: ${r.tendency}`);
+    // 3. Anschläge nur bis einschließlich Takt 9 (16 Takte)
+    r = judge(16, expectedFor(9), 4);
+    if (r.lostAt !== 10 || r.held) errors.push(`Vektor 3: lostAt ${r.lostAt}, held ${r.held}`);
+    // 4. Stufe 3, stille Takte 3–4 um 0,12 s verschoben: Takt 5 exakt → 'good', Takt 5 und 6 daneben → 'late'
+    const shifted = (bars, fn) => expectedFor(bars).map((t) => fn(Math.floor(t / barSec) + 1, t));
+    r = judge(8, shifted(8, (bar, t) => (bar === 3 || bar === 4 ? t + .12 : t)), 3);
+    if (r.reentry !== 'good') errors.push(`Vektor 4a: reentry ${r.reentry}`);
+    r = judge(8, shifted(8, (bar, t) => (bar >= 3 && bar <= 6 ? t + .12 : t)), 3);
+    if (r.reentry !== 'late') errors.push(`Vektor 4b: reentry ${r.reentry}`);
+    // 5. doppelt so viele Anschläge wie Soll
+    const e8 = expectedFor(8);
+    r = judge(8, [...e8, ...e8.map((t) => t + .02)], 2);
+    const base = judge(8, e8, 2);
+    if (!(r.bars.reduce((a, b) => a + b.extra, 0) > 0) || r.bars.reduce((a, b) => a + b.hit, 0) !== base.bars.reduce((a, b) => a + b.hit, 0)) errors.push('Vektor 5: extra/Treffer');
+    // Tonklassen: falsche Tonklasse trifft nicht
+    r = judgeHold({ expected: [{ t: 1, pc: 0 }, { t: 2, pc: 4 }], taps: [{ t: 1, pc: 0 }, { t: 2, pc: 5 }], barStart: 0, barSec: 4, tol, plan: [true] });
+    if (r.bars[0].hit !== 1) errors.push(`Tonklasse: ${r.bars[0].hit} statt 1 Treffer`);
+    return errors;
+  }
+
+
+  /** Neu (nie eingeschätzt), Lerne (zuletzt „wackelig“ oder „geht schon“), Sitzt. */
+  const grooveStatus = (id) => { const g = grooveData[id]; return !g || !g.rating ? 'Neu' : g.rating === 'solid' ? 'Sitzt' : 'Lerne'; };
+
+  /* ---- Ablage: rhythm.grooves = { [Lektions-ID]: { hold, rating, streak, due } } ---- */
+  const GROOVE_RATINGS = ['shaky', 'ok', 'solid'];
+  const grooveData = {};
+  /** Gespeicherten Stand prüfen: nur Lektionen des Kurses, Zahlen begrenzt, unbekannte Werte → Standard. */
+  function sanitizeGrooves(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    for (const l of COURSE) {
+      const g = raw[l.id];
+      if (!g || typeof g !== 'object') continue;
+      out[l.id] = {
+        hold: holdable(l) && Number.isInteger(g.hold) ? clamp(g.hold, 0, 4) : 0,
+        rating: GROOVE_RATINGS.includes(g.rating) ? g.rating : null,
+        streak: Number.isInteger(g.streak) ? clamp(g.streak, 0, 2) : 0,
+        due: typeof g.due === 'string' && DATE_RE.test(g.due) ? g.due : null,
+      };
+    }
+    return out;
+  }
+  const grooveItem = (id) => grooveData[id] || (grooveData[id] = { hold: 0, rating: null, streak: 0, due: null });
+  const doneLessons = () => COURSE.filter((l) => course.done.includes(l.id));
+  /** Fällige Grooves (geschaffte Lektionen mit gültigem `due` ≤ heute), früheste zuerst. */
+  function dueGrooveIds(today = localDate()) {
+    return doneLessons().filter((l) => { const g = grooveData[l.id]; return g && g.due && g.due <= today; })
+      .sort((a, b) => grooveData[a.id].due.localeCompare(grooveData[b.id].due)).map((l) => l.id);
+  }
+  /** Aufruf-Parameter: 'list' | 'review' | null. */
+  function parseGroovesParam(search) {
+    const v = new URLSearchParams(search).get('grooves');
+    return v === '1' ? 'list' : v === 'review' ? 'review' : null;
+  }
+
+  /* ---- Zeitleiste eines Laufs (Sekunden ab Start) ---- */
+  /** Ereignisse und Soll-Punkte für einen Lauf einer Lektion.
+   *  kind: 'hear' (Vorbild `times`-mal), 'refresh' (Vorbild, dann du) oder
+   *  'hold' (Stufe `stage`, mit `demo` zuerst einmal das Vorbild). */
+  function grooveTimeline(l, { kind, times = 1, stage = 1, demo = false }) {
+    const m = METERS[l.meter], T = m.ticks;
+    const tickSec = 60 / l.bpm / m.ref;
+    const pat = lessonPattern(l);
+    const p = pat.pickup;
+    const events = [], expected = [], phases = [];
+    const at = (tick) => tick * tickSec;
+    const beat = (t0, t1) => { for (let t = t0; t < t1; t++) if (mod(t, m.beat) === 0) events.push({ t: at(t), type: 'click', level: beatLevel(m, mod(t, T)) }); };
+    /** Begleitung von Tick t0 bis t1: Groove (acc) oder Klick auf den Zählzeiten. */
+    const accompany = (t0, t1, acc) => {
+      if (!acc) { beat(t0, t1); return; }
+      for (let t = t0; t < t1; t++) for (const k of accompHits(mod(t, T), acc, l.meter)) events.push({ t: at(t), type: 'drum', kind: k });
+    };
+    const claps = (start, boost) => pat.onsets.forEach((o) => events.push({ t: at(start + o), type: 'clap', boost }));
+    let end;
+    let start = 0;
+    if (kind === 'hold') {
+      const st = HOLD_STAGES[clamp(stage, 1, 4) - 1];
+      const plan = holdPlan(stage);
+      const full = accompFor(l, { accomp: 'full' }, course);
+      const snare = ACCOMP[l.meter] && course.accomp !== 'click' ? { level: 'snare', hatGrid: { period: 6, at: [0] } } : null;
+      let c = T; beat(0, T); phases.push({ from: 0, to: at(T), phase: 'count' });
+      if (demo) {
+        claps(c, !!full); accompany(c, c + pat.total, full); phases.push({ from: at(c), to: at(c + pat.total), phase: 'listen' });
+        c += pat.total;
+        beat(c, c + T); phases.push({ from: at(c), to: at(c + T), phase: 'count' });
+        c += T;
+      }
+      start = c;
+      const onsetsOf = l.bars.map((b) => courseNotes(b).filter((n) => !n.rest && !n.tie).map((n) => n.t));
+      plan.forEach((on, b) => {
+        if (on) accompany(c + b * T, c + (b + 1) * T, snare);
+        onsetsOf[b % l.bars.length].forEach((o) => expected.push(at(c + b * T + o)));
+      });
+      phases.push({ from: at(c), to: at(c + st.bars * T), phase: 'you' });
+      const last = c + st.bars * T;
+      // Schlussschlag auf der Eins nach dem letzten Takt.
+      events.push({ t: at(last), type: 'drum', kind: 'kick' }, { t: at(last), type: 'drum', kind: 'open' });
+      end = at(last) + .9;
+      return { events, expected, phases, tickSec, barSec: T * tickSec, startSec: at(start), endSec: end, plan, bars: st.bars, stage: st };
+    }
+    // Einzähler bis zum Auftakt (Volltakt-Regel: die Phrase ist bars × Takt lang).
+    const countLen = T - p;
+    beat(0, countLen); phases.push({ from: 0, to: at(countLen), phase: 'count' });
+    let c = countLen;
+    if (kind === 'hear') {
+      const acc = accompFor(l, { accomp: 'full' }, course);
+      for (let k = 0; k < times; k++) { claps(c, !!acc); accompany(c, c + pat.total, acc); phases.push({ from: at(c), to: at(c + pat.total), phase: 'listen' }); c += pat.total; }
+      end = at(c);
+      return { events, expected, phases, tickSec, barSec: T * tickSec, startSec: at(countLen), endSec: end };
+    }
+    // Auffrischen: Vorbild, dann du — Bassdrum + Snare wie in der Kurs-Wiederholung.
+    const acc = accompFor({ meter: l.meter, ch: 2 }, { accomp: 'backbeat' }, course);
+    claps(c, !!acc); accompany(c, c + pat.total, acc); phases.push({ from: at(c), to: at(c + pat.total), phase: 'listen' });
+    c += pat.total;
+    start = c;
+    accompany(c, c + pat.total, acc); phases.push({ from: at(c), to: at(c + pat.total), phase: 'you' });
+    pat.onsets.forEach((o) => expected.push(at(c + o)));
+    end = at(c + pat.total) + .3;
+    return { events, expected, phases, tickSec, barSec: T * tickSec, startSec: at(start), endSec: end, bars: pat.bars };
+  }
+  /** Trefferfenster eines Laufs aus dem kleinsten Abstand der Soll-Punkte. */
+  function groovesTol(expected, tickSec, ticksPerBar) {
+    let gap = ticksPerBar * tickSec;
+    for (let i = 1; i < expected.length; i++) gap = Math.min(gap, expected[i] - expected[i - 1]);
+    return toleranceFor(gap);
+  }
+
+  /* ---- Lauf: Ereignisse mit Vorlauf auf der Audio-Uhr einplanen ---- */
+  const gv = { view: 'list', id: null, phase: 'hear', stage: 1, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
+  const gr = { run: null, timer: 0, frame: 0 };
+  async function groovesStart(tl, onEnd) {
+    groovesStop(false);
+    try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return false; }
+    if (state.input === 'mic') {
+      setStatus('Mikrofon wird geöffnet …');
+      if (!(await micOn('rhythm'))) { setStatus(voice.error || 'Das Mikrofon konnte nicht gestartet werden.'); return false; }
+    }
+    const ctx = engine.ctx;
+    const r = { playing: true, t0: ctx.currentTime + .15, events: [...tl.events].sort((a, b) => a.t - b.t), idx: 0, taps: [], bus: engine.newBus({ reverb: false }), onEnd, tl };
+    r.endAt = r.t0 + tl.endSec;
+    gr.run = r;
+    const pump = () => {
+      if (gr.run !== r || !r.playing) return;
+      const horizon = ctx.currentTime + .25;
+      while (r.idx < r.events.length && r.t0 + r.events[r.idx].t < horizon) {
+        const ev = r.events[r.idx++];
+        const time = r.t0 + ev.t;
+        if (ev.type === 'click') engine.click(time, ev.level, r.bus);
+        else if (ev.type === 'drum') engine.drum(ev.kind, time, 1, r.bus);
+        else engine.clap(time, r.bus, ev.boost ? CLAP_WITH_ACCOMP : 1);
+      }
+      if (ctx.currentTime > r.endAt + .25) { const info = { taps: r.taps, t0: r.t0, tl }; const cb = r.onEnd; groovesStop(false); if (cb) cb(info); }
+    };
+    gr.timer = setInterval(pump, 25);
+    pump();
+    if (!gr.frame) gr.frame = requestAnimationFrame(groovesFrame);
+    return true;
+  }
+  /** Lauf beenden bzw. abbrechen; ohne Nachklingen (der Bus blendet aus). */
+  function groovesStop(notify = true) {
+    const r = gr.run;
+    clearInterval(gr.timer); gr.timer = 0;
+    if (!r) return;
+    gr.run = null;
+    r.playing = false;
+    engine.fadeBus(r.bus);
+    if (voice.consumer === 'rhythm' && !calib.active) micOff();
+    const cb = r.onEnd; r.onEnd = null;
+    if (notify && cb) cb(null);
+  }
+  function groovesTap() {
+    const r = gr.run;
+    if (!r || !r.playing || state.input === 'mic') return;
+    const ctx = engine.ctx;
+    r.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
+    engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
+    flashGroovePad();
+  }
+  function flashGroovePad() {
+    const pad = $('.grooves-pad');
+    if (!pad) return;
+    pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped');
+  }
+  /** Tippfeld: Beschriftung je Phase; Zählzeit-Punkte nur im Einzähler. */
+  function groovesFrame() {
+    gr.frame = requestAnimationFrame(groovesFrame);
+    const pad = $('.grooves-pad');
+    if (!pad || views.rhythm !== 'grooves') return;
+    const r = gr.run;
+    let phase = 'idle', beatNo = -1;
+    if (r && r.playing) {
+      const now = engine.ctx.currentTime - r.t0;
+      const ph = r.tl.phases.find((x) => now >= x.from && now < x.to);
+      phase = ph ? ph.phase : 'rest';
+      if (phase === 'count') beatNo = Math.floor((now - ph.from) / (r.tl.tickSec * METERS[lessonById(gv.id).meter].beat));
+    } else phase = gv.result ? 'done' : 'idle';
+    const key = `${phase}|${beatNo}`;
+    if (key === gv.padKey) return;
+    gv.padKey = key;
+    const labels = { idle: 'Starte mit „Start“', count: 'Einzähler …', listen: 'Hör zu …', you: 'Jetzt du!', rest: 'Weiterspielen …', done: 'Nochmal? Drück auf „Start“' };
+    pad.dataset.phase = phase === 'done' ? 'done' : phase;
+    pad.querySelector('.pad-label').textContent = labels[phase] || '';
+    const m = gv.id ? METERS[lessonById(gv.id).meter] : METERS['4/4'];
+    pad.querySelector('.pad-beats').replaceChildren(...(phase === 'count' ? Array.from({ length: m.ticks / m.beat }, (_, i) => {
+      const dot = document.createElement('i');
+      if (beatLevel(m, i * m.beat) >= 1) dot.className = 'is-strong';
+      if (i <= beatNo) dot.classList.add('is-on');
+      return dot;
+    }) : []));
+  }
+  const lessonById = (id) => COURSE.find((l) => l.id === id) || COURSE[0];
+
+  /** Zuordnung Anschlag ↔ Soll-Punkt (Sekunden), Ergebnis wie in der Kurs-Auswertung. */
+  function groovesAssign(exp, taps, tol) {
+    const used = new Set();
+    const res = exp.map((t) => {
+      let best = -1, bd = Infinity;
+      taps.forEach((x, i) => { const d = Math.abs(x - t); if (!used.has(i) && d <= tol && d < bd) { bd = d; best = i; } });
+      if (best < 0) return { t, status: 'miss' };
+      used.add(best);
+      return { t, status: bd <= GOOD_SEC ? 'good' : 'near', tap: best, off: taps[best] - t };
+    });
+    const tapRes = taps.map((x) => ({ t: x, status: 'extra' }));
+    res.forEach((r) => { if (r.tap !== undefined) tapRes[r.tap].status = r.status; });
+    return { exp: res, taps: tapRes, hits: res.filter((r) => r.status !== 'miss').length };
+  }
+
+  /* ---- Anzeige ---- */
+  const groovesPlaceholder = () => `<div class="stage" data-placeholder><svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="Nach Gehör"><line class="staff" x1="8" y1="${ST.LY}" x2="${ST.X1}" y2="${ST.LY}"/><text class="hint" x="${(ST.X0 + ST.X1) / 2}" y="${ST.LY - 16}" text-anchor="middle">Nach Gehör</text></svg></div>`;
+  /** Ergebnis nach der Auffrisch-Runde: Zeitleiste mit Soll-Punkten ○ und deinen Anschlägen ●. */
+  function groovesTimeline(res) {
+    const W = ST.W - 24, x0 = 12;
+    const X = (t) => (x0 + clamp(t / res.span, -.03, 1.03) * W).toFixed(1);
+    const parts = [`<line class="tl" x1="${x0}" y1="52" x2="${x0 + W}" y2="52"/>`];
+    for (const e of res.exp) parts.push(`<circle class="tg is-${e.status}" cx="${X(e.t)}" cy="52" r="4.6"/>`);
+    for (const t of res.taps) parts.push(`<rect class="tp is-${t.status === 'extra' ? 'miss' : t.status}" x="${(Number(X(t.t)) - 1.5).toFixed(1)}" y="40" width="3" height="24" rx="1.5"/>`);
+    return `<div class="stage" data-result><svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="Ergebnis: ${res.hits} von ${res.exp.length} getroffen">${parts.join('')}</svg></div>`;
+  }
+  /** Taktstreifen nach dem Durchhalten (stille Takte schraffiert). */
+  function groovesStrip(res) {
+    const cells = res.bars.map((b, i) => {
+      const f = b.expected ? b.hit / b.expected : 1;
+      return `<div class="g-cell ${f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost'}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}">${i + 1}</div>`;
+    }).join('');
+    return `<div class="g-strip" role="img" aria-label="Takte: ${res.bars.filter((b) => b.expected && b.hit >= .75 * b.expected).length} von ${res.bars.length} sicher">${cells}</div>
+      <div class="g-legend"><span><i style="background:var(--ok-bg)"></i>sicher</span><span><i style="background:var(--wobble-bg)"></i>wackelig</span><span><i style="background:var(--lost-bg)"></i>verloren</span><span><i style="background-image:repeating-linear-gradient(135deg,rgba(36,27,61,.4) 0 2px,transparent 2px 5px)"></i>still (ohne Schlagzeug)</span></div>`;
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  /** Ein Satz vor dem Start: was kommt (im Lauf gibt es keinen Zähler). */
+  function groovesBefore(st) {
+    if (!st.on) return `${st.bars} Takte. Die Snare spielt durch – du hältst den Rhythmus über die ganze Zeit. Am Ende ein Schlussschlag.`;
+    const sets = Math.ceil(st.bars / (st.on + st.off));
+    return `${st.bars} Takte. Das Schlagzeug setzt ${sets === 2 ? 'zweimal' : sets === 3 ? 'dreimal' : `${sets}-mal`} für ${st.off} Takte aus – spiel weiter. Am Ende ein Schlussschlag.`;
+  }
+  const groovesRateHtml = (l, g) => {
+    const canSolid = !holdable(l) || g.hold >= 2;
+    return `<p style="margin:12px 0 6px"><b>Wie fühlt es sich an?</b></p>
+      <div class="g-rate"><button class="nav-btn" type="button" data-grooves-rate="shaky">Noch wackelig</button><button class="nav-btn" type="button" data-grooves-rate="ok">Geht schon</button>
+      <button class="nav-btn" type="button" data-grooves-rate="solid"${canSolid ? '' : ' disabled'}>Sitzt</button></div>
+      ${canSolid ? '' : '<p class="foot-note" style="text-align:left">Erst 8 Takte durchhalten.</p>'}
+      <p class="foot-note" style="text-align:left">Bestimmt, wann der Groove wieder in „Heute wiederholen“ auftaucht.${g.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[g.rating]}.` : ''}</p>`;
+  };
+  const groovesPhases = (l) => [['hear', 'Hören'], ['refresh', 'Auffrischen'], ...(holdable(l) ? [['hold', 'Durchhalten']] : []), ['rate', 'Einschätzung']];
+
+  function renderGrooves() {
+    const host = $('[data-grooves]');
+    if (!host) return;
+    host.hidden = views.rhythm !== 'grooves';
+    if (host.hidden) return;
+    const inputRow = `<span class="sub-label">Eingabe</span><div class="chip-row"><button class="chip" type="button" data-grooves-input="tap" aria-pressed="${state.input === 'tap'}">Tippen</button><button class="chip" type="button" data-grooves-input="mic" aria-pressed="${state.input === 'mic'}">Mikrofon</button></div>`;
+    if (gv.view === 'list') {
+      const done = doneLessons();
+      const due = dueGrooveIds();
+      const rows = done.map((l) => `<li class="g-row"><button type="button" class="g-play" data-grooves-play="${l.id}" aria-label="${esc(l.name)} anhören">${gv.running === `play:${l.id}` ? '■' : '▶'}</button>
+        <button type="button" class="mode-row" data-grooves-open="${l.id}"><span class="mode-ico">${modeIcon('course')}</span><span><strong>${esc(l.name)}</strong><span class="mode-how">Kurs · Kapitel ${l.ch}</span></span><span class="mode-lv">${grooveStatus(l.id)}</span></button></li>`).join('');
+      host.innerHTML = `<div class="ex-head"><div class="ex-title"><span class="ex-area" aria-hidden="true">Licks &amp; Grooves</span><h2 class="mode-title">Klatsch-Grooves</h2></div></div>
+        ${due.length ? `<div class="g-review"><b>Heute fällig: ${due.length} ${due.length === 1 ? 'Groove' : 'Grooves'}</b><button class="nav-btn is-primary" type="button" data-grooves-review>Wiederholen</button></div>` : ''}
+        ${done.length ? `<ul class="mode-list">${rows}</ul>` : '<p class="course-intro">Erst eine Kurs-Lektion schaffen – dann erscheint sie hier zum Behalten und Durchhalten.</p>'}
+        <p class="foot-note" style="text-align:left">Hier behältst du, was du im Rhythmus-Kurs gelernt hast: hören, auffrischen, über viele Takte durchhalten.${gv.review === 'none' ? ' Heute ist nichts fällig.' : ''}</p>`;
+      return;
+    }
+    const l = lessonById(gv.id);
+    const g = grooveItem(l.id);
+    const rv = gv.review && gv.review.queue ? gv.review : null;
+    const phases = groovesPhases(l).filter(([p]) => !(rv && p === 'refresh' && holdable(l)));
+    const chips = phases.map(([p, name], i) => `<li class="${gv.phase === p ? 'is-now' : ''}"><b>${i + 1}</b>${name}</li>`).join('');
+    let body = '';
+    const running = !!gv.running;
+    const stopBtn = running ? '<button type="button" class="nav-btn" data-grooves-act="stop">■ Stopp</button>' : '';
+    const fb = `<p class="course-how" role="status" aria-live="polite" data-grooves-feedback>${esc(gv.feedback)}</p>`;
+    const pad = `<button class="tap-pad grooves-pad" type="button" data-phase="idle"><span class="pad-label">Starte mit „Start“</span><span class="pad-beats"></span></button>`;
+    if (gv.phase === 'hear') {
+      body = `<p class="course-intro">Hör den Groove zweimal, mit Begleitung. Noch nichts klatschen – nur spüren, wo die Schläge liegen.</p>${groovesPlaceholder()}
+        <div class="course-nav"><button type="button" class="nav-btn is-primary" data-grooves-act="hear"${running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn}<span class="grow"></span>
+        <button type="button" class="nav-btn" data-grooves-phase="${rv && holdable(l) ? 'hold' : 'refresh'}">Weiter</button></div>`;
+    } else if (gv.phase === 'refresh') {
+      const res = gv.result && gv.result.kind === 'refresh' ? gv.result : null;
+      body = `<p class="course-intro">Auffrischen: Du hörst den Rhythmus einmal und klatschst ihn dann nach – ohne Noten, mit Bassdrum und Snare.</p>${res ? groovesTimeline(res) : groovesPlaceholder()}${pad}${fb}
+        <div class="course-nav"><button type="button" class="nav-btn is-primary" data-grooves-act="refresh"${running ? ' disabled' : ''}>▶ ${res ? 'Nochmal' : 'Start'}</button>${stopBtn}<span class="grow"></span>
+        <button type="button" class="nav-btn" data-grooves-phase="${holdable(l) ? 'hold' : 'rate'}">Weiter</button></div>`;
+    } else if (gv.phase === 'hold') {
+      const ladder = HOLD_STAGES.map((s, i) => {
+        const n = i + 1, done = g.hold >= n, next = n === g.hold + 1;
+        return `<button type="button" class="g-stage${done ? ' is-done' : ''}${next ? ' is-next' : ''}" data-grooves-stage="${n}" aria-pressed="${gv.stage === n}"${n <= g.hold + 1 ? '' : ' disabled'}>${done ? '✓ ' : ''}${['4 Takte', '8 Takte', '8 mit Lücken', '16 mit Lücken'][i]}</button>`;
+      }).join('');
+      const res = gv.result && gv.result.kind === 'hold' ? gv.result : null;
+      const nextStage = res && res.held && gv.stage < 4 ? gv.stage + 1 : null;
+      body = `<div class="g-ladder" role="group" aria-label="Stufen">${ladder}</div><p class="course-intro">${groovesBefore(HOLD_STAGES[gv.stage - 1])}</p>
+        ${res ? groovesStrip(res) : groovesPlaceholder()}${pad}${fb}
+        <div class="course-nav"><button type="button" class="nav-btn is-primary" data-grooves-act="hold"${running ? ' disabled' : ''}>▶ ${res ? 'Nochmal' : 'Start'}</button>${stopBtn}<span class="grow"></span>
+        ${nextStage ? `<button type="button" class="nav-btn" data-grooves-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : `<button type="button" class="nav-btn" data-grooves-phase="rate">Weiter: Einschätzung</button>`}</div>`;
+    } else {
+      body = groovesRateHtml(l, g);
+    }
+    host.innerHTML = `<div class="ex-head"><button class="back-btn" type="button" data-grooves-back aria-label="Zurück zur Liste" title="Zurück zur Liste"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="ex-title"><span class="ex-area" aria-hidden="true">Klatsch-Grooves${rv ? ` · Wiederholen ${rv.i + 1}/${rv.queue.length}` : ''}</span><h2 class="mode-title">${esc(l.name)}</h2></div></div>
+      <section class="panel"><ol class="course-steps" aria-label="Schritte">${chips}</ol>${body}${gv.phase === 'rate' ? '' : inputRow}</section>`;
+    gv.padKey = '';
+  }
+  const gRerender = () => { if (views.rhythm === 'grooves') renderGrooves(); };
+  const gFeedback = (text, kind = '') => { gv.feedback = text; gv.kind = kind; const el = $('[data-grooves-feedback]'); if (el) el.textContent = text; };
+
+  function openGroovesList() {
+    groovesStop(false);
+    if (run.playing) stop();
+    state.tab = 'rhythm'; views.rhythm = 'grooves';
+    Object.assign(gv, { view: 'list', id: null, result: null, running: '', feedback: '', review: null });
+  }
+  function openGroove(id, phase = 'hear') {
+    groovesStop(false);
+    Object.assign(gv, { view: 'lesson', id, phase, result: null, running: '', feedback: '', visitRated: false });
+    gv.stage = clamp(grooveItem(id).hold + 1, 1, 4);
+    if (gv.review) gv.stage = clamp(grooveItem(id).hold, 1, 4);
+    setStatus('Bereit — am besten mit Kopfhörern.');
+    gRerender();
+  }
+  function startGroovesReview() {
+    const queue = dueGrooveIds();
+    if (!queue.length) { openGroovesList(); gv.review = 'none'; return; }
+    openGroovesList();
+    gv.review = { queue, i: 0 };
+    openGroove(queue[0], 'hear');
+  }
+  function groovesAfterRating() {
+    const rv = gv.review;
+    if (rv && rv.queue) {
+      rv.i++;
+      if (rv.i < rv.queue.length) { openGroove(rv.queue[rv.i], 'hear'); return; }
+      gv.review = null; gv.view = 'list'; gv.result = null; gRerender();
+      return;
+    }
+    gFeedback('Gemerkt.', 'good');
+    persist();
+  }
+
+  async function groovesRun(key, tl, evalFn) {
+    gv.running = key;
+    gv.result = key === 'hold' || key === 'refresh' ? null : gv.result;
+    gFeedback('');
+    gRerender();
+    const ok = await groovesStart(tl, (info) => {
+      gv.running = '';
+      if (info && evalFn) evalFn(info);
+      gRerender();
+    });
+    if (!ok) { gv.running = ''; gRerender(); }
+  }
+  function groovesReport(l, right, seconds) {
+    if (selfTesting || !progressApi) return;
+    try { progressApi.add({ area: 'licks', level: Math.min(6, l.ch), right: !!right, seconds: Math.min(120, seconds) }); } catch { /* App weg */ }
+  }
+  function groovesActions(act) {
+    const l = lessonById(gv.id);
+    const g = grooveItem(l.id);
+    if (act === 'stop') { groovesStop(true); return; }
+    if (act === 'hear') { groovesRun('hear', grooveTimeline(l, { kind: 'hear', times: 2 }), null); return; }
+    if (act === 'refresh') {
+      const tl = grooveTimeline(l, { kind: 'refresh' });
+      groovesRun('refresh', tl, (info) => {
+        const tol = groovesTol(tl.expected, tl.tickSec, METERS[l.meter].ticks);
+        const t0 = info.t0 + tl.startSec;
+        const span = tl.endSec - tl.startSec - .3; // Länge der Phrase
+        const taps = info.taps.filter((x) => x >= t0 - tol - .05 && x <= t0 + span + tol);
+        const asg = groovesAssign(tl.expected.map((e) => e + info.t0), taps, tol);
+        const extras = asg.taps.filter((x) => x.status === 'extra').length;
+        gv.result = { kind: 'refresh', span, exp: asg.exp.map((e) => ({ ...e, t: e.t - t0 })), taps: asg.taps.map((x) => ({ ...x, t: x.t - t0 })), hits: asg.hits };
+        const perfect = asg.hits === tl.expected.length && !extras;
+        gFeedback(perfect ? 'Genau so!' : !taps.length ? 'Da kam noch nichts. Hör das Vorbild nochmal – dann bist du dran.' : `Fast! ${asg.hits} von ${tl.expected.length} sitzen${extras ? `, ${extras} zu viel` : ''}. Nochmal – ruhig und gleichmäßig.`, perfect ? 'good' : '');
+      });
+      return;
+    }
+    if (act === 'hold') {
+      const demo = !gv.lastRunAt[l.id] || Date.now() - gv.lastRunAt[l.id] > 10 * 60 * 1000;
+      const stageNo = gv.stage;
+      const tl = grooveTimeline(l, { kind: 'hold', stage: stageNo, demo });
+      groovesRun('hold', tl, (info) => {
+        gv.lastRunAt[l.id] = Date.now();
+        const tol = groovesTol(tl.expected, tl.tickSec, METERS[l.meter].ticks);
+        const barStart = info.t0 + tl.startSec;
+        const taps = info.taps.filter((x) => x >= barStart - tol - .1 && x <= barStart + tl.bars * tl.barSec + tol);
+        const result = judgeHold({ expected: tl.expected.map((e) => e + info.t0), taps, barStart, barSec: tl.barSec, tol, plan: tl.plan });
+        gv.result = { kind: 'hold', stage: stageNo, ...result };
+        gFeedback(holdMessage(result, stageNo), result.held ? 'good' : '');
+        if (result.held && stageNo === g.hold + 1) { g.hold = Math.min(4, stageNo); persist(); }
+        groovesReport(l, result.held, tl.bars * tl.barSec);
+      });
+      return;
+    }
+    if (act === 'hold-next') { gv.stage = Math.min(4, gv.stage + 1); gv.result = null; gFeedback(''); gRerender(); }
+  }
+  function groovesRate(rating) {
+    const l = lessonById(gv.id);
+    const g = grooveItem(l.id);
+    if (rating === 'solid' && holdable(l) && g.hold < 2) return;
+    const { due, streak } = nextDue(rating, g.streak, localDate());
+    Object.assign(g, { rating, due, streak });
+    gv.visitRated = true;
+    persist();
+    groovesAfterRating();
+    if (!gv.review) gRerender();
+  }
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || views.rhythm !== 'grooves') return;
+    const d = b.dataset;
+    if (d.groovesPlay) {
+      const l = lessonById(d.groovesPlay);
+      if (gv.running === `play:${l.id}`) { groovesStop(true); return; }
+      gv.running = `play:${l.id}`; gRerender();
+      groovesStart(grooveTimeline(l, { kind: 'hear', times: 1 }), () => { gv.running = ''; gRerender(); }).then((ok) => { if (!ok) { gv.running = ''; gRerender(); } });
+    } else if (d.groovesOpen) openGroove(d.groovesOpen, 'hear');
+    else if (b.hasAttribute('data-grooves-review')) startGroovesReview();
+    else if (b.hasAttribute('data-grooves-back')) { groovesStop(false); gv.view = 'list'; gv.review = null; gv.result = null; gv.running = ''; gRerender(); }
+    else if (d.groovesAct) groovesActions(d.groovesAct);
+    else if (d.groovesPhase) { groovesStop(true); gv.phase = d.groovesPhase; gv.result = null; gFeedback(''); gRerender(); }
+    else if (d.groovesStage) { gv.stage = Number(d.groovesStage); gv.result = null; gFeedback(''); gRerender(); }
+    else if (d.groovesRate) groovesRate(d.groovesRate);
+    else if (d.groovesInput) { state.input = d.groovesInput === 'mic' ? 'mic' : 'tap'; persist(); gRerender(); }
+  });
+  document.addEventListener('pointerdown', (e) => {
+    const pad = e.target.closest?.('.grooves-pad');
+    if (!pad) return;
+    e.preventDefault();
+    groovesTap();
+  });
+  // Nichts klingt weiter, wenn die Seite verdeckt wird.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && gr.run) { groovesStop(true); } });
+
   /* ------------------------------------------------------------------------
      ABLAGE — über die App (window.parent.chorToolStorage, IndexedDB). Gleiche
      Herkunft, der Zugriff auf window.parent ist erlaubt; direkt geöffnet
@@ -7032,6 +7670,7 @@
         bars: state.bars, pickup: state.pickup, syllables: state.syllables, input: state.input, micLatencyMs: state.micLatencyMs,
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart, duoStage: state.duoStage, duoOstinato: state.duoOstinato,
         course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes, accomp: course.accomp },
+        grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
@@ -7079,6 +7718,8 @@
     // (die Stufen wurden für die Pop-Didaktik neu gefasst); Tempo bleibt.
     syncRhythmLevelContent();
     if (r.duoPart === 'upper' || r.duoPart === 'lower') state.duoPart = r.duoPart;
+    for (const k of Object.keys(grooveData)) delete grooveData[k];
+    Object.assign(grooveData, sanitizeGrooves(r.grooves));
     const rc = r.course && typeof r.course === 'object' ? r.course : {};
     if (COURSE.some((l) => l.id === rc.lesson)) course.lesson = rc.lesson;
     if (Array.isArray(rc.done)) course.done = COURSE.map((l) => l.id).filter((id) => rc.done.includes(id));
@@ -7491,6 +8132,11 @@
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     if (!$('.sheet:not(.level-sheet)').hidden || !$('.level-sheet').hidden) return;
+    // Klatsch-Grooves: Leertaste/Enter klatscht (Tippfeld), sonst nichts zu tun.
+    if (views[state.tab] === 'grooves') {
+      if ((e.code === 'Space' || e.code === 'Enter') && gr.run && gr.run.playing) { e.preventDefault(); groovesTap(); }
+      return;
+    }
     // In der Liste gibt es nichts zu spielen oder zu beantworten.
     if (views[state.tab] !== 'exercise') return;
     if (state.tab === 'voice') {
@@ -7850,6 +8496,177 @@
       restore({ tab: keep.tab, rhythm: { accomp: 'laut', course: { accomp: 7 } } });
       if (state.accomp !== 'click' || course.accomp !== 'groove') errors.push(`Begleitung: kaputter Stand ${state.accomp}/${course.accomp}`);
     } finally { state.accomp = keep.a; course.accomp = keep.c; }
+    return errors;
+  }
+
+  /** holdPlan, holdMessage und nextDue: wortgleich zu den Prüfungen in licks.html. */
+  function sharedHoldChecks() {
+    const errors = [];
+    // --- holdPlan
+    const t = true, f = false;
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    if (!eq(holdPlan(1), Array(4).fill(t)) || !eq(holdPlan(2), Array(8).fill(t))) errors.push('holdPlan Stufe 1/2');
+    if (!eq(holdPlan(3), [t, t, f, f, t, t, f, f])) errors.push(`holdPlan Stufe 3: ${holdPlan(3)}`);
+    if (!eq(holdPlan(4), [t, t, f, f, f, f, t, t, f, f, f, f, t, t, f, f])) errors.push(`holdPlan Stufe 4: ${holdPlan(4)}`);
+    if (HOLD_STAGES.length !== 4) errors.push('HOLD_STAGES');
+    errors.push(...holdVectors());
+    // --- holdMessage: jede Zeile der Tabelle
+    const msg = (res, st) => holdMessage({ held: false, tendency: 'steady', lostAt: null, reentry: null, bars: [], ...res }, st);
+    const M = [
+      [msg({ held: true }, 2), 'Durchgehalten – 8 Takte, ruhig und gleichmäßig.'],
+      [msg({ held: true, tendency: 'faster' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.'],
+      [msg({ held: true, tendency: 'slower' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.'],
+      [msg({ lostAt: 6, reentry: 'late' }, 3), 'Bis Takt 5 lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.'],
+      [msg({ lostAt: 6, reentry: 'good' }, 3), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
+      [msg({ lostAt: 6, reentry: 'late' }, 2), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
+      [msg({ tendency: 'faster' }, 2), 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.'],
+      [msg({ tendency: 'slower' }, 2), 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.'],
+      [msg({}, 2), 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.'],
+    ];
+    M.forEach(([got, want], i) => { if (got !== want) errors.push(`holdMessage ${i + 1}: „${got}“`); });
+    // --- nextDue
+    const nd = (r, s, d = '2026-03-10') => JSON.stringify(nextDue(r, s, d));
+    if (nd('shaky', 2) !== '{"due":"2026-03-11","streak":0}') errors.push(`nextDue wackelig: ${nd('shaky', 2)}`);
+    if (nd('ok', 1) !== '{"due":"2026-03-13","streak":0}') errors.push(`nextDue geht schon: ${nd('ok', 1)}`);
+    if (nd('solid', 0) !== '{"due":"2026-03-17","streak":1}' || nd('solid', 1) !== '{"due":"2026-03-31","streak":2}' || nd('solid', 2) !== '{"due":"2026-05-09","streak":2}') errors.push(`nextDue sitzt: ${nd('solid', 0)} ${nd('solid', 1)} ${nd('solid', 2)}`);
+    if (nd('shaky', 1, '2026-12-31') !== '{"due":"2027-01-01","streak":0}' || nd('ok', 0, '2026-12-30') !== '{"due":"2027-01-02","streak":0}' || nd('solid', 0, '2026-02-25') !== '{"due":"2026-03-04","streak":1}') errors.push('nextDue: Monats-/Jahreswechsel');
+    if (nd('solid', 1, '2028-02-20') !== '{"due":"2028-03-12","streak":2}') errors.push(`nextDue: Schaltjahr ${nd('solid', 1, '2028-02-20')}`);
+    if (nd(null, 1) !== '{"due":null,"streak":0}' || nd('quatsch', 1) !== '{"due":null,"streak":0}') errors.push('nextDue: ungültige Einschätzung');
+    // Folge 7 → 21 → 60 und Zurücksetzen
+    { let s = 0, d = [];
+      for (let i = 0; i < 4; i++) { const r = nextDue('solid', s, '2026-01-01'); d.push(r.due); s = r.streak; }
+      if (d.join() !== '2026-01-08,2026-01-22,2026-03-02,2026-03-02') errors.push(`Streak-Folge: ${d}`);
+      if (nextDue('ok', 2, '2026-01-01').streak !== 0) errors.push('Streak wird nicht zurückgesetzt'); }
+    return errors;
+  }
+
+  /** Klatsch-Grooves (Licks & Grooves, Teil B): gemeinsame Auswertung, Zeitleisten,
+   *  Ablage, Sichtbarkeit. Die Vektoren stehen wortgleich in licks.html. */
+  function groovesCheck() {
+    const errors = [];
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    errors.push(...holdVectors());
+    // holdPlan, holdMessage, nextDue: dieselben Prüfungen wie in licks.html
+    errors.push(...sharedHoldChecks());
+    // --- Lektionen: Durchhalten nur ohne Auftakt
+    const pickupLessons = COURSE.filter((l) => !holdable(l)).map((l) => l.id).sort().join();
+    if (pickupLessons !== 'auftakt,auftaktUnd,geburtstag') errors.push(`Klatsch-Grooves: Lektionen ohne Durchhalten: ${pickupLessons}`);
+    const saved = { done: [...course.done], accomp: course.accomp, view: views.rhythm, gvState: { ...gv }, data: JSON.stringify(grooveData), html: $('[data-grooves]')?.innerHTML, hidden: $('[data-grooves]')?.hidden, tab: state.tab, notes: course.notes };
+    selfTesting = true;
+    try {
+      course.done = COURSE.map((l) => l.id);
+      // Zeitleisten: Snare bzw. Klick nur in Snare-Takten, stille Takte leer, Schlussschlag, Soll-Punkte aller Takte
+      for (const l of COURSE.filter(holdable)) {
+        const m = METERS[l.meter];
+        for (const setting of ['groove', 'click']) {
+          course.accomp = setting;
+          for (let stage = 1; stage <= 4; stage++) {
+            const tl = grooveTimeline(l, { kind: 'hold', stage, demo: false });
+            const where = `Klatsch-Groove ${l.id}/${stage}/${setting}`;
+            const bars = tl.bars, barSec = tl.barSec;
+            const barOf = (ev) => Math.floor((ev.t - tl.startSec) / barSec + 1e-9);
+            const inRun = tl.events.filter((ev) => barOf(ev) >= 0 && barOf(ev) < bars);
+            if (inRun.some((ev) => ev.type === 'clap')) errors.push(`${where}: Vorbild im Lauf`);
+            for (let b = 0; b < bars; b++) {
+              const evs = inRun.filter((ev) => barOf(ev) === b);
+              if (!tl.plan[b] && evs.length) errors.push(`${where}: Takt ${b + 1} sollte still sein`);
+              if (tl.plan[b] && !evs.length) errors.push(`${where}: Takt ${b + 1} ohne Begleitung`);
+              if (tl.plan[b]) {
+                const drums = evs.filter((ev) => ev.type === 'drum');
+                const clicks = evs.filter((ev) => ev.type === 'click');
+                const useSnare = ACCOMP[l.meter] && setting !== 'click';
+                if (useSnare && (clicks.length || drums.some((ev) => !['snare', 'rim'].includes(ev.kind)))) errors.push(`${where}: Takt ${b + 1} nicht nur Snare`);
+                if (!useSnare && (drums.length || clicks.length !== m.ticks / m.beat)) errors.push(`${where}: Takt ${b + 1} Klick statt Snare falsch (${clicks.length})`);
+              }
+            }
+            const end = tl.events.filter((ev) => Math.abs(ev.t - (tl.startSec + bars * barSec)) < 1e-9).map((ev) => ev.kind).sort().join();
+            if (end !== 'kick,open') errors.push(`${where}: Schlussschlag ${end}`);
+            const perBar = l.bars.map((b) => courseNotes(b).filter((n) => !n.rest && !n.tie).length);
+            const want = Array.from({ length: bars }, (_, b) => perBar[b % l.bars.length]).reduce((a, b) => a + b, 0);
+            if (tl.expected.length !== want || tl.expected.some((e, i) => i && e < tl.expected[i - 1])) errors.push(`${where}: Soll-Punkte ${tl.expected.length} statt ${want}`);
+            if (tl.expected.some((e) => e < tl.startSec - 1e-9 || e >= tl.startSec + bars * barSec)) errors.push(`${where}: Soll-Punkt außerhalb der Takte`);
+          }
+        }
+        course.accomp = saved.accomp;
+        // Hören: Einzähler-Klick, danach Groove (bzw. Klick nach den Kurs-Regeln)
+        const hear = grooveTimeline(l, { kind: 'hear', times: 2 });
+        const countLen = hear.startSec;
+        if (hear.events.filter((ev) => ev.t < countLen - 1e-9).some((ev) => ev.type !== 'click')) errors.push(`Klatsch-Groove ${l.id}: Schlagzeug im Einzähler`);
+        if (hear.events.filter((ev) => ev.type === 'clap').length !== 2 * lessonPattern(l).onsets.length) errors.push(`Klatsch-Groove ${l.id}: Vorbild nicht zweimal`);
+        const acc = accompFor(l, { accomp: 'full' }, course);
+        if (!!acc !== hear.events.some((ev) => ev.type === 'drum')) errors.push(`Klatsch-Groove ${l.id}: Begleitung ${acc ? 'fehlt' : 'unerwartet'}`);
+      }
+      // Auftakt-Lektionen: Auffrischen mit Einzähler bis zum Auftakt, Phrase endet auf dem Raster
+      for (const l of COURSE.filter((x) => !holdable(x))) {
+        const tl = grooveTimeline(l, { kind: 'refresh' });
+        const m = METERS[l.meter], p = lessonPattern(l).pickup;
+        if (Math.abs(tl.startSec - (m.ticks - p + lessonPattern(l).total) * tl.tickSec) > 1e-9) errors.push(`Klatsch-Groove ${l.id}: Auffrischen beginnt nicht nach Einzähler und Vorbild`);
+        if (groovesPhases(l).some(([id]) => id === 'hold')) errors.push(`Klatsch-Groove ${l.id}: Durchhalten trotz Auftakt`);
+        if (!/data-grooves-rate="solid"(?! disabled)/.test(groovesRateHtml(l, { hold: 0, rating: null }))) errors.push(`Klatsch-Groove ${l.id}: „Sitzt“ ohne Durchhalten nicht wählbar`);
+      }
+      { const puls = COURSE[0]; if (!/data-grooves-rate="solid" disabled/.test(groovesRateHtml(puls, { hold: 1, rating: null }))) errors.push('Klatsch-Groove: „Sitzt“ bei hold < 2 nicht gesperrt'); }
+      // Ablage: rhythm.grooves — neu, alt ohne Feld, unbekannte ID, kaputt; Kurs und Zweistimmig unverändert
+      for (const k of Object.keys(grooveData)) delete grooveData[k];
+      grooveData.puls = { hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' };
+      grooveData.auftakt = { hold: 2, rating: 'solid', streak: 2, due: '2026-06-01' };
+      const snap = JSON.parse(JSON.stringify(snapshot()));
+      const tabNow = state.tab;
+      restore({ tab: tabNow, rhythm: { course: { lesson: 'walzer', done: ['puls', 'walzer', 'xyz'], syl: 'ta' }, duoOstinato: 'puls', grooves: { puls: { hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' }, xyz: { hold: 1 } } } });
+      if (!eq(grooveData, { puls: { hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' } })) errors.push(`Klatsch-Grooves: unbekannte ID nicht verworfen ${JSON.stringify(grooveData)}`);
+      if (course.lesson !== 'walzer' || course.done.join() !== 'puls,walzer' || state.duoOstinato !== 'puls') errors.push('Klatsch-Grooves: Kurs/Zweistimmig nach dem Laden verändert');
+      restore({ tab: tabNow, rhythm: {} });
+      if (Object.keys(grooveData).length) errors.push('Klatsch-Grooves: alter Stand ohne Feld nicht leer');
+      restore({ tab: tabNow, rhythm: { grooves: 'kaputt' } });
+      if (Object.keys(grooveData).length) errors.push('Klatsch-Grooves: kaputter Stand nicht leer');
+      restore({ tab: tabNow, rhythm: { grooves: { puls: { hold: 99, rating: 'toll', streak: -4, due: 'irgendwann' }, auftakt: { hold: 3, rating: 'solid', streak: 1, due: '2026-06-01' } } } });
+      if (!eq(grooveData.puls, { hold: 4, rating: null, streak: 0, due: null }) || grooveData.auftakt.hold !== 0) errors.push(`Klatsch-Grooves: Begrenzung ${JSON.stringify(grooveData)}`);
+      restore(snap);
+      if (!eq(grooveData.puls, { hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' }) || grooveData.auftakt.hold !== 0) errors.push(`Klatsch-Grooves: Roundtrip ${JSON.stringify(grooveData)}`);
+      // Fälligkeit
+      for (const k of Object.keys(grooveData)) delete grooveData[k];
+      grooveData.puls = { hold: 0, rating: 'ok', streak: 0, due: '2026-01-01' };
+      grooveData.halbe = { hold: 0, rating: 'ok', streak: 0, due: '2999-01-01' };
+      grooveData.achtel = { hold: 0, rating: null, streak: 0, due: null };
+      if (dueGrooveIds('2026-06-01').join() !== 'puls') errors.push('Klatsch-Grooves: dueGrooveIds');
+      course.done = ['halbe'];
+      if (dueGrooveIds('2999-06-01').join() !== 'halbe') errors.push('Klatsch-Grooves: nur geschaffte Lektionen sind fällig');
+      course.done = COURSE.map((l) => l.id);
+      if (parseGroovesParam('?tab=rhythm&grooves=1') !== 'list' || parseGroovesParam('?grooves=review') !== 'review' || parseGroovesParam('?grooves=x') !== null || parseGroovesParam('') !== null) errors.push('Klatsch-Grooves: parseGroovesParam');
+      // Sichtbarkeit: Platzhalter, kein Raster, keine Marke, kein Zähler während des Laufs; Ergebnis danach
+      views.rhythm = 'grooves';
+      const host = $('[data-grooves]');
+      for (const id of ['puls', 'clave']) {
+        for (const phase of ['hear', 'refresh', 'hold']) {
+          Object.assign(gv, { view: 'lesson', id, phase, running: phase, result: null, review: null, feedback: '' });
+          renderGrooves();
+          if (!host.querySelector('[data-placeholder]')) errors.push(`Klatsch-Grooves ${id}/${phase}: Platzhalter fehlt`);
+          if (host.querySelector('.g-strip, [data-result], .tl, .tg, .ph, .tl-beat')) errors.push(`Klatsch-Grooves ${id}/${phase}: Raster oder Ergebnis im Lauf sichtbar`);
+          if (/Takt \d+ von|Takt \d+\/\d+|Noch \d+ Takte/.test(host.textContent)) errors.push(`Klatsch-Grooves ${id}/${phase}: Taktzähler`);
+        }
+      }
+      const ph = [];
+      for (const id of ['puls', 'clave']) { Object.assign(gv, { view: 'lesson', id, phase: 'hold', running: 'hold', result: null }); renderGrooves(); ph.push(host.querySelector('[data-placeholder]')?.outerHTML); }
+      if (ph[0] !== ph[1] || !ph[0]?.includes('Nach Gehör')) errors.push('Klatsch-Grooves: Platzhalter hängt von der Lektion ab');
+      const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
+      Object.assign(gv, { view: 'lesson', id: 'puls', phase: 'hold', running: '', result: { kind: 'hold', stage: 1, ...res } });
+      renderGrooves();
+      if (!host.querySelector('.g-strip')) errors.push('Klatsch-Grooves: Taktstreifen nach dem Lauf fehlt');
+      Object.assign(gv, { view: 'list', running: '', result: null });
+      renderGrooves();
+      if (host.querySelectorAll('.g-row').length !== COURSE.length) errors.push(`Klatsch-Grooves: Liste zeigt ${host.querySelectorAll('.g-row').length} von ${COURSE.length} geschafften Lektionen`);
+      course.done = [];
+      renderGrooves();
+      if (host.querySelectorAll('.g-row').length) errors.push('Klatsch-Grooves: Liste ohne geschaffte Lektionen nicht leer');
+    } finally {
+      selfTesting = false;
+      course.done = saved.done; course.accomp = saved.accomp; course.notes = saved.notes; views.rhythm = saved.view;
+      Object.assign(gv, saved.gvState);
+      for (const k of Object.keys(grooveData)) delete grooveData[k];
+      Object.assign(grooveData, JSON.parse(saved.data));
+      const host = $('[data-grooves]');
+      if (host) { host.innerHTML = saved.html; host.hidden = saved.hidden; }
+      state.tab = saved.tab;
+    }
     return errors;
   }
 
@@ -10021,6 +10838,7 @@
     errors.push(...markCheck());
     errors.push(...aidsCheck());
     errors.push(...accompCheck());
+    errors.push(...groovesCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
@@ -10227,6 +11045,8 @@
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
     selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
+    // Klatsch-Grooves (Licks & Grooves)
+    HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck,
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Pop-Didaktik: Hören
@@ -10386,6 +11206,12 @@
   loadMemory();
   const quickParams = parseQuickParams(location.search);
   const modeParams = parseModeParam(location.search);
+  const groovesParam = parseGroovesParam(location.search);
+  /** ?grooves=1 bzw. =review: Klatsch-Grooves (Licks & Grooves) statt der Liste der Übungsarten. */
+  function applyGroovesParam() {
+    if (!groovesParam) return;
+    if (groovesParam === 'review') startGroovesReview(); else openGroovesList();
+  }
   ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'singEcho', 'inTime'].forEach(refreshHint);
   /** ?tab=… ohne from=quick: nur dieser Bereich, Überschrift statt Tab-Leiste. */
   function applyAreaOnly() {
@@ -10398,7 +11224,7 @@
   }
   loadPracticed();
   applyAreaOnly();
-  if (!storage) { applyQuickParams(quickParams); applyModeParam(modeParams); }
+  if (!storage) { applyQuickParams(quickParams); applyModeParam(modeParams); applyGroovesParam(); }
   setTab(state.tab);
   if (!storage) baselineLevels();
   if (storage) {
@@ -10409,9 +11235,10 @@
       applyAreaOnly();
       applyQuickParams(quickParams);
       applyModeParam(modeParams);
+      applyGroovesParam();
       setTab(state.tab);
       baselineLevels();
-    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); setTab(state.tab); baselineLevels(); });
+    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); applyGroovesParam(); setTab(state.tab); baselineLevels(); });
   }
 })();
 </script>
