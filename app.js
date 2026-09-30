@@ -1258,11 +1258,15 @@ const DB = {
 
 const SETTINGS_KEY = 'settings';
 
+// Tonbeschriftung der Übe-Tools (settings.toolSolfa): do re mi oder 1 2 3.
+const TOOL_SOLFA = ['syllables', 'numbers'];
+
 const DEFAULT_SETTINGS = {
   key: SETTINGS_KEY,
   type: 'settings',
   myVoices: [],             // z.B. ['ALT', 'BASS'] — [] = noch keine gewählt
   voiceProfile: null,       // { part, low, high, measuredAt, load } fürs Üben in den Tools — siehe sanitizeVoiceProfile
+  toolSolfa: null,          // 'syllables' (do re mi) | 'numbers' (1 2 3) für alle Übe-Tools; null = noch nicht global gewählt (dann gilt der Stand im Tool)
   defaultImportScope: 'mine', // 'mine' | 'full' | 'all' (siehe Auswahlmaske, M1)
   lyricsFontSize: 17,
   lastBackupAt: null,
@@ -16513,6 +16517,7 @@ async function buildBackupParts(opts, onProgress) {
       lightshowOffsetMs: settings.lightshowOffsetMs, lightshowVoice: settings.lightshowVoice,
       lightshowShow: settings.lightshowShow, lightshowSeed: settings.lightshowSeed,
       voiceProfile: settings.voiceProfile,
+      toolSolfa: settings.toolSolfa,
     })}`);
   }
   if (opts.loops) {
@@ -17010,6 +17015,7 @@ function sanitizeSettingsPatch(raw) {
     const vp = sanitizeVoiceProfile(raw.voiceProfile, []);
     if (vp.part || vp.low != null || vp.load !== 'normal') patch.voiceProfile = vp;
   }
+  if (TOOL_SOLFA.includes(raw.toolSolfa)) patch.toolSolfa = raw.toolSolfa;
   return patch;
 }
 
@@ -17857,6 +17863,8 @@ function runSelfTests() {
     const restored = sanitizeSettingsPatch({ voiceProfile: full });
     if (!same(restored.voiceProfile, full)) failed.push('sanitizeSettingsPatch: voiceProfile aus Sicherung nicht übernommen');
     if ('voiceProfile' in sanitizeSettingsPatch({ voiceProfile: 'kaputt' })) failed.push('sanitizeSettingsPatch: kaputtes voiceProfile übernommen');
+    if (sanitizeSettingsPatch({ toolSolfa: 'syllables' }).toolSolfa !== 'syllables') failed.push('sanitizeSettingsPatch: toolSolfa aus Sicherung nicht übernommen');
+    if ('toolSolfa' in sanitizeSettingsPatch({ toolSolfa: 'solfège' }) || 'toolSolfa' in sanitizeSettingsPatch({})) failed.push('sanitizeSettingsPatch: ungültiges/fehlendes toolSolfa übernommen');
   }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
@@ -22580,6 +22588,16 @@ window.chorVoiceProfile = {
   },
 };
 
+// Eine Wahl im Popup der Tools-Seite oder in einem Tool gilt überall; null =
+// noch nie global gewählt, dann behält jedes Tool seinen gemerkten Stand.
+window.chorToolPrefs = {
+  get: () => ({ solfa: TOOL_SOLFA.includes(settings.toolSolfa) ? settings.toolSolfa : null }),
+  set: async (patch) => {
+    if (patch && TOOL_SOLFA.includes(patch.solfa)) await saveSettings({ toolSolfa: patch.solfa });
+    return window.chorToolPrefs.get();
+  },
+};
+
 /* ==========================================================================
    FORTSCHRITT — nur lokal, Tagesaggregate, 180 Tage (Didaktik Paket 6).
    Die Tool-iframes schreiben nicht selbst, sondern melden über
@@ -22932,10 +22950,11 @@ async function loadPlaygroundState() {
 function renderQuickStart() {
   const pill = $('#quick-voice');
   if (!pill) return;
+  // Die Pille ist der Zugang zu den Übe-Einstellungen — auch ohne gewählte
+  // Stimme sichtbar, dann als Aufforderung „Stimme wählen“.
   const part = window.chorVoiceProfile.get().part;
-  pill.hidden = !part;
-  pill.textContent = part ? t(`tools.area.part${part}`) : '';
-  if (part) pill.setAttribute('aria-label', t('tools.warmup.voiceAria').replace('{part}', pill.textContent));
+  pill.textContent = part ? t(`tools.area.part${part}`) : t('tools.warmup.voiceNone');
+  pill.setAttribute('aria-label', part ? t('tools.warmup.voiceAria').replace('{part}', t(`tools.area.part${part}`)) : t('tools.warmup.voiceNone'));
   const paint = (minutes) => {
     // Geschützte Leerzeichen: bricht der Knopf um, dann nach „·“, nie in „10 Min.“.
     const label = (key, n) => t(key).replace('{n}', n).replace(/ (?=\S*$)/, '\u00a0').replace(/(\d) /, '$1\u00a0');
@@ -22970,7 +22989,48 @@ async function renderPracticeTiles() {
   }
 }
 
+/** Popup „Einstellungen fürs Üben“ (Pille auf der Tools-Seite): Stimme,
+ *  Tonbeschriftung und Belastung — alles, was für mehrere Übe-Tools gemeinsam
+ *  gilt. Die Tools lesen es beim Öffnen (chorVoiceProfile / chorToolPrefs). */
+const PREF_LOADS = [['leicht', 'tools.prefs.loadLight'], ['normal', 'tools.prefs.loadNormal'], ['kraeftig', 'tools.prefs.loadStrong']];
+async function openToolPrefs() {
+  // Noch nie global gewählt: der Stand, den das Üben-Tool gemerkt hat (sonst
+  // zeigte das Popup „1 2 3“, obwohl dort längst „do re mi“ gilt). Standard im Tool: Zahlen.
+  let solfa = window.chorToolPrefs.get().solfa;
+  if (!solfa) {
+    const stored = await window.chorToolStorage.load('playground').catch(() => null);
+    solfa = TOOL_SOLFA.includes(stored?.sing?.solfa) ? stored.sing.solfa : 'numbers';
+  }
+  const group = (titleKey, hintKey, options, current, onPick, extraClass = '') => {
+    const row = el('div', { class: `chip-grid ${extraClass}`.trim(), role: 'group', 'aria-label': t(titleKey) });
+    const paint = () => row.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === current)));
+    for (const [value, label] of options) {
+      row.append(el('button', { class: 'chip', type: 'button', 'data-value': value, text: label, 'aria-pressed': String(value === current),
+        onclick: async () => { current = value; paint(); await onPick(value); } }));
+    }
+    return el('div', { class: 'prefs-group' },
+      el('h3', { class: 'prefs-title', text: t(titleKey) }), row, el('p', { class: 'prefs-hint small muted', text: t(hintKey) }));
+  };
+  const profile = window.chorVoiceProfile.get();
+  const partOptions = PROFILE_PARTS.map((p) => [p, t(`tools.area.part${p}`)]);
+  const close = () => { layer.remove(); closeModal(layer); renderQuickStart(); };
+  const box = el('div', { class: 'dialog prefs-dialog' },
+    el('h2', { text: t('tools.prefs.title') }),
+    group('tools.prefs.voice', 'tools.prefs.voiceHint', partOptions, profile.part, (p) => window.chorVoiceProfile.set({ part: p })),
+    group('tools.prefs.solfa', 'tools.prefs.solfaHint',
+      [['syllables', t('tools.prefs.solfaSyllables')], ['numbers', t('tools.prefs.solfaNumbers')]], solfa, (v) => window.chorToolPrefs.set({ solfa: v })),
+    group('tools.prefs.load', 'tools.prefs.loadHint', PREF_LOADS.map(([id, key]) => [id, t(key)]), profile.load, (l) => window.chorVoiceProfile.set({ load: l })),
+    el('div', { class: 'dialog-actions' },
+      el('button', { class: 'btn', type: 'button', text: t('tools.prefs.more'), onclick: () => { close(); $('#btn-open-settings').click(); } }),
+      el('button', { class: 'btn btn--primary', type: 'button', text: t('common.close'), onclick: close })));
+  const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('tools.prefs.title') }, box);
+  layer.addEventListener('click', (e) => { if (e.target === layer) close(); });
+  document.body.append(layer);
+  openModal(layer, { onEscape: close });
+}
+
 function initQuickStart() {
+  $('#quick-voice').addEventListener('click', () => { openToolPrefs(); });
   $('#view-tools').addEventListener('click', (event) => {
     const btn = event.target.closest('[data-quick]');
     const def = btn && QUICK_STARTS[btn.dataset.quick];

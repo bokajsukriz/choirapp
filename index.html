@@ -295,8 +295,19 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .warmup-head .tool-tile-icon { width: 36px; height: 36px; background: var(--surface); }
 .warmup-head .tool-tile-icon svg { width: 22px; height: 22px; }
 .warmup-title { flex: 1 1 auto; min-width: 0; font-size: 1.25rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; hyphens: auto; }
-/* Stimme als Pille (aus dem Stimmprofil; ohne Stimme ausgeblendet). */
-.voice-pill { flex: 0 0 auto; padding: 3px 12px; border-radius: 999px; background: var(--surface); color: var(--text); font-size: .85rem; font-weight: 700; }
+/* Stimme als Pille (aus dem Stimmprofil). Ein Tipp öffnet das Popup
+   „Einstellungen fürs Üben“ (openToolPrefs in app.js); ::before vergrößert die
+   Trefferfläche über die sichtbare Pille hinaus, ohne sie aufzublähen. */
+.voice-pill { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 12px; border: 0; border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: .85rem; font-weight: 700; }
+.voice-pill::before { content: ''; position: absolute; inset: -8px -4px; }
+.voice-pill::after { content: ''; width: 6px; height: 6px; margin-top: -3px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; }
+.voice-pill:active { background: var(--surface-2); }
+/* Popup „Einstellungen fürs Üben“ */
+.prefs-group { margin-bottom: 16px; }
+.dialog .prefs-title { margin: 0 0 6px; font-size: .95rem; text-transform: none; letter-spacing: 0; color: var(--text); }
+.prefs-group .chip-grid { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+.prefs-group .chip { padding-inline: 4px; }
+.dialog .prefs-hint { margin: 6px 0 0; }
 .warmup-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
 .warmup-btn { min-height: 44px; padding: 6px 8px; border-radius: 999px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); font-weight: 700; font-size: .9rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
 .warmup-btn:active { background: var(--surface-2); }
@@ -4016,7 +4027,7 @@ input[type="checkbox"] {
       <div class="warmup-head">
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-4 4-4 6 0s4 4 6 0 3-3 4-2"/><path d="M4 8c2-3 4-3 6 0"/><circle cx="18" cy="7" r="2"/></svg></span>
         <h2 class="warmup-title" data-i18n="settings.tools.warmup">Einsingen</h2>
-        <span class="voice-pill" id="quick-voice" hidden></span>
+        <button class="voice-pill" id="quick-voice" type="button" aria-haspopup="dialog"></button>
       </div>
       <div class="warmup-actions">
         <button class="warmup-btn" type="button" data-quick="short" id="warmup-short">5 Min.</button>
