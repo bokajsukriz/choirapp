@@ -92,7 +92,13 @@ ein Dialog mit echter Wahl).
   Nachsingen, Im Takt, Blattsingen, Diktat). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
-  durch Singen kalibrierten Latenz. Das Vorspiel ist wahlweise Klavier oder eine
+  durch Singen kalibrierten Latenz. Kommen die Tipper in `uebe-lab.html` und
+  `licks.html` über mehrere Läufe hinweg gleichmäßig zu spät (ca. 80–350 ms,
+  typisch Touch/Bluetooth), erkennt `estimateRunDelay`/`detectDelay` das als
+  Verschiebung der ganzen Phrase (normale Offset-Statistik versagt dort, weil
+  alle Töne „daneben“ liegen) und schlägt einen Ausgleich vor. Er wird im
+  geteilten Speicher-Datensatz `calibration` (`{v:1, tapMs, micMs}`) abgelegt
+  und gilt übungsübergreifend. Das Vorspiel ist wahlweise Klavier oder eine
   künstliche Singstimme (Formant-Synthese, `singVoice`). Das Mikrofon wird nur live ausgewertet, nichts wird
   aufgenommen oder gesendet, und es läuft nie im Hintergrund.
   „Töne in der Tonart“ und „Akkorde in der Tonart“ üben das Erkennen
