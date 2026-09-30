@@ -1,0 +1,2070 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Licks &amp; Grooves</title>
+<!--
+  LICKS (Datei: licks.html) — kurze Synthesizer-Linien nach Gehör lernen:
+  hören, mitsingen, Startton finden, stückweise nachspielen, ganz spielen,
+  durchhalten (4 bis 16 Takte, zuletzt mit stillen Takten ohne Schlagzeug),
+  das Notenbild (Piano-Roll) kommt zuletzt und ist abschaltbar. Dazu Status
+  (Neu → Lerne → Sitzt) und Wiederholen mit Abstand („Heute wiederholen“ auf
+  der Tools-Seite, ?review=1). Hören statt Sehen: Während des eigenen Spielens
+  gibt es keine laufende Marke, kein Raster, keine leuchtenden Tasten und
+  keinen Taktzähler — nur den neutralen Platzhalter „Nach Gehör“.
+
+  In der App: Tools-Reiter → Licks & Grooves → Synth-Licks (Vollbild-iframe,
+  ?embedded=1, der Schließen-Knopf gehört der App). Ablage über
+  window.parent.chorToolStorage (Datensatz „licks“); Fortschritt meldet die
+  Seite an window.parent.chorProgress (Bereich „licks“). Offline über
+  SHELL_OPTIONAL und TOOL_PAGES in sw.js. Nur Deutsch, keine Abhängigkeiten,
+  kein Mikrofon (Eingabe über die Bildschirmtasten).
+
+  Klänge ohne Samples (Web Audio). Kopien, damit die Tools eigenständig
+  bleiben (Blöcke mit „Kopie aus …“ gekennzeichnet):
+  - Synth: playTone() mit SOUND_DEFAULTS, WAVE_LEVEL und fünf Presets aus
+    groove-lab.js — ohne Hall und Echo,
+  - Schlagzeug: drum()/tone()/noiseHit() aus metronom.html.
+-->
+<style>
+  :root {
+    --accent: #F868B0; --accent-rgb: 248,104,176;
+    --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
+    --text: #241b3d; --muted: #8c81a6;
+    --good: #2f9e5b; --near: #d9922b; --bad: #e0445a;
+    --ok-bg: #b8e3c6; --wobble-bg: #f6d78a; --lost-bg: #f0a6b0;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: light; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; color: var(--text); background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none; overflow: hidden;
+  }
+  button, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
+  button:disabled { cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  [hidden] { display: none !important; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left)); }
+  html.is-embedded .bar { padding-right: calc(60px + env(safe-area-inset-right)); }
+  h1 { margin: 0; font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; flex: 1; min-width: 0; }
+  h1 span { color: var(--accent); }
+  .icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+
+  main { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 4px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left)); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .chip { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .8rem; color: var(--muted); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .note { margin: 6px 2px; font-size: .8rem; color: var(--muted); font-weight: 600; }
+  .review-card { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; margin: 4px 0 10px; }
+  .review-card b { flex: 1; font-size: .9rem; }
+
+  .lick-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .lick-row .play { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .lick-row .play svg { fill: currentColor; stroke: none; }
+  .lick-row .open { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; min-height: 44px; justify-content: center; }
+  .lick-row .name { font-weight: 800; }
+  .lick-row .sub { font-size: .78rem; color: var(--muted); font-weight: 600; }
+  .status { flex: 0 0 auto; font-size: .72rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .status[data-status="Lerne"] { background: var(--wobble-bg); color: #6b4a00; }
+  .status[data-status="Sitzt"] { background: var(--ok-bg); color: #14532d; }
+
+  .lick-head { margin: 2px 2px 8px; }
+  .lick-head h2 { margin: 0; font-size: 1.05rem; }
+  .lick-head p { margin: 2px 0 0; font-size: .78rem; color: var(--muted); font-weight: 600; }
+  .steps { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; }
+  .steps::-webkit-scrollbar { display: none; }
+  .step { flex: 0 0 auto; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .76rem; color: var(--muted); white-space: nowrap; }
+  .step.is-done { color: var(--good); border-color: rgba(47,158,91,.5); }
+  .step.is-now { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step.is-optional { border-style: dashed; }
+  .step:disabled { opacity: .45; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px; }
+  .panel p { margin: 0 0 10px; font-size: .88rem; line-height: 1.4; }
+  .panel .more { font-size: .78rem; color: var(--muted); }
+  .panel .note { margin-top: 10px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .btn { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .86rem; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:disabled { opacity: .45; }
+  .feedback { min-height: 22px; margin: 8px 0 0; font-weight: 700; font-size: .88rem; }
+  .feedback.is-good { color: var(--good); }
+  .feedback.is-bad { color: var(--bad); }
+
+  .stage { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); margin: 8px 0; overflow: hidden; }
+  .stage svg { width: 100%; height: auto; display: block; stroke-width: 1.4; }
+  .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted); stroke: none; }
+  .stage .staff { stroke: var(--line); stroke-width: 1.6; }
+  .stage .tl { stroke: var(--line); stroke-width: 3; }
+  .stage .tg { fill: none; stroke: var(--muted); stroke-width: 2; }
+  .stage .tg.is-good { stroke: var(--good); }
+  .stage .tg.is-near { stroke: var(--near); }
+  .stage .tg.is-miss { stroke: var(--bad); }
+  .stage .tp { fill: var(--muted); stroke: none; }
+  .stage .tp.is-good { fill: var(--good); }
+  .stage .tp.is-near { fill: var(--near); }
+  .stage .tp.is-extra { fill: var(--bad); }
+  .stage .bar-l { stroke: var(--line); stroke-width: 1; }
+  .stage .lbl { font-size: 9px; font-weight: 800; fill: var(--muted); stroke: none; }
+  .stage .row-l { font-size: 9.5px; font-weight: 800; fill: var(--text); stroke: none; }
+  .stage .row-bg { fill: rgba(var(--accent-rgb), .05); stroke: none; }
+  .stage .roll-note { fill: var(--accent); stroke: none; }
+  .stage .roll-glide { stroke: var(--accent); stroke-width: 2.4; }
+  .stage .ph { stroke: var(--accent); stroke-width: 2; }
+
+  .strip { display: flex; gap: 3px; margin: 8px 0 4px; }
+  .strip .cell { flex: 1 1 0; min-width: 0; height: 30px; border-radius: 6px; font-size: .62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; color: #1b1330; border: 1px solid transparent; }
+  .strip .cell.is-sure { background: var(--ok-bg); }
+  .strip .cell.is-wobbly { background: var(--wobble-bg); }
+  .strip .cell.is-lost { background: var(--lost-bg); }
+  .strip .cell.is-silent { background-image: repeating-linear-gradient(135deg, rgba(36,27,61,.32) 0 2px, transparent 2px 6px); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .68rem; font-weight: 700; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(36,27,61,.2); }
+
+  .ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+  .ladder button { min-height: 52px; padding: 4px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .7rem; line-height: 1.2; }
+  .ladder button.is-done { border-color: rgba(47,158,91,.6); color: var(--good); }
+  .ladder button.is-next { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ladder button[aria-pressed="true"] { outline: 3px solid rgba(var(--accent-rgb), .45); }
+  .rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+
+  .dock { flex: 0 0 auto; background: var(--surface-2); border-top: 1px solid var(--line);
+    padding: 6px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .dock-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+  .dock-bar select { min-height: 36px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0 10px; font-weight: 800; font-size: .74rem; max-width: 46%; }
+  .group { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 2px; }
+  .group button { min-width: 34px; height: 32px; padding: 0 10px; border-radius: 999px; font-size: .74rem; font-weight: 800; color: var(--muted); }
+  .group button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .group .range { min-width: 28px; text-align: center; font-size: .72rem; font-weight: 800; }
+  .keyboard { position: relative; display: flex; height: 190px; touch-action: none; border-radius: 0 0 12px 12px; overflow: hidden; border-top: 6px solid var(--text); box-shadow: 0 6px 16px rgba(36,27,61,.16); }
+  .white { position: relative; flex: 1 1 0; min-width: 0; border-right: 1px solid #d9cfd6; background: linear-gradient(#fff, #fbf7f3 85%, #efe6ea); border-radius: 0 0 8px 8px; }
+  .white:last-child { border-right: 0; }
+  .white.is-down { background: linear-gradient(#f3eaf0, rgba(var(--accent-rgb), .35)); }
+  .black { position: absolute; top: 0; height: 60%; z-index: 2; border-radius: 0 0 6px 6px; background: linear-gradient(#3a3350, #1c1730 88%); box-shadow: inset 0 -4px 0 rgba(255,255,255,.08), 0 3px 5px rgba(0,0,0,.35); }
+  .black.is-down { background: linear-gradient(#2a2340, rgb(var(--accent-rgb))); }
+  .white.is-lit { background: linear-gradient(#ffe0f0, rgba(var(--accent-rgb), .55)); }
+  .black.is-lit { background: linear-gradient(#5a2a52, rgb(var(--accent-rgb))); }
+  .key-mark { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--accent); color: #fff; font-size: .68rem; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
+  .black .key-mark { bottom: 6px; }
+
+  .sheet { position: fixed; inset: 0; z-index: 20; background: rgba(36,27,61,.45); display: flex; align-items: flex-end; }
+  .sheet-card { width: 100%; background: var(--bg); border-radius: 20px 20px 0 0; padding: 16px 16px max(20px, env(safe-area-inset-bottom)); max-height: 80vh; overflow-y: auto; }
+  .sheet-card h3 { margin: 0 0 8px; font-size: 1rem; }
+  .sub-label { display: block; margin: 12px 0 4px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button class="icon-btn" type="button" data-act="back" aria-label="Zurück zur Liste" hidden><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <h1>Licks &amp; <span>Grooves</span></h1>
+  <button class="icon-btn" type="button" data-act="settings" aria-label="Einstellungen" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+</div>
+<main id="main">
+  <section id="view-list">
+    <div class="review-card" id="review-card" hidden><b id="review-text"></b><button class="btn primary" type="button" data-act="review-start">Wiederholen</button></div>
+    <div class="chips" id="cat-chips" role="group" aria-label="Kategorie"></div>
+    <div id="list"></div>
+    <p class="note" id="list-note"></p>
+  </section>
+  <section id="view-lick" hidden>
+    <div class="lick-head"><h2 id="lick-name"></h2><p id="lick-sub"></p></div>
+    <div class="steps" id="steps" role="group" aria-label="Schritte"></div>
+    <div class="panel" id="panel"></div>
+  </section>
+</main>
+<div class="dock" id="dock" hidden>
+  <div class="dock-bar">
+    <select id="sound-select" aria-label="Klang"></select>
+    <div class="group" role="group" aria-label="Glide beim eigenen Spiel"><button type="button" data-act="glide" aria-pressed="true">Glide</button></div>
+    <span style="flex:1"></span>
+    <div class="group" role="group" aria-label="Lage">
+      <button type="button" data-act="oct-down" aria-label="Eine Oktave tiefer">Okt −</button>
+      <span class="range" id="oct-range" aria-live="polite">0</span>
+      <button type="button" data-act="oct-up" aria-label="Eine Oktave höher">Okt +</button>
+    </div>
+  </div>
+  <div class="keyboard" id="keyboard" aria-label="Klaviatur"></div>
+</div>
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-label="Einstellungen">
+    <h3>Einstellungen</h3>
+    <span class="sub-label" style="margin-top:0">Notenbild bei Licks</span>
+    <div class="chips" id="notes-chips"></div>
+    <p class="note">Das Notenbild (Piano-Roll) kommt als letzter Schritt. Wer es abschaltet, übt ausschließlich mit den Ohren.</p>
+    <div class="actions"><button class="btn primary" type="button" data-act="settings-close">Fertig</button></div>
+  </div>
+</div>
+
+<script src="./harmony.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
+  try {
+    if (window.parent !== window) {
+      const appStyle = getComputedStyle(window.parent.document.documentElement);
+      const accent = appStyle.getPropertyValue('--accent').trim();
+      const rgb = appStyle.getPropertyValue('--accent-rgb').trim();
+      if (/^#[0-9a-f]{6}$/i.test(accent)) document.documentElement.style.setProperty('--accent', accent);
+      if (/^\d+,\s*\d+,\s*\d+$/.test(rgb)) document.documentElement.style.setProperty('--accent-rgb', rgb);
+    }
+  } catch { /* eigenständig geöffnet oder fremde Herkunft: Standardfarbe */ }
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const mod = (n, m) => ((n % m) + m) % m;
+  const { noteLabel } = window.ChorHarmony;
+
+  /* ------------------------------------------------------------------------
+     INHALT — Licks. `notes` = [Tick, Dauer, Halbtöne über root, Optionen?],
+     12 Ticks = Viertel, ein 4/4-Takt = 48 Ticks; Pausen sind Lücken zwischen
+     den Tönen. `parts` = Notenbereiche [von, bis) für „Stückweise“. `root`
+     als MIDI-Nummer; der Startton-Schritt bezieht Stufen auf `root`.
+     Lick-IDs sind fest (gespeichert), neue Licks nur anhängen.
+     ------------------------------------------------------------------------ */
+  const TICKS_BAR = 48;
+  const LICKS = [
+    { id: 'hookPenta', cat: 'hook', level: 1, name: 'Pentatonik-Hook', preset: 'Analog Lead', bpm: 96, bars: 2, root: 57,
+      notes: [[0, 12, 0], [12, 6, 3], [18, 6, 5], [24, 18, 7], [42, 6, 10], [48, 12, 7], [60, 6, 5], [66, 6, 3], [72, 24, 0]],
+      parts: [[0, 3], [3, 5], [5, 9]],
+      intro: 'Fünf Töne, zwei Takte: hinauf bis zur kleinen Septime, dann zurück nach Hause. Sing ihn zuerst auf „du“ – die Finger folgen der Stimme.',
+      more: 'Die Moll-Pentatonik ist die Tonleiter unzähliger Pop-, Soul- und Rock-Hooks. Auf ihr klingt fast jede Tonfolge richtig, deshalb ist sie der beste Einstieg.' },
+    { id: 'bassOktav', cat: 'bass', level: 1, name: 'Oktav-Disco-Bass', preset: 'Growl Bass', bpm: 100, bars: 2, root: 40,
+      notes: [[0, 6, 0], [6, 6, 12], [12, 6, 0], [18, 6, 12], [24, 6, 0], [30, 6, 12], [36, 6, 0], [42, 6, 12],
+        [48, 6, 5], [54, 6, 17], [60, 6, 5], [66, 6, 17], [72, 6, 7], [78, 6, 19], [84, 6, 7], [90, 6, 19]],
+      parts: [[0, 4], [4, 8], [8, 12], [12, 16]],
+      intro: 'Achtel, immer im Wechsel tief und eine Oktave höher. Erst auf der 1, dann auf der 4, dann auf der 5. Der tiefe Ton trägt, der hohe federt.',
+      more: 'Der Oktavbass treibt viele Disco- und Dance-Titel. Er ist rhythmisch einfach und schult trotzdem das Wichtigste: gleichmäßige Achtel über lange Strecken.' },
+    { id: 'fillGlideBlue', cat: 'fill', level: 2, name: 'Glide-Fill mit Blue Note', preset: 'Analog Lead', bpm: 92, bars: 1, root: 57,
+      notes: [[0, 6, 0], [6, 6, 3], [12, 6, 5], [18, 3, 6], [21, 9, 7, { glide: true }], [30, 6, 5], [36, 6, 3], [42, 6, 0]],
+      parts: [[0, 3], [3, 5], [5, 8]],
+      intro: 'Hinauf zur ♭5 und von dort in die 5 gleiten, dann zurück. Die ♭5 ist nur ein Sechzehntel lang – ein Durchgang, kein Ziel.',
+      more: 'Die ♭5 ist die typischste Blue Note. Mit Glide in die 5 gezogen klingt sie wie ein Schleifer in der Stimme – ein Klang, den man im Chor gut nachsingen kann.' },
+    { id: 'arpMoll', cat: 'arp', level: 2, name: 'Moll-Arp in Sechzehnteln', preset: 'Neon Pluck', bpm: 88, bars: 1, root: 57,
+      notes: [[0, 3, 0], [3, 3, 3], [6, 3, 7], [9, 3, 12], [12, 3, 7], [15, 3, 3], [18, 3, 0], [21, 3, 3],
+        [24, 3, -2], [27, 3, 2], [30, 3, 5], [33, 3, 10], [36, 3, 5], [39, 3, 2], [42, 3, -2], [45, 3, 2]],
+      parts: [[0, 4], [4, 8], [8, 12], [12, 16]],
+      intro: 'Vier Sechzehntel je Schlag: erst den Moll-Dreiklang hinauf und zurück, dann den Dur-Dreiklang einen Ganzton tiefer. Gleichmäßig, ohne Betonung.',
+      more: 'Ein Arpeggiator spielt Akkorde als Tonfolge. Von Hand gespielt merkt man, wie wenig sich die Finger bewegen müssen, wenn der Akkord wechselt.' },
+    { id: 'riffPush', cat: 'hook', level: 2, name: 'Synthpop-Riff mit Vorziehen', preset: 'Bright Saw', bpm: 108, bars: 1, root: 62,
+      notes: [[0, 6, 0], [6, 6, 0], [12, 6, 3], [18, 12, 5], [30, 6, 3], [36, 12, 0]],
+      parts: [[0, 3], [3, 6]],
+      intro: 'Der lange Ton kommt auf „2 und“ und liegt über die Drei. Auf der Drei selbst drückst du nichts – du hältst.',
+      more: 'Das ist dieselbe vorgezogene Drei wie im Rhythmus-Kurs, nur mit Tönen. Synthpop-Riffs leben von solchen Pushes: Die Betonung kommt ein Achtel zu früh.' },
+    { id: 'hookBlueThird', cat: 'fill', level: 2, name: 'Blue-Third-Schleifer', preset: 'Soft Brass', bpm: 84, bars: 1, root: 60,
+      notes: [[0, 6, 0], [6, 3, 3], [9, 9, 4, { glide: true }], [18, 6, 0], [24, 12, 7], [36, 6, 9], [42, 6, 7]],
+      parts: [[0, 3], [3, 7]],
+      intro: 'Aus der kleinen Terz in die große gleiten, dann über die 5 zur 6 und zurück. Der Schleifer ist kurz, das Ziel ist die große Terz.',
+      more: 'Die Blue Third liegt zwischen Moll und Dur. Sänger:innen treffen sie, indem sie von unten hineinziehen – genau das macht hier der Glide.' },
+    { id: 'hookAufA', cat: 'hook', level: 3, name: 'Einsatz auf dem „a“', preset: 'Analog Lead', bpm: 92, bars: 1, root: 64,
+      notes: [[9, 3, 7], [12, 6, 10], [18, 6, 12], [24, 3, 10], [27, 3, 7], [30, 6, 5], [36, 12, 3]],
+      parts: [[0, 3], [3, 7]],
+      intro: 'Die Eins bleibt leer. Der erste Ton kommt ein Sechzehntel vor der Zwei, auf dem „a“. Zähl „1 e + a“ und spiel auf „a“.',
+      more: 'Viele Hooks beginnen knapp vor einem Schlag. Wer auf der Zwei einsetzt, kommt zu spät. Dieselbe Figur gibt es im Rhythmus-Kurs als Klatsch-Lektion.' },
+    { id: 'bassFunk16', cat: 'bass', level: 3, name: 'Funk-Bass mit Sechzehnteln', preset: 'Growl Bass', bpm: 96, bars: 1, root: 43,
+      notes: [[0, 3, 0], [9, 3, 12], [12, 6, 10], [21, 3, 7], [27, 6, 0], [36, 3, -3], [42, 3, -2], [45, 3, -1]],
+      parts: [[0, 4], [4, 8]],
+      intro: 'Kurze Töne, viel Luft dazwischen. Die Eins sitzt, alles andere fällt auf „e“ und „a“. Die letzten drei Töne laufen chromatisch in die nächste Eins.',
+      more: 'Im Funk zählt die Pause so viel wie der Ton. Spiel die Töne kurz und trocken – die Lücken sind der Groove.' },
+  ];
+  const CATS = [['all', 'Alle'], ['hook', 'Hooks'], ['bass', 'Bass'], ['arp', 'Arps'], ['fill', 'Fills']];
+  const lickById = (id) => LICKS.find((l) => l.id === id) || null;
+
+  /* ------------------------------------------------------------------------
+     DURCHHALTEN — Leiter (je Baustein gespeichert als `hold` = Zahl der
+     geschafften Stufen, 0–4). on/off: Takte mit Snare / still, im Wechsel.
+     ------------------------------------------------------------------------ */
+  const HOLD_STAGES = [
+    { bars: 4,  on: 0, off: 0, name: '4 Takte' },                // Snare durchgehend
+    { bars: 8,  on: 0, off: 0, name: '8 Takte' },                // Snare durchgehend
+    { bars: 8,  on: 2, off: 2, name: '8 Takte mit Lücken' },     // 2 Takte Snare, 2 Takte still, …
+    { bars: 16, on: 2, off: 4, name: '16 Takte mit Lücken' },    // 2 Takte Snare, 4 Takte still, …
+  ];
+  const stageOf = (stage) => (typeof stage === 'number' ? HOLD_STAGES[clamp(stage, 1, 4) - 1] : stage);
+  const stageHasGaps = (stage) => stageOf(stage).on > 0;
+
+  /** Plan der Begleitung je Takt: true = Snare, false = still. Stufe 1–4
+   *  oder ein Eintrag aus HOLD_STAGES. */
+  function holdPlan(stage) {
+    const st = stageOf(stage);
+    if (!st.on) return Array(st.bars).fill(true);
+    const period = st.on + st.off;
+    return Array.from({ length: st.bars }, (_, b) => b % period < st.on);
+  }
+
+  /** Trefferfenster: knapp unter der halben kürzesten Notenlänge, höchstens 130 ms.
+   *  Gleiche Formel wie uebe-lab.html (toleranceFor). */
+  const toleranceFor = (gapSec) => Math.min(.13, Math.max(.035, gapSec * .45));
+
+  /**
+   * Auswertung eines Durchhalten-Laufs (Kopie in uebe-lab.html — beide
+   * Fassungen müssen identisch bleiben, gleiche Testvektoren).
+   *   expected: Soll-Zeitpunkte im ABSOLUTEN Raster (Sekunden), nie am ersten
+   *             Anschlag neu ausgerichtet; Zahlen oder { t, pc } (Tonklasse).
+   *   taps:     Anschläge (Sekunden) — Zahlen oder { t, pc }.
+   *   barStart / barSec: Anfang des ersten Takts und Taktdauer.
+   *   tol:      Trefferfenster (s). plan: je Takt true (Snare) / false (still).
+   * → { bars: [{ expected, hit, meanOffset, extra, silent }], held, tendency,
+   *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null) }
+   */
+  function judgeHold({ expected, taps, barStart, barSec, tol, plan }) {
+    const nBars = plan.length;
+    const timeOf = (x) => (typeof x === 'number' ? x : x.t);
+    const exp = expected.map((e) => ({ t: timeOf(e), pc: typeof e === 'number' ? null : e.pc })).sort((a, b) => a.t - b.t);
+    const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
+    const barOf = (t) => Math.floor((t - barStart) / barSec + 1e-9);
+    const bars = Array.from({ length: nBars }, (_, b) => ({ expected: 0, hit: 0, meanOffset: 0, extra: 0, silent: plan[b] === false, sum: 0 }));
+    const hits = [];
+    for (const e of exp) {
+      const b = barOf(e.t);
+      if (b < 0 || b >= nBars) continue;
+      bars[b].expected++;
+      let best = null;
+      for (const x of tp) {
+        if (x.used || Math.abs(x.t - e.t) > tol) continue;
+        if (e.pc !== null && x.pc !== null && e.pc !== x.pc) continue;
+        if (!best || Math.abs(x.t - e.t) < Math.abs(best.t - e.t)) best = x;
+      }
+      if (!best) continue;
+      best.used = true;
+      bars[b].hit++; bars[b].sum += best.t - e.t;
+      hits.push({ t: e.t, off: best.t - e.t });
+    }
+    for (const x of tp) {
+      if (x.used) continue;
+      const b = barOf(x.t);
+      if (b >= 0 && b < nBars) bars[b].extra++;
+    }
+    for (const b of bars) { b.meanOffset = b.hit ? b.sum / b.hit : 0; delete b.sum; }
+    // Tendenz: lineare Regression der Abweichungen über der Zeit; Unterschied
+    // Anfang → Ende des Laufs (über die Spanne der Soll-Punkte).
+    let tendency = 'steady';
+    if (hits.length >= 6) {
+      const n = hits.length;
+      const mt = hits.reduce((a, h) => a + h.t, 0) / n, mo = hits.reduce((a, h) => a + h.off, 0) / n;
+      let num = 0, den = 0;
+      for (const h of hits) { num += (h.t - mt) * (h.off - mo); den += (h.t - mt) ** 2; }
+      const slope = den ? num / den : 0;
+      const span = exp.length ? exp[exp.length - 1].t - exp[0].t : 0;
+      const change = slope * span;
+      tendency = change < -tol / 2 ? 'faster' : change > tol / 2 ? 'slower' : 'steady';
+    }
+    // Faden gerissen: zwei aufeinanderfolgende Takte mit weniger als der Hälfte der Soll-Punkte.
+    const weak = (b) => bars[b].expected > 0 && bars[b].hit < bars[b].expected / 2;
+    let lostAt = null;
+    for (let b = 0; b + 1 < nBars; b++) if (weak(b) && weak(b + 1)) { lostAt = b + 1; break; }
+    // Wiedereinstieg nach Lücken: jeweils der erste Snare-Takt nach einer Lücke.
+    let reentry = null;
+    if (plan.includes(false)) {
+      const firsts = bars.map((_, b) => b).filter((b) => plan[b] && b > 0 && plan[b - 1] === false && bars[b].expected > 0);
+      if (firsts.length) reentry = firsts.reduce((a, b) => a + bars[b].hit / bars[b].expected, 0) / firsts.length >= .75 ? 'good' : 'late';
+    }
+    const okBar = (b) => !bars[b].expected || bars[b].hit >= .75 * bars[b].expected;
+    const lastTwo = bars.slice(-2).filter((b) => b.expected > 0);
+    const held = bars.every((_, b) => okBar(b)) && lastTwo.every((b) => Math.abs(b.meanOffset) <= tol);
+    return { bars, held, tendency, lostAt, reentry };
+  }
+
+  /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
+  function holdMessage(result, stage) {
+    const st = stageOf(stage);
+    const gaps = stageHasGaps(st);
+    if (result.held && result.tendency === 'steady') return `Durchgehalten – ${st.bars} Takte, ruhig und gleichmäßig.`;
+    if (result.held && result.tendency === 'faster') return 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.';
+    if (result.held && result.tendency === 'slower') return 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.';
+    if (result.lostAt && gaps && result.reentry === 'late') return `Bis Takt ${result.lostAt - 1} lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.`;
+    if (result.lostAt) return `Bis Takt ${result.lostAt - 1} lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.`;
+    if (result.tendency === 'faster') return 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.';
+    if (result.tendency === 'slower') return 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.';
+    return 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.';
+  }
+
+  /** Stufenbezeichnung eines Tons (Halbtöne über root, mod 12). */
+  const DEGREES = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
+  const degreeLabel = (semis) => DEGREES[mod(semis, 12)];
+
+  /** Rückmeldung zu „Stückweise“. want/got: [{ midi, t }] (t in Sekunden,
+   *  relativ zum eigenen ersten Ton), tol: Trefferfenster. → { ok, text }. */
+  function partMessage({ want, got, tol }) {
+    if (got.length !== want.length) return { ok: false, text: `Das waren ${got.length} Töne, im Teil sind es ${want.length}. Hör ihn nochmal.` };
+    // Tonklassen prüfen: erster falscher Ton.
+    for (let i = 0; i < want.length; i++) {
+      if (mod(got[i].midi, 12) === mod(want[i].midi, 12)) continue;
+      const d = mod(want[i].midi - got[i].midi + 6, 12) - 6; // wo der richtige Ton liegt, vom gespielten aus
+      const dist = Math.abs(d) === 1 ? 'einen halben Schritt' : Math.abs(d) === 2 ? 'einen ganzen Schritt' : 'weiter';
+      const dir = d > 0 ? 'höher' : 'tiefer';
+      const lead = i === 0 ? 'Der erste Ton liegt' : `Fast! Die Richtung stimmt bis Ton ${i}. Ton ${i + 1} liegt`;
+      return { ok: false, text: `${lead} ${dist} ${dir}.` };
+    }
+    // Oktavabweichung (nur ein Hinweis).
+    const shift = got.map((g, i) => Math.round((g.midi - want[i].midi) / 12)).find((s) => s !== 0);
+    const octave = shift ? ` (eine Oktave ${shift > 0 ? 'höher' : 'tiefer'} – geht auch)` : '';
+    // Rhythmus relativ zum eigenen ersten Ton.
+    for (let i = 1; i < want.length; i++) {
+      const diff = (got[i].t - got[0].t) - (want[i].t - want[0].t);
+      if (Math.abs(diff) > tol) return { ok: true, text: `Die Töne stimmen! Der ${i + 1}. kam etwas ${diff < 0 ? 'früh' : 'spät'}.${octave}` };
+    }
+    return { ok: true, text: `Genau so!${octave}` };
+  }
+
+  /* ------------------------------------------------------------------------
+     STATUS UND WIEDERHOLEN MIT ABSTAND
+     ------------------------------------------------------------------------ */
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** Datum + n Tage (lokale Zeit, wie progressDate in der App). */
+  function addDays(date, n) {
+    const [y, m, d] = date.split('-').map(Number);
+    return localDate(new Date(y, m - 1, d + n));
+  }
+  /** Nächste Fälligkeit: noch wackelig → morgen; geht schon → 3 Tage; sitzt →
+   *  7, beim nächsten Mal 21, danach 60 Tage (streak 0/1/2+); jede andere
+   *  Einschätzung setzt streak auf 0. */
+  function nextDue(rating, streak, today) {
+    if (rating === 'shaky') return { due: addDays(today, 1), streak: 0 };
+    if (rating === 'ok') return { due: addDays(today, 3), streak: 0 };
+    if (rating === 'solid') {
+      const s = Number.isInteger(streak) && streak > 0 ? Math.min(streak, 2) : 0;
+      return { due: addDays(today, [7, 21, 60][s]), streak: Math.min(2, s + 1) };
+    }
+    return { due: null, streak: 0 };
+  }
+  /** Neu (nie eingeschätzt), Lerne (zuletzt „wackelig“ oder „geht schon“), Sitzt. */
+  function statusOf(item) {
+    if (!item || !item.rating) return 'Neu';
+    return item.rating === 'solid' ? 'Sitzt' : 'Lerne';
+  }
+  /** Zahl der fälligen Bausteine (gültiges `due` ≤ heute). */
+  function dueIds(items, today) {
+    if (!items || typeof items !== 'object') return [];
+    return Object.entries(items).filter(([id, it]) => lickById(id) && it && DATE_RE.test(it.due || '') && it.due <= today)
+      .sort((a, b) => a[1].due.localeCompare(b[1].due)).map(([id]) => id);
+  }
+
+  /* ------------------------------------------------------------------------
+     BEGLEITUNG — 4/4-Groove, neutral: Bassdrum 1 und 3, Snare 2 und 4, Hi-Hat
+     als gleichmäßiges Raster. Er spielt den Lick nie vor. level: full
+     (alles), backbeat (Bassdrum + Snare), snare (nur Snare), off.
+     ------------------------------------------------------------------------ */
+  const GROOVE_KICK = [0, 24];
+  const GROOVE_SNARE = [12, 36];
+  /** Hi-Hat alle 6 Ticks, alle 3, wenn irgendein Ton auf t % 6 ≠ 0 beginnt. */
+  const hatStep = (lick) => (lick.notes.some((n) => n[0] % 6 !== 0) ? 3 : 6);
+  function grooveFor(lick, level) {
+    const out = { kick: [], snare: [], hat: [] };
+    if (level === 'full' || level === 'backbeat') out.kick = [...GROOVE_KICK];
+    if (level === 'full' || level === 'backbeat' || level === 'snare') out.snare = [...GROOVE_SNARE];
+    if (level === 'full') { const st = hatStep(lick); for (let t = 0; t < TICKS_BAR; t += st) out.hat.push(t); }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------------
+     TASTATUR — Lage des Licks: von der weißen Taste auf/unter dem tiefsten
+     bis zur weißen Taste auf/über dem höchsten Ton, mindestens 8 weiße
+     Tasten (gleichmäßig nach beiden Seiten ergänzt); „Okt −/+“ verschiebt
+     um 12, Grenzen MIDI 24–96.
+     ------------------------------------------------------------------------ */
+  const IS_BLACK = [false, true, false, true, false, false, true, false, true, false, true, false];
+  const KEY_MIN = 24, KEY_MAX = 96, MIN_WHITES = 8;
+  const isWhite = (m) => !IS_BLACK[mod(m, 12)];
+  const whitesBetween = (lo, hi) => { let n = 0; for (let m = lo; m <= hi; m++) if (isWhite(m)) n++; return n; };
+  /** Erlaubte Oktavverschiebung eines Licks (−1, 0, 1), damit die Lage in 24–96 bleibt. */
+  function octaveLimits(lick) {
+    const semis = lick.notes.map((n) => n[2]);
+    const lo = lick.root + Math.min(...semis), hi = lick.root + Math.max(...semis);
+    return [clamp(Math.ceil((KEY_MIN + 2 - lo) / 12), -1, 0), clamp(Math.floor((KEY_MAX - 2 - hi) / 12), 0, 1)];
+  }
+  function keyboardRange(lick, octaveShift = 0) {
+    const semis = lick.notes.map((n) => n[2]);
+    const shift = 12 * clamp(octaveShift, -1, 1);
+    let lo = lick.root + Math.min(...semis) + shift, hi = lick.root + Math.max(...semis) + shift;
+    while (!isWhite(lo)) lo--;
+    while (!isWhite(hi)) hi++;
+    let down = true;
+    while (whitesBetween(lo, hi) < MIN_WHITES) {
+      const canDown = lo - 1 >= KEY_MIN, canUp = hi + 1 <= KEY_MAX;
+      if (!canDown && !canUp) break;
+      if ((down && canDown) || !canUp) { lo--; while (!isWhite(lo) && lo > KEY_MIN) lo--; } else { hi++; while (!isWhite(hi) && hi < KEY_MAX) hi++; }
+      down = !down;
+    }
+    return [lo, hi];
+  }
+
+  /* ------------------------------------------------------------------------
+     ZUSTAND UND ABLAGE
+     ------------------------------------------------------------------------ */
+  const PRESET_NAMES = ['Analog Lead', 'Bright Saw', 'Neon Pluck', 'Growl Bass', 'Soft Brass'];
+  const RATINGS = ['shaky', 'ok', 'solid'];
+  const STEP_NAMES = ['Hören', 'Mitsingen', 'Startton', 'Stückweise', 'Ganz', 'Durchhalten', 'Notenbild'];
+  const freshState = () => ({ v: 1, lick: LICKS[0].id, notes: 'last', glide: true, octave: {}, sound: {}, items: {} });
+  const intIn = (v, lo, hi, dflt = lo) => (Number.isInteger(v) ? clamp(v, lo, hi) : dflt);
+
+  /** Gespeicherter Stand → gültiger Stand: unbekannte Lick-IDs verworfen, Zahlen
+   *  begrenzt, unbekannte Werte → Standard, fehlendes `v` → leer. */
+  function sanitizeLicksState(raw) {
+    const out = freshState();
+    if (!raw || typeof raw !== 'object' || raw.v !== 1) return out;
+    if (lickById(raw.lick)) out.lick = raw.lick;
+    out.notes = raw.notes === 'off' ? 'off' : 'last';
+    out.glide = typeof raw.glide === 'boolean' ? raw.glide : true;
+    const oct = raw.octave && typeof raw.octave === 'object' ? raw.octave : {};
+    const snd = raw.sound && typeof raw.sound === 'object' ? raw.sound : {};
+    const items = raw.items && typeof raw.items === 'object' ? raw.items : {};
+    for (const l of LICKS) {
+      if ([-1, 0, 1].includes(oct[l.id])) out.octave[l.id] = oct[l.id];
+      if (PRESET_NAMES.includes(snd[l.id])) out.sound[l.id] = snd[l.id];
+      const it = items[l.id];
+      if (!it || typeof it !== 'object') continue;
+      out.items[l.id] = {
+        step: intIn(it.step, 0, 7), parts: intIn(it.parts, 0, l.parts.length), whole: intIn(it.whole, 0, 3), hold: intIn(it.hold, 0, 4),
+        rating: RATINGS.includes(it.rating) ? it.rating : null, streak: intIn(it.streak, 0, 2),
+        due: typeof it.due === 'string' && DATE_RE.test(it.due) ? it.due : null,
+      };
+    }
+    return out;
+  }
+
+  const state = freshState();
+  const STORAGE_ID = 'licks';
+  const storage = (() => { try { return window.parent !== window ? window.parent.chorToolStorage || null : null; } catch { return null; } })();
+  const progressApi = (() => { try { return window.parent !== window ? window.parent.chorProgress || null : null; } catch { return null; } })();
+  let saveTimer = 0;
+  let selfTesting = false;
+  function persist() {
+    if (!storage || selfTesting) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, state)).catch(() => {}); }, 300);
+  }
+  const itemOf = (id) => state.items[id] || (state.items[id] = { step: 0, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null });
+  const soundOf = (lick) => state.sound[lick.id] || lick.preset;
+  const octaveOf = (lick) => clamp(state.octave[lick.id] || 0, ...octaveLimits(lick));
+  /** Schritt k (1–7) geschafft? */
+  function stepDone(lick, k) {
+    const it = state.items[lick.id];
+    if (!it) return false;
+    if (k <= 3) return it.step >= k;
+    if (k === 4) return it.parts >= lick.parts.length;
+    if (k === 5) return it.whole >= 3;
+    if (k === 6) return it.hold >= 2;
+    return it.step >= 7;
+  }
+  /** Schritt k wählbar? Man darf jederzeit zurück, vorwärts nur der nächste; Durchhalten
+   *  und Notenbild gibt es nach „Ganz“; Notenbild fehlt bei notes: 'off'. */
+  function stepUnlocked(lick, k) {
+    if (k === 7 && state.notes === 'off') return false;
+    let reached = 1;
+    while (reached < 5 && stepDone(lick, reached)) reached++;
+    if (k <= reached) return true;
+    return (k === 6 || k === 7) && stepDone(lick, 5);
+  }
+  /** Schritte der Leiste (Notenbild fehlt bei notes: 'off'). */
+  const stepsShown = () => STEP_NAMES.map((name, i) => ({ k: i + 1, name })).filter((s) => !(s.k === 7 && state.notes === 'off'));
+
+  /* ------------------------------------------------------------------------
+     KLANG — Synth und Schlagzeug ohne Samples (Web Audio).
+
+     Synth: Kopie aus groove-lab.js, Stand e63013a (SOUND_DEFAULTS, WAVE_LEVEL, fünf Presets
+     unverändert, playTone mit Stimmen-Freigabe, Mono- und Glide-Logik).
+     Weggelassen: Hall und Echo (reverbWet/echoWet werden ignoriert), Ebenen
+     und Effekt-Busse. Ausgang über einen eigenen Bus (`dest`), der beim
+     Stoppen ausblendet.
+     ------------------------------------------------------------------------ */
+  const SOUND_DEFAULTS = {
+    wave: 'triangle', attack: .01, decay: .2, sustain: .6, release: .4,
+    cutoff: 3000, resonance: 2, filterEnvAmount: 0, filterType: 'lowpass', drive: 0,
+    lfoRate: 0, lfoDepth: 0, lfoSync: 0,
+    detune: 0, width: 0, subLevel: 0, pitchDrop: 0,
+    vibratoRate: 0, vibratoDepth: 0, vibratoDelay: 0,
+    glide: 0, mono: false, reverbWet: .2, echoWet: .1,
+  };
+  const SYNTH_PRESETS = [
+    { name: 'Neon Pluck', wave: 'sawtooth', attack: .004, decay: .1, sustain: .3, release: .16, cutoff: 5200, resonance: 6, filterEnvAmount: 2400, reverbWet: .1, echoWet: .22,
+      pitchDrop: 180, width: .3 },
+    { name: 'Soft Brass', wave: 'sawtooth', attack: .06, decay: .26, sustain: .58, release: .3, cutoff: 2600, resonance: 4, filterEnvAmount: 1400, reverbWet: .16, echoWet: .08,
+      pitchDrop: 55, vibratoRate: 5.5, vibratoDepth: 9, vibratoDelay: .28 },
+    { name: 'Analog Lead', wave: 'sawtooth', attack: .008, decay: .15, sustain: .6, release: .25, cutoff: 3800, resonance: 9, filterEnvAmount: 2600, reverbWet: .08, echoWet: .14,
+      pitchDrop: 130, vibratoRate: 6, vibratoDepth: 14, vibratoDelay: .18, drive: .2, mono: true, glide: .08 },
+    { name: 'Bright Saw', wave: 'sawtooth', attack: .01, decay: .2, sustain: .45, release: .4, cutoff: 7200, resonance: 5, filterEnvAmount: 1600, reverbWet: .2, echoWet: .16,
+      pitchDrop: 90, width: .5, vibratoRate: 5, vibratoDepth: 9, vibratoDelay: .2 },
+    { name: 'Growl Bass', wave: 'sawtooth', attack: .01, decay: .18, sustain: .6, release: .28, cutoff: 900, resonance: 9, filterEnvAmount: 500, reverbWet: .1, echoWet: .08,
+      detune: 6, subLevel: .45, pitchDrop: 220, drive: .5, mono: true, glide: .06 },
+  ];
+  const WAVE_LEVEL = { sine: 1, triangle: .9, square: .55, sawtooth: .6 };
+  const soundFromPreset = (name) => {
+    const p = SYNTH_PRESETS.find((x) => x.name === name) || SYNTH_PRESETS[0];
+    const { name: n, ...params } = p;
+    return { ...SOUND_DEFAULTS, ...params };
+  };
+  const noteHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+  // Pegel: Vorbild-Ton deutlich über dem Schlagzeug (Bus `run.bus`, siehe drum()).
+  const LEAD_VELOCITY = .3;
+  const OWN_VELOCITY = .3;
+  const VORBILD_GLIDE_DEFAULT = .08; // Dauer des Glides auf Noten mit { glide: true }, wenn das Preset keinen hat
+
+  const engine = {
+    ctx: null, master: null, noise: null, voices: new Set(), lastMidi: {}, monoVoice: {},
+
+    async start() {
+      if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
+      const ctx = new Ctx({ latencyHint: 'interactive' });
+      this.ctx = ctx;
+      this.master = ctx.createGain();
+      this.master.gain.value = .8;
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -10; limiter.ratio.value = 8;
+      this.master.connect(limiter).connect(ctx.destination);
+      this.noise = ctx.createBuffer(1, ctx.sampleRate * .5, ctx.sampleRate);
+      const d = this.noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      await ctx.resume();
+    },
+
+    /** Eigener Bus für einen Lauf: ein Gain-Knoten, den man beim Stoppen ausblendet. */
+    newBus() { const bus = this.ctx.createGain(); bus.connect(this.master); return bus; },
+    fadeBus(bus) {
+      if (!bus || !this.ctx) return;
+      const t = this.ctx.currentTime;
+      bus.gain.cancelScheduledValues(t);
+      bus.gain.setValueAtTime(bus.gain.value, t);
+      bus.gain.linearRampToValueAtTime(0, t + .08);
+      setTimeout(() => bus.disconnect(), 400);
+    },
+
+    /* ---- Schlagzeug: Kopie aus metronom.html (drum, tone, noiseHit; Stand
+       e08b9d5) mit Ausgang `dest`. Zusätzlich zu kick/snare/rim/hat der
+       offene Hi-Hat für den Schlussschlag. Pegel: Begleitung −8 dB gegenüber
+       dem Metronom-Tool (DRUM_GAIN), damit der Lick deutlich darüber liegt. ---- */
+    tone(time, { freq, type = 'sine', gain, decay, attack = .001, filter }, dest) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, time);
+      g.gain.setValueAtTime(.0001, time);
+      g.gain.linearRampToValueAtTime(gain, time + attack);
+      g.gain.exponentialRampToValueAtTime(.0001, time + attack + decay);
+      let node = osc.connect(g);
+      if (filter) {
+        const f = ctx.createBiquadFilter();
+        f.type = filter.type; f.frequency.value = filter.freq; f.Q.value = filter.q ?? .7;
+        node = node.connect(f);
+      }
+      node.connect(dest || this.master);
+      osc.start(time); osc.stop(time + attack + decay + .02);
+    },
+    noiseHit(time, { type = 'highpass', freq, q = .7, gain, decay }, dest) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource();
+      const f = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      src.buffer = this.noise;
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      g.gain.setValueAtTime(gain, time);
+      g.gain.exponentialRampToValueAtTime(.0001, time + decay);
+      src.connect(f).connect(g).connect(dest || this.master);
+      src.start(time); src.stop(time + decay + .02);
+    },
+    drum(kind, time, vel = 1, dest) {
+      const v = vel * DRUM_GAIN;
+      switch (kind) {
+        case 'kick': {
+          const ctx = this.ctx;
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.frequency.setValueAtTime(150, time);
+          osc.frequency.exponentialRampToValueAtTime(45, time + .11);
+          g.gain.setValueAtTime(.8 * v, time);
+          g.gain.exponentialRampToValueAtTime(.0001, time + .22);
+          osc.connect(g).connect(dest || this.master);
+          osc.start(time); osc.stop(time + .24);
+          break;
+        }
+        case 'snare':
+          this.tone(time, { freq: 185, type: 'triangle', gain: .28 * v, decay: .09 }, dest);
+          this.noiseHit(time, { type: 'bandpass', freq: 1800, q: 1.1, gain: .3 * v, decay: .16 }, dest);
+          break;
+        case 'rim':
+          this.tone(time, { freq: 1700, type: 'square', gain: .12 * v, decay: .025, filter: { type: 'bandpass', freq: 2000, q: 3 } }, dest);
+          break;
+        case 'hat':
+          this.noiseHit(time, { freq: 7000, gain: .07 * v, decay: .045 }, dest);
+          break;
+        case 'open':
+          this.noiseHit(time, { freq: 7200, q: .9, gain: .06 * v, decay: .3 }, dest);
+          break;
+        default: break;
+      }
+    },
+    /** Einzähler-Klick (Klang wie das Metronom „click“). */
+    click(time, strong, dest) {
+      this.tone(time, { freq: strong ? 1000 : 800, gain: strong ? .22 : .12, decay: .05 }, dest);
+    },
+    /** Liegender Grundton + Quinte (Sinus, keine Terz), leise — verrät nicht Dur/Moll. */
+    drone(midi, dest) {
+      const ctx = this.ctx;
+      const t = ctx.currentTime + .02;
+      const out = [];
+      for (const m of [midi, midi + 7]) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = noteHz(m);
+        g.gain.setValueAtTime(.0001, t);
+        g.gain.linearRampToValueAtTime(DRONE_GAIN, t + .12);
+        osc.connect(g).connect(dest || this.master);
+        osc.start(t);
+        out.push({ osc, g });
+      }
+      return out;
+    },
+    stopDrone(list) {
+      if (!list || !this.ctx) return;
+      const t = this.ctx.currentTime;
+      for (const { osc, g } of list) {
+        try { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(.0001, g.gain.value), t); g.gain.linearRampToValueAtTime(.0001, t + .15); osc.stop(t + .2); } catch { /* schon gestoppt */ }
+      }
+    },
+
+    /** Eine Synth-Note. Mit `duration` komplett auf der Audio-Uhr geplant,
+     *  ohne klingt sie bis releaseVoice(). opts: layer ('lead' = Vorbild,
+     *  'own' = eigenes Spiel; der Mono-Modus des Presets gilt nur beim Vorbild),
+     *  glide (Sekunden; 0 = aus), dest. */
+    playTone(sound, midi, time, velocity, duration, { layer = 'lead', glide = 0, dest } = {}) {
+      const ctx = this.ctx;
+      if (this.voices.size >= 24) { for (const oldest of this.voices) { this._release(oldest, true); break; } }
+      if (sound.mono && layer === 'lead') {
+        const prev = this.monoVoice[layer];
+        if (prev && !prev.done) this._releaseAt(prev, time);
+      }
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      const nyquist = ctx.sampleRate * .45;
+      const baseCutoff = Math.min(sound.cutoff, nyquist);
+      filter.type = sound.filterType || 'lowpass';
+      filter.Q.value = sound.resonance;
+      const attack = Math.max(.003, sound.attack);
+      const peakCutoff = Math.min(baseCutoff + (sound.filterEnvAmount || 0), nyquist);
+      filter.frequency.setValueAtTime(baseCutoff, time);
+      filter.frequency.linearRampToValueAtTime(peakCutoff, time + attack);
+      filter.frequency.linearRampToValueAtTime(baseCutoff, time + attack + sound.decay);
+      // Lautstärke-Hüllkurve; ist die Note kürzer als Attack+Decay, wird die Kurve abgeschnitten.
+      const voiceCount = 1 + (sound.detune ? 1.1 : 0) + (sound.subLevel || 0) * .6;
+      const peak = velocity * (WAVE_LEVEL[sound.wave] ?? 1) / voiceCount;
+      const sustainLevel = peak * sound.sustain;
+      gain.gain.setValueAtTime(.0001, time);
+      if (duration && duration < attack) {
+        gain.gain.linearRampToValueAtTime(Math.max(.0001, peak * duration / attack), time + duration);
+      } else {
+        gain.gain.linearRampToValueAtTime(peak, time + attack);
+        if (duration && duration < attack + sound.decay) {
+          const v = peak + (sustainLevel - peak) * (duration - attack) / sound.decay;
+          gain.gain.linearRampToValueAtTime(Math.max(.0001, v), time + duration);
+        } else {
+          gain.gain.linearRampToValueAtTime(Math.max(.0001, sustainLevel), time + attack + sound.decay);
+        }
+      }
+      let stopAt = null;
+      if (duration) {
+        gain.gain.setTargetAtTime(0, time + duration, Math.max(.01, sound.release / 4));
+        stopAt = time + duration + sound.release * 1.3 + .05;
+      }
+      const baseFreq = noteHz(midi);
+      const fromMidi = this.lastMidi[layer];
+      this.lastMidi[layer] = midi;
+      const setPitch = (param, ratio) => {
+        if (glide > 0 && fromMidi !== undefined && fromMidi !== midi) {
+          param.setValueAtTime(noteHz(fromMidi) * ratio, time);
+          param.exponentialRampToValueAtTime(baseFreq * ratio, time + glide);
+        } else param.setValueAtTime(baseFreq * ratio, time);
+      };
+      const oscillators = [];
+      const lfos = [];
+      const detune = sound.detune || 0;
+      const spreads = detune ? [[0, 0], [detune, 1], [-detune, -1]] : [[0, 0]];
+      for (const [cents, side] of spreads) {
+        const osc = ctx.createOscillator();
+        osc.type = sound.wave;
+        setPitch(osc.frequency, 1);
+        osc.detune.value = cents;
+        const voiceGain = ctx.createGain();
+        voiceGain.gain.value = cents === 0 ? 1 : .55;
+        let out = osc.connect(voiceGain);
+        if (side && sound.width && ctx.createStereoPanner) {
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = side * sound.width;
+          out = out.connect(pan);
+        }
+        out.connect(filter);
+        if (sound.vibratoDepth) {
+          const lfo = ctx.createOscillator();
+          lfo.frequency.value = sound.vibratoRate || 5;
+          const lfoGain = ctx.createGain();
+          const delay = sound.vibratoDelay ?? .15;
+          lfoGain.gain.setValueAtTime(0, time);
+          lfoGain.gain.setValueAtTime(0, time + delay);
+          lfoGain.gain.linearRampToValueAtTime(sound.vibratoDepth, time + delay + .25);
+          lfo.connect(lfoGain).connect(osc.detune);
+          lfo.start(time);
+          lfos.push(lfo);
+        }
+        if (sound.pitchDrop) {
+          const drop = Math.max(.02, attack);
+          osc.detune.setValueAtTime(cents + sound.pitchDrop, time);
+          osc.detune.linearRampToValueAtTime(cents, time + drop);
+        }
+        osc.start(time);
+        oscillators.push(osc);
+      }
+      if (sound.subLevel) {
+        const sub = ctx.createOscillator();
+        sub.type = 'sine';
+        setPitch(sub.frequency, .5);
+        const subGain = ctx.createGain();
+        subGain.gain.value = sound.subLevel;
+        sub.connect(subGain).connect(filter);
+        sub.start(time);
+        oscillators.push(sub);
+      }
+      filter.connect(gain).connect(dest || this.master);
+      const voice = { oscillators, lfos, gain, release: sound.release, done: false, layer };
+      if (stopAt !== null) {
+        oscillators.forEach((osc) => osc.stop(stopAt));
+        lfos.forEach((lfo) => lfo.stop(stopAt));
+      }
+      this.voices.add(voice);
+      if (sound.mono && layer === 'lead') this.monoVoice[layer] = voice;
+      oscillators[0].addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
+      return voice;
+    },
+    _release(voice, fast = false) {
+      if (!voice || voice.done || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const release = fast ? .03 : voice.release;
+      try {
+        voice.gain.gain.cancelScheduledValues(now);
+        voice.gain.gain.setValueAtTime(Math.max(.0001, voice.gain.gain.value), now);
+        voice.gain.gain.exponentialRampToValueAtTime(.0001, now + release);
+        const stopAt = now + release + .02;
+        voice.oscillators.forEach((osc) => osc.stop(stopAt));
+        voice.lfos.forEach((lfo) => lfo.stop(stopAt));
+      } catch { /* Oszillator kann schon beendet sein */ }
+      voice.done = true;
+      this.voices.delete(voice);
+    },
+    /** Mono-Modus: die vorige Stimme genau dann abbrechen, wenn die neue einsetzt. */
+    _releaseAt(voice, time) {
+      try {
+        voice.gain.gain.cancelScheduledValues(time);
+        voice.gain.gain.setTargetAtTime(0, time, .015);
+        voice.oscillators.forEach((osc) => osc.stop(time + .12));
+        voice.lfos.forEach((lfo) => lfo.stop(time + .12));
+      } catch { /* schon beendet */ }
+      voice.done = true;
+      this.voices.delete(voice);
+    },
+    releaseVoice(voice) { this._release(voice, false); },
+    releaseAll() { this.voices.forEach((v) => this._release(v, true)); },
+  };
+  // Schlagzeug: −8 dB gegenüber dem Metronom-Tool (0,4), Grundton-Liegeklang leise.
+  const DRUM_GAIN = .4;
+  const DRONE_GAIN = .05;
+
+  /* ------------------------------------------------------------------------
+     LAUF — eine Folge von Ereignissen auf der Audio-Uhr. Die Ereignisse
+     eines Laufs stehen vorab fest (Zeit in Sekunden ab Start) und werden mit
+     Vorlauf eingeplant; kein setTimeout für Töne. Ein Takt = 48 Ticks.
+     ------------------------------------------------------------------------ */
+  const tickSecOf = (lick) => 60 / lick.bpm / 12;
+  const barSecOf = (lick) => TICKS_BAR * tickSecOf(lick);
+
+  /** Baukasten für die Ereignisliste eines Laufs. */
+  function makeTimeline(lick) {
+    const tickSec = tickSecOf(lick), barSec = barSecOf(lick);
+    const events = [];
+    const expected = [];   // { t (s ab Start), pc, midi, dur, bar }
+    const tl = {
+      lick, tickSec, barSec, events, expected, bars: 0,
+      /** Einzähler: ein Takt, vier Klicks. */
+      countIn(bar) { for (let i = 0; i < 4; i++) events.push({ t: bar * barSec + i * 12 * tickSec, type: 'click', strong: i === 0 }); return bar + 1; },
+      /** Begleitung eines Takts (level: full | backbeat | snare | off). */
+      groove(bar, level) {
+        const g = grooveFor(lick, level);
+        for (const [kind, list] of Object.entries(g)) for (const tk of list) events.push({ t: bar * barSec + tk * tickSec, type: 'drum', kind });
+      },
+      /** Lick-Töne aus den Takten [lickBar0, lickBar1) an Takt `bar` legen; only: Notenindizes. */
+      lick(bar, { from = 0, to = lick.bars, only = null, glide = true, expect = false, octave = 0 } = {}) {
+        lick.notes.forEach((n, i) => {
+          const bi = Math.floor(n[0] / TICKS_BAR);
+          if (bi < from || bi >= to || (only && !only.includes(i))) return;
+          const t = (bar + bi - from) * barSec + (n[0] % TICKS_BAR) * tickSec;
+          const midi = lick.root + n[2] + 12 * octave;
+          const dur = n[1] * tickSec;
+          if (expect) expected.push({ t, pc: mod(midi, 12), midi, dur, bar: bar + bi - from, i });
+          else events.push({ t, type: 'tone', midi, dur, glide: glide && !!(n[3] && n[3].glide) });
+        });
+      },
+      end(bar) { tl.bars = bar; },
+    };
+    return tl;
+  }
+
+  const run = { playing: false, timer: 0, t0: 0, bus: null, idx: 0, events: [], taps: [], onEnd: null, endAt: 0, tl: null, sound: null };
+  const LATENCY_CAP = .25;
+  /** Lauf starten. tl: Zeitleiste (Ereignisse ab 0, `tl.bars` Takte), onEnd(run). */
+  async function startRun(tl, onEnd) {
+    stopRun(false);
+    try { await engine.start(); } catch { return false; }
+    const ctx = engine.ctx;
+    run.playing = true;
+    run.tl = tl;
+    run.sound = soundFromPreset(soundOf(tl.lick));
+    run.bus = engine.newBus();
+    run.t0 = ctx.currentTime + .15;
+    run.events = [...tl.events].sort((a, b) => a.t - b.t);
+    run.idx = 0; run.taps = []; run.onEnd = onEnd;
+    run.endAt = run.t0 + tl.bars * tl.barSec;
+    engine.lastMidi = {};
+    const pump = () => {
+      if (!run.playing) return;
+      const horizon = ctx.currentTime + .25;
+      while (run.idx < run.events.length && run.t0 + run.events[run.idx].t < horizon) fire(run.events[run.idx++]);
+      if (ctx.currentTime > run.endAt + .25) { const cb = run.onEnd; const info = { taps: run.taps, t0: run.t0, tl: run.tl }; stopRun(false); if (cb) cb(info); }
+    };
+    run.timer = setInterval(pump, 25);
+    pump();
+    return true;
+  }
+  function fire(ev) {
+    const time = run.t0 + ev.t;
+    if (ev.type === 'click') engine.click(time, ev.strong, run.bus);
+    else if (ev.type === 'drum') engine.drum(ev.kind, time, 1, run.bus);
+    else if (ev.type === 'tone') {
+      const glide = ev.glide ? (run.sound.glide || VORBILD_GLIDE_DEFAULT) : 0;
+      engine.playTone(run.sound, ev.midi, time, LEAD_VELOCITY, ev.dur, { layer: 'lead', glide, dest: run.bus });
+    }
+  }
+  /** Lauf abbrechen bzw. beenden; ohne Nachklingen (Bus blendet aus). */
+  function stopRun(notify = true) {
+    if (!run.playing && !run.timer) return;
+    clearInterval(run.timer); run.timer = 0;
+    const cb = run.onEnd;
+    run.playing = false; run.onEnd = null;
+    engine.fadeBus(run.bus); run.bus = null;
+    if (notify && cb) cb(null);
+  }
+
+  /* ---- Eigenes Spiel: Bildschirmtasten (Pointer Events, Mehrfach-Touch) ---- */
+  const own = { voices: new Map(), last: null };
+  function ownNoteOn(midi) {
+    if (!engine.ctx) { engine.start().then(() => ownNoteOn(midi)); return; }
+    if (engine.ctx.state !== 'running') engine.ctx.resume();
+    const lick = currentLick();
+    const sound = { ...soundFromPreset(lick ? soundOf(lick) : PRESET_NAMES[0]), mono: false };
+    const now = engine.ctx.currentTime;
+    const glide = state.glide ? (sound.glide || VORBILD_GLIDE_DEFAULT) : 0;
+    const voice = engine.playTone(sound, midi, now + .005, OWN_VELOCITY, undefined, { layer: 'own', glide, dest: engine.master });
+    own.voices.set(midi, voice);
+    if (run.playing) run.taps.push({ t: now - Math.min(LATENCY_CAP, engine.ctx.outputLatency || engine.ctx.baseLatency || 0), pc: mod(midi, 12), midi });
+    return voice;
+  }
+  function ownNoteOff(midi) {
+    const v = own.voices.get(midi);
+    own.voices.delete(midi);
+    if (v) engine.releaseVoice(v);
+  }
+
+  /* ------------------------------------------------------------------------
+     ANZEIGE
+     ------------------------------------------------------------------------ */
+  const ui = {
+    view: 'list', cat: 'all', step: 1, part: 0, holdStage: 1, running: '', feedback: '', feedbackKind: '', result: null,
+    foundKey: null, startFails: 0, drone: null, review: null, visitRated: false, lastRunAt: {}, rollTick: -1,
+  };
+  const currentLick = () => (ui.view === 'lick' ? lickById(state.lick) : null);
+  const SVG_W = 340;
+
+  /** Neutraler Platzhalter statt Raster und Notenbild (Hören statt Sehen). Hängt
+   *  von nichts ab — nicht von Länge, Taktzahl oder den Tönen des Bausteins. */
+  const placeholderHtml = () => `<div class="stage" data-placeholder><svg viewBox="0 0 ${SVG_W} 104" role="img" aria-label="Nach Gehör"><line class="staff" x1="8" y1="62" x2="${SVG_W - 8}" y2="62"/><text class="hint" x="${SVG_W / 2}" y="44" text-anchor="middle">Nach Gehör</text></svg></div>`;
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const statusText = (id) => statusOf(state.items[id]);
+
+  function renderList() {
+    $('#cat-chips').innerHTML = CATS.map(([id, label]) => `<button class="chip" type="button" data-cat="${id}" aria-pressed="${ui.cat === id}">${label}</button>`).join('');
+    const today = localDate();
+    const due = dueIds(state.items, today);
+    $('#review-card').hidden = !due.length;
+    $('#review-text').textContent = `Heute fällig: ${due.length} ${due.length === 1 ? 'Lick' : 'Licks'}`;
+    const list = LICKS.filter((l) => ui.cat === 'all' || l.cat === ui.cat);
+    $('#list').innerHTML = list.map((l) => {
+      const playing = ui.running === `preview:${l.id}`;
+      return `<div class="lick-row" data-id="${l.id}">
+        <button class="play" type="button" data-act="preview" data-id="${l.id}" aria-label="${playing ? 'Stoppen' : `${esc(l.name)} anhören`}">${playing
+    ? '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></svg>'}</button>
+        <button class="open" type="button" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span><span class="sub">${l.preset} · Stufe ${l.level}</span></button>
+        <span class="status" data-status="${statusText(l.id)}">${statusText(l.id)}</span></div>`;
+    }).join('');
+    const nothing = ui.review === 'none';
+    $('#list-note').textContent = nothing ? 'Heute ist nichts fällig.' : '';
+  }
+
+  function show(view) {
+    ui.view = view;
+    $('#view-list').hidden = view !== 'list';
+    $('#view-lick').hidden = view !== 'lick';
+    $('#dock').hidden = view !== 'lick';
+    $('[data-act="back"]').hidden = view !== 'lick';
+    $('[data-act="settings"]').hidden = view !== 'lick';
+  }
+
+  function setFeedback(text, kind = '') { ui.feedback = text; ui.feedbackKind = kind; const el = $('.feedback'); if (el) { el.textContent = text; el.className = `feedback${kind ? ` is-${kind}` : ''}`; } }
+
+  /** Gerät zum ersten Schritt, der noch nicht geschafft ist. */
+  function firstOpenStep(lick) {
+    for (const s of stepsShown()) if (s.k <= 5 && !stepDone(lick, s.k)) return s.k;
+    return 5;
+  }
+
+  function openLick(id, step = null) {
+    const lick = lickById(id);
+    if (!lick) return;
+    stopRun(false); releaseDrone();
+    state.lick = id;
+    ui.view = 'lick';
+    Object.assign(ui, { step: step || firstOpenStep(lick), part: 0, foundKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
+    ui.part = clamp(state.items[id]?.parts || 0, 0, lick.parts.length - 1);
+    ui.holdStage = clamp((state.items[id]?.hold || 0) + 1, 1, 4);
+    setFeedback('');
+    show('lick');
+    renderLick();
+    persist();
+  }
+
+  function renderLick() {
+    const lick = lickById(state.lick);
+    if (!lick) return;
+    const it = itemOf(lick.id);
+    $('#lick-name').textContent = lick.name;
+    $('#lick-sub').textContent = `${lick.preset} · Stufe ${lick.level} · ${lick.bars} ${lick.bars === 1 ? 'Takt' : 'Takte'} · ♩ = ${lick.bpm}`;
+    // Schrittleiste
+    $('#steps').innerHTML = stepsShown().map((s) => {
+      const done = stepDone(lick, s.k);
+      const cls = `step${done ? ' is-done' : ''}${ui.step === s.k ? ' is-now' : ''}${s.k === 7 ? ' is-optional' : ''}`;
+      return `<button class="${cls}" type="button" data-step="${s.k}"${stepUnlocked(lick, s.k) ? '' : ' disabled'}${ui.step === s.k ? ' aria-current="step"' : ''}>${done ? '✓ ' : ''}${s.k}. ${s.name}${s.k === 7 ? ' (optional)' : ''}</button>`;
+    }).join('');
+    renderPanel(lick, it);
+    buildKeyboard();
+    // Klang und Glide
+    $('#sound-select').innerHTML = PRESET_NAMES.map((n) => `<option value="${n}"${n === soundOf(lick) ? ' selected' : ''}>${n}</option>`).join('');
+    $('[data-act="glide"]').setAttribute('aria-pressed', String(state.glide));
+    const [lo, hi] = octaveLimits(lick);
+    const shift = octaveOf(lick);
+    $('#oct-range').textContent = shift > 0 ? `+${shift}` : String(shift);
+    $('[data-act="oct-down"]').disabled = shift <= lo;
+    $('[data-act="oct-up"]').disabled = shift >= hi;
+  }
+
+  const runLabel = (key) => ui.running === key;
+  const stopBtn = (key) => (runLabel(key) ? '<button class="btn" type="button" data-act="stop">■ Stopp</button>' : '');
+
+  function renderPanel(lick, it) {
+    const p = $('#panel');
+    if (ui.review && ui.review.queue && ui.review.phase) { p.innerHTML = reviewPanelHtml(lick, it); return; }
+    const k = ui.step;
+    let html = '';
+    if (k === 1) {
+      html = `<p>${esc(lick.intro)}</p><p class="more">${esc(lick.more)}</p>${placeholderHtml()}
+        <div class="actions"><button class="btn primary" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn('hear')}
+        <button class="btn" type="button" data-act="next-step"${stepDone(lick, 1) || ui.result === 'heard' ? '' : ' disabled'}>Weiter</button></div>
+        <p class="note">Der Lick läuft zweimal über einen Groove, dazwischen ein leerer Takt. Noch nichts nachspielen.</p>`;
+    } else if (k === 2) {
+      html = `<p>Sing mit auf „du“. Die Stimme lernt den Verlauf, die Finger folgen.</p>${placeholderHtml()}
+        <div class="actions"><button class="btn primary" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>▶ Hören und mitsingen</button>${stopBtn('sing')}
+        <button class="btn" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
+    } else if (k === 3) {
+      const found = ui.foundKey !== null;
+      html = `<p>Welcher Ton ist der erste? Hör den Lick, dann liegen Grundton und Quinte leise – tipp auf die Tasten, bis du ihn gefunden hast.</p>${placeholderHtml()}
+        <div class="actions"><button class="btn primary" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>▶ Lick und Grundton hören</button>${stopBtn('startton')}
+        ${ui.startFails >= 3 && !found ? '<button class="btn" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
+        ${ui.startFails >= 6 && !found ? '<button class="btn" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
+        <button class="btn" type="button" data-act="next-step"${found || stepDone(lick, 3) ? '' : ' disabled'}>Weiter</button></div>
+        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>`;
+    } else if (k === 4) {
+      const n = lick.parts.length;
+      const partNo = clamp(ui.part, 0, n - 1);
+      const [a, b] = lick.parts[partNo];
+      const last = partNo === n - 1;
+      html = `<p><b>Teil ${partNo + 1} von ${n}</b> · ${b - a} Töne. Erst hörst du den Teil, dann ein Takt weiter Groove, dann bist du dran.</p>${ui.result && ui.result.part === partNo ? resultTimelineHtml(ui.result) : placeholderHtml()}
+        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+        <div class="actions"><button class="btn primary" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
+        ${ui.result && ui.result.part === partNo && ui.result.ok ? `<button class="btn" type="button" data-act="part-next">${last ? 'Weiter: Ganz' : 'Nächster Teil'}</button>` : ''}
+        ${partNo > 0 ? '<button class="btn" type="button" data-act="part-prev">‹ Vorheriger Teil</button>' : ''}</div>`;
+    } else if (k === 5) {
+      const r = Math.min(it.whole, 2);
+      const label = ['mit vollem Groove', 'mit Bassdrum und Snare', 'nur mit der Snare'][r];
+      html = `<p><b>Runde ${Math.min(it.whole + 1, 3)} von 3</b> · ${label}. Du hörst den Lick einmal, dann spielst du ihn im selben Takt selbst.${it.whole >= 3 ? ' Alle drei Runden sind geschafft – du kannst weiter üben.' : ''}</p>
+        ${ui.result && ui.result.kind === 'whole' ? resultTimelineHtml(ui.result) : placeholderHtml()}
+        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+        <div class="actions"><button class="btn primary" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
+        ${it.whole >= 3 ? '<button class="btn" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
+    } else if (k === 6) {
+      html = holdPanelHtml(lick, it);
+    } else if (k === 7) {
+      html = `<p>So sieht der Lick aus – Zeilen sind die Töne, oben zählst du mit. Die Marke läuft mit, die Tasten leuchten.</p>${rollHtml(lick)}
+        <div class="actions"><button class="btn primary" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>▶ Mitspielen und mitlesen</button>${stopBtn('roll')}
+        <button class="btn" type="button" data-act="roll-done">${stepDone(lick, 7) ? '✓ Fertig' : 'Fertig'}</button></div>`;
+    }
+    p.innerHTML = html;
+    if (k === 6 || (it.whole >= 3 && k === 5)) { /* Einschätzung hängt am Durchhalten (Schritt 6) */ }
+  }
+
+  /** Einschätzung: „Wie fühlt es sich an?“ — „Sitzt“ erst nach 8 Takten Durchhalten. */
+  function rateHtml(lick, it) {
+    return `<p style="margin-top:12px"><b>Wie fühlt es sich an?</b></p>
+      <div class="rate"><button class="btn" type="button" data-rate="shaky">Noch wackelig</button><button class="btn" type="button" data-rate="ok">Geht schon</button>
+      <button class="btn" type="button" data-rate="solid"${it.hold >= 2 ? '' : ' disabled'}>Sitzt</button></div>
+      ${it.hold >= 2 ? '' : '<p class="note">Erst 8 Takte durchhalten.</p>'}
+      <p class="note">Bestimmt, wann der Lick wieder in „Heute wiederholen“ auftaucht.${it.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[it.rating]}.` : ''}</p>`;
+  }
+
+  function holdPanelHtml(lick, it) {
+    const stageNo = ui.holdStage;
+    const st = HOLD_STAGES[stageNo - 1];
+    const ladder = HOLD_STAGES.map((s, i) => {
+      const n = i + 1;
+      const done = it.hold >= n;
+      const next = n === it.hold + 1;
+      const enabled = n <= it.hold + 1;
+      const label = ['4 Takte', '8 Takte', '8 mit Lücken', '16 mit Lücken'][i];
+      return `<button type="button" class="${done ? 'is-done' : ''}${next ? ' is-next' : ''}" data-stage="${n}" aria-pressed="${stageNo === n}"${enabled ? '' : ' disabled'}>${done ? '✓ ' : ''}${label}</button>`;
+    }).join('');
+    const before = holdBefore(st);
+    const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
+    const nextStage = result && result.held && stageNo < 4 ? stageNo + 1 : null;
+    return `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
+      <p>${before}</p>
+      ${result ? stripHtml(result) : placeholderHtml()}
+      <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+      <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+      ${nextStage ? `<button class="btn" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
+      ${result && result.held && stageNo === 4 ? '<span class="note" style="align-self:center">Alle Stufen geschafft.</span>' : ''}</div>
+      ${(it.hold >= 1 || result) && !ui.running ? rateHtml(lick, it) : ''}`;
+  }
+  /** Ein Satz vor dem Start: was kommt (nicht während des Laufs — dort gibt es keinen Zähler). */
+  function holdBefore(st) {
+    if (!st.on) return `${st.bars} Takte. Die Snare spielt durch – du hältst den Lick über die ganze Zeit. Am Ende ein Schlussschlag.`;
+    const times = st.bars / (st.on + st.off);
+    const sets = Math.ceil(times);
+    return `${st.bars} Takte. Das Schlagzeug setzt ${sets === 2 ? 'zweimal' : sets === 3 ? 'dreimal' : `${sets}-mal`} für ${st.off} Takte aus – spiel weiter. Am Ende ein Schlussschlag.`;
+  }
+
+  /* ---- Ergebnis-Anzeigen (erst nach dem Lauf) ---- */
+
+  /** Zeitleiste: Soll-Punkte ○, eigene Töne ● (grün genau, gelb knapp, rot zu viel). */
+  function resultTimelineHtml(res) {
+    const W = SVG_W - 24, x0 = 12;
+    const span = res.span || 1;
+    const X = (t) => (x0 + clamp(t / span, -.03, 1.03) * W).toFixed(1);
+    const parts = [`<line class="tl" x1="${x0}" y1="52" x2="${x0 + W}" y2="52"/>`];
+    for (let b = 0; b <= Math.round(res.bars || 0); b++) parts.push(`<line class="bar-l" x1="${X(b * res.barSec)}" y1="36" x2="${X(b * res.barSec)}" y2="68"/>`);
+    for (const e of res.exp) parts.push(`<circle class="tg is-${e.status}" cx="${X(e.t)}" cy="52" r="5"/>`);
+    for (const t of res.taps) parts.push(`<rect class="tp is-${t.status}" x="${(Number(X(t.t)) - 2).toFixed(1)}" y="40" width="4" height="24" rx="2"/>`);
+    return `<div class="stage" data-result><svg viewBox="0 0 ${SVG_W} 104" role="img" aria-label="Ergebnis: ${res.hits} von ${res.exp.length} Tönen getroffen">${parts.join('')}
+      <text class="lbl" x="12" y="92">○ Soll   ● du   grün = genau · gelb = knapp · rot = zu viel</text></svg></div>`;
+  }
+  /** Taktstreifen nach dem Durchhalten: „sicher“ ≥ 75 %, „wackelig“ ≥ 50 %, „verloren“ < 50 %; stille Takte schraffiert. */
+  function stripHtml(res) {
+    const cells = res.bars.map((b, i) => {
+      const f = b.expected ? b.hit / b.expected : 1;
+      const cls = f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost';
+      return `<div class="cell ${cls}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}">${i + 1}</div>`;
+    }).join('');
+    return `<div class="strip" role="img" aria-label="Takte: ${res.bars.filter((b) => b.expected && b.hit >= .75 * b.expected).length} von ${res.bars.length} sicher">${cells}</div>
+      <div class="legend"><span><i style="background:var(--ok-bg)"></i>sicher</span><span><i style="background:var(--wobble-bg)"></i>wackelig</span><span><i style="background:var(--lost-bg)"></i>verloren</span>
+      <span><i style="background-image:repeating-linear-gradient(135deg,rgba(36,27,61,.4) 0 2px,transparent 2px 5px)"></i>still (ohne Schlagzeug)</span></div>`;
+  }
+
+  /** Piano-Roll (Notenbild, letzter Schritt): Zeilen = vorkommende Töne, oben Zählzeilen „1 e + a“. */
+  function rollHtml(lick) {
+    const midis = [...new Set(lick.notes.map((n) => lick.root + n[2]))].sort((a, b) => b - a);
+    const rowH = 20, top = 22, left = 84, right = SVG_W - 8, total = lick.bars * TICKS_BAR;
+    const H = top + midis.length * rowH + 8;
+    const X = (tick) => left + (tick / total) * (right - left);
+    const Y = (midi) => top + midis.indexOf(midi) * rowH;
+    const p = [];
+    midis.forEach((m, i) => { if (i % 2 === 0) p.push(`<rect class="row-bg" x="0" y="${top + i * rowH}" width="${SVG_W}" height="${rowH}"/>`); });
+    const step = hatStep(lick);
+    const labels = step === 3 ? ['1', 'e', '+', 'a'] : ['1', '+'];
+    for (let t = 0; t < total; t += step) {
+      const inBeat = t % 12;
+      const beatNo = Math.floor((t % TICKS_BAR) / 12) + 1;
+      const txt = inBeat === 0 ? String(beatNo) : labels[(inBeat / step) % labels.length];
+      p.push(`<text class="lbl" x="${X(t) + 1}" y="14">${txt}</text>`);
+    }
+    for (let b = 0; b <= lick.bars; b++) p.push(`<line class="bar-l" x1="${X(b * TICKS_BAR)}" y1="${top}" x2="${X(b * TICKS_BAR)}" y2="${top + midis.length * rowH}"/>`);
+    midis.forEach((m) => p.push(`<text class="row-l" x="6" y="${Y(m) + 14}">${esc(noteLabel(m))} · ${degreeLabel(m - lick.root)}</text>`));
+    lick.notes.forEach((n, i) => {
+      const m = lick.root + n[2];
+      const w = Math.max(3, X(n[0] + n[1]) - X(n[0]) - 1.5);
+      p.push(`<rect class="roll-note" x="${X(n[0]).toFixed(1)}" y="${Y(m) + 3}" width="${w.toFixed(1)}" height="${rowH - 6}" rx="3"/>`);
+      if (n[3] && n[3].glide && i > 0) {
+        const prev = lick.notes[i - 1];
+        p.push(`<line class="roll-glide" x1="${(X(prev[0] + prev[1]) - 1).toFixed(1)}" y1="${Y(lick.root + prev[2]) + rowH / 2}" x2="${X(n[0]).toFixed(1)}" y2="${Y(m) + rowH / 2}"/>`);
+      }
+    });
+    p.push(`<line class="ph" id="roll-ph" x1="${left}" y1="${top - 4}" x2="${left}" y2="${top + midis.length * rowH}" style="visibility:hidden"/>`);
+    return `<div class="stage" data-roll data-left="${left}" data-right="${right}"><svg viewBox="0 0 ${SVG_W} ${H}" role="img" aria-label="Notenbild von ${esc(lick.name)}">${p.join('')}</svg></div>`;
+  }
+
+  /* ---- Tastatur ---- */
+  const keyEls = new Map();
+  function buildKeyboard() {
+    const lick = currentLick();
+    const kb = $('#keyboard');
+    kb.replaceChildren();
+    keyEls.clear();
+    if (!lick) return;
+    const [lo, hi] = keyboardRange(lick, octaveOf(lick));
+    const whites = [];
+    for (let m = lo; m <= hi; m++) if (isWhite(m)) whites.push(m);
+    const wPct = 100 / whites.length;
+    whites.forEach((midi, i) => {
+      const el = document.createElement('div');
+      el.className = 'white';
+      el.dataset.midi = String(midi);
+      kb.append(el);
+      keyEls.set(midi, el);
+      const black = midi + 1;
+      if (i < whites.length - 1 && IS_BLACK[mod(black, 12)]) {
+        const b = document.createElement('div');
+        b.className = 'black';
+        b.dataset.midi = String(black);
+        b.style.left = `${(i + 1) * wPct - wPct * .31}%`;
+        b.style.width = `${wPct * .62}%`;
+        kb.append(b);
+        keyEls.set(black, b);
+      }
+    });
+    paintKeys();
+  }
+  const keysDown = new Map(); // pointerId → midi
+  function paintKeys() {
+    const down = new Set(keysDown.values());
+    keyEls.forEach((el, midi) => {
+      el.classList.toggle('is-down', down.has(midi));
+      el.querySelector('.key-mark')?.remove();
+    });
+    // Die gefundene Starttaste bleibt als kleine Stufenmarke stehen — sie verrät nur den Ausgangston.
+    const lick = currentLick();
+    if (lick && ui.foundKey !== null && keyEls.has(ui.foundKey)) {
+      const mark = document.createElement('span');
+      mark.className = 'key-mark';
+      mark.textContent = degreeLabel(lick.notes[0][2]);
+      keyEls.get(ui.foundKey).append(mark);
+    }
+  }
+  const setLit = (midis) => keyEls.forEach((el, midi) => el.classList.toggle('is-lit', midis.has(midi)));
+
+  function keyAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const key = el && el.closest('.white, .black');
+    return key ? Number(key.dataset.midi) : null;
+  }
+  const kbEl = $('#keyboard');
+  kbEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const midi = keyAt(e.clientX, e.clientY);
+    if (midi === null) return;
+    keysDown.set(e.pointerId, midi);
+    ownNoteOn(midi);
+    onOwnKey(midi);
+    paintKeys();
+  });
+  // Nicht waagrecht wischbar: kein Gleiten auf andere Tasten, Lagenwechsel nur über „Okt −/+“.
+  const upKey = (e) => {
+    if (!keysDown.has(e.pointerId)) return;
+    const midi = keysDown.get(e.pointerId);
+    keysDown.delete(e.pointerId);
+    if (![...keysDown.values()].includes(midi)) ownNoteOff(midi);
+    paintKeys();
+  };
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => kbEl.addEventListener(type, upKey));
+  kbEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  /* ------------------------------------------------------------------------
+     ABLÄUFE DER SCHRITTE
+     ------------------------------------------------------------------------ */
+  function releaseDrone() { if (ui.drone) { engine.stopDrone(ui.drone); ui.drone = null; } }
+  const rerender = () => { const lick = currentLick(); if (lick) { renderPanel(lick, itemOf(lick.id)); if (ui.step !== 7) setLit(new Set()); } };
+
+  /** Lauf mit Statusanzeige: key = Name der Anzeige, evalFn(info) nach dem Ende. */
+  async function beginRun(key, tl, evalFn) {
+    ui.running = key;
+    setFeedback('');
+    rerender();
+    const ok = await startRun(tl, (info) => {
+      ui.running = '';
+      if (info && evalFn) evalFn(info);
+      const l = currentLick();
+      if (l) renderLick(); else renderList();
+    });
+    if (!ok) { ui.running = ''; setFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); rerender(); }
+    else if (!run.playing) { /* sofort beendet */ }
+  }
+
+  /** Vorbild einmal über Groove `full`: Einzähler, Lick, ggf. weiter. */
+  function tlHear(lick, times = 1, gapBars = 0) {
+    const tl = makeTimeline(lick);
+    let bar = tl.countIn(0);
+    const octave = state.octave[lick.id] ? octaveOf(lick) : 0;
+    for (let k = 0; k < times; k++) {
+      for (let b = 0; b < lick.bars; b++) tl.groove(bar + b, 'full');
+      tl.lick(bar, { octave });
+      bar += lick.bars;
+      if (k < times - 1) for (let b = 0; b < gapBars; b++) { tl.groove(bar, 'full'); bar++; }
+    }
+    tl.end(bar);
+    return tl;
+  }
+
+  const timeIn = (taps, from, to) => taps.filter((x) => x.t >= from && x.t <= to).sort((a, b) => a.t - b.t);
+  const minGapSec = (expList, fallback = 12) => {
+    let g = Infinity;
+    for (let i = 1; i < expList.length; i++) g = Math.min(g, expList[i].t - expList[i - 1].t);
+    return Number.isFinite(g) ? g : fallback * .05;
+  };
+  /** Jedem Soll-Punkt den nächsten freien Anschlag mit richtiger Tonklasse zuordnen. */
+  function assign(exp, taps, tol) {
+    const used = new Set();
+    const res = exp.map((e) => {
+      let best = -1, bd = Infinity;
+      taps.forEach((x, i) => { const d = Math.abs(x.t - e.t); if (!used.has(i) && d <= tol && x.pc === e.pc && d < bd) { bd = d; best = i; } });
+      if (best < 0) return { t: e.t, status: 'miss' };
+      used.add(best);
+      return { t: e.t, status: bd <= .04 ? 'good' : 'near', off: taps[best].t - e.t, tap: best };
+    });
+    const tapStatus = taps.map((x, i) => ({ t: x.t, status: 'extra' }));
+    res.forEach((r) => { if (r.tap !== undefined) tapStatus[r.tap].status = r.status; });
+    return { exp: res, taps: tapStatus, hits: res.filter((r) => r.status !== 'miss').length };
+  }
+
+  /* Schritt 1–3 */
+  function stepHear() {
+    const lick = currentLick();
+    beginRun('hear', tlHear(lick, 2, 1), () => { ui.result = 'heard'; });
+  }
+  function stepSing() {
+    const lick = currentLick();
+    beginRun('sing', tlHear(lick, 2, 0), () => { ui.result = 'sung'; });
+  }
+  function stepStartton() {
+    const lick = currentLick();
+    releaseDrone();
+    beginRun('startton', tlHear(lick, 1), (info) => {
+      if (!info || ui.step !== 3 || !engine.ctx) return;
+      // Grundton + Quinte leise, in mittlerer Lage: keine Terz (verrät nicht Dur/Moll).
+      const rm = lick.root - 12 * Math.floor((lick.root - 55) / 12);
+      ui.drone = engine.drone(rm, engine.master);
+      setFeedback('Grundton und Quinte liegen. Welcher Ton beginnt den Lick?');
+    });
+  }
+  /** Eine Taste gedrückt (Schritt 3: Startton finden). */
+  function onOwnKey(midi) {
+    const lick = currentLick();
+    if (!lick || ui.step !== 3 || ui.running || ui.foundKey !== null || ui.review) return;
+    if (!ui.drone && ui.startFails === 0 && !ui.result) { /* auch ohne vorheriges Hören probieren */ }
+    const first = lick.root + lick.notes[0][2];
+    if (mod(midi, 12) === mod(first, 12)) {
+      ui.foundKey = midi;
+      releaseDrone();
+      const it = itemOf(lick.id);
+      it.step = Math.max(it.step, 3);
+      setFeedback(`Gefunden – das ist die ${degreeLabel(lick.notes[0][2])}.`, 'good');
+      persist();
+      renderLick();
+    } else {
+      ui.startFails++;
+      setFeedback(ui.startFails >= 3 ? 'Noch nicht. Hör den Lick nochmal an – wie beginnt er?' : 'Noch nicht – probier eine andere Taste.', '');
+      const el = $('.feedback');
+      if (ui.startFails === 3 || ui.startFails === 6) renderPanel(lick, itemOf(lick.id));
+      else if (el) el.textContent = ui.feedback;
+    }
+  }
+  function showMe() {
+    const lick = currentLick();
+    const first = lick.root + lick.notes[0][2] + 12 * octaveOf(lick);
+    const cand = [...keyEls.keys()].filter((m) => mod(m, 12) === mod(first, 12)).sort((a, b) => Math.abs(a - first) - Math.abs(b - first))[0];
+    ui.foundKey = cand ?? first;
+    releaseDrone();
+    const it = itemOf(lick.id);
+    it.step = Math.max(it.step, 3);
+    setFeedback(`Das ist die ${degreeLabel(lick.notes[0][2])} – der erste Ton.`, 'good');
+    persist();
+    renderLick();
+  }
+
+  /* Schritt 4: stückweise */
+  function partBars(lick, part) {
+    const [a, b] = part;
+    const k0 = Math.floor(lick.notes[a][0] / TICKS_BAR), k1 = Math.floor(lick.notes[b - 1][0] / TICKS_BAR);
+    return { k0, k1, n: k1 - k0 + 1, only: lick.notes.map((_, i) => i).filter((i) => i >= a && i < b) };
+  }
+  function stepPart() {
+    const lick = currentLick();
+    const partNo = clamp(ui.part, 0, lick.parts.length - 1);
+    const { k0, k1, n, only } = partBars(lick, lick.parts[partNo]);
+    const octave = octaveOf(lick);
+    const tl = makeTimeline(lick);
+    let bar = tl.countIn(0);
+    // Vorbild: nur dieser Teil, Groove full; danach ein Takt Groove weiter.
+    for (let b = 0; b < n; b++) tl.groove(bar + b, 'full');
+    tl.lick(bar, { from: k0, to: k1 + 1, only, octave });
+    bar += n;
+    tl.groove(bar, 'full'); bar++;
+    // Du: ein Takt (bei Teilen über die Taktmitte hinaus zwei) mit Groove backbeat.
+    const you = bar;
+    for (let b = 0; b < n; b++) tl.groove(you + b, 'backbeat');
+    tl.lick(you, { from: k0, to: k1 + 1, only, expect: true, octave });
+    tl.end(you + n);
+    beginRun('part', tl, (info) => {
+      const exp = tl.expected;
+      const tol = toleranceFor(minGapSec(exp));
+      const window = timeIn(info.taps, info.t0 + you * tl.barSec - tol, info.t0 + (you + n) * tl.barSec + .25);
+      const got = window.map((x) => ({ midi: x.midi, t: x.t - window[0].t }));
+      const want = exp.map((e) => ({ midi: e.midi, t: e.t - exp[0].t }));
+      const msg = window.length ? partMessage({ want, got, tol }) : { ok: false, text: 'Da kam noch nichts. Hör den Teil nochmal – dann bist du nach dem einen Takt Groove dran.' };
+      // Anzeige relativ zum eigenen ersten Ton.
+      const shift = window.length ? window[0].t - info.t0 - exp[0].t : 0;
+      const mapped = assign(exp.map((e) => ({ t: e.t + info.t0 + shift, pc: e.pc })), window, tol);
+      ui.result = { kind: 'part', part: partNo, ok: msg.ok, span: n * tl.barSec, bars: n, barSec: tl.barSec, ...relTimes(mapped, info.t0 + you * tl.barSec + shift), hits: mapped.hits };
+      setFeedback(msg.text, msg.ok ? 'good' : '');
+    });
+  }
+  /** Zeiten einer Zuordnung relativ zu `origin` (für die Zeitleiste). */
+  function relTimes(m, origin) {
+    return { exp: m.exp.map((e) => ({ ...e, t: e.t - origin })), taps: m.taps.map((x) => ({ ...x, t: x.t - origin })) };
+  }
+  function partNext() {
+    const lick = currentLick();
+    const it = itemOf(lick.id);
+    const partNo = clamp(ui.part, 0, lick.parts.length - 1);
+    it.parts = Math.max(it.parts, partNo + 1);
+    ui.result = null; setFeedback('');
+    if (partNo === lick.parts.length - 1) { it.step = Math.max(it.step, 4); ui.step = 5; }
+    else ui.part = partNo + 1;
+    persist(); renderLick();
+  }
+
+  /* Schritt 5: ganz */
+  function stepWhole() {
+    const lick = currentLick();
+    const it = itemOf(lick.id);
+    const r = Math.min(it.whole, 2);
+    const level = ['full', 'backbeat', 'snare'][r];
+    const octave = octaveOf(lick);
+    const tl = makeTimeline(lick);
+    let bar = tl.countIn(0);
+    for (let b = 0; b < lick.bars; b++) tl.groove(bar + b, level);
+    tl.lick(bar, { octave });
+    bar += lick.bars;
+    const you = bar;
+    for (let b = 0; b < lick.bars; b++) tl.groove(you + b, level);
+    tl.lick(you, { expect: true, octave });
+    tl.end(you + lick.bars);
+    beginRun('whole', tl, (info) => {
+      const exp = tl.expected;
+      const tol = toleranceFor(minGapSec(exp));
+      const start = info.t0 + you * tl.barSec;
+      const window = timeIn(info.taps, start - tol - .1, start + lick.bars * tl.barSec + tol);
+      const abs = assign(exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), window, tol);
+      const success = abs.hits === exp.length;
+      let text;
+      if (success) text = 'Genau so!';
+      else if (!window.length) text = 'Da kam noch nichts. Hör den Lick nochmal – nach dem Vorbild bist du dran.';
+      else {
+        const want = exp.map((e) => ({ midi: e.midi, t: e.t - exp[0].t }));
+        const got = window.map((x) => ({ midi: x.midi, t: x.t - window[0].t }));
+        const pm = partMessage({ want, got, tol });
+        if (pm.ok && pm.text.startsWith('Genau')) {
+          const offs = abs.exp.filter((e) => e.off !== undefined).map((e) => e.off);
+          const mean = offs.length ? offs.reduce((a, b) => a + b, 0) / offs.length : (window[0].t - (exp[0].t + info.t0));
+          text = `Die Töne und der Rhythmus stimmen – du bist als Ganzes etwas ${mean < 0 ? 'früh' : 'spät'} eingesetzt. Zähl den Einzähler innerlich weiter.`;
+        } else text = pm.text;
+      }
+      ui.result = { kind: 'whole', ok: success, span: lick.bars * tl.barSec, bars: lick.bars, barSec: tl.barSec, ...relTimes(abs, start), hits: abs.hits };
+      setFeedback(text, success ? 'good' : '');
+      if (success) { it.whole = Math.min(3, it.whole + 1); if (it.whole >= 3) it.step = Math.max(it.step, 5); persist(); }
+    });
+  }
+
+  /* Schritt 6: durchhalten */
+  function tlHold(lick, stageNo, withDemo) {
+    const st = HOLD_STAGES[stageNo - 1];
+    const plan = holdPlan(stageNo);
+    const octave = octaveOf(lick);
+    const tl = makeTimeline(lick);
+    let bar = tl.countIn(0);
+    if (withDemo) {
+      for (let b = 0; b < lick.bars; b++) tl.groove(bar + b, 'full');
+      tl.lick(bar, { octave });
+      bar += lick.bars;
+      bar = tl.countIn(bar);
+    }
+    const start = bar;
+    plan.forEach((snare, b) => { if (snare) tl.groove(start + b, 'snare'); });
+    // Der Lick läuft nicht mit: eigenes Spiel über `bars` Takte, der Baustein wiederholt sich.
+    for (let rep = 0; rep < st.bars / lick.bars; rep++) tl.lick(start + rep * lick.bars, { expect: true, octave });
+    // Schlussschlag auf der Eins nach dem letzten Takt.
+    tl.events.push({ t: (start + st.bars) * tl.barSec, type: 'drum', kind: 'kick' }, { t: (start + st.bars) * tl.barSec, type: 'drum', kind: 'open' });
+    tl.end(start + st.bars + .5);
+    return { tl, start, plan, st };
+  }
+  function stepHold() {
+    const lick = currentLick();
+    const it = itemOf(lick.id);
+    const stageNo = ui.holdStage;
+    const withDemo = !ui.lastRunAt[lick.id] || Date.now() - ui.lastRunAt[lick.id] > 10 * 60 * 1000;
+    const { tl, start, plan, st } = tlHold(lick, stageNo, withDemo);
+    beginRun('hold', tl, (info) => {
+      ui.lastRunAt[lick.id] = Date.now();
+      const exp = tl.expected;
+      const tol = toleranceFor(minGapSec(exp));
+      const taps = timeIn(info.taps, info.t0 + start * tl.barSec - tol - .1, info.t0 + (start + st.bars) * tl.barSec + tol).map((x) => ({ t: x.t, pc: x.pc }));
+      const result = judgeHold({ expected: exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), taps, barStart: info.t0 + start * tl.barSec, barSec: tl.barSec, tol, plan });
+      ui.result = { kind: 'hold', stage: stageNo, ...result };
+      setFeedback(holdMessage(result, stageNo), result.held ? 'good' : '');
+      if (result.held && stageNo === it.hold + 1) { it.hold = Math.min(4, stageNo); persist(); }
+      reportRun(lick, result.held, st.bars * tl.barSec);
+    });
+  }
+  function reportRun(lick, right, seconds) {
+    if (selfTesting || !progressApi) return;
+    try { progressApi.add({ area: 'licks', level: lick.level, right: !!right, seconds: Math.min(600, seconds) }); } catch { /* App weg */ }
+  }
+
+  /* Schritt 7: Notenbild, Mitspielen */
+  function stepRoll() {
+    const lick = currentLick();
+    beginRun('roll', tlHear(lick, 1), () => {
+      const it = itemOf(lick.id);
+      it.step = Math.max(it.step, 7);
+      persist();
+    });
+  }
+  /** Marke und leuchtende Tasten im Notenbild (nur dort, nur im Schritt „Notenbild“). */
+  function rollFrame() {
+    requestAnimationFrame(rollFrame);
+    const lick = currentLick();
+    const ph = $('#roll-ph');
+    if (!lick || ui.step !== 7 || !ph) return;
+    if (run.playing && run.tl && ui.running === 'roll') {
+      const now = engine.ctx.currentTime - run.t0 - run.tl.tickSec * 0; // ab Einzähler
+      const total = lick.bars * TICKS_BAR * run.tl.tickSec;
+      const t = now - run.tl.barSec; // Lick beginnt nach dem Einzähler
+      const roll = $('[data-roll]');
+      const left = Number(roll.dataset.left), right = Number(roll.dataset.right);
+      if (t >= 0 && t <= total) {
+        const x = left + (t / total) * (right - left);
+        ph.setAttribute('x1', x.toFixed(1)); ph.setAttribute('x2', x.toFixed(1)); ph.style.visibility = 'visible';
+      } else ph.style.visibility = 'hidden';
+      const lit = new Set();
+      const octave = octaveOf(lick);
+      lick.notes.forEach((n) => { const s = n[0] * run.tl.tickSec, e = s + n[1] * run.tl.tickSec; if (t >= s && t < e) lit.add(lick.root + n[2] + 12 * octave); });
+      setLit(lit);
+    } else { ph.style.visibility = 'hidden'; setLit(new Set()); }
+  }
+
+  /* ---- Einschätzung und Wiederholen ---- */
+  function setRating(id, rating) {
+    const it = itemOf(id);
+    if (rating === 'solid' && it.hold < 2) return;
+    const { due, streak } = nextDue(rating, it.streak, localDate());
+    Object.assign(it, { rating, due, streak });
+    ui.visitRated = true;
+    persist();
+  }
+
+  function startReview() {
+    const ids = dueIds(state.items, localDate());
+    if (!ids.length) { ui.review = 'none'; show('list'); renderList(); return; }
+    ui.review = { queue: ids, i: 0, phase: 'hear' };
+    openReviewItem();
+  }
+  function openReviewItem() {
+    const r = ui.review;
+    const id = r.queue[r.i];
+    r.phase = 'hear';
+    openLick(id, 1);
+    ui.review = r;
+    ui.holdStage = clamp(itemOf(id).hold, 1, 4);
+    ui.result = null;
+    renderLick();
+  }
+  function reviewPanelHtml(lick, it) {
+    const r = ui.review;
+    const head = `<p class="note" style="margin-top:0">Wiederholen ${r.i + 1} von ${r.queue.length}</p>`;
+    if (r.phase === 'hear') {
+      return `${head}<p>${esc(lick.intro)}</p>${placeholderHtml()}
+        <div class="actions"><button class="btn primary" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn('hear')}
+        <button class="btn" type="button" data-act="review-phase" data-phase="hold">Weiter: Durchhalten</button></div>`;
+    }
+    if (r.phase === 'hold') {
+      const st = HOLD_STAGES[ui.holdStage - 1];
+      const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
+      return `${head}<p><b>${st.name}</b> – ${holdBefore(st)}</p>${result ? stripHtml(result) : placeholderHtml()}
+        <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
+        <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+        <button class="btn" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
+    }
+    return `${head}${rateHtml(lick, it)}`;
+  }
+  function reviewAfterRating() {
+    const r = ui.review;
+    r.i++;
+    if (r.i >= r.queue.length) { ui.review = null; ui.result = null; show('list'); renderList(); $('#list-note').textContent = 'Alles wiederholt – bis zum nächsten Mal.'; return; }
+    openReviewItem();
+  }
+
+  /* ------------------------------------------------------------------------
+     BEDIENUNG
+     ------------------------------------------------------------------------ */
+  let previewLickId = null;
+  async function previewLick(id) {
+    const lick = lickById(id);
+    if (!lick) return;
+    if (ui.running === `preview:${id}`) { stopRun(true); return; }
+    ui.running = `preview:${id}`;
+    renderList();
+    const ok = await startRun(tlHear(lick, 1), () => { ui.running = ''; renderList(); });
+    if (!ok) { ui.running = ''; renderList(); }
+    previewLickId = id;
+  }
+
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    if (t.dataset.cat) { ui.cat = t.dataset.cat; renderList(); return; }
+    if (t.dataset.notesChoice) { state.notes = t.dataset.notesChoice === 'off' ? 'off' : 'last'; if (state.notes === 'off' && ui.step === 7) ui.step = 5; renderSheet(); persist(); return; }
+    if (t.dataset.step) { const k = Number(t.dataset.step); const lick = currentLick(); if (lick && stepUnlocked(lick, k)) { stopRun(true); releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick(); } return; }
+    if (t.dataset.stage) { ui.holdStage = Number(t.dataset.stage); ui.result = null; setFeedback(''); rerender(); return; }
+    if (t.dataset.rate) {
+      const lick = currentLick();
+      if (!lick) return;
+      setRating(lick.id, t.dataset.rate);
+      if (ui.review && ui.review.queue) { reviewAfterRating(); return; }
+      renderLick();
+      setFeedback('Gemerkt.', 'good');
+      const note = $('#panel .note:last-child'); if (note) note.textContent = 'Gemerkt – bestimmt, wann der Lick wieder in „Heute wiederholen“ auftaucht.';
+      return;
+    }
+    const act = t.dataset.act;
+    if (!act) return;
+    const lick = currentLick();
+    switch (act) {
+      case 'preview': previewLick(t.dataset.id); break;
+      case 'open': openLick(t.dataset.id); break;
+      case 'back':
+        stopRun(false); releaseDrone();
+        if (lick && !ui.review && !ui.visitRated && itemOf(lick.id).whole >= 3 && ui.view === 'lick' && !ui.askedLeave) { ui.askedLeave = true; ui.step = 6; renderLick(); setFeedback('Wie fühlt es sich an? Wähle unten – oder geh einfach zurück.'); break; }
+        ui.askedLeave = false; ui.review = null; show('list'); renderList(); break;
+      case 'settings': renderSheet(); $('#sheet').hidden = false; break;
+      case 'settings-close': $('#sheet').hidden = true; if (lick) renderLick(); break;
+      case 'stop': stopRun(true); releaseDrone(); rerender(); break;
+      case 'next-step': { const it = itemOf(lick.id); if (ui.step <= 3) it.step = Math.max(it.step, ui.step); ui.step = Math.min(ui.step + 1, stepsShown().length); ui.result = null; setFeedback(''); persist(); renderLick(); break; }
+      case 'hear': stepHear(); break;
+      case 'sing': stepSing(); break;
+      case 'startton': stepStartton(); break;
+      case 'show-me': showMe(); break;
+      case 'part-run': stepPart(); break;
+      case 'part-next': partNext(); break;
+      case 'part-prev': ui.part = Math.max(0, ui.part - 1); ui.result = null; setFeedback(''); renderLick(); break;
+      case 'whole-run': stepWhole(); break;
+      case 'hold-run': stepHold(); break;
+      case 'hold-next': ui.holdStage = Math.min(4, ui.holdStage + 1); ui.result = null; setFeedback(''); renderLick(); break;
+      case 'roll-run': stepRoll(); break;
+      case 'roll-done': { const it = itemOf(lick.id); it.step = Math.max(it.step, 7); persist(); stopRun(true); renderLick(); break; }
+      case 'review-start': startReview(); break;
+      case 'review-hear': ui.running = 'hear'; beginRun('hear', tlHear(lick, 1), null); break;
+      case 'review-phase': stopRun(true); ui.review.phase = t.dataset.phase; ui.result = null; setFeedback(''); renderLick(); break;
+      case 'glide': state.glide = !state.glide; t.setAttribute('aria-pressed', String(state.glide)); persist(); break;
+      case 'oct-down': case 'oct-up': {
+        if (!lick) break;
+        const [lo, hi] = octaveLimits(lick);
+        state.octave[lick.id] = clamp(octaveOf(lick) + (act === 'oct-up' ? 1 : -1), lo, hi);
+        persist(); renderLick(); break;
+      }
+      default: break;
+    }
+  });
+  $('#sound-select').addEventListener('change', (e) => {
+    const lick = currentLick();
+    if (!lick || !PRESET_NAMES.includes(e.target.value)) return;
+    state.sound[lick.id] = e.target.value;
+    persist();
+  });
+  function renderSheet() {
+    $('#notes-chips').innerHTML = [['last', 'als letzter Schritt'], ['off', 'aus']].map(([v, l]) => `<button class="chip" type="button" data-notes-choice="${v}" aria-pressed="${state.notes === v}">${l}</button>`).join('');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!$('#sheet').hidden) { $('#sheet').hidden = true; return; }
+      if (document.documentElement.classList.contains('is-embedded')) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin);
+    }
+  });
+  // Nichts klingt weiter, wenn die Seite verdeckt wird.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    stopRun(true); releaseDrone(); engine.releaseAll(); keysDown.clear(); own.voices.clear(); paintKeys();
+  });
+  window.addEventListener('pagehide', () => { stopRun(false); releaseDrone(); });
+
+  /* ------------------------------------------------------------------------
+     SELBSTPRÜFUNG — Konsole des iframes: licks.selfCheck() → Liste der Fehler
+     (leer = bestanden). Die judgeHold-Vektoren stehen wortgleich in uebe-lab.html.
+     ------------------------------------------------------------------------ */
+  /** Gemeinsame Testvektoren für judgeHold (4/4, 90 BPM, Backbeat: Soll auf 2 und 4 je Takt, tol 0,1 s). */
+  function holdVectors() {
+    const errors = [];
+    const barSec = 4 * 60 / 90, tol = .1;
+    const expectedFor = (bars) => Array.from({ length: bars }, (_, b) => [b * barSec + barSec / 4, b * barSec + 3 * barSec / 4]).flat();
+    const judge = (bars, taps, stageNo, expected = expectedFor(bars)) => judgeHold({ expected, taps, barStart: 0, barSec, tol, plan: holdPlan(stageNo) });
+    // 1. alle Anschläge exakt
+    let r = judge(16, expectedFor(16), 4);
+    if (!r.held || r.tendency !== 'steady' || r.lostAt !== null) errors.push(`Vektor 1: ${r.held}/${r.tendency}/${r.lostAt}`);
+    // 2. jeder Anschlag 8 ms früher als der vorige (16 Takte)
+    r = judge(16, expectedFor(16).map((t, i) => t - .008 * i), 4);
+    if (r.tendency !== 'faster') errors.push(`Vektor 2: ${r.tendency}`);
+    // 3. Anschläge nur bis einschließlich Takt 9 (16 Takte)
+    r = judge(16, expectedFor(9), 4);
+    if (r.lostAt !== 10 || r.held) errors.push(`Vektor 3: lostAt ${r.lostAt}, held ${r.held}`);
+    // 4. Stufe 3, stille Takte 3–4 um 0,12 s verschoben: Takt 5 exakt → 'good', Takt 5 und 6 daneben → 'late'
+    const shifted = (bars, fn) => expectedFor(bars).map((t) => fn(Math.floor(t / barSec) + 1, t));
+    r = judge(8, shifted(8, (bar, t) => (bar === 3 || bar === 4 ? t + .12 : t)), 3);
+    if (r.reentry !== 'good') errors.push(`Vektor 4a: reentry ${r.reentry}`);
+    r = judge(8, shifted(8, (bar, t) => (bar >= 3 && bar <= 6 ? t + .12 : t)), 3);
+    if (r.reentry !== 'late') errors.push(`Vektor 4b: reentry ${r.reentry}`);
+    // 5. doppelt so viele Anschläge wie Soll
+    const e8 = expectedFor(8);
+    r = judge(8, [...e8, ...e8.map((t) => t + .02)], 2);
+    const base = judge(8, e8, 2);
+    if (!(r.bars.reduce((a, b) => a + b.extra, 0) > 0) || r.bars.reduce((a, b) => a + b.hit, 0) !== base.bars.reduce((a, b) => a + b.hit, 0)) errors.push('Vektor 5: extra/Treffer');
+    // Tonklassen: falsche Tonklasse trifft nicht
+    r = judgeHold({ expected: [{ t: 1, pc: 0 }, { t: 2, pc: 4 }], taps: [{ t: 1, pc: 0 }, { t: 2, pc: 5 }], barStart: 0, barSec: 4, tol, plan: [true] });
+    if (r.bars[0].hit !== 1) errors.push(`Tonklasse: ${r.bars[0].hit} statt 1 Treffer`);
+    return errors;
+  }
+
+  function selfCheck() {
+    const errors = [];
+    // --- Inhalt
+    const ids = new Set();
+    let lastCat = null;
+    for (const l of LICKS) {
+      const w = `Lick ${l.id}`;
+      if (ids.has(l.id)) errors.push(`${w}: doppelte ID`);
+      ids.add(l.id);
+      if (!CATS.some(([c]) => c === l.cat) || !PRESET_NAMES.includes(l.preset) || !SYNTH_PRESETS.some((p) => p.name === l.preset)) errors.push(`${w}: Kategorie oder Preset`);
+      if (!(l.intro.length <= 160) || !(l.more.length <= 185)) errors.push(`${w}: Text zu lang (${l.intro.length}/${l.more.length})`);
+      let end = 0;
+      l.notes.forEach((n, i) => {
+        if (n[0] < end) errors.push(`${w}: Ton ${i + 1} überlappt oder liegt vor dem vorigen`);
+        end = n[0] + n[1];
+        if (n[1] % 3 || n[0] % 3) errors.push(`${w}: Ton ${i + 1} nicht auf dem Sechzehntelraster`);
+        if (end > l.bars * TICKS_BAR) errors.push(`${w}: Ton ${i + 1} über das Ende hinaus`);
+        const midi = l.root + n[2];
+        if (midi < 28 || midi > 88) errors.push(`${w}: Ton ${i + 1} MIDI ${midi}`);
+        if (n[3] && n[3].glide && (i === 0 || Math.abs(n[2] - l.notes[i - 1][2]) > 2)) errors.push(`${w}: Glide auf Ton ${i + 1} ungültig`);
+      });
+      let next = 0;
+      l.parts.forEach(([a, b], i) => {
+        if (a !== next) errors.push(`${w}: Teil ${i + 1} beginnt bei ${a}, erwartet ${next}`);
+        next = b;
+        if (b - a < 2 || b - a > 8) errors.push(`${w}: Teil ${i + 1} hat ${b - a} Töne`);
+        if (b > a && b <= l.notes.length && l.notes[b - 1][0] + l.notes[b - 1][1] - l.notes[a][0] > TICKS_BAR) errors.push(`${w}: Teil ${i + 1} länger als ein Takt`);
+      });
+      if (next !== l.notes.length) errors.push(`${w}: Teile enden bei ${next} statt ${l.notes.length}`);
+      // Groove: Bassdrum/Snare nur auf Hauptschlägen, Hi-Hat gleichmäßig; Raster 3 genau bei Tönen auf t % 6 ≠ 0
+      for (const level of ['full', 'backbeat', 'snare', 'off']) {
+        const g = grooveFor(l, level);
+        if ([...g.kick, ...g.snare].some((t) => t % 12)) errors.push(`${w}/${level}: Bassdrum oder Snare nicht auf einem Hauptschlag`);
+        if (level !== 'full' && g.hat.length) errors.push(`${w}/${level}: Hi-Hat in ausgedünnter Stufe`);
+        if (level === 'off' && (g.kick.length || g.snare.length)) errors.push(`${w}: Stufe off spielt`);
+        if (level === 'snare' && (g.kick.length || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe snare`);
+        if (level === 'backbeat' && (g.kick.join() !== '0,24' || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe backbeat`);
+        if (level === 'full') {
+          const step = l.notes.some((n) => n[0] % 6) ? 3 : 6;
+          if (g.hat.length !== TICKS_BAR / step || g.hat.some((t, i) => t !== i * step)) errors.push(`${w}: Hi-Hat-Raster (${g.hat.length})`);
+        }
+      }
+      // Tastatur
+      for (const shift of [-1, 0, 1]) {
+        const [lo, hi] = keyboardRange(l, shift);
+        const whites = whitesBetween(lo, hi);
+        const s = 12 * shift;
+        const ok = l.notes.every((n) => l.root + n[2] + s >= lo && l.root + n[2] + s <= hi);
+        if (!isWhite(lo) || !isWhite(hi) || whites < MIN_WHITES || lo < KEY_MIN || hi > KEY_MAX) errors.push(`${w}: Tastatur ${shift}: ${lo}–${hi} (${whites} weiße)`);
+        if (shift === 0 && (whites > 12 || !ok)) errors.push(`${w}: Tastatur 0: ${whites} weiße Tasten, Töne ${ok ? 'drin' : 'außerhalb'}`);
+        if (shift !== 0 && !ok && octaveLimits(l)[shift > 0 ? 1 : 0] === shift) errors.push(`${w}: Tastatur ${shift} schneidet Töne ab`);
+      }
+      void lastCat; lastCat = l.cat;
+    }
+    const hatThree = LICKS.filter((l) => hatStep(l) === 3).map((l) => l.id).sort().join();
+    if (hatThree !== ['arpMoll', 'hookAufA', 'bassFunk16', 'fillGlideBlue', 'hookBlueThird'].sort().join()) errors.push(`Hi-Hat-Raster 3 bei: ${hatThree}`);
+    if (LICKS.length !== 8) errors.push(`${LICKS.length} Licks`);
+    // --- holdPlan
+    const t = true, f = false;
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    if (!eq(holdPlan(1), Array(4).fill(t)) || !eq(holdPlan(2), Array(8).fill(t))) errors.push('holdPlan Stufe 1/2');
+    if (!eq(holdPlan(3), [t, t, f, f, t, t, f, f])) errors.push(`holdPlan Stufe 3: ${holdPlan(3)}`);
+    if (!eq(holdPlan(4), [t, t, f, f, f, f, t, t, f, f, f, f, t, t, f, f])) errors.push(`holdPlan Stufe 4: ${holdPlan(4)}`);
+    if (HOLD_STAGES.length !== 4) errors.push('HOLD_STAGES');
+    errors.push(...holdVectors());
+    // --- holdMessage: jede Zeile der Tabelle
+    const msg = (res, st) => holdMessage({ held: false, tendency: 'steady', lostAt: null, reentry: null, bars: [], ...res }, st);
+    const M = [
+      [msg({ held: true }, 2), 'Durchgehalten – 8 Takte, ruhig und gleichmäßig.'],
+      [msg({ held: true, tendency: 'faster' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.'],
+      [msg({ held: true, tendency: 'slower' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.'],
+      [msg({ lostAt: 6, reentry: 'late' }, 3), 'Bis Takt 5 lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.'],
+      [msg({ lostAt: 6, reentry: 'good' }, 3), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
+      [msg({ lostAt: 6, reentry: 'late' }, 2), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
+      [msg({ tendency: 'faster' }, 2), 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.'],
+      [msg({ tendency: 'slower' }, 2), 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.'],
+      [msg({}, 2), 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.'],
+    ];
+    M.forEach(([got, want], i) => { if (got !== want) errors.push(`holdMessage ${i + 1}: „${got}“`); });
+    // --- partMessage
+    const pm = (want, got) => partMessage({ want: want.map(([midi, t]) => ({ midi, t })), got: got.map(([midi, t]) => ({ midi, t })), tol: .08 }).text;
+    const P = [
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1]]), 'Genau so!'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1.3]]), 'Die Töne stimmen! Der 3. kam etwas spät.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .3], [64, 1]]), 'Die Töne stimmen! Der 2. kam etwas früh.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5]]), 'Das waren 2 Töne, im Teil sind es 3. Hör ihn nochmal.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1], [65, 1.5]]), 'Das waren 4 Töne, im Teil sind es 3. Hör ihn nochmal.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [61, .5], [64, 1]]), 'Fast! Die Richtung stimmt bis Ton 1. Ton 2 liegt einen halben Schritt höher.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [66, 1]]), 'Fast! Die Richtung stimmt bis Ton 2. Ton 3 liegt einen ganzen Schritt tiefer.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [70, 1]]), 'Fast! Die Richtung stimmt bis Ton 2. Ton 3 liegt weiter tiefer.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[61, 0], [62, .5], [64, 1]]), 'Der erste Ton liegt einen halben Schritt tiefer.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1]].map(([m, x]) => [m + 12, x])), 'Genau so! (eine Oktave höher – geht auch)'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1]].map(([m, x]) => [m - 12, x])), 'Genau so! (eine Oktave tiefer – geht auch)'],
+    ];
+    P.forEach(([got, want], i) => { if (got !== want) errors.push(`partMessage ${i + 1}: „${got}“ statt „${want}“`); });
+    if (!partMessage({ want: [{ midi: 60, t: 0 }, { midi: 62, t: .5 }], got: [{ midi: 60, t: 0 }, { midi: 62, t: .9 }], tol: .08 }).ok) errors.push('partMessage: richtige Töne mit falschem Rhythmus zählen als geschafft');
+    // --- degreeLabel
+    const want = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
+    for (let s = -12; s <= 24; s++) if (degreeLabel(s) !== want[mod(s, 12)]) errors.push(`degreeLabel ${s}`);
+    // --- nextDue
+    const nd = (r, s, d = '2026-03-10') => JSON.stringify(nextDue(r, s, d));
+    if (nd('shaky', 2) !== '{"due":"2026-03-11","streak":0}') errors.push(`nextDue wackelig: ${nd('shaky', 2)}`);
+    if (nd('ok', 1) !== '{"due":"2026-03-13","streak":0}') errors.push(`nextDue geht schon: ${nd('ok', 1)}`);
+    if (nd('solid', 0) !== '{"due":"2026-03-17","streak":1}' || nd('solid', 1) !== '{"due":"2026-03-31","streak":2}' || nd('solid', 2) !== '{"due":"2026-05-09","streak":2}') errors.push(`nextDue sitzt: ${nd('solid', 0)} ${nd('solid', 1)} ${nd('solid', 2)}`);
+    if (nd('shaky', 1, '2026-12-31') !== '{"due":"2027-01-01","streak":0}' || nd('ok', 0, '2026-12-30') !== '{"due":"2027-01-02","streak":0}' || nd('solid', 0, '2026-02-25') !== '{"due":"2026-03-04","streak":1}') errors.push('nextDue: Monats-/Jahreswechsel');
+    if (nd('solid', 1, '2028-02-20') !== '{"due":"2028-03-12","streak":2}') errors.push(`nextDue: Schaltjahr ${nd('solid', 1, '2028-02-20')}`);
+    if (nd(null, 1) !== '{"due":null,"streak":0}' || nd('quatsch', 1) !== '{"due":null,"streak":0}') errors.push('nextDue: ungültige Einschätzung');
+    // Folge 7 → 21 → 60 und Zurücksetzen
+    { let s = 0, d = [];
+      for (let i = 0; i < 4; i++) { const r = nextDue('solid', s, '2026-01-01'); d.push(r.due); s = r.streak; }
+      if (d.join() !== '2026-01-08,2026-01-22,2026-03-02,2026-03-02') errors.push(`Streak-Folge: ${d}`);
+      if (nextDue('ok', 2, '2026-01-01').streak !== 0) errors.push('Streak wird nicht zurückgesetzt'); }
+    // --- statusOf / dueIds
+    if (statusOf(undefined) !== 'Neu' || statusOf({ rating: null }) !== 'Neu' || statusOf({ rating: 'shaky' }) !== 'Lerne' || statusOf({ rating: 'ok' }) !== 'Lerne' || statusOf({ rating: 'solid' }) !== 'Sitzt') errors.push('statusOf');
+    if (dueIds({ hookPenta: { due: '2026-01-01' }, bassOktav: { due: '2026-02-01' }, xyz: { due: '2020-01-01' }, arpMoll: { due: 'morgen' } }, '2026-01-15').join() !== 'hookPenta') errors.push('dueIds');
+    if (dueIds(null, '2026-01-15').length || dueIds('kaputt', '2026-01-15').length) errors.push('dueIds bei kaputtem Stand');
+    // --- Ablage
+    errors.push(...stateCheck());
+    // --- Ablauf und Sichtbarkeit
+    errors.push(...flowCheck());
+    return errors;
+  }
+
+  /** Speichern/Laden: neu, leer, kaputt, unbekannte IDs, Begrenzungen. */
+  function stateCheck() {
+    const errors = [];
+    const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
+    const eq = (a, b) => canon(a) === canon(b);
+    if (!eq(sanitizeLicksState(null), freshState()) || !eq(sanitizeLicksState({}), freshState()) || !eq(sanitizeLicksState('x'), freshState()) || !eq(sanitizeLicksState({ v: 2, lick: 'arpMoll' }), freshState())) errors.push('sanitize: leer/kaputt/ohne v');
+    const good = { v: 1, lick: 'arpMoll', notes: 'off', glide: false, octave: { arpMoll: 1, hookPenta: -1 }, sound: { arpMoll: 'Soft Brass' },
+      items: { arpMoll: { step: 5, parts: 4, whole: 2, hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' } } };
+    const s = sanitizeLicksState(JSON.parse(JSON.stringify(good)));
+    if (!eq(s, { ...good, sound: { arpMoll: 'Soft Brass' } })) errors.push(`sanitize: Roundtrip ${JSON.stringify(s)}`);
+    if (!eq(sanitizeLicksState(JSON.parse(JSON.stringify(s))), s)) errors.push('sanitize: nicht idempotent');
+    const bad = sanitizeLicksState({ v: 1, lick: 'quatsch', notes: 5, glide: 'ja', octave: { arpMoll: 7, unbekannt: 1 }, sound: { arpMoll: 'Fagott' },
+      items: { unbekannt: { step: 1 }, arpMoll: { step: 99, parts: 50, whole: -3, hold: 1.5, rating: 'toll', streak: 9, due: 'irgendwann' }, hookPenta: 'kaputt' } });
+    const it = bad.items.arpMoll;
+    if (bad.lick !== 'hookPenta' || bad.notes !== 'last' || bad.glide !== true || 'arpMoll' in bad.octave || 'unbekannt' in bad.octave || 'arpMoll' in bad.sound) errors.push(`sanitize: kaputte Werte → Standard (${JSON.stringify(bad).slice(0, 120)})`);
+    if ('unbekannt' in bad.items || 'hookPenta' in bad.items || !it || it.step !== 7 || it.parts !== 4 || it.whole !== 0 || it.hold !== 0 || it.rating !== null || it.streak !== 2 || it.due !== null) errors.push(`sanitize: Begrenzungen ${JSON.stringify(it)}`);
+    return errors;
+  }
+
+  /** Lauf und Anzeige: Zeitleiste je Stufe, Platzhalter, Schrittleiste, Sichtbarkeit. */
+  function flowCheck() {
+    const errors = [];
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const saved = { view: ui.view, step: ui.step, running: ui.running, result: ui.result, feedback: ui.feedback, lick: state.lick, notes: state.notes, items: state.items, html: $('#panel').innerHTML, holdStage: ui.holdStage, review: ui.review };
+    selfTesting = true;
+    try {
+      // Zeitleiste Durchhalten: Snare nur in Snare-Takten, in stillen Takten weder Schlagzeug noch Klick, Schlussschlag.
+      for (const lick of LICKS) {
+        for (let stageNo = 1; stageNo <= 4; stageNo++) {
+          const { tl, start, plan, st } = tlHold(lick, stageNo, false);
+          const inBar = (ev) => Math.floor(ev.t / tl.barSec + 1e-9) - start;
+          const inRun = tl.events.filter((ev) => inBar(ev) >= 0 && inBar(ev) < st.bars);
+          if (inRun.some((ev) => ev.type === 'click' || ev.type === 'tone')) errors.push(`Hold ${lick.id}/${stageNo}: Klick oder Vorbild im Lauf`);
+          for (const ev of inRun) if (!plan[inBar(ev)] || ev.kind !== 'snare') errors.push(`Hold ${lick.id}/${stageNo}: ${ev.kind} in Takt ${inBar(ev) + 1}`);
+          for (let b = 0; b < st.bars; b++) {
+            const n = inRun.filter((ev) => inBar(ev) === b).length;
+            if (n !== (plan[b] ? 2 : 0)) errors.push(`Hold ${lick.id}/${stageNo}: Takt ${b + 1} hat ${n} Schläge`);
+          }
+          const endHits = tl.events.filter((ev) => Math.abs(ev.t - (start + st.bars) * tl.barSec) < 1e-9).map((ev) => ev.kind).sort().join();
+          if (endHits !== 'kick,open') errors.push(`Hold ${lick.id}/${stageNo}: Schlussschlag ${endHits}`);
+          if (tl.expected.length !== lick.notes.length * st.bars / lick.bars) errors.push(`Hold ${lick.id}/${stageNo}: ${tl.expected.length} Soll-Punkte`);
+          if (st.bars % lick.bars) errors.push(`Hold ${lick.id}/${stageNo}: Takte kein Vielfaches`);
+          if (tl.expected.some((e) => e.bar < start || e.bar >= start + st.bars)) errors.push(`Hold ${lick.id}/${stageNo}: Soll außerhalb der Takte`);
+        }
+        // Wiederholungszahl bei bars: 2
+        if (lick.bars === 2) { const { tl } = tlHold(lick, 1, false); if (tl.expected.length !== lick.notes.length * 2) errors.push(`Hold ${lick.id}: Wiederholungen`); }
+        // Keine Doppelschläge im Raster über 8 Takte
+        const tl = makeTimeline(lick);
+        for (let b = 0; b < 8; b++) tl.groove(b, 'full');
+        const seen = new Set();
+        for (const ev of tl.events) { const key = `${Math.round(ev.t * 1e6)}|${ev.kind}`; if (seen.has(key)) errors.push(`Groove ${lick.id}: Doppelschlag`); seen.add(key); }
+        if (tl.events.length !== 8 * (2 + 2 + TICKS_BAR / hatStep(lick))) errors.push(`Groove ${lick.id}: ${tl.events.length} Ereignisse über 8 Takte`);
+      }
+      // Platzhalter: identisch für verschiedene Bausteine, ohne Zähler, ohne Notenbild und Raster
+      const panels = {};
+      for (const id of ['bassOktav', 'arpMoll']) {
+        state.lick = id; ui.view = 'lick';
+        for (const step of [1, 2, 3, 4, 5, 6]) {
+          Object.assign(ui, { step, running: step === 1 ? 'hear' : step === 2 ? 'sing' : step === 3 ? 'startton' : step === 4 ? 'part' : step === 5 ? 'whole' : 'hold', result: null, review: null });
+          state.items = { [id]: { step: 5, parts: LICKS.find((l) => l.id === id).parts.length, whole: 3, hold: 2, rating: null, streak: 0, due: null } };
+          renderPanel(lickById(id), itemOf(id));
+          const p = $('#panel');
+          panels[`${id}/${step}`] = p.querySelector('[data-placeholder]')?.outerHTML || '';
+          if (!panels[`${id}/${step}`]) errors.push(`Platzhalter fehlt: ${id}/${step}`);
+          if (p.querySelector('[data-roll], [data-result], .strip, .tl, .ph')) errors.push(`Lauf ${id}/${step}: Raster, Notenbild oder Ergebnis sichtbar`);
+          if (/Takt \d+ von|Takt \d+\/\d+|Noch \d+ Takte/.test(p.textContent)) errors.push(`Lauf ${id}/${step}: Taktzähler`);
+          if (keyEls.size && $$('#keyboard .is-lit').length) errors.push('Tasten leuchten während eines Laufs');
+        }
+      }
+      const first = panels['bassOktav/5'];
+      if (Object.values(panels).some((h) => h !== first)) errors.push('Platzhalter hängt vom Baustein oder Schritt ab');
+      if (!first.includes('Nach Gehör')) errors.push('Platzhalter ohne Text');
+      // Schrittleiste
+      state.lick = 'hookPenta'; Object.assign(ui, { running: '', result: null });
+      state.notes = 'last';
+      if (stepsShown().length !== 7 || stepsShown()[6].name !== 'Notenbild') errors.push('Schrittleiste mit Notenbild');
+      state.notes = 'off';
+      if (stepsShown().length !== 6 || stepsShown().some((s) => s.name === 'Notenbild') || stepUnlocked(lickById('hookPenta'), 7)) errors.push('Schrittleiste ohne Notenbild');
+      state.notes = 'last';
+      // „Sitzt“ erst nach 8 Takten Durchhalten
+      state.items = { hookPenta: { step: 5, parts: 3, whole: 3, hold: 1, rating: null, streak: 0, due: null } };
+      let html = rateHtml(lickById('hookPenta'), itemOf('hookPenta'));
+      if (!/data-rate="solid" disabled/.test(html) || !html.includes('Erst 8 Takte durchhalten')) errors.push('„Sitzt“ bei hold < 2 nicht gesperrt');
+      state.items.hookPenta.hold = 2;
+      html = rateHtml(lickById('hookPenta'), itemOf('hookPenta'));
+      if (/data-rate="solid" disabled/.test(html)) errors.push('„Sitzt“ bei hold 2 gesperrt');
+      setRating('hookPenta', 'solid');
+      if (state.items.hookPenta.rating !== 'solid' || state.items.hookPenta.streak !== 1 || !DATE_RE.test(state.items.hookPenta.due)) errors.push('Einschätzung „sitzt“ wird nicht gespeichert');
+      state.items.hookPenta.hold = 1; setRating('hookPenta', 'solid');
+      if (state.items.hookPenta.streak !== 1) errors.push('„Sitzt“ trotz hold < 2 übernommen');
+      // Ergebnisse erscheinen erst nach dem Lauf
+      ui.running = '';
+      const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
+      Object.assign(ui, { step: 6, holdStage: 1, result: { kind: 'hold', stage: 1, ...res } });
+      renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
+      if (!$('#panel').querySelector('.strip')) errors.push('Taktstreifen nach dem Lauf fehlt');
+      const silent = holdPlan(3);
+      const res3 = judgeHold({ expected: [1, 5, 9, 13, 17, 21, 25, 29], taps: [1, 5, 9, 13, 17, 21, 25, 29], barStart: 0, barSec: 4, tol: .1, plan: silent });
+      ui.result = { kind: 'hold', stage: 3, ...res3 };
+      ui.holdStage = 3; state.items.hookPenta.hold = 2;
+      renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
+      if ($('#panel').querySelectorAll('.strip .is-silent').length !== 4) errors.push(`Taktstreifen: ${$('#panel').querySelectorAll('.strip .is-silent').length} schraffierte Takte statt 4`);
+      // Notenbild-Zeilen: Töne, Zählzeilen
+      const roll = rollHtml(lickById('arpMoll'));
+      if ((roll.match(/class="roll-note"/g) || []).length !== 16 || !roll.includes('>e<') || !roll.includes('>a<')) errors.push('Notenbild arpMoll: Töne oder Zählzeilen');
+      if (!rollHtml(lickById('fillGlideBlue')).includes('roll-glide') || rollHtml(lickById('hookPenta')).includes('roll-glide')) errors.push('Notenbild: Glide-Verbindung');
+      void eq;
+    } finally {
+      selfTesting = false;
+      Object.assign(ui, { view: saved.view, step: saved.step, running: saved.running, result: saved.result, feedback: saved.feedback, holdStage: saved.holdStage, review: saved.review });
+      state.lick = saved.lick; state.notes = saved.notes; state.items = saved.items;
+      $('#panel').innerHTML = saved.html;
+    }
+    return errors;
+  }
+
+  /** Tonerzeugung prüfen (asynchron): `await licks.selfCheckAudio()` — Pegel Lick gegen Schlagzeug. */
+  async function selfCheckAudio() {
+    const errors = [];
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Offline) return ['OfflineAudioContext fehlt'];
+    const sr = 48000;
+    const hpRms = (x, fc = 300) => { const rc = 1 / (2 * Math.PI * fc), a = rc / (rc + 1 / sr); let y = 0, e = 0; for (let i = 1; i < x.length; i++) { y = a * (y + x[i] - x[i - 1]); e += y * y; } return Math.sqrt(e / x.length); };
+    const render = async (fn) => {
+      const ctx = new Offline(1, sr * 2, sr);
+      const save = { ctx: engine.ctx, master: engine.master, noise: engine.noise };
+      engine.ctx = ctx; engine.master = ctx.destination;
+      engine.noise = ctx.createBuffer(1, sr * .3, sr);
+      const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      try { fn(); return (await ctx.startRendering()).getChannelData(0); } finally { Object.assign(engine, save); engine.lastMidi = {}; }
+    };
+    const drum = {};
+    for (const kind of ['kick', 'snare', 'rim', 'hat', 'open']) drum[kind] = hpRms(await render(() => engine.drum(kind, .1, 1, null)));
+    for (const lick of LICKS) {
+      const sound = soundFromPreset(lick.preset);
+      const n = lick.notes[Math.min(2, lick.notes.length - 1)];
+      const x = await render(() => engine.playTone(sound, lick.root + n[2], .1, LEAD_VELOCITY, Math.max(.25, n[1] * tickSecOf(lick)), { layer: 'lead', dest: null }));
+      const peak = x.reduce((a, b) => Math.max(a, Math.abs(b)), 0);
+      if (!(peak > .01)) errors.push(`${lick.id}: kein Ton`);
+      const level = hpRms(x);
+      // Der Lick liegt (nach Hochpass) mindestens auf dem Pegel der Snare, deutlich über Rim und Hi-Hat.
+      if (!(level > 1.0 * drum.snare)) errors.push(`${lick.id}: Pegel ${(level * 1000).toFixed(2)} nicht über der Snare ${(drum.snare * 1000).toFixed(2)}`);
+      if (!(level > 2 * Math.max(drum.hat, drum.rim))) errors.push(`${lick.id}: Pegel nicht deutlich über Rim/Hi-Hat`);
+    }
+    return errors;
+  }
+
+  window.licks = {
+    LICKS, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
+    sanitizeLicksState, selfCheck, selfCheckAudio,
+    // für Konsole und Prüfungen
+    dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
+  };
+
+  /* ------------------------------------------------------------------------
+     START
+     ------------------------------------------------------------------------ */
+  function init() {
+    show('list');
+    renderList();
+    requestAnimationFrame(rollFrame);
+    if (new URLSearchParams(location.search).get('review') === '1') startReview();
+  }
+  if (storage) {
+    Promise.resolve(storage.load(STORAGE_ID)).then((raw) => {
+      const s = sanitizeLicksState(raw);
+      for (const k of Object.keys(state)) delete state[k];
+      Object.assign(state, s);
+    }).catch(() => { /* nichts gespeichert */ }).then(init);
+  } else init();
+})();
+</script>
+</body>
+</html>

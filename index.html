@@ -311,6 +311,12 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .practice-tile { min-height: 132px; padding: 14px 10px; gap: 8px; justify-content: flex-start; }
 .practice-tile .tool-tile-label { font-size: min(1rem, 4.3vw); overflow-wrap: normal; }
 .practice-level { display: grid; gap: 5px; width: 100%; margin-top: auto; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Licks & Grooves: Karte „Heute wiederholen“ und zwei Kacheln (Klatsch-Grooves, Synth-Licks). */
+.licks-review { margin-bottom: 10px; }
+.licks-review-text { margin: 8px 0 0; font-size: .9rem; color: var(--muted); font-weight: 600; }
+.licks-review-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.licks-review-actions .warmup-btn { flex: 1 1 0; min-width: 0; }
+.licks-grid .tool-tile:disabled { opacity: .55; }
 .tools-grid--small .tool-tile { min-height: 92px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; padding: 12px 14px; }
 .tools-grid--small .tool-tile-icon { width: 40px; height: 40px; border-radius: 13px; }
 .tools-grid--small .tool-tile-icon svg { width: 22px; height: 22px; }
@@ -4003,7 +4009,7 @@ input[type="checkbox"] {
 
   <!-- ===== Tools ======================================================= -->
   <!-- Werkzeuge als Kacheln: Metronom (metronom.html), Piano (piano.html),
-       Einsingen (einsingen.html), Üben (uebe-lab.html) — alle als
+       Einsingen (einsingen.html), Üben (uebe-lab.html), Licks & Grooves (licks.html) — alle als
        Vollbild-iframe, siehe openToolFrame —, Groove Lab (groove-lab.js) und
        die Lichtshow (#lightshow). Alle werden erst beim Antippen geladen.
        Die breite Kachel darunter öffnet die Einstellungen. -->
@@ -4041,6 +4047,28 @@ input[type="checkbox"] {
         <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></span>
         <span class="tool-tile-label" data-i18n="tools.practice.sing">Singen</span>
         <span class="practice-level" data-practice-level></span>
+      </button>
+    </div>
+    <h2 class="tools-section-title" data-i18n="tools.licks.title">Licks &amp; Grooves</h2>
+    <div class="card licks-review" id="licks-review">
+      <div class="warmup-head">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/><path d="M12 8v4l3 2"/></svg></span>
+        <span class="tool-tile-label" data-i18n="tools.licks.review">Heute wiederholen</span>
+      </div>
+      <p class="licks-review-text" id="licks-review-text" data-i18n="tools.licks.reviewNone">Heute ist nichts fällig</p>
+      <div class="licks-review-actions" id="licks-review-actions" hidden>
+        <button class="warmup-btn" type="button" data-quick="groovesReview" id="licks-review-grooves" hidden></button>
+        <button class="warmup-btn" type="button" data-quick="licksReview" id="licks-review-licks" hidden></button>
+      </div>
+    </div>
+    <div class="tools-grid tools-grid--small licks-grid">
+      <button class="tool-tile" type="button" data-quick="grooves" id="tile-grooves" disabled>
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.3l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg></span>
+        <span class="tool-tile-text"><span class="tool-tile-label" data-i18n="tools.licks.grooves">Klatsch-Grooves</span><span class="tool-tile-sub" id="tile-grooves-sub"></span></span>
+      </button>
+      <button class="tool-tile" type="button" data-quick="licks" id="tile-licks">
+        <span class="tool-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17c2 0 2-8 4.5-8S10 15 12 15s2-8 4.5-8S19 12 21 12"/><circle cx="7.5" cy="9" r="1.2" fill="currentColor"/><circle cx="16.5" cy="7" r="1.2" fill="currentColor"/></svg></span>
+        <span class="tool-tile-text"><span class="tool-tile-label" data-i18n="tools.licks.synth">Synth-Licks</span><span class="tool-tile-sub" id="tile-licks-sub"></span></span>
       </button>
     </div>
     <h2 class="tools-section-title" data-i18n="tools.tools.title">Werkzeuge</h2>

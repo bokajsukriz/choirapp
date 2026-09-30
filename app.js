@@ -18712,7 +18712,9 @@ function runSelfTests() {
   checks++;
   {
     const want = { short: ['einsingen.html', 'from=quick&program=kurz'], long: ['einsingen.html', 'from=quick&program=lang'], more: ['einsingen.html', ''],
-      rhythm: ['uebe-lab.html', 'tab=rhythm'], ear: ['uebe-lab.html', 'tab=ear'], sing: ['uebe-lab.html', 'tab=voice'] };
+      rhythm: ['uebe-lab.html', 'tab=rhythm'], ear: ['uebe-lab.html', 'tab=ear'], sing: ['uebe-lab.html', 'tab=voice'],
+      licks: ['licks.html', ''], licksReview: ['licks.html', 'review=1'],
+      grooves: ['uebe-lab.html', 'tab=rhythm&grooves=1'], groovesReview: ['uebe-lab.html', 'tab=rhythm&grooves=review'] };
     for (const [key, [page, query]] of Object.entries(want)) {
       const def = QUICK_STARTS[key];
       if (!def || def[0] !== page || def[2] !== query) failed.push(`QUICK_STARTS.${key}: ${JSON.stringify(def)}`);
@@ -18720,6 +18722,42 @@ function runSelfTests() {
     for (const [stored, kurz, lang] of [[null, 5, 10], [undefined, 5, 10], [{}, 5, 10], [{ lengths: { kurz: 7, lang: 20 } }, 7, 20], [{ lengths: { kurz: 'x', lang: -3 } }, 5, 10]]) {
       const m = warmupMinutes(stored);
       if (m.kurz !== kurz || m.lang !== lang) failed.push(`warmupMinutes(${JSON.stringify(stored)}) = ${JSON.stringify(m)}`);
+    }
+    // Licks & Grooves: fällige Bausteine zählen, kaputte Stände ergeben 0.
+    const licksState = { v: 1, items: { hookPenta: { due: '2026-10-10' }, bassOktav: { due: '2026-10-12' }, arpMoll: { due: '2026-10-13' }, fillGlideBlue: { due: 'morgen' }, riffPush: null, x: 'kaputt' } };
+    if (licksDue(licksState, '2026-10-12') !== 2 || licksDue(licksState, '2026-10-09') !== 0 || licksDue(licksState, '2026-11-01') !== 3) failed.push('licksDue: Zählung falsch');
+    for (const bad of [null, undefined, 'x', 7, [], {}, { v: 2, items: {} }, { v: 1 }, { v: 1, items: 'x' }, { v: 1, items: [1] }]) {
+      if (licksDue(bad, '2026-10-12') !== 0) failed.push(`licksDue(${JSON.stringify(bad)}) ≠ 0`);
+    }
+    if (licksCounts({ a: { rating: 'solid' }, b: { rating: 'ok' }, c: null }).n !== 2 || licksCounts({ a: { rating: 'solid' }, b: { rating: 'ok' } }).solid !== 1 || licksCounts('x').n !== 0) failed.push('licksCounts falsch');
+    // Klatsch-Grooves: fällige Grooves aus dem Stand von uebe-lab.html; nur geschaffte Lektionen zählen.
+    {
+      const pg = (done, grooves) => ({ rhythm: { course: { done }, grooves } });
+      const g = { puls: { due: '2026-10-10' }, achtel: { due: '2026-10-12' }, clave: { due: '2026-10-13' }, halbe: { due: 'morgen' }, x: null };
+      if (groovesDue(pg(['puls', 'achtel', 'clave', 'halbe'], g), '2026-10-12') !== 2 || groovesDue(pg(['puls'], g), '2026-10-12') !== 1 || groovesDue(pg([], g), '2026-11-01') !== 0) failed.push('groovesDue: Zählung falsch');
+      for (const bad of [null, undefined, 'x', 7, [], {}, { rhythm: null }, { rhythm: 'x' }, { rhythm: { course: { done: 'x' }, grooves: g } }, { rhythm: { course: { done: ['puls'] }, grooves: [1] } }, { rhythm: { course: { done: ['puls'] }, grooves: 'x' } }]) {
+        if (groovesDue(bad, '2026-10-12') !== 0) failed.push(`groovesDue(${JSON.stringify(bad)}) ≠ 0`);
+      }
+      if (groovesOf(pg(['puls', 'achtel', 7], g)).done.length !== 2 || groovesOf(null).done.length !== 0) failed.push('groovesOf falsch');
+      // Karte: 0/0, n/0, 0/n, n/m — je Art ein Knopf, nur eine Art fällig → ein Knopf
+      const cases = [[0, 0], [2, 0], [0, 3], [2, 3]];
+      for (const [nl, ng] of cases) {
+        const lsState = { v: 1, items: Object.fromEntries(Array.from({ length: nl }, (_, i) => [`l${i}`, { due: '2020-01-01' }])) };
+        const gsState = pg(['puls'], Object.fromEntries(Array.from({ length: ng }, (_, i) => ['puls', { due: '2020-01-01' }]).slice(0, ng ? 1 : 0)));
+        const wantG = ng ? 1 : 0;
+        if (licksDue(lsState, '2026-10-12') !== nl || groovesDue(gsState, '2026-10-12') !== wantG) failed.push(`Karte ${nl}/${ng}: ${licksDue(lsState, '2026-10-12')}/${groovesDue(gsState, '2026-10-12')}`);
+      }
+    }
+    if (!PROGRESS_AREAS.includes('licks') || Object.values(PROGRESS_GROUPS).some((g) => g.includes('licks'))) failed.push('PROGRESS_AREAS: licks fehlt oder steht in einer Gruppe');
+    {
+      // Alter Fortschritt lädt unverändert; ein Lauf in „licks“ wird übernommen (sonst verwürfe sanitizeProgress ihn).
+      const oldData = applyProgressEntries(emptyProgress(), [{ area: 'rhythm', level: 2, right: true, seconds: 30 }], '2026-10-10');
+      const roundtrip = sanitizeProgress(JSON.parse(JSON.stringify(oldData)));
+      if (JSON.stringify(roundtrip) !== JSON.stringify(oldData)) failed.push('Fortschritt: alter Stand verändert sich beim Laden');
+      const withLicks = applyProgressEntries(sanitizeProgress(JSON.parse(JSON.stringify(oldData))), [{ area: 'licks', level: 2, right: true, seconds: 40 }], '2026-10-11');
+      const back = sanitizeProgress(JSON.parse(JSON.stringify(withLicks)));
+      if (!back.days['2026-10-11']?.licks?.[2]?.n || back.days['2026-10-11'].licks.sec !== 40 || !back.recent.licks?.length) failed.push('Fortschritt: Bereich „licks“ wird verworfen');
+      if (practiceTileState(withLicks, 'rhythm').level !== 2 || !practiceTileState(withLicks, 'sing').isNew) failed.push('Üben-Kacheln ändern sich durch „licks“');
     }
     for (const group of ['rhythm', 'ear', 'sing']) {
       const st = practiceTileState(emptyProgress(), group);
@@ -22570,7 +22608,8 @@ window.chorVoiceProfile = {
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
 const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning',
-  'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'];
+  'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime',
+  'licks']; // Licks & Grooves (licks.html): in keiner Gruppe von PROGRESS_GROUPS
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
   ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
@@ -22829,6 +22868,12 @@ const QUICK_STARTS = {
   rhythm: ['uebe-lab.html', 'tools.practice.rhythm', 'tab=rhythm'],
   ear: ['uebe-lab.html', 'tools.practice.ear', 'tab=ear'],
   sing: ['uebe-lab.html', 'tools.practice.sing', 'tab=voice'],
+  // Licks & Grooves: Synth-Licks (licks.html), „Heute wiederholen“ öffnet die fälligen Licks.
+  licks: ['licks.html', 'tools.licks.synth', ''],
+  licksReview: ['licks.html', 'tools.licks.title', 'review=1'],
+  // Klatsch-Grooves: eigene Ansicht in uebe-lab.html (Liste bzw. fällige Grooves nacheinander).
+  grooves: ['uebe-lab.html', 'tools.licks.grooves', 'tab=rhythm&grooves=1'],
+  groovesReview: ['uebe-lab.html', 'tools.licks.grooves', 'tab=rhythm&grooves=review'],
 };
 const WARMUP_DEFAULT_MINUTES = { kurz: 5, lang: 10 };
 
@@ -22855,6 +22900,65 @@ function practiceTileState(data, group) {
   return { isNew: false, level };
 }
 
+/* ---- Licks & Grooves: „Heute wiederholen“ und Kachel-Unterzeilen. Die Tools
+   sind eigenständig, app.js kennt die Lick-IDs nicht: gezählt werden Einträge
+   mit gültigem `due` (ungültige IDs verwirft licks.html beim nächsten Öffnen). ---- */
+const LICKS_DUE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Zahl der Bausteine im Stand von licks.html, die heute oder früher fällig sind. */
+function licksDue(licksState, today = progressDate()) {
+  const items = licksState && typeof licksState === 'object' && licksState.v === 1 && licksState.items && typeof licksState.items === 'object' ? licksState.items : {};
+  return Object.values(items).filter((it) => it && typeof it === 'object' && typeof it.due === 'string' && LICKS_DUE_RE.test(it.due) && it.due <= today).length;
+}
+/** Klatsch-Grooves: geschaffte Kurs-Lektionen und fällige Grooves im Stand von uebe-lab.html
+ *  („playground“: rhythm.course.done, rhythm.grooves). Nur geschaffte Lektionen zählen. */
+function groovesOf(playground) {
+  const r = playground && typeof playground === 'object' && playground.rhythm && typeof playground.rhythm === 'object' ? playground.rhythm : {};
+  const done = Array.isArray(r.course?.done) ? r.course.done.filter((id) => typeof id === 'string') : [];
+  const grooves = r.grooves && typeof r.grooves === 'object' && !Array.isArray(r.grooves) ? r.grooves : {};
+  return { done, entries: done.map((id) => grooves[id]).filter((g) => g && typeof g === 'object') };
+}
+/** Zahl der heute oder früher fälligen Grooves. */
+function groovesDue(playground, today = progressDate()) {
+  return groovesOf(playground).entries.filter((g) => typeof g.due === 'string' && LICKS_DUE_RE.test(g.due) && g.due <= today).length;
+}
+/** Angefangene und „sitzende“ Bausteine eines Stands (Unterzeile der Kachel). */
+function licksCounts(items) {
+  const list = items && typeof items === 'object' ? Object.values(items).filter((it) => it && typeof it === 'object') : [];
+  return { n: list.length, solid: list.filter((it) => it.rating === 'solid').length };
+}
+const fillN = (key, vars) => Object.entries(vars).reduce((text, [k, v]) => text.replace(`{${k}}`, v), t(key));
+/** Karte „Heute wiederholen“ und Kachel „Synth-Licks“ nach dem Stand der Ablage füllen. */
+async function renderLicksCard() {
+  const text = $('#licks-review-text');
+  if (!text) return;
+  let licksState = null;
+  try { licksState = await window.chorToolStorage.load('licks'); } catch { /* nichts gespeichert */ }
+  const today = progressDate();
+  const licks = licksDue(licksState, today);
+  const playground = await loadPlaygroundState();
+  const grooves = groovesDue(playground, today);
+  const gs = groovesOf(playground);
+  const c = licksCounts(licksState?.v === 1 ? licksState.items : null);
+  const sub = $('#tile-licks-sub');
+  if (sub) sub.textContent = c.n ? fillN('tools.licks.sub', { n: c.n, solid: c.solid }) : '';
+  // Kachel „Klatsch-Grooves“: erst nach der ersten geschafften Kurs-Lektion.
+  const gTile = $('#tile-grooves'), gSub = $('#tile-grooves-sub');
+  if (gTile) gTile.disabled = !gs.done.length;
+  if (gSub) gSub.textContent = gs.done.length ? fillN('tools.licks.sub', { n: gs.done.length, solid: gs.entries.filter((g) => g.rating === 'solid').length }) : t('tools.licks.groovesEmpty');
+  const actions = $('#licks-review-actions');
+  const bl = $('#licks-review-licks'), bg = $('#licks-review-grooves');
+  bl.hidden = !licks; bg.hidden = !grooves;
+  if (licks) bl.textContent = fillN('tools.licks.reviewLicks', { n: licks });
+  if (grooves) bg.textContent = fillN('tools.licks.reviewGrooves', { n: grooves });
+  actions.hidden = !licks && !grooves;
+  text.hidden = !!(licks || grooves);
+  text.textContent = t('tools.licks.reviewNone');
+}
+/** Stand von uebe-lab.html („playground“) — nur lesen (Klatsch-Grooves). */
+async function loadPlaygroundState() {
+  try { return await window.chorToolStorage.load('playground'); } catch { return null; }
+}
+
 function renderQuickStart() {
   const pill = $('#quick-voice');
   if (!pill) return;
@@ -22870,6 +22974,7 @@ function renderQuickStart() {
   };
   paint(WARMUP_DEFAULT_MINUTES);
   window.chorToolStorage.load('einsingen').then((stored) => paint(warmupMinutes(stored))).catch(() => {});
+  renderLicksCard();
 }
 
 /** Üben-Kacheln: Stufe (Text + Sechs-Segment-Strahl) bzw. „Neu“. */
