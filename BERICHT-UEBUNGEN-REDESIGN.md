@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v403. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v409. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -48,6 +48,12 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 
 | Bereich | Commits |
 |---|---|
+| Zweite Runde: Zweite Stimme halten | `80afde6` |
+| Zweite Runde: Tonmuster | `580685d` |
+| Zweite Runde: Audiationspause | `504d3ba` |
+| Zweite Runde: Klatsch-Grooves, Noten nur auf Klick | `3413ae5` |
+| Zweite Runde: Aufräumen | `cc2ecfd` |
+| Zweite Runde: Einsingen-Minuten | `550eb40` |
 | Rückmeldung Rhythmus (feste Bühne, „Los“) | `e313e34` |
 | Nacharbeit Licks | `7bd1b9c` |
 | Nacharbeit uebe-lab (Hören, Rhythmus, Singen) | `381af61` |
@@ -60,6 +66,57 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 | Rhythmus | `d132f89` |
 | Kopf uebe-lab | `11310e4` |
 | Basis | `0eb421f` (Voraussetzung für alle anderen, zuletzt zurückrollen) |
+
+## Zweite Runde (Rückmeldung des Chorleiters)
+
+Nach dem ersten Durchgang hat der Chorleiter die offenen Vorschläge der
+Leinwand „Chor-App – offene Vorschläge“ geprüft. Umgesetzt wurde alles außer
+„Tendenz der Sitzung“ und dem eigenen Blatt „Meine Stimme“; die gesperrten
+Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
+
+- **Klatsch-Grooves** (`3413ae5`, mit dem Musikpädagogen abgestimmt):
+  - Durchhalten mit zwei Achsen, Begleitung (Drums → Klick → Lücken →
+    Stumm) und Länge (4/8/16 Takte). Stumm gibt es nur mit 4/8 Takten,
+    Lücken nur mit 8/16.
+  - Alles frei wählbar. Der nächste Vorschlag ist markiert und folgt dem
+    Pfad Drums 4 → Drums 8 → Klick 8 → Lücken 8 → Lücken 16 → Stumm 4 →
+    Stumm 8, gerechnet ab der zuletzt geschafften Kombination.
+  - Nach einem misslungenen Lauf gibt es „Mit mehr Begleitung“. „Sitzt“
+    lässt sich erst nach 8 Takten ohne Schlagzeug wählen.
+  - Die Schritte oben sind antippbar. Beim Öffnen geht es dort weiter, wo
+    man zuletzt war. Beim fälligen Wiederholen geht es direkt ins
+    Durchhalten auf der zuletzt geschafften Kombination, mit einem Vorbild
+    davor.
+  - Hören: „Noten zeigen“ (mit Kurs-Silben) gibt es erst nach dem ersten
+    Hören, und die Noten erscheinen nur auf Klick.
+  - Ablage: Ein alter Stand (Stufe 1–4) wird beim Laden idempotent
+    umgestellt (Klick 4/8, Lücken 8/16). Kein `DATA_VERSION`-Wechsel, weil
+    das alte Feld seine Bedeutung behält und mitgeführt wird.
+- **Rhythmus · Nachklatschen:** Die Noten einer Runde erscheinen nur noch über
+  „Noten zeigen“ in der Notenfläche, nie automatisch (`3413ae5`).
+- **Audiationspause** (`504d3ba`): Beim Nachsingen und bei Intervallen kommt
+  nach der Vorgabe „Sing sie in Gedanken“ mit gelben Punkten je Schlag. Das
+  Mikrofon wertet dabei nichts aus. Im Zahnrad: aus / 1 Takt / 2 Takte,
+  Standard 1 Takt.
+- **Tonmuster** (`580685d`): bei „Töne in der Tonart“ die Einstellung
+  „Muster“ (ein Ton / 2 / 3 Töne). Man tippt Ton für Ton auf der Leiter und
+  sieht Kästchen je Ton. Gewertet wird das Muster einmal. Als Einstellung
+  statt siebter Stufe, weil die App-Fortschritte bis Stufe 6 rechnen.
+- **Zweite Stimme halten** (`80afde6`): neue Übung in der Gruppe „Im Chor“.
+  - Ablauf: die eigene Melodie hören, dann ein Takt Einzähler, dann spielt
+    die App eine Terz darunter (S, T) bzw. darüber (A, B), während man
+    singt.
+  - Auswertung wie beim Nachsingen, mit dem Hinweis „zur 2. Stimme
+    gerutscht“ und einer eigenen Spur im Tonhöhenbild.
+  - Die Lautstärke der zweiten Stimme stellt man im Zahnrad ein. Der
+    Fortschritt zählt unter Nachsingen.
+- **Aufräumen** (`cc2ecfd`): „ändern“ steht nur noch an der Stufen-Karte.
+  „Im Takt: Vom Blatt“ gibt es nur bei eingeblendetem Blattsingen.
+- **Einsingen** (`550eb40`): Die Kacheln zeigen wieder „ca. m Min“ als Pille
+  und „n Übungen“ darunter (Entscheidung zu D-2).
+- **Designvorschlag, noch nicht umgesetzt:** „Klatschfläche immer am unteren
+  Rand“ (Reihe 3 der Leinwand). Er wartet auf die Rückmeldung des
+  Chorleiters.
 
 ## Zugriff
 
@@ -355,6 +412,12 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 | Einsingen: „Gleich: …“ nur in der letzten Runde/Pause | Vorbereitung am Übergang, sonst Ablenkung | `e67a585` | wie oben |
 | Hören: Intonations-Schwelle nur noch in der Serienbilanz | während der Aufgabe Leistungsdruck und Fachjargon | `381af61` | `git revert 381af61` |
 | Licks: Erklärung im Schritt „Hören“ erst nach dem ersten Anhören | Klang vor Erklärung | `7bd1b9c` | `git revert 7bd1b9c` |
+| Klatsch-Grooves: Begleitung × Länge statt Stufenleiter, Vorschlagspfad, weiter wo man war | Stütze schrittweise abbauen, bis der Puls innerlich getragen wird | `3413ae5` | `git revert 3413ae5` |
+| Klatsch-Grooves/Nachklatschen: Noten nur auf Klick | Klang vor Zeichen; Wunsch des Chorleiters | `3413ae5` | wie oben |
+| Singen: Audiationspause (neu) | erst innerlich hören, dann singen (Gordon) | `504d3ba` | `git revert 504d3ba` |
+| Hören: Tonmuster 2–3 Töne (neu) | näher an echten Melodien | `580685d` | `git revert 580685d` |
+| Singen: „Zweite Stimme halten“ (neu) | Kernproblem im Pop-Chor | `80afde6` | `git revert 80afde6` |
+| Einsingen: Minuten wieder auf den Kacheln | Entscheidung des Chorleiters (D-2) | `550eb40` | `git revert 550eb40` |
 
 Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 `DATA_VERSION`-Wechsel nötig.
@@ -368,7 +431,9 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 - **D-2 Minuten bei Einsingen:** Der Musikpädagoge wollte „ca. m Min“ auf den
   Kacheln. Die Anweisung (Rang 1, Abschnitt 10) verbietet Minutenangaben auf
   Übersichten, und eine Zahl ist keine „didaktisch zwingende Erklärung“. Die
-  Dauer steht deshalb im Prestart. Die Kachel-Dauer bitte entscheiden.
+  Dauer stand deshalb zuerst nur im Prestart. **Entschieden:** Der
+  Chorleiter will die Minuten auf den Kacheln; sie stehen dort seit
+  `550eb40`.
 - **D-3 Mikrofon-Pegel:**
   - Der Standard der Anweisung („Pegelanzeige und Mikrofon-Symbol“) ist
     umgesetzt: ein Pegelbalken in Ruhe nach einem Tipp auf die Fläche, und das
@@ -430,18 +495,26 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
   startet ein Tipp auf die Fläche weiterhin den Test. Auf 320×568 liegt „Los“
   unter der Fußleiste, man muss also einmal scrollen.
 
+- **D-20 Tonmuster als Einstellung:** Es ist keine siebte Stufe, weil die
+  App-Fortschritte und Stufen-Ringe bis 6 rechnen.
+- **D-21 Zweite Stimme halten:** Die Übung baut auf dem Nachsingen auf
+  (gleiche Melodien, Stufen, Auswertung). Die zweite Stimme ist eine
+  diatonische Terz und klingt als Klavier, damit sie sich von der eigenen
+  Stimme abhebt. Die Übung ist nur mit Kopfhörern sinnvoll; der Hinweis
+  dazu steht wie beim Nachsingen auf der Seite.
+- **D-22 Klatsch-Grooves, Wiederholen:** Es geht direkt ins Durchhalten mit
+  einem Vorbild davor statt mit Hören und Auffrischen (Musikpädagoge: der
+  erste Abruf nach Tagen soll ehrlich zeigen, ob der Groove noch sitzt).
+
 ## Nicht umgesetzt (bewusst, als Vorschlag)
 
 - Hören:
   - Intervalle und Intonation senkrecht bzw. nach Größe.
-  - Tonmuster (2–3 Töne) als Ausbau.
   - „Mitsingen“ während der Auflösung.
 - Singen:
   - „Nochmal hören“ springt beim Nachsingen nicht direkt ins Singen.
-  - Audiationspause.
-  - Gegen eine zweite Stimme halten.
-  - Tendenz über die Sitzung.
-  - „Im Takt: Vom Blatt“ nur bei eingeschaltetem Blattsingen.
+  - Tendenz über die Sitzung (vom Chorleiter zurückgestellt).
+  - Eigenes Blatt „Meine Stimme“ (vom Chorleiter zurückgestellt).
   - Eine einheitliche Tonnamen-Schreibweise für die ganze App (die App nutzt
     durchgehend `noteLabel` aus harmony.js).
 - Einsingen: Lagepfeil statt Tonart als Hauptinfo (die Tonart steht klein mit
@@ -518,11 +591,11 @@ Leerzustand vertretbar, und die ist umgesetzt.
 
 **Für die nächste Runde (nicht umgesetzt, Inhalte):**
 
-1. Audiationspause beim Nachsingen und bei Intervallen.
-2. Tonmuster aus 2–3 Tönen in „Töne in der Tonart“.
-3. „Gegen eine zweite Stimme halten“ (Kernproblem im Pop-Chor).
-4. Tendenz über die Sitzung in der Stimm-Karte.
-5. Aufräumen: „Im Takt: Vom Blatt“ nur bei eingeschaltetem Blattsingen,
+1. ✓ Audiationspause beim Nachsingen und bei Intervallen (`504d3ba`).
+2. ✓ Tonmuster aus 2–3 Tönen in „Töne in der Tonart“ (`580685d`).
+3. ✓ „Gegen eine zweite Stimme halten“ (`80afde6`).
+4. Tendenz über die Sitzung in der Stimm-Karte (zurückgestellt).
+5. Aufräumen (✓ außer den Akkordknöpfen und dem Blatt „Meine Stimme“, `cc2ecfd`): „Im Takt: Vom Blatt“ nur bei eingeschaltetem Blattsingen,
    doppeltes „ändern“ bei Vom Blatt, gesperrte Akkordknöpfe leise statt
    Opazität .4, später ein eigenes Blatt „Meine Stimme“ mit dem
    Oktav-Hinweis für tiefe Stimmen.

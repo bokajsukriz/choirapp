@@ -19,6 +19,7 @@ Bericht), Basis `main` @ `dba2715`.
 | 6 Werkzeuge | fertig | `37a767f` | – |
 | Phase 3 Querschnitt | fertig | `e3c7866` | – |
 | Schlussprüfung + Bericht | fertig | – | Draft-PR, Prüfung von Hand |
+| Zweite Runde (Rückmeldung Chorleiter) | fertig | `550eb40` … `80afde6` | Designvorschlag „Klatschfläche immer unten“ wartet auf Rückmeldung |
 
 Hilfsskripte (Scratchpad, nicht im Repo): `gate.cjs` (App-Selbsttests +
 selfCheck aller Tool-Seiten, eingebettet und eigenständig), `flow.cjs`
