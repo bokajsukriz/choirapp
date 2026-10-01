@@ -48,7 +48,7 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 
 | Bereich | Commits |
 |---|---|
-| Rückmeldung Rhythmus (feste Bühne, „Los“) | siehe D-19 |
+| Rückmeldung Rhythmus (feste Bühne, „Los“) | `e313e34` |
 | Nacharbeit Licks | `7bd1b9c` |
 | Nacharbeit uebe-lab (Hören, Rhythmus, Singen) | `381af61` |
 | Querschnitt | `e3c7866` |
