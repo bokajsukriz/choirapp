@@ -217,6 +217,9 @@
   .g-play { width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--accent); color: #fff; font-size: .95rem; font-weight: 800; }
   .g-review { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
   .g-review b { flex: 1; font-size: .9rem; }
+  .g-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+  .g-dock .tap-pad { height: 140px; margin: 0; }
+  main:has(.g-dock) { padding-bottom: 190px; }
   .g-steps li { padding: 0; }
   .g-steps li > button { width: 100%; min-height: 44px; padding: 6px 2px; font: inherit; color: inherit; background: none; border: 0; border-radius: 9px; line-height: 1.2; cursor: pointer; }
   .g-steps li > button b { display: block; font-size: .8rem; }
@@ -495,18 +498,32 @@
   .pad-beats.is-quiet i { opacity: .55; }
   .pad-label { font-weight: 700; font-size: 15px; line-height: 1.3; text-align: center; }
   .pad-label:empty { display: none; }
-  /* Feste Höhe: Pillen, Notenfläche und Klatschfläche bleiben stehen, nichts
-     springt zwischen Ruhe, Hören, Du und Ergebnis. „Los“ liegt in Ruhe unten
-     in der Fläche (eigener Knopf über dem Platzhalter .pad-go-slot). */
+  /* Klatschfläche als Fußleiste: feste Höhe, nichts springt. In Ruhe nur
+     „Tippen zum Starten“ (keine Zählkreise), im Lauf Kreise und Ansage;
+     Stopp (rechts) und Mikrofontest (links) liegen als eigene Knöpfe oben
+     in den Ecken über der Fläche. */
   .pad-wrap { display: grid; }
   .pad-wrap > * { grid-area: 1 / 1; }
-  .rhythm-stage .tap-pad { height: 160px; min-height: 0; gap: 10px; }
-  .pad-go-slot { display: none; height: 46px; flex: none; }
-  .tap-pad[data-phase="idle"] .pad-go-slot, .tap-pad[data-phase="done"] .pad-go-slot { display: block; }
-  .tap-pad.is-mic[data-phase="idle"] .pad-beats { display: none; }
-  .pad-go { position: relative; z-index: 1; align-self: end; justify-self: center; margin-bottom: 15px; min-width: 132px; height: 46px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 6px 16px rgba(var(--accent-rgb), .3); cursor: pointer; }
-  .pad-go svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
-  .pad-go[hidden] { display: none; }
+  .pad-wrap .tap-pad { height: 150px; min-height: 0; gap: 10px; }
+  .tap-pad[data-phase="idle"] .pad-beats, .tap-pad[data-phase="done"] .pad-beats { display: none; }
+  .tap-pad[data-phase="idle"] .pad-label, .tap-pad[data-phase="done"] .pad-label { display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+  .tap-pad[data-phase="idle"] .pad-label::before, .tap-pad[data-phase="done"] .pad-label::before { content: ''; width: 0; height: 0; border-left: 14px solid currentColor; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+  .tap-pad.is-mic[data-phase="idle"] .pad-label::before { -webkit-mask: none; mask: none; background: none; margin-right: 0; }
+  .pad-corner { position: relative; z-index: 1; align-self: start; margin: 10px; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 999px; border: 2px solid var(--tint-line); background: var(--surface); color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 4px; font: inherit; font-weight: 800; font-size: 13px; cursor: pointer; }
+  .pad-corner svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+  .pad-stop { justify-self: end; }
+  .pad-stop svg { fill: currentColor; stroke: none; }
+  .pad-mic { justify-self: start; }
+  .pad-mic[aria-pressed="true"] { background: var(--ok-bg, #DDF5EA); border-color: var(--ok, #2f9e5b); }
+  .pad-corner[hidden] { display: none; }
+  .tempo-chip { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); font: inherit; font-weight: 800; font-size: 12px; vertical-align: middle; cursor: pointer; position: relative; }
+  .tempo-chip::before { content: ''; position: absolute; inset: -6px -2px; }
+  .tempo-chip b { font-size: 15px; font-weight: 700; margin-right: 2px; }
+  .rhythm-sum .tempo-chip { color: var(--text); text-decoration: none; padding: 0 10px; font-weight: 800; }
+  .rhythm-sum .tempo-chip::before { inset: -6px -2px; }
+  .pad-wrap:has(.pad-stop:not([hidden])) .tap-pad, .pad-wrap:has(.pad-mic:not([hidden])) .tap-pad { padding-left: 64px; padding-right: 64px; }
+  .sheet-tempo { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sheet-tempo .k-tempo { flex: 1; }
   .tap-pad.is-mic .pad-label::before { content: ''; display: inline-block; width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; background: currentColor; -webkit-mask: var(--mic-icon) center / contain no-repeat; mask: var(--mic-icon) center / contain no-repeat; }
   .tap-pad { --mic-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E"); }
   .pad-level { width: 70%; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
@@ -685,10 +702,6 @@
         <div class="bar-strip" aria-hidden="true"></div>
         <div class="rstage-meta" hidden></div>
         <div class="stage"></div>
-        <div class="pad-wrap">
-          <button class="tap-pad" type="button" data-phase="idle"><span class="pad-beats" aria-hidden="true"></span><span class="pad-label"></span><span class="pad-level" hidden><i></i></span><span class="pad-go-slot" aria-hidden="true"></span></button>
-          <button class="pad-go" type="button" data-rhythm-go><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg><span>Los</span></button>
-        </div>
       </div>
       <!-- Ergebnis der letzten Runde: Timing als Tendenz, Silben eingefärbt. -->
       <div class="round-card k-card" data-round-card hidden></div>
@@ -838,7 +851,15 @@
 </div>
 
 <footer>
-  <div class="transport-row">
+  <!-- Klatschfläche als Fußleiste (Variante C des Chorleiters): in Ruhe ist
+       die ganze Fläche der Startknopf, im Lauf das Klatschfeld; Stopp und der
+       Mikrofontest sind eigene kleine Knöpfe in den Ecken (nicht verschachtelt). -->
+  <div class="pad-wrap">
+    <button class="tap-pad" type="button" data-phase="idle"><span class="pad-beats" aria-hidden="true"></span><span class="pad-label"></span><span class="pad-level" hidden><i></i></span></button>
+    <button class="pad-corner pad-stop" type="button" data-rhythm-stop aria-label="Stoppen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
+    <button class="pad-corner pad-mic" type="button" data-rhythm-mictest hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Test</span></button>
+  </div>
+  <div class="transport-row" hidden>
     <button class="play" type="button" aria-label="Starten"></button>
     <div class="k-tempo tempo" role="group" aria-label="Tempo">
       <button type="button" data-tempo-step="-1" aria-label="Langsamer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
@@ -848,7 +869,7 @@
     </div>
     <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
   </div>
-  <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
+  <p class="status visually-hidden" role="status">Bereit — am besten mit Kopfhörern.</p>
 </footer>
 
 <script src="./harmony.js"></script>
@@ -2795,11 +2816,13 @@
    *  (○ offen, ✓ nach einer fehlerfreien Runde). */
   function renderStageMeta() {
     const box = $('.rstage-meta');
-    const inCourse = state.mode === 'course' && !course.review;
+    // Kurs: Tempo links (die Zusammenfassungszeile fehlt dort), rechts das Ziel.
+    const inCourse = state.mode === 'course';
     box.hidden = !inCourse;
     if (!inCourse) return;
+    if (course.review) { box.innerHTML = `<span>${tempoChipHtml()}</span>`; return; }
     const ok = !!(game.last?.result?.perfect && game.last.course);
-    box.innerHTML = `<span></span><span class="goal${ok ? ' is-ok' : ''}">Fehlerfreie Runde<span class="goal-dot" aria-hidden="true">${ok ? K_CHECK : ''}</span><span class="visually-hidden">${ok ? ': geschafft' : ': noch offen'}</span></span>`;
+    box.innerHTML = `<span>${tempoChipHtml()}</span><span class="goal${ok ? ' is-ok' : ''}">Fehlerfreie Runde<span class="goal-dot" aria-hidden="true">${ok ? K_CHECK : ''}</span><span class="visually-hidden">${ok ? ': geschafft' : ': noch offen'}</span></span>`;
   }
 
   function renderScore() {
@@ -2827,8 +2850,8 @@
   }
 
   const PAD_LABELS = {
-    idle: '', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
-    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft!',
+    idle: 'Tippen zum Starten', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
+    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Nochmal: tippen',
   };
 
   /** Klatschfläche: Zählkreise je Schlag (Konfetti B2). Sie stehen immer da,
@@ -2847,18 +2870,19 @@
     pad.dataset.phase = phase;
     pad.classList.toggle('is-mic', mic);
     let label = PAD_LABELS[phase];
-    if (phase === 'idle' && mic) label = micTest.on ? 'Klatsch einmal zum Test' : 'Fläche antippen: Mikrofon testen';
+    if (phase === 'idle' && mic && micTest.on) label = 'Klatsch zum Test – oder tippen zum Starten';
     if (phase === 'you' && mic) label = 'Jetzt du – klatsch oder sprich „ta“!';
     if (phase === 'you' && round?.duo) label = round.duo.youLabel || `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
     $('.pad-label').textContent = label;
-    pad.setAttribute('aria-label', phase === 'idle' && mic ? (micTest.on ? 'Mikrofontest beenden' : 'Mikrofon testen') : `Klatschfläche${label ? `: ${label}` : ''}`);
-    // „Los“ direkt in der Fläche: in Ruhe und nach dem Ende (dann „Nochmal“).
-    const go = $('[data-rhythm-go]');
     const idle = phase === 'idle' || phase === 'done';
-    if (!idle && go.contains(document.activeElement)) pad.focus({ preventScroll: true });
-    go.hidden = !idle;
-    go.querySelector('span').textContent = phase === 'done' ? 'Nochmal' : 'Los';
-    go.setAttribute('aria-label', phase === 'done' ? 'Nochmal starten' : 'Los: Übung starten');
+    pad.setAttribute('aria-label', idle ? (phase === 'done' ? 'Nochmal starten' : 'Übung starten') : `Klatschfläche${label ? `: ${label}` : ''}`);
+    // Ecken: Stopp nur im Lauf, Mikrofontest nur in Ruhe mit Mikrofon-Eingabe.
+    const stopBtn = $('[data-rhythm-stop]'), micBtn = $('[data-rhythm-mictest]');
+    if (idle && stopBtn.contains(document.activeElement)) pad.focus({ preventScroll: true });
+    stopBtn.hidden = idle;
+    micBtn.hidden = !(idle && mic);
+    micBtn.setAttribute('aria-pressed', String(micTest.on));
+    micBtn.setAttribute('aria-label', micTest.on ? 'Mikrofontest beenden' : 'Mikrofon testen');
     $('.pad-level').hidden = !(mic && micTest.on);
     const dots = $('.pad-beats');
     dots.classList.toggle('is-quiet', !live);
@@ -3384,6 +3408,7 @@
     // Nur die Zusammenfassung: „ändern“ steht schon an der Stufen-Karte, die
     // Einstellungen erreicht man über das Zahnrad (Musikpädagoge: nicht doppelt).
     $('.rhythm-sum').append(bits.join(' · '));
+    $('.rhythm-sum').insertAdjacentHTML('beforeend', tempoChipHtml());
     if (!run.playing) {
       renderStrip(null);
       renderPad(game.finished ? 'done' : 'idle');
@@ -3495,6 +3520,15 @@
     $('.sheet-hint').textContent = '';
   }
 
+  /** Tempo im Zahnrad (die Fußleiste ist jetzt die Klatschfläche). */
+  const tempoSheetHtml = () => `<span class="sub-label" style="margin-top:0">Tempo</span>
+    <div class="sheet-tempo"><div class="k-tempo tempo" role="group" aria-label="Tempo">
+      <button type="button" data-tempo-step="-1" aria-label="Langsamer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <span class="k-tempo-val"><output class="bpm-out">${state.bpm}</output><small>BPM</small></span>
+      <button type="button" data-tempo-step="1" aria-label="Schneller"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div><button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button></div>`;
+  const tempoChipHtml = () => `<button type="button" class="tempo-chip" data-rhythm="settings" data-tempo-chip aria-label="Tempo ${state.bpm}, ändern"><b>${tempoSymbol(state.meter)}</b>${state.bpm}</button>`;
+
   function renderTransport() {
     const btn = $('.play');
     btn.innerHTML = run.playing
@@ -3502,11 +3536,12 @@
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
     $('.bpm').value = String(state.bpm);
-    $('.bpm-out').textContent = String(state.bpm);
-    $('.k-tempo').setAttribute('aria-label', `Tempo: ${tempoSymbol(state.meter)} = ${state.bpm}`);
+    $$('.bpm-out').forEach((o) => { o.textContent = String(state.bpm); });
+    $$('.k-tempo').forEach((g) => g.setAttribute('aria-label', `Tempo: ${tempoSymbol(state.meter)} = ${state.bpm}`));
+    $$('[data-tempo-chip]').forEach((b) => { b.innerHTML = `<b>${tempoSymbol(state.meter)}</b>${state.bpm}`; b.setAttribute('aria-label', `Tempo ${state.bpm}, ändern`); });
     // Tap-Tempo nicht im Kurs: die Lektion gibt das Tempo vor, und „Tap“ direkt
     // unter der Klatschfläche wird leicht mit ihr verwechselt (Musikpädagoge).
-    $('.tap-btn').hidden = state.mode === 'course';
+    $$('.tap-btn').forEach((b) => { b.hidden = state.mode === 'course'; });
   }
 
   function renderAll() {
@@ -5586,7 +5621,7 @@
   const lastMeanOff = () => (game.last?.result?.hits ? Math.round(game.last.result.meanOff * 1000) : null);
 
   function renderSettings() {
-    if (sheetKind === 'rhythm') { renderRhythmSettings(); return; }
+    if (sheetKind === 'rhythm') { renderRhythmSettings(); $('.sheet-body').insertAdjacentHTML('afterbegin', tempoSheetHtml()); renderTransport(); return; }
     if (sheetKind === 'course') { renderCourseList(); return; }
     if (sheetKind === 'sing') {
       $('.sheet-body').innerHTML = `${partChipsHtml('singPart')}
@@ -8626,7 +8661,7 @@
     const key = `${phase}|${beatNo}`;
     if (key === gv.padKey) return;
     gv.padKey = key;
-    const labels = { idle: 'Starte mit „Start“', count: 'Einzähler …', listen: 'Hör zu …', you: 'Jetzt du!', rest: 'Weiterspielen …', done: 'Nochmal? Drück auf „Start“' };
+    const labels = { idle: 'Tippen zum Starten', count: 'Einzähler …', listen: 'Hör zu …', you: 'Jetzt du!', rest: 'Weiterspielen …', done: 'Nochmal: tippen' };
     pad.dataset.phase = phase === 'done' ? 'done' : phase;
     pad.querySelector('.pad-label').textContent = labels[phase] || '';
     const m = gv.id ? METERS[lessonById(gv.id).meter] : METERS['4/4'];
@@ -8723,7 +8758,10 @@
     const running = !!gv.running;
     const stopBtn = running ? '<button type="button" class="nav-btn" data-grooves-act="stop">■ Stopp</button>' : '';
     const fb = `<p class="course-how" role="status" aria-live="polite" data-grooves-feedback>${esc(gv.feedback)}</p>`;
-    const pad = `<button class="tap-pad grooves-pad" type="button" data-phase="idle"><span class="pad-label">Starte mit „Start“</span><span class="pad-beats"></span></button>`;
+    // Klatschfläche unten (Variante C): in Ruhe der Startknopf, im Lauf das Klatschfeld, Stopp in der Ecke.
+    const dock = `<div class="pad-wrap g-dock"><button class="tap-pad grooves-pad" type="button" data-phase="${gv.result ? 'done' : 'idle'}" aria-label="${running ? 'Klatschfläche' : 'Übung starten'}"><span class="pad-beats"></span><span class="pad-label">${gv.result ? 'Nochmal: tippen' : 'Tippen zum Starten'}</span></button>
+      <button class="pad-corner pad-stop" type="button" data-grooves-act="stop" aria-label="Stoppen"${running ? '' : ' hidden'}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>`;
+    const pad = '';
     if (gv.phase === 'hear') {
       // Noten nur auf Klick (nach dem ersten Hören), mit Kurs-Silben – Klang vor Zeichen.
       const heard = !!gv.heard[l.id];
@@ -8737,7 +8775,7 @@
     } else if (gv.phase === 'refresh') {
       const res = gv.result && gv.result.kind === 'refresh' ? gv.result : null;
       body = `<p class="course-intro">Auffrischen: Du hörst den Rhythmus einmal und klatschst ihn dann nach – ohne Noten, mit Bassdrum und Snare.</p>${res ? groovesTimeline(res) : groovesPlaceholder()}${pad}${fb}
-        <div class="course-nav"><button type="button" class="nav-btn is-primary" data-grooves-act="refresh"${running ? ' disabled' : ''}>▶ ${res ? 'Nochmal' : 'Start'}</button>${stopBtn}<span class="grow"></span>
+        <div class="course-nav"><span class="grow"></span>
         <button type="button" class="nav-btn" data-grooves-phase="${holdable(l) ? 'hold' : 'rate'}">Weiter</button></div>`;
     } else if (gv.phase === 'hold') {
       const cur = parseCombo(gv.combo) || parseCombo(nextCombo(g.held)) || parseCombo('drums4');
@@ -8759,7 +8797,7 @@
         <span class="sub-label">Länge</span><div class="chip-row">${lenChips}</div></div>
         <p class="course-intro">${groovesBefore(comboStage(cur.id))}${sug && sug !== cur.id ? ` <span class="g-sug">Vorschlag: ${comboName(sug)}</span>` : ''}</p>
         ${res ? groovesStrip(res) : groovesPlaceholder()}${pad}${fb}
-        <div class="course-nav"><button type="button" class="nav-btn is-primary" data-grooves-act="hold"${running ? ' disabled' : ''}>▶ ${res ? 'Nochmal' : 'Start'}</button>${stopBtn}
+        <div class="course-nav">
         ${easier ? `<button type="button" class="nav-btn" data-grooves-acc="${easier}">Mit mehr Begleitung</button>` : ''}<span class="grow"></span>
         ${nextAfter && nextAfter !== cur.id ? `<button type="button" class="nav-btn" data-grooves-combo="${nextAfter}">Weiter: ${comboName(nextAfter)}</button>` : `<button type="button" class="nav-btn" data-grooves-phase="rate">Weiter: Einschätzung</button>`}</div>`;
     } else {
@@ -8767,7 +8805,7 @@
     }
     host.innerHTML = `<div class="ex-head"><button class="back-btn" type="button" data-grooves-back aria-label="Zurück zur Liste" title="Zurück zur Liste"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
       <div class="ex-title"><span class="ex-area" aria-hidden="true">Klatsch-Grooves${rv ? ` · Wiederholen ${rv.i + 1}/${rv.queue.length}` : ''}</span><h2 class="mode-title">${esc(l.name)}</h2></div></div>
-      <section class="panel"><ol class="course-steps g-steps" aria-label="Schritte">${chips}</ol>${body}${delayCard}${gv.phase === 'rate' ? '' : inputRow}</section>`;
+      <section class="panel"><ol class="course-steps g-steps" aria-label="Schritte">${chips}</ol>${body}${delayCard}${gv.phase === 'rate' ? '' : inputRow}</section>${gv.phase === 'refresh' || gv.phase === 'hold' ? dock : ''}`;
     gv.padKey = '';
   }
   const gRerender = () => { if (views.rhythm === 'grooves') renderGrooves(); };
@@ -8922,6 +8960,8 @@
     const pad = e.target.closest?.('.grooves-pad');
     if (!pad) return;
     e.preventDefault();
+    // In Ruhe startet die Fläche den Schritt (Auffrischen bzw. Durchhalten), im Lauf wird geklatscht.
+    if (!gv.running && (gv.phase === 'refresh' || gv.phase === 'hold')) { groovesActions(gv.phase); return; }
     groovesTap();
   });
   // Nichts klingt weiter, wenn die Seite verdeckt wird.
@@ -9427,7 +9467,8 @@
       return;
     }
     if (e.target.closest('.play')) { if (run.playing) stop(); else start(); return; }
-    if (e.target.closest('[data-rhythm-go]')) { if (!run.playing) start(); return; }
+    if (e.target.closest('[data-rhythm-stop]')) { if (run.playing) stop(); return; }
+    if (e.target.closest('[data-rhythm-mictest]')) { if (!run.playing) toggleMicTest(); return; }
     const tempoStep = e.target.closest('[data-tempo-step]');
     if (tempoStep) { setBpm(state.bpm + 2 * Number(tempoStep.dataset.tempoStep)); renderTransport(); return; }
     if (e.target.closest('.tap-btn')) {
@@ -9476,7 +9517,8 @@
   $('.bpm').addEventListener('input', (e) => { setBpm(Number(e.target.value)); renderTransport(); persist(); });
   $('.tap-pad').addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (state.input === 'mic' && !run.playing && !calib.active && state.tab === 'rhythm') { toggleMicTest(); return; }
+    // In Ruhe ist die Fläche der Startknopf (Variante C); im Lauf das Klatschfeld.
+    if (!run.playing && !calib.active && state.tab === 'rhythm') { start(); return; }
     tap();
   });
   // Während des Laufs zählt auch die Notenfläche als Klatschfeld — bei zwei
@@ -9531,6 +9573,7 @@
       return;
     }
     if ((e.code === 'Space' || e.code === 'Enter') && (run.playing || calib.active)) { e.preventDefault(); tap(); return; }
+    if (e.code === 'Enter' && document.activeElement?.classList.contains('tap-pad') && state.tab === 'rhythm') { e.preventDefault(); start(); return; }
     if (e.code === 'Space' && !(document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName) && !document.activeElement.classList.contains('tap-pad'))) {
       e.preventDefault();
       start();
@@ -10051,6 +10094,7 @@
       if (host.querySelectorAll('.g-steps button[data-grooves-phase]').length !== groovesPhases(COURSE[0]).length) errors.push('Klatsch-Grooves: Schritte nicht antippbar');
       Object.assign(gv, { phase: 'hold', combo: 'gaps8', notes: false });
       renderGrooves();
+      if (!host.querySelector('.g-dock .grooves-pad') || host.querySelector('[data-grooves-act="hold"]') || !host.querySelector('.g-dock .pad-stop').hidden || host.querySelector('.g-dock .grooves-pad').textContent.trim() !== 'Tippen zum Starten') errors.push('Klatsch-Grooves: Klatschfläche unten als Startknopf');
       if (host.querySelectorAll('[data-grooves-acc]').length !== 4 || host.querySelectorAll('[data-grooves-len]').length !== 3 || !host.querySelector('[data-grooves-len="4"]').disabled || host.querySelector('[data-grooves-acc="gaps"]').getAttribute('aria-pressed') !== 'true') errors.push('Klatsch-Grooves: Auswahl Begleitung/Länge');
       const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
       Object.assign(gv, { view: 'lesson', id: 'puls', phase: 'hold', running: '', result: { kind: 'hold', stage: 1, ...res } });
@@ -12651,13 +12695,21 @@
       if (svgH(empty) < ST.H || svgH(fitStageHeight(`<svg viewBox="0 0 ${ST.W} ${ST.H}"></svg>`)) !== svgH(empty)) errors.push('Notenfläche: Höhe ändert sich zwischen leer und Noten');
       stageFit.key = fit;
       const padKey = run.padKey;
+      // Variante C: Klatschfläche unten in der Fußleiste; in Ruhe nur „Tippen zum Starten“ ohne Zählkreise,
+      // Stopp-Ecke nur im Lauf, keine verschachtelten Knöpfe.
+      const inputNow = state.input;
+      state.input = 'tap';
       run.padKey = ''; renderPad('idle');
-      if ($('[data-rhythm-go]').hidden || $('[data-rhythm-go]').textContent.trim() !== 'Los') errors.push('Klatschfläche: kein „Los“ in Ruhe');
-      run.padKey = ''; renderPad('done');
-      if ($('[data-rhythm-go]').hidden || $('[data-rhythm-go]').textContent.trim() !== 'Nochmal') errors.push('Klatschfläche: kein „Nochmal“ nach dem Ende');
+      const pad = $('.tap-pad');
+      if (!pad.closest('footer') || $('.pad-label').textContent !== 'Tippen zum Starten' || getComputedStyle($('.pad-beats')).display !== 'none' || !$('[data-rhythm-stop]').hidden || !$('[data-rhythm-mictest]').hidden) errors.push('Klatschfläche in Ruhe: nicht „Tippen zum Starten“ in der Fußleiste');
       run.padKey = ''; renderPad('count', 0, null);
-      if (!$('[data-rhythm-go]').hidden) errors.push('Klatschfläche: „Los“ während des Laufs');
-      if ($('.tap-pad').closest('.rhythm-stage') && $('[data-rhythm-go]').closest('.tap-pad')) errors.push('„Los“ steckt im Klatsch-Knopf');
+      if ($('[data-rhythm-stop]').hidden || getComputedStyle($('.pad-beats')).display === 'none') errors.push('Klatschfläche im Lauf: Stopp oder Kreise fehlen');
+      if (pad.querySelector('button') || !$('.transport-row').hidden) errors.push('Klatschfläche: Knopf in der Fläche oder alte Leiste sichtbar');
+      state.input = 'mic';
+      run.padKey = ''; renderPad('idle');
+      if ($('[data-rhythm-mictest]').hidden) errors.push('Klatschfläche: Mikrofontest fehlt in Ruhe');
+      state.input = inputNow;
+      if (!$('.rhythm-sum [data-tempo-chip]') && state.mode !== 'course') errors.push('Tempo-Chip fehlt');
       run.padKey = padKey; renderPad(game.finished ? 'done' : 'idle');
     }
     // Nachklatschen: Noten nur auf Klick (je Runde); mit „Noten zeigen“ im Zahnrad, Kurs und Vom Blatt unverändert.
@@ -12671,7 +12723,7 @@
       run.notesFor = nf;
     }
     // Aufräumen: „ändern“ nur an der Stufen-Karte; „Im Takt: Vom Blatt“ nur mit Blattsingen.
-    if ($('.rhythm-sum button')) errors.push('Rhythmus: „ändern“ doppelt (Zusammenfassung)');
+    if ($('.rhythm-sum button:not([data-tempo-chip])')) errors.push('Rhythmus: „ändern“ doppelt (Zusammenfassung)');
     {
       const sv = { show: sing.showSight, v: sing.inTime.variant };
       sing.inTime.variant = 'sheet';

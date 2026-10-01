@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v409. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v410. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -114,9 +114,8 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
   „Im Takt: Vom Blatt“ gibt es nur bei eingeblendetem Blattsingen.
 - **Einsingen** (`550eb40`): Die Kacheln zeigen wieder „ca. m Min“ als Pille
   und „n Übungen“ darunter (Entscheidung zu D-2).
-- **Designvorschlag, noch nicht umgesetzt:** „Klatschfläche immer am unteren
-  Rand“ (Reihe 3 der Leinwand). Er wartet auf die Rückmeldung des
-  Chorleiters.
+- **Klatschfläche ersetzt die Play/BPM-Leiste** (Variante C der Leinwand,
+  vom Chorleiter gewählt, siehe D-23).
 
 ## Zugriff
 
@@ -505,6 +504,22 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 - **D-22 Klatsch-Grooves, Wiederholen:** Es geht direkt ins Durchhalten mit
   einem Vorbild davor statt mit Hören und Auffrischen (Musikpädagoge: der
   erste Abruf nach Tagen soll ehrlich zeigen, ob der Groove noch sitzt).
+
+- **D-23 Klatschfläche als Fußleiste (Variante C):**
+  - Rhythmus (Nachklatschen, Vom Blatt, Zweistimmig, Kurs) und
+    Klatsch-Grooves (Auffrischen, Durchhalten): Die Klatschfläche sitzt fest
+    unten und ersetzt die Leiste mit Play, Tempo und Tap.
+  - In Ruhe ist die ganze Fläche der Startknopf und zeigt nur „Tippen zum
+    Starten“, ohne Zählkreise. Nach dem Ende steht dort „Nochmal: tippen“.
+  - Im Lauf ist die Fläche das Klatschfeld; Stopp sitzt als eigener kleiner
+    Knopf oben rechts.
+  - Mikrofon-Eingabe: Der Mikrofontest ist ein kleiner Knopf „Test“ oben
+    links, weil ein Tipp auf die Fläche jetzt startet.
+  - Tempo: als Chip „♩ 92“ in der Zusammenfassungszeile, im Kurs in der
+    Ziel-Zeile. Ein Tipp öffnet das Zahnrad, dort stehen − / + und Tap
+    (Tap wie bisher nicht im Kurs). Die Statuszeile bleibt für
+    Screenreader erhalten.
+  - Damit ersetzt C den „Los“-Knopf aus D-19.
 
 ## Nicht umgesetzt (bewusst, als Vorschlag)
 
