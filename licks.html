@@ -103,6 +103,10 @@
   .delay-hint p { margin: 0 0 8px; font-size: 13px; line-height: 1.35; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .actions .k-btn:not(.k-btn--ghost):not(.k-btn--hear) { flex: 1 1 auto; }
+  /* Der Hauptknopf im Panel ist nur Rückfall/Beschriftung: Start und Stopp liegen in der Fußleiste (Mitte). */
+  .actions .k-btn.main-act { height: auto; min-height: 44px; background: none; border-color: transparent; color: var(--muted-2); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .actions .k-btn.main-act svg { display: none; }
+  .actions .k-btn.main-act:disabled { opacity: .5; }
   .feedback { min-height: 22px; margin: 8px 0 0; font-weight: 700; font-size: 14px; line-height: 1.35; }
   .panel p.feedback:empty { display: none; }
   .feedback.is-good { color: var(--ok-fg); }
@@ -1311,7 +1315,7 @@
     stopRun(false); releaseDrone();
     state.lick = id;
     ui.view = 'lick';
-    Object.assign(ui, { tempoPct: 100, step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
+    Object.assign(ui, { tempoPct: 100, step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, heardOnce: false, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
     ui.part = clamp(state.items[id]?.parts || 0, 0, lick.parts.length - 1);
     ui.holdStage = clamp((state.items[id]?.hold || 0) + 1, 1, 4);
     setFeedback('');
@@ -1347,6 +1351,17 @@
     return ['hear', 'sing', 'startton', 'part-run', 'whole-run', 'hold-run', 'roll-run'][ui.step - 1] || null;
   }
   const MAIN_LABEL = { hear: 'Anhören', 'review-hear': 'Anhören', sing: 'Hören und mitsingen', startton: 'Lick und Grundton hören', 'part-run': 'Teil starten', 'whole-run': 'Runde starten', 'hold-run': 'Durchhalten', 'roll-run': 'Mitspielen' };
+  /** Klaviatur nur dort, wo man spielt: Startton, Stückweise/Ganz (bis das Ergebnis da ist), Durchhalten nur im Lauf.
+   *  Ergebnis, Einschätzung, Notenbild und Hören/Mitsingen bekommen den Platz für sich. */
+  function dockNeeded() {
+    const r = ui.review && ui.review.queue && ui.review.phase;
+    const k = r ? (r === 'hold' ? 6 : 0) : ui.step;
+    if (k === 3) return true;
+    if (k === 4 || k === 5) return !(ui.result && typeof ui.result === 'object');
+    if (k === 6) return ui.running === 'hold';
+    return false;
+  }
+  function syncDock() { $('#dock').hidden = ui.view !== 'lick' || !dockNeeded(); }
   /** Fußleiste: Tempo-Pille, Start/Stopp, Schritt zurück/vor. */
   function renderFoot() {
     const lick = currentLick();
@@ -1362,6 +1377,7 @@
     play.innerHTML = busy ? ICON.stop : ICON.play;
     play.setAttribute('aria-label', busy ? 'Stopp' : act ? `Start: ${MAIN_LABEL[act]}` : 'Start');
     const rv = !!(ui.review && ui.review.queue);
+    syncDock();
     $('[data-act="step-prev"]').disabled = rv || ui.step <= 1;
     $('[data-act="step-next"]').disabled = rv || ui.step >= 7 || !stepUnlocked(lick, ui.step + 1);
   }
@@ -1396,24 +1412,28 @@
   const runLabel = (key) => ui.running === key;
   const stopBtn = (key) => (runLabel(key) ? `<button class="k-btn k-btn--ghost" type="button" data-act="stop">${ICON.stop}Stopp</button>` : '');
 
+  const heardOnce = (lick) => !!ui.heardOnce || stepDone(lick, 1);
+
   function renderPanel(lick, it) {
     const p = $('#panel');
     if (ui.review && ui.review.queue && ui.review.phase) { p.innerHTML = reviewPanelHtml(lick, it); return; }
     const k = ui.step;
     let html = '';
     if (k === 1) {
-      html = `<p>${esc(lick.intro)}</p><details class="more-wrap"><summary>Mehr dazu</summary><p class="more">${esc(lick.more)}</p></details>${placeholderHtml()}
-        <div class="actions"><button class="k-btn" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
+      // Klang vor Erklärung: erst nach dem ersten Anhören (oder wenn der Schritt schon geschafft war) kommen Text und „Mehr dazu“.
+      const heard = heardOnce(lick);
+      html = `${heard ? `<p>${esc(lick.intro)}</p><details class="more-wrap"><summary>Mehr dazu</summary><p class="more">${esc(lick.more)}</p></details>` : '<p class="hear-first">Hör ihn dir erst an: Tippe unten auf ▶. Noch nichts nachspielen.</p>'}${placeholderHtml()}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
         <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${stepDone(lick, 1) || ui.result === 'heard' ? '' : ' disabled'}>Weiter</button></div>
-        <p class="note">Der Lick läuft zweimal über einen Groove, dazwischen ein leerer Takt. Noch nichts nachspielen.</p>`;
+        ${heard ? '<p class="note">Der Lick läuft zweimal über einen Groove, dazwischen ein leerer Takt. Noch nichts nachspielen.</p>' : ''}`;
     } else if (k === 2) {
       html = `<p>Sing mit auf „du“. Die Stimme lernt den Verlauf, die Finger folgen.</p>${placeholderHtml()}
-        <div class="actions"><button class="k-btn" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>${ICON.play}Hören und mitsingen</button>${stopBtn('sing')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>${ICON.play}Hören und mitsingen</button>${stopBtn('sing')}
         <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
     } else if (k === 3) {
       const found = ui.foundKey !== null;
       html = `<p>Welcher Ton ist der erste? Hör den Lick, dann liegen Grundton und Quinte leise. Probier die Tasten aus – wenn du meinst, den Ton gefunden zu haben, logg ihn ein.</p>${placeholderHtml()}
-        <div class="actions"><button class="k-btn" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>${ICON.play}Lick und Grundton hören</button>${stopBtn('startton')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>${ICON.play}Lick und Grundton hören</button>${stopBtn('startton')}
         ${found ? '' : `<button class="k-btn k-btn--ghost" type="button" data-act="lock-start"${ui.pickedKey === null || ui.running ? ' disabled' : ''}>${ICON.check}Ton einloggen</button>`}
         ${ui.startFails >= 3 && !found ? '<button class="k-btn k-btn--hear" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
         ${ui.startFails >= 6 && !found ? '<button class="k-btn k-btn--ghost" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
@@ -1426,7 +1446,7 @@
       const last = partNo === n - 1;
       html = `<p><b>Teil ${partNo + 1} von ${n}</b> · ${b - a} Töne. Erst hörst du den Teil, dann ein Takt weiter Groove, dann bist du dran.</p>${ui.result && ui.result.part === partNo ? resultTimelineHtml(ui.result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
-        <div class="actions"><button class="k-btn" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
         ${ui.result && ui.result.part === partNo && ui.result.ok ? `<button class="k-btn k-btn--ghost" type="button" data-act="part-next">${last ? 'Weiter: Ganz' : 'Nächster Teil'}</button>` : ''}
         ${partNo > 0 ? '<button class="k-btn k-btn--ghost" type="button" data-act="part-prev">Vorheriger Teil</button>' : ''}</div>`;
     } else if (k === 5) {
@@ -1435,13 +1455,13 @@
       html = `<p><b>Runde ${Math.min(it.whole + 1, 3)} von 3</b> · ${label}. Du hörst den Lick einmal, dann spielst du ihn im selben Takt selbst.${it.whole >= 3 ? ' Alle drei Runden sind geschafft – du kannst weiter üben.' : ''}</p>
         ${ui.result && ui.result.kind === 'whole' ? resultTimelineHtml(ui.result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-        <div class="actions"><button class="k-btn" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
         ${it.whole >= 3 ? '<button class="k-btn k-btn--ghost" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
     } else if (k === 6) {
       html = holdPanelHtml(lick, it);
     } else if (k === 7) {
       html = `<p>So sieht der Lick aus – Zeilen sind die Töne, oben zählst du mit. Die Marke läuft mit, die Tasten leuchten.</p>${rollHtml(lick)}
-        <div class="actions"><button class="k-btn" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>${ICON.play}Mitspielen und mitlesen</button>${stopBtn('roll')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>${ICON.play}Mitspielen und mitlesen</button>${stopBtn('roll')}
         <button class="k-btn k-btn--ghost" type="button" data-act="roll-done">${stepDone(lick, 7) ? `${ICON.check}Fertig` : 'Fertig'}</button></div>`;
     }
     p.innerHTML = html;
@@ -1476,7 +1496,7 @@
     return `${intro}
       ${result ? stripHtml(result) : placeholderHtml()}
       <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-      <div class="actions"><button class="k-btn" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+      <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
       ${nextStage ? `<button class="k-btn k-btn--ghost" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
       ${result && result.held && stageNo === 4 ? '<span class="note" style="align-self:center">Alle Stufen geschafft.</span>' : ''}</div>
       ${(it.hold >= 1 || result) && !ui.running ? rateHtml(lick, it) : ''}`;
@@ -1708,7 +1728,7 @@
   /* Schritt 1–3 */
   function stepHear() {
     const lick = currentLick();
-    beginRun('hear', tlHear(lick, 2, 1), () => { ui.result = 'heard'; });
+    beginRun('hear', tlHear(lick, 2, 1), () => { ui.result = 'heard'; ui.heardOnce = true; });
   }
   function stepSing() {
     const lick = currentLick();
@@ -1977,7 +1997,7 @@
     const head = '';
     if (r.phase === 'hear') {
       return `${head}<p>${esc(lick.intro)}</p>${placeholderHtml()}
-        <div class="actions"><button class="k-btn" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
         <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="hold">Weiter: Durchhalten</button></div>`;
     }
     if (r.phase === 'hold') {
@@ -1985,7 +2005,7 @@
       const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
       return `${head}${ui.running || result ? '' : `<p class="panel-title">${st.name}</p>${planHtml(st, ui.holdStage)}<p>${holdBefore(st)}</p>`}${result ? stripHtml(result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-        <div class="actions"><button class="k-btn" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
         <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
     }
     return `${head}${rateHtml(lick, it)}`;
@@ -2496,6 +2516,43 @@
       ui.step = 6; renderFoot();
       if (!/Original/.test($('#tempo-val').textContent) || !dis('tempo-down') || !dis('tempo-up')) errors.push('Fußleiste Durchhalten: Tempo muss „Original“ und gesperrt sein');
       if (dis('step-next') !== !stepUnlocked(lick, 7)) errors.push('Fußleiste: „vor“ folgt nicht stepUnlocked (Notenbild)');
+      // --- Klaviatur nur, wo man spielt; Hauptknopf im Panel nur Textknopf (Start/Stopp = Fußleiste)
+      {
+        const dockHidden = () => $('#dock').hidden;
+        const probe = (step, result, running, want, what) => {
+          Object.assign(ui, { step, result, running: running || '', review: null }); renderLick();
+          if (dockHidden() !== want) errors.push(`Klaviatur ${what}: ${want ? 'ausgeblendet' : 'sichtbar'} erwartet`);
+        };
+        const tlRes = { span: 4, bars: 1, barSec: 4, exp: [], taps: [], hits: 0 };
+        const fakeRes = { kind: 'hold', stage: 2, ...judgeHold({ expected: [1, 2], taps: [1, 2], barStart: 0, barSec: 4, tol: .1, plan: holdPlan(2) }) };
+        probe(1, null, '', true, 'Schritt 1'); probe(2, null, '', true, 'Schritt 2');
+        probe(3, null, '', false, 'Startton'); probe(4, null, '', false, 'Stückweise vor dem Lauf'); probe(5, null, '', false, 'Ganz vor dem Lauf');
+        probe(4, { kind: 'part', part: 0, ok: true, ...tlRes }, '', true, 'Stückweise-Ergebnis'); probe(5, { kind: 'whole', ok: true, ...tlRes }, '', true, 'Ganz-Ergebnis');
+        probe(6, null, '', true, 'Durchhalten vor dem Start'); probe(6, null, 'hold', false, 'Durchhalten-Lauf');
+        probe(6, fakeRes, '', true, 'Durchhalten-Ergebnis / Einschätzung'); probe(7, null, '', true, 'Notenbild');
+        state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 2, rating: null, streak: 0, due: null } };
+        probe(6, fakeRes, '', true, 'Durchhalten-Ergebnis'); if (!$('#panel [data-rate]')) errors.push('Durchhalten-Ergebnis: Einschätzung fehlt');
+        ui.review = { queue: [lick.id], i: 0, phase: 'rate' }; renderLick();
+        if (!dockHidden()) errors.push('Klaviatur in der Einschätzung (Wiederholung) sichtbar');
+        ui.review = { queue: [lick.id], i: 0, phase: 'hold' }; ui.running = 'hold'; renderLick();
+        if (dockHidden()) errors.push('Klaviatur im Durchhalten-Lauf (Wiederholung) fehlt');
+        ui.review = null; ui.running = ''; ui.result = null;
+        // Hauptknopf: bleibt im Panel (data-act), aber als Textknopf; kein zweiter pinker Knopf
+        for (const [st, act] of [[1, 'hear'], [2, 'sing'], [3, 'startton'], [4, 'part-run'], [5, 'whole-run'], [6, 'hold-run'], [7, 'roll-run']]) {
+          ui.step = st; ui.result = null; renderLick();
+          const m = $(`#panel [data-act="${act}"]`);
+          if (!m || !m.classList.contains('main-act') || !m.classList.contains('k-btn--ghost')) errors.push(`Schritt ${st}: Hauptknopf ${act} fehlt oder ist nicht zurückgenommen`);
+        }
+        // Klang vor Erklärung: Text erst nach dem ersten Anhören (oder bei geschafftem Schritt 1)
+        state.items = {}; Object.assign(ui, { step: 1, result: null, heardOnce: false }); renderLick();
+        if ($('#panel .more-wrap') || $('#panel').textContent.includes(lick.intro)) errors.push('Schritt 1: Erklärung steht schon vor dem ersten Anhören');
+        if (!$('#panel [data-act="hear"]')) errors.push('Schritt 1: Hauptknopf fehlt vor dem Anhören');
+        ui.heardOnce = true; renderLick();
+        if (!$('#panel .more-wrap') || !$('#panel').textContent.includes(lick.intro)) errors.push('Schritt 1: Erklärung fehlt nach dem Anhören');
+        ui.heardOnce = false; state.items = { [lick.id]: { step: 1, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null } }; renderLick();
+        if (!$('#panel .more-wrap')) errors.push('Schritt 1: Erklärung fehlt bei geschafftem Schritt');
+        state.items = {}; ui.heardOnce = false; ui.step = 1; renderLick();
+      }
       state.notes = 'off';
       renderFoot();
       if (!dis('step-next')) errors.push('Fußleiste: Notenbild „aus“ muss „vor“ sperren');
