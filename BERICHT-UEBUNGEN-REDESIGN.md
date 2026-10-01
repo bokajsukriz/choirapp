@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v400. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v402. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -10,6 +10,13 @@ Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 Zurück-Knopf), Rhythmus, Hören, Singen, Licks & Grooves, Einsingen, Werkzeuge
 (Metronom/Piano nur Kopf, Fußleiste, Farben) und der Querschnitt (Gerätegrößen,
 Fokus, Trefferflächen). **Übersprungen:** nichts.
+
+**Schlussprüfung des Musikpädagogen:** Rhythmus, Singen und Licks waren mit
+Hinweisen freigegeben, Einsingen und Werkzeuge ohne Einwand. Bei Hören war
+Nacharbeit nötig, weil die Halbtöne der Leiter an der falschen Stelle saßen.
+Das ist behoben, und die Hinweise sind eingearbeitet (`381af61`, `7bd1b9c`).
+Offen bleiben nur Inhaltsvorschläge für die nächste Runde (siehe Abschnitt
+„Schlussprüfung“).
 
 **Bitte zuerst prüfen (nach Wichtigkeit):**
 
@@ -41,6 +48,8 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 
 | Bereich | Commits |
 |---|---|
+| Nacharbeit Licks | `7bd1b9c` |
+| Nacharbeit uebe-lab (Hören, Rhythmus, Singen) | `381af61` |
 | Querschnitt | `e3c7866` |
 | Singen | `5051629` |
 | Hören | `0dd8a2c` (Kette), `312569b` (Namen), `4bf90e1` (Übung), `b1d8017` (Übersicht) |
@@ -343,6 +352,8 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 | Licks: Plan der stillen Takte vor dem Durchhalten (neu) | man weiß vorher, was kommt | `a065d67` | wie oben |
 | Einsingen: Prestart mit Dauer und „Erst Kurz einsingen …“ bei Höhe/Tiefe (neu) | Stimmgesundheit, Zeit als Entscheidungskriterium | `e67a585` | `git revert e67a585` |
 | Einsingen: „Gleich: …“ nur in der letzten Runde/Pause | Vorbereitung am Übergang, sonst Ablenkung | `e67a585` | wie oben |
+| Hören: Intonations-Schwelle nur noch in der Serienbilanz | während der Aufgabe Leistungsdruck und Fachjargon | `381af61` | `git revert 381af61` |
+| Licks: Erklärung im Schritt „Hören“ erst nach dem ersten Anhören | Klang vor Erklärung | `7bd1b9c` | `git revert 7bd1b9c` |
 
 Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 `DATA_VERSION`-Wechsel nötig.
@@ -477,4 +488,30 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 
 ## Schlussprüfung des Musikpädagogen
 
-_(siehe unten, wird nach Abschluss eingetragen)_
+Grundlage waren alle Commits bis `e3c7866`, die Screenshots und Stichproben im
+Code. Klang vor Zeichen, keine Cent- oder ms-Zahlen für Laien, nie Rot und
+Hilfe vor „Stufe zurück“ ziehen sich laut Urteil durch alle Bereiche.
+
+| Bereich | Urteil | Nacharbeit |
+|---|---|---|
+| Rhythmus | freigegeben mit Hinweisen | Karte „Letzte Runde“ zeigt die Silben nicht mehr, während die nächste Runde läuft; im Leertakt ruhen die Kreise (`381af61`) |
+| Hören | Nacharbeit nötig | Halbtöne der Leiter saßen unter mi/ti statt darüber (fachlicher Fehler). Jetzt `margin-top`, 2 px gegen 10 px, Selbsttest misst die Bildschirmlage. Die Leiter passt auf 375×667, die Intonations-Schwelle steht nur in der Bilanz, und „3 (3. Stufe)“ ist nicht mehr doppelt (`381af61`) |
+| Singen | freigegeben mit Hinweisen | Stimm-Karte ohne Stimme öffnet die Stimmwahl; ab 150 ct „mehr als einen Halbton zu hoch/tief“ (`381af61`) |
+| Licks & Grooves | freigegeben mit Hinweisen | ein Startknopf (Fußleiste), Erklärung erst nach dem ersten Hören, Klaviatur verdeckt Ergebnis und Selbsteinschätzung nicht mehr (`7bd1b9c`) |
+| Einsingen | freigegeben | – |
+| Werkzeuge | freigegeben | – |
+
+Die bewusst nicht umgesetzten Punkte (siehe oben) hält der Pädagoge für
+vertretbar. Die Stimmwahl im Zahnrad ist nur zusammen mit der Korrektur am
+Leerzustand vertretbar, und die ist umgesetzt.
+
+**Für die nächste Runde (nicht umgesetzt, Inhalte):**
+
+1. Audiationspause beim Nachsingen und bei Intervallen.
+2. Tonmuster aus 2–3 Tönen in „Töne in der Tonart“.
+3. „Gegen eine zweite Stimme halten“ (Kernproblem im Pop-Chor).
+4. Tendenz über die Sitzung in der Stimm-Karte.
+5. Aufräumen: „Im Takt: Vom Blatt“ nur bei eingeschaltetem Blattsingen,
+   doppeltes „ändern“ bei Vom Blatt, gesperrte Akkordknöpfe leise statt
+   Opazität .4, später ein eigenes Blatt „Meine Stimme“ mit dem
+   Oktav-Hinweis für tiefe Stimmen.
