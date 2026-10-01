@@ -467,8 +467,11 @@
   .bar-strip { margin-top: 0; gap: 8px; }
   .bar-pill { height: 38px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none; background: var(--surface); border: 1px solid var(--line); color: var(--muted); padding: 0 6px; }
   .bar-pill svg { width: 18px; height: 18px; flex: none; }
-  .bar-strip.is-dense .bar-pill span { font-size: 12px; }
-  .bar-strip.is-dense .bar-pill:not([data-kind="count"]) svg { display: none; }
+  @media (max-width: 400px) { .bar-strip { gap: 6px; } .bar-pill { gap: 4px; font-size: 13px; padding: 0 6px; } .bar-pill svg { width: 16px; height: 16px; } .bar-strip .bar-pill[data-kind="count"] { flex-basis: 32px; margin-right: 4px; } }
+  /* Sehr schmal (320 px): alle Pillen gleich – nur Icons, sobald es mehr als drei Abschnitte sind. */
+  @media (max-width: 340px) { .bar-strip { gap: 4px; } .bar-pill { gap: 3px; font-size: 12px; padding: 0 4px; } .bar-strip:has(.bar-pill:nth-child(5)) .bar-pill span { display: none; } }
+  .bar-pill { flex: var(--n, 1) 1 auto; }
+  .bar-pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { color: var(--accent-foreground); border-color: var(--tint-line); }
   .bar-pill[data-kind="rest"] { border-style: dashed; border-color: var(--rep-line); color: var(--rep-fg); }
   /* Mitlaufende Füllung (von links nach rechts): erledigt voll, aktuell bis --p. */
@@ -3155,26 +3158,39 @@
   function renderStrip(bar, frac = 0) {
     const seq = bar ? bar.round.seq : idleSeq();
     const count = run.playing ? run.countIn : state.countIn;
-    const kinds = count ? ['count', ...seq] : seq;
-    const off = count ? 1 : 0;
-    const now = !bar ? -1 : bar.kind === 'count' ? 0 : bar.pos >= 0 ? bar.pos + off : -1;
-    const key = `${kinds.join(',')}|${now}|${!!bar}`;
+    // Aufeinanderfolgende Leertakte als eine (breitere) Pille „Still“: so passen
+    // Icon und Wort überall (Chorleiter: einheitlich wie beim Nachklatschen).
+    const groups = [];
+    if (count) groups.push({ kind: 'count', from: -1, n: 1 });
+    seq.forEach((kind, i) => {
+      const last = groups[groups.length - 1];
+      if (kind === 'rest' && last && last.kind === 'rest' && last.from >= 0) last.n++;
+      else groups.push({ kind, from: i, n: 1 });
+    });
+    const pos = !bar ? null : bar.kind === 'count' ? -1 : bar.pos >= 0 ? bar.pos : null;
+    const now = pos === null ? -1 : groups.findIndex((g) => pos >= g.from && pos < g.from + g.n);
+    const key = `${groups.map((g) => g.kind + g.n).join(',')}|${now}|${!!bar}`;
     if (run.stripKey !== key) {
       run.stripKey = key;
-      $('.bar-strip').classList.toggle('is-dense', kinds.length >= 5);
-      $('.bar-strip').replaceChildren(...kinds.map((kind, i) => {
+      $('.bar-strip').replaceChildren(...groups.map((g, i) => {
         const pill = document.createElement('span');
-        const done = i < now || (bar && kind === 'count' && now !== 0);
+        const done = i < now || (bar && g.kind === 'count' && now !== 0);
         pill.className = `bar-pill${i === now ? ' is-now' : ''}${done ? ' is-done' : ''}`;
-        pill.dataset.kind = kind;
-        pill.innerHTML = `<i class="bar-fill"></i>${STRIP_ICONS[kind] ? `<svg viewBox="0 0 24 24" aria-hidden="true">${STRIP_ICONS[kind]}</svg>` : ''}${kind === 'count' ? '' : `<span>${STRIP_LABELS[kind]}</span>`}`;
-        if (kind === 'count') pill.title = STRIP_LABELS.count;
+        pill.dataset.kind = g.kind;
+        const label = g.kind === 'count' ? '' : `<span>${STRIP_LABELS[g.kind]}</span>`;
+        if (g.n > 1) pill.style.setProperty('--n', g.n); // mehrere Leertakte: breiter, füllt sich langsamer
+        pill.innerHTML = `<i class="bar-fill"></i><svg viewBox="0 0 24 24" aria-hidden="true">${STRIP_ICONS[g.kind]}</svg>${label}`;
+        if (g.kind === 'count') pill.title = STRIP_LABELS.count;
         return pill;
       }));
     }
-    const cur = now >= 0 ? $('.bar-strip').children[now] : null;
-    if (cur) cur.style.setProperty('--p', clamp(frac, 0, 1).toFixed(3));
+    if (now >= 0) {
+      const g = groups[now];
+      const p = g.kind === 'count' ? frac : (pos - g.from + clamp(frac, 0, 1)) / g.n;
+      $('.bar-strip').children[now].style.setProperty('--p', clamp(p, 0, 1).toFixed(3));
+    }
   }
+
 
   /** Welche Hilfen sind während des Laufs sichtbar? Menschen synchronisieren
    *  sich mit bewegten Bildern deutlich genauer als mit stehenden — eine
@@ -13202,7 +13218,7 @@
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
     selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
-    courseResult, game,
+    courseResult, game, renderStrip,
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
