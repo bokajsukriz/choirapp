@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v413. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v414. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -116,6 +116,17 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
   und „n Übungen“ darunter (Entscheidung zu D-2).
 - **Klatschfläche ersetzt die Play/BPM-Leiste** (Variante C der Leinwand,
   vom Chorleiter gewählt, siehe D-23).
+- **Rhythmuskurs: Schrittwechsel und Vorstellung** (siehe D-25, Texte vom
+  Musikpädagogen):
+  - Nach einem geschafften Schritt erscheint oben das Banner „✓ Geschafft!
+    Jetzt mit Pause.“ (je Schritt ein kurzer Satz). Leertakt plus ein
+    Pausentakt ergeben zwei Takte „Gleich geht’s weiter …“, dann startet
+    der neue Schritt von selbst. Stopp blendet das Banner aus.
+  - Statt „Rhythmus nach Gehör“ steht vor dem Start in der Notenfläche die
+    Vorstellung der Lektion, immer ganz sichtbar: ein Satz zum Charakter,
+    dann „Was er transportiert“, „Wo du ihn hörst“ und „Achte drauf“ mit
+    schlichten Strich-Icons. Ohne Notenwerte (Hören vor Sehen). Unsichere
+    Songbeispiele hat der Pädagoge markiert; dort steht nur der Stil.
 
 ## Zugriff
 
@@ -417,6 +428,8 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
 | Hören: Tonmuster 2–3 Töne (neu) | näher an echten Melodien | `580685d` | `git revert 580685d` |
 | Singen: „Zweite Stimme halten“ (neu) | Kernproblem im Pop-Chor | `80afde6` | `git revert 80afde6` |
 | Einsingen: Minuten wieder auf den Kacheln | Entscheidung des Chorleiters (D-2) | `550eb40` | `git revert 550eb40` |
+| Rhythmuskurs: Banner und zwei Takte Pause beim Schrittwechsel | man versteht, was als Nächstes kommt | `1ed784a` | `git revert 1ed784a` |
+| Rhythmuskurs: Vorstellung je Lektion (Charakter, Wirkung, Vorkommen, Tipp) | Klangbezug vor dem Klatschen, ohne Notenwerte | `1ed784a` | wie oben |
 
 Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 `DATA_VERSION`-Wechsel nötig.
@@ -535,6 +548,13 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
   - Klatsch-Grooves: Hier ist das Tempo neu einstellbar (vorher immer
     Lektionstempo). Es gilt für den aktuellen Besuch und wird nicht
     gespeichert.
+
+- **D-25 Schrittwechsel und Vorstellung im Kurs:** Von drei Entwürfen
+  (Karte auf der Bühne, Banner, Popup) hat der Chorleiter das Banner gewählt,
+  mit möglichst kurzem Text. Die Vorstellung steht ohne „Das lernst du“ und
+  ohne „Mehr erfahren“ immer ganz da; auf kleinen Bildschirmen scrollt die
+  Seite über der festen Klatschfläche. Die technischen Texte (Zählsilben,
+  Notenwerte) bleiben hinter dem „?“.
 
 ## Nicht umgesetzt (bewusst, als Vorschlag)
 
