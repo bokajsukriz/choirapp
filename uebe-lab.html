@@ -483,11 +483,25 @@
   .goal.is-ok .goal-dot { border-color: var(--ok); background: var(--ok-bg); color: var(--ok-fg); }
   .goal-dot svg { width: 10px; height: 10px; stroke-width: 3.2; }
   .rhythm-stage .stage { margin-top: 0; position: relative; }
+  .course-intro-card { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+  .ci-teaser { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.4; color: var(--text); }
+  .ci-row { display: flex; gap: 10px; align-items: flex-start; }
+  .ci-row svg { width: 18px; height: 18px; flex: none; margin-top: 1px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ci-label { display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .ci-row p { margin: 2px 0 0; font-size: 14px; line-height: 1.4; color: var(--text); }
   .stage-notes-btn { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); min-height: 44px; padding: 0 18px; border-radius: 999px; border: 2px solid var(--tint-line); background: var(--surface); font: inherit; font-weight: 800; font-size: 14px; color: var(--text); cursor: pointer; }
   .tap-pad { height: auto; min-height: 168px; margin-top: 0; border-radius: 20px; border: 3px solid var(--tint-line); border-style: solid; background: var(--surface); color: var(--muted); padding: 14px 8px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-size: 15px; }
   .tap-pad[data-phase="idle"] { border-style: dashed; }
   .tap-pad[data-phase="you"], .tap-pad[data-phase="along"] { border-color: var(--accent-foreground); background: var(--surface); color: var(--accent-foreground); }
-  .tap-pad[data-phase="rest"] { border-color: var(--rep-line); color: var(--rep-fg); }
+  .tap-pad[data-phase="rest"], .tap-pad[data-phase="wait"] { border-color: var(--rep-line); color: var(--rep-fg); }
+  /* Schrittwechsel im Kurs: Banner oben, bis der neue Schritt beginnt. */
+  .step-toast { position: fixed; z-index: 30; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); width: min(420px, calc(100% - 32px)); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 18px; background: var(--surface); border: 2px solid var(--ok, #2f9e5b); box-shadow: 0 12px 28px rgba(36, 27, 61, .18); animation: step-toast-in .25s ease-out; }
+  .step-toast[hidden] { display: none; }
+  .step-toast svg { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--ok-fg, #157a55); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .step-toast b { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--ok-fg, #157a55); }
+  .step-toast span { font-weight: 800; font-size: 16px; color: var(--text); }
+  @keyframes step-toast-in { from { opacity: 0; transform: translate(-50%, -12px); } }
+  @media (prefers-reduced-motion: reduce) { .step-toast { animation: none; } }
   .tap-pad[data-phase="listen"] { border-color: var(--hear-line); color: var(--hear-fg); }
   .tap-pad[data-phase="done"] { border-color: var(--ok); color: var(--ok-fg); }
   .pad-beats { display: grid; grid-template-columns: repeat(var(--beats, 4), minmax(0, 62px)); gap: 6px; width: 100%; justify-content: center; min-height: 0; }
@@ -710,6 +724,7 @@
       <div data-delay-hint hidden></div>
       <!-- Bühne (Konfetti B2): Phasen-Pillen, Ziel der Runde, Notenfläche (nur
            wo gelesen wird), eine große Klatschfläche mit Zählkreisen. -->
+      <div class="step-toast" data-step-toast role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><b></b><span></span></div>
       <div class="rhythm-stage k-stage">
         <div class="bar-strip" aria-hidden="true"></div>
         <div class="rstage-meta" hidden></div>
@@ -1461,6 +1476,157 @@
       more: 'Der Tanz stammt aus Kuba; weltberühmt wurde der Rhythmus durch die „Habanera“ aus Bizets Oper „Carmen“ (1875). Er gilt als ein Vorfahr des Tangos.' },
   ];
 
+  /** Vorstellung je Lektion auf dem ersten Bildschirm (statt „Rhythmus nach
+   *  Gehör“; Musikpädagoge): `teaser` Charakter + was du tust, in
+   *  Schlagsprache, ohne Notenwerte (Hören vor Sehen); `feel` was der
+   *  Rhythmus transportiert, `where` wo er vorkommt (nur sichere
+   *  Beispiele, sonst der Stil), `tip` worauf achten. */
+  const COURSE_INTRO = {
+    puls: { teaser: 'Der gleichmäßige Herzschlag der Musik – du klatschst jeden Schlag mit.',
+      feel: 'Ruhe und Sicherheit: Der Puls ist der Boden, auf dem alles andere steht.',
+      where: 'Überall. Hörbar pur in Disco und House, wo die Bassdrum jeden Schlag spielt („Four on the floor“).',
+      tip: 'Lass den Puls innerlich weiterlaufen, auch wenn du nicht klatschst – das trägt jeden späteren Rhythmus.' },
+    backbeat: { teaser: 'Der Groove von Pop und Gospel – du klatschst nur auf 2 und 4.',
+      feel: 'Lässig und federnd: Die Musik groovt, statt zu marschieren.',
+      where: 'Fundament von Pop, Rock, Soul und Gospel – die Snare spielt ihn in fast jedem Popsong.',
+      tip: 'Wer im Konzert auf 1 und 3 klatscht, klatscht gegen die Band. Übe ihn zu jedem Song im Radio.' },
+    halbe: { teaser: 'Lange Töne – du klatschst einmal und zählst dann still weiter.',
+      feel: 'Ruhe und Weite: Lange Töne lassen die Musik atmen.',
+      where: 'Am Ende von Phrasen in Chorälen, Balladen und Gospel-Schlüssen, oft mit Fermate.',
+      tip: 'Im Chor reißen lange Töne gern zu früh ab. Lass innerlich den Puls weiterlaufen, bis der Ton wirklich aus ist.' },
+    pause: { teaser: 'Stille, die mitzählt – du lässt Lücken im Puls und klatschst nicht hinein.',
+      feel: 'Spannung und Luft: Die Stille macht den nächsten Einsatz deutlicher.',
+      tip: 'In der Pause schon einatmen – dann sitzt der Einsatz danach pünktlich.' },
+    achtel: { teaser: 'Der Schlag teilt sich in zwei – du klatschst einmal doppelt so schnell.',
+      feel: 'Bewegung: Aus Gehen wird leichtes Laufen.',
+      where: 'Grundbaustein fast aller Lieder und Popsongs.',
+      tip: 'Beide Hälften gleich lang lassen. Der zweite Klatscher liegt genau in der Mitte, nicht knapp vor dem nächsten Schlag.' },
+    stomp: { teaser: 'Stampf, stampf, klatsch – das wohl bekannteste Stadion-Muster.',
+      feel: 'Kraft und Gemeinschaft: Ein ganzer Saal kann es gemeinsam machen.',
+      where: '„We Will Rock You“ von Queen (1977) – zweimal stampfen, einmal klatschen. Auch beliebt bei Body Percussion im Chor.',
+      tip: 'Im Studio entstand das Muster aus vielen übereinandergelegten Stampf- und Klatschaufnahmen.' },
+    offbeat: { teaser: 'Du klatschst nur zwischen den Schlägen – genau auf dem „und“.',
+      feel: 'Leichtigkeit und Schwung: Der Offbeat hüpft und treibt.',
+      where: 'Markenzeichen von Ska und Reggae: Die Gitarre spielt fast nur auf dem „und“ – typisch etwa bei Bob Marley.',
+      tip: 'Im Pop liegt der Offbeat oft in Hi-Hat oder Keyboard: Er treibt, der Backbeat trägt.' },
+    auftakt: { teaser: 'Die Melodie beginnt schon vor der Eins – du bist auf der Vier dran.',
+      feel: 'Anlauf: Der Auftakt holt Schwung und landet auf der schweren Eins.',
+      where: 'In sehr vielen Volksliedern, Chorälen und Hymnen.',
+      tip: 'Der Auftakt ist leicht, die Eins danach ist schwer. Nicht schon den Auftakt betonen.' },
+    auftaktUnd: { teaser: 'Einsatz kurz vor der Eins – auf dem „und“ der Vier, wie in vielen Popmelodien.',
+      feel: 'Lässiger Einstieg: Die erste, unbetonte Silbe rutscht vor die Eins.',
+      where: 'Typisch für Pop- und Gospelmelodien, die mit einem kleinen Wort wie „I“, „and“ oder „oh“ beginnen.',
+      tip: 'Wer erst auf der Eins einsetzt, ist sofort zu spät. Im Kopf „3, 4 und“ mitzählen.' },
+    synkope: { teaser: 'Der Akzent springt zwischen die Schläge – das macht Musik frech und lebendig.',
+      feel: 'Überraschung und Drive: Die Betonung landet dort, wo man sie nicht erwartet.',
+      where: 'Motor von Ragtime (z. B. Scott Joplins „The Entertainer“), Jazz, Pop und Gospel.',
+      tip: 'Auf dem übersprungenen Schlag passiert nichts – nicht klatschen, aber unbedingt mitzählen.' },
+    punktiert: { teaser: 'Lang – kurz: ein Klatscher, der etwas länger stehen bleibt, und ein kleiner Nachschlag.',
+      feel: 'Feierlich und schreitend, mit einem kleinen Schwung nach vorn.',
+      where: 'In Hymnen und Volksliedern, z. B. am Phrasenende der „Ode an die Freude“ („… E-ly-si-um“).',
+      tip: 'Den Schlag in der Mitte innerlich mitzählen. Sonst werden aus lang-kurz zwei gleiche Klatscher.' },
+    charleston: { teaser: 'Zwei kurze, federnde Klatscher – und dann Stille. Der Rhythmus der 1920er.',
+      feel: 'Gute Laune und Tanzlust: kurz, knackig, mit viel Luft danach.',
+      where: 'Benannt nach dem Tanz und dem Stück „The Charleston“ (James P. Johnson, 1923). Bis heute typisch für Swing und Big Band.',
+      tip: 'Die eigentliche Übung ist die Stille danach: Trag den Puls durch die Lücke.' },
+    antizipation: { teaser: 'Die Eins kommt ein bisschen zu früh – du klatschst kurz vor der Eins, nicht auf ihr.',
+      feel: 'Lässig und vorwärtsdrängend: Die Musik „fällt“ in den nächsten Takt.',
+      where: 'Ständig in Pop-, Jazz- und Gospelarrangements, oft bei betonten Silben am Phrasenanfang.',
+      tip: 'Klappt im Chor nur, wenn alle die Eins innerlich spüren – sonst fransen die Einsätze aus.' },
+    vorDrei: { teaser: 'Der Push: Die Drei kommt ein bisschen zu früh, auf ihr selbst klatschst du nicht.',
+      feel: 'Groove und Nachdruck: Die Betonung schiebt nach vorn.',
+      where: 'Typisch für Pop, Funk und Gospel, wo betonte Silben gern vor die Eins oder die Drei rutschen.',
+      tip: 'Den Schlag nach dem Push innerlich spüren – dann sitzt der Push, statt zu hetzen.' },
+    sechzehntel: { teaser: 'Ein Schlag zerfällt in vier schnelle Klatscher – gleichmäßig wie ein Rattern.',
+      feel: 'Energie und Dichte: Hier beginnt der Groove von Funk und R&B.',
+      where: 'Typisch für die Hi-Hat in Funk, Disco und modernem Pop.',
+      tip: 'Nicht zum Schlagende hin eilen. Bei schnellem Tempo lieber abwechselnd auf die Oberschenkel patschen.' },
+    achtel16: { teaser: 'Lang, kurz-kurz – ein galoppierender Rhythmus.',
+      feel: 'Galopp: Es treibt voran wie Pferdehufe.',
+      where: 'Als „Galopp“ typisch für Rock und Metal.',
+      tip: 'Der lange Klatscher ist genau doppelt so lang wie jeder kurze. Nicht in Dreier rutschen.' },
+    '16achtel': { teaser: 'Kurz-kurz, lang – ein Rhythmus, der nach vorn treibt.',
+      feel: 'Vorwärtsdrang und Spannung, wie ein Anlauf auf jedem Schlag.',
+      tip: 'Den langen Klatscher nicht verkürzen – sonst rutschen die nächsten kurzen zu früh.' },
+    aufE: { teaser: 'Einsatz knapp nach dem Schlag – du kommst einen Hauch später, nicht auf ihm.',
+      feel: 'Verzögerung und Lässigkeit: Die Phrase lehnt sich zurück.',
+      where: 'Typisch für Funk, R&B und Rap-Phrasierungen.',
+      tip: 'Der Schlag selbst bleibt still, aber spürbar. Wer auf dem Schlag klatscht, ist zu früh.' },
+    aufA: { teaser: 'Ein kurzer Klatscher direkt vor dem Schlag – wie ein kleiner Anlauf.',
+      feel: 'Federnder Schwung: Die kurze Silbe springt in den Schlag hinein.',
+      where: 'Typisch für Popphrasen, die mit einer kurzen Silbe kurz vor dem Schlag beginnen.',
+      tip: 'Zu früh klingt gehetzt, zu spät wird daraus eine Silbe auf dem Schlag.' },
+    synkope16: { teaser: 'Die Synkope im Kleinen: kurz – lang – kurz, eng um den Schlag.',
+      feel: 'Funky und wendig: kleine Stolperer, die den Groove lebendig machen.',
+      where: 'Typisch für R&B, Funk und viele Rap-Phrasierungen.',
+      tip: 'Nicht mit drei gleichen Klatschern (Triole) verwechseln: Die Abstände sind kurz – lang – kurz.' },
+    triole: { teaser: 'Der Schlag teilt sich in drei – rund und rollend statt zackig.',
+      feel: 'Rollen und Fließen: Die Musik bekommt etwas Rundes, Schwingendes.',
+      where: 'Grundlage von Swing, Blues und Soul-Balladen.',
+      tip: 'Nimm von den dreien nur den ersten und dritten, dann hast du schon den Shuffle – die nächste Lektion.' },
+    shuffle: { teaser: 'Lang-kurz, lang-kurz – der schwingende Gang von Blues und Swing.',
+      feel: 'Lässig schlendernd, mit Swing in den Hüften.',
+      where: 'Grundlage von Blues, Boogie-Woogie, Swing, frühem Rock ’n’ Roll und vielen Soulsongs.',
+      tip: 'Wie stark geswingt wird, ist Stilfrage – hier genau triolisch. Im Gospel oft etwas „gerader“.' },
+    sechsachtel: { teaser: 'Zwei große, wiegende Schläge, jeder in drei Teile geteilt.',
+      feel: 'Schaukeln und Wiegen – oder bei schnellem Tempo ausgelassenes Springen.',
+      where: 'Typisch für irische Jigs, Wiegenlieder und Balladen.',
+      tip: '6/8 und 3/4 haben gleich viele Achtel – der Unterschied ist nur die Betonung: zweimal drei statt dreimal zwei.' },
+    zwoelfachtel: { teaser: 'Das Wiegen der Soul-Ballade – vier große Schläge, jeder in drei geteilt.',
+      feel: 'Wärme, Sehnsucht und Gefühl: der Herzschlag der langsamen Soul- und Gospelnummer.',
+      where: 'Typisch für Soul- und Gospelballaden und den langsamen Blues.',
+      tip: 'Die Snare liegt auf dem zweiten und vierten großen Schlag – ein Backbeat in Dreiergruppen.' },
+    tresillo: { teaser: 'Drei Klatscher, ungleich verteilt (3 + 3 + 2) – der Urahn vieler Latin- und Pop-Grooves.',
+      feel: 'Tanzbarer Drive: ein Hinken, das unwiderstehlich vorwärts zieht.',
+      where: 'Afrokubanischen Ursprungs, heute in Reggaeton, Dancehall und Pop – oft im Bass oder in der Bassdrum.',
+      tip: 'Achte beim Hören von Popsongs einmal auf Bass und Bassdrum – dort steckt er oft.' },
+    clave: { teaser: 'Fünf Schläge über zwei Takte – der „Schlüssel“ der kubanischen Musik.',
+      feel: 'Ordnung im Groove: Alle Instrumente richten sich nach diesem Muster.',
+      where: 'Rückgrat von Son und Salsa. Im Rock ’n’ Roll als „Bo-Diddley-Beat“ berühmt, z. B. in „Not Fade Away“ (Buddy Holly).',
+      tip: '„Clave“ heißt Schlüssel – so heißen auch die beiden Hölzer, mit denen man den Rhythmus spielt.' },
+    walzer: { teaser: 'EINS zwei drei – ein schwerer Schlag, zwei leichte: der Rhythmus zum Drehen.',
+      feel: 'Drehen und Schweben: elegant, festlich, ein bisschen nostalgisch.',
+      where: 'Wiener Walzer wie „An der schönen blauen Donau“ (Johann Strauss Sohn), auch Popsongs im Dreiertakt wie „Piano Man“.',
+      tip: 'Im Wiener Walzer kommt die Zwei in der Begleitung einen Hauch zu früh – das gibt ihm sein Schweben.' },
+    sarabande: { teaser: 'Ein Dreiertakt, der auf der Zwei verweilt – ernst, würdevoll, langsam.',
+      feel: 'Würde und Innigkeit: Das Gewicht auf der Zwei wirkt wie ein ruhiger Schritt.',
+      where: 'Kennzeichen der Sarabande, eines langsamen Barocktanzes – etwa in Händels Arie „Lascia ch’io pianga“.',
+      tip: 'Die Eins bleibt trotzdem der Taktanfang. Spüre sie, auch wenn die Zwei länger klingt.' },
+    wiegen: { teaser: 'Lang-kurz, lang-kurz in großen Schlägen – es schaukelt wie eine Wiege.',
+      feel: 'Geborgenheit und sanftes Schaukeln, wie ein Boot auf dem Wasser.',
+      where: 'Wiegenlieder und Barkarolen (Gondellieder), etwa die Barcarole aus Offenbachs „Hoffmanns Erzählungen“.',
+      tip: 'Klingt ähnlich wie der Shuffle, aber langsamer und mit nur zwei großen Schlägen im Takt.' },
+    hemiole: { teaser: 'Für einen Takt kippt das Wiegen – aus zwei großen Schlägen werden drei.',
+      feel: 'Ein kurzes Stolpern oder Bremsen, das Spannung aufbaut.',
+      where: 'Im Barock oft kurz vor einem Schluss. Berühmt aus „America“ in Bernsteins „West Side Story“.',
+      tip: 'Die Takte bleiben gleich lang – nur die Betonung verschiebt sich: dreimal zwei statt zweimal drei.' },
+    punktachtel: { teaser: 'Lang-kurz, der kurze Ton knapp vor dem nächsten Schlag – federnd wie ein Marsch.',
+      feel: 'Zackig und stolz: Der Rhythmus federt und hat etwas Marschartiges.',
+      where: 'Typisch für Märsche und Hymnen.',
+      tip: 'Nicht mit zwei gleichen Klatschern oder dem Shuffle verwechseln: Der kurze Ton ist wirklich kurz.' },
+    geburtstag: { teaser: 'Ein kurzer, leichter Anlauf in die schwere Eins – so beginnt jedes „Happy Birthday“.',
+      feel: 'Festlich und schwungvoll: Der Anlauf hebt das Lied an.',
+      where: '„Happy Birthday“ – gesungen in einem Dreiertakt.',
+      tip: 'Beim Geburtstagssingen werden die beiden Anlaufsilben oft gleich lang gesungen. Hier lang-kurz.' },
+    habanera: { teaser: 'Ruhig und schwer, mit einem kleinen Anlauf in die Zwei – der Rhythmus der Habanera.',
+      feel: 'Sinnlich, stolz und ein wenig lauernd.',
+      where: 'Ein Tanz aus Kuba, weltberühmt durch die „Habanera“ aus Bizets „Carmen“ (1875). Gilt als Vorfahr des Tangos.',
+      tip: 'Klingt verwandt mit dem Tresillo – die Habanera füllt seine Lücke mit einem zusätzlichen Klatscher.' },
+  };
+  /** Vorstellungskarte (in der Notenfläche, vor dem Start eines Schritts nach Gehör). */
+  const INTRO_ICONS = {
+    feel: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>',
+    where: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+    tip: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/>',
+  };
+  const INTRO_LABELS = { feel: 'Was er transportiert', where: 'Wo du ihn hörst', tip: 'Achte drauf' };
+  function courseIntroHtml(l) {
+    const it = COURSE_INTRO[l.id];
+    if (!it) return '';
+    const rows = ['feel', 'where', 'tip'].filter((k) => it[k]).map((k) => `<div class="ci-row"><svg viewBox="0 0 24 24" aria-hidden="true">${INTRO_ICONS[k]}</svg><div><span class="ci-label">${INTRO_LABELS[k]}</span><p>${it[k]}</p></div></div>`).join('');
+    return `<div class="course-intro-card"><p class="ci-teaser">${it.teaser}</p>${rows}</div>`;
+  }
+
   /** Ticks-Text → Noten ab `t0`: „12“ Note, „-12“ Pause, „~12“ gebunden. */
   function courseNotes(text, t0 = 0) {
     const notes = [];
@@ -1504,12 +1670,12 @@
   function courseSteps(l) {
     const steps = [
       { mode: 'echo', name: 'Nachklatschen', how: 'Hören, dann ohne Noten nachklatschen.', accomp: 'full' },
-      { mode: 'echo', gap: 1, name: 'Behalten', how: 'Hören, einen Takt still weiterzählen, dann nachklatschen.', accomp: 'backbeat' },
+      { mode: 'echo', gap: 1, name: 'Behalten', cue: 'Jetzt mit Pause.', how: 'Hören, einen Takt still weiterzählen, dann nachklatschen.', accomp: 'backbeat' },
       combinable(l)
-        ? { mode: 'echo', combo: true, name: 'Im Zusammenhang', how: 'Zwei Takte nach Gehör: der neue Rhythmus und ein bekannter.', accomp: 'snare' }
-        : { mode: 'echo', name: 'Nur mit Snare', how: 'Nachklatschen, nur die Snare auf 2 und 4 hält dich.', accomp: 'snare' },
+        ? { mode: 'echo', combo: true, name: 'Im Zusammenhang', cue: 'Jetzt mit zwei Takten.', how: 'Zwei Takte nach Gehör: der neue Rhythmus und ein bekannter.', accomp: 'snare' }
+        : { mode: 'echo', name: 'Nur mit Snare', cue: 'Jetzt nur mit Snare.', how: 'Nachklatschen, nur die Snare auf 2 und 4 hält dich.', accomp: 'snare' },
     ];
-    if (course.notes !== 'off') steps.push({ mode: 'along', name: 'So sieht es aus', how: 'Mitklatschen und dabei die Noten lesen – der Rhythmus, den du schon kannst, als Notenbild.', accomp: 'full' });
+    if (course.notes !== 'off') steps.push({ mode: 'along', name: 'So sieht es aus', cue: 'Jetzt mit Noten.', how: 'Mitklatschen und dabei die Noten lesen – der Rhythmus, den du schon kannst, als Notenbild.', accomp: 'full' });
     return steps;
   }
 
@@ -2062,7 +2228,7 @@
   // { kind, round, pos (Index in round.seq, −1 = Ausgleichspause), start, len }.
   const run = {
     playing: false, bus: null, timer: 0, frame: 0, bars: [], ended: false, endTime: null,
-    viewKey: '', stripKey: '', padKey: '', shown: null, notesFor: null,
+    viewKey: '', stripKey: '', padKey: '', shown: null, notesFor: null, toastFrom: 0,
     meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05,
   };
   const game = { rounds: [], taps: [], streak: 0, best: 0, finished: false, stats: null };
@@ -2071,7 +2237,7 @@
      (gespeichert), Silben der Kurs-Anzeige (eigene Einstellung, Standard
      „ta ti-ti“). review: gelernte Rhythmen gemischt wiederholen. saved:
      Taktart/Tempo der anderen Übungen, solange der Kurs offen ist. */
-  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'count', notes: 'last', accomp: 'groove', moreOpen: false, saved: null };
+  const course = { lesson: COURSE[0].id, done: [], step: 0, misses: 0, complete: false, review: false, syl: 'count', notes: 'last', accomp: 'groove', moreOpen: false, saved: null, pause: 0 };
   const courseLesson = () => COURSE.find((l) => l.id === course.lesson) || COURSE[0];
   const reviewPool = () => COURSE.filter((l) => course.done.includes(l.id));
   /** Kursfortschritt zählt nur die Kapitel 1–6; das Zusatzkapitel ist freiwillig
@@ -2292,7 +2458,11 @@
       else { run.anchorTick = start; run.cursor = start; }
     } else {
       start = Math.ceil((run.layoutEnd + p) / T) * T - p;
-      if (start > run.layoutEnd) run.items.push({ kind: 'rest', round, pos: -1, start: run.layoutEnd, len: start - run.layoutEnd });
+      // Nach einem geschafften Kurs-Schritt: Pausentakte vor dem neuen Schritt.
+      const wait = state.mode === 'course' ? course.pause : 0;
+      course.pause = 0;
+      if (wait) { run.items.push({ kind: 'rest', wait: true, round, pos: -1, start: run.layoutEnd, len: start - run.layoutEnd + wait * T }); start += wait * T; }
+      else if (start > run.layoutEnd) run.items.push({ kind: 'rest', round, pos: -1, start: run.layoutEnd, len: start - run.layoutEnd });
     }
     round.seq.forEach((kind, pos) => {
       const len = kind === 'rest' ? T : round.pattern.total;
@@ -2309,7 +2479,7 @@
     const cand = run.items[run.itemIdx];
     const item = cand && tick >= cand.start && tick < cand.start + cand.len ? cand : null;
     if (item && tick === item.start) {
-      run.bars.push({ time, dur: item.len * run.tickSec, kind: item.kind, round: item.round, pos: item.pos, start: item.start, tickSec: run.tickSec });
+      run.bars.push({ time, dur: item.len * run.tickSec, kind: item.kind, round: item.round, pos: item.pos, start: item.start, tickSec: run.tickSec, ...(item.wait ? { wait: true } : {}) });
       if (item.kind === 'you' || item.kind === 'along') item.round.youStart = time;
     }
     // Mit Begleitung entfällt der Zählzeit-Klick; der Einzähler bleibt Klick.
@@ -2415,6 +2585,8 @@
     engine.fadeBus(run.bus);
     run.bus = null;
     run.bars = [];
+    course.pause = 0;
+    showStepToast(null);
     $('[data-round-card]').classList.remove('is-next-round');
     if (voice.consumer === 'rhythm' && !calib.active) micOff();
     renderTransport();
@@ -2714,6 +2886,17 @@
    *  Lektion geschafft (der Lauf endet nach dem Leertakt). Drei Fehlversuche
    *  im selben Schritt → etwas langsamer. */
   const COURSE_SLOWER = 6;   // BPM weniger nach drei Fehlversuchen
+  const STEP_PAUSE_BARS = 1; // + der Leertakt der Runde = zwei Takte Pause nach einem geschafften Schritt
+  /** Banner „Geschafft! Jetzt mit Pause.“ oben (Variante B des Chorleiters);
+   *  verschwindet, sobald der neue Schritt beginnt (oder beim Stopp). */
+  function showStepToast(step) {
+    const el = $('[data-step-toast]');
+    if (!step) { el.hidden = true; return; }
+    el.querySelector('b').textContent = 'Geschafft!';
+    el.querySelector('span').textContent = step.cue || `Weiter mit: ${step.name}`;
+    el.hidden = false;
+    run.toastFrom = game.rounds.length; // erst die nächste Runde blendet es aus
+  }
   const COURSE_MIN_BPM = 40;
   function courseResult(round) {
     const c = round.course;
@@ -2726,7 +2909,13 @@
         if (!course.done.includes(course.lesson)) course.done = COURSE.map((l) => l.id).filter((id) => id === course.lesson || course.done.includes(id));
         if (!selfTesting) persist();
         setStatus('Fehlerfrei — Lektion geschafft ✓');
-      } else setStatus(`Fehlerfrei ✓ Schritt ${course.step + 1}/${steps.length}: ${steps[course.step].name} — ${steps[course.step].how}`);
+      } else {
+        // Schrittwechsel (Chorleiter: „geht zu schnell weiter“): kurzes
+        // Banner und zwei Takte Pause, dann startet der neue Schritt von selbst.
+        course.pause = STEP_PAUSE_BARS;
+        showStepToast(steps[course.step]);
+        setStatus(`Fehlerfrei ✓ Schritt ${course.step + 1}/${steps.length}: ${steps[course.step].name} — ${steps[course.step].how}`);
+      }
     } else {
       course.misses++;
       if (course.misses >= 3 && state.bpm - COURSE_SLOWER >= COURSE_MIN_BPM) {
@@ -2866,6 +3055,7 @@
   const PAD_LABELS = {
     idle: 'Tippen zum Starten', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
     rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Nochmal: tippen',
+    wait: 'Gleich geht’s weiter …',
   };
 
   /** Klatschfläche: Zählkreise je Schlag (Konfetti B2). Sie stehen immer da,
@@ -2875,7 +3065,7 @@
     const m = METERS[round ? round.meter : state.meter];
     const aids = round && phase !== 'idle' && phase !== 'done' ? roundAids(round, phase) : null;
     const beats = Math.round(m.ticks / m.beat);
-    const live = !!(aids && aids.padBeats);
+    const live = !!(aids && aids.padBeats) || phase === 'wait';
     const mic = state.input === 'mic';
     const key = `${phase}|${live ? beat : -1}|${beats}|${state.input}|${micTest.on}`;
     if (run.padKey === key) return;
@@ -3008,7 +3198,10 @@
     const m = METERS[r.meter];
     const tickNow = bar.start + (now - bar.time) / bar.tickSec;
     const beat = Math.floor(mod(tickNow, m.ticks) / m.beat);
-    renderPad(bar.kind === 'count' ? 'count' : bar.kind, beat, r);
+    // Schrittwechsel: Leertakt und Pausentakt zusammen sind die Pause (Banner oben).
+    const toast = !$('[data-step-toast]').hidden;
+    if (toast && !bar.wait && r.index >= run.toastFrom) showStepToast(null);
+    renderPad(bar.wait || (toast && bar.kind === 'rest') ? 'wait' : bar.kind === 'count' ? 'count' : bar.kind, beat, r);
     renderStrip(bar);
     const disp = pickDisplay(bar);
     const aids = roundAids(disp.round, bar.round === disp.round ? bar.kind : 'rest');
@@ -3256,6 +3449,11 @@
     // jeder Runde): wo nichts zu lesen ist, die leere Zeile „Rhythmus nach Gehör“.
     let html;
     const hidden = echoNotesHidden(round);
+    // Kurs, vor dem Start eines Schritts nach Gehör: Vorstellung der Lektion.
+    if (round && round.index === -1 && round.course && round.mode === 'echo' && !run.playing && !course.review) {
+      const intro = courseIntroHtml(courseLesson());
+      if (intro) { stageLines = []; $('.stage').innerHTML = intro; $('.stage').hidden = false; return; }
+    }
     if (stageShown(round, phase) && !hidden) html = stageSvgHtml(round, reveal, phase);
     else { stageLines = []; html = neutralStageSvg(); }
     // Nachklatschen: die Noten der Runde nur auf Klick (Chorleiter) – nie automatisch.
@@ -12840,6 +13038,23 @@
         if (!(px < TEMPO_DRAG_PX) || Math.abs(120 - 2 * Math.trunc(180 / px) - TEMPO_DOWN_MIN) > 2 || tempoDownPx(44, 600) !== TEMPO_DRAG_PX || tempoDownPx(200, 20) !== 3) errors.push(`Tempo nach unten: ${px}`);
       }
       run.padKey = padKey; renderPad(game.finished ? 'done' : 'idle');
+      // Schrittwechsel (Variante B): kurzer Satz je Schritt, Banner, Pausentakt vor dem neuen Schritt.
+      {
+        const steps = courseSteps(COURSE.find((l) => l.id === 'backbeat'));
+        if (steps.slice(1).some((st) => !st.cue || st.cue.length > 26)) errors.push('Schrittwechsel: kurzer Satz fehlt');
+        showStepToast(steps[1]);
+        const el = $('[data-step-toast]');
+        if (el.hidden || el.textContent.trim() !== 'Geschafft!Jetzt mit Pause.') errors.push(`Schrittwechsel: Banner „${el.textContent}“`);
+        showStepToast(null);
+        if (!el.hidden) errors.push('Schrittwechsel: Banner bleibt stehen');
+        if (STEP_PAUSE_BARS < 1 || !PAD_LABELS.wait) errors.push('Schrittwechsel: keine Pause');
+      }
+      // Vorstellung je Lektion: alle Lektionen, kurz, ohne Prüfvermerke; steht in Ruhe in der Notenfläche.
+      for (const l of COURSE) {
+        const it = COURSE_INTRO[l.id];
+        if (!it || !it.teaser || it.teaser.length > 100 || Object.values(it).some((v) => v.length > 160 || /prüfen|\[/.test(v))) errors.push(`Vorstellung ${l.id}: fehlt oder zu lang`);
+      }
+      if (!/course-intro-card/.test(courseIntroHtml(COURSE[0])) || /Das lernst du|Mehr erfahren/.test(courseIntroHtml(COURSE[0])) || (courseIntroHtml(COURSE[0]).match(/ci-row/g) || []).length !== 3) errors.push('Vorstellung: Karte unvollständig');
     }
     // Nachklatschen: Noten nur auf Klick (je Runde); mit „Noten zeigen“ im Zahnrad, Kurs und Vom Blatt unverändert.
     {
@@ -12959,6 +13174,7 @@
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
     selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
+    courseResult, game,
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
