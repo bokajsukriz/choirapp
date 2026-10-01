@@ -149,6 +149,9 @@
   .tap-btn.is-tapped { background: rgba(var(--accent-rgb), .2); }
 
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  /* Konfetti B2: Chips behalten ihre Höhe, die Trefferfläche wächst auf 44 px. */
+  .chip { position: relative; }
+  .chip::before { content: ''; position: absolute; inset: -7px -2px; }
 </style>
 <!-- Gemeinsame Designsprache „Konfetti B2“ (Kopf, Fußleiste, Tokens); nach dem eigenen <style>. -->
 <link rel="stylesheet" href="./ueben.css">

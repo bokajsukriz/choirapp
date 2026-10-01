@@ -22486,10 +22486,16 @@ function syncToolFrameBack(frame) {
   try { own = !!frame.contentDocument?.documentElement.hasAttribute('data-own-back'); } catch { /* fremde Herkunft */ }
   if (frame.hidden || host.hidden) return;
   host.classList.toggle('has-own-back', own);
-  if (own && document.activeElement === $('#tool-frame-close')) {
-    // Der erste sichtbare (je nach Ansicht sitzt er im Seiten- oder im Übungskopf).
-    try { [...frame.contentDocument.querySelectorAll('[data-own-back-btn]')].find((b) => b.getClientRects().length)?.focus(); } catch { /* fremde Herkunft */ }
-  }
+  if (own && document.activeElement === $('#tool-frame-close')) focusOwnBack(frame, 3);
+}
+/** Fokus auf den ersten sichtbaren eigenen Zurück-Knopf (Seiten- oder
+ *  Übungskopf). Manche Seiten blenden ihn erst nach dem Laden ihres Stands
+ *  ein — dann kurz später noch einmal versuchen. */
+function focusOwnBack(frame, tries) {
+  let btn = null;
+  try { btn = [...frame.contentDocument.querySelectorAll('[data-own-back-btn]')].find((b) => b.getClientRects().length); } catch { return; /* fremde Herkunft */ }
+  if (btn) btn.focus();
+  else if (tries > 1) setTimeout(() => { if (!frame.hidden && frame.isConnected) focusOwnBack(frame, tries - 1); }, 250);
 }
 
 function closeToolFrame({ fromHistory = false } = {}) {

@@ -597,6 +597,11 @@
   .echo-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; background: var(--rep-bg); color: var(--rep-fg); font-size: 12px; font-weight: 700; }
   .echo-chip b { font-size: 12px; }
   .echo-chip.is-miss { background: var(--surface); border: 1px dashed var(--muted); color: var(--muted-2); }
+  /* Lange Titel (Lektionsname) dürfen umbrechen statt abgeschnitten zu werden. */
+  .mode-title { white-space: normal; overflow-wrap: anywhere; font-size: clamp(18px, 5.6vw, 22px); }
+  /* „ändern“ in der Zusammenfassungszeile: Trefferfläche 44 px ohne die Zeile aufzublähen */
+  .rhythm-sum button { position: relative; }
+  .rhythm-sum button::before { content: ''; position: absolute; inset: -16px -8px; }
   /* Fußleiste: schlank, halbtransparent, obere Linie (kein deckender Streifen) */
   footer { background: rgba(255, 255, 255, .7); border-top: 1px solid var(--line); padding: 8px 16px max(10px, env(safe-area-inset-bottom)); }
 </style>
