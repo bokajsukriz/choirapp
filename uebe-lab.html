@@ -9443,8 +9443,8 @@
     if (openBtn) {
       const [tab, id] = openBtn.dataset.openMode.split(':');
       openMode(tab, id);
-      // Play der Kurs-Karte: Lektion öffnen und gleich loslegen.
-      if (openBtn.classList.contains('course-hero-play') && !run.playing) start();
+      // Play der Kurs-Karte öffnet die Lektion, startet aber nicht gleich: erst
+      // steht die Vorstellung da (Chorleiter), los geht's mit der Klatschfläche.
       return;
     }
     // Kurs-Karte der Übersicht: Lektionsliste, Wahl ändert nur die Lektion

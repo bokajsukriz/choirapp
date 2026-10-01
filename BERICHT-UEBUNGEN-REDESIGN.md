@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v414. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v415. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -127,6 +127,9 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
     dann „Was er transportiert“, „Wo du ihn hörst“ und „Achte drauf“ mit
     schlichten Strich-Icons. Ohne Notenwerte (Hören vor Sehen). Unsichere
     Songbeispiele hat der Pädagoge markiert; dort steht nur der Stil.
+  - Der Play-Knopf der Kurs-Karte in der Übersicht öffnet die Lektion nur
+    noch und startet nicht mehr sofort, sonst würde die Vorstellung
+    übersprungen. Los geht es mit einem Tipp auf die Klatschfläche.
 
 ## Zugriff
 
