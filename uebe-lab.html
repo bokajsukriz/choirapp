@@ -497,6 +497,7 @@
   .rsyl.is-near { background: var(--rep-bg); color: var(--rep-fg); }
   .rsyl.is-miss { background: var(--surface); border: 1px dashed #c8102e; color: #c8102e; text-decoration: line-through; }
   .rsyl.is-rest { color: var(--muted); font-style: italic; }
+  .round-card.is-next-round .round-syl { display: none; }
   .round-text { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: var(--muted-2); }
   .round-card .help-text { margin: 4px 0 0; }
   .transport-row { grid-template-columns: auto 1fr auto; gap: 10px; }
@@ -532,15 +533,18 @@
   .ear-feedback.is-ok { color: var(--ok-fg); }
   /* Leiter: unten die Tonika, oben ihre Oktave; Halbtöne enger (--gap). */
   .answer-grid.is-ladder { display: flex; flex-direction: column-reverse; gap: 0; margin: 4px 0 0; padding: 8px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); }
-  .rung { position: relative; margin-bottom: var(--gap, 8px); }
-  .rung.is-top { margin-bottom: 0; }
+  /* Spalte ist umgekehrt (unten = Tonika): der Abstand zur nächsthöheren
+     Sprosse ist deshalb margin-top. Halbtöne 2 px, Ganztöne 10 px. */
+  .rung { position: relative; margin-top: var(--gap, 10px); }
+  .rung.is-top { margin-top: 0; }
   .rung .answer, .rung .answer-oct { width: 100%; min-height: 44px; padding: 0 14px; display: flex; align-items: center; text-align: left; font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1; border-radius: 12px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); }
   .rung.is-alt { margin-left: 34%; }
   .rung .answer.is-off, .rung .answer-oct.is-off { opacity: 1; border-style: dashed; border-color: var(--line); background: transparent; color: var(--muted); font-size: 15px; }
   .rung .answer.is-ok, .rung .answer-oct.is-ok { background: var(--ok-bg); border: 2px solid var(--ok); color: var(--ok-fg); }
   .rung .answer.is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); }
   .ear-stage:has(.key-row:not([hidden])) .ear-sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .ear-stage:has(.key-row:not([hidden])) .ear-prompt { font-size: 16px; }
+  .ear-stage:has(.key-row:not([hidden])) .ear-prompt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ear-stage:has(.key-row:not([hidden])) { padding: 0; }
   .rung .answer-oct.is-playing, .rung .answer.is-playing { background: var(--hear-bg); border: 2px solid var(--hear); color: var(--hear-fg); box-shadow: 0 0 0 3px rgba(51, 201, 220, .25); }
   .answer-grid.is-upper-playing .rung:not(.is-top) .answer[data-ans="0"].is-playing { background: var(--surface); border: 1px solid var(--tint-line); color: var(--text); box-shadow: none; }
   .rung-note { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
@@ -569,6 +573,7 @@
   .sum-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .sum-actions .k-btn { flex: 1 1 auto; height: 46px; font-size: 15px; }
   .voice-card { padding: 10px 12px; }
+  .sheet-tuner { width: 100%; margin-top: 12px; }
   .voice-card .k-hero-title { font-size: 17px; }
   .voice-dot { display: inline-block; width: 8px; height: 8px; margin: 0 6px 2px 0; border-radius: 50%; background: var(--accent-foreground); vertical-align: middle; }
   .voice-more { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; color: var(--muted-2); }
@@ -2336,6 +2341,7 @@
     engine.fadeBus(run.bus);
     run.bus = null;
     run.bars = [];
+    $('[data-round-card]').classList.remove('is-next-round');
     if (voice.consumer === 'rhythm' && !calib.active) micOff();
     renderTransport();
     renderCourse();
@@ -2888,7 +2894,9 @@
   /** Hilfen für eine Runde in einer Phase; mit Ergebnis (nach der Runde)
    *  bleibt die Auswertung sichtbar — ohne Marke. */
   function roundAids(round, phase) {
-    if (round.result) return { mark: false, timeline: true, liveTaps: true, padBeats: true, realLayout: true };
+    // Nach der Runde: Auswertung sichtbar, aber im Leertakt laufen keine
+    // Zählkreise mit („weiterzählen“ heißt innerlich zählen).
+    if (round.result) return { mark: false, timeline: true, liveTaps: true, padBeats: phase !== 'rest', realLayout: true };
     return visibleAids({ mode: round.mode, phase, course: !!round.course, showNotes: !!round.showNotes, markSelf: state.markSelf });
   }
   /** Kurs-Schritt 1–3 und Wiederholung: nie Notenköpfe, auch nicht nach der Runde. */
@@ -2909,6 +2917,8 @@
   function updateView(now, bar) {
     if (!bar) return;
     const r = bar.round;
+    // Folgerunde: die Silben der letzten Runde nicht mitlesen lassen (Musikpädagoge).
+    $('[data-round-card]').classList.toggle('is-next-round', !!game.last && r !== game.last);
     const m = METERS[r.meter];
     const tickNow = bar.start + (now - bar.time) / bar.tickSec;
     const beat = Math.floor(mod(tickNow, m.ticks) / m.beat);
@@ -3593,9 +3603,12 @@
     const part = profileApi ? prof?.part : ear.part;
     const measured = Number.isFinite(prof?.low) && Number.isFinite(prof?.high);
     const title = !chosen ? 'noch nicht gewählt' : `${PART_NAMES[part]}${measured ? ` · ${noteLabel(prof.low)} – ${noteLabel(prof.high)}` : ''}`;
-    const right = chosen && !measured ? 'Umfang messen' : 'Tuner & Umfang';
+    const right = !chosen ? 'Stimme wählen' : !measured ? 'Umfang messen' : 'Tuner & Umfang';
     const icon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
-    return `<button type="button" class="k-hero voice-card" data-open-mode="voice:tuner" aria-label="Meine Stimme: ${title}. ${right} – Tuner, Zielton und Tonumfang öffnen"><span class="k-hero-icon">${icon}</span><span class="k-hero-text"><span class="k-hero-over">Meine Stimme</span><span class="k-hero-title">${chosen ? '' : '<span class="voice-dot" aria-hidden="true"></span>'}${title}</span></span><span class="voice-more">${right}<span class="k-chev">${K_CHEV}</span></span></button>`;
+    // Noch keine Stimme: der Tipp führt zur Stimmwahl (Zahnrad-Blatt), nicht in den Tuner.
+    const act = chosen ? 'data-open-mode="voice:tuner"' : 'data-open-mode="voice:tuner" data-voice-choose';
+    const label = chosen ? `Meine Stimme: ${title}. ${right} – Tuner, Zielton und Tonumfang öffnen` : 'Meine Stimme: noch nicht gewählt – Stimme wählen';
+    return `<button type="button" class="k-hero voice-card" ${act} aria-label="${label}"><span class="k-hero-icon">${icon}</span><span class="k-hero-text"><span class="k-hero-over">Meine Stimme</span><span class="k-hero-title">${chosen ? '' : '<span class="voice-dot" aria-hidden="true"></span>'}${title}</span></span><span class="voice-more">${right}<span class="k-chev">${K_CHEV}</span></span></button>`;
   }
 
   /** Rhythmus-Übersicht: Kurs-Karte (Lektion, Stepper, Play), „Heute
@@ -4433,8 +4446,8 @@
       if (ok) return `Richtig: ${label} – ${task.semis === 11 && task.kmode === 'minor' ? 'der Leitton' : `die ${nth}`} in ${where}.`;
       const stufe = task.semis === 11 && task.kmode === 'minor' ? 'Leitton' : nth;
       return task.resolution.length === 1
-        ? `Das war ${label} (${stufe}) – der Grundton, hier ist die Tonart zu Hause.`
-        : `Das war ${label} (${stufe}) – hör, wie es nach ${noteInKeyLabel(task.kmode, 0)} läuft.`;
+        ? `Das war ${label}${/^\d/.test(label) ? '' : ` (${stufe})`} – der Grundton, hier ist die Tonart zu Hause.`
+        : `Das war ${label}${/^\d/.test(label) ? '' : ` (${stufe})`} – hör, wie es nach ${noteInKeyLabel(task.kmode, 0)} läuft.`;
     }
     if (ok) return `Richtig: ${label} in ${where}.`;
     return task.resolution.length === 1
@@ -4906,7 +4919,8 @@
     for (const m of misses) count[m] = (count[m] || 0) + 1;
     const worst = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
     const lines = [`${ok} von ${marks.length} auf Anhieb.`];
-    if (worst && worst[1] >= 2) lines.push(`${worst[0]} war heute knifflig.`);
+    // Silbe bzw. Name nicht an den Satzanfang (keine „Fa“-Großschreibung).
+    if (worst && worst[1] >= 2) lines.push(`Am kniffligsten heute: ${worst[0]}.`);
     let tip = '';
     if (ok < marks.length / 2) tip = inKey ? 'Tipp: Im Zahnrad „gleiche Tonart für 5 Aufgaben“ wählen – das gibt Halt.' : 'Tipp: Eine Stufe leichter kann helfen.';
     return { ok, text: lines.join(' '), tip };
@@ -4973,7 +4987,7 @@
     rung.className = 'rung';
     if (semis === 11 && task?.kmode === 'minor') rung.classList.add('is-alt'); // si/♯7: Nebensprosse
     const gap = next === undefined ? 12 - semis : next - semis;
-    rung.style.setProperty('--gap', gap === 1 ? '1px' : '6px');
+    rung.style.setProperty('--gap', gap === 1 ? '2px' : '10px');
     rung.append(btn);
     const note = rungNote(task, semis, false);
     if (note) rung.append(note);
@@ -5221,11 +5235,15 @@
         if (task && ear.revealed) { if (String(v) === String(task.correct)) b.classList.add('is-ok'); else if (String(v) === String(task.answer)) b.classList.add('is-bad'); }
         return b;
       }));
-      const th = stair.threshold();
-      const p = document.createElement('p');
-      p.className = 'tuning-threshold';
-      p.textContent = th ? `Deine Schwelle heute: etwa ${Math.round(th)} Cent` : `Abweichung gerade: ${Math.round(stair.delta)} Cent · die Schwelle erscheint nach sechs Umkehrpunkten`;
-      extra.append(p);
+      // Schwelle nur in der Serienbilanz (Musikpädagoge: bei jeder Aufgabe
+      // erzeugt sie Druck); im Gemischt-Programm wie bisher unter der Aufgabe.
+      if (quickRun || (seriesDone() && ear.revealed)) {
+        const th = stair.threshold();
+        const p = document.createElement('p');
+        p.className = 'tuning-threshold';
+        p.textContent = th ? `Deine Schwelle heute: etwa ${Math.round(th)} Cent` : `Abweichung gerade: ${Math.round(stair.delta)} Cent · die Schwelle erscheint nach sechs Umkehrpunkten`;
+        extra.append(p);
+      }
     }
 
     const st = ear.stats[ear.mode];
@@ -5258,7 +5276,12 @@
     const problem = settingsProblem();
     if (problem) { $('.sheet-hint').textContent = problem; return; }
     $('.sheet').hidden = true;
-    if (sheetKind === 'sing') { renderSing(); lastSettingsBtn?.focus?.(); return; }
+    if (sheetKind === 'sing') {
+      renderSing();
+      if (views.voice === 'list') renderModeList('voice'); // Stimm-Karte nach der Wahl
+      ($('[data-list="voice"] .voice-card') && views.voice === 'list' ? $('[data-list="voice"] .voice-card') : lastSettingsBtn)?.focus?.();
+      return;
+    }
     if (sheetKind === 'course') { renderRhythm(); ($('[data-course="list"]') || lastSettingsBtn)?.focus?.(); return; }
     if (sheetKind === 'rhythm') {
       // Ruhend: alte Runde ausblenden, damit Taktart & Co. gleich sichtbar sind.
@@ -5407,7 +5430,7 @@
         <div class="check-list">
           ${checkRow('showSight', 'on', 'Blattsingen anzeigen (mit Noten)', sing.showSight, 'Der Chor übt nach Gehör – Blattsingen ist deshalb ausgeblendet.', 'singset')}
           ${checkRow('findA4', 'on', 'Ton finden: nur das a′ (Stimmgabel)', sing.findA4, 'eigene Auswahl statt der Stufe', 'singset')}
-        </div>`;
+        </div>${views.voice === 'list' ? '<button type="button" class="k-btn k-btn--ghost sheet-tuner" data-sheet-tuner>Tuner und Tonumfang öffnen</button>' : ''}`;
       $('.sheet-hint').textContent = '';
       return;
     }
@@ -7252,7 +7275,7 @@
   function centsWord(cents) {
     const dir = cents > 0 ? 'hoch' : 'tief';
     const a = Math.abs(cents);
-    return a < 100 ? `etwas zu ${dir}` : a < 150 ? `einen Halbton zu ${dir}` : `zu ${dir}`;
+    return a < 100 ? `etwas zu ${dir}` : a < 150 ? `einen Halbton zu ${dir}` : `mehr als einen Halbton zu ${dir}`;
   }
   /** Ergebnis Nachsingen (Konfetti B2): Pille (Haken nur bei allem getroffen,
    *  versetzt/Oktave positiv), Tonspur Vorgabe/Stimme, Chips nur für Töne mit
@@ -8699,6 +8722,13 @@
     if (lvOpen) { openLevelSheet(lvOpen.dataset.levelOpen); return; }
     if (e.target === $('.level-sheet') || e.target.closest('[data-level-close]')) { closeLevelSheet(); return; }
     if (e.target.closest('[data-sing-settings]')) { openSettings('sing'); return; }
+    if (e.target.closest('[data-sheet-tuner]')) { closeSettings(); openMode('voice', 'tuner'); return; }
+    // Stimm-Karte im Leerzustand: erst die Stimme wählen (Blatt mit Weg zum Tuner).
+    if (e.target.closest('[data-voice-choose]')) {
+      openSettings('sing');
+      $('.sheet-body [data-chip="singPart"]')?.focus();
+      return;
+    }
     const openBtn = e.target.closest('[data-open-mode]');
     if (openBtn) {
       const [tab, id] = openBtn.dataset.openMode.split(':');
@@ -8710,6 +8740,7 @@
     // Kurs-Karte der Übersicht: Lektionsliste, Wahl ändert nur die Lektion
     // (Taktart/Tempo setzt erst das Öffnen des Kurses, siehe enterCourse).
     if (e.target.closest('[data-course-hub-list]')) { openSettings('course'); return; }
+
     if (e.target.closest('[data-grooves-hub-review]')) {
       startGroovesReview();
       gv.fromHub = true;
@@ -8907,7 +8938,8 @@
         if (voice.analyser) micOff();
         sing.mode = v; setSingFeedback('', '');
         renderVoice();
-      } else if (singChip.dataset.chip === 'singPart' && v !== ear.part) {
+      } else if (singChip.dataset.chip === 'singPart' && (v !== ear.part || (profileApi && !SATB_PARTS.includes(readProfile()?.part)))) {
+        // Auch die vorausgewählte Standardstimme speichern, solange im Profil noch keine steht.
         ear.part = v;
         try { profileApi?.set({ part: v }); } catch { /* App weg */ }
         clearSingTimers(); sing.task = null; sing.phase = 'idle'; sing.judge = null;
@@ -11920,7 +11952,7 @@
           if (QUICK_CHAINS[tab] && /Min/.test($(`[data-list="${tab}"] [data-mixed]`).textContent)) errors.push(`Liste ${tab}: Minutenangabe auf der Übersicht`);
         }
         // Konfetti B2: Tuner in der Karte „Meine Stimme“ oben, keine eigene Zeile.
-        if (!$('[data-list="voice"] .voice-card[data-open-mode="voice:tuner"]') || $('[data-list="voice"] .k-row[data-open-mode="voice:tuner"]')) errors.push('Singen: Tuner nicht in der Stimm-Karte');
+        if (!$('[data-list="voice"] .voice-card[data-open-mode="voice:tuner"], [data-list="voice"] .voice-card[data-voice-choose]') || $('[data-list="voice"] .k-row[data-open-mode="voice:tuner"]')) errors.push('Singen: Tuner nicht in der Stimm-Karte');
         if ($$('[data-list="voice"] .k-group-head').map((h) => h.textContent).join() !== 'Ton treffen,Melodie,Mit Rhythmus') errors.push('Singen: Gruppen');
         // Stufen-Karte: Zahl, Balken, „ändern“ öffnet das Blatt; dessen Zeilen
         // und der Vorschlags-Knopf setzen die Stufe über die alten Handler.
@@ -12002,7 +12034,7 @@
   /** Konfetti B2, Singen: Worte statt Cent, Ergebnis-Pille, Stepper, Übersicht. */
   function redesignSingCheck() {
     const errors = [];
-    if (centsWord(45) !== 'etwas zu hoch' || centsWord(-80) !== 'etwas zu tief' || centsWord(110) !== 'einen Halbton zu hoch' || centsWord(-260) !== 'zu tief') errors.push('centsWord');
+    if (centsWord(45) !== 'etwas zu hoch' || centsWord(-80) !== 'etwas zu tief' || centsWord(110) !== 'einen Halbton zu hoch' || centsWord(-260) !== 'mehr als einen Halbton zu tief') errors.push('centsWord');
     const tones = [{ t: 0, d: 12, midi: 60 }, { t: 12, d: 12, midi: 62 }, { t: 24, d: 12, midi: 64 }, { t: 36, d: 12, midi: 65 }];
     const box = document.createElement('div');
     box.innerHTML = echoResultHtml({ notes: [{ cents: 3, pitchOk: true }, { cents: 120, pitchOk: false }, { missing: true }, { cents: -8, pitchOk: true }], hits: 2, total: 4, extra: 0, octave: 0, transposed: null }, tones, []);
@@ -12016,7 +12048,9 @@
     const host = $('[data-list="voice"]');
     const keep = host.innerHTML;
     renderModeList('voice');
-    if (!host.querySelector('.voice-card[data-open-mode="voice:tuner"]') || host.querySelector('.k-row[data-open-mode="voice:tuner"]') || host.querySelector('.mode-how')) errors.push('Singen-Übersicht: Stimm-Karte/Tuner/Unterzeile');
+    const card = host.querySelector('.voice-card');
+    const chosenNow = !profileApi || SATB_PARTS.includes(readProfile()?.part);
+    if (!card || card.dataset.openMode !== 'voice:tuner' || card.hasAttribute('data-voice-choose') === chosenNow || host.querySelector('.k-row[data-open-mode="voice:tuner"]') || host.querySelector('.mode-how')) errors.push('Singen-Übersicht: Stimm-Karte/Tuner/Unterzeile');
     host.innerHTML = keep;
     return errors;
   }
@@ -12026,9 +12060,9 @@
     const errors = [];
     // Bilanz: auf Anhieb gezählt, schwierigster Ton ab 2 Fehlern, Hilfe-Tipp unter der Hälfte.
     let sum = seriesSummary(['ok', 'ok', 'help', 'ok', 'help', 'ok', 'ok', 'ok', 'help', 'ok'], ['fa', 'fa', 'ti']);
-    if (sum.ok !== 7 || sum.text !== '7 von 10 auf Anhieb. fa war heute knifflig.' || sum.tip) errors.push(`seriesSummary: ${JSON.stringify(sum)}`);
+    if (sum.ok !== 7 || sum.text !== '7 von 10 auf Anhieb. Am kniffligsten heute: fa.' || sum.tip) errors.push(`seriesSummary: ${JSON.stringify(sum)}`);
     sum = seriesSummary(['help', 'help', 'ok', 'help'], ['re'], { inKey: true });
-    if (!/Tonart/.test(sum.tip) || /knifflig/.test(sum.text)) errors.push(`seriesSummary Hilfe: ${JSON.stringify(sum)}`);
+    if (!/Tonart/.test(sum.tip) || /kniffligsten/.test(sum.text)) errors.push(`seriesSummary Hilfe: ${JSON.stringify(sum)}`);
     const saved = { mode: ear.mode, task: ear.task, revealed: ear.revealed, playing: ear.playing, upper: ear.playingUpper, levels: { ...ear.levels }, solfa: sing.solfa, series: JSON.parse(JSON.stringify(earSeries)), run: quickRun, tab: state.tab };
     try {
       quickRun = null; state.tab = 'ear';
@@ -12050,7 +12084,14 @@
       const rungs = $$('.answer-grid.is-ladder .rung');
       if (rungs.length !== 8 || !rungs[7].classList.contains('is-top') || rungs[7].textContent.trim() !== 'do′') errors.push(`Leiter: ${rungs.length} Sprossen, oben „${rungs[7]?.textContent}“`);
       const gapOf = (label) => rungs.find((r) => r.querySelector('.answer')?.textContent === label)?.style.getPropertyValue('--gap');
-      if (gapOf('mi') !== '1px' || gapOf('ti') !== '1px' || gapOf('do') !== '6px') errors.push(`Leiter: Abstände mi ${gapOf('mi')} ti ${gapOf('ti')} do ${gapOf('do')}`);
+      if (gapOf('mi') !== '2px' || gapOf('ti') !== '2px' || gapOf('do') !== '10px') errors.push(`Leiter: Abstände mi ${gapOf('mi')} ti ${gapOf('ti')} do ${gapOf('do')}`);
+      // Bildschirmlage (Schlussprüfung): der enge Abstand liegt ÜBER mi (mi–fa) und ti (ti–do′).
+      if ($('.answer-grid').getClientRects().length) {
+        const rect = (label) => rungs.find((r) => r.textContent.trim() === label)?.getBoundingClientRect();
+        const space = (low, high) => rect(low).top - rect(high).bottom;
+        const [mf, rm, td, lt] = [space('mi', 'fa'), space('re', 'mi'), space('ti', 'do′'), space('la', 'ti')];
+        if (!(mf < rm && td < lt && mf <= 3 && rm >= 8)) errors.push(`Leiter: Halbtöne an falscher Stelle (mi–fa ${mf}, re–mi ${rm}, ti–do′ ${td}, la–ti ${lt})`);
+      }
       if (/-Dur|-Moll/.test($('.key-row').textContent) || !$('.key-row [data-ear="inkey-cadence"]')) errors.push('Tonart-Zeile vor der Antwort');
       // Nach der Antwort: ti löst aufwärts auf → do′ ist das Ziel, Tonart-Name sichtbar.
       task.firstOk = true; task.answer = 11; ear.revealed = true;
