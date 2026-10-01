@@ -93,7 +93,9 @@ ein Dialog mit echter Wahl).
   Stufen-Karte, Phasenleiste Hören · Du · Ergebnis, eine Bühne mit fester Höhe
   (beim Singen nur Fortschrittsbalken, Mikro-Symbol als Pegel oben rechts) und
   ein Daumen-Dock (Nochmal · Start/Stopp/Weiter · Hilfen); alle Einstellungen
-  liegen im Zahnrad. Nachsingen und Im Takt werten
+  liegen im Zahnrad. Hören nutzt dasselbe Gerüst (Phasenleiste Hören · Du ·
+  Lösung, Zähler oben rechts in der Bühne, Antwortfeld mit fester Höhe, Dock
+  mit Nochmal · Start/Weiter · Hilfen). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
   durch Singen kalibrierten Latenz. Kommen die Tipper in `uebe-lab.html` und

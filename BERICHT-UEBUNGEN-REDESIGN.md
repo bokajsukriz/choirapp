@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v421. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v422. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -136,6 +136,25 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
     Diktat, Im Takt, Zweite Stimme, Blattsingen) in den Phasen vor Start,
     Vorgabe, Du und Ergebnis geprüft: Phasenleiste, Bühne und die drei
     Dock-Knöpfe stehen pixelgleich; in „Du“ keine Tonhöhe.
+- **Hören im selben Gerüst wie Singen** (Anweisung „Hören-UI“, Entwurf H1):
+  - Stufen-Karte immer sichtbar (gleich hoch, auch bei „Eigene Auswahl“),
+    Phasenleiste Hören · Du · Lösung. „Hören“ gilt, solange ein Ton der
+    Aufgabe klingt (Ende aus den geplanten Tönen auf dem Hör-Bus).
+  - Bühne wie Singen (360 px): Titel, Unterzeile, Mitte (Tonart-Zeile,
+    Lückenreihe der Akkordfolgen mit Löschtaste am Ende, Muster-Kästchen,
+    Serienbilanz, ruhige Wiedergabe-Andeutung), Meldungszeile mit zwei
+    Zeilen. Der Zähler „richtig/gesamt“ steht oben rechts.
+  - Antwortfeld mit fester Höhe, schon vor dem Start sichtbar (ausgegraut).
+    Töne in der Tonart: die Leiter liegt quer (links tief, rechts hoch,
+    Halbtöne enger), weil das Feld nicht mehr wächst.
+  - Dock wie Singen: Nochmal (Aufgabe noch einmal hören), Start/Weiter
+    (bei Stimmen „Antworten“, sobald ein Ton gewählt ist), Hilfen mit „Nur
+    den Ton/Akkord/Muster“, „Auflösung nochmal“, „Dur/Moll hören“, „Meine
+    Stimme lauter“, der vollen Erklärung und bei Intonation der Schwelle.
+  - Die Serienleiste „n von 10“ entfällt; die Bilanz nach 10 Aufgaben
+    erscheint in der Bühne. Phasenleiste, Bühne, Antwortfeld und Dock stehen
+    in allen acht Hör-Übungen und allen Phasen pixelgleich und an derselben
+    Stelle wie bei Singen (Playwright).
 - **Klatsch-Grooves als eine Seite (Mischpult, vom Chorleiter gewählt):**
   - Keine Schritte mehr: „Hören“ entfällt, Durchhalten ist der Standard.
   - Oben ein Regler für die Begleitung mit Icons in der Reihenfolge Klick,
