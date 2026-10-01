@@ -568,6 +568,35 @@
   .sum-text b { color: var(--text); }
   .sum-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .sum-actions .k-btn { flex: 1 1 auto; height: 46px; font-size: 15px; }
+  .voice-card { padding: 10px 12px; }
+  .voice-card .k-hero-title { font-size: 17px; }
+  .voice-dot { display: inline-block; width: 8px; height: 8px; margin: 0 6px 2px 0; border-radius: 50%; background: var(--accent-foreground); vertical-align: middle; }
+  .voice-more { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; color: var(--muted-2); }
+  .voice-more .k-chev svg { width: 18px; height: 18px; }
+  /* ---- Singen-Übung (Konfetti B2) ---- */
+  [data-panel="voice"] .panel { background: transparent; border: 0; padding: 0; }
+  [data-panel="voice"] .panel[data-sing-only="tuner"] { background: var(--surface); border: 1px solid var(--line); padding: 14px; }
+  .sing-stage { background: transparent; border: 0; padding: 4px 0; }
+  .sing-steps { margin: 0 0 10px; }
+  .sing-prompt { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+  .sing-ctl { min-width: 52px; font-size: 11px; font-weight: 700; }
+  .sing-ctl svg { background: var(--surface); border-color: var(--tint-line); }
+  .sing-ctl.is-primary svg { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .sing-ctl.is-quiet svg { background: transparent; border-color: var(--line); }
+  .echo-head { display: flex; justify-content: flex-start; margin-bottom: 6px; }
+  .echo-head .k-pill svg { width: 12px; height: 12px; stroke-width: 3; }
+  .stage .eb-ok { fill: var(--hear-bg); stroke: var(--hear-line); stroke-width: 1.5; }
+  .stage .eb-off { fill: var(--rep-bg); stroke: var(--rep-line); stroke-width: 1.5; }
+  .stage .eb-cents { font-size: 12px; font-weight: 800; fill: var(--rep-fg); }
+  .stage .eb-line { stroke: var(--accent-foreground); }
+  .echo-legend { display: flex; justify-content: center; gap: 14px; margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .echo-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .lg-target { width: 16px; height: 8px; border-radius: 4px; background: var(--hear-bg); border: 2px solid var(--hear-line); box-sizing: border-box; }
+  .lg-voice { width: 16px; height: 4px; border-radius: 2px; background: var(--accent-foreground); }
+  .echo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: center; }
+  .echo-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; background: var(--rep-bg); color: var(--rep-fg); font-size: 12px; font-weight: 700; }
+  .echo-chip b { font-size: 12px; }
+  .echo-chip.is-miss { background: var(--surface); border: 1px dashed var(--muted); color: var(--muted-2); }
   /* Fußleiste: schlank, halbtransparent, obere Linie (kein deckender Streifen) */
   footer { background: rgba(255, 255, 255, .7); border-top: 1px solid var(--line); padding: 8px 16px max(10px, env(safe-area-inset-bottom)); }
 </style>
@@ -657,6 +686,7 @@
     <div data-exview="voice" hidden>
     <div class="ex-head"><button class="back-btn" type="button" data-back="voice" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-sing-settings data-sing-only="task" aria-label="Einstellungen: meine Stimme" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel" data-sing-only="task" hidden>
+      <div class="sing-steps" hidden></div>
       <div data-levels="sing"></div>
       <div class="sing-opts">
         <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
@@ -3529,10 +3559,10 @@
   const EAR_GROUPS = [['Melodie', ['noteInKey', 'interval']], ['Harmonie', ['quality', 'cadence', 'chordInKey', 'chords']], ['Im Chor', ['tuning', 'parts']]];
   /** Übersicht mit „Gemischt üben“ und Gruppen (Hören, Singen). `top`: Karte
    *  über allem (Singen: Meine Stimme). Modi ohne Gruppe landen in der letzten. */
-  function groupedHubHtml(tab, groups, top = '') {
+  function groupedHubHtml(tab, groups, top = '', skip = []) {
     const modes = areaModes(tab);
     const names = Object.fromEntries(modes);
-    const placed = new Set(groups.flatMap(([, ids]) => ids));
+    const placed = new Set([...groups.flatMap(([, ids]) => ids), ...skip]);
     const rest = modes.map(([id]) => id).filter((id) => !placed.has(id));
     const last = currentMode(tab);
     const hero = QUICK_CHAINS[tab] ? `<button type="button" class="k-hero mixed-hero" data-mixed="${tab}" aria-label="Gemischt üben: alle Übungsarten nacheinander"><span class="k-hero-icon">${modeIcon('mixed')}</span><span class="k-hero-text"><span class="k-hero-title">Gemischt üben</span></span><span class="k-play" aria-hidden="true">${K_PLAY}</span></button>` : '';
@@ -3543,6 +3573,24 @@
       return `<section class="k-group"><h2 class="k-group-head">${title}</h2><div class="k-list">${rows}</div></section>`;
     }).join('');
     return `<div class="k-hub">${top}${hero}${sections}</div>`;
+  }
+
+  /** Singen: Ton treffen → Melodie → Mit Rhythmus (Musikpädagoge; Blattsingen,
+   *  wenn eingeschaltet, als dritter Eintrag unter Melodie). Der Tuner ist ein
+   *  Werkzeug, keine Übung: er sitzt in der Karte „Meine Stimme“. */
+  const SING_GROUPS = [['Ton treffen', ['hold', 'findTone', 'singInterval']], ['Melodie', ['singEcho', 'dictation', 'sight']], ['Mit Rhythmus', ['inTime']]];
+  /** Karte „Meine Stimme“: Stimme und (gemessener) Umfang als Startpunkt; die
+   *  ganze Karte ist ein Tippziel und öffnet Tuner, Zielton und Tonumfang.
+   *  Kein Standardumfang als Tatsache, keine Warnfarbe im Leerzustand. */
+  function voiceCardHtml() {
+    const prof = readProfile();
+    const chosen = profileApi ? SATB_PARTS.includes(prof?.part) : true;
+    const part = profileApi ? prof?.part : ear.part;
+    const measured = Number.isFinite(prof?.low) && Number.isFinite(prof?.high);
+    const title = !chosen ? 'noch nicht gewählt' : `${PART_NAMES[part]}${measured ? ` · ${noteLabel(prof.low)} – ${noteLabel(prof.high)}` : ''}`;
+    const right = chosen && !measured ? 'Umfang messen' : 'Tuner & Umfang';
+    const icon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+    return `<button type="button" class="k-hero voice-card" data-open-mode="voice:tuner" aria-label="Meine Stimme: ${title}. ${right} – Tuner, Zielton und Tonumfang öffnen"><span class="k-hero-icon">${icon}</span><span class="k-hero-text"><span class="k-hero-over">Meine Stimme</span><span class="k-hero-title">${chosen ? '' : '<span class="voice-dot" aria-hidden="true"></span>'}${title}</span></span><span class="voice-more">${right}<span class="k-chev">${K_CHEV}</span></span></button>`;
   }
 
   /** Rhythmus-Übersicht: Kurs-Karte (Lektion, Stepper, Play), „Heute
@@ -3577,6 +3625,7 @@
     const host = $(`[data-list="${tab}"]`);
     if (tab === 'rhythm') { host.innerHTML = rhythmHubHtml(); return; }
     if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS); return; }
+    if (tab === 'voice') { host.innerHTML = groupedHubHtml('voice', SING_GROUPS, voiceCardHtml(), ['tuner']); return; }
     const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
       <span class="mode-ico">${modeIcon(icon)}</span><span><strong>${name}</strong><span class="mode-how">${text}</span></span><span class="mode-lv">${right}</span></button></li>`;
@@ -7193,6 +7242,31 @@
   /** Tonhöhenbild: waagrechte Balken für die Zieltöne, darüber die
    *  gesungene Linie (auf den Zeitraum der Zieltöne gestreckt). Getroffen
    *  grün, daneben orange mit Cent, fehlend grau gestrichelt. */
+  /** Wort statt Cent (Musikpädagoge): unter einem Halbton „etwas zu hoch“,
+   *  ab einem Halbton „einen Halbton zu hoch“ bzw. „zu hoch“. */
+  function centsWord(cents) {
+    const dir = cents > 0 ? 'hoch' : 'tief';
+    const a = Math.abs(cents);
+    return a < 100 ? `etwas zu ${dir}` : a < 150 ? `einen Halbton zu ${dir}` : `zu ${dir}`;
+  }
+  /** Ergebnis Nachsingen (Konfetti B2): Pille (Haken nur bei allem getroffen,
+   *  versetzt/Oktave positiv), Tonspur Vorgabe/Stimme, Chips nur für Töne mit
+   *  Fehler – mit Worten statt Cent. */
+  function echoResultHtml(res, tones, line) {
+    const all = res.hits === res.total;
+    const allMissing = res.notes.every((x) => x.missing);
+    const pill = allMissing ? '<span class="k-pill">Nicht gehört</span>'
+      : res.transposed != null ? `<span class="k-pill k-pill--ok">${K_CHECK}Melodie stimmt</span>`
+      : all ? `<span class="k-pill k-pill--ok">${K_CHECK}${res.total} von ${res.total}</span>`
+      : `<span class="k-pill">${res.hits} von ${res.total}</span>`;
+    const chips = allMissing ? '' : res.notes.map((x, i) => {
+      if (!x.missing && x.pitchOk) return '';
+      return `<span class="echo-chip${x.missing ? ' is-miss' : ''}"><b>${i + 1}</b>${x.missing ? 'fehlt' : centsWord(x.cents)}</span>`;
+    }).join('');
+    return `<div class="echo-head">${pill}</div><div class="stage echo-graph">${echoPitchSvg(tones, res, line)}</div>
+      <div class="echo-legend" aria-hidden="true"><span><i class="lg-target"></i>Vorgabe</span><span><i class="lg-voice"></i>deine Stimme</span></div>${chips ? `<div class="echo-chips">${chips}</div>` : ''}`;
+  }
+
   function echoPitchSvg(tones, res, line) {
     const W = 340, H = 150, X0 = 10, X1 = 330, Y0 = 16, Y1 = 138;
     const start = tones[0].t, end = tones[tones.length - 1].t + tones[tones.length - 1].d;
@@ -7209,7 +7283,8 @@
       const cls = n.missing ? 'eb-miss' : n.pitchOk ? 'eb-ok' : 'eb-off';
       const x0 = xOf(x.t) + 1.5, w = Math.max(3, xOf(x.t + x.d) - xOf(x.t) - 3), y = yOf(x.midi);
       out.push(`<rect class="${cls}" x="${f1(x0)}" y="${f1(y - 4.5)}" width="${f1(w)}" height="9" rx="4.5"/>`);
-      if (!n.missing && !n.pitchOk) out.push(`<text class="eb-cents" x="${f1(x0 + w / 2)}" y="${f1(n.cents > 0 ? y + 17 : y - 9)}" text-anchor="middle">${n.cents > 0 ? '+' : '−'}${Math.abs(n.cents)}</text>`);
+      // Konfetti B2 (Musikpädagoge): Richtung als Pfeil, keine Cent-Zahl im Bild.
+      if (!n.missing && !n.pitchOk) out.push(`<text class="eb-cents" x="${f1(x0 + w / 2)}" y="${f1(n.cents > 0 ? y - 9 : y + 17)}" text-anchor="middle">${n.cents > 0 ? '↑' : '↓'}</text>`);
     });
     if (line && line.length > 1) {
       const a = line[0].t, b = line[line.length - 1].t;
@@ -7690,6 +7765,25 @@
     $('.intime-lat').textContent = sing.inTime.latencyMs === null ? ' Noch nicht kalibriert.' : ` Kalibriert: ${sing.inTime.latencyMs} ms.`;
   }
 
+  /** Stepper der Sing-Übungen (Musikpädagoge): Hören → Singen → Ergebnis;
+   *  kein Stepper bei Ton halten und Tuner (ein Vorgang bzw. Werkzeug). */
+  const SING_STEPS = {
+    singEcho: ['Hören', 'Singen', 'Ergebnis'], findTone: ['Hören', 'Singen', 'Ergebnis'],
+    singInterval: ['Grundton', 'Singen', 'Ergebnis'], inTime: ['Einzählen', 'Singen', 'Ergebnis'],
+    dictation: ['Hören', 'Aufschreiben', 'Auflösung'], sight: ['Lesen', 'Singen', 'Ergebnis'],
+  };
+  function singStepIndex(phase) {
+    return ['sing', 'answer', 'holdWait', 'hold'].includes(phase) ? 1 : ['result', 'calibDone'].includes(phase) ? 2 : 0;
+  }
+  function renderSingSteps() {
+    const box = $('.sing-steps');
+    const names = SING_STEPS[sing.mode];
+    box.hidden = !names || !sing.task;
+    if (box.hidden) return;
+    const k = singStepIndex(sing.phase);
+    box.innerHTML = stepperHtml(names, k, (i) => i < k, 'Ablauf der Aufgabe');
+  }
+
   function renderSing() {
     $('[data-exview="voice"] .mode-title').textContent = modeName('voice', sing.mode);
     const tuner = sing.mode === 'tuner';
@@ -7697,6 +7791,11 @@
     if (tuner) return;
     const levels = SING_LEVEL_TABLE[sing.mode]();
     $('[data-levels="sing"]').innerHTML = levelControlHtml(`sing-${sing.mode}`, levels, sing.levels[sing.mode], levelHints[sing.mode]);
+    renderSingSteps();
+    // Konfetti B2: Stufen-Karte und Optionen (Silben, Vorspiel, Variante) vor
+    // der ersten Aufgabe; während der Übung Stepper und Bühne.
+    $('[data-levels="sing"]').hidden = !!sing.task;
+    $('.sing-opts').hidden = !!sing.task;
     chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
     $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval', 'inTime'].includes(sing.mode);
     $$('[data-intime-row]').forEach((el) => { el.hidden = sing.mode !== 'inTime'; });
@@ -7759,7 +7858,7 @@
       prompt.textContent = { cue: 'Hör zu', sing: 'Jetzt du' }[sing.phase] || 'Nachsingen';
       sub.textContent = [task.minor ? 'Moll' : 'Dur', `${echoTones(task).length} Töne`, task.half ? 'erste Hälfte' : '', task.slow ? 'langsamer' : '',
         sing.phase === 'sing' ? 'Silbe frei, z. B. „no“' : ''].filter(Boolean).join(' · ');
-      if (sing.phase === 'result' && task.result) view.innerHTML = `<div class="stage echo-graph">${echoPitchSvg(echoTones(task), task.result, task.line)}</div>`;
+      if (sing.phase === 'result' && task.result) view.innerHTML = echoResultHtml(task.result, echoTones(task), task.line);
       else view.innerHTML = `<div class="echo-dots" aria-hidden="true">${echoTones(task).map(() => '<i></i>').join('')}</div>`;
       renderEchoDots();
     } else if (task.mode === 'hold') {
@@ -11422,7 +11521,7 @@
       // Grafik: Balken je Ton mit den richtigen Klassen, Cent-Beschriftung.
       const svg = echoPitchSvg([{ t: 0, d: 12, midi: 60 }, { t: 12, d: 12, midi: 62 }, { t: 24, d: 24, midi: 64 }],
         { notes: [{ pitchOk: true, cents: 3 }, { pitchOk: false, cents: 40 }, { missing: true }], hits: 1, total: 3 }, [{ t: 0, midi: 60 }, { t: 1, midi: 62.4 }]);
-      if (!svg.includes('eb-ok') || !svg.includes('eb-off') || !svg.includes('eb-miss') || !svg.includes('>+40<') || !svg.includes('eb-line')) errors.push('Tonhöhenbild: Klassen/Beschriftung fehlen');
+      if (!svg.includes('eb-ok') || !svg.includes('eb-off') || !svg.includes('eb-miss') || !svg.includes('>↑<') || /[+−]\d/.test(svg) || !svg.includes('eb-line')) errors.push('Tonhöhenbild: Klassen/Pfeil fehlen oder Cent-Zahl im Bild');
       // „Nochmal“ behält die Melodie; Hilfen setzen help: true.
       const t1 = runTask({});
       const key = t1.mel.key;
@@ -11815,7 +11914,9 @@
           // Konfetti B2: keine Minutenangaben auf Übersichten (Auftraggeber).
           if (QUICK_CHAINS[tab] && /Min/.test($(`[data-list="${tab}"] [data-mixed]`).textContent)) errors.push(`Liste ${tab}: Minutenangabe auf der Übersicht`);
         }
-        if ($$('[data-list="voice"] [data-open-mode]').pop()?.dataset.openMode !== 'voice:tuner') errors.push('Tuner nicht letzte Zeile');
+        // Konfetti B2: Tuner in der Karte „Meine Stimme“ oben, keine eigene Zeile.
+        if (!$('[data-list="voice"] .voice-card[data-open-mode="voice:tuner"]') || $('[data-list="voice"] .k-row[data-open-mode="voice:tuner"]')) errors.push('Singen: Tuner nicht in der Stimm-Karte');
+        if ($$('[data-list="voice"] .k-group-head').map((h) => h.textContent).join() !== 'Ton treffen,Melodie,Mit Rhythmus') errors.push('Singen: Gruppen');
         // Stufen-Karte: Zahl, Balken, „ändern“ öffnet das Blatt; dessen Zeilen
         // und der Vorschlags-Knopf setzen die Stufe über die alten Handler.
         const box = document.createElement('div');
@@ -11889,6 +11990,29 @@
     }
     errors.push(...redesignRhythmCheck());
     errors.push(...redesignEarCheck());
+    errors.push(...redesignSingCheck());
+    return errors;
+  }
+
+  /** Konfetti B2, Singen: Worte statt Cent, Ergebnis-Pille, Stepper, Übersicht. */
+  function redesignSingCheck() {
+    const errors = [];
+    if (centsWord(45) !== 'etwas zu hoch' || centsWord(-80) !== 'etwas zu tief' || centsWord(110) !== 'einen Halbton zu hoch' || centsWord(-260) !== 'zu tief') errors.push('centsWord');
+    const tones = [{ t: 0, d: 12, midi: 60 }, { t: 12, d: 12, midi: 62 }, { t: 24, d: 12, midi: 64 }, { t: 36, d: 12, midi: 65 }];
+    const box = document.createElement('div');
+    box.innerHTML = echoResultHtml({ notes: [{ cents: 3, pitchOk: true }, { cents: 120, pitchOk: false }, { missing: true }, { cents: -8, pitchOk: true }], hits: 2, total: 4, extra: 0, octave: 0, transposed: null }, tones, []);
+    if (box.querySelector('.echo-head .k-pill--ok') || box.querySelector('.echo-head').textContent !== '2 von 4') errors.push(`Nachsingen-Pille bei Fehlern: ${box.querySelector('.echo-head').textContent}`);
+    const chips = [...box.querySelectorAll('.echo-chip')].map((c) => c.textContent);
+    if (chips.join('|') !== '2einen Halbton zu hoch|3fehlt' || /ct|Cent|\d\d/.test(box.querySelector('.echo-chips').textContent)) errors.push(`Nachsingen-Chips: ${chips}`);
+    box.innerHTML = echoResultHtml({ notes: tones.map(() => ({ cents: 0, pitchOk: true })), hits: 4, total: 4, extra: 0, octave: 0, transposed: 200 }, tones, []);
+    if (!box.querySelector('.k-pill--ok') || !/Melodie stimmt/.test(box.textContent) || box.querySelector('.echo-chips')) errors.push('Nachsingen versetzt: Pille nicht positiv');
+    if (singStepIndex('cue') !== 0 || singStepIndex('sing') !== 1 || singStepIndex('answer') !== 1 || singStepIndex('result') !== 2) errors.push('singStepIndex');
+    if (SING_STEPS.hold || SING_STEPS.tuner || SING_STEPS.singEcho.join() !== 'Hören,Singen,Ergebnis') errors.push('SING_STEPS');
+    const host = $('[data-list="voice"]');
+    const keep = host.innerHTML;
+    renderModeList('voice');
+    if (!host.querySelector('.voice-card[data-open-mode="voice:tuner"]') || host.querySelector('.k-row[data-open-mode="voice:tuner"]') || host.querySelector('.mode-how')) errors.push('Singen-Übersicht: Stimm-Karte/Tuner/Unterzeile');
+    host.innerHTML = keep;
     return errors;
   }
 
