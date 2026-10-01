@@ -321,6 +321,12 @@
   .sing-ctl span { line-height: 1.1; }
   .big-btn svg { width: 16px; height: 16px; }
   .slot-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
+  .slot-row.is-pattern { grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+  .ear-panel:has(.slot-row.is-pattern) .rung:not(.is-top) { margin-top: calc(var(--gap, 10px) * .6); }
+  .pat-slot { min-height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 999px; border: 2px solid var(--line); background: var(--surface); font-weight: 800; font-size: 15px; color: var(--muted); }
+  .pat-slot.is-now { border-style: dashed; border-color: var(--accent-foreground, #db0a73); color: var(--accent-foreground, #db0a73); }
+  .pat-slot.is-ok { background: var(--ok-bg, #DDF5EA); border-color: #9fdcc2; color: var(--ok-fg, #157a55); }
+  .pat-slot.is-help { background: var(--rep-bg, #FFF3C4); border-color: var(--rep-line, #F4DE8C); color: var(--rep-fg, #6b4b00); }
   .slot { border: 2px dashed var(--line); border-radius: 12px; padding: 10px 0; font-weight: 800; font-size: 1rem; min-height: 46px; display: grid; place-items: center; }
   .slot.is-filled { border-style: solid; border-color: var(--accent); color: var(--accent); }
   .slot.is-playing { background: rgba(var(--accent-rgb), .14); }
@@ -3947,6 +3953,7 @@
       inKeyHold: false,    // Töne/Akkorde in der Tonart: dieselbe Tonart für 5 Aufgaben
       inKeyCadence: 'always', // 'always' Kadenz vor jeder Aufgabe | 'newKey' nur bei neuer Tonart (mit inKeyHold)
       inKeyResolve: true,  // Auflösung nach der richtigen Antwort spielen
+      inKeyPattern: 1,     // Töne in der Tonart: Muster aus 1–3 Tönen (Musikpädagoge: Tonmuster)
     },
     task: null,        // aktuelle Aufgabe
     revealed: false,   // Antwort schon aufgelöst?
@@ -4400,6 +4407,7 @@
   const IN_KEY_PAUSE = .6;       // s zwischen Kadenz und Ziel
   const IN_KEY_TARGET_SEC = 1.2; // Dauer des Zieltons bzw. -akkords
   const IN_KEY_HOLD_TASKS = 5;   // „gleiche Tonart für 5 Aufgaben“
+  const PATTERN_NOTE_SEC = .7;   // Tonmuster: Abstand der Töne
   const chordTempoSec = () => CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
   const chordNotes = (v) => [v.bass, ...v.upper];
 
@@ -4415,7 +4423,7 @@
     return style === 'numbers' ? String(deg + 1) : SOLFA[kmode === 'minor' ? mod(deg + 5, 7) : deg];
   }
   /** Ziel der Aufgabe (Antwortwert) und Beschriftung eines Werts. */
-  const inKeyTarget = (task) => (task.kind === 'noteInKey' ? task.semis : task.symbol);
+  const inKeyTarget = (task) => (task.kind === 'noteInKey' ? (task.pattern && !ear.revealed ? task.pattern[task.idx].semis : task.semis) : task.symbol);
   const inKeyValue = (task, raw) => (task.kind === 'noteInKey' ? Number(raw) : String(raw));
   const inKeyLabel = (task, value) => (task.kind === 'noteInKey' ? noteInKeyLabel(task.kmode, value) : symbolLabel(value));
 
@@ -4432,7 +4440,14 @@
       t += IN_KEY_PAUSE;
     }
     if (onlyCadence) return t - IN_KEY_PAUSE - t0;
-    if (task.kind === 'noteInKey') engine.keys(task.note, t, IN_KEY_TARGET_SEC, { velocity: .22, dest: bus });
+    if (task.kind === 'noteInKey' && task.pattern) {
+      // Tonmuster: die Töne hintereinander, der letzte klingt aus.
+      task.pattern.forEach((x, i) => {
+        const last = i === task.pattern.length - 1;
+        engine.keys(x.note, t, last ? IN_KEY_TARGET_SEC : PATTERN_NOTE_SEC * .95, { velocity: .22, dest: bus });
+        if (!last) t += PATTERN_NOTE_SEC;
+      });
+    } else if (task.kind === 'noteInKey') engine.keys(task.note, t, IN_KEY_TARGET_SEC, { velocity: .22, dest: bus });
     else chordNotes(task.voicings[0]).forEach((m) => engine.keys(m, t, IN_KEY_TARGET_SEC, { velocity: .13, dest: bus }));
     return t + IN_KEY_TARGET_SEC - t0;
   }
@@ -4518,6 +4533,10 @@
     const where = keyName(task.key, task.kmode);
     const middle = task.resolution.slice(1, -1).map((s) => inKeyLabel(task, s.value));
     const home = inKeyLabel(task, task.resolution[task.resolution.length - 1].value);
+    if (task.kind === 'noteInKey' && task.pattern) {
+      const line = task.pattern.map((x) => noteInKeyLabel(task.kmode, x.semis)).join(' – ');
+      return ok ? `Richtig: ${line} in ${where}.` : `Das Muster war ${line}.`;
+    }
     if (task.kind === 'noteInKey') {
       const nth = `${IN_KEY_SEMIS[task.kmode].indexOf(task.semis) + 1}. Stufe`;
       if (ok) return `Richtig: ${label} – ${task.semis === 11 && task.kmode === 'minor' ? 'der Leitton' : `die ${nth}`} in ${where}.`;
@@ -4555,6 +4574,7 @@
     const value = inKeyValue(task, raw);
     if (ear.revealed) { playInKeyCompare(task, value); return; }
     if (task.tries.includes(value)) return; // schon als falsch markiert
+    if (task.pattern) { answerPattern(task, value); return; }
     const ok = value === inKeyTarget(task);
     task.answer = value;
     if (task.firstOk === undefined) {
@@ -4569,6 +4589,54 @@
     if (ok || task.tries.length >= 2) { revealInKey(task); return; }
     setEarFeedback('Noch nicht — sing den Ton leise und geh Schritt für Schritt nach Hause.', 'try');
     renderEar();
+  }
+
+  /** Tonmuster: Ton für Ton. Je Ton zählt der erste Tipp; nach zwei
+   *  Fehlversuchen steht der Ton da (gelb, „mit Hilfe“) und es geht weiter.
+   *  Gewertet wird das ganze Muster einmal: richtig nur, wenn jeder Ton beim
+   *  ersten Tipp saß. Danach die Auflösung vom letzten Ton aus. */
+  function answerPattern(task, value) {
+    const want = task.pattern[task.idx].semis;
+    const ok = value === want;
+    if (!ok) task.tries.push(value);
+    if (!ok && task.tries.length < 2) {
+      setEarFeedback(`Noch nicht – Ton ${task.idx + 1} von ${task.pattern.length}. Sing das Muster leise mit.`, 'try');
+      renderEar();
+      return;
+    }
+    logInKey(task, ok && !task.tries.length);
+    task.slots[task.idx] = ok && !task.tries.length ? 'ok' : 'help';
+    task.idx++;
+    task.tries = [];
+    if (task.idx < task.pattern.length) { setEarFeedback('', ''); renderEar(); return; }
+    task.idx = task.pattern.length - 1;
+    const allOk = task.slots.every((x) => x === 'ok');
+    task.firstOk = allOk;
+    task.answer = allOk ? task.semis : null;
+    const st = ear.stats.noteInKey;
+    st.total++;
+    if (allOk) { st.right++; ear.streak++; } else ear.streak = 0;
+    onEarResult(task, allOk);
+    revealInKey(task);
+  }
+  /** Muster aus `len` Tönen der Stufe: Start wie bisher gewichtet, dann
+   *  meist Schritte (höchstens drei Stufen weit), nie zweimal derselbe Ton,
+   *  jeder Ton nah am vorigen in der Lage der eigenen Stimme. */
+  function makeInKeyPattern(first, len, level, kmode, key, rnd) {
+    const answers = noteInKeyAnswers(level, kmode);
+    const { lo, hi } = singRange(ear.part);
+    const top = Math.max(hi, lo + 11);
+    const degOf = (semis) => (semis === 11 && kmode === 'minor' ? 6 : IN_KEY_SEMIS[kmode].indexOf(semis));
+    const out = [first];
+    while (out.length < len) {
+      const prev = out[out.length - 1];
+      const options = answers.filter((x) => x !== prev.semis && Math.abs(degOf(x) - degOf(prev.semis)) <= 3);
+      const pool = options.length ? options : answers.filter((x) => x !== prev.semis);
+      if (!pool.length) break;
+      const semis = pool[Math.floor(rnd() * pool.length)];
+      out.push({ semis, note: placeNear(mod(key + semis, 12), prev.note, lo, top) });
+    }
+    return out;
   }
 
   /* ---- Töne in der Tonart: Stufen, Aufgabe ---- */
@@ -4635,7 +4703,7 @@
   function makeNoteInKeyTask(n, rnd = Math.random) {
     const level = NOTE_IN_KEY_LEVELS[n - 1];
     const { key, kmode, newKey } = inKeyContext('noteInKey', n, level.kmodes, rnd);
-    const semis = pickInKeyAnswer(kmode, noteInKeyAnswers(level, kmode), rnd);
+    let semis = pickInKeyAnswer(kmode, noteInKeyAnswers(level, kmode), rnd);
     // Lage der eigenen Stimme; ein sehr enger gemessener Umfang wird bis zur Oktave geweitet.
     const { lo, hi } = singRange(ear.part);
     const top = Math.max(hi, lo + 11);
@@ -4646,9 +4714,13 @@
       for (let m = lo; m <= top; m++) if (mod(m, 12) === pc) options.push(m);
       note = options[Math.floor(rnd() * options.length)];
     } else note = placeNear(pc, Math.round((lo + hi) / 2), lo, top);
+    const len = ear.settings.inKeyPattern || 1;
+    const pattern = len > 1 ? makeInKeyPattern({ semis, note }, len, level, kmode, key, rnd) : null;
+    if (pattern) ({ semis, note } = pattern[pattern.length - 1]);
     const deg = IN_KEY_SEMIS[kmode].indexOf(semis);
     return {
       kind: 'noteInKey', level: n, kmode, key, deg: deg < 0 ? 6 : deg, semis, note,
+      ...(pattern ? { pattern, idx: 0, slots: [] } : {}),
       resolution: noteInKeyResolution(kmode, semis, note),
       cadence: !(ear.settings.inKeyHold && ear.settings.inKeyCadence === 'newKey') || newKey,
       answer: null, tries: [],
@@ -4673,9 +4745,9 @@
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'big-btn secondary';
     b.dataset.ear = ear.revealed ? 'inkey-resolve' : 'inkey-target';
-    b.textContent = ear.revealed ? 'Auflösung nochmal' : task.kind === 'noteInKey' ? 'Ton' : 'Akkord';
+    b.textContent = ear.revealed ? 'Auflösung nochmal' : task.pattern ? 'Muster' : task.kind === 'noteInKey' ? 'Ton' : 'Akkord';
     b.classList.add('is-hear');
-    b.setAttribute('aria-label', ear.revealed ? 'Auflösung nochmal' : task.kind === 'noteInKey' ? 'Nur den Ton noch einmal' : 'Nur den Akkord noch einmal');
+    b.setAttribute('aria-label', ear.revealed ? 'Auflösung nochmal' : task.pattern ? 'Nur das Muster noch einmal' : task.kind === 'noteInKey' ? 'Nur den Ton noch einmal' : 'Nur den Akkord noch einmal');
     return b;
   }
 
@@ -5155,6 +5227,7 @@
     grid.className = `answer-grid${ear.playingUpper ? ' is-upper-playing' : ''}`;
     grid.style.removeProperty('--cols');
     slots.hidden = true;
+    slots.classList.remove('is-pattern');
 
     if (ear.mode === 'interval') {
       prompt.textContent = task ? 'Welches Intervall war das?' : 'Zwei Töne — welcher Abstand?';
@@ -5172,7 +5245,18 @@
     } else if (ear.mode === 'noteInKey') {
       const level = NOTE_IN_KEY_LEVELS[(task ? task.level : ear.levels.noteInKey) - 1];
       const numbers = sing.solfa === 'numbers';
-      prompt.textContent = task ? 'Welcher Ton war das?' : `Ein Ton in der Tonart — welche ${numbers ? 'Stufe' : 'Silbe'}?`;
+      prompt.textContent = task?.pattern ? 'Welche Töne waren das?' : task ? 'Welcher Ton war das?' : (ear.settings.inKeyPattern || 1) > 1 ? `${ear.settings.inKeyPattern} Töne in der Tonart — welche ${numbers ? 'Stufen' : 'Silben'}?` : `Ein Ton in der Tonart — welche ${numbers ? 'Stufe' : 'Silbe'}?`;
+      if (task?.pattern) {
+        // Kästchen je Ton: gesuchter Ton gestrichelt, geschaffte mit Silbe (grün, gelb = mit Hilfe).
+        slots.hidden = false;
+        slots.classList.add('is-pattern');
+        slots.style.setProperty('--n', task.pattern.length);
+        slots.innerHTML = task.pattern.map((x, i) => {
+          const st = task.slots[i] || (ear.revealed ? 'help' : i === task.idx ? 'now' : '');
+          const text = task.slots[i] || ear.revealed ? noteInKeyLabel(task.kmode, x.semis) : i === task.idx ? `Ton ${i + 1} ?` : `Ton ${i + 1}`;
+          return `<span class="pat-slot${st ? ` is-${st}` : ''}">${st === 'ok' ? '✓ ' : ''}${esc(text)}</span>`;
+        }).join('');
+      }
       const where = (m) => (m === 'major' ? 'Dur' : `Moll (${numbers ? 'la = 1' : 'la'})`);
       sub.textContent = task
         ? `${where(task.kmode)} · ${task.cadence ? 'nach der Kadenz' : 'Tonart wie eben'}${ear.revealed ? ' · Antippen zum Vergleichen' : ''}`
@@ -5578,7 +5662,10 @@
       `<button class="chip" type="button" data-inkey="${name}" data-value="${v}" aria-pressed="${String(v) === String(value)}">${label}</button>`).join('')}</div>`;
     return `${mode === 'noteInKey' ? `<span class="sub-label">Beschriftung</span>
         ${choice('solfa', [['syllables', 'Silben (do re mi)'], ['numbers', 'Zahlen (1 2 3)']], sing.solfa)}
-        <p class="foot-note" style="text-align:left;margin-top:4px">Gilt auch beim Singen. Moll zählt ab la (la = 1), der Leitton heißt si bzw. ♯7.</p>` : ''}
+        <p class="foot-note" style="text-align:left;margin-top:4px">Gilt auch beim Singen. Moll zählt ab la (la = 1), der Leitton heißt si bzw. ♯7.</p>
+        <span class="sub-label">Muster</span>
+        ${choice('pattern', [[1, 'ein Ton'], [2, '2 Töne'], [3, '3 Töne']], s.inKeyPattern || 1)}
+        <p class="foot-note" style="text-align:left;margin-top:4px">Mehrere Töne hintereinander, wie in einer Melodie – Ton für Ton auf der Leiter antippen.</p>` : ''}
         <span class="sub-label">Tonart</span>
         ${choice('hold', [[false, 'jede Aufgabe neu'], [true, 'gleiche für 5 Aufgaben']], !!s.inKeyHold)}
         <span class="sub-label">Kadenz</span>
@@ -5590,6 +5677,7 @@
     if (name === 'solfa' && (value === 'syllables' || value === 'numbers')) sing.solfa = value;
     else if (name === 'hold') { s.inKeyHold = value === 'true'; ear.inKey.left = 0; }
     else if (name === 'cadence' && (value === 'always' || value === 'newKey')) s.inKeyCadence = value;
+    else if (name === 'pattern' && ['1', '2', '3'].includes(value)) { s.inKeyPattern = Number(value); clearEarTimers(); ear.task = null; ear.revealed = false; }
     renderSettings();
     renderEar();
   }
@@ -8896,6 +8984,7 @@
     ear.settings.inKeyHold = typeof es.inKeyHold === 'boolean' ? es.inKeyHold : false;
     ear.settings.inKeyCadence = es.inKeyCadence === 'newKey' ? 'newKey' : 'always';
     ear.settings.inKeyResolve = typeof es.inKeyResolve === 'boolean' ? es.inKeyResolve : true;
+    ear.settings.inKeyPattern = [1, 2, 3].includes(es.inKeyPattern) ? es.inKeyPattern : 1;
     // Gespeicherte Stufe 1–6: Nummer bleibt, Inhalt nach der heutigen Stufe
     // (Pop-Didaktik) — Intervalle mit Richtungen, Akkordfolgen mit Satz.
     if (ear.settings.intervalLevel >= 1) {
@@ -12387,6 +12476,47 @@
     } finally {
       Object.assign(ear, { mode: saved.mode, task: saved.task, revealed: saved.revealed, playing: saved.playing, playingUpper: saved.upper });
       Object.assign(ear.levels, saved.levels); sing.solfa = saved.solfa; Object.assign(earSeries, saved.series); quickRun = saved.run; state.tab = saved.tab;
+    }
+    // Tonmuster: 3 Töne der Stufe, Schritte ≤ 3 Stufen, Ton für Ton beantworten; gewertet einmal.
+    {
+      const sv = { task: ear.task, revealed: ear.revealed, streak: ear.streak, stats: { ...ear.stats.noteInKey }, onResult: onEarResult, st: selfTesting, pat: ear.settings.inKeyPattern, auto: ear.settings.autoNext, mode: ear.mode, hold: ear.settings.inKeyHold };
+      const reports = [];
+      let seed = 11;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+      try {
+        selfTesting = true; onEarResult = (t, ok) => reports.push(ok); ear.settings.autoNext = false; ear.settings.inKeyHold = false; ear.mode = 'noteInKey';
+        ear.settings.inKeyPattern = 3;
+        for (let k = 0; k < 40; k++) {
+          const t = makeNoteInKeyTask(3, rnd);
+          const answers = noteInKeyAnswers(NOTE_IN_KEY_LEVELS[2], t.kmode);
+          if (!t.pattern || t.pattern.length !== 3 || t.pattern.some((x) => !answers.includes(x.semis)) || t.pattern.some((x, i) => i && x.semis === t.pattern[i - 1].semis)) { errors.push(`Tonmuster: ${JSON.stringify(t.pattern)}`); break; }
+          const degs = t.pattern.map((x) => IN_KEY_SEMIS[t.kmode].indexOf(x.semis));
+          if (degs.some((d, i) => i && Math.abs(d - degs[i - 1]) > 3) || t.semis !== t.pattern[2].semis || t.note !== t.pattern[2].note) { errors.push('Tonmuster: Sprünge oder Ziel'); break; }
+        }
+        // alles beim ersten Tipp → richtig; ein Fehler in Ton 2 → „mit Hilfe“, einmal gewertet
+        const tryPattern = (wrongAt) => {
+          clearEarTimers(); reports.length = 0; ear.revealed = false;
+          ear.task = makeNoteInKeyTask(3, rnd);
+          const t = ear.task;
+          t.pattern.forEach((x, i) => {
+            if (i === wrongAt) answerInKey(String(noteInKeyAnswers(NOTE_IN_KEY_LEVELS[2], t.kmode).find((v) => v !== x.semis)));
+            answerInKey(String(x.semis));
+          });
+          return t;
+        };
+        let t = tryPattern(-1);
+        if (!ear.revealed || reports.join() !== 'true' || t.slots.join() !== 'ok,ok,ok') errors.push(`Tonmuster richtig: ${reports} ${t.slots}`);
+        t = tryPattern(1);
+        if (!ear.revealed || reports.join() !== 'false' || t.slots.join() !== 'ok,help,ok') errors.push(`Tonmuster mit Fehler: ${reports} ${t.slots}`);
+        ear.settings.inKeyPattern = 1;
+        if (makeNoteInKeyTask(3, rnd).pattern) errors.push('Tonmuster: ein Ton hat ein Muster');
+      } finally {
+        clearEarTimers();
+        onEarResult = sv.onResult; selfTesting = sv.st; ear.settings.inKeyPattern = sv.pat; ear.settings.autoNext = sv.auto; ear.mode = sv.mode; ear.settings.inKeyHold = sv.hold;
+        Object.assign(ear.stats.noteInKey, sv.stats);
+        ear.task = sv.task; ear.revealed = sv.revealed; ear.streak = sv.streak;
+        setEarFeedback('', '');
+      }
     }
     return errors;
   }
