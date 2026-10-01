@@ -421,6 +421,90 @@
   .ex-head .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .ex-head .icon-btn { width: 44px; height: 44px; border-radius: 50%; }
   .ex-head .icon-btn svg { width: 22px; height: 22px; }
+  /* Übersicht (Hub): Kurs-Karte, Wiederholen, einzeilige Zeilen mit Ring */
+  .k-hub { display: flex; flex-direction: column; gap: 12px; padding-bottom: 12px; }
+  .k-row.is-last { border-color: color-mix(in srgb, var(--accent) 45%, white); }
+  .k-hero.course-hero { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 14px 12px; }
+  .course-hero-top { display: flex; align-items: center; gap: 12px; }
+  .course-hero-open { flex: 1 1 auto; min-width: 0; min-height: 52px; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); display: flex; align-items: center; gap: 4px; text-align: left; }
+  .course-hero-open .k-hero-text { flex: 0 1 auto; }
+  .course-hero-open .k-hero-title { font-size: 21px; }
+  .course-hero-open .k-chev { color: var(--accent-foreground); }
+  .course-hero-open .k-chev svg { width: 22px; height: 22px; stroke-width: 2.4; }
+  .course-hero-play { width: 52px; height: 52px; }
+  /* ---- Rhythmus-Übung: Bühne, Pillen, Klatschfläche, Ergebnis ---- */
+  [data-panel="rhythm"] .panel { background: transparent; border: 0; padding: 0; }
+  .title-btn { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; display: inline-flex; align-items: center; gap: 2px; max-width: 100%; min-height: 32px; text-align: left; }
+  .title-btn .k-chev { color: var(--accent-foreground); }
+  .course-card { background: transparent; border: 0; padding: 4px 4px 12px; }
+  .course-card .help-text { background: var(--surface); }
+  .course-help p { margin: 0 0 6px; } .course-help p:last-child { margin: 0; }
+  .course-done { text-align: center; background: var(--ok-bg); color: var(--ok-fg); }
+  .course-nav { justify-content: center; }
+  .course-nav .k-btn { height: 46px; font-size: 15px; }
+  .rhythm-stage { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+  .bar-strip { margin-top: 0; gap: 8px; }
+  .bar-pill { height: 38px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none; background: var(--surface); border: 1px solid var(--line); color: var(--muted); padding: 0 6px; }
+  .bar-pill svg { width: 18px; height: 18px; flex: none; }
+  .bar-strip:has(.bar-pill:nth-child(5)) .bar-pill span { font-size: 12px; }
+  .bar-strip:has(.bar-pill:nth-child(5)) .bar-pill svg { display: none; }
+  .bar-pill[data-kind="listen"].is-now { background: var(--hear-bg); border: 2px solid var(--hear); color: var(--hear-fg); }
+  .bar-pill[data-kind="you"].is-now, .bar-pill[data-kind="along"].is-now { background: var(--accent); border: 2px solid var(--accent); color: var(--accent-ink); }
+  .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { color: var(--accent-foreground); border-color: var(--tint-line); }
+  .bar-pill[data-kind="rest"] { border-style: dashed; border-color: var(--rep-line); color: var(--rep-fg); }
+  .bar-pill[data-kind="rest"].is-now { background: var(--rep-bg); border: 2px solid var(--rep-line); color: var(--rep-fg); }
+  .bar-pill[data-kind="count"].is-now, .bar-pill[data-kind="read"].is-now { background: var(--text); border-color: var(--text); color: #fff; }
+  .rstage-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: var(--muted-2); }
+  .rstage-meta .goal { display: inline-flex; align-items: center; gap: 6px; }
+  .goal-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--accent-foreground); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
+  .goal.is-ok .goal-dot { border-color: var(--ok); background: var(--ok-bg); color: var(--ok-fg); }
+  .goal-dot svg { width: 10px; height: 10px; stroke-width: 3.2; }
+  .rhythm-stage .stage { margin-top: 0; }
+  .tap-pad { height: auto; min-height: 168px; margin-top: 0; border-radius: 20px; border: 3px solid var(--tint-line); border-style: solid; background: var(--surface); color: var(--muted); padding: 14px 8px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-size: 15px; }
+  .tap-pad[data-phase="idle"] { border-style: dashed; }
+  .tap-pad[data-phase="you"], .tap-pad[data-phase="along"] { border-color: var(--accent-foreground); background: var(--surface); color: var(--accent-foreground); }
+  .tap-pad[data-phase="rest"] { border-color: var(--rep-line); color: var(--rep-fg); }
+  .tap-pad[data-phase="listen"] { border-color: var(--hear-line); color: var(--hear-fg); }
+  .tap-pad[data-phase="done"] { border-color: var(--ok); color: var(--ok-fg); }
+  .pad-beats { display: grid; grid-template-columns: repeat(var(--beats, 4), minmax(0, 62px)); gap: 6px; width: 100%; justify-content: center; min-height: 0; }
+  .pad-beats i { width: 100%; height: auto; aspect-ratio: 1; max-width: 62px; margin: 0; border-radius: 50%; box-sizing: border-box; background: var(--surface); border: 2px solid var(--tint-line); color: var(--muted); display: flex; align-items: center; justify-content: center; font-style: normal; font-family: var(--font-display); font-weight: 700; font-size: clamp(14px, 6vw, 24px); }
+  .pad-beats i.is-strong { width: 100%; height: auto; margin: 0; }
+  .pad-beats i.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .pad-beats i.is-now { border: 4px solid var(--accent-foreground); color: var(--text); box-shadow: 0 0 0 6px rgba(var(--accent-rgb), .25); }
+  .pad-beats.is-quiet i { opacity: .55; }
+  .pad-label { font-weight: 700; font-size: 15px; line-height: 1.3; text-align: center; }
+  .tap-pad.is-mic .pad-label::before { content: ''; display: inline-block; width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; background: currentColor; -webkit-mask: var(--mic-icon) center / contain no-repeat; mask: var(--mic-icon) center / contain no-repeat; }
+  .tap-pad { --mic-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E"); }
+  .pad-level { width: 70%; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .pad-level i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--ok); transition: width .05s linear; }
+  .round-card { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .round-head { display: flex; align-items: center; gap: 8px; }
+  .round-title { flex: 1 1 auto; font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+  .round-head .k-pill svg { width: 12px; height: 12px; stroke-width: 3; }
+  .round-head .help-btn { width: 32px; height: 32px; font-size: 14px; position: relative; }
+  .round-head .help-btn::before { content: ''; position: absolute; inset: -6px; }
+  .tstrip { position: relative; height: 34px; margin-top: 2px; }
+  .tstrip-line { position: absolute; left: 0; right: 0; top: 16px; height: 2px; background: var(--rule); }
+  .tstrip-mid { position: absolute; left: 50%; top: 6px; width: 2px; height: 22px; margin-left: -1px; background: var(--muted); }
+  .tdot { position: absolute; top: 10px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; }
+  .tdot.is-good { background: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+  .tdot.is-near { background: var(--accent-3); box-shadow: 0 0 0 1px #b38f00; }
+  .tstrip-legend { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .round-counts { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--muted-2); }
+  .round-syl { display: flex; flex-wrap: wrap; gap: 4px; }
+  .rsyl { padding: 3px 8px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 14px; line-height: 1.3; border: 1px solid transparent; }
+  .rsyl.is-good { background: var(--ok-bg); color: var(--ok-fg); }
+  .rsyl.is-near { background: var(--rep-bg); color: var(--rep-fg); }
+  .rsyl.is-miss { background: var(--surface); border: 1px dashed #c8102e; color: #c8102e; text-decoration: line-through; }
+  .rsyl.is-rest { color: var(--muted); font-style: italic; }
+  .round-text { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: var(--muted-2); }
+  .round-card .help-text { margin: 4px 0 0; }
+  .transport-row { grid-template-columns: auto 1fr auto; gap: 10px; }
+  footer .play { width: 48px; height: 48px; box-shadow: none; color: var(--accent-ink); }
+  footer .k-tempo { position: relative; }
+  .k-tempo .bpm-out { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1; }
+  .tap-btn { height: 44px; padding: 0 14px; border: 1px solid var(--tint-line); border-radius: 999px; background: var(--line); color: var(--text); font-size: 14px; font-weight: 700; }
+  .status { margin: 6px 0 0; font-size: 12px; }
   /* Fußleiste: schlank, halbtransparent, obere Linie (kein deckender Streifen) */
   footer { background: rgba(255, 255, 255, .7); border-top: 1px solid var(--line); padding: 8px 16px max(10px, env(safe-area-inset-bottom)); }
 </style>
@@ -457,14 +541,18 @@
       <p class="rhythm-sum"></p>
 
       <div data-delay-hint hidden></div>
-      <div class="bar-strip" aria-hidden="true"></div>
-      <div class="stage"></div>
-      <button class="tap-pad" type="button" data-phase="idle"><span class="pad-label">Starte mit Play</span><span class="pad-beats"></span></button>
-      <p class="score" role="status"></p>
-      <p class="score-sub"></p>
-      <div class="label-row" style="justify-content:center;margin-top:6px">
-        <button class="help-btn" type="button" data-help="help-timing" aria-expanded="false" aria-label="Erklärung der Auswertung">?</button></div>
-      <p class="help-text" id="help-timing" hidden>Unter den Noten markieren Striche deine Tipper: <b style="color:var(--good)">grün</b> = genau (bis 40 ms daneben), <b style="color:var(--near)">gelb</b> = knapp, <b style="color:var(--bad)">rot</b> = verpasst oder zu viel. „Ø 25 ms zu spät“ ist die mittlere Abweichung deiner Treffer. Eine Runde ist fehlerfrei, wenn alle Noten getroffen sind und kein Tipper zu viel ist. Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>
+      <!-- Bühne (Konfetti B2): Phasen-Pillen, Ziel der Runde, Notenfläche (nur
+           wo gelesen wird), eine große Klatschfläche mit Zählkreisen. -->
+      <div class="rhythm-stage k-stage">
+        <div class="bar-strip" aria-hidden="true"></div>
+        <div class="rstage-meta" hidden></div>
+        <div class="stage"></div>
+        <button class="tap-pad" type="button" data-phase="idle"><span class="pad-beats" aria-hidden="true"></span><span class="pad-label">Starte mit Play</span><span class="pad-level" hidden><i></i></span></button>
+      </div>
+      <!-- Ergebnis der letzten Runde: Timing als Tendenz, Silben eingefärbt. -->
+      <div class="round-card k-card" data-round-card hidden></div>
+      <p class="score visually-hidden" role="status"></p>
+      <p class="score-sub visually-hidden"></p>
     </section>
     </div>
     <!-- Klatsch-Grooves (Licks & Grooves): geschaffte Kurs-Lektionen behalten und durchhalten, siehe renderGrooves. -->
@@ -603,7 +691,12 @@
 <footer>
   <div class="transport-row">
     <button class="play" type="button" aria-label="Starten"></button>
-    <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="30" max="200" value="92" aria-label="Tempo"></label>
+    <div class="k-tempo tempo" role="group" aria-label="Tempo">
+      <button type="button" data-tempo-step="-1" aria-label="Langsamer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <span class="k-tempo-val"><output class="bpm-out">92</output><small>BPM</small></span>
+      <button type="button" data-tempo-step="1" aria-label="Schneller"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <input class="bpm visually-hidden" type="range" min="30" max="200" value="92" aria-label="Tempo" tabindex="-1">
+    </div>
     <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
   </div>
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
@@ -2080,6 +2173,7 @@
   }
 
   async function start() {
+    micTest.on = false;
     try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
     if (state.input === 'mic') {
       setStatus('Mikrofon wird geöffnet …');
@@ -2189,7 +2283,7 @@
   function micOnset(time) {
     if (calib.active) { calib.taps.push(time); flashPad(); return; }
     if (gr.run && gr.run.playing) { gr.run.taps.push(time - state.micLatencyMs / 1000); flashGroovePad(); return; }
-    if (!run.playing) return;
+    if (!run.playing) { if (micTest.on) flashPad(); return; }
     game.taps.push(time - state.micLatencyMs / 1000);
     flashPad();
   }
@@ -2480,7 +2574,87 @@
     return ms > 0 ? `Ø ${ms} ms zu spät` : `Ø ${-ms} ms zu früh`;
   }
 
+  /** Auswertung einer Runde für die Karte „Letzte Runde“ (Musikpädagoge):
+   *  Punkte je Treffer (x: −1 = zu früh … 0 = genau … +1 = zu spät, Achse =
+   *  Trefferfenster `tol`), Pille, verpasst/zu viel und ein Satz zur Tendenz
+   *  – ohne ms-Zahl (Laien können 35 ms nicht fühlen; die Zahl steht hinter „?“).
+   *  Tendenz erst ab ≥ 3 Treffern, ≥ 75 % auf einer Seite und Mittel ≥ 30 ms
+   *  zu spät bzw. ≥ 40 ms zu früh (früh ist gegenüber dem Klick normal). */
+  function timingSummary(result, tol, { mic = false } = {}) {
+    const hits = result.notes.filter((n) => n.status === 'good' || n.status === 'near');
+    const missed = result.notes.filter((n) => n.status === 'miss').length;
+    const extras = result.extras || 0;
+    const dots = hits.map((n) => ({ x: clamp(n.off / (tol || .1), -1, 1), status: n.status }));
+    const allGood = !missed && !extras && hits.length > 0 && hits.every((n) => n.status === 'good');
+    const pill = allGood ? { text: 'Genau', ok: true } : result.perfect ? { text: 'Geschafft', ok: true } : { text: `${hits.length} von ${result.count}`, ok: false };
+    const offs = hits.map((n) => n.off * 1000);
+    const meanMs = offs.length ? Math.round(offs.reduce((a, b) => a + b, 0) / offs.length) : null;
+    let tendency = '';
+    if (mic && !hits.length && !(result.taps || []).length) tendency = 'silent';
+    else if (offs.length >= 3) {
+      const same = offs.filter((o) => Math.sign(o) === Math.sign(meanMs)).length / offs.length;
+      if (same >= .75 && meanMs >= 30) tendency = 'late';
+      else if (same >= .75 && meanMs <= -40) tendency = 'early';
+      else if (hits.filter((n) => n.status === 'near').length >= 2) tendency = 'spread';
+      else if (allGood) tendency = 'good';
+    } else if (allGood) tendency = 'good';
+    return { dots, pill, missed, extras, hits: hits.length, count: result.count, meanMs, tendency, text: TENDENCY_TEXT[tendency] };
+  }
+  const TENDENCY_TEXT = {
+    '': '', good: 'Sitzt im Groove.',
+    early: 'Du bist eher etwas früh – lass den Schlag zu dir kommen.',
+    late: 'Eher etwas spät – klatsch mit dem Schlag, nicht danach.',
+    spread: 'Mal früh, mal spät – zähl innerlich mit.',
+    silent: 'Nichts gehört – etwas lauter oder näher ans Handy.',
+  };
+
+  /** Karte „Letzte Runde“: Pille, Timing-Streifen, verpasst/zu viel, beim
+   *  Nachklatschen ohne Noten die Silben eingefärbt (Klang → Silbe), Satz. */
+  function renderRoundCard() {
+    const card = $('[data-round-card]');
+    const last = game.last;
+    const r = last?.result;
+    if (!r || state.mode !== last.mode && !(state.mode === 'course' && last.course)) { card.hidden = true; card.innerHTML = ''; return; }
+    const sum = timingSummary(r, last.tol, { mic: state.input === 'mic' });
+    const dots = sum.dots.map((d) => `<span class="tdot is-${d.status}" style="left:calc(50% + ${(d.x * 50).toFixed(1)}% - 7px)"></span>`).join('');
+    const counts = [sum.missed ? `${sum.missed} verpasst` : '', sum.extras ? `${sum.extras} zu viel` : ''].filter(Boolean).join(' · ');
+    let syl = '';
+    if (!stageShown(last)) {
+      const style = last.course ? course.syl : state.syllables;
+      const texts = syllablesFor(last.pattern, style === 'off' ? 'ta' : style);
+      const statusAt = (t) => r.notes.find((n) => n.t === t)?.status || '';
+      syl = `<div class="round-syl" aria-label="Silben der Runde">${last.pattern.notes.map((n, k) => {
+        const st = n.rest || n.tie ? 'rest' : statusAt(n.t) || 'miss';
+        const word = { good: 'genau', near: 'knapp', miss: 'verpasst', rest: '' }[st];
+        return `<span class="rsyl is-${st}">${style === 'off' && st !== 'rest' ? '●' : esc(texts[k])}${word ? `<span class="visually-hidden"> (${word})</span>` : ''}</span>`;
+      }).join('')}</div>`;
+    }
+    const good = sum.dots.filter((d) => d.status === 'good').length;
+    const near = sum.dots.length - good;
+    card.innerHTML = `<div class="round-head"><span class="round-title">Letzte Runde</span><span class="k-pill${sum.pill.ok ? ' k-pill--ok' : ''}">${sum.pill.ok ? K_CHECK : ''}${sum.pill.text}</span>
+        <button class="help-btn" type="button" data-help="help-timing" aria-expanded="false" aria-label="Erklärung der Auswertung">?</button></div>
+      <div class="tstrip" role="img" aria-label="Timing: ${good} genau, ${near} knapp${sum.text ? `. ${sum.text}` : ''}"><span class="tstrip-line"></span><span class="tstrip-mid"></span>${dots}</div>
+      <div class="tstrip-legend" aria-hidden="true"><span>zu früh</span><span>genau</span><span>zu spät</span></div>
+      ${counts ? `<p class="round-counts">${counts}</p>` : ''}${syl}
+      ${sum.text ? `<p class="round-text">${sum.text}</p>` : ''}
+      <p class="help-text" id="help-timing" hidden>Jeder Punkt ist ein Klatscher: in der Mitte genau, links zu früh, rechts zu spät. <b>Grün</b> = genau (bis 40 ms), <b>gelb</b> = knapp. Eine Runde ist geschafft, wenn alle Noten getroffen sind und kein Klatscher zu viel ist.${sum.meanMs !== null ? ` Mittlere Abweichung dieser Runde: ${sum.meanMs > 0 ? '+' : ''}${sum.meanMs} ms.` : ''} Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>`;
+    card.hidden = false;
+  }
+
+  /** Zeile über der Klatschfläche: im Kurs das Ziel „Fehlerfreie Runde“
+   *  (○ offen, ✓ nach einer fehlerfreien Runde). */
+  function renderStageMeta() {
+    const box = $('.rstage-meta');
+    const inCourse = state.mode === 'course' && !course.review;
+    box.hidden = !inCourse;
+    if (!inCourse) return;
+    const ok = !!(game.last?.result?.perfect && game.last.course);
+    box.innerHTML = `<span></span><span class="goal${ok ? ' is-ok' : ''}">Fehlerfreie Runde<span class="goal-dot" aria-hidden="true">${ok ? K_CHECK : ''}</span><span class="visually-hidden">${ok ? ': geschafft' : ': noch offen'}</span></span>`;
+  }
+
   function renderScore() {
+    renderRoundCard();
+    renderStageMeta();
     const last = game.last;
     const s = game.stats;
     if (!s.rounds || !last?.result) { $('.score').textContent = ''; $('.score-sub').textContent = ''; return; }
@@ -2507,28 +2681,67 @@
     rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft! Nochmal mit Play',
   };
 
+  /** Klatschfläche: Zählkreise je Schlag (Konfetti B2). Sie stehen immer da,
+   *  laufen aber nur mit, wo die Hilfe erlaubt ist (Einzähler; beim Mitlesen
+   *  außerhalb des eigenen Takts) — sonst ruhen sie gedimmt: Hören statt Sehen. */
   function renderPad(phase, beat = -1, round = null) {
     const m = METERS[round ? round.meter : state.meter];
     const aids = round && phase !== 'idle' && phase !== 'done' ? roundAids(round, phase) : null;
-    const beats = phase === 'idle' || phase === 'done' || (aids && !aids.padBeats) ? 0 : m.ticks / m.beat;
-    const key = `${phase}|${beat}|${beats}|${state.input}`;
+    const beats = Math.round(m.ticks / m.beat);
+    const live = !!(aids && aids.padBeats);
+    const mic = state.input === 'mic';
+    const key = `${phase}|${live ? beat : -1}|${beats}|${state.input}|${micTest.on}`;
     if (run.padKey === key) return;
     run.padKey = key;
     const pad = $('.tap-pad');
     pad.dataset.phase = phase;
+    pad.classList.toggle('is-mic', mic);
     let label = PAD_LABELS[phase];
-    if (phase === 'idle' && state.input === 'mic') label = 'Starte mit Play — Eingabe übers Mikrofon';
+    if (phase === 'idle' && mic) label = micTest.on ? 'Klatsch einmal zum Test' : 'Mikrofon: antippen zum Testen, dann Play';
+    if (phase === 'you' && mic) label = 'Jetzt du – klatsch oder sprich „ta“!';
     if (phase === 'you' && round?.duo) label = round.duo.youLabel || `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
     $('.pad-label').textContent = label;
-    $('.pad-beats').replaceChildren(...Array.from({ length: beats }, (_, i) => {
+    pad.setAttribute('aria-label', phase === 'idle' && mic ? (micTest.on ? 'Mikrofontest beenden' : 'Mikrofon testen') : `Klatschfläche: ${label}`);
+    $('.pad-level').hidden = !(mic && micTest.on);
+    const dots = $('.pad-beats');
+    dots.classList.toggle('is-quiet', !live);
+    dots.style.setProperty('--beats', beats);
+    dots.replaceChildren(...Array.from({ length: beats }, (_, i) => {
       const dot = document.createElement('i');
+      dot.textContent = String(i + 1);
       if (beatLevel(m, i * m.beat) >= 1) dot.className = 'is-strong';
-      if (i <= beat) dot.classList.add('is-on');
+      if (live && i < beat) dot.classList.add('is-on');
+      if (live && i === beat) dot.classList.add('is-now');
       return dot;
     }));
   }
 
-  const STRIP_LABELS = { count: 'Einz.', listen: 'Hören', read: 'Lesen', rest: 'Pause', you: 'Du', along: 'Mit' };
+  /* ---- Mikrofontest in Ruhe (Mikrofon-Variante der Klatschfläche): ein
+     Tipp auf die Fläche öffnet das Mikrofon, ein Pegelbalken zeigt, dass es
+     hört, und die Fläche blinkt bei erkannten Einsätzen. Während des Laufs
+     gibt es keinen Pegel – nur das Aufblinken (Musikpädagoge). ---- */
+  const micTest = { on: false };
+  async function toggleMicTest() {
+    if (micTest.on) { micTest.on = false; if (voice.consumer === 'rhythm' && !run.playing) micOff(); run.padKey = ''; renderPad('idle'); return; }
+    micTest.on = true; run.padKey = ''; renderPad('idle');
+    const ok = await micOn('rhythm');
+    if (!ok || run.playing) { micTest.on = false; run.padKey = ''; if (!run.playing) { renderPad('idle'); if (voice.error) setStatus(voice.error); } }
+  }
+  function showMicLevel(db) {
+    if (!micTest.on) return;
+    const bar = $('.pad-level i');
+    if (bar) bar.style.width = `${clamp(((db + 60) / 50) * 100, 0, 100).toFixed(0)}%`;
+  }
+
+  const STRIP_LABELS = { count: 'Einzähler', listen: 'Hören', read: 'Lesen', rest: 'Still', you: 'Du', along: 'Mit' };
+  // Icons der Phasen-Pillen: Ohr (Hören), Hand (Du/Mit), Blatt (Lesen), Mond (Still).
+  const STRIP_ICONS = {
+    listen: '<path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/><path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/>',
+    you: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.3l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
+    read: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+    rest: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
+  };
+  STRIP_ICONS.along = STRIP_ICONS.you;
 
   /** Ablauf einer Runde als Leiste — zeigt vor dem Start, was die Leertakte
    *  bewirken, und beim Üben, wo man gerade ist. */
@@ -2543,7 +2756,7 @@
       const pill = document.createElement('span');
       pill.className = `bar-pill${i === now ? ' is-now' : ''}`;
       pill.dataset.kind = kind;
-      pill.textContent = STRIP_LABELS[kind];
+      pill.innerHTML = `${STRIP_ICONS[kind] ? `<svg viewBox="0 0 24 24" aria-hidden="true">${STRIP_ICONS[kind]}</svg>` : ''}<span>${STRIP_LABELS[kind]}</span>`;
       return pill;
     }));
   }
@@ -2837,7 +3050,16 @@
     const label = round && reveal ? `Rhythmus im ${meterId}-Takt${round.pattern.bars > 1 ? `, ${round.pattern.bars} Takte` : ''}${res ? `, ${res.hits} von ${res.count} getroffen` : ''}` : 'Notenfläche';
     return `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
   }
-  function renderStage(round, reveal, phase = 'rest') { $('.stage').innerHTML = stageSvgHtml(round, reveal, phase); }
+  function renderStage(round, reveal, phase = 'rest') {
+    $('.stage').innerHTML = stageSvgHtml(round, reveal, phase);
+    $('.stage').hidden = !stageShown(round, phase);
+  }
+  /** Notenfläche nur, wo es etwas zu lesen gibt (Vom Blatt, Mitlesen,
+   *  Zweistimmig, Ergebnis mit Noten). Beim Hören-und-Nachklatschen bleibt
+   *  sie weg; das Ergebnis zeigt dann die Karte „Letzte Runde“. */
+  function stageShown(round, phase = 'rest') {
+    return !!round && roundAids(round, phase).realLayout && showsHeads(round);
+  }
 
   function chips(name, entries, value, disabled = false) {
     $(`[data-chips="${name}"]`).replaceChildren(...entries.map(([v, label]) => {
@@ -2903,13 +3125,32 @@
     chips('gapAfter', gaps, state.gapAfter);
   }
 
+  /** Kopf der Rhythmus-Übung: im Kurs Überzeile „Rhythmus · Kurs“ und die
+   *  Lektion als Titel — ein Tipp darauf öffnet „Alle Lektionen“. Das „?“
+   *  zeigt dort die Lektionshilfe (Vorstellung, Hintergrund, Schritt). */
+  function renderRhythmTitle() {
+    const box = $('[data-exview="rhythm"]');
+    const title = box.querySelector('.mode-title');
+    const help = box.querySelector('[data-modes-help]');
+    const inCourse = state.mode === 'course';
+    box.querySelector('.ex-area').textContent = inCourse ? 'Rhythmus · Kurs' : 'Rhythmus';
+    if (inCourse && !course.review) {
+      const l = courseLesson();
+      const n = COURSE.indexOf(l) + 1;
+      title.innerHTML = `<button type="button" class="title-btn" data-course="list" aria-haspopup="dialog" aria-label="Alle Lektionen, aktuell: ${n}. ${esc(l.name)}${course.done.includes(l.id) ? ' (geschafft)' : ''}">${n}. ${esc(l.name)}<span class="k-chev">${K_CHEV}</span></button>`;
+    } else title.textContent = inCourse ? 'Gelerntes gemischt' : modeName('rhythm', currentMode('rhythm'));
+    const want = inCourse ? 'course-help' : 'help-modes';
+    if (help.dataset.help !== want) { help.dataset.help = want; help.setAttribute('aria-expanded', 'false'); $('#help-modes').hidden = true; }
+    help.setAttribute('aria-label', inCourse ? 'Hilfe zur Lektion' : 'Erklärung der Übungsarten');
+    help.hidden = inCourse && course.review;
+    if (inCourse) help.setAttribute('aria-expanded', String(course.moreOpen));
+  }
+
   function renderRhythm() {
-    $('[data-exview="rhythm"] .mode-title').textContent = modeName('rhythm', currentMode('rhythm'));
+    renderRhythmTitle();
     const inCourse = state.mode === 'course';
     $('[data-levels="rhythm"]').hidden = inCourse;
     $('.rhythm-sum').hidden = inCourse;
-    $('[data-modes-help]').hidden = inCourse;
-    if (inCourse) { $('#help-modes').hidden = true; $('[data-modes-help]').setAttribute('aria-expanded', 'false'); }
     renderCourse();
     const inDuo = state.mode === 'duo';
     const holding = inDuo && state.duoStage < 5;
@@ -2975,50 +3216,38 @@
     return { index: -1, mode: along ? 'along' : 'echo', meter: l.meter, pattern: lessonPattern(l), duo: null, result: null, youStart: null, showNotes: along, course: { lesson: l.id, step: course.step } };
   }
 
-  /** Lektionskarte: Kapitel, Name, Vorstellung, „?“, Schritte, Blättern. */
+  /** Lektionskarte (Konfetti B2): nur der Stepper der Schritte; Vorstellung,
+   *  Hintergrund und Schritt-Erklärung liegen hinter dem „?“ im Kopf
+   *  (course.moreOpen). Lektionen wechselt man über den Titel (Alle
+   *  Lektionen); nach einer geschafften Lektion stehen „Weiter: …“,
+   *  „Gemischt wiederholen“ und „Gegen 2. Stimme halten“ hier. */
   function renderCourse() {
     const box = $('[data-course-card]');
     box.hidden = state.mode !== 'course';
     if (box.hidden) return;
-    // Während des Übens kompakt: Vorstellung und Blättern ausblenden, damit
-    // Noten und Klatschfeld auf den Bildschirm passen.
     box.classList.toggle('is-playing', run.playing);
     const l = courseLesson();
     const i = COURSE.indexOf(l);
-    const prev = COURSE[i - 1], next = nextLesson(l);
-    const cc = courseCounts();
-    const top = `<div class="course-top"><span>${course.review ? `Wiederholung · ${reviewPool().length} Lektionen` : chapterLabel(l.ch)}</span>
-      <button type="button" class="link-btn" data-course="list" aria-haspopup="dialog" aria-label="Alle Lektionen, ${cc.done} von ${cc.total} geschafft">Alle Lektionen ›</button></div>`;
+    const next = nextLesson(l);
     if (course.review) {
-      box.innerHTML = `${top}
-        <div class="course-title"><h3>Gelerntes gemischt</h3></div>
-        <p class="course-intro">Die App mischt deine geschafften Rhythmen zu neuen Phrasen – du hörst zu und klatschst nach, ohne Noten. Die Taktart wird je Durchgang gewählt.</p>
-        <div class="course-nav"><button type="button" class="nav-btn" data-course="leave-review">‹ Zurück zur Lektion</button></div>`;
+      box.innerHTML = `<p class="course-intro">Die App mischt deine geschafften Rhythmen zu neuen Phrasen – du hörst zu und klatschst nach, ohne Noten.</p>
+        <div class="course-nav"><button type="button" class="k-btn k-btn--ghost" data-course="leave-review">Zurück zur Lektion</button></div>`;
       return;
     }
     const steps = courseSteps(l);
     const isDone = course.done.includes(l.id);
-    const stepHtml = steps.map((st, k) => {
-      const cls = course.complete || k < course.step ? 'is-done' : k === course.step ? 'is-now' : '';
-      return `<li class="${cls}"${k === course.step && !course.complete ? ' aria-current="step"' : ''}><b>${cls === 'is-done' ? '✓' : k + 1}</b>${st.name}</li>`;
-    }).join('');
     const cur = steps[Math.min(course.step, steps.length - 1)];
-    box.innerHTML = `${top}
-      <div class="course-title"><h3>${i + 1}. ${l.name}${isDone ? ' <span class="visually-hidden">(geschafft)</span>' : ''}</h3>
-        ${l.more ? `<button class="help-btn" type="button" data-course="more" aria-expanded="${course.moreOpen}" aria-controls="course-more" aria-label="Mehr über diesen Rhythmus">?</button>` : ''}</div>
-      <p class="course-intro">${l.intro}</p>
-      ${l.more ? `<p class="help-text" id="course-more"${course.moreOpen ? '' : ' hidden'}>${l.more}</p>` : ''}
-      <ol class="course-steps" aria-label="Schritte der Lektion">${stepHtml}</ol>
-      ${course.complete
-    ? `<p class="course-done" role="status">${next ? 'Geschafft ✓ Weiter zur nächsten Lektion – oder mit Play noch einmal üben.' : COURSE[i + 1] ? COURSE_FINISHED : 'Geschafft ✓ Du hast alle Lektionen durch. Glückwunsch!'}</p>`
-    : `<p class="course-how">Schritt ${course.step + 1}/${steps.length}: ${cur.how} Jeder Schritt braucht eine fehlerfreie Runde.</p>`}
-      <div class="course-nav">
-        <button type="button" class="nav-btn" data-course="prev"${prev ? '' : ' disabled'} aria-label="Vorige Lektion${prev ? `: ${prev.name}` : ''}">‹</button>
-        <span class="grow"></span>
-        ${reviewPool().length >= REVIEW_MIN ? '<button type="button" class="nav-btn" data-course="review">Gemischt wiederholen</button>' : ''}
-        ${isDone && holdable(l) ? '<button type="button" class="nav-btn" data-course="hold">Gegen 2. Stimme halten</button>' : ''}
-        <button type="button" class="nav-btn${course.complete && next ? ' is-primary' : ''}" data-course="next"${next ? '' : ' disabled'} aria-label="Nächste Lektion${next ? `: ${next.name}` : ''}">${course.complete && next ? `Weiter: ${next.name} ›` : '›'}</button>
-      </div>`;
+    const help = `<div class="help-text course-help" id="course-help"${course.moreOpen ? '' : ' hidden'}>
+        <p>${l.intro}</p>${l.more ? `<p>${l.more}</p>` : ''}
+        <p><b>Schritt ${Math.min(course.step, steps.length - 1) + 1}/${steps.length}: ${cur.name}.</b> ${cur.how} Jeder Schritt braucht eine fehlerfreie Runde.</p></div>`;
+    const nav = course.complete
+      ? `<p class="course-done" role="status">${next ? 'Geschafft ✓' : COURSE[i + 1] ? COURSE_FINISHED : 'Geschafft ✓ Du hast alle Lektionen durch. Glückwunsch!'}</p>
+        <div class="course-nav">
+          ${next ? `<button type="button" class="k-btn" data-course="next" aria-label="Nächste Lektion: ${esc(next.name)}">Weiter: ${esc(next.name)}</button>` : ''}
+          ${reviewPool().length >= REVIEW_MIN ? '<button type="button" class="k-btn k-btn--ghost" data-course="review">Gemischt wiederholen</button>' : ''}
+          ${isDone && holdable(l) ? '<button type="button" class="k-btn k-btn--ghost" data-course="hold">Gegen 2. Stimme halten</button>' : ''}
+        </div>` : '';
+    box.innerHTML = `${stepperHtml(steps.map((st) => st.name), course.complete ? -1 : course.step, (k) => course.complete || k < course.step, 'Schritte der Lektion')}${help}${nav}`;
   }
 
   /** Lektion öffnen (Schritt 1, Taktart und Starttempo der Lektion). */
@@ -3061,7 +3290,8 @@
       const head = extra ? `Zusatz (freiwillig) · ${title.replace(/^Zusatz: /, '')} · ${courseCounts().extraDone}/${courseCounts().extraTotal}` : `Kapitel ${ch} · ${title}`;
       return `<span class="sub-label"${ch === '1' ? ' style="margin-top:0"' : ''}>${head}</span><div class="level-options" role="list">${rows}</div>`;
     }).join('');
-    $('.sheet-body').innerHTML = `${html}<p class="foot-note" style="text-align:left">Die Lektionen bauen aufeinander auf, du kannst aber frei springen. Geschafft ist eine Lektion, wenn alle Schritte je einmal fehlerfrei geklappt haben. Das Zusatzkapitel ist freiwillig und zählt nicht zum Kursfortschritt.</p>`;
+    const mix = reviewPool().length >= REVIEW_MIN ? '<button type="button" class="k-btn k-btn--ghost course-mix" data-course="review">Gelerntes gemischt wiederholen</button>' : '';
+    $('.sheet-body').innerHTML = `${mix}${html}<p class="foot-note" style="text-align:left">Die Lektionen bauen aufeinander auf, du kannst aber frei springen. Geschafft ist eine Lektion, wenn alle Schritte je einmal fehlerfrei geklappt haben. Das Zusatzkapitel ist freiwillig und zählt nicht zum Kursfortschritt.</p>`;
     $('.sheet-hint').textContent = '';
   }
 
@@ -3072,7 +3302,11 @@
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
     $('.bpm').value = String(state.bpm);
-    $('.bpm-out').textContent = `${tempoSymbol(state.meter)} = ${state.bpm}`;
+    $('.bpm-out').textContent = String(state.bpm);
+    $('.k-tempo').setAttribute('aria-label', `Tempo: ${tempoSymbol(state.meter)} = ${state.bpm}`);
+    // Tap-Tempo nicht im Kurs: die Lektion gibt das Tempo vor, und „Tap“ direkt
+    // unter der Klatschfläche wird leicht mit ihr verwechselt (Musikpädagoge).
+    $('.tap-btn').hidden = state.mode === 'course';
   }
 
   function renderAll() {
@@ -3164,22 +3398,91 @@
   const views = { rhythm: 'list', ear: 'list', voice: 'list' };
   let practicedAreas = null; // Set der Fortschrittsbereiche mit Einträgen (null = unbekannt)
 
-  /** Stufen-Text einer Zeile: „Stufe n/6“, „neu“, „ab Stufe 3“ oder „eigene“. */
-  function modeLevelText(tab, id) {
-    if (tab === 'voice' && id === 'tuner') return '';
-    if (tab === 'rhythm' && id === 'duo') return `Stufe ${state.duoStage}/${DUO_LEVELS.length}`;
-    if (tab === 'rhythm' && id === 'course') { const cc = courseCounts(); return course.done.length ? `${cc.done}/${cc.total} ✓` : 'neu'; }
+  /** Stand einer Zeile: { kind: 'ring', n, max } | { kind: 'pill', text }
+   *  ('neu', 'eigene', Kurs „n/m ✓“) | null (Tuner). */
+  function modeLevelInfo(tab, id) {
+    if (tab === 'voice' && id === 'tuner') return null;
+    if (tab === 'rhythm' && id === 'duo') return { kind: 'ring', n: state.duoStage, max: DUO_LEVELS.length };
+    if (tab === 'rhythm' && id === 'course') { const cc = courseCounts(); return { kind: 'pill', text: course.done.length ? `${cc.done}/${cc.total} ✓` : 'neu' }; }
     const area = tab === 'rhythm' ? 'rhythm' : areaOf(id);
-    if (practicedAreas && !practicedAreas.has(area)) return 'neu';
+    if (practicedAreas && !practicedAreas.has(area)) return { kind: 'pill', text: 'neu' };
     let levels, n;
     if (tab === 'rhythm') { levels = RHYTHM_LEVELS; n = state.rhythmLevel; }
     else if (tab === 'ear') [levels, n] = earLevelInfo(id);
     else { levels = SING_LEVEL_TABLE[id](); n = sing.levels[id]; }
-    return levels.some((l) => l.n === n) ? `Stufe ${n}/${levels[levels.length - 1].n}` : 'eigene';
+    return levels.some((l) => l.n === n) ? { kind: 'ring', n, max: levels[levels.length - 1].n } : { kind: 'pill', text: 'eigene' };
+  }
+  /** Stufen-Text einer Zeile: „Stufe n/6“, „neu“ oder „eigene“ (Vorlese-/Testform). */
+  function modeLevelText(tab, id) {
+    const info = modeLevelInfo(tab, id);
+    return !info ? '' : info.kind === 'ring' ? `Stufe ${info.n}/${info.max}` : info.text;
+  }
+
+  /* ---- Konfetti B2: Bausteine der Übersichten und Stepper (ueben.css) ---- */
+  const K_CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+  const K_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>';
+  const K_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+  const K_REPEAT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>';
+  /** Stufen-Ring (34 px, Zahl in der Mitte, Füllung n/max). `mode-lv` trägt
+   *  die Vorleseform „Stufe n/max“ (visually-hidden) für Tests und Suche. */
+  function ringHtml(n, max, cls = '') {
+    const lv = max ? clamp(n / max, 0, 1) : 0;
+    return `<span class="k-ring${cls}" data-level="${n}" style="--level:${lv.toFixed(3)}" role="img" aria-label="Stufe ${n} von ${max}"><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="ring-bg" cx="17" cy="17" r="14"/><circle class="ring-fg" cx="17" cy="17" r="14"/></svg><b aria-hidden="true">${n}</b></span>`;
+  }
+  /** Rechte Seite einer Übersichtszeile: Ring oder Pille (beide mit .mode-lv). */
+  function levelBadgeHtml(tab, id) {
+    const info = modeLevelInfo(tab, id);
+    if (!info) return '';
+    if (info.kind === 'ring') return `<span class="mode-lv">${ringHtml(info.n, info.max)}<span class="visually-hidden">Stufe ${info.n}/${info.max}</span></span>`;
+    return `<span class="k-pill mode-lv">${info.text}</span>`;
+  }
+  /** Stepper: Punkte mit Linien; nur der aktuelle Schritt sichtbar beschriftet.
+   *  names: Schrittnamen; now: aktueller Index; done(k): erledigt? */
+  function stepperHtml(names, now, done = (k) => k < now, label = 'Schritte') {
+    const items = names.map((name, k) => {
+      const st = done(k) ? 'done' : k === now ? 'now' : 'todo';
+      const extra = st === 'done' ? ', erledigt' : st === 'now' ? ', aktuell' : '';
+      return `<li class="k-step" data-state="${st}"${st === 'now' ? ' aria-current="step"' : ''}><span class="k-dot" aria-hidden="true">${st === 'done' ? K_CHECK : ''}</span><span class="visually-hidden">${k + 1}. ${name}${extra}</span></li>`;
+    }).join('');
+    const cur = names[clamp(now, 0, names.length - 1)];
+    return `<div class="k-stepper"><ol aria-label="${label}">${items}</ol><p class="k-step-label" aria-hidden="true">${cur}</p></div>`;
+  }
+  /** Übersichtszeile (52 px): runde Icon-Marke, Name, rechts Ring/Pille. */
+  function kRowHtml(attrs, icon, name, right, cls = '') {
+    return `<button type="button" class="k-row mode-row${cls}" ${attrs}><span class="k-row-icon">${modeIcon(icon)}</span><span class="k-row-name">${name}</span>${right}</button>`;
+  }
+
+  /** Rhythmus-Übersicht: Kurs-Karte (Lektion, Stepper, Play), „Heute
+   *  wiederholen (n)“ direkt darunter (Wiederholen vor Neuem), dann die
+   *  freien Übungen als einzeilige Zeilen. */
+  function rhythmHubHtml() {
+    const l = courseLesson();
+    const i = COURSE.indexOf(l);
+    const cc = courseCounts();
+    const steps = courseSteps(l);
+    const done = course.done.includes(l.id);
+    const now = done ? steps.length : Math.min(course.step, steps.length - 1);
+    const over = isExtra(l) ? 'Rhythmus-Kurs · Zusatz' : `Rhythmus-Kurs · ${i + 1} von ${cc.total}`;
+    const stepName = steps[Math.min(now, steps.length - 1)].name;
+    const hero = `<div class="k-hero course-hero">
+      <div class="course-hero-top">
+        <button type="button" class="course-hero-open" data-course-hub-list aria-haspopup="dialog" aria-label="Alle Lektionen, aktuell: ${i + 1}. ${esc(l.name)}${done ? ' (geschafft)' : ''}"><span class="k-hero-text"><span class="k-hero-over">${over}</span><span class="k-hero-title">${esc(l.name)}</span></span><span class="k-chev">${K_CHEV}</span></button>
+        <button type="button" class="k-play course-hero-play" data-open-mode="rhythm:course" aria-label="${done ? `Lektion ${esc(l.name)} üben` : `Weiter mit ${stepName}`}">${K_PLAY}</button>
+      </div>
+      ${stepperHtml(steps.map((st) => st.name), done ? -1 : now, (k) => done || k < now, 'Schritte der Lektion')}
+    </div>`;
+    const due = dueGrooveIds().length;
+    const repeat = due ? `<button type="button" class="k-row k-row--repeat" data-grooves-hub-review><span class="k-row-icon">${K_REPEAT}</span><span class="k-row-name">Heute wiederholen (${due})</span><span class="k-chev">${K_CHEV}</span></button>` : '';
+    const rows = areaModes('rhythm').filter(([id]) => id !== 'course').map(([id, name]) => {
+      const isLast = id === state.mode;
+      return kRowHtml(`data-open-mode="rhythm:${id}"`, id, name + (isLast ? '<span class="visually-hidden"> (zuletzt geöffnet)</span>' : ''), levelBadgeHtml('rhythm', id), isLast ? ' is-last' : '');
+    }).join('');
+    return `<div class="k-hub">${hero}${repeat}<div class="k-list">${rows}</div></div>`;
   }
 
   function renderModeList(tab) {
     const host = $(`[data-list="${tab}"]`);
+    if (tab === 'rhythm') { host.innerHTML = rhythmHubHtml(); return; }
     const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
       <span class="mode-ico">${modeIcon(icon)}</span><span><strong>${name}</strong><span class="mode-how">${text}</span></span><span class="mode-lv">${right}</span></button></li>`;
@@ -3204,6 +3507,7 @@
     renderGrooves();
     if (views[tab] === 'grooves') return;
     if (views[tab] === 'list') renderModeList(tab);
+    else if (tab === 'rhythm') renderRhythmTitle();
     else {
       $(`[data-exview="${tab}"] .mode-title`).textContent = modeName(tab, currentMode(tab));
     }
@@ -3239,7 +3543,7 @@
     renderAll();
     renderArea();
     loadPracticed();
-    $(`[data-list="${tab}"] .mode-row.is-last, [data-list="${tab}"] .mode-row`)?.focus();
+    $(`[data-list="${tab}"] .mode-row.is-last, [data-list="${tab}"] .mode-row, [data-list="${tab}"] [data-open-mode]`)?.focus();
   }
 
   /** Fortschritt der App: welche Bereiche schon geübt wurden (für „neu“). */
@@ -3260,6 +3564,7 @@
     if (!box) return;
     box.hidden = !box.hidden;
     btn.setAttribute('aria-expanded', String(!box.hidden));
+    if (box.id === 'course-help') course.moreOpen = !box.hidden; // überlebt das Neuzeichnen der Karte
   }
 
   /* ------------------------------------------------------------------------
@@ -5116,6 +5421,7 @@
     if (voice.consumer === 'rhythm') {
       voice.analyser.getFloatTimeDomainData(voice.buffer);
       rhythmMicFrame(now);
+      if (micTest.on) showMicLevel(levelDb(voice.buffer, 0, voice.buffer.length));
       voice.frame = requestAnimationFrame(voiceLoop);
       return;
     }
@@ -7560,7 +7866,7 @@
   }
 
   /* ---- Lauf: Ereignisse mit Vorlauf auf der Audio-Uhr einplanen ---- */
-  const gv = { view: 'list', id: null, phase: 'hear', stage: 1, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
+  const gv = { fromHub: false, view: 'list', id: null, phase: 'hear', stage: 1, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
   const gr = { run: null, timer: 0, frame: 0 };
   async function groovesStart(tl, onEnd) {
     groovesStop(false);
@@ -7708,7 +8014,7 @@
       const due = dueGrooveIds();
       const rows = done.map((l) => `<li class="g-row"><button type="button" class="g-play" data-grooves-play="${l.id}" aria-label="${esc(l.name)} anhören">${gv.running === `play:${l.id}` ? '■' : '▶'}</button>
         <button type="button" class="mode-row" data-grooves-open="${l.id}"><span class="mode-ico">${modeIcon('course')}</span><span><strong>${esc(l.name)}</strong><span class="mode-how">Kurs · Kapitel ${l.ch}</span></span><span class="mode-lv">${grooveStatus(l.id)}</span></button></li>`).join('');
-      host.innerHTML = `<div class="ex-head">${document.documentElement.hasAttribute('data-own-back') ? `<button class="back-btn" type="button" data-close-tool data-own-back-btn aria-label="Zurück"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>` : ''}<div class="ex-title"><span class="ex-area" aria-hidden="true">Licks &amp; Grooves</span><h2 class="mode-title">Klatsch-Grooves</h2></div></div>
+      host.innerHTML = `<div class="ex-head">${gv.fromHub ? `<button class="back-btn" type="button" data-grooves-hub-back aria-label="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>` : document.documentElement.hasAttribute('data-own-back') ? `<button class="back-btn" type="button" data-close-tool data-own-back-btn aria-label="Zurück"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>` : ''}<div class="ex-title"><span class="ex-area" aria-hidden="true">Licks &amp; Grooves</span><h2 class="mode-title">Klatsch-Grooves</h2></div></div>
         ${due.length ? `<div class="g-review"><b>Heute fällig: ${due.length} ${due.length === 1 ? 'Groove' : 'Grooves'}</b><button class="nav-btn is-primary" type="button" data-grooves-review>Wiederholen</button></div>` : ''}
         ${done.length ? `<ul class="mode-list">${rows}</ul>` : '<p class="course-intro">Erst eine Kurs-Lektion schaffen – dann erscheint sie hier zum Behalten und Durchhalten.</p>'}
         <p class="foot-note" style="text-align:left">Hier behältst du, was du im Rhythmus-Kurs gelernt hast: hören, auffrischen, über viele Takte durchhalten.${gv.review === 'none' ? ' Heute ist nichts fällig.' : ''}</p>`;
@@ -8046,7 +8352,30 @@
     if (e.target === $('.level-sheet') || e.target.closest('[data-level-close]')) { closeLevelSheet(); return; }
     if (e.target.closest('[data-sing-settings]')) { openSettings('sing'); return; }
     const openBtn = e.target.closest('[data-open-mode]');
-    if (openBtn) { const [tab, id] = openBtn.dataset.openMode.split(':'); openMode(tab, id); return; }
+    if (openBtn) {
+      const [tab, id] = openBtn.dataset.openMode.split(':');
+      openMode(tab, id);
+      // Play der Kurs-Karte: Lektion öffnen und gleich loslegen.
+      if (openBtn.classList.contains('course-hero-play') && !run.playing) start();
+      return;
+    }
+    // Kurs-Karte der Übersicht: Lektionsliste, Wahl ändert nur die Lektion
+    // (Taktart/Tempo setzt erst das Öffnen des Kurses, siehe enterCourse).
+    if (e.target.closest('[data-course-hub-list]')) { openSettings('course'); return; }
+    if (e.target.closest('[data-grooves-hub-review]')) {
+      startGroovesReview();
+      gv.fromHub = true;
+      renderArea();
+      return;
+    }
+    if (e.target.closest('[data-grooves-hub-back]')) {
+      groovesStop(false);
+      gv.fromHub = false;
+      views.rhythm = 'list';
+      renderArea();
+      $('[data-list="rhythm"] [data-open-mode]')?.focus();
+      return;
+    }
     const backBtn = e.target.closest('[data-back]');
     if (backBtn) { backToList(backBtn.dataset.back); return; }
     const mixedBtn = e.target.closest('[data-mixed]');
@@ -8063,7 +8392,17 @@
 
     // --- Rhythmus-Kurs
     const coursePick = e.target.closest('[data-course-pick]');
-    if (coursePick) { loadLesson(coursePick.dataset.coursePick); closeSettings(); $('[data-course="list"]')?.focus(); return; }
+    if (coursePick) {
+      if (views.rhythm === 'list') {
+        const l = COURSE.find((x) => x.id === coursePick.dataset.coursePick) || COURSE[0];
+        Object.assign(course, { lesson: l.id, step: 0, misses: 0, complete: false, review: false, moreOpen: false });
+        closeSettings();
+        renderModeList('rhythm');
+        $('[data-course-hub-list]')?.focus();
+        return;
+      }
+      loadLesson(coursePick.dataset.coursePick); closeSettings(); $('[data-course="list"]')?.focus(); return;
+    }
     const courseBtn = e.target.closest('[data-course]');
     if (courseBtn) {
       const action = courseBtn.dataset.course;
@@ -8072,6 +8411,8 @@
       if (action === 'more') { course.moreOpen = !course.moreOpen; renderCourse(); $('[data-course="more"]')?.focus(); return; }
       if (action === 'prev' && COURSE[i - 1]) loadLesson(COURSE[i - 1].id);
       if (action === 'next' && nextLesson(COURSE[i])) loadLesson(nextLesson(COURSE[i]).id);
+      if (action === 'review' && !$('.sheet').hidden) closeSettings();
+      if (action === 'review' && (views.rhythm !== 'exercise' || state.mode !== 'course')) openMode('rhythm', 'course');
       if (action === 'review') { if (run.playing) stop(); course.review = true; run.shown = null; game.finished = false; renderRhythm(); setStatus('Wiederholung — Play startet.'); }
       if (action === 'leave-review') loadLesson(course.lesson);
       if (action === 'hold') {
@@ -8330,6 +8671,8 @@
       return;
     }
     if (e.target.closest('.play')) { if (run.playing) stop(); else start(); return; }
+    const tempoStep = e.target.closest('[data-tempo-step]');
+    if (tempoStep) { setBpm(state.bpm + 2 * Number(tempoStep.dataset.tempoStep)); renderTransport(); return; }
     if (e.target.closest('.tap-btn')) {
       const now = performance.now();
       tapTimes = tapTimes.filter((x) => now - x < 2500);
@@ -8374,7 +8717,11 @@
 
   $('[data-intime-tempo]').addEventListener('input', (e) => { sing.inTime.tempo = clamp(Math.round(Number(e.target.value) / 5) / 20, IN_TIME_TEMPO[0], IN_TIME_TEMPO[1]); renderInTimeOpts(); persist(); });
   $('.bpm').addEventListener('input', (e) => { setBpm(Number(e.target.value)); renderTransport(); persist(); });
-  $('.tap-pad').addEventListener('pointerdown', (e) => { e.preventDefault(); tap(); });
+  $('.tap-pad').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (state.input === 'mic' && !run.playing && !calib.active && state.tab === 'rhythm') { toggleMicTest(); return; }
+    tap();
+  });
   // Während des Laufs zählt auch die Notenfläche als Klatschfeld — bei zwei
   // Stimmen über vier Takte liegt das Feld sonst unter dem Bildschirmrand.
   $('.stage').addEventListener('pointerdown', (e) => { if (!run.playing || state.tab !== 'rhythm') return; e.preventDefault(); tap(); });
@@ -11289,6 +11636,65 @@
         if (v.bass < VOICE_RANGES.B[0] || v.bass > VOICE_RANGES.B[1]) errors.push(`Bass ${v.bass} außerhalb des Bassumfangs`);
       }
     }
+    errors.push(...redesignRhythmCheck());
+    return errors;
+  }
+
+  /** Konfetti B2, Rhythmus: Timing-Auswertung, Stepper, Ring, Übersicht. */
+  function redesignRhythmCheck() {
+    const errors = [];
+    const note = (t, status, ms) => ({ t, status, ...(ms === undefined ? {} : { off: ms / 1000 }) });
+    const res = (notes, extra = {}) => ({ notes, count: notes.length, extras: 0, perfect: false, taps: notes.filter((n) => n.status !== 'miss').map(() => ({})), ...extra });
+    // Alles genau: Pille „Genau“, Satz „Sitzt im Groove.“
+    let t = timingSummary(res([note(0, 'good', 5), note(12, 'good', -8), note(24, 'good', 12), note(36, 'good', 0)], { perfect: true }), .12);
+    if (t.pill.text !== 'Genau' || !t.pill.ok || t.tendency !== 'good' || t.dots.length !== 4) errors.push(`timingSummary genau: ${JSON.stringify(t)}`);
+    // Knapp, aber geschafft: „Geschafft“ statt „Fast perfekt“
+    t = timingSummary(res([note(0, 'good', 5), note(12, 'near', 60), note(24, 'good', 12)], { perfect: true }), .12);
+    if (t.pill.text !== 'Geschafft' || !t.pill.ok) errors.push(`timingSummary geschafft: ${t.pill.text}`);
+    // Deutlich spät (≥ 30 ms, ≥ 75 % auf einer Seite, ≥ 3 Treffer)
+    t = timingSummary(res([note(0, 'good', 35), note(12, 'near', 55), note(24, 'good', 30), note(36, 'good', 38)]), .12);
+    if (t.tendency !== 'late' || /ms/.test(t.text)) errors.push(`timingSummary spät: ${t.tendency} / ${t.text}`);
+    // Früh erst ab 40 ms
+    t = timingSummary(res([note(0, 'good', -32), note(12, 'good', -35), note(24, 'good', -30)]), .12);
+    if (t.tendency === 'early') errors.push('timingSummary: −32 ms gilt schon als früh');
+    t = timingSummary(res([note(0, 'near', -50), note(12, 'near', -45), note(24, 'good', -38)]), .12);
+    if (t.tendency !== 'early') errors.push(`timingSummary früh: ${t.tendency}`);
+    // Zu wenige Treffer: keine Tendenz; Verpasste/Extras gezählt, Pille neutral
+    t = timingSummary(res([note(0, 'good', 60), note(12, 'miss'), note(24, 'near', 70)], { extras: 1 }), .12);
+    if (t.tendency !== '' || t.missed !== 1 || t.extras !== 1 || t.pill.ok || t.pill.text !== '2 von 3') errors.push(`timingSummary wenige: ${JSON.stringify(t)}`);
+    // Punkte auf der Achse begrenzt (−1…1)
+    if (t.dots.some((d) => d.x < -1 || d.x > 1)) errors.push('timingSummary: Punkt außerhalb der Achse');
+    // Mikrofon: nichts gehört
+    t = timingSummary({ notes: [note(0, 'miss'), note(12, 'miss')], count: 2, extras: 0, perfect: false, taps: [] }, .12, { mic: true });
+    if (t.tendency !== 'silent') errors.push(`timingSummary Mikrofon still: ${t.tendency}`);
+    // Stepper: nur der aktuelle Schritt beschriftet, Rest unsichtbar für die Augen
+    const box = document.createElement('div');
+    box.innerHTML = stepperHtml(['A', 'B', 'C', 'D'], 1);
+    const lis = box.querySelectorAll('.k-step');
+    if (lis.length !== 4 || lis[0].dataset.state !== 'done' || lis[1].dataset.state !== 'now' || lis[2].dataset.state !== 'todo'
+      || box.querySelector('[aria-current="step"]') !== lis[1] || box.querySelector('.k-step-label').textContent !== 'B'
+      || box.querySelectorAll('.k-step .visually-hidden').length !== 4 || !lis[0].querySelector('svg')) errors.push('stepperHtml: Zustände/Beschriftung falsch');
+    // Ring: Füllung n/max, Vorleseform
+    box.innerHTML = ringHtml(2, 5);
+    const ring = box.querySelector('.k-ring');
+    if (ring.dataset.level !== '2' || ring.style.getPropertyValue('--level') !== '0.400' || ring.getAttribute('aria-label') !== 'Stufe 2 von 5') errors.push('ringHtml falsch');
+    // Übersicht: Kurs-Karte mit Stepper und Play, Zeilen ohne Unterzeile, Ring bei Zweistimmig
+    const host = $('[data-list="rhythm"]');
+    const keep = host.innerHTML;
+    renderModeList('rhythm');
+    if (!host.querySelector('.course-hero [data-open-mode="rhythm:course"]') || !host.querySelector('.course-hero .k-stepper')
+      || !host.querySelector('[data-course-hub-list]')) errors.push('Rhythmus-Übersicht: Kurs-Karte unvollständig');
+    if (host.querySelector('.mode-how')) errors.push('Rhythmus-Übersicht: Unterzeile vorhanden');
+    if (!host.querySelector('[data-open-mode="rhythm:duo"] .k-ring')) errors.push('Rhythmus-Übersicht: kein Ring bei Zweistimmig');
+    if (!!host.querySelector('[data-grooves-hub-review]') !== dueGrooveIds().length > 0) errors.push('Rhythmus-Übersicht: „Heute wiederholen“ passt nicht zu den fälligen Grooves');
+    host.innerHTML = keep;
+    // Tap-Tempo nicht im Kurs
+    const mode = state.mode;
+    state.mode = 'course'; renderTransport();
+    if (!$('.tap-btn').hidden) errors.push('Tap im Kurs sichtbar');
+    state.mode = 'echo'; renderTransport();
+    if ($('.tap-btn').hidden) errors.push('Tap in freien Übungen versteckt');
+    state.mode = mode; renderTransport();
     return errors;
   }
 
