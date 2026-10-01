@@ -22487,7 +22487,8 @@ function syncToolFrameBack(frame) {
   if (frame.hidden || host.hidden) return;
   host.classList.toggle('has-own-back', own);
   if (own && document.activeElement === $('#tool-frame-close')) {
-    try { frame.contentDocument.querySelector('[data-own-back-btn]')?.focus(); } catch { /* fremde Herkunft */ }
+    // Der erste sichtbare (je nach Ansicht sitzt er im Seiten- oder im Übungskopf).
+    try { [...frame.contentDocument.querySelectorAll('[data-own-back-btn]')].find((b) => b.getClientRects().length)?.focus(); } catch { /* fremde Herkunft */ }
   }
 }
 

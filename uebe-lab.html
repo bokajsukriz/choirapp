@@ -399,14 +399,40 @@
   .sheet .seg { max-width: 260px; }
 
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  /* ==== Konfetti B2 (ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md) ===============
+     Überschreibt die ältere Optik mit den Bausteinen aus ueben.css. Kopf:
+     runder Zurück-Knopf (44), Überzeile, Titel Baloo 22, rechts „?“ (40) und
+     Zahnrad (44). Eingebettet trägt die Seite ihren eigenen Zurück-Knopf
+     (data-own-back) — kein Platz mehr für das ✕ der App nötig. */
+  header.page-head { padding: max(12px, env(safe-area-inset-top)) 16px 8px; }
+  html.is-embedded header.page-head { padding-right: 16px; }
+  header.page-head .k-title { font-size: 22px; font-weight: 700; letter-spacing: 0; margin: 0; }
+  .ex-head { gap: 10px; min-height: 44px; margin: 0 0 8px; }
+  html.is-embedded .ex-head { padding-right: 0; }
+  html.is-embedded body.is-area-only[data-view="exercise"] .quick-bar { margin-right: 0; }
+  .back-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+  .back-btn svg { width: 22px; height: 22px; }
+  .ex-area { font-size: 11px; font-weight: 700; letter-spacing: .08em; line-height: 14px; color: var(--muted); }
+  .mode-title { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.15; letter-spacing: 0; }
+  .head-tools { gap: 8px; }
+  .ex-head .help-btn { position: relative; width: 40px; height: 40px; font-size: 16px; font-weight: 700; color: var(--muted); }
+  .ex-head .help-btn::before { content: ''; position: absolute; inset: -2px; }
+  .ex-head .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .ex-head .icon-btn { width: 44px; height: 44px; border-radius: 50%; }
+  .ex-head .icon-btn svg { width: 22px; height: 22px; }
+  /* Fußleiste: schlank, halbtransparent, obere Linie (kein deckender Streifen) */
+  footer { background: rgba(255, 255, 255, .7); border-top: 1px solid var(--line); padding: 8px 16px max(10px, env(safe-area-inset-bottom)); }
 </style>
 <!-- Gemeinsame Designsprache „Konfetti B2“ (Tokens, Schrift, Bausteine); nach dem
      eigenen <style>, damit ihre Tokens gewinnen. -->
 <link rel="stylesheet" href="./ueben.css">
 </head>
 <body>
-<header>
-  <h1>Chor-<span>Ausbildung</span></h1>
+<header class="k-head page-head">
+  <!-- Eingebettet: schließt das Tool (die App blendet dann ihr ✕ aus, data-own-back). -->
+  <button class="k-round" type="button" data-close-tool data-own-back-btn aria-label="Zurück" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <div class="k-titles"><h1 class="k-title">Chor-<span>Ausbildung</span></h1></div>
 </header>
 
 <div class="quick-bar" hidden role="status" aria-live="polite"><span class="quick-bar-text"></span><button class="big-btn" type="button" data-quick="close" hidden>Fertig ✓ – zurück</button></div>
@@ -422,7 +448,7 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="rhythm"></div>
     <div data-exview="rhythm" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="rhythm" aria-label="Zurück zu Rhythmus" title="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Rhythmus</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="help-btn" type="button" data-help="help-modes" data-modes-help aria-expanded="false" aria-label="Erklärung der Übungsarten">?</button><button class="icon-btn" type="button" data-rhythm="settings" aria-label="Einstellungen: Taktart, Bausteine, Ablauf" title="Einstellungen">  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="rhythm" data-own-back-btn aria-label="Zurück zu Rhythmus" title="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Rhythmus</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="help-btn" type="button" data-help="help-modes" data-modes-help aria-expanded="false" aria-label="Erklärung der Übungsarten">?</button><button class="icon-btn" type="button" data-rhythm="settings" aria-label="Einstellungen: Taktart, Bausteine, Ablauf" title="Einstellungen">  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel" data-rhythm-panel>
       <div data-levels="rhythm"></div>
       <div class="course-card" data-course-card hidden></div>
@@ -448,7 +474,7 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="ear"></div>
     <div data-exview="ear" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" data-own-back-btn aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel">
       <div data-levels="ear"></div>
       <div class="ear-stage">
@@ -471,7 +497,7 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="voice"></div>
     <div data-exview="voice" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="voice" aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-sing-settings data-sing-only="task" aria-label="Einstellungen: meine Stimme" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="voice" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-sing-settings data-sing-only="task" aria-label="Einstellungen: meine Stimme" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <section class="panel" data-sing-only="task" hidden>
       <div data-levels="sing"></div>
       <div class="sing-opts">
@@ -589,6 +615,13 @@
   'use strict';
 
   if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  // Eigener runder Zurück-Knopf (ueben.css): eingebettet schließt der Knopf im
+  // Seitenkopf das Tool, die App blendet ihren Schließen-Knopf dann aus
+  // (syncToolFrameBack in app.js). Eigenständig gibt es nichts zu schließen.
+  if (window.parent !== window) {
+    document.documentElement.setAttribute('data-own-back', '');
+    document.querySelector('[data-close-tool]').hidden = false;
+  }
   // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
   try {
     if (window.parent !== window) {
@@ -7675,7 +7708,7 @@
       const due = dueGrooveIds();
       const rows = done.map((l) => `<li class="g-row"><button type="button" class="g-play" data-grooves-play="${l.id}" aria-label="${esc(l.name)} anhören">${gv.running === `play:${l.id}` ? '■' : '▶'}</button>
         <button type="button" class="mode-row" data-grooves-open="${l.id}"><span class="mode-ico">${modeIcon('course')}</span><span><strong>${esc(l.name)}</strong><span class="mode-how">Kurs · Kapitel ${l.ch}</span></span><span class="mode-lv">${grooveStatus(l.id)}</span></button></li>`).join('');
-      host.innerHTML = `<div class="ex-head"><div class="ex-title"><span class="ex-area" aria-hidden="true">Licks &amp; Grooves</span><h2 class="mode-title">Klatsch-Grooves</h2></div></div>
+      host.innerHTML = `<div class="ex-head">${document.documentElement.hasAttribute('data-own-back') ? `<button class="back-btn" type="button" data-close-tool data-own-back-btn aria-label="Zurück"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>` : ''}<div class="ex-title"><span class="ex-area" aria-hidden="true">Licks &amp; Grooves</span><h2 class="mode-title">Klatsch-Grooves</h2></div></div>
         ${due.length ? `<div class="g-review"><b>Heute fällig: ${due.length} ${due.length === 1 ? 'Groove' : 'Grooves'}</b><button class="nav-btn is-primary" type="button" data-grooves-review>Wiederholen</button></div>` : ''}
         ${done.length ? `<ul class="mode-list">${rows}</ul>` : '<p class="course-intro">Erst eine Kurs-Lektion schaffen – dann erscheint sie hier zum Behalten und Durchhalten.</p>'}
         <p class="foot-note" style="text-align:left">Hier behältst du, was du im Rhythmus-Kurs gelernt hast: hören, auffrischen, über viele Takte durchhalten.${gv.review === 'none' ? ' Heute ist nichts fällig.' : ''}</p>`;
@@ -8121,6 +8154,10 @@
       return;
     }
 
+    if (e.target.closest('[data-close-tool]')) {
+      try { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); } catch { /* eigenständig */ }
+      return;
+    }
     if (e.target.closest('[data-quick="close"]')) {
       try { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); } catch { /* eigenständig */ }
       return;
