@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v419. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v420. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -127,7 +127,12 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
     „Noten“ (nur auf Klick). Die Einschätzung steht nach dem Lauf direkt im
     Kreis-Feld. Die Eingabe (Tippen/Mikrofon) liegt hinter dem Zahnrad.
   - Lücken spielen jetzt mit dem vollen Schlagzeug statt nur der Snare.
-  - Auftakt-Lektionen (ohne Durchhalten): Die Fläche startet das Auffrischen.
+  - Auch die Auftakt-Grooves („Der Auftakt“, „Einsatz auf 4-und“, „Der
+    punktierte Auftakt“) lassen sich jetzt durchhalten (Rat des
+    Musikpädagogen: gerade Einsätze vor der Eins sind im Chor heikel).
+    Einzähler bis zum Auftakt, jede Wiederholung beginnt wieder mit dem
+    Auftakt; nach der Volltakt-Regel reiht sich die Phrase nahtlos an.
+    Gespeicherte Stände bleiben gültig, kein `DATA_VERSION`-Wechsel.
 - **Klatschfläche ersetzt die Play/BPM-Leiste** (Variante C der Leinwand,
   vom Chorleiter gewählt, siehe D-23).
 - **Rhythmuskurs: Schrittwechsel und Vorstellung** (siehe D-25, Texte vom
