@@ -513,7 +513,19 @@
   .pad-corner svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; }
   .pad-stop { justify-self: end; }
   .pad-stop svg { fill: currentColor; stroke: none; }
-  .pad-mic { justify-self: start; }
+  .pad-mic { justify-self: start; align-self: end; }
+  .pad-tempo { justify-self: start; align-self: start; touch-action: none; min-width: 60px; gap: 3px; align-items: baseline; padding-top: 0; padding-bottom: 0; line-height: 40px; background: #fff7fb; border-color: var(--tint-line); transition: transform .12s ease; }
+  .pad-tempo b { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--text); }
+  .pad-tempo small { font-size: 10px; font-weight: 800; color: var(--muted); }
+  .pad-tempo[aria-disabled="true"] { opacity: .55; cursor: default; }
+  .pad-tempo.is-dragging { transform: scale(1.18); border-color: var(--accent-foreground, #db0a73); background: #ffe3f1; box-shadow: 0 8px 20px rgba(219, 10, 115, .25); }
+  .pad-tempo.is-dragging::before, .pad-tempo.is-dragging::after { position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; line-height: 1; color: var(--accent-foreground, #db0a73); }
+  .pad-tempo.is-dragging::before { content: '▲'; top: -14px; }
+  .pad-tempo.is-dragging::after { content: '▼'; bottom: -14px; }
+  .tempo-hint { position: relative; z-index: 1; justify-self: start; align-self: start; margin: 24px 0 0 104px; font-size: 11px; font-weight: 800; color: var(--accent-foreground, #db0a73); pointer-events: none; opacity: 0; transition: opacity .15s; }
+  .pad-wrap.is-tempo .tempo-hint { opacity: 1; }
+  .pad-wrap.is-tempo .tap-pad .pad-label { opacity: .35; }
+  .pad-wrap .tap-pad { padding-top: 42px; }
   .pad-mic[aria-pressed="true"] { background: var(--ok-bg, #DDF5EA); border-color: var(--ok, #2f9e5b); }
   .pad-corner[hidden] { display: none; }
   .tempo-chip { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); font: inherit; font-weight: 800; font-size: 12px; vertical-align: middle; cursor: pointer; position: relative; }
@@ -857,6 +869,8 @@
   <div class="pad-wrap">
     <button class="tap-pad" type="button" data-phase="idle"><span class="pad-beats" aria-hidden="true"></span><span class="pad-label"></span><span class="pad-level" hidden><i></i></span></button>
     <button class="pad-corner pad-stop" type="button" data-rhythm-stop aria-label="Stoppen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
+    <button type="button" class="pad-corner pad-tempo" data-tempo-drag="rhythm" role="slider" aria-label="Tempo in BPM (nach oben oder unten ziehen)" aria-valuemin="30" aria-valuemax="200" aria-valuenow="92"><b>92</b><small>BPM</small></button>
+    <span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
     <button class="pad-corner pad-mic" type="button" data-rhythm-mictest hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Test</span></button>
   </div>
   <div class="transport-row" hidden>
@@ -2820,9 +2834,9 @@
     const inCourse = state.mode === 'course';
     box.hidden = !inCourse;
     if (!inCourse) return;
-    if (course.review) { box.innerHTML = `<span>${tempoChipHtml()}</span>`; return; }
+    if (course.review) { box.hidden = true; return; }
     const ok = !!(game.last?.result?.perfect && game.last.course);
-    box.innerHTML = `<span>${tempoChipHtml()}</span><span class="goal${ok ? ' is-ok' : ''}">Fehlerfreie Runde<span class="goal-dot" aria-hidden="true">${ok ? K_CHECK : ''}</span><span class="visually-hidden">${ok ? ': geschafft' : ': noch offen'}</span></span>`;
+    box.innerHTML = `<span></span><span class="goal${ok ? ' is-ok' : ''}">Fehlerfreie Runde<span class="goal-dot" aria-hidden="true">${ok ? K_CHECK : ''}</span><span class="visually-hidden">${ok ? ': geschafft' : ': noch offen'}</span></span>`;
   }
 
   function renderScore() {
@@ -2880,6 +2894,8 @@
     const stopBtn = $('[data-rhythm-stop]'), micBtn = $('[data-rhythm-mictest]');
     if (idle && stopBtn.contains(document.activeElement)) pad.focus({ preventScroll: true });
     stopBtn.hidden = idle;
+    const tc = $('[data-tempo-drag="rhythm"]');
+    if (idle && !calib.active) tc.removeAttribute('aria-disabled'); else tc.setAttribute('aria-disabled', 'true');
     micBtn.hidden = !(idle && mic);
     micBtn.setAttribute('aria-pressed', String(micTest.on));
     micBtn.setAttribute('aria-label', micTest.on ? 'Mikrofontest beenden' : 'Mikrofon testen');
@@ -3408,7 +3424,6 @@
     // Nur die Zusammenfassung: „ändern“ steht schon an der Stufen-Karte, die
     // Einstellungen erreicht man über das Zahnrad (Musikpädagoge: nicht doppelt).
     $('.rhythm-sum').append(bits.join(' · '));
-    $('.rhythm-sum').insertAdjacentHTML('beforeend', tempoChipHtml());
     if (!run.playing) {
       renderStrip(null);
       renderPad(game.finished ? 'done' : 'idle');
@@ -3527,7 +3542,69 @@
       <span class="k-tempo-val"><output class="bpm-out">${state.bpm}</output><small>BPM</small></span>
       <button type="button" data-tempo-step="1" aria-label="Schneller"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
     </div><button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button></div>`;
-  const tempoChipHtml = () => `<button type="button" class="tempo-chip" data-rhythm="settings" data-tempo-chip aria-label="Tempo ${state.bpm}, ändern"><b>${tempoSymbol(state.meter)}</b>${state.bpm}</button>`;
+  /** Ziehbare Tempo-Zahl oben links in der Klatschfläche (Variante D):
+   *  hoch = schneller, runter = langsamer (12 px je 2 BPM); Pfeiltasten bzw.
+   *  Bild auf/ab; im Lauf nur Anzeige. Rolle „slider“ für Screenreader. */
+  const TEMPO_DRAG_PX = 12;
+  const tempoDragHtml = (scope, bpm, off) => `<button type="button" class="pad-corner pad-tempo" data-tempo-drag="${scope}" role="slider" aria-label="Tempo in BPM (nach oben oder unten ziehen)" aria-valuemin="30" aria-valuemax="200" aria-valuenow="${bpm}"${off ? ' aria-disabled="true"' : ''}><b>${bpm}</b><small>BPM</small></button>`;
+  const tempoDrag = { el: null, id: null, y: 0, start: 0, moved: false };
+  const tempoScope = (el) => (el.dataset.tempoDrag === 'grooves'
+    ? { get: () => groovesBpm(), set: (v) => { gv.bpm = clamp(Math.round(v), 30, 200); }, off: () => !!gv.running }
+    : { get: () => state.bpm, set: (v) => { setBpm(v); persist(); }, off: () => run.playing || calib.active });
+  function showTempoValue(el, bpm) {
+    el.querySelector('b').textContent = String(bpm);
+    el.setAttribute('aria-valuenow', String(bpm));
+    if (el.dataset.tempoDrag !== 'grooves') { $('.bpm').value = String(state.bpm); $$('.bpm-out').forEach((o) => { o.textContent = String(state.bpm); }); }
+  }
+  function tempoHint(el, on) {
+    const wrap = el.closest('.pad-wrap');
+    wrap?.classList.toggle('is-tempo', on);
+    clearTimeout(tempoDrag.hintTimer);
+    if (on && !tempoDrag.el) tempoDrag.hintTimer = setTimeout(() => wrap?.classList.remove('is-tempo'), 1600);
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest?.('[data-tempo-drag]');
+    if (!el) return;
+    e.preventDefault();
+    const sc = tempoScope(el);
+    if (sc.off()) return;
+    Object.assign(tempoDrag, { el, id: e.pointerId, y: e.clientY, start: sc.get(), moved: false });
+    el.classList.add('is-dragging');
+    tempoHint(el, true);
+    try { el.setPointerCapture(e.pointerId); } catch { /* alte Browser */ }
+  });
+  document.addEventListener('pointermove', (e) => {
+    const el = tempoDrag.el;
+    if (!el || e.pointerId !== tempoDrag.id) return;
+    e.preventDefault();
+    const steps = Math.trunc((tempoDrag.y - e.clientY) / TEMPO_DRAG_PX);
+    if (steps) tempoDrag.moved = true;
+    const sc = tempoScope(el);
+    const want = clamp(tempoDrag.start + 2 * steps, 30, 200);
+    if (want !== sc.get()) { sc.set(want); showTempoValue(el, sc.get()); }
+  });
+  const endTempoDrag = (e) => {
+    const el = tempoDrag.el;
+    if (!el || e.pointerId !== tempoDrag.id) return;
+    el.classList.remove('is-dragging');
+    tempoDrag.el = null;
+    // Nur angetippt: Hinweis kurz stehen lassen; gezogen: Hinweis weg.
+    if (tempoDrag.moved) tempoHint(el, false); else tempoHint(el, true);
+    if (el.dataset.tempoDrag === 'grooves') gRerender(); else renderTransport();
+  };
+  document.addEventListener('pointerup', endTempoDrag);
+  document.addEventListener('pointercancel', endTempoDrag);
+  document.addEventListener('keydown', (e) => {
+    const el = e.target.closest?.('[data-tempo-drag]');
+    if (!el) return;
+    const d = { ArrowUp: 2, ArrowRight: 2, ArrowDown: -2, ArrowLeft: -2, PageUp: 10, PageDown: -10 }[e.key];
+    if (!d) return;
+    e.preventDefault(); e.stopPropagation();
+    const sc = tempoScope(el);
+    if (sc.off()) return;
+    sc.set(sc.get() + d);
+    showTempoValue(el, sc.get());
+  }, true);
 
   function renderTransport() {
     const btn = $('.play');
@@ -3538,7 +3615,11 @@
     $('.bpm').value = String(state.bpm);
     $$('.bpm-out').forEach((o) => { o.textContent = String(state.bpm); });
     $$('.k-tempo').forEach((g) => g.setAttribute('aria-label', `Tempo: ${tempoSymbol(state.meter)} = ${state.bpm}`));
-    $$('[data-tempo-chip]').forEach((b) => { b.innerHTML = `<b>${tempoSymbol(state.meter)}</b>${state.bpm}`; b.setAttribute('aria-label', `Tempo ${state.bpm}, ändern`); });
+    const tc = $('[data-tempo-drag="rhythm"]');
+    if (tc) {
+      showTempoValue(tc, state.bpm);
+      if (run.playing || calib.active) tc.setAttribute('aria-disabled', 'true'); else tc.removeAttribute('aria-disabled');
+    }
     // Tap-Tempo nicht im Kurs: die Lektion gibt das Tempo vor, und „Tap“ direkt
     // unter der Klatschfläche wird leicht mit ihr verwechselt (Musikpädagoge).
     $$('.tap-btn').forEach((b) => { b.hidden = state.mode === 'course'; });
@@ -8518,9 +8599,9 @@
   /** Ereignisse und Soll-Punkte für einen Lauf einer Lektion.
    *  kind: 'hear' (Vorbild `times`-mal), 'refresh' (Vorbild, dann du) oder
    *  'hold' (Stufe `stage`, mit `demo` zuerst einmal das Vorbild). */
-  function grooveTimeline(l, { kind, times = 1, stage = 1, demo = false, combo = null }) {
+  function grooveTimeline(l, { kind, times = 1, stage = 1, demo = false, combo = null, bpm = l.bpm }) {
     const m = METERS[l.meter], T = m.ticks;
-    const tickSec = 60 / l.bpm / m.ref;
+    const tickSec = 60 / bpm / m.ref;
     const pat = lessonPattern(l);
     const p = pat.pickup;
     const events = [], expected = [], phases = [];
@@ -8590,7 +8671,7 @@
   }
 
   /* ---- Lauf: Ereignisse mit Vorlauf auf der Audio-Uhr einplanen ---- */
-  const gv = { fromHub: false, view: 'list', id: null, phase: 'hear', stage: 1, combo: null, notes: false, heard: {}, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
+  const gv = { fromHub: false, view: 'list', id: null, phase: 'hear', stage: 1, combo: null, bpm: null, notes: false, heard: {}, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
   const gr = { run: null, timer: 0, frame: 0 };
   async function groovesStart(tl, onEnd) {
     groovesStop(false);
@@ -8673,6 +8754,8 @@
     }) : []));
   }
   const lessonById = (id) => COURSE.find((l) => l.id === id) || COURSE[0];
+  /** Tempo der Klatsch-Grooves: Lektionstempo, in der Fläche ziehbar (gilt für diesen Besuch). */
+  const groovesBpm = () => gv.bpm || (gv.id ? lessonById(gv.id).bpm : 90);
 
   /** Zuordnung Anschlag ↔ Soll-Punkt (Sekunden), Ergebnis wie in der Kurs-Auswertung. */
   function groovesAssign(exp, taps, tol) {
@@ -8760,6 +8843,7 @@
     const fb = `<p class="course-how" role="status" aria-live="polite" data-grooves-feedback>${esc(gv.feedback)}</p>`;
     // Klatschfläche unten (Variante C): in Ruhe der Startknopf, im Lauf das Klatschfeld, Stopp in der Ecke.
     const dock = `<div class="pad-wrap g-dock"><button class="tap-pad grooves-pad" type="button" data-phase="${gv.result ? 'done' : 'idle'}" aria-label="${running ? 'Klatschfläche' : 'Übung starten'}"><span class="pad-beats"></span><span class="pad-label">${gv.result ? 'Nochmal: tippen' : 'Tippen zum Starten'}</span></button>
+      ${tempoDragHtml('grooves', groovesBpm(), running)}<span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
       <button class="pad-corner pad-stop" type="button" data-grooves-act="stop" aria-label="Stoppen"${running ? '' : ' hidden'}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>`;
     const pad = '';
     if (gv.phase === 'hear') {
@@ -8828,7 +8912,7 @@
     let ph = phase || (review ? (holdable(l) ? 'hold' : 'hear') : g.last?.phase || 'hear');
     if (!groovesPhases(l).some(([p]) => p === ph) || (review && ph === 'refresh' && holdable(l))) ph = 'hear';
     const combo = review ? lastHeldCombo(g.held) || nextCombo(g.held) : (parseCombo(g.last?.combo) ? g.last.combo : nextCombo(g.held));
-    Object.assign(gv, { view: 'lesson', id, phase: ph, combo: combo || 'drums4', notes: false, result: null, running: '', feedback: '', visitRated: false });
+    Object.assign(gv, { view: 'lesson', id, phase: ph, combo: combo || 'drums4', bpm: null, notes: false, result: null, running: '', feedback: '', visitRated: false });
     if (review) delete gv.lastRunAt[id]; // erster Abruf nach Tagen: einmal das Vorbild
     setStatus('Bereit — am besten mit Kopfhörern.');
     gRerender();
@@ -8879,10 +8963,10 @@
     const l = lessonById(gv.id);
     const g = grooveItem(l.id);
     if (act === 'stop') { groovesStop(true); return; }
-    if (act === 'hear') { groovesRun('hear', grooveTimeline(l, { kind: 'hear', times: 2 }), () => { gv.heard[l.id] = true; }); return; }
+    if (act === 'hear') { groovesRun('hear', grooveTimeline(l, { kind: 'hear', times: 2, bpm: groovesBpm() }), () => { gv.heard[l.id] = true; }); return; }
     if (act === 'notes') { gv.notes = !gv.notes; gRerender(); $('[data-grooves-act="notes"]')?.focus(); return; }
     if (act === 'refresh') {
-      const tl = grooveTimeline(l, { kind: 'refresh' });
+      const tl = grooveTimeline(l, { kind: 'refresh', bpm: groovesBpm() });
       groovesRun('refresh', tl, (info) => {
         const tol = groovesTol(tl.expected, tl.tickSec, METERS[l.meter].ticks);
         const t0 = info.t0 + tl.startSec;
@@ -8901,7 +8985,7 @@
       const demo = !gv.lastRunAt[l.id] || Date.now() - gv.lastRunAt[l.id] > 10 * 60 * 1000;
       const combo = parseCombo(gv.combo) ? gv.combo : nextCombo(g.held) || 'drums4';
       const st = comboStage(combo);
-      const tl = grooveTimeline(l, { kind: 'hold', combo, demo });
+      const tl = grooveTimeline(l, { kind: 'hold', combo, demo, bpm: groovesBpm() });
       groovesRun('hold', tl, (info) => {
         gv.lastRunAt[l.id] = Date.now();
         const tol = groovesTol(tl.expected, tl.tickSec, METERS[l.meter].ticks);
@@ -12709,7 +12793,21 @@
       run.padKey = ''; renderPad('idle');
       if ($('[data-rhythm-mictest]').hidden) errors.push('Klatschfläche: Mikrofontest fehlt in Ruhe');
       state.input = inputNow;
-      if (!$('.rhythm-sum [data-tempo-chip]') && state.mode !== 'course') errors.push('Tempo-Chip fehlt');
+      // Tempo: ziehbare Zahl oben links in der Fläche (Variante D), im Lauf nur Anzeige.
+      {
+        const tc = $('[data-tempo-drag="rhythm"]');
+        const bpm0 = state.bpm;
+        if (!tc || tc.getAttribute('role') !== 'slider' || tc.closest('.tap-pad') || !tc.closest('footer')) errors.push('Tempo: Zahl fehlt in der Klatschfläche');
+        else {
+          run.padKey = ''; renderPad('idle');
+          tc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+          if (state.bpm !== bpm0 + 2 || tc.querySelector('b').textContent !== String(state.bpm)) errors.push(`Tempo: Pfeiltaste ${bpm0} → ${state.bpm}`);
+          run.padKey = ''; renderPad('count', 0, null);
+          if (tc.getAttribute('aria-disabled') !== 'true') errors.push('Tempo: im Lauf änderbar');
+          setBpm(bpm0); renderTransport();
+        }
+        if ($('[data-tempo-chip]')) errors.push('Tempo: alter Chip oben noch da');
+      }
       run.padKey = padKey; renderPad(game.finished ? 'done' : 'idle');
     }
     // Nachklatschen: Noten nur auf Klick (je Runde); mit „Noten zeigen“ im Zahnrad, Kurs und Vom Blatt unverändert.
