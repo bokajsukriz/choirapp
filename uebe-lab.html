@@ -3547,7 +3547,12 @@
    *  Bild auf/ab; im Lauf nur Anzeige. Rolle „slider“ für Screenreader. */
   const TEMPO_DRAG_PX = 12;
   const tempoDragHtml = (scope, bpm, off) => `<button type="button" class="pad-corner pad-tempo" data-tempo-drag="${scope}" role="slider" aria-label="Tempo in BPM (nach oben oder unten ziehen)" aria-valuemin="30" aria-valuemax="200" aria-valuenow="${bpm}"${off ? ' aria-disabled="true"' : ''}><b>${bpm}</b><small>BPM</small></button>`;
-  const tempoDrag = { el: null, id: null, y: 0, start: 0, moved: false };
+  const tempoDrag = { el: null, id: null, y: 0, start: 0, moved: false, downPx: TEMPO_DRAG_PX };
+  const TEMPO_DOWN_MIN = 40; // so weit reicht der Weg nach unten bis zum Bildschirmrand
+  /** Pixel je 2-BPM-Schritt nach unten: Der Platz bis zum unteren Rand ist
+   *  knapp (die Fläche sitzt unten) – er reicht immer bis etwa 40 BPM, also
+   *  größere Sprünge als nach oben (höchstens so fein wie nach oben). */
+  const tempoDownPx = (startBpm, spaceBelow) => clamp((spaceBelow * .9) / Math.max(1, (startBpm - TEMPO_DOWN_MIN) / 2), 3, TEMPO_DRAG_PX);
   const tempoScope = (el) => (el.dataset.tempoDrag === 'grooves'
     ? { get: () => groovesBpm(), set: (v) => { gv.bpm = clamp(Math.round(v), 30, 200); }, off: () => !!gv.running }
     : { get: () => state.bpm, set: (v) => { setBpm(v); persist(); }, off: () => run.playing || calib.active });
@@ -3568,7 +3573,7 @@
     e.preventDefault();
     const sc = tempoScope(el);
     if (sc.off()) return;
-    Object.assign(tempoDrag, { el, id: e.pointerId, y: e.clientY, start: sc.get(), moved: false });
+    Object.assign(tempoDrag, { el, id: e.pointerId, y: e.clientY, start: sc.get(), moved: false, downPx: tempoDownPx(sc.get(), window.innerHeight - e.clientY) });
     el.classList.add('is-dragging');
     tempoHint(el, true);
     try { el.setPointerCapture(e.pointerId); } catch { /* alte Browser */ }
@@ -3577,7 +3582,8 @@
     const el = tempoDrag.el;
     if (!el || e.pointerId !== tempoDrag.id) return;
     e.preventDefault();
-    const steps = Math.trunc((tempoDrag.y - e.clientY) / TEMPO_DRAG_PX);
+    const dy = tempoDrag.y - e.clientY;
+    const steps = Math.trunc(dy / (dy >= 0 ? TEMPO_DRAG_PX : tempoDrag.downPx));
     if (steps) tempoDrag.moved = true;
     const sc = tempoScope(el);
     const want = clamp(tempoDrag.start + 2 * steps, 30, 200);
@@ -12807,6 +12813,9 @@
           setBpm(bpm0); renderTransport();
         }
         if ($('[data-tempo-chip]')) errors.push('Tempo: alter Chip oben noch da');
+        // Nach unten größere Sprünge: 200 px Platz reichen von 120 bis etwa 40 BPM; nie feiner als nach oben.
+        const px = tempoDownPx(120, 200);
+        if (!(px < TEMPO_DRAG_PX) || Math.abs(120 - 2 * Math.trunc(180 / px) - TEMPO_DOWN_MIN) > 2 || tempoDownPx(44, 600) !== TEMPO_DRAG_PX || tempoDownPx(200, 20) !== 3) errors.push(`Tempo nach unten: ${px}`);
       }
       run.padKey = padKey; renderPad(game.finished ? 'done' : 'idle');
     }

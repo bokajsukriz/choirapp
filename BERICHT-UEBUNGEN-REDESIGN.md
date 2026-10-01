@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v411. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v412. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -522,8 +522,9 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
   - Damit ersetzt C den „Los“-Knopf aus D-19.
 - **D-24 Tempo in der Fläche (Variante D):** Der Tempo-Chip oben entfällt.
   - Das Tempo steht als Zahl oben links in der Klatschfläche („92 BPM“) und
-    wird direkt gezogen: hoch = schneller, runter = langsamer, 2 BPM je
-    12 px.
+    wird direkt gezogen: hoch = schneller (2 BPM je 12 px), runter =
+    langsamer mit größeren Sprüngen. Der Platz bis zum unteren Rand reicht
+    immer bis etwa 40 BPM, höchstens 2 BPM je 3 px.
   - Während des Ziehens wird die Zahl groß, zeigt ▲/▼ und den Hinweis
     „hoch = schneller · runter = langsamer“; der Startknopf wird blass.
     Kurzes Antippen zeigt nur den Hinweis und startet nichts.
