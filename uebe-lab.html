@@ -473,6 +473,19 @@
   .pad-beats i.is-now { border: 4px solid var(--accent-foreground); color: var(--text); box-shadow: 0 0 0 6px rgba(var(--accent-rgb), .25); }
   .pad-beats.is-quiet i { opacity: .55; }
   .pad-label { font-weight: 700; font-size: 15px; line-height: 1.3; text-align: center; }
+  .pad-label:empty { display: none; }
+  /* Feste Höhe: Pillen, Notenfläche und Klatschfläche bleiben stehen, nichts
+     springt zwischen Ruhe, Hören, Du und Ergebnis. „Los“ liegt in Ruhe unten
+     in der Fläche (eigener Knopf über dem Platzhalter .pad-go-slot). */
+  .pad-wrap { display: grid; }
+  .pad-wrap > * { grid-area: 1 / 1; }
+  .rhythm-stage .tap-pad { height: 160px; min-height: 0; gap: 10px; }
+  .pad-go-slot { display: none; height: 46px; flex: none; }
+  .tap-pad[data-phase="idle"] .pad-go-slot, .tap-pad[data-phase="done"] .pad-go-slot { display: block; }
+  .tap-pad.is-mic[data-phase="idle"] .pad-beats { display: none; }
+  .pad-go { position: relative; z-index: 1; align-self: end; justify-self: center; margin-bottom: 15px; min-width: 132px; height: 46px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 6px 16px rgba(var(--accent-rgb), .3); cursor: pointer; }
+  .pad-go svg { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+  .pad-go[hidden] { display: none; }
   .tap-pad.is-mic .pad-label::before { content: ''; display: inline-block; width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; background: currentColor; -webkit-mask: var(--mic-icon) center / contain no-repeat; mask: var(--mic-icon) center / contain no-repeat; }
   .tap-pad { --mic-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E"); }
   .pad-level { width: 70%; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
@@ -649,7 +662,10 @@
         <div class="bar-strip" aria-hidden="true"></div>
         <div class="rstage-meta" hidden></div>
         <div class="stage"></div>
-        <button class="tap-pad" type="button" data-phase="idle"><span class="pad-beats" aria-hidden="true"></span><span class="pad-label">Starte mit Play</span><span class="pad-level" hidden><i></i></span></button>
+        <div class="pad-wrap">
+          <button class="tap-pad" type="button" data-phase="idle"><span class="pad-beats" aria-hidden="true"></span><span class="pad-label"></span><span class="pad-level" hidden><i></i></span><span class="pad-go-slot" aria-hidden="true"></span></button>
+          <button class="pad-go" type="button" data-rhythm-go><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg><span>Los</span></button>
+        </div>
       </div>
       <!-- Ergebnis der letzten Runde: Timing als Tendenz, Silben eingefärbt. -->
       <div class="round-card k-card" data-round-card hidden></div>
@@ -2788,8 +2804,8 @@
   }
 
   const PAD_LABELS = {
-    idle: 'Starte mit Play', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
-    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft! Nochmal mit Play',
+    idle: '', count: 'Einzähler …', listen: 'Hör zu …', read: 'Lies mit …',
+    rest: 'Leertakt — weiterzählen', you: 'Jetzt du!', along: 'Klatsch mit!', done: 'Geschafft!',
   };
 
   /** Klatschfläche: Zählkreise je Schlag (Konfetti B2). Sie stehen immer da,
@@ -2808,11 +2824,18 @@
     pad.dataset.phase = phase;
     pad.classList.toggle('is-mic', mic);
     let label = PAD_LABELS[phase];
-    if (phase === 'idle' && mic) label = micTest.on ? 'Klatsch einmal zum Test' : 'Mikrofon: antippen zum Testen, dann Play';
+    if (phase === 'idle' && mic) label = micTest.on ? 'Klatsch einmal zum Test' : 'Fläche antippen: Mikrofon testen';
     if (phase === 'you' && mic) label = 'Jetzt du – klatsch oder sprich „ta“!';
     if (phase === 'you' && round?.duo) label = round.duo.youLabel || `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
     $('.pad-label').textContent = label;
-    pad.setAttribute('aria-label', phase === 'idle' && mic ? (micTest.on ? 'Mikrofontest beenden' : 'Mikrofon testen') : `Klatschfläche: ${label}`);
+    pad.setAttribute('aria-label', phase === 'idle' && mic ? (micTest.on ? 'Mikrofontest beenden' : 'Mikrofon testen') : `Klatschfläche${label ? `: ${label}` : ''}`);
+    // „Los“ direkt in der Fläche: in Ruhe und nach dem Ende (dann „Nochmal“).
+    const go = $('[data-rhythm-go]');
+    const idle = phase === 'idle' || phase === 'done';
+    if (!idle && go.contains(document.activeElement)) pad.focus({ preventScroll: true });
+    go.hidden = !idle;
+    go.querySelector('span').textContent = phase === 'done' ? 'Nochmal' : 'Los';
+    go.setAttribute('aria-label', phase === 'done' ? 'Nochmal starten' : 'Los: Übung starten');
     $('.pad-level').hidden = !(mic && micTest.on);
     const dots = $('.pad-beats');
     dots.classList.toggle('is-quiet', !live);
@@ -3166,8 +3189,42 @@
     return `<svg viewBox="0 0 ${ST.W} ${y0}" role="img" aria-label="${label}">${svg.join('')}</svg>`;
   }
   function renderStage(round, reveal, phase = 'rest') {
-    $('.stage').innerHTML = stageSvgHtml(round, reveal, phase);
-    $('.stage').hidden = !stageShown(round, phase);
+    // Die Notenfläche steht immer da (sonst springt die Klatschfläche bei
+    // jeder Runde): wo nichts zu lesen ist, die leere Zeile „Rhythmus nach Gehör“.
+    let html;
+    if (stageShown(round, phase)) html = stageSvgHtml(round, reveal, phase);
+    else { stageLines = []; html = neutralStageSvg(); }
+    $('.stage').innerHTML = fitStageHeight(html);
+    $('.stage').hidden = false;
+  }
+  /** Höhe der Notenfläche je Übung (in viewBox-Einheiten): reicht für die
+   *  längste Phrase, die die Einstellungen erlauben, und wächst nur, nie
+   *  zurück — so bleibt die Klatschfläche an ihrem Platz. Hängt nur von den
+   *  Einstellungen ab, nicht von der verborgenen Phrase. */
+  const stageFit = { key: '', h: 0 };
+  function stageReserve() {
+    const key = [state.mode, state.meter, state.bars, state.elements.join(), state.rhythmLevel, state.duoStage, course.lesson, course.review].join('|');
+    if (stageFit.key !== key) {
+      stageFit.key = key;
+      let lines = 1;
+      if (state.mode === 'echo' || state.mode === 'read') {
+        const meters = rhythmLevel()?.meters || [state.meter];
+        const short = ['s', 'off', 't', 'sh'].some((id) => state.elements.includes(id));
+        lines = Math.max(...meters.map((m) => (short || METERS[m].ticks >= 60 ? state.bars : Math.ceil(state.bars / 2))));
+      }
+      stageFit.h = lines * ST.H;
+    }
+    return stageFit.h;
+  }
+  function fitStageHeight(html) {
+    const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(html);
+    if (!m) return html;
+    const h = Number(m[2]);
+    const want = Math.max(stageReserve(), h);
+    stageFit.h = want;
+    if (want <= h) return html;
+    const dy = ((want - h) / 2).toFixed(1);
+    return html.replace(m[0], `viewBox="0 0 ${m[1]} ${want}"`).replace(/^(<svg[^>]*>)([\s\S]*)(<\/svg>)$/, `$1<g transform="translate(0 ${dy})">$2</g>$3`);
   }
   /** Notenfläche nur, wo es etwas zu lesen gibt (Vom Blatt, Mitlesen,
    *  Zweistimmig, Ergebnis mit Noten). Beim Hören-und-Nachklatschen bleibt
@@ -9054,6 +9111,7 @@
       return;
     }
     if (e.target.closest('.play')) { if (run.playing) stop(); else start(); return; }
+    if (e.target.closest('[data-rhythm-go]')) { if (!run.playing) start(); return; }
     const tempoStep = e.target.closest('[data-tempo-step]');
     if (tempoStep) { setBpm(state.bpm + 2 * Number(tempoStep.dataset.tempoStep)); renderTransport(); return; }
     if (e.target.closest('.tap-btn')) {
@@ -12143,6 +12201,26 @@
     // Mikrofon: nichts gehört
     t = timingSummary({ notes: [note(0, 'miss'), note(12, 'miss')], count: 2, extras: 0, perfect: false, taps: [] }, .12, { mic: true });
     if (t.tendency !== 'silent') errors.push(`timingSummary Mikrofon still: ${t.tendency}`);
+    // Bühne springt nicht: Notenfläche immer sichtbar (leer „nach Gehör“),
+    // Höhe gleich, ob Noten oder nicht; „Los“ nur in Ruhe/nach dem Ende.
+    if (!run.playing) {
+      const fit = stageFit.key;
+      stageFit.key = '';
+      const empty = fitStageHeight(neutralStageSvg());
+      if (!/viewBox="0 0 \d+ \d+"/.test(empty)) errors.push('Notenfläche: Platzhalter ohne viewBox');
+      const svgH = (html) => Number(/viewBox="0 0 [\d.]+ ([\d.]+)"/.exec(html)?.[1]);
+      if (svgH(empty) < ST.H || svgH(fitStageHeight(`<svg viewBox="0 0 ${ST.W} ${ST.H}"></svg>`)) !== svgH(empty)) errors.push('Notenfläche: Höhe ändert sich zwischen leer und Noten');
+      stageFit.key = fit;
+      const padKey = run.padKey;
+      run.padKey = ''; renderPad('idle');
+      if ($('[data-rhythm-go]').hidden || $('[data-rhythm-go]').textContent.trim() !== 'Los') errors.push('Klatschfläche: kein „Los“ in Ruhe');
+      run.padKey = ''; renderPad('done');
+      if ($('[data-rhythm-go]').hidden || $('[data-rhythm-go]').textContent.trim() !== 'Nochmal') errors.push('Klatschfläche: kein „Nochmal“ nach dem Ende');
+      run.padKey = ''; renderPad('count', 0, null);
+      if (!$('[data-rhythm-go]').hidden) errors.push('Klatschfläche: „Los“ während des Laufs');
+      if ($('.tap-pad').closest('.rhythm-stage') && $('[data-rhythm-go]').closest('.tap-pad')) errors.push('„Los“ steckt im Klatsch-Knopf');
+      run.padKey = padKey; renderPad(game.finished ? 'done' : 'idle');
+    }
     // Stepper: nur der aktuelle Schritt beschriftet, Rest unsichtbar für die Augen
     const box = document.createElement('div');
     box.innerHTML = stepperHtml(['A', 'B', 'C', 'D'], 1);

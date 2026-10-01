@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v402. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v403. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -48,6 +48,7 @@ Commit erhöht `SW_VERSION`, beim Revert eine neue `SW_VERSION` setzen):
 
 | Bereich | Commits |
 |---|---|
+| Rückmeldung Rhythmus (feste Bühne, „Los“) | siehe D-19 |
 | Nacharbeit Licks | `7bd1b9c` |
 | Nacharbeit uebe-lab (Hören, Rhythmus, Singen) | `381af61` |
 | Querschnitt | `e3c7866` |
@@ -418,6 +419,16 @@ Keine Nutzerdaten gelöscht, keine IDs oder Speicherschlüssel geändert, kein
 - **D-18 Karte „Letzte Runde“:** Sie erscheint nach jeder ausgewerteten Runde,
   auch während der Lauf weitergeht (die Runden laufen endlos). Während einer
   Runde zeigt die Bühne nur Pillen und Fläche.
+- **D-19 Feste Bühne und „Los“ (Rückmeldung nach dem Redesign):** Die
+  Notenfläche wurde je nach Phase ein- und ausgeblendet. Dadurch sprang die
+  Klatschfläche bei jeder Runde um gut 100 px. Jetzt stehen Pillen,
+  Notenfläche und Klatschfläche immer da. Wo nichts zu lesen ist, zeigt die
+  Notenfläche die leere Zeile „Rhythmus nach Gehör“. Ihre Höhe richtet sich
+  nur nach den Einstellungen (Takte, Bausteine) und wächst höchstens. Die
+  Klatschfläche ist 160 px hoch. In Ruhe sitzt ein Knopf „Los“ in der Fläche,
+  nach dem Ende „Nochmal“. Play in der Fußleiste bleibt. Im Mikrofon-Modus
+  startet ein Tipp auf die Fläche weiterhin den Test. Auf 320×568 liegt „Los“
+  unter der Fußleiste, man muss also einmal scrollen.
 
 ## Nicht umgesetzt (bewusst, als Vorschlag)
 
