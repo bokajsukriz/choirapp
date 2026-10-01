@@ -505,6 +505,69 @@
   .k-tempo .bpm-out { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1; }
   .tap-btn { height: 44px; padding: 0 14px; border: 1px solid var(--tint-line); border-radius: 999px; background: var(--line); color: var(--text); font-size: 14px; font-weight: 700; }
   .status { margin: 6px 0 0; font-size: 12px; }
+  /* ---- Hören-Übung (Konfetti B2): Serie, Tonart-Zeile, Leiter, Aktionen unten ---- */
+  [data-panel="ear"] .panel { background: transparent; border: 0; padding: 0; }
+  .ear-series { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+  .ser-n { font-size: 12px; font-weight: 700; color: var(--muted-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ser-bar { flex: 1 1 auto; display: flex; gap: 3px; }
+  .ser-bar i { flex: 1 1 0; height: 6px; border-radius: 3px; background: var(--line); }
+  .ser-bar i.is-ok { background: var(--ok); }
+  .ser-bar i.is-help { background: var(--accent-3); }
+  .ser-bar i.is-now { background: var(--accent-foreground); }
+  .ser-level { position: relative; flex: none; margin: 0; padding: 0; border: 0; background: transparent; min-width: 32px; min-height: 32px; display: flex; align-items: center; justify-content: center; }
+  .ser-level::before { content: ''; position: absolute; inset: -6px; }
+  .ear-stage { margin-top: 0; background: transparent; border: 0; padding: 0 0 4px; }
+  .ear-prompt { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+  .key-row { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 6px 6px 6px 12px; border-radius: 18px; background: var(--hear-bg); border: 1px solid var(--hear-line); text-align: left; }
+  .key-ico { display: flex; color: var(--hear-fg); }
+  .key-ico svg { width: 20px; height: 20px; }
+  .key-text { flex: 1 1 auto; min-width: 0; font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.2; }
+  .key-cad { min-height: 44px; padding: 0 12px; border: 1px solid var(--hear-line); border-radius: 999px; background: var(--surface); color: var(--hear-fg); display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+  .key-cad svg { width: 18px; height: 18px; }
+  .answer { border-color: var(--tint-line); border-radius: 14px; font-weight: 700; font-size: 15px; color: var(--text); }
+  .answer.is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); }
+  .answer.is-ok { background: var(--ok-bg); border: 2px solid var(--ok); color: var(--ok-fg); }
+  .ear-feedback.is-try { color: var(--rep-fg); }
+  .ear-feedback.is-bad { color: var(--rep-fg); }
+  .ear-feedback.is-ok { color: var(--ok-fg); }
+  /* Leiter: unten die Tonika, oben ihre Oktave; Halbtöne enger (--gap). */
+  .answer-grid.is-ladder { display: flex; flex-direction: column-reverse; gap: 0; margin: 4px 0 0; padding: 8px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); }
+  .rung { position: relative; margin-bottom: var(--gap, 8px); }
+  .rung.is-top { margin-bottom: 0; }
+  .rung .answer, .rung .answer-oct { width: 100%; min-height: 44px; padding: 0 14px; display: flex; align-items: center; text-align: left; font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1; border-radius: 12px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); }
+  .rung.is-alt { margin-left: 34%; }
+  .rung .answer.is-off, .rung .answer-oct.is-off { opacity: 1; border-style: dashed; border-color: var(--line); background: transparent; color: var(--muted); font-size: 15px; }
+  .rung .answer.is-ok, .rung .answer-oct.is-ok { background: var(--ok-bg); border: 2px solid var(--ok); color: var(--ok-fg); }
+  .rung .answer.is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); }
+  .ear-stage:has(.key-row:not([hidden])) .ear-sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ear-stage:has(.key-row:not([hidden])) .ear-prompt { font-size: 16px; }
+  .rung .answer-oct.is-playing, .rung .answer.is-playing { background: var(--hear-bg); border: 2px solid var(--hear); color: var(--hear-fg); box-shadow: 0 0 0 3px rgba(51, 201, 220, .25); }
+  .answer-grid.is-upper-playing .rung:not(.is-top) .answer[data-ans="0"].is-playing { background: var(--surface); border: 1px solid var(--tint-line); color: var(--text); box-shadow: none; }
+  .rung-note { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+  .rung-note.is-target { color: var(--ok-fg); }
+  .rung-note.is-path { color: var(--hear-fg); }
+  .rung-note.is-goal { color: var(--hear-fg); }
+  .rung:has(.rung-note.is-path) .answer { border-style: dashed; border-color: var(--hear-line); background: var(--hear-bg); }
+  .rung:has(.rung-note.is-goal) .answer, .rung:has(.rung-note.is-goal) .answer-oct { border: 2px solid var(--hear); background: var(--hear-bg); }
+  .ear-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .ear-actions .ear-extra { display: contents; }
+  .ear-actions .ear-controls { display: contents; margin: 0; }
+  .ear-actions .big-btn, .ear-actions .ear-extra button { flex: 1 1 0; min-width: 0; height: 52px; justify-content: center; border-radius: 999px; font-size: 15px; font-weight: 700; }
+  .ear-actions .big-btn:not(.secondary) { background: var(--accent); color: var(--accent-ink); }
+  .ear-actions [data-ear="next"] { background: var(--accent); color: var(--accent-ink); border: 0; }
+  .ear-actions .big-btn.is-hear, .ear-actions .ear-extra button.is-hear { background: var(--hear-bg); border: 1px solid var(--hear-line); color: var(--hear-fg); }
+  .ear-actions [data-ear="next"].is-skip { background: var(--surface); border: 1px solid var(--tint-line); color: var(--text); }
+  .ear-actions .big-btn svg { width: 18px; height: 18px; flex: none; }
+  .ear-actions { flex-wrap: wrap; }
+  .ear-actions .big-btn, .ear-actions .ear-extra button { flex: 1 1 40%; padding: 0 12px; line-height: 1.15; }
+  .answer.is-off { opacity: 1; border-style: dashed; border-color: var(--line); background: transparent; color: var(--muted); }
+  .ear-actions .ear-extra p { flex-basis: 100%; }
+  .ear-actions:has(.ear-extra p) { flex-wrap: wrap; }
+  .ear-summary { margin-top: 10px; padding: 12px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
+  .sum-text { margin: 0 0 10px; font-size: 14px; line-height: 1.4; color: var(--muted-2); }
+  .sum-text b { color: var(--text); }
+  .sum-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sum-actions .k-btn { flex: 1 1 auto; height: 46px; font-size: 15px; }
   /* Fußleiste: schlank, halbtransparent, obere Linie (kein deckender Streifen) */
   footer { background: rgba(255, 255, 255, .7); border-top: 1px solid var(--line); padding: 8px 16px max(10px, env(safe-area-inset-bottom)); }
 </style>
@@ -563,21 +626,28 @@
     <div class="mode-list-wrap" data-list="ear"></div>
     <div data-exview="ear" hidden>
     <div class="ex-head"><button class="back-btn" type="button" data-back="ear" data-own-back-btn aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
-    <section class="panel">
+    <section class="panel ear-panel">
+      <!-- Konfetti B2: Serie „n von 10“ mit Stufen-Ring (während der Aufgaben),
+           Stufen-Karte nur vor dem Start; Aktionen unten. -->
+      <div class="ear-series" hidden></div>
       <div data-levels="ear"></div>
       <div class="ear-stage">
+        <div class="key-row" hidden></div>
         <p class="ear-prompt"></p>
         <p class="ear-sub"></p>
         <div class="slot-row" hidden></div>
+      </div>
+      <div class="answer-grid"></div>
+      <p class="ear-feedback" role="status" aria-live="polite"></p>
+      <div class="ear-summary" hidden></div>
+      <div class="ear-actions">
+        <div class="ear-extra"></div>
         <div class="ear-controls">
           <button class="big-btn" type="button" data-ear="play"></button>
           <button class="big-btn secondary" type="button" data-ear="next" hidden>Weiter</button>
         </div>
       </div>
-      <div class="answer-grid"></div>
-      <div class="ear-extra"></div>
-      <p class="ear-feedback" role="status" aria-live="polite"></p>
-      <p class="score ear-score"></p>
+      <p class="score ear-score visually-hidden"></p>
     </section>
     </div>
   </section>
@@ -3552,7 +3622,7 @@
       state.mode = id;
       run.shown = null; game.finished = false;
       if (id === 'course') enterCourse();
-    } else if (tab === 'ear') { ear.mode = id; ear.streak = 0; }
+    } else if (tab === 'ear') { ear.mode = id; ear.streak = 0; resetEarSeries(id); }
     else { sing.mode = id; sing.task = null; sing.phase = 'idle'; sing.judge = null; }
     views[tab] = 'exercise';
     renderAll();
@@ -4205,7 +4275,7 @@
 
   /** Kadenz (falls gewünscht), Pause, dann das Ziel — ab Zeit `t0` auf `bus`.
    *  `onlyTarget`: nur das Ziel, ohne Kadenz und Pause. Gibt die Dauer in s zurück. */
-  function playInKeyTask(task, t0, bus, { cadence = true, onlyTarget = false } = {}) {
+  function playInKeyTask(task, t0, bus, { cadence = true, onlyTarget = false, onlyCadence = false } = {}) {
     let t = t0;
     if (cadence && !onlyTarget) {
       const secs = chordTempoSec();
@@ -4215,6 +4285,7 @@
       });
       t += IN_KEY_PAUSE;
     }
+    if (onlyCadence) return t - IN_KEY_PAUSE - t0;
     if (task.kind === 'noteInKey') engine.keys(task.note, t, IN_KEY_TARGET_SEC, { velocity: .22, dest: bus });
     else chordNotes(task.voicings[0]).forEach((m) => engine.keys(m, t, IN_KEY_TARGET_SEC, { velocity: .13, dest: bus }));
     return t + IN_KEY_TARGET_SEC - t0;
@@ -4237,10 +4308,17 @@
   }
 
   /** Genau den Antwortknopf mit diesem Wert (data-ans) leuchten lassen; null = keinen. */
-  function setPlayingAnswer(value) {
+  function setPlayingAnswer(value, upper = false) {
     ear.playing = value === null ? null : String(value);
+    ear.playingUpper = !!upper && ear.playing !== null;
     $$('.answer-grid .answer').forEach((b) => b.classList.toggle('is-playing', ear.playing !== null && b.dataset.ans === ear.playing));
+    // Leiter: endet die Auflösung oben, leuchtet die obere Tonika-Sprosse (do′/la′).
+    const grid = $('.answer-grid');
+    grid.classList.toggle('is-upper-playing', !!upper && ear.playing !== null);
+    $$('.answer-grid .answer-oct').forEach((b) => b.classList.toggle('is-playing', !!upper && ear.playing !== null && b.dataset.oct === ear.playing));
   }
+  /** Endet die Auflösung über dem Aufgabenton (obere Tonika)? */
+  const resolvesUp = (task) => task.kind === 'noteInKey' && task.resolution.length > 1 && task.resolution[task.resolution.length - 1].midi > task.note;
 
   /** Spielt die Auflösung und lässt bei jedem Schritt den passenden Antwortknopf
    *  leuchten (Timer in ear.timers: einer je Schritt, dazu einer fürs Ende).
@@ -4258,9 +4336,11 @@
     }
     ear.resolving = true;
     let at = (lead + lag) * 1000;
-    for (const step of resolutionSteps(task)) {
+    const steps = resolutionSteps(task);
+    for (const step of steps) {
       if (live) step.notes.forEach((m) => engine.keys(m, t, step.sec * 1.04, { velocity: step.velocity, dest: ear.bus }));
-      ear.timers.push(setTimeout(() => setPlayingAnswer(step.value), at));
+      const upper = step === steps[steps.length - 1] && resolvesUp(task);
+      ear.timers.push(setTimeout(() => setPlayingAnswer(step.value, upper), at));
       at += step.sec * 1000;
       t += step.sec;
     }
@@ -4341,7 +4421,7 @@
     }
     if (!ok) task.tries.push(value);
     if (ok || task.tries.length >= 2) { revealInKey(task); return; }
-    setEarFeedback('Noch nicht — hör noch einmal hin und probier es weiter.', 'bad');
+    setEarFeedback('Noch nicht — sing den Ton leise und geh Schritt für Schritt nach Hause.', 'try');
     renderEar();
   }
 
@@ -4447,7 +4527,9 @@
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'big-btn secondary';
     b.dataset.ear = ear.revealed ? 'inkey-resolve' : 'inkey-target';
-    b.textContent = ear.revealed ? 'Auflösung nochmal' : task.kind === 'noteInKey' ? 'Nur den Ton' : 'Nur den Akkord';
+    b.textContent = ear.revealed ? 'Auflösung nochmal' : task.kind === 'noteInKey' ? 'Ton' : 'Akkord';
+    b.classList.add('is-hear');
+    b.setAttribute('aria-label', ear.revealed ? 'Auflösung nochmal' : task.kind === 'noteInKey' ? 'Nur den Ton noch einmal' : 'Nur den Akkord noch einmal');
     return b;
   }
 
@@ -4495,7 +4577,7 @@
 
   /** Spielt die aktuelle Aufgabe (oder, nach dem Auflösen, eine gewählte
    *  Vergleichs-Antwort) ab. */
-  async function playEar({ compareSemis, compare, first = false, only = false } = {}) {
+  async function playEar({ compareSemis, compare, first = false, only = false, cadenceOnly = false } = {}) {
     try { await engine.start(); } catch { setEarFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); return; }
     engine.fadeBus(ear.bus);
     clearEarTimers();
@@ -4530,7 +4612,7 @@
     }
     if (isInKey(task)) {
       // Neue Aufgabe: Kadenz nach Einstellung; „Nochmal hören“ immer mit Kadenz; „Nur den Ton“ ohne.
-      playInKeyTask(task, t0, bus, { cadence: !first || task.cadence !== false, onlyTarget: only });
+      playInKeyTask(task, t0, bus, { cadence: !first || task.cadence !== false, onlyTarget: only, onlyCadence: cadenceOnly });
       return;
     }
     if (task.kind !== 'chords') { playEarTask(task, t0, bus, { compare }); return; }
@@ -4670,6 +4752,7 @@
   }
   /** Fortschritt und „Heute üben“. */
   function onEarResult(task, ok) {
+    recordSeries(task, ok);
     const key = task.kind === 'modulation' ? 'chords' : task.kind;
     const [, level] = earLevelInfo(key);
     const extra = { help: !!task.help };
@@ -4727,6 +4810,8 @@
   }
 
   function nextEar() {
+    // Serie voll: nicht automatisch weiter — die Bilanz steht da.
+    if (seriesDone() && ear.task && ear.revealed && !quickRun) { clearEarTimers(); renderEar(); return; }
     clearEarTimers();
     newTask();
     setEarFeedback('', '');
@@ -4749,7 +4834,56 @@
     return [table, ear.levels[mode]];
   }
   /** Stufe `n` im aktuellen Modus übernehmen. */
+  /* ---- Serie „n von 10“ (Konfetti B2, Musikpädagoge): eine geschlossene
+     Einheit statt der offenen Zählzeile. Segmente: grün = auf Anhieb, gelb =
+     mit zweitem Versuch/Hilfe — nie rot. Im Gemischt-Programm zählt dessen
+     Leiste oben, dort gibt es keine eigene Serie. ---- */
+  const SERIES_LEN = 10;
+  const earSeries = { mode: null, marks: [], misses: [] };
+  function resetEarSeries(mode = ear.mode) { Object.assign(earSeries, { mode, marks: [], misses: [] }); }
+  const seriesDone = () => earSeries.mode === ear.mode && earSeries.marks.length >= SERIES_LEN;
+  /** Bilanz am Ende: „7 von 10 auf Anhieb.“, schwierigster Ton/Akkord, Hilfe-
+   *  Angebot vor „Stufe zurück“. marks: 'ok'|'help'; misses: Beschriftungen. */
+  function seriesSummary(marks, misses, { inKey = false } = {}) {
+    const ok = marks.filter((m) => m === 'ok').length;
+    const count = {};
+    for (const m of misses) count[m] = (count[m] || 0) + 1;
+    const worst = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
+    const lines = [`${ok} von ${marks.length} auf Anhieb.`];
+    if (worst && worst[1] >= 2) lines.push(`${worst[0]} war heute knifflig.`);
+    let tip = '';
+    if (ok < marks.length / 2) tip = inKey ? 'Tipp: Im Zahnrad „gleiche Tonart für 5 Aufgaben“ wählen – das gibt Halt.' : 'Tipp: Eine Stufe leichter kann helfen.';
+    return { ok, text: lines.join(' '), tip };
+  }
+  /** Ergebnis einer Aufgabe in die Serie (nur außerhalb des Gemischt-Programms). */
+  function recordSeries(task, ok) {
+    if (quickRun) return;
+    const key = task.kind === 'modulation' ? 'chords' : task.kind;
+    if (earSeries.mode !== key || earSeries.marks.length >= SERIES_LEN) resetEarSeries(key);
+    earSeries.marks.push(ok && !task.help ? 'ok' : 'help');
+    if (!ok) {
+      const label = isInKey(task) ? inKeyLabel(task, inKeyTarget(task)) : task.kind === 'interval' ? intervalName(task.semis) : '';
+      if (label) earSeries.misses.push(label);
+    }
+  }
+  function earSeriesHtml(task) {
+    const [levels, n] = earLevelInfo(ear.mode);
+    const max = levels[levels.length - 1].n;
+    const own = earSeries.mode === ear.mode ? earSeries.marks : [];
+    const pos = Math.min(SERIES_LEN, own.length + (task && !ear.revealed ? 1 : 0));
+    const segs = Array.from({ length: SERIES_LEN }, (_, i) => {
+      const st = own[i] === 'ok' ? 'ok' : own[i] === 'help' ? 'help' : i === own.length && task && !ear.revealed ? 'now' : '';
+      return `<i${st ? ` class="is-${st}"` : ''}></i>`;
+    }).join('');
+    const ring = levels.some((l) => l.n === n)
+      ? `<button type="button" class="ser-level" data-level-open="ear-${ear.mode}" aria-haspopup="dialog" aria-label="Stufe ${n} von ${max} – ändern">${ringHtml(n, max, ' k-ring--sm')}</button>`
+      : `<button type="button" class="ser-level k-pill" data-level-open="ear-${ear.mode}" aria-haspopup="dialog" aria-label="Eigene Auswahl – Stufe ändern">eigene</button>`;
+    const ok = own.filter((m) => m === 'ok').length;
+    return `<span class="ser-n">${pos} von ${SERIES_LEN}</span><div class="ser-bar" role="img" aria-label="Aufgabe ${pos} von ${SERIES_LEN}, ${ok} auf Anhieb">${segs}</div>${ring}`;
+  }
+
   function applyEarLevelFor(mode, n) {
+    resetEarSeries(mode);
     if (mode === 'interval') {
       const preset = INTERVAL_PRESETS.filter((p) => p[2] === 'level')[n - 1];
       if (!preset) return;
@@ -4775,6 +4909,66 @@
     return b;
   }
 
+  /** Sprosse der Leiter: Knopf (.answer, Beschriftung = nur die Silbe/Zahl)
+   *  plus Vermerk nach dem Auflösen („deine Antwort“, „löst sich auf“,
+   *  „Grundton · Ziel“). `next`: Wert der nächsthöheren Sprosse (Abstand). */
+  function ladderRung(task, btn, semis, next) {
+    const rung = document.createElement('div');
+    rung.className = 'rung';
+    if (semis === 11 && task?.kmode === 'minor') rung.classList.add('is-alt'); // si/♯7: Nebensprosse
+    const gap = next === undefined ? 12 - semis : next - semis;
+    rung.style.setProperty('--gap', gap === 1 ? '1px' : '6px');
+    rung.append(btn);
+    const note = rungNote(task, semis, false);
+    if (note) rung.append(note);
+    return rung;
+  }
+  /** Obere Tonika-Sprosse (do′/la′/1′): tippbar, zählt als Tonika. */
+  function ladderTop(task, kmode, numbers, tested) {
+    const label = `${noteInKeyLabel(kmode, 0)}′`;
+    const b = inKeyButton(task, 0, label, numbers ? `Stufe ${label}` : `8: ${label}, Oktave`, tested);
+    b.className = b.className.replace(/\banswer\b/, 'answer-oct');
+    b.dataset.oct = '0';
+    delete b.dataset.ans;
+    b.dataset.ansOct = '0';
+    b.classList.toggle('is-playing', ear.playing === '0' && !!ear.playingUpper);
+    const rung = document.createElement('div');
+    rung.className = 'rung is-top';
+    rung.append(b);
+    const note = rungNote(task, 0, true);
+    if (note) rung.append(note);
+    return rung;
+  }
+  function rungNote(task, semis, upper) {
+    if (!task || !ear.revealed || task.kind !== 'noteInKey') return null;
+    const res = task.resolution;
+    const goal = res[res.length - 1];
+    const goalUpper = resolvesUp(task);
+    let text = '', cls = '';
+    if (semis === task.semis && !upper) { text = task.firstOk ? 'deine Antwort' : 'das war es'; cls = 'is-target'; }
+    else if (semis === goal.value && upper === goalUpper && res.length > 1) { text = 'Grundton · Ziel'; cls = 'is-goal'; }
+    else if (!upper && res.slice(1, -1).some((r) => r.value === semis)) { text = 'löst sich auf'; cls = 'is-path'; }
+    if (!text) return null;
+    const span = document.createElement('span');
+    span.className = `rung-note ${cls}`;
+    span.textContent = text;
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+  /** Zeile über der Aufgabe (Töne/Akkorde in der Tonart): vor der Antwort nur
+   *  Dur/Moll (relative Solmisation – der Tonart-Name ist Ballast), danach
+   *  „C-Dur · do = C“; rechts „Kadenz“ (Tonart neu verankern). */
+  function renderKeyRow(task) {
+    const row = $('.key-row');
+    row.hidden = !isInKey(task);
+    if (row.hidden) return;
+    const name = keyName(task.key, task.kmode);
+    const tonic = name.split('-')[0];
+    const home = task.kind === 'noteInKey' ? noteInKeyLabel(task.kmode, 0) : symbolLabel(task.kmode === 'major' ? 'I' : 'i');
+    const text = ear.revealed ? `${name} · ${home} = ${tonic}` : task.kmode === 'major' ? 'Dur' : 'Moll';
+    row.innerHTML = `<span class="key-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span><span class="key-text">${text}</span><button type="button" class="key-cad" data-ear="inkey-cadence" aria-label="Kadenz noch einmal hören"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="9" width="4" height="11" rx="1"/></svg>Kadenz</button>`;
+  }
+
   function renderEar() {
     $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
     const [levels, current] = earLevelInfo(ear.mode);
@@ -4782,14 +4976,36 @@
     const task = ear.task;
     const playBtn = $('[data-ear="play"]');
     playBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>${task ? 'Nochmal hören' : 'Start'}`;
-    $('[data-ear="next"]').hidden = !task;
+    // Konfetti B2: Stufen-Karte vor dem Start, während der Serie der Ring in
+    // der Serienleiste; Töne/Akkorde in der Tonart: „Kadenz“ und „Ton“ statt
+    // „Nochmal hören“ (Musikpädagoge).
+    const series = $('.ear-series');
+    series.hidden = !task || !!quickRun;
+    if (!series.hidden) series.innerHTML = earSeriesHtml(task);
+    $('[data-levels="ear"]').hidden = !!task && !quickRun;
+    const done = !!task && ear.revealed && seriesDone() && !quickRun;
+    playBtn.hidden = !!task && (isInKey(task) || done);
+    playBtn.classList.toggle('is-hear', !!task); // „Nochmal hören“: cyan (Hören), „Start“: Akzent
+    $('[data-ear="next"]').hidden = !task || done;
+    // Vor der Antwort ist „Weiter“ nur Überspringen (zurückhaltend), danach Hauptaktion.
+    $('[data-ear="next"]').classList.toggle('is-skip', !!task && !ear.revealed);
+    renderKeyRow(task);
+    const sum = $('.ear-summary');
+    sum.hidden = !done;
+    if (done) {
+      const s = seriesSummary(earSeries.marks, earSeries.misses, { inKey: isInKey(task) });
+      const hint = levelHints[ear.mode];
+      const [, lv] = earLevelInfo(ear.mode);
+      const up = hint && hint.hint === 'up' && lv >= 1 && lv < 6 ? `<button type="button" class="k-btn k-btn--ghost" data-level-area="ear-${ear.mode}" data-level-n="${lv + 1}">Stufe ${lv + 1} ausprobieren</button>` : '';
+      sum.innerHTML = `<p class="sum-text"><b>${s.text}</b>${s.tip ? ` ${s.tip}` : ''}</p><div class="sum-actions"><button type="button" class="k-btn" data-ear="series-again">Noch ${SERIES_LEN}</button>${up}<button type="button" class="k-btn k-btn--ghost" data-back="ear">Fertig</button></div>`;
+    }
     const prompt = $('.ear-prompt');
     const sub = $('.ear-sub');
     const slots = $('.slot-row');
     const grid = $('.answer-grid');
     const extra = $('.ear-extra');
     extra.replaceChildren();
-    grid.className = 'answer-grid';
+    grid.className = `answer-grid${ear.playingUpper ? ' is-upper-playing' : ''}`;
     grid.style.removeProperty('--cols');
     slots.hidden = true;
 
@@ -4817,11 +5033,14 @@
       const kmode = task ? task.kmode : level.kmodes[0];
       const tested = noteInKeyAnswers(level, kmode);
       const shownNotes = noteInKeyShown(level, kmode);
-      grid.classList.add('is-row'); grid.style.setProperty('--cols', shownNotes.length);
+      // Konfetti B2: die Tonleiter als Leiter (Höhe = Position, Kodály), unten
+      // die Tonika, oben ihre Oktave (do′/la′, zählt wie do). Halbtonschritte
+      // liegen sichtbar enger. DOM aufsteigend (Tab/Screenreader: 1 = do).
+      grid.classList.add('is-ladder');
       grid.replaceChildren(...shownNotes.map((semis, i) => {
         const label = noteInKeyLabel(kmode, semis);
-        return inKeyButton(task, semis, label, numbers ? `Stufe ${label}` : `${i + 1}: ${label}`, tested.includes(semis));
-      }));
+        return ladderRung(task, inKeyButton(task, semis, label, numbers ? `Stufe ${label}` : `${i + 1}: ${label}`, tested.includes(semis)), semis, shownNotes[i + 1]);
+      }), ladderTop(task, kmode, numbers, tested.includes(0)));
       if (task) extra.append(inKeyExtraButton(task));
     } else if (ear.mode === 'chordInKey') {
       const level = CHORD_IN_KEY_LEVELS[(task ? task.level : ear.levels.chordInKey) - 1];
@@ -4958,7 +5177,6 @@
     if (st.total) parts.push(`${st.right}/${st.total} richtig`);
     if (ear.mode === 'chords' && st.chordsTotal) parts.push(`Akkorde ${st.chordsRight}/${st.chordsTotal}`);
     if (st.help) parts.push(`${st.help} mit Hilfe`);
-    if (ear.streak > 1) parts.push(`${ear.streak} in Folge`);
     $('.ear-score').textContent = parts.join(' · ');
   }
 
@@ -8618,6 +8836,8 @@
       else if (action === 'play') { if (!ear.task) { nextEar(); } else playEar(); }
       else if (action === 'confirm-part') confirmPart();
       else if (action === 'inkey-target' && ear.task) playEar({ only: true });
+      else if (action === 'inkey-cadence' && ear.task) playEar({ cadenceOnly: true });
+      else if (action === 'series-again') { resetEarSeries(); ear.task = null; nextEar(); }
       else if (action === 'inkey-resolve' && isInKey(ear.task) && ear.revealed) { clearEarTimers(); playResolution(ear.task); }
       else if (action === 'part-help' && ear.task) {
         // Hilfe zählt als „mit Hilfe“ — kein Fehler, aber nicht für den Stufenvorschlag.
@@ -8631,6 +8851,7 @@
     if (answer) { answerInterval(Number(answer.dataset.answer)); return; }
     const ans = e.target.closest('[data-ans]');
     if (ans) { answerEar(ans.dataset.ans); return; }
+    if (e.target.closest('[data-ans-oct]')) { answerEar('0'); return; } // do′/la′ zählt als Tonika
     const cmpQ = e.target.closest('[data-compare-q]');
     if (cmpQ) { playEar({ compare: { q: cmpQ.dataset.compareQ } }); return; }
     const earLevel = e.target.closest('[data-level-area^="ear-"]');
@@ -10347,7 +10568,8 @@
       ear.task = null; ear.revealed = false; ear.playing = null;
       renderEar();
       if ($$('.answer-grid .answer').length !== 7 || $$('.answer-grid .answer:disabled').length !== 7) errors.push('Töne: Knöpfe vor dem Start');
-      if (!$('.answer-grid').classList.contains('is-row') || $('.answer-grid').style.getPropertyValue('--cols') !== '7') errors.push('Töne: Knöpfe nicht in einer Reihe');
+      // Konfetti B2: Leiter statt Reihe; oben die Oktave der Tonika (eigene Sprosse, kein .answer).
+      if (!$('.answer-grid').classList.contains('is-ladder') || $$('.answer-grid .answer-oct').length !== 1) errors.push('Töne: keine Leiter mit oberer Tonika');
       const task = makeEarTask('noteInKey', 3, rnd);
       ear.task = task; ear.revealed = false;
       renderEar();
@@ -10355,7 +10577,8 @@
       if (btns().map((b) => b.textContent).join() !== 'do,re,mi,fa,so,la,ti' || btns()[2].getAttribute('aria-label') !== '3: mi') errors.push(`Töne: Beschriftung ${btns().map((b) => b.textContent)} / ${btns()[2]?.getAttribute('aria-label')}`);
       if (btns().some((b) => b.disabled || b.offsetHeight < 44 && b.offsetParent !== null)) errors.push('Töne: Knopf gesperrt oder unter 44 px');
       if ($('.ear-prompt').textContent !== 'Welcher Ton war das?' || !/^Dur · nach der Kadenz/.test($('.ear-sub').textContent)) errors.push(`Töne: Frage/Zeile „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
-      if ($$('.ear-extra button').map((b) => b.textContent).join() !== 'Nur den Ton') errors.push('Töne: Zusatzknopf vor dem Auflösen');
+      if ($$('.ear-extra button').map((b) => b.textContent).join() !== 'Ton' || $('[data-ear="play"]').hidden !== true || !$('.key-row [data-ear="inkey-cadence"]')) errors.push('Töne: Kadenz/Ton statt „Nochmal hören“ vor dem Auflösen');
+      if (/-Dur|-Moll/.test($('.key-row').textContent)) errors.push('Töne: Tonart-Name vor der Antwort');
       const wrongSemis = IN_KEY_SEMIS.major.find((x) => x !== task.semis);
       const savedSelf = selfTesting, savedResult = onEarResult;
       selfTesting = true; onEarResult = () => {};
@@ -10554,7 +10777,7 @@
       renderEar();
       if (btns().map((b) => b.textContent).join() !== 'I,ii,iii,IV,V,V⁷,vi,vii°' || btns()[3].dataset.ans !== 'IV' || btns()[5].dataset.ans !== 'V7') errors.push(`Akkorde: Beschriftung ${btns().map((b) => b.textContent)}`);
       if ($('.ear-prompt').textContent !== 'Welcher Akkord war das?' || !/^Dur · nach der Kadenz/.test($('.ear-sub').textContent)) errors.push(`Akkorde: Frage/Zeile „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
-      if ($$('.ear-extra button').map((b) => b.textContent).join() !== 'Nur den Akkord') errors.push('Akkorde: Zusatzknopf vor dem Auflösen');
+      if ($$('.ear-extra button').map((b) => b.textContent).join() !== 'Akkord') errors.push('Akkorde: Zusatzknopf vor dem Auflösen');
       const target = task.symbol;
       const wrong = chordInKeySymbols(CHORD_IN_KEY_LEVELS[3], 'major').filter((x) => x !== target);
       const savedSelf = selfTesting, savedResult = onEarResult;
@@ -11663,6 +11886,61 @@
       }
     }
     errors.push(...redesignRhythmCheck());
+    errors.push(...redesignEarCheck());
+    return errors;
+  }
+
+  /** Konfetti B2, Hören: Serie, Bilanz, Leiter (Töne in der Tonart). */
+  function redesignEarCheck() {
+    const errors = [];
+    // Bilanz: auf Anhieb gezählt, schwierigster Ton ab 2 Fehlern, Hilfe-Tipp unter der Hälfte.
+    let sum = seriesSummary(['ok', 'ok', 'help', 'ok', 'help', 'ok', 'ok', 'ok', 'help', 'ok'], ['fa', 'fa', 'ti']);
+    if (sum.ok !== 7 || sum.text !== '7 von 10 auf Anhieb. fa war heute knifflig.' || sum.tip) errors.push(`seriesSummary: ${JSON.stringify(sum)}`);
+    sum = seriesSummary(['help', 'help', 'ok', 'help'], ['re'], { inKey: true });
+    if (!/Tonart/.test(sum.tip) || /knifflig/.test(sum.text)) errors.push(`seriesSummary Hilfe: ${JSON.stringify(sum)}`);
+    const saved = { mode: ear.mode, task: ear.task, revealed: ear.revealed, playing: ear.playing, upper: ear.playingUpper, levels: { ...ear.levels }, solfa: sing.solfa, series: JSON.parse(JSON.stringify(earSeries)), run: quickRun, tab: state.tab };
+    try {
+      quickRun = null; state.tab = 'ear';
+      // Serie: Gemischt-Programm zählt nicht; voll nach 10; „mit Hilfe“ gelb.
+      ear.mode = 'noteInKey'; resetEarSeries('noteInKey');
+      for (let i = 0; i < 3; i++) recordSeries({ kind: 'noteInKey', kmode: 'major', semis: 5 }, i !== 1);
+      if (earSeries.marks.join() !== 'ok,help,ok' || earSeries.misses.join() !== noteInKeyLabel('major', 5)) errors.push(`Serie: ${earSeries.marks} / ${earSeries.misses}`);
+      quickRun = { tab: 'ear' }; recordSeries({ kind: 'noteInKey', kmode: 'major', semis: 0 }, true); quickRun = null;
+      if (earSeries.marks.length !== 3) errors.push('Serie zählt im Gemischt-Programm mit');
+      for (let i = 0; i < 7; i++) recordSeries({ kind: 'noteInKey', kmode: 'major', semis: 0 }, true);
+      if (!seriesDone()) errors.push('Serie nach 10 nicht voll');
+      // Leiter in Dur, Stufe 3: sieben Sprossen + do′ oben, Halbtöne enger.
+      const rnd = (() => { let x = 7; return () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; }; })();
+      sing.solfa = 'syllables'; ear.levels.noteInKey = 3; ear.playing = null; ear.playingUpper = false;
+      let task = null;
+      for (let i = 0; i < 200 && !(task && task.kmode === 'major' && task.semis === 11); i++) task = makeEarTask('noteInKey', 3, rnd);
+      ear.task = task; ear.revealed = false;
+      renderEar();
+      const rungs = $$('.answer-grid.is-ladder .rung');
+      if (rungs.length !== 8 || !rungs[7].classList.contains('is-top') || rungs[7].textContent.trim() !== 'do′') errors.push(`Leiter: ${rungs.length} Sprossen, oben „${rungs[7]?.textContent}“`);
+      const gapOf = (label) => rungs.find((r) => r.querySelector('.answer')?.textContent === label)?.style.getPropertyValue('--gap');
+      if (gapOf('mi') !== '1px' || gapOf('ti') !== '1px' || gapOf('do') !== '6px') errors.push(`Leiter: Abstände mi ${gapOf('mi')} ti ${gapOf('ti')} do ${gapOf('do')}`);
+      if (/-Dur|-Moll/.test($('.key-row').textContent) || !$('.key-row [data-ear="inkey-cadence"]')) errors.push('Tonart-Zeile vor der Antwort');
+      // Nach der Antwort: ti löst aufwärts auf → do′ ist das Ziel, Tonart-Name sichtbar.
+      task.firstOk = true; task.answer = 11; ear.revealed = true;
+      renderEar();
+      if (!resolvesUp(task) || !$('.rung.is-top .rung-note.is-goal') || $('.rung:not(.is-top) .rung-note.is-goal')) errors.push('Leiter: Ziel nicht oben bei ti → do′');
+      if (!/-Dur · do = /.test($('.key-row').textContent)) errors.push(`Tonart-Zeile nach der Antwort: ${$('.key-row').textContent}`);
+      setPlayingAnswer(0, true);
+      if (!$('.answer-oct').classList.contains('is-playing') || !$('.answer-grid').classList.contains('is-upper-playing')) errors.push('Leiter: obere Tonika leuchtet nicht');
+      setPlayingAnswer(null);
+      if ($('.answer-oct').classList.contains('is-playing') || ear.playingUpper) errors.push('Leiter: Leuchten der oberen Tonika bleibt');
+      // Moll: la unten, la′ oben, si als Nebensprosse.
+      let mt = null;
+      for (let i = 0; i < 400 && !(mt && mt.kmode === 'minor'); i++) mt = makeEarTask('noteInKey', 6, rnd);
+      ear.levels.noteInKey = 6; ear.task = mt; ear.revealed = false;
+      renderEar();
+      const mr = $$('.answer-grid.is-ladder .rung');
+      if (mr[0].textContent.trim() !== 'la' || mr[mr.length - 1].textContent.trim() !== 'la′' || !mr.some((r) => r.classList.contains('is-alt') && r.textContent.trim() === 'si')) errors.push(`Moll-Leiter: ${mr.map((r) => r.textContent.trim())}`);
+    } finally {
+      Object.assign(ear, { mode: saved.mode, task: saved.task, revealed: saved.revealed, playing: saved.playing, playingUpper: saved.upper });
+      Object.assign(ear.levels, saved.levels); sing.solfa = saved.solfa; Object.assign(earSeries, saved.series); quickRun = saved.run; state.tab = saved.tab;
+    }
     return errors;
   }
 
