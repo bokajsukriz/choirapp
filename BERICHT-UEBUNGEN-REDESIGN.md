@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v412. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v413. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 

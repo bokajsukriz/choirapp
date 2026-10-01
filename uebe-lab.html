@@ -8628,7 +8628,10 @@
       const full = accompFor(l, { accomp: 'full' }, course);
       const snareAcc = ACCOMP[l.meter] && course.accomp !== 'click' ? { level: 'snare', hatGrid: { period: 6, at: [0] } } : null;
       // Drums: der ganze Groove; Klick: nur die Zählzeiten; Lücken: Snare wie bisher.
-      const snare = !combo ? snareAcc : st.acc === 'drums' ? full : st.acc === 'click' ? null : snareAcc;
+      // Drums = voller Groove, unabhängig von den Kurs-Regeln (Kapitel 1 ohne
+      // Schlagzeug, Kurs-Einstellung „Klick“) – sonst klänge „Drums“ nur als Klick.
+      const drums = grooveDrums(l);
+      const snare = !combo ? snareAcc : st.acc === 'drums' ? drums : st.acc === 'click' ? null : snareAcc;
       let c = T; beat(0, T); phases.push({ from: 0, to: at(T), phase: 'count' });
       if (demo) {
         claps(c, !!full); accompany(c, c + pat.total, full); phases.push({ from: at(c), to: at(c + pat.total), phase: 'listen' });
@@ -8760,6 +8763,10 @@
     }) : []));
   }
   const lessonById = (id) => COURSE.find((l) => l.id === id) || COURSE[0];
+  /** Schlagzeug für „Drums“ beim Durchhalten; null, wo es keinen Groove gibt (3/4, 2/4). */
+  const grooveDrums = (l) => (ACCOMP[l.meter] ? { level: 'full', hatGrid: l.bars ? lessonHatGrid(l) : hatGridFor({}) } : null);
+  /** Ohne Groove (3/4, 2/4) wird aus Drums Klick (gleiche Länge). */
+  const comboFor = (l, c) => (c && c.startsWith('drums') && !grooveDrums(l) ? c.replace('drums', 'click') : c);
   /** Tempo der Klatsch-Grooves: Lektionstempo, in der Fläche ziehbar (gilt für diesen Besuch). */
   const groovesBpm = () => gv.bpm || (gv.id ? lessonById(gv.id).bpm : 90);
 
@@ -8868,19 +8875,21 @@
         <div class="course-nav"><span class="grow"></span>
         <button type="button" class="nav-btn" data-grooves-phase="${holdable(l) ? 'hold' : 'rate'}">Weiter</button></div>`;
     } else if (gv.phase === 'hold') {
-      const cur = parseCombo(gv.combo) || parseCombo(nextCombo(g.held)) || parseCombo('drums4');
-      const sug = nextCombo(g.held);
+      const cur = parseCombo(comboFor(l, gv.combo)) || parseCombo(comboFor(l, nextCombo(g.held))) || parseCombo(comboFor(l, 'drums4'));
+      const sug = comboFor(l, nextCombo(g.held));
+      const noDrums = !grooveDrums(l);
       const sugAcc = parseCombo(sug)?.acc;
       const accChips = GROOVE_ACCS.map(([a, name]) => {
         const done = GROOVE_LENS[a].some((n) => g.held.includes(`${a}${n}`));
-        return `<button type="button" class="chip g-chip${done ? ' is-done' : ''}${a === sugAcc && a !== cur.acc ? ' is-next' : ''}" data-grooves-acc="${a}" aria-pressed="${a === cur.acc}"${running ? ' disabled' : ''}>${done ? '✓ ' : ''}${name}</button>`;
+        const off = running || (a === 'drums' && noDrums);
+        return `<button type="button" class="chip g-chip${done ? ' is-done' : ''}${a === sugAcc && a !== cur.acc ? ' is-next' : ''}" data-grooves-acc="${a}" aria-pressed="${a === cur.acc}"${off ? ' disabled' : ''}${a === 'drums' && noDrums ? ` title="Im ${l.meter}-Takt gibt es kein Schlagzeug"` : ''}>${done ? '✓ ' : ''}${name}</button>`;
       }).join('');
       const lenChips = [4, 8, 16].map((n) => {
         const id = `${cur.acc}${n}`, ok = GROOVE_LENS[cur.acc].includes(n), done = g.held.includes(id);
         return `<button type="button" class="chip g-chip${done ? ' is-done' : ''}${id === sug && n !== cur.bars ? ' is-next' : ''}" data-grooves-len="${n}" aria-pressed="${n === cur.bars}"${ok && !running ? '' : ' disabled'}>${done ? '✓ ' : ''}${n} Takte</button>`;
       }).join('');
       const res = gv.result && gv.result.kind === 'hold' ? gv.result : null;
-      const nextAfter = res && res.held ? nextCombo(g.held) : null;
+      const nextAfter = res && res.held ? comboFor(l, nextCombo(g.held)) : null;
       const accIdx = GROOVE_ACCS.findIndex(([a]) => a === cur.acc);
       const easier = res && !res.held && accIdx > 0 ? GROOVE_ACCS[accIdx - 1][0] : null;
       body = `<div class="g-choose" role="group" aria-label="Durchhalten einstellen"><span class="sub-label">Begleitung</span><div class="chip-row">${accChips}</div>
@@ -8918,7 +8927,7 @@
     let ph = phase || (review ? (holdable(l) ? 'hold' : 'hear') : g.last?.phase || 'hear');
     if (!groovesPhases(l).some(([p]) => p === ph) || (review && ph === 'refresh' && holdable(l))) ph = 'hear';
     const combo = review ? lastHeldCombo(g.held) || nextCombo(g.held) : (parseCombo(g.last?.combo) ? g.last.combo : nextCombo(g.held));
-    Object.assign(gv, { view: 'lesson', id, phase: ph, combo: combo || 'drums4', bpm: null, notes: false, result: null, running: '', feedback: '', visitRated: false });
+    Object.assign(gv, { view: 'lesson', id, phase: ph, combo: comboFor(l, combo || 'drums4'), bpm: null, notes: false, result: null, running: '', feedback: '', visitRated: false });
     if (review) delete gv.lastRunAt[id]; // erster Abruf nach Tagen: einmal das Vorbild
     setStatus('Bereit — am besten mit Kopfhörern.');
     gRerender();
@@ -8989,7 +8998,7 @@
     }
     if (act === 'hold') {
       const demo = !gv.lastRunAt[l.id] || Date.now() - gv.lastRunAt[l.id] > 10 * 60 * 1000;
-      const combo = parseCombo(gv.combo) ? gv.combo : nextCombo(g.held) || 'drums4';
+      const combo = comboFor(l, parseCombo(gv.combo) ? gv.combo : nextCombo(g.held) || 'drums4');
       const st = comboStage(combo);
       const tl = grooveTimeline(l, { kind: 'hold', combo, demo, bpm: groovesBpm() });
       groovesRun('hold', tl, (info) => {
@@ -10146,6 +10155,19 @@
           if (st.acc === 'gaps' && !tl.plan.includes(false)) errors.push(`${where}: keine Lücken`);
           if (st.acc === 'silent' && st.bars > 8) errors.push(`${where}: Stumm über 8 Takte`);
         }
+        const ch1 = COURSE.find((x) => holdable(x) && x.ch === 1 && ACCOMP[x.meter]);
+        if (ch1) {
+          const saveAcc = course.accomp;
+          for (const setting of ['groove', 'click']) {
+            course.accomp = setting;
+            const tl = grooveTimeline(ch1, { kind: 'hold', combo: 'drums4', demo: false });
+            const inRun = tl.events.filter((ev) => ev.t >= tl.startSec - 1e-9 && ev.t < tl.startSec + 4 * tl.barSec - 1e-9);
+            if (!inRun.some((ev) => ev.type === 'drum' && ev.kind === 'kick') || inRun.some((ev) => ev.type === 'click')) errors.push(`Klatsch-Groove ${ch1.id}: „Drums“ klingt als Klick (Kurs-Begleitung ${setting})`);
+          }
+          course.accomp = saveAcc;
+        }
+        const noGroove = COURSE.find((x) => holdable(x) && !ACCOMP[x.meter]);
+        if (noGroove && (comboFor(noGroove, 'drums8') !== 'click8' || comboFor(ch1 || COURSE[0], 'drums8') !== (grooveDrums(ch1 || COURSE[0]) ? 'drums8' : 'click8'))) errors.push('Klatsch-Grooves: Drums ohne Groove nicht auf Klick umgestellt');
         if (GROOVE_PATH.some((c) => !parseCombo(c)) || nextCombo([]) !== 'drums4' || nextCombo(['drums4', 'drums8']) !== 'click8' || nextCombo(GROOVE_PATH) !== null) errors.push('Klatsch-Grooves: Vorschlagspfad');
         if (parseCombo('silent16') || parseCombo('gaps4') || parseCombo('x8')) errors.push('Klatsch-Grooves: ungültige Kombination angenommen');
         const pulsL = COURSE[0];
