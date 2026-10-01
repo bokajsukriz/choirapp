@@ -717,7 +717,7 @@
       <div class="sing-opts">
         <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
         <div data-demo-row hidden><span class="sub-label">Vorspiel</span><div class="chip-row" data-chips="demo"></div></div>
-        <div data-intime-row hidden><span class="sub-label">Variante</span><div class="chip-row" data-chips="inTimeVariant"></div></div>
+        <div data-intime-row data-intime-variant-row hidden><span class="sub-label">Variante</span><div class="chip-row" data-chips="inTimeVariant"></div></div>
         <div class="intime-opts" data-intime-row hidden>
           <label class="intime-tempo"><span class="sub-label">Tempo <output class="intime-tempo-out"></output></span><input type="range" min="80" max="120" step="5" value="100" data-intime-tempo aria-label="Tempo in Prozent"></label>
           <label class="switch"><input type="checkbox" role="switch" data-intime-syl><span class="switch-track"></span>Rhythmussprache</label>
@@ -3352,10 +3352,9 @@
       bits.push(free.meters.join(', '), `wie ${free.n ? `Stufe ${free.n}` : 'eigene Auswahl'} der übrigen Übungen`, free.bars === 1 ? '1 Takt' : `${free.bars} Takte`);
     }
     $('.rhythm-sum').innerHTML = '';
-    $('.rhythm-sum').append(`${bits.join(' · ')} `);
-    const edit = document.createElement('button');
-    edit.type = 'button'; edit.dataset.rhythm = 'settings'; edit.textContent = 'ändern';
-    $('.rhythm-sum').append(edit);
+    // Nur die Zusammenfassung: „ändern“ steht schon an der Stufen-Karte, die
+    // Einstellungen erreicht man über das Zahnrad (Musikpädagoge: nicht doppelt).
+    $('.rhythm-sum').append(bits.join(' · '));
     if (!run.playing) {
       renderStrip(null);
       renderPad(game.finished ? 'done' : 'idle');
@@ -7386,6 +7385,9 @@
      gemessen — sie enthält Aus- und Eingabe und die Verzögerung der
      Tonerkennung, daher getrennt von der Klatsch-Latenz. ---- */
   const IN_TIME_VARIANTS = [['echo', 'Echo'], ['sheet', 'Vom Blatt']];
+  /** Gilt im Lauf: „Vom Blatt“ nur bei eingeblendetem Blattsingen (die
+   *  gespeicherte Wahl bleibt, sie wirkt wieder, sobald es eingeblendet ist). */
+  const inTimeVariant = () => (sing.showSight ? sing.inTime.variant : 'echo');
   const IN_TIME_TEMPO = [.8, 1.2];     // Tempo-Faktor (±20 %)
   const SING_CALIB = { bpm: 80, clicks: 8, skip: 2, min: 5, maxMs: 500 };
   const SING_CALIB_FAIL = 'Das hat nicht geklappt – bitte noch einmal, mit Kopfhörern.';
@@ -7429,7 +7431,7 @@
 
   function playInTimeRun(task) {
     clearSingTimers();
-    task.variant = sing.inTime.variant;
+    task.variant = inTimeVariant();
     task.bpmNow = Math.round(task.bpm * sing.inTime.tempo);
     task.result = null; task.frames = null;
     sing.phase = 'cue';
@@ -7884,6 +7886,8 @@
     chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
     $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval', 'inTime'].includes(sing.mode);
     $$('[data-intime-row]').forEach((el) => { el.hidden = sing.mode !== 'inTime'; });
+    // „Vom Blatt“ nur, wenn Blattsingen eingeblendet ist (Musikpädagoge).
+    $('[data-intime-variant-row]').hidden = sing.mode !== 'inTime' || !sing.showSight;
     $('[data-demo-row]').hidden = !DEMO_MODES.includes(sing.mode);
     chips('demo', [['piano', 'Klavier'], ['voice', 'Stimme']], sing.demo);
     if (sing.mode === 'inTime') renderInTimeOpts();
@@ -12220,6 +12224,17 @@
       if (!$('[data-rhythm-go]').hidden) errors.push('Klatschfläche: „Los“ während des Laufs');
       if ($('.tap-pad').closest('.rhythm-stage') && $('[data-rhythm-go]').closest('.tap-pad')) errors.push('„Los“ steckt im Klatsch-Knopf');
       run.padKey = padKey; renderPad(game.finished ? 'done' : 'idle');
+    }
+    // Aufräumen: „ändern“ nur an der Stufen-Karte; „Im Takt: Vom Blatt“ nur mit Blattsingen.
+    if ($('.rhythm-sum button')) errors.push('Rhythmus: „ändern“ doppelt (Zusammenfassung)');
+    {
+      const sv = { show: sing.showSight, v: sing.inTime.variant };
+      sing.inTime.variant = 'sheet';
+      sing.showSight = false;
+      if (inTimeVariant() !== 'echo') errors.push('Im Takt: „Vom Blatt“ ohne Blattsingen');
+      sing.showSight = true;
+      if (inTimeVariant() !== 'sheet') errors.push('Im Takt: „Vom Blatt“ trotz Blattsingen nicht wählbar');
+      sing.showSight = sv.show; sing.inTime.variant = sv.v;
     }
     // Stepper: nur der aktuelle Schritt beschriftet, Rest unsichtbar für die Augen
     const box = document.createElement('div');
