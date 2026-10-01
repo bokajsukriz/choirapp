@@ -3502,8 +3502,12 @@
     else { stageLines = []; html = neutralStageSvg(); }
     // Nachklatschen: die Noten der Runde nur auf Klick (Chorleiter) – nie automatisch.
     const btn = hidden && round.result && stageShown(round, phase) ? '<button type="button" class="stage-notes-btn" data-show-notes>Noten zeigen</button>' : '';
-    $('.stage').innerHTML = fitStageHeight(html) + btn;
-    $('.stage').hidden = false;
+    // Kurs nach Gehör: kein großes „Rhythmus nach Gehör“ – dort steht direkt
+    // die Karte „Letzte Runde“ (wie viele richtig), statt unter der Fläche zu verschwinden.
+    // Die Klatschfläche sitzt fest unten, es springt also nichts.
+    const quiet = state.mode === 'course' && !btn && html === neutralStageSvg();
+    $('.stage').innerHTML = quiet ? '' : fitStageHeight(html) + btn;
+    $('.stage').hidden = quiet;
   }
   /** Nachklatschen ohne „Noten zeigen“ (Zahnrad): Notenbild der Runde erst,
    *  wenn man es antippt – gilt nur für die Runde, für die es geöffnet wurde. */
