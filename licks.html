@@ -29,82 +29,88 @@
   - Schlagzeug: drum()/tone()/noiseHit() aus metronom.html.
 -->
 <style>
+  /* Eigene Bausteine der Licks-Seite. Tokens und die k-*-Klassen (Kopf, Zeile,
+     Ring, Pille, Stepper, Fußleiste, Knöpfe, Bühne) kommen aus ueben.css. */
   :root {
     --accent: #F868B0; --accent-rgb: 248,104,176;
     --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
     --text: #241b3d; --muted: #8c81a6;
     --good: #2f9e5b; --near: #d9922b; --bad: #e0445a;
-    --ok-bg: #b8e3c6; --wobble-bg: #f6d78a; --lost-bg: #f0a6b0;
+    --ok-bg: #b8e3c6; --wobble-bg: #f6d78a;
+    /* „verloren“ im Taktstreifen: Rosa-Rot, Text und Rand dunkel genug (≥ 4,5:1) */
+    --lost-bg: #f8d2d8; --lost-line: #e59aa8; --lost-fg: #8a1a30; --bad-fg: #a3162d;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: light; } }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
     display: flex; flex-direction: column; color: var(--text); background: var(--bg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
     -webkit-user-select: none; user-select: none; overflow: hidden;
   }
   button, select, input { font: inherit; color: inherit; }
-  button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   button:disabled { cursor: default; }
-  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent-foreground); outline-offset: 2px; }
   svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
   [hidden] { display: none !important; }
-  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-  .bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
-    padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left)); }
-  html.is-embedded .bar { padding-right: calc(60px + env(safe-area-inset-right)); }
-  h1 { margin: 0; font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; flex: 1; min-width: 0; }
-  h1 span { color: var(--accent); }
-  .icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+  /* ---- Kopf */
+  .k-head { position: relative; z-index: 1; }
+  .k-head .k-round { cursor: pointer; }
+  .k-title { font-size: 22px; }
 
   main { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 4px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left)); }
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
-  .chip { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .8rem; color: var(--muted); }
-  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .note { margin: 6px 2px; font-size: .8rem; color: var(--muted); font-weight: 600; }
-  .review-card { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; margin: 4px 0 10px; }
-  .review-card b { flex: 1; font-size: .9rem; }
+    padding: 4px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
 
-  .lick-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
-  .lick-row .play { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-  .lick-row .play svg { fill: currentColor; stroke: none; }
-  .lick-row .open { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; min-height: 44px; justify-content: center; }
-  .lick-row .name { font-weight: 800; }
-  .lick-row .sub { font-size: .78rem; color: var(--muted); font-weight: 600; }
-  .status { flex: 0 0 auto; font-size: .72rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
-  .status[data-status="Lerne"] { background: var(--wobble-bg); color: #6b4a00; }
-  .status[data-status="Sitzt"] { background: var(--ok-bg); color: #14532d; }
+  /* ---- Liste: Filter-Pillen (eine Zeile, seitlich wischbar) */
+  .chips { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; margin: 2px -16px 12px; padding: 3px 16px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--tint-line); background: var(--surface);
+    font-weight: 700; font-size: 14px; color: var(--muted-2); white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .note { margin: 8px 2px; font-size: 12.5px; color: var(--muted-2); font-weight: 600; line-height: 1.4; }
+  #review-card { margin: 0 0 10px; }
+  #review-card .k-row { min-height: 56px; cursor: pointer; }
+  #list-note:empty { display: none; }
+  #list-note { text-align: center; margin-top: 14px; }
 
-  .lick-head { margin: 2px 2px 8px; }
-  .lick-head h2 { margin: 0; font-size: 1.05rem; }
-  .lick-head p { margin: 2px 0 0; font-size: .78rem; color: var(--muted); font-weight: 600; }
-  .steps { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; }
-  .steps::-webkit-scrollbar { display: none; }
-  .step { flex: 0 0 auto; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .76rem; color: var(--muted); white-space: nowrap; }
-  .step.is-done { color: var(--good); border-color: rgba(47,158,91,.5); }
-  .step.is-now { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .step.is-optional { border-style: dashed; }
-  .step:disabled { opacity: .45; }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px; }
-  .panel p { margin: 0 0 10px; font-size: .88rem; line-height: 1.4; }
-  .panel .more { font-size: .78rem; color: var(--muted); }
-  .panel .note { margin-top: 10px; }
-  .delay-hint { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .1); border: 1px solid rgba(var(--accent-rgb), .45); }
-  .delay-hint p { margin: 0 0 8px; font-size: .82rem; line-height: 1.35; }
+  /* ---- Liste: Zeilen */
+  .lick-row { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px 12px 8px 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .lick-row .play { width: 44px; height: 44px; border-radius: 50%; flex: none; padding: 0; margin: 0;
+    background: var(--hear-bg); border: 1px solid var(--hear-line); color: var(--hear-fg);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .lick-row .play svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
+  .lick-row .open { flex: 1 1 auto; min-width: 0; min-height: 44px; margin: 0; padding: 0 2px; text-align: left; background: none; border: 0;
+    display: flex; align-items: center; color: var(--text); }
+  .lick-row .name { font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.2; overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto; }
+  .lick-row .status { flex: none; min-width: 68px; justify-content: center; }
+
+  /* ---- Übungsansicht: Stepper, Bühne */
+  #steps { margin: 0 -4px 12px; }
+  .panel p { margin: 0 0 10px; font-size: 14px; line-height: 1.4; }
+  .panel .more { font-size: 12.5px; color: var(--muted-2); }
+  .panel .note { margin: 10px 0 0; }
+  .more-wrap { margin: 0 0 4px; }
+  .more-wrap summary { min-height: 44px; display: flex; align-items: center; gap: 8px; margin-top: -8px; font-weight: 700; font-size: 13px; color: var(--muted-2); cursor: pointer; list-style: none; }
+  .more-wrap summary::-webkit-details-marker { display: none; }
+  .more-wrap summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+  .more-wrap[open] summary::before { transform: rotate(45deg); }
+  .more-wrap .more { margin-top: -4px; }
+  .panel-title { margin: 0 0 8px; font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.2; }
+  .delay-hint { margin: 8px 0; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--tint-line); }
+  .delay-hint p { margin: 0 0 8px; font-size: 13px; line-height: 1.35; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .btn { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .86rem; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn:disabled { opacity: .45; }
-  .feedback { min-height: 22px; margin: 8px 0 0; font-weight: 700; font-size: .88rem; }
-  .feedback.is-good { color: var(--good); }
-  .feedback.is-bad { color: var(--bad); }
+  .actions .k-btn:not(.k-btn--ghost):not(.k-btn--hear) { flex: 1 1 auto; }
+  .feedback { min-height: 22px; margin: 8px 0 0; font-weight: 700; font-size: 14px; line-height: 1.35; }
+  .panel p.feedback:empty { display: none; }
+  .feedback.is-good { color: var(--ok-fg); }
+  .feedback.is-bad { color: var(--bad-fg); }
 
-  .stage { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); margin: 8px 0; overflow: hidden; }
+  .stage { border: 1px solid var(--tint-line); border-radius: 16px; background: var(--surface); margin: 8px 0; overflow: hidden; }
   .stage svg { width: 100%; height: auto; display: block; stroke-width: 1.4; }
-  .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted); stroke: none; }
+  .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted-2); stroke: none; }
   .stage .staff { stroke: var(--line); stroke-width: 1.6; }
   .stage .tl { stroke: var(--line); stroke-width: 3; }
   .stage .tg { fill: none; stroke: var(--muted); stroke-width: 2; }
@@ -116,101 +122,183 @@
   .stage .tp.is-near { fill: var(--near); }
   .stage .tp.is-extra { fill: var(--bad); }
   .stage .bar-l { stroke: var(--line); stroke-width: 1; }
-  .stage .lbl { font-size: 9px; font-weight: 800; fill: var(--muted); stroke: none; }
+  .stage .lbl { font-size: 9px; font-weight: 800; fill: var(--muted-2); stroke: none; }
   .stage .row-l { font-size: 9.5px; font-weight: 800; fill: var(--text); stroke: none; }
-  .stage .row-bg { fill: rgba(var(--accent-rgb), .05); stroke: none; }
+  .stage .row-bg { fill: rgba(var(--accent-rgb), .06); stroke: none; }
   .stage .roll-note { fill: var(--accent); stroke: none; }
   .stage .roll-glide { stroke: var(--accent); stroke-width: 2.4; }
   .stage .ph { stroke: var(--accent); stroke-width: 2; }
 
-  .strip { display: flex; gap: 3px; margin: 8px 0 4px; }
-  .strip .cell { flex: 1 1 0; min-width: 0; height: 30px; border-radius: 6px; font-size: .62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; color: #1b1330; border: 1px solid transparent; }
-  .strip .cell.is-sure { background: var(--ok-bg); }
-  .strip .cell.is-wobbly { background: var(--wobble-bg); }
-  .strip .cell.is-lost { background: var(--lost-bg); }
-  .strip .cell.is-silent { background-image: repeating-linear-gradient(135deg, rgba(36,27,61,.32) 0 2px, transparent 2px 6px); }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .68rem; font-weight: 700; color: var(--muted); }
-  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(36,27,61,.2); }
+  /* Ergebnis nach dem Lauf: sicher / wackelig / verloren, stille Takte schraffiert */
+  .strip { display: flex; gap: 3px; margin: 8px 0 6px; }
+  .strip .cell { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 8px; border: 1px solid transparent; color: var(--text);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; font-size: 10px; font-weight: 700; }
+  .strip .cell i { font-style: normal; font-size: 11px; }
+  .strip .cell.is-sure { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); }
+  .strip .cell.is-wobbly { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); }
+  .strip .cell.is-lost { background: var(--lost-bg); border-color: var(--lost-line); color: var(--lost-fg); }
+  .strip .cell.is-silent { background-image: repeating-linear-gradient(135deg, rgba(36,27,61,.28) 0 2px, transparent 2px 6px); border-style: dashed; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-weight: 600; color: var(--muted-2); margin-bottom: 4px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(36,27,61,.25); }
 
-  .ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
-  .ladder button { min-height: 52px; padding: 4px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .7rem; line-height: 1.2; }
-  .ladder button.is-done { border-color: rgba(47,158,91,.6); color: var(--good); }
-  .ladder button.is-next { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .ladder button[aria-pressed="true"] { outline: 3px solid rgba(var(--accent-rgb), .45); }
-  .rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .k-dot.is-optional { border-style: dashed; }
+  .k-dot:disabled { opacity: .5; cursor: default; }
+  #steps ol { padding: 0 8px; }
 
-  .dock { flex: 0 0 auto; background: var(--surface-2); border-top: 1px solid var(--line);
-    padding: 6px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
-  .dock-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
-  .dock-bar select { min-height: 36px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0 10px; font-weight: 800; font-size: .74rem; max-width: 46%; }
-  .group { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 2px; }
-  .group button { min-width: 34px; height: 32px; padding: 0 10px; border-radius: 999px; font-size: .74rem; font-weight: 800; color: var(--muted); }
-  .group button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-  .group .range { min-width: 28px; text-align: center; font-size: .72rem; font-weight: 800; }
-  .keyboard { position: relative; display: flex; height: 190px; touch-action: none; border-radius: 0 0 12px 12px; overflow: hidden; border-top: 6px solid var(--text); box-shadow: 0 6px 16px rgba(36,27,61,.16); }
-  .white { position: relative; flex: 1 1 0; min-width: 0; border-right: 1px solid #d9cfd6; background: linear-gradient(#fff, #fbf7f3 85%, #efe6ea); border-radius: 0 0 8px 8px; }
+  /* Durchhalten: Stufenleiter und (statischer) Plan vor dem Lauf */
+  .ladder { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 10px; }
+  .ladder button { min-height: 52px; padding: 4px; border-radius: 16px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text);
+    font-weight: 700; font-size: 12px; line-height: 1.2; text-align: center; display: flex; align-items: center; justify-content: center; }
+  .ladder button.is-done { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); }
+  .ladder button.is-next { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .ladder button[aria-pressed="true"] { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .45); border-color: var(--accent-foreground); }
+  .ladder button:disabled { opacity: .5; }
+  .plan-strip { display: flex; gap: 3px; margin: 8px 0 6px; }
+  .plan-strip i { flex: 1 1 0; min-width: 0; height: 26px; border-radius: 7px; background: var(--surface); border: 1px solid var(--tint-line); }
+  .plan-strip i.is-still, .plan-key i.is-still { background: var(--rep-bg) repeating-linear-gradient(135deg, color-mix(in srgb, var(--rep-fg) 32%, transparent) 0 2px, transparent 2px 6px); border: 1px dashed var(--rep-line); }
+  .plan-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted-2); }
+  .plan-key span { display: inline-flex; align-items: center; gap: 4px; }
+  .plan-key i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--surface); border: 1px solid var(--tint-line); }
+
+  .rate { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+  .rate .k-btn { height: auto; min-height: 46px; padding: 6px 6px; font-size: 13.5px; white-space: normal; }
+  .rate [data-rate="shaky"] { background: var(--rep-bg); border: 1px solid var(--rep-line); color: var(--rep-fg); }
+  .rate [data-rate="ok"] { background: var(--hear-bg); border: 1px solid var(--hear-line); color: var(--hear-fg); }
+  .rate [data-rate="solid"] { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok-fg); }
+
+  /* ---- Klaviatur (Dock): nur Oktave, darunter die Tasten */
+  .dock { flex: none; padding: 0 max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); }
+  .dock-bar { display: flex; align-items: center; justify-content: center; margin: 0 0 6px; }
+  .group { display: inline-flex; align-items: center; gap: 2px; height: 36px; padding: 0 2px; border-radius: 999px; background: var(--surface); border: 1px solid var(--tint-line); }
+  .group button { position: relative; min-width: 36px; height: 32px; padding: 0 8px; border-radius: 999px; background: none; border: 0; color: var(--text); font-weight: 700; font-size: 18px; line-height: 1; }
+  .group button::before { content: ''; position: absolute; inset: -6px -4px; }
+  .group button:disabled { opacity: .35; }
+  .group .range { min-width: 74px; text-align: center; font-size: 12.5px; font-weight: 700; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+  .keyboard { position: relative; display: flex; height: clamp(92px, 16vh, 170px); touch-action: none; border-radius: 0 0 16px 16px; overflow: hidden;
+    border: 1px solid var(--tint-line); border-top: 4px solid var(--text); background: var(--surface); }
+  .white { position: relative; flex: 1 1 0; min-width: 0; border-right: 1px solid var(--tint-line); background: var(--surface); border-radius: 0 0 8px 8px; }
   .white:last-child { border-right: 0; }
-  .white.is-down { background: linear-gradient(#f3eaf0, rgba(var(--accent-rgb), .35)); }
-  .black { position: absolute; top: 0; height: 60%; z-index: 2; border-radius: 0 0 6px 6px; background: linear-gradient(#3a3350, #1c1730 88%); box-shadow: inset 0 -4px 0 rgba(255,255,255,.08), 0 3px 5px rgba(0,0,0,.35); }
-  .black.is-down { background: linear-gradient(#2a2340, rgb(var(--accent-rgb))); }
-  .white.is-lit { background: linear-gradient(#ffe0f0, rgba(var(--accent-rgb), .55)); }
-  .black.is-lit { background: linear-gradient(#5a2a52, rgb(var(--accent-rgb))); }
+  .white.is-down { background: color-mix(in srgb, var(--accent) 38%, white); }
+  .black { position: absolute; top: 0; height: 58%; z-index: 2; border-radius: 0 0 7px 7px; background: var(--text); }
+  .black.is-down { background: var(--accent-foreground); }
+  .white.is-lit { background: color-mix(in srgb, var(--accent) 45%, white); }
+  .black.is-lit { background: var(--accent-foreground); }
   .white.is-picked, .black.is-picked { box-shadow: inset 0 0 0 3px var(--accent); }
-  .key-mark.is-pick { background: var(--surface); color: var(--accent); border: 2px solid var(--accent); }
-  .key-mark { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--accent); color: #fff; font-size: .68rem; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
+  .key-mark { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px;
+    background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
+  .key-mark.is-pick { background: var(--surface); color: var(--accent-foreground); border: 2px solid var(--accent); }
   .black .key-mark { bottom: 6px; }
 
-  .sheet { position: fixed; inset: 0; z-index: 20; background: rgba(36,27,61,.45); display: flex; align-items: flex-end; }
-  .sheet-card { width: 100%; background: var(--bg); border-radius: 20px 20px 0 0; padding: 16px 16px max(20px, env(safe-area-inset-bottom)); max-height: 80vh; overflow-y: auto; }
-  .sheet-card h3 { margin: 0 0 8px; font-size: 1rem; }
-  .sub-label { display: block; margin: 12px 0 4px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  /* ---- Fußleiste (nur Lick-Ansicht): Tempo | Start/Stopp | Schritt zurück/vor */
+  #foot { display: grid; grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr); gap: 8px; }
+  #foot .k-tempo { max-width: 156px; }
+  #foot .k-tempo button:disabled, #foot .foot-steps button:disabled { opacity: .35; }
+  #foot .k-tempo-val { flex-direction: column; align-items: center; gap: 0; line-height: 1.05; white-space: nowrap; }
+  #foot .k-tempo-val b { font-size: 19px; }
+  #foot .k-tempo-val b.is-word { font-size: 14px; }
+  .foot-steps { display: flex; justify-content: flex-end; gap: 6px; }
+  .foot-steps .k-round { color: var(--text); }
+  @media (max-width: 360px) {
+    .lick-row { gap: 8px; }
+    .lick-row .status { min-width: 58px; padding: 2px 8px; }
+    .k-foot { padding-left: 12px; padding-right: 12px; }
+    #foot .k-tempo button { width: 36px; position: relative; }
+    #foot .k-tempo button::before { content: ''; position: absolute; inset: 0 -4px; }
+    #foot .k-tempo-val b { font-size: 17px; }
+  }
+
+  /* ---- Einstellungen-Sheet */
+  .sheet { position: fixed; inset: 0; z-index: 20; background: rgba(36,27,61,.45); display: flex; align-items: flex-end; justify-content: center; }
+  .sheet-card { width: 100%; max-width: 520px; background: var(--bg); border-radius: 22px 22px 0 0; border: 1px solid var(--tint-line); border-bottom: 0;
+    padding: 16px 16px max(20px, env(safe-area-inset-bottom)); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }
+  .sheet-card:focus { outline: none; }
+  .sheet-card h3 { margin: 0 0 4px; font-family: var(--font-display); font-weight: 700; font-size: 20px; }
+  .sheet .chips { flex-wrap: wrap; overflow: visible; margin: 6px 0; padding: 0; }
+  .sub-label { display: block; margin: 14px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2); }
+  .sheet select { width: 100%; min-height: 44px; border: 1px solid var(--tint-line); background: var(--surface); border-radius: 999px; padding: 0 16px; font-weight: 700; font-size: 14px; }
+  .toggle { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; padding: 0; background: none; border: 0; font-weight: 700; font-size: 14px; }
+  .toggle-track { position: relative; width: 48px; height: 28px; border-radius: 14px; background: var(--rule); border: 1px solid var(--tint-line); flex: none; }
+  .toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(36,27,61,.35); }
+  .toggle[aria-pressed="true"] .toggle-track { background: var(--accent); border-color: var(--accent); }
+  .toggle[aria-pressed="true"] .toggle-track::after { left: 22px; }
+  .sheet .actions { margin-top: 14px; }
+  .sheet .actions .k-btn { flex: 1 1 auto; }
+  .sheet .actions:last-child { position: sticky; bottom: calc(-1 * max(20px, env(safe-area-inset-bottom))); margin: 14px -16px calc(-1 * max(20px, env(safe-area-inset-bottom))); padding: 10px 16px max(20px, env(safe-area-inset-bottom)); background: var(--bg); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 </style>
 <!-- Gemeinsame Designsprache „Konfetti B2“ (Tokens, Schrift, Bausteine); nach dem
      eigenen <style>, damit ihre Tokens gewinnen. -->
 <link rel="stylesheet" href="./ueben.css">
 </head>
 <body>
-<div class="bar">
-  <button class="icon-btn" type="button" data-act="back" aria-label="Zurück zur Liste" hidden><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
-  <h1>Licks &amp; <span>Grooves</span></h1>
-  <button class="icon-btn" type="button" data-act="settings" aria-label="Einstellungen" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
-</div>
+<header class="k-head" id="head">
+  <!-- Zurück: in der Liste schließt es das Tool (nur eingebettet sichtbar), in der Lick-Ansicht geht es zur Liste. -->
+  <button class="k-round" type="button" data-act="back" data-own-back-btn aria-label="Zurück" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <div class="k-titles">
+    <span class="k-over" id="head-over" hidden>Licks &amp; Grooves</span>
+    <h1 class="k-title" id="list-title">Licks &amp; Grooves</h1>
+    <h1 class="k-title" id="lick-name" hidden></h1>
+    <p class="visually-hidden" id="lick-sub"></p>
+  </div>
+  <div class="k-actions">
+    <button class="k-round" type="button" data-act="settings" aria-label="Einstellungen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+  </div>
+</header>
 <main id="main">
   <section id="view-list">
-    <div class="review-card" id="review-card" hidden><b id="review-text"></b><button class="btn primary" type="button" data-act="review-start">Wiederholen</button></div>
+    <div id="review-card" hidden>
+      <button class="k-row k-row--repeat" type="button" data-act="review-start">
+        <span class="k-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg></span>
+        <span class="k-row-name" id="review-text">Heute wiederholen</span>
+        <span class="k-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+      </button>
+    </div>
     <div class="chips" id="cat-chips" role="group" aria-label="Kategorie"></div>
-    <div id="list"></div>
+    <div class="k-list" id="list"></div>
     <p class="note" id="list-note"></p>
   </section>
   <section id="view-lick" hidden>
-    <div class="lick-head"><h2 id="lick-name"></h2><p id="lick-sub"></p></div>
-    <div class="steps" id="steps" role="group" aria-label="Schritte"></div>
-    <div class="panel" id="panel"></div>
+    <div class="k-stepper" id="steps" role="group" aria-label="Schritte"></div>
+    <div class="k-stage panel" id="panel"></div>
   </section>
 </main>
 <div class="dock" id="dock" hidden>
   <div class="dock-bar">
-    <select id="sound-select" aria-label="Klang"></select>
-    <div class="group" role="group" aria-label="Glide beim eigenen Spiel"><button type="button" data-act="glide" aria-pressed="true">Glide</button></div>
-    <span style="flex:1"></span>
-    <div class="group" role="group" aria-label="Lage">
-      <button type="button" data-act="oct-down" aria-label="Eine Oktave tiefer">Okt −</button>
-      <span class="range" id="oct-range" aria-live="polite">0</span>
-      <button type="button" data-act="oct-up" aria-label="Eine Oktave höher">Okt +</button>
+    <div class="group" role="group" aria-label="Lage der Klaviatur">
+      <button type="button" data-act="oct-down" aria-label="Eine Oktave tiefer">−</button>
+      <span class="range" id="oct-range" aria-live="polite">Oktave 0</span>
+      <button type="button" data-act="oct-up" aria-label="Eine Oktave höher">+</button>
     </div>
   </div>
   <div class="keyboard" id="keyboard" aria-label="Klaviatur"></div>
 </div>
+<!-- Fußleiste unter der Klaviatur: Tempo (nur langsamer) | Start/Stopp | Schritt zurück/vor -->
+<div class="k-foot" id="foot" hidden>
+  <div class="k-tempo" role="group" aria-label="Tempo">
+    <button type="button" data-act="tempo-down" aria-label="Langsamer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+    <div class="k-tempo-val" id="tempo-val" aria-live="polite"><b>100 %</b><small>96 BPM</small></div>
+    <button type="button" data-act="tempo-up" aria-label="Schneller"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>
+  <button class="k-play k-play--lg" type="button" id="foot-play" data-act="foot-play" aria-label="Start: Anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg></button>
+  <div class="foot-steps">
+    <button class="k-round" type="button" data-act="step-prev" aria-label="Schritt zurück"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="k-round" type="button" data-act="step-next" aria-label="Schritt vor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+</div>
 <div class="sheet" id="sheet" hidden>
-  <div class="sheet-card" role="dialog" aria-label="Einstellungen">
+  <div class="sheet-card" role="dialog" aria-label="Einstellungen" aria-modal="true" tabindex="-1">
     <h3>Einstellungen</h3>
-    <span class="sub-label" style="margin-top:0">Notenbild bei Licks</span>
+    <span class="sub-label" style="margin-top:8px">Notenbild bei Licks</span>
     <div class="chips" id="notes-chips"></div>
     <p class="note">Das Notenbild (Piano-Roll) kommt als letzter Schritt. Wer es abschaltet, übt ausschließlich mit den Ohren.</p>
+    <label class="sub-label" for="sound-select">Klang</label>
+    <select id="sound-select" aria-label="Klang"></select>
+    <span class="sub-label">Glide beim eigenen Spiel</span>
+    <button class="toggle" type="button" data-act="glide" aria-pressed="true" aria-label="Glide beim eigenen Spiel"><span class="toggle-track" aria-hidden="true"></span><span class="toggle-text">An</span></button>
     <span class="sub-label">Verzögerung beim Tippen</span>
     <p class="note" id="delay-note"></p>
-    <div class="actions" style="margin-top:0"><button class="btn" type="button" data-act="delay-reset" id="delay-reset">Zurücksetzen</button></div>
-    <div class="actions"><button class="btn primary" type="button" data-act="settings-close">Fertig</button></div>
+    <div class="actions" style="margin-top:0"><button class="k-btn k-btn--ghost" type="button" data-act="delay-reset" id="delay-reset">Zurücksetzen</button></div>
+    <div class="actions"><button class="k-btn" type="button" data-act="settings-close">Fertig</button></div>
   </div>
 </div>
 
@@ -219,7 +307,12 @@
 (function () {
   'use strict';
 
-  if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  const EMBEDDED = new URLSearchParams(location.search).has('embedded');
+  if (EMBEDDED) {
+    document.documentElement.classList.add('is-embedded');
+    // Eigener runder Zurück-Knopf: die App blendet dann ihr ✕ aus und fokussiert [data-own-back-btn].
+    document.documentElement.setAttribute('data-own-back', '');
+  }
   // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
   try {
     if (window.parent !== window) {
@@ -508,7 +601,7 @@
     const h = delayHint.open;
     if (!h || ui.running) return '';
     return `<div class="delay-hint" role="status"><p><b>Deine Töne kommen im Schnitt etwa ${h.ms} ms zu spät.</b> Das liegt oft am Gerät (Touchscreen, Bluetooth-Kopfhörer), nicht an dir. Soll die Verzögerung in allen Übungen ausgeglichen werden?</p>
-      <div class="actions" style="margin-top:0"><button class="btn primary" type="button" data-delay="apply">${h.ms} ms ausgleichen</button><button class="btn" type="button" data-delay="later">Später</button></div></div>`;
+      <div class="actions" style="margin-top:0"><button class="k-btn" type="button" data-delay="apply">${h.ms} ms ausgleichen</button><button class="k-btn k-btn--ghost" type="button" data-delay="later">Später</button></div></div>`;
   }
 
   /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
@@ -1035,7 +1128,13 @@
      eines Laufs stehen vorab fest (Zeit in Sekunden ab Start) und werden mit
      Vorlauf eingeplant; kein setTimeout für Töne. Ein Takt = 48 Ticks.
      ------------------------------------------------------------------------ */
-  const tickSecOf = (lick) => 60 / lick.bpm / 12;
+  /** Tempo der Läufe: Original (`lick.bpm`) mal Tempo-Pille (70–100 %, nur langsamer). Durchhalten,
+   *  Notenbild und Wiederholen laufen immer im Original, ebenso die Anhören-Knöpfe der Liste. */
+  const TEMPO_MIN = 70, TEMPO_MAX = 100, TEMPO_STEP = 5;
+  const tempoLocked = () => ui.step === 6 || ui.step === 7 || !!(ui.review && ui.review.queue);
+  const runPct = () => (ui.view === 'lick' && !tempoLocked() ? clamp(ui.tempoPct, TEMPO_MIN, TEMPO_MAX) : 100);
+  const runBpm = (lick) => lick.bpm * runPct() / 100;
+  const tickSecOf = (lick) => 60 / runBpm(lick) / 12;
   const barSecOf = (lick) => TICKS_BAR * tickSecOf(lick);
 
   /** Baukasten für die Ereignisliste eines Laufs. */
@@ -1138,7 +1237,7 @@
      ANZEIGE
      ------------------------------------------------------------------------ */
   const ui = {
-    view: 'list', cat: 'all', step: 1, part: 0, holdStage: 1, running: '', feedback: '', feedbackKind: '', result: null,
+    view: 'list', cat: 'all', tempoPct: 100, allDone: false, step: 1, part: 0, holdStage: 1, running: '', feedback: '', feedbackKind: '', result: null,
     foundKey: null, pickedKey: null, startFails: 0, drone: null, review: null, visitRated: false, lastRunAt: {}, rollTick: -1,
   };
   const currentLick = () => (ui.view === 'lick' ? lickById(state.lick) : null);
@@ -1146,38 +1245,56 @@
 
   /** Neutraler Platzhalter statt Raster und Notenbild (Hören statt Sehen). Hängt
    *  von nichts ab — nicht von Länge, Taktzahl oder den Tönen des Bausteins. */
-  const placeholderHtml = () => `<div class="stage" data-placeholder><svg viewBox="0 0 ${SVG_W} 104" role="img" aria-label="Nach Gehör"><line class="staff" x1="8" y1="62" x2="${SVG_W - 8}" y2="62"/><text class="hint" x="${SVG_W / 2}" y="44" text-anchor="middle">Nach Gehör</text></svg></div>`;
+  const placeholderHtml = () => `<div class="stage" data-placeholder><svg viewBox="0 0 ${SVG_W} 68" role="img" aria-label="Nach Gehör"><line class="staff" x1="8" y1="46" x2="${SVG_W - 8}" y2="46"/><text class="hint" x="${SVG_W / 2}" y="30" text-anchor="middle">Nach Gehör</text></svg></div>`;
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const statusText = (id) => statusOf(state.items[id]);
+
+  const ICON = {
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></svg>',
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  };
+  /** Liste innerhalb des Filters stabil nach Stufe sortiert (leicht → schwer). */
+  const sortedLicks = (cat) => LICKS.map((l, i) => [l, i]).filter(([l]) => cat === 'all' || l.cat === cat)
+    .sort((a, b) => a[0].level - b[0].level || a[1] - b[1]).map(([l]) => l);
+  const ringHtml = (level) => `<span class="k-ring" data-level="${level}" style="--level:${(level / 3).toFixed(3)}" role="img" aria-label="Stufe ${level} von 3"><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="ring-bg" cx="17" cy="17" r="14"/><circle class="ring-fg" cx="17" cy="17" r="14"/></svg><b aria-hidden="true">${level}</b></span>`;
 
   function renderList() {
     $('#cat-chips').innerHTML = CATS.map(([id, label]) => `<button class="chip" type="button" data-cat="${id}" aria-pressed="${ui.cat === id}">${label}</button>`).join('');
     const today = localDate();
     const due = dueIds(state.items, today);
     $('#review-card').hidden = !due.length;
-    $('#review-text').textContent = `Heute fällig: ${due.length} ${due.length === 1 ? 'Lick' : 'Licks'}`;
-    const list = LICKS.filter((l) => ui.cat === 'all' || l.cat === ui.cat);
-    $('#list').innerHTML = list.map((l) => {
+    $('#review-text').textContent = `Heute wiederholen (${due.length})`;
+    $('#list').innerHTML = sortedLicks(ui.cat).map((l) => {
       const playing = ui.running === `preview:${l.id}`;
+      const status = statusText(l.id);
+      const pillCls = status === 'Sitzt' ? 'k-pill k-pill--ok' : status === 'Lerne' ? 'k-pill k-pill--rep' : 'k-pill';
       return `<div class="lick-row" data-id="${l.id}">
         <button class="play" type="button" data-act="preview" data-id="${l.id}" aria-label="${playing ? 'Stoppen' : `${esc(l.name)} anhören`}">${playing
     ? '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
     : '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></svg>'}</button>
-        <button class="open" type="button" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span><span class="sub">${l.preset} · Stufe ${l.level}</span></button>
-        <span class="status" data-status="${statusText(l.id)}">${statusText(l.id)}</span></div>`;
+        <button class="open" type="button" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span></button>
+        ${ringHtml(l.level)}
+        <span class="status ${pillCls}" data-status="${status}">${status === 'Sitzt' ? ICON.check : ''}${status}</span></div>`;
     }).join('');
-    const nothing = ui.review === 'none';
-    $('#list-note').textContent = nothing ? 'Heute ist nichts fällig.' : '';
+    $('#list-note').textContent = due.length ? '' : ui.allDone ? 'Alles wiederholt – bis zum nächsten Mal.' : 'Heute ist nichts fällig.';
   }
 
   function show(view) {
     ui.view = view;
-    $('#view-list').hidden = view !== 'list';
-    $('#view-lick').hidden = view !== 'lick';
-    $('#dock').hidden = view !== 'lick';
-    $('[data-act="back"]').hidden = view !== 'lick';
-    $('[data-act="settings"]').hidden = view !== 'lick';
+    const lick = view === 'lick';
+    $('#view-list').hidden = lick;
+    $('#view-lick').hidden = !lick;
+    $('#dock').hidden = !lick;
+    $('#foot').hidden = !lick;
+    // Zurück: Lick-Ansicht → Liste; Liste → Tool schließen (nur eingebettet, sonst gibt es kein Ziel).
+    $('[data-act="back"]').hidden = !lick && !EMBEDDED;
+    $('[data-act="settings"]').hidden = !lick;
+    $('#list-title').hidden = lick;
+    $('#lick-name').hidden = !lick;
+    $('#head-over').hidden = !lick;
+    if (!lick) $('#head-over').textContent = 'Licks & Grooves';
   }
 
   function setFeedback(text, kind = '') { ui.feedback = text; ui.feedbackKind = kind; const el = $('.feedback'); if (el) { el.textContent = text; el.className = `feedback${kind ? ` is-${kind}` : ''}`; } }
@@ -1194,7 +1311,7 @@
     stopRun(false); releaseDrone();
     state.lick = id;
     ui.view = 'lick';
-    Object.assign(ui, { step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
+    Object.assign(ui, { tempoPct: 100, step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
     ui.part = clamp(state.items[id]?.parts || 0, 0, lick.parts.length - 1);
     ui.holdStage = clamp((state.items[id]?.hold || 0) + 1, 1, 4);
     setFeedback('');
@@ -1203,32 +1320,81 @@
     persist();
   }
 
+  /** Stepper: alle Schritte als Punkte, nur der aktuelle ist beschriftet (die anderen Namen stehen unsichtbar im Knopf). */
+  function renderStepper(lick) {
+    const el = $('#steps');
+    const rv = ui.review && ui.review.queue && ui.review.phase;
+    if (rv) { // Wiederholung: kein Schritt-Sprung, nur die Phase benennen
+      el.innerHTML = `<p class="k-step-label">${{ hear: 'Anhören', hold: 'Durchhalten', rate: 'Einschätzung' }[ui.review.phase] || ''}</p>`;
+      return;
+    }
+    const shown = stepsShown();
+    const items = shown.map((s) => {
+      const done = stepDone(lick, s.k), now = ui.step === s.k, unlocked = stepUnlocked(lick, s.k);
+      const name = `${s.name}${s.k === 7 ? ' (optional)' : ''}`;
+      const cls = `k-dot step${done ? ' is-done' : ''}${now ? ' is-now' : ''}${s.k === 7 ? ' is-optional' : ''}`;
+      const label = `Schritt ${s.k}: ${name}${done ? ', geschafft' : ''}${unlocked ? '' : ' (noch gesperrt)'}`;
+      return `<li class="k-step" data-state="${now ? 'now' : done ? 'done' : 'todo'}"><button class="${cls}" type="button" data-step="${s.k}" aria-label="${label}"${unlocked ? '' : ' disabled'}${now ? ' aria-current="step"' : ''}>${done && !now ? ICON.check : ''}<span class="visually-hidden">${name}</span></button></li>`;
+    }).join('');
+    const cur = shown.find((s) => s.k === ui.step) || shown[0];
+    el.innerHTML = `<ol>${items}</ol><p class="k-step-label" aria-hidden="true">${cur.name}${cur.k === 7 ? ' (optional)' : ''}</p>`;
+  }
+
+  /** Hauptaktion des aktuellen Schritts (dieselbe wie der pinke Knopf im Panel). */
+  function mainActOf() {
+    const r = ui.review;
+    if (r && r.queue && r.phase) return r.phase === 'hear' ? 'review-hear' : r.phase === 'hold' ? 'hold-run' : null;
+    return ['hear', 'sing', 'startton', 'part-run', 'whole-run', 'hold-run', 'roll-run'][ui.step - 1] || null;
+  }
+  const MAIN_LABEL = { hear: 'Anhören', 'review-hear': 'Anhören', sing: 'Hören und mitsingen', startton: 'Lick und Grundton hören', 'part-run': 'Teil starten', 'whole-run': 'Runde starten', 'hold-run': 'Durchhalten', 'roll-run': 'Mitspielen' };
+  /** Fußleiste: Tempo-Pille, Start/Stopp, Schritt zurück/vor. */
+  function renderFoot() {
+    const lick = currentLick();
+    if (!lick) return;
+    const locked = tempoLocked(), busy = !!ui.running;
+    const pct = locked ? 100 : ui.tempoPct;
+    $('#tempo-val').innerHTML = `<b${locked ? ' class="is-word"' : ''}>${locked ? 'Original' : `${pct} %`}</b><small>${Math.round(lick.bpm * pct / 100)} BPM</small>`;
+    $('[data-act="tempo-down"]').disabled = locked || busy || ui.tempoPct <= TEMPO_MIN;
+    $('[data-act="tempo-up"]').disabled = locked || busy || ui.tempoPct >= TEMPO_MAX;
+    const act = mainActOf();
+    const play = $('#foot-play');
+    play.disabled = !busy && !act;
+    play.innerHTML = busy ? ICON.stop : ICON.play;
+    play.setAttribute('aria-label', busy ? 'Stopp' : act ? `Start: ${MAIN_LABEL[act]}` : 'Start');
+    const rv = !!(ui.review && ui.review.queue);
+    $('[data-act="step-prev"]').disabled = rv || ui.step <= 1;
+    $('[data-act="step-next"]').disabled = rv || ui.step >= 7 || !stepUnlocked(lick, ui.step + 1);
+  }
+  function syncGlide() {
+    const b = $('[data-act="glide"]');
+    b.setAttribute('aria-pressed', String(state.glide));
+    b.querySelector('.toggle-text').textContent = state.glide ? 'An' : 'Aus';
+  }
+
   function renderLick() {
     const lick = lickById(state.lick);
     if (!lick) return;
     const it = itemOf(lick.id);
+    const rv = ui.review && ui.review.queue;
     $('#lick-name').textContent = lick.name;
-    $('#lick-sub').textContent = `${lick.preset} · Stufe ${lick.level} · ${lick.bars} ${lick.bars === 1 ? 'Takt' : 'Takte'} · ♩ = ${lick.bpm}`;
-    // Schrittleiste
-    $('#steps').innerHTML = stepsShown().map((s) => {
-      const done = stepDone(lick, s.k);
-      const cls = `step${done ? ' is-done' : ''}${ui.step === s.k ? ' is-now' : ''}${s.k === 7 ? ' is-optional' : ''}`;
-      return `<button class="${cls}" type="button" data-step="${s.k}"${stepUnlocked(lick, s.k) ? '' : ' disabled'}${ui.step === s.k ? ' aria-current="step"' : ''}>${done ? '✓ ' : ''}${s.k}. ${s.name}${s.k === 7 ? ' (optional)' : ''}</button>`;
-    }).join('');
+    $('#lick-sub').textContent = `Stufe ${lick.level} · ${lick.bars} ${lick.bars === 1 ? 'Takt' : 'Takte'} · ♩ = ${lick.bpm}`;
+    $('#head-over').textContent = rv ? `Wiederholen ${ui.review.i + 1} von ${ui.review.queue.length}` : 'Licks & Grooves';
+    renderStepper(lick);
     renderPanel(lick, it);
     buildKeyboard();
-    // Klang und Glide
+    // Klang und Glide (im Einstellungen-Sheet), Oktave (Dock)
     $('#sound-select').innerHTML = PRESET_NAMES.map((n) => `<option value="${n}"${n === soundOf(lick) ? ' selected' : ''}>${n}</option>`).join('');
-    $('[data-act="glide"]').setAttribute('aria-pressed', String(state.glide));
+    syncGlide();
     const [lo, hi] = octaveLimits(lick);
     const shift = octaveOf(lick);
-    $('#oct-range').textContent = shift > 0 ? `+${shift}` : String(shift);
+    $('#oct-range').textContent = `Oktave ${shift > 0 ? `+${shift}` : shift}`;
     $('[data-act="oct-down"]').disabled = shift <= lo;
     $('[data-act="oct-up"]').disabled = shift >= hi;
+    renderFoot();
   }
 
   const runLabel = (key) => ui.running === key;
-  const stopBtn = (key) => (runLabel(key) ? '<button class="btn" type="button" data-act="stop">■ Stopp</button>' : '');
+  const stopBtn = (key) => (runLabel(key) ? `<button class="k-btn k-btn--ghost" type="button" data-act="stop">${ICON.stop}Stopp</button>` : '');
 
   function renderPanel(lick, it) {
     const p = $('#panel');
@@ -1236,22 +1402,22 @@
     const k = ui.step;
     let html = '';
     if (k === 1) {
-      html = `<p>${esc(lick.intro)}</p><p class="more">${esc(lick.more)}</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn('hear')}
-        <button class="btn" type="button" data-act="next-step"${stepDone(lick, 1) || ui.result === 'heard' ? '' : ' disabled'}>Weiter</button></div>
+      html = `<p>${esc(lick.intro)}</p><details class="more-wrap"><summary>Mehr dazu</summary><p class="more">${esc(lick.more)}</p></details>${placeholderHtml()}
+        <div class="actions"><button class="k-btn" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${stepDone(lick, 1) || ui.result === 'heard' ? '' : ' disabled'}>Weiter</button></div>
         <p class="note">Der Lick läuft zweimal über einen Groove, dazwischen ein leerer Takt. Noch nichts nachspielen.</p>`;
     } else if (k === 2) {
       html = `<p>Sing mit auf „du“. Die Stimme lernt den Verlauf, die Finger folgen.</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>▶ Hören und mitsingen</button>${stopBtn('sing')}
-        <button class="btn" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
+        <div class="actions"><button class="k-btn" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>${ICON.play}Hören und mitsingen</button>${stopBtn('sing')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
     } else if (k === 3) {
       const found = ui.foundKey !== null;
       html = `<p>Welcher Ton ist der erste? Hör den Lick, dann liegen Grundton und Quinte leise. Probier die Tasten aus – wenn du meinst, den Ton gefunden zu haben, logg ihn ein.</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>▶ Lick und Grundton hören</button>${stopBtn('startton')}
-        ${found ? '' : `<button class="btn" type="button" data-act="lock-start"${ui.pickedKey === null || ui.running ? ' disabled' : ''}>✓ Ton einloggen</button>`}
-        ${ui.startFails >= 3 && !found ? '<button class="btn" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
-        ${ui.startFails >= 6 && !found ? '<button class="btn" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
-        <button class="btn" type="button" data-act="next-step"${found || stepDone(lick, 3) ? '' : ' disabled'}>Weiter</button></div>
+        <div class="actions"><button class="k-btn" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>${ICON.play}Lick und Grundton hören</button>${stopBtn('startton')}
+        ${found ? '' : `<button class="k-btn k-btn--ghost" type="button" data-act="lock-start"${ui.pickedKey === null || ui.running ? ' disabled' : ''}>${ICON.check}Ton einloggen</button>`}
+        ${ui.startFails >= 3 && !found ? '<button class="k-btn k-btn--hear" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
+        ${ui.startFails >= 6 && !found ? '<button class="k-btn k-btn--ghost" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
+        <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${found || stepDone(lick, 3) ? '' : ' disabled'}>Weiter</button></div>
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>`;
     } else if (k === 4) {
       const n = lick.parts.length;
@@ -1260,23 +1426,23 @@
       const last = partNo === n - 1;
       html = `<p><b>Teil ${partNo + 1} von ${n}</b> · ${b - a} Töne. Erst hörst du den Teil, dann ein Takt weiter Groove, dann bist du dran.</p>${ui.result && ui.result.part === partNo ? resultTimelineHtml(ui.result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
-        <div class="actions"><button class="btn primary" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
-        ${ui.result && ui.result.part === partNo && ui.result.ok ? `<button class="btn" type="button" data-act="part-next">${last ? 'Weiter: Ganz' : 'Nächster Teil'}</button>` : ''}
-        ${partNo > 0 ? '<button class="btn" type="button" data-act="part-prev">‹ Vorheriger Teil</button>' : ''}</div>`;
+        <div class="actions"><button class="k-btn" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
+        ${ui.result && ui.result.part === partNo && ui.result.ok ? `<button class="k-btn k-btn--ghost" type="button" data-act="part-next">${last ? 'Weiter: Ganz' : 'Nächster Teil'}</button>` : ''}
+        ${partNo > 0 ? '<button class="k-btn k-btn--ghost" type="button" data-act="part-prev">Vorheriger Teil</button>' : ''}</div>`;
     } else if (k === 5) {
       const r = Math.min(it.whole, 2);
       const label = ['mit vollem Groove', 'mit Bassdrum und Snare', 'nur mit der Snare'][r];
       html = `<p><b>Runde ${Math.min(it.whole + 1, 3)} von 3</b> · ${label}. Du hörst den Lick einmal, dann spielst du ihn im selben Takt selbst.${it.whole >= 3 ? ' Alle drei Runden sind geschafft – du kannst weiter üben.' : ''}</p>
         ${ui.result && ui.result.kind === 'whole' ? resultTimelineHtml(ui.result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
-        ${it.whole >= 3 ? '<button class="btn" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
+        <div class="actions"><button class="k-btn" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
+        ${it.whole >= 3 ? '<button class="k-btn k-btn--ghost" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
     } else if (k === 6) {
       html = holdPanelHtml(lick, it);
     } else if (k === 7) {
       html = `<p>So sieht der Lick aus – Zeilen sind die Töne, oben zählst du mit. Die Marke läuft mit, die Tasten leuchten.</p>${rollHtml(lick)}
-        <div class="actions"><button class="btn primary" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>▶ Mitspielen und mitlesen</button>${stopBtn('roll')}
-        <button class="btn" type="button" data-act="roll-done">${stepDone(lick, 7) ? '✓ Fertig' : 'Fertig'}</button></div>`;
+        <div class="actions"><button class="k-btn" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>${ICON.play}Mitspielen und mitlesen</button>${stopBtn('roll')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="roll-done">${stepDone(lick, 7) ? `${ICON.check}Fertig` : 'Fertig'}</button></div>`;
     }
     p.innerHTML = html;
     if (k === 6 || (it.whole >= 3 && k === 5)) { /* Einschätzung hängt am Durchhalten (Schritt 6) */ }
@@ -1285,8 +1451,8 @@
   /** Einschätzung: „Wie fühlt es sich an?“ — „Sitzt“ erst nach 8 Takten Durchhalten. */
   function rateHtml(lick, it) {
     return `<p style="margin-top:12px"><b>Wie fühlt es sich an?</b></p>
-      <div class="rate"><button class="btn" type="button" data-rate="shaky">Noch wackelig</button><button class="btn" type="button" data-rate="ok">Geht schon</button>
-      <button class="btn" type="button" data-rate="solid"${it.hold >= 2 ? '' : ' disabled'}>Sitzt</button></div>
+      <div class="rate"><button class="k-btn k-btn--ghost" type="button" data-rate="shaky">Noch wackelig</button><button class="k-btn k-btn--ghost" type="button" data-rate="ok">Geht schon</button>
+      <button class="k-btn k-btn--ghost" type="button" data-rate="solid"${it.hold >= 2 ? '' : ' disabled'}>Sitzt</button></div>
       ${it.hold >= 2 ? '' : '<p class="note">Erst 8 Takte durchhalten.</p>'}
       <p class="note">Bestimmt, wann der Lick wieder in „Heute wiederholen“ auftaucht.${it.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[it.rating]}.` : ''}</p>`;
   }
@@ -1302,17 +1468,27 @@
       const label = ['4 Takte', '8 Takte', '8 mit Lücken', '16 mit Lücken'][i];
       return `<button type="button" class="${done ? 'is-done' : ''}${next ? ' is-next' : ''}" data-stage="${n}" aria-pressed="${stageNo === n}"${enabled ? '' : ' disabled'}>${done ? '✓ ' : ''}${label}</button>`;
     }).join('');
-    const before = holdBefore(st);
     const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
     const nextStage = result && result.held && stageNo < 4 ? stageNo + 1 : null;
-    return `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
-      <p>${before}</p>
+    // Während des Laufs nur der neutrale Platzhalter (kein Plan, keine Leiter): Hören statt Sehen.
+    const intro = ui.running ? '' : `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
+      ${result ? '' : `${planHtml(st, stageNo)}<p>${holdBefore(st)}</p>`}`;
+    return `${intro}
       ${result ? stripHtml(result) : placeholderHtml()}
       <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-      <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
-      ${nextStage ? `<button class="btn" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
+      <div class="actions"><button class="k-btn" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+      ${nextStage ? `<button class="k-btn k-btn--ghost" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
       ${result && result.held && stageNo === 4 ? '<span class="note" style="align-self:center">Alle Stufen geschafft.</span>' : ''}</div>
       ${(it.hold >= 1 || result) && !ui.running ? rateHtml(lick, it) : ''}`;
+  }
+  /** Statischer Plan der Takte vor dem Lauf: Snare spielt (weiß) / still (gelb, gestrichelt). Eigene Klasse —
+   *  kein `.strip`: das ist das Ergebnis NACH dem Lauf. */
+  function planHtml(st, stageNo) {
+    const plan = holdPlan(stageNo);
+    const still = plan.filter((x) => !x).length;
+    const pill = still ? `<span class="k-pill k-pill--rep">${still} stille Takte</span>` : '';
+    return `<div class="plan-strip" role="img" aria-label="Plan: ${plan.length} Takte${still ? `, davon ${still} still ohne Schlagzeug` : ', Schlagzeug durchgehend'}">${plan.map((on) => `<i${on ? '' : ' class="is-still"'}></i>`).join('')}</div>
+      <div class="plan-key"><span><i></i>Snare spielt</span>${still ? '<span><i class="is-still"></i>still</span>' : ''}${pill}</div>`;
   }
   /** Ein Satz vor dem Start: was kommt (nicht während des Laufs — dort gibt es keinen Zähler). */
   function holdBefore(st) {
@@ -1341,10 +1517,11 @@
     const cells = res.bars.map((b, i) => {
       const f = b.expected ? b.hit / b.expected : 1;
       const cls = f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost';
-      return `<div class="cell ${cls}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}">${i + 1}</div>`;
+      const mark = f >= .75 ? '✓' : f >= .5 ? '~' : '×';
+      return `<div class="cell ${cls}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}${b.silent ? ' (still)' : ''}"><b>${i + 1}</b><i aria-hidden="true">${mark}</i></div>`;
     }).join('');
     return `<div class="strip" role="img" aria-label="Takte: ${res.bars.filter((b) => b.expected && b.hit >= .75 * b.expected).length} von ${res.bars.length} sicher">${cells}</div>
-      <div class="legend"><span><i style="background:var(--ok-bg)"></i>sicher</span><span><i style="background:var(--wobble-bg)"></i>wackelig</span><span><i style="background:var(--lost-bg)"></i>verloren</span>
+      <div class="legend"><span><i style="background:var(--ok-bg)"></i>✓ sicher</span><span><i style="background:var(--rep-bg)"></i>~ wackelig</span><span><i style="background:var(--lost-bg)"></i>× verloren</span>
       <span><i style="background-image:repeating-linear-gradient(135deg,rgba(36,27,61,.4) 0 2px,transparent 2px 5px)"></i>still (ohne Schlagzeug)</span></div>`;
   }
 
@@ -1475,7 +1652,7 @@
      ABLÄUFE DER SCHRITTE
      ------------------------------------------------------------------------ */
   function releaseDrone() { if (ui.drone) { engine.stopDrone(ui.drone); ui.drone = null; } }
-  const rerender = () => { const lick = currentLick(); if (lick) { renderPanel(lick, itemOf(lick.id)); if (ui.step !== 7) setLit(new Set()); } };
+  const rerender = () => { const lick = currentLick(); if (lick) { renderPanel(lick, itemOf(lick.id)); renderFoot(); if (ui.step !== 7) setLit(new Set()); } };
 
   /** Lauf mit Statusanzeige: key = Name der Anzeige, evalFn(info) nach dem Ende. */
   async function beginRun(key, tl, evalFn) {
@@ -1781,6 +1958,7 @@
   function startReview() {
     const ids = dueIds(state.items, localDate());
     if (!ids.length) { ui.review = 'none'; show('list'); renderList(); return; }
+    ui.allDone = false;
     ui.review = { queue: ids, i: 0, phase: 'hear' };
     openReviewItem();
   }
@@ -1796,26 +1974,26 @@
   }
   function reviewPanelHtml(lick, it) {
     const r = ui.review;
-    const head = `<p class="note" style="margin-top:0">Wiederholen ${r.i + 1} von ${r.queue.length}</p>`;
+    const head = '';
     if (r.phase === 'hear') {
       return `${head}<p>${esc(lick.intro)}</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn('hear')}
-        <button class="btn" type="button" data-act="review-phase" data-phase="hold">Weiter: Durchhalten</button></div>`;
+        <div class="actions"><button class="k-btn" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="hold">Weiter: Durchhalten</button></div>`;
     }
     if (r.phase === 'hold') {
       const st = HOLD_STAGES[ui.holdStage - 1];
       const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
-      return `${head}<p><b>${st.name}</b> – ${holdBefore(st)}</p>${result ? stripHtml(result) : placeholderHtml()}
+      return `${head}${ui.running || result ? '' : `<p class="panel-title">${st.name}</p>${planHtml(st, ui.holdStage)}<p>${holdBefore(st)}</p>`}${result ? stripHtml(result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
-        <button class="btn" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
+        <div class="actions"><button class="k-btn" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
     }
     return `${head}${rateHtml(lick, it)}`;
   }
   function reviewAfterRating() {
     const r = ui.review;
     r.i++;
-    if (r.i >= r.queue.length) { ui.review = null; ui.result = null; show('list'); renderList(); $('#list-note').textContent = 'Alles wiederholt – bis zum nächsten Mal.'; return; }
+    if (r.i >= r.queue.length) { ui.review = null; ui.result = null; ui.allDone = true; show('list'); renderList(); return; }
     openReviewItem();
   }
 
@@ -1834,6 +2012,15 @@
     previewLickId = id;
   }
 
+  /** Zu Schritt k wechseln (Punkte des Steppers und Schritt zurück/vor der Fußleiste). */
+  function goStep(k) {
+    const lick = currentLick();
+    if (!lick || ui.review && ui.review.queue || !stepUnlocked(lick, k)) return;
+    stopRun(true);
+    if (ui.step === 3 && k !== 3) resetStartton();
+    releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick();
+  }
+
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
@@ -1844,7 +2031,7 @@
     }
     if (t.dataset.cat) { ui.cat = t.dataset.cat; renderList(); return; }
     if (t.dataset.notesChoice) { state.notes = t.dataset.notesChoice === 'off' ? 'off' : 'last'; if (state.notes === 'off' && ui.step === 7) ui.step = 5; renderSheet(); persist(); return; }
-    if (t.dataset.step) { const k = Number(t.dataset.step); const lick = currentLick(); if (lick && stepUnlocked(lick, k)) { stopRun(true); if (ui.step === 3 && k !== 3) resetStartton(); releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick(); } return; }
+    if (t.dataset.step) { goStep(Number(t.dataset.step)); return; }
     if (t.dataset.stage) { ui.holdStage = Number(t.dataset.stage); ui.result = null; setFeedback(''); rerender(); return; }
     if (t.dataset.rate) {
       const lick = currentLick();
@@ -1863,12 +2050,13 @@
       case 'preview': previewLick(t.dataset.id); break;
       case 'open': openLick(t.dataset.id); break;
       case 'back':
+        if (ui.view === 'list') { if (EMBEDDED) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); break; }
         stopRun(false); resetStartton();
         if (lick && !ui.review && !ui.visitRated && itemOf(lick.id).whole >= 3 && ui.view === 'lick' && !ui.askedLeave) { ui.askedLeave = true; ui.step = 6; renderLick(); setFeedback('Wie fühlt es sich an? Wähle unten – oder geh einfach zurück.'); break; }
         ui.askedLeave = false; ui.review = null; show('list'); renderList(); break;
-      case 'settings': renderSheet(); $('#sheet').hidden = false; break;
+      case 'settings': renderSheet(); $('#sheet').hidden = false; $('.sheet-card').focus(); break;
       case 'delay-reset': calib.tapMs = 0; delayHint.list.length = 0; delayHint.open = null; delayHint.dismissed = false; saveCalibration(); renderSheet(); break;
-      case 'settings-close': $('#sheet').hidden = true; if (lick) renderLick(); break;
+      case 'settings-close': closeSheet(); if (lick) renderLick(); break;
       case 'stop': stopRun(true); releaseDrone(); rerender(); break;
       case 'next-step': { const it = itemOf(lick.id); if (ui.step <= 3) it.step = Math.max(it.step, ui.step); if (ui.step === 3) resetStartton(); ui.step = Math.min(ui.step + 1, stepsShown().length); ui.result = null; setFeedback(''); persist(); renderLick(); break; }
       case 'hear': stepHear(); break;
@@ -1887,7 +2075,22 @@
       case 'review-start': startReview(); break;
       case 'review-hear': ui.running = 'hear'; beginRun('hear', tlHear(lick, 1), null); break;
       case 'review-phase': stopRun(true); ui.review.phase = t.dataset.phase; ui.result = null; setFeedback(''); renderLick(); break;
-      case 'glide': state.glide = !state.glide; t.setAttribute('aria-pressed', String(state.glide)); persist(); break;
+      case 'glide': state.glide = !state.glide; syncGlide(); persist(); break;
+      case 'tempo-down': case 'tempo-up': {
+        if (!lick || tempoLocked() || ui.running) break;
+        ui.tempoPct = clamp(ui.tempoPct + (act === 'tempo-up' ? TEMPO_STEP : -TEMPO_STEP), TEMPO_MIN, TEMPO_MAX);
+        renderFoot(); break;
+      }
+      case 'foot-play': {
+        if (!lick) break;
+        if (ui.running) { stopRun(true); releaseDrone(); rerender(); break; }
+        const main = mainActOf();
+        const btn = main && $(`#panel [data-act="${main}"]`);
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case 'step-prev': if (lick) goStep(ui.step - 1); break;
+      case 'step-next': if (lick) goStep(ui.step + 1); break;
       case 'oct-down': case 'oct-up': {
         if (!lick) break;
         const [lo, hi] = octaveLimits(lick);
@@ -1903,6 +2106,12 @@
     state.sound[lick.id] = e.target.value;
     persist();
   });
+  /** Sheet schließen, Fokus zurück aufs Zahnrad. */
+  function closeSheet() {
+    $('#sheet').hidden = true;
+    const g = $('[data-act="settings"]');
+    if (!g.hidden) g.focus();
+  }
   function renderSheet() {
     $('#delay-note').textContent = calib.tapMs ? `Es werden ${calib.tapMs} ms abgezogen – in allen Übungen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.` : 'Nichts wird abgezogen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.';
     $('#delay-reset').hidden = !calib.tapMs;
@@ -1911,7 +2120,7 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (!$('#sheet').hidden) { $('#sheet').hidden = true; return; }
+      if (!$('#sheet').hidden) { closeSheet(); return; }
       if (document.documentElement.classList.contains('is-embedded')) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin);
     }
   });
@@ -2080,6 +2289,7 @@
     // --- Ablauf und Sichtbarkeit
     errors.push(...flowCheck());
     errors.push(...delayCheck());
+    errors.push(...uiCheck());
     return errors;
   }
 
@@ -2230,6 +2440,138 @@
     return errors;
   }
 
+  /** Redesign „Konfetti B2“: Tempo der Läufe (runBpm), Liste ohne Unterzeile mit Stufen-Ring, Plan der stillen
+   *  Takte nur außerhalb des Laufs, Fußleiste (Tempo, Start/Stopp, Schritt zurück/vor), eigener Zurück-Knopf. */
+  function uiCheck() {
+    const errors = [];
+    const saved = { view: ui.view, step: ui.step, running: ui.running, result: ui.result, holdStage: ui.holdStage, review: ui.review, tempoPct: ui.tempoPct, cat: ui.cat,
+      lick: state.lick, notes: state.notes, items: state.items, panel: $('#panel').innerHTML, list: $('#list').innerHTML, note: $('#list-note').textContent, foot: $('#foot').innerHTML, chips: $('#cat-chips').innerHTML };
+    selfTesting = true;
+    try {
+      // --- runBpm: Tempo-Pille wirkt auf die Lernschritte 1–5, sonst Original
+      const lick = lickById('hookPenta');
+      state.lick = lick.id;
+      Object.assign(ui, { view: 'lick', step: 1, running: '', review: null, tempoPct: 100 });
+      if (runBpm(lick) !== lick.bpm) errors.push(`runBpm 100 %: ${runBpm(lick)}`);
+      ui.tempoPct = 70;
+      if (Math.abs(runBpm(lick) - lick.bpm * .7) > 1e-9) errors.push(`runBpm 70 %: ${runBpm(lick)}`);
+      ui.tempoPct = 40;
+      if (Math.abs(runBpm(lick) - lick.bpm * .7) > 1e-9) errors.push('runBpm: Untergrenze 70 % nicht erzwungen');
+      ui.tempoPct = 130;
+      if (runBpm(lick) !== lick.bpm) errors.push('runBpm: Obergrenze 100 % nicht erzwungen');
+      ui.tempoPct = 70;
+      for (const step of [1, 2, 3, 4, 5]) { ui.step = step; if (Math.abs(runBpm(lick) - lick.bpm * .7) > 1e-9) errors.push(`runBpm Schritt ${step}: ${runBpm(lick)}`); }
+      const tl70 = makeTimeline(lick);
+      if (Math.abs(tl70.tickSec - 60 / (lick.bpm * .7) / 12) > 1e-12 || Math.abs(tl70.barSec - 48 * tl70.tickSec) > 1e-12) errors.push('runBpm: Zeitleiste folgt dem Tempo nicht');
+      const hearTl = tlHear(lick, 1);
+      if (Math.abs(hearTl.barSec - tl70.barSec) > 1e-12) errors.push('runBpm: Anhören läuft nicht im gewählten Tempo');
+      for (const step of [6, 7]) { ui.step = step; if (runBpm(lick) !== lick.bpm) errors.push(`runBpm Schritt ${step} nicht im Original`); }
+      const hold = tlHold(lick, 1, false);
+      if (Math.abs(hold.tl.barSec - 48 * 60 / lick.bpm / 12) > 1e-12) errors.push('runBpm: Durchhalten nicht im Original');
+      ui.step = 2; ui.review = { queue: [lick.id], i: 0, phase: 'hear' };
+      if (runBpm(lick) !== lick.bpm) errors.push('runBpm: Wiederholung nicht im Original');
+      ui.review = null; ui.view = 'list';
+      if (runBpm(lick) !== lick.bpm) errors.push('runBpm: Liste (Anhören-Knopf) nicht im Original');
+      ui.view = 'lick';
+
+      // --- Fußleiste
+      state.items = {};
+      Object.assign(ui, { step: 1, tempoPct: 100, running: '' });
+      renderFoot();
+      const dis = (act) => $(`#foot [data-act="${act}"]`).disabled;
+      if (!dis('step-prev') || !dis('step-next')) errors.push('Fußleiste Schritt 1 ohne Fortschritt: zurück und vor müssen gesperrt sein');
+      if (dis('tempo-down') || !dis('tempo-up') || !/100 %/.test($('#tempo-val').textContent) || !new RegExp(`${lick.bpm} BPM`).test($('#tempo-val').textContent)) errors.push(`Fußleiste Tempo bei 100 %: „${$('#tempo-val').textContent}“`);
+      if ($('#foot-play').disabled || !/^Start: /.test($('#foot-play').getAttribute('aria-label'))) errors.push('Fußleiste: Start fehlt');
+      ui.tempoPct = 70; renderFoot();
+      if (!dis('tempo-down') || dis('tempo-up') || !/70 %/.test($('#tempo-val').textContent) || !new RegExp(`${Math.round(lick.bpm * .7)} BPM`).test($('#tempo-val').textContent)) errors.push(`Fußleiste Tempo bei 70 %: „${$('#tempo-val').textContent}“`);
+      ui.running = 'hear'; renderFoot();
+      if ($('#foot-play').getAttribute('aria-label') !== 'Stopp' || !(dis('tempo-up') && dis('tempo-down'))) errors.push('Fußleiste: während des Laufs Stopp und gesperrtes Tempo erwartet');
+      ui.running = '';
+      state.items = { [lick.id]: { step: 3, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null } };
+      ui.step = 3; renderFoot();
+      if (dis('step-prev') || dis('step-next')) errors.push('Fußleiste Schritt 3 nach „Startton“: zurück/vor erwartet');
+      ui.step = 4; renderFoot();
+      if (dis('step-prev') || !dis('step-next')) errors.push('Fußleiste: Schritt vor muss gesperrt sein, solange „Stückweise“ nicht geschafft ist');
+      state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 0, rating: null, streak: 0, due: null } };
+      ui.step = 6; renderFoot();
+      if (!/Original/.test($('#tempo-val').textContent) || !dis('tempo-down') || !dis('tempo-up')) errors.push('Fußleiste Durchhalten: Tempo muss „Original“ und gesperrt sein');
+      if (dis('step-next') !== !stepUnlocked(lick, 7)) errors.push('Fußleiste: „vor“ folgt nicht stepUnlocked (Notenbild)');
+      state.notes = 'off';
+      renderFoot();
+      if (!dis('step-next')) errors.push('Fußleiste: Notenbild „aus“ muss „vor“ sperren');
+      state.notes = 'last';
+      ui.step = 5; ui.review = { queue: [lick.id], i: 0, phase: 'hold' }; renderFoot();
+      if (!/Original/.test($('#tempo-val').textContent) || !dis('step-prev') || !dis('step-next')) errors.push('Fußleiste Wiederholung: Original und kein Schrittwechsel erwartet');
+      ui.review = null;
+
+      // --- Plan der stillen Takte (nur vor dem Lauf, eigene Klasse)
+      state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 3, rating: null, streak: 0, due: null } };
+      Object.assign(ui, { step: 6, running: '', result: null, review: null });
+      for (let stageNo = 1; stageNo <= 4; stageNo++) {
+        ui.holdStage = stageNo;
+        const still = holdPlan(stageNo).filter((x) => !x).length;
+        ui.running = '';
+        renderPanel(lick, itemOf(lick.id));
+        const strip = $('#panel .plan-strip');
+        if (!strip || strip.children.length !== HOLD_STAGES[stageNo - 1].bars || strip.querySelectorAll('.is-still').length !== still) errors.push(`Plan-Streifen Stufe ${stageNo}: ${strip ? strip.children.length : 'fehlt'} Kästchen, ${strip ? strip.querySelectorAll('.is-still').length : '–'} still statt ${still}`);
+        if ($('#panel .strip, #panel [data-result]')) errors.push(`Plan-Streifen Stufe ${stageNo}: Ergebnis-Streifen vor dem Lauf`);
+        const pillText = ($('#panel .plan-key .k-pill') || {}).textContent || '';
+        if (still ? pillText !== `${still} stille Takte` : pillText) errors.push(`Plan-Streifen Stufe ${stageNo}: Pille „${pillText}“`);
+        ui.running = 'hold'; renderPanel(lick, itemOf(lick.id));
+        if ($('#panel .plan-strip, #panel .ladder') || !$('#panel [data-placeholder]')) errors.push(`Plan-Streifen Stufe ${stageNo}: während des Laufs sichtbar`);
+        ui.running = '';
+      }
+      ui.holdStage = 4; ui.result = { kind: 'hold', stage: 4, ...judgeHold({ expected: [1, 2], taps: [1, 2], barStart: 0, barSec: 4, tol: .1, plan: holdPlan(4) }) };
+      renderPanel(lick, itemOf(lick.id));
+      if ($('#panel .plan-strip') || !$('#panel .strip')) errors.push('Nach dem Lauf: Ergebnis-Streifen statt Plan erwartet');
+      ui.result = null;
+
+      // --- Liste: ohne Unterzeile, mit Ring, nach Stufe sortiert
+      ui.view = 'list'; ui.cat = 'all'; state.items = { hookPenta: { rating: 'solid', due: null }, arpMoll: { rating: 'shaky', due: null } };
+      renderList();
+      const rows = $$('#list .lick-row');
+      if (rows.length !== LICKS.length) errors.push(`Liste: ${rows.length} Zeilen`);
+      if ($('#list .sub')) errors.push('Liste: Unterzeile vorhanden');
+      let lastLevel = 0;
+      rows.forEach((row) => {
+        const l = lickById(row.dataset.id);
+        const ring = row.querySelector('.k-ring');
+        if (!ring || ring.dataset.level !== String(l.level) || ring.getAttribute('aria-label') !== `Stufe ${l.level} von 3` || Math.abs(parseFloat(ring.style.getPropertyValue('--level')) - l.level / 3) > .002) errors.push(`Liste ${l.id}: Stufen-Ring`);
+        if (l.level < lastLevel) errors.push('Liste: nicht nach Stufe sortiert');
+        lastLevel = l.level;
+        const st = row.querySelector('.status');
+        const want = { Neu: 'k-pill', Lerne: 'k-pill--rep', Sitzt: 'k-pill--ok' }[st.dataset.status];
+        if (!st.classList.contains(want) || st.dataset.status !== statusOf(state.items[l.id])) errors.push(`Liste ${l.id}: Status-Pille`);
+        if (!row.querySelector('button.play[data-act="preview"]') || !row.querySelector('button.open[data-act="open"]') || row.querySelector('.name').textContent !== l.name) errors.push(`Liste ${l.id}: Knöpfe oder Name`);
+      });
+      if (sortedLicks('bass').some((l) => l.cat !== 'bass') || sortedLicks('bass').length !== 2) errors.push('Liste: Filter');
+      state.items = { hookPenta: { due: '2000-01-01' }, bassOktav: { due: '2000-01-02' } };
+      renderList();
+      if ($('#review-card').hidden || $('#review-card [data-act="review-start"]').className.indexOf('k-row--repeat') < 0 || !/Heute wiederholen \(2\)/.test($('#review-text').textContent)) errors.push(`Liste: „Heute wiederholen“-Zeile (${$('#review-text').textContent})`);
+      state.items = {};
+      renderList();
+      if (!$('#review-card').hidden || !/nichts fällig/.test($('#list-note').textContent)) errors.push('Liste: ohne fällige Licks muss „Heute ist nichts fällig.“ stehen');
+
+      // --- Eigener Zurück-Knopf nur eingebettet
+      if (document.documentElement.hasAttribute('data-own-back') !== EMBEDDED) errors.push('data-own-back passt nicht zu ?embedded');
+      show('list');
+      if ($('[data-act="back"]').hidden === EMBEDDED || !$('[data-act="back"]').hasAttribute('data-own-back-btn')) errors.push('Zurück-Knopf in der Liste: nur eingebettet sichtbar');
+      show('lick');
+      if ($('[data-act="back"]').hidden || $('[data-act="settings"]').hidden || $('#foot').hidden || $('#dock').hidden) errors.push('Lick-Ansicht: Zurück, Zahnrad oder Fußleiste fehlen');
+      show('list');
+      if (!$('[data-act="settings"]').hidden || !$('#foot').hidden || !$('#dock').hidden) errors.push('Liste: Zahnrad oder Fußleiste sichtbar');
+      if ($$('#sheet #sound-select, #sheet [data-act="glide"]').length !== 2 || $('.dock-bar #sound-select, .dock-bar [data-act="glide"]')) errors.push('Klang und Glide gehören ins Einstellungen-Sheet');
+    } finally {
+      selfTesting = false;
+      Object.assign(ui, { view: saved.view, step: saved.step, running: saved.running, result: saved.result, holdStage: saved.holdStage, review: saved.review, tempoPct: saved.tempoPct, cat: saved.cat });
+      state.lick = saved.lick; state.items = saved.items; state.notes = saved.notes;
+      $('#panel').innerHTML = saved.panel; $('#list').innerHTML = saved.list; $('#list-note').textContent = saved.note; $('#cat-chips').innerHTML = saved.chips;
+      show(saved.view);
+      if (saved.view === 'lick') renderFoot();
+    }
+    return errors;
+  }
+
   /** Verzögerung erkennen: gemeinsame Vektoren, Vorschlag, Übernehmen, gemeinsame Ablage. */
   function delayCheck() {
     const errors = [...delayVectors()];
@@ -2302,7 +2644,7 @@
     LICKS, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
     sanitizeLicksState, selfCheck, selfCheckAudio,
     // für Konsole und Prüfungen
-    estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
+    runBpm, uiCheck, estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
   };
 
   /* ------------------------------------------------------------------------
