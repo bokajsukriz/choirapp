@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v418. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v419. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -114,6 +114,20 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
   „Im Takt: Vom Blatt“ gibt es nur bei eingeblendetem Blattsingen.
 - **Einsingen** (`550eb40`): Die Kacheln zeigen wieder „ca. m Min“ als Pille
   und „n Übungen“ darunter (Entscheidung zu D-2).
+- **Klatsch-Grooves als eine Seite (Mischpult, vom Chorleiter gewählt):**
+  - Keine Schritte mehr: „Hören“ entfällt, Durchhalten ist der Standard.
+  - Oben ein Regler für die Begleitung mit Icons in der Reihenfolge Klick,
+    Drums, Lücken, Stumm (✓ = schon gehalten, Punkt = Vorschlag). Der
+    Lernpfad und „Mit mehr Begleitung“ bleiben wie bisher.
+  - In der Mitte ein Kreis mit einem Segment je Takt (Takte ohne
+    Begleitung gestrichelt), links − und rechts + für die Länge. Im Lauf
+    bleibt er neutral (kein Taktzähler), danach zeigt er sicher / wackelig /
+    verloren und „6/8 Takte sicher“.
+  - Darunter „Auffrischen“ (einmal hören, einmal nachklatschen) und
+    „Noten“ (nur auf Klick). Die Einschätzung steht nach dem Lauf direkt im
+    Kreis-Feld. Die Eingabe (Tippen/Mikrofon) liegt hinter dem Zahnrad.
+  - Lücken spielen jetzt mit dem vollen Schlagzeug statt nur der Snare.
+  - Auftakt-Lektionen (ohne Durchhalten): Die Fläche startet das Auffrischen.
 - **Klatschfläche ersetzt die Play/BPM-Leiste** (Variante C der Leinwand,
   vom Chorleiter gewählt, siehe D-23).
 - **Rhythmuskurs: Schrittwechsel und Vorstellung** (siehe D-25, Texte vom

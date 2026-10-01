@@ -218,6 +218,42 @@
   .g-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
   .g-dock .tap-pad { height: 140px; margin: 0; }
   main:has(.g-dock) { padding-bottom: 190px; }
+  /* Eine Seite (Mischpult): Begleitung als Regler, Takte als Kreis mit − / +. */
+  .g-page { display: flex; flex-direction: column; gap: 12px; }
+  .g-mixer { display: flex; gap: 4px; padding: 4px; border-radius: 18px; background: var(--surface); border: 2px solid var(--tint-line); }
+  .g-seg { position: relative; flex: 1 1 0; min-width: 0; min-height: 54px; border: 0; border-radius: 14px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; }
+  .g-seg svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .g-seg[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .g-seg:disabled { opacity: .4; cursor: default; }
+  .g-seg.is-done::after { content: '✓'; position: absolute; top: 3px; right: 6px; font-size: 11px; font-weight: 900; color: var(--ok-fg, #157a55); }
+  .g-seg.is-next::after { content: ''; position: absolute; top: 6px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-foreground, #db0a73); }
+  .g-card { display: flex; flex-direction: column; gap: 10px; }
+  .g-ringrow { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .g-step { width: 48px; height: 48px; flex: none; border-radius: 50%; border: 2px solid var(--tint-line); background: var(--surface); color: var(--text); font: inherit; font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1; cursor: pointer; }
+  .g-step:disabled { opacity: .35; cursor: default; }
+  .g-ring { width: min(172px, 46vw); height: auto; flex: none; }
+  .g-ring path { fill: none; stroke-width: 16; stroke-linecap: butt; stroke: #f2c6dc; }
+  .g-ring text { stroke: none; }
+  .g-ring path.is-silent { stroke-dasharray: 3 4; opacity: .7; }
+  .g-ring path.is-sure { stroke: #9fdcc2; }
+  .g-ring path.is-wobbly { stroke: #F4DE8C; }
+  .g-ring path.is-lost { stroke: #f3a9a9; }
+  .g-ring-n { font-family: var(--font-display); font-weight: 700; font-size: 32px; fill: var(--text); }
+  .g-ring-t { font-weight: 800; font-size: 12px; fill: var(--muted); }
+  .g-feedback { margin: 0; text-align: center; font-size: 14px; line-height: 1.4; color: var(--text); }
+  .g-feedback:empty { display: none; }
+  .g-after { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .g-after:empty { display: none; }
+  .g-rate-q { margin: 4px 0 0; text-align: center; font-weight: 800; font-size: 14px; }
+  .g-rate { display: flex; gap: 6px; }
+  .g-rate button { flex: 1 1 0; min-height: 44px; border-radius: 999px; border: 2px solid var(--tint-line); background: var(--surface); color: var(--text); font: inherit; font-weight: 800; font-size: 13px; cursor: pointer; }
+  .g-rate button:disabled { opacity: .45; border-style: dashed; cursor: default; }
+  .g-rate-note { margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
+  .g-tools { display: flex; justify-content: center; gap: 8px; }
+  .g-tool { display: inline-flex; align-items: center; gap: 6px; }
+  .g-tool svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .g-tool[aria-pressed="true"] { background: var(--hear-bg); border-color: var(--hear); color: var(--hear-fg); }
+  .g-settings { padding: 8px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
   .g-steps li { padding: 0; }
   .g-steps li > button { width: 100%; min-height: 44px; padding: 6px 2px; font: inherit; color: inherit; background: none; border: 0; border-radius: 9px; line-height: 1.2; cursor: pointer; }
   .g-steps li > button b { display: block; font-size: .8rem; }
@@ -8873,11 +8909,11 @@
       const plan = combo ? comboPlan(combo) : holdPlan(stage);
       const full = accompFor(l, { accomp: 'full' }, course);
       const snareAcc = ACCOMP[l.meter] && course.accomp !== 'click' ? { level: 'snare', hatGrid: { period: 6, at: [0] } } : null;
-      // Drums: der ganze Groove; Klick: nur die Zählzeiten; Lücken: Snare wie bisher.
+      // Drums: der ganze Groove; Klick: nur die Zählzeiten; Lücken: der Groove mit Aussetzern (Chorleiter).
       // Drums = voller Groove, unabhängig von den Kurs-Regeln (Kapitel 1 ohne
       // Schlagzeug, Kurs-Einstellung „Klick“) – sonst klänge „Drums“ nur als Klick.
       const drums = grooveDrums(l);
-      const snare = !combo ? snareAcc : st.acc === 'drums' ? drums : st.acc === 'click' ? null : snareAcc;
+      const snare = !combo ? snareAcc : st.acc === 'drums' || st.acc === 'gaps' ? drums : st.acc === 'click' ? null : snareAcc;
       let c = T; beat(0, T); phases.push({ from: 0, to: at(T), phase: 'count' });
       if (demo) {
         claps(c, !!full); accompany(c, c + pat.total, full); phases.push({ from: at(c), to: at(c + pat.total), phase: 'listen' });
@@ -8926,7 +8962,7 @@
   }
 
   /* ---- Lauf: Ereignisse mit Vorlauf auf der Audio-Uhr einplanen ---- */
-  const gv = { fromHub: false, view: 'list', id: null, phase: 'hear', stage: 1, combo: null, bpm: null, notes: false, heard: {}, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
+  const gv = { fromHub: false, view: 'list', id: null, phase: 'hold', settings: false, stage: 1, combo: null, bpm: null, notes: false, heard: {}, result: null, running: '', feedback: '', kind: '', review: null, lastRunAt: {}, visitRated: false, padKey: '' };
   const gr = { run: null, timer: 0, frame: 0 };
   async function groovesStart(tl, onEnd) {
     groovesStop(false);
@@ -9042,34 +9078,45 @@
     for (const t of res.taps) parts.push(`<rect class="tp is-${t.status === 'extra' ? 'miss' : t.status}" x="${(Number(X(t.t)) - 1.5).toFixed(1)}" y="40" width="3" height="24" rx="1.5"/>`);
     return `<div class="stage" data-result><svg viewBox="0 0 ${ST.W} ${ST.H}" role="img" aria-label="Ergebnis: ${res.hits} von ${res.exp.length} getroffen">${parts.join('')}</svg></div>`;
   }
-  /** Taktstreifen nach dem Durchhalten (stille Takte schraffiert). */
-  function groovesStrip(res) {
-    const cells = res.bars.map((b, i) => {
-      const f = b.expected ? b.hit / b.expected : 1;
-      return `<div class="g-cell ${f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost'}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}">${i + 1}</div>`;
-    }).join('');
-    return `<div class="g-strip" role="img" aria-label="Takte: ${res.bars.filter((b) => b.expected && b.hit >= .75 * b.expected).length} von ${res.bars.length} sicher">${cells}</div>
-      <div class="g-legend"><span><i style="background:var(--ok-bg)"></i>sicher</span><span><i style="background:var(--wobble-bg)"></i>wackelig</span><span><i style="background:var(--lost-bg)"></i>verloren</span><span><i style="background-image:repeating-linear-gradient(135deg,rgba(36,27,61,.4) 0 2px,transparent 2px 5px)"></i>still (ohne Schlagzeug)</span></div>`;
-  }
+
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  /** Ein Satz vor dem Start: was kommt (im Lauf gibt es keinen Zähler). */
-  function groovesBefore(st) {
-    if (st.acc === 'drums') return `${st.bars} Takte mit Schlagzeug – du hältst den Rhythmus über die ganze Zeit. Am Ende ein Schlussschlag.`;
-    if (st.acc === 'click') return `${st.bars} Takte, nur der Klick zählt – du hältst den Groove. Am Ende ein Schlussschlag.`;
-    if (st.acc === 'silent') return `Einzähler, dann ${st.bars} Takte Stille – du hältst den Rhythmus allein. Der Schlussschlag zeigt, ob du noch drin bist.`;
-    if (!st.on) return `${st.bars} Takte. Die Snare spielt durch – du hältst den Rhythmus über die ganze Zeit. Am Ende ein Schlussschlag.`;
-    const sets = Math.ceil(st.bars / (st.on + st.off));
-    return `${st.bars} Takte. Das Schlagzeug setzt ${sets === 2 ? 'zweimal' : sets === 3 ? 'dreimal' : `${sets}-mal`} für ${st.off} Takte aus – spiel weiter. Am Ende ein Schlussschlag.`;
-  }
+
   const groovesRateHtml = (l, g) => {
     const canSolid = grooveCanSolid(l, g);
-    return `<p style="margin:12px 0 6px"><b>Wie fühlt es sich an?</b></p>
-      <div class="g-rate"><button class="nav-btn" type="button" data-grooves-rate="shaky">Noch wackelig</button><button class="nav-btn" type="button" data-grooves-rate="ok">Geht schon</button>
-      <button class="nav-btn" type="button" data-grooves-rate="solid"${canSolid ? '' : ' disabled'}>Sitzt</button></div>
-      ${canSolid ? '' : '<p class="foot-note" style="text-align:left">Dafür einmal 8 Takte mit Klick halten.</p>'}
-      <p class="foot-note" style="text-align:left">Bestimmt, wann der Groove wieder in „Heute wiederholen“ auftaucht.${g.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[g.rating]}.` : ''}</p>`;
+    const was = g.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[g.rating]}.` : '';
+    return `<p class="g-rate-q">Wie fühlt es sich an?</p>
+      <div class="g-rate"><button type="button" data-grooves-rate="shaky">Wackelig</button><button type="button" data-grooves-rate="ok">Geht schon</button><button type="button" data-grooves-rate="solid"${canSolid ? '' : ' disabled'}>Sitzt</button></div>
+      <p class="g-rate-note">${canSolid ? '' : '„Sitzt“ nach 8 Takten mit Klick. '}Bestimmt, wann der Groove wieder fällig wird.${was}</p>`;
   };
-  const groovesPhases = (l) => [['hear', 'Hören'], ['refresh', 'Auffrischen'], ...(holdable(l) ? [['hold', 'Durchhalten']] : []), ['rate', 'Einschätzung']];
+  /** Reihenfolge der Regler (Chorleiter): Klick, Drums, Lücken, Stumm. Der
+   *  Lernpfad und „Mit mehr Begleitung“ folgen weiter GROOVE_ACCS. */
+  const GROOVE_SEG_ORDER = ['click', 'drums', 'gaps', 'silent'];
+  const GROOVE_ACC_ICONS = {
+    click: '<path d="M9 3h6l4 18H5L9 3Z"/><path d="M12 15l5-8"/>',
+    drums: '<ellipse cx="12" cy="8" rx="8" ry="3"/><path d="M4 8v8c0 1.7 3.6 3 8 3s8-1.3 8-3V8"/><path d="M4 4l6 4M20 4l-6 4"/>',
+    gaps: '<path d="M3 12h4M17 12h4"/><path d="M10 12h4" stroke-dasharray="1 2.5"/>',
+    silent: '<path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M22 9l-6 6M16 9l6 6"/>',
+  };
+  /** Kreis der Takte: ein Segment je Takt; Takte ohne Begleitung gestrichelt.
+   *  Im Lauf neutral (kein Taktzähler), nach dem Lauf sicher/wackelig/verloren. */
+  function groovesRing(combo, res, running) {
+    const plan = comboPlan(combo);
+    const n = plan.length, R = 70, c = 86, gap = n > 8 ? .03 : .045;
+    const segs = plan.map((on, i) => {
+      const a0 = -Math.PI / 2 + i * 2 * Math.PI / n + gap, a1 = a0 + 2 * Math.PI / n - 2 * gap;
+      const b = res && res.bars[i];
+      const f = b ? (b.expected ? b.hit / b.expected : 1) : 0;
+      const cls = !b ? (on ? 'is-plan' : 'is-plan is-silent') : f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost';
+      const pt = (a) => `${(c + R * Math.cos(a)).toFixed(1)} ${(c + R * Math.sin(a)).toFixed(1)}`;
+      return `<path class="${cls}${b && !on ? ' is-silent' : ''}" d="M${pt(a0)} A${R} ${R} 0 0 1 ${pt(a1)}"/>`;
+    }).join('');
+    const sure = res ? res.bars.filter((b) => !b.expected || b.hit >= .75 * b.expected).length : 0;
+    const big = res ? `${sure}/${n}` : String(n);
+    const small = res ? 'Takte sicher' : 'Takte halten';
+    return `<svg class="g-ring${res ? ' is-result' : ''}" viewBox="0 0 172 172" role="img" aria-label="${res ? `${sure} von ${n} Takten sicher` : `${n} Takte`}"${running ? ' data-placeholder' : ''}>${segs}<text x="86" y="84" text-anchor="middle" class="g-ring-n">${big}</text><text x="86" y="106" text-anchor="middle" class="g-ring-t">${small}</text></svg>`;
+  }
+  /** Was die Klatschfläche startet: Durchhalten, bei Auftakt-Lektionen Auffrischen. */
+  const groovesPhases = (l) => [['refresh', 'Auffrischen'], ...(holdable(l) ? [['hold', 'Durchhalten']] : [])];
 
   function renderGrooves() {
     const host = $('[data-grooves]');
@@ -9092,65 +9139,51 @@
     const l = lessonById(gv.id);
     const g = grooveItem(l.id);
     const rv = gv.review && gv.review.queue ? gv.review : null;
-    const phases = groovesPhases(l).filter(([p]) => !(rv && p === 'refresh' && holdable(l)));
-    // Schritte antippbar (man kann sich durchklicken); der aktuelle ist markiert.
-    const nowIdx = phases.findIndex(([p]) => p === gv.phase);
-    const chips = phases.map(([p, name], i) => `<li class="${gv.phase === p ? 'is-now' : i < nowIdx ? 'is-done' : ''}"><button type="button" data-grooves-phase="${p}"${gv.phase === p ? ' aria-current="step"' : ''}><b>${i + 1}</b>${name}</button></li>`).join('');
-    let body = '';
+    // Eine Seite (Mischpult, Chorleiter): Durchhalten ist der Kern – Begleitung
+    // als Regler, die Länge mit − / + am Kreis der Takte; „Auffrischen“ und
+    // „Noten“ als Knöpfe darunter; die Einschätzung nach dem Lauf auf derselben Seite.
     const running = !!gv.running;
-    const stopBtn = running ? '<button type="button" class="nav-btn" data-grooves-act="stop">■ Stopp</button>' : '';
-    const fb = `<p class="course-how" role="status" aria-live="polite" data-grooves-feedback>${esc(gv.feedback)}</p>`;
-    // Klatschfläche unten (Variante C): in Ruhe der Startknopf, im Lauf das Klatschfeld, Stopp in der Ecke.
-    const dock = `<div class="pad-wrap g-dock"><button class="tap-pad grooves-pad" type="button" data-phase="${gv.result ? 'done' : 'idle'}" aria-label="${running ? 'Klatschfläche' : 'Übung starten'}"><span class="pad-beats"></span><span class="pad-label">${gv.result ? 'Nochmal: tippen' : 'Tippen zum Starten'}</span></button>
-      ${tempoDragHtml('grooves', groovesBpm(), running)}<span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
-      <button class="pad-corner pad-stop" type="button" data-grooves-act="stop" aria-label="Stoppen"${running ? '' : ' hidden'}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>`;
-    const pad = '';
-    if (gv.phase === 'hear') {
-      // Noten nur auf Klick (nach dem ersten Hören), mit Kurs-Silben – Klang vor Zeichen.
-      const heard = !!gv.heard[l.id];
-      const notes = gv.notes && heard && !running
-        ? `<div class="stage" data-grooves-notes>${stageSvgHtml({ index: -1, mode: 'along', meter: l.meter, pattern: lessonPattern(l), duo: null, result: null, youStart: null, showNotes: true, grooves: true }, true, 'rest')}</div>`
-        : groovesPlaceholder();
-      const toggle = heard ? `<button type="button" class="nav-btn" data-grooves-act="notes" aria-pressed="${!!gv.notes}"${running ? ' disabled' : ''}>${gv.notes ? 'Noten ausblenden' : 'Noten zeigen'}</button>` : '';
-      body = `<p class="course-intro">Hör den Groove zweimal, mit Begleitung. Noch nichts klatschen – nur spüren, wo die Schläge liegen.</p>${notes}
-        <div class="course-nav"><button type="button" class="nav-btn is-primary" data-grooves-act="hear"${running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn}${toggle}<span class="grow"></span>
-        <button type="button" class="nav-btn" data-grooves-phase="${rv && holdable(l) ? 'hold' : 'refresh'}">Weiter</button></div>`;
-    } else if (gv.phase === 'refresh') {
-      const res = gv.result && gv.result.kind === 'refresh' ? gv.result : null;
-      body = `<p class="course-intro">Auffrischen: Du hörst den Rhythmus einmal und klatschst ihn dann nach – ohne Noten, mit Bassdrum und Snare.</p>${res ? groovesTimeline(res) : groovesPlaceholder()}${pad}${fb}
-        <div class="course-nav"><span class="grow"></span>
-        <button type="button" class="nav-btn" data-grooves-phase="${holdable(l) ? 'hold' : 'rate'}">Weiter</button></div>`;
-    } else if (gv.phase === 'hold') {
-      const cur = parseCombo(comboFor(l, gv.combo)) || parseCombo(comboFor(l, nextCombo(g.held))) || parseCombo(comboFor(l, 'drums4'));
-      const sug = comboFor(l, nextCombo(g.held));
+    const holdOk = holdable(l);
+    const cur = holdOk ? (parseCombo(comboFor(l, gv.combo)) || parseCombo(comboFor(l, nextCombo(g.held))) || parseCombo(comboFor(l, 'drums4'))) : null;
+    const res = gv.result;
+    let mixer = '', card = '';
+    if (holdOk) {
+      const sugAcc = parseCombo(comboFor(l, nextCombo(g.held)))?.acc;
       const noDrums = !grooveDrums(l);
-      const sugAcc = parseCombo(sug)?.acc;
-      const accChips = GROOVE_ACCS.map(([a, name]) => {
+      mixer = `<div class="g-mixer" role="group" aria-label="Begleitung">${GROOVE_SEG_ORDER.map((a) => {
         const done = GROOVE_LENS[a].some((n) => g.held.includes(`${a}${n}`));
         const off = running || (a === 'drums' && noDrums);
-        return `<button type="button" class="chip g-chip${done ? ' is-done' : ''}${a === sugAcc && a !== cur.acc ? ' is-next' : ''}" data-grooves-acc="${a}" aria-pressed="${a === cur.acc}"${off ? ' disabled' : ''}${a === 'drums' && noDrums ? ` title="Im ${l.meter}-Takt gibt es kein Schlagzeug"` : ''}>${done ? '✓ ' : ''}${name}</button>`;
-      }).join('');
-      const lenChips = [4, 8, 16].map((n) => {
-        const id = `${cur.acc}${n}`, ok = GROOVE_LENS[cur.acc].includes(n), done = g.held.includes(id);
-        return `<button type="button" class="chip g-chip${done ? ' is-done' : ''}${id === sug && n !== cur.bars ? ' is-next' : ''}" data-grooves-len="${n}" aria-pressed="${n === cur.bars}"${ok && !running ? '' : ' disabled'}>${done ? '✓ ' : ''}${n} Takte</button>`;
-      }).join('');
-      const res = gv.result && gv.result.kind === 'hold' ? gv.result : null;
-      const nextAfter = res && res.held ? comboFor(l, nextCombo(g.held)) : null;
-      const accIdx = GROOVE_ACCS.findIndex(([a]) => a === cur.acc);
-      const easier = res && !res.held && accIdx > 0 ? GROOVE_ACCS[accIdx - 1][0] : null;
-      body = `<div class="g-choose" role="group" aria-label="Durchhalten einstellen"><span class="sub-label">Begleitung</span><div class="chip-row">${accChips}</div>
-        <span class="sub-label">Länge</span><div class="chip-row">${lenChips}</div></div>
-        <p class="course-intro">${groovesBefore(comboStage(cur.id))}${sug && sug !== cur.id ? ` <span class="g-sug">Vorschlag: ${comboName(sug)}</span>` : ''}</p>
-        ${res ? groovesStrip(res) : groovesPlaceholder()}${pad}${fb}
-        <div class="course-nav">
-        ${easier ? `<button type="button" class="nav-btn" data-grooves-acc="${easier}">Mit mehr Begleitung</button>` : ''}<span class="grow"></span>
-        ${nextAfter && nextAfter !== cur.id ? `<button type="button" class="nav-btn" data-grooves-combo="${nextAfter}">Weiter: ${comboName(nextAfter)}</button>` : `<button type="button" class="nav-btn" data-grooves-phase="rate">Weiter: Einschätzung</button>`}</div>`;
-    } else {
-      body = groovesRateHtml(l, g);
+        const name = GROOVE_ACCS.find(([x]) => x === a)[1];
+        return `<button type="button" class="g-seg${done ? ' is-done' : ''}${a === sugAcc && a !== cur.acc ? ' is-next' : ''}" data-grooves-acc="${a}" aria-pressed="${a === cur.acc}"${off ? ' disabled' : ''}${a === 'drums' && noDrums ? ` title="Im ${l.meter}-Takt gibt es kein Schlagzeug"` : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${GROOVE_ACC_ICONS[a]}</svg><span>${name}</span></button>`;
+      }).join('')}</div>`;
     }
+    const notes = gv.notes && !running ? `<div class="stage" data-grooves-notes>${stageSvgHtml({ index: -1, mode: 'along', meter: l.meter, pattern: lessonPattern(l), duo: null, result: null, youStart: null, showNotes: true, grooves: true }, true, 'rest')}</div>` : '';
+    const fb = `<p class="g-feedback" role="status" aria-live="polite" data-grooves-feedback>${esc(gv.feedback)}</p>`;
+    if (res && res.kind === 'refresh' && !running) card = groovesTimeline(res) + fb;
+    else if (holdOk) {
+      const lens = GROOVE_LENS[cur.acc];
+      const li = lens.indexOf(cur.bars);
+      const shown = res && res.kind === 'hold' && !running ? res : null;
+      const step = (d, label, sym) => { const n = lens[li + d]; return `<button type="button" class="g-step" data-grooves-len="${n || ''}" aria-label="${label}"${n && !running && !shown ? '' : ' disabled'}>${sym}</button>`; };
+      card = `<div class="g-ringrow">${step(-1, 'Weniger Takte', '−')}${groovesRing(cur.id, shown, running)}${step(1, 'Mehr Takte', '+')}</div>`;
+      if (shown) {
+        const nextAfter = shown.held ? comboFor(l, nextCombo(g.held)) : null;
+        const accIdx = GROOVE_ACCS.findIndex(([a]) => a === cur.acc);
+        const easier = !shown.held && accIdx > 0 ? GROOVE_ACCS[accIdx - 1][0] : null;
+        card += fb + `<div class="g-after">${easier ? `<button type="button" class="nav-btn" data-grooves-acc="${easier}">Mit mehr Begleitung</button>` : ''}${nextAfter && nextAfter !== cur.id ? `<button type="button" class="nav-btn" data-grooves-combo="${nextAfter}">Weiter: ${comboName(nextAfter)}</button>` : ''}</div>`;
+      }
+    } else card = running ? groovesPlaceholder() : `${groovesPlaceholder()}<p class="g-feedback">Mit Auftakt: Hier frischst du den Rhythmus auf – hören, dann nachklatschen.</p>`;
+    const rateNow = res && !running && (res.kind === 'hold' || !holdOk);
+    const rate = rateNow ? groovesRateHtml(l, g) : '';
+    const tools = `<div class="g-tools">${holdOk ? `<button type="button" class="nav-btn g-tool" data-grooves-act="refresh"${running ? ' disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${STRIP_ICONS.listen}</svg>Auffrischen</button>` : ''}<button type="button" class="nav-btn g-tool" data-grooves-act="notes" aria-pressed="${!!gv.notes}"${running ? ' disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>${gv.notes ? 'Noten aus' : 'Noten'}</button></div>`;
+    // Klatschfläche unten (Variante C): in Ruhe der Startknopf, im Lauf das Klatschfeld, Stopp in der Ecke.
+    const dock = `<div class="pad-wrap g-dock"><button class="tap-pad grooves-pad" type="button" data-phase="${res ? 'done' : 'idle'}" aria-label="${running ? 'Klatschfläche' : 'Übung starten'}"><span class="pad-beats"></span><span class="pad-label">${res ? 'Nochmal: tippen' : 'Tippen zum Starten'}</span></button>
+      ${tempoDragHtml('grooves', groovesBpm(), running)}<span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
+      <button class="pad-corner pad-stop" type="button" data-grooves-act="stop" aria-label="Stoppen"${running ? '' : ' hidden'}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>`;
+    const gear = `<div class="head-tools"><button class="icon-btn" type="button" data-grooves-act="settings" aria-expanded="${!!gv.settings}" aria-label="Einstellungen: Eingabe" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button></div>`;
     host.innerHTML = `<div class="ex-head"><button class="back-btn" type="button" data-grooves-back aria-label="Zurück zur Liste" title="Zurück zur Liste"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
-      <div class="ex-title"><span class="ex-area" aria-hidden="true">Klatsch-Grooves${rv ? ` · Wiederholen ${rv.i + 1}/${rv.queue.length}` : ''}</span><h2 class="mode-title">${esc(l.name)}</h2></div></div>
-      <section class="panel"><ol class="course-steps g-steps" aria-label="Schritte">${chips}</ol>${body}${delayCard}${gv.phase === 'rate' ? '' : inputRow}</section>${gv.phase === 'refresh' || gv.phase === 'hold' ? dock : ''}`;
+      <div class="ex-title"><span class="ex-area" aria-hidden="true">Klatsch-Grooves${rv ? ` · Wiederholen ${rv.i + 1}/${rv.queue.length}` : ''}</span><h2 class="mode-title">${esc(l.name)}</h2></div>${gear}</div>
+      <section class="panel g-page">${gv.settings ? `<div class="g-settings">${inputRow}</div>` : ''}${mixer}<div class="k-stage g-card">${notes}${card}${rate}</div>${tools}${delayCard}</section>${dock}`;
     gv.padKey = '';
   }
   const gRerender = () => { if (views.rhythm === 'grooves') renderGrooves(); };
@@ -9170,8 +9203,7 @@
     const l = lessonById(id);
     const g = grooveItem(id);
     const review = !!(gv.review && gv.review.queue);
-    let ph = phase || (review ? (holdable(l) ? 'hold' : 'hear') : g.last?.phase || 'hear');
-    if (!groovesPhases(l).some(([p]) => p === ph) || (review && ph === 'refresh' && holdable(l))) ph = 'hear';
+    const ph = phase || (holdable(l) ? 'hold' : 'refresh');
     const combo = review ? lastHeldCombo(g.held) || nextCombo(g.held) : (parseCombo(g.last?.combo) ? g.last.combo : nextCombo(g.held));
     Object.assign(gv, { view: 'lesson', id, phase: ph, combo: comboFor(l, combo || 'drums4'), bpm: null, notes: false, result: null, running: '', feedback: '', visitRated: false });
     if (review) delete gv.lastRunAt[id]; // erster Abruf nach Tagen: einmal das Vorbild
@@ -9225,6 +9257,7 @@
     const g = grooveItem(l.id);
     if (act === 'stop') { groovesStop(true); return; }
     if (act === 'hear') { groovesRun('hear', grooveTimeline(l, { kind: 'hear', times: 2, bpm: groovesBpm() }), () => { gv.heard[l.id] = true; }); return; }
+    if (act === 'settings') { gv.settings = !gv.settings; gRerender(); $('[data-grooves-act="settings"]')?.focus(); return; }
     if (act === 'notes') { gv.notes = !gv.notes; gRerender(); $('[data-grooves-act="notes"]')?.focus(); return; }
     if (act === 'refresh') {
       const tl = grooveTimeline(l, { kind: 'refresh', bpm: groovesBpm() });
@@ -9289,7 +9322,6 @@
     else if (b.hasAttribute('data-grooves-review')) startGroovesReview();
     else if (b.hasAttribute('data-grooves-back')) { groovesStop(false); gv.view = 'list'; gv.review = null; gv.result = null; gv.running = ''; gRerender(); }
     else if (d.groovesAct) groovesActions(d.groovesAct);
-    else if (d.groovesPhase) { groovesStop(true); gv.phase = d.groovesPhase; gv.notes = false; gv.result = null; gFeedback(''); rememberGroove(); gRerender(); $(`[data-grooves-phase="${gv.phase}"][aria-current]`)?.focus(); }
     else if (d.groovesAcc || d.groovesLen || d.groovesCombo) {
       // Begleitung/Länge wählen; eine Länge, die es für die Begleitung nicht gibt, rückt auf die nächste.
       const cur = parseCombo(gv.combo) || parseCombo('drums4');
@@ -9305,8 +9337,8 @@
     const pad = e.target.closest?.('.grooves-pad');
     if (!pad) return;
     e.preventDefault();
-    // In Ruhe startet die Fläche den Schritt (Auffrischen bzw. Durchhalten), im Lauf wird geklatscht.
-    if (!gv.running && (gv.phase === 'refresh' || gv.phase === 'hold')) { groovesActions(gv.phase); return; }
+    // In Ruhe startet die Fläche das Durchhalten (Auftakt-Lektionen: Auffrischen), im Lauf wird geklatscht.
+    if (!gv.running && gv.id) { groovesActions(holdable(lessonById(gv.id)) ? 'hold' : 'refresh'); return; }
     groovesTap();
   });
   // Nichts klingt weiter, wenn die Seite verdeckt wird.
@@ -10426,38 +10458,45 @@
       }
       course.done = COURSE.map((l) => l.id);
       if (parseGroovesParam('?tab=rhythm&grooves=1') !== 'list' || parseGroovesParam('?grooves=review') !== 'review' || parseGroovesParam('?grooves=x') !== null || parseGroovesParam('') !== null) errors.push('Klatsch-Grooves: parseGroovesParam');
-      // Sichtbarkeit: Platzhalter, kein Raster, keine Marke, kein Zähler während des Laufs; Ergebnis danach
+      // Sichtbarkeit: Platzhalter (neutraler Kreis bzw. Fläche), kein Raster, keine Marke, kein Zähler während des Laufs; Ergebnis danach
       views.rhythm = 'grooves';
       const host = $('[data-grooves]');
-      for (const id of ['puls', 'clave']) {
-        for (const phase of ['hear', 'refresh', 'hold']) {
-          Object.assign(gv, { view: 'lesson', id, phase, running: phase, result: null, review: null, feedback: '' });
+      for (const id of ['puls', 'clave', 'auftakt']) {
+        for (const kind of ['refresh', 'hold']) {
+          Object.assign(gv, { view: 'lesson', id, combo: 'click8', running: kind, result: null, review: null, feedback: '', notes: false });
           renderGrooves();
-          if (!host.querySelector('[data-placeholder]')) errors.push(`Klatsch-Grooves ${id}/${phase}: Platzhalter fehlt`);
-          if (host.querySelector('.g-strip, [data-result], .tl, .tg, .ph, .tl-beat')) errors.push(`Klatsch-Grooves ${id}/${phase}: Raster oder Ergebnis im Lauf sichtbar`);
-          if (/Takt \d+ von|Takt \d+\/\d+|Noch \d+ Takte/.test(host.textContent)) errors.push(`Klatsch-Grooves ${id}/${phase}: Taktzähler`);
+          if (!host.querySelector('[data-placeholder]')) errors.push(`Klatsch-Grooves ${id}/${kind}: Platzhalter fehlt`);
+          if (host.querySelector('.g-ring.is-result, [data-result], .tl, .tg, .ph, .tl-beat, .g-rate')) errors.push(`Klatsch-Grooves ${id}/${kind}: Raster oder Ergebnis im Lauf sichtbar`);
+          if (/Takt \d+ von|Takt \d+\/\d+|Noch \d+ Takte/.test(host.textContent)) errors.push(`Klatsch-Grooves ${id}/${kind}: Taktzähler`);
         }
       }
       const ph = [];
-      for (const id of ['puls', 'clave']) { Object.assign(gv, { view: 'lesson', id, phase: 'hold', running: 'hold', result: null }); renderGrooves(); ph.push(host.querySelector('[data-placeholder]')?.outerHTML); }
-      if (ph[0] !== ph[1] || !ph[0]?.includes('Nach Gehör')) errors.push('Klatsch-Grooves: Platzhalter hängt von der Lektion ab');
-      // Hören: Noten nur auf Klick (und erst nach dem Hören); Schritte antippbar; Durchhalten mit zwei Chip-Reihen
-      Object.assign(gv, { view: 'lesson', id: 'puls', phase: 'hear', running: '', result: null, notes: false, heard: {} });
+      for (const id of ['puls', 'clave']) { Object.assign(gv, { view: 'lesson', id, combo: 'click8', running: 'hold', result: null }); renderGrooves(); ph.push(host.querySelector('[data-placeholder]')?.outerHTML); }
+      if (ph[0] !== ph[1]) errors.push('Klatsch-Grooves: Platzhalter hängt von der Lektion ab');
+      // Eine Seite (Mischpult): keine Schritte; Regler Klick, Drums, Lücken, Stumm; Länge mit − / +; Noten nur auf Klick
+      Object.assign(gv, { view: 'lesson', id: 'puls', running: '', result: null, notes: false, combo: 'gaps8' });
       renderGrooves();
-      if (host.querySelector('[data-grooves-notes], [data-grooves-act="notes"]')) errors.push('Klatsch-Grooves: Noten vor dem ersten Hören');
-      gv.heard.puls = true; renderGrooves();
-      if (host.querySelector('[data-grooves-notes]') || !host.querySelector('[data-grooves-act="notes"]')) errors.push('Klatsch-Grooves: Noten automatisch oder ohne Knopf');
+      if (host.querySelector('.g-steps, [data-grooves-phase]')) errors.push('Klatsch-Grooves: noch Schritte');
+      if ([...host.querySelectorAll('.g-seg')].map((x) => x.dataset.groovesAcc).join() !== 'click,drums,gaps,silent' || host.querySelector('[data-grooves-acc="gaps"]').getAttribute('aria-pressed') !== 'true') errors.push('Klatsch-Grooves: Regler Begleitung');
+      const steps = host.querySelectorAll('.g-step');
+      if (steps.length !== 2 || !steps[0].disabled || steps[1].disabled || steps[1].dataset.groovesLen !== '16') errors.push('Klatsch-Grooves: − / + für die Länge');
+      if (host.querySelectorAll('.g-ring path').length !== 8 || host.querySelectorAll('.g-ring path.is-silent').length !== comboPlan('gaps8').filter((x) => !x).length) errors.push('Klatsch-Grooves: Kreis zeigt die Takte nicht');
+      if (!host.querySelector('[data-grooves-act="refresh"]') || host.querySelector('[data-grooves-notes]') || !host.querySelector('[data-grooves-act="notes"]')) errors.push('Klatsch-Grooves: Auffrischen/Noten');
+      if (host.querySelector('.g-rate')) errors.push('Klatsch-Grooves: Einschätzung vor dem Lauf');
       gv.notes = true; renderGrooves();
-      if (!host.querySelector('[data-grooves-notes] svg')) errors.push('Klatsch-Grooves: „Noten zeigen“ zeigt nichts');
-      if (host.querySelectorAll('.g-steps button[data-grooves-phase]').length !== groovesPhases(COURSE[0]).length) errors.push('Klatsch-Grooves: Schritte nicht antippbar');
-      Object.assign(gv, { phase: 'hold', combo: 'gaps8', notes: false });
-      renderGrooves();
+      if (!host.querySelector('[data-grooves-notes] svg')) errors.push('Klatsch-Grooves: „Noten“ zeigt nichts');
+      gv.notes = false; renderGrooves();
       if (!host.querySelector('.g-dock .grooves-pad') || host.querySelector('[data-grooves-act="hold"]') || !host.querySelector('.g-dock .pad-stop').hidden || host.querySelector('.g-dock .grooves-pad').textContent.trim() !== 'Tippen zum Starten') errors.push('Klatsch-Grooves: Klatschfläche unten als Startknopf');
-      if (host.querySelectorAll('[data-grooves-acc]').length !== 4 || host.querySelectorAll('[data-grooves-len]').length !== 3 || !host.querySelector('[data-grooves-len="4"]').disabled || host.querySelector('[data-grooves-acc="gaps"]').getAttribute('aria-pressed') !== 'true') errors.push('Klatsch-Grooves: Auswahl Begleitung/Länge');
+      // Lücken mit Schlagzeug (Chorleiter): in den Takten mit Begleitung spielt der Groove
+      {
+        const tl = grooveTimeline(COURSE[0], { kind: 'hold', combo: 'gaps8', demo: false });
+        const first = tl.events.filter((ev) => ev.t >= tl.startSec - 1e-9 && ev.t < tl.startSec + tl.barSec - 1e-9);
+        if (grooveDrums(COURSE[0]) && !first.some((ev) => ev.type === 'drum' && ev.kind === 'kick')) errors.push('Klatsch-Grooves: Lücken ohne Schlagzeug');
+      }
       const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
-      Object.assign(gv, { view: 'lesson', id: 'puls', phase: 'hold', running: '', result: { kind: 'hold', stage: 1, ...res } });
+      Object.assign(gv, { view: 'lesson', id: 'puls', running: '', combo: 'click4', result: { kind: 'hold', stage: 1, ...res } });
       renderGrooves();
-      if (!host.querySelector('.g-strip')) errors.push('Klatsch-Grooves: Taktstreifen nach dem Lauf fehlt');
+      if (!host.querySelector('.g-ring.is-result') || !host.querySelector('[data-grooves-rate="ok"]') || host.querySelectorAll('.g-step:not(:disabled)').length) errors.push('Klatsch-Grooves: Ergebnis mit Kreis und Einschätzung fehlt');
       Object.assign(gv, { view: 'list', running: '', result: null });
       renderGrooves();
       if (host.querySelectorAll('.g-row').length !== COURSE.length) errors.push(`Klatsch-Grooves: Liste zeigt ${host.querySelectorAll('.g-row').length} von ${COURSE.length} geschafften Lektionen`);
