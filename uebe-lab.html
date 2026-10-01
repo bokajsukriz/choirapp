@@ -3944,7 +3944,9 @@
      vorigen) und eigene Zähler in ear.stats.
      ------------------------------------------------------------------------ */
 
-  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Klänge'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimmen'], ['tuning', 'Intonation']];
+  // Namen (Musikpädagoge): „Akkordfarben“ statt „Klänge“ (neben „Akkorde in
+  // der Tonart“ zu unscharf), „Stimme heraushören“ statt „Stimmen“. IDs bleiben.
+  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation']];
   const rndInt = (lo, hi, rnd = Math.random) => lo + Math.floor(rnd() * (hi - lo + 1));
   const shuffle = (list, rnd = Math.random) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
