@@ -3433,7 +3433,7 @@
   function levelBadgeHtml(tab, id) {
     const info = modeLevelInfo(tab, id);
     if (!info) return '';
-    if (info.kind === 'ring') return `<span class="mode-lv">${ringHtml(info.n, info.max)}<span class="visually-hidden">Stufe ${info.n}/${info.max}</span></span>`;
+    if (info.kind === 'ring') return `${ringHtml(info.n, info.max)}<span class="visually-hidden mode-lv">Stufe ${info.n}/${info.max}</span>`;
     return `<span class="k-pill mode-lv">${info.text}</span>`;
   }
   /** Stepper: Punkte mit Linien; nur der aktuelle Schritt sichtbar beschriftet.
@@ -3450,6 +3450,29 @@
   /** Übersichtszeile (52 px): runde Icon-Marke, Name, rechts Ring/Pille. */
   function kRowHtml(attrs, icon, name, right, cls = '') {
     return `<button type="button" class="k-row mode-row${cls}" ${attrs}><span class="k-row-icon">${modeIcon(icon)}</span><span class="k-row-name">${name}</span>${right}</button>`;
+  }
+
+  /** Hören: Übungen nach Fähigkeit gruppiert (Musikpädagoge: Melodie –
+   *  erst Töne in der Tonart, dann Intervalle; Harmonie – vom ganzheitlichen
+   *  Schluss-Hören zur Folgenanalyse; Im Chor – Intonation vor Stimmen). Die
+   *  Reihenfolge von EAR_MODES (Speicher, Kette) bleibt unberührt. */
+  const EAR_GROUPS = [['Melodie', ['noteInKey', 'interval']], ['Harmonie', ['quality', 'cadence', 'chordInKey', 'chords']], ['Im Chor', ['tuning', 'parts']]];
+  /** Übersicht mit „Gemischt üben“ und Gruppen (Hören, Singen). `top`: Karte
+   *  über allem (Singen: Meine Stimme). Modi ohne Gruppe landen in der letzten. */
+  function groupedHubHtml(tab, groups, top = '') {
+    const modes = areaModes(tab);
+    const names = Object.fromEntries(modes);
+    const placed = new Set(groups.flatMap(([, ids]) => ids));
+    const rest = modes.map(([id]) => id).filter((id) => !placed.has(id));
+    const last = currentMode(tab);
+    const hero = QUICK_CHAINS[tab] ? `<button type="button" class="k-hero mixed-hero" data-mixed="${tab}" aria-label="Gemischt üben: alle Übungsarten nacheinander"><span class="k-hero-icon">${modeIcon('mixed')}</span><span class="k-hero-text"><span class="k-hero-title">Gemischt üben</span></span><span class="k-play" aria-hidden="true">${K_PLAY}</span></button>` : '';
+    const sections = groups.map(([title, ids], gi) => {
+      const list = [...ids, ...(gi === groups.length - 1 ? rest : [])].filter((id) => names[id]);
+      if (!list.length) return '';
+      const rows = list.map((id) => kRowHtml(`data-open-mode="${tab}:${id}"`, id, names[id] + (id === last ? '<span class="visually-hidden"> (zuletzt geöffnet)</span>' : ''), levelBadgeHtml(tab, id), id === last ? ' is-last' : '')).join('');
+      return `<section class="k-group"><h2 class="k-group-head">${title}</h2><div class="k-list">${rows}</div></section>`;
+    }).join('');
+    return `<div class="k-hub">${top}${hero}${sections}</div>`;
   }
 
   /** Rhythmus-Übersicht: Kurs-Karte (Lektion, Stepper, Play), „Heute
@@ -3483,11 +3506,12 @@
   function renderModeList(tab) {
     const host = $(`[data-list="${tab}"]`);
     if (tab === 'rhythm') { host.innerHTML = rhythmHubHtml(); return; }
+    if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS); return; }
     const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
       <span class="mode-ico">${modeIcon(icon)}</span><span><strong>${name}</strong><span class="mode-how">${text}</span></span><span class="mode-lv">${right}</span></button></li>`;
     const rows = [];
-    if (QUICK_CHAINS[tab]) rows.push(row(`data-mixed="${tab}"`, 'mixed', 'Gemischt üben', `Alle Übungsarten, ca. ${QUICK_MINUTES[tab]} Min.`, '', ' is-mixed'));
+    if (QUICK_CHAINS[tab]) rows.push(row(`data-mixed="${tab}"`, 'mixed', 'Gemischt üben', 'Alle Übungsarten', '', ' is-mixed'));
     for (const [id, name] of areaModes(tab)) {
       const isLast = id === last;
       rows.push(row(`data-open-mode="${tab}:${id}"`, id, name + (isLast ? '<span class="visually-hidden"> (zuletzt geöffnet)</span>' : ''), MODE_TEXT[id], modeLevelText(tab, id), isLast ? ' is-last' : ''));
@@ -10603,10 +10627,11 @@
     try {
       renderModeList('ear');
       const rows = $$('[data-list="ear"] [data-open-mode]').map((b) => b.dataset.openMode.split(':')[1]);
-      if (rows.join() !== 'interval,quality,cadence,noteInKey,chordInKey,chords,parts,tuning') errors.push(`Liste Hören: Reihenfolge ${rows}`);
-      const text = (id) => $(`[data-open-mode="ear:${id}"] .mode-how`)?.textContent;
-      if (text('noteInKey') !== 'Nach der Kadenz ein Ton – welche Silbe?' || text('chordInKey') !== 'Nach der Kadenz ein Akkord – welche Stufe?') errors.push(`Liste Hören: Kurztexte „${text('noteInKey')}“ / „${text('chordInKey')}“`);
-      if ($('[data-open-mode="ear:noteInKey"] strong')?.textContent !== 'Töne in der Tonart' || $('[data-open-mode="ear:chordInKey"] strong')?.textContent !== 'Akkorde in der Tonart') errors.push('Liste Hören: Namen');
+      // Konfetti B2: nach Fähigkeit gruppiert (EAR_GROUPS), einzeilig ohne Kurztext.
+      if (rows.join() !== EAR_GROUPS.flatMap(([, ids]) => ids).join() || rows.length !== EAR_MODES.length) errors.push(`Liste Hören: Reihenfolge ${rows}`);
+      if ($$('[data-list="ear"] .k-group-head').map((h) => h.textContent).join() !== 'Melodie,Harmonie,Im Chor') errors.push('Liste Hören: Gruppen');
+      if ($('[data-list="ear"] .mode-how')) errors.push('Liste Hören: Unterzeile vorhanden');
+      if ($('[data-open-mode="ear:noteInKey"] .k-row-name')?.textContent !== 'Töne in der Tonart' || $('[data-open-mode="ear:chordInKey"] .k-row-name')?.textContent !== 'Akkorde in der Tonart') errors.push('Liste Hören: Namen');
       for (const id of ['noteInKey', 'chordInKey']) {
         const paths = (MODE_ICONS[id].match(/<(path|circle|rect)\b/g) || []).length;
         if (!paths || paths > 6 || !$(`[data-open-mode="ear:${id}"] svg`)?.innerHTML.trim()) errors.push(`Symbol ${id}: ${paths} Formen`);
@@ -11562,7 +11587,8 @@
           }
           if ($$(`[data-list="${tab}"] [data-open-mode]`).length !== list.length) errors.push(`Liste ${tab}: zusätzliche Zeilen`);
           if (!!$(`[data-list="${tab}"] [data-mixed]`) !== !!QUICK_CHAINS[tab]) errors.push(`Liste ${tab}: „Gemischt üben“ falsch`);
-          if (QUICK_CHAINS[tab] && !$(`[data-list="${tab}"] [data-mixed]`).textContent.includes(`ca. ${QUICK_MINUTES[tab]} Min.`)) errors.push(`Liste ${tab}: Dauer fehlt`);
+          // Konfetti B2: keine Minutenangaben auf Übersichten (Auftraggeber).
+          if (QUICK_CHAINS[tab] && /Min/.test($(`[data-list="${tab}"] [data-mixed]`).textContent)) errors.push(`Liste ${tab}: Minutenangabe auf der Übersicht`);
         }
         if ($$('[data-list="voice"] [data-open-mode]').pop()?.dataset.openMode !== 'voice:tuner') errors.push('Tuner nicht letzte Zeile');
         // Stufen-Karte: Zahl, Balken, „ändern“ öffnet das Blatt; dessen Zeilen
