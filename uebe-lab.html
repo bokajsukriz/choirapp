@@ -4901,11 +4901,15 @@
      ------------------------------------------------------------------------ */
   const isInKey = (task) => !!task && (task.kind === 'noteInKey' || task.kind === 'chordInKey');
   const IN_KEY_SEMIS = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10] };
-  const IN_KEY_PAUSE = .6;       // s zwischen Kadenz und Ziel
+  const IN_KEY_PAUSE = .45;      // s zwischen Kadenz und Ziel
   const IN_KEY_TARGET_SEC = 1.2; // Dauer des Zieltons bzw. -akkords
   const IN_KEY_HOLD_TASKS = 5;   // „gleiche Tonart für 5 Aufgaben“
   const PATTERN_NOTE_SEC = .7;   // Tonmuster: Abstand der Töne
   const chordTempoSec = () => CHORD_TEMPI.find(([id]) => id === ear.settings.tempo)[2];
+  /** Einstimm-Kadenz vor einer Aufgabe: zügiger als die Akkordfolgen selbst
+   *  (Chorleiter: „noch etwas lahm“) – sie soll nur die Tonart setzen. */
+  const CUE_SPEED = .6;
+  const cueChordSec = () => chordTempoSec() * CUE_SPEED;
   const chordNotes = (v) => [v.bass, ...v.upper];
 
   /** Kadenz, die die Tonart festlegt: I–IV–V–I (Dur) bzw. i–iv–V–i (Moll), enge Lage. */
@@ -4929,7 +4933,7 @@
   function playInKeyTask(task, t0, bus, { cadence = true, onlyTarget = false, onlyCadence = false } = {}) {
     let t = t0;
     if (cadence && !onlyTarget) {
-      const secs = chordTempoSec();
+      const secs = cueChordSec();
       inKeyCadence(task.key, task.kmode).forEach((v) => {
         chordNotes(v).forEach((m) => engine.keys(m, t, secs * .92, { velocity: .13, dest: bus }));
         t += secs;
@@ -7834,10 +7838,11 @@
         SATB_PARTS.filter((x) => x !== task.part).forEach((x) => k(task.satb[x], t0 + SATB_FIND_SEC, 8, .1));
         end = t0 + SATB_FIND_SEC + .3;
       } else {
-        // Grundakkord, Kadenz oder Pop-Intro (je Akkord zwei Schläge bei ♩ = 90), dann Stille.
+        // Grundakkord, Kadenz oder Pop-Intro (je Akkord zwei Schläge bei ♩ = 112), dann Stille.
+        // Zügig (Chorleiter): die Kadenz setzt nur die Tonart.
         const [symbols, beats] = findCueSymbols(task);
         const satb = satbOf(task.key, symbols, 'close', task.kmode);
-        const dur = task.cue === 'popIntro' ? beats * 60 / 90 : beats === 1 ? 1 : 2;
+        const dur = task.cue === 'popIntro' ? beats * 60 / 112 : beats === 1 ? .9 : 1.1;
         satb.forEach((c, i) => SATB_PARTS.forEach((x) => k(c[x], t0 + i * dur, dur * .95, .13)));
         end = t0 + satb.length * dur + (task.cue === 'popIntro' ? .6 : 0);
       }
@@ -7845,9 +7850,9 @@
       // Blattsingen/Diktat: Tonika-Akkord und Grundton (in Moll auf la)
       const tonicMidi = task.minor ? task.doMidi - 3 : task.doMidi;
       const [c] = satbOf(mod(tonicMidi, 12), [task.minor ? 'i' : 'I']);
-      SATB_PARTS.forEach((x) => k(c[x], t0, 1.4, .12));
-      k(tonicMidi, t0 + 1.5, 1, .22);
-      end = t0 + 2.6;
+      SATB_PARTS.forEach((x) => k(c[x], t0, 1, .12));
+      k(tonicMidi, t0 + 1.05, .9, .22);
+      end = t0 + 2;
       if (task.mode === 'dictation') {
         const beat = 60 / 72;
         let t = end + .4;
@@ -11666,7 +11671,7 @@
     const engineKeys = engine.keys;
     const played = [];
     engine.keys = (midi, time, dur, o = {}) => played.push({ midi, time, dur, velocity: o.velocity });
-    const secs = chordTempoSec();
+    const secs = cueChordSec();
     try {
       const noteTask = { kind: 'noteInKey', level: 3, kmode: 'major', key: 0, semis: 4, note: 64, resolution: [{ value: 4, midi: 64 }, { value: 2, midi: 62 }, { value: 0, midi: 60 }], answer: null, tries: [] };
       const withCad = playInKeyTask(noteTask, 10, null);

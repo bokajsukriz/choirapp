@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v422. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v423. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -136,6 +136,12 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
     Diktat, Im Takt, Zweite Stimme, Blattsingen) in den Phasen vor Start,
     Vorgabe, Du und Ergebnis geprüft: Phasenleiste, Bühne und die drei
     Dock-Knöpfe stehen pixelgleich; in „Du“ keine Tonhöhe.
+- **Einstimm-Kadenzen zügiger** (Chorleiter: „noch etwas lahm“): Die
+  Kadenz vor Tönen/Akkorden in der Tonart läuft mit 60 % der eingestellten
+  Akkorddauer (mittel: 0,75 s statt 1,25 s je Akkord), die Pause davor ist
+  0,45 s. Ton finden: Kadenz 1,1 s je Akkord (vorher 2 s), Pop-Intro bei
+  ♩ = 112 (vorher 90). Blattsingen/Diktat: Tonika und Grundton in 2 s
+  (vorher 2,6 s). Die Akkordfolgen-Übung selbst bleibt beim eingestellten Tempo.
 - **Hören im selben Gerüst wie Singen** (Anweisung „Hören-UI“, Entwurf H1):
   - Stufen-Karte immer sichtbar (gleich hoch, auch bei „Eigene Auswahl“),
     Phasenleiste Hören · Du · Lösung. „Hören“ gilt, solange ein Ton der
