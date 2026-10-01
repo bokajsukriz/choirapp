@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v415. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v416. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -130,6 +130,10 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
   - Der Play-Knopf der Kurs-Karte in der Übersicht öffnet die Lektion nur
     noch und startet nicht mehr sofort, sonst würde die Vorstellung
     übersprungen. Los geht es mit einem Tipp auf die Klatschfläche.
+- **Ablaufleiste im Rhythmus springt nicht mehr:** Der Einzähler steht von
+  Anfang an als schmale Metronom-Pille vor der Runde (abgesetzt, ohne Text)
+  und bleibt danach erledigt stehen. Die Pillen füllen sich mit der Zeit von
+  links nach rechts: erledigt voll, aktuell wachsend, danach leer.
 
 ## Zugriff
 

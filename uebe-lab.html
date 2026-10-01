@@ -95,8 +95,6 @@
   .bar-pill { flex: 1 1 0; min-width: 0; text-align: center; font-size: .6rem; font-weight: 800; padding: 5px 0; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; overflow: hidden; }
   .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); }
   .bar-pill[data-kind="rest"] { border-style: dashed; }
-  .bar-pill.is-now { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .bar-pill[data-kind="rest"].is-now, .bar-pill[data-kind="count"].is-now { background: var(--text); border-color: var(--text); }
   body.is-running .stage { touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
   .stage { margin-top: 8px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 4px 2px; }
   .stage svg { display: block; width: 100%; height: auto; fill: var(--text); stroke: none; }
@@ -469,14 +467,28 @@
   .bar-strip { margin-top: 0; gap: 8px; }
   .bar-pill { height: 38px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none; background: var(--surface); border: 1px solid var(--line); color: var(--muted); padding: 0 6px; }
   .bar-pill svg { width: 18px; height: 18px; flex: none; }
-  .bar-strip:has(.bar-pill:nth-child(5)) .bar-pill span { font-size: 12px; }
-  .bar-strip:has(.bar-pill:nth-child(5)) .bar-pill svg { display: none; }
-  .bar-pill[data-kind="listen"].is-now { background: var(--hear-bg); border: 2px solid var(--hear); color: var(--hear-fg); }
-  .bar-pill[data-kind="you"].is-now, .bar-pill[data-kind="along"].is-now { background: var(--accent); border: 2px solid var(--accent); color: var(--accent-ink); }
+  .bar-strip.is-dense .bar-pill span { font-size: 12px; }
+  .bar-strip.is-dense .bar-pill:not([data-kind="count"]) svg { display: none; }
   .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { color: var(--accent-foreground); border-color: var(--tint-line); }
   .bar-pill[data-kind="rest"] { border-style: dashed; border-color: var(--rep-line); color: var(--rep-fg); }
-  .bar-pill[data-kind="rest"].is-now { background: var(--rep-bg); border: 2px solid var(--rep-line); color: var(--rep-fg); }
-  .bar-pill[data-kind="count"].is-now, .bar-pill[data-kind="read"].is-now { background: var(--text); border-color: var(--text); color: #fff; }
+  /* Mitlaufende Füllung (von links nach rechts): erledigt voll, aktuell bis --p. */
+  .bar-pill { position: relative; overflow: hidden; }
+  .bar-pill > svg, .bar-pill > span { position: relative; }
+  .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--fill, var(--tint-line)); }
+  .bar-pill.is-done .bar-fill { width: 100%; }
+  .bar-pill.is-now .bar-fill { width: calc(var(--p, 0) * 100%); }
+  .bar-pill.is-now { border-width: 2px; }
+  .bar-pill[data-kind="listen"] { --fill: var(--hear-bg); }
+  .bar-pill[data-kind="listen"].is-now { border-color: var(--hear); color: var(--hear-fg); }
+  .bar-pill[data-kind="you"], .bar-pill[data-kind="along"] { --fill: rgba(var(--accent-rgb), .45); }
+  .bar-pill[data-kind="you"].is-now, .bar-pill[data-kind="along"].is-now { border-color: var(--accent-foreground); }
+  .bar-pill[data-kind="rest"] { --fill: var(--rep-bg); }
+  .bar-pill[data-kind="rest"].is-now { border: 2px solid var(--rep-line); }
+  .bar-pill[data-kind="read"] { --fill: var(--line); }
+  .bar-pill[data-kind="read"].is-now { border-color: var(--text); color: var(--text); }
+  /* Einzähler: schmal, ohne Text, mit Abstand vor der Runde abgesetzt. */
+  .bar-pill[data-kind="count"] { flex: 0 0 38px; padding: 0; margin-right: 6px; border-style: dotted; --fill: var(--line); }
+  .bar-pill[data-kind="count"].is-now { border-color: var(--text); color: var(--text); }
   .rstage-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: var(--muted-2); }
   .rstage-meta .goal { display: inline-flex; align-items: center; gap: 6px; }
   .goal-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--accent-foreground); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
@@ -2556,6 +2568,7 @@
       if (level && level.meters.length > 1) setMeter(pick(level.meters));
     }
     run.meter = state.meter;
+    run.countIn = !!state.countIn; // für die Leiste: Einzähler-Pille nur, wenn er auch kommt
     run.playing = true;
     document.body.classList.add('is-running');
     run.bus = engine.newBus({ reverb: false });
@@ -3129,23 +3142,38 @@
     rest: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
   };
   STRIP_ICONS.along = STRIP_ICONS.you;
+  // Einzähler: kleines Metronom, ohne Text (abgesetzt vor der Runde).
+  STRIP_ICONS.count = '<path d="M9 3h6l4 18H5L9 3Z"/><path d="M12 15l5-8"/>';
 
   /** Ablauf einer Runde als Leiste — zeigt vor dem Start, was die Leertakte
    *  bewirken, und beim Üben, wo man gerade ist. */
-  function renderStrip(bar) {
+  /*  Die Leiste springt nicht (Chorleiter): Der Einzähler steht von Anfang
+   *  an da, wenn er eingeschaltet ist – klein und abgesetzt vor der Runde –,
+   *  und bleibt danach erledigt stehen. Die Pillen füllen sich von links nach
+   *  rechts mit der Zeit (`frac` = Anteil des laufenden Abschnitts): erledigt
+   *  voll, aktuell wachsend, danach leer. */
+  function renderStrip(bar, frac = 0) {
     const seq = bar ? bar.round.seq : idleSeq();
-    const kinds = bar?.kind === 'count' ? ['count', ...seq] : seq;
-    const now = bar ? (bar.kind === 'count' ? 0 : bar.pos) : -1;
-    const key = `${kinds.join(',')}|${now}`;
-    if (run.stripKey === key) return;
-    run.stripKey = key;
-    $('.bar-strip').replaceChildren(...kinds.map((kind, i) => {
-      const pill = document.createElement('span');
-      pill.className = `bar-pill${i === now ? ' is-now' : ''}`;
-      pill.dataset.kind = kind;
-      pill.innerHTML = `${STRIP_ICONS[kind] ? `<svg viewBox="0 0 24 24" aria-hidden="true">${STRIP_ICONS[kind]}</svg>` : ''}<span>${STRIP_LABELS[kind]}</span>`;
-      return pill;
-    }));
+    const count = run.playing ? run.countIn : state.countIn;
+    const kinds = count ? ['count', ...seq] : seq;
+    const off = count ? 1 : 0;
+    const now = !bar ? -1 : bar.kind === 'count' ? 0 : bar.pos >= 0 ? bar.pos + off : -1;
+    const key = `${kinds.join(',')}|${now}|${!!bar}`;
+    if (run.stripKey !== key) {
+      run.stripKey = key;
+      $('.bar-strip').classList.toggle('is-dense', kinds.length >= 5);
+      $('.bar-strip').replaceChildren(...kinds.map((kind, i) => {
+        const pill = document.createElement('span');
+        const done = i < now || (bar && kind === 'count' && now !== 0);
+        pill.className = `bar-pill${i === now ? ' is-now' : ''}${done ? ' is-done' : ''}`;
+        pill.dataset.kind = kind;
+        pill.innerHTML = `<i class="bar-fill"></i>${STRIP_ICONS[kind] ? `<svg viewBox="0 0 24 24" aria-hidden="true">${STRIP_ICONS[kind]}</svg>` : ''}${kind === 'count' ? '' : `<span>${STRIP_LABELS[kind]}</span>`}`;
+        if (kind === 'count') pill.title = STRIP_LABELS.count;
+        return pill;
+      }));
+    }
+    const cur = now >= 0 ? $('.bar-strip').children[now] : null;
+    if (cur) cur.style.setProperty('--p', clamp(frac, 0, 1).toFixed(3));
   }
 
   /** Welche Hilfen sind während des Laufs sichtbar? Menschen synchronisieren
@@ -3202,7 +3230,7 @@
     const toast = !$('[data-step-toast]').hidden;
     if (toast && !bar.wait && r.index >= run.toastFrom) showStepToast(null);
     renderPad(bar.wait || (toast && bar.kind === 'rest') ? 'wait' : bar.kind === 'count' ? 'count' : bar.kind, beat, r);
-    renderStrip(bar);
+    renderStrip(bar, (now - bar.time) / bar.dur);
     const disp = pickDisplay(bar);
     const aids = roundAids(disp.round, bar.round === disp.round ? bar.kind : 'rest');
     const liveTaps = disp.round.result || !aids.liveTaps ? -1 : game.taps.filter((x) => disp.round.youStart !== null && x >= disp.round.youStart - disp.round.tol).length;
