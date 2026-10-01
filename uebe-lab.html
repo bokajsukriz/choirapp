@@ -10889,7 +10889,7 @@
       Object.assign(ear.levels, before.levels); Object.assign(ear.settings, before.settings); ear.mode = before.mode; sing.solfa = before.solfa; state.tab = savedTab;
     }
     // Schnellstart: Kette mit den neuen Modi direkt vor den Akkordfolgen; nicht mitten in eine Auflösung schalten.
-    if (QUICK_CHAINS.ear.map(([m, n]) => `${m}×${n}`).join() !== 'interval×10,quality×10,noteInKey×8,chordInKey×6,chords×6,cadence×6,tuning×10' || QUICK_MINUTES.ear !== 13) errors.push(`Schnellstart Hören: ${QUICK_CHAINS.ear.map(([m, n]) => `${m}×${n}`)} / ${QUICK_MINUTES.ear} Min.`);
+    if (QUICK_CHAINS.ear.map(([m, n]) => `${m}×${n}`).join() !== 'noteInKey×8,interval×10,quality×10,cadence×6,chordInKey×6,chords×6,tuning×10' || QUICK_MINUTES.ear !== 13) errors.push(`Schnellstart Hören: ${QUICK_CHAINS.ear.map(([m, n]) => `${m}×${n}`)} / ${QUICK_MINUTES.ear} Min.`);
     const sv = { run: quickRun, mode: ear.mode, task: ear.task, revealed: ear.revealed, resolving: ear.resolving, tab: state.tab, selfTesting };
     const realSetTimeout = window.setTimeout;
     const queue = [];
@@ -12121,8 +12121,10 @@
      Klänge … Jede Übung auf ihrer zuletzt benutzten Stufe. Ist die Menge
      einer Übung erreicht, geht es mit der nächsten weiter. ---- */
   const QUICK_CHAINS = {
-    // Töne/Akkorde in der Tonart vor den Akkordfolgen: erst einzeln in der Tonart hören, dann Folgen.
-    ear: [['interval', 10], ['quality', 10], ['noteInKey', 8], ['chordInKey', 6], ['chords', 6], ['cadence', 6], ['tuning', 10]],
+    // Reihenfolge wie die Gruppen der Übersicht (Musikpädagoge): Melodie –
+    // Töne in der Tonart vor Intervallen; Harmonie – Akkordfarben, Schlüsse,
+    // Akkorde in der Tonart, zuletzt Akkordfolgen; Im Chor – Intonation.
+    ear: [['noteInKey', 8], ['interval', 10], ['quality', 10], ['cadence', 6], ['chordInKey', 6], ['chords', 6], ['tuning', 10]],
     // Nachsingen und Im Takt mit 6 statt 8 Aufgaben (sie dauern länger).
     // Pop-Didaktik: Diktat statt Blattsingen (nach Gehör).
     voice: [['singEcho', 6], ['singInterval', 8], ['inTime', 6], ['findTone', 8], ['hold', 4], ['dictation', 4]],
