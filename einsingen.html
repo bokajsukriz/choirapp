@@ -185,6 +185,8 @@
   .prog-card { width: 100%; height: 100%; min-height: 60px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; text-align: left; }
   .prog-card:active { background: var(--surface-2); }
   .prog-card strong { display: block; max-width: 100%; padding-right: 22px; font-family: var(--font-display); font-weight: 700; font-size: 16px; line-height: 1.2; overflow-wrap: break-word; }
+  .prog-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .prog-count { font-size: 12px; font-weight: 700; color: var(--muted-2); }
   .prog-menu { position: absolute; top: 0; right: 0; width: 40px; height: 40px; padding: 0; border-radius: 50%; color: var(--muted-2); display: grid; place-items: center; }
   .prog-menu::before { content: ''; position: absolute; inset: -2px; }
   .prog-menu svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
@@ -1929,7 +1931,8 @@
   const PLUS_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const DOTS_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
 
-  /** Programmkacheln: Name + „n Übungen“ (Dauer steht erst im Prestart). */
+  /** Programmkacheln: Name + „n Übungen · ca. m Min“ (die Dauer hilft bei
+   *  der Wahl – Entscheidung des Chorleiters, siehe Bericht D-2). */
   function renderPrograms() {
     const cards = overviewPrograms().map((p) => {
       const wrap = document.createElement('div');
@@ -1937,10 +1940,12 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-card';
       b.dataset.program = p.id;
-      b.innerHTML = '<strong></strong><span class="k-pill"></span>';
+      b.innerHTML = '<strong></strong><span class="prog-meta"><span class="k-pill"></span><span class="prog-count"></span></span>';
       b.children[0].textContent = p.name;
-      b.children[1].textContent = nUebungen(p.items.length);
-      b.setAttribute('aria-label', `${p.name} starten, ${nUebungen(p.items.length)}`);
+      const dur = fmtMinutes(secondsLeft(0, buildPlan(p)));
+      b.querySelector('.k-pill').textContent = dur;
+      b.querySelector('.prog-count').textContent = nUebungen(p.items.length);
+      b.setAttribute('aria-label', `${p.name} starten, ${nUebungen(p.items.length)}, ${dur}`);
       const menu = document.createElement('button');
       menu.type = 'button'; menu.className = 'prog-menu';
       menu.dataset.progMenu = p.id;
@@ -2969,12 +2974,12 @@
     if (de.hasAttribute('data-own-back') !== de.classList.contains('is-embedded')) errors.push('data-own-back passt nicht zu ?embedded');
     const backBtn = $('[data-own-back-btn]');
     if (!backBtn || backBtn.getAttribute('aria-label') !== 'Zurück') errors.push('Zurück-Knopf im Kopf fehlt');
-    // Übersicht: Zeilen ohne Kurzanleitung, Kacheln ohne Minuten, Pillen vorhanden.
+    // Übersicht: Zeilen ohne Kurzanleitung, Kacheln mit Übungszahl und Minuten, Pillen vorhanden.
     if (!isPlayer()) {
       renderPrograms(); renderGroups(); renderPills();
       if ($$('.ex-row .ex-how').length || $$('.ex-row').some((b) => b.textContent.trim() !== exById(b.dataset.playExercise).name)) errors.push('Übersicht: Übungszeilen mit mehr als dem Namen');
       for (const c of $$('.prog-card[data-program]')) {
-        if (/Min/.test(c.textContent) || !/ starten, \d+ Übungen?$/.test(c.getAttribute('aria-label')) || c.querySelector('small')) errors.push(`Übersicht: Kachel ${c.dataset.program}: „${c.textContent}“`);
+        if (!/^ca\. \d+ Min$/.test(c.querySelector('.k-pill')?.textContent || '') || !/^\d+ Übungen?$/.test(c.querySelector('.prog-count')?.textContent || '') || !/ starten, \d+ Übungen?, ca\. \d+ Min$/.test(c.getAttribute('aria-label')) || c.querySelector('small')) errors.push(`Übersicht: Kachel ${c.dataset.program}: „${c.textContent}“`);
       }
       const pv = $('[data-pill="voice"]'), pl = $('[data-pill="load"]');
       if (!pv || !pl || !/^(Stimme: .+|Stimme wählen)$/.test(pv.textContent.trim()) || !/^Belastung: (leicht|normal|kräftig)$/.test(pl.textContent.trim())) errors.push('Übersicht: Pillen Stimme/Belastung');
