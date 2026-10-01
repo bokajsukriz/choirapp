@@ -9,8 +9,8 @@
   EINSINGEN — eigenständiges Tool (Einstellungen → Tools → Einsingen),
   herausgelöst aus dem früheren Einsingen-Reiter des Spielplatzes
   (uebe-lab.html). Wie Metronom und Ausbildung als Vollbild-iframe
-  eingebettet (?embedded=1, siehe openToolFrame in app.js; der
-  Schließen-Knopf gehört der App), offline über SHELL_OPTIONAL in sw.js,
+  eingebettet (?embedded=1, siehe openToolFrame in app.js; die Seite
+  hat einen eigenen Zurück-Knopf, data-own-back blendet das App-✕ aus), offline über SHELL_OPTIONAL in sw.js,
   keine STRINGS (vorerst nur Deutsch), keine Abhängigkeiten —
   funktioniert auch direkt im Browser geöffnet.
 
@@ -41,10 +41,12 @@
   diese Ablage nicht; dann gilt der Stand nur bis zum Neuladen.
 -->
 <style>
+  /* Konfetti B2: Tokens (Hintergrund, Linien, Text, Hören/Wiederholen …) und
+     Bausteine (k-head, k-round, k-pill, k-play, k-btn, k-foot …) kommen aus
+     ueben.css. Hier nur Akzent-Startwerte (die App überschreibt sie) und die
+     Gruppenfarben. */
   :root {
     --accent: #F868B0; --accent-rgb: 248,104,176;
-    --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
-    --text: #241b3d; --muted: #8c81a6; --ok: #2f9e5b;
     /* Gruppenfarben (Grund = Text/Linie, -bg = helle Fläche; Grund auf
        Fläche mindestens 4.5:1). Resonanz: die Akzentfarbe, abgedunkelt,
        weil #F868B0 auf hellem Grund als Schrift zu schwach wäre. */
@@ -62,230 +64,220 @@
   html, body { height: 100%; margin: 0; }
   body {
     display: flex; flex-direction: column; color: var(--text);
-    background: radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .14), transparent 55%), var(--bg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font);
   }
   button, input { font: inherit; color: inherit; }
   button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
-  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent-foreground); outline-offset: 2px; }
   svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   [hidden] { display: none !important; }
 
-  header { padding: max(14px, env(safe-area-inset-top)) 16px 10px; }
-  /* In der App eingebettet: rechts Platz für den Schließen-Knopf der App. */
-  html.is-embedded header { padding-right: 68px; }
-  h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
-  h1 span { color: var(--accent); }
+  /* Kopf (k-head): Zurück | Titel | „?“ + Zahnrad. Der Titel wechselt im
+     Spielmodus zu „Einsingen · <Programm>“. */
+  header.k-head .k-title { font-size: 22px; }
+  body.is-player header.k-head .k-title { font-size: 20px; }
+  .k-round.gear-btn { color: var(--muted); }
+  body.is-player .hdr-help { display: none; }
 
-  header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .header-tools .gear-btn { width: 44px; height: 44px; }
-
-  main { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 16px 18px; }
-  .panel { border: 1px solid var(--line); border-radius: 20px; padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
+  main { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 18px; }
+  .panel { margin: 0 0 18px; padding: 0; }
   .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .panel-head h2 { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; }
-  .sub-label { display: flex; align-items: center; gap: 6px; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 6px; }
+  .panel-head h2 { font-family: var(--font-display); font-weight: 700; font-size: 20px; line-height: 1.2; margin: 0; }
+  .sub-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--muted-2); text-transform: uppercase; letter-spacing: .08em; margin: 18px 0 8px; }
   .sub-label:first-child { margin-top: 0; }
-  .foot-note { text-align: center; color: var(--muted); font-size: .68rem; line-height: 1.4; margin: 10px 0 0; }
+  .foot-note { text-align: center; color: var(--muted-2); font-size: 12px; line-height: 1.45; margin: 4px 8px 0; }
 
-  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 7px 12px; font-size: .74rem; font-weight: 700; color: var(--muted); }
-  .chip[aria-pressed="true"] { background: rgba(var(--accent-rgb), .16); border-color: var(--accent); color: var(--accent); }
+  /* Pillen Stimme / Belastung (öffnen das Einstellungsblatt an der Stelle) */
+  .ov-pills { display: flex; gap: 8px; margin: 0 0 16px; }
+  .ov-pill { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 4px 10px; border: 1px solid var(--tint-line); border-radius: 999px; background: var(--surface); color: var(--text); font-weight: 700; font-size: 13px; line-height: 1.2; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; }
+  .ov-pill svg { width: 16px; height: 16px; flex: none; color: var(--accent-foreground); }
+  .ov-pill:active { background: var(--surface-2); }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { min-height: 44px; border: 1px solid var(--tint-line); border-radius: 999px; background: var(--surface); padding: 0 16px; font-size: 14px; font-weight: 700; color: var(--muted-2); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .chip small { font-weight: 600; opacity: .75; }
 
-  .help-btn { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: .7rem; font-weight: 800; line-height: 1; display: inline-grid; place-items: center; padding: 0; text-transform: none; letter-spacing: 0; }
-  .help-btn.is-lg { width: 30px; height: 30px; font-size: .82rem; }
+  .help-btn { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 16px; font-weight: 700; line-height: 1; display: inline-grid; place-items: center; padding: 0; text-transform: none; letter-spacing: 0; }
+  .sub-label .help-btn { width: 36px; height: 36px; margin: -8px 0; position: relative; }
+  .sub-label .help-btn::before { content: ''; position: absolute; inset: -4px; }
 
-  .switch-row { display: flex; gap: 10px 18px; flex-wrap: wrap; }
-  .switch { display: inline-flex; align-items: center; gap: 9px; font-size: .78rem; font-weight: 700; cursor: pointer; position: relative; }
+  .switch-row { display: flex; gap: 6px 18px; flex-wrap: wrap; }
+  .switch { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; font-weight: 700; cursor: pointer; position: relative; }
   .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-  .switch-track { width: 40px; height: 24px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; flex: none; }
-  .switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(36,27,61,.3); transition: transform .15s; }
+  .switch-track { width: 44px; height: 26px; border-radius: 999px; background: var(--rule); position: relative; transition: background .15s; flex: none; }
+  .switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(36,27,61,.3); transition: transform .15s; }
   .switch input:checked + .switch-track { background: var(--accent); }
-  .switch input:checked + .switch-track::after { transform: translateX(16px); }
-  .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .switch input:checked + .switch-track::after { transform: translateX(18px); }
+  .switch input:focus-visible + .switch-track { outline: 3px solid var(--accent-foreground); outline-offset: 2px; }
 
+  /* Tempo (im Einstellungsblatt) */
+  .tempo-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+  .tempo { display: grid; gap: 4px; min-width: 0; }
+  .bpm-out { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .bpm-out small { font-weight: 700; color: var(--muted-2); font-size: 12px; }
+  input[type=range] { width: 100%; height: 32px; margin: 0; accent-color: var(--accent-foreground); }
+  .tap-btn { height: 44px; min-width: 64px; padding: 0 16px; border: 1px solid var(--tint-line); border-radius: 999px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 700; }
+  .tap-btn:active { background: var(--surface-2); }
 
-  /* ---- Bühne: aktuelle Übung ---- */
-  .stage { border-radius: 20px; background: var(--surface); border: 1px solid var(--line); padding: 14px 14px 12px; margin-bottom: 12px; }
-  .stage-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-  .stage-group { font-size: .62rem; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; min-height: 1.2em; }
-  .stage-title { font-size: 1.2rem; font-weight: 800; margin: 2px 0 0; letter-spacing: -.01em; }
-  .contour { display: flex; align-items: flex-end; gap: 3px; margin: 14px 0 4px; min-height: 40px; }
-  .syl { flex: 1 1 auto; min-width: 0; max-width: 54px; padding: 7px 1px; border-radius: 9px; background: var(--surface-2); font-weight: 800; font-size: .86rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: clip; transition: background .08s, color .08s; }
-  .contour.is-dense .syl { font-size: .7rem; padding: 6px 0; border-radius: 6px; }
-  .contour.is-wordy .syl { font-size: .74rem; padding: 7px 2px; }
-  .contour.is-flat .syl { max-width: 64px; }
-  .syl.is-now { background: var(--accent); color: #fff; }
-  /* Körperübungen: Anweisung groß, darunter ein Countdown-Ring. */
-  .body-stage { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin: 14px 0 4px; }
-  .body-move { font-size: 1.05rem; font-weight: 800; line-height: 1.35; margin: 0; }
+  /* ---- Bühne: Karte der aktuellen Übung ---- */
+  .stage { border-radius: 24px; background: var(--surface); border: 1px solid var(--line); padding: 16px; }
+  .stage-area { flex: 1 1 auto; width: 100%; display: flex; flex-direction: column; justify-content: center; }
+  .contour { display: flex; align-items: flex-end; justify-content: center; gap: 4px; margin: 6px 0; min-height: 40px; }
+  .syl { flex: 1 1 auto; min-width: 0; max-width: 72px; min-height: 28px; padding: 0 3px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--hear-bg); border: 1px solid var(--hear-line); color: var(--hear-fg); font-weight: 700; font-size: var(--syl-fs, 12px); line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .syl.is-past { background: var(--surface); border-color: var(--line); color: var(--muted); }
+  .syl.is-now { background: var(--accent); border: 2px solid var(--accent-foreground); color: var(--accent-ink); font-weight: 800; transform: scale(1.12); position: relative; z-index: 2; }
+  .contour.is-dense .syl { border-radius: 9px; padding: 0 1px; }
+  .contour.is-waiting .syl { opacity: .55; }
+  /* Körperübungen: Anweisung groß, daneben ein Countdown-Ring. */
+  .body-stage { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin: 8px 0; }
+  .body-move { font-family: var(--font-display); font-size: 19px; font-weight: 700; line-height: 1.3; margin: 0; }
   .body-ring { width: 58px; height: 58px; position: relative; }
   .body-ring svg { width: 58px; height: 58px; transform: rotate(-90deg); }
   .body-ring circle { fill: none; stroke-width: 6; }
-  .body-ring .ring-bg { stroke: var(--surface-2); }
+  .body-ring .ring-bg { stroke: var(--line); }
   .body-ring .ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
   .body-ring span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .contour.is-waiting .syl { opacity: .45; }
+  .body-stage.is-rhythm { grid-template-columns: 1fr; text-align: center; }
+  .body-stage.is-rhythm .body-ring { display: none; }
+  .body-stage.is-rhythm .body-move { font-size: 34px; letter-spacing: .02em; }
   /* Atemübung: Balken Einatmen | Ausatmen. Seine Breite wächst mit der Runde
      (Ausatmen 8 → 14 Schläge), die Füllung läuft mit der Audio-Uhr. */
-  .breath-stage { margin: 14px 0 4px; }
-  .breath-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 800; }
-  .breath-phase { font-size: 1.05rem; }
-  .breath-left { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .breath-lane { margin-top: 10px; border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+  .breath-stage { margin: 8px 0; }
+  .breath-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 700; }
+  .breath-phase { font-family: var(--font-display); font-size: 21px; }
+  .breath-left { font-size: 13px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+  .breath-lane { margin-top: 10px; border-radius: 12px; }
   .breath-track { display: flex; gap: 4px; width: 100%; transition: width .3s; }
-  .breath-seg { position: relative; height: 30px; border-radius: 10px; background: var(--surface-2); overflow: hidden; min-width: 0; }
+  .breath-seg { position: relative; height: 48px; border-radius: 10px; background: var(--tint); border: 1px solid var(--tint-line); overflow: hidden; min-width: 0; }
   .breath-seg i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--accent); }
   .breath-seg--in i { background: color-mix(in srgb, var(--accent) 50%, white); }
   /* Je Schlag ein feiner Strich — so lässt sich mitzählen. */
   .breath-seg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--surface) 2px, transparent 2px) 0 0 / calc(100% / var(--n, 1)) 100%; }
-  body.is-player .breath-stage { margin: auto 0 8px; }
-  body.is-player .breath-phase { font-size: 1.3rem; }
-  body.is-player .breath-seg { height: 48px; }
   /* Hinweiszeile über der Kontur: „Sprich: …“, Abschluss-Konsonant,
      „gerade“/„Vibrato erlaubt“ — Platz bleibt reserviert, damit nichts springt. */
-  .cue-line { min-height: 1.4em; margin: 10px 0 0; text-align: center; font-weight: 800; font-size: .95rem; color: var(--gc, var(--accent)); }
-  body.is-player .cue-line { margin-top: auto; font-size: 1.15rem; }
-  body.is-player .cue-line ~ .contour { margin-top: 4px; }
+  .cue-line { min-height: 1.4em; margin: 0 0 6px; text-align: center; font-weight: 800; font-size: 16px; color: var(--gc, var(--accent-foreground)); }
+  .glide { margin: 8px 0; }
+  .glide svg { display: block; width: 100%; height: auto; max-height: 150px; overflow: visible; }
+  .glide-path { fill: none; stroke: var(--gc, var(--accent)); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .45; }
+  .glide-dot { fill: var(--accent); stroke: var(--accent-foreground); stroke-width: 3; }
+
   /* Programm vor dem Start: Liste der Plätze mit ⇄ */
   .prog-plan { display: none; }
-  body.is-player.is-prestart .prog-plan { display: block; margin: 4px 0 auto; }
-  body.is-player.is-prestart .player-hero, body.is-player.is-prestart .cue-line, body.is-player.is-prestart .contour,
-  body.is-player.is-prestart .body-stage, body.is-player.is-prestart .breath-stage, body.is-player.is-prestart .glide, body.is-player.is-prestart .player-meta,
-  body.is-player.is-prestart .player-next { display: none !important; }
+  body.is-prestart .stage { background: none; border: 0; padding: 4px 0 0; }
+  body.is-prestart .prog-plan { display: block; width: 100%; }
+  body.is-prestart .player-hero, body.is-prestart .stage-area, body.is-prestart .card-foot,
+  body.is-prestart .player-next { display: none !important; }
   .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .pp-title { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
-  .pp-sub { font-size: .8rem; font-weight: 700; color: var(--muted); margin: 2px 0 10px; }
-  .pp-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
-  .pp-row { display: grid; grid-template-columns: 40px 1fr 44px; align-items: center; gap: 10px; min-height: 52px; padding: 4px 4px 4px 6px; border-radius: 14px; background: var(--surface-2); }
-  .pp-row .ex-ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; }
-  .pp-row strong { display: block; font-size: .88rem; }
-  .pp-row small { display: block; font-size: .72rem; color: #5f5577; font-weight: 700; margin-top: 1px; }
-  .pp-swap { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: 1.1rem; color: var(--text); }
-  .body-stage.is-rhythm { grid-template-columns: 1fr; text-align: center; }
-  .body-stage.is-rhythm .body-ring { display: none; }
-  .body-stage.is-rhythm .body-move { font-size: 2rem; letter-spacing: .02em; }
-  body.is-player .body-stage.is-rhythm { margin: auto 0 4px; }
-  body.is-player .body-stage.is-rhythm + .contour { margin-top: 0; }
-  .stage-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 8px; font-size: .74rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .stage-key { color: var(--text); font-weight: 800; }
-  .progress { height: 6px; border-radius: 999px; background: var(--surface-2); margin-top: 10px; overflow: hidden; }
-  .progress i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .25s linear; }
-  .stage-prog { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: .72rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .skip-btn { border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); padding: 6px 12px; font-size: .72rem; font-weight: 800; color: var(--text); }
+  .pp-title { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.15; margin: 0; overflow-wrap: anywhere; }
+  .pp-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+  .pp-note { margin: 10px 0 0; padding: 8px 12px; border-radius: 14px; background: var(--rep-bg); border: 1px solid var(--rep-line); color: var(--rep-fg); font-size: 13px; font-weight: 700; line-height: 1.35; }
+  .pp-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
+  .pp-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 46px; padding: 7px 7px 7px 7px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .pp-row .ex-ico { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; }
+  .pp-row strong { display: block; font-family: var(--font-display); font-size: 15px; line-height: 1.2; }
+  .pp-row small { display: block; font-size: 12px; color: var(--muted-2); font-weight: 700; margin-top: 1px; }
+  .pp-swap { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--tint-line); background: var(--surface); font-weight: 700; font-size: 18px; color: var(--text); }
 
   /* ---- Programme ---- */
   .prog-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  /* Einzelne Übungen: Zeilen mit Icon, Name, Kurzanleitung */
-  .ex-group { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
-  .ex-group:first-child { margin-top: 0; }
-  .group-hint { font-size: .76rem; line-height: 1.4; color: #5f5577; font-weight: 600; margin: -2px 0 8px; }
+  .prog-card-wrap { position: relative; min-width: 0; }
+  .prog-card { width: 100%; height: 100%; min-height: 60px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; text-align: left; }
+  .prog-card:active { background: var(--surface-2); }
+  .prog-card strong { display: block; max-width: 100%; padding-right: 22px; font-family: var(--font-display); font-weight: 700; font-size: 16px; line-height: 1.2; overflow-wrap: break-word; }
+  .prog-menu { position: absolute; top: 0; right: 0; width: 40px; height: 40px; padding: 0; border-radius: 50%; color: var(--muted-2); display: grid; place-items: center; }
+  .prog-menu::before { content: ''; position: absolute; inset: -2px; }
+  .prog-menu svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
+  .prog-card.is-add { border: 2px dashed var(--tint-line); background: rgba(255,255,255,.6); color: var(--accent-foreground); flex-direction: row; justify-content: center; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+  .prog-card.is-add svg { width: 18px; height: 18px; flex: none; }
+  /* Einzelne Übungen: Gruppenüberschrift, Zeilen mit Icon und Name */
+  .ex-group { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.2; }
+  .ex-group:first-child { margin-top: 12px; }
+  .ex-group::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex: none; }
+  .ex-group::after { content: ''; flex: 1 1 auto; height: 1px; background: color-mix(in srgb, var(--gbg, var(--line)) 82%, #000); }
+  .group-hint { font-size: 12px; line-height: 1.4; color: var(--muted-2); font-weight: 600; margin: -2px 4px 8px; }
   .ex-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .ex-row { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; width: 100%; min-height: 56px; text-align: left; padding: 6px 12px 6px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
-  .ex-row .ex-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; }
-  .ex-row strong { display: block; font-size: .88rem; }
-  .ex-row span.ex-how { display: block; font-size: .78rem; color: #5f5577; font-weight: 600; margin-top: 1px; }
-  /* Übersicht ohne Spielmodus: keine Bühne und keine Knopfleiste — Antippen
+  .ex-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; text-align: left; padding: 7px 12px 7px 7px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text); }
+  .ex-row:active { background: var(--surface-2); }
+  .ex-row .ex-ico { width: 32px; height: 32px; flex: none; border-radius: 10px; display: grid; place-items: center; }
+  .ex-row strong { flex: 1 1 auto; min-width: 0; font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.2; overflow-wrap: anywhere; }
+  /* Übersicht ohne Spielmodus: keine Bühne und keine Fußleiste — Antippen
      einer Karte oder Zeile startet im Spielmodus. */
-  body:not(.is-player) .stage, body:not(.is-player) footer { display: none; }
-  .prog-card { text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-height: 44px; }
-  .prog-card strong { display: block; font-size: .86rem; }
-  .prog-card span { display: block; font-size: .68rem; color: var(--muted); font-weight: 700; margin-top: 2px; }
-  .prog-card-wrap { position: relative; }
-  .prog-card-wrap .prog-card { width: 100%; height: 100%; padding-right: 34px; }
-  .prog-menu { position: absolute; top: 2px; right: 2px; width: 34px; height: 34px; border-radius: 10px; color: var(--muted); font-weight: 800; font-size: 1rem; }
-  .prog-card.is-add { border-style: dashed; color: var(--accent); display: grid; place-items: center; min-height: 58px; }
-  .prog-card small { display: block; font-size: .64rem; color: var(--muted); font-weight: 700; margin-top: 2px; }
+  body:not(.is-player) .stage, body:not(.is-player) footer, body:not(.is-player) .segbar { display: none; }
+
   /* Editor eigener Programme */
-  .ed-name { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-weight: 700; }
-  .ed-meta { font-size: .74rem; font-weight: 700; color: var(--muted); margin: 8px 0 0; }
-  .ed-warn { font-size: .74rem; font-weight: 700; color: #b07e00; margin: 6px 0 0; }
+  .ed-name { width: 100%; min-height: 44px; padding: 10px 14px; border: 1px solid var(--tint-line); border-radius: 14px; background: var(--surface); font-weight: 700; }
+  .ed-meta { font-size: 13px; font-weight: 700; color: var(--muted-2); margin: 8px 0 0; }
+  .ed-warn { font-size: 13px; font-weight: 700; color: var(--rep-fg); margin: 6px 0 0; }
   .ed-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
-  .ed-row { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
-  .ed-row-head { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: .82rem; }
-  .ed-row-head span { flex: 1; min-width: 0; }
-  .ed-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; }
+  .ed-row { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; }
+  .ed-row-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+  .ed-row-head span { flex: 1; min-width: 0; font-family: var(--font-display); font-size: 15px; }
+  .ed-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); font-weight: 700; }
   .ed-btn:disabled { opacity: .35; }
-  .ed-row .chip-row { margin-top: 6px; }
-  .ed-row .chip { padding: 5px 9px; font-size: .68rem; }
+  .ed-row .chip-row { margin-top: 6px; gap: 6px; }
+  .ed-row .chip { padding: 0 12px; font-size: 13px; }
   .ed-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
-  .ed-actions button { padding: 11px 18px; border-radius: 999px; font-weight: 800; font-size: .82rem; border: 1px solid var(--line); background: var(--surface-2); }
-  .ed-actions .is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .ed-actions .is-danger { color: #c0392b; }
+  .ed-actions button { min-height: 46px; padding: 0 18px; border-radius: 999px; font-weight: 700; font-size: 14px; border: 1px solid var(--tint-line); background: var(--surface); }
+  .ed-actions .is-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .ed-actions .is-danger { color: #a82a1d; }
   .ed-actions button:disabled { opacity: .45; }
-  .ed-hint { color: #c0392b; font-size: .72rem; font-weight: 700; text-align: center; min-height: 1.2em; margin: 8px 0 0; }
+  .ed-hint { color: #a82a1d; font-size: 13px; font-weight: 700; text-align: center; min-height: 1.2em; margin: 8px 0 0; }
   .menu-list { display: grid; gap: 8px; }
-  .menu-list button { text-align: left; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-weight: 800; }
+  .menu-list button { text-align: left; min-height: 46px; padding: 10px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); font-weight: 700; }
 
-  footer { border-top: 1px solid var(--line); background: var(--surface); padding: 10px 16px max(10px, env(safe-area-inset-bottom)); }
-  .transport-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }
-  .gear-btn { width: 42px; height: 42px; border-radius: 13px; background: var(--surface-2); }
-  .settings-sheet .sheet-card { background: var(--bg); }
-  .play { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7); }
-  .tempo { display: grid; gap: 2px; min-width: 0; }
-  .bpm-out { font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .bpm-out small { font-weight: 700; color: var(--muted); font-size: .7rem; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  .tap-btn { height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted); font-size: .72rem; font-weight: 800; }
-  .status { font-size: .68rem; color: var(--muted); text-align: center; margin: 8px 0 0; min-height: 1.2em; }
+  /* Fußleiste (k-foot): Zurück | Play/Pause | Weiter */
+  footer.k-foot { justify-content: center; gap: 28px; padding-top: 10px; position: relative; }
+  footer.k-foot .k-round { width: 48px; height: 48px; }
+  footer.k-foot .k-round:disabled { opacity: .45; }
+  .status { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  body.is-prestart footer.k-foot [data-action="prev"], body.is-prestart footer.k-foot [data-action="skip"] { display: none; }
 
+  /* Blätter (Einstellungen, Hilfe, Menü, Editor) */
   .sheet { position: fixed; inset: 0; background: rgba(36,27,61,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
   .sheet-card { width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 16px 16px max(18px, env(safe-area-inset-bottom)); }
-  .sheet-card h2 { font-size: 1rem; margin: 0; }
-  .sheet-body { font-size: .86rem; line-height: 1.5; }
+  .sheet-body { font-size: 15px; line-height: 1.5; }
   .sheet-body p { margin: 0 0 .7em; }
   .sheet-body ul { margin: 0 0 .7em; padding-left: 1.2em; }
-  .sheet-close { display: block; margin: 12px auto 0; padding: 11px 22px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
-  .icon-btn { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); }
+  .sheet-card .sheet-close { display: flex; margin: 16px auto 0; min-width: 160px; }
+  .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); }
 
-  /* ---- Spielmodus (body.is-player): nur die Bühne, volle Höhe ---- */
-  .player-top, .player-hero, .player-meta, .player-next, .player-done, .tap-start { display: none; }
-  body.is-player header, body.is-player .tab-bar, body.is-player [data-panel], body.is-player .foot-note,
-  body.is-player .stage-top, body.is-player .stage-meta, body.is-player .stage-program { display: none !important; }
-  body.is-player main { display: flex; flex-direction: column; padding: max(12px, env(safe-area-inset-top)) 12px 10px; }
-  body.is-player .stage { flex: 1 1 auto; min-height: 0; height: 100%; display: flex; flex-direction: column; margin: 0; padding: 12px 16px 14px; position: relative; overflow-y: auto; }
-  body.is-player .player-top { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0 0 10px; }
-  html.is-embedded body.is-player .player-top { padding-right: 52px; } /* Platz für den Schließen-Knopf der App */
-  .player-top .icon-btn { width: 40px; height: 40px; flex: none; }
-  .player-back { display: inline-flex; align-items: center; gap: 2px; height: 40px; flex: none; padding: 0 12px 0 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); font-size: .8rem; font-weight: 800; }
-  .player-back svg { width: 20px; height: 20px; }
-  .segbar { flex: 1 1 auto; display: flex; gap: 3px; height: 8px; }
-  .segbar i { flex: 1 1 0; position: relative; border-radius: 999px; background: var(--line); overflow: hidden; }
-  .segbar i::before { content: ""; position: absolute; inset: 0; background: var(--c); opacity: 0; }
-  .segbar i.is-now::before { opacity: .5; }
-  .segbar i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--c); }
+  /* ---- Spielmodus (body.is-player): Kopf, Segmentleiste, Karte, Fußleiste ---- */
+  .player-hero, .card-foot, .player-next, .player-done, .tap-start { display: none; }
+  body.is-player .ov-pills, body.is-player [data-panel], body.is-player .foot-note { display: none !important; }
+  body.is-player main { display: flex; flex-direction: column; padding: 0 16px 12px; }
+  body.is-player .stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0; position: relative; overflow-y: auto; }
+  .segbar { flex: none; display: flex; gap: 5px; height: 8px; margin: 4px 4px 12px; }
+  .segbar i { flex: 1 1 0; position: relative; border-radius: 4px; background: var(--cb, var(--line)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent); overflow: hidden; }
+  .segbar i.is-now { box-shadow: inset 0 0 0 1.5px var(--c); }
+  .segbar i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--c); border-radius: inherit; }
   .segbar i.is-done b { width: 100%; }
-  body.is-player .player-hero { display: flex; flex-direction: column; align-items: center; text-align: center; margin: 18px 0 6px; }
-  .hero-icon { width: 96px; height: 96px; border-radius: 26px; display: grid; place-items: center; background: var(--gc-bg, var(--surface-2)); color: var(--gc, var(--accent)); }
-  .hero-group { margin-top: 12px; font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--gc, var(--accent)); min-height: 1.2em; }
-  .hero-title-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 2px; }
-  .hero-title { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
-  .hero-how { font-size: 1.08rem; line-height: 1.4; margin: 6px 0 0; max-width: 28em; font-weight: 600; }
-  body.is-player .contour { min-height: 130px; margin: auto 0 8px; gap: 5px; }
-  body.is-player .syl { max-width: 76px; font-size: 1.05rem; padding: 12px 2px; border-radius: 12px; }
-  body.is-player .contour.is-dense .syl { font-size: .86rem; padding: 10px 0; }
-  body.is-player .contour.is-wordy .syl { font-size: .9rem; }
-  body.is-player .syl { background: var(--gc-bg, var(--surface-2)); }
-  body.is-player .syl.is-now { background: var(--gc, var(--accent)); color: #fff; }
-  body.is-player .body-stage { margin: auto 0 8px; }
-  body.is-player .body-move { font-size: 1.2rem; }
-  .glide { margin: auto 0 8px; }
-  .glide svg { display: block; width: 100%; height: auto; max-height: 180px; overflow: visible; }
-  .glide-path { fill: none; stroke: var(--gc, var(--accent)); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .45; }
-  .glide-dot { fill: var(--gc, var(--accent)); stroke: #fff; stroke-width: 3; }
-  body.is-player .player-meta { display: block; text-align: center; font-size: .9rem; font-weight: 800; color: var(--muted); margin: 6px 0 0; font-variant-numeric: tabular-nums; }
-  body.is-player .player-next { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: .86rem; font-weight: 700; color: var(--muted); min-height: 44px; }
+  body.is-player .player-hero { display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%; gap: 10px; }
+  .hero-icon { width: 84px; height: 84px; border-radius: 26px; display: grid; place-items: center; background: var(--gc-bg, var(--surface-2)); color: var(--gc, var(--accent-foreground)); }
+  .hero-title-row { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%; }
+  .hero-title { font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.15; margin: 0; overflow-wrap: anywhere; }
+  .hero-how { font-size: 15px; line-height: 1.4; margin: 0; max-width: 24em; }
+  body.is-player .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+  .player-meta { white-space: normal; text-align: left; font-variant-numeric: tabular-nums; }
+  .key-pill { white-space: nowrap; }
+  body.is-player .player-next { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 32px; font-size: 14px; font-weight: 700; color: var(--muted-2); }
+  .player-next.is-off { visibility: hidden; }
+  .stage.is-done .stage-area { display: none; }
   .next-text { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-  .next-text .ex-icon { color: var(--text); }
-  .skip-link { min-height: 44px; padding: 0 6px; font-weight: 800; color: var(--text); }
-  body.is-player .player-done:not([hidden]) { display: block; text-align: center; margin-top: 12px; }
-  .done-text { font-weight: 800; margin: 0 0 10px; }
-  .done-actions { display: flex; gap: 8px; justify-content: center; }
-  .done-actions button { min-height: 44px; padding: 0 20px; border-radius: 999px; font-weight: 800; border: 1px solid var(--line); background: var(--surface-2); }
-  .done-actions .is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  body.is-player .tap-start:not([hidden]) { display: grid; place-items: center; position: absolute; inset: 12px; border-radius: 18px; background: rgba(255,255,255,.92); font-size: 1.3rem; font-weight: 800; color: var(--text); z-index: 2; }
+  .next-text .ex-icon { color: var(--text); flex: none; }
+  body.is-player .player-done:not([hidden]) { display: block; text-align: center; width: 100%; }
+  .done-text { font-family: var(--font-display); font-weight: 700; font-size: 18px; margin: 0 0 10px; }
+  .done-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .done-actions .btn-white { background: var(--surface); border: 1px solid var(--tint-line); color: var(--text); }
+  body.is-player .tap-start:not([hidden]) { display: grid; place-items: center; position: absolute; inset: 0; border-radius: 24px; background: rgba(255,255,255,.92); font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text); z-index: 3; }
 
+  @media (max-height: 640px) {
+    .hero-icon { width: 64px; height: 64px; border-radius: 20px; }
+    .hero-icon svg { width: 44px; height: 44px; }
+    body.is-player:not(.is-prestart) .stage { gap: 6px; padding: 12px 14px; }
+    .hero-title { font-size: 22px; }
+    .hero-how { font-size: 14px; }
+  }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 <!-- Gemeinsame Designsprache „Konfetti B2“ (Tokens, Schrift, Bausteine); nach dem
@@ -293,101 +285,105 @@
 <link rel="stylesheet" href="./ueben.css">
 </head>
 <body>
-<header>
-  <h1>Ein<span>singen</span></h1>
-  <!-- Das Zahnrad wohnt hier in der Übersicht; im Spielmodus wandert es in
-       die obere Leiste der Bühne (enterPlayer/exitPlayer). -->
-  <div class="header-tools"></div>
+<header class="k-head">
+  <!-- Eigener Zurück-Knopf (eingebettet blendet die App ihr ✕ aus, siehe
+       data-own-back unten im Skript): Übersicht = Tool schließen (eigenständig
+       ausgeblendet), Spielmodus/Prestart = zurück zur Übersicht. -->
+  <button class="k-round" type="button" data-own-back-btn data-action="back" aria-label="Zurück"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <div class="k-titles"><h1 class="k-title">Einsingen</h1></div>
+  <div class="k-actions">
+    <button class="k-round k-round--help hdr-help" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button>
+    <button class="k-round gear-btn" type="button" data-action="open-settings" aria-label="Einstellungen: Stimme, Begleitung, Belastung, Tempo, Länge" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+  </div>
 </header>
 
 <main>
-  <!-- Spielmodus (body.is-player): Kopfzeile über der Bühne — „‹ Übersicht“,
-       Segmentbalken, Zahnrad (das bestehende, wird beim Betreten hierher
-       umgehängt). Rechts daneben sitzt eingebettet das ✕ der App; beide
-       Ausgänge sehen so verschieden aus und tun Verschiedenes. -->
-  <div class="player-top">
-    <button class="player-back" type="button" data-action="player-close" aria-label="Übung beenden, zur Übersicht"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg><span>Übersicht</span></button>
-    <div class="segbar" role="img" aria-label="Fortschritt"></div>
+  <!-- Übersicht: Stimme/Belastung, Programme, dann alle Übungen nach
+       Gruppen. Antippen startet im Spielmodus. -->
+  <div class="ov-pills">
+    <button class="ov-pill" type="button" data-pill="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span></span></button>
+    <button class="ov-pill" type="button" data-pill="load"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6M12 20V8M19 20V4"/></svg><span></span></button>
   </div>
+
+  <section class="panel" data-panel="program">
+    <h2 class="visually-hidden">Programme</h2>
+    <div class="prog-cards" data-programs></div>
+  </section>
+
+  <section class="panel" data-panel="single">
+    <h2 class="k-group-head">Einzelne Übungen</h2>
+    <div data-groups></div>
+  </section>
+
+  <p class="foot-note">Nie pressen: bei Kratzen, Druck oder Schmerz Pause machen. Hohe Runden darf man auslassen.</p>
+
+  <!-- Spielmodus (body.is-player): Segmentleiste unter dem Kopf, darunter die
+       Karte der Übung; Fußleiste unten. -->
+  <div class="segbar" role="img" aria-label="Fortschritt"></div>
   <section class="stage" aria-label="Aktuelle Übung">
     <div class="player-hero">
       <span class="hero-icon" aria-hidden="true"></span>
-      <div class="hero-group"></div>
-      <div class="hero-title-row"><h2 class="hero-title"></h2><button class="help-btn is-lg" type="button" data-help="exercise" aria-label="So geht die Übung">?</button></div>
+      <div class="hero-title-row"><h2 class="hero-title"></h2><button class="help-btn" type="button" data-help="exercise" aria-label="Weitere Tipps zur Übung">?</button></div>
       <p class="hero-how"></p>
-    </div>
-    <div class="stage-top">
-      <div>
-        <div class="stage-group"></div>
-        <h2 class="stage-title"></h2>
-      </div>
-      <button class="help-btn is-lg" type="button" data-help="exercise" aria-label="So geht die Übung">?</button>
     </div>
     <!-- Vor dem Start eines Programms (body.is-prestart): alle Plätze mit
          Funktion; Pool-Plätze tauscht ⇄ gegen eine andere Übung derselben
          Aufgabe. Start mit ▶ unten. -->
     <div class="prog-plan">
-      <div class="pp-head"><p class="pp-title"></p><button class="help-btn is-lg" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
-      <p class="pp-sub"></p>
+      <div class="pp-head"><p class="pp-title"></p><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
+      <div class="pp-pills"><span class="k-pill pp-dur"></span><span class="k-pill pp-count"></span></div>
+      <p class="pp-note" hidden>Erst Kurz einsingen, dann dieses Programm.</p>
       <ol class="pp-list"></ol>
     </div>
-    <p class="cue-line" aria-hidden="true"></p>
-    <div class="body-stage" hidden>
-      <p class="body-move" aria-live="polite"></p>
-      <div class="body-ring" aria-hidden="true"><svg viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="25"/><circle class="ring-fg" cx="29" cy="29" r="25" stroke-dasharray="157.1" stroke-dashoffset="0"/></svg><span></span></div>
+    <div class="stage-area">
+      <p class="cue-line" aria-hidden="true"></p>
+      <div class="body-stage" hidden>
+        <p class="body-move" aria-live="polite"></p>
+        <div class="body-ring" aria-hidden="true"><svg viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="25"/><circle class="ring-fg" cx="29" cy="29" r="25" stroke-dasharray="157.1" stroke-dashoffset="0"/></svg><span></span></div>
+      </div>
+      <div class="contour" aria-hidden="true"></div>
+      <div class="breath-stage" hidden>
+        <div class="breath-head"><span class="breath-phase"></span><span class="breath-left"></span></div>
+        <div class="breath-lane" aria-hidden="true"><div class="breath-track">
+          <span class="breath-seg breath-seg--in"><i></i></span><span class="breath-seg breath-seg--out"><i></i></span>
+        </div></div>
+      </div>
+      <div class="glide" hidden><svg viewBox="0 0 300 120" aria-hidden="true"><path class="glide-path"/><circle class="glide-dot" r="7"/></svg></div>
     </div>
-    <div class="contour" aria-hidden="true"></div>
-    <div class="breath-stage" hidden>
-      <div class="breath-head"><span class="breath-phase"></span><span class="breath-left"></span></div>
-      <div class="breath-lane" aria-hidden="true"><div class="breath-track">
-        <span class="breath-seg breath-seg--in"><i></i></span><span class="breath-seg breath-seg--out"><i></i></span>
-      </div></div>
+    <!-- „Gleich: …“ nur in der letzten Runde und in der Pause (renderPlayer). -->
+    <div class="player-next is-off"><span class="next-text"></span></div>
+    <div class="card-foot">
+      <p class="player-meta k-pill" aria-live="polite"></p>
+      <span class="key-pill k-pill k-pill--hear" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span></span></span>
     </div>
-    <div class="glide" hidden><svg viewBox="0 0 300 120" aria-hidden="true"><path class="glide-path"/><circle class="glide-dot" r="7"/></svg></div>
-    <div class="stage-meta"><span class="stage-key"></span><span class="stage-range"></span></div>
-    <div class="stage-program">
-      <div class="progress" aria-hidden="true"><i></i></div>
-      <div class="stage-prog"><span class="prog-text"></span><button class="skip-btn" type="button" data-action="skip">Nächste Übung ›</button></div>
-    </div>
-    <p class="player-meta" aria-live="polite"></p>
-    <div class="player-next"><span class="next-text"></span><button class="skip-link" type="button" data-action="skip">Überspringen ›</button></div>
     <div class="player-done" hidden>
       <p class="done-text" role="status"></p>
-      <div class="done-actions"><button type="button" data-action="again">Noch einmal</button><button type="button" class="is-primary" data-action="done-close">Schließen</button></div>
+      <div class="done-actions"><button type="button" class="k-btn" data-action="again">Noch einmal</button><button type="button" class="k-btn btn-white" data-action="done-close">Schließen</button></div>
     </div>
     <button class="tap-start" type="button" data-action="tap-start" hidden>Tippen zum Starten</button>
   </section>
-
-  <!-- Übersicht (ohne Spielmodus): Programme, dann alle Übungen nach
-       Gruppen. Antippen startet im Spielmodus. -->
-  <section class="panel" data-panel="program">
-    <div class="panel-head"><h2>Programme</h2><button class="help-btn" type="button" data-help="program" aria-label="Wie das Programm funktioniert">?</button></div>
-    <div class="prog-cards" data-programs></div>
-  </section>
-
-  <section class="panel" data-panel="single">
-    <div class="panel-head"><h2>Einzelne Übungen</h2></div>
-    <div data-groups></div>
-  </section>
-
-  <p class="foot-note">Nie pressen: bei Kratzen, Druck oder Schmerz Pause machen. Hohe Runden darf man auslassen.</p>
 </main>
 
-<!-- Einstellungen (Zahnrad in der Knopfleiste): Stimme, Begleitung,
-     Belastung, Einzähler, Einstimmung, Länge der Programme. -->
+<!-- Einstellungen (Zahnrad im Kopf): Stimme, Begleitung, Belastung, Tempo,
+     Einzähler, Einstimmung, Länge der Programme. -->
 <div class="sheet settings-sheet" hidden>
   <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="panel-head"><h2 id="settings-title">Einstellungen</h2>
       <button class="icon-btn" type="button" data-action="close-settings" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <span class="sub-label">Stimme <button class="help-btn" type="button" data-help="voice" aria-label="Welche Stimme wählen?">?</button></span>
     <div class="chip-row" data-chips="voice"></div>
+    <span class="sub-label">Belastung <button class="help-btn" type="button" data-help="load" aria-label="Was die Belastung ändert">?</button></span>
+    <div class="chip-row" data-chips="load"></div>
     <span class="sub-label">Begleitung <button class="help-btn" type="button" data-help="options" aria-label="Was die Schalter tun">?</button></span>
     <div class="switch-row">
       <label class="switch"><input type="checkbox" role="switch" data-switch="guide"><span class="switch-track"></span>Melodie</label>
       <label class="switch"><input type="checkbox" role="switch" data-switch="drone"><span class="switch-track"></span>Liegeton</label>
     </div>
-    <span class="sub-label">Belastung <button class="help-btn" type="button" data-help="load" aria-label="Was die Belastung ändert">?</button></span>
-    <div class="chip-row" data-chips="load"></div>
+    <span class="sub-label">Tempo</span>
+    <div class="tempo-row">
+      <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="40" max="160" value="92" aria-label="Tempo der Übung"></label>
+      <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
+    </div>
     <span class="sub-label">Einzähler</span>
     <div class="chip-row" data-chips="countIn"></div>
     <span class="sub-label">Einstimmung</span>
@@ -398,7 +394,7 @@
     <div class="chip-row" data-chips="lenLang"></div>
     <span class="sub-label">Einzelne Übung: Richtung</span>
     <div class="chip-row" data-chips="direction"></div>
-    <button class="sheet-close" type="button" data-action="close-settings">Fertig</button>
+    <button class="sheet-close k-btn" type="button" data-action="close-settings">Fertig</button>
   </div>
 </div>
 
@@ -407,17 +403,14 @@
     <div class="panel-head"><h2 id="sheet-title"></h2>
       <button class="icon-btn" type="button" data-action="close-help" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="sheet-body"></div>
-    <button class="sheet-close" type="button" data-action="close-help">Verstanden</button>
+    <button class="sheet-close k-btn" type="button" data-action="close-help">Verstanden</button>
   </div>
 </div>
 
-<footer>
-  <div class="transport-row">
-    <button class="play" type="button" aria-label="Starten"></button>
-    <label class="tempo"><output class="bpm-out">92 BPM</output><input class="bpm" type="range" min="40" max="160" value="92" aria-label="Tempo der Übung"></label>
-    <button class="tap-btn" type="button" aria-label="Tempo eintippen">Tap</button>
-    <button class="icon-btn gear-btn" type="button" data-action="open-settings" aria-label="Einstellungen: Stimme, Begleitung, Belastung, Länge" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
-  </div>
+<footer class="k-foot">
+  <button class="k-round" type="button" data-action="prev" aria-label="Zurück an den Anfang der Übung"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M19 6v12l-9-6z"/></svg></button>
+  <button class="play k-play k-play--lg" type="button" aria-label="Starten"></button>
+  <button class="k-round" type="button" data-action="skip" aria-label="Nächste Übung"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M5 6v12l9-6z"/></svg></button>
   <p class="status" role="status">Bereit — am besten mit Kopfhörern.</p>
 </footer>
 
@@ -426,7 +419,12 @@
 (function () {
   'use strict';
 
-  if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  if (new URLSearchParams(location.search).has('embedded')) {
+    document.documentElement.classList.add('is-embedded');
+    // Eigener Zurück-Knopf: die App blendet dann ihren Schließen-Knopf aus
+    // und fokussiert [data-own-back-btn] (syncToolFrameBack in app.js).
+    document.documentElement.setAttribute('data-own-back', '');
+  }
   // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
   try {
     if (window.parent !== window) {
@@ -500,6 +498,7 @@
     return null;
   })();
   let profile = null; // { part, low, high, measuredAt, load } oder null
+  let voiceChosen = false; // Stimme je gewählt (Profil, Ablage oder Tipp)? Sonst zeigt die Pille „Stimme wählen“.
   // Fortschritt der App (Paket 6): Minuten und Programm melden.
   const progressApi = (() => {
     try { if (window.parent !== window && window.parent.chorProgress) return window.parent.chorProgress; } catch { /* fremde Herkunft */ }
@@ -1649,7 +1648,7 @@
     // eine Nutzergeste wartet (dann hängt engine.start() bis dahin).
     if (run.playing || run.starting) return;
     run.starting = true;
-    $('.player-done').hidden = true;
+    setDone(false);
     $('.tap-start').hidden = true;
     try { await engine.start(); } catch { run.starting = false; setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
     run.starting = false;
@@ -1740,15 +1739,13 @@
   const DONE_TEXT = 'Fertig — gut eingesungen! Viel Spaß in der Probe.';
   function finish() {
     stop(DONE_TEXT, true);
-    if (state.mode === 'program') {
-      $('.progress i').style.width = '100%';
-    }
     if (isPlayer()) {
       $$('.segbar i').forEach((el) => { el.classList.add('is-done'); el.classList.remove('is-now'); });
       $('.done-text').textContent = DONE_TEXT;
-      $('.player-done').hidden = false;
+      setDone(true);
       $('.player-next').hidden = true;
       updatePrestart();
+      syncNav();
       $('.player-done [data-action="again"]').focus();
     }
   }
@@ -1813,7 +1810,13 @@
     const active = seg.kind !== 'round' ? -1 : ex.kind === 'breath' ? (pos < BREATH_IN * 4 ? 0 : 1)
       : ex.kind === 'breathRhythm' ? ex.starts.findIndex((s, i) => pos >= s && pos < s + ex.pattern[i][1])
       : ex.starts.findIndex((s, i) => pos - seg.cue >= s && pos - seg.cue < s + ex.notes[i][1]);
-    $$('.contour .syl').forEach((el, i) => el.classList.toggle('is-now', i === active));
+    // Vergangene Töne: alles vor dem zuletzt begonnenen (auch in Pausen zwischen Tönen).
+    let started = -1;
+    if (seg.kind === 'round' && ex.kind !== 'breath') ex.starts.forEach((s, i) => { if (pos - seg.cue >= s) started = i; });
+    $$('.contour .syl').forEach((el, i) => {
+      el.classList.toggle('is-now', i === active);
+      el.classList.toggle('is-past', i < started || (i === started && active !== i));
+    });
     if (ex.kind === 'body' && seg.kind === 'round') updateBodyRing(seg, pos);
     if (ex.kind === 'breathRhythm') {
       // Aktuelle Silbe groß (Pause: leer), darunter die Zeile mit Markierung.
@@ -1822,10 +1825,6 @@
     }
     const cueText = seg.kind === 'round' ? cueTextAt(ex, pos - seg.cue) : '';
     if ($('.cue-line').textContent !== cueText) $('.cue-line').textContent = cueText;
-    if (state.mode === 'program') {
-      $('.progress i').style.width = `${(100 * g / plan.total).toFixed(1)}%`;
-      $('.prog-text').textContent = `Übung ${seg.item + 1} von ${plan.items.length} · noch ${fmtTime(secondsLeft(g))}`;
-    }
   }
 
   /** Countdown-Ring einer Körperübung: verbleibende Schläge der Bewegung. */
@@ -1844,9 +1843,6 @@
     const first = plan.segs.find((s) => s.kind === 'round');
     const cur = seg || first;
     const ex = cur.ex;
-    const group = GROUPS.find(([id]) => id === ex.group)[1];
-    $('.stage-group').textContent = cur.kind === 'pause' ? 'Gleich geht es weiter mit' : group;
-    $('.stage-title').textContent = ex.name;
     $$('[data-help="exercise"]').forEach((b) => b.setAttribute('aria-label', `So geht: ${ex.name}`));
 
     const host = $('.contour');
@@ -1883,15 +1879,21 @@
       $('.body-move').textContent = r.move;
       updateBodyRing(r, 0);
     }
-    if (host.dataset.ex !== `${ex.id}|${state.voice}|${!!ex.isEasy}|${player}`) {
-      host.dataset.ex = `${ex.id}|${state.voice}|${!!ex.isEasy}|${player}`;
+    const compact = window.innerHeight < 640; // niedriger Bildschirm: Staffelung flacher
+    const hostKey = `${ex.id}|${state.voice}|${!!ex.isEasy}|${player}|${compact}`;
+    if (host.dataset.ex !== hostKey) {
+      host.dataset.ex = hostKey;
       const { min, max } = spanOf(ex, state.voice);
       const semis = notesOf(ex).map((n) => (toneless(ex) ? 0 : noteSemis(ex, n) - min));
       const span = Math.max(1, max - min);
-      const px = player ? Math.min(9, 100 / span) : Math.min(4, 44 / span);
+      const px = player ? Math.min(9, (compact ? 70 : 100) / span) : Math.min(4, 44 / span);
       host.classList.toggle('is-dense', ex.syllables.length > 11);
-      host.classList.toggle('is-flat', max === min);
-      host.classList.toggle('is-wordy', ex.syllables.length <= 11 && ex.syllables.join('').length > 24);
+      // Schriftgröße der Blasen so, dass alle Silben nebeneinander passen (9–12 px).
+      const dense = ex.syllables.length > 11;
+      const width = host.clientWidth || Math.max(200, window.innerWidth - 66);
+      const chars = ex.syllables.reduce((a, s) => a + Math.max(1, s.length), 0);
+      const fs = clamp(Math.floor((width - (ex.syllables.length - 1) * 4 - ex.syllables.length * (dense ? 4 : 8)) / (chars * .62)), 9, 12);
+      host.style.setProperty('--syl-fs', `${fs}px`);
       host.replaceChildren(...ex.syllables.map((s, i) => {
         const e = document.createElement('span');
         e.className = 'syl'; e.textContent = s;
@@ -1900,60 +1902,8 @@
       }));
     }
     host.classList.toggle('is-waiting', cur.kind === 'pause');
-    if (!seg) $$('.contour .syl').forEach((el) => el.classList.remove('is-now'));
+    if (!seg) $$('.contour .syl').forEach((el) => el.classList.remove('is-now', 'is-past'));
 
-    // Tonraum dieser Übung (bei Programmen: der aktuellen) für die Stimme.
-    const rounds = plan.segs.filter((s) => s.kind === 'round' && s.item === cur.item);
-    if (isBody) {
-      $('.stage-range').textContent = 'ohne Ton';
-      $('.stage-range').title = '';
-      const r = cur.kind === 'round' ? cur : rounds[0];
-      const totalBeats = rounds.reduce((a, sg) => a + sg.beats, 0);
-      $('.stage-key').textContent = seg && cur.kind === 'round'
-        ? `Bewegung ${r.round + 1}/${r.rounds} · ${r.beats} Schläge`
-        : `${rounds.length} Bewegungen · ${totalBeats} Schläge`;
-    } else if (ex.kind === 'breath') {
-      $('.stage-range').textContent = 'ohne Ton';
-      $('.stage-range').title = '';
-      const r = cur.kind === 'round' ? cur : rounds[0];
-      $('.stage-key').textContent = seg && cur.kind === 'round'
-        ? `ein ${BREATH_IN} · aus auf sss ${r.exhale} Schläge · Runde ${r.round + 1}/${r.rounds}`
-        : `ein ${BREATH_IN} · aus ${BREATH_EXHALES[0]}–${BREATH_EXHALES[BREATH_EXHALES.length - 1]} Schläge · ${rounds.length} Runden`;
-    } else if (isRhythm) {
-      $('.stage-range').textContent = 'ohne Ton';
-      $('.stage-range').title = '';
-      const r = cur.kind === 'round' ? cur : rounds[0];
-      $('.stage-key').textContent = seg && cur.kind === 'round'
-        ? `Runde ${r.round + 1}/${r.rounds} · ${ex.length / 4} Schläge`
-        : `${rounds.length} Runden · je ${ex.length / 4} Schläge`;
-    } else {
-    const { min, max } = spanOf(ex, state.voice);
-    const lowRoot = Math.min(...rounds.map((s) => s.root));
-    const highRoot = Math.max(...rounds.map((s) => s.root));
-    const low = lowRoot + min;
-    const high = highRoot + max;
-    const mode = ex.mode || 'major';
-    // Jeder Ton in der Schreibweise der Runde, aus der er stammt.
-    $('.stage-range').textContent = `Tonraum ${noteLabel(low, lowRoot, mode)}${low === high ? '' : `–${noteLabel(high, highRoot, mode)}`}`;
-    $('.stage-range').title = 'Tiefster und höchster Ton dieser Übung';
-    if (cur.kind === 'round') {
-      $('.stage-key').textContent = seg
-        ? `${keyLabel(cur.root, mode)} · Runde ${cur.round + 1}/${cur.rounds} ${cur.trend}`.trim()
-        : `${keyLabel(cur.root, mode)} · ${cur.rounds} Runden`;
-    } else {
-      $('.stage-key').textContent = `${keyLabel(rounds[0].root, mode)} · ${rounds.length} Runden`;
-    }
-    }
-
-    const isProgram = state.mode === 'program';
-    $('.stage-program').hidden = !isProgram;
-    if (isProgram) {
-      $('.skip-btn').hidden = !run.playing || cur.item >= plan.items.length - 1;
-      if (!seg) {
-        $('.progress i').style.width = '0%';
-        $('.prog-text').textContent = `${plan.items.length} Übungen · ${fmtMinutes(secondsLeft(0))}`;
-      }
-    }
     if (player) renderPlayer(seg, cur);
   }
 
@@ -1975,23 +1925,26 @@
   const OVERVIEW_PROGRAMS = ['kurz', 'lang', 'intonation', 'hoehe', 'tiefe'];
   const overviewPrograms = () => allPrograms().filter((p) => OVERVIEW_PROGRAMS.includes(p.id) || p.id.startsWith('own-'));
 
+  const nUebungen = (n) => `${n} ${n === 1 ? 'Übung' : 'Übungen'}`;
+  const PLUS_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+  const DOTS_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+
+  /** Programmkacheln: Name + „n Übungen“ (Dauer steht erst im Prestart). */
   function renderPrograms() {
     const cards = overviewPrograms().map((p) => {
-      const own = p.id.startsWith('own-');
       const wrap = document.createElement('div');
       wrap.className = 'prog-card-wrap';
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'prog-card';
       b.dataset.program = p.id;
-      b.innerHTML = '<strong></strong><small></small><span></span>';
+      b.innerHTML = '<strong></strong><span class="k-pill"></span>';
       b.children[0].textContent = p.name;
-      b.children[1].textContent = own ? 'Eigenes Programm' : p.about || '';
-      b.children[2].textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, buildPlan(p)))}`;
-      b.setAttribute('aria-label', `${p.name} starten, ${b.children[2].textContent}`);
+      b.children[1].textContent = nUebungen(p.items.length);
+      b.setAttribute('aria-label', `${p.name} starten, ${nUebungen(p.items.length)}`);
       const menu = document.createElement('button');
       menu.type = 'button'; menu.className = 'prog-menu';
       menu.dataset.progMenu = p.id;
-      menu.textContent = '⋯';
+      menu.innerHTML = DOTS_SVG;
       menu.setAttribute('aria-label', `Menü: ${p.name}`);
       wrap.append(b, menu);
       return wrap;
@@ -2000,7 +1953,7 @@
       const add = document.createElement('button');
       add.type = 'button'; add.className = 'prog-card is-add';
       add.dataset.action = 'own-new';
-      add.innerHTML = '<strong>+ Eigenes Programm</strong>';
+      add.innerHTML = `${PLUS_SVG}<span>Eigenes Programm</span>`;
       cards.push(add);
     }
     $('[data-programs]').replaceChildren(...cards);
@@ -2011,6 +1964,7 @@
       const label = document.createElement('h3');
       label.className = 'ex-group'; label.textContent = gname;
       label.style.color = groupColor(gid);
+      label.style.setProperty('--gbg', groupColor(gid, true));
       const hint = GROUP_HINTS[gid] ? Object.assign(document.createElement('p'), { className: 'group-hint', textContent: GROUP_HINTS[gid] }) : null;
       const list = document.createElement('ul');
       list.className = 'ex-list';
@@ -2019,16 +1973,29 @@
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'ex-row';
         b.dataset.playExercise = x.id;
-        b.innerHTML = `<span class="ex-ico">${iconSvg(x.id, 26)}</span><span><strong></strong><span class="ex-how"></span></span>`;
+        b.innerHTML = `<span class="ex-ico">${iconSvg(x.id, 20)}</span><strong></strong>`;
         b.firstChild.style.background = groupColor(gid, true);
         b.firstChild.style.color = groupColor(gid);
         b.querySelector('strong').textContent = x.name;
-        b.querySelector('.ex-how').textContent = x.how;
         li.append(b);
         return li;
       }));
       return hint ? [label, hint, list] : [label, list];
     }));
+  }
+
+  /** Pillen oben in der Übersicht: Stimme und Belastung (Tagesentscheidung). */
+  function renderPills() {
+    $('[data-pill="voice"] span').textContent = voiceChosen ? `Stimme: ${voiceById(state.voice).name}` : 'Stimme wählen';
+    $('[data-pill="load"] span').textContent = `Belastung: ${loadOf().name}`;
+  }
+
+  /** Kopf: Titel, Zurück-Knopf und „?“ je nach Ansicht. */
+  function syncHead() {
+    const player = isPlayer();
+    $('.k-title').textContent = player && state.mode === 'program' ? `Einsingen · ${program().name}` : 'Einsingen';
+    // Übersicht eigenständig geöffnet: nichts, wohin „Zurück“ führen könnte.
+    $('[data-own-back-btn]').hidden = !player && window.parent === window;
   }
 
   /** Tempo-Anzeige gilt der Übung, die gerade läuft bzw. als nächste käme. */
@@ -2038,25 +2005,82 @@
     return (plan || buildPlan()).segs[0].ex;
   }
 
+  const PLAY_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>';
+  const PAUSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
   function renderTransport() {
     const btn = $('.play');
-    btn.innerHTML = run.playing
-      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'
-      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
+    btn.innerHTML = run.playing ? PAUSE_SVG : PLAY_SVG;
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
     const ex = tempoExercise();
     $('.bpm').value = String(bpmOf(ex));
     $('.bpm').disabled = ex.kind === 'body'; // Körperübungen: Tempo fest
+    $('.tap-btn').disabled = ex.kind === 'body';
     $('.bpm-out').innerHTML = `${bpmOf(ex)} BPM <small></small>`;
     // Belastung ändert das gespielte Tempo; der Regler bleibt das Grundtempo.
     const played = playBpmOf(ex);
     $('.bpm-out small').textContent = `· ${ex.name}${played !== bpmOf(ex) ? ` · ${loadOf().name}: ${played}` : ''}`;
+    syncNav();
+  }
+
+  /** „Zurück“/„Weiter“ der Fußleiste: nur während des Spiels; „Weiter“ nicht
+   *  nach der letzten Übung (in der Pause führt es in die kommende Übung). */
+  function syncNav() {
+    const prev = $('[data-action="prev"]'), next = $('[data-action="skip"]');
+    if (!prev || !next) return;
+    const hit = run.playing ? segAt(Math.max(0, curStep())) : null;
+    prev.disabled = !run.playing;
+    next.disabled = !hit || nextItemOf(hit.seg) >= plan.items.length;
+    const label = hit && backTarget({ item: hit.seg.item, round: hit.seg.kind === 'round' ? hit.seg.round : 0, secs: secsInItem() }) === 'prev'
+      ? 'Vorherige Übung' : 'Zurück an den Anfang der Übung';
+    if (prev.getAttribute('aria-label') !== label) prev.setAttribute('aria-label', label);
+  }
+  const nextItemOf = (seg) => (seg.kind === 'pause' ? seg.item : seg.item + 1);
+
+  /** Aktuell angezeigter Schritt (Sechzehntel); während des Einzählers < 0. */
+  const curStep = () => (run.lastDrawn ? run.lastDrawn.g : run.step - 1);
+
+  /** Sekunden seit dem Beginn der aktuellen Übung (in der Pause davor < 0). */
+  function secsInItem() {
+    const g = curStep();
+    const hit = segAt(Math.max(0, g));
+    if (!hit) return 0;
+    const b = itemBounds()[hit.seg.item];
+    const x = plan.loop ? mod(g, plan.total) : g;
+    return b ? (x - b.start) * stepSecondsFor(hit.seg.ex) : 0;
+  }
+
+  /** Entscheidung des „Zurück“-Knopfs (rein): beim ersten Tipp an den Anfang
+   *  der aktuellen Übung (Startlage); nur in den ersten BACK_SECONDS Sekunden
+   *  der Übung – und wenn es eine gibt – zur vorigen Übung (Player-Konvention,
+   *  Musikpädagoge: „nochmal von unten“ ist der häufigste Wunsch). */
+  const BACK_SECONDS = 3;
+  function backTarget({ item, round, secs }) {
+    return item > 0 && secs < BACK_SECONDS ? 'prev' : 'start';
+  }
+
+  /** „Zurück“ gedrückt: Sprung an den Anfang dieser oder der vorigen Übung. */
+  function jumpBack() {
+    if (!run.playing) return;
+    const hit = segAt(Math.max(0, curStep()));
+    if (!hit) return;
+    const item = hit.seg.item;
+    const target = backTarget({ item, round: hit.seg.kind === 'round' ? hit.seg.round : 0, secs: secsInItem() });
+    jumpTo(itemStart(target === 'prev' ? item - 1 : item));
+  }
+
+  /** „Weiter“ gedrückt: zur nächsten Übung (in der Pause: zur kommenden). */
+  function jumpNext() {
+    if (!run.playing) return;
+    const hit = segAt(Math.max(0, curStep()));
+    if (hit && nextItemOf(hit.seg) < plan.items.length) jumpTo(itemStart(nextItemOf(hit.seg)));
   }
 
   function renderAll() {
     plan = buildPlan();
+    syncHead();
     renderPrograms();
     renderGroups();
+    renderPills();
     chips('voice', voiceList().map((v) => [v.id, v.name]), state.voice);
     chips('direction', DIRECTIONS, state.direction);
     chips('countIn', COUNT_INS, state.countIn);
@@ -2076,6 +2100,12 @@
      ------------------------------------------------------------------------ */
 
   const isPlayer = () => document.body.classList.contains('is-player');
+  /** Ende-Ansicht der Karte (Titel, Text, Knöpfe) statt Bühne und Rundenzeile. */
+  function setDone(on) {
+    $('.player-done').hidden = !on;
+    $('.card-foot').hidden = on;
+    $('.stage').classList.toggle('is-done', on);
+  }
   const PRESTART_TEXT = 'Mit ▶ starten — ⇄ tauscht eine Übung.';
   /** Programm im Spielmodus, das (noch) nicht läuft: Liste mit ⇄ statt Bühne. */
   const isPrestart = () => isPlayer() && state.mode === 'program' && !run.playing && !run.starting && $('.player-done').hidden;
@@ -2087,13 +2117,16 @@
     const base = PROGRAMS.find((x) => x.id === p.id);
     const res = base ? resolved(base) : null;
     $('.pp-title').textContent = p.name;
-    $('.pp-sub').textContent = `${p.items.length} Übungen · ${fmtMinutes(secondsLeft(0, plan))}`;
+    $('.pp-dur').textContent = fmtMinutes(secondsLeft(0, plan));
+    $('.pp-count').textContent = nUebungen(p.items.length);
+    // Stimmgesundheit: Höhe und Tiefe ersetzen das Einsingen nicht.
+    $('.pp-note').hidden = !['hoehe', 'tiefe'].includes(p.id);
     const focusSlot = document.activeElement?.dataset?.swap;
     $('.pp-list').replaceChildren(...p.items.map(([id, , , pool, slot]) => {
       const ex = exById(id);
       const li = document.createElement('li');
       li.className = 'pp-row';
-      li.innerHTML = `<span class="ex-ico">${iconSvg(id, 24)}</span><span><strong></strong><small></small></span>`;
+      li.innerHTML = `<span class="ex-ico">${iconSvg(id, 20)}</span><span><strong></strong><small></small></span>`;
       li.firstChild.style.background = groupColor(ex.group, true);
       li.firstChild.style.color = groupColor(ex.group);
       li.querySelector('strong').textContent = ex.name;
@@ -2123,15 +2156,14 @@
 
   function enterPlayer() {
     document.body.classList.add('is-player');
-    $('.player-top').append($('.gear-btn')); // das bestehende Zahnrad nach oben
-    $('.player-done').hidden = true;
+    setDone(false);
+    syncHead();
   }
   function exitPlayer() {
     if (run.playing) stop();
     swaps = null;
     document.body.classList.remove('is-player', 'is-prestart');
-    $('.header-tools').append($('.gear-btn'));
-    $('.player-done').hidden = true;
+    setDone(false);
     $('.tap-start').hidden = true;
     renderAll();
   }
@@ -2202,20 +2234,29 @@
       .map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('');
   }
 
+  /** Text der linken Pille unter der Übung („Runde 2 von 7“); die Tonart steht
+   *  getrennt in der Pille rechts (keyPillText). */
   function playerMetaText(seg, cur, rounds) {
     const ex = cur.ex;
     if (cur.kind === 'pause') return 'Kurze Pause';
     const r = cur.kind === 'round' ? cur : rounds[0];
-    const mode = ex.mode || 'major';
     if (!seg || !r) {
       if (ex.kind === 'body') return `${rounds.length} Bewegungen`;
       if (ex.kind === 'breath' || ex.kind === 'breathRhythm') return `${rounds.length} Runden · ohne Ton`;
-      return `${rounds.length} ${rounds.length === 1 ? 'Runde' : 'Runden'} · ${keyLabel(rounds[0].root, mode)}`;
+      return `${rounds.length} ${rounds.length === 1 ? 'Runde' : 'Runden'}`;
     }
     if (ex.kind === 'body') return `Bewegung ${r.round + 1} von ${r.rounds}`;
     if (ex.kind === 'breath') return `Runde ${r.round + 1} von ${r.rounds} · aus ${r.exhale} Schläge`;
     if (ex.kind === 'breathRhythm') return `Runde ${r.round + 1} von ${r.rounds} · ohne Ton`;
-    return `Runde ${r.round + 1} von ${r.rounds} · ${keyLabel(r.root, mode)}`;
+    return `Runde ${r.round + 1} von ${r.rounds}`;
+  }
+  /** Tonart (klein, mit Richtung der nächsten Rückung) — leer bei Übungen ohne Ton. */
+  function keyPillText(cur, rounds) {
+    const ex = cur.ex;
+    if (toneless(ex)) return '';
+    const r = cur.kind === 'round' ? cur : rounds[0];
+    if (!r || r.root == null) return '';
+    return `${keyLabel(r.root, ex.mode || 'major')}${r.trend ? ` ${r.trend}` : ''}`;
   }
 
   /** Spielmodus-Teil der Bühne (aus renderStage, je Segmentwechsel). */
@@ -2226,18 +2267,20 @@
     const stage = $('.stage');
     stage.style.setProperty('--gc', groupColor(ex.group));
     stage.style.setProperty('--gc-bg', groupColor(ex.group, true));
-    $('.hero-icon').innerHTML = iconSvg(ex.id, 64);
-    $('.hero-group').textContent = cur.kind === 'pause' ? 'Gleich' : GROUPS.find(([id]) => id === ex.group)[1];
+    $('.hero-icon').innerHTML = iconSvg(ex.id, 56);
     $('.hero-title').textContent = ex.name;
     $('.hero-how').textContent = ex.how;
     const rounds = plan.segs.filter((s) => s.kind === 'round' && s.item === cur.item);
     $('.player-meta').textContent = playerMetaText(seg, cur, rounds);
+    const keyText = keyPillText(cur, rounds);
+    $('.key-pill').hidden = !keyText;
+    $('.key-pill span').textContent = keyText;
     if (ex.glide) {
       $('.glide-path').setAttribute('d', glidePath(ex));
       const [x, y] = glidePoint(ex, 0);
       $('.glide-dot').setAttribute('cx', x.toFixed(1)); $('.glide-dot').setAttribute('cy', y.toFixed(1));
     }
-    // Segmentbalken: eine Übung = ein Segment in ihrer Gruppenfarbe.
+    // Segmentleiste: eine Übung = ein Segment in ihrer Gruppenfarbe.
     const bar = $('.segbar');
     const key = `${plan.items.map((x) => x.id).join()}|${plan.loop}`;
     if (bar.dataset.key !== key) {
@@ -2245,6 +2288,7 @@
       bar.replaceChildren(...plan.items.map((x) => {
         const i = document.createElement('i');
         i.style.setProperty('--c', groupColor(x.group));
+        i.style.setProperty('--cb', groupColor(x.group, true));
         i.append(document.createElement('b'));
         return i;
       }));
@@ -2255,18 +2299,25 @@
       el.classList.toggle('is-now', !!seg && k === cur.item);
       if (!seg || k !== cur.item) el.firstChild.style.width = '';
     });
-    // Vorschau: nächste Übung bzw. „Danach: fertig“ (Dauerschleife: keine).
+    // „Gleich: …“ nur in der letzten Runde einer Übung und in der Pause davor
+    // (Strohhalm holen, aufstehen …); sonst leer. Dauerschleife: nie.
     const next = $('.player-next');
     next.hidden = plan.loop || !$('.player-done').hidden;
     const last = cur.item >= plan.items.length - 1;
+    const lastRound = cur.kind === 'round' && cur.round >= cur.rounds - 1;
     const text = $('.next-text');
-    if (last) text.textContent = 'Danach: fertig';
+    const inPause = cur.kind === 'pause';
+    next.classList.toggle('is-off', !seg || !(inPause || lastRound));
+    if (inPause) {
+      text.innerHTML = `Gleich: ${iconSvg(ex.id, 20)}<span></span>`;
+      text.lastChild.textContent = ex.name;
+    } else if (last) text.textContent = 'Danach: fertig';
     else {
       const nx = plan.items[cur.item + 1];
       text.innerHTML = `Gleich: ${iconSvg(nx.id, 20)}<span></span>`;
       text.lastChild.textContent = nx.name;
     }
-    $('.skip-link').hidden = !run.playing || last;
+    syncNav();
   }
 
   /** Je Bild: Füllstand des aktuellen Segments, Punkt auf der Gleitkurve. */
@@ -2292,6 +2343,7 @@
   }
 
   function updatePlayerFrame(gf) {
+    syncNav();
     const x = plan.loop ? mod(gf, plan.total) : gf;
     const hit = segAt(Math.floor(x));
     if (!hit) return;
@@ -2326,7 +2378,7 @@
     sheetMode = 'help';
     openSheet(title);
     $('.sheet-body').innerHTML = paras.map((p) => (p.startsWith('<ul>') ? p : `<p>${p}</p>`)).join('');
-    $('.help-sheet .sheet-close').focus();
+    $('.help-sheet .sheet-close').focus({ preventScroll: true });
   }
   function closeHelp() {
     $('.help-sheet').hidden = true;
@@ -2338,10 +2390,17 @@
   function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
   let settingsReturn = null;
-  function openSettings() {
+  /** Einstellungsblatt öffnen; mit `chipGroup` ('voice' | 'load') den Fokus auf
+   *  das gewählte Chip dieser Gruppe setzen und die Gruppe ins Bild holen. */
+  function openSettings(chipGroup = null) {
     settingsReturn = document.activeElement;
     $('.settings-sheet').hidden = false;
-    $('.settings-sheet [data-action="close-settings"]').focus();
+    const row = chipGroup ? $(`.settings-sheet [data-chips="${chipGroup}"]`) : null;
+    const target = row && (row.querySelector('[aria-pressed="true"]') || row.querySelector('button'));
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ block: 'center' });
+    } else $('.settings-sheet [data-action="close-settings"]').focus();
   }
   function closeSettings() {
     $('.settings-sheet').hidden = true;
@@ -2519,7 +2578,14 @@
     if (t.closest('[data-action="own-new"]')) { openEditor(null); return; }
     const help = t.closest('[data-help]');
     if (help) { openHelp(help.dataset.help); return; }
-    if (t.closest('[data-action="player-close"]')) { exitPlayer(); return; }
+    if (t.closest('[data-action="back"]')) {
+      if (isPlayer()) exitPlayer();
+      else if (window.parent !== window) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin);
+      return;
+    }
+    const pill = t.closest('[data-pill]');
+    if (pill) { openSettings(pill.dataset.pill); return; }
+    if (t.closest('[data-action="prev"]')) { jumpBack(); return; }
     const swapBtn = t.closest('[data-swap]');
     if (swapBtn) { swapSlot(Number(swapBtn.dataset.swap)); return; }
     if (t.closest('[data-action="tap-start"]')) { kickStart(); return; }
@@ -2535,11 +2601,7 @@
     if (card) { playInPlayer({ program: card.dataset.program }); return; }
     const exRow = t.closest('[data-play-exercise]');
     if (exRow) { playInPlayer({ exercise: exRow.dataset.playExercise }); return; }
-    if (t.closest('[data-action="skip"]')) {
-      const hit = segAt(Math.max(0, run.step - 1));
-      if (hit && hit.seg.item < plan.items.length - 1) jumpTo(itemStart(hit.seg.item + 1));
-      return;
-    }
+    if (t.closest('[data-action="skip"]')) { jumpNext(); return; }
 
     if (t === $('.settings-sheet') || t.closest('[data-action="close-settings"]')) { closeSettings(); return; }
     if (t.closest('[data-action="open-settings"]')) { openSettings(); return; }
@@ -2554,6 +2616,7 @@
       const key = chip.dataset.chip;
       if (state[key] === chip.dataset.value) return;
       state[key] = chip.dataset.value;
+      if (key === 'voice') voiceChosen = true;
       // Die Stimmlage gilt in allen Tools — zurück ins gemeinsame Profil.
       if ((key === 'voice' || key === 'load') && profileApi) {
         const patch = key === 'voice' ? { part: state.voice } : { load: state.load };
@@ -2583,6 +2646,8 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.help-sheet').hidden) { closeHelp(); return; }
+    // Tap-Tempo (Taste T) gilt nur, solange das Tempo im Einstellungsblatt zu sehen ist.
+    if ((e.key === 't' || e.key === 'T') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && $('.help-sheet').hidden && !$('.settings-sheet').hidden) { tapTempo(); return; }
     if (e.key === 'Escape' && !$('.settings-sheet').hidden) { closeSettings(); return; }
     // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
     // (die App hört auf diese Nachricht, siehe initTools in app.js).
@@ -2590,7 +2655,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey || !$('.help-sheet').hidden || !$('.settings-sheet').hidden) return;
     const onControl = document.activeElement && /BUTTON|INPUT/.test(document.activeElement.tagName);
     if (e.code === 'Space' && !onControl && isPlayer()) { e.preventDefault(); if (run.playing) stop(); else kickStart(); }
-    else if ((e.key === 't' || e.key === 'T') && !e.repeat) tapTempo();
+
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -2876,6 +2941,7 @@
       for (const [id, dur] of [['moll5', 'mimemamomu'], ['mollDreiklang', 'dreiklang']]) {
         if (!ICONS[id].startsWith(ICONS[dur]) || ICONS[id] === ICONS[dur]) errors.push(`${id}: Icon nicht Dur-Schwester + Mondsichel`);
       }
+      errors.push(...checkRedesign());
       errors.push(...checkPopEngine());
       errors.push(...checkPopExercises());
       errors.push(...checkPopPrograms());
@@ -2885,6 +2951,62 @@
       plan = savedPlan;
       profile = savedProfile;
       if (!run.playing) renderAll();
+    }
+    return errors;
+  }
+
+  /** Konfetti-B2-Umbau: Zurück-Logik, Übersicht, Fußleiste, „Gleich:“, eigener Zurück-Knopf. */
+  function checkRedesign() {
+    const errors = [];
+    // Zurück: 1. Tipp an den Anfang der Übung, nur in den ersten 3 s zur vorigen.
+    const bt = (item, round, secs) => backTarget({ item, round, secs });
+    const cases = [[0, 0, .5, 'start'], [0, 4, 9, 'start'], [2, 3, 9, 'start'], [2, 3, 2.9, 'prev'], [2, 0, 20, 'start'], [1, 1, 3, 'start'], [1, 0, -2, 'prev']];
+    for (const [item, round, secs, want] of cases) {
+      if (bt(item, round, secs) !== want) errors.push(`backTarget(${item}, ${round}, ${secs}) = ${bt(item, round, secs)} statt ${want}`);
+    }
+    // Eigener Zurück-Knopf nur eingebettet; der Knopf selbst ist da.
+    const de = document.documentElement;
+    if (de.hasAttribute('data-own-back') !== de.classList.contains('is-embedded')) errors.push('data-own-back passt nicht zu ?embedded');
+    const backBtn = $('[data-own-back-btn]');
+    if (!backBtn || backBtn.getAttribute('aria-label') !== 'Zurück') errors.push('Zurück-Knopf im Kopf fehlt');
+    // Übersicht: Zeilen ohne Kurzanleitung, Kacheln ohne Minuten, Pillen vorhanden.
+    if (!isPlayer()) {
+      renderPrograms(); renderGroups(); renderPills();
+      if ($$('.ex-row .ex-how').length || $$('.ex-row').some((b) => b.textContent.trim() !== exById(b.dataset.playExercise).name)) errors.push('Übersicht: Übungszeilen mit mehr als dem Namen');
+      for (const c of $$('.prog-card[data-program]')) {
+        if (/Min/.test(c.textContent) || !/ starten, \d+ Übungen?$/.test(c.getAttribute('aria-label')) || c.querySelector('small')) errors.push(`Übersicht: Kachel ${c.dataset.program}: „${c.textContent}“`);
+      }
+      const pv = $('[data-pill="voice"]'), pl = $('[data-pill="load"]');
+      if (!pv || !pl || !/^(Stimme: .+|Stimme wählen)$/.test(pv.textContent.trim()) || !/^Belastung: (leicht|normal|kräftig)$/.test(pl.textContent.trim())) errors.push('Übersicht: Pillen Stimme/Belastung');
+      for (const el of [pv, pl, $('.prog-menu'), $('.prog-card.is-add')]) if (el && (el.offsetHeight < 44 || el.offsetWidth < 44) && !el.classList.contains('prog-menu')) errors.push(`zu klein: ${el.className}`);
+      if ($('[data-programs]') && !$$('.prog-menu').every((m) => m.offsetWidth >= 40 && m.offsetHeight >= 40)) errors.push('„…“-Knopf kleiner als 40 px');
+    }
+    // Tempo und Tap liegen im Einstellungsblatt, nicht in der Fußleiste.
+    if ($('footer .bpm') || $('footer .tap-btn') || !$('.settings-sheet .bpm') || !$('.settings-sheet .tap-btn') || !$('.settings-sheet .bpm-out')) errors.push('Tempo/Tap nicht im Einstellungsblatt');
+    if (!$('footer [data-action="prev"]') || !$('footer [data-action="skip"]') || !$('footer .play')) errors.push('Fußleiste: Zurück/Play/Weiter fehlen');
+    // „Gleich: …“ nur in der letzten Runde und in der Pause.
+    if (!run.playing) {
+      const wasPlayer = isPlayer();
+      document.body.classList.add('is-player');
+      try {
+        Object.assign(state, { mode: 'program', program: 'kurz', voice: 'A', load: 'normal' });
+        plan = buildPlan();
+        const rs = plan.segs.filter((s) => s.kind === 'round' && s.item === 0);
+        const off = () => $('.player-next').classList.contains('is-off');
+        if (rs.length > 1) {
+          renderStage(rs[0]);
+          if (!off()) errors.push('„Gleich:“ schon in der ersten Runde sichtbar');
+        }
+        renderStage(rs[rs.length - 1]);
+        if (off() || !/^Gleich: /.test($('.next-text').textContent)) errors.push(`„Gleich:“ fehlt in der letzten Runde: „${$('.next-text').textContent}“`);
+        renderStage(plan.segs.find((s) => s.kind === 'pause'));
+        if (off() || !/^Gleich: /.test($('.next-text').textContent)) errors.push('„Gleich:“ fehlt in der Pause');
+        renderStage();
+        if (!off()) errors.push('„Gleich:“ in der Vorschau sichtbar');
+      } finally {
+        if (!wasPlayer) document.body.classList.remove('is-player');
+        renderStage();
+      }
     }
     return errors;
   }
@@ -3219,6 +3341,12 @@
         if ($$('.pp-swap').length !== wantSwaps || $$('.pp-swap').some((b) => !/^Andere Übung für /.test(b.getAttribute('aria-label')))) errors.push(`⇄-Knöpfe: ${$$('.pp-swap').length} statt ${wantSwaps}`);
         const btn = $('.pp-swap');
         if (btn && (btn.offsetWidth < 44 || btn.offsetHeight < 44)) errors.push(`⇄ zu klein: ${btn.offsetWidth}×${btn.offsetHeight}`);
+        if (!/^ca\. \d+ Min$/.test($('.pp-dur').textContent) || $('.pp-note').hidden === false) errors.push(`Prestart: Dauer „${$('.pp-dur').textContent}“ / Hinweis bei Ausführlich`);
+        if ($('.k-title').textContent !== 'Einsingen · Ausführlich') errors.push(`Prestart: Titel „${$('.k-title').textContent}“`);
+        for (const pid of ['hoehe', 'tiefe']) {
+          state.program = pid; renderAll();
+          if ($('.pp-note').hidden || !/Erst Kurz/.test($('.pp-note').textContent)) errors.push(`Prestart ${pid}: Hinweis „Erst Kurz einsingen“ fehlt`);
+        }
       } finally {
         if (!wasPlayer) document.body.classList.remove('is-player');
         document.body.classList.remove('is-prestart');
@@ -3230,11 +3358,10 @@
   /** Stimmlage aus dem gemeinsamen Profil übernehmen (sofern gesetzt). */
   function applyProfile() {
     readProfile();
-    if (profile?.part && VOICE_IDS.includes(profile.part)) state.voice = profile.part;
+    if (profile?.part && VOICE_IDS.includes(profile.part)) { state.voice = profile.part; voiceChosen = true; }
     if (profile && LOAD_IDS.includes(profile.load)) state.load = profile.load;
   }
   applyProfile();
-  $('.header-tools').append($('.gear-btn'));
   const quickParams = parseQuickParams(location.search);
   // ?program=: Spielmodus sofort (auch vor dem Laden der Ablage), Start erst
   // danach — sonst liefe das Programm mit Standard-Längen los.
@@ -3247,7 +3374,7 @@
     try {
       Promise.resolve(storage.load('einsingen')).then((data) => {
         if (run.playing) return;
-        if (data) sanitize(data);
+        if (data) { sanitize(data); if (VOICE_IDS.includes(data.voice)) voiceChosen = true; }
         applyProfile();
         applyQuickParams(quickParams);
         renderAll();
