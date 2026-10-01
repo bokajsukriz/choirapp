@@ -308,6 +308,10 @@
   /* Singen: Knopfleiste mit Icons (Beschriftung klein darunter). */
   .sing-controls { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; justify-content: center; }
   .sing-ctl-gap { flex: 1 1 auto; }
+  .inner-dots { display: flex; justify-content: center; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
+  .inner-dots i { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #F4DE8C; background: #fff; box-sizing: border-box; }
+  .inner-dots i.is-on { background: #ffd23f; border-color: #e0b41c; }
+  .inner-text { text-align: center; color: var(--muted); font-weight: 700; font-size: 14px; margin: 4px 0 0; }
   .sing-controls:has(.big-btn:not([hidden])) .sing-ctl-gap { display: none; }
   .sing-ctl { display: grid; justify-items: center; gap: 3px; min-width: 56px; padding: 0; color: var(--text); font-size: .64rem; font-weight: 800; }
   .sing-ctl svg { width: 48px; height: 48px; padding: 12px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); box-sizing: border-box; }
@@ -5503,7 +5507,10 @@
         <div class="check-list">
           ${checkRow('showSight', 'on', 'Blattsingen anzeigen (mit Noten)', sing.showSight, 'Der Chor übt nach Gehör – Blattsingen ist deshalb ausgeblendet.', 'singset')}
           ${checkRow('findA4', 'on', 'Ton finden: nur das a′ (Stimmgabel)', sing.findA4, 'eigene Auswahl statt der Stufe', 'singset')}
-        </div>${views.voice === 'list' ? '<button type="button" class="k-btn k-btn--ghost sheet-tuner" data-sheet-tuner>Tuner und Tonumfang öffnen</button>' : ''}`;
+        </div>
+        <span class="sub-label">Pause vor dem Singen</span>
+        <div class="chip-row">${[[0, 'aus'], [1, '1 Takt'], [2, '2 Takte']].map(([n, t]) => `<button class="chip" type="button" data-sing-pause="${n}" aria-pressed="${sing.audiation === n}">${t}</button>`).join('')}</div>
+        <p class="foot-note" style="text-align:left">Beim Nachsingen und bei Intervallen: erst die Melodie in Gedanken singen, dann laut.</p>${views.voice === 'list' ? '<button type="button" class="k-btn k-btn--ghost sheet-tuner" data-sheet-tuner>Tuner und Tonumfang öffnen</button>' : ''}`;
       $('.sheet-hint').textContent = '';
       return;
     }
@@ -6738,6 +6745,7 @@
     levels: { singInterval: 1, findTone: 1, hold: 1, sight: 1, dictation: 1, singEcho: 1, inTime: 1 },
     solfa: SOLFA_DEFAULT, // 'numbers' (1 2 3, Standard) | 'syllables' (do re mi)
     showSight: false,     // Blattsingen anzeigen (mit Noten) — Einstellungsblatt „Singen“
+    audiation: 1,         // Pause vor dem Singen in Takten (0 = aus): erst innerlich hören (Gordon)
     findA4: false,        // Ton finden: „Nur das a′“ (Stimmgabel) statt der Stufe — eigene Auswahl
     showSolfa: true,      // Intervalle singen: Hilfe „do → mi“ zeigen
     task: null, phase: 'idle', judge: null, timers: [], bus: null, lastKey: null,
@@ -7167,6 +7175,7 @@
     sing.timers.push(setTimeout(() => {
       if (sing.task !== task) return;
       if (task.mode === 'dictation') { sing.phase = 'answer'; renderSing(); return; }
+      if (task.mode === 'singInterval') { startInner(task, beginSinging, INNER_BAR_SEC); return; }
       beginSinging();
     }, wait));
   }
@@ -7224,8 +7233,31 @@
     sing.timers.push(setTimeout(() => {
       if (sing.task !== task) return;
       task.playIdx = -1; renderEchoDots();
-      if (!melodyOnly && sing.phase === 'cue') beginEchoSinging(task);
+      if (!melodyOnly && sing.phase === 'cue') startInner(task, () => beginEchoSinging(task), METERS[task.mel.meter].ticks * tick, METERS[task.mel.meter]);
     }, at(end) + 350));
+  }
+
+  /* ---- Audiationspause (Musikpädagoge, Gordon): nach der Vorgabe ein bis
+     zwei stille Takte – „Sing sie in Gedanken“ –, dann erst laut. Das
+     Mikrofon wertet in dieser Phase nichts aus. ---- */
+  const AUDIATION_MODES = ['singEcho', 'singInterval'];
+  const INNER_BAR_SEC = 2.4; // Intervalle: ein „Takt“ = vier ruhige Schläge
+  function startInner(task, next, barSec, meter = null) {
+    const bars = AUDIATION_MODES.includes(task.mode) ? sing.audiation : 0;
+    if (!bars || selfTesting) { next(); return; }
+    const beats = meter ? Math.round(meter.ticks / meter.beat) : 4;
+    const total = beats * bars;
+    const beatSec = barSec / beats;
+    sing.phase = 'inner';
+    task.inner = { total, now: 0 };
+    renderSing();
+    for (let i = 1; i < total; i++) sing.timers.push(setTimeout(() => { if (sing.task === task && sing.phase === 'inner') { task.inner.now = i; renderInnerDots(task); } }, i * beatSec * 1000));
+    sing.timers.push(setTimeout(() => { if (sing.task === task && sing.phase === 'inner') next(); }, total * beatSec * 1000));
+  }
+  const innerDotsHtml = (task) => `<div class="inner-dots" aria-hidden="true">${Array.from({ length: task.inner?.total || 0 }, (_, i) => `<i${i <= (task.inner?.now ?? -1) ? ' class="is-on"' : ''}></i>`).join('')}</div>`;
+  function renderInnerDots(task) {
+    const box = $('.inner-dots');
+    if (box) box.outerHTML = innerDotsHtml(task);
   }
 
   function beginEchoSinging(task) {
@@ -7310,7 +7342,7 @@
    *  Zählt als „mit Hilfe“ (kein Fehler, nicht für den Stufenvorschlag). */
   function echoHelp(kind) {
     const task = sing.task;
-    if (!task || task.mode !== 'singEcho' || !['cue', 'sing'].includes(sing.phase)) return;
+    if (!task || task.mode !== 'singEcho' || !['cue', 'inner', 'sing'].includes(sing.phase)) return;
     if (kind === 'listen') { if (task.listens >= ECHO_MAX_LISTENS) return; task.listens++; }
     else if (kind === 'slow') task.slow = true;
     else if (kind === 'half') { if (!echoHalfTick(task.mel)) return; task.half = true; }
@@ -7881,10 +7913,12 @@
   }
   function renderSingSteps() {
     const box = $('.sing-steps');
-    const names = SING_STEPS[sing.mode];
+    let names = SING_STEPS[sing.mode];
     box.hidden = !names || !sing.task;
     if (box.hidden) return;
-    const k = singStepIndex(sing.phase);
+    let k = singStepIndex(sing.phase);
+    // Mit Audiationspause steht „Innerlich“ zwischen Hören und Singen.
+    if (sing.audiation && AUDIATION_MODES.includes(sing.mode)) { names = [names[0], 'Innerlich', ...names.slice(1)]; k = sing.phase === 'inner' ? 1 : k ? k + 1 : 0; }
     box.innerHTML = stepperHtml(names, k, (i) => i < k, 'Ablauf der Aufgabe');
   }
 
@@ -7917,7 +7951,7 @@
     view.innerHTML = '';
     $('.sing-progress').hidden = sing.mode !== 'hold' || !task;
     if (task?.mode === 'hold' && sing.phase !== 'hold' && sing.phase !== 'result') $('.sing-progress i').style.width = '0%';
-    const phaseText = { cue: 'Hör zu …', sing: 'Jetzt singen', holdWait: 'Setz ein, wenn du bereit bist', hold: 'Halten …', answer: 'Welche Silben?', result: '' };
+    const phaseText = { cue: 'Hör zu …', inner: 'Erst in Gedanken – noch kein Ton', sing: 'Jetzt singen', holdWait: 'Setz ein, wenn du bereit bist', hold: 'Halten …', answer: 'Welche Silben?', result: '' };
     const r = singRange();
     if (sing.calib) {
       prompt.textContent = sing.phase === 'calib' ? 'Sing 8-mal „da“ auf einem bequemen Ton, genau auf den Klick.' : 'Kalibrierung';
@@ -7941,6 +7975,7 @@
       prompt.textContent = `${intervalName(task.semis)} ${task.dir === 'down' ? 'abwärts' : 'aufwärts'}`;
       const ivPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
       sub.textContent = `${sing.showSolfa ? `${intervalSolfa(task.semis, task.dir)} · ` : ''}Grundton ${noteLabel(task.base)}${ivPhase ? ` · ${ivPhase}` : ''}`;
+      if (sing.phase === 'inner') view.innerHTML = innerDotsHtml(task);
     } else if (task.mode === 'findTone') {
       prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
       const findPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
@@ -7961,10 +7996,11 @@
       }
       view.innerHTML = html;
     } else if (task.mode === 'singEcho') {
-      prompt.textContent = { cue: 'Hör zu', sing: 'Jetzt du' }[sing.phase] || 'Nachsingen';
+      prompt.textContent = { cue: 'Hör zu', inner: 'Sing sie in Gedanken', sing: 'Jetzt du' }[sing.phase] || 'Nachsingen';
       sub.textContent = [task.minor ? 'Moll' : 'Dur', `${echoTones(task).length} Töne`, task.half ? 'erste Hälfte' : '', task.slow ? 'langsamer' : '',
         sing.phase === 'sing' ? 'Silbe frei, z. B. „no“' : ''].filter(Boolean).join(' · ');
       if (sing.phase === 'result' && task.result) view.innerHTML = echoResultHtml(task.result, echoTones(task), task.line);
+      else if (sing.phase === 'inner') view.innerHTML = `${innerDotsHtml(task)}<p class="inner-text">Noch kein Ton – nach dem Takt bist du dran.</p>`;
       else view.innerHTML = `<div class="echo-dots" aria-hidden="true">${echoTones(task).map(() => '<i></i>').join('')}</div>`;
       renderEchoDots();
     } else if (task.mode === 'hold') {
@@ -8011,7 +8047,7 @@
     $('[data-sing="skip"]').hidden = !(task?.mode === 'sight' && sing.phase === 'sing');
     $('[data-sing="stop"]').hidden = !task && sing.phase !== 'calib';
     const echo = task?.mode === 'singEcho';
-    const before = echo && ['cue', 'sing'].includes(sing.phase);
+    const before = echo && ['cue', 'inner', 'sing'].includes(sing.phase);
     $('[data-sing="again"]').hidden = !(echo && sing.phase === 'result');
     $('[data-sing="slow"]').hidden = !before || task.slow;
     $('[data-sing="half"]').hidden = !before || task.half || !echoHalfTick(task.mel);
@@ -8767,7 +8803,7 @@
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
-        inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
+        audiation: sing.audiation, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
     };
   }
 
@@ -8885,6 +8921,7 @@
     if (sg.demo === 'piano' || sg.demo === 'voice') sing.demo = sg.demo;
     // Im Takt (Nachsingen Paket 4): optional, sonst Standard.
     if (IN_TIME_VARIANTS.some(([id]) => id === sg.inTimeVariant)) sing.inTime.variant = sg.inTimeVariant;
+    if ([0, 1, 2].includes(sg.audiation)) sing.audiation = sg.audiation;
     if (Number.isFinite(sg.inTimeTempo) && sg.inTimeTempo >= IN_TIME_TEMPO[0] - 1e-9 && sg.inTimeTempo <= IN_TIME_TEMPO[1] + 1e-9) sing.inTime.tempo = Math.round(sg.inTimeTempo * 20) / 20;
     if (typeof sg.inTimeRhythmSyl === 'boolean') sing.inTime.rhythmSyl = sg.inTimeRhythmSyl;
     if (sg.singLatencyMs === null || (Number.isInteger(sg.singLatencyMs) && sg.singLatencyMs >= 0 && sg.singLatencyMs <= SING_CALIB.maxMs)) sing.inTime.latencyMs = sg.singLatencyMs;
@@ -8902,6 +8939,8 @@
     if (e.target === $('.level-sheet') || e.target.closest('[data-level-close]')) { closeLevelSheet(); return; }
     if (e.target.closest('[data-sing-settings]')) { openSettings('sing'); return; }
     if (e.target.closest('[data-sheet-tuner]')) { closeSettings(); openMode('voice', 'tuner'); return; }
+    const pauseChip = e.target.closest('[data-sing-pause]');
+    if (pauseChip) { sing.audiation = Number(pauseChip.dataset.singPause); persist(); renderSettings(); return; }
     // Stimm-Karte im Leerzustand: erst die Stimme wählen (Blatt mit Weg zum Tuner).
     if (e.target.closest('[data-voice-choose]')) {
       openSettings('sing');
@@ -12269,6 +12308,18 @@
     if (!box.querySelector('.k-pill--ok') || !/Melodie stimmt/.test(box.textContent) || box.querySelector('.echo-chips')) errors.push('Nachsingen versetzt: Pille nicht positiv');
     if (singStepIndex('cue') !== 0 || singStepIndex('sing') !== 1 || singStepIndex('answer') !== 1 || singStepIndex('result') !== 2) errors.push('singStepIndex');
     if (SING_STEPS.hold || SING_STEPS.tuner || SING_STEPS.singEcho.join() !== 'Hören,Singen,Ergebnis') errors.push('SING_STEPS');
+    // Audiationspause: Punkte je Schlag, aus = direkt singen, wird gespeichert.
+    { const d = document.createElement('div'); d.innerHTML = innerDotsHtml({ inner: { total: 4, now: 1 } }); if (d.querySelectorAll('i').length !== 4 || d.querySelectorAll('i.is-on').length !== 2) errors.push('Audiationspause: Punkte'); }
+    {
+      const sv = sing.audiation;
+      let called = false;
+      sing.audiation = 0; startInner({ mode: 'singEcho' }, () => { called = true; }, 2);
+      if (!called) errors.push('Audiationspause aus: kein direkter Einsatz');
+      sing.audiation = 2;
+      if (snapshot().sing?.audiation !== 2) errors.push('Audiationspause wird nicht gespeichert');
+      sing.audiation = sv;
+      if (AUDIATION_MODES.join() !== 'singEcho,singInterval') errors.push('Audiationspause: Modi');
+    }
     const host = $('[data-list="voice"]');
     const keep = host.innerHTML;
     renderModeList('voice');
