@@ -2,7 +2,7 @@
 
 Grundlage: `ARBEITSANWEISUNG-UEBUNGEN-REDESIGN.md`. Branch
 `claude/affectionate-archimedes-75nl5c` (siehe D-1), Basis `main` @ `dba2715`,
-`SW_VERSION` v388 → v420. Screenshots: `docs/redesign-uebungen/` (375×667).
+`SW_VERSION` v388 → v421. Screenshots: `docs/redesign-uebungen/` (375×667).
 
 ## Stand am Morgen
 
@@ -114,6 +114,28 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
   „Im Takt: Vom Blatt“ gibt es nur bei eingeblendetem Blattsingen.
 - **Einsingen** (`550eb40`): Die Kacheln zeigen wieder „ca. m Min“ als Pille
   und „n Übungen“ darunter (Entscheidung zu D-2).
+- **Singen: festes Gerüst mit Daumen-Dock** (Anweisung „Singen-UI“, Entwurf M1):
+  - Silben, Vorspiel und die Im-Takt-Optionen (Variante, Tempo,
+    Rhythmussprache, Neu kalibrieren) stehen im Zahnrad-Blatt, nur die für die
+    Übung passenden. Werte und Speicherung unverändert.
+  - Stufen-Karte bleibt immer sichtbar, darunter die Phasenleiste Hören · Du ·
+    Ergebnis (wie im Rhythmus-Kurs). Die Pause in Gedanken und Einzähler zählen
+    zu Hören.
+  - Bühne mit fester Höhe (360 px, auf niedrigen Bildschirmen 300 px): Titel,
+    Unterzeile, Mitte, Fortschrittsbalken, Meldungszeile. Beim Singen nur der
+    Balken (Nachsingen Ton für Ton bzw. Zeit, Im Takt über den Durchgang,
+    Blattsingen Ton für Ton) – keine Tonhöhe, keine Cent, keine Treffer; die
+    Auswertung erst im Ergebnis. Takt-/Ton-Zählertexte entfallen.
+  - Mikro-Symbol oben rechts: durchgestrichen = aus, leer = hört nichts, grün
+    gefüllt nach Pegel, rot = zu laut. Pegel aus dem vorhandenen Analyser im
+    vorhandenen Bild-Takt.
+  - Daumen-Dock fest unten: links „Nochmal“ (Vorgabe bzw. gleiche Melodie,
+    ausgegraut, wo es nicht geht), Mitte Start / Stopp / Weiter, rechts
+    „Hilfen“ (Blatt mit Zielton, Langsamer, 1. Hälfte, Überspringen).
+  - Mit Playwright je Übung (Ton halten, Ton finden, Intervalle, Nachsingen,
+    Diktat, Im Takt, Zweite Stimme, Blattsingen) in den Phasen vor Start,
+    Vorgabe, Du und Ergebnis geprüft: Phasenleiste, Bühne und die drei
+    Dock-Knöpfe stehen pixelgleich; in „Du“ keine Tonhöhe.
 - **Klatsch-Grooves als eine Seite (Mischpult, vom Chorleiter gewählt):**
   - Keine Schritte mehr: „Hören“ entfällt, Durchhalten ist der Standard.
   - Oben ein Regler für die Begleitung mit Icons in der Reihenfolge Klick,

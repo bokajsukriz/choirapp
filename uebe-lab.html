@@ -710,7 +710,65 @@
   [data-panel="voice"] .panel { background: transparent; border: 0; padding: 0; }
   [data-panel="voice"] .panel[data-sing-only="tuner"] { background: var(--surface); border: 1px solid var(--line); padding: 14px; }
   .sing-stage { background: transparent; border: 0; padding: 4px 0; }
-  .sing-steps { margin: 0 0 10px; }
+  /* Singen: festes Gerüst (Anweisung Singen-UI). Bühne mit fester Höhe,
+     jede Zeile mit fester Höhe; Dock fest unten mit drei Plätzen. */
+  .sing-page { display: flex; flex-direction: column; gap: 10px; padding-bottom: 150px; }
+  .sing-page [data-levels="sing"] { margin: 0; }
+  .sing-strip { margin: 0; }
+  .bar-pill[data-kind="result"] { --fill: var(--ok-bg, #DDF5EA); }
+  .bar-pill[data-kind="result"].is-now { border-color: var(--ok, #2f9e5b); color: var(--ok-fg, #157a55); }
+  .sing-strip .bar-pill.is-now .bar-fill { width: 100%; }
+  .sing-page .sing-stage { position: relative; height: 360px; box-sizing: border-box; margin: 0; padding: 12px 14px 10px; display: flex; flex-direction: column; text-align: center; background: var(--surface); border: 1px solid var(--tint-line); border-radius: 20px; }
+  .sing-page .sing-prompt { margin: 0; padding: 0 30px; height: 2.5em; line-height: 1.25; font-size: 18px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: none; }
+  .sing-page .sing-sub { margin: 2px 0 0; padding: 0 30px; height: 2.6em; line-height: 1.3; font-size: 13px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: none; }
+  .sing-page .sing-view { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; justify-content: safe center; gap: 8px; }
+  .sing-page .sing-view > * { flex: none; }
+  .sing-page .sing-view .stage { margin: 0; }
+  .sing-page .echo-head { margin: 0; justify-content: center; }
+  .sing-page .echo-graph { margin: 0; padding: 2px; }
+  .sing-page .echo-graph svg { display: block; width: 100%; max-height: 112px; }
+  .sing-page .echo-legend { margin: 0; }
+  .sing-page .echo-chips { margin: 0; }
+  .sing-intro { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text); }
+  .sing-page .sing-progress { flex: none; height: 10px; margin: 8px 0 0; }
+  .sing-page .sing-progress i { transition: width .12s linear; }
+  .sing-page .sing-progress.is-listen i { background: var(--text); }
+  .sing-msg { flex: none; height: 3.9em; margin-top: 6px; overflow-y: auto; }
+  .sing-msg p { margin: 0; }
+  .sing-page .sing-live { font-size: 15px; min-height: 0; }
+  .sing-page .sing-feedback { margin: 0; font-size: 14px; }
+  .sing-page .sing-feedback:empty, .sing-page .sing-live:empty { display: none; }
+  .sing-page .sing-answers { margin: 0; }
+  .sing-page .sing-answers.is-reserved { min-height: 112px; }
+  .sing-page .sing-score:empty { display: none; }
+  .sing-foot { margin: 0; }
+  /* Mikro-Symbol: Kapsel füllt sich von unten mit dem Pegel. */
+  .sing-mic { position: absolute; top: 10px; right: 10px; width: 26px; height: 30px; display: grid; place-items: center; opacity: .45; }
+  .sing-mic.is-open { opacity: .75; }
+  .sing-mic svg { width: 24px; height: 24px; overflow: visible; }
+  .sing-mic .mic-cap, .sing-mic .mic-stand { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sing-mic .mic-slash { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sing-mic.is-open .mic-slash { display: none; }
+  .sing-mic .mic-fill { fill: #6cbf8a; transition: y .08s linear, height .08s linear; }
+  .sing-mic.is-hot .mic-fill { fill: var(--bad); }
+  .sing-mic.is-hot .mic-cap, .sing-mic.is-hot .mic-stand { stroke: var(--bad); }
+  @media (max-height: 720px) { .sing-page .sing-stage { height: 300px; } }
+  @media (prefers-reduced-motion: reduce) { .sing-mic .mic-fill, .sing-page .sing-progress i { transition: none; } }
+  /* Daumen-Dock */
+  .sing-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+  .sing-dock button { font: inherit; border: 0; background: none; padding: 0; color: var(--text); cursor: pointer; display: grid; justify-items: center; gap: 4px; font-size: 12px; font-weight: 800; }
+  .sing-dock .dock-c { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--tint-line); background: var(--surface-2); display: grid; place-items: center; }
+  .sing-dock .dock-c svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sing-dock [data-sing="helps"] .dock-c svg { fill: currentColor; }
+  .sing-dock .dock-slot:disabled { opacity: .35; cursor: default; }
+  .sing-dock .dock-core { width: 66px; height: 66px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; box-shadow: 0 6px 16px rgba(var(--accent-rgb), .35); }
+  .sing-dock .dock-core svg { width: 24px; height: 24px; fill: currentColor; }
+  .sing-dock .dock-cap { color: var(--accent-foreground, #db0a73); }
+  .sing-helps { display: flex; flex-direction: column; gap: 8px; }
+  .sing-help { display: grid; gap: 2px; text-align: left; padding: 10px 14px; min-height: 52px; border-radius: 14px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+  .sing-help b { font-size: 15px; }
+  .sing-help span { font-size: 12px; color: var(--muted); }
+  .sing-help:disabled { opacity: .45; cursor: default; }
   .sing-prompt { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
   .sing-ctl { min-width: 52px; font-size: 11px; font-weight: 700; }
   .sing-ctl svg { background: var(--surface); border-color: var(--tint-line); }
@@ -824,45 +882,30 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="voice"></div>
     <div data-exview="voice" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="voice" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-sing-settings data-sing-only="task" aria-label="Einstellungen: meine Stimme" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
-    <section class="panel" data-sing-only="task" hidden>
-      <div class="sing-steps" hidden></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="voice" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-sing-settings data-sing-only="task" aria-label="Einstellungen: Stimme, Silben, Vorspiel und Übung" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
+    <!-- Festes Gerüst (Daumen-Dock, Anweisung Singen-UI): Stufen-Karte,
+         Phasenleiste Hören · Du · Ergebnis, Bühne mit fester Höhe (Mikro-Symbol
+         oben rechts), Antworten, Dock mit Nochmal · Start/Stopp/Weiter · Hilfen.
+         Alle Einstellungen liegen im Zahnrad. -->
+    <section class="panel sing-page" data-sing-only="task" hidden>
       <div data-levels="sing"></div>
-      <div class="sing-opts">
-        <div data-solfa-row><span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div></div>
-        <div data-demo-row hidden><span class="sub-label">Vorspiel</span><div class="chip-row" data-chips="demo"></div></div>
-        <div data-intime-row data-intime-variant-row hidden><span class="sub-label">Variante</span><div class="chip-row" data-chips="inTimeVariant"></div></div>
-        <div class="intime-opts" data-intime-row hidden>
-          <label class="intime-tempo"><span class="sub-label">Tempo <output class="intime-tempo-out"></output></span><input type="range" min="80" max="120" step="5" value="100" data-intime-tempo aria-label="Tempo in Prozent"></label>
-          <label class="switch"><input type="checkbox" role="switch" data-intime-syl><span class="switch-track"></span>Rhythmussprache</label>
-        </div>
-      </div>
-      <div class="ear-stage sing-stage">
-        <p class="ear-prompt sing-prompt"></p>
-        <p class="ear-sub sing-sub"></p>
+      <div class="bar-strip sing-strip" aria-hidden="true"></div>
+      <div class="sing-stage">
+        <span class="sing-mic" role="img" aria-label="Mikrofon aus"><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="sing-mic-clip"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/></clipPath></defs><rect class="mic-fill" clip-path="url(#sing-mic-clip)" x="8.5" y="14.5" width="7" height="0"/><rect class="mic-cap" x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path class="mic-stand" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/><path class="mic-slash" d="M4 3l16 18"/></svg></span>
+        <p class="sing-prompt"></p>
+        <p class="sing-sub"></p>
         <div class="sing-view"></div>
-        <div class="progress sing-progress" hidden><i></i></div>
-        <p class="sing-live" aria-hidden="true"></p>
-        <!-- Knopfleiste: links Beenden, rechts Wiederholen (Vorgabe, Zielton)
-             und Weiter (Pfeil); vor der ersten Aufgabe nur „Start“. -->
-        <div class="sing-controls">
-          <button class="sing-ctl is-quiet" type="button" data-sing="stop" aria-label="Beenden" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span>Beenden</span></button>
-          <span class="sing-ctl-gap"></span>
-          <button class="sing-ctl" type="button" data-sing="replay" aria-label="Vorgabe noch einmal" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg><span class="replay-label">Vorgabe</span></button>
-          <button class="sing-ctl" type="button" data-sing="target" aria-label="Zielton anhören" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="17" r="3"/><path d="M11 17V4l7 3"/></svg><span>Zielton</span></button>
-          <button class="sing-ctl" type="button" data-sing="slow" aria-label="Langsamer vorspielen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l-2.5 2.5M10 3h4"/></svg><span>Langsamer</span></button>
-          <button class="sing-ctl" type="button" data-sing="half" aria-label="Nur die erste Hälfte" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M12 7v10"/><path d="M3.5 12H12" stroke-width="6" stroke-opacity=".35"/></svg><span>1. Hälfte</span></button>
-          <button class="sing-ctl" type="button" data-sing="again" aria-label="Nochmal, gleiche Melodie" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6L20 8.7"/><path d="M20 4v4.7h-4.7"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg><span>Nochmal</span></button>
-          <button class="sing-ctl" type="button" data-sing="skip" aria-label="Ton überspringen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 9 7-9 7z"/><path d="M18 5v14"/></svg><span>Überspringen</span></button>
-          <button class="sing-ctl is-primary" type="button" data-sing="start" aria-label="Weiter" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg><span>Weiter</span></button>
-          <button class="big-btn" type="button" data-sing="begin">Start</button>
-        </div>
+        <div class="progress sing-progress"><i></i></div>
+        <div class="sing-msg"><p class="sing-live" aria-hidden="true"></p><p class="sing-feedback ear-feedback" role="status" aria-live="polite"></p></div>
       </div>
       <div class="answer-grid sing-answers"></div>
-      <p class="sing-feedback ear-feedback" role="status" aria-live="polite"></p>
       <p class="score sing-score"></p>
-      <p class="foot-note intime-note" data-intime-row hidden>Mit Kopfhörern – sonst hört das Mikrofon den Klick. Hast du das Gerät oder die Kopfhörer gewechselt: neu kalibrieren.<span class="intime-lat"></span> <button type="button" class="link-btn" data-sing="calib">Neu kalibrieren</button></p>
-      <p class="foot-note">Mit Kopfhörern üben, sonst hört das Mikrofon die Vorgabe mit. Tiefe Stimmen dürfen eine Oktave tiefer singen — das zählt als Treffer.</p>
+      <p class="foot-note sing-foot">Mit Kopfhörern üben, sonst hört das Mikrofon die Vorgabe mit. Tiefe Stimmen dürfen eine Oktave tiefer singen — das zählt als Treffer.</p>
+      <div class="sing-dock">
+        <button class="dock-slot" type="button" data-sing="nochmal" aria-label="Nochmal" disabled><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></span><span>Nochmal</span></button>
+        <button class="dock-main" type="button" data-sing="main" aria-label="Start"><span class="dock-core"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span class="dock-cap">Start</span></button>
+        <button class="dock-slot" type="button" data-sing="helps" aria-label="Hilfen: Zielton, Langsamer, 1. Hälfte, Überspringen" aria-haspopup="dialog"><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span><span>Hilfen</span></button>
+      </div>
     </section>
     <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Stimm-Tuner</h2>
@@ -5833,7 +5876,7 @@
 
   function openSettings(kind) {
     sheetKind = kind;
-    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : 'Einstellungen';
+    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' ? 'Hilfen' : 'Einstellungen';
     lastSettingsBtn = document.activeElement;
     $('.sheet').hidden = false;
     renderSettings();
@@ -5844,6 +5887,7 @@
     const problem = settingsProblem();
     if (problem) { $('.sheet-hint').textContent = problem; return; }
     $('.sheet').hidden = true;
+    if (sheetKind === 'singhelp') { renderSing(); $('[data-sing="helps"]')?.focus(); return; }
     if (sheetKind === 'sing') {
       renderSing();
       if (views.voice === 'list') renderModeList('voice'); // Stimm-Karte nach der Wahl
@@ -5873,7 +5917,7 @@
   }
 
   function settingsProblem() {
-    if (sheetKind === 'rhythm' || sheetKind === 'sing' || sheetKind === 'course') return '';
+    if (sheetKind === 'rhythm' || sheetKind === 'sing' || sheetKind === 'singhelp' || sheetKind === 'course') return '';
     const s = ear.settings;
     if (ear.mode === 'interval') {
       if (s.intervals.length < 2) return 'Bitte mindestens zwei Intervalle auswählen.';
@@ -5992,8 +6036,18 @@
   function renderSettings() {
     if (sheetKind === 'rhythm') { renderRhythmSettings(); $('.sheet-body').insertAdjacentHTML('afterbegin', tempoSheetHtml()); renderTransport(); return; }
     if (sheetKind === 'course') { renderCourseList(); return; }
+    if (sheetKind === 'singhelp') { renderSingHelps(); return; }
     if (sheetKind === 'sing') {
-      $('.sheet-body').innerHTML = `${partChipsHtml('singPart')}
+      // Einstellungen der Übung (früher über der Bühne): nur, was für sie gilt.
+      const ex = views.voice === 'list' ? '' : `${SOLFA_MODES.includes(sing.mode) ? '<span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div>' : ''}
+        ${DEMO_MODES.includes(sing.mode) ? '<span class="sub-label">Vorspiel</span><div class="chip-row" data-chips="demo"></div>' : ''}
+        ${sing.mode === 'inTime' ? `<span class="sub-label">Im Takt</span>
+          ${sing.showSight ? '<div class="chip-row" data-chips="inTimeVariant"></div>' : ''}
+          <label class="intime-tempo"><span class="sub-label">Tempo <output class="intime-tempo-out"></output></span><input type="range" min="80" max="120" step="5" value="100" data-intime-tempo aria-label="Tempo in Prozent"></label>
+          <label class="switch"><input type="checkbox" role="switch" data-intime-syl><span class="switch-track"></span>Rhythmussprache</label>
+          <p class="foot-note" style="text-align:left">Mit Kopfhörern – sonst hört das Mikrofon den Klick. Gerät oder Kopfhörer gewechselt: neu kalibrieren.<span class="intime-lat"></span></p>
+          <button type="button" class="k-btn k-btn--ghost" data-sing="calib">Neu kalibrieren</button>` : ''}`;
+      $('.sheet-body').innerHTML = `${partChipsHtml('singPart')}${ex}
         <span class="sub-label">Übungen</span>
         <div class="check-list">
           ${checkRow('showSight', 'on', 'Blattsingen anzeigen (mit Noten)', sing.showSight, 'Der Chor übt nach Gehör – Blattsingen ist deshalb ausgeblendet.', 'singset')}
@@ -6005,6 +6059,7 @@
         <span class="sub-label">Zweite Stimme</span>
         <div class="chip-row">${Object.entries(TWO_PART_VOL).map(([id, [t]]) => `<button class="chip" type="button" data-two-vol="${id}" aria-pressed="${sing.twoPartVol === id}">${t}</button>`).join('')}</div>${views.voice === 'list' ? '<button type="button" class="k-btn k-btn--ghost sheet-tuner" data-sheet-tuner>Tuner und Tonumfang öffnen</button>' : ''}`;
       $('.sheet-hint').textContent = '';
+      renderSingOpts();
       return;
     }
     const s = ear.settings;
@@ -6323,7 +6378,7 @@
       voice.frame = requestAnimationFrame(voiceLoop);
       return;
     }
-    if (voice.consumer === 'sing') { singFrame(now); voice.frame = requestAnimationFrame(voiceLoop); return; }
+    if (voice.consumer === 'sing') { singFrame(now); updateSingMic(now); if (sing.task && sing.phase !== 'result') updateSingProgress(now); voice.frame = requestAnimationFrame(voiceLoop); return; }
     voice.analyser.getFloatTimeDomainData(voice.buffer);
     const result = detectPitch(voice.buffer, engine.ctx.sampleRate);
     const raw = result && result.clarity > .8 ? hzToMidi(result.freq) : null;
@@ -7915,13 +7970,9 @@
     playEchoCue(task);
   }
 
-  function renderEchoDots() {
-    const task = sing.task;
-    $$('.echo-dots i').forEach((el, i) => {
-      el.classList.toggle('is-now', !!task && i === task.playIdx);
-      el.classList.toggle('is-past', !!task && task.playIdx >= 0 && i < task.playIdx);
-    });
-  }
+  /** Nachsingen: Fortschritt der Vorgabe Ton für Ton (Balken in der Bühne). */
+  function renderEchoDots() { updateSingProgress(); }
+
 
   /** Tonhöhenbild: waagrechte Balken für die Zieltöne, darüber die
    *  gesungene Linie (auf den Zeitraum der Zieltöne gestreckt). Getroffen
@@ -8205,6 +8256,7 @@
   function beginSinging() {
     const task = sing.task;
     sing.phase = task.mode === 'hold' ? 'holdWait' : 'sing';
+    task.singAt = engine.ctx ? engine.ctx.currentTime : 0; // für den Fortschrittsbalken
     if (task.mode === 'sight') sing.judge = sightJudge(task);
     else if (task.mode === 'findTone' || task.mode === 'singInterval') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: FIND_HOLD_SEC, timeoutSec: 12, strict: true });
     else if (task.mode !== 'hold') sing.judge = makePitchJudge({ target: task.target, tolerance: task.tolerance, holdSec: .5, timeoutSec: 8 });
@@ -8443,8 +8495,17 @@
     out.textContent = `${noteLabel(Math.round(live.midi))} · ${centsText(live.cents)}`;
   }
 
+  /** Einstellungen der Übung im Zahnrad-Blatt (nur, wenn es offen ist). */
+  const SOLFA_MODES = ['sight', 'dictation', 'singInterval', 'inTime'];
+  function renderSingOpts() {
+    if ($('.sheet').hidden || sheetKind !== 'sing') return;
+    if ($('.sheet-body [data-chips="solfa"]')) chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
+    if ($('.sheet-body [data-chips="demo"]')) chips('demo', [['piano', 'Klavier'], ['voice', 'Stimme']], sing.demo);
+    if ($('.sheet-body [data-intime-tempo]')) renderInTimeOpts();
+  }
   function renderInTimeOpts() {
-    chips('inTimeVariant', IN_TIME_VARIANTS, sing.inTime.variant);
+    if (!$('[data-intime-tempo]')) return;
+    if ($('[data-chips="inTimeVariant"]')) chips('inTimeVariant', IN_TIME_VARIANTS, sing.inTime.variant);
     const lvl = IN_TIME_LEVELS[sing.levels.inTime - 1];
     const pct = Math.round(sing.inTime.tempo * 100);
     $('[data-intime-tempo]').value = String(pct);
@@ -8453,26 +8514,139 @@
     $('.intime-lat').textContent = sing.inTime.latencyMs === null ? ' Noch nicht kalibriert.' : ` Kalibriert: ${sing.inTime.latencyMs} ms.`;
   }
 
-  /** Stepper der Sing-Übungen (Musikpädagoge): Hören → Singen → Ergebnis;
-   *  kein Stepper bei Ton halten und Tuner (ein Vorgang bzw. Werkzeug). */
-  const SING_STEPS = {
-    singEcho: ['Hören', 'Singen', 'Ergebnis'], findTone: ['Hören', 'Singen', 'Ergebnis'],
-    singInterval: ['Grundton', 'Singen', 'Ergebnis'], inTime: ['Einzählen', 'Singen', 'Ergebnis'],
-    dictation: ['Hören', 'Aufschreiben', 'Auflösung'], sight: ['Lesen', 'Singen', 'Ergebnis'],
-    twoPart: ['Deine Stimme', 'Mit 2. Stimme', 'Ergebnis'],
-  };
+  /** Phasenleiste (wie im Rhythmus-Kurs): Hören · Du · Ergebnis. Vorgabe,
+   *  Kadenz, Einzähler und die Pause in Gedanken = Hören; singen, halten,
+   *  aufschreiben = Du; Auswertung = Ergebnis; vor dem Start keine. */
   function singStepIndex(phase) {
-    return ['count', 'sing', 'answer', 'holdWait', 'hold'].includes(phase) ? 1 : ['result', 'calibDone'].includes(phase) ? 2 : 0;
+    if (phase === 'idle') return -1;
+    return ['sing', 'answer', 'holdWait', 'hold', 'calib'].includes(phase) ? 1 : ['result', 'calibDone'].includes(phase) ? 2 : 0;
   }
-  function renderSingSteps() {
-    const box = $('.sing-steps');
-    let names = SING_STEPS[sing.mode];
-    box.hidden = !names || !sing.task;
-    if (box.hidden) return;
-    let k = singStepIndex(sing.phase);
-    // Mit Audiationspause steht „Innerlich“ zwischen Hören und Singen.
-    if (sing.audiation && AUDIATION_MODES.includes(sing.mode)) { names = [names[0], 'Innerlich', ...names.slice(1)]; k = sing.phase === 'inner' ? 1 : k ? k + 1 : 0; }
-    box.innerHTML = stepperHtml(names, k, (i) => i < k, 'Ablauf der Aufgabe');
+  const SING_STRIP = [['listen', 'Hören'], ['you', 'Du'], ['result', 'Ergebnis']];
+  const SING_STRIP_ICONS = {
+    listen: STRIP_ICONS.listen,
+    you: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    result: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  };
+  function renderSingStrip() {
+    const k = sing.task || sing.calib ? singStepIndex(sing.phase) : -1;
+    const box = $('.sing-strip');
+    const key = String(k);
+    if (box.dataset.k === key) return;
+    box.dataset.k = key;
+    box.replaceChildren(...SING_STRIP.map(([kind, name], i) => {
+      const pill = document.createElement('span');
+      pill.className = `bar-pill${i === k ? ' is-now' : ''}${i < k ? ' is-done' : ''}`;
+      pill.dataset.kind = kind;
+      pill.innerHTML = `<i class="bar-fill"></i><svg viewBox="0 0 24 24" aria-hidden="true">${SING_STRIP_ICONS[kind]}</svg><span>${name}</span>`;
+      return pill;
+    }));
+  }
+
+  /** Dock: links „Nochmal“ (Vorgabe bzw. gleiche Melodie), Mitte Start /
+   *  Stopp / Weiter, rechts „Hilfen“ (Blatt). Kein Knopf verschwindet je
+   *  Phase – nur Beschriftung und Ausgrauen ändern sich. */
+  function singDock() {
+    const task = sing.task;
+    const res = sing.phase === 'result';
+    const main = !task ? (sing.phase === 'calib' ? ['stop', 'Stopp'] : ['begin', 'Start']) : res ? ['start', 'Weiter'] : ['stop', 'Stopp'];
+    let again = { action: '', label: 'Nochmal' };
+    if (task) {
+      const echo = task.mode === 'singEcho';
+      const before = ['cue', 'inner', 'sing'].includes(sing.phase);
+      if (echo) again = res ? { action: 'again', label: 'Nochmal, gleiche Melodie' } : before && task.listens < ECHO_MAX_LISTENS ? { action: 'replay', label: `Noch einmal hören, ${ECHO_MAX_LISTENS - task.listens} übrig` } : again;
+      else if (task.mode === 'inTime') again = res ? { action: 'again', label: 'Nochmal, gleiche Melodie' } : again;
+      else if (task.mode === 'dictation') again = !res && task.plays < 3 ? { action: 'replay', label: `Noch einmal hören, ${3 - task.plays} übrig` } : again;
+      else again = { action: 'replay', label: 'Vorgabe noch einmal' };
+    }
+    return { main, again, helps: singHelps() };
+  }
+  /** Seltene Aktionen (Blatt „Hilfen“); was gerade nicht passt, ist ausgegraut. */
+  function singHelps() {
+    const task = sing.task;
+    const echo = task?.mode === 'singEcho';
+    const before = echo && ['cue', 'inner', 'sing'].includes(sing.phase);
+    return [
+      ['target', 'Zielton', 'den gesuchten Ton anhören', !!(task && sing.phase === 'result' && task.target != null)],
+      ['slow', 'Langsamer', 'die Melodie langsamer vorspielen', !!(before && !task.slow)],
+      ['half', '1. Hälfte', 'nur die erste Hälfte singen', !!(before && !task.half && echoHalfTick(task.mel))],
+      ['skip', 'Überspringen', 'diesen Ton auslassen', !!(task?.mode === 'sight' && sing.phase === 'sing')],
+    ];
+  }
+  const SING_MAIN_ICONS = { begin: '<path d="M8 5v14l11-7z"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>', start: '<path d="M5 11h10l-4-4 1.4-1.4L19 12l-6.6 6.4L11 17l4-4H5z"/>' };
+  function renderSingDock() {
+    const d = singDock();
+    const main = $('[data-sing="main"]');
+    if (main.dataset.act !== d.main[0]) {
+      main.dataset.act = d.main[0];
+      main.querySelector('svg').innerHTML = SING_MAIN_ICONS[d.main[0]];
+      main.querySelector('.dock-cap').textContent = d.main[1];
+      main.setAttribute('aria-label', d.main[1]);
+    }
+    const again = $('[data-sing="nochmal"]');
+    again.disabled = !d.again.action;
+    again.dataset.act = d.again.action;
+    again.setAttribute('aria-label', d.again.label);
+    $('[data-sing="helps"]').disabled = !sing.task;
+    if (!$('.sheet').hidden && sheetKind === 'singhelp') renderSingHelps();
+  }
+  function renderSingHelps() {
+    $('.sheet-body').innerHTML = `<div class="sing-helps">${singHelps().map(([id, name, how, on]) => `<button type="button" class="sing-help" data-sing="${id}"${on ? '' : ' disabled'}><b>${name}</b><span>${how}</span></button>`).join('')}</div>
+      <p class="foot-note" style="text-align:left">Ausgegraut: passt gerade nicht (z. B. Zielton erst nach dem Singen).</p>`;
+    $('.sheet-hint').textContent = '';
+  }
+
+  /** Fortschrittsbalken der Bühne: für alle Übungen derselbe, ohne zu werten
+   *  (Ton halten: Haltezeit, siehe singFrame). */
+  function updateSingProgress(now = engine.ctx ? engine.ctx.currentTime : 0) {
+    const bar = $('.sing-progress');
+    const task = sing.task;
+    const k = task ? singStepIndex(sing.phase) : -1;
+    bar.classList.toggle('is-listen', k === 0);
+    if (task?.mode === 'hold' && k === 1) return;
+    let f = 0;
+    if (task && sing.phase === 'result') f = 1;
+    else if (task) {
+      const since = (t) => (t == null ? 0 : now - t);
+      if (task.mode === 'singEcho') f = sing.phase === 'cue' ? (task.playIdx + 1) / Math.max(1, echoTones(task).length) : sing.phase === 'sing' ? since(task.singStart) / Math.max(.5, task.melodySec) : 0;
+      else if (task.mode === 'inTime' && task.plan) f = (now - task.plan.gridStart) / Math.max(.5, task.plan.end - task.plan.gridStart);
+      else if (task.mode === 'sight') f = sing.phase === 'sing' ? task.idx / task.notes.length : 0;
+      else if (task.mode === 'dictation') f = sing.phase === 'answer' ? (task.input.length - 1) / Math.max(1, task.degs.length - 1) : 0;
+      else if (sing.phase === 'sing') f = since(task.singAt) / 12;
+    }
+    bar.querySelector('i').style.width = `${(clamp(f, 0, 1) * 100).toFixed(1)}%`;
+  }
+
+  /** Mikro-Symbol (oben rechts in der Bühne): zeigt nur, ob und wie laut etwas
+   *  ankommt – nie Tonhöhe. Pegel aus dem vorhandenen Analyser (RMS in dB,
+   *  −50 dB → leer, −10 dB → voll), schnell hoch, langsam runter. */
+  const singMic = { lv: 0, hotUntil: 0, state: '' };
+  function updateSingMic(now) {
+    const el = $('.sing-mic');
+    if (!el) return;
+    const open = !!voice.analyser && voice.consumer === 'sing';
+    let lv = 0, hot = false;
+    if (open) {
+      const buf = voice.buffer;
+      let e = 0, peak = 0;
+      for (let i = 0; i < buf.length; i++) { const v = buf[i]; e += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
+      const db = 10 * Math.log10(e / buf.length + 1e-12);
+      const target = clamp((db + 50) / 40, 0, 1);
+      singMic.lv += (target - singMic.lv) * (target > singMic.lv ? .5 : .08);
+      lv = singMic.lv;
+      if (db > -3 || peak >= .98) singMic.hotUntil = now + .5;
+      hot = now < singMic.hotUntil;
+    } else singMic.lv = 0;
+    const state = !open ? 'off' : hot ? 'hot' : lv > .08 ? 'on' : 'quiet';
+    if (state !== singMic.state) {
+      singMic.state = state;
+      el.classList.toggle('is-open', open);
+      el.classList.toggle('is-hot', hot);
+      el.setAttribute('aria-label', { off: 'Mikrofon aus', quiet: 'Mikrofon hört nichts', on: 'Mikrofon hört dich', hot: 'Mikrofon zu laut' }[state]);
+    }
+    const h = 12 * Math.min(1, lv / .9);
+    const fill = el.querySelector('.mic-fill');
+    fill.setAttribute('y', (14.5 - h).toFixed(2));
+    fill.setAttribute('height', h.toFixed(2));
   }
 
   function renderSing() {
@@ -8482,27 +8656,18 @@
     if (tuner) return;
     const levels = SING_LEVEL_TABLE[sing.mode]();
     $('[data-levels="sing"]').innerHTML = levelControlHtml(`sing-${sing.mode}`, levels, sing.levels[sing.mode], levelHints[sing.mode]);
-    renderSingSteps();
-    // Konfetti B2: Stufen-Karte und Optionen (Silben, Vorspiel, Variante) vor
-    // der ersten Aufgabe; während der Übung Stepper und Bühne.
-    $('[data-levels="sing"]').hidden = !!sing.task;
-    $('.sing-opts').hidden = !!sing.task;
-    chips('solfa', [['syllables', 'do re mi'], ['numbers', '1 2 3']], sing.solfa);
-    $('[data-solfa-row]').hidden = !['sight', 'dictation', 'singInterval', 'inTime'].includes(sing.mode);
-    $$('[data-intime-row]').forEach((el) => { el.hidden = sing.mode !== 'inTime'; });
-    // „Vom Blatt“ nur, wenn Blattsingen eingeblendet ist (Musikpädagoge).
-    $('[data-intime-variant-row]').hidden = sing.mode !== 'inTime' || !sing.showSight;
-    $('[data-demo-row]').hidden = !DEMO_MODES.includes(sing.mode);
-    chips('demo', [['piano', 'Klavier'], ['voice', 'Stimme']], sing.demo);
-    if (sing.mode === 'inTime') renderInTimeOpts();
+    // Festes Gerüst: Stufen-Karte, Phasenleiste, Bühne und Dock stehen immer
+    // an derselben Stelle; die Einstellungen liegen im Zahnrad (renderSingOpts).
+    renderSingStrip();
+    renderSingOpts();
     const task = sing.task;
+    $('.sing-answers').classList.toggle('is-reserved', sing.mode === 'dictation');
     const prompt = $('.sing-prompt');
     const sub = $('.sing-sub');
     const view = $('.sing-view');
     const answers = $('.sing-answers');
     answers.replaceChildren();
     view.innerHTML = '';
-    $('.sing-progress').hidden = sing.mode !== 'hold' || !task;
     if (task?.mode === 'hold' && sing.phase !== 'hold' && sing.phase !== 'result') $('.sing-progress i').style.width = '0%';
     const phaseText = { cue: 'Hör zu …', inner: 'Erst in Gedanken – noch kein Ton', sing: 'Jetzt singen', holdWait: 'Setz ein, wenn du bereit bist', hold: 'Halten …', answer: 'Welche Silben?', result: '' };
     const r = singRange();
@@ -8522,7 +8687,9 @@
       }[sing.mode];
       // Stufe 6 mit Chromatik: Hinweis auf die Blue Notes (Nachsingen, Im Takt, Diktat).
       const chroma = ['singEcho', 'inTime', 'dictation'].includes(sing.mode) && sing.levels[sing.mode] === 6;
-      prompt.textContent = chroma ? `${intro} ${CHROMA_HELP}` : intro;
+      // Titel kurz (feste Zeile), die Erklärung steht in der Bühnenmitte.
+      prompt.textContent = modeName('voice', sing.mode);
+      view.innerHTML = `<p class="sing-intro">${esc(chroma ? `${intro} ${CHROMA_HELP}` : intro)}</p>`;
       sub.textContent = `${PART_NAMES[ear.part]} · Töne zwischen ${noteLabel(r.lo)} und ${noteLabel(r.hi)}${sing.mode === 'dictation' ? '' : ' · mit Kopfhörern'}`;
     } else if (task.mode === 'singInterval') {
       prompt.textContent = `${intervalName(task.semis)} ${task.dir === 'down' ? 'abwärts' : 'aufwärts'}`;
@@ -8539,7 +8706,7 @@
       prompt.textContent = sing.phase === 'sing' ? 'Jetzt du – auf „da“' : running ? (task.variant === 'echo' ? 'Hör zu' : 'Lies mit – gleich bist du dran') : 'Im Takt';
       const bpm = task.bpmNow || task.bpm;
       sub.textContent = [task.minor ? 'Moll' : 'Dur', `${task.mel.meter}-Takt`, `${tempoSymbol(task.mel.meter)} = ${Math.round(bpm * 12 / METERS[task.mel.meter].ref)}`, task.variant === 'sheet' ? 'Vom Blatt' : 'Echo'].join(' · ');
-      let html = running ? '<p class="intime-pos" aria-live="off"></p>' : '';
+      let html = '';
       if (sing.phase === 'result' || task.variant === 'sheet') {
         const labels = task.mel.tones.map((x) => toneLabel(x.deg, x.alt, sing.solfa, task.minor));
         const rs = sing.inTime.rhythmSyl ? syllablesFor({ meter: task.mel.meter, pickup: task.mel.pickup, notes: task.mel.events }, 'ta') : null;
@@ -8556,8 +8723,7 @@
         sing.phase === 'sing' ? 'Silbe frei, z. B. „no“' : ''].filter(Boolean).join(' · ');
       if (sing.phase === 'result' && task.result) view.innerHTML = echoResultHtml(task.result, echoTones(task), task.line, task.two ? task.two.tones.filter((x, i) => i < echoTones(task).length) : null);
       else if (sing.phase === 'inner') view.innerHTML = `${innerDotsHtml(task)}<p class="inner-text">Noch kein Ton – nach dem Takt bist du dran.</p>`;
-      else view.innerHTML = `<div class="echo-dots" aria-hidden="true">${echoTones(task).map(() => '<i></i>').join('')}</div>`;
-      renderEchoDots();
+      // Vorgabe und Singen: nur der Fortschrittsbalken (Ton für Ton), keine Tonhöhe.
     } else if (task.mode === 'hold') {
       prompt.textContent = `${noteLabel(task.target)} halten — ${task.sec} Sekunden`;
       sub.textContent = `${{ mf: 'mittlere Lautstärke', cresc: 'dabei lauter werden', pp: 'leise', messa: 'an- und abschwellen' }[task.dyn]}${task.straight ? ' · gerade, ohne Vibrato' : ''} · ${phaseText[sing.phase] || ''}`;
@@ -8592,32 +8758,9 @@
           answerButton('back', '⌫', { dataset: 'dict', cls: 'is-backspace', aria: 'Letzte Silbe löschen', disabled: task.input.length <= 1 }));
       }
     }
-    // Knöpfe
-    $('[data-sing="begin"]').hidden = !!task || sing.phase === 'calib';
-    $('[data-sing="start"]').hidden = !task || sing.phase !== 'result';
-    $('[data-sing="replay"]').hidden = !task || (task.mode === 'dictation' && (task.plays >= 3 || sing.phase === 'result'));
-    $('.replay-label').textContent = task?.mode === 'dictation' ? `Nochmal (${3 - task.plays})` : 'Vorgabe';
-    $('[data-sing="replay"]').setAttribute('aria-label', task?.mode === 'dictation' ? `Noch einmal hören, ${3 - task.plays} übrig` : 'Vorgabe noch einmal');
-    $('[data-sing="target"]').hidden = !(task && sing.phase === 'result' && task.target != null);
-    $('[data-sing="skip"]').hidden = !(task?.mode === 'sight' && sing.phase === 'sing');
-    $('[data-sing="stop"]').hidden = !task && sing.phase !== 'calib';
-    const echo = task?.mode === 'singEcho';
-    const before = echo && ['cue', 'inner', 'sing'].includes(sing.phase);
-    $('[data-sing="again"]').hidden = !(echo && sing.phase === 'result');
-    $('[data-sing="slow"]').hidden = !before || task.slow;
-    $('[data-sing="half"]').hidden = !before || task.half || !echoHalfTick(task.mel);
-    if (echo) {
-      $('[data-sing="replay"]').hidden = before && task.listens >= ECHO_MAX_LISTENS;
-      $('.replay-label').textContent = before ? `Noch einmal (${ECHO_MAX_LISTENS - task.listens})` : 'Anhören';
-      $('[data-sing="replay"]').setAttribute('aria-label', before ? `Noch einmal hören, ${ECHO_MAX_LISTENS - task.listens} übrig` : 'Melodie anhören');
-    }
-    if (task?.mode === 'inTime') {
-      const res = sing.phase === 'result';
-      $('[data-sing="again"]').hidden = !res;
-      $('[data-sing="replay"]').hidden = !res;
-      $('.replay-label').textContent = 'Anhören';
-      $('[data-sing="replay"]').setAttribute('aria-label', 'Melodie mit Klick anhören');
-    }
+    renderSingDock();
+    updateSingProgress();
+    updateSingMic(engine.ctx ? engine.ctx.currentTime : 0);
     const st = sing.stats[sing.mode];
     $('.sing-score').textContent = st.total ? `${st.right}/${st.total} ${sing.mode === 'hold' ? 'ruhig gehalten' : 'getroffen'}` : '';
     renderSingLive();
@@ -9674,7 +9817,12 @@
     // --- Singen
     const singBtn = e.target.closest('[data-sing]');
     if (singBtn) {
-      const action = singBtn.dataset.sing;
+      let action = singBtn.dataset.sing;
+      // Dock: Hauptknopf und „Nochmal“ führen die Aktion der Phase aus; Hilfen öffnen ein Blatt.
+      if (action === 'main' || action === 'nochmal') { action = singBtn.dataset.act || (action === 'main' ? 'begin' : ''); if (!action) return; }
+      if (action === 'helps') { if (sing.task) openSettings('singhelp'); return; }
+      // Aus dem Hilfen- bzw. Einstellungsblatt: erst schließen, dann ausführen.
+      if (!$('.sheet').hidden && (sheetKind === 'singhelp' || action === 'calib')) closeSettings();
       if (action === 'calib') { stopSing(); startSingCalibration(); return; }
       if (sing.task?.mode === 'inTime' && ['replay', 'again'].includes(action)) {
         if (sing.phase === 'result') { if (action === 'again') { setSingFeedback('', ''); playInTimeRun(sing.task); } else playInTimePreview(sing.task); }
@@ -9889,7 +10037,7 @@
     persist(); syncLevels();
   });
 
-  $('[data-intime-tempo]').addEventListener('input', (e) => { sing.inTime.tempo = clamp(Math.round(Number(e.target.value) / 5) / 20, IN_TIME_TEMPO[0], IN_TIME_TEMPO[1]); renderInTimeOpts(); persist(); });
+  document.addEventListener('input', (e) => { if (!e.target.matches?.('[data-intime-tempo]')) return; sing.inTime.tempo = clamp(Math.round(Number(e.target.value) / 5) / 20, IN_TIME_TEMPO[0], IN_TIME_TEMPO[1]); renderInTimeOpts(); persist(); });
   $('.bpm').addEventListener('input', (e) => { setBpm(Number(e.target.value)); renderTransport(); persist(); });
   $('.tap-pad').addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -12599,9 +12747,13 @@
       if (sing.demo !== 'voice') errors.push('Vorspiel: kaputter Wert übernommen');
       for (const [mode] of SING_MODES) {
         if (mode === 'tuner') continue;
-        const m0 = sing.mode; sing.mode = mode; renderSing();
-        if ($('[data-demo-row]').hidden === DEMO_MODES.includes(mode)) errors.push(`Vorspiel-Wahl bei ${mode} ${DEMO_MODES.includes(mode) ? 'fehlt' : 'zu viel'}`);
-        sing.mode = m0;
+        // Vorspiel, Silben und Im-Takt-Optionen stehen im Zahnrad-Blatt (nicht mehr über der Bühne).
+        const m0 = sing.mode, k0 = sheetKind, v0 = views.voice; sing.mode = mode; views.voice = 'exercise'; sheetKind = 'sing'; renderSettings();
+        const body = $('.sheet-body');
+        if (!!body.querySelector('[data-chips="demo"]') !== DEMO_MODES.includes(mode)) errors.push(`Vorspiel-Wahl bei ${mode} ${DEMO_MODES.includes(mode) ? 'fehlt' : 'zu viel'}`);
+        if (!!body.querySelector('[data-chips="solfa"]') !== SOLFA_MODES.includes(mode)) errors.push(`Silben-Wahl bei ${mode} falsch`);
+        if (!!body.querySelector('[data-intime-tempo]') !== (mode === 'inTime') || !!body.querySelector('[data-sing="calib"]') !== (mode === 'inTime')) errors.push(`Im-Takt-Optionen bei ${mode} falsch`);
+        sing.mode = m0; sheetKind = k0; views.voice = v0; body.innerHTML = '';
       }
       renderSing();
       if (voiceRegister('B') !== 'low' || voiceRegister('T') !== 'low' || voiceRegister('A') !== 'high' || voiceRegister('S') !== 'high') errors.push('Singstimme: Lage je Stimme falsch');
@@ -12912,8 +13064,29 @@
     if (chips.join('|') !== '2einen Halbton zu hoch|3fehlt' || /ct|Cent|\d\d/.test(box.querySelector('.echo-chips').textContent)) errors.push(`Nachsingen-Chips: ${chips}`);
     box.innerHTML = echoResultHtml({ notes: tones.map(() => ({ cents: 0, pitchOk: true })), hits: 4, total: 4, extra: 0, octave: 0, transposed: 200 }, tones, []);
     if (!box.querySelector('.k-pill--ok') || !/Melodie stimmt/.test(box.textContent) || box.querySelector('.echo-chips')) errors.push('Nachsingen versetzt: Pille nicht positiv');
-    if (singStepIndex('cue') !== 0 || singStepIndex('sing') !== 1 || singStepIndex('answer') !== 1 || singStepIndex('result') !== 2) errors.push('singStepIndex');
-    if (SING_STEPS.hold || SING_STEPS.tuner || SING_STEPS.singEcho.join() !== 'Hören,Singen,Ergebnis') errors.push('SING_STEPS');
+    // Phasenleiste Hören · Du · Ergebnis (Daumen-Dock-Gerüst)
+    if (singStepIndex('idle') !== -1 || singStepIndex('cue') !== 0 || singStepIndex('inner') !== 0 || singStepIndex('count') !== 0 || singStepIndex('sing') !== 1 || singStepIndex('answer') !== 1 || singStepIndex('holdWait') !== 1 || singStepIndex('result') !== 2) errors.push('singStepIndex');
+    if (SING_STRIP.map(([, n]) => n).join() !== 'Hören,Du,Ergebnis') errors.push('Phasenleiste Singen');
+    // Daumen-Dock: drei feste Plätze, nur Beschriftung/Ausgrauen wechseln; Mikro-Symbol; keine Optionen über der Bühne.
+    {
+      const t0 = sing.task, p0 = sing.phase;
+      try {
+        sing.task = null; sing.phase = 'idle';
+        let d = singDock();
+        if (d.main[0] !== 'begin' || d.again.action || d.helps.length !== 4 || d.helps.some((h) => h[3])) errors.push('Dock vor dem Start');
+        sing.task = { mode: 'singEcho', listens: 0, mel: null, slow: false, half: true }; sing.phase = 'cue';
+        d = singDock();
+        if (d.main[0] !== 'stop' || d.again.action !== 'replay' || !d.helps.find((h) => h[0] === 'slow')[3] || d.helps.find((h) => h[0] === 'target')[3]) errors.push('Dock beim Nachsingen (Vorgabe)');
+        sing.task.listens = ECHO_MAX_LISTENS; if (singDock().again.action) errors.push('Dock: Nochmal trotz verbrauchter Hörversuche');
+        sing.phase = 'result'; sing.task.target = 60;
+        d = singDock();
+        if (d.main[0] !== 'start' || d.again.action !== 'again' || !d.helps.find((h) => h[0] === 'target')[3]) errors.push('Dock im Ergebnis');
+        sing.task = { mode: 'dictation', plays: 3 }; sing.phase = 'answer';
+        if (singDock().again.action) errors.push('Dock: Diktat nach drei Malen noch „Nochmal“');
+      } finally { sing.task = t0; sing.phase = p0; }
+      if ($('.sing-opts') || $('[data-sing="begin"]') || $$('.sing-dock button').length !== 3) errors.push('Singen: alte Optionen/Knöpfe oder Dock unvollständig');
+      if (!voice.analyser) { updateSingMic(0); if ($('.sing-mic').getAttribute('aria-label') !== 'Mikrofon aus' || $('.sing-mic').classList.contains('is-open')) errors.push('Mikro-Symbol vor dem Start nicht „aus“'); }
+    }
     // Audiationspause: Punkte je Schlag, aus = direkt singen, wird gespeichert.
     { const d = document.createElement('div'); d.innerHTML = innerDotsHtml({ inner: { total: 4, now: 1 } }); if (d.querySelectorAll('i').length !== 4 || d.querySelectorAll('i.is-on').length !== 2) errors.push('Audiationspause: Punkte'); }
     {
@@ -12950,7 +13123,7 @@
       const d = document.createElement('div');
       d.innerHTML = echoResultHtml(res, tns, [], task.two.tones);
       if (!/zur 2\. Stimme gerutscht/.test(d.textContent) || !d.querySelector('.eb-other') || !d.querySelector('.lg-other')) errors.push('Zweite Stimme: Ergebnis ohne Hinweis oder zweite Spur');
-      if (!SING_GROUPS.some(([, ids]) => ids.includes('twoPart')) || SING_LEVEL_TABLE.twoPart() !== ECHO_LEVELS || !SING_STEPS.twoPart) errors.push('Zweite Stimme: nicht eingebunden');
+      if (!SING_GROUPS.some(([, ids]) => ids.includes('twoPart')) || SING_LEVEL_TABLE.twoPart() !== ECHO_LEVELS) errors.push('Zweite Stimme: nicht eingebunden');
     }
     const host = $('[data-list="voice"]');
     const keep = host.innerHTML;
@@ -13272,6 +13445,7 @@
     selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
     courseResult, game, renderStrip,
+    sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
