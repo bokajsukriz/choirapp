@@ -22540,8 +22540,22 @@ function popToolHistory() {
   history.back();
 }
 const grooveLabEl = () => document.querySelector('chor-groove-lab');
+/** Zurück innerhalb der offenen Tool-Seite (Übung → Liste, Player →
+ *  Übersicht, offenes Blatt zu). Die Seite meldet über window.chorToolBack(),
+ *  ob sie selbst eine Ebene zurückgehen konnte; false bzw. keine solche
+ *  Funktion = oberste Ebene, dann schließt der Aufrufer das Tool. */
+function toolFrameStepBack() {
+  const frame = [...$('#tool-frame').querySelectorAll('iframe')].find((f) => !f.hidden);
+  try { return !!frame?.contentWindow?.chorToolBack?.(); } catch { return false; /* fremde Herkunft */ }
+}
 function closeToolOverlayFromHistory() {
-  if (!$('#tool-frame').hidden) { closeToolFrame({ fromHistory: true }); return true; }
+  if (!$('#tool-frame').hidden) {
+    // Seite ist noch nicht auf oberster Ebene: Verlaufseintrag fürs Tool neu
+    // anlegen, damit die nächste Zurück-Geste wieder hier landet.
+    if (toolFrameStepBack()) pushToolHistory();
+    else closeToolFrame({ fromHistory: true });
+    return true;
+  }
   const lab = grooveLabEl();
   if (lab && !lab.hidden) { lab.close(); return true; }
   return false;
@@ -22625,7 +22639,7 @@ function openToolFrame(page, titleKey, query = '') {
     if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
     // Wischgeste auch im iframe (gleiche Herkunft, Dokument erreichbar).
     frame.addEventListener('load', () => {
-      try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
+      try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden && !toolFrameStepBack()) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
       syncToolFrameBack(frame);
     });
     host.append(frame);

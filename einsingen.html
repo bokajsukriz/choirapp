@@ -2649,6 +2649,17 @@
     if (draft && e.target.classList?.contains('ed-name')) { draft.name = e.target.value.slice(0, OWN_NAME_MAX); $('.ed-hint').textContent = ''; }
   });
 
+  /** Zurück-Geste der App (Android-Zurück, Wischen vom linken Rand, siehe
+   *  toolFrameStepBack in app.js): erst offene Blätter schließen, dann aus
+   *  dem Player zurück zur Übersicht. true = hier erledigt; false = Übersicht,
+   *  die App schließt das Tool. */
+  window.chorToolBack = () => {
+    if (!$('.help-sheet').hidden) { closeHelp(); return true; }
+    if (!$('.settings-sheet').hidden) { closeSettings(); return true; }
+    if (isPlayer()) { exitPlayer(); return true; }
+    return false;
+  };
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.help-sheet').hidden) { closeHelp(); return; }
     // Tap-Tempo (Taste T) gilt nur, solange das Tempo im Einstellungsblatt zu sehen ist.

@@ -10715,6 +10715,20 @@
     else if (!ear.revealed) playEar();
   });
 
+  /** Zurück-Geste der App (Android-Zurück, Wischen vom linken Rand, siehe
+   *  toolFrameStepBack in app.js): erst offene Blätter schließen, dann eine
+   *  Ebene zurück wie der sichtbare Zurück-Knopf (Übung → Liste, Groove →
+   *  Groove-Liste). true = hier erledigt; false = oberste Ebene, die App
+   *  schließt das Tool. */
+  window.chorToolBack = () => {
+    if (!$('.level-sheet').hidden) { closeLevelSheet(); return true; }
+    if (!$('.sheet:not(.level-sheet)').hidden) { closeSettings(); return true; }
+    const btn = $$('[data-back], [data-grooves-back], [data-grooves-hub-back]').find((b) => !b.hasAttribute('data-close-tool') && b.getClientRects().length);
+    if (!btn) return false;
+    btn.click();
+    return true;
+  };
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.level-sheet').hidden) { closeLevelSheet(); return; }
     if (e.key === 'Escape' && !$('.sheet:not(.level-sheet)').hidden) { closeSettings(); return; }
