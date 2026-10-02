@@ -58,6 +58,17 @@ ein Dialog mit echter Wahl).
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
   Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
+  Ansicht „de:construct“ (eigene Kachel im Tools-Reiter, im Lab über die
+  Ansichtswahl): Ein verborgener, per Seed erzeugter Song läuft
+  (`dcGenerate`, Stufen leicht/mittel/schwer); nachgebaut wird mit den
+  normalen Reitern. A/B-Schalter wechselt im laufenden Takt zwischen
+  Original und eigener Version (`_dcHeard` tauscht je Schritt den
+  gehörten Stand, `dcSwitchStep`), „Nur Beat/Bass/…“ hört eine Spur
+  allein, „Prüfen“ vergleicht je Element (`dcCompare`: stimmt/fast/noch
+  nicht mit Hinweis, ohne Lösung), „Auflösen“ zeigt die Lösung. Stand
+  (Original, eigene Version, Fortschritt) liegt im Feld `deconstruct` des
+  Groove-Lab-Datensatzes (`sanitizeDeconstruct`), bis ein neuer Song
+  beginnt. Details: `DECONSTRUCT-BERICHT.md`.
 - `harmony.js` — gemeinsame Harmonik der Musik-Tools (`window.ChorHarmony`,
   klassisches Skript ohne DOM): Modi, Akkordbau (Dur-Dominante in Moll,
   Dominantseptakkorde), Tonnamen tonartabhängig (`spell`/`noteLabel`,

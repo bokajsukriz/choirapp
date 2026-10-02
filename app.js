@@ -20212,6 +20212,176 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
   }
 
+  // de:construct (DECONSTRUCT-BERICHT.md): Song-Erzeugung mit Seed,
+  // Vergleich je Element, A/B behält die Position, Speichern/Laden.
+  if (T.dcGenerate) {
+    const clone = (v) => JSON.parse(JSON.stringify(v));
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const hintKeys = new Set();
+    const note = (r) => { r.hints.forEach((h) => hintKeys.add(h.key)); return r; };
+    // 1. Erzeugung: deterministisch, sanitize-fest, Original gegen sich
+    //    selbst „stimmt“, der Start von „Meine Version“ ist nie schon gelöst.
+    for (const level of T.DC_LEVELS) {
+      for (let seed = 1; seed <= 60; seed++) {
+        const a = T.dcGenerate(seed * 7919, level.id);
+        if (!same(a, T.dcGenerate(seed * 7919, level.id))) { failed.push(`de:construct ${level.id}/${seed}: nicht deterministisch`); break; }
+        if (!same(T.sanitizeState(clone(a.original)), a.original) || !same(T.sanitizeState(clone(a.mine)), a.mine)) failed.push(`de:construct ${level.id}/${seed}: Stand nicht sanitize-fest`);
+        if (a.original.keyRoot !== a.mine.keyRoot) failed.push(`de:construct ${level.id}/${seed}: Grundton nicht vorgegeben`);
+        for (const el of level.elements) {
+          if (T.dcCompare(a.original, a.original, el).status !== 'ok') failed.push(`de:construct ${level.id}/${seed}: ${el} gegen sich selbst ≠ ok`);
+          if (note(T.dcCompare(a.original, a.mine, el)).status === 'ok') failed.push(`de:construct ${level.id}/${seed}: ${el} schon zu Beginn gelöst`);
+        }
+        // Leicht: Akkordfolge vorgegeben (die Basslinie folgt ihr).
+        if (!level.elements.includes('chords') && T.dcCompare(a.original, { ...a.mine, chordsOn: true }, 'chords').status !== 'ok') failed.push(`de:construct ${level.id}/${seed}: Akkorde nicht vorgegeben`);
+        // Erzeugte Basslinien lassen sich im Raster bauen (nur 1/5/8).
+        if (level.id !== 'easy' && Object.values(a.original.beat.bass).some((v) => ![0, 4, 7].includes(v))) failed.push(`de:construct ${level.id}/${seed}: Basston nicht baubar`);
+        if (level.id !== 'hard' && T.DRUM_PATTERNS[a.original.patternIndex].meter !== '4/4') failed.push(`de:construct ${level.id}/${seed}: Taktart ≠ 4/4`);
+      }
+    }
+    if (same(T.dcGenerate(1, 'hard'), T.dcGenerate(2, 'hard'))) failed.push('de:construct: Seed ändert nichts');
+    // Leicht nachbauen wie eine Nutzerin: Loop wählen, Tempo stellen → alles stimmt.
+    {
+      const { original: o, mine } = T.dcGenerate(4242, 'easy');
+      const m = clone(mine);
+      m.patternIndex = o.patternIndex;
+      m.beat = T.beatFromPattern(T.DRUM_PATTERNS[o.patternIndex]);
+      m.swing = o.swing;
+      m.bpm = o.bpm + 2;
+      for (const el of ['tempo', 'beat', 'bass']) if (T.dcCompare(o, m, el).status !== 'ok') failed.push(`de:construct leicht: ${el} nach Nachbau ≠ ok`);
+    }
+    // 2. Vergleich je Element mit gebauten Fällen.
+    {
+      const o = T.dcGenerate(99, 'medium').original;
+      const m = clone(o);
+      const check = (label, mine, el, status, key) => {
+        const r = note(T.dcCompare(o, mine, el));
+        if (r.status !== status || (key && !r.hints.some((h) => h.key === key))) failed.push(`de:construct ${label}: ${JSON.stringify(r)} statt ${status}/${key || '–'}`);
+      };
+      check('Tempo +2', { ...m, bpm: o.bpm + 2 }, 'tempo', 'ok');
+      check('Tempo −6', { ...m, bpm: o.bpm - 6 }, 'tempo', 'near', 'lab.dc.hint.bitFaster');
+      check('Tempo +20', { ...m, bpm: o.bpm + 20 }, 'tempo', 'no', 'lab.dc.hint.muchSlower');
+      check('Swing', { ...m, swing: Math.abs(o.swing - .6) }, 'tempo', 'near', 'lab.dc.hint.swing');
+      const p34 = T.DRUM_PATTERNS.findIndex((p) => p.meter === '3/4');
+      check('Taktart', { ...m, patternIndex: p34 }, 'tempo', 'no', 'lab.dc.hint.meter');
+      check('Taktart Bass', { ...m, patternIndex: p34 }, 'bass', 'no', 'lab.dc.hint.meterFirst');
+      // Bass: gleicher Rhythmus, andere Töne → fast
+      const steps = Object.keys(o.beat.bass).map(Number);
+      const wrongNotes = clone(m); steps.forEach((st) => { wrongNotes.beat.bass[st] = o.beat.bass[st] === 7 ? 4 : 7; });
+      check('Bass Töne', wrongNotes, 'bass', 'near', 'lab.dc.hint.bassNotes');
+      const lessRhythm = clone(m); delete lessRhythm.beat.bass[steps[steps.length - 1]];
+      check('Bass Rhythmus', lessRhythm, 'bass', 'near', 'lab.dc.hint.bassRhythm');
+      check('Bass leer', { ...m, beat: { ...m.beat, bass: {} } }, 'bass', 'no', 'lab.dc.hint.bassEmpty');
+      check('Bass aus', { ...m, trackOn: { ...m.trackOn, bass: false } }, 'bass', 'no', 'lab.dc.hint.bassEmpty');
+      // Beat: eine Spur fehlt → nennt sie, ohne Schritte zu verraten
+      const noHat = clone(m); noHat.beat.hat = {};
+      const r = note(T.dcCompare(o, noHat, 'beat'));
+      if (r.status === 'ok' || !r.hints.length || /\d/.test(JSON.stringify(r.hints.map((h) => h.vars)))) failed.push(`de:construct Beat ohne Hi-Hat: ${JSON.stringify(r)}`);
+      check('Beat leer', { ...m, beat: { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: m.beat.bass } }, 'beat', 'no', 'lab.dc.hint.beatEmpty');
+      const snareSteps = Object.keys(o.beat.snare);
+      if (snareSteps.length) {
+        const ghost = clone(m); snareSteps.forEach((st) => { ghost.beat.snare[st] = ghost.beat.snare[st] < 1 ? 1 : .45; });
+        check('Ghost-Notes', ghost, 'beat', 'near', 'lab.dc.hint.ghost');
+      }
+      // Akkorde
+      check('Akkorde aus', { ...m, chordsOn: false }, 'chords', 'no', 'lab.dc.hint.chordsOff');
+      check('Akkorde doppelt so langsam', { ...m, chordBars: 2 }, 'chords', 'near', 'lab.dc.hint.chordsFaster');
+      const otherMode = o.modeId === 'major' ? 'minor' : 'major';
+      const qual = T.dcCompare(o, { ...m, modeId: otherMode }, 'chords');
+      if (qual.status === 'ok') failed.push('de:construct: anderes Tongeschlecht gilt als richtig');
+      // Melodie und Klang (Stufe schwer)
+      const h = T.dcGenerate(5, 'hard').original;
+      const hm = clone(h);
+      const checkH = (label, mine, el, status, key) => {
+        const res = note(T.dcCompare(h, mine, el));
+        if (res.status !== status || (key && !res.hints.some((x) => x.key === key))) failed.push(`de:construct ${label}: ${JSON.stringify(res)} statt ${status}/${key || '–'}`);
+      };
+      checkH('Melodie Oktave', { ...hm, melodyOctave: h.melodyOctave === 4 ? 5 : 4 }, 'melody', 'near', 'lab.dc.hint.octave');
+      checkH('Melodie aus', { ...hm, melodyOn: false }, 'melody', 'no', 'lab.dc.hint.melodyOff');
+      checkH('Melodie gegen andere Akkorde', { ...hm, progId: 'drone', progDegrees: null }, 'melody', 'ok');
+      const mel = T.MELODIES[h.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
+      const shifted = mel.map((bar) => bar.map(([at, deg, len, alt]) => (alt ? [at, deg + 1, len, alt] : [at, deg + 1, len])));
+      checkH('Melodie Töne', { ...hm, melodyBars: shifted, melodyMeter: T.DRUM_PATTERNS[h.patternIndex].meter, melodyRef: 'chord' }, 'melody', 'near', 'lab.dc.hint.melNotes');
+      checkH('Klang gleich', hm, 'sound', 'ok');
+      checkH('Klang Wellenform', { ...hm, sound: { ...h.sound, wave: h.sound.wave === 'sine' ? 'square' : 'sine' } }, 'sound', 'near', 'lab.dc.hint.parts');
+    }
+    // Alle Hinweis-Schlüssel gibt es als Text (DE, EN, PL).
+    for (const key of hintKeys) for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
+    for (const key of ['lab.viewDeconstruct', 'settings.tools.deconstruct', ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`]),
+      ...T.DC_LEVELS.flatMap((l) => [`lab.dc.level.${l.id}`, `lab.dc.levelInfo.${l.id}`]), ...T.DC_FOCUS.map((f) => `lab.dc.focus.${f}`),
+      ...['ok', 'near', 'no', 'open', 'done'].map((s) => `lab.dc.status.${s}`)]) {
+      for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
+    }
+    // 3. A/B behält die Position: gleiche Taktart → derselbe Schritt;
+    //    andere → Anfang des nächsten Takts mit derselben Taktnummer.
+    if (T.dcSwitchStep(37, 16, 16) !== 37) failed.push('de:construct A/B: Schritt springt bei gleicher Taktart');
+    for (const [g, from, to] of [[37, 16, 12], [32, 16, 12], [25, 12, 16], [0, 12, 16]]) {
+      const n = T.dcSwitchStep(g, from, to);
+      if (n % to !== 0 || n / to !== Math.ceil(g / from)) failed.push(`de:construct A/B: ${g} (${from}→${to}) → ${n}`);
+    }
+    // … und in der echten Ansicht (nicht eingehängt, ohne Ton).
+    try {
+      const findSeed = (meter) => { for (let s = 1; s < 500; s++) { const d = T.dcNewSong(s, 'hard'); if (T.DRUM_PATTERNS[d.original.patternIndex].meter === meter) return d; } return null; };
+      for (const meter of ['4/4', '3/4']) {
+        const dc = findSeed(meter);
+        const view = document.createElement('chor-groove-lab');
+        view.state.bpm = 77; // Studio-Stand erkennbar machen
+        const studio = clone(view.state);
+        view._saved.deconstruct = dc;
+        view._applyView('deconstruct');
+        if (!view._dcActive || !same(view.state.beat, dc.mine.beat) || view.state.bpm !== dc.mine.bpm) failed.push(`de:construct Ansicht ${meter}: „Meine Version“ nicht geladen`);
+        if (view.ui.dc.listen !== 'orig') failed.push(`de:construct Ansicht ${meter}: startet nicht mit dem Original`);
+        if (view._dcHeard(() => view.state) !== dc.original || view.state === dc.original) failed.push(`de:construct Ansicht ${meter}: A spielt nicht das Original`);
+        const origStep = view._dcHeard(() => view._stepSeconds());
+        if (Math.abs(origStep - T.stepSecondsFor(dc.original.bpm, meter)) > 1e-9) failed.push(`de:construct Ansicht ${meter}: Original-Tempo nicht hörbar`);
+        view.playing = true; // nur die Position — kein AudioContext
+        view.globalStep = 37;
+        view._dcListen('mine');
+        const want = T.dcSwitchStep(37, T.METERS[meter].steps, 16);
+        if (view.globalStep !== want) failed.push(`de:construct Ansicht ${meter}: A→B Schritt ${view.globalStep} statt ${want}`);
+        if (view._dcHeard(() => view.state) !== view.state) failed.push(`de:construct Ansicht ${meter}: B spielt nicht meine Version`);
+        const before = view.globalStep;
+        view._dcListen('orig');
+        if (meter === '4/4' && view.globalStep !== before) failed.push('de:construct Ansicht: B→A springt im selben Takt');
+        view.playing = false;
+        // Prüfen: Tempo nachstellen → stimmt und bleibt geschafft.
+        view.state.patternIndex = dc.original.patternIndex;
+        view.state.bpm = dc.original.bpm;
+        view.state.swing = dc.original.swing;
+        view._dcCheck('tempo');
+        if (dc.checks.tempo !== 'ok' || !dc.done.tempo) failed.push(`de:construct Ansicht ${meter}: Tempo-Prüfung ${dc.checks.tempo}`);
+        view.state.bpm = 180;
+        view._dcCheck('tempo');
+        if (dc.checks.tempo === 'ok' || !dc.done.tempo) failed.push(`de:construct Ansicht ${meter}: „geschafft“ geht verloren`);
+        // Verlassen: Studio-Stand zurück, „Meine Version“ gesichert.
+        view._applyView('studio');
+        if (view._dcActive || view.state.bpm !== studio.bpm || dc.mine.bpm !== 180) failed.push(`de:construct Ansicht ${meter}: Verlassen tauscht falsch`);
+        view._applyView('deconstruct');
+        if (view.state.bpm !== 180) failed.push(`de:construct Ansicht ${meter}: Wiederkommen lädt meine Version nicht`);
+        view._applyView('studio');
+      }
+    } catch (err) {
+      failed.push(`de:construct Ansicht: ${err?.message || err}`);
+    }
+    // 4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll.
+    const dc = T.dcNewSong(31337, 'hard', '2026-10-01');
+    dc.checks = { tempo: 'near', beat: 'ok' };
+    dc.done = { beat: '2026-10-01' };
+    dc.revealed = true;
+    if (!same(T.sanitizeDeconstruct(clone(dc)), dc)) failed.push('de:construct: Roundtrip Speichern/Laden');
+    const oldStore = { slots: [], last: T.defaultState(), melodies: [], progressions: [], workshop: { done: {}, last: null } };
+    if (T.sanitizeDeconstruct(oldStore.deconstruct) !== null) failed.push('de:construct: alte Ablage ohne Feld ≠ null');
+    for (const junk of [null, 'x', [], {}, { seed: -1, level: 'easy' }, { seed: 1.5, level: 'easy' }, { seed: 3, level: 'profi' }]) {
+      if (T.sanitizeDeconstruct(junk) !== null) failed.push(`de:construct: Müll ${JSON.stringify(junk)} übernommen`);
+    }
+    // Nur Seed und Stufe (z. B. abgeschnitten): Song entsteht neu, gleich wie damals.
+    const regen = T.sanitizeDeconstruct({ seed: 31337, level: 'hard' });
+    if (!regen || !same(regen.original, dc.original) || !same(regen.mine, dc.mine)) failed.push('de:construct: Seed/Stufe erzeugen nicht denselben Song');
+    const dirty = T.sanitizeDeconstruct({ ...clone(dc), level: 'easy', checks: { tempo: 'super', melody: 'ok', beat: 'no' }, done: { bass: '1.10.2026', beat: '2026-10-01' }, revealed: 'ja' });
+    if (!same(dirty.checks, { beat: 'no' }) || !same(dirty.done, { beat: '2026-10-01' }) || dirty.revealed !== false) failed.push(`de:construct: kaputte Fortschrittsfelder → ${JSON.stringify([dirty.checks, dirty.done, dirty.revealed])}`);
+    const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'deconstruct' })).view;
+    if (savedView !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
+  }
+
   if (log) {
     if (failed.length) {
       console.error(`[Selbsttest Musik] ${failed.length} Prüfung(en) fehlgeschlagen:`);
@@ -22307,8 +22477,9 @@ async function openGrooveLab(entry = 'egg') {
       // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
       t,
       lang: settings.language,
-      // Über Tools → Chor-Ansicht, Easter Egg → Studio (solange nichts gespeichert ist).
-      entry: entry === 'tools' ? 'tools' : 'egg',
+      // Über Tools → Chor-Ansicht, Easter Egg → Studio (solange nichts
+      // gespeichert ist); Kachel „de:construct“ → direkt diese Ansicht.
+      entry: entry === 'tools' || entry === 'deconstruct' ? entry : 'egg',
       // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
       // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
       storage: {
@@ -23104,6 +23275,7 @@ function initTools() {
   initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
+  $('#btn-open-deconstruct').addEventListener('click', () => openGrooveLab('deconstruct'));
   $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));

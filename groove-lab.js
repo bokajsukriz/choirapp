@@ -1206,6 +1206,335 @@
     return list[Math.floor(rng() * list.length)];
   }
 
+  /* ------------------------------------------------------------------------
+     DE:CONSTRUCT — ein fertiger, verborgener Song („Original“) läuft, die
+     Nutzerin baut ihn mit den vorhandenen Reitern nach („Meine Version“)
+     und vergleicht per A/B. Alles hier ist rein (keine View, kein
+     Math.random): Erzeugung über einen Seed, Vergleich je Element,
+     Positionswechsel beim A/B-Umschalten, Einlesen des gespeicherten Stands.
+
+     Didaktik: Der Grundton ist immer vorgegeben (absolutes Hören ist keine
+     Chor-Fähigkeit), gesucht wird relativ — Tempo, Groove, Bass als Stufen,
+     Akkorde als Funktionen, Melodie, Klangfarbe. Was die Stufe nicht
+     abfragt, steht in „Meine Version“ schon richtig (vorgegeben).
+     ------------------------------------------------------------------------ */
+  const DC_ELEMENTS = ['tempo', 'beat', 'bass', 'chords', 'melody', 'sound'];
+  const DC_LEVELS = [
+    { id: 'easy', elements: ['tempo', 'beat', 'bass'] },
+    { id: 'medium', elements: ['tempo', 'beat', 'bass', 'chords'] },
+    { id: 'hard', elements: DC_ELEMENTS },
+  ];
+  // Wohin „Bauen“ springt (Reiter des Groove Labs).
+  const DC_TAB = { tempo: 'beat', beat: 'beat', bass: 'beat', chords: 'harmony', melody: 'melody', sound: 'sound' };
+  // „Nur …“-Hören: Spuren, die es im Song gibt (Tempo und Klang sind keine Spur).
+  const DC_FOCUS = ['all', 'beat', 'bass', 'chords', 'melody'];
+  const DC_STATUS = ['ok', 'near', 'no'];
+  // Tempi (in Vierteln gedacht, wie randomize) — bewusst nicht um 100,
+  // dem Starttempo von „Meine Version“: sonst wäre Tempo schon gelöst.
+  const DC_TEMPI = { easy: [72, 80, 88, 112, 120], medium: [70, 76, 84, 112, 118, 126], hard: [68, 76, 84, 90, 112, 120, 128, 136] };
+  const DC_MINE_BPM = 100;
+  const DC_TEMPO_OK = 3;   // ±3 BPM gilt als gleich
+  const DC_TEMPO_NEAR = 10;
+  // Bass-Zellen lassen sich nur 1 → 5 → 8 schalten (CELL_CYCLE) — eine
+  // erzeugte Basslinie bleibt deshalb in diesen Stufen (Grundton doppelt
+  // gewichtet, wie in echten Basslinien).
+  const DC_BASS_NOTES = [0, 0, 4, 7];
+
+  /** Deterministischer Zufall (mulberry32) — derselbe Seed, derselbe Song. */
+  function dcRng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let x = a;
+      x = Math.imul(x ^ (x >>> 15), x | 1);
+      x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const dcPick = (rng, list) => list[Math.floor(rng() * list.length)];
+  const dcLevel = (id) => DC_LEVELS.find((l) => l.id === id) || DC_LEVELS[0];
+
+  /** Klingende Akkordfolge eines Stands (wie GrooveLabView._progression). */
+  function progressionOfState(s) {
+    const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
+    if (!s.progDegrees) return base;
+    // Eigene/neue Folgen (mit Namen) erben von der zuletzt gewählten
+    // Vorlage nur Id und Kategorie — keine Modus-Bindung.
+    const from = s.progName ? { id: base.id, cat: base.cat } : base;
+    return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, custom: true };
+  }
+  const meterOfState = (s) => DRUM_PATTERNS[s.patternIndex].meter;
+  const modeStepsOf = (s) => (MODES.find((m) => m.id === s.modeId) || MODES[0]).steps;
+
+  /** Harmonie eines Stands am Schritt g (wie GrooveLabView._harmonyAt). */
+  function harmonyOfState(s, g) {
+    const prog = progressionOfState(s);
+    const barSteps = METERS[meterOfState(s)].steps;
+    const index = Math.floor(Math.floor(g / barSteps) / s.chordBars) % prog.degrees.length;
+    const deg = prog.degrees[index];
+    return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg), deg, sevenths: !!prog.sevenths, index };
+  }
+
+  /**
+   * Neuer Song zu `seed` und Stufe: { original, mine } als vollständige,
+   * sanitizeState-feste Stände. Leicht: ein 4/4-Loop mit seiner eigenen
+   * Basslinie; Tonart und Akkordfolge sind vorgegeben (Akkorde aus, die
+   * Basslinie folgt ihnen trotzdem). Mittel: dazu eine eigene Basslinie
+   * (nur 1/5/8, auf dem Rhythmus eines anderen Loops) und die Akkordfolge.
+   * Schwer: alle Taktarten, eine Zelle im Loop abgewandelt, dazu Melodie
+   * und Klang.
+   */
+  function dcGenerate(seed, levelId) {
+    const level = dcLevel(levelId);
+    const rng = dcRng(seed);
+    const has = (el) => level.elements.includes(el);
+    const o = defaultState();
+    const candidates = DRUM_PATTERNS.map((p, i) => [p, i])
+      .filter(([p]) => !p.vocal && (level.id === 'hard' || p.meter === '4/4'))
+      .map(([, i]) => i);
+    o.patternIndex = dcPick(rng, candidates);
+    const pattern = DRUM_PATTERNS[o.patternIndex];
+    const meter = pattern.meter;
+    const barSteps = METERS[meter].steps;
+    o.beat = beatFromPattern(pattern);
+    o.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
+    o.bpm = Math.round(dcPick(rng, DC_TEMPI[level.id]) * 2 / eighthsPerBeat(meter));
+    o.eighths = o.bpm * eighthsPerBeat(meter);
+    if (level.id !== 'easy') {
+      // Eigene Basslinie: Rhythmus aus einem anderen Loop derselben Taktart,
+      // Töne nur Grundton/Quinte/Oktave — so lässt sie sich im Raster bauen.
+      const others = DRUM_PATTERNS.filter((p, i) => p.meter === meter && i !== o.patternIndex && (p.bass || []).length > 1);
+      const from = others.length ? dcPick(rng, others) : pattern;
+      o.beat.bass = {};
+      (from.bass || [0]).filter((st) => st < barSteps).forEach((st, i) => { o.beat.bass[st] = i === 0 ? 0 : dcPick(rng, DC_BASS_NOTES); });
+    }
+    if (level.id === 'hard') {
+      // Eine Zelle in Kick, Snare oder Hi-Hat anders als im Loop: wer nur
+      // den Loop wählt, hört „fast“ — der Rest ist genaues Hinhören.
+      const bass = o.beat.bass;
+      o.beat = detectiveVariant(o.beat, rng, barSteps).beat;
+      o.beat.bass = bass;
+    }
+    o.beatEdited = level.id === 'hard';
+    o.keyRoot = Math.floor(rng() * 12);
+    o.modeId = level.id === 'hard' ? dcPick(rng, MODES).id : dcPick(rng, ['major', 'major', 'minor']);
+    const progs = progsForRandom(o.modeId)
+      .filter((p) => level.id === 'hard' || p.cat === 'pop' || p.cat === 'classic')
+      .filter((p) => p.degrees.length <= 8);
+    o.progId = dcPick(rng, progs).id;
+    o.chordBars = level.id === 'hard' && progressionOfState(o).degrees.length <= 4 && rng() < .35 ? 2 : 1;
+    o.chordsOn = has('chords');
+    o.melodyOn = has('melody');
+    const melodies = MELODIES.map((x, i) => [x, i]).filter(([x]) => x.meter === meter).map(([, i]) => i);
+    o.melodyIndex = dcPick(rng, melodies);
+    if (has('sound')) {
+      const presets = SYNTH_PRESETS.map((p, i) => [p, i]).filter(([p]) => p.cat !== 'pad').map(([, i]) => i);
+      o.sound = soundFromPreset(dcPick(rng, presets));
+    }
+    o.view = 'deconstruct';
+
+    // „Meine Version“: Vorgegebenes wie im Original, Gesuchtes neutral —
+    // leeres Raster, Tempo 100, ein einziger Akkord, Melodie aus.
+    const m = defaultState();
+    m.view = 'deconstruct';
+    m.keyRoot = o.keyRoot;
+    m.patternIndex = 0;
+    m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+    m.beatEdited = true;
+    m.bpm = DC_MINE_BPM;
+    m.eighths = m.bpm * eighthsPerBeat(meterOfState(m));
+    m.swing = 0;
+    if (has('chords')) { m.modeId = 'major'; m.progId = 'drone'; m.chordsOn = true; }
+    else { m.modeId = o.modeId; m.progId = o.progId; m.chordBars = o.chordBars; m.chordsOn = false; }
+    m.melodyOn = false;
+    const mineMelodies = MELODIES.map((x, i) => [x, i]).filter(([x, i]) => x.meter === meterOfState(m) && i !== o.melodyIndex).map(([, i]) => i);
+    m.melodyIndex = mineMelodies[0] ?? 0;
+    if (has('sound')) {
+      const start = SYNTH_PRESETS.map((p, i) => i).find((i) => !soundMatched(o.sound, soundFromPreset(i)));
+      m.sound = soundFromPreset(start ?? 0);
+    } else m.sound = JSON.parse(JSON.stringify(o.sound));
+    return { original: sanitizeState(o), mine: sanitizeState(m) };
+  }
+
+  const dcHint = (key, vars = {}) => ({ key, vars });
+  const dcResult = (status, ...hints) => ({ status, hints });
+  /** Gesetzte Schritte einer Spur, die auch klingen (Spur an). */
+  const dcTrack = (s, track) => (s.trackOn[track] ? s.beat[track] || {} : {});
+  const dcStepsOf = (map) => Object.keys(map).map(Number).sort((x, y) => x - y);
+
+  /** Melodie-Ereignisse über `bars` Takte, gerechnet über der Harmonie
+   *  von `ref` — so wird die Melodie unabhängig von den Akkorden geprüft. */
+  function dcMelodyEvents(s, ref, bars) {
+    if (!s.melodyOn) return [];
+    const barSteps = METERS[meterOfState(ref)].steps;
+    const melBars = s.melodyBars || MELODIES[s.melodyIndex].bars;
+    const melRef = s.melodyBars ? s.melodyRef : 'chord';
+    const out = [];
+    for (let g = 0; g < bars * barSteps; g++) {
+      for (const [at, deg, , alt = 0] of melodyNotesAt(g, melBars, barSteps, s.melodyAltBars && melRef !== 'key')) {
+        out.push({ g: Math.floor(g / barSteps) * barSteps + Math.round(at), midi: melodyMidi(deg, alt, harmonyOfState(ref, g), melRef, modeStepsOf(ref), s.melodyOctave) });
+      }
+    }
+    return out;
+  }
+  const dcGcd = (a, b) => (b ? dcGcd(b, a % b) : a);
+  const dcLcm = (...list) => list.reduce((a, b) => (a * b) / dcGcd(a, b), 1);
+
+  /**
+   * Vergleich eines Elements: { status: 'ok' | 'near' | 'no', hints }.
+   * Die Hinweise sagen, WAS passt und in welche Richtung es geht — nie,
+   * wie die Lösung lautet.
+   */
+  function dcCompare(o, m, element) {
+    const meterO = meterOfState(o);
+    const meterM = meterOfState(m);
+    // Beat, Bass, Akkorde und Melodie lassen sich nur im selben Takt vergleichen.
+    if (element !== 'tempo' && element !== 'sound' && meterO !== meterM) {
+      if (element === 'chords' && !m.chordsOn) return dcResult('no', dcHint('lab.dc.hint.chordsOff'));
+      if (element === 'melody' && !m.melodyOn) return dcResult('no', dcHint('lab.dc.hint.melodyOff'));
+      return dcResult('no', dcHint('lab.dc.hint.meterFirst'));
+    }
+    if (element === 'tempo') {
+      if (meterO !== meterM) return dcResult('no', dcHint('lab.dc.hint.meter'));
+      const diff = o.bpm - m.bpm;
+      const dir = diff > 0 ? 'Faster' : 'Slower';
+      if (Math.abs(diff) > DC_TEMPO_NEAR) return dcResult('no', dcHint(`lab.dc.hint.much${dir}`));
+      if (Math.abs(diff) > DC_TEMPO_OK) return dcResult('near', dcHint(`lab.dc.hint.bit${dir}`));
+      if (Math.abs(o.swing - m.swing) > .15) return dcResult('near', dcHint('lab.dc.hint.swing'));
+      return dcResult('ok');
+    }
+    if (element === 'beat') {
+      const fit = [];
+      const miss = [];
+      let softOnly = true;
+      for (const track of DRUM_TRACKS) {
+        const a = dcTrack(o, track);
+        const b = dcTrack(m, track);
+        const ka = dcStepsOf(a);
+        if (!ka.length && !dcStepsOf(b).length) continue;
+        if (!sameSteps(ka, dcStepsOf(b))) { miss.push(track); softOnly = false; continue; }
+        // Gleiche Schläge — und gleich laut (Ghost-Note < 1 gegen voll)?
+        if (ka.every((st) => (a[st] < 1) === (b[st] < 1))) fit.push(track);
+        else miss.push(track);
+      }
+      if (!miss.length) return dcResult('ok');
+      if (softOnly) return dcResult('near', dcHint('lab.dc.hint.ghost'));
+      if (!DRUM_TRACKS.some((track) => dcStepsOf(dcTrack(m, track)).length)) return dcResult('no', dcHint('lab.dc.hint.beatEmpty'));
+      const names = (list) => list.map(trackLabel).join(', ');
+      const hint = fit.length ? dcHint('lab.dc.hint.parts', { fit: names(fit), miss: names(miss) }) : dcHint('lab.dc.hint.partsNone', { miss: names(miss) });
+      return dcResult(fit.length && miss.length === 1 ? 'near' : 'no', hint);
+    }
+    if (element === 'bass') {
+      const a = dcTrack(o, 'bass');
+      const b = dcTrack(m, 'bass');
+      const ka = dcStepsOf(a);
+      const kb = dcStepsOf(b);
+      if (!kb.length) return dcResult('no', dcHint('lab.dc.hint.bassEmpty'));
+      const common = ka.filter((st) => b[st] !== undefined);
+      const rhythmOk = sameSteps(ka, kb);
+      const notesOk = common.length * 2 >= ka.length && common.every((st) => a[st] === b[st]);
+      if (rhythmOk && notesOk) return dcResult('ok');
+      if (rhythmOk) return dcResult('near', dcHint('lab.dc.hint.bassNotes'));
+      if (notesOk) return dcResult('near', dcHint('lab.dc.hint.bassRhythm'));
+      return dcResult('no', dcHint('lab.dc.hint.bassBoth'));
+    }
+    if (element === 'chords') {
+      if (!m.chordsOn) return dcResult('no', dcHint('lab.dc.hint.chordsOff'));
+      const lenO = progressionOfState(o).degrees.length * o.chordBars;
+      const lenM = progressionOfState(m).degrees.length * m.chordBars;
+      const bars = Math.min(96, dcLcm(lenO, lenM));
+      const barSteps = METERS[meterO].steps;
+      const chord = (s, bar) => { const h = harmonyOfState(s, bar * barSteps); return chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths); };
+      let same = 0;
+      let roots = 0;
+      for (let bar = 0; bar < bars; bar++) {
+        const ca = chord(o, bar);
+        const cb = chord(m, bar);
+        if (ca[0] === cb[0]) roots++;
+        if (ca.length === cb.length && ca.every((pc, i) => pc === cb[i])) same++;
+      }
+      if (same === bars) return dcResult('ok');
+      if (roots === bars) return dcResult('near', dcHint('lab.dc.hint.chordsQuality'));
+      if (o.chordBars !== m.chordBars && dcCompare(o, { ...m, chordBars: o.chordBars }, 'chords').status === 'ok') {
+        return dcResult('near', dcHint(o.chordBars < m.chordBars ? 'lab.dc.hint.chordsFaster' : 'lab.dc.hint.chordsSlower'));
+      }
+      return dcResult(same / bars >= .6 ? 'near' : 'no', dcHint('lab.dc.hint.chordsBars', { n: Math.round((same / bars) * 100) }));
+    }
+    if (element === 'melody') {
+      if (!m.melodyOn) return dcResult('no', dcHint('lab.dc.hint.melodyOff'));
+      const melLen = (s) => (s.melodyBars || MELODIES[s.melodyIndex].bars).length;
+      const bars = Math.min(64, dcLcm(progressionOfState(o).degrees.length * o.chordBars, melLen(o), melLen(m), 2));
+      const ea = dcMelodyEvents(o, o, bars);
+      const eb = dcMelodyEvents(m, o, bars);
+      const onsets = (list) => [...new Set(list.map((e) => e.g))].sort((x, y) => x - y);
+      const rhythmOk = sameSteps(onsets(ea), onsets(eb));
+      const byG = new Map(eb.map((e) => [e.g, e.midi]));
+      const common = ea.filter((e) => byG.has(e.g));
+      const exact = common.filter((e) => byG.get(e.g) === e.midi).length;
+      const pcs = common.filter((e) => mod(byG.get(e.g) - e.midi, 12) === 0).length;
+      if (rhythmOk && exact === ea.length) return dcResult('ok');
+      if (rhythmOk && pcs === ea.length) return dcResult('near', dcHint('lab.dc.hint.octave'));
+      if (rhythmOk) return dcResult('near', dcHint('lab.dc.hint.melNotes'));
+      if (ea.length && pcs / ea.length >= .75) return dcResult('near', dcHint('lab.dc.hint.melRhythm'));
+      return dcResult('no', dcHint('lab.dc.hint.melBoth'));
+    }
+    if (element === 'sound') {
+      const match = soundMatch(o.sound, m.sound);
+      const keys = Object.keys(match);
+      const label = { wave: 'lab.waveformAria', cutoff: 'lab.knobCutoff', attack: 'lab.envAttack', release: 'lab.envRelease' };
+      const fit = keys.filter((k) => match[k]);
+      if (fit.length === keys.length) return dcResult('ok');
+      const names = (list) => list.map((k) => t(label[k])).join(', ');
+      const miss = keys.filter((k) => !match[k]);
+      const hint = fit.length ? dcHint('lab.dc.hint.parts', { fit: names(fit), miss: names(miss) }) : dcHint('lab.dc.hint.partsNone', { miss: names(miss) });
+      return dcResult(fit.length >= 2 ? 'near' : 'no', hint);
+    }
+    return dcResult('no');
+  }
+
+  /**
+   * A/B-Wechsel im laufenden Takt: gleiche Taktart → derselbe Schritt
+   * (nahtlos). Andere Taktart → Anfang des nächsten Takts, mit derselben
+   * Taktnummer — Akkord und Melodietakt bleiben an ihrer Stelle im Song.
+   */
+  function dcSwitchStep(g, fromSteps, toSteps) {
+    if (fromSteps === toSteps) return g;
+    return Math.ceil(g / fromSteps) * toSteps;
+  }
+
+  /** Neuer de:construct-Stand (für Ansicht und Tests). */
+  function dcNewSong(seed, levelId, today = null) {
+    const { original, mine } = dcGenerate(seed, levelId);
+    return { v: 1, seed, level: dcLevel(levelId).id, created: today, original, mine, checks: {}, done: {}, revealed: false };
+  }
+
+  /** Gespeicherter de:construct-Stand (Ablage `deconstruct`). Fehlt er
+   *  (Ablage von vor de:construct) oder ist er kaputt: null — dann beginnt
+   *  de:construct mit der Auswahl. Fehlen nur die Stände, entstehen sie
+   *  aus Seed und Stufe neu. */
+  function sanitizeDeconstruct(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (!Number.isInteger(raw.seed) || raw.seed < 0 || !DC_LEVELS.some((l) => l.id === raw.level)) return null;
+    const level = dcLevel(raw.level);
+    const whole = raw.original && typeof raw.original === 'object' && raw.mine && typeof raw.mine === 'object';
+    const fresh = whole ? null : dcGenerate(raw.seed, level.id);
+    const original = sanitizeState(fresh ? fresh.original : raw.original);
+    const mine = sanitizeState(fresh ? fresh.mine : raw.mine);
+    original.view = 'deconstruct';
+    mine.view = 'deconstruct';
+    const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const out = { v: 1, seed: raw.seed, level: level.id, created: isDate(raw.created) ? raw.created : null,
+      original, mine, checks: {}, done: {}, revealed: raw.revealed === true };
+    for (const el of level.elements) {
+      if (DC_STATUS.includes(raw.checks?.[el])) out.checks[el] = raw.checks[el];
+      if (isDate(raw.done?.[el])) out.done[el] = raw.done[el];
+    }
+    return out;
+  }
+
+  // Ansichten des Labs (state.view); 'deconstruct' seit de:construct.
+  const VIEWS = ['choir', 'studio', 'workshop', 'deconstruct'];
+
   const TABS = [
     { id: 'beat', labelKey: 'lab.tabBeat' },
     { id: 'harmony', labelKey: 'lab.tabHarmony' },
@@ -1481,7 +1810,7 @@
     };
     s.automation = sanitizeAutomation(raw.automation);
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
-    s.view = oneOf(raw.view, ['choir', 'studio', 'workshop'], null);
+    s.view = oneOf(raw.view, VIEWS, null);
     s.choirTask = oneOf(raw.choirTask, CHOIR_TASKS.map((x) => x.id), null);
     s.lessonId = oneOf(raw.lessonId, WORKSHOP_LESSONS.map((l) => l.id), null);
     for (const [key, [lo, hi]] of Object.entries(KIT_RANGES)) s.kit[key] = num(obj(raw.kit)[key], lo, hi, KIT_DEFAULTS[key]);
@@ -2291,7 +2620,10 @@
       this.state = defaultState();
       this.ui = { tab: 'beat', beatCat: 'all', melodyCat: 'all', presetCat: 'all', latchOn: false, picker: null,
         melEdit: false, melBar: 0, melLen: 2, melChroma: false, melAlt: 0, melUndo: [], melRedo: [],
-        progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [] };
+        progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [],
+        // de:construct: was gerade klingt (A = 'orig', B = 'mine'), welche
+        // Spur allein, Stufenwahl offen?, Rückfrage vor dem Auflösen.
+        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', revealAsk: false } };
       // Einspielen: Phase idle → armed (zählt ein) → recording → done.
       // Automation aufnehmen: Phase idle → armed (zählt ein) → recording.
       this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
@@ -2317,7 +2649,11 @@
       this._soundKnobs = {};
 
       this._storage = null;
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null) };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null };
+      // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
+      // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
+      this._dcActive = false;
+      this._dcStash = null;
       this._storageRequested = false;
       this._restoreFocusTo = null;
       this._bodyOverflow = '';
@@ -2341,8 +2677,9 @@
       this._restoreFocusTo = document.activeElement;
       // Einstieg: über Tools → „Chor“, Easter Egg → „Studio“ (solange keine
       // Ansicht gespeichert ist).
-      this._entry = entry === 'tools' ? 'tools' : 'egg';
-      this._applyView(this.state.view);
+      // Kachel „de:construct“ im Tools-Reiter öffnet direkt diese Ansicht.
+      this._entry = entry === 'tools' || entry === 'deconstruct' ? entry : 'egg';
+      this._applyView(this._entry === 'deconstruct' ? 'deconstruct' : this.state.view);
       this.style.setProperty('--accent', accent || '#f868b0');
       const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent || '');
       this.style.setProperty('--accent-rgb', match
@@ -2368,7 +2705,13 @@
       this._closeSheet();
       this._closePicker({ focus: false });
       this._wsAbReset(); // nie im „Vorher“ speichern
-      this._saved.last = this._snapshot();
+      clearTimeout(this._dcSaveTimer);
+      // In de:construct hält this.state „Meine Version“ (landet über
+      // _persist in der Ablage `deconstruct`); als letzter Stand gilt der
+      // Studio-Stand — mit der Ansicht, damit es beim nächsten Mal hier weitergeht.
+      this._saved.last = this._dcActive && this._dcStash
+        ? { ...JSON.parse(JSON.stringify(this._dcStash.state)), view: 'deconstruct' }
+        : this._snapshot();
       this._persist();
       this.hidden = true;
       document.removeEventListener('keydown', this._onKeydown);
@@ -2397,14 +2740,23 @@
         this._saved.melodies = sanitizeMelodyLibrary(data.melodies);
         this._saved.progressions = sanitizeProgLibrary(data.progressions);
         this._saved.workshop = sanitizeWorkshopProgress(data.workshop);
+        // Ablagen von vor de:construct haben kein Feld `deconstruct` → null.
+        this._saved.deconstruct = sanitizeDeconstruct(data.deconstruct);
         this._renderMelody();
         this._renderHarmony();
         // Den letzten Stand nur übernehmen, solange noch nichts gespielt oder
         // verändert wurde — sonst überschriebe ein langsames Laden Eingaben.
         if (data.last && !this.playing && !this.history.length) {
+          // Lief de:construct schon (noch ohne Song), neu betreten: dann
+          // wird der geladene Stand zum Studio-Stand und „Meine Version“ geladen.
+          this._dcActive = false;
+          this._dcStash = null;
           this.state = sanitizeState(data.last);
           this._afterStateChange();
-          this._applyView(this.state.view);
+          this._applyView(this._entry === 'deconstruct' ? 'deconstruct' : this.state.view);
+        } else if (this._dcActive && this._saved.deconstruct && !this.history.length && !this.playing) {
+          this._applyState(sanitizeState(this._saved.deconstruct.mine), { history: false });
+          this._applyView('deconstruct');
         }
         this._renderWorkshop();
         this._renderSheet();
@@ -2412,6 +2764,7 @@
     }
 
     _persist() {
+      if (this._dcActive && this._saved.deconstruct) this._saved.deconstruct.mine = this._snapshot();
       if (!this._storage) return;
       Promise.resolve(this._storage.save(this._saved)).catch((err) => console.warn('[groove-lab] Stand nicht gespeichert', err));
     }
@@ -2462,23 +2815,338 @@
     /* ---- Ansicht: Chor · Studio (Didaktik Paket 8) ---- */
 
     _applyView(view) {
-      const v = ['choir', 'studio', 'workshop'].includes(view) ? view : (this._entry === 'tools' ? 'choir' : 'studio');
+      const v = VIEWS.includes(view) ? view : (this._entry === 'tools' ? 'choir' : 'studio');
       // Beim Verlassen des Workshops immer auf „Nachher“ zurück.
       if (v !== 'workshop') this._wsAbReset();
+      // de:construct verlassen: „Meine Version“ ablegen, Studio-Stand zurück.
+      if (v !== 'deconstruct' && this._dcActive) this._dcLeave();
       this.state.view = v;
+      if (v === 'deconstruct' && !this._dcActive) this._dcEnter();
       const choir = v === 'choir';
       const workshop = v === 'workshop';
+      const dcView = v === 'deconstruct';
+      // Ohne Song zeigt de:construct nur die Auswahl, keine Reiter.
+      const dcEmpty = dcView && (!this._saved.deconstruct || this.ui.dc.choosing);
       this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
       this.$('.view-select').value = v;
-      this.$('.tab-bar').hidden = choir || workshop;
+      this.$('.tab-bar').hidden = choir || workshop || dcEmpty;
       this.$('.choir-view').hidden = !choir;
       this.$('.workshop-view').hidden = !workshop;
-      if (choir) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
+      this.$('.dc-view').hidden = !dcView;
+      if (choir || dcEmpty) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
       else this._setTab(this.ui.tab);
       if (workshop) this._wsEnter();
       this._renderChoir();
+      this._renderDeconstruct();
       this._wsDecorate();
       this._applySound(); // Klang-Rätsel: außerhalb des Workshops immer der eigene Klang
+    }
+
+    /* ---- Ansicht: de:construct ----
+       Ein verborgener Song (this._saved.deconstruct.original) läuft; gebaut
+       wird mit den normalen Reitern in this.state („Meine Version“). Der
+       Scheduler spielt je Schritt entweder das eine oder das andere
+       (_dcHeard), ohne den Transport anzuhalten. */
+
+    /** Laufender de:construct-Song oder null (nur in der Ansicht). */
+    _dc() {
+      return this._dcActive ? this._saved.deconstruct : null;
+    }
+
+    _dcEnter() {
+      this._dcStash = { state: this._snapshot(), history: this.history };
+      this.history = [];
+      this._dcActive = true;
+      this.ui.dc.listen = 'orig';
+      this.ui.dc.focus = 'all';
+      this.ui.dc.revealAsk = false;
+      const dc = this._saved.deconstruct;
+      this.ui.dc.choosing = !dc;
+      if (dc) this._dcSwap(sanitizeState(dc.mine));
+      else this._renderTransport();
+    }
+
+    _dcLeave() {
+      const dc = this._saved.deconstruct;
+      if (dc) dc.mine = this._snapshot();
+      const stash = this._dcStash;
+      this._dcActive = false;
+      this._dcStash = null;
+      this.ui.dc.listen = 'mine';
+      this.ui.dc.choosing = false;
+      if (stash) {
+        this._dcSwap(sanitizeState(stash.state));
+        this.history = stash.history;
+      }
+      this._syncEngine();
+      this._renderTransport();
+      this._persist();
+    }
+
+    /** Zustand tauschen ohne Undo-Eintrag, taktgenau weiter (wie _wsSwap). */
+    _dcSwap(state) {
+      const stepsBefore = this._barSteps();
+      this._applyState(state, { history: false });
+      if (this.playing) this.globalStep = dcSwitchStep(this.globalStep, stepsBefore, this._barSteps());
+    }
+
+    /** Was der Scheduler gerade spielt: Original nur in de:construct mit
+     *  Song, auf A, und nicht während einer Aufnahme. */
+    _dcHearsOriginal() {
+      const dc = this._dc();
+      return !!dc && !this.ui.dc.choosing && this.ui.dc.listen === 'orig'
+        && this.rec.phase === 'idle' && this.autoRec.phase === 'idle';
+    }
+
+    /** fn mit dem gerade hörbaren Stand als this.state ausführen. Alle
+     *  abgeleiteten Werte (Takt, Tempo, Harmonie, Klang) lesen this.state —
+     *  so spielt der unveränderte Scheduler das Original, ohne dass es je
+     *  in den Editoren sichtbar wird. */
+    _dcHeard(fn) {
+      if (!this._dcHearsOriginal()) return fn();
+      const mine = this.state;
+      this.state = this._saved.deconstruct.original;
+      this._dcMine = mine;
+      const cache = this._voicingCache;
+      this._voicingCache = this._dcVoicingCache || null;
+      try { return fn(); } finally {
+        this._dcVoicingCache = this._voicingCache;
+        this._voicingCache = cache;
+        this._dcMine = null;
+        this.state = mine;
+      }
+    }
+
+    /** „Nur …“: diese Spur klingt (in A und B), alle anderen schweigen. */
+    _dcHears(part) {
+      const focus = this._dc() ? this.ui.dc.focus : 'all';
+      return focus === 'all' || focus === part;
+    }
+
+    /** A/B umschalten — gleicher Takt, gleiche Stelle (dcSwitchStep). */
+    _dcListen(side) {
+      const dc = this._dc();
+      if (!dc || (side !== 'orig' && side !== 'mine') || side === this.ui.dc.listen) return;
+      const stepsBefore = this._dcHeard(() => this._barSteps());
+      this.ui.dc.listen = side;
+      const stepsAfter = this._dcHeard(() => this._barSteps());
+      if (this.playing) this.globalStep = dcSwitchStep(this.globalStep, stepsBefore, stepsAfter);
+      this._syncEngine(); // Pegel, Klang und Effekte der jetzt hörbaren Seite
+      this._renderDeconstruct();
+      this._renderNow();
+    }
+
+    _dcFocus(part) {
+      if (!DC_FOCUS.includes(part)) return;
+      this.ui.dc.focus = part;
+      this._renderDeconstruct();
+    }
+
+    /** Neuer Song: ersetzt Original, „Meine Version“ und Fortschritt.
+     *  Das Antippen ist die Geste für den AudioContext — das Original läuft los. */
+    _dcNew(levelId, seed = Math.floor(Math.random() * 2147483647)) {
+      if (!this._dcActive) return;
+      const dc = dcNewSong(seed, levelId, localDate());
+      this._saved.deconstruct = dc;
+      this.history = [];
+      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, revealAsk: false };
+      this._dcSwap(sanitizeState(dc.mine));
+      this.ui.tab = 'beat';
+      this._applyView('deconstruct');
+      this._dcAnnounce(t('lab.dc.started'));
+      this._persist();
+      if (!this.playing) this.start();
+    }
+
+    /** Ein Element prüfen; „stimmt“ markiert es dauerhaft als geschafft. */
+    _dcCheck(element) {
+      const dc = this._dc();
+      if (!dc || !dcLevel(dc.level).elements.includes(element)) return;
+      const result = dcCompare(dc.original, this.state, element);
+      dc.checks[element] = result.status;
+      this.ui.dc.hints = { ...(this.ui.dc.hints || {}), [element]: result.hints };
+      if (result.status === 'ok' && !dc.done[element]) dc.done[element] = localDate();
+      const text = `${t(`lab.dc.el.${element}`)}: ${t(`lab.dc.status.${result.status}`)}${result.hints.length ? ` – ${this._dcHintText(result.hints)}` : ''}`;
+      this._dcAnnounce(text);
+      this._persist();
+      this._renderDeconstruct();
+    }
+
+    _dcHintText(hints) {
+      return hints.map(({ key, vars }) => tf(key, vars)).join(' ');
+    }
+
+    _dcReveal() {
+      const dc = this._dc();
+      if (!dc) return;
+      if (!this.ui.dc.revealAsk && !dc.revealed) { this.ui.dc.revealAsk = true; this._renderDeconstruct(); return; }
+      this.ui.dc.revealAsk = false;
+      dc.revealed = true;
+      this._persist();
+      this._renderDeconstruct();
+      this.$('.dc-solution')?.focus();
+    }
+
+    /** Nach dem Auflösen: das Original als „Meine Version“ übernehmen
+     *  (ein Undo-Schritt) — dann steht es in allen Reitern zum Ansehen. */
+    _dcAdopt() {
+      const dc = this._dc();
+      if (!dc?.revealed) return;
+      this._pushHistory();
+      this._dcSwap(sanitizeState(JSON.parse(JSON.stringify(dc.original))));
+      this._renderTransport();
+      this._persist();
+      this._dcAnnounce(t('lab.dc.adopted'));
+    }
+
+    _dcAnnounce(text) {
+      const live = this.$('.dc-live');
+      if (live) live.textContent = text;
+    }
+
+    /** Nach Eingaben „Meine Version“ gebündelt sichern — auch wenn die App
+     *  danach im Hintergrund beendet wird, bleibt der Nachbau erhalten. */
+    _dcAutosave() {
+      if (!this._dc()) return;
+      clearTimeout(this._dcSaveTimer);
+      this._dcSaveTimer = setTimeout(() => this._persist(), 1500);
+    }
+
+    /** Lösung eines Elements in Worten (erst nach dem Auflösen sichtbar). */
+    _dcSolution(element) {
+      const o = this._saved.deconstruct.original;
+      const pattern = DRUM_PATTERNS[o.patternIndex];
+      if (element === 'tempo') {
+        return `${tempoSymbol(pattern.meter)} = ${o.bpm} · ${pattern.meter}${o.swing ? ` · ${t('lab.swing')} ${Math.round(o.swing * 100)} %` : ''}`;
+      }
+      if (element === 'beat') {
+        const plain = beatFromPattern(pattern);
+        const varied = DRUM_TRACKS.some((track) => JSON.stringify(plain[track]) !== JSON.stringify(o.beat[track]));
+        return `„${pattern.name}“${varied ? ` (${t('lab.dc.varied')})` : ''}`;
+      }
+      if (element === 'bass') {
+        const steps = METERS[pattern.meter].steps;
+        const group = METERS[pattern.meter].group;
+        let line = '';
+        for (let i = 0; i < steps; i++) {
+          const v = o.beat.bass[i];
+          if (i && i % group === 0) line += ' ';
+          line += v === undefined ? '·' : String(v < 0 ? v + 8 : v + 1);
+        }
+        return line;
+      }
+      if (element === 'chords') {
+        const prog = progressionOfState(o);
+        const names = prog.degrees.map((deg) => chordName(o.keyRoot, chordSteps(modeStepsOf(o), o.modeId, prog, deg), deg, !!prog.sevenths, o.modeId));
+        const mode = MODES.find((m) => m.id === o.modeId) || MODES[0];
+        return `${names.join(' – ')} · ${t(mode.nameKey)}${o.chordBars === 2 ? ` · ${t('lab.dc.twoBars')}` : ''}`;
+      }
+      if (element === 'melody') return `„${MELODIES[o.melodyIndex].name}“`;
+      if (element === 'sound') return `„${SYNTH_PRESETS[o.sound.presetIndex]?.name || ''}“`;
+      return '';
+    }
+
+    _renderDeconstruct() {
+      const host = this.$('.dc-view');
+      if (!host) return;
+      const dcView = this.state.view === 'deconstruct';
+      // Markierung an der Transportleiste, nicht am Host: ein Custom Element
+      // darf im Konstruktor (der _renderAll aufruft) keine Attribute setzen.
+      this.$('.transport-bar').classList.toggle('is-dc-orig', dcView && !!this._saved.deconstruct && !this.ui.dc.choosing && this.ui.dc.listen === 'orig');
+      this._renderDcQuick();
+      if (!dcView) return;
+      const dc = this._saved.deconstruct;
+      const choosing = !dc || this.ui.dc.choosing;
+      this.$('.dc-intro').hidden = !choosing;
+      this.$('.dc-song').hidden = choosing;
+      // Stufenwahl
+      this._chips(this.$('.dc-levels'), DC_LEVELS.map((l) => ({ value: l.id, label: t(`lab.dc.level.${l.id}`) })), this.ui.dc.level, 'dc-level');
+      this.$('.dc-level-info').textContent = t(`lab.dc.levelInfo.${this.ui.dc.level}`);
+      this.$('[data-action="dc-cancel"]').hidden = !dc;
+      this.$('.dc-replace').hidden = !dc;
+      if (choosing) return;
+
+      const level = dcLevel(dc.level);
+      const elements = level.elements;
+      const doneCount = elements.filter((el) => dc.done[el]).length;
+      this.$('.dc-song-title').textContent = tf('lab.dc.songTitle', { code: dc.seed.toString(36).toUpperCase().slice(-4).padStart(4, '0'), level: t(`lab.dc.level.${dc.level}`) });
+      this.$('.dc-count').textContent = tf('lab.dc.count', { done: doneCount, total: elements.length });
+      const given = [tf('lab.dc.givenKey', { key: spell(dc.original.keyRoot, dc.original.keyRoot, 'major', labLang) })];
+      if (!elements.includes('chords')) given.push(t('lab.dc.givenChords'));
+      this.$('.dc-given').textContent = `${t('lab.dc.given')} ${given.join(' · ')}`;
+      // A/B
+      this.$all('.dc-ab-btn').forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.value === this.ui.dc.listen)));
+      // Nur hören
+      const parts = DC_FOCUS.filter((p) => p === 'all' || elements.includes(p));
+      if (!parts.includes(this.ui.dc.focus)) this.ui.dc.focus = 'all';
+      this._chips(this.$('.dc-focus'), parts.map((p) => ({ value: p, label: t(`lab.dc.focus.${p}`) })), this.ui.dc.focus, 'dc-focus');
+      // Elemente
+      const hints = this.ui.dc.hints || {};
+      this.$('.dc-elements').replaceChildren(...elements.map((el) => {
+        const status = dc.checks[el] || 'open';
+        const done = !!dc.done[el];
+        const li = document.createElement('li');
+        li.className = `dc-el is-${done ? 'done' : status}`;
+        const mark = document.createElement('span');
+        mark.className = 'dc-mark';
+        mark.setAttribute('aria-hidden', 'true');
+        mark.textContent = done ? '✓' : { ok: '✓', near: '◐', no: '○', open: '' }[status];
+        const text = document.createElement('div');
+        text.className = 'dc-el-text';
+        const name = document.createElement('strong');
+        name.textContent = t(`lab.dc.el.${el}`);
+        const state = document.createElement('span');
+        state.className = 'dc-el-state';
+        state.textContent = done ? t('lab.dc.status.done') : t(`lab.dc.status.${status}`);
+        name.append(' ', state);
+        const line = document.createElement('span');
+        line.className = 'dc-el-line';
+        line.textContent = hints[el]?.length && status !== 'ok' ? this._dcHintText(hints[el]) : t(`lab.dc.do.${el}`);
+        text.append(name, line);
+        if (dc.revealed) {
+          const sol = document.createElement('span');
+          sol.className = 'dc-el-solution';
+          sol.textContent = `${t('lab.dc.solution')} ${this._dcSolution(el)}`;
+          text.append(sol);
+        }
+        const build = document.createElement('button');
+        build.type = 'button';
+        build.className = 'chip dc-build';
+        build.dataset.action = 'dc-build';
+        build.dataset.value = el;
+        build.textContent = t('lab.dc.build');
+        build.setAttribute('aria-label', `${t(`lab.dc.el.${el}`)}: ${t('lab.dc.build')}`);
+        const check = document.createElement('button');
+        check.type = 'button';
+        check.className = 'chip dc-check';
+        check.dataset.action = 'dc-check';
+        check.dataset.value = el;
+        check.textContent = t('lab.dc.check');
+        check.setAttribute('aria-label', `${t(`lab.dc.el.${el}`)}: ${t('lab.dc.check')}`);
+        li.append(mark, text, build, check);
+        return li;
+      }));
+      this.$('.dc-all-done').hidden = doneCount < elements.length;
+      const reveal = this.$('[data-action="dc-reveal"]');
+      reveal.hidden = dc.revealed;
+      reveal.textContent = t(this.ui.dc.revealAsk ? 'lab.dc.revealSure' : 'lab.dc.reveal');
+      reveal.classList.toggle('is-ask', this.ui.dc.revealAsk);
+      this.$('.dc-solution').hidden = !dc.revealed;
+    }
+
+    /** A/B-Knopf in der Transportleiste — immer erreichbar, auch tief im Editor. */
+    _renderDcQuick() {
+      const btn = this.$('.dc-quick');
+      if (!btn) return;
+      const on = this.state.view === 'deconstruct' && !!this._saved.deconstruct && !this.ui.dc.choosing;
+      btn.hidden = !on;
+      // Würfeln würde in de:construct auch Vorgegebenes (Grundton) verstellen.
+      this.$('[data-action="randomize"]').hidden = this.state.view === 'deconstruct';
+      if (!on) return;
+      const orig = this.ui.dc.listen === 'orig';
+      btn.setAttribute('aria-pressed', String(orig));
+      btn.querySelector('.dc-quick-letter').textContent = orig ? 'A' : 'B';
+      btn.querySelector('.dc-quick-text').textContent = t(orig ? 'lab.dc.original' : 'lab.dc.mineShort');
     }
 
     /* ---- Ansicht: Workshop ----
@@ -2571,6 +3239,7 @@
 
     /** Synth-Klang, der zu hören ist: beim Klang-Rätsel auf Wunsch der Zielklang. */
     _heardSound() {
+      if (this._dcHearsOriginal()) return this._saved.deconstruct.original.sound;
       const ch = this._wsCh();
       return ch?.phase === 'running' && ch.kind === 'soundMatch' && ch.listen === 'model' ? ch.target.sound : this.state.sound;
     }
@@ -3152,15 +3821,7 @@
     }
     _mode() { return MODES.find((m) => m.id === this.state.modeId) || MODES[0]; }
     /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
-    _progression() {
-      const s = this.state;
-      const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
-      if (!s.progDegrees) return base;
-      // Eigene/neue Folgen (mit Namen) erben von der zuletzt gewählten
-      // Vorlage nur Id und Kategorie — keine Modus-Bindung.
-      const from = s.progName ? { id: base.id, cat: base.cat } : base;
-      return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, custom: true };
-    }
+    _progression() { return progressionOfState(this.state); }
     /** Tonleiter für den Akkord auf Stufe `deg` (siehe chordSteps). */
     _stepsFor(deg, prog = this._progression()) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg); }
     _progName() {
@@ -3200,7 +3861,10 @@
       };
     }
 
-    _currentHarmony() { return this.shown?.h || this._harmonyAt(0); }
+    _currentHarmony() { return (!this._shownOriginal() && this.shown?.h) || this._harmonyAt(this.shown?.g || 0); }
+
+    /** Zeigt die Anzeige gerade einen Schritt des de:construct-Originals? */
+    _shownOriginal() { return this.playing && this.shown?.side === 'orig'; }
 
     /** Vierstimmiger Satz für alle Akkorde der aktuellen Folge — einmal je
      *  Tonart/Modus/Folge gerechnet. Zweiter Durchlauf ab dem letzten
@@ -3243,8 +3907,11 @@
 
     _syncEngine() {
       if (!this.engine.ready) return;
+      // de:construct auf A: Pegel und Effekte des Originals.
+      if (this._dcHearsOriginal() && this.state !== this._saved.deconstruct.original) { this._dcHeard(() => this._syncEngine()); return; }
       const s = this.state;
-      this.engine.setMaster(s.mix.master);
+      // Gesamtlautstärke bleibt beim A/B-Wechsel die eigene.
+      this.engine.setMaster((this._dcMine || s).mix.master);
       for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
       this.engine.setLayerSound('chords', CHORD_SOUND);
@@ -3345,7 +4012,9 @@
     }
 
     _onTempoChange() {
-      this.engine.setFx(this.state.fx, this._stepSeconds());
+      // Echo-Zeit folgt dem Tempo dessen, was klingt (de:construct: ggf. Original).
+      this._dcHeard(() => this.engine.setFx(this.state.fx, this._stepSeconds()));
+      this._dcAutosave();
       this._renderTransport();
     }
 
@@ -3365,9 +4034,16 @@
           this.rec.startTime = this.nextStepTime;
           this.rec.stepSec = this._stepSeconds();
         }
-        this._playStep(g, this.nextStepTime, h);
-        this.scheduledSteps.push({ g, time: this.nextStepTime, h });
-        this.nextStepTime += this._stepSeconds();
+        // de:construct: Schritt für Schritt das, was gerade hörbar ist (A
+        // Original / B Meine Version) — Umschalten greift ab dem nächsten
+        // Schritt, die Position läuft weiter.
+        const side = this._dcHearsOriginal() ? 'orig' : 'mine';
+        this._dcHeard(() => {
+          const heard = side === 'orig' ? this._harmonyAt(g) : h;
+          this._playStep(g, this.nextStepTime, heard);
+          this.scheduledSteps.push({ g, time: this.nextStepTime, h: heard, side });
+          this.nextStepTime += this._stepSeconds();
+        });
         this.globalStep++;
       }
       this.schedulerTimer = global.setTimeout(() => this._scheduleAhead(), 25);
@@ -3401,25 +4077,27 @@
       const swung = time + this._swingOffset(step, stepSec);
 
       const beat = this._beatAt(g);
+      // de:construct „Nur …“: nur die gewählte Spur klingt (in A und B).
+      const hearBeat = this._dcHears('beat');
       for (const track of DRUM_TRACKS) {
         const value = beat[track]?.[step];
-        if (value === undefined || !s.trackOn[track]) continue;
+        if (value === undefined || !s.trackOn[track] || !hearBeat) continue;
         this.engine.hitTrack(track, swung, value, this.state.kit);
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
-      if (s.trackOn.bass && beat.bass?.[step] !== undefined) {
+      if (s.trackOn.bass && beat.bass?.[step] !== undefined && this._dcHears('bass')) {
         this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound());
       }
 
-      if (h.chordStart && s.chordsOn) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
+      if (h.chordStart && s.chordsOn && this._dcHears('chords')) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
       // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
         if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key');
-      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording') this._playMelodyStep(g, h, swung, stepSec);
+      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, h, swung, stepSec);
 
-      if (s.arpOn) {
+      if (s.arpOn && this._dcHears('all')) {
         const trigger = this._arpTrigger(g);
         if (trigger) this._playArp(trigger, swung, h);
       }
@@ -3613,7 +4291,7 @@
       let latest;
       while (this.scheduledSteps.length && this.scheduledSteps[0].time <= now + .01) latest = this.scheduledSteps.shift();
       if (latest) {
-        const chordChanged = latest.h.index !== this.shown?.h?.index;
+        const chordChanged = latest.h.index !== this.shown?.h?.index || latest.side !== this.shown?.side;
         this.shown = latest;
         this._showStep(latest, chordChanged);
       }
@@ -3720,6 +4398,7 @@
       this._renderNow();
       this._renderChoir();
       this._renderWorkshop();
+      this._renderDeconstruct();
       this._wsDecorate();
     }
 
@@ -3916,7 +4595,7 @@
     _renderChordStrip() {
       const s = this.state;
       const prog = this._progression();
-      const current = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : -1;
+      const current = this.playing && this.shown?.h && !this.shown.h.round && !this._shownOriginal() ? this.shown.h.index : -1;
       const host = this.$('.chord-strip');
       const editing = this.ui.progEdit;
       host.replaceChildren(...prog.degrees.map((deg, i) => {
@@ -3941,7 +4620,7 @@
 
     _renderSatb() {
       const s = this.state;
-      const index = this.playing && this.shown?.h && !this.shown.h.round ? this.shown.h.index : 0;
+      const index = this.playing && this.shown?.h && !this.shown.h.round && !this._shownOriginal() ? this.shown.h.index : 0;
       const voicing = this._voicings()[index] || this._voicings()[0];
       const own = this._choirPart();
       this.$all('.satb-list').forEach((host) => host.replaceChildren(...SATB.map((voice) => {
@@ -4590,6 +5269,7 @@
       this.$all('.bpm-input').forEach((el) => { el.value = String(this.state.bpm); });
       this.$all('.bpm-out').forEach((el) => { el.textContent = `${tempoSymbol(this._meter())} = ${this.state.bpm}`; });
       this.$('[data-action="undo"]').disabled = !this.history.length;
+      this._renderDcQuick();
     }
 
     _renderBeatDots(step) {
@@ -4607,8 +5287,13 @@
      *  SATB-Noten im Harmonie-Reiter — alles, was sich je Akkord ändert. */
     _renderNow() {
       const label = this.$('.now-chord');
-      const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
-      label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId);
+      // de:construct: Während das Original klingt, verrät die Anzeige keinen Akkord.
+      if (this._shownOriginal()) {
+        label.textContent = t('lab.dc.original');
+      } else {
+        const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
+        label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId);
+      }
       if (!this.playing) this._renderBeatDots(-1);
       this._renderChordStrip();
       this._renderSatb();
@@ -5640,7 +6325,7 @@
       // Workshop: nach jeder Eingabe (nach den Handlern oben) die Teilziele
       // prüfen — höchstens einmal pro Frame.
       for (const type of ['click', 'input', 'change', 'pointerup', 'keyup']) {
-        this.shadowRoot.addEventListener(type, () => this._wsSchedule());
+        this.shadowRoot.addEventListener(type, () => { this._wsSchedule(); this._dcAutosave(); });
       }
       this._wireMelGrid();
     }
@@ -5714,6 +6399,31 @@
         case 'ws-restart': if (this.ui.ws) this._wsSelect(this.ui.ws.lesson.id); break;
         case 'ws-next': { const next = this._wsNext(); if (next) this._wsSelect(next.id); break; }
         case 'ws-ab': this._wsToggleAb(); break;
+        // de:construct
+        case 'dc-level': this.ui.dc.level = DC_LEVELS.some((l) => l.id === value) ? value : 'easy'; this._renderDeconstruct(); break;
+        case 'dc-new': this._dcNew(this.ui.dc.level); break;
+        case 'dc-choose':
+          this.ui.dc.choosing = true;
+          this.ui.dc.level = this._saved.deconstruct?.level || this.ui.dc.level;
+          this._applyView('deconstruct');
+          this.$('.dc-intro [data-action="dc-new"]')?.focus();
+          break;
+        case 'dc-cancel': this.ui.dc.choosing = false; this._applyView('deconstruct'); break;
+        case 'dc-listen': this._dcListen(value); break;
+        case 'dc-quick': this._dcListen(this.ui.dc.listen === 'orig' ? 'mine' : 'orig'); break;
+        case 'dc-focus': this._dcFocus(value); break;
+        case 'dc-check': this._dcCheck(value); break;
+        case 'dc-build':
+          if (DC_TAB[value]) {
+            this._setTab(DC_TAB[value]);
+            // Zum Reiter unter der Elementliste scrollen.
+            const panel = this.$(`[data-tab-panel="${DC_TAB[value]}"]`);
+            panel?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+            if (value === 'tempo') this.$('.bpm-input')?.focus();
+          }
+          break;
+        case 'dc-reveal': this._dcReveal(); break;
+        case 'dc-adopt': this._dcAdopt(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
         case 'randomize': this.randomize(); break;
         case 'undo': this.undo(); break;
@@ -6266,6 +6976,63 @@
   .kit-box summary { min-height: 44px; display: flex; align-items: center; font-size: .72rem; font-weight: 800; color: var(--muted); cursor: pointer; }
   .kit-box .slider-line { grid-template-columns: 96px 1fr 56px; }
   .kit-box .chip { min-height: 44px; }
+  /* de:construct */
+  .dc-view .chip { min-height: 44px; }
+  .dc-panel { background: var(--surface); }
+  .dc-title { margin: 0; font-size: 1.3rem; font-weight: 900; letter-spacing: -.02em; }
+  .dc-title span { color: var(--accent); }
+  .dc-title-small { font-size: 1rem; }
+  .dc-lead { margin: 6px 0 8px; font-size: .86rem; line-height: 1.45; }
+  .dc-steps { margin: 0 0 4px; padding-left: 1.3em; font-size: .78rem; line-height: 1.5; color: var(--text); }
+  .dc-level-info, .dc-replace, .dc-tip, .dc-given, .dc-song-title { margin: 8px 2px 0; font-size: .74rem; line-height: 1.4; color: var(--muted); }
+  .dc-replace { color: var(--bad); font-weight: 700; }
+  .dc-song-title { margin-top: 2px; font-weight: 800; color: var(--text); }
+  .dc-given { margin-top: 2px; }
+  .dc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .dc-primary {
+    min-height: 48px; padding: 0 20px 0 14px; border-radius: 999px; background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 800;
+    box-shadow: 0 6px 20px -8px rgba(var(--accent-rgb), .8);
+  }
+  .dc-primary svg { width: 20px; height: 20px; }
+  .dc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .dc-count { font-size: .74rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
+  .dc-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 12px 0 4px; border: 2px solid var(--accent); border-radius: 16px; overflow: hidden; }
+  .dc-ab-btn { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .86rem; font-weight: 800; color: var(--accent); background: var(--surface); }
+  .dc-ab-btn b { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 2px solid currentColor; font-size: .8rem; }
+  .dc-ab-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .dc-ab-btn + .dc-ab-btn { border-left: 2px solid var(--accent); }
+  .dc-elements { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .dc-el { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 8px 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+  .dc-mark { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--muted); display: grid; place-items: center; font-size: .78rem; font-weight: 900; color: var(--muted); }
+  .dc-el.is-near .dc-mark { border-color: #d9a400; color: #b38700; }
+  .dc-el.is-ok .dc-mark, .dc-el.is-done .dc-mark { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .dc-el-text { min-width: 0; display: grid; gap: 2px; }
+  .dc-el-text strong { font-size: .84rem; }
+  .dc-el-state { font-size: .66rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .dc-el.is-done .dc-el-state, .dc-el.is-ok .dc-el-state { color: var(--accent); }
+  .dc-el.is-near .dc-el-state { color: #b38700; }
+  .dc-el-line { font-size: .72rem; line-height: 1.35; color: var(--muted); }
+  .dc-el.is-near .dc-el-line, .dc-el.is-no .dc-el-line { color: var(--text); }
+  .dc-el-solution { font-size: .74rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; word-break: break-word; }
+  .dc-el .chip { padding: 6px 10px; min-width: 44px; }
+  .dc-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .dc-all-done { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(var(--accent-rgb), .14); border: 2px solid var(--accent); font-size: .8rem; font-weight: 700; line-height: 1.45; }
+  /* Nur für Screenreader — sichtbar steht das Ergebnis schon am Element. */
+  .dc-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+  .dc-solution { margin-top: 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--accent); font-size: .76rem; line-height: 1.45; }
+  .dc-solution p { margin: 0 0 8px; }
+  .dc-reveal.is-ask { border-color: var(--bad); color: var(--bad); }
+  .dc-quick {
+    min-width: 52px; height: 44px; padding: 0 8px; border-radius: 13px; border: 2px solid var(--accent); background: var(--surface);
+    color: var(--accent); display: grid; place-items: center; line-height: 1; gap: 1px;
+  }
+  .dc-quick b { font-size: .95rem; font-weight: 900; }
+  .dc-quick span { font-size: .5rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+  .dc-quick[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  /* Während das Original klingt: ein Rand um die Transportleiste — man
+     soll beim Bauen nie raten müssen, was man gerade hört. */
+  .transport-bar.is-dc-orig { box-shadow: inset 0 3px 0 var(--accent); }
   /* Workshop */
   .workshop-view .chip { min-height: 44px; }
   .ws-progress { margin: 8px 2px; font-size: .72rem; font-weight: 800; color: var(--muted); }
@@ -6659,11 +7426,13 @@
     <button class="chip" type="button" data-action="view" data-value="choir" aria-pressed="false">${t('lab.viewChoir')}</button>
     <button class="chip" type="button" data-action="view" data-value="studio" aria-pressed="true">${t('lab.viewStudio')}</button>
     <button class="chip" type="button" data-action="view" data-value="workshop" aria-pressed="false">${t('lab.viewWorkshop')}</button>
+    <button class="chip" type="button" data-action="view" data-value="deconstruct" aria-pressed="false">${t('lab.viewDeconstruct')}</button>
   </div>
   <select class="view-select" aria-label="${t('lab.viewAria')}">
     <option value="choir">${t('lab.viewChoir')}</option>
     <option value="studio">${t('lab.viewStudio')}</option>
     <option value="workshop">${t('lab.viewWorkshop')}</option>
+    <option value="deconstruct">${t('lab.viewDeconstruct')}</option>
   </select>
   <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
   <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
@@ -6749,6 +7518,54 @@
         <p class="ws-to-studio">${t('lab.ws.toStudio')}</p>
       </div>
       <p class="ws-live" aria-live="polite"></p>
+    </section>
+  </section>
+  <section class="dc-view" hidden aria-labelledby="dc-heading">
+    <section class="panel dc-panel">
+      <div class="dc-intro">
+        <h2 class="dc-title" id="dc-heading"><span>de:</span>construct</h2>
+        <p class="dc-lead">${t('lab.dc.lead')}</p>
+        <ol class="dc-steps">
+          <li>${t('lab.dc.step1')}</li>
+          <li>${t('lab.dc.step2')}</li>
+          <li>${t('lab.dc.step3')}</li>
+        </ol>
+        <span class="sub-label" id="dc-level-label">${t('lab.dc.levelTitle')}</span>
+        <div class="chip-row dc-levels" role="group" aria-labelledby="dc-level-label"></div>
+        <p class="dc-level-info"></p>
+        <p class="dc-replace" hidden>${t('lab.dc.replaceWarn')}</p>
+        <div class="dc-actions">
+          <button class="dc-primary" type="button" data-action="dc-new">${UI_ICON.play}<span>${t('lab.dc.start')}</span></button>
+          <button class="chip" type="button" data-action="dc-cancel" hidden>${t('lab.dc.cancel')}</button>
+        </div>
+      </div>
+      <div class="dc-song" hidden>
+        <div class="dc-head">
+          <h2 class="dc-title dc-title-small"><span>de:</span>construct</h2>
+          <span class="dc-count"></span>
+        </div>
+        <p class="dc-song-title"></p>
+        <p class="dc-given"></p>
+        <div class="dc-ab" role="group" aria-label="${t('lab.dc.abAria')}">
+          <button class="dc-ab-btn" type="button" data-action="dc-listen" data-value="orig" aria-pressed="true"><b aria-hidden="true">A</b><span>${t('lab.dc.original')}</span></button>
+          <button class="dc-ab-btn" type="button" data-action="dc-listen" data-value="mine" aria-pressed="false"><b aria-hidden="true">B</b><span>${t('lab.dc.mine')}</span></button>
+        </div>
+        <span class="sub-label" id="dc-focus-label">${t('lab.dc.focusTitle')}</span>
+        <div class="chip-row dc-focus" role="group" aria-labelledby="dc-focus-label"></div>
+        <span class="sub-label">${t('lab.dc.elementsTitle')}</span>
+        <ul class="dc-elements"></ul>
+        <p class="dc-all-done" hidden>${t('lab.dc.allDone')}</p>
+        <p class="dc-live" role="status" aria-live="polite"></p>
+        <div class="dc-solution" tabindex="-1" hidden>
+          <p>${t('lab.dc.revealed')}</p>
+          <button class="chip" type="button" data-action="dc-adopt">${t('lab.dc.adopt')}</button>
+        </div>
+        <div class="dc-actions">
+          <button class="chip dc-reveal" type="button" data-action="dc-reveal">${t('lab.dc.reveal')}</button>
+          <button class="chip" type="button" data-action="dc-choose">${t('lab.dc.newSong')}</button>
+        </div>
+        <p class="dc-tip">${t('lab.dc.tip')}</p>
+      </div>
     </section>
   </section>
   <section class="tab-panel" data-tab-panel="beat">
@@ -7051,6 +7868,7 @@
     </label>
     <button class="icon-btn tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
     <button class="icon-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}" title="${t('lab.randomAria')}">${UI_ICON.dice}</button>
+    <button class="dc-quick" type="button" data-action="dc-quick" aria-pressed="true" aria-label="${t('lab.dc.quickAria')}" title="${t('lab.dc.quickAria')}" hidden><b class="dc-quick-letter">A</b><span class="dc-quick-text"></span></button>
     <button class="icon-btn" type="button" data-action="undo" aria-label="${t('lab.undoAria')}" title="${t('lab.undoAria')}" disabled>${UI_ICON.undo}</button>
   </div>
   <div class="now-row">
@@ -7111,6 +7929,9 @@
     melodyIndexByName, presetIndexByName, soundFromPreset, SYNTH_PRESETS, SOUND_DEFAULTS, SOUND_RANGES, CHOIR_PARTS,
     KIT_DEFAULTS, KIT_RANGES,
     pickChallengePattern, detectiveVariant, rebuildScore, soundMatch, soundMatchTarget, SOUND_MATCH_START, CHALLENGE_TRACKS,
+    // de:construct
+    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, dcRng, dcGenerate, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
+    progressionOfState, harmonyOfState, GrooveLabView,
   };
 
   global.ChorGrooveLab = {
