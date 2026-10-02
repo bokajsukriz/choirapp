@@ -211,6 +211,16 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
 
 ### Einsatz finden (neue Hör-Übung, Gruppe „Takt“)
 
+Nachbesserung (Chorleiter):
+- Gewertet wird erst ab dem ersten Klatscher: Der Groove läuft nach dem
+  Einblenden weiter (bis zu sechs Takte), die vier gewerteten Takte beginnen
+  mit dem Takt deines ersten Klatschers (etwas zu früh zählt zum Takt danach);
+  dann Schlusspunkt und Lösung. Die Fläche sagt „gewertet ab deinem ersten
+  Klatscher“ bzw. „noch vier Takte“.
+- Nach dem Lauf werden die vier Takte aufgelöst: je Takt eine Zeile mit den
+  Zählzeiten, dem Rhythmus (Kreis grün = getroffen, rot gestrichelt =
+  verpasst) und deinen Klatschern (Strich grün = im Muster, orange = zu viel).
+
 Wunsch des Chorleiters: „einen Rhythmus hören, der langsam lauter wird, man
 weiß also nicht, wann die 1 ist und muss das hören – in Stufen schwerere
 Rhythmen oder Muster, die man selbst darüber klatschen soll.“

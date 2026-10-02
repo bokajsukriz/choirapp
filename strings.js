@@ -1010,7 +1010,6 @@ export const STRINGS = {
     'lab.ws.roundOf': 'Runde {n} von {total}',
     'lab.ws.result': '{hits} von {total}',
     // Groove Lab: de:construct (siehe DECONSTRUCT-BERICHT.md)
-    'settings.tools.deconstruct': 'de:construct',
     'lab.viewDeconstruct': 'de:construct',
     'lab.dc.lead': 'Ein fertiger Song läuft – bau ihn nach. Du hörst das Original nur, sehen kannst du es nicht.',
     'lab.dc.step1': 'Hör dir das Original (A) an und nimm dir ein Element nach dem anderen vor: Tempo, Beat, Bass …',
@@ -2847,7 +2846,6 @@ export const STRINGS = {
     'lab.ws.roundOf': 'Round {n} of {total}',
     'lab.ws.result': '{hits} of {total}',
     // Groove Lab: de:construct (siehe DECONSTRUCT-BERICHT.md)
-    'settings.tools.deconstruct': 'de:construct',
     'lab.viewDeconstruct': 'de:construct',
     'lab.dc.lead': 'A finished song is playing – rebuild it. You can only hear the original, not see it.',
     'lab.dc.step1': 'Listen to the original (A) and take one element at a time: tempo, beat, bass …',
@@ -4684,7 +4682,6 @@ export const STRINGS = {
     'lab.ws.roundOf': 'Runda {n} z {total}',
     'lab.ws.result': '{hits} z {total}',
     // Groove Lab: de:construct (siehe DECONSTRUCT-BERICHT.md)
-    'settings.tools.deconstruct': 'de:construct',
     'lab.viewDeconstruct': 'de:construct',
     'lab.dc.lead': 'Gra gotowa piosenka – odbuduj ją. Oryginał możesz tylko usłyszeć, nie zobaczyć.',
     'lab.dc.step1': 'Posłuchaj oryginału (A) i bierz element po elemencie: tempo, beat, bas …',

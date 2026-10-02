@@ -20306,7 +20306,7 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
     // Alle Hinweis-Schlüssel gibt es als Text (DE, EN, PL).
     for (const key of hintKeys) for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
-    for (const key of ['lab.viewDeconstruct', 'settings.tools.deconstruct', ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`]),
+    for (const key of ['lab.viewDeconstruct', ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`]),
       ...T.DC_LEVELS.flatMap((l) => [`lab.dc.level.${l.id}`, `lab.dc.levelInfo.${l.id}`]), ...T.DC_FOCUS.map((f) => `lab.dc.focus.${f}`),
       ...['ok', 'near', 'no', 'open', 'done'].map((s) => `lab.dc.status.${s}`)]) {
       for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
@@ -23275,7 +23275,6 @@ function initTools() {
   initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
-  $('#btn-open-deconstruct').addEventListener('click', () => openGrooveLab('deconstruct'));
   $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));

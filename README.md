@@ -58,7 +58,7 @@ ein Dialog mit echter Wahl).
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
   Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
-  Ansicht „de:construct“ (eigene Kachel im Tools-Reiter, im Lab über die
+  Ansicht „de:construct“ (nur im Lab über die
   Ansichtswahl): Ein verborgener, per Seed erzeugter Song läuft
   (`dcGenerate`, Stufen leicht/mittel/schwer); nachgebaut wird mit den
   normalen Reitern. A/B-Schalter wechselt im laufenden Takt zwischen

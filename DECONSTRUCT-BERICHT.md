@@ -33,8 +33,8 @@ erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
 
 ## Bedienung
 
-- Einstieg: Kachel **„de:construct“** im Tools-Reiter (neben „Groove Lab“),
-  im Lab selbst über die Ansichtswahl (Chor · Studio · Kurs · de:construct;
+- Einstieg: nur im Groove Lab über die Ansichtswahl (Chorleiter: keine
+  eigene Kachel im Tools-Reiter) (Chor · Studio · Kurs · de:construct;
   auf dem Handy die Auswahlliste oben). Ohne Song erscheint eine kurze
   Erklärung („Ein fertiger Song läuft – bau ihn nach …“), die Stufenwahl
   und „Song starten“ – das Antippen startet zugleich das Original.
@@ -104,7 +104,7 @@ vergleichen („Erst die Taktart finden …“).
   – die Markierung „A klingt“ sitzt deshalb als Klasse an der
   Transportleiste.
 - Neue Texte in DE/EN/PL (`lab.dc.*`, `lab.viewDeconstruct`,
-  `settings.tools.deconstruct`), du-Form, „…“ und –.
+  ), du-Form, „…“ und –.
 
 ## Tests
 

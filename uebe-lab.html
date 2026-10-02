@@ -813,6 +813,27 @@
   .db-pattern { width: 100%; max-width: 360px; margin: 0 auto; }
   .db-pattern[hidden] { display: none; }
   .db-cap { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+  /* Auflösung Takt für Takt: Rhythmus (Kreise) und deine Klatscher (Striche). */
+  .db-pattern:has(.db-bars) .db-cap, .db-pattern:has(.db-bars) .db-row { display: none; }
+  .db-bars { display: block; width: 100%; height: auto; }
+  .db-bars text, .db-bars .dbb-tap { stroke: none; }
+  .db-bars .dbb-lab { font-size: 10px; font-weight: 800; fill: var(--muted); }
+  .db-bars .dbb-bar { font-size: 10px; font-weight: 800; fill: var(--muted); }
+  .db-bars .dbb-line { stroke: var(--tint-line); stroke-width: 1.5; }
+  .db-bars .dbb-beat { stroke: var(--line); stroke-width: 1; }
+  .db-bars .dbb-beat.is-one { stroke: var(--muted); stroke-width: 1.5; }
+  .db-bars .dbb-tg.is-ok { fill: var(--ok-bg, #DDF5EA); stroke: var(--ok, #2f9e5b); stroke-width: 2; }
+  .db-bars .dbb-tg.is-miss { fill: none; stroke: var(--bad, #c62828); stroke-width: 1.8; stroke-dasharray: 2.5 2; }
+  .db-bars .dbb-tap.is-ok { fill: var(--ok, #2f9e5b); }
+  .db-bars .dbb-tap.is-extra { fill: #e8890c; }
+  .db-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+  .db-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .db-legend i { width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; }
+  .db-legend i.is-ok { background: var(--ok-bg, #DDF5EA); border: 2px solid var(--ok, #2f9e5b); }
+  .db-legend i.is-miss { border: 1.5px dashed var(--bad, #c62828); }
+  .db-legend b { width: 3px; height: 12px; border-radius: 1.5px; }
+  .db-legend b.is-ok { background: var(--ok, #2f9e5b); }
+  .db-legend b.is-extra { background: #e8890c; }
   .db-cap b { color: var(--text); }
   .db-row { display: grid; grid-template-columns: repeat(var(--n, 8), minmax(0, 1fr)); gap: 4px; }
   .db-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -4884,6 +4905,8 @@
   ];
   const DB_LISTEN_BARS = 2;   // ganze Takte vor dem Klatschen (nach dem angeschnittenen)
   const DB_CLAP_BARS = 4;     // Takte zum Klatschen (gewertet)
+  const DB_WAIT_BARS = 6;     // so lange läuft der Groove weiter, bis du einsteigst (Chorleiter:
+                              // gewertet wird erst ab dem ersten Klatscher, nicht ab voller Lautstärke)
   const DB_FADE_BARS = 2;     // Einblenden ab dem ersten Schlag
   const DB_FADE_FROM = .04;
   const DB_BASS_STEPS = [0, 7, 9, 5]; // I – V – vi – IV, ein Ton je Takt
@@ -4915,12 +4938,15 @@
     const first = solution ? 0 : task.startTick;
     const youTick = bar * (solution ? 1 : 1 + DB_LISTEN_BARS);
     const endTick = youTick + bar * (solution ? 2 : DB_CLAP_BARS);
+    // Im Lauf spielt der Groove weiter, bis du einsteigst; den Schlusspunkt setzt
+    // erst dein erster Klatscher (downbeatTap → vier Takte ab diesem Takt).
+    const grooveEnd = solution ? endTick : endTick + bar * DB_WAIT_BARS;
     const targets = DB_PATTERNS[task.pattern].at.map((x) => dbSwing(g, x));
     const hat = g.hat === 'shuffle' ? { period: 12, at: [0, 8] } : { period: g.hat, at: [0] };
     const events = [];
     const add = (tick, kind, vel = 1, extra = {}) => events.push({ tick, t: (tick - first) * tickSec, kind, vel, ...extra });
     const bassAt = (b) => task.root + DB_BASS_STEPS[mod(b, 4)];
-    for (let tick = first; tick < endTick; tick++) {
+    for (let tick = first; tick < grooveEnd; tick++) {
       const p = tick % bar, b = Math.floor(tick / bar);
       if (g.kick.includes(p)) add(tick, 'kick', p === 0 ? 1 : .8);
       if (g.snare?.includes(p)) add(tick, 'snare');
@@ -4930,13 +4956,18 @@
       if ((accent || solution) && p === 0) add(tick, 'click');
       if (tick >= youTick && (solution || (demo && tick < youTick + bar)) && targets.includes(p)) add(tick, 'clap');
     }
-    // Schlusspunkt auf der Eins nach dem letzten Takt.
-    add(endTick, 'kick'); add(endTick, 'open');
-    if (task.bass && !(g.bass || []).some((bt) => bt < 0)) add(endTick, 'bass', 1, { midi: bassAt(endTick / bar), long: true });
+    // Schlusspunkt auf der Eins nach dem letzten Takt (Lösung; im Lauf: dbFinale).
+    if (solution) {
+      add(endTick, 'kick'); add(endTick, 'open');
+      if (task.bass && !(g.bass || []).some((bt) => bt < 0)) add(endTick, 'bass', 1, { midi: bassAt(endTick / bar), long: true });
+    }
     const fadeEnd = solution ? 0 : DB_FADE_BARS * bar * tickSec;
     return {
       tickSec, bar, first, events, targets, fadeFrom: solution ? 1 : DB_FADE_FROM, fadeEnd, youVisual: fadeEnd,
-      youStart: (youTick - first) * tickSec, youEnd: (endTick - first) * tickSec, end: (endTick - first) * tickSec + .9,
+      // youStart: frühester Beginn der gewerteten Takte (erste volle Eins nach dem Einblenden);
+      // firstBar: erste volle Eins überhaupt; end: Groove-Ende ohne Klatscher.
+      firstBar: (bar - first) * tickSec, youStart: (youTick - first) * tickSec, youEnd: (endTick - first) * tickSec,
+      end: (grooveEnd - first) * tickSec + (solution ? .9 : .3),
     };
   }
   /** Klatscher werten. taps: s relativ zur ersten gewerteten Eins. Treffer
@@ -4970,7 +5001,8 @@
       }
       for (const x of ticks) match((DB_CLAP_BARS * bar + x) * tickSec); // Schlusspunkt
       extra = inWin.length - used.size;
-      return { hits, extra, offs, perTarget };
+      const marks = inWin.map((t, i) => ({ t, hit: used.has(i) })).filter((x) => x.t < span + tol);
+      return { hits, extra, offs, perTarget, marks };
     };
     const ticks = raw.map((x) => dbSwing(g, x));
     const base = score(ticks);
@@ -4981,7 +5013,7 @@
       if (h > bestHits && h >= total / 2) { bestHits = h; shift = s; }
     }
     const ok = base.hits >= Math.ceil(total * .75) && base.extra <= Math.floor(total * .25);
-    return { ok, hits: base.hits, total, extras: base.extra, taps: taps.length, shift: ok ? 0 : shift, offs: base.offs, perTarget: base.perTarget, tol };
+    return { ok, hits: base.hits, total, extras: base.extra, taps: taps.length, shift: ok ? 0 : shift, offs: base.offs, perTarget: base.perTarget, marks: base.marks, tol };
   }
   /** Rückmeldung nach dem Lauf. */
   function downbeatMessage(task, res, mic = false) {
@@ -5625,9 +5657,11 @@
     ear.cueEnd = listen ? t0 + plan.youVisual : 0;
     const msAt = (sec) => Math.max(0, (t0 + sec - ctx.currentTime) * 1000);
     if (listen) {
-      dbRun = { task, t0, plan, taps: [], mic, playing: true };
+      dbRun = { task, t0, plan, taps: [], mic, playing: true, bus, windowStart: null };
       ear.timers.push(setTimeout(renderEar, msAt(plan.youVisual) + 30));
-      ear.timers.push(setTimeout(finishDownbeat, msAt(plan.end)));
+      // Ohne Klatscher endet der Groove nach DB_WAIT_BARS weiteren Takten („Keine Klatscher“).
+      dbRun.endTimer = setTimeout(finishDownbeat, msAt(plan.end));
+      ear.timers.push(dbRun.endTimer);
     }
     renderEar();
   }
@@ -5648,14 +5682,37 @@
       run.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
       engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
     } else run.taps.push(time);
+    if (run.windowStart == null) startDownbeatWindow(run, run.taps[run.taps.length - 1]);
     const pad = $('.ear-pad');
     if (pad) { pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped'); }
+  }
+  /** Erster Klatscher: die gewerteten vier Takte beginnen mit dem Takt, in den
+   *  er fällt (etwas zu früh zählt zum nächsten); frühestens die erste volle
+   *  Eins. Danach Schlusspunkt und Auswertung. */
+  function startDownbeatWindow(run, tap) {
+    const p = run.plan, barSec = p.bar * p.tickSec;
+    const firstBar = run.t0 + p.firstBar;
+    const k = clamp(Math.floor((tap - firstBar + .15) / barSec), 0, DB_LISTEN_BARS + DB_WAIT_BARS);
+    run.windowStart = firstBar + k * barSec;
+    const end = run.windowStart + DB_CLAP_BARS * barSec;
+    if (!engine.ctx || !run.bus) return;
+    // Groove nach dem vierten Takt beenden, Schlusspunkt auf der Eins danach.
+    run.bus.gain.cancelScheduledValues(end);
+    run.bus.gain.setValueAtTime(1, Math.max(engine.ctx.currentTime, end - .005));
+    run.bus.gain.linearRampToValueAtTime(0, end + .02);
+    const fin = engine.newBus({ reverb: false });
+    run.finBus = fin;
+    engine.drum('kick', end, 1, fin); engine.drum('open', end, 1, fin);
+    clearTimeout(run.endTimer);
+    run.endTimer = setTimeout(finishDownbeat, Math.max(0, (end + .9 - engine.ctx.currentTime) * 1000));
+    ear.timers.push(run.endTimer);
+    setTimeout(() => { if (dbRun === run) renderEar(); }, 0); // Fläche: „noch vier Takte“
   }
   /** Ende des Laufs: Klatscher relativ zur ersten gewerteten Eins werten. */
   function finishDownbeat() {
     const run = dbRun;
     if (!run || ear.task !== run.task || ear.revealed) return;
-    const res = judgeDownbeat(run.task, run.taps.map((t) => t - (run.t0 + run.plan.youStart)));
+    const res = judgeDownbeat(run.task, run.taps.map((t) => t - (run.windowStart ?? (run.t0 + run.plan.youStart))));
     stopDownbeatRun();
     run.task.answer = res;
     finishEarAnswer(res.ok, downbeatMessage(run.task, res, run.mic));
@@ -5681,7 +5738,38 @@
       }
       return `<span class="db-cell${st ? ` is-${st}` : ''}"><i></i><b>${c.label}</b></span>`;
     }).join('');
-    return `<p class="db-cap">Klatsch: <b>${esc(DB_PATTERNS[task.pattern].name)}</b></p><div class="db-row" style="--n:${downbeatCells(task).length}" role="img" aria-label="Muster: ${esc(DB_PATTERNS[task.pattern].name)}">${cells}</div>`;
+    return `<p class="db-cap">Klatsch: <b>${esc(DB_PATTERNS[task.pattern].name)}</b></p><div class="db-row" style="--n:${downbeatCells(task).length}" role="img" aria-label="Muster: ${esc(DB_PATTERNS[task.pattern].name)}">${cells}</div>${res?.marks ? downbeatBarsHtml(task, res) : ''}`;
+  }
+  /** Auflösung Takt für Takt (Chorleiter): je gewerteter Takt eine Zeile mit den
+   *  Zählzeiten, dem Rhythmus (Kreis: grün getroffen, rot gestrichelt verpasst)
+   *  und deinen Klatschern (Strich: grün im Muster, orange zu viel). */
+  function downbeatBarsHtml(task, res) {
+    const m = METERS[task.meter], g = DB_GROOVES[task.groove];
+    const bar = m.ticks, tickSec = 60 / task.bpm / m.ref, barSec = bar * tickSec;
+    const W = 320, X0 = 30, X1 = W - 8, RH = 30, TOP = 14;
+    const X = (t) => X0 + clamp(t / barSec, -.04, 1.04) * (X1 - X0);
+    const out = [];
+    const beats = task.meter === '6/8' ? 6 : bar / m.beat;
+    for (let k = 0; k < beats; k++) {
+      const x = X0 + k / beats * (X1 - X0);
+      out.push(`<text class="dbb-lab" x="${f1(x)}" y="10" text-anchor="middle">${k + 1}</text>`);
+    }
+    const tgt = DB_PATTERNS[task.pattern].at.map((x) => dbSwing(g, x));
+    for (let b = 0; b < DB_CLAP_BARS; b++) {
+      const y = TOP + b * RH + RH / 2;
+      out.push(`<text class="dbb-bar" x="2" y="${f1(y + 4)}">T${b + 1}</text><line class="dbb-line" x1="${X0}" x2="${X1}" y1="${f1(y)}" y2="${f1(y)}"/>`);
+      for (let k = 0; k <= beats; k++) { const x = X0 + k / beats * (X1 - X0); out.push(`<line class="dbb-beat${k === 0 || k === beats ? ' is-one' : ''}" x1="${f1(x)}" x2="${f1(x)}" y1="${f1(y - 8)}" y2="${f1(y + 8)}"/>`); }
+      tgt.forEach((x) => {
+        const hit = res.perTarget.find((p) => p.bar === b && p.tick === x)?.hit;
+        out.push(`<circle class="dbb-tg ${hit ? 'is-ok' : 'is-miss'}" cx="${f1(X(x * tickSec))}" cy="${f1(y)}" r="5.5"/>`);
+      });
+      res.marks.filter((t) => t.t >= b * barSec - res.tol && t.t < (b + 1) * barSec - res.tol).forEach((t) => {
+        out.push(`<rect class="dbb-tap ${t.hit ? 'is-ok' : 'is-extra'}" x="${f1(X(t.t - b * barSec) - 1.5)}" y="${f1(y - 11)}" width="3" height="22" rx="1.5"/>`);
+      });
+    }
+    const H = TOP + DB_CLAP_BARS * RH + 2;
+    return `<svg class="db-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="Deine vier Takte: ${res.hits} von ${res.total} Klatschern im Muster${res.extras ? `, ${res.extras} zu viel` : ''}">${out.join('')}</svg>
+      <p class="db-legend"><span><i class="is-ok"></i>Rhythmus getroffen</span><span><i class="is-miss"></i>verpasst</span><span><b class="is-ok"></b>dein Klatscher</span><span><b class="is-extra"></b>zu viel</span></p>`;
   }
 
   /** Antwort in den neuen Modi. value: Qualitäts-ID, Schlusstyp, Index. */
@@ -6303,8 +6391,8 @@
       const text = {
         idle: ['Tippen zum Starten', 'Ein Groove blendet ein – ohne Einzähler'],
         wait: ['Tippen zum Starten', '„Nochmal“ startet den Groove neu'],
-        listen: ['Hör zu …', mic ? 'gleich klatschen – das Mikro hört zu' : 'gleich hier klatschen'],
-        you: [mic ? 'Klatschen!' : 'Hier klatschen', mic ? 'das Mikro hört zu' : 'oder Leertaste'],
+        listen: ['Hör zu …', 'klatsch, sobald du die Eins hast'],
+        you: [mic ? 'Klatschen!' : 'Hier klatschen', dbRun?.windowStart != null ? 'noch vier Takte' : 'gewertet ab deinem ersten Klatscher'],
         done: [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '„Nochmal“ spielt die Lösung'],
       }[phase];
       pad.innerHTML = `<b>${esc(text[0])}</b><span>${esc(text[1])}</span>`;
@@ -13682,7 +13770,7 @@
     if (bass.some((e) => e.tick % 48) || bass.some((e, i) => i && e.midi === bass[i - 1].midi)) errors.push('Einsatz: Basston wechselt nicht auf der Eins');
     if (plan.targets.join() !== '0') errors.push(`Einsatz: Sollpunkte ${plan.targets}`);
     const acc = downbeatPlan(base, { accent: true }).events.filter((e) => e.kind === 'click');
-    if (!acc.length || acc.some((e) => e.tick % 48) || acc.length !== DB_LISTEN_BARS + DB_CLAP_BARS) errors.push('Einsatz: „Eins betonen“ klickt nicht genau auf jeder Eins');
+    if (!acc.length || acc.some((e) => e.tick % 48) || acc.length !== DB_LISTEN_BARS + DB_CLAP_BARS + DB_WAIT_BARS) errors.push('Einsatz: „Eins betonen“ klickt nicht genau auf jeder Eins');
     const demo = downbeatPlan({ ...base, pattern: 'backbeat' }, { demo: true }).events.filter((e) => e.kind === 'clap').map((e) => e.tick - (1 + DB_LISTEN_BARS) * 48);
     if (demo.join() !== '12,36') errors.push(`Einsatz: „Vormachen“ ${demo}`);
     const sol = downbeatPlan(base, { solution: true });
@@ -13720,6 +13808,21 @@
       r = judgeDownbeat(base, []);
       if (r.ok || !/Keine Klatscher/.test(downbeatMessage(base, r)) || !/Mikrofon/.test(downbeatMessage(base, r, true))) errors.push('Einsatz: ohne Klatscher');
     }
+    // Gewertet ab dem ersten Klatscher (Chorleiter): Einstieg im dritten vollen Takt,
+    // etwas zu früh zählt zum Takt danach; ohne Klatscher läuft der Groove weiter.
+    {
+      const p = downbeatPlan(base);
+      const barSec = 48 * ts;
+      const run = { task: base, t0: 10, plan: p, taps: [], mic: false, playing: true, bus: null, windowStart: null };
+      startDownbeatWindow(run, 10 + p.firstBar + 2 * barSec - .05);
+      if (!near(run.windowStart, 10 + p.firstBar + 2 * barSec)) errors.push(`Einsatz: Wertung beginnt nicht mit dem Takt des ersten Klatschers (${run.windowStart})`);
+      const late = { ...run, windowStart: null };
+      startDownbeatWindow(late, 10 + p.firstBar + 5 * barSec + .4 * barSec);
+      if (!near(late.windowStart, 10 + p.firstBar + 5 * barSec)) errors.push('Einsatz: später Einstieg');
+      if (!(p.end > p.youEnd + (DB_WAIT_BARS - .5) * barSec) || p.events.some((e) => e.kind === 'open')) errors.push('Einsatz: Groove wartet nicht auf den ersten Klatscher');
+      const r = judgeDownbeat(base, exactOf(base).map((x) => x + .01));
+      if (r.marks.length !== DB_CLAP_BARS || r.marks.some((x) => !x.hit)) errors.push('Einsatz: Klatscher für die Auflösung fehlen');
+    }
     // Ablauf: Lauf auswerten → Lösung, Zähler, Meldung; Hilfe zählt „mit Hilfe“.
     const sv = { mode: ear.mode, task: ear.task, revealed: ear.revealed, streak: ear.streak, stats: { ...ear.stats.downbeat }, onResult: onEarResult, st: selfTesting, auto: ear.settings.autoNext, run: quickRun, tab: state.tab, input: state.input, level: ear.levels.downbeat, fb: $('.ear-feedback').textContent, series: JSON.parse(JSON.stringify(earSeries)) };
     const reports = [];
@@ -13744,6 +13847,8 @@
       const pad = $$('.ear-page .answer-grid > *');
       if (pad.length !== 1 || !pad[0].classList.contains('ear-pad') || pad[0].dataset.phase !== 'done' || !$('.ear-page .answer-grid').classList.contains('is-pad')) errors.push('Einsatz: Klatschfläche im Antwortfeld fehlt');
       if ($$('.db-pattern .db-cell').length !== 8 || $$('.db-pattern .db-cell.is-ok').length !== 1 || $('.db-pattern').hidden) errors.push('Einsatz: Musteranzeige nach der Lösung');
+      // Auflösung Takt für Takt: vier Zeilen, Rhythmus getroffen, deine Klatscher eingezeichnet.
+      if ($$('.db-bars .dbb-bar').length !== DB_CLAP_BARS || $$('.db-bars .dbb-tg.is-ok').length !== DB_CLAP_BARS || $$('.db-bars .dbb-tap.is-ok').length !== DB_CLAP_BARS) errors.push('Einsatz: Takte nach der Lösung nicht aufgelöst');
       if (earPhaseIndex() !== 2 || !Object.fromEntries(earHelps().map(([id, , , on]) => [id, on]))['db-solution']) errors.push('Einsatz: Lösung nicht als Phase/Hilfe');
       reports.length = 0;
       simulate({ ...base, pattern: 'backbeat', help: true, aids: { accent: true, demo: false } }, 12 * ts);
