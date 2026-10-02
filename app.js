@@ -20248,6 +20248,7 @@ async function runMusicSelfTests({ log = true } = {}) {
         if (!ok.test(line)) failed.push(`${id}: ${track} „${line}“ nicht baubar`);
       }
       if (level.id !== 'hard' && song.meter !== '4/4') failed.push(`${id}: Taktart ≠ 4/4`);
+      if (typeof song.genre !== 'string' || !song.genre.trim()) failed.push(`${id}: Genre fehlt`);
       if (Math.abs(song.bpm - 100) <= 3 && song.meter === '4/4') failed.push(`${id}: Tempo wie der Start von „Meine Version“`);
       if (level.elements.includes('melody') && !song.melody) failed.push(`${id}: Melodie fehlt`);
       if (level.elements.includes('sound') && (!song.sound || !T.SYNTH_PRESETS.some((p) => p.name === song.sound))) failed.push(`${id}: Klang „${song.sound}“ unbekannt`);
@@ -20371,7 +20372,8 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
     // Alle Hinweis-Schlüssel gibt es als Text (DE, EN, PL).
     for (const key of hintKeys) for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
-    for (const key of ['lab.viewDeconstruct', 'lab.dc.moreAria', 'lab.dc.quickNow.orig', 'lab.dc.quickNow.mine', 'lab.dc.help.title', 'lab.dc.help.titleMore', 'lab.dc.help.listen', 'lab.dc.help.reveal', 'lab.dc.help.listening',
+    for (const key of ['lab.viewDeconstruct', 'lab.dc.moreAria', 'lab.dc.intro', 'lab.dc.how', 'lab.dc.startSong', 'lab.dc.resume', 'lab.dc.songsOf', 'lab.dc.songsTitle', 'lab.dc.replaceWarn', 'lab.dc.songTitle',
+      ...['calm', 'mid', 'brisk', 'fast'].map((x) => `lab.dc.feel.${x}`), 'lab.dc.quickNow.orig', 'lab.dc.quickNow.mine', 'lab.dc.help.title', 'lab.dc.help.titleMore', 'lab.dc.help.listen', 'lab.dc.help.reveal', 'lab.dc.help.listening',
       'lab.dc.grid.rowOk', 'lab.dc.grid.missOne', 'lab.dc.grid.missMany', 'lab.dc.grid.extra', 'lab.dc.legend.ok', 'lab.dc.legend.miss', 'lab.dc.legend.extra', 'lab.dc.legend.ghost',
       'lab.dc.part.rhythm', 'lab.dc.part.rhythmSub', 'lab.dc.part.notes', 'lab.dc.part.notesSub', 'lab.dc.sheet.sub.tracks', 'lab.dc.sheet.sub.bass', 'lab.dc.sheet.sub.all', 'lab.dc.sheet.allDone',
       'lab.dc.sheet.next', 'lab.dc.sheet.nextSong', 'lab.dc.sheet.close', 'lab.dc.sheet.keepBuilding', 'lab.dc.sheet.beatTip', ...['ok', 'near', 'no'].flatMap((x) => [`lab.dc.sheet.title.${x}`, `lab.dc.sheet.sub.${x}`]),
@@ -20431,6 +20433,44 @@ async function runMusicSelfTests({ log = true } = {}) {
       }
     } catch (err) {
       failed.push(`de:construct Ansicht: ${err?.message || err}`);
+    }
+    // Auswahl: Tempo-Gefühl (Grenzen in Vierteln, 6/8 über Achtel) und Songliste der echten, nicht eingehängten Lab-Instanz.
+    try {
+      const feel = (bpm, meter) => T.dcTempoFeel({ bpm, meter });
+      const feels = [[79, '4/4', 'calm'], [80, '4/4', 'mid'], [104, '4/4', 'mid'], [105, '4/4', 'brisk'], [124, '4/4', 'brisk'], [125, '4/4', 'fast'],
+        [52, '6/8', 'calm'], [54, '6/8', 'mid'], [70, '6/8', 'brisk'], [84, '6/8', 'fast']];
+      for (const [bpm, meter, want] of feels) if (feel(bpm, meter) !== want) failed.push(`de:construct Tempo-Gefühl ${bpm} ${meter}: ${feel(bpm, meter)} statt ${want}`);
+      const dcA = T.dcNewSong('e2', '2026-09-01', { e1: '2026-09-02' });
+      dcA.done.tempo = '2026-10-01';
+      const w = document.createElement('chor-groove-lab');
+      w._saved.deconstruct = dcA;
+      w._applyView('deconstruct');
+      w.ui.dc.choosing = true;
+      w.ui.dc.level = 'easy';
+      w.ui.dc.song = 'e2';
+      w._applyView('deconstruct');
+      const rows = w.$all('.dc-list .dc-row');
+      if (rows.length !== T.dcSongsOf('easy').length) failed.push(`de:construct Auswahl: ${rows.length} Zeilen statt ${T.dcSongsOf('easy').length}`);
+      const rowOf = (id) => rows.find((r) => r.dataset.value === id);
+      if (!rowOf('e1')?.textContent.includes('✓')) failed.push('de:construct Auswahl: gelöster Song ohne ✓');
+      if (!/1\/3/.test(rowOf('e2')?.textContent || '')) failed.push(`de:construct Auswahl: laufender Song ohne „1/3“ (${rowOf('e2')?.textContent})`);
+      if (rowOf('e2')?.getAttribute('aria-pressed') !== 'true' || rowOf('e3')?.getAttribute('aria-pressed') !== 'false') failed.push('de:construct Auswahl: aria-pressed');
+      if (rows.some((r) => (r.querySelector('.dc-row-main').textContent.match(/\d+/g) || []).some((n) => Number(n) >= 40))) failed.push('de:construct Auswahl: BPM-Zahl in der Songliste');
+      const btnText = () => w.$('.dc-primary span').textContent;
+      const resumeText = btnText(); // ohne eingereichtes t() steht der Schlüssel da — „Weiter“ ≠ „Starten“ reicht
+      if (!resumeText) failed.push('de:construct Auswahl: Startknopf ohne Text');
+      if (!w.$('.dc-replace').hidden) failed.push('de:construct Auswahl: Ersetzen-Hinweis beim laufenden Song');
+      w._handleAction('dc-song', 'e3', null);
+      if (!btnText() || btnText() === resumeText) failed.push('de:construct Auswahl: Startknopf für anderen Song heißt wie „Weiter“ (laufender Song)');
+      if (w.$('.dc-replace').hidden) failed.push('de:construct Auswahl: Ersetzen-Hinweis fehlt (anderer Song, Fortschritt)');
+      dcA.done = {};
+      w._renderDeconstruct();
+      if (!w.$('.dc-replace').hidden) failed.push('de:construct Auswahl: Ersetzen-Hinweis ohne Fortschritt');
+      w._handleAction('dc-level', 'medium', null);
+      if (w.$all('.dc-list .dc-row').length !== T.dcSongsOf('medium').length) failed.push('de:construct Auswahl: Stufenwechsel zeigt falsche Zeilenzahl');
+      w._applyView('studio');
+    } catch (err) {
+      failed.push(`de:construct Auswahl: ${err?.message || err}`);
     }
     // Bauen-Ansicht: aktives Element, „Danach“, Tap setzt „Meine Version“.
     try {

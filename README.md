@@ -62,12 +62,17 @@ ein Dialog mit echter Wahl).
   Ansichtswahl): Einer von festen, komplett nachbaubaren Songs läuft
   verborgen (`DC_SONGS`/`dcBuild`, je Stufe leicht/mittel/schwer 9–10 eigene Pop-
   Songs für den Popchor); nachgebaut wird mit den
-  normalen Reitern. A/B-Schalter wechselt im laufenden Takt zwischen
-  Original und eigener Version (`_dcHeard` tauscht je Schritt den
-  gehörten Stand, `dcSwitchStep`), „Nur Beat/Bass/…“ hört eine Spur
-  allein, „Prüfen“ vergleicht je Element (`dcCompare`: stimmt/fast/noch
-  nicht mit Hinweis, ohne Lösung), „Auflösen“ zeigt die Lösung. Stand
-  (Original, eigene Version, Fortschritt) liegt im Feld `deconstruct` des
+  normalen Reitern. Auswahl: Stufenwahl (Segmented Control), Fortschritt
+  und Songliste mit Genre · Tempo-Gefühl (`genre`, `dcTempoFeel`; nie die
+  BPM), ✓/„2/4“ je Song. Bauen: Element-Leiste mit Status, Hinweis nur
+  des aktiven Elements, Tempo per Tap („Meine Version“), „Prüfen“ unten.
+  A/B wechselt im laufenden Takt zwischen Original und eigener Version
+  (`_dcHeard` tauscht je Schritt den gehörten Stand, `dcSwitchStep`),
+  „Hinhören“ hört eine Spur allein. Prüfen öffnet ein Bottom-Sheet je
+  Spur (`dcCompare`: stimmt/fast/noch nicht, ohne Lösung), ab dem 3.
+  Versuch mit gestufter Hilfe; „Auflösen“ zeigt Beat/Bass als Raster
+  Original vs. meins, Akkorde als Kacheln. Stand (Original, eigene Version,
+  Fortschritt) liegt im Feld `deconstruct` des
   Groove-Lab-Datensatzes (`sanitizeDeconstruct`), bis ein neuer Song
   beginnt. Details: `DECONSTRUCT-BERICHT.md`.
 - `harmony.js` — gemeinsame Harmonik der Musik-Tools (`window.ChorHarmony`,

@@ -38,28 +38,40 @@ erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
 
 ## Bedienung
 
-- Einstieg: nur im Groove Lab über die Ansichtswahl (Chorleiter: keine
-  eigene Kachel im Tools-Reiter) (Chor · Studio · Kurs · de:construct;
-  auf dem Handy die Auswahlliste oben). Ohne Song erscheint eine kurze
-  Erklärung („Ein fertiger Song läuft – bau ihn nach …“), die Stufenwahl
-  und „Song starten“ – das Antippen startet zugleich das Original.
-- **A/B**: großer Zweierschalter „A Original / B Meine Version“
-  (`aria-pressed`) und zusätzlich ein A/B-Knopf in der Transportleiste,
-  damit er auch tief im Editor erreichbar ist. Während A klingt, trägt die
-  Transportleiste oben einen Akzentrand und die Akkordanzeige zeigt
-  „Original“ statt eines Akkordnamens.
-- **Hinhören**: „Alles · Nur Beat · Nur Bass · Nur Akkorde · Nur Melodie“
-  (nur Spuren, die es im Song gibt) – gilt für A und B, so lässt sich eine
-  einzelne Spur direkt vergleichen.
-- **Stück für Stück**: je Element eine Zeile mit Status (offen / fast /
-  noch nicht / geschafft), einem Hinweis, „Bauen“ (springt in den
-  passenden Reiter) und „Prüfen“. „Stimmt“ markiert das Element dauerhaft
-  als geschafft; der Zähler oben zählt mit.
-- **Auflösen**: zweistufig (Rückfrage durch zweites Tippen). Danach steht
-  bei jedem Element die Lösung; „Original als meine Version übernehmen“
-  lädt es in die Editoren (ein Undo-Schritt).
-- **Neuer Song**: öffnet wieder die Stufenwahl mit Warnung („ersetzt deinen
-  bisherigen Nachbau“) und „Weiter am alten Song“.
+- Einstieg: nur im Groove Lab über die Ansichtswahl (Chor · Studio · Kurs
+  · de:construct; auf dem Handy die Auswahlliste oben).
+- **Auswahl** (ohne Song bzw. nach „Neuer Song“): „de:construct“ mit einem
+  Satz Zweck, Stufenwahl als Segmented Control (Leicht/Mittel/Schwer) mit
+  Beschreibung in Alltagssprache, Fortschritt „Songs … 3 von 9“ (gelöste
+  Songs der Stufe) und die Songliste als Zeilen: Nummer, Name, darunter
+  Genre · Tempo-Gefühl (ruhig/mittel/zügig/schnell, aus BPM und Taktart
+  abgeleitet – nie die BPM-Zahl), rechts ✓ (gelöst) oder „2/4“ (laufender
+  Song). Unten der breite Startknopf „<Song> starten“ bzw. „Weiter mit
+  <Song>“ (laufender Song: zurück ohne Neustart). Der Hinweis „ersetzt
+  deinen bisherigen Nachbau“ erscheint nur bei einem anderen Song, wenn
+  der laufende schon Fortschritt hat. „So geht’s“ ist eingeklappt. Das
+  Antippen von „starten“ startet zugleich das Original.
+- **Bauen**: Element-Leiste (Tempo · Beat · Bass · Akkorde …) mit Status
+  als Symbol ✓ ≈ ✗ ○; die Hinweis-Karte zeigt nur das aktive Element (mit
+  Eselsbrücke und Hinhören-Chips), der Editor liegt direkt darunter,
+  „Danach: …“ schlägt das nächste Element vor (keine Pflichtreihenfolge).
+  Im Untertitel stehen Songnummer, Name, Genre und Stufe.
+- **Tempo per Tap**: großer Tap-Knopf („Tipp mit auf die Snare“); er setzt
+  immer „Meine Version“, nie das Original.
+- **Prüfen** (Knopf in der unteren Leiste, prüft das aktive Element):
+  Bottom-Sheet mit ✓/≈/✗ je Spur (z. B. Bass: Rhythmus/Töne), ohne
+  Schritte des Originals zu verraten; bei „stimmt“ geht es zum nächsten
+  Element.
+- **Gestufte Hilfe** ab dem 3. Fehlversuch je Element: „Nur diese Spur
+  hören“, dann „Nur dieses Element auflösen“ (zählt nicht als geschafft).
+- **A/B**: Schalter in der Leiste (A Original / B Meine Version, `aria-pressed`);
+  während A klingt, trägt die Transportleiste einen Akzentrand.
+- **Auflösen** (⋯-Menü, zweistufig): Beat und Bass als Mini-Raster
+  Original vs. meins (stimmt / fehlt gestrichelt / zu viel ×), Akkorde als
+  Kacheln mit Stufen; „Original als meine Version übernehmen“ lädt es in
+  die Editoren (ein Undo-Schritt).
+- **Neuer Song** (⋯-Menü): öffnet die Auswahl; „Weiter mit <laufender
+  Song>“ führt zurück.
 
 ## Rückmeldungen (`dcCompare`)
 

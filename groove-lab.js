@@ -1270,83 +1270,83 @@
   const DC_SONGS = [
     // --- Leicht: Tempo & Takt, Beat, Bass (4/4; Akkordfolge vorgegeben, klingt nicht).
     // Power-Pop-Ballade (Stadion-Feuerzeug-Moment): Grundbeat Kick 1+3, Snare 2+4, Achtel-Hi-Hat, Bass halbe Noten auf dem Grundton
-    { id: 'e1', level: 'easy', name: 'Lighthouse Hands', meter: '4/4', bpm: 72, key: 7, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+    { id: 'e1', level: 'easy', name: 'Lighthouse Hands', genre: 'Power-Ballade', meter: '4/4', bpm: 72, key: 7, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
       kick: 'x.......x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1.......1.......' },
     // 90er-Eurodance: Kick auf jeder Viertel, Clap statt Snare, offene Hi-Hat und Bass auf der Offbeat-Achtel
-    { id: 'e2', level: 'easy', name: 'Neon Kilometer', meter: '4/4', bpm: 136, key: 9, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
+    { id: 'e2', level: 'easy', name: 'Neon Kilometer', genre: 'Eurodance', meter: '4/4', bpm: 136, key: 9, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
       kick: 'x...x...x...x...', clap: '....x.......x...', open: '..x...x...x...x.',
       bass: '..1...1...1...1.' },
     // Deutscher Fun-Punk / Punk-Pop: schnell, Kick-Doppelschläge, durchgehende Achtel im Bass
-    { id: 'e3', level: 'easy', name: 'Kaputtes Fahrrad', meter: '4/4', bpm: 168, key: 4, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
+    { id: 'e3', level: 'easy', name: 'Kaputtes Fahrrad', genre: 'Punk-Pop', meter: '4/4', bpm: 168, key: 4, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
       kick: 'x.x.....x.x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1.1.1.1.1.1.1.1.' },
     // Motown-/Soul-Pop: Snare auf allen vier Vierteln, Bass in Vierteln Grundton–Quinte–Oktave–Quinte
-    { id: 'e4', level: 'easy', name: 'Sunday Stomp', meter: '4/4', bpm: 112, key: 5, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+    { id: 'e4', level: 'easy', name: 'Sunday Stomp', genre: 'Motown', meter: '4/4', bpm: 112, key: 5, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
       kick: 'x.......x.....x.', snare: 'x...x...x...x...', hat: '..x...x...x...x.',
       bass: '1...5...8...5...' },
     // 90er-Boyband-/R&B-Midtempo: synkopierte Kick, Sechzehntel-Hi-Hat, Bass mit Quinte
-    { id: 'e5', level: 'easy', name: 'Pager Love', meter: '4/4', bpm: 88, key: 10, mode: 'major', chords: { degrees: [0, 5, 1, 4] },
+    { id: 'e5', level: 'easy', name: 'Pager Love', genre: 'R&B', meter: '4/4', bpm: 88, key: 10, mode: 'major', chords: { degrees: [0, 5, 1, 4] },
       kick: 'x......x..x.....', snare: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx',
       bass: '1......1..5.....' },
     // Indie-Disco / Synth-Pop (isländisch-skandinavischer Feel-Good-Pop): Four-on-the-floor, Snare+Clap gedoppelt, offene Offbeat-Hat, Oktav-Bass
-    { id: 'e6', level: 'easy', name: 'Polaroid Summer', meter: '4/4', bpm: 122, key: 2, mode: 'major', chords: { degrees: [0, 2, 5, 3] },
+    { id: 'e6', level: 'easy', name: 'Polaroid Summer', genre: 'Indie-Disco', meter: '4/4', bpm: 122, key: 2, mode: 'major', chords: { degrees: [0, 2, 5, 3] },
       kick: 'x...x...x...x...', snare: '....x.......x...', clap: '....x.......x...', hat: 'x...x...x...x...', open: '..x...x...x...x.',
       bass: '1.8.1.8.1.8.1.8.' },
     // Reggae-Pop („One Drop“): die Eins bleibt leer, Kick und Snare zusammen auf der Drei
-    { id: 'e7', level: 'easy', name: 'Island Postcard', meter: '4/4', bpm: 78, key: 8, mode: 'major', chords: { degrees: [0, 3, 0, 4] },
+    { id: 'e7', level: 'easy', name: 'Island Postcard', genre: 'Reggae', meter: '4/4', bpm: 78, key: 8, mode: 'major', chords: { degrees: [0, 3, 0, 4] },
       kick: '........x.......', snare: '........x.......', hat: '..x...x...x...x.',
       bass: '1.....1.5.......' },
     // Pop-Rap / Hip-Hop-Pop mit Sechzehntel-Swing (Tempo-Element: Swing mitbestimmen)
-    { id: 'e8', level: 'easy', name: 'Rooftop Cypher', meter: '4/4', bpm: 90, swing: .4, key: 0, mode: 'minor', chords: { degrees: [0, 3, 5, 4] },
+    { id: 'e8', level: 'easy', name: 'Rooftop Cypher', genre: 'Hip-Hop', meter: '4/4', bpm: 90, swing: .4, key: 0, mode: 'minor', chords: { degrees: [0, 3, 5, 4] },
       kick: 'x......x.xx.....', snare: '....x.......x...', hat: 'x.xxx.xxx.xxx.xx',
       bass: '1......1.5......' },
     // Funk-Pop: Sechzehntel-Kick-Synkopen, offene Hat vor der Eins, Bass mit Grundton, Quinte und Oktave
-    { id: 'e9', level: 'easy', name: 'Elastic Monday', meter: '4/4', bpm: 108, key: 3, mode: 'major', chords: { degrees: [0, 3] },
+    { id: 'e9', level: 'easy', name: 'Elastic Monday', genre: 'Funk-Pop', meter: '4/4', bpm: 108, key: 3, mode: 'major', chords: { degrees: [0, 3] },
       kick: 'x..x..x...x..x..', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '..............x.',
       bass: '1..1..5...8..5..' },
 
     // --- Mittel: zusätzlich die Akkordfolge als Funktionen, Dur/Moll (4/4).
     // Pop-Rock-Mitsinghymne: die bekannteste Popfolge I–V–vi–IV, jetzt hörbar
-    { id: 'm1', level: 'medium', name: 'Paper Crown', meter: '4/4', bpm: 126, key: 2, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+    { id: 'm1', level: 'medium', name: 'Paper Crown', genre: 'Pop-Rock', meter: '4/4', bpm: 126, key: 2, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
       kick: 'x.....x.x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x...', open: '..............x.',
       bass: '1.....1.5.......' },
     // Moll-Power-Ballade: i–VI–III–VII, Ghost-Notes auf der Snare
-    { id: 'm2', level: 'medium', name: 'Ashes and Ivory', meter: '4/4', bpm: 74, key: 4, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
+    { id: 'm2', level: 'medium', name: 'Ashes and Ivory', genre: 'Power-Ballade', meter: '4/4', bpm: 74, key: 4, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
       kick: 'x.......xx......', snare: '....x..g....x..g', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1.......1.5.....' },
     // 50er-Doo-Wop/Soul-Ballade mit Swing: die „Ice-Cream“-Folge I–vi–IV–V
-    { id: 'm3', level: 'medium', name: 'Milkshake Moon', meter: '4/4', bpm: 64, swing: .5, key: 0, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+    { id: 'm3', level: 'medium', name: 'Milkshake Moon', genre: 'Doo-Wop', meter: '4/4', bpm: 64, swing: .5, key: 0, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
       kick: 'x.......x.....x.', snare: '....x.......x...', hat: 'x.x.x.xxx.x.x.xx',
       bass: '1.....5.8.....5.' },
     // 80er-Synth-Pop: beginnt auf vi — klingt nach Moll, ist aber Dur (vi–IV–I–V)
-    { id: 'm4', level: 'medium', name: 'Afterglow Arcade', meter: '4/4', bpm: 118, key: 7, mode: 'major', chords: { degrees: [5, 3, 0, 4] },
+    { id: 'm4', level: 'medium', name: 'Afterglow Arcade', genre: 'Synth-Pop', meter: '4/4', bpm: 118, key: 7, mode: 'major', chords: { degrees: [5, 3, 0, 4] },
       kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1.1.1.1.1.1.8.1.' },
     // Deutschpop-Ballade: Akkorde wechseln nur alle zwei Takte (I–IV–vi–V)
-    { id: 'm5', level: 'medium', name: 'Rosengarten', meter: '4/4', bpm: 68, key: 3, mode: 'major', chordBars: 2, chords: { degrees: [0, 3, 5, 4] },
+    { id: 'm5', level: 'medium', name: 'Rosengarten', genre: 'Deutschpop', meter: '4/4', bpm: 68, key: 3, mode: 'major', chordBars: 2, chords: { degrees: [0, 3, 5, 4] },
       kick: 'x.........x.....', snare: '....x.......x...', hat: 'x...x...x...x...', open: '..............x.',
       bass: '1.........1.5...' },
     // Latin-Pop/Reggaeton (Dembow): Moll mit Dur-Dominante i–VI–iv–V
-    { id: 'm6', level: 'medium', name: 'Fuego Lento', meter: '4/4', bpm: 92, key: 11, mode: 'minor', chords: { degrees: [0, 5, 3, 4], dominant: true },
+    { id: 'm6', level: 'medium', name: 'Fuego Lento', genre: 'Reggaeton', meter: '4/4', bpm: 92, key: 11, mode: 'minor', chords: { degrees: [0, 5, 3, 4], dominant: true },
       kick: 'x...x...x...x...', snare: '...x..x....x..x.', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1.....1.1.....5.' },
     // Neo-Soul/R&B-Pop: Septakkorde, ii7–V7–Imaj7 mit leichtem Swing
-    { id: 'm7', level: 'medium', name: 'Velvet Elevator', meter: '4/4', bpm: 82, swing: .3, key: 1, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true },
+    { id: 'm7', level: 'medium', name: 'Velvet Elevator', genre: 'Neo-Soul', meter: '4/4', bpm: 82, swing: .3, key: 1, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true },
       kick: 'x..x......x..x..', snare: '....x..g.g..x...', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1..5....1..8....' },
     // Gospel-Pop mit Mitklatschen: IV–V–iii–vi — startet nicht auf der Tonika
-    { id: 'm8', level: 'medium', name: 'Second Sunrise', meter: '4/4', bpm: 132, key: 9, mode: 'major', chords: { degrees: [3, 4, 2, 5] },
+    { id: 'm8', level: 'medium', name: 'Second Sunrise', genre: 'Gospel-Pop', meter: '4/4', bpm: 132, key: 9, mode: 'major', chords: { degrees: [3, 4, 2, 5] },
       kick: 'x.....x...x.....', snare: '....x.......x..g', clap: '....x.......x...', hat: '..x...x...x...x.',
       bass: '1.....1...5...8.' },
     // Pop-Noir / Agenten-Ballade: Moll-Septakkorde mit Dur-Dominante i7–iv7–VImaj7–V7
-    { id: 'm9', level: 'medium', name: 'Midnight Casino', meter: '4/4', bpm: 86, key: 6, mode: 'minor', chords: { degrees: [0, 3, 5, 4], sevenths: true, dominant: true },
+    { id: 'm9', level: 'medium', name: 'Midnight Casino', genre: 'Pop-Noir', meter: '4/4', bpm: 86, key: 6, mode: 'minor', chords: { degrees: [0, 3, 5, 4], sevenths: true, dominant: true },
       kick: 'x.....xx..x.....', snare: '....x..g....x.g.', hat: 'x.x.x.x.x.x.x.x.', open: '......x.......x.',
       bass: '1.....18..5.....' },
 
     // --- Schwer: alles inkl. Melodie und Klang; auch 3/4, 6/8 und Kirchentonarten.
     // 90er-Boyband-Ballade, E-Piano, I–V–vi–IV, Melodie in Vierteln/Achteln
-    { id: 'h1', level: 'hard', name: 'Windowsill Promise', meter: '4/4', bpm: 70, key: 4, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+    { id: 'h1', level: 'hard', name: 'Windowsill Promise', genre: 'Boyband-Ballade', meter: '4/4', bpm: 70, key: 4, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
       kick: 'x.......x..x....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '..............x.',
       bass: '1.......1..5....',
       melody: [[[0, 2, 4], [4, 4, 4], [8, 4, 6], [14, 5, 2]],
@@ -1355,7 +1355,7 @@
         [[0, 0, 4], [4, -1, 4], [8, -3, 8]]],
       sound: 'Tape Keys' },
     // Eurodance/Synth-Pop in Moll: Achtel-Hook mit Sägezahn-Lead, i–VI–III–VII
-    { id: 'h2', level: 'hard', name: 'Laser Halo', meter: '4/4', bpm: 128, key: 6, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
+    { id: 'h2', level: 'hard', name: 'Laser Halo', genre: 'Eurodance', meter: '4/4', bpm: 128, key: 6, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
       kick: 'x...x...x...x...', clap: '....x.......x...', hat: 'x...x...x...x...', open: '..x...x...x...x.',
       bass: '..1...1...8...1.',
       melody: [[[0, 4, 2], [2, 4, 2], [4, 2, 2], [6, 4, 4], [10, 2, 2], [12, 0, 4]],
@@ -1364,7 +1364,7 @@
         [[0, 4, 6], [6, 2, 2], [8, 2, 4], [12, 0, 4]]],
       sound: 'Bright Saw' },
     // Reggae-Pop (Steppers): Melodie setzt auf der Offbeat-Achtel ein, Dub-Echo
-    { id: 'h3', level: 'hard', name: 'Salt Water Radio', meter: '4/4', bpm: 76, key: 5, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
+    { id: 'h3', level: 'hard', name: 'Salt Water Radio', genre: 'Reggae', meter: '4/4', bpm: 76, key: 5, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
       kick: 'x...x...x...x...', snare: '........x.......', hat: '..x...x...x...x.',
       bass: '1...1.5.1...5...',
       melody: [[[2, 2, 2], [4, 4, 4], [8, 4, 2], [10, 5, 2], [12, 4, 4]],
@@ -1373,7 +1373,7 @@
         [[2, 0, 2], [4, -1, 4], [8, -3, 8]]],
       sound: 'Dub Chamber' },
     // Stadion-Rock in Mixolydisch: I–♭VII–IV–I, Orgel, Mitgröl-Hook
-    { id: 'h4', level: 'hard', name: 'Highway Sermon', meter: '4/4', bpm: 132, key: 9, mode: 'mixolydian', chords: { degrees: [0, 6, 3, 0] },
+    { id: 'h4', level: 'hard', name: 'Highway Sermon', genre: 'Stadium-Rock', meter: '4/4', bpm: 132, key: 9, mode: 'mixolydian', chords: { degrees: [0, 6, 3, 0] },
       kick: 'x.....x.x.....x.', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '......x.........',
       bass: '1.1.1.1.1.1.5.8.',
       melody: [[[0, 4, 2], [2, 4, 2], [4, 7, 4], [8, 6, 2], [10, 4, 2], [12, 4, 4]],
@@ -1382,7 +1382,7 @@
         [[0, 4, 4], [4, 2, 4], [8, 0, 8]]],
       sound: 'Vintage Organ' },
     // Piano-Bar-Mitsinger / Musical-Ballade im 3/4 (Rock-Halftime-Feel, kein Walzer-Humtata)
-    { id: 'h5', level: 'hard', name: 'Bar Stool Philosophy', meter: '3/4', bpm: 144, key: 7, mode: 'major', chords: { degrees: [0, 3, 5, 4] },
+    { id: 'h5', level: 'hard', name: 'Bar Stool Philosophy', genre: 'Musical-Ballade', meter: '3/4', bpm: 144, key: 7, mode: 'major', chords: { degrees: [0, 3, 5, 4] },
       kick: 'x.....x.....', snare: '........x...', hat: 'x.x.x.x.x.x.',
       bass: '1.......5...',
       melody: [[[0, 4, 4], [4, 7, 4], [8, 9, 4]],
@@ -1391,7 +1391,7 @@
         [[0, 9, 8], [8, 7, 4]]],
       sound: 'Soft Brass' },
     // Doo-Wop-/Soul-Ballade im 6/8 (Boygroup-Harmonie-Sound), I–vi–IV–V
-    { id: 'h6', level: 'hard', name: 'Jukebox Promise', meter: '6/8', bpm: 52, key: 10, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+    { id: 'h6', level: 'hard', name: 'Jukebox Promise', genre: 'Doo-Wop', meter: '6/8', bpm: 52, key: 10, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
       kick: 'x.....x.....', snare: '......x.....', hat: 'x.x.x.x.x.x.',
       bass: '1...5.1...8.',
       melody: [[[0, 4, 6], [6, 7, 4], [10, 6, 2]],
@@ -1400,7 +1400,7 @@
         [[0, 9, 6], [6, 7, 6]]],
       sound: 'Velvet Choir' },
     // Disco-Funk in Dorisch: Moll-Vamp i7–IV7 (Dur-IV!), Sechzehntel-Synkopen, Pluck-Synth
-    { id: 'h7', level: 'hard', name: 'Golden Hour Funk', meter: '4/4', bpm: 108, swing: .25, key: 9, mode: 'dorian', chordBars: 2, chords: { degrees: [0, 3], sevenths: true },
+    { id: 'h7', level: 'hard', name: 'Golden Hour Funk', genre: 'Disco-Funk', meter: '4/4', bpm: 108, swing: .25, key: 9, mode: 'dorian', chordBars: 2, chords: { degrees: [0, 3], sevenths: true },
       kick: 'x...x...x...x...', snare: '....x..g....x.g.', hat: 'xxxxxxxxxxxxxxxx', open: '......x.......x.',
       bass: '1..8..1.1.8..5..',
       melody: [[[0, 4, 2], [3, 7, 1], [4, 6, 2], [6, 4, 2], [10, 2, 2], [12, 4, 4]],
@@ -1409,7 +1409,7 @@
         [[0, 5, 2], [2, 4, 2], [4, 2, 2], [6, 0, 6], [14, -1, 2]]],
       sound: 'Neon Pluck' },
     // Schlager/Deutschpop in Moll mit Discofox-Beat: i–VII–III–V (Dur-Dominante mit Leitton)
-    { id: 'h8', level: 'hard', name: 'Herzschlag-Hotel', meter: '4/4', bpm: 120, key: 2, mode: 'minor', chords: { degrees: [0, 6, 2, 4], dominant: true },
+    { id: 'h8', level: 'hard', name: 'Herzschlag-Hotel', genre: 'Schlager', meter: '4/4', bpm: 120, key: 2, mode: 'minor', chords: { degrees: [0, 6, 2, 4], dominant: true },
       kick: 'x...x...x...x...', snare: '....x.......x...', hat: '..x...x...x...x.', open: '..............x.',
       bass: '1...8...5...8...',
       melody: [[[0, 0, 4], [4, 4, 2], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
@@ -1418,7 +1418,7 @@
         [[0, 7, 6], [6, 6, 2], [8, 4, 4], [12, 2, 4]]],
       sound: 'Analog Lead' },
     // Rock-Oper-/Power-Ballade im 6/8: absteigende Moll-Kadenz i–VII–VI–V mit Dur-Dominante
-    { id: 'h9', level: 'hard', name: 'Crimson Overture', meter: '6/8', bpm: 56, key: 0, mode: 'minor', chords: { degrees: [0, 6, 5, 4], dominant: true },
+    { id: 'h9', level: 'hard', name: 'Crimson Overture', genre: 'Rock-Oper', meter: '6/8', bpm: 56, key: 0, mode: 'minor', chords: { degrees: [0, 6, 5, 4], dominant: true },
       kick: 'x...x.....x.', snare: '......x.....', hat: 'x.x.x.x.x.x.', open: '..........x.',
       bass: '1.....1...5.',
       melody: [[[0, 4, 6], [6, 5, 2], [8, 4, 2], [10, 2, 2]],
@@ -1427,7 +1427,7 @@
         [[0, 7, 6], [6, 2, 4], [10, 4, 2]]],
       sound: 'Airy Choir' },
     // Neo-Soul/Gospel-R&B: Septakkorde I–vi–ii–V im Swing, Melodie mit Optionstönen
-    { id: 'h10', level: 'hard', name: 'Silk Static', meter: '4/4', bpm: 80, swing: .4, key: 3, mode: 'major', chords: { degrees: [0, 5, 1, 4], sevenths: true },
+    { id: 'h10', level: 'hard', name: 'Silk Static', genre: 'Neo-Soul', meter: '4/4', bpm: 80, swing: .4, key: 3, mode: 'major', chords: { degrees: [0, 5, 1, 4], sevenths: true },
       kick: 'x......x..x..x..', snare: '....x..g....x..g', hat: 'x.xxx.x.x.xxx.x.',
       bass: '1......8..5..1..',
       melody: [[[0, 4, 2], [2, 6, 4], [6, 4, 2], [8, 2, 6], [14, 1, 2]],
@@ -1440,6 +1440,12 @@
   const dcLevel = (id) => DC_LEVELS.find((l) => l.id === id) || DC_LEVELS[0];
   const dcSong = (id) => DC_SONGS.find((s) => s.id === id) || null;
   const dcSongsOf = (levelId) => DC_SONGS.filter((s) => s.level === levelId);
+  /** Tempo-Gefühl für die Songliste (nie die BPM-Zahl zeigen): Grenzen in Vierteln;
+   *  6/8 zählt in punktierten Vierteln und wird über die Achtel umgerechnet. */
+  function dcTempoFeel(song) {
+    const quarters = song.bpm * eighthsPerBeat(song.meter) / 2;
+    return quarters < 80 ? 'calm' : quarters < 105 ? 'mid' : quarters < 125 ? 'brisk' : 'fast';
+  }
 
   /** Klingende Akkordfolge eines Stands (wie GrooveLabView._progression). */
   function progressionOfState(s) {
@@ -3514,16 +3520,67 @@
       const choosing = !dc || this.ui.dc.choosing;
       this.$('.dc-intro').hidden = !choosing;
       this.$('.dc-song').hidden = choosing;
-      // Stufenwahl
-      this._chips(this.$('.dc-levels'), DC_LEVELS.map((l) => ({ value: l.id, label: t(`lab.dc.level.${l.id}`) })), this.ui.dc.level, 'dc-level');
-      this.$('.dc-level-info').textContent = t(`lab.dc.levelInfo.${this.ui.dc.level}`);
-      const songs = dcSongsOf(this.ui.dc.level);
-      if (!songs.some((x) => x.id === this.ui.dc.song)) this.ui.dc.song = this._dcSuggest(this.ui.dc.level);
+      // Stufenwahl (Segmented Control), Fortschritt, Songliste
+      const lv = this.ui.dc.level;
+      this.$all('.dc-seg [data-value]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === lv)));
+      this.$('.dc-level-info').textContent = t(`lab.dc.levelInfo.${lv}`);
+      const songs = dcSongsOf(lv);
+      if (!songs.some((x) => x.id === this.ui.dc.song)) this.ui.dc.song = this._dcSuggest(lv);
       const solved = dc?.solved || {};
-      this._chips(this.$('.dc-songs'), songs.map((x, i) => ({ value: x.id, label: `${i + 1}. ${x.name}${solved[x.id] ? ' ✓' : ''}`,
-        title: solved[x.id] ? t('lab.dc.status.done') : undefined })), this.ui.dc.song, 'dc-song');
-      this.$('[data-action="dc-cancel"]').hidden = !dc;
-      this.$('.dc-replace').hidden = !dc;
+      const solvedCount = songs.filter((x) => solved[x.id]).length;
+      const prog = this.$('.dc-prog');
+      prog.setAttribute('aria-valuemax', String(songs.length));
+      prog.setAttribute('aria-valuenow', String(solvedCount));
+      this.$('.dc-prog-fill').style.width = `${songs.length ? Math.round(100 * solvedCount / songs.length) : 0}%`;
+      this.$('.dc-prog-text').textContent = tf('lab.dc.songsOf', { done: solvedCount, total: songs.length });
+      const runId = dc?.song;
+      const elCount = dc ? dcLevel(dc.level).elements.length : 0;
+      this.$('.dc-list').replaceChildren(...songs.map((x, i) => {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dc-row';
+        btn.dataset.action = 'dc-song';
+        btn.dataset.value = x.id;
+        btn.setAttribute('aria-pressed', String(x.id === this.ui.dc.song));
+        const num = document.createElement('span');
+        num.className = 'dc-row-n';
+        num.textContent = String(i + 1);
+        const main = document.createElement('span');
+        main.className = 'dc-row-main';
+        const name = document.createElement('span');
+        name.className = 'dc-row-name';
+        name.textContent = x.name;
+        const tag = document.createElement('span');
+        tag.className = 'dc-row-tag';
+        tag.textContent = `${x.genre} · ${t(`lab.dc.feel.${dcTempoFeel(x)}`)}`;
+        main.append(name, tag);
+        btn.append(num, main);
+        const mark = document.createElement('span');
+        const isRun = !!dc && runId === x.id && dc.level === lv;
+        if (solved[x.id]) {
+          mark.className = 'dc-row-mark is-done';
+          mark.textContent = '✓';
+          mark.title = t('lab.dc.status.done');
+        } else if (isRun) {
+          mark.className = 'dc-row-mark is-run';
+          mark.textContent = `${dcLevel(dc.level).elements.filter((el) => dc.done[el]).length}/${elCount}`;
+        }
+        if (mark.className) btn.append(mark);
+        if (solved[x.id]) {
+          const sr = document.createElement('span');
+          sr.className = 'dc-sr';
+          sr.textContent = ` (${t('lab.dc.status.done')})`;
+          btn.append(sr);
+        }
+        li.append(btn);
+        return li;
+      }));
+      // Startknopf: der laufende Song heißt „Weiter“, jeder andere ersetzt ihn.
+      const pick = dcSong(this.ui.dc.song);
+      const resume = !!dc && pick?.id === dc.song;
+      this.$('.dc-primary span').textContent = tf(resume ? 'lab.dc.resume' : 'lab.dc.startSong', { name: pick?.name || '' });
+      this.$('.dc-replace').hidden = !(dc && !resume && Object.values(dc.done || {}).some(Boolean));
       if (choosing) return;
 
       const level = dcLevel(dc.level);
@@ -3531,7 +3588,7 @@
       const doneCount = elements.filter((el) => dc.done[el]).length;
       const levelSongs = dcSongsOf(dc.level);
       const song = levelSongs.find((x) => x.id === dc.song);
-      this.$('.dc-song-title').textContent = tf('lab.dc.songTitle', { n: levelSongs.indexOf(song) + 1, name: song.name, level: t(`lab.dc.level.${dc.level}`) });
+      this.$('.dc-song-title').textContent = tf('lab.dc.songTitle', { n: levelSongs.indexOf(song) + 1, name: song.name, genre: song.genre, level: t(`lab.dc.level.${dc.level}`) });
       this.$('.dc-count').textContent = tf('lab.dc.count', { done: doneCount, total: elements.length });
       const given = [tf('lab.dc.givenKey', { key: spell(dc.original.keyRoot, dc.original.keyRoot, 'major', labLang) })];
       if (!elements.includes('chords')) given.push(t('lab.dc.givenChords'));
@@ -6884,7 +6941,10 @@
           this._renderDeconstruct();
           break;
         case 'dc-song': if (DC_SONGS.some((x) => x.id === value && x.level === this.ui.dc.level)) { this.ui.dc.song = value; this._renderDeconstruct(); } break;
-        case 'dc-new': this._dcNew(this.ui.dc.song); break;
+        case 'dc-new':
+          // Der laufende Song heißt „Weiter“: zurück zu ihm, ohne Neustart.
+          if (this._saved.deconstruct?.song === this.ui.dc.song) { this.ui.dc.choosing = false; this._applyView('deconstruct'); } else this._dcNew(this.ui.dc.song);
+          break;
         case 'dc-menu':
           this.ui.dc.menu = !this.ui.dc.menu;
           if (!this.ui.dc.menu) this.ui.dc.revealAsk = false;
@@ -6905,7 +6965,6 @@
           this._applyView('deconstruct');
           this.$('.dc-intro [data-action="dc-new"]')?.focus();
           break;
-        case 'dc-cancel': this.ui.dc.choosing = false; this._applyView('deconstruct'); break;
         case 'dc-listen': this._dcListen(value); break;
         case 'dc-quick': this._dcListen(this.ui.dc.listen === 'orig' ? 'mine' : 'orig'); break;
         case 'dc-focus': this._dcFocus(value); break;
@@ -7475,13 +7534,41 @@
   .dc-title { margin: 0; font-size: 1.3rem; font-weight: 900; letter-spacing: -.02em; }
   .dc-title span { color: var(--accent); }
   .dc-title-small { font-size: 1rem; }
-  .dc-lead { margin: 6px 0 8px; font-size: .86rem; line-height: 1.45; }
+  .dc-lead { margin: 6px 0 0; font-size: .86rem; line-height: 1.45; color: #4a3f66; }
   .dc-steps { margin: 0 0 4px; padding-left: 1.3em; font-size: .78rem; line-height: 1.5; color: var(--text); }
+  .dc-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 12px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .dc-seg button { min-height: 44px; border-radius: 12px; font-size: .86rem; font-weight: 700; color: #4a3f66; }
+  .dc-seg button[aria-pressed="true"] { background: #d42f83; color: #fff; font-weight: 800; }
+  .dc-prog-line { display: flex; align-items: center; gap: 10px; margin: 12px 2px 8px; }
+  .dc-prog-label { font-size: .7rem; font-weight: 800; color: #6b6086; text-transform: uppercase; letter-spacing: .06em; }
+  .dc-prog { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .dc-prog-fill { height: 100%; width: 0; background: #1f7a4d; }
+  .dc-prog-text { font-size: .78rem; font-weight: 700; color: #1f7a4d; font-variant-numeric: tabular-nums; }
+  .dc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .dc-row { width: 100%; min-height: 58px; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 16px; text-align: left; color: var(--text); background: var(--surface); border: 1px solid var(--line); }
+  .dc-row[aria-pressed="true"] { background: #fde3f0; border: 2px solid #d42f83; padding: 5px 13px; }
+  .dc-row-n { width: 26px; flex: none; font-size: .8rem; font-weight: 800; color: #6b6086; }
+  .dc-row-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .dc-row-name { font-size: .94rem; font-weight: 700; overflow-wrap: anywhere; }
+  .dc-row-tag { font-size: .74rem; color: #6b6086; }
+  .dc-row-mark { flex: none; font-size: .75rem; font-weight: 700; color: #8a5a00; font-variant-numeric: tabular-nums; }
+  .dc-row-mark.is-done { font-size: 1.1rem; font-weight: 800; color: #1f7a4d; }
+  .dc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .dc-how { margin-top: 10px; }
+  .dc-how summary { min-height: 44px; display: flex; align-items: center; font-size: .78rem; font-weight: 800; color: #6b6086; cursor: pointer; }
+  .dc-start { margin-top: 10px; }
+  /* Auf hohen Bildschirmen bleibt der Startknopf unten stehen, auf niedrigen scrollt er mit. */
+  @media (min-height: 700px) {
+    .lab-body:has(.dc-intro:not([hidden])) { padding-bottom: 0; }
+    .dc-panel:has(.dc-intro:not([hidden])) { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    .dc-start { position: sticky; bottom: 0; margin: 4px -14px -14px; padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+  }
+  .dc-start .dc-primary { width: 100%; justify-content: center; min-height: 56px; border-radius: 18px; background: #d42f83; font-size: 1rem; box-shadow: none; }
+  .dc-start .dc-replace { margin: 0 2px 8px; text-align: center; }
   .dc-level-info, .dc-replace, .dc-tip, .dc-given, .dc-song-title { margin: 8px 2px 0; font-size: .74rem; line-height: 1.4; color: var(--muted); }
   .dc-replace { color: var(--bad); font-weight: 700; }
   .dc-song-title { margin-top: 2px; font-weight: 800; color: var(--text); }
   .dc-given { margin-top: 2px; }
-  .dc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
   .dc-primary {
     min-height: 48px; padding: 0 20px 0 14px; border-radius: 999px; background: var(--accent); color: #fff;
     display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 800;
@@ -8114,21 +8201,28 @@
     <section class="panel dc-panel">
       <div class="dc-intro">
         <h2 class="dc-title" id="dc-heading"><span>de:</span>construct</h2>
-        <p class="dc-lead">${t('lab.dc.lead')}</p>
-        <ol class="dc-steps">
-          <li>${t('lab.dc.step1')}</li>
-          <li>${t('lab.dc.step2')}</li>
-          <li>${t('lab.dc.step3')}</li>
-        </ol>
-        <span class="sub-label" id="dc-level-label">${t('lab.dc.levelTitle')}</span>
-        <div class="chip-row dc-levels" role="group" aria-labelledby="dc-level-label"></div>
+        <p class="dc-lead">${t('lab.dc.intro')}</p>
+        <div class="dc-seg" role="group" aria-label="${t('lab.dc.levelTitle')}">
+          ${DC_LEVELS.map((l) => `<button type="button" data-action="dc-level" data-value="${l.id}" aria-pressed="false">${t(`lab.dc.level.${l.id}`)}</button>`).join('')}
+        </div>
         <p class="dc-level-info"></p>
-        <span class="sub-label" id="dc-song-label">${t('lab.dc.songsTitle')}</span>
-        <div class="chip-row dc-songs" role="group" aria-labelledby="dc-song-label"></div>
-        <p class="dc-replace" hidden>${t('lab.dc.replaceWarn')}</p>
-        <div class="dc-actions">
-          <button class="dc-primary" type="button" data-action="dc-new">${UI_ICON.play}<span>${t('lab.dc.start')}</span></button>
-          <button class="chip" type="button" data-action="dc-cancel" hidden>${t('lab.dc.cancel')}</button>
+        <div class="dc-prog-line">
+          <span class="dc-prog-label" id="dc-song-label">${t('lab.dc.songsTitle')}</span>
+          <div class="dc-prog" role="progressbar" aria-labelledby="dc-song-label" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><div class="dc-prog-fill"></div></div>
+          <span class="dc-prog-text"></span>
+        </div>
+        <ul class="dc-list" aria-labelledby="dc-song-label"></ul>
+        <details class="dc-how">
+          <summary>${t('lab.dc.how')}</summary>
+          <ol class="dc-steps">
+            <li>${t('lab.dc.step1')}</li>
+            <li>${t('lab.dc.step2')}</li>
+            <li>${t('lab.dc.step3')}</li>
+          </ol>
+        </details>
+        <div class="dc-start">
+          <p class="dc-replace" hidden>${t('lab.dc.replaceWarn')}</p>
+          <button class="dc-primary" type="button" data-action="dc-new">${UI_ICON.play}<span></span></button>
         </div>
       </div>
       <div class="dc-song" hidden>
@@ -8564,7 +8658,7 @@
     KIT_DEFAULTS, KIT_RANGES,
     pickChallengePattern, detectiveVariant, rebuildScore, soundMatch, soundMatchTarget, SOUND_MATCH_START, CHALLENGE_TRACKS,
     // de:construct
-    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
+    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcTempoFeel, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
     progressionOfState, harmonyOfState, GrooveLabView,
   };
 
