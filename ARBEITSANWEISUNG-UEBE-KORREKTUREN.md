@@ -5,15 +5,17 @@ Entwickler:in. Ein musikpädagogisches Review der Übe-Sektion (Tools) hat
 Fehler gefunden, die falsch bewerten, etwas Falsches beibringen oder die
 Stimme unnötig belasten. Du behebst sie in kleinen, einzeln mergebaren
 Paketen. Zwei Erweiterungen kommen dazu: Rhythmus mit dem Körper
-(Paket 11) und Auftakte/Einsätze nach Pausen (Paket 12). Zielgruppe der App: ein Laien-Popchor, der **nur nach Gehör** lernt,
-vier Stimmen (S, A, T, B).
+(Paket 11) und Einsätze nach Pausen (Paket 12). Zielgruppe der App: ein
+Laien-Popchor, der **nur nach Gehör** lernt, vier Stimmen (S, A, T, B).
 
 Antworte und kommentiere auf Deutsch. **Die Anweisung läuft
 unbeaufsichtigt:** keine Rückfragen; bei Unklarheit die Variante näher am
 bestehenden Verhalten wählen und im Bericht unter „Zu entscheiden“ notieren.
 
-Zeilenangaben beziehen sich auf Stand `dba2715` (`SW_VERSION` `v388`) und
-dienen nur zur Orientierung. **Vor jedem Paket den Befund im aktuellen Code
+**Grundlage ist das Übungen-Redesign** (Branch
+`claude/affectionate-archimedes-75nl5c`, Stand `75078bc`, `SW_VERSION`
+`v456`). Zeilenangaben beziehen sich auf diesen Stand und dienen nur zur
+Orientierung. **Vor jedem Paket den Befund im aktuellen Code
 selbst nachprüfen.** Ist er schon behoben oder trifft er nicht zu: Paket
 überspringen und im Bericht begründen.
 
@@ -21,10 +23,26 @@ selbst nachprüfen.** Ist er schon behoben oder trifft er nicht zu: Paket
 
 ## 0. Vorbereitung
 
-1. `git fetch origin`, dann Branch `uebe-korrekturen` von `origin/main`
-   anlegen (gibt die Umgebung einen anderen Branch vor, diesen nehmen). Nie
-   auf `main` committen, nie mergen, nie force-pushen.
-2. `CLAUDE.md` und `README.md` vollständig lesen.
+1. `git fetch origin`. Prüfen, ob `origin/main` den Commit `75078bc`
+   enthält (`git merge-base --is-ancestor 75078bc origin/main`).
+   - Ja (Redesign ist gemergt): Branch `uebe-korrekturen` von `origin/main`.
+   - Nein: Branch `uebe-korrekturen` von
+     `origin/claude/affectionate-archimedes-75nl5c`. Den PR später gegen
+     diesen Branch öffnen, nicht gegen `main`, und das im Bericht vermerken.
+   - Gibt die Umgebung einen anderen Branch vor: diesen nehmen und ihn auf
+     dieselbe Basis setzen.
+   - Nie auf `main` committen, nie mergen, nie force-pushen.
+2. `CLAUDE.md` und `README.md` vollständig lesen, dazu
+   `BERICHT-UEBUNGEN-REDESIGN.md` (vor allem „Zweite Runde“,
+   „Inhaltsänderungen“ und „Entscheidungen“). Die dort festgelegten
+   Grundsätze gelten weiter:
+   - Hören vor Sehen; Noten nur auf Klick.
+   - In der Phase „Du“ keine Tonhöhe, keine Cent und keine Treffer; die
+     Auswertung erst im Ergebnis.
+   - Singen meldet Worte statt Cent.
+   - Gerüst je Übung: Stufen-Karte, Phasenleiste, Bühne und Dock bzw.
+     Klatschfläche.
+   - Gestaltung über `ueben.css`.
 3. Je Paket die dort genannten Funktionen vollständig lesen, nicht nur die
    zitierten Zeilen.
 
@@ -40,6 +58,10 @@ selbst nachprüfen.** Ist er schon behoben oder trifft er nicht zu: Paket
 - **Gespeicherte Zustände:** neue Felder optional mit Standardwert; `restore`
   bzw. das Laden übernimmt nur gültige Werte. `DATA_VERSION` in `app.js` nicht
   anfassen.
+- **Oberfläche:** Neue oder geänderte Elemente nutzen die Bausteine und
+  Tokens aus `ueben.css` und das bestehende Übungs-Gerüst. Keine eigenen
+  Farben und keine Sonderlayouts. Bestehende Playwright-/Gerüst-Tests (gleiche
+  Positionen von Phasenleiste, Bühne und Dock) bleiben grün.
 - **Texte:** Tool-Seiten (`uebe-lab.html`, `einsingen.html`, `licks.html`,
   `piano.html`) sind nur deutsch. Ermutigende Wortwahl wie im Bestand
   („Noch nicht — …“).
@@ -74,7 +96,6 @@ selbst nachprüfen.** Ist er schon behoben oder trifft er nicht zu: Paket
 | sus2/sus4 in „Klänge“ Stufe 6 | nur **Grundstellung** |
 | „Pop in Moll-Farbe“ vs. „Epische Moll-Folge“ | gleiche Akkorde → **beide Antworten gelten als richtig**, die Rückmeldung erklärt den Zusammenhang |
 | Moll in „Töne in der Tonart“ | Stufe 5 (natürliches Moll) kadenziert **i–VI–VII–i** (ohne Leitton); Stufe 6 (mit si) bleibt bei i–iv–V–i |
-| Licks-Tempo | wählbar **70 % · 85 % · 100 %**, Standard 100 %; „Sitzt“ nur bei 100 % |
 | Licks „Ganz“ | geschafft ab **85 % Treffern** (aufgerundet) und höchstens **einem** Ton zu viel |
 | Licks „Stückweise“ | **ein** Ton zu viel wird toleriert, wenn ohne ihn alles stimmt |
 | Licks-Lage | **Vorspiel und Liegeton** in die Lage der eigenen Stimme oktavieren; die Bewertung bleibt bei Tonklassen (Oktave egal) |
@@ -87,8 +108,9 @@ selbst nachprüfen.** Ist er schon behoben oder trifft er nicht zu: Paket
 
 **Befund.** In „Hören → Intonation“, Stufen 5 („Akkord: markierte Stimme“)
 und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
-(`playEarTask`, Zweig Intonation, ca. Z. 4220–4229; `engine.saw`, Z. 1608:
-„`cents` verstimmt gegen den gleichstufigen Ton“). Die große Terz liegt dann
+(`playEarTask`, Zweig Intonation, ca. Z. 5812–5815; `engine.saw`, Z. ~2378).
+Der Klang ist seit dem Redesign stimmähnlich und wandert um ±2,5 Cent, der
+Bezug ist aber weiter gleichstufig. Die große Terz liegt dann
 13,7 Cent über der reinen. Folgen:
 - Wer im Chor sauber, also die Terz tiefer intoniert, wird „zu tief“ gewertet.
 - Die Fangaufgabe („sauber — keine Abweichung“) schwebt selbst hörbar.
@@ -107,9 +129,12 @@ und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
    Aufgabe speichern, falls nicht vorhanden).
 3. Für die Quinte (Stufe 4) `1.955` durch `justOffsetCents(7)` ersetzen
    (gleiches Verhalten, eine Quelle).
-4. Kommentar an `engine.saw` anpassen. Unter der Stufe bzw. im Hilfetext
-   einen Satz ergänzen: „Im Akkord gilt die reine Stimmung: Die Dur-Terz
-   klingt etwas tiefer als am Klavier – so singt ein Chor sauber.“
+4. Die ±2,5-Cent-Wanderung bleibt; ihr Mittel ist künftig der reine statt
+   der gleichstufige Sollton. Kommentar an `engine.saw` anpassen.
+5. In die volle Erklärung im Blatt „Hilfen“ (bei Intonation) einen Satz
+   ergänzen: „Im Akkord gilt die reine Stimmung: Die Dur-Terz klingt etwas
+   tiefer als am Klavier – so singt ein Chor sauber.“ Nicht in die Bühne,
+   die bleibt während der Aufgabe ohne Fachbegriffe (Redesign).
 
 **Tests.**
 - `justOffsetCents` für 0/3/4/7 auf ±0,05 Cent.
@@ -119,20 +144,21 @@ und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
 ### Paket 2 – Ton halten oktavneutral (`uebe-lab.html`)
 
 **Befund.**
-- `holdStep` speichert `cents: (midi - task.target) * 100` (ca. Z. 6843),
-  ohne die Oktave herauszurechnen. Alle anderen Sing-Modi tun das: der Tuner
-  mit `mod(… + 6, 12) - 6` (Z. 5143), `makePitchJudge` und `scoreEcho`.
-- Ohne Stimmprofil gilt `ear.part = 'A'` (Z. 3383). Ein Tenor, der den
+- `holdStep` (Z. ~9136) speichert `cents: (midi - task.target) * 100`
+  (Z. ~9153), ohne die Oktave herauszurechnen. Alle anderen Sing-Modi tun
+  das: der Tuner bzw. „Meine Stimme“ mit `mod(… + 6, 12) - 6`,
+  `makePitchJudge` und `scoreEcho`.
+- Ohne Stimmprofil gilt `ear.part = 'A'` (Z. ~4694). Ein Tenor, der den
   Alt-Zielton eine Oktave tiefer singt, bekommt dann „Lage −1200 Cent“ und
   einen Fehlversuch.
 - Das widerspricht dem eigenen Hinweis „Tiefe Stimmen dürfen eine Oktave
-  tiefer singen“ (ca. Z. 508).
+  tiefer singen“ (Z. ~1086).
 
 **Umsetzung.**
 1. In `holdStep` die Abweichung auf ±6 Halbtöne falten, genau wie im Tuner.
    Die gefaltete Oktavlage (−1/0/+1) in der Aufgabe merken. Bei stabiler
-   Oktavabweichung ergänzt `finishHold` die Rückmeldung um „(eine Oktave
-   tiefer – passt)“ bzw. „höher“.
+   Oktavabweichung ergänzt `finishHold` (Z. ~9291) die Rückmeldung um
+   „(eine Oktave tiefer – passt)“ bzw. „höher“.
 2. Ist kein Stimmprofil gesetzt (`readProfile()?.part` fehlt), über „Ton
    halten“ einmal den Hinweis zeigen: „Wähle oben deine Stimme, dann liegt der
    Ton in deiner Lage.“ Dafür den vorhandenen Stimm-Wähler bzw. die
@@ -141,7 +167,7 @@ und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
    vermerken.
 
 **Tests.**
-- Den Simulationstest bei Z. ~10501 (`holdStep` mit synthetischen Werten)
+- Den Simulationstest bei Z. ~13642 (`holdStep` mit synthetischen Werten)
   erweitern: Ziel 64, gesungen 52 ± 5 Cent → Lage ≈ 0, Urteil „ruhig“.
 - Ziel 64, gesungen 64,3 → +30 Cent wie bisher.
 
@@ -149,21 +175,21 @@ und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
 
 **Befund.**
 - Der Abschnittskommentar verspricht „Ein Median über die letzten Werte
-  glättet einzelne Oktavfehler“ (ca. Z. 4872).
-- `smoothPitch` (Z. 4883) bildet aber den **Mittelwert**.
+  glättet einzelne Oktavfehler“ (Z. ~6971).
+- `smoothPitch` (Z. ~6982) bildet aber den **Mittelwert**.
 - Ein einzelner Oktavsprung des Erkenners in einem Fenster von ~21 Werten
   verschiebt das Ergebnis um rund 57 Cent. Betroffen sind die Tuner-Nadel,
   die Halte-Statistik (`holdHit`, sd ≤ 12 Cent → falsches „noch unruhig“) und
-  `makePitchJudge` (Z. 5287).
+  `makePitchJudge` (Z. ~7491).
 
 **Umsetzung.**
 1. `smoothPitch` liefert den Median der Werte im Fenster. Bei gerader Anzahl
    das Mittel der beiden mittleren Werte, damit Vibrato symmetrisch bleibt.
-   Es gibt schon zwei lokale `median`-Helfer (Z. 2207, 4940), die bei gerader
+   Es gibt schon zwei lokale `median`-Helfer (Z. ~3004, ~7039), die bei gerader
    Länge das obere Element nehmen. Eine gemeinsame, korrekte Fassung in der
    Nähe von `smoothPitch` anlegen; die bestehenden Aufrufer nicht verändern.
-2. Kommentar „Mittelwert der Rohwerte“ und den Anzeige-Kommentar
-   (Z. 4878–4880) anpassen: Der Median zeigt bei Vibrato ebenfalls die Mitte.
+2. Kommentar „Mittelwert der Rohwerte“ und den Anzeige-Kommentar direkt
+   über `SMOOTH_SECONDS` anpassen: Der Median zeigt bei Vibrato ebenfalls die Mitte.
 
 **Tests.**
 - Reihe aus 20 Werten 60,00 und einem Wert 72,00 → Ergebnis 60,00.
@@ -175,14 +201,17 @@ und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
 ### Paket 4 – Einsingen: Ruf nie mit kalter Stimme (`einsingen.html`)
 
 **Befund.**
-- Pool `popklang` = `['sprechSingen', 'geraderTon', 'ruf']` (Z. ~915). Die
+- Pool `popklang` = `['sprechSingen', 'geraderTon', 'ruf']` (Z. ~922). Die
   Programme „Kurz“ und „Schnell“ greifen schon an 3. bzw. 4. Stelle darauf
   zu.
 - Durch die Rotation (`resolveProgram`) kommt der „Ruf“ (leichter Belt)
   regelmäßig nach nur zwei kurzen Übungen.
 - Das widerspricht seinem eigenen Hilfetext „Nur nach dem Einsingen, nie mit
-  kalter Stimme“ (Z. ~742).
-- Die Editor-Warnung `draftWarning` (Z. ~2384) prüft nur die Gruppe `hoehe`.
+  kalter Stimme“ (Z. ~749).
+- Die Editor-Warnung `draftWarning` (Z. ~2503) prüft nur die Gruppe `hoehe`.
+- Der neue Prestart-Hinweis „Erst Kurz einsingen, dann dieses Programm“
+  (Redesign) gilt nur für „Höhe“/„Tiefe“, nicht für den Ruf in „Kurz“
+  selbst.
 
 **Umsetzung.**
 1. Übung `ruf` bekommt ein neues Feld `needsWarm: 'twang'`. Pool-Kandidaten
@@ -196,7 +225,8 @@ und 6 („Akkord: welche Stimme?“), klingt der Akkord gleichstufig
    Übung der Gruppen `lockern`/`resonanz`, lautet der Tipp: „Tipp: Den Ruf
    erst nach Lockern und Twang.“ Die bestehende Höhe-Warnung hat Vorrang,
    wenn beide zutreffen.
-4. „Höhe“ (fester `ruf` nach `twang`) bleibt unverändert.
+4. „Höhe“ (fester `ruf` nach `twang`) bleibt unverändert. `resolveProgram`
+   steht bei Z. ~969, die Programme bei Z. ~939.
 
 **Tests.**
 - Für jedes feste Programm × jede Belastung × 30 aufeinanderfolgende
@@ -220,7 +250,7 @@ oder über dem Übergang. Die Texte sagen nur „nicht hochdrücken“.
 
 **Umsetzung.**
 1. Neues optionales Übungsfeld `topLow` (Halbtöne, negativ). In
-   `exerciseRange` wird es bei den Stimmen T und B auf die Obergrenze addiert:
+   `exerciseRange` (Z. ~1433) wird es bei den Stimmen T und B auf die Obergrenze addiert:
    `v.floor + ex.top + L.topShift + (tief ? ex.topLow : 0)`. Die Grenze der
    Stimmlage (`v.ceil`) gilt weiter.
 2. `topLow: -2` für `oktave`, `dreiklang`, `mollDreiklang`, `staccatoLegato`,
@@ -240,7 +270,9 @@ oder über dem Übergang. Die Texte sagen nur „nicht hochdrücken“.
 
 ### Paket 6 – Rhythmussilben und Zählweise unterscheidbar (`uebe-lab.html`)
 
-**Befund.** `syllablesFor` (Z. ~965):
+**Befund.** `syllablesFor` (Z. ~1582). Die Silben stehen seit dem Redesign
+nach der Runde eingefärbt in der Karte „Letzte Runde“ und bei „Noten
+zeigen“; sie kommen weiter aus dieser Funktion:
 - **Silben:** Die Silbe hängt nur von der Notenlänge ab. Dadurch klingen
   `achtel16` (`6 3 3`) und `synkope16` (`3 6 3`) beide „ti ti ri“, zwei
   verschiedene Rhythmen mit derselben Rhythmussprache. Das widerspricht dem
@@ -248,7 +280,7 @@ oder über dem Übergang. Die Texte sagen nur „nicht hochdrücken“.
   Lektion selbst.
 - **Zählweise:** Jedes Sechzehntel neben dem Schlag heißt „e“
   (Kopfkommentar: „1 e + e“). Die Lektionen `aufA` und `synkope16` sprechen
-  aber vom „a“ (Z. ~1099, ~1102). `aufA` zeigt dadurch „1 (2) e 3 4“ statt
+  aber vom „a“ (Z. ~1715, ~1718). `aufA` zeigt dadurch „1 (2) e 3 4“ statt
   „1 (2 e +) a 3 4“, und „Einsatz auf e“ und „Einsatz auf a“ sehen gleich
   aus.
 
@@ -264,13 +296,13 @@ oder über dem Übergang. Die Texte sagen nur „nicht hochdrücken“.
      bleiben wie sie sind.
 2. **Zählweise** (`style 'count'`): Bei Schlageinheit 12 Ticks gilt Offset 3 →
    „e“, 6 → „+“, 9 → „a“. Andere Raster unverändert. Den Kopfkommentar und
-   den Lektionstext mit „1 e + e“ (Z. ~1089) auf „1 e + a“ ändern.
+   den Lektionstext mit „1 e + e“ (Z. ~1706) auf „1 e + a“ ändern.
 3. Lektionstexte prüfen, die Silben wörtlich zitieren (`intro`/`more` im
-   `COURSE`). Wo sie nach der Änderung nicht mehr zur Anzeige passen,
+   `COURSE` und die neuen Lektions-Vorstellungen aus dem Redesign). Wo sie nach der Änderung nicht mehr zur Anzeige passen,
    anpassen und im Bericht auflisten.
 
 **Tests.**
-- Den bestehenden Test (Z. ~9317, erwartet `'1 e + e 2 o le 3 (4) +'`) auf
+- Den bestehenden Test (Z. ~12454, erwartet `'1 e + e 2 o le 3 (4) +'`) auf
   „1 e + a …“ anpassen.
 - Neu:
   - `synkope16` und `achtel16` ergeben verschiedene Silbenfolgen.
@@ -288,19 +320,18 @@ Vier unabhängige Teilkorrekturen in einem Commit. Kann eine davon nicht
 sauber umgesetzt werden, nur sie weglassen und im Bericht begründen.
 
 **7a – Schlüsse enden in Grundstellung.**
-- *Befund:* `bassIndex` (Z. ~3452) wählt bei `inversion: 'style'` für einen
+- *Befund:* `bassIndex` (Z. ~4760) wählt bei `inversion: 'style'` für einen
   Nicht-Kadenz-I-Akkord zufällig zwischen [0, 1]. Das gilt auch für den
   **letzten** Akkord. In „Schlüsse“ Stufe 6 endet ein „fertig (Ganzschluss)“
   so oft auf I⁶, und das ist kein vollkommener Schluss.
 - *Umsetzung:* Der letzte Akkord einer Phrase (`nextSymbol === undefined`)
-  steht immer in Grundstellung. Prüfen, dass `bassIndex` dafür wirklich mit
-  `nextSymbol === undefined` aufgerufen wird, sonst die Aufrufstelle
-  entsprechend ergänzen.
+  steht immer in Grundstellung. Der Aufruf (Z. ~4784) übergibt
+  `symbols[i + 1]`, beim letzten Akkord also `undefined`.
 
 **7b – „Amen“-Erklärung.**
 - *Befund:* Die Phrase `['I', 'V', 'IV', 'I']` in `CADENCE_PHRASES.plagal`
-  enthält mit der V den Leitton. `CADENCE_WHY.plagal` behauptet aber „weich,
-  ohne Leitton“.
+  enthält mit der V den Leitton. `CADENCE_WHY.plagal` (Z. ~4893) behauptet
+  aber „weich, ohne Leitton“.
 - *Umsetzung:* Phrase behalten (V–IV ist im Pop gängig), Text ändern zu
   „IV–I am Schluss, der „Amen“-Schluss: Der letzte Schritt kommt ohne Leitton
   aus und klingt weich.“
@@ -310,12 +341,13 @@ sauber umgesetzt werden, nur sie weglassen und im Bericht begründen.
   `qualityInversions` für sus2/sus4 alle drei Lagen. Csus2 in der
   2. Umkehrung (G–C–D) ist aber Gsus4 in Grundstellung, Csus4 in der
   1. Umkehrung (F–G–C) ist Fsus2. Wer richtig hört, wird als falsch gewertet.
-- *Umsetzung:* `qualityInversions('sus2'|'sus4')` = 1. Kommentar mit dieser
-  Begründung.
+- *Umsetzung:* `qualityInversions('sus2'|'sus4')` = 1 (Z. ~4851). Den
+  Kommentar mit dieser Begründung ergänzen. Der Name des Modus ist seit dem
+  Redesign „Akkordfarben“.
 
 **7d – „Pop in Moll-Farbe“ = „Epische Moll-Folge“.**
-- *Befund:* `sad` (vi–IV–I–V in Dur) und `epic` (i–VI–III–VII in Moll)
-  ergeben dieselben Akkorde, z. B. Am–F–C–G. Liegen beide in einer Auswahl,
+- *Befund:* `sad` (vi–IV–I–V in Dur, Z. ~4598) und `epic` (i–VI–III–VII in
+  Moll, Z. ~4603) ergeben dieselben Akkorde, z. B. Am–F–C–G. Liegen beide in einer Auswahl,
   entscheidet nicht das Gehör.
 - *Umsetzung:* Liegen beide in der Auswahl der aktuellen Stufe, gilt jede der
   beiden Antworten als richtig. Die Rückmeldung ergänzt: „Gleiche Akkorde wie
@@ -324,15 +356,19 @@ sauber umgesetzt werden, nur sie weglassen und im Bericht begründen.
 
 **7e – Moll ohne Querstand.**
 - *Befund:* „Töne in der Tonart“ Stufe 5 („Moll: la bis so“, natürliches
-  Moll) kadenziert mit i–iv–**V**–i (`inKeyCadence`, Leitton si). Abgefragt
+  Moll, Z. ~5560) kadenziert mit i–iv–**V**–i (`inKeyCadence`, Z. ~5330,
+  Leitton si). Abgefragt
   und aufgelöst wird dann aber mit so (♭7, Auflösung fa→so→la bzw. so→la).
   Nach dem gerade gehörten gis erklingt also g.
 - *Umsetzung:* `inKeyCadence` bekommt die Stufe bzw. ein Flag `leading`:
   - Moll **ohne** si: i–VI–VII–i (äolisch, typisch Pop).
   - Moll **mit** si (Stufe 6): i–iv–V–i wie bisher.
   - In Stufe 6 lösen in Moll mi, fa und so stufenweise **abwärts** zur Tonika
-    auf, si weiter aufwärts. So erklingen ♭7 und ♯7 nie in derselben
-    Auflösung.
+    auf, si weiter aufwärts (`noteInKeyResolution`, Z. ~5609). So erklingen
+    ♭7 und ♯7 nie in derselben Auflösung.
+  - Das gilt genauso für die neuen Tonmuster (Einstellung „Muster“, 2–3 Töne):
+    Prüfen, wie deren Auflösung gebaut wird, und dieselbe Regel anwenden.
+  - Den Selbsttest, der `inKeyCadence` direkt aufruft (Z. ~12854), anpassen.
   - „Akkorde in der Tonart“ prüfen: Nutzt es dieselbe Kadenz? Nur ändern, wenn
     dort natürliches Moll ohne V abgefragt wird; sonst unverändert lassen und
     im Bericht vermerken.
@@ -348,38 +384,30 @@ sauber umgesetzt werden, nur sie weglassen und im Bericht begründen.
 - Der Parallelen-Test für Kadenzen (falls vorhanden) bleibt grün, auch für
   i–VI–VII–i.
 
-### Paket 8 – Licks: Tempo, faire Bewertung, eigene Lage (`licks.html`)
+### Paket 8 – Licks: faire Bewertung, eigene Lage (`licks.html`)
+
+**Schon erledigt (Redesign, `a065d67`):** Tempo 70–100 % in den
+Lernschritten (`runPct`/`runBpm`, Z. ~1364), Durchhalten im Original,
+„Sitzt“ nur im Original. Daran nichts ändern.
 
 **Befund.**
-- Jeder Lick hat ein festes `bpm` (`tickSecOf`, Z. ~1032), einen
-  Tempo-Regler gibt es nicht.
-- „Ganz“ zählt nur bei `abs.hits === exp.length` (Z. ~1673). Das
-  Trefferfenster ist 0,45 × kleinster Notenabstand; bei `arpMoll`
-  (Sechzehntel, 88 BPM) sind das etwa ±77 ms für 16 Töne in Folge.
+- „Ganz“ zählt nur bei `abs.hits === exp.length` (Z. ~2093), also alle Töne
+  ohne Ausnahme; bei `arpMoll` 16 Sechzehntel in Folge.
 - „Stückweise“ scheitert schon an einem einzigen versehentlichen Zusatz-Tipp
-  (`partMessage`, Z. ~540).
-- Basslicks liegen auf E (MIDI 40/43), auch für Soprane.
+  (`partMessage`, Z. ~840).
+- Basslicks liegen auf E bzw. G (MIDI 40/43, Z. ~343, ~375), auch für
+  Soprane. `licks.html` liest das Stimmprofil nicht.
 - Für Sänger:innen ohne Klavierpraxis ist das die größte Frustquelle.
 
 **Umsetzung.**
-1. **Tempo:** Wahl 70 % / 85 % / 100 % in der Lick-Ansicht (Segment-Knöpfe
-   wie im Bestand, Tippflächen ≥ 44 px), gespeichert im Tool-Stand als
-   `tempo` (Standard 1). Alle Zeitberechnungen laufen über einen Faktor in
-   `tickSecOf`. Prüfen, dass Begleitung, Einzähler, Vorspiel, Trefferfenster,
-   Durchhalten und Verzögerungserkennung (`noteRunDelay`) ausnahmslos daran
-   hängen; sonst nachziehen. Die Untertitelzeile zeigt das tatsächliche Tempo
-   („♩ = 75 (85 %)“).
-2. **„Sitzt“** (Durchhalten über 8 Takte, Z. ~1283) zählt nur bei 100 %. Bei
-   kleinerem Tempo lautet die Meldung: „Geschafft bei 85 % – für „Sitzt“
-   einmal im Originaltempo.“
-3. **„Ganz“:** geschafft bei `hits ≥ ceil(0,85 · n)` und höchstens einem
+1. **„Ganz“:** geschafft bei `hits ≥ ceil(0,85 · n)` und höchstens einem
    Ton zu viel. Bei weniger als allen Treffern lautet der Text „Fast alles –
    X von Y Tönen. Das zählt; ganz sauber wird's mit der Zeit.“
-4. **„Stückweise“:** Bei `got.length === want.length + 1` jeden einzelnen
+2. **„Stückweise“:** Bei `got.length === want.length + 1` jeden einzelnen
    Tipp probeweise weglassen. Passt ohne ihn alles (Tonklassen und
    Rhythmus), gilt der Teil als geschafft, mit dem Zusatz „(ein Ton zu viel –
    zählt trotzdem)“.
-5. **Lage:**
+3. **Lage:**
    - Eigene Stimme über `window.parent.chorVoiceProfile?.get()?.part` holen
      (im try/catch wie `prefsApi`).
    - Übe-Umfang über `ChorHarmony.practiceRange` (harmony.js ist schon
@@ -393,7 +421,6 @@ sauber umgesetzt werden, nur sie weglassen und im Bericht begründen.
    - Ohne Stimmprofil: keine Verschiebung.
 
 **Tests (`licks.selfCheck()`).**
-- `tickSecOf` bei 85 % = 1/0,85 × Original.
 - „Ganz“ mit 14/16 Treffern geschafft, mit 13/16 nicht.
 - „Stückweise“ mit genau einem Zusatz-Tipp geschafft, mit zwei nicht.
 - `bassOktav` für Sopran um +24 bzw. +12 (je nach Umfang) verschoben, für Bass
@@ -405,10 +432,13 @@ sauber umgesetzt werden, nur sie weglassen und im Bericht begründen.
 Nur angehen, wenn die Pakete 1–8 sauber durch sind. Gelingt es nicht in
 vertretbarem Umfang, zurücksetzen und im Bericht einen Entwurf beschreiben.
 
-**Befund.** `licks.html` bewertet ausschließlich Bildschirmtasten (Kopfzeile:
-„kein Mikrofon“). Für Sänger:innen misst das vor allem Fingergeschick. Die
-Tonhöhenerkennung gibt es schon in `uebe-lab.html` (`detectPitch`, YIN,
-Z. ~4903; Mikrofon-Constraints, Bluetooth-Behandlung Z. ~4944–4975).
+**Befund.** `licks.html` bewertet ausschließlich Bildschirmtasten (Kopfzeile
+Z. ~23: „kein Mikrofon“). Für Sänger:innen misst das vor allem
+Fingergeschick. Die Tonhöhenerkennung gibt es schon in `uebe-lab.html`
+(`detectPitch`, YIN; Mikrofon-Constraints und Bluetooth-Behandlung im
+Abschnitt davor). Für das Mikrofon-Symbol und den Pegel das Muster der
+Sing-Bühne aus dem Redesign übernehmen (durchgestrichen = aus, grün nach
+Pegel, rot = zu laut).
 
 **Umsetzung.**
 1. Eingabe-Wahl „Tippen · Singen“ (Standard Tippen, gespeichert im
@@ -421,7 +451,7 @@ Z. ~4903; Mikrofon-Constraints, Bluetooth-Behandlung Z. ~4944–4975).
 3. Die Anschläge gehen in dieselben Bewertungsfunktionen wie das Tippen.
    Tonklasse aus dem Median des Abschnitts.
 4. Das Mikrofon läuft nur während der eigenen Runde, nie im Hintergrund.
-   Nichts wird aufgenommen; Hinweistext wie in `uebe-lab.html` (Z. ~548).
+   Nichts wird aufgenommen; Hinweistext wie in `uebe-lab.html`.
    Die Kopfzeile von `licks.html` und `README.md` anpassen.
 5. Die CSP der Seite prüfen (Mikrofon braucht keine CSP-Änderung, aber
    `Permissions-Policy`/iframe-`allow` in `app.js` beim Öffnen des Tools
@@ -439,21 +469,21 @@ Z. ~4903; Mikrofon-Constraints, Bluetooth-Behandlung Z. ~4944–4975).
 Ein Commit je Datei ist erlaubt (10a–10d), jeweils mit SW_VERSION-Erhöhung.
 
 **10a – `uebe-lab.html`**
-1. **Kunststimme** (`singVoice`, Z. ~1385):
+1. **Kunststimme** (`singVoice`, Z. ~2153):
    - *Befund:* Sie schleift jeden Ton von −60 Cent an und hat ±28 Cent
      Vibrato ab 0,25 s. Die App lehrt selbst „Gerade Töne sind im Popchor die
-     Regel“ (Z. ~7136) und macht hier das Gegenteil vor.
+     Regel“ und macht hier das Gegenteil vor.
    - *Umsetzung:* Anschleifen −20 Cent in 50 ms. Vibrato nur bei Tönen
      ≥ 1 s, erst im letzten Drittel des Tons, ±12 Cent.
 2. **Tuner-Zone:**
-   - *Befund:* `.gauge-zone` ist 10 % breit (Z. ~267). Das entspricht ±5 Cent
+   - *Befund:* `.gauge-zone` ist 10 % breit (Z. ~317). Das entspricht ±5 Cent
      bei ±50 bzw. ±10 Cent bei ±100; „Sauber“ kommt aber bei ±10 Cent
-     (Z. ~5152).
+     (Z. ~7272). Betrifft die Karte „Meine Stimme“ (früher Tuner).
    - *Umsetzung:* Breite und Lage der Zone aus `range` setzen, sodass sie
      immer genau ±10 Cent zeigt.
 
 **10b – `licks.html`**
-1. **`bassFunk16`-Text:**
+1. **`bassFunk16`-Text** (Z. ~378):
    - *Befund:* „alles andere fällt auf ‚e‘ und ‚a‘“ stimmt nicht. Die Töne
      liegen auf 1, 1-a, 2, 2-a, 3-e, 4, 4-und, 4-a.
    - *Umsetzung:* neu: „Kurze Töne, viel Luft dazwischen. Die Eins sitzt,
@@ -462,24 +492,24 @@ Ein Commit je Datei ist erlaubt (10a–10d), jeweils mit SW_VERSION-Erhöhung.
      Eins.“ Gegen `notes` nachzählen.
 2. **Disco-Bass:**
    - *Befund:* `bassOktav` („Oktav-Disco-Bass“) läuft über die neutrale
-     Begleitung mit Bassdrum auf 1 und 3 (`GROOVE_KICK`). Disco hat
+     Begleitung mit Bassdrum auf 1 und 3 (`GROOVE_KICK`, Z. ~901). Disco hat
      Four-on-the-floor.
    - *Umsetzung:* optionales Lick-Feld `kick: 'four'` → Bassdrum auf allen
      vier Vierteln in `grooveFor`, gesetzt nur bei `bassOktav`. Test in
      `selfCheck`.
 
 **10c – `einsingen.html` (Texte, IDs bleiben)**
-- `zwerchfell`:
+- `zwerchfell` (Z. ~687):
   - Anzeigename „Zwerchfell-Staccato“ → „Atem-Staccato“.
   - `how` „der Impuls kommt aus dem Bauch“ → „der Impuls kommt aus der
     Körpermitte“.
   - Begründung im Kommentar: Das Zwerchfell ist ein Einatemmuskel, den
     Impuls geben die Bauchmuskeln. Der vorhandene Hilfetext („Bauch federt
     nach innen“) stimmt und bleibt.
-- `zwischenatmung`: „Die Luft fällt in den Bauch, weil er am Phrasenende
+- `zwischenatmung` (Z. ~674): „Die Luft fällt in den Bauch, weil er am Phrasenende
   loslässt“ → „Der Bauch lässt am Phrasenende los, und die Luft strömt von
   selbst ein.“
-- `haltung`: „drei ruhige Atemzüge in Bauch und Flanken“ → „drei ruhige
+- `haltung` (Z. ~642): „drei ruhige Atemzüge in Bauch und Flanken“ → „drei ruhige
   Atemzüge – Bauch und Flanken weiten sich dabei“.
 - Weitere Stellen mit derselben Vorstellung („Luft in den Bauch“) per grep
   suchen und gleich behandeln; im Bericht auflisten.
@@ -488,7 +518,7 @@ Ein Commit je Datei ist erlaubt (10a–10d), jeweils mit SW_VERSION-Erhöhung.
 - *Befund:* Das Klavier beschriftet mit festem Do (Do = C, Si = H), alle
   anderen Tools mit beweglichem do (do = Grundton). Für Laien ist das
   verwirrend.
-- *Umsetzung:* Den Knopf „Do Re Mi (fest)“ mit einem `title` versehen und
+- *Umsetzung:* Den Knopf „Do Re Mi (fest)“ (Z. ~103) mit einem `title` versehen und
   beim ersten Einschalten einmal einen kurzen Hinweis zeigen: „Hier ist Do
   immer C. In den Übungen ist „do“ der Grundton der Tonart.“ Keine neue
   Beschriftungsart.
@@ -503,18 +533,31 @@ außerdem ein klassisches Warm-up für Popchöre und lässt sich direkt in die
 Probe übertragen.
 
 **Einbindung.**
-- Neuer Rhythmus-Modus mit ID `body`, Anzeigename „Körper“, angehängt an
-  `MODES` (bestehende IDs bleiben).
-- `MODE_TEXT`: „Puls im Fuß, Rhythmus in den Händen“; Icon wie die anderen
-  Modi.
+- **Vorbild ist „Einsatz finden“** (`downbeat`, im Redesign in den
+  Rhythmus-Bereich umgehängt):
+  - eigene Zeile in der Rhythmus-Übersicht (`rhythmHubHtml`) und eigene
+    Ansicht (`views.rhythm`, Z. ~4309),
+  - Gerüst aus Stufen-Karte, Phasenleiste (Hören · Du · Ergebnis), Bühne und
+    Klatschfläche in der Fußleiste,
+  - Auflösung Takt für Takt nach dem Lauf,
+  - Hilfen im Blatt „Hilfen“, Eingabe (Tippen/Mikrofon) und Latenz wie dort.
+
+  Den Code von `downbeat` (`DOWNBEAT_LEVELS` Z. ~5074, `makeDownbeatTask`,
+  `judgeDownbeat`, `renderDownbeatDock` Z. ~6404) vorher vollständig lesen
+  und Bausteine wiederverwenden statt neu bauen.
+- Modus-ID `body`, Anzeigename „Körper“, Kurztext in `MODE_TEXT`: „Puls im
+  Fuß, Rhythmus in den Händen“, Icon in `MODE_ICONS`.
 - Stufen über die bestehende Stufen-Mechanik (Vorschlag, nie automatischer
-  Wechsel).
-- Fortschritt über die bestehende Meldung des Rhythmus-Bereichs. **Keine**
-  neuen Fortschrittsbereiche in `app.js`. Prüfen, ob der Ring der
-  Rhythmus-Kachel (`practiceTileState`) den neuen Modus mitteln würde: Ein
-  neuer Modus auf Stufe 1 darf den Ring nicht sichtbar senken. Er zählt erst
-  mit, wenn er einmal gespielt wurde, sonst bleibt er ganz draußen;
-  Entscheidung im Bericht nennen.
+  Wechsel), sechs Stufen.
+- Fortschritt: neuer Fortschrittsbereich `body` in `app.js`
+  (`PROGRESS_AREAS`), in der Gruppe `rhythm` wie `downbeat`
+  (`PROGRESS_GROUPS`, app.js Z. ~23102–23109). Prüfen, wie der Ring der
+  Rhythmus-Kachel die Gruppe mittelt: Ein neuer Bereich, der noch nie
+  gespielt wurde, darf den Ring nicht senken. Er zählt erst mit, wenn er
+  einmal gespielt wurde. Fügt `downbeat` sich schon so ein, genauso machen;
+  sonst die Regel ergänzen und im Bericht nennen. Die Selbsttests in `app.js`
+  zu `PROGRESS_AREAS`/`PROGRESS_GROUPS` erweitern. Texte, die in `app.js`
+  sichtbar werden, über `strings.js` in DE, EN und PL.
 - Material nur aus geschafften Kurs-Lektionen ohne Shuffle und Auftakt
   (wie `holdPool`, der Grundschlag ist immer dabei).
 
@@ -522,9 +565,10 @@ Probe übertragen.
 - Ablauf: Man steppt die Viertel auf der Stelle (von einem Fuß auf den
   anderen) und klatscht dazu einen gelernten Rhythmus, 4 bzw. 8 Takte am
   Stück.
-- Bewertet wird nur das Klatschen (Tippen oder Mikrofon), und zwar mit
-  `judgeHold` im absoluten Raster, also ohne Neuausrichtung. `judgeHold`
-  selbst nicht ändern.
+- Bewertet wird nur das Klatschen (Tippen oder Mikrofon), und zwar im
+  absoluten Raster, also ohne Neuausrichtung, mit `judgeHold`. `judgeHold`
+  selbst nicht ändern. Die Rückmeldung nennt das Timing als Tendenz in Worten
+  (früh / genau / spät), ohne ms, wie im Redesign.
 - Der Step bleibt bewusst unbewertet. Hinweistext: „Der Fuß ist dein
   Metronom – er wird nicht bewertet, aber er darf nie stehen bleiben.“
 
@@ -534,8 +578,8 @@ Probe übertragen.
 | 2 | nur noch die Fuß-Bassdrum | 8 Takte |
 | 3 | 2 Takte Fuß-Bassdrum, danach still: nur der eigene Step hält den Puls | 8 Takte |
 
-- Vorher einmal hören: Die App spielt den Rhythmus mit Fuß-Bassdrum vor.
-  Die Klänge kommen aus `engine.drum('kick' | 'snare' | 'hat' | 'rim')` und
+- Vorher einmal hören (Phase „Hören“): Die App spielt den Rhythmus mit
+  Fuß-Bassdrum vor. Die Klänge kommen aus `engine.drum('kick' | 'snare' | 'hat' | 'rim')` und
   `engine.clap`.
 
 **11b – Body-Percussion in Schichten (Stufen 4–6).**
@@ -565,9 +609,11 @@ Probe übertragen.
 
 - **Probenmodus** als Schalter: Alle vier Schichten laufen in Schleife, jede
   Schicht ist einer Chorstimme zugeordnet (Bass stampft, Tenor patscht, Alt
-  klatscht, Sopran schnipst; per Antippen änderbar). Tempo ist einstellbar,
-  es gibt keine Bewertung und kein Mikrofon. Die Anzeige ist groß genug
-  für einen Beamer. Gedacht für den Chorleiter in der Probe.
+  klatscht, Sopran schnipst; per Antippen änderbar). Tempo ist über die
+  vorhandene Tempo-Bedienung einstellbar (wie bei `downbeat`), es gibt keine
+  Bewertung und kein Mikrofon. Die Anzeige in der Bühne zeigt je Stimme groß
+  ihre Schicht, lesbar auf einem Beamer. Gedacht für den Chorleiter in der
+  Probe.
 
 **11c – Sprechen und steppen (optional, nur wenn 11a/11b sauber sind).**
 - Ablauf: Kurze **selbst ausgedachte** Textzeilen werden auf einen Rhythmus
@@ -588,50 +634,50 @@ Probe übertragen.
   4 bzw. 8 Takten, die Ansage einen Takt vorher.
 - Bewertung: Die eigene Schicht ergibt die erwarteten Soll-Zeitpunkte für
   `judgeHold`. Mit Mikrofon werden Stampfen/Patschen nicht gewertet.
-- Ring: Ein frischer Stand mit Modus `body` auf Stufe 1 ändert den Ring der
+- Ring: Ein frischer Stand ohne gespielten `body` ändert den Ring der
   Rhythmus-Kachel nicht.
+- Einbindung: Zeile in der Rhythmus-Übersicht vorhanden, Modusname, Icon und
+  Kurztext gesetzt (analog zum Test „Einsatz: nicht im Rhythmus-Bereich
+  eingebunden“, Z. ~14498). Gerüst-Positionen wie bei `downbeat`.
 
-### Paket 12 – Auftakte und Einsätze nach Pausen (`uebe-lab.html`)
+### Paket 12 – Einsätze nach Pausen (`uebe-lab.html`)
 
 **Warum.** Im Chor wackelt es fast nie mitten in der Phrase, sondern am
-Einsatz nach einer Pause. Auftakt-Lektionen gibt es, aber sie sind vom
-Durchhalten ausgeschlossen (`holdable = (l) => !l.pickup`, Z. ~1212). Geübt
-wird der Auftakt also nur einmal am Anfang, nie als wiederkehrender Einsatz.
+Einsatz nach einer Pause: Die Band spielt weiter, der Chor muss pünktlich
+wieder rein, oft mit einem Auftakt vor der Eins.
 
-**12a – Auftakt-Lektionen durchhalten (Klatsch-Grooves).**
-1. `holdable` aufteilen:
-   - `duoable` = `!l.pickup` für „Zweistimmig“: `holdRound`, `holdPool` und
-     der Knopf „Gegen 2. Stimme halten“ (Z. ~1250, ~1779, ~2980). Dort
-     ändert sich nichts.
-   - `holdable` gilt künftig auch für Auftakt-Lektionen und steuert nur noch
-     die Klatsch-Grooves (Z. ~7430, ~7651, ~7658, ~7681, ~7691, ~7696,
-     ~7812).
-   - Jede Stelle einzeln prüfen und im Bericht auflisten.
-2. Für Auftakt-Lektionen entsteht beim Durchhalten eine **Einsatz-Schleife**:
-   - Die Phrase (Auftakt + Takte) ergibt dank Volltakt-Regel ganze Takte.
-   - Danach folgt **ein Pausentakt**, dann wieder die Phrase mit Auftakt,
-     bis die Taktzahl der Stufe (4/8/16, `HOLD_STAGES`) erreicht ist.
-   - Die Snare-/Stille-Planung (`holdPlan`) läuft über alle Takte wie
-     bisher.
-   - `judgeHold` bekommt nur die Soll-Zeitpunkte und wird **nicht**
-     geändert. Es steht wortgleich in `licks.html`.
-3. Auswertung der **Einsätze**: Die erste Note jeder Wiederholung (der
-   Auftakt) wird gesondert ausgewiesen, zum Beispiel „Einsätze: 3 von 4
-   pünktlich, im Schnitt 40 ms zu spät“. Die Rückmeldung sagt bei
-   systematisch spätem Einsatz: „Atme in der Pause schon vor dem Auftakt
-   ein.“
-4. Gespeicherte Stände: `g.hold` war für Auftakt-Lektionen immer 0, das
-   bleibt gültig. Prüfen, dass das Laden alter Stände nichts verliert
-   (Test).
+**Schon erledigt (Redesign, `3413ae5`):** Auftakt-Lektionen lassen sich in
+den Klatsch-Grooves durchhalten; jede Wiederholung beginnt wieder mit dem
+Auftakt. Daran nichts ändern. **Abgrenzung zu „Einsatz finden“**
+(`downbeat`): Dort sucht man die Eins in einem eingeblendeten Groove. Hier
+weiß man, wo die Eins ist, und übt den pünktlichen Wiedereinstieg nach
+einer Pause.
 
-**12b – Neuer Modus „Einsätze“.**
-- Neuer Rhythmus-Modus mit ID `entries`, Anzeigename „Einsätze“.
-  `MODE_TEXT`: „Nach der Pause pünktlich wieder rein“. Stufen über die
-  bestehende Mechanik; für den Ring gilt dieselbe Regel wie in Paket 11.
+**12a – Einsätze in den Klatsch-Grooves sichtbar machen (klein).**
+- Für Auftakt-Lektionen nach dem Durchhalten-Lauf eine zusätzliche Zeile im
+  Ergebnis: „Einsätze: 3 von 4 pünktlich“, dazu die Tendenz in Worten
+  (früh / genau / spät).
+- Ist die Tendenz „spät“, folgt der Tipp: „Atme in der Pause schon vor dem
+  Auftakt ein.“
+- Gemessen wird die erste Note jeder Wiederholung. `judgeHold` liefert je
+  Takt nur Mittelwerte (`bars: [{ expected, hit, meanOffset, … }]`). Die
+  Einsätze daher in einer kleinen eigenen Funktion aus den Soll-Zeitpunkten
+  und den Tipps zuordnen, mit demselben Fenster und derselben Latenz.
+  `judgeHold` selbst nicht ändern; es steht wortgleich in `licks.html`.
+
+**12b – Neuer Modus „Wieder einsetzen“.**
+- **Einbindung wie in Paket 11** (Vorbild `downbeat`): eigene Zeile in der
+  Rhythmus-Übersicht und eigene Ansicht, dazu Gerüst, Klatschfläche, Hilfen
+  und Auflösung Takt für Takt.
+  - Modus-ID `entries`, Anzeigename „Wieder einsetzen“ (nicht „Einsätze“,
+    um die Verwechslung mit „Einsatz finden“ zu vermeiden).
+  - Kurztext: „Nach der Pause pünktlich wieder rein“.
+  - Fortschrittsbereich `entries` in der Gruppe `rhythm`, Ring-Regel wie in
+    Paket 11.
 - Ablauf einer Runde:
   - Die App spielt einen Groove über 8–16 Takte, darin wiederholt sich eine
     kurze Phrase mit Pausen dazwischen.
-  - Erst einmal vorhören, dann selbst.
+  - Erst einmal vorhören (Phase „Hören“), dann selbst (Phase „Du“).
   - Eingabe wie im Rhythmus-Bereich: Tippen, Klatschen übers Mikrofon oder
     ein gesungenes/gesprochenes „da“ (dieselbe Einsatzerkennung).
 - Einsatz-Katalog, jeweils als kurze Phrase von 1–2 Takten:
@@ -661,38 +707,40 @@ wird der Auftakt also nur einmal am Anfang, nie als wiederkehrender Einsatz.
 - **Atem-Marke**:
   - Im Vorspiel atmet die App hörbar: ein leises, kurzes Rauschen über
     `engine.burst` (Tiefpass, ca. 250 ms), einen Schlag vor dem Auftakt.
-  - In Stufe 1 und 2 zeigt die Fläche beim eigenen Durchgang zusätzlich
-    einen Schlag vor dem Einsatz das Wort „Atmen“, ohne Laufmarke und ohne
-    Noten. Ab Stufe 3 nicht mehr.
+  - In Stufe 1 und 2 zeigt die Bühne beim eigenen Durchgang zusätzlich einen
+    Schlag vor dem Einsatz das Wort „Atmen“, ohne Laufmarke und ohne Noten.
+    Ab Stufe 3 nicht mehr.
   - Bei `prefers-reduced-motion` nur Text, keine Animation.
 - **Bewertung**:
   - Je Einsatz die Abweichung der ersten Note.
-  - Trefferfenster wie im Rhythmus-Training (0,45 × kleinster Notenabstand,
-    35–130 ms), mit der gespeicherten Latenzkalibrierung.
+  - Trefferfenster `toleranceFor` wie im Rhythmus-Bereich (Z. ~2738), mit der
+    gespeicherten Latenzkalibrierung.
   - Die übrigen Noten der Phrase zählen nur als „mitgeklatscht ja/nein“.
   - Runde geschafft, wenn mindestens 80 % der Einsätze im Fenster liegen.
-  - Rückmeldung getrennt nach „zu früh / pünktlich / zu spät“ mit
-    Durchschnitt in ms und einem Satz Tipp (zu spät → früher einatmen; zu
-    früh → „Die Pause ganz aussitzen, innerlich weiterzählen“).
+- **Rückmeldung** (im Ergebnis, nicht während „Du“):
+  - getrennt nach „zu früh / pünktlich / zu spät“, als Tendenz in Worten
+    ohne ms (Redesign),
+  - dazu ein Satz Tipp: zu spät → früher einatmen; zu früh → „Die Pause
+    ganz aussitzen, innerlich weiterzählen“,
+  - Auflösung Takt für Takt wie bei `downbeat`, mit Einsatz grün bzw.
+    gestrichelt rot.
 - **Gespeicherter Stand**: Stufe und eine kleine Fehlerstatistik je
   Einsatz-ID (für gewichtetes Ziehen wie `pickInterval`). Neue Felder
   optional, `restore` übernimmt nur gültige Werte.
 
 **Tests.**
 - 12a:
-  - Für jede Auftakt-Lektion ergibt die Einsatz-Schleife ganze Takte, und die
-    Auftakt-Zeitpunkte liegen je Wiederholung um genau
-    (Phrasenlänge + 1 Takt) versetzt.
-  - Alter Stand mit `hold: 0` für `auftaktUnd` lädt unverändert.
-  - Zweistimmig bietet weiterhin keine Auftakt-Lektion an.
+  - Für jede Auftakt-Lektion wird je Wiederholung genau ein Einsatz gezählt.
+  - Simulierte Tipper mit +60 ms ergeben die Tendenz „spät“ und den Atem-Tipp.
 - 12b:
   - Jede Einsatz-ID ergibt die richtigen Ticks, z. B. `a4` = Tick 45 im
     vorigen Takt, `drei8` = Ticks 30/36/42 im vorigen Takt.
   - Die Pausenlänge liegt im Bereich der Stufe.
   - Stufe 6: Der Takt vor dem Einsatz ist still.
-  - Simulierte Tipper mit +60 ms ergeben „zu spät, im Schnitt 60 ms“.
-- `README.md`: neue Modi `body` und `entries` in der Dateiübersicht von
-  `uebe-lab.html` ergänzen.
+  - Simulierte Tipper mit +60 ms ergeben „zu spät“.
+  - Einbindung und Gerüst wie in Paket 11 geprüft.
+- `README.md`: die neuen Übungen „Körper“ und „Wieder einsetzen“ in der
+  Dateiübersicht von `uebe-lab.html` ergänzen.
 
 ---
 
@@ -701,30 +749,30 @@ wird der Auftakt also nur einmal am Anfang, nie als wiederkehrender Einsatz.
 Paket zurücksetzen (`git restore`/`git reset` nur auf eigene, ungepushte
 Änderungen), im Bericht mit Grund vermerken, mit dem nächsten Paket
 weitermachen. Alle Pakete sind unabhängig voneinander. Einzige Ausnahme:
-Paket 9 setzt Paket 8 voraus (gemeinsamer Tool-Stand). Paket 12b setzt
-Paket 12a voraus; Paket 11 ist unabhängig. Die Pakete 11 und 12 sind
-Erweiterungen: erst nach den Korrekturen 1–8 und 10 angehen.
+Paket 9 setzt Paket 8 voraus (gemeinsamer Tool-Stand). 12a und 12b sind
+unabhängig voneinander. Die Pakete 11 und 12 sind Erweiterungen: erst nach
+den Korrekturen 1–8 und 10 angehen.
 
 ## 5. Abschluss
 
 `BERICHT-UEBE-KORREKTUREN.md` anlegen, Aufbau wie `BERICHT-UMSETZUNG.md`
 (Paket / Status / Commit / SW_VERSION / Tests mit Zahlen, Abweichungen,
-Beobachtungen). PR gegen `main` öffnen.
+Beobachtungen). PR gegen die Basis aus Abschnitt 0 öffnen (`main` oder den
+Redesign-Branch).
 
 Unter „Manuell auf echten Geräten prüfen“ mindestens:
 - Intonation Stufe 5/6: Klingt der Fangakkord jetzt schwebungsfrei? Ist
   die Verstimmung der markierten Stimme bei 10–15 Cent noch hörbar?
 - Ton halten: Tenor/Bass ohne Stimmprofil, eine Oktave tiefer gesungen –
   wird es jetzt gewertet?
-- Tuner mit Median: reagiert die Nadel noch schnell genug bei Tonwechseln?
+- „Meine Stimme“ mit Median: reagiert die Nadel noch schnell genug bei
+  Tonwechseln?
 - Einsingen „Kurz“ mehrmals starten: kommt der Ruf jetzt nur nach Twang?
-- Licks bei 70 %: läuft die Begleitung sauber mit, stimmt die
-  Verzögerungserkennung?
 - Licks in Sopran-Lage: klingt ein hochoktavierter Bass-Preset noch gut?
 - Körper (11b) mit Mikrofon: werden Klatschen und Schnipsen zuverlässig
   erkannt, während das Handy die anderen Schichten über den Lautsprecher
   spielt?
-- Einsätze (12b): ist das hörbare Atmen im Vorspiel als Atmen erkennbar
+- Wieder einsetzen (12b): ist das hörbare Atmen im Vorspiel als Atmen erkennbar
   oder klingt es wie Rauschen?
 
 Unter „Zu entscheiden“ mindestens:
