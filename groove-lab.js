@@ -1236,7 +1236,9 @@
   const DC_TEMPO_NEAR = 10;
 
   /*
-   * Die Songs — je Stufe ein fester Satz, von Hand komponiert und komplett
+   * Die Songs — je Stufe ein fester Satz eigener Pop-Kompositionen (für
+   * einen Popchor: Ballade, Eurodance, Punk-Pop, Boyband, Disco, Reggae,
+   * Soul, Rock …; keine echten Titel oder Melodien), von Hand komponiert und komplett
    * mit den Reitern nachbaubar (Selbsttest „Nachbau“ in app.js):
    *  - Raster als Zeichenketten, eine Stelle je Sechzehntel: x = Schlag,
    *    g = Ghost-Note (nur Snare), . = Pause. Bass: 1 / 5 / 8 = Grundton,
@@ -1248,100 +1250,180 @@
    *  - chords: Stufen der Tonart (0 = I) wie im Akkord-Editor, dazu
    *    Septimen/Dominante; melody: Takte wie im Melodie-Editor
    *    ([Schritt, Stufe über dem Akkordgrundton, Länge]); sound: ein Preset.
+   *    Melodien: ein Takt je Akkordtakt, in Tonart-Stufen gedacht und je
+   *    Takt um den gefalteten Akkordgrundton (foldDegree) zurückgerechnet —
+   *    sonst springt die Linie bei IV→V um eine Septime.
    * Reihenfolge innerhalb einer Stufe = vom Einfachen zum Schweren. Ids nie
    * ändern — gespeichert wird die Id (deconstruct.song, deconstruct.solved).
    */
   const DC_SONGS = [
-    // --- Leicht: 4/4, Kick/Snare/Hi-Hat, Bass meist auf dem Grundton.
-    //     Tonart und Akkordfolge sind vorgegeben (die Akkorde klingen nicht,
-    //     der Bass folgt ihnen trotzdem).
-    { id: 'e1', level: 'easy', name: 'First Steps', meter: '4/4', bpm: 84, key: 0, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+    // --- Leicht: Tempo & Takt, Beat, Bass (4/4; Akkordfolge vorgegeben, klingt nicht).
+    // Power-Pop-Ballade (Stadion-Feuerzeug-Moment): Grundbeat Kick 1+3, Snare 2+4, Achtel-Hi-Hat, Bass halbe Noten auf dem Grundton
+    { id: 'e1', level: 'easy', name: 'Lighthouse Hands', meter: '4/4', bpm: 72, key: 7, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
       kick: 'x.......x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
       bass: '1.......1.......' },
-    { id: 'e2', level: 'easy', name: 'Lazy Bones', meter: '4/4', bpm: 76, key: 10, mode: 'major', chords: { degrees: [0, 3] },
-      kick: 'x.....x...x.....', snare: '....x.......x...', hat: '..x...x...x...x.',
-      bass: '1.....1...1.....' },
-    { id: 'e3', level: 'easy', name: 'Four on the Floor', meter: '4/4', bpm: 120, key: 7, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
-      kick: 'x...x...x...x...', clap: '....x.......x...', hat: '..x...x...x...x.',
+    // 90er-Eurodance: Kick auf jeder Viertel, Clap statt Snare, offene Hi-Hat und Bass auf der Offbeat-Achtel
+    { id: 'e2', level: 'easy', name: 'Neon Kilometer', meter: '4/4', bpm: 136, key: 9, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
+      kick: 'x...x...x...x...', clap: '....x.......x...', open: '..x...x...x...x.',
       bass: '..1...1...1...1.' },
-    { id: 'e4', level: 'easy', name: 'Backbeat Road', meter: '4/4', bpm: 92, key: 2, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
-      kick: 'x.....x.x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
-      bass: '1.....1.5.......' },
-    { id: 'e5', level: 'easy', name: 'Eighth Drive', meter: '4/4', bpm: 132, key: 9, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
-      kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
-      bass: '1.1.1.1.1.1.5.5.' },
-    { id: 'e6', level: 'easy', name: 'Slow Sunday', meter: '4/4', bpm: 68, key: 5, mode: 'major', chords: { degrees: [0, 3, 4, 0], dominant: true },
-      kick: 'x......x........', snare: '........x.......', hat: 'x...x...x...x...',
-      bass: '1......5........' },
-    { id: 'e7', level: 'easy', name: 'Open Door', meter: '4/4', bpm: 108, key: 4, mode: 'major', chords: { degrees: [3, 4, 2, 5] },
-      kick: 'x.......x.x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x...', open: '..............x.',
-      bass: '1.......1.5.....' },
-    { id: 'e8', level: 'easy', name: 'Clap Along', meter: '4/4', bpm: 116, key: 2, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
-      kick: 'x..x....x..x....', clap: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
-      bass: '1..1....1..5....' },
-
-    // --- Mittel: 4/4 mit Ghost-Notes, Clap, offener Hi-Hat, Swing; eine
-    //     eigene Basslinie und die Akkordfolge (Dur oder Moll) sind gesucht.
-    { id: 'm1', level: 'medium', name: 'Disco Ball', meter: '4/4', bpm: 118, key: 9, mode: 'major', chords: { degrees: [0, 5, 1, 4] },
-      kick: 'x...x...x...x...', clap: '....x.......x...', hat: '..x...x...x.....', open: '..............x.',
-      bass: '1.8.1.8.1.8.1.8.' },
-    { id: 'm2', level: 'medium', name: 'Ghost Town', meter: '4/4', bpm: 90, key: 4, mode: 'minor', chords: { degrees: [0, 3, 4, 0], dominant: true },
-      kick: 'x.....x...x.....', snare: '....x..g....x..g', hat: 'x.x.x.x.x.x.x.x.',
-      bass: '1.....1...5...8.' },
-    { id: 'm3', level: 'medium', name: 'Reggae Sky', meter: '4/4', bpm: 78, key: 1, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
-      kick: '........x.......', snare: '........x.......', hat: '..x...x...x...x.',
-      bass: '1.....1.5.....5.' },
-    { id: 'm4', level: 'medium', name: 'Rainy Window', meter: '4/4', bpm: 74, key: 0, mode: 'minor', chords: { degrees: [0, 5, 3, 4] },
-      kick: 'x.......x.x.....', snare: '....x.......x...', hat: 'x.x.x.xxx.x.x.xx',
-      bass: '1.......1.5...1.' },
-    { id: 'm5', level: 'medium', name: 'Half Moon', meter: '4/4', bpm: 84, key: 7, mode: 'major', chords: { degrees: [5, 3, 0, 4] },
-      kick: 'x......x..x.....', snare: '........x.....g.', hat: 'x.x.x.x.x.x.x.x.',
-      bass: '1......1..5.....' },
-    { id: 'm6', level: 'medium', name: 'Funk Window', meter: '4/4', bpm: 106, key: 3, mode: 'major', chords: { degrees: [0, 3], sevenths: true },
-      kick: 'x..x..x...x..x..', snare: '....x..g.g..x...', hat: 'x.x.x.x.x.x.x.x.',
-      bass: '1..1..5...1..8..' },
-    { id: 'm7', level: 'medium', name: 'Swing Street', meter: '4/4', bpm: 112, swing: .5, key: 5, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true, dominant: true },
-      kick: 'x.....x...x.....', snare: '....x.......x...', hat: 'x.xxx.xxx.xxx.xx',
+    // Deutscher Fun-Punk / Punk-Pop: schnell, Kick-Doppelschläge, durchgehende Achtel im Bass
+    { id: 'e3', level: 'easy', name: 'Kaputtes Fahrrad', meter: '4/4', bpm: 168, key: 4, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
+      kick: 'x.x.....x.x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.1.1.1.1.1.1.1.' },
+    // Motown-/Soul-Pop: Snare auf allen vier Vierteln, Bass in Vierteln Grundton–Quinte–Oktave–Quinte
+    { id: 'e4', level: 'easy', name: 'Sunday Stomp', meter: '4/4', bpm: 112, key: 5, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+      kick: 'x.......x.....x.', snare: 'x...x...x...x...', hat: '..x...x...x...x.',
       bass: '1...5...8...5...' },
-    { id: 'm8', level: 'medium', name: 'Midnight Trap', meter: '4/4', bpm: 72, key: 11, mode: 'minor', chords: { degrees: [0, 6, 5, 4], dominant: true },
-      kick: 'x.....x......x..', clap: '........x.......', hat: 'xxx.x.x.xxx.x.x.', open: '...............x',
-      bass: '1.....1......5..' },
+    // 90er-Boyband-/R&B-Midtempo: synkopierte Kick, Sechzehntel-Hi-Hat, Bass mit Quinte
+    { id: 'e5', level: 'easy', name: 'Pager Love', meter: '4/4', bpm: 88, key: 10, mode: 'major', chords: { degrees: [0, 5, 1, 4] },
+      kick: 'x......x..x.....', snare: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx',
+      bass: '1......1..5.....' },
+    // Indie-Disco / Synth-Pop (isländisch-skandinavischer Feel-Good-Pop): Four-on-the-floor, Snare+Clap gedoppelt, offene Offbeat-Hat, Oktav-Bass
+    { id: 'e6', level: 'easy', name: 'Polaroid Summer', meter: '4/4', bpm: 122, key: 2, mode: 'major', chords: { degrees: [0, 2, 5, 3] },
+      kick: 'x...x...x...x...', snare: '....x.......x...', clap: '....x.......x...', hat: 'x...x...x...x...', open: '..x...x...x...x.',
+      bass: '1.8.1.8.1.8.1.8.' },
+    // Reggae-Pop („One Drop“): die Eins bleibt leer, Kick und Snare zusammen auf der Drei
+    { id: 'e7', level: 'easy', name: 'Island Postcard', meter: '4/4', bpm: 78, key: 8, mode: 'major', chords: { degrees: [0, 3, 0, 4] },
+      kick: '........x.......', snare: '........x.......', hat: '..x...x...x...x.',
+      bass: '1.....1.5.......' },
+    // Pop-Rap / Hip-Hop-Pop mit Sechzehntel-Swing (Tempo-Element: Swing mitbestimmen)
+    { id: 'e8', level: 'easy', name: 'Rooftop Cypher', meter: '4/4', bpm: 90, swing: .4, key: 0, mode: 'minor', chords: { degrees: [0, 3, 5, 4] },
+      kick: 'x......x.xx.....', snare: '....x.......x...', hat: 'x.xxx.xxx.xxx.xx',
+      bass: '1......1.5......' },
+    // Funk-Pop: Sechzehntel-Kick-Synkopen, offene Hat vor der Eins, Bass mit Grundton, Quinte und Oktave
+    { id: 'e9', level: 'easy', name: 'Elastic Monday', meter: '4/4', bpm: 108, key: 3, mode: 'major', chords: { degrees: [0, 3] },
+      kick: 'x..x..x...x..x..', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '..............x.',
+      bass: '1..1..5...8..5..' },
 
-    // --- Schwer: auch 3/4 und 6/8, Kirchentonarten, dazu Melodie und Klang.
-    { id: 'h1', level: 'hard', name: 'Lantern Waltz', meter: '3/4', bpm: 126, key: 2, mode: 'major', chords: { degrees: [0, 3, 4, 0], dominant: true },
-      kick: 'x...........', snare: '....g...g...', hat: 'x...x...x...',
+    // --- Mittel: zusätzlich die Akkordfolge als Funktionen, Dur/Moll (4/4).
+    // Pop-Rock-Mitsinghymne: die bekannteste Popfolge I–V–vi–IV, jetzt hörbar
+    { id: 'm1', level: 'medium', name: 'Paper Crown', meter: '4/4', bpm: 126, key: 2, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+      kick: 'x.....x.x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x...', open: '..............x.',
+      bass: '1.....1.5.......' },
+    // Moll-Power-Ballade: i–VI–III–VII, Ghost-Notes auf der Snare
+    { id: 'm2', level: 'medium', name: 'Ashes and Ivory', meter: '4/4', bpm: 74, key: 4, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
+      kick: 'x.......xx......', snare: '....x..g....x..g', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.......1.5.....' },
+    // 50er-Doo-Wop/Soul-Ballade mit Swing: die „Ice-Cream“-Folge I–vi–IV–V
+    { id: 'm3', level: 'medium', name: 'Milkshake Moon', meter: '4/4', bpm: 64, swing: .5, key: 0, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+      kick: 'x.......x.....x.', snare: '....x.......x...', hat: 'x.x.x.xxx.x.x.xx',
+      bass: '1.....5.8.....5.' },
+    // 80er-Synth-Pop: beginnt auf vi — klingt nach Moll, ist aber Dur (vi–IV–I–V)
+    { id: 'm4', level: 'medium', name: 'Afterglow Arcade', meter: '4/4', bpm: 118, key: 7, mode: 'major', chords: { degrees: [5, 3, 0, 4] },
+      kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.1.1.1.1.1.8.1.' },
+    // Deutschpop-Ballade: Akkorde wechseln nur alle zwei Takte (I–IV–vi–V)
+    { id: 'm5', level: 'medium', name: 'Rosengarten', meter: '4/4', bpm: 68, key: 3, mode: 'major', chordBars: 2, chords: { degrees: [0, 3, 5, 4] },
+      kick: 'x.........x.....', snare: '....x.......x...', hat: 'x...x...x...x...', open: '..............x.',
+      bass: '1.........1.5...' },
+    // Latin-Pop/Reggaeton (Dembow): Moll mit Dur-Dominante i–VI–iv–V
+    { id: 'm6', level: 'medium', name: 'Fuego Lento', meter: '4/4', bpm: 92, key: 11, mode: 'minor', chords: { degrees: [0, 5, 3, 4], dominant: true },
+      kick: 'x...x...x...x...', snare: '...x..x....x..x.', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.....1.1.....5.' },
+    // Neo-Soul/R&B-Pop: Septakkorde, ii7–V7–Imaj7 mit leichtem Swing
+    { id: 'm7', level: 'medium', name: 'Velvet Elevator', meter: '4/4', bpm: 82, swing: .3, key: 1, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true },
+      kick: 'x..x......x..x..', snare: '....x..g.g..x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1..5....1..8....' },
+    // Gospel-Pop mit Mitklatschen: IV–V–iii–vi — startet nicht auf der Tonika
+    { id: 'm8', level: 'medium', name: 'Second Sunrise', meter: '4/4', bpm: 132, key: 9, mode: 'major', chords: { degrees: [3, 4, 2, 5] },
+      kick: 'x.....x...x.....', snare: '....x.......x..g', clap: '....x.......x...', hat: '..x...x...x...x.',
+      bass: '1.....1...5...8.' },
+    // Pop-Noir / Agenten-Ballade: Moll-Septakkorde mit Dur-Dominante i7–iv7–VImaj7–V7
+    { id: 'm9', level: 'medium', name: 'Midnight Casino', meter: '4/4', bpm: 86, key: 6, mode: 'minor', chords: { degrees: [0, 3, 5, 4], sevenths: true, dominant: true },
+      kick: 'x.....xx..x.....', snare: '....x..g....x.g.', hat: 'x.x.x.x.x.x.x.x.', open: '......x.......x.',
+      bass: '1.....18..5.....' },
+
+    // --- Schwer: alles inkl. Melodie und Klang; auch 3/4, 6/8 und Kirchentonarten.
+    // 90er-Boyband-Ballade, E-Piano, I–V–vi–IV, Melodie in Vierteln/Achteln
+    { id: 'h1', level: 'hard', name: 'Windowsill Promise', meter: '4/4', bpm: 70, key: 4, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+      kick: 'x.......x..x....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '..............x.',
+      bass: '1.......1..5....',
+      melody: [[[0, 2, 4], [4, 4, 4], [8, 4, 6], [14, 5, 2]],
+        [[0, 7, 4], [4, 4, 4], [8, 4, 8]],
+        [[0, 5, 2], [2, 4, 2], [4, 5, 4], [8, 7, 6], [14, 6, 2]],
+        [[0, 0, 4], [4, -1, 4], [8, -3, 8]]],
+      sound: 'Tape Keys' },
+    // Eurodance/Synth-Pop in Moll: Achtel-Hook mit Sägezahn-Lead, i–VI–III–VII
+    { id: 'h2', level: 'hard', name: 'Laser Halo', meter: '4/4', bpm: 128, key: 6, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
+      kick: 'x...x...x...x...', clap: '....x.......x...', hat: 'x...x...x...x...', open: '..x...x...x...x.',
+      bass: '..1...1...8...1.',
+      melody: [[[0, 4, 2], [2, 4, 2], [4, 2, 2], [6, 4, 4], [10, 2, 2], [12, 0, 4]],
+        [[0, 4, 2], [2, 4, 2], [4, 2, 2], [6, 4, 4], [10, 2, 2], [12, 1, 4]],
+        [[0, -1, 2], [2, -1, 2], [4, -3, 2], [6, -1, 4], [10, 0, 2], [12, 2, 4]],
+        [[0, 4, 6], [6, 2, 2], [8, 2, 4], [12, 0, 4]]],
+      sound: 'Bright Saw' },
+    // Reggae-Pop (Steppers): Melodie setzt auf der Offbeat-Achtel ein, Dub-Echo
+    { id: 'h3', level: 'hard', name: 'Salt Water Radio', meter: '4/4', bpm: 76, key: 5, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
+      kick: 'x...x...x...x...', snare: '........x.......', hat: '..x...x...x...x.',
+      bass: '1...1.5.1...5...',
+      melody: [[[2, 2, 2], [4, 4, 4], [8, 4, 2], [10, 5, 2], [12, 4, 4]],
+        [[2, 2, 2], [4, 0, 4], [8, -1, 2], [10, 0, 2], [12, 0, 4]],
+        [[2, 4, 2], [4, 7, 4], [8, 9, 2], [10, 7, 2], [12, 4, 4]],
+        [[2, 0, 2], [4, -1, 4], [8, -3, 8]]],
+      sound: 'Dub Chamber' },
+    // Stadion-Rock in Mixolydisch: I–♭VII–IV–I, Orgel, Mitgröl-Hook
+    { id: 'h4', level: 'hard', name: 'Highway Sermon', meter: '4/4', bpm: 132, key: 9, mode: 'mixolydian', chords: { degrees: [0, 6, 3, 0] },
+      kick: 'x.....x.x.....x.', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '......x.........',
+      bass: '1.1.1.1.1.1.5.8.',
+      melody: [[[0, 4, 2], [2, 4, 2], [4, 7, 4], [8, 6, 2], [10, 4, 2], [12, 4, 4]],
+        [[0, 7, 2], [2, 7, 2], [4, 9, 4], [8, 8, 2], [10, 7, 2], [12, 4, 4]],
+        [[0, 2, 4], [4, 4, 4], [8, 2, 4], [12, 0, 4]],
+        [[0, 4, 4], [4, 2, 4], [8, 0, 8]]],
+      sound: 'Vintage Organ' },
+    // Piano-Bar-Mitsinger / Musical-Ballade im 3/4 (Rock-Halftime-Feel, kein Walzer-Humtata)
+    { id: 'h5', level: 'hard', name: 'Bar Stool Philosophy', meter: '3/4', bpm: 144, key: 7, mode: 'major', chords: { degrees: [0, 3, 5, 4] },
+      kick: 'x.....x.....', snare: '........x...', hat: 'x.x.x.x.x.x.',
       bass: '1.......5...',
-      melody: [[[0, 4, 4], [4, 2, 4], [8, 0, 4]], [[0, 2, 8], [8, 4, 4]]], sound: 'Tape Keys' },
-    { id: 'h2', level: 'hard', name: 'Night Bus', meter: '4/4', bpm: 86, key: 5, mode: 'minor', chordBars: 2, chords: { degrees: [0, 5, 3, 4], dominant: true },
-      kick: 'x......x.x......', snare: '....x.......x..g', hat: 'x.x.x...x.x.x.x.', open: '......x.........',
-      bass: '1......1.5......',
-      melody: [[[0, 4, 6], [6, 2, 2], [8, 0, 8]], [[0, 2, 4], [4, 4, 4], [8, 7, 8]], [[0, 4, 4], [4, 5, 2], [6, 4, 2], [8, 2, 8]], [[0, 1, 4], [4, 0, 8]]],
+      melody: [[[0, 4, 4], [4, 7, 4], [8, 9, 4]],
+        [[0, 5, 4], [4, 4, 4], [8, 2, 4]],
+        [[0, 6, 4], [4, 9, 4], [8, 8, 4]],
+        [[0, 9, 8], [8, 7, 4]]],
       sound: 'Soft Brass' },
-    { id: 'h3', level: 'hard', name: 'Celtic Morning', meter: '6/8', bpm: 66, key: 7, mode: 'mixolydian', chords: { degrees: [0, 6, 3, 0] },
-      kick: 'x.....x.....', snare: '......x.....', hat: 'x.x.x.x.x...', open: '..........x.',
+    // Doo-Wop-/Soul-Ballade im 6/8 (Boygroup-Harmonie-Sound), I–vi–IV–V
+    { id: 'h6', level: 'hard', name: 'Jukebox Promise', meter: '6/8', bpm: 52, key: 10, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+      kick: 'x.....x.....', snare: '......x.....', hat: 'x.x.x.x.x.x.',
+      bass: '1...5.1...8.',
+      melody: [[[0, 4, 6], [6, 7, 4], [10, 6, 2]],
+        [[0, 7, 6], [6, 6, 2], [8, 4, 4]],
+        [[0, 0, 4], [4, 1, 2], [6, 2, 4], [10, 4, 2]],
+        [[0, 9, 6], [6, 7, 6]]],
+      sound: 'Velvet Choir' },
+    // Disco-Funk in Dorisch: Moll-Vamp i7–IV7 (Dur-IV!), Sechzehntel-Synkopen, Pluck-Synth
+    { id: 'h7', level: 'hard', name: 'Golden Hour Funk', meter: '4/4', bpm: 108, swing: .25, key: 9, mode: 'dorian', chordBars: 2, chords: { degrees: [0, 3], sevenths: true },
+      kick: 'x...x...x...x...', snare: '....x..g....x.g.', hat: 'xxxxxxxxxxxxxxxx', open: '......x.......x.',
+      bass: '1..8..1.1.8..5..',
+      melody: [[[0, 4, 2], [3, 7, 1], [4, 6, 2], [6, 4, 2], [10, 2, 2], [12, 4, 4]],
+        [[0, 6, 2], [2, 7, 2], [4, 6, 2], [6, 4, 6], [14, 3, 2]],
+        [[0, 2, 2], [3, 4, 1], [4, 2, 2], [6, 0, 2], [10, 2, 2], [12, 4, 4]],
+        [[0, 5, 2], [2, 4, 2], [4, 2, 2], [6, 0, 6], [14, -1, 2]]],
+      sound: 'Neon Pluck' },
+    // Schlager/Deutschpop in Moll mit Discofox-Beat: i–VII–III–V (Dur-Dominante mit Leitton)
+    { id: 'h8', level: 'hard', name: 'Herzschlag-Hotel', meter: '4/4', bpm: 120, key: 2, mode: 'minor', chords: { degrees: [0, 6, 2, 4], dominant: true },
+      kick: 'x...x...x...x...', snare: '....x.......x...', hat: '..x...x...x...x.', open: '..............x.',
+      bass: '1...8...5...8...',
+      melody: [[[0, 0, 4], [4, 4, 2], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
+        [[0, 4, 4], [4, 4, 2], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
+        [[0, 0, 4], [4, 0, 2], [6, 1, 2], [8, 2, 2], [10, 3, 2], [12, 4, 4]],
+        [[0, 7, 6], [6, 6, 2], [8, 4, 4], [12, 2, 4]]],
+      sound: 'Analog Lead' },
+    // Rock-Oper-/Power-Ballade im 6/8: absteigende Moll-Kadenz i–VII–VI–V mit Dur-Dominante
+    { id: 'h9', level: 'hard', name: 'Crimson Overture', meter: '6/8', bpm: 56, key: 0, mode: 'minor', chords: { degrees: [0, 6, 5, 4], dominant: true },
+      kick: 'x...x.....x.', snare: '......x.....', hat: 'x.x.x.x.x.x.', open: '..........x.',
       bass: '1.....1...5.',
-      melody: [[[0, 0, 2], [2, 2, 2], [4, 4, 2], [6, 4, 4], [10, 2, 2]], [[0, 4, 2], [2, 2, 2], [4, 0, 2], [6, 0, 6]]], sound: 'Neon Pluck' },
-    { id: 'h4', level: 'hard', name: 'Dorian Drift', meter: '4/4', bpm: 94, swing: .3, key: 9, mode: 'dorian', chords: { degrees: [0, 3], sevenths: true },
-      kick: 'x..x......x.....', snare: '....x..g....x...', hat: 'x.xxx.x.x.xxx.x.',
-      bass: '1..1......5..8..',
-      melody: [[[0, 4, 2], [3, 2, 1], [4, 0, 4], [10, 2, 2], [12, 4, 4]], [[0, 6, 4], [6, 4, 2], [8, 2, 8]]], sound: 'Vintage Organ' },
-    { id: 'h5', level: 'hard', name: 'Café Waltz', meter: '3/4', bpm: 150, key: 10, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true, dominant: true },
-      kick: 'x......x....', snare: '........g...', hat: 'x...x..xx...',
-      bass: '1...5...8...',
-      melody: [[[0, 6, 4], [4, 4, 2], [6, 2, 2], [8, 0, 4]], [[0, 2, 4], [4, 1, 4], [8, 0, 4]]], sound: 'Crystal Drops' },
-    { id: 'h6', level: 'hard', name: 'Mixolydian Sunrise', meter: '4/4', bpm: 124, key: 2, mode: 'mixolydian', chords: { degrees: [0, 6, 3] },
-      kick: 'x...x...x...x...', clap: '....x.......x...', hat: '..x...x...x.....', open: '..............x.',
-      bass: '1.8...1.8...5...',
-      melody: [[[0, 0, 2], [2, 0, 2], [4, 2, 2], [6, 4, 4], [12, 2, 4]], [[0, 4, 2], [4, 6, 2], [6, 4, 2], [8, 2, 8]]], sound: 'Bright Saw' },
-    { id: 'h7', level: 'hard', name: 'Lullaby Boat', meter: '6/8', bpm: 52, key: 3, mode: 'major', chordBars: 2, chords: { degrees: [0, 5, 3, 4] },
-      kick: 'x...........', snare: '......g.....', hat: 'x.x.x.x.x.x.',
-      bass: '1.....5.....',
-      melody: [[[0, 4, 4], [4, 2, 2], [6, 0, 6]], [[0, 2, 4], [4, 4, 2], [6, 7, 6]]], sound: 'Breath Glass' },
-    { id: 'h8', level: 'hard', name: 'Broken Clock', meter: '4/4', bpm: 110, key: 1, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
-      kick: 'x.........xx....', snare: '....x..g.g..x..g', hat: 'x.x.x.xxx.x.x.x.',
-      bass: '1.........1.5..8',
-      melody: [[[0, 0, 1], [3, 2, 1], [6, 4, 2], [10, 2, 2]], [[0, 4, 1], [3, 4, 1], [6, 6, 2], [10, 4, 6]],
-        [[0, 0, 1], [3, 2, 1], [6, 4, 2], [10, 2, 2]], [[0, 2, 4], [6, 1, 2], [8, 0, 8]]], sound: 'Dub Chamber' },
+      melody: [[[0, 4, 6], [6, 5, 2], [8, 4, 2], [10, 2, 2]],
+        [[0, 4, 6], [6, 5, 2], [8, 4, 2], [10, 2, 2]],
+        [[0, 4, 6], [6, 2, 2], [8, 4, 2], [10, 7, 2]],
+        [[0, 7, 6], [6, 2, 4], [10, 4, 2]]],
+      sound: 'Airy Choir' },
+    // Neo-Soul/Gospel-R&B: Septakkorde I–vi–ii–V im Swing, Melodie mit Optionstönen
+    { id: 'h10', level: 'hard', name: 'Silk Static', meter: '4/4', bpm: 80, swing: .4, key: 3, mode: 'major', chords: { degrees: [0, 5, 1, 4], sevenths: true },
+      kick: 'x......x..x..x..', snare: '....x..g....x..g', hat: 'x.xxx.x.x.xxx.x.',
+      bass: '1......8..5..1..',
+      melody: [[[0, 4, 2], [2, 6, 4], [6, 4, 2], [8, 2, 6], [14, 1, 2]],
+        [[0, 4, 4], [4, 2, 2], [6, 3, 2], [8, 4, 4], [12, 6, 4]],
+        [[0, 4, 2], [2, 3, 2], [4, 2, 4], [8, 1, 2], [10, 2, 2], [12, 4, 4]],
+        [[0, 7, 6], [6, 6, 2], [8, 4, 8]]],
+      sound: 'Crystal Drops' },
   ];
   const DC_BASS_CHAR = { 1: 0, 5: 4, 8: 7 };
   const dcLevel = (id) => DC_LEVELS.find((l) => l.id === id) || DC_LEVELS[0];

@@ -8,8 +8,10 @@ erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
 
 ## Konzept
 
-- **Original**: einer von festen, von Hand komponierten Songs – je Stufe
-  acht (`DC_SONGS` in `groove-lab.js`, gewählt in der Auswahl). Raster,
+- **Original**: einer von festen, eigens komponierten Pop-Songs für den
+  Popchor – je Stufe 9–10 (`DC_SONGS` in `groove-lab.js`, gewählt in der
+  Auswahl; Ballade, Eurodance, Punk-Pop, Boyband, Disco, Reggae, Soul,
+  Rock-Oper …, keine echten Titel oder Melodien). Raster,
   Basslinie, Tempo, Swing, Tonart, Modus, Akkordfolge (Stufen wie im
   Akkord-Editor), Melodie (Takte wie im Melodie-Editor) und Klang-Preset
   stehen ausgeschrieben im Katalog; `dcBuild(songId)` macht daraus
@@ -25,14 +27,14 @@ erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
   keine Chor-Fähigkeit, gesucht wird relativ (Stufen, Funktionen, Groove).
   Was die Stufe nicht abfragt, steht in „Meine Version“ schon richtig.
 - **Stufen** (Gehörbildung vom Groben ins Feine):
-  - *Leicht*: Tempo & Takt, Beat, Bass. Nur 4/4, Kick/Snare/Hi-Hat, Bass
-    meist auf dem Grundton. Tonart und Akkordfolge sind vorgegeben (die
-    Basslinie folgt ihnen).
-  - *Mittel*: 4/4 mit Ghost-Notes, Clap, offener Hi-Hat und Swing, eine
-    Basslinie mit 1/5/8 (genau das, was das Raster per Antippen kann) und
-    die Akkordfolge samt Dur/Moll.
-  - *Schwer*: auch 3/4 und 6/8, Kirchentonarten, Akkordwechsel teils alle
-    zwei Takte, dazu eine eigene Melodie und der Klang.
+  - *Leicht*: Tempo & Takt, Beat, Bass – „vom Fundament zur Synkope“:
+    Grundbeat, Offbeat-Bass, Motown-Stomp, One-Drop, Swing, Funk-Synkopen.
+    Nur 4/4; Tonart und Akkordfolge vorgegeben (die Basslinie folgt ihnen).
+  - *Mittel*: dazu die Akkordfolge als Funktionen – von I–V–vi–IV über
+    Doo-Wop, vi–IV–I–V und Zwei-Takt-Ballade bis ii–V–I und Moll mit V7.
+  - *Schwer*: der ganze Song mit Melodie und Klang, auch 3/4 und 6/8
+    (Piano-Bar-Mitsinger, Doo-Wop-Soul, Rock-Oper), Mixolydisch/Dorisch.
+    Melodien: ein Takt je Akkordtakt, Mittellage, Sprünge ≤ Sexte.
 
 ## Bedienung
 
