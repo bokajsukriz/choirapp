@@ -639,7 +639,7 @@
         ['Gewicht gleichmäßig auf beiden Füßen, ganz leicht nach vorn.', 6],
         ['Das Brustbein bleibt leicht oben, die Schultern sinken.', 6],
         ['Der Kopf balanciert oben auf der Wirbelsäule, der Nacken ist lang.', 6],
-        ['So stehen bleiben: drei ruhige Atemzüge in Bauch und Flanken.', 12],
+        ['So stehen bleiben: drei ruhige Atemzüge – Bauch und Flanken weiten sich dabei.', 12],
       ],
       help: ['Eine Haltung, in der nichts festgehalten wird: aufrecht, aber nicht steif.',
         'Diese Haltung beim Singen immer wieder kurz prüfen — besonders die Knie und die Schultern.'] },
@@ -671,7 +671,7 @@
     { id: 'zwischenatmung', group: 'atem', name: 'Atmen im Groove', how: 'Eine Takt-Phrase, auf „4-und“ kurz atmen, weiter', icon: 'zwischenatmung', hint: 'no · atmen auf 4-und', bpm: 92, lowStart: 3, top: 16, breath: 2, chain: true,
       notes: [[0, 2], [2, 2], [4, 2], [2, 2], [0, 6]], syllables: rep('no', 5),
       help: ['Eine kurze Phrase, dann nur eine Achtel Zeit zum Atmen – auf „4-und“, direkt vor dem nächsten Einsatz. Jede Runde liegt einen Halbton höher und schließt ohne Pause an.',
-        'Klein und leise atmen, nicht hochziehen: Die Luft fällt in den Bauch, weil er am Phrasenende loslässt. Genau diese Stelle geht im Popsong oft verloren.'] },
+        'Klein und leise atmen, nicht hochziehen: Der Bauch lässt am Phrasenende los, und die Luft strömt von selbst ein. Genau diese Stelle geht im Popsong oft verloren.'] },
     { id: 'lippen', group: 'lockern', name: 'Lippenflattern', how: 'Lippen flattern lassen und dabei summen', icon: 'lippen', hint: 'brrr', bpm: 88, lowStart: 3, top: 16, breath: 8,
       notes: legato5, syllables: rep('brrr', 9),
       help: ['Lippen locker aufeinander, Luft strömen lassen, bis sie flattern — und dabei auf den Tönen summen. Das lockert Lippen und Gesicht und bringt den Atem ohne Druck in Gang.',
@@ -684,7 +684,9 @@
       notes: [[0, 4], [7, 8], [0, 8]], syllables: ['ng', 'ng', 'ng'],
       help: ['Auf „ng“ (wie in „singen“) oder „u“ stufenlos eine Oktave hinauf und wieder hinunter gleiten — wie eine Sirene.',
         'Oben leichter werden statt lauter. Die Übung verbindet Brust- und Kopfstimme; ein Knacks unterwegs ist normal und wird mit der Zeit weicher.'] },
-    { id: 'zwerchfell', group: 'lockern', name: 'Zwerchfell-Staccato', how: 'Kurze „ha“ – der Impuls kommt aus dem Bauch', icon: 'zwerchfell', hint: 'ha ha ha', bpm: 100, lowStart: 3, top: 16,
+    // ID bleibt `zwerchfell`; der Name ist „Atem-Staccato“, weil das Zwerchfell
+    // ein Einatemmuskel ist – den Impuls beim Staccato geben die Bauchmuskeln.
+    { id: 'zwerchfell', group: 'lockern', name: 'Atem-Staccato', how: 'Kurze „ha“ – der Impuls kommt aus der Körpermitte', icon: 'zwerchfell', hint: 'ha ha ha', bpm: 100, lowStart: 3, top: 16,
       notes: [[0, 2, .7], [2, 2, .7], [4, 2, .7], [2, 2, .7], [0, 2, .7]], syllables: rep('ha', 5),
       help: ['Kurze, lockere „ha“: Der Impuls kommt aus der Körpermitte, nicht aus dem Hals. Eine Hand auf den Bauch legen — er federt bei jedem Ton nach innen.',
         'Zwischen den Tönen lässt der Bauch los, die Luft strömt von selbst wieder ein. Nicht hauchen, nicht drücken.'] },
@@ -2819,6 +2821,13 @@
             }
           }
         }
+      }
+      // Atem-Bilder (Übe-Korrekturen 10c): Impuls aus der Körpermitte, Luft „fällt“ nicht in den Bauch.
+      {
+        const z = exById('zwerchfell');
+        if (z.name !== 'Atem-Staccato' || !/Körpermitte/.test(z.how)) errors.push(`zwerchfell: ${z.name} / ${z.how}`);
+        const texts = JSON.stringify(EXERCISES.map((x) => [x.name, x.how, x.help, x.moves]));
+        if (/in den Bauch|Zwerchfell-Staccato|Atemzüge in Bauch/.test(texts)) errors.push('Atem-Bild „Luft in den Bauch“ noch im Text');
       }
       // Männerstimmen am Übergang (Übe-Korrekturen 5): T/B oben 2 Halbtöne
       // tiefer, S/A unverändert (Vergleich mit derselben Übung ohne topLow).
