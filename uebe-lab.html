@@ -9646,6 +9646,16 @@
       k = den ? clamp(num / den, .85, 1.15) : 1;
       a = clamp(my - k * mx, -HOLD_BIAS_MAX, HOLD_BIAS_MAX);
     };
+    // Versatz vorab suchen (bis ±HOLD_BIAS_MAX in 5-ms-Schritten, bei Gleichstand der kleinste):
+    // wer konstant mehr als das Trefferfenster daneben liegt, verlöre sonst schon im ersten Durchgang alles.
+    let bestA = 0, bestN = -1;
+    for (let c = -HOLD_BIAS_MAX; c <= HOLD_BIAS_MAX + 1e-9; c += .005) {
+      a = c;
+      const n = holdAssign(E, tp, predict, tolOf).length;
+      if (n > bestN || (n === bestN && Math.abs(c) < Math.abs(bestA))) { bestN = n; bestA = c; }
+    }
+    a = bestA;
+    for (const x of tp) x.used = false;
     let pairs = [];
     if (free) {
       // Stumm: die Tempo-Linie wächst Schlag für Schlag von vorn mit (sonst landen späte Schläge
@@ -9715,7 +9725,7 @@
       if (firsts.length) {
         const ok = firsts.every((b) => {
           const two = hits.filter((h) => h.bar === b).slice(0, 2);
-          return two.length && !bars[b].err && Math.abs(two.reduce((s, h) => s + h.dev, 0) / two.length) <= HOLD_REENTRY;
+          return two.length && !bars[b].err && Math.abs(two.reduce((s, h) => s + h.dev, 0) / two.length - m0) <= HOLD_REENTRY;
         });
         reentry = ok ? 'good' : 'late';
       }
@@ -9933,6 +9943,9 @@
     // 5b. Mikrofon: ein Zusatzschlag je Takt zählt nicht
     r = judge(8, [...e8, ...Array.from({ length: 8 }, (_, b) => b * barSec + .1)], 2, e8, { mic: true });
     if (!r.held || r.extras !== 0) errors.push(`Vektor 5b: ${r.held}/${r.extras}`);
+    // 6b. durchweg 140 ms früh (mehr als das Trefferfenster) → der Versatz wird vorab gefunden, alles getroffen
+    r = judge(8, e8.map((t) => t - .14), 3);
+    if (r.missed !== 0 || r.extras !== 0 || r.reentry !== 'good' || !r.held) errors.push(`Vektor 6b: ${r.missed} verpasst, ${r.extras} zu viel, ${r.reentry}, ${r.held}`);
     // 6. alles durchweg 70 ms spät → Fenster wandert mit, geschafft; nur Hinweis zum Versatz
     r = judge(8, e8.map((t) => t + .07), 2);
     if (!r.held || r.missed !== 0 || Math.round(r.bias * 1000) !== 70 || !holdBiasNote(r)) errors.push(`Vektor 6: ${r.held}/${r.missed}/${r.bias}`);
