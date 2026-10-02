@@ -13690,6 +13690,9 @@ const PLAYER_TABS = ['loops', 'rec', 'lyrics', 'notes'];
 
 function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
+  // Wer den Notizen-Reiter verlässt, hat nichts mehr zu speichern: Eingaben
+  // sofort sichern, eine leer gelassene Notiz verschwindet still.
+  if (tab !== 'notes' && $('#tab-btn-notes').getAttribute('aria-selected') === 'true') flushNote();
   for (const name of PLAYER_TABS) {
     $(`#tab-btn-${name}`).setAttribute('aria-selected', String(name === tab));
     // Roving tabindex (F-08): nur der ausgewählte Reiter ist per Tab
@@ -13906,8 +13909,8 @@ $('#scores-modal-close').addEventListener('click', closeScoresModal);
 
    Gespeichert wird automatisch, aber nicht bei jedem Tastendruck: eine kurze
    Ruhepause reicht, danach ist es ein Schreibvorgang von wenigen hundert Byte.
-   Die Diskette daneben speichert sofort — für alle, die das lieber selbst in
-   der Hand haben.
+   Es gibt keinen Speichern- oder Löschen-Knopf: wer den Text leert und den
+   Reiter oder Song verlässt, dessen Notiz verschwindet still (flushNote).
    ========================================================================== */
 
 const NOTE_SAVE_DELAY = 900;   // ms Tippruhe, bevor automatisch gespeichert wird
@@ -13990,21 +13993,7 @@ function renderNoteBlock() {
   $('#note-empty').hidden = has;
   $('#note-editor').hidden = !has;
   $('#note-text').value = has ? (playerNote.text || '') : '';
-  setNoteState(has ? 'saved' : 'none');
   setTabHasContent('notes', has);
-}
-
-function setNoteState(kind) {
-  const node = $('#note-state');
-  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
-  if (kind === 'dirty')  { node.textContent = t('notes.stateDirty'); return; }
-  if (kind === 'saving') { node.textContent = t('notes.stateSaving'); return; }
-  if (kind === 'saved') {
-    const at = fmtClock(playerNote?.updatedAt);
-    node.textContent = at ? t('notes.stateSavedAt').replace('{time}', at) : t('notes.stateSaved');
-    return;
-  }
-  node.textContent = '';
 }
 
 function fmtClock(iso) {
@@ -14021,13 +14010,11 @@ $('#btn-note-add').addEventListener('click', () => {
   playerNote = newNote(playerSong);
   notePersistedText.set(playerNote, '');
   renderNoteBlock();
-  setNoteState('none');
   $('#note-text').focus();
 });
 
 $('#note-text').addEventListener('input', () => {
   if (!playerNote) return;
-  setNoteState('dirty');
   clearTimeout(noteSaveTimer);
   noteSaveTimer = setTimeout(() => { saveNote(); }, NOTE_SAVE_DELAY);
 });
@@ -14035,78 +14022,33 @@ $('#note-text').addEventListener('input', () => {
 // Wer das Feld verlässt, will nicht auf die Tippruhe warten.
 $('#note-text').addEventListener('blur', () => { if (noteSaveTimer) saveNote(); });
 
-$('#btn-note-save').addEventListener('click', () => saveNote({ announce: true }));
-
-$('#btn-note-delete').addEventListener('click', async () => {
-  if (!playerNote) return;
-  if ($('#note-text').value.trim()) {
-    const ok = await confirmDialog({
-      title: t('notes.deleteTitle'),
-      text: t('notes.deleteText').replace('{song}', playerSong?.title || t('notes.thisSong')),
-      okLabel: t('common.delete'), danger: true,
-    });
-    if (!ok) return;
-  }
-  await deleteNote();
-});
-
-async function saveNote({ announce = false } = {}) {
+async function saveNote() {
   clearTimeout(noteSaveTimer);
   noteSaveTimer = null;
   const note = playerNote;
   if (!note) return;
 
+  // Das Feld bleibt beim automatischen Speichern offen, auch wenn es leer ist
+  // — sonst verschwindet es unter den Händen, während jemand neu schreibt.
+  // Eine leere Notiz räumt erst flushNote weg (Reiter-/Songwechsel, Wegwischen).
   const text = $('#note-text').value;
-
-  // Ausdrücklich gespeicherte Leere heißt: Notiz weg. Beim automatischen
-  // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
-  // Händen, während jemand den Text gerade neu schreibt.
-  if (announce && !text.trim()) {
-    if (await deleteNote()) banner(t('notes.emptyRemoved'));
-    return;
-  }
-
   note.text = text;
   note.songTitle = playerSong?.title || note.songTitle;
   note.updatedAt = new Date().toISOString();
-  setNoteState('saving');
 
   try {
     await noteWrite(() => DB.metaPut(note));
     notePersistedText.set(note, text);
-    if (playerNote === note) setNoteState('saved');
-    if (announce) banner(t('notes.saved'), { kind: 'ok' });
   } catch (err) {
-    if (playerNote === note) setNoteState('dirty');
     bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err);
   }
 }
 
-/** @returns {Promise<boolean>} ob die Notiz tatsächlich gelöscht wurde. */
-async function deleteNote() {
-  clearTimeout(noteSaveTimer);
-  noteSaveTimer = null;
-  const note = playerNote;
-  playerNote = null;
-  renderNoteBlock();
-  if (!note) return true;
-  try {
-    await noteWrite(() => DB.metaDelete(note.key));
-    return true;
-  } catch (err) {
-    // Der Datensatz steht noch in der Datenbank — das darf nicht als
-    // „gelöscht" durchgehen, sonst ist die Notiz nach dem nächsten Start
-    // unerwartet wieder da.
-    playerNote = note;
-    renderNoteBlock();
-    bannerError(t('msg.noteDeleteFailed'), 'NOTE-DELETE', err);
-    return false;
-  }
-}
-
 /**
- * Beim Schließen des Players oder beim Wegwischen der App sichern, was noch
- * offen ist. Liest den Text sofort — danach darf der Player längst zu sein.
+ * Sichert, was noch offen ist: beim Schließen des Players, Songwechsel,
+ * Reiterwechsel und Wegwischen der App. Liest den Text sofort — danach darf
+ * der Player längst zu sein. Eine leer gelassene Notiz verschwindet dabei
+ * still (kein Dialog), wie beim eigenen Liedtext.
  */
 function flushNote() {
   const note = playerNote;
@@ -14115,7 +14057,11 @@ function flushNote() {
 
   if (!text.trim()) {
     playerNote = null;
-    noteWrite(() => DB.metaDelete(note.key)).catch(console.error);
+    clearTimeout(noteSaveTimer);
+    noteSaveTimer = null;
+    renderNoteBlock();
+    noteWrite(() => DB.metaDelete(note.key))
+      .catch((err) => bannerError(t('msg.noteDeleteFailed'), 'NOTE-DELETE', err));
     return;
   }
   if (text === notePersistedText.get(note) && !noteSaveTimer) return;
@@ -14127,7 +14073,7 @@ function flushNote() {
   const saved = { ...note };
   noteWrite(() => DB.metaPut(saved))
     .then(() => notePersistedText.set(note, text))
-    .catch(console.error);
+    .catch((err) => bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err));
 }
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht

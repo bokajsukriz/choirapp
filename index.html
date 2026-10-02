@@ -2836,15 +2836,6 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 
-.note-foot { margin-top: 8px; }
-
-.note-state { color: var(--muted); font-size: 0.82rem; }
-.note-state[data-dirty="true"] { color: var(--warn-fg); }
-
-.note-actions { display: flex; gap: 6px; flex: 0 0 auto; }
-.note-actions .btn { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
-.note-actions .btn svg { width: 20px; height: 20px; }
-
 /* ---------- Meldungsbanner (ersetzt alert()) ---------------------------- */
 
 .banners {
@@ -3563,17 +3554,6 @@ input[type="checkbox"] {
         <textarea class="note-box" id="note-text" rows="12" spellcheck="true"
                   aria-label="Notiz zu diesem Lied" data-i18n-aria="notes.editorAria"
                   placeholder="z. B. Einsatz nach Takt 12 abwarten, zweite Strophe leiser" data-i18n-placeholder="notes.editorPlaceholder"></textarea>
-        <div class="row note-foot">
-          <span class="note-state" id="note-state" data-dirty="false" role="status"></span>
-          <span class="note-actions">
-            <button class="btn" id="btn-note-save" type="button" aria-label="Notiz speichern" data-i18n-aria="notes.saveAria">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
-            </button>
-            <button class="btn" id="btn-note-delete" type="button" aria-label="Notiz löschen" data-i18n-aria="notes.deleteAria" style="color: var(--danger-fg)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
-            </button>
-          </span>
-        </div>
       </div>
     </div>
 
