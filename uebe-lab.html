@@ -9822,6 +9822,21 @@
     return g;
   };
   const doneLessons = () => COURSE.filter((l) => course.done.includes(l.id));
+  /** Übungsfortschritt für den Balken der Kachel „Grooves“ in der App (0…1):
+   *  Mittel über die geschafften Kurs-Lektionen; je Groove zählen die
+   *  geschafften Durchhalte-Kombinationen (bis zur Länge des Vorschlagspfads)
+   *  zu 80 %, die eigene Einschätzung zu 20 %. So wächst der Balken mit jedem
+   *  Durchhalten, nicht erst bei „Sitzt“. */
+  const GROOVE_RATING_WEIGHT = { shaky: 1 / 3, ok: 2 / 3, solid: 1 };
+  function grooveProgress(g) {
+    if (!g) return 0;
+    const held = Array.isArray(g.held) ? g.held.length : LEGACY_HELD[clamp(g.hold || 0, 0, 4)].length;
+    return .8 * Math.min(1, held / GROOVE_PATH.length) + .2 * (GROOVE_RATING_WEIGHT[g.rating] || 0);
+  }
+  function groovesProgress() {
+    const done = doneLessons();
+    return done.length ? done.reduce((sum, l) => sum + grooveProgress(grooveData[l.id]), 0) / done.length : 0;
+  }
   /** Fällige Grooves (geschaffte Lektionen mit gültigem `due` ≤ heute), früheste zuerst. */
   function dueGrooveIds(today = localDate()) {
     return doneLessons().filter((l) => { const g = grooveData[l.id]; return g && g.due && g.due <= today; })
@@ -10315,6 +10330,7 @@
         rhythmLevel: state.rhythmLevel, duoPart: state.duoPart, duoStage: state.duoStage, duoOstinato: state.duoOstinato,
         course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes, accomp: course.accomp },
         grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
+        groovesProgress: groovesProgress(), // nur für den Balken der Kachel „Grooves“ in der App, beim Laden ignoriert
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbShift: ear.dbShift, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
@@ -11475,6 +11491,9 @@
         if (parseCombo('silent16') || parseCombo('gaps4') || parseCombo('x8')) errors.push('Klatsch-Grooves: ungültige Kombination angenommen');
         const pulsL = COURSE[0];
         if (grooveCanSolid(pulsL, { held: ['drums4', 'drums8', 'click4'] }) || !grooveCanSolid(pulsL, { held: ['click8'] })) errors.push('Klatsch-Grooves: „Sitzt“ erst nach 8 Takten ohne Drums');
+        // Übungsfortschritt für die Kachel: jedes Durchhalten zählt, voll erst mit Pfad und „Sitzt“.
+        if (grooveProgress(null) !== 0 || !(grooveProgress({ held: ['drums4'], rating: null }) > 0) || Math.abs(grooveProgress({ held: [...GROOVE_PATH], rating: 'solid' }) - 1) > 1e-9
+          || !(grooveProgress({ held: ['drums4', 'drums8'], rating: null }) > grooveProgress({ held: ['drums4'], rating: null }))) errors.push('Klatsch-Grooves: grooveProgress');
         // Alter Stand → Kombinationen; neuer Stand bleibt; letzte Position
         const san = sanitizeGrooves({ puls: { hold: 2, held: ['silent4', 'kaputt'], last: { phase: 'hold', combo: 'gaps8' } }, auftakt: { hold: 2, held: ['click4'], last: { phase: 'hold', combo: 'click4' } } });
         if (san.puls.held.join() !== 'click4,click8,silent4' || san.puls.last?.combo !== 'gaps8' || san.puls.hold !== 2) errors.push(`Klatsch-Grooves: Umstellung ${JSON.stringify(san.puls)}`);

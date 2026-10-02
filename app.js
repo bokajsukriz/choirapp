@@ -18739,6 +18739,14 @@ function runSelfTests() {
       const pg = (done, grooves) => ({ rhythm: { course: { done }, grooves } });
       const g = { puls: { due: '2026-10-10' }, achtel: { due: '2026-10-12' }, x: null };
       if (groovesOf(pg(['puls', 'achtel', 7], g)).done.length !== 2 || groovesOf(null).done.length !== 0) failed.push('groovesOf falsch');
+      // Übungsfortschritt aus uebe-lab.html: übernommen, wenn eine Zahl; sonst null (alter Stand → Anteil „sitzt“).
+      const withP = { rhythm: { course: { done: ['puls'] }, grooves: {}, groovesProgress: .4 } };
+      if (groovesOf(withP).progress !== .4 || groovesOf(pg(['puls'], g)).progress !== null || groovesOf({ rhythm: { groovesProgress: 'x' } }).progress !== null) failed.push('groovesOf: Übungsfortschritt');
+      const tile = document.createElement('button'), bar = document.createElement('span');
+      paintTileProgress(tile, bar, 'Licks', 2, 0, .375);
+      if (bar.style.getPropertyValue('--pct') !== '38%') failed.push(`Kachelbalken mit Übungsfortschritt: ${bar.style.getPropertyValue('--pct')}`);
+      paintTileProgress(tile, bar, 'Licks', 4, 1, null);
+      if (bar.style.getPropertyValue('--pct') !== '25%') failed.push(`Kachelbalken ohne Übungsfortschritt: ${bar.style.getPropertyValue('--pct')}`);
     }
     if (!PROGRESS_AREAS.includes('licks') || Object.values(PROGRESS_GROUPS).some((g) => g.includes('licks'))) failed.push('PROGRESS_AREAS: licks fehlt oder steht in einer Gruppe');
     {
@@ -23167,7 +23175,9 @@ function groovesOf(playground) {
   const r = playground && typeof playground === 'object' && playground.rhythm && typeof playground.rhythm === 'object' ? playground.rhythm : {};
   const done = Array.isArray(r.course?.done) ? r.course.done.filter((id) => typeof id === 'string') : [];
   const grooves = r.grooves && typeof r.grooves === 'object' && !Array.isArray(r.grooves) ? r.grooves : {};
-  return { done, entries: done.map((id) => grooves[id]).filter((g) => g && typeof g === 'object') };
+  // groovesProgress: Übungsfortschritt (0…1), von uebe-lab.html mitgespeichert; fehlt in älteren Ständen.
+  const progress = Number.isFinite(r.groovesProgress) ? r.groovesProgress : null;
+  return { done, entries: done.map((id) => grooves[id]).filter((g) => g && typeof g === 'object'), progress };
 }
 /** Angefangene und „sitzende“ Bausteine eines Stands (Fortschrittsbalken der Kachel). */
 function licksCounts(items) {
@@ -23178,9 +23188,16 @@ const fillN = (key, vars) => Object.entries(vars).reduce((text, [k, v]) => text.
 /** Fortschrittsbalken einer Kachel: Anteil „sitzender“ Bausteine (leer ohne
  *  Bausteine). Die Kachel trägt keinen sichtbaren Text mehr außer dem Namen —
  *  der Stand steht deshalb im aria-label. */
-function paintTileProgress(tile, bar, name, n, solid) {
-  if (bar) bar.style.setProperty('--pct', `${n ? Math.round((solid / n) * 100) : 0}%`);
-  tile.setAttribute('aria-label', n ? `${name}, ${fillN('tools.licks.sub', { n, solid })}` : name);
+function paintTileProgress(tile, bar, name, n, solid, progress = null) {
+  // `progress` (0…1): Übungsfortschritt, den das Tool selbst mitspeichert —
+  // wächst mit jedem Schritt. Fehlt er (Stand von vor dieser Fassung), wie
+  // früher der Anteil „sitzender“ Bausteine.
+  const pct = Number.isFinite(progress) ? Math.round(Math.min(1, Math.max(0, progress)) * 100) : n ? Math.round((solid / n) * 100) : 0;
+  if (bar) bar.style.setProperty('--pct', `${pct}%`);
+  const parts = [name];
+  if (Number.isFinite(progress)) parts.push(fillN('tools.licks.progress', { pct }));
+  if (n) parts.push(fillN('tools.licks.sub', { n, solid }));
+  tile.setAttribute('aria-label', parts.join(', '));
 }
 /** Kacheln „Licks“ und „Grooves“ nach dem Stand der Ablage füllen. */
 async function renderLicksCard() {
@@ -23190,12 +23207,12 @@ async function renderLicksCard() {
   const playground = await loadPlaygroundState();
   const gs = groovesOf(playground);
   const c = licksCounts(licksState?.v === 1 ? licksState.items : null);
-  paintTileProgress($('#tile-licks'), $('#tile-licks-bar'), t('tools.licks.synth'), c.n, c.solid);
+  paintTileProgress($('#tile-licks'), $('#tile-licks-bar'), t('tools.licks.synth'), c.n, c.solid, licksState?.v === 1 ? licksState.progress : null);
   // Kachel „Grooves“: erst nach der ersten geschafften Kurs-Lektion.
   const gTile = $('#tile-grooves');
   if (gTile) {
     gTile.disabled = !gs.done.length;
-    paintTileProgress(gTile, $('#tile-grooves-bar'), t('tools.licks.grooves'), gs.done.length, gs.entries.filter((g) => g.rating === 'solid').length);
+    paintTileProgress(gTile, $('#tile-grooves-bar'), t('tools.licks.grooves'), gs.done.length, gs.entries.filter((g) => g.rating === 'solid').length, gs.progress);
     // Ohne Text auf der Kachel erklärt nur das aria-label, warum sie noch gesperrt ist.
     if (!gs.done.length) gTile.setAttribute('aria-label', `${t('tools.licks.grooves')}, ${t('tools.licks.groovesEmpty')}`);
   }
