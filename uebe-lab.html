@@ -714,6 +714,20 @@
   /* Gewählter Zielton oben rechts in der Tuner-Karte. */
   .tuner-target { position: absolute; top: 12px; right: 14px; z-index: 1; padding: 4px 12px; border-radius: 999px; background: var(--ok-bg, #DDF5EA); color: var(--ok-fg, #157a55); font-weight: 800; font-size: 14px; }
   .tuner-target[hidden] { display: none; }
+  /* Deine Lage im Chor (Variante A): je Stimme ein Balken auf einer Tonachse, dein Umfang als Rahmen. */
+  .vr-fit { font-weight: 800; font-size: 14px; color: var(--accent-foreground); }
+  .vr-chart { position: relative; margin: 0 46px 0 58px; }
+  .vr-row { position: relative; height: 34px; }
+  .vr-row + .vr-row { margin-top: 6px; }
+  .vr-name { position: absolute; left: -58px; top: 50%; transform: translateY(-50%); font-weight: 800; font-size: 14px; }
+  .vr-bar { position: absolute; top: 6px; bottom: 6px; border-radius: 999px; background: var(--tint-line); }
+  .vr-bar.is-best { background: #f9a8cf; }
+  .vr-pct { position: absolute; right: -46px; width: 40px; text-align: right; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 800; color: var(--muted); }
+  .vr-band { position: absolute; top: -6px; bottom: -6px; border-radius: 10px; border: 3px solid var(--accent-foreground); background: rgba(var(--accent-rgb), .08); pointer-events: none; }
+  .vr-axis { position: relative; height: 20px; margin: 8px 46px 0 58px; }
+  .vr-axis span { position: absolute; transform: translateX(-50%); font-size: 12px; font-weight: 700; color: var(--muted); }
+  .vr-octaves { margin: 10px 0 0; text-align: center; font-weight: 700; font-size: 14px; color: var(--muted-2); }
+  .vr-octaves b { color: var(--text); }
   /* Zielton: eine Oktave Klaviatur (Oktave egal), gewählte Taste markiert. */
   .a4-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-weight: 700; }
   .target-piano { position: relative; height: 128px; display: flex; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
@@ -1083,6 +1097,13 @@
       </div>
       <p class="foot-note">Min. 1 Sek. halten. Einsingen bleibt zwei Halbtöne innerhalb dieser Grenze.</p>
       <p class="foot-note" data-range-save-status role="status" aria-live="polite"></p>
+    </section>
+    <!-- Deine Lage im Chor: die vier Übe-Umfänge (H.PRACTICE_RANGES) als Balken, der
+         gemessene Umfang als Rahmen darüber, Anteil je Stimme (renderVoiceMap). -->
+    <section class="panel" data-sing-only="tuner">
+      <div class="panel-head"><h2>Deine Lage im Chor</h2><span class="vr-fit"></span></div>
+      <div class="vr-map"></div>
+      <p class="vr-octaves"></p>
     </section>
     <p class="foot-note">Das Mikrofon wird nur live ausgewertet, nichts wird aufgenommen, gespeichert oder gesendet.</p>
     </div>
@@ -7203,6 +7224,39 @@
   function renderRange() {
     $('.range-low').textContent = voice.low === null ? '–' : noteLabel(voice.low);
     $('.range-high').textContent = voice.high === null ? '–' : noteLabel(voice.high);
+    renderVoiceMap();
+  }
+  /** Anteil des Übe-Umfangs einer Stimme, den der gemessene Umfang abdeckt (0–1). */
+  const rangeCover = (r, low, high) => Math.max(0, Math.min(r.ceil, high) - Math.max(r.floor, low)) / (r.ceil - r.floor);
+  /** Umfang in Oktaven, z. B. „1,8 Oktaven (21 Halbtöne)“. */
+  function octaveText(span) {
+    const oct = (span / 12).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+    return `<b>${oct} ${span === 12 ? 'Oktave' : 'Oktaven'}</b> (${span} Halbtöne)`;
+  }
+  /** Kachel „Deine Lage im Chor“: Sopran bis Bass als Balken, dein Umfang als Rahmen. */
+  function renderVoiceMap() {
+    const host = $('.vr-map');
+    if (!host) return;
+    const R = H.PRACTICE_RANGES;
+    const parts = ['S', 'A', 'T', 'B'];
+    const has = voice.low !== null && voice.high !== null && voice.high > voice.low;
+    const lo = Math.min(38, has ? voice.low - 2 : 38), hi = Math.max(82, has ? voice.high + 2 : 82);
+    const x = (m) => ((m - lo) / (hi - lo)) * 100;
+    const cover = Object.fromEntries(parts.map((k) => [k, has ? rangeCover(R[k], voice.low, voice.high) : 0]));
+    const best = has ? parts.reduce((a, k) => (cover[k] > cover[a] ? k : a), parts[0]) : null;
+    const rows = parts.map((k) => `<div class="vr-row"><span class="vr-name">${R[k].name}</span><div class="vr-bar${k === best ? ' is-best' : ''}" style="left:${x(R[k].floor)}%;width:${x(R[k].ceil) - x(R[k].floor)}%"></div>${has ? `<span class="vr-pct">${Math.round(cover[k] * 100)} %</span>` : ''}</div>`).join('');
+    const band = has ? `<div class="vr-band" style="left:${x(voice.low)}%;width:${x(voice.high) - x(voice.low)}%"></div>` : '';
+    const ticks = [];
+    for (let m = Math.ceil(lo); m <= hi; m++) if ([0, 7].includes(mod(m, 12))) ticks.push(`<span style="left:${x(m)}%">${noteLabel(m)}</span>`);
+    host.innerHTML = `<div class="vr-chart">${rows}${band}</div><div class="vr-axis" aria-hidden="true">${ticks.join('')}</div>`;
+    host.setAttribute('role', 'img');
+    host.setAttribute('aria-label', has
+      ? `Dein Umfang ${noteLabel(voice.low)} bis ${noteLabel(voice.high)}: ${parts.map((k) => `${R[k].name} ${Math.round(cover[k] * 100)} Prozent`).join(', ')}`
+      : 'Die vier Stimmlagen; dein Umfang ist noch nicht gemessen');
+    $('.vr-fit').textContent = best ? `passt: ${R[best].name}` : '';
+    $('.vr-octaves').innerHTML = has
+      ? `Dein Umfang: ${octaveText(voice.high - voice.low)}`
+      : 'Sing einen tiefen und einen hohen Ton, um dich einzuordnen.';
   }
   const canSaveRange = () => voice.low !== null && voice.high !== null && voice.high - voice.low >= RANGE_SAVE_MIN;
   /** Heutiges Datum (lokal) als JJJJ-MM-TT. */
@@ -13834,6 +13888,9 @@
         if (canSaveRange() !== want) errors.push(`Umfang speichern bei ${low}–${high}: ${canSaveRange()}`);
       }
       [voice.low, voice.high] = saved;
+      // Lage im Chor: Anteil je Stimme, Oktaven-Text.
+      if (rangeCover(H.PRACTICE_RANGES.A, 53, 74) !== 1 || rangeCover(H.PRACTICE_RANGES.B, 70, 80) !== 0) errors.push('Lage im Chor: rangeCover');
+      if (!/1,8 Oktaven<\/b> \(21 Halbtöne\)/.test(octaveText(21)) || !/>1 Oktave</.test(octaveText(12))) errors.push('Lage im Chor: octaveText');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(todayIso()) || todayIso(new Date(2026, 9, 2)) !== '2026-10-02') errors.push(`todayIso: ${todayIso()}`);
     }
     // Bass immer E–dis′ (40–51), in jeder Umkehrung und Lage.
