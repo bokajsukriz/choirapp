@@ -15334,6 +15334,32 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         orderContainer);
     }
 
+    // Vorlagen belegen die Schrittliste nur vor — danach ist alles wie bisher
+    // editierbar. „Eigene Stimme" = erste Stimme aus dem Stimmprofil, sonst die
+    // gerade im Player gewählte, sonst Full (jeweils nur, wenn zur Wahl).
+    let templates = null;
+    if (withVoice) {
+      const optionValues = voiceOptions().map(([v]) => v);
+      const currentVoice = playerSong?.tracks?.find((tr) => tr.fileKey === playerVoice)?.voice;
+      const own = pickRoutineVoice([settings.myVoices[0], currentVoice, 'FULL'], optionValues);
+      const full = pickRoutineVoice(['FULL'], optionValues);
+      const TEMPLATES = [
+        ['routine.tplLearn',   [[2, 0.7, own], [2, 1, own]]],
+        ['routine.tplConsolidate', [[2, 0.85, own], [2, 1, full]]],
+        ['routine.tplRunThrough',  [[3, 1, full]]],
+      ];
+      templates = el('div', { class: 'routine-templates', role: 'group', 'aria-label': t('routine.templatesAria') },
+        ...TEMPLATES.map(([key, steps]) => el('button', {
+          type: 'button', class: 'routine-chip', text: t(key),
+          onclick: () => {
+            draftSteps.length = 0;
+            for (const [reps, rate, voice] of steps) draftSteps.push({ reps, rate, voice });
+            renderRows();
+            updateResetVisibility();
+          },
+        })));
+    }
+
     const startBtn = el('button', {
       class: 'btn btn--primary', type: 'button', text: t('routine.startBtn'), disabled: !!emptyHint,
     });
@@ -15353,7 +15379,10 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     updateResetVisibility();
 
     const box = el('div', { class: 'dialog routine-dialog', style: 'max-height:86vh; display:flex; flex-direction:column; overflow-y:auto' },
-      el('div', { class: 'routine-head' }, el('h2', { text: 'Choirgym' }), resetBtn),
+      el('div', { class: 'routine-head' },
+        el('div', {}, el('h2', { text: t('routine.openLabel') }), el('span', { class: 'small muted routine-head-sub', text: 'Choirgym' })),
+        resetBtn),
+      templates,
       emptyHint ? el('p', { class: 'small muted', text: emptyHint }) : null,
       table,
       el('div', { class: 'routine-add' }, addBtn),
@@ -15363,7 +15392,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         el('div', { class: 'dialog-actions' },
           el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
           startBtn)));
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Choirgym' }, box);
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': `${t('routine.openLabel')} – Choirgym` }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
     openModal(layer, { initialFocus: rowsHost.querySelector('select'), onEscape: () => done(null) });

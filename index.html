@@ -2057,6 +2057,19 @@ input[type="checkbox"] {
 .loop-controls .icon-only svg, .rec-toggle-row-routine svg { width: 20px; height: 20px; }
 .rec-toggle-row-routine { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
 
+/* „Üben" (Choirgym) in der Loop-Leiste: beschrifteter Knopf, Akzentfarbe als Umriss */
+.loop-controls .routine-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 12px;
+  border-color: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.routine-pill svg { width: 18px; height: 18px; flex: 0 0 auto; }
+
 /* Schalter — echte Wippe mit Knopf, damit der Zustand auf den ersten Blick
    klar ist (nicht nur eine Farbänderung). Für Loop an/aus und für einzelne
    Ja/Nein-Einstellungen wie „Bildschirm anlassen". */
@@ -2153,6 +2166,21 @@ input[type="checkbox"] {
 
 .routine-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
 .routine-head h2 { margin: 0; }
+.routine-head-sub { display: block; margin-top: 1px; }
+
+/* Vorlagen-Chips im Üben-Dialog */
+.routine-templates { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+.routine-chip {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--pill-line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.routine-chip:active { background: rgba(var(--accent-rgb), .14); }
 /* Ghost-Reset: bleibt unsichtbar, solange der Entwurf noch den
    Vorgabewerten entspricht — taucht erst auf, wenn es tatsächlich etwas
    zurückzusetzen gibt (siehe updateResetVisibility() in app.js). */
@@ -3477,8 +3505,9 @@ input[type="checkbox"] {
         <button class="btn icon-only" id="btn-loop-save" type="button" disabled aria-label="Abschnitt speichern" data-i18n-aria="player.loopSaveAria">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         </button>
-        <button class="btn icon-only" id="btn-loop-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>
+        <button class="btn routine-pill" id="btn-loop-routine" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg>
+          <span data-i18n="routine.openLabel">Üben</span>
         </button>
       </div>
       <p class="small muted" id="loop-info" style="margin:10px 0 0; text-align:center"></p>
