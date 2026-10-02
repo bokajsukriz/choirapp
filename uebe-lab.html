@@ -639,6 +639,8 @@
   .status { margin: 6px 0 0; font-size: 12px; }
   /* ---- Hören-Übung (Konfetti B2): Serie, Tonart-Zeile, Leiter, Aktionen unten ---- */
   [data-panel="ear"] .panel { background: transparent; border: 0; padding: 0; }
+  /* Luft unter dem Daumen-Dock (gewinnt gegen die Zeile oben, sonst liegt das Antwortfeld unter dem Dock). */
+  [data-panel="ear"] .panel.ear-page { padding-bottom: 150px; }
   .ear-series { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
   .ser-n { font-size: 12px; font-weight: 700; color: var(--muted-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .ser-bar { flex: 1 1 auto; display: flex; gap: 3px; }
@@ -705,6 +707,7 @@
   .sum-actions .k-btn { flex: 1 1 auto; height: 46px; font-size: 15px; }
   /* ---- Singen-Übung (Konfetti B2) ---- */
   [data-panel="voice"] .panel { background: transparent; border: 0; padding: 0; }
+  [data-panel="voice"] .panel.sing-page { padding-bottom: 150px; }
   [data-panel="voice"] .panel[data-sing-only="tuner"] { background: var(--surface); border: 1px solid var(--line); padding: 14px; }
   /* Tuner: Mikro-Symbol oben rechts (wie in der Sing-Bühne), hier ein Knopf. */
   .tuner-panel { position: relative; }
@@ -828,7 +831,6 @@
      die Knöpfe sitzen mittig, sind gleich hoch und wirken drückbar. */
   .ear-page .ear-stage { height: 260px; }
   .ear-page .answer-grid { height: 178px; margin: 0; display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: 84px; align-content: start; gap: 10px; overflow-x: hidden; overflow-y: hidden; padding: 0; background: none; border: 0; border-radius: 0; margin-inline: 0; }
-  .ear-page .answer-grid.is-scroll { overflow-y: auto; align-content: start; grid-auto-rows: 60px; gap: 8px; }
   .ear-page .answer-grid .answer { min-height: 0; height: 100%; padding: 0 8px; border-radius: 20px; border: 2px solid var(--tint-line); background: var(--surface); box-shadow: 0 3px 0 var(--tint-line); font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.1; color: var(--text); overflow: hidden; transition: transform .06s, box-shadow .06s; }
   .ear-page .answer-grid :is(.answer, .answer-oct):not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--tint-line); }
   .ear-page .answer-grid :is(.answer, .answer-oct):disabled { opacity: .5; box-shadow: none; }
@@ -837,8 +839,6 @@
   .ear-page .answer-grid :is(.answer, .answer-oct).is-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); box-shadow: 0 3px 0 var(--ok); opacity: 1; }
   .ear-page .answer-grid :is(.answer, .answer-oct).is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); box-shadow: 0 3px 0 var(--rep-line); opacity: 1; }
   .ear-page .answer-grid .answer small { display: block; font-family: var(--font-body, inherit); font-size: 11px; font-weight: 700; color: var(--muted); }
-  .ear-page .answer-grid.is-tiles { gap: 6px; grid-auto-rows: 84px; }
-  .ear-page .answer-grid.is-tiles .answer { font-size: 17px; padding: 0 2px; border-radius: 16px; }
   .ear-page .answer-grid.is-pad { grid-auto-rows: 100%; align-content: stretch; }
   .ear-page .answer-grid.is-pad .ear-pad { height: 100%; }
   /* Einsatz finden: Bühne höher (Auflösung Takt für Takt), Klatschfläche flacher. */
@@ -846,8 +846,15 @@
   .ear-page.is-downbeat .answer-grid { height: 112px; }
   @media (max-height: 720px) { .ear-page.is-downbeat .ear-stage { height: 290px; } .ear-page.is-downbeat .answer-grid { height: 96px; } }
   @media (max-height: 620px) { .ear-page.is-downbeat .ear-stage { height: 240px; } .ear-page.is-downbeat .answer-grid { height: 88px; } }
-  @media (max-height: 720px) { .ear-page .ear-stage { height: 220px; } .ear-page .answer-grid { height: 150px; grid-auto-rows: 70px; } .ear-page .answer-grid.is-tiles, .ear-page .rung .answer, .ear-page .rung .answer-oct { grid-auto-rows: 72px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 72px; } }
-  @media (max-height: 620px) { .ear-page .ear-stage { height: 200px; } .ear-page .answer-grid { height: 128px; grid-auto-rows: 56px; } .ear-page .answer-grid.is-tiles { grid-auto-rows: 60px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 60px; } }
+  @media (max-height: 720px) { .ear-page .ear-stage { height: 220px; } .ear-page .answer-grid { height: 150px; grid-auto-rows: 70px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { grid-auto-rows: 72px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 72px; } }
+  @media (max-height: 620px) { .ear-page .ear-stage { height: 200px; } .ear-page .answer-grid { height: 128px; grid-auto-rows: 56px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 60px; } }
+  /* Antwortfeld (alle außer Leiter und Klatschfläche): layoutEarAnswers setzt
+     Spalten (--cols), Zeilenhöhe (--row-h), Abstand (--g) und die längste
+     Wortlänge (--wl). Schrift passt sich der Kachelbreite an (Container-
+     Einheiten), Zeilen brechen um statt abzuschneiden; keine eigene
+     Scroll-Fläche — die Seite scrollt. */
+  .ear-page .answer-grid:not(.is-ladder):not(.is-pad) { height: auto; grid-auto-rows: var(--row-h, 72px); gap: var(--g, 8px); align-content: start; overflow: visible; container-type: inline-size; padding: 0 0 3px; }
+  .ear-page .answer-grid:not(.is-ladder):not(.is-pad) .answer { padding: 0 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; line-height: 1.15; overflow-wrap: anywhere; hyphens: auto; font-size: 15px; font-size: clamp(12px, calc(((100cqw - (var(--cols, 2) - 1) * var(--g, 8px)) / var(--cols, 2) - 10px) / (var(--wl, 8) * .6)), 18px); }
   /* Einsatz finden: Klatschfläche im Antwortfeld (gleiche Höhe), Optik wie die Klatschfläche im Rhythmus. */
   .ear-page .answer-grid.is-pad { display: block; }
   .ear-pad { width: 100%; height: 112px; box-sizing: border-box; margin: 0; border-radius: 20px; border: 3px dashed var(--tint-line); background: var(--surface); color: var(--muted); font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -6365,17 +6372,31 @@
     $('[data-ear="helps"]').disabled = !d.helps;
     if (!$('.sheet').hidden && sheetKind === 'earhelp') renderEarHelps();
   }
-  /** Antwortfeld mit fester Höhe: bis 4 Antworten eine Reihe, 5–9 eine Reihe
-   *  schmaler Kacheln (Leiter: Halbtöne enger), mehr: 4 Spalten, scrollt. */
+  /** Antwortfeld: Kurzformen (Stufen, Silben) in einer Reihe, längere
+   *  Beschriftungen in 2–4 Spalten, so viele wie mit lesbarer Schrift
+   *  (≥ 13 px) passen. Zeilen gleich hoch, Abstände gleich; mehr Zeilen =
+   *  niedrigere Kacheln. Die Leiter bleibt eine Reihe (Höhe = Tonhöhe). */
   function layoutEarAnswers(grid) {
     const n = grid.children.length;
-    const ladder = grid.classList.contains('is-ladder');
-    // Lange Beschriftungen (z. B. „große Sekunde“) in zwei Spalten, damit die Knöpfe groß bleiben.
-    const long = [...grid.children].some((b) => (b.textContent || '').trim().length > 5);
-    const cols = ladder ? n : n > 9 ? 4 : long && n === 4 ? 2 : long && n > 4 && n <= 6 ? 3 : Math.max(1, n);
+    if (grid.classList.contains('is-ladder')) { grid.style.setProperty('--cols', n); return; }
+    const labels = [...grid.children].map((b) => (b.textContent || '').trim());
+    const maxLen = Math.max(1, ...labels.map((t) => t.length));
+    const maxWord = Math.max(1, ...labels.flatMap((t) => t.split(/[\s\u2013-]+/)).map((w) => w.length));
+    const width = grid.clientWidth || Math.max(240, Math.min(window.innerWidth, 520) - 32);
+    let cols;
+    let gap = 8;
+    if (maxLen <= 5) { cols = n <= 8 ? n : 4; if (cols >= 6) gap = 6; }
+    else {
+      cols = n <= 2 ? n : n === 4 ? 2 : n >= 10 ? 4 : 3;
+      const fits = (c) => (width - (c - 1) * gap) / c - 10 >= maxWord * 13 * .6;
+      while (cols > 1 && !fits(cols)) cols--;
+    }
+    cols = Math.max(1, cols);
+    const rows = Math.ceil(n / cols);
     grid.style.setProperty('--cols', cols);
-    grid.classList.toggle('is-tiles', !ladder && cols > 4 && n <= 9);
-    grid.classList.toggle('is-scroll', !ladder && n > 9);
+    grid.style.setProperty('--g', `${gap}px`);
+    grid.style.setProperty('--wl', maxWord);
+    grid.style.setProperty('--row-h', `${rows === 1 ? 84 : rows === 2 ? 72 : 60}px`);
   }
 
   /** Fußleiste für Einsatz finden im Rhythmus-Bereich: Klatschfläche (siehe
@@ -6430,7 +6451,7 @@
     const slots = $('.slot-row');
     const grid = $('.answer-grid');
     grid.className = `answer-grid${ear.playingUpper ? ' is-upper-playing' : ''}`;
-    grid.style.removeProperty('--cols');
+    for (const v of ['--cols', '--g', '--wl', '--row-h']) grid.style.removeProperty(v);
     slots.hidden = true;
     $('.slot-back').hidden = true;
     slots.classList.remove('is-pattern');
