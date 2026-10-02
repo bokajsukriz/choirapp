@@ -419,10 +419,17 @@
    *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null),
    *     reason ('bars' | 'loose' | 'drift' | null), offsets, meanAbs, missed, extras, expected }
    */
-  function judgeHold({ expected, taps, barStart, barSec, tol, plan, pos = null, gaps = null, names = null, beatSec = barSec / 4, mic = false, swingPairs = null }) {
+  function judgeHold({ expected, taps, barStart, barSec, tol, plan, pos = null, gaps = null, names = null, beatSec = barSec / 4, mic = false, swingPairs = null, pickupSec = 0 }) {
     const nBars = plan.length;
     const timeOf = (x) => (typeof x === 'number' ? x : x.t);
-    const barOf = (t) => Math.floor((t - barStart) / barSec + 1e-9);
+    // Takte zählen ab der echten Eins (barStart + pickupSec), wie die Begleitung
+    // (plan); der erste Auftakt gehört als Vortakt zu Takt 1. Ohne Auftakt wie bisher.
+    const barOf = (t) => {
+      const b = Math.floor((t - barStart - pickupSec) / barSec + 1e-9);
+      if (!pickupSec) return b;
+      const r = t - barStart;
+      return r < -1e-9 ? -1 : r >= nBars * barSec - 1e-9 ? nBars : Math.max(0, b);
+    };
     const E = expected.map((e, i) => ({ t: timeOf(e), pc: typeof e === 'number' || e.pc === undefined ? null : e.pc, pos: pos ? pos[i] : null }))
       .filter((e) => barOf(e.t) >= 0 && barOf(e.t) < nBars).sort((a, b) => a.t - b.t);
     const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' || x.pc === undefined ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
@@ -2455,6 +2462,18 @@
     // 5b. Mikrofon: ein Zusatzschlag je Takt zählt nicht
     r = judge(8, [...e8, ...Array.from({ length: 8 }, (_, b) => b * barSec + .1)], 2, e8, { mic: true });
     if (!r.held || r.extras !== 0) errors.push(`Vektor 5b: ${r.held}/${r.extras}`);
+    // 6c. Auftakt (ein Schlag, Lücken wie Stufe 3): der Auftakt vor der Lücke zählt zum
+    //     Takt davor, der vor dem Wiedereinstieg zum stillen Takt; Wiedereinstieg ab der Eins.
+    {
+      const beat = barSec / 4, plan3 = holdPlan(3);
+      const exp = Array.from({ length: 8 }, (_, b) => [b * barSec, b * barSec + 2 * beat]).flat(); // ab barStart: Auftakt, dann Schlag 2
+      const late = exp.map((t) => (Math.abs(t - 4 * barSec) < 1e-9 ? t + .09 : t)); // Auftakt vor Takt 5 (in der Stille) spät
+      const rp = judgeHold({ expected: exp, taps: late, barStart: 0, barSec, tol, plan: plan3, pickupSec: beat });
+      const r0 = judgeHold({ expected: exp, taps: exp, barStart: 0, barSec, tol, plan: plan3 });
+      // Takt 1 mit dem ersten Auftakt 3 Soll-Punkte, die übrigen 2, der letzte 1; der späte Auftakt liegt im stillen Takt 4.
+      if (rp.bars.map((b) => b.expected).join() !== '3,2,2,2,2,2,2,1' || !rp.bars[3].silent || !(rp.bars[3].meanOffset > .03) || rp.bars[4].meanOffset !== 0 || rp.reentry !== 'good'
+        || r0.bars.map((b) => b.expected).join() !== '2,2,2,2,2,2,2,2') errors.push(`Vektor 6c: ${rp.bars.map((b) => b.expected).join()}/${rp.bars[3].meanOffset}/${rp.reentry}`);
+    }
     // 6b. durchweg 140 ms früh (mehr als das Trefferfenster) → der Versatz wird vorab gefunden, alles getroffen
     r = judge(8, e8.map((t) => t - .14), 3);
     if (r.missed !== 0 || r.extras !== 0 || r.reentry !== 'good' || !r.held) errors.push(`Vektor 6b: ${r.missed} verpasst, ${r.extras} zu viel, ${r.reentry}, ${r.held}`);

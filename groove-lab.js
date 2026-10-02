@@ -1277,8 +1277,8 @@
 
   /**
    * Neuer Song zu `seed` und Stufe: { original, mine } als vollständige,
-   * sanitizeState-feste Stände. Leicht: ein 4/4-Loop mit seiner eigenen
-   * Basslinie; Tonart und Akkordfolge sind vorgegeben (Akkorde aus, die
+   * sanitizeState-feste Stände. Leicht: ein 4/4-Loop mit dem Rhythmus seiner
+   * Basslinie (Töne auf 1/5/8 gerundet); Tonart und Akkordfolge sind vorgegeben (Akkorde aus, die
    * Basslinie folgt ihnen trotzdem). Mittel: dazu eine eigene Basslinie
    * (nur 1/5/8, auf dem Rhythmus eines anderen Loops) und die Akkordfolge.
    * Schwer: alle Taktarten, eine Zelle im Loop abgewandelt, dazu Melodie
@@ -1307,6 +1307,14 @@
       const from = others.length ? dcPick(rng, others) : pattern;
       o.beat.bass = {};
       (from.bass || [0]).filter((st) => st < barSteps).forEach((st, i) => { o.beat.bass[st] = i === 0 ? 0 : dcPick(rng, DC_BASS_NOTES); });
+    } else {
+      // Leicht: Rhythmus der Loop-Basslinie, die Töne auf die nächste
+      // schaltbare Stufe (1/5/8) gerundet. Wer den Loop wählt, hat den
+      // Bass-Rhythmus schon und hört nur noch die Töne heraus.
+      for (const st of Object.keys(o.beat.bass)) {
+        const n = o.beat.bass[st];
+        o.beat.bass[st] = CELL_CYCLE.bass.reduce((best, x) => (Math.abs(x - n) < Math.abs(best - n) ? x : best));
+      }
     }
     if (level.id === 'hard') {
       // Eine Zelle in Kick, Snare oder Hi-Hat anders als im Loop: wer nur

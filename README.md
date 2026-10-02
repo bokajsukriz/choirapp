@@ -95,7 +95,11 @@ ein Dialog mit echter Wahl).
   stillen Takten), Status und Wiederholen mit Abstand (Ablage `rhythm.grooves`);
   Auswertung `judgeHold` wortgleich zu `licks.html`;
   Zweistimmig: gelernte Rhythmen vier Takte lang gegen eine zweite Stimme halten
-  – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei;
+  – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei; die
+  Notenfläche zeigt nur die eigene Stimme, nach der Runde Takt für Takt
+  (`duoBarsSvg`, wie die Auflösung bei „Einsatz finden“); das Trefferfenster
+  der Rhythmus-Auswertung (`evaluate`) wandert wie bei `judgeHold` bis
+  ±60 ms mit einem gleichbleibenden eigenen Versatz mit;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der

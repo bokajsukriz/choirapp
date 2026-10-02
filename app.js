@@ -20242,21 +20242,25 @@ async function runMusicSelfTests({ log = true } = {}) {
         }
         // Leicht: Akkordfolge vorgegeben (die Basslinie folgt ihr).
         if (!level.elements.includes('chords') && T.dcCompare(a.original, { ...a.mine, chordsOn: true }, 'chords').status !== 'ok') failed.push(`de:construct ${level.id}/${seed}: Akkorde nicht vorgegeben`);
-        // Erzeugte Basslinien lassen sich im Raster bauen (nur 1/5/8).
-        if (level.id !== 'easy' && Object.values(a.original.beat.bass).some((v) => ![0, 4, 7].includes(v))) failed.push(`de:construct ${level.id}/${seed}: Basston nicht baubar`);
+        // Erzeugte Basslinien lassen sich im Raster bauen (nur 1/5/8), auch auf Leicht.
+        if (Object.values(a.original.beat.bass).some((v) => ![0, 4, 7].includes(v))) failed.push(`de:construct ${level.id}/${seed}: Basston nicht baubar`);
         if (level.id !== 'hard' && T.DRUM_PATTERNS[a.original.patternIndex].meter !== '4/4') failed.push(`de:construct ${level.id}/${seed}: Taktart ≠ 4/4`);
       }
     }
     if (same(T.dcGenerate(1, 'hard'), T.dcGenerate(2, 'hard'))) failed.push('de:construct: Seed ändert nichts');
-    // Leicht nachbauen wie eine Nutzerin: Loop wählen, Tempo stellen → alles stimmt.
-    {
-      const { original: o, mine } = T.dcGenerate(4242, 'easy');
+    // Leicht nachbauen wie eine Nutzerin: Loop wählen, Tempo stellen → Tempo
+    // und Beat stimmen, der Bass-Rhythmus auch; die Töne (1/5/8) nachtippen.
+    for (const seed of [4242, 17, 99, 1234]) {
+      const { original: o, mine } = T.dcGenerate(seed, 'easy');
       const m = clone(mine);
       m.patternIndex = o.patternIndex;
       m.beat = T.beatFromPattern(T.DRUM_PATTERNS[o.patternIndex]);
       m.swing = o.swing;
       m.bpm = o.bpm + 2;
-      for (const el of ['tempo', 'beat', 'bass']) if (T.dcCompare(o, m, el).status !== 'ok') failed.push(`de:construct leicht: ${el} nach Nachbau ≠ ok`);
+      for (const el of ['tempo', 'beat']) if (T.dcCompare(o, m, el).status !== 'ok') failed.push(`de:construct leicht/${seed}: ${el} nach Loop-Wahl ≠ ok`);
+      if (T.dcCompare(o, m, 'bass').status === 'no') failed.push(`de:construct leicht/${seed}: Bass-Rhythmus kommt mit dem Loop nicht mit`);
+      m.beat.bass = { ...o.beat.bass };
+      if (T.dcCompare(o, m, 'bass').status !== 'ok') failed.push(`de:construct leicht/${seed}: bass nach Nachbau ≠ ok`);
     }
     // 2. Vergleich je Element mit gebauten Fällen.
     {

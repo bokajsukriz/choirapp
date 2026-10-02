@@ -900,6 +900,9 @@
   .db-bars .dbb-tg.is-miss { fill: none; stroke: var(--bad, #c62828); stroke-width: 1.8; stroke-dasharray: 2.5 2; }
   .db-bars .dbb-tap.is-ok { fill: var(--ok, #2f9e5b); }
   .db-bars .dbb-tap.is-extra { fill: #e8890c; }
+  .db-bars .dbb-tg.is-near { fill: var(--rep-bg, #FFF1D6); stroke: var(--rep-line, #e0a400); stroke-width: 2; }
+  .db-bars .dbb-tap.is-near { fill: var(--rep-line, #e0a400); }
+  .db-legend i.is-near { background: var(--rep-bg, #FFF1D6); border: 2px solid var(--rep-line, #e0a400); }
   .db-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; margin: 4px 0 0; font-size: 11px; color: var(--muted); }
   .db-legend span { display: inline-flex; align-items: center; gap: 4px; }
   .db-legend i { width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; }
@@ -2814,7 +2817,7 @@
     while (run.bars.length > 1 && run.bars[1].time <= now) run.bars.shift();
     const bar = run.bars[0] && run.bars[0].time <= now && now < run.bars[0].time + run.bars[0].dur ? run.bars[0] : null;
     for (const r of game.rounds) {
-      if (r.youStart !== null && !r.result && now > r.youStart + r.barSec + r.tol) evaluate(r);
+      if (r.youStart !== null && !r.result && now > r.youStart + r.barSec + r.tol + HOLD_BIAS_MAX) evaluate(r);
     }
     updateView(now, bar);
     if (run.ended && !bar && now > (run.endTime ?? 0) && game.rounds.every((r) => r.result || r.youStart === null)) { finish(); return; }
@@ -3139,22 +3142,31 @@
   function evaluate(round) {
     const { tol, youStart, tickSec, barSec } = round;
     const end = youStart + barSec;
-    const pool = game.taps.filter((x) => x >= youStart - tol && x <= end + tol);
+    const pool = game.taps.filter((x) => x >= youStart - tol - HOLD_BIAS_MAX && x <= end + tol + HOLD_BIAS_MAX);
+    // Gleichbleibender eigener Versatz (Touch, Bluetooth): das Trefferfenster
+    // wandert wie beim Durchhalten (judgeHold) bis ±HOLD_BIAS_MAX mit — wer
+    // durchweg knapp hinter dem Fenster liegt, sähe sonst alles rot.
+    // „genau“/„knapp“ misst weiter gegen den echten Schlag.
+    let bias = 0, bestN = -1;
+    for (let c = -HOLD_BIAS_MAX; c <= HOLD_BIAS_MAX + 1e-9; c += .005) {
+      const n = round.pattern.onsets.filter((step) => pool.some((x) => Math.abs(x - (youStart + step * tickSec + c)) <= tol)).length;
+      if (n > bestN || (n === bestN && Math.abs(c) < Math.abs(bias))) { bestN = n; bias = c; }
+    }
     const used = new Set();
     const notes = round.pattern.onsets.map((step) => {
-      const target = youStart + step * tickSec;
+      const target = youStart + step * tickSec + bias;
       let best = -1, bestDist = Infinity;
       pool.forEach((x, i) => { const d = Math.abs(x - target); if (!used.has(i) && d < bestDist) { bestDist = d; best = i; } });
       if (best === -1 || bestDist > tol) return { t: step, status: 'miss' };
       used.add(best);
-      const off = pool[best] - target;
+      const off = pool[best] - (target - bias);
       return { t: step, status: Math.abs(off) <= GOOD_SEC ? 'good' : 'near', off, tap: pool[best] };
     });
     // Kommt alles etwa gleich viel zu spät? (Fenster weiter als das Trefferfenster.)
     noteRunDelay(round.pattern.onsets.map((step) => youStart + step * tickSec), game.taps.filter((x) => x >= youStart - .1 && x <= end + .45));
-    const extras = pool.filter((x, i) => !used.has(i) && x >= youStart && x < end - tol);
+    const extras = pool.filter((x, i) => !used.has(i) && x >= youStart + bias && x < end + bias - tol);
     const usedTaps = new Set([...used].map((i) => pool[i]));
-    game.taps = game.taps.filter((x) => !usedTaps.has(x) && x >= end - tol);
+    game.taps = game.taps.filter((x) => !usedTaps.has(x) && x >= end + bias - tol);
     const hitNotes = notes.filter((n) => n.status !== 'miss');
     const meanOff = hitNotes.length ? hitNotes.reduce((a, n) => a + n.off, 0) / hitNotes.length : 0;
     const perfect = hitNotes.length === notes.length && extras.length === 0;
@@ -3726,6 +3738,41 @@
     return parts.join('');
   }
 
+  /** Zweistimmig nach der Runde: je Takt eine Zeile mit den Zählzeiten, deinem
+   *  Rhythmus (Kreis: grün genau, gelb knapp, rot gestrichelt verpasst) und
+   *  deinen Klatschern (Strich: grün im Muster, orange zu viel) — wie die
+   *  Auflösung bei „Einsatz finden“. Ein Auftakt steht vor Takt 1. */
+  function duoBarsSvg(round) {
+    const res = round.result, pat = round.pattern, m = METERS[round.meter];
+    const T = m.ticks, p = pat.pickup || 0, nBars = Math.max(1, Math.round((pat.total - p) / T) || pat.bars || 1);
+    const beats = round.meter === '6/8' ? 6 : T / m.beat;
+    const W = ST.W, XL = 30, X1 = W - 8, RH = 30, TOP = 14;
+    const span = (T + p) / T; // Breite einer Zeile in Takten (mit Platz für den Auftakt)
+    const X0 = XL + (p / T) / span * (X1 - XL);
+    const X = (t) => X0 + clamp(t / T, -p / T - .02, 1.04) * ((X1 - XL) / span);
+    const barOf = (t) => clamp(Math.floor(t / T), 0, nBars - 1); // t: Ticks ab der ersten Eins
+    const out = [];
+    for (let k = 0; k < beats; k++) out.push(`<text class="dbb-lab" x="${f1(X(k / beats * T))}" y="10" text-anchor="middle">${k + 1}</text>`);
+    for (let b = 0; b < nBars; b++) {
+      const y = TOP + b * RH + RH / 2;
+      out.push(`<text class="dbb-bar" x="2" y="${f1(y + 4)}">T${b + 1}</text><line class="dbb-line" x1="${f1(b === 0 ? XL : X0)}" x2="${X1}" y1="${f1(y)}" y2="${f1(y)}"/>`);
+      for (let k = 0; k <= beats; k++) { const x = X(k / beats * T); out.push(`<line class="dbb-beat${k === 0 || k === beats ? ' is-one' : ''}" x1="${f1(x)}" x2="${f1(x)}" y1="${f1(y - 8)}" y2="${f1(y + 8)}"/>`); }
+    }
+    const row = (t) => TOP + barOf(t) * RH + RH / 2;
+    const xIn = (t) => X(t - barOf(t) * T);
+    for (const n of res.notes) {
+      const t = n.t - p;
+      out.push(`<circle class="dbb-tg is-${n.status === 'good' ? 'ok' : n.status}" cx="${f1(xIn(t))}" cy="${f1(row(t))}" r="5.5"/>`);
+    }
+    for (const tp of res.taps) {
+      const t = (tp.at - round.youStart) / round.tickSec - p;
+      out.push(`<rect class="dbb-tap is-${tp.cls === 'good' ? 'ok' : tp.cls}" x="${f1(xIn(t) - 1.5)}" y="${f1(row(t) - 11)}" width="3" height="22" rx="1.5"/>`);
+    }
+    const H = TOP + nBars * RH + 2;
+    return `<svg class="db-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="Deine ${nBars} Takte: ${res.hits} von ${res.count} getroffen${res.extras ? `, ${res.extras} zu viel` : ''}">${out.join('')}</svg>`;
+  }
+  const DUO_LEGEND = '<p class="db-legend"><span><i class="is-ok"></i>genau</span><span><i class="is-near"></i>knapp</span><span><i class="is-miss"></i>verpasst</span><span><b class="is-ok"></b>dein Klatscher</span><span><b class="is-extra"></b>zu viel</span></p>';
+
   /** Neutraler Platzhalter statt Notenbild (Hören statt Sehen): eine leere
    *  Zeile, ohne Taktstriche, Taktangabe und Zeitleiste. Hängt von nichts ab,
    *  was die verborgene Phrase verrät (Taktzahl, Auftakt, Notenwerte). */
@@ -3747,12 +3794,13 @@
       return list.map(({ at, cls }) => ({ t: (at - round.youStart) / round.tickSec, cls }));
     };
     const systems = [];
+    // Zweistimmig: nach der Runde Takt für Takt wie bei „Einsatz finden“.
+    if (round?.duo && res && reveal && heads) { stageLines = []; return duoBarsSvg(round); }
     if (round?.duo) {
-      for (const part of ['upper', 'lower']) {
-        const own = round.duoPart === part;
-        systems.push({ pattern: round.duo[part], own, label: round.duo.labels ? round.duo.labels[part] : `${part === 'upper' ? 'Stimme 1' : 'Stimme 2'}${own ? ' · du' : ''}`,
-          statusOf: own ? statusOf : () => '', taps: own ? tapsOf() : [] });
-      }
+      // Nur deine Stimme (Chorleiter: was die App spielt, macht es unübersichtlich).
+      const part = round.duoPart;
+      systems.push({ pattern: round.duo[part], own: true, label: round.duo.labels ? round.duo.labels[part] : `${part === 'upper' ? 'Stimme 1' : 'Stimme 2'} · du`,
+        statusOf, taps: tapsOf() });
     } else systems.push({ pattern: round ? round.pattern : null, own: true, label: '', statusOf, taps: tapsOf() });
     const empty = { meter: meterId, notes: [], onsets: [], bars: 1, pickup: 0, total: METERS[meterId].ticks };
     let y0 = 0;
@@ -3787,7 +3835,8 @@
     // die Karte „Letzte Runde“ (wie viele richtig), statt unter der Fläche zu verschwinden.
     // Die Klatschfläche sitzt fest unten, es springt also nichts.
     const quiet = state.mode === 'course' && !btn && html === neutralStageSvg();
-    $('.stage').innerHTML = quiet ? '' : fitStageHeight(html) + btn;
+    const legend = round?.duo && round.result && html.includes('class="db-bars"') ? DUO_LEGEND : '';
+    $('.stage').innerHTML = quiet ? '' : fitStageHeight(html) + legend + btn;
     $('.stage').hidden = quiet;
   }
   /** Nachklatschen ohne „Noten zeigen“ (Zahnrad): Notenbild der Runde erst,
@@ -9614,8 +9663,8 @@
      (fällige Grooves nacheinander, Tools-Seite → „Heute wiederholen“).
 
      Ablauf je Groove: Hören (Vorbild zweimal) → Auffrischen (eine Nachklatsch-
-     Runde wie die Kurs-Wiederholung) → Durchhalten (nur Lektionen ohne
-     Auftakt; das Muster wird über 4 bis 16 Takte gehalten, mit Snare bzw.
+     Runde wie die Kurs-Wiederholung) → Durchhalten (auch mit Auftakt –
+     Takte zählen ab der echten Eins; das Muster wird über 4 bis 16 Takte gehalten, mit Snare bzw.
      zuletzt mit stillen Takten) → Einschätzung. Die Kurs-Schritte werden nicht
      wiederholt. Hören statt Sehen: keine Marke, kein Raster, kein Taktzähler —
      nur der neutrale Platzhalter „Nach Gehör“; das Ergebnis erscheint erst nach
@@ -9655,10 +9704,17 @@
    * → { bars: [{ expected, hit, meanOffset, extra, silent }], held, tendency,
    *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null) }
    */
-  function judgeHold({ expected, taps, barStart, barSec, tol, plan, pos = null, gaps = null, names = null, beatSec = barSec / 4, mic = false, swingPairs = null }) {
+  function judgeHold({ expected, taps, barStart, barSec, tol, plan, pos = null, gaps = null, names = null, beatSec = barSec / 4, mic = false, swingPairs = null, pickupSec = 0 }) {
     const nBars = plan.length;
     const timeOf = (x) => (typeof x === 'number' ? x : x.t);
-    const barOf = (t) => Math.floor((t - barStart) / barSec + 1e-9);
+    // Takte zählen ab der echten Eins (barStart + pickupSec), wie die Begleitung
+    // (plan); der erste Auftakt gehört als Vortakt zu Takt 1. Ohne Auftakt wie bisher.
+    const barOf = (t) => {
+      const b = Math.floor((t - barStart - pickupSec) / barSec + 1e-9);
+      if (!pickupSec) return b;
+      const r = t - barStart;
+      return r < -1e-9 ? -1 : r >= nBars * barSec - 1e-9 ? nBars : Math.max(0, b);
+    };
     const E = expected.map((e, i) => ({ t: timeOf(e), pc: typeof e === 'number' || e.pc === undefined ? null : e.pc, pos: pos ? pos[i] : null }))
       .filter((e) => barOf(e.t) >= 0 && barOf(e.t) < nBars).sort((a, b) => a.t - b.t);
     const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' || x.pc === undefined ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
@@ -9977,6 +10033,18 @@
     // 5b. Mikrofon: ein Zusatzschlag je Takt zählt nicht
     r = judge(8, [...e8, ...Array.from({ length: 8 }, (_, b) => b * barSec + .1)], 2, e8, { mic: true });
     if (!r.held || r.extras !== 0) errors.push(`Vektor 5b: ${r.held}/${r.extras}`);
+    // 6c. Auftakt (ein Schlag, Lücken wie Stufe 3): der Auftakt vor der Lücke zählt zum
+    //     Takt davor, der vor dem Wiedereinstieg zum stillen Takt; Wiedereinstieg ab der Eins.
+    {
+      const beat = barSec / 4, plan3 = holdPlan(3);
+      const exp = Array.from({ length: 8 }, (_, b) => [b * barSec, b * barSec + 2 * beat]).flat(); // ab barStart: Auftakt, dann Schlag 2
+      const late = exp.map((t) => (Math.abs(t - 4 * barSec) < 1e-9 ? t + .09 : t)); // Auftakt vor Takt 5 (in der Stille) spät
+      const rp = judgeHold({ expected: exp, taps: late, barStart: 0, barSec, tol, plan: plan3, pickupSec: beat });
+      const r0 = judgeHold({ expected: exp, taps: exp, barStart: 0, barSec, tol, plan: plan3 });
+      // Takt 1 mit dem ersten Auftakt 3 Soll-Punkte, die übrigen 2, der letzte 1; der späte Auftakt liegt im stillen Takt 4.
+      if (rp.bars.map((b) => b.expected).join() !== '3,2,2,2,2,2,2,1' || !rp.bars[3].silent || !(rp.bars[3].meanOffset > .03) || rp.bars[4].meanOffset !== 0 || rp.reentry !== 'good'
+        || r0.bars.map((b) => b.expected).join() !== '2,2,2,2,2,2,2,2') errors.push(`Vektor 6c: ${rp.bars.map((b) => b.expected).join()}/${rp.bars[3].meanOffset}/${rp.reentry}`);
+    }
     // 6b. durchweg 140 ms früh (mehr als das Trefferfenster) → der Versatz wird vorab gefunden, alles getroffen
     r = judge(8, e8.map((t) => t - .14), 3);
     if (r.missed !== 0 || r.extras !== 0 || r.reentry !== 'good' || !r.held) errors.push(`Vektor 6b: ${r.missed} verpasst, ${r.extras} zu viel, ${r.reentry}, ${r.held}`);
@@ -10193,7 +10261,7 @@
       // Schlussschlag auf der Eins nach dem letzten Takt.
       events.push({ t: at(last), type: 'drum', kind: 'kick' }, { t: at(last), type: 'drum', kind: 'open' });
       end = at(last) + .9;
-      return { events, expected, expectedPos, phases, tickSec, barSec: T * tickSec, startSec: at(start), endSec: end, plan, bars: st.bars, stage: st };
+      return { events, expected, expectedPos, phases, tickSec, barSec: T * tickSec, startSec: at(start), endSec: end, plan, bars: st.bars, stage: st, pickupSec: p * tickSec };
     }
     // Einzähler bis zum Auftakt (Volltakt-Regel: die Phrase ist bars × Takt lang).
     const countLen = T - p;
@@ -10271,7 +10339,8 @@
     }
     for (const t of res.replay.taps) if (t >= -.2) engine.clap(t0 + t, bus, CLAP_WITH_ACCOMP);
     const timers = [];
-    for (let b = 0; b < bars; b++) timers.push(setTimeout(() => holdMarkBar($('[data-grooves]'), b), (t0 + b * barSec - engine.ctx.currentTime) * 1000));
+    // Takte ab der echten Eins (wie die Wertung); Takt 1 beginnt mit dem Auftakt.
+    for (let b = 0; b < bars; b++) timers.push(setTimeout(() => holdMarkBar($('[data-grooves]'), b), (t0 + (b ? pickupSec + b * barSec : 0) - engine.ctx.currentTime) * 1000));
     timers.push(setTimeout(groovesReplayStop, (t0 + bars * barSec - engine.ctx.currentTime) * 1000 + 300));
     gr.replay = { bus, timers };
     gRerender();
@@ -10608,9 +10677,9 @@
         noteRunDelay(tl.expected.map((e) => e + info.t0), info.taps.filter((x) => x >= barStart - .1 && x <= barStart + tl.bars * tl.barSec + .45));
         const sta = grooveStations(l, tl.tickSec);
         const result = judgeHold({ expected: tl.expected.map((e) => e + info.t0), taps, barStart, barSec: tl.barSec, tol, plan: tl.plan,
-          pos: tl.expectedPos, gaps: sta.gaps, names: sta.names, beatSec: sta.beatSec, mic: state.input === 'mic', swingPairs: sta.swingPairs });
+          pos: tl.expectedPos, gaps: sta.gaps, names: sta.names, beatSec: sta.beatSec, mic: state.input === 'mic', swingPairs: sta.swingPairs, pickupSec: tl.pickupSec });
         // Fürs Anhören: eigene Schläge und Klick ab Taktanfang.
-        gv.result = { kind: 'hold', combo, tol, ...result, replay: { taps: taps.map((x) => x - barStart), barSec: tl.barSec, beatSec: sta.beatSec, bars: tl.bars, pickupSec: (lessonPattern(l).pickup || 0) * tl.tickSec } };
+        gv.result = { kind: 'hold', combo, tol, ...result, replay: { taps: taps.map((x) => x - barStart), barSec: tl.barSec, beatSec: sta.beatSec, bars: tl.bars, pickupSec: tl.pickupSec } };
         gFeedback(holdMessage(result, st), result.held ? 'good' : '');
         if (result.held && !g.held.includes(combo)) { g.held = GROOVE_COMBOS.filter((c) => c === combo || g.held.includes(c)); g.hold = Math.max(g.hold, holdFromHeld(g.held)); }
         rememberGroove();
@@ -10662,7 +10731,7 @@
     const pad = e.target.closest?.('.grooves-pad');
     if (!pad) return;
     e.preventDefault();
-    // In Ruhe startet die Fläche das Durchhalten (Auftakt-Lektionen: Auffrischen), im Lauf wird geklatscht.
+    // In Ruhe startet die Fläche das Durchhalten, im Lauf wird geklatscht.
     if (!gv.running && gv.id) { groovesActions('hold'); return; }
     groovesTap();
   });
