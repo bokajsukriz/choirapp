@@ -9710,13 +9710,25 @@
     const extras = bars.reduce((a, b) => a + b.extra, 0);
     return { bars, held, tendency, lostAt, reentry, reason, offsets: offs, meanAbs, missed: expectedN - hits.length, extras, expected: expectedN };
   }
-  /** Durchhalten (Klatsch-Grooves): mittlere Abweichung höchstens 50 ms, am Ende nicht über 60 ms weggedriftet. */
+  /** Durchhalten (Klatsch-Grooves und licks.html, wortgleich): mittlere Abweichung höchstens 50 ms, am Ende nicht über 60 ms weggedriftet. */
   const HOLD_MEAN_ABS = .05;
   /** Takt sicher ab 85 %: bis 6 Schläge im Takt müssen alle sitzen, ab 7 darf einer fehlen. */
   const HOLD_BAR_MIN = .85;
   const HOLD_END_DRIFT = .06;
   /** „Genau“ wie in der Karte „Letzte Runde“: bis 40 ms. */
   const HOLD_EXACT = .04;
+  /** Kennzahlen eines Durchhalte-Laufs: genau (bis 40 ms), zu früh, zu spät,
+   *  Mittel (mit Vorzeichen), größte Abweichung. */
+  function holdTimingStats(res) {
+    const offs = res.offsets || [];
+    const ms = (x) => Math.round(x * 1000);
+    const exact = offs.filter((o) => Math.abs(o) <= HOLD_EXACT).length;
+    const early = offs.filter((o) => o < -HOLD_EXACT).length;
+    const late = offs.filter((o) => o > HOLD_EXACT).length;
+    const mean = offs.length ? ms(offs.reduce((a, o) => a + o, 0) / offs.length) : null;
+    const worst = offs.length ? offs.reduce((a, o) => (Math.abs(o) > Math.abs(a) ? o : a), 0) : null;
+    return { exact, early, late, mean, meanAbs: res.meanAbs === null || res.meanAbs === undefined ? null : ms(res.meanAbs), worst: worst === null ? null : ms(worst), missed: res.missed || 0, extras: res.extras || 0 };
+  }
 
   /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
   function holdMessage(result, stage) {
@@ -9788,7 +9800,7 @@
     if (r.held || r.reason !== 'loose' || Math.round(r.meanAbs * 1000) !== 70 || r.missed !== 0) errors.push(`Vektor 6: ${r.held}/${r.reason}/${r.meanAbs}`);
     // 7. abwechselnd ±30 ms → geschafft; Kennzahlen
     r = judge(8, e8.map((t, i) => t + (i % 2 ? .03 : -.03)), 2);
-    const s7 = grooveHoldStats(r);
+    const s7 = holdTimingStats(r);
     if (!r.held || s7.exact !== 16 || s7.early || s7.late || s7.mean !== 0 || Math.abs(s7.worst) !== 30) errors.push(`Vektor 7: ${r.held}/${JSON.stringify(s7)}`);
     // 8. ein Klatscher pro Takt verpasst (Backbeat: 1 von 2) → Takte nicht sicher
     r = judge(8, e8.filter((_, i) => i % 2 === 0), 2);
@@ -10146,18 +10158,6 @@
     const f = b.expected ? (b.hit - b.extra) / b.expected : b.extra <= 2 ? .5 : 0;
     return f >= .5 ? 'is-wobbly' : 'is-lost';
   }
-  /** Kennzahlen eines Durchhalte-Laufs: genau (bis 40 ms), zu früh, zu spät,
-   *  Mittel (mit Vorzeichen), größte Abweichung. */
-  function grooveHoldStats(res) {
-    const offs = res.offsets || [];
-    const ms = (x) => Math.round(x * 1000);
-    const exact = offs.filter((o) => Math.abs(o) <= HOLD_EXACT).length;
-    const early = offs.filter((o) => o < -HOLD_EXACT).length;
-    const late = offs.filter((o) => o > HOLD_EXACT).length;
-    const mean = offs.length ? ms(offs.reduce((a, o) => a + o, 0) / offs.length) : null;
-    const worst = offs.length ? offs.reduce((a, o) => (Math.abs(o) > Math.abs(a) ? o : a), 0) : null;
-    return { exact, early, late, mean, meanAbs: res.meanAbs === null || res.meanAbs === undefined ? null : ms(res.meanAbs), worst: worst === null ? null : ms(worst), missed: res.missed || 0, extras: res.extras || 0 };
-  }
   const signedMs = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
   /** Ergebnis nach dem Durchhalten: Takte als Leiste (grün/gelb/rot, Takte
    *  ohne Begleitung gestrichelt), darunter die Verteilung aller Klatscher
@@ -10179,7 +10179,7 @@
     const height = 14 + step * (maxStack - 1) + 6;
     const dots = pts.map((p) => `<span class="tdot ${p.good ? 'is-good' : 'is-near'}" style="left:calc(50% + ${(p.x * 50).toFixed(1)}% - 7px);top:${(height - 17 - p.k * step).toFixed(1)}px"></span>`).join('');
     const exactBand = Math.min(50, HOLD_EXACT / tol * 50);
-    const s = grooveHoldStats(res);
+    const s = holdTimingStats(res);
     const cell = (n, label, cls = '') => `<div class="g-stat${cls}"><b>${n}</b><span>${label}</span></div>`;
     return `<div class="g-result" data-result>
       <div class="g-result-head"><span class="round-title">${sure} von ${res.bars.length} Takten sicher</span><span class="k-pill${res.held ? ' k-pill--ok' : ''}">${res.held ? `${K_CHECK}Geschafft` : 'Noch nicht'}</span>
@@ -14616,7 +14616,7 @@
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
-    grooveHoldStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
+    holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
     DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
