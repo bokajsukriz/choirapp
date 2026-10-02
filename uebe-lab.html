@@ -9174,11 +9174,23 @@
     if (voiced) task.lastVoiced = now;
     else if (now - task.lastVoiced > HOLD_GAP_SEC) return 'abort';
     const from = task.onset + HOLD_SETTLE_SEC;
-    if (voiced && now >= from) task.samples.push({ t: now - from, cents: (midi - task.target) * 100, rms });
+    if (voiced && now >= from) {
+      // Oktavneutral wie im Tuner: auf ±6 Halbtöne falten, Oktavlage je Wert merken.
+      const off = midi - task.target, folded = mod(off + 6, 12) - 6;
+      task.samples.push({ t: now - from, cents: folded * 100, oct: Math.round((off - folded) / 12), rms });
+    }
     return now >= from + task.sec ? 'done' : null;
   }
   function resetHold(task) {
-    task.onset = null; task.runStart = null; task.lastVoiced = null; task.samples = [];
+    task.onset = null; task.runStart = null; task.lastVoiced = null; task.samples = []; task.octave = 0;
+  }
+  /** Oktavlage beim Halten (−1/0/+1 …): die Oktave, in der mindestens 80 %
+   *  der Werte lagen, sonst 0 (gemischt oder in der Zielhöhe). */
+  function holdOctave(samples) {
+    const count = {};
+    samples.forEach((p) => { count[p.oct || 0] = (count[p.oct || 0] || 0) + 1; });
+    const [oct, n] = Object.entries(count).sort((a, b) => b[1] - a[1])[0] || [0, 0];
+    return samples.length && n >= samples.length * .8 ? Number(oct) : 0;
   }
 
   /** Blattsingen: je Ton ruhig halten (strict), kein Zeitlimit. */
@@ -9317,7 +9329,9 @@
     const st = holdStats(task.samples);
     const expected = task.sec * 50;
     if (!st || task.samples.length < expected * .15) { finishSing(false, 'Zu wenig Ton erkannt — noch einmal, ruhig und gleichmäßig.', {}); return; }
-    const parts = [`Lage ${st.mean >= 0 ? '+' : '−'}${Math.round(Math.abs(st.mean))} Cent`, `${st.sd <= 12 ? 'ruhig' : 'noch unruhig'} (±${Math.round(st.sd)} Cent)`];
+    task.octave = holdOctave(task.samples);
+    const octText = task.octave ? ` (${Math.abs(task.octave) === 1 ? 'eine Oktave' : `${Math.abs(task.octave)} Oktaven`} ${task.octave < 0 ? 'tiefer' : 'höher'} – passt)` : '';
+    const parts = [`Lage ${st.mean >= 0 ? '+' : '−'}${Math.round(Math.abs(st.mean))} Cent${octText}`, `${st.sd <= 12 ? 'ruhig' : 'noch unruhig'} (±${Math.round(st.sd)} Cent)`];
     if (Math.abs(st.trend) >= 2) parts.push(`${st.trend < 0 ? 'sinkt' : 'steigt'} am Ende leicht (${st.trend < 0 ? '−' : '+'}${Math.abs(st.trend).toFixed(0)} Cent/s)`);
     else parts.push('bleibt stabil');
     let text = `Ziel ${noteLabel(task.target)}: ${parts.join(' · ')}`;
@@ -9623,7 +9637,9 @@
       const chroma = ['singEcho', 'inTime', 'dictation'].includes(sing.mode) && sing.levels[sing.mode] === 6;
       // Titel kurz (feste Zeile), die Erklärung steht in der Bühnenmitte.
       prompt.textContent = modeName('voice', sing.mode);
-      view.innerHTML = `<p class="sing-intro">${esc(chroma ? `${intro} ${CHROMA_HELP}` : intro)}</p>`;
+      // Ton halten ohne Stimmprofil: Zielton liegt in der Standardlage (Alt).
+      const noPart = sing.mode === 'hold' && !SATB_PARTS.includes(readProfile()?.part) ? ' Wähle im Zahnrad deine Stimme, dann liegt der Ton in deiner Lage.' : '';
+      view.innerHTML = `<p class="sing-intro">${esc(chroma ? `${intro} ${CHROMA_HELP}` : intro + noPart)}</p>`;
       sub.textContent = `${PART_NAMES[ear.part]} · Töne zwischen ${noteLabel(r.lo)} und ${noteLabel(r.hi)}${sing.mode === 'dictation' ? '' : ' · mit Kopfhörern'}`;
     } else if (task.mode === 'singInterval') {
       prompt.textContent = `${intervalName(task.semis)} ${task.dir === 'down' ? 'abwärts' : 'aufwärts'}`;
@@ -13696,6 +13712,24 @@
       resetHold(task); phase = 'holdWait'; ended = null;
       feed(5, 10, 60.1);
       if (ended?.ev !== 'done' || Math.abs(ended.t - (5 + HOLD_SETTLE_SEC + 3)) > .03 || !holdHit(holdStats(task.samples))) errors.push(`Ton halten: Durchlauf ${JSON.stringify(ended)}`);
+      // Oktavneutral: Ziel 64, eine Oktave tiefer (52 ± 5 Cent) → Lage ≈ 0, ruhig, Oktave −1.
+      const low = { sec: 3, target: 64 };
+      resetHold(low);
+      let ph = 'holdWait';
+      for (let i = 0; i < 6 * 60; i++) {
+        const ev = holdStep(low, ph, i / 60, 52 + .05 * Math.sin(i / 3), .1);
+        if (ev === 'start') ph = 'hold';
+        if (ev === 'done') break;
+      }
+      const ls = holdStats(low.samples);
+      if (!ls || Math.abs(ls.mean) > 2 || ls.sd > 12 || !holdHit(ls) || holdOctave(low.samples) !== -1) errors.push(`Ton halten: Oktave tiefer nicht neutral (${JSON.stringify(ls)}, Oktave ${holdOctave(low.samples)})`);
+      // Ziel 64, gesungen 64,3 → +30 Cent wie bisher, Oktave 0.
+      const hi = { sec: 3, target: 64 };
+      resetHold(hi); ph = 'holdWait';
+      for (let i = 0; i < 6 * 60; i++) { const ev = holdStep(hi, ph, i / 60, 64.3, .1); if (ev === 'start') ph = 'hold'; if (ev === 'done') break; }
+      const hst = holdStats(hi.samples);
+      if (!hst || Math.abs(hst.mean - 30) > .5 || holdOctave(hi.samples) !== 0) errors.push(`Ton halten: 64,3 → ${hst?.mean} Cent`);
+      if (holdOctave([...Array(7)].map(() => ({ oct: -1 })).concat([...Array(3)].map(() => ({ oct: 0 })))) !== 0) errors.push('Ton halten: gemischte Oktave als stabil gewertet');
     }
     // Ton halten: synthetische Linie mit Trend −5 Cent/s → −5 ± 0,5.
     const line = Array.from({ length: 400 }, (_, i) => ({ t: i / 50, cents: 8 - 5 * (i / 50) + Math.sin(i * 1.7) * 2, rms: .1 }));
