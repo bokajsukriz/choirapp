@@ -1351,15 +1351,14 @@
     return ['hear', 'sing', 'startton', 'part-run', 'whole-run', 'hold-run', 'roll-run'][ui.step - 1] || null;
   }
   const MAIN_LABEL = { hear: 'Anhören', 'review-hear': 'Anhören', sing: 'Hören und mitsingen', startton: 'Lick und Grundton hören', 'part-run': 'Teil starten', 'whole-run': 'Runde starten', 'hold-run': 'Durchhalten', 'roll-run': 'Mitspielen' };
-  /** Klaviatur nur dort, wo man spielt: Startton, Stückweise/Ganz (bis das Ergebnis da ist), Durchhalten nur im Lauf.
-   *  Ergebnis, Einschätzung, Notenbild und Hören/Mitsingen bekommen den Platz für sich. */
+  /** Klaviatur dort, wo man spielt: Startton, Stückweise, Ganz, Durchhalten – durchgehend,
+   *  auch mit Ergebnis (Chorleiter: sie verschwand nach einem Durchlauf, die Ansicht sprang
+   *  und zum Nochmal-Spielen fehlte sie). Hören/Mitsingen, Notenbild und die Einschätzung
+   *  in der Wiederholung bekommen den Platz für sich. */
   function dockNeeded() {
     const r = ui.review && ui.review.queue && ui.review.phase;
     const k = r ? (r === 'hold' ? 6 : 0) : ui.step;
-    if (k === 3) return true;
-    if (k === 4 || k === 5) return !(ui.result && typeof ui.result === 'object');
-    if (k === 6) return ui.running === 'hold';
-    return false;
+    return k >= 3 && k <= 6;
   }
   function syncDock() { $('#dock').hidden = ui.view !== 'lick' || !dockNeeded(); }
   /** Fußleiste: Tempo-Pille, Start/Stopp, Schritt zurück/vor. */
@@ -2527,11 +2526,12 @@
         const fakeRes = { kind: 'hold', stage: 2, ...judgeHold({ expected: [1, 2], taps: [1, 2], barStart: 0, barSec: 4, tol: .1, plan: holdPlan(2) }) };
         probe(1, null, '', true, 'Schritt 1'); probe(2, null, '', true, 'Schritt 2');
         probe(3, null, '', false, 'Startton'); probe(4, null, '', false, 'Stückweise vor dem Lauf'); probe(5, null, '', false, 'Ganz vor dem Lauf');
-        probe(4, { kind: 'part', part: 0, ok: true, ...tlRes }, '', true, 'Stückweise-Ergebnis'); probe(5, { kind: 'whole', ok: true, ...tlRes }, '', true, 'Ganz-Ergebnis');
-        probe(6, null, '', true, 'Durchhalten vor dem Start'); probe(6, null, 'hold', false, 'Durchhalten-Lauf');
-        probe(6, fakeRes, '', true, 'Durchhalten-Ergebnis / Einschätzung'); probe(7, null, '', true, 'Notenbild');
+        // Nach einem Durchlauf bleibt sie stehen (nichts springt, gleich nochmal spielen).
+        probe(4, { kind: 'part', part: 0, ok: true, ...tlRes }, '', false, 'Stückweise-Ergebnis'); probe(5, { kind: 'whole', ok: true, ...tlRes }, '', false, 'Ganz-Ergebnis');
+        probe(6, null, '', false, 'Durchhalten vor dem Start'); probe(6, null, 'hold', false, 'Durchhalten-Lauf');
+        probe(6, fakeRes, '', false, 'Durchhalten-Ergebnis / Einschätzung'); probe(7, null, '', true, 'Notenbild');
         state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 2, rating: null, streak: 0, due: null } };
-        probe(6, fakeRes, '', true, 'Durchhalten-Ergebnis'); if (!$('#panel [data-rate]')) errors.push('Durchhalten-Ergebnis: Einschätzung fehlt');
+        probe(6, fakeRes, '', false, 'Durchhalten-Ergebnis'); if (!$('#panel [data-rate]')) errors.push('Durchhalten-Ergebnis: Einschätzung fehlt');
         ui.review = { queue: [lick.id], i: 0, phase: 'rate' }; renderLick();
         if (!dockHidden()) errors.push('Klaviatur in der Einschätzung (Wiederholung) sichtbar');
         ui.review = { queue: [lick.id], i: 0, phase: 'hold' }; ui.running = 'hold'; renderLick();
@@ -2701,7 +2701,7 @@
     LICKS, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
     sanitizeLicksState, selfCheck, selfCheckAudio,
     // für Konsole und Prüfungen
-    runBpm, uiCheck, estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
+    runBpm, uiCheck, estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff, renderLick,
   };
 
   /* ------------------------------------------------------------------------
