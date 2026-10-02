@@ -1535,6 +1535,9 @@
 
   const dcHint = (key, vars = {}) => ({ key, vars });
   const dcResult = (status, ...hints) => ({ status, hints });
+  /** Ergebnis mit Detaildaten fürs Prüf-Blatt: nur ✓/✗ je Spur bzw. Teil,
+   *  nie Schritte oder Werte des Originals. */
+  const dcWithParts = (result, parts) => ({ ...result, parts });
   /** Gesetzte Schritte einer Spur, die auch klingen (Spur an). */
   const dcTrack = (s, track) => (s.trackOn[track] ? s.beat[track] || {} : {});
   const dcStepsOf = (map) => Object.keys(map).map(Number).sort((x, y) => x - y);
@@ -1558,8 +1561,9 @@
   const dcLcm = (...list) => list.reduce((a, b) => (a * b) / dcGcd(a, b), 1);
 
   /**
-   * Vergleich eines Elements: { status: 'ok' | 'near' | 'no', hints }.
-   * Die Hinweise sagen, WAS passt und in welche Richtung es geht — nie,
+   * Vergleich eines Elements: { status: 'ok' | 'near' | 'no', hints, parts? }.
+   * parts (nur Beat: [{ id, ok, soft }] je Spur, Bass: { rhythm, notes })
+   * speist das Prüf-Blatt. Die Hinweise sagen, WAS passt und in welche Richtung es geht — nie,
    * wie die Lösung lautet.
    */
   function dcCompare(o, m, element) {
@@ -1584,22 +1588,23 @@
       const fit = [];
       const miss = [];
       let softOnly = true;
+      const parts = [];
       for (const track of DRUM_TRACKS) {
         const a = dcTrack(o, track);
         const b = dcTrack(m, track);
         const ka = dcStepsOf(a);
         if (!ka.length && !dcStepsOf(b).length) continue;
-        if (!sameSteps(ka, dcStepsOf(b))) { miss.push(track); softOnly = false; continue; }
+        if (!sameSteps(ka, dcStepsOf(b))) { miss.push(track); softOnly = false; parts.push({ id: track, ok: false, soft: false }); continue; }
         // Gleiche Schläge — und gleich laut (Ghost-Note < 1 gegen voll)?
-        if (ka.every((st) => (a[st] < 1) === (b[st] < 1))) fit.push(track);
-        else miss.push(track);
+        if (ka.every((st) => (a[st] < 1) === (b[st] < 1))) { fit.push(track); parts.push({ id: track, ok: true, soft: false }); }
+        else { miss.push(track); parts.push({ id: track, ok: false, soft: true }); }
       }
-      if (!miss.length) return dcResult('ok');
-      if (softOnly) return dcResult('near', dcHint('lab.dc.hint.ghost'));
+      if (!miss.length) return dcWithParts(dcResult('ok'), parts);
+      if (softOnly) return dcWithParts(dcResult('near', dcHint('lab.dc.hint.ghost')), parts);
       if (!DRUM_TRACKS.some((track) => dcStepsOf(dcTrack(m, track)).length)) return dcResult('no', dcHint('lab.dc.hint.beatEmpty'));
       const names = (list) => list.map(trackLabel).join(', ');
       const hint = fit.length ? dcHint('lab.dc.hint.parts', { fit: names(fit), miss: names(miss) }) : dcHint('lab.dc.hint.partsNone', { miss: names(miss) });
-      return dcResult(fit.length && miss.length === 1 ? 'near' : 'no', hint);
+      return dcWithParts(dcResult(fit.length && miss.length === 1 ? 'near' : 'no', hint), parts);
     }
     if (element === 'bass') {
       const a = dcTrack(o, 'bass');
@@ -1610,10 +1615,11 @@
       const common = ka.filter((st) => b[st] !== undefined);
       const rhythmOk = sameSteps(ka, kb);
       const notesOk = common.length * 2 >= ka.length && common.every((st) => a[st] === b[st]);
-      if (rhythmOk && notesOk) return dcResult('ok');
-      if (rhythmOk) return dcResult('near', dcHint('lab.dc.hint.bassNotes'));
-      if (notesOk) return dcResult('near', dcHint('lab.dc.hint.bassRhythm'));
-      return dcResult('no', dcHint('lab.dc.hint.bassBoth'));
+      const parts = { rhythm: rhythmOk, notes: notesOk };
+      if (rhythmOk && notesOk) return dcWithParts(dcResult('ok'), parts);
+      if (rhythmOk) return dcWithParts(dcResult('near', dcHint('lab.dc.hint.bassNotes')), parts);
+      if (notesOk) return dcWithParts(dcResult('near', dcHint('lab.dc.hint.bassRhythm')), parts);
+      return dcWithParts(dcResult('no', dcHint('lab.dc.hint.bassBoth')), parts);
     }
     if (element === 'chords') {
       if (!m.chordsOn) return dcResult('no', dcHint('lab.dc.hint.chordsOff'));
@@ -1684,7 +1690,7 @@
   function dcNewSong(songId, today = null, solved = {}) {
     const song = dcSong(songId) || DC_SONGS[0];
     const { original, mine } = dcBuild(song.id);
-    return { v: 2, song: song.id, level: song.level, created: today, original, mine, checks: {}, done: {}, revealed: false, solved: { ...solved } };
+    return { v: 2, song: song.id, level: song.level, created: today, original, mine, checks: {}, done: {}, revealed: false, revealedEls: {}, solved: { ...solved } };
   }
 
   /** Gespeicherter de:construct-Stand (Ablage `deconstruct`). Fehlt er
@@ -1703,10 +1709,11 @@
     mine.view = 'deconstruct';
     const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const out = { v: 2, song: song.id, level: level.id, created: isDate(raw.created) ? raw.created : null,
-      original: fresh.original, mine, checks: {}, done: {}, revealed: raw.revealed === true, solved: {} };
+      original: fresh.original, mine, checks: {}, done: {}, revealed: raw.revealed === true, revealedEls: {}, solved: {} };
     for (const el of level.elements) {
       if (DC_STATUS.includes(raw.checks?.[el])) out.checks[el] = raw.checks[el];
       if (isDate(raw.done?.[el])) out.done[el] = raw.done[el];
+      if (raw.revealedEls?.[el] === true) out.revealedEls[el] = true;
     }
     if (raw.solved && typeof raw.solved === 'object') {
       for (const s of DC_SONGS) if (isDate(raw.solved[s.id])) out.solved[s.id] = raw.solved[s.id];
@@ -2805,7 +2812,8 @@
         progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [],
         // de:construct: was gerade klingt (A = 'orig', B = 'mine'), welche
         // Spur allein, Stufenwahl offen?, Rückfrage vor dem Auflösen.
-        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', song: null, revealAsk: false, active: null, tpl: false } };
+        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', song: null, revealAsk: false, active: null, tpl: false,
+          tries: {}, sheet: null, last: null, menu: false } };
       // Einspielen: Phase idle → armed (zählt ein) → recording → done.
       // Automation aufnehmen: Phase idle → armed (zählt ein) → recording.
       this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
@@ -2885,6 +2893,8 @@
       this._stopDrone();
       this.state.droneOn = false;
       this._closeSheet();
+      this._dcSheetClose({ focus: false });
+      this.ui.dc.menu = false;
       this._closePicker({ focus: false });
       this._wsAbReset(); // nie im „Vorher“ speichern
       clearTimeout(this._dcSaveTimer);
@@ -3001,7 +3011,7 @@
       // Beim Verlassen des Workshops immer auf „Nachher“ zurück.
       if (v !== 'workshop') this._wsAbReset();
       // de:construct verlassen: „Meine Version“ ablegen, Studio-Stand zurück.
-      if (v !== 'deconstruct' && this._dcActive) this._dcLeave();
+      if (v !== 'deconstruct' && this._dcActive) { this._dcSheetClose({ focus: false }); this.ui.dc.menu = false; this._dcLeave(); }
       this.state.view = v;
       if (v === 'deconstruct' && !this._dcActive) this._dcEnter();
       const choir = v === 'choir';
@@ -3160,9 +3170,10 @@
     _dcNew(songId) {
       if (!this._dcActive || !DC_SONGS.some((x) => x.id === songId)) return;
       const dc = dcNewSong(songId, localDate(), this._saved.deconstruct?.solved);
+      this._dcSheetClose({ focus: false });
       this._saved.deconstruct = dc;
       this.history = [];
-      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, song: dc.song, revealAsk: false, active: null, tpl: false, hints: {} };
+      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, song: dc.song, revealAsk: false, active: null, tpl: false, hints: {}, tries: {}, sheet: null, last: null, menu: false };
       this.tapTimes = [];
       this._dcSwap(sanitizeState(dc.mine));
       this.ui.tab = 'beat';
@@ -3190,13 +3201,164 @@
       const result = dcCompare(dc.original, this.state, element);
       dc.checks[element] = result.status;
       this.ui.dc.hints = { ...(this.ui.dc.hints || {}), [element]: result.hints };
+      // Versuche je Element (nur Sitzung): ab dem dritten ohne „stimmt“ bietet das Blatt Hilfe an.
+      const tries = this.ui.dc.tries || (this.ui.dc.tries = {});
+      tries[element] = result.status === 'ok' ? 0 : (tries[element] || 0) + 1;
       if (result.status === 'ok' && !dc.done[element]) dc.done[element] = localDate();
-      // Ganz nachgebaut (ohne Auflösen): der Song zählt in der Auswahl als geschafft.
-      if (!dc.revealed && !dc.solved[dc.song] && dcLevel(dc.level).elements.every((el) => dc.done[el])) dc.solved[dc.song] = localDate();
+      // Ganz nachgebaut (ohne Auflösen, auch nicht einzeln): der Song zählt in der Auswahl als geschafft.
+      const pure = !dc.revealed && !Object.values(dc.revealedEls || {}).some(Boolean);
+      if (pure && !dc.solved[dc.song] && dcLevel(dc.level).elements.every((el) => dc.done[el])) dc.solved[dc.song] = localDate();
       const text = `${t(`lab.dc.el.${element}`)}: ${t(`lab.dc.status.${result.status}`)}${result.hints.length ? ` – ${this._dcHintText(result.hints)}` : ''}`;
       this._dcAnnounce(text);
       this._persist();
+      this.ui.dc.last = { element, status: result.status, hints: result.hints, parts: result.parts || null, tries: tries[element] };
+      this.ui.dc.sheet = element;
+      this.ui.dc.menu = false;
       this._renderDeconstruct();
+      this._dcSheetOpen();
+    }
+
+    /* ---- Prüf-Blatt (Bottom-Sheet) ---- */
+
+    _dcSheetOpen() {
+      const sheet = this.$('.dc-sheet');
+      if (!sheet || !this.ui.dc.last) return;
+      sheet.style.setProperty('--dc-bar-h', `${this.$('.transport-bar').offsetHeight}px`);
+      this._renderDcSheet();
+      sheet.hidden = false;
+      this.$('.dc-sheet-card').focus();
+    }
+
+    _dcSheetClose({ focus = true } = {}) {
+      const sheet = this.$('.dc-sheet');
+      this.ui.dc.sheet = null;
+      if (!sheet || sheet.hidden) return;
+      sheet.hidden = true;
+      const check = this.$('.dc-check-btn');
+      if (focus && check?.getClientRects().length) check.focus();
+    }
+
+    /** Hören-Fokus, der zu einem Element passt (Tempo und Klang haben keine Spur). */
+    _dcFocusOf(element) {
+      return DC_FOCUS.includes(element) && element !== 'all' ? element : null;
+    }
+
+    _dcHelpListen(element) {
+      const part = this._dcFocusOf(element);
+      if (!this._dc() || !part) return;
+      this._dcSheetClose({ focus: false });
+      this.ui.dc.focus = part;
+      this._dcListen('orig');
+      this._renderDeconstruct();
+      this._dcAnnounce(tf('lab.dc.help.listening', { part: t(`lab.dc.short.${element}`) }));
+      this.$('.dc-check-btn')?.focus();
+    }
+
+    /** Nur dieses Element auflösen: Lösung nur hier sichtbar, der Song zählt nicht mehr als ganz selbst gebaut. */
+    _dcHelpReveal(element) {
+      const dc = this._dc();
+      if (!dc || !dcLevel(dc.level).elements.includes(element)) return;
+      if (!dc.revealedEls) dc.revealedEls = {};
+      dc.revealedEls[element] = true;
+      this.ui.dc.active = element;
+      this._dcSheetClose({ focus: false });
+      this._persist();
+      this._renderDeconstruct();
+      this.$('.dc-el-solution')?.focus();
+    }
+
+    _renderDcSheet() {
+      const dc = this._saved.deconstruct;
+      const last = this.ui.dc.last;
+      if (!dc || !last) return;
+      const { element, status, parts } = last;
+      const elements = dcLevel(dc.level).elements;
+      const next = dcNextElement(elements, dc.done, element);
+      const allDone = status === 'ok' && elements.every((el) => dc.done[el]);
+      const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+      const sym = { ok: '✓', near: '≈', no: '✗' };
+      const name = t(`lab.dc.el.${element}`);
+
+      const mark = this.$('.dc-sheet-mark');
+      mark.className = `dc-sheet-mark is-${status}`;
+      mark.textContent = sym[status];
+      this.$('.dc-sheet-title').textContent = allDone ? t('lab.dc.sheet.allDone') : tf(`lab.dc.sheet.title.${status}`, { el: name });
+      // Kurze Zeile: bei Beat/Bass zählt sie die Treffer, sonst nur die Stufe.
+      let sub = t(`lab.dc.sheet.sub.${status}`);
+      if (Array.isArray(parts) && parts.length) sub = tf('lab.dc.sheet.sub.tracks', { n: parts.filter((x) => x.ok).length, total: parts.length });
+      else if (parts && typeof parts === 'object') sub = tf('lab.dc.sheet.sub.bass', { n: Number(parts.rhythm) + Number(parts.notes) });
+      if (allDone) sub = tf('lab.dc.sheet.sub.all', { n: elements.length });
+      this.$('.dc-sheet-sub').textContent = sub;
+
+      // Detail-Liste: ✓/✗ je Spur bzw. Teil — ohne Schritte.
+      const list = this.$('.dc-parts');
+      const rows = [];
+      if (Array.isArray(parts)) {
+        for (const p of parts) rows.push({ ok: p.ok, soft: p.soft, name: trackLabel(p.id), sub: t(`lab.dc.bridge.${p.id}`) });
+      } else if (parts) {
+        rows.push({ ok: parts.rhythm, name: t('lab.dc.part.rhythm'), sub: t('lab.dc.part.rhythmSub') });
+        rows.push({ ok: parts.notes, name: t('lab.dc.part.notes'), sub: t('lab.dc.part.notesSub') });
+      }
+      list.hidden = !rows.length;
+      list.replaceChildren(...rows.map((r) => {
+        const kind = r.ok ? 'ok' : r.soft ? 'near' : 'no';
+        const li = el('li', `dc-part is-${kind}`);
+        const m = el('span', 'dc-part-mark');
+        m.setAttribute('aria-hidden', 'true');
+        m.textContent = sym[kind];
+        const text = el('span', 'dc-part-text');
+        text.append(el('span', 'dc-part-name', r.name), el('span', 'dc-part-sub', r.sub));
+        li.append(m, text, el('span', 'dc-vh', t(`lab.dc.status.${kind}`)));
+        return li;
+      }));
+
+      // Hinweis: bei Beat nennt die Liste schon, was passt — der Satz zeigt dann nur die Richtung.
+      let hint = '';
+      if (status !== 'ok') {
+        const texts = last.hints.filter((h) => !(rows.length && (h.key === 'lab.dc.hint.parts' || h.key === 'lab.dc.hint.partsNone')));
+        hint = this._dcHintText(texts);
+        const firstMiss = Array.isArray(parts) ? parts.find((p) => !p.ok && !p.soft) : null;
+        if (firstMiss) hint = `${tf('lab.dc.sheet.beatTip', { track: trackLabel(firstMiss.id), bridge: t(`lab.dc.bridge.${firstMiss.id}`) })} ${hint}`.trim();
+      }
+      const hintEl = this.$('.dc-sheet-hint');
+      hintEl.hidden = !hint;
+      hintEl.textContent = hint;
+
+      // Gestufte Hilfe ab dem dritten Versuch ohne „stimmt“.
+      const help = this.$('.dc-help');
+      const tries = this.ui.dc.tries?.[element] || 0;
+      const showHelp = status !== 'ok' && tries >= 3;
+      help.hidden = !showHelp;
+      if (showHelp) {
+        this.$('.dc-help-title').textContent = t(tries === 3 ? 'lab.dc.help.title' : 'lab.dc.help.titleMore');
+        const listen = this.$('.dc-help-listen');
+        const part = this._dcFocusOf(element);
+        listen.hidden = !part;
+        listen.dataset.value = element;
+        listen.textContent = part ? tf('lab.dc.help.listen', { part: t(`lab.dc.short.${element}`) }) : '';
+        const reveal = this.$('.dc-help-reveal');
+        reveal.hidden = !!dc.revealedEls?.[element];
+        reveal.dataset.value = element;
+      }
+
+      // Knöpfe: stimmt → weiter (oder nächster Song), sonst weiter bauen.
+      const main = this.$('.dc-sheet-main');
+      const close = this.$('.dc-sheet-close');
+      if (status === 'ok') {
+        main.dataset.action = allDone ? 'dc-sheet-song' : 'dc-sheet-next';
+        main.dataset.value = next || '';
+        main.textContent = allDone ? t('lab.dc.sheet.nextSong') : tf('lab.dc.sheet.next', { el: next ? t(`lab.dc.short.${next}`) : '' });
+        main.hidden = !allDone && !next;
+        close.textContent = t('lab.dc.sheet.close');
+      } else {
+        main.dataset.action = 'dc-sheet-close';
+        main.dataset.value = '';
+        main.textContent = t('lab.dc.sheet.keepBuilding');
+        main.hidden = false;
+        close.textContent = '';
+      }
+      close.hidden = status !== 'ok';
+      this.$('.dc-sheet-card').setAttribute('aria-labelledby', 'dc-sheet-title');
     }
 
     _dcHintText(hints) {
@@ -3208,6 +3370,7 @@
       if (!dc) return;
       if (!this.ui.dc.revealAsk && !dc.revealed) { this.ui.dc.revealAsk = true; this._renderDeconstruct(); return; }
       this.ui.dc.revealAsk = false;
+      this.ui.dc.menu = false;
       dc.revealed = true;
       this._persist();
       this._renderDeconstruct();
@@ -3239,28 +3402,17 @@
       this._dcSaveTimer = setTimeout(() => this._persist(), 1500);
     }
 
-    /** Lösung eines Elements in Worten (erst nach dem Auflösen sichtbar). */
+    /** Lösung eines Elements in Worten (erst nach dem Auflösen sichtbar);
+     *  Beat und Bass zeigt _dcSolutionNodes als Raster, Akkorde als Kacheln. */
     _dcSolution(element) {
       const o = this._saved.deconstruct.original;
       const pattern = DRUM_PATTERNS[o.patternIndex];
-      const { steps, group } = METERS[pattern.meter];
-      // Eine Rasterzeile als Text: Gruppen wie im Raster, · = Pause.
-      const row = (cell) => Array.from({ length: steps }, (_, i) => `${i && i % group === 0 ? ' ' : ''}${cell(i) ?? '·'}`).join('');
       if (element === 'tempo') {
         return `${tempoSymbol(pattern.meter)} = ${o.bpm} · ${pattern.meter}${o.swing ? ` · ${t('lab.swing')} ${Math.round(o.swing * 100)} %` : ''}`;
       }
-      if (element === 'beat') {
-        return DRUM_TRACKS.filter((track) => dcStepsOf(o.beat[track]).length)
-          .map((track) => `${trackLabel(track)} ${row((i) => (o.beat[track][i] === undefined ? null : o.beat[track][i] < 1 ? 'g' : 'x'))}`).join(' · ');
-      }
-      if (element === 'bass') {
-        return row((i) => { const v = o.beat.bass[i]; return v === undefined ? null : String(v < 0 ? v + 8 : v + 1); });
-      }
       if (element === 'chords') {
-        const prog = progressionOfState(o);
-        const names = prog.degrees.map((deg) => chordName(o.keyRoot, chordSteps(modeStepsOf(o), o.modeId, prog, deg), deg, !!prog.sevenths, o.modeId));
         const mode = MODES.find((m) => m.id === o.modeId) || MODES[0];
-        return `${names.join(' – ')} · ${t(mode.nameKey)}${o.chordBars === 2 ? ` · ${t('lab.dc.twoBars')}` : ''}`;
+        return `${t(mode.nameKey)}${o.chordBars === 2 ? ` · ${t('lab.dc.twoBars')}` : ''}`;
       }
       if (element === 'melody') {
         // Je Takt die Stufen über dem Akkordgrundton (wie im Editor, 1 = Grundton).
@@ -3269,6 +3421,81 @@
       }
       if (element === 'sound') return `„${SYNTH_PRESETS[o.sound.presetIndex]?.name || ''}“`;
       return '';
+    }
+
+    /** Auflösung als Knoten: Beat/Bass als Mini-Raster Original gegen Meine
+     *  Version, Akkorde als Kacheln (Name + Stufe), sonst Text. */
+    _dcSolutionNodes(element) {
+      const o = this._saved.deconstruct.original;
+      const m = this.state;
+      const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+      const label = mk('span', 'dc-sol-label', t('lab.dc.solution'));
+      if (element === 'beat' || element === 'bass') {
+        const meter = meterOfState(o);
+        const { steps, group } = METERS[meter];
+        const groups = steps / group;
+        const sameMeter = meterOfState(m) === meter;
+        const tracks = element === 'bass' ? ['bass'] : DRUM_TRACKS.filter((track) => dcStepsOf(dcTrack(o, track)).length || dcStepsOf(dcTrack(m, track)).length);
+        const grid = mk('div', 'dc-mini');
+        const head = mk('div', 'dc-mini-row dc-mini-head');
+        head.setAttribute('aria-hidden', 'true');
+        head.append(mk('span'));
+        for (let g = 0; g < groups; g++) head.append(mk('span', '', String(g + 1)));
+        grid.append(head);
+        let ghosts = false;
+        for (const track of tracks) {
+          const a = dcTrack(o, track);
+          const b = sameMeter ? dcTrack(m, track) : {};
+          const row = mk('div', 'dc-mini-row');
+          row.setAttribute('role', 'img');
+          let miss = 0;
+          let extra = 0;
+          const bassNote = (v) => String(v < 0 ? v + 8 : v + 1);
+          row.append(mk('span', 'dc-mini-name', track === 'bass' ? t('lab.dc.el.bass') : trackLabel(track)));
+          for (let g = 0; g < groups; g++) {
+            const cells = mk('div', 'dc-mini-group');
+            cells.style.setProperty('--g', String(group));
+            for (let k = 0; k < group; k++) {
+              const i = g * group + k;
+              const inO = a[i] !== undefined;
+              const inM = b[i] !== undefined;
+              const cell = mk('span', `dc-cell${k === 0 ? ' is-beat' : ''}`);
+              const right = inO && inM && (track !== 'bass' || a[i] === b[i]);
+              if (right) { cell.classList.add('is-ok'); cell.textContent = track === 'bass' ? bassNote(a[i]) : ''; }
+              else if (inO) { cell.classList.add('is-miss'); cell.textContent = track === 'bass' ? bassNote(a[i]) : ''; miss++; }
+              else if (inM) { cell.classList.add('is-extra'); cell.textContent = '×'; extra++; }
+              if (track !== 'bass' && inO && a[i] < 1) { cell.classList.add('is-ghost'); ghosts = true; }
+              cells.append(cell);
+            }
+            row.append(cells);
+          }
+          const name = track === 'bass' ? t('lab.dc.el.bass') : trackLabel(track);
+          const said = [];
+          if (miss) said.push(tf(miss === 1 ? 'lab.dc.grid.missOne' : 'lab.dc.grid.missMany', { n: miss }));
+          if (extra) said.push(tf('lab.dc.grid.extra', { n: extra }));
+          row.setAttribute('aria-label', `${name}: ${said.length ? said.join(', ') : t('lab.dc.grid.rowOk')}`);
+          grid.append(row);
+        }
+        const legend = mk('div', 'dc-legend');
+        const item = (cls, mark, text) => { const li = mk('span', 'dc-legend-item'); li.append(mk('i', `dc-cell ${cls}`, mark), document.createTextNode(text)); return li; };
+        legend.append(item('is-ok', '', t('lab.dc.legend.ok')), item('is-miss', '', t('lab.dc.legend.miss')), item('is-extra', '×', t('lab.dc.legend.extra')));
+        if (ghosts) legend.append(item('is-ok is-ghost', '', t('lab.dc.legend.ghost')));
+        return [label, grid, legend];
+      }
+      if (element === 'chords') {
+        const prog = progressionOfState(o);
+        const tiles = mk('div', 'dc-tiles');
+        tiles.setAttribute('role', 'list');
+        for (const deg of prog.degrees) {
+          const steps = chordSteps(modeStepsOf(o), o.modeId, prog, deg);
+          const tile = mk('div', 'dc-tile');
+          tile.setAttribute('role', 'listitem');
+          tile.append(mk('strong', '', chordName(o.keyRoot, steps, deg, !!prog.sevenths, o.modeId)), mk('span', '', romanNumeral(steps, deg, prog.sevenths)));
+          tiles.append(tile);
+        }
+        return [label, tiles, mk('span', 'dc-sol-text', this._dcSolution('chords'))];
+      }
+      return [label, mk('span', 'dc-sol-text', this._dcSolution(element))];
     }
 
     _renderDeconstruct() {
@@ -3309,8 +3536,6 @@
       const given = [tf('lab.dc.givenKey', { key: spell(dc.original.keyRoot, dc.original.keyRoot, 'major', labLang) })];
       if (!elements.includes('chords')) given.push(t('lab.dc.givenChords'));
       this.$('.dc-given').textContent = `${t('lab.dc.given')} ${given.join(' · ')}`;
-      // A/B
-      this.$all('.dc-ab-btn').forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.value === this.ui.dc.listen)));
       // Nur hören
       const parts = DC_FOCUS.filter((p) => p === 'all' || elements.includes(p));
       if (!parts.includes(this.ui.dc.focus)) this.ui.dc.focus = 'all';
@@ -3351,8 +3576,9 @@
       this.$('.dc-card-tip').textContent = t(`lab.dc.tip.${active}`);
       this.$('.dc-tap-box').hidden = active !== 'tempo';
       const sol = this.$('.dc-el-solution');
-      sol.hidden = !dc.revealed;
-      sol.textContent = dc.revealed ? `${t('lab.dc.solution')} ${this._dcSolution(active)}` : '';
+      const showSol = dc.revealed || !!dc.revealedEls?.[active];
+      sol.hidden = !showSol;
+      sol.replaceChildren(...(showSol ? this._dcSolutionNodes(active) : []));
       // Danach: Vorschlag (nur Hinweis, keine Reihenfolge erzwingen)
       const next = dcNextElement(elements, dc.done, active);
       const nextBtn = this.$('.dc-next');
@@ -3370,10 +3596,13 @@
       beatPanel.classList.toggle('is-dc-tpl', !!this.ui.dc.tpl);
       this.$('[data-action="dc-tpl"]').setAttribute('aria-expanded', String(!!this.ui.dc.tpl));
       this.$('.dc-all-done').hidden = doneCount < elements.length;
+      // „⋯“-Menü im Kopf: Neuer Song, Auflösen (mit Rückfrage)
       const reveal = this.$('[data-action="dc-reveal"]');
       reveal.hidden = dc.revealed;
       reveal.textContent = t(this.ui.dc.revealAsk ? 'lab.dc.revealSure' : 'lab.dc.reveal');
       reveal.classList.toggle('is-ask', this.ui.dc.revealAsk);
+      this.$('.dc-menu').hidden = !this.ui.dc.menu;
+      this.$('.dc-more').setAttribute('aria-expanded', String(!!this.ui.dc.menu));
       this.$('.dc-solution').hidden = !dc.revealed;
     }
 
@@ -3390,6 +3619,9 @@
       btn.setAttribute('aria-pressed', String(orig));
       btn.querySelector('.dc-quick-letter').textContent = orig ? 'A' : 'B';
       btn.querySelector('.dc-quick-text').textContent = t(orig ? 'lab.dc.original' : 'lab.dc.mineShort');
+      const now = t(orig ? 'lab.dc.quickNow.orig' : 'lab.dc.quickNow.mine');
+      btn.setAttribute('aria-label', now);
+      btn.title = now;
     }
 
     /* ---- Ansicht: Workshop ----
@@ -6504,6 +6736,8 @@
 
     _wireControls() {
       this.shadowRoot.addEventListener('click', (event) => {
+        // Ein Tipp außerhalb schließt das „⋯“-Menü.
+        if (this.ui.dc.menu && !event.target.closest('.dc-menu-wrap')) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); }
         const target = event.target.closest('[data-action]');
         if (!target || target.disabled) return;
         this._handleAction(target.dataset.action, target.dataset.value, target);
@@ -6651,7 +6885,20 @@
           break;
         case 'dc-song': if (DC_SONGS.some((x) => x.id === value && x.level === this.ui.dc.level)) { this.ui.dc.song = value; this._renderDeconstruct(); } break;
         case 'dc-new': this._dcNew(this.ui.dc.song); break;
+        case 'dc-menu':
+          this.ui.dc.menu = !this.ui.dc.menu;
+          if (!this.ui.dc.menu) this.ui.dc.revealAsk = false;
+          this._renderDeconstruct();
+          if (this.ui.dc.menu) this.$('.dc-menu button:not([hidden])')?.focus();
+          break;
+        case 'dc-sheet-close': this._dcSheetClose(); break;
+        case 'dc-sheet-next': this._dcSheetClose({ focus: false }); if (value) this._dcPick(value); this.$('.dc-check-btn')?.focus(); break;
+        case 'dc-sheet-song': this._dcSheetClose({ focus: false }); this._handleAction('dc-choose', '', null); break;
+        case 'dc-help-listen': this._dcHelpListen(value); break;
+        case 'dc-help-reveal': this._dcHelpReveal(value); break;
         case 'dc-choose':
+          this.ui.dc.menu = false;
+          this.ui.dc.revealAsk = false;
           this.ui.dc.choosing = true;
           this.ui.dc.level = this._saved.deconstruct?.level || this.ui.dc.level;
           this.ui.dc.song = this._dcSuggest(this.ui.dc.level);
@@ -6973,6 +7220,8 @@
       if (event.key === 'Escape') {
         event.preventDefault();
         if (this.ui.picker) this._closePicker();
+        else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
+        else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
         else if (!this.$('.sheet').hidden) this._closeSheet();
         else this.close();
         return;
@@ -7011,7 +7260,7 @@
     }
 
     _trapFocus(event) {
-      const scope = [this.$('.picker-card'), this.$('.sheet')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
+      const scope = [this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
       const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
         .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
         .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
@@ -7239,13 +7488,16 @@
     box-shadow: 0 6px 20px -8px rgba(var(--accent-rgb), .8);
   }
   .dc-primary svg { width: 20px; height: 20px; }
-  .dc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .dc-head { display: flex; align-items: center; gap: 10px; position: relative; }
+  .dc-head .dc-count { margin-left: auto; }
+  .dc-menu-wrap { position: relative; }
+  .dc-more { width: 44px; height: 44px; margin: -6px -8px -6px 0; border-radius: 14px; display: grid; place-items: center; color: #6b6086; }
+  .dc-more[aria-expanded="true"] { background: var(--surface-2); }
+  .dc-menu { position: absolute; right: 0; top: 100%; z-index: 4; min-width: 200px; padding: 6px; display: grid; gap: 2px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 14px 30px -12px rgba(36,27,61,.35); }
+  .dc-menu-item { min-height: 44px; padding: 0 12px; border-radius: 10px; text-align: left; font-size: .86rem; font-weight: 700; color: var(--text); }
+  .dc-menu-item:hover { background: var(--surface-2); }
   .dc-count { font-size: .74rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
-  .dc-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 12px 0 4px; border: 2px solid var(--accent); border-radius: 16px; overflow: hidden; }
-  .dc-ab-btn { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .86rem; font-weight: 800; color: var(--accent); background: var(--surface); }
-  .dc-ab-btn b { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 2px solid currentColor; font-size: .8rem; }
-  .dc-ab-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
-  .dc-ab-btn + .dc-ab-btn { border-left: 2px solid var(--accent); }
   /* Element-Leiste: eine Zeile Chips, Status als Symbol + Text, nie nur Farbe */
   .dc-elements { margin: 10px 0 0; display: grid; grid-template-columns: repeat(var(--dc-cols, 4), minmax(0, 1fr)); gap: 6px; }
   .dc-el { min-height: 52px; min-width: 0; padding: 4px 2px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
@@ -7267,12 +7519,34 @@
   .dc-card-state.is-no { color: #c0364a; background: #fde4e8; }
   .dc-card-hint { font-size: .86rem; line-height: 1.45; }
   .dc-card-tip, .dc-card-sub { font-size: .8rem; line-height: 1.45; color: #6b6086; }
-  .dc-el-solution { font-size: .78rem; font-weight: 700; color: #9d1f60; font-variant-numeric: tabular-nums; word-break: break-word; }
+  .dc-el-solution { display: grid; gap: 8px; font-size: .78rem; font-weight: 700; color: #9d1f60; font-variant-numeric: tabular-nums; word-break: break-word; padding: 10px 10px 12px; border: 1px dashed #d42f83; border-radius: 14px; background: #fff7ec; }
+  .dc-sol-label { font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #6b6086; }
+  /* Mini-Raster: Original gegen Meine Version */
+  .dc-mini { display: grid; gap: 5px; }
+  .dc-mini-row { display: grid; grid-template-columns: 58px; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); column-gap: 6px; align-items: center; }
+  .dc-mini-head { font-size: .66rem; font-weight: 700; color: #6b6086; }
+  .dc-mini-name { font-size: .72rem; font-weight: 700; color: #4a3f66; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dc-mini-group { display: grid; grid-template-columns: repeat(var(--g, 4), minmax(0, 1fr)); gap: 2px; }
+  .dc-cell { height: 24px; border-radius: 5px; background: #f3e4d6; display: flex; align-items: center; justify-content: center;
+    font-size: .66rem; font-weight: 800; font-style: normal; box-sizing: border-box; color: #fff; }
+  .dc-cell.is-beat { background: #ead6c4; }
+  .dc-cell.is-ok { background: #241b3d; }
+  .dc-cell.is-ok.is-ghost { background: #6b6086; }
+  .dc-cell.is-miss { background: #fff; border: 2px dashed #d42f83; color: #9d1f60; }
+  .dc-cell.is-extra { background: #f3c2ca; color: #c0364a; }
+  .dc-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .72rem; font-weight: 600; color: #4a3f66; }
+  .dc-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .dc-legend-item .dc-cell { width: 16px; height: 16px; border-radius: 4px; flex: 0 0 auto; font-size: .62rem; }
+  .dc-legend-item .dc-cell.is-miss { border-width: 2px; }
+  .dc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 6px; }
+  .dc-tile { min-height: 54px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .dc-tile strong { font-size: 1.05rem; font-weight: 800; color: var(--text); }
+  .dc-tile span { font-size: .68rem; font-weight: 700; color: #6b6086; }
+  .dc-sol-text { font-size: .8rem; }
   .dc-focus-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .dc-focus-label { font-size: .66rem; font-weight: 800; color: #6b6086; text-transform: uppercase; letter-spacing: .06em; }
   .dc-focus-row .chip-row { gap: 6px; }
   .dc-focus-row .chip { font-size: .74rem; padding: 0 12px; }
-  .dc-song .dc-actions { margin-top: 0; }
   .dc-next { margin-top: 4px; min-height: 44px; width: 100%; text-align: left; padding: 0 4px; font-size: .84rem; font-weight: 700; color: var(--text); }
   .dc-next::before { content: '→ '; color: #d42f83; font-weight: 900; }
   /* Tempo: großer Tap-Knopf */
@@ -7295,7 +7569,7 @@
   .is-dc .dc-tools .chip { min-height: 44px; }
   .dc-meter { display: none; }
   .is-dc.is-dc-hard .dc-meter { display: flex; }
-  .is-dc .dc-tpl-panel, .is-dc .dc-bass-panel { display: none; }
+  .is-dc .dc-tpl-panel, .is-dc .dc-bass-panel, .is-dc .reset-beat, .is-dc .dc-pattern-head { display: none; }
   .is-dc.is-dc-tpl .dc-tpl-panel { display: block; }
   .is-dc:not(.is-dc-hard) .kit-box { display: none; }
   .dc-all-done { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(var(--accent-rgb), .14); border: 2px solid var(--accent); font-size: .8rem; font-weight: 700; line-height: 1.45; }
@@ -7303,13 +7577,48 @@
   .dc-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
   .dc-solution { margin-top: 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--accent); font-size: .76rem; line-height: 1.45; }
   .dc-solution p { margin: 0 0 8px; }
-  .dc-reveal.is-ask { border-color: var(--bad); color: var(--bad); }
+  .dc-menu .dc-reveal.is-ask { color: #c0364a; background: #fde4e8; }
+  /* Prüf-Blatt: unten im Lab, über der Transportleiste (Höhe per --dc-bar-h) */
+  .dc-sheet { position: absolute; left: 0; right: 0; top: 0; bottom: var(--dc-bar-h, 0px); z-index: 6; display: flex; align-items: flex-end; justify-content: center; }
+  .dc-sheet-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); }
+  .dc-sheet-card { position: relative; width: 100%; max-width: 520px; max-height: 92%; overflow-y: auto; display: grid; gap: 14px; background: var(--surface);
+    border-radius: 26px 26px 0 0; padding: 10px max(18px, env(safe-area-inset-right)) 18px max(18px, env(safe-area-inset-left)); box-shadow: 0 -14px 40px -16px rgba(36,27,61,.4); }
+  .dc-sheet-card:focus { outline: none; }
+  .dc-sheet-grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); justify-self: center; }
+  .dc-sheet-head { display: flex; align-items: center; gap: 12px; }
+  .dc-sheet-mark { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 1.25rem; font-weight: 800; }
+  .dc-sheet-mark.is-ok { background: #dff3e8; color: #1f7a4d; }
+  .dc-sheet-mark.is-near { background: #fff1cc; color: #8a5a00; }
+  .dc-sheet-mark.is-no { background: #fde4e8; color: #c0364a; }
+  .dc-sheet-heads { display: grid; gap: 2px; min-width: 0; }
+  .dc-sheet-title { margin: 0; font-size: 1.12rem; font-weight: 800; }
+  .dc-sheet-sub { margin: 0; font-size: .82rem; color: #6b6086; }
+  .dc-parts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dc-part { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1px solid; min-width: 0; }
+  .dc-part.is-ok { border-color: #cfe8da; background: #effaf3; }
+  .dc-part.is-near { border-color: #f0dca4; background: #fff8e1; }
+  .dc-part.is-no { border-color: #f3c2ca; background: #fff0f2; }
+  .dc-part-mark { width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: .95rem; font-weight: 800; color: #fff; }
+  .dc-part.is-ok .dc-part-mark { background: #1f7a4d; }
+  .dc-part.is-near .dc-part-mark { background: #8a5a00; }
+  .dc-part.is-no .dc-part-mark { background: #c0364a; }
+  .dc-part-text { display: grid; min-width: 0; }
+  .dc-part-name { font-size: .88rem; font-weight: 700; }
+  .dc-part-sub { font-size: .74rem; color: #6b6086; }
+  .dc-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .dc-sheet-hint { margin: 0; font-size: .88rem; line-height: 1.45; }
+  .dc-help { display: grid; gap: 10px; padding: 12px 14px; border: 1px dashed #d9b9a2; border-radius: 16px; background: var(--bg); }
+  .dc-help-title { font-size: .8rem; font-weight: 700; color: #4a3f66; }
+  .dc-help-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dc-help-btns .chip { min-height: 44px; color: #4a3f66; font-weight: 700; }
+  .dc-sheet-main { min-height: 54px; border-radius: 18px; background: #241b3d; color: #fff; font-size: 1rem; font-weight: 800; }
+  .dc-sheet-close { min-height: 44px; border-radius: 14px; font-size: .9rem; font-weight: 700; color: #4a3f66; }
   .dc-quick {
     min-width: 52px; height: 44px; padding: 0 8px; border-radius: 13px; border: 2px solid var(--accent); background: var(--surface);
     color: var(--accent); display: grid; place-items: center; line-height: 1; gap: 1px;
   }
   .dc-quick b { font-size: .95rem; font-weight: 900; }
-  .dc-quick span { font-size: .5rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+  .dc-quick span { font-size: .56rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
   .dc-quick[aria-pressed="true"] { background: var(--accent); color: #fff; }
   /* Während das Original klingt: ein Rand um die Transportleiste — man
      soll beim Bauen nie raten müssen, was man gerade hört. */
@@ -7826,13 +8135,16 @@
         <div class="dc-head">
           <h2 class="dc-title dc-title-small"><span>de:</span>construct</h2>
           <span class="dc-count"></span>
+          <div class="dc-menu-wrap">
+            <button class="dc-more" type="button" data-action="dc-menu" aria-haspopup="true" aria-expanded="false" aria-label="${t('lab.dc.moreAria')}" title="${t('lab.dc.moreAria')}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none"/></svg></button>
+            <div class="dc-menu" hidden>
+              <button class="dc-menu-item" type="button" data-action="dc-choose">${t('lab.dc.newSong')}</button>
+              <button class="dc-menu-item dc-reveal" type="button" data-action="dc-reveal">${t('lab.dc.reveal')}</button>
+            </div>
+          </div>
         </div>
         <p class="dc-song-title"></p>
         <p class="dc-given"></p>
-        <div class="dc-ab" role="group" aria-label="${t('lab.dc.abAria')}">
-          <button class="dc-ab-btn" type="button" data-action="dc-listen" data-value="orig" aria-pressed="true"><b aria-hidden="true">A</b><span>${t('lab.dc.original')}</span></button>
-          <button class="dc-ab-btn" type="button" data-action="dc-listen" data-value="mine" aria-pressed="false"><b aria-hidden="true">B</b><span>${t('lab.dc.mine')}</span></button>
-        </div>
         <nav class="dc-elements" aria-label="${t('lab.dc.elementsTitle')}"></nav>
         <section class="dc-card" aria-live="off">
           <div class="dc-card-head"><strong class="dc-card-name"></strong><span class="dc-card-state"></span></div>
@@ -7843,7 +8155,7 @@
             <output class="bpm-out dc-tap-bpm"></output>
           </div>
           <p class="dc-card-tip"></p>
-          <p class="dc-el-solution" hidden></p>
+          <div class="dc-el-solution" tabindex="-1" hidden></div>
           <div class="dc-focus-row">
             <span class="dc-focus-label" id="dc-focus-label">${t('lab.dc.focusTitle')}</span>
             <div class="chip-row dc-focus" role="group" aria-labelledby="dc-focus-label"></div>
@@ -7856,10 +8168,6 @@
           <p>${t('lab.dc.revealed')}</p>
           <button class="chip" type="button" data-action="dc-adopt">${t('lab.dc.adopt')}</button>
         </div>
-        <div class="dc-actions">
-          <button class="chip dc-reveal" type="button" data-action="dc-reveal">${t('lab.dc.reveal')}</button>
-          <button class="chip" type="button" data-action="dc-choose">${t('lab.dc.newSong')}</button>
-        </div>
       </div>
     </section>
   </section>
@@ -7869,7 +8177,7 @@
       ${pickerTrigger('beat')}
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
+      <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
       <div class="dc-tools">
         <div class="chip-row dc-meter" role="group" aria-label="${t('lab.dc.meterAria')}"></div>
         <button class="chip" type="button" data-action="dc-tpl" aria-expanded="false">${t('lab.dc.tpl')}</button>
@@ -8193,6 +8501,31 @@
     <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="import-code">${t('lab.importCode')}</button></div>
     <p class="sheet-status" role="status"></p>
   </div>
+</div>
+
+<div class="dc-sheet" hidden>
+  <div class="dc-sheet-backdrop" data-action="dc-sheet-close"></div>
+  <section class="dc-sheet-card" role="dialog" aria-modal="true" aria-labelledby="dc-sheet-title" tabindex="-1">
+    <div class="dc-sheet-grab" aria-hidden="true"></div>
+    <div class="dc-sheet-head">
+      <span class="dc-sheet-mark" aria-hidden="true"></span>
+      <div class="dc-sheet-heads">
+        <h2 class="dc-sheet-title" id="dc-sheet-title"></h2>
+        <p class="dc-sheet-sub"></p>
+      </div>
+    </div>
+    <ul class="dc-parts" hidden></ul>
+    <p class="dc-sheet-hint" hidden></p>
+    <div class="dc-help" hidden>
+      <span class="dc-help-title"></span>
+      <div class="dc-help-btns">
+        <button class="chip dc-help-listen" type="button" data-action="dc-help-listen"></button>
+        <button class="chip dc-help-reveal" type="button" data-action="dc-help-reveal">${t('lab.dc.help.reveal')}</button>
+      </div>
+    </div>
+    <button class="dc-sheet-main" type="button" data-action="dc-sheet-close"></button>
+    <button class="dc-sheet-close" type="button" data-action="dc-sheet-close" hidden></button>
+  </section>
 </div>
 
 <div class="picker" hidden>

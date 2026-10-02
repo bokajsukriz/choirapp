@@ -20331,6 +20331,16 @@ async function runMusicSelfTests({ log = true } = {}) {
       const noHat = clone(m); noHat.beat.hat = {};
       const r = note(T.dcCompare(o, noHat, 'beat'));
       if (r.status === 'ok' || !r.hints.length || /\d/.test(JSON.stringify(r.hints.map((h) => h.vars)))) failed.push(`de:construct Beat ohne Hi-Hat: ${JSON.stringify(r)}`);
+      // Detaildaten fürs Prüf-Blatt: Hi-Hat ✗, andere ✓, nie Schrittnummern
+      if (!Array.isArray(r.parts) || r.parts.find((x) => x.id === 'hat')?.ok !== false
+        || r.parts.some((x) => x.id !== 'hat' && !x.ok) || r.parts.some((x) => Object.keys(x).sort().join() !== 'id,ok,soft')) failed.push(`de:construct Beat-Details: ${JSON.stringify(r.parts)}`);
+      const rOk = T.dcCompare(o, o, 'beat');
+      if (!rOk.parts?.length || rOk.parts.some((x) => !x.ok)) failed.push('de:construct Beat-Details bei „stimmt“');
+      const bR = T.dcCompare(o, wrongNotes, 'bass');
+      const bN = T.dcCompare(o, lessRhythm, 'bass');
+      if (bR.parts?.rhythm !== true || bR.parts?.notes !== false) failed.push(`de:construct Bass-Details Töne: ${JSON.stringify(bR.parts)}`);
+      if (bN.parts?.rhythm !== false || bN.parts?.notes !== true) failed.push(`de:construct Bass-Details Rhythmus: ${JSON.stringify(bN.parts)}`);
+      if (JSON.stringify(T.dcCompare(o, o, 'bass').parts) !== '{"rhythm":true,"notes":true}') failed.push('de:construct Bass-Details bei „stimmt“');
       check('Beat leer', { ...m, beat: { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: m.beat.bass } }, 'beat', 'no', 'lab.dc.hint.beatEmpty');
       const snareSteps = Object.keys(o.beat.snare);
       if (snareSteps.length) {
@@ -20361,7 +20371,11 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
     // Alle Hinweis-Schlüssel gibt es als Text (DE, EN, PL).
     for (const key of hintKeys) for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
-    for (const key of ['lab.viewDeconstruct', 'lab.dc.tapSub', 'lab.dc.tapAria', 'lab.dc.checkEl', 'lab.dc.next', 'lab.dc.tpl', 'lab.dc.clearGrid', 'lab.dc.meterAria',
+    for (const key of ['lab.viewDeconstruct', 'lab.dc.moreAria', 'lab.dc.quickNow.orig', 'lab.dc.quickNow.mine', 'lab.dc.help.title', 'lab.dc.help.titleMore', 'lab.dc.help.listen', 'lab.dc.help.reveal', 'lab.dc.help.listening',
+      'lab.dc.grid.rowOk', 'lab.dc.grid.missOne', 'lab.dc.grid.missMany', 'lab.dc.grid.extra', 'lab.dc.legend.ok', 'lab.dc.legend.miss', 'lab.dc.legend.extra', 'lab.dc.legend.ghost',
+      'lab.dc.part.rhythm', 'lab.dc.part.rhythmSub', 'lab.dc.part.notes', 'lab.dc.part.notesSub', 'lab.dc.sheet.sub.tracks', 'lab.dc.sheet.sub.bass', 'lab.dc.sheet.sub.all', 'lab.dc.sheet.allDone',
+      'lab.dc.sheet.next', 'lab.dc.sheet.nextSong', 'lab.dc.sheet.close', 'lab.dc.sheet.keepBuilding', 'lab.dc.sheet.beatTip', ...['ok', 'near', 'no'].flatMap((x) => [`lab.dc.sheet.title.${x}`, `lab.dc.sheet.sub.${x}`]),
+      ...['kick', 'snare', 'clap', 'hat', 'open'].map((x) => `lab.dc.bridge.${x}`), 'lab.dc.tapSub', 'lab.dc.tapAria', 'lab.dc.checkEl', 'lab.dc.next', 'lab.dc.tpl', 'lab.dc.clearGrid', 'lab.dc.meterAria',
       ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`, `lab.dc.short.${el}`, `lab.dc.tip.${el}`]),
       ...T.DC_LEVELS.flatMap((l) => [`lab.dc.level.${l.id}`, `lab.dc.levelInfo.${l.id}`]), ...T.DC_FOCUS.map((f) => `lab.dc.focus.${f}`),
       ...['ok', 'near', 'no', 'open', 'done'].map((s) => `lab.dc.status.${s}`)]) {
@@ -20452,11 +20466,96 @@ async function runMusicSelfTests({ log = true } = {}) {
     } catch (err) {
       failed.push(`de:construct Bauen-Ansicht: ${err?.message || err}`);
     }
+    // Prüf-Blatt, Versuchszähler, gestufte Hilfe, Teil-Auflösen (echte, nicht eingehängte Lab-Instanz).
+    try {
+      const esc = (v) => v._handleKeydown({ key: 'Escape', preventDefault() {} });
+      const dcS = T.dcNewSong('e1');
+      const vs = document.createElement('chor-groove-lab');
+      vs._saved.deconstruct = dcS;
+      vs._applyView('deconstruct');
+      const sheet = vs.$('.dc-sheet');
+      if (!sheet.hidden) failed.push('de:construct Blatt: schon beim Start offen');
+      if (vs.$('.dc-ab')) failed.push('de:construct: großer A/B-Block noch da');
+      vs._dcCheck('beat'); // leeres Raster → noch nicht
+      const card = vs.$('.dc-sheet-card');
+      if (sheet.hidden || vs.ui.dc.sheet !== 'beat' || card.getAttribute('role') !== 'dialog' || card.getAttribute('aria-modal') !== 'true' || !vs.$('#dc-sheet-title, .dc-sheet-title').textContent) failed.push('de:construct Blatt: öffnet nicht richtig');
+      if (!vs.$('.dc-help').hidden || vs.ui.dc.tries.beat !== 1) failed.push('de:construct Blatt: Hilfe schon beim 1. Versuch');
+      vs._handleAction('dc-sheet-close', '', null);
+      if (!sheet.hidden || vs.ui.dc.sheet !== null) failed.push('de:construct Blatt: „Weiter bauen“ schließt nicht');
+      vs._dcCheck('beat');
+      if (sheet.hidden || !vs.$('.dc-help').hidden) failed.push('de:construct Blatt: 2. Versuch');
+      esc(vs);
+      if (!sheet.hidden) failed.push('de:construct Blatt: Escape schließt nicht');
+      vs._dcCheck('beat');
+      if (vs.ui.dc.tries.beat !== 3 || vs.$('.dc-help').hidden || vs.$('.dc-help-listen').hidden || vs.$('.dc-help-reveal').hidden) failed.push(`de:construct Blatt: Hilfe ab dem 3. Versuch (${vs.ui.dc.tries.beat})`);
+      vs._handleAction('dc-help-listen', 'beat', null);
+      if (!sheet.hidden || vs.ui.dc.focus !== 'beat' || vs.ui.dc.listen !== 'orig') failed.push('de:construct Blatt: „Nur Beat hören“');
+      vs._dcFocus('all');
+      // Tempo treffen: „stimmt“ setzt den Zähler zurück, Hauptknopf führt weiter.
+      vs.state.bpm = dcS.original.bpm; vs.state.swing = dcS.original.swing;
+      vs._dcCheck('tempo');
+      if (vs.ui.dc.tries.tempo !== 0 || vs.$('.dc-sheet-main').dataset.action !== 'dc-sheet-next' || vs.$('.dc-sheet-main').dataset.value !== 'beat') failed.push('de:construct Blatt: stimmt → „Weiter“');
+      vs._handleAction('dc-sheet-next', 'beat', null);
+      if (!sheet.hidden || vs.ui.dc.active !== 'beat') failed.push('de:construct Blatt: „Weiter“ setzt das Element nicht');
+      // Tempo ohne Spur: Hilfe bietet nur das Auflösen an.
+      vs.state.bpm = 100;
+      for (let i = 0; i < 3; i++) vs._dcCheck('tempo');
+      if (vs.$('.dc-help').hidden || !vs.$('.dc-help-listen').hidden) failed.push('de:construct Blatt: Tempo-Hilfe');
+      vs._handleAction('dc-sheet-close', '', null);
+      // Nur dieses Element auflösen.
+      vs._handleAction('dc-help-reveal', 'beat', null);
+      if (!dcS.revealedEls.beat || dcS.revealedEls.tempo || vs.$('.dc-el-solution').hidden || !vs.$('.dc-el-solution .dc-mini')) failed.push('de:construct Teil-Auflösen: Raster fehlt');
+      vs._dcPick('tempo');
+      if (!vs.$('.dc-el-solution').hidden) failed.push('de:construct Teil-Auflösen: Lösung auch bei Tempo sichtbar');
+      // Alles nachgebaut — aber ein Element war aufgelöst: nicht „geschafft“.
+      Object.assign(vs.state, clone(dcS.original));
+      for (const el of ['tempo', 'beat', 'bass']) vs._dcCheck(el);
+      if (!['tempo', 'beat', 'bass'].every((el) => dcS.done[el]) || dcS.solved.e1) failed.push(`de:construct: Teil-Auflösen zählt für „solved“ (${JSON.stringify(dcS.solved)})`);
+      if (vs.$('.dc-sheet-main').dataset.action !== 'dc-sheet-song' || !vs.$('.dc-sheet-mark').classList.contains('is-ok')) failed.push('de:construct Blatt: „Alles nachgebaut“ → Nächster Song');
+      // Gegenprobe: ohne Auflösen zählt es.
+      const dcP = T.dcNewSong('e1');
+      const vp = document.createElement('chor-groove-lab');
+      vp._saved.deconstruct = dcP; vp._applyView('deconstruct');
+      Object.assign(vp.state, clone(dcP.original));
+      for (const el of ['tempo', 'beat', 'bass']) vp._dcCheck(el);
+      if (!dcP.solved.e1 || vp.$('.dc-sheet-main').dataset.action !== 'dc-sheet-song') failed.push('de:construct: ganz ohne Hilfe nachgebaut zählt nicht');
+      vp._applyView('studio');
+      // Neuer Song setzt Versuche zurück.
+      vs.ui.dc.tries = { beat: 5 };
+      vs.playing = true; // kein AudioContext im Test
+      vs._dcNew('e2');
+      vs.playing = false;
+      if (Object.keys(vs.ui.dc.tries).length || !sheet.hidden || vs._saved.deconstruct.revealedEls && Object.keys(vs._saved.deconstruct.revealedEls).length) failed.push('de:construct: neuer Song setzt Versuche/Teil-Auflösung nicht zurück');
+      vs._applyView('studio');
+      // Mini-Raster: Zeilen und Zellen je Taktart, Beschriftung in Worten.
+      for (const meter of ['4/4', '3/4', '6/8']) {
+        const song = T.DC_SONGS.find((x) => x.level === 'hard' && x.meter === meter);
+        if (!song) continue;
+        const dcM = T.dcNewSong(song.id);
+        dcM.revealed = true;
+        const vm = document.createElement('chor-groove-lab');
+        vm._saved.deconstruct = dcM; vm._applyView('deconstruct');
+        const { steps, group } = T.METERS[meter];
+        for (const el of ['beat', 'bass']) {
+          vm._dcPick(el);
+          const rows = [...vm.$all('.dc-el-solution .dc-mini-row[role="img"]')];
+          if (!rows.length || rows.some((r) => r.querySelectorAll('.dc-cell').length !== steps || r.querySelectorAll('.dc-mini-group').length !== steps / group || !/: /.test(r.getAttribute('aria-label') || ''))) failed.push(`de:construct Raster ${meter}/${el}: Aufbau`);
+          if (rows.some((r) => !r.querySelector('.is-miss'))) failed.push(`de:construct Raster ${meter}/${el}: leeres „Meine Version“ zeigt nichts als fehlend`);
+        }
+        Object.assign(vm.state, clone(dcM.original));
+        vm._dcPick('beat');
+        if (vm.$all('.dc-mini-row[role="img"]').some((r) => /Many|One|extra|fehl|zu viel/.test(r.getAttribute('aria-label')) || r.querySelector('.is-miss, .is-extra'))) failed.push(`de:construct Raster ${meter}: gleiche Version zeigt Unterschiede`);
+        vm._applyView('studio');
+      }
+    } catch (err) {
+      failed.push(`de:construct Blatt/Hilfe/Raster: ${err?.stack || err}`);
+    }
     // 4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll.
     const dc = T.dcNewSong('h3', '2026-10-01', { e1: '2026-09-30' });
     dc.checks = { tempo: 'near', beat: 'ok' };
     dc.done = { beat: '2026-10-01' };
     dc.revealed = true;
+    dc.revealedEls = { beat: true };
     dc.mine.bpm = 77;
     dc.mine.eighths = 154;
     if (!same(T.sanitizeDeconstruct(clone(dc)), dc)) failed.push('de:construct: Roundtrip Speichern/Laden');
@@ -20474,6 +20573,9 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (forged.original.bpm !== dc.original.bpm) failed.push('de:construct: Original aus der Ablage übernommen');
     const dirty = T.sanitizeDeconstruct({ ...clone(dc), song: 'e2', level: 'hard', checks: { tempo: 'super', melody: 'ok', beat: 'no' }, done: { bass: '1.10.2026', beat: '2026-10-01' }, revealed: 'ja', solved: { e1: 'gestern', zz: '2026-10-01', m1: '2026-10-01' } });
     if (dirty.level !== 'easy' || !same(dirty.checks, { beat: 'no' }) || !same(dirty.done, { beat: '2026-10-01' }) || dirty.revealed !== false || !same(dirty.solved, { m1: '2026-10-01' })) failed.push(`de:construct: kaputte Fortschrittsfelder → ${JSON.stringify([dirty.level, dirty.checks, dirty.done, dirty.revealed, dirty.solved])}`);
+    const dirtyEls = T.sanitizeDeconstruct({ song: 'e2', revealedEls: { tempo: true, beat: 'ja', bass: 1, melody: true, zz: true } });
+    if (!same(dirtyEls.revealedEls, { tempo: true })) failed.push(`de:construct: Müll in revealedEls → ${JSON.stringify(dirtyEls.revealedEls)}`);
+    if (!same(T.sanitizeDeconstruct({ song: 'e2', revealedEls: 'x' }).revealedEls, {}) || !same(T.sanitizeDeconstruct({ song: 'e2' }).revealedEls, {})) failed.push('de:construct: alte Ablage ohne revealedEls');
     const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'deconstruct' })).view;
     if (savedView !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
   }
