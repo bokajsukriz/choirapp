@@ -702,15 +702,22 @@
   .sum-text b { color: var(--text); }
   .sum-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .sum-actions .k-btn { flex: 1 1 auto; height: 46px; font-size: 15px; }
-  .voice-card { padding: 10px 12px; }
-  .sheet-tuner { width: 100%; margin-top: 12px; }
-  .voice-card .k-hero-title { font-size: 17px; }
-  .voice-dot { display: inline-block; width: 8px; height: 8px; margin: 0 6px 2px 0; border-radius: 50%; background: var(--accent-foreground); vertical-align: middle; }
-  .voice-more { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; color: var(--muted-2); }
-  .voice-more .k-chev svg { width: 18px; height: 18px; }
   /* ---- Singen-Übung (Konfetti B2) ---- */
   [data-panel="voice"] .panel { background: transparent; border: 0; padding: 0; }
   [data-panel="voice"] .panel[data-sing-only="tuner"] { background: var(--surface); border: 1px solid var(--line); padding: 14px; }
+  /* Tuner: Mikro-Symbol oben rechts (wie in der Sing-Bühne), hier ein Knopf. */
+  .tuner-panel { position: relative; }
+  .sing-mic.tuner-mic { width: 44px; height: 44px; border-radius: 50%; z-index: 1; cursor: pointer; opacity: .6; }
+  .sing-mic.tuner-mic.is-open { opacity: 1; }
+  .sing-mic.tuner-mic svg { width: 28px; height: 28px; }
+  /* Zielton: eine Oktave Klaviatur (Oktave egal), gewählte Taste markiert. */
+  .a4-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-weight: 700; }
+  .target-piano { position: relative; height: 128px; display: flex; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  .tp-key { flex: 1 1 0; min-width: 0; margin: 0 1px; border: 2px solid var(--tint-line); border-top-width: 1px; border-radius: 0 0 10px 10px; background: #fff; color: var(--muted); font: inherit; font-size: 13px; font-weight: 800; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; }
+  .tp-key.is-black { position: absolute; top: 0; z-index: 1; width: 9.5%; height: 60%; margin: 0; background: #3a3150; border-color: #3a3150; color: #fff; font-size: 11px; padding-bottom: 6px; border-radius: 0 0 8px 8px; }
+  .tp-key[aria-pressed="true"] { background: var(--accent); border-color: var(--accent-foreground); color: var(--accent-ink); }
+  .tp-key.is-black[aria-pressed="true"] { background: var(--accent-foreground); border-color: var(--accent-foreground); color: #fff; }
+  .tp-key:active { filter: brightness(.94); }
   .sing-stage { background: transparent; border: 0; padding: 4px 0; }
   /* Singen: festes Gerüst (Anweisung Singen-UI). Bühne mit fester Höhe,
      jede Zeile mit fester Höhe; Dock fest unten mit drei Plätzen. */
@@ -840,7 +847,14 @@
   .db-wrap[hidden], .db-round[hidden], body:not([data-view="downbeat"]) .db-wrap, body:not([data-view="downbeat"]) .db-round { display: none; }
   .db-wrap .ear-pad { height: 150px; padding: 42px 14px 12px; border-width: 3px; gap: 6px; }
   .db-wrap .ear-pad b { white-space: nowrap; }
-  .db-wrap .ear-pad:is([data-phase="idle"], [data-phase="wait"], [data-phase="done"]) span { display: none; } /* wie die anderen Übungen: nur die Pille */
+  .db-wrap .ear-pad:is([data-phase="idle"], [data-phase="wait"]) span { display: none; } /* wie die anderen Übungen: nur die Pille */
+  /* Nach der Runde: Ergebnis oben im Feld, darunter der Weiter-Knopf (eigener Knopf, Tippen aufs Feld zählt nicht). */
+  .db-wrap .ear-pad.ear-pad[data-phase="done"] { justify-content: flex-start; padding-top: 18px; cursor: default; }
+  .db-wrap .ear-pad.ear-pad[data-phase="done"] b { background: none; color: inherit; padding: 0; }
+  .db-wrap .ear-pad.ear-pad[data-phase="done"] b::before { display: none; }
+  .db-next { position: relative; z-index: 1; align-self: end; justify-self: center; margin-bottom: 18px; display: inline-flex; align-items: center; gap: 10px; padding: 10px 26px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+  .db-next::after { content: ''; width: 0; height: 0; border-left: 12px solid currentColor; border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+  .db-next[hidden] { display: none; }
   .db-wrap .ear-pad[data-phase="idle"], .db-wrap .ear-pad[data-phase="wait"] { border-style: dashed; }
   .db-wrap .ear-pad[data-phase="idle"] b, .db-wrap .ear-pad[data-phase="wait"] b, .db-wrap .ear-pad[data-phase="done"] b { display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
   .db-wrap .ear-pad[data-phase="idle"] b::before, .db-wrap .ear-pad[data-phase="wait"] b::before, .db-wrap .ear-pad[data-phase="done"] b::before { content: ''; width: 0; height: 0; border-left: 14px solid currentColor; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
@@ -1039,9 +1053,9 @@
         <button class="dock-slot" type="button" data-sing="helps" aria-label="Hilfen: Zielton, Langsamer, 1. Hälfte, Überspringen" aria-haspopup="dialog"><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span><span>Hilfen</span></button>
       </div>
     </section>
-    <section class="panel" data-sing-only="tuner">
-      <div class="panel-head"><h2>Stimm-Tuner</h2>
-        <button class="big-btn" type="button" data-voice="mic">Mikrofon an</button></div>
+    <section class="panel tuner-panel" data-sing-only="tuner">
+      <!-- Mikro-Symbol wie bei den Singübungen (Pegel), zum Ein-/Ausschalten; beim Öffnen an. -->
+      <button class="sing-mic tuner-mic" type="button" data-voice="mic" aria-pressed="false" aria-label="Mikrofon aus – einschalten"><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="tuner-mic-clip"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/></clipPath></defs><rect class="mic-fill" clip-path="url(#tuner-mic-clip)" x="8.5" y="14.5" width="7" height="0"/><rect class="mic-cap" x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path class="mic-stand" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/><path class="mic-slash" d="M4 3l16 18"/></svg></button>
       <div class="tuner">
         <div class="tuner-note is-idle">–</div>
         <div class="tuner-hz"></div>
@@ -1054,26 +1068,18 @@
     </section>
     <section class="panel" data-sing-only="tuner">
       <div class="panel-head"><h2>Zielton</h2></div>
-      <div class="switch-row"><label class="switch"><input type="checkbox" role="switch" data-voiceswitch="useTarget"><span class="switch-track"></span>Auf Zielton stimmen</label></div>
-      <label class="a4-row">Kammerton a′ = <select data-voice-a4 aria-label="Kammerton in Hertz"></select> Hz</label>
-      <div class="target-row">
-        <button class="step-btn" type="button" data-voice="target-down" aria-label="Zielton einen Halbton tiefer">−</button>
-        <span class="target-note" aria-live="polite"></span>
-        <button class="step-btn" type="button" data-voice="target-up" aria-label="Zielton einen Halbton höher">+</button>
-        <button class="big-btn secondary" type="button" data-voice="target-play">Anspielen</button>
-      </div>
-      <p class="foot-note">Die Oktave ist egal: tiefe und hohe Stimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
+      <!-- Kammerton: springt auf a′ in der gewählten Frequenz (renderTargetPiano). -->
+      <div class="a4-row"><button class="chip" type="button" data-voice="kammerton">Kammerton a′</button><select data-voice-a4 aria-label="Kammerton in Hertz"></select> Hz</div>
+      <div class="target-piano" role="group" aria-label="Zielton wählen"></div>
+      <p class="foot-note">Taste antippen: Zielton, er klingt an. Noch einmal antippen: frei stimmen. Die Oktave ist egal – tiefe und hohe Stimmen treffen denselben Ton in ihrer Lage. Mit Kopfhörern üben, sonst hört das Mikrofon den Zielton mit.</p>
     </section>
     <section class="panel" data-sing-only="tuner">
-      <div class="panel-head"><h2>Tonumfang heute</h2><button class="chip" type="button" data-voice="range-reset">Zurücksetzen</button></div>
+      <div class="panel-head"><h2>Mein Tonumfang</h2><button class="chip" type="button" data-voice="range-reset">Zurücksetzen</button></div>
       <div class="range-out">
         <div class="range-box"><span>Tiefster Ton</span><strong class="range-low">–</strong></div>
         <div class="range-box"><span>Höchster Ton</span><strong class="range-high">–</strong></div>
       </div>
-      <p class="foot-note">Zählt nur Töne, die etwa eine halbe Sekunde sicher gehalten werden. Nie pressen — bei Kratzen oder Schmerz aufhören.</p>
-      <div class="ear-controls" data-range-save-row hidden>
-        <button class="big-btn secondary" type="button" data-voice="range-save" disabled>Als meinen Umfang speichern</button>
-      </div>
+      <p class="foot-note">Zählt nur Töne, die etwa eine Sekunde sicher gehalten werden, und bleibt gespeichert, bis du ihn zurücksetzt. Nie pressen — bei Kratzen oder Schmerz aufhören.</p>
       <p class="foot-note" data-range-save-note hidden>Das Einsingen bleibt zwei Halbtöne innerhalb dieser Grenzen.</p>
       <p class="foot-note" data-range-save-status role="status" aria-live="polite"></p>
     </section>
@@ -1121,6 +1127,7 @@
   </div>
   <div class="pad-wrap db-wrap" hidden>
     <button class="ear-pad" type="button" data-phase="idle"><b></b><span></span></button>
+    <button class="db-next" type="button" data-ear="next" hidden>Weiter</button>
     <button class="pad-corner pad-stop" type="button" data-ear="db-stop" aria-label="Stoppen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
     <button type="button" class="pad-corner pad-tempo" data-tempo-drag="downbeat" role="slider" aria-label="Tempo in BPM (nach oben oder unten ziehen)" aria-valuemin="30" aria-valuemax="200" aria-valuenow="90"><b>90</b><small>BPM</small></button>
     <span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
@@ -1248,6 +1255,7 @@
   }
   /** Mindestspanne für „Als meinen Umfang speichern" (wie practiceRange). */
   const RANGE_SAVE_MIN = 14;
+  const RANGE_HOLD_SEC = 1; // so lange muss ein Ton für den Tonumfang sicher gehalten werden
   const A4_CHOICES = [438, 439, 440, 441, 442, 443, 444, 445];
   let tuningA4 = 440;
   const noteHz = (midi) => tuningA4 * Math.pow(2, (midi - 69) / 12);
@@ -4293,24 +4301,8 @@
 
   /** Singen: Ton treffen → Melodie → Mit Rhythmus (Musikpädagoge; Blattsingen,
    *  wenn eingeschaltet, als dritter Eintrag unter Melodie). Der Tuner ist ein
-   *  Werkzeug, keine Übung: er sitzt in der Karte „Meine Stimme“. */
+   *  Werkzeug, keine Übung: eigene Kachel auf der Tools-Seite (?mode=tuner). */
   const SING_GROUPS = [['Ton treffen', ['hold', 'findTone', 'singInterval']], ['Melodie', ['singEcho', 'dictation', 'sight']], ['Mit Rhythmus', ['inTime']], ['Im Chor', ['twoPart']]];
-  /** Karte „Meine Stimme“: Stimme und (gemessener) Umfang als Startpunkt; die
-   *  ganze Karte ist ein Tippziel und öffnet Tuner, Zielton und Tonumfang.
-   *  Kein Standardumfang als Tatsache, keine Warnfarbe im Leerzustand. */
-  function voiceCardHtml() {
-    const prof = readProfile();
-    const chosen = profileApi ? SATB_PARTS.includes(prof?.part) : true;
-    const part = profileApi ? prof?.part : ear.part;
-    const measured = Number.isFinite(prof?.low) && Number.isFinite(prof?.high);
-    const title = !chosen ? 'noch nicht gewählt' : `${PART_NAMES[part]}${measured ? ` · ${noteLabel(prof.low)} – ${noteLabel(prof.high)}` : ''}`;
-    const right = !chosen ? 'Stimme wählen' : !measured ? 'Umfang messen' : 'Tuner & Umfang';
-    const icon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
-    // Noch keine Stimme: der Tipp führt zur Stimmwahl (Zahnrad-Blatt), nicht in den Tuner.
-    const act = chosen ? 'data-open-mode="voice:tuner"' : 'data-open-mode="voice:tuner" data-voice-choose';
-    const label = chosen ? `Meine Stimme: ${title}. ${right} – Tuner, Zielton und Tonumfang öffnen` : 'Meine Stimme: noch nicht gewählt – Stimme wählen';
-    return `<button type="button" class="k-hero voice-card" ${act} aria-label="${label}"><span class="k-hero-icon">${icon}</span><span class="k-hero-text"><span class="k-hero-over">Meine Stimme</span><span class="k-hero-title">${chosen ? '' : '<span class="voice-dot" aria-hidden="true"></span>'}${title}</span></span><span class="voice-more">${right}<span class="k-chev">${K_CHEV}</span></span></button>`;
-  }
 
   /** Rhythmus-Übersicht: Kurs-Karte (Lektion, Stepper, Play), „Heute
    *  wiederholen (n)“ direkt darunter (Wiederholen vor Neuem), dann die
@@ -4366,7 +4358,7 @@
     const host = $(`[data-list="${tab}"]`);
     if (tab === 'rhythm') { host.innerHTML = rhythmHubHtml(); return; }
     if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS, '', ['downbeat']); return; } // Einsatz finden steht bei Rhythmus
-    if (tab === 'voice') { host.innerHTML = groupedHubHtml('voice', SING_GROUPS, voiceCardHtml(), ['tuner']); return; }
+    if (tab === 'voice') { host.innerHTML = groupedHubHtml('voice', SING_GROUPS, '', ['tuner']); return; }
     const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
       <span class="mode-ico">${modeIcon(icon)}</span><span><strong>${name}</strong><span class="mode-how">${text}</span></span><span class="mode-lv">${right}</span></button></li>`;
@@ -5954,7 +5946,8 @@
     setEarFeedback(text, ok ? 'ok' : 'bad');
     onEarResult(task, ok);
     renderEar();
-    if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
+    // Einsatz finden: nie automatisch weiter – erst der Weiter-Knopf (man klatscht evtl. noch).
+    if (ok && ear.settings.autoNext && task.kind !== 'downbeat') ear.timers.push(setTimeout(nextEar, 1600));
   }
   /** Fortschritt und „Heute üben“. */
   function onEarResult(task, ok) {
@@ -6314,6 +6307,8 @@
     $('[data-ear="db-again"]').setAttribute('aria-label', task && ear.revealed ? 'Lösung hören' : 'Nochmal');
     $('[data-ear="db-helps"]').disabled = !task;
     $('[data-ear="db-stop"]').hidden = !dbRun;
+    // Nach der Runde: Weiter nur über den eigenen Knopf (an der Stelle der Start-Pille).
+    $('.db-next').hidden = !(task && ear.revealed);
     const tc = $('[data-tempo-drag="downbeat"]');
     if (tempoDrag.el !== tc) showTempoValue(tc, downbeatBpm());
     if (dbRun) tc.setAttribute('aria-disabled', 'true'); else tc.removeAttribute('aria-disabled');
@@ -6535,7 +6530,7 @@
         listen: ['Hör zu …', 'klatsch, sobald du die Eins hast'],
         you: [mic ? 'Klatschen!' : 'Hier klatschen', dbRun?.windowStart != null ? 'noch vier Takte' : 'gewertet ab deinem ersten Klatscher'],
         done: footer
-          ? ['Weiter: tippen', res ? `${res.hits} von ${res.total} im Takt${res.ok ? ' – die Eins sitzt' : ' · ↻ spielt die Lösung'}` : 'nächster Groove']
+          ? [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '↻ spielt die Lösung']
           : [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '„Nochmal“ spielt die Lösung'],
       }[phase];
       const pad = footer ? $('.db-wrap .ear-pad') : document.createElement('button');
@@ -6590,8 +6585,7 @@
     if (sheetKind === 'earhelp') { renderEar(); $(downbeatInRhythm() ? '[data-ear="db-helps"]' : '[data-ear="helps"]')?.focus(); return; }
     if (sheetKind === 'sing') {
       renderSing();
-      if (views.voice === 'list') renderModeList('voice'); // Stimm-Karte nach der Wahl
-      ($('[data-list="voice"] .voice-card') && views.voice === 'list' ? $('[data-list="voice"] .voice-card') : lastSettingsBtn)?.focus?.();
+      lastSettingsBtn?.focus?.();
       return;
     }
     if (sheetKind === 'course') { renderRhythm(); ($('[data-course="list"]') || lastSettingsBtn)?.focus?.(); return; }
@@ -6758,7 +6752,7 @@
         <div class="chip-row">${[[0, 'aus'], [1, '1 Takt'], [2, '2 Takte']].map(([n, t]) => `<button class="chip" type="button" data-sing-pause="${n}" aria-pressed="${sing.audiation === n}">${t}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left">Beim Nachsingen und bei Intervallen: erst die Melodie in Gedanken singen, dann laut.</p>
         <span class="sub-label">Zweite Stimme</span>
-        <div class="chip-row">${Object.entries(TWO_PART_VOL).map(([id, [t]]) => `<button class="chip" type="button" data-two-vol="${id}" aria-pressed="${sing.twoPartVol === id}">${t}</button>`).join('')}</div>${views.voice === 'list' ? '<button type="button" class="k-btn k-btn--ghost sheet-tuner" data-sheet-tuner>Tuner und Tonumfang öffnen</button>' : ''}`;
+        <div class="chip-row">${Object.entries(TWO_PART_VOL).map(([id, [t]]) => `<button class="chip" type="button" data-two-vol="${id}" aria-pressed="${sing.twoPartVol === id}">${t}</button>`).join('')}</div>`;
       $('.sheet-hint').textContent = '';
       renderSingOpts();
       return;
@@ -7084,6 +7078,7 @@
     }
     if (voice.consumer === 'sing') { singFrame(now); updateSingMic(now); if (sing.task && sing.phase !== 'result') updateSingProgress(now); voice.frame = requestAnimationFrame(voiceLoop); return; }
     voice.analyser.getFloatTimeDomainData(voice.buffer);
+    updateSingMic(now, $('.tuner-mic'), 'tuner');
     const result = detectPitch(voice.buffer, engine.ctx.sampleRate);
     const raw = result && result.clarity > .8 ? hzToMidi(result.freq) : null;
     const midi = pitchStep(now, raw);
@@ -7106,21 +7101,21 @@
     return smoothPitch(voice.recent, now);
   }
 
-  /** Tonumfang: ein Ton zählt, wenn er ~0,5 s ohne Aussetzer innerhalb
+  /** Tonumfang: ein Ton zählt, wenn er ~1 s ohne Aussetzer innerhalb
    *  von zwei Halbtönen gehalten wurde (auch mit Vibrato bis ±100 Cent) —
    *  Ausrutscher beim Einsatz zählen nicht. Gerundet über den Median. */
   function trackRange(now, midi) {
     if (midi === null) { voice.hold = []; return; }
     voice.hold.push({ t: now, midi });
-    while (voice.hold.length && voice.hold[0].t < now - .5) voice.hold.shift();
-    if (voice.hold[voice.hold.length - 1].t - voice.hold[0].t < .45) return;
+    while (voice.hold.length && voice.hold[0].t < now - RANGE_HOLD_SEC) voice.hold.shift();
+    if (voice.hold[voice.hold.length - 1].t - voice.hold[0].t < RANGE_HOLD_SEC - .05) return;
     const values = voice.hold.map((h) => h.midi);
     if (Math.max(...values) - Math.min(...values) > 2) return;
     const note = Math.round(median(values));
     let changed = false;
     if (voice.low === null || note < voice.low) { voice.low = note; changed = true; }
     if (voice.high === null || note > voice.high) { voice.high = note; changed = true; }
-    if (changed) renderRange();
+    if (changed) { renderRange(); rangeChanged(); }
   }
 
   function showPitch(midi, freq) {
@@ -7207,36 +7202,83 @@
   function renderRange() {
     $('.range-low').textContent = voice.low === null ? '–' : noteLabel(voice.low);
     $('.range-high').textContent = voice.high === null ? '–' : noteLabel(voice.high);
-    // Übernehmen ins Stimmprofil: nur eingebettet, mit beiden Grenzen und
-    // mindestens RANGE_SAVE_MIN Halbtönen Spanne.
-    $('[data-range-save-row]').hidden = !profileApi;
+    // Fürs Einsingen gilt er (eingebettet) ab RANGE_SAVE_MIN Halbtönen Spanne.
     $('[data-range-save-note]').hidden = !profileApi;
-    $('[data-voice="range-save"]').disabled = !canSaveRange();
   }
   const canSaveRange = () => voice.low !== null && voice.high !== null && voice.high - voice.low >= RANGE_SAVE_MIN;
   /** Heutiges Datum (lokal) als JJJJ-MM-TT. */
   const todayIso = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  /** Tonumfang dauerhaft: in der Ablage des Tools und – eingebettet, mit
+   *  genug Spanne – im gemeinsamen Stimmprofil (gilt dann fürs Einsingen). */
+  let rangeSaveTimer = 0;
+  function rangeChanged() {
+    persist();
+    clearTimeout(rangeSaveTimer);
+    rangeSaveTimer = setTimeout(saveRange, 800);
+  }
   async function saveRange() {
     const out = $('[data-range-save-status]');
-    if (!profileApi || !canSaveRange()) return;
+    if (!profileApi || selfTesting) return;
+    if (!canSaveRange()) { out.textContent = voice.low === null ? '' : `Fürs Einsingen zählt er ab ${RANGE_SAVE_MIN} Halbtönen Spanne.`; return; }
     try {
       await profileApi.set({ low: voice.low, high: voice.high, measuredAt: todayIso() });
-      out.textContent = `Gespeichert: ${noteLabel(voice.low)} – ${noteLabel(voice.high)}. Gilt jetzt in allen Übe-Tools.`;
+      out.textContent = `Gespeichert: ${noteLabel(voice.low)} – ${noteLabel(voice.high)}. Gilt in allen Übe-Tools.`;
     } catch {
       out.textContent = 'Konnte nicht gespeichert werden.';
     }
   }
+  async function resetRange() {
+    voice.low = null; voice.high = null; voice.hold = [];
+    clearTimeout(rangeSaveTimer);
+    persist();
+    renderRange();
+    const out = $('[data-range-save-status]');
+    out.textContent = '';
+    if (!profileApi) return;
+    try { await profileApi.set({ low: null, high: null, measuredAt: null }); out.textContent = 'Zurückgesetzt – das Einsingen nimmt wieder den Standardumfang deiner Stimme.'; } catch { out.textContent = 'Konnte nicht zurückgesetzt werden.'; }
+  }
+
+  /** Zielton: eine Oktave (C bis H) – die Oktave zählt nicht (Abweichung modulo 12). */
+  const TARGET_BASE = 48; // C3; a = 57 wie bisher
+  function renderTargetPiano() {
+    const host = $('.target-piano');
+    if (!host.children.length) {
+      const whites = [0, 2, 4, 5, 7, 9, 11];
+      const blacks = [[1, 1], [3, 2], [6, 4], [8, 5], [10, 6]]; // [Halbton, Position nach der n-ten weißen Taste]
+      host.innerHTML = whites.map((pc) => `<button type="button" class="tp-key" data-voice="target-key" data-pc="${pc}">${noteLabel(TARGET_BASE + pc).replace(/\d|[,′']/g, '')}</button>`).join('')
+        + blacks.map(([pc, n]) => `<button type="button" class="tp-key is-black" data-voice="target-key" data-pc="${pc}" style="left: calc(${(n / 7) * 100}% - 4.75%)">${noteLabel(TARGET_BASE + pc).replace(/\d|[,′']/g, '')}</button>`).join('');
+    }
+    const pc = mod(voice.target, 12);
+    for (const k of host.children) {
+      const on = voice.useTarget && Number(k.dataset.pc) === pc;
+      k.setAttribute('aria-pressed', String(on));
+      k.setAttribute('aria-label', `Zielton ${k.textContent}${on ? ' (gewählt – nochmal antippen: frei stimmen)' : ''}`);
+    }
+  }
+  /** Taste: Zielton wählen und anspielen; dieselbe Taste noch einmal = frei stimmen. */
+  function pickTarget(pc) {
+    if (voice.useTarget && mod(voice.target, 12) === pc) voice.useTarget = false;
+    else { voice.target = TARGET_BASE + pc; voice.useTarget = true; playTarget(); }
+    persist();
+    renderVoice();
+    drawHistory(engine.ctx?.currentTime || 0);
+  }
+  /** Kammerton: auf a′ in der gewählten Frequenz springen. */
+  function jumpToA4() {
+    voice.target = 57; voice.useTarget = true;
+    persist();
+    renderVoice();
+    drawHistory(engine.ctx?.currentTime || 0);
+    playTarget();
+  }
 
   function renderVoice() {
     renderSing();
-    const btn = $('[data-voice="mic"]');
-    btn.textContent = voice.analyser ? 'Mikrofon aus' : 'Mikrofon an';
-    btn.classList.toggle('secondary', !!voice.analyser);
-    $('.target-note').textContent = noteLabel(voice.target);
+    updateSingMic(engine.ctx?.currentTime || 0, $('.tuner-mic'), 'tuner');
+    renderTargetPiano();
     const a4 = $('[data-voice-a4]');
     if (a4.options.length !== A4_CHOICES.length) a4.innerHTML = A4_CHOICES.map((hz) => `<option value="${hz}">${hz}</option>`).join('');
     a4.value = String(tuningA4);
-    $('[data-voiceswitch="useTarget"]').checked = voice.useTarget;
     renderRange();
     if (!voice.analyser) { showPitch(null); drawHistory(engine.ctx?.currentTime || 0); }
   }
@@ -9325,10 +9367,12 @@
    *  ankommt – nie Tonhöhe. Pegel aus dem vorhandenen Analyser (RMS in dB,
    *  −50 dB → leer, −10 dB → voll), schnell hoch, langsam runter. */
   const singMic = { lv: 0, hotUntil: 0, state: '' };
-  function updateSingMic(now) {
-    const el = $('.sing-mic');
+  const tunerMic = { lv: 0, hotUntil: 0, state: '' };
+  /** Auch für den Tuner (Knopf .tuner-mic, Verbraucher 'tuner'). */
+  function updateSingMic(now, el = $('.sing-mic:not(.tuner-mic)'), consumer = 'sing') {
+    const st = consumer === 'sing' ? singMic : tunerMic;
     if (!el) return;
-    const open = !!voice.analyser && voice.consumer === 'sing';
+    const open = !!voice.analyser && voice.consumer === consumer;
     let lv = 0, hot = false;
     if (open) {
       const buf = voice.buffer;
@@ -9336,17 +9380,18 @@
       for (let i = 0; i < buf.length; i++) { const v = buf[i]; e += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
       const db = 10 * Math.log10(e / buf.length + 1e-12);
       const target = clamp((db + 50) / 40, 0, 1);
-      singMic.lv += (target - singMic.lv) * (target > singMic.lv ? .5 : .08);
-      lv = singMic.lv;
-      if (db > -3 || peak >= .98) singMic.hotUntil = now + .5;
-      hot = now < singMic.hotUntil;
-    } else singMic.lv = 0;
+      st.lv += (target - st.lv) * (target > st.lv ? .5 : .08);
+      lv = st.lv;
+      if (db > -3 || peak >= .98) st.hotUntil = now + .5;
+      hot = now < st.hotUntil;
+    } else st.lv = 0;
     const state = !open ? 'off' : hot ? 'hot' : lv > .08 ? 'on' : 'quiet';
-    if (state !== singMic.state) {
-      singMic.state = state;
+    if (state !== st.state) {
+      st.state = state;
       el.classList.toggle('is-open', open);
       el.classList.toggle('is-hot', hot);
-      el.setAttribute('aria-label', { off: 'Mikrofon aus', quiet: 'Mikrofon hört nichts', on: 'Mikrofon hört dich', hot: 'Mikrofon zu laut' }[state]);
+      el.setAttribute('aria-label', { off: 'Mikrofon aus', quiet: 'Mikrofon hört nichts', on: 'Mikrofon hört dich', hot: 'Mikrofon zu laut' }[state] + (consumer === 'tuner' ? (open ? ' – ausschalten' : ' – einschalten') : ''));
+      if (consumer === 'tuner') el.setAttribute('aria-pressed', String(open));
     }
     const h = 12 * Math.min(1, lv / .9);
     const fill = el.querySelector('.mic-fill');
@@ -10216,7 +10261,7 @@
         grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbShift: ear.dbShift, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
-      voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
+      voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
         audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
     };
@@ -10325,6 +10370,9 @@
     if (Number.isInteger(v.target)) voice.target = clamp(v.target, 36, 84);
     if (typeof v.useTarget === 'boolean') voice.useTarget = v.useTarget;
     if (A4_CHOICES.includes(v.a4)) tuningA4 = v.a4;
+    // Tonumfang (dauerhaft); das Stimmprofil der App gewinnt (applyProfile).
+    const midiOk = (x) => Number.isInteger(x) && x >= 28 && x <= 96;
+    if (midiOk(v.low) && midiOk(v.high) && v.low <= v.high) { voice.low = v.low; voice.high = v.high; }
     const sg = data.sing && typeof data.sing === 'object' ? data.sing : {};
     if (SING_MODES.some(([id]) => id === sg.mode)) sing.mode = sg.mode;
     const sl = sg.levels && typeof sg.levels === 'object' ? sg.levels : {};
@@ -10356,17 +10404,10 @@
     if (lvOpen) { openLevelSheet(lvOpen.dataset.levelOpen); return; }
     if (e.target === $('.level-sheet') || e.target.closest('[data-level-close]')) { closeLevelSheet(); return; }
     if (e.target.closest('[data-sing-settings]')) { openSettings('sing'); return; }
-    if (e.target.closest('[data-sheet-tuner]')) { closeSettings(); openMode('voice', 'tuner'); return; }
     const pauseChip = e.target.closest('[data-sing-pause]');
     if (pauseChip) { sing.audiation = Number(pauseChip.dataset.singPause); persist(); renderSettings(); return; }
     const volChip = e.target.closest('[data-two-vol]');
     if (volChip && TWO_PART_VOL[volChip.dataset.twoVol]) { sing.twoPartVol = volChip.dataset.twoVol; persist(); renderSettings(); return; }
-    // Stimm-Karte im Leerzustand: erst die Stimme wählen (Blatt mit Weg zum Tuner).
-    if (e.target.closest('[data-voice-choose]')) {
-      openSettings('sing');
-      $('.sheet-body [data-chip="singPart"]')?.focus();
-      return;
-    }
     const openBtn = e.target.closest('[data-open-mode]');
     if (openBtn) {
       const [tab, id] = openBtn.dataset.openMode.split(':');
@@ -10598,14 +10639,9 @@
     if (voiceBtn) {
       const action = voiceBtn.dataset.voice;
       if (action === 'mic') { if (voice.analyser) micOff(); else micOn('tuner'); }
-      else if (action === 'target-up' || action === 'target-down') {
-        voice.target = clamp(voice.target + (action === 'target-up' ? 1 : -1), 36, 84);
-        renderVoice();
-        playTarget();
-      }
-      else if (action === 'target-play') playTarget();
-      else if (action === 'range-reset') { voice.low = null; voice.high = null; $('[data-range-save-status]').textContent = ''; renderRange(); }
-      else if (action === 'range-save') saveRange();
+      else if (action === 'target-key') pickTarget(Number(voiceBtn.dataset.pc));
+      else if (action === 'kammerton') jumpToA4();
+      else if (action === 'range-reset') resetRange();
       return;
     }
 
@@ -10755,8 +10791,7 @@
     }
     else if (t.dataset?.singset) setSingOption(t.dataset.singset, t.checked);
     else if (t.hasAttribute?.('data-intime-syl')) { sing.inTime.rhythmSyl = t.checked; if (sing.phase !== 'sing') renderSing(); }
-    else if (t.dataset?.voiceswitch) { voice.useTarget = t.checked; drawHistory(engine.ctx?.currentTime || 0); }
-    else if (t.hasAttribute?.('data-voice-a4')) { tuningA4 = A4_CHOICES.includes(Number(t.value)) ? Number(t.value) : 440; playTarget(); }
+    else if (t.hasAttribute?.('data-voice-a4')) { tuningA4 = A4_CHOICES.includes(Number(t.value)) ? Number(t.value) : 440; jumpToA4(); }
     persist(); syncLevels();
   });
 
@@ -10787,7 +10822,6 @@
     if (dbRun?.playing) downbeatTap();
     else if (!ear.task) nextEar();
     else if (!ear.revealed) playEar();
-    else if (downbeatInRhythm()) nextEar(); // Fußleisten-Fläche: „Weiter: tippen“
   });
 
   /** Zurück-Geste der App (Android-Zurück, Wischen vom linken Rand, siehe
@@ -10802,6 +10836,15 @@
     if (!btn) return false;
     btn.click();
     return true;
+  };
+  /** Zahl der Zurück-Schritte bis zur obersten Ebene (wie chorToolBack): die
+   *  App legt je Ebene einen Verlaufseintrag an (syncToolHistory in app.js). */
+  window.chorToolDepth = () => {
+    const sheets = (!$('.level-sheet').hidden) + (!$('.sheet:not(.level-sheet)').hidden);
+    const v = views[state.tab];
+    if (v === 'list' || (tunerTool && state.tab === 'voice' && sing.mode === 'tuner')) return sheets;
+    if (v === 'grooves') return sheets + (gv.fromHub ? 1 : 0) + (gv.view !== 'list' ? 1 : 0);
+    return sheets + 1;
   };
 
   document.addEventListener('keydown', (e) => {
@@ -13717,7 +13760,7 @@
         if (views.ear !== 'exercise' || state.tab !== 'ear' || ear.mode !== QUICK_CHAINS.ear[0][0] || !quickRun || quickRun.steps !== QUICK_CHAINS.ear) errors.push('from=quick&tab=ear startet die Kette nicht wie bisher');
         quickRun = saved.run;
         // Einsatz finden steht im Rhythmus-Bereich (eigene Zeile data-downbeat-open, siehe downbeatCheck).
-        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => id !== 'downbeat')], ['voice', visibleSingModes()]]) {
+        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => id !== 'downbeat')], ['voice', visibleSingModes().filter(([id]) => id !== 'tuner')]]) { // Tuner: Tools-Kachel
           renderModeList(tab);
           for (const [id] of list) {
             const n = $$(`[data-list="${tab}"] [data-open-mode="${tab}:${id}"]`).length;
@@ -13728,8 +13771,8 @@
           // Konfetti B2: keine Minutenangaben auf Übersichten (Auftraggeber).
           if (QUICK_CHAINS[tab] && /Min/.test($(`[data-list="${tab}"] [data-mixed]`).textContent)) errors.push(`Liste ${tab}: Minutenangabe auf der Übersicht`);
         }
-        // Konfetti B2: Tuner in der Karte „Meine Stimme“ oben, keine eigene Zeile.
-        if (!$('[data-list="voice"] .voice-card[data-open-mode="voice:tuner"], [data-list="voice"] .voice-card[data-voice-choose]') || $('[data-list="voice"] .k-row[data-open-mode="voice:tuner"]')) errors.push('Singen: Tuner nicht in der Stimm-Karte');
+        // Tuner ist ein Werkzeug (Tools-Kachel): weder Karte noch Zeile in Singen.
+        if ($('[data-list="voice"] [data-open-mode="voice:tuner"]')) errors.push('Singen: Tuner steht noch in der Übersicht');
         if ($$('[data-list="voice"] .k-group-head').map((h) => h.textContent).join() !== 'Ton treffen,Melodie,Mit Rhythmus,Im Chor') errors.push('Singen: Gruppen');
         // Stufen-Karte: Zahl, Balken, „ändern“ öffnet das Blatt; dessen Zeilen
         // und der Vorschlags-Knopf setzen die Stufe über die alten Handler.
@@ -13884,9 +13927,7 @@
     const host = $('[data-list="voice"]');
     const keep = host.innerHTML;
     renderModeList('voice');
-    const card = host.querySelector('.voice-card');
-    const chosenNow = !profileApi || SATB_PARTS.includes(readProfile()?.part);
-    if (!card || card.dataset.openMode !== 'voice:tuner' || card.hasAttribute('data-voice-choose') === chosenNow || host.querySelector('.k-row[data-open-mode="voice:tuner"]') || host.querySelector('.mode-how')) errors.push('Singen-Übersicht: Stimm-Karte/Tuner/Unterzeile');
+    if (host.querySelector('[data-open-mode="voice:tuner"]') || host.querySelector('.mode-how')) errors.push('Singen-Übersicht: Tuner/Unterzeile');
     host.innerHTML = keep;
     return errors;
   }
@@ -14448,7 +14489,7 @@
   let quickRun = null; // { tab, steps: [[mode, count]], idx, done, finished }
   /** Deep-Link in eine Sing-Übung: ?tab=voice&mode=echo|inTime (bei Im Takt
    *  zusätzlich &variant=echo|sheet). Falsche Werte werden ignoriert. */
-  const MODE_PARAM = { echo: 'singEcho', inTime: 'inTime' };
+  const MODE_PARAM = { echo: 'singEcho', inTime: 'inTime', tuner: 'tuner' };
   function parseModeParam(search) {
     const q = new URLSearchParams(search);
     const mode = MODE_PARAM[q.get('mode')];
@@ -14456,12 +14497,27 @@
     const variant = mode === 'inTime' && IN_TIME_VARIANTS.some(([id]) => id === q.get('variant')) ? q.get('variant') : null;
     return { mode, variant };
   }
+  /** Tuner als Werkzeug (Tools-Kachel, ?mode=tuner): Zurück schließt das
+   *  Tool statt zur Singen-Übersicht zu führen; das Mikrofon startet gleich. */
+  let tunerTool = false;
+  function enterTunerTool() {
+    tunerTool = true;
+    const back = $('[data-exview="voice"] .back-btn');
+    if (window.parent !== window) {
+      back.removeAttribute('data-back');
+      back.setAttribute('data-close-tool', '');
+      back.setAttribute('aria-label', 'Zurück'); back.title = 'Zurück';
+    }
+    $('[data-exview="voice"] .ex-area').textContent = 'Tools';
+    if (!voice.analyser) micOn('tuner');
+  }
   function applyModeParam(p) {
     if (!p || quickRun) return;
     state.tab = 'voice';
     views.voice = 'exercise';
     sing.mode = p.mode; sing.task = null; sing.phase = 'idle'; sing.judge = null;
     if (p.variant) sing.inTime.variant = p.variant;
+    if (p.mode === 'tuner') enterTunerTool();
   }
   function applyQuickParams(p) {
     if (!p) return;
@@ -14532,6 +14588,7 @@
   function applyProfile() {
     const prof = readProfile();
     if (prof?.part && SATB_PARTS.includes(prof.part)) ear.part = prof.part;
+    if (Number.isInteger(prof?.low) && Number.isInteger(prof?.high)) { voice.low = prof.low; voice.high = prof.high; }
   }
   applyProfile();
   loadMemory();

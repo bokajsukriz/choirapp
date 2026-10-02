@@ -2283,8 +2283,9 @@ $('#settings-back').addEventListener('click', () => {
 // Zurück-Taste auf Android springt zwischen den Reitern bzw. aus dem Player
 // zurück, statt die App zu verlassen.
 window.addEventListener('popstate', () => {
-  // Eigener Rücksprung beim Schließen eines Tools (siehe popToolHistory).
-  if (skipNextPop) { skipNextPop = false; return; }
+  // Eigener Rücksprung beim Schließen eines Tools bzw. beim Abgleich der
+  // Tool-Ebenen (siehe popToolHistory/syncToolHistory).
+  if (skipPops) { skipPops--; syncToolHistory(); return; }
   // Zurück-Geste/-Taste bei offenem Tool: nur das Tool schließen.
   if (closeToolOverlayFromHistory()) return;
   applyRoute();
@@ -22528,16 +22529,46 @@ let toolFrameReturnFocus = null;
    2. Eine eigene Geste vom linken Rand nach rechts (für iOS, wo die
       Standalone-App keine Zurück-Geste hat) — in den Tool-iframes und im
       Groove Lab; nicht auf Tastaturen, Reglern und Tipp-Flächen, damit
-      Glissandi und Schieberegler weiter funktionieren. */
-let skipNextPop = false;
-function pushToolHistory() {
-  if (history.state?.toolOverlay) return;
-  history.pushState({ ...(history.state || {}), toolOverlay: true }, '', location.href);
+      Glissandi und Schieberegler weiter funktionieren.
+   Tool-Seiten mit Unterebenen (Übung in der Liste, Player, offenes Blatt)
+   melden ihre Tiefe über window.chorToolDepth(); je Ebene gibt es einen
+   Verlaufseintrag ({ toolOverlay: true, toolLevel: 1 + Tiefe }). Angelegt
+   wird er beim Hineingehen, also während der Nutzergeste — ein Eintrag, der
+   erst in der Zurück-Geste (popstate) entsteht, markiert Chrome als
+   überspringbar, und das nächste „zurück“ verließe die App. */
+let skipPops = 0;
+const toolLevelOf = (state) => (state?.toolOverlay ? state.toolLevel || 1 : 0);
+function pushToolHistory(level = 1) {
+  if (toolLevelOf(history.state) >= level) return;
+  history.pushState({ ...(history.state || {}), toolOverlay: true, toolLevel: level }, '', location.href);
 }
 function popToolHistory() {
-  if (!history.state?.toolOverlay) return;
-  skipNextPop = true;
-  history.back();
+  const level = toolLevelOf(history.state);
+  if (!level) return;
+  skipPops++;
+  history.go(-level);
+}
+/** Verlaufseinträge an die Tiefe der offenen Tool-Seite angleichen. */
+function syncToolHistory() {
+  if (skipPops || $('#tool-frame').hidden) return;
+  const frame = [...$('#tool-frame').querySelectorAll('iframe')].find((f) => !f.hidden);
+  let depth = 0;
+  try { depth = Math.max(0, Math.floor(frame?.contentWindow?.chorToolDepth?.() || 0)); } catch { return; /* fremde Herkunft */ }
+  const want = 1 + depth;
+  const have = toolLevelOf(history.state);
+  if (want > have) for (let l = Math.max(have, 0) + 1; l <= want; l++) history.pushState({ ...(history.state || {}), toolOverlay: true, toolLevel: l }, '', location.href);
+  else if (want < have) { skipPops++; history.go(want - have); }
+}
+/** Tiefe der Seite beobachten (Ansichten, Blätter: hidden/class im Dokument). */
+function watchToolDepth(frame) {
+  let queued = false;
+  try {
+    new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => { queued = false; if (!frame.hidden && frame.isConnected) syncToolHistory(); });
+    }).observe(frame.contentDocument.documentElement, { subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+  } catch { /* fremde Herkunft */ }
 }
 const grooveLabEl = () => document.querySelector('chor-groove-lab');
 /** Zurück innerhalb der offenen Tool-Seite (Übung → Liste, Player →
@@ -22550,10 +22581,10 @@ function toolFrameStepBack() {
 }
 function closeToolOverlayFromHistory() {
   if (!$('#tool-frame').hidden) {
-    // Seite ist noch nicht auf oberster Ebene: Verlaufseintrag fürs Tool neu
-    // anlegen, damit die nächste Zurück-Geste wieder hier landet.
-    if (toolFrameStepBack()) pushToolHistory();
-    else closeToolFrame({ fromHistory: true });
+    // Seite ist noch nicht auf oberster Ebene: eine Ebene zurück (der
+    // Verlaufseintrag dafür ist schon verbraucht); sonst Tool schließen.
+    if (toolFrameStepBack()) syncToolHistory();
+    else closeToolFrame();
     return true;
   }
   const lab = grooveLabEl();
@@ -22641,6 +22672,8 @@ function openToolFrame(page, titleKey, query = '') {
     frame.addEventListener('load', () => {
       try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden && !toolFrameStepBack()) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
       syncToolFrameBack(frame);
+      watchToolDepth(frame);
+      syncToolHistory();
     });
     host.append(frame);
   }
@@ -22683,10 +22716,12 @@ function focusOwnBack(frame, tries) {
   else if (tries > 1) setTimeout(() => { if (!frame.hidden && frame.isConnected) focusOwnBack(frame, tries - 1); }, 250);
 }
 
-function closeToolFrame({ fromHistory = false } = {}) {
+function closeToolFrame() {
   const host = $('#tool-frame');
   releaseLandscape(host);
-  if (!fromHistory) popToolHistory();
+  // Auch nach „zurück“ können noch Ebenen-Einträge übrig sein (z. B. ein
+  // Blatt, das sich nicht schließen ließ) — die mit abräumen.
+  popToolHistory();
   for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
   const metro = metronomeFrame();
   if (metro) {
@@ -23283,13 +23318,15 @@ function initGrooveLabEasterEgg() {
   });
 }
 
-/** Tools-Reiter: Metronom, Groove Lab und Piano (Einsingen und Üben laufen
+/** Tools-Reiter: Metronom, Tuner, Piano und Groove Lab (Einsingen und Üben laufen
  *  über QUICK_STARTS, die Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
   initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
   $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
+  // Tuner: Werkzeug statt Übung — die Ausbildungsseite direkt im Tuner (mode=tuner).
+  $('#btn-open-tuner').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.tuner', 'tab=voice&mode=tuner'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));
   $('#metronome-fab-stop').addEventListener('click', stopBackgroundMetronome);

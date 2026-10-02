@@ -2164,7 +2164,11 @@
     setDone(false);
     syncHead();
   }
+  // Player aus der Übersicht geöffnet (Zurück-Geste führt dann zur Übersicht);
+  // per Schnellstart (?program=) direkt im Player: Zurück schließt das Tool.
+  let playerFromOverview = false;
   function exitPlayer() {
+    playerFromOverview = false;
     if (run.playing) stop();
     swaps = null;
     document.body.classList.remove('is-player', 'is-prestart');
@@ -2199,6 +2203,7 @@
     if (pid) { state.mode = 'program'; state.program = pid; } else { state.mode = 'single'; state.exercise = exercise; }
     persist();
     enterPlayer();
+    playerFromOverview = true;
     renderAll();
     // Programme: erst die Liste mit ⇄, Start mit ▶. Einzelübungen sofort.
     if (pid) setStatus(PRESTART_TEXT); else start(0);
@@ -2374,7 +2379,7 @@
       title = HELP.voice[0];
       paras = ['Wähle deine Chorstimme. Die Übungen bleiben in einem bequemen Bereich, der mit jeder Runde nur ein paar Halbtöne steigt:',
         `<ul>${voiceList().map((v) => `<li><b>${v.name}:</b> ${noteLabel(v.floor)} bis ${noteLabel(v.ceil)}${v.personal ? ' (dein gemessener Umfang)' : ''}</li>`).join('')}</ul>`,
-        ...(profile?.low != null ? ['Mit gemessenem Umfang (Ausbildung → Stimme → Tonumfang heute) bleibt das Einsingen zwei Halbtöne innerhalb deiner Grenzen. Zurücksetzen kannst du ihn unter Tools.'] : []),
+        ...(profile?.low != null ? ['Mit gemessenem Umfang (Tools → Tuner → Mein Tonumfang) bleibt das Einsingen zwei Halbtöne innerhalb deiner Grenzen. Zurücksetzen kannst du ihn dort.'] : []),
         'Die Wahl gilt in allen Übe-Tools (Einsingen, Ausbildung, Groove Lab).',
         'Mezzosopran oder Bariton? Im Zweifel die tiefere Stimme wählen (Alt bzw. Bass) — lieber bequem als an der Grenze. Tiefe Stimmen singen eine Oktave tiefer als hohe; die Vorgabe klingt in deiner Lage.'];
     } else {
@@ -2651,14 +2656,16 @@
 
   /** Zurück-Geste der App (Android-Zurück, Wischen vom linken Rand, siehe
    *  toolFrameStepBack in app.js): erst offene Blätter schließen, dann aus
-   *  dem Player zurück zur Übersicht. true = hier erledigt; false = Übersicht,
-   *  die App schließt das Tool. */
+   *  dem Player zurück zur Übersicht. true = hier erledigt; false = oberste
+   *  Ebene, die App schließt das Tool. chorToolDepth() = Zahl dieser Schritte
+   *  (die App legt je Ebene einen Verlaufseintrag an, syncToolHistory). */
   window.chorToolBack = () => {
     if (!$('.help-sheet').hidden) { closeHelp(); return true; }
     if (!$('.settings-sheet').hidden) { closeSettings(); return true; }
-    if (isPlayer()) { exitPlayer(); return true; }
+    if (isPlayer() && playerFromOverview) { exitPlayer(); return true; }
     return false;
   };
+  window.chorToolDepth = () => (!$('.help-sheet').hidden) + (!$('.settings-sheet').hidden) + (isPlayer() && playerFromOverview);
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.help-sheet').hidden) { closeHelp(); return; }
