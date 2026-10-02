@@ -340,7 +340,7 @@
       parts: [[0, 3], [3, 5], [5, 9]],
       intro: 'Fünf Töne, zwei Takte: hinauf bis zur kleinen Septime, dann zurück nach Hause. Sing ihn zuerst auf „du“ – die Finger folgen der Stimme.',
       more: 'Die Moll-Pentatonik ist die Tonleiter unzähliger Pop-, Soul- und Rock-Hooks. Auf ihr klingt fast jede Tonfolge richtig, deshalb ist sie der beste Einstieg.' },
-    { id: 'bassOktav', cat: 'bass', level: 1, name: 'Oktav-Disco-Bass', preset: 'Growl Bass', bpm: 100, bars: 2, root: 40,
+    { id: 'bassOktav', cat: 'bass', level: 1, name: 'Oktav-Disco-Bass', preset: 'Growl Bass', bpm: 100, bars: 2, root: 40, kick: 'four',
       notes: [[0, 6, 0], [6, 6, 12], [12, 6, 0], [18, 6, 12], [24, 6, 0], [30, 6, 12], [36, 6, 0], [42, 6, 12],
         [48, 6, 5], [54, 6, 17], [60, 6, 5], [66, 6, 17], [72, 6, 7], [78, 6, 19], [84, 6, 7], [90, 6, 19]],
       parts: [[0, 4], [4, 8], [8, 12], [12, 16]],
@@ -375,8 +375,9 @@
     { id: 'bassFunk16', cat: 'bass', level: 3, name: 'Funk-Bass mit Sechzehnteln', preset: 'Growl Bass', bpm: 96, bars: 1, root: 43,
       notes: [[0, 3, 0], [9, 3, 12], [12, 6, 10], [21, 3, 7], [27, 6, 0], [36, 3, -3], [42, 3, -2], [45, 3, -1]],
       parts: [[0, 4], [4, 8]],
-      intro: 'Kurze Töne, viel Luft dazwischen. Die Eins sitzt, alles andere fällt auf „e“ und „a“. Die letzten drei Töne laufen chromatisch in die nächste Eins.',
-      more: 'Im Funk zählt die Pause so viel wie der Ton. Spiel die Töne kurz und trocken – die Lücken sind der Groove.' },
+      // Töne auf 1, 1-a, 2, 2-a, 3-e, 4, 4-und, 4-a (nicht „alles auf e und a“).
+      intro: 'Kurze Töne, viel Luft dazwischen. Die Eins sitzt, danach landen die Töne oft knapp neben dem Schlag – auf „a“ und „e“.',
+      more: 'Die letzten drei – auf 4, „und“, „a“ – laufen chromatisch in die nächste Eins. Im Funk zählt die Pause so viel wie der Ton. Spiel die Töne kurz und trocken – die Lücken sind der Groove.' },
   ];
   const CATS = [['all', 'Alle'], ['hook', 'Hooks'], ['bass', 'Bass'], ['arp', 'Arps'], ['fill', 'Fills']];
   const lickById = (id) => LICKS.find((l) => l.id === id) || null;
@@ -896,7 +897,8 @@
   /* ------------------------------------------------------------------------
      BEGLEITUNG — 4/4-Groove, neutral: Bassdrum 1 und 3, Snare 2 und 4, Hi-Hat
      als gleichmäßiges Raster. Er spielt den Lick nie vor. level: full
-     (alles), backbeat (Bassdrum + Snare), snare (nur Snare), off.
+     (alles), backbeat (Bassdrum + Snare), snare (nur Snare), off. Ein Lick
+     mit `kick: 'four'` (Disco) bekommt die Bassdrum auf allen vier Vierteln.
      ------------------------------------------------------------------------ */
   const GROOVE_KICK = [0, 24];
   const GROOVE_SNARE = [12, 36];
@@ -904,7 +906,7 @@
   const hatStep = (lick) => (lick.notes.some((n) => n[0] % 6 !== 0) ? 3 : 6);
   function grooveFor(lick, level) {
     const out = { kick: [], snare: [], hat: [] };
-    if (level === 'full' || level === 'backbeat') out.kick = [...GROOVE_KICK];
+    if (level === 'full' || level === 'backbeat') out.kick = lick?.kick === 'four' ? [0, 12, 24, 36] : [...GROOVE_KICK];
     if (level === 'full' || level === 'backbeat' || level === 'snare') out.snare = [...GROOVE_SNARE];
     if (level === 'full') { const st = hatStep(lick); for (let t = 0; t < TICKS_BAR; t += st) out.hat.push(t); }
     return out;
@@ -2569,7 +2571,7 @@
         if (level !== 'full' && g.hat.length) errors.push(`${w}/${level}: Hi-Hat in ausgedünnter Stufe`);
         if (level === 'off' && (g.kick.length || g.snare.length)) errors.push(`${w}: Stufe off spielt`);
         if (level === 'snare' && (g.kick.length || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe snare`);
-        if (level === 'backbeat' && (g.kick.join() !== '0,24' || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe backbeat`);
+        if (level === 'backbeat' && (g.kick.join() !== (l.kick === 'four' ? '0,12,24,36' : '0,24') || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe backbeat`);
         if (level === 'full') {
           const step = l.notes.some((n) => n[0] % 6) ? 3 : 6;
           if (g.hat.length !== TICKS_BAR / step || g.hat.some((t, i) => t !== i * step)) errors.push(`${w}: Hi-Hat-Raster (${g.hat.length})`);
@@ -2590,6 +2592,15 @@
     const hatThree = LICKS.filter((l) => hatStep(l) === 3).map((l) => l.id).sort().join();
     if (hatThree !== ['arpMoll', 'hookAufA', 'bassFunk16', 'fillGlideBlue', 'hookBlueThird'].sort().join()) errors.push(`Hi-Hat-Raster 3 bei: ${hatThree}`);
     if (LICKS.length !== 8) errors.push(`${LICKS.length} Licks`);
+    // Übe-Korrekturen 10b: Disco-Bass mit Four-on-the-floor, Funk-Bass-Text passt zu den Tönen.
+    if (grooveFor(lickById('bassOktav'), 'full').kick.join() !== '0,12,24,36' || grooveFor(lickById('hookPenta'), 'full').kick.join() !== '0,24') errors.push('Bassdrum: bassOktav nicht four-on-the-floor bzw. andere geändert');
+    if (LICKS.filter((l) => l.kick).map((l) => l.id).join() !== 'bassOktav') errors.push('kick: four nur bei bassOktav');
+    {
+      const POS = ['1', '1-e', '1-und', '1-a', '2', '2-e', '2-und', '2-a', '3', '3-e', '3-und', '3-a', '4', '4-e', '4-und', '4-a'];
+      const f = lickById('bassFunk16');
+      if (f.notes.map((n) => POS[n[0] / 3]).join() !== '1,1-a,2,2-a,3-e,4,4-und,4-a' || /alles andere fällt auf/.test(f.intro)) errors.push('bassFunk16: Text passt nicht zu den Tönen');
+      if (f.notes.slice(-3).some((n, i, a) => i && n[2] - a[i - 1][2] !== 1) || f.notes[f.notes.length - 1][2] !== -1) errors.push('bassFunk16: Schluss nicht chromatisch');
+    }
     // --- holdPlan
     const t = true, f = false;
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -2719,7 +2730,7 @@
         for (let b = 0; b < 8; b++) tl.groove(b, 'full');
         const seen = new Set();
         for (const ev of tl.events) { const key = `${Math.round(ev.t * 1e6)}|${ev.kind}`; if (seen.has(key)) errors.push(`Groove ${lick.id}: Doppelschlag`); seen.add(key); }
-        if (tl.events.length !== 8 * (2 + 2 + TICKS_BAR / hatStep(lick))) errors.push(`Groove ${lick.id}: ${tl.events.length} Ereignisse über 8 Takte`);
+        if (tl.events.length !== 8 * (grooveFor(lick, 'full').kick.length + 2 + TICKS_BAR / hatStep(lick))) errors.push(`Groove ${lick.id}: ${tl.events.length} Ereignisse über 8 Takte`);
       }
       // Platzhalter: identisch für verschiedene Bausteine, ohne Zähler, ohne Notenbild und Raster
       const panels = {};
