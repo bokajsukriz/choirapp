@@ -9888,6 +9888,8 @@ async function openPlayer(songId) {
   $('#player-title').textContent = songLabel(song);
   $('#btn-song-search').hidden = false;
   $('#player-hint').hidden = true;
+  // Jeder neue Song beginnt mit eingeklappter Setlisten-Vorschau.
+  setQueueOpen(false);
   renderQueue();
   playerVoice = null;
   resetBrokenNotice();
@@ -10129,6 +10131,15 @@ function songLabel(song) {
 // („1, 2, 3, 1, 2, 3").
 const queueRenderRuns = latestRuns();
 let queueExpanded = false;
+let queueOpen = false;   // Setlisten-Vorschau aufgeklappt? Nicht gespeichert.
+
+function setQueueOpen(open) {
+  queueOpen = open;
+  if (!open) queueExpanded = false;
+  $('#queue-body').dataset.open = String(open);
+  $('#queue-toggle').setAttribute('aria-expanded', String(open));
+}
+$('#queue-toggle').addEventListener('click', () => setQueueOpen(!queueOpen));
 
 async function renderQueue() {
   const run = queueRenderRuns.begin();
@@ -10147,11 +10158,21 @@ async function renderQueue() {
   $('#queue-title-text').textContent = t('player.queueLine')
     .replace('{name}', playQueue.name).replace('{pos}', pos).replace('{total}', total);
   $('#btn-queue-edit').hidden = !playQueue.id;
+  $('#queue-head-name').textContent = `${playQueue.name} · ${pos}/${total}`;
+  const nextItem = playQueue.items[playQueue.index + 1];
+  $('#queue-head-next').textContent = nextItem
+    ? t('player.queueNext').replace('{title}', nextItem.title || '')
+    : t('player.queueLast');
 
   const songs = await DB.metaByType('song').catch(() => []);
   if (run.stale) return; // eine neuere Anzeige läuft schon
   host.textContent = '';
   const byId = new Map(songs.map((s) => [s.id, s]));
+  if (nextItem) {
+    const nextSong = nextItem.id ? byId.get(nextItem.id) : null;
+    $('#queue-head-next').textContent = t('player.queueNext')
+      .replace('{title}', nextSong ? nextSong.title : (nextItem.title || ''));
+  }
 
   // Standardmäßig nur laufender und nächster Titel — auf Wunsch (über die
   // „…"-Zeile) klappt die ganze Playlist auf.

@@ -2559,6 +2559,46 @@ input[type="checkbox"] {
 .queue-item[data-unplayable="true"] { opacity: .6; }
 .queue-item[data-unplayable="true"] .grow { color: var(--muted); }
 
+/* Eingeklappte Setlisten-Zeile (ca. 44 px) in Kartenoptik der Listeneinträge */
+#queue-block { margin: 14px 0 6px; }
+.queue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.queue-head svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.queue-head-icon { color: var(--muted); }
+.queue-head-name { font-weight: 650; font-size: 0.88rem; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.queue-head-next { flex: 1 1 0; min-width: 0; margin-left: auto; text-align: right; color: var(--muted); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-head-chevron { color: var(--muted); transition: transform .2s ease; }
+.queue-head[aria-expanded="true"] .queue-head-chevron { transform: rotate(180deg); }
+/* Höhenanimation über grid-template-rows; zugeklappt zusätzlich visibility:hidden,
+   damit ×-Knöpfe und Stift nicht per Tab erreichbar sind. */
+.queue-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows .2s ease, visibility 0s .2s;
+}
+.queue-body[data-open="true"] {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows .2s ease, visibility 0s 0s;
+}
+.queue-body-inner { min-height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .queue-body, .queue-body[data-open="true"], .queue-head-chevron { transition: none; }
+}
+
 .queue-more {
   display: block;
   width: 100%;
@@ -3377,13 +3417,26 @@ input[type="checkbox"] {
     <div class="hint-box" id="player-hint" hidden></div>
 
     <div id="queue-block" hidden>
-      <div class="row" style="margin:18px 0 10px">
-        <p class="section-title" id="queue-title-text" style="margin:0">Setliste</p>
-        <button class="icon-btn" id="btn-queue-edit" type="button" aria-label="Setliste bearbeiten" data-i18n-aria="player.queueEditAria" style="min-width:36px; min-height:36px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>
-        </button>
+      <!-- Eingeklappt nur eine Zeile (Setlisten-Name, Position, nächster Titel);
+           die Liste mit ×-Knöpfen und Stift steckt im aufklappbaren Körper.
+           Jeder neue Song beginnt eingeklappt (siehe renderQueue). -->
+      <button class="queue-head" id="queue-toggle" type="button" aria-expanded="false" aria-controls="queue-body">
+        <svg class="queue-head-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M19 16V8l3 1.5"/><circle cx="17" cy="17" r="2"/></svg>
+        <span class="queue-head-name" id="queue-head-name"></span>
+        <span class="queue-head-next" id="queue-head-next"></span>
+        <svg class="queue-head-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="queue-body" id="queue-body" data-open="false">
+        <div class="queue-body-inner">
+          <div class="row" style="margin:12px 0 10px">
+            <p class="section-title" id="queue-title-text" style="margin:0">Setliste</p>
+            <button class="icon-btn" id="btn-queue-edit" type="button" aria-label="Setliste bearbeiten" data-i18n-aria="player.queueEditAria" style="min-width:36px; min-height:36px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>
+            </button>
+          </div>
+          <div id="queue-list"></div>
+        </div>
       </div>
-      <div id="queue-list"></div>
     </div>
 
     <div class="routine-status" id="routine-status" hidden aria-live="polite">
