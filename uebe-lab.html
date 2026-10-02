@@ -314,7 +314,7 @@
   .tuner-note.is-idle { color: var(--line); }
   .tuner-hz { font-size: .74rem; color: var(--muted); font-weight: 700; min-height: 1.2em; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .gauge { position: relative; height: 44px; margin: 14px 4px 4px; border-radius: 10px; background: var(--surface-2); overflow: hidden; }
-  .gauge-zone { position: absolute; top: 0; bottom: 0; left: 45%; width: 10%; background: rgba(47,158,91,.18); }
+  .gauge-zone { position: absolute; top: 0; bottom: 0; left: 40%; width: 20%; background: rgba(47,158,91,.18); } /* ±10 Cent bei ±50; showPitch setzt sie je Skala (gaugeZone) */
   .gauge-tick { position: absolute; top: 0; width: 1px; height: 30%; background: var(--line); }
   .gauge-tick.is-major { height: 55%; background: var(--muted); opacity: .5; }
   .gauge-needle { position: absolute; top: 4px; bottom: 4px; width: 4px; margin-left: -2px; border-radius: 2px; left: 50%; background: var(--muted); transition: left .08s linear, background .15s; }
@@ -2137,8 +2137,8 @@
 
   /* ---- Künstliche Singstimme fürs Vorspiel (Nachsingen, Im Takt): ein
      obertonreicher Grundton (Sägezahn) durch drei Formantfilter für den
-     Vokal, Anschleifen am Einsatz, Vibrato erst nach dem Einsatz, etwas
-     Atem. „no“: kurzes gedämpftes n vor dem Vokal; „da“: kurzer
+     Vokal, leichtes Anschleifen am Einsatz (−20 Cent), Vibrato nur am Ende
+     langer Töne (VOICE_SCOOP, voiceVibrato), etwas Atem. „no“: kurzes gedämpftes n vor dem Vokal; „da“: kurzer
      Konsonant-Knack vor dem Schlag, der Vokal genau auf `time` („Konsonant
      vor dem Schlag, Vokal auf den Schlag“). register: 'high' (S/A) oder
      'low' (T/B) — die Melodie liegt schon in der Lage der eigenen Stimme. */
@@ -2160,6 +2160,11 @@
     return voiceNoiseBuffers.get(ctx);
   }
   const voiceRegister = (part) => (part === 'T' || part === 'B' ? 'low' : 'high');
+  // Die Kunststimme macht vor, was die App lehrt: „Gerade Töne sind im
+  // Popchor die Regel“ – kaum Anschleifen, Vibrato nur am Ende langer Töne.
+  const VOICE_SCOOP = { cents: -20, sec: .05 };
+  /** Vibrato eines Tons der Länge `dur` (s): erst ab 1 s, im letzten Drittel, ±12 Cent. */
+  const voiceVibrato = (dur) => (dur >= 1 ? { from: dur * 2 / 3, cents: 12 } : null);
   function singVoice(ctx, dest, midi, time, dur, { syllable = 'no', register = 'high', velocity = .22 } = {}) {
     const vowel = syllable === 'da' ? 'a' : 'o';
     const start = time - (syllable === 'da' ? .035 : .07);
@@ -2167,19 +2172,20 @@
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
     osc.frequency.value = noteHz(midi);
-    // Anschleifen: von −60 Cent in 70 ms auf den Ton
-    osc.detune.setValueAtTime(-60, start);
-    osc.detune.setValueAtTime(-60, time);
-    osc.detune.linearRampToValueAtTime(0, time + .07);
+    // Anschleifen: nur leicht (VOICE_SCOOP), damit der Ton gerade ansetzt.
+    osc.detune.setValueAtTime(VOICE_SCOOP.cents, start);
+    osc.detune.setValueAtTime(VOICE_SCOOP.cents, time);
+    osc.detune.linearRampToValueAtTime(0, time + VOICE_SCOOP.sec);
     const nodes = [osc];
-    if (dur > .35) {
-      // Vibrato 5,5 Hz, ±28 Cent, ab 0,25 s eingeblendet
+    const vib = voiceVibrato(dur);
+    if (vib) {
+      // Vibrato 5,5 Hz, erst im letzten Drittel langer Töne eingeblendet
       const lfo = ctx.createOscillator();
       lfo.frequency.value = 5.5;
       const depth = ctx.createGain();
       depth.gain.setValueAtTime(0, start);
-      depth.gain.setValueAtTime(0, time + .25);
-      depth.gain.linearRampToValueAtTime(28, Math.min(end, time + .6));
+      depth.gain.setValueAtTime(0, time + vib.from);
+      depth.gain.linearRampToValueAtTime(vib.cents, Math.min(end, time + vib.from + .25));
       lfo.connect(depth).connect(osc.detune);
       nodes.push(lfo);
     }
@@ -7317,11 +7323,18 @@
   /** Klasse nur bei echter Änderung setzen: jede Zuweisung weckt den
    *  MutationObserver der App (Tiefe der Tool-Ebenen) — hier 60× je Sekunde. */
   const setClass = (el, cls) => { if (el.className !== cls) el.className = cls; };
+  const TUNER_OK_CENTS = 10;
+  /** Lage der grünen Zone in % der Skala (−range … +range): genau ±TUNER_OK_CENTS. */
+  const gaugeZone = (range) => ({ left: 50 - (TUNER_OK_CENTS / range) * 50, width: (TUNER_OK_CENTS / range) * 100 });
   function showPitch(midi, freq) {
     const noteEl = $('.tuner-note');
     const needle = $('.gauge-needle');
     const msg = $('.tuner-msg');
     const range = voice.useTarget ? 100 : 50;
+    // Die grüne Zone zeigt immer genau den Bereich von „Sauber!“ (±TUNER_OK_CENTS).
+    const zone = $('.gauge-zone');
+    const z = gaugeZone(range), zl = `${z.left}%`, zw = `${z.width}%`;
+    if (zone.style.left !== zl) { zone.style.left = zl; zone.style.width = zw; }
     $('.gauge-min').textContent = `−${range}`;
     $('.gauge-max').textContent = `+${range} Cent`;
     if (midi === null) {
@@ -7346,7 +7359,7 @@
     if (noteEl.classList.contains('is-idle')) noteEl.classList.remove('is-idle');
     $('.tuner-hz').textContent = `${freq ? freq.toFixed(1) : '–'} Hz · ${cents >= 0 ? '+' : '−'}${Math.abs(Math.round(cents))} Cent`;
     const abs = Math.abs(cents);
-    const kind = abs <= 10 ? 'ok' : abs <= 25 ? 'near' : 'off';
+    const kind = abs <= TUNER_OK_CENTS ? 'ok' : abs <= 25 ? 'near' : 'off';
     setClass(needle, `gauge-needle is-${kind}`);
     needle.style.left = `${50 + clamp(cents / range, -1, 1) * 50}%`;
     setClass(msg, `tuner-msg is-${kind}`);
@@ -13872,6 +13885,15 @@
         const peak = Math.max(...out.map((v) => Math.abs(v - 60)));
         if (Math.abs(avg - 60) > .05 || peak > .15) errors.push(`Glättung: Vibrato ${hz} Hz → Mitte ${avg.toFixed(3)}, Ausschlag ${peak.toFixed(3)}`);
       }
+    }
+    // Übe-Korrekturen 10a: Kunststimme gerade, Tuner-Zone = ±10 Cent.
+    if (VOICE_SCOOP.cents !== -20 || VOICE_SCOOP.sec !== .05 || voiceVibrato(.8) !== null || voiceVibrato(.99) !== null) errors.push('Kunststimme: Anschleifen bzw. Vibrato bei kurzen Tönen');
+    { const v = voiceVibrato(1.5); if (!v || Math.abs(v.from - 1) > 1e-9 || v.cents !== 12) errors.push(`Kunststimme: Vibrato ${JSON.stringify(v)}`); }
+    for (const range of [50, 100]) {
+      const z = gaugeZone(range);
+      // Nadelposition wie in showPitch: 50 + cents/range · 50 %.
+      const at = (c) => 50 + clamp(c / range, -1, 1) * 50;
+      if (Math.abs(z.left - at(-TUNER_OK_CENTS)) > 1e-9 || Math.abs(z.left + z.width - at(TUNER_OK_CENTS)) > 1e-9) errors.push(`Tuner-Zone bei ±${range}: ${JSON.stringify(z)}`);
     }
     // Ton halten: synthetische Linie mit Trend −5 Cent/s → −5 ± 0,5.
     const line = Array.from({ length: 400 }, (_, i) => ({ t: i / 50, cents: 8 - 5 * (i / 50) + Math.sin(i * 1.7) * 2, rms: .1 }));
