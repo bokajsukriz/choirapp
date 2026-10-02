@@ -136,6 +136,19 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
     Diktat, Im Takt, Zweite Stimme, Blattsingen) in den Phasen vor Start,
     Vorgabe, Du und Ergebnis geprüft: Phasenleiste, Bühne und die drei
     Dock-Knöpfe stehen pixelgleich; in „Du“ keine Tonhöhe.
+- **Hören: größere Antworten** (Chorleiter: „unten am Rand, das Feld ist leer“):
+  Bühne bei Hören 260 px statt 360 px, Antwortfeld 178 px mit Reihen von 84 px;
+  Knöpfe in Display-Schrift 18 px, runde Ecken, leichter „drückbarer“ Schatten,
+  oben im Feld statt am Rand. Lange Beschriftungen (z. B. Intervalle) zwei
+  Spalten bei vier Antworten; drei Antworten in einer Reihe; Leiter-Kacheln 84 px.
+  Kleinere Bildschirme stufenweise kleiner. Hören weicht damit in den Höhen von
+  Singen ab (Phasenleiste, Bühnenanfang und Dock stehen weiter gleich).
+- **Einsatz finden im Rhythmus-Bereich:** eigene Zeile in der Rhythmus-
+  Übersicht (wie die Klatsch-Grooves eine eigene Ansicht `views.rhythm =
+  'downbeat'`; die Hör-Ansicht wird dafür in den Rhythmus-Bereich umgehängt).
+  Zurück führt zur Rhythmus-Übersicht, Fortschritt zählt unter Rhythmus.
+  In der Hören-Liste steht die Übung nicht mehr. Bühne dort höher (340 px)
+  für die Auflösung Takt für Takt.
 - **Intonation: weicherer Klang, „rein“ nicht mehr an der Farbe erkennbar**
   (Chorleiter: „nerviger Schauer“; reine Klänge hörte man sofort): statt
   Sägezahn ein stimmähnlicher Ton (Obertöne 1/n², Tiefpass 1,8 kHz, weicher

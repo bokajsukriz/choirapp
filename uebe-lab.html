@@ -207,7 +207,9 @@
   .delay-hint p { margin: 0 0 8px; font-size: .82rem; line-height: 1.35; }
   .delay-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   /* Klatsch-Grooves (Licks & Grooves) */
-  body[data-view="grooves"] footer { display: none; }
+  body[data-view="grooves"] footer, body[data-view="downbeat"] footer { display: none; }
+  body.is-area-only[data-view="downbeat"] header { display: none; }
+  body.is-area-only[data-view="downbeat"] main { padding-top: max(12px, env(safe-area-inset-top)); }
   body.is-area-only[data-view="grooves"] header { display: none; }
   body.is-area-only[data-view="grooves"] main { padding-top: max(12px, env(safe-area-inset-top)); }
   .g-row { display: flex; align-items: center; gap: 8px; }
@@ -752,8 +754,8 @@
   .sing-mic .mic-fill { fill: #6cbf8a; transition: y .08s linear, height .08s linear; }
   .sing-mic.is-hot .mic-fill { fill: var(--bad); }
   .sing-mic.is-hot .mic-cap, .sing-mic.is-hot .mic-stand { stroke: var(--bad); }
-  @media (max-height: 720px) { .sing-page .sing-stage, .ear-page .ear-stage { height: 300px; } }
-  @media (max-height: 620px) { .sing-page .sing-stage, .ear-page .ear-stage { height: 230px; } }
+  @media (max-height: 720px) { .sing-page .sing-stage { height: 300px; } }
+  @media (max-height: 620px) { .sing-page .sing-stage { height: 230px; } }
   @media (prefers-reduced-motion: reduce) { .sing-mic .mic-fill, .sing-page .sing-progress i { transition: none; } }
   /* Daumen-Dock */
   .sing-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
@@ -795,11 +797,29 @@
   @keyframes ear-wave { 50% { height: 26px; } }
   @media (prefers-reduced-motion: reduce) { .ear-wave i { animation: none; height: 16px; } }
   .ear-help-text { margin: 4px 0 8px; font-size: 14px; line-height: 1.45; }
-  .ear-page .answer-grid { height: 112px; margin: 0; display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: 52px; align-content: start; gap: 6px; overflow-x: hidden; overflow-y: hidden; padding: 0; background: none; border: 0; border-radius: 0; margin-inline: 0; }
-  .ear-page .answer-grid.is-scroll { overflow-y: auto; }
-  .ear-page .answer-grid .answer { min-height: 0; height: 52px; padding: 0 4px; font-size: 14px; line-height: 1.15; overflow: hidden; }
-  .ear-page .answer-grid.is-tiles { gap: 4px; }
-  .ear-page .answer-grid.is-tiles .answer { font-size: 13px; padding: 0 1px; border-radius: 10px; }
+  /* Antwortfeld (Chorleiter: größer und schicker statt klein am Rand): die
+     Bühne ist bei Hören niedriger, das Feld hat Platz für zwei große Reihen;
+     die Knöpfe sitzen mittig, sind gleich hoch und wirken drückbar. */
+  .ear-page .ear-stage { height: 260px; }
+  .ear-page .answer-grid { height: 178px; margin: 0; display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: 84px; align-content: start; gap: 10px; overflow-x: hidden; overflow-y: hidden; padding: 0; background: none; border: 0; border-radius: 0; margin-inline: 0; }
+  .ear-page .answer-grid.is-scroll { overflow-y: auto; align-content: start; grid-auto-rows: 60px; gap: 8px; }
+  .ear-page .answer-grid .answer { min-height: 0; height: 100%; padding: 0 8px; border-radius: 20px; border: 2px solid var(--tint-line); background: var(--surface); box-shadow: 0 3px 0 var(--tint-line); font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.1; color: var(--text); overflow: hidden; transition: transform .06s, box-shadow .06s; }
+  .ear-page .answer-grid .answer:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--tint-line); }
+  .ear-page .answer-grid .answer:disabled { opacity: .5; box-shadow: none; }
+  .ear-page .answer-grid .answer.is-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); box-shadow: 0 3px 0 var(--ok); opacity: 1; }
+  .ear-page .answer-grid .answer.is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); box-shadow: 0 3px 0 var(--rep-line); opacity: 1; }
+  .ear-page .answer-grid .answer small { display: block; font-family: var(--font-body, inherit); font-size: 11px; font-weight: 700; color: var(--muted); }
+  .ear-page .answer-grid.is-tiles { gap: 6px; grid-auto-rows: 84px; }
+  .ear-page .answer-grid.is-tiles .answer { font-size: 17px; padding: 0 2px; border-radius: 16px; }
+  .ear-page .answer-grid.is-pad { grid-auto-rows: 100%; align-content: stretch; }
+  .ear-page .answer-grid.is-pad .ear-pad { height: 100%; }
+  /* Einsatz finden: Bühne höher (Auflösung Takt für Takt), Klatschfläche flacher. */
+  .ear-page.is-downbeat .ear-stage { height: 340px; }
+  .ear-page.is-downbeat .answer-grid { height: 112px; }
+  @media (max-height: 720px) { .ear-page.is-downbeat .ear-stage { height: 290px; } .ear-page.is-downbeat .answer-grid { height: 96px; } }
+  @media (max-height: 620px) { .ear-page.is-downbeat .ear-stage { height: 240px; } .ear-page.is-downbeat .answer-grid { height: 88px; } }
+  @media (max-height: 720px) { .ear-page .ear-stage { height: 220px; } .ear-page .answer-grid { height: 150px; grid-auto-rows: 70px; } .ear-page .answer-grid.is-tiles, .ear-page .rung .answer, .ear-page .rung .answer-oct { grid-auto-rows: 72px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 72px; } }
+  @media (max-height: 620px) { .ear-page .ear-stage { height: 200px; } .ear-page .answer-grid { height: 128px; grid-auto-rows: 56px; } .ear-page .answer-grid.is-tiles { grid-auto-rows: 60px; } .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 60px; } }
   /* Einsatz finden: Klatschfläche im Antwortfeld (gleiche Höhe), Optik wie die Klatschfläche im Rhythmus. */
   .ear-page .answer-grid.is-pad { display: block; }
   .ear-pad { width: 100%; height: 112px; box-sizing: border-box; margin: 0; border-radius: 20px; border: 3px dashed var(--tint-line); background: var(--surface); color: var(--muted); font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -849,7 +869,8 @@
   .ear-page .rung, .ear-panel.ear-page:has(.slot-row.is-pattern) .rung:not(.is-top) { flex: 1 1 0; min-width: 0; margin: 0 calc(var(--gap, 10px) * .6) 0 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
   .ear-page .rung.is-top { margin-right: 0; }
   .ear-page .rung.is-alt { margin-left: 0; }
-  .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 52px; min-height: 0; padding: 0; justify-content: center; text-align: center; font-size: 15px; }
+  .ear-page .answer-grid.is-ladder { align-items: center; }
+  .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 84px; min-height: 0; padding: 0; justify-content: center; text-align: center; font-size: 18px; border-radius: 16px; border-width: 2px; box-shadow: 0 3px 0 var(--tint-line); }
   .ear-page .rung-note { position: static; transform: none; font-size: 10px; line-height: 1.1; text-align: center; display: block; white-space: normal; }
   .ear-dock .dock-main.is-skip .dock-core { background: var(--surface); border: 2px solid var(--tint-line); color: var(--text); box-shadow: none; }
   .ear-dock .dock-main.is-skip .dock-cap { color: var(--text); }
@@ -4219,7 +4240,7 @@
    *  erst Töne in der Tonart, dann Intervalle; Harmonie – vom ganzheitlichen
    *  Schluss-Hören zur Folgenanalyse; Im Chor – Intonation vor Stimmen). Die
    *  Reihenfolge von EAR_MODES (Speicher, Kette) bleibt unberührt. */
-  const EAR_GROUPS = [['Melodie', ['noteInKey', 'interval']], ['Harmonie', ['quality', 'cadence', 'chordInKey', 'chords']], ['Takt', ['downbeat']], ['Im Chor', ['tuning', 'parts']]];
+  const EAR_GROUPS = [['Melodie', ['noteInKey', 'interval']], ['Harmonie', ['quality', 'cadence', 'chordInKey', 'chords']], ['Im Chor', ['tuning', 'parts']]];
   /** Übersicht mit „Gemischt üben“ und Gruppen (Hören, Singen). `top`: Karte
    *  über allem (Singen: Meine Stimme). Modi ohne Gruppe landen in der letzten. */
   function groupedHubHtml(tab, groups, top = '', skip = []) {
@@ -4284,13 +4305,35 @@
       const isLast = id === state.mode;
       return kRowHtml(`data-open-mode="rhythm:${id}"`, id, name + (isLast ? '<span class="visually-hidden"> (zuletzt geöffnet)</span>' : ''), levelBadgeHtml('rhythm', id), isLast ? ' is-last' : '');
     }).join('');
-    return `<div class="k-hub">${hero}${repeat}<div class="k-list">${rows}</div></div>`;
+    // „Einsatz finden“ (Chorleiter: gehört zu Rhythmus) – die Übung selbst ist die Hör-Übung
+    // im Gerüst von Hören, hier als eigene Rhythmus-Ansicht (views.rhythm = 'downbeat').
+    const db = kRowHtml('data-downbeat-open', 'downbeat', modeName('ear', 'downbeat'), levelBadgeHtml('ear', 'downbeat'));
+    return `<div class="k-hub">${hero}${repeat}<div class="k-list">${rows}${db}</div></div>`;
+  }
+  /** Einsatz finden im Rhythmus-Bereich: die Hör-Ansicht wird in den Rhythmus-
+   *  Bereich umgehängt (eine Übung, ein Markup) und beim Verlassen zurück. */
+  const dbHome = { parent: null, next: null };
+  function placeDownbeatView(inRhythm) {
+    const view = $('[data-exview="ear"]');
+    if (!dbHome.parent) { dbHome.parent = view.parentNode; dbHome.next = view.nextSibling; }
+    if (inRhythm && view.parentNode !== $('[data-panel="rhythm"]')) $('[data-panel="rhythm"]').append(view);
+    else if (!inRhythm && view.parentNode !== dbHome.parent) dbHome.parent.insertBefore(view, dbHome.next);
+  }
+  const downbeatInRhythm = () => views.rhythm === 'downbeat' && state.tab === 'rhythm';
+  function openDownbeat() {
+    quietArea('rhythm'); quietArea('ear');
+    leaveCourse();
+    ear.mode = 'downbeat'; ear.streak = 0; resetEarSeries('downbeat');
+    views.rhythm = 'downbeat';
+    renderAll();
+    renderArea();
+    $('[data-exview="ear"] .back-btn')?.focus();
   }
 
   function renderModeList(tab) {
     const host = $(`[data-list="${tab}"]`);
     if (tab === 'rhythm') { host.innerHTML = rhythmHubHtml(); return; }
-    if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS); return; }
+    if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS, '', ['downbeat']); return; } // Einsatz finden steht bei Rhythmus
     if (tab === 'voice') { host.innerHTML = groupedHubHtml('voice', SING_GROUPS, voiceCardHtml(), ['tuner']); return; }
     const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
@@ -4311,10 +4354,12 @@
     for (const t of Object.keys(AREA_NAMES)) {
       const list = views[t] === 'list';
       $(`[data-list="${t}"]`).hidden = !list;
-      $(`[data-exview="${t}"]`).hidden = list || views[t] === 'grooves'; // 'grooves': eigene Ansicht (Licks & Grooves)
+      $(`[data-exview="${t}"]`).hidden = list || views[t] === 'grooves' || views[t] === 'downbeat'; // eigene Ansichten
     }
     renderGrooves();
-    if (views[tab] === 'grooves') return;
+    placeDownbeatView(downbeatInRhythm());
+    if (downbeatInRhythm()) { $('[data-exview="ear"]').hidden = false; renderEar(); return; }
+    if (views[tab] === 'grooves' || views[tab] === 'downbeat') return;
     if (views[tab] === 'list') renderModeList(tab);
     else if (tab === 'rhythm') renderRhythmTitle();
     else {
@@ -4347,6 +4392,7 @@
 
   function backToList(tab) {
     quietArea(tab);
+    if (tab === 'rhythm' && views.rhythm === 'downbeat') quietArea('ear');
     if (tab === 'rhythm') leaveCourse();
     views[tab] = 'list';
     renderAll();
@@ -6199,13 +6245,25 @@
   function layoutEarAnswers(grid) {
     const n = grid.children.length;
     const ladder = grid.classList.contains('is-ladder');
-    grid.style.setProperty('--cols', ladder || n <= 9 ? Math.max(1, n) : 4);
-    grid.classList.toggle('is-tiles', !ladder && n > 4 && n <= 9);
+    // Lange Beschriftungen (z. B. „große Sekunde“) in zwei Spalten, damit die Knöpfe groß bleiben.
+    const long = [...grid.children].some((b) => (b.textContent || '').trim().length > 5);
+    const cols = ladder ? n : n > 9 ? 4 : long && n === 4 ? 2 : long && n > 4 && n <= 6 ? 3 : Math.max(1, n);
+    grid.style.setProperty('--cols', cols);
+    grid.classList.toggle('is-tiles', !ladder && cols > 4 && n <= 9);
     grid.classList.toggle('is-scroll', !ladder && n > 9);
   }
 
   function renderEar() {
     $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
+    $('.ear-page').classList.toggle('is-downbeat', ear.mode === 'downbeat');
+    // Im Rhythmus-Bereich (Einsatz finden): Zurück führt zur Rhythmus-Übersicht.
+    const home = downbeatInRhythm() ? 'rhythm' : 'ear';
+    const back = $('[data-exview="ear"] .back-btn');
+    if (back.dataset.back !== home) {
+      back.dataset.back = home;
+      back.setAttribute('aria-label', `Zurück zu ${AREA_NAMES[home]}`); back.title = back.getAttribute('aria-label');
+      $('[data-exview="ear"] .ex-area').textContent = AREA_NAMES[home];
+    }
     const [levels, current] = earLevelInfo(ear.mode);
     $('[data-levels="ear"]').innerHTML = levelControlHtml(`ear-${ear.mode}`, levels, current, levelHints[ear.mode]);
     const task = ear.task;
@@ -6221,7 +6279,7 @@
       const hint = levelHints[ear.mode];
       const [, lv] = earLevelInfo(ear.mode);
       const up = hint && hint.hint === 'up' && lv >= 1 && lv < 6 ? `<button type="button" class="k-btn k-btn--ghost" data-level-area="ear-${ear.mode}" data-level-n="${lv + 1}">Stufe ${lv + 1} ausprobieren</button>` : '';
-      sum.innerHTML = `<p class="sum-text"><b>${s.text}</b>${s.tip ? ` ${s.tip}` : ''}</p><div class="sum-actions"><button type="button" class="k-btn" data-ear="series-again">Noch ${SERIES_LEN}</button>${up}<button type="button" class="k-btn k-btn--ghost" data-back="ear">Fertig</button></div>`;
+      sum.innerHTML = `<p class="sum-text"><b>${s.text}</b>${s.tip ? ` ${s.tip}` : ''}</p><div class="sum-actions"><button type="button" class="k-btn" data-ear="series-again">Noch ${SERIES_LEN}</button>${up}<button type="button" class="k-btn k-btn--ghost" data-back="${downbeatInRhythm() ? 'rhythm' : 'ear'}">Fertig</button></div>`;
     }
     const prompt = $('.ear-prompt');
     const sub = $('.ear-sub');
@@ -10262,6 +10320,7 @@
       $('[data-list="rhythm"] [data-open-mode]')?.focus();
       return;
     }
+    if (e.target.closest('[data-downbeat-open]')) { openDownbeat(); return; }
     const backBtn = e.target.closest('[data-back]');
     if (backBtn) { backToList(backBtn.dataset.back); return; }
     const mixedBtn = e.target.closest('[data-mixed]');
@@ -10649,7 +10708,7 @@
   // Einsatz finden: Klatschfläche im Antwortfeld (wird neu gezeichnet → delegiert).
   // In Ruhe startet sie den Groove, im Lauf ist sie das Klatschfeld.
   document.addEventListener('pointerdown', (e) => {
-    if (!e.target.closest?.('.ear-pad') || state.tab !== 'ear') return;
+    if (!e.target.closest?.('.ear-pad') || (state.tab !== 'ear' && !downbeatInRhythm())) return;
     e.preventDefault();
     if (dbRun?.playing) downbeatTap();
     else if (!ear.task) nextEar();
@@ -10667,6 +10726,10 @@
     // Klatsch-Grooves: Leertaste/Enter klatscht (Tippfeld), sonst nichts zu tun.
     if (views[state.tab] === 'grooves') {
       if ((e.code === 'Space' || e.code === 'Enter') && gr.run && gr.run.playing) { e.preventDefault(); groovesTap(); }
+      return;
+    }
+    if (views[state.tab] === 'downbeat') {
+      if ((e.code === 'Space' || e.code === 'Enter') && dbRun?.playing) { e.preventDefault(); downbeatTap(); }
       return;
     }
     // In der Liste gibt es nichts zu spielen oder zu beantworten.
@@ -12608,8 +12671,8 @@
       renderModeList('ear');
       const rows = $$('[data-list="ear"] [data-open-mode]').map((b) => b.dataset.openMode.split(':')[1]);
       // Konfetti B2: nach Fähigkeit gruppiert (EAR_GROUPS), einzeilig ohne Kurztext.
-      if (rows.join() !== EAR_GROUPS.flatMap(([, ids]) => ids).join() || rows.length !== EAR_MODES.length) errors.push(`Liste Hören: Reihenfolge ${rows}`);
-      if ($$('[data-list="ear"] .k-group-head').map((h) => h.textContent).join() !== 'Melodie,Harmonie,Takt,Im Chor') errors.push('Liste Hören: Gruppen');
+      if (rows.join() !== EAR_GROUPS.flatMap(([, ids]) => ids).join() || rows.length !== EAR_MODES.length - 1) errors.push(`Liste Hören: Reihenfolge ${rows}`);
+      if ($$('[data-list="ear"] .k-group-head').map((h) => h.textContent).join() !== 'Melodie,Harmonie,Im Chor') errors.push('Liste Hören: Gruppen');
       if ($('[data-list="ear"] .mode-how')) errors.push('Liste Hören: Unterzeile vorhanden');
       if ($('[data-open-mode="ear:noteInKey"] .k-row-name')?.textContent !== 'Töne in der Tonart' || $('[data-open-mode="ear:chordInKey"] .k-row-name')?.textContent !== 'Akkorde in der Tonart') errors.push('Liste Hören: Namen');
       for (const id of ['noteInKey', 'chordInKey']) {
@@ -13564,7 +13627,8 @@
         applyQuickParams({ tab: 'ear' });
         if (views.ear !== 'exercise' || state.tab !== 'ear' || ear.mode !== QUICK_CHAINS.ear[0][0] || !quickRun || quickRun.steps !== QUICK_CHAINS.ear) errors.push('from=quick&tab=ear startet die Kette nicht wie bisher');
         quickRun = saved.run;
-        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES], ['voice', visibleSingModes()]]) {
+        // Einsatz finden steht im Rhythmus-Bereich (eigene Zeile data-downbeat-open, siehe downbeatCheck).
+        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => id !== 'downbeat')], ['voice', visibleSingModes()]]) {
           renderModeList(tab);
           for (const [id] of list) {
             const n = $$(`[data-list="${tab}"] [data-open-mode="${tab}:${id}"]`).length;
@@ -13747,7 +13811,7 @@
     const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
     // Stufen vollständig, jedes Groove mit passendem Muster, eingebunden.
     if (DOWNBEAT_LEVELS.map((l) => l.n).join() !== '1,2,3,4,5,6' || DOWNBEAT_LEVELS.some((l) => !l.label || l.label.length > 40)) errors.push('Einsatz: Stufen 1–6');
-    if (earLevelInfo('downbeat')[0] !== DOWNBEAT_LEVELS || modeName('ear', 'downbeat') !== 'Einsatz finden' || !MODE_ICONS.downbeat || !MODE_TEXT.downbeat || !EAR_GROUPS.some(([, ids]) => ids.includes('downbeat'))) errors.push('Einsatz: nicht eingebunden');
+    if (earLevelInfo('downbeat')[0] !== DOWNBEAT_LEVELS || modeName('ear', 'downbeat') !== 'Einsatz finden' || !MODE_ICONS.downbeat || !MODE_TEXT.downbeat || EAR_GROUPS.some(([, ids]) => ids.includes('downbeat')) || !rhythmHubHtml().includes('data-downbeat-open')) errors.push('Einsatz: nicht im Rhythmus-Bereich eingebunden');
     if (!ear.stats.downbeat || !('downbeat' in ear.levels)) errors.push('Einsatz: Zähler/Stufe fehlen');
     const l1 = DOWNBEAT_LEVELS[0];
     if (l1.grooves.join() !== 'pop' || l1.patterns.join() !== 'one4' || !l1.bass || !DB_GROOVES.pop.kick.includes(0)) errors.push('Einsatz Stufe 1: nicht eindeutig');
@@ -13882,7 +13946,9 @@
       if (dbRun) errors.push('Einsatz: Lauf läuft nach dem Stoppen weiter');
       // Gerüst: Phasenleiste, Bühne, Antwortfeld und Dock stehen wie bei „Intervalle“.
       if ($('.ear-page .answer-grid').getClientRects().length) {
-        const rects = () => ['.ear-strip', '.ear-stage', '.ear-page .answer-grid', '[data-ear="main"]', '[data-ear="nochmal"]', '[data-ear="helps"]'].map((sel) => { const b = $(sel).getBoundingClientRect(); return [b.top, b.left, b.width, b.height].map(Math.round).join(); }).join(' | ');
+        // Einsatz finden hat eine höhere Bühne (Auflösung Takt für Takt) – Phasenleiste,
+        // Bühnenanfang und Dock stehen aber wie bei „Intervalle“.
+        const rects = () => ['.ear-strip', '.ear-stage', '[data-ear="main"]', '[data-ear="nochmal"]', '[data-ear="helps"]'].map((sel) => { const b = $(sel).getBoundingClientRect(); return (sel === '.ear-stage' ? [b.top, b.left, b.width] : [b.top, b.left, b.width, b.height]).map(Math.round).join(); }).join(' | ');
         ear.mode = 'interval'; ear.task = null; ear.revealed = false; renderEar();
         const want = rects();
         ear.mode = 'downbeat'; renderEar();

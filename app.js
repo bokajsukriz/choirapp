@@ -22814,9 +22814,9 @@ const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'n
   'licks']; // Licks & Grooves (licks.html): in keiner Gruppe von PROGRESS_GROUPS
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
-  ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat'], // downbeat = Einsatz finden
+  ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
-  rhythm: ['rhythm'],
+  rhythm: ['rhythm', 'downbeat'], // downbeat = Einsatz finden (Rhythmus-Bereich)
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
 // sightShown: Blattsingen ist in der Ausbildung eingeblendet (Pop-Didaktik:
