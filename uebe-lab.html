@@ -2375,7 +2375,9 @@
     },
 
     /** Intonation: Sägezahn durch Tiefpass 2,5 kHz — die Obertöne machen
-     *  Schwebungen hörbar. `cents` verstimmt gegen den gleichstufigen Ton. */
+     *  Schwebungen hörbar. `cents` verstimmt gegen den gleichstufigen Ton; die
+     *  Intonations-Aufgaben rechnen die reine Stimmung schon hinein
+     *  (`justOffsetCents`, `tuningChordCents`). */
     /** Intonation: weicher, stimmähnlicher Ton statt Sägezahn (Chorleiter: das
      *  „Schnarren“ nervte) – Obertöne fallen mit 1/n² ab, die ersten (Oktave,
      *  Quinte) bleiben hörbar, damit Schwebungen entstehen. Jeder Ton wandert
@@ -4965,6 +4967,26 @@
     { n: 6, label: 'Akkord: welche Stimme?',      kind: 'chordWhich',  answers: ['S', 'A', 'T', 'B'] },
   ];
   const TUNING_TONE_SEC = 1.4;
+  /** Abweichung der reinen Stimmung von der gleichstufigen Stufe, in Cent, für
+   *  einen Ton `semisAboveRoot` Halbtöne über dem Grundton (mod 12): große
+   *  Terz 5/4 → −13,69, kleine Terz 6/5 → +15,64, Quinte 3/2 → +1,96, Prime und
+   *  Oktave 0. Andere Stufen kommen in `satbOf(key, ['I'])` nicht vor (nur
+   *  Grundton, große Terz, Quinte) und bleiben deshalb bei 0. Eine Quelle für
+   *  die Quinte (Stufe 4) und den Akkord (Stufen 5/6). */
+  function justOffsetCents(semisAboveRoot) {
+    switch (mod(semisAboveRoot, 12)) {
+      case 3: return 1200 * Math.log2(6 / 5) - 300;
+      case 4: return 1200 * Math.log2(5 / 4) - 400;
+      case 7: return 1200 * Math.log2(3 / 2) - 700;
+      default: return 0;
+    }
+  }
+  /** Cent-Abweichung der Stimme `x` einer Akkord-Intonationsaufgabe gegen den
+   *  gleichstufigen Ton: reine Stimmung zum (gleichstufigen) Grundton, die
+   *  markierte Stimme zusätzlich um `task.cents`. */
+  function tuningChordCents(task, x) {
+    return justOffsetCents(task.satb[x] - (task.key ?? task.satb.B)) + (x === task.voice ? task.cents : 0);
+  }
   /** 2-runter-1-hoch-Treppe (konvergiert gegen ≈ 71 % richtig): nach zwei
    *  richtigen in Folge Δ × 0,8, nach einem Fehler Δ × 1,25, Grenzen 3–60
    *  Cent. Schwelle = geometrisches Mittel der letzten 6 Umkehrpunkte. */
@@ -5279,7 +5301,7 @@
       const [c] = satbOf(key, ['I']);
       const voice = SATB_PARTS[Math.floor(rnd() * 4)];
       const sign = rnd() < .5 ? -1 : 1;
-      return { kind: 'tuning', level: n, sub: level.kind, satb: c, voice, cents: sign * stair.delta, stair: true, correct: voice, answer: null };
+      return { kind: 'tuning', level: n, sub: level.kind, key, satb: c, voice, cents: sign * stair.delta, stair: true, correct: voice, answer: null };
     }
     const catchTrial = rnd() < .25;
     const sign = rnd() < .5 ? -1 : 1;
@@ -5291,6 +5313,7 @@
     else if (level.kind === 'fifth') task.base = rndInt(48, 60, rnd);
     else {
       const key = rndInt(0, 11, rnd);
+      task.key = key;
       task.satb = satbOf(key, ['I'])[0];
       task.voice = SATB_PARTS[Math.floor(rnd() * 4)];
     }
@@ -5809,10 +5832,11 @@
     if (task.sub === 'seq') { saw(task.base, 0, t0, d); saw(task.base, task.cents, t0 + d + .15, d); return; }
     if (task.sub === 'unison') { saw(task.base, 0, t0, d + .5); saw(task.base, task.cents, t0 + .5, d); return; }
     if (task.sub === 'octave') { saw(task.base, 0, t0, d + .5); saw(task.base + 12, task.cents, t0 + .5, d); return; }
-    if (task.sub === 'fifth') { saw(task.base, 0, t0, d + .5); saw(task.base + 7, 1.955 + task.cents, t0 + .5, d); return; }
+    if (task.sub === 'fifth') { saw(task.base, 0, t0, d + .5); saw(task.base + 7, justOffsetCents(7) + task.cents, t0 + .5, d); return; }
+    // Akkord: reine Stimmung zum Grundton (auch die markierte Stimme allein).
     let t = t0;
-    if (task.sub === 'chordMarked' && !compare?.skipSolo) { saw(task.satb[task.voice], task.cents, t, 1); t += 1.2; }
-    SATB_PARTS.forEach((x) => saw(task.satb[x], x === task.voice ? task.cents : 0, t, d));
+    if (task.sub === 'chordMarked' && !compare?.skipSolo) { saw(task.satb[task.voice], tuningChordCents(task, task.voice), t, 1); t += 1.2; }
+    SATB_PARTS.forEach((x) => saw(task.satb[x], tuningChordCents(task, x), t, d));
   }
 
   /* ---- Einsatz finden: ein Lauf (Groove, Klatscher, Auswertung). Alles wird
@@ -6887,7 +6911,7 @@
         ${ear.mode === 'downbeat' ? `<span class="sub-label">Eingabe</span>
         <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.</p>` : ''}
-        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
+        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p><p class="foot-note" style="text-align:left">Im Akkord gilt die reine Stimmung: Die Dur-Terz klingt etwas tiefer als am Klavier – so singt ein Chor sauber.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${isInKeyMode(ear.mode) ? checkRow('inKeyResolve', 'on', ear.mode === 'noteInKey' ? 'Nach der Antwort auflösen (Ton läuft zur Tonika)' : 'Nach der Antwort auflösen (Akkord läuft nach Hause)', s.inKeyResolve !== false) : ''}${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext, isInKeyMode(ear.mode) ? 'erst nach der Auflösung' : '')}</div>`;
     } else {
@@ -12626,6 +12650,23 @@
     }
     const catchShare = Array.from({ length: 2000 }, () => makeEarTask('tuning', 1, rnd).cents === 0).filter(Boolean).length / 2000;
     if (catchShare < .2 || catchShare > .3) errors.push(`Intonation: ${Math.round(catchShare * 100)} % ohne Abweichung statt 25 %`);
+    // Reine Stimmung im Akkord (Paket Übe-Korrekturen 1).
+    [[0, 0], [3, 15.64], [4, -13.69], [7, 1.96], [12, 0], [16, -13.69]].forEach(([semis, want]) => {
+      if (Math.abs(justOffsetCents(semis) - want) > .05) errors.push(`justOffsetCents(${semis}) = ${justOffsetCents(semis)} statt ${want}`);
+    });
+    for (let i = 0; i < 60; i++) {
+      const t = makeEarTask('tuning', i % 2 ? 5 : 6, rnd);
+      t.cents = 0;
+      const hz = (x) => noteHz(t.satb[x]) * Math.pow(2, tuningChordCents(t, x) / 1200);
+      const role = (r) => SATB_PARTS.find((x) => mod(t.satb[x] - t.key, 12) === r);
+      const reduced = (a, b) => mod(1200 * Math.log2(hz(a) / hz(b)), 1200);
+      const [root, third, fifth] = [role(0), role(4), role(7)];
+      if (!root || !third) errors.push('Intonation Akkord: Grundton oder Terz fehlt');
+      else if (Math.abs(reduced(third, root) - 1200 * Math.log2(5 / 4)) > .1) errors.push(`Intonation Akkord: Terz/Grundton ${reduced(third, root).toFixed(2)} Cent statt 5/4`);
+      if (fifth && root && Math.abs(reduced(fifth, root) - 1200 * Math.log2(3 / 2)) > .1) errors.push('Intonation Akkord: Quinte nicht 3/2');
+      t.cents = 25;
+      if (Math.abs(tuningChordCents(t, t.voice) - justOffsetCents(t.satb[t.voice] - t.key) - 25) > 1e-9) errors.push('Intonation Akkord: Verstimmung nicht zusätzlich zur reinen Stimmung');
+    }
     // Intervalle: Stufe 6 alle Richtungen, 1–5 aufwärts.
     const lv = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level');
     // (Pop-Didaktik: Stufen 1–5 auf- und abwärts, Stufe 6 auch zusammen.)
