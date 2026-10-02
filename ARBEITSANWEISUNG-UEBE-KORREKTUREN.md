@@ -4,7 +4,8 @@ Du bist erfahrene Chorleiterin/erfahrener Chorleiter, Stimmbildner:in und
 Entwickler:in. Ein musikpädagogisches Review der Übe-Sektion (Tools) hat
 Fehler gefunden, die falsch bewerten, etwas Falsches beibringen oder die
 Stimme unnötig belasten. Du behebst sie in kleinen, einzeln mergebaren
-Paketen. Zielgruppe der App: ein Laien-Popchor, der **nur nach Gehör** lernt,
+Paketen. Zwei Erweiterungen kommen dazu: Rhythmus mit dem Körper
+(Paket 11) und Auftakte/Einsätze nach Pausen (Paket 12). Zielgruppe der App: ein Laien-Popchor, der **nur nach Gehör** lernt,
 vier Stimmen (S, A, T, B).
 
 Antworte und kommentiere auf Deutsch. **Die Anweisung läuft
@@ -492,6 +493,207 @@ Ein Commit je Datei ist erlaubt (10a–10d), jeweils mit SW_VERSION-Erhöhung.
   immer C. In den Übungen ist „do“ der Grundton der Tonart.“ Keine neue
   Beschriftungsart.
 
+### Paket 11 – Rhythmus mit dem Körper (`uebe-lab.html`, neuer Modus)
+
+**Warum.** Bisher ist Rhythmus reines Klatschen oder Tippen gegen einen
+Groove. Auf der Bühne muss der Puls aber im Körper laufen, während Stimme
+oder Hände etwas anderes tun. Laien verlieren den Puls fast immer genau dann,
+wenn der Rhythmus vom Schlag weggeht. Body-Percussion in Schichten ist
+außerdem ein klassisches Warm-up für Popchöre und lässt sich direkt in die
+Probe übertragen.
+
+**Einbindung.**
+- Neuer Rhythmus-Modus mit ID `body`, Anzeigename „Körper“, angehängt an
+  `MODES` (bestehende IDs bleiben).
+- `MODE_TEXT`: „Puls im Fuß, Rhythmus in den Händen“; Icon wie die anderen
+  Modi.
+- Stufen über die bestehende Stufen-Mechanik (Vorschlag, nie automatischer
+  Wechsel).
+- Fortschritt über die bestehende Meldung des Rhythmus-Bereichs. **Keine**
+  neuen Fortschrittsbereiche in `app.js`. Prüfen, ob der Ring der
+  Rhythmus-Kachel (`practiceTileState`) den neuen Modus mitteln würde: Ein
+  neuer Modus auf Stufe 1 darf den Ring nicht sichtbar senken. Er zählt erst
+  mit, wenn er einmal gespielt wurde, sonst bleibt er ganz draußen;
+  Entscheidung im Bericht nennen.
+- Material nur aus geschafften Kurs-Lektionen ohne Shuffle und Auftakt
+  (wie `holdPool`, der Grundschlag ist immer dabei).
+
+**11a – Steppen und klatschen (Stufen 1–3).**
+- Ablauf: Man steppt die Viertel auf der Stelle (von einem Fuß auf den
+  anderen) und klatscht dazu einen gelernten Rhythmus, 4 bzw. 8 Takte am
+  Stück.
+- Bewertet wird nur das Klatschen (Tippen oder Mikrofon), und zwar mit
+  `judgeHold` im absoluten Raster, also ohne Neuausrichtung. `judgeHold`
+  selbst nicht ändern.
+- Der Step bleibt bewusst unbewertet. Hinweistext: „Der Fuß ist dein
+  Metronom – er wird nicht bewertet, aber er darf nie stehen bleiben.“
+
+| Stufe | Begleitung | Länge |
+|---|---|---|
+| 1 | voller Groove, dazu eine leise Bassdrum auf allen Vierteln als „Fuß-Vorbild“ | 4 Takte |
+| 2 | nur noch die Fuß-Bassdrum | 8 Takte |
+| 3 | 2 Takte Fuß-Bassdrum, danach still: nur der eigene Step hält den Puls | 8 Takte |
+
+- Vorher einmal hören: Die App spielt den Rhythmus mit Fuß-Bassdrum vor.
+  Die Klänge kommen aus `engine.drum('kick' | 'snare' | 'hat' | 'rim')` und
+  `engine.clap`.
+
+**11b – Body-Percussion in Schichten (Stufen 4–6).**
+- Vier feste Schichten im 4/4:
+
+  | Schicht | Bewegung | Klang | Rhythmus |
+  |---|---|---|---|
+  | **Stampfen** | Fuß auf den Boden | `kick` | 1 und 3 |
+  | **Patschen** | Hände auf die Oberschenkel | `hat`, dunkler, eigener Pegel | alle Achtel |
+  | **Klatschen** | Hände zusammen | `clap` | 2 und 4 |
+  | **Schnipsen** | mit den Fingern | `rim` | die „und“ von 2 und 4 |
+
+  Ab Stufe 6 ist statt Schnipsen ein gelernter Kurs-Rhythmus möglich.
+- Ablauf: Die App spielt drei Schichten, du übernimmst die vierte. Nach
+  4 bzw. 8 Takten wechselt die Rolle; die App sagt die neue Schicht einen
+  Takt vorher an (Text plus kurzer Ansage-Klang, kein Countdown).
+- Bewertet werden nur die Schichten **Klatschen** und **Schnipsen** (hell,
+  übers Mikrofon zuverlässig erkennbar) bzw. jede Schicht beim Tippen. Beim
+  Mikrofon gelten Stampfen und Patschen als „Mitmachen“ ohne Wertung, mit
+  ehrlicher Begründung im Text: „Stampfen hört das Handy nicht zuverlässig.“
+
+| Stufe | Deine Schicht | Länge |
+|---|---|---|
+| 4 | immer Klatschen | 4 Takte |
+| 5 | Wechsel Klatschen ↔ Schnipsen | 8 Takte |
+| 6 | Wechsel durch alle vier | 8 Takte je Schicht |
+
+- **Probenmodus** als Schalter: Alle vier Schichten laufen in Schleife, jede
+  Schicht ist einer Chorstimme zugeordnet (Bass stampft, Tenor patscht, Alt
+  klatscht, Sopran schnipst; per Antippen änderbar). Tempo ist einstellbar,
+  es gibt keine Bewertung und kein Mikrofon. Die Anzeige ist groß genug
+  für einen Beamer. Gedacht für den Chorleiter in der Probe.
+
+**11c – Sprechen und steppen (optional, nur wenn 11a/11b sauber sind).**
+- Ablauf: Kurze **selbst ausgedachte** Textzeilen werden auf einen Rhythmus
+  gesprochen, dazu läuft der Step. Keine Liedtexte aus dem Repertoire
+  übernehmen (Urheberrecht).
+- Material: 6–8 Zeilen, die die Rhythmen aus Kapitel 2–4 abdecken (Achtel,
+  Offbeat, Synkope, Sechzehntel), etwa „Heu-te ge-hen wir noch weg“ mit den
+  Silben auf den Kurs-Rhythmus gelegt. Silben werden angezeigt, Noten nicht.
+- Bewertung über die Mikrofon-Einsatzerkennung (`makeOnsetDetector`). Zuerst
+  mit einer Simulation prüfen, ob gesprochene Silben verlässlich als Einsätze
+  erkannt werden. Wenn nicht: 11c ohne Bewertung als „Mitsprechen“ anbieten
+  und im Bericht begründen. Den Detektor dafür nicht verändern.
+
+**Tests.**
+- Fuß-Bassdrum: Das Kick-Raster liegt in jedem Takt auf allen Vierteln; die
+  Stille in Stufe 3 beginnt genau nach Takt 2.
+- Schichten: Die vier Raster stimmen (Ticks), Rollenwechsel genau nach
+  4 bzw. 8 Takten, die Ansage einen Takt vorher.
+- Bewertung: Die eigene Schicht ergibt die erwarteten Soll-Zeitpunkte für
+  `judgeHold`. Mit Mikrofon werden Stampfen/Patschen nicht gewertet.
+- Ring: Ein frischer Stand mit Modus `body` auf Stufe 1 ändert den Ring der
+  Rhythmus-Kachel nicht.
+
+### Paket 12 – Auftakte und Einsätze nach Pausen (`uebe-lab.html`)
+
+**Warum.** Im Chor wackelt es fast nie mitten in der Phrase, sondern am
+Einsatz nach einer Pause. Auftakt-Lektionen gibt es, aber sie sind vom
+Durchhalten ausgeschlossen (`holdable = (l) => !l.pickup`, Z. ~1212). Geübt
+wird der Auftakt also nur einmal am Anfang, nie als wiederkehrender Einsatz.
+
+**12a – Auftakt-Lektionen durchhalten (Klatsch-Grooves).**
+1. `holdable` aufteilen:
+   - `duoable` = `!l.pickup` für „Zweistimmig“: `holdRound`, `holdPool` und
+     der Knopf „Gegen 2. Stimme halten“ (Z. ~1250, ~1779, ~2980). Dort
+     ändert sich nichts.
+   - `holdable` gilt künftig auch für Auftakt-Lektionen und steuert nur noch
+     die Klatsch-Grooves (Z. ~7430, ~7651, ~7658, ~7681, ~7691, ~7696,
+     ~7812).
+   - Jede Stelle einzeln prüfen und im Bericht auflisten.
+2. Für Auftakt-Lektionen entsteht beim Durchhalten eine **Einsatz-Schleife**:
+   - Die Phrase (Auftakt + Takte) ergibt dank Volltakt-Regel ganze Takte.
+   - Danach folgt **ein Pausentakt**, dann wieder die Phrase mit Auftakt,
+     bis die Taktzahl der Stufe (4/8/16, `HOLD_STAGES`) erreicht ist.
+   - Die Snare-/Stille-Planung (`holdPlan`) läuft über alle Takte wie
+     bisher.
+   - `judgeHold` bekommt nur die Soll-Zeitpunkte und wird **nicht**
+     geändert. Es steht wortgleich in `licks.html`.
+3. Auswertung der **Einsätze**: Die erste Note jeder Wiederholung (der
+   Auftakt) wird gesondert ausgewiesen, zum Beispiel „Einsätze: 3 von 4
+   pünktlich, im Schnitt 40 ms zu spät“. Die Rückmeldung sagt bei
+   systematisch spätem Einsatz: „Atme in der Pause schon vor dem Auftakt
+   ein.“
+4. Gespeicherte Stände: `g.hold` war für Auftakt-Lektionen immer 0, das
+   bleibt gültig. Prüfen, dass das Laden alter Stände nichts verliert
+   (Test).
+
+**12b – Neuer Modus „Einsätze“.**
+- Neuer Rhythmus-Modus mit ID `entries`, Anzeigename „Einsätze“.
+  `MODE_TEXT`: „Nach der Pause pünktlich wieder rein“. Stufen über die
+  bestehende Mechanik; für den Ring gilt dieselbe Regel wie in Paket 11.
+- Ablauf einer Runde:
+  - Die App spielt einen Groove über 8–16 Takte, darin wiederholt sich eine
+    kurze Phrase mit Pausen dazwischen.
+  - Erst einmal vorhören, dann selbst.
+  - Eingabe wie im Rhythmus-Bereich: Tippen, Klatschen übers Mikrofon oder
+    ein gesungenes/gesprochenes „da“ (dieselbe Einsatzerkennung).
+- Einsatz-Katalog, jeweils als kurze Phrase von 1–2 Takten:
+
+  | ID | Einsatz | Typisch für |
+  |---|---|---|
+  | `und4` | auf „4 und“ vor der 1 | der klassische Pop-Auftakt |
+  | `a4` | auf „4 a“ (Sechzehntel vor der 1) | Hooks knapp vor dem Schlag |
+  | `zwei` | auf der 2 nach leerer 1 | Phrasen nach einem Atemschlag |
+  | `drei8` | drei Achtel vor der 1 („3-und, 4, 4-und“) | längere Auftakte |
+  | `eins` | genau auf der 1 nach Pause | Kontrolle: nicht zu früh |
+
+- Stufen:
+
+  | Stufe | Einsätze | Pause zwischen den Phrasen | Begleitung |
+  |---|---|---|---|
+  | 1 | `und4` | 1 Takt | voller Groove |
+  | 2 | `und4`, `eins` | 1–2 Takte | voller Groove |
+  | 3 | dazu `zwei`, `a4` | 1–2 Takte | voller Groove |
+  | 4 | dazu `drei8` | 2–4 Takte | Groove, im Takt vor dem Einsatz nur Snare |
+  | 5 | alle, zufällig | 2–4 Takte | nur Snare auf 2 und 4 |
+  | 6 | alle, zufällig | 4–8 Takte | Groove, der Takt vor dem Einsatz still |
+
+  Die Pausen sind nie ganz still über mehrere Takte, denn im Song spielt die
+  Band weiter. Geübt wird der Einsatz, nicht das Zählen im Leeren; das tun
+  schon die Klatsch-Grooves.
+- **Atem-Marke**:
+  - Im Vorspiel atmet die App hörbar: ein leises, kurzes Rauschen über
+    `engine.burst` (Tiefpass, ca. 250 ms), einen Schlag vor dem Auftakt.
+  - In Stufe 1 und 2 zeigt die Fläche beim eigenen Durchgang zusätzlich
+    einen Schlag vor dem Einsatz das Wort „Atmen“, ohne Laufmarke und ohne
+    Noten. Ab Stufe 3 nicht mehr.
+  - Bei `prefers-reduced-motion` nur Text, keine Animation.
+- **Bewertung**:
+  - Je Einsatz die Abweichung der ersten Note.
+  - Trefferfenster wie im Rhythmus-Training (0,45 × kleinster Notenabstand,
+    35–130 ms), mit der gespeicherten Latenzkalibrierung.
+  - Die übrigen Noten der Phrase zählen nur als „mitgeklatscht ja/nein“.
+  - Runde geschafft, wenn mindestens 80 % der Einsätze im Fenster liegen.
+  - Rückmeldung getrennt nach „zu früh / pünktlich / zu spät“ mit
+    Durchschnitt in ms und einem Satz Tipp (zu spät → früher einatmen; zu
+    früh → „Die Pause ganz aussitzen, innerlich weiterzählen“).
+- **Gespeicherter Stand**: Stufe und eine kleine Fehlerstatistik je
+  Einsatz-ID (für gewichtetes Ziehen wie `pickInterval`). Neue Felder
+  optional, `restore` übernimmt nur gültige Werte.
+
+**Tests.**
+- 12a:
+  - Für jede Auftakt-Lektion ergibt die Einsatz-Schleife ganze Takte, und die
+    Auftakt-Zeitpunkte liegen je Wiederholung um genau
+    (Phrasenlänge + 1 Takt) versetzt.
+  - Alter Stand mit `hold: 0` für `auftaktUnd` lädt unverändert.
+  - Zweistimmig bietet weiterhin keine Auftakt-Lektion an.
+- 12b:
+  - Jede Einsatz-ID ergibt die richtigen Ticks, z. B. `a4` = Tick 45 im
+    vorigen Takt, `drei8` = Ticks 30/36/42 im vorigen Takt.
+  - Die Pausenlänge liegt im Bereich der Stufe.
+  - Stufe 6: Der Takt vor dem Einsatz ist still.
+  - Simulierte Tipper mit +60 ms ergeben „zu spät, im Schnitt 60 ms“.
+- `README.md`: neue Modi `body` und `entries` in der Dateiübersicht von
+  `uebe-lab.html` ergänzen.
+
 ---
 
 ## 4. Wenn ein Paket nicht sauber klappt
@@ -499,7 +701,9 @@ Ein Commit je Datei ist erlaubt (10a–10d), jeweils mit SW_VERSION-Erhöhung.
 Paket zurücksetzen (`git restore`/`git reset` nur auf eigene, ungepushte
 Änderungen), im Bericht mit Grund vermerken, mit dem nächsten Paket
 weitermachen. Alle Pakete sind unabhängig voneinander. Einzige Ausnahme:
-Paket 9 setzt Paket 8 voraus (gemeinsamer Tool-Stand).
+Paket 9 setzt Paket 8 voraus (gemeinsamer Tool-Stand). Paket 12b setzt
+Paket 12a voraus; Paket 11 ist unabhängig. Die Pakete 11 und 12 sind
+Erweiterungen: erst nach den Korrekturen 1–8 und 10 angehen.
 
 ## 5. Abschluss
 
@@ -517,11 +721,20 @@ Unter „Manuell auf echten Geräten prüfen“ mindestens:
 - Licks bei 70 %: läuft die Begleitung sauber mit, stimmt die
   Verzögerungserkennung?
 - Licks in Sopran-Lage: klingt ein hochoktavierter Bass-Preset noch gut?
+- Körper (11b) mit Mikrofon: werden Klatschen und Schnipsen zuverlässig
+  erkannt, während das Handy die anderen Schichten über den Lautsprecher
+  spielt?
+- Einsätze (12b): ist das hörbare Atmen im Vorspiel als Atmen erkennbar
+  oder klingt es wie Rauschen?
 
 Unter „Zu entscheiden“ mindestens:
 - Soll die Intonations-Erklärung (reine Terz) auch in „Singen → Tuner“
   auftauchen (Hinweis „im Akkord Terz etwas tiefer“)?
 - Sollen beim Hochoktavieren von Basslicks automatisch ein Lead-Klang statt
   „Growl Bass“ gespielt werden?
+- Soll der Probenmodus der Body-Percussion (11b) auch direkt von der
+  Tools-Seite erreichbar sein (eigene Kachel unter „Werkzeuge“)?
+- Sollen später echte Einsätze aus den Chorsongs (mit Textsilbe) in den
+  Modus „Einsätze“ kommen? Dafür bräuchte es Rhythmusdaten je Song.
 - Soll „1 e + a“ auch im Groove Lab gelten (dort derzeit „1 e + e“, in
   `strings.js` dreisprachig)?
