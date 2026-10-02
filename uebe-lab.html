@@ -4767,7 +4767,9 @@
    *  - feste Umkehrungen aus dem Symbol (I64, iv6),
    *  - verminderte Akkorde immer als Sextakkord (vii°6, ii°6),
    *  - 'style': Grundstellung oder Sextakkord nach Zufall; Quartsextakkord
-   *    nur als Kadenzquartsext (Tonika direkt vor der Dominante),
+   *    nur als Kadenzquartsext (Tonika direkt vor der Dominante); der letzte
+   *    Akkord einer Phrase (kein `nextSymbol`) immer in Grundstellung – ein
+   *    Ganzschluss auf I⁶ ist kein vollkommener Schluss,
    *  - sonst Grundstellung. */
   function bassIndex(symbol, nextSymbol, inversion, rnd) {
     const [, quality, hint] = CHORD_SYMBOLS[symbol];
@@ -4775,6 +4777,7 @@
     if (hint === 'thirdBass') return 1;
     if (quality === 'dim') return 1;
     if (inversion !== 'style') return 0;
+    if (nextSymbol === undefined) return 0;
     const cadential = (symbol === 'I' || symbol === 'i') && (nextSymbol === 'V' || nextSymbol === 'V7');
     const options = cadential ? [0, 1, 2] : [0, 1];
     return options[Math.floor(rnd() * options.length)];
@@ -4859,8 +4862,10 @@
     { n: 6, label: 'alle, in Umkehrungen',     set: ['maj', 'min', 'sus4', 'sus2', 'dom7', 'm7', 'maj7', 'add9', 'dim', 'aug'], play: 'block', inversion: 'any' },
   ];
   /** Umkehrungen eines Klangs: add9 nur mit Grundton, Terz oder Quinte im
-   *  Bass (die None ist Farbe, kein Basston). */
-  const qualityInversions = (q) => (q === 'add9' ? 3 : CHORD_QUALITIES[q].semis.length);
+   *  Bass (die None ist Farbe, kein Basston). sus2/sus4 nur in Grundstellung:
+   *  Csus2 in der 2. Umkehrung (G–C–D) ist Gsus4, Csus4 in der 1. Umkehrung
+   *  (F–G–C) ist Fsus2 – wer richtig hört, würde sonst falsch gewertet. */
+  const qualityInversions = (q) => (q === 'add9' ? 3 : q === 'sus2' || q === 'sus4' ? 1 : CHORD_QUALITIES[q].semis.length);
   /** Töne eines Klangs in enger Lage über `root`, Umkehrung `inv` (die
    *  untersten `inv` Töne eine Oktave höher). add9: die None bleibt über
    *  Grundton und Terz — nie als Sekunde unter der Terz. */
@@ -4902,7 +4907,7 @@
     full: 'endet auf dem Grundakkord, nach der Dominante: fertig.',
     half: 'bleibt auf der Dominante stehen — offen wie ein Komma.',
     deceptive: 'die Dominante führt nicht nach Hause, sondern zur Mollfarbe der vi. Stufe.',
-    plagal: 'IV–I, der „Amen“-Schluss: weich, ohne Leitton.',
+    plagal: 'IV–I am Schluss, der „Amen“-Schluss: Der letzte Schritt kommt ohne Leitton aus und klingt weich.',
     rock: 'Der Akkord einen Ganzton unter dem Grundton führt ohne Leitton nach Hause – klingt kraftvoll und offen zugleich, typisch für Rock und Pop.',
     minorPlagal: 'Die Subdominante wird kurz Moll – dadurch der wehmütige, sehnsüchtige Beigeschmack vor dem Schluss.',
   };
@@ -5360,8 +5365,14 @@
   const cueChordSec = () => chordTempoSec() * CUE_SPEED;
   const chordNotes = (v) => [v.bass, ...v.upper];
 
-  /** Kadenz, die die Tonart festlegt: I–IV–V–I (Dur) bzw. i–iv–V–i (Moll), enge Lage. */
-  const inKeyCadence = (key, kmode) => voiceProgression(key, kmode === 'minor' ? ['i', 'iv', 'V', 'i'] : ['I', 'IV', 'V', 'I'], { spread: 'close', mode: kmode });
+  /** Kadenz, die die Tonart festlegt: I–IV–V–I (Dur) bzw. i–iv–V–i (Moll), enge
+   *  Lage. In natürlichem Moll ohne Leitton (`leading` false, „Töne in der
+   *  Tonart“ Stufe 5) i–VI–VII–i (äolisch, typisch Pop): sonst erklänge erst
+   *  der Leitton si in der Dominante und gleich danach so (♭7) als Aufgabe. */
+  const inKeyCadence = (key, kmode, leading = true) => voiceProgression(key, kmode === 'minor' ? (leading ? ['i', 'iv', 'V', 'i'] : ['i', 'VI', 'VII', 'i']) : ['I', 'IV', 'V', 'I'], { spread: 'close', mode: kmode });
+  /** Hat die Aufgabe den Leitton? Töne in der Tonart: nur Stufen mit `leading`
+   *  (Stufe 6); Akkorde in der Tonart fragen in Moll die V ab – immer. */
+  const inKeyLeading = (task) => task.kind !== 'noteInKey' || !!NOTE_IN_KEY_LEVELS[task.level - 1]?.leading;
 
   /** Silbe bzw. Zahl eines Tons in der Tonart. Moll ist la-basiert (la ti do
    *  re mi fa so, Leitton „si“ bzw. „♯7“); Zahlen zählen ab dem Grundton. */
@@ -5382,7 +5393,7 @@
     let t = t0;
     if (cadence && !onlyTarget) {
       const secs = cueChordSec();
-      inKeyCadence(task.key, task.kmode).forEach((v) => {
+      inKeyCadence(task.key, task.kmode, inKeyLeading(task)).forEach((v) => {
         chordNotes(v).forEach((m) => engine.keys(m, t, secs * .92, { velocity: .13, dest: bus }));
         t += secs;
       });
@@ -5639,13 +5650,15 @@
   /** Auflösung eines Tons (Anhang A): 1–4 stufenweise abwärts zur Tonika, 5–7 und
    *  der Leitton ♯7 aufwärts in die Oktave. `note` ist der Aufgabenton. Es sind
    *  immer alle Stufen als Knöpfe da (die nicht geprüften ausgegraut), also kann
-   *  jeder Schritt aufleuchten. */
-  function noteInKeyResolution(kmode, semis, note) {
+   *  jeder Schritt aufleuchten. Moll mit Leitton (`leading`, Stufe 6): mi, fa und
+   *  so lösen stufenweise abwärts auf, nur si aufwärts – so erklingen ♭7 und ♯7
+   *  nie in derselben Auflösung. */
+  function noteInKeyResolution(kmode, semis, note, leading = false) {
     const scale = IN_KEY_SEMIS[kmode];
     const deg = scale.indexOf(semis);
     let path;
     if (deg < 0) path = [semis, 12];
-    else if (deg <= 3) path = scale.slice(0, deg + 1).reverse();
+    else if (deg <= 3 || (leading && kmode === 'minor')) path = scale.slice(0, deg + 1).reverse();
     else path = [...scale.slice(deg), 12];
     const tonic = note - semis;
     return path.map((x) => ({ value: x % 12, midi: tonic + x }));
@@ -5671,7 +5684,7 @@
     return {
       kind: 'noteInKey', level: n, kmode, key, deg: deg < 0 ? 6 : deg, semis, note,
       ...(pattern ? { pattern, idx: 0, slots: [] } : {}),
-      resolution: noteInKeyResolution(kmode, semis, note),
+      resolution: noteInKeyResolution(kmode, semis, note, !!level.leading),
       cadence: !(ear.settings.inKeyHold && ear.settings.inKeyCadence === 'newKey') || newKey,
       answer: null, tries: [],
     };
@@ -6109,6 +6122,27 @@
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1100));
   }
 
+  /** Folgen der Auswahl, die genau dieselben Akkorde ergeben (in irgendeiner
+   *  Tonart): „Pop in Moll-Farbe“ (vi–IV–I–V) und „Epische Moll-Folge“
+   *  (i–VI–III–VII) sind z. B. beide Am–F–C–G. */
+  function sameChordProgs(prog, list = enabledProgs()) {
+    const shape = (p, key) => p.chords.map((sym) => [...chordPcs(key, sym, p.mode)].sort((a, b) => a - b).join('.')).join('|');
+    const base = shape(prog, 0);
+    return list.filter((q) => q.id !== prog.id && q.chords.length === prog.chords.length && Array.from({ length: 12 }, (_, k) => k).some((k) => shape(q, k) === base));
+  }
+  /** Rückmeldung nach einer Akkordfolge; bei klanggleicher Folge in Dur bzw.
+   *  Moll in der Auswahl ein Satz dazu (gewertet wird nach dem angezeigten
+   *  Tongeschlecht, gebucht auf die gezogene Folge). */
+  function chordsFeedback(task, right, list = enabledProgs()) {
+    const n = task.prog.chords.length;
+    const names = chordNames(task.key, task.prog.chords, task.prog.mode);
+    const twin = sameChordProgs(task.prog, list).find((q) => q.mode !== task.prog.mode);
+    const twinText = twin ? ` Gleiche Akkorde wie „${twin.name}“ – einmal von Dur aus gehört, einmal von Moll aus.` : '';
+    return (right === n
+      ? `Richtig! ${task.prog.name} in ${keyName(task.key, task.prog.mode)}: ${names}.`
+      : `${right} von ${n} richtig — gespielt wurde ${task.prog.chords.map(symbolLabel).join(' – ')} (${task.prog.name}, ${keyName(task.key, task.prog.mode)}: ${names}).`) + twinText;
+  }
+
   function answerChord(symbol) {
     const task = ear.task;
     if (!task) return;
@@ -6124,10 +6158,7 @@
     const st = ear.stats.chords;
     st.total++; st.chordsTotal += task.prog.chords.length; st.chordsRight += right;
     if (ok) { st.right++; ear.streak++; } else ear.streak = 0;
-    const names = chordNames(task.key, task.prog.chords, task.prog.mode);
-    setEarFeedback(ok
-      ? `Richtig! ${task.prog.name} in ${keyName(task.key, task.prog.mode)}: ${names}.`
-      : `${right} von ${task.prog.chords.length} richtig — gespielt wurde ${task.prog.chords.map(symbolLabel).join(' – ')} (${task.prog.name}, ${keyName(task.key, task.prog.mode)}: ${names}).`, ok ? 'ok' : 'bad');
+    setEarFeedback(chordsFeedback(task, right), ok ? 'ok' : 'bad');
     onEarResult(task, ok);
     renderEar();
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1600));
@@ -12738,6 +12769,41 @@
       t.cents = 25;
       if (Math.abs(tuningChordCents(t, t.voice) - justOffsetCents(t.satb[t.voice] - t.key) - 25) > 1e-9) errors.push('Intonation Akkord: Verstimmung nicht zusätzlich zur reinen Stimmung');
     }
+    // Übe-Korrekturen 7: Schlüsse in Grundstellung, sus eindeutig, klanggleiche
+    // Folgen, Moll ohne Querstand.
+    {
+      let full = 0;
+      for (let i = 0; i < 4000 && full < 200; i++) {
+        const t = makeEarTask('cadence', 6, rnd);
+        if (t.type !== 'full') continue;
+        full++;
+        if (mod(t.voicings[t.voicings.length - 1].bass - t.key, 12) !== 0) errors.push(`Ganzschluss endet nicht in Grundstellung: ${t.symbols.join('–')}`);
+      }
+      if (full < 200) errors.push(`nur ${full} Ganzschlüsse gezogen`);
+      for (let i = 0; i < 2000; i++) {
+        const t = makeEarTask('quality', 6, rnd);
+        if ((t.q === 'sus2' || t.q === 'sus4') && t.inv > 0) errors.push(`${t.q} in Umkehrung ${t.inv}`);
+      }
+      if (/ohne Leitton\.$|weich, ohne Leitton/.test(CADENCE_WHY.plagal) || !/letzte Schritt kommt ohne Leitton/.test(CADENCE_WHY.plagal)) errors.push('Amen-Erklärung');
+      const P = (id) => EAR_PROGRESSIONS.find((x) => x.id === id);
+      if (!sameChordProgs(P('sad'), EAR_PROGRESSIONS).some((q) => q.id === 'epic') || !sameChordProgs(P('epic'), EAR_PROGRESSIONS).some((q) => q.id === 'sad')) errors.push('sad/epic nicht als klanggleich erkannt');
+      const task = { prog: P('sad'), key: 0 };
+      if (!chordsFeedback(task, 4, [P('sad'), P('epic')]).includes('Gleiche Akkorde wie „Epische Moll-Folge“ – einmal von Dur aus gehört, einmal von Moll aus.')) errors.push('sad: Hinweis auf epic fehlt');
+      if (chordsFeedback(task, 4, [P('sad'), P('pop')]).includes('Gleiche Akkorde')) errors.push('sad: Hinweis ohne epic in der Auswahl');
+      if (!chordsFeedback({ prog: P('epic'), key: 9 }, 2, [P('sad'), P('epic')]).includes('„Pop in Moll-Farbe“')) errors.push('epic: Hinweis auf sad fehlt');
+      for (let key = 0; key < 12; key++) {
+        const cad = inKeyCadence(key, 'minor', false);
+        if (cad.map((v) => mod(v.bass - key, 12)).join() !== '0,8,10,0') errors.push(`Moll-Kadenz ohne Leitton ${key}: Bässe ${cad.map((v) => mod(v.bass - key, 12))}`);
+        if (cad.some((v) => chordNotes(v).some((m) => mod(m - key, 12) === 11))) errors.push(`Moll-Kadenz Stufe 5 mit Leitton (${key})`);
+        cad.forEach((v, i) => { if (i && parallelCount(chordNotes(cad[i - 1]), chordNotes(v))) errors.push(`Moll-Kadenz i–VI–VII–i ${key}: Parallelen`); });
+      }
+      if (inKeyLeading({ kind: 'noteInKey', level: 5 }) || !inKeyLeading({ kind: 'noteInKey', level: 6 }) || !inKeyLeading({ kind: 'chordInKey', level: 5 })) errors.push('inKeyLeading');
+      for (const semis of noteInKeyAnswers(NOTE_IN_KEY_LEVELS[5], 'minor')) {
+        const vals = noteInKeyResolution('minor', semis, 57 + semis, true).map((x) => x.value);
+        if (vals.includes(10) && vals.includes(11)) errors.push(`Stufe 6 Moll: Auflösung von ${semis} mit ♭7 und ♯7`);
+        if ([7, 8, 10].includes(semis) && vals[vals.length - 1] !== 0) errors.push(`Stufe 6 Moll: ${semis} löst nicht abwärts auf`);
+      }
+    }
     // Intervalle: Stufe 6 alle Richtungen, 1–5 aufwärts.
     const lv = INTERVAL_PRESETS.filter((pr) => pr[2] === 'level');
     // (Pop-Didaktik: Stufen 1–5 auf- und abwärts, Stufe 6 auch zusammen.)
@@ -13127,7 +13193,9 @@
           // Auflösung
           const res = t.resolution;
           if (res[0].value !== t.semis || res[0].midi !== t.note) errors.push(`Töne Stufe ${n}: Auflösung beginnt nicht beim Ton (${t.kmode}/${t.semis})`);
-          if (res.length > 5 || res.length < 1) errors.push(`Töne: Auflösung mit ${res.length} Schritten`);
+          // Stufe 6 in Moll (mit si): mi, fa, so stufenweise abwärts – bis zu 7 Töne (Übe-Korrekturen 7e).
+          const down = n === 6 && t.kmode === 'minor';
+          if (res.length > (down ? 7 : 5) || res.length < 1) errors.push(`Töne: Auflösung mit ${res.length} Schritten`);
           if (mod(res[res.length - 1].midi - t.key, 12) !== 0 || res[res.length - 1].value !== 0) errors.push(`Töne: Auflösung endet nicht auf der Tonika (${t.kmode}/${t.semis})`);
           res.forEach((r, k) => {
             if (k && Math.abs(r.midi - res[k - 1].midi) > 2) errors.push(`Töne: Schritt über ${Math.abs(r.midi - res[k - 1].midi)} Halbtöne (${t.kmode}/${t.semis})`);
@@ -13135,7 +13203,7 @@
             if (mod(r.midi - t.key, 12) !== r.value) errors.push('Töne: Auflösungston passt nicht zum Wert');
           });
           const name = syl(t.kmode, t.semis);
-          const wantRes = table[t.kmode][name];
+          const wantRes = (down && { mi: 'mi re do ti la', fa: 'fa mi re do ti la', so: 'so fa mi re do ti la' }[name]) || table[t.kmode][name];
           if (res.map((r) => syl(t.kmode, r.value)).join(' ') !== wantRes) errors.push(`Töne: Auflösung ${t.kmode}/${name}: ${res.map((r) => syl(t.kmode, r.value)).join(' ')}`);
         }
         if (n === 6 && kmodes.size !== 2) errors.push('Töne Stufe 6: nicht beide Tongeschlechter');
