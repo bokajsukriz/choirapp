@@ -209,6 +209,74 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
   nach dem Inhalt. Nur auf sehr schmalen Bildschirmen (≤ 340 px) mit mehr
   als drei Abschnitten stehen einheitlich nur Icons.
 
+### Einsatz finden (neue Hör-Übung, Gruppe „Takt“)
+
+Wunsch des Chorleiters: „einen Rhythmus hören, der langsam lauter wird, man
+weiß also nicht, wann die 1 ist und muss das hören – in Stufen schwerere
+Rhythmen oder Muster, die man selbst darüber klatschen soll.“
+
+- **Ablauf:** Start → ein Groove (Schlagzeug, auf den unteren Stufen mit
+  Bass) setzt ohne Einzähler an einer zufälligen Stelle im Takt ein, nie auf
+  der Eins, und blendet über zwei Takte von 4 % auf volle Lautstärke ein
+  (Phase „Hören“). Danach wechselt die Phasenleiste auf „Du“ – an der
+  Einstiegsstelle, also nie auf einer Eins, sonst verriete die Anzeige sie.
+  Ab der nächsten Eins zählen vier Takte, in denen man das Muster klatscht
+  (Fläche im Antwortfeld, Leertaste/Enter oder Mikrofon wie im Rhythmus,
+  dort eingestellte Latenz gilt mit). Ein Schlusspunkt auf der Eins danach
+  beendet den Lauf, dann kommt die Lösung: die Zählzeiten-Reihe des Musters
+  zeigt je Klatscher grün (jeder Takt), gelb (manche) oder gestrichelt rot
+  (keiner).
+- **Wertung** (`judgeDownbeat`): Trefferfenster `toleranceFor` wie im
+  Rhythmus-Bereich; geschafft mit mindestens 75 % Treffern und höchstens
+  25 % zu vielen Klatschern (der erste darf fehlen – man sucht die Eins ja
+  noch). Klatscher vor der ersten gewerteten Eins und auf den Schlusspunkt
+  zählen nicht. Passen die Klatscher um eine oder mehrere Zählzeiten
+  verschoben besser, sagt die Rückmeldung „du hast die 2 für die Eins
+  gehalten“.
+- **Stufen** (Musikpädagoge; Gordon: Metrum-Audiation von den Hauptschlägen
+  her, Zweier und Dreier früh nebeneinander; Kodály: Puls innen halten,
+  Rhythmus dagegen):
+  1. Pop-Groove mit Bass, klatsch auf die 1 – Basswechsel und Bassdrum
+     fallen auf der Eins zusammen, nur die Eins ist zu finden.
+  2. dazu 2 und 4 (Backbeat) – das Gospel-/Pop-Klatschen; prüft, ob die
+     Eins wirklich gehört ist (der typische Laienfehler 1 und 3 ist genau
+     eine Zählzeit daneben).
+  3. auch 3/4 (Walzer, Muster 1 bzw. „um-pa-pa“) und 6/8 (Muster 1 bzw. 4)
+     – Dreier gegen Zweier.
+  4. ohne Bass: Rock (Bassdrum auch auf 2+), Halftime (Snare nur auf 3, der
+     Puls ist doppeldeutig), Shuffle, 6/8 – die Eins nur noch aus dem
+     Schlagzeug.
+  5. schwerere Muster über Grooves ohne Bass: Offbeat (alle „und“),
+     Charleston (1 und 2+), Backbeat; im Shuffle hinken die „und“ mit.
+  6. Synkopen: ein Groove ohne Bassdrum auf der Eins mit vorgezogenem Bass
+     (4+), dazu Tresillo (3-3-2); der Einstieg kann auch auf einem „und“
+     liegen.
+- **Hilfen** (Blatt „Hilfen“): „Eins betonen“ (Klick auf jeder Eins) und
+  „Vormachen“ (die App klatscht im ersten Takt mit) starten den Groove neu
+  und zählen „mit Hilfe“; nach dem Lauf „Lösung hören“ (von der Eins an,
+  Eins betont, Muster vorgeklatscht; auch über „Nochmal“). Dazu „So findest
+  du die Eins“ und nach der Lösung ein Satz zum Groove.
+- **Einbindung:** `EAR_MODES` (ID `downbeat`, gespeichert in `ear.levels`,
+  alte Stände bleiben gültig – kein `DATA_VERSION`), Fortschrittsbereich
+  `downbeat` in `app.js` (Gruppe „Hören“), Serie/Bilanz wie die anderen
+  Hör-Übungen. Hören läuft sonst mit größerem Audiopuffer; für diese Übung
+  legt die Engine den Kontext wie im Rhythmus-Bereich für Echtzeit an.
+- **Tests:** `downbeatCheck` in `selfCheck` – Stufen vollständig und jedes
+  Groove mit passendem Muster; 200 Aufgaben je Stufe: Einstieg nie auf der
+  Eins, im Raster, zufällig verteilt (Stufe 6 auch auf „und“); Zeitplan:
+  erster Schlag an der Einstiegsstelle, kein Einzähler, Einblenden, „Du“
+  nicht auf einer Eins, Eins mit Bassdrum und neuem Basston, Sollpunkte
+  relativ zur Eins (Shuffle verschoben), Hilfen und Lösung; Wertung für acht
+  Groove/Muster-Paare: genau, leicht schwankend, ersten verpasst → richtig;
+  um einen Schlag verschoben, 200 ms zu spät, auf jeden Schlag → falsch;
+  Ablauf bis zur Lösung mit Zählern, „mit Hilfe“ und Gerüst-Positionen wie
+  „Intervalle“. Dazu Playwright (390 × 844): Phasenleiste, Bühne,
+  Antwortfeld und Dock stehen vor dem Start, in „Hören“, „Du“ und „Lösung“
+  pixelgleich wie bei „Intervalle“.
+- **Offen:** nicht in „Gemischt üben“ (die Kette und ihre Minuten blieben
+  unverändert); auf echten Geräten Lautstärke des Basses auf
+  Handy-Lautsprechern und das Mikrofon mit Schlagzeug ohne Kopfhörer prüfen.
+
 ## Zugriff
 
 - **Übungen-Artifact** (`https://claude.ai/artifact/GRVeSUXiFQ9amfBVcadEEQ`):

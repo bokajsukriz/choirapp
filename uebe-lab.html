@@ -800,6 +800,29 @@
   .ear-page .answer-grid .answer { min-height: 0; height: 52px; padding: 0 4px; font-size: 14px; line-height: 1.15; overflow: hidden; }
   .ear-page .answer-grid.is-tiles { gap: 4px; }
   .ear-page .answer-grid.is-tiles .answer { font-size: 13px; padding: 0 1px; border-radius: 10px; }
+  /* Einsatz finden: Klatschfläche im Antwortfeld (gleiche Höhe), Optik wie die Klatschfläche im Rhythmus. */
+  .ear-page .answer-grid.is-pad { display: block; }
+  .ear-pad { width: 100%; height: 112px; box-sizing: border-box; margin: 0; border-radius: 20px; border: 3px dashed var(--tint-line); background: var(--surface); color: var(--muted); font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  .ear-pad b { font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+  .ear-pad span { font-size: 13px; font-weight: 600; }
+  .ear-pad[data-phase="listen"] { border-style: solid; border-color: var(--hear-line); color: var(--hear-fg); }
+  .ear-pad[data-phase="you"] { border-style: solid; border-color: var(--accent-foreground); color: var(--accent-foreground); }
+  .ear-pad[data-phase="done"] { border-style: solid; border-color: var(--ok); color: var(--ok-fg); }
+  .ear-pad[data-phase="done"].is-miss { border-color: var(--rep-line); color: var(--rep-fg); }
+  .ear-pad.is-tapped { animation: tap .16s ease-out; }
+  .db-pattern { width: 100%; max-width: 360px; margin: 0 auto; }
+  .db-pattern[hidden] { display: none; }
+  .db-cap { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+  .db-cap b { color: var(--text); }
+  .db-row { display: grid; grid-template-columns: repeat(var(--n, 8), minmax(0, 1fr)); gap: 4px; }
+  .db-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .db-cell i { width: 100%; max-width: 34px; aspect-ratio: 1; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--tint-line); background: var(--surface); }
+  .db-cell b { font-size: 12px; font-weight: 800; color: var(--muted); }
+  .db-cell.is-clap i { background: var(--accent); border-color: var(--accent); }
+  .db-cell.is-clap b, .db-cell.is-ok b, .db-cell.is-part b, .db-cell.is-miss b { color: var(--text); }
+  .db-cell.is-ok i { background: var(--ok, #2f9e5b); border-color: var(--ok, #2f9e5b); }
+  .db-cell.is-part i { background: var(--rep-bg, #FFF1D6); border-color: var(--rep-line, #e0a400); }
+  .db-cell.is-miss i { border: 2px dashed var(--bad, #c62828); }
   /* Töne in der Tonart: die Leiter liegt quer – links tief, rechts hoch, Halbtöne enger. */
   .ear-page .answer-grid.is-ladder { display: flex; flex-direction: row; align-items: flex-start; gap: 0; }
   .ear-page .rung, .ear-panel.ear-page:has(.slot-row.is-pattern) .rung:not(.is-top) { flex: 1 1 0; min-width: 0; margin: 0 calc(var(--gap, 10px) * .6) 0 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
@@ -911,6 +934,7 @@
           <div class="key-row" hidden></div>
           <div class="slot-row-wrap"><div class="slot-row" hidden></div><button type="button" class="slot-back" data-chord="back" aria-label="Letzten Akkord löschen" hidden>⌫</button></div>
           <div class="ear-summary" hidden></div>
+          <div class="db-pattern" hidden></div>
           <div class="ear-wave" aria-hidden="true" hidden><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         </div>
         <div class="ear-msg"><p class="ear-feedback" role="status" aria-live="polite"></p></div>
@@ -2102,7 +2126,8 @@
       // größerer Puffer knackfrei mit Bluetooth-Kopfhörern. Die Latenz lässt sich
       // nach dem Anlegen nicht mehr ändern; beim Bereichswechsel (setTab hat alles
       // gestoppt) wird der Kontext deshalb beim nächsten Start neu angelegt.
-      const hint = state.tab === 'ear' ? 'balanced' : 'interactive';
+      // Einsatz finden (Hören) klatscht – dort ebenfalls Echtzeit.
+      const hint = state.tab === 'ear' && ear.mode !== 'downbeat' ? 'balanced' : 'interactive';
       if (this.ctx && this.hint !== hint) { const old = this.ctx; this.ctx = null; old.close().catch(() => {}); }
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -2781,6 +2806,7 @@
    *  des Eingangs, abzüglich der eingemessenen Mikrofon-Latenz. */
   function micOnset(time) {
     if (calib.active) { calib.taps.push(time); flashPad(); return; }
+    if (dbRun && dbRun.playing) { if (dbRun.mic) downbeatTap(time - state.micLatencyMs / 1000); return; }
     if (gr.run && gr.run.playing) { gr.run.taps.push(time - state.micLatencyMs / 1000); flashGroovePad(); return; }
     if (!run.playing) { if (micTest.on) flashPad(); return; }
     game.taps.push(time - state.micLatencyMs / 1000);
@@ -4014,6 +4040,7 @@
     if (document.visibilityState !== 'hidden') return;
     if (run.playing) stop();
     stopSing();
+    if (dbRun) { clearEarTimers(); engine.fadeBus(ear.bus); renderEar(); } // Einsatz finden: Lauf abbrechen
     if (voice.analyser) micOff();
     if (sing.mode !== 'tuner' && state.tab === 'voice') renderSing();
   });
@@ -4052,6 +4079,7 @@
     chordInKey: '<rect x="3.5" y="3.5" width="11" height="4" rx="1.5"/><rect x="3.5" y="10" width="11" height="4" rx="1.5"/><rect x="3.5" y="16.5" width="11" height="4" rx="1.5"/><path d="M19 5v12"/><path d="m16 14 3 3 3-3"/>',
     chords: '<rect x="3" y="12" width="3.2" height="8" rx="1"/><rect x="8.3" y="5" width="3.2" height="15" rx="1"/><rect x="13.6" y="9" width="3.2" height="11" rx="1"/><rect x="18.9" y="14" width="3.2" height="6" rx="1"/>',
     parts: '<path d="M4 5.5h16M4 10h16M4 19h16"/><path d="M4 14.5h16" stroke-width="3.6"/>',
+    downbeat: '<path d="M3 20h18"/><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><circle cx="5" cy="16.5" r="1.4" fill="currentColor"/><circle cx="19" cy="16.5" r="1.4" fill="currentColor"/>',
     tuning: '<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 8.5V10M6 11l1 1M18 11l-1 1"/><path d="m12 17 4.5-6"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/>',
     singInterval: '<circle cx="5.5" cy="18.5" r="2" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2" fill="currentColor"/><path d="M8 16l7.5-7.5"/><path d="M10.5 8.5h5v5"/>',
     findTone: '<circle cx="12" cy="12" r="6.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
@@ -4074,7 +4102,8 @@
     interval: 'Zwei Töne – wie weit liegen sie auseinander?', quality: 'Ein Akkord – Dur, Moll oder etwas anderes?',
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
     noteInKey: 'Nach der Kadenz ein Ton – welche Silbe?', chordInKey: 'Nach der Kadenz ein Akkord – welche Stufe?',
-    tuning: 'Sauber, zu hoch oder zu tief?', singInterval: 'Ein Grundton – du singst das Intervall',
+    tuning: 'Sauber, zu hoch oder zu tief?', downbeat: 'Ein Groove blendet ein – wo ist die Eins? Klatsch das Muster darüber',
+    singInterval: 'Ein Grundton – du singst das Intervall',
     findTone: 'Akkord oder Intro – du findest deinen Ton', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
     dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
     inTime: 'Ton und Rhythmus zum Klick – nachsingen oder vom Blatt', twoPart: 'Deine Melodie halten, während die App eine zweite Stimme singt', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
@@ -4151,7 +4180,7 @@
    *  erst Töne in der Tonart, dann Intervalle; Harmonie – vom ganzheitlichen
    *  Schluss-Hören zur Folgenanalyse; Im Chor – Intonation vor Stimmen). Die
    *  Reihenfolge von EAR_MODES (Speicher, Kette) bleibt unberührt. */
-  const EAR_GROUPS = [['Melodie', ['noteInKey', 'interval']], ['Harmonie', ['quality', 'cadence', 'chordInKey', 'chords']], ['Im Chor', ['tuning', 'parts']]];
+  const EAR_GROUPS = [['Melodie', ['noteInKey', 'interval']], ['Harmonie', ['quality', 'cadence', 'chordInKey', 'chords']], ['Takt', ['downbeat']], ['Im Chor', ['tuning', 'parts']]];
   /** Übersicht mit „Gemischt üben“ und Gruppen (Hören, Singen). `top`: Karte
    *  über allem (Singen: Meine Stimme). Modi ohne Gruppe landen in der letzten. */
   function groupedHubHtml(tab, groups, top = '', skip = []) {
@@ -4462,10 +4491,10 @@
     stats: {
       interval: { right: 0, total: 0 }, chords: { right: 0, total: 0, chordsRight: 0, chordsTotal: 0 }, intervalLog: {},
       quality: { right: 0, total: 0 }, cadence: { right: 0, total: 0 }, parts: { right: 0, total: 0, help: 0 }, tuning: { right: 0, total: 0 },
-      noteInKey: { right: 0, total: 0 }, chordInKey: { right: 0, total: 0 },
+      noteInKey: { right: 0, total: 0 }, chordInKey: { right: 0, total: 0 }, downbeat: { right: 0, total: 0, help: 0 },
     },
     // Stufen der neuen Modi (1–6); Intervalle: settings.intervalLevel, Akkordfolgen: settings.level.
-    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1, noteInKey: 1, chordInKey: 1 },
+    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1, noteInKey: 1, chordInKey: 1, downbeat: 1 },
     part: 'A',         // eigene Stimme für „Stimmen“ (aus dem Stimmprofil, sonst wählbar)
     stairs: {},        // Intonation: Treppe je Stufe
     pick: null,        // Stimmen: angetippter Kandidat
@@ -4594,7 +4623,7 @@
 
   // Namen (Musikpädagoge): „Akkordfarben“ statt „Klänge“ (neben „Akkorde in
   // der Tonart“ zu unscharf), „Stimme heraushören“ statt „Stimmen“. IDs bleiben.
-  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation']];
+  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation'], ['downbeat', 'Einsatz finden']];
   const rndInt = (lo, hi, rnd = Math.random) => lo + Math.floor(rnd() * (hi - lo + 1));
   const shuffle = (list, rnd = Math.random) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -4809,8 +4838,169 @@
     return null;
   }
 
+  /* ---- Einsatz finden: Ein Groove blendet an zufälliger Stelle im Takt ein,
+     ohne Einzähler. Du findest hörend die Eins und klatschst ein Muster
+     darüber (Tippen oder Mikrofon). Ticks wie METERS (12 = Viertel); bass:
+     Takt-Ticks des Basstons (negativ = vorgezogen, spielt schon den Ton des
+     nächsten Takts); hat: Raster in Ticks oder 'shuffle'. ---- */
+  const DB_GROOVES = {
+    pop:      { name: 'Pop-Groove', meter: '4/4', kick: [0, 24], snare: [12, 36], hat: 6, bass: [0], bpm: [84, 96],
+      cue: 'Die Eins erkennst du am Bass: Er wechselt auf der Eins den Ton, die Bassdrum spielt mit.' },
+    rock:     { name: 'Rock-Groove', meter: '4/4', kick: [0, 18, 24], snare: [12, 36], hat: 6, bpm: [88, 100],
+      cue: 'Die Snare liegt auf 2 und 4 – die Eins ist der tiefe Schlag vor der ersten Snare.' },
+    waltz:    { name: 'Walzer', meter: '3/4', kick: [0], rim: [12, 24], hat: 6, bass: [0], bpm: [108, 126],
+      cue: 'Um-pa-pa: Bass und Bassdrum nur auf der Eins, danach zweimal der helle Schlag.' },
+    six8:     { name: '6/8-Ballade', meter: '6/8', kick: [0], snare: [18], hat: 6, bass: [0], bpm: [52, 62],
+      cue: 'Zähl in 6: Bassdrum auf 1, Snare auf 4 – die Eins ist der tiefe Schlag.' },
+    halftime: { name: 'Halftime', meter: '4/4', kick: [0, 30], snare: [24], hat: 6, bpm: [116, 128],
+      cue: 'Im Halftime kommt die Snare nur einmal im Takt, auf der 3 – die Eins liegt zwei Schläge davor.' },
+    shuffle:  { name: 'Shuffle', meter: '4/4', kick: [0, 24], snare: [12, 36], hat: 'shuffle', swing: true, bpm: [80, 92],
+      cue: 'Im Shuffle hinken die Achtel (lang–kurz). Die Snare liegt auf 2 und 4, die Eins davor mit Bassdrum.' },
+    push:     { name: 'Synkopen-Groove', meter: '4/4', kick: [6, 30], snare: [12, 36], hat: 6, bass: [-6], forceBass: true, bpm: [86, 96],
+      cue: 'Der Bass kommt schon kurz vor der Eins (vorgezogen), die Bassdrum spielt nie auf der Eins – halt dich an die Snare auf 2 und 4.' },
+  };
+  // Muster zum Darüberklatschen: Ticks im Takt (gerade Achtel; im Shuffle verschoben, dbSwing).
+  const DB_PATTERNS = {
+    one4:       { meter: '4/4', at: [0], name: 'auf die 1' },
+    backbeat:   { meter: '4/4', at: [12, 36], name: '2 und 4 (Backbeat)' },
+    offbeat:    { meter: '4/4', at: [6, 18, 30, 42], name: 'alle „und“ (Offbeat)' },
+    charleston: { meter: '4/4', at: [0, 18], name: '1 und 2+ (Charleston)' },
+    tresillo:   { meter: '4/4', at: [0, 18, 36], name: '1 · 2+ · 4 (3-3-2)' },
+    one3:       { meter: '3/4', at: [0], name: 'auf die 1' },
+    waltzPa:    { meter: '3/4', at: [12, 24], name: '2 und 3 (um-pa-pa)' },
+    one68:      { meter: '6/8', at: [0], name: 'auf die 1' },
+    six8Back:   { meter: '6/8', at: [18], name: 'auf die 4' },
+  };
+  // Stufen (Musikpädagoge): erst Groove und Muster eindeutig (Bass wechselt auf
+  // der Eins, Klatschen auf der Eins), dann je Stufe genau eine neue Hürde –
+  // Backbeat, Dreier-Takte, Groove ohne Bass, Offbeat-Muster, Synkopen.
+  const DOWNBEAT_LEVELS = [
+    { n: 1, label: 'Klarer Groove: klatsch auf die 1', grooves: ['pop'], patterns: ['one4'], bass: true, starts: 'beats' },
+    { n: 2, label: 'Dazu 2 und 4 (Backbeat)', grooves: ['pop'], patterns: ['one4', 'backbeat'], bass: true, starts: 'beats' },
+    { n: 3, label: 'Auch im 3/4 und 6/8', grooves: ['pop', 'waltz', 'six8'], patterns: ['one4', 'backbeat', 'one3', 'waltzPa', 'one68', 'six8Back'], bass: true, starts: 'beats' },
+    { n: 4, label: 'Ohne Bass: Rock, Halftime, Shuffle', grooves: ['rock', 'halftime', 'shuffle', 'six8'], patterns: ['one4', 'backbeat', 'one68', 'six8Back'], bass: false, starts: 'beats' },
+    { n: 5, label: 'Offbeat und Charleston klatschen', grooves: ['pop', 'rock', 'halftime', 'shuffle'], patterns: ['backbeat', 'offbeat', 'charleston'], bass: false, starts: 'beats' },
+    { n: 6, label: 'Synkopen, Start auch auf „und“', grooves: ['push', 'rock', 'shuffle', 'six8'], patterns: ['offbeat', 'charleston', 'tresillo', 'six8Back'], bass: false, starts: 'eighths' },
+  ];
+  const DB_LISTEN_BARS = 2;   // ganze Takte vor dem Klatschen (nach dem angeschnittenen)
+  const DB_CLAP_BARS = 4;     // Takte zum Klatschen (gewertet)
+  const DB_FADE_BARS = 2;     // Einblenden ab dem ersten Schlag
+  const DB_FADE_FROM = .04;
+  const DB_BASS_STEPS = [0, 7, 9, 5]; // I – V – vi – IV, ein Ton je Takt
+  /** Shuffle: das „und“ (Tick 6 im Viertel) rückt auf das dritte Triolen-Achtel. */
+  const dbSwing = (g, t) => (g.swing && mod(t, 12) === 6 ? t + 2 : t);
+  /** Aufgabe: Groove, Muster, Tempo, Einstiegsstelle (nie die Eins). */
+  function makeDownbeatTask(n, rnd = Math.random) {
+    const level = DOWNBEAT_LEVELS[n - 1];
+    const groove = level.grooves[Math.floor(rnd() * level.grooves.length)];
+    const g = DB_GROOVES[groove];
+    const pats = level.patterns.filter((id) => DB_PATTERNS[id].meter === g.meter);
+    const m = METERS[g.meter];
+    const step = level.starts === 'eighths' && !g.swing ? 6 : m.beat;
+    const starts = [];
+    for (let t = step; t < m.ticks; t += step) starts.push(t);
+    return {
+      kind: 'downbeat', level: n, groove, meter: g.meter, pattern: pats[Math.floor(rnd() * pats.length)],
+      bpm: rndInt(g.bpm[0], g.bpm[1], rnd), startTick: starts[Math.floor(rnd() * starts.length)],
+      bass: !!(g.forceBass || (level.bass && g.bass)), root: rndInt(40, 45, rnd), aids: { accent: false, demo: false }, answer: null,
+    };
+  }
+  /** Zeitplan eines Laufs (reine Funktion). Zeiten in s ab dem ersten Schlag
+   *  (Tick `startTick` des angeschnittenen ersten Takts). accent: Klick auf
+   *  jeder Eins; demo: die App klatscht im ersten Klatsch-Takt mit; solution:
+   *  von der Eins an, ohne Einblenden, Muster durchgehend vorgeklatscht. */
+  function downbeatPlan(task, { accent = false, demo = false, solution = false } = {}) {
+    const m = METERS[task.meter], g = DB_GROOVES[task.groove];
+    const bar = m.ticks, tickSec = 60 / task.bpm / m.ref;
+    const first = solution ? 0 : task.startTick;
+    const youTick = bar * (solution ? 1 : 1 + DB_LISTEN_BARS);
+    const endTick = youTick + bar * (solution ? 2 : DB_CLAP_BARS);
+    const targets = DB_PATTERNS[task.pattern].at.map((x) => dbSwing(g, x));
+    const hat = g.hat === 'shuffle' ? { period: 12, at: [0, 8] } : { period: g.hat, at: [0] };
+    const events = [];
+    const add = (tick, kind, vel = 1, extra = {}) => events.push({ tick, t: (tick - first) * tickSec, kind, vel, ...extra });
+    const bassAt = (b) => task.root + DB_BASS_STEPS[mod(b, 4)];
+    for (let tick = first; tick < endTick; tick++) {
+      const p = tick % bar, b = Math.floor(tick / bar);
+      if (g.kick.includes(p)) add(tick, 'kick', p === 0 ? 1 : .8);
+      if (g.snare?.includes(p)) add(tick, 'snare');
+      if (g.rim?.includes(p)) add(tick, 'rim');
+      if (hat.at.includes(p % hat.period)) add(tick, 'hat', p % 12 === 0 ? 1 : .75);
+      if (task.bass) for (const bt of g.bass || []) if (mod(bt, bar) === p) add(tick, 'bass', 1, { midi: bassAt(bt < 0 ? b + 1 : b) });
+      if ((accent || solution) && p === 0) add(tick, 'click');
+      if (tick >= youTick && (solution || (demo && tick < youTick + bar)) && targets.includes(p)) add(tick, 'clap');
+    }
+    // Schlusspunkt auf der Eins nach dem letzten Takt.
+    add(endTick, 'kick'); add(endTick, 'open');
+    if (task.bass && !(g.bass || []).some((bt) => bt < 0)) add(endTick, 'bass', 1, { midi: bassAt(endTick / bar), long: true });
+    const fadeEnd = solution ? 0 : DB_FADE_BARS * bar * tickSec;
+    return {
+      tickSec, bar, first, events, targets, fadeFrom: solution ? 1 : DB_FADE_FROM, fadeEnd, youVisual: fadeEnd,
+      youStart: (youTick - first) * tickSec, youEnd: (endTick - first) * tickSec, end: (endTick - first) * tickSec + .9,
+    };
+  }
+  /** Klatscher werten. taps: s relativ zur ersten gewerteten Eins. Treffer
+   *  im Fenster toleranceFor; Klatscher auf das Muster im Takt danach (der
+   *  Schlusspunkt) zählen weder als Treffer noch als zu viel. shift: um so
+   *  viele Zählzeiten lagen die Klatscher besser (deine Eins = unsere shift+1). */
+  function judgeDownbeat(task, taps) {
+    const m = METERS[task.meter], g = DB_GROOVES[task.groove];
+    const bar = m.ticks, tickSec = 60 / task.bpm / m.ref;
+    const raw = DB_PATTERNS[task.pattern].at;
+    const gaps = raw.map((x, i) => (raw.length > 1 ? mod(raw[(i + 1) % raw.length] - x, bar) : bar));
+    const tol = toleranceFor(Math.min(...gaps) * tickSec);
+    const span = DB_CLAP_BARS * bar * tickSec;
+    const inWin = taps.filter((t) => t >= -tol && t <= span + tol).sort((a, b) => a - b);
+    const score = (ticks) => {
+      const used = new Set();
+      let hits = 0, extra = 0;
+      const offs = [];
+      const match = (time) => {
+        let best = -1;
+        inWin.forEach((t, i) => { if (!used.has(i) && Math.abs(t - time) <= tol && (best < 0 || Math.abs(t - time) < Math.abs(inWin[best] - time))) best = i; });
+        if (best >= 0) used.add(best);
+        return best;
+      };
+      const perTarget = [];
+      for (let b = 0; b < DB_CLAP_BARS; b++) for (const x of ticks) {
+        const time = (b * bar + x) * tickSec;
+        const i = match(time);
+        perTarget.push({ bar: b, tick: x, hit: i >= 0 });
+        if (i >= 0) { hits++; offs.push(inWin[i] - time); }
+      }
+      for (const x of ticks) match((DB_CLAP_BARS * bar + x) * tickSec); // Schlusspunkt
+      extra = inWin.length - used.size;
+      return { hits, extra, offs, perTarget };
+    };
+    const ticks = raw.map((x) => dbSwing(g, x));
+    const base = score(ticks);
+    const total = ticks.length * DB_CLAP_BARS;
+    let shift = 0, bestHits = base.hits;
+    for (let s = 1; s * m.beat < bar; s++) {
+      const h = score(raw.map((x) => dbSwing(g, mod(x + s * m.beat, bar)))).hits;
+      if (h > bestHits && h >= total / 2) { bestHits = h; shift = s; }
+    }
+    const ok = base.hits >= Math.ceil(total * .75) && base.extra <= Math.floor(total * .25);
+    return { ok, hits: base.hits, total, extras: base.extra, taps: taps.length, shift: ok ? 0 : shift, offs: base.offs, perTarget: base.perTarget, tol };
+  }
+  /** Rückmeldung nach dem Lauf. */
+  function downbeatMessage(task, res, mic = false) {
+    if (!res.taps) return mic ? 'Das Mikrofon hat keine Klatscher gehört – lauter klatschen, mit Kopfhörern?' : 'Keine Klatscher – tipp aufs Feld oder drück die Leertaste.';
+    if (res.ok) return `Die Eins sitzt! ${res.hits} von ${res.total} Klatschern im Takt${task.help ? ' (mit Hilfe)' : ''}.`;
+    if (res.shift) return `Um ${res.shift === 1 ? 'einen Schlag' : `${res.shift} Schläge`} verschoben – du hast die ${res.shift + 1} für die Eins gehalten.`;
+    return `${res.hits} von ${res.total} im Takt${res.extras ? `, ${res.extras} zu viel` : ''}. Wie du die Eins hier hörst, steht in den Hilfen.`;
+  }
+  /** Zählzeiten der Musteranzeige (je Achtel eine Zelle). */
+  function downbeatCells(task) {
+    const m = METERS[task.meter];
+    const at = DB_PATTERNS[task.pattern].at;
+    const labels = task.meter === '6/8' ? ['1', '2', '3', '4', '5', '6'] : Array.from({ length: m.ticks / 6 }, (_, i) => (i % 2 ? '+' : String(i / 2 + 1)));
+    return labels.map((label, i) => ({ label, tick: i * 6, clap: at.includes(i * 6) }));
+  }
+
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
   function makeEarTask(mode, n, rnd = Math.random) {
+    if (mode === 'downbeat') return makeDownbeatTask(n, rnd);
     if (mode === 'noteInKey') return makeNoteInKeyTask(n, rnd);
     if (mode === 'chordInKey') return makeChordInKeyTask(n, rnd);
     if (mode === 'quality') {
@@ -5290,6 +5480,7 @@
 
   function clearEarTimers() {
     ear.timers.forEach(clearTimeout); ear.timers = [];
+    stopDownbeatRun();
     ear.resolving = false;
     if (ear.playing !== null) setPlayingAnswer(null);
   }
@@ -5298,6 +5489,7 @@
    *  Vergleichs-Antwort) ab. */
   async function playEar({ compareSemis, compare, first = false, only = false, cadenceOnly = false } = {}) {
     try { await engine.start(); } catch { setEarFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); return; }
+    if (ear.task?.kind === 'downbeat') { playDownbeat({ solution: ear.revealed }); return; }
     engine.fadeBus(ear.bus);
     clearEarTimers();
     // Intonation ohne Hall — der verwischt die Schwebungen.
@@ -5396,6 +5588,100 @@
     let t = t0;
     if (task.sub === 'chordMarked' && !compare?.skipSolo) { saw(task.satb[task.voice], task.cents, t, 1); t += 1.2; }
     SATB_PARTS.forEach((x) => saw(task.satb[x], x === task.voice ? task.cents : 0, t, d));
+  }
+
+  /* ---- Einsatz finden: ein Lauf (Groove, Klatscher, Auswertung). Alles wird
+     beim Start auf der Audio-Uhr geplant; Stoppen = Bus ausblenden. ---- */
+  let dbRun = null; // { task, t0, plan, taps, mic, playing }
+  function stopDownbeatRun() {
+    if (!dbRun) return;
+    const { mic } = dbRun;
+    dbRun.playing = false;
+    dbRun = null;
+    if (mic && voice.consumer === 'rhythm') micOff();
+  }
+  /** Groove starten: zum Klatschen (eingeblendet, ohne Einzähler) bzw. nach
+   *  der Auflösung als Lösung (Eins betont, Muster vorgeklatscht). */
+  async function playDownbeat({ solution = false } = {}) {
+    const task = ear.task;
+    engine.fadeBus(ear.bus);
+    clearEarTimers();
+    ear.cueEnd = Infinity; // bis zum Start: „Hören“
+    const listen = !solution;
+    let mic = false;
+    if (listen && state.input === 'mic') {
+      mic = await micOn('rhythm');
+      if (ear.task !== task) return;
+      if (!mic) setEarFeedback(`${voice.error} Tippen geht trotzdem.`, 'bad');
+    }
+    const ctx = engine.ctx;
+    const bus = engine.newBus({ reverb: false });
+    ear.bus = bus;
+    const plan = downbeatPlan(task, solution ? { solution: true, accent: true } : task.aids || {});
+    const t0 = ctx.currentTime + .12;
+    bus.gain.setValueAtTime(plan.fadeFrom, t0);
+    if (plan.fadeEnd) bus.gain.exponentialRampToValueAtTime(1, t0 + plan.fadeEnd);
+    for (const ev of plan.events) playDownbeatEvent(ev, t0 + ev.t, bus);
+    ear.cueEnd = listen ? t0 + plan.youVisual : 0;
+    const msAt = (sec) => Math.max(0, (t0 + sec - ctx.currentTime) * 1000);
+    if (listen) {
+      dbRun = { task, t0, plan, taps: [], mic, playing: true };
+      ear.timers.push(setTimeout(renderEar, msAt(plan.youVisual) + 30));
+      ear.timers.push(setTimeout(finishDownbeat, msAt(plan.end)));
+    }
+    renderEar();
+  }
+  function playDownbeatEvent(ev, time, bus) {
+    if (ev.kind === 'bass') engine.drumTone(time, { freq: noteHz(ev.midi), type: 'triangle', gain: .2, decay: ev.long ? 1.2 : .45, filter: { type: 'lowpass', freq: 900 } }, bus);
+    else if (ev.kind === 'click') engine.click(time, 1, bus);
+    else if (ev.kind === 'clap') engine.clap(time, bus, 2);
+    else engine.drum(ev.kind, time, ev.vel, bus);
+  }
+  /** Klatscher: Tippen/Leertaste (time = null, Latenz wie im Rhythmus-Bereich
+   *  abgezogen) oder Mikrofon (Zeit des Einsatzes, Mikrofon-Latenz schon ab). */
+  function downbeatTap(time = null) {
+    const run = dbRun;
+    if (!run || !run.playing) return;
+    const ctx = engine.ctx;
+    if (time === null) {
+      if (run.mic) return; // Eingabe kommt vom Mikrofon
+      run.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
+      engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
+    } else run.taps.push(time);
+    const pad = $('.ear-pad');
+    if (pad) { pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped'); }
+  }
+  /** Ende des Laufs: Klatscher relativ zur ersten gewerteten Eins werten. */
+  function finishDownbeat() {
+    const run = dbRun;
+    if (!run || ear.task !== run.task || ear.revealed) return;
+    const res = judgeDownbeat(run.task, run.taps.map((t) => t - (run.t0 + run.plan.youStart)));
+    stopDownbeatRun();
+    run.task.answer = res;
+    finishEarAnswer(res.ok, downbeatMessage(run.task, res, run.mic));
+  }
+  /** Phase der Klatschfläche: idle | wait | listen | you | done. */
+  function downbeatPhase(task) {
+    if (!task) return 'idle';
+    if (ear.revealed) return 'done';
+    if (!dbRun || dbRun.task !== task) return 'wait';
+    return earPhaseIndex() === 0 ? 'listen' : 'you';
+  }
+  /** Muster als Zählzeiten-Reihe; nach dem Lauf je Zelle: ok (jeder Takt),
+   *  part (manche), miss (keiner). */
+  function downbeatPatternHtml(task) {
+    const res = ear.revealed ? task.answer : null;
+    const at = DB_PATTERNS[task.pattern].at;
+    const cells = downbeatCells(task).map((c) => {
+      let st = c.clap ? 'clap' : '';
+      if (c.clap && res?.perTarget) {
+        const k = at.indexOf(c.tick);
+        const hits = res.perTarget.filter((p, i) => i % at.length === k && p.hit).length;
+        st = hits === DB_CLAP_BARS ? 'ok' : hits ? 'part' : 'miss';
+      }
+      return `<span class="db-cell${st ? ` is-${st}` : ''}"><i></i><b>${c.label}</b></span>`;
+    }).join('');
+    return `<p class="db-cap">Klatsch: <b>${esc(DB_PATTERNS[task.pattern].name)}</b></p><div class="db-row" style="--n:${downbeatCells(task).length}" role="img" aria-label="Muster: ${esc(DB_PATTERNS[task.pattern].name)}">${cells}</div>`;
   }
 
   /** Antwort in den neuen Modi. value: Qualitäts-ID, Schlusstyp, Index. */
@@ -5549,7 +5835,7 @@
   function earLevelInfo(mode) {
     if (mode === 'interval') return [INTERVAL_LEVELS(), ear.settings.intervalLevel];
     if (mode === 'chords') return [EAR_LEVELS, ear.settings.level];
-    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS, noteInKey: NOTE_IN_KEY_LEVELS, chordInKey: CHORD_IN_KEY_LEVELS }[mode];
+    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS, noteInKey: NOTE_IN_KEY_LEVELS, chordInKey: CHORD_IN_KEY_LEVELS, downbeat: DOWNBEAT_LEVELS }[mode];
     return [table, ear.levels[mode]];
   }
   /** Stufe `n` im aktuellen Modus übernehmen. */
@@ -5582,7 +5868,7 @@
     if (earSeries.mode !== key || earSeries.marks.length >= SERIES_LEN) resetEarSeries(key);
     earSeries.marks.push(ok && !task.help ? 'ok' : 'help');
     if (!ok) {
-      const label = isInKey(task) ? inKeyLabel(task, inKeyTarget(task)) : task.kind === 'interval' ? intervalName(task.semis) : '';
+      const label = isInKey(task) ? inKeyLabel(task, inKeyTarget(task)) : task.kind === 'interval' ? intervalName(task.semis) : task.kind === 'downbeat' ? DB_PATTERNS[task.pattern].name : '';
       if (label) earSeries.misses.push(label);
     }
   }
@@ -5756,12 +6042,22 @@
       const lv = PART_LEVELS[ear.levels.parts - 1];
       if (lv.task === 'satb' || lv.task === 'line') list.push(['part-help', 'Meine Stimme lauter', 'den Satz noch einmal, deine Stimme hervorgehoben', !!task]);
     }
+    if (ear.mode === 'downbeat') {
+      // Hilfen starten den Groove neu und zählen „mit Hilfe“; die Lösung erst nach dem Lauf.
+      list.push(['db-accent', 'Eins betonen', 'ein Klick auf jeder Eins · zählt „mit Hilfe“', !!task && !rev],
+        ['db-demo', 'Vormachen', 'die App klatscht im ersten Takt mit · zählt „mit Hilfe“', !!task && !rev],
+        ['db-solution', 'Lösung hören', 'von der Eins an, Eins betont, Muster vorgeklatscht', rev]);
+    }
     return list;
   }
   function earHelpInfo() {
     const info = [];
     const fb = $('.ear-feedback').textContent;
     if (fb) info.push(['Erklärung', fb]);
+    if (ear.mode === 'downbeat') {
+      info.push(['So findest du die Eins', 'Erst nur zuhören, bis der Groove ganz da ist. Zähl leise mit („1 2 3 4“) und probier, wo die Eins sitzt: Dort passiert meist am meisten – tiefer Schlag, neuer Basston. Erst dann das Muster klatschen.']);
+      if (ear.task && ear.revealed) info.push(['Dieser Groove', DB_GROOVES[ear.task.groove].cue]);
+    }
     if (ear.mode === 'tuning') {
       const stair = stairFor(TUNING_LEVELS[ear.levels.tuning - 1].n);
       const th = stair.threshold();
@@ -5988,7 +6284,37 @@
       // Schwelle nur in der Serienbilanz (Musikpädagoge: bei jeder Aufgabe
       // erzeugt sie Druck); im Gemischt-Programm wie bisher unter der Aufgabe.
       // Zusatzinfo (Schwelle) jetzt in den Hilfen, nicht unter den Antworten (earHelps).
+    } else if (ear.mode === 'downbeat') {
+      // Einsatz finden: statt Antwortknöpfen eine Klatschfläche im Antwortfeld
+      // (feste Höhe); in der Bühne das Muster als Zählzeiten-Reihe – ohne
+      // laufende Marke, die würde die Eins verraten.
+      const level = DOWNBEAT_LEVELS[(task ? task.level : ear.levels.downbeat) - 1];
+      const phase = downbeatPhase(task);
+      const mic = state.input === 'mic';
+      prompt.textContent = { idle: 'Wo ist die Eins?', wait: 'Wo ist die Eins?', listen: 'Hör zu – wo ist die Eins?', you: 'Jetzt klatschen – auf deine Eins', done: task?.answer?.ok ? 'Die Eins gefunden' : 'Wo war die Eins?' }[phase];
+      sub.textContent = task
+        ? `${DB_GROOVES[task.groove].name} · ${task.meter}${ear.revealed ? '' : ' · kein Einzähler'}`
+        : `Stufe ${level.n}: ${level.label}`;
+      const pad = document.createElement('button');
+      pad.type = 'button';
+      pad.className = `ear-pad${mic ? ' is-mic' : ''}${phase === 'done' && !task?.answer?.ok ? ' is-miss' : ''}`;
+      pad.dataset.phase = phase;
+      const res = ear.revealed ? task?.answer : null;
+      const text = {
+        idle: ['Tippen zum Starten', 'Ein Groove blendet ein – ohne Einzähler'],
+        wait: ['Tippen zum Starten', '„Nochmal“ startet den Groove neu'],
+        listen: ['Hör zu …', mic ? 'gleich klatschen – das Mikro hört zu' : 'gleich hier klatschen'],
+        you: [mic ? 'Klatschen!' : 'Hier klatschen', mic ? 'das Mikro hört zu' : 'oder Leertaste'],
+        done: [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '„Nochmal“ spielt die Lösung'],
+      }[phase];
+      pad.innerHTML = `<b>${esc(text[0])}</b><span>${esc(text[1])}</span>`;
+      pad.setAttribute('aria-label', `${text[0]} – ${text[1]}`);
+      grid.classList.add('is-pad');
+      grid.replaceChildren(pad);
     }
+    const dbPat = $('.db-pattern');
+    dbPat.hidden = !(ear.mode === 'downbeat' && task) || done;
+    dbPat.innerHTML = dbPat.hidden ? '' : downbeatPatternHtml(task);
     layoutEarAnswers(grid);
 
     const st = ear.stats[ear.mode];
@@ -6224,6 +6550,9 @@
         <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Feld „Stufe“).</p>
         ${ear.mode === 'cadence' ? `<span class="sub-label">Klassik</span><div class="check-list">${checkRow('phrygian', 'on', 'Phrygischer Halbschluss (iv⁶–V in Moll)', !!s.phrygian, 'ab Stufe 4, wenn Moll dabei ist')}</div>` : ''}
         ${isInKeyMode(ear.mode) ? inKeySettingsHtml(ear.mode) : ''}
+        ${ear.mode === 'downbeat' ? `<span class="sub-label">Eingabe</span>
+        <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
+        <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.</p>` : ''}
         ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${isInKeyMode(ear.mode) ? checkRow('inKeyResolve', 'on', ear.mode === 'noteInKey' ? 'Nach der Antwort auflösen (Ton läuft zur Tonika)' : 'Nach der Antwort auflösen (Akkord läuft nach Hause)', s.inKeyResolve !== false) : ''}${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext, isInKeyMode(ear.mode) ? 'erst nach der Auflösung' : '')}</div>`;
@@ -10064,6 +10393,13 @@
         if (!ear.revealed) ear.task.help = true;
         playEar({ compare: { loud: true } });
       }
+      else if ((action === 'db-accent' || action === 'db-demo') && ear.task?.kind === 'downbeat' && !ear.revealed) {
+        // Hilfe zählt als „mit Hilfe“; der Groove startet neu, mit der Hilfe.
+        ear.task.help = true;
+        ear.task.aids = { ...ear.task.aids, [action === 'db-accent' ? 'accent' : 'demo']: true };
+        playEar();
+      }
+      else if (action === 'db-solution' && ear.task?.kind === 'downbeat' && ear.revealed) playEar();
       else if (action === 'next') nextEar();
       return;
     }
@@ -10101,6 +10437,8 @@
     }
     const earSet = e.target.closest('[data-earset]');
     if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
+    const dbIn = e.target.closest('[data-db-input]');
+    if (dbIn) { if (INPUT_CHOICES.some(([id]) => id === dbIn.dataset.dbInput)) state.input = dbIn.dataset.dbInput; renderSettings(); renderEar(); return; }
     const tempo = e.target.closest('[data-tempo]');
     if (tempo) { ear.settings.tempo = tempo.dataset.tempo; renderSettings(); return; }
     if (e.target === $('.sheet')) { closeSettings(); return; }
@@ -10202,6 +10540,15 @@
   });
   // Tastatur-"Klick" aufs Feld (Enter/Leertaste bei Fokus) nicht doppelt zählen.
   $('.tap-pad').addEventListener('click', (e) => e.preventDefault());
+  // Einsatz finden: Klatschfläche im Antwortfeld (wird neu gezeichnet → delegiert).
+  // In Ruhe startet sie den Groove, im Lauf ist sie das Klatschfeld.
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest?.('.ear-pad') || state.tab !== 'ear') return;
+    e.preventDefault();
+    if (dbRun?.playing) downbeatTap();
+    else if (!ear.task) nextEar();
+    else if (!ear.revealed) playEar();
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.level-sheet').hidden) { closeLevelSheet(); return; }
@@ -10225,6 +10572,8 @@
       } else if (e.key === 'Backspace' && sing.phase === 'answer') { e.preventDefault(); answerDictation('back'); }
       return;
     }
+    // Einsatz finden: Leertaste/Enter klatscht, solange der Groove läuft.
+    if (state.tab === 'ear' && ear.mode === 'downbeat' && (e.code === 'Space' || e.code === 'Enter') && dbRun?.playing) { e.preventDefault(); downbeatTap(); return; }
     if (state.tab === 'ear' && /^[1-9]$/.test(e.key)) {
       // Ziffern 1–9 wählen die Antworten (Barrierefreiheit).
       const btn = $$('.answer-grid .answer:not(.is-backspace)')[Number(e.key) - 1];
@@ -12134,7 +12483,7 @@
         if (!$('.sheet-body [data-set="inKeyResolve"]') || !$('.sheet-body [data-set="autoNext"]')) errors.push('Einstellungen Akkorde: Auflösung/automatisch weiter fehlen');
         sheetKind = kind; }
       // Modusliste: beide neuen Modi direkt vor „Akkordfolgen“.
-      if (EAR_MODES.map(([id]) => id).join() !== 'interval,quality,cadence,noteInKey,chordInKey,chords,parts,tuning') errors.push(`Reihenfolge der Hör-Modi: ${EAR_MODES.map(([id]) => id)}`);
+      if (EAR_MODES.map(([id]) => id).join() !== 'interval,quality,cadence,noteInKey,chordInKey,chords,parts,tuning,downbeat') errors.push(`Reihenfolge der Hör-Modi: ${EAR_MODES.map(([id]) => id)}`);
     } finally {
       ear.inKey = saved.ik; ear.settings.inKeyHold = saved.hold; ear.settings.inKeyCadence = saved.cad;
       ear.mode = saved.mode; ear.task = saved.task; ear.revealed = saved.revealed; ear.levels.chordInKey = saved.level;
@@ -12154,7 +12503,7 @@
       const rows = $$('[data-list="ear"] [data-open-mode]').map((b) => b.dataset.openMode.split(':')[1]);
       // Konfetti B2: nach Fähigkeit gruppiert (EAR_GROUPS), einzeilig ohne Kurztext.
       if (rows.join() !== EAR_GROUPS.flatMap(([, ids]) => ids).join() || rows.length !== EAR_MODES.length) errors.push(`Liste Hören: Reihenfolge ${rows}`);
-      if ($$('[data-list="ear"] .k-group-head').map((h) => h.textContent).join() !== 'Melodie,Harmonie,Im Chor') errors.push('Liste Hören: Gruppen');
+      if ($$('[data-list="ear"] .k-group-head').map((h) => h.textContent).join() !== 'Melodie,Harmonie,Takt,Im Chor') errors.push('Liste Hören: Gruppen');
       if ($('[data-list="ear"] .mode-how')) errors.push('Liste Hören: Unterzeile vorhanden');
       if ($('[data-open-mode="ear:noteInKey"] .k-row-name')?.textContent !== 'Töne in der Tonart' || $('[data-open-mode="ear:chordInKey"] .k-row-name')?.textContent !== 'Akkorde in der Tonart') errors.push('Liste Hören: Namen');
       for (const id of ['noteInKey', 'chordInKey']) {
@@ -13051,6 +13400,7 @@
     errors.push(...aidsCheck());
     errors.push(...accompCheck());
     errors.push(...groovesCheck());
+    errors.push(...downbeatCheck());
     errors.push(...delayCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
@@ -13279,6 +13629,154 @@
     const chosenNow = !profileApi || SATB_PARTS.includes(readProfile()?.part);
     if (!card || card.dataset.openMode !== 'voice:tuner' || card.hasAttribute('data-voice-choose') === chosenNow || host.querySelector('.k-row[data-open-mode="voice:tuner"]') || host.querySelector('.mode-how')) errors.push('Singen-Übersicht: Stimm-Karte/Tuner/Unterzeile');
     host.innerHTML = keep;
+    return errors;
+  }
+
+  /** Einsatz finden: Stufen, Zeitplan (Einstieg, Einblenden, Sollpunkte ab
+   *  der Eins), Auswertung (richtige Eins / um einen Schlag verschoben),
+   *  Ablauf bis zur Lösung, Gerüst wie die übrigen Hör-Übungen. */
+  function downbeatCheck() {
+    const errors = [];
+    let seed = 23;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    // Stufen vollständig, jedes Groove mit passendem Muster, eingebunden.
+    if (DOWNBEAT_LEVELS.map((l) => l.n).join() !== '1,2,3,4,5,6' || DOWNBEAT_LEVELS.some((l) => !l.label || l.label.length > 40)) errors.push('Einsatz: Stufen 1–6');
+    if (earLevelInfo('downbeat')[0] !== DOWNBEAT_LEVELS || modeName('ear', 'downbeat') !== 'Einsatz finden' || !MODE_ICONS.downbeat || !MODE_TEXT.downbeat || !EAR_GROUPS.some(([, ids]) => ids.includes('downbeat'))) errors.push('Einsatz: nicht eingebunden');
+    if (!ear.stats.downbeat || !('downbeat' in ear.levels)) errors.push('Einsatz: Zähler/Stufe fehlen');
+    const l1 = DOWNBEAT_LEVELS[0];
+    if (l1.grooves.join() !== 'pop' || l1.patterns.join() !== 'one4' || !l1.bass || !DB_GROOVES.pop.kick.includes(0)) errors.push('Einsatz Stufe 1: nicht eindeutig');
+    for (const l of DOWNBEAT_LEVELS) {
+      if (l.patterns.some((p) => !DB_PATTERNS[p])) errors.push(`Einsatz Stufe ${l.n}: unbekanntes Muster`);
+      for (const id of l.grooves) {
+        const g = DB_GROOVES[id];
+        if (!g || !METERS[g.meter] || !g.cue || !g.bpm) { errors.push(`Einsatz Stufe ${l.n}: Groove ${id}`); continue; }
+        if (!l.patterns.some((p) => DB_PATTERNS[p]?.meter === g.meter)) errors.push(`Einsatz Stufe ${l.n}: kein Muster für ${id}`);
+      }
+      // Aufgaben: Einstieg nie auf der Eins, im Raster, zufällig verteilt.
+      const starts = new Set();
+      for (let i = 0; i < 200; i++) {
+        const t = makeEarTask('downbeat', l.n, rnd);
+        const m = METERS[t.meter], g = DB_GROOVES[t.groove];
+        const step = l.starts === 'eighths' && !g.swing ? 6 : m.beat;
+        if (t.kind !== 'downbeat' || t.startTick <= 0 || t.startTick >= m.ticks || t.startTick % step || !l.grooves.includes(t.groove) || !l.patterns.includes(t.pattern)
+          || DB_PATTERNS[t.pattern].meter !== t.meter || t.bpm < g.bpm[0] || t.bpm > g.bpm[1] || t.bass !== !!(g.forceBass || (l.bass && g.bass))) { errors.push(`Einsatz Stufe ${l.n}: Aufgabe ${JSON.stringify(t)}`); break; }
+        starts.add(`${t.meter}:${t.startTick}`);
+      }
+      if (starts.size < 3) errors.push(`Einsatz Stufe ${l.n}: Einstieg kaum zufällig (${[...starts]})`);
+      if (l.n === 6 && ![...starts].some((x) => Number(x.split(':')[1]) % 12 === 6)) errors.push('Einsatz Stufe 6: nie ein Einstieg auf „und“');
+    }
+    // Zeitplan: Einstieg an der Stelle, kein Einzähler, Einblenden, Eins mit Bassdrum und neuem Basston.
+    const base = { kind: 'downbeat', level: 1, groove: 'pop', meter: '4/4', pattern: 'one4', bpm: 90, startTick: 24, bass: true, root: 40, aids: { accent: false, demo: false }, answer: null };
+    const ts = 60 / 90 / 12;
+    const near = (a, b) => Math.abs(a - b) < 1e-9;
+    const plan = downbeatPlan(base);
+    if (plan.events[0].tick !== 24 || !near(plan.events[0].t, 0) || plan.events.some((e) => e.t < 0)) errors.push('Einsatz: Groove beginnt nicht an der Einstiegsstelle');
+    if (plan.events.some((e) => e.kind === 'click' || e.kind === 'clap')) errors.push('Einsatz: Einzähler oder Klatscher ohne Hilfe');
+    if (!(plan.fadeFrom < .1) || !near(plan.fadeEnd, DB_FADE_BARS * 48 * ts)) errors.push(`Einsatz: Einblenden ${plan.fadeFrom}/${plan.fadeEnd}`);
+    if (!near(plan.youStart, ((1 + DB_LISTEN_BARS) * 48 - 24) * ts) || !(plan.youVisual > 0 && plan.youVisual < plan.youStart) || !near(plan.youEnd - plan.youStart, DB_CLAP_BARS * 48 * ts)) errors.push('Einsatz: Klatsch-Takte falsch');
+    // Die Phase „Du“ beginnt nicht auf einer Eins (sonst verriete die Anzeige sie).
+    if (Math.round(plan.youVisual / ts + 24) % 48 === 0) errors.push('Einsatz: Phase „Du“ beginnt auf der Eins');
+    const atOne = plan.events.filter((e) => near(e.t, plan.youStart)).map((e) => e.kind);
+    if (!atOne.includes('kick') || !atOne.includes('bass')) errors.push(`Einsatz: Eins ohne Bassdrum/Bass (${atOne})`);
+    const bass = plan.events.filter((e) => e.kind === 'bass' && !e.long);
+    if (bass.some((e) => e.tick % 48) || bass.some((e, i) => i && e.midi === bass[i - 1].midi)) errors.push('Einsatz: Basston wechselt nicht auf der Eins');
+    if (plan.targets.join() !== '0') errors.push(`Einsatz: Sollpunkte ${plan.targets}`);
+    const acc = downbeatPlan(base, { accent: true }).events.filter((e) => e.kind === 'click');
+    if (!acc.length || acc.some((e) => e.tick % 48) || acc.length !== DB_LISTEN_BARS + DB_CLAP_BARS) errors.push('Einsatz: „Eins betonen“ klickt nicht genau auf jeder Eins');
+    const demo = downbeatPlan({ ...base, pattern: 'backbeat' }, { demo: true }).events.filter((e) => e.kind === 'clap').map((e) => e.tick - (1 + DB_LISTEN_BARS) * 48);
+    if (demo.join() !== '12,36') errors.push(`Einsatz: „Vormachen“ ${demo}`);
+    const sol = downbeatPlan(base, { solution: true });
+    if (sol.events[0].tick !== 0 || sol.fadeFrom !== 1 || !sol.events.some((e) => e.kind === 'clap') || !sol.events.some((e) => e.kind === 'click')) errors.push('Einsatz: Lösung nicht ab der Eins mit Muster');
+    if (downbeatPlan({ ...base, groove: 'shuffle', pattern: 'offbeat', bass: false }).targets.join() !== '8,20,32,44') errors.push('Einsatz: Offbeat im Shuffle nicht verschoben');
+    const push = downbeatPlan({ ...base, groove: 'push', pattern: 'tresillo' });
+    const lastTick = push.events[push.events.length - 1].tick;
+    if (push.events.some((e) => e.kind === 'kick' && e.tick % 48 === 0 && e.tick < lastTick) || !push.events.some((e) => e.kind === 'bass' && e.tick % 48 === 42)) errors.push('Einsatz: Synkopen-Groove (Bassdrum nicht auf 1, Bass vorgezogen)');
+    // Auswertung: richtige Eins → getroffen; um einen Schlag verschoben → nicht.
+    const exactOf = (t) => { const p = downbeatPlan(t); const out = []; for (let b = 0; b < DB_CLAP_BARS; b++) for (const x of p.targets) out.push((b * p.bar + x) * p.tickSec); return out; };
+    for (const [g, pat] of [['pop', 'one4'], ['pop', 'backbeat'], ['waltz', 'one3'], ['waltz', 'waltzPa'], ['six8', 'six8Back'], ['shuffle', 'charleston'], ['push', 'tresillo'], ['rock', 'offbeat']]) {
+      const t = { ...base, groove: g, meter: DB_GROOVES[g].meter, pattern: pat, bpm: DB_GROOVES[g].bpm[1] };
+      const exact = exactOf(t);
+      const m = METERS[t.meter];
+      const beat = m.beat * 60 / t.bpm / m.ref;
+      let r = judgeDownbeat(t, exact);
+      if (!r.ok || r.hits !== r.total || r.extras || r.total !== DB_PATTERNS[pat].at.length * DB_CLAP_BARS) errors.push(`Einsatz ${g}/${pat}: genau getroffen → ${JSON.stringify([r.ok, r.hits, r.total, r.extras])}`);
+      r = judgeDownbeat(t, exact.map((x, i) => x + (i % 2 ? .03 : -.025) + .015));
+      if (!r.ok) errors.push(`Einsatz ${g}/${pat}: kleine Schwankung gilt als daneben`);
+      r = judgeDownbeat(t, exact.slice(1).map((x) => x + .01)); // den ersten verpasst (Eins erst gesucht)
+      if (!r.ok) errors.push(`Einsatz ${g}/${pat}: ein verpasster Klatscher am Anfang gilt als Fehler`);
+      if (pat !== 'offbeat') { // Offbeats wiederholen sich je Schlag – verschoben klingt gleich
+        r = judgeDownbeat(t, exact.map((x) => x + beat));
+        if (r.ok || r.shift !== 1 || !downbeatMessage(t, r).includes('die 2 für die Eins')) errors.push(`Einsatz ${g}/${pat}: um einen Schlag verschoben → ${JSON.stringify([r.ok, r.hits, r.shift])}`);
+      }
+      r = judgeDownbeat(t, exact.map((x) => x + .2));
+      if (r.ok) errors.push(`Einsatz ${g}/${pat}: 200 ms zu spät gilt als getroffen`);
+    }
+    {
+      const exact = exactOf(base);
+      let r = judgeDownbeat(base, Array.from({ length: DB_CLAP_BARS * 4 }, (_, i) => i * 12 * ts)); // jeden Schlag
+      if (r.ok || r.hits !== 4 || r.extras !== 12) errors.push(`Einsatz: Klatschen auf jeden Schlag gilt als richtig ${JSON.stringify([r.hits, r.extras])}`);
+      r = judgeDownbeat(base, [-1.5, -.7, ...exact, DB_CLAP_BARS * 48 * ts + .02]); // vorher hören, Schlusspunkt mitklatschen
+      if (!r.ok || r.extras) errors.push('Einsatz: Klatscher vor der Wertung/auf den Schlusspunkt zählen als zu viel');
+      r = judgeDownbeat(base, []);
+      if (r.ok || !/Keine Klatscher/.test(downbeatMessage(base, r)) || !/Mikrofon/.test(downbeatMessage(base, r, true))) errors.push('Einsatz: ohne Klatscher');
+    }
+    // Ablauf: Lauf auswerten → Lösung, Zähler, Meldung; Hilfe zählt „mit Hilfe“.
+    const sv = { mode: ear.mode, task: ear.task, revealed: ear.revealed, streak: ear.streak, stats: { ...ear.stats.downbeat }, onResult: onEarResult, st: selfTesting, auto: ear.settings.autoNext, run: quickRun, tab: state.tab, input: state.input, level: ear.levels.downbeat, fb: $('.ear-feedback').textContent, series: JSON.parse(JSON.stringify(earSeries)) };
+    const reports = [];
+    const simulate = (task, shift) => {
+      ear.task = task; ear.revealed = false;
+      const p = downbeatPlan(task);
+      dbRun = { task, t0: 10, plan: p, taps: exactOf(task).map((x) => x + 10 + p.youStart + shift), mic: false, playing: true };
+      finishDownbeat();
+    };
+    try {
+      selfTesting = true; quickRun = null; ear.settings.autoNext = false; state.input = 'tap'; state.tab = 'ear';
+      onEarResult = (t, ok) => reports.push(`${t.kind}:${ok}:${!!t.help}`);
+      ear.mode = 'downbeat'; ear.levels.downbeat = 1; resetEarSeries('downbeat');
+      ear.task = { ...base }; ear.revealed = false; dbRun = null;
+      const d = earDock();
+      const helps = Object.fromEntries(earHelps().map(([id, , , on]) => [id, on]));
+      if (d.main[0] !== 'next' || !helps['db-accent'] || !helps['db-demo'] || helps['db-solution'] !== false) errors.push('Einsatz: Dock/Hilfen vor der Lösung');
+      const before = ear.stats.downbeat.total;
+      simulate({ ...base }, 0);
+      if (!ear.revealed || dbRun || reports.join() !== 'downbeat:true:false' || ear.stats.downbeat.total !== before + 1 || !/Die Eins sitzt/.test($('.ear-feedback').textContent)) errors.push(`Einsatz: richtige Eins → ${reports} ${$('.ear-feedback').textContent}`);
+      renderEar();
+      const pad = $$('.ear-page .answer-grid > *');
+      if (pad.length !== 1 || !pad[0].classList.contains('ear-pad') || pad[0].dataset.phase !== 'done' || !$('.ear-page .answer-grid').classList.contains('is-pad')) errors.push('Einsatz: Klatschfläche im Antwortfeld fehlt');
+      if ($$('.db-pattern .db-cell').length !== 8 || $$('.db-pattern .db-cell.is-ok').length !== 1 || $('.db-pattern').hidden) errors.push('Einsatz: Musteranzeige nach der Lösung');
+      if (earPhaseIndex() !== 2 || !Object.fromEntries(earHelps().map(([id, , , on]) => [id, on]))['db-solution']) errors.push('Einsatz: Lösung nicht als Phase/Hilfe');
+      reports.length = 0;
+      simulate({ ...base, pattern: 'backbeat', help: true, aids: { accent: true, demo: false } }, 12 * ts);
+      if (reports.join() !== 'downbeat:false:true' || !/die 2 für die Eins/.test($('.ear-feedback').textContent)) errors.push(`Einsatz: verschoben mit Hilfe → ${reports} ${$('.ear-feedback').textContent}`);
+      // Tippen: nur während des Laufs; im Mikrofon-Lauf zählen Tipper nicht.
+      ear.task = { ...base }; ear.revealed = false;
+      dbRun = { task: ear.task, t0: 0, plan: downbeatPlan(ear.task), taps: [], mic: true, playing: true };
+      if (engine.ctx) { downbeatTap(); if (dbRun.taps.length) errors.push('Einsatz: Tippen trotz Mikrofon gezählt'); }
+      downbeatTap(1.25);
+      if (dbRun.taps.join() !== '1.25') errors.push('Einsatz: Mikrofon-Klatscher nicht gezählt');
+      dbRun.mic = false;
+      clearEarTimers();
+      if (dbRun) errors.push('Einsatz: Lauf läuft nach dem Stoppen weiter');
+      // Gerüst: Phasenleiste, Bühne, Antwortfeld und Dock stehen wie bei „Intervalle“.
+      if ($('.ear-page .answer-grid').getClientRects().length) {
+        const rects = () => ['.ear-strip', '.ear-stage', '.ear-page .answer-grid', '[data-ear="main"]', '[data-ear="nochmal"]', '[data-ear="helps"]'].map((sel) => { const b = $(sel).getBoundingClientRect(); return [b.top, b.left, b.width, b.height].map(Math.round).join(); }).join(' | ');
+        ear.mode = 'interval'; ear.task = null; ear.revealed = false; renderEar();
+        const want = rects();
+        ear.mode = 'downbeat'; renderEar();
+        if (rects() !== want) errors.push(`Einsatz: Gerüst vor dem Start verschoben (${rects()} statt ${want})`);
+        ear.task = { ...base }; ear.revealed = false; renderEar();
+        if (rects() !== want) errors.push('Einsatz: Gerüst mit Aufgabe verschoben');
+        simulate({ ...base }, 0); renderEar();
+        if (rects() !== want) errors.push('Einsatz: Gerüst nach der Lösung verschoben');
+      }
+    } finally {
+      dbRun = null;
+      onEarResult = sv.onResult; selfTesting = sv.st; ear.settings.autoNext = sv.auto; quickRun = sv.run; state.tab = sv.tab; state.input = sv.input;
+      Object.assign(ear.stats.downbeat, sv.stats); ear.levels.downbeat = sv.level; Object.assign(earSeries, sv.series);
+      ear.mode = sv.mode; ear.task = sv.task; ear.revealed = sv.revealed; ear.streak = sv.streak;
+      setEarFeedback(sv.fb, '');
+      renderEar();
+    }
     return errors;
   }
 
@@ -13595,6 +14093,8 @@
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
+    // Einsatz finden (Hören)
+    DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,
@@ -13765,7 +14265,7 @@
     if (!groovesParam) return;
     if (groovesParam === 'review') startGroovesReview(); else openGroovesList();
   }
-  ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'singEcho', 'inTime'].forEach(refreshHint);
+  ['rhythm', 'interval', 'quality', 'cadence', 'chords', 'parts', 'tuning', 'downbeat', 'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'singEcho', 'inTime'].forEach(refreshHint);
   /** ?tab=… ohne from=quick: nur dieser Bereich, Überschrift statt Tab-Leiste. */
   function applyAreaOnly() {
     if (!areaOnly) return;

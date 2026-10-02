@@ -22638,12 +22638,12 @@ window.chorToolPrefs = {
    ========================================================================== */
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
-const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning',
+const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat',
   'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime',
   'licks']; // Licks & Grooves (licks.html): in keiner Gruppe von PROGRESS_GROUPS
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
-  ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
+  ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat'], // downbeat = Einsatz finden
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
   rhythm: ['rhythm'],
 };
