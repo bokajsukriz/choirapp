@@ -99,14 +99,20 @@ ein Dialog mit echter Wahl).
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
-  Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
+  Tonart, Akkordfolgen, Stimmen heraushören, Intonation, Einsatz finden; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
   Nachsingen, Im Takt, Blattsingen, Diktat). Die Sing-Übungen haben ein festes Gerüst:
   Stufen-Karte, Phasenleiste Hören · Du · Ergebnis, eine Bühne mit fester Höhe
   (beim Singen nur Fortschrittsbalken, Mikro-Symbol als Pegel oben rechts) und
   ein Daumen-Dock (Nochmal · Start/Stopp/Weiter · Hilfen); alle Einstellungen
   liegen im Zahnrad. Hören nutzt dasselbe Gerüst (Phasenleiste Hören · Du ·
   Lösung, Zähler oben rechts in der Bühne, Antwortfeld mit fester Höhe, Dock
-  mit Nochmal · Start/Weiter · Hilfen). Nachsingen und Im Takt werten
+  mit Nochmal · Start/Weiter · Hilfen). „Einsatz finden“ (Hören, Gruppe
+  „Takt“) blendet einen Groove ohne Einzähler an zufälliger Stelle im Takt
+  ein; man findet hörend die Eins und klatscht ein Muster darüber (Tippen,
+  Leertaste oder Mikrofon, Klatschfläche im Antwortfeld) – Stufen 1–6 vom
+  Pop-Groove mit Klatschen auf 1 bis zu Synkopen-Grooves ohne Bassdrum auf 1
+  (`DOWNBEAT_LEVELS`, Zeitplan `downbeatPlan`, Wertung `judgeDownbeat`,
+  Prüfung `downbeatCheck`; Fortschrittsbereich `downbeat`). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
   durch Singen kalibrierten Latenz. Kommen die Tipper in `uebe-lab.html` und
