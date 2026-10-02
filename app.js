@@ -125,7 +125,7 @@ function fmtRatePercent(rate) {
 const VOICE_ORDER = ['FULL', 'SOP', 'ALT', 'TEN', 'BASS', 'BAR', 'LEAD', 'PIANO', 'OTHER'];
 
 const VOICE_LABEL = {
-  FULL:  'Gesamt',
+  FULL:  'Full',
   SOP:   'Sopran',
   ALT:   'Alt',
   TEN:   'Tenor',
@@ -14740,7 +14740,7 @@ function pickRoutineVoice(wishes, voices) {
 
 /** Vorgabewerte für eine neue, noch ungespeicherte Zeile (siehe Tabelle in
  *  Abschnitt 2 der Anweisung): erste Zeile 3×/1,0×/eigene Stimme, jede
- *  weitere über „+" 2×/1,0×/Gesamt (ab der dritten Zeile Kopie der zuletzt
+ *  weitere über „+" 2×/1,0×/Full (ab der dritten Zeile Kopie der zuletzt
  *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). `voices`
  *  begrenzt die Stimme auf das, was der Song hat. */
 function newRoutineDefaultStep(isFirst, withVoice, voices) {
