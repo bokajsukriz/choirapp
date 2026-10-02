@@ -1574,11 +1574,18 @@
   }
 
   /* ---- Rhythmussprache: Silben unter den Noten ----
-     'ta': ta, ti-ti, ta-a, ti-ri-ti-ri, tri-o-le; Pause „sch“.
-     'count': Zählzeiten — 1 + 2 +, Sechzehntel 1 e + e, 6/8 und 7/8 „in
+     'ta': ta, ti-ti, ta-a, ti-ri-ti-ri, tri-o-le; Pause „sch“. Sechzehntel
+     und Achtel nach ihrer Lage im Schlag: auf dem Schlag und dem „und“ „ti“,
+     auf „e“ und „a“ „ri“; ein Wert ab Achtellänge, der auf „e“/„a“ beginnt,
+     bekommt „-i“ (Sechzehntel-Synkope „ti ri-i ri“, nicht „ti ti ri“ wie
+     Achtel + zwei Sechzehntel) – wer es sprechen kann, kann es klatschen.
+     'count': Zählzeiten — 1 + 2 +, Sechzehntel 1 e + a, 6/8 und 7/8 „in
      Achteln“ (1 2 3 4 5 6), gehaltene Schläge und Pausen in Klammern. */
   const TA_LONG = { 48: 'ta-a-a-a', 36: 'ta-a-a', 24: 'ta-a', 18: 'ta-i', 12: 'ta', 9: 'ti-i' };
   function countBeatOf(m) { return m.unit === 12 ? m.beat : 6; }
+  /** Kurs-Takte, die trotz verschiedener Rhythmen gleich gesprochen werden
+   *  (vom Selbsttest gefüllt, für den Bericht: `uebeLab.rhythmSylCollisions`). */
+  const rhythmSylCollisions = [];
   function syllablesFor(pattern, style) {
     const m = METERS[pattern.meter];
     return pattern.notes.map((n) => {
@@ -1594,17 +1601,20 @@
         } else if (n.sh || (pattern.shuffle && off === 8)) parts = ['+']; // Shuffle zählt wie Achtel
         else if (n.d === 4 || (off % 4 === 0 && off % 3 !== 0)) parts = [{ 4: 'o', 8: 'le' }[off % 12] || 'tri'];
         else if (off * 2 === c) parts = ['+'];
-        else parts = ['e'];
+        else parts = [c === 12 && off === 9 ? 'a' : 'e'];
         // Gehaltene Schläge in Klammern; Pausen und gebundene Noten ganz.
         return n.rest || n.tie ? parts.map((x) => `(${x})`).join(' ') : [parts[0], ...parts.slice(1).map((x) => `(${x})`)].join(' ');
       }
       if (n.rest) return 'sch';
       if (n.tie) return '(–)';
       if (n.sh) return 'ti'; // Shuffle: wie Achtel („ti-ti“)
+      // Sechzehntel, Achtel, punktierte Achtel nach Lage: Schlag/„und“ → ti, „e“/„a“ → ri(-i).
+      const offGrid = inBar % 6 === 3;
+      if (n.d === 3) return offGrid ? 'ri' : 'ti';
+      if (n.d === 6) return offGrid ? 'ri-i' : 'ti';
+      if (n.d === 9) return offGrid ? 'ri-i' : 'ti-i';
       if (TA_LONG[n.d]) return TA_LONG[n.d];
-      if (n.d === 6) return 'ti';
       if (n.d === 4) return ['tri', 'o', 'le'][Math.floor((inBar % 12) / 4)];
-      if (n.d === 3) return inBar % 6 === 0 ? 'ti' : 'ri';
       return 'ta';
     });
   }
@@ -1703,7 +1713,7 @@
       more: 'Betonte Silben kommen im Pop ständig ein Achtel zu früh – auf die Eins wie auf die Drei. Man nennt das auch „Push“. Im Chor sitzt er nur, wenn alle den Schlag danach innerlich spüren.' },
 
     { id: 'sechzehntel', ch: 4, meter: '4/4', bpm: 66, name: 'Vier Sechzehntel', bars: ['12 3 3 3 3 12 6 6'],
-      intro: 'Vier Sechzehntel teilen einen Schlag in vier gleiche Teile: „ti-ri-ti-ri“ oder „1 e + e“. Gleichmäßig bleiben und zum Schlagende hin nicht eilen.',
+      intro: 'Vier Sechzehntel teilen einen Schlag in vier gleiche Teile: „ti-ri-ti-ri“ oder „1 e + a“. Gleichmäßig bleiben und zum Schlagende hin nicht eilen.',
       more: 'Bei schnellen Tempi hilft es, die Sechzehntel mit abwechselnden Händen auf die Oberschenkel zu patschen statt zu klatschen – so machen es auch Schlagzeuger.' },
     { id: 'achtel16', ch: 4, meter: '4/4', bpm: 66, name: 'Achtel und zwei Sechzehntel', bars: ['6 3 3 6 3 3 12 12'],
       intro: 'Erst ein Achtel, dann zwei Sechzehntel („ti ti-ri“): lang, kurz-kurz. Das Achtel ist genau doppelt so lang wie jedes Sechzehntel.' },
@@ -12361,7 +12371,7 @@
       if (box.querySelector('.tri')) errors.push('Shuffle als Triole notiert');
       const off = { meter: '4/4', pickup: 0, bars: 1, total: 48, notes: [{ t: 0, d: 3, rest: true }, { t: 3, d: 3 }, { t: 6, d: 6 }, { t: 12, d: 9, rest: true }, { t: 21, d: 3 }, { t: 24, d: 24 }] };
       off.onsets = [3, 6, 21, 24];
-      if (syllablesFor(off, 'ta').join(' ') !== 'sch ri ti sch ri ta-a' || syllablesFor(off, 'count').join(' ') !== '(1) e + (2) e 3 (4)') errors.push(`Silben e/a: ${syllablesFor(off, 'ta')} / ${syllablesFor(off, 'count')}`);
+      if (syllablesFor(off, 'ta').join(' ') !== 'sch ri ti sch ri ta-a' || syllablesFor(off, 'count').join(' ') !== '(1) e + (2) a 3 (4)') errors.push(`Silben e/a: ${syllablesFor(off, 'ta')} / ${syllablesFor(off, 'count')}`);
       for (const [id] of ELEMENTS) if (!ELEMENT_SHORT[id]) errors.push(`ELEMENT_SHORT ${id} fehlt`);
     }
     // Zweistimmig in Stufe 6: beide Stimmen swingen gleich.
@@ -12503,7 +12513,34 @@
     const ex1 = mk('4/4', [{ t: 0, d: 12 }, { t: 12, d: 6 }, { t: 18, d: 6 }, { t: 24, d: 24 }]);
     if (syllablesFor(ex1, 'ta').join(' ') !== 'ta ti ti ta-a' || syllablesFor(ex1, 'count').join(' ') !== '1 2 + 3 (4)') errors.push(`Silben 4/4: ${syllablesFor(ex1, 'ta')} / ${syllablesFor(ex1, 'count')}`);
     const ex2 = mk('4/4', [{ t: 0, d: 3 }, { t: 3, d: 3 }, { t: 6, d: 3 }, { t: 9, d: 3 }, { t: 12, d: 4 }, { t: 16, d: 4 }, { t: 20, d: 4 }, { t: 24, d: 18 }, { t: 42, d: 6 }]);
-    if (syllablesFor(ex2, 'ta').join(' ') !== 'ti ri ti ri tri o le ta-i ti' || syllablesFor(ex2, 'count').join(' ') !== '1 e + e 2 o le 3 (4) +') errors.push(`Silben 16tel/Triole: ${syllablesFor(ex2, 'ta')} / ${syllablesFor(ex2, 'count')}`);
+    if (syllablesFor(ex2, 'ta').join(' ') !== 'ti ri ti ri tri o le ta-i ti' || syllablesFor(ex2, 'count').join(' ') !== '1 e + a 2 o le 3 (4) +') errors.push(`Silben 16tel/Triole: ${syllablesFor(ex2, 'ta')} / ${syllablesFor(ex2, 'count')}`);
+    // Übe-Korrekturen 6: Silben nach Lage im Schlag, Zählweise 1 e + a.
+    {
+      const lp = (id) => lessonPattern(COURSE.find((l) => l.id === id));
+      const syl = (id, style) => syllablesFor(lp(id), style).join(' ');
+      if (syl('synkope16', 'ta') === syl('achtel16', 'ta')) errors.push(`synkope16 und achtel16 gleich gesprochen: ${syl('synkope16', 'ta')}`);
+      if (!syl('synkope16', 'ta').startsWith('ti ri-i ri ta') || !syl('achtel16', 'ta').startsWith('ti ti ri ti ti ri')) errors.push(`Silben 16tel-Synkope: ${syl('synkope16', 'ta')} / ${syl('achtel16', 'ta')}`);
+      if (syllablesFor(mk('4/4', [{ t: 0, d: 9 }, { t: 9, d: 3 }, { t: 12, d: 36 }]), 'ta').join(' ') !== 'ti-i ri ta-a-a') errors.push('Silben punktiert nicht mehr „ti-i ri“');
+      if (syl('aufA', 'count') !== '1 (2) a 3 4') errors.push(`aufA zählt ${syl('aufA', 'count')}`);
+      if (syl('aufE', 'count') === syl('aufA', 'count')) errors.push('aufE und aufA zählen gleich');
+      // Allgemein: Kurs-Takte ohne Pausen/Bindungen gleicher Taktart – verschiedene
+      // Rhythmen sollen verschieden klingen. Bekannte Kollisionen (Triolen,
+      // Shuffle) zählen nicht als Fehler; nur die genannten Paare sind Pflicht.
+      const seen = new Map();
+      rhythmSylCollisions.length = 0;
+      for (const l of COURSE) {
+        l.bars.forEach((bar, bi) => {
+          const notes = courseNotes(bar);
+          if (notes.some((n) => n.rest || n.tie)) return;
+          const pat = coursePattern(l.meter, '', [bar], l.id, !!l.shuffle);
+          const key = `${l.meter}${l.shuffle ? '/sh' : ''}|${syllablesFor(pat, 'ta').join(' ')}`;
+          const rhythm = notes.map((n) => n.d).join(' ');
+          const other = seen.get(key);
+          if (other && other.rhythm !== rhythm) rhythmSylCollisions.push(`${other.where} (${other.rhythm}) = ${l.id}/${bi + 1} (${rhythm}): ${key}`);
+          else if (!other) seen.set(key, { rhythm, where: `${l.id}/${bi + 1}` });
+        });
+      }
+    }
     const ex3 = mk('6/8', [{ t: 0, d: 6 }, { t: 6, d: 6 }, { t: 12, d: 6 }, { t: 18, d: 12, rest: true }, { t: 30, d: 6 }]);
     if (syllablesFor(ex3, 'count').join(' ') !== '1 2 3 (4) (5) 6' || syllablesFor(ex3, 'ta')[3] !== 'sch') errors.push(`Silben 6/8: ${syllablesFor(ex3, 'count')}`);
     // Klick-Betonung
@@ -15073,7 +15110,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
+    selfCheck, selfCheckAudio, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)
