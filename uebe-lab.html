@@ -6994,20 +6994,30 @@
      Einbruch unter die Schwelle, parabolisch verfeinert. Vorher auf die
      halbe Abtastrate gemittelt — für Singstimmen (ca. 65–1100 Hz) reicht
      das und viertelt die Rechenlast, was auf dem Handy bei 60 Bildern pro
-     Sekunde zählt. Ein Median über die letzten Werte glättet einzelne
-     Oktavfehler. Das Mikrofon läuft ohne Echo-Unterdrückung, Rausch-
+     Sekunde zählt. Ein Median über die letzten Werte (smoothPitch) glättet
+     einzelne Oktavfehler. Das Mikrofon läuft ohne Echo-Unterdrückung, Rausch-
      filter und automatische Pegelanpassung — die verfälschen Tonhöhe und
      Einsätze (siehe RECORDING_CONSTRAINTS in app.js).
      ------------------------------------------------------------------------ */
 
-  // Anzeige (Nadel, Ton, Cent) als Mittel über SMOOTH_SECONDS: bei Vibrato
-  // (5–6 Hz) zeigt das die Mitte des Tons, wie ein Chorleiter sie hört,
-  // statt hin- und herzuspringen. Die Verlaufslinie zeigt die Rohwerte.
+  // Anzeige (Nadel, Ton, Cent) als Median über SMOOTH_SECONDS: bei Vibrato
+  // (5–6 Hz) zeigt auch der Median die Mitte des Tons, wie ein Chorleiter sie
+  // hört, statt hin- und herzuspringen – und ein einzelner Oktavfehler des
+  // Erkenners verschiebt ihn nicht (der Mittelwert lag dann ~57 Cent daneben).
+  // Die Verlaufslinie zeigt die Rohwerte.
   const SMOOTH_SECONDS = .35;
-  /** Mittelwert der Rohwerte der letzten `windowSec` Sekunden. */
+  /** Median; bei gerader Anzahl das Mittel der beiden mittleren Werte (damit
+   *  Vibrato symmetrisch bleibt). Leere Liste → null. Die älteren lokalen
+   *  `median`-Helfer (obere Mitte) bleiben für ihre Aufrufer unverändert. */
+  function medianOf(values) {
+    const s = [...values].sort((a, b) => a - b), n = s.length;
+    if (!n) return null;
+    return n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2;
+  }
+  /** Median der Rohwerte der letzten `windowSec` Sekunden. */
   function smoothPitch(recent, now, windowSec = SMOOTH_SECONDS) {
     const list = recent.filter((p) => p.t >= now - windowSec);
-    return list.length ? list.reduce((sum, p) => sum + p.midi, 0) / list.length : null;
+    return list.length ? medianOf(list.map((p) => p.midi)) : null;
   }
   const PITCH_MIN_HZ = 65;
   const PITCH_MAX_HZ = 1100;
@@ -13738,6 +13748,25 @@
       const hst = holdStats(hi.samples);
       if (!hst || Math.abs(hst.mean - 30) > .5 || holdOctave(hi.samples) !== 0) errors.push(`Ton halten: 64,3 → ${hst?.mean} Cent`);
       if (holdOctave([...Array(7)].map(() => ({ oct: -1 })).concat([...Array(3)].map(() => ({ oct: 0 })))) !== 0) errors.push('Ton halten: gemischte Oktave als stabil gewertet');
+    }
+    // Glättung per Median (Übe-Korrekturen 3): ein Oktavfehler verschiebt nichts,
+    // Vibrato ±0,3 Halbtöne zeigt im Verlauf die Mitte.
+    {
+      const r = Array.from({ length: 21 }, (_, i) => ({ t: i / 60, midi: i === 10 ? 72 : 60 }));
+      if (smoothPitch(r, 20 / 60) !== 60) errors.push(`Glättung: Oktavfehler → ${smoothPitch(r, 20 / 60)}`);
+      if (medianOf([1, 2, 3, 4]) !== 2.5 || medianOf([3, 1, 2]) !== 2 || medianOf([]) !== null) errors.push('medianOf falsch');
+      for (const hz of [4.5, 5, 5.5, 6, 6.5]) {
+        const recent = [], out = [];
+        for (let i = 0; i < 120; i++) {
+          const t = i / 60;
+          recent.push({ t, midi: 60 + .3 * Math.sin(2 * Math.PI * hz * t + 1) });
+          while (recent[0].t < t - SMOOTH_SECONDS) recent.shift();
+          if (t > .4) out.push(smoothPitch(recent, t));
+        }
+        const avg = out.reduce((a, b) => a + b, 0) / out.length;
+        const peak = Math.max(...out.map((v) => Math.abs(v - 60)));
+        if (Math.abs(avg - 60) > .05 || peak > .15) errors.push(`Glättung: Vibrato ${hz} Hz → Mitte ${avg.toFixed(3)}, Ausschlag ${peak.toFixed(3)}`);
+      }
     }
     // Ton halten: synthetische Linie mit Trend −5 Cent/s → −5 ± 0,5.
     const line = Array.from({ length: 400 }, (_, i) => ({ t: i / 50, cents: 8 - 5 * (i / 50) + Math.sin(i * 1.7) * 2, rms: .1 }));
