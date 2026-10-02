@@ -266,8 +266,10 @@ Drei Punkte dazu:
 ## Übe-Programme
 
 An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im
-Player) öffnet ein Hantel-Symbol einen Dialog zum Zusammenstellen eines
-Übe-Programms: eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
+Player) öffnet ein Knopf (in der Loop-Leiste beschriftet „Üben", sonst ein
+Hantel-Symbol) einen Dialog zum Zusammenstellen eines
+Übe-Programms (Choirgym; Vorlagen-Chips „Kennenlernen", „Festigen",
+„Durchsingen" belegen die Schritte vor): eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
 danach automatisch der nächste Song/Loop/REC. Je Setliste bzw. Song wird
 genau ein zuletzt benutztes Programm gespeichert (`meta`-Typ `routine`) und
 beim nächsten Öffnen des Dialogs wieder vorbelegt — gespeichert wird erst
