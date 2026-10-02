@@ -207,7 +207,7 @@
   .delay-hint p { margin: 0 0 8px; font-size: .82rem; line-height: 1.35; }
   .delay-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   /* Klatsch-Grooves (Licks & Grooves) */
-  body[data-view="grooves"] footer, body[data-view="downbeat"] footer { display: none; }
+  body[data-view="grooves"] footer { display: none; }
   body.is-area-only[data-view="downbeat"] header { display: none; }
   body.is-area-only[data-view="downbeat"] main { padding-top: max(12px, env(safe-area-inset-top)); }
   body.is-area-only[data-view="grooves"] header { display: none; }
@@ -830,6 +830,25 @@
   .ear-pad[data-phase="done"] { border-style: solid; border-color: var(--ok); color: var(--ok-fg); }
   .ear-pad[data-phase="done"].is-miss { border-color: var(--rep-line); color: var(--rep-fg); }
   .ear-pad.is-tapped { animation: tap .16s ease-out; }
+  /* Einsatz finden im Rhythmus-Bereich: Klatschfläche in der Fußleiste wie bei
+     den anderen Rhythmusübungen (Tempo oben links, Stopp oben rechts); Nochmal
+     und Hilfen als runde Knöpfe, die oben aus der Fußleiste herausragen.
+     Antwortfeld und Daumen-Dock der Hör-Ansicht entfallen dann. */
+  body[data-view="downbeat"] footer { position: relative; padding-top: 30px; }
+  body[data-view="downbeat"] footer > .pad-wrap:not(.db-wrap) { display: none; }
+  body[data-view="downbeat"] .ear-page .answer-grid, body[data-view="downbeat"] .ear-page .ear-dock { display: none; }
+  .db-wrap[hidden], .db-round[hidden], body:not([data-view="downbeat"]) .db-wrap, body:not([data-view="downbeat"]) .db-round { display: none; }
+  .db-wrap .ear-pad { height: 150px; padding: 42px 14px 12px; border-width: 3px; gap: 6px; }
+  .db-wrap .ear-pad b { white-space: nowrap; }
+  .db-wrap .ear-pad:is([data-phase="idle"], [data-phase="wait"], [data-phase="done"]) span { display: none; } /* wie die anderen Übungen: nur die Pille */
+  .db-wrap .ear-pad[data-phase="idle"], .db-wrap .ear-pad[data-phase="wait"] { border-style: dashed; }
+  .db-wrap .ear-pad[data-phase="idle"] b, .db-wrap .ear-pad[data-phase="wait"] b, .db-wrap .ear-pad[data-phase="done"] b { display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+  .db-wrap .ear-pad[data-phase="idle"] b::before, .db-wrap .ear-pad[data-phase="wait"] b::before, .db-wrap .ear-pad[data-phase="done"] b::before { content: ''; width: 0; height: 0; border-left: 14px solid currentColor; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+  .db-wrap.is-tempo .ear-pad > * { opacity: .35; }
+  .db-round { position: absolute; top: -24px; left: 16px; right: 16px; display: flex; justify-content: space-between; pointer-events: none; }
+  .db-round-btn { pointer-events: auto; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--tint-line); background: var(--surface); color: var(--text); display: grid; place-items: center; box-shadow: 0 3px 10px rgba(36, 27, 61, .12); font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1; }
+  .db-round-btn svg { width: 22px; height: 22px; stroke-width: 2.2; }
+  .db-round-btn:disabled { color: var(--muted); opacity: .55; box-shadow: none; cursor: default; }
   .db-pattern { width: 100%; max-width: 360px; margin: 0 auto; }
   .db-pattern[hidden] { display: none; }
   .db-cap { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
@@ -1094,6 +1113,17 @@
     <button type="button" class="pad-corner pad-tempo" data-tempo-drag="rhythm" role="slider" aria-label="Tempo in BPM (nach oben oder unten ziehen)" aria-valuemin="30" aria-valuemax="200" aria-valuenow="92"><b>92</b><small>BPM</small></button>
     <span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
     <button class="pad-corner pad-mic" type="button" data-rhythm-mictest hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Test</span></button>
+  </div>
+  <!-- Einsatz finden (Rhythmus-Bereich): eigene Klatschfläche, siehe renderDownbeatDock. -->
+  <div class="db-round" hidden>
+    <button class="db-round-btn" type="button" data-ear="db-again" aria-label="Nochmal" title="Nochmal" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></button>
+    <button class="db-round-btn" type="button" data-ear="db-helps" aria-label="Hilfen" title="Hilfen" aria-haspopup="dialog" disabled>?</button>
+  </div>
+  <div class="pad-wrap db-wrap" hidden>
+    <button class="ear-pad" type="button" data-phase="idle"><b></b><span></span></button>
+    <button class="pad-corner pad-stop" type="button" data-ear="db-stop" aria-label="Stoppen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
+    <button type="button" class="pad-corner pad-tempo" data-tempo-drag="downbeat" role="slider" aria-label="Tempo in BPM (nach oben oder unten ziehen)" aria-valuemin="30" aria-valuemax="200" aria-valuenow="90"><b>90</b><small>BPM</small></button>
+    <span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
   </div>
   <div class="transport-row" hidden>
     <button class="play" type="button" aria-label="Starten"></button>
@@ -4013,11 +4043,13 @@
   const tempoDownPx = (startBpm, spaceBelow) => clamp((spaceBelow * .9) / Math.max(1, (startBpm - TEMPO_DOWN_MIN) / 2), 3, TEMPO_DRAG_PX);
   const tempoScope = (el) => (el.dataset.tempoDrag === 'grooves'
     ? { get: () => groovesBpm(), set: (v) => { gv.bpm = clamp(Math.round(v), 30, 200); }, off: () => !!gv.running }
-    : { get: () => state.bpm, set: (v) => { setBpm(v); persist(); }, off: () => run.playing || calib.active });
+    : el.dataset.tempoDrag === 'downbeat'
+      ? { get: () => downbeatBpm(), set: (v) => setDownbeatBpm(v), off: () => !!dbRun }
+      : { get: () => state.bpm, set: (v) => { setBpm(v); persist(); }, off: () => run.playing || calib.active });
   function showTempoValue(el, bpm) {
     el.querySelector('b').textContent = String(bpm);
     el.setAttribute('aria-valuenow', String(bpm));
-    if (el.dataset.tempoDrag !== 'grooves') { $('.bpm').value = String(state.bpm); $$('.bpm-out').forEach((o) => { o.textContent = String(state.bpm); }); }
+    if (el.dataset.tempoDrag === 'rhythm') { $('.bpm').value = String(state.bpm); $$('.bpm-out').forEach((o) => { o.textContent = String(state.bpm); }); }
   }
   function tempoHint(el, on) {
     const wrap = el.closest('.pad-wrap');
@@ -4054,7 +4086,7 @@
     tempoDrag.el = null;
     // Nur angetippt: Hinweis kurz stehen lassen; gezogen: Hinweis weg.
     if (tempoDrag.moved) tempoHint(el, false); else tempoHint(el, true);
-    if (el.dataset.tempoDrag === 'grooves') gRerender(); else renderTransport();
+    if (el.dataset.tempoDrag === 'grooves') gRerender(); else if (el.dataset.tempoDrag === 'downbeat') renderEar(); else renderTransport();
   };
   document.addEventListener('pointerup', endTempoDrag);
   document.addEventListener('pointercancel', endTempoDrag);
@@ -4584,6 +4616,7 @@
     stairs: {},        // Intonation: Treppe je Stufe
     pick: null,        // Stimmen: angetippter Kandidat
     streak: 0,
+    dbShift: 0,        // Einsatz finden: eigene Tempo-Verschiebung in BPM (BPM-Knopf)
   };
 
   const intervalName = (semis) => INTERVALS.find(([n]) => n === semis)[1];
@@ -4976,8 +5009,24 @@
   const DB_BASS_STEPS = [0, 7, 9, 5]; // I – V – vi – IV, ein Ton je Takt
   /** Shuffle: das „und“ (Tick 6 im Viertel) rückt auf das dritte Triolen-Achtel. */
   const dbSwing = (g, t) => (g.swing && mod(t, 12) === 6 ? t + 2 : t);
+  /** Tempo der Aufgabe: Grundtempo des Grooves plus die eigene Verschiebung
+   *  (BPM-Knopf der Klatschfläche, ear.dbShift). */
+  const dbTempo = (base, shift) => ({ baseBpm: base, bpm: clamp(base + shift, 30, 200) });
+  /** BPM-Knopf: Tempo der aktuellen Aufgabe; vor der ersten Aufgabe das
+   *  mittlere Tempo des ersten Grooves der Stufe (plus Verschiebung). */
+  const dbBaseBpm = () => { const g = DB_GROOVES[DOWNBEAT_LEVELS[ear.levels.downbeat - 1].grooves[0]]; return Math.round((g.bpm[0] + g.bpm[1]) / 2); };
+  const downbeatBpm = () => (ear.task?.kind === 'downbeat' ? ear.task.bpm : clamp(dbBaseBpm() + ear.dbShift, 30, 200));
+  /** Gezogenes Tempo gilt für diese Aufgabe (ab dem nächsten Start) und als
+   *  Verschiebung für die folgenden Grooves – jeder behält seinen Charakter. */
+  function setDownbeatBpm(v) {
+    const bpm = clamp(Math.round(v), 30, 200);
+    const task = ear.task?.kind === 'downbeat' ? ear.task : null;
+    if (task) task.bpm = bpm;
+    ear.dbShift = clamp(bpm - (task ? task.baseBpm ?? task.bpm : dbBaseBpm()), -60, 60);
+    persist();
+  }
   /** Aufgabe: Groove, Muster, Tempo, Einstiegsstelle (nie die Eins). */
-  function makeDownbeatTask(n, rnd = Math.random) {
+  function makeDownbeatTask(n, rnd = Math.random, shift = 0) {
     const level = DOWNBEAT_LEVELS[n - 1];
     const groove = level.grooves[Math.floor(rnd() * level.grooves.length)];
     const g = DB_GROOVES[groove];
@@ -4988,7 +5037,7 @@
     for (let t = step; t < m.ticks; t += step) starts.push(t);
     return {
       kind: 'downbeat', level: n, groove, meter: g.meter, pattern: pats[Math.floor(rnd() * pats.length)],
-      bpm: rndInt(g.bpm[0], g.bpm[1], rnd), startTick: starts[Math.floor(rnd() * starts.length)],
+      ...dbTempo(rndInt(g.bpm[0], g.bpm[1], rnd), shift), startTick: starts[Math.floor(rnd() * starts.length)],
       bass: !!(g.forceBass || (level.bass && g.bass)), root: rndInt(40, 45, rnd), aids: { accent: false, demo: false }, answer: null,
     };
   }
@@ -5096,7 +5145,7 @@
 
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
   function makeEarTask(mode, n, rnd = Math.random) {
-    if (mode === 'downbeat') return makeDownbeatTask(n, rnd);
+    if (mode === 'downbeat') return makeDownbeatTask(n, rnd, ear.dbShift);
     if (mode === 'noteInKey') return makeNoteInKeyTask(n, rnd);
     if (mode === 'chordInKey') return makeChordInKeyTask(n, rnd);
     if (mode === 'quality') {
@@ -5747,7 +5796,7 @@
       engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
     } else run.taps.push(time);
     if (run.windowStart == null) startDownbeatWindow(run, run.taps[run.taps.length - 1]);
-    const pad = $('.ear-pad');
+    const pad = $(downbeatInRhythm() ? '.db-wrap .ear-pad' : '.answer-grid .ear-pad');
     if (pad) { pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped'); }
   }
   /** Erster Klatscher: die gewerteten vier Takte beginnen mit dem Takt, in den
@@ -6253,6 +6302,23 @@
     grid.classList.toggle('is-scroll', !ladder && n > 9);
   }
 
+  /** Fußleiste für Einsatz finden im Rhythmus-Bereich: Klatschfläche (siehe
+   *  renderEar), Tempo oben links, Stopp oben rechts, darüber Nochmal und Hilfen. */
+  function renderDownbeatDock() {
+    const on = ear.mode === 'downbeat' && downbeatInRhythm();
+    $('.db-wrap').hidden = !on;
+    $('.db-round').hidden = !on;
+    if (!on) return;
+    const task = ear.task?.kind === 'downbeat' ? ear.task : null;
+    $('[data-ear="db-again"]').disabled = !task;
+    $('[data-ear="db-again"]').setAttribute('aria-label', task && ear.revealed ? 'Lösung hören' : 'Nochmal');
+    $('[data-ear="db-helps"]').disabled = !task;
+    $('[data-ear="db-stop"]').hidden = !dbRun;
+    const tc = $('[data-tempo-drag="downbeat"]');
+    if (tempoDrag.el !== tc) showTempoValue(tc, downbeatBpm());
+    if (dbRun) tc.setAttribute('aria-disabled', 'true'); else tc.removeAttribute('aria-disabled');
+  }
+
   function renderEar() {
     $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
     $('.ear-page').classList.toggle('is-downbeat', ear.mode === 'downbeat');
@@ -6459,23 +6525,29 @@
       sub.textContent = task
         ? `${DB_GROOVES[task.groove].name} · ${task.meter}${ear.revealed ? '' : ' · kein Einzähler'}`
         : `Stufe ${level.n}: ${level.label}`;
-      const pad = document.createElement('button');
-      pad.type = 'button';
-      pad.className = `ear-pad${mic ? ' is-mic' : ''}${phase === 'done' && !task?.answer?.ok ? ' is-miss' : ''}`;
-      pad.dataset.phase = phase;
       const res = ear.revealed ? task?.answer : null;
+      // Im Rhythmus-Bereich sitzt die Fläche in der Fußleiste (renderDownbeatDock):
+      // nach dem Lauf startet sie den nächsten Groove, „Nochmal“ ist der runde Knopf.
+      const footer = downbeatInRhythm();
       const text = {
         idle: ['Tippen zum Starten', 'Ein Groove blendet ein – ohne Einzähler'],
         wait: ['Tippen zum Starten', '„Nochmal“ startet den Groove neu'],
         listen: ['Hör zu …', 'klatsch, sobald du die Eins hast'],
         you: [mic ? 'Klatschen!' : 'Hier klatschen', dbRun?.windowStart != null ? 'noch vier Takte' : 'gewertet ab deinem ersten Klatscher'],
-        done: [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '„Nochmal“ spielt die Lösung'],
+        done: footer
+          ? ['Weiter: tippen', res ? `${res.hits} von ${res.total} im Takt${res.ok ? ' – die Eins sitzt' : ' · ↻ spielt die Lösung'}` : 'nächster Groove']
+          : [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '„Nochmal“ spielt die Lösung'],
       }[phase];
+      const pad = footer ? $('.db-wrap .ear-pad') : document.createElement('button');
+      pad.type = 'button';
+      pad.className = `ear-pad${mic ? ' is-mic' : ''}${phase === 'done' && !task?.answer?.ok ? ' is-miss' : ''}`;
+      pad.dataset.phase = phase;
       pad.innerHTML = `<b>${esc(text[0])}</b><span>${esc(text[1])}</span>`;
       pad.setAttribute('aria-label', `${text[0]} – ${text[1]}`);
-      grid.classList.add('is-pad');
-      grid.replaceChildren(pad);
+      if (footer) grid.replaceChildren();
+      else { grid.classList.add('is-pad'); grid.replaceChildren(pad); }
     }
+    renderDownbeatDock();
     const dbPat = $('.db-pattern');
     dbPat.hidden = !(ear.mode === 'downbeat' && task) || done;
     dbPat.innerHTML = dbPat.hidden ? '' : downbeatPatternHtml(task);
@@ -6515,7 +6587,7 @@
     if (problem) { $('.sheet-hint').textContent = problem; return; }
     $('.sheet').hidden = true;
     if (sheetKind === 'singhelp') { renderSing(); $('[data-sing="helps"]')?.focus(); return; }
-    if (sheetKind === 'earhelp') { renderEar(); $('[data-ear="helps"]')?.focus(); return; }
+    if (sheetKind === 'earhelp') { renderEar(); $(downbeatInRhythm() ? '[data-ear="db-helps"]' : '[data-ear="helps"]')?.focus(); return; }
     if (sheetKind === 'sing') {
       renderSing();
       if (views.voice === 'list') renderModeList('voice'); // Stimm-Karte nach der Wahl
@@ -10143,7 +10215,7 @@
         course: { lesson: course.lesson, done: course.done, syl: course.syl, notes: course.notes, accomp: course.accomp },
         grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
       },
-      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
+      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbShift: ear.dbShift, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4 },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
         audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
@@ -10205,6 +10277,7 @@
     const lv = e.levels && typeof e.levels === 'object' ? e.levels : {};
     for (const k of Object.keys(ear.levels)) if (Number.isInteger(lv[k]) && lv[k] >= 1 && lv[k] <= 6) ear.levels[k] = lv[k];
     if (SATB_PARTS.includes(e.part)) ear.part = e.part;
+    ear.dbShift = Number.isFinite(e.dbShift) ? clamp(Math.round(e.dbShift), -60, 60) : 0;
     if (e.stairs && typeof e.stairs === 'object') {
       for (const [n, st] of Object.entries(e.stairs)) {
         const k = Number(n);
@@ -10542,8 +10615,9 @@
       let action = earBtn.dataset.ear;
       // Dock: Hauptknopf führt die Aktion der Phase aus, „Nochmal“ = Aufgabe noch einmal hören.
       if (action === 'main') action = earBtn.dataset.act || 'play';
-      if (action === 'nochmal') { if (ear.task) playEar(); return; }
-      if (action === 'helps') { if (ear.task) openSettings('earhelp'); return; }
+      if (action === 'nochmal' || action === 'db-again') { if (ear.task) playEar(); return; }
+      if (action === 'helps' || action === 'db-helps') { if (ear.task) openSettings('earhelp'); return; }
+      if (action === 'db-stop') { clearEarTimers(); engine.fadeBus(ear.bus); renderEar(); return; }
       if (!$('.sheet').hidden && sheetKind === 'earhelp') closeSettings();
       if (action === 'settings') openSettings('ear');
       else if (action === 'close-settings') closeSettings();
@@ -10713,6 +10787,7 @@
     if (dbRun?.playing) downbeatTap();
     else if (!ear.task) nextEar();
     else if (!ear.revealed) playEar();
+    else if (downbeatInRhythm()) nextEar(); // Fußleisten-Fläche: „Weiter: tippen“
   });
 
   /** Zurück-Geste der App (Android-Zurück, Wischen vom linken Rand, siehe
