@@ -4967,6 +4967,7 @@
     { n: 6, label: 'Akkord: welche Stimme?',      kind: 'chordWhich',  answers: ['S', 'A', 'T', 'B'] },
   ];
   const TUNING_TONE_SEC = 1.4;
+  const TUNING_JUST_HELP = 'Im Akkord gilt die reine Stimmung: Die Dur-Terz klingt etwas tiefer als am Klavier – so singt ein Chor sauber.';
   /** Abweichung der reinen Stimmung von der gleichstufigen Stufe, in Cent, für
    *  einen Ton `semisAboveRoot` Halbtöne über dem Grundton (mod 12): große
    *  Terz 5/4 → −13,69, kleine Terz 6/5 → +15,64, Quinte 3/2 → +1,96, Prime und
@@ -6370,6 +6371,7 @@
       const stair = stairFor(TUNING_LEVELS[ear.levels.tuning - 1].n);
       const th = stair.threshold();
       info.push(['Deine Schwelle', th ? `etwa ${Math.round(th)} Cent` : `Abweichung gerade: ${Math.round(stair.delta)} Cent · die Schwelle erscheint nach sechs Umkehrpunkten`]);
+      info.push(['Reine Stimmung', TUNING_JUST_HELP]);
     }
     return info;
   }
@@ -6911,7 +6913,7 @@
         ${ear.mode === 'downbeat' ? `<span class="sub-label">Eingabe</span>
         <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.</p>` : ''}
-        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p><p class="foot-note" style="text-align:left">Im Akkord gilt die reine Stimmung: Die Dur-Terz klingt etwas tiefer als am Klavier – so singt ein Chor sauber.</p>' : ''}
+        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${isInKeyMode(ear.mode) ? checkRow('inKeyResolve', 'on', ear.mode === 'noteInKey' ? 'Nach der Antwort auflösen (Ton läuft zur Tonika)' : 'Nach der Antwort auflösen (Akkord läuft nach Hause)', s.inKeyResolve !== false) : ''}${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext, isInKeyMode(ear.mode) ? 'erst nach der Auflösung' : '')}</div>`;
     } else {
@@ -12666,7 +12668,13 @@
     }
     const catchShare = Array.from({ length: 2000 }, () => makeEarTask('tuning', 1, rnd).cents === 0).filter(Boolean).length / 2000;
     if (catchShare < .2 || catchShare > .3) errors.push(`Intonation: ${Math.round(catchShare * 100)} % ohne Abweichung statt 25 %`);
-    // Reine Stimmung im Akkord (Paket Übe-Korrekturen 1).
+    // Reine Stimmung im Akkord (Paket Übe-Korrekturen 1). Erklärung im Blatt
+    // „Hilfen“, nicht auf der Bühne.
+    {
+      const m0 = ear.mode;
+      try { ear.mode = 'tuning'; if (!earHelpInfo().some(([t, x]) => t === 'Reine Stimmung' && x === TUNING_JUST_HELP)) errors.push('Intonation: Erklärung zur reinen Stimmung fehlt in „Hilfen“'); }
+      finally { ear.mode = m0; }
+    }
     [[0, 0], [3, 15.64], [4, -13.69], [7, 1.96], [12, 0], [16, -13.69]].forEach(([semis, want]) => {
       if (Math.abs(justOffsetCents(semis) - want) > .05) errors.push(`justOffsetCents(${semis}) = ${justOffsetCents(semis)} statt ${want}`);
     });
