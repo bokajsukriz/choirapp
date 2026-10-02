@@ -2276,19 +2276,37 @@
 
     /** Intonation: Sägezahn durch Tiefpass 2,5 kHz — die Obertöne machen
      *  Schwebungen hörbar. `cents` verstimmt gegen den gleichstufigen Ton. */
+    /** Intonation: weicher, stimmähnlicher Ton statt Sägezahn (Chorleiter: das
+     *  „Schnarren“ nervte) – Obertöne fallen mit 1/n² ab, die ersten (Oktave,
+     *  Quinte) bleiben hörbar, damit Schwebungen entstehen. Jeder Ton wandert
+     *  minimal (±2,5 Cent, langsam, zufällige Phase): Auch ein reiner Klang ist
+     *  dann nicht völlig starr – „rein“ verrät sich nicht mehr an der Klangfarbe,
+     *  man muss auf die Richtung hören (wie bei echten Stimmen). */
     saw(midi, cents, time, duration, dest) {
       const ctx = this.ctx;
+      if (!this.voiceWave) {
+        const n = 10, re = new Float32Array(n + 1), im = new Float32Array(n + 1);
+        for (let k = 1; k <= n; k++) im[k] = 1 / (k * k * .6 + .4 * k);
+        this.voiceWave = ctx.createPeriodicWave(re, im);
+      }
       const osc = ctx.createOscillator();
-      osc.type = 'sawtooth';
+      osc.setPeriodicWave(this.voiceWave);
       osc.frequency.value = noteHz(midi) * Math.pow(2, cents / 1200);
+      // Langsames, kaum hörbares Wandern um den Sollton (Mittelwert genau der Sollton).
+      const lfo = ctx.createOscillator(), depth = ctx.createGain();
+      lfo.frequency.value = .25 + Math.random() * .3;
+      depth.gain.value = 2.5;
+      lfo.connect(depth).connect(osc.detune);
       const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass'; filter.frequency.value = 2500;
+      filter.type = 'lowpass'; filter.frequency.value = 1800; filter.Q.value = .5;
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(.0001, time);
-      gain.gain.linearRampToValueAtTime(.07, time + .05);
-      gain.gain.setValueAtTime(.07, time + duration - .08);
+      gain.gain.linearRampToValueAtTime(.11, time + .12);
+      gain.gain.setValueAtTime(.11, time + duration - .15);
       gain.gain.linearRampToValueAtTime(.0001, time + duration);
       osc.connect(filter).connect(gain).connect(dest || this.master);
+      const phase = Math.random() / lfo.frequency.value; // zufällige Phase des Wanderns
+      lfo.start(Math.max(0, time - phase)); lfo.stop(time + duration + .02);
       osc.start(time); osc.stop(time + duration + .02);
     },
 

@@ -136,6 +136,12 @@ Akkordknöpfe bleiben wie sie sind (Wunsch des Chorleiters).
     Diktat, Im Takt, Zweite Stimme, Blattsingen) in den Phasen vor Start,
     Vorgabe, Du und Ergebnis geprüft: Phasenleiste, Bühne und die drei
     Dock-Knöpfe stehen pixelgleich; in „Du“ keine Tonhöhe.
+- **Intonation: weicherer Klang, „rein“ nicht mehr an der Farbe erkennbar**
+  (Chorleiter: „nerviger Schauer“; reine Klänge hörte man sofort): statt
+  Sägezahn ein stimmähnlicher Ton (Obertöne 1/n², Tiefpass 1,8 kHz, weicher
+  Einsatz). Jeder Ton wandert langsam um ±2,5 Cent (zufällige Phase, Mittel =
+  Sollton) – ein reiner Klang ist dann nicht mehr völlig starr, man muss auf
+  die Richtung hören. Treppe und Wertung unverändert.
 - **Einstimm-Kadenzen zügiger** (Chorleiter: „noch etwas lahm“): Die
   Kadenz vor Tönen/Akkorden in der Tonart läuft mit 60 % der eingestellten
   Akkorddauer (mittel: 0,75 s statt 1,25 s je Akkord), die Pause davor ist
