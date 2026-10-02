@@ -20361,7 +20361,8 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
     // Alle Hinweis-Schlüssel gibt es als Text (DE, EN, PL).
     for (const key of hintKeys) for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
-    for (const key of ['lab.viewDeconstruct', ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`]),
+    for (const key of ['lab.viewDeconstruct', 'lab.dc.tapSub', 'lab.dc.tapAria', 'lab.dc.checkEl', 'lab.dc.next', 'lab.dc.tpl', 'lab.dc.clearGrid', 'lab.dc.meterAria',
+      ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`, `lab.dc.short.${el}`, `lab.dc.tip.${el}`]),
       ...T.DC_LEVELS.flatMap((l) => [`lab.dc.level.${l.id}`, `lab.dc.levelInfo.${l.id}`]), ...T.DC_FOCUS.map((f) => `lab.dc.focus.${f}`),
       ...['ok', 'near', 'no', 'open', 'done'].map((s) => `lab.dc.status.${s}`)]) {
       for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
@@ -20416,6 +20417,40 @@ async function runMusicSelfTests({ log = true } = {}) {
       }
     } catch (err) {
       failed.push(`de:construct Ansicht: ${err?.message || err}`);
+    }
+    // Bauen-Ansicht: aktives Element, „Danach“, Tap setzt „Meine Version“.
+    try {
+      const els = ['tempo', 'beat', 'bass', 'chords'];
+      if (T.dcFirstOpen(els, {}) !== 'tempo' || T.dcFirstOpen(els, { tempo: 'x', beat: 'x' }) !== 'bass' || T.dcFirstOpen(els, { tempo: 'x', beat: 'x', bass: 'x', chords: 'x' }) !== 'tempo') failed.push('de:construct: erstes nicht geschafftes Element');
+      if (T.dcNextElement(els, {}, 'tempo') !== 'beat' || T.dcNextElement(els, { beat: 'x' }, 'tempo') !== 'bass'
+        || T.dcNextElement(els, { tempo: 'x' }, 'chords') !== 'beat' || T.dcNextElement(els, { tempo: 'x', bass: 'x', chords: 'x' }, 'beat') !== null) failed.push('de:construct: „Danach“-Vorschlag');
+      const dcT = T.dcNewSong('e1');
+      const v = document.createElement('chor-groove-lab');
+      v._saved.deconstruct = dcT;
+      v._applyView('deconstruct');
+      if (v.ui.dc.active !== null && v.ui.dc.active !== 'tempo') failed.push(`de:construct: Standard-Element ${v.ui.dc.active}`);
+      if (v._dcActiveElement() !== 'tempo') failed.push('de:construct: aktives Element ≠ Tempo zu Beginn');
+      dcT.done.tempo = '2026-10-01';
+      v.ui.dc.active = null;
+      if (v._dcActiveElement() !== 'beat') failed.push('de:construct: aktives Element ≠ erstes nicht geschafftes');
+      v._renderDeconstruct();
+      if (v.$('.dc-next').dataset.value !== 'bass') failed.push(`de:construct: „Danach“ zeigt ${v.$('.dc-next').dataset.value}`);
+      v._dcPick('tempo');
+      if (v.ui.dc.active !== 'tempo' || v.$('.dc-tap-box').hidden) failed.push('de:construct: Tempo wählen zeigt keinen Tap');
+      v._dcCheck(v._dcActiveElement());
+      if (!dcT.checks.tempo) failed.push('de:construct: Prüfen des aktiven Elements');
+      // Tap im A-Modus: Meine Version ändert sich, das Original nicht.
+      const origBpm = dcT.original.bpm;
+      v.ui.dc.listen = 'orig';
+      const nowFake = performance.now.bind(performance);
+      let clock = 1000;
+      performance.now = () => clock;
+      try { for (let i = 0; i < 5; i++) { v._tapTempo(); clock += 500; } } finally { performance.now = nowFake; }
+      if (v.state.bpm !== 120) failed.push(`de:construct: Tap setzt Meine Version auf ${v.state.bpm} statt 120`);
+      if (dcT.original.bpm !== origBpm || v._dcHeard(() => v.state.bpm) !== origBpm) failed.push('de:construct: Tap verändert das Original');
+      v._applyView('studio');
+    } catch (err) {
+      failed.push(`de:construct Bauen-Ansicht: ${err?.message || err}`);
     }
     // 4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll.
     const dc = T.dcNewSong('h3', '2026-10-01', { e1: '2026-09-30' });

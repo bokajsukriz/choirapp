@@ -1226,6 +1226,17 @@
   ];
   // Wohin „Bauen“ springt (Reiter des Groove Labs).
   const DC_TAB = { tempo: 'beat', beat: 'beat', bass: 'beat', chords: 'harmony', melody: 'melody', sound: 'sound' };
+  // Reihenfolge des Vorschlags „Danach: …“ (nur ein Vorschlag, keine Pflicht).
+  const DC_ORDER = ['tempo', 'beat', 'bass', 'chords', 'melody', 'sound'];
+  /** Aktives Element, wenn noch keins gewählt ist: das erste nicht geschaffte. */
+  const dcFirstOpen = (elements, done) => elements.find((el) => !done[el]) || elements[0];
+  /** „Danach“: das erste nicht geschaffte Element nach dem aktiven (in
+   *  Reihenfolge, dann von vorn); null, wenn alles andere geschafft ist. */
+  function dcNextElement(elements, done, active) {
+    const order = DC_ORDER.filter((el) => elements.includes(el));
+    const at = order.indexOf(active);
+    return [...order.slice(at + 1), ...order.slice(0, Math.max(at, 0))].find((el) => el !== active && !done[el]) || null;
+  }
   // „Nur …“-Hören: Spuren, die es im Song gibt (Tempo und Klang sind keine Spur).
   const DC_FOCUS = ['all', 'beat', 'bass', 'chords', 'melody'];
   const DC_STATUS = ['ok', 'near', 'no'];
@@ -2794,7 +2805,7 @@
         progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [],
         // de:construct: was gerade klingt (A = 'orig', B = 'mine'), welche
         // Spur allein, Stufenwahl offen?, Rückfrage vor dem Auflösen.
-        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', song: null, revealAsk: false } };
+        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', song: null, revealAsk: false, active: null, tpl: false } };
       // Einspielen: Phase idle → armed (zählt ein) → recording → done.
       // Automation aufnehmen: Phase idle → armed (zählt ein) → recording.
       this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
@@ -3113,6 +3124,37 @@
       this._renderDeconstruct();
     }
 
+    /** Aktives Element: gewähltes, sonst das erste nicht geschaffte der Stufe. */
+    _dcActiveElement() {
+      const dc = this._saved.deconstruct;
+      if (!dc) return null;
+      const elements = dcLevel(dc.level).elements;
+      if (!elements.includes(this.ui.dc.active)) this.ui.dc.active = dcFirstOpen(elements, dc.done);
+      return this.ui.dc.active;
+    }
+
+    /** Element wählen: passender Reiter, aber kein Wegscrollen. */
+    _dcPick(element) {
+      const dc = this._dc();
+      if (!dc || !dcLevel(dc.level).elements.includes(element)) return;
+      this.ui.dc.active = element;
+      const body = this.$('.lab-body');
+      const top = body.scrollTop;
+      this._setTab(DC_TAB[element]);
+      body.scrollTop = top;
+      this._renderDeconstruct();
+    }
+
+    /** Beat-Raster komplett leeren (alle Spuren inkl. Bass) — ein Undo-Schritt. */
+    _dcClearGrid() {
+      if (!this._dc()) return;
+      this._pushHistory();
+      for (const track of Object.keys(this.state.beat)) this.state.beat[track] = {};
+      this.state.beatEdited = true;
+      this._renderBeat();
+      this._dcAutosave();
+    }
+
     /** Neuer Song: ersetzt Original, „Meine Version“ und Fortschritt.
      *  Das Antippen ist die Geste für den AudioContext — das Original läuft los. */
     _dcNew(songId) {
@@ -3120,7 +3162,8 @@
       const dc = dcNewSong(songId, localDate(), this._saved.deconstruct?.solved);
       this._saved.deconstruct = dc;
       this.history = [];
-      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, song: dc.song, revealAsk: false };
+      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, song: dc.song, revealAsk: false, active: null, tpl: false, hints: {} };
+      this.tapTimes = [];
       this._dcSwap(sanitizeState(dc.mine));
       this.ui.tab = 'beat';
       this._applyView('deconstruct');
@@ -3236,6 +3279,9 @@
       // darf im Konstruktor (der _renderAll aufruft) keine Attribute setzen.
       this.$('.transport-bar').classList.toggle('is-dc-orig', dcView && !!this._saved.deconstruct && !this.ui.dc.choosing && this.ui.dc.listen === 'orig');
       this._renderDcQuick();
+      const slim = dcView && !!this._saved.deconstruct && !this.ui.dc.choosing;
+      this.$('.transport-bar').classList.toggle('is-dc-song', slim);
+      if (!slim) this.$('[data-tab-panel="beat"]').classList.remove('is-dc', 'is-dc-hard', 'is-dc-tpl');
       if (!dcView) return;
       const dc = this._saved.deconstruct;
       const choosing = !dc || this.ui.dc.choosing;
@@ -3269,52 +3315,60 @@
       const parts = DC_FOCUS.filter((p) => p === 'all' || elements.includes(p));
       if (!parts.includes(this.ui.dc.focus)) this.ui.dc.focus = 'all';
       this._chips(this.$('.dc-focus'), parts.map((p) => ({ value: p, label: t(`lab.dc.focus.${p}`) })), this.ui.dc.focus, 'dc-focus');
-      // Elemente
+      // Element-Leiste: eine Zeile Chips, Status als Symbol (nie nur Farbe)
       const hints = this.ui.dc.hints || {};
-      this.$('.dc-elements').replaceChildren(...elements.map((el) => {
-        const status = dc.checks[el] || 'open';
-        const done = !!dc.done[el];
-        const li = document.createElement('li');
-        li.className = `dc-el is-${done ? 'done' : status}`;
-        const mark = document.createElement('span');
-        mark.className = 'dc-mark';
-        mark.setAttribute('aria-hidden', 'true');
-        mark.textContent = done ? '✓' : { ok: '✓', near: '◐', no: '○', open: '' }[status];
-        const text = document.createElement('div');
-        text.className = 'dc-el-text';
-        const name = document.createElement('strong');
-        name.textContent = t(`lab.dc.el.${el}`);
-        const state = document.createElement('span');
-        state.className = 'dc-el-state';
-        state.textContent = done ? t('lab.dc.status.done') : t(`lab.dc.status.${status}`);
-        name.append(' ', state);
-        const line = document.createElement('span');
-        line.className = 'dc-el-line';
-        line.textContent = hints[el]?.length && status !== 'ok' ? this._dcHintText(hints[el]) : t(`lab.dc.do.${el}`);
-        text.append(name, line);
-        if (dc.revealed) {
-          const sol = document.createElement('span');
-          sol.className = 'dc-el-solution';
-          sol.textContent = `${t('lab.dc.solution')} ${this._dcSolution(el)}`;
-          text.append(sol);
-        }
-        const build = document.createElement('button');
-        build.type = 'button';
-        build.className = 'chip dc-build';
-        build.dataset.action = 'dc-build';
-        build.dataset.value = el;
-        build.textContent = t('lab.dc.build');
-        build.setAttribute('aria-label', `${t(`lab.dc.el.${el}`)}: ${t('lab.dc.build')}`);
-        const check = document.createElement('button');
-        check.type = 'button';
-        check.className = 'chip dc-check';
-        check.dataset.action = 'dc-check';
-        check.dataset.value = el;
-        check.textContent = t('lab.dc.check');
-        check.setAttribute('aria-label', `${t(`lab.dc.el.${el}`)}: ${t('lab.dc.check')}`);
-        li.append(mark, text, build, check);
-        return li;
+      const active = this._dcActiveElement();
+      const mark = (el) => (dc.done[el] ? 'ok' : dc.checks[el] || 'open');
+      const stat = (el) => ({ ok: '✓', near: '≈', no: '✗', open: '○' })[mark(el)];
+      const bar = this.$('.dc-elements');
+      bar.style.setProperty('--dc-cols', String(elements.length === 4 ? 4 : 3));
+      bar.replaceChildren(...elements.map((el) => {
+        const status = mark(el);
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `dc-el is-${status}`;
+        chip.dataset.action = 'dc-pick';
+        chip.dataset.value = el;
+        chip.setAttribute('aria-pressed', String(el === active));
+        chip.setAttribute('aria-label', `${t(`lab.dc.el.${el}`)}: ${t(dc.done[el] ? 'lab.dc.status.done' : `lab.dc.status.${status}`)}`);
+        const sym = document.createElement('span');
+        sym.className = 'dc-mark';
+        sym.setAttribute('aria-hidden', 'true');
+        sym.textContent = stat(el);
+        const name = document.createElement('span');
+        name.className = 'dc-el-name';
+        name.textContent = t(`lab.dc.short.${el}`);
+        chip.append(sym, name);
+        return chip;
       }));
+      // Hinweis-Karte nur für das aktive Element
+      const aStatus = mark(active);
+      this.$('.dc-card-name').textContent = t(`lab.dc.el.${active}`);
+      const pill = this.$('.dc-card-state');
+      pill.className = `dc-card-state is-${aStatus}`;
+      pill.textContent = `${stat(active)} ${t(dc.done[active] ? 'lab.dc.status.done' : `lab.dc.status.${aStatus}`)}`;
+      this.$('.dc-card-hint').textContent = hints[active]?.length && aStatus !== 'ok' ? this._dcHintText(hints[active]) : t(`lab.dc.do.${active}`);
+      this.$('.dc-card-tip').textContent = t(`lab.dc.tip.${active}`);
+      this.$('.dc-tap-box').hidden = active !== 'tempo';
+      const sol = this.$('.dc-el-solution');
+      sol.hidden = !dc.revealed;
+      sol.textContent = dc.revealed ? `${t('lab.dc.solution')} ${this._dcSolution(active)}` : '';
+      // Danach: Vorschlag (nur Hinweis, keine Reihenfolge erzwingen)
+      const next = dcNextElement(elements, dc.done, active);
+      const nextBtn = this.$('.dc-next');
+      nextBtn.hidden = !next;
+      nextBtn.dataset.value = next || '';
+      nextBtn.textContent = next ? tf('lab.dc.next', { el: t(`lab.dc.short.${next}`) }) : '';
+      // Prüfen-Knopf in der unteren Leiste
+      const checkBtn = this.$('.dc-check-btn');
+      checkBtn.textContent = tf('lab.dc.checkEl', { el: t(`lab.dc.short.${active}`) });
+      checkBtn.setAttribute('aria-label', tf('lab.dc.checkEl', { el: t(`lab.dc.el.${active}`) }));
+      // Beat-Reiter: schlanke Fassung, Kick-Klang und Taktart nur auf Schwer
+      const beatPanel = this.$('[data-tab-panel="beat"]');
+      beatPanel.classList.add('is-dc');
+      beatPanel.classList.toggle('is-dc-hard', dc.level === 'hard');
+      beatPanel.classList.toggle('is-dc-tpl', !!this.ui.dc.tpl);
+      this.$('[data-action="dc-tpl"]').setAttribute('aria-expanded', String(!!this.ui.dc.tpl));
       this.$('.dc-all-done').hidden = doneCount < elements.length;
       const reveal = this.$('[data-action="dc-reveal"]');
       reveal.hidden = dc.revealed;
@@ -4643,6 +4697,7 @@
       this.$('[data-out="swing"]').textContent = `${Math.round(s.swing * 100)} %`;
       this.$('[data-field="pump"]').value = String(s.pump);
       this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
+      this._chips(this.$('.dc-meter'), METER_IDS.map((id) => ({ value: id, label: id })), this._meter(), 'meter');
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
       this._renderKit();
     }
@@ -5743,7 +5798,7 @@
         clear.innerHTML = UI_ICON.close;
         chips.append(clear);
       }
-      if (which === 'beat') {
+      if (which === 'beat' && !(this._dc() && dcLevel(this._dc().level).elements.length < DC_ELEMENTS.length)) {
         // Taktart gehört zum Drumloop: 3/4 antippen wechselt gleich den Loop.
         const meterHost = document.createElement('div');
         this._chips(meterHost, METER_IDS.map((id) => ({ value: id, label: id })), this._meter(), 'meter');
@@ -6607,16 +6662,10 @@
         case 'dc-listen': this._dcListen(value); break;
         case 'dc-quick': this._dcListen(this.ui.dc.listen === 'orig' ? 'mine' : 'orig'); break;
         case 'dc-focus': this._dcFocus(value); break;
-        case 'dc-check': this._dcCheck(value); break;
-        case 'dc-build':
-          if (DC_TAB[value]) {
-            this._setTab(DC_TAB[value]);
-            // Zum Reiter unter der Elementliste scrollen.
-            const panel = this.$(`[data-tab-panel="${DC_TAB[value]}"]`);
-            panel?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
-            if (value === 'tempo') this.$('.bpm-input')?.focus();
-          }
-          break;
+        case 'dc-pick': this._dcPick(value); break;
+        case 'dc-check-active': this._dcCheck(this._dcActiveElement()); break;
+        case 'dc-tpl': this.ui.dc.tpl = !this.ui.dc.tpl; this._renderDeconstruct(); break;
+        case 'dc-clear-grid': this._dcClearGrid(); break;
         case 'dc-reveal': this._dcReveal(); break;
         case 'dc-adopt': this._dcAdopt(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
@@ -7193,25 +7242,62 @@
   .dc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .dc-count { font-size: .74rem; font-weight: 800; color: var(--accent); white-space: nowrap; }
   .dc-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 12px 0 4px; border: 2px solid var(--accent); border-radius: 16px; overflow: hidden; }
-  .dc-ab-btn { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .86rem; font-weight: 800; color: var(--accent); background: var(--surface); }
+  .dc-ab-btn { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .86rem; font-weight: 800; color: var(--accent); background: var(--surface); }
   .dc-ab-btn b { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 2px solid currentColor; font-size: .8rem; }
   .dc-ab-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
   .dc-ab-btn + .dc-ab-btn { border-left: 2px solid var(--accent); }
-  .dc-elements { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .dc-el { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 8px 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
-  .dc-mark { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--muted); display: grid; place-items: center; font-size: .78rem; font-weight: 900; color: var(--muted); }
-  .dc-el.is-near .dc-mark { border-color: #d9a400; color: #b38700; }
-  .dc-el.is-ok .dc-mark, .dc-el.is-done .dc-mark { border-color: var(--accent); background: var(--accent); color: #fff; }
-  .dc-el-text { min-width: 0; display: grid; gap: 2px; }
-  .dc-el-text strong { font-size: .84rem; }
-  .dc-el-state { font-size: .66rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .dc-el.is-done .dc-el-state, .dc-el.is-ok .dc-el-state { color: var(--accent); }
-  .dc-el.is-near .dc-el-state { color: #b38700; }
-  .dc-el-line { font-size: .72rem; line-height: 1.35; color: var(--muted); }
-  .dc-el.is-near .dc-el-line, .dc-el.is-no .dc-el-line { color: var(--text); }
-  .dc-el-solution { font-size: .74rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; word-break: break-word; }
-  .dc-el .chip { padding: 6px 10px; min-width: 44px; }
-  .dc-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* Element-Leiste: eine Zeile Chips, Status als Symbol + Text, nie nur Farbe */
+  .dc-elements { margin: 10px 0 0; display: grid; grid-template-columns: repeat(var(--dc-cols, 4), minmax(0, 1fr)); gap: 6px; }
+  .dc-el { min-height: 52px; min-width: 0; padding: 4px 2px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+    color: var(--text); display: grid; place-items: center; align-content: center; gap: 1px; font: inherit; }
+  .dc-el[aria-pressed="true"] { border: 2px solid #d42f83; background: #fde3f0; }
+  .dc-mark { font-size: .95rem; font-weight: 900; line-height: 1; color: #6b6086; }
+  .dc-el.is-ok .dc-mark { color: #1f7a4d; }
+  .dc-el.is-near .dc-mark { color: #8a5a00; }
+  .dc-el.is-no .dc-mark { color: #c0364a; }
+  .dc-el-name { max-width: 100%; font-size: .74rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Hinweis-Karte des aktiven Elements */
+  .dc-card { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); display: grid; gap: 8px; }
+  .dc-card p { margin: 0; }
+  .dc-card-head { display: flex; align-items: center; gap: 8px; }
+  .dc-card-name { font-size: .95rem; font-weight: 800; }
+  .dc-card-state { font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; color: #6b6086; background: var(--surface-2); }
+  .dc-card-state.is-ok { color: #1f7a4d; background: #dff3e8; }
+  .dc-card-state.is-near { color: #8a5a00; background: #fff1cc; }
+  .dc-card-state.is-no { color: #c0364a; background: #fde4e8; }
+  .dc-card-hint { font-size: .86rem; line-height: 1.45; }
+  .dc-card-tip, .dc-card-sub { font-size: .8rem; line-height: 1.45; color: #6b6086; }
+  .dc-el-solution { font-size: .78rem; font-weight: 700; color: #9d1f60; font-variant-numeric: tabular-nums; word-break: break-word; }
+  .dc-focus-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dc-focus-label { font-size: .66rem; font-weight: 800; color: #6b6086; text-transform: uppercase; letter-spacing: .06em; }
+  .dc-focus-row .chip-row { gap: 6px; }
+  .dc-focus-row .chip { font-size: .74rem; padding: 0 12px; }
+  .dc-song .dc-actions { margin-top: 0; }
+  .dc-next { margin-top: 4px; min-height: 44px; width: 100%; text-align: left; padding: 0 4px; font-size: .84rem; font-weight: 700; color: var(--text); }
+  .dc-next::before { content: '→ '; color: #d42f83; font-weight: 900; }
+  /* Tempo: großer Tap-Knopf */
+  .dc-tap-box { display: grid; justify-items: center; gap: 10px; text-align: center; }
+  .dc-tap { width: 132px; height: 132px; border-radius: 50%; border: 6px solid #fde3f0; background: #d42f83; color: #fff; font-size: 1.4rem; font-weight: 800;
+    box-shadow: 0 0 0 8px rgba(212, 47, 131, .10); touch-action: manipulation; }
+  .dc-tap:active { transform: scale(.97); }
+  .dc-tap-bpm { font-size: 1.9rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  /* Prüfen in der Transportleiste (nur de:construct mit Song) */
+  .dc-check-btn { display: none; min-height: 52px; max-width: 96px; padding: 0 12px; border-radius: 16px; background: #241b3d; color: #fff;
+    font-size: .8rem; font-weight: 800; line-height: 1.15; text-align: center; }
+  .transport-bar.is-dc-song .dc-check-btn { display: block; }
+  .transport-bar.is-dc-song .tap-btn { display: none; }
+  .transport-bar.is-dc-song .transport-row { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .transport-bar.is-dc-song .bpm-out { font-size: .9rem; }
+  .transport-bar.is-dc-song .icon-btn { min-width: 44px; min-height: 44px; }
+  /* Beat-Reiter in de:construct: schlank — Vorlage, Bass-/Kick-Klang eingeklappt oder weg */
+  .dc-tools { display: none; }
+  .is-dc .dc-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+  .is-dc .dc-tools .chip { min-height: 44px; }
+  .dc-meter { display: none; }
+  .is-dc.is-dc-hard .dc-meter { display: flex; }
+  .is-dc .dc-tpl-panel, .is-dc .dc-bass-panel { display: none; }
+  .is-dc.is-dc-tpl .dc-tpl-panel { display: block; }
+  .is-dc:not(.is-dc-hard) .kit-box { display: none; }
   .dc-all-done { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(var(--accent-rgb), .14); border: 2px solid var(--accent); font-size: .8rem; font-weight: 700; line-height: 1.45; }
   /* Nur für Screenreader — sichtbar steht das Ergebnis schon am Element. */
   .dc-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
@@ -7747,10 +7833,23 @@
           <button class="dc-ab-btn" type="button" data-action="dc-listen" data-value="orig" aria-pressed="true"><b aria-hidden="true">A</b><span>${t('lab.dc.original')}</span></button>
           <button class="dc-ab-btn" type="button" data-action="dc-listen" data-value="mine" aria-pressed="false"><b aria-hidden="true">B</b><span>${t('lab.dc.mine')}</span></button>
         </div>
-        <span class="sub-label" id="dc-focus-label">${t('lab.dc.focusTitle')}</span>
-        <div class="chip-row dc-focus" role="group" aria-labelledby="dc-focus-label"></div>
-        <span class="sub-label">${t('lab.dc.elementsTitle')}</span>
-        <ul class="dc-elements"></ul>
+        <nav class="dc-elements" aria-label="${t('lab.dc.elementsTitle')}"></nav>
+        <section class="dc-card" aria-live="off">
+          <div class="dc-card-head"><strong class="dc-card-name"></strong><span class="dc-card-state"></span></div>
+          <p class="dc-card-hint"></p>
+          <div class="dc-tap-box" hidden>
+            <p class="dc-card-sub">${t('lab.dc.tapSub')}</p>
+            <button class="dc-tap" type="button" data-action="tap-tempo" aria-label="${t('lab.dc.tapAria')}">${t('lab.tapTempo')}</button>
+            <output class="bpm-out dc-tap-bpm"></output>
+          </div>
+          <p class="dc-card-tip"></p>
+          <p class="dc-el-solution" hidden></p>
+          <div class="dc-focus-row">
+            <span class="dc-focus-label" id="dc-focus-label">${t('lab.dc.focusTitle')}</span>
+            <div class="chip-row dc-focus" role="group" aria-labelledby="dc-focus-label"></div>
+          </div>
+        </section>
+        <button class="dc-next" type="button" data-action="dc-pick" hidden></button>
         <p class="dc-all-done" hidden>${t('lab.dc.allDone')}</p>
         <p class="dc-live" role="status" aria-live="polite"></p>
         <div class="dc-solution" tabindex="-1" hidden>
@@ -7761,17 +7860,21 @@
           <button class="chip dc-reveal" type="button" data-action="dc-reveal">${t('lab.dc.reveal')}</button>
           <button class="chip" type="button" data-action="dc-choose">${t('lab.dc.newSong')}</button>
         </div>
-        <p class="dc-tip">${t('lab.dc.tip')}</p>
       </div>
     </section>
   </section>
   <section class="tab-panel" data-tab-panel="beat">
-    <section class="panel">
+    <section class="panel dc-tpl-panel">
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
       ${pickerTrigger('beat')}
     </section>
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
+      <div class="dc-tools">
+        <div class="chip-row dc-meter" role="group" aria-label="${t('lab.dc.meterAria')}"></div>
+        <button class="chip" type="button" data-action="dc-tpl" aria-expanded="false">${t('lab.dc.tpl')}</button>
+        <button class="chip" type="button" data-action="dc-clear-grid">${t('lab.dc.clearGrid')}</button>
+      </div>
       ${helpText('editHint')}
       <div class="track-list"></div>
       <details class="kit-box">
@@ -7783,7 +7886,7 @@
         <div class="pill-row"><button class="chip" type="button" data-action="kit-reset">${t('lab.kitReset')}</button></div>
       </details>
     </section>
-    <section class="panel">
+    <section class="panel dc-bass-panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
       ${helpText('helpBass')}
       <div class="chip-row bass-chips"></div>
@@ -8065,6 +8168,7 @@
     </label>
     <button class="icon-btn tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
     <button class="icon-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}" title="${t('lab.randomAria')}">${UI_ICON.dice}</button>
+    <button class="dc-check-btn" type="button" data-action="dc-check-active"></button>
     <button class="dc-quick" type="button" data-action="dc-quick" aria-pressed="true" aria-label="${t('lab.dc.quickAria')}" title="${t('lab.dc.quickAria')}" hidden><b class="dc-quick-letter">A</b><span class="dc-quick-text"></span></button>
     <button class="icon-btn" type="button" data-action="undo" aria-label="${t('lab.undoAria')}" title="${t('lab.undoAria')}" disabled>${UI_ICON.undo}</button>
   </div>
@@ -8127,7 +8231,7 @@
     KIT_DEFAULTS, KIT_RANGES,
     pickChallengePattern, detectiveVariant, rebuildScore, soundMatch, soundMatchTarget, SOUND_MATCH_START, CHALLENGE_TRACKS,
     // de:construct
-    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
+    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
     progressionOfState, harmonyOfState, GrooveLabView,
   };
 
