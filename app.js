@@ -13331,15 +13331,22 @@ function releaseScoreURLs() {
 
 // Gilt für beide Quellen — offiziell wie privat —, damit die A−/A+-Knöpfe
 // unabhängig davon wirken, welcher Text gerade zu sehen ist.
+const LYRICS_FONT_MIN = 13;
+const LYRICS_FONT_MAX = 30;
+
 function applyLyricsFontSize() {
-  const size = `${settings.lyricsFontSize || 17}px`;
+  const px = settings.lyricsFontSize || 17;
+  const size = `${px}px`;
+  // An der Grenze ist die jeweilige Hälfte des Schriftgrößen-Knopfs aus.
+  $('#btn-lyrics-smaller').disabled = px <= LYRICS_FONT_MIN;
+  $('#btn-lyrics-bigger').disabled = px >= LYRICS_FONT_MAX;
   $('#lyrics-text').style.fontSize = size;
   $('#lyrics-note-display').style.fontSize = size;
   $('#lyrics-note-text').style.fontSize = size;
 }
 
 const stepFontSize = async (delta) => {
-  const next = Math.max(13, Math.min(30, (settings.lyricsFontSize || 17) + delta));
+  const next = Math.max(LYRICS_FONT_MIN, Math.min(LYRICS_FONT_MAX, (settings.lyricsFontSize || 17) + delta));
   await saveSettings({ lyricsFontSize: next });
   applyLyricsFontSize();
 };
