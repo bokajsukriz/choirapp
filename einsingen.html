@@ -742,7 +742,7 @@
       syllables: ['nä', 'nä', 'nä', 'nä', 'nä', 'ja', 'a', 'a', 'a', 'a'],
       help: ['Schmal, hell und ein bisschen frech – wie eine quäkende Ente oder ein nörgelndes Kind. Der Klang wird dadurch tragfähig, ohne dass du lauter wirst.',
         'Im zweiten Takt dieselbe Helligkeit auf „ja“ mitnehmen. Nur der Klang ist schmal – Hals und Kiefer bleiben locker. Drückt es: kleiner und leiser werden.'] },
-    { id: 'ruf', group: 'pop', name: 'Ruf', how: '„Hey!“ rufen wie über die Straße – nicht schreien', icon: 'ruf', hint: 'Hey · leichter Belt', bpm: 84, lowStart: 4, top: 13, avoidLight: true,
+    { id: 'ruf', group: 'pop', name: 'Ruf', how: '„Hey!“ rufen wie über die Straße – nicht schreien', icon: 'ruf', hint: 'Hey · leichter Belt', bpm: 84, lowStart: 4, top: 13, avoidLight: true, needsWarm: 'twang',
       notes: [[4, 6], [2, 2], [0, 8]], syllables: ['Hey', 'ja', 'ja'],
       easyNotes: [[2, 6], [1, 2], [0, 8]], easySyllables: ['Hey', 'ja', 'ja'], easyHint: 'Terz statt Quinte',
       help: ['Rufen wie über die Straße zu jemandem, den du magst: sprechnah, hell, mit dem Twang von vorher – nicht schreien und nicht drücken.',
@@ -965,7 +965,10 @@
    *  (`picks[slot]`, sofern zulässig und frei), 3. übrige Pool-Plätze in
    *  Programmreihenfolge: die zulässige freie Übung mit dem kleinsten
    *  `rotation.used[id]` (fehlend = −1), bei Gleichstand die frühere im Pool.
-   *  Ohne Kandidat entfällt der Platz. */
+   *  Eine Übung mit `needsWarm` (Ruf: leichter Belt) ist dabei nur zulässig,
+   *  wenn die genannte Übung im aufgelösten Programm schon vorher steht
+   *  (fester Platz, ⇄-Wahl oder früherer Pool-Platz) – nie mit kalter Stimme.
+   *  ⇄-Wahlen bleiben davon frei. Ohne Kandidat entfällt der Platz. */
   function resolveProgram(p, rotation, load, picks = null) {
     const used = rotation?.used || {};
     const taken = new Set(p.items.filter(([id]) => !poolOf(id)).map(([id]) => id));
@@ -980,7 +983,8 @@
       const pool = poolOf(id);
       if (!pool || chosen[k]) return;
       let best = null;
-      for (const c of candidates(pool)) if (best === null || (used[c] ?? -1) < (used[best] ?? -1)) best = c;
+      const warm = (c) => { const need = exById(c).needsWarm; return !need || chosen.slice(0, k).includes(need); };
+      for (const c of candidates(pool).filter(warm)) if (best === null || (used[c] ?? -1) < (used[best] ?? -1)) best = c;
       if (best) { chosen[k] = best; taken.add(best); }
     });
     const items = [];
@@ -2505,7 +2509,11 @@
     const isWarm = (id) => ['lockern', 'resonanz'].includes(exById(id)?.group);
     const high = items.findIndex(([id]) => isHigh(id));
     const warm = items.findIndex(([id]) => isWarm(id));
-    return high >= 0 && (warm < 0 || high < warm) ? 'Tipp: Höhe erst nach dem Lockern.' : '';
+    if (high >= 0 && (warm < 0 || high < warm)) return 'Tipp: Höhe erst nach dem Lockern.';
+    // Ruf (leichter Belt) erst nach Lockern bzw. Resonanz und nach Twang.
+    const ruf = items.findIndex(([id]) => id === 'ruf');
+    const twang = items.findIndex(([id]) => id === 'twang');
+    return ruf >= 0 && (twang < 0 || twang > ruf || warm < 0 || warm > ruf) ? 'Tipp: Den Ruf erst nach Lockern und Twang.' : '';
   }
   function draftProblem() {
     const name = draft.name.trim();
@@ -2913,6 +2921,9 @@
       sanitize({ ownPrograms: [...many, { id: 'own-leer', name: 'leer', items: [['nix']] }] });
       if (state.ownPrograms.length !== 12 || state.ownPrograms[0].name.length !== 40 || state.ownPrograms[0].items.length !== 20) errors.push('ownPrograms-Grenzen falsch');
       if (draftWarning([['oktave'], ['lippen']]) === '' || draftWarning([['lippen'], ['oktave']]) !== '' || draftWarning([['tiefe'], ['lippen']]) !== '') errors.push('Höhe-Hinweis falsch');
+      // Ruf erst nach Lockern und Twang; die Höhe-Warnung hat Vorrang.
+      if (draftWarning([['ruf'], ['lippen']]) !== 'Tipp: Den Ruf erst nach Lockern und Twang.' || draftWarning([['lippen'], ['twang'], ['ruf']]) !== ''
+        || draftWarning([['lippen'], ['ruf'], ['twang']]) === '' || draftWarning([['oktave'], ['ruf'], ['lippen']]) !== 'Tipp: Höhe erst nach dem Lockern.') errors.push('Ruf-Hinweis falsch');
       state.ownPrograms = [];
       if (parseQuickParams('?embedded&from=quick&minutes=10')?.minutes !== 10 || parseQuickParams('?from=quick&minutes=7').minutes !== null || parseQuickParams('?embedded=1') !== null) errors.push('Schnellstart-Parameter Einsingen falsch');
       // Länge „Kurz“/„Ausführlich“: angepasste Programme liegen nahe am Ziel.
@@ -3259,6 +3270,20 @@
           if (new Set(ids(r)).size !== r.items.length) errors.push(`${p.id}/${load}/Start ${k + 1}: doppelte Übung ${ids(r).join()}`);
           if (r.items.length !== p.items.length) errors.push(`${p.id}/${load}/Start ${k + 1}: Platz entfällt`);
           if (load === 'leicht' && r.items.some(([id, , , pool]) => pool && exById(id).avoidLight)) errors.push(`${p.id}/leicht: ruf aus einem Pool`);
+          if (JSON.stringify(resolveProgram(p, JSON.parse(JSON.stringify(rot)), load)) !== JSON.stringify(r)) errors.push(`${p.id}: nicht deterministisch`);
+          sim(r, rot);
+        }
+      }
+    }
+    // Ruf nie mit kalter Stimme: über 30 Rotationen je Programm und Belastung
+    // steht ruf nie ohne vorheriges twang (Übe-Korrekturen 4).
+    for (const p of PROGRAMS) {
+      for (const load of LOAD_IDS) {
+        const rot = { n: 0, used: {} };
+        for (let k = 0; k < 30; k++) {
+          const r = resolveProgram(p, rot, load);
+          const at = ids(r).indexOf('ruf');
+          if (at >= 0 && !ids(r).slice(0, at).includes('twang')) errors.push(`${p.id}/${load}/Start ${k + 1}: Ruf vor Twang (${ids(r).join()})`);
           if (JSON.stringify(resolveProgram(p, JSON.parse(JSON.stringify(rot)), load)) !== JSON.stringify(r)) errors.push(`${p.id}: nicht deterministisch`);
           sim(r, rot);
         }
