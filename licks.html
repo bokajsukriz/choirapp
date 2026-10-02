@@ -665,7 +665,7 @@
     return `<div class="hr" data-result>
       <div class="hr-head"><b class="hr-what">${v.what}</b><span class="hr-why">${v.why}</span></div>
       <div class="hr-bars" style="grid-template-columns:repeat(${res.bars.length},minmax(0,1fr))" role="img" aria-label="${res.bars.filter((b) => !b.err).length} von ${res.bars.length} Takten ohne Fehler">${bars}</div>
-      <div class="hr-kpis"><div class="hr-kpi ${res.reason === 'bars' ? 'is-bad' : 'is-good'}"><span>Muster</span><b>${res.reason === 'pattern' ? 'eine Stelle' : errWord}</b></div>
+      <div class="hr-kpis"><div class="hr-kpi ${res.reason === 'bars' || res.reason === 'pattern' ? 'is-bad' : 'is-good'}"><span>Muster</span><b>${res.reason === 'pattern' ? 'eine Stelle' : errWord}</b></div>
         <div class="hr-kpi ${res.level === 1 ? 'is-bad' : 'is-good'}"><span>Gleichmäßig</span><b>${words[res.level]}</b><i class="hr-scale" aria-hidden="true">${[1, 2, 3].map((n) => `<u class="${n <= res.level ? 'on' : ''}"></u>`).join('')}</i></div></div>
       <p class="hr-tip" role="status">${v.tip}${v.note ? `<small>${v.note}</small>` : ''}</p>
       <div class="hr-dist" role="img" aria-label="Verteilung deiner Schläge: ${s.exact} genau, ${s.early} früher, ${s.late} später">
@@ -1437,9 +1437,19 @@
   }
 
   /* ---- Eigenes Spiel: Bildschirmtasten (Pointer Events, Mehrfach-Touch) ---- */
-  const own = { voices: new Map(), last: null };
+  const own = { voices: new Map(), last: null, pending: new Set() };
   function ownNoteOn(midi) {
-    if (!engine.ctx) { engine.start().then(() => ownNoteOn(midi)); return; }
+    if (!engine.ctx) {
+      // Erster Ton startet erst das Audio. Losgelassen, bevor es läuft: nur
+      // kurz anspielen — sonst fände ownNoteOff keine Stimme, und der Ton hinge.
+      own.pending.add(midi);
+      engine.start().then(() => {
+        const held = own.pending.delete(midi);
+        const v = ownNoteOn(midi);
+        if (!held && v) setTimeout(() => { if (own.voices.get(midi) === v) ownNoteOff(midi); }, 150);
+      }).catch(() => own.pending.delete(midi));
+      return;
+    }
     if (engine.ctx.state !== 'running') engine.ctx.resume();
     const lick = currentLick();
     const sound = { ...soundFromPreset(lick ? soundOf(lick) : PRESET_NAMES[0]), mono: false };
@@ -1451,6 +1461,7 @@
     return voice;
   }
   function ownNoteOff(midi) {
+    own.pending.delete(midi);
     const v = own.voices.get(midi);
     own.voices.delete(midi);
     if (v) engine.releaseVoice(v);

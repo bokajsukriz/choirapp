@@ -22547,6 +22547,9 @@ let toolFrameReturnFocus = null;
 let skipPops = 0;
 const toolLevelOf = (state) => (state?.toolOverlay ? state.toolLevel || 1 : 0);
 function pushToolHistory(level = 1) {
+  // Ein Zurückspringen (popToolHistory) läuft noch: history.state ist noch
+  // der alte. Der popstate-Zweig holt den Eintrag per syncToolHistory nach.
+  if (skipPops) return;
   if (toolLevelOf(history.state) >= level) return;
   history.pushState({ ...(history.state || {}), toolOverlay: true, toolLevel: level }, '', location.href);
 }
@@ -22643,8 +22646,16 @@ let metronomeStopFallback = 0;
 const metronomeFrame = () => $('#tool-frame iframe[data-tool="metronome"]');
 
 /** Metronom-iframe verwerfen (stoppt Ton, Timer und Bildschirm-Sperre). */
+/** Ausstehendes Speichern im iframe erledigen, bevor es entfernt wird
+ *  (z. B. Tempo-Trainer hat gerade erhöht, Speichern läuft mit Verzögerung). */
+function flushToolFrame(frame) {
+  try { frame?.contentWindow?.chorToolFlush?.(); } catch { /* schon weg */ }
+}
+
 function removeMetronomeFrame() {
-  metronomeFrame()?.remove();
+  const frame = metronomeFrame();
+  flushToolFrame(frame);
+  frame?.remove();
   clearTimeout(metronomeStopFallback);
   metronomeBg.running = false;
   updateMetronomeFab();
@@ -22666,6 +22677,7 @@ function openToolFrame(page, titleKey, query = '') {
   }
   let metro = metronomeFrame();
   if (metro && !metronomeBg.running && page !== METRONOME_PAGE) {
+    flushToolFrame(metro);
     metro.remove();
     metro = null;
   }
@@ -22783,8 +22795,9 @@ function pulseMetronomeFab(level) {
 function stopBackgroundMetronome() {
   const frame = metronomeFrame();
   if (!frame) return updateMetronomeFab();
-  // Höflich stoppen (die Seite speichert dabei ihren Stand und meldet
-  // running:false, woraufhin onMetronomeMessage das iframe entfernt). Kommt
+  // Höflich stoppen (die Seite meldet
+  // running:false, woraufhin onMetronomeMessage das iframe entfernt – vorher
+  // speichert removeMetronomeFrame ihren Stand). Kommt
   // keine Antwort, hart entfernen — Stille ist hier wichtiger als Eleganz.
   try {
     frame.contentWindow.postMessage({ type: 'chor-metronome-cmd', action: 'stop' }, location.origin);

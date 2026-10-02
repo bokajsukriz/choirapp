@@ -899,8 +899,8 @@
     setBpm(60000 / ((recent[recent.length - 1] - recent[0]) / (recent.length - 1)));
   }
 
-  /** Wechsel der Taktart während des Spielens: am nächsten Taktanfang
-   *  weiterzählen, statt mitten im Takt umzuspringen. */
+  /** Wechsel der Taktart während des Spielens: sofort mit einer neuen Eins
+   *  weiterzählen (Takt-, Trainer- und Stummtakt-Zähler beginnen neu). */
   function changeMeter(id) {
     // Tempo so umrechnen, dass die Achtel gleich schnell bleiben.
     const before = eighthsPerBeat(state.meter);
@@ -996,6 +996,7 @@
     const t0 = engine.ctx.currentTime + .05;
     const bt = barTicks();
     const saved = run.queue;
+    run.queue = [];
     for (let tick = 0; tick < bt; tick++) {
       // scheduleTick liest nur den Zustand und schreibt in run.queue — die
       // Einträge hier gleich wieder verwerfen.

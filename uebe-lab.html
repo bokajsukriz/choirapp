@@ -249,6 +249,7 @@
   .g-rate-q { margin: 4px 0 0; text-align: center; font-weight: 800; font-size: 14px; }
   .g-rate { display: flex; gap: 6px; }
   .g-rate button { flex: 1 1 0; min-height: 44px; border-radius: 999px; border: 2px solid var(--tint-line); background: var(--surface); color: var(--text); font: inherit; font-weight: 800; font-size: 13px; cursor: pointer; }
+  .g-rate button[aria-pressed="true"] { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); }
   .g-rate button:disabled { opacity: .45; border-style: dashed; cursor: default; }
   .g-rate-note { margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
   .g-tools { display: flex; justify-content: center; gap: 8px; }
@@ -829,10 +830,12 @@
   .ear-page .answer-grid { height: 178px; margin: 0; display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: 84px; align-content: start; gap: 10px; overflow-x: hidden; overflow-y: hidden; padding: 0; background: none; border: 0; border-radius: 0; margin-inline: 0; }
   .ear-page .answer-grid.is-scroll { overflow-y: auto; align-content: start; grid-auto-rows: 60px; gap: 8px; }
   .ear-page .answer-grid .answer { min-height: 0; height: 100%; padding: 0 8px; border-radius: 20px; border: 2px solid var(--tint-line); background: var(--surface); box-shadow: 0 3px 0 var(--tint-line); font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.1; color: var(--text); overflow: hidden; transition: transform .06s, box-shadow .06s; }
-  .ear-page .answer-grid .answer:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--tint-line); }
-  .ear-page .answer-grid .answer:disabled { opacity: .5; box-shadow: none; }
-  .ear-page .answer-grid .answer.is-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); box-shadow: 0 3px 0 var(--ok); opacity: 1; }
-  .ear-page .answer-grid .answer.is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); box-shadow: 0 3px 0 var(--rep-line); opacity: 1; }
+  .ear-page .answer-grid :is(.answer, .answer-oct):not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--tint-line); }
+  .ear-page .answer-grid :is(.answer, .answer-oct):disabled { opacity: .5; box-shadow: none; }
+  /* Nicht geprüfte Stufe: gestrichelt (bewusst nur 0,3,0 — „löst sich auf“, Ziel, grün/rot und Leuchten gewinnen). */
+  .ear-page :is(.answer, .answer-oct).is-off { border-style: dashed; border-color: var(--line); background: transparent; color: var(--muted); box-shadow: none; }
+  .ear-page .answer-grid :is(.answer, .answer-oct).is-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); box-shadow: 0 3px 0 var(--ok); opacity: 1; }
+  .ear-page .answer-grid :is(.answer, .answer-oct).is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); box-shadow: 0 3px 0 var(--rep-line); opacity: 1; }
   .ear-page .answer-grid .answer small { display: block; font-family: var(--font-body, inherit); font-size: 11px; font-weight: 700; color: var(--muted); }
   .ear-page .answer-grid.is-tiles { gap: 6px; grid-auto-rows: 84px; }
   .ear-page .answer-grid.is-tiles .answer { font-size: 17px; padding: 0 2px; border-radius: 16px; }
@@ -5367,7 +5370,7 @@
 
   /** Vergleichen nach dem Auflösen: den angetippten Ton/Akkord spielen (aus
    *  der Auflösung, wenn er darin vorkommt — sonst nah am Aufgabenton). */
-  function playInKeyCompare(task, value) {
+  function playInKeyCompare(task, value, upper = false) {
     if (!engine.ctx || selfTesting) return;
     clearEarTimers();
     engine.fadeBus(ear.bus);
@@ -5375,7 +5378,8 @@
     const t = engine.ctx.currentTime + .03;
     const idx = task.resolution.findIndex((s) => s.value === value);
     if (task.kind === 'noteInKey') {
-      const midi = idx >= 0 ? task.resolution[idx].midi : task.note + mod(task.key + value - task.note + 6, 12) - 6;
+      // Tonika: unteres do bzw. obere Sprosse do′ — nicht die aus der Auflösung.
+      const midi = value === 0 ? task.note - task.semis + (upper ? 12 : 0) : idx >= 0 ? task.resolution[idx].midi : task.note + mod(task.key + value - task.note + 6, 12) - 6;
       engine.keys(midi, t, .9, { velocity: .22, dest: ear.bus });
       return;
     }
@@ -5424,11 +5428,11 @@
   /** Antwort in „Töne/Akkorde in der Tonart“. Gewertet wird nur der erste Tipp;
    *  ein falscher Tipp färbt den Knopf rot, man darf weiter tippen. Nach dem
    *  zweiten Fehlversuch wird die Lösung gezeigt und trotzdem aufgelöst. */
-  function answerInKey(raw) {
+  function answerInKey(raw, { upper = false } = {}) {
     const task = ear.task;
     if (!isInKey(task)) return;
     const value = inKeyValue(task, raw);
-    if (ear.revealed) { playInKeyCompare(task, value); return; }
+    if (ear.revealed) { playInKeyCompare(task, value, upper); return; }
     if (task.tries.includes(value)) return; // schon als falsch markiert
     if (task.pattern) { answerPattern(task, value); return; }
     const ok = value === inKeyTarget(task);
@@ -5760,7 +5764,9 @@
   let dbRun = null; // { task, t0, plan, taps, mic, playing }
   function stopDownbeatRun() {
     if (!dbRun) return;
-    const { mic } = dbRun;
+    const { mic, finBus, finAt } = dbRun;
+    // Schlusspunkt noch nicht erklungen (Stopp, Nochmal, Hilfe): mit abräumen.
+    if (finBus && engine.ctx && engine.ctx.currentTime < finAt) engine.fadeBus(finBus);
     dbRun.playing = false;
     dbRun = null;
     if (mic && voice.consumer === 'rhythm') micOff();
@@ -5834,7 +5840,7 @@
     run.bus.gain.setValueAtTime(1, Math.max(engine.ctx.currentTime, end - .005));
     run.bus.gain.linearRampToValueAtTime(0, end + .02);
     const fin = engine.newBus({ reverb: false });
-    run.finBus = fin;
+    run.finBus = fin; run.finAt = end;
     engine.drum('kick', end, 1, fin); engine.drum('open', end, 1, fin);
     clearTimeout(run.endTimer);
     run.endTimer = setTimeout(finishDownbeat, Math.max(0, (end + .9 - engine.ctx.currentTime) * 1000));
@@ -5906,10 +5912,10 @@
   }
 
   /** Antwort in den neuen Modi. value: Qualitäts-ID, Schlusstyp, Index. */
-  function answerEar(value) {
+  function answerEar(value, { upper = false } = {}) {
     const task = ear.task;
     if (!task) return;
-    if (isInKey(task)) { answerInKey(value); return; }
+    if (isInKey(task)) { answerInKey(value, { upper }); return; }
     if (task.kind === 'modulation') {
       if (ear.revealed) { playEar(); return; }
       const ok = Number(value) === task.shift;
@@ -6154,7 +6160,7 @@
   /** Obere Tonika-Sprosse (do′/la′/1′): tippbar, zählt als Tonika. */
   function ladderTop(task, kmode, numbers, tested) {
     const label = `${noteInKeyLabel(kmode, 0)}′`;
-    const b = inKeyButton(task, 0, label, numbers ? `Stufe ${label}` : `8: ${label}, Oktave`, tested);
+    const b = inKeyButton(task, 0, label, numbers ? `Stufe ${label}` : `${label}, Oktave`, tested);
     b.className = b.className.replace(/\banswer\b/, 'answer-oct');
     b.dataset.oct = '0';
     delete b.dataset.ans;
@@ -7002,11 +7008,21 @@
    *  'rhythm' (Einsätze klatschen/sprechen) oder 'sing' (Singen mit
    *  Mikrofon). Nur live ausgewertet, nie aufgezeichnet oder gespeichert.
    *  Liefert true/false; die Fehlermeldung steht in voice.error. */
-  async function micOn(consumer = 'tuner') {
+  /** Mikrofon an. Ein zweiter Aufruf, solange der erste noch auf die Freigabe
+   *  wartet, bekommt dasselbe Ergebnis — sonst liefe ein zweiter Stream, den
+   *  micOff nie stoppt. */
+  function micOn(consumer = 'tuner') {
+    if (voice.pending && voice.pending.consumer === consumer) return voice.pending.promise;
+    const promise = micStart(consumer).finally(() => { if (voice.pending?.promise === promise) voice.pending = null; });
+    voice.pending = { consumer, promise };
+    return promise;
+  }
+  async function micStart(consumer) {
     const err = $('.mic-error');
     err.textContent = '';
     voice.error = '';
     if (voice.analyser) { if (voice.consumer === consumer) return true; micOff(); }
+    const gen = voice.micGen = (voice.micGen || 0) + 1;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       voice.error = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).';
       err.textContent = voice.error;
@@ -7015,6 +7031,9 @@
     try {
       await engine.start();
       const stream = await preferBuiltInMic(await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS));
+      // Inzwischen ausgeschaltet oder neu gestartet (micOff, Seite verdeckt,
+      // anderer Verbraucher): diesen Stream gleich wieder freigeben.
+      if (voice.micGen !== gen) { stream.getTracks().forEach((track) => track.stop()); return !!voice.analyser && voice.consumer === consumer; }
       voice.stream = stream;
       voice.consumer = consumer;
       voice.source = engine.ctx.createMediaStreamSource(stream);
@@ -7045,6 +7064,8 @@
   function onMicDenied() { saveMemory('micDenied', true); }
 
   function micOff() {
+    voice.micGen = (voice.micGen || 0) + 1;
+    voice.pending = null;
     cancelAnimationFrame(voice.frame);
     voice.frame = 0;
     voice.stream?.getTracks().forEach((track) => track.stop());
@@ -7146,6 +7167,9 @@
     if (changed) { renderRange(); rangeChanged(); }
   }
 
+  /** Klasse nur bei echter Änderung setzen: jede Zuweisung weckt den
+   *  MutationObserver der App (Tiefe der Tool-Ebenen) — hier 60× je Sekunde. */
+  const setClass = (el, cls) => { if (el.className !== cls) el.className = cls; };
   function showPitch(midi, freq) {
     const noteEl = $('.tuner-note');
     const needle = $('.gauge-needle');
@@ -7154,12 +7178,12 @@
     $('.gauge-min').textContent = `−${range}`;
     $('.gauge-max').textContent = `+${range} Cent`;
     if (midi === null) {
-      noteEl.classList.add('is-idle');
+      if (!noteEl.classList.contains('is-idle')) noteEl.classList.add('is-idle');
       if (!voice.analyser) noteEl.textContent = '–';
       $('.tuner-hz').textContent = voice.analyser ? 'Singe einen Ton …' : '';
-      needle.className = 'gauge-needle is-idle';
+      setClass(needle, 'gauge-needle is-idle');
       msg.textContent = '';
-      msg.className = 'tuner-msg';
+      setClass(msg, 'tuner-msg');
       return;
     }
     const nearest = Math.round(midi);
@@ -7172,13 +7196,13 @@
       cents = (midi - nearest) * 100;
       noteEl.textContent = noteLabel(nearest);
     }
-    noteEl.classList.remove('is-idle');
+    if (noteEl.classList.contains('is-idle')) noteEl.classList.remove('is-idle');
     $('.tuner-hz').textContent = `${freq ? freq.toFixed(1) : '–'} Hz · ${cents >= 0 ? '+' : '−'}${Math.abs(Math.round(cents))} Cent`;
     const abs = Math.abs(cents);
     const kind = abs <= 10 ? 'ok' : abs <= 25 ? 'near' : 'off';
-    needle.className = `gauge-needle is-${kind}`;
+    setClass(needle, `gauge-needle is-${kind}`);
     needle.style.left = `${50 + clamp(cents / range, -1, 1) * 50}%`;
-    msg.className = `tuner-msg is-${kind}`;
+    setClass(msg, `tuner-msg is-${kind}`);
     if (voice.useTarget && abs > 60) msg.textContent = cents < 0 ? `Zu tief — ${spell(voice.target)} liegt höher` : `Zu hoch — ${spell(voice.target)} liegt tiefer`;
     else msg.textContent = kind === 'ok' ? 'Sauber!' : cents < 0 ? 'etwas zu tief' : 'etwas zu hoch';
   }
@@ -7249,7 +7273,11 @@
     const lo = Math.min(38, has ? voice.low - 2 : 38), hi = Math.max(82, has ? voice.high + 2 : 82);
     const x = (m) => ((m - lo) / (hi - lo)) * 100;
     const cover = Object.fromEntries(parts.map((k) => [k, has ? rangeCover(R[k], voice.low, voice.high) : 0]));
-    const best = has ? parts.reduce((a, k) => (cover[k] > cover[a] ? k : a), parts[0]) : null;
+    // Bei Gleichstand (ein weiter Umfang deckt mehrere Lagen ganz ab) die
+    // Lage, deren Mitte der Mitte deines Umfangs am nächsten liegt.
+    const dist = (k) => Math.abs((R[k].floor + R[k].ceil) / 2 - (voice.low + voice.high) / 2);
+    const better = (k, a) => cover[k] > cover[a] + 1e-9 || (Math.abs(cover[k] - cover[a]) <= 1e-9 && dist(k) < dist(a));
+    const best = has ? parts.reduce((a, k) => (better(k, a) ? k : a), parts[0]) : null;
     const rows = parts.map((k) => `<div class="vr-row"><span class="vr-name">${R[k].name}</span><div class="vr-bar${k === best ? ' is-best' : ''}" style="left:${x(R[k].floor)}%;width:${x(R[k].ceil) - x(R[k].floor)}%"></div>${has ? `<span class="vr-pct">${Math.round(cover[k] * 100)} %</span>` : ''}</div>`).join('');
     const band = has ? `<div class="vr-band" style="left:${x(voice.low)}%;width:${x(voice.high) - x(voice.low)}%"></div>` : '';
     const ticks = [];
@@ -7273,7 +7301,7 @@
   function rangeChanged() {
     persist();
     clearTimeout(rangeSaveTimer);
-    rangeSaveTimer = setTimeout(saveRange, 800);
+    rangeSaveTimer = setTimeout(() => { rangeSaveTimer = 0; saveRange(); }, 800);
   }
   async function saveRange() {
     const out = $('[data-range-save-status]');
@@ -7288,7 +7316,7 @@
   }
   async function resetRange() {
     voice.low = null; voice.high = null; voice.hold = [];
-    clearTimeout(rangeSaveTimer);
+    clearTimeout(rangeSaveTimer); rangeSaveTimer = 0;
     persist();
     renderRange();
     const out = $('[data-range-save-status]');
@@ -9873,7 +9901,7 @@
     return `<div class="hr" data-result>
       <div class="hr-head"><b class="hr-what">${v.what}</b><span class="hr-why">${v.why}</span></div>
       <div class="hr-bars" style="grid-template-columns:repeat(${res.bars.length},minmax(0,1fr))" role="img" aria-label="${res.bars.filter((b) => !b.err).length} von ${res.bars.length} Takten ohne Fehler">${bars}</div>
-      <div class="hr-kpis"><div class="hr-kpi ${res.reason === 'bars' ? 'is-bad' : 'is-good'}"><span>Muster</span><b>${res.reason === 'pattern' ? 'eine Stelle' : errWord}</b></div>
+      <div class="hr-kpis"><div class="hr-kpi ${res.reason === 'bars' || res.reason === 'pattern' ? 'is-bad' : 'is-good'}"><span>Muster</span><b>${res.reason === 'pattern' ? 'eine Stelle' : errWord}</b></div>
         <div class="hr-kpi ${res.level === 1 ? 'is-bad' : 'is-good'}"><span>Gleichmäßig</span><b>${words[res.level]}</b><i class="hr-scale" aria-hidden="true">${[1, 2, 3].map((n) => `<u class="${n <= res.level ? 'on' : ''}"></u>`).join('')}</i></div></div>
       <p class="hr-tip" role="status">${v.tip}${v.note ? `<small>${v.note}</small>` : ''}</p>
       <div class="hr-dist" role="img" aria-label="Verteilung deiner Schläge: ${s.exact} genau, ${s.early} früher, ${s.late} später">
@@ -10041,12 +10069,16 @@
   const holdFromHeld = (held) => (held.includes('gaps16') ? 4 : held.includes('gaps8') ? 3 : held.includes('click8') ? 2 : held.includes('click4') ? 1 : 0);
   /** Nächster Vorschlag: die erste noch offene Kombination des Pfads nach der
    *  zuletzt geschafften (wer schon Klick 8 hält, bekommt nicht Drums 4). */
-  const nextCombo = (held) => {
+  /** Klick 4 zählt auf dem Pfad wie Drums 4 — in Taktarten ohne Schlagzeug
+   *  (comboFor) ist er dessen Ersatz, sonst bliebe der Vorschlag dort hängen. */
+  const onPath = (held) => held.map((c) => (c === 'click4' ? 'drums4' : c));
+  const nextCombo = (heldRaw) => {
+    const held = onPath(heldRaw);
     const top = Math.max(-1, ...held.map((c) => GROOVE_PATH.indexOf(c)));
     return GROOVE_PATH.slice(top + 1).find((c) => !held.includes(c)) || null;
   };
   /** Zuletzt geschaffte Kombination auf dem Pfad (Einstieg beim Wiederholen). */
-  const lastHeldCombo = (held) => [...GROOVE_PATH].reverse().find((c) => held.includes(c)) || null;
+  const lastHeldCombo = (held) => [...GROOVE_PATH].reverse().find((c) => onPath(held).includes(c)) || null;
   const grooveCanSolid = (l, g) => (g.held || LEGACY_HELD[clamp(g.hold || 0, 0, 4)]).some((c) => SOLID_COMBOS.includes(c));
   const GROOVE_PHASES = ['hear', 'refresh', 'hold', 'rate'];
 
@@ -10227,11 +10259,16 @@
     const res = gv.result;
     if (!res || res.kind !== 'hold' || !res.replay) return;
     try { await engine.start(); } catch { return; }
-    const { barSec, beatSec, bars } = res.replay;
+    const { barSec, beatSec, bars, pickupSec = 0 } = res.replay;
     const bus = engine.newBus({ reverb: false });
     const t0 = engine.ctx.currentTime + .35; // Platz für einen etwas zu frühen ersten Schlag
     const beats = Math.round(barSec / beatSec);
-    for (let q = 0; q < bars * beats; q++) engine.click(t0 + q * beatSec, q % beats === 0 ? 1 : 0, bus);
+    // Mit Auftakt beginnt die Phrase vor der Eins: Klicks auf die echten
+    // Zählzeiten legen (Eins betont), nicht auf den Auftakt.
+    for (let q = -beats; q < bars * beats; q++) {
+      const at = pickupSec + q * beatSec;
+      if (at > -1e-6 && at < bars * barSec - 1e-6) engine.click(t0 + at, mod(q, beats) === 0 ? 1 : 0, bus);
+    }
     for (const t of res.replay.taps) if (t >= -.2) engine.clap(t0 + t, bus, CLAP_WITH_ACCOMP);
     const timers = [];
     for (let b = 0; b < bars; b++) timers.push(setTimeout(() => holdMarkBar($('[data-grooves]'), b), (t0 + b * barSec - engine.ctx.currentTime) * 1000));
@@ -10366,10 +10403,12 @@
 
   const groovesRateHtml = (l, g) => {
     const canSolid = grooveCanSolid(l, g);
+    // Gerade gewählt: Knopf gedrückt und „Gemerkt.“ (die Karte hat kein eigenes Rückmeldefeld).
+    const on = (r) => !!gv.visitRated && g.rating === r;
     const was = g.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[g.rating]}.` : '';
     return `<p class="g-rate-q">Wie fühlt es sich an?</p>
-      <div class="g-rate"><button type="button" data-grooves-rate="shaky">Wackelig</button><button type="button" data-grooves-rate="ok">Geht schon</button><button type="button" data-grooves-rate="solid"${canSolid ? '' : ' disabled'}>Sitzt</button></div>
-      <p class="g-rate-note">${canSolid ? '' : '„Sitzt“ nach 8 Takten mit Klick. '}Bestimmt, wann der Groove wieder fällig wird.${was}</p>`;
+      <div class="g-rate"><button type="button" data-grooves-rate="shaky" aria-pressed="${on('shaky')}">Wackelig</button><button type="button" data-grooves-rate="ok" aria-pressed="${on('ok')}">Geht schon</button><button type="button" data-grooves-rate="solid" aria-pressed="${on('solid')}"${canSolid ? '' : ' disabled'}>Sitzt</button></div>
+      <p class="g-rate-note" role="status">${gv.visitRated ? 'Gemerkt. ' : ''}${canSolid ? '' : '„Sitzt“ nach 8 Takten mit Klick, Lücken oder stumm. '}Bestimmt, wann der Groove wieder fällig wird.${gv.visitRated ? '' : was}</p>`;
   };
   /** Reihenfolge der Regler (Chorleiter): Klick, Drums, Lücken, Stumm. Der
    *  Lernpfad und „Mit mehr Begleitung“ folgen weiter GROOVE_ACCS. */
@@ -10492,9 +10531,10 @@
   }
   /** Stand merken: Schritt und Kombination (dort geht es beim nächsten Öffnen weiter). */
   function rememberGroove() {
-    if (!gv.id || gv.view !== 'lesson' || (gv.review && gv.review.queue)) return;
-    const g = grooveItem(gv.id);
-    g.last = { phase: gv.phase, combo: gv.combo };
+    if (!gv.id || gv.view !== 'lesson') return;
+    // Im Wiederholen nicht die Stelle merken — aber ein neu geschafftes
+    // „held“ trotzdem speichern (Kachel-Balken, Schließen ohne Einschätzung).
+    if (!(gv.review && gv.review.queue)) grooveItem(gv.id).last = { phase: gv.phase, combo: gv.combo };
     persist();
   }
   function startGroovesReview() {
@@ -10570,7 +10610,7 @@
         const result = judgeHold({ expected: tl.expected.map((e) => e + info.t0), taps, barStart, barSec: tl.barSec, tol, plan: tl.plan,
           pos: tl.expectedPos, gaps: sta.gaps, names: sta.names, beatSec: sta.beatSec, mic: state.input === 'mic', swingPairs: sta.swingPairs });
         // Fürs Anhören: eigene Schläge und Klick ab Taktanfang.
-        gv.result = { kind: 'hold', combo, tol, ...result, replay: { taps: taps.map((x) => x - barStart), barSec: tl.barSec, beatSec: sta.beatSec, bars: tl.bars } };
+        gv.result = { kind: 'hold', combo, tol, ...result, replay: { taps: taps.map((x) => x - barStart), barSec: tl.barSec, beatSec: sta.beatSec, bars: tl.bars, pickupSec: (lessonPattern(l).pickup || 0) * tl.tickSec } };
         gFeedback(holdMessage(result, st), result.held ? 'good' : '');
         if (result.held && !g.held.includes(combo)) { g.held = GROOVE_COMBOS.filter((c) => c === combo || g.held.includes(c)); g.hold = Math.max(g.hold, holdFromHeld(g.held)); }
         rememberGroove();
@@ -10675,6 +10715,9 @@
      mehr — „Sitzt“ tippen und gleich zurück ging sonst verloren), dazu
      pagehide, wenn die ganze Seite geht. */
   function flushSave() {
+    // Offener Tonumfang fürs Stimmprofil zuerst — sonst überschreibt beim
+    // nächsten Öffnen applyProfile() den neuen Umfang mit dem alten.
+    if (rangeSaveTimer) { clearTimeout(rangeSaveTimer); rangeSaveTimer = 0; saveRange(); }
     if (!saveTimer) return null;
     clearTimeout(saveTimer);
     return writeNow();
@@ -11047,7 +11090,7 @@
     const voiceBtn = e.target.closest('[data-voice]');
     if (voiceBtn) {
       const action = voiceBtn.dataset.voice;
-      if (action === 'mic') { if (voice.analyser) micOff(); else micOn('tuner'); }
+      if (action === 'mic') { if (voice.analyser || voice.pending) micOff(); else micOn('tuner'); }
       else if (action === 'target-key') pickTarget(Number(voiceBtn.dataset.pc));
       else if (action === 'kammerton') jumpToA4();
       else if (action === 'range-reset') resetRange();
@@ -11091,7 +11134,7 @@
     if (answer) { answerInterval(Number(answer.dataset.answer)); return; }
     const ans = e.target.closest('[data-ans]');
     if (ans) { answerEar(ans.dataset.ans); return; }
-    if (e.target.closest('[data-ans-oct]')) { answerEar('0'); return; } // do′/la′ zählt als Tonika
+    if (e.target.closest('[data-ans-oct]')) { answerEar('0', { upper: true }); return; } // do′/la′ zählt als Tonika
     const cmpQ = e.target.closest('[data-compare-q]');
     if (cmpQ && !$('.sheet').hidden && sheetKind === 'earhelp') closeSettings();
     if (cmpQ) { playEar({ compare: { q: cmpQ.dataset.compareQ } }); return; }
@@ -11756,9 +11799,9 @@
           if (Math.abs(h.expected[pat.onsets.length] - (h.startSec + pat.total * h.tickSec)) > 1e-9) errors.push(`Klatsch-Groove ${l.id}/${bars}: Wiederholung beginnt nicht mit dem Auftakt`);
         }
         if (!groovesPhases(l).some(([id]) => id === 'hold')) errors.push(`Klatsch-Groove ${l.id}: kein Durchhalten trotz Auftakt`);
-        if (!/data-grooves-rate="solid" disabled/.test(groovesRateHtml(l, { held: [], rating: null }))) errors.push(`Klatsch-Groove ${l.id}: „Sitzt“ ohne Durchhalten wählbar`);
+        if (!/data-grooves-rate="solid"[^>]* disabled/.test(groovesRateHtml(l, { held: [], rating: null }))) errors.push(`Klatsch-Groove ${l.id}: „Sitzt“ ohne Durchhalten wählbar`);
       }
-      { const puls = COURSE[0]; if (!/data-grooves-rate="solid" disabled/.test(groovesRateHtml(puls, { hold: 1, rating: null }))) errors.push('Klatsch-Groove: „Sitzt“ bei hold < 2 nicht gesperrt'); }
+      { const puls = COURSE[0]; if (!/data-grooves-rate="solid"[^>]* disabled/.test(groovesRateHtml(puls, { hold: 1, rating: null }))) errors.push('Klatsch-Groove: „Sitzt“ bei hold < 2 nicht gesperrt'); }
       // Ablage: rhythm.grooves — neu, alt ohne Feld, unbekannte ID, kaputt; Kurs und Zweistimmig unverändert
       for (const k of Object.keys(grooveData)) delete grooveData[k];
       grooveData.puls = { hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' };
@@ -11813,7 +11856,7 @@
         }
         const noGroove = COURSE.find((x) => holdable(x) && !ACCOMP[x.meter]);
         if (noGroove && (comboFor(noGroove, 'drums8') !== 'click8' || comboFor(ch1 || COURSE[0], 'drums8') !== (grooveDrums(ch1 || COURSE[0]) ? 'drums8' : 'click8'))) errors.push('Klatsch-Grooves: Drums ohne Groove nicht auf Klick umgestellt');
-        if (GROOVE_PATH.some((c) => !parseCombo(c)) || nextCombo([]) !== 'drums4' || nextCombo(['drums4', 'drums8']) !== 'click8' || nextCombo(GROOVE_PATH) !== null) errors.push('Klatsch-Grooves: Vorschlagspfad');
+        if (GROOVE_PATH.some((c) => !parseCombo(c)) || nextCombo([]) !== 'drums4' || nextCombo(['drums4', 'drums8']) !== 'click8' || nextCombo(GROOVE_PATH) !== null || nextCombo(['click4']) !== 'drums8' || lastHeldCombo(['click4']) !== 'drums4') errors.push('Klatsch-Grooves: Vorschlagspfad');
         if (parseCombo('silent16') || parseCombo('gaps4') || parseCombo('x8')) errors.push('Klatsch-Grooves: ungültige Kombination angenommen');
         const pulsL = COURSE[0];
         if (grooveCanSolid(pulsL, { held: ['drums4', 'drums8', 'click4'] }) || !grooveCanSolid(pulsL, { held: ['click8'] })) errors.push('Klatsch-Grooves: „Sitzt“ erst nach 8 Takten ohne Drums');

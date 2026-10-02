@@ -1042,20 +1042,43 @@
       // kleinste Puffer knackt dabei mit Bluetooth-Kopfhörern.
       const ctx = new Ctx({ latencyHint: 'balanced' });
       this.ctx = ctx;
-      this.master = ctx.createGain();
-      this.master.gain.value = .8;
+      this.out = ctx.createGain();
+      this.out.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
       limiter.threshold.value = -12; limiter.ratio.value = 6;
-      this.master.connect(limiter).connect(ctx.destination);
+      this.out.connect(limiter).connect(ctx.destination);
       // kleiner Hall für Stimme und Akkord — ohne klingt es sehr nackt
-      this.reverb = ctx.createConvolver();
+      this.conv = ctx.createConvolver();
       const len = ctx.sampleRate * 1.6;
       const ir = ctx.createBuffer(2, len, ctx.sampleRate);
       for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.4; }
-      this.reverb.buffer = ir;
+      this.conv.buffer = ir;
       const wet = ctx.createGain(); wet.gain.value = .25;
-      this.reverb.connect(wet).connect(this.master);
+      this.conv.connect(wet).connect(this.out);
+      this.newBus();
       await ctx.resume();
+    },
+
+    /** Geplante Töne laufen über einen Bus je Lauf (master trocken, reverb
+     *  als Hall-Send) — so lassen sie sich bei Stopp/Sprung abschneiden. */
+    newBus() {
+      this.master = this.ctx.createGain();
+      this.master.connect(this.out);
+      this.reverb = this.ctx.createGain();
+      this.reverb.connect(this.conv);
+    },
+    /** Alles schon Geplante ausblenden (Stopp, Sprung, Umplanen); der
+     *  Liegeton hängt nicht am Bus und hat sein eigenes stop(). */
+    cut() {
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      for (const bus of [this.master, this.reverb]) {
+        bus.gain.cancelScheduledValues(t);
+        bus.gain.setValueAtTime(bus.gain.value, t);
+        bus.gain.setTargetAtTime(0, t, .03);
+        setTimeout(() => { try { bus.disconnect(); } catch { /* schon getrennt */ } }, 400);
+      }
+      this.newBus();
     },
 
     click(time, strong) {
@@ -1188,8 +1211,8 @@
       gain.gain.linearRampToValueAtTime(.08, now + .8);
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass'; filter.frequency.value = 900;
-      filter.connect(gain).connect(this.master);
-      gain.connect(this.reverb);
+      filter.connect(gain).connect(this.out);
+      gain.connect(this.conv);
       const oscs = midis.map((midi) => {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
@@ -1334,6 +1357,9 @@
      mehr — „Sitzt“ tippen und gleich zurück ging sonst verloren), dazu
      pagehide, wenn die ganze Seite geht. */
   function flushSave() {
+    // Geschlossen, während es läuft (Zurück-Geste, ✕): die gesungene Zeit
+    // trotzdem melden — sonst tut das nur stop().
+    if (run.playing) reportMinutes(false);
     if (!saveTimer) return null;
     clearTimeout(saveTimer);
     return writeNow();
@@ -1707,6 +1733,7 @@
 
   function stop(message, finished = false) {
     reportMinutes(finished);
+    if (run.playing && !finished) engine.cut(); // angesetzte Töne nicht nachklingen lassen
     run.playing = false;
     if (swaps?.running) { swaps = null; plan = null; } // nächster Start: neu auflösen
     clearTimeout(run.timer);
@@ -1771,6 +1798,7 @@
    *  "Nächste Übung", geänderte Einstellungen). */
   function jumpTo(step) {
     if (!run.playing) { start(step); return; }
+    engine.cut();
     run.step = step;
     run.nextTime = engine.ctx.currentTime + .08;
     run.endTime = null;
