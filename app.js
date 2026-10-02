@@ -13423,9 +13423,8 @@ async function loadSongLyricsNote() {
 }
 
 const LYRICS_EDIT_ICON = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
-// Beim Beenden der Bearbeitung dieselbe Diskette wie beim Speichern von
-// Loops und RECs — ein Haken wirkte eher wie „bestätigen" als „speichern".
-const LYRICS_DONE_ICON = '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>';
+// Der Knopf trägt jetzt die Beschriftung „Fertig" — ein Haken genügt als Icon.
+const LYRICS_DONE_ICON = '<path d="M5 12.5l4.5 4.5L19 7.5"/>';
 
 /** Welcher Text gerade sichtbar ist — genutzt fürs Ein-/Ausblenden des
  *  Vorlesemodus-Knopfs UND für dessen Inhalt (siehe openLyricsPresent). */
@@ -13465,7 +13464,7 @@ function renderLyricsBlock() {
   // Quellenwechsel hin und her.
   $('#btn-lyrics-note-edit').classList.toggle('slot-hidden', showOfficial);
   $('#lyrics-edit-icon').innerHTML = editing ? LYRICS_DONE_ICON : LYRICS_EDIT_ICON;
-  $('#btn-lyrics-note-edit').setAttribute('aria-label', t(editing ? 'lyrics.doneAria' : 'lyrics.editAria'));
+  $('#lyrics-edit-label').textContent = t(editing ? 'lyrics.doneAria' : 'lyrics.editAria');
 
   $('#lyrics-text').hidden = !showOfficial;
   if (showOfficial) $('#lyrics-text').textContent = playerSong.lyrics;
@@ -13477,7 +13476,6 @@ function renderLyricsBlock() {
     $('#lyrics-note-empty-hint').hidden = hasPrivate || editing;
     $('#lyrics-note-editor').hidden = !editing;
     $('#lyrics-note-text').value = hasPrivate ? (playerLyricsNote.text || '') : '';
-    setLyricsNoteState(hasPrivate ? 'saved' : 'none');
   }
 
   applyLyricsFontSize();
@@ -13532,19 +13530,6 @@ $('#btn-lyrics-present').addEventListener('click', openLyricsPresent);
 $('#lyrics-present-close').addEventListener('click', closeLyricsPresent);
 $('#lyrics-present').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLyricsPresent(); });
 
-function setLyricsNoteState(kind) {
-  const node = $('#lyrics-note-state');
-  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
-  if (kind === 'dirty')  { node.textContent = t('notes.stateDirty'); return; }
-  if (kind === 'saving') { node.textContent = t('notes.stateSaving'); return; }
-  if (kind === 'saved') {
-    const at = fmtClock(playerLyricsNote?.updatedAt);
-    node.textContent = at ? t('notes.stateSavedAt').replace('{time}', at) : t('notes.stateSaved');
-    return;
-  }
-  node.textContent = '';
-}
-
 $$('#lyrics-source-switch .preset').forEach((btn) => {
   btn.addEventListener('click', () => {
     lyricsSource = btn.dataset.lyricsSource;
@@ -13564,14 +13549,13 @@ function startLyricsNoteEditing() {
   if (!lyricsNotePersistedText.has(playerLyricsNote)) lyricsNotePersistedText.set(playerLyricsNote, '');
   lyricsNoteEditing = true;
   renderLyricsBlock();
-  setLyricsNoteState('none');
   $('#lyrics-note-text').focus();
 }
 
 $('#btn-lyrics-note-edit').addEventListener('click', async () => {
   if (!playerSong) return;
   if (!lyricsNoteEditing) { startLyricsNoteEditing(); return; }
-  await saveLyricsNote({ announce: true });
+  await saveLyricsNote({ finish: true });
   lyricsNoteEditing = false;
   renderLyricsBlock();
 });
@@ -13582,14 +13566,13 @@ $('#btn-lyrics-note-start').addEventListener('click', () => startLyricsNoteEditi
 
 $('#lyrics-note-text').addEventListener('input', () => {
   if (!playerLyricsNote) return;
-  setLyricsNoteState('dirty');
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = setTimeout(() => { saveLyricsNote(); }, LYRICS_NOTE_SAVE_DELAY);
 });
 
 $('#lyrics-note-text').addEventListener('blur', () => { if (lyricsNoteSaveTimer) saveLyricsNote(); });
 
-async function saveLyricsNote({ announce = false } = {}) {
+async function saveLyricsNote({ finish = false } = {}) {
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = null;
   const note = playerLyricsNote;
@@ -13597,23 +13580,21 @@ async function saveLyricsNote({ announce = false } = {}) {
 
   const text = $('#lyrics-note-text').value;
 
-  if (announce && !text.trim()) {
-    if (await deleteLyricsNote()) banner(t('lyrics.emptyRemoved'));
+  // „Fertig" mit leerem Text: der Liedtext verschwindet still. Beim
+  // automatischen Speichern bleibt das Feld dagegen offen.
+  if (finish && !text.trim()) {
+    await deleteLyricsNote();
     return;
   }
 
   note.text = text;
   note.songTitle = playerSong?.title || note.songTitle;
   note.updatedAt = new Date().toISOString();
-  setLyricsNoteState('saving');
 
   try {
     await lyricsNoteWrite(() => DB.metaPut(note));
     lyricsNotePersistedText.set(note, text);
-    if (playerLyricsNote === note) setLyricsNoteState('saved');
-    if (announce) banner(t('lyrics.saved'), { kind: 'ok' });
   } catch (err) {
-    if (playerLyricsNote === note) setLyricsNoteState('dirty');
     bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err);
   }
 }
@@ -13654,7 +13635,12 @@ function flushLyricsNote() {
 
   if (!text.trim()) {
     playerLyricsNote = null;
-    lyricsNoteWrite(() => DB.metaDelete(note.key)).catch(console.error);
+    lyricsNoteEditing = false;
+    clearTimeout(lyricsNoteSaveTimer);
+    lyricsNoteSaveTimer = null;
+    renderLyricsBlock();
+    lyricsNoteWrite(() => DB.metaDelete(note.key))
+      .catch((err) => bannerError(t('msg.lyricsDeleteFailed'), 'LYRICS-NOTE-DELETE', err));
     return;
   }
   if (text === lyricsNotePersistedText.get(note) && !lyricsNoteSaveTimer) return;
@@ -13666,7 +13652,7 @@ function flushLyricsNote() {
   const saved = { ...note };
   lyricsNoteWrite(() => DB.metaPut(saved))
     .then(() => lyricsNotePersistedText.set(note, text))
-    .catch(console.error);
+    .catch((err) => bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err));
 }
 
 function iconPdf() {
@@ -13693,6 +13679,7 @@ function setPlayerTab(tab) {
   // Wer den Notizen-Reiter verlässt, hat nichts mehr zu speichern: Eingaben
   // sofort sichern, eine leer gelassene Notiz verschwindet still.
   if (tab !== 'notes' && $('#tab-btn-notes').getAttribute('aria-selected') === 'true') flushNote();
+  if (tab !== 'lyrics' && $('#tab-btn-lyrics').getAttribute('aria-selected') === 'true') flushLyricsNote();
   for (const name of PLAYER_TABS) {
     $(`#tab-btn-${name}`).setAttribute('aria-selected', String(name === tab));
     // Roving tabindex (F-08): nur der ausgewählte Reiter ist per Tab
@@ -13994,13 +13981,6 @@ function renderNoteBlock() {
   $('#note-editor').hidden = !has;
   $('#note-text').value = has ? (playerNote.text || '') : '';
   setTabHasContent('notes', has);
-}
-
-function fmtClock(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  return d.toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 $('#btn-note-add').addEventListener('click', () => {
