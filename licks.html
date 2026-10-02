@@ -789,8 +789,23 @@
   function persist() {
     if (!storage || selfTesting) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, state)).catch(() => {}); }, 300);
+    saveTimer = setTimeout(writeNow, 300);
   }
+  function writeNow() {
+    saveTimer = 0;
+    try { return Promise.resolve(storage.save(STORAGE_ID, state)).catch(() => {}); } catch { return null; /* Ablage weg */ }
+  }
+  /* Noch ausstehendes Speichern sofort erledigen: Die App ruft das vor dem
+     Schließen des Tools auf (danach liefe der Timer im entfernten iframe nie
+     mehr — „Sitzt“ tippen und gleich zurück ging sonst verloren), dazu
+     pagehide, wenn die ganze Seite geht. */
+  function flushSave() {
+    if (!saveTimer) return null;
+    clearTimeout(saveTimer);
+    return writeNow();
+  }
+  window.chorToolFlush = flushSave;
+  window.addEventListener('pagehide', flushSave);
   const itemOf = (id) => state.items[id] || (state.items[id] = { step: 0, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null });
   const soundOf = (lick) => state.sound[lick.id] || lick.preset;
   const octaveOf = (lick) => clamp(state.octave[lick.id] || 0, ...octaveLimits(lick));

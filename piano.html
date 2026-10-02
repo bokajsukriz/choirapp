@@ -169,8 +169,23 @@
     clearTimeout(saveTimer);
     // Nur Lage, Beschriftung und Lautstärke — das Pedal ist beim Öffnen
     // immer aus (sonst klingt ungewollt alles nach).
-    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume, keySize: state.keySize })).catch(() => {}); }, 300);
+    saveTimer = setTimeout(writeNow, 300);
   }
+  function writeNow() {
+    saveTimer = 0;
+    try { return Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume, keySize: state.keySize })).catch(() => {}); } catch { return null; /* Ablage weg */ }
+  }
+  /* Noch ausstehendes Speichern sofort erledigen: Die App ruft das vor dem
+     Schließen des Tools auf (danach liefe der Timer im entfernten iframe nie
+     mehr — „Sitzt“ tippen und gleich zurück ging sonst verloren), dazu
+     pagehide, wenn die ganze Seite geht. */
+  function flushSave() {
+    if (!saveTimer) return null;
+    clearTimeout(saveTimer);
+    return writeNow();
+  }
+  window.chorToolFlush = flushSave;
+  window.addEventListener('pagehide', flushSave);
   async function restore() {
     if (!storage) return;
     try {

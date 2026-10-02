@@ -22652,7 +22652,10 @@ function openToolFrame(page, titleKey, query = '') {
   if (Audio.playing) audioPause();
   const host = $('#tool-frame');
   // Andere Tools gibt es immer nur einmal; das Metronom bleibt, falls es läuft.
-  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) {
+    try { other.contentWindow?.chorToolFlush?.(); } catch { /* fremde Herkunft */ }
+    other.remove();
+  }
   let metro = metronomeFrame();
   if (metro && !metronomeBg.running && page !== METRONOME_PAGE) {
     metro.remove();
@@ -22722,6 +22725,11 @@ function closeToolFrame() {
   // Auch nach „zurück“ können noch Ebenen-Einträge übrig sein (z. B. ein
   // Blatt, das sich nicht schließen ließ) — die mit abräumen.
   popToolHistory();
+  // Ausstehendes (verzögertes) Speichern der Tools jetzt anstoßen — im
+  // entfernten iframe liefe dessen Timer nie mehr ab.
+  for (const frame of host.querySelectorAll('iframe')) {
+    try { frame.contentWindow?.chorToolFlush?.(); } catch { /* fremde Herkunft */ }
+  }
   for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
   const metro = metronomeFrame();
   if (metro) {
@@ -23293,9 +23301,19 @@ function initQuickStart() {
    Einstellungen in IndexedDB (meta-Typ `toolState`, je Tool ein Datensatz)
    — nicht in localStorage, der bleibt dem Fehler-/Diagnoseprotokoll
    vorbehalten. Der Typ taucht in keiner Song-/Setlisten-Abfrage auf. */
+// Ablagen, aus denen die Kacheln „Licks“/„Grooves“ ihren Balken zeichnen.
+const LICKS_TILE_STORES = ['licks', 'playground'];
 window.chorToolStorage = {
   load: (id) => DB.metaGet(`tool:${id}`).then((record) => record?.data ?? null),
-  save: (id, data) => DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) }),
+  save: (id, data) => {
+    const done = DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) });
+    // Speichern, das erst nach dem Schließen des Tools fertig wird: Die Kacheln
+    // sind dann schon mit dem alten Stand gezeichnet — nachziehen.
+    if (LICKS_TILE_STORES.includes(id)) {
+      done.then(() => { if (currentView === 'tools' && $('#tool-frame').hidden) renderLicksCard(); }, () => {});
+    }
+    return done;
+  },
 };
 
 // Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem

@@ -10326,8 +10326,23 @@
   function persist() {
     if (!storage) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, snapshot())).catch(() => {}); }, 400);
+    saveTimer = setTimeout(writeNow, 400);
   }
+  function writeNow() {
+    saveTimer = 0;
+    try { return Promise.resolve(storage.save(STORAGE_ID, snapshot())).catch(() => {}); } catch { return null; /* Ablage weg */ }
+  }
+  /* Noch ausstehendes Speichern sofort erledigen: Die App ruft das vor dem
+     Schließen des Tools auf (danach liefe der Timer im entfernten iframe nie
+     mehr — „Sitzt“ tippen und gleich zurück ging sonst verloren), dazu
+     pagehide, wenn die ganze Seite geht. */
+  function flushSave() {
+    if (!saveTimer) return null;
+    clearTimeout(saveTimer);
+    return writeNow();
+  }
+  window.chorToolFlush = flushSave;
+  window.addEventListener('pagehide', flushSave);
 
   /** Gespeichertes übernehmen, alles Unbekannte ignorieren. Ein alter Reiter
    *  „warmup“ (Einsingen, inzwischen eigenes Tool) fällt auf Rhythmus zurück. */
