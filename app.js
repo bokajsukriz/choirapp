@@ -20221,50 +20221,92 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
   }
 
-  // de:construct (DECONSTRUCT-BERICHT.md): Song-Erzeugung mit Seed,
+  // de:construct (DECONSTRUCT-BERICHT.md): feste Songs je Stufe,
   // Vergleich je Element, A/B behält die Position, Speichern/Laden.
-  if (T.dcGenerate) {
+  if (T.dcBuild) {
     const clone = (v) => JSON.parse(JSON.stringify(v));
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const hintKeys = new Set();
     const note = (r) => { r.hints.forEach((h) => hintKeys.add(h.key)); return r; };
-    // 1. Erzeugung: deterministisch, sanitize-fest, Original gegen sich
-    //    selbst „stimmt“, der Start von „Meine Version“ ist nie schon gelöst.
+    // 1. Katalog: 5–10 Songs je Stufe, Ids eindeutig, Raster in Taktlänge,
+    //    nur baubare Zeichen; Original gegen sich selbst „stimmt“, der Start
+    //    von „Meine Version“ ist nie schon gelöst.
+    if (new Set(T.DC_SONGS.map((x) => x.id)).size !== T.DC_SONGS.length) failed.push('de:construct: Song-Ids doppelt');
     for (const level of T.DC_LEVELS) {
-      for (let seed = 1; seed <= 60; seed++) {
-        const a = T.dcGenerate(seed * 7919, level.id);
-        if (!same(a, T.dcGenerate(seed * 7919, level.id))) { failed.push(`de:construct ${level.id}/${seed}: nicht deterministisch`); break; }
-        if (!same(T.sanitizeState(clone(a.original)), a.original) || !same(T.sanitizeState(clone(a.mine)), a.mine)) failed.push(`de:construct ${level.id}/${seed}: Stand nicht sanitize-fest`);
-        if (a.original.keyRoot !== a.mine.keyRoot) failed.push(`de:construct ${level.id}/${seed}: Grundton nicht vorgegeben`);
-        for (const el of level.elements) {
-          if (T.dcCompare(a.original, a.original, el).status !== 'ok') failed.push(`de:construct ${level.id}/${seed}: ${el} gegen sich selbst ≠ ok`);
-          if (note(T.dcCompare(a.original, a.mine, el)).status === 'ok') failed.push(`de:construct ${level.id}/${seed}: ${el} schon zu Beginn gelöst`);
-        }
-        // Leicht: Akkordfolge vorgegeben (die Basslinie folgt ihr).
-        if (!level.elements.includes('chords') && T.dcCompare(a.original, { ...a.mine, chordsOn: true }, 'chords').status !== 'ok') failed.push(`de:construct ${level.id}/${seed}: Akkorde nicht vorgegeben`);
-        // Erzeugte Basslinien lassen sich im Raster bauen (nur 1/5/8), auch auf Leicht.
-        if (Object.values(a.original.beat.bass).some((v) => ![0, 4, 7].includes(v))) failed.push(`de:construct ${level.id}/${seed}: Basston nicht baubar`);
-        if (level.id !== 'hard' && T.DRUM_PATTERNS[a.original.patternIndex].meter !== '4/4') failed.push(`de:construct ${level.id}/${seed}: Taktart ≠ 4/4`);
-      }
+      const n = T.dcSongsOf(level.id).length;
+      if (n < 5 || n > 10) failed.push(`de:construct ${level.id}: ${n} Songs statt 5–10`);
     }
-    if (same(T.dcGenerate(1, 'hard'), T.dcGenerate(2, 'hard'))) failed.push('de:construct: Seed ändert nichts');
-    // Leicht nachbauen wie eine Nutzerin: Loop wählen, Tempo stellen → Tempo
-    // und Beat stimmen, der Bass-Rhythmus auch; die Töne (1/5/8) nachtippen.
-    for (const seed of [4242, 17, 99, 1234]) {
-      const { original: o, mine } = T.dcGenerate(seed, 'easy');
-      const m = clone(mine);
-      m.patternIndex = o.patternIndex;
-      m.beat = T.beatFromPattern(T.DRUM_PATTERNS[o.patternIndex]);
-      m.swing = o.swing;
-      m.bpm = o.bpm + 2;
-      for (const el of ['tempo', 'beat']) if (T.dcCompare(o, m, el).status !== 'ok') failed.push(`de:construct leicht/${seed}: ${el} nach Loop-Wahl ≠ ok`);
-      if (T.dcCompare(o, m, 'bass').status === 'no') failed.push(`de:construct leicht/${seed}: Bass-Rhythmus kommt mit dem Loop nicht mit`);
-      m.beat.bass = { ...o.beat.bass };
-      if (T.dcCompare(o, m, 'bass').status !== 'ok') failed.push(`de:construct leicht/${seed}: bass nach Nachbau ≠ ok`);
+    for (const song of T.DC_SONGS) {
+      const id = `de:construct ${song.id}`;
+      const level = T.DC_LEVELS.find((l) => l.id === song.level);
+      if (!level) { failed.push(`${id}: Stufe ${song.level} unbekannt`); continue; }
+      const steps = T.METERS[song.meter].steps;
+      for (const track of [...T.DRUM_TRACKS, 'bass']) {
+        const line = song[track] || '';
+        if (line && line.length !== steps) failed.push(`${id}: ${track} hat ${line.length} statt ${steps} Stellen`);
+        const ok = track === 'bass' ? /^[158.]*$/ : track === 'snare' ? /^[xg.]*$/ : /^[x.]*$/;
+        if (!ok.test(line)) failed.push(`${id}: ${track} „${line}“ nicht baubar`);
+      }
+      if (level.id !== 'hard' && song.meter !== '4/4') failed.push(`${id}: Taktart ≠ 4/4`);
+      if (Math.abs(song.bpm - 100) <= 3 && song.meter === '4/4') failed.push(`${id}: Tempo wie der Start von „Meine Version“`);
+      if (level.elements.includes('melody') && !song.melody) failed.push(`${id}: Melodie fehlt`);
+      if (level.elements.includes('sound') && (!song.sound || !T.SYNTH_PRESETS.some((p) => p.name === song.sound))) failed.push(`${id}: Klang „${song.sound}“ unbekannt`);
+      const a = T.dcBuild(song.id);
+      if (!same(a, T.dcBuild(song.id))) failed.push(`${id}: nicht deterministisch`);
+      if (!same(T.sanitizeState(clone(a.original)), a.original) || !same(T.sanitizeState(clone(a.mine)), a.mine)) failed.push(`${id}: Stand nicht sanitize-fest`);
+      if (song.melody && !same(a.original.melodyBars, song.melody)) failed.push(`${id}: Melodie geht beim Bereinigen verloren`);
+      if (a.original.keyRoot !== a.mine.keyRoot) failed.push(`${id}: Grundton nicht vorgegeben`);
+      for (const el of level.elements) {
+        if (T.dcCompare(a.original, a.original, el).status !== 'ok') failed.push(`${id}: ${el} gegen sich selbst ≠ ok`);
+        if (note(T.dcCompare(a.original, a.mine, el)).status === 'ok') failed.push(`${id}: ${el} schon zu Beginn gelöst`);
+      }
+      // Leicht: Akkordfolge vorgegeben (die Basslinie folgt ihr).
+      if (!level.elements.includes('chords') && T.dcCompare(a.original, { ...a.mine, chordsOn: true }, 'chords').status !== 'ok') failed.push(`${id}: Akkorde nicht vorgegeben`);
+      // Nachbau nur mit dem, was die Reiter können: Taktart-Knopf (erster
+      // Loop der Taktart), Zellen antippen (Werte aus CELL_CYCLE), Tempo und
+      // Swing, Modus und Akkord-Editor, Melodie-Editor, Klang-Preset.
+      const m = clone(a.mine);
+      m.patternIndex = T.DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
+      m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+      for (const track of [...T.DRUM_TRACKS, 'bass']) {
+        [...(song[track] || '')].forEach((c, st) => {
+          if (c === '.') return;
+          const v = track === 'bass' ? { 1: 0, 5: 4, 8: 7 }[c] : c === 'g' ? .45 : 1;
+          if (!T.CELL_CYCLE[track].includes(v)) failed.push(`${id}: ${track} ${v} nicht antippbar`);
+          m.beat[track][st] = v;
+        });
+      }
+      m.bpm = song.bpm;
+      m.swing = song.swing || 0;
+      if (T.DRUM_PATTERNS[m.patternIndex].swingUnit) failed.push(`${id}: Swing hängt am Loop`);
+      m.modeId = song.mode;
+      m.progDegrees = [...song.chords.degrees];
+      m.progSevenths = !!song.chords.sevenths;
+      m.progDominant = !!song.chords.dominant;
+      m.progDom7 = false;
+      m.chordBars = song.chordBars || 1;
+      m.chordsOn = true;
+      if (song.melody) {
+        if (song.melody.length > 4) failed.push(`${id}: Melodie länger als der Editor (4 Takte)`);
+        for (const n of song.melody.flat()) {
+          if (![1, 2, 4, 6, 8].includes(n[2]) || n[1] < -7 || n[1] > 13 || n[0] + n[2] > steps) failed.push(`${id}: Melodieton ${JSON.stringify(n)} nicht im Editor setzbar`);
+        }
+        m.melodyOn = true;
+        m.melodyBars = clone(song.melody);
+        m.melodyMeter = song.meter;
+        m.melodyRef = 'chord';
+      }
+      if (song.sound) m.sound = T.soundFromPreset(T.presetIndexByName(song.sound));
+      const built = T.sanitizeState(m);
+      for (const el of level.elements) {
+        const r = T.dcCompare(a.original, built, el);
+        if (r.status !== 'ok') failed.push(`${id}: ${el} nach dem Nachbau ${r.status}`);
+      }
     }
     // 2. Vergleich je Element mit gebauten Fällen.
     {
-      const o = T.dcGenerate(99, 'medium').original;
+      // Mittel mit Ghost-Notes, Akkorde je 1 Takt.
+      const o = T.dcBuild('m2').original;
       const m = clone(o);
       const check = (label, mine, el, status, key) => {
         const r = note(T.dcCompare(o, mine, el));
@@ -20302,7 +20344,7 @@ async function runMusicSelfTests({ log = true } = {}) {
       const qual = T.dcCompare(o, { ...m, modeId: otherMode }, 'chords');
       if (qual.status === 'ok') failed.push('de:construct: anderes Tongeschlecht gilt als richtig');
       // Melodie und Klang (Stufe schwer)
-      const h = T.dcGenerate(5, 'hard').original;
+      const h = T.dcBuild('h4').original;
       const hm = clone(h);
       const checkH = (label, mine, el, status, key) => {
         const res = note(T.dcCompare(h, mine, el));
@@ -20311,7 +20353,7 @@ async function runMusicSelfTests({ log = true } = {}) {
       checkH('Melodie Oktave', { ...hm, melodyOctave: h.melodyOctave === 4 ? 5 : 4 }, 'melody', 'near', 'lab.dc.hint.octave');
       checkH('Melodie aus', { ...hm, melodyOn: false }, 'melody', 'no', 'lab.dc.hint.melodyOff');
       checkH('Melodie gegen andere Akkorde', { ...hm, progId: 'drone', progDegrees: null }, 'melody', 'ok');
-      const mel = T.MELODIES[h.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
+      const mel = h.melodyBars.map((bar) => bar.map((n) => [...n]));
       const shifted = mel.map((bar) => bar.map(([at, deg, len, alt]) => (alt ? [at, deg + 1, len, alt] : [at, deg + 1, len])));
       checkH('Melodie Töne', { ...hm, melodyBars: shifted, melodyMeter: T.DRUM_PATTERNS[h.patternIndex].meter, melodyRef: 'chord' }, 'melody', 'near', 'lab.dc.hint.melNotes');
       checkH('Klang gleich', hm, 'sound', 'ok');
@@ -20333,9 +20375,9 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
     // … und in der echten Ansicht (nicht eingehängt, ohne Ton).
     try {
-      const findSeed = (meter) => { for (let s = 1; s < 500; s++) { const d = T.dcNewSong(s, 'hard'); if (T.DRUM_PATTERNS[d.original.patternIndex].meter === meter) return d; } return null; };
+      const songIn = (meter) => T.dcNewSong(T.DC_SONGS.find((x) => x.level === 'hard' && x.meter === meter).id);
       for (const meter of ['4/4', '3/4']) {
-        const dc = findSeed(meter);
+        const dc = songIn(meter);
         const view = document.createElement('chor-groove-lab');
         view.state.bpm = 77; // Studio-Stand erkennbar machen
         const studio = clone(view.state);
@@ -20376,21 +20418,27 @@ async function runMusicSelfTests({ log = true } = {}) {
       failed.push(`de:construct Ansicht: ${err?.message || err}`);
     }
     // 4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll.
-    const dc = T.dcNewSong(31337, 'hard', '2026-10-01');
+    const dc = T.dcNewSong('h3', '2026-10-01', { e1: '2026-09-30' });
     dc.checks = { tempo: 'near', beat: 'ok' };
     dc.done = { beat: '2026-10-01' };
     dc.revealed = true;
+    dc.mine.bpm = 77;
+    dc.mine.eighths = 154;
     if (!same(T.sanitizeDeconstruct(clone(dc)), dc)) failed.push('de:construct: Roundtrip Speichern/Laden');
     const oldStore = { slots: [], last: T.defaultState(), melodies: [], progressions: [], workshop: { done: {}, last: null } };
     if (T.sanitizeDeconstruct(oldStore.deconstruct) !== null) failed.push('de:construct: alte Ablage ohne Feld ≠ null');
-    for (const junk of [null, 'x', [], {}, { seed: -1, level: 'easy' }, { seed: 1.5, level: 'easy' }, { seed: 3, level: 'profi' }]) {
+    // v1 (zufällige Songs, nur Seed) gibt es nicht mehr — zurück zur Auswahl.
+    for (const junk of [null, 'x', [], {}, { seed: 3, level: 'easy' }, { v: 1, seed: 3, level: 'hard', original: T.defaultState(), mine: T.defaultState() }, { song: 'x9' }, { song: 7 }]) {
       if (T.sanitizeDeconstruct(junk) !== null) failed.push(`de:construct: Müll ${JSON.stringify(junk)} übernommen`);
     }
-    // Nur Seed und Stufe (z. B. abgeschnitten): Song entsteht neu, gleich wie damals.
-    const regen = T.sanitizeDeconstruct({ seed: 31337, level: 'hard' });
-    if (!regen || !same(regen.original, dc.original) || !same(regen.mine, dc.mine)) failed.push('de:construct: Seed/Stufe erzeugen nicht denselben Song');
-    const dirty = T.sanitizeDeconstruct({ ...clone(dc), level: 'easy', checks: { tempo: 'super', melody: 'ok', beat: 'no' }, done: { bass: '1.10.2026', beat: '2026-10-01' }, revealed: 'ja' });
-    if (!same(dirty.checks, { beat: 'no' }) || !same(dirty.done, { beat: '2026-10-01' }) || dirty.revealed !== false) failed.push(`de:construct: kaputte Fortschrittsfelder → ${JSON.stringify([dirty.checks, dirty.done, dirty.revealed])}`);
+    // Nur die Song-Id (z. B. abgeschnitten): Song entsteht neu, gleich wie damals.
+    const regen = T.sanitizeDeconstruct({ song: 'h3' });
+    if (!regen || !same(regen.original, dc.original) || !same(regen.mine, T.dcBuild('h3').mine)) failed.push('de:construct: Song-Id erzeugt nicht denselben Song');
+    // Das Original kommt immer aus dem Katalog, nie aus der Ablage.
+    const forged = T.sanitizeDeconstruct({ ...clone(dc), original: { ...clone(dc.original), bpm: 150 } });
+    if (forged.original.bpm !== dc.original.bpm) failed.push('de:construct: Original aus der Ablage übernommen');
+    const dirty = T.sanitizeDeconstruct({ ...clone(dc), song: 'e2', level: 'hard', checks: { tempo: 'super', melody: 'ok', beat: 'no' }, done: { bass: '1.10.2026', beat: '2026-10-01' }, revealed: 'ja', solved: { e1: 'gestern', zz: '2026-10-01', m1: '2026-10-01' } });
+    if (dirty.level !== 'easy' || !same(dirty.checks, { beat: 'no' }) || !same(dirty.done, { beat: '2026-10-01' }) || dirty.revealed !== false || !same(dirty.solved, { m1: '2026-10-01' })) failed.push(`de:construct: kaputte Fortschrittsfelder → ${JSON.stringify([dirty.level, dirty.checks, dirty.done, dirty.revealed, dirty.solved])}`);
     const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'deconstruct' })).view;
     if (savedView !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
   }

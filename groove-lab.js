@@ -1210,7 +1210,7 @@
      DE:CONSTRUCT — ein fertiger, verborgener Song („Original“) läuft, die
      Nutzerin baut ihn mit den vorhandenen Reitern nach („Meine Version“)
      und vergleicht per A/B. Alles hier ist rein (keine View, kein
-     Math.random): Erzeugung über einen Seed, Vergleich je Element,
+     Math.random): feste Songs je Stufe (DC_SONGS), Vergleich je Element,
      Positionswechsel beim A/B-Umschalten, Einlesen des gespeicherten Stands.
 
      Didaktik: Der Grundton ist immer vorgegeben (absolutes Hören ist keine
@@ -1229,30 +1229,124 @@
   // „Nur …“-Hören: Spuren, die es im Song gibt (Tempo und Klang sind keine Spur).
   const DC_FOCUS = ['all', 'beat', 'bass', 'chords', 'melody'];
   const DC_STATUS = ['ok', 'near', 'no'];
-  // Tempi (in Vierteln gedacht, wie randomize) — bewusst nicht um 100,
-  // dem Starttempo von „Meine Version“: sonst wäre Tempo schon gelöst.
-  const DC_TEMPI = { easy: [72, 80, 88, 112, 120], medium: [70, 76, 84, 112, 118, 126], hard: [68, 76, 84, 90, 112, 120, 128, 136] };
+  // Tempi in Vierteln (6/8: punktierte Viertel) — bewusst nie um 100, dem
+  // Starttempo von „Meine Version“: sonst wäre Tempo schon gelöst.
   const DC_MINE_BPM = 100;
   const DC_TEMPO_OK = 3;   // ±3 BPM gilt als gleich
   const DC_TEMPO_NEAR = 10;
-  // Bass-Zellen lassen sich nur 1 → 5 → 8 schalten (CELL_CYCLE) — eine
-  // erzeugte Basslinie bleibt deshalb in diesen Stufen (Grundton doppelt
-  // gewichtet, wie in echten Basslinien).
-  const DC_BASS_NOTES = [0, 0, 4, 7];
 
-  /** Deterministischer Zufall (mulberry32) — derselbe Seed, derselbe Song. */
-  function dcRng(seed) {
-    let a = seed >>> 0;
-    return () => {
-      a = (a + 0x6D2B79F5) >>> 0;
-      let x = a;
-      x = Math.imul(x ^ (x >>> 15), x | 1);
-      x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
-      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  const dcPick = (rng, list) => list[Math.floor(rng() * list.length)];
+  /*
+   * Die Songs — je Stufe ein fester Satz, von Hand komponiert und komplett
+   * mit den Reitern nachbaubar (Selbsttest „Nachbau“ in app.js):
+   *  - Raster als Zeichenketten, eine Stelle je Sechzehntel: x = Schlag,
+   *    g = Ghost-Note (nur Snare), . = Pause. Bass: 1 / 5 / 8 = Grundton,
+   *    Quinte, Oktave des klingenden Akkords — genau das, was das Antippen
+   *    einer Bass-Zelle durchschaltet (CELL_CYCLE).
+   *  - Taktart über den ersten Loop dieser Taktart (wie der Taktart-Knopf);
+   *    Swing deshalb immer auf Sechzehnteln (keiner dieser Loops hat
+   *    swingUnit 8 — sonst hinge das Gefühl am gewählten Loop).
+   *  - chords: Stufen der Tonart (0 = I) wie im Akkord-Editor, dazu
+   *    Septimen/Dominante; melody: Takte wie im Melodie-Editor
+   *    ([Schritt, Stufe über dem Akkordgrundton, Länge]); sound: ein Preset.
+   * Reihenfolge innerhalb einer Stufe = vom Einfachen zum Schweren. Ids nie
+   * ändern — gespeichert wird die Id (deconstruct.song, deconstruct.solved).
+   */
+  const DC_SONGS = [
+    // --- Leicht: 4/4, Kick/Snare/Hi-Hat, Bass meist auf dem Grundton.
+    //     Tonart und Akkordfolge sind vorgegeben (die Akkorde klingen nicht,
+    //     der Bass folgt ihnen trotzdem).
+    { id: 'e1', level: 'easy', name: 'First Steps', meter: '4/4', bpm: 84, key: 0, mode: 'major', chords: { degrees: [0, 4, 5, 3] },
+      kick: 'x.......x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.......1.......' },
+    { id: 'e2', level: 'easy', name: 'Lazy Bones', meter: '4/4', bpm: 76, key: 10, mode: 'major', chords: { degrees: [0, 3] },
+      kick: 'x.....x...x.....', snare: '....x.......x...', hat: '..x...x...x...x.',
+      bass: '1.....1...1.....' },
+    { id: 'e3', level: 'easy', name: 'Four on the Floor', meter: '4/4', bpm: 120, key: 7, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
+      kick: 'x...x...x...x...', clap: '....x.......x...', hat: '..x...x...x...x.',
+      bass: '..1...1...1...1.' },
+    { id: 'e4', level: 'easy', name: 'Backbeat Road', meter: '4/4', bpm: 92, key: 2, mode: 'major', chords: { degrees: [0, 5, 3, 4] },
+      kick: 'x.....x.x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.....1.5.......' },
+    { id: 'e5', level: 'easy', name: 'Eighth Drive', meter: '4/4', bpm: 132, key: 9, mode: 'minor', chords: { degrees: [0, 5, 2, 6] },
+      kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.1.1.1.1.1.5.5.' },
+    { id: 'e6', level: 'easy', name: 'Slow Sunday', meter: '4/4', bpm: 68, key: 5, mode: 'major', chords: { degrees: [0, 3, 4, 0], dominant: true },
+      kick: 'x......x........', snare: '........x.......', hat: 'x...x...x...x...',
+      bass: '1......5........' },
+    { id: 'e7', level: 'easy', name: 'Open Door', meter: '4/4', bpm: 108, key: 4, mode: 'major', chords: { degrees: [3, 4, 2, 5] },
+      kick: 'x.......x.x.....', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x...', open: '..............x.',
+      bass: '1.......1.5.....' },
+    { id: 'e8', level: 'easy', name: 'Clap Along', meter: '4/4', bpm: 116, key: 2, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
+      kick: 'x..x....x..x....', clap: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1..1....1..5....' },
+
+    // --- Mittel: 4/4 mit Ghost-Notes, Clap, offener Hi-Hat, Swing; eine
+    //     eigene Basslinie und die Akkordfolge (Dur oder Moll) sind gesucht.
+    { id: 'm1', level: 'medium', name: 'Disco Ball', meter: '4/4', bpm: 118, key: 9, mode: 'major', chords: { degrees: [0, 5, 1, 4] },
+      kick: 'x...x...x...x...', clap: '....x.......x...', hat: '..x...x...x.....', open: '..............x.',
+      bass: '1.8.1.8.1.8.1.8.' },
+    { id: 'm2', level: 'medium', name: 'Ghost Town', meter: '4/4', bpm: 90, key: 4, mode: 'minor', chords: { degrees: [0, 3, 4, 0], dominant: true },
+      kick: 'x.....x...x.....', snare: '....x..g....x..g', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1.....1...5...8.' },
+    { id: 'm3', level: 'medium', name: 'Reggae Sky', meter: '4/4', bpm: 78, key: 1, mode: 'major', chords: { degrees: [0, 3, 4, 3] },
+      kick: '........x.......', snare: '........x.......', hat: '..x...x...x...x.',
+      bass: '1.....1.5.....5.' },
+    { id: 'm4', level: 'medium', name: 'Rainy Window', meter: '4/4', bpm: 74, key: 0, mode: 'minor', chords: { degrees: [0, 5, 3, 4] },
+      kick: 'x.......x.x.....', snare: '....x.......x...', hat: 'x.x.x.xxx.x.x.xx',
+      bass: '1.......1.5...1.' },
+    { id: 'm5', level: 'medium', name: 'Half Moon', meter: '4/4', bpm: 84, key: 7, mode: 'major', chords: { degrees: [5, 3, 0, 4] },
+      kick: 'x......x..x.....', snare: '........x.....g.', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1......1..5.....' },
+    { id: 'm6', level: 'medium', name: 'Funk Window', meter: '4/4', bpm: 106, key: 3, mode: 'major', chords: { degrees: [0, 3], sevenths: true },
+      kick: 'x..x..x...x..x..', snare: '....x..g.g..x...', hat: 'x.x.x.x.x.x.x.x.',
+      bass: '1..1..5...1..8..' },
+    { id: 'm7', level: 'medium', name: 'Swing Street', meter: '4/4', bpm: 112, swing: .5, key: 5, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true, dominant: true },
+      kick: 'x.....x...x.....', snare: '....x.......x...', hat: 'x.xxx.xxx.xxx.xx',
+      bass: '1...5...8...5...' },
+    { id: 'm8', level: 'medium', name: 'Midnight Trap', meter: '4/4', bpm: 72, key: 11, mode: 'minor', chords: { degrees: [0, 6, 5, 4], dominant: true },
+      kick: 'x.....x......x..', clap: '........x.......', hat: 'xxx.x.x.xxx.x.x.', open: '...............x',
+      bass: '1.....1......5..' },
+
+    // --- Schwer: auch 3/4 und 6/8, Kirchentonarten, dazu Melodie und Klang.
+    { id: 'h1', level: 'hard', name: 'Lantern Waltz', meter: '3/4', bpm: 126, key: 2, mode: 'major', chords: { degrees: [0, 3, 4, 0], dominant: true },
+      kick: 'x...........', snare: '....g...g...', hat: 'x...x...x...',
+      bass: '1.......5...',
+      melody: [[[0, 4, 4], [4, 2, 4], [8, 0, 4]], [[0, 2, 8], [8, 4, 4]]], sound: 'Tape Keys' },
+    { id: 'h2', level: 'hard', name: 'Night Bus', meter: '4/4', bpm: 86, key: 5, mode: 'minor', chordBars: 2, chords: { degrees: [0, 5, 3, 4], dominant: true },
+      kick: 'x......x.x......', snare: '....x.......x..g', hat: 'x.x.x...x.x.x.x.', open: '......x.........',
+      bass: '1......1.5......',
+      melody: [[[0, 4, 6], [6, 2, 2], [8, 0, 8]], [[0, 2, 4], [4, 4, 4], [8, 7, 8]], [[0, 4, 4], [4, 5, 2], [6, 4, 2], [8, 2, 8]], [[0, 1, 4], [4, 0, 8]]],
+      sound: 'Soft Brass' },
+    { id: 'h3', level: 'hard', name: 'Celtic Morning', meter: '6/8', bpm: 66, key: 7, mode: 'mixolydian', chords: { degrees: [0, 6, 3, 0] },
+      kick: 'x.....x.....', snare: '......x.....', hat: 'x.x.x.x.x...', open: '..........x.',
+      bass: '1.....1...5.',
+      melody: [[[0, 0, 2], [2, 2, 2], [4, 4, 2], [6, 4, 4], [10, 2, 2]], [[0, 4, 2], [2, 2, 2], [4, 0, 2], [6, 0, 6]]], sound: 'Neon Pluck' },
+    { id: 'h4', level: 'hard', name: 'Dorian Drift', meter: '4/4', bpm: 94, swing: .3, key: 9, mode: 'dorian', chords: { degrees: [0, 3], sevenths: true },
+      kick: 'x..x......x.....', snare: '....x..g....x...', hat: 'x.xxx.x.x.xxx.x.',
+      bass: '1..1......5..8..',
+      melody: [[[0, 4, 2], [3, 2, 1], [4, 0, 4], [10, 2, 2], [12, 4, 4]], [[0, 6, 4], [6, 4, 2], [8, 2, 8]]], sound: 'Vintage Organ' },
+    { id: 'h5', level: 'hard', name: 'Café Waltz', meter: '3/4', bpm: 150, key: 10, mode: 'major', chords: { degrees: [1, 4, 0, 0], sevenths: true, dominant: true },
+      kick: 'x......x....', snare: '........g...', hat: 'x...x..xx...',
+      bass: '1...5...8...',
+      melody: [[[0, 6, 4], [4, 4, 2], [6, 2, 2], [8, 0, 4]], [[0, 2, 4], [4, 1, 4], [8, 0, 4]]], sound: 'Crystal Drops' },
+    { id: 'h6', level: 'hard', name: 'Mixolydian Sunrise', meter: '4/4', bpm: 124, key: 2, mode: 'mixolydian', chords: { degrees: [0, 6, 3] },
+      kick: 'x...x...x...x...', clap: '....x.......x...', hat: '..x...x...x.....', open: '..............x.',
+      bass: '1.8...1.8...5...',
+      melody: [[[0, 0, 2], [2, 0, 2], [4, 2, 2], [6, 4, 4], [12, 2, 4]], [[0, 4, 2], [4, 6, 2], [6, 4, 2], [8, 2, 8]]], sound: 'Bright Saw' },
+    { id: 'h7', level: 'hard', name: 'Lullaby Boat', meter: '6/8', bpm: 52, key: 3, mode: 'major', chordBars: 2, chords: { degrees: [0, 5, 3, 4] },
+      kick: 'x...........', snare: '......g.....', hat: 'x.x.x.x.x.x.',
+      bass: '1.....5.....',
+      melody: [[[0, 4, 4], [4, 2, 2], [6, 0, 6]], [[0, 2, 4], [4, 4, 2], [6, 7, 6]]], sound: 'Breath Glass' },
+    { id: 'h8', level: 'hard', name: 'Broken Clock', meter: '4/4', bpm: 110, key: 1, mode: 'minor', chords: { degrees: [0, 6, 5, 6] },
+      kick: 'x.........xx....', snare: '....x..g.g..x..g', hat: 'x.x.x.xxx.x.x.x.',
+      bass: '1.........1.5..8',
+      melody: [[[0, 0, 1], [3, 2, 1], [6, 4, 2], [10, 2, 2]], [[0, 4, 1], [3, 4, 1], [6, 6, 2], [10, 4, 6]],
+        [[0, 0, 1], [3, 2, 1], [6, 4, 2], [10, 2, 2]], [[0, 2, 4], [6, 1, 2], [8, 0, 8]]], sound: 'Dub Chamber' },
+  ];
+  const DC_BASS_CHAR = { 1: 0, 5: 4, 8: 7 };
   const dcLevel = (id) => DC_LEVELS.find((l) => l.id === id) || DC_LEVELS[0];
+  const dcSong = (id) => DC_SONGS.find((s) => s.id === id) || null;
+  const dcSongsOf = (levelId) => DC_SONGS.filter((s) => s.level === levelId);
 
   /** Klingende Akkordfolge eines Stands (wie GrooveLabView._progression). */
   function progressionOfState(s) {
@@ -1275,70 +1369,50 @@
     return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg), deg, sevenths: !!prog.sevenths, index };
   }
 
+  /** Beat eines Songs aus seinen Rasterzeilen (siehe DC_SONGS). */
+  function dcBeat(song) {
+    const beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+    for (const track of DRUM_TRACKS) {
+      [...(song[track] || '')].forEach((c, st) => { if (c === 'x') beat[track][st] = 1; else if (c === 'g') beat[track][st] = .45; });
+    }
+    [...song.bass].forEach((c, st) => { if (hasOwn(DC_BASS_CHAR, c)) beat.bass[st] = DC_BASS_CHAR[c]; });
+    return beat;
+  }
+
   /**
-   * Neuer Song zu `seed` und Stufe: { original, mine } als vollständige,
-   * sanitizeState-feste Stände. Leicht: ein 4/4-Loop mit dem Rhythmus seiner
-   * Basslinie (Töne auf 1/5/8 gerundet); Tonart und Akkordfolge sind vorgegeben (Akkorde aus, die
-   * Basslinie folgt ihnen trotzdem). Mittel: dazu eine eigene Basslinie
-   * (nur 1/5/8, auf dem Rhythmus eines anderen Loops) und die Akkordfolge.
-   * Schwer: alle Taktarten, eine Zelle im Loop abgewandelt, dazu Melodie
-   * und Klang.
+   * Song `songId` als { original, mine } — vollständige, sanitizeState-feste
+   * Stände. Was die Stufe nicht abfragt, steht in „Meine Version“ schon wie
+   * im Original (Leicht: Tonart und Akkordfolge; Leicht/Mittel: Melodie aus).
    */
-  function dcGenerate(seed, levelId) {
-    const level = dcLevel(levelId);
-    const rng = dcRng(seed);
+  function dcBuild(songId) {
+    const song = dcSong(songId);
+    if (!song) return null;
+    const level = dcLevel(song.level);
     const has = (el) => level.elements.includes(el);
     const o = defaultState();
-    const candidates = DRUM_PATTERNS.map((p, i) => [p, i])
-      .filter(([p]) => !p.vocal && (level.id === 'hard' || p.meter === '4/4'))
-      .map(([, i]) => i);
-    o.patternIndex = dcPick(rng, candidates);
-    const pattern = DRUM_PATTERNS[o.patternIndex];
-    const meter = pattern.meter;
-    const barSteps = METERS[meter].steps;
-    o.beat = beatFromPattern(pattern);
-    o.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
-    o.bpm = Math.round(dcPick(rng, DC_TEMPI[level.id]) * 2 / eighthsPerBeat(meter));
-    o.eighths = o.bpm * eighthsPerBeat(meter);
-    if (level.id !== 'easy') {
-      // Eigene Basslinie: Rhythmus aus einem anderen Loop derselben Taktart,
-      // Töne nur Grundton/Quinte/Oktave — so lässt sie sich im Raster bauen.
-      const others = DRUM_PATTERNS.filter((p, i) => p.meter === meter && i !== o.patternIndex && (p.bass || []).length > 1);
-      const from = others.length ? dcPick(rng, others) : pattern;
-      o.beat.bass = {};
-      (from.bass || [0]).filter((st) => st < barSteps).forEach((st, i) => { o.beat.bass[st] = i === 0 ? 0 : dcPick(rng, DC_BASS_NOTES); });
-    } else {
-      // Leicht: Rhythmus der Loop-Basslinie, die Töne auf die nächste
-      // schaltbare Stufe (1/5/8) gerundet. Wer den Loop wählt, hat den
-      // Bass-Rhythmus schon und hört nur noch die Töne heraus.
-      for (const st of Object.keys(o.beat.bass)) {
-        const n = o.beat.bass[st];
-        o.beat.bass[st] = CELL_CYCLE.bass.reduce((best, x) => (Math.abs(x - n) < Math.abs(best - n) ? x : best));
-      }
-    }
-    if (level.id === 'hard') {
-      // Eine Zelle in Kick, Snare oder Hi-Hat anders als im Loop: wer nur
-      // den Loop wählt, hört „fast“ — der Rest ist genaues Hinhören.
-      const bass = o.beat.bass;
-      o.beat = detectiveVariant(o.beat, rng, barSteps).beat;
-      o.beat.bass = bass;
-    }
-    o.beatEdited = level.id === 'hard';
-    o.keyRoot = Math.floor(rng() * 12);
-    o.modeId = level.id === 'hard' ? dcPick(rng, MODES).id : dcPick(rng, ['major', 'major', 'minor']);
-    const progs = progsForRandom(o.modeId)
-      .filter((p) => level.id === 'hard' || p.cat === 'pop' || p.cat === 'classic')
-      .filter((p) => p.degrees.length <= 8);
-    o.progId = dcPick(rng, progs).id;
-    o.chordBars = level.id === 'hard' && progressionOfState(o).degrees.length <= 4 && rng() < .35 ? 2 : 1;
+    o.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
+    o.beat = dcBeat(song);
+    o.beatEdited = true;
+    o.swing = song.swing || 0;
+    o.bpm = song.bpm;
+    o.eighths = o.bpm * eighthsPerBeat(song.meter);
+    o.keyRoot = song.key;
+    o.modeId = song.mode;
+    o.progId = 'pop';
+    o.progDegrees = [...song.chords.degrees];
+    o.progSevenths = !!song.chords.sevenths;
+    o.progDominant = !!song.chords.dominant;
+    o.progDom7 = false;
+    o.chordBars = song.chordBars || 1;
     o.chordsOn = has('chords');
+    o.melodyIndex = Math.max(0, MELODIES.findIndex((x) => x.meter === song.meter));
     o.melodyOn = has('melody');
-    const melodies = MELODIES.map((x, i) => [x, i]).filter(([x]) => x.meter === meter).map(([, i]) => i);
-    o.melodyIndex = dcPick(rng, melodies);
-    if (has('sound')) {
-      const presets = SYNTH_PRESETS.map((p, i) => [p, i]).filter(([p]) => p.cat !== 'pad').map(([, i]) => i);
-      o.sound = soundFromPreset(dcPick(rng, presets));
+    if (song.melody) {
+      o.melodyBars = song.melody.map((bar) => bar.map((n) => [...n]));
+      o.melodyMeter = song.meter;
+      o.melodyRef = 'chord';
     }
+    if (song.sound) o.sound = soundFromPreset(presetIndexByName(song.sound));
     o.view = 'deconstruct';
 
     // „Meine Version“: Vorgegebenes wie im Original, Gesuchtes neutral —
@@ -1353,10 +1427,12 @@
     m.eighths = m.bpm * eighthsPerBeat(meterOfState(m));
     m.swing = 0;
     if (has('chords')) { m.modeId = 'major'; m.progId = 'drone'; m.chordsOn = true; }
-    else { m.modeId = o.modeId; m.progId = o.progId; m.chordBars = o.chordBars; m.chordsOn = false; }
+    else {
+      for (const k of ['modeId', 'progId', 'progDegrees', 'progSevenths', 'progDominant', 'progDom7', 'chordBars']) m[k] = JSON.parse(JSON.stringify(o[k]));
+      m.chordsOn = false;
+    }
     m.melodyOn = false;
-    const mineMelodies = MELODIES.map((x, i) => [x, i]).filter(([x, i]) => x.meter === meterOfState(m) && i !== o.melodyIndex).map(([, i]) => i);
-    m.melodyIndex = mineMelodies[0] ?? 0;
+    m.melodyIndex = 0;
     if (has('sound')) {
       const start = SYNTH_PRESETS.map((p, i) => i).find((i) => !soundMatched(o.sound, soundFromPreset(i)));
       m.sound = soundFromPreset(start ?? 0);
@@ -1510,32 +1586,37 @@
     return Math.ceil(g / fromSteps) * toSteps;
   }
 
-  /** Neuer de:construct-Stand (für Ansicht und Tests). */
-  function dcNewSong(seed, levelId, today = null) {
-    const { original, mine } = dcGenerate(seed, levelId);
-    return { v: 1, seed, level: dcLevel(levelId).id, created: today, original, mine, checks: {}, done: {}, revealed: false };
+  /** Neuer de:construct-Stand (für Ansicht und Tests). `solved` (Song-Id →
+   *  Datum) wandert von Song zu Song mit. */
+  function dcNewSong(songId, today = null, solved = {}) {
+    const song = dcSong(songId) || DC_SONGS[0];
+    const { original, mine } = dcBuild(song.id);
+    return { v: 2, song: song.id, level: song.level, created: today, original, mine, checks: {}, done: {}, revealed: false, solved: { ...solved } };
   }
 
   /** Gespeicherter de:construct-Stand (Ablage `deconstruct`). Fehlt er
-   *  (Ablage von vor de:construct) oder ist er kaputt: null — dann beginnt
-   *  de:construct mit der Auswahl. Fehlen nur die Stände, entstehen sie
-   *  aus Seed und Stufe neu. */
+   *  (Ablage von vor de:construct), ist er kaputt oder stammt er aus der
+   *  Zeit der zufälligen Songs (v1, nur Seed): null — dann beginnt
+   *  de:construct mit der Auswahl. Das Original entsteht immer neu aus
+   *  dem Katalog; nur „Meine Version“ und der Fortschritt kommen aus der
+   *  Ablage. */
   function sanitizeDeconstruct(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-    if (!Number.isInteger(raw.seed) || raw.seed < 0 || !DC_LEVELS.some((l) => l.id === raw.level)) return null;
-    const level = dcLevel(raw.level);
-    const whole = raw.original && typeof raw.original === 'object' && raw.mine && typeof raw.mine === 'object';
-    const fresh = whole ? null : dcGenerate(raw.seed, level.id);
-    const original = sanitizeState(fresh ? fresh.original : raw.original);
-    const mine = sanitizeState(fresh ? fresh.mine : raw.mine);
-    original.view = 'deconstruct';
+    const song = typeof raw.song === 'string' ? dcSong(raw.song) : null;
+    if (!song) return null;
+    const level = dcLevel(song.level);
+    const fresh = dcBuild(song.id);
+    const mine = sanitizeState(raw.mine && typeof raw.mine === 'object' ? raw.mine : fresh.mine);
     mine.view = 'deconstruct';
     const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
-    const out = { v: 1, seed: raw.seed, level: level.id, created: isDate(raw.created) ? raw.created : null,
-      original, mine, checks: {}, done: {}, revealed: raw.revealed === true };
+    const out = { v: 2, song: song.id, level: level.id, created: isDate(raw.created) ? raw.created : null,
+      original: fresh.original, mine, checks: {}, done: {}, revealed: raw.revealed === true, solved: {} };
     for (const el of level.elements) {
       if (DC_STATUS.includes(raw.checks?.[el])) out.checks[el] = raw.checks[el];
       if (isDate(raw.done?.[el])) out.done[el] = raw.done[el];
+    }
+    if (raw.solved && typeof raw.solved === 'object') {
+      for (const s of DC_SONGS) if (isDate(raw.solved[s.id])) out.solved[s.id] = raw.solved[s.id];
     }
     return out;
   }
@@ -2631,7 +2712,7 @@
         progCat: 'all', progEdit: false, progSel: 0, progUndo: [], progRedo: [],
         // de:construct: was gerade klingt (A = 'orig', B = 'mine'), welche
         // Spur allein, Stufenwahl offen?, Rückfrage vor dem Auflösen.
-        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', revealAsk: false } };
+        dc: { listen: 'orig', focus: 'all', choosing: false, level: 'easy', song: null, revealAsk: false } };
       // Einspielen: Phase idle → armed (zählt ein) → recording → done.
       // Automation aufnehmen: Phase idle → armed (zählt ein) → recording.
       this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
@@ -2952,18 +3033,29 @@
 
     /** Neuer Song: ersetzt Original, „Meine Version“ und Fortschritt.
      *  Das Antippen ist die Geste für den AudioContext — das Original läuft los. */
-    _dcNew(levelId, seed = Math.floor(Math.random() * 2147483647)) {
-      if (!this._dcActive) return;
-      const dc = dcNewSong(seed, levelId, localDate());
+    _dcNew(songId) {
+      if (!this._dcActive || !DC_SONGS.some((x) => x.id === songId)) return;
+      const dc = dcNewSong(songId, localDate(), this._saved.deconstruct?.solved);
       this._saved.deconstruct = dc;
       this.history = [];
-      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, revealAsk: false };
+      this.ui.dc = { ...this.ui.dc, listen: 'orig', focus: 'all', choosing: false, level: dc.level, song: dc.song, revealAsk: false };
       this._dcSwap(sanitizeState(dc.mine));
       this.ui.tab = 'beat';
       this._applyView('deconstruct');
       this._dcAnnounce(t('lab.dc.started'));
       this._persist();
       if (!this.playing) this.start();
+    }
+
+    /** Vorschlag in der Auswahl: der nächste noch nicht geschaffte Song
+     *  der Stufe nach dem laufenden (sonst der erste der Stufe). */
+    _dcSuggest(levelId) {
+      const list = dcSongsOf(levelId);
+      const dc = this._saved.deconstruct;
+      const solved = dc?.solved || {};
+      const at = list.findIndex((x) => x.id === dc?.song);
+      const order = [...list.slice(at + 1), ...list.slice(0, at + 1)];
+      return (order.find((x) => !solved[x.id] && x.id !== dc?.song) || order[0]).id;
     }
 
     /** Ein Element prüfen; „stimmt“ markiert es dauerhaft als geschafft. */
@@ -2974,6 +3066,8 @@
       dc.checks[element] = result.status;
       this.ui.dc.hints = { ...(this.ui.dc.hints || {}), [element]: result.hints };
       if (result.status === 'ok' && !dc.done[element]) dc.done[element] = localDate();
+      // Ganz nachgebaut (ohne Auflösen): der Song zählt in der Auswahl als geschafft.
+      if (!dc.revealed && !dc.solved[dc.song] && dcLevel(dc.level).elements.every((el) => dc.done[el])) dc.solved[dc.song] = localDate();
       const text = `${t(`lab.dc.el.${element}`)}: ${t(`lab.dc.status.${result.status}`)}${result.hints.length ? ` – ${this._dcHintText(result.hints)}` : ''}`;
       this._dcAnnounce(text);
       this._persist();
@@ -3024,24 +3118,18 @@
     _dcSolution(element) {
       const o = this._saved.deconstruct.original;
       const pattern = DRUM_PATTERNS[o.patternIndex];
+      const { steps, group } = METERS[pattern.meter];
+      // Eine Rasterzeile als Text: Gruppen wie im Raster, · = Pause.
+      const row = (cell) => Array.from({ length: steps }, (_, i) => `${i && i % group === 0 ? ' ' : ''}${cell(i) ?? '·'}`).join('');
       if (element === 'tempo') {
         return `${tempoSymbol(pattern.meter)} = ${o.bpm} · ${pattern.meter}${o.swing ? ` · ${t('lab.swing')} ${Math.round(o.swing * 100)} %` : ''}`;
       }
       if (element === 'beat') {
-        const plain = beatFromPattern(pattern);
-        const varied = DRUM_TRACKS.some((track) => JSON.stringify(plain[track]) !== JSON.stringify(o.beat[track]));
-        return `„${pattern.name}“${varied ? ` (${t('lab.dc.varied')})` : ''}`;
+        return DRUM_TRACKS.filter((track) => dcStepsOf(o.beat[track]).length)
+          .map((track) => `${trackLabel(track)} ${row((i) => (o.beat[track][i] === undefined ? null : o.beat[track][i] < 1 ? 'g' : 'x'))}`).join(' · ');
       }
       if (element === 'bass') {
-        const steps = METERS[pattern.meter].steps;
-        const group = METERS[pattern.meter].group;
-        let line = '';
-        for (let i = 0; i < steps; i++) {
-          const v = o.beat.bass[i];
-          if (i && i % group === 0) line += ' ';
-          line += v === undefined ? '·' : String(v < 0 ? v + 8 : v + 1);
-        }
-        return line;
+        return row((i) => { const v = o.beat.bass[i]; return v === undefined ? null : String(v < 0 ? v + 8 : v + 1); });
       }
       if (element === 'chords') {
         const prog = progressionOfState(o);
@@ -3049,7 +3137,11 @@
         const mode = MODES.find((m) => m.id === o.modeId) || MODES[0];
         return `${names.join(' – ')} · ${t(mode.nameKey)}${o.chordBars === 2 ? ` · ${t('lab.dc.twoBars')}` : ''}`;
       }
-      if (element === 'melody') return `„${MELODIES[o.melodyIndex].name}“`;
+      if (element === 'melody') {
+        // Je Takt die Stufen über dem Akkordgrundton (wie im Editor, 1 = Grundton).
+        const bars = o.melodyBars || MELODIES[o.melodyIndex].bars;
+        return bars.map((bar) => bar.map(([, deg]) => `${mod(deg, 7) + 1}${deg > 6 ? '↑' : deg < 0 ? '↓' : ''}`).join(' ')).join(' | ');
+      }
       if (element === 'sound') return `„${SYNTH_PRESETS[o.sound.presetIndex]?.name || ''}“`;
       return '';
     }
@@ -3070,6 +3162,11 @@
       // Stufenwahl
       this._chips(this.$('.dc-levels'), DC_LEVELS.map((l) => ({ value: l.id, label: t(`lab.dc.level.${l.id}`) })), this.ui.dc.level, 'dc-level');
       this.$('.dc-level-info').textContent = t(`lab.dc.levelInfo.${this.ui.dc.level}`);
+      const songs = dcSongsOf(this.ui.dc.level);
+      if (!songs.some((x) => x.id === this.ui.dc.song)) this.ui.dc.song = this._dcSuggest(this.ui.dc.level);
+      const solved = dc?.solved || {};
+      this._chips(this.$('.dc-songs'), songs.map((x, i) => ({ value: x.id, label: `${i + 1}. ${x.name}${solved[x.id] ? ' ✓' : ''}`,
+        title: solved[x.id] ? t('lab.dc.status.done') : undefined })), this.ui.dc.song, 'dc-song');
       this.$('[data-action="dc-cancel"]').hidden = !dc;
       this.$('.dc-replace').hidden = !dc;
       if (choosing) return;
@@ -3077,7 +3174,9 @@
       const level = dcLevel(dc.level);
       const elements = level.elements;
       const doneCount = elements.filter((el) => dc.done[el]).length;
-      this.$('.dc-song-title').textContent = tf('lab.dc.songTitle', { code: dc.seed.toString(36).toUpperCase().slice(-4).padStart(4, '0'), level: t(`lab.dc.level.${dc.level}`) });
+      const levelSongs = dcSongsOf(dc.level);
+      const song = levelSongs.find((x) => x.id === dc.song);
+      this.$('.dc-song-title').textContent = tf('lab.dc.songTitle', { n: levelSongs.indexOf(song) + 1, name: song.name, level: t(`lab.dc.level.${dc.level}`) });
       this.$('.dc-count').textContent = tf('lab.dc.count', { done: doneCount, total: elements.length });
       const given = [tf('lab.dc.givenKey', { key: spell(dc.original.keyRoot, dc.original.keyRoot, 'major', labLang) })];
       if (!elements.includes('chords')) given.push(t('lab.dc.givenChords'));
@@ -6408,11 +6507,17 @@
         case 'ws-next': { const next = this._wsNext(); if (next) this._wsSelect(next.id); break; }
         case 'ws-ab': this._wsToggleAb(); break;
         // de:construct
-        case 'dc-level': this.ui.dc.level = DC_LEVELS.some((l) => l.id === value) ? value : 'easy'; this._renderDeconstruct(); break;
-        case 'dc-new': this._dcNew(this.ui.dc.level); break;
+        case 'dc-level':
+          this.ui.dc.level = DC_LEVELS.some((l) => l.id === value) ? value : 'easy';
+          this.ui.dc.song = this._dcSuggest(this.ui.dc.level);
+          this._renderDeconstruct();
+          break;
+        case 'dc-song': if (DC_SONGS.some((x) => x.id === value && x.level === this.ui.dc.level)) { this.ui.dc.song = value; this._renderDeconstruct(); } break;
+        case 'dc-new': this._dcNew(this.ui.dc.song); break;
         case 'dc-choose':
           this.ui.dc.choosing = true;
           this.ui.dc.level = this._saved.deconstruct?.level || this.ui.dc.level;
+          this.ui.dc.song = this._dcSuggest(this.ui.dc.level);
           this._applyView('deconstruct');
           this.$('.dc-intro [data-action="dc-new"]')?.focus();
           break;
@@ -7541,6 +7646,8 @@
         <span class="sub-label" id="dc-level-label">${t('lab.dc.levelTitle')}</span>
         <div class="chip-row dc-levels" role="group" aria-labelledby="dc-level-label"></div>
         <p class="dc-level-info"></p>
+        <span class="sub-label" id="dc-song-label">${t('lab.dc.songsTitle')}</span>
+        <div class="chip-row dc-songs" role="group" aria-labelledby="dc-song-label"></div>
         <p class="dc-replace" hidden>${t('lab.dc.replaceWarn')}</p>
         <div class="dc-actions">
           <button class="dc-primary" type="button" data-action="dc-new">${UI_ICON.play}<span>${t('lab.dc.start')}</span></button>
@@ -7938,7 +8045,7 @@
     KIT_DEFAULTS, KIT_RANGES,
     pickChallengePattern, detectiveVariant, rebuildScore, soundMatch, soundMatchTarget, SOUND_MATCH_START, CHALLENGE_TRACKS,
     // de:construct
-    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, dcRng, dcGenerate, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
+    VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
     progressionOfState, harmonyOfState, GrooveLabView,
   };
 

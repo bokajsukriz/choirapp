@@ -59,8 +59,9 @@ ein Dialog mit echter Wahl).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
   Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
   Ansicht „de:construct“ (nur im Lab über die
-  Ansichtswahl): Ein verborgener, per Seed erzeugter Song läuft
-  (`dcGenerate`, Stufen leicht/mittel/schwer); nachgebaut wird mit den
+  Ansichtswahl): Einer von festen, komplett nachbaubaren Songs läuft
+  verborgen (`DC_SONGS`/`dcBuild`, je Stufe leicht/mittel/schwer acht
+  Songs); nachgebaut wird mit den
   normalen Reitern. A/B-Schalter wechselt im laufenden Takt zwischen
   Original und eigener Version (`_dcHeard` tauscht je Schritt den
   gehörten Stand, `dcSwitchStep`), „Nur Beat/Bass/…“ hört eine Spur

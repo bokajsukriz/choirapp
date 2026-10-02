@@ -8,10 +8,14 @@ erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
 
 ## Konzept
 
-- **Original**: Die App erzeugt aus dem vorhandenen Groove-Lab-Inhalt
-  (Drumloops, Basslinien, Akkordfolgen, Melodien, Klang-Presets, Tonart,
-  Tempo, Taktart) einen verborgenen Song – deterministisch aus einem Seed
-  (`dcGenerate(seed, stufe)`, Zufall über `dcRng`, kein `Math.random`).
+- **Original**: einer von festen, von Hand komponierten Songs – je Stufe
+  acht (`DC_SONGS` in `groove-lab.js`, gewählt in der Auswahl). Raster,
+  Basslinie, Tempo, Swing, Tonart, Modus, Akkordfolge (Stufen wie im
+  Akkord-Editor), Melodie (Takte wie im Melodie-Editor) und Klang-Preset
+  stehen ausgeschrieben im Katalog; `dcBuild(songId)` macht daraus
+  Original und Startstand. Jeder Song ist komplett mit den Reitern
+  nachbaubar (Selbsttest „Nachbau“). Früher: zufällig aus Seed und
+  Loop-Vorlagen erzeugt (`dcGenerate`, entfernt).
   Das Original ist nur hörbar, nie in einem Editor sichtbar.
 - **Meine Version**: ist ganz normal `this.state` des Labs. Gebaut wird mit
   den vorhandenen Reitern (Beat, Harmonie, Melodie, Klang …) – nichts
@@ -21,15 +25,14 @@ erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
   keine Chor-Fähigkeit, gesucht wird relativ (Stufen, Funktionen, Groove).
   Was die Stufe nicht abfragt, steht in „Meine Version“ schon richtig.
 - **Stufen** (Gehörbildung vom Groben ins Feine):
-  - *Leicht*: Tempo & Takt, Beat, Bass. Nur 4/4, der Bass ist der des
-    Loops – wer den richtigen Loop findet und das Tempo trifft, ist fertig.
-    Tonart und Akkordfolge sind vorgegeben (die Basslinie folgt ihnen).
-  - *Mittel*: dazu eine eigene Basslinie (Rhythmus aus einem anderen Loop,
-    Töne nur 1/5/8 – genau das, was das Raster per Antippen kann) und die
-    Akkordfolge samt Dur/Moll.
-  - *Schwer*: alle Taktarten (3/4, 6/8), eine Zelle im Loop abgewandelt
-    (Loop wählen ergibt „fast“), Akkordwechsel ggf. alle zwei Takte, dazu
-    Melodie und Klang.
+  - *Leicht*: Tempo & Takt, Beat, Bass. Nur 4/4, Kick/Snare/Hi-Hat, Bass
+    meist auf dem Grundton. Tonart und Akkordfolge sind vorgegeben (die
+    Basslinie folgt ihnen).
+  - *Mittel*: 4/4 mit Ghost-Notes, Clap, offener Hi-Hat und Swing, eine
+    Basslinie mit 1/5/8 (genau das, was das Raster per Antippen kann) und
+    die Akkordfolge samt Dur/Moll.
+  - *Schwer*: auch 3/4 und 6/8, Kirchentonarten, Akkordwechsel teils alle
+    zwei Takte, dazu eine eigene Melodie und der Klang.
 
 ## Bedienung
 
@@ -92,12 +95,14 @@ vergleichen („Erst die Taktart finden …“).
   umgekehrt. Undo wirkt nur innerhalb von de:construct.
 - **Speichern**: im vorhandenen Groove-Lab-Datensatz (IndexedDB,
   meta-Schlüssel `grooveLab`, über die Ablage aus `app.js`) als neues Feld
-  `deconstruct = { v, seed, level, created, original, mine, checks, done,
-  revealed }`. `_persist` aktualisiert `mine`, zusätzlich gebündelt 1,5 s
+  `deconstruct = { v: 2, song, level, created, original, mine, checks, done,
+  revealed, solved }` (`solved`: Song-Id → Datum, ganz nachgebaut ohne
+  Auflösen; wandert von Song zu Song mit, ✓ in der Auswahl). Das Original
+  entsteht beim Laden immer neu aus dem Katalog. `_persist` aktualisiert `mine`, zusätzlich gebündelt 1,5 s
   nach Eingaben (übersteht ein Beenden der App). Schließen in de:construct
   merkt die Ansicht, das nächste Öffnen macht dort weiter. Alte Ablagen ohne
-  Feld → `null` (Auswahl erscheint); fehlen nur die Stände, entstehen sie
-  aus Seed + Stufe neu; unbekannte Status/Daten fallen weg. Nur ein neues
+  Feld und alte v1-Stände (zufällige Songs, nur Seed) → `null` (Auswahl
+  erscheint); fehlt nur „Meine Version“, entsteht sie aus der Song-Id neu; unbekannte Status/Daten fallen weg. Nur ein neues
   Feld, keine Bedeutungsänderung → **kein** `DATA_VERSION`-Sprung.
   `sanitizeState` kennt `view: 'deconstruct'` (Liste `VIEWS`).
 - Custom-Element-Regel: Der Konstruktor darf keine Attribute am Host setzen
@@ -110,11 +115,13 @@ vergleichen („Erst die Taktart finden …“).
 
 In `runMusicSelfTests` (app.js), läuft mit `runSelfTests()`/Selbsttest-Tor:
 
-1. Erzeugung: je Stufe 60 Seeds – deterministisch, `sanitizeState`-fest,
-   Grundton vorgegeben, Original gegen sich selbst „stimmt“, Start nie schon
-   gelöst, Leicht: Akkorde vorgegeben, erzeugte Basstöne baubar (1/5/8),
-   Leicht/Mittel nur 4/4; ein Nachbau wie eine Nutzerin (Loop + Tempo ±2)
-   ergibt auf Leicht überall „stimmt“.
+1. Katalog: 5–10 Songs je Stufe, Ids eindeutig, Rasterzeilen in Taktlänge
+   und nur mit antippbaren Werten; je Song deterministisch,
+   `sanitizeState`-fest, Grundton vorgegeben, Original gegen sich selbst
+   „stimmt“, Start nie schon gelöst, Leicht: Akkorde vorgegeben,
+   Leicht/Mittel nur 4/4. Nachbau nur mit Editor-Schritten (Taktart-Knopf,
+   Zellen, Tempo/Swing, Modus + Akkord-Editor, Melodie-Editor mit dessen
+   Längen/Umfang, Preset) ergibt für jedes Element jedes Songs „stimmt“.
 2. Vergleich je Element mit gebauten Fällen (Tempo ±2/−6/+20, Swing,
    Taktart, Bass Töne/Rhythmus/leer/aus, Beat ohne Hi-Hat verrät keine
    Schritte, Ghost-Notes, Akkorde aus/halbes Wechseltempo/anderes
@@ -125,7 +132,7 @@ In `runMusicSelfTests` (app.js), läuft mit `runSelfTests()`/Selbsttest-Tor:
    und 3/4: Laden von „Meine Version“, A spielt das Original (Tempo hörbar),
    A→B behält die Position, Prüfen markiert „geschafft“ dauerhaft,
    Verlassen/Wiederkommen tauscht Studio-Stand und eigene Version korrekt.
-4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll, nur Seed+Stufe,
+4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll, alte v1-Stände, nur Song-Id, Original nie aus der Ablage,
    kaputte Fortschrittsfelder, `view` bleibt erhalten.
 
 Zusätzlich per Playwright (390×844) durchgeklickt: Tools-Kachel → Einstieg →
