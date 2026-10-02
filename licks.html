@@ -133,33 +133,6 @@
   .stage .roll-glide { stroke: var(--accent); stroke-width: 2.4; }
   .stage .ph { stroke: var(--accent); stroke-width: 2; }
 
-  /* Ergebnis nach dem Lauf: sicher / wackelig / verloren, stille Takte schraffiert */
-  .strip { display: flex; gap: 3px; margin: 8px 0 6px; }
-  .strip .cell { flex: 1 1 0; min-width: 0; height: 40px; border-radius: 8px; border: 1px solid transparent; color: var(--text);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; font-size: 10px; font-weight: 700; }
-  .strip .cell i { font-style: normal; font-size: 11px; }
-  .strip .cell.is-sure { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); }
-  .strip .cell.is-wobbly { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); }
-  .strip .cell.is-lost { background: var(--lost-bg); border-color: var(--lost-line); color: var(--lost-fg); }
-  .strip .cell.is-silent { background-image: repeating-linear-gradient(135deg, rgba(36,27,61,.28) 0 2px, transparent 2px 6px); border-style: dashed; }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-weight: 600; color: var(--muted-2); margin-bottom: 4px; }
-  .tstrip { position: relative; margin-top: 6px; }
-  .tstrip-line { position: absolute; left: 0; right: 0; bottom: 12px; height: 2px; background: var(--line); }
-  .tstrip-mid { position: absolute; left: 50%; top: 0; height: 100%; width: 2px; margin-left: -1px; background: var(--muted); }
-  .texact { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--ok-bg); opacity: .55; }
-  .tdot { position: absolute; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; }
-  .tdot.is-good { background: var(--good); box-shadow: 0 0 0 1px var(--good); }
-  .tdot.is-near { background: var(--wobble-bg); box-shadow: 0 0 0 1px var(--near); }
-  .tstrip-legend { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--muted); }
-  .hstats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 6px; }
-  .hstat { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
-  .hstat b { font-family: var(--font-display); font-size: 20px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .hstat span { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
-  .hstat.is-ok b { color: var(--good); }
-  .hstat.is-bad b { color: var(--bad-fg); }
-  .hstat-line { margin: 6px 0 0; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted-2); font-variant-numeric: tabular-nums; }
-  .hstat-rule { margin: 4px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
-  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(36,27,61,.25); }
 
   .k-dot.is-optional { border-style: dashed; }
   .k-dot:disabled { opacity: .5; cursor: default; }
@@ -446,94 +419,260 @@
    *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null),
    *     reason ('bars' | 'loose' | 'drift' | null), offsets, meanAbs, missed, extras, expected }
    */
-  function judgeHold({ expected, taps, barStart, barSec, tol, plan }) {
+  function judgeHold({ expected, taps, barStart, barSec, tol, plan, pos = null, gaps = null, names = null, beatSec = barSec / 4, mic = false, swingPairs = null }) {
     const nBars = plan.length;
     const timeOf = (x) => (typeof x === 'number' ? x : x.t);
-    const exp = expected.map((e) => ({ t: timeOf(e), pc: typeof e === 'number' ? null : e.pc })).sort((a, b) => a.t - b.t);
-    const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
     const barOf = (t) => Math.floor((t - barStart) / barSec + 1e-9);
-    const bars = Array.from({ length: nBars }, (_, b) => ({ expected: 0, hit: 0, meanOffset: 0, extra: 0, silent: plan[b] === false, sum: 0 }));
-    const hits = [];
-    for (const e of exp) {
-      const b = barOf(e.t);
-      if (b < 0 || b >= nBars) continue;
-      bars[b].expected++;
-      let best = null;
-      for (const x of tp) {
-        if (x.used || Math.abs(x.t - e.t) > tol) continue;
-        if (e.pc !== null && x.pc !== null && e.pc !== x.pc) continue;
-        if (!best || Math.abs(x.t - e.t) < Math.abs(best.t - e.t)) best = x;
-      }
-      if (!best) continue;
-      best.used = true;
-      bars[b].hit++; bars[b].sum += best.t - e.t;
-      hits.push({ t: e.t, off: best.t - e.t });
-    }
+    const E = expected.map((e, i) => ({ t: timeOf(e), pc: typeof e === 'number' || e.pc === undefined ? null : e.pc, pos: pos ? pos[i] : null }))
+      .filter((e) => barOf(e.t) >= 0 && barOf(e.t) < nBars).sort((a, b) => a.t - b.t);
+    const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' || x.pc === undefined ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
+    // Stumm: alle Takte ohne Begleitung – dann zählt das eigene Tempo, nicht das starre Raster.
+    const free = nBars > 0 && plan.every((p) => p === false);
+    const tolOf = (e) => tol + (plan[barOf(e.t)] === false ? HOLD_GAP_EXTRA : 0);
+    const t0 = E.length ? E[0].t : 0;
+    // Zuordnung: erst am Raster, dann (dreimal) um den eigenen Versatz bzw. – in Stumm – um
+    // die eigene Tempo-Gerade verschoben. Wer konstant früh ist, verliert so keine Treffer.
+    let a = 0, k = 1;
+    const predict = (e) => t0 + a + k * (e.t - t0);
+    const fit = (ps) => {
+      if (!ps.length) return;
+      if (!free || ps.length < 2) { a = clamp(ps.reduce((s, p) => s + p.x.t - p.e.t, 0) / ps.length, -HOLD_BIAS_MAX, HOLD_BIAS_MAX); return; }
+      const n = ps.length;
+      const mx = ps.reduce((s, p) => s + p.e.t - t0, 0) / n, my = ps.reduce((s, p) => s + p.x.t - t0, 0) / n;
+      let num = 0, den = 0;
+      for (const p of ps) { num += (p.e.t - t0 - mx) * (p.x.t - t0 - my); den += (p.e.t - t0 - mx) ** 2; }
+      k = den ? clamp(num / den, .85, 1.15) : 1;
+      a = clamp(my - k * mx, -HOLD_BIAS_MAX, HOLD_BIAS_MAX);
+    };
+    let pairs = [];
+    if (free) {
+      // Stumm: die Tempo-Linie wächst Schlag für Schlag von vorn mit (sonst landen späte Schläge
+      // eines langsamer Werdenden auf falschen Soll-Punkten).
+      for (const e of E) { pairs.push(...holdAssign([e], tp.filter((x) => !x.used), predict, tolOf)); fit(pairs); }
+    } else pairs = holdAssign(E, tp, predict, tolOf);
+    for (let round = 0; round < 3 && pairs.length >= 1; round++) { fit(pairs); pairs = holdAssign(E, tp, predict, tolOf); }
+    const bars = Array.from({ length: nBars }, (_, b) => ({ expected: 0, hit: 0, meanOffset: 0, extra: 0, silent: plan[b] === false, sum: 0, err: false }));
+    for (const e of E) bars[barOf(e.t)].expected++;
+    const hits = pairs.map((p) => ({ t: p.e.t, x: p.x.t, bar: barOf(p.e.t), pos: p.e.pos, off: p.x.t - p.e.t, dev: p.x.t - predict(p.e) }));
+    for (const h of hits) { bars[h.bar].hit++; bars[h.bar].sum += h.off; }
     for (const x of tp) {
       if (x.used) continue;
       const b = barOf(x.t);
       if (b >= 0 && b < nBars) bars[b].extra++;
     }
-    for (const b of bars) { b.meanOffset = b.hit ? b.sum / b.hit : 0; delete b.sum; }
-    // Tendenz: lineare Regression der Abweichungen über der Zeit; Unterschied
-    // Anfang → Ende des Laufs (über die Spanne der Soll-Punkte).
-    let tendency = 'steady';
-    if (hits.length >= 6) {
-      const n = hits.length;
-      const mt = hits.reduce((a, h) => a + h.t, 0) / n, mo = hits.reduce((a, h) => a + h.off, 0) / n;
-      let num = 0, den = 0;
-      for (const h of hits) { num += (h.t - mt) * (h.off - mo); den += (h.t - mt) ** 2; }
-      const slope = den ? num / den : 0;
-      const span = exp.length ? exp[exp.length - 1].t - exp[0].t : 0;
-      const change = slope * span;
-      tendency = change < -tol / 2 ? 'faster' : change > tol / 2 ? 'slower' : 'steady';
+    for (const b of bars) {
+      b.meanOffset = b.hit ? b.sum / b.hit : 0; delete b.sum;
+      // Mikrofon: Hall und Doppel-Erkennung – der erste Zusatzschlag je Takt zählt nicht.
+      b.counted = mic ? Math.max(0, b.extra - 1) : b.extra;
+      b.err = b.hit < b.expected || b.counted > 0;
     }
+    // Muster: Fehler (verpasst + zu viel) gegen ein Budget von 3 % der Schläge, mindestens 1 je 8 Takte;
+    // zwei Takte mit Fehler hintereinander nie.
+    const expectedN = E.length;
+    const missed = expectedN - hits.length;
+    const extras = bars.reduce((s, b) => s + b.counted, 0);
+    const errors = missed + extras;
+    const allowed = Math.max(Math.ceil(nBars / 8), Math.round(HOLD_ERR_SHARE * expectedN));
+    const consecutive = bars.some((b, i) => b.err && bars[i + 1]?.err);
     // Faden gerissen: zwei aufeinanderfolgende Takte mit weniger als der Hälfte der Soll-Punkte.
     const weak = (b) => bars[b].expected > 0 && bars[b].hit < bars[b].expected / 2;
     let lostAt = null;
     for (let b = 0; b + 1 < nBars; b++) if (weak(b) && weak(b + 1)) { lostAt = b + 1; break; }
-    // Wiedereinstieg nach Lücken: jeweils der erste Snare-Takt nach einer Lücke.
+    // Stellen im Muster: Versatz je Stelle gegen den eigenen Mittelwert. Gezählt nur bei ≥ 4 Treffern
+    // und ≥ 70 % gleichgerichtet; Tipp ab 35 ms, kein „geschafft“ ab max(60 ms, 20 % des Nachbarabstands).
+    const devs = hits.map((h) => h.dev);
+    const m0 = devs.length ? devs.reduce((s, d) => s + d, 0) / devs.length : 0;
+    const swingShort = new Set((swingPairs || []).map(([, j]) => j));
+    const byPos = new Map();
+    for (const h of hits) if (h.pos !== null) { if (!byPos.has(h.pos)) byPos.set(h.pos, []); byPos.get(h.pos).push(h.dev - m0); }
+    const posDev = [...byPos].map(([p, ds]) => {
+      // gegen das Mittel der übrigen Stellen, damit der eigene Versatz nicht im Gesamtmittel verwässert
+      const others = hits.filter((h) => h.pos !== p).map((h) => h.dev - m0);
+      const rest = others.length ? others.reduce((s, d) => s + d, 0) / others.length : 0;
+      const rel = ds.reduce((s, d) => s + d, 0) / ds.length - rest;
+      const same = ds.filter((d) => Math.sign(d - rest) === Math.sign(rel)).length / ds.length;
+      const counts = ds.length >= 4 && same >= .7 && !swingShort.has(p);
+      const failAt = Math.max(HOLD_POS_FAIL, .2 * (gaps && gaps[p] ? gaps[p] : 0));
+      return { pos: p, rel, mean: ds.reduce((s, d) => s + d, 0) / ds.length, n: ds.length, same, tip: counts && Math.abs(rel) >= HOLD_POS_TIP, fail: counts && Math.abs(rel) >= failAt, name: names ? names[p] : null };
+    });
+    const hot = posDev.filter((p) => p.tip).sort((x, y) => Math.abs(y.rel) - Math.abs(x.rel))[0] || null;
+    // Gleichmäßigkeit: Streuung um den eigenen Mittelwert je Stelle (ein fester Stellen-Versatz ist
+    // kein Wackeln – er zählt oben als Muster). Schwelle je Begleitung, bei langsamem Tempo ≥ 5 % des Schlags.
+    const posMean = new Map(posDev.filter((p) => p.n >= 4).map((p) => [p.pos, p.mean]));
+    const res = hits.map((h) => h.dev - m0 - (posMean.get(h.pos) || 0));
+    const sd = res.length ? Math.sqrt(res.reduce((s, r) => s + r * r, 0) / res.length) : null;
+    const cat = free || plan.includes(false) ? HOLD_SD.gaps : HOLD_SD.steady;
+    const limit = Math.max(cat[0], HOLD_SD_BEAT * beatSec);
+    const star = limit * cat[1] / cat[0];
+    const level = sd === null ? 0 : sd < star ? 3 : sd <= limit ? 2 : 1;
+    // Wiedereinstieg nach Lücken: Mittel der ersten zwei Schläge des ersten Takts mit Begleitung,
+    // höchstens 70 ms neben der eigenen Linie, und dieser Takt ohne Fehler.
     let reentry = null;
-    if (plan.includes(false)) {
+    if (!free && plan.includes(false)) {
       const firsts = bars.map((_, b) => b).filter((b) => plan[b] && b > 0 && plan[b - 1] === false && bars[b].expected > 0);
-      if (firsts.length) reentry = firsts.reduce((a, b) => a + bars[b].hit / bars[b].expected, 0) / firsts.length >= .75 ? 'good' : 'late';
+      if (firsts.length) {
+        const ok = firsts.every((b) => {
+          const two = hits.filter((h) => h.bar === b).slice(0, 2);
+          return two.length && !bars[b].err && Math.abs(two.reduce((s, h) => s + h.dev, 0) / two.length) <= HOLD_REENTRY;
+        });
+        reentry = ok ? 'good' : 'late';
+      }
     }
-    // Takt sicher: Treffer minus Klatscher zu viel ≥ HOLD_BAR_MIN der Soll-Punkte
-    // (wer einfach alles durchklatscht, schafft keinen Takt mehr); Takt ohne
-    // Soll-Punkte: höchstens ein Klatscher zu viel.
-    for (const b of bars) b.ok = b.expected ? b.hit - b.extra >= HOLD_BAR_MIN * b.expected - 1e-9 : b.extra <= 1;
-    const offs = hits.map((h) => h.off);
-    const meanAbs = offs.length ? offs.reduce((a, o) => a + Math.abs(o), 0) / offs.length : null;
-    const lastTwo = bars.slice(-2).filter((b) => b.hit > 0);
-    // Geschafft: alle Takte sicher, im Mittel höchstens HOLD_MEAN_ABS daneben
-    // und am Ende nicht weggedriftet (Mittel der letzten zwei Takte).
-    const allOk = bars.every((b) => b.ok);
-    const tight = meanAbs === null || meanAbs <= HOLD_MEAN_ABS;
-    const noDrift = lastTwo.every((b) => Math.abs(b.meanOffset) <= HOLD_END_DRIFT);
-    const held = allOk && tight && noDrift;
-    const reason = held ? null : !allOk ? 'bars' : !tight ? 'loose' : 'drift';
-    const expectedN = bars.reduce((a, b) => a + b.expected, 0);
-    const extras = bars.reduce((a, b) => a + b.extra, 0);
-    return { bars, held, tendency, lostAt, reentry, reason, offsets: offs, meanAbs, missed: expectedN - hits.length, extras, expected: expectedN };
+    // Shuffle: Verhältnis lang:kurz je Grundschlag (Median); unter 1,35 ist es kein Shuffle mehr.
+    let swing = null;
+    if (swingPairs && swingPairs.length) {
+      const byKey = new Map(hits.map((h) => [`${h.bar}:${h.pos}`, h]));
+      const ratios = [];
+      for (const h of hits) for (const [i, j] of swingPairs) {
+        if (h.pos !== i) continue;
+        const s = byKey.get(`${h.bar}:${j}`);
+        if (s && s.x > h.x && h.x + beatSec > s.x) ratios.push((s.x - h.x) / (h.x + beatSec - s.x));
+      }
+      if (ratios.length >= 3) {
+        ratios.sort((x, y) => x - y);
+        const ratio = ratios[Math.floor(ratios.length / 2)];
+        swing = { ratio, fail: ratio < HOLD_SWING.fail, tip: ratio < HOLD_SWING.tip ? 'straight' : ratio > HOLD_SWING.max ? 'dotted' : null };
+      }
+    }
+    // Tendenz: lineare Regression der Abweichungen über der Zeit (Anfang → Ende), in Stumm das eigene Tempo.
+    let tendency = 'steady';
+    const tempoDev = free ? k - 1 : null;
+    if (free) tendency = tempoDev < -HOLD_TEMPO[1] ? 'faster' : tempoDev > HOLD_TEMPO[1] ? 'slower' : 'steady';
+    else if (hits.length >= 6) {
+      const n = hits.length;
+      const mt = hits.reduce((s, h) => s + h.t, 0) / n, mo = hits.reduce((s, h) => s + h.off, 0) / n;
+      let num = 0, den = 0;
+      for (const h of hits) { num += (h.t - mt) * (h.off - mo); den += (h.t - mt) ** 2; }
+      const change = (den ? num / den : 0) * (E[E.length - 1].t - E[0].t);
+      tendency = change < -tol / 2 ? 'faster' : change > tol / 2 ? 'slower' : 'steady';
+    }
+    const okErr = errors <= allowed && !consecutive && lostAt === null;
+    const patternFail = posDev.some((p) => p.fail) || !!(swing && swing.fail);
+    const okSd = sd === null || sd <= limit;
+    const okTempo = !free || Math.abs(tempoDev) <= HOLD_TEMPO[0];
+    const held = expectedN > 0 && hits.length > 0 && okErr && !patternFail && reentry !== 'late' && okTempo && okSd;
+    const reason = held ? null : !okErr || !hits.length ? 'bars' : patternFail ? 'pattern' : reentry === 'late' ? 'reentry' : !okTempo ? 'tempo' : 'loose';
+    const offsets = hits.map((h) => h.off);
+    const bias = offsets.length ? offsets.reduce((s, o) => s + o, 0) / offsets.length : null;
+    const meanAbs = offsets.length ? offsets.reduce((s, o) => s + Math.abs(o), 0) / offsets.length : null;
+    return { bars, held, reason, tendency, lostAt, reentry, free, tempoDev, offsets, bias, meanAbs, sd, limit, star, level,
+      errors, allowed, consecutive, missed, extras, expected: expectedN, posDev, hot, swing, hits: hits.map(({ x, bar, pos: p, off }) => ({ t: x - barStart, bar, pos: p, off })) };
   }
-  /** Durchhalten (Klatsch-Grooves und licks.html, wortgleich): mittlere Abweichung höchstens 50 ms, am Ende nicht über 60 ms weggedriftet. */
-  const HOLD_MEAN_ABS = .05;
-  /** Takt sicher ab 85 %: bis 6 Schläge im Takt müssen alle sitzen, ab 7 darf einer fehlen. */
-  const HOLD_BAR_MIN = .85;
-  const HOLD_END_DRIFT = .06;
-  /** „Genau“ wie in der Karte „Letzte Runde“: bis 40 ms. */
-  const HOLD_EXACT = .04;
-  /** Kennzahlen eines Durchhalte-Laufs: genau (bis 40 ms), zu früh, zu spät,
-   *  Mittel (mit Vorzeichen), größte Abweichung. */
+  /** Nächste freie Anschläge zu den (verschobenen) Soll-Punkten; Tonklasse muss passen, wenn beide eine haben. */
+  function holdAssign(E, tp, predict, tolOf) {
+    for (const x of tp) x.used = false;
+    const pairs = [];
+    for (const e of E) {
+      const want = predict(e), w = tolOf(e);
+      let best = null;
+      for (const x of tp) {
+        if (x.used || Math.abs(x.t - want) > w) continue;
+        if (e.pc !== null && x.pc !== null && e.pc !== x.pc) continue;
+        if (!best || Math.abs(x.t - want) < Math.abs(best.t - want)) best = x;
+      }
+      if (best) { best.used = true; pairs.push({ e, x: best }); }
+    }
+    return pairs;
+  }
+  /* Grenzen (Musikpädagoge; Startwerte, teils Erfahrungswerte – Repp 2005, Rasch 1979):
+     Streuung geschafft / sehr sauber je Begleitung, bei langsamem Tempo mindestens 5 % des Schlags. */
+  const HOLD_SD = { steady: [.035, .025], gaps: [.04, .028] };
+  const HOLD_SD_BEAT = .05;
+  const HOLD_ERR_SHARE = .03;      // Fehlerbudget: 3 % der Schläge, mindestens 1 je 8 Takte
+  const HOLD_BIAS_MAX = .06;       // so weit wandert das Trefferfenster mit dem eigenen Versatz mit
+  const HOLD_GAP_EXTRA = .02;      // stille Takte: Fenster etwas weiter
+  const HOLD_REENTRY = .07;        // Wiedereinstieg: Mittel der ersten zwei Schläge
+  const HOLD_TEMPO = [.04, .02];   // Stumm: Tempoänderung geschafft / „sehr sauber“
+  const HOLD_POS_TIP = .035, HOLD_POS_FAIL = .06;
+  const HOLD_SWING = { fail: 1.35, tip: 1.6, max: 2.6 };
+  const HOLD_EXACT = .04;          // „genau“ wie in der Karte „Letzte Runde“
+  /** Kennzahlen für „Details“: genau (bis 40 ms am Raster), zu früh, zu spät, Ø, Streuung, größte Abweichung. */
   function holdTimingStats(res) {
     const offs = res.offsets || [];
-    const ms = (x) => Math.round(x * 1000);
-    const exact = offs.filter((o) => Math.abs(o) <= HOLD_EXACT).length;
-    const early = offs.filter((o) => o < -HOLD_EXACT).length;
-    const late = offs.filter((o) => o > HOLD_EXACT).length;
-    const mean = offs.length ? ms(offs.reduce((a, o) => a + o, 0) / offs.length) : null;
-    const worst = offs.length ? offs.reduce((a, o) => (Math.abs(o) > Math.abs(a) ? o : a), 0) : null;
-    return { exact, early, late, mean, meanAbs: res.meanAbs === null || res.meanAbs === undefined ? null : ms(res.meanAbs), worst: worst === null ? null : ms(worst), missed: res.missed || 0, extras: res.extras || 0 };
+    const ms = (x) => (x === null || x === undefined ? null : Math.round(x * 1000));
+    const worst = offs.length ? offs.reduce((s, o) => (Math.abs(o) > Math.abs(s) ? o : s), 0) : null;
+    return { exact: offs.filter((o) => Math.abs(o) <= HOLD_EXACT).length, early: offs.filter((o) => o < -HOLD_EXACT).length, late: offs.filter((o) => o > HOLD_EXACT).length,
+      mean: ms(res.bias), sd: ms(res.sd), worst: ms(worst), missed: res.missed || 0, extras: res.extras || 0 };
+  }
+  /** Ein Satz zum Ergebnis und genau ein Tipp (größter Hebel zuerst), Wortwahl für Laien. */
+  function holdResultVerdict(res) {
+    const what = res.held ? (res.level === 3 ? 'Geschafft – sehr sauber' : 'Geschafft') : 'Noch nicht';
+    const why = res.held ? `${res.bars.length} Takte durchgehalten.`
+      : res.reason === 'bars' ? (res.lostAt ? `Bis Takt ${res.lostAt - 1} lief es stabil.` : 'Noch zu viele Fehler.')
+      : res.reason === 'pattern' ? 'Alles da, aber eine Stelle sitzt noch nicht.'
+      : res.reason === 'reentry' ? 'Durchgehalten, aber nach der Stille zu spät wieder drin.'
+      : res.reason === 'tempo' ? 'Durchgehalten, aber das Tempo ist weggelaufen.'
+      : 'Alles da, aber noch nicht gleichmäßig genug.';
+    return { what, why, tip: holdTip(res), note: holdBiasNote(res) };
+  }
+  function holdTip(res) {
+    const posTip = (p) => (p.rel < 0 ? `Fast immer kommt ${p.name || 'eine Stelle'} zu früh – du drängst. Lass dir dort Zeit und zähl die Achtel mit.`
+      : `Fast immer kommt ${p.name || 'eine Stelle'} zu spät – du schleppst. Denk die Stelle schon auf dem Schlag davor.`);
+    const swingTip = (s) => (s.tip === 'dotted' ? 'Dein Shuffle ist sehr punktiert. Lockerer: lang-kurz wie „Tri-o-le“, ohne die Mitte.'
+      : 'Deine Achtel sind zu gerade für einen Shuffle. Denk eine Triole und klatsch nur die erste und die dritte.');
+    if (res.reason === 'bars') {
+      if (res.lostAt) return res.reentry === 'late' ? 'In der Stille zählst du beim nächsten Mal leise mit.' : 'Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal. Nochmal, notfalls mit mehr Begleitung.';
+      if (res.extras >= 2 && res.extras >= res.missed) return `${res.extras} Schläge zu viel – nur dort, wo der Rhythmus wirklich einen Schlag hat.`;
+      return 'Ein paar Schläge fehlten. Nimm eine Stufe mehr Begleitung oder ein ruhigeres Tempo.';
+    }
+    if (res.reason === 'pattern') return res.swing && res.swing.fail ? swingTip(res.swing) : posTip(res.posDev.filter((p) => p.fail).sort((x, y) => Math.abs(y.rel) - Math.abs(x.rel))[0]);
+    if (res.reason === 'reentry') return 'Nach der Stille kamst du zu spät wieder rein. Zähl in der Stille leise mit – dann sitzt der Einsatz.';
+    if (res.reason === 'tempo') return res.tempoDev > 0 ? 'Ohne Begleitung bist du langsamer geworden. Halt den Puls innerlich fest – Fuß mitwippen hilft.' : 'Ohne Begleitung bist du schneller geworden. Lass die Pausen ruhig lang.';
+    if (res.reason === 'loose') {
+      if (res.tendency === 'faster') return 'Du bist nach und nach schneller geworden – du drängst. Nochmal, diesmal bewusst gemütlich.';
+      if (res.tendency === 'slower') return 'Du bist nach und nach langsamer geworden – du schleppst. Die Begleitung zieht dich.';
+      return 'Mal früher, mal später. Wipp mit dem Fuß auf den Vierteln mit – die Hände hängen sich dran.';
+    }
+    if (res.hot) return posTip(res.hot);
+    if (res.swing && res.swing.tip) return swingTip(res.swing);
+    if (res.errors) return 'Ein kleiner Patzer, und du warst sofort wieder drin – genau darum geht es beim Durchhalten.';
+    return res.level === 3 ? 'Ruhig und sehr gleichmäßig. Nimm als Nächstes weniger Begleitung.' : 'Ruhig und gleichmäßig.';
+  }
+  /** Versatz insgesamt: nur ab 30 ms und neutral – er kostet nichts. */
+  function holdBiasNote(res) {
+    if (res.bias === null || Math.abs(res.bias) <= .03) return '';
+    return res.bias < 0 ? 'Du bist insgesamt etwas vor dem Schlag – das machen fast alle.' : 'Du bist insgesamt etwas nach dem Schlag.';
+  }
+  /** Ergebnis-Karte nach dem Durchhalten (wortgleich in beiden Seiten, Stile .hr-*):
+   *  Urteil, Takte, Muster und Gleichmäßigkeit in Worten, ein Tipp, Verteilung mit Abspielknopf,
+   *  Millisekunden nur unter „Details“. `playing`: gerade abgespielt (Knopf zeigt Stopp). */
+  function holdResultHtml(res, { playing = false } = {}) {
+    const v = holdResultVerdict(res);
+    const bars = res.bars.map((b, i) => `<span class="hr-bar ${b.err ? (b.hit < b.expected / 2 ? 'is-lost' : 'is-err') : 'is-ok'}${b.silent ? ' is-silent' : ''}" data-hr-bar="${i}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}${b.extra ? `, ${b.extra} zu viel` : ''}">${i + 1}${b.err ? '<i aria-hidden="true">!</i>' : ''}</span>`).join('');
+    const words = ['–', 'wacklig', 'gleichmäßig', 'sehr sauber'];
+    const errWord = res.errors === 0 ? 'alles da' : `${res.errors} ${res.errors === 1 ? 'Fehler' : 'Fehler'}`;
+    // Verteilung um die eigene Linie: Mitte = Schlag, gestrichelt = du, Band = deine Streuung.
+    const span = .1, X = (o) => 50 + clamp(o / span, -1, 1) * 46;
+    const stack = {};
+    const dots = res.hits.map((h) => {
+      const bin = Math.round(X(h.off) / 2.5);
+      const k = (stack[bin] = (stack[bin] || 0) + 1) - 1;
+      const odd = res.hot && h.pos === res.hot.pos;
+      return `<span class="hr-dot${odd ? ' is-odd' : ''}" data-hr-bar="${h.bar}" style="left:${(bin * 2.5).toFixed(1)}%;bottom:${22 + Math.min(k, 9) * 7}px"></span>`;
+    }).join('');
+    const bias = res.bias || 0, sd = res.sd || 0;
+    const s = holdTimingStats(res);
+    return `<div class="hr" data-result>
+      <div class="hr-head"><b class="hr-what">${v.what}</b><span class="hr-why">${v.why}</span></div>
+      <div class="hr-bars" style="grid-template-columns:repeat(${res.bars.length},minmax(0,1fr))" role="img" aria-label="${res.bars.filter((b) => !b.err).length} von ${res.bars.length} Takten ohne Fehler">${bars}</div>
+      <div class="hr-kpis"><div class="hr-kpi ${res.reason === 'bars' ? 'is-bad' : 'is-good'}"><span>Muster</span><b>${res.reason === 'pattern' ? 'eine Stelle' : errWord}</b></div>
+        <div class="hr-kpi ${res.level === 1 ? 'is-bad' : 'is-good'}"><span>Gleichmäßig</span><b>${words[res.level]}</b><i class="hr-scale" aria-hidden="true">${[1, 2, 3].map((n) => `<u class="${n <= res.level ? 'on' : ''}"></u>`).join('')}</i></div></div>
+      <p class="hr-tip" role="status">${v.tip}${v.note ? `<small>${v.note}</small>` : ''}</p>
+      <div class="hr-dist" role="img" aria-label="Verteilung deiner Schläge: ${s.exact} genau, ${s.early} früher, ${s.late} später">
+        <span class="hr-band" style="left:${X(bias - sd).toFixed(1)}%;width:${(X(bias + sd) - X(bias - sd)).toFixed(1)}%"></span><span class="hr-axis"></span><span class="hr-mid"></span>
+        <span class="hr-mean" style="left:${X(bias).toFixed(1)}%"><em>du</em></span>${dots}
+        <span class="hr-lg"><span>früher</span><span>Schlag</span><span>später</span></span>
+        <button type="button" class="hr-play" data-hold-play aria-label="${playing ? 'Anhören stoppen' : 'Eigenes Spiel anhören'}">${playing ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="4" height="12" rx="1"/><rect x="13" y="6" width="4" height="12" rx="1"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'}</button></div>
+      <details class="hr-more"><summary>Details in Millisekunden</summary>
+        <div class="hr-grid"><span><b>${s.exact}</b>genau</span><span><b>${s.early}</b>zu früh</span><span><b>${s.late}</b>zu spät</span><span><b>${s.missed}</b>verpasst</span><span><b>${s.extras}</b>zu viel</span></div>
+        <p>${s.mean !== null ? `Ø ${hrMs(s.mean)} ms · Streuung ±${s.sd} ms · größte ${hrMs(s.worst)} ms. ` : ''}„Genau“ heißt bis ${HOLD_EXACT * 1000} ms am Schlag.${res.free && res.tempoDev !== null ? ` Tempo ${res.tempoDev > 0 ? 'langsamer' : 'schneller'} um ${Math.abs(Math.round(res.tempoDev * 1000) / 10)} %.` : ''}${res.swing ? ` Shuffle lang:kurz ${res.swing.ratio.toFixed(2).replace('.', ',')}.` : ''}</p></details>
+    </div>`;
+  }
+  const hrMs = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
+  /** Beim Abspielen: aktuellen Takt und seine Punkte hervorheben (-1 = keiner). */
+  function holdMarkBar(host, bar) {
+    if (!host) return;
+    host.querySelectorAll('[data-hr-bar]').forEach((el) => el.classList.toggle('is-now', Number(el.dataset.hrBar) === bar));
   }
 
   /* ---- Verzögerung erkennen (übungsübergreifende Kalibration). Kommen alle
@@ -657,21 +796,9 @@
       <div class="actions" style="margin-top:0"><button class="k-btn" type="button" data-delay="apply">${h.ms} ms ausgleichen</button><button class="k-btn k-btn--ghost" type="button" data-delay="later">Später</button></div></div>`;
   }
 
-  /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
+  /** Rückmeldung nach dem Durchhalten: der eine Tipp der Ergebnis-Karte (holdTip). `stage` bleibt für ältere Aufrufer. */
   function holdMessage(result, stage) {
-    const st = stageOf(stage);
-    const gaps = stageHasGaps(st);
-    if (result.held && result.tendency === 'steady') return `Durchgehalten – ${st.bars} Takte, ruhig und gleichmäßig.`;
-    if (result.held && result.tendency === 'faster') return 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.';
-    if (result.held && result.tendency === 'slower') return 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.';
-    if (result.lostAt && gaps && result.reentry === 'late') return `Bis Takt ${result.lostAt - 1} lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.`;
-    if (result.lostAt) return `Bis Takt ${result.lostAt - 1} lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.`;
-    if (result.reason === 'loose') return `Alle Takte gehalten, aber im Schnitt ${Math.round(result.meanAbs * 1000)} ms daneben. Geschafft ist es ab höchstens ${HOLD_MEAN_ABS * 1000} ms – nochmal, ganz bewusst mit dem Schlag.`;
-    if (result.reason === 'drift') return 'Fast! Zum Schluss bist du aus dem Takt gerutscht. Nochmal – bis zum letzten Ton mitzählen.';
-    if (result.reason === 'bars' && result.extras >= 2 && result.extras >= result.missed) return `Fast! ${result.extras} Töne zu viel oder falsch – spiel nur die Töne des Licks.`;
-    if (result.tendency === 'faster') return 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.';
-    if (result.tendency === 'slower') return 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.';
-    return 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.';
+    return holdTip(result);
   }
 
   /** Stufenbezeichnung eines Tons (Halbtöne über root, mod 12). */
@@ -1258,6 +1385,7 @@
   /** Lauf starten. tl: Zeitleiste (Ereignisse ab 0, `tl.bars` Takte), onEnd(run). */
   async function startRun(tl, onEnd) {
     stopRun(false);
+    holdReplayStop(false);
     try { await engine.start(); } catch { return false; }
     const ctx = engine.ctx;
     run.playing = true;
@@ -1574,7 +1702,7 @@
     const intro = ui.running ? '' : `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
       ${result ? '' : `${planHtml(st, stageNo)}<p>${holdBefore(st)}</p>`}`;
     return `${intro}
-      ${result ? stripHtml(result) : placeholderHtml()}
+      ${result ? holdResultHtml(result, { playing: !!holdReplayState }) : placeholderHtml()}
       <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
       <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
       ${nextStage ? `<button class="k-btn k-btn--ghost" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
@@ -1612,46 +1740,6 @@
     return `<div class="stage" data-result><svg viewBox="0 0 ${SVG_W} 104" role="img" aria-label="Ergebnis: ${res.hits} von ${res.exp.length} Tönen getroffen">${parts.join('')}
       <text class="lbl" x="12" y="92">○ Soll   ● du   grün = genau · gelb = knapp · rot = zu viel</text></svg></div>`;
   }
-  /** Taktstreifen nach dem Durchhalten: „sicher“ = b.ok aus judgeHold (Treffer minus zu viel ≥ 85 %),
-   *  „wackelig“ ≥ 50 %, „verloren“ darunter; stille Takte schraffiert. Darunter Verteilung und Zahlen. */
-  function stripHtml(res) {
-    const okOf = (b) => (b.ok !== undefined ? b.ok : !b.expected || b.hit >= HOLD_BAR_MIN * b.expected);
-    const cells = res.bars.map((b, i) => {
-      const f = b.expected ? (b.hit - (b.extra || 0)) / b.expected : 1;
-      const cls = okOf(b) ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost';
-      const mark = { 'is-sure': '✓', 'is-wobbly': '~', 'is-lost': '×' }[cls];
-      return `<div class="cell ${cls}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}${b.extra ? `, ${b.extra} zu viel` : ''}${b.silent ? ' (still)' : ''}"><b>${i + 1}</b><i aria-hidden="true">${mark}</i></div>`;
-    }).join('');
-    return `<div class="strip" role="img" aria-label="Takte: ${res.bars.filter(okOf).length} von ${res.bars.length} sicher">${cells}</div>
-      <div class="legend"><span><i style="background:var(--ok-bg)"></i>✓ sicher</span><span><i style="background:var(--rep-bg)"></i>~ wackelig</span><span><i style="background:var(--lost-bg)"></i>× verloren</span>
-      <span><i style="background-image:repeating-linear-gradient(135deg,rgba(36,27,61,.4) 0 2px,transparent 2px 5px)"></i>still (ohne Schlagzeug)</span></div>${res.offsets ? distHtml(res) : ''}`;
-  }
-  const signedMs = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
-  /** Verteilung aller Töne nach dem Durchhalten (wie in den Klatsch-Grooves):
-   *  Mitte genau, links früh, rechts spät, gleich weit daneben stapelt sich;
-   *  darunter genau / zu früh / zu spät / verpasst / zu viel und Ø-Werte. */
-  function distHtml(res) {
-    const tol = res.tol || .1;
-    const BINS = 25;
-    const stack = new Array(BINS).fill(0);
-    const pts = res.offsets.map((o) => {
-      const bin = Math.round((clamp(o / tol, -1, 1) + 1) / 2 * (BINS - 1));
-      return { x: bin / (BINS - 1) * 2 - 1, k: stack[bin]++, good: Math.abs(o) <= HOLD_EXACT };
-    });
-    const maxStack = Math.max(1, ...stack);
-    const step = Math.min(9, 54 / maxStack);
-    const height = 14 + step * (maxStack - 1) + 6;
-    const dots = pts.map((p) => `<span class="tdot ${p.good ? 'is-good' : 'is-near'}" style="left:calc(50% + ${(p.x * 50).toFixed(1)}% - 7px);top:${(height - 17 - p.k * step).toFixed(1)}px"></span>`).join('');
-    const band = Math.min(50, HOLD_EXACT / tol * 50);
-    const s = holdTimingStats(res);
-    const cell = (n, label, cls = '') => `<div class="hstat${cls}"><b>${n}</b><span>${label}</span></div>`;
-    return `<div class="tstrip" style="height:${height.toFixed(0)}px" role="img" aria-label="Verteilung: ${s.exact} genau, ${s.early} zu früh, ${s.late} zu spät"><span class="texact" style="left:${(50 - band).toFixed(1)}%;width:${(2 * band).toFixed(1)}%"></span><span class="tstrip-line"></span><span class="tstrip-mid"></span>${dots}</div>
-      <div class="tstrip-legend" aria-hidden="true"><span>zu früh</span><span>genau</span><span>zu spät</span></div>
-      <div class="hstats">${cell(s.exact, 'genau', ' is-ok')}${cell(s.early, 'zu früh')}${cell(s.late, 'zu spät')}${cell(s.missed, 'verpasst', s.missed ? ' is-bad' : '')}${cell(s.extras, 'zu viel', s.extras ? ' is-bad' : '')}</div>
-      ${s.mean !== null ? `<p class="hstat-line">Ø ${signedMs(s.mean)} ms · Ø Abstand ${s.meanAbs} ms · größte ${signedMs(s.worst)} ms</p>` : ''}
-      <p class="hstat-rule">Grün = genau (bis ${HOLD_EXACT * 1000} ms), getroffen bis ${Math.round(tol * 1000)} ms. Geschafft: jeder Takt zu ${Math.round(HOLD_BAR_MIN * 100)} % sicher (Töne zu viel ziehen ab), im Schnitt höchstens ${HOLD_MEAN_ABS * 1000} ms daneben.</p>`;
-  }
-
   /** Piano-Roll (Notenbild, letzter Schritt): Zeilen = vorkommende Töne, oben Zählzeilen „1 e + a“. */
   function rollHtml(lick) {
     const midis = [...new Set(lick.notes.map((n) => lick.root + n[2]))].sort((a, b) => b - a);
@@ -2016,6 +2104,51 @@
     tl.end(start + st.bars + .5);
     return { tl, start, plan, st };
   }
+  /** Stellen im Lick für die Auswertung des Durchhaltens: Name in Zählsprache und kürzerer Abstand zum Nachbarton (s). */
+  function lickStations(lick, tickSec) {
+    const ticks = lick.notes.map((n) => n[0]), total = lick.bars * TICKS_BAR;
+    const names = ticks.map((tk, i) => {
+      const bar = Math.floor(tk / TICKS_BAR), inBar = tk % TICKS_BAR;
+      const beat = Math.floor(inBar / 12) + 1, sub = (inBar % 12) / 12;
+      const nm = sub === 0 ? `der Ton auf der ${beat}` : sub === .5 ? `der Ton auf dem „und“ nach der ${beat}` : sub === .25 ? `der Ton auf dem „e“ nach der ${beat}`
+        : sub === .75 ? `der Ton auf dem „a“ vor der ${beat % 4 + 1}` : `der ${i + 1}. Ton`;
+      return lick.bars > 1 ? `${nm} im ${bar + 1}. Takt` : nm;
+    });
+    const gaps = ticks.map((tk, i) => {
+      const prev = i ? tk - ticks[i - 1] : tk + total - ticks[ticks.length - 1];
+      const next = i < ticks.length - 1 ? ticks[i + 1] - tk : ticks[0] + total - tk;
+      return Math.min(prev, next) * tickSec;
+    });
+    return { names, gaps };
+  }
+  /** Eigenes Spiel nach dem Durchhalten anhören: die eigenen Töne mit dem Klick darunter;
+   *  der gerade gespielte Takt und seine Punkte leuchten. */
+  let holdReplayState = null;
+  async function holdReplay() {
+    if (holdReplayState) { holdReplayStop(); return; }
+    const res = ui.result, lick = currentLick();
+    if (!res || res.kind !== 'hold' || !res.replay || !lick) return;
+    stopRun(false);
+    try { await engine.start(); } catch { return; }
+    const { notes, barSec, bars } = res.replay;
+    const bus = engine.newBus(), sound = { ...soundFromPreset(soundOf(lick)), mono: false };
+    const t0 = engine.ctx.currentTime + .35; // Platz für einen etwas zu frühen ersten Ton
+    for (let q = 0; q < bars * 4; q++) engine.click(t0 + q * barSec / 4, q % 4 === 0, bus);
+    for (const n of notes) if (n.t >= -.2 && Number.isFinite(n.midi)) engine.playTone(sound, n.midi, t0 + n.t, OWN_VELOCITY, .22, { layer: 'own', dest: bus });
+    const timers = [];
+    for (let b = 0; b < bars; b++) timers.push(setTimeout(() => holdMarkBar($('#panel'), b), (t0 + b * barSec - engine.ctx.currentTime) * 1000));
+    timers.push(setTimeout(holdReplayStop, (t0 + bars * barSec - engine.ctx.currentTime) * 1000 + 300));
+    holdReplayState = { bus, timers };
+    renderLick();
+  }
+  function holdReplayStop(render = true) {
+    const r = holdReplayState;
+    if (!r) return;
+    holdReplayState = null;
+    r.timers.forEach(clearTimeout);
+    engine.fadeBus(r.bus);
+    if (render) renderLick();
+  }
   function stepHold() {
     const lick = currentLick();
     const it = itemOf(lick.id);
@@ -2029,9 +2162,15 @@
       const tol = Math.min(.1, toleranceFor(minGapSec(exp)));
       const taps = timeIn(info.taps, info.t0 + start * tl.barSec - tol - .1, info.t0 + (start + st.bars) * tl.barSec + tol).map((x) => ({ t: x.t, pc: x.pc }));
       noteRunDelay(exp.map((e) => e.t + info.t0), info.taps.filter((x) => x.t >= info.t0 + start * tl.barSec - .1 && x.t <= info.t0 + (start + st.bars) * tl.barSec + .45).map((x) => x.t));
-      const result = judgeHold({ expected: exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), taps, barStart: info.t0 + start * tl.barSec, barSec: tl.barSec, tol, plan });
-      ui.result = { kind: 'hold', stage: stageNo, tol, ...result };
-      setFeedback(holdMessage(result, stageNo), result.held ? 'good' : '');
+      const barStart = info.t0 + start * tl.barSec;
+      const sta = lickStations(lick, tl.tickSec);
+      const result = judgeHold({ expected: exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), taps, barStart, barSec: tl.barSec, tol, plan,
+        pos: exp.map((e) => e.i), gaps: sta.gaps, names: sta.names, beatSec: tl.barSec / 4 });
+      // Fürs Anhören: die eigenen Töne (mit Tonhöhe) ab Taktanfang.
+      const own = timeIn(info.taps, barStart - tol - .1, barStart + st.bars * tl.barSec + tol).map((x) => ({ t: x.t - barStart, midi: x.midi }));
+      ui.result = { kind: 'hold', stage: stageNo, tol, ...result, replay: { notes: own, barSec: tl.barSec, bars: st.bars } };
+      // Der Tipp steht in der Ergebnis-Karte (role="status").
+      setFeedback('', result.held ? 'good' : '');
       if (result.held && stageNo === it.hold + 1) { it.hold = Math.min(4, stageNo); persist(); }
       reportRun(lick, result.held, st.bars * tl.barSec);
     });
@@ -2111,7 +2250,7 @@
     if (r.phase === 'hold') {
       const st = HOLD_STAGES[ui.holdStage - 1];
       const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
-      return `${head}${ui.running || result ? '' : `<p class="panel-title">${st.name}</p>${planHtml(st, ui.holdStage)}<p>${holdBefore(st)}</p>`}${result ? stripHtml(result) : placeholderHtml()}
+      return `${head}${ui.running || result ? '' : `<p class="panel-title">${st.name}</p>${planHtml(st, ui.holdStage)}<p>${holdBefore(st)}</p>`}${result ? holdResultHtml(result, { playing: !!holdReplayState }) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
         <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
         <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
@@ -2152,6 +2291,8 @@
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
+    if (t.hasAttribute('data-hold-play')) { holdReplay(); return; }
+    if (holdReplayState) holdReplayStop();
     if (t.dataset.delay) {
       if (t.dataset.delay === 'apply') { applyDelaySuggestion(); setFeedback(`Verzögerung ausgeglichen: ${calib.tapMs} ms werden künftig abgezogen – in allen Übungen.`, 'good'); }
       else { delayHint.dismissed = true; delayHint.open = null; }
@@ -2268,43 +2409,79 @@
     const errors = [];
     const barSec = 4 * 60 / 90, tol = .1;
     const expectedFor = (bars) => Array.from({ length: bars }, (_, b) => [b * barSec + barSec / 4, b * barSec + 3 * barSec / 4]).flat();
-    const judge = (bars, taps, stageNo, expected = expectedFor(bars)) => judgeHold({ expected, taps, barStart: 0, barSec, tol, plan: holdPlan(stageNo) });
-    // 1. alle Anschläge exakt
+    const judge = (bars, taps, stageNo, expected = expectedFor(bars), more = {}) => judgeHold({ expected, taps, barStart: 0, barSec, tol, plan: holdPlan(stageNo), ...more });
+    // 1. alle Anschläge exakt (16 Takte mit Lücken)
     let r = judge(16, expectedFor(16), 4);
-    if (!r.held || r.tendency !== 'steady' || r.lostAt !== null) errors.push(`Vektor 1: ${r.held}/${r.tendency}/${r.lostAt}`);
-    // 2. jeder Anschlag 8 ms früher als der vorige (16 Takte)
-    r = judge(16, expectedFor(16).map((t, i) => t - .008 * i), 4);
+    if (!r.held || r.tendency !== 'steady' || r.lostAt !== null || r.level !== 3) errors.push(`Vektor 1: ${r.held}/${r.tendency}/${r.lostAt}/${r.level}`);
+    // 2. jeder Anschlag 4 ms früher als der vorige (8 Takte) → schneller geworden
+    r = judge(8, expectedFor(8).map((t, i) => t - .004 * i), 2);
     if (r.tendency !== 'faster') errors.push(`Vektor 2: ${r.tendency}`);
     // 3. Anschläge nur bis einschließlich Takt 9 (16 Takte)
     r = judge(16, expectedFor(9), 4);
-    if (r.lostAt !== 10 || r.held) errors.push(`Vektor 3: lostAt ${r.lostAt}, held ${r.held}`);
-    // 4. Stufe 3, stille Takte 3–4 um 0,12 s verschoben: Takt 5 exakt → 'good', Takt 5 und 6 daneben → 'late'
+    if (r.lostAt !== 10 || r.held || r.reason !== 'bars') errors.push(`Vektor 3: lostAt ${r.lostAt}, held ${r.held}`);
+    // 4. Stufe 3 (Lücken in Takt 3–4 und 7–8): stille Takte 0,12 s spät, Takt 5 exakt → Wiedereinstieg gut;
+    //    Takt 5 (Wiedereinstieg) 95 ms spät → zu spät wieder drin
     const shifted = (bars, fn) => expectedFor(bars).map((t) => fn(Math.floor(t / barSec) + 1, t));
     r = judge(8, shifted(8, (bar, t) => (bar === 3 || bar === 4 ? t + .12 : t)), 3);
     if (r.reentry !== 'good') errors.push(`Vektor 4a: reentry ${r.reentry}`);
-    r = judge(8, shifted(8, (bar, t) => (bar >= 3 && bar <= 6 ? t + .12 : t)), 3);
-    if (r.reentry !== 'late') errors.push(`Vektor 4b: reentry ${r.reentry}`);
-    // 5. doppelt so viele Anschläge wie Soll
+    r = judge(8, shifted(8, (bar, t) => (bar === 5 ? t + .095 : t)), 3);
+    if (r.reentry !== 'late' || r.held || r.reason !== 'reentry') errors.push(`Vektor 4b: reentry ${r.reentry}/${r.reason}`);
+    // 5. doppelt so viele Anschläge wie Soll → Durchklatschen gilt nicht
     const e8 = expectedFor(8);
     r = judge(8, [...e8, ...e8.map((t) => t + .02)], 2);
     const base = judge(8, e8, 2);
-    if (!(r.bars.reduce((a, b) => a + b.extra, 0) > 0) || r.bars.reduce((a, b) => a + b.hit, 0) !== base.bars.reduce((a, b) => a + b.hit, 0)) errors.push('Vektor 5: extra/Treffer');
-    if (r.held || r.reason !== 'bars' || r.extras !== 16 || !base.held) errors.push(`Vektor 5: Durchklatschen gilt als geschafft (${r.held}/${r.reason}/${r.extras})`);
-    // 6. alles getroffen, aber durchweg 70 ms zu spät (im Fenster) → nicht geschafft, Grund „loose“
+    if (r.held || r.reason !== 'bars' || r.extras !== 16 || !base.held || r.bars.reduce((a, b) => a + b.hit, 0) !== 16) errors.push(`Vektor 5: ${r.held}/${r.reason}/${r.extras}`);
+    // 5b. Mikrofon: ein Zusatzschlag je Takt zählt nicht
+    r = judge(8, [...e8, ...Array.from({ length: 8 }, (_, b) => b * barSec + .1)], 2, e8, { mic: true });
+    if (!r.held || r.extras !== 0) errors.push(`Vektor 5b: ${r.held}/${r.extras}`);
+    // 6. alles durchweg 70 ms spät → Fenster wandert mit, geschafft; nur Hinweis zum Versatz
     r = judge(8, e8.map((t) => t + .07), 2);
-    if (r.held || r.reason !== 'loose' || Math.round(r.meanAbs * 1000) !== 70 || r.missed !== 0) errors.push(`Vektor 6: ${r.held}/${r.reason}/${r.meanAbs}`);
-    // 7. abwechselnd ±30 ms → geschafft; Kennzahlen
+    if (!r.held || r.missed !== 0 || Math.round(r.bias * 1000) !== 70 || !holdBiasNote(r)) errors.push(`Vektor 6: ${r.held}/${r.missed}/${r.bias}`);
+    // 7. abwechselnd ±30 ms → geschafft, „gleichmäßig“ (nicht „sehr sauber“); Kennzahlen
     r = judge(8, e8.map((t, i) => t + (i % 2 ? .03 : -.03)), 2);
     const s7 = holdTimingStats(r);
-    if (!r.held || s7.exact !== 16 || s7.early || s7.late || s7.mean !== 0 || Math.abs(s7.worst) !== 30) errors.push(`Vektor 7: ${r.held}/${JSON.stringify(s7)}`);
-    // 8. ein Klatscher pro Takt verpasst (Backbeat: 1 von 2) → Takte nicht sicher
-    r = judge(8, e8.filter((_, i) => i % 2 === 0), 2);
-    if (r.held || r.bars.some((b) => b.ok) || r.missed !== 8) errors.push(`Vektor 8: ${r.held}/${r.missed}`);
-    // 9. Takt mit acht Achteln: einer verpasst → sicher, zwei verpasst → nicht; vier Viertel, einer verpasst → nicht
+    if (!r.held || r.level !== 2 || s7.exact !== 16 || s7.early || s7.late || s7.mean !== 0 || s7.sd !== 30 || Math.abs(s7.worst) !== 30) errors.push(`Vektor 7: ${r.held}/${r.level}/${JSON.stringify(s7)}`);
+    // 7b. abwechselnd ±50 ms → wacklig
+    r = judge(8, e8.map((t, i) => t + (i % 2 ? .05 : -.05)), 2);
+    if (r.held || r.reason !== 'loose' || r.level !== 1) errors.push(`Vektor 7b: ${r.held}/${r.reason}/${r.level}`);
+    // 8. Fehlerbudget: 8 Takte Backbeat (16 Schläge) → 1 Fehler erlaubt, 2 nicht; 16 Takte → 2, aber nie zwei Takte hintereinander
+    const drop = (list, idx) => list.filter((_, i) => !idx.includes(i));
+    if (!judge(8, drop(e8, [5]), 2).held || judge(8, drop(e8, [5, 11]), 2).held) errors.push('Vektor 8: Budget 8 Takte');
+    const e16 = expectedFor(16);
+    if (!judge(16, drop(e16, [4, 17]), 4).held || judge(16, drop(e16, [4, 6]), 4).held) errors.push('Vektor 8: Budget 16 Takte / hintereinander');
+    // 9. Stelle im Muster (vier Viertel je Takt, Stelle 2 versetzt): −75 ms → kein „geschafft“, aber „gleichmäßig“;
+    //    −50 ms → geschafft mit Tipp
     {
-      const e = Array.from({ length: 8 }, (_, i) => .1 + i * barSec / 8), q = Array.from({ length: 4 }, (_, i) => .1 + i * barSec / 4);
-      const one = (exp, taps) => judgeHold({ expected: exp, taps, barStart: 0, barSec, tol, plan: [true] }).bars[0].ok;
-      if (!one(e, e.slice(1)) || one(e, e.slice(2)) || one(q, q.slice(1)) || !one(q, q)) errors.push('Vektor 9: Schwelle sicherer Takt');
+      const q = Array.from({ length: 32 }, (_, i) => Math.floor(i / 4) * barSec + (i % 4) * barSec / 4);
+      const pos = q.map((_, i) => i % 4);
+      const names = ['die 1', 'die 2', 'die 3', 'die 4'];
+      const run = (d) => judge(8, q.map((t, i) => t + (i % 4 === 2 ? d : 0)), 2, q, { pos, names, gaps: [barSec / 8, barSec / 8, barSec / 8, barSec / 8] });
+      r = run(-.075);
+      if (r.held || r.reason !== 'pattern' || r.level < 2 || !/die 3 zu früh/.test(holdTip(r))) errors.push(`Vektor 9a: ${r.held}/${r.reason}/${r.level}`);
+      r = run(-.05);
+      if (!r.held || !r.hot || r.hot.pos !== 2) errors.push(`Vektor 9b: ${r.held}/${r.hot && r.hot.pos}`);
+    }
+    // 10. Shuffle (Paare Schlag / kurzes Achtel): Verhältnis 2 → in Ordnung, 1,5 → Tipp, 1,25 → kein „geschafft“
+    {
+      const beat = barSec / 4;
+      const exp = [], pos = [];
+      for (let i = 0; i < 16; i++) { exp.push(i * beat, i * beat + beat * 2 / 3); pos.push(0, 1); }
+      const run = (ratio) => judge(4, exp.map((t, i) => (i % 2 ? Math.floor(i / 2) * beat + beat * ratio / (1 + ratio) : t)), 1, exp, { pos, beatSec: beat, swingPairs: [[0, 1]] });
+      r = run(2);
+      if (!r.held || !r.swing || r.swing.tip) errors.push(`Vektor 10a: ${r.held}/${JSON.stringify(r.swing)}`);
+      r = run(1.5);
+      if (!r.held || r.swing.tip !== 'straight') errors.push(`Vektor 10b: ${r.held}/${JSON.stringify(r.swing)}`);
+      r = run(1.25);
+      if (r.held || r.reason !== 'pattern' || !r.swing.fail) errors.push(`Vektor 10c: ${r.held}/${r.reason}/${JSON.stringify(r.swing)}`);
+    }
+    // 11. Stumm (alle Takte still): eigenes Tempo zählt – 3 % langsamer geschafft, 7 % langsamer nicht
+    {
+      const silent = Array(8).fill(false);
+      const run = (f) => judgeHold({ expected: e8, taps: e8.map((t) => e8[0] + (t - e8[0]) * f), barStart: 0, barSec, tol, plan: silent });
+      r = run(1.03);
+      if (!r.held || !r.free || Math.abs(r.tempoDev - .03) > .002 || r.missed) errors.push(`Vektor 11a: ${r.held}/${r.tempoDev}/${r.missed}`);
+      r = run(1.07);
+      if (r.held || r.reason !== 'tempo') errors.push(`Vektor 11b: ${r.held}/${r.reason}/${r.tempoDev}`);
     }
     // Tonklassen: falsche Tonklasse trifft nicht
     r = judgeHold({ expected: [{ t: 1, pc: 0 }, { t: 2, pc: 4 }], taps: [{ t: 1, pc: 0 }, { t: 2, pc: 5 }], barStart: 0, barSec: 4, tol, plan: [true] });
@@ -2378,20 +2555,24 @@
     if (!eq(holdPlan(4), [t, t, f, f, f, f, t, t, f, f, f, f, t, t, f, f])) errors.push(`holdPlan Stufe 4: ${holdPlan(4)}`);
     if (HOLD_STAGES.length !== 4) errors.push('HOLD_STAGES');
     errors.push(...holdVectors());
-    // --- holdMessage: jede Zeile der Tabelle
-    const msg = (res, st) => holdMessage({ held: false, tendency: 'steady', lostAt: null, reentry: null, bars: [], ...res }, st);
+    // --- holdTip / holdResultVerdict: ein Satz, ein Tipp je Grund
+    const tipFor = (res) => holdTip({ held: false, reason: 'loose', tendency: 'steady', lostAt: null, reentry: null, bars: [], errors: 0, missed: 0, extras: 0, hot: null, swing: null, posDev: [], level: 2, bias: 0, ...res });
     const M = [
-      [msg({ held: true }, 2), 'Durchgehalten – 8 Takte, ruhig und gleichmäßig.'],
-      [msg({ held: true, tendency: 'faster' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.'],
-      [msg({ held: true, tendency: 'slower' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.'],
-      [msg({ lostAt: 6, reentry: 'late' }, 3), 'Bis Takt 5 lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.'],
-      [msg({ lostAt: 6, reentry: 'good' }, 3), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
-      [msg({ lostAt: 6, reentry: 'late' }, 2), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
-      [msg({ tendency: 'faster' }, 2), 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.'],
-      [msg({ tendency: 'slower' }, 2), 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.'],
-      [msg({}, 2), 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.'],
+      [tipFor({ held: true, reason: null, level: 3 }), 'Ruhig und sehr gleichmäßig. Nimm als Nächstes weniger Begleitung.'],
+      [tipFor({ held: true, reason: null, errors: 1 }), 'Ein kleiner Patzer, und du warst sofort wieder drin – genau darum geht es beim Durchhalten.'],
+      [tipFor({ held: true, reason: null, hot: { rel: -.04, name: 'das „und“ nach der 2' } }), 'Fast immer kommt das „und“ nach der 2 zu früh – du drängst. Lass dir dort Zeit und zähl die Achtel mit.'],
+      [tipFor({ reason: 'bars', lostAt: 6 }), 'Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal. Nochmal, notfalls mit mehr Begleitung.'],
+      [tipFor({ reason: 'bars', extras: 3, missed: 1 }), '3 Schläge zu viel – nur dort, wo der Rhythmus wirklich einen Schlag hat.'],
+      [tipFor({ reason: 'pattern', posDev: [{ rel: .07, fail: true, name: 'die 4' }] }), 'Fast immer kommt die 4 zu spät – du schleppst. Denk die Stelle schon auf dem Schlag davor.'],
+      [tipFor({ reason: 'pattern', swing: { ratio: 1.2, fail: true, tip: 'straight' } }), 'Deine Achtel sind zu gerade für einen Shuffle. Denk eine Triole und klatsch nur die erste und die dritte.'],
+      [tipFor({ reason: 'reentry' }), 'Nach der Stille kamst du zu spät wieder rein. Zähl in der Stille leise mit – dann sitzt der Einsatz.'],
+      [tipFor({ reason: 'tempo', tempoDev: .06 }), 'Ohne Begleitung bist du langsamer geworden. Halt den Puls innerlich fest – Fuß mitwippen hilft.'],
+      [tipFor({ tendency: 'faster' }), 'Du bist nach und nach schneller geworden – du drängst. Nochmal, diesmal bewusst gemütlich.'],
+      [tipFor({}), 'Mal früher, mal später. Wipp mit dem Fuß auf den Vierteln mit – die Hände hängen sich dran.'],
     ];
-    M.forEach(([got, want], i) => { if (got !== want) errors.push(`holdMessage ${i + 1}: „${got}“`); });
+    M.forEach(([got, want], i) => { if (got !== want) errors.push(`holdTip ${i + 1}: „${got}“`); });
+    if (holdBiasNote({ bias: -.045 }) !== 'Du bist insgesamt etwas vor dem Schlag – das machen fast alle.' || holdBiasNote({ bias: .02 }) !== '') errors.push('holdBiasNote');
+    if (holdResultVerdict({ held: true, level: 3, bars: Array(8), reason: null, bias: 0 }).what !== 'Geschafft – sehr sauber') errors.push('holdResultVerdict');
     // --- partMessage
     const pm = (want, got) => partMessage({ want: want.map(([midi, t]) => ({ midi, t })), got: got.map(([midi, t]) => ({ midi, t })), tol: .08 }).text;
     const P = [
@@ -2508,7 +2689,7 @@
           const p = $('#panel');
           panels[`${id}/${step}`] = p.querySelector('[data-placeholder]')?.outerHTML || '';
           if (!panels[`${id}/${step}`]) errors.push(`Platzhalter fehlt: ${id}/${step}`);
-          if (p.querySelector('[data-roll], [data-result], .strip, .tl, .ph')) errors.push(`Lauf ${id}/${step}: Raster, Notenbild oder Ergebnis sichtbar`);
+          if (p.querySelector('[data-roll], [data-result], .hr, .tl, .ph')) errors.push(`Lauf ${id}/${step}: Raster, Notenbild oder Ergebnis sichtbar`);
           if (/Takt \d+ von|Takt \d+\/\d+|Noch \d+ Takte/.test(p.textContent)) errors.push(`Lauf ${id}/${step}: Taktzähler`);
           if (keyEls.size && $$('#keyboard .is-lit').length) errors.push('Tasten leuchten während eines Laufs');
         }
@@ -2539,13 +2720,13 @@
       const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
       Object.assign(ui, { step: 6, holdStage: 1, result: { kind: 'hold', stage: 1, ...res } });
       renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
-      if (!$('#panel').querySelector('.strip')) errors.push('Taktstreifen nach dem Lauf fehlt');
+      if (!$('#panel').querySelector('.hr-bars') || !$('#panel').querySelector('[data-hold-play]')) errors.push('Ergebnis-Karte (Takte, Abspielknopf) nach dem Lauf fehlt');
       const silent = holdPlan(3);
       const res3 = judgeHold({ expected: [1, 5, 9, 13, 17, 21, 25, 29], taps: [1, 5, 9, 13, 17, 21, 25, 29], barStart: 0, barSec: 4, tol: .1, plan: silent });
       ui.result = { kind: 'hold', stage: 3, ...res3 };
       ui.holdStage = 3; state.items.hookPenta.hold = 2;
       renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
-      if ($('#panel').querySelectorAll('.strip .is-silent').length !== 4) errors.push(`Taktstreifen: ${$('#panel').querySelectorAll('.strip .is-silent').length} schraffierte Takte statt 4`);
+      if ($('#panel').querySelectorAll('.hr-bars .is-silent').length !== 4) errors.push(`Taktleiste: ${$('#panel').querySelectorAll('.hr-bars .is-silent').length} schraffierte Takte statt 4`);
       // Startton: Tippen wählt nur aus, erst „Ton einloggen“ prüft; die Tastatur wird dabei nicht neu gebaut
       {
         state.lick = 'hookPenta'; state.items = {};
@@ -2712,7 +2893,7 @@
       }
       ui.holdStage = 4; ui.result = { kind: 'hold', stage: 4, ...judgeHold({ expected: [1, 2], taps: [1, 2], barStart: 0, barSec: 4, tol: .1, plan: holdPlan(4) }) };
       renderPanel(lick, itemOf(lick.id));
-      if ($('#panel .plan-strip') || !$('#panel .strip')) errors.push('Nach dem Lauf: Ergebnis-Streifen statt Plan erwartet');
+      if ($('#panel .plan-strip') || !$('#panel .hr-bars')) errors.push('Nach dem Lauf: Ergebnis-Karte statt Plan erwartet');
       ui.result = null;
 
       // --- Liste: ohne Unterzeile, mit Ring, nach Stufe sortiert

@@ -278,3 +278,49 @@ button.k-dot::before { content: ''; position: absolute; inset: -11px; }
 @media (prefers-reduced-motion: reduce) {
   .k-row, .k-hero, .k-btn, .k-play, .k-round, .k-dot { transition: none !important; }
 }
+
+/* ---- Ergebnis nach dem Durchhalten (Klatsch-Grooves in uebe-lab.html und licks.html,
+   holdResultHtml): Urteil, Takte, Muster/Gleichmäßig in Worten, ein Tipp, Verteilung
+   mit Abspielknopf, Millisekunden unter „Details“. ---- */
+.hr { display: flex; flex-direction: column; gap: 10px; }
+.hr-head { display: flex; flex-direction: column; gap: 1px; }
+.hr-what { font-family: var(--font-display); font-weight: 700; font-size: 20px; line-height: 1.15; color: var(--text); }
+.hr-why { font-size: 13.5px; color: var(--muted-2); }
+.hr-bars { display: grid; gap: 3px; }
+.hr-bar { position: relative; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #173b2e; background: #9fdcc2; }
+.hr-bar.is-err { background: #F4DE8C; color: #5a4500; }
+.hr-bar.is-lost { background: #f3a9a9; color: #6e1020; }
+.hr-bar.is-silent { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.6) 0 4px, transparent 4px 8px); }
+.hr-bar i { position: absolute; top: -6px; right: -3px; width: 15px; height: 15px; border-radius: 50%; background: #a3162d; color: #fff; font-size: 10px; font-style: normal; display: grid; place-items: center; }
+.hr-bar.is-now { outline: 3px solid var(--text); outline-offset: 1px; }
+.hr-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.hr-kpi { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 16px; background: var(--surface); border: 2px solid #9fdcc2; min-width: 0; }
+.hr-kpi.is-bad { border-color: #f3a9a9; }
+.hr-kpi span { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.hr-kpi b { font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.2; color: var(--text); }
+.hr-kpi.is-bad b { color: #a3162d; }
+.hr-scale { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 4px; }
+.hr-scale u { height: 7px; border-radius: 4px; background: var(--line); text-decoration: none; }
+.hr-scale u.on { background: var(--ok); }
+.hr-kpi.is-bad .hr-scale u.on { background: #e3b400; }
+.hr-tip { margin: 0; padding: 9px 12px; border-radius: 14px; background: #d8eefb; color: #1d5f86; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.hr-tip small { display: block; margin-top: 3px; font-size: 12.5px; font-weight: 500; }
+.hr-dist { position: relative; height: 104px; border-radius: 16px; background: var(--surface); overflow: hidden; }
+.hr-band { position: absolute; top: 0; bottom: 20px; background: var(--ok-bg); }
+.hr-axis { position: absolute; left: 8px; right: 8px; bottom: 20px; height: 2px; background: var(--rule); }
+.hr-mid { position: absolute; left: 50%; top: 8px; bottom: 20px; width: 2px; margin-left: -1px; background: var(--muted); }
+.hr-mean { position: absolute; top: 8px; bottom: 20px; border-left: 2px dashed #1d5f86; }
+.hr-mean em { position: absolute; top: -4px; left: 4px; font-size: 10px; font-weight: 800; font-style: normal; color: #1d5f86; }
+.hr-dot { position: absolute; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; background: var(--ok); transition: transform .12s; }
+.hr-dot.is-odd { background: #e3b400; }
+.hr-dot.is-now { transform: scale(1.6); z-index: 1; }
+.hr-lg { position: absolute; left: 10px; right: 10px; bottom: 2px; display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--muted); }
+.hr-play { position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--accent); color: var(--text); display: grid; place-items: center; cursor: pointer; z-index: 2; }
+.hr-play svg { width: 18px; height: 18px; fill: currentColor; }
+.hr-play::before { content: ''; position: absolute; inset: -4px; }
+.hr-more { font-size: 13px; color: var(--muted-2); }
+.hr-more summary { cursor: pointer; font-weight: 800; color: var(--text); }
+.hr-more p { margin: 6px 0 0; }
+.hr-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-top: 6px; text-align: center; font-size: 10.5px; font-weight: 700; }
+.hr-grid b { display: block; font-family: var(--font-display); font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .hr-dot { transition: none; } }
