@@ -61,7 +61,8 @@
   .spacer { flex: 1; }
   .hint { flex: 0 0 auto; margin: 0 12px 8px; padding: 8px 12px; border-radius: 12px; background: rgba(var(--accent-rgb), .12); color: var(--text); font-size: .74rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
   .hint svg { color: var(--accent-foreground); flex: 0 0 auto; }
-  @media (orientation: landscape) { .hint { display: none; } }
+  @media (orientation: landscape) { .hint:not(.hint-solf) { display: none; } }
+  .hint-solf[hidden] { display: none; }
 
   .keyboard-wrap { flex: 1 1 auto; min-height: 0; display: flex; padding: 0 max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   .keyboard { position: relative; flex: 1; display: flex; touch-action: none; border-radius: 0 0 12px 12px; overflow: hidden;
@@ -100,7 +101,7 @@
   <div class="group" role="group" aria-label="Beschriftung">
     <button type="button" data-labels="none">–</button>
     <button type="button" data-labels="names">C D E</button>
-    <button type="button" data-labels="solf">Do Re Mi (fest)</button>
+    <button type="button" data-labels="solf" title="Feste Silben: Do ist hier immer C – in den Übungen ist „do“ der Grundton der Tonart">Do Re Mi (fest)</button>
   </div>
   <div class="group">
     <button type="button" data-act="pedal" aria-pressed="false" title="Pedal (am Computer: Leertaste halten)">Pedal</button>
@@ -112,6 +113,7 @@
     <input type="range" min="0" max="1" step=".01" value=".8" aria-label="Lautstärke"></label>
 </div>
 <p class="hint"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 9v6M21 9v6"/></svg>Gerät quer halten – dann gibt es mehr und größere Tasten.</p>
+<p class="hint hint-solf" role="status" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>Hier ist Do immer C. In den Übungen ist „do“ der Grundton der Tonart.</p>
 <div class="keyboard-wrap"><div class="keyboard" aria-label="Klaviatur"></div></div>
 
 <script src="./harmony.js"></script>
@@ -160,7 +162,8 @@
   /* ---------------- Zustand & Ablage ---------------- */
 
   // keySize: Stufe der Tastenbreite (KEY_SIZES), Standard breiter als früher.
-  const state = { startC: 48, labels: 'names', pedal: false, volume: .8, keySize: 2 };
+  // solfHint: Hinweis „Do = C“ schon einmal gezeigt (beim ersten Einschalten von „Do Re Mi (fest)“).
+  const state = { startC: 48, labels: 'names', pedal: false, volume: .8, keySize: 2, solfHint: false };
   const STORAGE_ID = 'piano';
   const storage = (() => { try { return window.parent !== window ? window.parent.chorToolStorage || null : null; } catch { return null; } })();
   let saveTimer = 0;
@@ -173,7 +176,7 @@
   }
   function writeNow() {
     saveTimer = 0;
-    try { return Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume, keySize: state.keySize })).catch(() => {}); } catch { return null; /* Ablage weg */ }
+    try { return Promise.resolve(storage.save(STORAGE_ID, { startC: state.startC, labels: state.labels, volume: state.volume, keySize: state.keySize, solfHint: state.solfHint })).catch(() => {}); } catch { return null; /* Ablage weg */ }
   }
   /* Noch ausstehendes Speichern sofort erledigen: Die App ruft das vor dem
      Schließen des Tools auf (danach liefe der Timer im entfernten iframe nie
@@ -195,6 +198,7 @@
       if (['none', 'names', 'solf'].includes(data.labels)) state.labels = data.labels;
       if (Number.isFinite(data.volume)) state.volume = clamp(data.volume, 0, 1);
       if (Number.isInteger(data.keySize) && data.keySize >= 0 && data.keySize < KEY_SIZES.length) state.keySize = data.keySize;
+      if (data.solfHint === true) state.solfHint = true;
     } catch { /* nichts gespeichert */ }
   }
 
@@ -529,7 +533,7 @@
     const btn = e.target.closest('button');
     if (!btn) return;
     const act = btn.dataset.act;
-    if (btn.dataset.labels) { state.labels = btn.dataset.labels; renderLabels(); persist(); return; }
+    if (btn.dataset.labels) { state.labels = btn.dataset.labels; showSolfHint(); renderLabels(); persist(); return; }
     if (act === 'down') { state.startC = Math.max(LOWEST_C, state.startC - 12); build(); persist(); }
     else if (act === 'up') { state.startC = Math.min(72, state.startC + 12); build(); persist(); }
     else if (act === 'narrower' || act === 'wider') { state.keySize = clamp(state.keySize + (act === 'wider' ? 1 : -1), 0, KEY_SIZES.length - 1); build(); persist(); }
@@ -541,6 +545,18 @@
       setTimeout(() => group.forEach((midi) => { if (!state.pedal) { const v = audio.voices.get(midi); if (v) { v.held = false; damp(v, .25); } } }), 1400);
     }
   });
+  /** Beim ersten Einschalten der festen Silben einmal erklären: Das Klavier
+   *  zählt mit festem Do (Do = C), alle Übungen mit beweglichem do. */
+  let solfHintTimer = 0;
+  function showSolfHint() {
+    const el = $('.hint-solf');
+    if (state.labels !== 'solf') { el.hidden = true; return; }
+    if (state.solfHint) return;
+    state.solfHint = true;
+    el.hidden = false;
+    clearTimeout(solfHintTimer);
+    solfHintTimer = setTimeout(() => { el.hidden = true; }, 8000);
+  }
   $('.vol input').addEventListener('input', (e) => {
     state.volume = Number(e.target.value);
     if (audio.master) audio.master.gain.setTargetAtTime(state.volume, audio.ctx.currentTime, .02);
@@ -571,6 +587,18 @@
     state.keySize = savedSize;
     if (counts.some((n, i) => i && n > counts[i - 1]) || Math.min(...counts) < 5) errors.push(`Tastenbreite: ${counts.join(',')}`);
     if (KEY_SIZES[state.keySize] === undefined) errors.push('Tastenbreite ungültig');
+    // Festes Do: Knopf mit title, Hinweis genau beim ersten Einschalten (Übe-Korrekturen 10d).
+    {
+      const saved = { labels: state.labels, solfHint: state.solfHint }, el = $('.hint-solf');
+      const wasHidden = el.hidden;
+      if (!/Do ist hier immer C/.test($('[data-labels="solf"]').title)) errors.push('Do Re Mi (fest): title fehlt');
+      state.solfHint = false; state.labels = 'solf'; showSolfHint();
+      if (el.hidden || !state.solfHint) errors.push('Hinweis „Do = C“ erscheint nicht beim ersten Einschalten');
+      el.hidden = true; state.labels = 'names'; showSolfHint(); state.labels = 'solf'; showSolfHint();
+      if (!el.hidden) errors.push('Hinweis „Do = C“ erscheint ein zweites Mal');
+      clearTimeout(solfHintTimer);
+      state.labels = saved.labels; state.solfHint = saved.solfHint; el.hidden = wasHidden;
+    }
     return errors;
   }
 
