@@ -9692,10 +9692,10 @@
       const firsts = bars.map((_, b) => b).filter((b) => plan[b] && b > 0 && plan[b - 1] === false && bars[b].expected > 0);
       if (firsts.length) reentry = firsts.reduce((a, b) => a + bars[b].hit / bars[b].expected, 0) / firsts.length >= .75 ? 'good' : 'late';
     }
-    // Takt sicher: Treffer minus Klatscher zu viel ≥ 75 % der Soll-Punkte
+    // Takt sicher: Treffer minus Klatscher zu viel ≥ HOLD_BAR_MIN der Soll-Punkte
     // (wer einfach alles durchklatscht, schafft keinen Takt mehr); Takt ohne
     // Soll-Punkte: höchstens ein Klatscher zu viel.
-    for (const b of bars) b.ok = b.expected ? b.hit - b.extra >= .75 * b.expected : b.extra <= 1;
+    for (const b of bars) b.ok = b.expected ? b.hit - b.extra >= HOLD_BAR_MIN * b.expected - 1e-9 : b.extra <= 1;
     const offs = hits.map((h) => h.off);
     const meanAbs = offs.length ? offs.reduce((a, o) => a + Math.abs(o), 0) / offs.length : null;
     const lastTwo = bars.slice(-2).filter((b) => b.hit > 0);
@@ -9712,6 +9712,8 @@
   }
   /** Durchhalten (Klatsch-Grooves): mittlere Abweichung höchstens 50 ms, am Ende nicht über 60 ms weggedriftet. */
   const HOLD_MEAN_ABS = .05;
+  /** Takt sicher ab 85 %: bis 6 Schläge im Takt müssen alle sitzen, ab 7 darf einer fehlen. */
+  const HOLD_BAR_MIN = .85;
   const HOLD_END_DRIFT = .06;
   /** „Genau“ wie in der Karte „Letzte Runde“: bis 40 ms. */
   const HOLD_EXACT = .04;
@@ -9791,6 +9793,12 @@
     // 8. ein Klatscher pro Takt verpasst (Backbeat: 1 von 2) → Takte nicht sicher
     r = judge(8, e8.filter((_, i) => i % 2 === 0), 2);
     if (r.held || r.bars.some((b) => b.ok) || r.missed !== 8) errors.push(`Vektor 8: ${r.held}/${r.missed}`);
+    // 9. Takt mit acht Achteln: einer verpasst → sicher, zwei verpasst → nicht; vier Viertel, einer verpasst → nicht
+    {
+      const e = Array.from({ length: 8 }, (_, i) => .1 + i * barSec / 8), q = Array.from({ length: 4 }, (_, i) => .1 + i * barSec / 4);
+      const one = (exp, taps) => judgeHold({ expected: exp, taps, barStart: 0, barSec, tol, plan: [true] }).bars[0].ok;
+      if (!one(e, e.slice(1)) || one(e, e.slice(2)) || one(q, q.slice(1)) || !one(q, q)) errors.push('Vektor 9: Schwelle sicherer Takt');
+    }
     // Tonklassen: falsche Tonklasse trifft nicht
     r = judgeHold({ expected: [{ t: 1, pc: 0 }, { t: 2, pc: 4 }], taps: [{ t: 1, pc: 0 }, { t: 2, pc: 5 }], barStart: 0, barSec: 4, tol, plan: [true] });
     if (r.bars[0].hit !== 1) errors.push(`Tonklasse: ${r.bars[0].hit} statt 1 Treffer`);
@@ -10181,7 +10189,7 @@
       <div class="tstrip-legend" aria-hidden="true"><span>zu früh</span><span>genau</span><span>zu spät</span></div>
       <div class="g-stats">${cell(s.exact, 'genau', ' is-ok')}${cell(s.early, 'zu früh')}${cell(s.late, 'zu spät')}${cell(s.missed, 'verpasst', s.missed ? ' is-bad' : '')}${cell(s.extras, 'zu viel', s.extras ? ' is-bad' : '')}</div>
       ${s.mean !== null ? `<p class="g-stat-line">Ø ${signedMs(s.mean)} ms · Ø Abstand ${s.meanAbs} ms · größte ${signedMs(s.worst)} ms</p>` : ''}
-      <p class="help-text" id="help-hold" hidden>Jeder Punkt ist ein Klatscher: in der Mitte genau, links zu früh, rechts zu spät, gleich weit daneben stapelt sich. <b>Grün</b> = genau (bis ${HOLD_EXACT * 1000} ms). Getroffen zählt bis ${Math.round(tol * 1000)} ms. Ein Takt ist sicher, wenn Treffer minus Klatscher zu viel mindestens drei Viertel der Schläge ergeben. Geschafft ist der Durchgang, wenn alle Takte sicher sind, du im Schnitt höchstens ${HOLD_MEAN_ABS * 1000} ms daneben liegst und am Ende nicht wegdriftest. Ø mit Vorzeichen: minus = eher früh, plus = eher spät.</p>
+      <p class="help-text" id="help-hold" hidden>Jeder Punkt ist ein Klatscher: in der Mitte genau, links zu früh, rechts zu spät, gleich weit daneben stapelt sich. <b>Grün</b> = genau (bis ${HOLD_EXACT * 1000} ms). Getroffen zählt bis ${Math.round(tol * 1000)} ms. Ein Takt ist sicher, wenn Treffer minus Klatscher zu viel mindestens ${Math.round(HOLD_BAR_MIN * 100)} % der Schläge ergeben – bei bis zu sechs Schlägen im Takt also alle. Geschafft ist der Durchgang, wenn alle Takte sicher sind, du im Schnitt höchstens ${HOLD_MEAN_ABS * 1000} ms daneben liegst und am Ende nicht wegdriftest. Ø mit Vorzeichen: minus = eher früh, plus = eher spät.</p>
     </div>`;
   }
   /** Was die Klatschfläche startet: Durchhalten, bei Auftakt-Lektionen Auffrischen. */
