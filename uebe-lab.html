@@ -922,6 +922,12 @@
   .ear-page .rung.is-alt { margin-left: 0; }
   .ear-page .answer-grid.is-ladder { align-items: center; }
   .ear-page .rung .answer, .ear-page .rung .answer-oct { height: 84px; min-height: 0; padding: 0; justify-content: center; text-align: center; font-size: 18px; border-radius: 16px; border-width: 2px; box-shadow: 0 3px 0 var(--tint-line); }
+  /* Auflösung: Leuchten des gerade klingenden Knopfs. Steht nach allen
+     Hören-Regeln und ist mindestens so spezifisch wie die Zustände (grün/
+     rot/„löst sich auf“/Ziel), sonst läuft das Leuchten nicht mit. */
+  .ear-page .answer-grid :is(.answer, .answer-oct).is-playing { background: var(--hear-bg); border: 2px solid var(--hear); color: var(--hear-fg); box-shadow: 0 0 0 4px rgba(51, 201, 220, .35); opacity: 1; transition: background .08s, box-shadow .08s; }
+  .ear-page .answer-grid :is(.answer, .answer-oct).is-playing small { color: var(--hear-fg); }
+  @media (prefers-reduced-motion: reduce) { .ear-page .answer-grid :is(.answer, .answer-oct).is-playing { transition: none; } }
   .ear-page .rung-note { position: static; transform: none; font-size: 10px; line-height: 1.1; text-align: center; display: block; white-space: normal; }
   .ear-dock .dock-main.is-skip .dock-core { background: var(--surface); border: 2px solid var(--tint-line); color: var(--text); box-shadow: none; }
   .ear-dock .dock-main.is-skip .dock-cap { color: var(--text); }
