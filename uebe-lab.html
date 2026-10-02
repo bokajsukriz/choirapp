@@ -242,6 +242,25 @@
   .g-ring path.is-lost { stroke: #f3a9a9; }
   .g-ring-n { font-family: var(--font-display); font-weight: 700; font-size: 32px; fill: var(--text); }
   .g-ring-t { font-weight: 800; font-size: 12px; fill: var(--muted); }
+  .g-result { display: flex; flex-direction: column; gap: 8px; }
+  .g-result-head { display: flex; align-items: center; gap: 8px; }
+  .g-result-head .k-pill svg { width: 12px; height: 12px; stroke-width: 3; }
+  .g-result-head .help-btn { width: 32px; height: 32px; font-size: 14px; position: relative; }
+  .g-bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(18px, 1fr)); gap: 3px; }
+  .g-bar { height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #1b1b1b; background: #f2c6dc; }
+  .g-bar.is-sure { background: #9fdcc2; }
+  .g-bar.is-wobbly { background: #F4DE8C; }
+  .g-bar.is-lost { background: #f3a9a9; }
+  .g-bar.is-silent { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 4px, transparent 4px 8px); }
+  .g-dist { margin-top: 4px; }
+  .g-exact { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--ok-bg); }
+  .g-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .g-stat { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+  .g-stat b { font-family: var(--font-display); font-size: 20px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .g-stat span { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .g-stat.is-ok b { color: var(--ok-fg); }
+  .g-stat.is-bad b { color: #c8102e; }
+  .g-stat-line { margin: 0; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted-2); font-variant-numeric: tabular-nums; }
   .g-feedback { margin: 0; text-align: center; font-size: 14px; line-height: 1.4; color: var(--text); }
   .g-feedback:empty { display: none; }
   .g-after { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
@@ -9673,11 +9692,29 @@
       const firsts = bars.map((_, b) => b).filter((b) => plan[b] && b > 0 && plan[b - 1] === false && bars[b].expected > 0);
       if (firsts.length) reentry = firsts.reduce((a, b) => a + bars[b].hit / bars[b].expected, 0) / firsts.length >= .75 ? 'good' : 'late';
     }
-    const okBar = (b) => !bars[b].expected || bars[b].hit >= .75 * bars[b].expected;
-    const lastTwo = bars.slice(-2).filter((b) => b.expected > 0);
-    const held = bars.every((_, b) => okBar(b)) && lastTwo.every((b) => Math.abs(b.meanOffset) <= tol);
-    return { bars, held, tendency, lostAt, reentry };
+    // Takt sicher: Treffer minus Klatscher zu viel ≥ 75 % der Soll-Punkte
+    // (wer einfach alles durchklatscht, schafft keinen Takt mehr); Takt ohne
+    // Soll-Punkte: höchstens ein Klatscher zu viel.
+    for (const b of bars) b.ok = b.expected ? b.hit - b.extra >= .75 * b.expected : b.extra <= 1;
+    const offs = hits.map((h) => h.off);
+    const meanAbs = offs.length ? offs.reduce((a, o) => a + Math.abs(o), 0) / offs.length : null;
+    const lastTwo = bars.slice(-2).filter((b) => b.hit > 0);
+    // Geschafft: alle Takte sicher, im Mittel höchstens HOLD_MEAN_ABS daneben
+    // und am Ende nicht weggedriftet (Mittel der letzten zwei Takte).
+    const allOk = bars.every((b) => b.ok);
+    const tight = meanAbs === null || meanAbs <= HOLD_MEAN_ABS;
+    const noDrift = lastTwo.every((b) => Math.abs(b.meanOffset) <= HOLD_END_DRIFT);
+    const held = allOk && tight && noDrift;
+    const reason = held ? null : !allOk ? 'bars' : !tight ? 'loose' : 'drift';
+    const expectedN = bars.reduce((a, b) => a + b.expected, 0);
+    const extras = bars.reduce((a, b) => a + b.extra, 0);
+    return { bars, held, tendency, lostAt, reentry, reason, offsets: offs, meanAbs, missed: expectedN - hits.length, extras, expected: expectedN };
   }
+  /** Durchhalten (Klatsch-Grooves): mittlere Abweichung höchstens 50 ms, am Ende nicht über 60 ms weggedriftet. */
+  const HOLD_MEAN_ABS = .05;
+  const HOLD_END_DRIFT = .06;
+  /** „Genau“ wie in der Karte „Letzte Runde“: bis 40 ms. */
+  const HOLD_EXACT = .04;
 
   /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
   function holdMessage(result, stage) {
@@ -9688,6 +9725,9 @@
     if (result.held && result.tendency === 'slower') return 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.';
     if (result.lostAt && gaps && result.reentry === 'late') return `Bis Takt ${result.lostAt - 1} lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.`;
     if (result.lostAt) return `Bis Takt ${result.lostAt - 1} lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.`;
+    if (result.reason === 'loose') return `Alle Takte gehalten, aber im Schnitt ${Math.round(result.meanAbs * 1000)} ms daneben. Geschafft ist es ab höchstens ${HOLD_MEAN_ABS * 1000} ms – nochmal, ganz bewusst mit dem Schlag.`;
+    if (result.reason === 'drift') return 'Fast! Zum Schluss bist du aus dem Takt gerutscht. Nochmal – bis zum letzten Klatscher mitzählen.';
+    if (result.reason === 'bars' && result.extras >= 2 && result.extras >= result.missed) return `Fast! ${result.extras} Klatscher zu viel – klatsch nur, wo der Rhythmus wirklich einen Schlag hat.`;
     if (result.tendency === 'faster') return 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.';
     if (result.tendency === 'slower') return 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.';
     return 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.';
@@ -9740,6 +9780,17 @@
     r = judge(8, [...e8, ...e8.map((t) => t + .02)], 2);
     const base = judge(8, e8, 2);
     if (!(r.bars.reduce((a, b) => a + b.extra, 0) > 0) || r.bars.reduce((a, b) => a + b.hit, 0) !== base.bars.reduce((a, b) => a + b.hit, 0)) errors.push('Vektor 5: extra/Treffer');
+    if (r.held || r.reason !== 'bars' || r.extras !== 16 || !base.held) errors.push(`Vektor 5: Durchklatschen gilt als geschafft (${r.held}/${r.reason}/${r.extras})`);
+    // 6. alles getroffen, aber durchweg 70 ms zu spät (im Fenster) → nicht geschafft, Grund „loose“
+    r = judge(8, e8.map((t) => t + .07), 2);
+    if (r.held || r.reason !== 'loose' || Math.round(r.meanAbs * 1000) !== 70 || r.missed !== 0) errors.push(`Vektor 6: ${r.held}/${r.reason}/${r.meanAbs}`);
+    // 7. abwechselnd ±30 ms → geschafft; Kennzahlen
+    r = judge(8, e8.map((t, i) => t + (i % 2 ? .03 : -.03)), 2);
+    const s7 = grooveHoldStats(r);
+    if (!r.held || s7.exact !== 16 || s7.early || s7.late || s7.mean !== 0 || Math.abs(s7.worst) !== 30) errors.push(`Vektor 7: ${r.held}/${JSON.stringify(s7)}`);
+    // 8. ein Klatscher pro Takt verpasst (Backbeat: 1 von 2) → Takte nicht sicher
+    r = judge(8, e8.filter((_, i) => i % 2 === 0), 2);
+    if (r.held || r.bars.some((b) => b.ok) || r.missed !== 8) errors.push(`Vektor 8: ${r.held}/${r.missed}`);
     // Tonklassen: falsche Tonklasse trifft nicht
     r = judgeHold({ expected: [{ t: 1, pc: 0 }, { t: 2, pc: 4 }], taps: [{ t: 1, pc: 0 }, { t: 2, pc: 5 }], barStart: 0, barSec: 4, tol, plan: [true] });
     if (r.bars[0].hit !== 1) errors.push(`Tonklasse: ${r.bars[0].hit} statt 1 Treffer`);
@@ -9925,7 +9976,8 @@
   function groovesTol(expected, tickSec, ticksPerBar) {
     let gap = ticksPerBar * tickSec;
     for (let i = 1; i < expected.length; i++) gap = Math.min(gap, expected[i] - expected[i - 1]);
-    return toleranceFor(gap);
+    // Höchstens 100 ms: was weiter daneben liegt, zählt nicht mehr als Treffer.
+    return Math.min(.1, toleranceFor(gap));
   }
 
   /* ---- Lauf: Ereignisse mit Vorlauf auf der Audio-Uhr einplanen ---- */
@@ -10071,15 +10123,66 @@
     const segs = plan.map((on, i) => {
       const a0 = -Math.PI / 2 + i * 2 * Math.PI / n + gap, a1 = a0 + 2 * Math.PI / n - 2 * gap;
       const b = res && res.bars[i];
-      const f = b ? (b.expected ? b.hit / b.expected : 1) : 0;
-      const cls = !b ? (on ? 'is-plan' : 'is-plan is-silent') : f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost';
+      const cls = !b ? (on ? 'is-plan' : 'is-plan is-silent') : barClass(b);
       const pt = (a) => `${(c + R * Math.cos(a)).toFixed(1)} ${(c + R * Math.sin(a)).toFixed(1)}`;
       return `<path class="${cls}${b && !on ? ' is-silent' : ''}" d="M${pt(a0)} A${R} ${R} 0 0 1 ${pt(a1)}"/>`;
     }).join('');
-    const sure = res ? res.bars.filter((b) => !b.expected || b.hit >= .75 * b.expected).length : 0;
+    const sure = res ? res.bars.filter((b) => b.ok).length : 0;
     const big = res ? `${sure}/${n}` : String(n);
     const small = res ? 'Takte sicher' : 'Takte halten';
     return `<svg class="g-ring${res ? ' is-result' : ''}" viewBox="0 0 172 172" role="img" aria-label="${res ? `${sure} von ${n} Takten sicher` : `${n} Takte`}"${running ? ' data-placeholder' : ''}>${segs}<text x="86" y="84" text-anchor="middle" class="g-ring-n">${big}</text><text x="86" y="106" text-anchor="middle" class="g-ring-t">${small}</text></svg>`;
+  }
+  /** Takt sicher / wackelig / verloren (Ergebnis von judgeHold). */
+  function barClass(b) {
+    if (b.ok) return 'is-sure';
+    const f = b.expected ? (b.hit - b.extra) / b.expected : b.extra <= 2 ? .5 : 0;
+    return f >= .5 ? 'is-wobbly' : 'is-lost';
+  }
+  /** Kennzahlen eines Durchhalte-Laufs: genau (bis 40 ms), zu früh, zu spät,
+   *  Mittel (mit Vorzeichen), größte Abweichung. */
+  function grooveHoldStats(res) {
+    const offs = res.offsets || [];
+    const ms = (x) => Math.round(x * 1000);
+    const exact = offs.filter((o) => Math.abs(o) <= HOLD_EXACT).length;
+    const early = offs.filter((o) => o < -HOLD_EXACT).length;
+    const late = offs.filter((o) => o > HOLD_EXACT).length;
+    const mean = offs.length ? ms(offs.reduce((a, o) => a + o, 0) / offs.length) : null;
+    const worst = offs.length ? offs.reduce((a, o) => (Math.abs(o) > Math.abs(a) ? o : a), 0) : null;
+    return { exact, early, late, mean, meanAbs: res.meanAbs === null || res.meanAbs === undefined ? null : ms(res.meanAbs), worst: worst === null ? null : ms(worst), missed: res.missed || 0, extras: res.extras || 0 };
+  }
+  const signedMs = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
+  /** Ergebnis nach dem Durchhalten: Takte als Leiste (grün/gelb/rot, Takte
+   *  ohne Begleitung gestrichelt), darunter die Verteilung aller Klatscher
+   *  (wie „Letzte Runde“: Mitte genau, links früh, rechts spät; gleiche
+   *  Abweichungen stapeln sich) und die Zahlen dazu. */
+  function groovesHoldResult(res) {
+    const sure = res.bars.filter((b) => b.ok).length;
+    const barsHtml = res.bars.map((b, i) => `<span class="g-bar ${barClass(b)}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}${b.extra ? `, ${b.extra} zu viel` : ''}">${i + 1}</span>`).join('');
+    const tol = res.tol || .1;
+    const BINS = 25;
+    const stack = new Array(BINS).fill(0);
+    const pts = (res.offsets || []).map((o) => {
+      const x = clamp(o / tol, -1, 1);
+      const bin = Math.round((x + 1) / 2 * (BINS - 1));
+      return { x: bin / (BINS - 1) * 2 - 1, k: stack[bin]++, good: Math.abs(o) <= HOLD_EXACT };
+    });
+    const maxStack = Math.max(1, ...stack);
+    const step = Math.min(9, 54 / maxStack);
+    const height = 14 + step * (maxStack - 1) + 6;
+    const dots = pts.map((p) => `<span class="tdot ${p.good ? 'is-good' : 'is-near'}" style="left:calc(50% + ${(p.x * 50).toFixed(1)}% - 7px);top:${(height - 17 - p.k * step).toFixed(1)}px"></span>`).join('');
+    const exactBand = Math.min(50, HOLD_EXACT / tol * 50);
+    const s = grooveHoldStats(res);
+    const cell = (n, label, cls = '') => `<div class="g-stat${cls}"><b>${n}</b><span>${label}</span></div>`;
+    return `<div class="g-result" data-result>
+      <div class="g-result-head"><span class="round-title">${sure} von ${res.bars.length} Takten sicher</span><span class="k-pill${res.held ? ' k-pill--ok' : ''}">${res.held ? `${K_CHECK}Geschafft` : 'Noch nicht'}</span>
+        <button class="help-btn" type="button" data-help="help-hold" aria-expanded="false" aria-label="Erklärung der Auswertung">?</button></div>
+      <div class="g-bars" role="img" aria-label="${sure} von ${res.bars.length} Takten sicher">${barsHtml}</div>
+      <div class="tstrip g-dist" style="height:${height.toFixed(0)}px" role="img" aria-label="Verteilung: ${s.exact} genau, ${s.early} zu früh, ${s.late} zu spät"><span class="g-exact" style="left:${(50 - exactBand).toFixed(1)}%;width:${(2 * exactBand).toFixed(1)}%"></span><span class="tstrip-line" style="top:auto;bottom:12px"></span><span class="tstrip-mid" style="top:0;height:100%"></span>${dots}</div>
+      <div class="tstrip-legend" aria-hidden="true"><span>zu früh</span><span>genau</span><span>zu spät</span></div>
+      <div class="g-stats">${cell(s.exact, 'genau', ' is-ok')}${cell(s.early, 'zu früh')}${cell(s.late, 'zu spät')}${cell(s.missed, 'verpasst', s.missed ? ' is-bad' : '')}${cell(s.extras, 'zu viel', s.extras ? ' is-bad' : '')}</div>
+      ${s.mean !== null ? `<p class="g-stat-line">Ø ${signedMs(s.mean)} ms · Ø Abstand ${s.meanAbs} ms · größte ${signedMs(s.worst)} ms</p>` : ''}
+      <p class="help-text" id="help-hold" hidden>Jeder Punkt ist ein Klatscher: in der Mitte genau, links zu früh, rechts zu spät, gleich weit daneben stapelt sich. <b>Grün</b> = genau (bis ${HOLD_EXACT * 1000} ms). Getroffen zählt bis ${Math.round(tol * 1000)} ms. Ein Takt ist sicher, wenn Treffer minus Klatscher zu viel mindestens drei Viertel der Schläge ergeben. Geschafft ist der Durchgang, wenn alle Takte sicher sind, du im Schnitt höchstens ${HOLD_MEAN_ABS * 1000} ms daneben liegst und am Ende nicht wegdriftest. Ø mit Vorzeichen: minus = eher früh, plus = eher spät.</p>
+    </div>`;
   }
   /** Was die Klatschfläche startet: Durchhalten, bei Auftakt-Lektionen Auffrischen. */
   const groovesPhases = () => [['refresh', 'Auffrischen'], ['hold', 'Durchhalten']];
@@ -10128,7 +10231,7 @@
       const li = lens.indexOf(cur.bars);
       const shown = res && res.kind === 'hold' && !running ? res : null;
       const step = (d, label, sym) => { const n = lens[li + d]; return `<button type="button" class="g-step" data-grooves-len="${n || ''}" aria-label="${label}"${n && !running && !shown ? '' : ' disabled'}>${sym}</button>`; };
-      card = `<div class="g-ringrow">${step(-1, 'Weniger Takte', '−')}${groovesRing(cur.id, shown, running)}${step(1, 'Mehr Takte', '+')}</div>`;
+      card = shown ? groovesHoldResult(shown) : `<div class="g-ringrow">${step(-1, 'Weniger Takte', '−')}${groovesRing(cur.id, null, running)}${step(1, 'Mehr Takte', '+')}</div>`;
       if (shown) {
         const nextAfter = shown.held ? comboFor(l, nextCombo(g.held)) : null;
         const accIdx = GROOVE_ACCS.findIndex(([a]) => a === cur.acc);
@@ -10250,7 +10353,7 @@
         const taps = info.taps.filter((x) => x >= barStart - tol - .1 && x <= barStart + tl.bars * tl.barSec + tol);
         noteRunDelay(tl.expected.map((e) => e + info.t0), info.taps.filter((x) => x >= barStart - .1 && x <= barStart + tl.bars * tl.barSec + .45));
         const result = judgeHold({ expected: tl.expected.map((e) => e + info.t0), taps, barStart, barSec: tl.barSec, tol, plan: tl.plan });
-        gv.result = { kind: 'hold', combo, ...result };
+        gv.result = { kind: 'hold', combo, tol, ...result };
         gFeedback(holdMessage(result, st), result.held ? 'good' : '');
         if (result.held && !g.held.includes(combo)) { g.held = GROOVE_COMBOS.filter((c) => c === combo || g.held.includes(c)); g.hold = Math.max(g.hold, holdFromHeld(g.held)); }
         rememberGroove();
@@ -11540,7 +11643,7 @@
       const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
       Object.assign(gv, { view: 'lesson', id: 'puls', running: '', combo: 'click4', result: { kind: 'hold', stage: 1, ...res } });
       renderGrooves();
-      if (!host.querySelector('.g-ring.is-result') || !host.querySelector('[data-grooves-rate="ok"]') || host.querySelectorAll('.g-step:not(:disabled)').length) errors.push('Klatsch-Grooves: Ergebnis mit Kreis und Einschätzung fehlt');
+      if (!host.querySelector('.g-result') || host.querySelectorAll('.g-bar').length !== 1 || host.querySelectorAll('.g-dist .tdot').length !== 3 || !host.querySelector('[data-grooves-rate="ok"]') || host.querySelectorAll('.g-step:not(:disabled)').length) errors.push('Klatsch-Grooves: Ergebnis mit Takten, Verteilung und Einschätzung fehlt');
       Object.assign(gv, { view: 'list', running: '', result: null });
       renderGrooves();
       if (host.querySelectorAll('.g-row').length !== COURSE.length) errors.push(`Klatsch-Grooves: Liste zeigt ${host.querySelectorAll('.g-row').length} von ${COURSE.length} geschafften Lektionen`);
@@ -14505,6 +14608,7 @@
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
+    grooveHoldStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
     DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
