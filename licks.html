@@ -20,7 +20,9 @@
   window.parent.chorToolStorage (Datensatz „licks“); Fortschritt meldet die
   Seite an window.parent.chorProgress (Bereich „licks“). Offline über
   SHELL_OPTIONAL und TOOL_PAGES in sw.js. Nur Deutsch, keine Abhängigkeiten,
-  kein Mikrofon (Eingabe über die Bildschirmtasten).
+  Eingabe über die Bildschirmtasten oder – Einstellung „Singen“ – übers
+  Mikrofon (nur während der eigenen Runde, nur live ausgewertet, nichts wird
+  aufgenommen; detectPitch als Kopie aus uebe-lab.html).
 
   Klänge ohne Samples (Web Audio). Kopien, damit die Tools eigenständig
   bleiben (Blöcke mit „Kopie aus …“ gekennzeichnet):
@@ -29,82 +31,104 @@
   - Schlagzeug: drum()/tone()/noiseHit() aus metronom.html.
 -->
 <style>
+  /* Eigene Bausteine der Licks-Seite. Tokens und die k-*-Klassen (Kopf, Zeile,
+     Ring, Pille, Stepper, Fußleiste, Knöpfe, Bühne) kommen aus ueben.css. */
   :root {
     --accent: #F868B0; --accent-rgb: 248,104,176;
     --bg: #fff7ec; --surface: #ffffff; --surface-2: #fff1e2; --line: #f1ddd0;
     --text: #241b3d; --muted: #8c81a6;
     --good: #2f9e5b; --near: #d9922b; --bad: #e0445a;
-    --ok-bg: #b8e3c6; --wobble-bg: #f6d78a; --lost-bg: #f0a6b0;
+    --ok-bg: #b8e3c6; --wobble-bg: #f6d78a;
+    /* „verloren“ im Taktstreifen: Rosa-Rot, Text und Rand dunkel genug (≥ 4,5:1) */
+    --lost-bg: #f8d2d8; --lost-line: #e59aa8; --lost-fg: #8a1a30; --bad-fg: #a3162d;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: light; } }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
     display: flex; flex-direction: column; color: var(--text); background: var(--bg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
     -webkit-user-select: none; user-select: none; overflow: hidden;
   }
   button, select, input { font: inherit; color: inherit; }
-  button { cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: 0; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   button:disabled { cursor: default; }
-  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent-foreground); outline-offset: 2px; }
   svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
   [hidden] { display: none !important; }
-  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-  .bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
-    padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left)); }
-  html.is-embedded .bar { padding-right: calc(60px + env(safe-area-inset-right)); }
-  h1 { margin: 0; font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; flex: 1; min-width: 0; }
-  h1 span { color: var(--accent); }
-  .icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+  /* ---- Kopf */
+  .k-head { position: relative; z-index: 1; }
+  .k-head .k-round { cursor: pointer; }
+  .k-title { font-size: 22px; }
 
   main { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 4px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left)); }
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
-  .chip { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .8rem; color: var(--muted); }
-  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .note { margin: 6px 2px; font-size: .8rem; color: var(--muted); font-weight: 600; }
-  .review-card { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; margin: 4px 0 10px; }
-  .review-card b { flex: 1; font-size: .9rem; }
+    padding: 4px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
 
-  .lick-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
-  .lick-row .play { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-  .lick-row .play svg { fill: currentColor; stroke: none; }
-  .lick-row .open { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; min-height: 44px; justify-content: center; }
-  .lick-row .name { font-weight: 800; }
-  .lick-row .sub { font-size: .78rem; color: var(--muted); font-weight: 600; }
-  .status { flex: 0 0 auto; font-size: .72rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
-  .status[data-status="Lerne"] { background: var(--wobble-bg); color: #6b4a00; }
-  .status[data-status="Sitzt"] { background: var(--ok-bg); color: #14532d; }
+  /* ---- Liste: Filter-Pillen (eine Zeile, seitlich wischbar) */
+  .chips { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; margin: 2px -16px 12px; padding: 3px 16px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--tint-line); background: var(--surface);
+    font-weight: 700; font-size: 14px; color: var(--muted-2); white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .note { margin: 8px 2px; font-size: 12.5px; color: var(--muted-2); font-weight: 600; line-height: 1.4; }
+  #review-card { margin: 0 0 10px; }
+  #review-card .k-row { min-height: 56px; cursor: pointer; }
+  #list-note:empty { display: none; }
+  #list-note { text-align: center; margin-top: 14px; }
 
-  .lick-head { margin: 2px 2px 8px; }
-  .lick-head h2 { margin: 0; font-size: 1.05rem; }
-  .lick-head p { margin: 2px 0 0; font-size: .78rem; color: var(--muted); font-weight: 600; }
-  .steps { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; }
-  .steps::-webkit-scrollbar { display: none; }
-  .step { flex: 0 0 auto; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: .76rem; color: var(--muted); white-space: nowrap; }
-  .step.is-done { color: var(--good); border-color: rgba(47,158,91,.5); }
-  .step.is-now { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .step.is-optional { border-style: dashed; }
-  .step:disabled { opacity: .45; }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px; }
-  .panel p { margin: 0 0 10px; font-size: .88rem; line-height: 1.4; }
-  .panel .more { font-size: .78rem; color: var(--muted); }
-  .panel .note { margin-top: 10px; }
-  .delay-hint { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: rgba(var(--accent-rgb), .1); border: 1px solid rgba(var(--accent-rgb), .45); }
-  .delay-hint p { margin: 0 0 8px; font-size: .82rem; line-height: 1.35; }
+  /* ---- Liste: Zeilen */
+  .lick-row { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px 12px 8px 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .lick-row .play { width: 44px; height: 44px; border-radius: 50%; flex: none; padding: 0; margin: 0;
+    background: var(--hear-bg); border: 1px solid var(--hear-line); color: var(--hear-fg);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .lick-row .play svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
+  .lick-row .open { flex: 1 1 auto; min-width: 0; min-height: 44px; margin: 0; padding: 0 2px; text-align: left; background: none; border: 0;
+    display: flex; align-items: center; color: var(--text); }
+  .lick-row .name { font-family: var(--font-display); font-weight: 700; font-size: 15px; line-height: 1.2; overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto; }
+  .lick-row .status { flex: none; min-width: 68px; justify-content: center; }
+
+  /* ---- Übungsansicht: Stepper, Bühne */
+  #steps { margin: 0 -4px 12px; }
+  .panel p { margin: 0 0 10px; font-size: 14px; line-height: 1.4; }
+  .panel .more { font-size: 12.5px; color: var(--muted-2); }
+  .panel .note { margin: 10px 0 0; }
+  .more-wrap { margin: 0 0 4px; }
+  .more-wrap summary { min-height: 44px; display: flex; align-items: center; gap: 8px; margin-top: -8px; font-weight: 700; font-size: 13px; color: var(--muted-2); cursor: pointer; list-style: none; }
+  .more-wrap summary::-webkit-details-marker { display: none; }
+  .more-wrap summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); }
+  .more-wrap[open] summary::before { transform: rotate(45deg); }
+  .more-wrap .more { margin-top: -4px; }
+  .panel-title { margin: 0 0 8px; font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.2; }
+  .delay-hint { margin: 8px 0; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--tint-line); }
+  .delay-hint p { margin: 0 0 8px; font-size: 13px; line-height: 1.35; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .btn { min-height: 44px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .86rem; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn:disabled { opacity: .45; }
-  .feedback { min-height: 22px; margin: 8px 0 0; font-weight: 700; font-size: .88rem; }
-  .feedback.is-good { color: var(--good); }
-  .feedback.is-bad { color: var(--bad); }
+  .actions .k-btn:not(.k-btn--ghost):not(.k-btn--hear) { flex: 1 1 auto; }
+  /* Der Hauptknopf im Panel ist nur Rückfall/Beschriftung: Start und Stopp liegen in der Fußleiste (Mitte). */
+  .actions .k-btn.main-act { height: auto; min-height: 44px; background: none; border-color: transparent; color: var(--muted-2); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .actions .k-btn.main-act svg { display: none; }
+  .actions .k-btn.main-act:disabled { opacity: .5; }
+  .feedback { min-height: 22px; margin: 8px 0 0; font-weight: 700; font-size: 14px; line-height: 1.35; }
+  .panel p.feedback:empty { display: none; }
+  .feedback.is-good { color: var(--ok-fg); }
+  .feedback.is-bad { color: var(--bad-fg); }
+  /* Mikro-Symbol (Kopie aus uebe-lab.html, .sing-mic): durchgestrichen = aus, grün nach Pegel, rot = zu laut */
+  .dock-bar { position: relative; }
+  .sing-mic { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 26px; height: 30px; display: grid; place-items: center; opacity: .45; }
+  .sing-mic[hidden] { display: none; }
+  .sing-mic.is-open { opacity: .75; }
+  .sing-mic svg { width: 24px; height: 24px; overflow: visible; }
+  .sing-mic .mic-cap, .sing-mic .mic-stand { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sing-mic .mic-slash { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sing-mic.is-open .mic-slash { display: none; }
+  .sing-mic .mic-fill { fill: #6cbf8a; transition: y .08s linear, height .08s linear; }
+  .sing-mic.is-hot .mic-fill { fill: var(--bad); }
+  .sing-mic.is-hot .mic-cap, .sing-mic.is-hot .mic-stand { stroke: var(--bad); }
 
-  .stage { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); margin: 8px 0; overflow: hidden; }
+  .stage { border: 1px solid var(--tint-line); border-radius: 16px; background: var(--surface); margin: 8px 0; overflow: hidden; }
   .stage svg { width: 100%; height: auto; display: block; stroke-width: 1.4; }
-  .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted); stroke: none; }
+  .stage .hint { font-weight: 800; font-size: 13px; fill: var(--muted-2); stroke: none; }
   .stage .staff { stroke: var(--line); stroke-width: 1.6; }
   .stage .tl { stroke: var(--line); stroke-width: 3; }
   .stage .tg { fill: none; stroke: var(--muted); stroke-width: 2; }
@@ -116,98 +140,176 @@
   .stage .tp.is-near { fill: var(--near); }
   .stage .tp.is-extra { fill: var(--bad); }
   .stage .bar-l { stroke: var(--line); stroke-width: 1; }
-  .stage .lbl { font-size: 9px; font-weight: 800; fill: var(--muted); stroke: none; }
+  .stage .lbl { font-size: 9px; font-weight: 800; fill: var(--muted-2); stroke: none; }
   .stage .row-l { font-size: 9.5px; font-weight: 800; fill: var(--text); stroke: none; }
-  .stage .row-bg { fill: rgba(var(--accent-rgb), .05); stroke: none; }
+  .stage .row-bg { fill: rgba(var(--accent-rgb), .06); stroke: none; }
   .stage .roll-note { fill: var(--accent); stroke: none; }
   .stage .roll-glide { stroke: var(--accent); stroke-width: 2.4; }
   .stage .ph { stroke: var(--accent); stroke-width: 2; }
 
-  .strip { display: flex; gap: 3px; margin: 8px 0 4px; }
-  .strip .cell { flex: 1 1 0; min-width: 0; height: 30px; border-radius: 6px; font-size: .62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; color: #1b1330; border: 1px solid transparent; }
-  .strip .cell.is-sure { background: var(--ok-bg); }
-  .strip .cell.is-wobbly { background: var(--wobble-bg); }
-  .strip .cell.is-lost { background: var(--lost-bg); }
-  .strip .cell.is-silent { background-image: repeating-linear-gradient(135deg, rgba(36,27,61,.32) 0 2px, transparent 2px 6px); }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .68rem; font-weight: 700; color: var(--muted); }
-  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(36,27,61,.2); }
 
-  .ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
-  .ladder button { min-height: 52px; padding: 4px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 800; font-size: .7rem; line-height: 1.2; }
-  .ladder button.is-done { border-color: rgba(47,158,91,.6); color: var(--good); }
-  .ladder button.is-next { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .ladder button[aria-pressed="true"] { outline: 3px solid rgba(var(--accent-rgb), .45); }
-  .rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .k-dot.is-optional { border-style: dashed; }
+  .k-dot:disabled { opacity: .5; cursor: default; }
+  #steps ol { padding: 0 8px; }
 
-  .dock { flex: 0 0 auto; background: var(--surface-2); border-top: 1px solid var(--line);
-    padding: 6px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
-  .dock-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
-  .dock-bar select { min-height: 36px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0 10px; font-weight: 800; font-size: .74rem; max-width: 46%; }
-  .group { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 2px; }
-  .group button { min-width: 34px; height: 32px; padding: 0 10px; border-radius: 999px; font-size: .74rem; font-weight: 800; color: var(--muted); }
-  .group button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-  .group .range { min-width: 28px; text-align: center; font-size: .72rem; font-weight: 800; }
-  .keyboard { position: relative; display: flex; height: 190px; touch-action: none; border-radius: 0 0 12px 12px; overflow: hidden; border-top: 6px solid var(--text); box-shadow: 0 6px 16px rgba(36,27,61,.16); }
-  .white { position: relative; flex: 1 1 0; min-width: 0; border-right: 1px solid #d9cfd6; background: linear-gradient(#fff, #fbf7f3 85%, #efe6ea); border-radius: 0 0 8px 8px; }
+  /* Durchhalten: Stufenleiter und (statischer) Plan vor dem Lauf */
+  .ladder { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 10px; }
+  .ladder button { min-height: 52px; padding: 4px; border-radius: 16px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--text);
+    font-weight: 700; font-size: 12px; line-height: 1.2; text-align: center; display: flex; align-items: center; justify-content: center; }
+  .ladder button.is-done { background: var(--ok-bg); border-color: var(--ok); color: var(--ok-fg); }
+  .ladder button.is-next { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .ladder button[aria-pressed="true"] { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .45); border-color: var(--accent-foreground); }
+  .ladder button:disabled { opacity: .5; }
+  .plan-strip { display: flex; gap: 3px; margin: 8px 0 6px; }
+  .plan-strip i { flex: 1 1 0; min-width: 0; height: 26px; border-radius: 7px; background: var(--surface); border: 1px solid var(--tint-line); }
+  .plan-strip i.is-still, .plan-key i.is-still { background: var(--rep-bg) repeating-linear-gradient(135deg, color-mix(in srgb, var(--rep-fg) 32%, transparent) 0 2px, transparent 2px 6px); border: 1px dashed var(--rep-line); }
+  .plan-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted-2); }
+  .plan-key span { display: inline-flex; align-items: center; gap: 4px; }
+  .plan-key i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--surface); border: 1px solid var(--tint-line); }
+
+  .rate { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+  .rate .k-btn { height: auto; min-height: 46px; padding: 6px 6px; font-size: 13.5px; white-space: normal; }
+  .rate [data-rate="shaky"] { background: var(--rep-bg); border: 1px solid var(--rep-line); color: var(--rep-fg); }
+  .rate [data-rate="ok"] { background: var(--hear-bg); border: 1px solid var(--hear-line); color: var(--hear-fg); }
+  .rate [data-rate="solid"] { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok-fg); }
+
+  /* ---- Klaviatur (Dock): nur Oktave, darunter die Tasten */
+  .dock { flex: none; padding: 0 max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); }
+  .dock-bar { display: flex; align-items: center; justify-content: center; margin: 0 0 6px; }
+  .group { display: inline-flex; align-items: center; gap: 2px; height: 36px; padding: 0 2px; border-radius: 999px; background: var(--surface); border: 1px solid var(--tint-line); }
+  .group button { position: relative; min-width: 36px; height: 32px; padding: 0 8px; border-radius: 999px; background: none; border: 0; color: var(--text); font-weight: 700; font-size: 18px; line-height: 1; }
+  .group button::before { content: ''; position: absolute; inset: -6px -4px; }
+  .group button:disabled { opacity: .35; }
+  .group .range { min-width: 74px; text-align: center; font-size: 12.5px; font-weight: 700; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+  .keyboard { position: relative; display: flex; height: clamp(92px, 16vh, 170px); touch-action: none; border-radius: 0 0 16px 16px; overflow: hidden;
+    border: 1px solid var(--tint-line); border-top: 4px solid var(--text); background: var(--surface); }
+  .white { position: relative; flex: 1 1 0; min-width: 0; border-right: 1px solid var(--tint-line); background: var(--surface); border-radius: 0 0 8px 8px; }
   .white:last-child { border-right: 0; }
-  .white.is-down { background: linear-gradient(#f3eaf0, rgba(var(--accent-rgb), .35)); }
-  .black { position: absolute; top: 0; height: 60%; z-index: 2; border-radius: 0 0 6px 6px; background: linear-gradient(#3a3350, #1c1730 88%); box-shadow: inset 0 -4px 0 rgba(255,255,255,.08), 0 3px 5px rgba(0,0,0,.35); }
-  .black.is-down { background: linear-gradient(#2a2340, rgb(var(--accent-rgb))); }
-  .white.is-lit { background: linear-gradient(#ffe0f0, rgba(var(--accent-rgb), .55)); }
-  .black.is-lit { background: linear-gradient(#5a2a52, rgb(var(--accent-rgb))); }
+  .white.is-down { background: color-mix(in srgb, var(--accent) 38%, white); }
+  .black { position: absolute; top: 0; height: 58%; z-index: 2; border-radius: 0 0 7px 7px; background: var(--text); }
+  .black.is-down { background: var(--accent-foreground); }
+  .white.is-lit { background: color-mix(in srgb, var(--accent) 45%, white); }
+  .black.is-lit { background: var(--accent-foreground); }
   .white.is-picked, .black.is-picked { box-shadow: inset 0 0 0 3px var(--accent); }
-  .key-mark.is-pick { background: var(--surface); color: var(--accent); border: 2px solid var(--accent); }
-  .key-mark { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--accent); color: #fff; font-size: .68rem; font-weight: 800; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
+  .key-mark { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px;
+    background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3; }
+  .key-mark.is-pick { background: var(--surface); color: var(--accent-foreground); border: 2px solid var(--accent); }
   .black .key-mark { bottom: 6px; }
 
-  .sheet { position: fixed; inset: 0; z-index: 20; background: rgba(36,27,61,.45); display: flex; align-items: flex-end; }
-  .sheet-card { width: 100%; background: var(--bg); border-radius: 20px 20px 0 0; padding: 16px 16px max(20px, env(safe-area-inset-bottom)); max-height: 80vh; overflow-y: auto; }
-  .sheet-card h3 { margin: 0 0 8px; font-size: 1rem; }
-  .sub-label { display: block; margin: 12px 0 4px; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  /* ---- Fußleiste (nur Lick-Ansicht): Tempo | Start/Stopp | Schritt zurück/vor */
+  #foot { display: grid; grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr); gap: 8px; }
+  #foot .k-tempo { max-width: 156px; }
+  #foot .k-tempo button:disabled, #foot .foot-steps button:disabled { opacity: .35; }
+  #foot .k-tempo-val { flex-direction: column; align-items: center; gap: 0; line-height: 1.05; white-space: nowrap; }
+  #foot .k-tempo-val b { font-size: 19px; }
+  #foot .k-tempo-val b.is-word { font-size: 14px; }
+  .foot-steps { display: flex; justify-content: flex-end; gap: 6px; }
+  .foot-steps .k-round { color: var(--text); }
+  @media (max-width: 360px) {
+    .lick-row { gap: 8px; }
+    .lick-row .status { min-width: 58px; padding: 2px 8px; }
+    .k-foot { padding-left: 12px; padding-right: 12px; }
+    #foot .k-tempo button { width: 36px; position: relative; }
+    #foot .k-tempo button::before { content: ''; position: absolute; inset: 0 -4px; }
+    #foot .k-tempo-val b { font-size: 17px; }
+  }
+
+  /* ---- Einstellungen-Sheet */
+  .sheet { position: fixed; inset: 0; z-index: 20; background: rgba(36,27,61,.45); display: flex; align-items: flex-end; justify-content: center; }
+  .sheet-card { width: 100%; max-width: 520px; background: var(--bg); border-radius: 22px 22px 0 0; border: 1px solid var(--tint-line); border-bottom: 0;
+    padding: 16px 16px max(20px, env(safe-area-inset-bottom)); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }
+  .sheet-card:focus { outline: none; }
+  .sheet-card h3 { margin: 0 0 4px; font-family: var(--font-display); font-weight: 700; font-size: 20px; }
+  .sheet .chips { flex-wrap: wrap; overflow: visible; margin: 6px 0; padding: 0; }
+  .sub-label { display: block; margin: 14px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2); }
+  .sheet select { width: 100%; min-height: 44px; border: 1px solid var(--tint-line); background: var(--surface); border-radius: 999px; padding: 0 16px; font-weight: 700; font-size: 14px; }
+  .toggle { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; padding: 0; background: none; border: 0; font-weight: 700; font-size: 14px; }
+  .toggle-track { position: relative; width: 48px; height: 28px; border-radius: 14px; background: var(--rule); border: 1px solid var(--tint-line); flex: none; }
+  .toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(36,27,61,.35); }
+  .toggle[aria-pressed="true"] .toggle-track { background: var(--accent); border-color: var(--accent); }
+  .toggle[aria-pressed="true"] .toggle-track::after { left: 22px; }
+  .sheet .actions { margin-top: 14px; }
+  .sheet .actions .k-btn { flex: 1 1 auto; }
+  .sheet .actions:last-child { position: sticky; bottom: calc(-1 * max(20px, env(safe-area-inset-bottom))); margin: 14px -16px calc(-1 * max(20px, env(safe-area-inset-bottom))); padding: 10px 16px max(20px, env(safe-area-inset-bottom)); background: var(--bg); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 </style>
+<!-- Gemeinsame Designsprache „Konfetti B2“ (Tokens, Schrift, Bausteine); nach dem
+     eigenen <style>, damit ihre Tokens gewinnen. -->
+<link rel="stylesheet" href="./ueben.css">
 </head>
 <body>
-<div class="bar">
-  <button class="icon-btn" type="button" data-act="back" aria-label="Zurück zur Liste" hidden><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
-  <h1>Licks &amp; <span>Grooves</span></h1>
-  <button class="icon-btn" type="button" data-act="settings" aria-label="Einstellungen" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
-</div>
+<header class="k-head" id="head">
+  <!-- Zurück: in der Liste schließt es das Tool (nur eingebettet sichtbar), in der Lick-Ansicht geht es zur Liste. -->
+  <button class="k-round" type="button" data-act="back" data-own-back-btn aria-label="Zurück" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <div class="k-titles">
+    <span class="k-over" id="head-over" hidden>Licks &amp; Grooves</span>
+    <h1 class="k-title" id="list-title">Licks &amp; Grooves</h1>
+    <h1 class="k-title" id="lick-name" hidden></h1>
+    <p class="visually-hidden" id="lick-sub"></p>
+  </div>
+  <div class="k-actions">
+    <button class="k-round" type="button" data-act="settings" aria-label="Einstellungen" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+  </div>
+</header>
 <main id="main">
   <section id="view-list">
-    <div class="review-card" id="review-card" hidden><b id="review-text"></b><button class="btn primary" type="button" data-act="review-start">Wiederholen</button></div>
+    <div id="review-card" hidden>
+      <button class="k-row k-row--repeat" type="button" data-act="review-start">
+        <span class="k-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg></span>
+        <span class="k-row-name" id="review-text">Heute wiederholen</span>
+        <span class="k-chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+      </button>
+    </div>
     <div class="chips" id="cat-chips" role="group" aria-label="Kategorie"></div>
-    <div id="list"></div>
+    <div class="k-list" id="list"></div>
     <p class="note" id="list-note"></p>
   </section>
   <section id="view-lick" hidden>
-    <div class="lick-head"><h2 id="lick-name"></h2><p id="lick-sub"></p></div>
-    <div class="steps" id="steps" role="group" aria-label="Schritte"></div>
-    <div class="panel" id="panel"></div>
+    <div class="k-stepper" id="steps" role="group" aria-label="Schritte"></div>
+    <div class="k-stage panel" id="panel"></div>
   </section>
 </main>
 <div class="dock" id="dock" hidden>
   <div class="dock-bar">
-    <select id="sound-select" aria-label="Klang"></select>
-    <div class="group" role="group" aria-label="Glide beim eigenen Spiel"><button type="button" data-act="glide" aria-pressed="true">Glide</button></div>
-    <span style="flex:1"></span>
-    <div class="group" role="group" aria-label="Lage">
-      <button type="button" data-act="oct-down" aria-label="Eine Oktave tiefer">Okt −</button>
-      <span class="range" id="oct-range" aria-live="polite">0</span>
-      <button type="button" data-act="oct-up" aria-label="Eine Oktave höher">Okt +</button>
+    <div class="group" role="group" aria-label="Lage der Klaviatur">
+      <button type="button" data-act="oct-down" aria-label="Eine Oktave tiefer">−</button>
+      <span class="range" id="oct-range" aria-live="polite">Oktave 0</span>
+      <button type="button" data-act="oct-up" aria-label="Eine Oktave höher">+</button>
     </div>
+    <span class="sing-mic" id="mic-icon" role="img" aria-label="Mikrofon aus" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="mic-clip"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/></clipPath></defs><rect class="mic-fill" clip-path="url(#mic-clip)" x="8.5" y="14.5" width="7" height="0"/><rect class="mic-cap" x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path class="mic-stand" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/><path class="mic-slash" d="M4 3l16 18"/></svg></span>
   </div>
   <div class="keyboard" id="keyboard" aria-label="Klaviatur"></div>
 </div>
+<!-- Fußleiste unter der Klaviatur: Tempo (nur langsamer) | Start/Stopp | Schritt zurück/vor -->
+<div class="k-foot" id="foot" hidden>
+  <div class="k-tempo" role="group" aria-label="Tempo">
+    <button type="button" data-act="tempo-down" aria-label="Langsamer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+    <div class="k-tempo-val" id="tempo-val" aria-live="polite"><b>100 %</b><small>96 BPM</small></div>
+    <button type="button" data-act="tempo-up" aria-label="Schneller"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>
+  <button class="k-play k-play--lg" type="button" id="foot-play" data-act="foot-play" aria-label="Start: Anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg></button>
+  <div class="foot-steps">
+    <button class="k-round" type="button" data-act="step-prev" aria-label="Schritt zurück"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="k-round" type="button" data-act="step-next" aria-label="Schritt vor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+</div>
 <div class="sheet" id="sheet" hidden>
-  <div class="sheet-card" role="dialog" aria-label="Einstellungen">
+  <div class="sheet-card" role="dialog" aria-label="Einstellungen" aria-modal="true" tabindex="-1">
     <h3>Einstellungen</h3>
-    <span class="sub-label" style="margin-top:0">Notenbild bei Licks</span>
+    <span class="sub-label" style="margin-top:8px">Notenbild bei Licks</span>
     <div class="chips" id="notes-chips"></div>
     <p class="note">Das Notenbild (Piano-Roll) kommt als letzter Schritt. Wer es abschaltet, übt ausschließlich mit den Ohren.</p>
+    <label class="sub-label" for="sound-select">Klang</label>
+    <select id="sound-select" aria-label="Klang"></select>
+    <span class="sub-label">Eingabe</span>
+    <div class="chips" id="input-chips"></div>
+    <p class="note">Singen: Das Mikrofon läuft nur während deiner Runde und wird nur live ausgewertet – nichts wird aufgenommen oder gesendet. Mit Kopfhörern singen, sonst hört das Mikrofon die Begleitung mit. Gewertet werden Tonklasse und Einsatz wie beim Tippen.</p>
+    <span class="sub-label">Glide beim eigenen Spiel</span>
+    <button class="toggle" type="button" data-act="glide" aria-pressed="true" aria-label="Glide beim eigenen Spiel"><span class="toggle-track" aria-hidden="true"></span><span class="toggle-text">An</span></button>
     <span class="sub-label">Verzögerung beim Tippen</span>
     <p class="note" id="delay-note"></p>
-    <div class="actions" style="margin-top:0"><button class="btn" type="button" data-act="delay-reset" id="delay-reset">Zurücksetzen</button></div>
-    <div class="actions"><button class="btn primary" type="button" data-act="settings-close">Fertig</button></div>
+    <div class="actions" style="margin-top:0"><button class="k-btn k-btn--ghost" type="button" data-act="delay-reset" id="delay-reset">Zurücksetzen</button></div>
+    <div class="actions"><button class="k-btn" type="button" data-act="settings-close">Fertig</button></div>
   </div>
 </div>
 
@@ -216,7 +318,12 @@
 (function () {
   'use strict';
 
-  if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  const EMBEDDED = new URLSearchParams(location.search).has('embedded');
+  if (EMBEDDED) {
+    document.documentElement.classList.add('is-embedded');
+    // Eigener runder Zurück-Knopf: die App blendet dann ihr ✕ aus und fokussiert [data-own-back-btn].
+    document.documentElement.setAttribute('data-own-back', '');
+  }
   // In der App eingebettet: deren Akzentfarbe übernehmen (gleiche Herkunft).
   try {
     if (window.parent !== window) {
@@ -225,6 +332,9 @@
       const rgb = appStyle.getPropertyValue('--accent-rgb').trim();
       if (/^#[0-9a-f]{6}$/i.test(accent)) document.documentElement.style.setProperty('--accent', accent);
       if (/^\d+,\s*\d+,\s*\d+$/.test(rgb)) document.documentElement.style.setProperty('--accent-rgb', rgb);
+      // Dunkle Textvariante der Akzentfarbe (≥ 4,5:1, deriveAccentForeground in app.js).
+      const fg = appStyle.getPropertyValue('--accent-foreground').trim();
+      if (/^#[0-9a-f]{6}$/i.test(fg)) document.documentElement.style.setProperty('--accent-foreground', fg);
     }
   } catch { /* eigenständig geöffnet oder fremde Herkunft: Standardfarbe */ }
 
@@ -248,7 +358,7 @@
       parts: [[0, 3], [3, 5], [5, 9]],
       intro: 'Fünf Töne, zwei Takte: hinauf bis zur kleinen Septime, dann zurück nach Hause. Sing ihn zuerst auf „du“ – die Finger folgen der Stimme.',
       more: 'Die Moll-Pentatonik ist die Tonleiter unzähliger Pop-, Soul- und Rock-Hooks. Auf ihr klingt fast jede Tonfolge richtig, deshalb ist sie der beste Einstieg.' },
-    { id: 'bassOktav', cat: 'bass', level: 1, name: 'Oktav-Disco-Bass', preset: 'Growl Bass', bpm: 100, bars: 2, root: 40,
+    { id: 'bassOktav', cat: 'bass', level: 1, name: 'Oktav-Disco-Bass', preset: 'Growl Bass', bpm: 100, bars: 2, root: 40, kick: 'four',
       notes: [[0, 6, 0], [6, 6, 12], [12, 6, 0], [18, 6, 12], [24, 6, 0], [30, 6, 12], [36, 6, 0], [42, 6, 12],
         [48, 6, 5], [54, 6, 17], [60, 6, 5], [66, 6, 17], [72, 6, 7], [78, 6, 19], [84, 6, 7], [90, 6, 19]],
       parts: [[0, 4], [4, 8], [8, 12], [12, 16]],
@@ -283,8 +393,9 @@
     { id: 'bassFunk16', cat: 'bass', level: 3, name: 'Funk-Bass mit Sechzehnteln', preset: 'Growl Bass', bpm: 96, bars: 1, root: 43,
       notes: [[0, 3, 0], [9, 3, 12], [12, 6, 10], [21, 3, 7], [27, 6, 0], [36, 3, -3], [42, 3, -2], [45, 3, -1]],
       parts: [[0, 4], [4, 8]],
-      intro: 'Kurze Töne, viel Luft dazwischen. Die Eins sitzt, alles andere fällt auf „e“ und „a“. Die letzten drei Töne laufen chromatisch in die nächste Eins.',
-      more: 'Im Funk zählt die Pause so viel wie der Ton. Spiel die Töne kurz und trocken – die Lücken sind der Groove.' },
+      // Töne auf 1, 1-a, 2, 2-a, 3-e, 4, 4-und, 4-a (nicht „alles auf e und a“).
+      intro: 'Kurze Töne, viel Luft dazwischen. Die Eins sitzt, danach landen die Töne oft knapp neben dem Schlag – auf „a“ und „e“.',
+      more: 'Die letzten drei – auf 4, „und“, „a“ – laufen chromatisch in die nächste Eins. Im Funk zählt die Pause so viel wie der Ton. Spiel die Töne kurz und trocken – die Lücken sind der Groove.' },
   ];
   const CATS = [['all', 'Alle'], ['hook', 'Hooks'], ['bass', 'Bass'], ['arp', 'Arps'], ['fill', 'Fills']];
   const lickById = (id) => LICKS.find((l) => l.id === id) || null;
@@ -323,65 +434,281 @@
    *   taps:     Anschläge (Sekunden) — Zahlen oder { t, pc }.
    *   barStart / barSec: Anfang des ersten Takts und Taktdauer.
    *   tol:      Trefferfenster (s). plan: je Takt true (Snare) / false (still).
-   * → { bars: [{ expected, hit, meanOffset, extra, silent }], held, tendency,
-   *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null) }
+   * → { bars: [{ expected, hit, meanOffset, extra, silent, ok }], held, tendency,
+   *     lostAt (1-basiert oder null), reentry ('good' | 'late' | null),
+   *     reason ('bars' | 'loose' | 'drift' | null), offsets, meanAbs, missed, extras, expected }
    */
-  function judgeHold({ expected, taps, barStart, barSec, tol, plan }) {
+  function judgeHold({ expected, taps, barStart, barSec, tol, plan, pos = null, gaps = null, names = null, beatSec = barSec / 4, mic = false, swingPairs = null, pickupSec = 0 }) {
     const nBars = plan.length;
     const timeOf = (x) => (typeof x === 'number' ? x : x.t);
-    const exp = expected.map((e) => ({ t: timeOf(e), pc: typeof e === 'number' ? null : e.pc })).sort((a, b) => a.t - b.t);
-    const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
-    const barOf = (t) => Math.floor((t - barStart) / barSec + 1e-9);
-    const bars = Array.from({ length: nBars }, (_, b) => ({ expected: 0, hit: 0, meanOffset: 0, extra: 0, silent: plan[b] === false, sum: 0 }));
-    const hits = [];
-    for (const e of exp) {
-      const b = barOf(e.t);
-      if (b < 0 || b >= nBars) continue;
-      bars[b].expected++;
-      let best = null;
-      for (const x of tp) {
-        if (x.used || Math.abs(x.t - e.t) > tol) continue;
-        if (e.pc !== null && x.pc !== null && e.pc !== x.pc) continue;
-        if (!best || Math.abs(x.t - e.t) < Math.abs(best.t - e.t)) best = x;
-      }
-      if (!best) continue;
-      best.used = true;
-      bars[b].hit++; bars[b].sum += best.t - e.t;
-      hits.push({ t: e.t, off: best.t - e.t });
+    // Takte zählen ab der echten Eins (barStart + pickupSec), wie die Begleitung
+    // (plan); der erste Auftakt gehört als Vortakt zu Takt 1. Ohne Auftakt wie bisher.
+    const barOf = (t) => {
+      const b = Math.floor((t - barStart - pickupSec) / barSec + 1e-9);
+      if (!pickupSec) return b;
+      const r = t - barStart;
+      return r < -1e-9 ? -1 : r >= nBars * barSec - 1e-9 ? nBars : Math.max(0, b);
+    };
+    const E = expected.map((e, i) => ({ t: timeOf(e), pc: typeof e === 'number' || e.pc === undefined ? null : e.pc, pos: pos ? pos[i] : null }))
+      .filter((e) => barOf(e.t) >= 0 && barOf(e.t) < nBars).sort((a, b) => a.t - b.t);
+    const tp = taps.map((x) => ({ t: timeOf(x), pc: typeof x === 'number' || x.pc === undefined ? null : x.pc, used: false })).sort((a, b) => a.t - b.t);
+    // Stumm: alle Takte ohne Begleitung – dann zählt das eigene Tempo, nicht das starre Raster.
+    const free = nBars > 0 && plan.every((p) => p === false);
+    const tolOf = (e) => tol + (plan[barOf(e.t)] === false ? HOLD_GAP_EXTRA : 0);
+    const t0 = E.length ? E[0].t : 0;
+    // Zuordnung: erst am Raster, dann (dreimal) um den eigenen Versatz bzw. – in Stumm – um
+    // die eigene Tempo-Gerade verschoben. Wer konstant früh ist, verliert so keine Treffer.
+    let a = 0, k = 1;
+    const predict = (e) => t0 + a + k * (e.t - t0);
+    const fit = (ps) => {
+      if (!ps.length) return;
+      if (!free || ps.length < 2) { a = clamp(ps.reduce((s, p) => s + p.x.t - p.e.t, 0) / ps.length, -HOLD_BIAS_MAX, HOLD_BIAS_MAX); return; }
+      const n = ps.length;
+      const mx = ps.reduce((s, p) => s + p.e.t - t0, 0) / n, my = ps.reduce((s, p) => s + p.x.t - t0, 0) / n;
+      let num = 0, den = 0;
+      for (const p of ps) { num += (p.e.t - t0 - mx) * (p.x.t - t0 - my); den += (p.e.t - t0 - mx) ** 2; }
+      k = den ? clamp(num / den, .85, 1.15) : 1;
+      a = clamp(my - k * mx, -HOLD_BIAS_MAX, HOLD_BIAS_MAX);
+    };
+    // Versatz vorab suchen (bis ±HOLD_BIAS_MAX in 5-ms-Schritten, bei Gleichstand der kleinste):
+    // wer konstant mehr als das Trefferfenster daneben liegt, verlöre sonst schon im ersten Durchgang alles.
+    let bestA = 0, bestN = -1;
+    for (let c = -HOLD_BIAS_MAX; c <= HOLD_BIAS_MAX + 1e-9; c += .005) {
+      a = c;
+      const n = holdAssign(E, tp, predict, tolOf).length;
+      if (n > bestN || (n === bestN && Math.abs(c) < Math.abs(bestA))) { bestN = n; bestA = c; }
     }
+    a = bestA;
+    for (const x of tp) x.used = false;
+    let pairs = [];
+    if (free) {
+      // Stumm: die Tempo-Linie wächst Schlag für Schlag von vorn mit (sonst landen späte Schläge
+      // eines langsamer Werdenden auf falschen Soll-Punkten).
+      for (const e of E) { pairs.push(...holdAssign([e], tp.filter((x) => !x.used), predict, tolOf)); fit(pairs); }
+    } else pairs = holdAssign(E, tp, predict, tolOf);
+    for (let round = 0; round < 3 && pairs.length >= 1; round++) { fit(pairs); pairs = holdAssign(E, tp, predict, tolOf); }
+    const bars = Array.from({ length: nBars }, (_, b) => ({ expected: 0, hit: 0, meanOffset: 0, extra: 0, silent: plan[b] === false, sum: 0, err: false }));
+    for (const e of E) bars[barOf(e.t)].expected++;
+    const hits = pairs.map((p) => ({ t: p.e.t, x: p.x.t, bar: barOf(p.e.t), pos: p.e.pos, off: p.x.t - p.e.t, dev: p.x.t - predict(p.e) }));
+    for (const h of hits) { bars[h.bar].hit++; bars[h.bar].sum += h.off; }
     for (const x of tp) {
       if (x.used) continue;
       const b = barOf(x.t);
       if (b >= 0 && b < nBars) bars[b].extra++;
     }
-    for (const b of bars) { b.meanOffset = b.hit ? b.sum / b.hit : 0; delete b.sum; }
-    // Tendenz: lineare Regression der Abweichungen über der Zeit; Unterschied
-    // Anfang → Ende des Laufs (über die Spanne der Soll-Punkte).
-    let tendency = 'steady';
-    if (hits.length >= 6) {
-      const n = hits.length;
-      const mt = hits.reduce((a, h) => a + h.t, 0) / n, mo = hits.reduce((a, h) => a + h.off, 0) / n;
-      let num = 0, den = 0;
-      for (const h of hits) { num += (h.t - mt) * (h.off - mo); den += (h.t - mt) ** 2; }
-      const slope = den ? num / den : 0;
-      const span = exp.length ? exp[exp.length - 1].t - exp[0].t : 0;
-      const change = slope * span;
-      tendency = change < -tol / 2 ? 'faster' : change > tol / 2 ? 'slower' : 'steady';
+    for (const b of bars) {
+      b.meanOffset = b.hit ? b.sum / b.hit : 0; delete b.sum;
+      // Mikrofon: Hall und Doppel-Erkennung – der erste Zusatzschlag je Takt zählt nicht.
+      b.counted = mic ? Math.max(0, b.extra - 1) : b.extra;
+      b.err = b.hit < b.expected || b.counted > 0;
     }
+    // Muster: Fehler (verpasst + zu viel) gegen ein Budget von 3 % der Schläge, mindestens 1 je 8 Takte;
+    // zwei Takte mit Fehler hintereinander nie.
+    const expectedN = E.length;
+    const missed = expectedN - hits.length;
+    const extras = bars.reduce((s, b) => s + b.counted, 0);
+    const errors = missed + extras;
+    const allowed = Math.max(Math.ceil(nBars / 8), Math.round(HOLD_ERR_SHARE * expectedN));
+    const consecutive = bars.some((b, i) => b.err && bars[i + 1]?.err);
     // Faden gerissen: zwei aufeinanderfolgende Takte mit weniger als der Hälfte der Soll-Punkte.
     const weak = (b) => bars[b].expected > 0 && bars[b].hit < bars[b].expected / 2;
     let lostAt = null;
     for (let b = 0; b + 1 < nBars; b++) if (weak(b) && weak(b + 1)) { lostAt = b + 1; break; }
-    // Wiedereinstieg nach Lücken: jeweils der erste Snare-Takt nach einer Lücke.
+    // Stellen im Muster: Versatz je Stelle gegen den eigenen Mittelwert. Gezählt nur bei ≥ 4 Treffern
+    // und ≥ 70 % gleichgerichtet; Tipp ab 35 ms, kein „geschafft“ ab max(60 ms, 20 % des Nachbarabstands).
+    const devs = hits.map((h) => h.dev);
+    const m0 = devs.length ? devs.reduce((s, d) => s + d, 0) / devs.length : 0;
+    const swingShort = new Set((swingPairs || []).map(([, j]) => j));
+    const byPos = new Map();
+    for (const h of hits) if (h.pos !== null) { if (!byPos.has(h.pos)) byPos.set(h.pos, []); byPos.get(h.pos).push(h.dev - m0); }
+    const posDev = [...byPos].map(([p, ds]) => {
+      // gegen das Mittel der übrigen Stellen, damit der eigene Versatz nicht im Gesamtmittel verwässert
+      const others = hits.filter((h) => h.pos !== p).map((h) => h.dev - m0);
+      const rest = others.length ? others.reduce((s, d) => s + d, 0) / others.length : 0;
+      const rel = ds.reduce((s, d) => s + d, 0) / ds.length - rest;
+      const same = ds.filter((d) => Math.sign(d - rest) === Math.sign(rel)).length / ds.length;
+      const counts = ds.length >= 4 && same >= .7 && !swingShort.has(p);
+      const failAt = Math.max(HOLD_POS_FAIL, .2 * (gaps && gaps[p] ? gaps[p] : 0));
+      return { pos: p, rel, mean: ds.reduce((s, d) => s + d, 0) / ds.length, n: ds.length, same, tip: counts && Math.abs(rel) >= HOLD_POS_TIP, fail: counts && Math.abs(rel) >= failAt, name: names ? names[p] : null };
+    });
+    const hot = posDev.filter((p) => p.tip).sort((x, y) => Math.abs(y.rel) - Math.abs(x.rel))[0] || null;
+    // Gleichmäßigkeit: Streuung um den eigenen Mittelwert je Stelle (ein fester Stellen-Versatz ist
+    // kein Wackeln – er zählt oben als Muster). Schwelle je Begleitung, bei langsamem Tempo ≥ 5 % des Schlags.
+    const posMean = new Map(posDev.filter((p) => p.n >= 4).map((p) => [p.pos, p.mean]));
+    const res = hits.map((h) => h.dev - m0 - (posMean.get(h.pos) || 0));
+    const sd = res.length ? Math.sqrt(res.reduce((s, r) => s + r * r, 0) / res.length) : null;
+    const cat = free || plan.includes(false) ? HOLD_SD.gaps : HOLD_SD.steady;
+    const limit = Math.max(cat[0], HOLD_SD_BEAT * beatSec);
+    const star = limit * cat[1] / cat[0];
+    const level = sd === null ? 0 : sd < star ? 3 : sd <= limit ? 2 : 1;
+    // Wiedereinstieg nach Lücken: Mittel der ersten zwei Schläge des ersten Takts mit Begleitung,
+    // höchstens 70 ms neben der eigenen Linie, und dieser Takt ohne Fehler.
     let reentry = null;
-    if (plan.includes(false)) {
+    if (!free && plan.includes(false)) {
       const firsts = bars.map((_, b) => b).filter((b) => plan[b] && b > 0 && plan[b - 1] === false && bars[b].expected > 0);
-      if (firsts.length) reentry = firsts.reduce((a, b) => a + bars[b].hit / bars[b].expected, 0) / firsts.length >= .75 ? 'good' : 'late';
+      if (firsts.length) {
+        const ok = firsts.every((b) => {
+          const two = hits.filter((h) => h.bar === b).slice(0, 2);
+          return two.length && !bars[b].err && Math.abs(two.reduce((s, h) => s + h.dev, 0) / two.length - m0) <= HOLD_REENTRY;
+        });
+        reentry = ok ? 'good' : 'late';
+      }
     }
-    const okBar = (b) => !bars[b].expected || bars[b].hit >= .75 * bars[b].expected;
-    const lastTwo = bars.slice(-2).filter((b) => b.expected > 0);
-    const held = bars.every((_, b) => okBar(b)) && lastTwo.every((b) => Math.abs(b.meanOffset) <= tol);
-    return { bars, held, tendency, lostAt, reentry };
+    // Shuffle: Verhältnis lang:kurz je Grundschlag (Median); unter 1,35 ist es kein Shuffle mehr.
+    let swing = null;
+    if (swingPairs && swingPairs.length) {
+      const byKey = new Map(hits.map((h) => [`${h.bar}:${h.pos}`, h]));
+      const ratios = [];
+      for (const h of hits) for (const [i, j] of swingPairs) {
+        if (h.pos !== i) continue;
+        const s = byKey.get(`${h.bar}:${j}`);
+        if (s && s.x > h.x && h.x + beatSec > s.x) ratios.push((s.x - h.x) / (h.x + beatSec - s.x));
+      }
+      if (ratios.length >= 3) {
+        ratios.sort((x, y) => x - y);
+        const ratio = ratios[Math.floor(ratios.length / 2)];
+        swing = { ratio, fail: ratio < HOLD_SWING.fail, tip: ratio < HOLD_SWING.tip ? 'straight' : ratio > HOLD_SWING.max ? 'dotted' : null };
+      }
+    }
+    // Tendenz: lineare Regression der Abweichungen über der Zeit (Anfang → Ende), in Stumm das eigene Tempo.
+    let tendency = 'steady';
+    const tempoDev = free ? k - 1 : null;
+    if (free) tendency = tempoDev < -HOLD_TEMPO[1] ? 'faster' : tempoDev > HOLD_TEMPO[1] ? 'slower' : 'steady';
+    else if (hits.length >= 6) {
+      const n = hits.length;
+      const mt = hits.reduce((s, h) => s + h.t, 0) / n, mo = hits.reduce((s, h) => s + h.off, 0) / n;
+      let num = 0, den = 0;
+      for (const h of hits) { num += (h.t - mt) * (h.off - mo); den += (h.t - mt) ** 2; }
+      const change = (den ? num / den : 0) * (E[E.length - 1].t - E[0].t);
+      tendency = change < -tol / 2 ? 'faster' : change > tol / 2 ? 'slower' : 'steady';
+    }
+    const okErr = errors <= allowed && !consecutive && lostAt === null;
+    const patternFail = posDev.some((p) => p.fail) || !!(swing && swing.fail);
+    const okSd = sd === null || sd <= limit;
+    const okTempo = !free || Math.abs(tempoDev) <= HOLD_TEMPO[0];
+    const held = expectedN > 0 && hits.length > 0 && okErr && !patternFail && reentry !== 'late' && okTempo && okSd;
+    const reason = held ? null : !okErr || !hits.length ? 'bars' : patternFail ? 'pattern' : reentry === 'late' ? 'reentry' : !okTempo ? 'tempo' : 'loose';
+    const offsets = hits.map((h) => h.off);
+    const bias = offsets.length ? offsets.reduce((s, o) => s + o, 0) / offsets.length : null;
+    const meanAbs = offsets.length ? offsets.reduce((s, o) => s + Math.abs(o), 0) / offsets.length : null;
+    return { bars, held, reason, tendency, lostAt, reentry, free, tempoDev, offsets, bias, meanAbs, sd, limit, star, level,
+      errors, allowed, consecutive, missed, extras, expected: expectedN, posDev, hot, swing, hits: hits.map(({ x, bar, pos: p, off }) => ({ t: x - barStart, bar, pos: p, off })) };
+  }
+  /** Nächste freie Anschläge zu den (verschobenen) Soll-Punkten; Tonklasse muss passen, wenn beide eine haben. */
+  function holdAssign(E, tp, predict, tolOf) {
+    for (const x of tp) x.used = false;
+    const pairs = [];
+    for (const e of E) {
+      const want = predict(e), w = tolOf(e);
+      let best = null;
+      for (const x of tp) {
+        if (x.used || Math.abs(x.t - want) > w) continue;
+        if (e.pc !== null && x.pc !== null && e.pc !== x.pc) continue;
+        if (!best || Math.abs(x.t - want) < Math.abs(best.t - want)) best = x;
+      }
+      if (best) { best.used = true; pairs.push({ e, x: best }); }
+    }
+    return pairs;
+  }
+  /* Grenzen (Musikpädagoge; Startwerte, teils Erfahrungswerte – Repp 2005, Rasch 1979):
+     Streuung geschafft / sehr sauber je Begleitung, bei langsamem Tempo mindestens 5 % des Schlags. */
+  const HOLD_SD = { steady: [.035, .025], gaps: [.04, .028] };
+  const HOLD_SD_BEAT = .05;
+  const HOLD_ERR_SHARE = .03;      // Fehlerbudget: 3 % der Schläge, mindestens 1 je 8 Takte
+  const HOLD_BIAS_MAX = .06;       // so weit wandert das Trefferfenster mit dem eigenen Versatz mit
+  const HOLD_GAP_EXTRA = .02;      // stille Takte: Fenster etwas weiter
+  const HOLD_REENTRY = .07;        // Wiedereinstieg: Mittel der ersten zwei Schläge
+  const HOLD_TEMPO = [.04, .02];   // Stumm: Tempoänderung geschafft / „sehr sauber“
+  const HOLD_POS_TIP = .035, HOLD_POS_FAIL = .06;
+  const HOLD_SWING = { fail: 1.35, tip: 1.6, max: 2.6 };
+  const HOLD_EXACT = .04;          // „genau“ wie in der Karte „Letzte Runde“
+  /** Kennzahlen für „Details“: genau (bis 40 ms am Raster), zu früh, zu spät, Ø, Streuung, größte Abweichung. */
+  function holdTimingStats(res) {
+    const offs = res.offsets || [];
+    const ms = (x) => (x === null || x === undefined ? null : Math.round(x * 1000));
+    const worst = offs.length ? offs.reduce((s, o) => (Math.abs(o) > Math.abs(s) ? o : s), 0) : null;
+    return { exact: offs.filter((o) => Math.abs(o) <= HOLD_EXACT).length, early: offs.filter((o) => o < -HOLD_EXACT).length, late: offs.filter((o) => o > HOLD_EXACT).length,
+      mean: ms(res.bias), sd: ms(res.sd), worst: ms(worst), missed: res.missed || 0, extras: res.extras || 0 };
+  }
+  /** Ein Satz zum Ergebnis und genau ein Tipp (größter Hebel zuerst), Wortwahl für Laien. */
+  function holdResultVerdict(res) {
+    const what = res.held ? (res.level === 3 ? 'Geschafft – sehr sauber' : 'Geschafft') : 'Noch nicht';
+    const why = res.held ? `${res.bars.length} Takte durchgehalten.`
+      : res.reason === 'bars' ? (res.lostAt ? `Bis Takt ${res.lostAt - 1} lief es stabil.` : 'Noch zu viele Fehler.')
+      : res.reason === 'pattern' ? 'Alles da, aber eine Stelle sitzt noch nicht.'
+      : res.reason === 'reentry' ? 'Durchgehalten, aber nach der Stille zu spät wieder drin.'
+      : res.reason === 'tempo' ? 'Durchgehalten, aber das Tempo ist weggelaufen.'
+      : 'Alles da, aber noch nicht gleichmäßig genug.';
+    return { what, why, tip: holdTip(res), note: holdBiasNote(res) };
+  }
+  function holdTip(res) {
+    const posTip = (p) => (p.rel < 0 ? `Fast immer kommt ${p.name || 'eine Stelle'} zu früh – du drängst. Lass dir dort Zeit und zähl die Achtel mit.`
+      : `Fast immer kommt ${p.name || 'eine Stelle'} zu spät – du schleppst. Denk die Stelle schon auf dem Schlag davor.`);
+    const swingTip = (s) => (s.tip === 'dotted' ? 'Dein Shuffle ist sehr punktiert. Lockerer: lang-kurz wie „Tri-o-le“, ohne die Mitte.'
+      : 'Deine Achtel sind zu gerade für einen Shuffle. Denk eine Triole und klatsch nur die erste und die dritte.');
+    if (res.reason === 'bars') {
+      if (res.lostAt) return res.reentry === 'late' ? 'In der Stille zählst du beim nächsten Mal leise mit.' : 'Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal. Nochmal, notfalls mit mehr Begleitung.';
+      if (res.extras >= 2 && res.extras >= res.missed) return `${res.extras} Schläge zu viel – nur dort, wo der Rhythmus wirklich einen Schlag hat.`;
+      return 'Ein paar Schläge fehlten. Nimm eine Stufe mehr Begleitung oder ein ruhigeres Tempo.';
+    }
+    if (res.reason === 'pattern') return res.swing && res.swing.fail ? swingTip(res.swing) : posTip(res.posDev.filter((p) => p.fail).sort((x, y) => Math.abs(y.rel) - Math.abs(x.rel))[0]);
+    if (res.reason === 'reentry') return 'Nach der Stille kamst du zu spät wieder rein. Zähl in der Stille leise mit – dann sitzt der Einsatz.';
+    if (res.reason === 'tempo') return res.tempoDev > 0 ? 'Ohne Begleitung bist du langsamer geworden. Halt den Puls innerlich fest – Fuß mitwippen hilft.' : 'Ohne Begleitung bist du schneller geworden. Lass die Pausen ruhig lang.';
+    if (res.reason === 'loose') {
+      if (res.tendency === 'faster') return 'Du bist nach und nach schneller geworden – du drängst. Nochmal, diesmal bewusst gemütlich.';
+      if (res.tendency === 'slower') return 'Du bist nach und nach langsamer geworden – du schleppst. Die Begleitung zieht dich.';
+      return 'Mal früher, mal später. Wipp mit dem Fuß auf den Vierteln mit – die Hände hängen sich dran.';
+    }
+    if (res.hot) return posTip(res.hot);
+    if (res.swing && res.swing.tip) return swingTip(res.swing);
+    if (res.errors) return 'Ein kleiner Patzer, und du warst sofort wieder drin – genau darum geht es beim Durchhalten.';
+    return res.level === 3 ? 'Ruhig und sehr gleichmäßig. Nimm als Nächstes weniger Begleitung.' : 'Ruhig und gleichmäßig.';
+  }
+  /** Versatz insgesamt: nur ab 30 ms und neutral – er kostet nichts. */
+  function holdBiasNote(res) {
+    if (res.bias === null || Math.abs(res.bias) <= .03) return '';
+    return res.bias < 0 ? 'Du bist insgesamt etwas vor dem Schlag – das machen fast alle.' : 'Du bist insgesamt etwas nach dem Schlag.';
+  }
+  /** Ergebnis-Karte nach dem Durchhalten (wortgleich in beiden Seiten, Stile .hr-*):
+   *  Urteil, Takte, Muster und Gleichmäßigkeit in Worten, ein Tipp, Verteilung mit Abspielknopf,
+   *  Millisekunden nur unter „Details“. `playing`: gerade abgespielt (Knopf zeigt Stopp). */
+  function holdResultHtml(res, { playing = false } = {}) {
+    const v = holdResultVerdict(res);
+    const bars = res.bars.map((b, i) => `<span class="hr-bar ${b.err ? (b.hit < b.expected / 2 ? 'is-lost' : 'is-err') : 'is-ok'}${b.silent ? ' is-silent' : ''}" data-hr-bar="${i}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}${b.extra ? `, ${b.extra} zu viel` : ''}">${i + 1}${b.err ? '<i aria-hidden="true">!</i>' : ''}</span>`).join('');
+    const words = ['–', 'wacklig', 'gleichmäßig', 'sehr sauber'];
+    const errWord = res.errors === 0 ? 'alles da' : `${res.errors} ${res.errors === 1 ? 'Fehler' : 'Fehler'}`;
+    // Verteilung um die eigene Linie: Mitte = Schlag, gestrichelt = du, Band = deine Streuung.
+    const span = .1, X = (o) => 50 + clamp(o / span, -1, 1) * 46;
+    const stack = {};
+    const dots = res.hits.map((h) => {
+      const bin = Math.round(X(h.off) / 2.5);
+      const k = (stack[bin] = (stack[bin] || 0) + 1) - 1;
+      const odd = res.hot && h.pos === res.hot.pos;
+      return `<span class="hr-dot${odd ? ' is-odd' : ''}" data-hr-bar="${h.bar}" style="left:${(bin * 2.5).toFixed(1)}%;bottom:${22 + Math.min(k, 9) * 7}px"></span>`;
+    }).join('');
+    const bias = res.bias || 0, sd = res.sd || 0;
+    const s = holdTimingStats(res);
+    return `<div class="hr" data-result>
+      <div class="hr-head"><b class="hr-what">${v.what}</b><span class="hr-why">${v.why}</span></div>
+      <div class="hr-bars" style="grid-template-columns:repeat(${res.bars.length},minmax(0,1fr))" role="img" aria-label="${res.bars.filter((b) => !b.err).length} von ${res.bars.length} Takten ohne Fehler">${bars}</div>
+      <div class="hr-kpis"><div class="hr-kpi ${res.reason === 'bars' || res.reason === 'pattern' ? 'is-bad' : 'is-good'}"><span>Muster</span><b>${res.reason === 'pattern' ? 'eine Stelle' : errWord}</b></div>
+        <div class="hr-kpi ${res.level === 1 ? 'is-bad' : 'is-good'}"><span>Gleichmäßig</span><b>${words[res.level]}</b><i class="hr-scale" aria-hidden="true">${[1, 2, 3].map((n) => `<u class="${n <= res.level ? 'on' : ''}"></u>`).join('')}</i></div></div>
+      <p class="hr-tip" role="status">${v.tip}${v.note ? `<small>${v.note}</small>` : ''}</p>
+      <div class="hr-dist" role="img" aria-label="Verteilung deiner Schläge: ${s.exact} genau, ${s.early} früher, ${s.late} später">
+        <span class="hr-band" style="left:${X(bias - sd).toFixed(1)}%;width:${(X(bias + sd) - X(bias - sd)).toFixed(1)}%"></span><span class="hr-axis"></span><span class="hr-mid"></span>
+        <span class="hr-mean" style="left:${X(bias).toFixed(1)}%"><em>du</em></span>${dots}
+        <span class="hr-lg"><span>früher</span><span>Schlag</span><span>später</span></span>
+        <button type="button" class="hr-play" data-hold-play aria-label="${playing ? 'Anhören stoppen' : 'Eigenes Spiel anhören'}">${playing ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="4" height="12" rx="1"/><rect x="13" y="6" width="4" height="12" rx="1"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'}</button></div>
+      <details class="hr-more"><summary>Details in Millisekunden</summary>
+        <div class="hr-grid"><span><b>${s.exact}</b>genau</span><span><b>${s.early}</b>zu früh</span><span><b>${s.late}</b>zu spät</span><span><b>${s.missed}</b>verpasst</span><span><b>${s.extras}</b>zu viel</span></div>
+        <p>${s.mean !== null ? `Ø ${hrMs(s.mean)} ms · Streuung ±${s.sd} ms · größte ${hrMs(s.worst)} ms. ` : ''}„Genau“ heißt bis ${HOLD_EXACT * 1000} ms am Schlag.${res.free && res.tempoDev !== null ? ` Tempo ${res.tempoDev > 0 ? 'langsamer' : 'schneller'} um ${Math.abs(Math.round(res.tempoDev * 1000) / 10)} %.` : ''}${res.swing ? ` Shuffle lang:kurz ${res.swing.ratio.toFixed(2).replace('.', ',')}.` : ''}</p></details>
+    </div>`;
+  }
+  const hrMs = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
+  /** Beim Abspielen: aktuellen Takt und seine Punkte hervorheben (-1 = keiner). */
+  function holdMarkBar(host, bar) {
+    if (!host) return;
+    host.querySelectorAll('[data-hr-bar]').forEach((el) => el.classList.toggle('is-now', Number(el.dataset.hrBar) === bar));
   }
 
   /* ---- Verzögerung erkennen (übungsübergreifende Kalibration). Kommen alle
@@ -502,21 +829,12 @@
     const h = delayHint.open;
     if (!h || ui.running) return '';
     return `<div class="delay-hint" role="status"><p><b>Deine Töne kommen im Schnitt etwa ${h.ms} ms zu spät.</b> Das liegt oft am Gerät (Touchscreen, Bluetooth-Kopfhörer), nicht an dir. Soll die Verzögerung in allen Übungen ausgeglichen werden?</p>
-      <div class="actions" style="margin-top:0"><button class="btn primary" type="button" data-delay="apply">${h.ms} ms ausgleichen</button><button class="btn" type="button" data-delay="later">Später</button></div></div>`;
+      <div class="actions" style="margin-top:0"><button class="k-btn" type="button" data-delay="apply">${h.ms} ms ausgleichen</button><button class="k-btn k-btn--ghost" type="button" data-delay="later">Später</button></div></div>`;
   }
 
-  /** Rückmeldung nach dem Durchhalten (erste passende Zeile gewinnt). */
+  /** Rückmeldung nach dem Durchhalten: der eine Tipp der Ergebnis-Karte (holdTip). `stage` bleibt für ältere Aufrufer. */
   function holdMessage(result, stage) {
-    const st = stageOf(stage);
-    const gaps = stageHasGaps(st);
-    if (result.held && result.tendency === 'steady') return `Durchgehalten – ${st.bars} Takte, ruhig und gleichmäßig.`;
-    if (result.held && result.tendency === 'faster') return 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.';
-    if (result.held && result.tendency === 'slower') return 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.';
-    if (result.lostAt && gaps && result.reentry === 'late') return `Bis Takt ${result.lostAt - 1} lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.`;
-    if (result.lostAt) return `Bis Takt ${result.lostAt - 1} lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.`;
-    if (result.tendency === 'faster') return 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.';
-    if (result.tendency === 'slower') return 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.';
-    return 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.';
+    return holdTip(result);
   }
 
   /** Stufenbezeichnung eines Tons (Halbtöne über root, mod 12). */
@@ -529,6 +847,13 @@
     try { if (window.parent !== window && window.parent.chorToolPrefs) return window.parent.chorToolPrefs; } catch { /* fremde Herkunft */ }
     return null;
   })();
+  // Stimmprofil der App (Stimme, gemessener Umfang) – nur zum Oktavieren von
+  // Vorspiel, Liegeton und Tastatur; die Bewertung bleibt bei Tonklassen.
+  const profileApi = (() => {
+    try { if (window.parent !== window && window.parent.chorVoiceProfile) return window.parent.chorVoiceProfile; } catch { /* fremde Herkunft */ }
+    return null;
+  })();
+  const readProfile = () => { try { return profileApi?.get() || null; } catch { return null; } };
   let forceNumbers = false; // Selbstprüfung: erwartet Stufenzahlen, unabhängig von der Wahl der App
   const syllables = () => { try { return !forceNumbers && prefsApi?.get().solfa === 'syllables'; } catch { return false; } };
   /** Name eines Tons für die Anzeige: „5“ bzw. „so“. */
@@ -539,6 +864,15 @@
   /** Rückmeldung zu „Stückweise“. want/got: [{ midi, t }] (t in Sekunden,
    *  relativ zum eigenen ersten Ton), tol: Trefferfenster. → { ok, text }. */
   function partMessage({ want, got, tol }) {
+    // Ein versehentlicher Zusatz-Tipp: jeden Tipp probeweise weglassen – passt
+    // ohne ihn alles (Tonklassen und Rhythmus), zählt der Teil trotzdem.
+    if (got.length === want.length + 1 && want.length) {
+      for (let j = 0; j < got.length; j++) {
+        const rest = got.filter((_, i) => i !== j);
+        const pm = partMessage({ want, got: rest.map((g) => ({ ...g, t: g.t - rest[0].t })), tol });
+        if (pm.ok && pm.text.startsWith('Genau so!')) return { ok: true, text: `${pm.text} (ein Ton zu viel – zählt trotzdem)`, extra: 1 };
+      }
+    }
     if (got.length !== want.length) return { ok: false, text: `Das waren ${got.length} Töne, im Teil sind es ${want.length}. Hör ihn nochmal.` };
     // Tonklassen prüfen: erster falscher Ton.
     for (let i = 0; i < want.length; i++) {
@@ -597,7 +931,8 @@
   /* ------------------------------------------------------------------------
      BEGLEITUNG — 4/4-Groove, neutral: Bassdrum 1 und 3, Snare 2 und 4, Hi-Hat
      als gleichmäßiges Raster. Er spielt den Lick nie vor. level: full
-     (alles), backbeat (Bassdrum + Snare), snare (nur Snare), off.
+     (alles), backbeat (Bassdrum + Snare), snare (nur Snare), off. Ein Lick
+     mit `kick: 'four'` (Disco) bekommt die Bassdrum auf allen vier Vierteln.
      ------------------------------------------------------------------------ */
   const GROOVE_KICK = [0, 24];
   const GROOVE_SNARE = [12, 36];
@@ -605,7 +940,7 @@
   const hatStep = (lick) => (lick.notes.some((n) => n[0] % 6 !== 0) ? 3 : 6);
   function grooveFor(lick, level) {
     const out = { kick: [], snare: [], hat: [] };
-    if (level === 'full' || level === 'backbeat') out.kick = [...GROOVE_KICK];
+    if (level === 'full' || level === 'backbeat') out.kick = lick?.kick === 'four' ? [0, 12, 24, 36] : [...GROOVE_KICK];
     if (level === 'full' || level === 'backbeat' || level === 'snare') out.snare = [...GROOVE_SNARE];
     if (level === 'full') { const st = hatStep(lick); for (let t = 0; t < TICKS_BAR; t += st) out.hat.push(t); }
     return out;
@@ -621,15 +956,33 @@
   const KEY_MIN = 24, KEY_MAX = 96, MIN_WHITES = 8;
   const isWhite = (m) => !IS_BLACK[mod(m, 12)];
   const whitesBetween = (lo, hi) => { let n = 0; for (let m = lo; m <= hi; m++) if (isWhite(m)) n++; return n; };
-  /** Erlaubte Oktavverschiebung eines Licks (−1, 0, 1), damit die Lage in 24–96 bleibt. */
+  /** Erlaubte Oktavverschiebung eines Licks (−2 … 2), damit die Lage in 24–96
+   *  bleibt (±2 für Basslicks in Sopranlage und umgekehrt). */
   function octaveLimits(lick) {
     const semis = lick.notes.map((n) => n[2]);
     const lo = lick.root + Math.min(...semis), hi = lick.root + Math.max(...semis);
-    return [clamp(Math.ceil((KEY_MIN + 2 - lo) / 12), -1, 0), clamp(Math.floor((KEY_MAX - 2 - hi) / 12), 0, 1)];
+    return [clamp(Math.ceil((KEY_MIN + 2 - lo) / 12), -2, 0), clamp(Math.floor((KEY_MAX - 2 - hi) / 12), 0, 2)];
+  }
+  /** Oktave für die eigene Stimme: die Verschiebung k, deren Lick-Mitte (Mittel
+   *  aus tiefstem und höchstem Ton) der Mitte des Übe-Umfangs
+   *  (ChorHarmony.practiceRange) am nächsten liegt; bei Gleichstand die
+   *  kleinere. Ohne Stimmprofil 0. */
+  function voiceOctave(lick, profile = readProfile()) {
+    if (!profile || !window.ChorHarmony.PRACTICE_RANGES[profile.part]) return 0;
+    const r = window.ChorHarmony.practiceRange({ part: profile.part, low: profile.low ?? null, high: profile.high ?? null });
+    const semis = lick.notes.map((n) => n[2]);
+    const mid = lick.root + (Math.min(...semis) + Math.max(...semis)) / 2, center = (r.floor + r.ceil) / 2;
+    const [lo, hi] = octaveLimits(lick);
+    let best = 0;
+    for (let k = lo; k <= hi; k++) {
+      const d = Math.abs(mid + 12 * k - center), db = Math.abs(mid + 12 * best - center);
+      if (d < db - 1e-9 || (Math.abs(d - db) <= 1e-9 && Math.abs(k) < Math.abs(best))) best = k;
+    }
+    return best;
   }
   function keyboardRange(lick, octaveShift = 0) {
     const semis = lick.notes.map((n) => n[2]);
-    const shift = 12 * clamp(octaveShift, -1, 1);
+    const shift = 12 * clamp(octaveShift, -2, 2);
     let lo = lick.root + Math.min(...semis) + shift, hi = lick.root + Math.max(...semis) + shift;
     while (!isWhite(lo)) lo--;
     while (!isWhite(hi)) hi++;
@@ -649,7 +1002,8 @@
   const PRESET_NAMES = ['Analog Lead', 'Bright Saw', 'Neon Pluck', 'Growl Bass', 'Soft Brass'];
   const RATINGS = ['shaky', 'ok', 'solid'];
   const STEP_NAMES = ['Hören', 'Mitsingen', 'Startton', 'Stückweise', 'Ganz', 'Durchhalten', 'Notenbild'];
-  const freshState = () => ({ v: 1, lick: LICKS[0].id, notes: 'last', glide: true, octave: {}, sound: {}, items: {} });
+  // input: Eingabe 'tap' (Bildschirmtasten) oder 'sing' (Mikrofon, Übe-Korrekturen 9).
+  const freshState = () => ({ v: 1, lick: LICKS[0].id, notes: 'last', glide: true, input: 'tap', octave: {}, sound: {}, items: {} });
   const intIn = (v, lo, hi, dflt = lo) => (Number.isInteger(v) ? clamp(v, lo, hi) : dflt);
 
   /** Gespeicherter Stand → gültiger Stand: unbekannte Lick-IDs verworfen, Zahlen
@@ -660,11 +1014,12 @@
     if (lickById(raw.lick)) out.lick = raw.lick;
     out.notes = raw.notes === 'off' ? 'off' : 'last';
     out.glide = typeof raw.glide === 'boolean' ? raw.glide : true;
+    out.input = raw.input === 'sing' ? 'sing' : 'tap';
     const oct = raw.octave && typeof raw.octave === 'object' ? raw.octave : {};
     const snd = raw.sound && typeof raw.sound === 'object' ? raw.sound : {};
     const items = raw.items && typeof raw.items === 'object' ? raw.items : {};
     for (const l of LICKS) {
-      if ([-1, 0, 1].includes(oct[l.id])) out.octave[l.id] = oct[l.id];
+      if ([-2, -1, 0, 1, 2].includes(oct[l.id])) out.octave[l.id] = oct[l.id];
       if (PRESET_NAMES.includes(snd[l.id])) out.sound[l.id] = snd[l.id];
       const it = items[l.id];
       if (!it || typeof it !== 'object') continue;
@@ -677,6 +1032,20 @@
     return out;
   }
 
+  /* ---- Übungsfortschritt für den Balken der Kachel „Licks“ in der App
+     (gespeichert als `progress`, 0…1; beim Laden ignoriert, beim Speichern
+     neu berechnet): Mittel über alle Licks, je Lick sieben gleich schwere
+     Teile – Hören, Mitsingen, Startton, Stückweise (Anteil der Stücke),
+     Ganz (x/3), Durchhalten (bis 2 Stufen) und die eigene Einschätzung.
+     So wächst der Balken mit jedem Schritt, nicht erst bei „Sitzt“. ---- */
+  const RATING_WEIGHT = { shaky: 1 / 3, ok: 2 / 3, solid: 1 };
+  function lickProgress(lick, it) {
+    if (!it) return 0;
+    const parts = [it.step >= 1, it.step >= 2, it.step >= 3, it.parts / lick.parts.length, it.whole / 3, Math.min(it.hold, 2) / 2, RATING_WEIGHT[it.rating] || 0];
+    return parts.reduce((sum, p) => sum + Math.min(1, Number(p) || 0), 0) / parts.length;
+  }
+  const licksProgress = (items) => LICKS.reduce((sum, l) => sum + lickProgress(l, items[l.id]), 0) / LICKS.length;
+
   const state = freshState();
   const STORAGE_ID = 'licks';
   const storage = (() => { try { return window.parent !== window ? window.parent.chorToolStorage || null : null; } catch { return null; } })();
@@ -686,11 +1055,27 @@
   function persist() {
     if (!storage || selfTesting) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { Promise.resolve(storage.save(STORAGE_ID, state)).catch(() => {}); }, 300);
+    saveTimer = setTimeout(writeNow, 300);
   }
+  function writeNow() {
+    saveTimer = 0;
+    try { return Promise.resolve(storage.save(STORAGE_ID, { ...state, progress: licksProgress(state.items) })).catch(() => {}); } catch { return null; /* Ablage weg */ }
+  }
+  /* Noch ausstehendes Speichern sofort erledigen: Die App ruft das vor dem
+     Schließen des Tools auf (danach liefe der Timer im entfernten iframe nie
+     mehr — „Sitzt“ tippen und gleich zurück ging sonst verloren), dazu
+     pagehide, wenn die ganze Seite geht. */
+  function flushSave() {
+    if (!saveTimer) return null;
+    clearTimeout(saveTimer);
+    return writeNow();
+  }
+  window.chorToolFlush = flushSave;
+  window.addEventListener('pagehide', flushSave);
   const itemOf = (id) => state.items[id] || (state.items[id] = { step: 0, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null });
   const soundOf = (lick) => state.sound[lick.id] || lick.preset;
-  const octaveOf = (lick) => clamp(state.octave[lick.id] || 0, ...octaveLimits(lick));
+  /** Oktave eines Licks: eigene Wahl (Okt −/+), sonst die Lage der eigenen Stimme. */
+  const octaveOf = (lick) => clamp(Object.prototype.hasOwnProperty.call(state.octave, lick.id) ? state.octave[lick.id] : voiceOctave(lick), ...octaveLimits(lick));
   /** Schritt k (1–7) geschafft? */
   function stepDone(lick, k) {
     const it = state.items[lick.id];
@@ -1029,7 +1414,13 @@
      eines Laufs stehen vorab fest (Zeit in Sekunden ab Start) und werden mit
      Vorlauf eingeplant; kein setTimeout für Töne. Ein Takt = 48 Ticks.
      ------------------------------------------------------------------------ */
-  const tickSecOf = (lick) => 60 / lick.bpm / 12;
+  /** Tempo der Läufe: Original (`lick.bpm`) mal Tempo-Pille (70–100 %, nur langsamer). Durchhalten,
+   *  Notenbild und Wiederholen laufen immer im Original, ebenso die Anhören-Knöpfe der Liste. */
+  const TEMPO_MIN = 70, TEMPO_MAX = 100, TEMPO_STEP = 5;
+  const tempoLocked = () => ui.step === 6 || ui.step === 7 || !!(ui.review && ui.review.queue);
+  const runPct = () => (ui.view === 'lick' && !tempoLocked() ? clamp(ui.tempoPct, TEMPO_MIN, TEMPO_MAX) : 100);
+  const runBpm = (lick) => lick.bpm * runPct() / 100;
+  const tickSecOf = (lick) => 60 / runBpm(lick) / 12;
   const barSecOf = (lick) => TICKS_BAR * tickSecOf(lick);
 
   /** Baukasten für die Ereignisliste eines Laufs. */
@@ -1063,12 +1454,203 @@
     return tl;
   }
 
+  /* ------------------------------------------------------------------------
+     SINGEN STATT TIPPEN (Übe-Korrekturen 9) — Eingabe „Singen“: Das Mikrofon
+     läuft nur während eines eigenen Laufs (Stückweise, Ganz, Durchhalten) und
+     wird nur live ausgewertet: nichts wird aufgenommen, gespeichert oder
+     gesendet. Aus der Tonhöhe je Bild (YIN, detectPitch) werden Anschläge
+     { t, pc, midi }: ein stimmhafter Abschnitt ab 80 ms ist ein Ton, ein
+     neuer Ton beginnt bei einem Tonwechsel ab einem Dreiviertel-Halbton, der
+     80 ms hält (Vibrato und Oktavfehler des Erkenners zählen nicht), t ist
+     der Beginn abzüglich der Mikrofon-Latenz (calibration.micMs). Die
+     Anschläge gehen in dieselben Bewertungen wie das Tippen.
+     ------------------------------------------------------------------------ */
+  // Kopie aus uebe-lab.html (PITCH_MIN_HZ, PITCH_MAX_HZ, detectPitch), identisch halten.
+  const PITCH_MIN_HZ = 65;
+  const PITCH_MAX_HZ = 1100;
+  const voice = { x: null, d: null };
+  function detectPitch(buf, sampleRate) {
+    const n = buf.length >> 1;
+    if (!voice.x || voice.x.length !== n) voice.x = new Float32Array(n);
+    const x = voice.x;
+    let energy = 0;
+    for (let i = 0; i < n; i++) { const v = (buf[2 * i] + buf[2 * i + 1]) * .5; x[i] = v; energy += v * v; }
+    const rms = Math.sqrt(energy / n);
+    if (rms < .01) return null;
+    const sr = sampleRate / 2;
+    const w = n >> 1;
+    const minTau = Math.max(2, Math.floor(sr / PITCH_MAX_HZ));
+    const maxTau = Math.min(w - 2, Math.ceil(sr / PITCH_MIN_HZ));
+    if (!voice.d || voice.d.length < maxTau + 2) voice.d = new Float32Array(maxTau + 2);
+    const d = voice.d;
+    d[0] = 1;
+    let running = 0;
+    for (let tau = 1; tau <= maxTau + 1; tau++) {
+      let sum = 0;
+      for (let i = 0; i < w; i++) { const diff = x[i] - x[i + tau]; sum += diff * diff; }
+      running += sum;
+      d[tau] = running ? sum * tau / running : 1;
+    }
+    let tau = -1;
+    for (let t = minTau; t <= maxTau; t++) {
+      if (d[t] < .15) {
+        while (t + 1 <= maxTau && d[t + 1] < d[t]) t++;
+        tau = t;
+        break;
+      }
+    }
+    if (tau < 0) return null;
+    const s0 = d[tau - 1], s1 = d[tau], s2 = d[tau + 1];
+    const denom = s0 - 2 * s1 + s2;
+    const shift = denom ? clamp((s0 - s2) / (2 * denom), -1, 1) : 0;
+    return { freq: sr / (tau + shift), clarity: 1 - s1, rms };
+  }
+  // Kopie aus uebe-lab.html (RECORDING_CONSTRAINTS, HEADSET_LABEL_RE, BUILTIN_LABEL_RE,
+  // streamIsHeadset, preferBuiltInMic), identisch halten: ohne Echo-Unterdrückung,
+  // Rauschfilter und Pegelanpassung; Bluetooth-Headset nur, wenn es kein eingebautes Mikrofon gibt.
+  const RECORDING_CONSTRAINTS = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+  const HEADSET_LABEL_RE = /bluetooth|airpods|air pods|beats|buds|headset|hands[\s-]?free|freisprech|\bhfp\b|\bbt\b/i;
+  const BUILTIN_LABEL_RE = /built[\s-]?in|internal|eingebaut|integriert|microphone array|mikrofonarray|wbudowan/i;
+  function streamIsHeadset(stream) {
+    const track = stream?.getAudioTracks?.()[0];
+    const rate = track?.getSettings?.().sampleRate || 0;
+    return (rate > 0 && rate <= 24000) || HEADSET_LABEL_RE.test(track?.label || '');
+  }
+  async function preferBuiltInMic(stream) {
+    if (!streamIsHeadset(stream) || !navigator.mediaDevices?.enumerateDevices) return stream;
+    let ids;
+    try {
+      ids = (await navigator.mediaDevices.enumerateDevices())
+        .filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications' && BUILTIN_LABEL_RE.test(d.label || ''))
+        .map((d) => d.deviceId);
+    } catch { return stream; }
+    if (new Set(ids).size !== 1) return stream;
+    // Den Headset-Stream zuerst freigeben — erst das lässt den Kopfhörer zurück ins Musikprofil schalten.
+    stream.getTracks().forEach((track) => track.stop());
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { ...RECORDING_CONSTRAINTS.audio, deviceId: { exact: ids[0] } } });
+    } catch {
+      return navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS); // lieber das Headset als gar kein Mikrofon
+    }
+  }
+  const hzToMidi = (hz) => 69 + 12 * Math.log2(hz / 440);
+  const SUNG_MIN_SEC = .08;    // so lange muss ein Ton (bzw. ein Tonwechsel) halten
+  const SUNG_GAP_SEC = .06;    // längere Stille trennt zwei Töne
+  const SUNG_CHANGE = .75;     // Halbtöne: ab hier ein neuer Ton (Vibrato ±30 Cent bleibt darunter)
+  /** Bilder [{ t, midi|null }] (zeitlich geordnet) → Anschläge [{ t, pc, midi }]. Rein. */
+  function sungOnsets(frames, { micMs = 0 } = {}) {
+    const fold = (x) => mod(x + 6, 12) - 6; // Oktavfehler des Erkenners: gleiche Tonklasse
+    const med = (list) => { const s = [...list].sort((a, b) => a - b); const n = s.length; return n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+    const notes = [];
+    let cur = null;     // { start, ref, vals: [] }
+    let cand = null;    // Kandidat für einen Tonwechsel { start, vals: [] }
+    let lastVoiced = -Infinity;
+    const close = () => {
+      if (cur && cur.end - cur.start >= SUNG_MIN_SEC - 1e-9) {
+        const m = med(cur.vals.map((v) => cur.ref + fold(v - cur.ref)));
+        notes.push({ t: cur.start - micMs / 1000, midi: Math.round(m), pc: mod(Math.round(m), 12) });
+      }
+      cur = null; cand = null;
+    };
+    for (const f of frames) {
+      if (f.midi === null || f.midi === undefined) { if (cur && f.t - lastVoiced > SUNG_GAP_SEC) close(); continue; }
+      lastVoiced = f.t;
+      if (!cur) { cur = { start: f.t, end: f.t, ref: f.midi, vals: [f.midi] }; continue; }
+      // Bezugston: Median der ersten 80 ms des Tons.
+      if (f.t - cur.start <= SUNG_MIN_SEC) cur.ref = med(cur.vals.concat(f.midi));
+      const d = fold(f.midi - cur.ref);
+      if (Math.abs(d) < SUNG_CHANGE) { cur.vals.push(f.midi); cur.end = f.t; cand = null; continue; }
+      if (cand && Math.abs(fold(f.midi - med(cand.vals))) > .5) cand = null;
+      if (!cand) cand = { start: f.t, vals: [] };
+      cand.vals.push(f.midi);
+      if (f.t - cand.start >= SUNG_MIN_SEC - 1e-9) {
+        const next = { start: cand.start, end: f.t, ref: med(cand.vals), vals: cand.vals };
+        close();
+        cur = next;
+      }
+    }
+    close();
+    return notes;
+  }
+  /** Mikrofon für einen Lauf: nur geöffnet, solange der Lauf geht. */
+  const mic = { stream: null, source: null, analyser: null, buf: null, frames: [], raf: 0, error: '', lv: 0, hotUntil: 0, state: '' };
+  async function micStart() {
+    mic.error = '';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { mic.error = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).'; return false; }
+    try {
+      await engine.start();
+      const stream = await preferBuiltInMic(await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS));
+      mic.stream = stream;
+      mic.source = engine.ctx.createMediaStreamSource(stream);
+      mic.analyser = engine.ctx.createAnalyser();
+      mic.analyser.fftSize = 2048;
+      mic.buf = new Float32Array(mic.analyser.fftSize);
+      mic.source.connect(mic.analyser); // bewusst NICHT zum Ausgang — keine Rückkopplung
+      mic.frames = [];
+      const loop = () => {
+        if (!mic.analyser) return;
+        mic.analyser.getFloatTimeDomainData(mic.buf);
+        const r = detectPitch(mic.buf, engine.ctx.sampleRate);
+        mic.frames.push({ t: engine.ctx.currentTime, midi: r && r.clarity >= .85 ? hzToMidi(r.freq) : null });
+        updateMicIcon();
+        mic.raf = requestAnimationFrame(loop);
+      };
+      loop();
+      return true;
+    } catch (e) {
+      mic.error = e?.name === 'NotAllowedError' ? 'Der Zugriff aufs Mikrofon wurde nicht erlaubt – tippen geht trotzdem.' : 'Das Mikrofon konnte nicht gestartet werden – tippen geht trotzdem.';
+      micStop();
+      return false;
+    }
+  }
+  function micStop() {
+    cancelAnimationFrame(mic.raf); mic.raf = 0;
+    mic.stream?.getTracks().forEach((track) => track.stop());
+    try { mic.source?.disconnect(); } catch { /* schon getrennt */ }
+    mic.stream = null; mic.source = null; mic.analyser = null;
+    updateMicIcon();
+  }
+  /** Mikro-Symbol wie in der Sing-Bühne (uebe-lab.html, updateSingMic): durchgestrichen
+   *  = aus, grün nach Pegel, rot = zu laut. */
+  function updateMicIcon() {
+    const el = $('#mic-icon');
+    if (!el) return;
+    el.hidden = state.input !== 'sing';
+    const open = !!mic.analyser;
+    let lv = 0, hot = false;
+    if (open) {
+      let e = 0, peak = 0;
+      for (let i = 0; i < mic.buf.length; i++) { const v = mic.buf[i]; e += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
+      const db = 10 * Math.log10(e / mic.buf.length + 1e-12);
+      const target = clamp((db + 50) / 40, 0, 1);
+      mic.lv += (target - mic.lv) * (target > mic.lv ? .5 : .08);
+      lv = mic.lv;
+      const now = engine.ctx.currentTime;
+      if (db > -3 || peak >= .98) mic.hotUntil = now + .5;
+      hot = now < mic.hotUntil;
+    } else mic.lv = 0;
+    const st = !open ? 'off' : hot ? 'hot' : lv > .08 ? 'on' : 'quiet';
+    if (st !== mic.state) {
+      mic.state = st;
+      el.classList.toggle('is-open', open);
+      el.classList.toggle('is-hot', hot);
+      el.setAttribute('aria-label', { off: 'Mikrofon aus', quiet: 'Mikrofon hört nichts', on: 'Mikrofon hört dich', hot: 'Mikrofon zu laut' }[st]);
+    }
+    const h = 12 * Math.min(1, lv / .9);
+    const fill = el.querySelector('.mic-fill');
+    fill.setAttribute('y', (14.5 - h).toFixed(2));
+    fill.setAttribute('height', h.toFixed(2));
+  }
+
   const run = { playing: false, timer: 0, t0: 0, bus: null, idx: 0, events: [], taps: [], onEnd: null, endAt: 0, tl: null, sound: null };
   const LATENCY_CAP = .25;
   /** Lauf starten. tl: Zeitleiste (Ereignisse ab 0, `tl.bars` Takte), onEnd(run). */
   async function startRun(tl, onEnd) {
     stopRun(false);
+    holdReplayStop(false);
     try { await engine.start(); } catch { return false; }
+    // Singen: Mikrofon nur für Läufe, in denen du dran bist (mit Soll-Punkten).
+    if (state.input === 'sing' && tl.expected.length && !(await micStart())) setFeedback(mic.error, 'bad');
     const ctx = engine.ctx;
     run.playing = true;
     run.tl = tl;
@@ -1083,7 +1665,7 @@
       if (!run.playing) return;
       const horizon = ctx.currentTime + .25;
       while (run.idx < run.events.length && run.t0 + run.events[run.idx].t < horizon) fire(run.events[run.idx++]);
-      if (ctx.currentTime > run.endAt + .25) { const cb = run.onEnd; const info = { taps: run.taps, t0: run.t0, tl: run.tl }; stopRun(false); if (cb) cb(info); }
+      if (ctx.currentTime > run.endAt + .25) { const cb = run.onEnd; const info = { taps: mic.analyser ? sungOnsets(mic.frames, { micMs: calib.micMs }) : run.taps, t0: run.t0, tl: run.tl }; stopRun(false); if (cb) cb(info); }
     };
     run.timer = setInterval(pump, 25);
     pump();
@@ -1100,6 +1682,7 @@
   }
   /** Lauf abbrechen bzw. beenden; ohne Nachklingen (Bus blendet aus). */
   function stopRun(notify = true) {
+    micStop(); // nie im Hintergrund
     if (!run.playing && !run.timer) return;
     clearInterval(run.timer); run.timer = 0;
     const cb = run.onEnd;
@@ -1109,9 +1692,19 @@
   }
 
   /* ---- Eigenes Spiel: Bildschirmtasten (Pointer Events, Mehrfach-Touch) ---- */
-  const own = { voices: new Map(), last: null };
+  const own = { voices: new Map(), last: null, pending: new Set() };
   function ownNoteOn(midi) {
-    if (!engine.ctx) { engine.start().then(() => ownNoteOn(midi)); return; }
+    if (!engine.ctx) {
+      // Erster Ton startet erst das Audio. Losgelassen, bevor es läuft: nur
+      // kurz anspielen — sonst fände ownNoteOff keine Stimme, und der Ton hinge.
+      own.pending.add(midi);
+      engine.start().then(() => {
+        const held = own.pending.delete(midi);
+        const v = ownNoteOn(midi);
+        if (!held && v) setTimeout(() => { if (own.voices.get(midi) === v) ownNoteOff(midi); }, 150);
+      }).catch(() => own.pending.delete(midi));
+      return;
+    }
     if (engine.ctx.state !== 'running') engine.ctx.resume();
     const lick = currentLick();
     const sound = { ...soundFromPreset(lick ? soundOf(lick) : PRESET_NAMES[0]), mono: false };
@@ -1123,6 +1716,7 @@
     return voice;
   }
   function ownNoteOff(midi) {
+    own.pending.delete(midi);
     const v = own.voices.get(midi);
     own.voices.delete(midi);
     if (v) engine.releaseVoice(v);
@@ -1132,7 +1726,7 @@
      ANZEIGE
      ------------------------------------------------------------------------ */
   const ui = {
-    view: 'list', cat: 'all', step: 1, part: 0, holdStage: 1, running: '', feedback: '', feedbackKind: '', result: null,
+    view: 'list', cat: 'all', tempoPct: 100, allDone: false, step: 1, part: 0, holdStage: 1, running: '', feedback: '', feedbackKind: '', result: null,
     foundKey: null, pickedKey: null, startFails: 0, drone: null, review: null, visitRated: false, lastRunAt: {}, rollTick: -1,
   };
   const currentLick = () => (ui.view === 'lick' ? lickById(state.lick) : null);
@@ -1140,38 +1734,56 @@
 
   /** Neutraler Platzhalter statt Raster und Notenbild (Hören statt Sehen). Hängt
    *  von nichts ab — nicht von Länge, Taktzahl oder den Tönen des Bausteins. */
-  const placeholderHtml = () => `<div class="stage" data-placeholder><svg viewBox="0 0 ${SVG_W} 104" role="img" aria-label="Nach Gehör"><line class="staff" x1="8" y1="62" x2="${SVG_W - 8}" y2="62"/><text class="hint" x="${SVG_W / 2}" y="44" text-anchor="middle">Nach Gehör</text></svg></div>`;
+  const placeholderHtml = () => `<div class="stage" data-placeholder><svg viewBox="0 0 ${SVG_W} 68" role="img" aria-label="Nach Gehör"><line class="staff" x1="8" y1="46" x2="${SVG_W - 8}" y2="46"/><text class="hint" x="${SVG_W / 2}" y="30" text-anchor="middle">Nach Gehör</text></svg></div>`;
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const statusText = (id) => statusOf(state.items[id]);
+
+  const ICON = {
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></svg>',
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  };
+  /** Liste innerhalb des Filters stabil nach Stufe sortiert (leicht → schwer). */
+  const sortedLicks = (cat) => LICKS.map((l, i) => [l, i]).filter(([l]) => cat === 'all' || l.cat === cat)
+    .sort((a, b) => a[0].level - b[0].level || a[1] - b[1]).map(([l]) => l);
+  const ringHtml = (level) => `<span class="k-ring" data-level="${level}" style="--level:${(level / 3).toFixed(3)}" role="img" aria-label="Stufe ${level} von 3"><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="ring-bg" cx="17" cy="17" r="14"/><circle class="ring-fg" cx="17" cy="17" r="14"/></svg><b aria-hidden="true">${level}</b></span>`;
 
   function renderList() {
     $('#cat-chips').innerHTML = CATS.map(([id, label]) => `<button class="chip" type="button" data-cat="${id}" aria-pressed="${ui.cat === id}">${label}</button>`).join('');
     const today = localDate();
     const due = dueIds(state.items, today);
     $('#review-card').hidden = !due.length;
-    $('#review-text').textContent = `Heute fällig: ${due.length} ${due.length === 1 ? 'Lick' : 'Licks'}`;
-    const list = LICKS.filter((l) => ui.cat === 'all' || l.cat === ui.cat);
-    $('#list').innerHTML = list.map((l) => {
+    $('#review-text').textContent = `Heute wiederholen (${due.length})`;
+    $('#list').innerHTML = sortedLicks(ui.cat).map((l) => {
       const playing = ui.running === `preview:${l.id}`;
+      const status = statusText(l.id);
+      const pillCls = status === 'Sitzt' ? 'k-pill k-pill--ok' : status === 'Lerne' ? 'k-pill k-pill--rep' : 'k-pill';
       return `<div class="lick-row" data-id="${l.id}">
         <button class="play" type="button" data-act="preview" data-id="${l.id}" aria-label="${playing ? 'Stoppen' : `${esc(l.name)} anhören`}">${playing
     ? '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
     : '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></svg>'}</button>
-        <button class="open" type="button" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span><span class="sub">${l.preset} · Stufe ${l.level}</span></button>
-        <span class="status" data-status="${statusText(l.id)}">${statusText(l.id)}</span></div>`;
+        <button class="open" type="button" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span></button>
+        ${ringHtml(l.level)}
+        <span class="status ${pillCls}" data-status="${status}">${status === 'Sitzt' ? ICON.check : ''}${status}</span></div>`;
     }).join('');
-    const nothing = ui.review === 'none';
-    $('#list-note').textContent = nothing ? 'Heute ist nichts fällig.' : '';
+    $('#list-note').textContent = due.length ? '' : ui.allDone ? 'Alles wiederholt – bis zum nächsten Mal.' : 'Heute ist nichts fällig.';
   }
 
   function show(view) {
     ui.view = view;
-    $('#view-list').hidden = view !== 'list';
-    $('#view-lick').hidden = view !== 'lick';
-    $('#dock').hidden = view !== 'lick';
-    $('[data-act="back"]').hidden = view !== 'lick';
-    $('[data-act="settings"]').hidden = view !== 'lick';
+    const lick = view === 'lick';
+    $('#view-list').hidden = lick;
+    $('#view-lick').hidden = !lick;
+    $('#dock').hidden = !lick;
+    $('#foot').hidden = !lick;
+    // Zurück: Lick-Ansicht → Liste; Liste → Tool schließen (nur eingebettet, sonst gibt es kein Ziel).
+    $('[data-act="back"]').hidden = !lick && !EMBEDDED;
+    $('[data-act="settings"]').hidden = !lick;
+    $('#list-title').hidden = lick;
+    $('#lick-name').hidden = !lick;
+    $('#head-over').hidden = !lick;
+    if (!lick) $('#head-over').textContent = 'Licks & Grooves';
   }
 
   function setFeedback(text, kind = '') { ui.feedback = text; ui.feedbackKind = kind; const el = $('.feedback'); if (el) { el.textContent = text; el.className = `feedback${kind ? ` is-${kind}` : ''}`; } }
@@ -1188,7 +1800,7 @@
     stopRun(false); releaseDrone();
     state.lick = id;
     ui.view = 'lick';
-    Object.assign(ui, { step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
+    Object.assign(ui, { tempoPct: 100, step: step || firstOpenStep(lick), part: 0, foundKey: null, pickedKey: null, startFails: 0, heardOnce: false, result: null, running: '', visitRated: false, review: ui.review && ui.review.queue ? ui.review : null });
     ui.part = clamp(state.items[id]?.parts || 0, 0, lick.parts.length - 1);
     ui.holdStage = clamp((state.items[id]?.hold || 0) + 1, 1, 4);
     setFeedback('');
@@ -1197,32 +1809,95 @@
     persist();
   }
 
+  /** Stepper: alle Schritte als Punkte, nur der aktuelle ist beschriftet (die anderen Namen stehen unsichtbar im Knopf). */
+  function renderStepper(lick) {
+    const el = $('#steps');
+    const rv = ui.review && ui.review.queue && ui.review.phase;
+    if (rv) { // Wiederholung: kein Schritt-Sprung, nur die Phase benennen
+      el.innerHTML = `<p class="k-step-label">${{ hear: 'Anhören', hold: 'Durchhalten', rate: 'Einschätzung' }[ui.review.phase] || ''}</p>`;
+      return;
+    }
+    const shown = stepsShown();
+    const items = shown.map((s) => {
+      const done = stepDone(lick, s.k), now = ui.step === s.k, unlocked = stepUnlocked(lick, s.k);
+      const name = `${s.name}${s.k === 7 ? ' (optional)' : ''}`;
+      const cls = `k-dot step${done ? ' is-done' : ''}${now ? ' is-now' : ''}${s.k === 7 ? ' is-optional' : ''}`;
+      const label = `Schritt ${s.k}: ${name}${done ? ', geschafft' : ''}${unlocked ? '' : ' (noch gesperrt)'}`;
+      return `<li class="k-step" data-state="${now ? 'now' : done ? 'done' : 'todo'}"><button class="${cls}" type="button" data-step="${s.k}" aria-label="${label}"${unlocked ? '' : ' disabled'}${now ? ' aria-current="step"' : ''}>${done && !now ? ICON.check : ''}<span class="visually-hidden">${name}</span></button></li>`;
+    }).join('');
+    const cur = shown.find((s) => s.k === ui.step) || shown[0];
+    el.innerHTML = `<ol>${items}</ol><p class="k-step-label" aria-hidden="true">${cur.name}${cur.k === 7 ? ' (optional)' : ''}</p>`;
+  }
+
+  /** Hauptaktion des aktuellen Schritts (dieselbe wie der pinke Knopf im Panel). */
+  function mainActOf() {
+    const r = ui.review;
+    if (r && r.queue && r.phase) return r.phase === 'hear' ? 'review-hear' : r.phase === 'hold' ? 'hold-run' : null;
+    return ['hear', 'sing', 'startton', 'part-run', 'whole-run', 'hold-run', 'roll-run'][ui.step - 1] || null;
+  }
+  const MAIN_LABEL = { hear: 'Anhören', 'review-hear': 'Anhören', sing: 'Hören und mitsingen', startton: 'Lick und Grundton hören', 'part-run': 'Teil starten', 'whole-run': 'Runde starten', 'hold-run': 'Durchhalten', 'roll-run': 'Mitspielen' };
+  /** Klaviatur dort, wo man spielt: Startton, Stückweise, Ganz, Durchhalten – durchgehend,
+   *  auch mit Ergebnis (Chorleiter: sie verschwand nach einem Durchlauf, die Ansicht sprang
+   *  und zum Nochmal-Spielen fehlte sie). Hören/Mitsingen, Notenbild und die Einschätzung
+   *  in der Wiederholung bekommen den Platz für sich. */
+  function dockNeeded() {
+    const r = ui.review && ui.review.queue && ui.review.phase;
+    const k = r ? (r === 'hold' ? 6 : 0) : ui.step;
+    return k >= 3 && k <= 6;
+  }
+  function syncDock() { $('#dock').hidden = ui.view !== 'lick' || !dockNeeded(); }
+  /** Fußleiste: Tempo-Pille, Start/Stopp, Schritt zurück/vor. */
+  function renderFoot() {
+    const lick = currentLick();
+    if (!lick) return;
+    const locked = tempoLocked(), busy = !!ui.running;
+    const pct = locked ? 100 : ui.tempoPct;
+    $('#tempo-val').innerHTML = `<b${locked ? ' class="is-word"' : ''}>${locked ? 'Original' : `${pct} %`}</b><small>${Math.round(lick.bpm * pct / 100)} BPM</small>`;
+    $('[data-act="tempo-down"]').disabled = locked || busy || ui.tempoPct <= TEMPO_MIN;
+    $('[data-act="tempo-up"]').disabled = locked || busy || ui.tempoPct >= TEMPO_MAX;
+    const act = mainActOf();
+    const play = $('#foot-play');
+    play.disabled = !busy && !act;
+    play.innerHTML = busy ? ICON.stop : ICON.play;
+    play.setAttribute('aria-label', busy ? 'Stopp' : act ? `Start: ${MAIN_LABEL[act]}` : 'Start');
+    const rv = !!(ui.review && ui.review.queue);
+    syncDock();
+    $('[data-act="step-prev"]').disabled = rv || ui.step <= 1;
+    $('[data-act="step-next"]').disabled = rv || ui.step >= 7 || !stepUnlocked(lick, ui.step + 1);
+  }
+  function syncGlide() {
+    const b = $('[data-act="glide"]');
+    b.setAttribute('aria-pressed', String(state.glide));
+    b.querySelector('.toggle-text').textContent = state.glide ? 'An' : 'Aus';
+  }
+
   function renderLick() {
     const lick = lickById(state.lick);
     if (!lick) return;
     const it = itemOf(lick.id);
+    const rv = ui.review && ui.review.queue;
     $('#lick-name').textContent = lick.name;
-    $('#lick-sub').textContent = `${lick.preset} · Stufe ${lick.level} · ${lick.bars} ${lick.bars === 1 ? 'Takt' : 'Takte'} · ♩ = ${lick.bpm}`;
-    // Schrittleiste
-    $('#steps').innerHTML = stepsShown().map((s) => {
-      const done = stepDone(lick, s.k);
-      const cls = `step${done ? ' is-done' : ''}${ui.step === s.k ? ' is-now' : ''}${s.k === 7 ? ' is-optional' : ''}`;
-      return `<button class="${cls}" type="button" data-step="${s.k}"${stepUnlocked(lick, s.k) ? '' : ' disabled'}${ui.step === s.k ? ' aria-current="step"' : ''}>${done ? '✓ ' : ''}${s.k}. ${s.name}${s.k === 7 ? ' (optional)' : ''}</button>`;
-    }).join('');
+    $('#lick-sub').textContent = `Stufe ${lick.level} · ${lick.bars} ${lick.bars === 1 ? 'Takt' : 'Takte'} · ♩ = ${lick.bpm}`;
+    $('#head-over').textContent = rv ? `Wiederholen ${ui.review.i + 1} von ${ui.review.queue.length}` : 'Licks & Grooves';
+    renderStepper(lick);
     renderPanel(lick, it);
     buildKeyboard();
-    // Klang und Glide
+    // Klang und Glide (im Einstellungen-Sheet), Oktave (Dock)
     $('#sound-select').innerHTML = PRESET_NAMES.map((n) => `<option value="${n}"${n === soundOf(lick) ? ' selected' : ''}>${n}</option>`).join('');
-    $('[data-act="glide"]').setAttribute('aria-pressed', String(state.glide));
+    syncGlide();
     const [lo, hi] = octaveLimits(lick);
     const shift = octaveOf(lick);
-    $('#oct-range').textContent = shift > 0 ? `+${shift}` : String(shift);
+    $('#oct-range').textContent = `Oktave ${shift > 0 ? `+${shift}` : shift}`;
+    updateMicIcon();
     $('[data-act="oct-down"]').disabled = shift <= lo;
     $('[data-act="oct-up"]').disabled = shift >= hi;
+    renderFoot();
   }
 
   const runLabel = (key) => ui.running === key;
-  const stopBtn = (key) => (runLabel(key) ? '<button class="btn" type="button" data-act="stop">■ Stopp</button>' : '');
+  const stopBtn = (key) => (runLabel(key) ? `<button class="k-btn k-btn--ghost" type="button" data-act="stop">${ICON.stop}Stopp</button>` : '');
+
+  const heardOnce = (lick) => !!ui.heardOnce || stepDone(lick, 1);
 
   function renderPanel(lick, it) {
     const p = $('#panel');
@@ -1230,22 +1905,24 @@
     const k = ui.step;
     let html = '';
     if (k === 1) {
-      html = `<p>${esc(lick.intro)}</p><p class="more">${esc(lick.more)}</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn('hear')}
-        <button class="btn" type="button" data-act="next-step"${stepDone(lick, 1) || ui.result === 'heard' ? '' : ' disabled'}>Weiter</button></div>
-        <p class="note">Der Lick läuft zweimal über einen Groove, dazwischen ein leerer Takt. Noch nichts nachspielen.</p>`;
+      // Klang vor Erklärung: erst nach dem ersten Anhören (oder wenn der Schritt schon geschafft war) kommen Text und „Mehr dazu“.
+      const heard = heardOnce(lick);
+      html = `${heard ? `<p>${esc(lick.intro)}</p><details class="more-wrap"><summary>Mehr dazu</summary><p class="more">${esc(lick.more)}</p></details>` : '<p class="hear-first">Hör ihn dir erst an: Tippe unten auf ▶. Noch nichts nachspielen.</p>'}${placeholderHtml()}
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${stepDone(lick, 1) || ui.result === 'heard' ? '' : ' disabled'}>Weiter</button></div>
+        ${heard ? '<p class="note">Der Lick läuft zweimal über einen Groove, dazwischen ein leerer Takt. Noch nichts nachspielen.</p>' : ''}`;
     } else if (k === 2) {
       html = `<p>Sing mit auf „du“. Die Stimme lernt den Verlauf, die Finger folgen.</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>▶ Hören und mitsingen</button>${stopBtn('sing')}
-        <button class="btn" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="sing"${ui.running ? ' disabled' : ''}>${ICON.play}Hören und mitsingen</button>${stopBtn('sing')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${stepDone(lick, 2) || ui.result === 'sung' ? '' : ' disabled'}>Weiter</button></div>`;
     } else if (k === 3) {
       const found = ui.foundKey !== null;
       html = `<p>Welcher Ton ist der erste? Hör den Lick, dann liegen Grundton und Quinte leise. Probier die Tasten aus – wenn du meinst, den Ton gefunden zu haben, logg ihn ein.</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>▶ Lick und Grundton hören</button>${stopBtn('startton')}
-        ${found ? '' : `<button class="btn" type="button" data-act="lock-start"${ui.pickedKey === null || ui.running ? ' disabled' : ''}>✓ Ton einloggen</button>`}
-        ${ui.startFails >= 3 && !found ? '<button class="btn" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
-        ${ui.startFails >= 6 && !found ? '<button class="btn" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
-        <button class="btn" type="button" data-act="next-step"${found || stepDone(lick, 3) ? '' : ' disabled'}>Weiter</button></div>
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="startton"${ui.running ? ' disabled' : ''}>${ICON.play}Lick und Grundton hören</button>${stopBtn('startton')}
+        ${found ? '' : `<button class="k-btn k-btn--ghost" type="button" data-act="lock-start"${ui.pickedKey === null || ui.running ? ' disabled' : ''}>${ICON.check}Ton einloggen</button>`}
+        ${ui.startFails >= 3 && !found ? '<button class="k-btn k-btn--hear" type="button" data-act="startton">Lick nochmal hören</button>' : ''}
+        ${ui.startFails >= 6 && !found ? '<button class="k-btn k-btn--ghost" type="button" data-act="show-me">Zeig ihn mir</button>' : ''}
+        <button class="k-btn k-btn--ghost" type="button" data-act="next-step"${found || stepDone(lick, 3) ? '' : ' disabled'}>Weiter</button></div>
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>`;
     } else if (k === 4) {
       const n = lick.parts.length;
@@ -1254,23 +1931,23 @@
       const last = partNo === n - 1;
       html = `<p><b>Teil ${partNo + 1} von ${n}</b> · ${b - a} Töne. Erst hörst du den Teil, dann ein Takt weiter Groove, dann bist du dran.</p>${ui.result && ui.result.part === partNo ? resultTimelineHtml(ui.result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>
-        <div class="actions"><button class="btn primary" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
-        ${ui.result && ui.result.part === partNo && ui.result.ok ? `<button class="btn" type="button" data-act="part-next">${last ? 'Weiter: Ganz' : 'Nächster Teil'}</button>` : ''}
-        ${partNo > 0 ? '<button class="btn" type="button" data-act="part-prev">‹ Vorheriger Teil</button>' : ''}</div>`;
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="part-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.part === partNo ? 'Nochmal' : 'Teil starten'}</button>${stopBtn('part')}
+        ${ui.result && ui.result.part === partNo && ui.result.ok ? `<button class="k-btn k-btn--ghost" type="button" data-act="part-next">${last ? 'Weiter: Ganz' : 'Nächster Teil'}</button>` : ''}
+        ${partNo > 0 ? '<button class="k-btn k-btn--ghost" type="button" data-act="part-prev">Vorheriger Teil</button>' : ''}</div>`;
     } else if (k === 5) {
       const r = Math.min(it.whole, 2);
       const label = ['mit vollem Groove', 'mit Bassdrum und Snare', 'nur mit der Snare'][r];
       html = `<p><b>Runde ${Math.min(it.whole + 1, 3)} von 3</b> · ${label}. Du hörst den Lick einmal, dann spielst du ihn im selben Takt selbst.${it.whole >= 3 ? ' Alle drei Runden sind geschafft – du kannst weiter üben.' : ''}</p>
         ${ui.result && ui.result.kind === 'whole' ? resultTimelineHtml(ui.result) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>▶ ${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
-        ${it.whole >= 3 ? '<button class="btn" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="whole-run"${ui.running ? ' disabled' : ''}>${ICON.play}${ui.result && ui.result.kind === 'whole' ? 'Nochmal' : 'Runde starten'}</button>${stopBtn('whole')}
+        ${it.whole >= 3 ? '<button class="k-btn k-btn--ghost" type="button" data-act="next-step">Weiter: Durchhalten</button>' : ''}</div>`;
     } else if (k === 6) {
       html = holdPanelHtml(lick, it);
     } else if (k === 7) {
       html = `<p>So sieht der Lick aus – Zeilen sind die Töne, oben zählst du mit. Die Marke läuft mit, die Tasten leuchten.</p>${rollHtml(lick)}
-        <div class="actions"><button class="btn primary" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>▶ Mitspielen und mitlesen</button>${stopBtn('roll')}
-        <button class="btn" type="button" data-act="roll-done">${stepDone(lick, 7) ? '✓ Fertig' : 'Fertig'}</button></div>`;
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="roll-run"${ui.running ? ' disabled' : ''}>${ICON.play}Mitspielen und mitlesen</button>${stopBtn('roll')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="roll-done">${stepDone(lick, 7) ? `${ICON.check}Fertig` : 'Fertig'}</button></div>`;
     }
     p.innerHTML = html;
     if (k === 6 || (it.whole >= 3 && k === 5)) { /* Einschätzung hängt am Durchhalten (Schritt 6) */ }
@@ -1279,8 +1956,8 @@
   /** Einschätzung: „Wie fühlt es sich an?“ — „Sitzt“ erst nach 8 Takten Durchhalten. */
   function rateHtml(lick, it) {
     return `<p style="margin-top:12px"><b>Wie fühlt es sich an?</b></p>
-      <div class="rate"><button class="btn" type="button" data-rate="shaky">Noch wackelig</button><button class="btn" type="button" data-rate="ok">Geht schon</button>
-      <button class="btn" type="button" data-rate="solid"${it.hold >= 2 ? '' : ' disabled'}>Sitzt</button></div>
+      <div class="rate"><button class="k-btn k-btn--ghost" type="button" data-rate="shaky">Noch wackelig</button><button class="k-btn k-btn--ghost" type="button" data-rate="ok">Geht schon</button>
+      <button class="k-btn k-btn--ghost" type="button" data-rate="solid"${it.hold >= 2 ? '' : ' disabled'}>Sitzt</button></div>
       ${it.hold >= 2 ? '' : '<p class="note">Erst 8 Takte durchhalten.</p>'}
       <p class="note">Bestimmt, wann der Lick wieder in „Heute wiederholen“ auftaucht.${it.rating ? ` Zuletzt: ${{ shaky: 'noch wackelig', ok: 'geht schon', solid: 'sitzt' }[it.rating]}.` : ''}</p>`;
   }
@@ -1296,17 +1973,27 @@
       const label = ['4 Takte', '8 Takte', '8 mit Lücken', '16 mit Lücken'][i];
       return `<button type="button" class="${done ? 'is-done' : ''}${next ? ' is-next' : ''}" data-stage="${n}" aria-pressed="${stageNo === n}"${enabled ? '' : ' disabled'}>${done ? '✓ ' : ''}${label}</button>`;
     }).join('');
-    const before = holdBefore(st);
     const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
     const nextStage = result && result.held && stageNo < 4 ? stageNo + 1 : null;
-    return `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
-      <p>${before}</p>
-      ${result ? stripHtml(result) : placeholderHtml()}
+    // Während des Laufs nur der neutrale Platzhalter (kein Plan, keine Leiter): Hören statt Sehen.
+    const intro = ui.running ? '' : `<div class="ladder" role="group" aria-label="Stufen">${ladder}</div>
+      ${result ? '' : `${planHtml(st, stageNo)}<p>${holdBefore(st)}</p>`}`;
+    return `${intro}
+      ${result ? holdResultHtml(result, { playing: !!holdReplayState }) : placeholderHtml()}
       <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-      <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
-      ${nextStage ? `<button class="btn" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
+      <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+      ${nextStage ? `<button class="k-btn k-btn--ghost" type="button" data-act="hold-next">Weiter: ${HOLD_STAGES[nextStage - 1].name}</button>` : ''}
       ${result && result.held && stageNo === 4 ? '<span class="note" style="align-self:center">Alle Stufen geschafft.</span>' : ''}</div>
       ${(it.hold >= 1 || result) && !ui.running ? rateHtml(lick, it) : ''}`;
+  }
+  /** Statischer Plan der Takte vor dem Lauf: Snare spielt (weiß) / still (gelb, gestrichelt). Eigene Klasse —
+   *  kein `.strip`: das ist das Ergebnis NACH dem Lauf. */
+  function planHtml(st, stageNo) {
+    const plan = holdPlan(stageNo);
+    const still = plan.filter((x) => !x).length;
+    const pill = still ? `<span class="k-pill k-pill--rep">${still} stille Takte</span>` : '';
+    return `<div class="plan-strip" role="img" aria-label="Plan: ${plan.length} Takte${still ? `, davon ${still} still ohne Schlagzeug` : ', Schlagzeug durchgehend'}">${plan.map((on) => `<i${on ? '' : ' class="is-still"'}></i>`).join('')}</div>
+      <div class="plan-key"><span><i></i>Snare spielt</span>${still ? '<span><i class="is-still"></i>still</span>' : ''}${pill}</div>`;
   }
   /** Ein Satz vor dem Start: was kommt (nicht während des Laufs — dort gibt es keinen Zähler). */
   function holdBefore(st) {
@@ -1330,18 +2017,6 @@
     return `<div class="stage" data-result><svg viewBox="0 0 ${SVG_W} 104" role="img" aria-label="Ergebnis: ${res.hits} von ${res.exp.length} Tönen getroffen">${parts.join('')}
       <text class="lbl" x="12" y="92">○ Soll   ● du   grün = genau · gelb = knapp · rot = zu viel</text></svg></div>`;
   }
-  /** Taktstreifen nach dem Durchhalten: „sicher“ ≥ 75 %, „wackelig“ ≥ 50 %, „verloren“ < 50 %; stille Takte schraffiert. */
-  function stripHtml(res) {
-    const cells = res.bars.map((b, i) => {
-      const f = b.expected ? b.hit / b.expected : 1;
-      const cls = f >= .75 ? 'is-sure' : f >= .5 ? 'is-wobbly' : 'is-lost';
-      return `<div class="cell ${cls}${b.silent ? ' is-silent' : ''}" title="Takt ${i + 1}: ${b.hit} von ${b.expected}">${i + 1}</div>`;
-    }).join('');
-    return `<div class="strip" role="img" aria-label="Takte: ${res.bars.filter((b) => b.expected && b.hit >= .75 * b.expected).length} von ${res.bars.length} sicher">${cells}</div>
-      <div class="legend"><span><i style="background:var(--ok-bg)"></i>sicher</span><span><i style="background:var(--wobble-bg)"></i>wackelig</span><span><i style="background:var(--lost-bg)"></i>verloren</span>
-      <span><i style="background-image:repeating-linear-gradient(135deg,rgba(36,27,61,.4) 0 2px,transparent 2px 5px)"></i>still (ohne Schlagzeug)</span></div>`;
-  }
-
   /** Piano-Roll (Notenbild, letzter Schritt): Zeilen = vorkommende Töne, oben Zählzeilen „1 e + a“. */
   function rollHtml(lick) {
     const midis = [...new Set(lick.notes.map((n) => lick.root + n[2]))].sort((a, b) => b - a);
@@ -1469,7 +2144,7 @@
      ABLÄUFE DER SCHRITTE
      ------------------------------------------------------------------------ */
   function releaseDrone() { if (ui.drone) { engine.stopDrone(ui.drone); ui.drone = null; } }
-  const rerender = () => { const lick = currentLick(); if (lick) { renderPanel(lick, itemOf(lick.id)); if (ui.step !== 7) setLit(new Set()); } };
+  const rerender = () => { const lick = currentLick(); if (lick) { renderPanel(lick, itemOf(lick.id)); renderFoot(); if (ui.step !== 7) setLit(new Set()); } };
 
   /** Lauf mit Statusanzeige: key = Name der Anzeige, evalFn(info) nach dem Ende. */
   async function beginRun(key, tl, evalFn) {
@@ -1490,7 +2165,7 @@
   function tlHear(lick, times = 1, gapBars = 0) {
     const tl = makeTimeline(lick);
     let bar = tl.countIn(0);
-    const octave = state.octave[lick.id] ? octaveOf(lick) : 0;
+    const octave = octaveOf(lick);
     for (let k = 0; k < times; k++) {
       for (let b = 0; b < lick.bars; b++) tl.groove(bar + b, 'full');
       tl.lick(bar, { octave });
@@ -1525,7 +2200,7 @@
   /* Schritt 1–3 */
   function stepHear() {
     const lick = currentLick();
-    beginRun('hear', tlHear(lick, 2, 1), () => { ui.result = 'heard'; });
+    beginRun('hear', tlHear(lick, 2, 1), () => { ui.result = 'heard'; ui.heardOnce = true; });
   }
   function stepSing() {
     const lick = currentLick();
@@ -1537,7 +2212,8 @@
     beginRun('startton', tlHear(lick, 1), (info) => {
       if (!info || ui.step !== 3 || !engine.ctx) return;
       // Grundton + Quinte leise, in mittlerer Lage: keine Terz (verrät nicht Dur/Moll).
-      const rm = lick.root - 12 * Math.floor((lick.root - 55) / 12);
+      // Mit Stimmprofil in der Lage der eigenen Stimme (wie das Vorspiel).
+      const rm = readProfile()?.part ? lick.root + 12 * octaveOf(lick) : lick.root - 12 * Math.floor((lick.root - 55) / 12);
       ui.drone = engine.drone(rm, engine.master);
       setFeedback('Grundton und Quinte liegen. Welcher Ton beginnt den Lick?');
     });
@@ -1641,6 +2317,13 @@
     persist(); renderLick();
   }
 
+  /** „Ganz“ geschafft ab 85 % Treffern (aufgerundet) und höchstens einem Ton
+   *  zu viel – bei 16 Sechzehnteln in Folge darf einer daneben gehen. */
+  function wholeVerdict(hits, n, extra) {
+    if (!n || hits < Math.ceil(.85 * n) || extra > 1) return { ok: false, text: null };
+    return { ok: true, text: hits === n ? 'Genau so!' : `Fast alles – ${hits} von ${n} Tönen. Das zählt; ganz sauber wird's mit der Zeit.` };
+  }
+
   /* Schritt 5: ganz */
   function stepWhole() {
     const lick = currentLick();
@@ -1664,9 +2347,10 @@
       const window = timeIn(info.taps, start - tol - .1, start + lick.bars * tl.barSec + tol);
       noteRunDelay(exp.map((e) => e.t + info.t0), info.taps.filter((x) => x.t >= start - .1 && x.t <= start + lick.bars * tl.barSec + .45).map((x) => x.t));
       const abs = assign(exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), window, tol);
-      const success = abs.hits === exp.length;
+      const verdict = wholeVerdict(abs.hits, exp.length, abs.taps.filter((x) => x.status === 'extra').length);
+      const success = verdict.ok;
       let text;
-      if (success) text = 'Genau so!';
+      if (success) text = verdict.text;
       else if (!window.length) text = 'Da kam noch nichts. Hör den Lick nochmal – nach dem Vorbild bist du dran.';
       else {
         const want = exp.map((e) => ({ midi: e.midi, t: e.t - exp[0].t }));
@@ -1706,6 +2390,51 @@
     tl.end(start + st.bars + .5);
     return { tl, start, plan, st };
   }
+  /** Stellen im Lick für die Auswertung des Durchhaltens: Name in Zählsprache und kürzerer Abstand zum Nachbarton (s). */
+  function lickStations(lick, tickSec) {
+    const ticks = lick.notes.map((n) => n[0]), total = lick.bars * TICKS_BAR;
+    const names = ticks.map((tk, i) => {
+      const bar = Math.floor(tk / TICKS_BAR), inBar = tk % TICKS_BAR;
+      const beat = Math.floor(inBar / 12) + 1, sub = (inBar % 12) / 12;
+      const nm = sub === 0 ? `der Ton auf der ${beat}` : sub === .5 ? `der Ton auf dem „und“ nach der ${beat}` : sub === .25 ? `der Ton auf dem „e“ nach der ${beat}`
+        : sub === .75 ? `der Ton auf dem „a“ vor der ${beat % 4 + 1}` : `der ${i + 1}. Ton`;
+      return lick.bars > 1 ? `${nm} im ${bar + 1}. Takt` : nm;
+    });
+    const gaps = ticks.map((tk, i) => {
+      const prev = i ? tk - ticks[i - 1] : tk + total - ticks[ticks.length - 1];
+      const next = i < ticks.length - 1 ? ticks[i + 1] - tk : ticks[0] + total - tk;
+      return Math.min(prev, next) * tickSec;
+    });
+    return { names, gaps };
+  }
+  /** Eigenes Spiel nach dem Durchhalten anhören: die eigenen Töne mit dem Klick darunter;
+   *  der gerade gespielte Takt und seine Punkte leuchten. */
+  let holdReplayState = null;
+  async function holdReplay() {
+    if (holdReplayState) { holdReplayStop(); return; }
+    const res = ui.result, lick = currentLick();
+    if (!res || res.kind !== 'hold' || !res.replay || !lick) return;
+    stopRun(false);
+    try { await engine.start(); } catch { return; }
+    const { notes, barSec, bars } = res.replay;
+    const bus = engine.newBus(), sound = { ...soundFromPreset(soundOf(lick)), mono: false };
+    const t0 = engine.ctx.currentTime + .35; // Platz für einen etwas zu frühen ersten Ton
+    for (let q = 0; q < bars * 4; q++) engine.click(t0 + q * barSec / 4, q % 4 === 0, bus);
+    for (const n of notes) if (n.t >= -.2 && Number.isFinite(n.midi)) engine.playTone(sound, n.midi, t0 + n.t, OWN_VELOCITY, .22, { layer: 'own', dest: bus });
+    const timers = [];
+    for (let b = 0; b < bars; b++) timers.push(setTimeout(() => holdMarkBar($('#panel'), b), (t0 + b * barSec - engine.ctx.currentTime) * 1000));
+    timers.push(setTimeout(holdReplayStop, (t0 + bars * barSec - engine.ctx.currentTime) * 1000 + 300));
+    holdReplayState = { bus, timers };
+    renderLick();
+  }
+  function holdReplayStop(render = true) {
+    const r = holdReplayState;
+    if (!r) return;
+    holdReplayState = null;
+    r.timers.forEach(clearTimeout);
+    engine.fadeBus(r.bus);
+    if (render) renderLick();
+  }
   function stepHold() {
     const lick = currentLick();
     const it = itemOf(lick.id);
@@ -1715,12 +2444,19 @@
     beginRun('hold', tl, (info) => {
       ui.lastRunAt[lick.id] = Date.now();
       const exp = tl.expected;
-      const tol = toleranceFor(minGapSec(exp));
+      // Durchhalten: getroffen zählt höchstens 100 ms (wie die Klatsch-Grooves).
+      const tol = Math.min(.1, toleranceFor(minGapSec(exp)));
       const taps = timeIn(info.taps, info.t0 + start * tl.barSec - tol - .1, info.t0 + (start + st.bars) * tl.barSec + tol).map((x) => ({ t: x.t, pc: x.pc }));
       noteRunDelay(exp.map((e) => e.t + info.t0), info.taps.filter((x) => x.t >= info.t0 + start * tl.barSec - .1 && x.t <= info.t0 + (start + st.bars) * tl.barSec + .45).map((x) => x.t));
-      const result = judgeHold({ expected: exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), taps, barStart: info.t0 + start * tl.barSec, barSec: tl.barSec, tol, plan });
-      ui.result = { kind: 'hold', stage: stageNo, ...result };
-      setFeedback(holdMessage(result, stageNo), result.held ? 'good' : '');
+      const barStart = info.t0 + start * tl.barSec;
+      const sta = lickStations(lick, tl.tickSec);
+      const result = judgeHold({ expected: exp.map((e) => ({ t: e.t + info.t0, pc: e.pc })), taps, barStart, barSec: tl.barSec, tol, plan,
+        pos: exp.map((e) => e.i), gaps: sta.gaps, names: sta.names, beatSec: tl.barSec / 4 });
+      // Fürs Anhören: die eigenen Töne (mit Tonhöhe) ab Taktanfang.
+      const own = timeIn(info.taps, barStart - tol - .1, barStart + st.bars * tl.barSec + tol).map((x) => ({ t: x.t - barStart, midi: x.midi }));
+      ui.result = { kind: 'hold', stage: stageNo, tol, ...result, replay: { notes: own, barSec: tl.barSec, bars: st.bars } };
+      // Der Tipp steht in der Ergebnis-Karte (role="status").
+      setFeedback('', result.held ? 'good' : '');
       if (result.held && stageNo === it.hold + 1) { it.hold = Math.min(4, stageNo); persist(); }
       reportRun(lick, result.held, st.bars * tl.barSec);
     });
@@ -1775,6 +2511,7 @@
   function startReview() {
     const ids = dueIds(state.items, localDate());
     if (!ids.length) { ui.review = 'none'; show('list'); renderList(); return; }
+    ui.allDone = false;
     ui.review = { queue: ids, i: 0, phase: 'hear' };
     openReviewItem();
   }
@@ -1790,26 +2527,26 @@
   }
   function reviewPanelHtml(lick, it) {
     const r = ui.review;
-    const head = `<p class="note" style="margin-top:0">Wiederholen ${r.i + 1} von ${r.queue.length}</p>`;
+    const head = '';
     if (r.phase === 'hear') {
       return `${head}<p>${esc(lick.intro)}</p>${placeholderHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>▶ Anhören</button>${stopBtn('hear')}
-        <button class="btn" type="button" data-act="review-phase" data-phase="hold">Weiter: Durchhalten</button></div>`;
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="review-hear"${ui.running ? ' disabled' : ''}>${ICON.play}Anhören</button>${stopBtn('hear')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="hold">Weiter: Durchhalten</button></div>`;
     }
     if (r.phase === 'hold') {
       const st = HOLD_STAGES[ui.holdStage - 1];
       const result = ui.result && ui.result.kind === 'hold' ? ui.result : null;
-      return `${head}<p><b>${st.name}</b> – ${holdBefore(st)}</p>${result ? stripHtml(result) : placeholderHtml()}
+      return `${head}${ui.running || result ? '' : `<p class="panel-title">${st.name}</p>${planHtml(st, ui.holdStage)}<p>${holdBefore(st)}</p>`}${result ? holdResultHtml(result, { playing: !!holdReplayState }) : placeholderHtml()}
         <p class="feedback${ui.feedbackKind ? ` is-${ui.feedbackKind}` : ''}" role="status" aria-live="polite">${esc(ui.feedback)}</p>${delayCardHtml()}
-        <div class="actions"><button class="btn primary" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>▶ ${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
-        <button class="btn" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
+        <div class="actions"><button class="k-btn k-btn--ghost main-act" type="button" data-act="hold-run"${ui.running ? ' disabled' : ''}>${ICON.play}${result ? 'Nochmal' : 'Start'}</button>${stopBtn('hold')}
+        <button class="k-btn k-btn--ghost" type="button" data-act="review-phase" data-phase="rate">Weiter: Einschätzung</button></div>`;
     }
     return `${head}${rateHtml(lick, it)}`;
   }
   function reviewAfterRating() {
     const r = ui.review;
     r.i++;
-    if (r.i >= r.queue.length) { ui.review = null; ui.result = null; show('list'); renderList(); $('#list-note').textContent = 'Alles wiederholt – bis zum nächsten Mal.'; return; }
+    if (r.i >= r.queue.length) { ui.review = null; ui.result = null; ui.allDone = true; show('list'); renderList(); return; }
     openReviewItem();
   }
 
@@ -1828,17 +2565,29 @@
     previewLickId = id;
   }
 
+  /** Zu Schritt k wechseln (Punkte des Steppers und Schritt zurück/vor der Fußleiste). */
+  function goStep(k) {
+    const lick = currentLick();
+    if (!lick || ui.review && ui.review.queue || !stepUnlocked(lick, k)) return;
+    stopRun(true);
+    if (ui.step === 3 && k !== 3) resetStartton();
+    releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick();
+  }
+
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
+    if (t.hasAttribute('data-hold-play')) { holdReplay(); return; }
+    if (holdReplayState) holdReplayStop();
     if (t.dataset.delay) {
       if (t.dataset.delay === 'apply') { applyDelaySuggestion(); setFeedback(`Verzögerung ausgeglichen: ${calib.tapMs} ms werden künftig abgezogen – in allen Übungen.`, 'good'); }
       else { delayHint.dismissed = true; delayHint.open = null; }
       rerender(); return;
     }
     if (t.dataset.cat) { ui.cat = t.dataset.cat; renderList(); return; }
+    if (t.dataset.inputChoice) { state.input = t.dataset.inputChoice === 'sing' ? 'sing' : 'tap'; renderSheet(); updateMicIcon(); persist(); return; }
     if (t.dataset.notesChoice) { state.notes = t.dataset.notesChoice === 'off' ? 'off' : 'last'; if (state.notes === 'off' && ui.step === 7) ui.step = 5; renderSheet(); persist(); return; }
-    if (t.dataset.step) { const k = Number(t.dataset.step); const lick = currentLick(); if (lick && stepUnlocked(lick, k)) { stopRun(true); if (ui.step === 3 && k !== 3) resetStartton(); releaseDrone(); ui.step = k; ui.result = null; setFeedback(''); renderLick(); } return; }
+    if (t.dataset.step) { goStep(Number(t.dataset.step)); return; }
     if (t.dataset.stage) { ui.holdStage = Number(t.dataset.stage); ui.result = null; setFeedback(''); rerender(); return; }
     if (t.dataset.rate) {
       const lick = currentLick();
@@ -1857,12 +2606,13 @@
       case 'preview': previewLick(t.dataset.id); break;
       case 'open': openLick(t.dataset.id); break;
       case 'back':
+        if (ui.view === 'list') { if (EMBEDDED) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); break; }
         stopRun(false); resetStartton();
         if (lick && !ui.review && !ui.visitRated && itemOf(lick.id).whole >= 3 && ui.view === 'lick' && !ui.askedLeave) { ui.askedLeave = true; ui.step = 6; renderLick(); setFeedback('Wie fühlt es sich an? Wähle unten – oder geh einfach zurück.'); break; }
         ui.askedLeave = false; ui.review = null; show('list'); renderList(); break;
-      case 'settings': renderSheet(); $('#sheet').hidden = false; break;
+      case 'settings': renderSheet(); $('#sheet').hidden = false; $('.sheet-card').focus(); break;
       case 'delay-reset': calib.tapMs = 0; delayHint.list.length = 0; delayHint.open = null; delayHint.dismissed = false; saveCalibration(); renderSheet(); break;
-      case 'settings-close': $('#sheet').hidden = true; if (lick) renderLick(); break;
+      case 'settings-close': closeSheet(); if (lick) renderLick(); break;
       case 'stop': stopRun(true); releaseDrone(); rerender(); break;
       case 'next-step': { const it = itemOf(lick.id); if (ui.step <= 3) it.step = Math.max(it.step, ui.step); if (ui.step === 3) resetStartton(); ui.step = Math.min(ui.step + 1, stepsShown().length); ui.result = null; setFeedback(''); persist(); renderLick(); break; }
       case 'hear': stepHear(); break;
@@ -1881,7 +2631,22 @@
       case 'review-start': startReview(); break;
       case 'review-hear': ui.running = 'hear'; beginRun('hear', tlHear(lick, 1), null); break;
       case 'review-phase': stopRun(true); ui.review.phase = t.dataset.phase; ui.result = null; setFeedback(''); renderLick(); break;
-      case 'glide': state.glide = !state.glide; t.setAttribute('aria-pressed', String(state.glide)); persist(); break;
+      case 'glide': state.glide = !state.glide; syncGlide(); persist(); break;
+      case 'tempo-down': case 'tempo-up': {
+        if (!lick || tempoLocked() || ui.running) break;
+        ui.tempoPct = clamp(ui.tempoPct + (act === 'tempo-up' ? TEMPO_STEP : -TEMPO_STEP), TEMPO_MIN, TEMPO_MAX);
+        renderFoot(); break;
+      }
+      case 'foot-play': {
+        if (!lick) break;
+        if (ui.running) { stopRun(true); releaseDrone(); rerender(); break; }
+        const main = mainActOf();
+        const btn = main && $(`#panel [data-act="${main}"]`);
+        if (btn && !btn.disabled) btn.click();
+        break;
+      }
+      case 'step-prev': if (lick) goStep(ui.step - 1); break;
+      case 'step-next': if (lick) goStep(ui.step + 1); break;
       case 'oct-down': case 'oct-up': {
         if (!lick) break;
         const [lo, hi] = octaveLimits(lick);
@@ -1897,15 +2662,22 @@
     state.sound[lick.id] = e.target.value;
     persist();
   });
+  /** Sheet schließen, Fokus zurück aufs Zahnrad. */
+  function closeSheet() {
+    $('#sheet').hidden = true;
+    const g = $('[data-act="settings"]');
+    if (!g.hidden) g.focus();
+  }
   function renderSheet() {
     $('#delay-note').textContent = calib.tapMs ? `Es werden ${calib.tapMs} ms abgezogen – in allen Übungen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.` : 'Nichts wird abgezogen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.';
     $('#delay-reset').hidden = !calib.tapMs;
+    $('#input-chips').innerHTML = [['tap', 'Tippen'], ['sing', 'Singen']].map(([v, l]) => `<button class="chip" type="button" data-input-choice="${v}" aria-pressed="${state.input === v}">${l}</button>`).join('');
     $('#notes-chips').innerHTML = [['last', 'als letzter Schritt'], ['off', 'aus']].map(([v, l]) => `<button class="chip" type="button" data-notes-choice="${v}" aria-pressed="${state.notes === v}">${l}</button>`).join('');
   }
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (!$('#sheet').hidden) { $('#sheet').hidden = true; return; }
+      if (!$('#sheet').hidden) { closeSheet(); return; }
       if (document.documentElement.classList.contains('is-embedded')) window.parent.postMessage({ type: 'chor-tool-close' }, location.origin);
     }
   });
@@ -1925,27 +2697,95 @@
     const errors = [];
     const barSec = 4 * 60 / 90, tol = .1;
     const expectedFor = (bars) => Array.from({ length: bars }, (_, b) => [b * barSec + barSec / 4, b * barSec + 3 * barSec / 4]).flat();
-    const judge = (bars, taps, stageNo, expected = expectedFor(bars)) => judgeHold({ expected, taps, barStart: 0, barSec, tol, plan: holdPlan(stageNo) });
-    // 1. alle Anschläge exakt
+    const judge = (bars, taps, stageNo, expected = expectedFor(bars), more = {}) => judgeHold({ expected, taps, barStart: 0, barSec, tol, plan: holdPlan(stageNo), ...more });
+    // 1. alle Anschläge exakt (16 Takte mit Lücken)
     let r = judge(16, expectedFor(16), 4);
-    if (!r.held || r.tendency !== 'steady' || r.lostAt !== null) errors.push(`Vektor 1: ${r.held}/${r.tendency}/${r.lostAt}`);
-    // 2. jeder Anschlag 8 ms früher als der vorige (16 Takte)
-    r = judge(16, expectedFor(16).map((t, i) => t - .008 * i), 4);
+    if (!r.held || r.tendency !== 'steady' || r.lostAt !== null || r.level !== 3) errors.push(`Vektor 1: ${r.held}/${r.tendency}/${r.lostAt}/${r.level}`);
+    // 2. jeder Anschlag 4 ms früher als der vorige (8 Takte) → schneller geworden
+    r = judge(8, expectedFor(8).map((t, i) => t - .004 * i), 2);
     if (r.tendency !== 'faster') errors.push(`Vektor 2: ${r.tendency}`);
     // 3. Anschläge nur bis einschließlich Takt 9 (16 Takte)
     r = judge(16, expectedFor(9), 4);
-    if (r.lostAt !== 10 || r.held) errors.push(`Vektor 3: lostAt ${r.lostAt}, held ${r.held}`);
-    // 4. Stufe 3, stille Takte 3–4 um 0,12 s verschoben: Takt 5 exakt → 'good', Takt 5 und 6 daneben → 'late'
+    if (r.lostAt !== 10 || r.held || r.reason !== 'bars') errors.push(`Vektor 3: lostAt ${r.lostAt}, held ${r.held}`);
+    // 4. Stufe 3 (Lücken in Takt 3–4 und 7–8): stille Takte 0,12 s spät, Takt 5 exakt → Wiedereinstieg gut;
+    //    Takt 5 (Wiedereinstieg) 95 ms spät → zu spät wieder drin
     const shifted = (bars, fn) => expectedFor(bars).map((t) => fn(Math.floor(t / barSec) + 1, t));
     r = judge(8, shifted(8, (bar, t) => (bar === 3 || bar === 4 ? t + .12 : t)), 3);
     if (r.reentry !== 'good') errors.push(`Vektor 4a: reentry ${r.reentry}`);
-    r = judge(8, shifted(8, (bar, t) => (bar >= 3 && bar <= 6 ? t + .12 : t)), 3);
-    if (r.reentry !== 'late') errors.push(`Vektor 4b: reentry ${r.reentry}`);
-    // 5. doppelt so viele Anschläge wie Soll
+    r = judge(8, shifted(8, (bar, t) => (bar === 5 ? t + .095 : t)), 3);
+    if (r.reentry !== 'late' || r.held || r.reason !== 'reentry') errors.push(`Vektor 4b: reentry ${r.reentry}/${r.reason}`);
+    // 5. doppelt so viele Anschläge wie Soll → Durchklatschen gilt nicht
     const e8 = expectedFor(8);
     r = judge(8, [...e8, ...e8.map((t) => t + .02)], 2);
     const base = judge(8, e8, 2);
-    if (!(r.bars.reduce((a, b) => a + b.extra, 0) > 0) || r.bars.reduce((a, b) => a + b.hit, 0) !== base.bars.reduce((a, b) => a + b.hit, 0)) errors.push('Vektor 5: extra/Treffer');
+    if (r.held || r.reason !== 'bars' || r.extras !== 16 || !base.held || r.bars.reduce((a, b) => a + b.hit, 0) !== 16) errors.push(`Vektor 5: ${r.held}/${r.reason}/${r.extras}`);
+    // 5b. Mikrofon: ein Zusatzschlag je Takt zählt nicht
+    r = judge(8, [...e8, ...Array.from({ length: 8 }, (_, b) => b * barSec + .1)], 2, e8, { mic: true });
+    if (!r.held || r.extras !== 0) errors.push(`Vektor 5b: ${r.held}/${r.extras}`);
+    // 6c. Auftakt (ein Schlag, Lücken wie Stufe 3): der Auftakt vor der Lücke zählt zum
+    //     Takt davor, der vor dem Wiedereinstieg zum stillen Takt; Wiedereinstieg ab der Eins.
+    {
+      const beat = barSec / 4, plan3 = holdPlan(3);
+      const exp = Array.from({ length: 8 }, (_, b) => [b * barSec, b * barSec + 2 * beat]).flat(); // ab barStart: Auftakt, dann Schlag 2
+      const late = exp.map((t) => (Math.abs(t - 4 * barSec) < 1e-9 ? t + .09 : t)); // Auftakt vor Takt 5 (in der Stille) spät
+      const rp = judgeHold({ expected: exp, taps: late, barStart: 0, barSec, tol, plan: plan3, pickupSec: beat });
+      const r0 = judgeHold({ expected: exp, taps: exp, barStart: 0, barSec, tol, plan: plan3 });
+      // Takt 1 mit dem ersten Auftakt 3 Soll-Punkte, die übrigen 2, der letzte 1; der späte Auftakt liegt im stillen Takt 4.
+      if (rp.bars.map((b) => b.expected).join() !== '3,2,2,2,2,2,2,1' || !rp.bars[3].silent || !(rp.bars[3].meanOffset > .03) || rp.bars[4].meanOffset !== 0 || rp.reentry !== 'good'
+        || r0.bars.map((b) => b.expected).join() !== '2,2,2,2,2,2,2,2') errors.push(`Vektor 6c: ${rp.bars.map((b) => b.expected).join()}/${rp.bars[3].meanOffset}/${rp.reentry}`);
+    }
+    // 6b. durchweg 140 ms früh (mehr als das Trefferfenster) → der Versatz wird vorab gefunden, alles getroffen
+    r = judge(8, e8.map((t) => t - .14), 3);
+    if (r.missed !== 0 || r.extras !== 0 || r.reentry !== 'good' || !r.held) errors.push(`Vektor 6b: ${r.missed} verpasst, ${r.extras} zu viel, ${r.reentry}, ${r.held}`);
+    // 6. alles durchweg 70 ms spät → Fenster wandert mit, geschafft; nur Hinweis zum Versatz
+    r = judge(8, e8.map((t) => t + .07), 2);
+    if (!r.held || r.missed !== 0 || Math.round(r.bias * 1000) !== 70 || !holdBiasNote(r)) errors.push(`Vektor 6: ${r.held}/${r.missed}/${r.bias}`);
+    // 7. abwechselnd ±30 ms → geschafft, „gleichmäßig“ (nicht „sehr sauber“); Kennzahlen
+    r = judge(8, e8.map((t, i) => t + (i % 2 ? .03 : -.03)), 2);
+    const s7 = holdTimingStats(r);
+    if (!r.held || r.level !== 2 || s7.exact !== 16 || s7.early || s7.late || s7.mean !== 0 || s7.sd !== 30 || Math.abs(s7.worst) !== 30) errors.push(`Vektor 7: ${r.held}/${r.level}/${JSON.stringify(s7)}`);
+    // 7b. abwechselnd ±50 ms → wacklig
+    r = judge(8, e8.map((t, i) => t + (i % 2 ? .05 : -.05)), 2);
+    if (r.held || r.reason !== 'loose' || r.level !== 1) errors.push(`Vektor 7b: ${r.held}/${r.reason}/${r.level}`);
+    // 8. Fehlerbudget: 8 Takte Backbeat (16 Schläge) → 1 Fehler erlaubt, 2 nicht; 16 Takte → 2, aber nie zwei Takte hintereinander
+    const drop = (list, idx) => list.filter((_, i) => !idx.includes(i));
+    if (!judge(8, drop(e8, [5]), 2).held || judge(8, drop(e8, [5, 11]), 2).held) errors.push('Vektor 8: Budget 8 Takte');
+    const e16 = expectedFor(16);
+    if (!judge(16, drop(e16, [4, 17]), 4).held || judge(16, drop(e16, [4, 6]), 4).held) errors.push('Vektor 8: Budget 16 Takte / hintereinander');
+    // 9. Stelle im Muster (vier Viertel je Takt, Stelle 2 versetzt): −75 ms → kein „geschafft“, aber „gleichmäßig“;
+    //    −50 ms → geschafft mit Tipp
+    {
+      const q = Array.from({ length: 32 }, (_, i) => Math.floor(i / 4) * barSec + (i % 4) * barSec / 4);
+      const pos = q.map((_, i) => i % 4);
+      const names = ['die 1', 'die 2', 'die 3', 'die 4'];
+      const run = (d) => judge(8, q.map((t, i) => t + (i % 4 === 2 ? d : 0)), 2, q, { pos, names, gaps: [barSec / 8, barSec / 8, barSec / 8, barSec / 8] });
+      r = run(-.075);
+      if (r.held || r.reason !== 'pattern' || r.level < 2 || !/die 3 zu früh/.test(holdTip(r))) errors.push(`Vektor 9a: ${r.held}/${r.reason}/${r.level}`);
+      r = run(-.05);
+      if (!r.held || !r.hot || r.hot.pos !== 2) errors.push(`Vektor 9b: ${r.held}/${r.hot && r.hot.pos}`);
+    }
+    // 10. Shuffle (Paare Schlag / kurzes Achtel): Verhältnis 2 → in Ordnung, 1,5 → Tipp, 1,25 → kein „geschafft“
+    {
+      const beat = barSec / 4;
+      const exp = [], pos = [];
+      for (let i = 0; i < 16; i++) { exp.push(i * beat, i * beat + beat * 2 / 3); pos.push(0, 1); }
+      const run = (ratio) => judge(4, exp.map((t, i) => (i % 2 ? Math.floor(i / 2) * beat + beat * ratio / (1 + ratio) : t)), 1, exp, { pos, beatSec: beat, swingPairs: [[0, 1]] });
+      r = run(2);
+      if (!r.held || !r.swing || r.swing.tip) errors.push(`Vektor 10a: ${r.held}/${JSON.stringify(r.swing)}`);
+      r = run(1.5);
+      if (!r.held || r.swing.tip !== 'straight') errors.push(`Vektor 10b: ${r.held}/${JSON.stringify(r.swing)}`);
+      r = run(1.25);
+      if (r.held || r.reason !== 'pattern' || !r.swing.fail) errors.push(`Vektor 10c: ${r.held}/${r.reason}/${JSON.stringify(r.swing)}`);
+    }
+    // 11. Stumm (alle Takte still): eigenes Tempo zählt – 3 % langsamer geschafft, 7 % langsamer nicht
+    {
+      const silent = Array(8).fill(false);
+      const run = (f) => judgeHold({ expected: e8, taps: e8.map((t) => e8[0] + (t - e8[0]) * f), barStart: 0, barSec, tol, plan: silent });
+      r = run(1.03);
+      if (!r.held || !r.free || Math.abs(r.tempoDev - .03) > .002 || r.missed) errors.push(`Vektor 11a: ${r.held}/${r.tempoDev}/${r.missed}`);
+      r = run(1.07);
+      if (r.held || r.reason !== 'tempo') errors.push(`Vektor 11b: ${r.held}/${r.reason}/${r.tempoDev}`);
+    }
     // Tonklassen: falsche Tonklasse trifft nicht
     r = judgeHold({ expected: [{ t: 1, pc: 0 }, { t: 2, pc: 4 }], taps: [{ t: 1, pc: 0 }, { t: 2, pc: 5 }], barStart: 0, barSec: 4, tol, plan: [true] });
     if (r.bars[0].hit !== 1) errors.push(`Tonklasse: ${r.bars[0].hit} statt 1 Treffer`);
@@ -1989,7 +2829,7 @@
         if (level !== 'full' && g.hat.length) errors.push(`${w}/${level}: Hi-Hat in ausgedünnter Stufe`);
         if (level === 'off' && (g.kick.length || g.snare.length)) errors.push(`${w}: Stufe off spielt`);
         if (level === 'snare' && (g.kick.length || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe snare`);
-        if (level === 'backbeat' && (g.kick.join() !== '0,24' || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe backbeat`);
+        if (level === 'backbeat' && (g.kick.join() !== (l.kick === 'four' ? '0,12,24,36' : '0,24') || g.snare.join() !== '12,36')) errors.push(`${w}: Stufe backbeat`);
         if (level === 'full') {
           const step = l.notes.some((n) => n[0] % 6) ? 3 : 6;
           if (g.hat.length !== TICKS_BAR / step || g.hat.some((t, i) => t !== i * step)) errors.push(`${w}: Hi-Hat-Raster (${g.hat.length})`);
@@ -2010,6 +2850,15 @@
     const hatThree = LICKS.filter((l) => hatStep(l) === 3).map((l) => l.id).sort().join();
     if (hatThree !== ['arpMoll', 'hookAufA', 'bassFunk16', 'fillGlideBlue', 'hookBlueThird'].sort().join()) errors.push(`Hi-Hat-Raster 3 bei: ${hatThree}`);
     if (LICKS.length !== 8) errors.push(`${LICKS.length} Licks`);
+    // Übe-Korrekturen 10b: Disco-Bass mit Four-on-the-floor, Funk-Bass-Text passt zu den Tönen.
+    if (grooveFor(lickById('bassOktav'), 'full').kick.join() !== '0,12,24,36' || grooveFor(lickById('hookPenta'), 'full').kick.join() !== '0,24') errors.push('Bassdrum: bassOktav nicht four-on-the-floor bzw. andere geändert');
+    if (LICKS.filter((l) => l.kick).map((l) => l.id).join() !== 'bassOktav') errors.push('kick: four nur bei bassOktav');
+    {
+      const POS = ['1', '1-e', '1-und', '1-a', '2', '2-e', '2-und', '2-a', '3', '3-e', '3-und', '3-a', '4', '4-e', '4-und', '4-a'];
+      const f = lickById('bassFunk16');
+      if (f.notes.map((n) => POS[n[0] / 3]).join() !== '1,1-a,2,2-a,3-e,4,4-und,4-a' || /alles andere fällt auf/.test(f.intro)) errors.push('bassFunk16: Text passt nicht zu den Tönen');
+      if (f.notes.slice(-3).some((n, i, a) => i && n[2] - a[i - 1][2] !== 1) || f.notes[f.notes.length - 1][2] !== -1) errors.push('bassFunk16: Schluss nicht chromatisch');
+    }
     // --- holdPlan
     const t = true, f = false;
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -2018,20 +2867,24 @@
     if (!eq(holdPlan(4), [t, t, f, f, f, f, t, t, f, f, f, f, t, t, f, f])) errors.push(`holdPlan Stufe 4: ${holdPlan(4)}`);
     if (HOLD_STAGES.length !== 4) errors.push('HOLD_STAGES');
     errors.push(...holdVectors());
-    // --- holdMessage: jede Zeile der Tabelle
-    const msg = (res, st) => holdMessage({ held: false, tendency: 'steady', lostAt: null, reentry: null, bars: [], ...res }, st);
+    // --- holdTip / holdResultVerdict: ein Satz, ein Tipp je Grund
+    const tipFor = (res) => holdTip({ held: false, reason: 'loose', tendency: 'steady', lostAt: null, reentry: null, bars: [], errors: 0, missed: 0, extras: 0, hot: null, swing: null, posDev: [], level: 2, bias: 0, ...res });
     const M = [
-      [msg({ held: true }, 2), 'Durchgehalten – 8 Takte, ruhig und gleichmäßig.'],
-      [msg({ held: true, tendency: 'faster' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas schneller geworden – lass die Pausen ruhig lang.'],
-      [msg({ held: true, tendency: 'slower' }, 1), 'Durchgehalten! Zum Ende hin bist du etwas langsamer geworden – denk an den Backbeat.'],
-      [msg({ lostAt: 6, reentry: 'late' }, 3), 'Bis Takt 5 lief es stabil. In der Stille zählst du beim nächsten Mal leise mit.'],
-      [msg({ lostAt: 6, reentry: 'good' }, 3), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
-      [msg({ lostAt: 6, reentry: 'late' }, 2), 'Bis Takt 5 lief es stabil. Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal.'],
-      [msg({ tendency: 'faster' }, 2), 'Fast! Du bist nach und nach schneller geworden. Nochmal – diesmal bewusst gemütlich.'],
-      [msg({ tendency: 'slower' }, 2), 'Fast! Du bist nach und nach langsamer geworden. Nochmal – die Snare zieht dich.'],
-      [msg({}, 2), 'Fast! Ein paar Takte waren wackelig. Nochmal – ruhig und gleichmäßig.'],
+      [tipFor({ held: true, reason: null, level: 3 }), 'Ruhig und sehr gleichmäßig. Nimm als Nächstes weniger Begleitung.'],
+      [tipFor({ held: true, reason: null, errors: 1 }), 'Ein kleiner Patzer, und du warst sofort wieder drin – genau darum geht es beim Durchhalten.'],
+      [tipFor({ held: true, reason: null, hot: { rel: -.04, name: 'das „und“ nach der 2' } }), 'Fast immer kommt das „und“ nach der 2 zu früh – du drängst. Lass dir dort Zeit und zähl die Achtel mit.'],
+      [tipFor({ reason: 'bars', lostAt: 6 }), 'Danach ist der Faden gerissen – das ist beim Durchhalten ganz normal. Nochmal, notfalls mit mehr Begleitung.'],
+      [tipFor({ reason: 'bars', extras: 3, missed: 1 }), '3 Schläge zu viel – nur dort, wo der Rhythmus wirklich einen Schlag hat.'],
+      [tipFor({ reason: 'pattern', posDev: [{ rel: .07, fail: true, name: 'die 4' }] }), 'Fast immer kommt die 4 zu spät – du schleppst. Denk die Stelle schon auf dem Schlag davor.'],
+      [tipFor({ reason: 'pattern', swing: { ratio: 1.2, fail: true, tip: 'straight' } }), 'Deine Achtel sind zu gerade für einen Shuffle. Denk eine Triole und klatsch nur die erste und die dritte.'],
+      [tipFor({ reason: 'reentry' }), 'Nach der Stille kamst du zu spät wieder rein. Zähl in der Stille leise mit – dann sitzt der Einsatz.'],
+      [tipFor({ reason: 'tempo', tempoDev: .06 }), 'Ohne Begleitung bist du langsamer geworden. Halt den Puls innerlich fest – Fuß mitwippen hilft.'],
+      [tipFor({ tendency: 'faster' }), 'Du bist nach und nach schneller geworden – du drängst. Nochmal, diesmal bewusst gemütlich.'],
+      [tipFor({}), 'Mal früher, mal später. Wipp mit dem Fuß auf den Vierteln mit – die Hände hängen sich dran.'],
     ];
-    M.forEach(([got, want], i) => { if (got !== want) errors.push(`holdMessage ${i + 1}: „${got}“`); });
+    M.forEach(([got, want], i) => { if (got !== want) errors.push(`holdTip ${i + 1}: „${got}“`); });
+    if (holdBiasNote({ bias: -.045 }) !== 'Du bist insgesamt etwas vor dem Schlag – das machen fast alle.' || holdBiasNote({ bias: .02 }) !== '') errors.push('holdBiasNote');
+    if (holdResultVerdict({ held: true, level: 3, bars: Array(8), reason: null, bias: 0 }).what !== 'Geschafft – sehr sauber') errors.push('holdResultVerdict');
     // --- partMessage
     const pm = (want, got) => partMessage({ want: want.map(([midi, t]) => ({ midi, t })), got: got.map(([midi, t]) => ({ midi, t })), tol: .08 }).text;
     const P = [
@@ -2039,7 +2892,11 @@
       [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1.3]]), 'Die Töne stimmen! Der 3. kam etwas spät.'],
       [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .3], [64, 1]]), 'Die Töne stimmen! Der 2. kam etwas früh.'],
       [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5]]), 'Das waren 2 Töne, im Teil sind es 3. Hör ihn nochmal.'],
-      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1], [65, 1.5]]), 'Das waren 4 Töne, im Teil sind es 3. Hör ihn nochmal.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1], [65, 1.5]]), 'Genau so! (ein Ton zu viel – zählt trotzdem)'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [61, .25], [62, .5], [64, 1]]), 'Genau so! (ein Ton zu viel – zählt trotzdem)'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[59, -.3], [60, 0], [62, .5], [64, 1]]), 'Genau so! (ein Ton zu viel – zählt trotzdem)'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1], [65, 1.5], [67, 2]]), 'Das waren 5 Töne, im Teil sind es 3. Hör ihn nochmal.'],
+      [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [64, 1.3], [65, 1.5]]), 'Das waren 4 Töne, im Teil sind es 3. Hör ihn nochmal.'],
       [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [61, .5], [64, 1]]), 'Fast! Die Richtung stimmt bis Ton 1. Ton 2 liegt einen halben Schritt höher.'],
       [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [66, 1]]), 'Fast! Die Richtung stimmt bis Ton 2. Ton 3 liegt einen ganzen Schritt tiefer.'],
       [pm([[60, 0], [62, .5], [64, 1]], [[60, 0], [62, .5], [70, 1]]), 'Fast! Die Richtung stimmt bis Ton 2. Ton 3 liegt weiter tiefer.'],
@@ -2049,6 +2906,27 @@
     ];
     P.forEach(([got, want], i) => { if (got !== want) errors.push(`partMessage ${i + 1}: „${got}“ statt „${want}“`); });
     if (!partMessage({ want: [{ midi: 60, t: 0 }, { midi: 62, t: .5 }], got: [{ midi: 60, t: 0 }, { midi: 62, t: .9 }], tol: .08 }).ok) errors.push('partMessage: richtige Töne mit falschem Rhythmus zählen als geschafft');
+    // --- Übe-Korrekturen 8: „Ganz“ ab 85 %, „Stückweise“ mit einem Ton zu viel, Lage der eigenen Stimme
+    if (!wholeVerdict(14, 16, 0).ok || wholeVerdict(13, 16, 0).ok || !wholeVerdict(16, 16, 1).ok || wholeVerdict(16, 16, 2).ok || wholeVerdict(0, 0, 0).ok) errors.push('wholeVerdict: Grenzen 85 % / ein Ton zu viel');
+    if (wholeVerdict(14, 16, 0).text !== "Fast alles – 14 von 16 Tönen. Das zählt; ganz sauber wird's mit der Zeit." || wholeVerdict(16, 16, 0).text !== 'Genau so!') errors.push(`wholeVerdict-Text: ${wholeVerdict(14, 16, 0).text}`);
+    {
+      const bo = lickById('bassOktav');
+      const prof = (part, low = null, high = null) => ({ part, low, high });
+      if (voiceOctave(bo, prof('S')) !== 2) errors.push(`bassOktav/Sopran: ${voiceOctave(bo, prof('S'))} statt +2`);
+      if (voiceOctave(bo, prof('S', 52, 72)) !== 1) errors.push(`bassOktav/Sopran mit tieferem Umfang: ${voiceOctave(bo, prof('S', 52, 72))} statt +1`);
+      if (voiceOctave(bo, prof('B')) !== 0 || voiceOctave(bo, null) !== 0 || voiceOctave(bo, prof('X')) !== 0) errors.push('bassOktav: Bass bzw. ohne Profil nicht 0');
+      for (const l of LICKS) for (const part of ['S', 'A', 'T', 'B']) {
+        const k = voiceOctave(l, prof(part));
+        const [lo, hi] = keyboardRange(l, k);
+        if (l.notes.some((n) => l.root + n[2] + 12 * k < lo || l.root + n[2] + 12 * k > hi) || lo < KEY_MIN || hi > KEY_MAX) errors.push(`${l.id}/${part}: Tastatur folgt der Lage nicht`);
+      }
+      // Eigene Wahl (Okt −/+) geht vor; ohne Wahl gilt die Stimme.
+      const saved = state.octave;
+      state.octave = { bassOktav: 0 };
+      if (octaveOf(bo) !== 0) errors.push('Oktave: eigene Wahl 0 überschrieben');
+      state.octave = saved;
+      if (sanitizeLicksState({ v: 1, octave: { bassOktav: 2, arpMoll: 3 } }).octave.bassOktav !== 2 || 'arpMoll' in sanitizeLicksState({ v: 1, octave: { arpMoll: 3 } }).octave) errors.push('sanitize: Oktave ±2');
+    }
     // --- degreeLabel
     const want = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
     for (let s = -12; s <= 24; s++) if (degreeLabel(s) !== want[mod(s, 12)]) errors.push(`degreeLabel ${s}`);
@@ -2066,6 +2944,12 @@
       if (d.join() !== '2026-01-08,2026-01-22,2026-03-02,2026-03-02') errors.push(`Streak-Folge: ${d}`);
       if (nextDue('ok', 2, '2026-01-01').streak !== 0) errors.push('Streak wird nicht zurückgesetzt'); }
     // --- statusOf / dueIds
+    {
+      // Übungsfortschritt für die Kachel: wächst schon mit den ersten Schritten, voll erst mit allem.
+      const l0 = LICKS[0], full = { step: 7, parts: l0.parts.length, whole: 3, hold: 2, rating: 'solid' };
+      if (lickProgress(l0, undefined) !== 0 || !(lickProgress(l0, { step: 1, parts: 0, whole: 0, hold: 0, rating: null }) > 0)
+        || Math.abs(lickProgress(l0, full) - 1) > 1e-9 || Math.abs(licksProgress({ [l0.id]: full }) - 1 / LICKS.length) > 1e-9) errors.push('lickProgress');
+    }
     if (statusOf(undefined) !== 'Neu' || statusOf({ rating: null }) !== 'Neu' || statusOf({ rating: 'shaky' }) !== 'Lerne' || statusOf({ rating: 'ok' }) !== 'Lerne' || statusOf({ rating: 'solid' }) !== 'Sitzt') errors.push('statusOf');
     if (dueIds({ hookPenta: { due: '2026-01-01' }, bassOktav: { due: '2026-02-01' }, xyz: { due: '2020-01-01' }, arpMoll: { due: 'morgen' } }, '2026-01-15').join() !== 'hookPenta') errors.push('dueIds');
     if (dueIds(null, '2026-01-15').length || dueIds('kaputt', '2026-01-15').length) errors.push('dueIds bei kaputtem Stand');
@@ -2074,6 +2958,7 @@
     // --- Ablauf und Sichtbarkeit
     errors.push(...flowCheck());
     errors.push(...delayCheck());
+    errors.push(...uiCheck());
     return errors;
   }
 
@@ -2086,7 +2971,37 @@
     const good = { v: 1, lick: 'arpMoll', notes: 'off', glide: false, octave: { arpMoll: 1, hookPenta: -1 }, sound: { arpMoll: 'Soft Brass' },
       items: { arpMoll: { step: 5, parts: 4, whole: 2, hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' } } };
     const s = sanitizeLicksState(JSON.parse(JSON.stringify(good)));
-    if (!eq(s, { ...good, sound: { arpMoll: 'Soft Brass' } })) errors.push(`sanitize: Roundtrip ${JSON.stringify(s)}`);
+    // Alter Stand ohne `input` (Übe-Korrekturen 9): Standard Tippen.
+    if (!eq(s, { ...good, input: 'tap', sound: { arpMoll: 'Soft Brass' } })) errors.push(`sanitize: Roundtrip ${JSON.stringify(s)}`);
+    if (sanitizeLicksState({ ...good, input: 'sing' }).input !== 'sing' || sanitizeLicksState({ ...good, input: 'mic' }).input !== 'tap') errors.push('sanitize: Eingabe');
+    // Singen: synthetische Tonhöhen-Bilder (60 je Sekunde) → Anschläge { t, pc }.
+    {
+      const fr = (notes, { vib = 0, jump = null, end = null } = {}) => {
+        const out = [];
+        const last = end ?? Math.max(...notes.map((n) => n.t + n.d)) + .3;
+        for (let t = 0; t <= last; t += 1 / 60) {
+          const n = notes.find((x) => t >= x.t && t < x.t + x.d);
+          let m = n ? n.midi + vib * Math.sin(2 * Math.PI * 5.5 * (t - n.t)) + .03 * Math.sin(t * 37) : null;
+          if (m !== null && jump && t >= jump[0] && t < jump[1]) m += 12;
+          out.push({ t, midi: m });
+        }
+        return out;
+      };
+      const lick = lickById('hookPenta');
+      const beat = 60 / lick.bpm / 12;
+      const want = lick.notes.map((n) => ({ t: n[0] * beat, d: Math.max(.1, n[1] * beat - .07), midi: lick.root + n[2] }));
+      const got = sungOnsets(fr(want));
+      if (got.length !== want.length || got.some((g, i) => Math.abs(g.t - want[i].t) > .02 || g.pc !== mod(want[i].midi, 12))) errors.push(`Singen: Anschläge ${JSON.stringify(got.map((g) => [+g.t.toFixed(3), g.pc]))}`);
+      if (Math.abs(sungOnsets(fr(want), { micMs: 100 })[0].t - (want[0].t - .1)) > .02) errors.push('Singen: Mikrofon-Latenz nicht abgezogen');
+      const vib = sungOnsets(fr([{ t: .2, d: 1.2, midi: 64 }], { vib: .3 }));
+      if (vib.length !== 1 || vib[0].pc !== 4) errors.push(`Singen: Vibrato ±30 Cent ergibt ${vib.length} Anschläge`);
+      const oct = sungOnsets(fr([{ t: .2, d: 1, midi: 60 }], { jump: [.5, .62] }));
+      if (oct.length !== 1 || oct[0].pc !== 0) errors.push(`Singen: Oktavsprung des Erkenners ergibt ${oct.length} Anschläge`);
+      const legato = sungOnsets(fr([{ t: .2, d: .4, midi: 60 }, { t: .6, d: .4, midi: 62 }]));
+      if (legato.length !== 2 || Math.abs(legato[1].t - .6) > .03 || legato[1].pc !== 2) errors.push(`Singen: gebundener Tonwechsel ${JSON.stringify(legato)}`);
+      if (sungOnsets(fr([{ t: .2, d: .05, midi: 60 }])).length) errors.push('Singen: Knackser unter 80 ms zählt');
+      if (mic.analyser) errors.push('Singen: Mikrofon läuft ohne Lauf');
+    }
     if (!eq(sanitizeLicksState(JSON.parse(JSON.stringify(s))), s)) errors.push('sanitize: nicht idempotent');
     const bad = sanitizeLicksState({ v: 1, lick: 'quatsch', notes: 5, glide: 'ja', octave: { arpMoll: 7, unbekannt: 1 }, sound: { arpMoll: 'Fagott' },
       items: { unbekannt: { step: 1 }, arpMoll: { step: 99, parts: 50, whole: -3, hold: 1.5, rating: 'toll', streak: 9, due: 'irgendwann' }, hookPenta: 'kaputt' } });
@@ -2128,7 +3043,7 @@
         for (let b = 0; b < 8; b++) tl.groove(b, 'full');
         const seen = new Set();
         for (const ev of tl.events) { const key = `${Math.round(ev.t * 1e6)}|${ev.kind}`; if (seen.has(key)) errors.push(`Groove ${lick.id}: Doppelschlag`); seen.add(key); }
-        if (tl.events.length !== 8 * (2 + 2 + TICKS_BAR / hatStep(lick))) errors.push(`Groove ${lick.id}: ${tl.events.length} Ereignisse über 8 Takte`);
+        if (tl.events.length !== 8 * (grooveFor(lick, 'full').kick.length + 2 + TICKS_BAR / hatStep(lick))) errors.push(`Groove ${lick.id}: ${tl.events.length} Ereignisse über 8 Takte`);
       }
       // Platzhalter: identisch für verschiedene Bausteine, ohne Zähler, ohne Notenbild und Raster
       const panels = {};
@@ -2141,7 +3056,7 @@
           const p = $('#panel');
           panels[`${id}/${step}`] = p.querySelector('[data-placeholder]')?.outerHTML || '';
           if (!panels[`${id}/${step}`]) errors.push(`Platzhalter fehlt: ${id}/${step}`);
-          if (p.querySelector('[data-roll], [data-result], .strip, .tl, .ph')) errors.push(`Lauf ${id}/${step}: Raster, Notenbild oder Ergebnis sichtbar`);
+          if (p.querySelector('[data-roll], [data-result], .hr, .tl, .ph')) errors.push(`Lauf ${id}/${step}: Raster, Notenbild oder Ergebnis sichtbar`);
           if (/Takt \d+ von|Takt \d+\/\d+|Noch \d+ Takte/.test(p.textContent)) errors.push(`Lauf ${id}/${step}: Taktzähler`);
           if (keyEls.size && $$('#keyboard .is-lit').length) errors.push('Tasten leuchten während eines Laufs');
         }
@@ -2172,19 +3087,20 @@
       const res = judgeHold({ expected: [1, 2, 3, 4], taps: [1, 2, 3, 4], barStart: 0, barSec: 4, tol: .1, plan: [true] });
       Object.assign(ui, { step: 6, holdStage: 1, result: { kind: 'hold', stage: 1, ...res } });
       renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
-      if (!$('#panel').querySelector('.strip')) errors.push('Taktstreifen nach dem Lauf fehlt');
+      if (!$('#panel').querySelector('.hr-bars') || !$('#panel').querySelector('[data-hold-play]')) errors.push('Ergebnis-Karte (Takte, Abspielknopf) nach dem Lauf fehlt');
       const silent = holdPlan(3);
       const res3 = judgeHold({ expected: [1, 5, 9, 13, 17, 21, 25, 29], taps: [1, 5, 9, 13, 17, 21, 25, 29], barStart: 0, barSec: 4, tol: .1, plan: silent });
       ui.result = { kind: 'hold', stage: 3, ...res3 };
       ui.holdStage = 3; state.items.hookPenta.hold = 2;
       renderPanel(lickById('hookPenta'), itemOf('hookPenta'));
-      if ($('#panel').querySelectorAll('.strip .is-silent').length !== 4) errors.push(`Taktstreifen: ${$('#panel').querySelectorAll('.strip .is-silent').length} schraffierte Takte statt 4`);
+      if ($('#panel').querySelectorAll('.hr-bars .is-silent').length !== 4) errors.push(`Taktleiste: ${$('#panel').querySelectorAll('.hr-bars .is-silent').length} schraffierte Takte statt 4`);
       // Startton: Tippen wählt nur aus, erst „Ton einloggen“ prüft; die Tastatur wird dabei nicht neu gebaut
       {
         state.lick = 'hookPenta'; state.items = {};
         Object.assign(ui, { view: 'lick', step: 3, running: '', result: null, review: null, foundKey: null, pickedKey: null, startFails: 0, feedback: '' });
         buildKeyboard();
-        const lick = lickById('hookPenta'), firstMidi = lick.root + lick.notes[0][2];
+        // Die Tastatur folgt der Lage der eigenen Stimme (octaveOf).
+        const lick = lickById('hookPenta'), firstMidi = lick.root + lick.notes[0][2] + 12 * octaveOf(lick);
         const keyNode = keyEls.get(firstMidi);
         if (!keyNode) errors.push('Startton: Taste des ersten Tons fehlt');
         onOwnKey(firstMidi);
@@ -2220,6 +3136,176 @@
       Object.assign(ui, { view: saved.view, step: saved.step, running: saved.running, result: saved.result, feedback: saved.feedback, holdStage: saved.holdStage, review: saved.review, foundKey: saved.foundKey, pickedKey: saved.pickedKey, startFails: saved.startFails });
       state.lick = saved.lick; state.notes = saved.notes; state.items = saved.items;
       $('#panel').innerHTML = saved.html;
+    }
+    return errors;
+  }
+
+  /** Redesign „Konfetti B2“: Tempo der Läufe (runBpm), Liste ohne Unterzeile mit Stufen-Ring, Plan der stillen
+   *  Takte nur außerhalb des Laufs, Fußleiste (Tempo, Start/Stopp, Schritt zurück/vor), eigener Zurück-Knopf. */
+  function uiCheck() {
+    const errors = [];
+    const saved = { view: ui.view, step: ui.step, running: ui.running, result: ui.result, holdStage: ui.holdStage, review: ui.review, tempoPct: ui.tempoPct, cat: ui.cat,
+      lick: state.lick, notes: state.notes, items: state.items, panel: $('#panel').innerHTML, list: $('#list').innerHTML, note: $('#list-note').textContent, foot: $('#foot').innerHTML, chips: $('#cat-chips').innerHTML };
+    selfTesting = true;
+    try {
+      // --- runBpm: Tempo-Pille wirkt auf die Lernschritte 1–5, sonst Original
+      const lick = lickById('hookPenta');
+      state.lick = lick.id;
+      Object.assign(ui, { view: 'lick', step: 1, running: '', review: null, tempoPct: 100 });
+      if (runBpm(lick) !== lick.bpm) errors.push(`runBpm 100 %: ${runBpm(lick)}`);
+      ui.tempoPct = 70;
+      if (Math.abs(runBpm(lick) - lick.bpm * .7) > 1e-9) errors.push(`runBpm 70 %: ${runBpm(lick)}`);
+      ui.tempoPct = 40;
+      if (Math.abs(runBpm(lick) - lick.bpm * .7) > 1e-9) errors.push('runBpm: Untergrenze 70 % nicht erzwungen');
+      ui.tempoPct = 130;
+      if (runBpm(lick) !== lick.bpm) errors.push('runBpm: Obergrenze 100 % nicht erzwungen');
+      ui.tempoPct = 70;
+      for (const step of [1, 2, 3, 4, 5]) { ui.step = step; if (Math.abs(runBpm(lick) - lick.bpm * .7) > 1e-9) errors.push(`runBpm Schritt ${step}: ${runBpm(lick)}`); }
+      const tl70 = makeTimeline(lick);
+      if (Math.abs(tl70.tickSec - 60 / (lick.bpm * .7) / 12) > 1e-12 || Math.abs(tl70.barSec - 48 * tl70.tickSec) > 1e-12) errors.push('runBpm: Zeitleiste folgt dem Tempo nicht');
+      const hearTl = tlHear(lick, 1);
+      if (Math.abs(hearTl.barSec - tl70.barSec) > 1e-12) errors.push('runBpm: Anhören läuft nicht im gewählten Tempo');
+      for (const step of [6, 7]) { ui.step = step; if (runBpm(lick) !== lick.bpm) errors.push(`runBpm Schritt ${step} nicht im Original`); }
+      const hold = tlHold(lick, 1, false);
+      if (Math.abs(hold.tl.barSec - 48 * 60 / lick.bpm / 12) > 1e-12) errors.push('runBpm: Durchhalten nicht im Original');
+      ui.step = 2; ui.review = { queue: [lick.id], i: 0, phase: 'hear' };
+      if (runBpm(lick) !== lick.bpm) errors.push('runBpm: Wiederholung nicht im Original');
+      ui.review = null; ui.view = 'list';
+      if (runBpm(lick) !== lick.bpm) errors.push('runBpm: Liste (Anhören-Knopf) nicht im Original');
+      ui.view = 'lick';
+
+      // --- Fußleiste
+      state.items = {};
+      Object.assign(ui, { step: 1, tempoPct: 100, running: '' });
+      renderFoot();
+      const dis = (act) => $(`#foot [data-act="${act}"]`).disabled;
+      if (!dis('step-prev') || !dis('step-next')) errors.push('Fußleiste Schritt 1 ohne Fortschritt: zurück und vor müssen gesperrt sein');
+      if (dis('tempo-down') || !dis('tempo-up') || !/100 %/.test($('#tempo-val').textContent) || !new RegExp(`${lick.bpm} BPM`).test($('#tempo-val').textContent)) errors.push(`Fußleiste Tempo bei 100 %: „${$('#tempo-val').textContent}“`);
+      if ($('#foot-play').disabled || !/^Start: /.test($('#foot-play').getAttribute('aria-label'))) errors.push('Fußleiste: Start fehlt');
+      ui.tempoPct = 70; renderFoot();
+      if (!dis('tempo-down') || dis('tempo-up') || !/70 %/.test($('#tempo-val').textContent) || !new RegExp(`${Math.round(lick.bpm * .7)} BPM`).test($('#tempo-val').textContent)) errors.push(`Fußleiste Tempo bei 70 %: „${$('#tempo-val').textContent}“`);
+      ui.running = 'hear'; renderFoot();
+      if ($('#foot-play').getAttribute('aria-label') !== 'Stopp' || !(dis('tempo-up') && dis('tempo-down'))) errors.push('Fußleiste: während des Laufs Stopp und gesperrtes Tempo erwartet');
+      ui.running = '';
+      state.items = { [lick.id]: { step: 3, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null } };
+      ui.step = 3; renderFoot();
+      if (dis('step-prev') || dis('step-next')) errors.push('Fußleiste Schritt 3 nach „Startton“: zurück/vor erwartet');
+      ui.step = 4; renderFoot();
+      if (dis('step-prev') || !dis('step-next')) errors.push('Fußleiste: Schritt vor muss gesperrt sein, solange „Stückweise“ nicht geschafft ist');
+      state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 0, rating: null, streak: 0, due: null } };
+      ui.step = 6; renderFoot();
+      if (!/Original/.test($('#tempo-val').textContent) || !dis('tempo-down') || !dis('tempo-up')) errors.push('Fußleiste Durchhalten: Tempo muss „Original“ und gesperrt sein');
+      if (dis('step-next') !== !stepUnlocked(lick, 7)) errors.push('Fußleiste: „vor“ folgt nicht stepUnlocked (Notenbild)');
+      // --- Klaviatur nur, wo man spielt; Hauptknopf im Panel nur Textknopf (Start/Stopp = Fußleiste)
+      {
+        const dockHidden = () => $('#dock').hidden;
+        const probe = (step, result, running, want, what) => {
+          Object.assign(ui, { step, result, running: running || '', review: null }); renderLick();
+          if (dockHidden() !== want) errors.push(`Klaviatur ${what}: ${want ? 'ausgeblendet' : 'sichtbar'} erwartet`);
+        };
+        const tlRes = { span: 4, bars: 1, barSec: 4, exp: [], taps: [], hits: 0 };
+        const fakeRes = { kind: 'hold', stage: 2, ...judgeHold({ expected: [1, 2], taps: [1, 2], barStart: 0, barSec: 4, tol: .1, plan: holdPlan(2) }) };
+        probe(1, null, '', true, 'Schritt 1'); probe(2, null, '', true, 'Schritt 2');
+        probe(3, null, '', false, 'Startton'); probe(4, null, '', false, 'Stückweise vor dem Lauf'); probe(5, null, '', false, 'Ganz vor dem Lauf');
+        // Nach einem Durchlauf bleibt sie stehen (nichts springt, gleich nochmal spielen).
+        probe(4, { kind: 'part', part: 0, ok: true, ...tlRes }, '', false, 'Stückweise-Ergebnis'); probe(5, { kind: 'whole', ok: true, ...tlRes }, '', false, 'Ganz-Ergebnis');
+        probe(6, null, '', false, 'Durchhalten vor dem Start'); probe(6, null, 'hold', false, 'Durchhalten-Lauf');
+        probe(6, fakeRes, '', false, 'Durchhalten-Ergebnis / Einschätzung'); probe(7, null, '', true, 'Notenbild');
+        state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 2, rating: null, streak: 0, due: null } };
+        probe(6, fakeRes, '', false, 'Durchhalten-Ergebnis'); if (!$('#panel [data-rate]')) errors.push('Durchhalten-Ergebnis: Einschätzung fehlt');
+        ui.review = { queue: [lick.id], i: 0, phase: 'rate' }; renderLick();
+        if (!dockHidden()) errors.push('Klaviatur in der Einschätzung (Wiederholung) sichtbar');
+        ui.review = { queue: [lick.id], i: 0, phase: 'hold' }; ui.running = 'hold'; renderLick();
+        if (dockHidden()) errors.push('Klaviatur im Durchhalten-Lauf (Wiederholung) fehlt');
+        ui.review = null; ui.running = ''; ui.result = null;
+        // Hauptknopf: bleibt im Panel (data-act), aber als Textknopf; kein zweiter pinker Knopf
+        for (const [st, act] of [[1, 'hear'], [2, 'sing'], [3, 'startton'], [4, 'part-run'], [5, 'whole-run'], [6, 'hold-run'], [7, 'roll-run']]) {
+          ui.step = st; ui.result = null; renderLick();
+          const m = $(`#panel [data-act="${act}"]`);
+          if (!m || !m.classList.contains('main-act') || !m.classList.contains('k-btn--ghost')) errors.push(`Schritt ${st}: Hauptknopf ${act} fehlt oder ist nicht zurückgenommen`);
+        }
+        // Klang vor Erklärung: Text erst nach dem ersten Anhören (oder bei geschafftem Schritt 1)
+        state.items = {}; Object.assign(ui, { step: 1, result: null, heardOnce: false }); renderLick();
+        if ($('#panel .more-wrap') || $('#panel').textContent.includes(lick.intro)) errors.push('Schritt 1: Erklärung steht schon vor dem ersten Anhören');
+        if (!$('#panel [data-act="hear"]')) errors.push('Schritt 1: Hauptknopf fehlt vor dem Anhören');
+        ui.heardOnce = true; renderLick();
+        if (!$('#panel .more-wrap') || !$('#panel').textContent.includes(lick.intro)) errors.push('Schritt 1: Erklärung fehlt nach dem Anhören');
+        ui.heardOnce = false; state.items = { [lick.id]: { step: 1, parts: 0, whole: 0, hold: 0, rating: null, streak: 0, due: null } }; renderLick();
+        if (!$('#panel .more-wrap')) errors.push('Schritt 1: Erklärung fehlt bei geschafftem Schritt');
+        state.items = {}; ui.heardOnce = false; ui.step = 1; renderLick();
+      }
+      state.notes = 'off';
+      renderFoot();
+      if (!dis('step-next')) errors.push('Fußleiste: Notenbild „aus“ muss „vor“ sperren');
+      state.notes = 'last';
+      ui.step = 5; ui.review = { queue: [lick.id], i: 0, phase: 'hold' }; renderFoot();
+      if (!/Original/.test($('#tempo-val').textContent) || !dis('step-prev') || !dis('step-next')) errors.push('Fußleiste Wiederholung: Original und kein Schrittwechsel erwartet');
+      ui.review = null;
+
+      // --- Plan der stillen Takte (nur vor dem Lauf, eigene Klasse)
+      state.items = { [lick.id]: { step: 5, parts: lick.parts.length, whole: 3, hold: 3, rating: null, streak: 0, due: null } };
+      Object.assign(ui, { step: 6, running: '', result: null, review: null });
+      for (let stageNo = 1; stageNo <= 4; stageNo++) {
+        ui.holdStage = stageNo;
+        const still = holdPlan(stageNo).filter((x) => !x).length;
+        ui.running = '';
+        renderPanel(lick, itemOf(lick.id));
+        const strip = $('#panel .plan-strip');
+        if (!strip || strip.children.length !== HOLD_STAGES[stageNo - 1].bars || strip.querySelectorAll('.is-still').length !== still) errors.push(`Plan-Streifen Stufe ${stageNo}: ${strip ? strip.children.length : 'fehlt'} Kästchen, ${strip ? strip.querySelectorAll('.is-still').length : '–'} still statt ${still}`);
+        if ($('#panel .strip, #panel [data-result]')) errors.push(`Plan-Streifen Stufe ${stageNo}: Ergebnis-Streifen vor dem Lauf`);
+        const pillText = ($('#panel .plan-key .k-pill') || {}).textContent || '';
+        if (still ? pillText !== `${still} stille Takte` : pillText) errors.push(`Plan-Streifen Stufe ${stageNo}: Pille „${pillText}“`);
+        ui.running = 'hold'; renderPanel(lick, itemOf(lick.id));
+        if ($('#panel .plan-strip, #panel .ladder') || !$('#panel [data-placeholder]')) errors.push(`Plan-Streifen Stufe ${stageNo}: während des Laufs sichtbar`);
+        ui.running = '';
+      }
+      ui.holdStage = 4; ui.result = { kind: 'hold', stage: 4, ...judgeHold({ expected: [1, 2], taps: [1, 2], barStart: 0, barSec: 4, tol: .1, plan: holdPlan(4) }) };
+      renderPanel(lick, itemOf(lick.id));
+      if ($('#panel .plan-strip') || !$('#panel .hr-bars')) errors.push('Nach dem Lauf: Ergebnis-Karte statt Plan erwartet');
+      ui.result = null;
+
+      // --- Liste: ohne Unterzeile, mit Ring, nach Stufe sortiert
+      ui.view = 'list'; ui.cat = 'all'; state.items = { hookPenta: { rating: 'solid', due: null }, arpMoll: { rating: 'shaky', due: null } };
+      renderList();
+      const rows = $$('#list .lick-row');
+      if (rows.length !== LICKS.length) errors.push(`Liste: ${rows.length} Zeilen`);
+      if ($('#list .sub')) errors.push('Liste: Unterzeile vorhanden');
+      let lastLevel = 0;
+      rows.forEach((row) => {
+        const l = lickById(row.dataset.id);
+        const ring = row.querySelector('.k-ring');
+        if (!ring || ring.dataset.level !== String(l.level) || ring.getAttribute('aria-label') !== `Stufe ${l.level} von 3` || Math.abs(parseFloat(ring.style.getPropertyValue('--level')) - l.level / 3) > .002) errors.push(`Liste ${l.id}: Stufen-Ring`);
+        if (l.level < lastLevel) errors.push('Liste: nicht nach Stufe sortiert');
+        lastLevel = l.level;
+        const st = row.querySelector('.status');
+        const want = { Neu: 'k-pill', Lerne: 'k-pill--rep', Sitzt: 'k-pill--ok' }[st.dataset.status];
+        if (!st.classList.contains(want) || st.dataset.status !== statusOf(state.items[l.id])) errors.push(`Liste ${l.id}: Status-Pille`);
+        if (!row.querySelector('button.play[data-act="preview"]') || !row.querySelector('button.open[data-act="open"]') || row.querySelector('.name').textContent !== l.name) errors.push(`Liste ${l.id}: Knöpfe oder Name`);
+      });
+      if (sortedLicks('bass').some((l) => l.cat !== 'bass') || sortedLicks('bass').length !== 2) errors.push('Liste: Filter');
+      state.items = { hookPenta: { due: '2000-01-01' }, bassOktav: { due: '2000-01-02' } };
+      renderList();
+      if ($('#review-card').hidden || $('#review-card [data-act="review-start"]').className.indexOf('k-row--repeat') < 0 || !/Heute wiederholen \(2\)/.test($('#review-text').textContent)) errors.push(`Liste: „Heute wiederholen“-Zeile (${$('#review-text').textContent})`);
+      state.items = {};
+      renderList();
+      if (!$('#review-card').hidden || !/nichts fällig/.test($('#list-note').textContent)) errors.push('Liste: ohne fällige Licks muss „Heute ist nichts fällig.“ stehen');
+
+      // --- Eigener Zurück-Knopf nur eingebettet
+      if (document.documentElement.hasAttribute('data-own-back') !== EMBEDDED) errors.push('data-own-back passt nicht zu ?embedded');
+      show('list');
+      if ($('[data-act="back"]').hidden === EMBEDDED || !$('[data-act="back"]').hasAttribute('data-own-back-btn')) errors.push('Zurück-Knopf in der Liste: nur eingebettet sichtbar');
+      show('lick');
+      if ($('[data-act="back"]').hidden || $('[data-act="settings"]').hidden || $('#foot').hidden || $('#dock').hidden) errors.push('Lick-Ansicht: Zurück, Zahnrad oder Fußleiste fehlen');
+      show('list');
+      if (!$('[data-act="settings"]').hidden || !$('#foot').hidden || !$('#dock').hidden) errors.push('Liste: Zahnrad oder Fußleiste sichtbar');
+      if ($$('#sheet #sound-select, #sheet [data-act="glide"]').length !== 2 || $('.dock-bar #sound-select, .dock-bar [data-act="glide"]')) errors.push('Klang und Glide gehören ins Einstellungen-Sheet');
+    } finally {
+      selfTesting = false;
+      Object.assign(ui, { view: saved.view, step: saved.step, running: saved.running, result: saved.result, holdStage: saved.holdStage, review: saved.review, tempoPct: saved.tempoPct, cat: saved.cat });
+      state.lick = saved.lick; state.items = saved.items; state.notes = saved.notes;
+      $('#panel').innerHTML = saved.panel; $('#list').innerHTML = saved.list; $('#list-note').textContent = saved.note; $('#cat-chips').innerHTML = saved.chips;
+      show(saved.view);
+      if (saved.view === 'lick') renderFoot();
     }
     return errors;
   }
@@ -2293,10 +3379,10 @@
   }
 
   window.licks = {
-    LICKS, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
+    LICKS, sungOnsets, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
     sanitizeLicksState, selfCheck, selfCheckAudio,
     // für Konsole und Prüfungen
-    estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff,
+    runBpm, uiCheck, estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff, renderLick,
   };
 
   /* ------------------------------------------------------------------------

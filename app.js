@@ -125,7 +125,7 @@ function fmtRatePercent(rate) {
 const VOICE_ORDER = ['FULL', 'SOP', 'ALT', 'TEN', 'BASS', 'BAR', 'LEAD', 'PIANO', 'OTHER'];
 
 const VOICE_LABEL = {
-  FULL:  'Gesamt',
+  FULL:  'Full',
   SOP:   'Sopran',
   ALT:   'Alt',
   TEN:   'Tenor',
@@ -2283,8 +2283,9 @@ $('#settings-back').addEventListener('click', () => {
 // Zurück-Taste auf Android springt zwischen den Reitern bzw. aus dem Player
 // zurück, statt die App zu verlassen.
 window.addEventListener('popstate', () => {
-  // Eigener Rücksprung beim Schließen eines Tools (siehe popToolHistory).
-  if (skipNextPop) { skipNextPop = false; return; }
+  // Eigener Rücksprung beim Schließen eines Tools bzw. beim Abgleich der
+  // Tool-Ebenen (siehe popToolHistory/syncToolHistory).
+  if (skipPops) { skipPops--; syncToolHistory(); return; }
   // Zurück-Geste/-Taste bei offenem Tool: nur das Tool schließen.
   if (closeToolOverlayFromHistory()) return;
   applyRoute();
@@ -9887,6 +9888,8 @@ async function openPlayer(songId) {
   $('#player-title').textContent = songLabel(song);
   $('#btn-song-search').hidden = false;
   $('#player-hint').hidden = true;
+  // Jeder neue Song beginnt mit eingeklappter Setlisten-Vorschau.
+  setQueueOpen(false);
   renderQueue();
   playerVoice = null;
   resetBrokenNotice();
@@ -10128,6 +10131,15 @@ function songLabel(song) {
 // („1, 2, 3, 1, 2, 3").
 const queueRenderRuns = latestRuns();
 let queueExpanded = false;
+let queueOpen = false;   // Setlisten-Vorschau aufgeklappt? Nicht gespeichert.
+
+function setQueueOpen(open) {
+  queueOpen = open;
+  if (!open) queueExpanded = false;
+  $('#queue-body').dataset.open = String(open);
+  $('#queue-toggle').setAttribute('aria-expanded', String(open));
+}
+$('#queue-toggle').addEventListener('click', () => setQueueOpen(!queueOpen));
 
 async function renderQueue() {
   const run = queueRenderRuns.begin();
@@ -10146,11 +10158,21 @@ async function renderQueue() {
   $('#queue-title-text').textContent = t('player.queueLine')
     .replace('{name}', playQueue.name).replace('{pos}', pos).replace('{total}', total);
   $('#btn-queue-edit').hidden = !playQueue.id;
+  $('#queue-head-name').textContent = `${playQueue.name} · ${pos}/${total}`;
+  const nextItem = playQueue.items[playQueue.index + 1];
+  $('#queue-head-next').textContent = nextItem
+    ? t('player.queueNext').replace('{title}', nextItem.title || '')
+    : t('player.queueLast');
 
   const songs = await DB.metaByType('song').catch(() => []);
   if (run.stale) return; // eine neuere Anzeige läuft schon
   host.textContent = '';
   const byId = new Map(songs.map((s) => [s.id, s]));
+  if (nextItem) {
+    const nextSong = nextItem.id ? byId.get(nextItem.id) : null;
+    $('#queue-head-next').textContent = t('player.queueNext')
+      .replace('{title}', nextSong ? nextSong.title : (nextItem.title || ''));
+  }
 
   // Standardmäßig nur laufender und nächster Titel — auf Wunsch (über die
   // „…"-Zeile) klappt die ganze Playlist auf.
@@ -13330,15 +13352,22 @@ function releaseScoreURLs() {
 
 // Gilt für beide Quellen — offiziell wie privat —, damit die A−/A+-Knöpfe
 // unabhängig davon wirken, welcher Text gerade zu sehen ist.
+const LYRICS_FONT_MIN = 13;
+const LYRICS_FONT_MAX = 30;
+
 function applyLyricsFontSize() {
-  const size = `${settings.lyricsFontSize || 17}px`;
+  const px = settings.lyricsFontSize || 17;
+  const size = `${px}px`;
+  // An der Grenze ist die jeweilige Hälfte des Schriftgrößen-Knopfs aus.
+  $('#btn-lyrics-smaller').disabled = px <= LYRICS_FONT_MIN;
+  $('#btn-lyrics-bigger').disabled = px >= LYRICS_FONT_MAX;
   $('#lyrics-text').style.fontSize = size;
   $('#lyrics-note-display').style.fontSize = size;
   $('#lyrics-note-text').style.fontSize = size;
 }
 
 const stepFontSize = async (delta) => {
-  const next = Math.max(13, Math.min(30, (settings.lyricsFontSize || 17) + delta));
+  const next = Math.max(LYRICS_FONT_MIN, Math.min(LYRICS_FONT_MAX, (settings.lyricsFontSize || 17) + delta));
   await saveSettings({ lyricsFontSize: next });
   applyLyricsFontSize();
 };
@@ -13422,9 +13451,8 @@ async function loadSongLyricsNote() {
 }
 
 const LYRICS_EDIT_ICON = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
-// Beim Beenden der Bearbeitung dieselbe Diskette wie beim Speichern von
-// Loops und RECs — ein Haken wirkte eher wie „bestätigen" als „speichern".
-const LYRICS_DONE_ICON = '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>';
+// Der Knopf trägt jetzt die Beschriftung „Fertig" — ein Haken genügt als Icon.
+const LYRICS_DONE_ICON = '<path d="M5 12.5l4.5 4.5L19 7.5"/>';
 
 /** Welcher Text gerade sichtbar ist — genutzt fürs Ein-/Ausblenden des
  *  Vorlesemodus-Knopfs UND für dessen Inhalt (siehe openLyricsPresent). */
@@ -13464,7 +13492,7 @@ function renderLyricsBlock() {
   // Quellenwechsel hin und her.
   $('#btn-lyrics-note-edit').classList.toggle('slot-hidden', showOfficial);
   $('#lyrics-edit-icon').innerHTML = editing ? LYRICS_DONE_ICON : LYRICS_EDIT_ICON;
-  $('#btn-lyrics-note-edit').setAttribute('aria-label', t(editing ? 'lyrics.doneAria' : 'lyrics.editAria'));
+  $('#lyrics-edit-label').textContent = t(editing ? 'lyrics.doneAria' : 'lyrics.editAria');
 
   $('#lyrics-text').hidden = !showOfficial;
   if (showOfficial) $('#lyrics-text').textContent = playerSong.lyrics;
@@ -13476,7 +13504,6 @@ function renderLyricsBlock() {
     $('#lyrics-note-empty-hint').hidden = hasPrivate || editing;
     $('#lyrics-note-editor').hidden = !editing;
     $('#lyrics-note-text').value = hasPrivate ? (playerLyricsNote.text || '') : '';
-    setLyricsNoteState(hasPrivate ? 'saved' : 'none');
   }
 
   applyLyricsFontSize();
@@ -13531,19 +13558,6 @@ $('#btn-lyrics-present').addEventListener('click', openLyricsPresent);
 $('#lyrics-present-close').addEventListener('click', closeLyricsPresent);
 $('#lyrics-present').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLyricsPresent(); });
 
-function setLyricsNoteState(kind) {
-  const node = $('#lyrics-note-state');
-  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
-  if (kind === 'dirty')  { node.textContent = t('notes.stateDirty'); return; }
-  if (kind === 'saving') { node.textContent = t('notes.stateSaving'); return; }
-  if (kind === 'saved') {
-    const at = fmtClock(playerLyricsNote?.updatedAt);
-    node.textContent = at ? t('notes.stateSavedAt').replace('{time}', at) : t('notes.stateSaved');
-    return;
-  }
-  node.textContent = '';
-}
-
 $$('#lyrics-source-switch .preset').forEach((btn) => {
   btn.addEventListener('click', () => {
     lyricsSource = btn.dataset.lyricsSource;
@@ -13563,14 +13577,13 @@ function startLyricsNoteEditing() {
   if (!lyricsNotePersistedText.has(playerLyricsNote)) lyricsNotePersistedText.set(playerLyricsNote, '');
   lyricsNoteEditing = true;
   renderLyricsBlock();
-  setLyricsNoteState('none');
   $('#lyrics-note-text').focus();
 }
 
 $('#btn-lyrics-note-edit').addEventListener('click', async () => {
   if (!playerSong) return;
   if (!lyricsNoteEditing) { startLyricsNoteEditing(); return; }
-  await saveLyricsNote({ announce: true });
+  await saveLyricsNote({ finish: true });
   lyricsNoteEditing = false;
   renderLyricsBlock();
 });
@@ -13581,14 +13594,13 @@ $('#btn-lyrics-note-start').addEventListener('click', () => startLyricsNoteEditi
 
 $('#lyrics-note-text').addEventListener('input', () => {
   if (!playerLyricsNote) return;
-  setLyricsNoteState('dirty');
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = setTimeout(() => { saveLyricsNote(); }, LYRICS_NOTE_SAVE_DELAY);
 });
 
 $('#lyrics-note-text').addEventListener('blur', () => { if (lyricsNoteSaveTimer) saveLyricsNote(); });
 
-async function saveLyricsNote({ announce = false } = {}) {
+async function saveLyricsNote({ finish = false } = {}) {
   clearTimeout(lyricsNoteSaveTimer);
   lyricsNoteSaveTimer = null;
   const note = playerLyricsNote;
@@ -13596,23 +13608,21 @@ async function saveLyricsNote({ announce = false } = {}) {
 
   const text = $('#lyrics-note-text').value;
 
-  if (announce && !text.trim()) {
-    if (await deleteLyricsNote()) banner(t('lyrics.emptyRemoved'));
+  // „Fertig" mit leerem Text: der Liedtext verschwindet still. Beim
+  // automatischen Speichern bleibt das Feld dagegen offen.
+  if (finish && !text.trim()) {
+    await deleteLyricsNote();
     return;
   }
 
   note.text = text;
   note.songTitle = playerSong?.title || note.songTitle;
   note.updatedAt = new Date().toISOString();
-  setLyricsNoteState('saving');
 
   try {
     await lyricsNoteWrite(() => DB.metaPut(note));
     lyricsNotePersistedText.set(note, text);
-    if (playerLyricsNote === note) setLyricsNoteState('saved');
-    if (announce) banner(t('lyrics.saved'), { kind: 'ok' });
   } catch (err) {
-    if (playerLyricsNote === note) setLyricsNoteState('dirty');
     bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err);
   }
 }
@@ -13653,7 +13663,12 @@ function flushLyricsNote() {
 
   if (!text.trim()) {
     playerLyricsNote = null;
-    lyricsNoteWrite(() => DB.metaDelete(note.key)).catch(console.error);
+    lyricsNoteEditing = false;
+    clearTimeout(lyricsNoteSaveTimer);
+    lyricsNoteSaveTimer = null;
+    renderLyricsBlock();
+    lyricsNoteWrite(() => DB.metaDelete(note.key))
+      .catch((err) => bannerError(t('msg.lyricsDeleteFailed'), 'LYRICS-NOTE-DELETE', err));
     return;
   }
   if (text === lyricsNotePersistedText.get(note) && !lyricsNoteSaveTimer) return;
@@ -13665,7 +13680,7 @@ function flushLyricsNote() {
   const saved = { ...note };
   lyricsNoteWrite(() => DB.metaPut(saved))
     .then(() => lyricsNotePersistedText.set(note, text))
-    .catch(console.error);
+    .catch((err) => bannerError(t('msg.lyricsSaveFailed'), 'LYRICS-NOTE-SAVE', err));
 }
 
 function iconPdf() {
@@ -13689,6 +13704,10 @@ const PLAYER_TABS = ['loops', 'rec', 'lyrics', 'notes'];
 
 function setPlayerTab(tab) {
   if (!PLAYER_TABS.includes(tab)) return;
+  // Wer den Notizen-Reiter verlässt, hat nichts mehr zu speichern: Eingaben
+  // sofort sichern, eine leer gelassene Notiz verschwindet still.
+  if (tab !== 'notes' && $('#tab-btn-notes').getAttribute('aria-selected') === 'true') flushNote();
+  if (tab !== 'lyrics' && $('#tab-btn-lyrics').getAttribute('aria-selected') === 'true') flushLyricsNote();
   for (const name of PLAYER_TABS) {
     $(`#tab-btn-${name}`).setAttribute('aria-selected', String(name === tab));
     // Roving tabindex (F-08): nur der ausgewählte Reiter ist per Tab
@@ -13905,8 +13924,8 @@ $('#scores-modal-close').addEventListener('click', closeScoresModal);
 
    Gespeichert wird automatisch, aber nicht bei jedem Tastendruck: eine kurze
    Ruhepause reicht, danach ist es ein Schreibvorgang von wenigen hundert Byte.
-   Die Diskette daneben speichert sofort — für alle, die das lieber selbst in
-   der Hand haben.
+   Es gibt keinen Speichern- oder Löschen-Knopf: wer den Text leert und den
+   Reiter oder Song verlässt, dessen Notiz verschwindet still (flushNote).
    ========================================================================== */
 
 const NOTE_SAVE_DELAY = 900;   // ms Tippruhe, bevor automatisch gespeichert wird
@@ -13989,28 +14008,7 @@ function renderNoteBlock() {
   $('#note-empty').hidden = has;
   $('#note-editor').hidden = !has;
   $('#note-text').value = has ? (playerNote.text || '') : '';
-  setNoteState(has ? 'saved' : 'none');
   setTabHasContent('notes', has);
-}
-
-function setNoteState(kind) {
-  const node = $('#note-state');
-  node.dataset.dirty = kind === 'dirty' ? 'true' : 'false';
-  if (kind === 'dirty')  { node.textContent = t('notes.stateDirty'); return; }
-  if (kind === 'saving') { node.textContent = t('notes.stateSaving'); return; }
-  if (kind === 'saved') {
-    const at = fmtClock(playerNote?.updatedAt);
-    node.textContent = at ? t('notes.stateSavedAt').replace('{time}', at) : t('notes.stateSaved');
-    return;
-  }
-  node.textContent = '';
-}
-
-function fmtClock(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  return d.toLocaleTimeString(currentLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 $('#btn-note-add').addEventListener('click', () => {
@@ -14020,13 +14018,11 @@ $('#btn-note-add').addEventListener('click', () => {
   playerNote = newNote(playerSong);
   notePersistedText.set(playerNote, '');
   renderNoteBlock();
-  setNoteState('none');
   $('#note-text').focus();
 });
 
 $('#note-text').addEventListener('input', () => {
   if (!playerNote) return;
-  setNoteState('dirty');
   clearTimeout(noteSaveTimer);
   noteSaveTimer = setTimeout(() => { saveNote(); }, NOTE_SAVE_DELAY);
 });
@@ -14034,78 +14030,33 @@ $('#note-text').addEventListener('input', () => {
 // Wer das Feld verlässt, will nicht auf die Tippruhe warten.
 $('#note-text').addEventListener('blur', () => { if (noteSaveTimer) saveNote(); });
 
-$('#btn-note-save').addEventListener('click', () => saveNote({ announce: true }));
-
-$('#btn-note-delete').addEventListener('click', async () => {
-  if (!playerNote) return;
-  if ($('#note-text').value.trim()) {
-    const ok = await confirmDialog({
-      title: t('notes.deleteTitle'),
-      text: t('notes.deleteText').replace('{song}', playerSong?.title || t('notes.thisSong')),
-      okLabel: t('common.delete'), danger: true,
-    });
-    if (!ok) return;
-  }
-  await deleteNote();
-});
-
-async function saveNote({ announce = false } = {}) {
+async function saveNote() {
   clearTimeout(noteSaveTimer);
   noteSaveTimer = null;
   const note = playerNote;
   if (!note) return;
 
+  // Das Feld bleibt beim automatischen Speichern offen, auch wenn es leer ist
+  // — sonst verschwindet es unter den Händen, während jemand neu schreibt.
+  // Eine leere Notiz räumt erst flushNote weg (Reiter-/Songwechsel, Wegwischen).
   const text = $('#note-text').value;
-
-  // Ausdrücklich gespeicherte Leere heißt: Notiz weg. Beim automatischen
-  // Speichern bleibt das Feld dagegen offen — sonst verschwindet es unter den
-  // Händen, während jemand den Text gerade neu schreibt.
-  if (announce && !text.trim()) {
-    if (await deleteNote()) banner(t('notes.emptyRemoved'));
-    return;
-  }
-
   note.text = text;
   note.songTitle = playerSong?.title || note.songTitle;
   note.updatedAt = new Date().toISOString();
-  setNoteState('saving');
 
   try {
     await noteWrite(() => DB.metaPut(note));
     notePersistedText.set(note, text);
-    if (playerNote === note) setNoteState('saved');
-    if (announce) banner(t('notes.saved'), { kind: 'ok' });
   } catch (err) {
-    if (playerNote === note) setNoteState('dirty');
     bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err);
   }
 }
 
-/** @returns {Promise<boolean>} ob die Notiz tatsächlich gelöscht wurde. */
-async function deleteNote() {
-  clearTimeout(noteSaveTimer);
-  noteSaveTimer = null;
-  const note = playerNote;
-  playerNote = null;
-  renderNoteBlock();
-  if (!note) return true;
-  try {
-    await noteWrite(() => DB.metaDelete(note.key));
-    return true;
-  } catch (err) {
-    // Der Datensatz steht noch in der Datenbank — das darf nicht als
-    // „gelöscht" durchgehen, sonst ist die Notiz nach dem nächsten Start
-    // unerwartet wieder da.
-    playerNote = note;
-    renderNoteBlock();
-    bannerError(t('msg.noteDeleteFailed'), 'NOTE-DELETE', err);
-    return false;
-  }
-}
-
 /**
- * Beim Schließen des Players oder beim Wegwischen der App sichern, was noch
- * offen ist. Liest den Text sofort — danach darf der Player längst zu sein.
+ * Sichert, was noch offen ist: beim Schließen des Players, Songwechsel,
+ * Reiterwechsel und Wegwischen der App. Liest den Text sofort — danach darf
+ * der Player längst zu sein. Eine leer gelassene Notiz verschwindet dabei
+ * still (kein Dialog), wie beim eigenen Liedtext.
  */
 function flushNote() {
   const note = playerNote;
@@ -14114,7 +14065,11 @@ function flushNote() {
 
   if (!text.trim()) {
     playerNote = null;
-    noteWrite(() => DB.metaDelete(note.key)).catch(console.error);
+    clearTimeout(noteSaveTimer);
+    noteSaveTimer = null;
+    renderNoteBlock();
+    noteWrite(() => DB.metaDelete(note.key))
+      .catch((err) => bannerError(t('msg.noteDeleteFailed'), 'NOTE-DELETE', err));
     return;
   }
   if (text === notePersistedText.get(note) && !noteSaveTimer) return;
@@ -14126,7 +14081,7 @@ function flushNote() {
   const saved = { ...note };
   noteWrite(() => DB.metaPut(saved))
     .then(() => notePersistedText.set(note, text))
-    .catch(console.error);
+    .catch((err) => bannerError(t('msg.noteSaveFailed'), 'NOTE-SAVE', err));
 }
 
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
@@ -14806,7 +14761,7 @@ function pickRoutineVoice(wishes, voices) {
 
 /** Vorgabewerte für eine neue, noch ungespeicherte Zeile (siehe Tabelle in
  *  Abschnitt 2 der Anweisung): erste Zeile 3×/1,0×/eigene Stimme, jede
- *  weitere über „+" 2×/1,0×/Gesamt (ab der dritten Zeile Kopie der zuletzt
+ *  weitere über „+" 2×/1,0×/Full (ab der dritten Zeile Kopie der zuletzt
  *  hinzugefügten — das übernimmt der Aufrufer in der Dialog-UI). `voices`
  *  begrenzt die Stimme auf das, was der Song hat. */
 function newRoutineDefaultStep(isFirst, withVoice, voices) {
@@ -15379,6 +15334,32 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         orderContainer);
     }
 
+    // Vorlagen belegen die Schrittliste nur vor — danach ist alles wie bisher
+    // editierbar. „Eigene Stimme" = erste Stimme aus dem Stimmprofil, sonst die
+    // gerade im Player gewählte, sonst Full (jeweils nur, wenn zur Wahl).
+    let templates = null;
+    if (withVoice) {
+      const optionValues = voiceOptions().map(([v]) => v);
+      const currentVoice = playerSong?.tracks?.find((tr) => tr.fileKey === playerVoice)?.voice;
+      const own = pickRoutineVoice([settings.myVoices[0], currentVoice, 'FULL'], optionValues);
+      const full = pickRoutineVoice(['FULL'], optionValues);
+      const TEMPLATES = [
+        ['routine.tplLearn',   [[2, 0.7, own], [2, 1, own]]],
+        ['routine.tplConsolidate', [[2, 0.85, own], [2, 1, full]]],
+        ['routine.tplRunThrough',  [[3, 1, full]]],
+      ];
+      templates = el('div', { class: 'routine-templates', role: 'group', 'aria-label': t('routine.templatesAria') },
+        ...TEMPLATES.map(([key, steps]) => el('button', {
+          type: 'button', class: 'routine-chip', text: t(key),
+          onclick: () => {
+            draftSteps.length = 0;
+            for (const [reps, rate, voice] of steps) draftSteps.push({ reps, rate, voice });
+            renderRows();
+            updateResetVisibility();
+          },
+        })));
+    }
+
     const startBtn = el('button', {
       class: 'btn btn--primary', type: 'button', text: t('routine.startBtn'), disabled: !!emptyHint,
     });
@@ -15398,7 +15379,10 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
     updateResetVisibility();
 
     const box = el('div', { class: 'dialog routine-dialog', style: 'max-height:86vh; display:flex; flex-direction:column; overflow-y:auto' },
-      el('div', { class: 'routine-head' }, el('h2', { text: 'Choirgym' }), resetBtn),
+      el('div', { class: 'routine-head' },
+        el('div', {}, el('h2', { text: t('routine.openLabel') }), el('span', { class: 'small muted routine-head-sub', text: 'Choirgym' })),
+        resetBtn),
+      templates,
       emptyHint ? el('p', { class: 'small muted', text: emptyHint }) : null,
       table,
       el('div', { class: 'routine-add' }, addBtn),
@@ -15408,7 +15392,7 @@ function showRoutineDialog({ scope, targetId, stored, itemLabel, withVoice, elem
         el('div', { class: 'dialog-actions' },
           el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
           startBtn)));
-    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Choirgym' }, box);
+    const layer = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': `${t('routine.openLabel')} – Choirgym` }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     document.body.append(layer);
     openModal(layer, { initialFocus: rowsHost.querySelector('select'), onEscape: () => done(null) });
@@ -18738,6 +18722,14 @@ function runSelfTests() {
       const pg = (done, grooves) => ({ rhythm: { course: { done }, grooves } });
       const g = { puls: { due: '2026-10-10' }, achtel: { due: '2026-10-12' }, x: null };
       if (groovesOf(pg(['puls', 'achtel', 7], g)).done.length !== 2 || groovesOf(null).done.length !== 0) failed.push('groovesOf falsch');
+      // Übungsfortschritt aus uebe-lab.html: übernommen, wenn eine Zahl; sonst null (alter Stand → Anteil „sitzt“).
+      const withP = { rhythm: { course: { done: ['puls'] }, grooves: {}, groovesProgress: .4 } };
+      if (groovesOf(withP).progress !== .4 || groovesOf(pg(['puls'], g)).progress !== null || groovesOf({ rhythm: { groovesProgress: 'x' } }).progress !== null) failed.push('groovesOf: Übungsfortschritt');
+      const tile = document.createElement('button'), bar = document.createElement('span');
+      paintTileProgress(tile, bar, 'Licks', 2, 0, .375);
+      if (bar.style.getPropertyValue('--pct') !== '38%') failed.push(`Kachelbalken mit Übungsfortschritt: ${bar.style.getPropertyValue('--pct')}`);
+      paintTileProgress(tile, bar, 'Licks', 4, 1, null);
+      if (bar.style.getPropertyValue('--pct') !== '25%') failed.push(`Kachelbalken ohne Übungsfortschritt: ${bar.style.getPropertyValue('--pct')}`);
     }
     if (!PROGRESS_AREAS.includes('licks') || Object.values(PROGRESS_GROUPS).some((g) => g.includes('licks'))) failed.push('PROGRESS_AREAS: licks fehlt oder steht in einer Gruppe');
     {
@@ -18749,6 +18741,16 @@ function runSelfTests() {
       const back = sanitizeProgress(JSON.parse(JSON.stringify(withLicks)));
       if (!back.days['2026-10-11']?.licks?.[2]?.n || back.days['2026-10-11'].licks.sec !== 40 || !back.recent.licks?.length) failed.push('Fortschritt: Bereich „licks“ wird verworfen');
       if (practiceTileState(withLicks, 'rhythm').level !== 2 || !practiceTileState(withLicks, 'sing').isNew) failed.push('Üben-Kacheln ändern sich durch „licks“');
+    }
+    {
+      // Körper (Übe-Korrekturen 11): Bereich in der Gruppe Rhythmus; ein frischer Stand ohne
+      // gespielten „body“ ändert den Ring nicht, erst ein Lauf zählt mit.
+      if (!PROGRESS_AREAS.includes('body') || !PROGRESS_AREAS.includes('entries') || PROGRESS_GROUPS.rhythm.join() !== 'rhythm,downbeat,body,entries') failed.push('PROGRESS_GROUPS: body/entries fehlen in Rhythmus');
+      const r = applyProgressEntries(emptyProgress(), [{ area: 'rhythm', level: 4, right: true }, { area: 'downbeat', level: 2, right: true }], '2026-10-10');
+      if (practiceTileState(r, 'rhythm').level !== 3) failed.push(`Üben-Kachel Rhythmus ohne Körper: ${practiceTileState(r, 'rhythm').level} statt 3`);
+      const rb = applyProgressEntries(sanitizeProgress(JSON.parse(JSON.stringify(r))), [{ area: 'body', level: 1, right: true, seconds: 20 }], '2026-10-11');
+      if (!sanitizeProgress(JSON.parse(JSON.stringify(rb))).recent.body?.length) failed.push('Fortschritt: Bereich „body“ wird verworfen');
+      if (practiceTileState(rb, 'rhythm').level !== Math.round((4 + 2 + 1) / 3)) failed.push('Üben-Kachel Rhythmus: gespielter Körper zählt nicht mit');
     }
     for (const group of ['rhythm', 'ear', 'sing']) {
       const st = practiceTileState(emptyProgress(), group);
@@ -20210,6 +20212,405 @@ async function runMusicSelfTests({ log = true } = {}) {
     for (const junk of [undefined, null, 'x', [], { done: [1], last: 7 }, { done: { gibtsNicht: '2026-01-01', [lessonId]: '28.9.2026' }, last: 'gibtsNicht' }]) {
       if (!same(T.sanitizeWorkshopProgress(junk), { done: {}, last: null })) failed.push(`Workshop: Fortschritt aus ${JSON.stringify(junk)} nicht Standard`);
     }
+  }
+
+  // de:construct (DECONSTRUCT-BERICHT.md): feste Songs je Stufe,
+  // Vergleich je Element, A/B behält die Position, Speichern/Laden.
+  if (T.dcBuild) {
+    const clone = (v) => JSON.parse(JSON.stringify(v));
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const hintKeys = new Set();
+    const note = (r) => { r.hints.forEach((h) => hintKeys.add(h.key)); return r; };
+    // 1. Katalog: 5–10 Songs je Stufe, Ids eindeutig, Raster in Taktlänge,
+    //    nur baubare Zeichen; Original gegen sich selbst „stimmt“, der Start
+    //    von „Meine Version“ ist nie schon gelöst.
+    if (new Set(T.DC_SONGS.map((x) => x.id)).size !== T.DC_SONGS.length) failed.push('de:construct: Song-Ids doppelt');
+    for (const level of T.DC_LEVELS) {
+      const n = T.dcSongsOf(level.id).length;
+      if (n < 5 || n > 10) failed.push(`de:construct ${level.id}: ${n} Songs statt 5–10`);
+    }
+    for (const song of T.DC_SONGS) {
+      const id = `de:construct ${song.id}`;
+      const level = T.DC_LEVELS.find((l) => l.id === song.level);
+      if (!level) { failed.push(`${id}: Stufe ${song.level} unbekannt`); continue; }
+      const steps = T.METERS[song.meter].steps;
+      for (const track of [...T.DRUM_TRACKS, 'bass']) {
+        const line = song[track] || '';
+        if (line && line.length !== steps) failed.push(`${id}: ${track} hat ${line.length} statt ${steps} Stellen`);
+        const ok = track === 'bass' ? /^[158.]*$/ : track === 'snare' ? /^[xg.]*$/ : /^[x.]*$/;
+        if (!ok.test(line)) failed.push(`${id}: ${track} „${line}“ nicht baubar`);
+      }
+      if (level.id !== 'hard' && song.meter !== '4/4') failed.push(`${id}: Taktart ≠ 4/4`);
+      if (typeof song.genre !== 'string' || !song.genre.trim()) failed.push(`${id}: Genre fehlt`);
+      if (Math.abs(song.bpm - 100) <= 3 && song.meter === '4/4') failed.push(`${id}: Tempo wie der Start von „Meine Version“`);
+      if (level.elements.includes('melody') && !song.melody) failed.push(`${id}: Melodie fehlt`);
+      if (level.elements.includes('sound') && (!song.sound || !T.SYNTH_PRESETS.some((p) => p.name === song.sound))) failed.push(`${id}: Klang „${song.sound}“ unbekannt`);
+      const a = T.dcBuild(song.id);
+      if (!same(a, T.dcBuild(song.id))) failed.push(`${id}: nicht deterministisch`);
+      if (!same(T.sanitizeState(clone(a.original)), a.original) || !same(T.sanitizeState(clone(a.mine)), a.mine)) failed.push(`${id}: Stand nicht sanitize-fest`);
+      if (song.melody && !same(a.original.melodyBars, song.melody)) failed.push(`${id}: Melodie geht beim Bereinigen verloren`);
+      if (a.original.keyRoot !== a.mine.keyRoot) failed.push(`${id}: Grundton nicht vorgegeben`);
+      for (const el of level.elements) {
+        if (T.dcCompare(a.original, a.original, el).status !== 'ok') failed.push(`${id}: ${el} gegen sich selbst ≠ ok`);
+        if (note(T.dcCompare(a.original, a.mine, el)).status === 'ok') failed.push(`${id}: ${el} schon zu Beginn gelöst`);
+      }
+      // Leicht: Akkordfolge vorgegeben (die Basslinie folgt ihr).
+      if (!level.elements.includes('chords') && T.dcCompare(a.original, { ...a.mine, chordsOn: true }, 'chords').status !== 'ok') failed.push(`${id}: Akkorde nicht vorgegeben`);
+      // Nachbau nur mit dem, was die Reiter können: Taktart-Knopf (erster
+      // Loop der Taktart), Zellen antippen (Werte aus CELL_CYCLE), Tempo und
+      // Swing, Modus und Akkord-Editor, Melodie-Editor, Klang-Preset.
+      const m = clone(a.mine);
+      m.patternIndex = T.DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
+      m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+      for (const track of [...T.DRUM_TRACKS, 'bass']) {
+        [...(song[track] || '')].forEach((c, st) => {
+          if (c === '.') return;
+          const v = track === 'bass' ? { 1: 0, 5: 4, 8: 7 }[c] : c === 'g' ? .45 : 1;
+          if (!T.CELL_CYCLE[track].includes(v)) failed.push(`${id}: ${track} ${v} nicht antippbar`);
+          m.beat[track][st] = v;
+        });
+      }
+      m.bpm = song.bpm;
+      m.swing = song.swing || 0;
+      if (T.DRUM_PATTERNS[m.patternIndex].swingUnit) failed.push(`${id}: Swing hängt am Loop`);
+      m.modeId = song.mode;
+      m.progDegrees = [...song.chords.degrees];
+      m.progSevenths = !!song.chords.sevenths;
+      m.progDominant = !!song.chords.dominant;
+      m.progDom7 = false;
+      m.chordBars = song.chordBars || 1;
+      m.chordsOn = true;
+      if (song.melody) {
+        if (song.melody.length > 4) failed.push(`${id}: Melodie länger als der Editor (4 Takte)`);
+        for (const n of song.melody.flat()) {
+          if (![1, 2, 4, 6, 8].includes(n[2]) || n[1] < -7 || n[1] > 13 || n[0] + n[2] > steps) failed.push(`${id}: Melodieton ${JSON.stringify(n)} nicht im Editor setzbar`);
+        }
+        m.melodyOn = true;
+        m.melodyBars = clone(song.melody);
+        m.melodyMeter = song.meter;
+        m.melodyRef = 'chord';
+      }
+      if (song.sound) m.sound = T.soundFromPreset(T.presetIndexByName(song.sound));
+      const built = T.sanitizeState(m);
+      for (const el of level.elements) {
+        const r = T.dcCompare(a.original, built, el);
+        if (r.status !== 'ok') failed.push(`${id}: ${el} nach dem Nachbau ${r.status}`);
+      }
+    }
+    // 2. Vergleich je Element mit gebauten Fällen.
+    {
+      // Mittel mit Ghost-Notes, Akkorde je 1 Takt.
+      const o = T.dcBuild('m2').original;
+      const m = clone(o);
+      const check = (label, mine, el, status, key) => {
+        const r = note(T.dcCompare(o, mine, el));
+        if (r.status !== status || (key && !r.hints.some((h) => h.key === key))) failed.push(`de:construct ${label}: ${JSON.stringify(r)} statt ${status}/${key || '–'}`);
+      };
+      check('Tempo +2', { ...m, bpm: o.bpm + 2 }, 'tempo', 'ok');
+      check('Tempo −6', { ...m, bpm: o.bpm - 6 }, 'tempo', 'near', 'lab.dc.hint.bitFaster');
+      check('Tempo +20', { ...m, bpm: o.bpm + 20 }, 'tempo', 'no', 'lab.dc.hint.muchSlower');
+      check('Swing', { ...m, swing: Math.abs(o.swing - .6) }, 'tempo', 'near', 'lab.dc.hint.swing');
+      const p34 = T.DRUM_PATTERNS.findIndex((p) => p.meter === '3/4');
+      check('Taktart', { ...m, patternIndex: p34 }, 'tempo', 'no', 'lab.dc.hint.meter');
+      check('Taktart Bass', { ...m, patternIndex: p34 }, 'bass', 'no', 'lab.dc.hint.meterFirst');
+      // Bass: gleicher Rhythmus, andere Töne → fast
+      const steps = Object.keys(o.beat.bass).map(Number);
+      const wrongNotes = clone(m); steps.forEach((st) => { wrongNotes.beat.bass[st] = o.beat.bass[st] === 7 ? 4 : 7; });
+      check('Bass Töne', wrongNotes, 'bass', 'near', 'lab.dc.hint.bassNotes');
+      const lessRhythm = clone(m); delete lessRhythm.beat.bass[steps[steps.length - 1]];
+      check('Bass Rhythmus', lessRhythm, 'bass', 'near', 'lab.dc.hint.bassRhythm');
+      check('Bass leer', { ...m, beat: { ...m.beat, bass: {} } }, 'bass', 'no', 'lab.dc.hint.bassEmpty');
+      check('Bass aus', { ...m, trackOn: { ...m.trackOn, bass: false } }, 'bass', 'no', 'lab.dc.hint.bassEmpty');
+      // Beat: eine Spur fehlt → nennt sie, ohne Schritte zu verraten
+      const noHat = clone(m); noHat.beat.hat = {};
+      const r = note(T.dcCompare(o, noHat, 'beat'));
+      if (r.status === 'ok' || !r.hints.length || /\d/.test(JSON.stringify(r.hints.map((h) => h.vars)))) failed.push(`de:construct Beat ohne Hi-Hat: ${JSON.stringify(r)}`);
+      // Detaildaten fürs Prüf-Blatt: Hi-Hat ✗, andere ✓, nie Schrittnummern
+      if (!Array.isArray(r.parts) || r.parts.find((x) => x.id === 'hat')?.ok !== false
+        || r.parts.some((x) => x.id !== 'hat' && !x.ok) || r.parts.some((x) => Object.keys(x).sort().join() !== 'id,ok,soft')) failed.push(`de:construct Beat-Details: ${JSON.stringify(r.parts)}`);
+      const rOk = T.dcCompare(o, o, 'beat');
+      if (!rOk.parts?.length || rOk.parts.some((x) => !x.ok)) failed.push('de:construct Beat-Details bei „stimmt“');
+      const bR = T.dcCompare(o, wrongNotes, 'bass');
+      const bN = T.dcCompare(o, lessRhythm, 'bass');
+      if (bR.parts?.rhythm !== true || bR.parts?.notes !== false) failed.push(`de:construct Bass-Details Töne: ${JSON.stringify(bR.parts)}`);
+      if (bN.parts?.rhythm !== false || bN.parts?.notes !== true) failed.push(`de:construct Bass-Details Rhythmus: ${JSON.stringify(bN.parts)}`);
+      if (JSON.stringify(T.dcCompare(o, o, 'bass').parts) !== '{"rhythm":true,"notes":true}') failed.push('de:construct Bass-Details bei „stimmt“');
+      check('Beat leer', { ...m, beat: { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: m.beat.bass } }, 'beat', 'no', 'lab.dc.hint.beatEmpty');
+      const snareSteps = Object.keys(o.beat.snare);
+      if (snareSteps.length) {
+        const ghost = clone(m); snareSteps.forEach((st) => { ghost.beat.snare[st] = ghost.beat.snare[st] < 1 ? 1 : .45; });
+        check('Ghost-Notes', ghost, 'beat', 'near', 'lab.dc.hint.ghost');
+      }
+      // Akkorde
+      check('Akkorde aus', { ...m, chordsOn: false }, 'chords', 'no', 'lab.dc.hint.chordsOff');
+      check('Akkorde doppelt so langsam', { ...m, chordBars: 2 }, 'chords', 'near', 'lab.dc.hint.chordsFaster');
+      const otherMode = o.modeId === 'major' ? 'minor' : 'major';
+      const qual = T.dcCompare(o, { ...m, modeId: otherMode }, 'chords');
+      if (qual.status === 'ok') failed.push('de:construct: anderes Tongeschlecht gilt als richtig');
+      // Melodie und Klang (Stufe schwer)
+      const h = T.dcBuild('h4').original;
+      const hm = clone(h);
+      const checkH = (label, mine, el, status, key) => {
+        const res = note(T.dcCompare(h, mine, el));
+        if (res.status !== status || (key && !res.hints.some((x) => x.key === key))) failed.push(`de:construct ${label}: ${JSON.stringify(res)} statt ${status}/${key || '–'}`);
+      };
+      checkH('Melodie Oktave', { ...hm, melodyOctave: h.melodyOctave === 4 ? 5 : 4 }, 'melody', 'near', 'lab.dc.hint.octave');
+      checkH('Melodie aus', { ...hm, melodyOn: false }, 'melody', 'no', 'lab.dc.hint.melodyOff');
+      checkH('Melodie gegen andere Akkorde', { ...hm, progId: 'drone', progDegrees: null }, 'melody', 'ok');
+      const mel = h.melodyBars.map((bar) => bar.map((n) => [...n]));
+      const shifted = mel.map((bar) => bar.map(([at, deg, len, alt]) => (alt ? [at, deg + 1, len, alt] : [at, deg + 1, len])));
+      checkH('Melodie Töne', { ...hm, melodyBars: shifted, melodyMeter: T.DRUM_PATTERNS[h.patternIndex].meter, melodyRef: 'chord' }, 'melody', 'near', 'lab.dc.hint.melNotes');
+      checkH('Klang gleich', hm, 'sound', 'ok');
+      checkH('Klang Wellenform', { ...hm, sound: { ...h.sound, wave: h.sound.wave === 'sine' ? 'square' : 'sine' } }, 'sound', 'near', 'lab.dc.hint.parts');
+    }
+    // Alle Hinweis-Schlüssel gibt es als Text (DE, EN, PL).
+    for (const key of hintKeys) for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
+    for (const key of ['lab.viewDeconstruct', 'lab.dc.moreAria', 'lab.dc.intro', 'lab.dc.how', 'lab.dc.startSong', 'lab.dc.resume', 'lab.dc.songsOf', 'lab.dc.songsTitle', 'lab.dc.replaceWarn', 'lab.dc.songTitle',
+      ...['calm', 'mid', 'brisk', 'fast'].map((x) => `lab.dc.feel.${x}`), 'lab.dc.quickNow.orig', 'lab.dc.quickNow.mine', 'lab.dc.help.title', 'lab.dc.help.titleMore', 'lab.dc.help.listen', 'lab.dc.help.reveal', 'lab.dc.help.listening',
+      'lab.dc.grid.rowOk', 'lab.dc.grid.missOne', 'lab.dc.grid.missMany', 'lab.dc.grid.extra', 'lab.dc.legend.ok', 'lab.dc.legend.miss', 'lab.dc.legend.extra', 'lab.dc.legend.ghost',
+      'lab.dc.part.rhythm', 'lab.dc.part.rhythmSub', 'lab.dc.part.notes', 'lab.dc.part.notesSub', 'lab.dc.sheet.sub.tracks', 'lab.dc.sheet.sub.bass', 'lab.dc.sheet.sub.all', 'lab.dc.sheet.allDone',
+      'lab.dc.sheet.next', 'lab.dc.sheet.nextSong', 'lab.dc.sheet.close', 'lab.dc.sheet.keepBuilding', 'lab.dc.sheet.beatTip', ...['ok', 'near', 'no'].flatMap((x) => [`lab.dc.sheet.title.${x}`, `lab.dc.sheet.sub.${x}`]),
+      ...['kick', 'snare', 'clap', 'hat', 'open'].map((x) => `lab.dc.bridge.${x}`), 'lab.dc.tapSub', 'lab.dc.tapAria', 'lab.dc.checkEl', 'lab.dc.next', 'lab.dc.tpl', 'lab.dc.clearGrid', 'lab.dc.meterAria',
+      ...T.DC_ELEMENTS.flatMap((el) => [`lab.dc.el.${el}`, `lab.dc.do.${el}`, `lab.dc.short.${el}`, `lab.dc.tip.${el}`]),
+      ...T.DC_LEVELS.flatMap((l) => [`lab.dc.level.${l.id}`, `lab.dc.levelInfo.${l.id}`]), ...T.DC_FOCUS.map((f) => `lab.dc.focus.${f}`),
+      ...['ok', 'near', 'no', 'open', 'done'].map((s) => `lab.dc.status.${s}`)]) {
+      for (const lang of ['de', 'en', 'pl']) if (typeof STRINGS[lang]?.[key] !== 'string') failed.push(`de:construct: Text ${key} fehlt (${lang})`);
+    }
+    // 3. A/B behält die Position: gleiche Taktart → derselbe Schritt;
+    //    andere → Anfang des nächsten Takts mit derselben Taktnummer.
+    if (T.dcSwitchStep(37, 16, 16) !== 37) failed.push('de:construct A/B: Schritt springt bei gleicher Taktart');
+    for (const [g, from, to] of [[37, 16, 12], [32, 16, 12], [25, 12, 16], [0, 12, 16]]) {
+      const n = T.dcSwitchStep(g, from, to);
+      if (n % to !== 0 || n / to !== Math.ceil(g / from)) failed.push(`de:construct A/B: ${g} (${from}→${to}) → ${n}`);
+    }
+    // … und in der echten Ansicht (nicht eingehängt, ohne Ton).
+    try {
+      const songIn = (meter) => T.dcNewSong(T.DC_SONGS.find((x) => x.level === 'hard' && x.meter === meter).id);
+      for (const meter of ['4/4', '3/4']) {
+        const dc = songIn(meter);
+        const view = document.createElement('chor-groove-lab');
+        view.state.bpm = 77; // Studio-Stand erkennbar machen
+        const studio = clone(view.state);
+        view._saved.deconstruct = dc;
+        view._applyView('deconstruct');
+        if (!view._dcActive || !same(view.state.beat, dc.mine.beat) || view.state.bpm !== dc.mine.bpm) failed.push(`de:construct Ansicht ${meter}: „Meine Version“ nicht geladen`);
+        if (view.ui.dc.listen !== 'orig') failed.push(`de:construct Ansicht ${meter}: startet nicht mit dem Original`);
+        if (view._dcHeard(() => view.state) !== dc.original || view.state === dc.original) failed.push(`de:construct Ansicht ${meter}: A spielt nicht das Original`);
+        const origStep = view._dcHeard(() => view._stepSeconds());
+        if (Math.abs(origStep - T.stepSecondsFor(dc.original.bpm, meter)) > 1e-9) failed.push(`de:construct Ansicht ${meter}: Original-Tempo nicht hörbar`);
+        view.playing = true; // nur die Position — kein AudioContext
+        view.globalStep = 37;
+        view._dcListen('mine');
+        const want = T.dcSwitchStep(37, T.METERS[meter].steps, 16);
+        if (view.globalStep !== want) failed.push(`de:construct Ansicht ${meter}: A→B Schritt ${view.globalStep} statt ${want}`);
+        if (view._dcHeard(() => view.state) !== view.state) failed.push(`de:construct Ansicht ${meter}: B spielt nicht meine Version`);
+        const before = view.globalStep;
+        view._dcListen('orig');
+        if (meter === '4/4' && view.globalStep !== before) failed.push('de:construct Ansicht: B→A springt im selben Takt');
+        view.playing = false;
+        // Prüfen: Tempo nachstellen → stimmt und bleibt geschafft.
+        view.state.patternIndex = dc.original.patternIndex;
+        view.state.bpm = dc.original.bpm;
+        view.state.swing = dc.original.swing;
+        view._dcCheck('tempo');
+        if (dc.checks.tempo !== 'ok' || !dc.done.tempo) failed.push(`de:construct Ansicht ${meter}: Tempo-Prüfung ${dc.checks.tempo}`);
+        view.state.bpm = 180;
+        view._dcCheck('tempo');
+        if (dc.checks.tempo === 'ok' || !dc.done.tempo) failed.push(`de:construct Ansicht ${meter}: „geschafft“ geht verloren`);
+        // Verlassen: Studio-Stand zurück, „Meine Version“ gesichert.
+        view._applyView('studio');
+        if (view._dcActive || view.state.bpm !== studio.bpm || dc.mine.bpm !== 180) failed.push(`de:construct Ansicht ${meter}: Verlassen tauscht falsch`);
+        view._applyView('deconstruct');
+        if (view.state.bpm !== 180) failed.push(`de:construct Ansicht ${meter}: Wiederkommen lädt meine Version nicht`);
+        view._applyView('studio');
+      }
+    } catch (err) {
+      failed.push(`de:construct Ansicht: ${err?.message || err}`);
+    }
+    // Auswahl: Tempo-Gefühl (Grenzen in Vierteln, 6/8 über Achtel) und Songliste der echten, nicht eingehängten Lab-Instanz.
+    try {
+      const feel = (bpm, meter) => T.dcTempoFeel({ bpm, meter });
+      const feels = [[79, '4/4', 'calm'], [80, '4/4', 'mid'], [104, '4/4', 'mid'], [105, '4/4', 'brisk'], [124, '4/4', 'brisk'], [125, '4/4', 'fast'],
+        [52, '6/8', 'calm'], [54, '6/8', 'mid'], [70, '6/8', 'brisk'], [84, '6/8', 'fast']];
+      for (const [bpm, meter, want] of feels) if (feel(bpm, meter) !== want) failed.push(`de:construct Tempo-Gefühl ${bpm} ${meter}: ${feel(bpm, meter)} statt ${want}`);
+      const dcA = T.dcNewSong('e2', '2026-09-01', { e1: '2026-09-02' });
+      dcA.done.tempo = '2026-10-01';
+      const w = document.createElement('chor-groove-lab');
+      w._saved.deconstruct = dcA;
+      w._applyView('deconstruct');
+      w.ui.dc.choosing = true;
+      w.ui.dc.level = 'easy';
+      w.ui.dc.song = 'e2';
+      w._applyView('deconstruct');
+      const rows = w.$all('.dc-list .dc-row');
+      if (rows.length !== T.dcSongsOf('easy').length) failed.push(`de:construct Auswahl: ${rows.length} Zeilen statt ${T.dcSongsOf('easy').length}`);
+      const rowOf = (id) => rows.find((r) => r.dataset.value === id);
+      if (!rowOf('e1')?.textContent.includes('✓')) failed.push('de:construct Auswahl: gelöster Song ohne ✓');
+      if (!/1\/3/.test(rowOf('e2')?.textContent || '')) failed.push(`de:construct Auswahl: laufender Song ohne „1/3“ (${rowOf('e2')?.textContent})`);
+      if (rowOf('e2')?.getAttribute('aria-pressed') !== 'true' || rowOf('e3')?.getAttribute('aria-pressed') !== 'false') failed.push('de:construct Auswahl: aria-pressed');
+      if (rows.some((r) => (r.querySelector('.dc-row-main').textContent.match(/\d+/g) || []).some((n) => Number(n) >= 40))) failed.push('de:construct Auswahl: BPM-Zahl in der Songliste');
+      const btnText = () => w.$('.dc-primary span').textContent;
+      const resumeText = btnText(); // ohne eingereichtes t() steht der Schlüssel da — „Weiter“ ≠ „Starten“ reicht
+      if (!resumeText) failed.push('de:construct Auswahl: Startknopf ohne Text');
+      if (!w.$('.dc-replace').hidden) failed.push('de:construct Auswahl: Ersetzen-Hinweis beim laufenden Song');
+      w._handleAction('dc-song', 'e3', null);
+      if (!btnText() || btnText() === resumeText) failed.push('de:construct Auswahl: Startknopf für anderen Song heißt wie „Weiter“ (laufender Song)');
+      if (w.$('.dc-replace').hidden) failed.push('de:construct Auswahl: Ersetzen-Hinweis fehlt (anderer Song, Fortschritt)');
+      dcA.done = {};
+      w._renderDeconstruct();
+      if (!w.$('.dc-replace').hidden) failed.push('de:construct Auswahl: Ersetzen-Hinweis ohne Fortschritt');
+      w._handleAction('dc-level', 'medium', null);
+      if (w.$all('.dc-list .dc-row').length !== T.dcSongsOf('medium').length) failed.push('de:construct Auswahl: Stufenwechsel zeigt falsche Zeilenzahl');
+      w._applyView('studio');
+    } catch (err) {
+      failed.push(`de:construct Auswahl: ${err?.message || err}`);
+    }
+    // Bauen-Ansicht: aktives Element, „Danach“, Tap setzt „Meine Version“.
+    try {
+      const els = ['tempo', 'beat', 'bass', 'chords'];
+      if (T.dcFirstOpen(els, {}) !== 'tempo' || T.dcFirstOpen(els, { tempo: 'x', beat: 'x' }) !== 'bass' || T.dcFirstOpen(els, { tempo: 'x', beat: 'x', bass: 'x', chords: 'x' }) !== 'tempo') failed.push('de:construct: erstes nicht geschafftes Element');
+      if (T.dcNextElement(els, {}, 'tempo') !== 'beat' || T.dcNextElement(els, { beat: 'x' }, 'tempo') !== 'bass'
+        || T.dcNextElement(els, { tempo: 'x' }, 'chords') !== 'beat' || T.dcNextElement(els, { tempo: 'x', bass: 'x', chords: 'x' }, 'beat') !== null) failed.push('de:construct: „Danach“-Vorschlag');
+      const dcT = T.dcNewSong('e1');
+      const v = document.createElement('chor-groove-lab');
+      v._saved.deconstruct = dcT;
+      v._applyView('deconstruct');
+      if (v.ui.dc.active !== null && v.ui.dc.active !== 'tempo') failed.push(`de:construct: Standard-Element ${v.ui.dc.active}`);
+      if (v._dcActiveElement() !== 'tempo') failed.push('de:construct: aktives Element ≠ Tempo zu Beginn');
+      dcT.done.tempo = '2026-10-01';
+      v.ui.dc.active = null;
+      if (v._dcActiveElement() !== 'beat') failed.push('de:construct: aktives Element ≠ erstes nicht geschafftes');
+      v._renderDeconstruct();
+      if (v.$('.dc-next').dataset.value !== 'bass') failed.push(`de:construct: „Danach“ zeigt ${v.$('.dc-next').dataset.value}`);
+      v._dcPick('tempo');
+      if (v.ui.dc.active !== 'tempo' || v.$('.dc-tap-box').hidden) failed.push('de:construct: Tempo wählen zeigt keinen Tap');
+      v._dcCheck(v._dcActiveElement());
+      if (!dcT.checks.tempo) failed.push('de:construct: Prüfen des aktiven Elements');
+      // Tap im A-Modus: Meine Version ändert sich, das Original nicht.
+      const origBpm = dcT.original.bpm;
+      v.ui.dc.listen = 'orig';
+      const nowFake = performance.now.bind(performance);
+      let clock = 1000;
+      performance.now = () => clock;
+      try { for (let i = 0; i < 5; i++) { v._tapTempo(); clock += 500; } } finally { performance.now = nowFake; }
+      if (v.state.bpm !== 120) failed.push(`de:construct: Tap setzt Meine Version auf ${v.state.bpm} statt 120`);
+      if (dcT.original.bpm !== origBpm || v._dcHeard(() => v.state.bpm) !== origBpm) failed.push('de:construct: Tap verändert das Original');
+      v._applyView('studio');
+    } catch (err) {
+      failed.push(`de:construct Bauen-Ansicht: ${err?.message || err}`);
+    }
+    // Prüf-Blatt, Versuchszähler, gestufte Hilfe, Teil-Auflösen (echte, nicht eingehängte Lab-Instanz).
+    try {
+      const esc = (v) => v._handleKeydown({ key: 'Escape', preventDefault() {} });
+      const dcS = T.dcNewSong('e1');
+      const vs = document.createElement('chor-groove-lab');
+      vs._saved.deconstruct = dcS;
+      vs._applyView('deconstruct');
+      const sheet = vs.$('.dc-sheet');
+      if (!sheet.hidden) failed.push('de:construct Blatt: schon beim Start offen');
+      if (vs.$('.dc-ab')) failed.push('de:construct: großer A/B-Block noch da');
+      vs._dcCheck('beat'); // leeres Raster → noch nicht
+      const card = vs.$('.dc-sheet-card');
+      if (sheet.hidden || vs.ui.dc.sheet !== 'beat' || card.getAttribute('role') !== 'dialog' || card.getAttribute('aria-modal') !== 'true' || !vs.$('#dc-sheet-title, .dc-sheet-title').textContent) failed.push('de:construct Blatt: öffnet nicht richtig');
+      if (!vs.$('.dc-help').hidden || vs.ui.dc.tries.beat !== 1) failed.push('de:construct Blatt: Hilfe schon beim 1. Versuch');
+      vs._handleAction('dc-sheet-close', '', null);
+      if (!sheet.hidden || vs.ui.dc.sheet !== null) failed.push('de:construct Blatt: „Weiter bauen“ schließt nicht');
+      vs._dcCheck('beat');
+      if (sheet.hidden || !vs.$('.dc-help').hidden) failed.push('de:construct Blatt: 2. Versuch');
+      esc(vs);
+      if (!sheet.hidden) failed.push('de:construct Blatt: Escape schließt nicht');
+      vs._dcCheck('beat');
+      if (vs.ui.dc.tries.beat !== 3 || vs.$('.dc-help').hidden || vs.$('.dc-help-listen').hidden || vs.$('.dc-help-reveal').hidden) failed.push(`de:construct Blatt: Hilfe ab dem 3. Versuch (${vs.ui.dc.tries.beat})`);
+      vs._handleAction('dc-help-listen', 'beat', null);
+      if (!sheet.hidden || vs.ui.dc.focus !== 'beat' || vs.ui.dc.listen !== 'orig') failed.push('de:construct Blatt: „Nur Beat hören“');
+      vs._dcFocus('all');
+      // Tempo treffen: „stimmt“ setzt den Zähler zurück, Hauptknopf führt weiter.
+      vs.state.bpm = dcS.original.bpm; vs.state.swing = dcS.original.swing;
+      vs._dcCheck('tempo');
+      if (vs.ui.dc.tries.tempo !== 0 || vs.$('.dc-sheet-main').dataset.action !== 'dc-sheet-next' || vs.$('.dc-sheet-main').dataset.value !== 'beat') failed.push('de:construct Blatt: stimmt → „Weiter“');
+      vs._handleAction('dc-sheet-next', 'beat', null);
+      if (!sheet.hidden || vs.ui.dc.active !== 'beat') failed.push('de:construct Blatt: „Weiter“ setzt das Element nicht');
+      // Tempo ohne Spur: Hilfe bietet nur das Auflösen an.
+      vs.state.bpm = 100;
+      for (let i = 0; i < 3; i++) vs._dcCheck('tempo');
+      if (vs.$('.dc-help').hidden || !vs.$('.dc-help-listen').hidden) failed.push('de:construct Blatt: Tempo-Hilfe');
+      vs._handleAction('dc-sheet-close', '', null);
+      // Nur dieses Element auflösen.
+      vs._handleAction('dc-help-reveal', 'beat', null);
+      if (!dcS.revealedEls.beat || dcS.revealedEls.tempo || vs.$('.dc-el-solution').hidden || !vs.$('.dc-el-solution .dc-mini')) failed.push('de:construct Teil-Auflösen: Raster fehlt');
+      vs._dcPick('tempo');
+      if (!vs.$('.dc-el-solution').hidden) failed.push('de:construct Teil-Auflösen: Lösung auch bei Tempo sichtbar');
+      // Alles nachgebaut — aber ein Element war aufgelöst: nicht „geschafft“.
+      Object.assign(vs.state, clone(dcS.original));
+      for (const el of ['tempo', 'beat', 'bass']) vs._dcCheck(el);
+      if (!['tempo', 'beat', 'bass'].every((el) => dcS.done[el]) || dcS.solved.e1) failed.push(`de:construct: Teil-Auflösen zählt für „solved“ (${JSON.stringify(dcS.solved)})`);
+      if (vs.$('.dc-sheet-main').dataset.action !== 'dc-sheet-song' || !vs.$('.dc-sheet-mark').classList.contains('is-ok')) failed.push('de:construct Blatt: „Alles nachgebaut“ → Nächster Song');
+      // Gegenprobe: ohne Auflösen zählt es.
+      const dcP = T.dcNewSong('e1');
+      const vp = document.createElement('chor-groove-lab');
+      vp._saved.deconstruct = dcP; vp._applyView('deconstruct');
+      Object.assign(vp.state, clone(dcP.original));
+      for (const el of ['tempo', 'beat', 'bass']) vp._dcCheck(el);
+      if (!dcP.solved.e1 || vp.$('.dc-sheet-main').dataset.action !== 'dc-sheet-song') failed.push('de:construct: ganz ohne Hilfe nachgebaut zählt nicht');
+      vp._applyView('studio');
+      // Neuer Song setzt Versuche zurück.
+      vs.ui.dc.tries = { beat: 5 };
+      vs.playing = true; // kein AudioContext im Test
+      vs._dcNew('e2');
+      vs.playing = false;
+      if (Object.keys(vs.ui.dc.tries).length || !sheet.hidden || vs._saved.deconstruct.revealedEls && Object.keys(vs._saved.deconstruct.revealedEls).length) failed.push('de:construct: neuer Song setzt Versuche/Teil-Auflösung nicht zurück');
+      vs._applyView('studio');
+      // Mini-Raster: Zeilen und Zellen je Taktart, Beschriftung in Worten.
+      for (const meter of ['4/4', '3/4', '6/8']) {
+        const song = T.DC_SONGS.find((x) => x.level === 'hard' && x.meter === meter);
+        if (!song) continue;
+        const dcM = T.dcNewSong(song.id);
+        dcM.revealed = true;
+        const vm = document.createElement('chor-groove-lab');
+        vm._saved.deconstruct = dcM; vm._applyView('deconstruct');
+        const { steps, group } = T.METERS[meter];
+        for (const el of ['beat', 'bass']) {
+          vm._dcPick(el);
+          const rows = [...vm.$all('.dc-el-solution .dc-mini-row[role="img"]')];
+          if (!rows.length || rows.some((r) => r.querySelectorAll('.dc-cell').length !== steps || r.querySelectorAll('.dc-mini-group').length !== steps / group || !/: /.test(r.getAttribute('aria-label') || ''))) failed.push(`de:construct Raster ${meter}/${el}: Aufbau`);
+          if (rows.some((r) => !r.querySelector('.is-miss'))) failed.push(`de:construct Raster ${meter}/${el}: leeres „Meine Version“ zeigt nichts als fehlend`);
+        }
+        Object.assign(vm.state, clone(dcM.original));
+        vm._dcPick('beat');
+        if (vm.$all('.dc-mini-row[role="img"]').some((r) => /Many|One|extra|fehl|zu viel/.test(r.getAttribute('aria-label')) || r.querySelector('.is-miss, .is-extra'))) failed.push(`de:construct Raster ${meter}: gleiche Version zeigt Unterschiede`);
+        vm._applyView('studio');
+      }
+    } catch (err) {
+      failed.push(`de:construct Blatt/Hilfe/Raster: ${err?.stack || err}`);
+    }
+    // 4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll.
+    const dc = T.dcNewSong('h3', '2026-10-01', { e1: '2026-09-30' });
+    dc.checks = { tempo: 'near', beat: 'ok' };
+    dc.done = { beat: '2026-10-01' };
+    dc.revealed = true;
+    dc.revealedEls = { beat: true };
+    dc.mine.bpm = 77;
+    dc.mine.eighths = 154;
+    if (!same(T.sanitizeDeconstruct(clone(dc)), dc)) failed.push('de:construct: Roundtrip Speichern/Laden');
+    const oldStore = { slots: [], last: T.defaultState(), melodies: [], progressions: [], workshop: { done: {}, last: null } };
+    if (T.sanitizeDeconstruct(oldStore.deconstruct) !== null) failed.push('de:construct: alte Ablage ohne Feld ≠ null');
+    // v1 (zufällige Songs, nur Seed) gibt es nicht mehr — zurück zur Auswahl.
+    for (const junk of [null, 'x', [], {}, { seed: 3, level: 'easy' }, { v: 1, seed: 3, level: 'hard', original: T.defaultState(), mine: T.defaultState() }, { song: 'x9' }, { song: 7 }]) {
+      if (T.sanitizeDeconstruct(junk) !== null) failed.push(`de:construct: Müll ${JSON.stringify(junk)} übernommen`);
+    }
+    // Nur die Song-Id (z. B. abgeschnitten): Song entsteht neu, gleich wie damals.
+    const regen = T.sanitizeDeconstruct({ song: 'h3' });
+    if (!regen || !same(regen.original, dc.original) || !same(regen.mine, T.dcBuild('h3').mine)) failed.push('de:construct: Song-Id erzeugt nicht denselben Song');
+    // Das Original kommt immer aus dem Katalog, nie aus der Ablage.
+    const forged = T.sanitizeDeconstruct({ ...clone(dc), original: { ...clone(dc.original), bpm: 150 } });
+    if (forged.original.bpm !== dc.original.bpm) failed.push('de:construct: Original aus der Ablage übernommen');
+    const dirty = T.sanitizeDeconstruct({ ...clone(dc), song: 'e2', level: 'hard', checks: { tempo: 'super', melody: 'ok', beat: 'no' }, done: { bass: '1.10.2026', beat: '2026-10-01' }, revealed: 'ja', solved: { e1: 'gestern', zz: '2026-10-01', m1: '2026-10-01' } });
+    if (dirty.level !== 'easy' || !same(dirty.checks, { beat: 'no' }) || !same(dirty.done, { beat: '2026-10-01' }) || dirty.revealed !== false || !same(dirty.solved, { m1: '2026-10-01' })) failed.push(`de:construct: kaputte Fortschrittsfelder → ${JSON.stringify([dirty.level, dirty.checks, dirty.done, dirty.revealed, dirty.solved])}`);
+    const dirtyEls = T.sanitizeDeconstruct({ song: 'e2', revealedEls: { tempo: true, beat: 'ja', bass: 1, melody: true, zz: true } });
+    if (!same(dirtyEls.revealedEls, { tempo: true })) failed.push(`de:construct: Müll in revealedEls → ${JSON.stringify(dirtyEls.revealedEls)}`);
+    if (!same(T.sanitizeDeconstruct({ song: 'e2', revealedEls: 'x' }).revealedEls, {}) || !same(T.sanitizeDeconstruct({ song: 'e2' }).revealedEls, {})) failed.push('de:construct: alte Ablage ohne revealedEls');
+    const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'deconstruct' })).view;
+    if (savedView !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
   }
 
   if (log) {
@@ -22307,8 +22708,9 @@ async function openGrooveLab(entry = 'egg') {
       // Sprache (für den Neuaufbau nach einem Sprachwechsel) gereicht.
       t,
       lang: settings.language,
-      // Über Tools → Chor-Ansicht, Easter Egg → Studio (solange nichts gespeichert ist).
-      entry: entry === 'tools' ? 'tools' : 'egg',
+      // Über Tools → Chor-Ansicht, Easter Egg → Studio (solange nichts
+      // gespeichert ist); Kachel „de:construct“ → direkt diese Ansicht.
+      entry: entry === 'tools' || entry === 'deconstruct' ? entry : 'egg',
       // Speicherplätze und der letzte Stand des Labs — eigener meta-Typ,
       // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
       storage: {
@@ -22357,20 +22759,67 @@ let toolFrameReturnFocus = null;
    2. Eine eigene Geste vom linken Rand nach rechts (für iOS, wo die
       Standalone-App keine Zurück-Geste hat) — in den Tool-iframes und im
       Groove Lab; nicht auf Tastaturen, Reglern und Tipp-Flächen, damit
-      Glissandi und Schieberegler weiter funktionieren. */
-let skipNextPop = false;
-function pushToolHistory() {
-  if (history.state?.toolOverlay) return;
-  history.pushState({ ...(history.state || {}), toolOverlay: true }, '', location.href);
+      Glissandi und Schieberegler weiter funktionieren.
+   Tool-Seiten mit Unterebenen (Übung in der Liste, Player, offenes Blatt)
+   melden ihre Tiefe über window.chorToolDepth(); je Ebene gibt es einen
+   Verlaufseintrag ({ toolOverlay: true, toolLevel: 1 + Tiefe }). Angelegt
+   wird er beim Hineingehen, also während der Nutzergeste — ein Eintrag, der
+   erst in der Zurück-Geste (popstate) entsteht, markiert Chrome als
+   überspringbar, und das nächste „zurück“ verließe die App. */
+let skipPops = 0;
+const toolLevelOf = (state) => (state?.toolOverlay ? state.toolLevel || 1 : 0);
+function pushToolHistory(level = 1) {
+  // Ein Zurückspringen (popToolHistory) läuft noch: history.state ist noch
+  // der alte. Der popstate-Zweig holt den Eintrag per syncToolHistory nach.
+  if (skipPops) return;
+  if (toolLevelOf(history.state) >= level) return;
+  history.pushState({ ...(history.state || {}), toolOverlay: true, toolLevel: level }, '', location.href);
 }
 function popToolHistory() {
-  if (!history.state?.toolOverlay) return;
-  skipNextPop = true;
-  history.back();
+  const level = toolLevelOf(history.state);
+  if (!level) return;
+  skipPops++;
+  history.go(-level);
+}
+/** Verlaufseinträge an die Tiefe der offenen Tool-Seite angleichen. */
+function syncToolHistory() {
+  if (skipPops || $('#tool-frame').hidden) return;
+  const frame = [...$('#tool-frame').querySelectorAll('iframe')].find((f) => !f.hidden);
+  let depth = 0;
+  try { depth = Math.max(0, Math.floor(frame?.contentWindow?.chorToolDepth?.() || 0)); } catch { return; /* fremde Herkunft */ }
+  const want = 1 + depth;
+  const have = toolLevelOf(history.state);
+  if (want > have) for (let l = Math.max(have, 0) + 1; l <= want; l++) history.pushState({ ...(history.state || {}), toolOverlay: true, toolLevel: l }, '', location.href);
+  else if (want < have) { skipPops++; history.go(want - have); }
+}
+/** Tiefe der Seite beobachten (Ansichten, Blätter: hidden/class im Dokument). */
+function watchToolDepth(frame) {
+  let queued = false;
+  try {
+    new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => { queued = false; if (!frame.hidden && frame.isConnected) syncToolHistory(); });
+    }).observe(frame.contentDocument.documentElement, { subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+  } catch { /* fremde Herkunft */ }
 }
 const grooveLabEl = () => document.querySelector('chor-groove-lab');
+/** Zurück innerhalb der offenen Tool-Seite (Übung → Liste, Player →
+ *  Übersicht, offenes Blatt zu). Die Seite meldet über window.chorToolBack(),
+ *  ob sie selbst eine Ebene zurückgehen konnte; false bzw. keine solche
+ *  Funktion = oberste Ebene, dann schließt der Aufrufer das Tool. */
+function toolFrameStepBack() {
+  const frame = [...$('#tool-frame').querySelectorAll('iframe')].find((f) => !f.hidden);
+  try { return !!frame?.contentWindow?.chorToolBack?.(); } catch { return false; /* fremde Herkunft */ }
+}
 function closeToolOverlayFromHistory() {
-  if (!$('#tool-frame').hidden) { closeToolFrame({ fromHistory: true }); return true; }
+  if (!$('#tool-frame').hidden) {
+    // Seite ist noch nicht auf oberster Ebene: eine Ebene zurück (der
+    // Verlaufseintrag dafür ist schon verbraucht); sonst Tool schließen.
+    if (toolFrameStepBack()) syncToolHistory();
+    else closeToolFrame();
+    return true;
+  }
   const lab = grooveLabEl();
   if (lab && !lab.hidden) { lab.close(); return true; }
   return false;
@@ -22419,8 +22868,16 @@ let metronomeStopFallback = 0;
 const metronomeFrame = () => $('#tool-frame iframe[data-tool="metronome"]');
 
 /** Metronom-iframe verwerfen (stoppt Ton, Timer und Bildschirm-Sperre). */
+/** Ausstehendes Speichern im iframe erledigen, bevor es entfernt wird
+ *  (z. B. Tempo-Trainer hat gerade erhöht, Speichern läuft mit Verzögerung). */
+function flushToolFrame(frame) {
+  try { frame?.contentWindow?.chorToolFlush?.(); } catch { /* schon weg */ }
+}
+
 function removeMetronomeFrame() {
-  metronomeFrame()?.remove();
+  const frame = metronomeFrame();
+  flushToolFrame(frame);
+  frame?.remove();
   clearTimeout(metronomeStopFallback);
   metronomeBg.running = false;
   updateMetronomeFab();
@@ -22436,9 +22893,13 @@ function openToolFrame(page, titleKey, query = '') {
   if (Audio.playing) audioPause();
   const host = $('#tool-frame');
   // Andere Tools gibt es immer nur einmal; das Metronom bleibt, falls es läuft.
-  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) {
+    try { other.contentWindow?.chorToolFlush?.(); } catch { /* fremde Herkunft */ }
+    other.remove();
+  }
   let metro = metronomeFrame();
   if (metro && !metronomeBg.running && page !== METRONOME_PAGE) {
+    flushToolFrame(metro);
     metro.remove();
     metro = null;
   }
@@ -22454,11 +22915,18 @@ function openToolFrame(page, titleKey, query = '') {
     if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
     // Wischgeste auch im iframe (gleiche Herkunft, Dokument erreichbar).
     frame.addEventListener('load', () => {
-      try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
+      try { attachEdgeSwipe(frame.contentDocument, () => { if (!host.hidden && !toolFrameStepBack()) closeToolFrame(); }); } catch { /* fremde Herkunft */ }
+      syncToolFrameBack(frame);
+      watchToolDepth(frame);
+      syncToolHistory();
     });
     host.append(frame);
   }
   host.setAttribute('aria-label', t(titleKey));
+  // Bis die Seite geladen ist (bzw. für das wieder gezeigte Metronom sofort):
+  // eigener Zurück-Knopf der Seite oder der Schließen-Knopf der App.
+  host.classList.remove('has-own-back');
+  if (page === METRONOME_PAGE && metro && !metro.hidden) syncToolFrameBack(metro);
   toolFrameReturnFocus = document.activeElement;
   host.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -22468,10 +22936,42 @@ function openToolFrame(page, titleKey, query = '') {
   if (page === 'piano.html') lockLandscapeFor(host);
 }
 
-function closeToolFrame({ fromHistory = false } = {}) {
+/**
+ * Übungsseiten im Stil „Konfetti B2“ (ueben.css) haben oben links einen
+ * eigenen runden Zurück-Knopf und markieren das mit `data-own-back` am
+ * <html>. Dann blendet die Ebene den Schließen-Knopf der App aus (er läge
+ * sonst über „?“ und Zahnrad der Seite) und der Fokus wandert auf den
+ * Zurück-Knopf der Seite. Esc und die Wischgeste schließen weiterhin.
+ */
+function syncToolFrameBack(frame) {
+  const host = $('#tool-frame');
+  let own = false;
+  try { own = !!frame.contentDocument?.documentElement.hasAttribute('data-own-back'); } catch { /* fremde Herkunft */ }
+  if (frame.hidden || host.hidden) return;
+  host.classList.toggle('has-own-back', own);
+  if (own && document.activeElement === $('#tool-frame-close')) focusOwnBack(frame, 3);
+}
+/** Fokus auf den ersten sichtbaren eigenen Zurück-Knopf (Seiten- oder
+ *  Übungskopf). Manche Seiten blenden ihn erst nach dem Laden ihres Stands
+ *  ein — dann kurz später noch einmal versuchen. */
+function focusOwnBack(frame, tries) {
+  let btn = null;
+  try { btn = [...frame.contentDocument.querySelectorAll('[data-own-back-btn]')].find((b) => b.getClientRects().length); } catch { return; /* fremde Herkunft */ }
+  if (btn) btn.focus();
+  else if (tries > 1) setTimeout(() => { if (!frame.hidden && frame.isConnected) focusOwnBack(frame, tries - 1); }, 250);
+}
+
+function closeToolFrame() {
   const host = $('#tool-frame');
   releaseLandscape(host);
-  if (!fromHistory) popToolHistory();
+  // Auch nach „zurück“ können noch Ebenen-Einträge übrig sein (z. B. ein
+  // Blatt, das sich nicht schließen ließ) — die mit abräumen.
+  popToolHistory();
+  // Ausstehendes (verzögertes) Speichern der Tools jetzt anstoßen — im
+  // entfernten iframe liefe dessen Timer nie mehr ab.
+  for (const frame of host.querySelectorAll('iframe')) {
+    try { frame.contentWindow?.chorToolFlush?.(); } catch { /* fremde Herkunft */ }
+  }
   for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
   const metro = metronomeFrame();
   if (metro) {
@@ -22517,8 +23017,9 @@ function pulseMetronomeFab(level) {
 function stopBackgroundMetronome() {
   const frame = metronomeFrame();
   if (!frame) return updateMetronomeFab();
-  // Höflich stoppen (die Seite speichert dabei ihren Stand und meldet
-  // running:false, woraufhin onMetronomeMessage das iframe entfernt). Kommt
+  // Höflich stoppen (die Seite meldet
+  // running:false, woraufhin onMetronomeMessage das iframe entfernt – vorher
+  // speichert removeMetronomeFrame ihren Stand). Kommt
   // keine Antwort, hart entfernen — Stille ist hier wichtiger als Eleganz.
   try {
     frame.contentWindow.postMessage({ type: 'chor-metronome-cmd', action: 'stop' }, location.origin);
@@ -22608,14 +23109,16 @@ window.chorToolPrefs = {
    ========================================================================== */
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
-const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning',
+const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat', 'body', 'entries',
   'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime',
   'licks']; // Licks & Grooves (licks.html): in keiner Gruppe von PROGRESS_GROUPS
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
   ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
-  rhythm: ['rhythm'],
+  // downbeat = Einsatz finden, body = Körper, entries = Wieder einsetzen (alle im
+  // Rhythmus-Bereich). Ein Bereich zählt im Ring erst mit, wenn er eine Stufe hat.
+  rhythm: ['rhythm', 'downbeat', 'body', 'entries'],
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
 // sightShown: Blattsingen ist in der Ausbildung eingeblendet (Pop-Didaktik:
@@ -22909,7 +23412,9 @@ function groovesOf(playground) {
   const r = playground && typeof playground === 'object' && playground.rhythm && typeof playground.rhythm === 'object' ? playground.rhythm : {};
   const done = Array.isArray(r.course?.done) ? r.course.done.filter((id) => typeof id === 'string') : [];
   const grooves = r.grooves && typeof r.grooves === 'object' && !Array.isArray(r.grooves) ? r.grooves : {};
-  return { done, entries: done.map((id) => grooves[id]).filter((g) => g && typeof g === 'object') };
+  // groovesProgress: Übungsfortschritt (0…1), von uebe-lab.html mitgespeichert; fehlt in älteren Ständen.
+  const progress = Number.isFinite(r.groovesProgress) ? r.groovesProgress : null;
+  return { done, entries: done.map((id) => grooves[id]).filter((g) => g && typeof g === 'object'), progress };
 }
 /** Angefangene und „sitzende“ Bausteine eines Stands (Fortschrittsbalken der Kachel). */
 function licksCounts(items) {
@@ -22920,9 +23425,16 @@ const fillN = (key, vars) => Object.entries(vars).reduce((text, [k, v]) => text.
 /** Fortschrittsbalken einer Kachel: Anteil „sitzender“ Bausteine (leer ohne
  *  Bausteine). Die Kachel trägt keinen sichtbaren Text mehr außer dem Namen —
  *  der Stand steht deshalb im aria-label. */
-function paintTileProgress(tile, bar, name, n, solid) {
-  if (bar) bar.style.setProperty('--pct', `${n ? Math.round((solid / n) * 100) : 0}%`);
-  tile.setAttribute('aria-label', n ? `${name}, ${fillN('tools.licks.sub', { n, solid })}` : name);
+function paintTileProgress(tile, bar, name, n, solid, progress = null) {
+  // `progress` (0…1): Übungsfortschritt, den das Tool selbst mitspeichert —
+  // wächst mit jedem Schritt. Fehlt er (Stand von vor dieser Fassung), wie
+  // früher der Anteil „sitzender“ Bausteine.
+  const pct = Number.isFinite(progress) ? Math.round(Math.min(1, Math.max(0, progress)) * 100) : n ? Math.round((solid / n) * 100) : 0;
+  if (bar) bar.style.setProperty('--pct', `${pct}%`);
+  const parts = [name];
+  if (Number.isFinite(progress)) parts.push(fillN('tools.licks.progress', { pct }));
+  if (n) parts.push(fillN('tools.licks.sub', { n, solid }));
+  tile.setAttribute('aria-label', parts.join(', '));
 }
 /** Kacheln „Licks“ und „Grooves“ nach dem Stand der Ablage füllen. */
 async function renderLicksCard() {
@@ -22932,12 +23444,12 @@ async function renderLicksCard() {
   const playground = await loadPlaygroundState();
   const gs = groovesOf(playground);
   const c = licksCounts(licksState?.v === 1 ? licksState.items : null);
-  paintTileProgress($('#tile-licks'), $('#tile-licks-bar'), t('tools.licks.synth'), c.n, c.solid);
+  paintTileProgress($('#tile-licks'), $('#tile-licks-bar'), t('tools.licks.synth'), c.n, c.solid, licksState?.v === 1 ? licksState.progress : null);
   // Kachel „Grooves“: erst nach der ersten geschafften Kurs-Lektion.
   const gTile = $('#tile-grooves');
   if (gTile) {
     gTile.disabled = !gs.done.length;
-    paintTileProgress(gTile, $('#tile-grooves-bar'), t('tools.licks.grooves'), gs.done.length, gs.entries.filter((g) => g.rating === 'solid').length);
+    paintTileProgress(gTile, $('#tile-grooves-bar'), t('tools.licks.grooves'), gs.done.length, gs.entries.filter((g) => g.rating === 'solid').length, gs.progress);
     // Ohne Text auf der Kachel erklärt nur das aria-label, warum sie noch gesperrt ist.
     if (!gs.done.length) gTile.setAttribute('aria-label', `${t('tools.licks.grooves')}, ${t('tools.licks.groovesEmpty')}`);
   }
@@ -23043,9 +23555,19 @@ function initQuickStart() {
    Einstellungen in IndexedDB (meta-Typ `toolState`, je Tool ein Datensatz)
    — nicht in localStorage, der bleibt dem Fehler-/Diagnoseprotokoll
    vorbehalten. Der Typ taucht in keiner Song-/Setlisten-Abfrage auf. */
+// Ablagen, aus denen die Kacheln „Licks“/„Grooves“ ihren Balken zeichnen.
+const LICKS_TILE_STORES = ['licks', 'playground'];
 window.chorToolStorage = {
   load: (id) => DB.metaGet(`tool:${id}`).then((record) => record?.data ?? null),
-  save: (id, data) => DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) }),
+  save: (id, data) => {
+    const done = DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) });
+    // Speichern, das erst nach dem Schließen des Tools fertig wird: Die Kacheln
+    // sind dann schon mit dem alten Stand gezeichnet — nachziehen.
+    if (LICKS_TILE_STORES.includes(id)) {
+      done.then(() => { if (currentView === 'tools' && $('#tool-frame').hidden) renderLicksCard(); }, () => {});
+    }
+    return done;
+  },
 };
 
 // Der Auslöser saß früher auf der allgemeinen Kopfzeile — die ist mit dem
@@ -23068,13 +23590,15 @@ function initGrooveLabEasterEgg() {
   });
 }
 
-/** Tools-Reiter: Metronom, Groove Lab und Piano (Einsingen und Üben laufen
+/** Tools-Reiter: Metronom, Tuner, Piano und Groove Lab (Einsingen und Üben laufen
  *  über QUICK_STARTS, die Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
   initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));
   $('#btn-open-piano').addEventListener('click', () => openToolFrame('piano.html', 'settings.tools.piano'));
+  // Tuner: Werkzeug statt Übung — die Ausbildungsseite direkt im Tuner (mode=tuner).
+  $('#btn-open-tuner').addEventListener('click', () => openToolFrame('uebe-lab.html', 'settings.tools.tuner', 'tab=voice&mode=tuner'));
   $('#tool-frame-close').addEventListener('click', closeToolFrame);
   $('#metronome-fab-open').addEventListener('click', () => openToolFrame(METRONOME_PAGE, 'settings.tools.metronome'));
   $('#metronome-fab-stop').addEventListener('click', stopBackgroundMetronome);
