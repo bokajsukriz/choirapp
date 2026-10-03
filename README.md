@@ -99,7 +99,8 @@ ein Dialog mit echter Wahl).
   Klatsch-Grooves (Licks & Grooves, `?tab=rhythm&grooves=1`): geschaffte Kurs-
   Lektionen hören, auffrischen und über 4 bis 16 Takte durchhalten (zuletzt mit
   stillen Takten), Status und Wiederholen mit Abstand (Ablage `rhythm.grooves`);
-  Auswertung `judgeHold` wortgleich zu `licks.html`;
+  Auswertung `judgeHold` wortgleich zu `licks.html`; bei Auftakt-Lektionen
+  zusätzlich die Einsätze (erste Note jeder Wiederholung, `holdEntries`);
   Zweistimmig: gelernte Rhythmen vier Takte lang gegen eine zweite Stimme halten
   – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei; die
   Notenfläche zeigt nur die eigene Stimme, nach der Runde Takt für Takt
@@ -133,7 +134,14 @@ ein Dialog mit echter Wahl).
   `judgeHold` im absoluten Raster, mit Mikrofon nur Klatschen und Schnipsen;
   Probenmodus (Zahnrad) für den Chor: alle Schichten in Schleife, je Stimme eine
   Schicht groß angezeigt (`BODY_LEVELS`, `bodyPlan`, `judgeBody`, Prüfung
-  `bodyCheck`; Fortschrittsbereich `body`). Nachsingen und Im Takt werten
+  `bodyCheck`; Fortschrittsbereich `body`). „Wieder einsetzen“ (ID `entries`,
+  ebenfalls dort): Die Band spielt 8–16 Takte, dazwischen kommt eine kurze Phrase
+  nach Pausen immer wieder – Einsätze auf „4 und“, „4 a“, auf der 2, drei Achtel
+  Auftakt oder genau auf der 1 (`ENTRY_TYPES`); Vorbild mit hörbarem Atem, in
+  Stufe 1–2 „Atmen“ einen Schlag vor dem Einsatz; je Einsatz zählt die erste
+  Note, geschafft ab 80 % im Fenster, Rückmeldung früh/pünktlich/spät mit Tipp;
+  Fehler je Einsatz steuern das Ziehen (`ENTRY_LEVELS`, `entriesPlan`,
+  `judgeEntries`, Prüfung `entriesCheck`; Fortschrittsbereich `entries`). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
   durch Singen kalibrierten Latenz. Kommen die Tipper in `uebe-lab.html` und

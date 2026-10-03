@@ -18745,7 +18745,7 @@ function runSelfTests() {
     {
       // Körper (Übe-Korrekturen 11): Bereich in der Gruppe Rhythmus; ein frischer Stand ohne
       // gespielten „body“ ändert den Ring nicht, erst ein Lauf zählt mit.
-      if (!PROGRESS_AREAS.includes('body') || PROGRESS_GROUPS.rhythm.join() !== 'rhythm,downbeat,body') failed.push('PROGRESS_GROUPS: body fehlt in Rhythmus');
+      if (!PROGRESS_AREAS.includes('body') || !PROGRESS_AREAS.includes('entries') || PROGRESS_GROUPS.rhythm.join() !== 'rhythm,downbeat,body,entries') failed.push('PROGRESS_GROUPS: body/entries fehlen in Rhythmus');
       const r = applyProgressEntries(emptyProgress(), [{ area: 'rhythm', level: 4, right: true }, { area: 'downbeat', level: 2, right: true }], '2026-10-10');
       if (practiceTileState(r, 'rhythm').level !== 3) failed.push(`Üben-Kachel Rhythmus ohne Körper: ${practiceTileState(r, 'rhythm').level} statt 3`);
       const rb = applyProgressEntries(sanitizeProgress(JSON.parse(JSON.stringify(r))), [{ area: 'body', level: 1, right: true, seconds: 20 }], '2026-10-11');
@@ -23109,16 +23109,16 @@ window.chorToolPrefs = {
    ========================================================================== */
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
-const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat', 'body',
+const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat', 'body', 'entries',
   'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime',
   'licks']; // Licks & Grooves (licks.html): in keiner Gruppe von PROGRESS_GROUPS
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
   ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
-  // downbeat = Einsatz finden, body = Körper (beide im Rhythmus-Bereich). Ein Bereich
-  // zählt im Ring erst mit, wenn er eine Stufe hat (gespielt oder gewählt).
-  rhythm: ['rhythm', 'downbeat', 'body'],
+  // downbeat = Einsatz finden, body = Körper, entries = Wieder einsetzen (alle im
+  // Rhythmus-Bereich). Ein Bereich zählt im Ring erst mit, wenn er eine Stufe hat.
+  rhythm: ['rhythm', 'downbeat', 'body', 'entries'],
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
 // sightShown: Blattsingen ist in der Ausbildung eingeblendet (Pop-Didaktik:
