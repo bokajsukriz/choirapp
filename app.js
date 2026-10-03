@@ -2221,7 +2221,7 @@ function showView(name) { navigate(`#${name}`); }
  * einen echten Zurück-Knopf hat, damit sie sich per Browser-Zurück-Taste
  * zuverlässig wieder schließt.
  */
-function applyRoute() {
+function applyRoute({ fromPop = false } = {}) {
   // Sonst bliebe das Menü sichtbar, wenn man z.B. per Zurück-Taste oder
   // Reiterleiste wegnavigiert, statt es über einen seiner eigenen Wege
   // (Aktion, Backdrop, ×-Knopf) zu schließen.
@@ -2242,6 +2242,10 @@ function applyRoute() {
   if (name === 'recorder') {
     if (openPlaylist) closePlaylistView();
     openRecorderView();
+    return;
+  }
+  if (recorderOpen && recorderSessionAtRisk() && !recorderCloseConfirmed) {
+    guardRecorderLeave(fromPop);
     return;
   }
   if (recorderOpen) closeRecorderView();
@@ -2294,7 +2298,7 @@ window.addEventListener('popstate', () => {
   if (skipPops) { skipPops--; syncToolHistory(); return; }
   // Zurück-Geste/-Taste bei offenem Tool: nur das Tool schließen.
   if (closeToolOverlayFromHistory()) return;
-  applyRoute();
+  applyRoute({ fromPop: true });
 });
 
 /* ---------- Bibliothek --------------------------------------------------- */
@@ -8695,6 +8699,53 @@ function closeRecorderView() {
   // späterer Blick auf recHost nicht die geschlossene Ansicht meint.
   if (!(recMediaRecorder && recMediaRecorder.state !== 'inactive') && !pendingTake) recHost = 'player';
 }
+
+/** Ob beim Verlassen des Recorders etwas verloren ginge (Vorlauf, laufende
+ *  Aufnahme oder noch nicht gespeicherter Take). */
+function recorderSessionAtRisk() {
+  return recHost === 'recorder'
+    && !!(recCountIn || pendingTake || (recMediaRecorder && recMediaRecorder.state !== 'inactive'));
+}
+
+/**
+ * Verlassen des Recorders über einen anderen Weg als den Zurück-Pfeil —
+ * Zurück-Wischgeste/-Taste des Systems (die etwa beim Ziehen am linken
+ * Zuschneide-Griff nah am Bildschirmrand versehentlich auslöst) oder ein
+ * Reiterwechsel. Statt die Aufnahme still zu verwerfen: Adresse wieder auf
+ * #recorder stellen und nachfragen. Nur ein ausdrückliches „Verlassen"
+ * verwirft, dann geht es zum eigentlichen Ziel weiter.
+ */
+let recorderLeaveAsking = false;
+async function guardRecorderLeave(fromPop) {
+  const target = location.hash || '#songs';
+  // Nach einem Zurück liegt der Recorder-Eintrag „vorne" — neu anlegen, damit
+  // ein späteres Zurück wieder genau dorthin führt, wo es herkam.
+  if (fromPop) history.pushState({}, '', '#recorder');
+  else history.replaceState({}, '', '#recorder');
+  if (recorderLeaveAsking) return;
+  recorderLeaveAsking = true;
+  let ok = false;
+  try {
+    ok = await confirmDialog({
+      title: t('rec.leaveTitle'), text: t('msg.recDiscarded'),
+      okLabel: t('common.leave'), danger: true,
+    });
+  } finally {
+    recorderLeaveAsking = false;
+  }
+  if (!ok || !recorderOpen) return;
+  recorderCloseConfirmed = true;
+  if (fromPop) history.back();
+  else navigate(target, { replace: true });
+}
+
+// Neu laden, Tab schließen, aus der App wischen: der Browser fragt nach,
+// solange im Recorder etwas Ungespeichertes liegt.
+window.addEventListener('beforeunload', (e) => {
+  if (!recorderOpen || !recorderSessionAtRisk()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 /** Zurück-Pfeil: bewusster Tipp, hier ist Zeit zu fragen (anders als beim
  *  stillen Abbruch bei einem Routenwechsel von außen, siehe closeRecorderView). */

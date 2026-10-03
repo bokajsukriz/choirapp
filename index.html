@@ -2628,6 +2628,10 @@ input[type="checkbox"] {
   flex: 0 0 auto; display: flex; flex-direction: column; gap: 12px;
   padding: 16px calc(24px + var(--safe-right)) 18px calc(24px + var(--safe-left));
 }
+/* Die Griffe sitzen an den Rändern der Wellenform — mit Abstand zum
+   Bildschirmrand, damit Ziehen am Anfang nicht die Zurück-Wischgeste des
+   Systems auslöst (Android/iOS werten etwa die äußeren 20–30 px dafür aus). */
+.rc-trim { margin: 0 20px; }
 .rc-trim { position: relative; touch-action: none; }
 .rc-take-wave {
   display: block; width: 100%; height: 112px; border-radius: 18px;
