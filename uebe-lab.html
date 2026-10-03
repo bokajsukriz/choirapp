@@ -892,6 +892,16 @@
   .db-round-btn svg { width: 22px; height: 22px; stroke-width: 2.2; }
   .db-round-btn:disabled { color: var(--muted); opacity: .55; box-shadow: none; cursor: default; }
   .db-pattern { width: 100%; max-width: 360px; margin: 0 auto; }
+  /* Körper: Schichten bzw. Fuß/Hände, Probenmodus groß (Beamer) */
+  .body-rows { display: grid; gap: 4px; margin-bottom: 6px; }
+  .k-row.body-row { min-height: 34px; padding-top: 3px; padding-bottom: 3px; }
+  .k-row.body-row.is-mine { background: var(--tint); border-color: var(--tint-line); }
+  .body-layer { margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; }
+  .body-note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+  .body-rows.is-big { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .body-rows.is-big .k-row.body-voice { min-height: 76px; padding-top: 6px; padding-bottom: 6px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
+  .body-rows.is-big .k-row-name { font-family: var(--font-display); font-size: 18px; color: var(--muted); }
+  .body-rows.is-big .body-layer { margin-left: 0; text-align: left; font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--text); }
   .db-pattern[hidden] { display: none; }
   .db-cap { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
   /* Auflösung Takt für Takt: Rhythmus (Kreise) und deine Klatscher (Striche). */
@@ -4157,7 +4167,7 @@
   const tempoScope = (el) => (el.dataset.tempoDrag === 'grooves'
     ? { get: () => groovesBpm(), set: (v) => { gv.bpm = clamp(Math.round(v), 30, 200); }, off: () => !!gv.running }
     : el.dataset.tempoDrag === 'downbeat'
-      ? { get: () => downbeatBpm(), set: (v) => setDownbeatBpm(v), off: () => !!dbRun }
+      ? { get: () => rhythmEarBpm(), set: (v) => setRhythmEarBpm(v), off: () => !!dbRun }
       : { get: () => state.bpm, set: (v) => { setBpm(v); persist(); }, off: () => run.playing || calib.active });
   function showTempoValue(el, bpm) {
     el.querySelector('b').textContent = String(bpm);
@@ -4285,6 +4295,7 @@
     chords: '<rect x="3" y="12" width="3.2" height="8" rx="1"/><rect x="8.3" y="5" width="3.2" height="15" rx="1"/><rect x="13.6" y="9" width="3.2" height="11" rx="1"/><rect x="18.9" y="14" width="3.2" height="6" rx="1"/>',
     parts: '<path d="M4 5.5h16M4 10h16M4 19h16"/><path d="M4 14.5h16" stroke-width="3.6"/>',
     downbeat: '<path d="M3 20h18"/><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><circle cx="5" cy="16.5" r="1.4" fill="currentColor"/><circle cx="19" cy="16.5" r="1.4" fill="currentColor"/>',
+    body: '<circle cx="12" cy="4.5" r="2" fill="currentColor"/><path d="M12 7v7"/><path d="m7 9 5 2 5-2"/><path d="m12 14-3.5 6.5M12 14l3.5 6.5"/><path d="M3 21h4M17 21h4"/>',
     tuning: '<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 8.5V10M6 11l1 1M18 11l-1 1"/><path d="m12 17 4.5-6"/><circle cx="12" cy="17" r="1.6" fill="currentColor"/>',
     singInterval: '<circle cx="5.5" cy="18.5" r="2" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2" fill="currentColor"/><path d="M8 16l7.5-7.5"/><path d="M10.5 8.5h5v5"/>',
     findTone: '<circle cx="12" cy="12" r="6.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
@@ -4308,6 +4319,7 @@
     cadence: 'Wie endet die Phrase?', chords: 'Welche Akkordfolge hörst du?', parts: 'Welchen Ton singt deine Stimme im Klang?',
     noteInKey: 'Nach der Kadenz ein Ton – welche Silbe?', chordInKey: 'Nach der Kadenz ein Akkord – welche Stufe?',
     tuning: 'Sauber, zu hoch oder zu tief?', downbeat: 'Ein Groove blendet ein – wo ist die Eins? Klatsch das Muster darüber',
+    body: 'Puls im Fuß, Rhythmus in den Händen',
     singInterval: 'Ein Grundton – du singst das Intervall',
     findTone: 'Akkord oder Intro – du findest deinen Ton', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
     dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
@@ -4437,7 +4449,9 @@
     // „Einsatz finden“ (Chorleiter: gehört zu Rhythmus) – die Übung selbst ist die Hör-Übung
     // im Gerüst von Hören, hier als eigene Rhythmus-Ansicht (views.rhythm = 'downbeat').
     const db = kRowHtml('data-downbeat-open', 'downbeat', modeName('ear', 'downbeat'), levelBadgeHtml('ear', 'downbeat'));
-    return `<div class="k-hub">${hero}${repeat}<div class="k-list">${rows}${db}</div></div>`;
+    // „Körper“ (Puls im Fuß, Rhythmus in den Händen) im selben Gerüst.
+    const body = kRowHtml('data-downbeat-open="body"', 'body', modeName('ear', 'body'), levelBadgeHtml('ear', 'body'));
+    return `<div class="k-hub">${hero}${repeat}<div class="k-list">${rows}${db}${body}</div></div>`;
   }
   /** Einsatz finden im Rhythmus-Bereich: die Hör-Ansicht wird in den Rhythmus-
    *  Bereich umgehängt (eine Übung, ein Markup) und beim Verlassen zurück. */
@@ -4449,10 +4463,14 @@
     else if (!inRhythm && view.parentNode !== dbHome.parent) dbHome.parent.insertBefore(view, dbHome.next);
   }
   const downbeatInRhythm = () => views.rhythm === 'downbeat' && state.tab === 'rhythm';
-  function openDownbeat() {
+  /** Übungen im Gerüst von „Einsatz finden“ (Rhythmus-Bereich, Klatschfläche in der Fußleiste). */
+  const RHYTHM_EAR_MODES = ['downbeat', 'body'];
+  const isRhythmEar = (mode) => RHYTHM_EAR_MODES.includes(mode);
+  function openDownbeat(mode = 'downbeat') {
     quietArea('rhythm'); quietArea('ear');
     leaveCourse();
-    ear.mode = 'downbeat'; ear.streak = 0; resetEarSeries('downbeat');
+    if (!isRhythmEar(mode)) mode = 'downbeat';
+    ear.mode = mode; ear.streak = 0; resetEarSeries(mode);
     views.rhythm = 'downbeat';
     renderAll();
     renderArea();
@@ -4462,7 +4480,7 @@
   function renderModeList(tab) {
     const host = $(`[data-list="${tab}"]`);
     if (tab === 'rhythm') { host.innerHTML = rhythmHubHtml(); return; }
-    if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS, '', ['downbeat']); return; } // Einsatz finden steht bei Rhythmus
+    if (tab === 'ear') { host.innerHTML = groupedHubHtml('ear', EAR_GROUPS, '', RHYTHM_EAR_MODES); return; } // Einsatz finden steht bei Rhythmus
     if (tab === 'voice') { host.innerHTML = groupedHubHtml('voice', SING_GROUPS, '', ['tuner']); return; }
     const last = tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode;
     const row = (attrs, icon, name, text, right, cls = '') => `<li><button type="button" class="mode-row${cls}" ${attrs}>
@@ -4705,15 +4723,17 @@
     stats: {
       interval: { right: 0, total: 0 }, chords: { right: 0, total: 0, chordsRight: 0, chordsTotal: 0 }, intervalLog: {},
       quality: { right: 0, total: 0 }, cadence: { right: 0, total: 0 }, parts: { right: 0, total: 0, help: 0 }, tuning: { right: 0, total: 0 },
-      noteInKey: { right: 0, total: 0 }, chordInKey: { right: 0, total: 0 }, downbeat: { right: 0, total: 0, help: 0 },
+      noteInKey: { right: 0, total: 0 }, chordInKey: { right: 0, total: 0 }, downbeat: { right: 0, total: 0, help: 0 }, body: { right: 0, total: 0, help: 0 },
     },
     // Stufen der neuen Modi (1–6); Intervalle: settings.intervalLevel, Akkordfolgen: settings.level.
-    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1, noteInKey: 1, chordInKey: 1, downbeat: 1 },
+    levels: { quality: 1, cadence: 1, parts: 1, tuning: 1, noteInKey: 1, chordInKey: 1, downbeat: 1, body: 1 },
     part: 'A',         // eigene Stimme für „Stimmen“ (aus dem Stimmprofil, sonst wählbar)
     stairs: {},        // Intonation: Treppe je Stufe
     pick: null,        // Stimmen: angetippter Kandidat
     streak: 0,
     dbShift: 0,        // Einsatz finden: eigene Tempo-Verschiebung in BPM (BPM-Knopf)
+    bodyShift: 0,      // Körper: ebenso
+    bodyRehearsal: { on: false, map: { B: 'stomp', T: 'patsch', A: 'clap', S: 'snap' } }, // Körper: Probenmodus, Schicht je Stimme
   };
 
   const intervalName = (semis) => INTERVALS.find(([n]) => n === semis)[1];
@@ -4841,7 +4861,7 @@
 
   // Namen (Musikpädagoge): „Akkordfarben“ statt „Klänge“ (neben „Akkorde in
   // der Tonart“ zu unscharf), „Stimme heraushören“ statt „Stimmen“. IDs bleiben.
-  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation'], ['downbeat', 'Einsatz finden']];
+  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation'], ['downbeat', 'Einsatz finden'], ['body', 'Körper']];
   const rndInt = (lo, hi, rnd = Math.random) => lo + Math.floor(rnd() * (hi - lo + 1));
   const shuffle = (list, rnd = Math.random) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -5139,6 +5159,17 @@
    *  mittlere Tempo des ersten Grooves der Stufe (plus Verschiebung). */
   const dbBaseBpm = () => { const g = DB_GROOVES[DOWNBEAT_LEVELS[ear.levels.downbeat - 1].grooves[0]]; return Math.round((g.bpm[0] + g.bpm[1]) / 2); };
   const downbeatBpm = () => (ear.task?.kind === 'downbeat' ? ear.task.bpm : clamp(dbBaseBpm() + ear.dbShift, 30, 200));
+  /** Tempo-Knopf im Gerüst von „Einsatz finden“ – je Übung (Körper: eigene Verschiebung). */
+  const bodyBaseBpm = () => (BODY_LEVELS[ear.levels.body - 1].kind === 'step' && !ear.bodyRehearsal.on ? (bodyPool()[0]?.bpm || 80) : Math.round((BODY_LAYER_BPM[0] + BODY_LAYER_BPM[1]) / 2));
+  const rhythmEarBpm = () => (ear.mode !== 'body' ? downbeatBpm() : ear.task?.kind === 'body' ? ear.task.bpm : clamp(bodyBaseBpm() + ear.bodyShift, 30, 200));
+  function setRhythmEarBpm(v) {
+    if (ear.mode !== 'body') { setDownbeatBpm(v); return; }
+    const bpm = clamp(Math.round(v), 30, 200);
+    const task = ear.task?.kind === 'body' ? ear.task : null;
+    if (task) task.bpm = bpm;
+    ear.bodyShift = clamp(bpm - (task ? task.baseBpm ?? task.bpm : bodyBaseBpm()), -60, 60);
+    persist();
+  }
   /** Gezogenes Tempo gilt für diese Aufgabe (ab dem nächsten Start) und als
    *  Verschiebung für die folgenden Grooves – jeder behält seinen Charakter. */
   function setDownbeatBpm(v) {
@@ -5266,9 +5297,180 @@
     return labels.map((label, i) => ({ label, tick: i * 6, clap: at.includes(i * 6) }));
   }
 
+  /* ---- Körper (Übe-Korrekturen 11): Puls im Fuß, Rhythmus in den Händen.
+     Stufen 1–3: auf der Stelle steppen (Viertel, unbewertet) und einen
+     gelernten Rhythmus klatschen – erst mit Groove, dann nur mit der
+     Fuß-Bassdrum, zuletzt hält nur der eigene Step den Puls. Stufen 4–6:
+     Body-Percussion in vier Schichten; die App spielt drei, du übernimmst die
+     vierte, die Rolle wechselt nach 4 bzw. 8 Takten (Ansage einen Takt
+     vorher). Gewertet wird mit judgeHold im absoluten Raster (judgeHold
+     selbst unverändert); mit Mikrofon nur Klatschen und Schnipsen – Stampfen
+     und Patschen hört das Handy nicht zuverlässig. Läuft im Gerüst von
+     „Einsatz finden“ (dbRun, Klatschfläche, Phasenleiste, Hilfen). ---- */
+  const BODY_LAYERS = {
+    stomp:  { name: 'Stampfen',  move: 'Fuß auf den Boden',          at: [0, 24], mic: false },
+    patsch: { name: 'Patschen',  move: 'Hände auf die Oberschenkel', at: [0, 6, 12, 18, 24, 30, 36, 42], mic: false },
+    clap:   { name: 'Klatschen', move: 'Hände zusammen',             at: [12, 36], mic: true },
+    snap:   { name: 'Schnipsen', move: 'mit den Fingern',            at: [18, 42], mic: true },
+  };
+  const BODY_LAYER_IDS = ['stomp', 'patsch', 'clap', 'snap'];
+  const BODY_LEVELS = [
+    { n: 1, label: 'Steppen und klatschen, mit Groove', kind: 'step', bars: 4, accomp: 'full' },
+    { n: 2, label: 'Nur noch der Fuß als Vorbild', kind: 'step', bars: 8, accomp: 'foot' },
+    { n: 3, label: 'Nach zwei Takten nur dein Fuß', kind: 'step', bars: 8, accomp: 'footThenSilent' },
+    { n: 4, label: 'Body-Percussion: du klatschst', kind: 'layers', roles: ['clap'], barsPer: 4 },
+    { n: 5, label: 'Wechsel Klatschen und Schnipsen', kind: 'layers', roles: ['clap', 'snap'], barsPer: 4 },
+    { n: 6, label: 'Durch alle vier Schichten', kind: 'layers', roles: BODY_LAYER_IDS, barsPer: 8 },
+  ];
+  const BODY_FOOT_BARS = 2;        // Stufe 3: so viele Takte spielt die Fuß-Bassdrum noch mit
+  const BODY_FOOT_VEL = .55;       // „leise Bassdrum“ als Fuß-Vorbild unter dem Groove
+  const BODY_LAYER_BPM = [84, 96]; // Body-Percussion: ruhiges Pop-Tempo
+  const BODY_STEP_TEXT = 'Der Fuß ist dein Metronom – er wird nicht bewertet, aber er darf nie stehen bleiben.';
+  const BODY_MIC_TEXT = 'Stampfen hört das Handy nicht zuverlässig.';
+  const BODY_REHEARSAL_DEFAULT = { B: 'stomp', T: 'patsch', A: 'clap', S: 'snap' };
+  /** Material für die Stufen 1–3: geschaffte Lektionen ohne Shuffle und
+   *  Auftakt (wie holdPool, der Grundschlag ist immer dabei) mit Viertel-Puls. */
+  const bodyPool = () => holdPool().filter((l) => !l.shuffle && METERS[l.meter].unit === 12 && METERS[l.meter].ticks % 12 === 0);
+  /** Schicht-Raster in Ticks (4/4); Stufe 6 kann statt Schnipsen einen gelernten Rhythmus tragen. */
+  const bodyLayerAt = (task, id) => (id === 'snap' && task.snapAt ? task.snapAt : BODY_LAYERS[id].at);
+  const bodyLayerName = (task, id) => (id === 'snap' && task.snapLesson ? `Schnipsen: ${COURSE.find((l) => l.id === task.snapLesson)?.name || ''}` : BODY_LAYERS[id].name);
+  /** Aufgabe (reine Funktion bis auf den Zufall). pool: Lektionen für 1–3 und den Rhythmus in Stufe 6. */
+  function makeBodyTask(n, rnd = Math.random, shift = 0, pool = bodyPool()) {
+    const level = BODY_LEVELS[n - 1];
+    const base = { kind: 'body', level: n, mode: level.kind, answer: null, help: false };
+    if (level.kind === 'step') {
+      const list = pool.length ? pool : [COURSE.find((l) => l.id === 'puls')];
+      const l = list[Math.floor(rnd() * list.length)];
+      return { ...base, meter: l.meter, lesson: l.id, patternBars: [...l.bars], bars: level.bars, ...dbTempo(l.bpm, shift) };
+    }
+    let roles = [...level.roles];
+    if (roles.length > 1) { const k = Math.floor(rnd() * roles.length); roles = [...roles.slice(k), ...roles.slice(0, k)]; }
+    const task = { ...base, meter: '4/4', roles, barsPer: level.barsPer, bars: roles.length * level.barsPer, ...dbTempo(rndInt(BODY_LAYER_BPM[0], BODY_LAYER_BPM[1], rnd), shift) };
+    // Stufe 6: statt Schnipsen ein gelernter 4/4-Rhythmus (ein Takt, ohne Pausen am Anfang), wenn es einen gibt.
+    if (n === 6) {
+      const learned = pool.filter((l) => l.id !== 'puls' && l.meter === '4/4' && l.bars.length >= 1);
+      if (learned.length && rnd() < .5) {
+        const l = learned[Math.floor(rnd() * learned.length)];
+        task.snapLesson = l.id;
+        task.snapAt = courseNotes(l.bars[0]).filter((x) => !x.rest && !x.tie).map((x) => x.t);
+      }
+    }
+    return task;
+  }
+  /** Zeitplan (reine Funktion). Zeiten in s ab t0. Hören: Einzähler und
+   *  Vorbild; Du: ein Einzähltakt (Fuß bzw. Klick), dann die Takte der
+   *  Aufgabe; Schlusspunkt auf der Eins danach. rehearsal: alle vier
+   *  Schichten `bars` Takte lang, ohne Einzähler und Erwartung. */
+  function bodyPlan(task, { rehearsal = false, bars: rbars = 8 } = {}) {
+    const m = METERS[task.meter], bar = m.ticks, tickSec = 60 / task.bpm / m.ref, barSec = bar * tickSec;
+    const beats = bar / 12;
+    const events = [], expected = [], cues = [], segments = [];
+    const add = (barNo, tick, kind, vel = 1, extra = {}) => events.push({ t: (barNo * bar + tick) * tickSec, bar: barNo, tick, kind, vel, ...extra });
+    const foot = (b, vel = 1) => { for (let k = 0; k < beats; k++) add(b, k * 12, 'kick', vel, { foot: true }); };
+    const clicks = (b) => { for (let k = 0; k < beats; k++) add(b, k * 12, 'click', k ? 1 : 2); };
+    const layer = (b, id) => { for (const x of bodyLayerAt(task, id)) add(b, x, id); };
+    if (rehearsal) {
+      for (let b = 0; b < rbars; b++) BODY_LAYER_IDS.forEach((id) => layer(b, id));
+      return { tickSec, bar, barSec, events, expected, cues, segments, youStart: 0, youVisual: 0, end: rbars * barSec, plan: [] };
+    }
+    let b = 0;
+    if (task.mode === 'step') {
+      const pat = task.patternBars;
+      const notesOf = (k) => courseNotes(pat[k % pat.length]).filter((x) => !x.rest && !x.tie);
+      const groove = (bb) => {
+        if (beats === 4) { add(bb, 12, 'snare'); add(bb, 36, 'snare'); add(bb, 0, 'kick'); add(bb, 24, 'kick', .8); }
+        else if (beats === 2) { add(bb, 0, 'kick'); add(bb, 12, 'snare'); }
+        else add(bb, 0, 'kick');
+        for (let t = 0; t < bar; t += 6) add(bb, t, 'hat', t % 12 ? .75 : 1);
+      };
+      // Hören: ein Takt Fuß mit Klick, dann der Rhythmus vorgeklatscht mit Fuß-Bassdrum (Stufe 1 mit Groove).
+      foot(b); clicks(b); b++;
+      const demoBars = clamp(pat.length, 1, 2);
+      for (let k = 0; k < demoBars; k++, b++) {
+        foot(b, task.level === 1 ? BODY_FOOT_VEL : 1);
+        if (task.level === 1) groove(b);
+        notesOf(k).forEach((x) => add(b, x.t, 'clap', 1, { demo: true }));
+      }
+      // Du: Einzähltakt nur Fuß + Klick, dann die Takte.
+      const youVisual = b * barSec;
+      foot(b); clicks(b); b++;
+      const youBar = b;
+      const plan = [];
+      for (let k = 0; k < task.bars; k++, b++) {
+        const withFoot = task.level !== 3 || k < BODY_FOOT_BARS;
+        plan.push(withFoot);
+        if (withFoot) foot(b, task.level === 1 ? BODY_FOOT_VEL : 1);
+        if (task.level === 1) groove(b);
+        notesOf(k).forEach((x) => expected.push({ t: (b * bar + x.t) * tickSec, bar: k, tick: x.t }));
+      }
+      add(b, 0, 'kick'); add(b, 0, 'open');
+      segments.push({ role: 'clap', from: 0, to: task.bars, judged: true });
+      return { tickSec, bar, barSec, events, expected, cues, segments, youStart: youBar * barSec, youVisual, end: (b * bar) * tickSec + .9, plan };
+    }
+    // Schichten: Hören = Einzähler + zwei Takte alle vier Schichten; Du = Einzähltakt, dann je Rolle barsPer Takte.
+    clicks(b); b++;
+    for (let k = 0; k < 2; k++, b++) BODY_LAYER_IDS.forEach((id) => layer(b, id));
+    const youVisual = b * barSec;
+    cues.push({ t: b * barSec, role: task.roles[0], bar: -1 });
+    clicks(b); BODY_LAYER_IDS.filter((id) => id !== task.roles[0]).forEach((id) => layer(b, id)); b++;
+    const youBar = b;
+    task.roles.forEach((role, s) => {
+      const from = s * task.barsPer;
+      segments.push({ role, from, to: from + task.barsPer });
+      for (let k = 0; k < task.barsPer; k++, b++) {
+        BODY_LAYER_IDS.filter((id) => id !== role).forEach((id) => layer(b, id));
+        bodyLayerAt(task, role).forEach((x) => expected.push({ t: (b * bar + x) * tickSec, bar: from + k, tick: x, role, seg: s }));
+        // Ansage einen Takt vor dem Wechsel: Text und kurzer Klang auf der Eins dieses Takts.
+        if (k === task.barsPer - 1 && s + 1 < task.roles.length) { cues.push({ t: b * barSec, role: task.roles[s + 1], bar: from + k }); add(b, 0, 'cue'); }
+      }
+    });
+    add(b, 0, 'kick'); add(b, 0, 'open');
+    return { tickSec, bar, barSec, events, expected, cues, segments, youStart: youBar * barSec, youVisual, end: (b * bar) * tickSec + .9, plan: Array(task.bars).fill(true) };
+  }
+  /** Tendenz in Worten (Redesign: ohne ms). bias in s (judgeHold). */
+  const timingWord = (bias) => (bias === null || bias === undefined ? null : Math.abs(bias) <= .03 ? 'genau' : bias < 0 ? 'eher früh' : 'eher spät');
+  /** Wertung. taps: s ab t0 (Latenz schon abgezogen). Je Rolle ein
+   *  judgeHold-Lauf über ihre Takte; mit Mikrofon zählen Stampfen und
+   *  Patschen als „mitgemacht“ (judged: false). */
+  function judgeBody(task, plan, taps, mic = false) {
+    const segs = plan.segments.map((sg, s) => {
+      const judged = task.mode === 'step' || !mic || BODY_LAYERS[sg.role].mic;
+      const exp = plan.expected.filter((e) => task.mode === 'step' || e.seg === s);
+      const ts = exp.map((e) => e.t).sort((a, b) => a - b);
+      let gap = plan.barSec;
+      for (let i = 1; i < ts.length; i++) gap = Math.min(gap, ts[i] - ts[i - 1]);
+      const tol = toleranceFor(gap);
+      const barStart = plan.youStart + sg.from * plan.barSec;
+      const inSeg = taps.filter((t) => t >= barStart - tol && t < barStart + (sg.to - sg.from) * plan.barSec + tol);
+      if (!judged) return { role: sg.role, judged: false, from: sg.from, to: sg.to, taps: inSeg.length };
+      const res = judgeHold({ expected: exp.map((e) => e.t), taps: inSeg, barStart, barSec: plan.barSec, tol, plan: plan.plan.slice(sg.from, sg.to), mic, beatSec: plan.barSec / (plan.bar / 12) });
+      const hits = res.hits.length;
+      return { role: sg.role, judged: true, from: sg.from, to: sg.to, res, hits, total: exp.length, tol, barStart, ok: res.held, exp: exp.map((e) => e.t - barStart), taps: inSeg.map((t) => t - barStart) };
+    });
+    const judged = segs.filter((s) => s.judged);
+    const hits = judged.reduce((a, s) => a + s.hits, 0), total = judged.reduce((a, s) => a + s.total, 0);
+    const offs = judged.flatMap((s) => s.res.offsets);
+    const bias = offs.length ? offs.reduce((a, o) => a + o, 0) / offs.length : null;
+    return { ok: judged.length > 0 && judged.every((s) => s.ok), hits, total, taps: taps.length, segments: segs, bias, word: timingWord(bias), mic };
+  }
+  /** Rückmeldung nach dem Lauf (Worte, keine ms). */
+  function bodyMessage(task, res) {
+    if (!res.taps) return res.mic ? 'Das Mikrofon hat nichts gehört – lauter klatschen, mit Kopfhörern?' : 'Keine Klatscher – tipp aufs Feld oder drück die Leertaste.';
+    const timing = res.word ? ` Timing: ${res.word}.` : '';
+    const skipped = res.segments.filter((s) => !s.judged).map((s) => BODY_LAYERS[s.role].name);
+    const note = skipped.length ? ` ${skipped.join(' und ')}: mitgemacht, ohne Wertung – ${BODY_MIC_TEXT}` : '';
+    if (res.ok) return `Geschafft! ${res.hits} von ${res.total} im Groove.${timing}${note}`;
+    const bad = res.segments.filter((s) => s.judged && !s.ok).map((s) => bodyLayerName(task, s.role));
+    const where = task.mode === 'layers' && bad.length ? ` Wackelig beim ${bad.join(' und ')}.` : '';
+    const tip = task.mode === 'step' ? ' Lass den Fuß weiterlaufen, auch wenn die Hände kurz stolpern.' : ' Hör auf die Schicht, die mit dir zusammen auf dem Schlag liegt.';
+    return `Noch nicht – ${res.hits} von ${res.total} im Groove.${where}${timing}${tip}${note}`;
+  }
+
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
   function makeEarTask(mode, n, rnd = Math.random) {
     if (mode === 'downbeat') return makeDownbeatTask(n, rnd, ear.dbShift);
+    // Probenmodus: immer die vier Schichten im 4/4 (Tempo wie die Schichten-Stufen).
+    if (mode === 'body') return ear.bodyRehearsal.on ? { ...makeBodyTask(4, rnd, ear.bodyShift), level: n, rehearsal: true } : makeBodyTask(n, rnd, ear.bodyShift);
     if (mode === 'noteInKey') return makeNoteInKeyTask(n, rnd);
     if (mode === 'chordInKey') return makeChordInKeyTask(n, rnd);
     if (mode === 'quality') {
@@ -5768,6 +5970,7 @@
   async function playEar({ compareSemis, compare, first = false, only = false, cadenceOnly = false } = {}) {
     try { await engine.start(); } catch { setEarFeedback('Web Audio ist auf diesem Gerät nicht verfügbar.', 'bad'); return; }
     if (ear.task?.kind === 'downbeat') { playDownbeat({ solution: ear.revealed }); return; }
+    if (ear.task?.kind === 'body') { playBody({ listen: !ear.revealed }); return; }
     engine.fadeBus(ear.bus);
     clearEarTimers();
     // Intonation ohne Hall — der verwischt die Schwebungen.
@@ -5920,18 +6123,161 @@
     else if (ev.kind === 'clap') engine.clap(time, bus, 2);
     else engine.drum(ev.kind, time, ev.vel, bus);
   }
+  /* ---- Körper: Lauf, Probenmodus, Bühne (Gerüst wie „Einsatz finden“) ---- */
+  /** Klang je Ereignis: Stampfen = Bassdrum, Patschen = dunkles Rauschen
+   *  (eigener Pegel), Klatschen = Clap, Schnipsen = Rim; cue = Ansage-Klang. */
+  function playBodyEvent(ev, time, bus) {
+    if (ev.kind === 'stomp') engine.drum('kick', time, 1, bus);
+    else if (ev.kind === 'patsch') engine.drumNoise(time, { type: 'bandpass', freq: 900, q: .8, gain: .16, decay: .07 }, bus);
+    else if (ev.kind === 'clap') engine.clap(time, bus, ev.demo ? 2 : 1.4);
+    else if (ev.kind === 'snap') engine.drum('rim', time, 1, bus);
+    else if (ev.kind === 'click') engine.click(time, ev.vel, bus);
+    else if (ev.kind === 'cue') engine.drumTone(time, { freq: 1320, type: 'sine', gain: .12, decay: .25 }, bus);
+    else engine.drum(ev.kind, time, ev.vel, bus);
+  }
+  /** Lauf starten (listen) bzw. nach der Auflösung das Vorbild noch einmal. */
+  async function playBody({ listen = true } = {}) {
+    const task = ear.task;
+    engine.fadeBus(ear.bus);
+    clearEarTimers();
+    if (task.rehearsal) { playBodyRehearsal(task); return; }
+    ear.cueEnd = Infinity;
+    let mic = false;
+    if (listen && state.input === 'mic') {
+      mic = await micOn('rhythm');
+      if (ear.task !== task) return;
+      if (!mic) setEarFeedback(`${voice.error} Tippen geht trotzdem.`, 'bad');
+    }
+    const ctx = engine.ctx;
+    const bus = engine.newBus({ reverb: false });
+    ear.bus = bus;
+    const plan = bodyPlan(task);
+    const t0 = ctx.currentTime + .15;
+    for (const ev of plan.events) if (listen || ev.t < plan.youVisual) playBodyEvent(ev, t0 + ev.t, bus);
+    ear.cueEnd = t0 + plan.youVisual;
+    const msAt = (sec) => Math.max(0, (t0 + sec - ctx.currentTime) * 1000);
+    ear.timers.push(setTimeout(renderEar, msAt(plan.youVisual) + 30));
+    if (listen) {
+      dbRun = { task, t0, plan, taps: [], mic, playing: true, bus, role: task.mode === 'layers' ? task.roles[0] : null, cue: null };
+      const run = dbRun;
+      // Ansage einen Takt vor dem Wechsel, Rollenwechsel auf der Eins.
+      plan.cues.forEach((c) => ear.timers.push(setTimeout(() => { if (dbRun === run) { run.cue = c.role; renderEar(); } }, msAt(c.t))));
+      plan.segments.forEach((sg) => ear.timers.push(setTimeout(() => { if (dbRun === run) { run.role = sg.role; run.cue = null; renderEar(); } }, msAt(plan.youStart + sg.from * plan.barSec))));
+      run.endTimer = setTimeout(finishBody, msAt(plan.end));
+      ear.timers.push(run.endTimer);
+    }
+    renderEar();
+  }
+  /** Ende des Laufs: eigene Schicht mit judgeHold werten. */
+  function finishBody() {
+    const run = dbRun;
+    if (!run || run.task.kind !== 'body' || ear.task !== run.task || ear.revealed || run.task.rehearsal) return;
+    const res = judgeBody(run.task, run.plan, run.taps.map((t) => t - run.t0), run.mic);
+    stopDownbeatRun();
+    run.task.answer = res;
+    finishEarAnswer(res.ok, bodyMessage(run.task, res));
+  }
+  /** Probenmodus: alle vier Schichten in Schleife, ohne Wertung und ohne
+   *  Mikrofon; immer acht Takte im Voraus geplant, bis Stopp. */
+  function playBodyRehearsal(task) {
+    const ctx = engine.ctx;
+    const bus = engine.newBus({ reverb: false });
+    ear.bus = bus;
+    ear.cueEnd = Infinity; // läuft: „Hören“
+    const plan = bodyPlan(task, { rehearsal: true, bars: 8 });
+    const t0 = ctx.currentTime + .15;
+    dbRun = { task, t0, plan, taps: [], mic: false, playing: true, bus, rehearsal: true };
+    const run = dbRun;
+    let k = 0;
+    const chunk = () => {
+      if (dbRun !== run) return;
+      const start = t0 + k * plan.end;
+      for (const ev of plan.events) playBodyEvent(ev, start + ev.t, bus);
+      k++;
+      ear.timers.push(setTimeout(chunk, Math.max(0, (start + plan.end - 1 - ctx.currentTime) * 1000)));
+    };
+    chunk();
+    renderEar();
+  }
+  const bodyRehearsalOn = () => ear.mode === 'body' && ear.bodyRehearsal.on;
+  /** Bühne: die vier Schichten bzw. Fuß und Hände; die eigene markiert. Im
+   *  Probenmodus je Stimme groß ihre Schicht (antippen wechselt), für den Beamer. */
+  function bodyStageHtml(task, phase) {
+    if (bodyRehearsalOn()) {
+      const map = ear.bodyRehearsal.map;
+      const rows = ['S', 'A', 'T', 'B'].map((x) => `<button type="button" class="k-row body-voice" data-body-voice="${x}" aria-label="${PART_NAMES[x]}: ${BODY_LAYERS[map[x]].name} – antippen zum Wechseln"><span class="k-row-name">${PART_NAMES[x]}</span><span class="body-layer">${BODY_LAYERS[map[x]].name}</span></button>`).join('');
+      return `<div class="body-rows is-big">${rows}</div>`;
+    }
+    const level = BODY_LEVELS[(task ? task.level : ear.levels.body) - 1];
+    if (level.kind === 'step') {
+      const l = task ? COURSE.find((x) => x.id === task.lesson) : null;
+      return `<div class="body-rows"><div class="k-row body-row"><span class="k-row-name">Fuß</span><span class="body-layer">steppen, alle Viertel · nicht bewertet</span></div>
+        <div class="k-row body-row is-mine"><span class="k-row-name">Hände</span><span class="body-layer">${l ? esc(l.name) : 'ein gelernter Rhythmus'}</span><span class="k-pill">du</span></div></div>
+        <p class="db-cap">${BODY_STEP_TEXT}</p>`;
+    }
+    const roles = task ? task.roles : level.roles;
+    const now = phase === 'you' && dbRun?.task === task ? dbRun.role : roles[0];
+    const next = phase === 'you' && dbRun?.task === task ? dbRun.cue : null;
+    const mic = state.input === 'mic';
+    const rows = BODY_LAYER_IDS.map((id) => {
+      const mine = id === now;
+      return `<div class="k-row body-row${mine ? ' is-mine' : ''}"><span class="k-row-name">${esc(task ? bodyLayerName(task, id) : BODY_LAYERS[id].name)}</span><span class="body-layer">${BODY_LAYERS[id].move}</span>${mine ? '<span class="k-pill">du</span>' : ''}</div>`;
+    }).join('');
+    const cap = next ? `Gleich: ${esc(bodyLayerName(task, next))}` : mic && !BODY_LAYERS[now].mic ? `Mitmachen – ${BODY_MIC_TEXT}` : 'Die App spielt drei Schichten, du die vierte.';
+    return `<div class="body-rows">${rows}</div><p class="db-cap" aria-live="polite">${cap}</p>`;
+  }
+  /** Auflösung Takt für Takt (wie bei „Einsatz finden“): je gewerteter Takt eine
+   *  Zeile mit Soll-Punkten (grün getroffen, rot gestrichelt verpasst) und deinen
+   *  Tipps (grün im Muster, orange zu viel). Mehr als acht Takte: je Schicht eine Zeile. */
+  function bodyResultHtml(task, res) {
+    const judged = res.segments.filter((s) => s.judged);
+    const nBars = judged.reduce((a, s) => a + s.to - s.from, 0);
+    const skipped = res.segments.filter((s) => !s.judged).map((s) => `<p class="body-note">${esc(BODY_LAYERS[s.role].name)}: mitgemacht – ${BODY_MIC_TEXT}</p>`).join('');
+    if (nBars > 8) {
+      const rows = judged.map((s) => {
+        const sure = s.res.bars.filter((b) => !b.err).length;
+        return `<div class="k-row body-row"><span class="k-row-name">${esc(bodyLayerName(task, s.role))}</span><span class="body-layer">${sure} von ${s.to - s.from} Takten sicher</span>${s.ok ? `<span class="k-pill k-pill--ok">${K_CHECK}</span>` : ''}</div>`;
+      }).join('');
+      return `<div class="body-rows">${rows}</div>${skipped}`;
+    }
+    const m = METERS[task.meter], beats = m.ticks / 12, barSec = 60 / task.bpm / m.ref * m.ticks;
+    const W = 320, X0 = 30, X1 = W - 8, RH = nBars > 4 ? 17 : 26, TOP = 14;
+    const X = (t) => X0 + clamp(t / barSec, -.04, 1.04) * (X1 - X0);
+    const out = [];
+    for (let k = 0; k < beats; k++) out.push(`<text class="dbb-lab" x="${f1(X0 + k / beats * (X1 - X0))}" y="10" text-anchor="middle">${k + 1}</text>`);
+    let row = 0;
+    for (const s of judged) {
+      const hitExp = new Set(s.res.hits.map((h) => Math.round((h.t - h.off) * 1000)));
+      const hitTap = new Set(s.res.hits.map((h) => Math.round(h.t * 1000)));
+      for (let b = 0; b < s.to - s.from; b++, row++) {
+        const y = TOP + row * RH + RH / 2;
+        out.push(`<text class="dbb-bar" x="2" y="${f1(y + 4)}">T${s.from + b + 1}</text><line class="dbb-line" x1="${X0}" x2="${X1}" y1="${f1(y)}" y2="${f1(y)}"/>`);
+        for (let k = 0; k <= beats; k++) { const x = X0 + k / beats * (X1 - X0); out.push(`<line class="dbb-beat${k === 0 || k === beats ? ' is-one' : ''}" x1="${f1(x)}" x2="${f1(x)}" y1="${f1(y - 7)}" y2="${f1(y + 7)}"/>`); }
+        s.exp.filter((t) => t >= b * barSec - 1e-6 && t < (b + 1) * barSec - 1e-6).forEach((t) => {
+          out.push(`<circle class="dbb-tg ${hitExp.has(Math.round(t * 1000)) ? 'is-ok' : 'is-miss'}" cx="${f1(X(t - b * barSec))}" cy="${f1(y)}" r="${RH < 26 ? 4 : 5}"/>`);
+        });
+        s.taps.filter((t) => t >= b * barSec - s.tol && t < (b + 1) * barSec - s.tol).forEach((t) => {
+          out.push(`<rect class="dbb-tap ${hitTap.has(Math.round(t * 1000)) ? 'is-ok' : 'is-extra'}" x="${f1(X(t - b * barSec) - 1.5)}" y="${f1(y - RH * .38)}" width="3" height="${f1(RH * .76)}" rx="1.5"/>`);
+        });
+      }
+    }
+    const H = TOP + row * RH + 2;
+    return `<svg class="db-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="Deine Takte: ${res.hits} von ${res.total} im Groove">${out.join('')}</svg>
+      <p class="db-legend"><span><i class="is-ok"></i>getroffen</span><span><i class="is-miss"></i>verpasst</span><span><b class="is-ok"></b>dein Klatscher</span><span><b class="is-extra"></b>zu viel</span></p>${skipped}`;
+  }
+
   /** Klatscher: Tippen/Leertaste (time = null, Latenz wie im Rhythmus-Bereich
    *  abgezogen) oder Mikrofon (Zeit des Einsatzes, Mikrofon-Latenz schon ab). */
   function downbeatTap(time = null) {
     const run = dbRun;
-    if (!run || !run.playing) return;
+    if (!run || !run.playing || run.rehearsal) return;
     const ctx = engine.ctx;
     if (time === null) {
       if (run.mic) return; // Eingabe kommt vom Mikrofon
       run.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
       engine.burst(ctx.currentTime, { cutoff: 2500, q: 2, length: .05, volume: .12 });
     } else run.taps.push(time);
-    if (run.windowStart == null) startDownbeatWindow(run, run.taps[run.taps.length - 1]);
+    if (run.task.kind === 'downbeat' && run.windowStart == null) startDownbeatWindow(run, run.taps[run.taps.length - 1]);
     const pad = $(downbeatInRhythm() ? '.db-wrap .ear-pad' : '.answer-grid .ear-pad');
     if (pad) { pad.classList.remove('is-tapped'); void pad.offsetWidth; pad.classList.add('is-tapped'); }
   }
@@ -6091,7 +6437,7 @@
     onEarResult(task, ok);
     renderEar();
     // Einsatz finden: nie automatisch weiter – erst der Weiter-Knopf (man klatscht evtl. noch).
-    if (ok && ear.settings.autoNext && task.kind !== 'downbeat') ear.timers.push(setTimeout(nextEar, 1600));
+    if (ok && ear.settings.autoNext && !isRhythmEar(task.kind)) ear.timers.push(setTimeout(nextEar, 1600));
   }
   /** Fortschritt und „Heute üben“. */
   function onEarResult(task, ok) {
@@ -6191,7 +6537,7 @@
   function earLevelInfo(mode) {
     if (mode === 'interval') return [INTERVAL_LEVELS(), ear.settings.intervalLevel];
     if (mode === 'chords') return [EAR_LEVELS, ear.settings.level];
-    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS, noteInKey: NOTE_IN_KEY_LEVELS, chordInKey: CHORD_IN_KEY_LEVELS, downbeat: DOWNBEAT_LEVELS }[mode];
+    const table = { quality: QUALITY_LEVELS, cadence: CADENCE_LEVELS, parts: PART_LEVELS, tuning: TUNING_LEVELS, noteInKey: NOTE_IN_KEY_LEVELS, chordInKey: CHORD_IN_KEY_LEVELS, downbeat: DOWNBEAT_LEVELS, body: BODY_LEVELS }[mode];
     return [table, ear.levels[mode]];
   }
   /** Stufe `n` im aktuellen Modus übernehmen. */
@@ -6224,7 +6570,7 @@
     if (earSeries.mode !== key || earSeries.marks.length >= SERIES_LEN) resetEarSeries(key);
     earSeries.marks.push(ok && !task.help ? 'ok' : 'help');
     if (!ok) {
-      const label = isInKey(task) ? inKeyLabel(task, inKeyTarget(task)) : task.kind === 'interval' ? intervalName(task.semis) : task.kind === 'downbeat' ? DB_PATTERNS[task.pattern].name : '';
+      const label = isInKey(task) ? inKeyLabel(task, inKeyTarget(task)) : task.kind === 'interval' ? intervalName(task.semis) : task.kind === 'downbeat' ? DB_PATTERNS[task.pattern].name : task.kind === 'body' ? (task.mode === 'step' ? COURSE.find((l) => l.id === task.lesson)?.name || '' : task.roles.map((r) => BODY_LAYERS[r].name).join(' · ')) : '';
       if (label) earSeries.misses.push(label);
     }
   }
@@ -6404,6 +6750,7 @@
         ['db-demo', 'Vormachen', 'die App klatscht im ersten Takt mit · zählt „mit Hilfe“', !!task && !rev],
         ['db-solution', 'Lösung hören', 'von der Eins an, Eins betont, Muster vorgeklatscht', rev]);
     }
+    if (ear.mode === 'body' && !ear.bodyRehearsal.on) list.push(['body-demo', 'Vorbild hören', 'die App spielt es noch einmal vor, ohne Wertung', !!task && !dbRun]);
     return list;
   }
   function earHelpInfo() {
@@ -6413,6 +6760,14 @@
     if (ear.mode === 'downbeat') {
       info.push(['So findest du die Eins', 'Erst nur zuhören, bis der Groove ganz da ist. Zähl leise mit („1 2 3 4“) und probier, wo die Eins sitzt: Dort passiert meist am meisten – tiefer Schlag, neuer Basston. Erst dann das Muster klatschen.']);
       if (ear.task && ear.revealed) info.push(['Dieser Groove', DB_GROOVES[ear.task.groove].cue]);
+    }
+    if (ear.mode === 'body') {
+      const lv = BODY_LEVELS[(ear.task?.level || ear.levels.body) - 1];
+      info.push(['So geht’s', lv.kind === 'step'
+        ? `Auf der Stelle steppen, von einem Fuß auf den anderen, auf jedem Schlag. Die Hände klatschen dazu den Rhythmus. ${BODY_STEP_TEXT}`
+        : 'Vier Schichten im 4/4: Stampfen auf 1 und 3, Patschen (Hände auf die Oberschenkel) auf alle Achtel, Klatschen auf 2 und 4, Schnipsen auf das „und“ von 2 und 4. Die App spielt drei, du die vierte; einen Takt vor dem Wechsel sagt sie deine neue Schicht an.']);
+      if (state.input === 'mic') info.push(['Mikrofon', `Gewertet werden nur Klatschen und Schnipsen – ${BODY_MIC_TEXT} Stampfen und Patschen machst du trotzdem mit.`]);
+      info.push(['In der Probe', 'Im Zahnrad gibt es den Probenmodus: alle vier Schichten in Schleife, jede Stimme eine Schicht.']);
     }
     if (ear.mode === 'tuning') {
       const stair = stairFor(TUNING_LEVELS[ear.levels.tuning - 1].n);
@@ -6475,25 +6830,25 @@
   /** Fußleiste für Einsatz finden im Rhythmus-Bereich: Klatschfläche (siehe
    *  renderEar), Tempo oben links, Stopp oben rechts, darüber Nochmal und Hilfen. */
   function renderDownbeatDock() {
-    const on = ear.mode === 'downbeat' && downbeatInRhythm();
+    const on = isRhythmEar(ear.mode) && downbeatInRhythm();
     $('.db-wrap').hidden = !on;
     $('.db-round').hidden = !on;
     if (!on) return;
-    const task = ear.task?.kind === 'downbeat' ? ear.task : null;
+    const task = ear.task && ear.task.kind === ear.mode ? ear.task : null;
     $('[data-ear="db-again"]').disabled = !task;
-    $('[data-ear="db-again"]').setAttribute('aria-label', task && ear.revealed ? 'Lösung hören' : 'Nochmal');
+    $('[data-ear="db-again"]').setAttribute('aria-label', task && ear.revealed ? (task.kind === 'body' ? 'Vorbild hören' : 'Lösung hören') : 'Nochmal');
     $('[data-ear="db-helps"]').disabled = !task;
     $('[data-ear="db-stop"]').hidden = !dbRun;
     // Nach der Runde: Weiter nur über den eigenen Knopf (an der Stelle der Start-Pille).
     $('.db-next').hidden = !(task && ear.revealed);
     const tc = $('[data-tempo-drag="downbeat"]');
-    if (tempoDrag.el !== tc) showTempoValue(tc, downbeatBpm());
+    if (tempoDrag.el !== tc) showTempoValue(tc, rhythmEarBpm());
     if (dbRun) tc.setAttribute('aria-disabled', 'true'); else tc.removeAttribute('aria-disabled');
   }
 
   function renderEar() {
     $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
-    $('.ear-page').classList.toggle('is-downbeat', ear.mode === 'downbeat');
+    $('.ear-page').classList.toggle('is-downbeat', isRhythmEar(ear.mode));
     // Im Rhythmus-Bereich (Einsatz finden): Zurück führt zur Rhythmus-Übersicht.
     const home = downbeatInRhythm() ? 'rhythm' : 'ear';
     const back = $('[data-exview="ear"] .back-btn');
@@ -6686,6 +7041,39 @@
       // Schwelle nur in der Serienbilanz (Musikpädagoge: bei jeder Aufgabe
       // erzeugt sie Druck); im Gemischt-Programm wie bisher unter der Aufgabe.
       // Zusatzinfo (Schwelle) jetzt in den Hilfen, nicht unter den Antworten (earHelps).
+    } else if (ear.mode === 'body') {
+      // Körper: Klatschfläche in der Fußleiste wie bei „Einsatz finden“; Bühne zeigt
+      // Fuß/Hände bzw. die vier Schichten, nach dem Lauf die Takte.
+      const level = BODY_LEVELS[(task ? task.level : ear.levels.body) - 1];
+      const phase = downbeatPhase(task);
+      const mic = state.input === 'mic' && !ear.bodyRehearsal.on;
+      const step = level.kind === 'step' && !ear.bodyRehearsal.on;
+      const role = dbRun?.task === task && task ? dbRun.role : null;
+      const quiet = mic && role && !BODY_LAYERS[role].mic;
+      const res = ear.revealed ? task?.answer : null;
+      if (ear.bodyRehearsal.on) {
+        prompt.textContent = 'Probenmodus';
+        sub.textContent = 'Alle vier Schichten in Schleife · ohne Wertung';
+      } else {
+        prompt.textContent = { idle: 'Puls im Fuß, Rhythmus in den Händen', wait: 'Puls im Fuß, Rhythmus in den Händen', listen: step ? 'Hör zu – so klingt es' : 'Hör zu – alle vier Schichten', you: step ? 'Jetzt du: steppen und klatschen' : `Jetzt du: ${role ? bodyLayerName(task, role) : ''}`, done: res?.ok ? 'Geschafft' : 'Noch nicht ganz' }[phase];
+        sub.textContent = `Stufe ${level.n}: ${level.label}`;
+      }
+      const text = ear.bodyRehearsal.on
+        ? (dbRun ? ['Läuft …', 'Stopp oben rechts'] : ['Tippen zum Starten', 'alle vier Schichten in Schleife'])
+        : {
+          idle: ['Tippen zum Starten', step ? 'erst hören, dann steppen und klatschen' : 'drei Schichten spielt die App, eine du'],
+          wait: ['Tippen zum Starten', '„Nochmal“ startet neu'],
+          listen: ['Hör zu …', step ? 'gleich steppst du mit' : 'gleich bist du dran'],
+          you: quiet ? ['Mitmachen', BODY_MIC_TEXT] : [mic ? (role === 'snap' ? 'Schnipsen!' : 'Klatschen!') : 'Hier tippen', step ? 'der Fuß steppt weiter' : `deine Schicht: ${role ? bodyLayerName(task, role) : ''}`],
+          done: [res ? `${res.hits} von ${res.total} im Groove` : 'Fertig', res?.ok ? (res.word ? `Timing: ${res.word}` : 'geschafft') : '↻ hört das Vorbild'],
+        }[phase];
+      const pad = $('.db-wrap .ear-pad');
+      pad.type = 'button';
+      pad.className = `ear-pad${mic ? ' is-mic' : ''}${phase === 'done' && !res?.ok ? ' is-miss' : ''}`;
+      pad.dataset.phase = ear.bodyRehearsal.on && dbRun ? 'listen' : phase;
+      pad.innerHTML = `<b>${esc(text[0])}</b><span>${esc(text[1])}</span>`;
+      pad.setAttribute('aria-label', `${text[0]} – ${text[1]}`);
+      grid.replaceChildren();
     } else if (ear.mode === 'downbeat') {
       // Einsatz finden: statt Antwortknöpfen eine Klatschfläche im Antwortfeld
       // (feste Höhe); in der Bühne das Muster als Zählzeiten-Reihe – ohne
@@ -6721,8 +7109,14 @@
     }
     renderDownbeatDock();
     const dbPat = $('.db-pattern');
-    dbPat.hidden = !(ear.mode === 'downbeat' && task) || done;
-    dbPat.innerHTML = dbPat.hidden ? '' : downbeatPatternHtml(task);
+    if (ear.mode === 'body') {
+      dbPat.hidden = done;
+      const res = ear.revealed && task?.answer && !task.rehearsal ? task.answer : null;
+      dbPat.innerHTML = dbPat.hidden ? '' : res ? bodyResultHtml(task, res) : bodyStageHtml(task, downbeatPhase(task));
+    } else {
+      dbPat.hidden = !(ear.mode === 'downbeat' && task) || done;
+      dbPat.innerHTML = dbPat.hidden ? '' : downbeatPatternHtml(task);
+    }
     layoutEarAnswers(grid);
 
     const st = ear.stats[ear.mode];
@@ -6957,7 +7351,10 @@
         <p class="foot-note" style="text-align:left;margin-top:0">Die Stufe wählst du direkt über den Aufgaben (Feld „Stufe“).</p>
         ${ear.mode === 'cadence' ? `<span class="sub-label">Klassik</span><div class="check-list">${checkRow('phrygian', 'on', 'Phrygischer Halbschluss (iv⁶–V in Moll)', !!s.phrygian, 'ab Stufe 4, wenn Moll dabei ist')}</div>` : ''}
         ${isInKeyMode(ear.mode) ? inKeySettingsHtml(ear.mode) : ''}
-        ${ear.mode === 'downbeat' ? `<span class="sub-label">Eingabe</span>
+        ${ear.mode === 'body' ? `<span class="sub-label">Probenmodus</span>
+        <div class="chip-row">${[['off', 'Aus'], ['on', 'An']].map(([v, label]) => `<button class="chip" type="button" data-body-rehearsal="${v}" aria-pressed="${ear.bodyRehearsal.on === (v === 'on')}">${label}</button>`).join('')}</div>
+        <p class="foot-note" style="text-align:left;margin-top:4px">Für die Probe: alle vier Schichten in Schleife, ohne Wertung und ohne Mikrofon. Jede Stimme hat eine Schicht (Bass stampft, Tenor patscht, Alt klatscht, Sopran schnipst) – in der Bühne antippen zum Wechseln. Tempo wie sonst in der Fläche ziehen.</p>` : ''}
+        ${isRhythmEar(ear.mode) ? `<span class="sub-label">Eingabe</span>
         <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.</p>` : ''}
         ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
@@ -10890,7 +11287,7 @@
         grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
         groovesProgress: groovesProgress(), // nur für den Balken der Kachel „Grooves“ in der App, beim Laden ignoriert
       },
-      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbShift: ear.dbShift, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
+      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbShift: ear.dbShift, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
         audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
@@ -10971,6 +11368,13 @@
     for (const k of Object.keys(ear.levels)) if (Number.isInteger(lv[k]) && lv[k] >= 1 && lv[k] <= 6) ear.levels[k] = lv[k];
     if (SATB_PARTS.includes(e.part)) ear.part = e.part;
     ear.dbShift = Number.isFinite(e.dbShift) ? clamp(Math.round(e.dbShift), -60, 60) : 0;
+    ear.bodyShift = Number.isFinite(e.bodyShift) ? clamp(Math.round(e.bodyShift), -60, 60) : 0;
+    { // Körper: Probenmodus; nur gültige Schichten je Stimme übernehmen.
+      const br = e.bodyRehearsal && typeof e.bodyRehearsal === 'object' ? e.bodyRehearsal : {};
+      const map = { ...BODY_REHEARSAL_DEFAULT };
+      for (const x of SATB_PARTS) if (BODY_LAYER_IDS.includes(br.map?.[x])) map[x] = br.map[x];
+      ear.bodyRehearsal = { on: br.on === true, map };
+    }
     if (e.stairs && typeof e.stairs === 'object') {
       for (const [n, st] of Object.entries(e.stairs)) {
         const k = Number(n);
@@ -11082,7 +11486,7 @@
       $('[data-list="rhythm"] [data-open-mode]')?.focus();
       return;
     }
-    if (e.target.closest('[data-downbeat-open]')) { openDownbeat(); return; }
+    { const dbo = e.target.closest('[data-downbeat-open]'); if (dbo) { openDownbeat(dbo.dataset.downbeatOpen || 'downbeat'); return; } }
     const backBtn = e.target.closest('[data-back]');
     if (backBtn) { backToList(backBtn.dataset.back); return; }
     const mixedBtn = e.target.closest('[data-mixed]');
@@ -11323,6 +11727,7 @@
         playEar();
       }
       else if (action === 'db-solution' && ear.task?.kind === 'downbeat' && ear.revealed) playEar();
+      else if (action === 'body-demo' && ear.task?.kind === 'body' && !dbRun) playBody({ listen: false });
       else if (action === 'next') nextEar();
       return;
     }
@@ -11360,6 +11765,18 @@
     }
     const earSet = e.target.closest('[data-earset]');
     if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
+    const bodyReh = e.target.closest('[data-body-rehearsal]');
+    if (bodyReh) {
+      ear.bodyRehearsal.on = bodyReh.dataset.bodyRehearsal === 'on';
+      clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); ear.task = null; setEarFeedback('', '');
+      persist(); renderSettings(); renderEar(); return;
+    }
+    const bodyVoice = e.target.closest('[data-body-voice]');
+    if (bodyVoice && SATB_PARTS.includes(bodyVoice.dataset.bodyVoice)) {
+      const map = ear.bodyRehearsal.map, x = bodyVoice.dataset.bodyVoice;
+      map[x] = BODY_LAYER_IDS[(BODY_LAYER_IDS.indexOf(map[x]) + 1) % BODY_LAYER_IDS.length];
+      persist(); renderEar(); return;
+    }
     const dbIn = e.target.closest('[data-db-input]');
     if (dbIn) { if (INPUT_CHOICES.some(([id]) => id === dbIn.dataset.dbInput)) state.input = dbIn.dataset.dbInput; renderSettings(); renderEar(); return; }
     const tempo = e.target.closest('[data-tempo]');
@@ -13528,7 +13945,7 @@
         if (!$('.sheet-body [data-set="inKeyResolve"]') || !$('.sheet-body [data-set="autoNext"]')) errors.push('Einstellungen Akkorde: Auflösung/automatisch weiter fehlen');
         sheetKind = kind; }
       // Modusliste: beide neuen Modi direkt vor „Akkordfolgen“.
-      if (EAR_MODES.map(([id]) => id).join() !== 'interval,quality,cadence,noteInKey,chordInKey,chords,parts,tuning,downbeat') errors.push(`Reihenfolge der Hör-Modi: ${EAR_MODES.map(([id]) => id)}`);
+      if (EAR_MODES.map(([id]) => id).join() !== 'interval,quality,cadence,noteInKey,chordInKey,chords,parts,tuning,downbeat,body') errors.push(`Reihenfolge der Hör-Modi: ${EAR_MODES.map(([id]) => id)}`);
     } finally {
       ear.inKey = saved.ik; ear.settings.inKeyHold = saved.hold; ear.settings.inKeyCadence = saved.cad;
       ear.mode = saved.mode; ear.task = saved.task; ear.revealed = saved.revealed; ear.levels.chordInKey = saved.level;
@@ -13547,7 +13964,7 @@
       renderModeList('ear');
       const rows = $$('[data-list="ear"] [data-open-mode]').map((b) => b.dataset.openMode.split(':')[1]);
       // Konfetti B2: nach Fähigkeit gruppiert (EAR_GROUPS), einzeilig ohne Kurztext.
-      if (rows.join() !== EAR_GROUPS.flatMap(([, ids]) => ids).join() || rows.length !== EAR_MODES.length - 1) errors.push(`Liste Hören: Reihenfolge ${rows}`);
+      if (rows.join() !== EAR_GROUPS.flatMap(([, ids]) => ids).join() || rows.length !== EAR_MODES.length - RHYTHM_EAR_MODES.length) errors.push(`Liste Hören: Reihenfolge ${rows}`);
       if ($$('[data-list="ear"] .k-group-head').map((h) => h.textContent).join() !== 'Melodie,Harmonie,Im Chor') errors.push('Liste Hören: Gruppen');
       if ($('[data-list="ear"] .mode-how')) errors.push('Liste Hören: Unterzeile vorhanden');
       if ($('[data-open-mode="ear:noteInKey"] .k-row-name')?.textContent !== 'Töne in der Tonart' || $('[data-open-mode="ear:chordInKey"] .k-row-name')?.textContent !== 'Akkorde in der Tonart') errors.push('Liste Hören: Namen');
@@ -14492,6 +14909,7 @@
     errors.push(...accompCheck());
     errors.push(...groovesCheck());
     errors.push(...downbeatCheck());
+    errors.push(...bodyCheck());
     errors.push(...delayCheck());
     errors.push(...earPackageCheck());
     errors.push(...popEarCheck());
@@ -14549,8 +14967,8 @@
         applyQuickParams({ tab: 'ear' });
         if (views.ear !== 'exercise' || state.tab !== 'ear' || ear.mode !== QUICK_CHAINS.ear[0][0] || !quickRun || quickRun.steps !== QUICK_CHAINS.ear) errors.push('from=quick&tab=ear startet die Kette nicht wie bisher');
         quickRun = saved.run;
-        // Einsatz finden steht im Rhythmus-Bereich (eigene Zeile data-downbeat-open, siehe downbeatCheck).
-        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => id !== 'downbeat')], ['voice', visibleSingModes().filter(([id]) => id !== 'tuner')]]) { // Tuner: Tools-Kachel
+        // Einsatz finden und Körper stehen im Rhythmus-Bereich (eigene Zeilen data-downbeat-open, siehe downbeatCheck/bodyCheck).
+        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => !isRhythmEar(id))], ['voice', visibleSingModes().filter(([id]) => id !== 'tuner')]]) { // Tuner: Tools-Kachel
           renderModeList(tab);
           for (const [id] of list) {
             const n = $$(`[data-list="${tab}"] [data-open-mode="${tab}:${id}"]`).length;
@@ -14728,6 +15146,87 @@
   /** Einsatz finden: Stufen, Zeitplan (Einstieg, Einblenden, Sollpunkte ab
    *  der Eins), Auswertung (richtige Eins / um einen Schlag verschoben),
    *  Ablauf bis zur Lösung, Gerüst wie die übrigen Hör-Übungen. */
+  /** Übe-Korrekturen 11: Körper – Fuß-Bassdrum, Schichten, Wertung, Einbindung. */
+  function bodyCheck() {
+    const errors = [];
+    let seed = 11;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const puls = COURSE.find((l) => l.id === 'puls');
+    const near = (a, b) => Math.abs(a - b) < 1e-6;
+    // Schicht-Raster (Ticks im 4/4)
+    const want = { stomp: '0,24', patsch: '0,6,12,18,24,30,36,42', clap: '12,36', snap: '18,42' };
+    for (const [id, at] of Object.entries(want)) if (BODY_LAYERS[id].at.join() !== at) errors.push(`Körper: Raster ${id} = ${BODY_LAYERS[id].at}`);
+    if (BODY_LAYERS.clap.mic !== true || BODY_LAYERS.snap.mic !== true || BODY_LAYERS.stomp.mic || BODY_LAYERS.patsch.mic) errors.push('Körper: Mikrofon-Wertung der Schichten');
+    // Stufen 1–3: Fuß-Bassdrum auf allen Vierteln; Stufe 3 still ab Takt 3.
+    for (const n of [1, 2, 3]) {
+      const t = makeBodyTask(n, rnd, 0, [puls]);
+      const p = bodyPlan(t);
+      const youBar = Math.round(p.youStart / p.barSec);
+      if (t.bars !== [4, 8, 8][n - 1] || t.mode !== 'step') errors.push(`Körper Stufe ${n}: ${t.bars} Takte`);
+      for (let k = 0; k < t.bars; k++) {
+        const evs = p.events.filter((e) => e.bar === youBar + k);
+        const foot = evs.filter((e) => e.kind === 'kick' && e.foot).map((e) => e.tick).join();
+        if (n === 3 && k >= BODY_FOOT_BARS) { if (evs.length) errors.push(`Körper Stufe 3: Takt ${k + 1} nicht still (${evs.map((e) => e.kind)})`); }
+        else if (foot !== '0,12,24,36') errors.push(`Körper Stufe ${n}: Fuß in Takt ${k + 1} = ${foot}`);
+      }
+      if (n === 3 && p.plan.join() !== 'true,true,false,false,false,false,false,false') errors.push(`Körper Stufe 3: Plan ${p.plan}`);
+      if ((n === 1) !== p.events.some((e) => e.kind === 'snare')) errors.push(`Körper Stufe ${n}: Groove ${n === 1 ? 'fehlt' : 'zu viel'}`);
+      if (p.expected.length !== t.bars * 4 || p.expected.some((e, i) => !near(e.t, p.youStart + i * p.barSec / 4))) errors.push(`Körper Stufe ${n}: Soll-Punkte`);
+      if (!(p.youVisual < p.youStart && near(p.youStart - p.youVisual, p.barSec))) errors.push(`Körper Stufe ${n}: kein Einzähltakt vor „Du“`);
+    }
+    // Stufen 4–6: Rollen, Wechsel nach 4 bzw. 8 Takten, Ansage einen Takt vorher, App spielt die drei anderen.
+    for (const n of [4, 5, 6]) {
+      for (let i = 0; i < 20; i++) {
+        const t = makeBodyTask(n, rnd, 0, [puls]);
+        const p = bodyPlan(t);
+        const per = n === 6 ? 8 : 4;
+        if (t.barsPer !== per || t.roles.length !== [1, 2, 4][n - 4] || new Set(t.roles).size !== t.roles.length || (n === 4 && t.roles[0] !== 'clap') || (n === 5 && t.roles.slice().sort().join() !== 'clap,snap')) errors.push(`Körper Stufe ${n}: Rollen ${t.roles}`);
+        p.segments.forEach((sg, s) => {
+          if (sg.from !== s * per || sg.to !== (s + 1) * per) errors.push(`Körper Stufe ${n}: Wechsel nicht nach ${per} Takten`);
+          const cue = p.cues[s];
+          const cueAt = p.youStart + (sg.from - 1) * p.barSec;
+          if (!cue || cue.role !== sg.role || !near(cue.t, cueAt)) errors.push(`Körper Stufe ${n}: Ansage für ${sg.role} nicht einen Takt vorher`);
+          const youBar = Math.round(p.youStart / p.barSec);
+          for (let k = sg.from; k < sg.to; k++) {
+            const kinds = new Set(p.events.filter((e) => e.bar === youBar + k).map((e) => e.kind));
+            if (kinds.has(sg.role) || BODY_LAYER_IDS.some((id) => id !== sg.role && !kinds.has(id))) errors.push(`Körper Stufe ${n}: Takt ${k + 1} spielt die falschen Schichten`);
+          }
+          const exp = p.expected.filter((e) => e.seg === s);
+          if (exp.length !== per * bodyLayerAt(t, sg.role).length || exp.some((e) => !bodyLayerAt(t, sg.role).includes(e.tick))) errors.push(`Körper Stufe ${n}: Soll-Punkte für ${sg.role}`);
+        });
+      }
+    }
+    // Wertung: genau → geschafft; +60 ms → „eher spät“; mit Mikrofon zählen Stampfen/Patschen nicht.
+    {
+      const t = { ...makeBodyTask(6, rnd, 0, [puls]), roles: ['stomp', 'clap', 'patsch', 'snap'], snapAt: null, snapLesson: null };
+      const p = bodyPlan(t);
+      const exact = p.expected.map((e) => e.t);
+      if (!judgeBody(t, p, exact, false).ok) errors.push('Körper: genaue Tipps nicht geschafft');
+      const late = judgeBody(t, p, exact.map((x) => x + .06), false);
+      if (late.word !== 'eher spät') errors.push(`Körper: +60 ms → „${late.word}“`);
+      const micTaps = p.expected.filter((e) => BODY_LAYERS[e.role].mic).map((e) => e.t);
+      const mic = judgeBody(t, p, micTaps, true);
+      if (!mic.ok || mic.segments.filter((sg) => !sg.judged).map((sg) => sg.role).sort().join() !== 'patsch,stomp' || mic.total !== micTaps.length) errors.push('Körper: Mikrofon wertet Stampfen/Patschen');
+      if (judgeBody(t, p, micTaps, false).ok) errors.push('Körper: Tippen ohne Stampfen/Patschen geschafft');
+      if (!/Stampfen hört das Handy nicht zuverlässig/.test(bodyMessage(t, mic))) errors.push('Körper: Begründung fürs Mikrofon fehlt');
+      const st = makeBodyTask(2, rnd, 0, [puls]);
+      const sp = bodyPlan(st);
+      if (!judgeBody(st, sp, sp.expected.map((e) => e.t)).ok || judgeBody(st, sp, sp.expected.slice(0, 8).map((e) => e.t)).ok) errors.push('Körper Stufe 2: Wertung');
+      if (/\d+ ?ms/.test(bodyMessage(st, judgeBody(st, sp, sp.expected.map((e) => e.t + .05))))) errors.push('Körper: Rückmeldung mit ms');
+    }
+    // Probenmodus: alle vier Schichten in jedem Takt.
+    {
+      const p = bodyPlan({ ...makeBodyTask(4, rnd), rehearsal: true }, { rehearsal: true, bars: 8 });
+      for (let b = 0; b < 8; b++) { const kinds = new Set(p.events.filter((e) => e.bar === b).map((e) => e.kind)); if (BODY_LAYER_IDS.some((id) => !kinds.has(id))) errors.push(`Probenmodus: Takt ${b + 1} unvollständig`); }
+      if (p.expected.length) errors.push('Probenmodus: wird gewertet');
+    }
+    // Einbindung: Zeile in der Rhythmus-Übersicht, Name, Icon, Kurztext; nicht in der Hören-Liste.
+    if (BODY_LEVELS.map((l) => l.n).join() !== '1,2,3,4,5,6' || earLevelInfo('body')[0] !== BODY_LEVELS) errors.push('Körper: Stufen 1–6');
+    if (modeName('ear', 'body') !== 'Körper' || !MODE_ICONS.body || MODE_TEXT.body !== 'Puls im Fuß, Rhythmus in den Händen' || !rhythmHubHtml().includes('data-downbeat-open="body"')
+      || groupedHubHtml('ear', EAR_GROUPS, '', RHYTHM_EAR_MODES).includes('ear:body') || EAR_GROUPS.some(([, ids]) => ids.includes('body'))) errors.push('Körper: nicht im Rhythmus-Bereich eingebunden');
+    if (areaOf('body') !== 'body' || !('body' in currentLevels())) errors.push('Körper: Fortschrittsbereich');
+    return errors;
+  }
   function downbeatCheck() {
     const errors = [];
     let seed = 23;
@@ -15207,7 +15706,7 @@
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
-    DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
+    DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,

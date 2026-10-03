@@ -124,7 +124,16 @@ ein Dialog mit echter Wahl).
   Leertaste oder Mikrofon, Klatschfläche im Antwortfeld) – Stufen 1–6 vom
   Pop-Groove mit Klatschen auf 1 bis zu Synkopen-Grooves ohne Bassdrum auf 1
   (`DOWNBEAT_LEVELS`, Zeitplan `downbeatPlan`, Wertung `judgeDownbeat`,
-  Prüfung `downbeatCheck`; Fortschrittsbereich `downbeat`). Nachsingen und Im Takt werten
+  Prüfung `downbeatCheck`; Fortschrittsbereich `downbeat`). „Körper“ (ID `body`,
+  ebenfalls im Rhythmus-Bereich, gleiches Gerüst): Stufen 1–3 auf der Stelle
+  steppen (unbewertet) und einen gelernten Rhythmus klatschen – mit Groove, nur
+  mit Fuß-Bassdrum, zuletzt nach zwei Takten ohne; Stufen 4–6 Body-Percussion in
+  vier Schichten (Stampfen, Patschen, Klatschen, Schnipsen), die App spielt drei,
+  man übernimmt die vierte, Rollenwechsel mit Ansage einen Takt vorher. Wertung mit
+  `judgeHold` im absoluten Raster, mit Mikrofon nur Klatschen und Schnipsen;
+  Probenmodus (Zahnrad) für den Chor: alle Schichten in Schleife, je Stimme eine
+  Schicht groß angezeigt (`BODY_LEVELS`, `bodyPlan`, `judgeBody`, Prüfung
+  `bodyCheck`; Fortschrittsbereich `body`). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
   durch Singen kalibrierten Latenz. Kommen die Tipper in `uebe-lab.html` und

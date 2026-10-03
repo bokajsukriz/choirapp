@@ -18742,6 +18742,16 @@ function runSelfTests() {
       if (!back.days['2026-10-11']?.licks?.[2]?.n || back.days['2026-10-11'].licks.sec !== 40 || !back.recent.licks?.length) failed.push('Fortschritt: Bereich „licks“ wird verworfen');
       if (practiceTileState(withLicks, 'rhythm').level !== 2 || !practiceTileState(withLicks, 'sing').isNew) failed.push('Üben-Kacheln ändern sich durch „licks“');
     }
+    {
+      // Körper (Übe-Korrekturen 11): Bereich in der Gruppe Rhythmus; ein frischer Stand ohne
+      // gespielten „body“ ändert den Ring nicht, erst ein Lauf zählt mit.
+      if (!PROGRESS_AREAS.includes('body') || PROGRESS_GROUPS.rhythm.join() !== 'rhythm,downbeat,body') failed.push('PROGRESS_GROUPS: body fehlt in Rhythmus');
+      const r = applyProgressEntries(emptyProgress(), [{ area: 'rhythm', level: 4, right: true }, { area: 'downbeat', level: 2, right: true }], '2026-10-10');
+      if (practiceTileState(r, 'rhythm').level !== 3) failed.push(`Üben-Kachel Rhythmus ohne Körper: ${practiceTileState(r, 'rhythm').level} statt 3`);
+      const rb = applyProgressEntries(sanitizeProgress(JSON.parse(JSON.stringify(r))), [{ area: 'body', level: 1, right: true, seconds: 20 }], '2026-10-11');
+      if (!sanitizeProgress(JSON.parse(JSON.stringify(rb))).recent.body?.length) failed.push('Fortschritt: Bereich „body“ wird verworfen');
+      if (practiceTileState(rb, 'rhythm').level !== Math.round((4 + 2 + 1) / 3)) failed.push('Üben-Kachel Rhythmus: gespielter Körper zählt nicht mit');
+    }
     for (const group of ['rhythm', 'ear', 'sing']) {
       const st = practiceTileState(emptyProgress(), group);
       if (!st.isNew) failed.push(`Üben-Kachel ${group}: leerer Fortschritt nicht „Neu“`);
@@ -23099,14 +23109,16 @@ window.chorToolPrefs = {
    ========================================================================== */
 const PROGRESS_KEY = 'progress';
 const PROGRESS_DAYS = 180;
-const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat',
+const PROGRESS_AREAS = ['warmup', 'rhythm', 'interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning', 'downbeat', 'body',
   'singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime',
   'licks']; // Licks & Grooves (licks.html): in keiner Gruppe von PROGRESS_GROUPS
 const PROGRESS_GROUPS = {
   warmup: ['warmup'],
   ear: ['interval', 'quality', 'cadence', 'noteInKey', 'chordInKey', 'progression', 'parts', 'tuning'],
   sing: ['singInterval', 'findTone', 'hold', 'sight', 'dictation', 'echo', 'inTime'], // echo = Nachsingen
-  rhythm: ['rhythm', 'downbeat'], // downbeat = Einsatz finden (Rhythmus-Bereich)
+  // downbeat = Einsatz finden, body = Körper (beide im Rhythmus-Bereich). Ein Bereich
+  // zählt im Ring erst mit, wenn er eine Stufe hat (gespielt oder gewählt).
+  rhythm: ['rhythm', 'downbeat', 'body'],
 };
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
 // sightShown: Blattsingen ist in der Ausbildung eingeblendet (Pop-Didaktik:
