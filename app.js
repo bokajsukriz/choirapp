@@ -11967,7 +11967,7 @@ async function onTakeDiscardClick() {
 $('#btn-rec-discard').addEventListener('click', onTakeDiscardClick);
 $('#btn-recorder-discard').addEventListener('click', onTakeDiscardClick);
 
-const REC_SONG_PICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+const REC_SONG_UNPICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
 // Läuft renderRecSongPicker() mehrfach überlappend (schnelles Tippen in der
 // Suche), darf nur der jeweils letzte Aufruf zeichnen — dieselbe Regel wie
@@ -11999,6 +11999,29 @@ async function renderRecSongPicker() {
     updateRecSaveLocked();
   };
 
+  // Gewählt: nur noch dieser Song, ohne Suche und ohne die übrigen Zeilen —
+  // eindeutig, was gespeichert wird. Das X nimmt ihn wieder heraus.
+  const search = $('#rec-song-search');
+  const picked = takeDraft?.songId ? songs.find((s) => s.id === takeDraft.songId) : null;
+  search.hidden = !!picked;
+  if (picked) {
+    const label = songLabel(picked);
+    const clear = el('button', {
+      class: 'icon-btn pick-clear', type: 'button',
+      'aria-label': t('rec.unpickSongAria').replace('{song}', label),
+      onclick: () => {
+        takeDraft.songId = null;
+        search.value = '';
+        renderRecSongPicker().then(() => search.focus());
+        updateRecSaveLocked();
+      },
+    });
+    clear.innerHTML = REC_SONG_UNPICK_ICON;
+    host.append(el('div', { class: 'list-item is-picked' },
+      el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: label })), clear));
+    return;
+  }
+
   if (canCreatePlaceholderFor(songs, rawQuery)) {
     host.append(el('button', {
       class: 'list-item', type: 'button', style: 'margin-bottom:10px',
@@ -12010,17 +12033,10 @@ async function renderRecSongPicker() {
   }
 
   for (const song of visible) {
-    const picked = takeDraft?.songId === song.id;
-    const row = el('button', {
-      class: 'list-item', type: 'button', 'aria-pressed': picked ? 'true' : 'false',
+    host.append(el('button', {
+      class: 'list-item', type: 'button',
       onclick: () => selectSong(song),
-    }, el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) })));
-    if (picked) {
-      const check = el('span', { class: 'pick-check', 'aria-hidden': 'true' });
-      check.innerHTML = REC_SONG_PICK_ICON;
-      row.append(check);
-    }
-    host.append(row);
+    }, el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) }))));
   }
 }
 

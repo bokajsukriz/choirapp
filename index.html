@@ -758,10 +758,10 @@ button.card-row:focus-visible {
   text-align: left;
 }
 
-/* Songwahl im allgemeinen Recorder (siehe renderRecSongPicker) — die
-   gewählte Zeile bekommt einen Akzentrand statt einer eigenen Auswahlmaske. */
-.song-pick-list .list-item[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb),.09); }
-.song-pick-list .list-item .pick-check { color: var(--accent-foreground); flex: 0 0 auto; }
+/* Songwahl im allgemeinen Recorder (siehe renderRecSongPicker) — ist ein
+   Song gewählt, steht nur noch er da (Akzentrand), mit X zum Herausnehmen. */
+.song-pick-list .list-item.is-picked { border-color: var(--accent); background: rgba(var(--accent-rgb),.09); padding-right: 4px; }
+.song-pick-list .pick-clear { flex: 0 0 auto; color: var(--accent-foreground); }
 
 /* Titel und Stimm-Kürzel laufen als ein Textfluss: die Badges hängen sich
    direkt an den Titel und brechen nur um, wenn die Zeile voll ist. */
