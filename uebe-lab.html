@@ -10733,6 +10733,25 @@
     return v === '1' ? 'list' : v === 'review' ? 'review' : null;
   }
 
+  /** Einsätze nach der Pause (Übe-Korrekturen 12a): jede Soll-Zeit eines Einsatzes
+   *  (erste Note einer Wiederholung) bekommt den nächsten freien Tipp im selben
+   *  Fenster wie das Durchhalten; die Latenz ist in den Tipps schon abgezogen.
+   *  judgeHold liefert je Takt nur Mittelwerte, deshalb eigens. */
+  function holdEntries(firsts, taps, tol) {
+    const used = new Set(), offs = [];
+    for (const t of firsts) {
+      let best = -1;
+      taps.forEach((x, i) => { if (!used.has(i) && Math.abs(x - t) <= tol && (best < 0 || Math.abs(x - t) < Math.abs(taps[best] - t))) best = i; });
+      if (best >= 0) { used.add(best); offs.push(taps[best] - t); }
+    }
+    const mean = offs.length ? offs.reduce((a, o) => a + o, 0) / offs.length : null;
+    return { n: firsts.length, hit: offs.length, mean, word: mean === null ? null : mean <= -.03 ? 'früh' : mean >= .03 ? 'spät' : 'genau' };
+  }
+  /** „Einsätze: 3 von 4 pünktlich, eher spät.“ – bei spätem Einsatz der Atem-Tipp. */
+  function entryLine(st) {
+    const word = st.word ? `, ${st.word === 'genau' ? 'genau' : `eher ${st.word}`}` : '';
+    return `Einsätze: ${st.hit} von ${st.n} pünktlich${word}.${st.word === 'spät' ? ' Atme in der Pause schon vor dem Auftakt ein.' : ''}`;
+  }
   /* ---- Zeitleiste eines Laufs (Sekunden ab Start) ---- */
   /** Ereignisse und Soll-Punkte für einen Lauf einer Lektion.
    *  kind: 'hear' (Vorbild `times`-mal), 'refresh' (Vorbild, dann du) oder
@@ -11203,8 +11222,10 @@
         const result = judgeHold({ expected: tl.expected.map((e) => e + info.t0), taps, barStart, barSec: tl.barSec, tol, plan: tl.plan,
           pos: tl.expectedPos, gaps: sta.gaps, names: sta.names, beatSec: sta.beatSec, mic: state.input === 'mic', swingPairs: sta.swingPairs, pickupSec: tl.pickupSec });
         // Fürs Anhören: eigene Schläge und Klick ab Taktanfang.
-        gv.result = { kind: 'hold', combo, tol, ...result, replay: { taps: taps.map((x) => x - barStart), barSec: tl.barSec, beatSec: sta.beatSec, bars: tl.bars, pickupSec: tl.pickupSec } };
-        gFeedback(holdMessage(result, st), result.held ? 'good' : '');
+        // Auftakt-Lektionen: die Einsätze (erste Note jeder Wiederholung) gesondert.
+        const entries = tl.pickupSec ? holdEntries(tl.expected.filter((_, i) => tl.expectedPos[i] === 0).map((e) => e + info.t0), taps, tol) : null;
+        gv.result = { kind: 'hold', combo, tol, ...result, entries, replay: { taps: taps.map((x) => x - barStart), barSec: tl.barSec, beatSec: sta.beatSec, bars: tl.bars, pickupSec: tl.pickupSec } };
+        gFeedback(`${holdMessage(result, st)}${entries ? ` ${entryLine(entries)}` : ''}`, result.held ? 'good' : '');
         if (result.held && !g.held.includes(combo)) { g.held = GROOVE_COMBOS.filter((c) => c === combo || g.held.includes(c)); g.hold = Math.max(g.hold, holdFromHeld(g.held)); }
         rememberGroove();
         groovesReport(l, result.held, tl.bars * tl.barSec);
@@ -12341,6 +12362,32 @@
 
   /** Klatsch-Grooves (Licks & Grooves, Teil B): gemeinsame Auswertung, Zeitleisten,
    *  Ablage, Sichtbarkeit. Die Vektoren stehen wortgleich in licks.html. */
+  /** Übe-Korrekturen 12a: Einsätze der Auftakt-Grooves – je Wiederholung genau
+   *  einer, im Abstand der Phrase; +60 ms ergibt „spät“ mit Atem-Tipp. */
+  function holdEntriesCheck() {
+    const errors = [];
+    const pickups = COURSE.filter((l) => l.pickup);
+    if (!pickups.length) errors.push('Einsätze: keine Auftakt-Lektion');
+    for (const l of pickups) {
+      for (const combo of ['drums4', 'drums8', 'gaps16']) {
+        const tl = grooveTimeline(l, { kind: 'hold', combo, demo: false });
+        const pat = lessonPattern(l), T = METERS[l.meter].ticks;
+        const firsts = tl.expected.filter((_, i) => tl.expectedPos[i] === 0);
+        const reps = Math.ceil((tl.bars * T) / pat.total);
+        if (firsts.length !== reps) errors.push(`Einsätze ${l.id}/${combo}: ${firsts.length} statt ${reps}`);
+        if (firsts.some((t, i) => i && Math.abs(t - firsts[i - 1] - pat.total * tl.tickSec) > 1e-9)) errors.push(`Einsätze ${l.id}/${combo}: Abstand ≠ Phrasenlänge`);
+        if (Math.abs(firsts[0] - tl.startSec) > 1e-9) errors.push(`Einsätze ${l.id}/${combo}: erster Einsatz nicht am Auftakt`);
+        const tol = groovesTol(tl.expected, tl.tickSec, T);
+        const late = holdEntries(firsts, firsts.map((t) => t + .06), tol);
+        if (late.hit !== firsts.length || late.word !== 'spät' || !/Atme in der Pause schon vor dem Auftakt ein\./.test(entryLine(late))) errors.push(`Einsätze ${l.id}: +60 ms → ${entryLine(late)}`);
+        const exact = holdEntries(firsts, firsts, tol);
+        if (exact.word !== 'genau' || /Atme/.test(entryLine(exact)) || entryLine(exact) !== `Einsätze: ${firsts.length} von ${firsts.length} pünktlich, genau.`) errors.push(`Einsätze ${l.id}: genau → ${entryLine(exact)}`);
+        if (holdEntries(firsts, firsts.map((t) => t - .06), tol).word !== 'früh') errors.push(`Einsätze ${l.id}: −60 ms nicht „früh“`);
+        if (holdEntries(firsts, firsts.slice(1), tol).hit !== firsts.length - 1) errors.push(`Einsätze ${l.id}: verpasster Einsatz zählt`);
+      }
+    }
+    return errors;
+  }
   function groovesCheck() {
     const errors = [];
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -14908,6 +14955,7 @@
     errors.push(...aidsCheck());
     errors.push(...accompCheck());
     errors.push(...groovesCheck());
+    errors.push(...holdEntriesCheck());
     errors.push(...downbeatCheck());
     errors.push(...bodyCheck());
     errors.push(...delayCheck());
@@ -15706,7 +15754,7 @@
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
-    DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
+    holdEntriesCheck, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,
