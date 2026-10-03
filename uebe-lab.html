@@ -14357,7 +14357,43 @@
    *  Nachsingen/Im Takt/Diktat mit eigenen Tonvorräten und Chromatik.
    *  count: Melodien je Stufe und Stimme (Anweisung: 1000). */
   const popSingNotes = [];
-  function popSingCheck(count = 1000) {
+  /* ---- Melodie-Prüfungen schnell: popSingCheck und rhythmMelodyCheck laufen
+     mit festem Zufalls-Startwert – bei unveränderter Melodielogik erzeugen sie
+     immer dieselben Melodien und kommen zum selben Ergebnis. Standard ist
+     deshalb eine Stichprobe von MELODY_QUICK Melodien je Übung, Stufe und Stimme
+     (≈ 12 s statt ≈ 2 min). Ihr Fingerabdruck (die erzeugten Melodien plus der
+     Quelltext der Prüfregeln) wird mit MELODY_VERIFIED verglichen, dem Stand
+     der letzten vollen Prüfung. Weicht er ab – Generator, Hilfsfunktion,
+     Stufentabelle oder Prüfregel geändert –, läuft automatisch zusätzlich die
+     volle Prüfung (MELODY_FULL je Kombination); ist sie grün, steht der neue
+     Wert zum Eintragen in der Konsole. selfCheck({ full: true }) prüft immer voll. ---- */
+  const MELODY_QUICK = 100;   // unter 100 schlagen die Häufigkeitsprüfungen (Moll-Anteil) zufällig an
+  const MELODY_FULL = 1000;
+  const MELODY_VERIFIED = '850b0852'; // zuletzt voll geprüft (alle Melodie-Prüfungen grün)
+  let melodyCheckInfo = null; // { fingerprint, verified, full, ms }
+  /** Kurzform einer Melodie für den Fingerabdruck. */
+  const melodySig = (tag, mel) => `${tag}|${mel.key}|${mel.meter}|${mel.pickup}|${mel.degs}|${(mel.alts || []).map(Number)}|${mel.tones.map((x) => x.midi)}|${mel.events.map((e) => `${e.t}:${e.d}${e.rest ? 'r' : ''}`)}`;
+  /** FNV-1a (32 Bit) über die Signaturen und den Quelltext der Prüfregeln. */
+  function melodyFingerprint(sigs) {
+    const text = [...sigs, popSingCheck, rhythmMelodyCheck, rhythmMelodyOk, leapRuleOk, chromaTurnOk, rhythmNeeds, echoModes].map(String).join('\n');
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
+  }
+  /** Beide Melodie-Prüfungen: Stichprobe, bei geändertem Fingerabdruck (oder full) voll. */
+  function melodyChecks(full = false) {
+    const t0 = performance.now();
+    const sigs = [];
+    const errors = [...popSingCheck(MELODY_QUICK, sigs), ...rhythmMelodyCheck(MELODY_QUICK, sigs)];
+    const fingerprint = melodyFingerprint(sigs);
+    const verified = fingerprint === MELODY_VERIFIED;
+    const runFull = full || !verified;
+    if (runFull) errors.push(...popSingCheck(MELODY_FULL), ...rhythmMelodyCheck(MELODY_FULL));
+    melodyCheckInfo = { fingerprint, verified, full: runFull, ms: Math.round(performance.now() - t0) };
+    if (!verified && !errors.length) console.warn(`Melodielogik geändert: volle Prüfung (je ${MELODY_FULL} Melodien) bestanden. In uebe-lab.html MELODY_VERIFIED = '${fingerprint}' eintragen, dann reicht wieder die Stichprobe.`);
+    return errors;
+  }
+  function popSingCheck(count = 1000, sink = null) {
     const errors = [];
     popSingNotes.length = 0;
     const add = (msg) => { if (errors.length < 60) errors.push(msg); };
@@ -14437,6 +14473,7 @@
               if (mode === 'dictation') {
                 const t = makeSingTask('dictation', n, range, { rnd, previousKey: prev });
                 prev = t.key; ({ degs, alts, minor, rules } = t); midis = t.notes;
+                sink?.push(`D${n}${part}|${t.key}|${degs}|${alts.map(Number)}|${midis}`);
                 if (degs.length < SIGHT_LEVELS[n - 1].len[0] || degs.length > SIGHT_LEVELS[n - 1].len[1]) add(`${name}: Länge ${degs.length}`);
                 if (!leapRuleOk(degs)) add(`${name}: Sprungregel ${degs}`);
                 if (degs.some((d, j) => j && Math.abs(d - degs[j - 1]) > rules.maxLeap)) add(`${name}: größter Sprung ${degs}`);
@@ -14450,6 +14487,7 @@
                 const mel = makeRhythmMelody(spec, range, { previousKey: prev, rnd });
                 if (!mel) { add(`${name}: keine Melodie`); break; }
                 prev = mel.key; ({ degs, alts, minor, phraseStarts, rules } = mel); midis = mel.tones.map((x) => x.midi);
+                sink?.push(melodySig(`${mode}${n}${part}`, mel));
                 const why = rhythmMelodyOk(spec, mel);
                 if (why) add(`${name}: ${why} (${mel.degs})`);
                 if (!spec.meters.includes(mel.meter) || (mode === 'inTime' && !['4/4', '6/8'].includes(mel.meter))) add(`${name}: Taktart ${mel.meter}`);
@@ -14785,7 +14823,7 @@
   }
 
   /** Nachsingen Paket 2: 1000 Melodien je Stufe beider Modi. */
-  function rhythmMelodyCheck(count = 1000) {
+  function rhythmMelodyCheck(count = 1000, sink = null) {
     const errors = [];
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -14803,6 +14841,7 @@
           if (!mel) { add(`${name}: keine Melodie`); break; }
           if (mel.key === prev) add(`${name}: zweimal dieselbe`);
           prev = mel.key;
+          sink?.push(melodySig(`R${mode}${level.n}${part}`, mel));
           const why = rhythmMelodyOk(spec, mel);
           if (why) add(`${name}: ${why} (${mel.degs})`);
           if (mel.minor) minors++;
@@ -15158,7 +15197,7 @@
   /** Selbstprüfung (Konsole des iframes: `uebeLab.selfCheck()`). Liefert
    *  die Liste der Fehler — leer = bestanden. Nur reine Funktionen, ändert
    *  keinen Zustand. */
-  function selfCheck() {
+  function selfCheck({ full = false } = {}) {
     const errors = [...spellCheck()];
     [[8, 'minor', 'gis-Moll'], [1, 'major', 'Des-Dur'], [3, 'minor', 'dis-Moll'], [3, 'major', 'Es-Dur'], [6, 'major', 'Ges-Dur'],
       [10, 'minor', 'b-Moll'], [1, 'minor', 'cis-Moll'], [11, 'major', 'H-Dur']].forEach(([pc, mode, want]) => {
@@ -15240,9 +15279,8 @@
     errors.push(...popEarCheck());
     errors.push(...inKeyCheck());
     errors.push(...singPackageCheck());
-    errors.push(...popSingCheck());
+    errors.push(...melodyChecks(full)); // popSingCheck + rhythmMelodyCheck
     errors.push(...echoSimCheck());
-    errors.push(...rhythmMelodyCheck());
     errors.push(...echoFlowCheck());
     errors.push(...inTimeCheck());
     // Schnellstart: Parameter, Ketten aus bekannten Modi, Weiterschalten.
@@ -16098,7 +16136,7 @@
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
-    holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
+    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,

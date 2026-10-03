@@ -41,7 +41,7 @@ Blatt „Hilfen“ statt ins Zahnrad).
 
 Vor jedem Commit lief headless Chromium (Playwright, vorinstalliert) mit dem
 Selbsttest der betroffenen Seite; alle liefern `[]`:
-`uebeLab.selfCheck()` (eigenständig je ca. 5 Min.), `einsingen.selfCheck()`,
+`uebeLab.selfCheck()` (vor der Beschleunigung gut 2 Min., jetzt ≈ 20 s, siehe Beobachtungen), `einsingen.selfCheck()`,
 `licks.selfCheck()` (eigenständig und eingebettet mit Sopran/Alt/Tenor/Bass),
 `piano.selfCheck()`, `chorApp.selfTest()`, `selfTestAsync()`, `selfTestMusic()`.
 Reine Funktionen wurden vorher in Node geprüft (Median, Silben).
@@ -130,7 +130,7 @@ Sopran und Alt: unverändert. Über e′ (T) bzw. c′ (B) liegen außerdem `sir
 
 - Rhythmus-Kurs, Lektion `synkope` (6 12 6 12 12): Die Zählweise zeigt „1 + + 3 4“ – die Viertel auf „und“ hält über die 2, die aber nicht als „(2)“ erscheint. Unverändert.
 - Einsingen: Die Testseite für eingebettete Prüfungen (`_harness.html`) wurde nur lokal benutzt, nicht committet.
-- `uebeLab.selfCheck()` braucht eigenständig etwa 5 Minuten (wie schon im Redesign-Bericht vermerkt).
+- `uebeLab.selfCheck()` brauchte gut 2 Minuten; 118 s davon für `popSingCheck` und `rhythmMelodyCheck` (je 1000 Melodien je Übung, Stufe und Stimme, fester Zufalls-Startwert, also bei gleicher Logik immer dasselbe Ergebnis). Nachträglich beschleunigt: Stichprobe von 100 plus Fingerabdruck (`MELODY_VERIFIED`); nur bei geänderter Melodielogik läuft automatisch die volle Prüfung. Jetzt ≈ 20 s. Gegenprobe: eine Änderung am Generator und eine an einer Prüfregel ändern beide den Fingerabdruck.
 - „Ablauf: Nach richtiger Antwort automatisch weiter“ steht im Zahnrad auch bei den Rhythmus-Übungen im Hör-Gerüst, wirkt dort aber nicht (wie schon bei „Einsatz finden“).
 
 ## Manuell auf echten Geräten prüfen

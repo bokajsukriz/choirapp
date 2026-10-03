@@ -244,6 +244,16 @@ chorApp.selfTestAsync()
 chorApp.selfTestAudioPath()
 ```
 
+Die Tool-Seiten haben eigene Prüfungen in ihrer Konsole (`uebeLab.selfCheck()`,
+`einsingen.selfCheck()`, `licks.selfCheck()`, `piano.selfCheck()`). In
+`uebeLab.selfCheck()` (≈ 20 s) laufen die Melodie-Prüfungen (`popSingCheck`,
+`rhythmMelodyCheck`, fester Zufalls-Startwert) als Stichprobe von 100 Melodien
+je Übung, Stufe und Stimme. Ihr Fingerabdruck (erzeugte Melodien plus Quelltext
+der Prüfregeln) wird mit `MELODY_VERIFIED` verglichen; weicht er ab, läuft
+zusätzlich die volle Prüfung mit 1000 je Kombination (≈ 2 min), und die Konsole
+nennt den neuen Wert zum Eintragen. `uebeLab.selfCheck({ full: true })` prüft
+immer voll.
+
 Geprüft wird alles, was ohne Browser-Automatisierung möglich ist (Datei- und
 Titelerkennung, Speicher-Warteschlangen, Aufräumlogik). Fokusreihenfolge,
 Kontrast im echten Rendering, Quota-Verhalten und Service-Worker-Updates
