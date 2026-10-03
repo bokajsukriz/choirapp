@@ -188,7 +188,11 @@ ein Dialog mit echter Wahl).
 - `licks.html` — „Licks & Grooves“, Synth-Licks: kurze Synthesizer-Linien nach
   Gehör lernen (hören → mitsingen → Startton finden → stückweise → ganz →
   durchhalten über 4 bis 16 Takte, zuletzt mit stillen Takten ohne Schlagzeug →
-  Notenbild/Piano-Roll, abschaltbar), Bildschirmtasten mit Mehrfach-Touch, fünf
+  Notenbild/Piano-Roll, abschaltbar), Bildschirmtasten mit Mehrfach-Touch oder –
+  Einstellung „Singen“ – übers Mikrofon (nur während der eigenen Runde, nur live
+  ausgewertet, nichts wird aufgenommen; Tonhöhe per `detectPitch` als Kopie aus
+  `uebe-lab.html`, Anschläge aus stimmhaften Abschnitten ab 80 ms, `sungOnsets`;
+  Vorspiel, Liegeton und Tastatur in der Lage der eigenen Stimme), fünf
   Synth-Klänge (Kopie aus `groove-lab.js`, ohne Hall) und Groove-Begleitung
   (Kopie aus `metronom.html`). Während des eigenen Spielens keine Marke, kein
   Raster, keine leuchtenden Tasten, kein Taktzähler. Status (Neu → Lerne →

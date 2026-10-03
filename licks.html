@@ -20,7 +20,9 @@
   window.parent.chorToolStorage (Datensatz „licks“); Fortschritt meldet die
   Seite an window.parent.chorProgress (Bereich „licks“). Offline über
   SHELL_OPTIONAL und TOOL_PAGES in sw.js. Nur Deutsch, keine Abhängigkeiten,
-  kein Mikrofon (Eingabe über die Bildschirmtasten).
+  Eingabe über die Bildschirmtasten oder – Einstellung „Singen“ – übers
+  Mikrofon (nur während der eigenen Runde, nur live ausgewertet, nichts wird
+  aufgenommen; detectPitch als Kopie aus uebe-lab.html).
 
   Klänge ohne Samples (Web Audio). Kopien, damit die Tools eigenständig
   bleiben (Blöcke mit „Kopie aus …“ gekennzeichnet):
@@ -111,6 +113,18 @@
   .panel p.feedback:empty { display: none; }
   .feedback.is-good { color: var(--ok-fg); }
   .feedback.is-bad { color: var(--bad-fg); }
+  /* Mikro-Symbol (Kopie aus uebe-lab.html, .sing-mic): durchgestrichen = aus, grün nach Pegel, rot = zu laut */
+  .dock-bar { position: relative; }
+  .sing-mic { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 26px; height: 30px; display: grid; place-items: center; opacity: .45; }
+  .sing-mic[hidden] { display: none; }
+  .sing-mic.is-open { opacity: .75; }
+  .sing-mic svg { width: 24px; height: 24px; overflow: visible; }
+  .sing-mic .mic-cap, .sing-mic .mic-stand { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sing-mic .mic-slash { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sing-mic.is-open .mic-slash { display: none; }
+  .sing-mic .mic-fill { fill: #6cbf8a; transition: y .08s linear, height .08s linear; }
+  .sing-mic.is-hot .mic-fill { fill: var(--bad); }
+  .sing-mic.is-hot .mic-cap, .sing-mic.is-hot .mic-stand { stroke: var(--bad); }
 
   .stage { border: 1px solid var(--tint-line); border-radius: 16px; background: var(--surface); margin: 8px 0; overflow: hidden; }
   .stage svg { width: 100%; height: auto; display: block; stroke-width: 1.4; }
@@ -262,6 +276,7 @@
       <span class="range" id="oct-range" aria-live="polite">Oktave 0</span>
       <button type="button" data-act="oct-up" aria-label="Eine Oktave höher">+</button>
     </div>
+    <span class="sing-mic" id="mic-icon" role="img" aria-label="Mikrofon aus" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="mic-clip"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/></clipPath></defs><rect class="mic-fill" clip-path="url(#mic-clip)" x="8.5" y="14.5" width="7" height="0"/><rect class="mic-cap" x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path class="mic-stand" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/><path class="mic-slash" d="M4 3l16 18"/></svg></span>
   </div>
   <div class="keyboard" id="keyboard" aria-label="Klaviatur"></div>
 </div>
@@ -286,6 +301,9 @@
     <p class="note">Das Notenbild (Piano-Roll) kommt als letzter Schritt. Wer es abschaltet, übt ausschließlich mit den Ohren.</p>
     <label class="sub-label" for="sound-select">Klang</label>
     <select id="sound-select" aria-label="Klang"></select>
+    <span class="sub-label">Eingabe</span>
+    <div class="chips" id="input-chips"></div>
+    <p class="note">Singen: Das Mikrofon läuft nur während deiner Runde und wird nur live ausgewertet – nichts wird aufgenommen oder gesendet. Mit Kopfhörern singen, sonst hört das Mikrofon die Begleitung mit. Gewertet werden Tonklasse und Einsatz wie beim Tippen.</p>
     <span class="sub-label">Glide beim eigenen Spiel</span>
     <button class="toggle" type="button" data-act="glide" aria-pressed="true" aria-label="Glide beim eigenen Spiel"><span class="toggle-track" aria-hidden="true"></span><span class="toggle-text">An</span></button>
     <span class="sub-label">Verzögerung beim Tippen</span>
@@ -984,7 +1002,8 @@
   const PRESET_NAMES = ['Analog Lead', 'Bright Saw', 'Neon Pluck', 'Growl Bass', 'Soft Brass'];
   const RATINGS = ['shaky', 'ok', 'solid'];
   const STEP_NAMES = ['Hören', 'Mitsingen', 'Startton', 'Stückweise', 'Ganz', 'Durchhalten', 'Notenbild'];
-  const freshState = () => ({ v: 1, lick: LICKS[0].id, notes: 'last', glide: true, octave: {}, sound: {}, items: {} });
+  // input: Eingabe 'tap' (Bildschirmtasten) oder 'sing' (Mikrofon, Übe-Korrekturen 9).
+  const freshState = () => ({ v: 1, lick: LICKS[0].id, notes: 'last', glide: true, input: 'tap', octave: {}, sound: {}, items: {} });
   const intIn = (v, lo, hi, dflt = lo) => (Number.isInteger(v) ? clamp(v, lo, hi) : dflt);
 
   /** Gespeicherter Stand → gültiger Stand: unbekannte Lick-IDs verworfen, Zahlen
@@ -995,6 +1014,7 @@
     if (lickById(raw.lick)) out.lick = raw.lick;
     out.notes = raw.notes === 'off' ? 'off' : 'last';
     out.glide = typeof raw.glide === 'boolean' ? raw.glide : true;
+    out.input = raw.input === 'sing' ? 'sing' : 'tap';
     const oct = raw.octave && typeof raw.octave === 'object' ? raw.octave : {};
     const snd = raw.sound && typeof raw.sound === 'object' ? raw.sound : {};
     const items = raw.items && typeof raw.items === 'object' ? raw.items : {};
@@ -1434,6 +1454,194 @@
     return tl;
   }
 
+  /* ------------------------------------------------------------------------
+     SINGEN STATT TIPPEN (Übe-Korrekturen 9) — Eingabe „Singen“: Das Mikrofon
+     läuft nur während eines eigenen Laufs (Stückweise, Ganz, Durchhalten) und
+     wird nur live ausgewertet: nichts wird aufgenommen, gespeichert oder
+     gesendet. Aus der Tonhöhe je Bild (YIN, detectPitch) werden Anschläge
+     { t, pc, midi }: ein stimmhafter Abschnitt ab 80 ms ist ein Ton, ein
+     neuer Ton beginnt bei einem Tonwechsel ab einem Dreiviertel-Halbton, der
+     80 ms hält (Vibrato und Oktavfehler des Erkenners zählen nicht), t ist
+     der Beginn abzüglich der Mikrofon-Latenz (calibration.micMs). Die
+     Anschläge gehen in dieselben Bewertungen wie das Tippen.
+     ------------------------------------------------------------------------ */
+  // Kopie aus uebe-lab.html (PITCH_MIN_HZ, PITCH_MAX_HZ, detectPitch), identisch halten.
+  const PITCH_MIN_HZ = 65;
+  const PITCH_MAX_HZ = 1100;
+  const voice = { x: null, d: null };
+  function detectPitch(buf, sampleRate) {
+    const n = buf.length >> 1;
+    if (!voice.x || voice.x.length !== n) voice.x = new Float32Array(n);
+    const x = voice.x;
+    let energy = 0;
+    for (let i = 0; i < n; i++) { const v = (buf[2 * i] + buf[2 * i + 1]) * .5; x[i] = v; energy += v * v; }
+    const rms = Math.sqrt(energy / n);
+    if (rms < .01) return null;
+    const sr = sampleRate / 2;
+    const w = n >> 1;
+    const minTau = Math.max(2, Math.floor(sr / PITCH_MAX_HZ));
+    const maxTau = Math.min(w - 2, Math.ceil(sr / PITCH_MIN_HZ));
+    if (!voice.d || voice.d.length < maxTau + 2) voice.d = new Float32Array(maxTau + 2);
+    const d = voice.d;
+    d[0] = 1;
+    let running = 0;
+    for (let tau = 1; tau <= maxTau + 1; tau++) {
+      let sum = 0;
+      for (let i = 0; i < w; i++) { const diff = x[i] - x[i + tau]; sum += diff * diff; }
+      running += sum;
+      d[tau] = running ? sum * tau / running : 1;
+    }
+    let tau = -1;
+    for (let t = minTau; t <= maxTau; t++) {
+      if (d[t] < .15) {
+        while (t + 1 <= maxTau && d[t + 1] < d[t]) t++;
+        tau = t;
+        break;
+      }
+    }
+    if (tau < 0) return null;
+    const s0 = d[tau - 1], s1 = d[tau], s2 = d[tau + 1];
+    const denom = s0 - 2 * s1 + s2;
+    const shift = denom ? clamp((s0 - s2) / (2 * denom), -1, 1) : 0;
+    return { freq: sr / (tau + shift), clarity: 1 - s1, rms };
+  }
+  // Kopie aus uebe-lab.html (RECORDING_CONSTRAINTS, HEADSET_LABEL_RE, BUILTIN_LABEL_RE,
+  // streamIsHeadset, preferBuiltInMic), identisch halten: ohne Echo-Unterdrückung,
+  // Rauschfilter und Pegelanpassung; Bluetooth-Headset nur, wenn es kein eingebautes Mikrofon gibt.
+  const RECORDING_CONSTRAINTS = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+  const HEADSET_LABEL_RE = /bluetooth|airpods|air pods|beats|buds|headset|hands[\s-]?free|freisprech|\bhfp\b|\bbt\b/i;
+  const BUILTIN_LABEL_RE = /built[\s-]?in|internal|eingebaut|integriert|microphone array|mikrofonarray|wbudowan/i;
+  function streamIsHeadset(stream) {
+    const track = stream?.getAudioTracks?.()[0];
+    const rate = track?.getSettings?.().sampleRate || 0;
+    return (rate > 0 && rate <= 24000) || HEADSET_LABEL_RE.test(track?.label || '');
+  }
+  async function preferBuiltInMic(stream) {
+    if (!streamIsHeadset(stream) || !navigator.mediaDevices?.enumerateDevices) return stream;
+    let ids;
+    try {
+      ids = (await navigator.mediaDevices.enumerateDevices())
+        .filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications' && BUILTIN_LABEL_RE.test(d.label || ''))
+        .map((d) => d.deviceId);
+    } catch { return stream; }
+    if (new Set(ids).size !== 1) return stream;
+    // Den Headset-Stream zuerst freigeben — erst das lässt den Kopfhörer zurück ins Musikprofil schalten.
+    stream.getTracks().forEach((track) => track.stop());
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { ...RECORDING_CONSTRAINTS.audio, deviceId: { exact: ids[0] } } });
+    } catch {
+      return navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS); // lieber das Headset als gar kein Mikrofon
+    }
+  }
+  const hzToMidi = (hz) => 69 + 12 * Math.log2(hz / 440);
+  const SUNG_MIN_SEC = .08;    // so lange muss ein Ton (bzw. ein Tonwechsel) halten
+  const SUNG_GAP_SEC = .06;    // längere Stille trennt zwei Töne
+  const SUNG_CHANGE = .75;     // Halbtöne: ab hier ein neuer Ton (Vibrato ±30 Cent bleibt darunter)
+  /** Bilder [{ t, midi|null }] (zeitlich geordnet) → Anschläge [{ t, pc, midi }]. Rein. */
+  function sungOnsets(frames, { micMs = 0 } = {}) {
+    const fold = (x) => mod(x + 6, 12) - 6; // Oktavfehler des Erkenners: gleiche Tonklasse
+    const med = (list) => { const s = [...list].sort((a, b) => a - b); const n = s.length; return n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+    const notes = [];
+    let cur = null;     // { start, ref, vals: [] }
+    let cand = null;    // Kandidat für einen Tonwechsel { start, vals: [] }
+    let lastVoiced = -Infinity;
+    const close = () => {
+      if (cur && cur.end - cur.start >= SUNG_MIN_SEC - 1e-9) {
+        const m = med(cur.vals.map((v) => cur.ref + fold(v - cur.ref)));
+        notes.push({ t: cur.start - micMs / 1000, midi: Math.round(m), pc: mod(Math.round(m), 12) });
+      }
+      cur = null; cand = null;
+    };
+    for (const f of frames) {
+      if (f.midi === null || f.midi === undefined) { if (cur && f.t - lastVoiced > SUNG_GAP_SEC) close(); continue; }
+      lastVoiced = f.t;
+      if (!cur) { cur = { start: f.t, end: f.t, ref: f.midi, vals: [f.midi] }; continue; }
+      // Bezugston: Median der ersten 80 ms des Tons.
+      if (f.t - cur.start <= SUNG_MIN_SEC) cur.ref = med(cur.vals.concat(f.midi));
+      const d = fold(f.midi - cur.ref);
+      if (Math.abs(d) < SUNG_CHANGE) { cur.vals.push(f.midi); cur.end = f.t; cand = null; continue; }
+      if (cand && Math.abs(fold(f.midi - med(cand.vals))) > .5) cand = null;
+      if (!cand) cand = { start: f.t, vals: [] };
+      cand.vals.push(f.midi);
+      if (f.t - cand.start >= SUNG_MIN_SEC - 1e-9) {
+        const next = { start: cand.start, end: f.t, ref: med(cand.vals), vals: cand.vals };
+        close();
+        cur = next;
+      }
+    }
+    close();
+    return notes;
+  }
+  /** Mikrofon für einen Lauf: nur geöffnet, solange der Lauf geht. */
+  const mic = { stream: null, source: null, analyser: null, buf: null, frames: [], raf: 0, error: '', lv: 0, hotUntil: 0, state: '' };
+  async function micStart() {
+    mic.error = '';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { mic.error = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).'; return false; }
+    try {
+      await engine.start();
+      const stream = await preferBuiltInMic(await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS));
+      mic.stream = stream;
+      mic.source = engine.ctx.createMediaStreamSource(stream);
+      mic.analyser = engine.ctx.createAnalyser();
+      mic.analyser.fftSize = 2048;
+      mic.buf = new Float32Array(mic.analyser.fftSize);
+      mic.source.connect(mic.analyser); // bewusst NICHT zum Ausgang — keine Rückkopplung
+      mic.frames = [];
+      const loop = () => {
+        if (!mic.analyser) return;
+        mic.analyser.getFloatTimeDomainData(mic.buf);
+        const r = detectPitch(mic.buf, engine.ctx.sampleRate);
+        mic.frames.push({ t: engine.ctx.currentTime, midi: r && r.clarity >= .85 ? hzToMidi(r.freq) : null });
+        updateMicIcon();
+        mic.raf = requestAnimationFrame(loop);
+      };
+      loop();
+      return true;
+    } catch (e) {
+      mic.error = e?.name === 'NotAllowedError' ? 'Der Zugriff aufs Mikrofon wurde nicht erlaubt – tippen geht trotzdem.' : 'Das Mikrofon konnte nicht gestartet werden – tippen geht trotzdem.';
+      micStop();
+      return false;
+    }
+  }
+  function micStop() {
+    cancelAnimationFrame(mic.raf); mic.raf = 0;
+    mic.stream?.getTracks().forEach((track) => track.stop());
+    try { mic.source?.disconnect(); } catch { /* schon getrennt */ }
+    mic.stream = null; mic.source = null; mic.analyser = null;
+    updateMicIcon();
+  }
+  /** Mikro-Symbol wie in der Sing-Bühne (uebe-lab.html, updateSingMic): durchgestrichen
+   *  = aus, grün nach Pegel, rot = zu laut. */
+  function updateMicIcon() {
+    const el = $('#mic-icon');
+    if (!el) return;
+    el.hidden = state.input !== 'sing';
+    const open = !!mic.analyser;
+    let lv = 0, hot = false;
+    if (open) {
+      let e = 0, peak = 0;
+      for (let i = 0; i < mic.buf.length; i++) { const v = mic.buf[i]; e += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
+      const db = 10 * Math.log10(e / mic.buf.length + 1e-12);
+      const target = clamp((db + 50) / 40, 0, 1);
+      mic.lv += (target - mic.lv) * (target > mic.lv ? .5 : .08);
+      lv = mic.lv;
+      const now = engine.ctx.currentTime;
+      if (db > -3 || peak >= .98) mic.hotUntil = now + .5;
+      hot = now < mic.hotUntil;
+    } else mic.lv = 0;
+    const st = !open ? 'off' : hot ? 'hot' : lv > .08 ? 'on' : 'quiet';
+    if (st !== mic.state) {
+      mic.state = st;
+      el.classList.toggle('is-open', open);
+      el.classList.toggle('is-hot', hot);
+      el.setAttribute('aria-label', { off: 'Mikrofon aus', quiet: 'Mikrofon hört nichts', on: 'Mikrofon hört dich', hot: 'Mikrofon zu laut' }[st]);
+    }
+    const h = 12 * Math.min(1, lv / .9);
+    const fill = el.querySelector('.mic-fill');
+    fill.setAttribute('y', (14.5 - h).toFixed(2));
+    fill.setAttribute('height', h.toFixed(2));
+  }
+
   const run = { playing: false, timer: 0, t0: 0, bus: null, idx: 0, events: [], taps: [], onEnd: null, endAt: 0, tl: null, sound: null };
   const LATENCY_CAP = .25;
   /** Lauf starten. tl: Zeitleiste (Ereignisse ab 0, `tl.bars` Takte), onEnd(run). */
@@ -1441,6 +1649,8 @@
     stopRun(false);
     holdReplayStop(false);
     try { await engine.start(); } catch { return false; }
+    // Singen: Mikrofon nur für Läufe, in denen du dran bist (mit Soll-Punkten).
+    if (state.input === 'sing' && tl.expected.length && !(await micStart())) setFeedback(mic.error, 'bad');
     const ctx = engine.ctx;
     run.playing = true;
     run.tl = tl;
@@ -1455,7 +1665,7 @@
       if (!run.playing) return;
       const horizon = ctx.currentTime + .25;
       while (run.idx < run.events.length && run.t0 + run.events[run.idx].t < horizon) fire(run.events[run.idx++]);
-      if (ctx.currentTime > run.endAt + .25) { const cb = run.onEnd; const info = { taps: run.taps, t0: run.t0, tl: run.tl }; stopRun(false); if (cb) cb(info); }
+      if (ctx.currentTime > run.endAt + .25) { const cb = run.onEnd; const info = { taps: mic.analyser ? sungOnsets(mic.frames, { micMs: calib.micMs }) : run.taps, t0: run.t0, tl: run.tl }; stopRun(false); if (cb) cb(info); }
     };
     run.timer = setInterval(pump, 25);
     pump();
@@ -1472,6 +1682,7 @@
   }
   /** Lauf abbrechen bzw. beenden; ohne Nachklingen (Bus blendet aus). */
   function stopRun(notify = true) {
+    micStop(); // nie im Hintergrund
     if (!run.playing && !run.timer) return;
     clearInterval(run.timer); run.timer = 0;
     const cb = run.onEnd;
@@ -1677,6 +1888,7 @@
     const [lo, hi] = octaveLimits(lick);
     const shift = octaveOf(lick);
     $('#oct-range').textContent = `Oktave ${shift > 0 ? `+${shift}` : shift}`;
+    updateMicIcon();
     $('[data-act="oct-down"]').disabled = shift <= lo;
     $('[data-act="oct-up"]').disabled = shift >= hi;
     renderFoot();
@@ -2373,6 +2585,7 @@
       rerender(); return;
     }
     if (t.dataset.cat) { ui.cat = t.dataset.cat; renderList(); return; }
+    if (t.dataset.inputChoice) { state.input = t.dataset.inputChoice === 'sing' ? 'sing' : 'tap'; renderSheet(); updateMicIcon(); persist(); return; }
     if (t.dataset.notesChoice) { state.notes = t.dataset.notesChoice === 'off' ? 'off' : 'last'; if (state.notes === 'off' && ui.step === 7) ui.step = 5; renderSheet(); persist(); return; }
     if (t.dataset.step) { goStep(Number(t.dataset.step)); return; }
     if (t.dataset.stage) { ui.holdStage = Number(t.dataset.stage); ui.result = null; setFeedback(''); rerender(); return; }
@@ -2458,6 +2671,7 @@
   function renderSheet() {
     $('#delay-note').textContent = calib.tapMs ? `Es werden ${calib.tapMs} ms abgezogen – in allen Übungen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.` : 'Nichts wird abgezogen. Die App schlägt selbst einen Ausgleich vor, wenn sie merkt, dass du regelmäßig zu spät kommst.';
     $('#delay-reset').hidden = !calib.tapMs;
+    $('#input-chips').innerHTML = [['tap', 'Tippen'], ['sing', 'Singen']].map(([v, l]) => `<button class="chip" type="button" data-input-choice="${v}" aria-pressed="${state.input === v}">${l}</button>`).join('');
     $('#notes-chips').innerHTML = [['last', 'als letzter Schritt'], ['off', 'aus']].map(([v, l]) => `<button class="chip" type="button" data-notes-choice="${v}" aria-pressed="${state.notes === v}">${l}</button>`).join('');
   }
 
@@ -2757,7 +2971,37 @@
     const good = { v: 1, lick: 'arpMoll', notes: 'off', glide: false, octave: { arpMoll: 1, hookPenta: -1 }, sound: { arpMoll: 'Soft Brass' },
       items: { arpMoll: { step: 5, parts: 4, whole: 2, hold: 3, rating: 'ok', streak: 1, due: '2026-05-01' } } };
     const s = sanitizeLicksState(JSON.parse(JSON.stringify(good)));
-    if (!eq(s, { ...good, sound: { arpMoll: 'Soft Brass' } })) errors.push(`sanitize: Roundtrip ${JSON.stringify(s)}`);
+    // Alter Stand ohne `input` (Übe-Korrekturen 9): Standard Tippen.
+    if (!eq(s, { ...good, input: 'tap', sound: { arpMoll: 'Soft Brass' } })) errors.push(`sanitize: Roundtrip ${JSON.stringify(s)}`);
+    if (sanitizeLicksState({ ...good, input: 'sing' }).input !== 'sing' || sanitizeLicksState({ ...good, input: 'mic' }).input !== 'tap') errors.push('sanitize: Eingabe');
+    // Singen: synthetische Tonhöhen-Bilder (60 je Sekunde) → Anschläge { t, pc }.
+    {
+      const fr = (notes, { vib = 0, jump = null, end = null } = {}) => {
+        const out = [];
+        const last = end ?? Math.max(...notes.map((n) => n.t + n.d)) + .3;
+        for (let t = 0; t <= last; t += 1 / 60) {
+          const n = notes.find((x) => t >= x.t && t < x.t + x.d);
+          let m = n ? n.midi + vib * Math.sin(2 * Math.PI * 5.5 * (t - n.t)) + .03 * Math.sin(t * 37) : null;
+          if (m !== null && jump && t >= jump[0] && t < jump[1]) m += 12;
+          out.push({ t, midi: m });
+        }
+        return out;
+      };
+      const lick = lickById('hookPenta');
+      const beat = 60 / lick.bpm / 12;
+      const want = lick.notes.map((n) => ({ t: n[0] * beat, d: Math.max(.1, n[1] * beat - .07), midi: lick.root + n[2] }));
+      const got = sungOnsets(fr(want));
+      if (got.length !== want.length || got.some((g, i) => Math.abs(g.t - want[i].t) > .02 || g.pc !== mod(want[i].midi, 12))) errors.push(`Singen: Anschläge ${JSON.stringify(got.map((g) => [+g.t.toFixed(3), g.pc]))}`);
+      if (Math.abs(sungOnsets(fr(want), { micMs: 100 })[0].t - (want[0].t - .1)) > .02) errors.push('Singen: Mikrofon-Latenz nicht abgezogen');
+      const vib = sungOnsets(fr([{ t: .2, d: 1.2, midi: 64 }], { vib: .3 }));
+      if (vib.length !== 1 || vib[0].pc !== 4) errors.push(`Singen: Vibrato ±30 Cent ergibt ${vib.length} Anschläge`);
+      const oct = sungOnsets(fr([{ t: .2, d: 1, midi: 60 }], { jump: [.5, .62] }));
+      if (oct.length !== 1 || oct[0].pc !== 0) errors.push(`Singen: Oktavsprung des Erkenners ergibt ${oct.length} Anschläge`);
+      const legato = sungOnsets(fr([{ t: .2, d: .4, midi: 60 }, { t: .6, d: .4, midi: 62 }]));
+      if (legato.length !== 2 || Math.abs(legato[1].t - .6) > .03 || legato[1].pc !== 2) errors.push(`Singen: gebundener Tonwechsel ${JSON.stringify(legato)}`);
+      if (sungOnsets(fr([{ t: .2, d: .05, midi: 60 }])).length) errors.push('Singen: Knackser unter 80 ms zählt');
+      if (mic.analyser) errors.push('Singen: Mikrofon läuft ohne Lauf');
+    }
     if (!eq(sanitizeLicksState(JSON.parse(JSON.stringify(s))), s)) errors.push('sanitize: nicht idempotent');
     const bad = sanitizeLicksState({ v: 1, lick: 'quatsch', notes: 5, glide: 'ja', octave: { arpMoll: 7, unbekannt: 1 }, sound: { arpMoll: 'Fagott' },
       items: { unbekannt: { step: 1 }, arpMoll: { step: 99, parts: 50, whole: -3, hold: 1.5, rating: 'toll', streak: 9, due: 'irgendwann' }, hookPenta: 'kaputt' } });
@@ -3135,7 +3379,7 @@
   }
 
   window.licks = {
-    LICKS, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
+    LICKS, sungOnsets, HOLD_STAGES, holdPlan, judgeHold, holdMessage, partMessage, degreeLabel, nextDue, statusOf, grooveFor, keyboardRange,
     sanitizeLicksState, selfCheck, selfCheckAudio,
     // für Konsole und Prüfungen
     runBpm, uiCheck, estimateRunDelay, detectDelay, delayVectors, delayCheck, calib, delayHint, dueIds, toleranceFor, tlHold, makeTimeline, placeholderHtml, rollHtml, state, ui, engine, run, octaveLimits, stepsShown, holdVectors, ownNoteOn, ownNoteOff, renderLick,
