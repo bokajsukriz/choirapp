@@ -1340,6 +1340,11 @@ const DEFAULT_SETTINGS = {
     // Gewicht — siehe SLOWPLAY-HD-PLAN.md.
     splitComputation: true,
   },
+  // Link zum geteilten Dropbox-Ordner des Chores („Dropbox öffnen" in der
+  // Import-Ansicht und unter Einstellungen → Hilfe). Bleibt bewusst nur auf
+  // diesem Gerät: buildBackupParts() übernimmt Einstellungen nur aus einer
+  // festen Liste, dieser Schlüssel steht nicht darin.
+  dropboxUrl: '',
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -3083,6 +3088,7 @@ async function renderSettings() {
   renderNotificationState();
   await renderStorage();
   renderBackupAge();
+  renderDropboxSetting();
   await renderExportCount();
   await renderStorageManager();
   renderErrorLog();
@@ -4199,6 +4205,69 @@ $$('#default-tab-picker .player-tab').forEach((btn) => {
 });
 
 $('#btn-help-import').addEventListener('click', () => showView('import'));
+
+/* ---- Dropbox öffnen ------------------------------------------------------
+   Der Link wird nur lokal in settings.dropboxUrl gehalten (siehe dort). */
+
+/** Eingabe → https-Link oder null. Ohne Schema („www.dropbox.com/…") wird
+ *  https:// ergänzt; alles andere als https wird abgelehnt. */
+function normalizeDropboxUrl(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = `https://${text}`;
+  try {
+    const url = new URL(text);
+    return url.protocol === 'https:' && url.hostname.includes('.') ? url.href : null;
+  } catch { return null; }
+}
+
+/** Fragt nach dem Link. Liefert den gültigen Link, '' (bewusst geleert, nur
+ *  mit allowClear) oder null (abgebrochen bzw. ungültig — dann mit Hinweis). */
+async function askDropboxUrl({ allowClear = false } = {}) {
+  const raw = await promptDialog({
+    title: t('dropbox.promptTitle'),
+    text: t(allowClear ? 'dropbox.promptTextClear' : 'dropbox.promptText'),
+    value: settings.dropboxUrl || '',
+    placeholder: 'https://www.dropbox.com/…',
+  });
+  if (raw === null) return null;
+  if (!raw.trim()) return allowClear ? '' : null;
+  const url = normalizeDropboxUrl(raw);
+  if (!url) { banner(t('dropbox.invalid'), { kind: 'error' }); return null; }
+  return url;
+}
+
+/** Öffnet den hinterlegten Ordner; ohne Link wird zuerst danach gefragt. */
+async function openDropbox() {
+  let url = settings.dropboxUrl;
+  if (!url) {
+    url = await askDropboxUrl();
+    if (!url) return;
+    // Erst öffnen, dann speichern: das Öffnen muss noch in der Nutzergeste
+    // des OK-Tipps passieren, sonst blockt Safari das neue Fenster.
+    window.open(url, '_blank', 'noopener');
+    await saveSettings({ dropboxUrl: url });
+    renderDropboxSetting();
+    return;
+  }
+  window.open(url, '_blank', 'noopener');
+}
+
+function renderDropboxSetting() {
+  $('#dropbox-url-sub').textContent = settings.dropboxUrl
+    ? settings.dropboxUrl.replace(/^https:\/\//, '')
+    : t('dropbox.linkNone');
+}
+
+$('#btn-dropbox-open-import').addEventListener('click', openDropbox);
+$('#btn-dropbox-open-settings').addEventListener('click', openDropbox);
+$('#btn-dropbox-url').addEventListener('click', async () => {
+  const url = await askDropboxUrl({ allowClear: true });
+  if (url === null || url === settings.dropboxUrl) return;
+  await saveSettings({ dropboxUrl: url });
+  renderDropboxSetting();
+  banner(t(url ? 'dropbox.saved' : 'dropbox.removed'), { kind: 'info', timeout: 2500 });
+});
 $('#btn-setup-again').addEventListener('click', () => openOnboarding());
 
 $('#btn-persist').addEventListener('click', async () => {

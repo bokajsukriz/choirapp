@@ -3779,8 +3779,12 @@ input[type="checkbox"] {
         wähle sie hier aus. Danach ist alles offline auf dem Handy — ohne Dropbox,
         ohne Internet.
       </p>
+      <button class="btn btn--block" id="btn-dropbox-open-import" type="button" style="margin-top:14px">
+        <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        <span data-i18n="dropbox.openBtn">Dropbox öffnen</span>
+      </button>
       <input class="visually-hidden" id="zip-input" type="file" tabindex="-1" aria-hidden="true" accept=".zip,application/zip,application/x-zip-compressed">
-      <button class="btn btn--primary btn--block" id="btn-zip" type="button" style="margin-top:14px" data-i18n="import.pickZipBtn">
+      <button class="btn btn--primary btn--block" id="btn-zip" type="button" style="margin-top:10px" data-i18n="import.pickZipBtn">
         ZIP-Datei auswählen
       </button>
       <!-- Der Ordner-Import ist bewusst nur auf dem Desktop sichtbar: auf iOS und
@@ -4728,6 +4732,22 @@ input[type="checkbox"] {
         <button class="setting-item setting-item--toggle" id="btn-help-import" type="button">
           <span class="setting-main">
             <span class="setting-label" data-i18n="settings.help.howToBtn">Wie bekomme ich Songs in die App?</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+
+        <button class="setting-item setting-item--toggle" id="btn-dropbox-open-settings" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="dropbox.openBtn">Dropbox öffnen</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+
+        <button class="setting-item setting-item--toggle" id="btn-dropbox-url" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="dropbox.linkLabel">Dropbox-Link</span>
+            <span class="setting-sub" id="dropbox-url-sub" style="overflow-wrap:anywhere"></span>
+            <span class="setting-sub" data-i18n="dropbox.localOnly">Nur auf diesem Gerät gespeichert, nicht in der Sicherung.</span>
           </span>
           <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
