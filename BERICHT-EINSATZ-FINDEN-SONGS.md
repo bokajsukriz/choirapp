@@ -18,8 +18,10 @@ Standard aus der Arbeitsanweisung.
 | Nachtrag | Ruckeln mit Bluetooth: portionsweise planen, „Ruckelfrei“ | umgesetzt | v484 |
 | Fehler | v484 legte den Rhythmus-Bereich lahm; Schalter wieder raus | behoben | v485 |
 | Nachtrag | Song läuft länger ohne Klatschen; Überschrift nach Muster | umgesetzt | v487 |
+| Teil A | UI: Akkorde in der Tonart, Einsatz finden schlichter, Body Percussion | umgesetzt | v488 |
+| Etappe 3 | Stufen 3, 5, 6 auf Songs, 12/8, alte Grooves entfernt | umgesetzt | v489 |
+| Teil C | Echte Instrumente für alle Songs, offline | umgesetzt | v490 |
 | Etappe 2 | Einstieg in der Periode, „Worauf hören?“, „Nur das Zeichen“ | offen | – |
-| Etappe 3 | Stufen 3, 5, 6 auf Songs, 12/8 | offen | – |
 | Etappe 4 | Typ C (Stufe 7) | offen | – |
 | Etappe 5 | Stufe 8, alte 6 → neue 8, Aufräumen | offen | – |
 
@@ -221,9 +223,98 @@ Klang-Versuch. Zwei Ursachen angegangen:
   Stufen 3, 5 und 6 laufen noch mit den alten Grooves (nur Schlagzeug, ein
   Basston je Takt) – das ist Etappe 3.
 
+## Teil A: UI-Korrekturen (v488)
+
+Grundlage `ARBEITSANWEISUNG-EINSATZ-FINDEN-ETAPPE-3.md`, offene Fragen alle
+mit dem Standard beantwortet.
+
+- **Akkorde in der Tonart:** kein Dur/Moll-Balken und keine Unterzeile
+  „Dur · nach der Kadenz“ mehr. Über der Wellen-Anzeige (nur solange etwas
+  klingt) zwei Knöpfe: „Akkord nochmal“ (nur der Akkord, wie bisher „Nur den
+  Akkord“ – zählt weiter **nicht** „mit Hilfe“) und „Alles nochmal“ (Kadenz +
+  Akkord, wie „Nochmal“ im Dock). Nach der Antwort steht die Tonart schlicht
+  in der Unterzeile („B-Dur · I = B · Antippen zum Vergleichen“). Töne in der
+  Tonart unverändert.
+- **Einsatz finden:** Überschrift „Hör zu …“ (vor dem Start und im Hören),
+  „Jetzt du!“, danach „Geschafft!“ bzw. „Noch nicht“, darunter klein
+  Song · Stil · Taktart. Unterzeile im Lauf leer (feste Höhe, das Gerüst
+  springt nicht – Selbsttest misst es). Zeile „Klatsch: …“ entfernt.
+- **Überspringen** (⏭ neben ↻): stoppt den Lauf, neue Aufgabe ohne Wertung,
+  ohne Serie und Statistik; der übersprungene Song bleibt im Gedächtnis.
+  Nach der Auflösung ausgeblendet (dann gibt es „Weiter“).
+- **Body Percussion** statt „Körper“ (nur sichtbarer Name; IDs bleiben).
+  Body Percussion und Wieder einsetzen in der Rhythmus-Übersicht gedämpft mit
+  Badge „in Arbeit“ (Text #5e5277, ≈ 7 : 1), weiter anklickbar; Screenreader
+  hören „(noch in Arbeit)“. `app.js` unverändert.
+
+## Etappe 3: Stufen 3, 5, 6 auf Songs (v489)
+
+- Stufen 3 „Dreier: Walzer und 6/8“, 5 „Falsche Fährten“, 6 „Halftime,
+  Shuffle, 12/8“ ziehen aus dem Katalog (Label/Muster/Bass/Einstieg wie
+  `SONG_LEVELS`, Selbsttest vergleicht). **Hinweis:** Stufen 5 und 6 laufen
+  jetzt **mit Bass** (so in `SONG_LEVELS`), die alten Groove-Stufen waren ohne.
+- Stufe 3: Taktart reihum (nach 3/4 ein 6/8-Song und umgekehrt).
+- Einstieg auf „und“ in Stufe 5/6 bei geraden Songs, im Shuffle auf Schlägen.
+- 12/8: Zählzeiten „1 · · 2 · · 3 · · 4 · ·“, Auflösung mit vier großen
+  Schlägen, Tempo in ♩., Meldung „um einen großen Schlag verschoben – du hast
+  die 2 für die Eins gehalten“ bzw. in Achteln.
+- Wertung: Achtel-Verschiebung in allen Stufen mit `starts: 'eighths'` bei
+  geraden 4/4-Songs (nicht mehr nur `level === 6`).
+- Halbe-Anzeige nur im 4/4 (Seemannsgarn, 3/4 ♩ 144–160, bleibt in Vierteln).
+- Alte Grooves entfernt (`DB_GROOVES`, `dbLevelBpm`, `dbCombos`,
+  `DB_BASS_STEPS`, Groove-Zweig im Planer). Die allgemeinen Tests in
+  `downbeatCheck` (Zeitplan, Wertung, Ablauf, Gerüst) laufen jetzt mit
+  Fahrradkette; Wertung genau/verschoben für elf Song/Muster-Paare inkl. 6/8,
+  12/8, Shuffle. Alte `dbLog`-Einträge mit `groove` werden beim Laden verworfen.
+- **Nicht umgerechnet** (Etappe 5): gespeicherte Stufe 5/6 bedeuten jetzt
+  „Falsche Fährten“ bzw. „Halftime, Shuffle, 12/8“ statt der alten Synkopen-
+  Stufen.
+- Browser: je ein Lauf in Stufe 3 (Leiser Walzer), 5 (Schwarzweißfilm),
+  6 (Wolkenkratzer 12/8, Rückspiegel Shuffle/Charleston) mit Klatschern zu
+  berechneten Zeiten → bestanden; Stufe 3 um zwei Achtel verschoben (6/8) →
+  „Um 2 Achtel verschoben – du hast die 3 für die Eins gehalten“.
+
+## Teil C: Echte Instrumente für alle Songs (v490)
+
+- Tonumfang aller 48 Songs in allen Tonarten berechnet: Bass 38–66, Klavier
+  50–85, Gitarre (Melodie) 62–88, Streicher 38–81, Chor 65–81, Bläser 50–76.
+  Ergänzt: Bass 39/63/66, Klavier 81/84, Gitarre 63/84/87, Streicher 39,
+  Chor 81, **Bläser neu** (`brass_section`, 51–75) für die Stabs.
+  Selbsttest prüft jetzt alle Songs/Tonarten (±1,5 Halbtöne) und dass jede
+  Klangart mit Tonhöhe ein Instrument hat. Klavier bleibt Klavier (auch Arpeggien).
+- **Streicher länger:** Die Quelle hält 3,1 s ohne Abklingen; die alte
+  Aufbereitung blendete schon ab 2,4 s aus. Jetzt nur 0,15 s Ausblenden, und
+  längere Töne setzt `sampleNote` aus Stücken zusammen (ab 0,9 s in der Datei,
+  je 0,4 s überblendet). Selbsttest: Stücke nahtlos, Gesamtdauer stimmt.
+- **Standard:** „Echte Instrumente“ für alle Songs; Probesong-Beschränkung
+  entfernt. Einstellungen: schlichter Schalter „Klang: Echte Instrumente /
+  Einfach (lädt nichts)“. Gespeichertes `dbSound: 'synth'` ohne Merker
+  `dbSoundV: 2` (alter Standard) wird einmalig auf echte Instrumente gehoben.
+- **Offline:** Service Worker liefert `samples/*.mp3` cache-first aus dem
+  eigenen Cache `chor-samples-v1` (nicht im Shell-Cache, nicht an
+  `SW_VERSION` gebunden; bei geänderten Samples die Nummer erhöhen). Im
+  Browser geprüft: 73 Dateien im Cache, offline neu geladen → Samples da.
+  Ohne Netz und Cache: wie bisher Synthese (Ladefehler → `prepareSamples` false).
+- Größe 1,4 MB (Ziel ≤ 3 MB). Lizenzen: `samples/LIZENZ.md`, `THIRD-PARTY.md`,
+  Namensnennung in der App bleibt. Bassdrum unverändert (keine CC0-Rock-
+  Bassdrum gesucht).
+
+### Bitte auf dem Handy probehören
+
+Mitschnitte (eine Schleife + Schluss, echte Instrumente) liegen bei. Neu bzw.
+am meisten zu prüfen:
+
+- **Tanzverbot**, **Discokugel** (5), **Rückspiegel** (6, Shuffle): Bläser-Stabs – Lautstärke, Länge?
+- **Wolkenkratzer** (6): 12/8, Zählzeiten-Anzeige.
+- **Katerstimmung** (6): Shuffle in Moll.
+- **Doppelte Zeit** (6): Polka-Punk.
+- **Seemannsgarn** (3): schneller Walzer, Tempo jetzt in Vierteln.
+- **Stadtrand** (1/2): lange Streicher-Fläche – hört man die Überblendung?
+- Allgemein: Stufe 5/6 mit Bass zu leicht? Überspringen-Knopf verständlich?
+
 ## Offene Punkte
 
-- Etappen 2–5.
+- Etappen 2, 4, 5 (Umrechnung alte Stufe 6 → neue 8 in Etappe 5).
 - Echter Shuffle-Beutel (ohne Zurücklegen über Sitzungen) bräuchte ein eigenes
   Feld in der Ablage; vorerst Gedächtnis von 8 Aufgaben.
 - Pegel der neuen Spuren sind geschätzt (siehe Probehör-Liste).

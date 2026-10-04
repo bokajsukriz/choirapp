@@ -609,11 +609,6 @@
   .tap-pad { --mic-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E"); }
   .pad-level { width: 70%; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
   .pad-level i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--ok); transition: width .05s linear; }
-  .sound-trial { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-  .sound-row { display: flex; align-items: center; gap: 6px; }
-  .sound-row > span { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
-  .sound-row small { color: var(--muted); font-size: 12px; }
-  .sound-row .chip { flex: none; white-space: nowrap; }
   .round-card { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
   /* Urteil (Entwurf docs/nachklatschen): Symbol im Kreis + großes Wort,
      darunter eine Zeile. Wort + Symbol, nie nur Farbe. */
@@ -4865,7 +4860,7 @@
     pick: null,        // Stimmen: angetippter Kandidat
     streak: 0,
     dbPct: 0,          // Einsatz finden: eigene Tempo-Verschiebung in Prozent (BPM-Knopf, ±25)
-    dbSound: 'synth',  // Einsatz finden, Klang-Versuch: 'synth' | 'samples' (echte Instrumente, nur Probesongs)
+    dbSound: 'samples', // Einsatz finden, Klang: 'samples' (echte Instrumente, Standard) | 'synth' (einfach, lädt nichts)
     dbLog: [],         // Einsatz finden: die letzten Aufgaben (Abwechslung, siehe makeDownbeatTask)
     bodyShift: 0,      // Körper: ebenso
     bodyRehearsal: { on: false, map: { B: 'stomp', T: 'patsch', A: 'clap', S: 'snap' } }, // Körper: Probenmodus, Schicht je Stimme
@@ -5329,8 +5324,8 @@
   }
   /** Aufgabe: Song, Muster, Tempo, Einstiegsstelle (nie die Eins), siehe
    *  makeSongTask. pct: eigene Tempo-Verschiebung in Prozent (BPM-Knopf). */
-  function makeDownbeatTask(n, rnd = Math.random, pct = 0, log = [], only = null) {
-    return makeSongTask(n, rnd, pct, log, only);
+  function makeDownbeatTask(n, rnd = Math.random, pct = 0, log = []) {
+    return makeSongTask(n, rnd, pct, log);
   }
   /** Zeitplan eines Laufs (reine Funktion), siehe songPlan. Zeiten in s ab dem
    *  ersten Schlag (Tick `startTick` des angeschnittenen ersten Takts). accent:
@@ -5801,22 +5796,20 @@
    *  (ear.dbLog, DB_MEMORY) zuletzt – eine Annäherung an „ohne Zurücklegen“.
    *  Einstieg nie auf der Eins und nicht an derselben Stelle wie zuletzt.
    *  Tonart zufällig: Dur F–A, Moll d–fis (Bass und Melodie in Chorlage). */
-  function makeSongTask(n, rnd = Math.random, pct = 0, log = [], only = null) {
+  function makeSongTask(n, rnd = Math.random, pct = 0, log = []) {
     const level = DOWNBEAT_LEVELS[n - 1];
     const pickR = (list) => list[Math.floor(rnd() * list.length)];
     const narrow = (list, keep) => { const k = list.filter(keep); return k.length ? k : list; };
     const recent = log.filter((x) => x && x.level === n);
     const last = recent[recent.length - 1] || null, prev = recent[recent.length - 2] || null;
     let combos = songCombos(level);
-    // Klang-Versuch: nur die Probesongs, soweit die Stufe welche hat.
-    if (only) combos = narrow(combos, (c) => only.includes(c.song));
     // Stufe 3: Taktart reihum (nach einem 3/4-Song lieber ein 6/8-Song und umgekehrt).
     if (level.rotateMeters && last) combos = narrow(combos, (c) => DB_SONGS[c.song].meter !== last.meter);
     if (last) {
       const fam = (x) => x.family ?? DB_SONGS[x.song]?.family;
       const near = new Set(recent.slice(-DB_SONG_RECENT).map((x) => x.song));
       combos = narrow(combos, (c) => !near.has(c.song));
-      combos = narrow(combos, (c) => c.song !== last.song); // kleiner Vorrat (Klang-Versuch): wenigstens nicht direkt nochmal
+      combos = narrow(combos, (c) => c.song !== last.song); // kleiner Vorrat: wenigstens nicht direkt nochmal
       if (prev && fam(prev) && fam(prev) === fam(last)) combos = narrow(combos, (c) => DB_SONGS[c.song].family !== fam(last));
       const seen = new Set(recent.map((x) => `${x.song}/${x.pattern}`));
       combos = narrow(combos, (c) => !seen.has(`${c.song}/${c.pattern}`));
@@ -5926,23 +5919,29 @@
   }
   const SONG_TOMS = { hi: [220, 160], mid: [160, 110], lo: [110, 70] };
 
-  /* ---- Klang-Versuch: echte Instrumente statt Synthese (nur für die
-     Probesongs). Samples in ./samples/ (54 MP3, mono, ≈ 1,1 MB; Herkunft und
-     Lizenzen in samples/LIZENZ.md und THIRD-PARTY.md): Schlagzeug aus VCSL
-     (CC0), Bass/Klavier/Streicher/Gitarre/Chor aus FluidR3_GM (CC BY 3.0).
-     Je Instrument ein Ton alle drei Halbtöne, dazwischen umgestimmt
-     (playbackRate, höchstens ±1,5 Halbtöne). Geladen erst beim ersten
-     Gebrauch, nicht im Shell-Cache – offline oder bei einem Ladefehler
-     klingt es wie bisher. ---- */
-  const SAMPLE_SONGS = ['fahrradkette', 'stadtrand', 'gummistiefel'];
+  /* ---- Echte Instrumente statt Synthese (Standard für alle Songs, seit dem
+     Klang-Versuch v483). Samples in ./samples/ (73 MP3, mono, ≈ 1,4 MB;
+     Herkunft und Lizenzen in samples/LIZENZ.md und THIRD-PARTY.md):
+     Schlagzeug aus VCSL (CC0), Bass/Klavier/Streicher/Gitarre/Chor/Bläser
+     aus FluidR3_GM (CC BY 3.0). Je Instrument ein Ton alle drei Halbtöne,
+     dazwischen umgestimmt (playbackRate, höchstens ±1,5 Halbtöne). Geladen
+     erst beim ersten Gebrauch, nicht im Shell-Cache; der Service Worker legt
+     sie in einen eigenen Cache (offline). Ohne Netz und Cache oder bei einem
+     Ladefehler klingt es wie mit „Einfach“ (Synthese). ---- */
   const SAMPLE_DRUMS = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'tom-hi', 'tom-lo', 'crash', 'clap'];
   const SAMPLE_INST = {
-    bass: [42, 45, 48, 51, 54, 57, 60],
-    piano: [48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78],
-    strings: [42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81],
-    guitar: [66, 69, 72, 75, 78, 81],
-    choir: [66, 69, 72, 75, 78],
+    bass: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66],
+    piano: [48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84],
+    strings: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81],
+    guitar: [63, 66, 69, 72, 75, 78, 81, 84, 87],
+    choir: [66, 69, 72, 75, 78, 81],
+    brass: [51, 54, 57, 60, 63, 66, 69, 72, 75],
   };
+  /** Instrument je Klangart der Songs (Stabs: Bläser-Hits). */
+  const SAMPLE_OF = { bass: 'bass', keys: 'piano', pad: 'strings', lead: 'guitar', chop: 'choir', stab: 'brass' };
+  /** Lange Töne aus überblendeten Stücken: ab loopFrom (s in der Datei, nach dem
+   *  Einschwingen) gleichmäßig; die Dateien sind am Ende kurz ausgeblendet (tail). */
+  const SAMPLE_LONG = { strings: { loopFrom: .9, tail: .2, xfade: .4 } };
   const samples = { buf: null, loading: null };
   /** Stille am Anfang abschneiden (MP3-Vorlauf des Kodierers, je nach Browser
    *  verschieden) – sonst kämen die Schläge alle ein paar ms zu spät. */
@@ -5981,7 +5980,7 @@
   /** Für diese Aufgabe mit Samples spielen? Lädt beim ersten Mal (höchstens
    *  8 s warten); bei Fehler false → bisheriger Klang. */
   async function prepareSamples(task) {
-    if (ear.dbSound !== 'samples' || !task?.song || !SAMPLE_SONGS.includes(task.song)) return false;
+    if (ear.dbSound !== 'samples' || !task?.song) return false;
     if (samples.buf) return true;
     try {
       await Promise.race([loadSamples(), new Promise((_, no) => setTimeout(() => no(new Error('Zeitüberschreitung')), 8000))]);
@@ -5989,12 +5988,14 @@
     } catch (err) { console.warn('Samples nicht geladen:', err); return false; }
   }
   /** Ein Sample abspielen; dur: Note endet (mit release ausklingen), attack: einblenden. */
-  function playSample(b, time, { rate = 1, gain = 1, dur = null, attack = 0, release = .06, dest }) {
+  let playSampleHook = null; // Selbsttest: Aufrufe mitschreiben statt spielen
+  function playSample(b, time, { rate = 1, gain = 1, dur = null, attack = 0, release = .06, offset = 0, dest }) {
+    if (playSampleHook) { playSampleHook(b, time, { rate, gain, dur, attack, release, offset }); return; }
     const ctx = engine.ctx;
     const src = ctx.createBufferSource();
     src.buffer = b; src.playbackRate.value = rate;
     const g = ctx.createGain();
-    const len = b.duration / rate;
+    const len = (b.duration - offset) / rate;
     const a = Math.min(attack, len / 2);
     if (a) { g.gain.setValueAtTime(.0001, time); g.gain.linearRampToValueAtTime(gain, time + a); } else g.gain.setValueAtTime(gain, time);
     let end = len;
@@ -6004,16 +6005,31 @@
       end = Math.max(a, dur) + release;
     }
     src.connect(g).connect(dest);
-    src.start(time); src.stop(time + end + .02);
+    src.start(time, offset); src.stop(time + end + .02);
   }
-  /** Ton eines Instruments: nächstes Sample, umgestimmt. */
+  /** Nächstes Sample eines Instruments zu einem Ton (Datei-Ton). */
+  const sampleBase = (inst, midi) => SAMPLE_INST[inst].reduce((best, x) => (Math.abs(x - midi) < Math.abs(best - midi) ? x : best), SAMPLE_INST[inst][0]);
+  /** Ton eines Instruments: nächstes Sample, umgestimmt. Länger als die Datei
+   *  (Streicher-Flächen in langsamen Songs): weitere Stücke aus dem ruhigen
+   *  Mittelteil, jeweils überblendet – sonst klänge die Fläche vor dem
+   *  Akkordwechsel aus. */
   function sampleNote(inst, midi, time, dur, opts) {
-    const notes = SAMPLE_INST[inst];
-    const n = notes.reduce((best, x) => (Math.abs(x - midi) < Math.abs(best - midi) ? x : best), notes[0]);
-    playSample(samples.buf.inst[inst][n], time, { ...opts, rate: 2 ** ((midi - n) / 12), dur });
+    const n = sampleBase(inst, midi);
+    const b = samples.buf.inst[inst][n], rate = 2 ** ((midi - n) / 12);
+    const long = SAMPLE_LONG[inst];
+    const release = opts.release ?? .06;
+    if (!long) { playSample(b, time, { ...opts, rate, dur }); return; }
+    let t = time, left = dur, offset = 0, attack = opts.attack ?? 0;
+    for (let k = 0; k < 64; k++) {
+      const avail = (b.duration - offset) / rate - long.tail; // hörbar vor dem Ausblenden der Datei
+      if (left + release <= avail || k === 63) { playSample(b, t, { ...opts, rate, dur: left, attack, offset }); return; }
+      const piece = avail - long.xfade;
+      playSample(b, t, { ...opts, rate, dur: piece, attack, release: long.xfade, offset });
+      t += piece; left -= piece; offset = long.loopFrom; attack = long.xfade;
+    }
   }
-  /** Ereignis mit Samples spielen; false = nicht zuständig (Klick, Vorklatschen,
-   *  Stabs …) → Synthese wie bisher. Pegel geschätzt (siehe Bericht). */
+  /** Ereignis mit Samples spielen; false = nicht zuständig (Klick, Vorklatschen)
+   *  → Synthese wie bisher. Pegel geschätzt (siehe Bericht). */
   function playSampledEvent(ev, time, bus) {
     const d = samples.buf.drums;
     ev = { ...ev, vel: ev.vel ?? 1 }; // Schlusspunkt-Ereignisse tragen keine Anschlagstärke
@@ -6034,6 +6050,7 @@
       case 'pad': ev.notes.forEach((n) => sampleNote('strings', n, time, Math.max(.3, ev.dur), { gain: .2, attack: .25, release: .4, dest: part('s-pad', 1) })); return true;
       case 'lead': sampleNote('guitar', ev.midi, time, ev.dur, { gain: .38, release: .12, dest: part('s-lead', 1) }); return true;
       case 'chop': sampleNote('choir', ev.midi, time, Math.max(.2, ev.dur), { gain: .4, attack: .04, release: .2, dest: part('s-chop', 1) }); return true;
+      case 'stab': ev.notes.forEach((n) => sampleNote('brass', n, time, Math.max(.08, ev.dur ?? .15), { gain: .32, attack: .005, release: .09, dest: part('s-stab', 1) })); return true;
       default: return false;
     }
   }
@@ -6074,17 +6091,11 @@
     scheduleSoon(evs, t0, (ev, at) => playDownbeatEvent(ev, at, bus), () => soundPreview.bus === bus);
     soundPreview.timer = setTimeout(() => { if (soundPreview.key === key) { soundPreview.key = ''; soundPreview.bus = null; renderSettings(); } }, (L * tickSec + 1.6) * 1000);
   }
-  /** Abschnitt „Klang (Versuch)“ in den Einstellungen von „Einsatz finden“. */
+  /** Abschnitt „Klang“ in den Einstellungen von „Einsatz finden“. */
   function soundTrialHtml() {
-    const rows = SAMPLE_SONGS.map((id) => {
-      const s = DB_SONGS[id];
-      const btn = (sound, label) => { const on = soundPreview.key === `${id}:${sound}`; return `<button class="chip" type="button" data-sound-preview="${id}:${sound}" aria-pressed="${on}" aria-label="${esc(s.name)} ${label} anhören">${on ? '■' : '▶'} ${label}</button>`; };
-      return `<div class="sound-row"><span><b>${esc(s.name)}</b><small>${esc(s.style)} · Stufe ${s.levels.filter((n) => n <= 2).join('/')}</small></span>${btn('synth', 'Bisher')}${btn('samples', 'Echt')}</div>`;
-    }).join('');
-    return `<span class="sub-label">Klang (Versuch)</span>
-      <div class="chip-row">${[['synth', 'Bisher'], ['samples', 'Echte Instrumente']].map(([v, label]) => `<button class="chip" type="button" data-db-sound="${v}" aria-pressed="${ear.dbSound === v}">${label}</button>`).join('')}</div>
-      <p class="foot-note" style="text-align:left;margin-top:4px">Probe mit drei Songs. Mit „Echte Instrumente“ kommen in Stufe 1 und 2 nur diese Songs dran, gespielt mit aufgenommenen Instrumenten (beim ersten Mal etwa 1 MB laden). Zum Vergleichen hier direkt anhören:</p>
-      <div class="sound-trial">${rows}</div>
+    return `<span class="sub-label">Klang</span>
+      <div class="chip-row">${[['samples', 'Echte Instrumente'], ['synth', 'Einfach (lädt nichts)']].map(([v, label]) => `<button class="chip" type="button" data-db-sound="${v}" aria-pressed="${ear.dbSound === v}">${label}</button>`).join('')}</div>
+      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal etwa 1,4 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
       <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (CC BY 3.0, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Schlagzeug: Versilian Community Sample Library (CC0).</p>`;
   }
 
@@ -6392,7 +6403,7 @@
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
   function makeEarTask(mode, n, rnd = Math.random) {
     if (mode === 'downbeat') {
-      const t = makeDownbeatTask(n, rnd, ear.dbPct, ear.dbLog, ear.dbSound === 'samples' ? SAMPLE_SONGS : null);
+      const t = makeDownbeatTask(n, rnd, ear.dbPct, ear.dbLog);
       ear.dbLog = [...ear.dbLog, dbLogEntry(t)].slice(-DB_MEMORY);
       return t;
     }
@@ -12448,7 +12459,7 @@
         grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
         groovesProgress: groovesProgress(), // nur für den Balken der Kachel „Grooves“ in der App, beim Laden ignoriert
       },
-      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbPct: ear.dbPct, dbSound: ear.dbSound, dbLog: ear.dbLog, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, entryShift: ear.entryShift, entryLog: ear.entryLog, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
+      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbPct: ear.dbPct, dbSound: ear.dbSound, dbSoundV: 2, dbLog: ear.dbLog, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, entryShift: ear.entryShift, entryLog: ear.entryLog, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
         audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
@@ -12530,7 +12541,9 @@
     if (SATB_PARTS.includes(e.part)) ear.part = e.part;
     // Früher dbShift in BPM (konnte Pop auf 150 treiben) — bewusst nicht übernommen.
     ear.dbPct = Number.isFinite(e.dbPct) ? clamp(Math.round(e.dbPct), -DB_PCT_MAX, DB_PCT_MAX) : 0;
-    ear.dbSound = e.dbSound === 'samples' ? 'samples' : 'synth';
+    // „Echte Instrumente“ ist Standard. 'synth' aus dem Klang-Versuch (vor dbSoundV 2)
+    // war nur der alte Standard und wird einmalig gehoben.
+    ear.dbSound = e.dbSound === 'synth' && e.dbSoundV >= 2 ? 'synth' : 'samples';
     // Alte Einträge mit `groove` (vor Etappe 3) werden verworfen.
     ear.dbLog = Array.isArray(e.dbLog) ? e.dbLog.filter((x) => x && DB_SONGS[x.song] && DB_PATTERNS[x.pattern] && Number.isInteger(x.level)).slice(-DB_MEMORY)
       .map((x) => dbLogEntry({ ...x, meter: DB_SONGS[x.song].meter, startTick: Number(x.startTick) || 0 })) : [];
@@ -12946,8 +12959,6 @@
       clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); ear.task = null; ear.revealed = false; setEarFeedback('', '');
       persist(); renderSettings(); renderEar(); return;
     }
-    const preview = e.target.closest('[data-sound-preview]');
-    if (preview) { const [id, sound] = preview.dataset.soundPreview.split(':'); if (SAMPLE_SONGS.includes(id)) playSoundPreview(id, sound); return; }
     const bodyReh = e.target.closest('[data-body-rehearsal]');
     if (bodyReh) {
       ear.bodyRehearsal.on = bodyReh.dataset.bodyRehearsal === 'on';
@@ -16170,38 +16181,50 @@
       // Ohne Klatscher läuft der Song lange weiter (früher endete er nach ≈ 25 s).
       if (p.end - p.youEnd < 30 * p.bar * p.tickSec) errors.push(`Einsatz: Song endet ohne Klatscher schon nach ${(p.end - p.youEnd).toFixed(1)} s`);
     }
-    // Klang-Versuch: Samples decken alle Töne der Probesongs (jede Tonart) auf ±1,5 Halbtöne ab;
-    // mit „Echte Instrumente“ kommen in Stufe 1/2 nur Probesongs dran, nie zweimal direkt hintereinander.
-    const inst = { bass: 'bass', keys: 'piano', pad: 'strings', lead: 'guitar', chop: 'choir' };
-    for (const id of SAMPLE_SONGS) {
-      const song = DB_SONGS[id];
+    // Echte Instrumente: Samples decken alle Töne aller Songs (jede Tonart) auf ±1,5 Halbtöne ab,
+    // jede Klangart mit Tonhöhe hat ein Instrument; lange Streicher-Töne aus überblendeten Stücken.
+    for (const [id, song] of Object.entries(DB_SONGS)) {
       for (const tonic of song.mode === 'minor' ? [62, 63, 64, 65, 66] : [65, 66, 67, 68, 69]) {
         const t = { song: id, meter: song.meter, tonic, mode: song.mode };
-        const evs = [...songVoices(t, true), ...songFinaleEvents(t)];
-        for (const e of evs) {
-          const name = inst[e.kind];
-          if (!name) continue;
-          for (const n of e.notes || [e.midi]) if (!SAMPLE_INST[name].some((x) => Math.abs(x - n) <= 1.5)) errors.push(`Klang-Versuch: ${id} braucht ${name} ${n}`);
+        const miss = new Set();
+        for (const e of [...songVoices(t, true), ...songFinaleEvents(t)]) {
+          if (!e.notes && e.midi === undefined) continue;
+          const name = SAMPLE_OF[e.kind];
+          if (!name) { miss.add(`${e.kind} ohne Instrument`); continue; }
+          for (const n of e.notes || [e.midi]) if (!SAMPLE_INST[name].some((x) => Math.abs(x - n) <= 1.5)) miss.add(`${name} ${n}`);
         }
+        if (miss.size) { errors.push(`Echte Instrumente: ${id} braucht ${[...miss].join(', ')}`); break; }
       }
     }
-    for (const n of [1, 2]) {
-      let log = [];
-      for (let i = 0; i < 30; i++) {
-        const t = makeDownbeatTask(n, rnd, 0, log, SAMPLE_SONGS);
-        if (!SAMPLE_SONGS.includes(t.song) || (log.length && log[log.length - 1].song === t.song)) { errors.push(`Klang-Versuch Stufe ${n}: ${t.song} nach ${log[log.length - 1]?.song}`); break; }
-        log = [...log, dbLogEntry(t)].slice(-DB_MEMORY);
-      }
+    if (Object.values(SAMPLE_OF).some((x) => !SAMPLE_INST[x])) errors.push('Echte Instrumente: Zuordnung unvollständig');
+    // Lange Fläche: genug Stücke, nahtlos überblendet (Ende des einen = Einsatz des nächsten).
+    {
+      const calls = [];
+      const orig = samples.buf;
+      const fake = { duration: 3.1 };
+      samples.buf = { inst: { strings: Object.fromEntries(SAMPLE_INST.strings.map((n) => [n, fake])) } };
+      try {
+        playSampleHook = (b, time, o) => calls.push({ time, ...o });
+        sampleNote('strings', 60, 10, 7, { gain: .2, attack: .25, release: .4, dest: null });
+      } finally { playSampleHook = null; samples.buf = orig; }
+      const L = SAMPLE_LONG.strings;
+      const ok = calls.length >= 3 && Math.abs(calls[calls.length - 1].time + calls[calls.length - 1].dur - 17) < 1e-6
+        && calls.every((c, i) => !i || (Math.abs(c.time - (calls[i - 1].time + calls[i - 1].dur)) < 1e-6 && c.offset === L.loopFrom && c.attack === L.xfade && calls[i - 1].release === L.xfade))
+        && calls.every((c) => c.dur + (c.release ?? .06) <= (fake.duration - c.offset) - L.tail + 1e-6);
+      if (!ok) errors.push(`Echte Instrumente: lange Streicher ${JSON.stringify(calls.map((c) => [c.time, c.dur, c.offset]))}`);
     }
     // Gedächtnis: Song-Einträge überstehen Speichern/Laden (mit Stil-Familie).
     const snap = JSON.parse(JSON.stringify(snapshot()));
     try {
       restore({ ...snap, ear: { ...snap.ear, dbLog: [{ level: 1, song: 'fahrradkette', pattern: 'one4', startTick: 12 }, { level: 1, song: 'gibtsnicht', pattern: 'one4' }] } });
       if (ear.dbLog.length !== 1 || ear.dbLog[0].family !== 'indie-rock' || ear.dbLog[0].meter !== '4/4') errors.push(`Einsatz: Song-Gedächtnis nach dem Laden ${JSON.stringify(ear.dbLog)}`);
-      restore({ ...snap, ear: { ...snap.ear, dbSound: 'samples' } });
-      if (ear.dbSound !== 'samples' || snapshot().ear.dbSound !== 'samples') errors.push('Klang-Versuch: Einstellung wird nicht gespeichert');
+      restore({ ...snap, ear: { ...snap.ear, dbSound: 'synth', dbSoundV: 2 } });
+      if (ear.dbSound !== 'synth' || snapshot().ear.dbSound !== 'synth' || snapshot().ear.dbSoundV !== 2) errors.push('Klang: Einstellung „Einfach“ wird nicht gespeichert');
+      // 'synth' aus dem Klang-Versuch (ohne dbSoundV) war nur der alte Standard → echte Instrumente.
+      restore({ ...snap, ear: { ...snap.ear, dbSound: 'synth', dbSoundV: undefined } });
+      if (ear.dbSound !== 'samples') errors.push('Klang: alter Standard „Bisher“ nicht gehoben');
       restore({ ...snap, ear: { ...snap.ear, dbSound: 'laut' } });
-      if (ear.dbSound !== 'synth') errors.push('Klang-Versuch: unbekannter Wert übernommen');
+      if (ear.dbSound !== 'samples') errors.push('Klang: unbekannter Wert übernommen');
     } finally { restore(snap); }
     return errors;
   }

@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Aufbereitung der Samples für den Klang-Versuch („Einsatz finden“).
+# Aufbereitung der Samples für „Einsatz finden“ (echte Instrumente, alle Songs).
 # Quellen vorher holen:
 #   VCSL:  git clone --filter=blob:none --no-checkout https://github.com/sgossner/VCSL /tmp/claude-0/vcsl
 #          und die unten genannten Dateien mit `git checkout HEAD -- <Pfad>` auschecken
 #   FluidR3_GM: https://raw.githubusercontent.com/gleitz/midi-js-soundfonts/gh-pages/FluidR3_GM/<instrument>-mp3/<Ton>.mp3
 #          (Ton mit b-Namen, z. B. Gb2), abgelegt als /tmp/claude-0/src/fl/<instrument>/<MIDI>.mp3
+#          Töne je Instrument: siehe SAMPLE_INST in uebe-lab.html (alle drei Halbtöne).
 # Braucht ffmpeg mit libmp3lame.
 set -e
 V=/tmp/claude-0/vcsl; FL=/tmp/claude-0/src/fl; OUT=$(cd "$(dirname "$0")" && pwd)
 peak(){ ffmpeg -hide_banner -nostats -i "$1" -af volumedetect -f null - 2>&1 | sed -n 's/.*max_volume: \(-\?[0-9.]*\) dB/\1/p'; }
-# enc SRC DST LEN GAIN_DB BITRATE [extra filters]
-enc(){ local L=$3; local fo=$(python3 -c "print(round($L*0.6,3))"); local fd=$(python3 -c "print(round($L*0.4,3))");
+# enc SRC DST LEN GAIN_DB BITRATE [extra filters] [Ausblenden in s, sonst 40 % von LEN]
+enc(){ local L=$3; local fd=${7:-$(python3 -c "print(round($L*0.4,3))")}; local fo=$(python3 -c "print(round($L-$fd,3))");
   ffmpeg -hide_banner -loglevel error -y -i "$1" -af "aformat=channel_layouts=mono,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.002${6:+,$6},atrim=0:$L,volume=${4}dB,afade=t=out:st=$fo:d=$fd" -ac 1 -ar 44100 -c:a libmp3lame -b:a $5 "$2"; }
+if [ -d "$V" ]; then
 mkdir -p $OUT/drums
 d(){ local p=$(peak "$V/$1"); enc "$V/$1" $OUT/drums/$2.mp3 $3 $(python3 -c "print(round(-1-($p),2))") 96k "$4"; }
 d "Membranophones/Struck Membranophones/Bass Drum 2/bassdrum_hit_f.wav" kick 0.45 "highpass=f=35"
@@ -25,11 +27,15 @@ d "Membranophones/Struck Membranophones/Tom 1/Stick/TomH_HitS_v4_rr1_Mid.wav" to
 d "Membranophones/Struck Membranophones/Tom 2/Stick/TomL_HitS_v4_rr1_Mid.wav" tom-lo 0.6
 d "Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mf1.wav" crash 1.6
 d "Idiophones/Struck Idiophones/Claps/Clap_rr1.wav" clap 0.3
+fi
 # Instrumente: eine Verstärkung je Instrument (lautester Ton → −1 dB), Verhältnis der Töne bleibt
-inst(){ local src=$1 dst=$2 L=$3; mkdir -p $OUT/$dst; local mx=-99; for f in $FL/$src/*.mp3; do p=$(peak $f); mx=$(python3 -c "print(max($mx,$p))"); done
-  for f in $FL/$src/*.mp3; do enc $f $OUT/$dst/$(basename $f) $L $(python3 -c "print(round(-1-($mx),2))") 64k; done; }
+inst(){ local src=$1 dst=$2 L=$3 fd=$4; rm -rf $OUT/$dst; mkdir -p $OUT/$dst; local mx=-99; for f in $FL/$src/*.mp3; do p=$(peak $f); mx=$(python3 -c "print(max($mx,$p))"); done
+  for f in $FL/$src/*.mp3; do enc $f $OUT/$dst/$(basename $f) $L $(python3 -c "print(round(-1-($mx),2))") 64k "" $fd; done; }
 inst electric_bass_finger bass 1.6
 inst acoustic_grand_piano piano 2.5
-inst string_ensemble_1 strings 4
+# Streicher: die Quelle hält 3,1 s ohne Abklingen – nur kurz ausblenden; längere
+# Flächen setzt die App aus überblendeten Stücken zusammen (sampleNote, loopFrom).
+inst string_ensemble_1 strings 3.1 0.15
 inst electric_guitar_clean guitar 1.8
 inst choir_aahs choir 2.5
+inst brass_section brass 1.2

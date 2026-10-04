@@ -53,11 +53,11 @@ Volltexte nicht. `lame.min.js` selbst wurde dabei nicht angefasst.
 
 | Feld | Wert |
 |---|---|
-| Komponente | Samples für den Klang-Versuch („Einsatz finden“) |
-| Dateien | `samples/` (54 MP3, ≈ 1,1 MB), Einzelnachweis in `samples/LIZENZ.md` |
+| Komponente | Samples für „Einsatz finden“ (echte Instrumente) |
+| Dateien | `samples/` (73 MP3, ≈ 1,4 MB), Einzelnachweis in `samples/LIZENZ.md` |
 | Quelle Schlagzeug | Versilian Community Sample Library (VCSL), https://github.com/sgossner/VCSL, Stand `c1ea7bc` |
 | Lizenz Schlagzeug | CC0 1.0 (Volltext `samples/LICENSE-VCSL-CC0.txt`) |
 | Quelle Instrumente | FluidR3_GM (Frank Wen), Einzeltöne aus https://github.com/gleitz/midi-js-soundfonts (Benjamin Gleitzman) |
-| Lizenz Instrumente | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung auch in der App (Einstellungen von „Einsatz finden“, Abschnitt „Klang (Versuch)“) |
+| Lizenz Instrumente | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung auch in der App (Einstellungen von „Einsatz finden“, Abschnitt „Klang“) |
 | Verändert | ja – gekürzt, Stille am Anfang entfernt, ausgeblendet, mono, Pegel angeglichen, neu als MP3 kodiert |
-| Verwendung | Wiedergabe der Probesongs mit echten Instrumenten, erst beim ersten Gebrauch nachgeladen (nicht im Shell-Cache) |
+| Verwendung | Wiedergabe aller Songs in „Einsatz finden“ mit echten Instrumenten (Standard), erst beim ersten Gebrauch nachgeladen; nicht im Shell-Cache, sondern im eigenen Service-Worker-Cache `chor-samples-v1` (offline) |

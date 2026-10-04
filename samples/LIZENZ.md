@@ -1,6 +1,6 @@
-# Samples für den Klang-Versuch in „Einsatz finden“
+# Samples für „Einsatz finden“ (echte Instrumente)
 
-Aufbereitet für `uebe-lab.html` (Klang-Versuch, Probesongs): Stille am Anfang
+Aufbereitet für `uebe-lab.html` (alle Songs von „Einsatz finden“): Stille am Anfang
 entfernt, gekürzt, ausgeblendet, mono, Pegel angeglichen, als MP3 neu kodiert
 (Schlagzeug 96 kbit/s, Instrumente 64 kbit/s). Dateiname der Instrumente =
 MIDI-Tonhöhe (60 = c′). Skript: `aufbereiten.sh` in diesem Ordner.
@@ -25,7 +25,7 @@ Volltext `LICENSE-VCSL-CC0.txt`), keine Namensnennung nötig.
 | crash | Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mf1.wav |
 | clap | Idiophones/Struck Idiophones/Claps/Clap_rr1.wav |
 
-## Instrumente (`bass/`, `piano/`, `strings/`, `guitar/`, `choir/`) – FluidR3_GM, CC BY 3.0
+## Instrumente (`bass/`, `piano/`, `strings/`, `guitar/`, `choir/`, `brass/`) – FluidR3_GM, CC BY 3.0
 
 FluidR3_GM-Soundfont von Frank Wen, als Einzeltöne gerendert von Benjamin
 Gleitzman: https://github.com/gleitz/midi-js-soundfonts (Ordner `FluidR3_GM`,
@@ -39,3 +39,9 @@ https://creativecommons.org/licenses/by/3.0/). Hier verändert (siehe oben).
 | strings | string_ensemble_1 |
 | guitar | electric_guitar_clean |
 | choir | choir_aahs |
+| brass | brass_section (Bläser-Hits der Stabs) |
+
+Töne je Ordner: alle drei Halbtöne über den Umfang aller Songs in allen
+Tonarten (Liste `SAMPLE_INST` in `uebe-lab.html`). Streicher: 3,1 s, nur
+kurz ausgeblendet – längere Flächen setzt die App aus überblendeten Stücken
+zusammen.
