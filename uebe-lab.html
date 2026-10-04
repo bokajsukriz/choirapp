@@ -2131,6 +2131,13 @@
   // die Klatscher in Runden mit Groove um +9,5 dB angehoben (ohne Groove
   // unverändert). Gemessen: selfCheckAudio.
   const ACCOMP_GAIN = .3;
+  /** Wandern der Intonations-Töne (engine.saw) in Cent. Früher ±2,5 je Ton,
+   *  unabhängig: zwei Töne schwankten bis 5 Cent gegeneinander – so groß wie
+   *  die kleinen Stufen der Treppe (3–5 Cent), Fangfragen klangen nicht mehr
+   *  „gleich“. ±1 hält das Leben im Klang, die gegenseitige Schwankung (≤ 2)
+   *  bleibt unter der kleinsten Stufe (makeStaircase min 3); die Treppe bleibt
+   *  unverändert (gespeicherte Stände gelten weiter). */
+  const TUNING_WANDER_CENTS = 1;
   const SOFT_GAIN = .74; // engine.soft: so laut wie engine.keys bei gleicher velocity (selfCheckAudio)
   const CLAP_WITH_ACCOMP = 3;
   /** Hi-Hat-Raster (nur Stufe 'full'): Ticks `at` innerhalb jeder Periode. */
@@ -2443,9 +2450,9 @@
     /** Intonation: weicher, stimmähnlicher Ton statt Sägezahn (Chorleiter: das
      *  „Schnarren“ nervte) – Obertöne fallen mit 1/n² ab, die ersten (Oktave,
      *  Quinte) bleiben hörbar, damit Schwebungen entstehen. Jeder Ton wandert
-     *  minimal (±2,5 Cent, langsam, zufällige Phase): Auch ein reiner Klang ist
-     *  dann nicht völlig starr – „rein“ verrät sich nicht mehr an der Klangfarbe,
-     *  man muss auf die Richtung hören (wie bei echten Stimmen). */
+     *  minimal (±TUNING_WANDER_CENTS, langsam, zufällige Phase): Auch ein reiner
+     *  Klang ist dann nicht völlig starr – „rein“ verrät sich nicht mehr an der
+     *  Klangfarbe, man muss auf die Richtung hören (wie bei echten Stimmen). */
     saw(midi, cents, time, duration, dest) {
       const ctx = this.ctx;
       const osc = ctx.createOscillator();
@@ -2454,7 +2461,7 @@
       // Langsames, kaum hörbares Wandern um den Sollton (Mittelwert genau der Sollton).
       const lfo = ctx.createOscillator(), depth = ctx.createGain();
       lfo.frequency.value = .25 + Math.random() * .3;
-      depth.gain.value = 2.5;
+      depth.gain.value = TUNING_WANDER_CENTS;
       lfo.connect(depth).connect(osc.detune);
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass'; filter.frequency.value = 1800; filter.Q.value = .5;
@@ -8573,7 +8580,7 @@
         ${isRhythmEar(ear.mode) ? `<span class="sub-label">Eingabe</span>
         <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.${ear.mode === 'entries' ? ' Ein gesprochenes oder gesungenes „da“ zählt genauso.' : ''}</p>` : ''}
-        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
+        ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner (bis 3 Cent), nach einem Fehler größer. Jeder Ton schwankt dabei ganz leicht (±1 Cent) wie eine echte Stimme – deutlich weniger als die kleinste Abweichung, „gleich“ und „rein“ klingen also wirklich gleich.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${isInKeyMode(ear.mode) ? checkRow('inKeyResolve', 'on', ear.mode === 'noteInKey' ? 'Nach der Antwort auflösen (Ton läuft zur Tonika)' : 'Nach der Antwort auflösen (Akkord läuft nach Hause)', s.inKeyResolve !== false) : ''}${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext, isInKeyMode(ear.mode) ? 'erst nach der Auflösung' : '')}</div>`;
     } else {
@@ -17290,6 +17297,10 @@
       if (calls.length !== 3 || calls.some((c, i) => Math.abs(c.rate - want[i]) > 1e-9)) errors.push(`Klavier: Stimmungskorrektur ${calls.map((c) => c.rate)}`);
       if (Math.abs(calls[0]?.gain - .2 * PIANO_LEVEL[39]) > 1e-9 || calls[0]?.release !== KEYS_RELEASE) errors.push('Klavier: Pegel/Ausklang je Datei');
     } finally { samples.inst.piano = saved; playSampleHook = null; }
+    // Intonation: gegenseitiges Wandern zweier Töne unter der kleinsten Treppenstufe.
+    const st = makeStaircase();
+    for (let i = 0; i < 60; i++) st.answer(true);
+    if (!(2 * TUNING_WANDER_CENTS < st.delta)) errors.push(`Intonation: Wandern ±${TUNING_WANDER_CENTS} Cent so groß wie die kleinste Stufe (${st.delta.toFixed(1)})`);
     return errors;
   }
   /** Klavier-Paket: engine.keys mit Samples – Tonhöhe (gleichstufig, auch
@@ -17327,6 +17338,12 @@
       const ratio = rmsOf(soft, .2 * sr, 1.0 * sr) / rmsOf(syn, .2 * sr, 1.0 * sr);
       if (!(ratio > .7 && ratio < 1.4)) errors.push(`Weicher Ton ${noteLabel(midi)}: Pegel ${ratio.toFixed(2)} × Klavier-Synthese`);
       if (rmsOf(soft, 1.5 * sr, 1.9 * sr) > 1e-4) errors.push(`Weicher Ton ${noteLabel(midi)}: Fahne länger als 0,3 s`);
+    }
+    // Intonation: der Ton wandert höchstens ±TUNING_WANDER_CENTS um den Sollton.
+    {
+      const x = await off((c) => engine.saw(60, 0, 0, 1.95, c.destination));
+      const c = [.2, .5, .8, 1.1, 1.4].map((a) => centsOf(x, 60, a, a + .35));
+      if (c.some((v) => Math.abs(v) > TUNING_WANDER_CENTS + .4)) errors.push(`Intonation: Ton wandert ${c.map((v) => v.toFixed(1))} Cent`);
     }
     // Rückfall: ohne geladene Samples spielt engine.keys die Synthese.
     const bank = samples.inst.piano, buf = samples.buf;
