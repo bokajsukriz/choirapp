@@ -44,6 +44,7 @@
   button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   [hidden] { display: none !important; }
+  html.is-booting body > * { visibility: hidden; }
 
   header { padding: max(14px, env(safe-area-inset-top)) 16px 10px; }
   /* In der App eingebettet: rechts Platz für den Schließen-Knopf der App. */
@@ -1221,6 +1222,13 @@
   'use strict';
 
   if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
+  // In der App mit Direkt-Aufruf (Klatsch-Grooves, Schnellstart, Übung): bis
+  // der gespeicherte Stand geladen und die Ansicht gewählt ist, nichts zeigen –
+  // sonst blitzt kurz die Übersicht des Bereichs auf (unbooted() hebt es auf).
+  if (window.parent !== window && /[?&](grooves|mode|from)=/.test(location.search)) {
+    document.documentElement.classList.add('is-booting');
+    setTimeout(() => document.documentElement.classList.remove('is-booting'), 4000); // Notbremse
+  }
   // Eigener runder Zurück-Knopf (ueben.css): eingebettet schließt der Knopf im
   // Seitenkopf das Tool, die App blendet ihren Schließen-Knopf dann aus
   // (syncToolFrameBack in app.js). Eigenständig gibt es nichts zu schließen.
@@ -12241,7 +12249,21 @@
   /** Was die Klatschfläche startet: Durchhalten, bei Auftakt-Lektionen Auffrischen. */
   const groovesPhases = () => [['refresh', 'Auffrischen'], ['hold', 'Durchhalten']];
 
+  /** Tiefe für die Zurück-Geste der App sichtbar machen: Klatsch-Grooves
+   *  zeichnen ihre Ansichten per innerHTML neu, die App beobachtet aber nur
+   *  hidden/class (watchToolDepth in app.js). Ohne diese Klasse am <html>
+   *  entstand der Verlaufseintrag für eine geöffnete Lektion erst beim
+   *  Zurückgehen – Chrome überspringt solche Einträge, das zweite „zurück“
+   *  verließ die App. Muss während der Tipp-Geste passieren (renderGrooves). */
+  function markToolDepth() {
+    const el = document.documentElement;
+    const want = `tool-depth-${window.chorToolDepth?.() ?? 0}`;
+    if (el.classList.contains(want)) return;
+    [...el.classList].filter((c) => c.startsWith('tool-depth-')).forEach((c) => el.classList.remove(c));
+    el.classList.add(want);
+  }
   function renderGrooves() {
+    queueMicrotask(markToolDepth); // nach dem Neuzeichnen (Blätter, Ansicht stehen dann fest)
     const host = $('[data-grooves]');
     if (!host) return;
     host.hidden = views.rhythm !== 'grooves';
@@ -17467,12 +17489,13 @@
   }
   loadPracticed();
   applyAreaOnly();
+  const unbooted = () => document.documentElement.classList.remove('is-booting');
   if (!storage) { applyQuickParams(quickParams); applyModeParam(modeParams); applyGroovesParam(); }
   setTab(state.tab);
-  if (!storage) baselineLevels();
+  if (!storage) { baselineLevels(); unbooted(); }
   if (storage) {
     Promise.all([Promise.resolve(storage.load(STORAGE_ID)), Promise.resolve(storage.load(CALIBRATION_ID)).catch(() => null)]).then(([data, cal]) => {
-      if (run.playing || ear.task || voice.analyser) { baselineLevels(); return; }
+      if (run.playing || ear.task || voice.analyser) { baselineLevels(); unbooted(); return; }
       if (data) restore(data);
       applyCalibration(cal); // gemeinsame Kalibration gewinnt
       applyProfile();
@@ -17483,7 +17506,8 @@
       applyGroovesParam();
       setTab(state.tab);
       baselineLevels();
-    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); applyGroovesParam(); setTab(state.tab); baselineLevels(); });
+      unbooted();
+    }).catch(() => { applyAreaOnly(); applyQuickParams(quickParams); applyModeParam(modeParams); applyGroovesParam(); setTab(state.tab); baselineLevels(); unbooted(); });
   }
 })();
 </script>
