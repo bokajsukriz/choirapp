@@ -151,7 +151,12 @@ ein Dialog mit echter Wahl).
   alle Töne „daneben“ liegen) und schlägt einen Ausgleich vor. Er wird im
   geteilten Speicher-Datensatz `calibration` (`{v:1, tapMs, micMs}`) abgelegt
   und gilt übungsübergreifend. Das Vorspiel ist wahlweise Klavier oder eine
-  künstliche Singstimme (Formant-Synthese, `singVoice`). Das Mikrofon wird nur live ausgewertet, nichts wird
+  künstliche Singstimme (Formant-Synthese, `singVoice`). Das Klavier
+  (`engine.keys`) spielt aufgenommene FluidR3-Töne aus `samples/piano/`
+  (beim Öffnen von Hören/Singen nachgeladen, je Datei auf gleichstufig
+  umgestimmt, siehe `samples/LIZENZ.md`); solange sie fehlen, die Synthese.
+  Gehaltene Vorgaben (Ton halten, Satz bei „Ton im Akkord finden“) klingen
+  weich und ohne Abklingen (`engine.soft`). Das Mikrofon wird nur live ausgewertet, nichts wird
   aufgenommen oder gesendet, und es läuft nie im Hintergrund.
   „Töne in der Tonart“ und „Akkorde in der Tonart“ üben das Erkennen
   einzelner Töne (do re mi … bzw. 1–7, in Moll la-basiert) und Akkorde

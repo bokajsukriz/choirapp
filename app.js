@@ -19233,6 +19233,18 @@ function runSelfTests() {
       if (!sanitizeProgress(JSON.parse(JSON.stringify(rb))).recent.body?.length) failed.push('Fortschritt: Bereich „body“ wird verworfen');
       if (practiceTileState(rb, 'rhythm').level !== Math.round((4 + 2 + 1) / 3)) failed.push('Üben-Kachel Rhythmus: gespielter Körper zählt nicht mit');
     }
+    {
+      // Lizenzen / Danke (Klavier-Paket): alle Fremdkomponenten mit Lizenz-Link, in jeder Sprache.
+      const keys = ['librariesTitle', 'thanksIntro', 'fluidr3', 'vcsl', 'lame', 'stretch', 'licenses'].map((k) => `settings.about.${k}`);
+      for (const lang of Object.keys(STRINGS)) for (const k of keys) if (!STRINGS[lang][k]) failed.push(`Lizenzen: ${k} fehlt (${lang})`);
+      const want = { fluidr3: ['FluidR3', 'Frank Wen', 'creativecommons.org/licenses/by/3.0', 'midi-js-soundfonts'], vcsl: ['Versilian', 'publicdomain/zero/1.0'], lame: ['lamejs', 'LGPL-3.0'], stretch: ['signalsmith-stretch', 'Geraint Luff', 'MIT'] };
+      for (const lang of Object.keys(STRINGS)) for (const [k, parts] of Object.entries(want)) {
+        const txt = STRINGS[lang][`settings.about.${k}`] || '';
+        if (parts.some((x) => !txt.includes(x)) || !/<a href="https:/.test(txt)) failed.push(`Lizenzen: ${k} unvollständig (${lang})`);
+      }
+      if (!/gekürzt und neu kodiert/.test(STRINGS.de['settings.about.fluidr3'])) failed.push('Lizenzen: FluidR3 ohne Hinweis „gekürzt und neu kodiert“');
+      if ($$('#about-licenses li').length !== 5) failed.push(`Lizenzen: Abschnitt in den Einstellungen hat ${$$('#about-licenses li').length} statt 5 Einträge`);
+    }
     for (const group of ['rhythm', 'ear', 'sing']) {
       const st = practiceTileState(emptyProgress(), group);
       if (!st.isNew) failed.push(`Üben-Kachel ${group}: leerer Fortschritt nicht „Neu“`);

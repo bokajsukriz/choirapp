@@ -53,11 +53,11 @@ Volltexte nicht. `lame.min.js` selbst wurde dabei nicht angefasst.
 
 | Feld | Wert |
 |---|---|
-| Komponente | Samples für „Einsatz finden“ (echte Instrumente) |
-| Dateien | `samples/` (73 MP3, ≈ 1,4 MB), Einzelnachweis in `samples/LIZENZ.md` |
+| Komponente | Samples: echte Instrumente in „Einsatz finden“ und Klavier für `engine.keys` (Hören/Singen) |
+| Dateien | `samples/` (76 MP3, ≈ 1,5 MB), Einzelnachweis in `samples/LIZENZ.md` |
 | Quelle Schlagzeug | Versilian Community Sample Library (VCSL), https://github.com/sgossner/VCSL, Stand `c1ea7bc` |
 | Lizenz Schlagzeug | CC0 1.0 (Volltext `samples/LICENSE-VCSL-CC0.txt`) |
 | Quelle Instrumente | FluidR3_GM (Frank Wen), Einzeltöne aus https://github.com/gleitz/midi-js-soundfonts (Benjamin Gleitzman) |
-| Lizenz Instrumente | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung auch in der App (Einstellungen von „Einsatz finden“, Abschnitt „Klang“) |
-| Verändert | ja – gekürzt, Stille am Anfang entfernt, ausgeblendet, mono, Pegel angeglichen, neu als MP3 kodiert |
-| Verwendung | Wiedergabe aller Songs in „Einsatz finden“ mit echten Instrumenten (Standard), erst beim ersten Gebrauch nachgeladen; nicht im Shell-Cache, sondern im eigenen Service-Worker-Cache `chor-samples-v1` (offline) |
+| Lizenz Instrumente | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung in der App: Einstellungen → Über die App → „Lizenzen / Danke“ (alle Sprachen) und Fußnote in den Einstellungen von „Einsatz finden“, jeweils mit Link zum Lizenztext |
+| Verändert | ja – gekürzt, Stille am Anfang entfernt, ausgeblendet, mono, Pegel angeglichen, neu als MP3 kodiert; Klavier zusätzlich in der App umgestimmt (gemessene Abweichung je Datei, `SAMPLE_TUNE`) |
+| Verwendung | Wiedergabe aller Songs in „Einsatz finden“ mit echten Instrumenten (Standard), dazu das Klavier für alle Vorgabetöne und Akkorde in Hören und Singen (`engine.keys`, beim Öffnen des Bereichs nachgeladen; ohne Samples Synthese); erst beim ersten Gebrauch nachgeladen; nicht im Shell-Cache, sondern im eigenen Service-Worker-Cache `chor-samples-v1` (offline) |

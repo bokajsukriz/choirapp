@@ -2131,6 +2131,7 @@
   // die Klatscher in Runden mit Groove um +9,5 dB angehoben (ohne Groove
   // unverändert). Gemessen: selfCheckAudio.
   const ACCOMP_GAIN = .3;
+  const SOFT_GAIN = .74; // engine.soft: so laut wie engine.keys bei gleicher velocity (selfCheckAudio)
   const CLAP_WITH_ACCOMP = 3;
   /** Hi-Hat-Raster (nur Stufe 'full'): Ticks `at` innerhalb jeder Periode. */
   function hatGridFor({ shuffle = false, triplets = false, sixteenths = false }) {
@@ -2447,13 +2448,8 @@
      *  man muss auf die Richtung hören (wie bei echten Stimmen). */
     saw(midi, cents, time, duration, dest) {
       const ctx = this.ctx;
-      if (!this.voiceWave) {
-        const n = 10, re = new Float32Array(n + 1), im = new Float32Array(n + 1);
-        for (let k = 1; k <= n; k++) im[k] = 1 / (k * k * .6 + .4 * k);
-        this.voiceWave = ctx.createPeriodicWave(re, im);
-      }
       const osc = ctx.createOscillator();
-      osc.setPeriodicWave(this.voiceWave);
+      osc.setPeriodicWave(this.wave(ctx, 'voice', (k) => 1 / (k * k * .6 + .4 * k), 10));
       osc.frequency.value = noteHz(midi) * Math.pow(2, cents / 1200);
       // Langsames, kaum hörbares Wandern um den Sollton (Mittelwert genau der Sollton).
       const lfo = ctx.createOscillator(), depth = ctx.createGain();
@@ -2471,6 +2467,43 @@
       const phase = Math.random() / lfo.frequency.value; // zufällige Phase des Wanderns
       lfo.start(Math.max(0, time - phase)); lfo.stop(time + duration + .02);
       osc.start(time); osc.stop(time + duration + .02);
+    },
+
+    /** Wellenform je Audio-Kontext zwischenspeichern: eine PeriodicWave gehört
+     *  ihrem Kontext. Früher einmal je Engine – nach einem neuen Kontext
+     *  (Bereichswechsel Hören ↔ Rhythmus, Offline-Selbsttest) scheiterte
+     *  setPeriodicWave. */
+    waves: new WeakMap(),
+    wave(ctx, name, amp, n) {
+      let m = this.waves.get(ctx);
+      if (!m) this.waves.set(ctx, (m = {}));
+      if (!m[name]) {
+        const re = new Float32Array(n + 1), im = new Float32Array(n + 1);
+        for (let k = 1; k <= n; k++) im[k] = amp(k);
+        m[name] = ctx.createPeriodicWave(re, im);
+      }
+      return m[name];
+    },
+
+    /** Weicher, gehaltener Ton (Ton halten, Ton finden mit Satz): Obertöne wie
+     *  saw, aber ohne Wandern und ohne Abklingen – exakt der gleichstufige Ton,
+     *  hält beliebig lange, klingt nach `duration` in 0,12 s aus (kurze Fahne:
+     *  das Mikrofon soll sie nicht als Einsatz hören, HOLD_CUE_TAIL_SEC). */
+    soft(midi, time, duration, { velocity = .2, dest } = {}) {
+      const ctx = this.ctx;
+      const osc = ctx.createOscillator();
+      osc.setPeriodicWave(this.wave(ctx, 'soft', (k) => 1 / (k * k), 8));
+      osc.frequency.value = noteHz(midi);
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass'; filter.frequency.value = 1600; filter.Q.value = .5;
+      const gain = ctx.createGain();
+      const g = velocity * SOFT_GAIN;
+      gain.gain.setValueAtTime(.0001, time);
+      gain.gain.linearRampToValueAtTime(g, time + .08);
+      gain.gain.setValueAtTime(g, time + Math.max(.08, duration));
+      gain.gain.linearRampToValueAtTime(.0001, time + Math.max(.08, duration) + .12);
+      osc.connect(filter).connect(gain).connect(dest || this.master);
+      osc.start(time); osc.stop(time + Math.max(.08, duration) + .15);
     },
 
     /** Holzblock (Zweistimmig): hoch für die obere, tief für die untere Stimme. */
@@ -2511,7 +2544,9 @@
     /** Klavierähnlicher Ton für die Hör-Aufgaben: kurzer Anschlag, dann
      *  abklingend, Filter schließt sich — deutlich "gezupft" statt gesungen,
      *  damit Intervall und Akkord klar konturiert sind. */
-    keys(midi, time, duration, { velocity = .2, dest } = {}) {
+    keys(midi, time, duration, { velocity = .2, dest, synth = false } = {}) {
+      // Klavier-Samples, sobald geladen (preloadPiano); sonst/ mit synth: true die Synthese.
+      if (!synth && sampleBank('piano')) { pianoNote(midi, time, duration, velocity, dest || this.master); return; }
       const ctx = this.ctx;
       const gain = ctx.createGain();
       const filter = ctx.createBiquadFilter();
@@ -4394,6 +4429,7 @@
     // Das Mikrofon läuft nie im Hintergrund weiter, wenn man den Reiter verlässt.
     if (voice.analyser) micOff();
     if (tab !== 'voice') stopSing();
+    if (tab === 'ear' || tab === 'voice') preloadPiano(); // Klavier-Samples für engine.keys
     renderAll();
     renderArea();
   }
@@ -5920,7 +5956,7 @@
   const SONG_TOMS = { hi: [220, 160], mid: [160, 110], lo: [110, 70] };
 
   /* ---- Echte Instrumente statt Synthese (Standard für alle Songs, seit dem
-     Klang-Versuch v483). Samples in ./samples/ (73 MP3, mono, ≈ 1,4 MB;
+     Klang-Versuch v483). Samples in ./samples/ (76 MP3, mono, ≈ 1,5 MB;
      Herkunft und Lizenzen in samples/LIZENZ.md und THIRD-PARTY.md):
      Schlagzeug aus VCSL (CC0), Bass/Klavier/Streicher/Gitarre/Chor/Bläser
      aus FluidR3_GM (CC BY 3.0). Je Instrument ein Ton alle drei Halbtöne,
@@ -5931,7 +5967,7 @@
   const SAMPLE_DRUMS = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'tom-hi', 'tom-lo', 'crash', 'clap'];
   const SAMPLE_INST = {
     bass: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66],
-    piano: [48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84],
+    piano: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84], // auch engine.keys (Hören/Singen)
     strings: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81],
     guitar: [63, 66, 69, 72, 75, 78, 81, 84, 87],
     choir: [66, 69, 72, 75, 78, 81],
@@ -5942,7 +5978,19 @@
   /** Lange Töne aus überblendeten Stücken: ab loopFrom (s in der Datei, nach dem
    *  Einschwingen) gleichmäßig; die Dateien sind am Ende kurz ausgeblendet (tail). */
   const SAMPLE_LONG = { strings: { loopFrom: .9, tail: .2, xfade: .4 } };
-  const samples = { buf: null, loading: null };
+  /** Stimmung je Datei: gemessene Abweichung des Grundtons in Cent (Spektrum um
+   *  den Grundton, 0,12–1,12 s nach dem Anschlag; Messung siehe samples/LIZENZ.md).
+   *  Das FluidR3-Klavier ist wie ein echtes gespreizt gestimmt (tief bis −7, hoch
+   *  bis +3 Cent) – Intonation und Zieltöne brauchen aber den gleichstufigen Ton,
+   *  sampleNote rechnet die Abweichung heraus. */
+  const SAMPLE_TUNE = {
+    piano: { 39: -6.9, 42: -7, 45: -3.5, 48: -3.2, 51: -2.4, 54: -2.5, 57: -.1, 60: -.6, 63: -.4, 66: -.8, 69: .1, 72: -.8, 75: 1.4, 78: 1.8, 81: 3.2, 84: 3.1 },
+  };
+  /** Laden je Gruppe ('drums' oder ein Instrument): Hören/Singen brauchen nur das
+   *  Klavier (≈ 0,4 MB), die Songs alles. buf (alles beisammen) erst, wenn alle
+   *  Gruppen da sind. */
+  const samples = { buf: null, loading: null, groups: {}, inst: {}, drums: null, dec: null };
+  const sampleBank = (inst) => samples.inst[inst] || samples.buf?.inst?.[inst] || null;
   /** Stille am Anfang abschneiden (MP3-Vorlauf des Kodierers, je nach Browser
    *  verschieden) – sonst kämen die Schläge alle ein paar ms zu spät. */
   function trimOnset(b) {
@@ -5957,25 +6005,56 @@
     for (let c = 0; c < b.numberOfChannels; c++) out.copyToChannel(b.getChannelData(c).subarray(i0), c);
     return out;
   }
-  function loadSamples() {
-    if (samples.buf) return Promise.resolve(samples.buf);
-    if (samples.loading) return samples.loading;
-    const ctx = engine.ctx;
+  function loadSampleGroup(group) {
+    if (samples.groups[group]) return samples.groups[group];
+    // Dekodieren geht auch ohne laufenden Audio-Kontext (Hören/Singen laden schon
+    // beim Öffnen, vor dem ersten Ton) – AudioBuffer gehören keinem Kontext.
+    const dec = engine.ctx || (samples.dec ||= new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100));
     const one = async (path) => {
       const r = await fetch(`./samples/${path}.mp3`);
       if (!r.ok) throw new Error(`Sample ${path}: ${r.status}`);
-      return trimOnset(await ctx.decodeAudioData(await r.arrayBuffer()));
+      return trimOnset(await dec.decodeAudioData(await r.arrayBuffer()));
     };
-    samples.loading = (async () => {
-      const buf = { drums: {}, inst: {} };
-      await Promise.all([
-        ...SAMPLE_DRUMS.map(async (id) => { buf.drums[id] = await one(`drums/${id}`); }),
-        ...Object.entries(SAMPLE_INST).flatMap(([inst, notes]) => notes.map(async (n) => { (buf.inst[inst] ||= {})[n] = await one(`${inst}/${n}`); })),
-      ]);
-      samples.buf = buf;
-      return buf;
-    })().finally(() => { samples.loading = null; });
+    const p = (async () => {
+      if (group === 'drums') {
+        const d = {};
+        await Promise.all(SAMPLE_DRUMS.map(async (id) => { d[id] = await one(`drums/${id}`); }));
+        samples.drums = d;
+      } else {
+        const bank = {};
+        await Promise.all(SAMPLE_INST[group].map(async (n) => { bank[n] = await one(`${group}/${n}`); }));
+        samples.inst[group] = bank;
+      }
+    })();
+    samples.groups[group] = p;
+    p.catch(() => { if (samples.groups[group] === p) delete samples.groups[group]; }); // später erneut versuchen
+    return p;
+  }
+  function loadSamples() {
+    if (samples.buf) return Promise.resolve(samples.buf);
+    if (samples.loading) return samples.loading;
+    samples.loading = Promise.all(['drums', ...Object.keys(SAMPLE_INST)].map(loadSampleGroup))
+      .then(() => { samples.buf = { drums: samples.drums, inst: samples.inst }; return samples.buf; })
+      .finally(() => { samples.loading = null; });
     return samples.loading;
+  }
+  /** Klavier für engine.keys im Hintergrund laden (Hören/Singen öffnen). */
+  function preloadPiano() { if (!sampleBank('piano')) loadSampleGroup('piano').catch((err) => console.warn('Klavier-Samples nicht geladen:', err)); }
+  /** Klavier-Ton aus Samples (engine.keys). Pegel wie die Synthese bei gleicher
+   *  velocity (PIANO_GAIN, gemessen in selfCheckAudio); Ausklang nach `dur`
+   *  kurz und fest (KEYS_RELEASE), damit Mikrofon-Übungen keine Fahne hören. */
+  const PIANO_GAIN = 1;
+  /** Verstärkung je Klavier-Datei, damit engine.keys so laut klingt wie die
+   *  Synthese (Effektivwert 0,12–0,5 s nach dem Anschlag, velocity 0,22),
+   *  begrenzt auf höchstens den doppelten Spitzenwert der Synthese – hohe Töne
+   *  bleiben dadurch etwas leiser (wie beim echten Klavier), nichts übersteuert.
+   *  Gemessen im Browser (OfflineAudioContext); selfCheckAudio prüft das
+   *  Verhältnis. Nur für engine.keys – die Songs mischen ihr Klavier selbst. */
+  const PIANO_LEVEL = { 39: 2.26, 42: 2.33, 45: 2.23, 48: 2.89, 51: 2.37, 54: 2.45, 57: 3.41, 60: 3.16, 63: 6.18, 66: 5.92, 69: 2.68, 72: 4.71, 75: 5.15, 78: 5.33, 81: 5.33, 84: 6.35 };
+  const KEYS_RELEASE = .15;
+  function pianoNote(midi, time, dur, velocity, dest) {
+    const lvl = PIANO_LEVEL[sampleBase('piano', midi)] || 1;
+    sampleNote('piano', midi, time, dur, { gain: velocity * PIANO_GAIN * lvl, release: KEYS_RELEASE, dest });
   }
   /** Für diese Aufgabe mit Samples spielen? Lädt beim ersten Mal (höchstens
    *  8 s warten); bei Fehler false → bisheriger Klang. */
@@ -6015,7 +6094,7 @@
    *  Akkordwechsel aus. */
   function sampleNote(inst, midi, time, dur, opts) {
     const n = sampleBase(inst, midi);
-    const b = samples.buf.inst[inst][n], rate = 2 ** ((midi - n) / 12);
+    const b = sampleBank(inst)[n], rate = 2 ** ((midi - n - (SAMPLE_TUNE[inst]?.[n] || 0) / 100) / 12);
     const long = SAMPLE_LONG[inst];
     const release = opts.release ?? .06;
     if (!long) { playSample(b, time, { ...opts, rate, dur }); return; }
@@ -6095,8 +6174,8 @@
   function soundTrialHtml() {
     return `<span class="sub-label">Klang</span>
       <div class="chip-row">${[['samples', 'Echte Instrumente'], ['synth', 'Einfach (lädt nichts)']].map(([v, label]) => `<button class="chip" type="button" data-db-sound="${v}" aria-pressed="${ear.dbSound === v}">${label}</button>`).join('')}</div>
-      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal etwa 1,4 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
-      <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (CC BY 3.0, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Schlagzeug: Versilian Community Sample Library (CC0).</p>`;
+      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal etwa 1,5 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
+      <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Schlagzeug: Versilian Community Sample Library (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>). Alle Lizenzen: App-Einstellungen → Über die App.</p>`;
   }
 
   /* ---- Körper (Übe-Korrekturen 11): Puls im Fuß, Rhythmus in den Händen.
@@ -7088,7 +7167,7 @@
       case 'click': engine.click(time, 1, bus); break;
       case 'clap': engine.clap(time, bus, 2); break;
       case 'bandclap': engine.clap(time, bus, .6); break;
-      case 'keys': ev.notes.forEach((n) => engine.keys(n, time, Math.max(.1, ev.dur), { velocity: ev.arp ? .16 : .1, dest: bus })); break;
+      case 'keys': ev.notes.forEach((n) => engine.keys(n, time, Math.max(.1, ev.dur), { velocity: ev.arp ? .16 : .1, dest: bus, synth: true })); break; // „Einfach“ bleibt Synthese
       case 'pad': ev.notes.forEach((n) => [-6, 6].forEach((c) => engine.saw(n, c, time, Math.max(.3, ev.dur), songPart(bus, 'pad', .2)))); break;
       case 'stab': ev.notes.forEach((n) => engine.drumTone(time, { freq: noteHz(n), type: 'sawtooth', gain: .04, decay: clamp(ev.dur * .8, .08, .3), filter: { type: 'lowpass', freq: 2200 } }, bus)); break;
       case 'lead':
@@ -10218,15 +10297,20 @@
     const bus = singBus({ reverb: task.mode !== 'hold' });
     const t0 = engine.ctx.currentTime + .08;
     const k = (m, t, dur, v = .18) => engine.keys(m, t, dur, { velocity: v, dest: bus });
+    // Gehaltener, weicher Klang statt Klavier: Ton halten (Vorgabe zum Halten) und
+    // der Satz bei „Ton im Akkord finden“ (andere Stimmen klingen bis 8 s weiter –
+    // ein Klavierton wäre längst verklungen).
+    const soft = (m, t, dur, v = .18) => engine.soft(m, t, dur, { velocity: v, dest: bus });
     let end = t0;
-    if (task.mode === 'singInterval' || task.mode === 'hold') { k(task.mode === 'hold' ? task.target : task.base, t0, 1.5, .22); end = t0 + 1.5; }
+    if (task.mode === 'hold') { soft(task.target, t0, 1.5, .22); end = t0 + 1.5; }
+    else if (task.mode === 'singInterval') { k(task.base, t0, 1.5, .22); end = t0 + 1.5; }
     else if (task.mode === 'findTone') {
       if (task.cue === 'a4') { k(69, t0, 2, .22); end = t0 + 2; }
       else if (task.cue === 'satb') {
         // Der Satz einmal voll, dann klingen nur die drei anderen Stimmen weiter
         // (bis zum Ende der Aufgabe) — du singst deine Stimme in die Lücke.
-        SATB_PARTS.forEach((x) => k(task.satb[x], t0, SATB_FIND_SEC * .95, .13));
-        SATB_PARTS.filter((x) => x !== task.part).forEach((x) => k(task.satb[x], t0 + SATB_FIND_SEC, 8, .1));
+        SATB_PARTS.forEach((x) => soft(task.satb[x], t0, SATB_FIND_SEC * .95, .13));
+        SATB_PARTS.filter((x) => x !== task.part).forEach((x) => soft(task.satb[x], t0 + SATB_FIND_SEC, 8, .1));
         end = t0 + SATB_FIND_SEC + .3;
       } else {
         // Grundakkord, Kadenz oder Pop-Intro (je Akkord zwei Schläge bei ♩ = 112), dann Stille.
@@ -10748,9 +10832,10 @@
   const HOLD_ONSET_GAP = .1;    // kürzere Aussetzer beim Einsetzen überbrückt
   const HOLD_GAP_SEC = .35;     // so lange Stille beim Halten = Ton abgesetzt, Abbruch
   const HOLD_SETTLE_SEC = .4;   // Einschwingen nach dem Einsatz, zählt nicht mit
-  // Nach dem Vorgabeton so lange taub bleiben: Ausklang von engine.keys
-  // (Oszillatoren laufen 0,7 s nach) + Puffer für Mikrofon-Latenz. Ohne
-  // Kopfhörer hört das Handy sonst seinen eigenen Lautsprecher.
+  // Nach dem Vorgabeton so lange taub bleiben: Ausklang (seit dem Klavier-Paket
+  // engine.soft, 0,12 s; früher engine.keys mit 0,7 s Nachlauf) + Puffer für
+  // Mikrofon-Latenz und Raumhall. Ohne Kopfhörer hört das Handy sonst seinen
+  // eigenen Lautsprecher.
   const HOLD_CUE_TAIL_SEC = 1;
   /** Ausgabelatenz (Bluetooth-Lautsprecher u. ä.), gedeckelt. */
   const outputLatencySec = () => Math.min(.5, (engine.ctx?.outputLatency || 0) + (engine.ctx?.baseLatency || 0));
@@ -16316,6 +16401,7 @@
     errors.push(...holdEntriesCheck());
     errors.push(...downbeatCheck());
     errors.push(...songDownbeatCheck());
+    errors.push(...pianoSampleCheck());
     errors.push(...bodyCheck());
     errors.push(...entriesCheck());
     errors.push(...delayCheck());
@@ -17182,6 +17268,76 @@
   /** Singstimme mit gerendertem Audio (OfflineAudioContext) durch die
    *  eigene Tonerkennung: richtige Tonhöhe, Vokal auf `time`, Pegel etwa
    *  wie das Klavier. Asynchron: `await uebeLab.selfCheckAudio()`. */
+  /** Klavier-Paket ohne Audio: Umfang 38–84, Stimmungs- und Pegeltabelle,
+   *  engine.keys nimmt die Samples (Rate mit Stimmungskorrektur, Pegel je Datei). */
+  function pianoSampleCheck() {
+    const errors = [];
+    const notes = SAMPLE_INST.piano;
+    for (let m = 38; m <= 84; m++) if (!notes.some((x) => Math.abs(x - m) <= 1.5)) errors.push(`Klavier-Samples: kein Sample für ${noteLabel(m)}`);
+    for (const n of notes) {
+      if (!Number.isFinite(SAMPLE_TUNE.piano[n]) || Math.abs(SAMPLE_TUNE.piano[n]) > 15) errors.push(`Klavier ${n}: Stimmung fehlt/unplausibel`);
+      if (!(PIANO_LEVEL[n] > 0)) errors.push(`Klavier ${n}: Pegel fehlt`);
+    }
+    const saved = samples.inst.piano, calls = [];
+    const fake = { duration: 2.5 };
+    samples.inst.piano = Object.fromEntries(notes.map((n) => [n, fake]));
+    playSampleHook = (b, t, o) => calls.push(o);
+    try {
+      engine.keys(39, 0, 1, { velocity: .2, dest: {} });
+      engine.keys(40, 0, 1, { velocity: .2, dest: {} });
+      engine.keys(84, 0, 1, { velocity: .2, dest: {} });
+      const want = [2 ** (6.9 / 1200), 2 ** ((100 + 6.9) / 1200), 2 ** (-3.1 / 1200)];
+      if (calls.length !== 3 || calls.some((c, i) => Math.abs(c.rate - want[i]) > 1e-9)) errors.push(`Klavier: Stimmungskorrektur ${calls.map((c) => c.rate)}`);
+      if (Math.abs(calls[0]?.gain - .2 * PIANO_LEVEL[39]) > 1e-9 || calls[0]?.release !== KEYS_RELEASE) errors.push('Klavier: Pegel/Ausklang je Datei');
+    } finally { samples.inst.piano = saved; playSampleHook = null; }
+    return errors;
+  }
+  /** Klavier-Paket: engine.keys mit Samples – Tonhöhe (gleichstufig, auch
+   *  zwischen den Dateien), Pegel wie die Synthese, kurze Fahne, Rückfall auf
+   *  die Synthese ohne Samples; engine.soft exakt gestimmt und gleich laut. */
+  async function pianoAudioCheck(render, rmsOf, sr) {
+    const errors = [];
+    const off = (fn) => render((ctx) => { const save = engine.ctx; engine.ctx = ctx; try { fn(ctx); } finally { engine.ctx = save; } });
+    // Grundton im Spektrum (fein gerasterte DFT um den Sollton, Hann-Fenster) – robust
+    // gegen die gestreckten Obertöne des Klaviers.
+    const centsOf = (x, midi, a, b) => {
+      const n = Math.round((b - a) * sr), i0 = Math.round(a * sr), f0 = noteHz(midi);
+      const w = new Float64Array(n); for (let i = 0; i < n; i++) w[i] = x[i0 + i] * (.5 - .5 * Math.cos(2 * Math.PI * i / (n - 1)));
+      const mag = (c) => { const k = 2 * Math.PI * f0 * 2 ** (c / 1200) / sr; let re = 0, im = 0; for (let i = 0; i < n; i++) { re += w[i] * Math.cos(k * i); im -= w[i] * Math.sin(k * i); } return re * re + im * im; };
+      let best = 0, bm = -1;
+      for (let c = -40; c <= 40; c += 2) { const v = mag(c); if (v > bm) { bm = v; best = c; } }
+      for (let c = best - 2; c <= best + 2; c += .1) { const v = mag(c); if (v > bm) { bm = v; best = c; } }
+      return best;
+    };
+    try { await loadSampleGroup('piano'); } catch (err) { return [`Klavier-Samples nicht geladen (${err.message}) – Klavier-Prüfung übersprungen`]; }
+    for (const midi of [40, 47, 53, 61, 66, 70, 77, 83]) {
+      const smp = await off((c) => engine.keys(midi, .1, 1.2, { velocity: .22, dest: c.destination }));
+      const syn = await off((c) => engine.keys(midi, .1, 1.2, { velocity: .22, dest: c.destination, synth: true }));
+      const cents = centsOf(smp, midi, .22, 1.2);
+      if (!(Math.abs(cents) <= 3)) errors.push(`Klavier-Sample ${noteLabel(midi)}: ${cents.toFixed(1)} Cent daneben`);
+      const ratio = rmsOf(smp, .22 * sr, .6 * sr) / rmsOf(syn, .22 * sr, .6 * sr);
+      if (!(ratio > .3 && ratio < 1.6)) errors.push(`Klavier-Sample ${noteLabel(midi)}: Pegel ${ratio.toFixed(2)} × Synthese`);
+      if (rmsOf(smp, 1.5 * sr, 1.9 * sr) > 1e-4) errors.push(`Klavier-Sample ${noteLabel(midi)}: klingt nach dem Ende weiter (Mikrofon würde es hören)`);
+    }
+    for (const midi of [45, 60, 74]) {
+      const soft = await off((c) => engine.soft(midi, .1, 1.2, { velocity: .22, dest: c.destination }));
+      const syn = await off((c) => engine.keys(midi, .1, 1.2, { velocity: .22, dest: c.destination, synth: true }));
+      const cents = centsOf(soft, midi, .3, 1.2);
+      if (!(Math.abs(cents) <= .5)) errors.push(`Weicher Ton ${noteLabel(midi)}: ${cents.toFixed(1)} Cent daneben`);
+      const ratio = rmsOf(soft, .2 * sr, 1.0 * sr) / rmsOf(syn, .2 * sr, 1.0 * sr);
+      if (!(ratio > .7 && ratio < 1.4)) errors.push(`Weicher Ton ${noteLabel(midi)}: Pegel ${ratio.toFixed(2)} × Klavier-Synthese`);
+      if (rmsOf(soft, 1.5 * sr, 1.9 * sr) > 1e-4) errors.push(`Weicher Ton ${noteLabel(midi)}: Fahne länger als 0,3 s`);
+    }
+    // Rückfall: ohne geladene Samples spielt engine.keys die Synthese.
+    const bank = samples.inst.piano, buf = samples.buf;
+    let calls = 0;
+    samples.inst.piano = undefined; samples.buf = null; playSampleHook = () => { calls++; };
+    try {
+      const syn = await off((c) => engine.keys(60, .1, .8, { velocity: .22, dest: c.destination }));
+      if (calls || !(rmsOf(syn, .15 * sr, .6 * sr) > 1e-3)) errors.push('Klavier: ohne Samples keine Synthese');
+    } finally { samples.inst.piano = bank; samples.buf = buf; playSampleHook = null; }
+    return errors;
+  }
   async function selfCheckAudio() {
     const errors = [];
     const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -17212,6 +17368,7 @@
       if (!(ratio > .5 && ratio < 2.5)) errors.push(`${name}: Pegel ${ratio.toFixed(2)} × Klavier`);
     }
     voice.x = saved.x; voice.d = saved.d;
+    errors.push(...await pianoAudioCheck(render, rmsOf, sr));
     // Begleitung: Vorbild-Klatscher (mit Groove angehoben) deutlich über dem Schlagzeug.
     // Vergleich ab 300 Hz (Ohr und Handylautsprecher hören Tiefes kaum): Effektivwert nach Hochpass.
     const hpRms = (x, fc = 300) => {
@@ -17250,7 +17407,7 @@
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
-    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, songDownbeatCheck, songPlan, makeSongTask, loadSamples, samplesLoaded: () => !!samples.buf, playSoundPreview, engine, songEvents, songFairness, DB_SONGS, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
+    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, songDownbeatCheck, songPlan, makeSongTask, loadSamples, loadSampleGroup, pianoReady: () => !!sampleBank("piano"), samplesLoaded: () => !!samples.buf, playSoundPreview, engine, songEvents, songFairness, DB_SONGS, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,

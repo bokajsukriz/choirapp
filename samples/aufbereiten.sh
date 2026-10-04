@@ -7,13 +7,16 @@
 #          (Ton mit b-Namen, z. B. Gb2), abgelegt als /tmp/claude-0/src/fl/<instrument>/<MIDI>.mp3
 #          Töne je Instrument: siehe SAMPLE_INST in uebe-lab.html (alle drei Halbtöne).
 # Braucht ffmpeg mit libmp3lame.
+# Nur einzelne Ordner neu erzeugen: ONLY="piano strings" ./aufbereiten.sh
+# (ohne ONLY alles; Schlagzeug nur, wenn ONLY leer ist oder „drums“ enthält).
 set -e
+want(){ [ -z "$ONLY" ] || [[ " $ONLY " == *" $1 "* ]]; }
 V=/tmp/claude-0/vcsl; FL=/tmp/claude-0/src/fl; OUT=$(cd "$(dirname "$0")" && pwd)
 peak(){ ffmpeg -hide_banner -nostats -i "$1" -af volumedetect -f null - 2>&1 | sed -n 's/.*max_volume: \(-\?[0-9.]*\) dB/\1/p'; }
 # enc SRC DST LEN GAIN_DB BITRATE [extra filters] [Ausblenden in s, sonst 40 % von LEN]
 enc(){ local L=$3; local fd=${7:-$(python3 -c "print(round($L*0.4,3))")}; local fo=$(python3 -c "print(round($L-$fd,3))");
   ffmpeg -hide_banner -loglevel error -y -i "$1" -af "aformat=channel_layouts=mono,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.002${6:+,$6},atrim=0:$L,volume=${4}dB,afade=t=out:st=$fo:d=$fd" -ac 1 -ar 44100 -c:a libmp3lame -b:a $5 "$2"; }
-if [ -d "$V" ]; then
+if [ -d "$V" ] && want drums; then
 mkdir -p $OUT/drums
 d(){ local p=$(peak "$V/$1"); enc "$V/$1" $OUT/drums/$2.mp3 $3 $(python3 -c "print(round(-1-($p),2))") 96k "$4"; }
 d "Membranophones/Struck Membranophones/Bass Drum 2/bassdrum_hit_f.wav" kick 0.45 "highpass=f=35"
@@ -29,9 +32,10 @@ d "Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mf1.wav" c
 d "Idiophones/Struck Idiophones/Claps/Clap_rr1.wav" clap 0.3
 fi
 # Instrumente: eine Verstärkung je Instrument (lautester Ton → −1 dB), Verhältnis der Töne bleibt
-inst(){ local src=$1 dst=$2 L=$3 fd=$4; rm -rf $OUT/$dst; mkdir -p $OUT/$dst; local mx=-99; for f in $FL/$src/*.mp3; do p=$(peak $f); mx=$(python3 -c "print(max($mx,$p))"); done
+inst(){ local src=$1 dst=$2 L=$3 fd=$4; want $dst || return 0; rm -rf $OUT/$dst; mkdir -p $OUT/$dst; local mx=-99; for f in $FL/$src/*.mp3; do p=$(peak $f); mx=$(python3 -c "print(max($mx,$p))"); done
   for f in $FL/$src/*.mp3; do enc $f $OUT/$dst/$(basename $f) $L $(python3 -c "print(round(-1-($mx),2))") 64k "" $fd; done; }
 inst electric_bass_finger bass 1.6
+# Klavier 39–84 (seit dem Klavier-Paket auch für engine.keys in Hören/Singen).
 inst acoustic_grand_piano piano 2.5
 # Streicher: die Quelle hält 3,1 s ohne Abklingen – nur kurz ausblenden; längere
 # Flächen setzt die App aus überblendeten Stücken zusammen (sampleNote, loopFrom).
