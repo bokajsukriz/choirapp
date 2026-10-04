@@ -4488,7 +4488,7 @@
     tuning: 'Sauber, zu hoch oder zu tief?', downbeat: 'Ein Groove blendet ein – wo ist die Eins? Klatsch das Muster darüber',
     body: 'Puls im Fuß, Rhythmus in den Händen', entries: 'Nach der Pause pünktlich wieder rein',
     singInterval: 'Ein Grundton – du singst das Intervall',
-    findTone: 'Akkord oder Intro – du findest deinen Ton', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
+    findTone: 'Deinen Ton im Zusammenklang finden – wie beim Anstimmen im Chor', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
     dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
     inTime: 'Ton und Rhythmus zum Klick – nachsingen oder vom Blatt', twoPart: 'Deine Melodie halten, während die App eine zweite Stimme singt', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
   };
@@ -8539,8 +8539,10 @@
         <span class="sub-label">Übungen</span>
         <div class="check-list">
           ${checkRow('showSight', 'on', 'Blattsingen anzeigen (mit Noten)', sing.showSight, 'Der Chor übt nach Gehör – Blattsingen ist deshalb ausgeblendet.', 'singset')}
-          ${checkRow('findA4', 'on', 'Ton finden: nur das a′ (Stimmgabel)', sing.findA4, 'eigene Auswahl statt der Stufe', 'singset')}
         </div>
+        <span class="sub-label">Ton im Akkord finden: Bezug</span>
+        <div class="chip-row">${FIND_CUES.map(([id, label]) => `<button class="chip" type="button" data-find-cue="${id}" aria-pressed="${sing.findCue === id}">${label}</button>`).join('')}</div>
+        <p class="foot-note" style="text-align:left;margin-top:4px">„Nur das a′“ und „a′, dann Akkord“ sind eigene Auswahlen statt der Stufe. Bei „a′, dann Akkord“ klingt erst nur das a′ (wie die Stimmgabel), dann der Akkord ohne deine Stimme – du findest deinen Ton darin.</p>
         <span class="sub-label">Pause vor dem Singen</span>
         <div class="chip-row">${[[0, 'aus'], [1, '1 Takt'], [2, '2 Takte']].map(([n, t]) => `<button class="chip" type="button" data-sing-pause="${n}" aria-pressed="${sing.audiation === n}">${t}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left">Beim Nachsingen und bei Intervallen: erst die Melodie in Gedanken singen, dann laut.</p>
@@ -9423,6 +9425,9 @@
     { n: 6, label: 'Dein Ton im vierstimmigen Akkord', cue: 'satb',     ask: ['mine'],                   modes: ['major', 'minor'] },
   ];
   const FIND_A4 = { n: 0, label: 'Nur das a′ (Stimmgabel)', cue: 'a4', ask: ['fromA'] };
+  /** Eigene Auswahl bei „Ton im Akkord finden“ (sing.findCue). */
+  const FIND_CUES = [['level', 'Nach Stufe'], ['a4', 'Nur das a′'], ['a4satb', 'a′, dann Akkord']];
+  const A4_GAP_SEC = .5; // „a′, dann Akkord“: Pause zwischen a′ und Akkord
   // Pop-Intro vor der Aufgabe (je Akkord zwei Schläge): Dur I–V–vi–IV, Moll i–VI–III–VII.
   const POP_INTRO = { major: ['I', 'V', 'vi', 'IV'], minor: ['i', 'VI', 'III', 'VII'] };
   const SATB_FIND_SEC = 1.5; // Satz einmal voll, danach nur die drei anderen Stimmen
@@ -9907,7 +9912,7 @@
   // Stufenzahlen statt Tonika-Do als Standard (gilt nur, wenn nichts gespeichert ist).
   const SOLFA_DEFAULT = 'numbers';
   // Pop-Didaktik: nach Gehör zuerst, Blattsingen zuletzt (und standardmäßig ausgeblendet).
-  const SING_MODES = [['tuner', 'Tuner'], ['hold', 'Ton halten'], ['findTone', 'Ton finden'], ['singEcho', 'Nachsingen'], ['inTime', 'Im Takt'], ['singInterval', 'Intervalle singen'], ['dictation', 'Diktat'], ['sight', 'Blattsingen'], ['twoPart', 'Zweite Stimme halten']];
+  const SING_MODES = [['tuner', 'Tuner'], ['hold', 'Ton halten'], ['findTone', 'Ton im Akkord finden'], ['singEcho', 'Nachsingen'], ['inTime', 'Im Takt'], ['singInterval', 'Intervalle singen'], ['dictation', 'Diktat'], ['sight', 'Blattsingen'], ['twoPart', 'Zweite Stimme halten']];
   const sing = {
     mode: 'tuner',
     levels: { singInterval: 1, findTone: 1, hold: 1, sight: 1, dictation: 1, singEcho: 1, inTime: 1, twoPart: 1 },
@@ -9915,7 +9920,8 @@
     solfa: SOLFA_DEFAULT, // 'numbers' (1 2 3, Standard) | 'syllables' (do re mi)
     showSight: false,     // Blattsingen anzeigen (mit Noten) — Einstellungsblatt „Singen“
     audiation: 1,         // Pause vor dem Singen in Takten (0 = aus): erst innerlich hören (Gordon)
-    findA4: false,        // Ton finden: „Nur das a′“ (Stimmgabel) statt der Stufe — eigene Auswahl
+    findA4: false,        // Ton finden: „Nur das a′“ (Stimmgabel) statt der Stufe — eigene Auswahl (alt, = findCue 'a4')
+    findCue: 'level',     // Ton im Akkord finden, eigene Auswahl: 'level' (nach Stufe) | 'a4' (nur das a′) | 'a4satb' (a′, dann Akkord ohne deine Stimme)
     showSolfa: true,      // Intervalle singen: Hilfe „do → mi“ zeigen
     task: null, phase: 'idle', judge: null, timers: [], bus: null, lastKey: null,
     stats: { twoPart: { right: 0, total: 0 }, singInterval: { right: 0, total: 0 }, findTone: { right: 0, total: 0 }, hold: { right: 0, total: 0 }, sight: { right: 0, total: 0 }, dictation: { right: 0, total: 0 }, singEcho: { right: 0, total: 0 }, inTime: { right: 0, total: 0 } },
@@ -9945,6 +9951,7 @@
       if (state.tab === 'voice') renderArea();
     } else if (key === 'findA4') {
       sing.findA4 = on;
+      sing.findCue = on ? 'a4' : 'level';
       if (sing.mode === 'findTone') { stopSing(); renderSing(); }
     }
   }
@@ -9989,6 +9996,19 @@
     }
     return null;
   }
+  /** „a′, dann Akkord“ (eigene Auswahl): die Aufgabe aus Stufe 6 (makeSatbFindTask,
+   *  dein Ton im vierstimmigen Akkord), aber ohne den vollen Satz vorab – erst
+   *  nur das a′ als Bezug, dann die drei anderen Stimmen. Wo dein Ton zum a′
+   *  liegt, nennt das Ergebnis (A_RELATIONS, sonst Halbtöne). */
+  function makeA4SatbFindTask(n, range, part, rnd = Math.random) {
+    const t = makeSatbFindTask(n, range, part, rnd);
+    if (!t) return null;
+    const aRef = [45, 57, 69, 81].reduce((best, a) => (Math.abs(t.target - a) < Math.abs(t.target - best) ? a : best), 69);
+    const semis = Math.abs(t.target - aRef);
+    const rel = A_RELATIONS.find(([x]) => x === semis)?.[1] || (semis === 12 ? 'Oktave' : `${semis} Halbtöne`);
+    const dir = t.target === aRef ? 'same' : t.target < aRef ? 'down' : 'up';
+    return { ...t, cue: 'a4satb', aRef, aSemis: semis, aRel: rel, aDir: dir };
+  }
   /** Akkorde der Einstimmung von „Ton finden“: [[Symbol …], Dauer je Akkord in Schlägen]. */
   function findCueSymbols(task) {
     const tonic = task.kmode === 'minor' ? 'i' : 'I';
@@ -9997,7 +10017,9 @@
     return [[tonic], 2];
   }
 
-  function makeSingTask(mode, n, range, { rnd = Math.random, log = {}, previousKey = null, solfa = 'syllables', findA4 = false, part = ear.part } = {}) {
+  function makeSingTask(mode, n, range, { rnd = Math.random, log = {}, previousKey = null, solfa = 'syllables', findA4 = false, findCue = null, part = ear.part } = {}) {
+    if (mode === 'findTone' && (findCue === 'a4satb')) return makeA4SatbFindTask(n, range, part, rnd) || makeSingTask(mode, n, range, { rnd, log, previousKey, solfa, findA4: true, part });
+    if (findCue === 'a4') findA4 = true;
     const { lo, hi } = range;
     if (mode === 'singInterval') {
       const preset = INTERVAL_PRESETS.filter((p) => p[2] === 'level')[n - 1];
@@ -10279,7 +10301,7 @@
     // Im Takt ohne eigene Sing-Latenz: erst kalibrieren (zählt nicht als Aufgabe).
     if (sing.mode === 'inTime' && sing.inTime.latencyMs === null) { startSingCalibration(); return; }
     sing.calib = null;
-    sing.task = makeSingTask(sing.mode === 'twoPart' ? 'singEcho' : sing.mode, singLevel(), singRange(), { log: sing.log, previousKey: sing.lastKey, solfa: sing.solfa, findA4: sing.findA4, part: ear.part });
+    sing.task = makeSingTask(sing.mode === 'twoPart' ? 'singEcho' : sing.mode, singLevel(), singRange(), { log: sing.log, previousKey: sing.lastKey, solfa: sing.solfa, findA4: sing.findCue === 'a4', findCue: sing.findCue, part: ear.part });
     sing.lastKey = sing.task.key || null;
     if (sing.mode === 'twoPart') addSecondVoice(sing.task, ear.part);
     sing.task.marks = [];
@@ -10313,6 +10335,14 @@
     else if (task.mode === 'singInterval') { k(task.base, t0, 1.5, .22); end = t0 + 1.5; }
     else if (task.mode === 'findTone') {
       if (task.cue === 'a4') { k(69, t0, 2, .22); end = t0 + 2; }
+      else if (task.cue === 'a4satb') {
+        // Erst nur das a′ (weich, wie eine Stimmgabel), dann die drei anderen Stimmen
+        // ohne deine – kein voller Satz vorab.
+        soft(task.aRef, t0, 1.5, .22);
+        const t1 = t0 + 1.5 + A4_GAP_SEC;
+        SATB_PARTS.filter((x) => x !== task.part).forEach((x) => soft(task.satb[x], t1, 8, .1));
+        end = t1 + .3;
+      }
       else if (task.cue === 'satb') {
         // Der Satz einmal voll, dann klingen nur die drei anderen Stimmen weiter
         // (bis zum Ende der Aufgabe) — du singst deine Stimme in die Lücke.
@@ -10999,15 +11029,25 @@
     if (task.mode === 'singInterval') return `${noteLabel(task.target)} – ${intervalName(task.semis)} ${task.dir === 'down' ? 'unter' : 'über'} ${noteLabel(task.base)}`;
     if (task.cue === 'a4') return task.text;
     if (task.cue === 'satb') return `${noteLabel(task.target)} – ${PART_NAMES[task.part]} im Akkord ${task.chordName}`;
+    if (task.cue === 'a4satb') return `${noteLabel(task.target)} – ${PART_NAMES[task.part]} im Akkord ${task.chordName}, ${task.aDir === 'same' ? `gleich ${noteLabel(task.aRef)}` : `die ${task.aRel} ${task.aDir === 'down' ? 'unter' : 'über'} ${noteLabel(task.aRef)}`}`;
     const key = keyName(task.key, task.kmode);
     const role = task.ask === 'degree' ? `Stufe ${task.deg + 1} (${task.syl}) in ${key}`
       : task.ask === 'root' ? `der Grundton von ${key}` : `die ${FIND_ASK[task.ask][0]} von ${key}`;
     return `${noteLabel(task.target)} – ${role}`;
   }
+  /** Treffer bei „Ton im Akkord finden“ abgestuft (Toleranzen unverändert):
+   *  ≤ 15 Cent sauber, ≤ 30 leicht daneben, darüber noch ungenau mit Richtung. */
+  function findToneHitWord(cents) {
+    const a = Math.abs(cents);
+    if (a <= 15) return 'Sauber gefunden!';
+    if (a <= 30) return 'Gefunden, leicht daneben.';
+    return `Gefunden, aber noch ungenau (${Math.round(a)} Cent zu ${cents > 0 ? 'hoch' : 'tief'}).`;
+  }
   function findToneResultText(task, res) {
     const goal = `Gesucht: ${findToneTarget(task)}.`;
     if (res.hit) {
       const oct = res.octaveOff ? ` (eine Oktave ${res.octaveOff < 0 ? 'tiefer' : 'höher'} – zählt)` : '';
+      if (task.mode === 'findTone') return `${findToneHitWord(res.cents)}${oct} ${goal}`;
       return `Gefunden! ${goal} Du lagst ${centsText(res.cents)}${oct}.`;
     }
     if (Number.isNaN(res.cents)) return `Kein ruhiger Ton erkannt. ${goal}`;
@@ -11295,7 +11335,10 @@
     $$('[data-sing-only]').forEach((el) => { el.hidden = (el.dataset.singOnly === 'tuner') !== tuner; });
     if (tuner) return;
     const levels = SING_LEVEL_TABLE[sing.mode]();
-    $('[data-levels="sing"]').innerHTML = levelControlHtml(`sing-${sing.mode}`, levels, sing.levels[sing.mode], levelHints[sing.mode]);
+    // „Ton im Akkord finden“ mit eigener Auswahl (nur a′ / a′, dann Akkord): keine Stufe anzeigen.
+    const ownCue = sing.mode === 'findTone' && sing.findCue !== 'level' ? FIND_CUES.find(([id]) => id === sing.findCue)?.[1] : null;
+    $('[data-levels="sing"]').innerHTML = levelControlHtml(`sing-${sing.mode}`, levels, ownCue ? 0 : sing.levels[sing.mode], ownCue ? null : levelHints[sing.mode]);
+    if (ownCue) $('[data-levels="sing"] .level-card')?.insertAdjacentHTML('beforeend', `<span class="lv-label" aria-hidden="true">${esc(ownCue)} (im Zahnrad)</span>`);
     // Festes Gerüst: Stufen-Karte, Phasenleiste, Bühne und Dock stehen immer
     // an derselben Stelle; die Einstellungen liegen im Zahnrad (renderSingOpts).
     renderSingStrip();
@@ -11318,7 +11361,9 @@
     } else if (!task) {
       const intro = {
         singInterval: 'Ein Grundton — du singst das Intervall.',
-        findTone: sing.findA4 ? 'Nur das a′ als Bezug — du findest deinen Ton.' : 'Akkord oder Intro — du findest deinen Ton.',
+        // Ein Satz zum Sinn der Übung: der eigene Ton im harmonischen Zusammenhang,
+        // nicht der Abstand zum vorigen Ton wie bei „Intervalle singen“.
+        findTone: `${{ a4: 'Nur das a′ als Bezug. ', a4satb: 'Erst nur das a′, dann der Akkord ohne deine Stimme. ' }[sing.findCue] || ''}Du suchst deinen Ton im Zusammenklang – wie beim Anstimmen im Chor, nicht über den Abstand zum vorigen Ton wie bei „Intervalle singen“.`,
         hold: 'Einen Ton ruhig halten — Lage, Ruhe und Trend. Gerade Töne sind im Popchor die Regel – Vibrato kommt, wenn überhaupt, erst am Ende.',
         sight: 'Eine kurze Melodie vom Blatt singen, Ton für Ton.',
         dictation: 'Eine kurze Melodie hören und aufschreiben.',
@@ -12553,7 +12598,7 @@
       },
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbPct: ear.dbPct, dbSound: ear.dbSound, dbSoundV: 2, dbLog: ear.dbLog, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, entryShift: ear.entryShift, entryLog: ear.entryLog, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
-      sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
+      sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findCue === 'a4', findCue: sing.findCue,
         audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
     };
   }
@@ -12711,6 +12756,9 @@
     // Blattsingen: gespeichert → übernehmen; fehlt/kaputt → aus (Pop-Didaktik).
     if (typeof sg.showSight === 'boolean') sing.showSight = sg.showSight;
     if (typeof sg.findA4 === 'boolean') sing.findA4 = sg.findA4;
+    // findCue (neu) gewinnt; ältere Stände kennen nur findA4 → 'a4' bzw. 'level'.
+    sing.findCue = FIND_CUES.some(([id]) => id === sg.findCue) ? sg.findCue : sing.findA4 ? 'a4' : 'level';
+    sing.findA4 = sing.findCue === 'a4';
     if (!sing.showSight && sing.mode === 'sight') sing.mode = 'dictation';
     if (sg.demo === 'piano' || sg.demo === 'voice') sing.demo = sg.demo;
     // Im Takt (Nachsingen Paket 4): optional, sonst Standard.
@@ -12733,6 +12781,12 @@
     if (lvOpen) { openLevelSheet(lvOpen.dataset.levelOpen); return; }
     if (e.target === $('.level-sheet') || e.target.closest('[data-level-close]')) { closeLevelSheet(); return; }
     if (e.target.closest('[data-sing-settings]')) { openSettings('sing'); return; }
+    const findCue = e.target.closest('[data-find-cue]');
+    if (findCue && FIND_CUES.some(([id]) => id === findCue.dataset.findCue)) {
+      sing.findCue = findCue.dataset.findCue; sing.findA4 = sing.findCue === 'a4';
+      if (sing.mode === 'findTone') { stopSing(); renderSing(); }
+      persist(); renderSettings(); return;
+    }
     const pauseChip = e.target.closest('[data-sing-pause]');
     if (pauseChip) { sing.audiation = Number(pauseChip.dataset.singPause); persist(); renderSettings(); return; }
     const volChip = e.target.closest('[data-two-vol]');
@@ -15369,7 +15423,7 @@
      Wert zum Eintragen in der Konsole. selfCheck({ full: true }) prüft immer voll. ---- */
   const MELODY_QUICK = 100;   // unter 100 schlagen die Häufigkeitsprüfungen (Moll-Anteil) zufällig an
   const MELODY_FULL = 1000;
-  const MELODY_VERIFIED = '850b0852'; // zuletzt voll geprüft (alle Melodie-Prüfungen grün)
+  const MELODY_VERIFIED = '4c22a242'; // zuletzt voll geprüft (alle Melodie-Prüfungen grün)
   let melodyCheckInfo = null; // { fingerprint, verified, full, ms }
   /** Kurzform einer Melodie für den Fingerabdruck. */
   const melodySig = (tag, mel) => `${tag}|${mel.key}|${mel.meter}|${mel.pickup}|${mel.degs}|${(mel.alts || []).map(Number)}|${mel.tones.map((x) => x.midi)}|${mel.events.map((e) => `${e.t}:${e.d}${e.rest ? 'r' : ''}`)}`;
@@ -15399,7 +15453,7 @@
     const add = (msg) => { if (errors.length < 60) errors.push(msg); };
     let seed = 61;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-    const saved = JSON.parse(JSON.stringify({ showSight: sing.showSight, solfa: sing.solfa, mode: sing.mode, findA4: sing.findA4, tab: state.tab }));
+    const saved = JSON.parse(JSON.stringify({ showSight: sing.showSight, solfa: sing.solfa, mode: sing.mode, findA4: sing.findA4, findCue: sing.findCue, tab: state.tab }));
     try {
       // 6a Reihenfolge, Blattsingen ausblenden, Stufenzahlen.
       sing.showSight = false;
@@ -15520,7 +15574,7 @@
       for (const [d, a, minor, syl, num] of lab) if (toneLabel(d, a, 'syllables', minor) !== syl || toneLabel(d, a, 'numbers', minor) !== num) add(`Chromatik-Silbe ${d}/${a}: ${toneLabel(d, a, 'syllables', minor)} / ${toneLabel(d, a, 'numbers', minor)}`);
       if (ECHO_LEVELS.map((l) => l.tol).join() !== '50,50,45,40,40,35' || IN_TIME_LEVELS.some((l, i) => l.elements.join() !== RHYTHM_LEVELS[i].elements.filter((e) => e !== 't' && e !== 'sh').join())) add('Stufen Nachsingen/Im Takt falsch');
     } finally {
-      Object.assign(sing, { showSight: saved.showSight, solfa: saved.solfa, mode: saved.mode, findA4: saved.findA4 }); state.tab = saved.tab;
+      Object.assign(sing, { showSight: saved.showSight, solfa: saved.solfa, mode: saved.mode, findA4: saved.findA4, findCue: saved.findCue }); state.tab = saved.tab;
     }
     return errors;
   }
@@ -16409,6 +16463,7 @@
     errors.push(...downbeatCheck());
     errors.push(...songDownbeatCheck());
     errors.push(...pianoSampleCheck());
+    errors.push(...findToneCueCheck());
     errors.push(...bodyCheck());
     errors.push(...entriesCheck());
     errors.push(...delayCheck());
@@ -17275,6 +17330,45 @@
   /** Singstimme mit gerendertem Audio (OfflineAudioContext) durch die
    *  eigene Tonerkennung: richtige Tonhöhe, Vokal auf `time`, Pegel etwa
    *  wie das Klavier. Asynchron: `await uebeLab.selfCheckAudio()`. */
+  /** „Ton im Akkord finden“: Name, eigene Auswahl (findCue, alte Stände mit
+   *  findA4), Aufgabe „a′, dann Akkord“, abgestufte Rückmeldung. */
+  function findToneCueCheck() {
+    const errors = [];
+    if (modeName('voice', 'findTone') !== 'Ton im Akkord finden' || !SING_MODES.some(([id]) => id === 'findTone')) errors.push('Ton im Akkord finden: Name/ID');
+    if (!/Anstimmen/.test(MODE_TEXT.findTone)) errors.push('Ton im Akkord finden: Beschreibung');
+    // Laden: findA4 (alt) → 'a4', findCue gewinnt, Unbekanntes → 'level'; die Stufe (ID findTone) bleibt.
+    const snap = JSON.parse(JSON.stringify(snapshot()));
+    try {
+      const sg = (x) => ({ ...snap, sing: { ...snap.sing, levels: { ...snap.sing.levels, findTone: 4 }, ...x } });
+      for (const [x, want] of [[{ findA4: true, findCue: undefined }, 'a4'], [{ findA4: false, findCue: undefined }, 'level'], [{ findA4: true, findCue: 'a4satb' }, 'a4satb'], [{ findA4: false, findCue: 'quatsch' }, 'level']]) {
+        restore(sg(x));
+        if (sing.findCue !== want || sing.findA4 !== (want === 'a4')) errors.push(`Ton im Akkord finden: ${JSON.stringify(x)} → ${sing.findCue}`);
+      }
+      if (sing.levels.findTone !== 4) errors.push('Ton im Akkord finden: Stufe nach dem Laden verloren');
+      if (snapshot().sing.findCue !== sing.findCue) errors.push('Ton im Akkord finden: findCue wird nicht gespeichert');
+    } finally { restore(snap); }
+    // „a′, dann Akkord“: Aufgabe aus Stufe 6, Bezug a in passender Oktave.
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    for (const part of SATB_PARTS) {
+      const range = singRange(part, { low: null, high: null });
+      for (let i = 0; i < 20; i++) {
+        const t = makeSingTask('findTone', 3, range, { rnd, part, findCue: 'a4satb' });
+        if (t.cue !== 'a4satb') { errors.push(`a′, dann Akkord (${part}): ${t.cue}`); break; }
+        if (t.target !== t.satb[part] || SATB_PARTS.some((x) => x !== part && t.satb[x] === t.target) || t.target < range.lo || t.target > range.hi) { errors.push(`a′, dann Akkord (${part}): Zielton`); break; }
+        if (![45, 57, 69, 81].includes(t.aRef) || Math.abs(t.target - t.aRef) > 6 || !t.aRel || !/ a$|a′|a″|A/.test(findToneTarget(t)) && !findToneTarget(t).includes(noteLabel(t.aRef))) { errors.push(`a′, dann Akkord (${part}): Bezug ${t.aRef} ${t.aRel}`); break; }
+        if (t.tolerance !== FIND_TOLERANCE[2]) { errors.push('a′, dann Akkord: Toleranz nicht die der Stufe'); break; }
+      }
+    }
+    if (makeSingTask('findTone', 3, singRange('A'), { rnd, part: 'A', findCue: 'a4' }).cue !== 'a4') errors.push('Nur das a′ über findCue');
+    // Abgestufte Rückmeldung (Toleranzen unverändert).
+    const w = [10, -15, 20, -30, 31, -40].map(findToneHitWord);
+    if (!/^Sauber/.test(w[0]) || !/^Sauber/.test(w[1]) || !/leicht daneben/.test(w[2]) || !/leicht daneben/.test(w[3]) || !/31 Cent zu hoch/.test(w[4]) || !/40 Cent zu tief/.test(w[5])) errors.push(`Ton im Akkord finden: Abstufung ${w}`);
+    const ft = { mode: 'findTone', cue: 'tonic', key: 0, kmode: 'major', ask: 'third', target: 64 };
+    if (!/^Sauber gefunden! Gesucht:/.test(findToneResultText(ft, { hit: true, cents: 5, octaveOff: 0 }))) errors.push('Ton im Akkord finden: Treffertext');
+    if (!/Gefunden! /.test(findToneResultText({ mode: 'singInterval', semis: 7, dir: 'up', base: 60, target: 67 }, { hit: true, cents: 25, octaveOff: 0 }))) errors.push('Intervalle singen: Treffertext verändert');
+    return errors;
+  }
   /** Klavier-Paket ohne Audio: Umfang 38–84, Stimmungs- und Pegeltabelle,
    *  engine.keys nimmt die Samples (Rate mit Stimmungskorrektur, Pegel je Datei). */
   function pianoSampleCheck() {

@@ -110,7 +110,7 @@ ein Dialog mit echter Wahl).
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
-  Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Ton halten, Intervalle singen, Ton finden,
+  Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Ton halten, Intervalle singen, Ton im Akkord finden (intern `findTone`; eigene Auswahl „Nur das a′“ oder „a′, dann Akkord“),
   Nachsingen, Im Takt, Blattsingen, Diktat; der Tuner – Zielton per Klaviatur,
   Kammerton, dauerhaft gemerkter Tonumfang – ist eine eigene Tools-Kachel,
   uebe-lab.html?tab=voice&mode=tuner). Die Sing-Übungen haben ein festes Gerüst:
