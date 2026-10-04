@@ -17,6 +17,7 @@ Standard aus der Arbeitsanweisung.
 | Versuch | Echte Instrumente (Samples) für 3 Probesongs | „viel besser“ | v483 |
 | Nachtrag | Ruckeln mit Bluetooth: portionsweise planen, „Ruckelfrei“ | umgesetzt | v484 |
 | Fehler | v484 legte den Rhythmus-Bereich lahm; Schalter wieder raus | behoben | v485 |
+| Nachtrag | Song läuft länger ohne Klatschen; Überschrift nach Muster | umgesetzt | v487 |
 | Etappe 2 | Einstieg in der Periode, „Worauf hören?“, „Nur das Zeichen“ | offen | – |
 | Etappe 3 | Stufen 3, 5, 6 auf Songs, 12/8 | offen | – |
 | Etappe 4 | Typ C (Stufe 7) | offen | – |
@@ -204,6 +205,21 @@ Klang-Versuch. Zwei Ursachen angegangen:
 - Geprüft im Browser: Einsatz finden starten, Einstellungen ändern, zurück,
   Nachklatschen starten → läuft; vier Runden mit allen Urteilen; Einsatz finden
   Stufe 2 richtig gewertet.
+
+## Nachtrag: Wartezeit und Überschrift (v487)
+
+- **„Stoppt, obwohl ich noch nicht geklatscht habe“:** kein Absturz, sondern
+  die Wartezeit: Ohne Klatscher endete der Groove 6 Takte nach dem
+  Klatschbereich (≈ 13 Takte ab Start, bei ♩ 120 etwa 25 s) mit „Keine
+  Klatscher“. `DB_WAIT_BARS` jetzt 60 – je nach Tempo zwei bis drei Minuten.
+  Dank `scheduleSoon` entstehen die Klänge trotzdem erst kurz vorher.
+- **Überschrift:** „Wo ist die Eins?“ nur noch, wenn auf die 1 geklatscht
+  wird. Bei anderen Mustern „Klatsch: 1 und 4“, „Hör zu – dann klatsch: 2 und 4
+  (Backbeat)“, „Jetzt klatschen: …“, danach „Das Muster sitzt“ bzw. „Wo saß
+  das Muster?“; Meldung „Das Muster sitzt!“ statt „Die Eins sitzt!“.
+- **„Manche Tracks raffiniert, manche (Pop-Groove) unterkomplex“:** Die
+  Stufen 3, 5 und 6 laufen noch mit den alten Grooves (nur Schlagzeug, ein
+  Basston je Takt) – das ist Etappe 3.
 
 ## Offene Punkte
 

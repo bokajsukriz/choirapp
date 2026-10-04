@@ -5303,8 +5303,10 @@
   const DB_MEMORY = 8; // so viele letzte Aufgaben merkt sich die Abwechslung (ear.dbLog)
   const DB_LISTEN_BARS = 2;   // ganze Takte vor dem Klatschen (nach dem angeschnittenen)
   const DB_CLAP_BARS = 4;     // Takte zum Klatschen (gewertet)
-  const DB_WAIT_BARS = 6;     // so lange läuft der Groove weiter, bis du einsteigst (Chorleiter:
-                              // gewertet wird erst ab dem ersten Klatscher, nicht ab voller Lautstärke)
+  const DB_WAIT_BARS = 60;    // so lange läuft der Groove weiter, bis du einsteigst (Chorleiter:
+                              // gewertet wird erst ab dem ersten Klatscher, nicht ab voller Lautstärke).
+                              // Früher 6 – endete nach ≈ 25 s „mitten im Zuhören“ (Nutzerin); jetzt
+                              // zwei bis drei Minuten. Klänge entstehen erst kurz vorher (scheduleSoon).
   const DB_FADE_BARS = 2;     // Einblenden ab dem ersten Schlag
   const DB_FADE_FROM = .04;
   const DB_BASS_STEPS = [0, 7, 9, 5]; // I – V – vi – IV, ein Ton je Takt
@@ -5511,7 +5513,8 @@
       const clean = res.level === 3 ? ' – sehr sauber' : '';
       const timing = res.word ? ` Timing: ${res.word}.` : '';
       const note = holdBiasNote(res.hold);
-      return `Die Eins sitzt${clean}! ${res.hits} von ${res.total} im Takt${task.help ? ' (mit Hilfe)' : ''}.${timing}${note ? ` ${note}` : ''}`;
+      const one = DB_PATTERNS[task.pattern].at.every((x) => x === 0);
+      return `${one ? 'Die Eins sitzt' : 'Das Muster sitzt'}${clean}! ${res.hits} von ${res.total} im Takt${task.help ? ' (mit Hilfe)' : ''}.${timing}${note ? ` ${note}` : ''}`;
     }
     if (res.shift && res.unit === 'eighth') return 'Um eine Achtel verschoben – du klatschst auf den Schlag statt dazwischen (oder umgekehrt). Zähl „1 und 2 und“ mit.';
     if (res.shift) {
@@ -8274,7 +8277,14 @@
       const level = DOWNBEAT_LEVELS[(task ? task.level : ear.levels.downbeat) - 1];
       const phase = downbeatPhase(task);
       const mic = state.input === 'mic';
-      prompt.textContent = { idle: 'Wo ist die Eins?', wait: 'Wo ist die Eins?', listen: 'Hör zu – wo ist die Eins?', you: 'Jetzt klatschen – auf deine Eins', done: task?.answer?.ok ? 'Die Eins gefunden' : 'Wo war die Eins?' }[phase];
+      // Überschrift nach der Aufgabe: „Wo ist die Eins?“ nur, wenn auf die 1
+      // geklatscht wird – sonst das Muster (Backbeat, 1 und 4 …).
+      const pat = task ? DB_PATTERNS[task.pattern] : null;
+      const onlyOne = pat ? pat.at.every((x) => x === 0) : level.patterns.every((id) => DB_PATTERNS[id].at.every((x) => x === 0));
+      prompt.textContent = onlyOne
+        ? { idle: 'Wo ist die Eins?', wait: 'Wo ist die Eins?', listen: 'Hör zu – wo ist die Eins?', you: 'Jetzt klatschen – auf deine Eins', done: task?.answer?.ok ? 'Die Eins gefunden' : 'Wo war die Eins?' }[phase]
+        : !pat ? (phase === 'idle' ? 'Hör zu und klatsch das Muster' : 'Hör zu …')
+          : { wait: `Klatsch: ${pat.name}`, listen: `Hör zu – dann klatsch: ${pat.name}`, you: `Jetzt klatschen: ${pat.name}`, done: task.answer?.ok ? 'Das Muster sitzt' : 'Wo saß das Muster?' }[phase] || `Klatsch: ${pat.name}`;
       sub.textContent = task
         ? `${task.song ? `${DB_SONGS[task.song].name} · ${DB_SONGS[task.song].style}` : DB_GROOVES[task.groove].name} · ${task.meter}${ear.revealed ? '' : ' · kein Einzähler'}`
         : `Stufe ${level.n}: ${level.label}`;
@@ -8285,11 +8295,11 @@
       const text = {
         idle: ['Tippen zum Starten', 'Ein Groove blendet ein – ohne Einzähler'],
         wait: ['Tippen zum Starten', '„Nochmal“ startet den Groove neu'],
-        listen: ['Hör zu …', 'klatsch, sobald du die Eins hast'],
+        listen: ['Hör zu …', onlyOne ? 'klatsch, sobald du die Eins hast' : 'klatsch, sobald du das Muster hörst'],
         you: [mic ? 'Klatschen!' : 'Hier klatschen', dbRun?.windowStart != null ? 'noch vier Takte' : 'gewertet ab deinem ersten Klatscher'],
         done: footer
-          ? [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '↻ spielt die Lösung']
-          : [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? 'die Eins sitzt' : '„Nochmal“ spielt die Lösung'],
+          ? [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? (onlyOne ? 'die Eins sitzt' : 'das Muster sitzt') : '↻ spielt die Lösung']
+          : [res ? `${res.hits} von ${res.total} im Takt` : 'Fertig', res?.ok ? (onlyOne ? 'die Eins sitzt' : 'das Muster sitzt') : '„Nochmal“ spielt die Lösung'],
       }[phase];
       const pad = footer ? $('.db-wrap .ear-pad') : document.createElement('button');
       pad.type = 'button';
@@ -16232,6 +16242,10 @@
       if (!r.ok || r.hits !== r.total) errors.push(`Einsatz Song: genau getroffen → ${JSON.stringify([r.ok, r.hits, r.total])}`);
       r = judgeDownbeat(t, exact.map((x) => x + 12 * p.tickSec));
       if (r.ok || !/die 2 für die Eins/.test(downbeatMessage(t, r))) errors.push(`Einsatz Song: verschoben → ${downbeatMessage(t, r)}`);
+      // Meldung nennt das Muster, nicht „die Eins“, wenn nicht auf die 1 geklatscht wird.
+      if (!/^Das Muster sitzt/.test(downbeatMessage(t, judgeDownbeat(t, exact)))) errors.push(`Einsatz: Meldung bei Backbeat ${downbeatMessage(t, judgeDownbeat(t, exact))}`);
+      // Ohne Klatscher läuft der Song lange weiter (früher endete er nach ≈ 25 s).
+      if (p.end - p.youEnd < 30 * p.bar * p.tickSec) errors.push(`Einsatz: Song endet ohne Klatscher schon nach ${(p.end - p.youEnd).toFixed(1)} s`);
     }
     // Klang-Versuch: Samples decken alle Töne der Probesongs (jede Tonart) auf ±1,5 Halbtöne ab;
     // mit „Echte Instrumente“ kommen in Stufe 1/2 nur Probesongs dran, nie zweimal direkt hintereinander.
