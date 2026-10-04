@@ -2293,10 +2293,7 @@
       // nach dem Anlegen nicht mehr ändern; beim Bereichswechsel (setTab hat alles
       // gestoppt) wird der Kontext deshalb beim nächsten Start neu angelegt.
       // Einsatz finden (Hören) klatscht – dort ebenfalls Echtzeit.
-      // „Ruckelfrei“ (state.smoothAudio): auch in den Klatsch-Übungen der größere
-      // Puffer – mit Bluetooth kostet er kaum Zeit (die Ausgabelatenz wird beim
-      // Tippen ohnehin abgezogen), verhindert aber Aussetzer.
-      const hint = state.tab === 'ear' && ear.mode !== 'downbeat' ? 'balanced' : state.smoothAudio ? 'balanced' : 'interactive';
+      const hint = state.tab === 'ear' && ear.mode !== 'downbeat' ? 'balanced' : 'interactive';
       if (this.ctx && this.hint !== hint) { const old = this.ctx; this.ctx = null; old.close().catch(() => {}); }
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -2304,8 +2301,6 @@
       const ctx = new Ctx({ latencyHint: hint });
       this.ctx = ctx;
       this.hint = hint;
-      // Große Ausgabeverzögerung (typisch Bluetooth): „Ruckelfrei“ empfehlen.
-      setTimeout(() => { if (this.ctx === ctx && (ctx.outputLatency || 0) > .1) this.slowOutput = Math.round(ctx.outputLatency * 1000); }, 1500);
       this.master = ctx.createGain();
       this.master.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
@@ -2568,7 +2563,7 @@
     // in 6/8 die Achtel); eighths: genaues Tempo in Achteln pro Minute, bleibt
     // beim Taktwechsel gleich (kein Wandern durch Runden). latency: eigene
     // Verzögerung beim Tippen (Touch/Bluetooth), wird abgezogen.
-    tab: 'rhythm', bpm: 92, eighths: 184, latency: 0, smoothAudio: false,
+    tab: 'rhythm', bpm: 92, eighths: 184, latency: 0,
     // rounds: immer 0 = endlos (seit der Überarbeitung nicht mehr wählbar).
     mode: 'echo', meter: '4/4', elements: ['e', 'r'], gapBefore: 0, gapAfter: 0, rounds: 0,
     countIn: true, click: true, speedUp: false, showNotes: false,
@@ -6167,16 +6162,8 @@
     });
     songFinaleEvents(task).forEach((e) => evs.push({ ...e, t: L * tickSec }));
     evs.sort((a, b) => a.t - b.t);
-    scheduleAhead(evs, t0, (ev, at) => playDownbeatEvent(ev, at, bus), () => soundPreview.bus === bus);
+    scheduleSoon(evs, t0, (ev, at) => playDownbeatEvent(ev, at, bus), () => soundPreview.bus === bus);
     soundPreview.timer = setTimeout(() => { if (soundPreview.key === key) { soundPreview.key = ''; soundPreview.bus = null; renderSettings(); } }, (L * tickSec + 1.6) * 1000);
-  }
-  /** Wiedergabe „Schnell“ (kleiner Puffer) oder „Ruckelfrei“ (größerer Puffer,
-   *  für Bluetooth) – gilt für alle Klatsch-Übungen, ab dem nächsten Start. */
-  function smoothAudioHtml() {
-    const slow = engine.slowOutput && !state.smoothAudio ? ` Dein Gerät gibt den Ton etwa ${engine.slowOutput} ms verzögert aus (wie bei Bluetooth) – „Ruckelfrei“ empfohlen.` : '';
-    return `<span class="sub-label">Wiedergabe</span>
-      <div class="chip-row">${[[false, 'Schnell'], [true, 'Ruckelfrei (Bluetooth)']].map(([v, label]) => `<button class="chip" type="button" data-smooth-audio="${v}" aria-pressed="${state.smoothAudio === v}">${label}</button>`).join('')}</div>
-      <p class="foot-note" style="text-align:left;margin-top:4px">Ruckelt der Ton (oft mit Bluetooth-Kopfhörern)? „Ruckelfrei“ nimmt einen größeren Puffer. Die Verzögerung gleicht die App beim Klatschen aus; mit Kabel oder Lautsprecher reicht „Schnell“. Gilt für alle Klatsch-Übungen.${slow}</p>`;
   }
   /** Abschnitt „Klang (Versuch)“ in den Einstellungen von „Einsatz finden“. */
   function soundTrialHtml() {
@@ -7125,7 +7112,7 @@
    *  der auf manchen Geräten (v. a. mit Bluetooth) als Ruckeln zu hören ist.
    *  events nach t sortiert; alive() = false bricht ab (Stopp, neuer Lauf). */
   const SCHEDULE_AHEAD = 1.5, SCHEDULE_EVERY_MS = 300;
-  function scheduleAhead(events, t0, play, alive) {
+  function scheduleSoon(events, t0, play, alive) {
     let i = 0;
     const step = () => {
       if (!alive() || !engine.ctx) return;
@@ -7158,7 +7145,7 @@
     const t0 = ctx.currentTime + .12;
     bus.gain.setValueAtTime(plan.fadeFrom, t0);
     if (plan.fadeEnd) bus.gain.exponentialRampToValueAtTime(1, t0 + plan.fadeEnd);
-    scheduleAhead(plan.events, t0, (ev, at) => { if (!(bus.until < at)) playDownbeatEvent(ev, at, bus); }, () => ear.bus === bus);
+    scheduleSoon(plan.events, t0, (ev, at) => { if (!(bus.until < at)) playDownbeatEvent(ev, at, bus); }, () => ear.bus === bus);
     ear.cueEnd = listen ? t0 + plan.youVisual : 0;
     const msAt = (sec) => Math.max(0, (t0 + sec - ctx.currentTime) * 1000);
     if (listen) {
@@ -7455,7 +7442,7 @@
     run.bus.gain.cancelScheduledValues(end);
     run.bus.gain.setValueAtTime(1, Math.max(engine.ctx.currentTime, end - .005));
     run.bus.gain.linearRampToValueAtTime(0, end + .02);
-    run.bus.until = end + .02; // danach keine Klänge mehr anlegen (scheduleAhead)
+    run.bus.until = end + .02; // danach keine Klänge mehr anlegen (scheduleSoon)
     const fin = engine.newBus({ reverb: false });
     fin.sampled = run.bus.sampled;
     run.finBus = fin; run.finAt = end;
@@ -8408,7 +8395,7 @@
     ? `<p class="foot-note" style="margin-top:0">Einmal einmessen: vier Klicks zuhören, dann achtmal zum Klick klatschen. Jetzt: ${state.micLatencyMs} ms.</p>
       <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.micLatencyMs ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}</div>`
     : `<p class="foot-note" style="margin-top:0">Kommen deine Tipper immer etwas zu spät (Touchscreen, Bluetooth-Kopfhörer)? Die App schlägt selbst einen Ausgleich vor, wenn sie es merkt; er gilt in allen Übungen. Oder einmal einmessen: vier Klicks zuhören, acht mittippen. Jetzt: ${Math.round(state.latency * 1000)} ms${lastMeanOff() !== null ? ` · letzte Runde im Mittel ${lastMeanOff() >= 0 ? '+' : '−'}${Math.abs(lastMeanOff())} ms` : ''}.</p>
-      <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}${smoothAudioHtml()}`;
+      <div class="chip-row"><button class="chip" type="button" data-rcalib="start">Einmessen</button>${state.latency ? '<button class="chip" type="button" data-rcalib="reset">Zurücksetzen</button>' : ''}${lastMeanOff() !== null && Math.abs(lastMeanOff()) >= 10 ? `<button class="chip" type="button" data-rcalib="suggest">Mittelwert übernehmen</button>` : ''}</div>`}`;
     const inputHtml = `<span class="sub-label">Eingabe</span>
       ${choice('input', INPUT_CHOICES, state.input)}
       ${mic ? '<p class="foot-note" style="margin-top:4px">Mit Kopfhörern — sonst hört das Mikrofon den Klick bzw. das Schlagzeug. Klatschen oder deutlich sprechen („ta“). Nichts wird aufgenommen.</p>' : ''}`;
@@ -8560,7 +8547,6 @@
         ${isRhythmEar(ear.mode) ? `<span class="sub-label">Eingabe</span>
         <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.${ear.mode === 'entries' ? ' Ein gesprochenes oder gesungenes „da“ zählt genauso.' : ''}</p>` : ''}
-        ${isRhythmEar(ear.mode) ? smoothAudioHtml() : ''}
         ${ear.mode === 'tuning' ? '<p class="foot-note" style="text-align:left">Unter 10 Cent hören sehr geübte Ohren; 15–25 Cent sind für Laiensänger:innen gut; ein Chor klingt ab etwa 20 Cent Abweichung hörbar unsauber. Die Abweichung passt sich an: nach zwei richtigen Antworten wird sie kleiner, nach einem Fehler größer.</p>' : ''}
         <span class="sub-label">Ablauf</span>
         <div class="check-list">${isInKeyMode(ear.mode) ? checkRow('inKeyResolve', 'on', ear.mode === 'noteInKey' ? 'Nach der Antwort auflösen (Ton läuft zur Tonika)' : 'Nach der Antwort auflösen (Akkord läuft nach Hause)', s.inKeyResolve !== false) : ''}${checkRow('autoNext', 'on', 'Nach richtiger Antwort automatisch weiter', s.autoNext, isInKeyMode(ear.mode) ? 'erst nach der Auflösung' : '')}</div>`;
@@ -12502,7 +12488,7 @@
 
   function snapshot() {
     return {
-      tab: state.tab, bpm: state.bpm, tempoRef: 'beat', eighths: state.eighths, latency: state.latency, smoothAudio: state.smoothAudio,
+      tab: state.tab, bpm: state.bpm, tempoRef: 'beat', eighths: state.eighths, latency: state.latency,
       rhythm: {
         mode: state.mode, meter: state.meter, elements: state.elements, gapBefore: state.gapBefore, gapAfter: state.gapAfter,
         rounds: state.rounds, countIn: state.countIn, click: state.click, speedUp: state.speedUp, showNotes: state.showNotes, markSelf: state.markSelf, accomp: state.accomp,
@@ -12561,7 +12547,6 @@
       if (!old && Number.isFinite(exact) && tempoForMeter(exact, state.meter) === state.bpm) state.eighths = exact;
     }
     if (Number.isFinite(data.latency)) state.latency = clamp(data.latency, -.05, .3);
-    state.smoothAudio = data.smoothAudio === true;
     if (Array.isArray(r.elements)) state.elements = ELEMENTS.map(([id]) => id).filter((id) => r.elements.includes(id));
     ['gapBefore', 'gapAfter'].forEach((k) => { if ([0, 1, 2].includes(r[k])) state[k] = r[k]; });
     state.rounds = 0; // Rhythmus läuft immer endlos
@@ -13022,13 +13007,6 @@
       const map = ear.bodyRehearsal.map, x = bodyVoice.dataset.bodyVoice;
       map[x] = BODY_LAYER_IDS[(BODY_LAYER_IDS.indexOf(map[x]) + 1) % BODY_LAYER_IDS.length];
       persist(); renderEar(); return;
-    }
-    const smooth = e.target.closest('[data-smooth-audio]');
-    if (smooth) {
-      state.smoothAudio = smooth.dataset.smoothAudio === 'true';
-      // Neuer Puffer heißt neuer Audio-Kontext: laufende Wiedergabe stoppen, beim nächsten Start neu anlegen.
-      if (dbRun || run.playing) { clearEarTimers(); if (run.playing) stop(); }
-      persist(); renderSettings(); renderEar(); return;
     }
     const dbIn = e.target.closest('[data-db-input]');
     if (dbIn) { if (INPUT_CHOICES.some(([id]) => id === dbIn.dataset.dbInput)) state.input = dbIn.dataset.dbInput; renderSettings(); renderEar(); return; }
@@ -16265,10 +16243,6 @@
       if (ear.dbSound !== 'samples' || snapshot().ear.dbSound !== 'samples') errors.push('Klang-Versuch: Einstellung wird nicht gespeichert');
       restore({ ...snap, ear: { ...snap.ear, dbSound: 'laut' } });
       if (ear.dbSound !== 'synth') errors.push('Klang-Versuch: unbekannter Wert übernommen');
-      restore({ ...snap, smoothAudio: true });
-      if (state.smoothAudio !== true || snapshot().smoothAudio !== true) errors.push('Ruckelfrei: Einstellung wird nicht gespeichert');
-      restore({ ...snap, smoothAudio: 'ja' });
-      if (state.smoothAudio !== false) errors.push('Ruckelfrei: unbekannter Wert übernommen');
     } finally { restore(snap); }
     return errors;
   }
@@ -16278,6 +16252,14 @@
    *  keinen Zustand. */
   function selfCheck({ full = false } = {}) {
     const errors = [...spellCheck()];
+    // Doppelte Funktionsnamen: die spätere Deklaration überschreibt still die
+    // frühere (so legte „scheduleAhead“ einmal den ganzen Rhythmus-Bereich lahm).
+    {
+      const src = [...document.scripts].filter((x) => !x.src).map((x) => x.textContent).join('\n');
+      const seen = new Map();
+      for (const m of src.matchAll(/^ {2}(?:async )?function (\w+)\s*\(/gm)) seen.set(m[1], (seen.get(m[1]) || 0) + 1);
+      for (const [name, n] of seen) if (n > 1) errors.push(`Funktion ${name} ist ${n}× deklariert`);
+    }
     [[8, 'minor', 'gis-Moll'], [1, 'major', 'Des-Dur'], [3, 'minor', 'dis-Moll'], [3, 'major', 'Es-Dur'], [6, 'major', 'Ges-Dur'],
       [10, 'minor', 'b-Moll'], [1, 'minor', 'cis-Moll'], [11, 'major', 'H-Dur']].forEach(([pc, mode, want]) => {
       if (keyName(pc, mode) !== want) errors.push(`keyName(${pc}, ${mode}) = ${keyName(pc, mode)}, erwartet ${want}`);

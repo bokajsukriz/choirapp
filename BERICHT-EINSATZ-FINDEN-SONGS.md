@@ -16,6 +16,7 @@ Standard aus der Arbeitsanweisung.
 | Etappe 1 | Song-Engine, Stufen 1, 2, 4 | umgesetzt | v482 |
 | Versuch | Echte Instrumente (Samples) für 3 Probesongs | „viel besser“ | v483 |
 | Nachtrag | Ruckeln mit Bluetooth: portionsweise planen, „Ruckelfrei“ | umgesetzt | v484 |
+| Fehler | v484 legte den Rhythmus-Bereich lahm; Schalter wieder raus | behoben | v485 |
 | Etappe 2 | Einstieg in der Periode, „Worauf hören?“, „Nur das Zeichen“ | offen | – |
 | Etappe 3 | Stufen 3, 5, 6 auf Songs, 12/8 | offen | – |
 | Etappe 4 | Typ C (Stufe 7) | offen | – |
@@ -186,6 +187,23 @@ Klang-Versuch. Zwei Ursachen angegangen:
 - Tests: Einstellung wird gespeichert, unbekannte Werte verworfen; im Browser
   wechselt der Puffer nach dem Umschalten, Läufe werden weiter richtig gewertet
   (Stufe 1, 2, verschoben), die Klangprobe läuft vollständig.
+
+## Fehler in v484 und Korrektur (v485)
+
+- **Fehler:** Die neue Planungsfunktion hieß `scheduleAhead` – genau wie der
+  Takt-Planer des Rhythmus-Bereichs. Die spätere Deklaration überschrieb still
+  die frühere, dadurch starteten Nachklatschen, Vom Blatt, Zweistimmig und der
+  Kurs nicht mehr („es passiert gar nichts“, Konsole: `alive is not a
+  function`). Der Selbsttest hatte es nicht bemerkt, weil er die Läufe nicht
+  startet.
+- **Korrektur:** umbenannt in `scheduleSoon`. Neuer Selbsttest in
+  `selfCheck()`: meldet jede Funktion, die im Inline-Skript mehrfach
+  deklariert ist (gegen v484 geprüft: findet `scheduleAhead` 2×).
+- **Schalter „Ruckelfrei“ wieder entfernt** (Wunsch der Nutzerin), Puffer wie
+  vor v484. Das portionsweise Planen bleibt.
+- Geprüft im Browser: Einsatz finden starten, Einstellungen ändern, zurück,
+  Nachklatschen starten → läuft; vier Runden mit allen Urteilen; Einsatz finden
+  Stufe 2 richtig gewertet.
 
 ## Offene Punkte
 
