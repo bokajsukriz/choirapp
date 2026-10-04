@@ -5236,29 +5236,11 @@
     return null;
   }
 
-  /* ---- Einsatz finden: Ein Groove blendet an zufälliger Stelle im Takt ein,
+  /* ---- Einsatz finden: Ein Song blendet an zufälliger Stelle im Takt ein,
      ohne Einzähler. Du findest hörend die Eins und klatschst ein Muster
-     darüber (Tippen oder Mikrofon). Ticks wie METERS (12 = Viertel); bass:
-     Takt-Ticks des Basstons (negativ = vorgezogen, spielt schon den Ton des
-     nächsten Takts); hat: Raster in Ticks oder 'shuffle'; mark: ohne Bass
-     eine offene Hi-Hat auf „4 und“ jedes zweiten Takts — sonst klängen 1 und
-     3 gleich und die Eins wäre Raten (Musikpädagoge). ---- */
-  const DB_GROOVES = {
-    pop:      { name: 'Pop-Groove', meter: '4/4', kick: [0, 24], snare: [12, 36], hat: 6, bass: [0], mark: true, bpm: [84, 96],
-      cue: 'Die Eins erkennst du am Bass: Er wechselt auf der Eins den Ton, die Bassdrum spielt mit. Ohne Bass zischt jeden zweiten Takt kurz vor der Eins die offene Hi-Hat.' },
-    rock:     { name: 'Rock-Groove', meter: '4/4', kick: [0, 18, 24], snare: [12, 36], hat: 6, bass: [0], bpm: [90, 104],
-      cue: 'Die Snare liegt auf 2 und 4. Die Bassdrum schlägt auf 1, auf „2 und“ und auf 3 – die Eins ist der Schlag, nach dem die Bassdrum gleich doppelt kommt.' },
-    waltz:    { name: 'Walzer', meter: '3/4', kick: [0], rim: [12, 24], hat: 6, bass: [0], bpm: [108, 126],
-      cue: 'Um-pa-pa: Bass und Bassdrum nur auf der Eins, danach zweimal der helle Schlag.' },
-    six8:     { name: '6/8-Ballade', meter: '6/8', kick: [0], snare: [18], hat: 6, bass: [0], bpm: [52, 62],
-      cue: 'Zähl in 6: Bassdrum auf 1, Snare auf 4 – die Eins ist der tiefe Schlag.' },
-    halftime: { name: 'Halftime', meter: '4/4', kick: [0, 30], snare: [24], hat: 6, bpm: [116, 128],
-      cue: 'Im Halftime kommt die Snare nur einmal im Takt, auf der 3 – die Eins liegt zwei Schläge davor.' },
-    shuffle:  { name: 'Shuffle', meter: '4/4', kick: [0, 24], snare: [12, 36], hat: 'shuffle', swing: true, bass: [0], mark: true, bpm: [80, 92],
-      cue: 'Im Shuffle hinken die Achtel (lang–kurz). Die Snare liegt auf 2 und 4. Ohne Bass verrät die offene Hi-Hat den Taktanfang: Sie zischt jeden zweiten Takt kurz vor der Eins.' },
-    push:     { name: 'Synkopen-Groove', meter: '4/4', kick: [6, 30], snare: [12, 36], hat: 6, bass: [-6], forceBass: true, bpm: [86, 96],
-      cue: 'Der Bass kommt schon kurz vor der Eins (vorgezogen), die Bassdrum spielt nie auf der Eins – halt dich an die Snare auf 2 und 4.' },
-  };
+     darüber (Tippen oder Mikrofon). Ticks wie METERS (12 = Viertel). Die
+     Songs stehen unten (DB_SONGS); die alten Grooves (nur Schlagzeug und ein
+     Basston je Takt) sind seit Etappe 3 ganz durch Songs ersetzt. ---- */
   // Muster zum Darüberklatschen: Ticks im Takt (gerade Achtel; im Shuffle verschoben, dbSwing).
   const DB_PATTERNS = {
     one4:       { meter: '4/4', at: [0], name: 'auf die 1' },
@@ -5276,45 +5258,18 @@
     one128:     { meter: '12/8', at: [0], name: 'auf die 1' },
     back128:    { meter: '12/8', at: [18, 54], name: '2 und 4 (große Schläge)' },
   };
-  // Stufen (Musikpädagoge, Überarbeitung): je Stufe eine neue Hürde, aber nie
-  // Raten — jedes Groove ohne Bass hat ein eigenes Zeichen für den Taktanfang
-  // (Rock: Bassdrum auf 2+, Halftime: Snare nur auf 3, Walzer/6/8: Bassdrum nur
-  // auf 1, Pop/Shuffle: offene Hi-Hat, siehe mark). „Offbeat“ prüft die Eins
-  // nicht (sieht verschoben gleich aus) und fehlt deshalb. Muster wie oneFour
-  // und push4 kommen einmal je Takt vor und unterscheiden 1 von 3.
-  //   bpm: Tempo-Bereich je Groove in dieser Stufe (sonst der des Grooves);
-  //   only: Muster nur über diesen Grooves (Backbeat über Halftime ist eine
-  //   echte Aufgabe, über Pop/Rock nur Mitklatschen mit der Snare).
+  // Stufen: alle aus dem Song-Katalog (songs: true); Label, Muster, Bass und
+  // Einstieg wie SONG_LEVELS (selfCheck vergleicht). rotateMeters: die
+  // Taktart wechselt reihum (Stufe 3: 3/4 und 6/8). „Offbeat“ prüft die Eins
+  // nicht (sieht verschoben gleich aus) und fehlt deshalb.
   const DOWNBEAT_LEVELS = [
-    // songs: Stufe zieht aus DB_SONGS (Song-Katalog, Etappe 1); Muster/Bass/Einstieg wie SONG_LEVELS.
     { n: 1, label: 'Klare Eins: klatsch auf die 1', songs: true, patterns: ['one4', 'one3', 'one68'], bass: true, starts: 'beats' },
     { n: 2, label: 'Backbeat und Muster', songs: true, patterns: ['one4', 'backbeat', 'oneFour'], bass: true, starts: 'beats' },
-    { n: 3, label: 'Auch im 3/4 und 6/8', grooves: ['pop', 'waltz', 'six8'], patterns: ['one4', 'oneFour', 'one3', 'waltzPa', 'one68', 'six8Back'], bass: true, starts: 'beats',
-      bpm: { pop: [84, 96], waltz: [100, 120], six8: [50, 60] }, rotateMeters: true },
+    { n: 3, label: 'Dreier: Walzer und 6/8', songs: true, patterns: ['one3', 'waltzPa', 'one68', 'six8Back'], bass: true, starts: 'beats', rotateMeters: true },
     { n: 4, label: 'Ohne Bass: Akkorde und Melodie', songs: true, patterns: ['one4', 'backbeat', 'oneFour', 'one3', 'waltzPa'], bass: false, starts: 'beats' },
-    { n: 5, label: 'Synkopen klatschen', grooves: ['rock', 'halftime', 'push', 'shuffle'], patterns: ['charleston', 'oneFour', 'push4', 'backbeat'], bass: false, starts: 'beats',
-      only: { backbeat: ['halftime'] } },
-    { n: 6, label: 'Synkopen, Start auch auf „und“', grooves: ['push', 'rock', 'shuffle', 'six8'], patterns: ['charleston', 'tresillo', 'push4', 'six8Back'], bass: false, starts: 'eighths',
-      bpmUp: 1.08 },
+    { n: 5, label: 'Falsche Fährten', songs: true, patterns: ['one4', 'oneFour', 'push4', 'backbeat'], bass: true, starts: 'eighths' },
+    { n: 6, label: 'Halftime, Shuffle, 12/8', songs: true, patterns: ['one4', 'backbeat', 'charleston', 'oneFour', 'push4', 'one128', 'back128'], bass: true, starts: 'eighths' },
   ];
-  /** Tempo-Bereich eines Grooves in einer Stufe (Stufe 6: bis 8 % schneller). */
-  const dbLevelBpm = (level, groove) => {
-    const r = level.bpm?.[groove] || DB_GROOVES[groove].bpm;
-    return level.bpmUp ? [r[0], Math.round(r[1] * level.bpmUp)] : r;
-  };
-  /** Alle Paare aus Groove und Muster einer Stufe (Taktart passt, only beachtet). */
-  function dbCombos(level) {
-    if (level.songs) return songCombos(level);
-    const out = [];
-    for (const groove of level.grooves) {
-      for (const pattern of level.patterns) {
-        if (DB_PATTERNS[pattern].meter !== DB_GROOVES[groove].meter) continue;
-        if (level.only?.[pattern] && !level.only[pattern].includes(groove)) continue;
-        out.push({ groove, pattern });
-      }
-    }
-    return out;
-  }
   const DB_MEMORY = 8; // so viele letzte Aufgaben merkt sich die Abwechslung (ear.dbLog)
   const DB_LISTEN_BARS = 2;   // ganze Takte vor dem Klatschen (nach dem angeschnittenen)
   const DB_CLAP_BARS = 4;     // Takte zum Klatschen (gewertet)
@@ -5324,7 +5279,6 @@
                               // zwei bis drei Minuten. Klänge entstehen erst kurz vorher (scheduleSoon).
   const DB_FADE_BARS = 2;     // Einblenden ab dem ersten Schlag
   const DB_FADE_FROM = .04;
-  const DB_BASS_STEPS = [0, 7, 9, 5]; // I – V – vi – IV, ein Ton je Takt
   /** Shuffle: das „und“ (Tick 6 im Viertel) rückt auf das dritte Triolen-Achtel. */
   const dbSwing = (g, t) => (g.swing && mod(t, 12) === 6 ? t + 2 : t);
   /** Tempo der Aufgabe: Grundtempo des Grooves mal der eigenen Verschiebung in
@@ -5338,7 +5292,7 @@
    *  mittlere Tempo des ersten Grooves der Stufe (plus Verschiebung). */
   const dbBaseBpm = () => {
     const l = DOWNBEAT_LEVELS[ear.levels.downbeat - 1];
-    const r = l.songs ? DB_SONGS[songPool(l.n)[0]].bpm : dbLevelBpm(l, l.grooves[0]);
+    const r = DB_SONGS[songPool(l.n)[0]].bpm;
     return Math.round((r[0] + r[1]) / 2);
   };
   /** Angezeigtes Tempo: bei schnellen Songs (task.half) in Halben. */
@@ -5373,97 +5327,17 @@
     if (task) task.bpm = dbTempo(base, ear.dbPct).bpm;
     persist();
   }
-  /** Aufgabe: Groove, Muster, Tempo, Einstiegsstelle (nie die Eins).
-   *  Abwechslung über log (die letzten Aufgaben, neueste zuletzt): nie zweimal
-   *  dasselbe Paar, das Muster möglichst anders als zuletzt, ein Groove höchstens
-   *  zweimal in Folge, Einstieg nicht an derselben Stelle; Stufe 3 wechselt die
-   *  Taktart reihum. pct: eigene Tempo-Verschiebung in Prozent (BPM-Knopf). */
+  /** Aufgabe: Song, Muster, Tempo, Einstiegsstelle (nie die Eins), siehe
+   *  makeSongTask. pct: eigene Tempo-Verschiebung in Prozent (BPM-Knopf). */
   function makeDownbeatTask(n, rnd = Math.random, pct = 0, log = [], only = null) {
-    const level = DOWNBEAT_LEVELS[n - 1];
-    if (level.songs) return makeSongTask(n, rnd, pct, log, only);
-    const pickR = (list) => list[Math.floor(rnd() * list.length)];
-    const recent = log.filter((x) => x && x.level === n);
-    const last = recent[recent.length - 1] || null;
-    let combos = dbCombos(level);
-    if (level.rotateMeters && last) {
-      const order = [...new Set(level.grooves.map((gid) => DB_GROOVES[gid].meter))];
-      const want = order[(order.indexOf(DB_GROOVES[last.groove].meter) + 1) % order.length];
-      combos = combos.filter((c) => DB_GROOVES[c.groove].meter === want);
-    }
-    // Regeln nacheinander anwenden, solange noch etwas übrig bleibt.
-    const narrow = (list, keep) => { const k = list.filter(keep); return k.length ? k : list; };
-    if (last) {
-      combos = narrow(combos, (c) => c.groove !== last.groove || c.pattern !== last.pattern);
-      combos = narrow(combos, (c) => c.pattern !== last.pattern);
-      const prev = recent[recent.length - 2];
-      if (prev && prev.groove === last.groove) combos = narrow(combos, (c) => c.groove !== last.groove);
-      const seen = new Set(recent.map((x) => `${x.groove}/${x.pattern}`));
-      combos = narrow(combos, (c) => !seen.has(`${c.groove}/${c.pattern}`));
-    }
-    // Erst der Groove (gleich verteilt — sonst kämen Walzer und 6/8 mit nur einem
-    // passenden Muster kaum dran), dann das Muster.
-    const groove = pickR([...new Set(combos.map((c) => c.groove))]);
-    const { pattern } = pickR(combos.filter((c) => c.groove === groove));
-    const g = DB_GROOVES[groove];
-    const m = METERS[g.meter];
-    const step = level.starts === 'eighths' && !g.swing ? 6 : m.beat;
-    let starts = [];
-    for (let t = step; t < m.ticks; t += step) starts.push(t);
-    if (last && last.meter === g.meter) starts = narrow(starts, (t) => t !== last.startTick);
-    const range = dbLevelBpm(level, groove);
-    return {
-      kind: 'downbeat', level: n, groove, meter: g.meter, pattern,
-      ...dbTempo(rndInt(range[0], range[1], rnd), pct), startTick: pickR(starts),
-      bass: !!(g.forceBass || (level.bass && g.bass)), root: rndInt(40, 45, rnd), aids: { accent: false, demo: false, bass: false }, answer: null,
-    };
+    return makeSongTask(n, rnd, pct, log, only);
   }
-  /** Zeitplan eines Laufs (reine Funktion). Zeiten in s ab dem ersten Schlag
-   *  (Tick `startTick` des angeschnittenen ersten Takts). accent: Klick auf
-   *  jeder Eins; demo: die App klatscht im ersten Klatsch-Takt mit; solution:
-   *  von der Eins an, ohne Einblenden, Muster durchgehend vorgeklatscht. */
+  /** Zeitplan eines Laufs (reine Funktion), siehe songPlan. Zeiten in s ab dem
+   *  ersten Schlag (Tick `startTick` des angeschnittenen ersten Takts). accent:
+   *  Klick auf jeder Eins; demo: die App klatscht im ersten Klatsch-Takt mit;
+   *  solution: von der Eins an, ohne Einblenden, Muster durchgehend vorgeklatscht. */
   function downbeatPlan(task, { accent = false, demo = false, solution = false, bass: bassAid = false } = {}) {
-    if (task.song) return songPlan(task, { accent, demo, solution, bass: bassAid });
-    const m = METERS[task.meter], g = DB_GROOVES[task.groove];
-    // Hilfe „Bass dazu“ (Stufen ohne Bass): der Bass spielt mit wie in Stufe 1–3.
-    const withBass = task.bass || (bassAid && !!g.bass);
-    // Ohne Bass: offene Hi-Hat auf „4 und“ jedes zweiten Takts (mark).
-    const markTick = g.mark && !withBass ? dbSwing(g, m.ticks - 6) : null;
-    const bar = m.ticks, tickSec = 60 / task.bpm / m.ref;
-    const first = solution ? 0 : task.startTick;
-    const youTick = bar * (solution ? 1 : 1 + DB_LISTEN_BARS);
-    const endTick = youTick + bar * (solution ? 2 : DB_CLAP_BARS);
-    // Im Lauf spielt der Groove weiter, bis du einsteigst; den Schlusspunkt setzt
-    // erst dein erster Klatscher (downbeatTap → vier Takte ab diesem Takt).
-    const grooveEnd = solution ? endTick : endTick + bar * DB_WAIT_BARS;
-    const targets = DB_PATTERNS[task.pattern].at.map((x) => dbSwing(g, x));
-    const hat = g.hat === 'shuffle' ? { period: 12, at: [0, 8] } : { period: g.hat, at: [0] };
-    const events = [];
-    const add = (tick, kind, vel = 1, extra = {}) => events.push({ tick, t: (tick - first) * tickSec, kind, vel, ...extra });
-    const bassAt = (b) => task.root + DB_BASS_STEPS[mod(b, 4)];
-    for (let tick = first; tick < grooveEnd; tick++) {
-      const p = tick % bar, b = Math.floor(tick / bar);
-      if (g.kick.includes(p)) add(tick, 'kick', p === 0 ? 1 : .8);
-      if (g.snare?.includes(p)) add(tick, 'snare');
-      if (g.rim?.includes(p)) add(tick, 'rim');
-      if (markTick !== null && p === markTick && mod(b, 2) === 1) add(tick, 'open', .8);
-      else if (hat.at.includes(p % hat.period)) add(tick, 'hat', p % 12 === 0 ? 1 : .75);
-      if (withBass) for (const bt of g.bass || []) if (mod(bt, bar) === p) add(tick, 'bass', 1, { midi: bassAt(bt < 0 ? b + 1 : b) });
-      if ((accent || solution) && p === 0) add(tick, 'click');
-      if (tick >= youTick && (solution || (demo && tick < youTick + bar)) && targets.includes(p)) add(tick, 'clap');
-    }
-    // Schlusspunkt auf der Eins nach dem letzten Takt (Lösung; im Lauf: dbFinale).
-    if (solution) {
-      add(endTick, 'kick'); add(endTick, 'open');
-      if (withBass && !(g.bass || []).some((bt) => bt < 0)) add(endTick, 'bass', 1, { midi: bassAt(endTick / bar), long: true });
-    }
-    const fadeEnd = solution ? 0 : DB_FADE_BARS * bar * tickSec;
-    return {
-      tickSec, bar, first, events, targets, fadeFrom: solution ? 1 : DB_FADE_FROM, fadeEnd, youVisual: fadeEnd,
-      // youStart: frühester Beginn der gewerteten Takte (erste volle Eins nach dem Einblenden);
-      // firstBar: erste volle Eins überhaupt; end: Groove-Ende ohne Klatscher.
-      firstBar: (bar - first) * tickSec, youStart: (youTick - first) * tickSec, youEnd: (endTick - first) * tickSec,
-      end: (grooveEnd - first) * tickSec + (solution ? .9 : .3),
-    };
+    return songPlan(task, { accent, demo, solution, bass: bassAid });
   }
   /** Klatscher werten — mit judgeHold wie „Durchhalten“ und „Körper“ (unverändert,
    *  wortgleich mit licks.html): Trefferfenster höchstens 100 ms (groovesTol),
@@ -5500,12 +5374,13 @@
     const hits = r.hits.length;
     // Bestanden: genug getroffen (Fehlerbudget, kein Abreißen); Gleichmäßigkeit nur als Zusatz.
     const ok = hits > 0 && r.reason !== 'bars';
-    // Verschiebung: um ganze Schläge, in Stufe 6 bei geraden Grooves auch um eine Achtel.
+    // Verschiebung: um ganze Schläge (6/8, 12/8: Achtel); in Stufen mit Einstieg
+    // auf „und“ (starts: 'eighths') bei geraden 4/4-Songs auch um eine Achtel.
     let shift = 0, unit = 'beat', bestHits = hits;
     if (!ok) {
       const tries = [];
       for (let k = 1; k * m.beat < bar; k++) tries.push([k, 'beat', k * m.beat]);
-      if (task.level === 6 && !g.swing && m.beat === 12) tries.push([1, 'eighth', 6], [-1, 'eighth', -6]);
+      if (DOWNBEAT_LEVELS[task.level - 1]?.starts === 'eighths' && !g.swing && task.meter === '4/4') tries.push([1, 'eighth', 6], [-1, 'eighth', -6]);
       for (const [k, u, d] of tries) {
         const h = run(raw.map((x) => mod(x + d, bar))).res.hits.length;
         if (h > bestHits && h >= total / 2) { bestHits = h; shift = k; unit = u; }
@@ -5532,6 +5407,12 @@
       return `${one ? 'Die Eins sitzt' : 'Das Muster sitzt'}${clean}! ${res.hits} von ${res.total} im Takt${task.help ? ' (mit Hilfe)' : ''}.${timing}${note ? ` ${note}` : ''}`;
     }
     if (res.shift && res.unit === 'eighth') return 'Um eine Achtel verschoben – du klatschst auf den Schlag statt dazwischen (oder umgekehrt). Zähl „1 und 2 und“ mit.';
+    if (res.shift && task.meter === '12/8') {
+      // 12/8: in großen Schlägen (je drei Achtel) zählen.
+      if (res.shift % 3) return `Um ${res.shift === 1 ? 'eine Achtel' : `${res.shift} Achtel`} verschoben – zähl in vier großen Schlägen: 1 – 2 – 3 – 4, jeder mit drei Achteln.`;
+      const k = res.shift / 3;
+      return `Um ${k === 1 ? 'einen großen Schlag' : `${k} große Schläge`} verschoben – du hast die ${k + 1} für die Eins gehalten.`;
+    }
     if (res.shift) {
       const sixEight = task.meter === '6/8';
       if (!sixEight && task.meter === '4/4' && res.shift === 2) return `Um zwei Schläge verschoben – du hast die 3 für die Eins gehalten. Hör auf den Taktanfang${task.bass ? ': Der Basston wechselt nur auf der 1' : ''}.`;
@@ -5546,7 +5427,10 @@
   function downbeatCells(task) {
     const m = METERS[task.meter];
     const at = DB_PATTERNS[task.pattern].at;
-    const labels = task.meter === '6/8' ? ['1', '2', '3', '4', '5', '6'] : Array.from({ length: m.ticks / 6 }, (_, i) => (i % 2 ? '+' : String(i / 2 + 1)));
+    // 6/8: 1–6; 12/8: vier große Schläge (1 · · 2 · · …); sonst 1 + 2 + …
+    const labels = task.meter === '6/8' ? ['1', '2', '3', '4', '5', '6']
+      : task.meter === '12/8' ? Array.from({ length: 12 }, (_, i) => (i % 3 ? '·' : String(i / 3 + 1)))
+        : Array.from({ length: m.ticks / 6 }, (_, i) => (i % 2 ? '+' : String(i / 2 + 1)));
     return labels.map((label, i) => ({ label, tick: i * 6, clap: at.includes(i * 6) }));
   }
 
@@ -5893,11 +5777,10 @@
   }
 
   /* ---- Einsatz finden mit Songs (Etappe 1): Aufgabe aus Song + Muster,
-     Abwechslung, Zeitplan und Klänge. Stufen mit `songs: true` in
-     DOWNBEAT_LEVELS ziehen aus DB_SONGS (Song kennt seine Stufen); die
-     übrigen laufen vorerst mit den alten Grooves (DB_GROOVES). ---- */
+     Abwechslung, Zeitplan und Klänge. Alle Stufen in DOWNBEAT_LEVELS
+     ziehen aus DB_SONGS (Song kennt seine Stufen). ---- */
   const DB_SONG_RECENT = 3;   // kein Song zweimal innerhalb der letzten 3 Aufgaben
-  const DB_HALF_FROM = 140;   // ab diesem Grundtempo zeigt der Knopf Halbe (Punk-Pop ♩ 150 → 𝅗𝅥 75)
+  const DB_HALF_FROM = 140;   // ab diesem Grundtempo zeigt der Knopf Halbe (Punk-Pop ♩ 150 → 𝅗𝅥 75) – nur im 4/4
   /** Songs einer Stufe (Reihenfolge wie im Katalog). */
   const songPool = (n) => Object.keys(DB_SONGS).filter((id) => DB_SONGS[id].levels.includes(n));
   /** Klatschmuster eines Songs in einer Stufe (Schnittmenge, Taktart passt). */
@@ -5905,11 +5788,9 @@
   /** Spielt der Bass in dieser Stufe mit? (Stufe 4 und noBassLevels: nein – „Bass dazu“ ist die Hilfe.) */
   const songBass = (level, id) => !!(level.bass && DB_SONGS[id].bass && !(DB_SONGS[id].noBassLevels || []).includes(level.n));
   /** Shuffle-Info einer Aufgabe für dbSwing (Song: Achtel stehen schon geswingt in den Daten). */
-  const dbFeel = (task) => (task.song ? { swing: !!DB_SONGS[task.song].drums.swing } : DB_GROOVES[task.groove]);
-  /** Eintrag im Abwechslungs-Gedächtnis (ear.dbLog): Groove oder Song (+ Stil-Familie). */
-  const dbLogEntry = (t) => (t.song
-    ? { level: t.level, song: t.song, family: DB_SONGS[t.song].family, pattern: t.pattern, meter: t.meter, startTick: t.startTick }
-    : { level: t.level, groove: t.groove, pattern: t.pattern, meter: t.meter, startTick: t.startTick });
+  const dbFeel = (task) => ({ swing: !!DB_SONGS[task.song]?.drums.swing });
+  /** Eintrag im Abwechslungs-Gedächtnis (ear.dbLog): Song (+ Stil-Familie). */
+  const dbLogEntry = (t) => ({ level: t.level, song: t.song, family: DB_SONGS[t.song].family, pattern: t.pattern, meter: t.meter, startTick: t.startTick });
   /** Alle Paare aus Song und Muster einer Stufe. */
   function songCombos(level) {
     return songPool(level.n).flatMap((song) => songPatterns(level, song).map((pattern) => ({ song, pattern })));
@@ -5929,6 +5810,8 @@
     let combos = songCombos(level);
     // Klang-Versuch: nur die Probesongs, soweit die Stufe welche hat.
     if (only) combos = narrow(combos, (c) => only.includes(c.song));
+    // Stufe 3: Taktart reihum (nach einem 3/4-Song lieber ein 6/8-Song und umgekehrt).
+    if (level.rotateMeters && last) combos = narrow(combos, (c) => DB_SONGS[c.song].meter !== last.meter);
     if (last) {
       const fam = (x) => x.family ?? DB_SONGS[x.song]?.family;
       const near = new Set(recent.slice(-DB_SONG_RECENT).map((x) => x.song));
@@ -5955,7 +5838,7 @@
     if (last && last.meter === s.meter) starts = narrow(starts, (t) => t !== last.startTick);
     return {
       kind: 'downbeat', level: n, song, groove: null, family: s.family, meter: s.meter, pattern,
-      ...dbTempo(rndInt(s.bpm[0], s.bpm[1], rnd), pct), half: s.bpm[0] >= DB_HALF_FROM, startTick: pickR(starts),
+      ...dbTempo(rndInt(s.bpm[0], s.bpm[1], rnd), pct), half: s.meter === '4/4' && s.bpm[0] >= DB_HALF_FROM, startTick: pickR(starts),
       bass: songBass(level, song), mode: s.mode, tonic: s.mode === 'minor' ? rndInt(62, 66, rnd) : rndInt(65, 69, rnd),
       aids: { accent: false, demo: false, bass: false }, answer: null,
     };
@@ -7523,7 +7406,7 @@
     const W = 320, X0 = 30, X1 = W - 8, RH = 30, TOP = 14;
     const X = (t) => X0 + clamp(t / barSec, -.04, 1.04) * (X1 - X0);
     const out = [];
-    const beats = task.meter === '6/8' ? 6 : bar / m.beat;
+    const beats = task.meter === '6/8' ? 6 : task.meter === '12/8' ? 4 : bar / m.beat;
     for (let k = 0; k < beats; k++) {
       const x = X0 + k / beats * (X1 - X0);
       out.push(`<text class="dbb-lab" x="${f1(x)}" y="10" text-anchor="middle">${k + 1}</text>`);
@@ -7947,7 +7830,7 @@
       // Hilfen starten den Groove neu und zählen „mit Hilfe“; die Lösung erst nach dem Lauf.
       list.push(['db-accent', 'Eins betonen', 'ein Klick auf jeder Eins · zählt „mit Hilfe“', !!task && !rev],
         ['db-demo', 'Vormachen', 'die App klatscht im ersten Takt mit · zählt „mit Hilfe“', !!task && !rev],
-        ...(!task || (!task.bass && (task.song ? DB_SONGS[task.song].bass : DB_GROOVES[task.groove].bass)) ? [['db-bass', 'Bass dazu', 'der Bass wechselt auf jeder Eins den Ton · zählt „mit Hilfe“', !!task && !rev && !task.bass]] : []),
+        ...(!task || (!task.bass && DB_SONGS[task.song].bass) ? [['db-bass', 'Bass dazu', 'der Bass wechselt auf jeder Eins den Ton · zählt „mit Hilfe“', !!task && !rev && !task.bass]] : []),
         ['db-solution', 'Lösung hören', 'von der Eins an, Eins betont, Muster vorgeklatscht', rev]);
     }
     if (ear.mode === 'entries') list.push(['entries-demo', 'Vorbild hören', 'die App macht einen Einsatz vor, mit hörbarem Atem · ohne Wertung', !!task && !dbRun]);
@@ -7960,7 +7843,7 @@
     if (fb) info.push(['Erklärung', fb]);
     if (ear.mode === 'downbeat') {
       info.push(['So findest du die Eins', 'Erst nur zuhören, bis der Groove ganz da ist. Zähl leise mit („1 2 3 4“) und probier, wo die Eins sitzt: Dort passiert meist am meisten – tiefer Schlag, neuer Basston. Erst dann das Muster klatschen.']);
-      if (ear.task && ear.revealed) info.push(ear.task.song ? ['Dieser Song', DB_SONGS[ear.task.song].cue] : ['Dieser Groove', DB_GROOVES[ear.task.groove].cue]);
+      if (ear.task && ear.revealed) info.push(['Dieser Song', DB_SONGS[ear.task.song].cue]);
     }
     if (ear.mode === 'entries') {
       info.push(['So geht’s', 'Die Band spielt durch, dazwischen kommt immer wieder dieselbe kurze Phrase. Du weißt, wo die Eins ist – zähl in der Pause innerlich weiter und setz pünktlich wieder ein. Gewertet wird vor allem der erste Ton nach der Pause.']);
@@ -8322,7 +8205,7 @@
       const onlyOne = pat ? pat.at.every((x) => x === 0) : level.patterns.every((id) => DB_PATTERNS[id].at.every((x) => x === 0));
       prompt.textContent = phase === 'you' ? 'Jetzt du!' : phase === 'done' ? (task.answer?.ok ? 'Geschafft!' : 'Noch nicht') : 'Hör zu …';
       sub.textContent = !task ? `Stufe ${level.n}: ${level.label}`
-        : phase === 'done' ? `${task.song ? `${DB_SONGS[task.song].name} · ${DB_SONGS[task.song].style}` : DB_GROOVES[task.groove].name} · ${task.meter}` : '';
+        : phase === 'done' ? `${DB_SONGS[task.song].name} · ${DB_SONGS[task.song].style} · ${task.meter}` : '';
       const res = ear.revealed ? task?.answer : null;
       // Im Rhythmus-Bereich sitzt die Fläche in der Fußleiste (renderDownbeatDock):
       // nach dem Lauf startet sie den nächsten Groove, „Nochmal“ ist der runde Knopf.
@@ -12648,8 +12531,9 @@
     // Früher dbShift in BPM (konnte Pop auf 150 treiben) — bewusst nicht übernommen.
     ear.dbPct = Number.isFinite(e.dbPct) ? clamp(Math.round(e.dbPct), -DB_PCT_MAX, DB_PCT_MAX) : 0;
     ear.dbSound = e.dbSound === 'samples' ? 'samples' : 'synth';
-    ear.dbLog = Array.isArray(e.dbLog) ? e.dbLog.filter((x) => x && (DB_GROOVES[x.groove] || DB_SONGS[x.song]) && DB_PATTERNS[x.pattern] && Number.isInteger(x.level)).slice(-DB_MEMORY)
-      .map((x) => dbLogEntry({ ...x, meter: x.song ? DB_SONGS[x.song].meter : DB_GROOVES[x.groove].meter, startTick: Number(x.startTick) || 0 })) : [];
+    // Alte Einträge mit `groove` (vor Etappe 3) werden verworfen.
+    ear.dbLog = Array.isArray(e.dbLog) ? e.dbLog.filter((x) => x && DB_SONGS[x.song] && DB_PATTERNS[x.pattern] && Number.isInteger(x.level)).slice(-DB_MEMORY)
+      .map((x) => dbLogEntry({ ...x, meter: DB_SONGS[x.song].meter, startTick: Number(x.startTick) || 0 })) : [];
     ear.bodyShift = Number.isFinite(e.bodyShift) ? clamp(Math.round(e.bodyShift), -60, 60) : 0;
     { // Körper: Probenmodus; nur gültige Schichten je Stimme übernehmen.
       const br = e.bodyRehearsal && typeof e.bodyRehearsal === 'object' ? e.bodyRehearsal : {};
@@ -16261,12 +16145,12 @@
         const recent = log.slice(-DB_SONG_RECENT).map((x) => x.song);
         const last = log[log.length - 1], prev = log[log.length - 2];
         if (!song || !song.levels.includes(l.n) || !songPatterns(l, t.song).includes(t.pattern) || t.meter !== song.meter || t.bass !== songBass(l, t.song)) { errors.push(`Einsatz Stufe ${l.n}: Song-Aufgabe ${JSON.stringify(t)}`); break; }
-        if (t.startTick <= 0 || t.startTick >= m.ticks || t.startTick % m.beat || t.bpm < song.bpm[0] || t.bpm > song.bpm[1] || !(t.tonic >= (t.mode === 'minor' ? 62 : 65) && t.tonic <= (t.mode === 'minor' ? 66 : 69))) { errors.push(`Einsatz Stufe ${l.n}: Einstieg/Tempo/Tonart ${JSON.stringify(t)}`); break; }
+        if (t.startTick <= 0 || t.startTick >= m.ticks || t.startTick % (l.starts === 'eighths' && !song.drums.swing ? 6 : m.beat) || t.bpm < song.bpm[0] || t.bpm > song.bpm[1] || !(t.tonic >= (t.mode === 'minor' ? 62 : 65) && t.tonic <= (t.mode === 'minor' ? 66 : 69))) { errors.push(`Einsatz Stufe ${l.n}: Einstieg/Tempo/Tonart ${JSON.stringify(t)}`); break; }
         if (recent.includes(t.song)) { errors.push(`Einsatz Stufe ${l.n}: ${t.song} innerhalb von ${DB_SONG_RECENT} Aufgaben wiederholt`); break; }
         if (last && prev && last.family === prev.family && t.family === last.family) { errors.push(`Einsatz Stufe ${l.n}: Stil ${t.family} dreimal in Folge`); break; }
         if (last && t.pattern === last.pattern && songPatterns(l, t.song).length > 1) { errors.push(`Einsatz Stufe ${l.n}: Muster wiederholt (${t.pattern})`); break; }
         if (last && last.meter === t.meter && t.startTick === last.startTick) { errors.push(`Einsatz Stufe ${l.n}: Einstieg an derselben Stelle`); break; }
-        if (t.half !== song.bpm[0] >= DB_HALF_FROM) errors.push(`Einsatz: Halbe-Anzeige bei ${t.song}`);
+        if (t.half !== (song.meter === '4/4' && song.bpm[0] >= DB_HALF_FROM)) errors.push(`Einsatz: Halbe-Anzeige bei ${t.song}`);
         starts.add(t.startTick);
         log = [...log, dbLogEntry(t)].slice(-DB_MEMORY);
       }
@@ -16804,67 +16688,44 @@
     if (!ear.stats.downbeat || !('downbeat' in ear.levels)) errors.push('Einsatz: Zähler/Stufe fehlen');
     const l1 = DOWNBEAT_LEVELS[0];
     if (!l1.songs || !l1.bass || songCombos(l1).some((c) => !DB_PATTERNS[c.pattern].at.every((x) => x === 0)) || songPool(1).length < 6 || songPool(1).some((id) => !songBass(l1, id))) errors.push('Einsatz Stufe 1: nicht eindeutig (nur auf die 1, mit Bass, mehrere Songs)');
-    // Groove-Stufen (noch ohne Songs, Rückfall) prüfen wie bisher.
-    const grooveLevels = DOWNBEAT_LEVELS.filter((x) => !x.songs);
-    if (DOWNBEAT_LEVELS.filter((x) => x.songs).map((x) => x.n).join() !== '1,2,4') errors.push('Einsatz: Song-Stufen sind nicht 1, 2, 4');
-    // Nie Raten: ohne Bass braucht jedes Groove ein eigenes Zeichen für den Taktanfang.
-    const ownSign = (id) => { const g = DB_GROOVES[id]; return g.mark || g.forceBass || g.kick.join() !== '0,24' || (g.snare || []).join() !== '12,36'; };
-    for (const l of grooveLevels.filter((x) => !x.bass)) for (const id of l.grooves) if (!ownSign(id)) errors.push(`Einsatz Stufe ${l.n}: ${id} ohne Bass klingt auf 1 und 3 gleich`);
-    // „Offbeat“ prüft die Eins nicht – nicht mehr in den Stufen; Backbeat ohne Bass nur über Halftime.
+    // Alle Stufen ziehen aus dem Song-Katalog, Muster/Bass/Einstieg wie SONG_LEVELS.
+    for (const l of DOWNBEAT_LEVELS) {
+      const sl = SONG_LEVELS[l.n - 1];
+      if (!l.songs || l.label !== sl.label || l.patterns.join() !== sl.patterns.join() || l.bass !== sl.bass || l.starts !== sl.starts) errors.push(`Einsatz Stufe ${l.n}: nicht wie SONG_LEVELS`);
+      if (l.grooves || l.patterns.some((p) => !DB_PATTERNS[p])) errors.push(`Einsatz Stufe ${l.n}: alte Grooves/unbekanntes Muster`);
+      if (songPool(l.n).length < 6) errors.push(`Einsatz Stufe ${l.n}: nur ${songPool(l.n).length} Songs`);
+    }
+    // „Offbeat“ prüft die Eins nicht – nicht in den Stufen.
     if (DOWNBEAT_LEVELS.some((l) => l.patterns.includes('offbeat'))) errors.push('Einsatz: Offbeat-Muster in einer Stufe');
-    for (const l of grooveLevels.filter((x) => !x.bass && x.patterns.includes('backbeat'))) {
-      if (dbCombos(l).some((c) => c.pattern === 'backbeat' && !['halftime', 'rock', 'shuffle'].includes(c.groove))) errors.push(`Einsatz Stufe ${l.n}: Backbeat über ${l.grooves}`);
-    }
-    if (dbCombos(DOWNBEAT_LEVELS[4]).some((c) => c.pattern === 'backbeat' && c.groove !== 'halftime')) errors.push('Einsatz Stufe 5: Backbeat nur über Halftime');
-    // Offene Hi-Hat als Zeichen (Pop/Shuffle ohne Bass): auf „4 und“ jedes zweiten Takts.
-    for (const id of ['pop', 'shuffle']) {
-      const pl = downbeatPlan({ kind: 'downbeat', level: 4, groove: id, meter: '4/4', pattern: 'one4', bpm: 90, startTick: 12, bass: false, root: 40, aids: {}, answer: null });
-      const op = pl.events.filter((e) => e.kind === 'open');
-      if (!op.length || op.some((e) => e.tick % 48 !== dbSwing(DB_GROOVES[id], 42) || Math.floor(e.tick / 48) % 2 !== 1)) errors.push(`Einsatz: ${id} ohne Bass ohne Zeichen vor der Eins`);
-      if (downbeatPlan({ kind: 'downbeat', level: 1, groove: id, meter: '4/4', pattern: 'one4', bpm: 90, startTick: 12, bass: true, root: 40, aids: {}, answer: null }).events.some((e) => e.kind === 'open')) errors.push(`Einsatz: ${id} mit Bass trotzdem offene Hi-Hat`);
-      const withAid = downbeatPlan({ kind: 'downbeat', level: 4, groove: id, meter: '4/4', pattern: 'one4', bpm: 90, startTick: 12, bass: false, root: 40, aids: {}, answer: null }, { bass: true });
-      if (!withAid.events.some((e) => e.kind === 'bass') || withAid.events.some((e) => e.kind === 'open')) errors.push(`Einsatz: Hilfe „Bass dazu“ bei ${id}`);
-    }
-    // Abwechslung: nie zweimal dasselbe Paar, Muster wechselt (wo möglich), Groove höchstens zweimal, Einstieg wechselt.
-    for (const l of grooveLevels) {
+    // Stufe 3: Taktart reihum; Stufen 5/6: Einstieg auch auf „und“ (gerade Songs), im Shuffle auf Schlägen.
+    for (const n of [3, 5, 6]) {
+      const l = DOWNBEAT_LEVELS[n - 1];
       let log = [];
-      const multiPat = new Set(dbCombos(l).map((c) => c.pattern)).size > 1;
-      for (let i = 0; i < 60; i++) {
-        const t = makeDownbeatTask(l.n, rnd, 0, log);
-        const last = log[log.length - 1], prev = log[log.length - 2];
-        if (last && t.groove === last.groove && t.pattern === last.pattern) { errors.push(`Einsatz Stufe ${l.n}: dasselbe Paar zweimal`); break; }
-        if (last && multiPat && !l.rotateMeters && t.pattern === last.pattern) { errors.push(`Einsatz Stufe ${l.n}: Muster wiederholt (${t.pattern})`); break; }
-        if (last && prev && l.grooves.length > 1 && t.groove === last.groove && last.groove === prev.groove) { errors.push(`Einsatz Stufe ${l.n}: Groove dreimal in Folge`); break; }
-        if (last && last.meter === t.meter && t.startTick === last.startTick) { errors.push(`Einsatz Stufe ${l.n}: Einstieg an derselben Stelle`); break; }
-        if (l.rotateMeters && last && t.meter === last.meter) { errors.push(`Einsatz Stufe ${l.n}: Taktart nicht reihum`); break; }
-        log = [...log, { level: l.n, groove: t.groove, pattern: t.pattern, meter: t.meter, startTick: t.startTick }].slice(-DB_MEMORY);
-      }
-    }
-    // Tempo: Verschiebung in Prozent, gedeckelt; kein Pop mit 150 mehr.
-    if (dbTempo(90, 60).bpm !== Math.round(90 * 1.25) || dbTempo(57, -40).bpm !== Math.round(57 * .75) || dbTempo(90, 0).bpm !== 90) errors.push('Einsatz: Tempo-Verschiebung nicht ±25 %');
-    for (const l of grooveLevels) for (const id of l.grooves) { const r = dbLevelBpm(l, id); if (DB_GROOVES[id].meter === '4/4' && id !== 'halftime' && r[1] * 1.25 > 145) errors.push(`Einsatz Stufe ${l.n}: ${id} bis ${r[1]} (mit Verschiebung zu schnell)`); }
-    for (const l of grooveLevels) {
-      if (l.patterns.some((p) => !DB_PATTERNS[p])) errors.push(`Einsatz Stufe ${l.n}: unbekanntes Muster`);
-      for (const id of l.grooves) {
-        const g = DB_GROOVES[id];
-        if (!g || !METERS[g.meter] || !g.cue || !g.bpm) { errors.push(`Einsatz Stufe ${l.n}: Groove ${id}`); continue; }
-        if (!l.patterns.some((p) => DB_PATTERNS[p]?.meter === g.meter)) errors.push(`Einsatz Stufe ${l.n}: kein Muster für ${id}`);
-      }
-      // Aufgaben: Einstieg nie auf der Eins, im Raster, zufällig verteilt.
       const starts = new Set();
-      for (let i = 0; i < 200; i++) {
-        const t = makeEarTask('downbeat', l.n, rnd);
-        const m = METERS[t.meter], g = DB_GROOVES[t.groove];
-        const step = l.starts === 'eighths' && !g.swing ? 6 : m.beat;
-        if (t.kind !== 'downbeat' || t.startTick <= 0 || t.startTick >= m.ticks || t.startTick % step || !l.grooves.includes(t.groove) || !l.patterns.includes(t.pattern)
-          || DB_PATTERNS[t.pattern].meter !== t.meter || t.bpm < dbLevelBpm(l, t.groove)[0] || t.bpm > dbLevelBpm(l, t.groove)[1] || t.bass !== !!(g.forceBass || (l.bass && g.bass))) { errors.push(`Einsatz Stufe ${l.n}: Aufgabe ${JSON.stringify(t)}`); break; }
-        starts.add(`${t.meter}:${t.startTick}`);
+      for (let i = 0; i < 120; i++) {
+        const t = makeDownbeatTask(n, rnd, 0, log);
+        const m = METERS[t.meter], swing = dbFeel(t).swing;
+        const step = l.starts === 'eighths' && !swing ? 6 : m.beat;
+        if (t.startTick % step || t.startTick <= 0) { errors.push(`Einsatz Stufe ${n}: Einstieg ${t.song} bei ${t.startTick}`); break; }
+        if (n === 3 && log.length && t.meter === log[log.length - 1].meter) { errors.push(`Einsatz Stufe 3: Taktart nicht reihum (${log[log.length - 1].meter} → ${t.meter})`); break; }
+        if (t.meter === '4/4' && !swing) starts.add(t.startTick % 12);
+        log = [...log, dbLogEntry(t)].slice(-DB_MEMORY);
       }
-      if (starts.size < 3) errors.push(`Einsatz Stufe ${l.n}: Einstieg kaum zufällig (${[...starts]})`);
-      if (l.n === 6 && ![...starts].some((x) => Number(x.split(':')[1]) % 12 === 6)) errors.push('Einsatz Stufe 6: nie ein Einstieg auf „und“');
+      if (n > 3 && !starts.has(6)) errors.push(`Einsatz Stufe ${n}: nie ein Einstieg auf „und“`);
     }
+    // Halbe-Anzeige nur im 4/4 (Seemannsgarn, 3/4 ♩ 144–160, bleibt in Vierteln).
+    for (let i = 0; i < 40; i++) { const t = makeDownbeatTask(3, rnd, 0, []); if (t.half) { errors.push(`Einsatz: Halbe-Anzeige bei ${t.song} (${t.meter})`); break; } }
+    // 12/8: vier große Schläge in der Anzeige, Tempo in punktierten Vierteln.
+    {
+      const t = { kind: 'downbeat', level: 6, song: 'wolkenkratzer', meter: '12/8', pattern: 'back128', bpm: 60, startTick: 6, bass: true, mode: DB_SONGS.wolkenkratzer.mode, tonic: 67, aids: {}, answer: null };
+      const cells = downbeatCells(t);
+      if (cells.map((c) => c.label).join('') !== '1··2··3··4··' || cells.filter((c) => c.clap).map((c) => c.label).join() !== '2,4') errors.push(`Einsatz 12/8: Zählzeiten ${cells.map((c) => c.label).join('')}`);
+      if (tempoSymbol('12/8') !== '♩.') errors.push('Einsatz 12/8: Tempo nicht in ♩.');
+    }
+    // Tempo: Verschiebung in Prozent, gedeckelt.
+    if (dbTempo(90, 60).bpm !== Math.round(90 * 1.25) || dbTempo(57, -40).bpm !== Math.round(57 * .75) || dbTempo(90, 0).bpm !== 90) errors.push('Einsatz: Tempo-Verschiebung nicht ±25 %');
     // Zeitplan: Einstieg an der Stelle, kein Einzähler, Einblenden, Eins mit Bassdrum und neuem Basston.
-    const base = { kind: 'downbeat', level: 1, groove: 'pop', meter: '4/4', pattern: 'one4', bpm: 90, startTick: 24, bass: true, root: 40, aids: { accent: false, demo: false }, answer: null };
+    const base = { kind: 'downbeat', level: 1, song: 'fahrradkette', groove: null, meter: '4/4', pattern: 'one4', bpm: 90, startTick: 24, bass: true, mode: 'major', tonic: 67, aids: { accent: false, demo: false }, answer: null };
     const ts = 60 / 90 / 12;
     const near = (a, b) => Math.abs(a - b) < 1e-9;
     const plan = downbeatPlan(base);
@@ -16876,8 +16737,8 @@
     if (Math.round(plan.youVisual / ts + 24) % 48 === 0) errors.push('Einsatz: Phase „Du“ beginnt auf der Eins');
     const atOne = plan.events.filter((e) => near(e.t, plan.youStart)).map((e) => e.kind);
     if (!atOne.includes('kick') || !atOne.includes('bass')) errors.push(`Einsatz: Eins ohne Bassdrum/Bass (${atOne})`);
-    const bass = plan.events.filter((e) => e.kind === 'bass' && !e.long);
-    if (bass.some((e) => e.tick % 48) || bass.some((e, i) => i && e.midi === bass[i - 1].midi)) errors.push('Einsatz: Basston wechselt nicht auf der Eins');
+    const bass = plan.events.filter((e) => e.kind === 'bass' && !e.long && e.tick % 48 === 0);
+    if (bass.length < 4 || bass.some((e, i) => i && e.midi === bass[i - 1].midi)) errors.push('Einsatz: Basston wechselt nicht auf der Eins');
     if (plan.targets.join() !== '0') errors.push(`Einsatz: Sollpunkte ${plan.targets}`);
     const acc = downbeatPlan(base, { accent: true }).events.filter((e) => e.kind === 'click');
     if (!acc.length || acc.some((e) => e.tick % 48) || acc.length !== DB_LISTEN_BARS + DB_CLAP_BARS + DB_WAIT_BARS) errors.push('Einsatz: „Eins betonen“ klickt nicht genau auf jeder Eins');
@@ -16885,17 +16746,16 @@
     if (demo.join() !== '12,36') errors.push(`Einsatz: „Vormachen“ ${demo}`);
     const sol = downbeatPlan(base, { solution: true });
     if (sol.events[0].tick !== 0 || sol.fadeFrom !== 1 || !sol.events.some((e) => e.kind === 'clap') || !sol.events.some((e) => e.kind === 'click')) errors.push('Einsatz: Lösung nicht ab der Eins mit Muster');
-    if (downbeatPlan({ ...base, groove: 'shuffle', pattern: 'offbeat', bass: false }).targets.join() !== '8,20,32,44') errors.push('Einsatz: Offbeat im Shuffle nicht verschoben');
-    const push = downbeatPlan({ ...base, groove: 'push', pattern: 'tresillo' });
-    const lastTick = push.events[push.events.length - 1].tick;
-    if (push.events.some((e) => e.kind === 'kick' && e.tick % 48 === 0 && e.tick < lastTick) || !push.events.some((e) => e.kind === 'bass' && e.tick % 48 === 42)) errors.push('Einsatz: Synkopen-Groove (Bassdrum nicht auf 1, Bass vorgezogen)');
+    if (downbeatPlan({ ...base, song: 'rueckspiegel', pattern: 'offbeat' }).targets.join() !== '8,20,32,44') errors.push('Einsatz: Offbeat im Shuffle nicht verschoben');
     // Auswertung: richtige Eins → getroffen; um einen Schlag verschoben → nicht.
     const exactOf = (t) => { const p = downbeatPlan(t); const out = []; for (let b = 0; b < DB_CLAP_BARS; b++) for (const x of p.targets) out.push((b * p.bar + x) * p.tickSec); return out; };
-    for (const [g, pat] of [['pop', 'one4'], ['pop', 'backbeat'], ['waltz', 'one3'], ['waltz', 'waltzPa'], ['six8', 'six8Back'], ['shuffle', 'charleston'], ['push', 'tresillo'], ['rock', 'oneFour'], ['shuffle', 'push4'], ['halftime', 'backbeat']]) {
-      const t = { ...base, groove: g, meter: DB_GROOVES[g].meter, pattern: pat, bpm: DB_GROOVES[g].bpm[1] };
+    for (const [g, pat] of [['fahrradkette', 'one4'], ['fahrradkette', 'backbeat'], ['leiserwalzer', 'one3'], ['leiserwalzer', 'waltzPa'], ['kerzenschein', 'six8Back'], ['rueckspiegel', 'charleston'], ['vorstadtfunk', 'push4'], ['kopfstein', 'oneFour'], ['bruecke', 'backbeat'], ['wolkenkratzer', 'back128'], ['wolkenkratzer', 'one128']]) {
+      const sg = DB_SONGS[g];
+      const t = { ...base, level: sg.levels.find((n) => n <= 6), song: g, meter: sg.meter, mode: sg.mode, pattern: pat, bpm: sg.bpm[1] };
       const exact = exactOf(t);
       const m = METERS[t.meter];
-      const beat = m.beat * 60 / t.bpm / m.ref;
+      // 12/8: um einen großen Schlag (drei Achtel) verschoben.
+      const beat = (t.meter === '12/8' ? 3 : 1) * m.beat * 60 / t.bpm / m.ref;
       let r = judgeDownbeat(t, exact);
       if (!r.ok || r.hits !== r.total || r.extras || r.total !== DB_PATTERNS[pat].at.length * DB_CLAP_BARS) errors.push(`Einsatz ${g}/${pat}: genau getroffen → ${JSON.stringify([r.ok, r.hits, r.total, r.extras])}`);
       r = judgeDownbeat(t, exact.map((x, i) => x + (i % 2 ? .03 : -.025) + .015));
@@ -16903,7 +16763,7 @@
       r = judgeDownbeat(t, exact.slice(1).map((x) => x + .01)); // den ersten verpasst (Eins erst gesucht)
       if (!r.ok) errors.push(`Einsatz ${g}/${pat}: ein verpasster Klatscher am Anfang gilt als Fehler`);
       r = judgeDownbeat(t, exact.map((x) => x + beat));
-      if (r.ok || r.shift !== 1 || !downbeatMessage(t, r).includes('die 2 für die Eins')) errors.push(`Einsatz ${g}/${pat}: um einen Schlag verschoben → ${JSON.stringify([r.ok, r.hits, r.shift])}`);
+      if (r.ok || r.shift !== (t.meter === '12/8' ? 3 : 1) || !downbeatMessage(t, r).includes('die 2 für die Eins')) errors.push(`Einsatz ${g}/${pat}: um einen Schlag verschoben → ${JSON.stringify([r.ok, r.hits, r.shift])}`);
       r = judgeDownbeat(t, exact.map((x) => x + .2));
       if (r.ok) errors.push(`Einsatz ${g}/${pat}: 200 ms zu spät gilt als getroffen`);
       // Gleichmäßig 50 ms zu spät (Bluetooth/Touch): der Versatz kostet nichts.
@@ -16924,8 +16784,14 @@
       if (!r.ok || r.extras) errors.push('Einsatz: Klatscher vor der Wertung/auf den Schlusspunkt zählen als zu viel');
       r = judgeDownbeat({ ...base, pattern: 'oneFour' }, exactOf({ ...base, pattern: 'oneFour' }).map((x) => x + 24 * ts));
       if (r.ok || r.shift !== 2 || !downbeatMessage(base, r).includes('die 3 für die Eins')) errors.push(`Einsatz: um zwei Schläge verschoben (1 statt 3) ${JSON.stringify([r.ok, r.shift])}`);
-      r = judgeDownbeat({ ...base, level: 6, groove: 'rock', pattern: 'charleston' }, exactOf({ ...base, groove: 'rock', pattern: 'charleston' }).map((x) => x + 6 * ts));
-      if (r.ok || r.unit !== 'eighth' || !/Achtel/.test(downbeatMessage(base, r))) errors.push(`Einsatz Stufe 6: Achtel-Verschiebung ${JSON.stringify([r.ok, r.shift, r.unit])}`);
+      // Achtel-Verschiebung: in Stufen mit Einstieg auf „und“ (5, 6) bei geraden Songs, nicht im Shuffle.
+      for (const n of [5, 6]) {
+        const t8 = { ...base, level: n, pattern: 'oneFour' };
+        r = judgeDownbeat(t8, exactOf(t8).map((x) => x + 6 * ts));
+        if (r.ok || r.unit !== 'eighth' || !/Achtel/.test(downbeatMessage(t8, r))) errors.push(`Einsatz Stufe ${n}: Achtel-Verschiebung ${JSON.stringify([r.ok, r.shift, r.unit])}`);
+      }
+      const sh = { ...base, level: 6, song: 'rueckspiegel', pattern: 'charleston', bpm: 120 };
+      if (judgeDownbeat(sh, exactOf(sh).map((x) => x + 6 * 60 / 120 / 12)).unit === 'eighth') errors.push('Einsatz: Achtel-Verschiebung im Shuffle');
       r = judgeDownbeat(base, []);
       if (r.ok || !/Keine Klatscher/.test(downbeatMessage(base, r)) || !/Mikrofon/.test(downbeatMessage(base, r, true))) errors.push('Einsatz: ohne Klatscher');
     }
@@ -16940,7 +16806,7 @@
       const late = { ...run, windowStart: null };
       startDownbeatWindow(late, 10 + p.firstBar + 5 * barSec + .4 * barSec);
       if (!near(late.windowStart, 10 + p.firstBar + 5 * barSec)) errors.push('Einsatz: später Einstieg');
-      if (!(p.end > p.youEnd + (DB_WAIT_BARS - .5) * barSec) || p.events.some((e) => e.kind === 'open')) errors.push('Einsatz: Groove wartet nicht auf den ersten Klatscher');
+      if (!(p.end > p.youEnd + (DB_WAIT_BARS - .5) * barSec) || p.events.some((e) => e.kind === 'crash' && e.tick === Math.round(p.youEnd / ts) + 24)) errors.push('Einsatz: Song wartet nicht auf den ersten Klatscher');
       const r = judgeDownbeat(base, exactOf(base).map((x) => x + .01));
       if (r.marks.length !== DB_CLAP_BARS || r.marks.some((x) => !x.hit)) errors.push('Einsatz: Klatscher für die Auflösung fehlen');
     }
