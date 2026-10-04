@@ -14,7 +14,8 @@ Standard aus der Arbeitsanweisung.
 |---|---|---|---|
 | Vorab | Nachklatschen: Urteil Gut/Okay/Fast/Nochmal | umgesetzt | v481 |
 | Etappe 1 | Song-Engine, Stufen 1, 2, 4 | umgesetzt | v482 |
-| Versuch | Echte Instrumente (Samples) für 3 Probesongs | zum Probehören | v483 |
+| Versuch | Echte Instrumente (Samples) für 3 Probesongs | „viel besser“ | v483 |
+| Nachtrag | Ruckeln mit Bluetooth: portionsweise planen, „Ruckelfrei“ | umgesetzt | v484 |
 | Etappe 2 | Einstieg in der Periode, „Worauf hören?“, „Nur das Zeichen“ | offen | – |
 | Etappe 3 | Stufen 3, 5, 6 auf Songs, 12/8 | offen | – |
 | Etappe 4 | Typ C (Stufe 7) | offen | – |
@@ -159,6 +160,32 @@ spielt die Songs weiter selbst, aber mit **aufgenommenen Instrumenten**.
 Offen nach dem Probehören: weiter so (dann alle Songs, Stabs/Bläser, längere
 Streicher, Samples offline cachen) oder verwerfen (Ordner `samples/` und den
 Abschnitt in `uebe-lab.html` entfernen).
+
+## Nachtrag: Ruckeln mit Bluetooth (v484)
+
+Rückmeldung: Mit Bluetooth-Kopfhörern ruckelt es etwas, schon vor dem
+Klang-Versuch. Zwei Ursachen angegangen:
+
+- **Portionsweise planen** (`scheduleAhead`): Ein Lauf legte bisher alle
+  300–400 Klänge beim Start auf einmal an (je Ton mehrere Knoten). Jetzt immer
+  nur ≈ 1,5 s im Voraus, alle 300 ms nachgelegt; nach dem Schlusspunkt keine
+  Klänge mehr in die stumme Schiene. Gilt für Läufe, Lösung und Klangprobe
+  (Grooves und Songs).
+- **Schalter „Wiedergabe: Schnell / Ruckelfrei (Bluetooth)“** (`state.smoothAudio`,
+  gespeichert): „Ruckelfrei“ nimmt auch in den Klatsch-Übungen den größeren
+  Puffer (`latencyHint: 'balanced'`, wie schon bei „Hören“, laut Kommentar dort
+  knackfrei mit Bluetooth). Die zusätzliche Verzögerung ist gegenüber der
+  Bluetooth-Latenz klein und wird beim Tippen wie bisher über
+  `outputLatency`/`baseLatency` und den eigenen Ausgleich abgezogen. Steht in
+  den Einstellungen von „Einsatz finden“ (und den übrigen Klatsch-Übungen im
+  Hören-Bereich) und im Rhythmus-Bereich unter „Latenz ausgleichen“; gilt für
+  alle Klatsch-Übungen. Meldet der Browser eine Ausgabeverzögerung über 100 ms
+  (typisch Bluetooth), empfiehlt der Text „Ruckelfrei“.
+- Nicht zu beheben in der App: Funkstörungen der Bluetooth-Verbindung selbst
+  (WLAN und Bluetooth teilen sich das 2,4-GHz-Band).
+- Tests: Einstellung wird gespeichert, unbekannte Werte verworfen; im Browser
+  wechselt der Puffer nach dem Umschalten, Läufe werden weiter richtig gewertet
+  (Stufe 1, 2, verschoben), die Klangprobe läuft vollständig.
 
 ## Offene Punkte
 
