@@ -1018,7 +1018,7 @@
       <div data-levels="rhythm"></div>
       <div class="course-card" data-course-card hidden></div>
       <div data-duo-row hidden><span class="sub-label">Ich klatsche</span><div class="chip-row" data-chips="duoPart"></div></div>
-      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen. Beim Nachklatschen gibt es bewusst nichts zu sehen – dein Ohr und dein innerer Puls sind das Werkzeug.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
+      <p class="help-text" id="help-modes" hidden><b>Zweistimmig:</b> Du hältst einen im Kurs gelernten Rhythmus vier Takte lang, die App (Holzblock) setzt in Takt 2 mit einer zweiten Stimme ein – erst der Puls, dann ein Gegenrhythmus, dann eine Stimme, die immer dichter wird. In Stufe 4 tauschen die Rollen, in Stufe 5 sind beide Stimmen jede Runde neu. Zu Beginn klatscht die App deinen Rhythmus einmal allein vor; nach jeder Runde hält die Übung an, damit du das Ergebnis ansehen kannst — Play bringt die nächste Runde.<br><b>Nachklatschen:</b> Ein Takt wird vorgeklatscht, danach klatschst du ihn nach — gehört, nicht gelesen. Beim Nachklatschen gibt es bewusst nichts zu sehen – dein Ohr und dein innerer Puls sind das Werkzeug.<br><b>Vom Blatt:</b> Du siehst die Noten, hörst aber nur den Klick — im nächsten Takt klatschst du den Rhythmus selbst.<br>Tippen aufs Feld (während des Laufs auch auf die Noten) oder Leertaste — oder übers Mikrofon klatschen bzw. sprechen (Zahnrad → Eingabe, mit Kopfhörern). Viertel und Halbe sind immer dabei, weitere Bausteine, Taktart, Takte, Auftakt, Silben und Rundenzahl stellt das Zahnrad ein. Sprich die Silben laut mit — wer den Rhythmus sprechen kann, kann ihn singen.</p>
       <p class="rhythm-sum"></p>
 
       <div data-delay-hint hidden></div>
@@ -2565,8 +2565,11 @@
     playing: false, bus: null, timer: 0, frame: 0, bars: [], ended: false, endTime: null,
     viewKey: '', stripKey: '', padKey: '', shown: null, notesFor: null, toastFrom: 0,
     meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05,
+    duoIntro: false, // Zweistimmig 1–4: eigenen Rhythmus vor der ersten Runde einmal vorklatschen
   };
-  const game = { rounds: [], taps: [], streak: 0, best: 0, finished: false, stats: null };
+  // duoPaused: Zweistimmig nach einer Runde angehalten — Schlüssel der
+  // Einstellung (duoResumeKey), mit der Play fortsetzt; sonst null.
+  const game = { rounds: [], taps: [], streak: 0, best: 0, finished: false, stats: null, duoPaused: null };
   let tapTimes = [];
   /* Rhythmus-Kurs: aktuelle Lektion und Schritt, erledigte Lektionen
      (gespeichert), Silben der Kurs-Anzeige (eigene Einstellung, Standard
@@ -2634,7 +2637,8 @@
   }
   /** Ablauf, der vor dem Start in der Leiste steht. */
   const idleSeq = () => (state.mode === 'course' ? courseSeq(courseStep().mode, courseStep().gap || 0)
-    : state.mode === 'duo' && state.duoStage < 5 ? ['you', 'rest'] : roundSeq(state.mode, false));
+    : state.mode === 'duo' && state.duoStage < 5 ? (game.duoPaused ? ['you'] : ['listen', 'you'])
+      : roundSeq(state.mode, state.mode === 'duo'));
 
   /** Muster und Modus der nächsten Kurs-Runde. */
   function courseRoundSpec(rnd = Math.random) {
@@ -2724,12 +2728,13 @@
       accomp = cs.course.review ? accompFor({ meter: run.meter, ch: 2 }, { accomp: 'backbeat' }, course)
         : accompFor(courseLesson(), { accomp: cs.accomp }, course);
     } else if (state.mode === 'duo' && state.duoStage < 5) {
-      // Halten: gleich los (du kennst deinen Rhythmus), danach ein Leertakt
-      // zum Ansehen — die nächste Runde bringt eine neue Gegenstimme.
+      // Halten: beim ersten Start klatscht die App deinen Rhythmus einmal
+      // allein vor (listenOwn), dann gleich los. Danach pausiert der Lauf
+      // (siehe duoPaused) — Play bringt eine neue Gegenstimme.
       const h = holdRound(duoLesson(), state.duoStage);
-      duo = { upper: h.upper, lower: h.lower, key: h.key, ok: true, labels: h.labels, youLabel: h.youLabel };
+      duo = { upper: h.upper, lower: h.lower, key: h.key, ok: true, labels: h.labels, youLabel: h.youLabel, listenOwn: run.duoIntro };
       pattern = h.lower; duoPart = 'lower';
-      seq = ['you', 'rest'];
+      seq = run.duoIntro ? ['listen', 'you'] : ['you'];
     } else if (state.mode === 'duo') {
       const free = duoFree();
       const freeChosen = free.elements.filter((id) => !(id === 't' && METERS[run.meter].unit !== 12));
@@ -2743,7 +2748,7 @@
       index, mode, meter: run.meter, bpm: state.bpm,
       tickSec: 60 / state.bpm / m.ref,
       pattern, duo, duoPart, accomp,
-      seq: seq || roundSeq(state.mode, !!state.rounds && index === state.rounds - 1),
+      seq: seq || roundSeq(state.mode, state.mode === 'duo' || (!!state.rounds && index === state.rounds - 1)),
       showNotes: mode !== 'echo' || (state.showNotes && !courseInfo),
       youStart: null, result: null, course: courseInfo,
     };
@@ -2776,6 +2781,8 @@
    *  so bleibt das Metrum über Runden mit verschiedenem Auftakt erhalten. */
   function layoutNext(first = false) {
     if (state.rounds && game.rounds.length >= state.rounds) return false;
+    // Zweistimmig: eine Runde je Start, dann Pause zum Ansehen (duoPaused).
+    if (state.mode === 'duo' && !first) return false;
     if (state.mode === 'course' && course.complete) return false;
     const round = newRound();
     const m = METERS[round.meter];
@@ -2826,7 +2833,7 @@
     const rel = tick - item.start;
     if (r.duo) {
       for (const part of ['upper', 'lower']) {
-        const play = item.kind === 'listen' || (item.kind === 'you' && part !== r.duoPart);
+        const play = (item.kind === 'listen' && (!r.duo.listenOwn || part === r.duoPart)) || (item.kind === 'you' && part !== r.duoPart);
         if (play && r.duo[part].onsets.includes(rel)) engine.block(time, part === 'upper', run.bus);
       }
       return;
@@ -2863,6 +2870,10 @@
 
   async function start() {
     micTest.on = false;
+    // Zweistimmig nach einer Runde pausiert: dieselbe Einstellung setzt fort
+    // (Statistik und Serie bleiben), alles andere ist ein neuer Anfang.
+    const resume = state.mode === 'duo' && !!game.duoPaused && game.duoPaused === duoResumeKey();
+    game.duoPaused = null;
     try { await engine.start(); } catch { setStatus('Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
     if (state.input === 'mic') {
       setStatus('Mikrofon wird geöffnet …');
@@ -2879,9 +2890,12 @@
         setBpm(Math.min(...pool.filter((l) => l.meter === meter).map((l) => l.bpm)));
       } else { course.review = false; setMeter(courseLesson().meter); }
     } else if (state.mode === 'duo' && state.duoStage < 5) {
-      const pool = holdPool();
-      const fixed = pool.find((l) => l.id === state.duoOstinato);
-      duoCurrent = fixed ? fixed.id : pick(pool.length > 1 ? pool.filter((l) => l.id !== duoCurrent) : pool).id;
+      // Weiter nach der Pause: derselbe Rhythmus, kein Vorklatschen mehr.
+      if (!resume) {
+        const pool = holdPool();
+        const fixed = pool.find((l) => l.id === state.duoOstinato);
+        duoCurrent = fixed ? fixed.id : pick(pool.length > 1 ? pool.filter((l) => l.id !== duoCurrent) : pool).id;
+      }
       setMeter(duoLesson().meter);
     } else if (state.mode === 'duo') {
       setMeter(pick(duoFree().meters));
@@ -2892,6 +2906,7 @@
     }
     run.meter = state.meter;
     run.countIn = !!state.countIn; // für die Leiste: Einzähler-Pille nur, wenn er auch kommt
+    run.duoIntro = state.mode === 'duo' && state.duoStage < 5 && !resume;
     run.playing = true;
     document.body.classList.add('is-running');
     run.bus = engine.newBus({ reverb: false });
@@ -2900,9 +2915,12 @@
     run.anchorTick = 0; run.anchorTime = engine.ctx.currentTime + .08;
     run.ended = false; run.endTime = null;
     run.viewKey = ''; run.stripKey = ''; run.padKey = '';
-    game.rounds = []; game.taps = []; game.streak = 0; game.best = 0; game.finished = false; game.last = null; run.notesFor = null;
+    // Fortsetzen: die letzte Runde bleibt als Vorgänger (keine Wiederholung
+    // desselben Paars), Serie und Statistik laufen weiter.
+    game.rounds = resume ? game.rounds.slice(-1) : [];
+    game.taps = []; game.finished = false; game.last = null; run.notesFor = null;
+    if (!resume) { game.streak = 0; game.best = 0; game.stats = freshStats(); }
     run.shown = null;
-    game.stats = freshStats();
     layoutNext(true);
     renderTransport();
     renderScore();
@@ -2944,9 +2962,15 @@
       stop(next ? `Lektion geschafft ✓ — weiter mit „${next.name}“`
         : COURSE[COURSE.indexOf(cur) + 1] ? COURSE_FINISHED : 'Lektion geschafft ✓ — das war die letzte Lektion!');
       renderRhythm();
+    } else if (state.mode === 'duo') {
+      game.duoPaused = duoResumeKey();
+      const last = game.rounds[game.rounds.length - 1];
+      stop(`${last?.result?.perfect ? 'Fehlerfrei ✓' : 'Runde fertig'} — ${s.perfect} von ${s.rounds} fehlerfrei. Play für die nächste Runde.`);
     } else stop(`Geschafft: ${s.perfect} von ${s.rounds} Runden fehlerfrei.`);
     renderScore();
   }
+  /** Woran „Weiter" nach der Zweistimmig-Pause hängt: Stufe, Rhythmus, Stimme. */
+  const duoResumeKey = () => [state.duoStage, state.duoOstinato, state.duoStage < 5 ? duoCurrent : state.duoPart, state.bpm].join('|');
 
   /* ------------------------------------------------------------------------
      RHYTHMUS-AUSWERTUNG — erst, wenn dein Takt auf der Audio-Uhr wirklich
@@ -3423,6 +3447,8 @@
     if (phase === 'idle' && mic && micTest.on) label = 'Klatsch zum Test – oder tippen zum Starten';
     if (phase === 'you' && mic) label = 'Jetzt du – klatsch oder sprich „ta“!';
     if (phase === 'you' && round?.duo) label = round.duo.youLabel || `Jetzt du: ${round.duoPart === 'upper' ? 'obere' : 'untere'} Stimme!`;
+    if (phase === 'listen' && round?.duo?.listenOwn) label = 'Hör zu: dein Rhythmus …';
+    if (phase === 'done' && game.duoPaused && state.mode === 'duo') label = 'Weiter: tippen';
     $('.pad-label').textContent = label;
     const idle = phase === 'idle' || phase === 'done';
     pad.setAttribute('aria-label', idle ? (phase === 'done' ? 'Nochmal starten' : 'Übung starten') : `Klatschfläche${label ? `: ${label}` : ''}`);
@@ -4232,7 +4258,7 @@
     btn.innerHTML = run.playing
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
-    btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
+    btn.setAttribute('aria-label', run.playing ? 'Stoppen' : game.duoPaused && state.mode === 'duo' ? 'Nächste Runde' : 'Starten');
     $('.bpm').value = String(state.bpm);
     $$('.bpm-out').forEach((o) => { o.textContent = String(state.bpm); });
     $$('.k-tempo').forEach((g) => g.setAttribute('aria-label', `Tempo: ${tempoSymbol(state.meter)} = ${state.bpm}`));
@@ -13222,21 +13248,29 @@
     // Stufe 1 gegen den Grundschlag selbst: lange Noten statt Unisono.
     const p1 = holdRound(COURSE.find((l) => l.id === 'puls'), 1, rnd);
     if (p1.upper.onsets.join() !== '48,72,96,120,144,168') errors.push(`Halten: Puls gegen Puls (${p1.upper.onsets})`);
-    // Raster: kein Vorspiel, sofort „du“, danach Leertakt; Stufe 5 wie bisher.
+    // Raster: beim ersten Start klatscht die App deinen Rhythmus einmal allein
+    // vor, dann „du“; eine Runde je Start (danach Pause). Weiter: ohne Vorspiel.
     const saved = { state: { ...state }, run: { ...run }, rounds: game.rounds, cur: duoCurrent };
     try {
       Object.assign(state, { mode: 'duo', duoStage: 3, rounds: 0, countIn: true });
       duoCurrent = 'puls';
       Object.assign(run, { meter: '4/4', items: [], itemIdx: 0, cursor: 0, layoutEnd: 0, anchorTick: 0, anchorTime: 0, tickSec: .05 });
       game.rounds = [];
-      layoutNext(true); layoutNext();
-      const [r0, r1] = game.rounds;
-      if (r0.seq.join() !== 'you,rest' || !r0.duo || r0.duoPart !== 'lower' || r0.pattern !== r0.duo.lower || run.items[0].kind !== 'count') errors.push(`Halten Raster: ${r0.seq}`);
-      if (r1.duo.lower.key !== r0.duo.lower.key) errors.push('Halten: gehaltener Rhythmus wechselt innerhalb des Durchgangs');
+      run.duoIntro = true;
+      layoutNext(true);
+      if (layoutNext()) errors.push('Zweistimmig: läuft nach einer Runde automatisch weiter');
+      const [r0] = game.rounds;
+      if (game.rounds.length !== 1 || r0.seq.join() !== 'listen,you' || !r0.duo?.listenOwn || r0.duoPart !== 'lower' || r0.pattern !== r0.duo.lower || run.items[0].kind !== 'count') errors.push(`Halten Raster: ${r0.seq}`);
+      game.rounds = []; run.items = []; run.layoutEnd = 0; run.cursor = 0;
+      run.duoIntro = false;
+      layoutNext(true);
+      const r1 = game.rounds[0];
+      if (r1.seq.join() !== 'you' || r1.duo.listenOwn) errors.push(`Halten Weiter: ${r1.seq}`);
+      if (r1.duo.lower.key !== r0.duo.lower.key) errors.push('Halten: gehaltener Rhythmus wechselt beim Weiter');
       state.duoStage = 5; state.rhythmLevel = 1;
       game.rounds = []; run.items = []; run.layoutEnd = 0; run.cursor = 0;
       layoutNext(true);
-      if (game.rounds[0].seq[0] !== 'listen' || !game.rounds[0].duo.upper || game.rounds[0].pattern.bars !== RHYTHM_LEVELS[2].bars) errors.push('Zweistimmig Stufe 5: nicht wie bisher (mind. Stufe 3)');
+      if (game.rounds[0].seq[0] !== 'listen' || game.rounds[0].seq[game.rounds[0].seq.length - 1] !== 'you' || game.rounds[0].duo.listenOwn || !game.rounds[0].duo.upper || game.rounds[0].pattern.bars !== RHYTHM_LEVELS[2].bars) errors.push('Zweistimmig Stufe 5: nicht wie bisher (mind. Stufe 3)');
     } finally {
       Object.assign(state, saved.state); Object.assign(run, saved.run); game.rounds = saved.rounds; duoCurrent = saved.cur;
     }
