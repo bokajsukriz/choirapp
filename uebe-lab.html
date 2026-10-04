@@ -676,6 +676,8 @@
   .key-text { flex: 1 1 auto; min-width: 0; font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.2; }
   .key-cad { min-height: 44px; padding: 0 12px; border: 1px solid var(--hear-line); border-radius: 999px; background: var(--surface); color: var(--hear-fg); display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
   .key-cad svg { width: 18px; height: 18px; }
+  /* Akkorde in der Tonart: statt des Tonart-Balkens nur zwei Knöpfe nebeneinander. */
+  .key-row.is-replay { justify-content: center; padding: 0; background: none; border: 0; }
   .answer { border-color: var(--tint-line); border-radius: 14px; font-weight: 700; font-size: 15px; color: var(--text); }
   .answer.is-bad { background: var(--rep-bg); border-color: var(--rep-line); color: var(--rep-fg); }
   .answer.is-ok { background: var(--ok-bg); border: 2px solid var(--ok); color: var(--ok-fg); }
@@ -909,6 +911,13 @@
   .db-round-btn { pointer-events: auto; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--tint-line); background: var(--surface); color: var(--text); display: grid; place-items: center; box-shadow: 0 3px 10px rgba(36, 27, 61, .12); font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1; }
   .db-round-btn svg { width: 22px; height: 22px; stroke-width: 2.2; }
   .db-round-btn:disabled { color: var(--muted); opacity: .55; box-shadow: none; cursor: default; }
+  .db-round-btn[hidden] { display: none; }
+  .db-round-l { display: flex; gap: 10px; }
+  /* Rhythmus-Übersicht: Übungen „in Arbeit“ gedämpft (bleiben anklickbar). */
+  .k-row.is-wip { background: var(--surface-2); border-style: dashed; }
+  .k-row.is-wip .k-row-name { color: #5e5277; } /* 7 : 1 auf --surface-2 */
+  .k-row.is-wip .k-row-icon, .k-row.is-wip .k-ring { filter: grayscale(1); opacity: .6; }
+  .k-wip { display: inline-block; margin-left: 8px; padding: 1px 7px; border: 1px solid #c9c0da; border-radius: 999px; background: #fff; color: #5e5277; font-family: var(--font-body, inherit); font-size: 11px; font-weight: 700; vertical-align: 2px; white-space: nowrap; }
   .db-pattern { width: 100%; max-width: 360px; margin: 0 auto; }
   /* Körper: Schichten bzw. Fuß/Hände, Probenmodus groß (Beamer) */
   .body-rows { display: grid; gap: 4px; margin-bottom: 6px; }
@@ -925,7 +934,7 @@
   .db-pattern[hidden] { display: none; }
   .db-cap { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
   /* Auflösung Takt für Takt: Rhythmus (Kreise) und deine Klatscher (Striche). */
-  .db-pattern:has(.db-bars) .db-cap, .db-pattern:has(.db-bars) .db-row { display: none; }
+  .db-pattern:has(.db-bars) .db-row { display: none; }
   .db-bars { display: block; width: 100%; height: auto; }
   .db-bars text, .db-bars .dbb-tap { stroke: none; }
   .db-bars .dbb-lab { font-size: 10px; font-weight: 800; fill: var(--muted); }
@@ -1193,7 +1202,10 @@
   </div>
   <!-- Einsatz finden (Rhythmus-Bereich): eigene Klatschfläche, siehe renderDownbeatDock. -->
   <div class="db-round" hidden>
+    <div class="db-round-l">
     <button class="db-round-btn" type="button" data-ear="db-again" aria-label="Nochmal" title="Nochmal" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></button>
+    <button class="db-round-btn" type="button" data-ear="db-skip" aria-label="Überspringen" title="Weiter (überspringen)" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6l8 6-8 6z"/><path d="M13 6l6 6-6 6"/></svg></button>
+    </div>
     <button class="db-round-btn" type="button" data-ear="db-helps" aria-label="Hilfen" title="Hilfen" aria-haspopup="dialog" disabled>?</button>
   </div>
   <div class="pad-wrap db-wrap" hidden>
@@ -4566,9 +4578,12 @@
     // „Einsatz finden“ (Chorleiter: gehört zu Rhythmus) – die Übung selbst ist die Hör-Übung
     // im Gerüst von Hören, hier als eigene Rhythmus-Ansicht (views.rhythm = 'downbeat').
     const db = kRowHtml('data-downbeat-open', 'downbeat', modeName('ear', 'downbeat'), levelBadgeHtml('ear', 'downbeat'));
-    // „Körper“ (Puls im Fuß, Rhythmus in den Händen) im selben Gerüst.
-    const body = kRowHtml('data-downbeat-open="body"', 'body', modeName('ear', 'body'), levelBadgeHtml('ear', 'body'));
-    const entries = kRowHtml('data-downbeat-open="entries"', 'entries', modeName('ear', 'entries'), levelBadgeHtml('ear', 'entries'));
+    // Body Percussion (Puls im Fuß, Rhythmus in den Händen) im selben Gerüst.
+    // Body Percussion und Wieder einsetzen: ausgegraut „in Arbeit“, aber weiter
+    // anklickbar und ausprobierbar (Wunsch der Nutzerin) – nur Optik.
+    const wip = (name) => `${name}<span class="k-wip" aria-hidden="true">in Arbeit</span><span class="visually-hidden"> (noch in Arbeit)</span>`;
+    const body = kRowHtml('data-downbeat-open="body"', 'body', wip(modeName('ear', 'body')), levelBadgeHtml('ear', 'body'), ' is-wip');
+    const entries = kRowHtml('data-downbeat-open="entries"', 'entries', wip(modeName('ear', 'entries')), levelBadgeHtml('ear', 'entries'), ' is-wip');
     return `<div class="k-hub">${hero}${repeat}<div class="k-list">${rows}${db}${body}${entries}</div></div>`;
   }
   /** Einsatz finden im Rhythmus-Bereich: die Hör-Ansicht wird in den Rhythmus-
@@ -4983,7 +4998,7 @@
 
   // Namen (Musikpädagoge): „Akkordfarben“ statt „Klänge“ (neben „Akkorde in
   // der Tonart“ zu unscharf), „Stimme heraushören“ statt „Stimmen“. IDs bleiben.
-  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation'], ['downbeat', 'Einsatz finden'], ['body', 'Körper'], ['entries', 'Wieder einsetzen']];
+  const EAR_MODES = [['interval', 'Intervalle'], ['quality', 'Akkordfarben'], ['cadence', 'Schlüsse'], ['noteInKey', 'Töne in der Tonart'], ['chordInKey', 'Akkorde in der Tonart'], ['chords', 'Akkordfolgen'], ['parts', 'Stimme heraushören'], ['tuning', 'Intonation'], ['downbeat', 'Einsatz finden'], ['body', 'Body Percussion'], ['entries', 'Wieder einsetzen']];
   const rndInt = (lo, hi, rnd = Math.random) => lo + Math.floor(rnd() * (hi - lo + 1));
   const shuffle = (list, rnd = Math.random) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -7497,7 +7512,7 @@
       }
       return `<span class="db-cell${st ? ` is-${st}` : ''}"><i></i><b>${c.label}</b></span>`;
     }).join('');
-    return `<p class="db-cap">Klatsch: <b>${esc(DB_PATTERNS[task.pattern].name)}</b></p><div class="db-row" style="--n:${downbeatCells(task).length}" role="img" aria-label="Muster: ${esc(DB_PATTERNS[task.pattern].name)}">${cells}</div>${res?.marks ? downbeatBarsHtml(task, res) : ''}`;
+    return `<div class="db-row" style="--n:${downbeatCells(task).length}" role="img" aria-label="Muster: ${esc(DB_PATTERNS[task.pattern].name)}">${cells}</div>${res?.marks ? downbeatBarsHtml(task, res) : ''}`;
   }
   /** Auflösung Takt für Takt (Chorleiter): je gewerteter Takt eine Zeile mit den
    *  Zählzeiten, dem Rhythmus (Kreis: grün getroffen, rot gestrichelt verpasst)
@@ -7690,6 +7705,19 @@
     playEar({ first: true });
   }
 
+  /** Einsatz finden: Song überspringen – Lauf stoppen, neue Aufgabe, ohne
+   *  Wertung, Serie und Statistik. Das Gedächtnis (ear.dbLog) hat den Song
+   *  schon beim Erzeugen bekommen, er kommt also nicht gleich wieder. */
+  function skipDownbeat({ play = true } = {}) {
+    if (ear.mode !== 'downbeat' || !ear.task || ear.revealed) return;
+    clearEarTimers();
+    if (ear.bus) engine.fadeBus(ear.bus);
+    newTask();
+    setEarFeedback('', '');
+    renderEar();
+    if (play) playEar({ first: true });
+  }
+
   function setEarFeedback(text, kind) {
     const el = $('.ear-feedback');
     el.textContent = text;
@@ -7833,7 +7861,14 @@
   function renderKeyRow(task) {
     const row = $('.key-row');
     row.hidden = !isInKey(task);
+    row.classList.toggle('is-replay', task?.kind === 'chordInKey');
     if (row.hidden) return;
+    if (task.kind === 'chordInKey') {
+      // Akkorde in der Tonart (Wunsch der Nutzerin): kein Tonart-Balken, nur zwei
+      // Knöpfe; die Tonart steht nach der Antwort schlicht in der Unterzeile.
+      row.innerHTML = `<button type="button" class="key-cad" data-ear="inkey-target" aria-label="Nur den Akkord noch einmal, ohne Kadenz">Akkord nochmal</button><button type="button" class="key-cad" data-ear="nochmal" aria-label="Kadenz und Akkord noch einmal">Alles nochmal</button>`;
+      return;
+    }
     const name = keyName(task.key, task.kmode);
     const tonic = name.split('-')[0];
     const home = task.kind === 'noteInKey' ? noteInKeyLabel(task.kmode, 0) : symbolLabel(task.kmode === 'major' ? 'I' : 'i');
@@ -8009,6 +8044,9 @@
     $('[data-ear="db-again"]').disabled = !task;
     $('[data-ear="db-again"]').setAttribute('aria-label', task && ear.revealed ? (task.kind === 'downbeat' ? 'Lösung hören' : 'Vorbild hören') : 'Nochmal');
     $('[data-ear="db-helps"]').disabled = !task;
+    // Überspringen (nur Einsatz finden): neuer Song ohne Wertung, solange nicht aufgelöst.
+    $('[data-ear="db-skip"]').hidden = ear.mode !== 'downbeat' || !!(task && ear.revealed);
+    $('[data-ear="db-skip"]').disabled = !(task && ear.mode === 'downbeat' && !ear.revealed);
     $('[data-ear="db-stop"]').hidden = !dbRun;
     // Nach der Runde: Weiter nur über den eigenen Knopf (an der Stelle der Start-Pille).
     $('.db-next').hidden = !(task && ear.revealed);
@@ -8104,9 +8142,9 @@
     } else if (ear.mode === 'chordInKey') {
       const level = CHORD_IN_KEY_LEVELS[(task ? task.level : ear.levels.chordInKey) - 1];
       prompt.textContent = task ? 'Welcher Akkord war das?' : 'Ein Akkord in der Tonart — welche Stufe?';
-      sub.textContent = task
-        ? `${task.kmode === 'major' ? 'Dur' : 'Moll'} · ${task.cadence ? 'nach der Kadenz' : 'Tonart wie eben'}${ear.revealed ? ' · Antippen zum Vergleichen' : ''}`
-        : `Stufe ${level.n}: ${level.label}`;
+      // Vor der Antwort keine Unterzeile (Wunsch der Nutzerin), danach schlicht die Tonart.
+      const keyLine = () => { const name = keyName(task.key, task.kmode); return `${name} · ${symbolLabel(task.kmode === 'major' ? 'I' : 'i')} = ${name.split('-')[0]} · Antippen zum Vergleichen`; };
+      sub.textContent = task ? (ear.revealed ? keyLine() : '') : `Stufe ${level.n}: ${level.label}`;
       const kmode = task ? task.kmode : (level.major.length ? 'major' : 'minor');
       const tested = chordInKeySymbols(level, kmode);
       const shownChords = chordInKeyShown(kmode);
@@ -8277,17 +8315,14 @@
       const level = DOWNBEAT_LEVELS[(task ? task.level : ear.levels.downbeat) - 1];
       const phase = downbeatPhase(task);
       const mic = state.input === 'mic';
-      // Überschrift nach der Aufgabe: „Wo ist die Eins?“ nur, wenn auf die 1
-      // geklatscht wird – sonst das Muster (Backbeat, 1 und 4 …).
+      // Überschrift schlicht nach der Phase (Wunsch der Nutzerin): „Hör zu …“,
+      // „Jetzt du!“, danach das Ergebnis und klein der Song (Wiedererkennen
+      // ist gewollt). Unterzeile im Lauf leer – sie hat feste Höhe, nichts springt.
       const pat = task ? DB_PATTERNS[task.pattern] : null;
       const onlyOne = pat ? pat.at.every((x) => x === 0) : level.patterns.every((id) => DB_PATTERNS[id].at.every((x) => x === 0));
-      prompt.textContent = onlyOne
-        ? { idle: 'Wo ist die Eins?', wait: 'Wo ist die Eins?', listen: 'Hör zu – wo ist die Eins?', you: 'Jetzt klatschen – auf deine Eins', done: task?.answer?.ok ? 'Die Eins gefunden' : 'Wo war die Eins?' }[phase]
-        : !pat ? (phase === 'idle' ? 'Hör zu und klatsch das Muster' : 'Hör zu …')
-          : { wait: `Klatsch: ${pat.name}`, listen: `Hör zu – dann klatsch: ${pat.name}`, you: `Jetzt klatschen: ${pat.name}`, done: task.answer?.ok ? 'Das Muster sitzt' : 'Wo saß das Muster?' }[phase] || `Klatsch: ${pat.name}`;
-      sub.textContent = task
-        ? `${task.song ? `${DB_SONGS[task.song].name} · ${DB_SONGS[task.song].style}` : DB_GROOVES[task.groove].name} · ${task.meter}${ear.revealed ? '' : ' · kein Einzähler'}`
-        : `Stufe ${level.n}: ${level.label}`;
+      prompt.textContent = phase === 'you' ? 'Jetzt du!' : phase === 'done' ? (task.answer?.ok ? 'Geschafft!' : 'Noch nicht') : 'Hör zu …';
+      sub.textContent = !task ? `Stufe ${level.n}: ${level.label}`
+        : phase === 'done' ? `${task.song ? `${DB_SONGS[task.song].name} · ${DB_SONGS[task.song].style}` : DB_GROOVES[task.groove].name} · ${task.meter}` : '';
       const res = ear.revealed ? task?.answer : null;
       // Im Rhythmus-Bereich sitzt die Fläche in der Fußleiste (renderDownbeatDock):
       // nach dem Lauf startet sie den nächsten Groove, „Nochmal“ ist der runde Knopf.
@@ -12959,6 +12994,7 @@
       if (action === 'nochmal' || action === 'db-again') { if (ear.task) playEar(); return; }
       if (action === 'helps' || action === 'db-helps') { if (ear.task) openSettings('earhelp'); return; }
       if (action === 'db-stop') { clearEarTimers(); engine.fadeBus(ear.bus); renderEar(); return; }
+      if (action === 'db-skip') { skipDownbeat(); return; }
       if (!$('.sheet').hidden && sheetKind === 'earhelp') closeSettings();
       if (action === 'settings') openSettings('ear');
       else if (action === 'close-settings') closeSettings();
@@ -15186,7 +15222,9 @@
       ear.task = task; ear.revealed = false;
       renderEar();
       if (btns().map((b) => b.textContent).join() !== 'I,ii,iii,IV,V,V⁷,vi,vii°' || btns()[3].dataset.ans !== 'IV' || btns()[5].dataset.ans !== 'V7') errors.push(`Akkorde: Beschriftung ${btns().map((b) => b.textContent)}`);
-      if ($('.ear-prompt').textContent !== 'Welcher Akkord war das?' || !/^Dur · nach der Kadenz/.test($('.ear-sub').textContent)) errors.push(`Akkorde: Frage/Zeile „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
+      if ($('.ear-prompt').textContent !== 'Welcher Akkord war das?' || $('.ear-sub').textContent !== '') errors.push(`Akkorde: Frage/Zeile „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
+      // Kein Tonart-Balken: nur „Akkord nochmal“ (ohne Kadenz) und „Alles nochmal“.
+      if (!$('.key-row').classList.contains('is-replay') || /Dur|Moll/.test($('.key-row').textContent) || $$('.key-row button').map((b) => `${b.dataset.ear}:${b.textContent}`).join() !== 'inkey-target:Akkord nochmal,nochmal:Alles nochmal') errors.push(`Akkorde: Zeile über der Aufgabe „${$('.key-row').textContent}“`);
       if (earHelps().filter((h) => h[3]).map((h) => h[1]).join() !== 'Nur den Akkord') errors.push('Akkorde: Zusatzknopf vor dem Auflösen');
       const target = task.symbol;
       const wrong = chordInKeySymbols(CHORD_IN_KEY_LEVELS[3], 'major').filter((x) => x !== target);
@@ -15198,6 +15236,7 @@
         if (btns().filter((b) => b.classList.contains('is-bad')).map((b) => b.dataset.ans).join() !== wrong[0] || ear.revealed) errors.push('Akkorde: falscher Tipp → rot');
         answerEar(wrong[1]);
         if (!ear.revealed || btns().filter((b) => b.classList.contains('is-ok')).map((b) => b.dataset.ans).join() !== target || btns().filter((b) => b.classList.contains('is-bad')).length !== 2) errors.push('Akkorde: nach zwei Fehlversuchen Lösung nicht grün/rot');
+        if (!/^\S+-Dur · I = /.test($('.ear-sub').textContent)) errors.push(`Akkorde: Tonart nach der Antwort „${$('.ear-sub').textContent}“`);
         if (ear.stats.chordInKey.total !== stats0.total + 1 || ear.stats.chordInKey.right !== stats0.right) errors.push('Akkorde: Statistik nach zwei Fehlversuchen');
         if (earHelps().filter((h) => h[3]).map((h) => h[1]).join() !== 'Auflösung nochmal') errors.push('Akkorde: Zusatzknopf nach dem Auflösen');
         // Leuchten im Rhythmus der Akkorde (0,7 s, letzter 1,4 s).
@@ -15227,7 +15266,7 @@
       for (let i = 0; i < 200 && !(mt && mt.kmode === 'minor'); i++) mt = makeEarTask('chordInKey', 6, rnd);
       ear.levels.chordInKey = 6; ear.task = mt; ear.revealed = false;
       renderEar();
-      if (btns().map((b) => b.dataset.ans).join() !== 'i,ii°,III,iv,V,v,VI,VII' || !/^Moll · /.test($('.ear-sub').textContent)) errors.push(`Akkorde Moll: ${btns().map((b) => b.dataset.ans)}`);
+      if (btns().map((b) => b.dataset.ans).join() !== 'i,ii°,III,iv,V,v,VI,VII' || $('.ear-sub').textContent !== '') errors.push(`Akkorde Moll: ${btns().map((b) => b.dataset.ans)}`);
       // Rückmeldungen laut Anweisung.
       const aTask = { kind: 'chordInKey', kmode: 'major', key: 9, symbol: 'IV', resolution: [{ value: 'IV' }, { value: 'V' }, { value: 'I' }] };
       const viTask = { kind: 'chordInKey', kmode: 'major', key: 9, symbol: 'vi', resolution: [{ value: 'vi' }, { value: 'V' }, { value: 'I' }] };
@@ -16750,7 +16789,7 @@
     }
     // Einbindung: Zeile in der Rhythmus-Übersicht, Name, Icon, Kurztext; nicht in der Hören-Liste.
     if (BODY_LEVELS.map((l) => l.n).join() !== '1,2,3,4,5,6' || earLevelInfo('body')[0] !== BODY_LEVELS) errors.push('Körper: Stufen 1–6');
-    if (modeName('ear', 'body') !== 'Körper' || !MODE_ICONS.body || MODE_TEXT.body !== 'Puls im Fuß, Rhythmus in den Händen' || !rhythmHubHtml().includes('data-downbeat-open="body"')
+    if (modeName('ear', 'body') !== 'Body Percussion' || !/is-wip[^>]*data-downbeat-open="body"[\s\S]*\(noch in Arbeit\)/.test(rhythmHubHtml()) || !MODE_ICONS.body || MODE_TEXT.body !== 'Puls im Fuß, Rhythmus in den Händen' || !rhythmHubHtml().includes('data-downbeat-open="body"')
       || groupedHubHtml('ear', EAR_GROUPS, '', RHYTHM_EAR_MODES).includes('ear:body') || EAR_GROUPS.some(([, ids]) => ids.includes('body'))) errors.push('Körper: nicht im Rhythmus-Bereich eingebunden');
     if (areaOf('body') !== 'body' || !('body' in currentLevels())) errors.push('Körper: Fortschrittsbereich');
     return errors;
@@ -16958,6 +16997,24 @@
         simulate({ ...base }, 0); renderEar();
         if (rects() !== want) errors.push('Einsatz: Gerüst nach der Lösung verschoben');
       }
+      // Überschrift nur nach der Phase; Überspringen ohne Wertung (Song-Stufe).
+      const log0 = ear.dbLog;
+      try {
+        ear.mode = 'downbeat'; ear.levels.downbeat = 1; ear.revealed = false;
+        newTask();
+        const first = ear.task;
+        renderEar();
+        if ($('.ear-prompt').textContent !== 'Hör zu …' || $('.ear-sub').textContent !== '') errors.push(`Einsatz: Überschrift vor dem Lauf „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
+        if ($('.db-cap')) errors.push('Einsatz: Zeile „Klatsch: …“ noch da');
+        const stats = JSON.stringify(ear.stats.downbeat), series = JSON.stringify(earSeries);
+        dbRun = { task: first, t0: 0, plan: [], taps: [], playing: true };
+        skipDownbeat({ play: false });
+        if (dbRun || !ear.task || ear.task === first || ear.task.song === first.song || ear.revealed || JSON.stringify(ear.stats.downbeat) !== stats || JSON.stringify(earSeries) !== series) errors.push('Einsatz: Überspringen wertet oder bringt denselben Song');
+        if (!ear.dbLog.some((x) => x.song === first.song)) errors.push('Einsatz: übersprungener Song nicht im Gedächtnis');
+        ear.task.answer = { ok: false, hits: 1, total: 4 }; ear.revealed = true; renderEar();
+        if ($('.ear-prompt').textContent !== 'Noch nicht' || !$('.ear-sub').textContent.startsWith(`${DB_SONGS[ear.task.song].name} · `)) errors.push(`Einsatz: Überschrift nach dem Lauf „${$('.ear-prompt').textContent}“ / „${$('.ear-sub').textContent}“`);
+        if (downbeatInRhythm() && !$('[data-ear="db-skip"]').disabled) errors.push('Einsatz: Überspringen nach der Lösung möglich');
+      } finally { ear.dbLog = log0; }
     } finally {
       dbRun = null;
       onEarResult = sv.onResult; selfTesting = sv.st; ear.settings.autoNext = sv.auto; quickRun = sv.run; state.tab = sv.tab; state.input = sv.input;
