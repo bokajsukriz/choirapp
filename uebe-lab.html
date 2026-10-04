@@ -608,20 +608,33 @@
   .tap-pad { --mic-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E"); }
   .pad-level { width: 70%; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
   .pad-level i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--ok); transition: width .05s linear; }
-  .round-card { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .round-head { display: flex; align-items: center; gap: 8px; }
-  .round-title { flex: 1 1 auto; font-family: var(--font-display); font-weight: 700; font-size: 16px; }
-  .round-head .k-pill svg { width: 12px; height: 12px; stroke-width: 3; }
-  .round-head .help-btn { width: 32px; height: 32px; font-size: 14px; position: relative; }
-  .round-head .help-btn::before { content: ''; position: absolute; inset: -6px; }
-  .tstrip { position: relative; height: 34px; margin-top: 2px; }
-  .tstrip-line { position: absolute; left: 0; right: 0; top: 16px; height: 2px; background: var(--rule); }
-  .tstrip-mid { position: absolute; left: 50%; top: 6px; width: 2px; height: 22px; margin-left: -1px; background: var(--muted); }
-  .tdot { position: absolute; top: 10px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; }
-  .tdot.is-good { background: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
-  .tdot.is-near { background: var(--accent-3); box-shadow: 0 0 0 1px #b38f00; }
-  .tstrip-legend { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--muted); }
-  .round-counts { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--muted-2); }
+  .round-card { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+  /* Urteil (Entwurf docs/nachklatschen): Symbol im Kreis + großes Wort,
+     darunter eine Zeile. Wort + Symbol, nie nur Farbe. */
+  .round-verdict { display: flex; align-items: center; gap: 12px; }
+  .verdict-badge { flex: none; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .verdict-badge svg { width: 28px; height: 28px; stroke-width: 3; }
+  .verdict-text { flex: 1 1 auto; min-width: 0; }
+  .verdict-word { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1; }
+  .verdict-line { margin: 3px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); }
+  [data-verdict="gut"] .verdict-badge { background: var(--ok); color: #fff; }
+  [data-verdict="gut"] .verdict-word { color: var(--ok-fg); }
+  [data-verdict="okay"] .verdict-badge { background: var(--warn); color: var(--text); }
+  [data-verdict="okay"] .verdict-word { color: var(--warn-fg); }
+  [data-verdict="fast"] .verdict-badge { background: var(--fast); color: var(--text); }
+  [data-verdict="fast"] .verdict-word { color: var(--fast-fg); }
+  [data-verdict="nochmal"] .verdict-badge { background: var(--danger-bg); color: var(--danger-fg); }
+  [data-verdict="nochmal"] .verdict-word { color: var(--danger-fg); }
+  .round-verdict .help-btn { align-self: flex-start; width: 32px; height: 32px; font-size: 14px; position: relative; }
+  .round-verdict .help-btn::before { content: ''; position: absolute; inset: -6px; }
+  .round-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .rdot { width: 26px; height: 26px; border-radius: 50%; box-sizing: border-box; }
+  .rdot.is-good { background: var(--ok); }
+  .rdot.is-near { background: var(--warn); }
+  .rdot.is-miss { border: 2.5px dashed var(--danger); }
+  .rdot.is-extra { width: 8px; height: 20px; border-radius: 4px; background: var(--fast); }
+  .round-tip { margin: 0; padding: 9px 12px; border-radius: 14px; background: var(--surface-2); font-size: 14px; line-height: 1.35; }
+  .round-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
   .round-syl { display: flex; flex-wrap: wrap; gap: 4px; }
   .rsyl { padding: 3px 8px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 14px; line-height: 1.3; border: 1px solid transparent; }
   .rsyl.is-good { background: var(--ok-bg); color: var(--ok-fg); }
@@ -629,7 +642,6 @@
   .rsyl.is-miss { background: var(--surface); border: 1px dashed #c8102e; color: #c8102e; text-decoration: line-through; }
   .rsyl.is-rest { color: var(--muted); font-style: italic; }
   .round-card.is-next-round .round-syl { display: none; }
-  .round-text { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: var(--muted-2); }
   .round-card .help-text { margin: 4px 0 0; }
   .transport-row { grid-template-columns: auto 1fr auto; gap: 10px; }
   footer .play { width: 48px; height: 48px; box-shadow: none; color: var(--accent-ink); }
@@ -1031,7 +1043,7 @@
         <div class="stage"></div>
       </div>
       <!-- Ergebnis der letzten Runde: Timing als Tendenz, Silben eingefärbt. -->
-      <div class="round-card k-card" data-round-card hidden></div>
+      <div class="round-card k-card" data-round-card role="group" hidden></div>
       <p class="score visually-hidden" role="status"></p>
       <p class="score-sub visually-hidden"></p>
     </section>
@@ -3352,16 +3364,75 @@
     silent: 'Nichts gehört – etwas lauter oder näher ans Handy.',
   };
 
-  /** Karte „Letzte Runde“: Pille, Timing-Streifen, verpasst/zu viel, beim
-   *  Nachklatschen ohne Noten die Silben eingefärbt (Klang → Silbe), Satz. */
+  /** Urteil einer Runde (Entwurf docs/nachklatschen): ein großes Wort statt
+   *  Zahlen. Fehler = verpasst + zu viel. Gut = fehlerfrei und alles genau,
+   *  Okay = fehlerfrei mit knappen Treffern, Fast = 1–2 Fehler, sonst
+   *  Nochmal. `perfect` (Serie, Tempo, Kurs) bleibt unberührt. Rein. */
+  const VERDICT_WORD = { gut: 'Gut!', okay: 'Okay', fast: 'Fast', nochmal: 'Nochmal' };
+  function roundVerdict(result, { tol = .1, mic = false, mode = 'echo' } = {}) {
+    const sum = timingSummary(result, tol, { mic });
+    const errors = sum.missed + sum.extras;
+    const allGood = result.notes.length > 0 && result.notes.every((n) => n.status === 'good');
+    const key = result.perfect ? (allGood ? 'gut' : 'okay') : errors <= 2 ? 'fast' : 'nochmal';
+    let how;
+    if (key === 'gut') how = 'genau im Takt';
+    else if (key === 'okay') {
+      how = timingWord(result.meanOff);
+      if (how === 'genau') {
+        const offs = result.notes.filter((n) => n.status === 'near').map((n) => n.off);
+        how = offs.every((o) => o < 0) ? 'eher früh' : offs.every((o) => o > 0) ? 'eher spät' : 'mal früh, mal spät';
+      }
+    } else how = [sum.missed ? `${sum.missed} verpasst` : '', sum.extras ? `${sum.extras} zu viel` : ''].filter(Boolean).join(' · ');
+    const line = `${sum.hits} von ${sum.count}${how ? ` · ${how}` : ''}`;
+    const read = mode === 'read';
+    const missAt = result.notes.findIndex((n) => n.status === 'miss') + 1;
+    let tip;
+    if (sum.tendency === 'silent') tip = sum.text;
+    else if (key === 'gut') tip = mode === 'course' ? 'Sitzt – genau im Groove.' : 'Sitzt. Nächste Runde – oder eine Stufe höher.';
+    else if (key === 'okay') tip = sum.text || 'Alle Schläge da – jetzt noch genauer auf den Schlag.';
+    else if (key === 'fast') {
+      const look = read ? 'Schau' : 'Hör';
+      if (sum.missed === 1) tip = `${sum.extras ? `Der ${missAt}. Klatscher fehlte, dafür kam einer zu viel.` : `Nur der ${missAt}. Klatscher fehlte.`} ${look} beim nächsten Mal genau auf diese Stelle.`;
+      else if (!sum.missed) tip = `${sum.extras === 1 ? 'Ein Klatscher' : 'Zwei Klatscher'} zu viel – klatsch nur, ${read ? 'was dasteht' : 'was du gehört hast'}.`;
+      else tip = sum.text || `Fast geschafft – ${read ? 'lies' : 'hör'} noch einmal genau ${read ? 'mit' : 'hin'}.`;
+    }
+    else tip = read ? 'Erst den Takt lesen, innerlich mitsprechen („ta ti-ti“) – dann klatschen.'
+      : mode === 'duo' ? 'Erst nur zuhören, innerlich mitzählen – dann klatschen.'
+        : 'Erst ganz zuhören, innerlich mitsprechen („ta ti-ti“) – dann klatschen.';
+    return { key, word: VERDICT_WORD[key], line, tip, errors, sum };
+  }
+  /** Punktreihe der Karte: je Note ein Punkt in Reihenfolge, zu viel
+   *  Geklatschtes als Strich an seiner zeitlichen Stelle. Verrät keine
+   *  Notenwerte (gleich große Punkte, gleicher Abstand). */
+  function roundDots(round) {
+    const r = round.result;
+    const at = (n) => n.tap ?? (round.youStart + n.t * round.tickSec);
+    const items = [
+      ...r.notes.map((n) => ({ at: at(n), cls: n.status })),
+      ...(r.taps || []).filter((x) => x.cls === 'extra').map((x) => ({ at: x.at, cls: 'extra' })),
+    ];
+    return items.sort((a, b) => a.at - b.at || (a.cls === 'extra') - (b.cls === 'extra')).map((x) => x.cls);
+  }
+  const VERDICT_ICON = {
+    gut: '<path d="M5 12l5 5L20 7"/>',
+    okay: '<path d="M6 12h12"/>',
+    fast: '<path d="M4 12h3M10.5 12h3M17 12h3"/>',
+    nochmal: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/>',
+  };
+
+  /** Karte „Letzte Runde“: Urteil (Symbol + Wort), Zeile, Punktreihe, beim
+   *  Nachklatschen ohne Noten die Silben eingefärbt (Klang → Silbe), Tipp,
+   *  Fußzeile Runde/Serie. */
   function renderRoundCard() {
     const card = $('[data-round-card]');
     const last = game.last;
     const r = last?.result;
-    if (!r || state.mode !== last.mode && !(state.mode === 'course' && last.course)) { card.hidden = true; card.innerHTML = ''; return; }
-    const sum = timingSummary(r, last.tol, { mic: state.input === 'mic' });
-    const dots = sum.dots.map((d) => `<span class="tdot is-${d.status}" style="left:calc(50% + ${(d.x * 50).toFixed(1)}% - 7px)"></span>`).join('');
-    const counts = [sum.missed ? `${sum.missed} verpasst` : '', sum.extras ? `${sum.extras} zu viel` : ''].filter(Boolean).join(' · ');
+    if (!r || state.mode !== last.mode && !(state.mode === 'course' && last.course)) { card.hidden = true; card.innerHTML = ''; card.removeAttribute('aria-label'); return; }
+    const v = roundVerdict(r, { tol: last.tol, mic: state.input === 'mic', mode: last.course ? 'course' : last.mode });
+    const sum = v.sum;
+    const dots = roundDots(last).map((c) => `<span class="rdot is-${c}"></span>`).join('');
+    const good = r.notes.filter((n) => n.status === 'good').length;
+    const near = sum.hits - good;
     let syl = '';
     if (!stageShown(last)) {
       const style = last.course ? course.syl : state.syllables;
@@ -3373,15 +3444,18 @@
         return `<span class="rsyl is-${st}">${style === 'off' && st !== 'rest' ? '●' : esc(texts[k])}${word ? `<span class="visually-hidden"> (${word})</span>` : ''}</span>`;
       }).join('')}</div>`;
     }
-    const good = sum.dots.filter((d) => d.status === 'good').length;
-    const near = sum.dots.length - good;
-    card.innerHTML = `<div class="round-head"><span class="round-title">Letzte Runde</span><span class="k-pill${sum.pill.ok ? ' k-pill--ok' : ''}">${sum.pill.ok ? K_CHECK : ''}${sum.pill.text}</span>
+    const s = game.stats;
+    const right = game.streak > 1 ? `${game.streak} in Folge ✓` : s.targets ? `${Math.round(100 * s.hits / s.targets)} % getroffen` : '';
+    const dotsLabel = [`${good} genau`, near ? `${near} knapp` : '', sum.missed ? `${sum.missed} verpasst` : '', sum.extras ? `${sum.extras} zu viel` : ''].filter(Boolean).join(', ');
+    card.dataset.verdict = v.key;
+    card.setAttribute('aria-label', `Letzte Runde: ${v.word.replace('!', '')}, ${v.line.replace(/ · /g, ', ')}. ${v.tip}`);
+    card.innerHTML = `<div class="round-verdict"><span class="verdict-badge" aria-hidden="true"><svg viewBox="0 0 24 24">${VERDICT_ICON[v.key]}</svg></span>
+        <div class="verdict-text"><p class="verdict-word">${v.word}</p><p class="verdict-line">${esc(v.line)}</p></div>
         <button class="help-btn" type="button" data-help="help-timing" aria-expanded="false" aria-label="Erklärung der Auswertung">?</button></div>
-      <div class="tstrip" role="img" aria-label="Timing: ${good} genau, ${near} knapp${sum.text ? `. ${sum.text}` : ''}"><span class="tstrip-line"></span><span class="tstrip-mid"></span>${dots}</div>
-      <div class="tstrip-legend" aria-hidden="true"><span>zu früh</span><span>genau</span><span>zu spät</span></div>
-      ${counts ? `<p class="round-counts">${counts}</p>` : ''}${syl}
-      ${sum.text ? `<p class="round-text">${sum.text}</p>` : ''}
-      <p class="help-text" id="help-timing" hidden>Jeder Punkt ist ein Klatscher: in der Mitte genau, links zu früh, rechts zu spät. <b>Grün</b> = genau (bis 40 ms), <b>gelb</b> = knapp. Eine Runde ist geschafft, wenn alle Noten getroffen sind und kein Klatscher zu viel ist.${sum.meanMs !== null ? ` Mittlere Abweichung dieser Runde: ${sum.meanMs > 0 ? '+' : ''}${sum.meanMs} ms.` : ''} Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>`;
+      <div class="round-dots" role="img" aria-label="Klatscher in Reihenfolge: ${dotsLabel}">${dots}</div>${syl}
+      <p class="round-tip">${esc(v.tip)}</p>
+      <div class="round-foot"><span>Runde ${s.rounds}${state.rounds ? `/${state.rounds}` : ''}</span><span>${right}</span></div>
+      <p class="help-text" id="help-timing" hidden><b>Gut</b> = alles getroffen, alles genau (bis 40 ms). <b>Okay</b> = alles getroffen, aber manches nur knapp. <b>Fast</b> = ein oder zwei Fehler. <b>Nochmal</b> = mehr Fehler. Ein Fehler ist ein verpasster oder ein zu viel geklatschter Schlag. Die Punkte stehen für die Klatscher in ihrer Reihenfolge: <b>grün</b> genau, <b>gelb</b> knapp, <b>gestrichelt</b> verpasst, <b>Strich</b> zu viel. Eine Runde ist geschafft, wenn alle Noten getroffen sind und kein Klatscher zu viel ist.${sum.meanMs !== null ? ` Mittlere Abweichung dieser Runde: ${sum.meanMs > 0 ? '+' : ''}${sum.meanMs} ms.` : ''} Bluetooth-Kopfhörer verzögern den Ton spürbar — am besten mit Kabel oder Lautsprecher üben.</p>`;
     card.hidden = false;
   }
 
@@ -16139,6 +16213,26 @@
     // Mikrofon: nichts gehört
     t = timingSummary({ notes: [note(0, 'miss'), note(12, 'miss')], count: 2, extras: 0, perfect: false, taps: [] }, .12, { mic: true });
     if (t.tendency !== 'silent') errors.push(`timingSummary Mikrofon still: ${t.tendency}`);
+    // Urteil: je Stufe ein Beispiel, Grenzfälle 0/1/2/3 Fehler, alles knapp.
+    const V = (notes, extra) => roundVerdict(res(notes, { meanOff: 0, ...extra }), { tol: .12 });
+    let v = V([note(0, 'good', 5), note(12, 'good', -8), note(24, 'good', 12)], { perfect: true });
+    if (v.key !== 'gut' || v.word !== 'Gut!' || v.line !== '3 von 3 · genau im Takt') errors.push(`roundVerdict gut: ${JSON.stringify(v)}`);
+    v = V([note(0, 'good', 20), note(12, 'near', 60), note(24, 'near', 70)], { perfect: true, meanOff: .05 });
+    if (v.key !== 'okay' || v.line !== '3 von 3 · eher spät') errors.push(`roundVerdict okay: ${v.key} / ${v.line}`);
+    v = V([note(0, 'near', -60), note(12, 'near', -55), note(24, 'near', -50)], { perfect: true, meanOff: -.055 });
+    if (v.key !== 'okay' || !/eher früh/.test(v.line)) errors.push(`roundVerdict alles knapp: ${v.key} / ${v.line}`);
+    v = V([note(0, 'near', -60), note(12, 'near', 55), note(24, 'good', 0)], { perfect: true, meanOff: 0 });
+    if (v.key !== 'okay' || !/mal früh, mal spät/.test(v.line)) errors.push(`roundVerdict knapp gemischt: ${v.line}`);
+    v = V([note(0, 'good', 0), note(12, 'good', 0), note(24, 'miss'), note(36, 'good', 0)]);
+    if (v.key !== 'fast' || v.errors !== 1 || v.line !== '3 von 4 · 1 verpasst' || !/^Nur der 3\. Klatscher fehlte/.test(v.tip)) errors.push(`roundVerdict 1 Fehler: ${JSON.stringify(v)}`);
+    v = V([note(0, 'good', 0), note(12, 'good', 0)], { extras: 2 });
+    if (v.key !== 'fast' || v.errors !== 2 || v.line !== '2 von 2 · 2 zu viel') errors.push(`roundVerdict 2 Fehler: ${v.key} / ${v.line}`);
+    v = V([note(0, 'miss'), note(12, 'good', 0), note(24, 'miss'), note(36, 'good', 0)], { extras: 1 });
+    if (v.key !== 'nochmal' || v.errors !== 3 || v.line !== '2 von 4 · 2 verpasst · 1 zu viel' || !v.tip) errors.push(`roundVerdict 3 Fehler: ${JSON.stringify(v)}`);
+    if (V([note(0, 'good', 0), note(12, 'miss')], { extras: 2 }).key !== 'nochmal') errors.push('roundVerdict: 1 verpasst + 2 zu viel ist nicht „Nochmal“');
+    // Punktreihe: Extras an ihrer zeitlichen Stelle, Verpasste an der Sollzeit.
+    const dr = { youStart: 10, tickSec: .05, result: { notes: [{ t: 0, status: 'good', tap: 10 }, { t: 12, status: 'miss' }, { t: 24, status: 'near', tap: 11.25 }], taps: [{ at: 10, cls: 'good' }, { at: 10.3, cls: 'extra' }, { at: 11.25, cls: 'near' }] } };
+    if (roundDots(dr).join() !== 'good,extra,miss,near') errors.push(`roundDots: ${roundDots(dr).join()}`);
     // Bühne springt nicht: Notenfläche immer sichtbar (leer „nach Gehör“),
     // Höhe gleich, ob Noten oder nicht; „Los“ nur in Ruhe/nach dem Ende.
     if (!run.playing) {
@@ -16317,7 +16411,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
+    selfCheck, selfCheckAudio, roundVerdict, roundDots, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)

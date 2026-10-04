@@ -47,6 +47,15 @@
   --ok: #21b17f;
   --ok-fg: #157a55;
   --ok-bg: #DDF5EA;
+  /* Urteil einer Runde (Gut/Okay/Fast/Nochmal), Werte wie index.html.
+     *-fg ≥ 4,5:1 auf Weiß; Flächen tragen Symbol + Wort. */
+  --warn: #ffb100;
+  --warn-fg: #8a5a00;    /* 5,9:1 auf Weiß */
+  --fast: #f08a24;       /* Orange „Fast“; --text darauf 6,4:1 */
+  --fast-fg: #a5520a;    /* 5,5:1 auf Weiß */
+  --danger: #ff4d6d;
+  --danger-fg: #c8102e;  /* 5,9:1 auf Weiß */
+  --danger-bg: #ffe1e7;
   /* Farbcode: Cyan = Hören/Vorgabe, Gelb = Wiederholen/still. Immer mit
      Icon oder Text, nie nur Farbe. */
   --hear: #33c9dc;
